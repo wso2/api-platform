@@ -19,7 +19,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FC } from 'react';
 import { Box, Button, CircularProgress, PageContent, PageTitle, Typography } from '@wso2/oxygen-ui';
 import ProviderDeployPage from './ProviderDeployPage';
-import { createProviderDeployClient, type ProviderUpstream } from './providerDeployApi';
+import { createProviderDeployClient, withValuePrefix, type ProviderUpstream } from './providerDeployApi';
 import { isSettling } from './utils/status';
 import type { CloudHostPort } from './hostPort';
 import type { Build, Environment } from './types';
@@ -168,7 +168,7 @@ const ProviderDeployFeature: FC<ProviderDeployFeatureProps> = ({ port, artifactH
                 target.gateways.find((candidate) => candidate.id === gateway.gatewayId)?.name ??
                 gateway.gatewayId;
               const reference = await client.storeCredential(
-                gateway.apiKey,
+                withValuePrefix(upstream.authValuePrefix, gateway.apiKey),
                 `${handle} · ${target.name} · ${name}`
               );
               stored.push(reference);

@@ -18,21 +18,28 @@
 
 import { FormattedMessage } from 'react-intl';
 
-import { ComingSoon } from '../../../../components/ComingSoon';
-import { routes } from '../../../../routes/paths';
-import { ScopeGate } from '../../../../scope/ScopeGate';
+import { AppPage } from '@/components/AppPage';
+import { ComingSoon } from '@/components/ComingSoon';
+import { routes } from '@/routes/paths';
+import { ScopeGate } from '@/scope/ScopeGate';
 
 export function CompliancePage() {
   return (
-    <ScopeGate prompt="Compliance is assessed per API." requires="api" to={routes.apiInsightsCompliance}>
-      <ComingSoon
-        feature={
-          <FormattedMessage
-            id="appShell.compliancePage.feature"
-            defaultMessage="Compliance reporting for this API"
-          />
-        }
-      />
-    </ScopeGate>
+    <AppPage>
+      <ScopeGate
+        prompt="Compliance is assessed per API."
+        requires="api"
+        to={routes.apiInsightsCompliance}
+      >
+        <ComingSoon
+          feature={
+            <FormattedMessage
+              id="appShell.compliancePage.feature"
+              defaultMessage="Compliance reporting for this API"
+            />
+          }
+        />
+      </ScopeGate>
+    </AppPage>
   );
 }

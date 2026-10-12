@@ -30,7 +30,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { AppAuthContext, type AppUser, type AppOrg } from './AppAuthContext';
+import { LoginOptions, AppAuthContext, type AppUser, type AppOrg } from './AppAuthContext';
 import { checkPermission, isPlatformRole } from '../auth/permissions';
 import { AUTH_MODE, CSRF_HEADER, CSRF_VALUE } from '../config.env';
 import { BASE_PATH } from '../paths';
@@ -52,6 +52,7 @@ interface SessionResponse {
     name?: string | null;
     email?: string | null;
     role?: string | null;
+    picture?: string;
     scopes?: string[];
     org?: { id: string; name: string; handle: string } | null;
     organizations?: string[];
@@ -66,6 +67,7 @@ function toAppUser(u: SessionResponse['user']): AppUser | null {
   return {
     name: u.name ?? null,
     email: u.email ?? null,
+    picture: u.picture ?? null,
     role: isPlatformRole(u.role) ? u.role : null,
     scopes: u.scopes ?? [],
     org,
@@ -165,10 +167,18 @@ export function BFFAuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const login = useCallback(async () => {
+  const login = useCallback(async (options?: LoginOptions) => {
     if (AUTH_MODE === 'oidc') {
-      const ret = encodeURIComponent(window.location.pathname + window.location.search);
-      window.location.href = `${OIDC_LOGIN_URL}?return=${ret}`;
+      const params = new URLSearchParams({
+        return: window.location.pathname + window.location.search,
+      });
+      // Forwarded to the IDP by the BFF, which allowlists them. Passing a provider
+      // lets a login page offer "Continue with Google" and send the user straight
+      // there, instead of to the IDP's own provider chooser; omitting it keeps the
+      // original behaviour, where the IDP asks.
+      if (options?.fidp) params.set('fidp', options.fidp);
+      if (options?.loginHint) params.set('login_hint', options.loginHint);
+      window.location.href = `${OIDC_LOGIN_URL}?${params.toString()}`;
     }
     // Basic mode: the login page calls POST /api/login and reloads on success.
   }, []);

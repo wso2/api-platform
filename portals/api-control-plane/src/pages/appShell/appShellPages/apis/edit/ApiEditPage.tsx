@@ -20,6 +20,7 @@ import { PageTitle } from '@wso2/oxygen-ui';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import { Link, useNavigate } from 'react-router-dom';
 
+import { AppPage } from '@/components/AppPage';
 import { useRestApi, useUpdateRestApi, type RestApi } from '@/api/resources/restApis';
 import { useNotifications } from '@/components/Notifications';
 import { ErrorState, LoadingState } from '@/components/StateViews';
@@ -87,6 +88,14 @@ const toUpdateBody = (api: RestApi, values: ApiBasicInfoFormValues): RestApi => 
 // No `ScopeGate`: this page is only reachable from the API detail page's own
 // edit button, so it never mounts without an API in scope.
 export function ApiEditPage() {
+  return (
+    <AppPage>
+      <ApiEditPageContent />
+    </AppPage>
+  );
+}
+
+function ApiEditPageContent() {
   const intl = useIntl();
   const navigate = useNavigate();
   const { notify } = useNotifications();

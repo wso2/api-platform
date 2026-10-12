@@ -30,6 +30,10 @@ go test ./suites/it -count=1 -timeout=30m -blocks=gateway-core/sqlite
 # The full matrix (all database engines), bounded concurrency:
 go test ./suites/it -count=1 -timeout=45m -blocks=gateway-core -block-parallel=3
 
+# The ap CLI's ai-workspace commands against platform-api (needs the ap binary, see below):
+make ap-cli
+go test ./suites/it -count=1 -timeout=30m -blocks=ai-workspace-cli
+
 # Gateway-controller policy smoke (requires ../gateway-controllers/policies)
 go test ./suites/it -count=1 -timeout=25m -args -blocks=gateway-controller-policies
 #   On Apple silicon, cap coverage runs at -block-parallel=2: the arm64 SQL Server
@@ -52,7 +56,10 @@ go test ./suites/cloud -count=1 -timeout=15m \
   -args -blocks=apip-cloud -cloud-env=development
 ```
 
-Prerequisite images: `make testbench` here. Coverage runs build source images through the
+Prerequisite images: `make testbench` and, for blocks that list `a2a-trip-planner`,
+`make a2a-trip-planner` here. The `ai-workspace-cli` block also needs the host `ap` binary:
+`make ap-cli` builds it to `cli/src/build/ap` (override the location with `AP_CLI_BINARY`); a
+missing binary fails the block rather than skipping it. Coverage runs build source images through the
 framework and use the product `VERSION` files for their tags; they do not require a separate
 product coverage-image target. See
 [`docs/coverage-architecture.md`](docs/coverage-architecture.md) for what coverage collects
@@ -137,7 +144,15 @@ go test -blocks gateway-restart                         # one block
 go test -feature-tags "@request-rewrite"                # one feature, any block
 go test -blocks gateway-core -feature-tags "@metrics,@cors"          # ',' is OR
 go test -gateway-version 1.2.0 -blocks gateway-core/sqlite # one Gateway release
+go test -gateway-version 1.1.0 -host registry.example/test-gateway -blocks gateway-core/sqlite # released images from another repository
 ```
+
+`-host` overrides the `ghcr.io/wso2/api-platform` image repository prefix for the
+Platform Gateway controller and runtime only. It must be used together with
+`-gateway-version`; the version remains the Gateway release used for configuration,
+management paths, and compatibility selection. For example, the command above pulls
+`registry.example/test-gateway/gateway-controller:1.1.0` and
+`registry.example/test-gateway/gateway-runtime:1.1.0`.
 
 Two flags are deliberately NOT named after their `go test` counterparts, because the go tool
 consumes any flag it recognises and forwards only the rest:
@@ -173,6 +188,58 @@ defaults:
 The selector uses the same strict Gateway-version syntax as runner tags. Incompatible matrix
 variants are reported as skipped before their topology boots. Explicitly selecting an incompatible
 variant, such as `-blocks gateway-core/sqlserver -gateway-version 1.1.0`, is a configuration error.
+
+### Policy error compatibility
+
+The `policy-compat` blocks prove that changing a policy in gateway-controllers leaves the error
+response a client receives unchanged — status, contract headers and body — on every supported
+Gateway version. Each scenario drives one policy into its main rejection and checks the response
+with `the response should match the expected error response "<id>"`, against
+`suites/it/resources/expected-error-responses/<id>.json`. One file serves every Gateway version.
+If a version's response genuinely differs, record that version's own file as
+`expected-error-responses/<gateway version>/<id>.json`; it wins for that version. The source build's
+version is the one in `gateway/VERSION`.
+
+The policies under test come from `../gateway-controllers/policies`, a gateway-controllers
+checkout next to this repository: in gateway-controllers' CI that is the pull request. The
+expected responses were recorded from the policies as they were before the change being checked.
+
+On a released Gateway, only the policies that release ships are built (`releasedPoliciesOnly`
+on the block's `platform-gateway`): those are the ones its users would upgrade. The rest of the
+checkout can need what the release's gateway-builder lacks — a newer Go, a newer shared module.
+
+| Runner | Gateway versions | Covers |
+|---|---|---|
+| `policy-errors-from-1-1-0` | 1.1.0 and later | policies every supported release ships |
+| `policy-errors-from-1-2-0` | 1.2.0 and later | policies, and a streamed rejection, first shipped in 1.2.0 |
+| `policy-errors-latest` | the current source build | unreleased policies, the Python guardrails, Agent APIs |
+| `policy-errors-semantic-cache` | 1.1.0 and later | semantic-cache, in its own block with Redis |
+
+Run them alone, for one Gateway version (`-gateway-version` omitted means the source build):
+
+```bash
+cd tests/framework
+B=policy-compat/sqlite,policy-compat-semantic-ai/sqlite
+go test ./suites/it -count=1 -timeout=60m -v -args -blocks=$B -gateway-version=1.2.0
+```
+
+`-blocks` selects only these blocks; the `/sqlite` suffix picks one variant of each block's
+database matrix (drop it to run every database). To run one runner, add
+`-run 'TestIntegrationSuite/policy-compat/sqlite/policy-errors-from-1-2-0'` before `-args`.
+
+**Recording.** Check out the policies from before the change as `../gateway-controllers`, then
+run with `IT_RECORD_EXPECTED_ERRORS=1` on the source build, which runs every scenario. Then run
+the other Gateway versions without it: a difference there is either a real incompatibility or a
+version that genuinely answers differently. For the latter, copy the shared file into
+`<gateway version>/` and record again on that version, which then writes the override. A missing
+expected response fails rather than recording itself. Responses are stored with UUIDs,
+timestamps, hex IDs and the runner's generated names masked, and JSON bodies are compared
+structurally.
+
+**An intended difference** is recorded rather than left failing: run with
+`IT_ACCEPT_ERROR_CHANGES=1` and each differing response is written beside its expected response
+as `<id>.accepted.json`. A response then passes if it matches either file, and the accepted file
+is reviewed like any other change.
 
 ### Docker environment
 

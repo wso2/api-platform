@@ -25,9 +25,11 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
+	"mime"
 	"mime/multipart"
 	"net/http"
 	"net/url"
@@ -39,6 +41,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	commonconstants "github.com/wso2/api-platform/common/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
@@ -322,7 +325,9 @@ type controlPlaneAPIKey struct {
 }
 
 // FetchAPIKeysByKind fetches all API keys for the given artifact kind from the control plane.
-// Supported kinds: KindLlmProvider, KindLlmProxy, KindRestApi, KindWebSubApi, KindWebBrokerApi.
+// Supported kinds: KindLlmProvider, KindLlmProxy, KindRestApi, KindWebSubApi, KindWebBrokerApi,
+// KindAgent. KindAgent selects the gateway-internal /agents/api-keys route, which the control
+// plane serves for its AgentProxy kind — the gateway's Agent vocabulary crosses the boundary here.
 // When issuer is non-empty it is appended as a query parameter so the server returns
 // only keys matching that issuer; an empty issuer fetches all keys for the kind.
 // Only active keys that carry a sha256 hash are returned; others are skipped.
@@ -340,6 +345,8 @@ func (s *APIUtilsService) FetchAPIKeysByKind(artifactKind, issuer string) ([]mod
 		path = "/websub-apis/api-keys"
 	case models.KindWebBrokerApi:
 		path = "/webbroker-apis/api-keys"
+	case models.KindAgent:
+		path = "/agents/api-keys"
 	default:
 		return nil, fmt.Errorf("unsupported artifact kind for API key fetch: %s", artifactKind)
 	}
@@ -474,6 +481,14 @@ func (s *APIUtilsService) ExtractYAMLFromZip(zipData []byte) ([]byte, error) {
 		return nil, fmt.Errorf("failed to create zip reader: %w", err)
 	}
 
+	// The archive itself is bounded by the response-size ceiling, but a small
+	// archive can inflate to far more than that; bound the decompressed entry
+	// by the same ceiling.
+	maxEntryBytes := s.config.MaxResponseBytes
+	if maxEntryBytes <= 0 {
+		maxEntryBytes = defaultMaxResponseBytes
+	}
+
 	// Look for YAML files in the zip
 	for _, file := range zipReader.File {
 		// Check for common API definition file names
@@ -482,6 +497,10 @@ func (s *APIUtilsService) ExtractYAMLFromZip(zipData []byte) ([]byte, error) {
 				slog.String("filename", file.Name),
 			)
 
+			if file.UncompressedSize64 > uint64(maxEntryBytes) {
+				return nil, fmt.Errorf("file %s exceeds maximum allowed size", file.Name)
+			}
+
 			// Open the file
 			rc, err := file.Open()
 			if err != nil {
@@ -489,10 +508,14 @@ func (s *APIUtilsService) ExtractYAMLFromZip(zipData []byte) ([]byte, error) {
 			}
 			defer rc.Close()
 
-			// Read the content
-			yamlData, err := io.ReadAll(rc)
+			// Read the content. The declared size above is attacker-supplied
+			// header data, so the read itself is bounded too.
+			yamlData, err := io.ReadAll(io.LimitReader(rc, maxEntryBytes+1))
 			if err != nil {
 				return nil, fmt.Errorf("failed to read file %s: %w", file.Name, err)
+			}
+			if int64(len(yamlData)) > maxEntryBytes {
+				return nil, fmt.Errorf("file %s exceeds maximum allowed size", file.Name)
 			}
 
 			return yamlData, nil
@@ -638,6 +661,14 @@ func (s *APIUtilsService) FetchMCPProxyDefinition(proxyID string) ([]byte, error
 // boilerplate the way FetchAPIDefinition/FetchLLMProviderDefinition/
 // FetchLLMProxyDefinition above do for kinds known to core.
 func (s *APIUtilsService) FetchResourceZip(resourcePath, resourceLabel string) ([]byte, error) {
+	bodyBytes, _, err := s.fetchZip(resourcePath, resourceLabel)
+	return bodyBytes, err
+}
+
+// fetchZip is FetchResourceZip returning the response's Content-Type as well,
+// for callers that verify what they were sent rather than only that a 200 came
+// back.
+func (s *APIUtilsService) fetchZip(resourcePath, resourceLabel string) ([]byte, string, error) {
 	url := s.getBaseURL() + resourcePath
 
 	s.logger.Debug("Fetching "+resourceLabel,
@@ -648,7 +679,7 @@ func (s *APIUtilsService) FetchResourceZip(resourcePath, resourceLabel string) (
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
+		return nil, "", fmt.Errorf("failed to create request: %w", err)
 	}
 
 	req.Header.Add("api-key", s.config.Token)
@@ -656,28 +687,98 @@ func (s *APIUtilsService) FetchResourceZip(resourcePath, resourceLabel string) (
 
 	resp, err := s.client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch %s: %w", resourceLabel, err)
+		return nil, "", fmt.Errorf("failed to fetch %s: %w", resourceLabel, err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, s.config.MaxResponseBytes))
-		return nil, fmt.Errorf("%s request failed with status %d: %s", resourceLabel, resp.StatusCode, string(bodyBytes))
+		return nil, "", fmt.Errorf("%s request failed with status %d: %s", resourceLabel, resp.StatusCode, string(bodyBytes))
 	}
 
 	bodyBytes, err := io.ReadAll(io.LimitReader(resp.Body, s.config.MaxResponseBytes+1))
 	if err != nil {
-		return nil, fmt.Errorf("failed to read response body: %w", err)
+		return nil, "", fmt.Errorf("failed to read response body: %w", err)
 	}
 	if int64(len(bodyBytes)) > s.config.MaxResponseBytes {
-		return nil, fmt.Errorf("%s response exceeds maximum allowed size", resourceLabel)
+		return nil, "", fmt.Errorf("%s response exceeds maximum allowed size", resourceLabel)
 	}
 
 	s.logger.Debug("Successfully fetched "+resourceLabel,
 		slog.Int("size_bytes", len(bodyBytes)),
 	)
 
-	return bodyBytes, nil
+	return bodyBytes, resp.Header.Get("Content-Type"), nil
+}
+
+// ErrInvalidAgentArtifact is returned by FetchAgentDefinition when the control
+// plane answered 200 with something other than the requested Agent's artifact.
+var ErrInvalidAgentArtifact = errors.New("invalid agent artifact")
+
+// FetchAgentDefinition downloads an Agent's deployment artifact from the control
+// plane's gateway-internal API: GET {base}/agents/{agentID}, answered with the
+// immutable snapshot of the Agent's current deployment on this gateway, as a ZIP
+// holding exactly one entry, agent-{agentID}.yaml.
+//
+// agentID is the artifact UUID the agent.* events carry — never the Agent
+// proxy's public handle, which the internal API does not accept. It is
+// interpolated into the request path, so anything other than a canonical UUID
+// is refused before a request is built.
+//
+// The response is verified to be the artifact that was asked for — a ZIP media
+// type, a readable archive, a single entry naming this Agent — so a failed or
+// misrouted fetch surfaces here, before anything is parsed or written locally.
+func (s *APIUtilsService) FetchAgentDefinition(agentID string) ([]byte, error) {
+	if !isCanonicalUUID(agentID) {
+		return nil, fmt.Errorf("%w: agent ID is not a canonical UUID", ErrInvalidAgentArtifact)
+	}
+
+	zipData, contentType, err := s.fetchZip("/agents/"+agentID, "agent definition")
+	if err != nil {
+		return nil, err
+	}
+
+	mediaType, _, err := mime.ParseMediaType(contentType)
+	if err != nil || mediaType != "application/zip" {
+		return nil, fmt.Errorf("%w: unexpected content type %q", ErrInvalidAgentArtifact, contentType)
+	}
+
+	if err := validateAgentArtifactZip(agentID, zipData); err != nil {
+		return nil, err
+	}
+
+	return zipData, nil
+}
+
+// validateAgentArtifactZip checks that zipData is the archive the control plane
+// packages for agentID: exactly one regular entry, named agent-{agentID}.yaml.
+// An archive for another Agent, or one carrying extra entries, is refused
+// rather than searched for something that looks like YAML.
+func validateAgentArtifactZip(agentID string, zipData []byte) error {
+	zipReader, err := zip.NewReader(bytes.NewReader(zipData), int64(len(zipData)))
+	if err != nil {
+		return fmt.Errorf("%w: response is not a readable ZIP archive: %v", ErrInvalidAgentArtifact, err)
+	}
+	if len(zipReader.File) != 1 {
+		return fmt.Errorf("%w: expected exactly one archive entry, found %d", ErrInvalidAgentArtifact, len(zipReader.File))
+	}
+	entry := zipReader.File[0]
+	expected := "agent-" + agentID + ".yaml"
+	if entry.Name != expected || entry.FileInfo().IsDir() {
+		return fmt.Errorf("%w: unexpected archive entry %q, want %q", ErrInvalidAgentArtifact, entry.Name, expected)
+	}
+	return nil
+}
+
+// isCanonicalUUID reports whether id is a UUID in its canonical 36-character
+// form. uuid.Parse alone also accepts the braced, URN and unhyphenated forms,
+// none of which the control plane issues.
+func isCanonicalUUID(id string) bool {
+	if len(id) != 36 {
+		return false
+	}
+	_, err := uuid.Parse(id)
+	return err == nil
 }
 
 // FetchResourceJSON performs a generic authenticated GET against
@@ -992,6 +1093,7 @@ var artifactPushOrder = map[string]int{
 	models.KindRestApi:             4,
 	models.KindWebSubApi:           5,
 	models.KindWebBrokerApi:        6,
+	models.KindAgent:               7,
 }
 
 // artifactPushRank returns the push-order rank for a kind; unknown kinds sort last.

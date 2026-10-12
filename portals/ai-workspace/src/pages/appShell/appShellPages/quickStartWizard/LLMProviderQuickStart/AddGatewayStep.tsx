@@ -21,6 +21,7 @@ import {
   Alert,
   CircularProgress,
   FormControl,
+  FormHelperText,
   FormLabel,
   Grid,
   MenuItem,
@@ -67,21 +68,49 @@ export default function AddGatewayStep({
   createRef,
 }: AddGatewayStepProps) {
   const { gateways, isLoading, createGateway, isCreating } = useGatewayList();
-  const { environments, isLoading: isLoadingEnvironments } = useEnvironments();
+  const {
+    environments,
+    isLoading: isLoadingEnvironments,
+    error: environmentsError,
+  } = useEnvironments();
 
   const aiGateways = useMemo(
     () => gateways.filter((gateway) => gateway.functionalityType === 'ai'),
     [gateways]
   );
 
+  // Only a selection that exists in the freshly loaded list counts: an
+  // organization switch or a failed load empties `environments` while
+  // `formState.environment` still holds the previous org's UUID.
+  const isEnvironmentSelectionValid =
+    !isLoadingEnvironments &&
+    !environmentsError &&
+    environments.some((environment) => environment.id === formState.environment);
+
   useEffect(() => {
-    if (environments.length > 0 && !formState.environment) {
-      setFormState((prev) => ({
-        ...prev,
-        environment: environments[0].id,
-      }));
+    if (isLoadingEnvironments) {
+      return;
     }
-  }, [environments, formState.environment, setFormState]);
+
+    if (isEnvironmentSelectionValid) {
+      return;
+    }
+
+    // Fall back to the first available environment, or clear the stale id so
+    // the picker (and the create gate) reflect what is actually selectable.
+    const nextEnvironment = environmentsError ? '' : environments[0]?.id ?? '';
+    setFormState((prev) =>
+      prev.environment === nextEnvironment
+        ? prev
+        : { ...prev, environment: nextEnvironment }
+    );
+  }, [
+    environments,
+    environmentsError,
+    isEnvironmentSelectionValid,
+    isLoadingEnvironments,
+    setFormState,
+  ]);
 
   useEffect(() => {
     if (preferredGatewayId) {
@@ -99,7 +128,7 @@ export default function AddGatewayStep({
     formState.displayName.length <= MAX_GATEWAY_NAME_LENGTH &&
     formState.description.length <= MAX_GATEWAY_DESCRIPTION_LENGTH &&
     normalizeVhost(formState.vhost).length > 0 &&
-    formState.environment.trim().length > 0 &&
+    isEnvironmentSelectionValid &&
     formState.version.trim().length > 0;
 
   useEffect(() => {
@@ -236,6 +265,21 @@ export default function AddGatewayStep({
                 </MenuItem>
               ))}
             </Select>
+            {/* A gateway cannot be created without an environment, so an empty
+                picker disables the whole drawer. Say why rather than leaving a
+                dead control the user cannot act on. */}
+            {isLoadingEnvironments ? (
+              <FormHelperText>Loading environments...</FormHelperText>
+            ) : environmentsError ? (
+              <FormHelperText error>
+                Could not load environments for this organization.
+              </FormHelperText>
+            ) : environments.length === 0 ? (
+              <FormHelperText error>
+                No environments are available for this organization, so a gateway
+                cannot be created yet.
+              </FormHelperText>
+            ) : null}
           </FormControl>
         </Grid>
 

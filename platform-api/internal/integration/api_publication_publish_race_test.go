@@ -42,12 +42,23 @@ func (p *publishRecorder) Publish(_ context.Context, _ *model.APIPortal, _ strin
 	return nil
 }
 
-// saveListingDraft saves the draft for the seeded API and portal with the given description.
-func saveListingDraft(t *testing.T, it *itDB, svc *service.PublicationService, g graph, description string) {
+// saveDraftDetails saves just the details half of the draft for the seeded
+// API and portal, with the given description.
+func saveDraftDetails(t *testing.T, it *itDB, svc *service.PublicationService, g graph, description string) {
 	t.Helper()
 	draft := &model.Publication{DisplayName: "Live Listing", Version: "1.0", Description: description, AgentVisibility: "VISIBLE"}
 	if _, err := svc.SaveDraftDetails("rest-api", apiHandleFor(g), portalHandleFor(g), g.org, "racer", draft, []string{planHandleFor(g)}, []string{docHandleFor(g)}); err != nil {
 		t.Fatalf("[%s] SaveDraftDetails failed: %v", it.driver, err)
+	}
+}
+
+// saveListingDraft saves both halves of the draft for the seeded API and
+// portal, with the given description.
+func saveListingDraft(t *testing.T, it *itDB, svc *service.PublicationService, g graph, description string) {
+	t.Helper()
+	saveDraftDetails(t, it, svc, g, description)
+	if err := svc.SaveDraftDefinition("rest-api", apiHandleFor(g), portalHandleFor(g), g.org, "racer", "application/json", []byte(minimalValidDefinition)); err != nil {
+		t.Fatalf("[%s] SaveDraftDefinition failed: %v", it.driver, err)
 	}
 }
 
@@ -59,7 +70,7 @@ func TestPublicationPublish_DraftEditedDuringPush(t *testing.T) {
 		edit func(t *testing.T, it *itDB, svc *service.PublicationService, g graph)
 	}{
 		{"details", func(t *testing.T, it *itDB, svc *service.PublicationService, g graph) {
-			saveListingDraft(t, it, svc, g, "edited during push")
+			saveDraftDetails(t, it, svc, g, "edited during push")
 		}},
 		{"content", func(t *testing.T, it *itDB, svc *service.PublicationService, g graph) {
 			if err := svc.SaveDraftLandingPage("rest-api", apiHandleFor(g), portalHandleFor(g), g.org, "racer", []byte("# edited during push")); err != nil {

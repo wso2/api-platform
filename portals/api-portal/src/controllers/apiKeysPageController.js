@@ -131,7 +131,7 @@ const loadAPIApiKeys = async (req, res, next) => {
             lastName: req.user.lastName,
             email: req.user.email,
             imageURL: req.user.picture || req.user.imageURL || constants.DEFAULT_PROFILE_IMAGE_URL,
-            isAdmin: req.user.isAdmin,
+            isAdmin: req.user.isAdmin && !req.foreignOrgSession,
         };
 
         const templateContent = {

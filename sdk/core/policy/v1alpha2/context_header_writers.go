@@ -224,3 +224,42 @@ func (c *ResponseContext) AddUpstreamHeader(name, value string) {
 func (c *ResponseContext) RemoveUpstreamHeader(name string) {
 	removeSnapshotHeader(upstreamWritableHeaders(c.Upstream), name)
 }
+
+// ─── Fault phase: snapshot writers ───────────────────────────────────────────
+//
+// Restated on FaultContext for the same reason as the read accessors — see
+// context_accessors.go. These write to the SNAPSHOTS, which later fault entries read; they
+// are not how a fault handler changes the response the client receives. That is
+// FaultResponse.HeadersToSet/Append/Remove, which is the only channel that reaches the wire.
+
+// SetDownstreamHeader overwrites a header in the client-request snapshot that
+// later fault entries read via DownstreamHeaders().
+func (c *FaultContext) SetDownstreamHeader(name, value string) {
+	setSnapshotHeader(downstreamWritableHeaders(c.Downstream), name, value)
+}
+
+// AddDownstreamHeader appends a value to a header in the client-request snapshot.
+func (c *FaultContext) AddDownstreamHeader(name, value string) {
+	addSnapshotHeader(downstreamWritableHeaders(c.Downstream), name, value)
+}
+
+// RemoveDownstreamHeader removes a header from the client-request snapshot.
+func (c *FaultContext) RemoveDownstreamHeader(name string) {
+	removeSnapshotHeader(downstreamWritableHeaders(c.Downstream), name)
+}
+
+// SetUpstreamHeader overwrites a header in the upstream-response snapshot that
+// later fault entries read via UpstreamHeaders().
+func (c *FaultContext) SetUpstreamHeader(name, value string) {
+	setSnapshotHeader(upstreamWritableHeaders(c.Upstream), name, value)
+}
+
+// AddUpstreamHeader appends a value to a header in the upstream-response snapshot.
+func (c *FaultContext) AddUpstreamHeader(name, value string) {
+	addSnapshotHeader(upstreamWritableHeaders(c.Upstream), name, value)
+}
+
+// RemoveUpstreamHeader removes a header from the upstream-response snapshot.
+func (c *FaultContext) RemoveUpstreamHeader(name string) {
+	removeSnapshotHeader(upstreamWritableHeaders(c.Upstream), name)
+}

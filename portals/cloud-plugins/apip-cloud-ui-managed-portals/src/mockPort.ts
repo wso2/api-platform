@@ -58,6 +58,10 @@ export function createMockPortalPort(seed?: ManagedPortal[]): PortalPort {
         name,
         description: input.description?.trim() || undefined,
         loginEnvironment: input.loginEnvironment?.trim() || 'production',
+        // Real backend inserts the row as pending and its poller flips it to
+        // active later; the mock does the same so tests exercising the
+        // provisioning-state UI branches see the pending path.
+        status: 'pending',
         url: `https://pending-${handle}.portals.invalid`,
         updatedAt: new Date().toISOString(),
       };

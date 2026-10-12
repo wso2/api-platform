@@ -328,7 +328,7 @@ func TestHTTPPortalPublisher_SendsDefinitionContent(t *testing.T) {
 	pub := &model.Publication{DisplayName: "X", Version: "1.0", AgentVisibility: "VISIBLE"}
 	definition := &model.PublicationContent{
 		FileName:    "definition.yaml",
-		ContentType: "application/x-yaml",
+		ContentType: "application/yaml",
 		Content:     []byte("openapi: 3.0.0"),
 	}
 

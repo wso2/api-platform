@@ -20,6 +20,7 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httputil"
@@ -31,6 +32,7 @@ import (
 	"ai-workspace-bff/internal/config"
 	"ai-workspace-bff/internal/paths"
 	"ai-workspace-bff/internal/proxy"
+	"ai-workspace-bff/internal/secure"
 	"ai-workspace-bff/internal/session"
 )
 
@@ -47,13 +49,16 @@ type refreshLock struct {
 
 // Server holds the BFF dependencies and HTTP handler.
 type Server struct {
-	cfg          *config.Config
-	claims       session.ClaimMapping
-	store        session.Store
+	cfg    *config.Config
+	claims session.ClaimMapping
+	store  session.Store
+	// stateCodec is set exactly when store is the cookie store: it seals/opens the
+	// session-state cookies that carry what used to be process-local state.
+	stateCodec   *session.CookieCodec
 	fileBased    *auth.FileBased
 	oidc         *auth.OIDC
 	proxy        *httputil.ReverseProxy
-	cloudProxy   *httputil.ReverseProxy
+	moesifProxy  *httputil.ReverseProxy
 	billingProxy *httputil.ReverseProxy
 	handler      http.Handler
 
@@ -65,6 +70,9 @@ type Server struct {
 
 	exchangeMu    sync.Mutex
 	exchangeLocks map[string]*exchangeLock
+
+	discoverMu    sync.Mutex
+	discoverLocks map[string]*discoverLock
 
 	// sessionMu/sessionLocks serialize the store read-modify-write in doExchange
 	// against the rekey/delete in doRefresh for the same token. Without this, the
@@ -83,6 +91,22 @@ type exchangeLock struct {
 	result *auth.Result
 	err    error
 }
+
+// discoverLock single-flights one session's org lookup, for the same reason
+// exchangeLock exists: the SPA's page-load burst arrives before any of it has been
+// recorded on the session, so without this every request in the burst would run its
+// own lookup against the Platform API.
+type discoverLock struct {
+	sync.Mutex
+	done   bool
+	handle string
+	err    error
+}
+
+// processStart is when this process came up, reported alongside a failed OIDC
+// callback: login transactions live in memory, so "did we restart mid-login" is the
+// first question such a failure raises and the one the error itself cannot answer.
+var processStart = time.Now()
 
 // New builds a Server from config. It creates the upstream HTTP client, the
 // session store, the file-based authenticator, and (when enabled) the OIDC
@@ -127,23 +151,31 @@ func New(ctx context.Context, cfg *config.Config) (*Server, error) {
 			proxy.WithPathMapper(cfg.ControlPlane.UpstreamPath)),
 		refreshLocks:  make(map[string]*refreshLock),
 		exchangeLocks: make(map[string]*exchangeLock),
+		discoverLocks: make(map[string]*discoverLock),
 		sessionLocks:  make(map[string]*sessionLock),
 	}
 
-	if cfg.ControlPlane.CloudURL != "" {
-		cloudTarget, err := url.Parse(cfg.ControlPlane.CloudURL)
+	if cfg.ControlPlane.MoesifURL != "" {
+		moesifTarget, err := url.Parse(cfg.ControlPlane.MoesifURL)
 		if err != nil {
 			return nil, err
 		}
-		cloudTransport, err := proxy.NewTransport(cfg.HTTPClient, proxy.TLSClientOptions{
-			CAFile:     cfg.ControlPlane.CloudCAFile,
-			SkipVerify: cfg.ControlPlane.CloudTLSSkipVerify,
+		moesifTransport, err := proxy.NewTransport(cfg.HTTPClient, proxy.TLSClientOptions{
+			CAFile:     cfg.ControlPlane.MoesifCAFile,
+			SkipVerify: cfg.ControlPlane.MoesifTLSSkipVerify,
 		})
 		if err != nil {
 			return nil, err
 		}
-		// Strip <base>/proxy/cloud so /analytics/id-token joins onto CloudURL's /cloud.
-		s.cloudProxy = proxy.ReverseProxy(cloudTarget, paths.Base+paths.Proxy+"/cloud", cloudTransport)
+		// Strip <base>/proxy/moesif so /analytics/id-token joins onto MoesifURL.
+		// A deployment whose Moesif upstream publishes those routes under other
+		// names (Choreo's moesif-key API serves the viewer token at /id_token)
+		// supplies moesif_path_mappings; without it this hop forwards unchanged.
+		moesifOpts := []proxy.Option{}
+		if mapPath := cfg.ControlPlane.MoesifPathMapper(); mapPath != nil {
+			moesifOpts = append(moesifOpts, proxy.WithPathMapper(mapPath))
+		}
+		s.moesifProxy = proxy.ReverseProxy(moesifTarget, paths.Base+paths.Proxy+"/moesif", moesifTransport, moesifOpts...)
 	}
 
 	if cfg.ControlPlane.BillingURL != "" {
@@ -152,7 +184,7 @@ func New(ctx context.Context, cfg *config.Config) (*Server, error) {
 			return nil, err
 		}
 		// Its own transport, so a per-upstream TLS trust setting never leaks onto
-		// the control plane or the cloud hop.
+		// the control plane or the Moesif hop.
 		billingTransport, err := proxy.NewTransport(cfg.HTTPClient, proxy.TLSClientOptions{
 			CAFile:     cfg.ControlPlane.BillingCAFile,
 			SkipVerify: cfg.ControlPlane.BillingTLSSkipVerify,
@@ -164,14 +196,42 @@ func New(ctx context.Context, cfg *config.Config) (*Server, error) {
 	}
 
 	if cfg.Auth.OIDCEnabled() {
-		// The session store exists only to hold OIDC refresh/id tokens for renewal.
-		// File-based sessions are fully self-contained in the cookie JWT.
-		s.store = session.NewMemoryStore()
+		// The session store holds the OIDC refresh/id tokens for renewal, the cached
+		// exchanged token, and the selected org. File-based sessions are fully
+		// self-contained in the cookie JWT and never touch it.
+		//
+		// In the default cookie mode none of that is kept here: it is sealed into the
+		// client's own cookies, and the login transaction with it, so any replica can
+		// serve any request of any session. That is the whole multi-replica story —
+		// there is no shared store to run and no sticky sessions to configure.
+		// The session's server-side state is sealed into the client's own cookies
+		// rather than kept here, so any replica can serve any request. File-based auth
+		// never gets here and needs nothing: its JWT is self-contained in the pair.
+		material := cfg.SealKeyMaterial()
+		if material == "" {
+			// validate already refused to start; this guards the path through tests
+			// that build a Config directly.
+			return nil, fmt.Errorf("[session] encryption_key is required")
+		}
+		stateSealer, err := secure.NewSealer(secure.DeriveKey(material, config.StateSealLabel))
+		if err != nil {
+			return nil, err
+		}
+		txSealer, err := secure.NewSealer(secure.DeriveKey(material, config.TxSealLabel))
+		if err != nil {
+			return nil, err
+		}
+		s.stateCodec = session.NewCookieCodec(stateSealer, stateChunkSize, stateMaxChunks, claims)
+		s.store = cookieStore{}
+		slog.Info("session state is carried by the client, sealed per-deployment: this BFF " +
+			"keeps nothing per-session, so it can run with multiple replicas behind a plain " +
+			"load balancer — no sticky sessions required.")
+
 		o, err := auth.NewOIDC(
 			ctx, upstream,
 			cfg.Auth.OIDC.Issuer, cfg.Auth.OIDC.ClientID, cfg.Auth.OIDC.ClientSecret,
 			cfg.Auth.OIDC.RedirectURL, cfg.Auth.OIDC.PostLogoutRedirectURL, cfg.Auth.OIDC.Scopes,
-			claims, cfg.Session.AbsoluteTTL,
+			claims, cfg.Session.AbsoluteTTL, txSealer,
 		)
 		if err != nil {
 			return nil, err
@@ -215,6 +275,11 @@ func New(ctx context.Context, cfg *config.Config) (*Server, error) {
 	// not serve, and a tx cookie whose Path the callback route falls outside of.
 	// They are only meaningful together, so they are logged together, at Info — a
 	// failing login should not require turning debug on first.
+	if cfg.Auth.OIDCEnabled() && !s.oidc.SupportsRevocation() {
+		slog.Warn("the issuer advertises no revocation_endpoint: logout clears this browser's " +
+			"cookies and ends the IDP session")
+	}
+
 	if cfg.Auth.OIDCEnabled() {
 		slog.Info("oidc login wiring",
 			"issuer", cfg.Auth.OIDC.Issuer,
@@ -273,6 +338,9 @@ func buildClaimMapping(c config.ClaimMappingConfig, authz config.AuthorizationCo
 	}
 	if c.Email != "" {
 		m.Email = c.Email
+	}
+	if c.Picture != "" {
+		m.Picture = c.Picture
 	}
 	if c.Roles != "" {
 		m.Roles = c.Roles

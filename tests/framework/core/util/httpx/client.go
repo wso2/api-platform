@@ -253,7 +253,8 @@ func (c *Client) Do(ctx context.Context, req Request, maxRetries int, retryDelay
 	return last, nil
 }
 
-func (c *Client) once(ctx context.Context, req Request) (*Response, error) {
+// build converts a Request into the net/http request both buffered and streamed calls send.
+func (c *Client) build(ctx context.Context, req Request) (*http.Request, error) {
 	var body io.Reader
 	if len(req.Body) > 0 {
 		body = bytes.NewReader(req.Body)
@@ -271,6 +272,14 @@ func (c *Client) once(ctx context.Context, req Request) (*Response, error) {
 	}
 	if h := strings.TrimSpace(req.Host); h != "" {
 		httpReq.Host = h
+	}
+	return httpReq, nil
+}
+
+func (c *Client) once(ctx context.Context, req Request) (*Response, error) {
+	httpReq, err := c.build(ctx, req)
+	if err != nil {
+		return nil, err
 	}
 
 	started := time.Now()

@@ -132,6 +132,7 @@ export default function OrgRegisterPage() {
   const userForMenu = {
     name: user?.name || user?.email || 'User',
     email: user?.email || '',
+    picture: user?.picture ?? null,
     role: user?.role ?? undefined,
   };
 

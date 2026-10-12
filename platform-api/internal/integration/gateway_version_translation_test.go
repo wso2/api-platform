@@ -21,6 +21,8 @@
 package integration
 
 import (
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/wso2/api-platform/platform-api/api"
@@ -29,6 +31,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/gatewaytranslator"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
+	"github.com/wso2/api-platform/platform-api/internal/utils"
 )
 
 // seedGateway creates a gateway row through the real GatewayRepo, then stamps
@@ -87,8 +90,7 @@ func TestIT_RestAPI_DataVersionStamped_AndTranslate(t *testing.T) {
 
 	newGw120 := seedGateway(t, it, orgID, "1.2.0")
 	artifactForNew := &dto.APIDeploymentYAML{ApiVersion: constants.GatewayApiVersion, Kind: constants.RestApi}
-	targetNew := gatewaytranslator.GatewayDataVersionForGateway(newGw120AsVersion(t, it, newGw120))
-	if err := gatewaytranslator.Translate(constants.RestApi, sourceDataVersion, targetNew, artifactForNew); err != nil {
+	if _, err := gatewaytranslator.Translate(constants.RestApi, sourceDataVersion, newGw120AsVersion(t, it, newGw120), artifactForNew); err != nil {
 		t.Fatalf("[%s] Translate to 1.2.0 gateway failed: %v", it.driver, err)
 	}
 	if artifactForNew.ApiVersion != constants.GatewayApiVersion {
@@ -97,8 +99,7 @@ func TestIT_RestAPI_DataVersionStamped_AndTranslate(t *testing.T) {
 
 	oldGw110 := seedGateway(t, it, orgID, "1.1.0")
 	artifactForOld := &dto.APIDeploymentYAML{ApiVersion: constants.GatewayApiVersion, Kind: constants.RestApi}
-	targetOld := gatewaytranslator.GatewayDataVersionForGateway(newGw120AsVersion(t, it, oldGw110))
-	if err := gatewaytranslator.Translate(constants.RestApi, sourceDataVersion, targetOld, artifactForOld); err != nil {
+	if _, err := gatewaytranslator.Translate(constants.RestApi, sourceDataVersion, newGw120AsVersion(t, it, oldGw110), artifactForOld); err != nil {
 		t.Fatalf("[%s] Translate to 1.1.0 gateway failed: %v", it.driver, err)
 	}
 	if artifactForOld.ApiVersion != constants.GatewayApiVersionV1Alpha1 {
@@ -145,14 +146,14 @@ func TestIT_MCPProxy_DataVersionStamped_AndTranslate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("[%s] GetByUUID failed: %v", it.driver, err)
 	}
-	if stored.DataVersion != "1.0" {
-		t.Fatalf("[%s] want data_version 1.0 for a fresh MCP proxy, got %q", it.driver, stored.DataVersion)
+	// 1.1 since MCPProxyConfiguration gained specVersions; the gateway CRD apiVersion stays v1.
+	if stored.DataVersion != "1.1" {
+		t.Fatalf("[%s] want data_version 1.1 for a fresh MCP proxy, got %q", it.driver, stored.DataVersion)
 	}
 
 	gwOld := seedGateway(t, it, orgID, "1.1.0")
 	artifact := &model.MCPProxyDeploymentYAML{ApiVersion: constants.GatewayApiVersion, Kind: constants.MCPProxy}
-	target := gatewaytranslator.GatewayDataVersionForGateway(newGw120AsVersion(t, it, gwOld))
-	if err := gatewaytranslator.Translate(constants.MCPProxy, gatewaytranslator.PlatformDataVersion(stored.DataVersion), target, artifact); err != nil {
+	if _, err := gatewaytranslator.Translate(constants.MCPProxy, gatewaytranslator.PlatformDataVersion(stored.DataVersion), newGw120AsVersion(t, it, gwOld), artifact); err != nil {
 		t.Fatalf("[%s] Translate to 1.1.0 gateway failed: %v", it.driver, err)
 	}
 	if artifact.ApiVersion != constants.GatewayApiVersionV1Alpha1 {
@@ -210,8 +211,7 @@ func TestIT_LLMProvider_CurrentDataVersion_SplitPoliciesPreservedOnNewGateway_Fl
 	gwNew := seedGateway(t, it, orgID, "1.2.0")
 	artifactNew := &dto.LLMProviderDeploymentYAML{ApiVersion: constants.GatewayApiVersion}
 	artifactNew.Spec.GlobalPolicies = []api.Policy{{Name: "llm-cost-based-ratelimit", Version: "v1"}}
-	targetNew := gatewaytranslator.GatewayDataVersionForGateway(newGw120AsVersion(t, it, gwNew))
-	if err := gatewaytranslator.Translate(constants.LLMProvider, sourceDataVersion, targetNew, artifactNew); err != nil {
+	if _, err := gatewaytranslator.Translate(constants.LLMProvider, sourceDataVersion, newGw120AsVersion(t, it, gwNew), artifactNew); err != nil {
 		t.Fatalf("[%s] Translate to 1.2.0 gateway failed: %v", it.driver, err)
 	}
 	if artifactNew.ApiVersion != constants.GatewayApiVersion {
@@ -225,8 +225,7 @@ func TestIT_LLMProvider_CurrentDataVersion_SplitPoliciesPreservedOnNewGateway_Fl
 	gwOld := seedGateway(t, it, orgID, "1.1.0")
 	artifactOld := &dto.LLMProviderDeploymentYAML{ApiVersion: constants.GatewayApiVersion}
 	artifactOld.Spec.GlobalPolicies = []api.Policy{{Name: "llm-cost-based-ratelimit", Version: "v1"}}
-	targetOld := gatewaytranslator.GatewayDataVersionForGateway(newGw120AsVersion(t, it, gwOld))
-	if err := gatewaytranslator.Translate(constants.LLMProvider, sourceDataVersion, targetOld, artifactOld); err != nil {
+	if _, err := gatewaytranslator.Translate(constants.LLMProvider, sourceDataVersion, newGw120AsVersion(t, it, gwOld), artifactOld); err != nil {
 		t.Fatalf("[%s] Translate to 1.1.0 gateway failed: %v", it.driver, err)
 	}
 	if artifactOld.ApiVersion != constants.GatewayApiVersionV1Alpha1 {
@@ -287,8 +286,7 @@ func TestIT_LLMProvider_LegacyDataVersion_FlatPoliciesNormalizedOnNewGateway(t *
 		Name:  "llm-cost-based-ratelimit",
 		Paths: []api.LLMPolicyPath{{Path: "/*", Methods: []api.LLMPolicyPathMethods{"*"}, Params: map[string]interface{}{}}},
 	}}
-	targetNew := gatewaytranslator.GatewayDataVersionForGateway(newGw120AsVersion(t, it, gwNew))
-	if err := gatewaytranslator.Translate(constants.LLMProvider, gatewaytranslator.PlatformDataVersion(stored.DataVersion), targetNew, artifactNew); err != nil {
+	if _, err := gatewaytranslator.Translate(constants.LLMProvider, gatewaytranslator.PlatformDataVersion(stored.DataVersion), newGw120AsVersion(t, it, gwNew), artifactNew); err != nil {
 		t.Fatalf("[%s] Translate legacy source to 1.2.0 gateway failed: %v", it.driver, err)
 	}
 	if artifactNew.ApiVersion != constants.GatewayApiVersion {
@@ -308,8 +306,7 @@ func TestIT_LLMProvider_LegacyDataVersion_FlatPoliciesNormalizedOnNewGateway(t *
 		Name:  "llm-cost-based-ratelimit",
 		Paths: []api.LLMPolicyPath{{Path: "/*", Methods: []api.LLMPolicyPathMethods{"*"}, Params: map[string]interface{}{}}},
 	}}
-	targetOld := gatewaytranslator.GatewayDataVersionForGateway(newGw120AsVersion(t, it, gwOld))
-	if err := gatewaytranslator.Translate(constants.LLMProvider, gatewaytranslator.PlatformDataVersion(stored.DataVersion), targetOld, artifactOld); err != nil {
+	if _, err := gatewaytranslator.Translate(constants.LLMProvider, gatewaytranslator.PlatformDataVersion(stored.DataVersion), newGw120AsVersion(t, it, gwOld), artifactOld); err != nil {
 		t.Fatalf("[%s] Translate legacy source to 1.1.0 gateway failed: %v", it.driver, err)
 	}
 	if artifactOld.ApiVersion != constants.GatewayApiVersionV1Alpha1 {
@@ -318,5 +315,97 @@ func TestIT_LLMProvider_LegacyDataVersion_FlatPoliciesNormalizedOnNewGateway(t *
 	if len(artifactOld.Spec.GlobalPolicies) != 0 || len(artifactOld.Spec.Policies) != 1 {
 		t.Fatalf("[%s] gateway 1.1.0: want legacy source to stay flat, got globalPolicies=%d legacyPolicies=%d",
 			it.driver, len(artifactOld.Spec.GlobalPolicies), len(artifactOld.Spec.Policies))
+	}
+}
+
+// TestIT_MCPProxy_SpecVersionsSurviveTheConfigurationBlob round-trips both spec-version fields
+// through storage. The configuration is persisted as a JSON blob, so each field depends on its
+// own json tag rather than on a column: a renamed or missing tag loses the value silently, and
+// the value is only read back on the next deploy.
+func TestIT_MCPProxy_SpecVersionsSurviveTheConfigurationBlob(t *testing.T) {
+	it := openITDB(t)
+	defer it.db.Close()
+	orgID, projID := seedOrgProject(t, it, "gwt-mcp-sv")
+	mcpRepo := repository.NewMCPProxyRepo(it.db)
+
+	proxy := &model.MCPProxy{
+		Handle:           "mcp-" + id()[:8],
+		Name:             "IT MCP Proxy",
+		OrganizationUUID: orgID,
+		ProjectUUID:      &projID,
+		Version:          "v1.0",
+		Configuration: model.MCPProxyConfiguration{
+			Name:                 "IT MCP Proxy",
+			Version:              "v1.0",
+			SpecVersions:         []string{"2025-06-18", "2026-07-28"},
+			UpstreamSpecVersions: []string{"2024-11-05", "2025-06-18", "2026-07-28"},
+		},
+	}
+	if err := mcpRepo.Create(proxy); err != nil {
+		t.Fatalf("[%s] Create MCP proxy failed: %v", it.driver, err)
+	}
+
+	stored, err := mcpRepo.GetByUUID(proxy.UUID, orgID)
+	if err != nil {
+		t.Fatalf("[%s] GetByUUID failed: %v", it.driver, err)
+	}
+
+	if got := stored.Configuration.SpecVersions; !slices.Equal(got, []string{"2025-06-18", "2026-07-28"}) {
+		t.Errorf("[%s] declared versions: got %v", it.driver, got)
+	}
+	// Every revision the server named, including one older than the protected-resource model.
+	if got := stored.Configuration.UpstreamSpecVersions; !slices.Equal(got,
+		[]string{"2024-11-05", "2025-06-18", "2026-07-28"}) {
+		t.Errorf("[%s] reported versions: got %v", it.driver, got)
+	}
+	if stored.Configuration.SpecVersion != "" {
+		t.Errorf("[%s] the deprecated scalar must stay empty on a fresh row, got %q",
+			it.driver, stored.Configuration.SpecVersion)
+	}
+}
+
+// TestIT_MCPProxy_LegacyScalarRowStillReadsAsAList covers a row written before specVersions
+// existed: its configuration blob carries only the deprecated scalar. Nothing rewrites such a
+// row, so every read has to fold it, and a deploy has to emit the list form.
+func TestIT_MCPProxy_LegacyScalarRowStillReadsAsAList(t *testing.T) {
+	it := openITDB(t)
+	defer it.db.Close()
+	orgID, projID := seedOrgProject(t, it, "gwt-mcp-legacy")
+	mcpRepo := repository.NewMCPProxyRepo(it.db)
+
+	proxy := &model.MCPProxy{
+		Handle:           "mcp-" + id()[:8],
+		Name:             "IT Legacy MCP Proxy",
+		OrganizationUUID: orgID,
+		ProjectUUID:      &projID,
+		Version:          "v1.0",
+		Configuration: model.MCPProxyConfiguration{
+			Name:        "IT Legacy MCP Proxy",
+			Version:     "v1.0",
+			SpecVersion: "2025-11-25",
+		},
+	}
+	if err := mcpRepo.Create(proxy); err != nil {
+		t.Fatalf("[%s] Create MCP proxy failed: %v", it.driver, err)
+	}
+
+	stored, err := mcpRepo.GetByUUID(proxy.UUID, orgID)
+	if err != nil {
+		t.Fatalf("[%s] GetByUUID failed: %v", it.driver, err)
+	}
+	if got := stored.Configuration.EffectiveSpecVersions(); !slices.Equal(got, []string{"2025-11-25"}) {
+		t.Errorf("[%s] a legacy scalar must read back as the canonical list, got %v", it.driver, got)
+	}
+	if stored.Configuration.SpecVersions != nil {
+		t.Errorf("[%s] reading must not rewrite the stored row, got %v",
+			it.driver, stored.Configuration.SpecVersions)
+	}
+
+	yamlString, err := (&utils.MCPUtils{}).GenerateMCPDeploymentYAML(stored)
+	if err != nil {
+		t.Fatalf("[%s] GenerateMCPDeploymentYAML failed: %v", it.driver, err)
+	}
+	if !strings.Contains(yamlString, "specVersions:") || !strings.Contains(yamlString, "2025-11-25") {
+		t.Errorf("[%s] a legacy row must deploy as the list form:\n%s", it.driver, yamlString)
 	}
 }

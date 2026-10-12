@@ -68,7 +68,7 @@ func (h *APIPortalHandler) CreateAPIPortal(w http.ResponseWriter, r *http.Reques
 		return serviceError(err, fmt.Sprintf("failed to create api portal %q for org %s by user %s", req.Handle, orgID, createdBy))
 	}
 
-	setLocation(w, "api-portals", derefStr(resp.Handle))
+	setLocation(w, "api-portals", derefStr(resp.Id))
 	httputil.WriteJSON(w, http.StatusCreated, resp)
 	return nil
 }

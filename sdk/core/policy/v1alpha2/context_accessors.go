@@ -177,6 +177,41 @@ func (c *ResponseContext) UpstreamHeaders() *Headers {
 	return c.UpstreamResponse().Headers
 }
 
+// ─── Fault phase ─────────────────────────────────────────────────────────────
+//
+// Declared on FaultContext rather than inherited: it spells its response fields out instead
+// of embedding ResponseContext (see context.go), so it does not pick these up for free.
+// Restating them keeps the snapshots reachable by the same names a response handler uses.
+// The bodies are identical to the ResponseContext ones.
+
+// DownstreamRequest returns the client request snapshot, or the live request
+// echoes when the gateway does not provide a snapshot.
+func (c *FaultContext) DownstreamRequest() *DownstreamRequest {
+	if snap := downstreamSnapshot(c.Downstream); snap != nil {
+		return snap
+	}
+	return &DownstreamRequest{Headers: c.RequestHeaders, Path: c.RequestPath, Method: c.RequestMethod}
+}
+
+// DownstreamHeaders is a shortcut for DownstreamRequest().Headers.
+func (c *FaultContext) DownstreamHeaders() *Headers {
+	return c.DownstreamRequest().Headers
+}
+
+// UpstreamResponse returns the upstream response snapshot, or the live response
+// values when the gateway does not provide a snapshot.
+func (c *FaultContext) UpstreamResponse() *UpstreamResponse {
+	if snap := upstreamSnapshot(c.Upstream); snap != nil {
+		return snap
+	}
+	return &UpstreamResponse{Headers: c.ResponseHeaders, StatusCode: c.ResponseStatus}
+}
+
+// UpstreamHeaders is a shortcut for UpstreamResponse().Headers.
+func (c *FaultContext) UpstreamHeaders() *Headers {
+	return c.UpstreamResponse().Headers
+}
+
 // DownstreamRequest returns the client request snapshot, or the live request
 // echoes when the gateway does not provide a snapshot.
 func (c *ResponseStreamContext) DownstreamRequest() *DownstreamRequest {

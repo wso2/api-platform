@@ -64,6 +64,7 @@ type Props = {
 
   userName?: string;
   userEmail?: string;
+  userPicture?: string;
 
   currentOrganization: SelectableOrg | null;
   organizationOptions: SelectableOrg[];
@@ -92,6 +93,7 @@ export default function AppHeader(props: Props) {
     navigate,
     userName,
     userEmail,
+    userPicture,
 
     currentOrganization,
     organizationOptions,
@@ -118,9 +120,10 @@ export default function AppHeader(props: Props) {
     () => ({
       name: userName || userEmail || "User",
       email: userEmail || "",
+      picture: userPicture || null,
       role: role || undefined,
     }),
-    [userName, userEmail, role],
+    [userName, userEmail, userPicture, role],
   );
 
   const canShowProjectSwitcher = Boolean(currentProject?.id);

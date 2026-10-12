@@ -83,13 +83,14 @@ type PublicCardConfig struct {
 	// polarity.
 	RewriteUrlsStated bool
 
-	// Policies, Content and Signing are passed through untouched. Nothing is
-	// defaulted into them: an absent policy list is no policies, and an absent
-	// document or signing block is exactly what the mode rules already reason
-	// about.
-	Policies *[]api.Policy
-	Content  *api.A2AAgentCardDocument
-	Signing  *api.A2ACardSigning
+	// Policies, FaultPolicies, Content and Signing are passed through untouched.
+	// Nothing is defaulted into them: an absent policy list is no policies, and an
+	// absent document or signing block is exactly what the mode rules already
+	// reason about.
+	Policies      *[]api.Policy
+	FaultPolicies *[]api.Policy
+	Content       *api.A2AAgentCardDocument
+	Signing       *api.A2ACardSigning
 }
 
 // EffectivePublicCard resolves the public Agent Card configuration, including
@@ -135,6 +136,7 @@ func EffectivePublicCard(card *api.A2AAgentCard) PublicCardConfig {
 		effective.RewriteUrlsStated = true
 	}
 	effective.Policies = public.Policies
+	effective.FaultPolicies = public.FaultPolicies
 	effective.Content = public.Content
 	effective.Signing = public.Signing
 	return effective

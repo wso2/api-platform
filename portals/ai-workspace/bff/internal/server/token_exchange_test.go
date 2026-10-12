@@ -168,7 +168,7 @@ func newExchangeHarness(t *testing.T, cfgMut func(*config.TokenExchangeConfig)) 
 	}
 
 	cfg := &config.Config{
-		Cookie: config.CookieConfig{Name: "_ai_workspace_session", Secure: true, SameSite: "lax"},
+		Cookie: config.CookieConfig{Name1: "_ai_workspace_session_1", Name2: "_ai_workspace_session_2", Secure: true, SameSite: "lax"},
 		Auth: config.AuthConfig{
 			Mode: config.AuthModeOIDC,
 			OIDC: config.OIDCConfig{
@@ -182,7 +182,7 @@ func newExchangeHarness(t *testing.T, cfgMut func(*config.TokenExchangeConfig)) 
 		context.Background(), idp.Client(),
 		idp.URL, "c", "s",
 		"https://localhost:9643"+paths.Base+"/api/auth/callback", "", "openid",
-		session.DefaultClaimMapping(), 8*time.Hour,
+		session.DefaultClaimMapping(), 8*time.Hour, testTxSealer(),
 	)
 	if err != nil {
 		t.Fatalf("build oidc client: %v", err)
@@ -192,7 +192,7 @@ func newExchangeHarness(t *testing.T, cfgMut func(*config.TokenExchangeConfig)) 
 	h.server = &Server{
 		cfg:           cfg,
 		claims:        session.DefaultClaimMapping(),
-		store:         session.NewMemoryStore(),
+		store:         newFakeStore(),
 		oidc:          oidcClient,
 		proxy:         proxy.ReverseProxy(target, paths.Base+paths.Proxy, http.DefaultTransport),
 		exchanger:     auth.NewExchanger(idp.Client(), teCfg, oidcClient.TokenEndpoint()),
@@ -226,7 +226,7 @@ func (h *exchangeTestHarness) subjectSession(t *testing.T) string {
 
 func (h *exchangeTestHarness) proxyRequest(subject string) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(http.MethodGet, paths.Base+paths.Proxy+"/api/v0.9/projects", nil)
-	req.AddCookie(&http.Cookie{Name: h.server.cfg.Cookie.Name, Value: subject})
+	addSessionCookies(req, h.server.cfg.Cookie, subject)
 	rec := httptest.NewRecorder()
 	h.server.handleProxy(rec, req)
 	return rec
@@ -449,7 +449,7 @@ func TestSessionReportsExchangedScopes(t *testing.T) {
 	subject := h.subjectSession(t)
 
 	req := httptest.NewRequest(http.MethodGet, paths.Base+"/api/session", nil)
-	req.AddCookie(&http.Cookie{Name: h.server.cfg.Cookie.Name, Value: subject})
+	addSessionCookies(req, h.server.cfg.Cookie, subject)
 	rec := httptest.NewRecorder()
 	h.server.handleSession(rec, req)
 
@@ -479,7 +479,7 @@ func TestSessionReportsExchangedScopes(t *testing.T) {
 // returns the callback request the browser would send back.
 func (h *exchangeTestHarness) callbackRequest(t *testing.T) *http.Request {
 	t.Helper()
-	authURL, txID, err := h.server.oidc.AuthCodeURL(paths.Base + "/")
+	authURL, txID, err := h.server.oidc.AuthCodeURL(paths.Base+"/", nil)
 	if err != nil {
 		t.Fatalf("AuthCodeURL: %v", err)
 	}
@@ -495,16 +495,27 @@ func (h *exchangeTestHarness) callbackRequest(t *testing.T) *http.Request {
 	return req
 }
 
-// sessionCookieValue returns the value the response set the session cookie to, or ""
-// when it set none or cleared it. Clearing writes the cookie with an empty value, so
-// "no usable session cookie" and "no cookie at all" are the same assertion.
+// sessionCookieValue returns the session token the response set, reassembled from
+// its two cookie parts, or "" when it set none or cleared it. Clearing writes each
+// part with an empty value, so "no usable session cookie" and "no cookie at all" are
+// the same assertion. Both parts must be present, matching tokenFromCookie.
 func sessionCookieValue(h *exchangeTestHarness, rec *httptest.ResponseRecorder) string {
+	var part1, part2 string
 	for _, c := range rec.Result().Cookies() {
-		if c.Name == h.server.cfg.Cookie.Name && c.Value != "" && c.MaxAge >= 0 {
-			return c.Value
+		if c.Value == "" || c.MaxAge < 0 {
+			continue
+		}
+		switch c.Name {
+		case h.server.cfg.Cookie.Name1:
+			part1 = c.Value
+		case h.server.cfg.Cookie.Name2:
+			part2 = c.Value
 		}
 	}
-	return ""
+	if part1 == "" || part2 == "" {
+		return ""
+	}
+	return joinSessionToken(part1, part2)
 }
 
 // TestLoginClassifiesExchangeFailure: the login path must tell its two failure classes
@@ -582,7 +593,7 @@ func TestLoginClassifiesExchangeFailure(t *testing.T) {
 func TestSessionFailsClosedWhenExchangeFails(t *testing.T) {
 	sessionRequest := func(h *exchangeTestHarness, subject string) *httptest.ResponseRecorder {
 		req := httptest.NewRequest(http.MethodGet, paths.Base+"/api/session", nil)
-		req.AddCookie(&http.Cookie{Name: h.server.cfg.Cookie.Name, Value: subject})
+		addSessionCookies(req, h.server.cfg.Cookie, subject)
 		rec := httptest.NewRecorder()
 		h.server.handleSession(rec, req)
 		return rec
@@ -809,7 +820,7 @@ func TestSessionReportsExchangedScopesWithCachingDisabled(t *testing.T) {
 	subject := h.subjectSession(t)
 
 	req := httptest.NewRequest(http.MethodGet, paths.Base+"/api/session", nil)
-	req.AddCookie(&http.Cookie{Name: h.server.cfg.Cookie.Name, Value: subject})
+	addSessionCookies(req, h.server.cfg.Cookie, subject)
 	rec := httptest.NewRecorder()
 	h.server.handleSession(rec, req)
 
@@ -991,5 +1002,49 @@ func TestNoOrgParamWithoutDefaultOrSwitch(t *testing.T) {
 	form, _ := h.idpLastForm.Load().(url.Values)
 	if _, present := form["orgHandle"]; present {
 		t.Errorf("orgHandle must be absent with no default and no switch, got %q", form.Get("orgHandle"))
+	}
+}
+
+// Revisiting the callback URL — a refresh, the back button, a restored tab — never
+// carries a transaction: the cookie is cleared on every callback and the transaction
+// is consumed on first use. A browser that already holds a live session is therefore
+// logged in, not failing to log in, and must land in the app rather than on an error
+// page whose only button restarts the whole handshake.
+func TestCallbackWithLiveSessionIsTreatedAsARevisit(t *testing.T) {
+	h := newExchangeHarness(t, nil)
+	subject := h.subjectSession(t) // a live session for this browser
+
+	req := httptest.NewRequest(http.MethodGet,
+		paths.Base+"/api/auth/callback?code=stale&state=stale", nil)
+	addSessionCookies(req, h.server.cfg.Cookie, subject)
+	rec := httptest.NewRecorder()
+	h.server.handleOIDCCallback(rec, req)
+
+	if rec.Code != http.StatusFound {
+		t.Fatalf("status = %d, want 302", rec.Code)
+	}
+	if loc := rec.Header().Get("Location"); strings.Contains(loc, "error=") {
+		t.Errorf("Location = %q, want the app, not a login error", loc)
+	}
+	// The live session must survive untouched — this path decides nothing about it.
+	if _, ok, _ := h.server.store.Get(context.Background(), subject); !ok {
+		t.Error("the live session was destroyed by a revisited callback")
+	}
+}
+
+// Without a session it is a genuine failure and must still be reported as one.
+func TestCallbackWithoutSessionStillFailsTheLogin(t *testing.T) {
+	h := newExchangeHarness(t, nil)
+
+	req := httptest.NewRequest(http.MethodGet,
+		paths.Base+"/api/auth/callback?code=stale&state=stale", nil)
+	rec := httptest.NewRecorder()
+	h.server.handleOIDCCallback(rec, req)
+
+	if rec.Code != http.StatusFound {
+		t.Fatalf("status = %d, want 302", rec.Code)
+	}
+	if loc := rec.Header().Get("Location"); !strings.Contains(loc, "error="+loginErrAuthFailed) {
+		t.Errorf("Location = %q, want ?error=%s", loc, loginErrAuthFailed)
 	}
 }

@@ -22,12 +22,21 @@ import type { Build, Environment } from './types';
 import { managedGatewaysPath, toEnvironments, type ManagedGatewayDTO, type StageDTO } from './wire';
 
 /**
- * The provider's own record. Only its upstream auth type is read: it decides whether a
- * deployment can name the header its credential is sent in, which only an api-key upstream
- * can. The credential itself never comes back — it is write-only.
+ * The provider's own record. Its upstream auth type decides whether a deployment can name
+ * the header its credential is sent in, which only an api-key upstream can, and its
+ * template names where the credential's scheme is declared. The credential itself never
+ * comes back — it is write-only.
  */
 type ProviderDTO = {
+  template?: string;
   upstream?: { main?: { url?: string; auth?: { type?: string; header?: string } } };
+};
+
+/**
+ * The provider's template, read only for the prefix its credential is sent with.
+ */
+type ProviderTemplateDTO = {
+  metadata?: { auth?: { valuePrefix?: string } };
 };
 
 /**
@@ -39,7 +48,34 @@ export type ProviderUpstream = {
   url?: string;
   authType?: string;
   authHeader?: string;
+  /**
+   * The scheme the credential is sent with, as the provider's template declares it
+   * ("Bearer " for OpenAI). An upstream credential carries its own scheme — there is no
+   * separate prefix field on upstream auth, and the gateway sends `auth.value` verbatim —
+   * so the prefix belongs inside the stored value. See withValuePrefix.
+   */
+  authValuePrefix?: string;
 };
+
+/**
+ * Builds the credential exactly as the gateway must send it: the template's scheme
+ * followed by the key.
+ *
+ * This is what makes a deployment-time key behave like one set on the provider itself,
+ * whose form concatenates the same prefix before storing it. Without it the gateway sends
+ * the bare key and the provider's upstream rejects it. A key already carrying the scheme
+ * is left alone, so someone who types it is not double-prefixed.
+ *
+ * Carrying the scheme means the separator too: a key whose own characters merely begin
+ * with the scheme text ("Bearerabc" under "Bearer ") is a key, not a prefixed one, and
+ * still needs the scheme put in front of it.
+ */
+export function withValuePrefix(valuePrefix: string | undefined, key: string): string {
+  const prefix = (valuePrefix ?? '').trimEnd();
+  const alreadyPrefixed = key.startsWith(prefix) && /^\s/.test(key.slice(prefix.length));
+  if (!prefix || alreadyPrefixed) return key;
+  return `${prefix} ${key}`;
+}
 
 /** One of the provider's builds, as the platform reports it. */
 type BuildDTO = {
@@ -92,7 +128,23 @@ export function createProviderDeployClient(apiFetch: ApiFetch, providerHandle: s
     async readUpstream(): Promise<ProviderUpstream> {
       const provider = await apiFetch<ProviderDTO>('GET', nativeBase);
       const main = provider?.upstream?.main;
-      return { url: main?.url, authType: main?.auth?.type, authHeader: main?.auth?.header };
+      // The scheme is declared by the template, not by the provider record, because the
+      // provider's own credential already has it folded into its (write-only) value. A
+      // template that cannot be read leaves the prefix out rather than failing the form:
+      // the deploy still works, and a key typed with its scheme still reaches the gateway
+      // intact.
+      const template = provider?.template
+        ? await apiFetch<ProviderTemplateDTO>(
+            'GET',
+            `/llm-provider-templates/${encodeURIComponent(provider.template)}`
+          ).catch(() => undefined)
+        : undefined;
+      return {
+        url: main?.url,
+        authType: main?.auth?.type,
+        authHeader: main?.auth?.header,
+        authValuePrefix: template?.metadata?.auth?.valuePrefix,
+      };
     },
 
     /**

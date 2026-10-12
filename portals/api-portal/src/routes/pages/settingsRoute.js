@@ -34,13 +34,13 @@ router.get('/:orgName/settings', noFavicon,
 
 // LLM config CRUD (view-scoped data endpoints, driven by the page's view selector)
 router.get('/:orgName/views/:viewName/llms-config', noFavicon,
-    authController.handleSilentSSO, ensureAuthenticated, viewConfigureController.getLlmsConfig);
+    authController.handleSilentSSO, ensureAuthenticated, requireAdmin, viewConfigureController.getLlmsConfig);
 
 router.put('/:orgName/views/:viewName/llms-config', noFavicon,
-    ensureAuthenticated, requireCsrfForMutatingApi, viewConfigureController.saveLlmsConfig);
+    ensureAuthenticated, requireAdmin, requireCsrfForMutatingApi, viewConfigureController.saveLlmsConfig);
 
 // llms.txt preview (uses real API data + submitted overrides)
 router.post('/:orgName/views/:viewName/llms.txt/preview', noFavicon,
-    ensureAuthenticated, requireCsrfForMutatingApi, apiContentController.previewLlmsTxt);
+    ensureAuthenticated, requireAdmin, requireCsrfForMutatingApi, apiContentController.previewLlmsTxt);
 
 module.exports = router;

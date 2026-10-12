@@ -1,0 +1,10 @@
+{
+  "body": {
+    "message": "Error extracting value from JSONPath: key not found: nonexistent",
+    "type": "SEMANTIC_CACHE"
+  },
+  "headers": {
+    "content-type": "application/json"
+  },
+  "status": 400
+}

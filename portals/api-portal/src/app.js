@@ -30,6 +30,7 @@ const applicationContent = require('./routes/pages/applicationsContentRoute');
 const customContent = require('./routes/pages/customPageRoute');
 const subscriptionsContent = require('./routes/pages/subscriptionsContentRoute');
 const apiKeysOverviewContent = require('./routes/pages/apiKeysOverviewRoute');
+const oauth2KeysContent = require('./routes/pages/oauth2KeysRoute');
 const mcpRegistryRoute = require('./routes/pages/mcpRegistryRoute');
 const { config } = require('./config/configLoader');
 const Handlebars = require('handlebars');
@@ -262,6 +263,8 @@ if (config.designMode?.enabled) {
     portal.use(constants.ROUTE.DEFAULT, apiWorkflowsRoute);
     portal.use(constants.ROUTE.DEFAULT, subscriptionsContent);
     portal.use(constants.ROUTE.DEFAULT, apiKeysOverviewContent);
+    portal.use(constants.ROUTE.DEFAULT, oauth2KeysContent);
+    // customContent is the catch-all page router and must stay last.
     portal.use(constants.ROUTE.DEFAULT, customContent);
 }
 
@@ -326,11 +329,20 @@ app.use(async (err, req, res, next) => {
     // view that exists after that one has been renamed or deleted. Never throws — see
     // orgContext.getFallbackViewHandle — which matters on this path above all others.
     const baseUrl = constants.ROUTE.BASE_PATH + '/' + orgContext.getHandle() + constants.ROUTE.VIEWS_PATH + await orgContext.getFallbackViewHandle();
-    const templateContent = {
-        baseUrl,
-        errorType,
-        profile: typeof req.isAuthenticated === 'function' && req.isAuthenticated() ? req.user : null,
-    };
+    let profile = typeof req.isAuthenticated === 'function' && req.isAuthenticated() ? req.user : null;
+    // The page's links point at the configured organization; in multi-organization mode a
+    // user of another one is no administrator there (see orgGuard). Compared with the
+    // stored idp_ref_id — what sign-ins are matched against, which auth.idp_org_id need
+    // not equal (an unset setting leaves the stored value alone). Must not throw on this
+    // path, so a failed lookup counts as foreign: a missing admin link is the safe
+    // default.
+    if (profile && orgContext.isMultiOrganizationEnabled()) {
+        const idpRefId = await orgContext.getConfiguredOrgIdpRefId().catch(() => null);
+        if (orgContext.isForeignOrgSession(profile, { idp_ref_id: idpRefId })) {
+            profile = { ...profile, isAdmin: false };
+        }
+    }
+    const templateContent = { baseUrl, errorType, profile };
 
     const html = util.renderTemplate('../pages/error-page/page.hbs', './src/defaultContent/layout/main.hbs', templateContent, true);
     res.status(status).send(html);

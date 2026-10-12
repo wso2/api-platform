@@ -22,17 +22,18 @@ package apperror
 // the fallback used by NewErrorResponse when a handler hasn't been
 // migrated to a more specific domain code via NewErrorResponseWithCode.
 const (
-	CodeCommonValidationFailed    = "VALIDATION_FAILED"
-	CodeCommonUnauthorized        = "UNAUTHORIZED"
-	CodeCommonForbidden           = "FORBIDDEN"
-	CodeCommonNotFound            = "NOT_FOUND"
-	CodeCommonConflict            = "CONFLICT"
-	CodeCommonNotAcceptable       = "NOT_ACCEPTABLE"
-	CodeCommonUnprocessableEntity = "UNPROCESSABLE_ENTITY"
-	CodeCommonInternalError       = "INTERNAL_ERROR"
-	CodeCommonServiceUnavailable  = "SERVICE_UNAVAILABLE"
-	CodeCommonTooManyRequests     = "TOO_MANY_REQUESTS"
-	CodeCommonPayloadTooLarge     = "PAYLOAD_TOO_LARGE"
+	CodeCommonValidationFailed     = "VALIDATION_FAILED"
+	CodeCommonUnauthorized         = "UNAUTHORIZED"
+	CodeCommonForbidden            = "FORBIDDEN"
+	CodeCommonNotFound             = "NOT_FOUND"
+	CodeCommonConflict             = "CONFLICT"
+	CodeCommonNotAcceptable        = "NOT_ACCEPTABLE"
+	CodeCommonUnprocessableEntity  = "UNPROCESSABLE_ENTITY"
+	CodeCommonInternalError        = "INTERNAL_ERROR"
+	CodeCommonServiceUnavailable   = "SERVICE_UNAVAILABLE"
+	CodeCommonTooManyRequests      = "TOO_MANY_REQUESTS"
+	CodeCommonPayloadTooLarge      = "PAYLOAD_TOO_LARGE"
+	CodeCommonUnsupportedMediaType = "UNSUPPORTED_MEDIA_TYPE"
 )
 
 // LLM provider/proxy domain codes, matching the examples documented in
@@ -95,6 +96,12 @@ const (
 	CodeDeploymentGatewayMismatch = "DEPLOYMENT_GATEWAY_MISMATCH"
 	CodeDeploymentActive          = "DEPLOYMENT_ACTIVE"
 	CodeDeploymentInvalidStatus   = "DEPLOYMENT_INVALID_STATUS"
+	// CodeDeploymentKindUnsupportedByGateway: the target gateway's release does not
+	// have the artifact kind (e.g. an Agent proxy on an LTS gateway).
+	CodeDeploymentKindUnsupportedByGateway = "DEPLOYMENT_KIND_UNSUPPORTED_BY_GATEWAY"
+	// CodeDeploymentSecretResolutionFailed: a gateway that needs secrets inlined
+	// fetched a deployment and a secret it references could not be resolved.
+	CodeDeploymentSecretResolutionFailed = "DEPLOYMENT_SECRET_RESOLUTION_FAILED"
 )
 
 // REST API domain codes.
@@ -114,6 +121,15 @@ const (
 	CodeMCPProxyExists                     = "MCP_PROXY_EXISTS"
 	CodeMCPProxyDeploymentValidationFailed = "MCP_PROXY_DEPLOYMENT_VALIDATION_FAILED"
 	CodeMCPProxyUpstreamUnauthorized       = "MCP_PROXY_UPSTREAM_UNAUTHORIZED"
+)
+
+// Agent proxy domain codes.
+const (
+	CodeAgentProxyNotFound                   = "AGENT_PROXY_NOT_FOUND"
+	CodeAgentProxyExists                     = "AGENT_PROXY_EXISTS"
+	CodeAgentProxyUpstreamUnreachable        = "AGENT_PROXY_UPSTREAM_UNREACHABLE"
+	CodeAgentProxyDeploymentValidationFailed = "AGENT_PROXY_DEPLOYMENT_VALIDATION_FAILED"
+	CodeAgentProxyDeploymentNotUndeployed    = "AGENT_PROXY_DEPLOYMENT_NOT_UNDEPLOYED"
 )
 
 // Organization domain codes.
@@ -180,6 +196,11 @@ const (
 	CodeArtifactDeployed         = "ARTIFACT_DEPLOYED"
 )
 
+// API document domain codes.
+const (
+	CodeAPIDocumentNameExists = "API_DOCUMENT_NAME_EXISTS"
+)
+
 // Custom policy domain codes.
 const (
 	CodeCustomPolicyNotFound        = "CUSTOM_POLICY_NOT_FOUND"
@@ -223,6 +244,7 @@ const (
 	CodeAPIPublicationDraftNotFound     = "DRAFT_NOT_FOUND"
 	CodeAPIPublicationNotFound          = "PUBLICATION_NOT_FOUND"
 	CodeAPIPublicationValidationFailed  = "PUBLICATION_VALIDATION_FAILED"
+	CodeAPIPublicationTypeUnsupported   = "PUBLICATION_TYPE_UNSUPPORTED"
 	CodeAPIPublicationPortalConflict    = "PUBLICATION_PORTAL_CONFLICT"
 	CodeAPIPublicationPortalUnavailable = "PUBLICATION_PORTAL_UNAVAILABLE"
 	// CodeAPIPublicationStateConflict: the action (unpublish, deprecate) is not

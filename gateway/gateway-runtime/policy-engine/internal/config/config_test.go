@@ -2276,3 +2276,53 @@ func TestValidate_ExtProcMessageLimits(t *testing.T) {
 		})
 	}
 }
+
+// The fault-flow-for-upstream-errors flag must be off when nothing configures it. This is
+// the assertion that protects the shipped behaviour: every previous generation of this
+// gateway ran an upstream error through the response policies, so a config file that says
+// nothing must keep doing that.
+func TestLoad_HandleUpstreamFaultsDefaultsOff(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.toml")
+
+	// Deliberately no [policy_engine.fault_policies] section at all.
+	configContent := `
+[policy_engine.config_mode]
+mode = "file"
+
+[policy_engine.file_config]
+path = "/tmp/policies.yaml"
+`
+	require.NoError(t, os.WriteFile(configPath, []byte(configContent), 0644))
+
+	cfg, err := Load(configPath)
+	require.NoError(t, err)
+
+	assert.False(t, cfg.PolicyEngine.FaultPolicies.HandleUpstreamFaults,
+		"an unconfigured deployment must keep upstream errors on the response policies")
+}
+
+// And it must actually load when set — a flag nothing reads is worse than no flag, since it
+// looks configured and changes nothing.
+func TestLoad_HandleUpstreamFaultsOptIn(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.toml")
+
+	configContent := `
+[policy_engine.config_mode]
+mode = "file"
+
+[policy_engine.file_config]
+path = "/tmp/policies.yaml"
+
+[policy_engine.fault_policies]
+handle_upstream_faults = true
+`
+	require.NoError(t, os.WriteFile(configPath, []byte(configContent), 0644))
+
+	cfg, err := Load(configPath)
+	require.NoError(t, err)
+
+	assert.True(t, cfg.PolicyEngine.FaultPolicies.HandleUpstreamFaults,
+		"policy_engine.fault_policies.handle_upstream_faults must reach the engine")
+}

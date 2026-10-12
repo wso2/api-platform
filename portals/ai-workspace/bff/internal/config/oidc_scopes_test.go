@@ -113,6 +113,8 @@ var excludedScopeResources = []string{
 	// MCP proxy — that gets its own scopes (see ap:api_portal:mcp_proxy: above) once it
 	// ships. Consistent with ap:rest_api: itself being excluded.
 	"ap:api_portal:rest_api:",
+	"ap:docs:",
+	"ap:thumbnail:",
 }
 
 func isExcludedScope(scope string) bool {

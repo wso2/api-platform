@@ -27,6 +27,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 )
 
@@ -102,7 +103,7 @@ func FetchOpenAPISpecFromURL(ctx context.Context, rawURL string, maxBytes int64)
 		return "", fmt.Errorf("failed to read OpenAPI spec response")
 	}
 	if int64(len(data)) > maxBytes {
-		return "", fmt.Errorf("OpenAPI spec exceeds the maximum allowed size")
+		return "", apperror.PayloadTooLarge.New("The OpenAPI spec fetched from the provided URL exceeds the maximum allowed size.")
 	}
 
 	return string(data), nil

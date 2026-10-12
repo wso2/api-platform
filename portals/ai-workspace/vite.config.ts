@@ -16,7 +16,8 @@
  * under the License.
  */
 
-import { defineConfig } from 'vitest/config'
+/// <reference types="vitest/config" />
+import { defineConfig } from 'vite'
 import type { PluginOption } from 'vite'
 import react from '@vitejs/plugin-react'
 import basicSsl from '@vitejs/plugin-basic-ssl'
@@ -151,16 +152,6 @@ if (process.env.VITE_COVERAGE === 'true') {
 export default defineConfig({
   plugins,
   base: basePath,
-  // Unit tests, for the modules that are plain logic rather than screens: what
-  // translates for a provider, what a proxy stores, what a key is named. These
-  // are the decisions a defect in can be silent — a wrong verdict renders
-  // perfectly well — so they are the ones worth testing away from a browser.
-  // Everything React is covered end to end instead, under cypress/.
-  test: {
-    environment: 'node',
-    include: ['src/**/*.test.ts'],
-    coverage: { provider: 'v8', include: ['src/utils/**'] },
-  },
   // Expose only the allowlisted APIP_AIW_ variables to client code via
   // import.meta.env, instead of Vite's default VITE_ prefix. The whole platform
   // namespaces its configuration this way (APIP_AIW_ here, APIP_CP_ for the Platform
@@ -201,5 +192,48 @@ export default defineConfig({
         },
       ]),
     ),
-  }
+  },
+  test: {
+    environment: 'jsdom',
+    setupFiles: ['./src/test/setup.ts'],
+    globals: true,
+    testTimeout: 20000,
+    hookTimeout: 20000,
+    // Oxygen UI and MUI ship CSS imports Node cannot load on its own, so Vite
+    // transforms them rather than leaving them to the runtime.
+    server: {
+      deps: {
+        inline: [/@wso2\/oxygen-ui/, /@mui\//],
+      },
+    },
+    coverage: {
+      provider: 'v8',
+      reporter: ['text-summary', 'lcov'],
+      reportsDirectory: './coverage',
+      all: true,
+      // Scoped to the Agent proxy surface. The browser suite stays the source of
+      // coverage for the rest of the portal and Codecov merges the two reports.
+      include: [
+        'src/apis/agent/**/*.ts',
+        'src/contexts/agentProxy/**/*.{ts,tsx}',
+        'src/pages/appShell/appShellPages/agentProxies/**/*.{ts,tsx}',
+        // Shared surfaces this feature extended: the deploy context gained an
+        // agent-proxy resource type, and the project overview lists and deletes
+        // agent proxies alongside the other kinds.
+        'src/contexts/GatewayDeployContext.tsx',
+        'src/pages/appShell/appShellPages/overview/KindDetailPanel.tsx',
+        // The render helper runs in every component test, so it is reported
+        // rather than left to count as uncovered changed lines.
+        'src/test/**/*.{ts,tsx}',
+        // Multi-provider routing added plain-logic modules under utils — what
+        // translates for a provider, what a proxy stores, what a key is named.
+        // A defect in these is silent: a wrong verdict still renders perfectly,
+        // which is why they are unit-tested rather than left to the browser suite.
+        'src/utils/proxyProviders.ts',
+        'src/utils/transformerResolution.ts',
+        'src/utils/apiKeyNaming.ts',
+      ],
+      exclude: ['**/*.test.{ts,tsx}', '**/*.d.ts', '**/index.ts'],
+    },
+  },
 })

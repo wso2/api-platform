@@ -16,18 +16,21 @@
  * under the License.
  */
 
+import { AppPage } from '@/components/AppPage';
 import { routes } from '@/routes/paths';
 import { ScopeGate } from '@/scope/ScopeGate';
 import { DocumentsPanel } from './DocumentsPanel';
 
 export function DocumentsPage() {
   return (
-    <ScopeGate
-      prompt="Documents belong to a single API."
-      requires="api"
-      to={routes.apiDevelopDocuments}
-    >
-      <DocumentsPanel />
-    </ScopeGate>
+    <AppPage>
+      <ScopeGate
+        prompt="Documents belong to a single API."
+        requires="api"
+        to={routes.apiDevelopDocuments}
+      >
+        <DocumentsPanel />
+      </ScopeGate>
+    </AppPage>
   );
 }

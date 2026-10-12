@@ -19,14 +19,24 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { resetHttpClient } from '@/api/core/http';
-import { accepts } from '@/test/msw';
+import { accepts, recorder, type Recorder } from '@/test/msw';
 import { server } from '@/test/server';
 import { fireEvent, renderWithProviders, screen, waitFor } from '@/test/utils';
 import { ContractSourceForm, fetchContractForPreview } from './ContractSourceForm';
 
+let validateRequests: Recorder;
+
 beforeEach(() => {
   resetHttpClient();
-  server.use(accepts('post', '/rest-apis/validate-openapi', { isValid: true, errors: [] }));
+  validateRequests = recorder();
+  server.use(
+    accepts(
+      'post',
+      '/rest-apis/validate-openapi',
+      { isValid: true, errors: [], content: VALID_SPEC },
+      { record: validateRequests },
+    ),
+  );
 });
 
 const yamlFile = (name: string) =>
@@ -47,19 +57,6 @@ const VALID_SPEC = [
   "        '200':",
   '          description: ok',
 ].join('\n');
-
-/** Serves `VALID_SPEC` to every request, and counts them. */
-const stubSpecHost = () => {
-  const fetchMock = vi.fn(() =>
-    Promise.resolve({
-      headers: new Headers(),
-      ok: true,
-      text: () => Promise.resolve(VALID_SPEC),
-    }),
-  );
-  vi.stubGlobal('fetch', fetchMock);
-  return fetchMock;
-};
 
 /** The hidden `<input type="file">` inside the drop zone. */
 const filePicker = (): HTMLInputElement => {
@@ -126,7 +123,6 @@ describe('ContractSourceForm — automatic fetch', () => {
   });
 
   it('reads the URL when the field is left, not while it is being typed', async () => {
-    const fetchMock = stubSpecHost();
     const onContractChange = vi.fn();
     const { user } = renderWithProviders(
       <ContractSourceForm onContractChange={onContractChange} />,
@@ -138,7 +134,7 @@ describe('ContractSourceForm — automatic fetch', () => {
     );
     // A URL passes through many invalid prefixes on the way in; none of them
     // is worth a request.
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(validateRequests.count()).toBe(0);
     expect(screen.queryByRole('button', { name: /Fetch/i })).not.toBeInTheDocument();
 
     await user.tab();
@@ -148,11 +144,10 @@ describe('ContractSourceForm — automatic fetch', () => {
         expect.objectContaining({ dialect: 'openapi-3.0' }),
       ),
     );
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(validateRequests.count()).toBe(1);
   });
 
   it('clears fetched state and re-fetches when the same URL is entered again', async () => {
-    const fetchMock = stubSpecHost();
     const onContractChange = vi.fn();
     const { user } = renderWithProviders(
       <ContractSourceForm onContractChange={onContractChange} />,
@@ -174,7 +169,7 @@ describe('ContractSourceForm — automatic fetch', () => {
     await user.type(field, 'https://example.com/openapi.yaml');
     await user.tab();
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(validateRequests.count()).toBe(2));
     await waitFor(() =>
       expect(onContractChange).toHaveBeenLastCalledWith(
         expect.objectContaining({ dialect: 'openapi-3.0' }),
@@ -183,7 +178,6 @@ describe('ContractSourceForm — automatic fetch', () => {
   });
 
   it('does not read it again when the field is left untouched', async () => {
-    const fetchMock = stubSpecHost();
     const onContractChange = vi.fn();
     const { user } = renderWithProviders(
       <ContractSourceForm onContractChange={onContractChange} />,
@@ -203,7 +197,7 @@ describe('ContractSourceForm — automatic fetch', () => {
     await user.click(field);
     await user.tab();
 
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(validateRequests.count()).toBe(1);
   });
 
   it('reads an uploaded file as soon as it is chosen', async () => {

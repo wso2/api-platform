@@ -23,7 +23,7 @@ import type { LogQuery } from './types';
 
 const baseQuery: LogQuery = {
   rangeMinutes: 60,
-  kind: 'all',
+  kinds: [],
   levels: [],
   searchPhrase: '',
   limit: 200,
@@ -69,9 +69,15 @@ describe('buildLogsQuery', () => {
     ).toBe(false);
   });
 
-  it('sends kind only when it narrows', () => {
-    const params = new URLSearchParams(buildLogsQuery({ ...baseQuery, kind: 'access' }, NOW));
-    expect(params.get('kind')).toBe('access');
+  it('sends kind only when exactly one is picked', () => {
+    const one = new URLSearchParams(buildLogsQuery({ ...baseQuery, kinds: ['access'] }, NOW));
+    expect(one.get('kind')).toBe('access');
+
+    // The endpoint takes one kind, so ticking both is the same request as none.
+    const both = new URLSearchParams(
+      buildLogsQuery({ ...baseQuery, kinds: ['access', 'operational'] }, NOW)
+    );
+    expect(both.has('kind')).toBe(false);
   });
 
   it('sends the environment when one is picked', () => {

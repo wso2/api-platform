@@ -1,0 +1,88 @@
+apiVersion: gateway.api-platform.wso2.com/v1
+kind: Agent
+metadata:
+    name: weather-agent
+    labels:
+        projectId: 0b7d3c1e-5f2a-4c8e-9d6b-1a2b3c4d5e6f
+spec:
+    displayName: Weather Agent
+    version: v1.0
+    context: /weather
+    vhost: agents.gw.com
+    upstream:
+        url: http://weather-agent:9000
+        auth:
+            type: api-key
+            header: X-API-Key
+            value: '{{ secret "weather-upstream" }}'
+    resilience:
+        idleTimeout: 5s
+    a2a:
+        protocolVersion: "1.0"
+        operationConfigs:
+            transports:
+                - protocolBinding: JSONRPC
+                  pathPrefix: /rpc
+                - protocolBinding: HTTP+JSON
+                  pathPrefix: /rest
+            policies:
+                - name: jwt-auth
+                  version: v1
+                  params:
+                    issuer: https://idp.example.com
+                    requiredScopes:
+                        - a2a.invoke
+            operations:
+                - name: SendMessage
+                  policies:
+                    - name: advanced-ratelimit
+                      version: v1
+                      params:
+                        quotas:
+                            - limits:
+                                - duration: 1m
+                                  limit: 100
+                              name: send-message-limit
+        agentCard:
+            public:
+                mode: managed
+                path: /.well-known/agent-card.json
+                policies:
+                    - name: cors
+                      version: v1
+                content:
+                    capabilities:
+                        extendedAgentCard: true
+                        streaming: true
+                    defaultInputModes:
+                        - text/plain
+                    defaultOutputModes:
+                        - text/plain
+                    description: Provides forecasts and severe-weather alerts
+                    name: Weather Agent
+                    securityRequirements:
+                        - schemes:
+                            gateway-jwt:
+                                list:
+                                    - a2a.invoke
+                    securitySchemes:
+                        gateway-jwt:
+                            openIdConnectSecurityScheme:
+                                openIdConnectUrl: https://idp.example.com/.well-known/openid-configuration
+                    skills:
+                        - description: Multi-day forecast for a location
+                          id: forecast
+                          name: Forecast
+                          tags:
+                            - weather
+                    supportedInterfaces:
+                        - protocolBinding: JSONRPC
+                          protocolVersion: "1.0"
+                          url: https://agent-proxies.gw.com/weather/rpc
+                        - protocolBinding: HTTP+JSON
+                          protocolVersion: "1.0"
+                          url: https://agent-proxies.gw.com/weather/rest
+                    version: 1.0.0
+            protected:
+                mode: passthrough
+                rewriteUrls: true

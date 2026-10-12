@@ -27,6 +27,7 @@ package config
 import (
 	"fmt"
 	"log/slog"
+	"math"
 	"net"
 	"net/url"
 	"slices"
@@ -143,16 +144,27 @@ type ControlPlaneConfig struct {
 	CAFile string `koanf:"ca_file"`
 	// TLSSkipVerify disables upstream certificate verification entirely. Last-resort
 	// escape hatch for dev/demo only; prefer CAFile.
-	TLSSkipVerify bool `koanf:"tls_skip_verify"`
+	TLSSkipVerify       bool   `koanf:"tls_skip_verify"`
 	PlatformAPIBasePath string `koanf:"platform_api_base_path"`
 	PortalAPIBasePath   string `koanf:"portal_api_base_path"`
-	// CloudURL is an optional second hop for Moesif analytics (wso2cloud platform-api).
-	// When set, <base>/proxy/cloud/* is proxied there instead of the primary control
-	// plane. Include the /cloud path prefix (e.g. http://host:8081/cloud).
-	CloudURL string `koanf:"cloud_url"`
-	// CloudCAFile / CloudTLSSkipVerify apply only to CloudURL when that hop uses TLS.
-	CloudCAFile        string `koanf:"cloud_ca_file"`
-	CloudTLSSkipVerify bool   `koanf:"cloud_tls_skip_verify"`
+	// MoesifURL is an optional second hop for Moesif analytics. When set,
+	// <base>/proxy/moesif/* is proxied there instead of the primary control plane.
+	// Include whatever path prefix the upstream publishes under (e.g.
+	// https://host:8443/cloud for wso2cloud's platform-api, or
+	// https://apis.<env>.choreo.dev/moesif-key/0.1.0 for Choreo's moesif-key API).
+	//
+	// Must be https://, which the control plane's own URL need not be: this hop
+	// forwards the user's exchanged token to a third-party service, so validate()
+	// refuses to start on a plaintext one.
+	MoesifURL string `koanf:"moesif_url"`
+	// MoesifCAFile / MoesifTLSSkipVerify apply to the MoesifURL hop, which is always TLS.
+	MoesifCAFile        string `koanf:"moesif_ca_file"`
+	MoesifTLSSkipVerify bool   `koanf:"moesif_tls_skip_verify"`
+	// MoesifPathMappings rewrites paths on the Moesif hop, as comma-separated
+	// "<from>=<to>" pairs (e.g. "/analytics/id-token=/id_token"). Needed when the
+	// configured MoesifURL publishes a route under a different path than the SPA
+	// asks for — see MoesifPathMapper. Empty leaves that hop forwarding untouched.
+	MoesifPathMappings string `koanf:"moesif_path_mappings"`
 	// BillingURL is an optional hop to the billing service. When set,
 	// <base>/proxy/billing/* is proxied there instead of the primary control plane.
 	// Cloud-only: every standalone deployment leaves it empty, which is what keeps
@@ -163,12 +175,132 @@ type ControlPlaneConfig struct {
 	BillingTLSSkipVerify bool   `koanf:"billing_tls_skip_verify"`
 }
 
-// SessionConfig is [ai_workspace.session]: server-side session lifetime.
+// SessionConfig is [ai_workspace.session]: where the session's server-side state
+// lives and how long it lives for.
 type SessionConfig struct {
-	Store       string        `koanf:"store"`        // "memory" (default) | "redis" (future)
+	// Store names the session backend. "cookie" is the only supported value; the key is
+	// kept so a config carrying the removed "memory" fails loudly instead of silently
+	// changing behaviour.
+	Store  string              `koanf:"store"`
+	Cookie SessionCookieConfig `koanf:"cookie"`
+
 	IdleTimeout time.Duration `koanf:"idle_timeout"` // sliding idle window
 	AbsoluteTTL time.Duration `koanf:"absolute_ttl"` // hard cap regardless of activity / token exp
 }
+
+// SessionCookieConfig is [ai_workspace.session.cookie]: the settings for the cookies
+// the session is carried in.
+type SessionCookieConfig struct {
+	// EncryptionKey seals every cookie this BFF writes that the browser must not read:
+	// the session-state cookies, and the OIDC login-transaction cookie — which is not
+	// part of a session, but is a cookie, which is why the key is named for the
+	// mechanism rather than for one of its users.
+	//
+	// REQUIRED in OIDC mode, and every replica must see the same value. Deliberately
+	// not defaulted to the OIDC client secret: reusing it would widen that secret's
+	// exposure from "can impersonate the client" to "can also open any session cookie".
+	// Changing it invalidates every live session.
+	EncryptionKey string `koanf:"encryption_key"`
+}
+
+// SessionStoreCookie is the only supported [session] store value.
+const SessionStoreCookie = "cookie"
+
+// sessionStoreMemory is the removed process-local store. Named only so validate can
+// recognise a config that still asks for it and say what happened.
+const sessionStoreMemory = "memory"
+
+// StateSealLabel and TxSealLabel keep the two derived keys independent: neither opens
+// the other's records.
+const (
+	StateSealLabel = "ai-workspace-bff/session-state/v1"
+	TxSealLabel    = "ai-workspace-bff/oidc-login-tx/v1"
+)
+
+// MinSessionKeyLength and minVarietyScoreBits are floors on the configured sealing key.
+//
+// They are sanity checks for an obviously hand-made value, NOT a measurement of
+// entropy: no test on a string can prove it was generated well, and passing them
+// guarantees nothing. The only real guarantee is generating the key from a CSPRNG,
+// which scripts/setup.sh does (`openssl rand -hex 32`). HKDF stretches whatever it is
+// given to the right key length and adds no entropy, so a weak value stays guessable
+// offline against a captured record — and recovering it opens every session sealed
+// under it.
+const (
+	MinSessionKeyLength = 32
+	minVarietyScoreBits = 128
+	minDistinctRunes    = 8
+)
+
+// weakKeyReason names why a configured key looks hand-made, or "" if it passes every
+// check. It never includes the key or any part of it in what it returns.
+//
+// Three complementary checks, because each alone is blind to what the others catch —
+// most importantly varietyScoreBits, which scores a repeated pattern exactly as highly
+// as random material of the same alphabet ("0123456789abcdef" four times scores the
+// same 256 as a real 64-character hex key).
+func weakKeyReason(v string) string {
+	if len(v) < MinSessionKeyLength {
+		return fmt.Sprintf("it is %d characters, minimum %d", len(v), MinSessionKeyLength)
+	}
+	if p := shortestPeriod(v); p < MinSessionKeyLength {
+		return fmt.Sprintf("it is a %d-character sequence repeated to fill the length", p)
+	}
+	if n := distinctRunes(v); n < minDistinctRunes {
+		return fmt.Sprintf("it is built from only %d distinct characters, minimum %d", n, minDistinctRunes)
+	}
+	if bits := varietyScoreBits(v); bits < minVarietyScoreBits {
+		return fmt.Sprintf("its character variety scores ~%.0f, below the %d floor", bits, minVarietyScoreBits)
+	}
+	return ""
+}
+
+// shortestPeriod returns the length of the smallest string that, repeated, produces v —
+// or len(v) when v is not an exact repetition. This is what catches a short pattern
+// padded out to look long enough; varietyScoreBits cannot see it.
+func shortestPeriod(v string) int {
+	n := len(v)
+	for p := 1; p <= n/2; p++ {
+		if n%p == 0 && strings.Repeat(v[:p], n/p) == v {
+			return p
+		}
+	}
+	return n
+}
+
+func distinctRunes(v string) int {
+	seen := make(map[rune]struct{}, len(v))
+	for _, r := range v {
+		seen[r] = struct{}{}
+	}
+	return len(seen)
+}
+
+// varietyScoreBits is the Shannon entropy of the value's own character distribution
+// times its length. Despite the unit it is NOT a count of entropy bits — it is blind to
+// ordering, so any permutation of the same characters scores identically. It is kept
+// only because it catches repeated words and single-case runs that the other two checks
+// let through.
+func varietyScoreBits(v string) float64 {
+	if v == "" {
+		return 0
+	}
+	counts := make(map[rune]int, len(v))
+	total := 0
+	for _, r := range v {
+		counts[r]++
+		total++
+	}
+	var perRune float64
+	for _, n := range counts {
+		p := float64(n) / float64(total)
+		perRune -= p * math.Log2(p)
+	}
+	return perRune * float64(total)
+}
+
+// SealKeyMaterial is the secret the sealing keys derive from. No fallback.
+func (c *Config) SealKeyMaterial() string { return c.Session.Cookie.EncryptionKey }
 
 // AuthConfig is [ai_workspace.auth]: the login mode and the claim/OIDC settings.
 type AuthConfig struct {
@@ -274,12 +406,22 @@ type TokenExchangeConfig struct {
 	// the handle of the org currently selected
 	OrgParam string `koanf:"org_param"`
 
-	// DefaultOrg is the org handle used before the user has selected one — the
-	// window between login and the first org switch, which for a single-org
-	// deployment is the whole session. Unset, the exchange sends no org and the STS
-	// resolves whichever org it considers the caller's default; pinning it here
-	// makes that choice explicit and stable, so the workspace does not silently
-	// follow a default changed elsewhere. A user's own switch always wins over it.
+	// OrgLookupURL overrides WHERE the user's organizations are read from — the
+	// absolute URL of a service that accepts the LOGIN token and answers with that
+	// user's orgs. Empty reads them from the Platform API's own /organizations.
+	//
+	OrgLookupURL string `koanf:"org_lookup_url"`
+
+	// DefaultOrg is the FALLBACK org handle, used when the user's own organizations
+	// could not be read from the Platform API — which is where the handle normally
+	// comes from before the user has switched (see the server's resolveOrgHandle).
+	//
+	// A fallback rather than the primary source: it is one guess shared by every
+	// user of the deployment, and only the user's own memberships can be right for
+	// all of them. Unset, such a session exchanges with no org at all and the STS
+	// resolves whichever org it considers the caller's default — which is what
+	// pinning this avoids, so the workspace does not silently follow a default
+	// chosen elsewhere. A user's own switch always wins over it.
 	DefaultOrg string `koanf:"default_org"`
 
 	// ClaimMappings names the claims in the ISSUED token, which routinely differ
@@ -391,6 +533,7 @@ type OIDCConfig struct {
 type ClaimMappingConfig struct {
 	Username      string `koanf:"username"`
 	Email         string `koanf:"email"`
+	Picture       string `koanf:"picture"`
 	Roles         string `koanf:"roles"`
 	Scope         string `koanf:"scope"`
 	OrgID         string `koanf:"organization"`
@@ -405,13 +548,28 @@ type ClaimMappingConfig struct {
 // unconditionally true; there is no supported plain-HTTP deployment that would need it
 // false.
 type CookieConfig struct {
-	Name     string
-	Secure   bool
-	SameSite string // "lax" | "strict" | "none"
+	// Name1 and Name2 carry the session JWT split across two HttpOnly cookies, so a
+	// single Set-Cookie value stays under browsers' and intermediate proxies'
+	// per-cookie size ceiling even when the JWT's scope list is large (see
+	// defaultOIDCScopes below).
+	Name1 string
+	Name2 string
+	// StatePrefix names the sealed session-state cookies, numbered from it.
+	StatePrefix string
+	Secure      bool
+	SameSite    string // "lax" | "strict" | "none"
 }
 
-// cookieName is the session cookie's name.
-const cookieName = "_ai_workspace_session"
+// cookieName1 and cookieName2 are the session cookie names. LegacyCookieName is the
+// single-cookie name used before the session was split in two; exported because
+// server.clearSessionCookie also expires it so a browser holding a pre-upgrade cookie
+// doesn't keep it alive forever (see cookies.go).
+const (
+	cookieName1       = "_ai_workspace_session_1"
+	cookieName2       = "_ai_workspace_session_2"
+	stateCookiePrefix = "_ai_workspace_state_"
+	LegacyCookieName  = "_ai_workspace_session"
+)
 
 // CSRFHeaderName is the header the SPA must set on every state-mutating request, and
 // the BFF checks for on the way in (see server/middleware.go requireCSRF). It is a
@@ -450,6 +608,9 @@ const defaultOIDCScopes = "openid profile email offline_access" +
 	" ap:llm_proxy:deployment:read ap:llm_proxy:deployment:create ap:llm_proxy:deployment:delete ap:llm_proxy:deployment:manage ap:llm_proxy:deployment:undeploy ap:llm_proxy:deployment:restore" +
 	" ap:mcp_proxy:read ap:mcp_proxy:create ap:mcp_proxy:update ap:mcp_proxy:delete ap:mcp_proxy:manage" +
 	" ap:mcp_proxy:deployment:read ap:mcp_proxy:deployment:create ap:mcp_proxy:deployment:delete ap:mcp_proxy:deployment:manage ap:mcp_proxy:deployment:undeploy ap:mcp_proxy:deployment:restore" +
+	" ap:agent_proxy:read ap:agent_proxy:create ap:agent_proxy:update ap:agent_proxy:delete ap:agent_proxy:manage" +
+	" ap:agent_proxy:api_key:read ap:agent_proxy:api_key:create ap:agent_proxy:api_key:update ap:agent_proxy:api_key:delete ap:agent_proxy:api_key:manage" +
+	" ap:agent_proxy:deployment:read ap:agent_proxy:deployment:create ap:agent_proxy:deployment:delete ap:agent_proxy:deployment:manage ap:agent_proxy:deployment:undeploy ap:agent_proxy:deployment:restore" +
 	" ap:api_portal:read ap:api_portal:create ap:api_portal:update ap:api_portal:delete ap:api_portal:manage" +
 	" ap:api_portal:draft:read ap:api_portal:draft:update ap:api_portal:draft:manage" +
 	" ap:api_portal:publication:read" +
@@ -522,7 +683,7 @@ func (c *Config) normalize() {
 	// it falls back to the API's own prefix rather than silently flattening the path.
 	c.ControlPlane.PlatformAPIBasePath = normalizeBasePath(c.ControlPlane.PlatformAPIBasePath, apipaths.PlatformAPI)
 	c.ControlPlane.PortalAPIBasePath = normalizeBasePath(c.ControlPlane.PortalAPIBasePath, apipaths.PortalAPI)
-	c.ControlPlane.CloudURL = strings.TrimRight(c.ControlPlane.CloudURL, "/")
+	c.ControlPlane.MoesifURL = strings.TrimRight(c.ControlPlane.MoesifURL, "/")
 	c.ControlPlane.BillingURL = strings.TrimRight(c.ControlPlane.BillingURL, "/")
 	c.Auth.OIDC.Issuer = strings.TrimRight(c.Auth.OIDC.Issuer, "/")
 
@@ -558,6 +719,7 @@ func (c *Config) normalize() {
 	}{
 		{&te.Username, parent.Username},
 		{&te.Email, parent.Email},
+		{&te.Picture, parent.Picture},
 		{&te.Roles, parent.Roles},
 		{&te.Scope, parent.Scope},
 		{&te.OrgID, parent.OrgID},
@@ -576,7 +738,13 @@ func (c *Config) normalize() {
 		c.Auth.OIDC.TokenExchange.Scopes = c.Auth.OIDC.Scopes
 	}
 
-	c.Cookie = CookieConfig{Name: cookieName, Secure: true, SameSite: "lax"}
+	c.Cookie = CookieConfig{
+		Name1:       cookieName1,
+		Name2:       cookieName2,
+		StatePrefix: stateCookiePrefix,
+		Secure:      true,
+		SameSite:    "lax",
+	}
 }
 
 // TokenExchangeEnabled derives the switch from both flags, so the feature can never
@@ -636,6 +804,38 @@ func (c *Config) validate() error {
 			return fmt.Errorf("[server.https] ecdh_curves: %w", err)
 		}
 	}
+	// A typo'd store must not silently fall back: "memorry" landing on the cookie
+	// store (or the reverse) is the difference between a deployment that survives
+	// scale-out and one that logs users out at random, with nothing in the logs
+	// connecting the two.
+	// "memory" is named specifically so an upgrade says what happened; silently
+	// accepting or ignoring it would both move a deployment without anyone deciding to.
+	switch c.Session.Store {
+	case SessionStoreCookie:
+	case sessionStoreMemory:
+		return fmt.Errorf("[session] store = %q is no longer supported: the session is now "+
+			"always carried by the client, which is what lets the BFF run more than one "+
+			"replica. Remove the key (or set it to %q) and set [session] encryption_key",
+			sessionStoreMemory, SessionStoreCookie)
+	default:
+		return fmt.Errorf("invalid [session] store %q: the only supported value is %q",
+			c.Session.Store, SessionStoreCookie)
+	}
+	// Required only where there is something to seal: file-based auth keeps no
+	// server-side session at all.
+	if c.Auth.OIDCEnabled() {
+		if c.Session.Cookie.EncryptionKey == "" {
+			return fmt.Errorf("[session.cookie] encryption_key is required — generate one with " +
+				"`openssl rand -base64 32` and give every replica the same value")
+		}
+		// A sanity check for a hand-made value, not proof of a strong one: generate the
+		// key with a CSPRNG (scripts/setup.sh does) rather than choosing it.
+		if reason := weakKeyReason(c.Session.Cookie.EncryptionKey); reason != "" {
+			return fmt.Errorf("[session.cookie] encryption_key looks hand-made — %s. Generate one with "+
+				"`openssl rand -base64 32` (scripts/setup.sh does this for you) and give every "+
+				"replica the same value", reason)
+		}
+	}
 	// Every session duration is a lifetime, where <= 0 is never meaningful.
 	if c.Session.IdleTimeout <= 0 {
 		return fmt.Errorf("[session] idle_timeout must be positive, got %s", c.Session.IdleTimeout)
@@ -669,19 +869,18 @@ func (c *Config) validate() error {
 			"Trust the upstream certificate with [control_plane] ca_file instead.")
 	}
 
-	if c.ControlPlane.CloudURL != "" {
-		cu, err := url.Parse(c.ControlPlane.CloudURL)
-		if err != nil || (cu.Scheme != "http" && cu.Scheme != "https") || cu.Host == "" {
-			return fmt.Errorf("[control_plane] cloud_url must be an absolute http:// or https:// URL, got %q", c.ControlPlane.CloudURL)
+	// https only, unlike the other upstream hops: this one is reached by proxying the
+	// user's EXCHANGED token to a third-party analytics service, so a plaintext hop
+	// would put a live credential on the wire. Rejected at startup rather than at the
+	// first proxied request, where it would already be too late.
+	if c.ControlPlane.MoesifURL != "" {
+		cu, err := url.Parse(c.ControlPlane.MoesifURL)
+		if err != nil || cu.Scheme != "https" || cu.Host == "" {
+			return fmt.Errorf("[control_plane] moesif_url must be an absolute https:// URL, got %q", c.ControlPlane.MoesifURL)
 		}
-		if cu.Scheme == "http" {
-			if c.ControlPlane.CloudCAFile != "" || c.ControlPlane.CloudTLSSkipVerify {
-				return fmt.Errorf("[control_plane] cloud_ca_file / cloud_tls_skip_verify are set but cloud_url is http:// (no TLS on that hop)")
-			}
-		}
-		if cu.Scheme == "https" && c.ControlPlane.CloudTLSSkipVerify {
-			slog.Warn("[control_plane] cloud_tls_skip_verify = true — cloud upstream certificate verification is DISABLED. " +
-				"Trust the upstream certificate with [control_plane] cloud_ca_file instead.")
+		if c.ControlPlane.MoesifTLSSkipVerify {
+			slog.Warn("[control_plane] moesif_tls_skip_verify = true — cloud upstream certificate verification is DISABLED. " +
+				"Trust the upstream certificate with [control_plane] moesif_ca_file instead.")
 		}
 	}
 
@@ -730,8 +929,8 @@ func (c *Config) validate() error {
 	return nil
 }
 
-// isLoopbackHost reports whether host (possibly with a port) is the local machine.
-func isLoopbackHost(host string) bool {
+// IsLoopbackHost reports whether host (possibly with a port) is the local machine.
+func IsLoopbackHost(host string) bool {
 	h := host
 	if parsed, _, err := net.SplitHostPort(host); err == nil {
 		h = parsed
@@ -823,7 +1022,7 @@ func (c *Config) validateTokenExchange() error {
 		}
 		// The POST body carries the client secret and subject token. Loopback is
 		// exempt: the request never reaches a network there.
-		if u.Scheme == "http" && !isLoopbackHost(u.Host) {
+		if u.Scheme == "http" && !IsLoopbackHost(u.Host) {
 			return fmt.Errorf("[auth.oidc.token_exchange] token_endpoint must be https:// "+
 				"(the client secret and subject token are sent in the request body), got %q",
 				redactURL(te.TokenEndpoint))
@@ -864,6 +1063,28 @@ func (c *Config) validateTokenExchange() error {
 	}
 
 	// A zero window would renew only after expiry, guaranteeing an in-flight expiry.
+	// An org-scoping STS needs to be told which org; with no parameter to put it in,
+	// the exchange sends none and the STS picks for itself — which is a 500 on the
+	// Choreo STS and a wrong-org token elsewhere. Not fatal, because an STS that
+	// does not scope per org is a legitimate deployment, but loud, because the two
+	// are indistinguishable until the first login fails.
+	if te.Enabled && te.OrgParam == "" {
+		slog.Warn("[auth.oidc.token_exchange] org_param is empty — the exchange will carry no " +
+			"organization, and the identity provider will resolve one of its own choosing. " +
+			"Set org_param (and org_lookup_url, when the login token cannot read the user's " +
+			"organizations from the Platform API) if the issued token must be org-scoped.")
+	}
+
+	// Absolute and http(s): a relative or malformed URL here would fail on every
+	// login, and the fallback would quietly hide it behind default_org.
+	if te.OrgLookupURL != "" {
+		u, err := url.Parse(te.OrgLookupURL)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+			return fmt.Errorf("[auth.oidc.token_exchange] org_lookup_url must be an absolute "+
+				"http:// or https:// URL, got %q", te.OrgLookupURL)
+		}
+	}
+
 	if te.CacheEnabled && te.MinValidity <= 0 {
 		return fmt.Errorf("[auth.oidc.token_exchange] min_validity must be positive when cache_enabled = true, got %s",
 			te.MinValidity)

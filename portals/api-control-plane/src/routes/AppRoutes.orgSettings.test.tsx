@@ -56,18 +56,14 @@ describe('Org-level Settings', () => {
   });
   afterEach(() => vi.unstubAllEnvs());
 
-  it('names the organization on the org-level Settings page', async () => {
+  it('renders the org-level Settings page', async () => {
     renderWithProviders(<AppRoutes />, {
       route: '/organizations/api-platform-demo/settings',
       authState: authStatePresets.authenticated(),
     });
 
     expect(
-      await screen.findByText(
-        /Minimal settings overview for API Platform Demo/,
-        undefined,
-        LAZY_ROUTE_TIMEOUT,
-      ),
+      await screen.findByRole('heading', { name: 'Settings' }, LAZY_ROUTE_TIMEOUT),
     ).toBeInTheDocument();
   });
 

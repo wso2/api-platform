@@ -35,7 +35,14 @@ import (
 var (
 	controlPlaneCryptoOnce sync.Once
 	controlPlaneCryptoData map[string][]byte
+
+	identityProviderTLSOnce sync.Once
+	identityProviderTLSData *KeyPairPEM
 )
+
+// IdentityProviderHost is the host name the testbench identity provider is reached at from
+// other containers, and the name its certificate is issued for.
+const IdentityProviderHost = "testbench"
 
 // KeyPairPEM contains PEM-encoded certificate and key material.
 type KeyPairPEM struct {
@@ -123,6 +130,20 @@ func ControlPlaneCrypto() map[string][]byte {
 		}
 	})
 	return controlPlaneCryptoData
+}
+
+// IdentityProviderTLS returns the certificate and key the testbench identity provider serves
+// HTTPS with. A component that calls the provider trusts this certificate; the test process
+// verifies it with IdentityProviderHost as the server name, whatever address it dials.
+func IdentityProviderTLS() *KeyPairPEM {
+	identityProviderTLSOnce.Do(func() {
+		pair, err := SelfSignedCert(IdentityProviderHost, []string{IdentityProviderHost, "localhost"})
+		if err != nil {
+			panic(err)
+		}
+		identityProviderTLSData = pair
+	})
+	return identityProviderTLSData
 }
 
 func mustPKCS8(key *rsa.PrivateKey) []byte {

@@ -479,6 +479,22 @@ max_redirects = 5
 allowed_schemes = ["http", "https"]
 
 # ---------------------------------------------------------------------------
+# Agent Card display cache — in-process, per replica
+# ---------------------------------------------------------------------------
+# The public Agent Card of a passthrough Agent proxy is not stored, so the
+# control plane fetches it from the upstream whenever that page is viewed.
+# This cache keeps that off the upstream on every view. It holds nothing
+# durable: a restart empties it, and two replicas may report different `Age`
+# values for the same Agent proxy. It is display-only — deployment artifacts
+# always read stored configuration, never a cached card. A request carrying
+# `Cache-Control: no-cache` always bypasses it and refreshes the entry.
+[platform_api.agent_card_cache]
+positive_ttl = "60s"   # how long a fetched card is served from cache (0 = never cache successes)
+negative_ttl = "10s"   # how long a fetch failure is served from cache (0 = never cache failures)
+max_entries  = 512     # LRU cap on cached Agent proxies (0 = cache nothing)
+max_bytes    = 33554432 # 32 MiB total cached card bytes (0 = cache nothing)
+
+# ---------------------------------------------------------------------------
 # EventHub — multi-replica HA event delivery
 # ---------------------------------------------------------------------------
 # Values are durations, e.g. "3s", "10m", "1h". All must be positive.
@@ -503,3 +519,26 @@ secret = ""
 signature_tolerance = "5m"                       # max age of a signed request (replay protection)
 max_body_size       = 1048576                    # request body cap in bytes (1 MiB)
 signature_header    = "X-Api-Portal-Signature"     # header carrying the "t=...,v1=..." signature
+
+# ---------------------------------------------------------------------------
+# Read-only (maintenance) mode — TEMPORARY, v1 → v2 migration (TEMP-READ-ONLY-MODE)
+# ---------------------------------------------------------------------------
+# While enabled, EVERY organization is read-only — its POST/PUT/PATCH/DELETE
+# requests are rejected with HTTP 503 (error code ORGANIZATION_READ_ONLY) while
+# GET requests keep working — except the organizations listed in
+# writable_organizations. While disabled the feature is fully off and the list
+# has no effect. Used to test the migrated Platform API v2 with write access
+# limited to a defined set of organizations; removed once the migration is done
+# (see README.md "Read-only (maintenance) mode — temporary").
+#
+# Organizations are identified by their platform UUID (the organization_uuid
+# column — the value the token's organization claim resolves to), never by
+# handle: a non-UUID entry fails startup. Restart-time setting: every replica
+# must get identical values; the startup log announces the mode and the list.
+#
+# Env example:
+#   enabled                = '{{ env "APIP_CP_READ_ONLY_ENABLED" "false" }}'
+#   writable_organizations = '{{ env "APIP_CP_READ_ONLY_WRITABLE_ORGANIZATIONS" "" }}'   # comma-separated UUIDs
+[platform_api.read_only]
+enabled                = false
+writable_organizations = []

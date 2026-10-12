@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Avatar,
   Box,
@@ -178,6 +178,12 @@ const UserMenuBillingChip = styled(Chip, {
 export interface UserMenuUser {
   name: string;
   email: string;
+  /**
+   * Absolute URL to the user's avatar, from the IDP's `picture` claim. Optional:
+   * an IDP that releases no picture falls back to the initial, which is also
+   * what happens when the image itself fails to load.
+   */
+  picture?: string | null;
   role?: string;
 }
 
@@ -196,7 +202,14 @@ export default function UserMenu({
   onBillingClick,
   onLogout,
 }: UserMenuProps) {
-  const [profilePicUrl] = useState<string | undefined>(undefined);
+  // Cleared when the image fails to load, so a broken or expired picture URL
+  // shows the initial rather than a broken-image glyph. Keyed on the URL so a
+  // new picture gets a fresh attempt.
+  const [imageFailed, setImageFailed] = useState(false);
+  useEffect(() => {
+    setImageFailed(false);
+  }, [user.picture]);
+  const profilePicUrl = imageFailed ? undefined : user.picture || undefined;
 
   const [anchorEl, setAnchorEl] = React.useState<null | HTMLElement>(null);
   const open = Boolean(anchorEl);
@@ -227,7 +240,11 @@ export default function UserMenu({
           aria-haspopup="true"
           aria-expanded={open ? 'true' : undefined}
         >
-          <UserMenuAvatar src={profilePicUrl || undefined} alt={user.name}>
+          <UserMenuAvatar
+            src={profilePicUrl}
+            alt={user.name}
+            slotProps={{ img: { onError: () => setImageFailed(true) } }}
+          >
             {!profilePicUrl && (user.name || 'U').charAt(0).toUpperCase()}
           </UserMenuAvatar>
         </UserMenuTrigger>
@@ -251,7 +268,11 @@ export default function UserMenu({
       >
         <UserMenuHeader>
           <UserMenuHeaderContent>
-            <UserMenuHeaderAvatar src={profilePicUrl || undefined} alt={user.name}>
+            <UserMenuHeaderAvatar
+              src={profilePicUrl}
+              alt={user.name}
+              slotProps={{ img: { onError: () => setImageFailed(true) } }}
+            >
               {!profilePicUrl && (user.name || 'U').charAt(0).toUpperCase()}
             </UserMenuHeaderAvatar>
             <UserMenuUserInfo>

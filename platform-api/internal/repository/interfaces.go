@@ -155,6 +155,8 @@ type DeploymentRepository interface {
 	GetStatus(artifactUUID, orgUUID, gatewayID string) (deploymentID string, status model.DeploymentStatus, updatedAt *time.Time, err error)
 	GetStatusFull(artifactUUID, orgUUID, gatewayID string) (deploymentID string, status model.DeploymentStatus, performedAt *time.Time, statusReason string, err error)
 	UpdateStatusWithPerformedAtGuard(artifactUUID, orgUUID, gatewayID string, newStatus model.DeploymentStatus, statusReason string, performedAt time.Time, requireCurrentStatus []model.DeploymentStatus) (rowsAffected int64, err error)
+	// FailCurrentDeployment marks the deployment FAILED with statusReason only while it is still the row's current deployment.
+	FailCurrentDeployment(artifactUUID, orgUUID, gatewayID, deploymentID, statusReason string) (rowsAffected int64, err error)
 	GetStaleTransitionalStatuses(timeout time.Duration) ([]StaleDeploymentStatus, error)
 	DeleteStatus(artifactUUID, orgUUID, gatewayID string) error
 	GetDeployedGatewayIDs(artifactUUID, orgUUID string) ([]string, error)
@@ -211,8 +213,8 @@ type SubscriptionPlanRepository interface {
 	GetByID(planID, orgUUID string) (*model.SubscriptionPlan, error)
 	GetByIDs(planIDs []string, orgUUID string) (map[string]string, error)
 	GetByHandleAndOrg(handle, orgUUID string) (*model.SubscriptionPlan, error)
-	ListByOrganization(orgUUID string, limit, offset int) ([]*model.SubscriptionPlan, error)
-	CountByOrganization(orgUUID string) (int, error)
+	ListByOrganization(orgUUID string, opts ListOptions) ([]*model.SubscriptionPlan, error)
+	CountByOrganization(orgUUID, search string) (int, error)
 	Update(plan *model.SubscriptionPlan) error
 	Delete(planID, orgUUID string) error
 	ExistsByHandleAndOrg(handle, orgUUID string) (bool, error)
@@ -393,6 +395,26 @@ type APIPortalRepository interface {
 	// GET /api-publications rollup, which lists only these; a portal still
 	// provisioning or failed is absent entirely.
 	ListActiveByOrg(orgUUID string) ([]*model.APIPortal, error)
+	// UpdateStatus mutates only the status column for one portal; used by
+	// the cloud plugin's provisioning poller for pending -> active/failed
+	// transitions without touching the whitelisted mutable-metadata fields
+	// Update covers.
+	UpdateStatus(portalID, orgUUID, updatedBy, status string) error
+	// GetStatusByHandle returns just the status column for one portal.
+	GetStatusByHandle(handle, orgUUID string) (string, error)
+	// ListStatusesByOrg returns handle -> status for every portal in the org
+	// so the plugin's List projection can stamp status per row without an
+	// N+1 fanout.
+	ListStatusesByOrg(orgUUID string) (map[string]string, error)
+	// ListLoginEnvironmentsByOrg returns handle -> loginEnvironment for
+	// portals in the org whose metadata blob carries the key. Companion to
+	// ListStatusesByOrg so the plugin can hydrate list-view rows without
+	// exposing this cloud-plugin-specific field on ApiPortalListItem.
+	ListLoginEnvironmentsByOrg(orgUUID string) (map[string]string, error)
+	// ListByStatus returns every portal across every org whose status matches.
+	// Cross-org by design: the cloud plugin's provisioning poller resumes
+	// tracking on startup without an org list.
+	ListByStatus(status string) ([]*model.APIPortal, error)
 }
 
 // MCPProxyRepository defines the interface for MCP proxy persistence
@@ -405,6 +427,21 @@ type MCPProxyRepository interface {
 	Count(orgUUID string) (int, error)
 	CountByProject(orgUUID, projectUUID string) (int, error)
 	Update(p *model.MCPProxy) error
+	Delete(handle, orgUUID string) error
+	Exists(handle, orgUUID string) (bool, error)
+	EnsureGatewayAssociation(proxyUUID, gatewayUUID, orgUUID, createdBy, deployMetadata string, metadataProvided bool) (string, error)
+}
+
+// AgentProxyRepository defines the interface for Agent proxy persistence
+type AgentProxyRepository interface {
+	Create(p *model.AgentProxy) error
+	GetByHandle(handle, orgUUID string) (*model.AgentProxy, error)
+	GetByUUID(uuid, orgUUID string) (*model.AgentProxy, error)
+	List(orgUUID string, opts AgentProxyListOptions) ([]*model.AgentProxy, error)
+	Count(orgUUID string, opts AgentProxyListOptions) (int, error)
+	ListByProject(orgUUID, projectUUID string) ([]*model.AgentProxy, error)
+	CountByProject(orgUUID, projectUUID string) (int, error)
+	Update(p *model.AgentProxy) error
 	Delete(handle, orgUUID string) error
 	Exists(handle, orgUUID string) (bool, error)
 	EnsureGatewayAssociation(proxyUUID, gatewayUUID, orgUUID, createdBy, deployMetadata string, metadataProvided bool) (string, error)
@@ -480,11 +517,14 @@ type CustomPolicyRepository interface {
 // DocumentRepository defines the interface for document persistence.
 type DocumentRepository interface {
 	CreateDocument(doc *model.Document) error
-	GetDocumentByArtifactAndHandle(artifactUUID, handle, orgUUID string) (*model.Document, error)
-	GetDocumentByArtifactAndType(artifactUUID, docType, orgUUID string) (*model.Document, error)
+	GetDocument(artifactUUID, handle, orgUUID, docType string) (*model.Document, error)
+	ListDocumentsByArtifact(artifactUUID, orgUUID, docType string, limit, offset int) ([]*model.Document, int, error)
 	UpsertDocument(doc *model.Document) error
-	DeleteDocument(artifactUUID, handle, orgUUID string) error
+	UpdateApiDocument(doc *model.Document, updateContent bool) error
+	DeleteApiDocument(artifactUUID, handle, orgUUID string) error
+	DeleteDocument(artifactUUID, handle, orgUUID, docType string) error
 	DocumentHandleExistsForArtifact(artifactUUID, handle string) (bool, error)
+	DocumentDisplayNameExistsForArtifact(artifactUUID, displayName, excludeHandle string) (bool, error)
 	// GetDocumentUUIDsByHandles resolves each handle to its document uuid,
 	// scoped to one artifact (api_documents' real unique index is
 	// (artifact_uuid, handle) — a handle is only guaranteed unique per

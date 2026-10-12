@@ -862,3 +862,51 @@ func TestMoesif_CloseHonoursShutdownDeadline(t *testing.T) {
 	// than a misleading nil.
 	assert.Equal(t, err, m.Close(context.Background()))
 }
+
+// Moesif must carry the failure classification too. Same gap as the traffic log: this
+// publisher projects dto.Event into Moesif's own EventModel rather than serialising it, so
+// Event.Error reached it and went nowhere — every 4xx/5xx arrived in Moesif with a status
+// and no cause.
+func TestPublish_CarriesTheFailureClassification(t *testing.T) {
+	moesif := createTestMoesifWithoutAPI()
+
+	event := createBaseEvent()
+	event.ErrorType = "AUTH"
+	event.Error = &dto.Error{
+		ErrorCode:    900902,
+		ErrorMessage: dto.AuthenticationFailure,
+		Type:         "authentication",
+		Summary:      "Valid credentials required",
+		Policy:       "jwt-auth",
+		Source:       "gateway",
+	}
+
+	moesif.Publish(event)
+
+	require.Len(t, moesif.events, 1)
+	metadata, ok := moesif.events[0].Metadata.(map[string]interface{})
+	require.True(t, ok, "expected a metadata map, got %T", moesif.events[0].Metadata)
+
+	assert.Equal(t, "AUTH", metadata["errorType"], "the category stays a flat key")
+
+	// Nested under one key, following the aiMetadata/mcpAnalytics precedent, rather than
+	// flattened into a dozen error_* siblings.
+	errObj, ok := metadata["error"].(*dto.Error)
+	require.True(t, ok, "expected the error object, got %T", metadata["error"])
+	assert.Equal(t, 900902, errObj.ErrorCode)
+	assert.Equal(t, "jwt-auth", errObj.Policy)
+	assert.Equal(t, "gateway", errObj.Source)
+}
+
+// A successful request must not gain an error key in Moesif metadata either.
+func TestPublish_SuccessCarriesNoError(t *testing.T) {
+	moesif := createTestMoesifWithoutAPI()
+
+	moesif.Publish(createBaseEvent())
+
+	require.Len(t, moesif.events, 1)
+	metadata, ok := moesif.events[0].Metadata.(map[string]interface{})
+	require.True(t, ok)
+	assert.NotContains(t, metadata, "error")
+	assert.NotContains(t, metadata, "errorType")
+}

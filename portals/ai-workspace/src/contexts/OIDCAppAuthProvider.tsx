@@ -19,7 +19,7 @@
 import React, { useCallback, useMemo } from 'react';
 import { useAuth } from 'react-oidc-context';
 import { AppAuthContext, type AppUser, type AppOrg } from './AppAuthContext';
-import { USERNAME_CLAIM, EMAIL_CLAIM, ORG_ID_CLAIM, ORG_NAME_CLAIM, ORG_HANDLE_CLAIM, ORG_IDS_CLAIM } from '../config.env';
+import { USERNAME_CLAIM, EMAIL_CLAIM, PICTURE_CLAIM, ORG_ID_CLAIM, ORG_NAME_CLAIM, ORG_HANDLE_CLAIM, ORG_IDS_CLAIM } from '../config.env';
 import { BASE_PATH } from '../paths';
 import { checkPermission, isPlatformRole } from '../auth/permissions';
 import type { PlatformRole } from '../auth/permissions';
@@ -100,6 +100,7 @@ export function OIDCAppAuthProvider({ children }: { children: React.ReactNode })
     return {
       name: claim(USERNAME_CLAIM),
       email: claim(EMAIL_CLAIM),
+      picture: claim(PICTURE_CLAIM),
       role,
       scopes,
       org,

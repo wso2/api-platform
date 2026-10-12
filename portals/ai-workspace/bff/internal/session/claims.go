@@ -33,6 +33,7 @@ import (
 type ClaimMapping struct {
 	Username      string
 	Email         string
+	Picture       string
 	Roles         string
 	Scope         string
 	OrgID         string
@@ -63,6 +64,7 @@ func DefaultClaimMapping() ClaimMapping {
 	return ClaimMapping{
 		Username:      "username",
 		Email:         "email",
+		Picture:       "picture",
 		Roles:         "roles",
 		Scope:         "scope",
 		OrgID:         "organization",
@@ -137,10 +139,11 @@ func UserFromClaims(claims, idClaims map[string]any, m ClaimMapping) User {
 	roleList := strSliceClaim(claims, m.Roles)
 
 	u := User{
-		Name:   first(get(m.Username), get(m.Email), get("sub")),
-		Email:  get(m.Email),
-		Role:   strings.Join(roleList, " "),
-		Scopes: effectiveScopes(claims, roleList, m),
+		Name:    first(get(m.Username), get(m.Email), get("sub")),
+		Email:   get(m.Email),
+		Picture: get(m.Picture),
+		Role:    strings.Join(roleList, " "),
+		Scopes:  effectiveScopes(claims, roleList, m),
 	}
 
 	orgID := strClaim(claims, m.OrgID)

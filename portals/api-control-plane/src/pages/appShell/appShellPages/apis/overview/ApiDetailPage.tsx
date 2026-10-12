@@ -18,7 +18,6 @@
 
 import { useMemo } from 'react';
 import {
-  Avatar,
   Box,
   Button,
   Card,
@@ -28,10 +27,12 @@ import {
   Tooltip,
   Typography,
 } from '@wso2/oxygen-ui';
-import { Boxes, Clock, Copy, Edit, Lock, Rocket } from '@wso2/oxygen-ui-icons-react';
+import { Clock, Copy, Edit, Lock, Rocket } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import { Link as RouterLink } from 'react-router-dom';
 
+import { AppPage } from '@/components/AppPage';
+import { REST_API_TYPE } from '@/api/resources/apiPublications';
 import { useRestApi } from '@/api/resources/restApis';
 import type { Gateway } from '@/api/resources/gateways';
 import { useDeployments } from '@/api/resources/restApis/deployments';
@@ -40,8 +41,8 @@ import { ErrorState, LoadingState } from '@/components/StateViews';
 import { useFormatters } from '@/i18n/useFormatters';
 import { routes } from '@/routes/paths';
 import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
+import { ApiThumbnailManager } from '../components/ApiThumbnailManager';
 import { ApiKindChip, VersionChip } from '../listing/components/RestApiChips';
-import { apiInitials } from '../utils/restApiDisplay';
 import { OverviewTab } from './OverviewTab';
 import { ProgressBanner } from './ProgressBanner';
 import { Can } from '@/permissions/Can';
@@ -153,6 +154,14 @@ function DescriptionField({ description }: { description: string }) {
 // No `ScopeGate`: this page is the API tier of the sidebar's Overview item, which
 // degrades to a shallower tier rather than linking here without an API.
 export function ApiDetailPage() {
+  return (
+    <AppPage>
+      <ApiDetailPageContent />
+    </AppPage>
+  );
+}
+
+function ApiDetailPageContent() {
   const { params } = useConsoleScope();
   const canEdit = useCan('UpdateRESTAPI');
   const apiQuery = useRestApi(params.apiHandler);
@@ -227,19 +236,15 @@ export function ApiDetailPage() {
               minWidth: 0,
             }}
           >
-            <Avatar
-              sx={{
-                bgcolor: 'primary.light',
-                color: 'primary.contrastText',
-                flexShrink: 0,
-                height: AVATAR_SIZE,
-                width: AVATAR_SIZE,
-                fontSize: AVATAR_FONT_SIZE,
-              }}
-              variant="rounded"
-            >
-              {apiInitials(displayName) || <Boxes size={AVATAR_ICON_SIZE} />}
-            </Avatar>
+            <ApiThumbnailManager
+              apiType={REST_API_TYPE}
+              apiId={restApiId}
+              displayName={displayName}
+              disabled={api.readOnly}
+              fontSize={AVATAR_FONT_SIZE}
+              iconSize={AVATAR_ICON_SIZE}
+              size={AVATAR_SIZE}
+            />
 
             <Stack spacing={1.5} sx={{ minWidth: 0 }}>
               {/* Identity: name, version, lifecycle, and whether this console

@@ -63,6 +63,11 @@ const mapEntry = (dto: LogEntryDTO): LogEntry => ({
  * not pinned when the range was picked, so "last 15 minutes" still means that
  * on refresh. Only non-default values are sent, leaving the server's defaults
  * as their single definition.
+ *
+ * `sortOrder` is deliberately never sent, so the server's `desc` stands: it
+ * applies `limit` in the search engine, so asking for ascending order would
+ * return the oldest page of the window and a live tail could never reach the
+ * present. The console shows newest-first by reversing what it holds.
  */
 export function buildLogsQuery(query: LogQuery, nowMs: number): string {
   const params = new URLSearchParams();
@@ -71,7 +76,10 @@ export function buildLogsQuery(query: LogQuery, nowMs: number): string {
   params.set('startTime', start.toISOString());
   params.set('endTime', end.toISOString());
   params.set('limit', String(query.limit));
-  if (query.kind !== 'all') params.set('kind', query.kind);
+  // The endpoint takes one kind, the panel offers a checkbox each. Two or more
+  // ticked is the same request as none — anything else would have to fetch twice
+  // and interleave the pages.
+  if (query.kinds.length === 1) params.set('kind', query.kinds[0]);
   for (const level of query.levels) params.append('logLevels', level);
   const phrase = query.searchPhrase.trim();
   if (phrase) params.set('searchPhrase', phrase);

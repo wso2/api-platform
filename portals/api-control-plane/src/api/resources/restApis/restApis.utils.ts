@@ -18,6 +18,8 @@
 
 import yaml from 'js-yaml';
 
+import type { OpenAPIValidationError } from './restApis.endpoints';
+
 /**
  * Converts stored OpenAPI content into the shape consumed by the application.
  *
@@ -126,3 +128,20 @@ export const toRestApiDefinition = (
   specVersion: specVersionOf(spec),
   serverUrl: serverUrlOf(spec),
 });
+
+/**
+ * Renders one validation error as a single display string. When the backend
+ * reports a JSONPath location, appends it as `: at <path>` — the raw message
+ * (often something like "validation failed") is not always self-locating, so
+ * showing the path inline lets the user distinguish otherwise-identical
+ * error lines pointing at different places in the spec. Path segments still
+ * carry libopenapi-validator's JSON Pointer escapes (`~1` for `/`, `~0` for
+ * `~`); they are decoded here so a raw `$.paths['~1pet']` renders as
+ * `$.paths['/pet']`. Order matters: `~1` must be decoded before `~0`, or a
+ * literal `~01` collapses to `/1`.
+ */
+export const formatValidationError = (e: OpenAPIValidationError): string => {
+  if (!e.path) return e.message;
+  const decoded = e.path.replace(/~1/g, '/').replace(/~0/g, '~');
+  return `${e.message}: at ${decoded}`;
+};

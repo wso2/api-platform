@@ -26,6 +26,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/model"
@@ -33,12 +34,24 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/utils"
 )
 
+// Maximum lengths of the draft fields the editor sends, matching the
+// api_publications column widths. A longer value is rejected up front: the
+// PostgreSQL and SQL Server columns would otherwise fail the insert with an
+// unhandled error, while SQLite would store it silently.
+const (
+	publicationDisplayNameMaxLength = 255
+	publicationVersionMaxLength     = 30
+	publicationDescriptionMaxLength = 1023
+	publicationURLMaxLength         = 255
+	publicationOwnerMaxLength       = 255
+)
+
 // definitionFileNamesByContentType maps an accepted definition Content-Type to
 // the canonical file name it's stored under, matching the API Portal's own
 // constants. No other media type is accepted.
 var definitionFileNamesByContentType = map[string]string{
 	"application/json":    "definition.json",
-	"application/x-yaml":  "definition.yaml",
+	"application/yaml":    "definition.yaml",
 	"application/graphql": "definition.graphql",
 	"application/xml":     "definition.xml",
 }
@@ -235,6 +248,9 @@ func (s *PublicationService) SaveDraftDetails(apiType, apiId, apiPortalId, orgUU
 	if strings.TrimSpace(draft.Version) == "" {
 		return nil, apperror.APIPublicationValidationFailed.New("version is required")
 	}
+	if err := validateDraftFieldLengths(draft); err != nil {
+		return nil, err
+	}
 	switch draft.AgentVisibility {
 	case "":
 		draft.AgentVisibility = "VISIBLE"
@@ -269,6 +285,32 @@ func (s *PublicationService) SaveDraftDetails(apiType, apiId, apiPortalId, orgUU
 	saved.SubscriptionPlanIds = nonNil(planHandles)
 	saved.DocIds = nonNil(docHandles)
 	return saved, nil
+}
+
+// validateDraftFieldLengths counts characters rather than bytes, since the
+// columns are VARCHAR(n).
+func validateDraftFieldLengths(draft *model.Publication) error {
+	limits := []struct {
+		field string
+		value string
+		max   int
+	}{
+		{"displayName", draft.DisplayName, publicationDisplayNameMaxLength},
+		{"version", draft.Version, publicationVersionMaxLength},
+		{"description", draft.Description, publicationDescriptionMaxLength},
+		{"productionUrl", draft.ProductionURL, publicationURLMaxLength},
+		{"sandboxUrl", draft.SandboxURL, publicationURLMaxLength},
+		{"businessOwner", draft.BusinessOwner, publicationOwnerMaxLength},
+		{"businessOwnerEmail", draft.BusinessOwnerEmail, publicationOwnerMaxLength},
+		{"technicalOwner", draft.TechnicalOwner, publicationOwnerMaxLength},
+		{"technicalOwnerEmail", draft.TechnicalOwnerEmail, publicationOwnerMaxLength},
+	}
+	for _, l := range limits {
+		if utf8.RuneCountInString(l.value) > l.max {
+			return apperror.APIPublicationValidationFailed.New(fmt.Sprintf("%s must not exceed %d characters", l.field, l.max))
+		}
+	}
+	return nil
 }
 
 // nonNil returns s, or a non-nil empty slice when s is nil, so the field
@@ -334,11 +376,16 @@ func (s *PublicationService) GetDraftDefinition(apiType, apiId, apiPortalId, org
 // SaveDraftDefinition replaces the draft's definition. contentTypeHeader must
 // be one of the four accepted serializations; it selects both the stored
 // Content-Type and the canonical file name recorded alongside it.
+//
+// A draft is a work in progress: its definition is not required to be a
+// complete, valid document, or even one that matches apiType's own rules —
+// only Publish enforces that, at the one point it actually matters (a
+// listing going live). Saving progress must never be blocked on that.
 func (s *PublicationService) SaveDraftDefinition(apiType, apiId, apiPortalId, orgUUID, actor, contentTypeHeader string, data []byte) error {
 	fileName, ok := definitionFileNamesByContentType[contentTypeHeader]
 	if !ok {
 		return apperror.APIPublicationValidationFailed.New(
-			"Content-Type must be one of application/json, application/x-yaml, application/graphql, application/xml")
+			"Content-Type must be one of application/json, application/yaml, application/graphql, application/xml")
 	}
 	pub, err := s.getDraftRow(apiType, apiId, apiPortalId, orgUUID)
 	if err != nil {
@@ -510,11 +557,14 @@ func (s *PublicationService) getPublicationContent(apiType, apiId, apiPortalId, 
 
 // Publish publishes the current draft to the API Portal. In the UI's own
 // flow, the client always saves the draft (draft PUT) immediately before
-// calling this bodyless action, so a draft is guaranteed to exist and
-// already validated by the time this runs — APIPublicationDraftNotFound
-// here is a defensive, fail-closed check for a client bug or a failed prior
-// save proceeding anyway, not a normal user-facing gate. Publish itself
-// validates nothing further.
+// calling this bodyless action, so a draft is guaranteed to exist by the
+// time this runs — APIPublicationDraftNotFound here is a defensive,
+// fail-closed check for a client bug or a failed prior save proceeding
+// anyway, not a normal user-facing gate.
+//
+// This is the one place a definition is required to exist and be valid —
+// SaveDraftDefinition accepts anything (or nothing), so nothing upstream can
+// be assumed to have checked it.
 //
 // The portal is pushed first: nothing local changes unless that succeeds. On
 // success, one transaction (PublicationRepository.PromoteDraftToPublication):
@@ -552,6 +602,9 @@ func (s *PublicationService) Publish(ctx context.Context, apiType, apiId, apiPor
 	definition, err := s.publicationRepo.GetContent(draft.UUID, model.PublicationContentTypeDefinition, orgUUID)
 	if err != nil {
 		return nil, false, fmt.Errorf("failed to get publication draft definition: %w", err)
+	}
+	if err := validateDefinitionContent(apiType, definition); err != nil {
+		return nil, false, err
 	}
 
 	if err := s.portalPublisher.Publish(ctx, portal, apiId, draft, definition); err != nil {
@@ -601,7 +654,7 @@ func (s *PublicationService) Unpublish(ctx context.Context, apiType, apiId, apiP
 		return fmt.Errorf("failed to get publication: %w", err)
 	}
 	if live == nil || (live.Status != model.PublicationStatusPublished && live.Status != model.PublicationStatusDeprecated) {
-		return apperror.APIPublicationStateConflict.New("unpublished")
+		return apperror.APIPublicationStateConflict.New("This API is already unpublished from this API Portal. No changes were made.")
 	}
 
 	if err := s.portalPublisher.Unpublish(ctx, portal, apiId); err != nil {
@@ -615,7 +668,7 @@ func (s *PublicationService) Unpublish(ctx context.Context, apiType, apiId, apiP
 	if !found {
 		// The live row existed moments ago (checked above) but is gone now —
 		// same defensive precondition failure, not a normal outcome.
-		return apperror.APIPublicationStateConflict.New("unpublished")
+		return apperror.APIPublicationStateConflict.New("This API was already unpublished by another request. No changes were made.")
 	}
 	return nil
 }
@@ -637,8 +690,11 @@ func (s *PublicationService) Deprecate(ctx context.Context, apiType, apiId, apiP
 	if err != nil {
 		return nil, fmt.Errorf("failed to get publication: %w", err)
 	}
-	if live == nil || live.Status != model.PublicationStatusPublished {
-		return nil, apperror.APIPublicationStateConflict.New("deprecated")
+	if live == nil {
+		return nil, apperror.APIPublicationStateConflict.New("This API is not published on this API Portal, so it cannot be deprecated.")
+	}
+	if live.Status != model.PublicationStatusPublished {
+		return nil, apperror.APIPublicationStateConflict.New("This API is already deprecated on this API Portal. No changes were made.")
 	}
 	if err := s.resolveHandles(live, planUUIDs, docUUIDs, orgUUID); err != nil {
 		return nil, err
@@ -654,7 +710,7 @@ func (s *PublicationService) Deprecate(ctx context.Context, apiType, apiId, apiP
 	}
 	if !found {
 		// The row changed since the check above (for example, a concurrent unpublish).
-		return nil, apperror.APIPublicationStateConflict.New("deprecated")
+		return nil, apperror.APIPublicationStateConflict.New("The API status changed during the request. No changes were made.")
 	}
 	return s.getPublicationRow(apiType, apiId, apiPortalId, orgUUID)
 }

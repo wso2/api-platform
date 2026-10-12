@@ -388,7 +388,7 @@ func registerDeleters(reg *cleanup.Registry, topo *frameworkruntime.Topology) {
 		// A 404 means it is already gone, which is success for a sweep. Anything else is a
 		// real leak signal and is reported.
 		if resp.StatusCode == http.StatusNotFound || resp.Succeeded() {
-			return nil
+			return awaitDeletionApplied(ctx, topo, client, version, res.ID)
 		}
 		return errFromResponse(resp)
 	})
@@ -397,6 +397,7 @@ func registerDeleters(reg *cleanup.Registry, topo *frameworkruntime.Topology) {
 	registerControllerDeleter(reg, topo, client, cleanup.KindLLMProxy, "/llm-proxies")
 	registerControllerDeleter(reg, topo, client, cleanup.KindLLMProviderTemplate, "/llm-provider-templates")
 	registerControllerDeleter(reg, topo, client, cleanup.KindMCPProxy, "/mcp-proxies")
+	registerControllerDeleter(reg, topo, client, cleanup.KindAgent, "/agents")
 	registerControllerDeleter(reg, topo, client, cleanup.KindCertificate, "/certificates")
 	registerControllerDeleter(reg, topo, client, cleanup.KindSecret, "/secrets")
 }
@@ -428,10 +429,22 @@ func registerControllerDeleter(
 			return err
 		}
 		if resp.StatusCode == http.StatusNotFound || resp.Succeeded() {
-			return nil
+			return awaitDeletionApplied(ctx, topo, client, version, res.ID)
 		}
 		return errFromResponse(resp)
 	})
+}
+
+// awaitDeletionApplied waits until the controller has applied a gateway deletion, on releases
+// where the next scenario's resource could otherwise lose its route to the snapshot race.
+func awaitDeletionApplied(
+	ctx context.Context, topo *frameworkruntime.Topology, client *httpx.Client, version, handle string,
+) error {
+	admin, err := topo.URL("platform-gateway", "admin")
+	if err != nil {
+		return err
+	}
+	return platformgateway.AwaitDeletionApplied(ctx, client, admin, version, basicAuthFor(topo), handle)
 }
 
 func basicAuthFor(topo *frameworkruntime.Topology) string {
@@ -452,7 +465,7 @@ func TestEveryBlockSweepsEveryEngine(t *testing.T) {
 	}
 	require.NotEmpty(t, variants)
 	for source, got := range variants {
-		if source == "devportal-webhook" || source == "multigateway" {
+		if source == "devportal-webhook" || source == "multigateway" || source == "ai-workspace-cli" {
 			require.Len(t, got, 1, "single-engine block %q", source)
 			continue
 		}

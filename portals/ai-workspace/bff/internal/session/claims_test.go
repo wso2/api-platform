@@ -360,3 +360,33 @@ func TestUserFromClaims_ExchangedTokenShape(t *testing.T) {
 		t.Errorf("Scopes = %v, want the three ap:* scopes", u.Scopes)
 	}
 }
+
+// The avatar URL rides the standard OIDC "picture" claim, and comes from the ID
+// token when the access token does not carry it (which is the usual split).
+func TestUserFromClaims_Picture(t *testing.T) {
+	idClaims := map[string]any{"picture": "https://cdn.example/avatar.png"}
+	u := UserFromClaims(map[string]any{"username": "ada"}, idClaims, DefaultClaimMapping())
+	if u.Picture != "https://cdn.example/avatar.png" {
+		t.Errorf("Picture = %q, want the id-token picture claim", u.Picture)
+	}
+}
+
+// An IDP that releases the avatar under another name is handled by config, not
+// code — the same escape hatch every other claim has.
+func TestUserFromClaims_PictureCustomClaim(t *testing.T) {
+	m := DefaultClaimMapping()
+	m.Picture = "avatar_url"
+	u := UserFromClaims(map[string]any{"avatar_url": "https://cdn.example/a.png"}, nil, m)
+	if u.Picture != "https://cdn.example/a.png" {
+		t.Errorf("Picture = %q, want the mapped claim", u.Picture)
+	}
+}
+
+// No picture claim must leave it empty rather than inventing a value: the SPA
+// renders initials, and `omitempty` keeps it out of the session payload.
+func TestUserFromClaims_PictureAbsent(t *testing.T) {
+	u := UserFromClaims(map[string]any{"username": "ada"}, nil, DefaultClaimMapping())
+	if u.Picture != "" {
+		t.Errorf("Picture = %q, want empty", u.Picture)
+	}
+}

@@ -55,7 +55,9 @@ import {
   type AIWorkspaceExtension,
 } from '../../extensions';
 import { useSlot } from '../../slots';
+import { getBillingOrganization } from '../../billing/organization';
 import { extensionApiFetch, PortProvider, type AIWorkspaceHostPort, type NotifySeverity } from '../../hostPort';
+import { useResourceLimits } from '../../hooks/useResourceLimits';
 import useAIWorkspaceSnackbar from '../../hooks/aiWorkspaceSnackbar';
 
 type SelectableOrg = {
@@ -81,6 +83,7 @@ export default function AppLayout(): JSX.Element {
   const {
     userName,
     userEmail,
+    userPicture,
 
     currentOrganization,
     organizations,
@@ -110,15 +113,53 @@ export default function AppLayout(): JSX.Element {
     },
     [showSnackbar]
   );
+  // Read rather than owned here: ResourceLimitsProvider sits above this component
+  // (App.tsx) so the value can ride the Port. A cloud plugin mounted on app.gate
+  // supplies the numbers through `resourceLimits.set`; this portal only carries them.
+  const {
+    canCreate,
+    limitMessage,
+    setResourceLimits,
+    refresh,
+    refreshSignal,
+    readOnly,
+    readOnlyMessage,
+    setReadOnly,
+  } = useResourceLimits();
+  const resourceLimits = useMemo(
+    () => ({
+      canCreate,
+      limitMessage,
+      set: setResourceLimits,
+      refresh,
+      refreshSignal,
+      readOnly,
+      readOnlyMessage,
+      setReadOnly,
+    }),
+    [
+      canCreate,
+      limitMessage,
+      readOnly,
+      readOnlyMessage,
+      refresh,
+      refreshSignal,
+      setReadOnly,
+      setResourceLimits,
+    ]
+  );
   const port: AIWorkspaceHostPort = useMemo(
     () => ({
       orgHandle: getOrgSlug(currentOrganization),
+      orgUuid: currentOrganization?.uuid,
       projectHandle: currentProject ? getProjectSlug(currentProject) : undefined,
       navigate,
       notify,
       apiFetch: extensionApiFetch,
+      resourceLimits,
+      billing: { organization: getBillingOrganization },
     }),
-    [currentOrganization, currentProject, navigate, notify]
+    [currentOrganization, currentProject, navigate, notify, resourceLimits]
   );
 
   // The first-run wizard owns the whole viewport: a user with nothing set up yet
@@ -273,8 +314,15 @@ export default function AppLayout(): JSX.Element {
         shellActions.setActiveMenuItem('provider-template');
         return;
       }
-      if (tertiarySegment === 'external-servers') {
+      if (
+        tertiarySegment === 'external-servers' ||
+        tertiarySegment === 'mcp-proxy'
+      ) {
         shellActions.setActiveMenuItem('external-servers');
+        return;
+      }
+      if (tertiarySegment === 'agent-proxy') {
+        shellActions.setActiveMenuItem('agent-proxies');
         return;
       }
       if (tertiarySegment === 'registries') {
@@ -314,8 +362,15 @@ export default function AppLayout(): JSX.Element {
       shellActions.setActiveMenuItem('provider-template');
       return;
     }
-    if (primarySegment === 'external-servers') {
+    if (
+      primarySegment === 'external-servers' ||
+      primarySegment === 'mcp-proxy'
+    ) {
       shellActions.setActiveMenuItem('external-servers');
+      return;
+    }
+    if (primarySegment === 'agent-proxy') {
+      shellActions.setActiveMenuItem('agent-proxies');
       return;
     }
     if (primarySegment === 'registries') {
@@ -462,6 +517,7 @@ export default function AppLayout(): JSX.Element {
           navigate={navigate}
           userName={userName ?? undefined}
           userEmail={userEmail ?? undefined}
+          userPicture={userPicture ?? undefined}
           currentOrganization={
             currentOrganization
               ? {

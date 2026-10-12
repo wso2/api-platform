@@ -19,17 +19,22 @@
 export { default as LogsFeature } from './LogsFeature';
 export type { LogsFeatureProps } from './LogsFeature';
 export { default as LogConsole } from './LogConsole';
-export type { ConsoleLine, LogConsoleProps } from './LogConsole';
+export type { ConsoleDetail, ConsoleLine, LogConsoleProps } from './LogConsole';
 export { default as LogsToolbar } from './LogsToolbar';
+export { default as MetricsPanel } from './MetricsPanel';
+export { default as ComingSoonPanel } from './ComingSoonPanel';
+export type { ComingSoonPanelProps } from './ComingSoonPanel';
+export { default as ScopedLogsNotice } from './ScopedLogsNotice';
+export type { ScopedLogsNoticeProps } from './ScopedLogsNotice';
 export type { LogsToolbarProps } from './LogsToolbar';
 export type { AIWorkspaceHostPort, ApiFetch, NotifySeverity } from './hostPort';
 export type { BufferedLine } from './consoleLines';
 export type {
   EnvironmentSummary,
+  Facet,
   LogEntry,
   LogFacets,
   LogKind,
-  LogKindFilter,
   LogLevel,
   LogPage,
   LogQuery,

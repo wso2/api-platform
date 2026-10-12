@@ -19,6 +19,7 @@ package repository
 
 import (
 	"bytes"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -518,5 +519,288 @@ func TestAPIPortalRepo_Exists(t *testing.T) {
 	}
 	if !ok {
 		t.Error("Exists: expected true for existing row")
+	}
+}
+
+func TestAPIPortalRepo_UpdateStatus_HappyPath(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	const orgUUID = "org-portal-status-update"
+	createTestAPIPortalOrg(t, db, orgUUID)
+
+	repo := NewAPIPortalRepo(db)
+	portal := newTestAPIPortal("portal-us", orgUUID, "us-target")
+	// Start in pending, matching how the cloud plugin's Create writes.
+	portal.Status = constants.APIPortalStatusPending
+	if err := repo.Create(portal); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	if err := repo.UpdateStatus(portal.ID, orgUUID, "poller", constants.APIPortalStatusActive); err != nil {
+		t.Fatalf("UpdateStatus: %v", err)
+	}
+	got, err := repo.GetByUUID(portal.ID, orgUUID)
+	if err != nil {
+		t.Fatalf("GetByUUID: %v", err)
+	}
+	if got.Status != constants.APIPortalStatusActive {
+		t.Errorf("status not flipped; want %q got %q", constants.APIPortalStatusActive, got.Status)
+	}
+	if got.UpdatedBy != "poller" {
+		t.Errorf("UpdatedBy not stamped; got %q", got.UpdatedBy)
+	}
+}
+
+func TestAPIPortalRepo_UpdateStatus_MissingRow(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	repo := NewAPIPortalRepo(db)
+	// UpdateStatus must return an error when no row matches; a silent zero-rows
+	// update would let the poller mark a deleted portal as active/failed against
+	// a row that no longer exists.
+	err := repo.UpdateStatus("nonexistent-uuid", "nonexistent-org", "poller", constants.APIPortalStatusActive)
+	if err == nil {
+		t.Fatal("UpdateStatus on missing row must return an error")
+	}
+	if !strings.Contains(err.Error(), "api portal not found") {
+		t.Errorf("error should name the missing row; got %q", err.Error())
+	}
+}
+
+// UpdateStatus enforces the pending-only source guard so a poller that races
+// a terminal state cannot overwrite it. The write must return
+// ErrAPIPortalNotPending and leave the stored status unchanged.
+func TestAPIPortalRepo_UpdateStatus_RejectsNonPendingSource(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	const orgUUID = "org-portal-status-guard"
+	createTestAPIPortalOrg(t, db, orgUUID)
+
+	repo := NewAPIPortalRepo(db)
+	portal := newTestAPIPortal("portal-gd", orgUUID, "guard-target")
+	portal.Status = constants.APIPortalStatusPending
+	if err := repo.Create(portal); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if err := repo.UpdateStatus(portal.ID, orgUUID, "poller", constants.APIPortalStatusActive); err != nil {
+		t.Fatalf("first UpdateStatus (pending -> active) must succeed: %v", err)
+	}
+	// Second UpdateStatus on the now-active row is the race we're protecting
+	// against: a late poller tick from a lagging replica trying to write
+	// "failed" over a portal that has already reached "active".
+	err := repo.UpdateStatus(portal.ID, orgUUID, "poller", constants.APIPortalStatusFailed)
+	if !errors.Is(err, ErrAPIPortalNotPending) {
+		t.Fatalf("update on non-pending row must return ErrAPIPortalNotPending; got %v", err)
+	}
+	got, err := repo.GetByUUID(portal.ID, orgUUID)
+	if err != nil {
+		t.Fatalf("GetByUUID: %v", err)
+	}
+	if got.Status != constants.APIPortalStatusActive {
+		t.Errorf("stored status must remain %q after rejected update; got %q", constants.APIPortalStatusActive, got.Status)
+	}
+}
+
+func TestAPIPortalRepo_GetStatusByHandle(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	const orgUUID = "org-portal-status-get"
+	createTestAPIPortalOrg(t, db, orgUUID)
+
+	repo := NewAPIPortalRepo(db)
+	portal := newTestAPIPortal("portal-gs", orgUUID, "gs-target")
+	portal.Status = constants.APIPortalStatusFailed
+	if err := repo.Create(portal); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	status, err := repo.GetStatusByHandle("gs-target", orgUUID)
+	if err != nil {
+		t.Fatalf("GetStatusByHandle: %v", err)
+	}
+	if status != constants.APIPortalStatusFailed {
+		t.Errorf("want %q got %q", constants.APIPortalStatusFailed, status)
+	}
+}
+
+func TestAPIPortalRepo_ListStatusesByOrg(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	const orgUUID = "org-portal-status-list"
+	createTestAPIPortalOrg(t, db, orgUUID)
+
+	repo := NewAPIPortalRepo(db)
+	for handle, status := range map[string]string{
+		"alpha": constants.APIPortalStatusActive,
+		"beta":  constants.APIPortalStatusPending,
+		"gamma": constants.APIPortalStatusFailed,
+	} {
+		p := newTestAPIPortal("portal-"+handle, orgUUID, handle)
+		p.Status = status
+		if err := repo.Create(p); err != nil {
+			t.Fatalf("Create %q: %v", handle, err)
+		}
+	}
+
+	got, err := repo.ListStatusesByOrg(orgUUID)
+	if err != nil {
+		t.Fatalf("ListStatusesByOrg: %v", err)
+	}
+	if len(got) != 3 {
+		t.Errorf("want 3 entries, got %d: %+v", len(got), got)
+	}
+	if got["alpha"] != constants.APIPortalStatusActive ||
+		got["beta"] != constants.APIPortalStatusPending ||
+		got["gamma"] != constants.APIPortalStatusFailed {
+		t.Errorf("map contents wrong: %+v", got)
+	}
+}
+
+// ListLoginEnvironmentsByOrg is the plugin-only companion accessor that lets
+// callers hydrate list-view rows with loginEnvironment without exposing the
+// field on ApiPortalListItem. Rows whose metadata omits the key must be
+// dropped from the result, empty metadata is safe, and unrelated orgs must
+// not leak in.
+func TestAPIPortalRepo_ListLoginEnvironmentsByOrg(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	const orgUUID = "org-portal-loginenvs"
+	const otherOrgUUID = "org-portal-loginenvs-other"
+	createTestAPIPortalOrg(t, db, orgUUID)
+	createTestAPIPortalOrg(t, db, otherOrgUUID)
+
+	repo := NewAPIPortalRepo(db)
+
+	// Three portals in the target org: one with loginEnvironment set, one with
+	// a metadata blob that doesn't carry the key, one with no metadata at all.
+	withEnv := newTestAPIPortal("portal-with-env", orgUUID, "with-env")
+	withEnv.Metadata = map[string]interface{}{"loginEnvironment": "production", "unrelated": "value"}
+	if err := repo.Create(withEnv); err != nil {
+		t.Fatalf("Create with-env: %v", err)
+	}
+	otherKey := newTestAPIPortal("portal-other-key", orgUUID, "other-key")
+	otherKey.Metadata = map[string]interface{}{"unrelated": "value"}
+	if err := repo.Create(otherKey); err != nil {
+		t.Fatalf("Create other-key: %v", err)
+	}
+	noMeta := newTestAPIPortal("portal-no-meta", orgUUID, "no-meta")
+	if err := repo.Create(noMeta); err != nil {
+		t.Fatalf("Create no-meta: %v", err)
+	}
+
+	// Portal in a different org with loginEnvironment set — must not leak into the target org's result.
+	other := newTestAPIPortal("portal-other-org", otherOrgUUID, "other-org")
+	other.Metadata = map[string]interface{}{"loginEnvironment": "staging"}
+	if err := repo.Create(other); err != nil {
+		t.Fatalf("Create other-org: %v", err)
+	}
+
+	got, err := repo.ListLoginEnvironmentsByOrg(orgUUID)
+	if err != nil {
+		t.Fatalf("ListLoginEnvironmentsByOrg: %v", err)
+	}
+	if len(got) != 1 {
+		t.Errorf("want 1 entry (only with-env qualifies), got %d: %+v", len(got), got)
+	}
+	if got["with-env"] != "production" {
+		t.Errorf("with-env should map to \"production\", got %q", got["with-env"])
+	}
+	if _, exists := got["other-key"]; exists {
+		t.Error("portal without loginEnvironment key must be omitted from the map")
+	}
+	if _, exists := got["no-meta"]; exists {
+		t.Error("portal with no metadata must be omitted from the map")
+	}
+	if _, exists := got["other-org"]; exists {
+		t.Error("portal from a different org must not appear in the target org's result")
+	}
+}
+
+func TestAPIPortalRepo_ListLoginEnvironmentsByOrg_EmptyOrg(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	const orgUUID = "org-portal-loginenvs-empty"
+	createTestAPIPortalOrg(t, db, orgUUID)
+
+	repo := NewAPIPortalRepo(db)
+	got, err := repo.ListLoginEnvironmentsByOrg(orgUUID)
+	if err != nil {
+		t.Fatalf("ListLoginEnvironmentsByOrg on empty org must not error: %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("empty org should return empty map, got %+v", got)
+	}
+}
+
+func TestAPIPortalRepo_ListStatusesByOrg_EmptyOrg(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	const orgUUID = "org-portal-status-empty"
+	createTestAPIPortalOrg(t, db, orgUUID)
+
+	repo := NewAPIPortalRepo(db)
+	got, err := repo.ListStatusesByOrg(orgUUID)
+	if err != nil {
+		t.Fatalf("ListStatusesByOrg on empty org must not error: %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("empty org should return empty map, got %+v", got)
+	}
+}
+
+func TestAPIPortalRepo_ListByStatus_CrossOrg(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	// Two separate orgs, each with portals in different states. The plugin
+	// poller's ResumePending scans across every org for the pending set, so
+	// this must not be filtered to a single org.
+	const orgA = "org-portal-lbs-a"
+	const orgB = "org-portal-lbs-b"
+	createTestAPIPortalOrg(t, db, orgA)
+	createTestAPIPortalOrg(t, db, orgB)
+
+	repo := NewAPIPortalRepo(db)
+	fixtures := []struct {
+		org, handle, status string
+	}{
+		{orgA, "a-pending-1", constants.APIPortalStatusPending},
+		{orgA, "a-active-1", constants.APIPortalStatusActive},
+		{orgB, "b-pending-1", constants.APIPortalStatusPending},
+		{orgB, "b-failed-1", constants.APIPortalStatusFailed},
+	}
+	for _, f := range fixtures {
+		p := newTestAPIPortal("portal-"+f.handle, f.org, f.handle)
+		p.Status = f.status
+		if err := repo.Create(p); err != nil {
+			t.Fatalf("Create %q: %v", f.handle, err)
+		}
+	}
+
+	pending, err := repo.ListByStatus(constants.APIPortalStatusPending)
+	if err != nil {
+		t.Fatalf("ListByStatus(pending): %v", err)
+	}
+	if len(pending) != 2 {
+		t.Fatalf("want 2 pending across orgs, got %d", len(pending))
+	}
+	// Cross-org selection must include rows from both orgs.
+	seen := map[string]bool{}
+	for _, p := range pending {
+		seen[p.Handle] = true
+		if p.Status != constants.APIPortalStatusPending {
+			t.Errorf("row %q returned with wrong status %q", p.Handle, p.Status)
+		}
+	}
+	if !seen["a-pending-1"] || !seen["b-pending-1"] {
+		t.Errorf("cross-org selection missed a row; got %+v", seen)
 	}
 }

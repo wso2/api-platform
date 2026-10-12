@@ -78,6 +78,7 @@ import OpenAILogo from '../../../../assets/brands/openAI.png';
 import NoFeatureAvilable from '../../../../assets/images/NoFeatureAvilable.svg';
 import NoProviders from '../../../../assets/images/NoProviders.svg';
 import { FormattedMessage } from 'react-intl';
+import { useResourceLimits } from '../../../../hooks/useResourceLimits';
 
 const statusChipColor: Record<string, 'success' | 'warning' | 'default'> = {
   Active: 'success',
@@ -158,9 +159,9 @@ export default function ServiceProviders() {
   // Access the list from the API response
   const providers = providersResponse.list;
   const emptyMessage = 'No Available LLM Providers';
-  const isProviderQuotaReached = false;
-  const providerQuotaTooltip =
-    'You cannot create more providers because your organization has reached the maximum limit of 5 LLM providers.';
+  const { canCreate, limitMessage } = useResourceLimits();
+  const isProviderQuotaReached = !canCreate('llmProviders');
+  const providerQuotaTooltip = limitMessage('llmProviders');
 
   const filteredProviders = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();

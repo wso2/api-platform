@@ -168,3 +168,23 @@ type StreamingResponsePolicy interface {
 	OnResponseBodyChunk(ctx context.Context, respCtx *ResponseStreamContext, chunk *StreamBody, params map[string]interface{}) StreamingResponseAction
 	NeedsMoreResponseData(accumulated []byte) bool
 }
+
+// FaultPolicy is the contract for a policy that runs on the FAULT path: the ordered list
+// of policies a route may declare to run only when a request has failed.
+//
+// A fault policy is a distinct kind of policy, not a response policy reused: implementing
+// this interface says "this policy is for the fault path", which the gateway checks at
+// configuration time. A policy that does not implement OnFault cannot be used in a fault
+// sequence — existing policies gain the capability by adding this method, not automatically.
+//
+// The context is a FaultContext: the response the client is receiving, the request that
+// produced it, and a typed description of why the flow is running.
+//
+// Returning nil is the ordinary case and says "I changed nothing" — what a notification,
+// audit or metrics entry does.
+//
+// OnFault must not fail the request. It runs when the client is already receiving an error,
+// so a panic or an unusable return leaves the original error intact rather than escalating.
+type FaultPolicy interface {
+	OnFault(ctx context.Context, faultCtx *FaultContext, params map[string]interface{}) *FaultResponse
+}

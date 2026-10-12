@@ -158,6 +158,11 @@ type Component struct {
 	// The path is resolved against the repository root when the build is prepared.
 	AddPoliciesFrom string `yaml:"addPoliciesFrom"`
 
+	// ReleasedPoliciesOnly, with addPoliciesFrom on a released Gateway version, builds only the
+	// policies that release ships — the ones its users would upgrade. The rest of the tree can
+	// need what the release's gateway-builder lacks. Ignored for a source build.
+	ReleasedPoliciesOnly bool `yaml:"releasedPoliciesOnly"`
+
 	// Overlay is an optional component configuration overlay.
 	Overlay string `yaml:"overlay"`
 

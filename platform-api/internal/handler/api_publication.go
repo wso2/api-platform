@@ -69,7 +69,7 @@ func decodeJSONBody(w http.ResponseWriter, r *http.Request, maxBytes int64, dst 
 // publish/unpublish/deprecate routes are pinned to this one literal per
 // type — unlike the shared read/draft routes, apiType is not a path
 // variable here.
-const restAPITypeValue = "rest-api"
+const restAPITypeValue = constants.PublicationAPITypeRestAPI
 
 // defaultPublicationContentMaxBytes/defaultPublicationThumbnailMaxBytes apply
 // when the corresponding config field is <= 0 — same zero-means-default
@@ -211,7 +211,7 @@ func (h *PublicationHandler) SaveDraftDefinition(w http.ResponseWriter, r *http.
 	contentType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 	if err != nil || contentType == "" {
 		return apperror.APIPublicationValidationFailed.New(
-			"Content-Type must be one of application/json, application/x-yaml, application/graphql, application/xml")
+			"Content-Type must be one of application/json, application/yaml, application/graphql, application/xml")
 	}
 
 	data, err := io.ReadAll(http.MaxBytesReader(w, r.Body, h.contentMaxBytes))

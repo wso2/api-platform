@@ -30,6 +30,10 @@ const messages = defineMessages({
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.PublishActionsBar.publish',
     defaultMessage: 'Publish',
   },
+  republish: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.PublishActionsBar.republish',
+    defaultMessage: 'Republish',
+  },
   unpublish: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.PublishActionsBar.unpublish',
     defaultMessage: 'Unpublish',
@@ -112,6 +116,9 @@ export function PublishActionsBar({
   const alternatives = (['publish', 'deprecate', 'unpublish'] as const).filter(
     (action) => action !== effectiveAction,
   );
+  // Publish reads as "Republish" once the listing is already published — canDeprecate
+  // is only true in that exact state — so a re-push isn't mistaken for the first one.
+  const actionLabel = (action: PrimaryAction) => (action === 'publish' && canDeprecate ? messages.republish : messages[action]);
 
   return (
     <Stack direction="row" spacing={2} sx={{ alignItems: 'center', justifyContent: 'flex-end' }}>
@@ -121,7 +128,7 @@ export function PublishActionsBar({
 
       <ButtonGroup color={ACTION_COLOR[effectiveAction]} disabled={busy} variant="contained">
         <Button onClick={run[effectiveAction]}>
-          <FormattedMessage {...messages[effectiveAction]} />
+          <FormattedMessage {...actionLabel(effectiveAction)} />
         </Button>
         <Button
           aria-label={intl.formatMessage(messages.moreActions)}
@@ -148,7 +155,7 @@ export function PublishActionsBar({
               setArmedAction(action);
             }}
           >
-            <FormattedMessage {...messages[action]} />
+            <FormattedMessage {...actionLabel(action)} />
           </MenuItem>
         ))}
       </Menu>
