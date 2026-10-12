@@ -747,6 +747,22 @@ func TestAPIPortalService_UpdateAPIPortal_PendingURLChangeRejected(t *testing.T)
 	}
 }
 
+func TestAPIPortalService_UpdateAPIPortal_PendingInvalidURLRejected(t *testing.T) {
+	existing := &model.APIPortal{
+		ID: "p1", Handle: "acme", OrganizationID: "org-1",
+		Name: "Acme", URL: "https://acme.portals.example.com", Status: constants.APIPortalStatusPending,
+	}
+	repo := &mockAPIPortalRepository{getResult: existing}
+	svc := newTestAPIPortalService(t, repo, &mockAPIPortalOrgRepository{}, &mockAPIPortalAuditRepository{})
+	_, err := svc.UpdateAPIPortal("acme", testUpdateReq{URL: apiPortalStrPtr("http://acme.portals.example.com")}.build(), "org-1", "editor")
+	if err == nil || !apperror.ValidationFailed.Is(err) {
+		t.Fatalf("want ValidationFailed for an invalid URL on a pending portal, got %v", err)
+	}
+	if repo.updateCapturedInput != nil {
+		t.Error("a rejected update must not persist anything")
+	}
+}
+
 // A full write-back that repeats the current URL is not a URL change.
 func TestAPIPortalService_UpdateAPIPortal_PendingAllowsUnchangedURL(t *testing.T) {
 	existing := &model.APIPortal{
