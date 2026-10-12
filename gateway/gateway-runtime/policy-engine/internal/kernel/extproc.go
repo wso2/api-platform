@@ -38,6 +38,7 @@ import (
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
 	grpccodes "google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/prototext"
 	"google.golang.org/protobuf/types/known/structpb"
@@ -229,15 +230,36 @@ func traceContextCarrier(req *extprocv3.ProcessingRequest) propagation.MapCarrie
 	return carrier
 }
 
-// startRootSpan starts the ext_proc root span for a stream. When tracing is
-// enabled and a request is available, the span is parented on the downstream
-// request's W3C trace context (traceparent/tracestate from its HTTP headers);
-// otherwise it starts a new root. When tracing is disabled the returned span is
-// a no-op and the per-request header extraction is skipped entirely. req is nil
-// on the pre-first-message error path, which likewise starts a plain new root.
+// streamMetadataCarrier builds a W3C trace-context carrier from the ext_proc
+// stream's incoming gRPC metadata. Envoy's native gRPC async client spawns a
+// client span for the stream ("async ...ExternalProcessor.Process egress") and
+// injects that span's context into the stream's initial metadata. One stream is
+// one HTTP request, so the value is per-request.
+func streamMetadataCarrier(ctx context.Context) propagation.MapCarrier {
+	carrier := propagation.MapCarrier{}
+	md, ok := metadata.FromIncomingContext(ctx)
+	if !ok {
+		return carrier
+	}
+	// Values repeat per key, and W3C permits tracestate to be split across
+	// several fields to be recombined comma-separated in field order.
+	for _, key := range []string{"traceparent", "tracestate"} {
+		if values := md.Get(key); len(values) > 0 {
+			carrier[key] = strings.Join(values, ",")
+		}
+	}
+	return carrier
+}
+
+// startRootSpan starts the ext_proc root span for a stream, parented on Envoy's
+// client span for this call so the engine's spans join the router's trace.
 func (s *ExternalProcessorServer) startRootSpan(ctx context.Context, req *extprocv3.ProcessingRequest) (context.Context, trace.Span) {
-	if s.tracingEnabled && req != nil {
-		ctx = tracing.ExtractTraceContext(ctx, traceContextCarrier(req))
+	if s.tracingEnabled {
+		carrier := streamMetadataCarrier(ctx)
+		if carrier["traceparent"] == "" && req != nil {
+			carrier = traceContextCarrier(req)
+		}
+		ctx = tracing.ExtractTraceContext(ctx, carrier)
 	}
 	return s.tracer.Start(ctx, constants.SpanExternalProcessingProcess,
 		trace.WithSpanKind(trace.SpanKindServer),
@@ -421,12 +443,17 @@ func (s *ExternalProcessorServer) handleProcessingPhase(ctx context.Context, req
 		startTime := time.Now()
 
 		// Create span for request headers processing - NoOp if tracing disabled
-		_, span := s.tracer.Start(ctx, constants.SpanProcessRequestHeaders,
+		ctx, span := s.tracer.Start(ctx, constants.SpanProcessRequestHeaders,
 			trace.WithSpanKind(trace.SpanKindInternal))
 		defer span.End()
 
-		// Initialize execution context for this request
-		rm, outcome, denial := s.initializeExecutionContext(ctx, req, execCtx)
+		// Initialize execution context for this request. Spanned separately: route
+		// lookup, chain binding and context construction run before any policy does
+		// and were the unattributed majority of this phase.
+		bindCtx, bindSpan := s.tracer.Start(ctx, constants.SpanBindRoute,
+			trace.WithSpanKind(trace.SpanKindInternal))
+		rm, outcome, denial := s.initializeExecutionContext(bindCtx, req, execCtx)
+		bindSpan.End()
 		if parentSpan.IsRecording() {
 			parentSpan.SetAttributes(
 				attribute.String(constants.AttrRouteName, rm.RouteName),
@@ -569,7 +596,7 @@ func (s *ExternalProcessorServer) handleProcessingPhase(ctx context.Context, req
 		startTime := time.Now()
 
 		// Create span for request body processing - NoOp if tracing disabled
-		_, span := s.tracer.Start(ctx, constants.SpanProcessRequestBody,
+		ctx, span := s.tracer.Start(ctx, constants.SpanProcessRequestBody,
 			trace.WithSpanKind(trace.SpanKindInternal))
 		defer span.End()
 
@@ -638,7 +665,7 @@ func (s *ExternalProcessorServer) handleProcessingPhase(ctx context.Context, req
 		startTime := time.Now()
 
 		// Create span for response headers processing - NoOp if tracing disabled
-		_, span := s.tracer.Start(ctx, constants.SpanProcessResponseHeaders,
+		ctx, span := s.tracer.Start(ctx, constants.SpanProcessResponseHeaders,
 			trace.WithSpanKind(trace.SpanKindInternal))
 		defer span.End()
 
@@ -696,7 +723,7 @@ func (s *ExternalProcessorServer) handleProcessingPhase(ctx context.Context, req
 		startTime := time.Now()
 
 		// Create span for response body processing - NoOp if tracing disabled
-		_, span := s.tracer.Start(ctx, constants.SpanProcessResponseBody,
+		ctx, span := s.tracer.Start(ctx, constants.SpanProcessResponseBody,
 			trace.WithSpanKind(trace.SpanKindInternal))
 		defer span.End()
 

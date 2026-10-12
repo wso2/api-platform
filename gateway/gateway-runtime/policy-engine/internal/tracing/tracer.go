@@ -131,6 +131,8 @@ func InitTracer(cfg *config.Config) (func(), error) {
 		sampler = sdktrace.TraceIDRatioBased(samplingRate)
 	}
 
+	sampler = sdktrace.ParentBased(sampler)
+
 	slog.InfoContext(ctx, "Using trace sampler", "sampling_rate", samplingRate)
 
 	// Create trace provider with batch span processor
