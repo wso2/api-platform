@@ -97,10 +97,10 @@ export function usePublishPageData(apiPortalId: string, apiHandler: string, want
   const apiOpenApiQuery = useRestApiOpenApi(publicationDefinitionAbsent ? apiHandler : undefined);
 
   // Where the API is served; the first is the Production URL's default.
-  // A failed read just leaves the list empty, so it never blocks the page.
+  // A failed read leaves the list empty, even over an older cached one, and never blocks the page.
   const productionUrlOptions = useMemo(
-    () => buildProductionUrlOptions(gatewaysQuery.data?.list ?? [], apiQuery.data?.context),
-    [apiQuery.data?.context, gatewaysQuery.data],
+    () => buildProductionUrlOptions(gatewaysQuery.error ? [] : (gatewaysQuery.data?.list ?? []), apiQuery.data?.context),
+    [apiQuery.data?.context, gatewaysQuery.data, gatewaysQuery.error],
   );
 
   // A disabled query stays `isPending` forever, so a definition tier only blocks

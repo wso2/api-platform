@@ -23,6 +23,9 @@ import { Route, Routes } from 'react-router-dom';
 
 import { ApiScopeProvider } from '@/api/core/ApiScopeProvider';
 import { resetHttpClient } from '@/api/core/http';
+import { orgScope } from '@/api/core/queryKeys';
+import { apiGatewayQueries } from '@/api/resources/restApis/apiGateways/apiGateways.queries';
+import type { RestApiGatewayListResponse } from '@/api/resources/restApis/apiGateways/apiGateways.endpoints';
 import { routes } from '@/routes/paths';
 import {
   accepts,
@@ -225,6 +228,23 @@ describe('PortalPublishPage', () => {
     server.use(failure('get', GATEWAYS_PATH, 500, 'INTERNAL_ERROR'));
 
     renderPage();
+
+    expect(await screen.findByDisplayValue('Loan Management Service')).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Production URL' })).toHaveValue('');
+    expect(screen.queryByRole('button', { name: 'Show gateway URLs' })).not.toBeInTheDocument();
+  });
+
+  it('ignores an older cached gateway list when the gateways cannot be read again', async () => {
+    servePublicationState();
+    server.use(failure('get', GATEWAYS_PATH, 500, 'INTERNAL_ERROR'));
+    const queryClient = makeTestQueryClient();
+    queryClient.setQueryData(
+      apiGatewayQueries.list(orgScope(ORG)!, API).queryKey,
+      { list: [deployedGateway('gw-1', 'Gateway One', 'https://gw-one.test')] } as RestApiGatewayListResponse,
+      { updatedAt: 0 },
+    );
+
+    renderPage(queryClient);
 
     expect(await screen.findByDisplayValue('Loan Management Service')).toBeInTheDocument();
     expect(screen.getByRole('combobox', { name: 'Production URL' })).toHaveValue('');
