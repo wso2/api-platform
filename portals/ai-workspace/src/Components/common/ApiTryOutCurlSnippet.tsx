@@ -38,7 +38,7 @@ const TEMPLATE_ENDPOINTS: Record<string, EndpointOption> = {
   openai: {
     path: '/chat/completions',
     body: {
-      model: 'gpt-4o-mini',
+      model: 'gpt-5-mini',
       messages: [{ role: 'user', content: 'Say hello!' }],
     },
   },
@@ -84,7 +84,7 @@ const TEMPLATE_ENDPOINTS: Record<string, EndpointOption> = {
     },
   },
   awsbedrock: {
-    path: '/model/amazon.nova-lite-v1:0/converse',
+    path: '/model/us.amazon.nova-lite-v1:0/converse',
     body: {
       messages: [
         {
@@ -96,7 +96,7 @@ const TEMPLATE_ENDPOINTS: Record<string, EndpointOption> = {
     },
   },
   'aws-bedrock': {
-    path: '/model/amazon.nova-lite-v1:0/converse',
+    path: '/model/us.amazon.nova-lite-v1:0/converse',
     body: {
       messages: [
         {
