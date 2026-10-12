@@ -237,3 +237,64 @@ warned() {
   local n; n=$(grep "adapted for older gateway" "$LOGS/platform-api.log" 2>/dev/null | grep -F "field=$2 " | grep -cE "gatewayVersion=$(printf '%s' "$1" | sed 's/[.]/\\./g')( |$)")
   echo "${n:-0}"
 }
+
+# --- API keys ---------------------------------------------------------------------
+# api-key-auth answers every missing, invalid or revoked key with this message.
+UNAUTHORIZED_MSG="Valid API key required"
+# api_key_create COLLECTION HANDLE [DISPLAYNAME] [VALUE] -> "id apiKey" (201 only, else die).
+# rest-apis answer keyId, llm-* answer id; a caller-supplied VALUE (rest-apis only) is not echoed
+# back by platform-api, so it is printed from the argument. The plaintext is returned once, so the
+# display name defaults to a unique one and reruns never collide.
+api_key_create() {
+  local name="${3:-e2e-key-$(date +%s)-$RANDOM}" body out code b id key
+  body="{\"displayName\":\"$name\""
+  [ -n "${4:-}" ] && body="$body,\"apiKey\":\"$4\""
+  body="$body}"
+  out=$(api POST "/$1/$2/api-keys" "$body"); code=$(printf '%s\n' "$out" | http_code)
+  [ "$code" = 201 ] || { printf '%s\n' "$out" >&2; die "create api key on $1/$2 failed (HTTP $code)"; }
+  b=$(printf '%s\n' "$out" | http_body)
+  id=$(printf '%s' "$b" | json_get keyId); [ -n "$id" ] || id=$(printf '%s' "$b" | json_get id)
+  key=$(printf '%s' "$b" | json_get apiKey); [ -n "$key" ] || key="${4:-}"
+  [ -n "$id" ] && [ -n "$key" ] || die "api key response for $1/$2 lacks id/apiKey: $b"
+  log "api key '$name' ($id) created on $1/$2"
+  echo "$id $key"
+}
+# api_key_revoke COLLECTION HANDLE ID -> prints the HTTP code (204 expected; 503 means the artifact
+# is not associated with any gateway yet).
+api_key_revoke() { api DELETE "/$1/$2/api-keys/$3" | http_code; }
+# The gateway lists the keys it holds for an artifact under their platform-api ids (field "name",
+# source "external", masked value) and drops a key when it is revoked. Evidence that a hash reached
+# that gateway:
+#   gw_api_key_count VER COLLECTION HANDLE      -> number of keys listed (0 when no JSON)
+#   gw_api_key_present VER COLLECTION HANDLE ID -> yes|no
+gw_api_key_names() {
+  curl -s -u admin:admin "$(gw_mgmt_base "$1")/$2/$3/api-keys" | python3 -c '
+import json,sys
+try: ks=json.load(sys.stdin).get("apiKeys") or []
+except Exception: ks=[]
+print("\n".join(k.get("name","") for k in ks))'
+}
+gw_api_key_count()   { gw_api_key_names "$@" | grep -c .; }
+gw_api_key_present() { gw_api_key_names "$1" "$2" "$3" | grep -Fxq "$4" && echo yes || echo no; }
+# invoke_until_code SECS CODE VER METHOD PATH [BODY] [curl args...]
+# Like invoke_until but waits for an HTTP status (a 401 carries no echo to wait on): the gateway
+# applies a key create/revoke a few seconds after platform-api sends the event.
+invoke_until_code() {
+  local secs="$1" want="$2" i=0 out; shift 2
+  while :; do
+    out=$("$(dirname "${BASH_SOURCE[0]}")/invoke.sh" "$@")
+    [ "$(printf '%s\n' "$out" | http_code)" = "$want" ] && break
+    [ "$i" -ge "$secs" ] && break
+    sleep 1; i=$((i+1))
+  done
+  printf '%s\n' "$out"
+}
+# echo_has_header NAME (stdin: invoke output) -> yes|no, case-insensitive: request-info echoes Go's
+# canonical header keys (X-API-Key arrives as X-Api-Key).
+echo_has_header() {
+  http_body | python3 -c '
+import json,sys
+try: h=json.load(sys.stdin)["Request"]["Header"]
+except Exception: h={}
+print("yes" if sys.argv[1].lower() in [k.lower() for k in h] else "no")' "$1"
+}

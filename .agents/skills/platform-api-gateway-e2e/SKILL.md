@@ -38,7 +38,8 @@ missing with **one** `AskUserQuestion` call:
 - **Scenarios** (multiSelect, max 4 options per question): offer "All built-in scenarios
   (Recommended)", "Gateway translation only" (`mcp-proxy-upstream-path`, `kind-gating`,
   `llm-policies-flatten`, `mcp-spec-versions-fold`, `upstream-auth-types`,
-  `llm-proxy-additional-providers`), "Secrets only" (`llm-provider-secret`, `secret-rotation`, `secret-migrated-row`, `secret-undecryptable`);
+  `llm-proxy-additional-providers`), "Secrets & API keys" (`llm-provider-secret`, `secret-rotation`, `secret-migrated-row`, `secret-undecryptable`,
+  `rest-api-api-key`, `llm-provider-api-key`, `llm-proxy-api-key`);
   "Other" = named scenarios or a custom scenario described in prose. The full list with what each
   proves is in `scenarios/README.md`.
 - **After the run**: tear down (Recommended) / keep the stack running for manual checks.
@@ -119,6 +120,13 @@ not start (it checks the process answers like platform-api/request-info before k
 - Gateway 1.2.0 caches each secret handle after its first fetch and refreshes on reconnect only,
   so a rotated secret reaches it after a controller restart, not after a redeploy
   (`secret-rotation` demonstrates this).
+- API keys belong to one artifact and reach a gateway only as a sha256 hash: `apikey.created` /
+  `apikey.revoked` websocket events to the gateways the artifact is deployed on, a backfill of every
+  active key at each deploy, and a bulk pull on reconnect. The `api-key-auth` policy (same `@v1`
+  module in 1.0.0/1.1.0/1.2.0) applies an event a few seconds later (scenarios wait with
+  `invoke_until_code`), strips the key header before forwarding and answers 401
+  `Valid API key required`. `security.apiKey.valuePrefix` exists only in the policy shipped with
+  1.2.0 and is not used by the built-in scenarios.
 - request-info ([github.com/renuka-fernando/request-info](https://github.com/renuka-fernando/request-info)) is installed with `go install github.com/renuka-fernando/request-info@latest` (no local checkout) and runs with `-read-envs=false` (its default echoes the whole environment) and on
   `127.0.0.1` (it has a `/command` shell endpoint); containers still reach it via
   `host.docker.internal`.
@@ -133,3 +141,5 @@ not start (it checks the process answers like platform-api/request-info before k
 | gateway never `isActive` | controller log: TLS/host errors mean the HTTPS listener or `host.docker.internal` mapping; 401 means a stale token — rerun `start-gateway.sh <ver>` (rotates it) |
 | deployment stays `DEPLOYING` then `FAILED` after 60 s | the gateway rejected or never received the artifact; check the controller log for the deployment event |
 | port 9243 busy | another platform-api (e.g. an ai-workspace stack) — the skill uses 9380/9343 by default for that reason |
+| an API-key `with-key` check stays 401 | the hash never reached that gateway: the key was created before the artifact was deployed there and no deploy followed (controller log `artifact not found for UUID`); compare `curl -u admin:admin "$(gw_mgmt_base <ver>)/<collection>/<handle>/api-keys"` with platform-api's list |
+| `api_key_revoke` prints 503 | the artifact is not associated with any gateway yet — deploy first |
