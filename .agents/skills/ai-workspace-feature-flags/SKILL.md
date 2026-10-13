@@ -30,7 +30,7 @@ runtime-config.js    window.__RUNTIME_CONFIG__ = {"APIP_AIW_FEATURE_FLAGS_GUARDR
 config.env.ts        isFeatureEnabled('guardrail-templates')  →  true
 ```
 
-The browser-side name is derived from the key's path, never chosen: `APIP_AIW_` plus the path under `[ai_workspace]`, uppercased, with dots as underscores. `feature_flags.guardrail_templates_enabled` becomes `APIP_AIW_FEATURE_FLAGS_GUARDRAIL_TEMPLATES_ENABLED`. The same name works as an environment variable.
+The browser-side name is derived from the key's path, never chosen: `APIP_AIW_` plus the path under `[ai_workspace]`, uppercased, with dots as underscores. `feature_flags.guardrail_templates_enabled` becomes `APIP_AIW_FEATURE_FLAGS_GUARDRAIL_TEMPLATES_ENABLED`. An `{{ env }}` token that binds the key to the environment uses that same name by convention.
 
 The BFF emits only keys that are present in the config, so an absent key never reaches the browser and the SPA's `false` applies.
 
@@ -132,7 +132,14 @@ A deployment adds the table to its own config.toml:
 guardrail_templates_enabled = true
 ```
 
-or sets `APIP_AIW_FEATURE_FLAGS_GUARDRAIL_TEMPLATES_ENABLED=true`. The SPA needs no rebuild. The BFF reads its config at startup, so restart it to pick up the change.
+To drive it from the environment instead, bind the key to a variable in config.toml and set that variable to `true`. The BFF reads environment variables only through `{{ env }}` tokens, so setting the variable without this binding does nothing:
+
+```toml
+[ai_workspace.feature_flags]
+guardrail_templates_enabled = '{{ env "APIP_AIW_FEATURE_FLAGS_GUARDRAIL_TEMPLATES_ENABLED" "false" }}'
+```
+
+The SPA needs no rebuild. The BFF reads its config at startup, so restart it to pick up the change.
 
 ## Retiring a flag
 
@@ -155,5 +162,6 @@ Removing the `FEATURE_FLAGS` entry removes its `FeatureId`, so TypeScript report
 | Context default that throws | Conditionally mounting its provider crashes the page |
 | Flag treated as access control | The endpoint stays reachable; scopes are the real gate |
 | UI block given no overlay | Its scenarios cannot find the nav entry or route |
+| Environment variable set without an `{{ env }}` binding in config.toml | Ignored; the BFF reads variables only through `{{ env }}` tokens |
 | Environment variable name written by hand | It must match the derived name exactly |
 | Shipped feature's flag defaulted to `true` | A dead flag stays in the code; retire it instead |
