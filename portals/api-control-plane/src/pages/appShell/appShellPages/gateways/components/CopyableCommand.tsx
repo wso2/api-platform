@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ClipboardEvent } from 'react';
 import { Box, CodeBlock, IconButton, Tooltip } from '@wso2/oxygen-ui';
 import { Check, Copy } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, useIntl } from 'react-intl';
@@ -38,9 +38,19 @@ const messages = defineMessages({
 const COPIED_FEEDBACK_MS = 1500;
 
 /** A shell command block with a copy-to-clipboard button in its corner. */
-export function CopyableCommand({ code }: { code: string }) {
+export function CopyableCommand({
+  code,
+  copyCode,
+}: {
+  /** Text shown in the code block (may use placeholders). */
+  code: string;
+  /** Text copied to the clipboard; defaults to `code`. */
+  copyCode?: string;
+}) {
   const intl = useIntl();
   const [copied, setCopied] = useState(false);
+  const clipboardText = copyCode ?? code;
+  const usesDistinctCopy = copyCode !== undefined && copyCode !== code;
 
   // Held in a ref so a copy that lands just before the block unmounts (a tab
   // change, a dialog closing) does not leave a timer setting state afterwards.
@@ -48,12 +58,16 @@ export function CopyableCommand({ code }: { code: string }) {
 
   useEffect(() => () => window.clearTimeout(resetTimer.current), []);
 
-  const copy = async () => {
+  const markCopied = () => {
+    setCopied(true);
+    window.clearTimeout(resetTimer.current);
+    resetTimer.current = window.setTimeout(() => setCopied(false), COPIED_FEEDBACK_MS);
+  };
+
+  const copyToClipboard = async () => {
     try {
-      await navigator.clipboard.writeText(code);
-      setCopied(true);
-      window.clearTimeout(resetTimer.current);
-      resetTimer.current = window.setTimeout(() => setCopied(false), COPIED_FEEDBACK_MS);
+      await navigator.clipboard.writeText(clipboardText);
+      markCopied();
     } catch {
       // No clipboard permission (or no clipboard at all, over plain HTTP). The
       // command is still on screen and selectable, so there is nothing useful
@@ -61,19 +75,29 @@ export function CopyableCommand({ code }: { code: string }) {
     }
   };
 
+  const handleNativeCopy = (event: ClipboardEvent<HTMLDivElement>) => {
+    if (!usesDistinctCopy) return;
+    // Keyboard/context-menu copy should use real secrets, not placeholders.
+    event.preventDefault();
+    event.clipboardData.setData('text/plain', clipboardText);
+    markCopied();
+  };
+
   return (
     <Box sx={{ position: 'relative' }}>
       <Tooltip title={intl.formatMessage(copied ? messages.copied : messages.copy)}>
         <IconButton
           aria-label={intl.formatMessage(messages.copy)}
-          onClick={copy}
+          onClick={copyToClipboard}
           size="small"
           sx={{ position: 'absolute', right: 8, top: 8, zIndex: 1 }}
         >
           {copied ? <Check size={16} /> : <Copy size={16} />}
         </IconButton>
       </Tooltip>
-      <CodeBlock code={code} language="bash" />
+      <Box data-testid="copyable-command-body" onCopy={handleNativeCopy}>
+        <CodeBlock code={code} language="bash" />
+      </Box>
     </Box>
   );
 }

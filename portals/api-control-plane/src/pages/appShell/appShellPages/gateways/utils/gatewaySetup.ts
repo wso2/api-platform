@@ -16,6 +16,7 @@
  * under the License.
  */
 
+import { isShellSafeCollectorKey } from '@/api/cloud/analyticsApi';
 import type { Gateway } from '@/api/resources/gateways';
 import type { GatewayFunctionality } from './gatewayDisplay';
 
@@ -34,6 +35,9 @@ import type { GatewayFunctionality } from './gatewayDisplay';
 
 /** Placeholder standing in for a token the user has not generated yet. */
 export const TOKEN_PLACEHOLDER = '<your-gateway-token>';
+
+/** Placeholder for the Moesif collector key shown in on-screen commands. */
+export const MOESIF_KEY_PLACEHOLDER = '<your-moesif-key>';
 
 /**
  * Port the gateway agent connects to the control plane on. Fixed rather than
@@ -74,6 +78,28 @@ export type GatewaySetupTarget = {
   version: string;
 };
 
+/** Optional Moesif analytics lines for cloud self-hosted gateway setup. */
+export type GatewaySetupOptions = {
+  /** When false, omit Moesif lines even if a key is present. */
+  includeMoesif?: boolean;
+  moesifKey?: string | null;
+  /**
+   * When true, embed the real Moesif key (and keep the token as passed).
+   * When false, show `MOESIF_KEY_PLACEHOLDER` in the UI.
+   */
+  forCopy?: boolean;
+};
+
+const resolveMoesifLine = (options?: GatewaySetupOptions) => {
+  if (!options?.includeMoesif || !options.moesifKey) return '';
+  // Defense in depth: never interpolate an unsafe key into a shell heredoc.
+  if (!isShellSafeCollectorKey(options.moesifKey)) return '';
+  if (options.forCopy) {
+    return `MOESIF_KEY=${options.moesifKey}\n`;
+  }
+  return `MOESIF_KEY=${MOESIF_KEY_PLACEHOLDER}\n`;
+};
+
 /**
  * Resolves a gateway plus the deployment's control plane host into the values
  * every command below is built from.
@@ -101,9 +127,15 @@ export const downloadCommand = (target: GatewaySetupTarget): string =>
  *
  * A heredoc rather than two `echo` lines so the whole file is one paste, and
  * the token never lands in the user's shell history as a bare argument.
+ * On cloud, optionally includes MOESIF_KEY for analytics publishing.
  */
-export const configureCommand = (target: GatewaySetupTarget, token: string): string =>
+export const configureCommand = (
+  target: GatewaySetupTarget,
+  token: string,
+  options?: GatewaySetupOptions,
+): string =>
   `cat > ${target.distribution}/configs/keys.env << 'ENVFILE'\n` +
+  resolveMoesifLine(options) +
   `GATEWAY_CONTROLPLANE_HOST=${target.controlPlaneHost}\n` +
   `GATEWAY_CONTROLPLANE_PORT=${CONTROL_PLANE_PORT}\n` +
   `GATEWAY_REGISTRATION_TOKEN=${token}\n` +
@@ -130,8 +162,25 @@ export const helmInstallCommand = (
   target: GatewaySetupTarget,
   releaseName: string,
   token: string,
-): string =>
-  `helm install ${releaseName} ${HELM_CHART_REF} --version ${target.version} \\\n` +
-  `  --set gateway.controller.controlPlane.host="${target.controlPlaneHost}" \\\n` +
-  `  --set gateway.controller.controlPlane.port=${CONTROL_PLANE_PORT} \\\n` +
-  `  --set gateway.controller.controlPlane.token.value="${token}"`;
+  options?: GatewaySetupOptions,
+): string => {
+  const lines = [
+    `helm install ${releaseName} ${HELM_CHART_REF} --version ${target.version} \\`,
+    `  --set gateway.controller.controlPlane.host="${target.controlPlaneHost}" \\`,
+    `  --set gateway.controller.controlPlane.port=${CONTROL_PLANE_PORT} \\`,
+    `  --set gateway.controller.controlPlane.token.value="${token}"`,
+  ];
+  if (options?.includeMoesif && options.moesifKey) {
+    if (!isShellSafeCollectorKey(options.moesifKey)) {
+      return lines.join('\n');
+    }
+    lines[lines.length - 1] += ' \\';
+    lines.push(
+      options.forCopy
+        ? `  --set gateway.config.analytics.publishers.moesif.application_id="${options.moesifKey}" \\`
+        : `  --set gateway.config.analytics.publishers.moesif.application_id=${MOESIF_KEY_PLACEHOLDER} \\`,
+    );
+    lines.push('  --set gateway.config.analytics.enabled=true');
+  }
+  return lines.join('\n');
+};

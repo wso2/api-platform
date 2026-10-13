@@ -40,6 +40,7 @@ import {
   Alert,
 } from "@wso2/oxygen-ui";
 import { Copy } from "@wso2/oxygen-ui-icons-react";
+import { isShellSafeCollectorKey } from "../../../../apis/cloud/analyticsApi";
 import { CONTROLPLANE_HOST } from "../../../../config.env";
 import {
   getCommandTextFieldSx,
@@ -59,6 +60,9 @@ export const isGatewayV12OrAbove = (gatewayVersionHelm: string): boolean => {
   return major > 1 || (major === 1 && minor >= 2);
 };
 
+/** Placeholder for the Moesif collector key shown in on-screen commands. */
+export const MOESIF_KEY_PLACEHOLDER = "<your-moesif-key>";
+
 /** Bare env-file name for UI labels and downloads, per gateway version. */
 export const getGatewayEnvFileName = (isV12OrAbove: boolean): string =>
   isV12OrAbove ? "api-platform.env" : "keys.env";
@@ -68,10 +72,13 @@ export const buildGatewayEnvFileContent = (
   isV12OrAbove: boolean,
   controlPlaneHost: string,
   token: string,
-): string =>
-  isV12OrAbove
-    ? `APIP_GW_CONTROLLER_CONTROLPLANE_HOST=${controlPlaneHost}\nAPIP_GW_CONTROLLER_CONTROLPLANE_TOKEN=${token}`
-    : `GATEWAY_CONTROLPLANE_HOST=${controlPlaneHost}\nGATEWAY_REGISTRATION_TOKEN=${token}`;
+  moesifKey?: string | null,
+): string => {
+  const moesifLine = moesifKey ? `MOESIF_KEY=${moesifKey}\n` : "";
+  return isV12OrAbove
+    ? `${moesifLine}APIP_GW_CONTROLLER_CONTROLPLANE_HOST=${controlPlaneHost}\nAPIP_GW_CONTROLLER_CONTROLPLANE_TOKEN=${token}`
+    : `${moesifLine}GATEWAY_CONTROLPLANE_HOST=${controlPlaneHost}\nGATEWAY_REGISTRATION_TOKEN=${token}`;
+};
 
 export interface GatewaySetupStepsProps {
   /** Resolved version string (with leading "v"), used in the download URL. */
@@ -85,6 +92,11 @@ export interface GatewaySetupStepsProps {
   onCopy: (text: string, label: string) => void;
   colorScheme: ColorScheme;
   renderConnectionStatus: () => ReactNode;
+  /** When true, cloud Moesif collector-key wiring is active. */
+  includeMoesifAnalytics?: boolean;
+  moesifKey?: string | null;
+  moesifKeyLoading?: boolean;
+  moesifUnavailable?: boolean;
 }
 
 /** A read-only command box with a copy button (and optional distinct copy value). */
@@ -199,6 +211,56 @@ function ReconfigurePrompt({
   );
 }
 
+/** Cloud-only: loading / unavailable tips for Moesif collector-key setup. */
+function MoesifAnalyticsHints({
+  envFileLabel,
+  includeMoesifAnalytics,
+  moesifKey,
+  moesifKeyLoading,
+  moesifUnavailable,
+}: {
+  envFileLabel: string;
+  includeMoesifAnalytics?: boolean;
+  moesifKey?: string | null;
+  moesifKeyLoading?: boolean;
+  moesifUnavailable?: boolean;
+}) {
+  // Local / OSS: no Moesif key configuration in setup commands.
+  if (!includeMoesifAnalytics) {
+    return null;
+  }
+  if (moesifKeyLoading) {
+    return (
+      <Alert severity="info" sx={{ mt: 2 }}>
+        Loading Moesif analytics configuration…
+      </Alert>
+    );
+  }
+  if (moesifUnavailable || !moesifKey) {
+    return (
+      <Alert severity="warning" sx={{ mt: 2 }}>
+        To configure analytics, add your existing Moesif key as{" "}
+        <code>MOESIF_KEY=&lt;your-moesif-key&gt;</code> to the{" "}
+        <code>{envFileLabel}</code> file after creating it with the command
+        below.
+      </Alert>
+    );
+  }
+  return null;
+}
+
+const resolveMoesifLine = (
+  includeMoesif: boolean | undefined,
+  moesifKey: string | null | undefined,
+  forCopy: boolean,
+) => {
+  if (!includeMoesif || !moesifKey) return "";
+  // Defense in depth: never interpolate an unsafe key into shell content.
+  if (!isShellSafeCollectorKey(moesifKey)) return "";
+  if (forCopy) return `MOESIF_KEY=${moesifKey}\n`;
+  return `MOESIF_KEY=${MOESIF_KEY_PLACEHOLDER}\n`;
+};
+
 /**
  * Setup steps for gateway v1.2 and above:
  * 1. Download → 2. Set up (setup.sh) → 3. Configure (api-platform.env) → 4. Start.
@@ -214,12 +276,16 @@ export function GatewaySetupStepsV1_2Plus({
   onCopy,
   colorScheme,
   renderConnectionStatus,
+  includeMoesifAnalytics,
+  moesifKey,
+  moesifKeyLoading,
+  moesifUnavailable,
 }: GatewaySetupStepsProps) {
   const envFile = "api-platform.env";
   const setupCommand = `cd ${gatewayFolderName} && ./scripts/setup.sh`;
-  const buildConfigureCommand = (token: string) =>
+  const buildConfigureCommand = (token: string, forCopy: boolean) =>
     `cat >> ${envFile} << 'ENVFILE'
-APIP_GW_CONTROLLER_CONTROLPLANE_HOST=${CONTROLPLANE_HOST}
+${resolveMoesifLine(includeMoesifAnalytics, moesifKey, forCopy)}APIP_GW_CONTROLLER_CONTROLPLANE_HOST=${CONTROLPLANE_HOST}
 APIP_GW_CONTROLLER_CONTROLPLANE_TOKEN=${token}
 ENVFILE`;
   const startCommand = "docker compose up";
@@ -268,19 +334,33 @@ ENVFILE`;
               Run this command to add the control plane connection settings to{" "}
               {envFile}:
             </Typography>
-            <CommandField
-              value={buildConfigureCommand("<your-gateway-token>")}
-              copyValue={buildConfigureCommand(registrationToken)}
-              copyLabel="Configure command"
-              onCopy={onCopy}
-              colorScheme={colorScheme}
-              minRows={4}
-            />
-            <Alert severity="info" sx={{ mt: 2 }}>
-              To gain gateway analytics, you can integrate with Moesif by adding
-              your Moesif application token with the key <code>MOESIF_KEY</code>{" "}
-              to your <code>{envFile}</code>.
-            </Alert>
+            {includeMoesifAnalytics && moesifKeyLoading ? (
+              <MoesifAnalyticsHints
+                envFileLabel={envFile}
+                includeMoesifAnalytics={includeMoesifAnalytics}
+                moesifKey={moesifKey}
+                moesifKeyLoading={moesifKeyLoading}
+                moesifUnavailable={moesifUnavailable}
+              />
+            ) : (
+              <>
+                <CommandField
+                  value={buildConfigureCommand("<your-gateway-token>", false)}
+                  copyValue={buildConfigureCommand(registrationToken, true)}
+                  copyLabel="Configure command"
+                  onCopy={onCopy}
+                  colorScheme={colorScheme}
+                  minRows={4}
+                />
+                <MoesifAnalyticsHints
+                  envFileLabel={envFile}
+                  includeMoesifAnalytics={includeMoesifAnalytics}
+                  moesifKey={moesifKey}
+                  moesifKeyLoading={moesifKeyLoading}
+                  moesifUnavailable={moesifUnavailable}
+                />
+              </>
+            )}
           </>
         ) : (
           <ReconfigurePrompt
@@ -326,11 +406,15 @@ export function GatewaySetupStepsPreV1_2({
   onCopy,
   colorScheme,
   renderConnectionStatus,
+  includeMoesifAnalytics,
+  moesifKey,
+  moesifKeyLoading,
+  moesifUnavailable,
 }: GatewaySetupStepsProps) {
   const envFile = `${gatewayFolderName}/configs/keys.env`;
-  const buildConfigureCommand = (token: string) =>
+  const buildConfigureCommand = (token: string, forCopy: boolean) =>
     `cat > ${envFile} << 'ENVFILE'
-GATEWAY_CONTROLPLANE_HOST=${CONTROLPLANE_HOST}
+${resolveMoesifLine(includeMoesifAnalytics, moesifKey, forCopy)}GATEWAY_CONTROLPLANE_HOST=${CONTROLPLANE_HOST}
 GATEWAY_REGISTRATION_TOKEN=${token}
 ENVFILE`;
   const navigateCommand = `cd ${gatewayFolderName}`;
@@ -362,19 +446,33 @@ ENVFILE`;
               Run this command to create {envFile} with the required environment
               variables:
             </Typography>
-            <CommandField
-              value={buildConfigureCommand("<your-gateway-token>")}
-              copyValue={buildConfigureCommand(registrationToken)}
-              copyLabel="Configure command"
-              onCopy={onCopy}
-              colorScheme={colorScheme}
-              minRows={4}
-            />
-            <Alert severity="info" sx={{ mt: 2 }}>
-              To gain gateway analytics, you can integrate with Moesif by adding
-              your Moesif application token with the key <code>MOESIF_KEY</code>{" "}
-              to your <code>configs/keys.env</code>.
-            </Alert>
+            {includeMoesifAnalytics && moesifKeyLoading ? (
+              <MoesifAnalyticsHints
+                envFileLabel="configs/keys.env"
+                includeMoesifAnalytics={includeMoesifAnalytics}
+                moesifKey={moesifKey}
+                moesifKeyLoading={moesifKeyLoading}
+                moesifUnavailable={moesifUnavailable}
+              />
+            ) : (
+              <>
+                <CommandField
+                  value={buildConfigureCommand("<your-gateway-token>", false)}
+                  copyValue={buildConfigureCommand(registrationToken, true)}
+                  copyLabel="Configure command"
+                  onCopy={onCopy}
+                  colorScheme={colorScheme}
+                  minRows={4}
+                />
+                <MoesifAnalyticsHints
+                  envFileLabel="configs/keys.env"
+                  includeMoesifAnalytics={includeMoesifAnalytics}
+                  moesifKey={moesifKey}
+                  moesifKeyLoading={moesifKeyLoading}
+                  moesifUnavailable={moesifUnavailable}
+                />
+              </>
+            )}
           </>
         ) : (
           <ReconfigurePrompt

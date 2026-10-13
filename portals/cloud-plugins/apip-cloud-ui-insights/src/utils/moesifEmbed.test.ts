@@ -89,10 +89,16 @@ describe('moesifEmbed helpers', () => {
 
 describe('analyticsApi', () => {
   afterEach(() => {
+    const testWindow = window as Window & {
+      __RUNTIME_CONFIG__?: Record<string, unknown>;
+    };
+    delete testWindow.__RUNTIME_CONFIG__;
     vi.unstubAllGlobals();
+    vi.resetModules();
   });
 
   it('fetchViewerToken reads token from cloud analytics endpoint', async () => {
+    vi.resetModules();
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => ({
@@ -107,6 +113,31 @@ describe('analyticsApi', () => {
       '/proxy/cloud/analytics/id-token',
       expect.objectContaining({ credentials: 'include' })
     );
+  });
+
+  it('fetchViewerToken uses the moesif hop for AI Workspace', async () => {
+    const testWindow = window as Window & {
+      __RUNTIME_CONFIG__?: Record<string, unknown>;
+    };
+    testWindow.__RUNTIME_CONFIG__ = {
+      platformApiBaseUrl: '/ai-workspace/proxy',
+    };
+    vi.resetModules();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({ token: 'viewer-token-123' }),
+      }))
+    );
+
+    const { fetchViewerToken } = await import('../api/analyticsApi');
+    await expect(fetchViewerToken()).resolves.toBe('viewer-token-123');
+    expect(fetch).toHaveBeenCalledWith(
+      '/ai-workspace/proxy/moesif/analytics/id-token',
+      expect.objectContaining({ credentials: 'include' })
+    );
+    delete testWindow.__RUNTIME_CONFIG__;
   });
 
   it('fetchViewerToken maps 404 to a user-facing org message', async () => {
