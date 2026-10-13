@@ -1462,6 +1462,39 @@ func TestTranslator_CreateListener_PathNormalization(t *testing.T) {
 	}
 }
 
+// The HTTP and HTTPS listeners are built by the same createListener code path, so exercising the
+// HTTP listener covers the HCM setting for both.
+func TestTranslator_CreateListener_ReturnRequestIDInResponse(t *testing.T) {
+	tests := []struct {
+		name         string
+		enabled      bool
+		wantReturned bool
+	}{
+		{name: "disabled via config", enabled: false, wantReturned: false},
+		{name: "enabled via config", enabled: true, wantReturned: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			logger := createTestLogger()
+			routerCfg := testRouterConfig()
+			routerCfg.HTTPListener.ReturnRequestIDInResponse = tt.enabled
+			cfg := testConfig()
+			cfg.Router = *routerCfg
+			translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+			lis, _, err := translator.createListener(nil, false)
+			require.NoError(t, err)
+
+			manager := extractHCM(t, lis)
+			assert.Equal(t, tt.wantReturned, manager.GetAlwaysSetRequestIdInResponse(), "always_set_request_id_in_response")
+			// Envoy keeps generating/preserving x-request-id regardless of this flag; the flag
+			// only controls whether it is echoed back to the client.
+			assert.True(t, manager.GetGenerateRequestId().GetValue(), "generate_request_id must stay enabled")
+		})
+	}
+}
+
 func TestTranslator_CreateListener_PathWithEscapedSlashesAction(t *testing.T) {
 	tests := []struct {
 		name                         string
