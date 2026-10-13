@@ -70,6 +70,10 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("POST "+s.path("/api/mcp-proxies"), s.handleCreateMCPServer)
 	mux.HandleFunc("POST "+s.path("/api/api-portals/{apiPortalId}/mcp-proxies/{mcpProxyId}/publish"), s.handlePublishMCPProxy)
 
+	// Ask AI. Registered even when [docs_assistant] is off, so the handler can answer
+	// 503 itself instead of the SPA fallback returning HTML to a JSON caller.
+	mux.HandleFunc("POST "+s.path("/api/docs-assistant/chat"), s.handleDocsAssistantChat)
+
 	// Same-origin reverse proxy to the Platform API. The Moesif hop is more
 	// specific (/proxy/moesif/) and must be registered before the catch-all
 	// /proxy/.

@@ -60,7 +60,10 @@ type Server struct {
 	proxy        *httputil.ReverseProxy
 	moesifProxy  *httputil.ReverseProxy
 	billingProxy *httputil.ReverseProxy
-	handler      http.Handler
+	// docsAssistant calls the Ask AI documentation assistant. Nil when
+	// [docs_assistant] is not configured.
+	docsAssistant *http.Client
+	handler       http.Handler
 
 	// exchanger is non-nil exactly when cfg.Auth.TokenExchangeEnabled().
 	exchanger *auth.Exchanger
@@ -193,6 +196,14 @@ func New(ctx context.Context, cfg *config.Config) (*Server, error) {
 			return nil, err
 		}
 		s.billingProxy = proxy.ReverseProxy(billingTarget, paths.Base+paths.Proxy+"/billing", billingTransport)
+	}
+
+	if cfg.DocsAssistant.Enabled() {
+		client, err := newDocsAssistantClient(cfg.HTTPClient, cfg.DocsAssistant.Timeout)
+		if err != nil {
+			return nil, err
+		}
+		s.docsAssistant = client
 	}
 
 	if cfg.Auth.OIDCEnabled() {

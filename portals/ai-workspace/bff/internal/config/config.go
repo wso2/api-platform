@@ -64,6 +64,10 @@ type Config struct {
 	Session      SessionConfig      `koanf:"session"`
 	Auth         AuthConfig         `koanf:"auth"`
 
+	// DocsAssistant is the optional Ask AI documentation assistant. Empty endpoint
+	// means the feature is off.
+	DocsAssistant DocsAssistantConfig `koanf:"docs_assistant"`
+
 	// Cookie attributes are fixed implementation details of the session mechanism, not
 	// deployment config; Load sets them. RuntimeConfig is assembled after load.
 	Cookie        CookieConfig      `koanf:"-"`
@@ -173,6 +177,39 @@ type ControlPlaneConfig struct {
 	// BillingCAFile / BillingTLSSkipVerify apply only to BillingURL when that hop uses TLS.
 	BillingCAFile        string `koanf:"billing_ca_file"`
 	BillingTLSSkipVerify bool   `koanf:"billing_tls_skip_verify"`
+}
+
+// DocsAssistantConfig is [ai_workspace.docs_assistant]: the documentation assistant
+// behind Ask AI. The BFF calls it server-side with an API key the browser never sees,
+// so the SPA only learns whether the feature is on (see buildRuntimeConfig).
+type DocsAssistantConfig struct {
+	// Endpoint is the assistant's base URL; "chat" is appended to it. Must be https://.
+	// Empty leaves the feature off.
+	Endpoint string `koanf:"endpoint"`
+	// APIKey is sent as the api-key header. A secret: supply it with {{ env }} or
+	// {{ file }}, never as a literal.
+	APIKey string `koanf:"api_key"`
+	// Product and Branch select the documentation index (the assistant's product and
+	// branch headers).
+	Product string `koanf:"product"`
+	Branch  string `koanf:"branch"`
+	// Timeout bounds one call, including the wait for the first response byte: the
+	// assistant answers only once the whole answer is generated.
+	Timeout time.Duration `koanf:"timeout"`
+}
+
+// Enabled reports whether the docs assistant is configured.
+func (d DocsAssistantConfig) Enabled() bool { return d.Endpoint != "" }
+
+// normalize trims the values; "chat" is appended to the endpoint, so it always ends in
+// exactly one slash.
+func (d *DocsAssistantConfig) normalize() {
+	d.Endpoint = strings.TrimSpace(d.Endpoint)
+	if d.Endpoint != "" {
+		d.Endpoint = strings.TrimRight(d.Endpoint, "/") + "/"
+	}
+	d.Product = strings.TrimSpace(d.Product)
+	d.Branch = strings.TrimSpace(d.Branch)
 }
 
 // SessionConfig is [ai_workspace.session]: where the session's server-side state
@@ -691,6 +728,8 @@ func (c *Config) normalize() {
 	c.ControlPlane.BillingURL = strings.TrimRight(c.ControlPlane.BillingURL, "/")
 	c.Auth.OIDC.Issuer = strings.TrimRight(c.Auth.OIDC.Issuer, "/")
 
+	c.DocsAssistant.normalize()
+
 	// Lowercased first so the alias lookup is case-insensitive too, then resolved:
 	// the registered URI and the short name are the same protocol, and every check
 	// downstream compares against the short name.
@@ -904,6 +943,10 @@ func (c *Config) validate() error {
 		}
 	}
 
+	if err := c.validateDocsAssistant(); err != nil {
+		return err
+	}
+
 	if c.Auth.OIDCEnabled() {
 		if c.Auth.OIDC.Issuer == "" || c.Auth.OIDC.ClientID == "" || c.Auth.OIDC.ClientSecret == "" || c.Auth.OIDC.RedirectURL == "" {
 			return fmt.Errorf("OIDC mode requires [auth.oidc] authority, client_id, client_secret and redirect_url")
@@ -944,6 +987,38 @@ func IsLoopbackHost(host string) bool {
 	}
 	ip := net.ParseIP(strings.Trim(h, "[]"))
 	return ip != nil && ip.IsLoopback()
+}
+
+// Bounds for [docs_assistant] timeout: long enough for a generated answer, short
+// enough that a hung upstream cannot hold a request open indefinitely.
+const (
+	minDocsAssistantTimeout = time.Second
+	maxDocsAssistantTimeout = 2 * time.Minute
+)
+
+// validateDocsAssistant fails startup on a half-configured docs assistant. Nothing is
+// checked when the endpoint is empty, since that is how the feature is turned off.
+func (c *Config) validateDocsAssistant() error {
+	d := c.DocsAssistant
+	if !d.Enabled() {
+		return nil
+	}
+	// https only: every call carries the API key.
+	u, err := url.Parse(d.Endpoint)
+	if err != nil || u.Scheme != "https" || u.Host == "" {
+		return fmt.Errorf("[docs_assistant] endpoint must be an absolute https:// URL, got %s", redactURL(d.Endpoint))
+	}
+	if d.APIKey == "" {
+		return fmt.Errorf("[docs_assistant] api_key is required when endpoint is set")
+	}
+	if d.Product == "" || d.Branch == "" {
+		return fmt.Errorf("[docs_assistant] product and branch are required when endpoint is set")
+	}
+	if d.Timeout < minDocsAssistantTimeout || d.Timeout > maxDocsAssistantTimeout {
+		return fmt.Errorf("[docs_assistant] timeout must be between %s and %s, got %s",
+			minDocsAssistantTimeout, maxDocsAssistantTimeout, d.Timeout)
+	}
+	return nil
 }
 
 func redactURL(raw string) string {

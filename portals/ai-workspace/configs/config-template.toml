@@ -289,6 +289,29 @@ controlplane_host = "localhost:9243"
 platform_gateway_versions = "[{\"version\":\"1.2\",\"latestVersion\":\"v1.2.0-rc\",\"distVersion\":\"1.2.0-rc\",\"distFolderVersion\":\"1.2.0\",\"channel\":\"LTS\"}]"
 
 
+# ---------------------------------------------------------------------------
+# Ask AI documentation assistant — optional, off unless endpoint is set. The BFF
+# answers <base>/api/docs-assistant/chat by calling this assistant server-side with
+# the API key below, so the key never reaches the browser; the SPA only learns that
+# the feature is on (APIP_AIW_DOCS_ASSISTANT_ENABLED). Questions and answers are
+# never logged.
+# ---------------------------------------------------------------------------
+# [ai_workspace.docs_assistant]
+#
+# # Assistant base URL; "chat" is appended to it. Must be https://. Empty = off.
+# endpoint = "{{ env \"APIP_AIW_DOCS_ASSISTANT_ENDPOINT\" \"\" }}"
+#
+# # Sent as the api-key header. A secret: use {{ env }} or {{ file }}, never a literal.
+# api_key = "{{ env \"APIP_AIW_DOCS_ASSISTANT_API_KEY\" \"\" }}"
+#
+# # Documentation index to answer from (the assistant's product and branch headers).
+# product = "bijira"
+# branch  = "main"
+#
+# # Upper bound for one answer, including generation time (1s to 2m).
+# timeout = "60s"
+
+
 
 # ---------------------------------------------------------------------------
 # Server-side session lifetime.

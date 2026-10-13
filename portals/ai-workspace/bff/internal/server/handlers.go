@@ -359,15 +359,35 @@ func (s *Server) serveProxy(rp *httputil.ReverseProxy, w http.ResponseWriter, r 
 		return
 	}
 
-	jwt, ok := s.tokenFromCookie(r)
+	jwt, ok := s.sessionToken(w, r)
 	if !ok {
-		writeErrorJSON(w, http.StatusUnauthorized, "NOT_AUTHENTICATED", "not authenticated")
 		return
 	}
 
-	// Refresh near-expiry OIDC access tokens before proxying. The expiry is read
-	// from the JWT itself (not the store); the store is consulted only when an
-	// actual refresh is required.
+	// Both hops authorize the forwarded token, so the exchange applies to whichever
+	// one rp targets; the Moesif hop must not fall back to the login token.
+	upstream, err := s.upstreamToken(r.Context(), jwt)
+	if err != nil {
+		slog.Warn("token exchange failed for proxied request", "err", err, "path", r.URL.Path)
+		s.writeExchangeError(w, r, err)
+		return
+	}
+
+	rp.ServeHTTP(w, proxy.WithToken(r, upstream))
+}
+
+// sessionToken returns the caller's session token, refreshing a near-expiry OIDC
+// access token first. On failure it has already written the 401, so the caller just
+// returns. It does not verify the token: the upstream that receives it does.
+func (s *Server) sessionToken(w http.ResponseWriter, r *http.Request) (string, bool) {
+	jwt, ok := s.tokenFromCookie(r)
+	if !ok {
+		writeErrorJSON(w, http.StatusUnauthorized, "NOT_AUTHENTICATED", "not authenticated")
+		return "", false
+	}
+
+	// Refresh near-expiry OIDC access tokens. The expiry is read from the JWT itself
+	// (not the store); the store is consulted only when an actual refresh is required.
 	if s.oidc != nil {
 		exp := session.ExpiryFromClaims(session.DecodeJWTClaims(jwt))
 		if needsRefreshSoon(exp) {
@@ -397,21 +417,11 @@ func (s *Server) serveProxy(rp *httputil.ReverseProxy, w http.ResponseWriter, r 
 				_ = s.store.Delete(r.Context(), jwt)
 				s.clearSessionCookie(w)
 				writeErrorJSON(w, http.StatusUnauthorized, "SESSION_EXPIRED", "session expired")
-				return
+				return "", false
 			}
 		}
 	}
-
-	// Both hops authorize the forwarded token, so the exchange applies to whichever
-	// one rp targets; the Moesif hop must not fall back to the login token.
-	upstream, err := s.upstreamToken(r.Context(), jwt)
-	if err != nil {
-		slog.Warn("token exchange failed for proxied request", "err", err, "path", r.URL.Path)
-		s.writeExchangeError(w, r, err)
-		return
-	}
-
-	rp.ServeHTTP(w, proxy.WithToken(r, upstream))
+	return jwt, true
 }
 
 // ---------------------------------------------------------------------------

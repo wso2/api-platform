@@ -120,5 +120,10 @@ func defaultConfig() *Config {
 				Mode: AuthzModeScope,
 			},
 		},
+		// Off by default (no endpoint). The timeout covers answer generation, which
+		// the assistant finishes before sending its first byte.
+		DocsAssistant: DocsAssistantConfig{
+			Timeout: 60 * time.Second,
+		},
 	}
 }
