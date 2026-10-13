@@ -18,8 +18,21 @@
 
 import { parseSpecText, serializeSpec, type SpecFormat } from '../../apis/create/utils/specText';
 
+/**
+ * How a definition is written: a REST API's OpenAPI document as JSON or YAML,
+ * or a GraphQL API's SDL, which has a single serialization.
+ */
+export type DefinitionFormat = SpecFormat | 'graphql';
+
 /** A stored definition as the editor shows it. */
-export type StoredDefinition = { format: SpecFormat; text: string };
+export type StoredDefinition = { format: DefinitionFormat; text: string };
+
+/** Whether a stored definition's content type marks it as GraphQL SDL. */
+const isGraphQLContentType = (contentType = ''): boolean => /graphql/i.test(contentType);
+
+/** An SDL as the editor shows it: as stored, or nothing when there is no text to pre-fill from. */
+export const readStoredSdl = (text: string): StoredDefinition | undefined =>
+  text.trim() ? { format: 'graphql', text } : undefined;
 
 /**
  * A stored definition's serialization: the content type the server labelled it
@@ -40,6 +53,7 @@ const formatOf = (text: string, contentType = ''): SpecFormat => {
  * treated as "nothing to pre-fill from".
  */
 export const readStoredDefinition = (text: string, contentType?: string): StoredDefinition | undefined => {
+  if (isGraphQLContentType(contentType)) return readStoredSdl(text);
   const format = formatOf(text, contentType);
   const parsed = parseSpecText(text, format);
   if (parsed.status !== 'parsed') return undefined;
@@ -47,8 +61,11 @@ export const readStoredDefinition = (text: string, contentType?: string): Stored
 };
 
 /** The definition re-printed in `format`; unchanged when it is already in it. */
-export const reformatDefinition = (definition: StoredDefinition, format: SpecFormat): string => {
-  if (definition.format === format) return definition.text;
+export const reformatDefinition = (definition: StoredDefinition, format: DefinitionFormat): string => {
+  // SDL has one serialization, and OpenAPI is never shown as SDL or back.
+  if (definition.format === format || definition.format === 'graphql' || format === 'graphql') {
+    return definition.text;
+  }
   const parsed = parseSpecText(definition.text, definition.format);
   return parsed.status === 'parsed' ? serializeSpec(parsed.spec, format) : definition.text;
 };

@@ -19,21 +19,13 @@
 package apikey
 
 import (
-	"bytes"
 	"fmt"
-	"net/url"
 	"os"
-	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/wso2/api-platform/cli/cmd/gateway/apikeycmd"
 	"github.com/wso2/api-platform/cli/internal/gateway"
 	"github.com/wso2/api-platform/cli/utils"
-)
-
-const (
-	RegenerateCmdLiteral = "regenerate"
-	RegenerateCmdExample = `# Regenerate an API key, replacing its previous value
-ap gateway graphql-api api-key regenerate --id countries-graphql-api --key-name my-production-key`
 )
 
 var (
@@ -42,12 +34,13 @@ var (
 )
 
 var regenerateCmd = &cobra.Command{
-	Use:     RegenerateCmdLiteral,
-	Short:   "Regenerate an API key for a GraphQL API",
-	Long:    "Creates a new API key value replacing the previous one. The new plaintext key is returned once in the response.",
-	Example: RegenerateCmdExample,
+	Use:   "regenerate",
+	Short: fmt.Sprintf("Regenerate an API key for a %s", apiKeyConfig.KindLabel),
+	Long:  "Creates a new API key value replacing the previous one. The new plaintext key is returned once in the response.",
+	Example: fmt.Sprintf("# Regenerate an API key, replacing its previous value\nap gateway %s api-key regenerate --id %s --key-name my-production-key",
+		apiKeyConfig.KindPathSegment, apiKeyConfig.ExampleAPIID),
 	Run: func(cmd *cobra.Command, args []string) {
-		if err := runRegenerateCommand(cmd); err != nil {
+		if err := apikeycmd.RunRegenerate(cmd, apiKeyConfig, regenerateAPIID, regenerateKeyName); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
@@ -56,33 +49,8 @@ var regenerateCmd = &cobra.Command{
 
 func init() {
 	gateway.AddSelectionFlags(regenerateCmd)
-	utils.AddStringFlag(regenerateCmd, utils.FlagID, &regenerateAPIID, "", "GraphQL API ID (required)")
+	utils.AddStringFlag(regenerateCmd, utils.FlagID, &regenerateAPIID, "", fmt.Sprintf("%s ID (required)", apiKeyConfig.KindLabel))
 	utils.AddStringFlag(regenerateCmd, utils.FlagKeyName, &regenerateKeyName, "", "Name of the API key to regenerate (required)")
 	regenerateCmd.MarkFlagRequired(utils.FlagID)
 	regenerateCmd.MarkFlagRequired(utils.FlagKeyName)
-}
-
-func runRegenerateCommand(cmd *cobra.Command) error {
-	if strings.TrimSpace(regenerateAPIID) == "" {
-		return fmt.Errorf("--%s is required", utils.FlagID)
-	}
-	if strings.TrimSpace(regenerateKeyName) == "" {
-		return fmt.Errorf("--%s is required", utils.FlagKeyName)
-	}
-
-	client, err := gateway.NewClientFromCommand(cmd)
-	if err != nil {
-		return err
-	}
-
-	// Client.Post already treats any non-2xx status as an error and returns a
-	// nil *http.Response in that case, so err == nil here always means success.
-	endpoint := fmt.Sprintf(utils.GatewayGraphQLAPIKeyRegeneratePath, url.PathEscape(regenerateAPIID), url.PathEscape(regenerateKeyName))
-	resp, err := client.Post(endpoint, bytes.NewReader([]byte("{}")))
-	if err != nil {
-		return fmt.Errorf("failed to regenerate API key: %w", err)
-	}
-
-	fmt.Println("API key regenerated successfully.")
-	return gateway.PrintJSONResponse(resp)
 }

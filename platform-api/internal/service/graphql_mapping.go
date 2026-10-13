@@ -28,7 +28,7 @@ import (
 // including the full SDL (used for Get/Create/Update responses, never for
 // list responses — see mapGraphQLAPIModelToListItem). Upstream/policy
 // conversion reuses the same generic helpers LLM/MCP already share
-// (mapUpstreamAPIToModel/mapUpstreamModelToAPI in llm.go,
+// (mapUpstreamAPIToModel/mapUpstreamConfigToDTO in llm.go,
 // mapMCPPoliciesAPIToModel/mapMCPPoliciesModelToAPI in mcp.go) since
 // GraphQL reuses model.UpstreamConfig/model.Policy unmodified.
 func mapGraphQLAPIModelToAPI(m *model.GraphQLAPI) *api.GraphQLAPI {
@@ -47,6 +47,12 @@ func mapGraphQLAPIModelToAPI(m *model.GraphQLAPI) *api.GraphQLAPI {
 		introspectionMode = &im
 	}
 
+	var schemaSource *api.GraphQLAPISchemaSource
+	if m.Configuration.SchemaSource != "" {
+		ss := api.GraphQLAPISchemaSource(m.Configuration.SchemaSource)
+		schemaSource = &ss
+	}
+
 	var subscriptionPlans *[]string
 	if len(m.Configuration.SubscriptionPlans) > 0 {
 		subscriptionPlans = &m.Configuration.SubscriptionPlans
@@ -58,13 +64,14 @@ func mapGraphQLAPIModelToAPI(m *model.GraphQLAPI) *api.GraphQLAPI {
 		Id:                utils.StringPtrIfNotEmpty(m.Handle),
 		DisplayName:       m.Name,
 		Version:           m.Version,
-		Context:           utils.ValueOrEmpty(m.Configuration.Context),
+		Context:           m.Configuration.Context,
 		ProjectId:         m.ProjectID,
 		Description:       &desc,
 		CreatedBy:         &createdBy,
 		Kind:              &kind,
 		Sdl:               &sdl,
 		IntrospectionMode: introspectionMode,
+		SchemaSource:      schemaSource,
 		Upstream:          upstream,
 		Policies:          mapMCPPoliciesModelToAPI(m.Configuration.Policies),
 		SubscriptionPlans: subscriptionPlans,
@@ -95,6 +102,12 @@ func mapGraphQLAPIModelToDetail(m *model.GraphQLAPI) *api.GraphQLAPIDetail {
 		introspectionMode = &im
 	}
 
+	var schemaSource *api.GraphQLAPIDetailSchemaSource
+	if m.Configuration.SchemaSource != "" {
+		ss := api.GraphQLAPIDetailSchemaSource(m.Configuration.SchemaSource)
+		schemaSource = &ss
+	}
+
 	var subscriptionPlans *[]string
 	if len(m.Configuration.SubscriptionPlans) > 0 {
 		subscriptionPlans = &m.Configuration.SubscriptionPlans
@@ -106,12 +119,13 @@ func mapGraphQLAPIModelToDetail(m *model.GraphQLAPI) *api.GraphQLAPIDetail {
 		Id:                utils.StringPtrIfNotEmpty(m.Handle),
 		DisplayName:       m.Name,
 		Version:           m.Version,
-		Context:           utils.ValueOrEmpty(m.Configuration.Context),
+		Context:           m.Configuration.Context,
 		ProjectId:         m.ProjectID,
 		Description:       &desc,
 		CreatedBy:         &createdBy,
 		Kind:              &kind,
 		IntrospectionMode: introspectionMode,
+		SchemaSource:      schemaSource,
 		Upstream:          upstream,
 		Policies:          mapMCPPoliciesModelToAPI(m.Configuration.Policies),
 		SubscriptionPlans: subscriptionPlans,
@@ -130,6 +144,8 @@ func mapGraphQLAPIModelToListItem(m *model.GraphQLAPI) *api.GraphQLAPIListItem {
 		return nil
 	}
 
+	kind := constants.GraphQLApi
+
 	var introspectionMode *api.GraphQLIntrospectionMode
 	if m.Configuration.IntrospectionMode != "" {
 		im := api.GraphQLIntrospectionMode(m.Configuration.IntrospectionMode)
@@ -145,6 +161,7 @@ func mapGraphQLAPIModelToListItem(m *model.GraphQLAPI) *api.GraphQLAPIListItem {
 		Context:           utils.ValueOrEmpty(m.Configuration.Context),
 		ProjectId:         m.ProjectID,
 		Description:       utils.StringPtrIfNotEmpty(m.Description),
+		Kind:              &kind,
 		IntrospectionMode: introspectionMode,
 		Upstream:          &upstream,
 		ReadOnly:          utils.BoolPtr(m.Origin == constants.OriginDP),

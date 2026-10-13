@@ -1,0 +1,5 @@
+# Force text diffing for TSX sources so a stray raw control byte (e.g. a
+# botched `\x00`-style escape typed literally instead of as text) shows up as
+# an ordinary line-level diff instead of git silently classifying the whole
+# file as binary — which is what let such a byte go unnoticed in review.
+*.tsx text

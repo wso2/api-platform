@@ -47,6 +47,10 @@ func TestMinGatewayVersionForKind(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, gwversion.MinAgentKindGatewayVersion, min)
 
+	min, ok = MinGatewayVersionForKind(constants.GraphQLApi)
+	require.True(t, ok)
+	assert.Equal(t, gwversion.MinGraphQLKindGatewayVersion, min)
+
 	min, ok = MinGatewayVersionForKind(constants.RestApi)
 	require.True(t, ok)
 	assert.Empty(t, min)
@@ -67,6 +71,12 @@ func TestEnsureKindSupported(t *testing.T) {
 		{"Agent on 1.0.0 is refused", constants.GatewayKindAgent, "1.0.0", true},
 		{"Agent on an unversioned gateway is allowed", constants.GatewayKindAgent, "", false},
 		{"Agent on a dev build is allowed", constants.GatewayKindAgent, "it-e2e", false},
+		{"GraphQL on 1.2.0 is refused", constants.GraphQLApi, "1.2.0", true},
+		{"GraphQL on 1.1.0 is refused", constants.GraphQLApi, "1.1.0", true},
+		{"GraphQL on 1.0.0 is refused", constants.GraphQLApi, "1.0.0", true},
+		{"GraphQL on an unversioned gateway is allowed", constants.GraphQLApi, "", false},
+		{"GraphQL on a dev build is allowed", constants.GraphQLApi, "it-e2e", false},
+		{"GraphQL on a date-named build is allowed", constants.GraphQLApi, "2026.09.24", false},
 		{"WebBroker on 1.1.0 is refused", constants.WebBrokerApi, "1.1.0", true},
 		{"WebBroker on 1.2.0 is allowed", constants.WebBrokerApi, "1.2.0", false},
 		{"REST on 1.0.0 is allowed", constants.RestApi, "1.0.0", false},

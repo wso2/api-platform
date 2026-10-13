@@ -29,6 +29,7 @@ import (
 	"github.com/wso2/api-platform/common/eventhub"
 	"github.com/wso2/api-platform/platform-api/api"
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
+	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/dto"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
@@ -39,9 +40,16 @@ import (
 // mockGraphQLAPIRepo is a configurable in-memory-ish fake satisfying
 // repository.GraphQLAPIRepository, mirroring the mocking style used across
 // this repo's service-layer tests (see internal/service/api_test.go).
+// nameVersionCheck records one ExistsByNameAndVersion call.
+type nameVersionCheck struct{ name, version, excludeHandle string }
+
 type mockGraphQLAPIRepo struct {
 	existsResult bool
 	existsErr    error
+
+	nameVersionExists bool
+	nameVersionErr    error
+	nameVersionChecks []nameVersionCheck
 
 	created   *model.GraphQLAPI
 	createErr error
@@ -135,6 +143,11 @@ func (m *mockGraphQLAPIRepo) Delete(handle, orgUUID string) error {
 
 func (m *mockGraphQLAPIRepo) Exists(handle, orgUUID string) (bool, error) {
 	return m.existsResult, m.existsErr
+}
+
+func (m *mockGraphQLAPIRepo) ExistsByNameAndVersion(name, version, orgUUID, excludeHandle string) (bool, error) {
+	m.nameVersionChecks = append(m.nameVersionChecks, nameVersionCheck{name, version, excludeHandle})
+	return m.nameVersionExists, m.nameVersionErr
 }
 
 func (m *mockGraphQLAPIRepo) GetAPIGatewaysWithDetails(apiUUID, orgUUID string) ([]*model.APIGatewayWithDetails, error) {
@@ -234,7 +247,7 @@ func TestGraphQLCreate_WithSDL_Success(t *testing.T) {
 
 	req := &api.CreateGraphQLAPIRequest{
 		DisplayName: "Countries GraphQL API",
-		Context:     "/countries",
+		Context:     graphQLStrPtr("/countries"),
 		Version:     "v1.0",
 		ProjectId:   "project-uuid",
 		Sdl:         graphQLStrPtr(validCountriesGraphQLSDL),
@@ -304,7 +317,7 @@ func TestGraphQLCreate_WithIntrospection_Success(t *testing.T) {
 
 	req := &api.CreateGraphQLAPIRequest{
 		DisplayName: "Introspected API",
-		Context:     "/introspected",
+		Context:     graphQLStrPtr("/introspected"),
 		Version:     "v1.0",
 		ProjectId:   "project-uuid",
 		Upstream: api.Upstream{
@@ -327,6 +340,71 @@ func TestGraphQLCreate_WithIntrospection_Success(t *testing.T) {
 	}
 	if !strings.Contains(repo.created.Configuration.SDL, "hello") {
 		t.Errorf("expected derived SDL to contain the introspected field, got: %s", repo.created.Configuration.SDL)
+	}
+}
+
+// TestGraphQLCreate_InlineIntrospectionJSON_ConvertsToSDL pins the fix for
+// ".json is an accepted SDL upload type, but nothing converts a JSON
+// introspection result to SDL" — schemaSource inline/file previously handed
+// the raw JSON straight to gqlparser.LoadSchema, which always failed on it,
+// even though ".json" is on both upload allowlists specifically for this
+// shape. The same introspection JSON fixture that already works via live
+// introspection (TestGraphQLCreate_WithIntrospection_Success) must now also
+// resolve when supplied directly as inline/file content.
+func TestGraphQLCreate_InlineIntrospectionJSON_ConvertsToSDL(t *testing.T) {
+	introspectionJSON := `{
+		"data": {
+			"__schema": {
+				"queryType": {"name": "Query"},
+				"mutationType": null,
+				"subscriptionType": null,
+				"types": [
+					{
+						"kind": "OBJECT",
+						"name": "Query",
+						"description": "",
+						"fields": [
+							{
+								"name": "hello",
+								"description": "",
+								"args": [],
+								"type": {"kind": "SCALAR", "name": "String", "ofType": null}
+							}
+						]
+					}
+				]
+			}
+		}
+	}`
+
+	repo := &mockGraphQLAPIRepo{}
+	project := &model.Project{ID: "project-uuid", OrganizationID: "org-1"}
+	svc := newGraphQLTestService(repo, project)
+
+	req := &api.CreateGraphQLAPIRequest{
+		DisplayName: "Uploaded Introspection JSON API",
+		Context:     graphQLStrPtr("/uploaded-introspection"),
+		Version:     "v1.0",
+		ProjectId:   "project-uuid",
+		Sdl:         graphQLStrPtr(introspectionJSON),
+		Upstream:    api.Upstream{Main: api.UpstreamDefinition{Url: graphQLStrPtr("https://example.com/graphql")}},
+	}
+
+	resp, err := svc.Create("org-1", "creator-uuid", req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp == nil {
+		t.Fatal("expected a response, got nil")
+	}
+	if repo.created.Configuration.IntrospectionMode != "SDL" {
+		t.Errorf("expected introspectionMode SDL (supplied directly, just JSON-shaped), got %q", repo.created.Configuration.IntrospectionMode)
+	}
+	if !strings.Contains(repo.created.Configuration.SDL, "type Query") {
+		t.Errorf("expected the converted SDL to contain a Query type, got: %s", repo.created.Configuration.SDL)
+	}
+	if !strings.Contains(repo.created.Configuration.SDL, "hello") {
+		t.Errorf("expected the converted SDL to contain the introspected field, got: %s", repo.created.Configuration.SDL)
 	}
 }
 
@@ -356,7 +434,7 @@ func TestGraphQLCreate_IntrospectionFailure_SucceedsWithEmptySchema(t *testing.T
 
 	req := &api.CreateGraphQLAPIRequest{
 		DisplayName: "Unreachable Introspection API",
-		Context:     "/unreachable",
+		Context:     graphQLStrPtr("/unreachable"),
 		Version:     "v1.0",
 		ProjectId:   "project-uuid",
 		Upstream:    api.Upstream{Main: api.UpstreamDefinition{Url: graphQLStrPtr(server.URL)}},
@@ -383,36 +461,49 @@ func TestGraphQLCreate_IntrospectionFailure_SucceedsWithEmptySchema(t *testing.T
 // introspection must both succeed with an empty schema — neither is a
 // structural problem, so neither may block the request, and the outcome
 // shouldn't depend on which cause produced it.
-func TestGraphQLCreate_SchemaResolveFailure_IdenticalShapeRegardlessOfCause(t *testing.T) {
+// TestGraphQLCreate_SchemaResolveFailure_DivergesByWhetherTextWasCallerAuthored
+// pins the intentional split Create now makes between the two resolution-quality
+// failure causes, replacing what used to be an "identical shape regardless of
+// cause" guarantee. Malformed inline SDL is text the caller directly supplied —
+// SDLErrors is populated, and that is now a 400 rather than a silently
+// schema-less API. An introspection failure is a network-layer problem with no
+// caller text to blame — SDLErrors is never populated for it (see SDLErrors'
+// doc comment), so it still succeeds with an empty schema, unchanged.
+func TestGraphQLCreate_SchemaResolveFailure_DivergesByWhetherTextWasCallerAuthored(t *testing.T) {
 	introspectionServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	defer introspectionServer.Close()
 
 	malformedSDLReq := &api.CreateGraphQLAPIRequest{
-		DisplayName: "Broken API", Context: "/broken", Version: "v1.0", ProjectId: "project-uuid",
+		DisplayName: "Broken API", Context: graphQLStrPtr("/broken"), Version: "v1.0", ProjectId: "project-uuid",
 		Sdl:      graphQLStrPtr("this is not { valid SDL at all"),
 		Upstream: api.Upstream{Main: api.UpstreamDefinition{Url: graphQLStrPtr("https://example.com/graphql")}},
 	}
 	introspectionFailureReq := &api.CreateGraphQLAPIRequest{
-		DisplayName: "Unreachable API", Context: "/unreachable", Version: "v1.0", ProjectId: "project-uuid",
+		DisplayName: "Unreachable API", Context: graphQLStrPtr("/unreachable"), Version: "v1.0", ProjectId: "project-uuid",
 		Upstream: api.Upstream{Main: api.UpstreamDefinition{Url: graphQLStrPtr(introspectionServer.URL)}},
 	}
 
 	project := &model.Project{ID: "project-uuid", OrganizationID: "org-1"}
 	sdlRepo, introspectRepo := &mockGraphQLAPIRepo{}, &mockGraphQLAPIRepo{}
-	sdlResp, sdlErr := newGraphQLTestService(sdlRepo, project).Create("org-1", "creator-uuid", malformedSDLReq)
+	_, sdlErr := newGraphQLTestService(sdlRepo, project).Create("org-1", "creator-uuid", malformedSDLReq)
 	introspectResp, introspectErr := newGraphQLTestService(introspectRepo, project).Create("org-1", "creator-uuid", introspectionFailureReq)
 
-	if sdlErr != nil || introspectErr != nil {
-		t.Fatalf("expected both to succeed, got sdlErr=%v introspectErr=%v", sdlErr, introspectErr)
+	if sdlErr == nil {
+		t.Error("expected malformed caller-authored SDL to fail creation")
 	}
-	if sdlResp == nil || introspectResp == nil {
-		t.Fatal("expected both responses to be non-nil")
+	if sdlRepo.created != nil {
+		t.Error("expected no repository write for the malformed-SDL create")
 	}
-	if sdlRepo.created.Configuration.SDL != "" || introspectRepo.created.Configuration.SDL != "" {
-		t.Errorf("expected empty SDL for both causes, got %q and %q",
-			sdlRepo.created.Configuration.SDL, introspectRepo.created.Configuration.SDL)
+	if introspectErr != nil {
+		t.Fatalf("expected the introspection-failure create to still succeed, got: %v", introspectErr)
+	}
+	if introspectResp == nil {
+		t.Fatal("expected a response for the introspection-failure create")
+	}
+	if introspectRepo.created.Configuration.SDL != "" {
+		t.Errorf("expected empty SDL for an introspection failure, got %q", introspectRepo.created.Configuration.SDL)
 	}
 }
 
@@ -424,7 +515,7 @@ func TestGraphQLCreate_DuplicateHandle_Conflict(t *testing.T) {
 	req := &api.CreateGraphQLAPIRequest{
 		Id:          graphQLStrPtr("countries-graphql-api"),
 		DisplayName: "Countries GraphQL API",
-		Context:     "/countries",
+		Context:     graphQLStrPtr("/countries"),
 		Version:     "v1.0",
 		ProjectId:   "project-uuid",
 		Sdl:         graphQLStrPtr(validCountriesGraphQLSDL),
@@ -727,6 +818,13 @@ func TestGraphQLList_NoProjectFilter_ReturnsAllAndResolvesHandles(t *testing.T) 
 		if item.ProjectId != "default-project" {
 			t.Errorf("expected ProjectId resolved to handle %q, got %q", "default-project", item.ProjectId)
 		}
+		// Regression guard: mapGraphQLAPIModelToListItem once omitted Kind
+		// entirely, so every list item silently failed any client-side
+		// filter/label keyed on it (e.g. the console's "GraphQL" API-type
+		// filter matched zero rows even though the APIs existed).
+		if item.Kind == nil || *item.Kind != constants.GraphQLApi {
+			t.Errorf("expected Kind %q, got %v", constants.GraphQLApi, item.Kind)
+		}
 	}
 }
 
@@ -768,66 +866,76 @@ func TestGraphQLList_UnknownProjectHandle_NotFound(t *testing.T) {
 // best-effort posture for the "inline" source: invalid SDL text is a
 // resolution-quality problem (like a failed introspection or sdlUrl fetch),
 // not a structural one, so it must not block creation.
-func TestGraphQLCreate_MalformedSDL_SucceedsWithEmptySchema(t *testing.T) {
+// TestGraphQLCreate_MalformedSDL_ValidationFailed pins the fix for silently
+// discarding caller-authored SDL that fails to parse: unlike a network-layer
+// resolution failure (unreachable sdlUrl, introspection down), SDLErrors is
+// only ever populated for text the caller directly supplied (see SDLErrors'
+// doc comment), so a create that would otherwise persist an empty schema
+// with no signal beyond a server-side WARN now fails loudly instead —
+// nothing is persisted, and the sdlErrors are surfaced in the error details.
+func TestGraphQLCreate_MalformedSDL_ValidationFailed(t *testing.T) {
 	repo := &mockGraphQLAPIRepo{}
 	project := &model.Project{ID: "project-uuid", OrganizationID: "org-1"}
 	svc := newGraphQLTestService(repo, project)
 
 	req := &api.CreateGraphQLAPIRequest{
 		DisplayName: "Broken API",
-		Context:     "/broken",
+		Context:     graphQLStrPtr("/broken"),
 		Version:     "v1.0",
 		ProjectId:   "project-uuid",
 		Sdl:         graphQLStrPtr("this is not { valid SDL at all"),
 		Upstream:    api.Upstream{Main: api.UpstreamDefinition{Url: graphQLStrPtr("https://example.com/graphql")}},
 	}
 
-	resp, err := svc.Create("org-1", "creator-uuid", req)
-	if err != nil {
-		t.Fatalf("expected creation to succeed despite malformed SDL, got: %v", err)
+	_, err := svc.Create("org-1", "creator-uuid", req)
+	if err == nil {
+		t.Fatal("expected creation to fail for unparseable inline SDL")
 	}
-	if resp == nil {
-		t.Fatal("expected a response, got nil")
+	if code := graphQLCatalogCode(t, err); code != apperror.ValidationFailed.Code {
+		t.Errorf("expected VALIDATION_FAILED, got %q", code)
 	}
-	if repo.created == nil {
-		t.Fatal("expected repo.Create to be called")
+	var appErr *apperror.Error
+	if !errors.As(err, &appErr) {
+		t.Fatalf("expected an *apperror.Error, got %T: %v", err, err)
 	}
-	if repo.created.Configuration.SDL != "" {
-		t.Errorf("expected empty SDL for a schema that failed validation, got %q", repo.created.Configuration.SDL)
+	details, ok := appErr.Details.(map[string]any)
+	if !ok || len(details["sdlErrors"].([]api.GraphQLSdlValidationIssue)) == 0 {
+		t.Errorf("expected sdlErrors in the error details, got %+v", appErr.Details)
+	}
+	if repo.created != nil {
+		t.Error("expected no repository write for a create that fails schema validation")
 	}
 }
 
-// TestGraphQLCreate_SDLWithNoQueryRoot_SucceedsWithEmptySchema covers the
+// TestGraphQLCreate_SDLWithNoQueryRoot_ValidationFailed covers the
 // schema.Query == nil branch in validateGraphQLSDL — syntactically valid SDL
 // that nonetheless never defines a Query root type. Distinct from the
-// malformed-syntax case above, which never reaches that check. Like any other
-// resolution-quality failure, this must not block creation.
-func TestGraphQLCreate_SDLWithNoQueryRoot_SucceedsWithEmptySchema(t *testing.T) {
+// malformed-syntax case above, which never reaches that check; same
+// caller-authored-text reasoning applies, so this must also fail loudly
+// rather than silently creating a schema-less API.
+func TestGraphQLCreate_SDLWithNoQueryRoot_ValidationFailed(t *testing.T) {
 	repo := &mockGraphQLAPIRepo{}
 	project := &model.Project{ID: "project-uuid", OrganizationID: "org-1"}
 	svc := newGraphQLTestService(repo, project)
 
 	req := &api.CreateGraphQLAPIRequest{
 		DisplayName: "No Query Root API",
-		Context:     "/no-query-root",
+		Context:     graphQLStrPtr("/no-query-root"),
 		Version:     "v1.0",
 		ProjectId:   "project-uuid",
 		Sdl:         graphQLStrPtr("type Mutation { addCountry(name: String!): String }"),
 		Upstream:    api.Upstream{Main: api.UpstreamDefinition{Url: graphQLStrPtr("https://example.com/graphql")}},
 	}
 
-	resp, err := svc.Create("org-1", "creator-uuid", req)
-	if err != nil {
-		t.Fatalf("expected creation to succeed despite a schema with no Query root type, got: %v", err)
+	_, err := svc.Create("org-1", "creator-uuid", req)
+	if err == nil {
+		t.Fatal("expected creation to fail for a schema with no Query root type")
 	}
-	if resp == nil {
-		t.Fatal("expected a response, got nil")
+	if code := graphQLCatalogCode(t, err); code != apperror.ValidationFailed.Code {
+		t.Errorf("expected VALIDATION_FAILED, got %q", code)
 	}
-	if repo.created == nil {
-		t.Fatal("expected repo.Create to be called")
-	}
-	if repo.created.Configuration.SDL != "" {
-		t.Errorf("expected empty SDL for a schema with no Query root type, got %q", repo.created.Configuration.SDL)
+	if repo.created != nil {
+		t.Error("expected no repository write for a create that fails schema validation")
 	}
 }
 
@@ -848,7 +956,7 @@ func TestGraphQLCreate_SDLTakesPrecedenceOverIntrospection(t *testing.T) {
 
 	req := &api.CreateGraphQLAPIRequest{
 		DisplayName: "SDL Precedence API",
-		Context:     "/sdl-precedence",
+		Context:     graphQLStrPtr("/sdl-precedence"),
 		Version:     "v1.0",
 		ProjectId:   "project-uuid",
 		Sdl:         graphQLStrPtr(validCountriesGraphQLSDL),
@@ -880,7 +988,7 @@ func TestGraphQLCreate_SDLAndSDLUrlMutuallyExclusive(t *testing.T) {
 
 	req := &api.CreateGraphQLAPIRequest{
 		DisplayName: "Both SDL Sources API",
-		Context:     "/both-sdl-sources",
+		Context:     graphQLStrPtr("/both-sdl-sources"),
 		Version:     "v1.0",
 		ProjectId:   "project-uuid",
 		Sdl:         graphQLStrPtr(validCountriesGraphQLSDL),
@@ -915,7 +1023,7 @@ func TestGraphQLCreate_SDLUrlFetchFailure_SucceedsWithEmptySchema(t *testing.T) 
 
 	req := &api.CreateGraphQLAPIRequest{
 		DisplayName: "SDL URL Blocked API",
-		Context:     "/sdl-url-blocked",
+		Context:     graphQLStrPtr("/sdl-url-blocked"),
 		Version:     "v1.0",
 		ProjectId:   "project-uuid",
 		SdlUrl:      graphQLStrPtr("http://127.0.0.1:9/schema.graphql"),
@@ -956,7 +1064,7 @@ func TestGraphQLCreate_SDLUrlFetchFailure_DoesNotFallBackToIntrospection(t *test
 
 	req := &api.CreateGraphQLAPIRequest{
 		DisplayName: "SDL URL Blocked With Upstream API",
-		Context:     "/sdl-url-blocked-with-upstream",
+		Context:     graphQLStrPtr("/sdl-url-blocked-with-upstream"),
 		Version:     "v1.0",
 		ProjectId:   "project-uuid",
 		SdlUrl:      graphQLStrPtr("http://127.0.0.1:9/schema.graphql"),
@@ -994,7 +1102,7 @@ func TestGraphQLCreate_MissingSDLAndUpstream_ValidationFailed(t *testing.T) {
 
 	req := &api.CreateGraphQLAPIRequest{
 		DisplayName: "No Schema Source API",
-		Context:     "/no-schema",
+		Context:     graphQLStrPtr("/no-schema"),
 		Version:     "v1.0",
 		ProjectId:   "project-uuid",
 		// Neither Sdl nor Upstream.Main.Url supplied.
@@ -1112,6 +1220,34 @@ func TestGraphQLValidateSchema_ResolutionFailure_ReturnsUnresolved(t *testing.T)
 	}
 }
 
+// TestGraphQLValidateSchema_InlineSDLFailure_ReturnsLineAnchoredErrors pins the
+// fix that lets the console show gqlparser's own parse errors in the schema
+// panel instead of a generic "could not derive a schema" message: an inline
+// SDL failure is safe to detail precisely, since it describes text the caller
+// submitted themselves, not an upstream/network outcome.
+func TestGraphQLValidateSchema_InlineSDLFailure_ReturnsLineAnchoredErrors(t *testing.T) {
+	svc := newGraphQLTestService(&mockGraphQLAPIRepo{}, nil)
+
+	req := api.ValidateGraphQLSchemaRequest{
+		Sdl: graphQLStrPtr("type Query { countries: [Country "), // unterminated brace
+	}
+
+	resolution, err := svc.ValidateSchema(req)
+	if err != nil {
+		t.Fatalf("expected no error for a resolution-quality failure, got: %v", err)
+	}
+	if len(resolution.SDLErrors) == 0 {
+		t.Fatal("expected at least one SDL error for the malformed inline SDL")
+	}
+	issue := resolution.SDLErrors[0]
+	if issue.Message == "" {
+		t.Error("expected a non-empty parser message")
+	}
+	if issue.Line == nil || *issue.Line == 0 {
+		t.Errorf("expected a non-zero line number, got %v", issue.Line)
+	}
+}
+
 // TestGraphQLValidateSchema_StructuralMismatch_ValidationFailed guards the
 // structural side of resolveSchema still applying to ValidateSchema — a
 // schemaSource/field mismatch is a real error, not a soft "unresolved"
@@ -1149,15 +1285,18 @@ func TestGraphQLValidateSchema_NoFieldsSupplied_ValidationFailed(t *testing.T) {
 	}
 }
 
-// TestGraphQLCreate_MissingContext_ValidationFailed covers the
-// displayName/version/context required-fields check with context specifically
-// omitted, matching the test-scenarios sheet's "context omitted" case.
-func TestGraphQLCreate_MissingContext_ValidationFailed(t *testing.T) {
+// TestGraphQLCreate_MissingContext_DerivesDefault covers context being
+// optional, unlike REST: unlike displayName/version (still required), an
+// omitted context succeeds and the service derives one from the handle and
+// version — mirroring the create wizard's own default (`toContext` in
+// GraphqlConfigureForm.tsx) — rather than rejecting the request.
+func TestGraphQLCreate_MissingContext_DerivesDefault(t *testing.T) {
 	repo := &mockGraphQLAPIRepo{}
 	project := &model.Project{ID: "project-uuid", OrganizationID: "org-1"}
 	svc := newGraphQLTestService(repo, project)
 
 	req := &api.CreateGraphQLAPIRequest{
+		Id:          graphQLStrPtr("countries-graphql-api"),
 		DisplayName: "Countries GraphQL API",
 		Version:     "v1.0",
 		ProjectId:   "project-uuid",
@@ -1165,15 +1304,15 @@ func TestGraphQLCreate_MissingContext_ValidationFailed(t *testing.T) {
 		// Context omitted.
 	}
 
-	_, err := svc.Create("org-1", "creator-uuid", req)
-	if err == nil {
-		t.Fatal("expected an error when context is omitted")
+	resp, err := svc.Create("org-1", "creator-uuid", req)
+	if err != nil {
+		t.Fatalf("expected omitted context to succeed with a derived default, got error: %v", err)
 	}
-	if code := graphQLCatalogCode(t, err); code != apperror.CodeCommonValidationFailed {
-		t.Errorf("expected %s, got %s", apperror.CodeCommonValidationFailed, code)
+	if resp.Context == nil || *resp.Context != "/countries-graphql-api/v1.0/graphql" {
+		t.Errorf("expected a derived context, got %v", resp.Context)
 	}
-	if repo.created != nil {
-		t.Error("expected no repository write when a required field is missing")
+	if repo.created == nil || repo.created.Configuration.Context == nil || *repo.created.Configuration.Context == "" {
+		t.Error("expected the derived context to be persisted, not left empty")
 	}
 }
 
@@ -1185,7 +1324,7 @@ func TestGraphQLCreate_ProjectRefNotFound_CrossOrgProject(t *testing.T) {
 
 	req := &api.CreateGraphQLAPIRequest{
 		DisplayName: "Countries GraphQL API",
-		Context:     "/countries",
+		Context:     graphQLStrPtr("/countries"),
 		Version:     "v1.0",
 		ProjectId:   "project-uuid",
 		Sdl:         graphQLStrPtr(validCountriesGraphQLSDL),
@@ -1229,7 +1368,7 @@ func TestGraphQLUpdate_Success(t *testing.T) {
 }`
 	req := &api.GraphQLAPI{
 		DisplayName: "Countries GraphQL API v2",
-		Context:     "/countries",
+		Context:     graphQLStrPtr("/countries"),
 		Version:     "v1.1",
 		Sdl:         graphQLStrPtr(updatedSDL),
 		Upstream:    api.Upstream{Main: api.UpstreamDefinition{Url: graphQLStrPtr("https://example.com/graphql")}},
@@ -1262,6 +1401,61 @@ func TestGraphQLUpdate_Success(t *testing.T) {
 	}
 }
 
+// TestGraphQLUpdate_EndpointOnlyEdit_PreservesUpstreamAuth guards an endpoint-URL edit
+// from the console, which round-trips the GET response (auth.value redacted) back into
+// the PUT. Update used to map req.Upstream straight onto the model, silently wiping the
+// stored credential; it must now be backfilled from the existing model, as REST does.
+func TestGraphQLUpdate_EndpointOnlyEdit_PreservesUpstreamAuth(t *testing.T) {
+	stored := &model.GraphQLAPI{
+		ID:             "some-uuid",
+		Handle:         "countries-graphql-api",
+		OrganizationID: "org-1",
+		ProjectID:      "project-uuid",
+		Origin:         "control_plane",
+		Configuration: model.GraphQLAPIConfig{
+			SDL: validCountriesGraphQLSDL,
+			Upstream: model.UpstreamConfig{
+				Main: &model.UpstreamEndpoint{
+					URL:  "https://countries.example.com/graphql",
+					Auth: &model.UpstreamAuth{Type: "apiKey", Header: "X-Api-Key", Value: "super-secret-main-credential"},
+				},
+			},
+		},
+	}
+	repo := &mockGraphQLAPIRepo{
+		getByHandleFunc: func(handle, orgUUID string) (*model.GraphQLAPI, error) {
+			return stored, nil
+		},
+	}
+	svc := newGraphQLTestService(repo, nil)
+
+	authType := api.UpstreamAuthType("apiKey")
+	req := &api.GraphQLAPI{
+		DisplayName: "Countries GraphQL API",
+		Context:     graphQLStrPtr("/countries"),
+		Version:     "v1.0",
+		Sdl:         graphQLStrPtr(validCountriesGraphQLSDL),
+		Upstream: api.Upstream{Main: api.UpstreamDefinition{
+			Url:  graphQLStrPtr("https://countries-v2.example.com/graphql"),
+			Auth: &api.UpstreamAuth{Type: &authType, Header: graphQLStrPtr("X-Api-Key")}, // value redacted on GET
+		}},
+	}
+
+	if _, err := svc.Update("org-1", "countries-graphql-api", "updater-uuid", req); err != nil {
+		t.Fatalf("Update failed: %v", err)
+	}
+	if repo.updated == nil {
+		t.Fatal("expected the repository Update to be called")
+	}
+	main := repo.updated.Configuration.Upstream.Main
+	if main == nil || main.URL != "https://countries-v2.example.com/graphql" {
+		t.Fatalf("expected the new endpoint URL to be stored, got %+v", main)
+	}
+	if main.Auth == nil || main.Auth.Value != "super-secret-main-credential" {
+		t.Errorf("expected the stored upstream credential to be preserved, got %+v", main.Auth)
+	}
+}
+
 // TestGraphQLUpdate_IDMismatch_400 pins Update's body-vs-path handle guard
 // (graphql_api.go: "if req.Id != nil && *req.Id != "" && *req.Id != handle"),
 // which had no test at all despite being a real, already-shipped check —
@@ -1283,7 +1477,7 @@ func TestGraphQLUpdate_IDMismatch_400(t *testing.T) {
 	req := &api.GraphQLAPI{
 		Id:          graphQLStrPtr("a-different-handle"),
 		DisplayName: "Countries GraphQL API",
-		Context:     "/countries",
+		Context:     graphQLStrPtr("/countries"),
 		Version:     "v1.0",
 		Sdl:         graphQLStrPtr(validCountriesGraphQLSDL),
 		Upstream:    api.Upstream{Main: api.UpstreamDefinition{Url: graphQLStrPtr("https://example.com/graphql")}},
@@ -1356,7 +1550,7 @@ func TestGraphQLUpdate_ReIntrospect_RefreshesSchema(t *testing.T) {
 
 	req := &api.GraphQLAPI{
 		DisplayName: "Countries GraphQL API",
-		Context:     "/countries",
+		Context:     graphQLStrPtr("/countries"),
 		Version:     "v1.0",
 		Upstream:    api.Upstream{Main: api.UpstreamDefinition{Url: graphQLStrPtr(server.URL)}},
 	}
@@ -1401,7 +1595,7 @@ func TestGraphQLUpdate_ReIntrospectFails_PreservesExistingSchema(t *testing.T) {
 
 	req := &api.GraphQLAPI{
 		DisplayName: "Countries GraphQL API",
-		Context:     "/countries",
+		Context:     graphQLStrPtr("/countries"),
 		Version:     "v1.0",
 		Upstream:    api.Upstream{Main: api.UpstreamDefinition{Url: graphQLStrPtr(server.URL)}},
 	}
@@ -1441,7 +1635,7 @@ func TestGraphQLUpdate_MalformedSDL_PreservesExistingSchema(t *testing.T) {
 
 	req := &api.GraphQLAPI{
 		DisplayName: "Countries GraphQL API",
-		Context:     "/countries",
+		Context:     graphQLStrPtr("/countries"),
 		Version:     "v1.0",
 		Sdl:         graphQLStrPtr("this is not { valid SDL at all"),
 		Upstream:    api.Upstream{Main: api.UpstreamDefinition{Url: graphQLStrPtr("https://example.com/graphql")}},
@@ -1476,7 +1670,7 @@ func TestGraphQLUpdate_SDLWithNoQueryRoot_PreservesExistingSchema(t *testing.T) 
 
 	req := &api.GraphQLAPI{
 		DisplayName: "Countries GraphQL API",
-		Context:     "/countries",
+		Context:     graphQLStrPtr("/countries"),
 		Version:     "v1.0",
 		Sdl:         graphQLStrPtr("type Mutation { addCountry(name: String!): String }"),
 		Upstream:    api.Upstream{Main: api.UpstreamDefinition{Url: graphQLStrPtr("https://example.com/graphql")}},
@@ -1515,7 +1709,7 @@ func TestGraphQLUpdate_SDLAndSDLUrlMutuallyExclusive(t *testing.T) {
 
 	req := &api.GraphQLAPI{
 		DisplayName: "Countries GraphQL API",
-		Context:     "/countries",
+		Context:     graphQLStrPtr("/countries"),
 		Version:     "v1.0",
 		Sdl:         graphQLStrPtr(validCountriesGraphQLSDL),
 		SdlUrl:      graphQLStrPtr("https://example.com/schema.graphql"),
@@ -1552,7 +1746,7 @@ func TestGraphQLUpdate_SDLUrlFetchFailure_PreservesExistingSchema(t *testing.T) 
 
 	req := &api.GraphQLAPI{
 		DisplayName: "Countries GraphQL API",
-		Context:     "/countries",
+		Context:     graphQLStrPtr("/countries"),
 		Version:     "v1.0",
 		SdlUrl:      graphQLStrPtr("http://127.0.0.1:9/schema.graphql"),
 	}
@@ -1565,6 +1759,86 @@ func TestGraphQLUpdate_SDLUrlFetchFailure_PreservesExistingSchema(t *testing.T) 
 	}
 	if repo.updated.Configuration.SDL != validCountriesGraphQLSDL {
 		t.Errorf("expected the previously-stored SDL to be preserved, got: %q", repo.updated.Configuration.SDL)
+	}
+}
+
+// TestGraphQLUpdate_ResupplyInlineSchemaSource_MetadataOnlyEdit_SkipsIntrospection
+// pins the fix for schemaSource not being persisted/echoed back: a caller
+// editing only metadata (displayName here) on an inline-sourced API resupplies
+// schemaSource="inline" plus the unchanged sdl — exactly what GraphQLAPIDetail
+// now lets a caller read back and resupply — and Update must resolve that
+// through the SDL path, leaving Configuration.SDL/IntrospectionMode/
+// SchemaSource unchanged and never touching upstream.main.url at all. Before
+// this fix there was nothing faithful to resupply, so a caller either forced
+// "introspection" (silently re-deriving the schema from upstream, or 400ing
+// if upstream isn't a literal reachable URL) or omitted schemaSource entirely
+// (inferring "introspection" by default) — both wrong for a schema that was
+// never meant to be introspected.
+func TestGraphQLUpdate_ResupplyInlineSchemaSource_MetadataOnlyEdit_SkipsIntrospection(t *testing.T) {
+	introspectionCalls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		introspectionCalls++
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	repo := &mockGraphQLAPIRepo{}
+	project := &model.Project{ID: "project-uuid", OrganizationID: "org-1"}
+	svc := newGraphQLTestService(repo, project)
+
+	createSchemaSource := api.CreateGraphQLAPIRequestSchemaSourceInline
+	createReq := &api.CreateGraphQLAPIRequest{
+		DisplayName:  "Countries GraphQL API",
+		Context:      graphQLStrPtr("/countries"),
+		Version:      "v1.0",
+		ProjectId:    "project-uuid",
+		SchemaSource: &createSchemaSource,
+		Sdl:          graphQLStrPtr(validCountriesGraphQLSDL),
+		Upstream: api.Upstream{
+			Main: api.UpstreamDefinition{Url: graphQLStrPtr(server.URL)},
+		},
+	}
+	if _, err := svc.Create("org-1", "creator-uuid", createReq); err != nil {
+		t.Fatalf("unexpected error on create: %v", err)
+	}
+	if repo.created.Configuration.SchemaSource != "inline" {
+		t.Fatalf("expected the created API to persist schemaSource inline, got %q", repo.created.Configuration.SchemaSource)
+	}
+	stored := repo.created
+
+	repo.getByHandleFunc = func(handle, orgUUID string) (*model.GraphQLAPI, error) {
+		return stored, nil
+	}
+
+	updateSchemaSource := api.GraphQLAPISchemaSourceInline
+	updateReq := &api.GraphQLAPI{
+		DisplayName:  "Countries GraphQL API (renamed)",
+		Context:      graphQLStrPtr("/countries"),
+		Version:      "v1.0",
+		SchemaSource: &updateSchemaSource,
+		Sdl:          graphQLStrPtr(validCountriesGraphQLSDL),
+		Upstream: api.Upstream{
+			Main: api.UpstreamDefinition{Url: graphQLStrPtr(server.URL)},
+		},
+	}
+	if _, err := svc.Update("org-1", stored.Handle, "updater-uuid", updateReq); err != nil {
+		t.Fatalf("unexpected error on update: %v", err)
+	}
+
+	if introspectionCalls != 0 {
+		t.Errorf("expected no introspection call for a resupplied inline schemaSource, got %d", introspectionCalls)
+	}
+	if repo.updated.Configuration.SDL != validCountriesGraphQLSDL {
+		t.Errorf("expected Configuration.SDL to remain unchanged, got %q", repo.updated.Configuration.SDL)
+	}
+	if repo.updated.Configuration.IntrospectionMode != "SDL" {
+		t.Errorf("expected Configuration.IntrospectionMode to remain SDL, got %q", repo.updated.Configuration.IntrospectionMode)
+	}
+	if repo.updated.Configuration.SchemaSource != "inline" {
+		t.Errorf("expected Configuration.SchemaSource to remain inline, got %q", repo.updated.Configuration.SchemaSource)
+	}
+	if repo.updated.Name != "Countries GraphQL API (renamed)" {
+		t.Errorf("expected the displayName edit to still apply, got %q", repo.updated.Name)
 	}
 }
 
@@ -1585,7 +1859,7 @@ func TestGraphQLUpdate_DPOriginated_Blocked(t *testing.T) {
 
 	req := &api.GraphQLAPI{
 		DisplayName: "Countries GraphQL API",
-		Context:     "/countries",
+		Context:     graphQLStrPtr("/countries"),
 		Version:     "v1.0",
 		Sdl:         graphQLStrPtr(validCountriesGraphQLSDL),
 		Upstream:    api.Upstream{Main: api.UpstreamDefinition{Url: graphQLStrPtr("https://example.com/graphql")}},
