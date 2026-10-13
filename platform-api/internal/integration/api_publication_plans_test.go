@@ -48,7 +48,7 @@ func (p *planSyncRecorder) CreateMissingPlans(ctx context.Context, _ *model.APIP
 	return p.plansErr
 }
 
-func (p *planSyncRecorder) Publish(_ context.Context, _ *model.APIPortal, _ string, _ *model.Publication, _ *model.PublicationContent) error {
+func (p *planSyncRecorder) Publish(_ context.Context, _ *model.APIPortal, _ string, _ string, _ *model.Publication, _ *model.PublicationContent) error {
 	p.events = append(p.events, "publish")
 	return nil
 }
