@@ -281,6 +281,48 @@ func TestArtifactImport_CreateGraphQLAPI(t *testing.T) {
 	}
 }
 
+func TestArtifactImport_RestAPIFlatOperationsPreserved(t *testing.T) {
+	d := setupImportTest(t)
+
+	req := restImportRequest("11111111-1111-1111-1111-111111111112", "flat-ops-api", "Flat Ops API")
+	req.Configuration.Spec["operations"] = []interface{}{
+		map[string]interface{}{"method": "get", "path": "/weather/{city}"},
+		map[string]interface{}{
+			"method": "POST",
+			"path":   "/alerts",
+			"policies": []interface{}{
+				map[string]interface{}{"name": "set-headers", "version": "v1"},
+			},
+		},
+	}
+
+	resp, err := d.svc.Import(importTestOrgID, importTestGatewayID, req)
+	if err != nil {
+		t.Fatalf("Import() error = %v", err)
+	}
+
+	api, err := d.apiRepo.GetAPIByUUID(resp.ID, importTestOrgID)
+	if err != nil || api == nil {
+		t.Fatalf("GetAPIByUUID returned (%v, %v)", api, err)
+	}
+	ops := api.Configuration.Operations
+	if len(ops) != 2 {
+		t.Fatalf("stored %d operations, want 2", len(ops))
+	}
+	want := []struct{ method, path string }{{"GET", "/weather/{city}"}, {"POST", "/alerts"}}
+	for i, w := range want {
+		if ops[i].Request == nil {
+			t.Fatalf("operation %d has nil request", i)
+		}
+		if ops[i].Request.Method != w.method || ops[i].Request.Path != w.path {
+			t.Errorf("operation %d = (%q, %q), want (%q, %q)", i, ops[i].Request.Method, ops[i].Request.Path, w.method, w.path)
+		}
+	}
+	if p := ops[1].Request.Policies; len(p) != 1 || p[0].Name != "set-headers" || p[0].Version != "v1" {
+		t.Errorf("operation 1 policies = %+v, want [set-headers v1]", p)
+	}
+}
+
 func TestArtifactImport_UnsupportedKind(t *testing.T) {
 	d := setupImportTest(t)
 	req := restImportRequest("22222222-2222-2222-2222-222222222222", "x", "X")
