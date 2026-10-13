@@ -1033,4 +1033,16 @@ rejectRetiredAuthKeys(interpolatedTomlConfig.auth);
 validateAuthorizationConfig(config);
 validateKeyManagers(config);
 
+/** Surfaces webhooks.delivery.tls_skip_verify in the startup log whenever it is on. */
+function warnWebhookDeliveryTlsSkip(cfg) {
+    if (cfg.webhooks?.delivery?.tlsSkipVerify === true) {
+        process.stderr.write(
+            '[WARN] webhooks.delivery.tls_skip_verify = true: webhook deliveries do not verify ' +
+            "the subscriber's TLS certificate. Development only.\n"
+        );
+    }
+}
+
+warnWebhookDeliveryTlsSkip(config);
+
 module.exports = { config, KNOWN_ARTIFACT_TYPES, AUTHORIZATION_MODES, ORG_HANDLE_PATTERN, RESERVED_ORG_HANDLES };
