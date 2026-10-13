@@ -286,7 +286,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	artifactDefinitions := service.NewArtifactDefinitions(
 		service.NewRestAPIDefinition(apiRepo, apiUtil),
 		service.NewMCPProxyDefinition(mcpProxyRepo, &utils.MCPUtils{}),
-		service.NewLLMProxyDefinition(llmProxyRepo),
+		service.NewLLMProxyDefinition(llmProxyRepo, llmProviderRepo, llmTemplateRepo),
 		service.NewLLMProviderDefinition(llmProviderRepo, llmTemplateRepo),
 		service.NewAgentProxyDefinition(agentProxyRepo, &utils.AgentProxyUtils{}),
 		service.NewGraphQLAPIDefinition(graphqlAPIRepo),
@@ -447,6 +447,11 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	llmProviderService.SetSecretService(secretService)
 	llmProviderDeploymentService.SetSecretService(secretService)
 	llmProxyService.SetSecretService(secretService)
+	// A provider cannot be deleted while a proxy still references it in either
+	// role, and a proxy's inbound interface must resolve to a real template.
+	// Both need a repository the constructors don't take.
+	llmProviderService.SetProxyRepository(llmProxyRepo)
+	llmProxyService.SetTemplateRepository(llmTemplateRepo)
 	mcpProxyService.WithSecretService(secretService)
 	agentProxyService.WithSecretService(secretService)
 	apiService.SetSecretService(secretService)
