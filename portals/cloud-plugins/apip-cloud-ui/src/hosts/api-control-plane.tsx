@@ -44,7 +44,6 @@ import type { CloudHostPort } from '../../../../api-control-plane/src/hostPort';
 import { routes } from '../../../../api-control-plane/src/routes/paths';
 import { useConsoleScope } from '../../../../api-control-plane/src/scope/ConsoleScopeContext';
 import { ScopeGate } from '../../../../api-control-plane/src/scope/ScopeGate';
-import { useConsoleScope } from '../../../../api-control-plane/src/scope/ConsoleScopeContext';
 import { defineCloudPlugin, getCloudExtensions, type CloudPluginFeature } from '../plugin';
 import { filterExtensionsForRuntime } from '../runtimeFlags';
 import cloudLogoDark from '../assets/logos/apiplatform_white.svg';
@@ -148,24 +147,6 @@ const observabilityLogsPath = (orgHandle: string) =>
  * (Metrics, Alerts) in place and replaces only its Logs page, through
  * `PAGE_API_OBSERVABILITY_LOGS_SLOT`.
  */
-
-/**
- * The `deploy` override's render: `AppPage` only wraps the scope picker, not
- * `DeployFeature` itself. `DeployFeature`'s own page already carries its own
- * `PageContent` padding (shared with the AI Workspace host, which renders it
- * with no `AppPage`/`ScopeGate` of its own) — wrapping it here too would nest
- * two padded containers. Checking scope ourselves, rather than always wrapping
- * `ScopeGate` in `AppPage`, is what keeps the padding singular either way.
- */
-function ApiDeployPage({ port }: { port: CloudHostPort }) {
-  const { isApiScope } = useConsoleScope();
-  const gated = (
-    <ScopeGate prompt="Deployments are made for a single API." requires="api" to={routes.apiDeploy}>
-      <DeployFeature port={port} />
-    </ScopeGate>
-  );
-  return isApiScope ? gated : <AppPage>{gated}</AppPage>;
-}
 
 export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[] = [
   defineCloudPlugin({
