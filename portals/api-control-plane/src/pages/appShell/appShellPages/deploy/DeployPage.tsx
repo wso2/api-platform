@@ -180,9 +180,11 @@ function Deploy() {
       </PageTitle>
 
       {readOnly && (
-        <Alert severity="info" sx={{ mb: 3 }}>
-          <FormattedMessage {...messages.gatewayManaged} />
-        </Alert>
+        <Box sx={{ pb: 1, pt: 3 }}>
+          <Alert severity="info">
+            <FormattedMessage {...messages.gatewayManaged} />
+          </Alert>
+        </Box>
       )}
 
       {sortedGateways.length === 0 ? (

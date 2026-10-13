@@ -27,6 +27,8 @@ export type EnvironmentCardProps = {
   environment: Environment;
   nextEnvironment?: Environment;
   busy: boolean;
+  /** Gateway-created API: Promote and each gateway's Stop are disabled. */
+  readOnly?: boolean;
   /** Whether this artifact's deployments carry a backend URL worth showing per gateway. */
   takesEndpoint: boolean;
   onPromoteClick: () => void;
@@ -45,6 +47,7 @@ const EnvironmentCard: FC<EnvironmentCardProps> = ({
   environment,
   nextEnvironment,
   busy,
+  readOnly = false,
   takesEndpoint,
   onPromoteClick,
   onStopGateway,
@@ -73,6 +76,8 @@ const EnvironmentCard: FC<EnvironmentCardProps> = ({
 
   const promoteDisabledReason = !nextEnvironment
     ? ''
+    : readOnly
+      ? 'This API was created from a gateway, which manages its deployments.'
     : !hasBuildToPromote
       ? `Nothing is deployed in ${environment.name} to promote. Deploy here first.`
       : activeGatewayCount(nextEnvironment.gateways) === 0
@@ -159,6 +164,7 @@ const EnvironmentCard: FC<EnvironmentCardProps> = ({
                 gateway={gateway}
                 environmentName={environment.name}
                 busy={busy}
+                readOnly={readOnly}
                 showEndpointUrl={takesEndpoint}
                 onStop={() => onStopGateway(gateway.id)}
               />
@@ -176,7 +182,7 @@ const EnvironmentCard: FC<EnvironmentCardProps> = ({
                   fullWidth
                   variant="contained"
                   startIcon={<MoveRight size={16} />}
-                  disabled={!canPromote || busy}
+                  disabled={readOnly || !canPromote || busy}
                   onClick={onPromoteClick}
                 >
                   Promote to {nextEnvironment.name}

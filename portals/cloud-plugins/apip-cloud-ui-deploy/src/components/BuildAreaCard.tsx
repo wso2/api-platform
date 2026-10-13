@@ -50,6 +50,8 @@ export type BuildAreaCardProps = {
    */
   undeletableBuilds: Record<string, string>;
   busy: boolean;
+  /** Gateway-created API: Deploy and Build and deploy are disabled. */
+  readOnly?: boolean;
   /** Opens deployment using an existing build, or creates a build when omitted. */
   onDeployClick: (buildId?: string, createBuild?: boolean) => void;
   /**
@@ -71,6 +73,7 @@ const BuildAreaCard: FC<BuildAreaCardProps> = ({
   targetEnvironment,
   undeletableBuilds,
   busy,
+  readOnly = false,
   onDeployClick,
   onDeleteBuild,
 }) => {
@@ -81,10 +84,13 @@ const BuildAreaCard: FC<BuildAreaCardProps> = ({
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
   const latestBuild = builds[0] ?? null;
   const visibleBuilds = builds.slice(0, VISIBLE_BUILD_COUNT);
-  const canDeploy = activeGatewayCount(targetEnvironment.gateways) > 0;
-  const deployDisabledReason = canDeploy
-    ? ''
-    : `All gateways in ${targetEnvironment.name} are inactive. Activate a gateway before deploying.`;
+  const hasActiveGateway = activeGatewayCount(targetEnvironment.gateways) > 0;
+  const canDeploy = !readOnly && hasActiveGateway;
+  const deployDisabledReason = readOnly
+    ? 'This API was created from a gateway, which manages its deployments.'
+    : hasActiveGateway
+      ? ''
+      : `All gateways in ${targetEnvironment.name} are inactive. Activate a gateway before deploying.`;
 
   const openDeployMenu = (event: MouseEvent<HTMLButtonElement>) => {
     setDeployMenuAnchor(event.currentTarget);

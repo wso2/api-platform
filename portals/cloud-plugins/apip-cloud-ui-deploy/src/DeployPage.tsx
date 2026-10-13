@@ -17,7 +17,7 @@
  */
 
 import { Fragment, useState, type FC } from 'react';
-import { Box, PageContent, PageTitle, Typography } from '@wso2/oxygen-ui';
+import { Alert, Box, PageContent, PageTitle, Typography } from '@wso2/oxygen-ui';
 import BuildAreaCard from './components/BuildAreaCard';
 import EnvironmentCard from './components/EnvironmentCard';
 import PipelineConnector from './components/PipelineConnector';
@@ -38,6 +38,11 @@ export type DeployPageProps = {
    * per-gateway to ask for.
    */
   takesEndpoint: boolean;
+  /**
+   * A gateway-created API. Its pipeline is shown, but deploying, promoting and
+   * stopping are the gateway's to manage, so every such action is disabled.
+   */
+  readOnly?: boolean;
   busy: boolean;
   /**
    * Deploys to `target`; `from` is set when this is a promotion. Every gateway
@@ -73,6 +78,7 @@ const DeployPage: FC<DeployPageProps> = ({
   builds,
   apiEndpointUrl,
   takesEndpoint,
+  readOnly = false,
   busy,
   onDeploy,
   onStopGateway,
@@ -97,6 +103,13 @@ const DeployPage: FC<DeployPageProps> = ({
       <PageTitle sx={{ mb: 2, flexShrink: 0 }}>
         <PageTitle.Header>Deploy</PageTitle.Header>
       </PageTitle>
+
+      {readOnly && (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          This API was created from a gateway. You can view its deployments, but deploy,
+          promote and stop actions are managed by the gateway and are unavailable here.
+        </Alert>
+      )}
 
       {environments.length === 0 ? (
         <Box
@@ -154,6 +167,7 @@ const DeployPage: FC<DeployPageProps> = ({
               targetEnvironment={environments[0]}
               undeletableBuilds={undeletableBuildReasons(environments)}
               busy={busy}
+              readOnly={readOnly}
               onDeployClick={(buildId, createBuild) =>
                 setDialog({ targetIndex: 0, buildId, createBuild })
               }
@@ -167,6 +181,7 @@ const DeployPage: FC<DeployPageProps> = ({
                   environment={environment}
                   nextEnvironment={environments[index + 1]}
                   busy={busy}
+                  readOnly={readOnly}
                   takesEndpoint={takesEndpoint}
                   onPromoteClick={() =>
                     setDialog({ targetIndex: index + 1, sourceIndex: index })

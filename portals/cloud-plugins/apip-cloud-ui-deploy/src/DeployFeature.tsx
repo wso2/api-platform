@@ -62,6 +62,8 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port, kind = 'RestApi', artifac
   const [environments, setEnvironments] = useState<Environment[]>([]);
   const [builds, setBuilds] = useState<Build[]>([]);
   const [apiEndpointUrl, setApiEndpointUrl] = useState<string | undefined>(undefined);
+  // A gateway-created API: its deployments are shown, but the gateway owns them.
+  const [readOnly, setReadOnly] = useState(false);
   // Whether this kind's deployments carry a backend URL at all. A REST API's does;
   // an MCP server's and an LLM proxy's upstream belongs to the artifact, so the form
   // neither asks for one nor sends one.
@@ -113,7 +115,16 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port, kind = 'RestApi', artifac
   // so failing to read it must leave the rest of the page working.
   useEffect(() => {
     if (!client) return;
-    void client.readApiEndpointUrl().then(setApiEndpointUrl, () => setApiEndpointUrl(undefined));
+    void client.readApi().then(
+      (api) => {
+        setApiEndpointUrl(api.endpointUrl);
+        setReadOnly(api.readOnly);
+      },
+      () => {
+        setApiEndpointUrl(undefined);
+        setReadOnly(false);
+      }
+    );
   }, [client]);
 
   // A deployment settles asynchronously once its gateway acknowledges, so poll
@@ -256,6 +267,7 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port, kind = 'RestApi', artifac
       builds={builds}
       apiEndpointUrl={apiEndpointUrl}
       takesEndpoint={takesEndpoint}
+      readOnly={readOnly}
       busy={busy}
       onDeploy={handleDeploy}
       onStopGateway={handleStop}
