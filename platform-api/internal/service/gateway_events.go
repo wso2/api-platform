@@ -27,9 +27,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/wso2/api-platform/common/eventhub"
 
-	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/dto"
-	"github.com/wso2/api-platform/platform-api/internal/gatewaytranslator/gwversion"
+	"github.com/wso2/api-platform/platform-api/internal/gatewaytranslator"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 )
 
@@ -277,38 +276,20 @@ func (s *GatewayEventsService) BroadcastAPIKeyUpdatedEventFor(gw *model.APIGatew
 }
 
 // KeyEventActor returns the user id to stamp on an API key revoke/update event
-// for a gateway that reported gatewayVersion.
-//
-// platform-api decides who may revoke or update a key (the creator, a holder
-// of ap:api_key:all:manage, or a trusted origin) before broadcasting, and
-// gateways from gwversion.MinTrustedKeyEventsGatewayVersion apply the event on
-// that authority. Older releases re-check ownership themselves: the event's
-// user id has to equal the created_by they stored from the apikey.created
-// event, and an event carries no roles, so no caller is ever an admin there.
-// For those gateways the event is stamped with what they hold: the creator's
-// identity for a key created here (the create event carried the creator's
-// resolved sub), and the empty id for a key the migration brought over, which
-// Platform API v1 created on the gateway without a creator. Otherwise the
-// gateway drops every revocation by anyone but the creator, and every
-// revocation of a migrated key, until its next full key resync.
+// for a gateway that reported gatewayVersion: it resolves the key creator's
+// IdP subject and leaves the decision to gatewaytranslator.KeyEventActor, which
+// knows what each gateway release expects.
 func (s *GatewayEventsService) KeyEventActor(gatewayVersion, keyCreatedBy, userId string) string {
-	if !gwversion.RechecksKeyEventOwnership(gatewayVersion) {
-		return userId
-	}
-	if keyCreatedBy == "" {
-		return ""
-	}
-	if s.identity != nil {
+	creatorSub := ""
+	if keyCreatedBy != "" && s.identity != nil {
 		sub, err := s.identity.SubForUUID(keyCreatedBy)
 		if err != nil {
-			s.slogger.Error("Failed to resolve API key creator for a legacy gateway key event; sending the caller", "error", err)
-			return userId
-		}
-		if sub == constants.MigrationActorSub {
-			return ""
+			s.slogger.Error("Failed to resolve the API key creator for a gateway key event", "error", err)
+		} else {
+			creatorSub = sub
 		}
 	}
-	return keyCreatedBy
+	return gatewaytranslator.KeyEventActor(gatewayVersion, keyCreatedBy, creatorSub, userId)
 }
 
 // BroadcastApplicationUpdatedEvent sends an application updated event to target gateway.

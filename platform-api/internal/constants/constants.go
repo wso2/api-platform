@@ -156,10 +156,16 @@ const AdminRole = "admin"
 // a user whose mapping was removed.
 const DeletedUser = "deleted_user"
 
-// MigrationActorSub is the idp_id the v1→v2 migration client seeds for its
-// synthetic actor, the created_by of every row it brings over that had no v1
-// creator. A creator that resolves to it marks a migrated row.
-const MigrationActorSub = "platform-api-migration"
+// MigrationActorSub is the IdP subject (user_idp_references.idp_id) of the
+// synthetic user the v1→v2 migration client acts as: it seeds the row under
+// this subject and stamps that user as created_by / updated_by / performed_by
+// on every row it writes (organizations, gateways, artifacts, API keys,
+// deployments, deployment status, mappings, secrets), so audit fields render
+// it, the reverse migration maps it back to v1's empty creator, and
+// platform-api recognises a migrated row by a creator that resolves to it
+// (gatewaytranslator.KeyEventActor). Namespaced so no IdP can issue it as a
+// real subject.
+const MigrationActorSub = "system:platform-api-migration"
 
 // Deployment limit constants
 const (

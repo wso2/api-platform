@@ -26,39 +26,21 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/model"
 )
 
-// Gateways below 1.2.0 apply an apikey.revoked / apikey.updated event only when
-// its user id equals the created_by they stored from the create event; newer
-// releases trust the control plane. KeyEventActor must therefore stamp the
-// creator's identity (or the empty id Platform API v1 wrote for migrated keys)
-// on events to old gateways, and the authorized caller otherwise.
-func TestKeyEventActor(t *testing.T) {
-	svc := NewGatewayEventsService(&capturingEventHub{}, newTestIdentityService(), newTestLogger())
-	cases := []struct {
-		name, version, createdBy, caller, want string
-	}{
-		{"1.2.0 trusts the platform: caller as is", "1.2.0", "creator-1", "admin-1", "admin-1"},
-		{"current build (no version yet): caller as is", "", "creator-1", "admin-1", "admin-1"},
-		{"STS build is a current build", "2026.09.24", "creator-1", "admin-1", "admin-1"},
-		{"1.1.0: the key's creator, whoever revokes", "1.1.0", "creator-1", "admin-1", "creator-1"},
-		{"1.0.0: the creator revoking their own key", "1.0.0", "creator-1", "creator-1", "creator-1"},
-		{"1.1.0: migrated key (creator is the migration actor) -> empty id", "1.1.0", constants.MigrationActorSub, "admin-1", ""},
-		{"1.1.0: key with no creator -> empty id", "1.1.0", "", "admin-1", ""},
+// The service resolves the creator through the identity service before the
+// translator decides (gatewaytranslator.KeyEventActor has the version table):
+// a creator that resolves to the migration actor yields the empty id, and
+// without an identity service the creator id is still sent, never the caller.
+func TestKeyEventActor_ResolvesTheCreator(t *testing.T) {
+	withIdentity := NewGatewayEventsService(&capturingEventHub{}, newTestIdentityService(), newTestLogger())
+	if got := withIdentity.KeyEventActor("1.1.0", constants.MigrationActorSub, "admin-1"); got != "" {
+		t.Fatalf("migrated key: got %q, want the empty id", got)
 	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := svc.KeyEventActor(tc.version, tc.createdBy, tc.caller); got != tc.want {
-				t.Fatalf("KeyEventActor(%q, %q, %q) = %q, want %q", tc.version, tc.createdBy, tc.caller, got, tc.want)
-			}
-		})
+	if got := withIdentity.KeyEventActor("1.1.0", "creator-1", "admin-1"); got != "creator-1" {
+		t.Fatalf("own key: got %q, want creator-1", got)
 	}
-}
-
-// Without an identity service a migrated key cannot be told apart; the
-// creator id is still sent rather than the caller.
-func TestKeyEventActor_NoIdentityService(t *testing.T) {
-	svc := NewGatewayEventsService(&capturingEventHub{}, nil, newTestLogger())
-	if got := svc.KeyEventActor("1.1.0", "creator-1", "admin-1"); got != "creator-1" {
-		t.Fatalf("got %q, want creator-1", got)
+	withoutIdentity := NewGatewayEventsService(&capturingEventHub{}, nil, newTestLogger())
+	if got := withoutIdentity.KeyEventActor("1.1.0", "creator-1", "admin-1"); got != "creator-1" {
+		t.Fatalf("no identity service: got %q, want creator-1", got)
 	}
 }
 
