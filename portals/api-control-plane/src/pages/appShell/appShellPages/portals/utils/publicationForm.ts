@@ -20,7 +20,9 @@ import { defineMessages, type MessageDescriptor } from 'react-intl';
 
 import type { Publication, PublicationDraftDetails, PublicationDraftDetailsInput } from '@/api/resources/apiPublications';
 import type { RestApi } from '@/api/resources/restApis';
+import type { RestApiGateway } from '@/api/resources/restApis/apiGateways/apiGateways.endpoints';
 import { isHttpUrl } from '../../apis/utils/basicInfoRules';
+import { buildInvokeUrl, gatewayEndpoint } from '../../gateways/utils/gatewayDisplay';
 
 const messages = defineMessages({
   displayNameRequired: {
@@ -61,6 +63,22 @@ export type DraftFormValues = {
   agentVisibility: AgentVisibility;
 };
 
+/** A URL the Production URL can be picked from, and the gateway that serves it. */
+export type GatewayUrlOption = { gatewayName: string; url: string };
+
+/**
+ * The URLs the API is served at: one per gateway it is deployed to, in the
+ * order the API lists them. A gateway without an address has no URL to offer.
+ */
+export const buildProductionUrlOptions = (
+  gateways: readonly RestApiGateway[],
+  context: string | undefined,
+): GatewayUrlOption[] =>
+  gateways
+    .filter((gateway) => gateway.isDeployed)
+    .map((gateway) => ({ gatewayName: gateway.displayName, url: buildInvokeUrl(gatewayEndpoint(gateway), context) }))
+    .filter((option) => option.url !== '');
+
 export const emptyDraftFormValues: DraftFormValues = {
   displayName: '',
   version: '',
@@ -76,11 +94,15 @@ export const emptyDraftFormValues: DraftFormValues = {
  * published or not. No endpoint resolves this chain server-side, so it's
  * composed here from three independently-fetched tiers, each `undefined` when
  * that tier has nothing (a 404, not a real error — see `useApiPublicationDraft`).
+ * The API's own tier defaults the Production URL to `defaultProductionUrl`, a
+ * gateway URL, and leaves it empty without one; the Sandbox URL starts empty.
+ * The API's backend URLs are not exposed.
  */
 export const resolveDraftFormValues = (
   draft: PublicationDraftDetails | undefined,
   publication: Publication | undefined,
   api: RestApi | undefined,
+  defaultProductionUrl?: string,
 ): DraftFormValues => {
   if (draft) {
     return {
@@ -107,8 +129,8 @@ export const resolveDraftFormValues = (
       displayName: api.displayName ?? '',
       version: api.version ?? '',
       description: api.description ?? '',
-      productionUrl: api.upstream?.main?.url ?? '',
-      sandboxUrl: api.upstream?.sandbox?.url ?? '',
+      productionUrl: defaultProductionUrl ?? '',
+      sandboxUrl: '',
       agentVisibility: DEFAULT_AGENT_VISIBILITY,
     };
   }
