@@ -351,14 +351,17 @@ Response:
 POST /api/management/v0.9/rest-apis
 Content-Type: application/yaml
 
-version: api-platform.wso2.com/v1
+apiVersion: gateway.api-platform.wso2.com/v1
 kind: RestApi
-data:
-  name: Weather API
+metadata:
+  name: weather-api-v1.0
+spec:
+  displayName: Weather API
   version: v1.0
   context: /weather
   upstream:
-    - url: http://api.weather.com/api/v2
+    main:
+      url: http://api.weather.com/api/v2
   operations:
     - method: GET
       path: /{country}/{city}
@@ -394,21 +397,23 @@ server-managed `status` block):
 GET /api/management/v0.9/rest-apis
 ```
 
-#### Get API by Name and Version
+Optionally filter with `displayName`, `version`, `context`, or `status` query parameters.
+
+#### Get API by ID
 
 ```bash
-GET /api/management/v0.9/rest-apis/{name}/{version}
+GET /api/management/v0.9/rest-apis/{id}
 ```
 
 Example:
 ```bash
-GET /api/management/v0.9/rest-apis/Weather%20API/v1.0
+GET /api/management/v0.9/rest-apis/weather-api-v1.0
 ```
 
 #### Update API
 
 ```bash
-PUT /api/management/v0.9/rest-apis/{name}/{version}
+PUT /api/management/v0.9/rest-apis/{id}
 Content-Type: application/yaml
 
 <updated configuration>
@@ -416,17 +421,20 @@ Content-Type: application/yaml
 
 Example:
 ```bash
-PUT /api/management/v0.9/rest-apis/Weather%20API/v1.0
+PUT /api/management/v0.9/rest-apis/weather-api-v1.0
 Content-Type: application/yaml
 
-version: api-platform.wso2.com/v1
+apiVersion: gateway.api-platform.wso2.com/v1
 kind: RestApi
-data:
-  name: Weather API
+metadata:
+  name: weather-api-v1.0
+spec:
+  displayName: Weather API
   version: v1.0
   context: /weather
   upstream:
-    - url: http://api.weather.com/api/v3
+    main:
+      url: http://api.weather.com/api/v3
   operations:
     - method: GET
       path: /{country}/{city}
@@ -435,13 +443,72 @@ data:
 #### Delete API
 
 ```bash
-DELETE /api/management/v0.9/rest-apis/{name}/{version}
+DELETE /api/management/v0.9/rest-apis/{id}
 ```
 
 Example:
 ```bash
-DELETE /api/management/v0.9/rest-apis/Weather%20API/v1.0
+DELETE /api/management/v0.9/rest-apis/weather-api-v1.0
 ```
+
+#### Create GraphQL API Configuration
+
+The GraphQL API surface (`/graphql-apis`) mirrors the REST one operation-for-operation (create/list/get/update/delete, plus a matching `/graphql-apis/{id}/api-keys` sub-resource). A `GraphQLApi` resource has no `operations` list — every request goes through a single `POST <context>` route, since the operation is identified by the GraphQL request body, not the URL — and no `upstreamDefinitions`/`upstream.ref`, only an inline `upstream.main`/`upstream.sandbox` URL.
+
+```bash
+POST /api/management/v0.9/graphql-apis
+Content-Type: application/yaml
+
+apiVersion: gateway.api-platform.wso2.com/v1
+kind: GraphQLApi
+metadata:
+  name: countries-graphql-api-v1.0
+spec:
+  displayName: Countries-GraphQL-API
+  version: v1.0
+  context: /countries/$version/graphql
+  upstream:
+    main:
+      url: https://countries.trevorblades.com/graphql
+```
+
+Response shape (same k8s-shaped resource + `status` block pattern as `RestAPI`):
+```json
+{
+  "apiVersion": "gateway.api-platform.wso2.com/v1",
+  "kind": "GraphQLApi",
+  "metadata": { "name": "countries-graphql-api-v1.0" },
+  "spec": {
+    "displayName": "Countries-GraphQL-API",
+    "version": "v1.0",
+    "context": "/countries/$version/graphql",
+    "upstream": { "main": { "url": "https://countries.trevorblades.com/graphql" } }
+  },
+  "status": {
+    "id": "countries-graphql-api-v1.0",
+    "state": "deployed",
+    "createdAt": "2025-10-12T15:45:00Z",
+    "updatedAt": "2025-10-12T15:45:00Z",
+    "deployedAt": "2025-10-12T15:45:00Z"
+  }
+}
+```
+
+#### List, Get, Update, Delete GraphQL APIs
+
+```bash
+GET    /api/management/v0.9/graphql-apis
+GET    /api/management/v0.9/graphql-apis/{id}
+PUT    /api/management/v0.9/graphql-apis/{id}
+DELETE /api/management/v0.9/graphql-apis/{id}
+```
+
+Example:
+```bash
+GET /api/management/v0.9/graphql-apis/countries-graphql-api-v1.0
+```
+
+Ready-to-use `kind: GraphQLApi` samples: [`gateway/examples/countries-graphql-api.yaml`](../examples/countries-graphql-api.yaml) and [`gateway/examples/blog-graphql-api.yaml`](../examples/blog-graphql-api.yaml).
 
 ## Data Storage
 
@@ -461,7 +528,7 @@ The SQLite database contains the following table:
 | `name` | TEXT | API name (indexed for fast lookups) |
 | `version` | TEXT | API version (indexed for fast lookups) |
 | `context` | TEXT | Base path (e.g., "/weather") |
-| `kind` | TEXT | API type ("RestApi", "graphql", etc.) |
+| `kind` | TEXT | API type ("RestApi", "GraphQLApi", "Mcp", etc.) |
 | `configuration` | TEXT | Full JSON-serialized API configuration |
 | `status` | TEXT | Deployment status ("pending", "deployed", "failed") |
 | `created_at` | TIMESTAMP | Record creation timestamp |
@@ -689,6 +756,36 @@ components:
               path: /pet/{petId}
             - method: DELETE
               path: /pet/{petId}
+```
+
+The `GraphQLAPI` schema carries its own explicit example the same way:
+
+```yaml
+    GraphQLAPI:
+      allOf:
+        - $ref: "#/components/schemas/GraphQLAPIRequest"
+        - type: object
+          properties:
+            status:
+              $ref: "#/components/schemas/APIStatus"
+      example:
+        apiVersion: gateway.api-platform.wso2.com/v1
+        kind: GraphQLApi
+        metadata:
+          name: countries-graphql-api-v1.0
+        spec:
+          displayName: Countries-GraphQL-API
+          version: v1.0
+          context: /countries/$version/graphql
+          upstream:
+            main:
+              url: https://countries.trevorblades.com/graphql
+          policies:
+            - name: jwt-auth
+              version: v1
+        status:
+          id: countries-graphql-api-v1.0
+          state: deployed
 ```
 
 The `example` field at the schema level overrides auto-generation for that component. Add one per component where the auto-generated sample is inaccurate or incomplete. After editing the spec, re-run `make generate-apidocs` to regenerate the docs.

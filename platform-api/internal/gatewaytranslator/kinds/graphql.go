@@ -19,13 +19,19 @@ package kinds
 import (
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/dto"
+	"github.com/wso2/api-platform/platform-api/internal/gatewaytranslator/gwversion"
 	"github.com/wso2/api-platform/platform-api/internal/gatewaytranslator/translate"
 )
 
-// GraphQL is the GraphQL API kind. Its artifacts have had a single stored
-// shape and carry nothing an older gateway rejects, so the only adaptation is
-// the CRD apiVersion swap translate.Run applies to every kind.
+// GraphQL is the GraphQL API kind.
+//
+// No LTS gateway release has the kind (gwversion.MinGraphQLKindGatewayVersion),
+// so a deploy to an LTS gateway is refused before translation (see
+// gatewaytranslator.EnsureKindSupported). Its artifacts have had a single
+// stored shape, so the only adaptation is the CRD apiVersion swap
+// translate.Run applies to every kind.
 var GraphQL = translate.Kind{
-	GatewayKind: constants.GraphQLApi,
-	Normalize:   onlyType[*dto.GraphQLAPIDeploymentYAML](),
+	GatewayKind:       constants.GraphQLApi,
+	MinGatewayVersion: gwversion.MinGraphQLKindGatewayVersion,
+	Normalize:         onlyType[*dto.GraphQLAPIDeploymentYAML](),
 }

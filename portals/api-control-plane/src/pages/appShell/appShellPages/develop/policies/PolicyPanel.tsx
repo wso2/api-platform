@@ -50,6 +50,7 @@ import {
 } from '../../apis/utils/developEdit';
 import { getDraggedPolicy, type PolicyScope, scopeId } from './policyDnd';
 import { PolicyConfigDrawer, type PolicyRef } from './PolicyConfigDrawer';
+import { ReadOnlyPoliciesNotice } from './ReadOnlyPoliciesNotice';
 
 const messages = defineMessages({
   heading: {
@@ -129,15 +130,20 @@ const messages = defineMessages({
 
 type EditState = { scope: PolicyScope; policyIndex: number; policy: Policy } | null;
 
-/** A left-panel drop target that highlights while a catalog policy hovers it. */
+/**
+ * A left-panel drop target that highlights while a catalog policy hovers it.
+ * `disabled` makes it inert — no highlight, no drop — for a read-only API.
+ */
 function DropZone({
   active,
+  disabled = false,
   onEnter,
   onLeave,
   onDrop,
   children,
 }: {
   active: boolean;
+  disabled?: boolean;
   onEnter: () => void;
   onLeave: () => void;
   onDrop: () => void;
@@ -147,14 +153,14 @@ function DropZone({
     <Box
       onDragLeave={onLeave}
       onDragOver={(event) => {
-        if (!getDraggedPolicy()) return;
+        if (disabled || !getDraggedPolicy()) return;
         event.preventDefault();
         event.dataTransfer.dropEffect = 'copy';
         onEnter();
       }}
       onDrop={(event) => {
         event.preventDefault();
-        onDrop();
+        if (!disabled) onDrop();
       }}
       sx={{
         border: '2px dashed',
@@ -176,6 +182,10 @@ export function PolicyPanel({ api }: { api: RestApi }) {
   const update = useUpdateRestApi();
   const hubEnabled = useIsPolicyHubConfigured();
   const restApiId = api.id;
+  // Synced from a data-plane gateway: the control plane rejects any change to
+  // its runtime artifact, so the policies are listed without the controls
+  // that would change them.
+  const readOnly = Boolean(api.readOnly);
 
   const [apiPolicies, setApiPolicies] = useState<Policy[]>(api.policies ?? []);
   // Flattened once, lazily: from here the panel owns the edits, so re-deriving
@@ -221,7 +231,7 @@ export function PolicyPanel({ api }: { api: RestApi }) {
   const dropOnScope = (s: PolicyScope) => {
     const dragged = getDraggedPolicy();
     setActiveZone(null);
-    if (!dragged) return;
+    if (readOnly || !dragged) return;
     setEditing(null);
     setScope(s);
     setPicked({
@@ -314,6 +324,7 @@ export function PolicyPanel({ api }: { api: RestApi }) {
 
   return (
     <Stack spacing={2}>
+      {readOnly && <ReadOnlyPoliciesNotice />}
       <Stack alignItems="flex-start" direction={{ xs: 'column', md: 'row' }} spacing={2}>
         {/* LEFT: Policies (drop targets) */}
         <Box sx={{ flex: 1, minWidth: 0, width: '100%' }}>
@@ -346,6 +357,7 @@ export function PolicyPanel({ api }: { api: RestApi }) {
                 </Typography>
                 <DropZone
                   active={activeZone === scopeId({ kind: 'api' })}
+                  disabled={readOnly}
 
                   onDrop={() => dropOnScope({ kind: 'api' })}
                   onEnter={() => setActiveZone(scopeId({ kind: 'api' }))}
@@ -353,7 +365,7 @@ export function PolicyPanel({ api }: { api: RestApi }) {
                 >
                   <AttachedPolicyList
                     canAdd={hubEnabled}
-                    emptyText={intl.formatMessage(messages.globalEmpty)}
+                    emptyText={readOnly ? undefined : intl.formatMessage(messages.globalEmpty)}
                     onAdd={() => {
                       setEditing(null);
                       setScope({ kind: 'api' });
@@ -363,6 +375,7 @@ export function PolicyPanel({ api }: { api: RestApi }) {
                     onReorder={(from, to) => reorderAt({ kind: 'api' }, from, to)}
                     onRemove={(i) => removeAt({ kind: 'api' }, i)}
                     policies={apiPolicies}
+                    readOnly={readOnly}
                     showHeader={false}
                   />
                 </DropZone>
@@ -450,13 +463,18 @@ export function PolicyPanel({ api }: { api: RestApi }) {
                             >
                               <DropZone
                                 active={activeZone === zid}
+                                disabled={readOnly}
                                 onDrop={() => dropOnScope({ kind: 'operation', index })}
                                 onEnter={() => setActiveZone(zid)}
                                 onLeave={() => setActiveZone(null)}
                               >
                                 <AttachedPolicyList
                                   canAdd={hubEnabled}
-                                  emptyText={intl.formatMessage(messages.resourceEmpty)}
+                                  emptyText={
+                                    readOnly
+                                      ? undefined
+                                      : intl.formatMessage(messages.resourceEmpty)
+                                  }
                                   onAdd={() => {
                                     setEditing(null);
                                     setScope({ kind: 'operation', index });
@@ -468,6 +486,7 @@ export function PolicyPanel({ api }: { api: RestApi }) {
                                   }
                                   onRemove={(i) => removeAt({ kind: 'operation', index }, i)}
                                   policies={op.policies || []}
+                                  readOnly={readOnly}
                                   showHeader={false}
                                 />
                               </DropZone>
@@ -484,7 +503,7 @@ export function PolicyPanel({ api }: { api: RestApi }) {
         </Box>
 
         {/* RIGHT: Available Policies (drag source) */}
-        {hubEnabled && (
+        {hubEnabled && !readOnly && (
           <Box sx={{ flexShrink: 0, width: { xs: '100%', md: 400 } }}>
             <Card sx={{ height: '100%', overflow: 'hidden' }} variant="outlined">
               <CardContent sx={{ height: 620, p: 2 }}>
@@ -495,13 +514,15 @@ export function PolicyPanel({ api }: { api: RestApi }) {
         )}
       </Stack>
 
-      <SaveBar
-        dirty={dirty}
-        disabled={!restApiId}
-        onCancel={cancel}
-        onSave={save}
-        saving={update.isPending}
-      />
+      {!readOnly && (
+        <SaveBar
+          dirty={dirty}
+          disabled={!restApiId}
+          onCancel={cancel}
+          onSave={save}
+          saving={update.isPending}
+        />
+      )}
 
       <PolicyConfigDrawer
         initialValues={editing?.policy.params}

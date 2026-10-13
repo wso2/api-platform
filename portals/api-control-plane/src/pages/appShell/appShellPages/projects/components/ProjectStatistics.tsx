@@ -21,6 +21,7 @@ import { Box, ButtonBase, Divider, Grid, Skeleton, Stack, Typography } from '@ws
 import { Network } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, FormattedMessage, FormattedNumber, useIntl } from 'react-intl';
 
+import { useAllGraphQLApis } from '@/api/resources/graphqlApis';
 import { useAllRestApis } from '@/api/resources/restApis';
 import grpcIcon from '@/assets/icons/gRPC.svg';
 import graphqlIcon from '@/assets/icons/graphql.svg';
@@ -129,16 +130,26 @@ type ProjectStatisticsProps = {
 
 export function ProjectStatistics({ onTypeFilterChange, selectedType }: ProjectStatisticsProps) {
   const intl = useIntl();
-  const apisQuery = useAllRestApis();
-  const total = apisQuery.data?.pagination.total;
-  const apis = apisQuery.data?.list;
+  // Same two sources `ApiList` merges — the counts must agree with the list below.
+  const restApisQuery = useAllRestApis();
+  const graphqlApisQuery = useAllGraphQLApis();
+  const isPending = restApisQuery.isPending || graphqlApisQuery.isPending;
+  const restApis = restApisQuery.data?.list;
+  const graphqlApis = graphqlApisQuery.data?.list;
+  const total =
+    restApisQuery.data && graphqlApisQuery.data
+      ? restApisQuery.data.pagination.total + graphqlApisQuery.data.pagination.total
+      : undefined;
+  // GraphQL is counted by source, not `kind`, matching `ApiList`'s filter.
   const countType = (type: ApiTypeFilter) =>
-    apis?.filter((api) => matchesApiType(api.kind, type)).length;
+    type === 'graphql'
+      ? graphqlApis?.length
+      : restApis?.filter((api) => matchesApiType(api.kind, type)).length;
   const selectType = (type: ApiTypeFilter) =>
     onTypeFilterChange(selectedType === type ? null : type);
   const filterLabel = (label: string) => intl.formatMessage(messages.selectType, { type: label });
 
-  if (!apisQuery.isPending && total === 0) return null;
+  if (!isPending && total === 0) return null;
 
   const metrics = [
     { type: 'rest' as const, message: messages.rest, icon: restIcon },

@@ -25,9 +25,8 @@ import { useNavigate } from 'react-router-dom';
 import { parseSpecContent, useRestApi, useRestApiOpenApi } from '@/api/resources/restApis';
 import { useDeployments } from '@/api/resources/restApis/deployments';
 import { useRestApiGateways } from '@/api/resources/restApis/apiGateways/apiGateways.hooks';
-import { isTestKeyExpired, testKeyRemainingMs } from './utils/testApiKey';
+import { isTestKeyExpired, KEY_COUNTDOWN_TICK_MS, testKeyRemainingMs } from './utils/testApiKey';
 import { useTestApiKey } from './utils/useTestApiKey';
-import type { Gateway } from '@/api/resources/gateways';
 import { isApiError } from '@/api/core/errors';
 import { AppPage } from '@/components/AppPage';
 import { ApiDesignerCanvasIllustration } from '@/components/illustrations/ApiDesignerCanvasIllustration';
@@ -38,10 +37,10 @@ import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
 import { useNow } from '@/hooks/useNow';
 import { ScopeGate } from '@/scope/ScopeGate';
 import { buildInvokeUrl, gatewayEndpoint } from '../gateways/utils/gatewayDisplay';
-import { MOCK_ENVIRONMENTS } from '../gateways/utils/gatewayEnvironments';
 import { CurlBuilder } from './curl/CurlBuilder';
 import { deployedGateways as deployedGatewaysOf } from './utils/deployedGateways';
 import { apiKeyAuthOf } from './utils/apiKeyAuth';
+import { gatewayOptionLabel } from './utils/gatewayOptionLabel';
 import { GatewaySection } from './components/GatewaySection';
 import { buildConsoleRequest, firstOperationOf } from './utils/operationRequest';
 import { TestKeySection } from './components/TestKeySection';
@@ -120,18 +119,6 @@ const messages = defineMessages({
     description: 'Accessible label for the toggle between the two views.',
   },
 });
-
-/** Refresh the test key countdown every 30 seconds. */
-const KEY_COUNTDOWN_TICK_MS = 30_000;
-
-/** Gateway label as "Name — Environment", matching the Invoke URL panel. */
-const gatewayOptionLabel = (gateway: Gateway): string => {
-  const name = gateway.displayName || gateway.id || '';
-  const environment = MOCK_ENVIRONMENTS.find(
-    (candidate) => candidate.id === gateway.properties?.environment,
-  )?.name;
-  return environment ? `${name} — ${environment}` : name;
-};
 
 export function TestPage() {
   const intl = useIntl();

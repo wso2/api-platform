@@ -69,6 +69,8 @@ export const DOCUMENTS_PANEL_HEIGHT = { md: 'max(480px, calc(100vh - 300px))', x
 
 type DocumentsBrowserProps = {
   apiHandle: string;
+  /** The `{apiType}` path segment — `rest-api` unless another artifact kind owns the documents. */
+  apiType?: string;
   /** The document in the URL; the first loaded one is shown when absent. */
   selectedId?: string;
   onCreate: () => void;
@@ -80,6 +82,7 @@ type DocumentsBrowserProps = {
 /** The document list beside the selected document's content. */
 export function DocumentsBrowser({
   apiHandle,
+  apiType = REST_API_TYPE,
   onCreate,
   onDeleted,
   onEdit,
@@ -87,7 +90,7 @@ export function DocumentsBrowser({
   selectedId,
 }: DocumentsBrowserProps) {
   const intl = useIntl();
-  const pagesQuery = useApiDocumentPages(REST_API_TYPE, apiHandle, { limit: DOCUMENTS_PAGE_SIZE });
+  const pagesQuery = useApiDocumentPages(apiType, apiHandle, { limit: DOCUMENTS_PAGE_SIZE });
   const firstId = pagesQuery.data?.pages[0]?.list[0]?.id;
   // Stable, so the list's infinite-scroll observer isn't rebuilt on every render.
   const { fetchNextPage } = pagesQuery;
@@ -160,6 +163,7 @@ export function DocumentsBrowser({
                 {activeId && (
                   <DocumentViewer
                     apiHandle={apiHandle}
+                    apiType={apiType}
                     docId={activeId}
                     key={activeId}
                     onDeleted={onDeleted}

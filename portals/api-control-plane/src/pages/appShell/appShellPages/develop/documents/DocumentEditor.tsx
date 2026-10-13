@@ -251,6 +251,8 @@ const EDITOR_HEIGHT = 480;
 
 type DocumentEditorProps = {
   apiHandle: string;
+  /** The `{apiType}` path segment — `rest-api` unless another artifact kind owns the documents. */
+  apiType?: string;
   /** The document to edit; absent for a new document. */
   docId?: string;
   onCancel: () => void;
@@ -261,10 +263,16 @@ type DocumentEditorProps = {
  * Create or edit form. In edit mode, loads the document's metadata and body
  * (two requests) before showing the form, so it never opens half-filled.
  */
-export function DocumentEditor({ apiHandle, docId, onCancel, onSaved }: DocumentEditorProps) {
+export function DocumentEditor({
+  apiHandle,
+  apiType = REST_API_TYPE,
+  docId,
+  onCancel,
+  onSaved,
+}: DocumentEditorProps) {
   const intl = useIntl();
-  const documentQuery = useApiDocument(REST_API_TYPE, apiHandle, docId);
-  const contentQuery = useApiDocumentContent(REST_API_TYPE, apiHandle, docId);
+  const documentQuery = useApiDocument(apiType, apiHandle, docId);
+  const contentQuery = useApiDocumentContent(apiType, apiHandle, docId);
 
   if (docId) {
     if (documentQuery.isPending || contentQuery.isPending) {
@@ -282,6 +290,7 @@ export function DocumentEditor({ apiHandle, docId, onCancel, onSaved }: Document
   return (
     <DocumentForm
       apiHandle={apiHandle}
+      apiType={apiType}
       existing={docId ? documentQuery.data : undefined}
       existingContent={docId ? contentQuery.data?.text : undefined}
       // Re-seed the form when switching documents rather than carrying edits across.
@@ -294,6 +303,7 @@ export function DocumentEditor({ apiHandle, docId, onCancel, onSaved }: Document
 
 type DocumentFormProps = {
   apiHandle: string;
+  apiType: string;
   existing?: ApiDocument;
   /** The existing document's body; fetched separately from its metadata. */
   existingContent?: string;
@@ -305,6 +315,7 @@ type FieldErrors = { displayName?: string; inlineContent?: string; type?: string
 
 function DocumentForm({
   apiHandle,
+  apiType,
   existing,
   existingContent = '',
   onCancel,
@@ -388,7 +399,7 @@ function DocumentForm({
       createMutation.mutate(
         {
           apiId: apiHandle,
-          apiType: REST_API_TYPE,
+          apiType,
           body: {
             displayName: trimmedName,
             inlineContent: content,
@@ -415,7 +426,7 @@ function DocumentForm({
       inlineContent: contentChanged ? content : undefined,
     };
     updateMutation.mutate(
-      { apiId: apiHandle, apiType: REST_API_TYPE, body, docId: existing.id },
+      { apiId: apiHandle, apiType, body, docId: existing.id },
       {
         onError: handleError,
         onSuccess: (updated) => {

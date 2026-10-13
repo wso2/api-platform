@@ -271,10 +271,41 @@ func fetchAndConvertGraphQLSchema(upstreamURL string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if err := validateGraphQLSDL(sdl); err != nil {
-		return "", fmt.Errorf("derived schema failed validation: %w", err)
+	if issues := validateGraphQLSDL(sdl); len(issues) > 0 {
+		// Internal-only: the caller (resolveSchema's introspection branch)
+		// discards this and reports the same sterile GraphQLAPISchemaResolveFailed
+		// message as any other introspection failure — never these issues.
+		return "", fmt.Errorf("derived schema failed validation: %v", issues)
 	}
 	return sdl, nil
+}
+
+// tryConvertIntrospectionJSONToSDL detects and converts a raw introspection
+// JSON response (the `{"data":{"__schema":{...}}}` shape a client gets back
+// from POSTing the standard introspection query against a live endpoint)
+// into SDL text, for resolveSchema's inline/file branch. `.json` is on both
+// upload allowlists (graphql_multipart.go's allowedSDLFileExtensions,
+// GraphqlUrlUploadForm.tsx's FILE_EXTENSIONS) precisely so a user can upload
+// this shape instead of hand-writing SDL, but nothing converted it before
+// this — it went straight to gqlparser.LoadSchema and failed. Returns
+// ok=false for anything that isn't recognizably this shape, including plain
+// SDL text (which never starts with `{` — a type-system-definition document
+// has no bare block at its top level), so the caller falls through to its
+// existing SDL validation/error path unchanged.
+func tryConvertIntrospectionJSONToSDL(text string) (sdl string, ok bool) {
+	trimmed := strings.TrimSpace(text)
+	if !strings.HasPrefix(trimmed, "{") {
+		return "", false
+	}
+	var parsed graphQLIntrospectionResponse
+	if err := json.Unmarshal([]byte(trimmed), &parsed); err != nil || parsed.Data == nil {
+		return "", false
+	}
+	converted, err := convertGraphQLIntrospectionToSDL(parsed.Data.Schema)
+	if err != nil {
+		return "", false
+	}
+	return converted, true
 }
 
 // convertGraphQLIntrospectionToSDL converts a standard introspection

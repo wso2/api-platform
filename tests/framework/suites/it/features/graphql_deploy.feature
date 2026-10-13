@@ -362,7 +362,70 @@ Feature: GraphQL API CRUD and connectivity
       | spec.upstream.main.url | http://testbench:3000/graphql |
     Then the response should be a client error
     And the response should be valid JSON
-    And the response body should contain "context must start with"
+    And the response body should contain "Context must start with /"
+
+  # displayName/version follow RestApi's own rules (see api_error_responses.feature).
+  Scenario: Deploy a GraphQL API with an invalid version returns a validation error
+    Given I generate a unique resource name from "graphql-invalid-version" and store it as "graphqlName"
+    And I generate a unique API context from "/graphql-invalid-version" and store it as "graphqlContext"
+    When I create GraphQL API from "resources/templates/graphql-api.yaml" with values:
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
+      | name                   | ${CTX:graphqlName}        |
+      | spec.displayName       | Invalid Version GraphQL   |
+      | spec.version           | v1.0.0-beta               |
+      | spec.context           | ${CTX:graphqlContext}     |
+      | spec.upstream.main.url | http://testbench:3000/graphql |
+    Then the response should be a client error
+    And the response should be valid JSON
+    And the JSON response field "status" should be "error"
+    And the response body should contain "spec.version"
+    And the response body should contain "semantic versioning pattern"
+
+  Scenario: Deploy a GraphQL API with a display name that is not URL-friendly returns a validation error
+    Given I generate a unique resource name from "graphql-invalid-name" and store it as "graphqlName"
+    And I generate a unique API context from "/graphql-invalid-name" and store it as "graphqlContext"
+    When I create GraphQL API from "resources/templates/graphql-api.yaml" with values:
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
+      | name                   | ${CTX:graphqlName}        |
+      | spec.displayName       | Countries/GraphQL         |
+      | spec.version           | v1.0                      |
+      | spec.context           | ${CTX:graphqlContext}     |
+      | spec.upstream.main.url | http://testbench:3000/graphql |
+    Then the response should be a client error
+    And the response should be valid JSON
+    And the JSON response field "status" should be "error"
+    And the response body should contain "spec.displayName"
+    And the response body should contain "URL-friendly"
+
+  Scenario: Deploying a GraphQL API reusing another's display name and version returns a conflict
+    Given I generate a unique resource name from "graphql-name-version-a" and store it as "graphqlNameA"
+    And I generate a unique resource name from "graphql-name-version-b" and store it as "graphqlNameB"
+    And I generate a unique value from "graphql-name-version" and store it as "graphqlDisplayName"
+    And I generate a unique API context from "/graphql-name-version-a" and store it as "graphqlContextA"
+    And I generate a unique API context from "/graphql-name-version-b" and store it as "graphqlContextB"
+    When I create GraphQL API from "resources/templates/graphql-api.yaml" with values:
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
+      | name                   | ${CTX:graphqlNameA}       |
+      | spec.displayName       | ${CTX:graphqlDisplayName} |
+      | spec.version           | v1.0                      |
+      | spec.context           | ${CTX:graphqlContextA}    |
+      | spec.upstream.main.url | http://testbench:3000/graphql |
+    Then the response should be successful
+
+    When I create GraphQL API from "resources/templates/graphql-api.yaml" with values:
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
+      | name                   | ${CTX:graphqlNameB}       |
+      | spec.displayName       | ${CTX:graphqlDisplayName} |
+      | spec.version           | v1.0                      |
+      | spec.context           | ${CTX:graphqlContextB}    |
+      | spec.upstream.main.url | http://testbench:3000/graphql |
+    Then the response status code should be 409
+    And the response should be valid JSON
+    And the JSON response field "status" should be "error"
+    And the response body should contain "already exists"
+
+    When I delete the GraphQL API "${CTX:graphqlNameA}"
+    Then the response should be successful
 
   Scenario: Deploy a GraphQL API without an upstream returns 400
     Given I generate a unique resource name from "graphql-missing-upstream" and store it as "graphqlName"
@@ -526,13 +589,12 @@ Feature: GraphQL API CRUD and connectivity
     When I delete the GraphQL API "${CTX:graphqlName}"
     Then the response should be successful
 
-  # CONFIRMED via this test (not assumed): a GraphQL API resolves to exactly one POST route
-  # with an Exact path/method match, so an OPTIONS preflight never matches that route at
-  # all - Envoy 404s before the cors policy, or any policy, ever runs. REST's cors preflight
-  # support (which relies on an explicit "- method: OPTIONS" entry in operations[]) does not
-  # carry over to GraphQL; there is no operations[] to add one to. This is a genuine, current
-  # limitation, not yet supported.
-  Scenario: A GraphQL API with cors does not handle a preflight request - confirmed limitation
+  # A GraphQLApi has no operations[] list the way RestApi does, so it can't get an OPTIONS
+  # route the same way REST's cors preflight support does (an explicit "- method: OPTIONS"
+  # entry). Instead, GraphQLAPITransformer synthesizes one itself whenever a "cors" policy
+  # is attached (pkg/transform/graphql.go) - this used to 404 before that fix, since Envoy
+  # had no route to match an OPTIONS request against at all.
+  Scenario: A GraphQL API with cors answers a preflight request
     Given I generate a unique resource name from "graphql-cors" and store it as "graphqlName"
     And I generate a unique value from "graphql-cors" and store it as "graphqlDisplayName"
     And I generate a unique API context from "/graphql-cors" and store it as "graphqlContext"
@@ -555,7 +617,8 @@ Feature: GraphQL API CRUD and connectivity
     And I set header "Origin" to "http://example.com"
     And I set header "Access-Control-Request-Method" to "POST"
     And I send a "OPTIONS" request to "${CTX:graphqlContext}"
-    Then the response status code should be 404
+    Then the response should be successful
+    And the response header "Access-Control-Allow-Origin" should be "http://example.com"
 
     When I clear all headers
     And I authenticate using basic auth as "admin"

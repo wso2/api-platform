@@ -47,7 +47,7 @@ import (
 // used before a real per-portal auth key existed to publish for real.
 type alwaysSucceedsPortalPublisher struct{}
 
-func (alwaysSucceedsPortalPublisher) Publish(_ context.Context, _ *model.APIPortal, _ string, _ *model.Publication, _ *model.PublicationContent) error {
+func (alwaysSucceedsPortalPublisher) Publish(_ context.Context, _ *model.APIPortal, _, _ string, _ *model.Publication, _ *model.PublicationContent) error {
 	return nil
 }
 
@@ -59,7 +59,7 @@ func (alwaysSucceedsPortalPublisher) CreateMissingPlans(_ context.Context, _ *mo
 	return nil
 }
 
-func (alwaysSucceedsPortalPublisher) Deprecate(_ context.Context, _ *model.APIPortal, _ string, _ *model.Publication) error {
+func (alwaysSucceedsPortalPublisher) Deprecate(_ context.Context, _ *model.APIPortal, _, _ string, _ *model.Publication) error {
 	return nil
 }
 

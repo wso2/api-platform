@@ -18,6 +18,7 @@
 package pdk
 
 import (
+	"context"
 	"log/slog"
 
 	"github.com/wso2/api-platform/platform-api/api"
@@ -103,6 +104,11 @@ type APIPortals interface {
 	UpdateAPIPortal(handle string, req *api.UpdateApiPortalRequest, orgID, updatedBy string) (*api.ApiPortalResponse, error)
 	UpdateAPIPortalStatus(handle, orgID, updatedBy, status string) error
 	DeleteAPIPortal(handle, orgID, actor string) error
+	// AuthHeaderForPortal returns the "SharedKey <raw>" Authorization header for
+	// calling the portal's admin API. The shared key is stored encrypted and only
+	// core can decrypt it, so plugins that call the portal after Create (once its
+	// pod is up) get the header here instead of keeping the plaintext key.
+	AuthHeaderForPortal(ctx context.Context, handle, orgID string) (string, error)
 }
 
 // Organizations exposes read-only lookups over the platform's organizations.

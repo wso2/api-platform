@@ -47,6 +47,7 @@ import { useApiPortals } from '@/api/resources/apiPortals';
 import { useOrganization } from '@/api/resources/organizations';
 import { useGateways } from '@/api/resources/gateways';
 import { useDeleteProject, type Project } from '@/api/resources/projects';
+import { useGraphQLApiCounts } from '@/api/resources/graphqlApis';
 import { useRestApiCounts } from '@/api/resources/restApis';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useNotifications } from '@/components/Notifications';
@@ -301,6 +302,15 @@ function OrganizationHomePageContent() {
   const portalsQuery = useApiPortals();
   const deleteProjectMutation = useDeleteProject();
   const restApiCountsQuery = useRestApiCounts(projects.map((project) => project.id));
+  const graphqlApiCountsQuery = useGraphQLApiCounts(projects.map((project) => project.id));
+  const apiCountsPending = restApiCountsQuery.isPending || graphqlApiCountsQuery.isPending;
+  const apiCountsError = restApiCountsQuery.error ?? graphqlApiCountsQuery.error;
+  const apiCountsTotal = restApiCountsQuery.total + graphqlApiCountsQuery.total;
+  const combinedApiCount = (projectId: string): number | undefined => {
+    const rest = restApiCountsQuery.counts[projectId];
+    const graphql = graphqlApiCountsQuery.counts[projectId];
+    return rest === undefined && graphql === undefined ? undefined : (rest ?? 0) + (graphql ?? 0);
+  };
   const currentOrganization = organizationQuery.data || organization || organizations[0];
 
   const sortedProjects = useMemo(
@@ -384,9 +394,7 @@ function OrganizationHomePageContent() {
               description={intl.formatMessage(messages.apiDescription)}
               icon={<Boxes size={22} />}
               metric={
-                restApiCountsQuery.isPending || restApiCountsQuery.error
-                  ? '—'
-                  : intl.formatNumber(restApiCountsQuery.total)
+                apiCountsPending || apiCountsError ? '—' : intl.formatNumber(apiCountsTotal)
               }
               onAction={createApi}
               title={intl.formatMessage(messages.apiTitle)}
@@ -540,12 +548,12 @@ function OrganizationHomePageContent() {
                             sx={{ flexShrink: 0, minWidth: 72 }}
                             variant="caption"
                           >
-                            {restApiCountsQuery.counts[project.id] === undefined ? (
+                            {combinedApiCount(project.id) === undefined ? (
                               '—'
                             ) : (
                               <FormattedMessage
                                 {...messages.projectApiCount}
-                                values={{ count: restApiCountsQuery.counts[project.id] }}
+                                values={{ count: combinedApiCount(project.id) }}
                               />
                             )}
                           </Typography>

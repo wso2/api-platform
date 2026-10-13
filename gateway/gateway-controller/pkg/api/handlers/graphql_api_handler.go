@@ -107,6 +107,10 @@ func (s *APIServer) CreateGraphQLAPI(w http.ResponseWriter, r *http.Request) {
 // ListGraphQLAPIs implements ServerInterface.ListGraphQLAPIs
 // (GET /graphql-apis)
 func (s *APIServer) ListGraphQLAPIs(w http.ResponseWriter, r *http.Request, params api.ListGraphQLAPIsParams) {
+	if (params.DisplayName != nil && *params.DisplayName != "") || (params.Version != nil && *params.Version != "") || (params.Context != nil && *params.Context != "") || (params.Status != nil && *params.Status != "") {
+		s.SearchDeployments(w, r, string(api.GraphQLAPIKindGraphQLApi))
+		return
+	}
 	configs, err := s.db.GetAllConfigsByKind(string(api.GraphQLAPIKindGraphQLApi))
 	if err != nil {
 		s.logger.Error("Failed to get GraphQL APIs", slog.Any("error", err))
@@ -119,25 +123,6 @@ func (s *APIServer) ListGraphQLAPIs(w http.ResponseWriter, r *http.Request, para
 
 	items := make([]any, 0, len(configs))
 	for _, cfg := range configs {
-		if params.DisplayName != nil && *params.DisplayName != "" && cfg.DisplayName != *params.DisplayName {
-			continue
-		}
-		if params.Version != nil && *params.Version != "" && cfg.Version != *params.Version {
-			continue
-		}
-		if params.Context != nil && *params.Context != "" {
-			cfgContext, err := cfg.GetContext()
-			if err != nil {
-				s.logger.Error("Failed to get context for GraphQL API config", slog.Any("error", err), slog.String("uuid", cfg.UUID))
-				continue
-			}
-			if cfgContext != *params.Context {
-				continue
-			}
-		}
-		if params.Status != nil && *params.Status != "" && string(cfg.DesiredState) != string(*params.Status) {
-			continue
-		}
 		items = append(items, buildResourceResponseFromStored(cfg.SourceConfiguration, cfg))
 	}
 

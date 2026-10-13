@@ -30,6 +30,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/config"
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/client"
+	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 )
 
@@ -102,7 +103,7 @@ func TestHTTPPortalPublisher_WorstCasePublishFitsTheStatedBudget(t *testing.T) {
 	if err := p.CreateMissingPlans(ctx, portal, []*model.SubscriptionPlan{{Handle: "gold"}}); err != nil {
 		t.Fatalf("CreateMissingPlans: %v", err)
 	}
-	if err := p.Publish(ctx, portal, "my-api", pub, nil); err != nil {
+	if err := p.Publish(ctx, portal, constants.PublicationAPITypeRestAPI, "my-api", pub, nil); err != nil {
 		t.Fatalf("Publish: %v", err)
 	}
 	took := time.Since(started)
