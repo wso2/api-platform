@@ -43,7 +43,9 @@ import (
 // Only the metadata and definition are pushed; the content ZIP (thumbnail,
 // landing page, documents) is not implemented yet.
 type HTTPPortalPublisher struct {
-	client       *client.RetryableHTTPClient
+	client *client.RetryableHTTPClient
+	// pushClient carries the listing pushes under a longer attempt limit.
+	pushClient   *client.RetryableHTTPClient
 	authRegistry *APIPortalAuthRegistry
 }
 
@@ -51,8 +53,8 @@ type HTTPPortalPublisher struct {
 // API Portal over HTTP, authenticating via the shared-key S2S auth scheme —
 // the raw key is resolved per-portal through authRegistry (each api_portals
 // row carries its own encrypted key), never a single server-wide secret.
-func NewHTTPPortalPublisher(authRegistry *APIPortalAuthRegistry, retryClient *client.RetryableHTTPClient) PortalPublisher {
-	return &HTTPPortalPublisher{client: retryClient, authRegistry: authRegistry}
+func NewHTTPPortalPublisher(authRegistry *APIPortalAuthRegistry, lightClient, pushClient *client.RetryableHTTPClient) PortalPublisher {
+	return &HTTPPortalPublisher{client: lightClient, pushClient: pushClient, authRegistry: authRegistry}
 }
 
 // authHeader resolves the Authorization header for this specific portal via
@@ -192,17 +194,14 @@ func (p *HTTPPortalPublisher) pushMetadata(ctx context.Context, portal *model.AP
 		return err
 	}
 
-	reqCtx, cancel := context.WithTimeout(ctx, p.client.TotalTimeout())
-	defer cancel()
-
-	req, err := http.NewRequestWithContext(reqCtx, method, path, body)
+	req, err := http.NewRequestWithContext(ctx, method, path, body)
 	if err != nil {
 		return fmt.Errorf("failed to build portal metadata request: %w", err)
 	}
 	req.Header.Set("Content-Type", contentType)
 	req.Header.Set("Authorization", authHeader)
 
-	resp, err := p.client.Do(req)
+	resp, err := p.pushClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("portal metadata push failed: %w", err)
 	}
@@ -230,10 +229,7 @@ func (p *HTTPPortalPublisher) Unpublish(ctx context.Context, portal *model.APIPo
 		return err
 	}
 
-	reqCtx, cancel := context.WithTimeout(ctx, p.client.TotalTimeout())
-	defer cancel()
-
-	req, err := http.NewRequestWithContext(reqCtx, http.MethodDelete, apiURL(portal, apiHandle), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, apiURL(portal, apiHandle), nil)
 	if err != nil {
 		return fmt.Errorf("failed to build portal unpublish request: %w", err)
 	}
@@ -265,10 +261,7 @@ func (p *HTTPPortalPublisher) checkExists(ctx context.Context, portal *model.API
 		return false, err
 	}
 
-	reqCtx, cancel := context.WithTimeout(ctx, p.client.TotalTimeout())
-	defer cancel()
-
-	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, apiURL(portal, apiHandle), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL(portal, apiHandle), nil)
 	if err != nil {
 		return false, fmt.Errorf("failed to build portal existence-check request: %w", err)
 	}

@@ -10,7 +10,7 @@ Enable platform-api to publish and unpublish APIs to an external API portal serv
 - **API Publishing**: Publish APIs to API portal with metadata and OpenAPI definitions
 - **API Unpublishing**: Remove APIs from API portal
 - **Update Support**: Republish existing APIs to update metadata (unpublish + publish approach)
-- **Retry Logic**: 3 retries with 15-second timeout per request
+- **Retry Logic**: failed requests are retried; the attempt, retry and overall limits are set in `[platform_api.api_portal_client]`
 - **Graceful Degradation**: Optional integration - platform-api works even if API portal is disabled
 
 ## Configuration

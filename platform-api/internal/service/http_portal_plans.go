@@ -112,11 +112,8 @@ func (p *HTTPPortalPublisher) listPlansPage(ctx context.Context, portal *model.A
 		return nil, err
 	}
 
-	reqCtx, cancel := context.WithTimeout(ctx, p.client.TotalTimeout())
-	defer cancel()
-
 	target := fmt.Sprintf("%s?limit=%d&offset=%d", plansURL(portal), portalPlansPageSize, offset)
-	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, target, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build portal plan listing request: %w", err)
 	}
@@ -160,10 +157,7 @@ func (p *HTTPPortalPublisher) createPlans(ctx context.Context, portal *model.API
 		return err
 	}
 
-	reqCtx, cancel := context.WithTimeout(ctx, p.client.TotalTimeout())
-	defer cancel()
-
-	req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, plansURL(portal), bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, plansURL(portal), bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("failed to build portal plan create request: %w", err)
 	}

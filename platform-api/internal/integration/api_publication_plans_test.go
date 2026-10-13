@@ -83,8 +83,8 @@ func TestPublicationPublish_CreatesMissingPlansBeforePush(t *testing.T) {
 	if len(portal.plans) != 1 || portal.plans[0].Handle != planHandleFor(g) || portal.plans[0].UUID != g.plan {
 		t.Fatalf("[%s] want the selected plan handed over, got %+v", it.driver, portal.plans)
 	}
-	if !portal.hasDeadline || portal.deadline.After(before.Add(26*time.Second)) {
-		t.Fatalf("[%s] want the plan step bounded to 25s, got deadline %v (set=%v)", it.driver, portal.deadline, portal.hasDeadline)
+	if !portal.hasDeadline || portal.deadline.After(before.Add(publicationTestOperationTimeout+time.Second)) {
+		t.Fatalf("[%s] want the plan step under the operation deadline, got deadline %v (set=%v)", it.driver, portal.deadline, portal.hasDeadline)
 	}
 }
 

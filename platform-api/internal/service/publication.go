@@ -66,6 +66,8 @@ type PublicationService struct {
 	publicationRepo      repository.PublicationRepository
 	portalPublisher      PortalPublisher
 	slogger              *slog.Logger
+
+	portalOperationTimeout time.Duration
 }
 
 // NewPublicationService creates a new API Publication service.
@@ -76,6 +78,7 @@ func NewPublicationService(
 	subscriptionPlanRepo repository.SubscriptionPlanRepository,
 	publicationRepo repository.PublicationRepository,
 	portalPublisher PortalPublisher,
+	portalOperationTimeout time.Duration,
 	slogger *slog.Logger,
 ) *PublicationService {
 	if slogger == nil {
@@ -89,7 +92,14 @@ func NewPublicationService(
 		publicationRepo:      publicationRepo,
 		portalPublisher:      portalPublisher,
 		slogger:              slogger,
+
+		portalOperationTimeout: portalOperationTimeout,
 	}
+}
+
+// portalOperationContext applies the one deadline shared by all portal calls of a request.
+func (s *PublicationService) portalOperationContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(ctx, s.portalOperationTimeout)
 }
 
 // resolveArtifact resolves (apiType, apiId) to the artifact's internal UUID:
@@ -610,6 +620,9 @@ func (s *PublicationService) getPublicationContent(apiType, apiId, apiPortalId, 
 // A draft saved during the portal push is not promoted (APIPublicationDraftChanged).
 // The push is not undone, so the portal may differ until the caller publishes again.
 func (s *PublicationService) Publish(ctx context.Context, apiType, apiId, apiPortalId, orgUUID, actor string) (*model.Publication, bool, error) {
+	ctx, cancel := s.portalOperationContext(ctx)
+	defer cancel()
+
 	artifactUUID, err := s.resolveArtifact(apiType, apiId, orgUUID)
 	if err != nil {
 		return nil, false, err
@@ -676,6 +689,9 @@ func (s *PublicationService) Publish(ctx context.Context, apiType, apiId, apiPor
 // durable identity for this pairing and doesn't change either way. Either way
 // a draft survives.
 func (s *PublicationService) Unpublish(ctx context.Context, apiType, apiId, apiPortalId, orgUUID, actor string) error {
+	ctx, cancel := s.portalOperationContext(ctx)
+	defer cancel()
+
 	artifactUUID, err := s.resolveArtifact(apiType, apiId, orgUUID)
 	if err != nil {
 		return err
@@ -713,6 +729,9 @@ func (s *PublicationService) Unpublish(ctx context.Context, apiType, apiId, apiP
 // requires the listing to be PUBLISHED (409 PUBLICATION_STATE_CONFLICT otherwise).
 // The draft is neither read nor modified.
 func (s *PublicationService) Deprecate(ctx context.Context, apiType, apiId, apiPortalId, orgUUID, actor string) (*model.Publication, error) {
+	ctx, cancel := s.portalOperationContext(ctx)
+	defer cancel()
+
 	artifactUUID, err := s.resolveArtifact(apiType, apiId, orgUUID)
 	if err != nil {
 		return nil, err
@@ -751,10 +770,6 @@ func (s *PublicationService) Deprecate(ctx context.Context, apiType, apiId, apiP
 	return s.getPublicationRow(apiType, apiId, apiPortalId, orgUUID)
 }
 
-// portalPlansTimeout bounds the whole plan step. Publish's own two portal calls can
-// take 43s each, so 25s keeps the worst case under the server's 120s write timeout.
-const portalPlansTimeout = 25 * time.Second
-
 // createMissingPortalPlans makes sure the portal has every plan the draft selects,
 // creating those it lacks. Failures come back already mapped for the caller.
 func (s *PublicationService) createMissingPortalPlans(ctx context.Context, portal *model.APIPortal, orgUUID string, handles []string) error {
@@ -770,8 +785,6 @@ func (s *PublicationService) createMissingPortalPlans(ctx context.Context, porta
 		plans = append(plans, byHandle[h])
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, portalPlansTimeout)
-	defer cancel()
 	if err := s.portalPublisher.CreateMissingPlans(ctx, portal, plans); err != nil {
 		return portalPushError(err)
 	}

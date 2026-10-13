@@ -407,11 +407,11 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	secretService := service.NewSecretService(secretRepo, secretVault, identityService)
 	apiPortalAuthRegistry := service.NewAPIPortalAuthRegistry(apiPortalRepo, secretVault)
 	apiPortalService := service.NewAPIPortalService(apiPortalRepo, orgRepo, auditRepo, secretVault, apiPortalAuthRegistry, identityService, slogger)
-	portalPublisher, err := newPortalPublisher(apiPortalAuthRegistry, slogger)
+	portalPublisher, err := newPortalPublisher(apiPortalAuthRegistry, &cfg.APIPortalPublication, slogger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize API Portal publisher: %w", err)
 	}
-	publicationService := service.NewPublicationService(artifactRepo, apiPortalRepo, documentRepo, subscriptionPlanRepo, publicationRepo, portalPublisher, slogger)
+	publicationService := service.NewPublicationService(artifactRepo, apiPortalRepo, documentRepo, subscriptionPlanRepo, publicationRepo, portalPublisher, cfg.APIPortalPublication.OverallTimeout, slogger)
 
 	// Initialize handlers
 	orgHandler := handler.NewOrganizationHandler(orgService, identityService, slogger)
@@ -1194,11 +1194,28 @@ func seedFileBasedOrg(cfg *config.Server, orgRepo repository.OrganizationReposit
 // newPortalPublisher builds the real API Portal publisher. Each portal's
 // shared key is resolved per-call from its own api_portals row via
 // authRegistry — there is no server-wide key to read at startup.
-func newPortalPublisher(authRegistry *service.APIPortalAuthRegistry, slogger *slog.Logger) (service.PortalPublisher, error) {
-	retryClient, err := client.NewRetryableHTTPClient(3, 10*time.Second)
+func newPortalPublisher(authRegistry *service.APIPortalAuthRegistry, cfg *config.APIPortalPublication, slogger *slog.Logger) (service.PortalPublisher, error) {
+	lightClient, err := client.NewRetryableHTTPClient(client.RetryConfig{
+		MaxRetries:     cfg.MaxRetries,
+		AttemptTimeout: cfg.RequestTimeout,
+		Backoff:        cfg.RetryBackoff,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to build the API Portal HTTP client: %w", err)
 	}
-	slogger.Info("Initialized the real HTTP publisher for API Publication")
-	return service.NewHTTPPortalPublisher(authRegistry, retryClient), nil
+	pushClient, err := client.NewRetryableHTTPClient(client.RetryConfig{
+		MaxRetries:     cfg.MaxRetries,
+		AttemptTimeout: cfg.ListingRequestTimeout,
+		Backoff:        cfg.RetryBackoff,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to build the API Portal push HTTP client: %w", err)
+	}
+	slogger.Info("Initialized the real HTTP publisher for API Publication",
+		"requestTimeout", cfg.RequestTimeout,
+		"listingRequestTimeout", cfg.ListingRequestTimeout,
+		"maxRetries", cfg.MaxRetries,
+		"retryBackoff", cfg.RetryBackoff,
+		"overallTimeout", cfg.OverallTimeout)
+	return service.NewHTTPPortalPublisher(authRegistry, lightClient, pushClient), nil
 }

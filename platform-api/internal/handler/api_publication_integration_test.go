@@ -30,6 +30,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/wso2/api-platform/platform-api/internal/database"
 	"github.com/wso2/api-platform/platform-api/internal/middleware"
@@ -110,6 +111,7 @@ func setupPublicationTestEnv(t *testing.T) (http.Handler, *database.DB, func()) 
 		repository.NewSubscriptionPlanRepo(db),
 		repository.NewPublicationRepo(db),
 		alwaysSucceedsPortalPublisher{},
+		time.Minute,
 		slog.Default(),
 	)
 	h := NewPublicationHandler(publicationService, identityService, 0, 0, slog.Default())

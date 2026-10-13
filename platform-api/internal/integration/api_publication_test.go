@@ -24,6 +24,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/model"
@@ -62,8 +63,14 @@ func newPublicationTestService(it *itDB) *service.PublicationService {
 	return newPublicationTestServiceWith(it, alwaysSucceedsPortalPublisher{})
 }
 
+const publicationTestOperationTimeout = time.Minute
+
 // newPublicationTestServiceWith builds the service with the given portal double.
 func newPublicationTestServiceWith(it *itDB, portalPublisher service.PortalPublisher) *service.PublicationService {
+	return newPublicationTestServiceWithTimeout(it, portalPublisher, publicationTestOperationTimeout)
+}
+
+func newPublicationTestServiceWithTimeout(it *itDB, portalPublisher service.PortalPublisher, operationTimeout time.Duration) *service.PublicationService {
 	return service.NewPublicationService(
 		repository.NewArtifactRepo(it.db),
 		repository.NewAPIPortalRepo(it.db),
@@ -71,6 +78,7 @@ func newPublicationTestServiceWith(it *itDB, portalPublisher service.PortalPubli
 		repository.NewSubscriptionPlanRepo(it.db),
 		repository.NewPublicationRepo(it.db),
 		portalPublisher,
+		operationTimeout,
 		nil,
 	)
 }
@@ -615,6 +623,7 @@ func TestPublicationUnpublish_PortalConflict(t *testing.T) {
 		repository.NewSubscriptionPlanRepo(it.db),
 		repository.NewPublicationRepo(it.db),
 		unpublishConflictPublisher{},
+		publicationTestOperationTimeout,
 		nil,
 	)
 
@@ -686,6 +695,7 @@ func TestPublicationUnpublish_PortalConflictReasonSurfaced(t *testing.T) {
 		repository.NewSubscriptionPlanRepo(it.db),
 		repository.NewPublicationRepo(it.db),
 		unpublishSubscriptionConflictPublisher{},
+		publicationTestOperationTimeout,
 		nil,
 	)
 

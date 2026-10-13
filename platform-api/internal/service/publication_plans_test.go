@@ -50,25 +50,19 @@ func (f *publicationPlanRepo) GetByHandles(handles []string, _ string) (map[stri
 
 type planSyncPublisher struct {
 	PortalPublisher
-	err         error
-	calls       int
-	got         []*model.SubscriptionPlan
-	hasDeadline bool
-	remaining   time.Duration
+	err   error
+	calls int
+	got   []*model.SubscriptionPlan
 }
 
-func (f *planSyncPublisher) CreateMissingPlans(ctx context.Context, _ *model.APIPortal, plans []*model.SubscriptionPlan) error {
+func (f *planSyncPublisher) CreateMissingPlans(_ context.Context, _ *model.APIPortal, plans []*model.SubscriptionPlan) error {
 	f.calls++
 	f.got = plans
-	if d, ok := ctx.Deadline(); ok {
-		f.hasDeadline = true
-		f.remaining = time.Until(d)
-	}
 	return f.err
 }
 
 func newPublicationPlanService(repo *publicationPlanRepo, pub *planSyncPublisher) *PublicationService {
-	return NewPublicationService(nil, nil, nil, repo, nil, pub, nil)
+	return NewPublicationService(nil, nil, nil, repo, nil, pub, time.Minute, nil)
 }
 
 func publicationTestPlans() *publicationPlanRepo {
@@ -148,16 +142,13 @@ func TestCreateMissingPortalPlans(t *testing.T) {
 		}
 	})
 
-	t.Run("sends the selected plans in order under a deadline", func(t *testing.T) {
+	t.Run("sends the selected plans in order", func(t *testing.T) {
 		pub := &planSyncPublisher{}
 		if err := newPublicationPlanService(publicationTestPlans(), pub).createMissingPortalPlans(context.Background(), portal, "org", []string{"silver", "gold"}); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		if pub.calls != 1 || len(pub.got) != 2 || pub.got[0].Handle != "silver" || pub.got[1].Handle != "gold" {
 			t.Fatalf("got %d calls, plans %v", pub.calls, pub.got)
-		}
-		if !pub.hasDeadline || pub.remaining > portalPlansTimeout {
-			t.Fatalf("want a deadline of at most %s, got %v", portalPlansTimeout, pub.remaining)
 		}
 	})
 
