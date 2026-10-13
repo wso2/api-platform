@@ -181,3 +181,69 @@ func TestCreateMissingPortalPlans(t *testing.T) {
 		}
 	})
 }
+
+type publishFlowArtifactRepo struct{ repository.ArtifactRepository }
+
+func (publishFlowArtifactRepo) GetAPIMetadataByHandleAndKind(_, _, _ string) (*model.APIMetadata, error) {
+	return &model.APIMetadata{ID: "artifact-uuid"}, nil
+}
+
+type publishFlowPortalRepo struct{ repository.APIPortalRepository }
+
+func (publishFlowPortalRepo) GetByHandleAndOrgID(handle, _ string) (*model.APIPortal, error) {
+	return &model.APIPortal{ID: "portal-uuid", Handle: handle}, nil
+}
+
+type publishFlowPublicationRepo struct {
+	repository.PublicationRepository
+}
+
+func (publishFlowPublicationRepo) GetDraft(_, _, _ string) (*model.Publication, []string, []string, error) {
+	return &model.Publication{UUID: "draft-uuid"}, []string{"uuid-gold"}, nil, nil
+}
+
+func (publishFlowPublicationRepo) GetContent(_ string, _ model.PublicationContentType, _ string) (*model.PublicationContent, error) {
+	return &model.PublicationContent{ContentType: "application/json", Content: []byte(validRESTDefinitionSpec)}, nil
+}
+
+type publishFlowPlanRepo struct{ *publicationPlanRepo }
+
+func (publishFlowPlanRepo) GetHandlesByIDs(_ []string, _ string) (map[string]string, error) {
+	return map[string]string{"uuid-gold": "gold"}, nil
+}
+
+type publishFlowDocumentRepo struct{ repository.DocumentRepository }
+
+func (publishFlowDocumentRepo) GetDocumentHandlesByUUIDs(_ []string, _ string) (map[string]string, error) {
+	return map[string]string{}, nil
+}
+
+// A failed plan step ends Publish before the listing is pushed or the draft promoted: the
+// publisher's Publish and the repository's promote are left unimplemented, so reaching
+// either panics.
+func TestPublish_StopsWhenThePlanStepFails(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		is   func(error) bool
+	}{
+		{"portal unavailable", errors.New("connection refused"), apperror.APIPublicationPortalUnavailable.Is},
+		{"portal rejection", &PortalConflictError{Message: "rejected"}, apperror.APIPublicationPortalConflict.Is},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			pub := &planSyncPublisher{err: tc.err}
+			svc := NewPublicationService(
+				publishFlowArtifactRepo{}, publishFlowPortalRepo{}, publishFlowDocumentRepo{},
+				publishFlowPlanRepo{publicationTestPlans()}, publishFlowPublicationRepo{}, pub, time.Minute, nil)
+
+			published, _, err := svc.Publish(context.Background(), restAPITypeValue, "my-api", "my-portal", "org", "actor")
+			if !tc.is(err) || published != nil {
+				t.Fatalf("want the mapped plan error and no publication, got %v, %v", published, err)
+			}
+			if pub.calls != 1 || len(pub.got) != 1 || pub.got[0].Handle != "gold" {
+				t.Fatalf("want one plan call carrying the draft's plan, got %d calls with %v", pub.calls, pub.got)
+			}
+		})
+	}
+}

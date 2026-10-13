@@ -323,3 +323,56 @@ func TestCreateMissingPlans_ErrorMapping(t *testing.T) {
 		})
 	}
 }
+
+func TestCreateMissingPlans_RequestFailures(t *testing.T) {
+	plans := testPlans("brand-new")
+
+	t.Run("credential cannot be resolved", func(t *testing.T) {
+		srv := (&planPortal{}).serve(t)
+		p := newTestHTTPPortalPublisher(t, "test-shared-key")
+		p.authRegistry = NewAPIPortalAuthRegistry(&mockAPIPortalRepository{getErr: errors.New("portal row unreadable")}, newTestVault(t))
+		portal := &model.APIPortal{URL: srv.URL}
+
+		if err := p.CreateMissingPlans(context.Background(), portal, plans); err == nil || !strings.Contains(err.Error(), "failed to resolve API Portal auth") {
+			t.Fatalf("listing: want the credential error, got %v", err)
+		}
+		if err := p.createPlans(context.Background(), portal, plans); err == nil || !strings.Contains(err.Error(), "failed to resolve API Portal auth") {
+			t.Fatalf("create: want the credential error, got %v", err)
+		}
+	})
+
+	t.Run("portal URL is not a valid URL", func(t *testing.T) {
+		p := newTestHTTPPortalPublisher(t, "test-shared-key")
+		portal := &model.APIPortal{URL: "http://bad host"}
+
+		if _, err := p.listPlansPage(context.Background(), portal, 0); err == nil || !strings.Contains(err.Error(), "failed to build portal plan listing request") {
+			t.Fatalf("listing: want a build error, got %v", err)
+		}
+		if err := p.createPlans(context.Background(), portal, plans); err == nil || !strings.Contains(err.Error(), "failed to build portal plan create request") {
+			t.Fatalf("create: want a build error, got %v", err)
+		}
+	})
+
+	t.Run("connection drops during the create", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method == http.MethodGet {
+				_, _ = w.Write([]byte(`{"list":[],"pagination":{"total":0}}`))
+				return
+			}
+			conn, _, err := w.(http.Hijacker).Hijack()
+			if err != nil {
+				t.Errorf("hijack: %v", err)
+				return
+			}
+			conn.Close()
+		}))
+		t.Cleanup(srv.Close)
+		p := newTestHTTPPortalPublisher(t, "test-shared-key")
+
+		err := p.CreateMissingPlans(context.Background(), &model.APIPortal{URL: srv.URL}, plans)
+		var conflict *PortalConflictError
+		if err == nil || errors.As(err, &conflict) || !strings.Contains(err.Error(), "portal plan create failed") {
+			t.Fatalf("want a plain create failure, got %v", err)
+		}
+	})
+}

@@ -150,6 +150,22 @@ func TestSubscriptionPlanRepo_GetByHandles(t *testing.T) {
 		}
 	})
 
+	t.Run("an unreadable row is an error, not a partial result", func(t *testing.T) {
+		if _, err := db.Exec(db.Rebind(`INSERT INTO subscription_plan_limits (uuid, subscription_plan_uuid, limit_type, time_unit, limit_count)
+			SELECT ?, uuid, 'REQUEST_COUNT', 'MINUTE', ? FROM subscription_plans WHERE handle = ? AND organization_uuid = ?`),
+			"bad-limit", "not a number", "silver", "org-1"); err != nil {
+			t.Fatalf("corrupt the row: %v", err)
+		}
+		defer func() {
+			if _, err := db.Exec(db.Rebind("DELETE FROM subscription_plan_limits WHERE uuid = ?"), "bad-limit"); err != nil {
+				t.Fatalf("restore the row: %v", err)
+			}
+		}()
+		if _, err := repo.GetByHandles([]string{"gold", "silver"}, "org-1"); err == nil {
+			t.Error("want a scan error")
+		}
+	})
+
 	t.Run("database error is wrapped", func(t *testing.T) {
 		broken, brokenCleanup := setupTestDB(t)
 		brokenCleanup()
