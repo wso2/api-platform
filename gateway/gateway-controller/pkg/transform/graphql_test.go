@@ -25,6 +25,7 @@ import (
 	"github.com/stretchr/testify/require"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
 )
@@ -171,4 +172,28 @@ func keysOf(m map[string]*models.Route) []string {
 		keys = append(keys, k)
 	}
 	return keys
+}
+
+// The analytics system policy skips body processing only for kinds it knows don't need the
+// body, and buffers it when api_kind is missing. Every GraphQL route must carry the kind.
+func TestGraphQLAPITransformer_AnalyticsPolicyGetsAPIKind(t *testing.T) {
+	sysCfg := &config.Config{Analytics: config.AnalyticsConfig{Enabled: true}}
+	transformer := NewGraphQLAPITransformer(testRouterCfg(), sysCfg, map[string]models.PolicyDefinition{})
+	cfg := makeGraphQLAPIStoredConfig(ptrStr("http://sandbox-backend:8080/graphql"), nil)
+
+	rdc, err := transformer.Transform(cfg)
+	require.NoError(t, err)
+	require.Len(t, rdc.PolicyChains, 2)
+
+	for routeKey, chain := range rdc.PolicyChains {
+		var found bool
+		for _, p := range chain.Policies {
+			if p.Name != constants.ANALYTICS_SYSTEM_POLICY_NAME {
+				continue
+			}
+			found = true
+			assert.Equal(t, "GraphQLApi", p.Params["api_kind"], "route %s", routeKey)
+		}
+		assert.True(t, found, "route %s has no analytics system policy", routeKey)
+	}
 }

@@ -93,7 +93,14 @@ func (t *GraphQLAPITransformer) Transform(cfg *models.StoredConfig) (*models.Run
 	// the route's whole chain (plus injected system policies).
 	apiPolicies := t.collectAPIPolicies(apiData.Policies)
 	chain := t.buildPolicyChain(apiPolicies)
-	injected := utils.InjectSystemPolicies(chain, t.systemConfig, nil)
+	// api_kind lets the analytics system policy skip body processing when request/response
+	// body capture is off, as the REST transformer does (see transform/restapi.go). Without
+	// it the policy fails safe and always buffers the body; GraphQL analytics derive nothing
+	// from the body, so the skip is safe here.
+	systemPolicyProps := map[string]any{
+		utils.SharedParamsKey: map[string]interface{}{"api_kind": cfg.Kind},
+	}
+	injected := utils.InjectSystemPolicies(chain, t.systemConfig, systemPolicyProps)
 
 	// fullPath has no operation-path suffix: a GraphQLApi's whole route match is the
 	// resolved context (ConstructFullPath(context, version, "") == context+version,
