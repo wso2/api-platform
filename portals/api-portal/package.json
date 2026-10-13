@@ -46,7 +46,7 @@
     "jose": "6.2.3",
     "js-yaml": "5.2.1",
     "marked": "18.0.6",
-    "minimatch": "10.2.5",
+    "minimatch": "10.2.6",
     "mssql": "12.7.0",
     "multer": "2.2.0",
     "passport": "0.7.0",
