@@ -421,9 +421,7 @@ func TestInheritMCPProxyCredential(t *testing.T) {
 		incoming.Spec.Upstream.Auth.Value = nil
 		inheritMCPProxyCredential(&incoming, storedConfig)
 		require.NotNil(t, incoming.Spec.Upstream.Auth.Value)
-		require.NotNil(t, incoming.Spec.Upstream.Auth.Header)
 		assert.Equal(t, api.MCPProxyConfigDataUpstreamAuthTypeApiKey, incoming.Spec.Upstream.Auth.Type)
-		assert.Equal(t, "Authorization", *incoming.Spec.Upstream.Auth.Header)
 		assert.Equal(t, storedCred, *incoming.Spec.Upstream.Auth.Value)
 	})
 

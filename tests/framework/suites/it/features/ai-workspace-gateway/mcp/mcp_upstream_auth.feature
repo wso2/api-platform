@@ -143,7 +143,7 @@ Feature: MCP proxy upstream API key authentication
       | context            | ${CTX:mcpContext}                                                |
       | specVersion        | 2025-06-18                                                       |
       | spec.upstream.url  | ${CTX:captureUpstream}/${CTX:mcpName}${CTX:gatewayMCPUpstreamPath} |
-      | spec.upstream.auth | {"type":"api-key"}                                               |
+      | spec.upstream.auth | {"type":"api-key","header":"X-API-Key"}                          |
     Then the response should be successful
     When I send a "POST" request to "${CTX:mcpContext}/mcp" until status 200 with body:
       """
