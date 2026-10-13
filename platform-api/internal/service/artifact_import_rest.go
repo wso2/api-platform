@@ -127,9 +127,7 @@ func normalizeGatewayRestOperations(spec map[string]interface{}, cfg *model.Rest
 	if err := utils.DecodeSpec(spec, &gwSpec); err != nil {
 		return err
 	}
-	if len(gwSpec.Operations) != len(cfg.Operations) {
-		return nil
-	}
+	// Both decodes read the same operations array, so the two slices align by index.
 	for idx, op := range gwSpec.Operations {
 		if cfg.Operations[idx].Request != nil {
 			continue
