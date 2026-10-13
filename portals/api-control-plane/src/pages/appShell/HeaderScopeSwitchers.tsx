@@ -99,7 +99,7 @@ export function HeaderScopeSwitchers() {
     const scopeParams = { orgHandle: params.orgHandle, projectHandler: params.projectHandler };
     // The current page at the new API, as for the switchers above. A GraphQL
     // API only takes that target when the page has a GraphQL equivalent —
-    // a REST-only page (per-operation Resources, say) resolves to a REST path,
+    // a REST-only page (the Definition editor, say) resolves to a REST path,
     // which a GraphQL handle would not open, so it falls back to the API's Home.
     const target = findTargetAtScope(
       location.pathname,

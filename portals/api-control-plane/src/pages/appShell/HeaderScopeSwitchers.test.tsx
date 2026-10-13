@@ -181,6 +181,59 @@ describe('HeaderScopeSwitchers — a GraphQL API in scope', () => {
 });
 
 /**
+ * Switching APIs keeps the current page, as the org and project switchers do
+ * (`findTargetAtScope`) — but a GraphQL API only takes that page when it has
+ * a GraphQL equivalent, and otherwise opens on its own Overview rather than a
+ * REST path its handle would not resolve on.
+ */
+describe('HeaderScopeSwitchers — switching from a REST API to a GraphQL API', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(useAllRestApis).mockReturnValue(restApisResult(REST_API_LIST));
+    vi.mocked(useAllGraphQLApis).mockReturnValue(graphqlApisResult(GRAPHQL_API_LIST));
+  });
+
+  const switchToGraphqlApiFrom = async (route: string) => {
+    const { user } = renderWithProviders(
+      <AppShell>
+        <AppShell.Navbar>
+          <Header>
+            <HeaderScopeSwitchers />
+          </Header>
+        </AppShell.Navbar>
+        <Located />
+      </AppShell>,
+      {
+        route,
+        scope: makeConsoleScope({
+          isApiScope: true,
+          params: { apiHandler: 'orders-api', orgHandle: ORG, projectHandler: PROJECT_ID },
+          project: PROJECT,
+          projects: [PROJECT],
+        }),
+      },
+    );
+    // `Header.Switchers` computes as hidden in jsdom — see `organizationTrigger`.
+    await user.click(screen.getByRole('combobox', { name: 'APIs', hidden: true }));
+    await user.click(await screen.findByRole('option', { name: /Countries API/ }));
+  };
+
+  it('stays on the page the GraphQL API also has', async () => {
+    await switchToGraphqlApiFrom(routes.apiDevelopPolicies(ORG, PROJECT_ID, 'orders-api'));
+
+    expect(
+      screen.getByText(`at ${routes.graphqlApiDevelopPolicies(ORG, PROJECT_ID, 'countries-graphql-api')}`),
+    ).toBeInTheDocument();
+  });
+
+  it('opens the GraphQL API’s Overview from a REST-only page', async () => {
+    await switchToGraphqlApiFrom(routes.apiDevelopDefinition(ORG, PROJECT_ID, 'orders-api'));
+
+    expect(screen.getByText(`at ${routes.graphqlApi(ORG, PROJECT_ID, 'countries-graphql-api')}`)).toBeInTheDocument();
+  });
+});
+
+/**
  * Oxygen's `Header.Switchers` is `display: none` below the `md` breakpoint and
  * flips to `flex` in a media query. jsdom never applies that override, so the
  * switchers compute as hidden and the default role query skips them — hence
