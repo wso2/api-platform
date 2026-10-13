@@ -21,11 +21,12 @@ package framework
 import "embed"
 
 // Assets holds the repository files the engine reads when it runs without an api-platform
-// checkout. Files under the module keep their module-relative path; snapshots of files that
-// live elsewhere in the repository sit under snapshots/ at their repository-relative path. It
-// carries no key material, which the framework generates per run. The core/assets package
-// resolves repository paths against it.
+// checkout, and the canonical resource templates a project's features fall back to. Files under
+// the module keep their module-relative path; snapshots of files that live elsewhere in the
+// repository sit under snapshots/ at their repository-relative path. It carries no key
+// material, which the framework generates per run. The core/assets package resolves
+// repository paths against it.
 //
 //go:embed core/catalog/overlays core/catalog/platformgateway/docker-compose.yaml
-//go:embed core/catalog/platformgateway/resources all:snapshots
+//go:embed core/catalog/platformgateway/resources suites/it/resources/templates all:snapshots
 var Assets embed.FS

@@ -680,9 +680,9 @@ func TestAnalyticsMetadataResolvesNestedPaths(t *testing.T) {
 func TestGatewayTemplatePathAndLiteralHelpers(t *testing.T) {
 	root := t.TempDir()
 	gateway := &Gateway{featureRoot: root}
-	path, err := gateway.templatePath("resources/templates/rest-api.yaml")
+	path, err := gateway.templatePath("resources/templates/custom.yaml")
 	require.NoError(t, err)
-	require.Equal(t, filepath.Join(root, "resources/templates/rest-api.yaml"), path)
+	require.Equal(t, filepath.Join(root, "resources/templates/custom.yaml"), path)
 	for _, name := range []string{"", "/tmp/api.yaml", "../api.yaml", "resources/templates/../../../api.yaml"} {
 		_, err = gateway.templatePath(name)
 		require.Error(t, err)
