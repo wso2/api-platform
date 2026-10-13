@@ -412,6 +412,13 @@ function GraphqlTestConsolePageContent() {
             height: GRAPHIQL_HEIGHT,
             minHeight: GRAPHIQL_MIN_HEIGHT,
             overflow: 'hidden',
+            // GraphiQL positions each Monaco editor absolutely but leaves its
+            // `.graphiql-editor` host static, so the editor anchors to the
+            // nearest positioned ancestor — here AppShell's layout, outside
+            // its scrolling main area. The editor's text then stays put while
+            // the page scrolls and spills out of the editor's box. Anchoring
+            // it to its own host keeps the two together.
+            '& .graphiql-editor': { position: 'relative' },
           }}
         >
           {/*
