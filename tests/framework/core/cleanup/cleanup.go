@@ -64,8 +64,9 @@ var (
 	// control plane's imported AgentProxy copy, which platform-api only lets go once the
 	// gateway has reported the Agent undeployed. Like an API it can name certificates, so it
 	// also deletes before them.
-	KindAgent     = Kind{Name: "agent", Order: 52}
-	KindMCPServer = Kind{Name: "mcp-server", Order: 55}
+	KindAgent      = Kind{Name: "agent", Order: 52}
+	KindGraphQLAPI = Kind{Name: "graphql-api", Order: 53}
+	KindMCPServer  = Kind{Name: "mcp-server", Order: 55}
 	// An Agent proxy can hold its upstream credential as a {{ secret "handle" }}
 	// placeholder, so it deletes before KindSecret.
 	KindAgentProxy  = Kind{Name: "agent-proxy", Order: 56}

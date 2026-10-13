@@ -233,6 +233,14 @@ func buildRequest(
 		chainHostConfig(req, func(hc *container.HostConfig) {
 			hc.PortBindings = bindings
 		})
+		// Keep the permanent home network as the gateway when block networks are
+		// attached or detached. A gateway change recreates published port forwarding,
+		// briefly refusing requests even when the host port numbers stay the same.
+		req.EndpointSettingsModifier = func(endpoints map[string]*dockernet.EndpointSettings) {
+			if settings := endpoints[opts.Network.Name()]; settings != nil {
+				settings.GwPriority = 1
+			}
+		}
 	}
 	if len(def.Cmd) > 0 {
 		req.Cmd = def.Cmd

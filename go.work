@@ -27,6 +27,5 @@ use (
 	./sdk/ai
 	./sdk/core
 	./tests/framework
-	./tests/integration-e2e
 	./tests/mock-servers/mock-platform-api
 )
