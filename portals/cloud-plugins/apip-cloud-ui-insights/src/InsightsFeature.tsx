@@ -32,7 +32,8 @@ export { ENABLE_ACP_PROJECT_FILTER } from './config/acpProjectFilter';
 
 /**
  * AI Workspace pages own their PageContent (the shell does not wrap the outlet).
- * ACP already wraps the outlet in PageContent — do not nest another here.
+ * ACP wraps this extension's route in `PageContent` at the registration site
+ * instead (see the host's `api-control-plane.tsx`), so it isn't duplicated here.
  */
 function withHostPageChrome(
   embedProfile: InsightsEmbedProfile,

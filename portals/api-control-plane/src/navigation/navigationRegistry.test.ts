@@ -20,7 +20,7 @@ import { describe, expect, it } from 'vitest';
 
 import { routes } from '../routes/paths';
 import { makeConsoleScope } from '../test/mockScope';
-import { navigationRegistry } from './navigationRegistry';
+import { findTargetAtScope, navigationRegistry } from './navigationRegistry';
 import { anOrganization, aProject } from '@/test/msw/fixtures';
 
 const definitionFor = (id: string) => {
@@ -302,6 +302,46 @@ describe('organization-level items', () => {
     expect(match(`${ORG}/settings`)).toBe(true);
     expect(match(`${PROJECT}/settings`)).toBe(true);
     expect(match(`${API}/settings`)).toBe(false);
+  });
+});
+
+/*
+ * The header's org/project/API switchers used to always send the user to the
+ * target scope's Home page, regardless of what page they were on — picking a
+ * project while on the organization's Settings tab landed on the project's
+ * Overview instead of carrying Settings down with it, and clearing the
+ * project back out landed on the organization's Overview rather than back on
+ * its own Settings. `findTargetAtScope` re-resolves whatever page the user is
+ * actually on at the target scope, in either direction.
+ */
+describe('findTargetAtScope', () => {
+  it('keeps the user on Settings when dropping a project to its organization', () => {
+    const target = findTargetAtScope(`${PROJECT}/settings/general`, atProject(), {
+      orgHandle: anOrganization().id,
+    });
+    expect(target).toBe(`${ORG}/settings`);
+  });
+
+  it('keeps the user on Settings when picking a project from the organization', () => {
+    const target = findTargetAtScope(`${ORG}/settings/general`, atOrg(), {
+      orgHandle: anOrganization().id,
+      projectHandler: aProject().id,
+    });
+    expect(target).toBe(`${PROJECT}/settings`);
+  });
+
+  it('keeps the user on an API-only page when dropping its API, via the scope-less alias', () => {
+    const target = findTargetAtScope(`${API}/deploy`, atApi(), {
+      orgHandle: anOrganization().id,
+      projectHandler: aProject().id,
+    });
+    expect(target).toBe(`${PROJECT}/select-scope/deploy`);
+  });
+
+  it('returns undefined for a URL no registry item claims, so callers can fall back to Home', () => {
+    expect(
+      findTargetAtScope('/not-a-real-page', atOrg(), { orgHandle: anOrganization().id }),
+    ).toBeUndefined();
   });
 });
 

@@ -73,11 +73,11 @@ export function AppPage({
       {...pageContentProps}
     >
       <Stack spacing={1}>
-        {showBreadcrumbs && (
+        {/* {showBreadcrumbs && (
           <Box sx={{ pb: 1 }}>
             <AppBreadcrumbs items={breadcrumbs} sx={breadcrumbSx} />
           </Box>
-        )}
+        )} */}
         {children}
       </Stack>
     </PageContent>
