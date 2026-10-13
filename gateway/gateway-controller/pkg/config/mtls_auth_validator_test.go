@@ -88,7 +88,7 @@ func upstreamCA(name string) *models.StoredCertificate {
 // mtlsPolicy builds an mtls-auth policy entry with the given params (nil for
 // "no params at all", matching an omitted params: block).
 func mtlsPolicy(params map[string]interface{}) api.Policy {
-	p := api.Policy{Name: MtlsAuthPolicyName, Version: "v1"}
+	p := api.Policy{Name: MtlsAuthPolicyName, Version: "v0"}
 	if params != nil {
 		p.Params = &params
 	}

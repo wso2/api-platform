@@ -91,7 +91,7 @@ func TestValidateGraphQLUpstream_URLOnly_NoRefError(t *testing.T) {
 // so the policy would refuse every caller.
 func TestValidateGraphQLAPIConfig_MtlsAuthRefused(t *testing.T) {
 	cfg := api.GraphQLAPI{Kind: api.GraphQLAPIKindGraphQLApi}
-	cfg.Spec.Policies = &[]api.Policy{{Name: "cors", Version: "v1"}, {Name: config.MtlsAuthPolicyName, Version: "v1"}}
+	cfg.Spec.Policies = &[]api.Policy{{Name: "cors", Version: "v1"}, {Name: config.MtlsAuthPolicyName, Version: "v0"}}
 
 	_, _, errs := validateGraphQLAPIConfig(cfg)
 

@@ -58,7 +58,7 @@ func createDedicatedHostnameTestServerFor(t *testing.T, required bool, request s
 	}))
 
 	defs := map[string]models.PolicyDefinition{
-		"mtls-auth|v1.0.0": {Name: config.MtlsAuthPolicyName, Version: "v1.0.0"},
+		"mtls-auth|v0.9.0": {Name: config.MtlsAuthPolicyName, Version: "v0.9.0"},
 	}
 	mtlsAuthValidator := config.NewMtlsAuthValidator(mockDB, true, false, nil).
 		WithVHosts(server.routerConfig.VHosts).
@@ -76,7 +76,7 @@ func mtlsAuthRestAPIBody(t *testing.T, handle, vhostsMain string) []byte {
 	t.Helper()
 	var cfg api.RestAPI
 	require.NoError(t, json.Unmarshal(createTestRestAPIRequestBody(t, handle, handle, "v1.0.0", "/"+handle), &cfg))
-	cfg.Spec.Policies = &[]api.Policy{{Name: "mtls-auth", Version: "v1"}}
+	cfg.Spec.Policies = &[]api.Policy{{Name: "mtls-auth", Version: "v0"}}
 	if vhostsMain != "" {
 		cfg.Spec.Vhosts = &struct {
 			Main    string  `json:"main" yaml:"main"`
@@ -214,7 +214,7 @@ func hostnameWarningFieldsFor(t *testing.T, vhostsMain, request string) []string
 
 	var cfg api.RestAPI
 	require.NoError(t, json.Unmarshal(createTestRestAPIRequestBody(t, "mtls-host", "mtls-host", "v1.0.0", "/mtls-host"), &cfg))
-	cfg.Spec.Policies = &[]api.Policy{{Name: "mtls-auth", Version: "v1"}}
+	cfg.Spec.Policies = &[]api.Policy{{Name: "mtls-auth", Version: "v0"}}
 	if vhostsMain != "" {
 		cfg.Spec.Vhosts = &struct {
 			Main    string  `json:"main" yaml:"main"`

@@ -1076,7 +1076,7 @@ func restAPIConfigWithMtlsAuth(handle string, apiLevel bool, caNames ...string) 
 		}
 		params = map[string]interface{}{"accept": accept}
 	}
-	policy := management.Policy{Name: "mtls-auth", Version: "v1"}
+	policy := management.Policy{Name: "mtls-auth", Version: "v0"}
 	if params != nil {
 		policy.Params = &params
 	}

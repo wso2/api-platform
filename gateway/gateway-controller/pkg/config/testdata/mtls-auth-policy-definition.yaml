@@ -1,5 +1,5 @@
 name: mtls-auth
-version: v1.0.0
+version: v0.9.0
 description: |
   Authenticates API callers using mutual TLS. The gateway matches the client
   certificate presented on the connection against the accepted client

@@ -93,7 +93,7 @@ func warnMessages(t *testing.T, buf *bytes.Buffer) []string {
 // A stored API the setting would refuse keeps being served and is named in
 // one startup warning.
 func TestWarnMtlsAPIsWithoutDedicatedHostname(t *testing.T) {
-	mtls := api.Policy{Name: config.MtlsAuthPolicyName, Version: "v1"}
+	mtls := api.Policy{Name: config.MtlsAuthPolicyName, Version: "v0"}
 	sandboxDefault := "sandbox-*"
 	configs := []*models.StoredConfig{
 		storedRestAPI("no-hostname", "", nil, mtls),
@@ -126,7 +126,7 @@ func TestWarnMtlsAPIsWithoutDedicatedHostname(t *testing.T) {
 
 func TestWarnMtlsAPIsWithoutDedicatedHostname_SettingOff(t *testing.T) {
 	configs := []*models.StoredConfig{
-		storedRestAPI("no-hostname", "", nil, api.Policy{Name: config.MtlsAuthPolicyName, Version: "v1"}),
+		storedRestAPI("no-hostname", "", nil, api.Policy{Name: config.MtlsAuthPolicyName, Version: "v0"}),
 	}
 	var buf bytes.Buffer
 	warnMtlsAPIsWithoutDedicatedHostname(configs, dedicatedHostnameRouterConfig(false), slog.New(slog.NewJSONHandler(&buf, nil)))
@@ -137,8 +137,8 @@ func TestWarnMtlsAPIsWithoutDedicatedHostname_SettingOff(t *testing.T) {
 // and no stored API is named.
 func TestWarnMtlsAPIsWithoutDedicatedHostname_AllConnections(t *testing.T) {
 	configs := []*models.StoredConfig{
-		storedRestAPI("no-hostname", "", nil, api.Policy{Name: config.MtlsAuthPolicyName, Version: "v1"}),
-		storedRestAPI("also-no-hostname", "", nil, api.Policy{Name: config.MtlsAuthPolicyName, Version: "v1"}),
+		storedRestAPI("no-hostname", "", nil, api.Policy{Name: config.MtlsAuthPolicyName, Version: "v0"}),
+		storedRestAPI("also-no-hostname", "", nil, api.Policy{Name: config.MtlsAuthPolicyName, Version: "v0"}),
 	}
 	const combined = "router.downstream_tls.mtls_requires_dedicated_hostname has no effect while " +
 		"router.downstream_tls.client_certificate_request is all_connections"

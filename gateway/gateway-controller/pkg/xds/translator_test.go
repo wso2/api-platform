@@ -3743,7 +3743,7 @@ func makeRestAPIWithOperationLevelMTLSAuth(uuid, name, ctx string) *models.Store
 					Method: api.Ptr(api.OperationMethodGET),
 					Path:   api.Ptr("/resource"),
 					Policies: &[]api.Policy{
-						{Name: "mtls-auth", Version: "v1"},
+						{Name: "mtls-auth", Version: "v0"},
 					},
 				},
 			},
@@ -3953,7 +3953,7 @@ func TestTranslator_CreateRouteFromRDC_StripsXFCCHeader_UnlessChainAttachesMTLSA
 			},
 		},
 		PolicyChains: map[string]*models.PolicyChain{
-			"mtls-route": {Policies: []models.Policy{{Name: "mtls-auth", Version: "v1.0.0"}}},
+			"mtls-route": {Policies: []models.Policy{{Name: "mtls-auth", Version: "v0.9.0"}}},
 			// "plain-route" has no chain at all.
 		},
 		UpstreamClusters: map[string]*models.UpstreamCluster{
@@ -3997,7 +3997,7 @@ func mtlsHeaderStrippingRDC() *models.RuntimeDeployConfig {
 			},
 		},
 		PolicyChains: map[string]*models.PolicyChain{
-			"mtls-route": {Policies: []models.Policy{{Name: "mtls-auth", Version: "v1.0.0"}}},
+			"mtls-route": {Policies: []models.Policy{{Name: "mtls-auth", Version: "v0.9.0"}}},
 		},
 		UpstreamClusters: map[string]*models.UpstreamCluster{
 			"backend": {BasePath: "/", Endpoints: []models.Endpoint{{Host: "backend.example.com", Port: 8080}}},

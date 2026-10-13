@@ -162,7 +162,7 @@ func TestPolicyValidator_MtlsAuthRefusedOutsideRestAPI(t *testing.T) {
 	validator := NewPolicyValidator(ratelimitDefs(), nil)
 
 	llm := &api.LLMProxyConfiguration{Spec: api.LLMProxyConfigData{
-		GlobalPolicies: &[]api.Policy{{Name: MtlsAuthPolicyName, Version: "v1"}},
+		GlobalPolicies: &[]api.Policy{{Name: MtlsAuthPolicyName, Version: "v0"}},
 	}}
 	errs := validator.ValidateLLMProxyPolicies(llm)
 	require.Len(t, errs, 1)
@@ -170,7 +170,7 @@ func TestPolicyValidator_MtlsAuthRefusedOutsideRestAPI(t *testing.T) {
 	assert.Equal(t, "mtls-auth is supported on RestApi only", errs[0].Message)
 
 	mcp := &api.MCPProxyConfiguration{Spec: api.MCPProxyConfigData{
-		Policies: &[]api.Policy{{Name: MtlsAuthPolicyName, Version: "v1"}},
+		Policies: &[]api.Policy{{Name: MtlsAuthPolicyName, Version: "v0"}},
 	}}
 	errs = validator.ValidateMCPProxyPolicies(mcp)
 	require.Len(t, errs, 1)
@@ -183,7 +183,7 @@ func TestPolicyValidator_MtlsAuthRefusedOutsideRestAPI(t *testing.T) {
 // policy runs after the request was let through and could never deny it.
 func TestPolicyValidator_MtlsAuthRefusedAsFaultPolicy(t *testing.T) {
 	validator := NewPolicyValidator(ratelimitDefs(), nil)
-	mtls := []api.Policy{{Name: MtlsAuthPolicyName, Version: "v1"}}
+	mtls := []api.Policy{{Name: MtlsAuthPolicyName, Version: "v0"}}
 
 	llm := &api.LLMProxyConfiguration{Spec: api.LLMProxyConfigData{
 		GlobalFaultPolicies: &mtls,

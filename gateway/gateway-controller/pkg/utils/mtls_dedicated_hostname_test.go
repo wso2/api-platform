@@ -63,7 +63,7 @@ spec:
       url: http://backend:8080
   policies:
     - name: mtls-auth
-      version: v1
+      version: v0
   operations:
     - method: GET
       path: /
@@ -83,7 +83,7 @@ func TestCreateAPIFromYAML_MtlsRequiresDedicatedHostname(t *testing.T) {
 	deploy := func(t *testing.T, required bool, vhosts string) error {
 		t.Helper()
 		defs := map[string]models.PolicyDefinition{
-			"mtls-auth|v1.0.0": {Name: config.MtlsAuthPolicyName, Version: "v1.0.0"},
+			"mtls-auth|v0.9.0": {Name: config.MtlsAuthPolicyName, Version: "v0.9.0"},
 		}
 		mtlsAuthValidator := config.NewMtlsAuthValidator(clientAuthorityStore{}, true, false, nil).
 			WithVHosts(routerConfig.VHosts).

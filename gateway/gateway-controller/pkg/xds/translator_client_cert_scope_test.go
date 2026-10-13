@@ -66,7 +66,7 @@ func (a scopeAPI) stored() *models.StoredConfig {
 	}
 	rest := cfg.Configuration.(api.RestAPI)
 	if a.mtls == "api" {
-		rest.Spec.Policies = &[]api.Policy{{Name: "mtls-auth", Version: "v1"}}
+		rest.Spec.Policies = &[]api.Policy{{Name: "mtls-auth", Version: "v0"}}
 	}
 	if a.main != "" || a.sandboxHost != "" {
 		rest.Spec.Vhosts = &struct {
