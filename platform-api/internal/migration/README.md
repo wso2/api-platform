@@ -160,6 +160,18 @@ such as `gateway_custom_policies.display_name`/`description`, `api_keys.issuer`,
 `deployment_status.status_reason` — keep `nullOrString`. When adding a column, check the v2
 model field type before choosing between the two.
 
+## API key names and gateway state
+
+A gateway identifies an API key by the name the control plane first sent it — the v1 name — and v2
+addresses it by the v2 handle. The client mints `api_keys.handle` from the v1 name (v2's column is
+`VARCHAR(40)`, v1 names go up to 63 characters; uniqueness may add a suffix). A key whose name does
+not survive the mint is still migrated, but the gateways that hold it can neither re-sync nor
+revoke it from v2: the report lists every such key as a WARN (`api_key <uuid> on artifact <uuid>:
+v1 name … becomes handle …`) so it can be recreated after cut-over or revoked before.
+
+`gateways.is_active` is not carried over: v2 sets it when the gateway connects and clears it when
+it disconnects, and a migrated gateway has not connected to v2 yet.
+
 ## Reverse migration (§13)
 
 Reverse (`--direction reverse`) is **best-effort and NOT the primary rollback** —

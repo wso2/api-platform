@@ -97,6 +97,14 @@ func (m *apiKeysMigrator) Migrate(ctx context.Context, rc *RunContext) (*Resourc
 		if err != nil {
 			return err
 		}
+		if handle != r.name {
+			// A gateway identifies a key by the name the control plane first sent it,
+			// the v1 name; v2 addresses it by the handle. A key whose name does not
+			// survive the mint (longer than 40 chars, or suffixed for uniqueness) can
+			// then neither be re-synced nor revoked on the gateways that hold it.
+			rep.warn("api_key %s on artifact %s: v1 name %q becomes handle %q; gateways keep it under the v1 name, so it cannot be revoked from v2 — recreate it after cut-over (or revoke it before)",
+				r.uuid, r.artifactUUID, r.name, handle)
+		}
 		actor, err := rc.Kernels.resolveActor(ctx, q, nullToString(r.createdBy))
 		if err != nil {
 			return err
