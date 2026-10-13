@@ -181,6 +181,8 @@ type GatewayDeployEnvCardProps = {
   deployments: Deployment[];
   currentDeployment?: Deployment;
   isGatewayActive: boolean;
+  /** Gateway-created API: Stop, Redeploy and Change deployment are disabled. */
+  readOnly?: boolean;
 };
 
 /**
@@ -194,6 +196,7 @@ export function GatewayDeployEnvCard({
   deployments,
   currentDeployment,
   isGatewayActive,
+  readOnly = false,
 }: GatewayDeployEnvCardProps) {
   const theme = useTheme();
   const intl = useIntl();
@@ -326,7 +329,7 @@ export function GatewayDeployEnvCard({
           <Can do="DeleteDeployment" denied="disable">
             <Button
               color="error"
-              disabled={!isGatewayActive || busy || isDeploying}
+              disabled={readOnly || !isGatewayActive || busy || isDeploying}
               onClick={handleUndeploy}
               size="small"
               variant="outlined"
@@ -341,7 +344,7 @@ export function GatewayDeployEnvCard({
           <Can do="RestoreDeployment" denied="disable">
             <Button
               color="primary"
-              disabled={!isGatewayActive || busy || isUndeploying}
+              disabled={readOnly || !isGatewayActive || busy || isUndeploying}
               onClick={handleRedeploy}
               size="small"
               variant="outlined"
@@ -426,7 +429,7 @@ export function GatewayDeployEnvCard({
             aria-label={intl.formatMessage(messages.changeDeploymentLabel, {
               gatewayName: gateway.displayName,
             })}
-            disabled={!isGatewayActive}
+            disabled={readOnly || !isGatewayActive}
             onClick={() => setSelectorOpen(true)}
             size="small"
           >

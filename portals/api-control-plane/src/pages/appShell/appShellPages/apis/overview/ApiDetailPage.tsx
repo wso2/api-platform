@@ -17,17 +17,8 @@
  */
 
 import { useMemo } from 'react';
-import {
-  Box,
-  Button,
-  Card,
-  Chip,
-  IconButton,
-  Stack,
-  Tooltip,
-  Typography,
-} from '@wso2/oxygen-ui';
-import { Clock, Copy, Edit, Lock, Rocket } from '@wso2/oxygen-ui-icons-react';
+import { Box, Button, Card, IconButton, Stack, Tooltip, Typography } from '@wso2/oxygen-ui';
+import { Clock, Copy, Edit, Rocket } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import { Link as RouterLink } from 'react-router-dom';
 
@@ -76,6 +67,11 @@ const messages = defineMessages({
   deployToGateway: {
     id: 'apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.deployToGateway',
     defaultMessage: 'Deploy to Gateway',
+    description: "Button on the API overview header that opens the API's deployment page.",
+  },
+  viewDeployments: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.viewDeployments',
+    defaultMessage: 'View Deployments',
     description: "Button on the API overview header that opens the API's deployment page.",
   },
   descriptionPlaceholder: {
@@ -256,17 +252,6 @@ function ApiDetailPageContent() {
                       {displayName}
                     </Typography>
                   </Tooltip>
-                  {api.readOnly && (
-                    <Tooltip title={intl.formatMessage(messages.gatewayManagedHint)}>
-                      <Chip
-                        icon={<Lock size={12} />}
-                        label={intl.formatMessage(messages.gatewayManaged)}
-                        size="small"
-                        sx={{ flexShrink: 0, typography: 'caption' }}
-                        variant="outlined"
-                      />
-                    </Tooltip>
-                  )}
                 </Stack>
                 <Stack alignItems="center" direction="row" spacing={0.75}>
                   <VersionChip version={api.version} />
@@ -301,12 +286,16 @@ function ApiDetailPageContent() {
                         <FormattedMessage {...messages.created} />
                       </Typography>
                       <Typography variant="body2">{relativeTime(api.createdAt)}</Typography>
-                      <Typography color="text.secondary" sx={{ opacity: 0.75 }} variant="body2">
-                        <FormattedMessage {...messages.by} />
-                      </Typography>
-                      <Typography variant="body2">
-                        {api.createdBy || intl.formatMessage(messages.unknownCreator)}
-                      </Typography>
+                      {!api.readOnly && (
+                        <>
+                          <Typography color="text.secondary" sx={{ opacity: 0.75 }} variant="body2">
+                            <FormattedMessage {...messages.by} />
+                          </Typography>
+                          <Typography variant="body2">
+                            {api.createdBy || intl.formatMessage(messages.unknownCreator)}
+                          </Typography>
+                        </>
+                      )}
                     </Stack>
                   </Tooltip>
                 )}
@@ -366,7 +355,8 @@ function ApiDetailPageContent() {
                 to={deployPath}
                 variant="contained"
               >
-                <FormattedMessage {...messages.deployToGateway} />
+                {!api.readOnly && <FormattedMessage {...messages.deployToGateway} />}
+                {api.readOnly && <FormattedMessage {...messages.viewDeployments} />}
               </Button>
             </Can>
           </Stack>

@@ -20,6 +20,7 @@ import {
   Accordion,
   AccordionDetails,
   AccordionSummary,
+  Alert,
   Box,
   Card,
   CardContent,
@@ -125,6 +126,13 @@ const messages = defineMessages({
     id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.saved',
     defaultMessage: 'Policies saved.',
   },
+  gatewayManaged: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.gatewayManaged',
+    defaultMessage:
+      'This API was created from a gateway. You can view its policies, but attaching, editing, removing and reordering policies are managed by the gateway and are unavailable in the API Control Plane.',
+    description:
+      'Info banner on the Policies page of a read-only API, i.e. one that a gateway pushed to the control plane.',
+  },
 });
 
 type EditState = { scope: PolicyScope; policyIndex: number; policy: Policy } | null;
@@ -132,12 +140,15 @@ type EditState = { scope: PolicyScope; policyIndex: number; policy: Policy } | n
 /** A left-panel drop target that highlights while a catalog policy hovers it. */
 function DropZone({
   active,
+  disabled = false,
   onEnter,
   onLeave,
   onDrop,
   children,
 }: {
   active: boolean;
+  /** Rejects drops (and never highlights) — used for a read-only API. */
+  disabled?: boolean;
   onEnter: () => void;
   onLeave: () => void;
   onDrop: () => void;
@@ -147,14 +158,14 @@ function DropZone({
     <Box
       onDragLeave={onLeave}
       onDragOver={(event) => {
-        if (!getDraggedPolicy()) return;
+        if (disabled || !getDraggedPolicy()) return;
         event.preventDefault();
         event.dataTransfer.dropEffect = 'copy';
         onEnter();
       }}
       onDrop={(event) => {
         event.preventDefault();
-        onDrop();
+        if (!disabled) onDrop();
       }}
       sx={{
         border: '2px dashed',
@@ -176,6 +187,9 @@ export function PolicyPanel({ api }: { api: RestApi }) {
   const update = useUpdateRestApi();
   const hubEnabled = useIsPolicyHubConfigured();
   const restApiId = api.id;
+  // A gateway-created API is owned by that gateway: its policies are shown,
+  // but every action that would change them is disabled.
+  const readOnly = api.readOnly === true;
 
   const [apiPolicies, setApiPolicies] = useState<Policy[]>(api.policies ?? []);
   // Flattened once, lazily: from here the panel owns the edits, so re-deriving
@@ -221,7 +235,7 @@ export function PolicyPanel({ api }: { api: RestApi }) {
   const dropOnScope = (s: PolicyScope) => {
     const dragged = getDraggedPolicy();
     setActiveZone(null);
-    if (!dragged) return;
+    if (readOnly || !dragged) return;
     setEditing(null);
     setScope(s);
     setPicked({
@@ -238,6 +252,7 @@ export function PolicyPanel({ api }: { api: RestApi }) {
   // Click in the catalog (non-DnD fallback) attaches to whichever scope the user
   // last targeted via its "Add Policy" button, defaulting to API level.
   const pickFromCatalog = (policy: PolicySummary) => {
+    if (readOnly) return;
     setEditing(null);
     setScope((current) => current ?? { kind: 'api' });
     setPicked(policy);
@@ -314,6 +329,11 @@ export function PolicyPanel({ api }: { api: RestApi }) {
 
   return (
     <Stack spacing={2}>
+      {readOnly && (
+        <Alert severity="info">
+          <FormattedMessage {...messages.gatewayManaged} />
+        </Alert>
+      )}
       <Stack alignItems="flex-start" direction={{ xs: 'column', md: 'row' }} spacing={2}>
         {/* LEFT: Policies (drop targets) */}
         <Box sx={{ flex: 1, minWidth: 0, width: '100%' }}>
@@ -346,7 +366,7 @@ export function PolicyPanel({ api }: { api: RestApi }) {
                 </Typography>
                 <DropZone
                   active={activeZone === scopeId({ kind: 'api' })}
-
+                  disabled={readOnly}
                   onDrop={() => dropOnScope({ kind: 'api' })}
                   onEnter={() => setActiveZone(scopeId({ kind: 'api' }))}
                   onLeave={() => setActiveZone(null)}
@@ -363,6 +383,7 @@ export function PolicyPanel({ api }: { api: RestApi }) {
                     onReorder={(from, to) => reorderAt({ kind: 'api' }, from, to)}
                     onRemove={(i) => removeAt({ kind: 'api' }, i)}
                     policies={apiPolicies}
+                    readOnly={readOnly}
                     showHeader={false}
                   />
                 </DropZone>
@@ -450,6 +471,7 @@ export function PolicyPanel({ api }: { api: RestApi }) {
                             >
                               <DropZone
                                 active={activeZone === zid}
+                                disabled={readOnly}
                                 onDrop={() => dropOnScope({ kind: 'operation', index })}
                                 onEnter={() => setActiveZone(zid)}
                                 onLeave={() => setActiveZone(null)}
@@ -468,6 +490,7 @@ export function PolicyPanel({ api }: { api: RestApi }) {
                                   }
                                   onRemove={(i) => removeAt({ kind: 'operation', index }, i)}
                                   policies={op.policies || []}
+                                  readOnly={readOnly}
                                   showHeader={false}
                                 />
                               </DropZone>
@@ -488,7 +511,7 @@ export function PolicyPanel({ api }: { api: RestApi }) {
           <Box sx={{ flexShrink: 0, width: { xs: '100%', md: 400 } }}>
             <Card sx={{ height: '100%', overflow: 'hidden' }} variant="outlined">
               <CardContent sx={{ height: 620, p: 2 }}>
-                <AvailablePoliciesPanel onSelect={pickFromCatalog} />
+                <AvailablePoliciesPanel disabled={readOnly} onSelect={pickFromCatalog} />
               </CardContent>
             </Card>
           </Box>
@@ -497,7 +520,7 @@ export function PolicyPanel({ api }: { api: RestApi }) {
 
       <SaveBar
         dirty={dirty}
-        disabled={!restApiId}
+        disabled={readOnly || !restApiId}
         onCancel={cancel}
         onSave={save}
         saving={update.isPending}

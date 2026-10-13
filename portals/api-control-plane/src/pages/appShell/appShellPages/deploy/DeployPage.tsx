@@ -17,7 +17,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Box, PageTitle, TextField, Typography } from '@wso2/oxygen-ui';
+import { Alert, Box, PageTitle, TextField, Typography } from '@wso2/oxygen-ui';
 import { useNavigate } from 'react-router-dom';
 
 import { useGateways } from '@/api/resources/gateways';
@@ -51,6 +51,13 @@ const messages = defineMessages({
   apiNotFound: {
     id: 'apiControlPlane.pages.appShell.appShellPages.deploy.DeployPage.apiNotFound',
     defaultMessage: 'API not found',
+  },
+  gatewayManaged: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.DeployPage.gatewayManaged',
+    defaultMessage:
+      'This API was created from a gateway. You can view its deployments, but deploy, redeploy, restore and undeploy actions are managed by the gateway and are unavailable in the API Control Plane.',
+    description:
+      'Info banner on the Deploy page of a read-only API, i.e. one that a gateway pushed to the control plane.',
   },
   searchPlaceholder: {
     id: 'apiControlPlane.pages.appShell.appShellPages.deploy.DeployPage.searchPlaceholder',
@@ -138,6 +145,9 @@ function Deploy() {
 
   const api = apiQuery.data;
   const restApiId = api.id ?? params.apiHandler ?? '';
+  // A gateway-created API is owned by that gateway: its deployments are shown,
+  // but every action that changes them is disabled.
+  const readOnly = api.readOnly === true;
   const deployments = deploymentsQuery.data?.list ?? [];
 
   const filteredGateways = searchQuery.trim()
@@ -168,6 +178,12 @@ function Deploy() {
           <FormattedMessage {...messages.subtitle} />
         </PageTitle.SubHeader>
       </PageTitle>
+
+      {readOnly && (
+        <Alert severity="info" sx={{ mb: 3 }}>
+          <FormattedMessage {...messages.gatewayManaged} />
+        </Alert>
+      )}
 
       {sortedGateways.length === 0 ? (
         <EmptyState
@@ -205,6 +221,7 @@ function Deploy() {
                   key={gateway.id}
                   onRefresh={() => deploymentsQuery.refetch()}
                   onToggleExpand={(expanded) => toggleExpand(gateway.id ?? '', expanded)}
+                  readOnly={readOnly}
                   refreshing={deploymentsQuery.isFetching}
                   restApiId={restApiId}
                 />

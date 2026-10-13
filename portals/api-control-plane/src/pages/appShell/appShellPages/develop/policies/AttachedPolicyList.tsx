@@ -75,6 +75,7 @@ export function AttachedPolicyList({
   onReorder,
   emptyText,
   showHeader = true,
+  readOnly = false,
 }: {
   policies: Policy[];
   canAdd: boolean;
@@ -85,6 +86,8 @@ export function AttachedPolicyList({
   /** Overrides the default placeholder; already-translated text. */
   emptyText?: string;
   showHeader?: boolean;
+  /** Gateway-created API: policies are listed, but cannot be added, edited, removed or reordered. */
+  readOnly?: boolean;
 }) {
   const intl = useIntl();
   const [dragIndex, setDragIndex] = useState<number | null>(null);
@@ -92,6 +95,7 @@ export function AttachedPolicyList({
   // Defaulted here rather than in the signature: a default parameter is
   // evaluated before `useIntl` exists, so the fallback could not be translated.
   const emptyLabel = emptyText ?? intl.formatMessage(messages.empty);
+  const canModify = canAdd && !readOnly;
 
   return (
     <Box>
@@ -107,7 +111,7 @@ export function AttachedPolicyList({
           <Typography sx={{ fontWeight: 600 }} variant="body2">
             <FormattedMessage {...messages.heading} />
           </Typography>
-          {canAdd && (
+          {canModify && (
             <Button onClick={onAdd} size="small" startIcon={<Plus size={14} />} variant="outlined">
               <FormattedMessage {...messages.addPolicy} />
             </Button>
@@ -138,7 +142,7 @@ export function AttachedPolicyList({
             const isOver = overIndex === index && dragIndex !== null && dragIndex !== index;
             return (
               <Box
-                draggable
+                draggable={!readOnly}
                 key={`${policy.name}-${index}`}
                 onDragEnd={() => {
                   setDragIndex(null);
@@ -176,9 +180,11 @@ export function AttachedPolicyList({
                   py: 1,
                 }}
               >
-                <Box sx={{ color: 'text.disabled', cursor: 'grab', display: 'flex' }}>
-                  <GripVertical size={16} />
-                </Box>
+                {!readOnly && (
+                  <Box sx={{ color: 'text.disabled', cursor: 'grab', display: 'flex' }}>
+                    <GripVertical size={16} />
+                  </Box>
+                )}
                 <Shield size={16} />
                 <Typography noWrap sx={{ flex: 1, fontWeight: 500 }} variant="body2">
                   {policy.name}
@@ -192,7 +198,7 @@ export function AttachedPolicyList({
                   <Tooltip title={intl.formatMessage(messages.edit)}>
                     <IconButton
                       aria-label={intl.formatMessage(messages.editLabel)}
-                      disabled={!canAdd}
+                      disabled={!canModify}
                       onClick={() => onEdit(index)}
                       size="small"
                     >
@@ -203,6 +209,7 @@ export function AttachedPolicyList({
                     <IconButton
                       aria-label={intl.formatMessage(messages.removeLabel)}
                       color="error"
+                      disabled={readOnly}
                       onClick={() => onRemove(index)}
                       size="small"
                     >
@@ -216,7 +223,7 @@ export function AttachedPolicyList({
         </Stack>
       )}
 
-      {canAdd && policies.length > 0 && (
+      {canModify && policies.length > 0 && (
         <Box
           sx={{
             border: '1px dashed',

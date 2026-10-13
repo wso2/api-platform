@@ -86,6 +86,8 @@ type GatewayDeployCardProps = {
   onToggleExpand: (expanded: boolean) => void;
   onRefresh: () => void;
   refreshing: boolean;
+  /** Gateway-created API: deployments are shown, but no action may change them. */
+  readOnly?: boolean;
 };
 
 /**
@@ -102,6 +104,7 @@ export function GatewayDeployCard({
   onToggleExpand,
   onRefresh,
   refreshing,
+  readOnly = false,
 }: GatewayDeployCardProps) {
   const intl = useIntl();
   const { notify } = useNotifications();
@@ -203,7 +206,7 @@ export function GatewayDeployCard({
               <Can do="DeployAPI" denied="disable">
                 <Button
                   color="primary"
-                  disabled={!isActive || deployMutation.isPending}
+                  disabled={readOnly || !isActive || deployMutation.isPending}
                   onClick={handleDeploy}
                   size="small"
                   startIcon={
@@ -237,6 +240,7 @@ export function GatewayDeployCard({
               deployments={gatewayDeployments}
               gateway={gateway}
               isGatewayActive={isActive}
+              readOnly={readOnly}
               restApiId={restApiId}
             />
           </Grid>

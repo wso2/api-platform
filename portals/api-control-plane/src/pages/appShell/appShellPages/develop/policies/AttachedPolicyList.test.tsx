@@ -41,4 +41,28 @@ describe('AttachedPolicyList', () => {
     expect(screen.queryByText('vv1')).not.toBeInTheDocument();
     expect(screen.getByText('v2.0')).toBeInTheDocument();
   });
+
+  it('lists policies but blocks every change when read-only', () => {
+    renderWithProviders(
+      <AttachedPolicyList
+        canAdd
+        onAdd={vi.fn()}
+        onEdit={vi.fn()}
+        onRemove={vi.fn()}
+        onReorder={vi.fn()}
+        policies={[{ name: 'gateway-policy', version: 'v1' }]}
+        readOnly
+      />,
+    );
+
+    expect(screen.getByText('gateway-policy')).toBeInTheDocument();
+    // `canAdd` is true, so only `readOnly` can be what hides Add and disables the rest.
+    expect(screen.queryByRole('button', { name: 'Add Policy' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Edit policy' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Remove policy' })).toBeDisabled();
+    expect(screen.getByText('gateway-policy').closest('[draggable]')).toHaveAttribute(
+      'draggable',
+      'false',
+    );
+  });
 });

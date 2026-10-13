@@ -788,6 +788,10 @@
   "apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.unknownCreator": {
     "defaultMessage": "—"
   },
+  "apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.viewDeployments": {
+    "defaultMessage": "View Deployments",
+    "description": "Button on the API overview header that opens the API's deployment page."
+  },
   "apiControlPlane.pages.appShell.appShellPages.apis.ApiThumbnailManager.changeThumbnail": {
     "defaultMessage": "Change thumbnail"
   },
@@ -1256,6 +1260,10 @@
   "apiControlPlane.pages.appShell.appShellPages.deploy.DeployPage.emptyTitle": {
     "defaultMessage": "No gateway added yet",
     "description": "Empty state when the organization has no gateways to deploy to."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.deploy.DeployPage.gatewayManaged": {
+    "defaultMessage": "This API was created from a gateway. You can view its deployments, but deploy, redeploy, restore and undeploy actions are managed by the gateway and are unavailable in the API Control Plane.",
+    "description": "Info banner on the Deploy page of a read-only API, i.e. one that a gateway pushed to the control plane."
   },
   "apiControlPlane.pages.appShell.appShellPages.deploy.DeployPage.loading": {
     "defaultMessage": "Loading deploy state",
@@ -1809,6 +1817,10 @@
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.allMethods": {
     "defaultMessage": "All methods"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.gatewayManaged": {
+    "defaultMessage": "This API was created from a gateway. You can view its policies, but attaching, editing, removing and reordering policies are managed by the gateway and are unavailable in the API Control Plane.",
+    "description": "Info banner on the Policies page of a read-only API, i.e. one that a gateway pushed to the control plane."
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.globalDescription": {
     "defaultMessage": "Policies applied here will affect all API resources"

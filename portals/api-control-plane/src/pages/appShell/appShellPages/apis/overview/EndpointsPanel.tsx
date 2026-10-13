@@ -26,7 +26,7 @@ import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import { useUpdateRestApi, type RestApi } from '@/api/resources/restApis';
 import { useNotifications } from '@/components/Notifications';
 import { isValidUrl } from '../utils/developEdit';
-import { Can } from '@/permissions/Can';
+import { useCan } from '@/permissions/useCan';
 
 const messages = defineMessages({
   cancel: {
@@ -81,6 +81,7 @@ type Props = {
 
 export function EndpointsPanel({ api }: Props) {
   const intl = useIntl();
+  const canUpdateRestApi = useCan('UpdateRESTAPI');
   const { notify } = useNotifications();
   const updateApi = useUpdateRestApi();
   const url = api.upstream?.main?.url;
@@ -137,17 +138,16 @@ export function EndpointsPanel({ api }: Props) {
           <Typography sx={{ fontWeight: 600 }} variant="h6">
             <FormattedMessage {...messages.title} />
           </Typography>
-          <Can do="UpdateRESTAPI" denied="hide">
-            <Tooltip title={intl.formatMessage(messages.edit)}>
-              <IconButton
-                aria-label={intl.formatMessage(messages.edit)}
-                onClick={openDrawer}
-                size="small"
-              >
-                <Pencil size={16} />
-              </IconButton>
-            </Tooltip>
-          </Can>
+          <Tooltip title={intl.formatMessage(messages.edit)}>
+            <IconButton
+              aria-label={intl.formatMessage(messages.edit)}
+              onClick={openDrawer}
+              size="small"
+              disabled={!canUpdateRestApi || api.readOnly}
+            >
+              <Pencil size={16} />
+            </IconButton>
+          </Tooltip>
         </Stack>
         <Divider />
         <Stack alignItems="center" direction="row" spacing={1.25} sx={{ px: 2, py: 1.5 }}>
