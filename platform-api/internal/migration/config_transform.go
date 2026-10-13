@@ -149,11 +149,13 @@ func (k *Kernels) externalizeAuthAt(ctx context.Context, q queryer, cfg map[stri
 		return nil // dry-run: computed + validated, not persisted
 	}
 
-	// secrets row (data_version is a DB default — omitted).
+	// secrets row (data_version is a DB default — omitted). description is ""
+	// rather than NULL: v2 scans it into a plain string, and database/sql
+	// refuses NULL there, which made every migrated secret unreadable.
 	if err := insertRow(ctx, q, "secrets",
 		[]string{"uuid", "organization_uuid", "handle", "display_name", "description", "ciphertext", "hash",
 			"type", "provider", "status", "created_at", "created_by", "updated_at", "updated_by"},
-		[]any{uuid, orgUUID, handle, handle /* display_name */, nil /* description */, ciphertext, hash,
+		[]any{uuid, orgUUID, handle, handle /* display_name */, "" /* description */, ciphertext, hash,
 			model.SecretTypeGeneric, model.SecretProviderInHouse, model.SecretStatusActive,
 			ts, createdBy, ts, createdBy},
 		conflictUUIDNothing); err != nil {

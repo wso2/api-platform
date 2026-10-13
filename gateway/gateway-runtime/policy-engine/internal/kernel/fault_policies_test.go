@@ -102,7 +102,7 @@ func faultExecCtx(t *testing.T, faultPolicies []policy.Policy, specs []policy.Po
 	// the deployment flag gating upstream/router failures is not what any test using it is
 	// about — leaving it off would make every passthrough test in this file silently assert
 	// nothing. The flag's own behaviour, both ways, lives in handle_upstream_faults_config_test.go.
-	server := NewExternalProcessorServer(k, chainExecutor, config.TracingConfig{}, "", 1<<20, 1<<20,
+	server := NewExternalProcessorServer(k, chainExecutor, config.TracingConfig{}, "", 1<<20, 1<<20, nil,
 		WithHandleUpstreamFaults(true))
 
 	hasConditions := false
@@ -1069,15 +1069,23 @@ func TestFaultPolicies_Metadata_CarriesOriginalStatus(t *testing.T) {
 // Without this the whole pass-through path silently breaks: the response-body phase would not run
 // for an API whose own policies do not need the body.
 func TestApplyFaultPoliciesBodyRequirement(t *testing.T) {
-	withSeq := &registry.PolicyChain{HasFaultPolicies: true}
-	ApplyFaultPoliciesBodyRequirement(withSeq)
-	assert.True(t, withSeq.RequiresResponseBody,
-		"fault policies must force response-body processing on, or it never fires")
+	faultOnly := &registry.PolicyChain{HasFaultPolicies: true}
+	ApplyFaultPoliciesBodyRequirement(faultOnly)
+	assert.True(t, faultOnly.RequiresResponseBodyOnFault,
+		"fault policies must get the error body, or they never fire for an upstream error")
+	assert.False(t, faultOnly.RequiresResponseBody,
+		"fault policies alone must not send every successful response body through the engine")
+
+	withBodyPolicy := &registry.PolicyChain{HasFaultPolicies: true, RequiresResponseBody: true}
+	ApplyFaultPoliciesBodyRequirement(withBodyPolicy)
+	assert.True(t, withBodyPolicy.RequiresResponseBody)
+	assert.False(t, withBodyPolicy.RequiresResponseBodyOnFault, "the body is already requested for every response")
 
 	without := &registry.PolicyChain{}
 	ApplyFaultPoliciesBodyRequirement(without)
 	assert.False(t, without.RequiresResponseBody,
 		"an API with no fault policies must not be made to buffer response bodies")
+	assert.False(t, without.RequiresResponseBodyOnFault)
 
 	assert.NotPanics(t, func() { ApplyFaultPoliciesBodyRequirement(nil) })
 }

@@ -18,12 +18,15 @@
 package platformgateway
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -66,7 +69,7 @@ func BuildSourceWithPolicies(
 	if err != nil {
 		return DerivedImages{}, err
 	}
-	workspace, err := stagePolicyWorkspace(root, source)
+	workspace, err := stagePolicyWorkspace(root, source, nil)
 	if err != nil {
 		return DerivedImages{}, err
 	}
@@ -90,8 +93,11 @@ func BuildSourceWithPolicies(
 
 // BuildVersionedWithPolicies derives runtime and controller images from a versioned
 // gateway using the matching gateway-builder and base gateway images.
+//
+// releasedOnly stages only the policies the release ships; see stagePolicyWorkspace.
 func BuildVersionedWithPolicies(
 	ctx context.Context, repoRoot, version, source, controllerBase, runtimeBase string, runner builder.Runner,
+	releasedOnly bool,
 ) (DerivedImages, error) {
 	if ctx == nil {
 		return DerivedImages{}, fmt.Errorf("platform-gateway: build context is required")
@@ -113,7 +119,19 @@ func BuildVersionedWithPolicies(
 		return DerivedImages{}, err
 	}
 
-	workspace, err := stagePolicyWorkspace(root, source)
+	// releasedOnly narrows the build to the policies this release ships, which are the only
+	// ones a user of the release would upgrade. The rest of a policy tree can need what the
+	// release's builder lacks — a newer Go, a newer shared module — and say nothing about it.
+	var only map[string]bool
+	if releasedOnly {
+		names, err := releasedPolicyNames(ctx, runtimeBase)
+		if err != nil {
+			return DerivedImages{}, fmt.Errorf("platform-gateway: %w", err)
+		}
+		only = names
+	}
+
+	workspace, err := stagePolicyWorkspace(root, source, only)
 	if err != nil {
 		return DerivedImages{}, err
 	}
@@ -184,7 +202,44 @@ type policyDefinition struct {
 	Version string `yaml:"version"`
 }
 
-func stagePolicyWorkspace(repoRoot, source string) (policyWorkspace, error) {
+// gatewayBuilderImage is the gateway-builder image for a released gateway version.
+func gatewayBuilderImage(version string) string {
+	return "ghcr.io/wso2/api-platform/gateway-builder:" + version
+}
+
+// releasedPolicyNames returns the names of the policies a released gateway ships, read from
+// the build manifest its runtime image carries. A variable so tests can stand in for docker.
+var releasedPolicyNames = func(ctx context.Context, runtimeImage string) (map[string]bool, error) {
+	var out bytes.Buffer
+	cmd := exec.CommandContext(ctx, "docker", "run", "--rm", "--entrypoint", "cat", runtimeImage, "/app/build-manifest.yaml")
+	cmd.Stdout = &out
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("reading the build manifest from %s: %w", runtimeImage, err)
+	}
+	var manifest struct {
+		Policies []struct {
+			Name string `yaml:"name"`
+		} `yaml:"policies"`
+	}
+	if err := yaml.Unmarshal(out.Bytes(), &manifest); err != nil {
+		return nil, fmt.Errorf("parsing the build manifest from %s: %w", runtimeImage, err)
+	}
+	names := make(map[string]bool, len(manifest.Policies))
+	for _, policy := range manifest.Policies {
+		if name := strings.TrimSpace(policy.Name); name != "" {
+			names[name] = true
+		}
+	}
+	if len(names) == 0 {
+		return nil, fmt.Errorf("the build manifest in %s lists no policies", runtimeImage)
+	}
+	return names, nil
+}
+
+// stagePolicyWorkspace stages the policies under source into a fresh build workspace.
+//
+// only, when non-nil, names the policies to stage; the rest are left out.
+func stagePolicyWorkspace(repoRoot, source string, only map[string]bool) (policyWorkspace, error) {
 	if strings.TrimSpace(repoRoot) == "" {
 		return policyWorkspace{}, fmt.Errorf("platform-gateway: repository root is required")
 	}
@@ -291,6 +346,11 @@ func stagePolicyWorkspace(repoRoot, source string) (policyWorkspace, error) {
 		definition, err := readPolicyDefinition(src)
 		if err != nil {
 			return policyWorkspace{}, fmt.Errorf("platform-gateway: policy %q: %w", entry.Name(), err)
+		}
+		if only != nil && !only[definition.Name] {
+			slog.Info("platform-gateway: leaving out a policy the gateway release does not ship",
+				"policy", definition.Name)
+			continue
 		}
 		if previous, exists := seen[definition.Name]; exists {
 			return policyWorkspace{}, fmt.Errorf("platform-gateway: duplicate policy name %q in %q and %q",
@@ -460,7 +520,7 @@ func sourcePolicyBuildCommands(
 func versionedPolicyBuildCommands(
 	repoRoot, version string, workspace policyWorkspace, controllerBase, runtimeBase string, images DerivedImages,
 ) []builder.Command {
-	builderImage := "ghcr.io/wso2/api-platform/gateway-builder:" + version
+	builderImage := gatewayBuilderImage(version)
 	return []builder.Command{
 		{
 			Directory: repoRoot,

@@ -46,6 +46,18 @@ export const gatewayMode = (gateway: Gateway): GatewayMode =>
  */
 export const gatewayEndpoint = (gateway: Gateway): string => gateway.endpoints?.[0] ?? '';
 
+/** `{endpoint}{context}` with a scheme ensured and slashes normalised. */
+export const buildInvokeUrl = (endpoint: string, context?: string): string => {
+  const trimmedEndpoint = endpoint.trim();
+  if (!trimmedEndpoint) return '';
+  const base = /^https?:\/\//i.test(trimmedEndpoint)
+    ? trimmedEndpoint.replace(/\/+$/, '')
+    : `https://${trimmedEndpoint.replace(/\/+$/, '')}`;
+  const trimmedContext = (context || '/').trim();
+  const path = trimmedContext.startsWith('/') ? trimmedContext : `/${trimmedContext}`;
+  return `${base}${path}`;
+};
+
 /** Kinds of traffic a gateway is provisioned to serve. */
 export type GatewayFunctionality = NonNullable<Gateway['functionalityType']>;
 

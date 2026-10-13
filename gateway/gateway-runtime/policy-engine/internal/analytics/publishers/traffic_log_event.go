@@ -19,6 +19,7 @@ package publishers
 
 import (
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics/dto"
+	hdrs "github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics/headers"
 )
 
 // trafficLogTimestampFormat is RFC 3339 with millisecond precision.
@@ -185,9 +186,9 @@ func (l *Log) toTrafficLogEvent(event *dto.Event, dir *dto.TrafficLogDirective) 
 	// enabled set, never an independent "log everything except X" switch. Setting
 	// exclude_fields alone, with every request_*/response_* toggle left at its
 	// false default, still logs no headers/bodies.
-	if raw, ok := event.Properties[dto.PropKeyRequestHeaders].(string); ok && dir.Request != nil && dir.Request.Headers {
-		if headers := parseHeadersFromString(raw); headers != nil {
-			tl.RequestHeaders = maskHeaders(headers, l.maskedHeaders)
+	if dir.Request != nil && dir.Request.Headers {
+		if headers := hdrs.Flatten(event.Properties[dto.PropKeyRequestHeaders]); headers != nil {
+			tl.RequestHeaders = filterAndMaskHeaders(headers, l.maskedHeaders, l.exclusions.excludedRequestHeaders())
 		}
 	}
 	if p, ok := event.Properties[dto.PropKeyRequestPayload].(string); ok && p != "" && dir.Request != nil && dir.Request.Payload {
@@ -195,9 +196,9 @@ func (l *Log) toTrafficLogEvent(event *dto.Event, dir *dto.TrafficLogDirective) 
 	}
 
 	// Response flow
-	if raw, ok := event.Properties[dto.PropKeyResponseHeaders].(string); ok && dir.Response != nil && dir.Response.Headers {
-		if headers := parseHeadersFromString(raw); headers != nil {
-			tl.ResponseHeaders = maskHeaders(headers, l.maskedHeaders)
+	if dir.Response != nil && dir.Response.Headers {
+		if headers := hdrs.Flatten(event.Properties[dto.PropKeyResponseHeaders]); headers != nil {
+			tl.ResponseHeaders = filterAndMaskHeaders(headers, l.maskedHeaders, l.exclusions.excludedResponseHeaders())
 		}
 	}
 	if p, ok := event.Properties[dto.PropKeyResponsePayload].(string); ok && p != "" && dir.Response != nil && dir.Response.Payload {

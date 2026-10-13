@@ -141,6 +141,11 @@ var (
 	// Args: the control-plane kind name, what the gateway would need (gwversion.Requirement).
 	DeploymentKindUnsupportedByGateway = def(CodeDeploymentKindUnsupportedByGateway, http.StatusBadRequest,
 		"This gateway does not support %s artifacts; %s.")
+	// Raised by the gateway-facing fetch of a deployment whose {{ secret }}
+	// placeholder platform-api had to inline and could not (missing, deprecated
+	// or undecryptable secret). The message names no handle.
+	DeploymentSecretResolutionFailed = def(CodeDeploymentSecretResolutionFailed, http.StatusUnprocessableEntity,
+		"A secret referenced by this deployment could not be resolved for the gateway.")
 )
 
 // MCP proxy entries. MCPProxyUpstreamUnauthorized covers an upstream MCP
@@ -244,6 +249,19 @@ var (
 	WebSubAPIExists      = def(CodeWebSubAPIExists, http.StatusConflict, "A WebSub API with this ID already exists.")
 	WebBrokerAPINotFound = def(CodeWebBrokerAPINotFound, http.StatusNotFound, "The specified WebBroker API could not be found.")
 	WebBrokerAPIExists   = def(CodeWebBrokerAPIExists, http.StatusConflict, "A WebBroker API with this ID already exists.")
+)
+
+// GraphQL API entries (GraphQL is a core artifact kind, not a plugin).
+// GraphQLAPISchemaResolveFailed is the generic 422 for both "introspection
+// against upstream.main.url failed" and
+// "the supplied SDL could not be parsed" — the message never echoes the resolved
+// IP, the parser's internal error text, or which specific reason applied
+// (error-handling.md / ssrf-prevention.md).
+var (
+	GraphQLAPINotFound                   = def(CodeGraphQLAPINotFound, http.StatusNotFound, "The specified GraphQL API could not be found.")
+	GraphQLAPIExists                     = def(CodeGraphQLAPIExists, http.StatusConflict, "A GraphQL API with this ID already exists.")
+	GraphQLAPISchemaResolveFailed        = def(CodeGraphQLAPISchemaResolveFailed, http.StatusUnprocessableEntity, "The provided endpoint could not be used to derive a GraphQL schema, or the supplied SDL could not be parsed.")
+	GraphQLAPIDeploymentValidationFailed = def(CodeGraphQLAPIDeploymentValidationFailed, http.StatusBadRequest, "%s")
 )
 
 // HMAC secret entries. The 32-character minimum is a fixed, publicly

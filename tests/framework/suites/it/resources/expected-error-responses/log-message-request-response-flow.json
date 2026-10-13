@@ -1,0 +1,12 @@
+{
+  "body": {
+    "slideshow": {
+      "author": "testbench",
+      "title": "Sample Slide Show"
+    }
+  },
+  "headers": {
+    "content-type": "application/json"
+  },
+  "status": 200
+}

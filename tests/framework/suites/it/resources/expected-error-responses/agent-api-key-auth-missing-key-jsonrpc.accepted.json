@@ -1,0 +1,18 @@
+{
+  "body": {
+    "error": {
+      "code": -32600,
+      "data": {
+        "code": "900902",
+        "type": "authentication"
+      },
+      "message": "Valid API key required"
+    },
+    "id": null,
+    "jsonrpc": "2.0"
+  },
+  "headers": {
+    "content-type": "application/json"
+  },
+  "status": 401
+}

@@ -41,6 +41,7 @@ type GatewayInternalAPIService struct {
 	proxyRepo            repository.LLMProxyRepository
 	mcpProxyRepo         repository.MCPProxyRepository
 	agentProxyRepo       repository.AgentProxyRepository
+	graphqlAPIRepo       repository.GraphQLAPIRepository
 	websubAPIRepo        repository.WebSubAPIRepository
 	webbrokerAPIRepo     repository.WebBrokerAPIRepository
 	deploymentRepo       repository.DeploymentRepository
@@ -63,6 +64,7 @@ func NewGatewayInternalAPIService(apiRepo repository.APIRepository, subscription
 	subscriptionPlanRepo repository.SubscriptionPlanRepository, providerRepo repository.LLMProviderRepository,
 	proxyRepo repository.LLMProxyRepository, mcpProxyRepo repository.MCPProxyRepository,
 	agentProxyRepo repository.AgentProxyRepository,
+	graphqlAPIRepo repository.GraphQLAPIRepository,
 	deploymentRepo repository.DeploymentRepository, gatewayRepo repository.GatewayRepository,
 	orgRepo repository.OrganizationRepository, projectRepo repository.ProjectRepository, apiKeyRepo repository.APIKeyRepository,
 	artifactRepo repository.ArtifactRepository, secretRepo repository.SecretRepository, cfg *config.Server, slogger *slog.Logger) *GatewayInternalAPIService {
@@ -74,6 +76,7 @@ func NewGatewayInternalAPIService(apiRepo repository.APIRepository, subscription
 		proxyRepo:            proxyRepo,
 		mcpProxyRepo:         mcpProxyRepo,
 		agentProxyRepo:       agentProxyRepo,
+		graphqlAPIRepo:       graphqlAPIRepo,
 		deploymentRepo:       deploymentRepo,
 		gatewayRepo:          gatewayRepo,
 		orgRepo:              orgRepo,
@@ -163,7 +166,7 @@ func (s *GatewayInternalAPIService) GetActiveDeploymentByGateway(apiID, orgID, g
 
 	// Deployment content is stored as YAML; it is only rewritten for a gateway
 	// that cannot resolve secret placeholders itself.
-	content, err := s.deliverContent(orgID, gatewayID, deployment.Content)
+	content, err := s.deliverDeployment(orgID, gatewayID, deployment)
 	if err != nil {
 		return nil, err
 	}
@@ -185,7 +188,7 @@ func (s *GatewayInternalAPIService) GetActiveLLMProviderDeploymentByGateway(prov
 		return nil, apperror.DeploymentNotActive.New("LLM provider")
 	}
 
-	content, err := s.deliverContent(orgID, gatewayID, deployment.Content)
+	content, err := s.deliverDeployment(orgID, gatewayID, deployment)
 	if err != nil {
 		return nil, err
 	}
@@ -206,7 +209,7 @@ func (s *GatewayInternalAPIService) GetActiveLLMProxyDeploymentByGateway(proxyID
 		return nil, apperror.DeploymentNotActive.New("LLM proxy")
 	}
 
-	content, err := s.deliverContent(orgID, gatewayID, deployment.Content)
+	content, err := s.deliverDeployment(orgID, gatewayID, deployment)
 	if err != nil {
 		return nil, err
 	}
@@ -362,7 +365,7 @@ func (s *GatewayInternalAPIService) GetActiveMCPProxyDeploymentByGateway(proxyID
 		return nil, apperror.DeploymentNotActive.New("MCP proxy")
 	}
 
-	content, err := s.deliverContent(orgID, gatewayID, deployment.Content)
+	content, err := s.deliverDeployment(orgID, gatewayID, deployment)
 	if err != nil {
 		return nil, err
 	}
@@ -398,13 +401,38 @@ func (s *GatewayInternalAPIService) GetActiveAgentDeploymentByGateway(agentID, o
 		return nil, apperror.DeploymentNotActive.New("Agent proxy")
 	}
 
-	content, err := s.deliverContent(orgID, gatewayID, deployment.Content)
+	content, err := s.deliverDeployment(orgID, gatewayID, deployment)
 	if err != nil {
 		return nil, err
 	}
 	return map[string]string{
 		agentID: string(content),
 	}, nil
+}
+
+// GetActiveGraphQLAPIDeploymentByGateway retrieves the currently deployed GraphQL API artifact for a specific gateway
+func (s *GatewayInternalAPIService) GetActiveGraphQLAPIDeploymentByGateway(apiID, orgID, gatewayID string) (map[string]string, error) {
+	graphqlAPI, err := s.graphqlAPIRepo.GetByUUID(apiID, orgID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get GraphQL API: %w", err)
+	}
+	if graphqlAPI == nil {
+		return nil, apperror.GraphQLAPINotFound.New()
+	}
+
+	deployment, err := s.deploymentRepo.GetCurrentByGateway(graphqlAPI.ID, gatewayID, orgID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get deployment: %w", err)
+	}
+	if deployment == nil {
+		return nil, apperror.DeploymentNotActive.New("GraphQL API")
+	}
+
+	apiYaml := string(deployment.Content)
+	apiYamlMap := map[string]string{
+		apiID: apiYaml,
+	}
+	return apiYamlMap, nil
 }
 
 // GetActiveWebSubAPIDeploymentByGateway retrieves the currently deployed WebSub API artifact for a specific gateway
@@ -429,7 +457,7 @@ func (s *GatewayInternalAPIService) GetActiveWebSubAPIDeploymentByGateway(apiID,
 		return nil, apperror.DeploymentNotActive.New("WebSub API")
 	}
 
-	content, err := s.deliverContent(orgID, gatewayID, deployment.Content)
+	content, err := s.deliverDeployment(orgID, gatewayID, deployment)
 	if err != nil {
 		return nil, err
 	}
@@ -461,7 +489,7 @@ func (s *GatewayInternalAPIService) GetActiveWebBrokerAPIDeploymentByGateway(api
 		return nil, apperror.DeploymentNotActive.New("WebBroker API")
 	}
 
-	content, err := s.deliverContent(orgID, gatewayID, deployment.Content)
+	content, err := s.deliverDeployment(orgID, gatewayID, deployment)
 	if err != nil {
 		return nil, err
 	}
@@ -535,14 +563,12 @@ func (s *GatewayInternalAPIService) GetDeploymentContentBatch(orgID, gatewayID s
 	for deploymentID, dc := range contentMap {
 		rendered, err := s.renderContentForGateway(orgID, gateway, dc.Content)
 		if err != nil {
+			if !apperror.DeploymentSecretResolutionFailed.Is(err) {
+				return nil, fmt.Errorf("failed to render deployment %s: %w", deploymentID, err)
+			}
 			s.slogger.Warn("Skipping deployment in batch: secret rendering failed",
 				"deploymentID", deploymentID, "artifactID", dc.ArtifactID, "gatewayID", gatewayID, "error", err)
-			if _, statusErr := s.deploymentRepo.SetCurrentWithDetails(dc.ArtifactID, orgID, gatewayID, deploymentID,
-				model.DeploymentStatusFailed, string(model.DeploymentStatusDeployed), nil,
-				model.DeploymentErrorSecretResolutionFailed); statusErr != nil {
-				s.slogger.Error("Failed to record secret resolution failure on deployment status",
-					"deploymentID", deploymentID, "gatewayID", gatewayID, "error", statusErr)
-			}
+			s.recordSecretResolutionFailure(orgID, gatewayID, dc.ArtifactID, deploymentID)
 			delete(contentMap, deploymentID)
 			continue
 		}

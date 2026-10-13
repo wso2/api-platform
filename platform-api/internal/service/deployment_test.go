@@ -280,6 +280,7 @@ type mockDeploymentRepo struct {
 	setCurrentStatus      model.DeploymentStatus
 	setCurrentPerformedAt *time.Time
 	deleteCalled          bool
+	createdDeployment     *model.Deployment
 }
 
 func (m *mockDeploymentRepo) GetWithContent(deploymentID, artifactUUID, orgUUID string) (*model.Deployment, error) {
@@ -343,7 +344,13 @@ func (m *mockDeploymentRepo) CreateFromBuildWithLimitEnforcement(deployment *mod
 	return m.CreateWithLimitEnforcement(deployment, hardLimit)
 }
 
+func (m *mockDeploymentRepo) CreateWithBuild(deployment *model.Deployment, _ *model.Build,
+	_, hardLimit int) error {
+	return m.CreateWithLimitEnforcement(deployment, hardLimit)
+}
+
 func (m *mockDeploymentRepo) CreateWithLimitEnforcement(deployment *model.Deployment, hardLimit int) error {
+	m.createdDeployment = deployment
 	return m.createWithLimitError
 }
 
@@ -1938,4 +1945,12 @@ func TestApplyStructOverrides(t *testing.T) {
 			t.Errorf("vhosts should remain nil, got %v", d.Spec.Vhosts)
 		}
 	})
+}
+
+func (m *mockDeploymentAPIRepository) FailCurrentDeployment(string, string, string, string, string) (int64, error) {
+	return 0, nil
+}
+
+func (m *mockDeploymentRepo) FailCurrentDeployment(string, string, string, string, string) (int64, error) {
+	return 0, nil
 }

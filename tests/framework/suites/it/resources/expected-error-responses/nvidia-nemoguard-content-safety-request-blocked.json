@@ -1,0 +1,15 @@
+{
+  "body": {
+    "message": {
+      "action": "GUARDRAIL_INTERVENED",
+      "actionReason": "Unsafe content detected.",
+      "direction": "REQUEST",
+      "interveningGuardrail": "NeMo Guard Content Safety"
+    },
+    "type": "NVIDIA_NEMOGUARD_CONTENT_SAFETY"
+  },
+  "headers": {
+    "content-type": "application/json"
+  },
+  "status": 422
+}

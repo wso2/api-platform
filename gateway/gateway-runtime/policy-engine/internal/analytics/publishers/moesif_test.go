@@ -233,6 +233,35 @@ func TestPublish_WithInvalidResponseHeaders(t *testing.T) {
 	assert.Empty(t, headers)
 }
 
+// TestPublish_HeaderSourceIndependent is the Moesif half of the "Step 4" safety
+// net (see log_test.go's TestLog_Publish_GoldenLine_HeaderSourceIndependent):
+// event.Properties[dto.PropKeyRequestHeaders/PropKeyResponseHeaders] can now
+// arrive as either an already-typed map[string]string (a correlation-store hit)
+// or a JSON string (the metadata-decode fallback path). Both must produce an
+// identical Headers payload for the same logical content.
+func TestPublish_HeaderSourceIndependent(t *testing.T) {
+	moesifString := createTestMoesifWithoutAPI()
+	eventString := createBaseEvent()
+	eventString.Properties[dto.PropKeyRequestHeaders] = `{"Content-Type":"application/json","X-Custom":"value"}`
+	eventString.Properties[dto.PropKeyResponseHeaders] = `{"Content-Type":"text/html"}`
+	moesifString.Publish(eventString)
+
+	moesifTyped := createTestMoesifWithoutAPI()
+	eventTyped := createBaseEvent()
+	eventTyped.Properties[dto.PropKeyRequestHeaders] = map[string]string{"Content-Type": "application/json", "X-Custom": "value"}
+	eventTyped.Properties[dto.PropKeyResponseHeaders] = map[string]string{"Content-Type": "text/html"}
+	moesifTyped.Publish(eventTyped)
+
+	require.Len(t, moesifString.events, 1)
+	require.Len(t, moesifTyped.events, 1)
+	assert.Equal(t, moesifString.events[0].Request.Headers, moesifTyped.events[0].Request.Headers)
+	assert.Equal(t, moesifString.events[0].Response.Headers, moesifTyped.events[0].Response.Headers)
+
+	headers := moesifTyped.events[0].Request.Headers.(map[string]interface{})
+	assert.Equal(t, "application/json", headers["Content-Type"])
+	assert.Equal(t, "value", headers["X-Custom"])
+}
+
 func TestPublish_NoHeadersConfigured(t *testing.T) {
 	moesif := createTestMoesifWithoutAPI()
 
