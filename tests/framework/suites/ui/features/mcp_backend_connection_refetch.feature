@@ -80,7 +80,7 @@ Feature: MCP proxy Backend Connection refetch behavior
     And the user edits the backend connection URL to "https://url-only-edit.mcp.example.com/mcp"
     When the user saves the backend connection
     Then the MCP proxy update carries the URL "https://url-only-edit.mcp.example.com/mcp"
-    And the MCP proxy update kept the auth header "Authorization" and type "header"
+    And the MCP proxy update kept the auth header "Authorization" and type "api-key"
     And no secret was created for that credential
 
   Scenario: Refetching after a URL-only edit sends the edited URL alongside the stored proxy

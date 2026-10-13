@@ -114,6 +114,7 @@ describe('AI Workspace — MCP server secret management', () => {
     // MCP server payload must contain a placeholder, not the plaintext.
     cy.wait('@createServer').then((interception) => {
       expect(interception.response.statusCode).to.be.oneOf([200, 201]);
+      expect(interception.request.body?.upstream?.main?.auth?.type).to.equal('api-key');
       const bodyStr = JSON.stringify(interception.request.body);
       expect(bodyStr).to.include('{{ secret ');
       expect(bodyStr).not.to.include('tok-tc80-plaintext');

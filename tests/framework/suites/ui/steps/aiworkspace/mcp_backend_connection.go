@@ -200,8 +200,8 @@ func (u *Steps) theRefetchRequestSentTheLiveCredential(ctx context.Context, url,
 	if req.Auth == nil {
 		return fmt.Errorf("expected an auth override, got none")
 	}
-	if req.Auth.Type != "header" {
-		return fmt.Errorf("auth type = %q, want %q", req.Auth.Type, "header")
+	if req.Auth.Type != "api-key" {
+		return fmt.Errorf("auth type = %q, want %q", req.Auth.Type, "api-key")
 	}
 	if req.Auth.Header != header {
 		return fmt.Errorf("auth header = %q, want %q", req.Auth.Header, header)

@@ -347,6 +347,7 @@ func (s *MCPDeploymentService) parseValidateAndTransform(params MCPDeploymentPar
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to parse configuration: %w", err)
 	}
+	normalizeMCPProxyAuthType(&mcpConfig)
 
 	// On update, inherit the persisted upstream credential when this request does
 	// not carry one. See credential_inheritance.go for the inheritance rules.

@@ -31,7 +31,7 @@ Feature: MCP proxy credential preservation across policy updates
 
     When the user opens the MCP proxy's Policies tab
     And the user adds a CORS policy and saves
-    Then the MCP proxy update kept the auth header "Authorization" and type "header"
+    Then the MCP proxy update kept the auth header "Authorization" and type "api-key"
     And no secret was created for that credential
     And the MCP proxy update body does not include "tok-setup-key"
 
