@@ -18,6 +18,7 @@
 
 // Package framework is the root of the integration-test framework module. It embeds the files
 // the engine reads at run time (compose files, version profiles, configuration overlays, and
-// snapshots of the gateway schemas, configuration and pricing file), so a project that imports
-// the framework as a Go module runs without an api-platform checkout.
+// snapshots of the gateway schemas, configuration and pricing file, which the release
+// generates), so a project that imports the framework as a Go module runs without an
+// api-platform checkout.
 package framework

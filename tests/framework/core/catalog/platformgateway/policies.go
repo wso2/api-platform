@@ -528,7 +528,7 @@ func versionedPolicyBuildCommands(
 	// The published latest images move with every merge, so a copy pulled earlier must not be
 	// reused. A release tag never changes, so its local copy is.
 	runPull, buildPull := []string{}, []string{}
-	if version == "latest" {
+	if strings.EqualFold(strings.TrimSpace(version), "latest") {
 		runPull, buildPull = []string{"--pull", "always"}, []string{"--pull"}
 	}
 	return []builder.Command{

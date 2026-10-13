@@ -186,9 +186,10 @@ every repository file the engine reads at run time must be available without one
   to the embedded copy.
 - A file under `tests/framework` that the engine reads (compose files, version profiles,
   overlays) must be listed in the `go:embed` directive of `assets.go`.
-- A file outside the module (database schemas, data files) needs a snapshot under `snapshots/`
-  at its repository-relative path and an entry in `assets.SnapshotSources`. Refresh snapshots
-  with `make snapshots`; `TestSnapshotsMatchTheRepositorySource` fails when one is stale.
+- A file outside the module (database schemas, data files) needs an entry in
+  `assets.SnapshotSources`. Its embedded copy is generated, never committed: the release workflow
+  runs `go run ./cmd/syncassets` and commits `snapshots/` on the release tag only. Run
+  `make snapshots` to use the module through a `replace` before a release.
 - Never snapshot key material, certificates or secrets. Generate them per process in
   `core/catalog/shared` (as `GatewayListenerTLS` and `GatewayEncryptionKey` do) and mount them
   through `GeneratedFiles` or a content-backed `FileMount`; the repository ignores `*.key` and a

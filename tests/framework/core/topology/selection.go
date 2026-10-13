@@ -121,7 +121,7 @@ func normalizeGatewayHost(raw string) (string, error) {
 		return "", nil
 	}
 	if strings.Contains(host, "://") || strings.ContainsAny(host, " \t\r\n?#") {
-		return "", fmt.Errorf("topology: -host must be an image repository prefix such as docker.io/isurangaws")
+		return "", fmt.Errorf("topology: -host must be an image repository prefix such as registry.example/test-gateway")
 	}
 	return host, nil
 }

@@ -16,8 +16,9 @@
  * under the License.
  */
 
-// Command syncassets keeps the framework's embedded snapshots equal to the repository files
-// they copy. It lists the files that differ and, unless -check is given, rewrites them.
+// Command syncassets generates the framework's embedded snapshots from the repository files
+// they copy. The snapshots are not committed: the release workflow runs it before tagging.
+// It lists the files that differ and, unless -check is given, rewrites them.
 package main
 
 import (

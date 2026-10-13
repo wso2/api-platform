@@ -83,7 +83,7 @@ framework/
   core/taxonomy/    capability-map lint and coverage-tree renderer
   core/assets/      resolves repository-relative files: workspace first, embedded copy second
   core/suiterun/    the exported suite entry (Main and Run) any project's test binary calls
-  snapshots/        embedded copies of the gateway schemas, current config and pricing file the engine reads
+  snapshots/        empty in git (.gitkeep); the release generates the embedded gateway schemas, current config and pricing file
 suites/
   it/  cloud/  ui/
 ```
@@ -148,8 +148,13 @@ The default testbench image follows the framework version in the importing binar
 checkout, a `replace` or an untagged revision uses the locally built `:test` image, and
 `APIP_IT_IMAGE_TESTBENCH` overrides either.
 
-Keeping the embedded copies equal to their source is checked by the unit tests and by the
-release workflow. After changing a gateway schema or the pricing file, refresh the copies:
+The embedded copies of files that live outside the module (the gateway database schemas, the
+current gateway configuration and the pricing file, listed in `assets.SnapshotSources`) are not
+committed: `snapshots/` holds only a `.gitkeep`. The release workflow generates them from the
+repository and commits them on the release tag only, so a released module carries them and `main`
+does not. Inside an api-platform checkout nothing needs generating, because the engine reads the
+repository files. To use the module without a release, through a `replace` or an untagged
+revision, generate the copies yourself:
 
 ```bash
 make snapshots

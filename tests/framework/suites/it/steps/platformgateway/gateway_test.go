@@ -1368,9 +1368,10 @@ func TestManagementEndpointDeleteWaitsForTheControllerOnReleasesWithTheRace(t *t
 	}))
 	t.Cleanup(rest.Close)
 	var dumps atomic.Int32
-	admin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	admin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/api/admin/v0.9/config_dump", r.URL.Path)
 		if dumps.Add(1) == 1 {
-			_, _ = io.WriteString(w, `{"apis":["api-1"]}`)
+			_, _ = io.WriteString(w, `{"apis":[{"configuration":{"metadata":{"name":"api-1"}}}]}`)
 			return
 		}
 		_, _ = io.WriteString(w, `{"apis":[]}`)

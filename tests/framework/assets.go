@@ -23,7 +23,9 @@ import "embed"
 // Assets holds the repository files the engine reads when it runs without an api-platform
 // checkout, and the canonical resource templates a project's features fall back to. Files under
 // the module keep their module-relative path; snapshots of files that live elsewhere in the
-// repository sit under snapshots/ at their repository-relative path. It carries no key
+// repository sit under snapshots/ at their repository-relative path. Git holds only
+// snapshots/.gitkeep: the release workflow generates the snapshots and commits them on the
+// release tag, and snapshots/ must hold a file for this directive to compile. It carries no key
 // material, which the framework generates per run. The core/assets package resolves
 // repository paths against it.
 //

@@ -602,6 +602,9 @@ func TestBuildVersionedWithPoliciesRepullsOnlyTheMovingLatestTag(t *testing.T) {
 	require.Contains(t, strings.Join(latest[1].Args, " "), "docker buildx build --pull -f ")
 	require.Contains(t, strings.Join(latest[2].Args, " "), "docker buildx build --pull -f ")
 
+	// A direct caller may spell the tag in any case; it is still the moving tag.
+	require.Contains(t, strings.Join(build(" LATEST ")[0].Args, " "), "--pull always")
+
 	release := build("1.2.0")
 	for _, command := range release {
 		require.NotContains(t, command.Args, "--pull")

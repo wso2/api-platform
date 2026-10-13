@@ -37,8 +37,8 @@ standards-check: ## Check step and feature isolation rules
 	go run ./cmd/standards -root . -unit-root . -steps suites/cloud/steps -features suites/cloud/features -scripts tools -suites suites/cloud/cloud-suite.yaml,suites/it/it-suite.yaml,suites/ui/ui-suite.yaml -docs core
 	go run ./cmd/standards -root "" -unit-root "" -steps "" -features suites/ui/features -scripts "" -suites "" -docs ""
 
-snapshots: ## Refresh the embedded gateway fixtures from the repository (run after changing one)
+snapshots: ## Generate the embedded gateway fixtures from the repository (not committed; the release does the same)
 	go run ./cmd/syncassets
 
-snapshots-check: ## Verify the embedded gateway fixtures equal the repository files
+snapshots-check: ## Verify generated gateway fixtures equal the repository files
 	go run ./cmd/syncassets -check

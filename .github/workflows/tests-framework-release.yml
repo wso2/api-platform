@@ -38,6 +38,9 @@ env:
 
 jobs:
   release:
+    # A version is permanent once the Go module proxy records it, so only reviewed code on main
+    # is released. A manual run from another branch must not tag it.
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     permissions:
@@ -77,16 +80,20 @@ jobs:
           go-version: '1.26.5'
           cache-dependency-path: tests/framework/go.sum
 
-      # A consumer has no checkout to read these files from, so the snapshots the module
-      # embeds must equal the gateway files they copy at the commit being released.
-      - name: Check the embedded snapshots match the repository
-        run: go run ./cmd/syncassets -check
+      # A consumer has no checkout to read these files from, so the module embeds copies of
+      # them. The copies are not committed to main: they are generated here from the gateway
+      # files at the commit being released, and only the release tag carries them.
+      - name: Generate the embedded snapshots
+        run: go run ./cmd/syncassets
 
+      # TestGatewayBuildYAMLAgreesWithVERSION checks the gateway's own version files, not the
+      # framework, and gateway/VERSION and gateway/build.yaml disagree on main. A framework
+      # release must not wait on the gateway release process, so that one test is skipped.
       - name: Run the framework unit tests
-        run: go test ./core/... ./cmd/... -count=1
+        run: go test ./core/... ./cmd/... -count=1 -skip '^TestGatewayBuildYAMLAgreesWithVERSION$'
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3.7.0
         with:
           platforms: linux/amd64,linux/arm64
 
@@ -94,7 +101,7 @@ jobs:
         uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
 
       - name: Login to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -112,11 +119,22 @@ jobs:
             -t "${TESTBENCH_REPOSITORY}:${VERSION}" \
             --push .
 
+      # The tag points at a commit that adds the generated snapshots to the released commit.
+      # That commit is on no branch, so main stays free of them while a consumer who downloads
+      # the tagged module gets them. Only the tag is pushed.
       - name: Create and push the tag
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
+          set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          git switch --detach
+          git add -f snapshots
+          if [ "$(git ls-files -- snapshots | wc -l)" -lt 2 ]; then
+            echo "Error: the generated snapshots were not added to the release commit"
+            exit 1
+          fi
+          git commit -m "Tests framework ${VERSION}: embed the generated snapshots"
           git tag -a "tests/framework/v${VERSION}" -m "Tests framework ${VERSION}"
           git push origin "tests/framework/v${VERSION}"

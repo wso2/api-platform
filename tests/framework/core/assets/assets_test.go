@@ -193,10 +193,25 @@ func TestSyncSnapshotsReportsAndRepairsDrift(t *testing.T) {
 	require.Empty(t, drifted)
 }
 
-// TestEmbeddedTreeCarriesEverySnapshotSource guards the module against a snapshot that was
-// listed but never added to the repository, which would only fail for a consumer.
+// snapshotsGenerated reports whether the embedded tree carries any snapshot. Git holds only
+// snapshots/.gitkeep; the release workflow and `make snapshots` generate the rest.
+func snapshotsGenerated(store *store) bool {
+	for _, source := range SnapshotSources {
+		if clean, ok := repositoryPath(source); ok && store.has(clean) {
+			return true
+		}
+	}
+	return false
+}
+
+// TestEmbeddedTreeCarriesEverySnapshotSource guards a released module against a snapshot that
+// was listed but never generated, which would only fail for a consumer. It runs once the
+// snapshots exist, as they do in the release workflow.
 func TestEmbeddedTreeCarriesEverySnapshotSource(t *testing.T) {
 	store := newStore(framework.Assets)
+	if !snapshotsGenerated(store) {
+		t.Skip("snapshots are generated at release; run `make snapshots` to include them")
+	}
 	for _, source := range SnapshotSources {
 		clean, ok := repositoryPath(source)
 		require.True(t, ok, source)
@@ -219,12 +234,28 @@ func TestEmbeddedTreeCarriesTheCatalogFilesTheGatewayReads(t *testing.T) {
 	}
 }
 
-// TestSnapshotsMatchTheRepositorySource keeps each embedded copy equal to the file the
-// gateway ships. It only runs inside an api-platform checkout.
+// TestSnapshotSourcesExistInTheRepository fails when a file listed in SnapshotSources was
+// renamed or removed, which would otherwise surface only when the release generates the
+// snapshots. It only runs inside an api-platform checkout.
+func TestSnapshotSourcesExistInTheRepository(t *testing.T) {
+	repo, ok := findRepository()
+	if !ok {
+		t.Skip("not running inside an api-platform checkout")
+	}
+	for _, source := range SnapshotSources {
+		require.FileExists(t, filepath.Join(repo, filepath.FromSlash(source)), "snapshot source %s", source)
+	}
+}
+
+// TestSnapshotsMatchTheRepositorySource keeps generated snapshots equal to the file the
+// gateway ships. It only runs inside an api-platform checkout that has generated them.
 func TestSnapshotsMatchTheRepositorySource(t *testing.T) {
 	repo, ok := findRepository()
 	if !ok {
 		t.Skip("not running inside an api-platform checkout")
+	}
+	if !snapshotsGenerated(newStore(framework.Assets)) {
+		t.Skip("snapshots are generated at release; run `make snapshots` to include them")
 	}
 	_, file, _, _ := runtime.Caller(0)
 	moduleRoot := filepath.Join(filepath.Dir(file), "..", "..")
