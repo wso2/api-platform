@@ -33,7 +33,7 @@ spec:
       url: http://orders-backend:9080/api/v1
   policies:
     - name: mtls-auth
-      version: v1
+      version: v0
       params:
         accept:
           - ca: partner-a
