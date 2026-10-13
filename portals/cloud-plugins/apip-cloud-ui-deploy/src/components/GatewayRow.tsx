@@ -32,8 +32,8 @@ export type GatewayRowProps = {
   /** Used only to label the scope of this gateway's drawers, e.g. "Development · EU Gateway". */
   environmentName: string;
   busy: boolean;
-  /** Gateway-created API: the gateway manages this deployment, so Stop is disabled. */
-  readOnly?: boolean;
+  /** Deploy actions are locked for this API (gateway-owned or not yet verified): Stop is disabled. */
+  locked?: boolean;
   /**
    * Whether this artifact's deployment has a backend URL of its own to show. An
    * LLM provider's upstream belongs to the provider rather than to the deployment,
@@ -49,7 +49,7 @@ const GatewayRow: FC<GatewayRowProps> = ({
   gateway,
   environmentName,
   busy,
-  readOnly = false,
+  locked = false,
   showEndpointUrl = true,
   onStop,
 }) => {
@@ -67,7 +67,7 @@ const GatewayRow: FC<GatewayRowProps> = ({
   //
   // Nothing to stop while a deployment is still settling, or where there is none.
   const actionDisabled =
-    readOnly ||
+    locked ||
     busy ||
     gateway.status === 'NOT_DEPLOYED' ||
     gateway.status === 'UNDEPLOYED' ||

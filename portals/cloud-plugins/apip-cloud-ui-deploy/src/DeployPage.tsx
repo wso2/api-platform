@@ -16,14 +16,14 @@
  * under the License.
  */
 
-import { Fragment, useState, type FC } from 'react';
+import { Fragment, useEffect, useState, type FC } from 'react';
 import { Alert, Box, PageContent, PageTitle, Typography } from '@wso2/oxygen-ui';
 import BuildAreaCard from './components/BuildAreaCard';
 import EnvironmentCard from './components/EnvironmentCard';
 import PipelineConnector from './components/PipelineConnector';
 import DeployDialog from './components/DeployDialog';
 import { undeletableBuildReasons } from './utils/status';
-import type { Build, Environment } from './types';
+import type { ApiOwnership, Build, Environment } from './types';
 
 export type DeployPageProps = {
   /** Pipeline environments in promotion order, as the server returns them. */
@@ -39,10 +39,10 @@ export type DeployPageProps = {
    */
   takesEndpoint: boolean;
   /**
-   * A gateway-created API. Its pipeline is shown, but deploying, promoting and
-   * stopping are the gateway's to manage, so every such action is disabled.
+   * Who manages this API's deployments. Its pipeline is always shown, but deploy,
+   * promote and stop are enabled only once the control plane is confirmed to own it.
    */
-  readOnly?: boolean;
+  ownership: ApiOwnership;
   busy: boolean;
   /**
    * Deploys to `target`; `from` is set when this is a promotion. Every gateway
@@ -66,6 +66,14 @@ export type DeployPageProps = {
  * being arranged here, so the view cannot imply a promotion the pipeline does
  * not allow.
  */
+/** Why the deploy actions are disabled in each ownership state that disables them. */
+const LOCKED_REASONS: Record<ApiOwnership, string | undefined> = {
+  checking: 'Checking whether this API can be deployed from here.',
+  'control-plane': undefined,
+  gateway: 'This API was created from a gateway, which manages its deployments.',
+  unverified: "Couldn't confirm who manages this API's deployments, so deploy actions are disabled.",
+};
+
 type DialogState = {
   targetIndex: number;
   sourceIndex?: number;
@@ -78,13 +86,20 @@ const DeployPage: FC<DeployPageProps> = ({
   builds,
   apiEndpointUrl,
   takesEndpoint,
-  readOnly = false,
+  ownership,
   busy,
   onDeploy,
   onStopGateway,
   onDeleteBuild,
 }) => {
   const [dialog, setDialog] = useState<DialogState>(null);
+  // Why deploy, promote and stop are unavailable; undefined when they are allowed.
+  const lockedReason = LOCKED_REASONS[ownership];
+
+  // A dialog opened before the actions were locked must not stay usable.
+  useEffect(() => {
+    if (lockedReason) setDialog(null);
+  }, [lockedReason]);
 
   const target = dialog ? (environments[dialog.targetIndex] ?? null) : null;
   const source =
@@ -94,7 +109,7 @@ const DeployPage: FC<DeployPageProps> = ({
     gateways: { gatewayId: string; endpointUrl?: string }[],
     buildId?: string
   ) => {
-    if (target) onDeploy(target, gateways, source, buildId);
+    if (target && !lockedReason) onDeploy(target, gateways, source, buildId);
     setDialog(null);
   };
 
@@ -104,10 +119,15 @@ const DeployPage: FC<DeployPageProps> = ({
         <PageTitle.Header>Deploy</PageTitle.Header>
       </PageTitle>
 
-      {readOnly && (
+      {ownership === 'gateway' && (
         <Alert severity="info" sx={{ mb: 2 }}>
           This API was created from a gateway. You can view its deployments, but deploy,
           promote and stop actions are managed by the gateway and are unavailable here.
+        </Alert>
+      )}
+      {ownership === 'unverified' && (
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          {LOCKED_REASONS.unverified} Reload the page to try again.
         </Alert>
       )}
 
@@ -167,7 +187,7 @@ const DeployPage: FC<DeployPageProps> = ({
               targetEnvironment={environments[0]}
               undeletableBuilds={undeletableBuildReasons(environments)}
               busy={busy}
-              readOnly={readOnly}
+              lockedReason={lockedReason}
               onDeployClick={(buildId, createBuild) =>
                 setDialog({ targetIndex: 0, buildId, createBuild })
               }
@@ -181,7 +201,7 @@ const DeployPage: FC<DeployPageProps> = ({
                   environment={environment}
                   nextEnvironment={environments[index + 1]}
                   busy={busy}
-                  readOnly={readOnly}
+                  lockedReason={lockedReason}
                   takesEndpoint={takesEndpoint}
                   onPromoteClick={() =>
                     setDialog({ targetIndex: index + 1, sourceIndex: index })

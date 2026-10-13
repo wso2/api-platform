@@ -347,7 +347,9 @@ function ApiDetailPageContent() {
                 </IconButton>
               </Tooltip>
             )}
-            <Can do="DeployAPI" denied="disable">
+            {api.readOnly ? (
+              // Viewing deployments is not deploying: a gateway owns these, so the
+              // link stays open to anyone who can see the API.
               <Button
                 component={RouterLink}
                 startIcon={<Rocket size={18} />}
@@ -355,10 +357,21 @@ function ApiDetailPageContent() {
                 to={deployPath}
                 variant="contained"
               >
-                {!api.readOnly && <FormattedMessage {...messages.deployToGateway} />}
-                {api.readOnly && <FormattedMessage {...messages.viewDeployments} />}
+                <FormattedMessage {...messages.viewDeployments} />
               </Button>
-            </Can>
+            ) : (
+              <Can do="DeployAPI" denied="disable">
+                <Button
+                  component={RouterLink}
+                  startIcon={<Rocket size={18} />}
+                  sx={{ flexShrink: 0 }}
+                  to={deployPath}
+                  variant="contained"
+                >
+                  <FormattedMessage {...messages.deployToGateway} />
+                </Button>
+              </Can>
+            )}
           </Stack>
         </Box>
         <ProgressBanner api={api} deployed={deployedGateways.length > 0} />

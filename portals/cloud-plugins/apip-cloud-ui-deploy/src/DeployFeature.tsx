@@ -22,7 +22,7 @@ import DeployPage from './DeployPage';
 import { createDeployClient, takesEndpointUrl, type ArtifactKind } from './deployApi';
 import { isSettling } from './utils/status';
 import type { CloudHostPort } from './hostPort';
-import type { Build, Environment } from './types';
+import type { ApiOwnership, Build, Environment } from './types';
 
 export type DeployFeatureProps = {
   port: CloudHostPort;
@@ -62,8 +62,9 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port, kind = 'RestApi', artifac
   const [environments, setEnvironments] = useState<Environment[]>([]);
   const [builds, setBuilds] = useState<Build[]>([]);
   const [apiEndpointUrl, setApiEndpointUrl] = useState<string | undefined>(undefined);
-  // A gateway-created API: its deployments are shown, but the gateway owns them.
-  const [readOnly, setReadOnly] = useState(false);
+  // Starts unresolved: deploy actions stay disabled until a successful read
+  // confirms the control plane owns this API.
+  const [ownership, setOwnership] = useState<ApiOwnership>('checking');
   // Whether this kind's deployments carry a backend URL at all. A REST API's does;
   // an MCP server's and an LLM proxy's upstream belongs to the artifact, so the form
   // neither asks for one nor sends one.
@@ -110,21 +111,28 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port, kind = 'RestApi', artifac
     void load();
   }, [load]);
 
-  // Read once per API rather than on every settling poll: the API's own backend
-  // URL is not pipeline state, and it is only the deploy form's starting value,
-  // so failing to read it must leave the rest of the page working.
+  // Read once per API rather than on every settling poll: neither the API's
+  // backend URL nor its ownership is pipeline state. A failed read leaves the
+  // pipeline viewable, but ownership unverified, so the actions stay disabled.
   useEffect(() => {
-    if (!client) return;
+    if (!client) return undefined;
+    let cancelled = false;
+    setOwnership('checking');
     void client.readApi().then(
       (api) => {
+        if (cancelled) return;
         setApiEndpointUrl(api.endpointUrl);
-        setReadOnly(api.readOnly);
+        setOwnership(api.readOnly ? 'gateway' : 'control-plane');
       },
       () => {
+        if (cancelled) return;
         setApiEndpointUrl(undefined);
-        setReadOnly(false);
+        setOwnership('unverified');
       }
     );
+    return () => {
+      cancelled = true;
+    };
   }, [client]);
 
   // A deployment settles asynchronously once its gateway acknowledges, so poll
@@ -267,7 +275,7 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port, kind = 'RestApi', artifac
       builds={builds}
       apiEndpointUrl={apiEndpointUrl}
       takesEndpoint={takesEndpoint}
-      readOnly={readOnly}
+      ownership={ownership}
       busy={busy}
       onDeploy={handleDeploy}
       onStopGateway={handleStop}
