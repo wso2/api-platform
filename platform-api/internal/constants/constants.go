@@ -156,6 +156,11 @@ const AdminRole = "admin"
 // a user whose mapping was removed.
 const DeletedUser = "deleted_user"
 
+// MigrationActorSub is the idp_id the v1→v2 migration client seeds for its
+// synthetic actor, the created_by of every row it brings over that had no v1
+// creator. A creator that resolves to it marks a migrated row.
+const MigrationActorSub = "platform-api-migration"
+
 // Deployment limit constants
 const (
 	// DeploymentLimitBuffer is the buffer added to MaxPerAPIGateway for hard limit enforcement

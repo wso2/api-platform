@@ -27,7 +27,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/wso2/api-platform/common/eventhub"
 
+	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/dto"
+	"github.com/wso2/api-platform/platform-api/internal/gatewaytranslator/gwversion"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 )
 
@@ -258,6 +260,55 @@ func (s *GatewayEventsService) BroadcastAPIKeyRevokedEvent(gatewayID, userId str
 // BroadcastAPIKeyUpdatedEvent sends an API key updated event to target gateway.
 func (s *GatewayEventsService) BroadcastAPIKeyUpdatedEvent(gatewayID, userId string, event *model.APIKeyUpdatedEvent) error {
 	return s.broadcastEventWithUserID(gatewayID, userId, EventTypeAPIKeyUpdated, event)
+}
+
+// BroadcastAPIKeyRevokedEventFor sends an API key revoked event to gateway gw,
+// stamped with the identity that gateway's release accepts (see KeyEventActor).
+// keyCreatedBy is the revoked key's creator; userId is the caller platform-api
+// has already authorized.
+func (s *GatewayEventsService) BroadcastAPIKeyRevokedEventFor(gw *model.APIGatewayWithDetails, keyCreatedBy, userId string, event *model.APIKeyRevokedEvent) error {
+	return s.broadcastEventWithUserID(gw.ID, s.KeyEventActor(gw.Version, keyCreatedBy, userId), EventTypeAPIKeyRevoked, event)
+}
+
+// BroadcastAPIKeyUpdatedEventFor is BroadcastAPIKeyRevokedEventFor for an
+// updated event.
+func (s *GatewayEventsService) BroadcastAPIKeyUpdatedEventFor(gw *model.APIGatewayWithDetails, keyCreatedBy, userId string, event *model.APIKeyUpdatedEvent) error {
+	return s.broadcastEventWithUserID(gw.ID, s.KeyEventActor(gw.Version, keyCreatedBy, userId), EventTypeAPIKeyUpdated, event)
+}
+
+// KeyEventActor returns the user id to stamp on an API key revoke/update event
+// for a gateway that reported gatewayVersion.
+//
+// platform-api decides who may revoke or update a key (the creator, a holder
+// of ap:api_key:all:manage, or a trusted origin) before broadcasting, and
+// gateways from gwversion.MinTrustedKeyEventsGatewayVersion apply the event on
+// that authority. Older releases re-check ownership themselves: the event's
+// user id has to equal the created_by they stored from the apikey.created
+// event, and an event carries no roles, so no caller is ever an admin there.
+// For those gateways the event is stamped with what they hold: the creator's
+// identity for a key created here (the create event carried the creator's
+// resolved sub), and the empty id for a key the migration brought over, which
+// Platform API v1 created on the gateway without a creator. Otherwise the
+// gateway drops every revocation by anyone but the creator, and every
+// revocation of a migrated key, until its next full key resync.
+func (s *GatewayEventsService) KeyEventActor(gatewayVersion, keyCreatedBy, userId string) string {
+	if !gwversion.RechecksKeyEventOwnership(gatewayVersion) {
+		return userId
+	}
+	if keyCreatedBy == "" {
+		return ""
+	}
+	if s.identity != nil {
+		sub, err := s.identity.SubForUUID(keyCreatedBy)
+		if err != nil {
+			s.slogger.Error("Failed to resolve API key creator for a legacy gateway key event; sending the caller", "error", err)
+			return userId
+		}
+		if sub == constants.MigrationActorSub {
+			return ""
+		}
+	}
+	return keyCreatedBy
 }
 
 // BroadcastApplicationUpdatedEvent sends an application updated event to target gateway.

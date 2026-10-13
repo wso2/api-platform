@@ -683,6 +683,7 @@ func getArtifactGatewaysWithDetails(db *database.DB, artifactUUID, orgUUID strin
 			g.properties,
 			g.is_critical,
 			g.gateway_functionality_type as functionality_type,
+			g.version,
 			g.is_active,
 			g.created_at,
 			g.updated_at,
@@ -714,6 +715,7 @@ func getArtifactGatewaysWithDetails(db *database.DB, artifactUUID, orgUUID strin
 		var deployedAt sql.NullTime
 		var deploymentId, endpointURL sql.NullString
 		var id, organizationID, name, handle, description, functionalityType string
+		var version sql.NullString
 		var createdAt, updatedAt, associatedAt, associationUpdatedAt time.Time
 		var isDeployed bool
 
@@ -726,6 +728,7 @@ func getArtifactGatewaysWithDetails(db *database.DB, artifactUUID, orgUUID strin
 			&propertiesBytes,
 			&isCritical,
 			&functionalityType,
+			&version,
 			&isActive,
 			&createdAt,
 			&updatedAt,
@@ -750,6 +753,7 @@ func getArtifactGatewaysWithDetails(db *database.DB, artifactUUID, orgUUID strin
 				Description:          description,
 				IsCritical:           isCritical != 0,
 				FunctionalityType:    functionalityType,
+				Version:              version.String,
 				IsActive:             isActive != 0,
 				CreatedAt:            createdAt,
 				UpdatedAt:            updatedAt,
