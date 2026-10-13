@@ -56,7 +56,7 @@ Feature: HTTPS listener derived from the APIs that use mutual TLS
       | spec.version           | ${CTX:apiVersion}               |
       | spec.context           | ${CTX:apiContext}/$version      |
       | spec.upstream.main.url | http://testbench:3000/api/v1    |
-      | spec.operations        | [{"method":"GET","path":"/health"},{"method":"GET","path":"/protected","policies":[{"name":"mtls-auth","version":"v1"}]}] |
+      | spec.operations        | [{"method":"GET","path":"/health"},{"method":"GET","path":"/protected","policies":[{"name":"mtls-auth","version":"v0"}]}] |
     Then the response should be successful
     And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until the route answers 200
     And the HTTPS listener should request a client certificate
@@ -77,7 +77,7 @@ Feature: HTTPS listener derived from the APIs that use mutual TLS
       | spec.version           | ${CTX:apiVersion}               |
       | spec.context           | ${CTX:apiContext}/$version      |
       | spec.upstream.main.url | http://testbench:3000/api/v1    |
-      | spec.operations        | [{"method":"GET","path":"/health","policies":[{"name":"mtls-auth","version":"v1"}]}] |
+      | spec.operations        | [{"method":"GET","path":"/health","policies":[{"name":"mtls-auth","version":"v0"}]}] |
     Then the response should be successful
     When I create API from "resources/templates/rest-api.yaml" with values:
       | apiVersion             | ${CTX:gatewaySpecVersion}        |
@@ -112,7 +112,7 @@ Feature: HTTPS listener derived from the APIs that use mutual TLS
       | spec.version           | ${CTX:apiVersion}               |
       | spec.context           | ${CTX:apiContext}/$version      |
       | spec.upstream.main.url | http://testbench:3000/api/v1    |
-      | spec.operations        | [{"method":"GET","path":"/health"},{"method":"GET","path":"/protected","policies":[{"name":"mtls-auth","version":"v1"}]}] |
+      | spec.operations        | [{"method":"GET","path":"/health"},{"method":"GET","path":"/protected","policies":[{"name":"mtls-auth","version":"v0"}]}] |
     Then the response should be successful
     And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until the route answers 200
     When I send a "GET" request over HTTPS to "${CTX:apiContext}/${CTX:apiVersion}/protected" with no client certificate
@@ -138,7 +138,7 @@ Feature: HTTPS listener derived from the APIs that use mutual TLS
       | spec.version           | ${CTX:apiVersion}               |
       | spec.context           | ${CTX:apiContext}/$version      |
       | spec.upstream.main.url | http://testbench:3000/api/v1    |
-      | spec.operations        | [{"method":"GET","path":"/health","policies":[{"name":"mtls-auth","version":"v1"}]}] |
+      | spec.operations        | [{"method":"GET","path":"/health","policies":[{"name":"mtls-auth","version":"v0"}]}] |
     Then the response should be successful
     And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until the route answers 401
     And the gateway has applied the client authority pool
@@ -171,7 +171,7 @@ Feature: HTTPS listener derived from the APIs that use mutual TLS
       | spec.version           | ${CTX:apiVersion}               |
       | spec.context           | ${CTX:apiContext}/$version      |
       | spec.upstream.main.url | http://testbench:3000/api/v1    |
-      | spec.policies          | [{"name":"mtls-auth","version":"v1"}] |
+      | spec.policies          | [{"name":"mtls-auth","version":"v0"}] |
       | spec.operations        | [{"method":"GET","path":"/health"}] |
     Then the response status should be 400
     And the JSON response field "status" should be "error"
@@ -189,7 +189,7 @@ Feature: HTTPS listener derived from the APIs that use mutual TLS
       | spec.version           | ${CTX:apiVersion}               |
       | spec.context           | ${CTX:apiContext}/$version      |
       | spec.upstream.main.url | http://testbench:3000/api/v1    |
-      | spec.policies          | [{"name":"mtls-auth","version":"v1","params":<params>}] |
+      | spec.policies          | [{"name":"mtls-auth","version":"v0","params":<params>}] |
       | spec.operations        | [{"method":"GET","path":"/health"}] |
     Then the response status should be 400
     And the response should list a validation error for field "<field>" with message "<message>"
@@ -224,7 +224,7 @@ Feature: HTTPS listener derived from the APIs that use mutual TLS
       | spec.version           | ${CTX:apiVersion}               |
       | spec.context           | ${CTX:apiContext}/$version      |
       | spec.upstream.main.url | http://testbench:3002           |
-      | spec.policies          | [{"name":"mtls-auth","version":"v1","executionCondition":"request.Method == \"POST\"","params":{"accept":[{"ca":"${CTX:partnerA}"}]}}] |
+      | spec.policies          | [{"name":"mtls-auth","version":"v0","executionCondition":"request.Method == \"POST\"","params":{"accept":[{"ca":"${CTX:partnerA}"}]}}] |
       | spec.operations        | [{"method":"GET","path":"/health"}] |
     Then the response status should be 400
     And the response should list a validation error for field "spec.policies[0].executionCondition" with message "mtls-auth runs on every request and cannot carry an executionCondition"
@@ -239,7 +239,7 @@ Feature: HTTPS listener derived from the APIs that use mutual TLS
       | spec.version           | ${CTX:apiVersion}               |
       | spec.context           | ${CTX:apiContext}/$version      |
       | spec.upstream.main.url | http://testbench:3002           |
-      | spec.policies          | [{"name":"mtls-auth","version":"v1"}] |
+      | spec.policies          | [{"name":"mtls-auth","version":"v0"}] |
       | spec.operations        | [{"method":"GET","path":"/health"}] |
     Then the response status should be 400
     And the response should list a validation error for field "spec.policies[0]" containing "requires at least one client authority"
@@ -253,7 +253,7 @@ Feature: HTTPS listener derived from the APIs that use mutual TLS
       | spec.version           | ${CTX:apiVersion}               |
       | spec.context           | ${CTX:apiContext}/$version      |
       | spec.upstream.main.url | http://testbench:3000/api/v1    |
-      | spec.policies          | [{"name":"mtls-auth","version":"v1"},{"name":"mtls-auth","version":"v1","params":{"accept":[{"ca":"${CTX:partnerA}"}]}}] |
+      | spec.policies          | [{"name":"mtls-auth","version":"v0"},{"name":"mtls-auth","version":"v0","params":{"accept":[{"ca":"${CTX:partnerA}"}]}}] |
       | spec.operations        | [{"method":"GET","path":"/health"}] |
     Then the response status should be 400
     And the response should list a validation error for field "spec.policies[1]" with message "mtls-auth may appear once per scope; use several accept entries instead"
@@ -267,8 +267,8 @@ Feature: HTTPS listener derived from the APIs that use mutual TLS
       | spec.version           | ${CTX:apiVersion}               |
       | spec.context           | ${CTX:apiContext}/$version      |
       | spec.upstream.main.url | http://testbench:3000/api/v1    |
-      | spec.policies          | [{"name":"mtls-auth","version":"v1"}] |
-      | spec.operations        | [{"method":"GET","path":"/health","policies":[{"name":"mtls-auth","version":"v1"}]}] |
+      | spec.policies          | [{"name":"mtls-auth","version":"v0"}] |
+      | spec.operations        | [{"method":"GET","path":"/health","policies":[{"name":"mtls-auth","version":"v0"}]}] |
     Then the response status should be 400
     And the response should list a validation error for field "spec.operations[0].policies[0]" with message "mtls-auth is already attached at API level; attach it at one level only"
 
@@ -282,7 +282,7 @@ Feature: HTTPS listener derived from the APIs that use mutual TLS
       | spec.version           | ${CTX:apiVersion}               |
       | spec.context           | ${CTX:apiContext}/$version      |
       | spec.upstream.main.url | http://testbench:3000/api/v1    |
-      | spec.policies          | [{"name":"mtls-auth","version":"v1"}] |
+      | spec.policies          | [{"name":"mtls-auth","version":"v0"}] |
       | spec.operations        | [{"method":"GET","path":"/health"}] |
     Then the response status should be 400
     And the HTTPS listener should not request a client certificate
@@ -299,7 +299,7 @@ Feature: HTTPS listener derived from the APIs that use mutual TLS
       | spec.version           | ${CTX:apiVersion}               |
       | spec.context           | ${CTX:apiContext}/$version      |
       | spec.upstream.main.url | http://testbench:3000/api/v1    |
-      | spec.policies          | [{"name":"mtls-auth","version":"v1"}] |
+      | spec.policies          | [{"name":"mtls-auth","version":"v0"}] |
       | spec.operations        | [{"method":"GET","path":"/health"}] |
     Then the response should be successful
     And the response should include a warning with code "MTLS_ACCEPT_INHERITS_POOL" for field "spec.policies[0].params.accept"
@@ -316,7 +316,7 @@ Feature: HTTPS listener derived from the APIs that use mutual TLS
       | spec.version           | ${CTX:apiVersion}               |
       | spec.context           | ${CTX:apiContext}/$version      |
       | spec.upstream.main.url | http://testbench:3000/api/v1    |
-      | spec.policies          | [{"name":"mtls-auth","version":"v1","params":{"accept":[{"ca":"${CTX:partnerA}"}]}}] |
+      | spec.policies          | [{"name":"mtls-auth","version":"v0","params":{"accept":[{"ca":"${CTX:partnerA}"}]}}] |
       | spec.operations        | [{"method":"GET","path":"/health"}] |
     Then the response should be successful
     And the response should include a warning with code "MTLS_ACCEPT_UNNARROWED" for field "spec.policies[0].params.accept[0]"
@@ -332,7 +332,7 @@ Feature: HTTPS listener derived from the APIs that use mutual TLS
       | spec.version           | ${CTX:apiVersion}               |
       | spec.context           | ${CTX:apiContext}/$version      |
       | spec.upstream.main.url | http://testbench:3000/api/v1    |
-      | spec.policies          | [{"name":"mtls-auth","version":"v1","params":{"accept":[{"ca":"${CTX:partnerA}"}]}}] |
+      | spec.policies          | [{"name":"mtls-auth","version":"v0","params":{"accept":[{"ca":"${CTX:partnerA}"}]}}] |
       | spec.operations        | [{"method":"GET","path":"/health"}] |
     Then the response should be successful
     And the response should include a warning with code "MTLS_ACCEPT_UNNARROWED" for field "spec.policies[0].params.accept[0]"
@@ -350,7 +350,7 @@ Feature: HTTPS listener derived from the APIs that use mutual TLS
       | spec.context           | ${CTX:apiContext}/$version      |
       | spec.vhosts.main       | ${CTX:listenerLabel}.example    |
       | spec.upstream.main.url | http://testbench:3000/api/v1    |
-      | spec.policies          | [{"name":"mtls-auth","version":"v1"}] |
+      | spec.policies          | [{"name":"mtls-auth","version":"v0"}] |
       | spec.operations        | [{"method":"GET","path":"/health"}] |
     Then the response should be successful
     And the response should include no warnings
@@ -365,7 +365,7 @@ Feature: HTTPS listener derived from the APIs that use mutual TLS
       | spec.version           | ${CTX:apiVersion}               |
       | spec.context           | ${CTX:apiContext}/$version      |
       | spec.upstream.main.url | http://testbench:3000/api/v1    |
-      | spec.policies          | [{"name":"jwt-auth","version":"v1","params":{"issuers":["mock-jwks"]}},{"name":"mtls-auth","version":"v1","params":{"accept":[{"ca":"${CTX:partnerA}","match":{"uriSANs":["urn:partner-a:payments"]}}]}}] |
+      | spec.policies          | [{"name":"jwt-auth","version":"v1","params":{"issuers":["mock-jwks"]}},{"name":"mtls-auth","version":"v0","params":{"accept":[{"ca":"${CTX:partnerA}","match":{"uriSANs":["urn:partner-a:payments"]}}]}}] |
       | spec.operations        | [{"method":"GET","path":"/health"}] |
     Then the response should be successful
     And the response should include a warning with code "MTLS_AUTH_NOT_FIRST" for field "spec.policies[0]"
@@ -380,7 +380,7 @@ Feature: HTTPS listener derived from the APIs that use mutual TLS
       | spec.version           | ${CTX:apiVersion}               |
       | spec.context           | ${CTX:apiContext}/$version      |
       | spec.upstream.main.url | http://testbench:3000/api/v1    |
-      | spec.policies          | [{"name":"mtls-auth","version":"v1","params":{"accept":[{"ca":"${CTX:partnerA}","thumbprints":["sha256:9F:86:D0:81:88:4C:7D:65:9A:2F:EA:A0:C5:5A:D0:15:A3:BF:4F:1B:2B:0B:82:2C:D1:5D:6C:15:B0:F0:0A:08"]}]}}] |
+      | spec.policies          | [{"name":"mtls-auth","version":"v0","params":{"accept":[{"ca":"${CTX:partnerA}","thumbprints":["sha256:9F:86:D0:81:88:4C:7D:65:9A:2F:EA:A0:C5:5A:D0:15:A3:BF:4F:1B:2B:0B:82:2C:D1:5D:6C:15:B0:F0:0A:08"]}]}}] |
       | spec.operations        | [{"method":"GET","path":"/health"}] |
     Then the response should be successful
     And the response should include a warning with code "MTLS_THUMBPRINT_NORMALISED" for field "spec.policies[0].params.accept[0].thumbprints[0]"

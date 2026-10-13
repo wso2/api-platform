@@ -59,7 +59,7 @@ Feature: Authenticating API callers with a client certificate
       | spec.version           | ${CTX:apiVersion}          |
       | spec.context           | ${CTX:apiContext}/$version |
       | spec.upstream.main.url | http://testbench:3002      |
-      | spec.policies          | [{"name":"mtls-auth","version":"v1","params":{"accept":[{"ca":"${CTX:caA}","match":{"uriSANs":["urn:partner-a:payments"]}}]}}] |
+      | spec.policies          | [{"name":"mtls-auth","version":"v0","params":{"accept":[{"ca":"${CTX:caA}","match":{"uriSANs":["urn:partner-a:payments"]}}]}}] |
       | spec.operations        | [{"method":"GET","path":"/anything"}] |
     Then the response should be successful
     And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/anything" until the route answers 401
@@ -93,7 +93,7 @@ Feature: Authenticating API callers with a client certificate
       | spec.version           | ${CTX:apiVersion}          |
       | spec.context           | ${CTX:apiContext}/$version |
       | spec.upstream.main.url | http://testbench:3002      |
-      | spec.policies          | [{"name":"mtls-auth","version":"v1","params":{"accept":[{"ca":"${CTX:caA}","match":{"uriSANs":["urn:partner-a:payments"]}}]}}] |
+      | spec.policies          | [{"name":"mtls-auth","version":"v0","params":{"accept":[{"ca":"${CTX:caA}","match":{"uriSANs":["urn:partner-a:payments"]}}]}}] |
       | spec.operations        | [{"method":"GET","path":"/anything"}] |
     Then the response should be successful
     And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/anything" until the route answers 401
@@ -136,7 +136,7 @@ Feature: Authenticating API callers with a client certificate
       | spec.version           | ${CTX:apiVersion}          |
       | spec.context           | ${CTX:apiContext}/$version |
       | spec.upstream.main.url | http://testbench:3002      |
-      | spec.policies          | [{"name":"mtls-auth","version":"v1","params":{"accept":[{"ca":"${CTX:caA}"}],"forwardCertificate":false}}] |
+      | spec.policies          | [{"name":"mtls-auth","version":"v0","params":{"accept":[{"ca":"${CTX:caA}"}],"forwardCertificate":false}}] |
       | spec.operations        | [{"method":"GET","path":"/anything"}] |
     Then the response should be successful
     And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/anything" until the route answers 401
@@ -157,7 +157,7 @@ Feature: Authenticating API callers with a client certificate
       | spec.version           | ${CTX:apiVersion}          |
       | spec.context           | ${CTX:apiContext}/$version |
       | spec.upstream.main.url | http://testbench:3002      |
-      | spec.policies          | [{"name":"mtls-auth","version":"v1","params":{"accept":[{"ca":"${CTX:caA}","thumbprints":["${CTX:fixture.client-valid.thumbprint}"]}]}}] |
+      | spec.policies          | [{"name":"mtls-auth","version":"v0","params":{"accept":[{"ca":"${CTX:caA}","thumbprints":["${CTX:fixture.client-valid.thumbprint}"]}]}}] |
       | spec.operations        | [{"method":"GET","path":"/anything"}] |
     Then the response should be successful
     And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/anything" until the route answers 401
@@ -179,7 +179,7 @@ Feature: Authenticating API callers with a client certificate
       | spec.version           | ${CTX:apiVersion}          |
       | spec.context           | ${CTX:apiContext}/$version |
       | spec.upstream.main.url | http://testbench:3002      |
-      | spec.policies          | [{"name":"mtls-auth","version":"v1","params":{"accept":[{"ca":"${CTX:caA}","thumbprints":["${CTX:fixture.client-valid.thumbprint}","${CTX:fixture.client-renewed.thumbprint}"]}]}}] |
+      | spec.policies          | [{"name":"mtls-auth","version":"v0","params":{"accept":[{"ca":"${CTX:caA}","thumbprints":["${CTX:fixture.client-valid.thumbprint}","${CTX:fixture.client-renewed.thumbprint}"]}]}}] |
       | spec.operations        | [{"method":"GET","path":"/anything"}] |
     Then the response should be successful
     And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/anything" until the route answers 401
@@ -199,7 +199,7 @@ Feature: Authenticating API callers with a client certificate
       | spec.version           | ${CTX:apiVersion}          |
       | spec.context           | ${CTX:apiContext}/$version |
       | spec.upstream.main.url | http://testbench:3002      |
-      | spec.policies          | [{"name":"mtls-auth","version":"v1","params":{"accept":[{"ca":"${CTX:caA}"}]}}] |
+      | spec.policies          | [{"name":"mtls-auth","version":"v0","params":{"accept":[{"ca":"${CTX:caA}"}]}}] |
       | spec.operations        | [{"method":"GET","path":"/anything"}] |
     Then the response should be successful
     And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/anything" until the route answers 401
@@ -212,7 +212,7 @@ Feature: Authenticating API callers with a client certificate
       | spec.version           | ${CTX:apiVersion}          |
       | spec.context           | ${CTX:apiContext}/$version |
       | spec.upstream.main.url | http://testbench:3002      |
-      | spec.policies          | [{"name":"mtls-auth","version":"v1","params":{"accept":[{"ca":"${CTX:caA}","match":{"uriSANs":["urn:partner-a:payments"]}}]}}] |
+      | spec.policies          | [{"name":"mtls-auth","version":"v0","params":{"accept":[{"ca":"${CTX:caA}","match":{"uriSANs":["urn:partner-a:payments"]}}]}}] |
       | spec.operations        | [{"method":"GET","path":"/anything"}] |
     Then the response should be successful
     And I wait for policy snapshot sync
@@ -230,7 +230,7 @@ Feature: Authenticating API callers with a client certificate
       | spec.version           | ${CTX:apiVersion}          |
       | spec.context           | ${CTX:apiContext}/$version |
       | spec.upstream.main.url | http://testbench:3002      |
-      | spec.policies          | [{"name":"mtls-auth","version":"v1","params":{"accept":[{"ca":"${CTX:caA}"}]}}] |
+      | spec.policies          | [{"name":"mtls-auth","version":"v0","params":{"accept":[{"ca":"${CTX:caA}"}]}}] |
       | spec.operations        | [{"method":"GET","path":"/anything"}] |
     Then the response should be successful
     And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/anything" until the route answers 401
@@ -249,7 +249,7 @@ Feature: Authenticating API callers with a client certificate
       | spec.version           | ${CTX:apiVersion}          |
       | spec.context           | ${CTX:apiContext}/$version |
       | spec.upstream.main.url | http://testbench:3002      |
-      | spec.policies          | [{"name":"mtls-auth","version":"v1","params":{"accept":[{"ca":"${CTX:caA}"}]}}] |
+      | spec.policies          | [{"name":"mtls-auth","version":"v0","params":{"accept":[{"ca":"${CTX:caA}"}]}}] |
       | spec.operations        | [{"method":"GET","path":"/anything"}] |
     Then the response should be successful
     And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/anything" until the route answers 401
@@ -271,7 +271,7 @@ Feature: Authenticating API callers with a client certificate
       | spec.version           | ${CTX:apiVersion}          |
       | spec.context           | ${CTX:apiContext}/$version |
       | spec.upstream.main.url | http://testbench:3002      |
-      | spec.policies          | [{"name":"mtls-auth","version":"v1"}] |
+      | spec.policies          | [{"name":"mtls-auth","version":"v0"}] |
       | spec.operations        | [{"method":"GET","path":"/anything"}] |
     Then the response should be successful
     And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/anything" until the route answers 401
@@ -298,7 +298,7 @@ Feature: Authenticating API callers with a client certificate
       | spec.version           | ${CTX:apiVersion}          |
       | spec.context           | ${CTX:apiContext}/$version |
       | spec.upstream.main.url | http://testbench:3002      |
-      | spec.policies          | [{"name":"mtls-auth","version":"v1"}] |
+      | spec.policies          | [{"name":"mtls-auth","version":"v0"}] |
       | spec.operations        | [{"method":"GET","path":"/anything"}] |
     Then the response should be successful
     When I create API from "resources/templates/rest-api.yaml" with values:
@@ -336,7 +336,7 @@ Feature: Authenticating API callers with a client certificate
       | spec.version           | ${CTX:apiVersion}          |
       | spec.context           | ${CTX:apiContext}/$version |
       | spec.upstream.main.url | http://testbench:3002      |
-      | spec.policies          | [{"name":"mtls-auth","version":"v1","params":{"accept":[{"ca":"${CTX:caA}","match":{"uriSANs":["urn:partner-a:payments"]}}]}}] |
+      | spec.policies          | [{"name":"mtls-auth","version":"v0","params":{"accept":[{"ca":"${CTX:caA}","match":{"uriSANs":["urn:partner-a:payments"]}}]}}] |
       | spec.operations        | [{"method":"GET","path":"/anything"}] |
     Then the response should be successful
     When I create API from "resources/templates/rest-api.yaml" with values:
@@ -376,7 +376,7 @@ Feature: Authenticating API callers with a client certificate
       | spec.version           | ${CTX:apiVersion}          |
       | spec.context           | ${CTX:apiContext}/$version |
       | spec.upstream.main.url | http://testbench:3002      |
-      | spec.policies          | [{"name":"mtls-auth","version":"v1","params":{"accept":[{"ca":"${CTX:anchorEntry}"}]}}] |
+      | spec.policies          | [{"name":"mtls-auth","version":"v0","params":{"accept":[{"ca":"${CTX:anchorEntry}"}]}}] |
       | spec.operations        | [{"method":"GET","path":"/anything"}] |
     Then the response should be successful
     And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/anything" until the route answers 401
@@ -402,7 +402,7 @@ Feature: Authenticating API callers with a client certificate
       | spec.version           | ${CTX:apiVersion}          |
       | spec.context           | ${CTX:apiContext}/$version |
       | spec.upstream.main.url | http://testbench:3002      |
-      | spec.policies          | [{"name":"mtls-auth","version":"v1","params":{"accept":[{"ca":"${CTX:anchorEntry}"}]}}] |
+      | spec.policies          | [{"name":"mtls-auth","version":"v0","params":{"accept":[{"ca":"${CTX:anchorEntry}"}]}}] |
       | spec.operations        | [{"method":"GET","path":"/anything"}] |
     Then the response should be successful
     And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/anything" until the route answers 401
@@ -426,7 +426,7 @@ Feature: Authenticating API callers with a client certificate
       | spec.version           | ${CTX:apiVersion}          |
       | spec.context           | ${CTX:apiContext}/$version |
       | spec.upstream.main.url | http://testbench:3002      |
-      | spec.policies          | [{"name":"mtls-auth","version":"v1","params":{"accept":[{"ca":"${CTX:anchorEntry}"}]}}] |
+      | spec.policies          | [{"name":"mtls-auth","version":"v0","params":{"accept":[{"ca":"${CTX:anchorEntry}"}]}}] |
       | spec.operations        | [{"method":"GET","path":"/anything"}] |
     Then the response should be successful
     And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/anything" until the route answers 401
@@ -450,7 +450,7 @@ Feature: Authenticating API callers with a client certificate
       | spec.version           | ${CTX:apiVersion}          |
       | spec.context           | ${CTX:apiContext}/$version |
       | spec.upstream.main.url | http://testbench:3002      |
-      | spec.policies          | [{"name":"mtls-auth","version":"v1","params":{"accept":[{"ca":"${CTX:anchorEntry}"}]}}] |
+      | spec.policies          | [{"name":"mtls-auth","version":"v0","params":{"accept":[{"ca":"${CTX:anchorEntry}"}]}}] |
       | spec.operations        | [{"method":"GET","path":"/anything"}] |
     Then the response should be successful
     And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/anything" until the route answers 401
@@ -474,7 +474,7 @@ Feature: Authenticating API callers with a client certificate
       | spec.version           | ${CTX:apiVersion}          |
       | spec.context           | ${CTX:apiContext}/$version |
       | spec.upstream.main.url | http://testbench:3002      |
-      | spec.policies          | [{"name":"mtls-auth","version":"v1","params":{"accept":[{"ca":"<entry>"}]}}] |
+      | spec.policies          | [{"name":"mtls-auth","version":"v0","params":{"accept":[{"ca":"<entry>"}]}}] |
       | spec.operations        | [{"method":"GET","path":"/anything"}] |
     Then the response should be successful
     And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/anything" until the route answers 401
@@ -499,7 +499,7 @@ Feature: Authenticating API callers with a client certificate
       | spec.version           | ${CTX:apiVersion}          |
       | spec.context           | ${CTX:apiContext}/$version |
       | spec.upstream.main.url | http://testbench:3002      |
-      | spec.policies          | [{"name":"mtls-auth","version":"v1","params":{"accept":[{"ca":"${CTX:caA}"}]}},{"name":"jwt-auth","version":"v1","params":{"issuers":["mock-jwks"]}}] |
+      | spec.policies          | [{"name":"mtls-auth","version":"v0","params":{"accept":[{"ca":"${CTX:caA}"}]}},{"name":"jwt-auth","version":"v1","params":{"issuers":["mock-jwks"]}}] |
       | spec.operations        | [{"method":"GET","path":"/anything"}] |
     Then the response should be successful
     And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/anything" until the route answers 401
@@ -534,7 +534,7 @@ Feature: Authenticating API callers with a client certificate
       | spec.version           | ${CTX:apiVersion}          |
       | spec.context           | ${CTX:apiContext}/$version |
       | spec.upstream.main.url | http://testbench:3002      |
-      | spec.operations        | [{"method":"GET","path":"/anything"},{"method":"GET","path":"/anything/protected","policies":[{"name":"mtls-auth","version":"v1","params":{"accept":[{"ca":"${CTX:caA}"}]}}]}] |
+      | spec.operations        | [{"method":"GET","path":"/anything"},{"method":"GET","path":"/anything/protected","policies":[{"name":"mtls-auth","version":"v0","params":{"accept":[{"ca":"${CTX:caA}"}]}}]}] |
     Then the response should be successful
     And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/anything" until the route answers 200
     When I send a "GET" request over HTTPS to "${CTX:apiContext}/${CTX:apiVersion}/anything" with no client certificate

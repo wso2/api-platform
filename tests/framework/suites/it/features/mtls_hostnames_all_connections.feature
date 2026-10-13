@@ -68,7 +68,7 @@ Feature: Asking every connection for a client certificate
       | spec.context           | ${CTX:mtlsContext}/$version |
       | spec.vhosts.main       | ${CTX:mtlsLabel}.example |
       | spec.upstream.main.url | http://testbench:3002 |
-      | spec.policies          | [{"name":"mtls-auth","version":"v1","params":{"accept":[{"ca":"${CTX:caA}","match":{"uriSANs":["urn:partner-a:payments"]}}]}}] |
+      | spec.policies          | [{"name":"mtls-auth","version":"v0","params":{"accept":[{"ca":"${CTX:caA}","match":{"uriSANs":["urn:partner-a:payments"]}}]}}] |
       | spec.operations        | [{"method":"GET","path":"/anything"}] |
     Then the response should be successful
     And the JSON response field "status.warnings" should not exist
@@ -106,7 +106,7 @@ Feature: Asking every connection for a client certificate
       | spec.version           | ${CTX:mtlsApiVersion} |
       | spec.context           | ${CTX:mtlsContext}/$version |
       | spec.upstream.main.url | http://testbench:3002 |
-      | spec.policies          | [{"name":"mtls-auth","version":"v1","params":{"accept":[{"ca":"${CTX:caA}","match":{"uriSANs":["urn:partner-a:payments"]}}]}}] |
+      | spec.policies          | [{"name":"mtls-auth","version":"v0","params":{"accept":[{"ca":"${CTX:caA}","match":{"uriSANs":["urn:partner-a:payments"]}}]}}] |
       | spec.operations        | [{"method":"GET","path":"/anything"}] |
     Then the response should be successful
     And the JSON response field "status.warnings" should not exist
@@ -125,7 +125,7 @@ Feature: Asking every connection for a client certificate
       | spec.vhosts.main          | ${CTX:mtlsLabel}.example |
       | spec.upstream.main.url    | http://testbench:3002 |
       | spec.upstream.sandbox.url | http://testbench:3002 |
-      | spec.policies             | [{"name":"mtls-auth","version":"v1","params":{"accept":[{"ca":"${CTX:caA}","match":{"uriSANs":["urn:partner-a:payments"]}}]}}] |
+      | spec.policies             | [{"name":"mtls-auth","version":"v0","params":{"accept":[{"ca":"${CTX:caA}","match":{"uriSANs":["urn:partner-a:payments"]}}]}}] |
       | spec.operations           | [{"method":"GET","path":"/anything"}] |
     Then the response should be successful
     And the JSON response field "status.warnings" should not exist
@@ -144,7 +144,7 @@ Feature: Asking every connection for a client certificate
       | spec.context           | ${CTX:mtlsContext}/$version |
       | spec.vhosts.main       | ${CTX:mtlsLabel}.example |
       | spec.upstream.main.url | http://testbench:3002 |
-      | spec.policies          | [{"name":"mtls-auth","version":"v1","params":{"accept":[{"ca":"${CTX:caA}","match":{"uriSANs":["urn:partner-a:payments"]}}]}}] |
+      | spec.policies          | [{"name":"mtls-auth","version":"v0","params":{"accept":[{"ca":"${CTX:caA}","match":{"uriSANs":["urn:partner-a:payments"]}}]}}] |
       | spec.operations        | [{"method":"GET","path":"/anything"}] |
     Then the response should be successful
     And I set request host to "${CTX:mtlsLabel}.example"
@@ -171,7 +171,7 @@ Feature: Asking every connection for a client certificate
       | spec.context           | ${CTX:mtlsContext}/$version |
       | spec.vhosts.main       | ${CTX:mtlsLabel}.example |
       | spec.upstream.main.url | http://testbench:3002 |
-      | spec.policies          | [{"name":"mtls-auth","version":"v1","params":{"accept":[{"ca":"${CTX:caA}","match":{"uriSANs":["urn:partner-a:payments"]}}]}}] |
+      | spec.policies          | [{"name":"mtls-auth","version":"v0","params":{"accept":[{"ca":"${CTX:caA}","match":{"uriSANs":["urn:partner-a:payments"]}}]}}] |
       | spec.operations        | [{"method":"GET","path":"/anything"}] |
     Then the response should be successful
     When I create API from "resources/templates/rest-api.yaml" with values:

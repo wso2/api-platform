@@ -54,7 +54,7 @@ Feature: Asking every connection while a dedicated hostname is required
       | spec.version           | ${CTX:mtlsApiVersion} |
       | spec.context           | ${CTX:mtlsContext}/$version |
       | spec.upstream.main.url | http://testbench:3002 |
-      | spec.policies          | [{"name":"mtls-auth","version":"v1","params":{"accept":[{"ca":"${CTX:caA}","match":{"uriSANs":["urn:partner-a:payments"]}}]}}] |
+      | spec.policies          | [{"name":"mtls-auth","version":"v0","params":{"accept":[{"ca":"${CTX:caA}","match":{"uriSANs":["urn:partner-a:payments"]}}]}}] |
       | spec.operations        | [{"method":"GET","path":"/anything"}] |
     Then the response status code should be 201
     And the JSON response field "status.warnings" should not exist
@@ -74,7 +74,7 @@ Feature: Asking every connection while a dedicated hostname is required
       | spec.vhosts.main          | ${CTX:mtlsLabel}.example |
       | spec.upstream.main.url    | http://testbench:3002 |
       | spec.upstream.sandbox.url | http://testbench:3002 |
-      | spec.policies             | [{"name":"mtls-auth","version":"v1","params":{"accept":[{"ca":"${CTX:caA}","match":{"uriSANs":["urn:partner-a:payments"]}}]}}] |
+      | spec.policies             | [{"name":"mtls-auth","version":"v0","params":{"accept":[{"ca":"${CTX:caA}","match":{"uriSANs":["urn:partner-a:payments"]}}]}}] |
       | spec.operations           | [{"method":"GET","path":"/anything"}] |
     Then the response status code should be 201
     And the JSON response field "status.warnings" should not exist

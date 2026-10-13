@@ -51,7 +51,7 @@ Feature: Pool entries referenced by APIs, and the levers that revoke a client
       | spec.version           | ${CTX:apiVersion} |
       | spec.context           | ${CTX:apiContext}/$version |
       | spec.upstream.main.url | http://testbench:3002 |
-      | spec.policies          | [{"name":"mtls-auth","version":"v1","params":{"accept":[{"ca":"${CTX:partnerA}"}]}}] |
+      | spec.policies          | [{"name":"mtls-auth","version":"v0","params":{"accept":[{"ca":"${CTX:partnerA}"}]}}] |
       | spec.operations        | [{"method":"GET","path":"/anything"}] |
     Then the response should be successful
     When I create API from "resources/templates/rest-api.yaml" with values:
@@ -61,7 +61,7 @@ Feature: Pool entries referenced by APIs, and the levers that revoke a client
       | spec.version           | ${CTX:otherApiVersion} |
       | spec.context           | ${CTX:otherApiContext}/$version |
       | spec.upstream.main.url | http://testbench:3002 |
-      | spec.policies          | [{"name":"mtls-auth","version":"v1"}] |
+      | spec.policies          | [{"name":"mtls-auth","version":"v0"}] |
       | spec.operations        | [{"method":"GET","path":"/anything"}] |
     Then the response should be successful
     When I send a "GET" request to the "gateway-controller" service at "/certificates?usage=downstream"
@@ -77,7 +77,7 @@ Feature: Pool entries referenced by APIs, and the levers that revoke a client
       | spec.version           | ${CTX:apiVersion} |
       | spec.context           | ${CTX:apiContext}/$version |
       | spec.upstream.main.url | http://testbench:3002 |
-      | spec.policies          | [{"name":"mtls-auth","version":"v1","params":{"accept":[{"ca":"${CTX:partnerA}"}]}}] |
+      | spec.policies          | [{"name":"mtls-auth","version":"v0","params":{"accept":[{"ca":"${CTX:partnerA}"}]}}] |
       | spec.operations        | [{"method":"GET","path":"/anything"}] |
     Then the response should be successful
     And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/anything" until the route answers 401
@@ -102,7 +102,7 @@ Feature: Pool entries referenced by APIs, and the levers that revoke a client
       | spec.version           | ${CTX:apiVersion} |
       | spec.context           | ${CTX:apiContext}/$version |
       | spec.upstream.main.url | http://testbench:3002 |
-      | spec.policies          | [{"name":"mtls-auth","version":"v1"}] |
+      | spec.policies          | [{"name":"mtls-auth","version":"v0"}] |
       | spec.operations        | [{"method":"GET","path":"/anything"}] |
     Then the response should be successful
     And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/anything" until the route answers 401
@@ -126,7 +126,7 @@ Feature: Pool entries referenced by APIs, and the levers that revoke a client
       | spec.version           | ${CTX:apiVersion} |
       | spec.context           | ${CTX:apiContext}/$version |
       | spec.upstream.main.url | http://testbench:3002 |
-      | spec.policies          | [{"name":"mtls-auth","version":"v1"}] |
+      | spec.policies          | [{"name":"mtls-auth","version":"v0"}] |
       | spec.operations        | [{"method":"GET","path":"/anything"}] |
     Then the response should be successful
     When I delete the certificate named "${CTX:entry}"
@@ -151,7 +151,7 @@ Feature: Pool entries referenced by APIs, and the levers that revoke a client
       | spec.version           | ${CTX:apiVersion} |
       | spec.context           | ${CTX:apiContext}/$version |
       | spec.upstream.main.url | http://testbench:3002 |
-      | spec.policies          | [{"name":"mtls-auth","version":"v1","params":{"accept":[{"ca":"${CTX:partnerA}"}]}}] |
+      | spec.policies          | [{"name":"mtls-auth","version":"v0","params":{"accept":[{"ca":"${CTX:partnerA}"}]}}] |
       | spec.operations        | [{"method":"GET","path":"/anything"}] |
     Then the response should be successful
     When I delete the certificate named "${CTX:entry}"
@@ -173,7 +173,7 @@ Feature: Pool entries referenced by APIs, and the levers that revoke a client
       | spec.version           | ${CTX:apiVersion} |
       | spec.context           | ${CTX:apiContext}/$version |
       | spec.upstream.main.url | http://testbench:3002 |
-      | spec.policies          | [{"name":"mtls-auth","version":"v1","params":{"accept":[{"ca":"${CTX:partnerA}","match":{"uriSANs":["urn:partner-a:payments","urn:partner-a:first"]}}]}}] |
+      | spec.policies          | [{"name":"mtls-auth","version":"v0","params":{"accept":[{"ca":"${CTX:partnerA}","match":{"uriSANs":["urn:partner-a:payments","urn:partner-a:first"]}}]}}] |
       | spec.operations        | [{"method":"GET","path":"/anything"}] |
     Then the response should be successful
     And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/anything" until the route answers 401
@@ -188,7 +188,7 @@ Feature: Pool entries referenced by APIs, and the levers that revoke a client
       | spec.version           | ${CTX:apiVersion} |
       | spec.context           | ${CTX:apiContext}/$version |
       | spec.upstream.main.url | http://testbench:3002 |
-      | spec.policies          | [{"name":"mtls-auth","version":"v1","params":{"accept":[{"ca":"${CTX:partnerA}","match":{"uriSANs":["urn:partner-a:payments"]}}]}}] |
+      | spec.policies          | [{"name":"mtls-auth","version":"v0","params":{"accept":[{"ca":"${CTX:partnerA}","match":{"uriSANs":["urn:partner-a:payments"]}}]}}] |
       | spec.operations        | [{"method":"GET","path":"/anything"}] |
     Then the response should be successful
     And I wait for policy snapshot sync
@@ -207,7 +207,7 @@ Feature: Pool entries referenced by APIs, and the levers that revoke a client
       | spec.version           | ${CTX:apiVersion} |
       | spec.context           | ${CTX:apiContext}/$version |
       | spec.upstream.main.url | http://testbench:3002 |
-      | spec.policies          | [{"name":"mtls-auth","version":"v1","params":{"accept":[{"ca":"${CTX:partnerA}"},{"ca":"${CTX:partnerB}"}]}}] |
+      | spec.policies          | [{"name":"mtls-auth","version":"v0","params":{"accept":[{"ca":"${CTX:partnerA}"},{"ca":"${CTX:partnerB}"}]}}] |
       | spec.operations        | [{"method":"GET","path":"/anything"}] |
     Then the response should be successful
     And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/anything" until the route answers 401
@@ -220,7 +220,7 @@ Feature: Pool entries referenced by APIs, and the levers that revoke a client
       | spec.version           | ${CTX:apiVersion} |
       | spec.context           | ${CTX:apiContext}/$version |
       | spec.upstream.main.url | http://testbench:3002 |
-      | spec.policies          | [{"name":"mtls-auth","version":"v1","params":{"accept":[{"ca":"${CTX:partnerA}"}]}}] |
+      | spec.policies          | [{"name":"mtls-auth","version":"v0","params":{"accept":[{"ca":"${CTX:partnerA}"}]}}] |
       | spec.operations        | [{"method":"GET","path":"/anything"}] |
     Then the response should be successful
     And I wait for policy snapshot sync
@@ -238,7 +238,7 @@ Feature: Pool entries referenced by APIs, and the levers that revoke a client
       | spec.version           | ${CTX:apiVersion} |
       | spec.context           | ${CTX:apiContext}/$version |
       | spec.upstream.main.url | http://testbench:3002 |
-      | spec.policies          | [{"name":"mtls-auth","version":"v1","params":{"accept":[{"ca":"${CTX:partnerA}","thumbprints":["${CTX:fixture.client-valid.thumbprint}","${CTX:fixture.client-renewed.thumbprint}"]}]}}] |
+      | spec.policies          | [{"name":"mtls-auth","version":"v0","params":{"accept":[{"ca":"${CTX:partnerA}","thumbprints":["${CTX:fixture.client-valid.thumbprint}","${CTX:fixture.client-renewed.thumbprint}"]}]}}] |
       | spec.operations        | [{"method":"GET","path":"/anything"}] |
     Then the response should be successful
     And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/anything" until the route answers 401
@@ -253,7 +253,7 @@ Feature: Pool entries referenced by APIs, and the levers that revoke a client
       | spec.version           | ${CTX:apiVersion} |
       | spec.context           | ${CTX:apiContext}/$version |
       | spec.upstream.main.url | http://testbench:3002 |
-      | spec.policies          | [{"name":"mtls-auth","version":"v1","params":{"accept":[{"ca":"${CTX:partnerA}","thumbprints":["${CTX:fixture.client-renewed.thumbprint}"]}]}}] |
+      | spec.policies          | [{"name":"mtls-auth","version":"v0","params":{"accept":[{"ca":"${CTX:partnerA}","thumbprints":["${CTX:fixture.client-renewed.thumbprint}"]}]}}] |
       | spec.operations        | [{"method":"GET","path":"/anything"}] |
     Then the response should be successful
     And I wait for policy snapshot sync
@@ -273,7 +273,7 @@ Feature: Pool entries referenced by APIs, and the levers that revoke a client
       | spec.version           | ${CTX:apiVersion} |
       | spec.context           | ${CTX:apiContext}/$version |
       | spec.upstream.main.url | http://testbench:3002 |
-      | spec.policies          | [{"name":"mtls-auth","version":"v1","params":{"accept":[{"ca":"${CTX:partnerA}","match":{"uriSANs":["urn:partner-a:nothing"]}},{"ca":"${CTX:partnerA}"}]}}] |
+      | spec.policies          | [{"name":"mtls-auth","version":"v0","params":{"accept":[{"ca":"${CTX:partnerA}","match":{"uriSANs":["urn:partner-a:nothing"]}},{"ca":"${CTX:partnerA}"}]}}] |
       | spec.operations        | [{"method":"GET","path":"/anything"}] |
     Then the response should be successful
     And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/anything" until the route answers 401
@@ -290,7 +290,7 @@ Feature: Pool entries referenced by APIs, and the levers that revoke a client
       | spec.version           | ${CTX:apiVersion} |
       | spec.context           | ${CTX:apiContext}/$version |
       | spec.upstream.main.url | http://testbench:3002 |
-      | spec.policies          | [{"name":"mtls-auth","version":"v1","params":{"accept":[{"ca":"${CTX:entry}"}]}}] |
+      | spec.policies          | [{"name":"mtls-auth","version":"v0","params":{"accept":[{"ca":"${CTX:entry}"}]}}] |
       | spec.operations        | [{"method":"GET","path":"/anything"}] |
     Then the response should be successful
     And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/anything" until the route answers 401

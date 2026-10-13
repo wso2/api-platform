@@ -56,7 +56,7 @@ Feature: Requiring a dedicated hostname for mutual TLS APIs
       | spec.version           | ${CTX:mtlsApiVersion} |
       | spec.context           | ${CTX:mtlsContext}/$version |
       | spec.upstream.main.url | http://testbench:3002 |
-      | spec.policies          | [{"name":"mtls-auth","version":"v1","params":{"accept":[{"ca":"${CTX:caA}","match":{"uriSANs":["urn:partner-a:payments"]}}]}}] |
+      | spec.policies          | [{"name":"mtls-auth","version":"v0","params":{"accept":[{"ca":"${CTX:caA}","match":{"uriSANs":["urn:partner-a:payments"]}}]}}] |
       | spec.operations        | [{"method":"GET","path":"/anything"}] |
     Then the response status code should be 400
     And the JSON response field "errors[0].field" should be "spec.vhosts.main"
@@ -72,7 +72,7 @@ Feature: Requiring a dedicated hostname for mutual TLS APIs
       | spec.context           | ${CTX:mtlsContext}/$version |
       | spec.vhosts.main       | <hostname> |
       | spec.upstream.main.url | http://testbench:3002 |
-      | spec.policies          | [{"name":"mtls-auth","version":"v1","params":{"accept":[{"ca":"${CTX:caA}","match":{"uriSANs":["urn:partner-a:payments"]}}]}}] |
+      | spec.policies          | [{"name":"mtls-auth","version":"v0","params":{"accept":[{"ca":"${CTX:caA}","match":{"uriSANs":["urn:partner-a:payments"]}}]}}] |
       | spec.operations        | [{"method":"GET","path":"/anything"}] |
     Then the response status code should be 400
     And the JSON response field "errors[0].field" should be "spec.vhosts.main"
@@ -95,7 +95,7 @@ Feature: Requiring a dedicated hostname for mutual TLS APIs
       | spec.context           | ${CTX:mtlsContext}/$version |
       | spec.vhosts.main       | ${CTX:mtlsLabel}.example |
       | spec.upstream.main.url | http://testbench:3002 |
-      | spec.policies          | [{"name":"mtls-auth","version":"v1","params":{"accept":[{"ca":"${CTX:caA}","match":{"uriSANs":["urn:partner-a:payments"]}}]}}] |
+      | spec.policies          | [{"name":"mtls-auth","version":"v0","params":{"accept":[{"ca":"${CTX:caA}","match":{"uriSANs":["urn:partner-a:payments"]}}]}}] |
       | spec.operations        | [{"method":"GET","path":"/anything"}] |
     Then the response status code should be 201
     And the JSON response field "status.warnings" should not exist
@@ -106,7 +106,7 @@ Feature: Requiring a dedicated hostname for mutual TLS APIs
       | spec.version           | ${CTX:mtlsApiVersion} |
       | spec.context           | ${CTX:mtlsContext}/$version |
       | spec.upstream.main.url | http://testbench:3002 |
-      | spec.policies          | [{"name":"mtls-auth","version":"v1","params":{"accept":[{"ca":"${CTX:caA}","match":{"uriSANs":["urn:partner-a:payments"]}}]}}] |
+      | spec.policies          | [{"name":"mtls-auth","version":"v0","params":{"accept":[{"ca":"${CTX:caA}","match":{"uriSANs":["urn:partner-a:payments"]}}]}}] |
       | spec.operations        | [{"method":"GET","path":"/anything"}] |
     Then the response status code should be 400
     And the JSON response field "errors[0].field" should be "spec.vhosts.main"
@@ -123,7 +123,7 @@ Feature: Requiring a dedicated hostname for mutual TLS APIs
       | spec.vhosts.main          | ${CTX:mtlsLabel}.example |
       | spec.upstream.main.url    | http://testbench:3002 |
       | spec.upstream.sandbox.url | http://testbench:3002 |
-      | spec.policies             | [{"name":"mtls-auth","version":"v1","params":{"accept":[{"ca":"${CTX:caA}","match":{"uriSANs":["urn:partner-a:payments"]}}]}}] |
+      | spec.policies             | [{"name":"mtls-auth","version":"v0","params":{"accept":[{"ca":"${CTX:caA}","match":{"uriSANs":["urn:partner-a:payments"]}}]}}] |
       | spec.operations           | [{"method":"GET","path":"/anything"}] |
     Then the response status code should be 400
     And the JSON response field "errors[0].field" should be "spec.vhosts.sandbox"
@@ -141,7 +141,7 @@ Feature: Requiring a dedicated hostname for mutual TLS APIs
       | spec.upstream.main.url    | http://testbench:3002 |
       | spec.upstream.sandbox.url | http://testbench:3002 |
       | spec.vhosts.sandbox       | ${CTX:sandboxLabel}.example |
-      | spec.policies             | [{"name":"mtls-auth","version":"v1","params":{"accept":[{"ca":"${CTX:caA}","match":{"uriSANs":["urn:partner-a:payments"]}}]}}] |
+      | spec.policies             | [{"name":"mtls-auth","version":"v0","params":{"accept":[{"ca":"${CTX:caA}","match":{"uriSANs":["urn:partner-a:payments"]}}]}}] |
       | spec.operations           | [{"method":"GET","path":"/anything"}] |
     Then the response status code should be 201
     And the JSON response field "status.warnings" should not exist
@@ -154,7 +154,7 @@ Feature: Requiring a dedicated hostname for mutual TLS APIs
       | spec.vhosts.main          | ${CTX:mtlsLabel}.example |
       | spec.upstream.main.url    | http://testbench:3002 |
       | spec.upstream.sandbox.url | http://testbench:3002 |
-      | spec.policies             | [{"name":"mtls-auth","version":"v1","params":{"accept":[{"ca":"${CTX:caA}","match":{"uriSANs":["urn:partner-a:payments"]}}]}}] |
+      | spec.policies             | [{"name":"mtls-auth","version":"v0","params":{"accept":[{"ca":"${CTX:caA}","match":{"uriSANs":["urn:partner-a:payments"]}}]}}] |
       | spec.operations           | [{"method":"GET","path":"/anything"}] |
     Then the response status code should be 400
     And the JSON response field "errors[0].field" should be "spec.vhosts.sandbox"
@@ -170,7 +170,7 @@ Feature: Requiring a dedicated hostname for mutual TLS APIs
       | spec.context           | ${CTX:mtlsContext}/$version |
       | spec.vhosts.main       | ${CTX:mtlsLabel}.example |
       | spec.upstream.main.url | http://testbench:3002 |
-      | spec.policies          | [{"name":"mtls-auth","version":"v1","params":{"accept":[{"ca":"${CTX:caA}","match":{"uriSANs":["urn:partner-a:payments"]}}]}}] |
+      | spec.policies          | [{"name":"mtls-auth","version":"v0","params":{"accept":[{"ca":"${CTX:caA}","match":{"uriSANs":["urn:partner-a:payments"]}}]}}] |
       | spec.operations        | [{"method":"GET","path":"/anything"}] |
     Then the response status code should be 201
     And the JSON response field "status.warnings" should not exist
@@ -185,7 +185,7 @@ Feature: Requiring a dedicated hostname for mutual TLS APIs
       | spec.context           | ${CTX:mtlsContext}/$version |
       | spec.vhosts.main       | "*.${CTX:mtlsLabel}.example" |
       | spec.upstream.main.url | http://testbench:3002 |
-      | spec.policies          | [{"name":"mtls-auth","version":"v1","params":{"accept":[{"ca":"${CTX:caA}","match":{"uriSANs":["urn:partner-a:payments"]}}]}}] |
+      | spec.policies          | [{"name":"mtls-auth","version":"v0","params":{"accept":[{"ca":"${CTX:caA}","match":{"uriSANs":["urn:partner-a:payments"]}}]}}] |
       | spec.operations        | [{"method":"GET","path":"/anything"}] |
     Then the response status code should be 201
     And the JSON response field "status.warnings" should not exist
@@ -202,7 +202,7 @@ Feature: Requiring a dedicated hostname for mutual TLS APIs
       | spec.context           | ${CTX:mtlsContext}/$version |
       | spec.vhosts.main       | ${CTX:mtlsLabel}.example |
       | spec.upstream.main.url | http://testbench:3002 |
-      | spec.policies          | [{"name":"mtls-auth","version":"v1","params":{"accept":[{"ca":"${CTX:caA}","match":{"uriSANs":["urn:partner-a:payments"]}}]}}] |
+      | spec.policies          | [{"name":"mtls-auth","version":"v0","params":{"accept":[{"ca":"${CTX:caA}","match":{"uriSANs":["urn:partner-a:payments"]}}]}}] |
       | spec.operations        | [{"method":"GET","path":"/anything"}] |
     Then the response status code should be 201
     And the JSON response field "status.warnings" should not exist

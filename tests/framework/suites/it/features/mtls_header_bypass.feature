@@ -47,7 +47,7 @@ Feature: Believing the relayed certificate from any connection on a trusted netw
       | spec.version           | ${CTX:apiVersion}          |
       | spec.context           | ${CTX:apiContext}/$version |
       | spec.upstream.main.url | http://testbench:3002      |
-      | spec.policies          | [{"name":"mtls-auth","version":"v1","params":{"accept":[{"ca":"${CTX:partnerA}"}]}}] |
+      | spec.policies          | [{"name":"mtls-auth","version":"v0","params":{"accept":[{"ca":"${CTX:partnerA}"}]}}] |
       | spec.operations        | [{"method":"GET","path":"/anything"}] |
     Then the response should be successful
     And the response should include a warning with code "HEADER_CERT_BYPASS_ACTIVE"
@@ -60,7 +60,7 @@ Feature: Believing the relayed certificate from any connection on a trusted netw
       | spec.version           | ${CTX:apiVersion}          |
       | spec.context           | ${CTX:apiContext}/$version |
       | spec.upstream.main.url | http://testbench:3002      |
-      | spec.policies          | [{"name":"mtls-auth","version":"v1","params":{"accept":[{"ca":"${CTX:partnerA}"}]}}] |
+      | spec.policies          | [{"name":"mtls-auth","version":"v0","params":{"accept":[{"ca":"${CTX:partnerA}"}]}}] |
       | spec.operations        | [{"method":"GET","path":"/anything"}] |
     And the response should be successful
     And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/anything" until the route answers 401
@@ -85,7 +85,7 @@ Feature: Believing the relayed certificate from any connection on a trusted netw
       | spec.version           | ${CTX:apiVersion}          |
       | spec.context           | ${CTX:apiContext}/$version |
       | spec.upstream.main.url | http://testbench:3002      |
-      | spec.policies          | [{"name":"mtls-auth","version":"v1","params":{"accept":[{"ca":"${CTX:partnerA}"}]}}] |
+      | spec.policies          | [{"name":"mtls-auth","version":"v0","params":{"accept":[{"ca":"${CTX:partnerA}"}]}}] |
       | spec.operations        | [{"method":"GET","path":"/anything"}] |
     And the response should be successful
     And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/anything" until the route answers 401
@@ -102,7 +102,7 @@ Feature: Believing the relayed certificate from any connection on a trusted netw
       | spec.version           | ${CTX:apiVersion}          |
       | spec.context           | ${CTX:apiContext}/$version |
       | spec.upstream.main.url | http://testbench:3002      |
-      | spec.policies          | [{"name":"mtls-auth","version":"v1","params":{"accept":[{"ca":"${CTX:partnerA}"}],"forwardCertificate":false}}] |
+      | spec.policies          | [{"name":"mtls-auth","version":"v0","params":{"accept":[{"ca":"${CTX:partnerA}"}],"forwardCertificate":false}}] |
       | spec.operations        | [{"method":"GET","path":"/anything"}] |
     And the response should be successful
     And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/anything" until the route answers 401

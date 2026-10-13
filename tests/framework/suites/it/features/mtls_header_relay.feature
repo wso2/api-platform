@@ -51,7 +51,7 @@ Feature: Client certificates relayed in a header by a front proxy
       | spec.version           | ${CTX:apiVersion}                                                                         |
       | spec.context           | ${CTX:apiContext}/$version                                                                |
       | spec.upstream.main.url | http://testbench:3002                                                                     |
-      | spec.policies          | [{"name":"mtls-auth","version":"v1","params":{"accept":[{"ca":"${CTX:caA}"}]}}]         |
+      | spec.policies          | [{"name":"mtls-auth","version":"v0","params":{"accept":[{"ca":"${CTX:caA}"}]}}]         |
       | spec.operations        | [{"method":"GET","path":"/anything"}]                                                     |
     Then the response should be successful
     And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/anything" until the route answers 401
@@ -191,7 +191,7 @@ Feature: Client certificates relayed in a header by a front proxy
       | spec.version           | ${CTX:nofwdVersion}                                                                                                    |
       | spec.context           | ${CTX:nofwdContext}/$version                                                                                           |
       | spec.upstream.main.url | http://testbench:3002                                                                                                  |
-      | spec.policies          | [{"name":"mtls-auth","version":"v1","params":{"accept":[{"ca":"${CTX:caA}"}],"forwardCertificate":false}}]           |
+      | spec.policies          | [{"name":"mtls-auth","version":"v0","params":{"accept":[{"ca":"${CTX:caA}"}],"forwardCertificate":false}}]           |
       | spec.operations        | [{"method":"GET","path":"/anything"}]                                                                                  |
     Then the response should be successful
     And I send a "GET" request to "${CTX:nofwdContext}/${CTX:nofwdVersion}/anything" until the route answers 401
@@ -214,7 +214,7 @@ Feature: Client certificates relayed in a header by a front proxy
       | spec.version           | ${CTX:refusedVersion}                                                                              |
       | spec.context           | ${CTX:refusedContext}/$version                                                                     |
       | spec.upstream.main.url | http://testbench:3002                                                                              |
-      | spec.policies          | [{"name":"mtls-auth","version":"v1","params":{"accept":[{"ca":"${CTX:edgeLB}"}]}}]               |
+      | spec.policies          | [{"name":"mtls-auth","version":"v0","params":{"accept":[{"ca":"${CTX:edgeLB}"}]}}]               |
       | spec.operations        | [{"method":"GET","path":"/anything"}]                                                              |
     Then the response status should be 400
     And the response should list a validation error for field "spec.policies[0].params.accept[0].ca" with message "${CTX:edgeLB} is a relay (front proxy) entry and cannot be accepted as a client"
@@ -235,7 +235,7 @@ Feature: Client certificates relayed in a header by a front proxy
       | spec.version           | ${CTX:lbVersion}                                                                                       |
       | spec.context           | ${CTX:lbContext}/$version                                                                              |
       | spec.upstream.main.url | http://testbench:3002                                                                                  |
-      | spec.policies          | [{"name":"mtls-auth","version":"v1","params":{"accept":[{"ca":"${CTX:edgeLBClient}"}]}}]             |
+      | spec.policies          | [{"name":"mtls-auth","version":"v0","params":{"accept":[{"ca":"${CTX:edgeLBClient}"}]}}]             |
       | spec.operations        | [{"method":"GET","path":"/anything"}]                                                                  |
     Then the response should be successful
     And the response should include a warning with code "MTLS_ACCEPT_NAMES_RELAY_AUTHORITY" for field "spec.policies[0].params.accept[0].ca"

@@ -41,7 +41,7 @@ Feature: Seeing what client and backend certificates did
       | spec.version           | ${CTX:apiVersion}                                                                 |
       | spec.context           | ${CTX:apiContext}/$version                                                        |
       | spec.upstream.main.url | http://testbench:3002                                                             |
-      | spec.policies          | [{"name":"mtls-auth","version":"v1","params":{"accept":[{"ca":"${CTX:caA}"}]}}] |
+      | spec.policies          | [{"name":"mtls-auth","version":"v0","params":{"accept":[{"ca":"${CTX:caA}"}]}}] |
       | spec.operations        | [{"method":"GET","path":"/anything"}]                                             |
     Then the response should be successful
     And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/anything" until the route answers 401

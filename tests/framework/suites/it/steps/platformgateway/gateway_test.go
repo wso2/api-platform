@@ -1923,7 +1923,7 @@ func TestListenerDeployDocumentsKeepTheirFields(t *testing.T) {
 		"spec.version", "v1.0",
 		"spec.context", "/mtls-listener/v1.0/$version",
 		"spec.upstream.main.url", "http://testbench:3000/api/v1",
-		"spec.operations", `[{"method":"GET","path":"/health"},{"method":"GET","path":"/protected","policies":[{"name":"mtls-auth","version":"v1"}]}]`,
+		"spec.operations", `[{"method":"GET","path":"/health"},{"method":"GET","path":"/protected","policies":[{"name":"mtls-auth","version":"v0"}]}]`,
 	))
 	upstream := protected["upstream"].(map[string]any)["main"].(map[string]any)
 	require.Equal(t, "http://testbench:3000/api/v1", upstream["url"])
@@ -1936,7 +1936,7 @@ func TestListenerDeployDocumentsKeepTheirFields(t *testing.T) {
 	conditional := specOf(render(
 		"apiVersion", "gateway.api-platform.wso2.com/v1",
 		"name", "mtls-listener-api",
-		"spec.policies", `[{"name":"mtls-auth","version":"v1","executionCondition":"request.Method == \"POST\""}]`,
+		"spec.policies", `[{"name":"mtls-auth","version":"v0","executionCondition":"request.Method == \"POST\""}]`,
 		"spec.operations", `[{"method":"POST","path":"/echo"}]`,
 		"spec.upstream.main.url", "http://testbench:3002",
 	))
@@ -1945,7 +1945,7 @@ func TestListenerDeployDocumentsKeepTheirFields(t *testing.T) {
 	optOut := specOf(render(
 		"apiVersion", "gateway.api-platform.wso2.com/v1",
 		"name", "mtls-listener-api",
-		"spec.policies", `[{"name":"mtls-auth","version":"v1","params":{"accept":[{"ca":"partner-a"}],"forwardCertificate":false}}]`,
+		"spec.policies", `[{"name":"mtls-auth","version":"v0","params":{"accept":[{"ca":"partner-a"}],"forwardCertificate":false}}]`,
 		"spec.operations", `[{"method":"GET","path":"/anything"}]`,
 		"spec.upstream.main.url", "http://testbench:3002",
 	))
@@ -1956,7 +1956,7 @@ func TestListenerDeployDocumentsKeepTheirFields(t *testing.T) {
 	inherited := specOf(render(
 		"apiVersion", "gateway.api-platform.wso2.com/v1",
 		"name", "mtls-listener-api",
-		"spec.policies", `[{"name":"mtls-auth","version":"v1","params":{"accept":[]}}]`,
+		"spec.policies", `[{"name":"mtls-auth","version":"v0","params":{"accept":[]}}]`,
 		"spec.operations", `[{"method":"GET","path":"/health"}]`,
 		"spec.upstream.main.url", "http://testbench:3000/api/v1",
 	))
