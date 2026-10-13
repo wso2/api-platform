@@ -34,8 +34,6 @@ go test ./suites/it -count=1 -timeout=45m -blocks=gateway-core -block-parallel=3
 make ap-cli
 go test ./suites/it -count=1 -timeout=30m -blocks=ai-workspace-cli
 
-# Gateway-controller policy smoke (requires ../gateway-controllers/policies)
-go test ./suites/it -count=1 -timeout=25m -args -blocks=gateway-controller-policies
 #   On Apple silicon, cap coverage runs at -block-parallel=2: the arm64 SQL Server
 #   substitute crashes probabilistically when three instrumented stacks cold-boot at once.
 
@@ -83,6 +81,9 @@ framework/
   core/cleanup/     owner-tagged resource registry
   core/util/        HTTP, retry, runner context, and unique-name helpers
   core/taxonomy/    capability-map lint and coverage-tree renderer
+  core/assets/      resolves repository-relative files: workspace first, embedded copy second
+  core/suiterun/    the exported suite entry (Main and Run) any project's test binary calls
+  snapshots/        empty in git (.gitkeep); the release generates the embedded gateway schemas, current config and pricing file
 suites/
   it/  cloud/  ui/
 ```
@@ -100,6 +101,64 @@ their step contracts.
 
 Each package's `doc.go` carries its charter and the invariants it exists to protect. Read those
 before changing one — most encode a failure mode that presents as a passing test.
+
+## Using the framework from another repository
+
+The framework is a Go module, `github.com/wso2/api-platform/tests/framework`, released with the
+tag `tests/framework/vX.Y.Z` by the `Tests Framework Release` workflow. A project that owns its
+features, step definitions and resource templates imports it and runs without an api-platform
+checkout:
+
+```go
+func TestMain(m *testing.M) { suiterun.Main(m, options()) }
+func TestIntegrationSuite(t *testing.T) { suiterun.Run(t, options()) }
+```
+
+`options()` returns a `suiterun.Options` carrying the project's step definitions and cleanup
+handlers. `Main` registers the suite flags (`-blocks`, `-policies`, `-gateway-version`, `-host`,
+`-coverage`, `-logs`), and `Run` loads the suite file beside the test, builds images, applies the
+selection and runs the runners.
+
+A repository that keeps each policy's tests next to the policy declares one block with
+`runnersFrom: policies` and `addPoliciesFrom: <policy tree>`. Each policy lists its runners in
+`<policy>/it/it.yaml`; `-policies=a,b` limits a run to the policies a pull request changed. A
+selection that leaves nothing to run, for example because every selected policy needs a newer
+gateway, skips the test instead of failing it. Both are checked by `cmd/standards`, which
+accepts several feature directories and, with `-approved-imports`, the project's own step
+packages.
+
+Feature files name templates as `resources/templates/<kind>.yaml`. The suite directory is
+searched first and the framework's canonical templates (the ones api-platform's own suite uses)
+are the fallback, so a project keeps only the templates that differ. `Options.CleanupDeleters`
+takes `platformgateway.RegisterDeleters`, which removes what a scenario created through the
+gateway controller's management API.
+
+Paths in a suite resolve against the *workspace root*, the nearest ancestor of the suite that
+holds `go.work` or `.git`, or `Options.WorkspaceRoot`. A policy tree named by `addPoliciesFrom`
+is relative to it. The files the framework itself reads from the repository — compose files,
+gateway version profiles, configuration overlays, the gateway database schemas, the current gateway configuration and the LLM
+pricing file — are embedded: `core/assets` uses the workspace copy when one exists, so a run
+inside the api-platform checkout reads live source, and the embedded copy otherwise. The
+gateway's key material (listener certificate and key, AES key) is generated per run, never
+stored. Only the gateway is embedded today; a block that needs another product's files still
+needs the api-platform checkout.
+
+The default testbench image follows the framework version in the importing binary: release
+`vX.Y.Z` runs against `ghcr.io/wso2/api-platform/testbench:X.Y.Z`. A framework built from a
+checkout, a `replace` or an untagged revision uses the locally built `:test` image, and
+`APIP_IT_IMAGE_TESTBENCH` overrides either.
+
+The embedded copies of files that live outside the module (the gateway database schemas, the
+current gateway configuration and the pricing file, listed in `assets.SnapshotSources`) are not
+committed: `snapshots/` holds only a `.gitkeep`. The release workflow generates them from the
+repository and commits them on the release tag only, so a released module carries them and `main`
+does not. Inside an api-platform checkout nothing needs generating, because the engine reads the
+repository files. To use the module without a release, through a `replace` or an untagged
+revision, generate the copies yourself:
+
+```bash
+make snapshots
+```
 
 ## The division of labour
 
@@ -148,11 +207,24 @@ go test -gateway-version 1.1.0 -host registry.example/test-gateway -blocks gatew
 ```
 
 `-host` overrides the `ghcr.io/wso2/api-platform` image repository prefix for the
-Platform Gateway controller and runtime only. It must be used together with
+Platform Gateway controller and runtime, and for the `gateway-builder` that builds a policy
+image on them, so the repository must publish all three. It must be used together with
 `-gateway-version`; the version remains the Gateway release used for configuration,
 management paths, and compatibility selection. For example, the command above pulls
-`registry.example/test-gateway/gateway-controller:1.1.0` and
-`registry.example/test-gateway/gateway-runtime:1.1.0`.
+`registry.example/test-gateway/gateway-controller:1.1.0`,
+`registry.example/test-gateway/gateway-runtime:1.1.0` and
+`registry.example/test-gateway/gateway-builder:1.1.0`.
+
+`-gateway-version latest` pulls the images that `gateway-latest-image.yml` publishes after each
+merge to `main` (`gateway-controller`, `gateway-runtime` and `gateway-builder`, tagged `latest`
+and `main-<sha>`), so a project that has no gateway source can test against the current gateway.
+It is not a release: it uses the current configuration and contract, runners are matched as they
+are for a source build (`gateway-version>=1.2.0` runs, `gateway-version<1.2.0` is skipped), and
+policy images built on it are re-pulled each run because the tag moves.
+
+```bash
+go test -gateway-version latest -blocks gateway-core/sqlite
+```
 
 Two flags are deliberately NOT named after their `go test` counterparts, because the go tool
 consumes any flag it recognises and forwards only the rest:

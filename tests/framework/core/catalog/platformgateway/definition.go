@@ -56,12 +56,10 @@ func PlatformGateway() *components.Definition {
 			Services:       []string{svcController, svcRuntime},
 
 			StagedFiles: map[string]string{
-				"aesgcm-keys/default-aesgcm256-v1.bin": "gateway/it/it-aesgcm-keys/default-aesgcm256-v1.bin",
-				"listener-certs":                       "gateway/gateway-controller/listener-certs",
-				"certificates":                         "gateway/gateway-controller/certificates",
-				"llm-pricing/model_prices.json":        "gateway/configs/llm-pricing/model_prices.json",
+				"llm-pricing/model_prices.json": "gateway/configs/llm-pricing/model_prices.json",
 			},
-			Env: env,
+			GeneratedFiles: gatewayGeneratedFiles(),
+			Env:            env,
 
 			CoverageServices: []components.CoverageService{
 				{Name: svcRuntime, Types: []string{"go"}},
@@ -143,4 +141,18 @@ type PlatformGatewayWiring struct {
 	ControlPlaneToken string `yaml:"controlPlaneToken"`
 	// LogLevel sets the gateway log level.
 	LogLevel string `yaml:"logLevel"`
+}
+
+// gatewayGeneratedFiles returns the key material every gateway stack mounts. It is generated
+// per process, never read from the repository: the listener certificate and key serve the
+// default HTTPS listener and are trusted as the controller's upstream certificate, and the AES
+// key encrypts stored secrets.
+func gatewayGeneratedFiles() map[string][]byte {
+	listener := shared.GatewayListenerTLS()
+	return map[string][]byte{
+		"listener-certs/default-listener.crt":  listener.CertPEM,
+		"listener-certs/default-listener.key":  listener.PrivateKeyPEM,
+		"certificates/default-listener.crt":    listener.CertPEM,
+		"aesgcm-keys/default-aesgcm256-v1.bin": shared.GatewayEncryptionKey(),
+	}
 }
