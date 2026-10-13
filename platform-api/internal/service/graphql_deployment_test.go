@@ -196,6 +196,7 @@ func TestGraphQLDeployAPI_STSGateway_Allowed(t *testing.T) {
 	}
 	repo := &mockGraphQLAPIRepo{
 		getByHandleFunc: func(handle, orgUUID string) (*model.GraphQLAPI, error) { return stored, nil },
+		getByUUIDFunc:   func(uuid, orgUUID string) (*model.GraphQLAPI, error) { return stored, nil },
 	}
 	stsGateway := &model.Gateway{ID: "gw-uuid-1", OrganizationID: "org-1", Handle: "prod-gateway", Name: "Prod Gateway", Version: "2026.09.24"}
 	gatewayRepo := &mockGatewayRepository{getByNameResult: stsGateway, getByUUIDResult: stsGateway}
