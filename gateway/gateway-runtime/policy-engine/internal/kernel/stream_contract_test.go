@@ -70,7 +70,7 @@ func newStreamingExecCtx(t *testing.T, pol policy.Policy, contentEncoding string
 	t.Helper()
 
 	kernel := NewKernel()
-	server := NewExternalProcessorServer(kernel, newTestExecutor(), config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
+	server := NewExternalProcessorServer(kernel, newTestExecutor(), config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes, nil)
 	chain := &registry.PolicyChain{
 		RequiresResponseBody:      true,
 		SupportsResponseStreaming: true,

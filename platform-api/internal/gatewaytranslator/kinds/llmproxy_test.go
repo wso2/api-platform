@@ -31,7 +31,9 @@ import (
 
 func newProxyArtifact() *dto.LLMProxyDeploymentYAML {
 	a := &dto.LLMProxyDeploymentYAML{ApiVersion: constants.GatewayApiVersion, Kind: constants.LLMProxy}
-	a.Spec.Provider.ID = "openai"
+	// spec.provider is a pointer: a proxy using the canonical spec.providers list
+	// supplies none, so it has to be constructed rather than assigned through.
+	a.Spec.Provider = &dto.LLMProxyDeploymentProvider{ID: "openai"}
 	return a
 }
 

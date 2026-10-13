@@ -25,6 +25,7 @@ export type GuardrailPillProps = {
   onClick?: () => void;
   onRemove?: () => void;
   removeAriaLabel?: string;
+  'data-cyid'?: string;
 };
 
 export default function GuardrailPill({
@@ -32,9 +33,11 @@ export default function GuardrailPill({
   onClick,
   onRemove,
   removeAriaLabel = 'Remove guardrail',
+  'data-cyid': dataCyId,
 }: GuardrailPillProps) {
   return (
     <Box
+      data-cyid={dataCyId}
       onClick={onClick}
       onKeyDown={
         onClick

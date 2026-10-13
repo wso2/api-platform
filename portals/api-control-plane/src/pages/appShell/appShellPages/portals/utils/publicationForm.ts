@@ -20,7 +20,9 @@ import { defineMessages, type MessageDescriptor } from 'react-intl';
 
 import type { Publication, PublicationDraftDetails, PublicationDraftDetailsInput } from '@/api/resources/apiPublications';
 import type { RestApi } from '@/api/resources/restApis';
+import type { RestApiGateway } from '@/api/resources/restApis/apiGateways/apiGateways.endpoints';
 import { isHttpUrl } from '../../apis/utils/basicInfoRules';
+import { buildInvokeUrl, gatewayEndpoint } from '../../gateways/utils/gatewayDisplay';
 
 const messages = defineMessages({
   displayNameRequired: {
@@ -40,19 +42,42 @@ const messages = defineMessages({
 /**
  * Form state and the pre-fill chain for the alpha "Publish to Portal" editor —
  * the API Details fields this release covers
- * (`displayName`, `version`, `description`, the two endpoint URLs). Everything
- * else `PublicationDetailsCore` carries (tags, labels, agentVisibility, owners,
+ * (`displayName`, `version`, `description`, the two endpoint URLs,
+ * `agentVisibility`). Everything
+ * else `PublicationDetailsCore` carries (tags, labels, owners,
  * subscriptionPlanIds, docIds) belongs to a tab this alpha doesn't show, so a
  * save never sends it — a save sends every field currently shown, not every
  * field the schema could hold.
  */
+export type AgentVisibility = NonNullable<PublicationDraftDetailsInput['agentVisibility']>;
+
+/** What the server stores for a listing that never set it; shown until the user chooses. */
+const DEFAULT_AGENT_VISIBILITY: AgentVisibility = 'VISIBLE';
+
 export type DraftFormValues = {
   displayName: string;
   version: string;
   description: string;
   productionUrl: string;
   sandboxUrl: string;
+  agentVisibility: AgentVisibility;
 };
+
+/** A URL the Production URL can be picked from, and the gateway that serves it. */
+export type GatewayUrlOption = { gatewayName: string; url: string };
+
+/**
+ * The URLs the API is served at: one per gateway it is deployed to, in the
+ * order the API lists them. A gateway without an address has no URL to offer.
+ */
+export const buildProductionUrlOptions = (
+  gateways: readonly RestApiGateway[],
+  context: string | undefined,
+): GatewayUrlOption[] =>
+  gateways
+    .filter((gateway) => gateway.isDeployed)
+    .map((gateway) => ({ gatewayName: gateway.displayName, url: buildInvokeUrl(gatewayEndpoint(gateway), context) }))
+    .filter((option) => option.url !== '');
 
 export const emptyDraftFormValues: DraftFormValues = {
   displayName: '',
@@ -60,6 +85,7 @@ export const emptyDraftFormValues: DraftFormValues = {
   description: '',
   productionUrl: '',
   sandboxUrl: '',
+  agentVisibility: DEFAULT_AGENT_VISIBILITY,
 };
 
 /**
@@ -68,11 +94,15 @@ export const emptyDraftFormValues: DraftFormValues = {
  * published or not. No endpoint resolves this chain server-side, so it's
  * composed here from three independently-fetched tiers, each `undefined` when
  * that tier has nothing (a 404, not a real error — see `useApiPublicationDraft`).
+ * The API's own tier defaults the Production URL to `defaultProductionUrl`, a
+ * gateway URL, and leaves it empty without one; the Sandbox URL starts empty.
+ * The API's backend URLs are not exposed.
  */
 export const resolveDraftFormValues = (
   draft: PublicationDraftDetails | undefined,
   publication: Publication | undefined,
   api: RestApi | undefined,
+  defaultProductionUrl?: string,
 ): DraftFormValues => {
   if (draft) {
     return {
@@ -81,6 +111,7 @@ export const resolveDraftFormValues = (
       description: draft.description ?? '',
       productionUrl: draft.endpoints?.productionUrl ?? '',
       sandboxUrl: draft.endpoints?.sandboxUrl ?? '',
+      agentVisibility: draft.agentVisibility ?? DEFAULT_AGENT_VISIBILITY,
     };
   }
   if (publication) {
@@ -90,6 +121,7 @@ export const resolveDraftFormValues = (
       description: publication.description ?? '',
       productionUrl: publication.endpoints?.productionUrl ?? '',
       sandboxUrl: publication.endpoints?.sandboxUrl ?? '',
+      agentVisibility: publication.agentVisibility ?? DEFAULT_AGENT_VISIBILITY,
     };
   }
   if (api) {
@@ -97,8 +129,9 @@ export const resolveDraftFormValues = (
       displayName: api.displayName ?? '',
       version: api.version ?? '',
       description: api.description ?? '',
-      productionUrl: api.upstream?.main?.url ?? '',
-      sandboxUrl: api.upstream?.sandbox?.url ?? '',
+      productionUrl: defaultProductionUrl ?? '',
+      sandboxUrl: '',
+      agentVisibility: DEFAULT_AGENT_VISIBILITY,
     };
   }
   return emptyDraftFormValues;
@@ -123,6 +156,7 @@ export const draftFormValuesToInput = (values: DraftFormValues): PublicationDraf
     displayName: values.displayName.trim(),
     version: values.version.trim(),
     description: trimmedOrUndefined(values.description),
+    agentVisibility: values.agentVisibility,
     // Sent only when at least one URL is set; omitted when both are empty.
     ...((productionUrl ?? sandboxUrl) !== undefined
       ? { endpoints: { productionUrl, sandboxUrl } }

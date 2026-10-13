@@ -326,3 +326,40 @@ func TestPolicyBuildsMatchComponentsByBuildMode(t *testing.T) {
 	require.Equal(t, versionedImages.Runtime,
 		resolved.Blocks[0].Components[1].Def.Compose.Env[platformgatewaycatalog.EnvImagePGRuntime])
 }
+
+func TestPolicyBuildsMatchComponentsByReleasedPoliciesOnly(t *testing.T) {
+	source := "../gateway-controllers/policies"
+	version := "1.2.0"
+	resolved := &topology.Resolved{Blocks: []topology.ResolvedBlock{
+		{Components: []topology.ResolvedComponent{
+			{Def: platformgatewaycatalog.PlatformGateway().WithImageVersion(version), Version: version, AddPoliciesFrom: source},
+		}},
+		{Components: []topology.ResolvedComponent{
+			{Def: platformgatewaycatalog.PlatformGateway().WithImageVersion(version), Version: version, AddPoliciesFrom: source,
+				ReleasedPoliciesOnly: true},
+		}},
+	}}
+
+	products, err := policyProducts(resolved)
+	require.NoError(t, err)
+	require.Len(t, products, 2)
+	require.False(t, products[0].releasedOnly)
+	require.True(t, products[1].releasedOnly)
+
+	allImages := platformgatewaycatalog.DerivedImages{Controller: "local/controller:all", Runtime: "local/runtime:all"}
+	releasedImages := platformgatewaycatalog.DerivedImages{Controller: "local/controller:released", Runtime: "local/runtime:released"}
+	setPlatformGatewayImages(resolved, products[0], allImages)
+	setPlatformGatewayImages(resolved, products[1], releasedImages)
+
+	env := func(block int) map[string]string { return resolved.Blocks[block].Components[0].Def.Compose.Env }
+	require.Equal(t, allImages.Controller, env(0)[platformgatewaycatalog.EnvImagePGController])
+	require.Equal(t, allImages.Runtime, env(0)[platformgatewaycatalog.EnvImagePGRuntime])
+	require.Equal(t, releasedImages.Controller, env(1)[platformgatewaycatalog.EnvImagePGController])
+	require.Equal(t, releasedImages.Runtime, env(1)[platformgatewaycatalog.EnvImagePGRuntime])
+
+	setPlatformGatewayImages(resolved, products[0], allImages)
+	_, _, err = platformGatewayBaseImages(resolved, products[1])
+	require.NoError(t, err)
+	require.Equal(t, releasedImages.Controller, env(1)[platformgatewaycatalog.EnvImagePGController],
+		"a build for one setting never rewrites a component with the other")
+}

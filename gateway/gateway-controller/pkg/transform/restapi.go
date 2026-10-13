@@ -125,6 +125,21 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 		return nil, err
 	}
 
+	// Hint the analytics system policy at injection time with this API's kind (RestApi, Mcp,
+	// LlmProvider, LlmProxy), via the existing additionalProps/"_shared" mechanism
+	// InjectSystemPolicies already supports (see utils.SharedParamsKey doc comment). The
+	// analytics policy's Mode() (gateway/system-policies/analytics/analytics.go) uses this to
+	// decide whether request/response body buffering can be skipped when request_body/
+	// response_body capture is off: MCP (session id, JSON-RPC method) and LLM Provider/Proxy
+	// (token usage) derive analytics from the body unconditionally, so skipping body processing
+	// for those kinds would silently break that analytics. cfg.Kind is constant for the whole
+	// API, so this is computed once outside the per-operation loop below.
+	systemPolicyProps := map[string]any{
+		utils.SharedParamsKey: map[string]interface{}{
+			"api_kind": cfg.Kind,
+		},
+	}
+
 	// Determine effective vhosts. vhosts.main may carry several production hostnames separated
 	// by ";" (e.g. when a Gateway-API HTTPRoute attaches to multiple listener hostnames); every
 	// entry serves the main upstream and the first is the primary vhost. When unset, the gateway
@@ -258,7 +273,7 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 
 			// Build policy chain: API-level + operation-level + system policies
 			chain := t.buildPolicyChain(apiPolicies, op.Policies)
-			injected := utils.InjectSystemPolicies(chain, t.systemConfig, nil)
+			injected := utils.InjectSystemPolicies(chain, t.systemConfig, systemPolicyProps)
 			routeChain := sdkChainToModel(injected)
 			// Fault policies: this operation's entries then the API's, which is the order
 			// they execute in, and then the fault-path system policies LAST.
@@ -620,7 +635,10 @@ func (r *upstreamClusterResult) UpstreamInfo() policyenginev1.UpstreamInfo {
 // transformer calls it directly so that an Agent's cluster key, base path, Envoy
 // cluster name and TLS flag are derived by the identical code path as a REST API's
 // — those four values are what the route rewrite and the policy engine's
-// default-upstream both key off.
+// default-upstream both key off. GraphQLAPITransformer calls it directly for the
+// same reason, to resolve its own main/sandbox upstream clusters without
+// duplicating the resolution logic (URL/ref lookup, port defaulting, TLS
+// detection, connect-timeout resolution).
 func addUpstreamCluster(
 	rdc *models.RuntimeDeployConfig,
 	upstreamName string,

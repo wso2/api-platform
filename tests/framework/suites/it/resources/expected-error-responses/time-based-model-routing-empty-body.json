@@ -1,0 +1,9 @@
+{
+  "body": {
+    "error": "request body must contain a JSON object"
+  },
+  "headers": {
+    "content-type": "application/json"
+  },
+  "status": 400
+}

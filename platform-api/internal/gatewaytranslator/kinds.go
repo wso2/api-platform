@@ -38,6 +38,7 @@ var platformToGatewayKind = map[string]string{
 	constants.MCPProxy:     constants.MCPProxy,
 	constants.LLMProxy:     constants.LLMProxy,
 	constants.LLMProvider:  constants.LLMProvider,
+	constants.GraphQLApi:   constants.GraphQLApi,
 	constants.AgentProxy:   constants.GatewayKindAgent,
 }
 

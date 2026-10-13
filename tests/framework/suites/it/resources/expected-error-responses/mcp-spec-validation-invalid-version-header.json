@@ -1,0 +1,14 @@
+{
+  "body": {
+    "error": {
+      "code": -32020,
+      "message": "MCP-Protocol-Version is not a valid protocol version, expected YYYY-MM-DD"
+    },
+    "id": 51,
+    "jsonrpc": "2.0"
+  },
+  "headers": {
+    "content-type": "application/json"
+  },
+  "status": 400
+}

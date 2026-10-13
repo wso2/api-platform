@@ -92,3 +92,39 @@ func TestAgentProxiesParticipatesInUnionQueries(t *testing.T) {
 		}
 	}
 }
+
+// TestNewArtifactTableRegistry_AllCoreKindsRegistered guards GraphQL's status
+// as a core kind (like RestApi/LlmProvider/LlmProxy/Mcp): NewArtifactTableRegistry
+// must register all of them unconditionally, with no build tag or plugin Init()
+// step able to skip any of them. A future kind silently dropped from this
+// constructor would otherwise only surface as a runtime 404 on that kind's
+// API-key/deployment/gateway-association endpoints — this test catches it at
+// build time instead.
+func TestNewArtifactTableRegistry_AllCoreKindsRegistered(t *testing.T) {
+	reg := NewArtifactTableRegistry()
+
+	wantKindAliases := []string{"RestApi", "LlmProvider", "LlmProxy", "Mcp", "AgentProxy", "GraphQLApi"}
+	for _, alias := range wantKindAliases {
+		if !reg.IsValidKindAlias(alias) {
+			t.Errorf("expected core kind %q to be registered, but it wasn't", alias)
+		}
+	}
+
+	entries := reg.Entries()
+	if len(entries) != len(wantKindAliases) {
+		t.Errorf("expected exactly %d core tables registered, got %d: %+v", len(wantKindAliases), len(entries), entries)
+	}
+
+	// GraphQLApi specifically: confirm both the handle form ("graphql-api")
+	// and the Go-constant form ("GraphQLApi") resolve to the graphql_apis
+	// table, matching every other core kind's dual-key convention.
+	for _, key := range []string{"graphql-api", "GraphQLApi"} {
+		entry, ok := reg.TableByKindKey(key)
+		if !ok {
+			t.Fatalf("expected kind key %q to resolve to a table entry", key)
+		}
+		if entry.Table != "graphql_apis" {
+			t.Errorf("expected kind key %q to resolve to table \"graphql_apis\", got %q", key, entry.Table)
+		}
+	}
+}

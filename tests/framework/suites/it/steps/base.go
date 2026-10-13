@@ -231,6 +231,7 @@ func (b *Base) registerBaseSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^the response should be successful$`, b.responseSuccessful)
 	sc.Step(`^the response should be a client error$`, b.responseClientError)
 	sc.Step(`^the response should be (valid JSON|empty)$`, b.responseShapeIs)
+	sc.Step(`^the response should match the expected error response "([^"]*)"$`, b.responseMatchesExpectedError)
 	sc.Step(`^the response body should be empty$`, func(ctx context.Context) error { return b.responseShapeIs(ctx, "empty") })
 	sc.Step(`^the response body should be:$`, b.responseBodyIs)
 	sc.Step(`^the response body should contain "([^"]*)"$`, b.responseContains)

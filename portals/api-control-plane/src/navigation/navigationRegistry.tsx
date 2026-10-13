@@ -26,11 +26,11 @@ import {
   FileCheck,
   FileText,
   Gauge,
-  Home,
+  LayoutDashboard,
+  Logs,
   Megaphone,
   Network,
   Rocket,
-  ScrollText,
   Settings,
   ShieldCheck,
   FlaskConical,
@@ -45,7 +45,7 @@ import {
   type ApiPathBuilder,
   type ScopedPathBuilder,
 } from '../routes/paths';
-import type { ConsoleRouteParams } from '../scope/ConsoleScopeContext';
+import type { ConsoleRouteParams, ConsoleScope } from '../scope/ConsoleScopeContext';
 import type { NavigationDefinition, NavigationLevel } from './navigationTypes';
 
 /**
@@ -265,7 +265,7 @@ export const navigationRegistry: NavigationDefinition[] = [
     label: 'Overview',
     group: CLUSTER.place,
     order: 10,
-    icon: <Home />,
+    icon: <LayoutDashboard />,
     // The summary of wherever you are. Opening a project or an API navigates
     // into a deeper tier of this same item rather than to a different one.
     ...adaptive([
@@ -383,7 +383,7 @@ export const navigationRegistry: NavigationDefinition[] = [
         to: routes.apiObservabilityMetrics,
       },
       {
-        icon: <ScrollText />,
+        icon: <Logs />,
         id: 'observability-logs',
         label: 'Logs',
         to: routes.apiObservabilityLogs,
@@ -424,3 +424,59 @@ export const navigationRegistry: NavigationDefinition[] = [
     ),
   },
 ];
+
+/**
+ * The registry definition whose `match` claims the current URL, deepest child
+ * first — same precedence as `usePageTitle`'s `activeItemLabel`, so the two
+ * agree on which item a URL belongs to.
+ */
+const findActiveDefinition = (
+  definitions: readonly NavigationDefinition[],
+  pathname: string,
+): NavigationDefinition | undefined => {
+  for (const definition of definitions) {
+    const fromChild = definition.children
+      ? findActiveDefinition(definition.children, pathname)
+      : undefined;
+    if (fromChild) return fromChild;
+    if (definition.match?.(pathname)) return definition;
+  }
+  return undefined;
+};
+
+/**
+ * Where the header's org/project/API switchers should send the user: the
+ * *current page*, re-resolved at `targetParams`, rather than a fixed Home
+ * page — in either direction, dropping a scope (clearing the project/API) or
+ * picking one (selecting a project/API from the switcher).
+ *
+ * The header switcher used to always navigate to `organizationHome`/
+ * `projectHome`/the API overview regardless of what page the user was on —
+ * picking a project while on the organization's Settings tab landed on the
+ * project's Overview page instead of carrying Settings down with it, and
+ * clearing the project back out landed on the organization's Overview rather
+ * than back on its own Settings. `adaptive()` already models "this item's URL
+ * at a given scope" for exactly this kind of item (Settings, Overview), so
+ * this finds the item that owns the current URL and asks it for its URL at
+ * `targetParams` instead of guessing from the pathname.
+ *
+ * Returns `undefined` when the current page isn't a built-in adaptive item,
+ * or has no tier at `targetParams` (e.g. an API-only page with no
+ * organization-level equivalent) — callers fall back to a fixed Home route.
+ */
+export const findTargetAtScope = (
+  pathname: string,
+  scope: ConsoleScope,
+  targetParams: ConsoleRouteParams,
+): string | undefined => {
+  const definition = findActiveDefinition(navigationRegistry, pathname);
+  if (!definition) return undefined;
+
+  const targetScope: ConsoleScope = {
+    ...scope,
+    isApiScope: Boolean(targetParams.projectHandler && targetParams.apiHandler),
+    isProjectScope: Boolean(targetParams.projectHandler),
+    params: targetParams,
+  };
+  return definition.to(targetScope);
+};

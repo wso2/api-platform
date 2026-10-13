@@ -1,0 +1,12 @@
+{
+  "body": {
+    "error": {
+      "message": "Request body is empty.",
+      "type": "invalid_request_error"
+    }
+  },
+  "headers": {
+    "content-type": "application/json"
+  },
+  "status": 400
+}
