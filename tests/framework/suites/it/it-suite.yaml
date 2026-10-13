@@ -713,7 +713,7 @@ blocks:
         features:
           - features/gateway/observability-policies/analytics_header_filter.feature
       - name: graphql-analytics
-        tags: "gateway-version>=1.2.0"
+        tags: "gateway-version>1.2.0"
         features:
           - features/graphql_analytics.feature
       - name: subscription-analytics
