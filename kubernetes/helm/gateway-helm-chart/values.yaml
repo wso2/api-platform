@@ -35,6 +35,63 @@ serviceAccount:
   # Individual pods can override via gateway.<component>.deployment.automountServiceAccountToken.
   automountServiceAccountToken: true
 
+# OpenShift-specific resources. Routes are rendered only when openshift.enabled=true
+# and the individual route is enabled. Security contexts are configured per component
+# under gateway.<component>.deployment.{podSecurityContext,securityContext}.
+openshift:
+  enabled: false
+  routes:
+    # Default TLS settings shared by every route; a route's own `tls` block overrides
+    # these key by key.
+    tls:
+      # passthrough | edge | reencrypt
+      termination: passthrough
+      # None | Allow | Redirect (passthrough accepts only None or Redirect)
+      insecureEdgeTerminationPolicy: None
+      # PEM certificate, key and CA chain served by the router (edge and reencrypt only).
+      # Leave empty to use the router's default certificate.
+      certificate: ""
+      key: ""
+      caCertificate: ""
+      # PEM CA that signed the backend certificate (reencrypt only).
+      destinationCACertificate: ""
+    # API traffic (gateway-runtime Service).
+    gatewayRuntime:
+      enabled: true
+      # Empty lets OpenShift generate <route-name>-<namespace>.<apps-domain>.
+      hostname: ""
+      # Service port name: "https" (TLS, for passthrough/reencrypt) or "http" (plain, for edge).
+      targetPort: https
+      annotations: {}
+      labels: {}
+      tls: {}
+    # Sandbox API traffic (gateway-runtime Service). Off by default.
+    # The router forwards only hostnames that have a Route, and the gateway serves an API's
+    # sandbox environment on the sandbox vhost, so sandbox traffic needs its own hostname.
+    # The Route is named sandbox-<fullname>, so the generated hostname
+    # (sandbox-<fullname>-<namespace>.<apps-domain>) matches the default sandbox vhost
+    # pattern "sandbox-*" (gateway.config.router.vhosts.sandbox.default). A custom hostname
+    # must match that pattern too, or be listed in gateway.config.router.vhosts.sandbox.domains
+    # (a non-empty list replaces the pattern).
+    sandbox:
+      enabled: false
+      hostname: ""
+      # Service port name: "https" (TLS, for passthrough/reencrypt) or "http" (plain, for edge).
+      targetPort: https
+      annotations: {}
+      labels: {}
+      tls: {}
+    # Gateway-controller management REST API (plain HTTP, so edge termination only).
+    # Off by default: it is an administrative surface.
+    managementApi:
+      enabled: false
+      hostname: ""
+      annotations: {}
+      labels: {}
+      tls:
+        termination: edge
+        insecureEdgeTerminationPolicy: Redirect
+
 ## moved to each component's deployment block below
 
 # Component-level configuration

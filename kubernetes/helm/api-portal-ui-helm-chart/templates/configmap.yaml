@@ -137,8 +137,16 @@ data:
     {{- if not $orgHandle }}
       {{- fail "config.organization.handle is required" }}
     {{- end }}
+    {{- $portalId := toString ($org.portalId | default "") }}
+    {{- if not (trim $portalId) }}
+      {{- fail "config.organization.portalId is required" }}
+    {{- end }}
+    {{- if regexMatch "\\s" $portalId }}
+      {{- fail "config.organization.portalId must not contain whitespace" }}
+    {{- end }}
     [api_portal.organization]
     handle = {{ $orgHandle | quote }}
+    portal_id = {{ $portalId | quote }}
     display_name = {{ $org.displayName | default "" | quote }}
     auto_create_subscription_plans = {{ $org.autoCreateSubscriptionPlans }}
 

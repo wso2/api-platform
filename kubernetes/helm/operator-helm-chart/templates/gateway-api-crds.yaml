@@ -3,20 +3,29 @@
   "files/gateway-api-standard/standard-crds.yaml"
 }}
 {{- range $p := $paths }}
-{{- $crd := fromYaml ($.Files.Get $p) }}
-{{- $existing := lookup "apiextensions.k8s.io/v1" "CustomResourceDefinition" "" $crd.metadata.name }}
+{{- /* The bundle holds several documents; check each one, so objects that already
+       exist and belong to someone else (another release, a cloud add-on) are skipped
+       individually instead of failing the whole install. */}}
+{{- range $doc := regexSplit "(?m)^---\\s*$" ($.Files.Get $p) -1 }}
+{{- $obj := fromYaml $doc }}
+{{- if and $obj $obj.kind $obj.metadata }}
+{{- $existing := lookup $obj.apiVersion $obj.kind "" $obj.metadata.name }}
 {{- $ownedByThisRelease := false }}
 {{- if $existing }}
-  {{- $relName := index $existing.metadata.annotations "meta.helm.sh/release-name" }}
-  {{- $relNs := index $existing.metadata.annotations "meta.helm.sh/release-namespace" }}
-  {{- $managedBy := index $existing.metadata.labels "app.kubernetes.io/managed-by" }}
+  {{- $annotations := default (dict) $existing.metadata.annotations }}
+  {{- $labels := default (dict) $existing.metadata.labels }}
+  {{- $relName := index $annotations "meta.helm.sh/release-name" }}
+  {{- $relNs := index $annotations "meta.helm.sh/release-namespace" }}
+  {{- $managedBy := index $labels "app.kubernetes.io/managed-by" }}
   {{- if and (eq $relName $.Release.Name) (eq $relNs $.Release.Namespace) (eq $managedBy "Helm") }}
     {{- $ownedByThisRelease = true }}
   {{- end }}
 {{- end }}
 {{- if or (not $existing) $ownedByThisRelease }}
 ---
-{{ $.Files.Get $p }}
+{{ trim $doc }}
+{{- end }}
+{{- end }}
 {{- end }}
 {{- end }}
 {{- end }}

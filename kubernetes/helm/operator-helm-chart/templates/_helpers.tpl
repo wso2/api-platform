@@ -41,23 +41,6 @@ configured image.repository:tag.
 {{- end -}}
 
 {{- /*
-Return pod-level securityContext YAML block according to values and debug flag.
-This helper prints the inner keys only; caller should indent appropriately.
-*/ -}}
-{{- define "gateway-operator.podSecurityContext" -}}
-{{- if .Values.debug.enabled }}
-runAsUser: 0
-{{- else }}
-{{- if .Values.securityContext.runAsUser }}
-runAsUser: {{ .Values.securityContext.runAsUser }}
-{{- end }}
-{{- if .Values.securityContext.runAsNonRoot }}
-runAsNonRoot: true
-{{- end }}
-{{- end }}
-{{- end }}
-
-{{- /*
 RBAC for GatewayClass (cluster-scoped). Namespace Roles cannot grant these
 verbs at cluster scope; when watchNamespaces is set, chart also installs
 clusterrole-gatewayclass.yaml + binding.
@@ -84,6 +67,20 @@ clusterrole-gatewayclass.yaml + binding.
 {{- /*
 Common RBAC rules shared between ClusterRole (global) and Role (scoped)
 */ -}}
+{{/*
+Renders "true" when deploying to OpenShift (openshift.enabled true, or auto and the
+cluster serves route.openshift.io/v1), else empty.
+*/}}
+{{- define "gateway-operator.isOpenShift" -}}
+{{- $mode := toString (dig "enabled" false (default (dict) .Values.openshift)) -}}
+{{- if not (has $mode (list "true" "false" "auto")) -}}
+{{- fail (printf "openshift.enabled must be true, false or auto, got %q" $mode) -}}
+{{- end -}}
+{{- if or (eq $mode "true") (and (eq $mode "auto") (.Capabilities.APIVersions.Has "route.openshift.io/v1")) -}}
+true
+{{- end -}}
+{{- end -}}
+
 {{- define "gateway-operator.rbacRules" -}}
 - apiGroups:
   - ""
@@ -309,4 +306,26 @@ Common RBAC rules shared between ClusterRole (global) and Role (scoped)
   - get
   - list
   - watch
+{{- if include "gateway-operator.isOpenShift" . }}
+- apiGroups:
+  - route.openshift.io
+  resources:
+  - routes
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - route.openshift.io
+  resources:
+  - routes/custom-host
+  verbs:
+  - create
+  - patch
+  - update
+{{- end }}
 {{- end -}}

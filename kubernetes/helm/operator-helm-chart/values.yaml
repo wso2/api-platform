@@ -9,11 +9,10 @@ nameOverride: ""
 fullnameOverride: ""
 
 # Kubernetes Gateway API (gateway.networking.k8s.io) — standard-channel CRDs v1.3.0.
-# Leave false if Gateway API CRDs already exist (cloud add-on, Traefik "crd" chart, etc.).
-# Setting true when those CRDs are owned by another Helm release fails with:
-# "exists and cannot be imported into the current release: invalid ownership metadata".
-# Duplicate CRDs can also cause server-side apply conflicts on upgrade.
-# Set true only when no gateway*.gateway.networking.k8s.io CRDs are present yet.
+# Each object in the bundle is installed only if it does not exist yet or is owned by this
+# release; objects owned by anyone else (cloud add-on, Traefik "crd" chart, etc.) are skipped.
+# Set false on OpenShift 4.19+: the Ingress Operator manages these CRDs and an admission
+# policy rejects any other writer, including creating the ones OpenShift does not ship.
 gatewayApi:
   installStandardCRDs: true
   # Passed through to operator config.yaml as gateway_api.gateway_class_names (Gateway API / HTTPRoute flow).
@@ -54,16 +53,32 @@ debug:
   # use the same image by default; if your build image doesn't include dlv, set a debugImage
   debugImage: ""
 
-# Pod-level security context defaults. Many images run as root by default; set
-# runAsNonRoot: true only if your image runs as a non-root user. The chart will
-# still force runAsUser: 0 when debug.enabled=true (Delve needs root privileges).
-securityContext:
+# Pod-level security context, rendered as given.
+podSecurityContext:
   runAsNonRoot: true
-  # If you want the pod to run as a specific uid, set this (e.g. 1000). Leave
-  # null to not set runAsUser and let the image default decide.
-  runAsUser: 10001
   seccompProfile:
     type: RuntimeDefault
+
+# Container-level security context for the operator (manager) container, rendered as given.
+# Both blocks are ignored when debug.enabled=true: Delve needs root (runAsUser: 0) and
+# SYS_PTRACE, so debug mode cannot run under OpenShift's restricted SCCs.
+securityContext:
+  # Set to null to leave the UID unset, so the image default (65532) is used or, on
+  # OpenShift, the UID is assigned from the project's range.
+  runAsUser: 10001
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: true
+
+# OpenShift support: false, true, or auto (enabled when the cluster serves route.openshift.io/v1).
+# When enabled: the operator may manage Routes, and gateways get openshift.enabled=true unless
+# gateway.values.openshift.enabled is set. Security contexts are not changed: on OpenShift, set
+# securityContext.runAsUser to null (or a UID your SCC allows). auto needs a live cluster: helm template and dry runs
+# render it as false. Gateway Routes need a gateway chart version that includes them.
+openshift:
+  enabled: false
 
 # Operator config.yaml contents (YAML block, indented)
 gateway:
@@ -653,3 +668,6 @@ cleanupJob:
     repository: bitnami/kubectl
     tag: latest
     pullPolicy: IfNotPresent
+  # Pod- and container-level security contexts for the pre-delete cleanup Job, rendered as given.
+  podSecurityContext: {}
+  securityContext: {}

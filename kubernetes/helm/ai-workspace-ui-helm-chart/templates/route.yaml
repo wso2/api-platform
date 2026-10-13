@@ -1,0 +1,48 @@
+{{- $route := .Values.openshift.routes.aiWorkspace -}}
+{{- if and .Values.openshift.enabled $route.enabled .Values.deployment.enabled }}
+{{- $tls := merge (dict) (default (dict) $route.tls) (default (dict) .Values.openshift.routes.tls) -}}
+{{- $termination := default "passthrough" $tls.termination -}}
+{{- if not (has $termination (list "passthrough" "reencrypt")) -}}
+{{- fail (printf "openshift.routes.aiWorkspace: tls.termination must be passthrough or reencrypt (got %q); the AI Workspace Service serves HTTPS only, so edge termination cannot reach it" $termination) -}}
+{{- end }}
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: {{ include "apip.aiWorkspace.fullname" . }}
+  labels:
+    {{- include "apip.componentLabels" (list . "ai-workspace" $route.labels) | nindent 4 }}
+  {{- with (include "apip.annotations" (list . $route.annotations)) }}
+  annotations:
+    {{- . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with $route.hostname }}
+  host: {{ . | quote }}
+  {{- end }}
+  to:
+    kind: Service
+    name: {{ include "apip.aiWorkspace.fullname" . }}
+    weight: 100
+  port:
+    targetPort: http
+  tls:
+    termination: {{ $termination }}
+    {{- with $tls.insecureEdgeTerminationPolicy }}
+    insecureEdgeTerminationPolicy: {{ . }}
+    {{- end }}
+    {{- if eq $termination "reencrypt" }}
+    {{- with $tls.certificate }}
+    certificate: {{ . | toJson }}
+    {{- end }}
+    {{- with $tls.key }}
+    key: {{ . | toJson }}
+    {{- end }}
+    {{- with $tls.caCertificate }}
+    caCertificate: {{ . | toJson }}
+    {{- end }}
+    {{- with $tls.destinationCACertificate }}
+    destinationCACertificate: {{ . | toJson }}
+    {{- end }}
+    {{- end }}
+  wildcardPolicy: None
+{{- end }}

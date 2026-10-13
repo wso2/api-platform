@@ -147,8 +147,8 @@ kubectl logs -l app.kubernetes.io/component=gateway-runtime
 helm-chart/
 ├── templates/
 │   ├── gateway/
-│   │   ├── controller/       # Deployment, Service, ConfigMap, PVC
-│   │   └── gateway-runtime/  # Deployment and Service
+│   │   ├── controller/       # Deployment, Service, ConfigMap, PVC, Route
+│   │   └── gateway-runtime/  # Deployment, Service, Route
 │   ├── serviceaccount.yaml
 │   └── _helpers.tpl
 ├── values.yaml
@@ -173,6 +173,8 @@ All configurable values are documented in `values.yaml`. Component blocks are fu
 - `gateway.controller.upstreamCerts.*` – Custom CA certificates for upstream backend TLS verification.
 - `gateway.config.policy_engine.*` – policy engine configuration including xDS client settings and admin API.
 - `gateway.config.api_key` / `gateway.config.subscriptions` – API-key policy tuning (length/algorithm/issuer) and opt-in application-subscription validation.
+- `gateway.<component>.deployment.podSecurityContext` / `securityContext` – pod and container security contexts, rendered as given (empty by default).
+- `openshift.*` – OpenShift Routes for the gateway runtime (`openshift.routes.gatewayRuntime`, on by default), sandbox API traffic (`openshift.routes.sandbox`, off by default; named `sandbox-<fullname>` so its generated hostname matches the default `sandbox-*` virtual host) and the management API (`openshift.routes.managementApi`, off by default), with shared `openshift.routes.tls` settings that each route can override. Routes render only when `openshift.enabled=true`. See the [OpenShift deployment guide](../../../openshift/gateway/standalone-deployment-guide.md).
 
 Refer to the inline comments inside `values.yaml` for a complete matrix of options and the expected data types for each block.
 

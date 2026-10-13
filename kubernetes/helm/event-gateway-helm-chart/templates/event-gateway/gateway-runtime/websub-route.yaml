@@ -1,0 +1,61 @@
+{{- $route := .Values.openshift.routes.websub -}}
+{{- if and .Values.openshift.enabled $route.enabled .Values.eventGateway.gatewayRuntime.deployment.enabled }}
+{{- $tls := merge (dict) (default (dict) $route.tls) (default (dict) .Values.openshift.routes.tls) -}}
+{{- $termination := default "passthrough" $tls.termination -}}
+{{- $targetPort := default "websub-https" $route.targetPort -}}
+{{- if not (has $targetPort (list "websub-http" "websub-https")) -}}
+{{- fail (printf "openshift.routes.websub.targetPort must be websub-http or websub-https (got %q)" $targetPort) -}}
+{{- end -}}
+{{- if not (has $termination (list "passthrough" "edge" "reencrypt")) -}}
+{{- fail (printf "openshift.routes.websub: tls.termination must be passthrough, edge or reencrypt (got %q)" $termination) -}}
+{{- end -}}
+{{- if and (eq $targetPort "websub-https") (eq $termination "edge") -}}
+{{- fail "openshift.routes.websub: edge termination forwards plain HTTP, but target port \"websub-https\" serves TLS. Use passthrough or reencrypt, or set targetPort to websub-http." -}}
+{{- end -}}
+{{- if and (eq $targetPort "websub-http") (ne $termination "edge") -}}
+{{- fail (printf "openshift.routes.websub: %s termination needs a TLS backend, but target port \"websub-http\" serves plain HTTP. Use edge termination." $termination) -}}
+{{- end }}
+{{- $annotations := merge (deepCopy (default (dict) .Values.commonAnnotations)) (default (dict) $route.annotations) }}
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: {{ include "event-gateway.fullname" . }}-websub
+  labels:
+    {{- include "event-gateway.componentLabels" (list . "gateway-runtime" $route.labels) | nindent 4 }}
+  {{- with $annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with $route.hostname }}
+  host: {{ . | quote }}
+  {{- end }}
+  to:
+    kind: Service
+    name: {{ include "event-gateway.fullname" . }}-gateway-runtime
+    weight: 100
+  port:
+    targetPort: {{ $targetPort }}
+  tls:
+    termination: {{ $termination }}
+    {{- with $tls.insecureEdgeTerminationPolicy }}
+    insecureEdgeTerminationPolicy: {{ . }}
+    {{- end }}
+    {{- if ne $termination "passthrough" }}
+    {{- with $tls.certificate }}
+    certificate: {{ . | toJson }}
+    {{- end }}
+    {{- with $tls.key }}
+    key: {{ . | toJson }}
+    {{- end }}
+    {{- with $tls.caCertificate }}
+    caCertificate: {{ . | toJson }}
+    {{- end }}
+    {{- end }}
+    {{- if eq $termination "reencrypt" }}
+    {{- with $tls.destinationCACertificate }}
+    destinationCACertificate: {{ . | toJson }}
+    {{- end }}
+    {{- end }}
+  wildcardPolicy: None
+{{- end }}

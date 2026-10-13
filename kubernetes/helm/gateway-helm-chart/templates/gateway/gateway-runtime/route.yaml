@@ -1,0 +1,12 @@
+{{- if and .Values.openshift.enabled .Values.gateway.gatewayRuntime.deployment.enabled }}
+{{- $fullname := include "gateway-operator.fullname" . }}
+{{- if .Values.openshift.routes.gatewayRuntime.enabled }}
+{{ include "gateway-operator.gatewayRuntimeRoute" (dict "ctx" . "key" "gatewayRuntime" "name" (printf "%s-gateway-runtime" $fullname)) }}
+{{- end }}
+{{- with .Values.openshift.routes.sandbox }}
+{{- if .enabled }}
+---
+{{ include "gateway-operator.gatewayRuntimeRoute" (dict "ctx" $ "key" "sandbox" "name" (printf "sandbox-%s" $fullname | trunc 63 | trimSuffix "-")) }}
+{{- end }}
+{{- end }}
+{{- end }}

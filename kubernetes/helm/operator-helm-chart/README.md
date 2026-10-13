@@ -77,7 +77,7 @@ helm install apip-operator oci://ghcr.io/wso2/api-platform/helm-charts/gateway-o
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
-| `gatewayApi.installStandardCRDs` | Install the standard-channel Gateway API CRDs | `true` |
+| `gatewayApi.installStandardCRDs` | Install the standard-channel Gateway API CRDs. Each CRD is skipped if it already exists and is not owned by this release. Set `false` on OpenShift 4.19+, where the Ingress Operator manages these CRDs | `true` |
 | `gatewayApi.managedGatewayClassNames` | `gatewayClassName` values this operator reconciles | `[wso2-api-platform]` |
 | `gatewayApi.clusterDomain` | Cluster DNS suffix for in-cluster Service URLs | `cluster.local` |
 
@@ -109,10 +109,31 @@ Component container image tags come from the gateway chart; do not hardcode them
 
 ### Security Context
 
+Both blocks are rendered as given, so any valid `PodSecurityContext` / `SecurityContext` field can be set. They are ignored when `debug.enabled=true` (Delve needs root and `SYS_PTRACE`).
+
+> [!NOTE]
+> **Upgrading from earlier chart versions:** `securityContext` is now the container-level security context. Earlier versions treated it as pod-level but rendered only `runAsUser` and `runAsNonRoot`, which work at both levels, so existing values keep their effect. Move any pod-only fields (`fsGroup`, `supplementalGroups`, `sysctls`) to `podSecurityContext`.
+
 | Parameter | Description | Default |
 |-----------|-------------|---------|
-| `securityContext.runAsNonRoot` | Run as non-root user | `true` |
-| `securityContext.runAsUser` | User ID to run as | `10001` |
+| `podSecurityContext` | Pod-level security context for the operator | `runAsNonRoot: true`, `seccompProfile.type: RuntimeDefault` |
+| `securityContext` | Container-level security context for the operator | `runAsUser: 10001`, `allowPrivilegeEscalation: false`, `capabilities.drop: [ALL]`, `readOnlyRootFilesystem: true` |
+| `securityContext.runAsUser` | UID for the operator container. Set to `null` to leave it unset (the image default `65532` is used, or OpenShift assigns one from the project range) | `10001` |
+| `cleanupJob.podSecurityContext` | Pod-level security context for the pre-delete cleanup Job | `{}` |
+| `cleanupJob.securityContext` | Container-level security context for the pre-delete cleanup Job | `{}` |
+
+### OpenShift
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `openshift.enabled` | `true`, `false` or `auto`. `auto` turns OpenShift support on when the cluster serves `route.openshift.io/v1`; `helm template`, dry runs and GitOps renderers such as Argo CD resolve it to `false`, so use `true` there | `false` |
+
+With OpenShift support on, the chart:
+
+- grants the operator permission to manage Routes (`routes` and `routes/custom-host`);
+- sets `openshift.enabled: true` in the rendered gateway values, so every gateway gets an OpenShift Route. A value set in `gateway.values.openshift.enabled` takes precedence. Gateway chart `1.2.0` has no Route support and ignores it.
+
+`openshift.enabled` does not change the security contexts. On OpenShift, set `securityContext.runAsUser: null` so the `restricted-v2` SCC assigns a UID from the project's range, or set a UID your SCC allows. See the [OpenShift deployment guide](../../../openshift/gateway/operator-deployment-guide.md).
 
 ## Custom Resource Definitions (CRDs)
 

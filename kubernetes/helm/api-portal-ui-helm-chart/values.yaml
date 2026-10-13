@@ -185,6 +185,9 @@ config:
     handle: default                         # URL slug: /{handle}/views/{viewName}; required
     displayName: ""                         # seed-time only; empty means "use the handle"
     autoCreateSubscriptionPlans: true       # auto-create Bronze/Silver/Gold/Unlimited/AsyncUnlimited
+    # Identifier this portal instance is pinned to; required, no whitespace.
+    # Instances sharing one database need distinct values, except replicas of the same portal.
+    portalId: portal_id
 
   # --- Artifacts: which types this portal serves (allowlist) ---
   # A type left out gets no nav entry, no landing-page section, and 404s on its
@@ -275,6 +278,36 @@ service:
 
 # Port the portal process listens on (matches the image's native default/EXPOSE).
 containerPort: 9543
+
+# ----------------------------------------------------------------------------
+# openshift: OpenShift Routes, rendered only when openshift.enabled=true.
+# Security contexts are configured under deployment.podSecurityContext and
+# deployment.securityContext.
+# ----------------------------------------------------------------------------
+openshift:
+  enabled: false
+  routes:
+    # Default TLS settings; the route's own `tls` block overrides them key by key.
+    tls:
+      # passthrough | reencrypt (the Service serves HTTPS only, so edge cannot reach it)
+      termination: passthrough
+      # None | Redirect
+      insecureEdgeTerminationPolicy: None
+      # PEM certificate, key and CA chain served by the router (reencrypt only).
+      # Leave empty to use the router's default certificate.
+      certificate: ""
+      key: ""
+      caCertificate: ""
+      # PEM CA that signed the backend certificate (reencrypt only).
+      destinationCACertificate: ""
+    # API Portal.
+    apiPortal:
+      enabled: true
+      # Empty lets OpenShift generate <route-name>-<namespace>.<apps-domain>.
+      hostname: ""
+      annotations: {}
+      labels: {}
+      tls: {}
 
 # ----------------------------------------------------------------------------
 # tls — certificate for the portal's HTTPS listener (APIP_AP_TLS_*)

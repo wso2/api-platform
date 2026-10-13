@@ -1,0 +1,43 @@
+{{- $route := .Values.openshift.routes.managementApi -}}
+{{- if and .Values.openshift.enabled $route.enabled .Values.eventGateway.controller.deployment.enabled }}
+{{- $tls := merge (dict) (default (dict) $route.tls) (default (dict) .Values.openshift.routes.tls) -}}
+{{- if ne (default "edge" $tls.termination) "edge" -}}
+{{- fail (printf "openshift.routes.managementApi: the management API serves plain HTTP, so tls.termination must be edge (got %q)" $tls.termination) -}}
+{{- end }}
+{{- $annotations := merge (deepCopy (default (dict) .Values.commonAnnotations)) (default (dict) $route.annotations) }}
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: {{ include "event-gateway.fullname" . }}-management-api
+  labels:
+    {{- include "event-gateway.componentLabels" (list . "controller" $route.labels) | nindent 4 }}
+  {{- with $annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with $route.hostname }}
+  host: {{ . | quote }}
+  {{- end }}
+  to:
+    kind: Service
+    name: {{ include "event-gateway.fullname" . }}-controller
+    weight: 100
+  port:
+    targetPort: rest
+  tls:
+    termination: edge
+    {{- with $tls.insecureEdgeTerminationPolicy }}
+    insecureEdgeTerminationPolicy: {{ . }}
+    {{- end }}
+    {{- with $tls.certificate }}
+    certificate: {{ . | toJson }}
+    {{- end }}
+    {{- with $tls.key }}
+    key: {{ . | toJson }}
+    {{- end }}
+    {{- with $tls.caCertificate }}
+    caCertificate: {{ . | toJson }}
+    {{- end }}
+  wildcardPolicy: None
+{{- end }}
