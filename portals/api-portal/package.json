@@ -44,7 +44,7 @@
     "handlebars": "4.7.9",
     "ipaddr.js": "2.4.0",
     "jose": "6.2.3",
-    "js-yaml": "5.2.1",
+    "js-yaml": "5.4.3",
     "marked": "18.0.6",
     "minimatch": "10.2.6",
     "mssql": "12.7.0",
