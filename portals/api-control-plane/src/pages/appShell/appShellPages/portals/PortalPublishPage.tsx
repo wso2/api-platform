@@ -537,6 +537,7 @@ function PortalPublishPageContent() {
         }}
         onBlurField={markTouched}
         onChange={handleChange}
+        productionUrlOptions={data.productionUrlOptions}
         values={values}
       />
     ) : (

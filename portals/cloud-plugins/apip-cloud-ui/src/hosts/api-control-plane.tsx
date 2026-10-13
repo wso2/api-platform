@@ -7,13 +7,14 @@
  * You may not alter or remove any copyright or other notice from copies of this content.
  */
 
+import { PageContent } from '@wso2/oxygen-ui';
 import {
   Activity,
   BarChart3,
   Gauge,
   Layers,
-  PanelTop,
-  ScrollText,
+  Logs,
+  PanelsTopLeft,
   Workflow,
 } from '@wso2/oxygen-ui-icons-react';
 
@@ -38,8 +39,11 @@ import {
   type ApiControlPlaneCloudEntry,
   type ApiControlPlaneExtension,
 } from '../../../../api-control-plane/src/extensions';
+import { AppPage } from '../../../../api-control-plane/src/components/AppPage';
+import type { CloudHostPort } from '../../../../api-control-plane/src/hostPort';
 import { routes } from '../../../../api-control-plane/src/routes/paths';
 import { ScopeGate } from '../../../../api-control-plane/src/scope/ScopeGate';
+import { useConsoleScope } from '../../../../api-control-plane/src/scope/ConsoleScopeContext';
 import { defineCloudPlugin, getCloudExtensions, type CloudPluginFeature } from '../plugin';
 import { filterExtensionsForRuntime } from '../runtimeFlags';
 import cloudLogoDark from '../assets/logos/apiplatform_white.svg';
@@ -122,6 +126,25 @@ const observabilityLogsPath = (orgHandle: string) =>
  * (Metrics, Alerts) in place and replaces only its Logs page, through
  * `PAGE_API_OBSERVABILITY_LOGS_SLOT`.
  */
+
+/**
+ * The `deploy` override's render: `AppPage` only wraps the scope picker, not
+ * `DeployFeature` itself. `DeployFeature`'s own page already carries its own
+ * `PageContent` padding (shared with the AI Workspace host, which renders it
+ * with no `AppPage`/`ScopeGate` of its own) — wrapping it here too would nest
+ * two padded containers. Checking scope ourselves, rather than always wrapping
+ * `ScopeGate` in `AppPage`, is what keeps the padding singular either way.
+ */
+function ApiDeployPage({ port }: { port: CloudHostPort }) {
+  const { isApiScope } = useConsoleScope();
+  const gated = (
+    <ScopeGate prompt="Deployments are made for a single API." requires="api" to={routes.apiDeploy}>
+      <DeployFeature port={port} />
+    </ScopeGate>
+  );
+  return isApiScope ? gated : <AppPage>{gated}</AppPage>;
+}
+
 export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[] = [
   defineCloudPlugin({
     id: 'trial-status',
@@ -192,15 +215,7 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[
         // Settings-tab pipeline, which only match `sidebar.*` / `settings.*.tabs`.
         order: 0,
         routePath: 'deploy',
-        render: (port) => (
-          <ScopeGate
-            prompt="Deployments are made for a single API."
-            requires="api"
-            to={routes.apiDeploy}
-          >
-            <DeployFeature port={port} />
-          </ScopeGate>
-        ),
+        render: (port) => <ApiDeployPage port={port} />,
         label: 'Deploy',
         level: 'api',
       },
@@ -250,7 +265,7 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[
             routePath: 'logs',
             render: (port) => <LogsFeature port={port} />,
             label: 'Logs',
-            icon: <ScrollText size={20} />,
+            icon: <Logs size={20} />,
           },
           {
             id: 'observability-metrics',
@@ -350,7 +365,7 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[
         routePath: 'managed-api-portals',
         render: (port) => <ManagedPortalsPage port={port} />,
         label: 'Portals',
-        icon: <PanelTop size={20} />,
+        icon: <PanelsTopLeft size={20} />,
         level: 'organization',
       },
     ],
@@ -382,12 +397,18 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[
             !typed.isApiScope
           );
         },
+        // `InsightsFeature` brings its own `PageContent` on AI Workspace (whose
+        // shell doesn't wrap the outlet either) but not here, so this slot's
+        // route supplies it — ACP's shell adds none, same as the `deploy`
+        // override above.
         render: (port) => (
-          <InsightsFeature
-            port={port}
-            forcedScopeLevel="organization"
-            embedProfile="api-control-plane"
-          />
+          <PageContent fullWidth>
+            <InsightsFeature
+              port={port}
+              forcedScopeLevel="organization"
+              embedProfile="api-control-plane"
+            />
+          </PageContent>
         ),
       },
       {
@@ -408,11 +429,13 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[
           return Boolean(typed.isProjectScope) && !typed.isApiScope;
         },
         render: (port) => (
-          <InsightsFeature
-            port={port}
-            forcedScopeLevel="project"
-            embedProfile="api-control-plane"
-          />
+          <PageContent fullWidth>
+            <InsightsFeature
+              port={port}
+              forcedScopeLevel="project"
+              embedProfile="api-control-plane"
+            />
+          </PageContent>
         ),
       },
     ],

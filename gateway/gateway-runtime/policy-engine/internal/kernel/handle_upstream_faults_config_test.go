@@ -42,7 +42,7 @@ func upstreamFaultCtx(t *testing.T, enabled bool, faultPolicies []policy.Policy)
 	t.Helper()
 	k := NewKernel()
 	chainExecutor := executor.NewChainExecutor(nil, nil, noop.NewTracerProvider().Tracer(""))
-	server := NewExternalProcessorServer(k, chainExecutor, config.TracingConfig{}, "", 1<<20, 1<<20,
+	server := NewExternalProcessorServer(k, chainExecutor, config.TracingConfig{}, "", 1<<20, 1<<20, nil,
 		WithHandleUpstreamFaults(enabled))
 
 	chain := &registry.PolicyChain{

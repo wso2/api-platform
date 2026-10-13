@@ -17,12 +17,13 @@
  */
 
 import { Box, ComplexSelect, Header, IconButton } from '@wso2/oxygen-ui';
-import { Boxes, BoxIcon, Building, X } from '@wso2/oxygen-ui-icons-react';
+import { X } from '@wso2/oxygen-ui-icons-react';
 import { useIntl } from 'react-intl';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 
 import { useRestApis } from '../../api/resources/restApis';
 import SearchableComplexSelect from '../../components/common/SearchableComplexSelect';
+import { findTargetAtScope } from '../../navigation/navigationRegistry';
 import { routes } from '../../routes/paths';
 import { useConsoleScope } from '../../scope/ConsoleScopeProvider';
 import APIQuickSelector from './APIQuickSelector';
@@ -53,7 +54,9 @@ const TRUNCATED_OPTION_TEXT_SLOT_PROPS = {
  */
 export function HeaderScopeSwitchers() {
   const navigate = useNavigate();
+  const location = useLocation();
   const intl = useIntl();
+  const scope = useConsoleScope();
   const {
     component,
     organization,
@@ -63,31 +66,54 @@ export function HeaderScopeSwitchers() {
     projects,
     isLoading,
     projectsError,
-  } = useConsoleScope();
+  } = scope;
 
+  // Every switcher action below re-resolves the *current page* at the new
+  // scope (e.g. picking a project while on the organization's Settings tab
+  // lands on that project's Settings, not its Overview; clearing the project
+  // back out returns to the organization's Settings, not its Overview)
+  // instead of always bouncing to that scope's Home — see `findTargetAtScope`.
+  // Each falls back to its own Home route when the current page has no
+  // equivalent at the new scope (an API-only page, say, cleared down to the
+  // project that owns it).
   const changeOrganization = (orgHandle: string) => {
     if (!orgHandle || orgHandle === params.orgHandle) return;
-    navigate(routes.organizationHome(orgHandle));
+    const target = findTargetAtScope(location.pathname, scope, { orgHandle });
+    navigate(target ?? routes.organizationHome(orgHandle));
   };
 
   const changeProject = (projectHandler: string) => {
     if (!params.orgHandle || !projectHandler) return;
-    navigate(routes.projectHome(params.orgHandle, projectHandler));
+    const target = findTargetAtScope(location.pathname, scope, {
+      orgHandle: params.orgHandle,
+      projectHandler,
+    });
+    navigate(target ?? routes.projectHome(params.orgHandle, projectHandler));
   };
 
   const changeApi = (apiHandler: string) => {
     if (!params.orgHandle || !params.projectHandler || !apiHandler) return;
-    navigate(routes.api(params.orgHandle, params.projectHandler, apiHandler));
+    const target = findTargetAtScope(location.pathname, scope, {
+      apiHandler,
+      orgHandle: params.orgHandle,
+      projectHandler: params.projectHandler,
+    });
+    navigate(target ?? routes.api(params.orgHandle, params.projectHandler, apiHandler));
   };
 
   const clearProjectSelection = () => {
     if (!params.orgHandle) return;
-    navigate(routes.organizationHome(params.orgHandle));
+    const target = findTargetAtScope(location.pathname, scope, { orgHandle: params.orgHandle });
+    navigate(target ?? routes.organizationHome(params.orgHandle));
   };
 
   const clearApiSelection = () => {
     if (!params.orgHandle || !params.projectHandler) return;
-    navigate(routes.projectHome(params.orgHandle, params.projectHandler));
+    const target = findTargetAtScope(location.pathname, scope, {
+      orgHandle: params.orgHandle,
+      projectHandler: params.projectHandler,
+    });
+    navigate(target ?? routes.projectHome(params.orgHandle, params.projectHandler));
   };
 
   // organizations may not be loaded yet on first paint; keep the current org
@@ -158,16 +184,11 @@ export function HeaderScopeSwitchers() {
               name: item.name,
             }))}
             renderOptionContent={(option) => (
-              <>
-                <ComplexSelect.MenuItem.Icon>
-                  <Building size={18} />
-                </ComplexSelect.MenuItem.Icon>
-                <ComplexSelect.MenuItem.Text
-                  primary={option.name}
-                  secondary={option.id}
-                  slotProps={TRUNCATED_OPTION_TEXT_SLOT_PROPS}
-                />
-              </>
+              <ComplexSelect.MenuItem.Text
+                primary={option.name}
+                secondary={option.id}
+                slotProps={TRUNCATED_OPTION_TEXT_SLOT_PROPS}
+              />
             )}
             searchPlaceholder={intl.formatMessage({ id: 'appShell.header.org.placeholder', defaultMessage: 'Search organizations...' })}
             emptyMessage={intl.formatMessage({ id: 'appShell.header.org.empty', defaultMessage: 'No organizations found' })}
@@ -195,16 +216,11 @@ export function HeaderScopeSwitchers() {
               name: item.name,
             }))}
             renderOptionContent={(option) => (
-              <>
-                <ComplexSelect.MenuItem.Icon>
-                  <BoxIcon size={18} />
-                </ComplexSelect.MenuItem.Icon>
-                <ComplexSelect.MenuItem.Text
-                  primary={option.name}
-                  secondary={option.id}
-                  slotProps={TRUNCATED_OPTION_TEXT_SLOT_PROPS}
-                />
-              </>
+              <ComplexSelect.MenuItem.Text
+                primary={option.name}
+                secondary={option.id}
+                slotProps={TRUNCATED_OPTION_TEXT_SLOT_PROPS}
+              />
             )}
             searchPlaceholder={intl.formatMessage({ id: 'appShell.header.project.placeholder', defaultMessage: 'Search projects...' })}
             emptyMessage={intl.formatMessage({ id: 'appShell.header.project.empty', defaultMessage: 'No projects found' })}
@@ -274,16 +290,11 @@ export function HeaderScopeSwitchers() {
               name: item.name,
             }))}
             renderOptionContent={(option) => (
-              <>
-                <ComplexSelect.MenuItem.Icon>
-                  <Boxes size={18} />
-                </ComplexSelect.MenuItem.Icon>
-                <ComplexSelect.MenuItem.Text
-                  primary={option.name}
-                  secondary={option.id}
-                  slotProps={TRUNCATED_OPTION_TEXT_SLOT_PROPS}
-                />
-              </>
+              <ComplexSelect.MenuItem.Text
+                primary={option.name}
+                secondary={option.id}
+                slotProps={TRUNCATED_OPTION_TEXT_SLOT_PROPS}
+              />
             )}
             searchPlaceholder={intl.formatMessage({ id: 'appShell.header.api.placeholder', defaultMessage: 'Search APIs...' })}
             emptyMessage={intl.formatMessage({ id: 'appShell.header.api.empty', defaultMessage: 'No APIs found' })}
