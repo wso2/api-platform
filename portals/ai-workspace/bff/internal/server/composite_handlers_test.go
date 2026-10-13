@@ -405,8 +405,18 @@ func TestHandlePublishMCPProxy_SavesDraftThenPublishes(t *testing.T) {
 	if (*calls)[1].method != http.MethodPost || (*calls)[1].body != "" {
 		t.Errorf("second call = %s %q, want POST with no body", (*calls)[1].method, (*calls)[1].body)
 	}
+	// Both hops must carry the token resolved by `upstreamToken`, exactly as the
+	// reverse proxy does — the Platform API rejects the raw LOGIN token on issuer
+	// mismatch. This server is built without an exchanger, where `upstreamToken`
+	// returns the subject token unchanged, so the expected value here is the
+	// session's own bearer; what this pins is that BOTH calls are authorized and
+	// with the SAME token. Proving the exchanged token is forwarded when an
+	// exchanger IS configured needs the fake-IDP harness in token_exchange_test.go.
+	if (*calls)[0].auth != "Bearer test-jwt" {
+		t.Errorf("draft auth = %q, want the resolved upstream bearer token", (*calls)[0].auth)
+	}
 	if (*calls)[1].auth != "Bearer test-jwt" {
-		t.Errorf("publish auth = %q, want the session's bearer token", (*calls)[1].auth)
+		t.Errorf("publish auth = %q, want the resolved upstream bearer token", (*calls)[1].auth)
 	}
 }
 

@@ -1057,6 +1057,7 @@ type CELEvaluator interface {
 	EvaluateRequestBodyCondition(expression string, ctx *policy.RequestContext) (bool, error)
 	EvaluateResponseHeaderCondition(expression string, ctx *policy.ResponseHeaderContext) (bool, error)
 	EvaluateResponseBodyCondition(expression string, ctx *policy.ResponseContext) (bool, error)
+	EvaluateFaultCondition(expression string, ctx *policy.FaultContext) (bool, error)
 	EvaluateStreamingRequestCondition(expression string, ctx *policy.RequestStreamContext) (bool, error)
 	EvaluateStreamingResponseCondition(expression string, ctx *policy.ResponseStreamContext) (bool, error)
 }

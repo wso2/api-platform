@@ -35,7 +35,7 @@ import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
 import type { Gateway } from '@/api/resources/gateways';
 import { useNotifications } from '@/components/Notifications';
-import { gatewayEndpoint } from '../../gateways/utils/gatewayDisplay';
+import { buildInvokeUrl, gatewayEndpoint } from '../../gateways/utils/gatewayDisplay';
 import { MOCK_ENVIRONMENTS } from '../../gateways/utils/gatewayEnvironments';
 
 const messages = defineMessages({
@@ -78,18 +78,6 @@ const messages = defineMessages({
     description: 'Label of the read-only field holding the generated invoke URL.',
   },
 });
-
-/** `{endpoint}{context}` with a scheme ensured and slashes normalised. */
-export const buildInvokeUrl = (endpoint: string, context?: string): string => {
-  const trimmedEndpoint = endpoint.trim();
-  if (!trimmedEndpoint) return '';
-  const base = /^https?:\/\//i.test(trimmedEndpoint)
-    ? trimmedEndpoint.replace(/\/+$/, '')
-    : `https://${trimmedEndpoint.replace(/\/+$/, '')}`;
-  const trimmedContext = (context || '/').trim();
-  const path = trimmedContext.startsWith('/') ? trimmedContext : `/${trimmedContext}`;
-  return `${base}${path}`;
-};
 
 type InvokeUrlPanelProps = {
   /** Gateways the API is currently deployed on, most recent first. */

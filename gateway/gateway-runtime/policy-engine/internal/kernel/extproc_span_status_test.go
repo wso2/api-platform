@@ -116,7 +116,7 @@ func newSpanStatusServerWithCEL(t *testing.T, cel executor.CELEvaluator) (*Exter
 
 	k := NewKernel()
 	chainExecutor := executor.NewChainExecutor(nil, cel, tp.Tracer("test"))
-	server := NewExternalProcessorServer(k, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
+	server := NewExternalProcessorServer(k, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes, nil)
 	server.tracer = tp.Tracer("test") // package-internal field; avoids mutating global otel state
 	return server, k, sr
 }
@@ -183,6 +183,9 @@ func (m *mockEvaluatorError) EvaluateResponseHeaderCondition(_ string, _ *policy
 	return false, errors.New("injected evaluator error")
 }
 func (m *mockEvaluatorError) EvaluateResponseBodyCondition(_ string, _ *policy.ResponseContext) (bool, error) {
+	return false, errors.New("injected evaluator error")
+}
+func (m *mockEvaluatorError) EvaluateFaultCondition(_ string, _ *policy.FaultContext) (bool, error) {
 	return false, errors.New("injected evaluator error")
 }
 func (m *mockEvaluatorError) EvaluateStreamingRequestCondition(_ string, _ *policy.RequestStreamContext) (bool, error) {
@@ -787,7 +790,7 @@ func TestProcessSpanStatus_TracingDisabled(t *testing.T) {
 	// server's own tracer coming from the untouched global (no-op-by-default)
 	// TracerProvider rather than a real SDK one.
 	chainExecutor := executor.NewChainExecutor(nil, nil, noop.NewTracerProvider().Tracer("test"))
-	server := NewExternalProcessorServer(k, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
+	server := NewExternalProcessorServer(k, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes, nil)
 
 	stream := newMockStream([]*extprocv3.ProcessingRequest{
 		requestHeadersReq("test-route", "GET", "/pets"),

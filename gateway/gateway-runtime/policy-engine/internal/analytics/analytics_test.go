@@ -77,6 +77,7 @@ func validAnalyticsConfigForValidation(analytics config.AnalyticsConfig) *config
 		Analytics: analytics,
 	}
 	cfg.Analytics.Enabled = true // a consumer being on makes the collector implicit
+	cfg.Collector.CorrelationStore = config.CorrelationStoreConfig{Capacity: 100, TTL: time.Second, Shards: 2}
 	cfg.Collector.Server = config.AccessLogsServiceConfig{
 		Mode:                  "uds",
 		ShutdownTimeout:       600 * time.Second,
@@ -565,7 +566,6 @@ func TestMetadataKeys(t *testing.T) {
 	assert.Equal(t, "x-wso2-api-version", APIVersionKey)
 	assert.Equal(t, "x-wso2-application-id", AppIDKey)
 	assert.Equal(t, "x-wso2-application-name", AppNameKey)
-	assert.Equal(t, "x-wso2-correlation-id", CorrelationIDKey)
 	assert.Equal(t, "UNKNOWN", Unknown)
 }
 

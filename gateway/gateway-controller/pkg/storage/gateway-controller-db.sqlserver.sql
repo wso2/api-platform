@@ -120,6 +120,19 @@ CREATE TABLE dbo.agents (
     FOREIGN KEY(gateway_id, uuid) REFERENCES dbo.artifacts(gateway_id, uuid) ON DELETE CASCADE
 );
 
+-- GraphQL is not a separate product the way event-gateway is (see the websub_apis/
+-- webbroker_apis note above), so graphql_apis is defined directly here as a
+-- one-column-identical clone of rest_apis, instead of being owned by a separate
+-- supplemental-DDL module.
+IF OBJECT_ID(N'dbo.graphql_apis', N'U') IS NULL
+CREATE TABLE dbo.graphql_apis (
+    uuid NVARCHAR(64) NOT NULL,
+    gateway_id NVARCHAR(64) NOT NULL,
+    configuration NVARCHAR(MAX) NOT NULL,
+    PRIMARY KEY (gateway_id, uuid),
+    FOREIGN KEY(gateway_id, uuid) REFERENCES dbo.artifacts(gateway_id, uuid) ON DELETE CASCADE
+);
+
 -- Table for custom TLS certificates
 IF OBJECT_ID(N'dbo.certificates', N'U') IS NULL
 CREATE TABLE dbo.certificates (

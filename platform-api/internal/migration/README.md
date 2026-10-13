@@ -147,6 +147,19 @@ migration with a fresh `--checkpoint-file`.
 they are emitted inline while each artifact's inline credential is externalized
 (§B.10); the `secrets` step is a verify-only integrity check.
 
+## NULL vs empty string
+
+A v2 column that is nullable in the schema is not necessarily nullable to v2's code: the
+`description` of artifacts (`rest_apis`, `llm_providers`, `llm_proxies`, `mcp_proxies`,
+`llm_provider_templates`, `websub_apis`, `webbroker_apis`), `gateways`, `projects`,
+`applications` and `secrets` is scanned into a plain Go `string`, and `database/sql` refuses to
+scan NULL into a string — one NULL makes every read of that row fail (`GET`, list, the gateway's
+secret sync). v2's own writers store `''` there, so the client does too (`textOrEmpty`). Columns
+v2 itself leaves NULL — foreign keys such as `mcp_proxies.project_uuid` and pointer-typed fields
+such as `gateway_custom_policies.display_name`/`description`, `api_keys.issuer`,
+`deployment_status.status_reason` — keep `nullOrString`. When adding a column, check the v2
+model field type before choosing between the two.
+
 ## Reverse migration (§13)
 
 Reverse (`--direction reverse`) is **best-effort and NOT the primary rollback** —

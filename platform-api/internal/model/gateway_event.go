@@ -188,6 +188,19 @@ type AgentDeploymentEvent struct {
 	PerformedAt time.Time `json:"performedAt"`
 }
 
+// GraphQLAPIDeploymentEvent contains payload data for "graphqlapi.deployed" event
+// type. This event is sent when a GraphQL API is successfully deployed to a gateway.
+type GraphQLAPIDeploymentEvent struct {
+	// ApiId identifies the deployed GraphQL API (handle)
+	ApiId string `json:"apiId"`
+
+	// DeploymentID identifies the specific deployment artifact
+	DeploymentID string `json:"deploymentId"`
+
+	// PerformedAt is the timestamp when the deployment was initiated (concurrency token)
+	PerformedAt time.Time `json:"performedAt"`
+}
+
 // AgentUndeploymentEvent contains payload data for "agent.undeployed" event type.
 // This event is sent when an Agent proxy is undeployed from a gateway.
 type AgentUndeploymentEvent struct {
@@ -201,11 +214,31 @@ type AgentUndeploymentEvent struct {
 	PerformedAt time.Time `json:"performedAt"`
 }
 
+// GraphQLAPIUndeploymentEvent contains payload data for "graphqlapi.undeployed" event
+// type. This event is sent when a GraphQL API is undeployed from a gateway.
+type GraphQLAPIUndeploymentEvent struct {
+	// ApiId identifies the undeployed GraphQL API (handle)
+	ApiId string `json:"apiId"`
+
+	// DeploymentID identifies the specific deployment being undeployed
+	DeploymentID string `json:"deploymentId"`
+
+	// PerformedAt is the timestamp when the undeployment was initiated (concurrency token)
+	PerformedAt time.Time `json:"performedAt"`
+}
+
 // AgentDeletionEvent contains payload data for "agent.deleted" event type.
 // This event is sent when an Agent proxy is permanently deleted from the platform.
 type AgentDeletionEvent struct {
 	// ProxyId identifies the deleted Agent proxy (artifact UUID, not the public handle)
 	ProxyId string `json:"proxyId"`
+}
+
+// GraphQLAPIDeletionEvent contains payload data for "graphqlapi.deleted" event
+// type. This event is sent when a GraphQL API is permanently deleted from the platform.
+type GraphQLAPIDeletionEvent struct {
+	// ApiId identifies the deleted GraphQL API (handle)
+	ApiId string `json:"apiId"`
 }
 
 // WebSubAPIDeploymentEvent contains payload data for "websub.deployed" event type.

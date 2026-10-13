@@ -282,6 +282,92 @@ Feature: PII masking regex policy
     Then the response should be successful
     And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
+  Scenario: Root JSONPath masks PII across the whole payload and restores it in the response
+    Given I generate a unique value from "pii-mask-root-jsonpath" and store it as "apiName"
+    And I generate a unique API version from "pii-mask-root-jsonpath" and store it as "apiVersion"
+    And I generate a unique API context from "/pii-mask-root-jsonpath" and store it as "apiContext"
+    When I create API from "resources/templates/rest-api.yaml" with values:
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
+      | name                   | ${CTX:apiName}                   |
+      | spec.displayName       | ${CTX:apiName}                   |
+      | spec.version           | ${CTX:apiVersion}                |
+      | spec.context           | ${CTX:apiContext}/$version       |
+      | spec.upstream.main.url | ${CTX:captureUpstream}           |
+      | spec.operations        | [{"method":"GET","path":"/get"},{"method":"POST","path":"/root-jsonpath","policies":[{"name":"pii-masking-regex","version":"v1","params":{"customPIIEntities":[{"piiEntity":"EMAIL","piiRegex":"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\\\.[a-zA-Z]{2,}"}],"jsonPath":"$","redactPII":false}}]}] |
+    Then the resource creation response should indicate successful deployment
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 200
+
+    When I set header "Content-Type" to "application/json"
+    And I send a "POST" request to "${CTX:apiContext}/${CTX:apiVersion}/root-jsonpath" with body:
+      """
+      {
+        "user": {
+          "name": "Sam Carter",
+          "email": "sam.carter@example.com"
+        },
+        "messages": [
+          {"role": "user", "content": "Forward this to ops@example.org"}
+        ]
+      }
+      """
+    Then the response status code should be 200
+    And the response body should contain "sam.carter@example.com"
+    And the response body should contain "ops@example.org"
+    And the response body should not contain "[EMAIL_"
+
+    When I send a "GET" request to the "capture" service at "/test/captured?path=/root-jsonpath"
+    Then the response body should contain "[EMAIL_"
+    And the response body should not contain "sam.carter@example.com"
+    And the response body should not contain "ops@example.org"
+    And the response body should contain "Sam Carter"
+
+    When I delete the API "${CTX:apiName}"
+    Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
+
+  Scenario: Root JSONPath redacts PII across the whole payload permanently
+    Given I generate a unique value from "pii-redact-root-jsonpath" and store it as "apiName"
+    And I generate a unique API version from "pii-redact-root-jsonpath" and store it as "apiVersion"
+    And I generate a unique API context from "/pii-redact-root-jsonpath" and store it as "apiContext"
+    When I create API from "resources/templates/rest-api.yaml" with values:
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
+      | name                   | ${CTX:apiName}                   |
+      | spec.displayName       | ${CTX:apiName}                   |
+      | spec.version           | ${CTX:apiVersion}                |
+      | spec.context           | ${CTX:apiContext}/$version       |
+      | spec.upstream.main.url | ${CTX:captureUpstream}           |
+      | spec.operations        | [{"method":"GET","path":"/get"},{"method":"POST","path":"/redact-root-jsonpath","policies":[{"name":"pii-masking-regex","version":"v1","params":{"customPIIEntities":[{"piiEntity":"EMAIL","piiRegex":"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\\\.[a-zA-Z]{2,}"}],"jsonPath":"$","redactPII":true}}]}] |
+    Then the resource creation response should indicate successful deployment
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 200
+
+    When I set header "Content-Type" to "application/json"
+    And I send a "POST" request to "${CTX:apiContext}/${CTX:apiVersion}/redact-root-jsonpath" with body:
+      """
+      {
+        "user": {
+          "name": "Sam Carter",
+          "email": "sam.carter@example.com"
+        },
+        "messages": [
+          {"role": "user", "content": "Forward this to ops@example.org"}
+        ]
+      }
+      """
+    Then the response status code should be 200
+    And the response body should not contain "sam.carter@example.com"
+    And the response body should not contain "ops@example.org"
+    And the response body should contain "*****"
+
+    When I send a "GET" request to the "capture" service at "/test/captured?path=/redact-root-jsonpath"
+    Then the response body should contain "*****"
+    And the response body should not contain "sam.carter@example.com"
+    And the response body should not contain "ops@example.org"
+    And the response body should contain "Sam Carter"
+
+    When I delete the API "${CTX:apiName}"
+    Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
+
   Scenario: Content without PII passes through unchanged
     Given I generate a unique value from "pii-no-pii" and store it as "apiName"
     And I generate a unique API version from "pii-no-pii" and store it as "apiVersion"

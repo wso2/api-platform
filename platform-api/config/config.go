@@ -111,6 +111,8 @@ type Server struct {
 	// upload. Kept separate from PublicationContentMaxBytes — a thumbnail is a small
 	// icon, not a spec document, so it gets its own, tighter default (2 MiB) when <= 0.
 	PublicationThumbnailMaxBytes int64 `koanf:"publication_thumbnail_max_bytes"`
+	// ThumbnailMaxFetchBytes bounds a single-artifact thumbnail upload.
+	ThumbnailMaxFetchBytes int64 `koanf:"thumbnail_max_fetch_bytes"`
 	// AgentCardMaxFetchBytes bounds the body read from an upstream agent's Agent Card
 	// endpoint (internal/utils/agent_card.go). <= 0 falls back to the fetcher's built-in
 	// 1 MiB default, which is the contract's per-card ceiling — mirroring

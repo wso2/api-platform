@@ -233,6 +233,35 @@ func TestPublish_WithInvalidResponseHeaders(t *testing.T) {
 	assert.Empty(t, headers)
 }
 
+// TestPublish_HeaderSourceIndependent is the Moesif half of the "Step 4" safety
+// net (see log_test.go's TestLog_Publish_GoldenLine_HeaderSourceIndependent):
+// event.Properties[dto.PropKeyRequestHeaders/PropKeyResponseHeaders] can now
+// arrive as either an already-typed map[string]string (a correlation-store hit)
+// or a JSON string (the metadata-decode fallback path). Both must produce an
+// identical Headers payload for the same logical content.
+func TestPublish_HeaderSourceIndependent(t *testing.T) {
+	moesifString := createTestMoesifWithoutAPI()
+	eventString := createBaseEvent()
+	eventString.Properties[dto.PropKeyRequestHeaders] = `{"Content-Type":"application/json","X-Custom":"value"}`
+	eventString.Properties[dto.PropKeyResponseHeaders] = `{"Content-Type":"text/html"}`
+	moesifString.Publish(eventString)
+
+	moesifTyped := createTestMoesifWithoutAPI()
+	eventTyped := createBaseEvent()
+	eventTyped.Properties[dto.PropKeyRequestHeaders] = map[string]string{"Content-Type": "application/json", "X-Custom": "value"}
+	eventTyped.Properties[dto.PropKeyResponseHeaders] = map[string]string{"Content-Type": "text/html"}
+	moesifTyped.Publish(eventTyped)
+
+	require.Len(t, moesifString.events, 1)
+	require.Len(t, moesifTyped.events, 1)
+	assert.Equal(t, moesifString.events[0].Request.Headers, moesifTyped.events[0].Request.Headers)
+	assert.Equal(t, moesifString.events[0].Response.Headers, moesifTyped.events[0].Response.Headers)
+
+	headers := moesifTyped.events[0].Request.Headers.(map[string]interface{})
+	assert.Equal(t, "application/json", headers["Content-Type"])
+	assert.Equal(t, "value", headers["X-Custom"])
+}
+
 func TestPublish_NoHeadersConfigured(t *testing.T) {
 	moesif := createTestMoesifWithoutAPI()
 
@@ -861,4 +890,52 @@ func TestMoesif_CloseHonoursShutdownDeadline(t *testing.T) {
 	// The error is remembered, so a second Close reports the same outcome rather
 	// than a misleading nil.
 	assert.Equal(t, err, m.Close(context.Background()))
+}
+
+// Moesif must carry the failure classification too. Same gap as the traffic log: this
+// publisher projects dto.Event into Moesif's own EventModel rather than serialising it, so
+// Event.Error reached it and went nowhere — every 4xx/5xx arrived in Moesif with a status
+// and no cause.
+func TestPublish_CarriesTheFailureClassification(t *testing.T) {
+	moesif := createTestMoesifWithoutAPI()
+
+	event := createBaseEvent()
+	event.ErrorType = "AUTH"
+	event.Error = &dto.Error{
+		ErrorCode:    900902,
+		ErrorMessage: dto.AuthenticationFailure,
+		Type:         "authentication",
+		Summary:      "Valid credentials required",
+		Policy:       "jwt-auth",
+		Source:       "gateway",
+	}
+
+	moesif.Publish(event)
+
+	require.Len(t, moesif.events, 1)
+	metadata, ok := moesif.events[0].Metadata.(map[string]interface{})
+	require.True(t, ok, "expected a metadata map, got %T", moesif.events[0].Metadata)
+
+	assert.Equal(t, "AUTH", metadata["errorType"], "the category stays a flat key")
+
+	// Nested under one key, following the aiMetadata/mcpAnalytics precedent, rather than
+	// flattened into a dozen error_* siblings.
+	errObj, ok := metadata["error"].(*dto.Error)
+	require.True(t, ok, "expected the error object, got %T", metadata["error"])
+	assert.Equal(t, 900902, errObj.ErrorCode)
+	assert.Equal(t, "jwt-auth", errObj.Policy)
+	assert.Equal(t, "gateway", errObj.Source)
+}
+
+// A successful request must not gain an error key in Moesif metadata either.
+func TestPublish_SuccessCarriesNoError(t *testing.T) {
+	moesif := createTestMoesifWithoutAPI()
+
+	moesif.Publish(createBaseEvent())
+
+	require.Len(t, moesif.events, 1)
+	metadata, ok := moesif.events[0].Metadata.(map[string]interface{})
+	require.True(t, ok)
+	assert.NotContains(t, metadata, "error")
+	assert.NotContains(t, metadata, "errorType")
 }

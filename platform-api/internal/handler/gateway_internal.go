@@ -139,6 +139,32 @@ func (h *GatewayInternalAPIHandler) authenticateRequest(w http.ResponseWriter, r
 	return gateway.OrganizationID, gateway.ID, true
 }
 
+// writeArtifactFetchFailure answers a single-artifact fetch that failed for a
+// reason every kind shares, once the handler has ruled out its own not-found
+// cases. A deployment whose secret platform-api could not inline for this
+// gateway is refused with 422 and a description the gateway's log will carry
+// (the released controllers log the response body); the service has already
+// marked that deployment FAILED. Anything else is a 500, logged here because
+// the cause never reaches the gateway.
+func (h *GatewayInternalAPIHandler) writeArtifactFetchFailure(w http.ResponseWriter, r *http.Request, kind, artifactID, orgID, gatewayID string, err error) {
+	clientIP := r.RemoteAddr
+	if i := strings.LastIndex(clientIP, ":"); i != -1 {
+		clientIP = clientIP[:i]
+	}
+	if apperror.DeploymentSecretResolutionFailed.Is(err) {
+		h.slogger.Warn("Refused deployment fetch: secret could not be resolved for gateway",
+			"clientIP", clientIP, "kind", kind, "artifactID", artifactID, "orgID", orgID, "gatewayID", gatewayID, "error", err)
+		httputil.WriteJSON(w, http.StatusUnprocessableEntity, dto.NewInternalErrorResponse(422, "Unprocessable Entity",
+			"A secret referenced by this deployment could not be resolved for this gateway. "+
+				"The deployment is marked FAILED with reason SECRET_RESOLUTION_FAILED; restore the secret and redeploy."))
+		return
+	}
+	h.slogger.Error("Failed to get "+kind,
+		"clientIP", clientIP, "kind", kind, "artifactID", artifactID, "orgID", orgID, "gatewayID", gatewayID, "error", err)
+	httputil.WriteJSON(w, http.StatusInternalServerError, dto.NewInternalErrorResponse(500, "Internal Server Error",
+		"Failed to get "+kind))
+}
+
 // GetAPI handles GET /api/internal/v1/apis/:apiId
 func (h *GatewayInternalAPIHandler) GetAPI(w http.ResponseWriter, r *http.Request) {
 	orgID, gatewayID, ok := h.authenticateRequest(w, r)
@@ -165,8 +191,7 @@ func (h *GatewayInternalAPIHandler) GetAPI(w http.ResponseWriter, r *http.Reques
 				"API not found"))
 			return
 		}
-		httputil.WriteJSON(w, http.StatusInternalServerError, dto.NewInternalErrorResponse(500, "Internal Server Error",
-			"Failed to get API"))
+		h.writeArtifactFetchFailure(w, r, "API", apiID, orgID, gatewayID, err)
 		return
 	}
 
@@ -256,8 +281,7 @@ func (h *GatewayInternalAPIHandler) GetLLMProvider(w http.ResponseWriter, r *htt
 				"LLM provider not found"))
 			return
 		}
-		httputil.WriteJSON(w, http.StatusInternalServerError, dto.NewInternalErrorResponse(500, "Internal Server Error",
-			"Failed to get LLM provider"))
+		h.writeArtifactFetchFailure(w, r, "LLM provider", providerID, orgID, gatewayID, err)
 		return
 	}
 
@@ -306,8 +330,7 @@ func (h *GatewayInternalAPIHandler) GetLLMProxy(w http.ResponseWriter, r *http.R
 				"LLM proxy not found"))
 			return
 		}
-		httputil.WriteJSON(w, http.StatusInternalServerError, dto.NewInternalErrorResponse(500, "Internal Server Error",
-			"Failed to get LLM proxy"))
+		h.writeArtifactFetchFailure(w, r, "LLM proxy", proxyID, orgID, gatewayID, err)
 		return
 	}
 
@@ -556,9 +579,7 @@ func (h *GatewayInternalAPIHandler) GetMCPProxy(w http.ResponseWriter, r *http.R
 				"MCP proxy not found"))
 			return
 		}
-		h.slogger.Error("Failed to get MCP proxy", "clientIP", clientIP, "proxyID", proxyID, "orgID", orgID, "gatewayID", gatewayID, "error", err)
-		httputil.WriteJSON(w, http.StatusInternalServerError, dto.NewInternalErrorResponse(500, "Internal Server Error",
-			"Failed to get MCP proxy"))
+		h.writeArtifactFetchFailure(w, r, "MCP proxy", proxyID, orgID, gatewayID, err)
 		return
 	}
 
@@ -618,9 +639,7 @@ func (h *GatewayInternalAPIHandler) GetAgent(w http.ResponseWriter, r *http.Requ
 				"Agent not found"))
 			return
 		}
-		h.slogger.Error("Failed to get Agent proxy", "clientIP", clientIP, "agentID", agentID, "orgID", orgID, "gatewayID", gatewayID, "error", err)
-		httputil.WriteJSON(w, http.StatusInternalServerError, dto.NewInternalErrorResponse(500, "Internal Server Error",
-			"Failed to get Agent"))
+		h.writeArtifactFetchFailure(w, r, "Agent", agentID, orgID, gatewayID, err)
 		return
 	}
 
@@ -636,6 +655,63 @@ func (h *GatewayInternalAPIHandler) GetAgent(w http.ResponseWriter, r *http.Requ
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"agent-%s.zip\"", agentID))
 	w.Header().Set("Content-Length", fmt.Sprintf("%d", len(zipData)))
 
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(zipData)
+}
+
+// GetGraphQLAPI handles GET /api/internal/v1/graphql-apis/:apiId
+func (h *GatewayInternalAPIHandler) GetGraphQLAPI(w http.ResponseWriter, r *http.Request) {
+	orgID, gatewayID, ok := h.authenticateRequest(w, r)
+	if !ok {
+		return
+	}
+
+	apiID := r.PathValue("apiId")
+	if apiID == "" {
+		httputil.WriteJSON(w, http.StatusBadRequest, dto.NewInternalErrorResponse(400, "Bad Request",
+			"API ID is required"))
+		return
+	}
+
+	api, err := h.gatewayInternalService.GetActiveGraphQLAPIDeploymentByGateway(apiID, orgID, gatewayID)
+	if err != nil {
+		clientIP := r.RemoteAddr
+		if i := strings.LastIndex(clientIP, ":"); i != -1 {
+			clientIP = clientIP[:i]
+		}
+		if apperror.DeploymentNotActive.Is(err) {
+			h.slogger.Error("No active deployment found for GraphQL API", "clientIP", clientIP, "apiID", apiID, "orgID", orgID, "gatewayID", gatewayID, "error", err)
+			httputil.WriteJSON(w, http.StatusNotFound, dto.NewInternalErrorResponse(404, "Not Found",
+				"No active deployment found for this GraphQL API on this gateway"))
+			return
+		}
+		if apperror.GraphQLAPINotFound.Is(err) {
+			h.slogger.Error("GraphQL API not found", "clientIP", clientIP, "apiID", apiID, "orgID", orgID, "gatewayID", gatewayID, "error", err)
+			httputil.WriteJSON(w, http.StatusNotFound, dto.NewInternalErrorResponse(404, "Not Found",
+				"GraphQL API not found"))
+			return
+		}
+		h.slogger.Error("Failed to get GraphQL API", "clientIP", clientIP, "apiID", apiID, "orgID", orgID, "gatewayID", gatewayID, "error", err)
+		httputil.WriteJSON(w, http.StatusInternalServerError, dto.NewInternalErrorResponse(500, "Internal Server Error",
+			"Failed to get GraphQL API"))
+		return
+	}
+
+	// Create ZIP file from GraphQL API YAML file
+	zipData, err := utils.CreateGraphQLAPIYamlZip(api)
+	if err != nil {
+		h.slogger.Error("Failed to create ZIP file", "apiID", apiID, "error", err)
+		httputil.WriteJSON(w, http.StatusInternalServerError, dto.NewInternalErrorResponse(500, "Internal Server Error",
+			"Failed to create GraphQL API package"))
+		return
+	}
+
+	// Set headers for ZIP file download
+	w.Header().Set("Content-Type", "application/zip")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"graphql-api-%s.zip\"", apiID))
+	w.Header().Set("Content-Length", fmt.Sprintf("%d", len(zipData)))
+
+	// Return ZIP file
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(zipData)
 }
@@ -672,9 +748,7 @@ func (h *GatewayInternalAPIHandler) GetWebSubAPI(w http.ResponseWriter, r *http.
 				"WebSub API not found"))
 			return
 		}
-		h.slogger.Error("Failed to get WebSub API", "clientIP", clientIP, "apiID", apiID, "orgID", orgID, "gatewayID", gatewayID, "error", err)
-		httputil.WriteJSON(w, http.StatusInternalServerError, dto.NewInternalErrorResponse(500, "Internal Server Error",
-			"Failed to get WebSub API"))
+		h.writeArtifactFetchFailure(w, r, "WebSub API", apiID, orgID, gatewayID, err)
 		return
 	}
 
@@ -729,9 +803,7 @@ func (h *GatewayInternalAPIHandler) GetWebBrokerAPI(w http.ResponseWriter, r *ht
 				"WebBroker API not found"))
 			return
 		}
-		h.slogger.Error("Failed to get WebBroker API", "clientIP", clientIP, "apiID", apiID, "orgID", orgID, "gatewayID", gatewayID, "error", err)
-		httputil.WriteJSON(w, http.StatusInternalServerError, dto.NewInternalErrorResponse(500, "Internal Server Error",
-			"Failed to get WebBroker API"))
+		h.writeArtifactFetchFailure(w, r, "WebBroker API", apiID, orgID, gatewayID, err)
 		return
 	}
 
@@ -885,6 +957,22 @@ func (h *GatewayInternalAPIHandler) GetAgentAPIKeys(w http.ResponseWriter, r *ht
 	keys, err := h.gatewayInternalService.GetAPIKeysByKind(gatewayID, orgID, constants.AgentProxy, issuer)
 	if err != nil {
 		h.slogger.Error("Failed to get API keys for Agent proxies", "gatewayID", gatewayID, "error", err)
+		httputil.WriteJSON(w, http.StatusInternalServerError, dto.NewInternalErrorResponse(500, "Internal Server Error", "Failed to get API keys"))
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, keys)
+}
+
+// GetGraphQLAPIAPIKeys handles GET /api/internal/v1/graphql-apis/api-keys
+func (h *GatewayInternalAPIHandler) GetGraphQLAPIAPIKeys(w http.ResponseWriter, r *http.Request) {
+	orgID, gatewayID, ok := h.authenticateRequest(w, r)
+	if !ok {
+		return
+	}
+	issuer := r.URL.Query().Get("issuer")
+	keys, err := h.gatewayInternalService.GetAPIKeysByKind(gatewayID, orgID, constants.GraphQLApi, issuer)
+	if err != nil {
+		h.slogger.Error("Failed to get API keys for GraphQL APIs", "gatewayID", gatewayID, "error", err)
 		httputil.WriteJSON(w, http.StatusInternalServerError, dto.NewInternalErrorResponse(500, "Internal Server Error", "Failed to get API keys"))
 		return
 	}
@@ -1102,6 +1190,8 @@ func (h *GatewayInternalAPIHandler) RegisterRoutes(mux router.Router) {
 	mux.HandleFunc("GET /api/internal/v1/mcp-proxies/{proxyId}", h.GetMCPProxy)
 	mux.HandleFunc("GET /api/internal/v1/agents/api-keys", h.GetAgentAPIKeys)
 	mux.HandleFunc("GET /api/internal/v1/agents/{agentId}", h.GetAgent)
+	mux.HandleFunc("GET /api/internal/v1/graphql-apis/api-keys", h.GetGraphQLAPIAPIKeys)
+	mux.HandleFunc("GET /api/internal/v1/graphql-apis/{apiId}", h.GetGraphQLAPI)
 	mux.HandleFunc("GET /api/internal/v1/websub-apis/api-keys", h.GetWebSubAPIAPIKeys)
 	mux.HandleFunc("GET /api/internal/v1/websub-apis/{apiId}", h.GetWebSubAPI)
 	mux.HandleFunc("GET /api/internal/v1/websub-apis/{apiId}/secrets", h.GetWebSubAPIHmacSecrets)

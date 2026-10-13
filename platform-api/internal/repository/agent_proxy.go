@@ -55,14 +55,15 @@ var ErrAgentProxyProtocolImmutable = errors.New("agent proxy protocol is immutab
 // agree.
 var ErrAgentProxyProjectOrgMismatch = errors.New("project does not belong to the organization")
 
-// AgentProxyListOptions carries the org-scoped list and count inputs. Protocol is
-// optional; empty means "every protocol". Both the list and the count query build
-// their predicate from the same helper so a filtered page can never disagree with
-// the total it is paginated against.
+// AgentProxyListOptions carries the org-scoped list and count inputs. Protocol and
+// ProjectUUID are optional; empty means "every protocol" / "every project". Both
+// the list and the count query build their predicate from the same helper so a
+// filtered page can never disagree with the total it is paginated against.
 type AgentProxyListOptions struct {
-	Limit    int
-	Offset   int
-	Protocol model.AgentProxyProtocol
+	Limit       int
+	Offset      int
+	Protocol    model.AgentProxyProtocol
+	ProjectUUID string
 }
 
 // AgentProxyRepo handles database operations for Agent proxies.
@@ -181,9 +182,9 @@ func (r *AgentProxyRepo) GetByUUID(uuid, orgUUID string) (*model.AgentProxy, err
 }
 
 // List retrieves the Agent proxies of an organization, optionally restricted to
-// one protocol.
+// one protocol and/or one project.
 func (r *AgentProxyRepo) List(orgUUID string, opts AgentProxyListOptions) ([]*model.AgentProxy, error) {
-	filter, filterArgs := agentProxyProtocolPredicate(opts.Protocol)
+	filter, filterArgs := agentProxyListPredicate(opts)
 	pageClause, pageArgs := r.db.PaginationClause(opts.Limit, opts.Offset)
 	query := `SELECT` + agentProxyColumns + `
 		FROM agent_proxies
@@ -199,7 +200,7 @@ func (r *AgentProxyRepo) List(orgUUID string, opts AgentProxyListOptions) ([]*mo
 // Count returns the number of Agent proxies in an organization under the same
 // filter List applies.
 func (r *AgentProxyRepo) Count(orgUUID string, opts AgentProxyListOptions) (int, error) {
-	filter, filterArgs := agentProxyProtocolPredicate(opts.Protocol)
+	filter, filterArgs := agentProxyListPredicate(opts)
 	query := `SELECT COUNT(*) FROM agent_proxies WHERE organization_uuid = ?` + filter
 
 	var count int
@@ -395,13 +396,20 @@ func (r *AgentProxyRepo) queryAgentProxies(query string, args ...any) ([]*model.
 	return res, rows.Err()
 }
 
-// agentProxyProtocolPredicate builds the optional protocol filter shared by the
-// list and count queries, as a bound parameter rather than interpolated text.
-func agentProxyProtocolPredicate(protocol model.AgentProxyProtocol) (string, []any) {
-	if protocol == "" {
-		return "", nil
+// agentProxyListPredicate builds the optional protocol and project filters shared
+// by the list and count queries, as bound parameters rather than interpolated text.
+func agentProxyListPredicate(opts AgentProxyListOptions) (string, []any) {
+	var filter string
+	var args []any
+	if opts.Protocol != "" {
+		filter += ` AND protocol = ?`
+		args = append(args, string(opts.Protocol))
 	}
-	return ` AND protocol = ?`, []any{string(protocol)}
+	if opts.ProjectUUID != "" {
+		filter += ` AND project_uuid = ?`
+		args = append(args, opts.ProjectUUID)
+	}
+	return filter, args
 }
 
 // scanAgentProxyRow scans a single-row query, translating "no rows" into (nil, nil).

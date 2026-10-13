@@ -23,14 +23,17 @@ import (
 	"context"
 	_ "embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
+	"net"
 	"net/http"
 	"net/url"
 	"reflect"
 	"sort"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/cucumber/godog"
@@ -69,6 +72,43 @@ func ManagementBasePathForVersion(version string) string {
 		return managementBasePathV11
 	}
 	return ManagementBasePath
+}
+
+// AwaitDeletionApplied waits, on a Gateway release with the xDS snapshot race, until the
+// controller has applied the deletion of handle, so the next change reaches it in a later poll.
+//
+// Releases before 1.2.0 apply each change from an event the controller polls for every three
+// seconds, and rebuild the route snapshot on a goroutine per event, without a lock (fixed in
+// 1.2.0 by "fix(xds): add mutex to SnapshotManager.UpdateSnapshot"). A deletion and a creation
+// applied in the same poll race, and the deletion's rebuild can publish last, leaving the new
+// resource without a route. The controller's config dump drops the handle when its poll applies
+// the deletion, so once the handle is gone a later creation is applied in a later poll. A kind
+// the dump does not list never rebuilds the route snapshot, so it passes at once. Later releases
+// are not polled.
+func AwaitDeletionApplied(
+	ctx context.Context, client *httpx.Client, adminURL, version, authorization, handle string,
+) error {
+	if !usesLegacyGatewayContract(version) {
+		return nil
+	}
+	if client == nil || strings.TrimSpace(adminURL) == "" || strings.TrimSpace(handle) == "" {
+		return errors.New("awaiting a deletion: client, admin URL and handle are required")
+	}
+	url := adminURL + adminBasePathForVersion(version) + "/config_dump"
+	quoted := `"` + handle + `"`
+	accept := func(r *httpx.Response) bool {
+		return r != nil && r.Succeeded() && !strings.Contains(r.Text(), quoted)
+	}
+	last, err := retry.Until(ctx,
+		retry.Options{Interval: 100 * time.Millisecond},
+		func(ctx context.Context) (*httpx.Response, error) {
+			return client.Do(ctx, httpx.Request{
+				Method: http.MethodGet, URL: url, Headers: map[string]string{"Authorization": authorization},
+			}, 0, 0)
+		},
+		accept,
+	)
+	return awaited(last, err, accept, fmt.Sprintf("the config dump still lists the deleted %q", handle))
 }
 
 func adminBasePathForVersion(version string) string {
@@ -1097,12 +1137,12 @@ func (g *Gateway) register(sc *godog.ScenarioContext) {
 		g.createResource)
 	sc.Step(`^I create API with JSON configuration:$`, g.createJSONAPI)
 	g.registerResourceTemplateSteps(sc)
-	sc.Step(`^I get the (API|LLM provider|LLM provider template|MCP proxy|LLM proxy|Agent) "([^"]*)"$`,
+	sc.Step(`^I get the (API|LLM provider|LLM provider template|MCP proxy|LLM proxy|Agent|GraphQL API) "([^"]*)"$`,
 		g.getResource)
 	sc.Step(`^I list all (LLM providers|LLM provider templates|MCP proxies|LLM proxies)$`,
 		g.listResources)
 	sc.Step(`^I update the (API|LLM provider|LLM provider template|MCP proxy|LLM proxy|Agent) "([^"]*)" with configuration:$`, g.updateResource)
-	sc.Step(`^I delete the (API|LLM provider|LLM provider template|MCP proxy|LLM proxy|Agent) "([^"]*)"$`, g.deleteResource)
+	sc.Step(`^I delete the (API|LLM provider|LLM provider template|MCP proxy|LLM proxy|Agent|GraphQL API) "([^"]*)"$`, g.deleteResource)
 	sc.Step(`^I send a "([^"]*)" request to the "([^"]*)" service at "([^"]*)"$`, g.serviceRequest)
 	sc.Step(`^I send a "([^"]*)" request to the "([^"]*)" service at "([^"]*)" with body:$`, g.serviceRequestWithBody)
 	sc.Step(`^I send a "([^"]*)" request to the "([^"]*)" service at "([^"]*)" until status (\d+)$`,
@@ -1428,6 +1468,7 @@ var resourceKinds = map[string]struct{ declared, collection string }{
 	"MCP proxy":             {"Mcp", collMCPProxies},
 	"LLM proxy":             {"LlmProxy", collLLMProxies},
 	"Agent":                 {"Agent", collAgents},
+	"GraphQL API":           {"GraphQLApi", collGraphQLAPIs},
 }
 
 // kindFromDefinition returns the top-level kind a definition declares.
@@ -1773,7 +1814,72 @@ func (g *Gateway) serviceRequestWithBody(
 			headers["Content-Type"] = "application/json"
 		}
 	}
-	return g.invokeWith(ctx, method, url, headers, payload)
+	return g.invokeService(ctx, method, url, headers, payload)
+}
+
+// A shared component is one container for the whole run, attached to each block's network
+// as that block boots and detached as it ends. Docker re-programs the container's
+// networking on every attachment, and its published host ports stop forwarding for a
+// moment while that happens — so a call over 127.0.0.1 landing in that window is refused,
+// by a container that is up, answered the same port moments earlier, and answers it again
+// moments later. The block that draws the short straw is whichever one happened to call
+// while a *different* block was booting, and it fails for a reason that has nothing to do
+// with what it was testing.
+//
+// StableHostPorts already exists for this hazard, and pins the port number across
+// attachments; it cannot keep the forwarding continuously live. A few short re-dials cover
+// the rest. Deliberately not the retry package: that one waits for a value to propagate and
+// floors its deadline at a minute, where this waits only for forwarding to come back, which
+// happens at once or not at all. Anything that answers — including an error status — is the
+// component's own reply and is returned as it is, so a scenario's real failure stays a fast
+// one.
+const (
+	serviceDialAttempts = 4
+	serviceDialPause    = 400 * time.Millisecond
+)
+
+// wsaeconnrefused is Winsock's code for a refused connection. Named here rather than taken
+// from golang.org/x/sys/windows so this file builds on every platform: on a non-Windows
+// build it is simply an errno nothing produces, which is exactly what makes it safe to test
+// for everywhere.
+const wsaeconnrefused = syscall.Errno(10061)
+
+// refusedConnection reports whether a request was turned away before a connection existed.
+//
+// Two conditions, both required. The dial is what must have failed — a component that
+// answered has answered, however badly, and its reply is never re-sent. And the failure
+// must be a refusal specifically: a dial that timed out is a host that is not coming back
+// within this step's patience, and retrying it three more times would spend three more
+// request timeouts to reach the same answer. Both platform spellings of "refused" count,
+// because the one Go names is a fabricated value on Windows.
+func refusedConnection(err error) bool {
+	var dialErr *net.OpError
+	if !errors.As(err, &dialErr) || dialErr.Op != "dial" {
+		return false
+	}
+	return errors.Is(err, syscall.ECONNREFUSED) || errors.Is(err, wsaeconnrefused)
+}
+
+// invokeService calls a component's own API, re-dialling through a refused connection.
+func (g *Gateway) invokeService(
+	ctx context.Context, method, url string, headers map[string]string, payload []byte,
+) error {
+	var err error
+	for attempt := range serviceDialAttempts {
+		err = g.invokeWith(ctx, method, url, headers, payload)
+		if err == nil || !refusedConnection(err) {
+			return err
+		}
+		if attempt == serviceDialAttempts-1 {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(serviceDialPause):
+		}
+	}
+	return err
 }
 
 // awaitMappedTestbenchService verifies the host-side mapped port used by a direct
@@ -2323,6 +2429,7 @@ const (
 	collMCPProxies   = "/mcp-proxies"
 	collLLMProxies   = "/llm-proxies"
 	collAgents       = "/agents"
+	collGraphQLAPIs  = "/graphql-apis"
 )
 
 // mutateResource creates, replaces or removes a controller resource and waits for the change
@@ -2487,6 +2594,8 @@ func cleanupKindForCollection(collection string) (cleanup.Kind, bool) {
 		return cleanup.KindMCPProxy, true
 	case collAgents:
 		return cleanup.KindAgent, true
+	case collGraphQLAPIs:
+		return cleanup.KindGraphQLAPI, true
 	default:
 		return cleanup.Kind{}, false
 	}

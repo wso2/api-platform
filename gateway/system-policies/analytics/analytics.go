@@ -67,6 +67,33 @@ const (
 	// traffic-logging publisher's global "$ctx:metadata['<key>']" property.
 	GenericMetadataKey = "x-wso2-metadata"
 
+	// Fault metadata keys, written ONLY by OnFault — the collector runs as the last entry
+	// in every API's fault chain, which is the first point at which the gateway has
+	// resolved what actually failed. Mirrored by the policy-engine's prepareAnalyticEvent
+	// (internal/analytics/analytics.go), which maps the code and class onto the event's
+	// own error object and leaves the rest as properties.
+	//
+	// FaultDetails.Description and GuardrailDetails.Assessments are deliberately absent
+	// from this set. For a guardrail rejection those hold the content the guardrail existed
+	// to stop — the reason every renderer withholds Description from the response body —
+	// and an analytics event is forwarded to external publishers (Moesif, Application
+	// Insights, stdout traffic logs). Sending the blocked content to a third party as a
+	// side effect of blocking it would defeat the guardrail. The guardrail's identity,
+	// action and reason carry the operationally useful part without the payload.
+	FaultCodeMetadataKey            = "x-wso2-fault-code"
+	FaultTypeMetadataKey            = "x-wso2-fault-type"
+	FaultDirectionMetadataKey       = "x-wso2-fault-direction"
+	FaultMessageMetadataKey         = "x-wso2-fault-message"
+	FaultPolicyMetadataKey          = "x-wso2-fault-policy"
+	FaultPolicyPhaseMetadataKey     = "x-wso2-fault-policy-phase"
+	FaultSourceMetadataKey          = "x-wso2-fault-source"
+	FaultStatusMetadataKey          = "x-wso2-fault-status"
+	FaultOriginalStatusMetadataKey  = "x-wso2-fault-original-status"
+	FaultGuardrailMetadataKey       = "x-wso2-fault-guardrail"
+	FaultGuardrailActionMetadataKey = "x-wso2-fault-guardrail-action"
+	FaultGuardrailReasonMetadataKey = "x-wso2-fault-guardrail-reason"
+	FaultJSONRPCCodeMetadataKey     = "x-wso2-fault-jsonrpc-code"
+
 	// Lazy resource type for LLM provider templates
 	lazyResourceTypeLLMProviderTemplate = "LlmProviderTemplate"
 	// Lazy resource type for provider-to-template mapping
@@ -196,7 +223,16 @@ const (
 )
 
 // AnalyticsPolicy implements the default analytics data collection process.
-type AnalyticsPolicy struct{}
+// AnalyticsPolicy's body-processing modes are computed once at construction (see
+// computeBodyModes) rather than being a fixed constant, so a bodyless request only pays for
+// request/response body buffering when something actually needs the body -- see Mode().
+type AnalyticsPolicy struct {
+	// requestBodyMode/responseBodyMode are returned verbatim by Mode(). Set once in GetPolicy
+	// and never mutated afterward, so concurrent requests sharing this instance need no
+	// synchronization to read them.
+	requestBodyMode  policy.BodyProcessingMode
+	responseBodyMode policy.BodyProcessingMode
+}
 
 type McpRequestAnalyticsProperties struct {
 	JsonRpcMethod string `json:"jsonRpcMethod,omitempty"`
@@ -341,13 +377,21 @@ type LLMProviderAnalyticsInfo struct {
 	ResponseModel       *string // Model name from response
 }
 
-var ins = &AnalyticsPolicy{}
-
+// GetPolicy builds a fresh AnalyticsPolicy instance per policy-chain entry, capturing the
+// merged params (request_body/response_body/api_kind -- see computeBodyModes) into its body
+// modes. This intentionally does NOT return a shared package-level singleton: Mode() must be
+// config-aware per route/instance, and the registry's GetInstance contract explicitly allows a
+// factory to return either a new or a cached instance (see registry.go doc comment). A fresh
+// struct is cheap -- this only runs at policy-chain build time (config load / xDS update), never
+// per request -- and every other method already reads its parameters fresh from the params
+// argument passed at each request-time call, never from receiver state, so a per-chain instance
+// is safe with no synchronization.
 func GetPolicy(
 	metadata policy.PolicyMetadata,
 	params map[string]interface{},
 ) (policy.Policy, error) {
-	return ins, nil
+	reqMode, respMode := computeBodyModes(params)
+	return &AnalyticsPolicy{requestBodyMode: reqMode, responseBodyMode: respMode}, nil
 }
 
 // GetPolicyV2 is an alias for GetPolicy, provided for compatibility with the
@@ -359,16 +403,84 @@ func GetPolicyV2(
 	return GetPolicy(metadata, params)
 }
 
-// Mode returns the processing mode for this policy.
-// ResponseBodyMode is BodyModeStream so the kernel keeps streaming enabled when
+// computeBodyModes derives the request/response body processing modes from the params injected
+// at policy-chain build time: system_policies.go (gateway-controller) stamps request_body/
+// response_body from cfg.Collector whenever this policy is enabled, and transform/restapi.go
+// stamps api_kind from the StoredConfig's Kind field via the same additionalProps/"_shared"
+// mechanism (see utils.InjectSystemPolicies) -- both unconditionally, so both are present on
+// every request that goes through the real controller injection path.
+//
+// Safety rules, in order:
+//  1. MCP (mcp_session_id, JSON-RPC method/capability -- OnRequestBody/OnResponseBody) and LLM
+//     Provider/Proxy (token usage -- OnResponseBody) analytics are extracted from the body
+//     UNCONDITIONALLY, regardless of request_body/response_body, and so is Agent analytics
+//     (OnRequestBody/OnResponseBody). Those kinds therefore always need the body
+//     buffered/streamed -- skipping it would silently drop that analytics.
+//  2. When request_body/response_body/api_kind are absent (a caller that doesn't go through the
+//     standard controller injection path -- e.g. a policy constructed directly in a test) this
+//     falls back to needing the body, matching today's unconditional Buffer/Stream behavior,
+//     rather than risk silently dropping body-derived analytics for a route Mode() can't
+//     identify. Slower-but-correct beats faster-but-wrong.
+//  3. Otherwise (RestApi, WebSubApi, or any other kind not listed in rule 1) the body is
+//     genuinely optional: buffered/streamed only when request_body/response_body is explicitly
+//     true.
+func computeBodyModes(params map[string]interface{}) (requestMode, responseMode policy.BodyProcessingMode) {
+	_, hasReqBody := params["request_body"]
+	_, hasRespBody := params["response_body"]
+	if !hasReqBody || !hasRespBody || needsBodyRegardlessOfCaptureConfig(params) {
+		return policy.BodyModeBuffer, policy.BodyModeStream
+	}
+
+	sendReqBody, sendRespBody := getPayloadFlags(params)
+	requestMode = policy.BodyModeSkip
+	if sendReqBody {
+		requestMode = policy.BodyModeBuffer
+	}
+	responseMode = policy.BodyModeSkip
+	if sendRespBody {
+		responseMode = policy.BodyModeStream
+	}
+	return requestMode, responseMode
+}
+
+// needsBodyRegardlessOfCaptureConfig reports whether this policy instance's route needs the
+// body irrespective of the request_body/response_body capture flags -- true for MCP and LLM
+// Provider/Proxy routes (see computeBodyModes), and true (fail-safe) when api_kind is missing or
+// unrecognized.
+func needsBodyRegardlessOfCaptureConfig(params map[string]interface{}) bool {
+	kind, ok := params["api_kind"].(string)
+	if !ok || kind == "" {
+		return true
+	}
+	switch kind {
+	case "Mcp", "LlmProvider", "LlmProxy", "Agent":
+		return true
+	default:
+		return false
+	}
+}
+
+// Mode returns the processing mode for this policy instance, computed once at construction (see
+// computeBodyModes). A zero-value AnalyticsPolicy (e.g. constructed directly, bypassing
+// GetPolicy -- as some existing tests do for the header-phase methods) falls back to today's
+// unconditional Buffer/Stream rather than an invalid empty BodyProcessingMode.
+// ResponseBodyMode is BodyModeStream (never Buffer) so the kernel keeps streaming enabled when
 // all other policies in the chain also support streaming. The buffered fallback
 // (OnResponseBody) is still called when the chain cannot stream.
 func (a *AnalyticsPolicy) Mode() policy.ProcessingMode {
+	reqMode := a.requestBodyMode
+	if reqMode == "" {
+		reqMode = policy.BodyModeBuffer
+	}
+	respMode := a.responseBodyMode
+	if respMode == "" {
+		respMode = policy.BodyModeStream
+	}
 	return policy.ProcessingMode{
 		RequestHeaderMode:  policy.HeaderModeProcess,
-		RequestBodyMode:    policy.BodyModeBuffer,
+		RequestBodyMode:    reqMode,
 		ResponseHeaderMode: policy.HeaderModeProcess,
-		ResponseBodyMode:   policy.BodyModeStream,
+		ResponseBodyMode:   respMode,
 	}
 }
 
@@ -428,7 +540,7 @@ func (a *AnalyticsPolicy) OnRequestHeaders(_ context.Context, reqCtx *policy.Req
 	// Capture all request headers when enabled, so they flow into analytics events
 	// (and the stdout/log publisher) without attaching a per-API header policy.
 	if sendReqHeaders, _ := getHeaderFlags(params); sendReqHeaders && reqCtx.Headers != nil {
-		if headers := serializeHeaders(reqCtx.Headers); headers != "" {
+		if headers := flattenHeaders(reqCtx.Headers); len(headers) > 0 {
 			analyticsMetadata["request_headers"] = headers
 		}
 	}
@@ -601,7 +713,7 @@ func (a *AnalyticsPolicy) OnResponseHeaders(_ context.Context, respCtx *policy.R
 
 	// Capture all response headers when enabled.
 	if _, sendRespHeaders := getHeaderFlags(params); sendRespHeaders && respCtx.ResponseHeaders != nil {
-		if headers := serializeHeaders(respCtx.ResponseHeaders); headers != "" {
+		if headers := flattenHeaders(respCtx.ResponseHeaders); len(headers) > 0 {
 			analyticsMetadata["response_headers"] = headers
 		}
 	}
@@ -942,6 +1054,146 @@ func (a *AnalyticsPolicy) OnResponseBodyChunk(_ context.Context, ctx *policy.Res
 	}
 	return policy.ForwardResponseChunk{AnalyticsMetadata: analyticsMetadata}
 }
+
+// populateFaultAnalyticsMetadata copies the resolved failure onto the analytics metadata.
+//
+// Every value here is one a status code cannot supply. The code and class are what the
+// own classifier files the event under; the failing policy and phase are what turn "446
+// happened" into "word-count-guardrail rejected the response body"; and the source
+// distinguishes a backend's own 503 from the router's, which are the same number and mean
+// opposite things.
+//
+// Description and Guardrail.Assessments are deliberately not copied — see the doc on the
+// Fault*MetadataKey block for why.
+func populateFaultAnalyticsMetadata(analyticsMetadata map[string]any, faultCtx *policy.FaultContext) {
+	analyticsMetadata[FaultStatusMetadataKey] = faultCtx.ResponseStatus
+	// Only meaningful when a policy changed it; equal values would just assert twice.
+	if faultCtx.OriginalStatus != 0 && faultCtx.OriginalStatus != faultCtx.ResponseStatus {
+		analyticsMetadata[FaultOriginalStatusMetadataKey] = faultCtx.OriginalStatus
+	}
+	// Attribution is absent for an infrastructure failure, and absent is the correct answer
+	// there rather than a placeholder: empty means "no policy caused this", never "unknown".
+	if faultCtx.Policy != "" {
+		analyticsMetadata[FaultPolicyMetadataKey] = faultCtx.Policy
+	}
+	if faultCtx.PolicyPhase != "" {
+		analyticsMetadata[FaultPolicyPhaseMetadataKey] = faultCtx.PolicyPhase
+	}
+	if faultCtx.Source != "" {
+		analyticsMetadata[FaultSourceMetadataKey] = faultCtx.Source
+	}
+
+	f := faultCtx.Fault
+	if f == nil {
+		return
+	}
+	if f.Code != "" {
+		analyticsMetadata[FaultCodeMetadataKey] = f.Code
+	}
+	if f.Type != "" {
+		analyticsMetadata[FaultTypeMetadataKey] = f.Type
+	}
+	if f.Direction != "" {
+		analyticsMetadata[FaultDirectionMetadataKey] = f.Direction
+	}
+	if f.Message != "" {
+		analyticsMetadata[FaultMessageMetadataKey] = f.Message
+	}
+	if g := f.Guardrail; g != nil {
+		if g.InterveningGuardrail != "" {
+			analyticsMetadata[FaultGuardrailMetadataKey] = g.InterveningGuardrail
+		}
+		if g.Action != "" {
+			analyticsMetadata[FaultGuardrailActionMetadataKey] = g.Action
+		}
+		if g.ActionReason != "" {
+			analyticsMetadata[FaultGuardrailReasonMetadataKey] = g.ActionReason
+		}
+	}
+	// Stored as the int, not the *int: the engine converts this metadata through structpb,
+	// which rejects a pointer, so the code would arrive as a string the classifier never
+	// reads. A nil Code means "derive from the status", which has nothing to record.
+	if f.JSONRPC != nil && f.JSONRPC.Code != nil {
+		analyticsMetadata[FaultJSONRPCCodeMetadataKey] = *f.JSONRPC.Code
+	}
+}
+
+// OnFault implements policy.FaultPolicy, which is what lets the controller append this
+// collector as the LAST entry of every API's fault chain (utils.FaultSystemPolicies).
+//
+// An event is emitted for every request regardless; what a response-phase hook cannot supply
+// is WHY it failed — a status cannot distinguish a backend's 503 from the router's, or say
+// which guardrail rejected a 446. The fault flow resolves that, and this is where it is read.
+//
+// Last, because the operator's own fault entries may change the status, body and description
+// first; recording before them would publish a failure that differs from the one delivered.
+//
+// It records and changes nothing: the returned FaultResponse carries analytics metadata only,
+// every read tolerates a nil, and nil is returned when there is nothing to add.
+func (a *AnalyticsPolicy) OnFault(
+	ctx context.Context,
+	faultCtx *policy.FaultContext,
+	params map[string]interface{},
+) *policy.FaultResponse {
+	slog.Debug("Analytics system policy: OnFault called")
+	if faultCtx == nil {
+		return nil
+	}
+
+	analyticsMetadata := make(map[string]any)
+
+	// The response-side set is collected by DELEGATING to OnResponseHeaders rather than by
+	// repeating what it does.
+	//
+	// Needed because for an upstream or router failure this policy is excluded from the
+	// response chain so it can run here instead (see kernel.responsePolicies) — without it
+	// the auth context and metadata bag would be missing from every backend-error event.
+	//
+	// Delegation rather than a shared helper keeps this file purely additive: the response
+	// hook that runs on every single successful response is not touched, so nothing on the
+	// hot path can regress from a change made for the failure path. It also cannot drift —
+	// there is one implementation, not two that must be kept in step.
+	//
+	// The synthesized context is COMPLETE, not a stub: every field of ResponseHeaderContext
+	// exists on FaultContext and is copied below, so OnResponseHeaders sees exactly what it
+	// would have seen had it run in the response chain. That is what makes delegating safe
+	// against a future field read being added there.
+	respCtx := &policy.ResponseHeaderContext{
+		SharedContext:   faultCtx.SharedContext,
+		RequestHeaders:  faultCtx.RequestHeaders,
+		RequestBody:     faultCtx.RequestBody,
+		RequestPath:     faultCtx.RequestPath,
+		RequestMethod:   faultCtx.RequestMethod,
+		ResponseHeaders: faultCtx.ResponseHeaders,
+		ResponseStatus:  faultCtx.ResponseStatus,
+		Downstream:      faultCtx.Downstream,
+		Upstream:        faultCtx.Upstream,
+	}
+	// OnResponseHeaders dereferences SharedContext unguarded, which is correct for the
+	// response chain — the engine always sets it there. The fault path can reach here with
+	// it nil (a bare FaultContext), so an empty one is substituted rather than letting a
+	// telemetry call panic on a request that is already failing.
+	if respCtx.SharedContext == nil {
+		respCtx.SharedContext = &policy.SharedContext{}
+	}
+	if mods, ok := a.OnResponseHeaders(ctx, respCtx, params).(policy.DownstreamResponseHeaderModifications); ok {
+		for k, v := range mods.AnalyticsMetadata {
+			analyticsMetadata[k] = v
+		}
+	}
+
+	populateFaultAnalyticsMetadata(analyticsMetadata, faultCtx)
+
+	if len(analyticsMetadata) == 0 {
+		return nil
+	}
+	return &policy.FaultResponse{AnalyticsMetadata: analyticsMetadata}
+}
+
+// Compile-time proof that the collector satisfies the fault contract. Without it a chain
+// built with this policy appended would drop it at chain-build time with a warning and then
+// silently never record a fault — the failure mode the assertion exists to make impossible.
+var _ policy.FaultPolicy = (*AnalyticsPolicy)(nil)
 
 // NeedsMoreResponseData always returns false: each chunk is processed immediately
 // and analytics data is accumulated internally in SharedContext.Metadata.
@@ -2233,25 +2485,28 @@ func getHeaderFlags(params map[string]interface{}) (sendRequestHeaders, sendResp
 	return sendRequestHeaders, sendResponseHeaders
 }
 
-// serializeHeaders renders all headers as a JSON object string ({"name":"v1, v2"}),
-// matching the request_headers/response_headers format the analytics engine reads.
-// Returns "" when there are no headers. Sensitive values are not masked here; the
+// flattenHeaders renders all headers as a flat map[string]string ({"name": "v1, v2"}),
+// joining repeated header values with ", ". Returns nil when there are no headers.
+//
+// This used to JSON-encode that map into a string (serializeHeaders, removed) so it
+// could be carried inside a structpb.Value across the ext_proc -> Envoy -> ALS round
+// trip. That round trip is gone for captured headers specifically: the policy engine
+// now hands this map straight to its in-process ext_proc<->ALS correlation store,
+// keyed per ext_proc stream (see the policy engine's internal/analytics/correlation and
+// internal/kernel's buildAnalyticsStruct, which deliberately excludes the
+// request_headers/response_headers keys this policy stamps into AnalyticsMetadata
+// from what gets sent to Envoy). Sensitive values are not masked here; the
 // stdout/log publisher applies masked_headers on output.
-func serializeHeaders(headers *policy.Headers) string {
+func flattenHeaders(headers *policy.Headers) map[string]string {
 	all := headers.GetAll()
 	if len(all) == 0 {
-		return ""
+		return nil
 	}
 	flat := make(map[string]string, len(all))
 	for name, values := range all {
 		flat[name] = strings.Join(values, ", ")
 	}
-	data, err := json.Marshal(flat)
-	if err != nil {
-		slog.Error("Failed to marshal headers for analytics", "error", err)
-		return ""
-	}
-	return string(data)
+	return flat
 }
 
 // Helper to extract string values via JSONPath

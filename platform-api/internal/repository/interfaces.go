@@ -155,6 +155,8 @@ type DeploymentRepository interface {
 	GetStatus(artifactUUID, orgUUID, gatewayID string) (deploymentID string, status model.DeploymentStatus, updatedAt *time.Time, err error)
 	GetStatusFull(artifactUUID, orgUUID, gatewayID string) (deploymentID string, status model.DeploymentStatus, performedAt *time.Time, statusReason string, err error)
 	UpdateStatusWithPerformedAtGuard(artifactUUID, orgUUID, gatewayID string, newStatus model.DeploymentStatus, statusReason string, performedAt time.Time, requireCurrentStatus []model.DeploymentStatus) (rowsAffected int64, err error)
+	// FailCurrentDeployment marks the deployment FAILED with statusReason only while it is still the row's current deployment.
+	FailCurrentDeployment(artifactUUID, orgUUID, gatewayID, deploymentID, statusReason string) (rowsAffected int64, err error)
 	GetStaleTransitionalStatuses(timeout time.Duration) ([]StaleDeploymentStatus, error)
 	DeleteStatus(artifactUUID, orgUUID, gatewayID string) error
 	GetDeployedGatewayIDs(artifactUUID, orgUUID string) ([]string, error)
@@ -368,10 +370,8 @@ type LLMProxyRepository interface {
 	GetByID(proxyID, orgUUID string) (*model.LLMProxy, error)
 	List(orgUUID string, limit, offset int) ([]*model.LLMProxy, error)
 	ListByProject(orgUUID, projectUUID string, limit, offset int) ([]*model.LLMProxy, error)
-	ListByProvider(orgUUID, providerID string, limit, offset int) ([]*model.LLMProxy, error)
 	Count(orgUUID string) (int, error)
 	CountByProject(orgUUID, projectUUID string) (int, error)
-	CountByProvider(orgUUID, providerID string) (int, error)
 	Update(p *model.LLMProxy) error
 	Delete(proxyID, orgUUID string) error
 	Exists(proxyID, orgUUID string) (bool, error)
@@ -447,6 +447,39 @@ type AgentProxyRepository interface {
 	EnsureGatewayAssociation(proxyUUID, gatewayUUID, orgUUID, createdBy, deployMetadata string, metadataProvided bool) (string, error)
 }
 
+// GraphQLAPIRepository defines the interface for GraphQL API persistence.
+// GraphQL is a core artifact kind (like RestApi/LlmProvider/LlmProxy/Mcp). No
+// cross-service hooks are wired for it yet (unlike APIRepository, which
+// plugin.Deps exposes for
+// eventgateway to reference), so this interface is declared for the same
+// service/repo decoupling and testability every other core kind gets, without
+// also adding a plugin.Deps field until a real consumer needs one.
+type GraphQLAPIRepository interface {
+	Create(a *model.GraphQLAPI) error
+	GetByHandle(handle, orgUUID string) (*model.GraphQLAPI, error)
+	GetByUUID(uuid, orgUUID string) (*model.GraphQLAPI, error)
+	List(orgUUID, projectUUID string, opts ListOptions) ([]*model.GraphQLAPI, error)
+	Count(orgUUID string) (int, error)
+	CountByProject(orgUUID, projectUUID, search string) (int, error)
+	Update(a *model.GraphQLAPI) error
+	Delete(handle, orgUUID string) error
+	Exists(handle, orgUUID string) (bool, error)
+
+	// API-Gateway association methods. These operate on the same
+	// artifact_gateway_mappings table as APIRepository's identically-named
+	// methods — the table is kind-agnostic (keyed on artifact_uuid), so both
+	// interfaces are backed by the same shared repository helpers
+	// (createArtifactGatewayAssociation et al. in repository/api.go) rather
+	// than duplicated SQL.
+	GetAPIGatewaysWithDetails(apiUUID, orgUUID string) ([]*model.APIGatewayWithDetails, error)
+	CreateAPIAssociation(association *model.APIAssociation) error
+	GetAPIAssociations(apiUUID, associationType, orgUUID string) ([]*model.APIAssociation, error)
+	UpdateAPIAssociation(apiUUID, resourceId, associationType, orgUUID, updatedBy string) error
+	// EnsureGatewayAssociation creates a gateway association for the API if one
+	// does not already exist and resolves the metadata to use for the deployment.
+	EnsureGatewayAssociation(apiUUID, gatewayUUID, orgUUID, createdBy, deployMetadata string, metadataProvided bool) (string, error)
+}
+
 // WebSubAPIHmacSecretRepository defines the interface for WebSub API HMAC secret persistence
 type WebSubAPIHmacSecretRepository interface {
 	Create(secret *model.WebSubAPIHmacSecret) error
@@ -517,11 +550,14 @@ type CustomPolicyRepository interface {
 // DocumentRepository defines the interface for document persistence.
 type DocumentRepository interface {
 	CreateDocument(doc *model.Document) error
-	GetDocumentByArtifactAndHandle(artifactUUID, handle, orgUUID string) (*model.Document, error)
-	GetDocumentByArtifactAndType(artifactUUID, docType, orgUUID string) (*model.Document, error)
+	GetDocument(artifactUUID, handle, orgUUID, docType string) (*model.Document, error)
+	ListDocumentsByArtifact(artifactUUID, orgUUID, docType string, limit, offset int) ([]*model.Document, int, error)
 	UpsertDocument(doc *model.Document) error
-	DeleteDocument(artifactUUID, handle, orgUUID string) error
+	UpdateApiDocument(doc *model.Document, updateContent bool) error
+	DeleteApiDocument(artifactUUID, handle, orgUUID string) error
+	DeleteDocument(artifactUUID, handle, orgUUID, docType string) error
 	DocumentHandleExistsForArtifact(artifactUUID, handle string) (bool, error)
+	DocumentDisplayNameExistsForArtifact(artifactUUID, displayName, excludeHandle string) (bool, error)
 	// GetDocumentUUIDsByHandles resolves each handle to its document uuid,
 	// scoped to one artifact (api_documents' real unique index is
 	// (artifact_uuid, handle) — a handle is only guaranteed unique per

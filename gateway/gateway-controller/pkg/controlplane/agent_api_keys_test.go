@@ -259,6 +259,7 @@ func TestSyncAPIKeysForExistingArtifacts_BackfillsAgentKeys(t *testing.T) {
 		"/llm-providers/api-keys",
 		"/llm-proxies/api-keys",
 		"/agents/api-keys",
+		"/graphql-apis/api-keys",
 	}, srv.requested(), "every existing kind is still synced, and Agent is added")
 
 	key, err := h.db.GetAPIKeysByAPIAndName(agentEvtID, agentKeyName)
@@ -287,8 +288,9 @@ type backfillKind struct {
 // active, against its own artifact and announced; and every kind whose artifact
 // is deployed locally reconciles away the key its control plane stopped
 // reporting. WebSubApi and WebBrokerApi artifacts cannot exist in this core
-// gateway store, so their keys are stored ahead of a local artifact — as the
-// schema allows — and there is nothing of theirs to reconcile.
+// gateway store, and no GraphQLApi is deployed here, so their keys are stored
+// ahead of a local artifact — as the schema allows — and there is nothing of
+// theirs to reconcile.
 func TestSyncAPIKeysForExistingArtifacts_BackfillsAndReconcilesEveryKind(t *testing.T) {
 	h := newAgentEventsHarness(t)
 	h.deploy(t, agentEvtID, "dep-1", time.Now())
@@ -299,6 +301,7 @@ func TestSyncAPIKeysForExistingArtifacts_BackfillsAndReconcilesEveryKind(t *test
 		proxyID    = "0199a1b2-0000-7000-8000-00000000a003"
 		webSubID   = "0199a1b2-0000-7000-8000-00000000a004"
 		brokerID   = "0199a1b2-0000-7000-8000-00000000a005"
+		graphqlID  = "0199a1b2-0000-7000-8000-00000000a006"
 	)
 	require.NoError(t, h.db.SaveConfig(agentEvtRestConfig(restID, "backfill-rest")))
 	require.NoError(t, h.db.SaveConfig(backfillLLMProviderConfig(providerID, "backfill-provider")))
@@ -311,6 +314,7 @@ func TestSyncAPIKeysForExistingArtifacts_BackfillsAndReconcilesEveryKind(t *test
 		{kind: models.KindLlmProvider, path: "/llm-providers/api-keys", artifactID: providerID, local: true},
 		{kind: models.KindLlmProxy, path: "/llm-proxies/api-keys", artifactID: proxyID, local: true},
 		{kind: models.KindAgent, path: "/agents/api-keys", artifactID: agentEvtID, local: true},
+		{kind: models.KindGraphQLApi, path: "/graphql-apis/api-keys", artifactID: graphqlID},
 	}
 	bodies := make(map[string]string, len(kinds))
 	for i := range kinds {

@@ -265,6 +265,94 @@ Feature: Regex guardrail policy
     Then the response should be successful
     And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
+  Scenario: Root JSONPath validates the pattern against the whole payload
+    Given I generate a unique value from "rg-root-jsonpath" and store it as "apiName"
+    And I generate a unique API version from "rg-root-jsonpath" and store it as "apiVersion"
+    And I generate a unique API context from "/rg-root-jsonpath" and store it as "apiContext"
+    When I create API from "resources/templates/rest-api.yaml" with values:
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
+      | name                   | ${CTX:apiName}                   |
+      | spec.displayName       | ${CTX:apiName}                   |
+      | spec.version           | ${CTX:apiVersion}                |
+      | spec.context           | ${CTX:apiContext}/$version       |
+      | spec.upstream.main.url | http://testbench:3000            |
+      | spec.operations        | [{"method":"GET","path":"/get"},{"method":"POST","path":"/validate","policies":[{"name":"regex-guardrail","version":"v1","params":{"request":{"jsonPath":"$","regex":"ORDER-[0-9]{4}"}}}]}] |
+    Then the resource creation response should indicate successful deployment
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 200
+
+    When I set header "Content-Type" to "application/json"
+    And I send a "POST" request to "${CTX:apiContext}/${CTX:apiVersion}/validate" with body:
+      """
+      {
+        "reference": "ORDER-1234",
+        "messages": [
+          {"role": "user", "content": "Where is my parcel?"}
+        ]
+      }
+      """
+    Then the response status code should be 200
+
+    When I set header "Content-Type" to "application/json"
+    And I send a "POST" request to "${CTX:apiContext}/${CTX:apiVersion}/validate" with body:
+      """
+      {
+        "reference": "none",
+        "messages": [
+          {"role": "user", "content": "Where is my parcel?"}
+        ]
+      }
+      """
+    Then the response status code should be 422
+    And the response body should contain "REGEX_GUARDRAIL"
+
+    When I delete the API "${CTX:apiName}"
+    Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
+
+  Scenario: Root JSONPath with inverted logic blocks a pattern anywhere in the payload
+    Given I generate a unique value from "rg-root-jsonpath-invert" and store it as "apiName"
+    And I generate a unique API version from "rg-root-jsonpath-invert" and store it as "apiVersion"
+    And I generate a unique API context from "/rg-root-jsonpath-invert" and store it as "apiContext"
+    When I create API from "resources/templates/rest-api.yaml" with values:
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
+      | name                   | ${CTX:apiName}                   |
+      | spec.displayName       | ${CTX:apiName}                   |
+      | spec.version           | ${CTX:apiVersion}                |
+      | spec.context           | ${CTX:apiContext}/$version       |
+      | spec.upstream.main.url | http://testbench:3000            |
+      | spec.operations        | [{"method":"GET","path":"/get"},{"method":"POST","path":"/validate","policies":[{"name":"regex-guardrail","version":"v1","params":{"request":{"jsonPath":"$","regex":"secret-[0-9]+","invert":true}}}]}] |
+    Then the resource creation response should indicate successful deployment
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 200
+
+    When I set header "Content-Type" to "application/json"
+    And I send a "POST" request to "${CTX:apiContext}/${CTX:apiVersion}/validate" with body:
+      """
+      {
+        "metadata": {"note": "nothing to see here"},
+        "messages": [
+          {"role": "user", "content": "Hello"}
+        ]
+      }
+      """
+    Then the response status code should be 200
+
+    When I set header "Content-Type" to "application/json"
+    And I send a "POST" request to "${CTX:apiContext}/${CTX:apiVersion}/validate" with body:
+      """
+      {
+        "metadata": {"note": "token is secret-42"},
+        "messages": [
+          {"role": "user", "content": "Hello"}
+        ]
+      }
+      """
+    Then the response status code should be 422
+    And the response body should contain "GUARDRAIL_INTERVENED"
+
+    When I delete the API "${CTX:apiName}"
+    Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
+
   Scenario: JSONPath extraction of a missing field is blocked
     Given I generate a unique value from "rg-invalid-path" and store it as "apiName"
     And I generate a unique API version from "rg-invalid-path" and store it as "apiVersion"
