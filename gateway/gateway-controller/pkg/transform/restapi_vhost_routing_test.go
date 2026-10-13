@@ -54,7 +54,7 @@ func restAPIRouteDomains(t *testing.T, spec api.APIConfigData) [][]string {
 	translator, err := xds.NewTranslator(slog.New(slog.NewTextHandler(io.Discard, nil)), routerCfg, nil, systemCfg)
 	require.NoError(t, err)
 	restT := transform.NewRestAPITransformer(routerCfg, systemCfg, map[string]models.PolicyDefinition{})
-	translator.SetTransformers(map[string]models.ConfigTransformer{models.KindRestApi: transform.NewRegistry(restT, nil, nil)})
+	translator.SetTransformers(map[string]models.ConfigTransformer{models.KindRestApi: transform.NewRegistry(restT, nil, nil, nil)})
 
 	stored := &models.StoredConfig{
 		UUID: "vhost-api", Kind: models.KindRestApi, Handle: "vhost-api", DesiredState: models.StateDeployed,

@@ -34,6 +34,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/wso2/api-platform/platform-api/api"
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/database"
 	"github.com/wso2/api-platform/platform-api/internal/dto"
@@ -182,5 +183,61 @@ func TestMCPProxyService_Update_MissingSecretRef_Rejected(t *testing.T) {
 	}
 	if !apperror.ValidationFailed.Is(err) {
 		t.Errorf("expected VALIDATION_FAILED, got: %v", err)
+	}
+}
+
+// TestLLMProxy_SecretValidationCoversEveryAttachment confirms that
+// secret validation is payload-wide, so a credential on a `providers` entry — a
+// field that did not exist when this validation was written — is validated with
+// no new plumbing.
+//
+// This is a *confirmation*, not an implementation: the point is that validation
+// generalises to a new shape and redaction does not. The
+// asymmetry is the whole reason this test exists next to the redaction one.
+func TestLLMProxy_SecretValidationCoversEveryAttachment(t *testing.T) {
+	const orgID = "org-llm-attachments"
+	svc, cleanup := setupLLMSecretTestEnv(t, orgID)
+	defer cleanup()
+
+	if _, err := svc.Create(orgID, "alice", &dto.CreateSecretRequest{Handle: "primary-key", Value: "sk-primary"}); err != nil {
+		t.Fatalf("create primary secret: %v", err)
+	}
+
+	// The whole request is serialised for validation, so a canonical entry's
+	// credential is reached exactly like the primary's always has been.
+	request := &api.LLMProxy{
+		DisplayName: "Attachment Secrets", Version: "v1.0", ProjectId: "project-1",
+		Providers: &[]api.LLMProxyProviderEntry{
+			{Id: "openai-provider", IsPrimary: true, Auth: &api.UpstreamAuth{
+				Type: upstreamAuthTypePtr("api-key"), Header: stringPtr("Authorization"),
+				Value: stringPtr(`{{ secret "primary-key" }}`),
+			}},
+			{Id: "anthropic-provider", Auth: &api.UpstreamAuth{
+				Type: upstreamAuthTypePtr("api-key"), Header: stringPtr("x-api-key"),
+				Value: stringPtr(`{{ secret "additional-key-that-does-not-exist" }}`),
+			}},
+		},
+	}
+	configJSON, err := marshalUpstreamForValidation(request)
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+
+	// The unknown handle is on an *additional* provider, which had no credential
+	// field at all. Validation must still catch it.
+	err = svc.ValidateSecretRefs(orgID, configJSON)
+	if err == nil {
+		t.Fatal("expected the unknown secret on an additional provider to be rejected")
+	}
+	if !apperror.ValidationFailed.Is(err) {
+		t.Errorf("expected VALIDATION_FAILED, got: %v", err)
+	}
+
+	// With both handles known, the same payload validates.
+	if _, err := svc.Create(orgID, "alice", &dto.CreateSecretRequest{Handle: "additional-key-that-does-not-exist", Value: "sk-additional"}); err != nil {
+		t.Fatalf("create additional secret: %v", err)
+	}
+	if err := svc.ValidateSecretRefs(orgID, configJSON); err != nil {
+		t.Errorf("expected every attachment's placeholder to validate, got: %v", err)
 	}
 }

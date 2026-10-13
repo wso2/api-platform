@@ -225,6 +225,13 @@ export default defineConfig({
         // The render helper runs in every component test, so it is reported
         // rather than left to count as uncovered changed lines.
         'src/test/**/*.{ts,tsx}',
+        // Multi-provider routing added plain-logic modules under utils — what
+        // translates for a provider, what a proxy stores, what a key is named.
+        // A defect in these is silent: a wrong verdict still renders perfectly,
+        // which is why they are unit-tested rather than left to the browser suite.
+        'src/utils/proxyProviders.ts',
+        'src/utils/transformerResolution.ts',
+        'src/utils/apiKeyNaming.ts',
       ],
       exclude: ['**/*.test.{ts,tsx}', '**/*.d.ts', '**/index.ts'],
     },

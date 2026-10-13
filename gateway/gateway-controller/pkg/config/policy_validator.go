@@ -784,6 +784,21 @@ func refuseMtlsAuthOutsideRestAPI(policyName, fieldPath string) (ValidationError
 	}, true
 }
 
+// RefuseMtlsAuth reports a validation error for every mtls-auth reference in
+// policies, for a kind whose validator does not otherwise check its policies.
+func RefuseMtlsAuth(policies *[]api.Policy, fieldPrefix string) []ValidationError {
+	if policies == nil {
+		return nil
+	}
+	var errors []ValidationError
+	for i, policy := range *policies {
+		if err, refused := refuseMtlsAuthOutsideRestAPI(policy.Name, fmt.Sprintf("%s[%d]", fieldPrefix, i)); refused {
+			errors = append(errors, err)
+		}
+	}
+	return errors
+}
+
 // refuseMtlsAuthAsFaultPolicy reports the validation error for an mtls-auth
 // reference in a RestApi fault policy list. Fault policies run over the error
 // response, after the request was already let through, so client-certificate
