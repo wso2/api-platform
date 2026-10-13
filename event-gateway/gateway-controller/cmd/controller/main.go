@@ -407,7 +407,19 @@ func main() {
 	// listener (which dispatches EventTypeAgent), so Agents do reach both the
 	// policy manager and the xDS translator below.
 	agentTransformer := transform.NewAgentTransformer(&cfg.Router, cfg, policyDefinitions)
-	transformerRegistry := transform.NewRegistry(restTransformer, llmTransformer, agentTransformer)
+	// GraphQLApi's config validator/deploy parser (pkg/utils/graphql_deployment.go)
+	// self-register via init() and are therefore already active in this binary too
+	// (transitively imported via the shared transform/handlers packages) — the
+	// /graphql-apis CRUD and api-key routes are served here by the shared
+	// *handlers.APIServer, but (like /rest-apis) they are not listed in this
+	// binary's generateAuthConfig role map below, so they 403 when auth is
+	// enabled (see common/authenticators/authz.go's deny-on-unlisted-route
+	// behavior) — reachability here means routable, not authorized. Without a
+	// transformer wired in, a created GraphQLApi would accept and store but
+	// silently fail to ever deploy; build one exactly the way restTransformer
+	// is built above so it actually can.
+	graphqlTransformer := transform.NewGraphQLAPITransformer(&cfg.Router, cfg, policyDefinitions)
+	transformerRegistry := transform.NewRegistry(restTransformer, llmTransformer, agentTransformer, graphqlTransformer)
 
 	// Derived from the registry rather than hand-listed, for the same reason the
 	// gateway controller derives it: a hand-written map beside the registry's own

@@ -82,9 +82,15 @@ export default function Overview(): React.JSX.Element {
         <ProxiesProvider>
           <MCPServersProvider>
             <ApplicationsProvider>
-              <AgentProxiesProvider>
+              {/* The provider fetches on mount, so it stays out while the
+                  feature is off. */}
+              {isFeatureEnabled('agent-proxy') ? (
+                <AgentProxiesProvider>
+                  <OverviewContent />
+                </AgentProxiesProvider>
+              ) : (
                 <OverviewContent />
-              </AgentProxiesProvider>
+              )}
             </ApplicationsProvider>
           </MCPServersProvider>
         </ProxiesProvider>
