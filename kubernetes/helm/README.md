@@ -48,7 +48,7 @@ Make sure you have the following.
 - `kubectl`
 - `openssl`, to generate encryption keys
 - `htpasswd` or Docker, used by the AI Workspace and API Portal secret scripts
-- cert-manager installed in your cluster, for TLS certificates. See [Installing cert-manager](gateway-helm-chart/README.md#installing-cert-manager).
+- cert-manager installed in your cluster, which issues the TLS certificates by default. See [Installing cert-manager](gateway-helm-chart/README.md#installing-cert-manager). To use your own TLS secrets instead, see each chart's README.
 
 ## Install an offering
 
@@ -65,12 +65,12 @@ Each section lists the steps for one offering. Install the charts in the order s
 3. Install the `gateway` chart with the following values. Follow the steps in the [`gateway` README](gateway-helm-chart/README.md).
    - Set `gateway.controller.controlPlane.host` to `ai-workspace-platform-api.ai-workspace.svc:9243`. This is the Platform API address when you use the default release and namespace names.
    - Set `gateway.controller.controlPlane.token.value` to the registration token.
-   - If the Platform API uses a self-signed certificate, also set `gateway.config.controller.controlplane.insecure_skip_verify` to `true`.
+   - For testing only, if the Platform API uses a self-signed certificate, also set `gateway.config.controller.controlplane.insecure_skip_verify` to `true`.
 4. In the AI Workspace, check that the gateway status is **Active**.
 
 > **Tip:** The **Kubernetes** tab on the gateway page shows a `helm install` command you can copy.
 
-> **Note:** You can use a registration token only once. To connect the gateway again, click **Reconfigure** on the gateway page to get a new token.
+> **Note:** The AI Workspace shows the registration token only once. To get a new token, click **Reconfigure** on the gateway page.
 
 ### API Gateway and API Portal
 
@@ -81,7 +81,7 @@ Each section lists the steps for one offering. Install the charts in the order s
 3. Install the `gateway` chart with the following values. Follow the steps in the [`gateway` README](gateway-helm-chart/README.md).
    - Set `gateway.controller.controlPlane.host` to `api-portal-platform-api.api-portal.svc:9243`. This is the Platform API address when you use the default release and namespace names.
    - Set `gateway.controller.controlPlane.token.value` to the registration token.
-   - If the Platform API uses a self-signed certificate, also set `gateway.config.controller.controlplane.insecure_skip_verify` to `true`.
+   - For testing only, if the Platform API uses a self-signed certificate, also set `gateway.config.controller.controlplane.insecure_skip_verify` to `true`.
 
 ### Standalone API Portal
 
@@ -115,7 +115,7 @@ To install these components as one product, use an umbrella chart and add the co
          enabled: true
          config:
            platformApi:
-             insecure: true   # Only if the Platform API uses a self-signed certificate
+             insecure: true   # For testing only, with a self-signed certificate
        ```
 
      - In `values-ai-workspace-ui.yaml`, set the Platform API address that gateways use. The AI Workspace shows this address in its gateway setup commands.
@@ -126,7 +126,7 @@ To install these components as one product, use an umbrella chart and add the co
            gateway:
              controlplaneHost: <platform-api-host>:9243
            controlPlane:
-             tlsSkipVerify: true   # Only if the Platform API uses a self-signed certificate
+             tlsSkipVerify: true   # For testing only, with a self-signed certificate
        ```
 
      - In `values-global.yaml`, add any settings shared by all subcharts, such as image pull secrets.
@@ -156,5 +156,5 @@ To install these components as one product, use an umbrella chart and add the co
 5. Install the `gateway` chart with the following values. Follow the steps in the [`gateway` README](gateway-helm-chart/README.md).
    - Set `gateway.controller.controlPlane.host` to `ai-workspace-platform-api.ai-workspace.svc:9243`.
    - Set `gateway.controller.controlPlane.token.value` to the registration token.
-   - If the Platform API uses a self-signed certificate, also set `gateway.config.controller.controlplane.insecure_skip_verify` to `true`.
+   - For testing only, if the Platform API uses a self-signed certificate, also set `gateway.config.controller.controlplane.insecure_skip_verify` to `true`.
 6. In the AI Workspace, check that the gateway status is **Active**.
