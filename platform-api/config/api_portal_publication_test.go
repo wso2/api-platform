@@ -52,6 +52,16 @@ func TestAPIPortalPublication_WorstCases(t *testing.T) {
 	assert.Equal(t, 15*time.Second, c.ListingRequestWorstCase())
 }
 
+func TestAPIPortalPublication_PlanListingBudget(t *testing.T) {
+	c := validAPIPortalPublication()
+	assert.Equal(t, c.RequestWorstCase(), c.PlanListingBudget(), "the whole listing gets the time of one call")
+	assert.Equal(t, c.PlanListingBudget()+2*c.RequestWorstCase()+c.ListingRequestWorstCase(), c.PublishWorstCase(),
+		"the publish worst case counts the listing at its budget, however many pages it has")
+
+	c.MaxRetries = 0
+	assert.Equal(t, c.RequestTimeout, c.PlanListingBudget(), "no retries means a single attempt's time")
+}
+
 func TestLoadConfig_APIPortalPublication_DefaultsFitTheConsole(t *testing.T) {
 	cfg, err := loadWithKeys(t, "")
 	require.NoError(t, err)

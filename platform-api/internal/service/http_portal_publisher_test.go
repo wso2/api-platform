@@ -70,7 +70,7 @@ func newTestHTTPPortalPublisherWithPolicies(t *testing.T, sharedKey string, ligh
 		InternalAuthKey: encryptedKey,
 	}}
 	authRegistry := NewAPIPortalAuthRegistry(portalRepo, testVault)
-	return &HTTPPortalPublisher{client: lightClient, pushClient: pushClient, authRegistry: authRegistry}
+	return &HTTPPortalPublisher{client: lightClient, pushClient: pushClient, authRegistry: authRegistry, plansListingTimeout: time.Minute}
 }
 
 // assertMultipartParts drains r's multipart body against boundary, returning

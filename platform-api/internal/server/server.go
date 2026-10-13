@@ -1217,5 +1217,5 @@ func newPortalPublisher(authRegistry *service.APIPortalAuthRegistry, cfg *config
 		"maxRetries", cfg.MaxRetries,
 		"retryBackoff", cfg.RetryBackoff,
 		"overallTimeout", cfg.OverallTimeout)
-	return service.NewHTTPPortalPublisher(authRegistry, lightClient, pushClient), nil
+	return service.NewHTTPPortalPublisher(authRegistry, lightClient, pushClient, cfg.PlanListingBudget()), nil
 }

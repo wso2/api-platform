@@ -31,7 +31,8 @@ import (
 )
 
 const (
-	portalPlansPageSize = 20
+	// portalPlansPageSize is below the portal's own maximum page size.
+	portalPlansPageSize = 50
 	// portalPlansMaxPages bounds the listing loop; running into it is an error,
 	// not a short list, so plans that exist are never mistaken for missing ones.
 	portalPlansMaxPages = 250
@@ -84,6 +85,9 @@ func (p *HTTPPortalPublisher) CreateMissingPlans(ctx context.Context, portal *mo
 // it does not list, in input order. It stops once every plan has been seen or
 // the listing ends.
 func (p *HTTPPortalPublisher) findMissingPlans(ctx context.Context, portal *model.APIPortal, plans []*model.SubscriptionPlan) ([]*model.SubscriptionPlan, error) {
+	ctx, cancel := context.WithTimeout(ctx, p.plansListingTimeout)
+	defer cancel()
+
 	missing := slices.Clone(plans)
 	for page := 0; page < portalPlansMaxPages; page++ {
 		offset := page * portalPlansPageSize

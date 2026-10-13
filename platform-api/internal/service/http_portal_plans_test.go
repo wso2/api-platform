@@ -27,17 +27,19 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/wso2/api-platform/platform-api/internal/model"
 )
 
 // planPortal is a fake API Portal serving the subscription plan collection.
 type planPortal struct {
-	handles      []string // the portal's plans, in listing order
-	total        int      // reported pagination total; len(handles) when zero
-	listStatus   int      // overrides the listing's 200 when non-zero
-	createStatus int      // the bulk create's status; 201 when zero
-	listBody     string   // replaces the listing body when non-empty
+	handles      []string      // the portal's plans, in listing order
+	total        int           // reported pagination total; len(handles) when zero
+	listStatus   int           // overrides the listing's 200 when non-zero
+	createStatus int           // the bulk create's status; 201 when zero
+	listBody     string        // replaces the listing body when non-empty
+	listDelay    time.Duration // how long each listing page takes to answer
 
 	queries []string
 	auths   []string
@@ -75,6 +77,7 @@ func (pp *planPortal) serve(t *testing.T) *httptest.Server {
 
 func (pp *planPortal) list(w http.ResponseWriter, r *http.Request) {
 	pp.queries = append(pp.queries, r.URL.RawQuery)
+	time.Sleep(pp.listDelay)
 	if pp.listStatus != 0 {
 		w.WriteHeader(pp.listStatus)
 		return
@@ -101,6 +104,10 @@ func (pp *planPortal) list(w http.ResponseWriter, r *http.Request) {
 		"list":       page,
 		"pagination": map[string]int{"limit": limit, "offset": offset, "total": total},
 	})
+}
+
+func pageQuery(offset int) string {
+	return fmt.Sprintf("limit=%d&offset=%d", portalPlansPageSize, offset)
 }
 
 func testPlan(handle string) *model.SubscriptionPlan {
@@ -158,7 +165,7 @@ func TestCreateMissingPlans_NothingMissingSkipsCreate(t *testing.T) {
 	if len(pp.posted) != 0 {
 		t.Fatalf("want no create, got %v", postedIDs(pp))
 	}
-	if len(pp.queries) != 1 || pp.queries[0] != "limit=20&offset=0" {
+	if len(pp.queries) != 1 || pp.queries[0] != pageQuery(0) {
 		t.Fatalf("want one listing of the first page, got %v", pp.queries)
 	}
 }
@@ -179,11 +186,12 @@ func TestCreateMissingPlans_CreatesOnlyMissingInInputOrder(t *testing.T) {
 }
 
 func TestCreateMissingPlans_PagesUntilTotal(t *testing.T) {
-	pp := &planPortal{handles: numberedHandles(25)}
-	if err := createMissing(t, pp, testPlans("plan-025", "brand-new")); err != nil {
+	handles := numberedHandles(portalPlansPageSize + 5)
+	pp := &planPortal{handles: handles}
+	if err := createMissing(t, pp, testPlans(handles[len(handles)-1], "brand-new")); err != nil {
 		t.Fatalf("CreateMissingPlans: %v", err)
 	}
-	want := []string{"limit=20&offset=0", "limit=20&offset=20"}
+	want := []string{pageQuery(0), pageQuery(portalPlansPageSize)}
 	if strings.Join(pp.queries, "|") != strings.Join(want, "|") {
 		t.Fatalf("want listings %v, got %v", want, pp.queries)
 	}
@@ -193,7 +201,7 @@ func TestCreateMissingPlans_PagesUntilTotal(t *testing.T) {
 }
 
 func TestCreateMissingPlans_StopsPagingOnceAllFound(t *testing.T) {
-	pp := &planPortal{handles: numberedHandles(100)}
+	pp := &planPortal{handles: numberedHandles(2 * portalPlansPageSize)}
 	if err := createMissing(t, pp, testPlans("plan-001")); err != nil {
 		t.Fatalf("CreateMissingPlans: %v", err)
 	}
@@ -203,7 +211,7 @@ func TestCreateMissingPlans_StopsPagingOnceAllFound(t *testing.T) {
 }
 
 func TestCreateMissingPlans_StopsOnEmptyPage(t *testing.T) {
-	pp := &planPortal{handles: numberedHandles(20), total: 50}
+	pp := &planPortal{handles: numberedHandles(portalPlansPageSize), total: portalPlansPageSize + 30}
 	if err := createMissing(t, pp, testPlans("brand-new")); err != nil {
 		t.Fatalf("CreateMissingPlans: %v", err)
 	}
@@ -216,11 +224,11 @@ func TestCreateMissingPlans_StopsOnEmptyPage(t *testing.T) {
 }
 
 func TestCreateMissingPlans_PageCapIsAnError(t *testing.T) {
-	pp := &planPortal{handles: numberedHandles(20), total: 1 << 30}
-	// Every page repeats the same 20 plans, so the wanted one is never found.
+	pp := &planPortal{handles: numberedHandles(portalPlansPageSize), total: 1 << 30}
+	// Every page repeats the same plans, so the wanted one is never found.
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		pp.queries = append(pp.queries, r.URL.RawQuery)
-		items := make([]map[string]string, 0, 20)
+		items := make([]map[string]string, 0, portalPlansPageSize)
 		for _, h := range pp.handles {
 			items = append(items, map[string]string{"id": h})
 		}
@@ -375,4 +383,77 @@ func TestCreateMissingPlans_RequestFailures(t *testing.T) {
 			t.Fatalf("want a plain create failure, got %v", err)
 		}
 	})
+}
+
+// A listing that spans many slow pages ends at the caller's deadline, as an ordinary failure
+// and not as a conflict, and the create is never sent.
+func TestCreateMissingPlans_SlowMultiPageListingStopsAtTheDeadline(t *testing.T) {
+	const pageDelay = 40 * time.Millisecond
+	pp := &planPortal{handles: numberedHandles(20 * portalPlansPageSize), listDelay: pageDelay}
+	srv := pp.serve(t)
+	p := newTestHTTPPortalPublisher(t, "test-shared-key")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*pageDelay)
+	defer cancel()
+	err := p.CreateMissingPlans(ctx, &model.APIPortal{URL: srv.URL}, testPlans("never-listed"))
+	srv.Close() // waits for the handler still answering the cancelled page, so the recorded queries are stable
+
+	var conflict *PortalConflictError
+	if !errors.Is(err, context.DeadlineExceeded) || errors.As(err, &conflict) {
+		t.Fatalf("want a plain deadline failure, got %v", err)
+	}
+	if len(pp.queries) < 2 || len(pp.queries) >= 20 {
+		t.Fatalf("want the listing cut off part-way through, got %d pages", len(pp.queries))
+	}
+	if len(pp.posted) != 0 {
+		t.Fatalf("want no create after a failed listing, got %v", postedIDs(pp))
+	}
+}
+
+// The plan listing has a time budget of its own, however many pages it spans and whatever
+// deadline the caller's context carries.
+func TestCreateMissingPlans_ListingStopsAtItsOwnBudget(t *testing.T) {
+	const pageDelay = 40 * time.Millisecond
+	pp := &planPortal{handles: numberedHandles(20 * portalPlansPageSize), listDelay: pageDelay}
+	srv := pp.serve(t)
+	p := newTestHTTPPortalPublisher(t, "test-shared-key")
+	p.plansListingTimeout = 3 * pageDelay
+
+	started := time.Now()
+	err := p.CreateMissingPlans(context.Background(), &model.APIPortal{URL: srv.URL}, testPlans("never-listed"))
+	took := time.Since(started)
+	srv.Close() // waits for the handler still answering the cancelled page, so the recorded queries are stable
+
+	var conflict *PortalConflictError
+	if !errors.Is(err, context.DeadlineExceeded) || errors.As(err, &conflict) {
+		t.Fatalf("want a plain deadline failure, got %v", err)
+	}
+	if took > 10*pageDelay {
+		t.Fatalf("the listing outlived its budget by far: %s", took)
+	}
+	if len(pp.queries) < 2 || len(pp.queries) >= 20 {
+		t.Fatalf("want the listing cut off part-way through, got %d pages", len(pp.queries))
+	}
+	if len(pp.posted) != 0 {
+		t.Fatalf("want no create after a failed listing, got %v", postedIDs(pp))
+	}
+}
+
+func TestCreateMissingPlans_ListingWithinItsBudgetCompletes(t *testing.T) {
+	const pageDelay = 10 * time.Millisecond
+	handles := numberedHandles(3 * portalPlansPageSize)
+	pp := &planPortal{handles: handles, listDelay: pageDelay}
+	srv := pp.serve(t)
+	p := newTestHTTPPortalPublisher(t, "test-shared-key")
+	p.plansListingTimeout = time.Minute
+
+	if err := p.CreateMissingPlans(context.Background(), &model.APIPortal{URL: srv.URL}, testPlans(handles[len(handles)-1], "brand-new")); err != nil {
+		t.Fatalf("CreateMissingPlans: %v", err)
+	}
+	if len(pp.queries) != 3 {
+		t.Fatalf("want all three pages read, got %v", pp.queries)
+	}
+	if got := postedIDs(pp); len(got) != 1 || got[0] != "brand-new" {
+		t.Fatalf("want only brand-new created, got %v", got)
+	}
 }

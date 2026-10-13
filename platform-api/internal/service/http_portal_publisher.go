@@ -27,6 +27,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/wso2/api-platform/platform-api/internal/client"
 	"github.com/wso2/api-platform/platform-api/internal/model"
@@ -47,14 +48,16 @@ type HTTPPortalPublisher struct {
 	// pushClient carries the listing pushes under a longer attempt limit.
 	pushClient   *client.RetryableHTTPClient
 	authRegistry *APIPortalAuthRegistry
+	// plansListingTimeout bounds the plan listing, all its pages together.
+	plansListingTimeout time.Duration
 }
 
 // NewHTTPPortalPublisher returns a PortalPublisher that pushes to the real
 // API Portal over HTTP, authenticating via the shared-key S2S auth scheme —
 // the raw key is resolved per-portal through authRegistry (each api_portals
 // row carries its own encrypted key), never a single server-wide secret.
-func NewHTTPPortalPublisher(authRegistry *APIPortalAuthRegistry, lightClient, pushClient *client.RetryableHTTPClient) PortalPublisher {
-	return &HTTPPortalPublisher{client: lightClient, pushClient: pushClient, authRegistry: authRegistry}
+func NewHTTPPortalPublisher(authRegistry *APIPortalAuthRegistry, lightClient, pushClient *client.RetryableHTTPClient, plansListingTimeout time.Duration) PortalPublisher {
+	return &HTTPPortalPublisher{client: lightClient, pushClient: pushClient, authRegistry: authRegistry, plansListingTimeout: plansListingTimeout}
 }
 
 // authHeader resolves the Authorization header for this specific portal via

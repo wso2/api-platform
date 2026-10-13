@@ -158,12 +158,14 @@ func (c *APIPortalPublication) ListingRequestWorstCase() time.Duration {
 	return c.callWorstCase(c.ListingRequestTimeout)
 }
 
-// publishRequests counts the plan listing, plan creation and existence check; the plan
-// listing makes one call per page, so a portal with several pages adds to it.
-const publishRequests = 3
+// PlanListingBudget bounds the plan listing, all its pages together, to the worst case of
+// one call.
+func (c *APIPortalPublication) PlanListingBudget() time.Duration {
+	return c.RequestWorstCase()
+}
 
 func (c *APIPortalPublication) PublishWorstCase() time.Duration {
-	return publishRequests*c.RequestWorstCase() + c.ListingRequestWorstCase()
+	return c.PlanListingBudget() + 2*c.RequestWorstCase() + c.ListingRequestWorstCase()
 }
 
 // AgentCardCache configures the in-process cache sitting in front of the
