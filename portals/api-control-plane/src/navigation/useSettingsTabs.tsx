@@ -18,7 +18,7 @@
 
 import type { ReactNode } from 'react';
 import { defineMessages, useIntl } from 'react-intl';
-import { Gauge, Settings } from '@wso2/oxygen-ui-icons-react';
+import { Gauge, Laptop, Settings } from '@wso2/oxygen-ui-icons-react';
 
 import { useConsoleScope } from '../scope/ConsoleScopeProvider';
 import {
@@ -26,6 +26,7 @@ import {
   settingsTabSlot,
   useExtensions,
 } from '../extensions';
+import { useCan } from '../permissions';
 import { useIsHidden } from '../slots';
 import type { NavigationLevel } from './navigationTypes';
 
@@ -41,6 +42,12 @@ const messages = defineMessages({
     defaultMessage: 'Subscription plans',
     description:
       'Label for the built-in organization-level Settings tab listing rate-limit tiers.',
+  },
+  serviceAccountsTab: {
+    id: 'apiControlPlane.navigation.useSettingsTabs.serviceAccountsTab',
+    defaultMessage: 'Service accounts',
+    description:
+      'Label for the organization-level Settings tab listing machine identities (service accounts).',
   },
 });
 
@@ -66,6 +73,10 @@ export const useSettingsTabs = (level: NavigationLevel): SettingsTab[] => {
   const consoleScope = useConsoleScope();
   const extensions = useExtensions();
   const generalTabHidden = useIsHidden(`${settingsTabSlot(level)}.general`);
+  const serviceAccountsTabHidden = useIsHidden(`${settingsTabSlot(level)}.service-accounts`);
+  // Only those who can manage service accounts see the tab (`ap_admin` as
+  // shipped). UX only: the server enforces the scope on every call.
+  const canManageServiceAccounts = useCan('createServiceAccount');
 
   const extensionTabs: SettingsTab[] = settingsTabExtensions(extensions, level)
     .filter((extension) => extension.isVisible?.(consoleScope) ?? true)
@@ -100,6 +111,16 @@ export const useSettingsTabs = (level: NavigationLevel): SettingsTab[] => {
       label: intl.formatMessage(messages.subscriptionPlansTab),
       order: 1,
       path: 'subscription-plans',
+    });
+  }
+
+  if (level === 'organization' && canManageServiceAccounts && !serviceAccountsTabHidden) {
+    builtInTabs.push({
+      icon: <Laptop size={18} />,
+      id: 'service-accounts',
+      label: intl.formatMessage(messages.serviceAccountsTab),
+      order: 2,
+      path: 'service-accounts',
     });
   }
 
