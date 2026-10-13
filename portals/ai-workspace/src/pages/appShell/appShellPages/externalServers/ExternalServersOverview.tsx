@@ -25,6 +25,7 @@ import React, {
 } from 'react';
 import { Link as RouterLink, useNavigate, useParams } from 'react-router-dom';
 import {
+  Alert,
   Avatar,
   Box,
   Button,
@@ -300,6 +301,17 @@ export default function ExternalServersOverview(): JSX.Element {
   // successful save, since the newly saved server's own capabilities are then current.
   const [refetchedCapabilities, setRefetchedCapabilities] =
     useState<MCPServerCapabilities | null>(null);
+  // The endpoint/credential the last successful Refetch Server Info actually validated
+  // against. Lets us detect when the form has since been edited away from it, so stale
+  // discovery data is never saved against a target it wasn't fetched from. Kept (not
+  // nulled) across a manual drawer edit — isCapabilitiesManuallyOverridden below is what
+  // distinguishes that case, so this can keep tracking staleness for hasUpstreamVersionsChanges.
+  const [refetchedTarget, setRefetchedTarget] = useState<{
+    url: string;
+    headerName: string;
+    wasCredentialMasked: boolean;
+    headerValue: string; // only meaningful when wasCredentialMasked is false
+  } | null>(null);
   // MCP protocol versions the upstream reported on the last successful Refetch Server
   // Info, staged pending Save (mirrors refetchedCapabilities).
   const [refetchedSupportedVersions, setRefetchedSupportedVersions] =
@@ -309,11 +321,24 @@ export default function ExternalServersOverview(): JSX.Element {
   // stand in for it, and those describe the proxy rather than the server.
   const [refetchedServerInfo, setRefetchedServerInfo] =
     useState<MCPServerInfoFetchResponse['serverInfo'] | null>(null);
+  // True once the staged capabilities came from a manual drawer edit rather than a
+  // Refetch. Lets hasCapabilitiesChanges save them regardless of refetchedTarget
+  // staleness — a manual edit isn't tied to any fetch target, so target drift is
+  // irrelevant to it — while isRefetchStale/hasUpstreamVersionsChanges keep using the
+  // real (unnulled) refetchedTarget to judge the separately-staged version data.
+  const [isCapabilitiesManuallyOverridden, setIsCapabilitiesManuallyOverridden] =
+    useState(false);
   const [isCapabilitiesDrawerOpen, setIsCapabilitiesDrawerOpen] =
     useState(false);
 
   const selectedPoliciesRef = useRef<SelectedPolicy[]>([]);
   const [initialPolicies, setInitialPolicies] = useState<SelectedPolicy[]>([]);
+  // Bumped every time `server` is replaced (including by a successful Save's
+  // setServer(updated), not just the initial load) — see the reset effect below.
+  // handleRefetch captures this before its request and checks it after, so a refetch
+  // that straddles a concurrent Save can tell its response is now stale and discard it
+  // instead of staging discovery data for a config Save has already superseded.
+  const serverRevisionRef = useRef(0);
 
   const updateSelectedPolicies = useCallback(
     (updater: React.SetStateAction<SelectedPolicy[]>) => {
@@ -600,6 +625,7 @@ export default function ExternalServersOverview(): JSX.Element {
   // against the current persisted state rather than a snapshot taken once on mount.
   useEffect(() => {
     if (!server) return;
+    serverRevisionRef.current += 1;
     setEndpointUrl(server.upstream?.main?.url ?? '');
     setAuthHeaderName(server.upstream?.main?.auth?.header ?? '');
     // auth.value is write-only and never returned by GET — auth.header is the only
@@ -609,8 +635,10 @@ export default function ExternalServersOverview(): JSX.Element {
     setIsCredentialMasked(hasExistingAuth);
     setHasCredentialChanged(false);
     setRefetchedCapabilities(null);
+    setRefetchedTarget(null);
     setRefetchedSupportedVersions(undefined);
     setRefetchedServerInfo(null);
+    setIsCapabilitiesManuallyOverridden(false);
   }, [server]);
 
   const hasPolicyChanges = useMemo(() => {
@@ -641,16 +669,47 @@ export default function ExternalServersOverview(): JSX.Element {
     hasCredentialChanged,
   ]);
 
+  // True once the endpoint/credential has been edited away from what the last refetch
+  // validated against — its discovered capabilities no longer describe the target that
+  // Save would persist. The credential value is only comparable when both the snapshot
+  // and the live field are unmasked; a masked value is just the display placeholder.
+  const isRefetchStale = useMemo(() => {
+    if (!refetchedCapabilities || !refetchedTarget) return false;
+    if (endpointUrl.trim() !== refetchedTarget.url) return true;
+    if (authHeaderName.trim() !== refetchedTarget.headerName) return true;
+    if (isCredentialMasked !== refetchedTarget.wasCredentialMasked) return true;
+    if (
+      !isCredentialMasked &&
+      !refetchedTarget.wasCredentialMasked &&
+      authHeaderValue.trim() !== refetchedTarget.headerValue
+    ) {
+      return true;
+    }
+    return false;
+  }, [
+    refetchedCapabilities,
+    refetchedTarget,
+    endpointUrl,
+    authHeaderName,
+    isCredentialMasked,
+    authHeaderValue,
+  ]);
+
   // A staged refetch only actually counts as a change if it discovered something
   // different from what's currently stored — an unedited refetch that finds the
-  // exact same tools/resources/prompts shouldn't flip Save on for no reason.
+  // exact same tools/resources/prompts shouldn't flip Save on for no reason. A stale
+  // refetch never counts: handleSaveChanges derives capabilitiesPayload from this, so
+  // treating it as unstaged is what keeps stale discovery data from being saved. A
+  // manually-overridden edit bypasses that gate — it was never tied to refetchedTarget
+  // in the first place, so target drift since the last refetch doesn't apply to it.
   const hasCapabilitiesChanges = useMemo(() => {
     if (!refetchedCapabilities) return false;
+    if (!isCapabilitiesManuallyOverridden && isRefetchStale) return false;
     return (
       JSON.stringify(refetchedCapabilities) !==
       JSON.stringify(normalizeCapabilities(server?.capabilities))
     );
-  }, [refetchedCapabilities, server]);
+  }, [refetchedCapabilities, isCapabilitiesManuallyOverridden, isRefetchStale, server]);
 
   // Its own term rather than part of hasCapabilitiesChanges: a refetch can report a
   // version set the proxy has not recorded while the tools, resources and prompts are
@@ -661,12 +720,17 @@ export default function ExternalServersOverview(): JSX.Element {
     // carrying none means the server named none — a fact about whatever this endpoint now
     // points at. Treating it as no-change left the previous server's versions recorded
     // against a backend that does not report them.
-    if (!refetchedSupportedVersions) return false;
+    //
+    // A stale refetch never counts, for the same reason hasCapabilitiesChanges excludes
+    // it above: handleSaveChanges derives upstreamVersionsPayload from this, so treating
+    // a stale refetch as unstaged is what keeps version data tied to an old target from
+    // being saved.
+    if (!refetchedSupportedVersions || isRefetchStale) return false;
     return (
       JSON.stringify(refetchedSupportedVersions) !==
       JSON.stringify(server?.upstreamMcpSpecVersions ?? [])
     );
-  }, [refetchedSupportedVersions, server]);
+  }, [refetchedSupportedVersions, isRefetchStale, server]);
 
   const hasUnsavedChanges =
     hasPolicyChanges ||
@@ -686,8 +750,10 @@ export default function ExternalServersOverview(): JSX.Element {
       setHasCredentialChanged(false);
     }
     setRefetchedCapabilities(null);
+    setRefetchedTarget(null);
     setRefetchedSupportedVersions(undefined);
     setRefetchedServerInfo(null);
+    setIsCapabilitiesManuallyOverridden(false);
   };
 
   const handleSaveChanges = async () => {
@@ -828,6 +894,10 @@ export default function ExternalServersOverview(): JSX.Element {
 
   const handleRefetch = async () => {
     if (!server) return;
+    // Captured before the request, compared after — if a concurrent Save replaces
+    // server while this fetch is in flight, the revision will have moved on by the
+    // time the response comes back.
+    const startServerRevision = serverRevisionRef.current;
     const trimmedUrl = endpointUrl.trim();
     if (!trimmedUrl) {
       showSnackbar('Enter an endpoint URL before refetching.', 'error');
@@ -859,9 +929,12 @@ export default function ExternalServersOverview(): JSX.Element {
             value: authHeaderValue.trim(),
           },
         };
-      } else if (!trimmedHeaderName) {
-        // No auth header configured, or the user is clearing it — validate the way the
-        // saved proxy would actually behave, unauthenticated.
+      } else if (!trimmedHeaderName || !isCredentialMasked) {
+        // No auth header configured, or the credential has been explicitly cleared
+        // (unmasked, then left blank instead of retyped) — in both cases there is no
+        // live credential to send. Validate the way the saved proxy would actually
+        // behave unauthenticated, rather than falling through to proxyId below, which
+        // would silently resolve the stored secret the user just cleared.
         request = { url: trimmedUrl };
       } else if (!headerNameUnchanged) {
         // The header was renamed but the value is still masked. proxyId would resolve
@@ -887,6 +960,13 @@ export default function ExternalServersOverview(): JSX.Element {
         request,
         apimBaseUrl
       );
+      if (serverRevisionRef.current !== startServerRevision) {
+        // The persisted server config was replaced (e.g. by a concurrent Save) while
+        // this fetch was in flight. The response describes a target/config that Save
+        // has already superseded, so discard it rather than staging discovery data
+        // that would resurrect "unsaved changes" right after a save completed.
+        return;
+      }
       // Stage the discovered tools/resources/prompts so the user can Save them —
       // the fetch-server-info response already uses the same MCPServerTool/
       // MCPServerResource/MCPServerPrompt shapes as MCPServerCapabilities, so no
@@ -897,6 +977,15 @@ export default function ExternalServersOverview(): JSX.Element {
         prompts: response.prompts ?? [],
       };
       setRefetchedCapabilities(discoveredCapabilities);
+      // Snapshot exactly what this fetch validated against. The masked placeholder is
+      // not a real credential, so the value is only recorded when it was typed live.
+      setRefetchedTarget({
+        url: trimmedUrl,
+        headerName: trimmedHeaderName,
+        wasCredentialMasked: isCredentialMasked,
+        headerValue: isCredentialMasked ? '' : authHeaderValue.trim(),
+      });
+      setIsCapabilitiesManuallyOverridden(false);
       // Coerced so the display can tell "the probe found none" from "no probe ran" — the
       // API omits the field in both cases, and only this side knows one happened.
       const discoveredVersions = response.supportedVersions ?? [];
@@ -963,6 +1052,12 @@ export default function ExternalServersOverview(): JSX.Element {
     try {
       const parsed = JSON.parse(value) as Record<string, unknown>;
       setRefetchedCapabilities(parseMCPServerCapabilities(parsed));
+      // A manual edit isn't tied to any fetch target, so it's never "stale" the way a
+      // refetch result is — hasCapabilitiesChanges reads this flag to bypass the
+      // isRefetchStale gate below. refetchedTarget itself is deliberately left alone
+      // (not nulled) so isRefetchStale/hasUpstreamVersionsChanges can still correctly
+      // judge whether the separately-staged refetchedSupportedVersions has gone stale.
+      setIsCapabilitiesManuallyOverridden(true);
       // Anything an earlier refetch learned about the server itself is left staged: a
       // hand-edited capability list replaces the capabilities and says nothing about what
       // the server reported it is or which protocol versions it speaks. Dropping the
@@ -1205,7 +1300,11 @@ export default function ExternalServersOverview(): JSX.Element {
   const refetchedValidationResult: EndpointValidationResponse | null = useMemo(() => {
     if (!refetchedCapabilities) return null;
     return {
-      endpointUrl: endpointUrl.trim(),
+      // The URL the capabilities were actually fetched from, not the live form value —
+      // they differ once the refetch goes stale. Empty for manually edited capabilities
+      // (refetchedTarget itself is no longer nulled on manual edit — see
+      // isCapabilitiesManuallyOverridden — so this checks the flag explicitly instead).
+      endpointUrl: isCapabilitiesManuallyOverridden ? '' : (refetchedTarget?.url ?? ''),
       // What the upstream said about itself, not what this proxy is called. Falling back
       // to the proxy's own displayName and artifact version would put two unrelated
       // values under a heading that claims they came from the server.
@@ -1220,9 +1319,11 @@ export default function ExternalServersOverview(): JSX.Element {
     };
   }, [
     refetchedCapabilities,
+    refetchedTarget,
     refetchedSupportedVersions,
     refetchedServerInfo,
-    endpointUrl,
+    isCapabilitiesManuallyOverridden,
+    server,
   ]);
 
   if (isLoading) {
@@ -1771,12 +1872,28 @@ export default function ExternalServersOverview(): JSX.Element {
                   </Button>
                 </Box>
                 {refetchedValidationResult ? (
-                  <ExternalServersValidationDetails
-                    validationResult={refetchedValidationResult}
-                    variant="upstreamInfo"
-                    showHeader={false}
-                    showInputSchema
-                  />
+                  <Box>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1 }}>
+                      Discovered Capabilities{' '}
+                    </Typography>
+                    {isRefetchStale ? (
+                      <Alert
+                        severity="warning"
+                        sx={{ mb: 1 }}
+                        data-testid="backend-connection-refetch-stale"
+                      >
+                        Target or credentials have changed since these capabilities
+                        were fetched. Refetch server info to save the latest
+                        capabilities.
+                      </Alert>
+                    ) : null}
+                    <ExternalServersValidationDetails
+                      validationResult={refetchedValidationResult}
+                      variant="upstreamInfo"
+                      showHeader={false}
+                      showInputSchema
+                    />
+                  </Box>
                 ) : null}
               </Stack>
             </TabPanel>
