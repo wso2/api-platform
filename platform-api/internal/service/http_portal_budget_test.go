@@ -47,9 +47,11 @@ func budgetTestLimits() config.APIPortalPublication {
 
 func newBudgetTestPublisher(t *testing.T, limits config.APIPortalPublication) *HTTPPortalPublisher {
 	t.Helper()
-	return newTestHTTPPortalPublisherWithPolicies(t, "key",
+	p := newTestHTTPPortalPublisherWithPolicies(t, "key",
 		client.RetryConfig{MaxRetries: limits.MaxRetries, AttemptTimeout: limits.RequestTimeout, Backoff: limits.RetryBackoff},
 		client.RetryConfig{MaxRetries: limits.MaxRetries, AttemptTimeout: limits.ListingRequestTimeout, Backoff: limits.RetryBackoff})
+	p.plansListingTimeout = limits.PlanListingBudget()
+	return p
 }
 
 // hangUntilClientGivesUp holds the request open until the client drops it. The server only
