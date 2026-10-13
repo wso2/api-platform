@@ -32,6 +32,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -1336,4 +1337,47 @@ func TestInvokeServiceRidesOutARefusedConnection(t *testing.T) {
 		require.ErrorIs(t, gateway.invokeService(context.Background(), http.MethodGet, "http://x", nil, nil), wanted)
 		require.Equal(t, 1, stub.calls, "an answered request should not be repeated")
 	})
+}
+
+func TestManagementEndpointDeleteSweepsAResourceThroughTheManagementAPI(t *testing.T) {
+	var method, path, authorization string
+	status := http.StatusNoContent
+	rest := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		method, path, authorization = r.Method, r.URL.Path, r.Header.Get("Authorization")
+		w.WriteHeader(status)
+	}))
+	t.Cleanup(rest.Close)
+	endpoint := managementEndpoint{restURL: rest.URL, version: "1.2.0", authorization: "Basic token"}
+	client := httpx.NewClient(httpx.Options{MaxRetries: 1})
+
+	require.NoError(t, endpoint.delete(t.Context(), client, "/llm-proxies", "proxy-1"))
+	require.Equal(t, http.MethodDelete, method)
+	require.Equal(t, ManagementBasePathForVersion("1.2.0")+"/llm-proxies/proxy-1", path)
+	require.Equal(t, "Basic token", authorization)
+
+	status = http.StatusNotFound
+	require.NoError(t, endpoint.delete(t.Context(), client, "/llm-proxies", "gone"), "an absent resource is deleted")
+
+	status = http.StatusInternalServerError
+	require.Error(t, endpoint.delete(t.Context(), client, "/llm-proxies", "stuck"))
+}
+
+func TestManagementEndpointDeleteWaitsForTheControllerOnReleasesWithTheRace(t *testing.T) {
+	rest := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	t.Cleanup(rest.Close)
+	var dumps atomic.Int32
+	admin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if dumps.Add(1) == 1 {
+			_, _ = io.WriteString(w, `{"apis":["api-1"]}`)
+			return
+		}
+		_, _ = io.WriteString(w, `{"apis":[]}`)
+	}))
+	t.Cleanup(admin.Close)
+	endpoint := managementEndpoint{restURL: rest.URL, adminURL: admin.URL, version: "1.1.0", authorization: "Basic token"}
+
+	require.NoError(t, endpoint.delete(t.Context(), httpx.NewClient(httpx.Options{MaxRetries: 1}), "/rest-apis", "api-1"))
+	require.GreaterOrEqual(t, dumps.Load(), int32(2), "the sweep returned before the controller applied the deletion")
 }
