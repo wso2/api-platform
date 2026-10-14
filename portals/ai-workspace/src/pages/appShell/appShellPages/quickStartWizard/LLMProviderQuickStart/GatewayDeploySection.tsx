@@ -84,11 +84,16 @@ export default function GatewayDeploySection({
     onPreferredGatewayChange(aiGateways[0].id);
   }, [aiGateways, onPreferredGatewayChange, preferredGatewayId]);
 
-  const selectedGatewayId = createdGateway?.id ?? preferredGatewayId;
+  // `preferredGatewayId` is the selection, and it wins: `createdGateway` only
+  // stands in for a gateway the list has not caught up with yet (just created,
+  // or refreshed by the setup drawer's polling). Reading `createdGateway` first
+  // pinned the whole section to the last created/polled gateway, so picking
+  // another one from the dropdown changed nothing and every deployment still
+  // went to that gateway.
+  const selectedGatewayId = preferredGatewayId ?? createdGateway?.id ?? null;
   const selectedGateway =
     aiGateways.find((gateway) => gateway.id === selectedGatewayId) ??
-    createdGateway ??
-    null;
+    (createdGateway?.id === selectedGatewayId ? createdGateway : null);
 
   useEffect(() => {
     onGatewayReadyChange(Boolean(selectedGateway?.isActive));
@@ -238,6 +243,9 @@ export default function GatewayDeploySection({
                 onPreferredGatewayChange={onPreferredGatewayChange}
                 onGatewayCreated={(gateway) => {
                   onGatewayCreated(gateway);
+                  // Select it too: selection now comes from `preferredGatewayId`
+                  // alone, so a new gateway has to be set there to be shown.
+                  onPreferredGatewayChange(gateway.id);
                   onRegistrationTokenChange(gateway.token ?? null);
                   setDrawerStage('setup');
                 }}
@@ -248,7 +256,9 @@ export default function GatewayDeploySection({
             ) : selectedGatewayId ? (
               <SetupGatewayStep
                 gatewayId={selectedGatewayId}
-                gateway={createdGateway}
+                gateway={
+                  createdGateway?.id === selectedGatewayId ? createdGateway : null
+                }
                 gatewayVersion={gatewayFormState.version}
                 registrationToken={gatewayRegistrationToken}
                 onGatewayChange={onGatewayChange}
