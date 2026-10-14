@@ -206,6 +206,13 @@ func defaultConfig() *Server {
 				AllowedSchemes: []string{"http", "https"},
 			},
 		},
+		APIPortalPublication: APIPortalPublication{
+			RequestTimeout:        5 * time.Second,
+			ListingRequestTimeout: 15 * time.Second,
+			MaxRetries:            1,
+			RetryBackoff:          1 * time.Second,
+			OverallTimeout:        65 * time.Second,
+		},
 		// Short enough that an operator fixing a broken upstream sees the result
 		// within about a minute without hunting for a flush, long enough that a
 		// page opened repeatedly does not re-contact the upstream each time. The

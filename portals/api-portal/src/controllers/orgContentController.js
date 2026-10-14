@@ -25,7 +25,7 @@ const orgDao = require('../dao/organizationDao');
 
 const loadOrganizationContent = async (req, res, next) => {
 
-    let html = "";
+    let html;
     if (config.designMode?.enabled) {
         html = await loadOrgContentFromFile(req, res);
     } else {

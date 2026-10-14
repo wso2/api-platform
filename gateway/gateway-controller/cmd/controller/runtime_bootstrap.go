@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log/slog"
+	"strings"
 
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
@@ -170,5 +171,45 @@ func supportsRuntimeBootstrapKind(kind string) bool {
 		return true
 	default:
 		return false
+	}
+}
+
+// warnMtlsAPIsWithoutDedicatedHostname logs one warning per stored mtls-auth
+// API that router.downstream_tls.mtls_requires_dedicated_hostname would refuse
+// to deploy. Such an API keeps being served. Pass rendered configurations.
+// With client_certificate_request all_connections the requirement has no
+// effect, and one warning says so instead.
+func warnMtlsAPIsWithoutDedicatedHostname(configs []*models.StoredConfig, routerConfig *config.RouterConfig, log *slog.Logger) {
+	if log == nil || routerConfig == nil || !routerConfig.DownstreamTLS.MtlsRequiresDedicatedHostname {
+		return
+	}
+	if routerConfig.DownstreamTLS.AsksAllConnections() {
+		log.Warn("router.downstream_tls.mtls_requires_dedicated_hostname has no effect while " +
+			"router.downstream_tls.client_certificate_request is all_connections")
+		return
+	}
+	if !routerConfig.HTTPSEnabled {
+		return
+	}
+	for _, cfg := range configs {
+		if cfg == nil || cfg.Kind != models.KindRestApi {
+			continue
+		}
+		restCfg, ok := cfg.Configuration.(api.RestAPI)
+		if !ok {
+			continue
+		}
+		found := config.UndedicatedHostnames(restCfg, routerConfig.VHosts)
+		if len(found) == 0 {
+			continue
+		}
+		settings := make([]string, 0, len(found))
+		for _, h := range found {
+			settings = append(settings, h.Setting)
+		}
+		log.Warn(fmt.Sprintf("mtls-auth API %s has no dedicated hostname; the HTTPS listener asks every connection "+
+			"for a client certificate; update it to set %s", cfg.Handle, strings.Join(settings, " and ")),
+			slog.String("handle", cfg.Handle),
+			slog.String("id", cfg.UUID))
 	}
 }

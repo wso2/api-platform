@@ -208,7 +208,7 @@ func (p *EventPublisher) PublishEvent(eventType eventhub.EventType, action, enti
 	}
 
 	if err := p.EventHub.PublishEvent(p.GatewayID, event); err != nil {
-		logger.Warn("Failed to publish event to event hub",
+		logger.Error("Failed to publish event to event hub",
 			slog.String("gateway_id", p.GatewayID),
 			slog.String("event_type", string(eventType)),
 			slog.String("action", action),

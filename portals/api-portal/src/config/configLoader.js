@@ -70,13 +70,13 @@ function loadConfigFiles(paths) {
         try {
             raw = fs.readFileSync(resolvedPath, 'utf8');
         } catch (err) {
-            throw new Error(`config file "${p}" could not be read: ${err.message}`);
+            throw new Error(`config file "${p}" could not be read: ${err.message}`, { cause: err });
         }
         let parsed;
         try {
             parsed = toml.parse(raw);
         } catch (err) {
-            throw new Error(`config file "${p}" is not valid TOML: ${err.message}`);
+            throw new Error(`config file "${p}" is not valid TOML: ${err.message}`, { cause: err });
         }
         const tree = snakeToCamelDeep(parsed).apiPortal || {};
         merged = mergeOver(merged, tree);
@@ -191,8 +191,8 @@ function readAllowedFile(inputPath) {
     let resolved;
     try {
         resolved = fs.realpathSync(cleaned);
-    } catch (_) {
-        throw new Error(`required file "${inputPath}" is not found`);
+    } catch (err) {
+        throw new Error(`required file "${inputPath}" is not found`, { cause: err });
     }
     if (!isAllowedResolved(resolved, allowlist)) {
         throw new Error(`file "${inputPath}" is not in an allowed source directory`);
@@ -201,8 +201,8 @@ function readAllowedFile(inputPath) {
     let stat;
     try {
         stat = fs.statSync(resolved);
-    } catch (_) {
-        throw new Error(`required file "${inputPath}" is not found`);
+    } catch (err) {
+        throw new Error(`required file "${inputPath}" is not found`, { cause: err });
     }
     if (stat.size > MAX_FILE_BYTES) {
         throw new Error(`file "${inputPath}" exceeds the maximum allowed size`);
@@ -211,8 +211,8 @@ function readAllowedFile(inputPath) {
     let data;
     try {
         data = fs.readFileSync(resolved, 'utf8');
-    } catch (_) {
-        throw new Error(`required file "${inputPath}" is not found`);
+    } catch (err) {
+        throw new Error(`required file "${inputPath}" is not found`, { cause: err });
     }
     return data.replace(/[ \t\r\n]+$/, '');
 }
@@ -272,7 +272,7 @@ function interpolateLeaf(value, fieldPath) {
         const compiled = hb.compile(value, { noEscape: true, strict: true });
         return coerceValue(compiled({}));
     } catch (err) {
-        throw new Error(`config interpolation failed at "${fieldPath}": ${err.message}`);
+        throw new Error(`config interpolation failed at "${fieldPath}": ${err.message}`, { cause: err });
     }
 }
 

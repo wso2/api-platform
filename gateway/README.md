@@ -47,7 +47,7 @@ docker compose up
 terminal:
 
 ```bash
-curl http://localhost:9092/api/admin/v0.9/health
+curl http://localhost:9094/api/admin/v1/health
 ```
 
 On Windows, use the PowerShell counterpart (same flags and generated files; requires `openssl`
