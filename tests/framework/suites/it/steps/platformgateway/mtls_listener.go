@@ -26,9 +26,6 @@ import (
 	"encoding/pem"
 	"fmt"
 	"net/url"
-	"os"
-	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/cucumber/godog"
@@ -48,7 +45,7 @@ func (g *Gateway) registerMTLSListenerSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^the HTTPS listener should request a client certificate$`, g.listenerRequestsClientCertificate)
 	sc.Step(`^the HTTPS listener should stop requesting a client certificate$`, g.listenerStopsRequestingClientCertificate)
 	sc.Step(`^the HTTPS listener should not request a client certificate$`, g.listenerDoesNotRequestClientCertificate)
-	sc.Step(`^the HTTPS listener should present the certificate in "([^"]*)"$`, g.listenerPresentsCertificateFile)
+	sc.Step(`^the HTTPS listener should present the gateway's listener certificate$`, g.listenerPresentsGatewayCertificate)
 	sc.Step(`^the response should include a warning with code "([^"]*)" for field "([^"]*)"$`, responseWarnsForField)
 	sc.Step(`^the response should include a warning with code "([^"]*)"$`,
 		func(ctx context.Context, code string) error { return responseWarnsForField(ctx, code, "") })
@@ -134,20 +131,13 @@ func (g *Gateway) listenerDoesNotRequestClientCertificate(ctx context.Context) e
 	return nil
 }
 
-// listenerPresentsCertificateFile requires the listener's leaf certificate to be the
-// certificate in a PEM file, named relative to the repository root.
-func (g *Gateway) listenerPresentsCertificateFile(ctx context.Context, relative string) error {
-	path, err := repositoryFile(relative)
-	if err != nil {
-		return err
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return fmt.Errorf("reading the expected listener certificate %q: %w", relative, err)
-	}
-	block, _ := pem.Decode(data)
+// listenerPresentsGatewayCertificate checks that the HTTPS listener presents the listener
+// certificate the framework generated and mounted for this gateway stack, which the controller
+// delivers to Envoy as an SDS secret.
+func (g *Gateway) listenerPresentsGatewayCertificate(ctx context.Context) error {
+	block, _ := pem.Decode(shared.GatewayListenerTLS().CertPEM)
 	if block == nil || block.Type != "CERTIFICATE" {
-		return fmt.Errorf("%q does not start with a PEM certificate", relative)
+		return fmt.Errorf("the generated gateway listener certificate is not a PEM certificate")
 	}
 	want := sha256.Sum256(block.Bytes)
 	if isMTLSScenario(ctx) {
@@ -164,26 +154,10 @@ func (g *Gateway) listenerPresentsCertificateFile(ctx context.Context, relative 
 	}
 	got := sha256.Sum256(state.PeerCertificates[0].Raw)
 	if got != want {
-		return fmt.Errorf("the HTTPS listener presented %q (sha256 %s), expected the certificate in %q (sha256 %s)",
-			state.PeerCertificates[0].Subject.String(), hex.EncodeToString(got[:]), relative, hex.EncodeToString(want[:]))
+		return fmt.Errorf("the HTTPS listener presented %q (sha256 %s), expected the gateway listener certificate (sha256 %s)",
+			state.PeerCertificates[0].Subject.String(), hex.EncodeToString(got[:]), hex.EncodeToString(want[:]))
 	}
 	return nil
-}
-
-// repositoryFile resolves a repository-relative path and refuses one that leaves the checkout.
-func repositoryFile(relative string) (string, error) {
-	root, ok := shared.RepoRootFromCallerFile()
-	if !ok {
-		return "", fmt.Errorf("the repository root could not be located")
-	}
-	if relative == "" || filepath.IsAbs(relative) || strings.ContainsRune(relative, 0) {
-		return "", fmt.Errorf("%q is not a repository-relative path", relative)
-	}
-	path := filepath.Clean(filepath.Join(root, filepath.FromSlash(relative)))
-	if !strings.HasPrefix(path, filepath.Clean(root)+string(filepath.Separator)) {
-		return "", fmt.Errorf("%q leaves the repository", relative)
-	}
-	return path, nil
 }
 
 // ── Deploy-response validation errors and warnings ────────────────────────────

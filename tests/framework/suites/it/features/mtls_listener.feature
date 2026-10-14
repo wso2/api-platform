@@ -158,7 +158,7 @@ Feature: HTTPS listener derived from the APIs that use mutual TLS
     And the response body should contain "tls_certificate_sds_secret_configs"
     And the response body should not contain "private_key"
     And the response body should not contain "tls_certificates"
-    And the HTTPS listener should present the certificate in "gateway/gateway-controller/listener-certs/default-listener.crt"
+    And the HTTPS listener should present the gateway's listener certificate
 
   # ==================== DEPLOYMENTS THAT COULD NEVER AUTHENTICATE ANYONE ARE REFUSED ====================
 

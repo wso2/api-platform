@@ -48,6 +48,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
 
+	"github.com/wso2/api-platform/tests/framework/core/catalog/shared"
 	"github.com/wso2/api-platform/tests/framework/core/cleanup"
 	"github.com/wso2/api-platform/tests/framework/core/components"
 	frameworkruntime "github.com/wso2/api-platform/tests/framework/core/runtime"
@@ -1824,19 +1825,6 @@ func TestResponseWarningsPreferTheStatusList(t *testing.T) {
 	require.NoError(t, responseHasNoWarnings(ctx))
 }
 
-func TestRepositoryFileStaysInsideTheCheckout(t *testing.T) {
-	const relative = "gateway/gateway-controller/listener-certs/default-listener.crt"
-	path, err := repositoryFile(relative)
-	require.NoError(t, err)
-	info, err := os.Stat(path)
-	require.NoError(t, err)
-	require.False(t, info.IsDir())
-	for _, bad := range []string{"", "/etc/passwd", "../outside", "gateway/../../outside", "a\x00b"} {
-		_, err := repositoryFile(bad)
-		require.Error(t, err, bad)
-	}
-}
-
 func TestListenerProbeAndHold(t *testing.T) {
 	requesting := httptest.NewUnstartedServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
 	requesting.TLS = &tls.Config{ClientAuth: tls.RequestClientCert}
@@ -1879,23 +1867,21 @@ func TestListenerProbeAndHold(t *testing.T) {
 	require.Less(t, time.Since(started), time.Second)
 }
 
-func TestListenerPresentsTheCertificateFile(t *testing.T) {
-	const relative = "gateway/gateway-controller/listener-certs/default-listener.crt"
-	path, err := repositoryFile(relative)
-	require.NoError(t, err)
-	pair, err := tls.LoadX509KeyPair(path, filepath.Join(filepath.Dir(path), "default-listener.key"))
+func TestListenerPresentsTheGatewayListenerCertificate(t *testing.T) {
+	listener := shared.GatewayListenerTLS()
+	pair, err := tls.X509KeyPair(listener.CertPEM, listener.PrivateKeyPEM)
 	require.NoError(t, err)
 	https := httptest.NewUnstartedServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
 	https.TLS = &tls.Config{Certificates: []tls.Certificate{pair}}
 	https.StartTLS()
 	t.Cleanup(https.Close)
 	g, ctx := mtlsGatewayUnderTest(t, consistentMTLSGateway(t), https)
-	require.NoError(t, g.listenerPresentsCertificateFile(ctx, relative))
+	require.NoError(t, g.listenerPresentsGatewayCertificate(ctx))
 
 	other := httptest.NewTLSServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
 	t.Cleanup(other.Close)
 	g, ctx = mtlsGatewayUnderTest(t, consistentMTLSGateway(t), other)
-	require.ErrorContains(t, g.listenerPresentsCertificateFile(ctx, relative), relative)
+	require.ErrorContains(t, g.listenerPresentsGatewayCertificate(ctx), "expected the gateway listener certificate")
 }
 
 func TestListenerDeployDocumentsKeepTheirFields(t *testing.T) {
