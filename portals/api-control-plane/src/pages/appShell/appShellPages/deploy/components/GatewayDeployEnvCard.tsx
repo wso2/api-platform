@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { alpha, Box, Button, IconButton, Typography, useTheme } from '@wso2/oxygen-ui';
 import { PackageOpen, SquarePen } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
@@ -212,6 +212,10 @@ export function GatewayDeployEnvCard({
   const undeployMutation = useUndeploy();
   const restoreMutation = useRestore();
   const [selectorOpen, setSelectorOpen] = useState(false);
+  // An open restore drawer must not outlive the API turning read-only.
+  useEffect(() => {
+    if (readOnly) setSelectorOpen(false);
+  }, [readOnly]);
 
   const status = currentDeployment?.status;
   // When the gateway is offline the deployment state is unknowable — show
@@ -448,6 +452,7 @@ export function GatewayDeployEnvCard({
         deployments={deployments}
         onClose={() => setSelectorOpen(false)}
         open={selectorOpen}
+        readOnly={readOnly}
         useRestore={useRestore}
       />
     </Box>

@@ -245,7 +245,7 @@ const SERVER_FIELD_MAP: Record<string, ValidatedField> = {
 
 export function GatewayCreatePage() {
   return (
-    <AppPage hideBreadcrumbs>
+    <AppPage>
       <GatewayCreatePageContent />
     </AppPage>
   );

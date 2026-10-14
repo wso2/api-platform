@@ -255,7 +255,7 @@ type PendingAction = 'idle' | 'saving' | 'publishing' | 'unpublishing' | 'deprec
  */
 export function PortalPublishPage() {
   return (
-    <AppPage hideBreadcrumbs>
+    <AppPage>
       <RestPortalPublish />
     </AppPage>
   );

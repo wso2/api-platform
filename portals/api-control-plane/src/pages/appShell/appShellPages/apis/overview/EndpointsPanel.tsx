@@ -26,7 +26,7 @@ import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import { useUpdateRestApi, type RestApi } from '@/api/resources/restApis';
 import { useNotifications } from '@/components/Notifications';
 import { isValidUrl } from '../utils/developEdit';
-import { useCan } from '@/permissions/useCan';
+import { useActionPermission } from '@/permissions/useCan';
 import type { PermissionOperation } from '@/permissions';
 
 const messages = defineMessages({
@@ -53,6 +53,17 @@ const messages = defineMessages({
   edit: {
     id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.EndpointsPanel.edit',
     defaultMessage: 'Edit endpoint',
+  },
+  notEditable: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.EndpointsPanel.notEditable',
+    defaultMessage: 'This endpoint cannot be edited here.',
+    description: 'Tooltip on the disabled Edit endpoint button when no more specific reason applies.',
+  },
+  gatewayManaged: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.EndpointsPanel.gatewayManaged',
+    defaultMessage:
+      'This API was created from a gateway, so its endpoint is managed by the gateway and cannot be edited here.',
+    description: 'Tooltip on the disabled Edit endpoint button of a read-only (gateway-created) API.',
   },
   notConfigured: {
     id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.EndpointsPanel.notConfigured',
@@ -83,6 +94,11 @@ export type EndpointCardProps = {
   url?: string;
   /** Whether the endpoint may be edited at all (e.g. not a read-only API). */
   editable?: boolean;
+  /**
+   * Set when `editable` is false because a gateway created the API, so the
+   * disabled button can say why rather than give a generic reason.
+   */
+  gatewayManaged?: boolean;
   /** The operation the edit button is gated on. */
   editOperation: PermissionOperation;
   /** True while a save is in flight. */
@@ -98,6 +114,7 @@ export type EndpointCardProps = {
 export function EndpointCard({
   editable = true,
   editOperation,
+  gatewayManaged = false,
   onSave,
   saving,
   title,
@@ -105,8 +122,16 @@ export function EndpointCard({
 }: EndpointCardProps) {
   const intl = useIntl();
   // Each API kind passes its own update operation, so a GraphQL API is never
-  // gated on the REST permission.
-  const canUpdate = useCan(editOperation);
+  // gated on the REST permission. `tooltip` is the shared "not permitted" text.
+  const permission = useActionPermission(editOperation);
+  const canUpdate = permission.allowed;
+  // Explain a disabled button: why it can't be edited, or that the user lacks
+  // permission; otherwise just name the action.
+  const editTooltip = !editable
+    ? intl.formatMessage(gatewayManaged ? messages.gatewayManaged : messages.notEditable)
+    : !canUpdate
+      ? (permission.tooltip ?? intl.formatMessage(messages.edit))
+      : intl.formatMessage(messages.edit);
   const { notify } = useNotifications();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [endpointUrl, setEndpointUrl] = useState('');
@@ -149,15 +174,19 @@ export function EndpointCard({
           <Typography sx={{ fontWeight: 600 }} variant="h6">
             {title ?? <FormattedMessage {...messages.title} />}
           </Typography>
-          <Tooltip title={intl.formatMessage(messages.edit)}>
-            <IconButton
-              aria-label={intl.formatMessage(messages.edit)}
-              onClick={openDrawer}
-              size="small"
-              disabled={!canUpdate || !editable}
-            >
-              <Pencil size={16} />
-            </IconButton>
+          <Tooltip title={editTooltip}>
+            {/* A disabled button gets no pointer events, so the span receives
+                the hover that shows why it is disabled. */}
+            <span>
+              <IconButton
+                aria-label={intl.formatMessage(messages.edit)}
+                onClick={openDrawer}
+                size="small"
+                disabled={!canUpdate || !editable}
+              >
+                <Pencil size={16} />
+              </IconButton>
+            </span>
           </Tooltip>
         </Stack>
         <Divider />
@@ -283,7 +312,9 @@ export function EndpointsPanel({ api }: { api: RestApi }) {
 
   return (
     <EndpointCard
+      editable={!api.readOnly}
       editOperation="UpdateRESTAPI"
+      gatewayManaged={api.readOnly === true}
       onSave={(endpointUrl) =>
         updateApi.mutateAsync({
           restApiId: api.id ?? '',

@@ -1328,8 +1328,16 @@
   "apiControlPlane.pages.appShell.appShellPages.apis.overview.EndpointsPanel.endpointRequired": {
     "defaultMessage": "Enter a valid endpoint URL."
   },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.EndpointsPanel.gatewayManaged": {
+    "defaultMessage": "This API was created from a gateway, so its endpoint is managed by the gateway and cannot be edited here.",
+    "description": "Tooltip on the disabled Edit endpoint button of a read-only (gateway-created) API."
+  },
   "apiControlPlane.pages.appShell.appShellPages.apis.overview.EndpointsPanel.notConfigured": {
     "defaultMessage": "No endpoint configured"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.EndpointsPanel.notEditable": {
+    "defaultMessage": "This endpoint cannot be edited here.",
+    "description": "Tooltip on the disabled Edit endpoint button when no more specific reason applies."
   },
   "apiControlPlane.pages.appShell.appShellPages.apis.overview.EndpointsPanel.save": {
     "defaultMessage": "Save"
