@@ -26,6 +26,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -45,7 +46,17 @@ import (
 // always returns the one fixed row below.
 func newTestHTTPPortalPublisher(t *testing.T, sharedKey string) *HTTPPortalPublisher {
 	t.Helper()
-	retryClient, err := client.NewRetryableHTTPClient(0, 5*time.Second)
+	cfg := client.RetryConfig{AttemptTimeout: 5 * time.Second}
+	return newTestHTTPPortalPublisherWithPolicies(t, sharedKey, cfg, cfg)
+}
+
+func newTestHTTPPortalPublisherWithPolicies(t *testing.T, sharedKey string, light, push client.RetryConfig) *HTTPPortalPublisher {
+	t.Helper()
+	lightClient, err := client.NewRetryableHTTPClient(light)
+	if err != nil {
+		t.Fatalf("NewRetryableHTTPClient: %v", err)
+	}
+	pushClient, err := client.NewRetryableHTTPClient(push)
 	if err != nil {
 		t.Fatalf("NewRetryableHTTPClient: %v", err)
 	}
@@ -60,7 +71,7 @@ func newTestHTTPPortalPublisher(t *testing.T, sharedKey string) *HTTPPortalPubli
 		InternalAuthKey: encryptedKey,
 	}}
 	authRegistry := NewAPIPortalAuthRegistry(portalRepo, testVault)
-	return &HTTPPortalPublisher{client: retryClient, authRegistry: authRegistry}
+	return &HTTPPortalPublisher{client: lightClient, pushClient: pushClient, authRegistry: authRegistry, plansListingTimeout: time.Minute}
 }
 
 // assertMultipartParts drains r's multipart body against boundary, returning
@@ -828,5 +839,104 @@ func TestPortalURLsIncludeTheRESTBase(t *testing.T) {
 		if got, want := apiURL(portal, "my-api"), "https://portal.example.com/api-portal/api/v0.9/apis/my-api"; got != want {
 			t.Errorf("apiURL(%q) = %q, want %q", root, got, want)
 		}
+		if got, want := plansURL(portal), "https://portal.example.com/api-portal/api/v0.9/subscription-plans"; got != want {
+			t.Errorf("plansURL(%q) = %q, want %q", root, got, want)
+		}
+	}
+}
+
+func TestHTTPPortalPublisher_AttemptLimitsByCall(t *testing.T) {
+	const portalDelay = 150 * time.Millisecond
+	light := client.RetryConfig{AttemptTimeout: portalDelay / 3}
+	push := client.RetryConfig{AttemptTimeout: portalDelay * 10}
+
+	slowPortal := func(status int) *httptest.Server {
+		return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			select {
+			case <-time.After(portalDelay):
+				w.WriteHeader(status)
+			case <-r.Context().Done():
+			}
+		}))
+	}
+	pub := &model.Publication{DisplayName: "X", Version: "1.0", AgentVisibility: "VISIBLE"}
+
+	t.Run("push calls use the push limit", func(t *testing.T) {
+		srv := slowPortal(http.StatusOK)
+		defer srv.Close()
+		p := newTestHTTPPortalPublisherWithPolicies(t, "key", light, push)
+
+		if err := p.Deprecate(context.Background(), &model.APIPortal{URL: srv.URL}, constants.PublicationAPITypeRestAPI, "my-api", pub); err != nil {
+			t.Fatalf("Deprecate: %v", err)
+		}
+	})
+
+	t.Run("publish push uses the push limit", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method == http.MethodGet {
+				w.WriteHeader(http.StatusNotFound)
+				return
+			}
+			time.Sleep(portalDelay)
+			w.WriteHeader(http.StatusCreated)
+		}))
+		defer srv.Close()
+		p := newTestHTTPPortalPublisherWithPolicies(t, "key", light, push)
+
+		if err := p.Publish(context.Background(), &model.APIPortal{URL: srv.URL}, constants.PublicationAPITypeRestAPI, "my-api", pub, nil); err != nil {
+			t.Fatalf("Publish: %v", err)
+		}
+	})
+
+	lightCalls := []struct {
+		name string
+		call func(p *HTTPPortalPublisher, portal *model.APIPortal) error
+	}{
+		{"existence check", func(p *HTTPPortalPublisher, portal *model.APIPortal) error {
+			return p.Publish(context.Background(), portal, constants.PublicationAPITypeRestAPI, "my-api", pub, nil)
+		}},
+		{"unpublish", func(p *HTTPPortalPublisher, portal *model.APIPortal) error {
+			return p.Unpublish(context.Background(), portal, "my-api")
+		}},
+		{"plan listing", func(p *HTTPPortalPublisher, portal *model.APIPortal) error {
+			return p.CreateMissingPlans(context.Background(), portal, []*model.SubscriptionPlan{{Handle: "gold"}})
+		}},
+	}
+	for _, tc := range lightCalls {
+		t.Run(tc.name+" uses the request limit", func(t *testing.T) {
+			srv := slowPortal(http.StatusNotFound)
+			defer srv.Close()
+			p := newTestHTTPPortalPublisherWithPolicies(t, "key", light, push)
+
+			err := tc.call(p, &model.APIPortal{URL: srv.URL})
+			if !errors.Is(err, context.DeadlineExceeded) {
+				t.Fatalf("want the request limit to cut the call off, got %v", err)
+			}
+		})
+	}
+}
+
+func TestHTTPPortalPublisher_StopsAtTheContextDeadline(t *testing.T) {
+	var hits atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer srv.Close()
+	cfg := client.RetryConfig{MaxRetries: 100, AttemptTimeout: time.Second, Backoff: 20 * time.Millisecond}
+	p := newTestHTTPPortalPublisherWithPolicies(t, "key", cfg, cfg)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	started := time.Now()
+	err := p.Unpublish(ctx, &model.APIPortal{URL: srv.URL}, "my-api")
+	if err == nil {
+		t.Fatal("want a failure once the deadline passes")
+	}
+	if took := time.Since(started); took > time.Second {
+		t.Fatalf("the call outlived its context by far: %s", took)
+	}
+	if hits.Load() < 2 {
+		t.Fatalf("want the call retried within the deadline, got %d attempts", hits.Load())
 	}
 }

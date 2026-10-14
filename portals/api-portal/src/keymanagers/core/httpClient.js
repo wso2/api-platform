@@ -129,7 +129,7 @@ function assertDialable(rawUrl, fieldPath, policy) {
             ? 'http and https are permitted'
             : 'only https is permitted; set allow_http_endpoints = true on this ' +
               'key manager to allow http';
-        throw new Error(`${fieldPath}: ${err.message} (${remedy})`);
+        throw new Error(`${fieldPath}: ${err.message} (${remedy})`, { cause: err });
     }
     // Only IP literals can be judged here: assertAllowedHost is a no-op for a
     // hostname, since Node resolves those at connection time. A hostname that
@@ -150,7 +150,8 @@ function assertDialable(rawUrl, fieldPath, policy) {
             : 'Link-local and cloud-metadata addresses are never permitted, ' +
               'whatever this key manager is configured with.';
         throw new Error(
-            `${fieldPath}: ${err.message} — "${hostname}" is in a blocked address range. ${remedy}`
+            `${fieldPath}: ${err.message} — "${hostname}" is in a blocked address range. ${remedy}`,
+            { cause: err }
         );
     }
 }

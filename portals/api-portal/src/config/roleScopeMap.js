@@ -83,8 +83,8 @@ function readMappingFile(filePath) {
     let stat;
     try {
         stat = fs.statSync(cleaned);
-    } catch (_) {
-        throw new Error(`role_to_scope_mapping file "${filePath}" could not be read`);
+    } catch (err) {
+        throw new Error(`role_to_scope_mapping file "${filePath}" could not be read`, { cause: err });
     }
     if (!stat.isFile()) {
         throw new Error(`role_to_scope_mapping "${filePath}" is not a file`);
@@ -94,8 +94,8 @@ function readMappingFile(filePath) {
     }
     try {
         return fs.readFileSync(cleaned, 'utf8');
-    } catch (_) {
-        throw new Error(`role_to_scope_mapping file "${filePath}" could not be read`);
+    } catch (err) {
+        throw new Error(`role_to_scope_mapping file "${filePath}" could not be read`, { cause: err });
     }
 }
 
@@ -118,7 +118,7 @@ function parseRoleScopeMap(contents, filePath) {
     try {
         doc = yaml.load(contents);
     } catch (err) {
-        throw new Error(`role_to_scope_mapping file "${filePath}" is not valid YAML: ${err.message}`);
+        throw new Error(`role_to_scope_mapping file "${filePath}" is not valid YAML: ${err.message}`, { cause: err });
     }
     if (!doc || typeof doc !== 'object' || !Array.isArray(doc.roles)) {
         throw new Error(
@@ -185,7 +185,7 @@ function readDeclaredPortalScopes(specPath) {
     try {
         doc = yaml.load(fs.readFileSync(specPath, 'utf8'));
     } catch (err) {
-        throw new Error(`API Portal OpenAPI spec "${specPath}" could not be read: ${err.message}`);
+        throw new Error(`API Portal OpenAPI spec "${specPath}" could not be read: ${err.message}`, { cause: err });
     }
     const declared = new Set();
     const schemes = doc?.components?.securitySchemes || {};

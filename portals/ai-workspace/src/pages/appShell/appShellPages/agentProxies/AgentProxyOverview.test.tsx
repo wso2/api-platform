@@ -229,7 +229,14 @@ describe('moving between the tabs', () => {
     await openOverview();
 
     expect(screen.getByRole('link', { name: 'Edit Agent Proxy' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Deploy to Gateway' })).toBeInTheDocument();
+    // Absolute, built from `listPath` + the agent proxy id — not a bare relative
+    // "deploy", which resolved against whatever the current URL happened to be
+    // (e.g. the project's own slug segment) rather than the organization-rooted
+    // path this app's routes actually expect.
+    expect(screen.getByRole('link', { name: 'Deploy to Gateway' })).toHaveAttribute(
+      'href',
+      '/organizations/acme/projects/proj-1/agent-proxy/proxy-1/deploy',
+    );
   });
 
   it('refuses to save with no transport selected', async () => {

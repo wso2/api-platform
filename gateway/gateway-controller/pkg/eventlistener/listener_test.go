@@ -250,6 +250,7 @@ func TestNewEventListener_RequiresSystemConfig(t *testing.T) {
 			nil,
 			nil,
 			nil,
+			&fakeClientAuthorityPublisher{},
 			nil,
 			nil,
 			newTestLogger(),
@@ -271,6 +272,7 @@ func TestNewEventListener_RequiresGatewayID(t *testing.T) {
 			nil,
 			nil,
 			nil,
+			&fakeClientAuthorityPublisher{},
 			nil,
 			nil,
 			newTestLogger(),
@@ -292,6 +294,7 @@ func TestStart_SubscribesWithTrimmedGatewayID(t *testing.T) {
 		nil,
 		nil,
 		nil,
+		&fakeClientAuthorityPublisher{},
 		nil,
 		nil,
 		newTestLogger(),
@@ -341,7 +344,7 @@ func TestHandleEvent_AcceptsKnownTypesAndUnknown(t *testing.T) {
 	})
 
 	logs := logBuf.String()
-	assert.Contains(t, logs, "Certificate event received")
+	assert.Contains(t, logs, "Unknown certificate event action")
 	assert.Contains(t, logs, "Successfully processed application replica sync event")
 	assert.Contains(t, logs, "Unknown LLM template event action")
 	assert.Contains(t, logs, "Unknown event type received")

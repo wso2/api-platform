@@ -587,3 +587,79 @@ func TestInitializeExecutionContext_WithPolicyChain(t *testing.T) {
 	assert.Equal(t, "/api/v1/pets", execCtx.requestBodyCtx.Path)
 	assert.Equal(t, "GET", execCtx.requestBodyCtx.Method)
 }
+
+// =============================================================================
+// extractDownstreamTLS
+// =============================================================================
+
+// TestExtractDownstreamTLS_AttributesNil guards that a nil attributes map
+// yields a nil DownstreamTLS, so a policy sees the attributes as absent.
+func TestExtractDownstreamTLS_AttributesNil(t *testing.T) {
+	assert.Nil(t, extractDownstreamTLS(nil))
+}
+
+// TestExtractDownstreamTLS_ExtProcFilterEmpty covers an ext_proc entry with
+// no fields: the struct exists, so the result is a non-nil, MTLS-false value.
+func TestExtractDownstreamTLS_ExtProcFilterEmpty(t *testing.T) {
+	attrs := map[string]*structpb.Struct{constants.ExtProcFilter: {}}
+
+	tls := extractDownstreamTLS(attrs)
+
+	require.NotNil(t, tls)
+	assert.False(t, tls.MTLS)
+	assert.Nil(t, tls.PeerCertValid)
+}
+
+// TestExtractDownstreamTLS_AllFieldsPresent guards the field mapping for a
+// fully populated mTLS connection, with PeerCertValid a non-nil true.
+func TestExtractDownstreamTLS_AllFieldsPresent(t *testing.T) {
+	attrs := map[string]*structpb.Struct{
+		constants.ExtProcFilter: {
+			Fields: map[string]*structpb.Value{
+				constants.ExtProcAttrConnectionMTLS:                   structpb.NewBoolValue(true),
+				constants.ExtProcAttrConnectionPeerCertificateDigest:  structpb.NewStringValue("deadbeef"),
+				constants.ExtProcAttrConnectionSubjectPeerCertificate: structpb.NewStringValue("CN=client-valid"),
+				constants.ExtProcAttrConnectionURISANPeerCertificate:  structpb.NewStringValue("urn:partner-a:payments"),
+				constants.ExtProcAttrConnectionDNSSANPeerCertificate:  structpb.NewStringValue("client-valid.partner-a.test"),
+				constants.ExtProcAttrConnectionPeerCertificate:        structpb.NewStringValue("-----BEGIN CERTIFICATE-----\nMII...\n-----END CERTIFICATE-----\n"),
+				constants.ExtProcAttrConnectionTLSVersion:             structpb.NewStringValue("TLSv1.3"),
+				constants.ExtProcAttrConnectionRequestedServerName:    structpb.NewStringValue("api.example.com"),
+				constants.ExtProcAttrConnectionPeerCertificateValid:   structpb.NewBoolValue(true),
+			},
+		},
+	}
+
+	tls := extractDownstreamTLS(attrs)
+
+	require.NotNil(t, tls)
+	assert.True(t, tls.MTLS)
+	assert.Equal(t, "deadbeef", tls.SHA256Thumbprint)
+	assert.Equal(t, "CN=client-valid", tls.SubjectDN)
+	assert.Equal(t, "urn:partner-a:payments", tls.FirstURISAN)
+	assert.Equal(t, "client-valid.partner-a.test", tls.FirstDNSSAN)
+	assert.Equal(t, "-----BEGIN CERTIFICATE-----\nMII...\n-----END CERTIFICATE-----\n", tls.PeerCertificatePEM)
+	assert.Equal(t, "TLSv1.3", tls.TLSVersion)
+	assert.Equal(t, "api.example.com", tls.RequestedServerName)
+	require.NotNil(t, tls.PeerCertValid)
+	assert.True(t, *tls.PeerCertValid)
+}
+
+// TestExtractDownstreamTLS_PeerCertValid_FalsePointer guards that a false
+// verdict becomes a non-nil pointer to false, distinct from an absent one.
+func TestExtractDownstreamTLS_PeerCertValid_FalsePointer(t *testing.T) {
+	attrs := map[string]*structpb.Struct{
+		constants.ExtProcFilter: {
+			Fields: map[string]*structpb.Value{
+				constants.ExtProcAttrConnectionMTLS:                 structpb.NewBoolValue(true),
+				constants.ExtProcAttrConnectionPeerCertificateValid: structpb.NewBoolValue(false),
+			},
+		},
+	}
+
+	tls := extractDownstreamTLS(attrs)
+
+	require.NotNil(t, tls)
+	assert.True(t, tls.MTLS)
+	require.NotNil(t, tls.PeerCertValid)
+	assert.False(t, *tls.PeerCertValid)
+}

@@ -38,7 +38,7 @@ func createTestServerWithLLM() *APIServer {
 	server := createTestAPIServer()
 	// Create LLM deployment service with test infrastructure
 	policyVersionResolver := utils.NewLoadedPolicyVersionResolver(server.policyDefinitions)
-	policyValidator := config.NewPolicyValidator(server.policyDefinitions)
+	policyValidator := config.NewPolicyValidator(server.policyDefinitions, nil)
 	llmService := utils.NewLLMDeploymentService(
 		server.store,
 		server.db,

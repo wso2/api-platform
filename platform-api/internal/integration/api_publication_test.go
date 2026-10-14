@@ -24,6 +24,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/model"
@@ -45,6 +46,10 @@ func (alwaysSucceedsPortalPublisher) Unpublish(_ context.Context, _ *model.APIPo
 	return nil
 }
 
+func (alwaysSucceedsPortalPublisher) CreateMissingPlans(_ context.Context, _ *model.APIPortal, _ []*model.SubscriptionPlan) error {
+	return nil
+}
+
 func (alwaysSucceedsPortalPublisher) Deprecate(_ context.Context, _ *model.APIPortal, _, _ string, _ *model.Publication) error {
 	return nil
 }
@@ -58,8 +63,14 @@ func newPublicationTestService(it *itDB) *service.PublicationService {
 	return newPublicationTestServiceWith(it, alwaysSucceedsPortalPublisher{})
 }
 
+const publicationTestOperationTimeout = time.Minute
+
 // newPublicationTestServiceWith builds the service with the given portal double.
 func newPublicationTestServiceWith(it *itDB, portalPublisher service.PortalPublisher) *service.PublicationService {
+	return newPublicationTestServiceWithTimeout(it, portalPublisher, publicationTestOperationTimeout)
+}
+
+func newPublicationTestServiceWithTimeout(it *itDB, portalPublisher service.PortalPublisher, operationTimeout time.Duration) *service.PublicationService {
 	return service.NewPublicationService(
 		repository.NewArtifactRepo(it.db),
 		repository.NewAPIPortalRepo(it.db),
@@ -67,6 +78,7 @@ func newPublicationTestServiceWith(it *itDB, portalPublisher service.PortalPubli
 		repository.NewSubscriptionPlanRepo(it.db),
 		repository.NewPublicationRepo(it.db),
 		portalPublisher,
+		operationTimeout,
 		nil,
 	)
 }
@@ -589,6 +601,10 @@ func (unpublishConflictPublisher) Unpublish(_ context.Context, _ *model.APIPorta
 	return &service.PortalConflictError{Message: "active consumers still attached"}
 }
 
+func (unpublishConflictPublisher) CreateMissingPlans(_ context.Context, _ *model.APIPortal, _ []*model.SubscriptionPlan) error {
+	return nil
+}
+
 func (unpublishConflictPublisher) Deprecate(_ context.Context, _ *model.APIPortal, _, _ string, _ *model.Publication) error {
 	return nil
 }
@@ -607,6 +623,7 @@ func TestPublicationUnpublish_PortalConflict(t *testing.T) {
 		repository.NewSubscriptionPlanRepo(it.db),
 		repository.NewPublicationRepo(it.db),
 		unpublishConflictPublisher{},
+		publicationTestOperationTimeout,
 		nil,
 	)
 
@@ -656,6 +673,10 @@ func (unpublishSubscriptionConflictPublisher) Unpublish(_ context.Context, _ *mo
 	}
 }
 
+func (unpublishSubscriptionConflictPublisher) CreateMissingPlans(_ context.Context, _ *model.APIPortal, _ []*model.SubscriptionPlan) error {
+	return nil
+}
+
 func (unpublishSubscriptionConflictPublisher) Deprecate(_ context.Context, _ *model.APIPortal, _, _ string, _ *model.Publication) error {
 	return nil
 }
@@ -674,6 +695,7 @@ func TestPublicationUnpublish_PortalConflictReasonSurfaced(t *testing.T) {
 		repository.NewSubscriptionPlanRepo(it.db),
 		repository.NewPublicationRepo(it.db),
 		unpublishSubscriptionConflictPublisher{},
+		publicationTestOperationTimeout,
 		nil,
 	)
 

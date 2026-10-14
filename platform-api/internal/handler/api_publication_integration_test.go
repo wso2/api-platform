@@ -30,6 +30,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/wso2/api-platform/platform-api/internal/database"
 	"github.com/wso2/api-platform/platform-api/internal/middleware"
@@ -51,6 +52,10 @@ func (alwaysSucceedsPortalPublisher) Publish(_ context.Context, _ *model.APIPort
 }
 
 func (alwaysSucceedsPortalPublisher) Unpublish(_ context.Context, _ *model.APIPortal, _ string) error {
+	return nil
+}
+
+func (alwaysSucceedsPortalPublisher) CreateMissingPlans(_ context.Context, _ *model.APIPortal, _ []*model.SubscriptionPlan) error {
 	return nil
 }
 
@@ -106,6 +111,7 @@ func setupPublicationTestEnv(t *testing.T) (http.Handler, *database.DB, func()) 
 		repository.NewSubscriptionPlanRepo(db),
 		repository.NewPublicationRepo(db),
 		alwaysSucceedsPortalPublisher{},
+		time.Minute,
 		slog.Default(),
 	)
 	h := NewPublicationHandler(publicationService, identityService, 0, 0, slog.Default())
