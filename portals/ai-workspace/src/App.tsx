@@ -111,6 +111,7 @@ import {
   AI_WORKSPACE_MCP_DEPLOY_SLOT,
   AI_WORKSPACE_LLM_PROXY_DEPLOY_SLOT,
   AI_WORKSPACE_LLM_PROVIDER_DEPLOY_SLOT,
+  AI_WORKSPACE_AGENT_PROXY_DEPLOY_SLOT,
   AI_WORKSPACE_QUICKSTART_SLOT,
 } from './extensions';
 import { Hideable, HiddenRegionsProvider, useSlot } from './slots';
@@ -447,6 +448,15 @@ function LLMProviderDeployRoute() {
   );
 }
 
+function AgentProxyDeployRoute() {
+  const { agentProxyId } = useParams<{ agentProxyId: string }>();
+  return (
+    <ArtifactDeployRoute slot={AI_WORKSPACE_AGENT_PROXY_DEPLOY_SLOT} handle={agentProxyId}>
+      <AgentProxiesDeploy />
+    </ArtifactDeployRoute>
+  );
+}
+
 
 export type AppProps = {
   extensions?: readonly AIWorkspaceCloudEntry[];
@@ -703,7 +713,7 @@ function WorkspaceRoutes({ extensions = [] }: AppProps) {
                   path=":agentProxyId/deploy"
                   element={
                     <WithPageBoundary>
-                      <AgentProxiesDeploy />
+                      <AgentProxyDeployRoute />
                     </WithPageBoundary>
                   }
                 />
@@ -1024,7 +1034,7 @@ function WorkspaceRoutes({ extensions = [] }: AppProps) {
                     path=":agentProxyId/deploy"
                     element={
                       <WithPageBoundary>
-                        <AgentProxiesDeploy />
+                        <AgentProxyDeployRoute />
                       </WithPageBoundary>
                     }
                   />

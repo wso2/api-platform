@@ -136,12 +136,13 @@ const (
 	KindLLMProxy    = "LlmProxy"
 	KindLLMProvider = "LlmProvider"
 	KindGraphQLAPI  = "GraphQLApi"
+	KindAgentProxy  = "AgentProxy"
 )
 
 type Deployments interface {
 	// Every operation names the artifact KIND alongside the handle — the same kinds
 	// the platform's own paths are split by ("RestApi", "Mcp", "LlmProxy",
-	// "LlmProvider", "GraphQLApi"). Handles are unique only WITHIN a kind, so a handle alone could
+	// "LlmProvider", "GraphQLApi", "AgentProxy"). Handles are unique only WITHIN a kind, so a handle alone could
 	// reach an artifact the caller did not name; the kind settles it, and the
 	// platform checks that the artifact it resolves really is of that kind.
 
