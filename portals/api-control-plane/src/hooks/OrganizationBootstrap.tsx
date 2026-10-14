@@ -43,14 +43,54 @@ import { useAuth } from '../contexts/auth/AuthProvider';
  * Renders nothing, and never blocks the console — the organization may simply be
  * arriving by the other route.
  */
+const isValidOrgHandle = (handle?: string): boolean => {
+  if (!handle) return false;
+  const h = handle.toLowerCase();
+  return (
+    h.length >= 3 &&
+    h.length <= 63 &&
+    !h.includes('--') &&
+    /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(h)
+  );
+};
+
 const slugifyOrgName = (name?: string): string => {
   if (!name) return '';
   return name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
 };
 
+const stableFallbackHandle = (input: string): string => {
+  const bytes = new TextEncoder().encode(input);
+  let hash = 2166136261;
+  for (let i = 0; i < bytes.length; i++) {
+    hash ^= bytes[i];
+    hash = Math.imul(hash, 16777619);
+  }
+  return `org-${(hash >>> 0).toString(16).padStart(8, '0')}`;
+};
+
+export const deriveValidOrgHandle = (org?: { handle?: string; name?: string; id?: string } | null): string => {
+  if (!org) return '';
+  if (isValidOrgHandle(org.handle)) {
+    return org.handle!.toLowerCase();
+  }
+  const slug = slugifyOrgName(org.name);
+  if (isValidOrgHandle(slug)) {
+    return slug;
+  }
+  if (isValidOrgHandle(org.id)) {
+    return org.id!.toLowerCase();
+  }
+  const fallbackSource = org.name || org.id || org.handle;
+  if (fallbackSource) {
+    return stableFallbackHandle(fallbackSource);
+  }
+  return '';
+};
+
 export function OrganizationBootstrap() {
   const { isAuthenticated, user } = useAuth();
-  const handle = user?.org?.handle || slugifyOrgName(user?.org?.name) || user?.org?.id;
+  const handle = deriveValidOrgHandle(user?.org);
   const displayName = user?.org?.name || user?.org?.handle || handle;
 
   // Only a real absence justifies registering. `isPending` covers the disabled case
