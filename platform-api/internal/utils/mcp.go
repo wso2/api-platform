@@ -33,6 +33,7 @@ import (
 	"strings"
 	"time"
 
+	commonconstants "github.com/wso2/api-platform/common/constants"
 	"github.com/wso2/api-platform/platform-api/api"
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
@@ -196,9 +197,12 @@ func (u *MCPUtils) BuildMCPDeploymentYAML(proxy *model.MCPProxy) (*model.MCPProx
 	}
 	mcpDeploymentYaml.Spec.Upstream = upstream
 
-	if proxy.ProjectUUID != nil {
+	if proxy.ProjectUUID != nil && *proxy.ProjectUUID != "" {
+		mcpDeploymentYaml.Metadata.Annotations = map[string]string{
+			commonconstants.AnnotationProjectID: *proxy.ProjectUUID,
+		}
 		mcpDeploymentYaml.Metadata.Labels = map[string]string{
-			"projectId": *proxy.ProjectUUID,
+			commonconstants.DeprecatedLabelProjectID: *proxy.ProjectUUID,
 		}
 	}
 
