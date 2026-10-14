@@ -95,6 +95,7 @@ const (
 	AttrPolicySkipped             = "policy.skipped"
 	AttrSkipReason                = "skip.reason"
 	AttrSkipReasonConditionNotMet = "condition_not_met"
+	AttrSkipReasonErrorFlow       = "error_flow"
 	AttrPolicyExecutionTimeNS     = "policy.execution_time_ns"
 	AttrPolicyShortCircuit        = "policy.short_circuit"
 	AttrResolverName              = "resolver.name"
