@@ -286,7 +286,7 @@ print("\n".join(k.get("name","") for k in ks))' || { log "gateway $1: GET $url r
 # gw_api_key_count VER COLLECTION HANDLE -> number of keys the gateway lists (-1: lookup failed).
 gw_api_key_count() {
   local names; names=$(gw_api_key_names "$@") || { echo -1; return 1; }
-  printf '%s\n' "$names" | grep -c .
+  printf '%s\n' "$names" | grep -c . || true   # grep -c exits 1 on a count of 0: an empty list is a success
 }
 # gw_api_key_present VER COLLECTION HANDLE ID -> yes|no (lookup-failed, exit 1: the lookup itself failed).
 gw_api_key_present() {
