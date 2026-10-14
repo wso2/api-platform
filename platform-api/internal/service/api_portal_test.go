@@ -728,6 +728,80 @@ func TestAPIPortalService_UpdateAPIPortal_InvalidURLRejected(t *testing.T) {
 	}
 }
 
+func TestAPIPortalService_UpdateAPIPortal_PendingURLChangeRejected(t *testing.T) {
+	existing := &model.APIPortal{
+		ID: "p1", Handle: "acme", OrganizationID: "org-1",
+		Name: "Acme", URL: "https://acme.portals.example.com", Status: constants.APIPortalStatusPending,
+	}
+	repo := &mockAPIPortalRepository{getResult: existing}
+	svc := newTestAPIPortalService(t, repo, &mockAPIPortalOrgRepository{}, &mockAPIPortalAuditRepository{})
+
+	_, err := svc.UpdateAPIPortal("acme", testUpdateReq{
+		URL: apiPortalStrPtr("https://elsewhere.example.com"),
+	}.build(), "org-1", "editor")
+	if err == nil || !apperror.ValidationFailed.Is(err) {
+		t.Fatalf("want ValidationFailed for a URL change on a pending portal, got %v", err)
+	}
+	if repo.updateCapturedInput != nil {
+		t.Error("a rejected update must not persist anything")
+	}
+}
+
+func TestAPIPortalService_UpdateAPIPortal_PendingInvalidURLRejected(t *testing.T) {
+	existing := &model.APIPortal{
+		ID: "p1", Handle: "acme", OrganizationID: "org-1",
+		Name: "Acme", URL: "https://acme.portals.example.com", Status: constants.APIPortalStatusPending,
+	}
+	repo := &mockAPIPortalRepository{getResult: existing}
+	svc := newTestAPIPortalService(t, repo, &mockAPIPortalOrgRepository{}, &mockAPIPortalAuditRepository{})
+	_, err := svc.UpdateAPIPortal("acme", testUpdateReq{URL: apiPortalStrPtr("http://acme.portals.example.com")}.build(), "org-1", "editor")
+	if err == nil || !apperror.ValidationFailed.Is(err) {
+		t.Fatalf("want ValidationFailed for an invalid URL on a pending portal, got %v", err)
+	}
+	if repo.updateCapturedInput != nil {
+		t.Error("a rejected update must not persist anything")
+	}
+}
+
+// A full write-back that repeats the current URL is not a URL change.
+func TestAPIPortalService_UpdateAPIPortal_PendingAllowsUnchangedURL(t *testing.T) {
+	existing := &model.APIPortal{
+		ID: "p1", Handle: "acme", OrganizationID: "org-1",
+		Name: "Acme", URL: "https://acme.portals.example.com", Status: constants.APIPortalStatusPending,
+	}
+	svc := newTestAPIPortalService(t, &mockAPIPortalRepository{getResult: existing}, &mockAPIPortalOrgRepository{}, &mockAPIPortalAuditRepository{})
+	got, err := svc.UpdateAPIPortal("acme", testUpdateReq{
+		Name: apiPortalStrPtr("Renamed"),
+		URL:  apiPortalStrPtr("https://acme.portals.example.com"),
+	}.build(), "org-1", "editor")
+	if err != nil || got.Name != "Renamed" {
+		t.Fatalf("want the rename to apply with the unchanged URL, got %+v, %v", got, err)
+	}
+}
+
+// Other fields of a pending portal, and the URL of a portal that is no longer
+// pending, can still be changed.
+func TestAPIPortalService_UpdateAPIPortal_PendingGuardIsURLOnly(t *testing.T) {
+	pending := &model.APIPortal{
+		ID: "p1", Handle: "acme", OrganizationID: "org-1",
+		Name: "Acme", URL: "https://acme.portals.example.com", Status: constants.APIPortalStatusPending,
+	}
+	svc := newTestAPIPortalService(t, &mockAPIPortalRepository{getResult: pending}, &mockAPIPortalOrgRepository{}, &mockAPIPortalAuditRepository{})
+	if _, err := svc.UpdateAPIPortal("acme", testUpdateReq{Name: apiPortalStrPtr("Renamed")}.build(), "org-1", "editor"); err != nil {
+		t.Fatalf("name change on a pending portal: %v", err)
+	}
+
+	active := &model.APIPortal{
+		ID: "p1", Handle: "acme", OrganizationID: "org-1",
+		Name: "Acme", URL: "https://acme.portals.example.com", Status: constants.APIPortalStatusActive,
+	}
+	svc = newTestAPIPortalService(t, &mockAPIPortalRepository{getResult: active}, &mockAPIPortalOrgRepository{}, &mockAPIPortalAuditRepository{})
+	got, err := svc.UpdateAPIPortal("acme", testUpdateReq{URL: apiPortalStrPtr("https://moved.example.com")}.build(), "org-1", "editor")
+	if err != nil || got.Url != "https://moved.example.com" {
+		t.Fatalf("URL change on an active portal: got %+v, %v", got, err)
+	}
+}
+
 func TestAPIPortalService_UpdateAPIPortal_NotFound(t *testing.T) {
 	svc := newTestAPIPortalService(t, &mockAPIPortalRepository{getResult: nil}, &mockAPIPortalOrgRepository{}, &mockAPIPortalAuditRepository{})
 	_, err := svc.UpdateAPIPortal("ghost", testUpdateReq{Name: apiPortalStrPtr("x")}.build(), "org-1", "editor")

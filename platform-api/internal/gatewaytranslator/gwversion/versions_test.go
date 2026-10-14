@@ -36,6 +36,7 @@ func TestMinVersionsParse(t *testing.T) {
 		"MinWebBrokerKindGatewayVersion":         MinWebBrokerKindGatewayVersion,
 		"MinMCPSpecVersionListGatewayVersion":    MinMCPSpecVersionListGatewayVersion,
 		"MinAgentKindGatewayVersion":             MinAgentKindGatewayVersion,
+		"MinGraphQLKindGatewayVersion":           MinGraphQLKindGatewayVersion,
 	} {
 		if v == NoLTSRelease {
 			continue

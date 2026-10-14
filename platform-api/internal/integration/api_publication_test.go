@@ -37,7 +37,7 @@ import (
 // used before a real per-portal auth key existed to publish for real.
 type alwaysSucceedsPortalPublisher struct{}
 
-func (alwaysSucceedsPortalPublisher) Publish(_ context.Context, _ *model.APIPortal, _ string, _ *model.Publication, _ *model.PublicationContent) error {
+func (alwaysSucceedsPortalPublisher) Publish(_ context.Context, _ *model.APIPortal, _, _ string, _ *model.Publication, _ *model.PublicationContent) error {
 	return nil
 }
 
@@ -45,7 +45,7 @@ func (alwaysSucceedsPortalPublisher) Unpublish(_ context.Context, _ *model.APIPo
 	return nil
 }
 
-func (alwaysSucceedsPortalPublisher) Deprecate(_ context.Context, _ *model.APIPortal, _ string, _ *model.Publication) error {
+func (alwaysSucceedsPortalPublisher) Deprecate(_ context.Context, _ *model.APIPortal, _, _ string, _ *model.Publication) error {
 	return nil
 }
 
@@ -581,7 +581,7 @@ func TestPublicationUnpublish_DeletesWhenDraftExists(t *testing.T) {
 // subscriptions/API keys attached to the listing.
 type unpublishConflictPublisher struct{}
 
-func (unpublishConflictPublisher) Publish(_ context.Context, _ *model.APIPortal, _ string, _ *model.Publication, _ *model.PublicationContent) error {
+func (unpublishConflictPublisher) Publish(_ context.Context, _ *model.APIPortal, _, _ string, _ *model.Publication, _ *model.PublicationContent) error {
 	return nil
 }
 
@@ -589,7 +589,7 @@ func (unpublishConflictPublisher) Unpublish(_ context.Context, _ *model.APIPorta
 	return &service.PortalConflictError{Message: "active consumers still attached"}
 }
 
-func (unpublishConflictPublisher) Deprecate(_ context.Context, _ *model.APIPortal, _ string, _ *model.Publication) error {
+func (unpublishConflictPublisher) Deprecate(_ context.Context, _ *model.APIPortal, _, _ string, _ *model.Publication) error {
 	return nil
 }
 
@@ -645,7 +645,7 @@ func TestPublicationUnpublish_PortalConflict(t *testing.T) {
 // portal's response names that known error code.
 type unpublishSubscriptionConflictPublisher struct{}
 
-func (unpublishSubscriptionConflictPublisher) Publish(_ context.Context, _ *model.APIPortal, _ string, _ *model.Publication, _ *model.PublicationContent) error {
+func (unpublishSubscriptionConflictPublisher) Publish(_ context.Context, _ *model.APIPortal, _, _ string, _ *model.Publication, _ *model.PublicationContent) error {
 	return nil
 }
 
@@ -656,7 +656,7 @@ func (unpublishSubscriptionConflictPublisher) Unpublish(_ context.Context, _ *mo
 	}
 }
 
-func (unpublishSubscriptionConflictPublisher) Deprecate(_ context.Context, _ *model.APIPortal, _ string, _ *model.Publication) error {
+func (unpublishSubscriptionConflictPublisher) Deprecate(_ context.Context, _ *model.APIPortal, _, _ string, _ *model.Publication) error {
 	return nil
 }
 

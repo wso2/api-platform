@@ -19,6 +19,8 @@
 package testbench
 
 import (
+	"regexp"
+	"runtime/debug"
 	"strconv"
 	"time"
 
@@ -32,6 +34,7 @@ import (
 	"github.com/wso2/api-platform/tests/framework/testbench/services/contentsafety"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/echo"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/embeddings"
+	"github.com/wso2/api-platform/tests/framework/testbench/services/graphqlbackend"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/guardian"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/interceptor"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/jwks"
@@ -45,7 +48,42 @@ import (
 // EnvImageTestbench overrides the testbench image, for CI to pin a build.
 const EnvImageTestbench = "APIP_IT_IMAGE_TESTBENCH"
 
-const imgTestbench = "ghcr.io/wso2/api-platform/testbench:test"
+const (
+	// imgTestbenchRepository is where framework releases publish the testbench image.
+	imgTestbenchRepository = "ghcr.io/wso2/api-platform/testbench"
+	// imgTestbench is the image a checkout builds locally with `make testbench`.
+	imgTestbench = imgTestbenchRepository + ":test"
+	// frameworkModule is the module path the framework is published under.
+	frameworkModule = "github.com/wso2/api-platform/tests/framework"
+)
+
+// releaseVersion matches the tag of a framework release, which is also the tag of the testbench
+// image published with it.
+var releaseVersion = regexp.MustCompile(`^v(\d+\.\d+\.\d+)$`)
+
+// defaultImage returns the testbench image that matches the framework in this binary. A
+// project that imports a released framework gets the image published with that release, so the
+// mock services always match the steps and features compiled against them. A framework built
+// from a checkout, a replaced module or an untagged revision uses the locally built image.
+func defaultImage() string {
+	info, ok := debug.ReadBuildInfo()
+	if !ok {
+		return imgTestbench
+	}
+	return imageForModule(info)
+}
+
+func imageForModule(info *debug.BuildInfo) string {
+	for _, dep := range info.Deps {
+		if dep.Path != frameworkModule || dep.Replace != nil {
+			continue
+		}
+		if match := releaseVersion.FindStringSubmatch(dep.Version); match != nil {
+			return imgTestbenchRepository + ":" + match[1]
+		}
+	}
+	return imgTestbench
+}
 
 // OIDCIssuer is the issuer the testbench identity provider signs tokens with, as a component
 // reaches it over the docker network.
@@ -69,7 +107,7 @@ var OIDCIssuer = "https://" + shared.IdentityProviderHost + ":" + strconv.Itoa(o
 func Testbench() *components.Definition {
 	d := &components.Definition{
 		Name:  "testbench",
-		Image: shared.Image(EnvImageTestbench, imgTestbench),
+		Image: shared.Image(EnvImageTestbench, defaultImage()),
 		Alias: "testbench",
 		Endpoints: []components.Endpoint{
 			{Name: "backend", Port: backend.Port, Scheme: "http", AwaitListening: true},
@@ -103,6 +141,7 @@ func Testbench() *components.Definition {
 			// certificate components that sign in through it are given to trust.
 			{Name: "oidc", Port: oidc.Port, Scheme: "https", AwaitListening: true},
 			{Name: "guardian", Port: guardian.Port, Scheme: "http", AwaitListening: true},
+			{Name: "graphql-backend", Port: graphqlbackend.Port, Scheme: "http", AwaitListening: true},
 		},
 		Env: map[string]string{
 			oidc.EnvTLSCert: string(shared.IdentityProviderTLS().CertPEM),

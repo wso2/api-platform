@@ -35,6 +35,7 @@ import {
   HEADER_ACTIONS_SLOT,
   PAGE_API_DEPLOY_SLOT,
   PAGE_API_OBSERVABILITY_LOGS_SLOT,
+  PAGE_GRAPHQL_API_DEPLOY_SLOT,
   PAGE_GATEWAYS_SLOT,
   type ApiControlPlaneCloudEntry,
   type ApiControlPlaneExtension,
@@ -94,6 +95,7 @@ const observabilityLogsPath = (orgHandle: string) =>
  * to the platform-api REST endpoints.
  *
  * `deploy` overrides the built-in API Deploy page via the `page.apiDeploy` slot,
+ * and the GraphQL API Deploy page via `page.graphqlApiDeploy` with the same feature,
  * the same way `gateways` does: the nav entry and route stay native, and only
  * what renders there changes. It is the one API-scoped feature here, so it needs
  * the API in scope, which the Port carries as `apiHandle`. Because the override
@@ -216,6 +218,21 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[
         order: 0,
         routePath: 'deploy',
         render: (port) => <ApiDeployPage port={port} />,
+        label: 'Deploy',
+        level: 'api',
+      },
+      {
+        // The same Deploy feature for a GraphQL API, so both kinds deploy through
+        // one page. Its route is reached only with the API in its URL, which is
+        // where the handle comes from — the Port's `apiHandle` is REST-only — so
+        // there is no scope to gate on. `routePath`/`level` are inert, as above.
+        id: 'graphql-api-deploy',
+        slot: PAGE_GRAPHQL_API_DEPLOY_SLOT,
+        order: 0,
+        routePath: 'deploy',
+        render: (port, artifactHandle) => (
+          <DeployFeature artifactHandle={artifactHandle} kind="GraphQLApi" port={port} />
+        ),
         label: 'Deploy',
         level: 'api',
       },

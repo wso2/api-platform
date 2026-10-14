@@ -89,16 +89,17 @@ async function reconcileIdpOrgId(org) {
  * provisioning the same org: a create that loses the race surfaces as a duplicate
  * key and is resolved by re-reading the row the winner created.
  *
- * @param {{ handle: string, displayName: string, idpRefId: string }} org
+ * @param {{ handle: string, displayName: string, idpRefId: string, cpRefId?: string }} org
  * @param {string} operation name recorded in log entries
  * @returns {Promise<{ org: object, existed: boolean }>}
  * @throws when the organization can neither be found nor created
  */
-async function seedOrg({ handle, displayName, idpRefId }, operation = 'seedOrg') {
+async function seedOrg({ handle, displayName, idpRefId, cpRefId }, operation = 'seedOrg') {
     const payload = {
         displayName,
         handle,
         idpRefId,
+        cpRefId,
         configuration: {},
         createdBy: constants.SYSTEM_ACTOR,
     };
@@ -223,6 +224,9 @@ async function seedDefaultOrg() {
         // handle. Config owns this field: the admin API refuses to change it, and
         // reconcileIdpOrgId re-applies the configured value on later boots.
         idpRefId: orgContext.getIdpOrgId(),
+        // Sent as org.ref_id in webhook events, which Platform API resolves by
+        // handle. Set on create only; settings can override it.
+        cpRefId: orgName,
     }, 'seedDefaultOrg');
 
     if (existed) {

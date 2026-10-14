@@ -430,9 +430,9 @@ spec:
 
 func TestResourceTemplatePath(t *testing.T) {
 	root := t.TempDir()
-	path, err := ResourceTemplatePath(root, "resources/templates/agent-proxy.yaml")
+	path, err := ResourceTemplatePath(root, "resources/templates/custom.yaml")
 	require.NoError(t, err)
-	require.Equal(t, filepath.Join(root, "resources/templates/agent-proxy.yaml"), path)
+	require.Equal(t, filepath.Join(root, "resources/templates/custom.yaml"), path)
 
 	for _, name := range []string{"", "   ", "/tmp/agent.yaml", "..", "../agent.yaml", "resources/../../agent.yaml"} {
 		_, err := ResourceTemplatePath(root, name)
@@ -448,6 +448,33 @@ func TestResourceTemplatePath(t *testing.T) {
 	require.NoError(t, os.Symlink(outside, link))
 	_, err = ResourceTemplatePath(root, "resources/templates/link.yaml")
 	require.ErrorContains(t, err, "escapes")
+}
+
+func TestResourceTemplatePathFallsBackToTheShippedTemplate(t *testing.T) {
+	cache := t.TempDir()
+	t.Setenv("HOME", cache)
+	t.Setenv("XDG_CACHE_HOME", cache)
+	root := t.TempDir()
+	own := filepath.Join(root, "resources", "templates", "rest-api.yaml")
+
+	shipped, err := ResourceTemplatePath(root, "resources/templates/rest-api.yaml")
+	require.NoError(t, err)
+	require.NotEqual(t, own, shipped)
+	content, err := os.ReadFile(shipped)
+	require.NoError(t, err)
+	require.Contains(t, string(content), "kind: RestApi")
+
+	require.NoError(t, os.MkdirAll(filepath.Dir(own), 0o755))
+	require.NoError(t, os.WriteFile(own, []byte("kind: Own\n"), 0o600))
+	path, err := ResourceTemplatePath(root, "resources/templates/rest-api.yaml")
+	require.NoError(t, err)
+	require.Equal(t, own, path, "the root's own template wins")
+
+	for _, name := range []string{"resources/templates/not-shipped.yaml", "resources/fixtures/rest-api.yaml"} {
+		path, err := ResourceTemplatePath(root, name)
+		require.NoError(t, err, name)
+		require.Equal(t, filepath.Join(root, filepath.FromSlash(name)), path, "only a shipped template falls back")
+	}
 }
 
 func TestCanonicalAgentProxyTemplateRendersTheContractPayload(t *testing.T) {
