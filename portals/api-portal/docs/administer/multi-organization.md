@@ -198,19 +198,19 @@ To accept bearer tokens issued that way, describe the issuer and its key URL as 
 ```toml
 [api_portal.auth.idp]
 issuer_template    = "https://is.example.com/o/{org}/oauth2/token"
-jwks_url_template = "https://is.example.com/o/{org}/oauth2/jwks"   # empty: use jwks_url for every org
-issuer_org_claim  = "org_id"   # the claim that must equal {org}; empty: claim_mappings.organization
+jwks_url_template  = "https://is.example.com/o/{org}/oauth2/jwks"   # empty: use jwks_url for every org
+template_org_claim = "org_id"   # the claim that must equal {org}; empty: claim_mappings.organization
 ```
 
 - A token whose `iss` is `auth.idp.issuer` is verified as before. One whose `iss` fits
   `issuer_template` is verified against that organization's keys and its exact issuer;
   any other issuer is rejected.
 - The token is bound to the organization in its issuer: the claim named by
-  `issuer_org_claim` must equal the `{org}` in the issuer, and the token must carry the
-  organization claim too. Set `issuer_org_claim` when the issuer's `{org}` is a different
+  `template_org_claim` must equal the `{org}` in the issuer, and the token must carry the
+  organization claim too. Set `template_org_claim` when the issuer's `{org}` is a different
   identifier from the one you key organizations on — with WSO2 IS, `{org}` is the
   organization's `org_id`, so keying on `org_name` or `org_handle` needs
-  `issuer_org_claim = "org_id"`.
+  `template_org_claim = "org_id"`.
 - Only that one path segment is taken from the token. It must be a plain identifier
   (letters, digits, `-`, `_`), and the key URL is always built from configuration.
 - `issuer_template` and `jwks_url_template` must each contain exactly one `{org}`; both

@@ -147,7 +147,7 @@ Feature: API Portal multi-organization organization claims
     Then the response status code should be 200
     And the API Portal "api-portal-multi-organization" should have 1 organizations with IDP reference "${CTX:suborg}"
 
-  Scenario: The issuer organization claim, not the organization claim, must name the issuer's organization
+  Scenario: The template organization claim, not the organization claim, must name the issuer's organization
     # org_id names the issuer's organization, but org_handle, the binding claim, doesn't.
     Given I generate a unique resource name from "unbound" and store it as "unbound"
     And I mint an API Portal IDP token stored as "token" with claims:

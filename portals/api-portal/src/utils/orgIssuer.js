@@ -32,7 +32,7 @@
  * must be a plain identifier (no '/', '.' runs, '%' or other URL syntax), and it is
  * substituted into a configured JWKS URL template — so the scheme, host and path of the
  * key fetch always come from configuration. The verified token must then carry that
- * same organization in the claim named by issuer_org_claim, so a token signed by one
+ * same organization in the claim named by template_org_claim, so a token signed by one
  * organization can't assert another.
  */
 
