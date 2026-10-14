@@ -131,7 +131,9 @@ Both blocks are rendered as given, so any valid `PodSecurityContext` / `Security
 With OpenShift support on, the chart:
 
 - grants the operator permission to manage Routes (`routes` and `routes/custom-host`);
-- sets `openshift.enabled: true` in the rendered gateway values, so every gateway gets an OpenShift Route. A value set in `gateway.values.openshift.enabled` takes precedence. Gateway chart `1.2.0` has no Route support and ignores it.
+- sets `openshift.enabled: true` in the rendered gateway values, so the gateway chart's optional management API Route (`gateway.values.openshift.routes.managementApi`, off by default) can be turned on. A value set in `gateway.values.openshift.enabled` takes precedence. Gateway chart `1.2.0` has no OpenShift support and ignores it.
+
+The chart does not create Routes for API traffic. The hostnames a gateway serves come from its virtual hosts (`gateway.values.gateway.config.router.vhosts`) and from each API definition, so create a Route to the gateway's `gateway-runtime` Service for each hostname you use. See the [OpenShift deployment guide](../../../openshift/gateway/operator-deployment-guide.md).
 
 `openshift.enabled` does not change the security contexts. On OpenShift, set `securityContext.runAsUser: null` so the `restricted-v2` SCC assigns a UID from the project's range, or set a UID your SCC allows. See the [OpenShift deployment guide](../../../openshift/gateway/operator-deployment-guide.md).
 

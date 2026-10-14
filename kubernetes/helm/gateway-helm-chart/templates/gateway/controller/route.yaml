@@ -1,6 +1,6 @@
 {{- $route := .Values.openshift.routes.managementApi -}}
 {{- if and .Values.openshift.enabled $route.enabled .Values.gateway.controller.deployment.enabled }}
-{{- $tls := merge (dict) (default (dict) $route.tls) (default (dict) .Values.openshift.routes.tls) -}}
+{{- $tls := default (dict) $route.tls -}}
 {{- $termination := default "edge" $tls.termination -}}
 {{- if ne $termination "edge" -}}
 {{- fail (printf "openshift.routes.managementApi: the management API serves plain HTTP, so tls.termination must be edge (got %q)" $termination) -}}

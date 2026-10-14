@@ -74,9 +74,11 @@ securityContext:
 
 # OpenShift support: false, true, or auto (enabled when the cluster serves route.openshift.io/v1).
 # When enabled: the operator may manage Routes, and gateways get openshift.enabled=true unless
-# gateway.values.openshift.enabled is set. Security contexts are not changed: on OpenShift, set
-# securityContext.runAsUser to null (or a UID your SCC allows). auto needs a live cluster: helm template and dry runs
-# render it as false. Gateway Routes need a gateway chart version that includes them.
+# gateway.values.openshift.enabled is set, so the gateway chart's optional management API Route
+# (gateway.values.openshift.routes.managementApi) can be turned on. No Routes are created for API
+# traffic: create them for the hostnames your gateways serve. Security contexts are not changed:
+# on OpenShift, set securityContext.runAsUser to null (or a UID your SCC allows). auto needs a live
+# cluster: helm template and dry runs render it as false.
 openshift:
   enabled: false
 
