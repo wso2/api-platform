@@ -939,14 +939,6 @@
     "defaultMessage": "Edit API details",
     "description": "Accessible label and tooltip for the button beside the API name, which opens the edit page."
   },
-  "apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.gatewayManaged": {
-    "defaultMessage": "Gateway-managed",
-    "description": "Chip marking an API that was discovered from a gateway and cannot be edited here."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.gatewayManagedHint": {
-    "defaultMessage": "Discovered from a data-plane gateway, so it is read-only in this console.",
-    "description": "Tooltip explaining the gateway-managed chip."
-  },
   "apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.transports.label": {
     "defaultMessage": "Transports",
     "description": "Label for the protocols an API is exposed over (HTTP, HTTPS)."
@@ -1948,6 +1940,14 @@
     "defaultMessage": "Policies are attached to a single API.",
     "description": "Explains why an API must be picked before this page can render."
   },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.PoliciesPageTitle.subtitle": {
+    "defaultMessage": "Policies the gateway applies to this API’s traffic, such as authentication, rate limiting and header changes.",
+    "description": "Description under the Policies page heading."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.PoliciesPageTitle.title": {
+    "defaultMessage": "Policies",
+    "description": "Heading of the Policies page of an API. Noun."
+  },
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyConfigDrawer.attachPolicy": {
     "defaultMessage": "Attach policy",
     "description": "Attaches the configured policy to the selected scope. Verb phrase."
@@ -1983,10 +1983,6 @@
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.allMethods": {
     "defaultMessage": "All methods"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.gatewayManaged": {
-    "defaultMessage": "This API was created from a gateway. You can view its policies, but attaching, editing, removing and reordering policies are managed by the gateway and are unavailable in the API Control Plane.",
-    "description": "Info banner on the Policies page of a read-only API, i.e. one that a gateway pushed to the control plane."
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.globalDescription": {
     "defaultMessage": "Policies applied here will affect all API resources"
@@ -2043,12 +2039,8 @@
     "defaultMessage": "Search resources"
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.ReadOnlyPoliciesNotice.body": {
-    "defaultMessage": "This API was discovered from a data-plane gateway, so its policies are read-only in this console. Change them on the gateway.",
-    "description": "Explains why the policies of a gateway-managed API cannot be added, edited or removed."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.develop.policies.ReadOnlyPoliciesNotice.title": {
-    "defaultMessage": "Policies cannot be changed here",
-    "description": "Title of the notice shown on the policies page of a gateway-managed API."
+    "defaultMessage": "This API was created from a gateway. You can view its policies, but attach, edit, remove and reorder actions are managed by the gateway and are unavailable in the API Control Plane.",
+    "description": "Info banner on the Policies page of a read-only API, i.e. one that a gateway pushed to the control plane."
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.SchemaField.addEntry": {
     "defaultMessage": "Add entry",
@@ -2882,9 +2874,35 @@
   "apiControlPlane.pages.appShell.appShellPages.projects.components.ProjectMetadata.unknown": {
     "defaultMessage": "Unknown"
   },
-  "apiControlPlane.pages.appShell.appShellPages.settings.GeneralSettingsPage.mvpScope": {
-    "defaultMessage": "Advanced organization admin settings, governance, marketplace, and developer portal configuration are intentionally excluded from the MVP replacement app.",
-    "description": "Body copy explaining which settings areas the MVP deliberately leaves out."
+  "apiControlPlane.pages.appShell.appShellPages.settings.GeneralSettingsPage.copyFailed": {
+    "defaultMessage": "Unable to copy the ID."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.GeneralSettingsPage.copyId": {
+    "defaultMessage": "Copy ID"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.GeneralSettingsPage.copySucceeded": {
+    "defaultMessage": "ID copied to clipboard."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.GeneralSettingsPage.created": {
+    "defaultMessage": "Created"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.GeneralSettingsPage.loading": {
+    "defaultMessage": "Loading settings"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.GeneralSettingsPage.organizationDetailsTitle": {
+    "defaultMessage": "Organization Details"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.GeneralSettingsPage.organizationNotFound": {
+    "defaultMessage": "Organization not found"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.GeneralSettingsPage.projectDetailsTitle": {
+    "defaultMessage": "Project Details"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.GeneralSettingsPage.projectNotFound": {
+    "defaultMessage": "Project not found"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.GeneralSettingsPage.region": {
+    "defaultMessage": "Region"
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.SettingsLayout.title": {
     "defaultMessage": "Settings",

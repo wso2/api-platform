@@ -194,8 +194,6 @@ export function ApiDeployView({
       </PageTitle>
 
       {readOnly && (
-        // Padding, not margin: AppPage's Stack resets its children's margins,
-        // which would silently drop an `mt`/`mb` on the Alert itself.
         <Box sx={{ pb: 1, pt: 3 }}>
           <Alert severity="info">
             <FormattedMessage {...messages.gatewayManaged} />

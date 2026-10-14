@@ -50,6 +50,7 @@ import {
 } from '../../apis/utils/developEdit';
 import { getDraggedPolicy, type PolicyScope, scopeId } from './policyDnd';
 import { PolicyConfigDrawer, type PolicyRef } from './PolicyConfigDrawer';
+import { PoliciesPageTitle } from './PoliciesPageTitle';
 import { ReadOnlyPoliciesNotice } from './ReadOnlyPoliciesNotice';
 
 const messages = defineMessages({
@@ -125,13 +126,6 @@ const messages = defineMessages({
   saved: {
     id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.saved',
     defaultMessage: 'Policies saved.',
-  },
-  gatewayManaged: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.gatewayManaged',
-    defaultMessage:
-      'This API was created from a gateway. You can view its policies, but attaching, editing, removing and reordering policies are managed by the gateway and are unavailable in the API Control Plane.',
-    description:
-      'Info banner on the Policies page of a read-only API, i.e. one that a gateway pushed to the control plane.',
   },
 });
 
@@ -332,6 +326,7 @@ export function PolicyPanel({ api }: { api: RestApi }) {
 
   return (
     <Stack spacing={2}>
+      <PoliciesPageTitle />
       {readOnly && <ReadOnlyPoliciesNotice />}
       <Stack alignItems="flex-start" direction={{ xs: 'column', md: 'row' }} spacing={2}>
         {/* LEFT: Policies (drop targets) */}
@@ -390,6 +385,7 @@ export function PolicyPanel({ api }: { api: RestApi }) {
 
               <Card sx={{ borderRadius: 2, overflow: 'hidden' }}>
                 <Accordion
+                  defaultExpanded
                   disableGutters
                   elevation={0}
                   sx={{ bgcolor: 'transparent', '&:before': { display: 'none' } }}
@@ -509,8 +505,9 @@ export function PolicyPanel({ api }: { api: RestApi }) {
           </Card>
         </Box>
 
-        {/* RIGHT: Available Policies (drag source) */}
-        {hubEnabled && !readOnly && (
+        {/* RIGHT: Available Policies (drag source). Shown disabled, not hidden,
+            for a read-only API: still browsable, but nothing can be attached. */}
+        {hubEnabled && (
           <Box sx={{ flexShrink: 0, width: { xs: '100%', md: 400 } }}>
             <Card sx={{ height: '100%', overflow: 'hidden' }} variant="outlined">
               <CardContent sx={{ height: 620, p: 2 }}>

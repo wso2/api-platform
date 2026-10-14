@@ -16,10 +16,8 @@
  * under the License.
  */
 
-import { AppBreadcrumbs, Box, PageContent, Stack } from '@wso2/oxygen-ui';
-import type { PageContentProps, SxProps, Theme } from '@wso2/oxygen-ui';
-
-import { useScopeBreadcrumbs } from '../navigation/useScopeBreadcrumbs';
+import { PageContent, Stack } from '@wso2/oxygen-ui';
+import type { PageContentProps } from '@wso2/oxygen-ui';
 
 export type AppPageProps = PageContentProps & {
   /**
@@ -31,21 +29,6 @@ export type AppPageProps = PageContentProps & {
   hideBreadcrumbs?: boolean;
 };
 
-const breadcrumbSx: SxProps<Theme> = (theme) => ({
-  '& .MuiBreadcrumbs-li .MuiTypography-root': {
-    fontSize: theme.typography.body2.fontSize,
-    opacity: 0.55,
-  },
-  '& .MuiBreadcrumbs-li:last-of-type .MuiTypography-root': {
-    color: 'text.primary',
-    fontWeight: theme.typography.fontWeightMedium,
-    opacity: 1,
-  },
-  '& .MuiBreadcrumbs-separator': {
-    opacity: 0.45,
-  },
-});
-
 /**
  * The outer container of every page in the app shell: `PageContent` with the
  * scope breadcrumb trail above the page's own content.
@@ -56,16 +39,7 @@ const breadcrumbSx: SxProps<Theme> = (theme) => ({
  * trail renders inside the page's `PageContent`, so it always lines up with
  * the page body whatever width the page picks.
  */
-export function AppPage({
-  children,
-  fullWidth = true,
-  hideBreadcrumbs = false,
-  sx,
-  ...pageContentProps
-}: AppPageProps) {
-  const breadcrumbs = useScopeBreadcrumbs();
-  const showBreadcrumbs = !hideBreadcrumbs && breadcrumbs.length > 1;
-
+export function AppPage({ children, fullWidth = true, sx, ...pageContentProps }: AppPageProps) {
   return (
     <PageContent
       fullWidth={fullWidth}
