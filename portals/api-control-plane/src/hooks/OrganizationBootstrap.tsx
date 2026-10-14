@@ -43,10 +43,15 @@ import { useAuth } from '../contexts/auth/AuthProvider';
  * Renders nothing, and never blocks the console — the organization may simply be
  * arriving by the other route.
  */
+const slugifyOrgName = (name?: string): string => {
+  if (!name) return '';
+  return name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+};
+
 export function OrganizationBootstrap() {
   const { isAuthenticated, user } = useAuth();
-  const handle = user?.org?.handle;
-  const displayName = user?.org?.name;
+  const handle = user?.org?.handle || slugifyOrgName(user?.org?.name) || user?.org?.id;
+  const displayName = user?.org?.name || user?.org?.handle || handle;
 
   // Only a real absence justifies registering. `isPending` covers the disabled case
   // too, so nothing is read until the lookup has actually answered.
