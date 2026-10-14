@@ -127,7 +127,14 @@ function TemplateBasedFormFieldsContainer({
         setOpenapiSpec(inlineSpec);
       } else if (specUrl) {
         fetch(specUrl)
-          .then((res) => res.text())
+          .then((res) => {
+            // An error page (e.g. a 404 for a spec not yet published) must not
+            // be stored as the provider's OpenAPI spec.
+            if (!res.ok) {
+              throw new Error(`HTTP ${res.status} fetching ${specUrl}`);
+            }
+            return res.text();
+          })
           .then((text) => {
             setOpenapiSpec(text);
           })

@@ -115,6 +115,7 @@ func RegisterLLMSteps(ctx *godog.ScenarioContext, state *TestState, httpSteps *s
 			"azure-openai",
 			"mistralai",
 			"awsbedrock",
+			"typesafe",
 		}
 
 		// 2️⃣ Validate count is at least the expected set
