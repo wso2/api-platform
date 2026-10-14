@@ -329,6 +329,55 @@ func TestUserFromClaims_NestedOrganizationDefaultMapping(t *testing.T) {
 	}
 }
 
+func TestUserFromClaims_PreservesFlatOrgNameWhenNestedNameAbsent(t *testing.T) {
+	claims := map[string]any{
+		"sub":      "a39ea41a-4382-47ed-84bf-56376168955d",
+		"email":    "carol@example.com",
+		"org_name": "Flat Org Name",
+		"organization": map[string]any{
+			"uuid": "nested-uuid-123",
+		},
+	}
+	m := DefaultClaimMapping()
+	u := UserFromClaims(claims, nil, m)
+	if u.Org == nil {
+		t.Fatal("Org is nil")
+	}
+	if u.Org.ID != "nested-uuid-123" {
+		t.Errorf("Org.ID = %q, want nested-uuid-123", u.Org.ID)
+	}
+	if u.Org.Name != "Flat Org Name" {
+		t.Errorf("Org.Name = %q, want Flat Org Name", u.Org.Name)
+	}
+	if u.Org.Handle != "flat-org-name" {
+		t.Errorf("Org.Handle = %q, want flat-org-name", u.Org.Handle)
+	}
+}
+
+func TestUserFromClaims_NonASCIIOrgNameGeneratesStableHandle(t *testing.T) {
+	claims := map[string]any{
+		"sub":          "a39ea41a-4382-47ed-84bf-56376168955d",
+		"email":        "dave@example.com",
+		"organization": "invalid non ascii org id",
+		"org_name":     "テスト",
+	}
+	m := DefaultClaimMapping()
+	u := UserFromClaims(claims, nil, m)
+	if u.Org == nil {
+		t.Fatal("Org is nil")
+	}
+	if u.Org.Name != "テスト" {
+		t.Errorf("Org.Name = %q, want テスト", u.Org.Name)
+	}
+	expectedHandle := stableFallbackHandle("テスト")
+	if u.Org.Handle != expectedHandle {
+		t.Errorf("Org.Handle = %q, want %q", u.Org.Handle, expectedHandle)
+	}
+	if !isValidHandle(u.Org.Handle) {
+		t.Errorf("Derived handle %q is not a valid handle", u.Org.Handle)
+	}
+}
+
 
 // A dotted path must not invent values when the claim is missing, a leaf is not an
 // object, or the path runs past a string — each would otherwise scope the session to

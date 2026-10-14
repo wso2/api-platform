@@ -19,6 +19,9 @@ package session
 import (
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
+	"hash/fnv"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -180,9 +183,11 @@ func UserFromClaims(claims, idClaims map[string]any, m ClaimMapping) User {
 	if orgID == "" && orgHandle == "" {
 		if raw := resolveClaimPath(claims, m.OrgID); raw != nil {
 			if nested, isMap := raw.(map[string]any); isMap {
-				orgID = first(strClaim(nested, "uuid"), strClaim(nested, "id"))
-				orgHandle = strClaim(nested, "handle")
-				orgName = first(strClaim(nested, "name"), strClaim(nested, "displayName"))
+				orgID = first(strClaim(nested, "uuid"), strClaim(nested, "id"), orgID)
+				orgHandle = first(strClaim(nested, "handle"), orgHandle)
+				if nestedName := first(strClaim(nested, "name"), strClaim(nested, "displayName")); nestedName != "" {
+					orgName = nestedName
+				}
 			}
 		}
 	}
@@ -192,10 +197,16 @@ func UserFromClaims(claims, idClaims map[string]any, m ClaimMapping) User {
 		if name == "" {
 			name = first(orgHandle, orgID)
 		}
-		if orgHandle == "" {
-			orgHandle = slugify(name)
-			if orgHandle == "" {
-				orgHandle = orgID
+		if !isValidHandle(orgHandle) {
+			if slug := slugify(name); isValidHandle(slug) {
+				orgHandle = slug
+			} else if isValidHandle(orgID) {
+				orgHandle = strings.ToLower(orgID)
+			} else {
+				fallbackSource := first(name, orgID, orgHandle)
+				if fallbackSource != "" {
+					orgHandle = stableFallbackHandle(fallbackSource)
+				}
 			}
 		}
 		if orgID == "" {
@@ -291,5 +302,21 @@ func slugify(displayName string) string {
 		}
 	}
 	return strings.Trim(b.String(), "-")
+}
+
+var validHandleRegex = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$`)
+
+func isValidHandle(h string) bool {
+	h = strings.ToLower(h)
+	if len(h) < 3 || len(h) > 63 || strings.Contains(h, "--") {
+		return false
+	}
+	return validHandleRegex.MatchString(h)
+}
+
+func stableFallbackHandle(input string) string {
+	h := fnv.New32a()
+	h.Write([]byte(input))
+	return fmt.Sprintf("org-%08x", h.Sum32())
 }
 
