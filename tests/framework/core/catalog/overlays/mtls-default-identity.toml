@@ -1,0 +1,12 @@
+# The gateway presents a default client certificate to HTTPS backends whose upstream definition
+# names no identity, by default: the gateway identity with role default, else the HTTPS
+# listener certificate. This block leaves present_default_identity unset to test that default.
+
+# JSON access logs carry the TLS fields of each request.
+[router.access_logs]
+enabled = true
+format = "json"
+
+# The controller propagates a change to the runtime when it next polls the event hub.
+[controller.event_hub]
+poll_interval = "200ms"
