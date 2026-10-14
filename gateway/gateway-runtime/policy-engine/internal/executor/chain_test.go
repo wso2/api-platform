@@ -566,6 +566,18 @@ func TestExecuteResponsePolicies_GuardrailSkippedOnErrorFlow(t *testing.T) {
 			expectedSkip: false,
 		},
 		{
+			name:         "moderation-analytics on 403 error flow is NOT skipped",
+			policyName:   "moderation-analytics",
+			status:       403,
+			expectedSkip: false,
+		},
+		{
+			name:         "prompt-injection-logger on 500 error flow is NOT skipped",
+			policyName:   "prompt-injection-logger",
+			status:       500,
+			expectedSkip: false,
+		},
+		{
 			name:         "cors policy on 500 error flow is NOT skipped",
 			policyName:   "cors",
 			status:       500,
@@ -615,6 +627,35 @@ func TestExecuteStreamingResponsePolicies_GuardrailSkippedOnErrorFlow(t *testing
 	assert.True(t, result.Results[0].Skipped)
 	assert.False(t, executed)
 }
+
+func TestIsGuardrailPolicy(t *testing.T) {
+	assert.True(t, isGuardrailPolicy("aws-bedrock-guardrail", nil))
+	assert.True(t, isGuardrailPolicy("content-length-guardrail", nil))
+	assert.True(t, isGuardrailPolicy("json-schema-guardrail", nil))
+	assert.True(t, isGuardrailPolicy("regex-guardrail", nil))
+	assert.True(t, isGuardrailPolicy("azure-content-safety-content-moderation", nil))
+	assert.True(t, isGuardrailPolicy("granite-guardian-prompt-injection", nil))
+	assert.True(t, isGuardrailPolicy("custom-guardrail", nil))
+	assert.True(t, isGuardrailPolicy("guardrail", nil))
+
+	// Collisions that contain keywords but are not guardrails
+	assert.False(t, isGuardrailPolicy("moderation-analytics", nil))
+	assert.False(t, isGuardrailPolicy("prompt-injection-logger", nil))
+	assert.False(t, isGuardrailPolicy("guardrail-dashboard", nil))
+	assert.False(t, isGuardrailPolicy("cors", nil))
+	assert.False(t, isGuardrailPolicy("header-mod", nil))
+
+	// Explicit marker interface
+	assert.True(t, isGuardrailPolicy("arbitrary-name", &guardrailMarkerPolicy{isGuardrail: true}))
+	assert.False(t, isGuardrailPolicy("some-guardrail", &guardrailMarkerPolicy{isGuardrail: false}))
+}
+
+type guardrailMarkerPolicy struct {
+	isGuardrail bool
+}
+
+func (p *guardrailMarkerPolicy) Mode() policy.ProcessingMode { return policy.ProcessingMode{} }
+func (p *guardrailMarkerPolicy) IsGuardrail() bool           { return p.isGuardrail }
 
 type guardrailTestPolicy struct {
 	onExecute func()

@@ -1129,6 +1129,12 @@ func (c *ChainExecutor) GetCELEvaluator() CELEvaluator {
 	return c.celEvaluator
 }
 
+// knownBuiltinGuardrails lists built-in content-moderation guardrail policies that do not end with "-guardrail".
+var knownBuiltinGuardrails = map[string]struct{}{
+	"azure-content-safety-content-moderation": {},
+	"granite-guardian-prompt-injection":       {},
+}
+
 // isGuardrailPolicy reports whether a policy is a content moderation or guardrail policy.
 // Guardrails validate prompt and completion content; they must not run on HTTP error responses (>= 400).
 func isGuardrailPolicy(name string, pol policy.Policy) bool {
@@ -1138,9 +1144,11 @@ func isGuardrailPolicy(name string, pol policy.Policy) bool {
 	if g, ok := pol.(guardrailMarker); ok {
 		return g.IsGuardrail()
 	}
-	normalized := strings.ToLower(name)
-	return strings.Contains(normalized, "guardrail") ||
-		strings.Contains(normalized, "moderation") ||
-		strings.Contains(normalized, "prompt-injection")
+	normalized := strings.ToLower(strings.TrimSpace(name))
+	if strings.HasSuffix(normalized, "-guardrail") || normalized == "guardrail" {
+		return true
+	}
+	_, isKnown := knownBuiltinGuardrails[normalized]
+	return isKnown
 }
 
