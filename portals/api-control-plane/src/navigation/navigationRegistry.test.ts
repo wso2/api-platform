@@ -59,6 +59,16 @@ const atApi = () =>
       projectHandler: aProject().id,
     },
   });
+const GRAPHQL_API = `${PROJECT}/graphql-apis/graphql-api-1`;
+const atGraphqlApi = () =>
+  makeConsoleScope({
+    isGraphQLApiScope: true,
+    params: {
+      graphqlApiHandler: 'graphql-api-1',
+      orgHandle: anOrganization().id,
+      projectHandler: aProject().id,
+    },
+  });
 
 /*
  * The sidebar has one item per *concern*, not per scope: Overview is the summary
@@ -80,12 +90,21 @@ describe('Overview adapts to the deepest scope', () => {
     expect(definitionFor('overview').to(atApi())).toBe(API);
   });
 
+  // A GraphQL API sets `params.graphqlApiHandler`, never `params.apiHandler`
+  // (see `graphqlApiPath`'s doc comment), so the 'api' tier needs its own
+  // `graphqlTo` to resolve — without it, Overview fell through to the
+  // project tier and landed on the project's own overview instead.
+  it('links to the GraphQL API overview once one is open, not the project overview', () => {
+    expect(definitionFor('overview').to(atGraphqlApi())).toBe(GRAPHQL_API);
+  });
+
   // Opening a project or an API navigates into a deeper tier of this same item,
   // so Overview has to stay lit rather than handing off to another item.
   it.each([
     ['organization home', `${ORG}/home`],
     ['project home', `${PROJECT}/home`],
     ['api overview', API],
+    ['graphql api overview', GRAPHQL_API],
   ])('stays active on the %s page', (_name, pathname) => {
     expect(matcherFor('overview')(pathname)).toBe(true);
   });
@@ -162,6 +181,28 @@ describe('API-level items', () => {
   it('leaves an API handled like a page suffix reachable', () => {
     expect(matcherFor('overview')(`${PROJECT}/apis/deploy`)).toBe(true);
     expect(matcherFor('deploy')(`${PROJECT}/apis/deploy`)).toBe(false);
+  });
+
+  // Pins the fix for a real bug: Deploy had no `graphqlTo` at all, so opening
+  // it from a GraphQL API resolved through the REST-only `apiLevelTo`, which
+  // ignores `graphqlApiHandler` and falls back to REST's scope-less alias —
+  // a page for a completely different (and unrelated) API, not this one.
+  it('links to the GraphQL API deploy page, not REST’s scope-less alias', () => {
+    expect(definitionFor('deploy').to(atGraphqlApi())).toBe(`${GRAPHQL_API}/deploy`);
+    expect(matcherFor('deploy')(`${GRAPHQL_API}/deploy`)).toBe(true);
+  });
+});
+
+// Pins the fix for a real gap: Publish had no `graphqlTo` on its 'api' tier,
+// so a GraphQL API fell through to the project-level Portals page instead of
+// its own — inconsistent with every other API-level item once one exists.
+describe('Publish resolves to the GraphQL API-level page', () => {
+  it('links to GraphqlPublishPage once a GraphQL API is open, not the project Portals page', () => {
+    expect(definitionFor('publish').to(atGraphqlApi())).toBe(`${GRAPHQL_API}/publish`);
+  });
+
+  it('stays active on the GraphQL publish page', () => {
+    expect(matcherFor('publish')(`${GRAPHQL_API}/publish`)).toBe(true);
   });
 });
 

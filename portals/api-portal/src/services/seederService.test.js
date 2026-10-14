@@ -47,7 +47,7 @@ function duplicateKeyError() {
 }
 
 /** `orgRows` is the mutable "table"; `onCreate` decides what create() does. */
-function loadSeeder({ orgRows, onCreate }) {
+function loadSeeder({ orgRows, onCreate, orgContext = {} }) {
     const calls = { create: 0, label: 0, view: 0 };
     const stubs = {
         orgDao: {
@@ -65,7 +65,7 @@ function loadSeeder({ orgRows, onCreate }) {
         viewDao: { update: async () => { calls.view++; return { uuid: 'view-1' }; } },
         planDao: { createMany: async () => {} },
         configLoader: { config: { organization: { autoCreateSubscriptionPlans: false } } },
-        orgContext: {},
+        orgContext,
         logger: { error: () => {}, warn: () => {}, info: () => {} },
         driver: { isDuplicateKeyError: (e) => !!e.duplicate },
     };
@@ -127,4 +127,41 @@ test('a duplicate on another column (not this handle) is not swallowed', async (
 test('any other create failure propagates', async () => {
     const { seeder } = loadSeeder({ orgRows: [], onCreate: () => { throw new Error('connection reset'); } });
     await assert.rejects(seeder.seedOrg(acme), /connection reset/);
+});
+
+// seedDefaultOrg seeds the instance's own org from config. cp_ref_id is what outbound
+// webhook events carry as org.ref_id, and Platform API resolves it by handle.
+function defaultOrgContext(handle = 'acme') {
+    return {
+        getHandle: () => handle,
+        getDisplayName: () => 'Acme',
+        getIdpOrgId: () => 'acme-id',
+        getConfiguredIdpOrgId: () => 'acme-id',
+        resetCache: () => {},
+    };
+}
+
+test('a new default org is created with cp_ref_id defaulted to its handle', async () => {
+    const rows = [];
+    const { seeder } = loadSeeder({
+        orgRows: rows,
+        onCreate: (payload) => { const row = { uuid: 'u-new', ...payload }; rows.push(row); return row; },
+        orgContext: defaultOrgContext(),
+    });
+    await seeder.seedDefaultOrg();
+    assert.strictEqual(rows[0].cpRefId, 'acme');
+});
+
+// cp_ref_id is set on create only, so a value an admin set (or cleared) in settings
+// survives restarts.
+test('an existing default org keeps its cp_ref_id across restarts', async () => {
+    const row = { uuid: 'u-acme', handle: 'acme', idp_ref_id: 'acme-id', cp_ref_id: '' };
+    const { seeder, calls } = loadSeeder({
+        orgRows: [row],
+        onCreate: () => assert.fail('must not create'),
+        orgContext: defaultOrgContext(),
+    });
+    await seeder.seedDefaultOrg();
+    assert.strictEqual(calls.create, 0);
+    assert.strictEqual(row.cp_ref_id, '');
 });

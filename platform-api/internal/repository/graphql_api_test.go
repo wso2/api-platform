@@ -707,3 +707,64 @@ func TestGraphQLAPIRepo_CreateRecordsArtifactSecretRefs(t *testing.T) {
 		t.Fatal("expected an artifact_secret_refs row recording the {{ secret \"upstream-token\" }} reference")
 	}
 }
+
+// TestGraphQLAPIRepo_ExistsByNameAndVersion is the GraphQL counterpart to
+// TestAPIRepo_CheckAPIExistsByNameAndVersionInOrganization.
+func TestGraphQLAPIRepo_ExistsByNameAndVersion(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	t.Cleanup(cleanup)
+
+	repo := NewGraphQLAPIRepo(db, NewArtifactTableRegistry())
+
+	orgUUID := "org-graphql-namever-001"
+	projectUUID := "project-graphql-namever-001"
+	createTestOrganizationAndProject(t, db, orgUUID, projectUUID)
+	otherOrgUUID := "org-graphql-namever-002"
+	createTestOrganizationAndProject(t, db, otherOrgUUID, "project-graphql-namever-002")
+
+	stored := newTestGraphQLAPI("countries-graphql", orgUUID, projectUUID)
+	if err := repo.Create(stored); err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+
+	// A REST API with the same name and version in the same org: uniqueness is
+	// per kind, as REST's own check only looks at rest_apis.
+	restAPI := &model.API{
+		Handle:          "countries-rest",
+		Name:            stored.Name,
+		Version:         stored.Version,
+		CreatedBy:       "test-user",
+		ProjectID:       projectUUID,
+		OrganizationID:  orgUUID,
+		LifeCycleStatus: "CREATED",
+		Configuration:   model.RestAPIConfig{Name: stored.Name, Version: stored.Version, Transport: []string{"https"}},
+	}
+	if err := NewAPIRepo(db).CreateAPI(restAPI); err != nil {
+		t.Fatalf("CreateAPI failed: %v", err)
+	}
+
+	cases := []struct {
+		name                                     string
+		displayName, version, org, excludeHandle string
+		want                                     bool
+	}{
+		{"same name and version", stored.Name, stored.Version, orgUUID, "", true},
+		{"same name, different version", stored.Name, "v2.0", orgUUID, "", false},
+		{"different name, same version", "Cities GraphQL API", stored.Version, orgUUID, "", false},
+		{"the API itself is excluded on update", stored.Name, stored.Version, orgUUID, stored.Handle, false},
+		{"excluding a different API still matches", stored.Name, stored.Version, orgUUID, "some-other-api", true},
+		{"another organization", stored.Name, stored.Version, otherOrgUUID, "", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := repo.ExistsByNameAndVersion(tc.displayName, tc.version, tc.org, tc.excludeHandle)
+			if err != nil {
+				t.Fatalf("ExistsByNameAndVersion failed: %v", err)
+			}
+			if got != tc.want {
+				t.Errorf("ExistsByNameAndVersion(%q, %q, %q, %q) = %v, want %v",
+					tc.displayName, tc.version, tc.org, tc.excludeHandle, got, tc.want)
+			}
+		})
+	}
+}

@@ -19,21 +19,23 @@
 import { useMemo, useState } from 'react';
 
 import {
-  REST_API_TYPE,
   useApiPublication,
   useApiPublicationDefinition,
   useApiPublicationDraft,
   useApiPublicationDraftDefinition,
 } from '@/api/resources/apiPublications';
 import { isApiError } from '@/api/core/errors';
+import { useGraphQLApi, useGraphQLApiSdl } from '@/api/resources/graphqlApis';
 import { useRestApi, useRestApiOpenApi } from '@/api/resources/restApis';
+import { useGraphQLApiGateways } from '@/api/resources/graphqlApis/apiGateways';
 import { useRestApiGateways } from '@/api/resources/restApis/apiGateways/apiGateways.hooks';
+import type { PublishTarget } from './publishTarget';
 import {
   buildProductionUrlOptions,
   resolveDraftFormValues,
   type DraftFormValues,
 } from './utils/publicationForm';
-import { readStoredDefinition, type StoredDefinition } from './utils/storedDefinition';
+import { readStoredDefinition, readStoredSdl, type StoredDefinition } from './utils/storedDefinition';
 
 /** What the editor opens with: the details and the definition, from the freshest tier that has them. */
 export type PublishSeed = { definition?: StoredDefinition; values: DraftFormValues };
@@ -72,12 +74,20 @@ const liveData = <T,>(query: { data: T | undefined; error: unknown }): T | undef
  * cache still holds the old draft and definitions until the next visit
  * refetches them, and seeding from those would show what is no longer there.
  */
-export function usePublishPageData(apiPortalId: string, apiHandler: string, wantPublishedDefinition: boolean) {
-  const apiQuery = useRestApi(apiHandler);
-  const gatewaysQuery = useRestApiGateways(apiHandler);
-  const draftQuery = useApiPublicationDraft(apiPortalId, REST_API_TYPE, apiHandler);
-  const publicationQuery = useApiPublication(apiPortalId, REST_API_TYPE, apiHandler);
-  const draftDefinitionQuery = useApiPublicationDraftDefinition(apiPortalId, REST_API_TYPE, apiHandler);
+export function usePublishPageData(apiPortalId: string, target: PublishTarget, wantPublishedDefinition: boolean) {
+  const { apiHandle: apiHandler, apiType } = target;
+  const isGraphQL = target.definitionKind === 'graphql';
+  // Both kinds' API queries are declared, and the other kind's stays disabled
+  // on an `undefined` handle, so the hooks run in the same order either way.
+  const restApiQuery = useRestApi(isGraphQL ? undefined : apiHandler);
+  const graphqlApiQuery = useGraphQLApi(isGraphQL ? apiHandler : undefined);
+  const apiQuery = isGraphQL ? graphqlApiQuery : restApiQuery;
+  const restGatewaysQuery = useRestApiGateways(isGraphQL ? undefined : apiHandler);
+  const graphqlGatewaysQuery = useGraphQLApiGateways(isGraphQL ? apiHandler : undefined);
+  const gatewaysQuery = isGraphQL ? graphqlGatewaysQuery : restGatewaysQuery;
+  const draftQuery = useApiPublicationDraft(apiPortalId, apiType, apiHandler);
+  const publicationQuery = useApiPublication(apiPortalId, apiType, apiHandler);
+  const draftDefinitionQuery = useApiPublicationDraftDefinition(apiPortalId, apiType, apiHandler);
   const draftDefinitionAbsent = isNotFound(draftDefinitionQuery.error);
 
   // A refetch that 404s (after an unpublish) keeps the previous `data` beside
@@ -87,14 +97,18 @@ export function usePublishPageData(apiPortalId: string, apiHandler: string, want
 
   const publicationDefinitionQuery = useApiPublicationDefinition(
     apiPortalId,
-    REST_API_TYPE,
+    apiType,
     draftDefinitionAbsent || (wantPublishedDefinition && publication) ? apiHandler : undefined,
   );
   const publicationDefinitionAbsent = draftDefinitionAbsent && isNotFound(publicationDefinitionQuery.error);
 
-  // Last fallback tier: the API's own stored definition, which 404s when none
-  // has ever been uploaded.
-  const apiOpenApiQuery = useRestApiOpenApi(publicationDefinitionAbsent ? apiHandler : undefined);
+  // Last fallback tier: the API's own stored definition — a REST API's OpenAPI
+  // document, which 404s when none has ever been uploaded, or a GraphQL API's SDL.
+  const restDefinitionQuery = useRestApiOpenApi(
+    publicationDefinitionAbsent && !isGraphQL ? apiHandler : undefined,
+  );
+  const sdlQuery = useGraphQLApiSdl(publicationDefinitionAbsent && isGraphQL ? apiHandler : undefined);
+  const apiOpenApiQuery = isGraphQL ? sdlQuery : restDefinitionQuery;
 
   // Where the API is served; the first is the Production URL's default.
   // A failed read leaves the list empty, even over an older cached one, and never blocks the page.
@@ -146,7 +160,8 @@ export function usePublishPageData(apiPortalId: string, apiHandler: string, want
 
   const draftDefinitionData = liveData(draftDefinitionQuery);
   const publicationDefinitionData = liveData(publicationDefinitionQuery);
-  const apiOpenApiData = liveData(apiOpenApiQuery);
+  const restDefinitionData = liveData(restDefinitionQuery);
+  const sdlData = liveData(sdlQuery);
 
   const publishedDefinition = useMemo(
     () =>
@@ -156,13 +171,19 @@ export function usePublishPageData(apiPortalId: string, apiHandler: string, want
     [publicationDefinitionData],
   );
 
+  /** The API's own definition as the editor opens it, whichever kind it is. */
+  const apiDefinition = useMemo<StoredDefinition | undefined>(() => {
+    if (isGraphQL) return sdlData === undefined ? undefined : readStoredSdl(sdlData);
+    return restDefinitionData ? readStoredDefinition(restDefinitionData.content) : undefined;
+  }, [isGraphQL, restDefinitionData, sdlData]);
+
   // The freshest tier that has a definition wins: draft, publication, the API's own.
   const seed = useMemo<PublishSeed | undefined>(() => {
     if (isLoading) return undefined;
     const definition =
       (draftDefinitionData && readStoredDefinition(draftDefinitionData.text, draftDefinitionData.contentType)) ??
       publishedDefinition ??
-      (apiOpenApiData ? readStoredDefinition(apiOpenApiData.content) : undefined);
+      apiDefinition;
     return { definition, values: resolveDraftFormValues(draft, publication, apiQuery.data, productionUrlOptions[0]?.url) };
   }, [
     isLoading,
@@ -171,7 +192,7 @@ export function usePublishPageData(apiPortalId: string, apiHandler: string, want
     publication,
     draftDefinitionData,
     publishedDefinition,
-    apiOpenApiData,
+    apiDefinition,
     productionUrlOptions,
   ]);
 

@@ -42,6 +42,28 @@ func init() {
 
 const graphQLApiKind = string(api.GraphQLAPIKindGraphQLApi)
 
+// graphQLSpecRules supplies the spec-level rules GraphQLApi shares with RestApi
+// (displayName, version, context). Stateless apart from its compiled regexes,
+// so one instance serves every validation.
+var graphQLSpecRules = config.NewAPIValidator()
+
+// graphQLPolicyValidator validates spec.policies references (name/version resolution
+// and param-schema conformance). It is nil until SetGraphQLPolicyValidator is called from
+// main.go, because it depends on the loaded policy definitions, which are not available
+// yet when this file's init() runs. Policy validation is skipped (not failed) if it is
+// never set, rather than panicking, so a caller that forgets to wire it degrades to the
+// pre-existing behavior instead of crashing the controller.
+var graphQLPolicyValidator *config.PolicyValidator
+
+// SetGraphQLPolicyValidator wires the shared policy validator into GraphQLApi config
+// validation. Call once from main.go after config.NewPolicyValidator is constructed —
+// this is what config.APIValidator.SetPolicyValidator / config.MCPValidator.WithPolicyValidator
+// do for RestApi/Mcp, adapted to GraphQLApi's KindConfigValidator registration model, which
+// has no constructor call site of its own to pass the validator through.
+func SetGraphQLPolicyValidator(pv *config.PolicyValidator) {
+	graphQLPolicyValidator = pv
+}
+
 // parseGraphQLAPIDeployment is the KindDeployParser for GraphQLApi. It mirrors the
 // "RestApi" case in DeployAPIConfiguration's own switch: the whole request body is
 // parsed directly into api.GraphQLAPI (the deployable shape), and identifiers that
@@ -84,26 +106,27 @@ func validateGraphQLAPIConfig(cfg any) (apiName, apiVersion string, validationEr
 
 	errors = append(errors, config.ValidateMetadata(&graphqlConfig.Metadata)...)
 
+	// displayName, version and context follow RestApi's own rules exactly
+	// (length, URL-friendly name, semantic version, context shape) — reused
+	// from config.APIValidator rather than re-implemented, so the two kinds
+	// can't drift apart. Name/version and handle uniqueness are enforced for
+	// every kind by DeployAPIConfiguration's validateArtifactConflicts.
 	spec := graphqlConfig.Spec
-	if strings.TrimSpace(spec.DisplayName) == "" {
-		errors = append(errors, config.ValidationError{Field: "spec.displayName", Message: "displayName is required"})
-	}
-	if strings.TrimSpace(spec.Version) == "" {
-		errors = append(errors, config.ValidationError{Field: "spec.version", Message: "version is required"})
-	}
-	if strings.TrimSpace(spec.Context) == "" {
-		errors = append(errors, config.ValidationError{Field: "spec.context", Message: "context is required"})
-	} else if !strings.HasPrefix(spec.Context, "/") {
-		errors = append(errors, config.ValidationError{Field: "spec.context", Message: "context must start with '/'"})
-	} else if strings.HasSuffix(spec.Context, "/") && spec.Context != "/" {
-		errors = append(errors, config.ValidationError{Field: "spec.context", Message: "Context cannot end with / (except for root context)"})
-	}
-
-	errors = append(errors, config.RefuseMtlsAuth(spec.Policies, "spec.policies")...)
+	errors = append(errors, graphQLSpecRules.ValidateDisplayName(spec.DisplayName)...)
+	errors = append(errors, graphQLSpecRules.ValidateVersion(spec.Version)...)
+	errors = append(errors, graphQLSpecRules.ValidateContext(spec.Context)...)
 
 	errors = append(errors, validateGraphQLUpstream("main", &spec.Upstream.Main)...)
 	if spec.Upstream.Sandbox != nil {
 		errors = append(errors, validateGraphQLUpstream("sandbox", spec.Upstream.Sandbox)...)
+	}
+
+	// Validate policies if a policy validator is configured — matches
+	// RestApi/Mcp/Agent, which all reject a config referencing an unresolvable
+	// policy (unknown name, or a version not present in the loaded policy
+	// definitions) instead of silently dropping it from the runtime chain.
+	if graphQLPolicyValidator != nil {
+		errors = append(errors, graphQLPolicyValidator.ValidateGraphQLAPIPolicies(&graphqlConfig)...)
 	}
 
 	return spec.DisplayName, spec.Version, errors

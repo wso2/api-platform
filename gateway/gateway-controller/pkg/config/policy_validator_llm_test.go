@@ -176,6 +176,14 @@ func TestPolicyValidator_MtlsAuthRefusedOutsideRestAPI(t *testing.T) {
 	require.Len(t, errs, 1)
 	assert.Equal(t, "spec.policies[0]", errs[0].Field)
 	assert.Equal(t, "mtls-auth is supported on RestApi only", errs[0].Message)
+
+	graphql := &api.GraphQLAPI{Spec: api.GraphQLAPIConfigData{
+		Policies: &[]api.Policy{{Name: "basic-ratelimit", Version: "v1"}, {Name: MtlsAuthPolicyName, Version: "v0"}},
+	}}
+	errs = validator.ValidateGraphQLAPIPolicies(graphql)
+	require.Len(t, errs, 1)
+	assert.Equal(t, "spec.policies[1]", errs[0].Field)
+	assert.Equal(t, "mtls-auth is supported on RestApi only", errs[0].Message)
 }
 
 // mtls-auth in a fault policy list is refused on every kind: on a non-REST kind

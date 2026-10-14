@@ -61,6 +61,14 @@ type GraphQLAPIConfig struct {
 	// creation/update time). Informational only; storage is identical either way.
 	IntrospectionMode string `json:"introspectionMode,omitempty"`
 
+	// SchemaSource records the exact source the schema was declared with —
+	// "inline", "url", "file", or "introspection" (a finer-grained sibling of
+	// IntrospectionMode, which only distinguishes the two-bucket "SDL" vs
+	// "ENDPOINT" storage outcome). Read back by GraphQLAPIDetail so a caller
+	// making an unrelated metadata edit can resupply the API's actual
+	// schemaSource instead of guessing or defaulting to "introspection".
+	SchemaSource string `json:"schemaSource,omitempty"`
+
 	// Upstream is reused as-is from model/upstream.go — a GraphQL API has a
 	// single endpoint (no per-operation paths), so upstream.main is the one
 	// GraphQL endpoint.

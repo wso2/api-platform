@@ -85,20 +85,3 @@ func TestValidateGraphQLUpstream_URLOnly_NoRefError(t *testing.T) {
 		t.Errorf("expected no validation errors for a valid direct url, got: %+v", errs)
 	}
 }
-
-// TestValidateGraphQLAPIConfig_MtlsAuthRefused pins that a GraphQLApi cannot attach
-// mtls-auth: the listener never asks a GraphQL hostname for a client certificate,
-// so the policy would refuse every caller.
-func TestValidateGraphQLAPIConfig_MtlsAuthRefused(t *testing.T) {
-	cfg := api.GraphQLAPI{Kind: api.GraphQLAPIKindGraphQLApi}
-	cfg.Spec.Policies = &[]api.Policy{{Name: "cors", Version: "v1"}, {Name: config.MtlsAuthPolicyName, Version: "v0"}}
-
-	_, _, errs := validateGraphQLAPIConfig(cfg)
-
-	if !containsFieldError(errs, "spec.policies[1]") {
-		t.Errorf("expected a spec.policies[1] error for mtls-auth on a GraphQLApi, got: %+v", errs)
-	}
-	if containsFieldError(errs, "spec.policies[0]") {
-		t.Errorf("expected no error for a policy other than mtls-auth, got: %+v", errs)
-	}
-}

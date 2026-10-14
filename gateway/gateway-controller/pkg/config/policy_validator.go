@@ -97,6 +97,34 @@ func (pv *PolicyValidator) ValidateMCPProxyPolicies(mcpConfig *api.MCPProxyConfi
 	return errors
 }
 
+// ValidateGraphQLAPIPolicies validates all policies in a GraphQL API configuration.
+// A GraphQLApi has no operations (see transform/graphql.go's buildPolicyChain), so —
+// like ValidateMCPProxyPolicies — only the API-level policy list is validated. Without
+// this, an unresolvable policy reference (unknown name, or a version not present in the
+// loaded policy definitions — e.g. a local/filePath policy whose schema never made it
+// into this controller image) is silently dropped from the chain at xDS-generation time
+// instead of failing the deploy, unlike RestApi/Mcp/Agent, which all reject such a
+// configuration up front via their own ValidateXPolicies call.
+func (pv *PolicyValidator) ValidateGraphQLAPIPolicies(apiConfig *api.GraphQLAPI) []ValidationError {
+	var errors []ValidationError
+
+	if apiConfig.Spec.Policies == nil {
+		return errors
+	}
+
+	for i, policy := range *apiConfig.Spec.Policies {
+		fieldPath := fmt.Sprintf("spec.policies[%d]", i)
+		if err, refused := refuseMtlsAuthOutsideRestAPI(policy.Name, fieldPath); refused {
+			errors = append(errors, err)
+			continue
+		}
+		errs := pv.validatePolicy(policy, fieldPath)
+		errors = append(errors, errs...)
+	}
+
+	return errors
+}
+
 // ValidateRestAPIPolicies validates all policies in a REST API configuration
 func (pv *PolicyValidator) ValidateRestAPIPolicies(apiConfig *api.RestAPI) []ValidationError {
 	var errors []ValidationError
@@ -782,21 +810,6 @@ func refuseMtlsAuthOutsideRestAPI(policyName, fieldPath string) (ValidationError
 		Field:   fieldPath,
 		Message: "mtls-auth is supported on RestApi only",
 	}, true
-}
-
-// RefuseMtlsAuth reports a validation error for every mtls-auth reference in
-// policies, for a kind whose validator does not otherwise check its policies.
-func RefuseMtlsAuth(policies *[]api.Policy, fieldPrefix string) []ValidationError {
-	if policies == nil {
-		return nil
-	}
-	var errors []ValidationError
-	for i, policy := range *policies {
-		if err, refused := refuseMtlsAuthOutsideRestAPI(policy.Name, fmt.Sprintf("%s[%d]", fieldPrefix, i)); refused {
-			errors = append(errors, err)
-		}
-	}
-	return errors
 }
 
 // refuseMtlsAuthAsFaultPolicy reports the validation error for an mtls-auth

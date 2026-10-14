@@ -274,7 +274,8 @@ func (s *APIServer) SearchDeployments(w http.ResponseWriter, r *http.Request, ki
 	}
 
 	configs := s.store.GetAllByKind(kind)
-	if kind == string(api.MCPProxyConfigurationKindMcp) && s.mcpDeploymentService != nil {
+	switch {
+	case kind == string(api.MCPProxyConfigurationKindMcp) && s.mcpDeploymentService != nil:
 		var err error
 		configs, err = s.mcpDeploymentService.ListMCPProxies()
 		if err != nil {
@@ -282,6 +283,22 @@ func (s *APIServer) SearchDeployments(w http.ResponseWriter, r *http.Request, ki
 			httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{
 				Status:  "error",
 				Message: "Failed to list MCP proxies",
+			})
+			return
+		}
+	case kind == string(api.GraphQLAPIKindGraphQLApi):
+		// GraphQL APIs have no eventlistener processor keeping `s.store` in
+		// sync (unlike REST/MCP/Agent/etc — see pkg/eventlistener), so
+		// `s.store.GetAllByKind` above is always empty for this kind. Read
+		// straight from the DB instead, the same source ListGraphQLAPIs uses
+		// for its own unfiltered path.
+		var err error
+		configs, err = s.db.GetAllConfigsByKind(kind)
+		if err != nil {
+			s.logger.Error("Failed to get GraphQL APIs", slog.Any("error", err))
+			httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{
+				Status:  "error",
+				Message: "Failed to retrieve GraphQL API configurations",
 			})
 			return
 		}
@@ -333,6 +350,8 @@ func (s *APIServer) SearchDeployments(w http.ResponseWriter, r *http.Request, ki
 		envelopeKey = "websubApis"
 	case string(api.AgentConfigurationKindAgent):
 		envelopeKey = "agents"
+	case string(api.GraphQLAPIKindGraphQLApi):
+		envelopeKey = "graphqlApis"
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{

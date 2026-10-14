@@ -598,6 +598,10 @@ func main() {
 	validator.SetPolicyValidator(policyValidator)
 	upstreamTLSValidator := config.NewUpstreamTLSValidator(db, cfg.Router.Upstream.TLS.DisableSslVerification)
 	validator.SetUpstreamTLSValidator(upstreamTLSValidator)
+	// GraphQLApi has no dedicated deployment-service constructor to pass this through
+	// (see graphql_deployment.go's KindConfigValidator registration model), so it is
+	// wired via a package-level setter instead of a constructor argument.
+	utils.SetGraphQLPolicyValidator(policyValidator)
 
 	// Build the single shared outbound *http.Client used by every control-plane /
 	// platform-API / on-prem-APIM call this process makes. Built once, here, and injected

@@ -281,6 +281,90 @@ func TestArtifactImport_CreateGraphQLAPI(t *testing.T) {
 	}
 }
 
+func TestArtifactImport_RestAPIFlatOperationsPreserved(t *testing.T) {
+	d := setupImportTest(t)
+
+	req := restImportRequest("11111111-1111-1111-1111-111111111112", "flat-ops-api", "Flat Ops API")
+	req.Configuration.Spec["operations"] = []interface{}{
+		map[string]interface{}{"method": "get", "path": "/weather/{city}"},
+		map[string]interface{}{
+			"method": "POST",
+			"path":   "/alerts",
+			"policies": []interface{}{
+				map[string]interface{}{"name": "set-headers", "version": "v1"},
+			},
+		},
+	}
+
+	resp, err := d.svc.Import(importTestOrgID, importTestGatewayID, req)
+	if err != nil {
+		t.Fatalf("Import() error = %v", err)
+	}
+
+	api, err := d.apiRepo.GetAPIByUUID(resp.ID, importTestOrgID)
+	if err != nil || api == nil {
+		t.Fatalf("GetAPIByUUID returned (%v, %v)", api, err)
+	}
+	ops := api.Configuration.Operations
+	if len(ops) != 2 {
+		t.Fatalf("stored %d operations, want 2", len(ops))
+	}
+	want := []struct{ method, path string }{{"GET", "/weather/{city}"}, {"POST", "/alerts"}}
+	for i, w := range want {
+		if ops[i].Request == nil {
+			t.Fatalf("operation %d has nil request", i)
+		}
+		if ops[i].Request.Method != w.method || ops[i].Request.Path != w.path {
+			t.Errorf("operation %d = (%q, %q), want (%q, %q)", i, ops[i].Request.Method, ops[i].Request.Path, w.method, w.path)
+		}
+	}
+	if p := ops[1].Request.Policies; len(p) != 1 || p[0].Name != "set-headers" || p[0].Version != "v1" {
+		t.Errorf("operation 1 policies = %+v, want [set-headers v1]", p)
+	}
+}
+
+func TestArtifactImport_RestAPIMalformedOperationRejected(t *testing.T) {
+	d := setupImportTest(t)
+
+	// A non-string method passes the nested decode (which ignores it) but fails the flat one.
+	req := restImportRequest("11111111-1111-1111-1111-111111111113", "bad-ops-api", "Bad Ops API")
+	req.Configuration.Spec["operations"] = []interface{}{
+		map[string]interface{}{"method": 42, "path": "/weather"},
+	}
+
+	if _, err := d.svc.Import(importTestOrgID, importTestGatewayID, req); err == nil {
+		t.Fatal("Import() error = nil, want a decode error for a non-string method")
+	}
+}
+
+func TestNormalizeGatewayRestOperations_KeepsNestedRequest(t *testing.T) {
+	spec := map[string]interface{}{
+		"operations": []interface{}{
+			map[string]interface{}{"method": "post", "path": "/alerts"},
+			map[string]interface{}{
+				"name":    "getWeather",
+				"request": map[string]interface{}{"method": "GET", "path": "/weather/{city}"},
+			},
+		},
+	}
+	var cfg model.RestAPIConfig
+	cfg.Operations = []model.Operation{
+		{},
+		{Name: "getWeather", Request: &model.OperationRequest{Method: "GET", Path: "/weather/{city}"}},
+	}
+
+	if err := normalizeGatewayRestOperations(spec, &cfg); err != nil {
+		t.Fatalf("normalizeGatewayRestOperations() error = %v", err)
+	}
+
+	if r := cfg.Operations[0].Request; r == nil || r.Method != "POST" || r.Path != "/alerts" {
+		t.Errorf("flat operation request = %+v, want POST /alerts", r)
+	}
+	if op := cfg.Operations[1]; op.Name != "getWeather" || op.Request.Method != "GET" || op.Request.Path != "/weather/{city}" {
+		t.Errorf("nested operation = %+v (request %+v), want it unchanged", op, op.Request)
+	}
+}
+
 func TestArtifactImport_UnsupportedKind(t *testing.T) {
 	d := setupImportTest(t)
 	req := restImportRequest("22222222-2222-2222-2222-222222222222", "x", "X")

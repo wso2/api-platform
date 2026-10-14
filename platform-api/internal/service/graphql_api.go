@@ -146,14 +146,40 @@ func (s *GraphQLAPIService) toGraphQLAPIDetail(m *model.GraphQLAPI) (*api.GraphQ
 	return resp, nil
 }
 
+// defaultGraphQLContext derives the routing context a GraphQL API gets when
+// the caller doesn't supply one on create/update. Unlike REST, a GraphQL API
+// serves every operation from a single path a client discovers via
+// introspection, so a meaningful default can always be derived from the
+// handle/version rather than forcing every caller to spell one out — mirrors
+// the create wizard's own default (`toContext` in
+// GraphqlConfigureForm.tsx) so a caller who leaves the field blank gets the
+// same path the UI would already show them.
+func defaultGraphQLContext(handle, version string) string {
+	segments := []string{handle}
+	if version != "" {
+		segments = append(segments, versionPathSegment(version))
+	}
+	segments = append(segments, "graphql")
+	return "/" + strings.Join(segments, "/")
+}
+
+// versionPathSegment prefixes a version with "v" unless it already carries
+// one — mirrors the frontend's versionLabel (src/utils/versionLabel.ts).
+func versionPathSegment(version string) string {
+	if version != "" && (version[0] == 'v' || version[0] == 'V') {
+		return version
+	}
+	return "v" + version
+}
+
 // Create creates a new GraphQL API. Supply either req.Sdl directly or
 // req.Upstream.Main.Url — exactly one schema-resolution path runs.
 func (s *GraphQLAPIService) Create(orgUUID, createdBy string, req *api.CreateGraphQLAPIRequest) (*api.GraphQLAPI, error) {
 	if req == nil {
 		return nil, apperror.ValidationFailed.New("A request body is required.")
 	}
-	if req.DisplayName == "" || req.Version == "" || req.Context == "" {
-		return nil, apperror.ValidationFailed.New("The displayName, context and version fields are required.")
+	if req.DisplayName == "" || req.Version == "" {
+		return nil, apperror.ValidationFailed.New("The displayName and version fields are required.")
 	}
 	if req.ProjectId == "" {
 		return nil, apperror.ValidationFailed.New("The projectId field is required.")
@@ -209,7 +235,10 @@ func (s *GraphQLAPIService) Create(orgUUID, createdBy string, req *api.CreateGra
 		return nil, fmt.Errorf("failed to check GraphQL API exists: %w", err)
 	}
 	if exists {
-		return nil, apperror.GraphQLAPIExists.New()
+		return nil, apperror.GraphQLAPIExists.New(graphQLAPIIDExistsMessage)
+	}
+	if err := s.ensureNameVersionAvailable(req.DisplayName, req.Version, orgUUID, ""); err != nil {
+		return nil, err
 	}
 
 	upstream := mapUpstreamAPIToModel(req.Upstream)
@@ -224,16 +253,30 @@ func (s *GraphQLAPIService) Create(orgUUID, createdBy string, req *api.CreateGra
 	if err != nil {
 		return nil, err
 	}
-	// resolution.Resolved false is not an error on create — there is no
-	// previous schema to fall back to, so an unresolved schema just means the
-	// new API's sdl/introspectionMode start out empty (see resolveSchema).
+	// resolution.Resolved false is not an error on create in general — there
+	// is no previous schema to fall back to, so a network-layer failure
+	// (unreachable sdlUrl, introspection failing) just means the new API's
+	// sdl/introspectionMode start out empty (see resolveSchema). The one
+	// exception: SDLErrors is only ever populated for text the caller
+	// effectively authored (inline/file always, url once its own fetch
+	// succeeded — see SDLErrors' doc comment) — silently creating a
+	// schema-less API from a typo in that text with no signal beyond a
+	// server-side WARN is worse than a 400 telling them exactly what's wrong
+	// with the text they just supplied.
+	if !resolution.Resolved && len(resolution.SDLErrors) > 0 {
+		return nil, apperror.ValidationFailed.New("The supplied GraphQL SDL could not be parsed.").
+			WithDetails(map[string]any{"sdlErrors": resolution.SDLErrors})
+	}
 
 	var subscriptionPlans []string
 	if req.SubscriptionPlans != nil {
 		subscriptionPlans = *req.SubscriptionPlans
 	}
 
-	context := req.Context
+	apiContext := utils.ValueOrEmpty(req.Context)
+	if apiContext == "" {
+		apiContext = defaultGraphQLContext(handle, req.Version)
+	}
 	m := &model.GraphQLAPI{
 		Handle:         handle,
 		OrganizationID: orgUUID,
@@ -246,9 +289,10 @@ func (s *GraphQLAPIService) Create(orgUUID, createdBy string, req *api.CreateGra
 		Configuration: model.GraphQLAPIConfig{
 			Name:              req.DisplayName,
 			Version:           req.Version,
-			Context:           &context,
+			Context:           &apiContext,
 			SDL:               resolution.SDL,
 			IntrospectionMode: resolution.IntrospectionMode,
+			SchemaSource:      resolution.SchemaSource,
 			Upstream:          *upstream,
 			Policies:          mapMCPPoliciesAPIToModel(req.Policies),
 			SubscriptionPlans: subscriptionPlans,
@@ -258,7 +302,7 @@ func (s *GraphQLAPIService) Create(orgUUID, createdBy string, req *api.CreateGra
 
 	if err := s.repo.Create(m); err != nil {
 		if isSQLiteUniqueConstraint(err) {
-			return nil, apperror.GraphQLAPIExists.Wrap(err)
+			return nil, apperror.GraphQLAPIExists.Wrap(err, graphQLAPIIDExistsMessage)
 		}
 		return nil, fmt.Errorf("failed to create GraphQL API: %w", err)
 	}
@@ -294,7 +338,23 @@ func (s *GraphQLAPIService) ValidateSchema(req api.ValidateGraphQLSchemaRequest)
 type graphQLSchemaResolution struct {
 	SDL               string
 	IntrospectionMode string
-	Resolved          bool
+	// SchemaSource is the effective schemaSource this resolution ran under —
+	// the request's own declared value, or the inferred one when the request
+	// left it blank (see the inference block below). Set on every return path
+	// past inference, including a Resolved=false one: Create persists it
+	// unconditionally (the caller's declared intent still matters even when
+	// this attempt didn't produce usable SDL), while Update only adopts it
+	// when Resolved is true, falling back to the existing stored value
+	// otherwise — mirroring how it already treats SDL/IntrospectionMode.
+	SchemaSource string
+	Resolved     bool
+	// SDLErrors is set when resolution failed on SDL text the caller
+	// effectively authored: schemaSource inline/file always, and url once its
+	// fetch itself succeeded. Never set for a url fetch failure or an
+	// introspection failure — those describe a network outcome, not the
+	// caller's own text (see validateGraphQLSDL's doc comment for why that
+	// split matters).
+	SDLErrors []api.GraphQLSdlValidationIssue
 }
 
 // resolveSchema validates the request's declared schemaSource against which
@@ -396,31 +456,65 @@ func (s *GraphQLAPIService) resolveSchema(schemaSource, suppliedSDL, sdlURL stri
 	// it just means Resolved is false.
 	switch schemaSource {
 	case string(api.GraphQLAPISchemaSourceInline), string(api.GraphQLAPISchemaSourceFile):
-		if err := validateGraphQLSDL(suppliedSDL); err != nil {
-			s.slogger.Warn("Supplied GraphQL SDL failed validation", "schemaSource", schemaSource, "error", err)
-			return graphQLSchemaResolution{}, nil
+		// `.json` is an accepted extension for this source (an introspection
+		// result, not hand-written SDL) — detect and convert it before
+		// falling through to SDL validation, which would otherwise always
+		// fail on it. Not recognizably that shape (including genuine SDL
+		// text) falls through unchanged.
+		effectiveSDL := suppliedSDL
+		if converted, ok := tryConvertIntrospectionJSONToSDL(suppliedSDL); ok {
+			effectiveSDL = converted
 		}
-		return graphQLSchemaResolution{SDL: suppliedSDL, IntrospectionMode: "SDL", Resolved: true}, nil
+		if issues := validateGraphQLSDL(effectiveSDL); len(issues) > 0 {
+			s.slogger.Warn("Supplied GraphQL SDL failed validation", "schemaSource", schemaSource, "issues", issues)
+			return graphQLSchemaResolution{SchemaSource: schemaSource, SDLErrors: issues}, nil
+		}
+		return graphQLSchemaResolution{SDL: effectiveSDL, IntrospectionMode: "SDL", SchemaSource: schemaSource, Resolved: true}, nil
 	case string(api.GraphQLAPISchemaSourceUrl):
-		fetched, err := utils.FetchOpenAPISpecFromURL(context.Background(), sdlURL, s.maxSDLFetchBytes)
+		fetched, err := utils.FetchDocumentFromURL(context.Background(), sdlURL, s.maxSDLFetchBytes, "GraphQL SDL")
 		if err != nil {
 			s.slogger.Warn("Failed to fetch GraphQL SDL from sdlUrl", "error", err)
-			return graphQLSchemaResolution{}, nil
+			return graphQLSchemaResolution{SchemaSource: schemaSource}, nil
 		}
 		fetched = strings.TrimSpace(fetched)
-		if err := validateGraphQLSDL(fetched); err != nil {
-			s.slogger.Warn("Fetched GraphQL SDL failed validation", "error", err)
-			return graphQLSchemaResolution{}, nil
+		// The fetch itself succeeded — this is a parse failure on the text it
+		// returned, exactly as safe to detail as inline/file (see SDLErrors'
+		// doc comment); only the fetch failure above stays sterile.
+		if issues := validateGraphQLSDL(fetched); len(issues) > 0 {
+			s.slogger.Warn("Fetched GraphQL SDL failed validation", "issues", issues)
+			return graphQLSchemaResolution{SchemaSource: schemaSource, SDLErrors: issues}, nil
 		}
-		return graphQLSchemaResolution{SDL: fetched, IntrospectionMode: "SDL", Resolved: true}, nil
+		return graphQLSchemaResolution{SDL: fetched, IntrospectionMode: "SDL", SchemaSource: schemaSource, Resolved: true}, nil
 	default: // introspection
 		derived, err := fetchAndConvertGraphQLSchema(upstream.Main.URL)
 		if err != nil {
 			s.slogger.Warn("GraphQL introspection failed", "error", err)
-			return graphQLSchemaResolution{}, nil
+			return graphQLSchemaResolution{SchemaSource: schemaSource}, nil
 		}
-		return graphQLSchemaResolution{SDL: derived, IntrospectionMode: "ENDPOINT", Resolved: true}, nil
+		return graphQLSchemaResolution{SDL: derived, IntrospectionMode: "ENDPOINT", SchemaSource: schemaSource, Resolved: true}, nil
 	}
+}
+
+// GraphQLAPIExists messages, one per conflict — worded like REST's
+// RESTAPIExists equivalents.
+const (
+	graphQLAPIIDExistsMessage          = "A GraphQL API with this ID already exists."
+	graphQLAPINameVersionExistsMessage = "A GraphQL API with the same name and version already exists in the organization."
+)
+
+// ensureNameVersionAvailable rejects a display name + version pair another
+// GraphQL API in the organization already uses — the same rule
+// validateCreateAPIRequest/validateUpdateAPIRequest apply to REST APIs, and the
+// gateway enforces at deploy time. excludeHandle skips the API being updated.
+func (s *GraphQLAPIService) ensureNameVersionAvailable(name, version, orgUUID, excludeHandle string) error {
+	exists, err := s.repo.ExistsByNameAndVersion(name, version, orgUUID, excludeHandle)
+	if err != nil {
+		return fmt.Errorf("failed to check GraphQL API name and version: %w", err)
+	}
+	if exists {
+		return apperror.GraphQLAPIExists.New(graphQLAPINameVersionExistsMessage)
+	}
+	return nil
 }
 
 // handleExistsCheck returns a function that checks if a GraphQL API handle
@@ -589,8 +683,8 @@ func (s *GraphQLAPIService) Update(orgUUID, handle, updatedBy string, req *api.G
 	if handle == "" || req == nil {
 		return nil, apperror.ValidationFailed.New("The GraphQL API id and a request body are required.")
 	}
-	if req.DisplayName == "" || req.Version == "" || req.Context == "" {
-		return nil, apperror.ValidationFailed.New("The displayName, context and version fields are required.")
+	if req.DisplayName == "" || req.Version == "" {
+		return nil, apperror.ValidationFailed.New("The displayName and version fields are required.")
 	}
 
 	// Validate {{ secret "..." }} placeholders anywhere in the request — see
@@ -619,8 +713,16 @@ func (s *GraphQLAPIService) Update(orgUUID, handle, updatedBy string, req *api.G
 	if req.Id != nil && *req.Id != "" && *req.Id != handle {
 		return nil, apperror.ValidationFailed.New("The id in the request body must match the path parameter.")
 	}
+	// Unlike a REST update, a GraphQL update may change the version as well as
+	// the display name, so the pair checked is the requested one.
+	if err := s.ensureNameVersionAvailable(req.DisplayName, req.Version, orgUUID, handle); err != nil {
+		return nil, err
+	}
 
-	upstream := mapUpstreamAPIToModel(req.Upstream)
+	// auth.value is redacted on GET, so a read-modify-write that only changes the
+	// endpoint URL never has the stored credential to resend — backfill it from the
+	// existing (unredacted) model, as the REST API update does, instead of wiping it.
+	upstream := mapUpstreamAPIToModel(preserveUpstreamAuthOnAPIUpdate(existing.Configuration.Upstream, req.Upstream))
 	var schemaSource string
 	if req.SchemaSource != nil {
 		schemaSource = string(*req.SchemaSource)
@@ -635,10 +737,12 @@ func (s *GraphQLAPIService) Update(orgUUID, handle, updatedBy string, req *api.G
 	// Unlike Create, a failed resolution on update keeps the previously-stored
 	// schema instead of blanking it out — the whole point of best-effort
 	// resolution is that a metadata-only edit (or a transient upstream issue)
-	// shouldn't destroy a schema that was working before this request.
-	sdl, introspectionMode := existing.Configuration.SDL, existing.Configuration.IntrospectionMode
+	// shouldn't destroy a schema that was working before this request. The
+	// stored schemaSource follows the same rule: it only changes alongside a
+	// successful re-resolution, never left dangling out of sync with SDL.
+	sdl, introspectionMode, storedSchemaSource := existing.Configuration.SDL, existing.Configuration.IntrospectionMode, existing.Configuration.SchemaSource
 	if resolution.Resolved {
-		sdl, introspectionMode = resolution.SDL, resolution.IntrospectionMode
+		sdl, introspectionMode, storedSchemaSource = resolution.SDL, resolution.IntrospectionMode, resolution.SchemaSource
 	}
 
 	var subscriptionPlans []string
@@ -646,7 +750,10 @@ func (s *GraphQLAPIService) Update(orgUUID, handle, updatedBy string, req *api.G
 		subscriptionPlans = *req.SubscriptionPlans
 	}
 
-	context := req.Context
+	apiContext := utils.ValueOrEmpty(req.Context)
+	if apiContext == "" {
+		apiContext = defaultGraphQLContext(handle, req.Version)
+	}
 	existing.Name = req.DisplayName
 	existing.Version = req.Version
 	existing.Description = utils.ValueOrEmpty(req.Description)
@@ -654,9 +761,10 @@ func (s *GraphQLAPIService) Update(orgUUID, handle, updatedBy string, req *api.G
 	existing.Configuration = model.GraphQLAPIConfig{
 		Name:              req.DisplayName,
 		Version:           req.Version,
-		Context:           &context,
+		Context:           &apiContext,
 		SDL:               sdl,
 		IntrospectionMode: introspectionMode,
+		SchemaSource:      storedSchemaSource,
 		Upstream:          *upstream,
 		Policies:          mapMCPPoliciesAPIToModel(req.Policies),
 		SubscriptionPlans: subscriptionPlans,
