@@ -3,7 +3,9 @@ kind: Agent
 metadata:
     name: weather-agent
     labels:
-        projectId: 0b7d3c1e-5f2a-4c8e-9d6b-1a2b3c4d5e6f
+        project-id: 0b7d3c1e-5f2a-4c8e-9d6b-1a2b3c4d5e6f
+    annotations:
+        gateway.api-platform.wso2.com/project-id: 0b7d3c1e-5f2a-4c8e-9d6b-1a2b3c4d5e6f
 spec:
     displayName: Weather Agent
     version: v1.0
