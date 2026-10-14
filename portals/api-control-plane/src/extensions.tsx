@@ -38,9 +38,11 @@ import { SlotEntriesProvider, useSlotEntries, type SlotEntry } from './slots';
  * `render` receives the small, portable `CloudHostPort` (org/project handle,
  * navigate, notify) instead of a pre-built element, so the same feature
  * component can be reused by another host app without depending on this
- * portal's own hooks — see `hostPort.tsx`.
+ * portal's own hooks — see `hostPort.tsx`. A page override for an artifact the
+ * Port does not carry (a GraphQL API) also receives that artifact's handle,
+ * read off its route, as the second argument.
  */
-type ExtensionRender = (port: CloudHostPort) => ReactNode;
+type ExtensionRender = (port: CloudHostPort, artifactHandle?: string) => ReactNode;
 
 type ApiControlPlaneExtensionBase = SlotEntry & {
   routePath: string;
@@ -151,6 +153,15 @@ export const PAGE_GATEWAYS_SLOT = 'page.gateways';
  * scope, which the Port carries as `apiHandle`.
  */
 export const PAGE_API_DEPLOY_SLOT = 'page.apiDeploy';
+
+/**
+ * Slot for overriding the built-in GraphQL API Deploy page — the GraphQL
+ * counterpart of `PAGE_API_DEPLOY_SLOT`, so a host that replaces the REST
+ * Deploy page can replace this one with the same feature. Consumed by the
+ * `graphqlApiDeploy` route wrapper in `AppRoutes`. The Port's `apiHandle` is
+ * REST-only, so the GraphQL API's handle is passed to `render` instead.
+ */
+export const PAGE_GRAPHQL_API_DEPLOY_SLOT = 'page.graphqlApiDeploy';
 
 /**
  * Slot for overriding the built-in per-API Logs page under Observability. Same

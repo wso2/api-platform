@@ -27,8 +27,6 @@ import (
 	"fmt"
 	"math"
 	"net/textproto"
-	"os"
-	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -167,22 +165,11 @@ func platformAPITLSConfig(caPEM []byte) (*tls.Config, error) {
 	return &tls.Config{RootCAs: rootCAs, ServerName: "platform-api"}, nil
 }
 
-// gatewayListenerCertPath is the repo-relative self-signed certificate the gateway serves on
-// its default HTTPS listener.
-const gatewayListenerCertPath = "gateway/gateway-controller/listener-certs/default-listener.crt"
-
-// gatewayListenerCertificate reads the gateway's default HTTPS listener certificate from the
-// checkout the framework runs in.
+// gatewayListenerCertificate returns the certificate the gateway serves on its default HTTPS
+// listener. The framework generates it once per process and mounts the same one into every
+// gateway stack, so the steps and the gateway always agree on it.
 func gatewayListenerCertificate() ([]byte, error) {
-	root, ok := shared.RepoRootFromCallerFile()
-	if !ok {
-		return nil, fmt.Errorf("locating the repository root for the gateway listener certificate")
-	}
-	pem, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(gatewayListenerCertPath)))
-	if err != nil {
-		return nil, fmt.Errorf("reading the gateway listener certificate: %w", err)
-	}
-	return pem, nil
+	return shared.GatewayListenerTLS().CertPEM, nil
 }
 
 // gatewayListenerTLSConfig trusts only the gateway's listener certificate. The name is pinned
@@ -231,6 +218,7 @@ func (b *Base) registerBaseSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^the response should be successful$`, b.responseSuccessful)
 	sc.Step(`^the response should be a client error$`, b.responseClientError)
 	sc.Step(`^the response should be (valid JSON|empty)$`, b.responseShapeIs)
+	sc.Step(`^the response should match the expected error response "([^"]*)"$`, b.responseMatchesExpectedError)
 	sc.Step(`^the response body should be empty$`, func(ctx context.Context) error { return b.responseShapeIs(ctx, "empty") })
 	sc.Step(`^the response body should be:$`, b.responseBodyIs)
 	sc.Step(`^the response body should contain "([^"]*)"$`, b.responseContains)
@@ -249,10 +237,13 @@ func (b *Base) registerBaseSteps(sc *godog.ScenarioContext) {
 		b.echoedHeaderEquals)
 	sc.Step(`^the response should contain echoed header "([^"]*)" with exact value:$`,
 		b.echoedHeaderEqualsDoc)
+	sc.Step(`^the response should contain echoed header "([^"]*)" containing "([^"]*)"$`,
+		b.echoedHeaderContains)
 	sc.Step(`^the response should not contain echoed header "([^"]*)"$`, b.echoedHeaderAbsent)
 	sc.Step(`^the JSON response should have field "([^"]*)"$`, b.jsonFieldExists)
 	sc.Step(`^the JSON response field "([^"]*)" should not exist$`, b.jsonFieldAbsent)
 	sc.Step(`^the JSON response field "([^"]*)" should be (\d+)$`, b.jsonFieldIsNumber)
+	sc.Step(`^the JSON response field "([^"]*)" should be (true|false)$`, b.jsonFieldIsBool)
 	sc.Step(`^the JSON response field "([^"]*)" should be "([^"]*)"$`, b.jsonFieldIs)
 	sc.Step(`^the JSON response field "([^"]*)" should not equal "([^"]*)"$`, b.jsonFieldNotEqual)
 	sc.Step(`^the JSON response field "([^"]*)" should be:$`, b.jsonFieldIsDoc)
@@ -1291,40 +1282,66 @@ func (b *Base) echoedHeaderAbsent(ctx context.Context, name string) error {
 }
 
 func (b *Base) assertEchoedHeader(ctx context.Context, name, want string) error {
-	resp, err := httpx.Published(ctx)
+	values, resolved, err := b.echoedHeaderValues(ctx, name, want)
 	if err != nil {
 		return err
+	}
+	if len(values) != 1 || values[0] != resolved {
+		return fmt.Errorf("expected echoed header %q to be exactly %q, got %q", name, resolved, values)
+	}
+	return nil
+}
+
+// echoedHeaderContains asserts the gateway forwarded a header upstream with a value that
+// contains the given text.
+func (b *Base) echoedHeaderContains(ctx context.Context, name, want string) error {
+	values, resolved, err := b.echoedHeaderValues(ctx, name, want)
+	if err != nil {
+		return err
+	}
+	for _, value := range values {
+		if strings.Contains(value, resolved) {
+			return nil
+		}
+	}
+	return fmt.Errorf("expected echoed header %q to contain %q, got %q", name, resolved, values)
+}
+
+// echoedHeaderValues returns every value of an echoed header and the expanded expectation.
+func (b *Base) echoedHeaderValues(ctx context.Context, name, want string) ([]string, string, error) {
+	resp, err := httpx.Published(ctx)
+	if err != nil {
+		return nil, "", err
 	}
 	resolved, err := stepscommon.Expand(ctx, want)
 	if err != nil {
-		return err
+		return nil, "", err
 	}
 	headers, err := echoedHeaders(resp)
 	if err != nil {
-		return err
+		return nil, "", err
 	}
 	value, found := lookupEchoed(headers, name)
 	if !found {
-		return fmt.Errorf("expected echoed header %q to exist in response", name)
+		return nil, "", fmt.Errorf("expected echoed header %q to exist in response", name)
 	}
 
-	// A JSON echo may render a header as a string or an array; compare the first value.
+	// A JSON echo may render a header as a string or an array of values.
 	switch v := value.(type) {
 	case string:
-		if v != resolved {
-			return fmt.Errorf("expected echoed header %q to be %q, got %q", name, resolved, v)
-		}
+		return []string{v}, resolved, nil
 	case []any:
 		if len(v) == 0 {
-			return fmt.Errorf("expected echoed header %q to be %q, got empty array", name, resolved)
+			return nil, "", fmt.Errorf("expected echoed header %q to hold %q, got empty array", name, resolved)
 		}
-		if got := fmt.Sprintf("%v", v[0]); got != resolved {
-			return fmt.Errorf("expected echoed header %q to be %q, got %q", name, resolved, got)
+		values := make([]string, len(v))
+		for i, item := range v {
+			values[i] = fmt.Sprintf("%v", item)
 		}
+		return values, resolved, nil
 	default:
-		return fmt.Errorf("expected echoed header %q to be string or array, got %T", name, value)
+		return nil, "", fmt.Errorf("expected echoed header %q to be string or array, got %T", name, value)
 	}
-	return nil
 }
 
 // echoedHeaders pulls the request headers the backend reflected back in its JSON body.
@@ -1459,6 +1476,31 @@ func (b *Base) jsonFieldIsNumber(ctx context.Context, field string, want int) er
 	}
 	if num != float64(want) {
 		return fmt.Errorf("JSON field %q: expected %d, got %v: %s", field, want, num, resp.Describe())
+	}
+	return nil
+}
+
+// jsonFieldIsBool asserts the field at a dotted path holds the given JSON boolean, not a
+// string spelling it.
+func (b *Base) jsonFieldIsBool(ctx context.Context, field, want string) error {
+	resp, err := httpx.Published(ctx)
+	if err != nil {
+		return err
+	}
+	var doc map[string]any
+	if err := json.Unmarshal(resp.Body, &doc); err != nil {
+		return fmt.Errorf("response is not a JSON object: %w (%s)", err, resp.Describe())
+	}
+	got, present := traverseJSON(doc, field)
+	if !present {
+		return fmt.Errorf("JSON field %q is absent from %s", field, resp.Describe())
+	}
+	value, ok := got.(bool)
+	if !ok {
+		return fmt.Errorf("JSON field %q holds %v (%T), not a boolean: %s", field, got, got, resp.Describe())
+	}
+	if value != (want == "true") {
+		return fmt.Errorf("JSON field %q: expected %s, got %t: %s", field, want, value, resp.Describe())
 	}
 	return nil
 }

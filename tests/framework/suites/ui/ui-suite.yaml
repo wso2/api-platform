@@ -106,6 +106,7 @@ blocks:
         dependsOn: [platform-api]
       - name: testbench
       - name: ai-workspace
+        overlay: tests/framework/core/catalog/overlays/ai-workspace-agent-proxy.toml
       - name: browser
     runners:
       - name: smoke
@@ -126,6 +127,12 @@ blocks:
       - name: mcp-proxy
         features:
           - features/mcp_proxy.feature
+      - name: agent-proxy
+        features:
+          - features/agent_proxy.feature
+      - name: agent-proxy-configuration
+        features:
+          - features/agent_proxy_configuration.feature
       - name: mcp-secrets
         features:
           - features/mcp_secret_management.feature

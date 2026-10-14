@@ -1,0 +1,51 @@
+# --------------------------------------------------------------------
+# Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+#
+# WSO2 LLC. licenses this file to you under the Apache License,
+# Version 2.0 (the "License"); you may not use this file except
+# in compliance with the License. You may obtain a copy of the
+# License at http://www.apache.org/licenses/LICENSE-2.0
+# --------------------------------------------------------------------
+#
+# AI Workspace feature flags
+#
+# A reference of every feature the SPA can show or hide. Nothing loads this file:
+# it is not passed to -config, not merged into the distribution, and not read by
+# the BFF. It exists so the flags have one documented home.
+#
+# HOW TO USE IT
+# A flag covers a feature that is still rolling out, so it starts hidden
+# everywhere. A deployment ready to serve one copies the
+# [ai_workspace.feature_flags] table below into its own config.toml and sets
+# that flag to true. Everywhere else leaves the table out and the feature stays
+# hidden, which is why config.toml and config-template.toml do not carry it.
+#
+# A flag lives only as long as its rollout. Once a feature ships to every
+# deployment, its flag is retired rather than defaulted to true.
+#
+# POLARITY
+# A flag that is not set leaves its feature hidden. Showing a feature means
+# setting its flag to true; there is no value that hides a feature which was
+# never named.
+#
+#   agent_proxy_enabled = true    # feature is shown
+#   agent_proxy_enabled = false   # feature is hidden
+#   (key absent)                  # feature is hidden
+#
+# WHAT A DISABLED FEATURE LOSES
+# Hiding a feature removes it from the product completely: no navigation entry,
+# no route, and no entry on the project overview. It is a presentation control,
+# not an access control — the Platform API's own scope checks are what govern
+# who may call an endpoint.
+#
+# NAMING
+# One key per feature, named <feature>_enabled, so the direction is readable at
+# the point of use. The environment variable is the key's table path uppercased
+# with underscores and prefixed APIP_AIW_, as everywhere else:
+#
+#   [ai_workspace.feature_flags] agent_proxy_enabled
+#     ->  APIP_AIW_FEATURE_FLAGS_AGENT_PROXY_ENABLED
+# --------------------------------------------------------------------
+
+[ai_workspace.feature_flags]
+agent_proxy_enabled = true

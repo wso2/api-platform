@@ -216,6 +216,218 @@ blocks:
         features:
           - features/apiportal/organizations/foreign_org_login.feature
 
+  # Which hostnames the HTTPS listener asks for a client certificate. What it asks is state of
+  # the whole gateway, so runners take turns, and each block sets its own downstream_tls
+  # settings. The settings do not depend on the database, so only the default block repeats
+  # on every engine.
+  - name: gateway-mtls-hostnames
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/mtls-event-hub.toml
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: testbench
+    runners:
+      - name: mtls-hostnames
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mtls_hostnames.feature
+
+  - name: gateway-mtls-hostnames-required
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/mtls-dedicated-hostname.toml
+        db: sqlite
+      - name: testbench
+    runners:
+      - name: mtls-hostnames-required
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mtls_hostnames_required.feature
+
+  - name: gateway-mtls-hostnames-all-connections
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/mtls-all-connections.toml
+        db: sqlite
+      - name: testbench
+    runners:
+      - name: mtls-hostnames-all-connections
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mtls_hostnames_all_connections.feature
+
+  - name: gateway-mtls-hostnames-all-connections-required
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/mtls-all-connections-dedicated-hostname.toml
+        db: sqlite
+      - name: testbench
+    runners:
+      - name: mtls-hostnames-all-connections-required
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mtls_hostnames_all_connections_required.feature
+
+  # Mutual TLS scenarios change the client authority pool and whether the HTTPS listener
+  # asks for a certificate, which is state of the whole gateway, so runners take turns.
+  - name: gateway-mtls
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/mtls.toml
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: testbench
+    runners:
+      - name: mtls-auth
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mtls_auth.feature
+      - name: mtls-client-ca-pool
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mtls_client_ca_pool.feature
+      - name: mtls-pool-references
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mtls_pool_references.feature
+      - name: mtls-listener
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mtls_listener.feature
+      - name: mtls-header-relay
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mtls_header_relay.feature
+
+  # The relayed client certificate header is believed from any connection here, a gateway-wide
+  # setting the other mutual TLS blocks must not see.
+  - name: gateway-mtls-trust-any
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/mtls-header-trust-any.toml
+        db: sqlite
+      - name: testbench
+    runners:
+      - name: mtls-header-bypass
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mtls_header_bypass.feature
+
+  # Mutual TLS outcomes in the access log, analytics and metrics. The block reads gateway-wide
+  # certificate gauges and its own JSON access log lines, so runners take turns.
+  - name: gateway-mtls-observability
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/mtls-observability.toml
+        db: sqlite
+      - name: testbench
+      - name: tls-backend
+    runners:
+      - name: mtls-observability
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mtls_observability.feature
+
+  # Outbound mutual TLS adds gateway identities and trust certificates and never a client
+  # authority, so it has its own gateway and runs beside the inbound block.
+  - name: gateway-mtls-outbound
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/mtls-outbound.toml
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: testbench
+      - name: tls-backend
+    runners:
+      - name: mtls-outbound
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mtls_outbound.feature
+
+  # The mutual TLS scenarios on a gateway with two controllers sharing one PostgreSQL
+  # database. One serves the management API; the other alone feeds the runtime, so every
+  # certificate and API change reaches the runtime through the event path between them.
+  - name: gateway-mtls-ha
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/mtls-ha.toml
+        db: postgres
+      - name: testbench
+      - name: tls-backend
+    wiring:
+      platform-gateway:
+        controllers: 2
+    runners:
+      - name: mtls-auth
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mtls_auth.feature
+      - name: mtls-client-ca-pool
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mtls_client_ca_pool.feature
+      - name: mtls-pool-references
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mtls_pool_references.feature
+      - name: mtls-listener
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mtls_listener.feature
+      - name: mtls-header-relay
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mtls_header_relay.feature
+      - name: mtls-observability
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mtls_observability.feature
+      - name: mtls-outbound
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mtls_outbound.feature
+
+  # The default client certificate to backends. The switch is gateway configuration (on by
+  # default; the off block sets it false) and the default identity is gateway-wide state, so
+  # each block runs its scenarios one at a time.
+  - name: gateway-mtls-default-identity-off
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/mtls-default-identity-off.toml
+        db: sqlite
+      - name: testbench
+      - name: tls-backend
+    runners:
+      - name: mtls-default-identity-off
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mtls_default_identity_off.feature
+
+  - name: gateway-mtls-default-identity-on
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/mtls-default-identity.toml
+        db: sqlite
+      - name: testbench
+      - name: tls-backend
+    runners:
+      - name: mtls-default-identity-on
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mtls_default_identity.feature
+
   - name: gateway-core
     parallel: 7
     components:
@@ -310,9 +522,6 @@ blocks:
       - name: url-guardrail
         features:
           - features/gateway/guardrails-policies/url_guardrail.feature
-      - name: regex-guardrail
-        features:
-          - features/gateway/guardrails-policies/regex_guardrail.feature
       - name: json-schema-guardrail
         features:
           - features/gateway/guardrails-policies/json_schema_guardrail.feature
@@ -320,6 +529,11 @@ blocks:
         features:
           - features/gateway/core/cel_conditions.feature
       - name: certificates
+        tags: "gateway-version>1.2.0;~@certificate-refusal-1.2.0"
+        features:
+          - features/gateway/security/certificates.feature
+      - name: certificates-1.2.0
+        tags: "gateway-version<=1.2.0;~@certificate-refusal-current"
         features:
           - features/gateway/security/certificates.feature
       - name: secrets
@@ -431,6 +645,18 @@ blocks:
         tags: "gateway-version>1.2.0"
         features:
           - features/ai-workspace-gateway/mcp/mcp_legacy_upstream_modern_client.feature
+      - name: mcp-upstream-auth
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/ai-workspace-gateway/mcp/mcp_upstream_auth.feature
+      - name: graphql-deploy
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/graphql_deploy.feature
+      - name: graphql-api-keys
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/graphql_api_keys.feature
       - name: oauth2-auth
         tags: "gateway-version>1.2.0"
         features:
@@ -494,18 +720,6 @@ blocks:
         tags: "gateway-version>=1.2.0"
         features:
           - features/gateway/control-plane/dp_to_cp_reconnect.feature
-
-  - name: pii-masking-regex
-    parallel: 1
-    components:
-      - name: platform-gateway
-        db:
-          matrix: [sqlite, postgres, sqlserver]
-      - name: testbench
-    runners:
-      - name: pii-masking-regex
-        features:
-          - features/gateway/guardrails-policies/pii_masking_regex.feature
 
   - name: gateway-metrics
     parallel: 1
@@ -677,6 +891,10 @@ blocks:
         tags: "gateway-version>=1.2.0"
         features:
           - features/gateway/security-policies/jwt_auth_scope_claim_rules.feature
+      - name: graphql-policies
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/graphql_policies.feature
 
   - name: mcp-auth-gateway-host
     parallel: 1
@@ -715,6 +933,10 @@ blocks:
       - name: analytics-header-filter
         features:
           - features/gateway/observability-policies/analytics_header_filter.feature
+      - name: graphql-analytics
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/graphql_analytics.feature
       - name: subscription-analytics
         features:
           - features/gateway/observability/subscription_analytics.feature
@@ -976,19 +1198,55 @@ blocks:
         features:
           - features/apiportal/webhooks/devportal_webhook.feature
 
-  # This block is intended for gateway-controllers pull requests. Its policy source is
-  # an adjacent checkout, so callers must check out gateway-controllers next to this
-  # repository and select this block explicitly.
-  - name: gateway-controller-policies
-    parallel: 1
+  # Policy error compatibility: every migrated policy's main rejection, held to the error
+  # response the policy returned before the change. The policies come from the adjacent
+  # gateway-controllers checkout — in that repository's CI, the pull request under test — and
+  # the expected responses live in resources/expected-error-responses/, one file per scenario
+  # for every Gateway version.
+  # Runners are tagged by the first Gateway release that ships their policies; select a release
+  # with -gateway-version, or omit it for the current source build. On a release, only the
+  # policies it ships are built (releasedPoliciesOnly). See the "Policy error compatibility"
+  # section of tests/framework/README.md.
+  - name: policy-compat
+    parallel: 3
     components:
       - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/policy-compat.toml
         db:
           matrix: [sqlite, postgres, sqlserver]
         addPoliciesFrom: ../gateway-controllers/policies
+        releasedPoliciesOnly: true
       - name: testbench
     runners:
-      - name: time-based-model-routing
+      - name: policy-errors-from-1-1-0
+        tags: "gateway-version>=1.1.0"
+        features:
+          - features/gateway/policy-errors/policy_errors_from_1_1_0.feature
+      - name: policy-errors-from-1-2-0
         tags: "gateway-version>=1.2.0"
         features:
-          - features/ai-workspace-gateway/llm-policies/time_based_model_routing.feature
+          - features/gateway/policy-errors/policy_errors_from_1_2_0.feature
+      - name: policy-errors-latest
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/policy-errors/policy_errors_latest.feature
+
+  # semantic-cache needs the semantic-ai overlay and Redis, which the block above does not
+  # carry. Same policy source, same expected responses.
+  - name: policy-compat-semantic-ai
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/semantic-ai.toml
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+        dependsOn: [redis]
+        addPoliciesFrom: ../gateway-controllers/policies
+        releasedPoliciesOnly: true
+      - name: testbench
+      - name: redis
+    runners:
+      - name: policy-errors-semantic-cache
+        tags: "gateway-version>=1.1.0"
+        features:
+          - features/gateway/policy-errors/policy_errors_semantic_cache.feature

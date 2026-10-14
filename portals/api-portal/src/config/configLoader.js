@@ -70,13 +70,13 @@ function loadConfigFiles(paths) {
         try {
             raw = fs.readFileSync(resolvedPath, 'utf8');
         } catch (err) {
-            throw new Error(`config file "${p}" could not be read: ${err.message}`);
+            throw new Error(`config file "${p}" could not be read: ${err.message}`, { cause: err });
         }
         let parsed;
         try {
             parsed = toml.parse(raw);
         } catch (err) {
-            throw new Error(`config file "${p}" is not valid TOML: ${err.message}`);
+            throw new Error(`config file "${p}" is not valid TOML: ${err.message}`, { cause: err });
         }
         const tree = snakeToCamelDeep(parsed).apiPortal || {};
         merged = mergeOver(merged, tree);
@@ -191,8 +191,8 @@ function readAllowedFile(inputPath) {
     let resolved;
     try {
         resolved = fs.realpathSync(cleaned);
-    } catch (_) {
-        throw new Error(`required file "${inputPath}" is not found`);
+    } catch (err) {
+        throw new Error(`required file "${inputPath}" is not found`, { cause: err });
     }
     if (!isAllowedResolved(resolved, allowlist)) {
         throw new Error(`file "${inputPath}" is not in an allowed source directory`);
@@ -201,8 +201,8 @@ function readAllowedFile(inputPath) {
     let stat;
     try {
         stat = fs.statSync(resolved);
-    } catch (_) {
-        throw new Error(`required file "${inputPath}" is not found`);
+    } catch (err) {
+        throw new Error(`required file "${inputPath}" is not found`, { cause: err });
     }
     if (stat.size > MAX_FILE_BYTES) {
         throw new Error(`file "${inputPath}" exceeds the maximum allowed size`);
@@ -211,8 +211,8 @@ function readAllowedFile(inputPath) {
     let data;
     try {
         data = fs.readFileSync(resolved, 'utf8');
-    } catch (_) {
-        throw new Error(`required file "${inputPath}" is not found`);
+    } catch (err) {
+        throw new Error(`required file "${inputPath}" is not found`, { cause: err });
     }
     return data.replace(/[ \t\r\n]+$/, '');
 }
@@ -272,7 +272,7 @@ function interpolateLeaf(value, fieldPath) {
         const compiled = hb.compile(value, { noEscape: true, strict: true });
         return coerceValue(compiled({}));
     } catch (err) {
-        throw new Error(`config interpolation failed at "${fieldPath}": ${err.message}`);
+        throw new Error(`config interpolation failed at "${fieldPath}": ${err.message}`, { cause: err });
     }
 }
 
@@ -696,8 +696,9 @@ function validateIdpConfig(cfg) {
     // accepted tokens. jose's createRemoteJWKSet does not enforce HTTPS itself.
     const jwksUrlRaw = String(cfg.auth.idp.jwksUrl).trim();
     let jwksProtocol;
+    let jwksHostname;
     try {
-        jwksProtocol = new URL(jwksUrlRaw).protocol;
+        ({ protocol: jwksProtocol, hostname: jwksHostname } = new URL(jwksUrlRaw));
     } catch (_) {
         process.stderr.write(
             `[FATAL] auth.idp.jwks_url is not a valid URL: ${jwksUrlRaw}\n`
@@ -705,11 +706,22 @@ function validateIdpConfig(cfg) {
         process.exit(1);
     }
     if (jwksProtocol !== 'https:') {
+        // Development-only opt-in. Limited to localhost hosts so the flag can
+        // never expose a remote key set to an on-path attacker.
+        const devHttpAllowed =
+            cfg.auth.idp.allowLocalHttpJwks === true &&
+            jwksProtocol === 'http:' &&
+            (jwksHostname === 'localhost' || jwksHostname.endsWith('.localhost'));
+        if (!devHttpAllowed) {
+            process.stderr.write(
+                `[FATAL] auth.idp.jwks_url must use https:// (got ${jwksProtocol}//${jwksUrlRaw.replace(/^\S+?:\/\//, '')}). ` +
+                'A plain http:// JWKS URL lets a network attacker substitute the key set and sign accepted tokens.\n'
+            );
+            process.exit(1);
+        }
         process.stderr.write(
-            `[FATAL] auth.idp.jwks_url must use https:// (got ${jwksProtocol}//${jwksUrlRaw.replace(/^\S+?:\/\//, '')}). ` +
-            'A plain http:// JWKS URL lets a network attacker substitute the key set and sign accepted tokens.\n'
+            `[WARN] auth.idp.jwks_url is plain http:// (${jwksUrlRaw}); allowed because auth.idp.allow_local_http_jwks=true and the host is local. Development only.\n`
         );
-        process.exit(1);
     }
 }
 
@@ -1020,5 +1032,17 @@ function validateKeyManagers(cfg) {
 rejectRetiredAuthKeys(interpolatedTomlConfig.auth);
 validateAuthorizationConfig(config);
 validateKeyManagers(config);
+
+/** Surfaces webhooks.delivery.tls_skip_verify in the startup log whenever it is on. */
+function warnWebhookDeliveryTlsSkip(cfg) {
+    if (cfg.webhooks?.delivery?.tlsSkipVerify === true) {
+        process.stderr.write(
+            '[WARN] webhooks.delivery.tls_skip_verify = true: webhook deliveries do not verify ' +
+            "the subscriber's TLS certificate. Development only.\n"
+        );
+    }
+}
+
+warnWebhookDeliveryTlsSkip(config);
 
 module.exports = { config, KNOWN_ARTIFACT_TYPES, AUTHORIZATION_MODES, ORG_HANDLE_PATTERN, RESERVED_ORG_HANDLES };

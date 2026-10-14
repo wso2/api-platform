@@ -19,9 +19,13 @@
 package transform
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -107,6 +111,14 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 
 	// Collect validated API-level policies
 	apiPolicies := t.collectAPIPolicies(apiData.Policies)
+	// The API-level fault policies are resolved once; each route then prepends its own
+	// operation-level entries (see mergeFaultPolicies). Order is preserved and duplicates
+	// are kept: a sequence may legitimately repeat a policy (two notifications to two
+	// destinations).
+	apiFaultPolicies := t.collectFaultPolicies(apiData.FaultPolicies, policyv1alpha.LevelAPI)
+	// Resolved once for the whole API rather than per route: the parameters come from the
+	// runtime config, so every route would build an identical list.
+	faultSystemPolicies := sdkChainToModel(utils.FaultSystemPolicies(t.systemConfig, nil)).Policies
 
 	// An MCP proxy carries every logical operation — tools/call, tools/list,
 	// server/discover — on one POST endpoint, so that route's policy chain is selected
@@ -117,20 +129,27 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 		return nil, err
 	}
 
+	// Hint the analytics system policy at injection time with this API's kind (RestApi, Mcp,
+	// LlmProvider, LlmProxy), via the existing additionalProps/"_shared" mechanism
+	// InjectSystemPolicies already supports (see utils.SharedParamsKey doc comment). The
+	// analytics policy's Mode() (gateway/system-policies/analytics/analytics.go) uses this to
+	// decide whether request/response body buffering can be skipped when request_body/
+	// response_body capture is off: MCP (session id, JSON-RPC method) and LLM Provider/Proxy
+	// (token usage) derive analytics from the body unconditionally, so skipping body processing
+	// for those kinds would silently break that analytics. cfg.Kind is constant for the whole
+	// API, so this is computed once outside the per-operation loop below.
+	systemPolicyProps := map[string]any{
+		utils.SharedParamsKey: map[string]interface{}{
+			"api_kind": cfg.Kind,
+		},
+	}
+
 	// Determine effective vhosts. vhosts.main may carry several production hostnames separated
 	// by ";" (e.g. when a Gateway-API HTTPRoute attaches to multiple listener hostnames); every
 	// entry serves the main upstream and the first is the primary vhost. When unset, the gateway
-	// default applies. Sandbox is always a single hostname.
-	effectiveSandboxVHost := t.routerConfig.VHosts.Sandbox.Default
-	mainVhosts := []string{t.routerConfig.VHosts.Main.Default}
-	if apiData.Vhosts != nil {
-		if parsed := splitVhosts(apiData.Vhosts.Main); len(parsed) > 0 {
-			mainVhosts = parsed
-		}
-		if apiData.Vhosts.Sandbox != nil && strings.TrimSpace(*apiData.Vhosts.Sandbox) != "" {
-			effectiveSandboxVHost = *apiData.Vhosts.Sandbox
-		}
-	}
+	// default applies. Sandbox is always a single hostname, active when a sandbox upstream is
+	// configured via either url or ref.
+	mainVhosts, effectiveSandboxVHost, hasSandbox := config.RestAPIVhosts(apiData, t.routerConfig.VHosts)
 
 	// Build main upstream cluster
 	mainUpstream, err := addUpstreamCluster(rdc, "main", &apiData.Upstream.Main, apiData.UpstreamDefinitions)
@@ -138,12 +157,6 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 		return nil, fmt.Errorf("failed to resolve main upstream: %w", err)
 	}
 	mainUpstreamInfo := mainUpstream.UpstreamInfo()
-
-	// Determine vhosts to create routes for.
-	// Sandbox is active when a sandbox upstream is configured via either url or ref.
-	hasSandbox := apiData.Upstream.Sandbox != nil &&
-		((apiData.Upstream.Sandbox.Url != nil && strings.TrimSpace(*apiData.Upstream.Sandbox.Url) != "") ||
-			(apiData.Upstream.Sandbox.Ref != nil && strings.TrimSpace(*apiData.Upstream.Sandbox.Ref) != ""))
 
 	// Check if dynamic cluster selection should be used. Enabled whenever the API has named
 	// upstream definitions (so a policy can select one) OR a sandbox upstream (so a policy can
@@ -250,8 +263,32 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 
 			// Build policy chain: API-level + operation-level + system policies
 			chain := t.buildPolicyChain(apiPolicies, op.Policies)
-			injected := utils.InjectSystemPolicies(chain, t.systemConfig, nil)
-			rdc.PolicyChains[chainKey] = sdkChainToModel(injected)
+			injected := utils.InjectSystemPolicies(chain, t.systemConfig, systemPolicyProps)
+			routeChain := sdkChainToModel(injected)
+			// Fault policies: this operation's entries then the API's, which is the order
+			// they execute in, and then the fault-path system policies LAST.
+			//
+			// NOT InjectSystemPolicies: that prepends every enabled system policy, and
+			// both halves are wrong here. Prepending would run the collector before the
+			// operator's handlers, publishing the failure as it looked before they shaped
+			// it; and only a system policy that implements the FaultPolicy contract can
+			// run here at all, which is what FaultPath opts into.
+			//
+			// Protocol-specific error formatting is still not a chain entry — it is a
+			// default the engine applies after this chain runs (policy-engine
+			// internal/faultformat) — so an API with no fault policies of its own gets a
+			// body its client can parse, and now also gets its failure recorded.
+			routeChain.FaultPolicies = appendFaultSystemPolicies(
+				mergeFaultPolicies(
+					t.collectFaultPolicies(op.FaultPolicies, policyv1alpha.LevelRoute),
+					apiFaultPolicies,
+				),
+				faultSystemPolicies,
+			)
+			// Keyed by chainKey, not routeKey: an MCP multiplexed POST route files its
+			// chain under a resolver-generated key, and fault policies have to land on
+			// the same chain the engine will look up.
+			rdc.PolicyChains[chainKey] = routeChain
 		}
 	}
 
@@ -304,7 +341,7 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 				Name:           def.Name,
 				BasePath:       basePath,
 				Endpoints:      endpoints,
-				TLS:            &models.UpstreamTLS{Enabled: tlsExists},
+				TLS:            upstreamTLSFromParams(def.Tls, tlsExists),
 				ConnectTimeout: defConnectTimeout,
 			}
 		}
@@ -353,26 +390,10 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 	return rdc, nil
 }
 
-// splitVhosts parses a vhosts.main value into its individual production hostnames. Multiple
-// hostnames may be provided separated by ";" (each serves the main upstream); surrounding
-// whitespace is trimmed, empty entries are dropped, and duplicates are removed while preserving
-// order. A single hostname (the common case) returns a one-element slice.
+// splitVhosts parses a vhosts.main value into its individual hostnames; see
+// config.SplitVhosts.
 func splitVhosts(raw string) []string {
-	parts := strings.Split(raw, ";")
-	out := make([]string, 0, len(parts))
-	seen := make(map[string]struct{}, len(parts))
-	for _, p := range parts {
-		p = strings.TrimSpace(p)
-		if p == "" {
-			continue
-		}
-		if _, ok := seen[p]; ok {
-			continue
-		}
-		seen[p] = struct{}{}
-		out = append(out, p)
-	}
-	return out
+	return config.SplitVhosts(raw)
 }
 
 // routeHeaderMatches converts an operation's Gateway-API-style header matchers into the model form
@@ -453,6 +474,93 @@ func resolvePolicyInstances(
 	return result
 }
 
+// collectFaultPolicies resolves one level's fault policies into the model policies that
+// travel to the engine. Unlike collectAPIPolicies the result is returned as models.Policy
+// directly, because fault policies bypass buildPolicyChain and InjectSystemPolicies
+// entirely: it is the authored list, in the order declared.
+//
+// An entry whose version cannot be resolved is dropped with an error logged, matching the
+// normal chain — a bad failure-path entry must not stop the API deploying.
+func (t *RestAPITransformer) collectFaultPolicies(
+	faultPolicies *[]api.Policy,
+	level policyv1alpha.Level,
+) []models.Policy {
+	return collectFaultPolicies(t.policyDefinitions, t.latestVersions, faultPolicies, level)
+}
+
+// collectFaultPolicies resolves a fault list against the policy registry.
+//
+// A free function rather than a method because two transformers need it and they are
+// different types: a REST API and an Agent resolve the same list the same way, and the only
+// thing either brings is the registry to resolve against. Duplicating it per transformer is
+// how the two would drift on which errors are skipped versus fatal.
+func collectFaultPolicies(
+	policyDefinitions map[string]models.PolicyDefinition,
+	latestVersions map[string]string,
+	faultPolicies *[]api.Policy,
+	level policyv1alpha.Level,
+) []models.Policy {
+	if faultPolicies == nil || len(*faultPolicies) == 0 {
+		return nil
+	}
+	result := make([]models.Policy, 0, len(*faultPolicies))
+	for _, p := range *faultPolicies {
+		resolved, err := config.ResolvePolicyVersion(policyDefinitions, latestVersions, p.Name, p.Version)
+		if err != nil {
+			slog.Error("Failed to resolve policy version for fault-policies policy",
+				"policy_name", p.Name, "level", string(level), "error", err)
+			continue
+		}
+		inst := convertAPIPolicyToSDK(p, level, versionutil.MajorVersion(resolved))
+		result = append(result, models.Policy{
+			Name:               inst.Name,
+			Version:            inst.Version,
+			Params:             inst.Parameters,
+			ExecutionCondition: inst.ExecutionCondition,
+		})
+	}
+	return result
+}
+
+// mergeFaultPolicies combines an operation's fault entries with the API's, in the order
+// they will EXECUTE: operation-level first, then API-level.
+//
+// The construction order is the opposite of buildPolicyChain's because a fault list executes
+// FORWARD, while the response chain is built API-then-operation and executed back to front.
+// Both end up running the operation's entries first.
+//
+// Both levels run; the operation does not override the API. A fault entry is a handler rather
+// than a setting, so two of them are additive.
+func mergeFaultPolicies(opFault, apiFault []models.Policy) []models.Policy {
+	if len(opFault) == 0 {
+		return apiFault
+	}
+	if len(apiFault) == 0 {
+		return opFault
+	}
+	merged := make([]models.Policy, 0, len(opFault)+len(apiFault))
+	merged = append(merged, opFault...)
+	merged = append(merged, apiFault...)
+	return merged
+}
+
+// appendFaultSystemPolicies puts the fault-path system policies after the operator's own.
+//
+// A separate function from mergeFaultPolicies because the two answer different questions.
+// mergeFaultPolicies decides precedence between two levels an operator authored, and either
+// side may legitimately be empty. This appends entries the operator did not author and
+// cannot reorder, and it must hold even when the operator authored nothing — an API with no
+// fault policies still has its failures recorded.
+func appendFaultSystemPolicies(authored, systemFault []models.Policy) []models.Policy {
+	if len(systemFault) == 0 {
+		return authored
+	}
+	out := make([]models.Policy, 0, len(authored)+len(systemFault))
+	out = append(out, authored...)
+	out = append(out, systemFault...)
+	return out
+}
+
 // buildPolicyChain builds a merged list: API-level + operation-level policies (SDK format).
 func (t *RestAPITransformer) buildPolicyChain(
 	apiPolicies []policyenginev1.PolicyInstance,
@@ -501,7 +609,10 @@ func (r *upstreamClusterResult) UpstreamInfo() policyenginev1.UpstreamInfo {
 // transformer calls it directly so that an Agent's cluster key, base path, Envoy
 // cluster name and TLS flag are derived by the identical code path as a REST API's
 // — those four values are what the route rewrite and the policy engine's
-// default-upstream both key off.
+// default-upstream both key off. GraphQLAPITransformer calls it directly for the
+// same reason, to resolve its own main/sandbox upstream clusters without
+// duplicating the resolution logic (URL/ref lookup, port defaulting, TLS
+// detection, connect-timeout resolution).
 func addUpstreamCluster(
 	rdc *models.RuntimeDeployConfig,
 	upstreamName string,
@@ -532,27 +643,41 @@ func addUpstreamCluster(
 		basePath = "/"
 	}
 
-	// The connect timeout can only come from a referenced upstreamDefinition
-	// (direct-URL upstreams have no timeout field). Resolve it here so the RDC->Envoy
-	// translation applies it to this cluster instead of falling back to the global default.
+	// Only a referenced upstreamDefinition can carry a connect timeout or a
+	// tls block; a direct-URL upstream has neither.
 	var connectTimeout *time.Duration
+	var refDef *api.UpstreamDefinition
 	if up != nil && up.Ref != nil && strings.TrimSpace(*up.Ref) != "" {
-		ct, terr := definitionConnectTimeout(lookupUpstreamDefinition(*up.Ref, upstreamDefinitions))
+		refDef = lookupUpstreamDefinition(*up.Ref, upstreamDefinitions)
+		ct, terr := definitionConnectTimeout(refDef)
 		if terr != nil {
 			return nil, fmt.Errorf("%s upstream: %w", upstreamName, terr)
 		}
 		connectTimeout = ct
 	}
 
-	clusterKey := fmt.Sprintf("upstream_%s_%s_%d", upstreamName, parsedURL.Hostname(), port)
+	var tls *map[string]interface{}
+	if refDef != nil {
+		tls = refDef.Tls
+	}
+	upstreamTLS := upstreamTLSFromParams(tls, parsedURL.Scheme == "https")
+	clusterKey := upstreamClusterKey(upstreamName, parsedURL.Hostname(), port, parsedURL.Scheme, upstreamTLS)
+
+	// The definition name keys the per-upstream trust secret, so it must
+	// match the one the definitions loop uses.
+	defName := ""
+	if refDef != nil {
+		defName = refDef.Name
+	}
 
 	rdc.UpstreamClusters[clusterKey] = &models.UpstreamCluster{
+		Name:     defName,
 		BasePath: basePath,
 		Endpoints: []models.Endpoint{{
 			Host: parsedURL.Hostname(),
 			Port: port,
 		}},
-		TLS:            &models.UpstreamTLS{Enabled: parsedURL.Scheme == "https"},
+		TLS:            upstreamTLS,
 		ConnectTimeout: connectTimeout,
 	}
 
@@ -562,6 +687,29 @@ func addUpstreamCluster(
 		BasePath:         basePath,
 		URL:              fmt.Sprintf("%s://%s", parsedURL.Scheme, parsedURL.Host),
 	}, nil
+}
+
+// upstreamClusterKey names the Envoy cluster for an API's main or sandbox
+// upstream. Envoy keeps one cluster per name across every deployed API, so an
+// upstream without a tls block is named by host and port alone, while one with
+// a tls block also carries a suffix derived from its TLS settings: two APIs
+// reach the same host:port through one cluster only when they present the same
+// identity and trust the same authorities.
+func upstreamClusterKey(upstreamName, host string, port int, scheme string, tls *models.UpstreamTLS) string {
+	key := fmt.Sprintf("upstream_%s_%s_%d", upstreamName, host, port)
+	if tls == nil || !tls.HasTLSBlock {
+		return key
+	}
+	trustedCAs := append([]string{}, tls.TrustedCANames...)
+	sort.Strings(trustedCAs)
+	settings, _ := json.Marshal(struct {
+		Scheme         string   `json:"scheme"`
+		Identity       string   `json:"identity"`
+		TrustedCAs     []string `json:"trustedCAs"`
+		VerifyHostName bool     `json:"verifyHostName"`
+	}{scheme, tls.IdentityName, trustedCAs, tls.VerifyHostName})
+	sum := sha256.Sum256(settings)
+	return key + "_" + hex.EncodeToString(sum[:4])
 }
 
 // sanitizeEnvoyClusterName computes the Envoy cluster name from a URL host and scheme,
@@ -650,6 +798,24 @@ func ResolvePort(u *url.URL) int {
 		return 443
 	}
 	return 80
+}
+
+// upstreamTLSFromParams builds the runtime TLS model for one API-traffic
+// upstream cluster. tls is the validated tls block, or nil; enabled is
+// whether the target uses https.
+func upstreamTLSFromParams(tls *map[string]interface{}, enabled bool) *models.UpstreamTLS {
+	if tls == nil {
+		return &models.UpstreamTLS{Enabled: enabled, APITraffic: true}
+	}
+	identity, trustedCAs, verifyHostName := config.ResolveUpstreamTLSFromParams(*tls)
+	return &models.UpstreamTLS{
+		Enabled:        enabled,
+		APITraffic:     true,
+		HasTLSBlock:    true,
+		IdentityName:   identity,
+		TrustedCANames: trustedCAs,
+		VerifyHostName: verifyHostName,
+	}
 }
 
 // SanitizeUpstreamDefinitionName replaces dots and colons for Envoy cluster name compatibility.

@@ -1,0 +1,15 @@
+{
+  "body": {
+    "message": {
+      "action": "GUARDRAIL_INTERVENED",
+      "actionReason": "Violation of applied word count constraints detected",
+      "direction": "REQUEST",
+      "interveningGuardrail": "word-count-guardrail"
+    },
+    "type": "WORD_COUNT_GUARDRAIL"
+  },
+  "headers": {
+    "content-type": "application/json"
+  },
+  "status": 422
+}

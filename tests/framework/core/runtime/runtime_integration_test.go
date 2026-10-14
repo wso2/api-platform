@@ -22,20 +22,29 @@ package runtime
 
 import (
 	"context"
-	"strconv"
-	"testing"
-	"time"
-
+	"crypto/tls"
+	"crypto/x509"
 	"database/sql"
 	"fmt"
-	"github.com/stretchr/testify/require"
-	"github.com/wso2/api-platform/tests/framework/core/cleanup"
-	"github.com/wso2/api-platform/tests/framework/core/components"
+	"net/http"
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
+	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/require"
+
+	"github.com/wso2/api-platform/tests/framework/core/catalog/shared"
+	catalogtestbench "github.com/wso2/api-platform/tests/framework/core/catalog/testbench"
+	"github.com/wso2/api-platform/tests/framework/core/cleanup"
+	"github.com/wso2/api-platform/tests/framework/core/components"
+	"github.com/wso2/api-platform/tests/framework/core/util/httpx"
 )
 
 // These tests exercise network creation, container startup, port resolution, and readiness.
@@ -394,42 +403,99 @@ func TestProvisionReplicasGetSeparateDatabases(t *testing.T) {
 	}
 }
 
-// TestSharedHostPortSurvivesRehoming verifies that a shared component keeps its host port.
+// TestSharedHostPortSurvivesRehoming checks both the host port and OIDC connectivity
+// while other blocks attach and detach their networks from the shared testbench.
 func TestSharedHostPortSurvivesRehoming(t *testing.T) {
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
+	defer cancel()
 
-	home := newTestNetwork(t, ctx, "sharedport-home")
-	t.Cleanup(func() { _ = home.Remove(context.Background()) })
+	// Equal gateway priorities select the lowest network name. Choosing the home
+	// network last makes every block attachment exercise the gateway-change case.
+	networks := make([]*Network, 4)
+	for i := range networks {
+		nw := newTestNetwork(t, ctx, "sharedport")
+		networks[i] = nw
+		t.Cleanup(func() { _ = nw.Remove(context.Background()) })
+	}
+	sort.Slice(networks, func(i, j int) bool { return networks[i].Name() < networks[j].Name() })
+	home := networks[len(networks)-1]
 
-	def := probeDef("sharedport")
+	def := catalogtestbench.Testbench()
 	c, err := Launch(ctx, def, Options{Network: home, Replicas: 1, StableHostPorts: true})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = c.Stop(context.Background()) })
 
-	atLaunch, err := c.Instance.MappedPort("http")
+	atLaunch, err := c.Instance.MappedPort("oidc")
 	require.NoError(t, err)
 
 	live := func(t *testing.T) int {
 		t.Helper()
-		p, perr := c.container.MappedPort(ctx, "80/tcp")
+		p, perr := c.container.MappedPort(ctx, "3015/tcp")
 		require.NoError(t, perr)
 		return int(p.Num())
 	}
 
 	require.Equal(t, atLaunch, live(t), "the launch snapshot must match what docker publishes")
 
-	for range 3 {
-		nw := newTestNetwork(t, ctx, "sharedport-block")
+	base, err := c.Instance.URL("oidc")
+	require.NoError(t, err)
+	roots := x509.NewCertPool()
+	require.True(t, roots.AppendCertsFromPEM(shared.IdentityProviderTLS().CertPEM))
+	client := httpx.NewClient(httpx.Options{TLSClientConfig: &tls.Config{
+		RootCAs: roots, ServerName: shared.IdentityProviderHost, MinVersion: tls.VersionTLS12,
+	}})
+	probe := func(ctx context.Context) error {
+		response, err := client.Do(ctx, httpx.Request{
+			Method: http.MethodPost, URL: base + "/mint", ContentType: "application/json",
+			Body: []byte(`{"sub":"probe","aud":"api-portal-it-client","org_id":"default"}`),
+		}, 0, 0)
+		if err != nil {
+			return err
+		}
+		return response.RequireSuccessWithBody("OIDC token minting during network changes")
+	}
+	require.NoError(t, probe(ctx))
 
-		require.NoError(t, c.AttachTo(ctx, nw, "sharedport"))
+	probeCtx, cancelProbe := context.WithCancel(ctx)
+	var probes sync.WaitGroup
+	var probeErr error
+	var requests int
+	started := make(chan struct{})
+	probes.Add(1)
+	go func() {
+		defer probes.Done()
+		close(started)
+		for probeCtx.Err() == nil {
+			if err := probe(probeCtx); err != nil {
+				if probeCtx.Err() == nil {
+					probeErr = err
+				}
+				return
+			}
+			requests++
+			if !waitContext(probeCtx, 2*time.Millisecond) {
+				return
+			}
+		}
+	}()
+	stopProbes := func() {
+		cancelProbe()
+		probes.Wait()
+	}
+	t.Cleanup(stopProbes)
+	<-started
+
+	for _, nw := range networks[:len(networks)-1] {
+		require.NoError(t, c.AttachTo(ctx, nw, def.Alias))
 		require.Equal(t, atLaunch, live(t), "host port changed after attaching to a block network")
 
 		require.NoError(t, c.DetachFrom(ctx, nw))
 		require.Equal(t, atLaunch, live(t), "host port changed after detaching from a block network")
-
-		require.NoError(t, nw.Remove(ctx))
 	}
 
+	stopProbes()
+	require.NoError(t, probeErr, "OIDC requests must remain reachable during network changes")
+	require.Greater(t, requests, 0, "the probe must issue requests while the networks change")
 	require.Equal(t, atLaunch, live(t), "host port must be stable for the container's whole life")
 }
 

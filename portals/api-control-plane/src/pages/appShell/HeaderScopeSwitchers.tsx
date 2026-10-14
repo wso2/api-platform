@@ -17,12 +17,15 @@
  */
 
 import { Box, ComplexSelect, Header, IconButton } from '@wso2/oxygen-ui';
-import { Boxes, BoxIcon, Building, X } from '@wso2/oxygen-ui-icons-react';
+import { X } from '@wso2/oxygen-ui-icons-react';
 import { useIntl } from 'react-intl';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 
-import { useRestApis } from '../../api/resources/restApis';
+import { useAllGraphQLApis } from '../../api/resources/graphqlApis';
+import { useAllRestApis } from '../../api/resources/restApis';
 import SearchableComplexSelect from '../../components/common/SearchableComplexSelect';
+import { findTargetAtScope } from '../../navigation/navigationRegistry';
+import { toGraphQLListableApi, toRestListableApi } from './appShellPages/apis/listing/apiListItem';
 import { routes } from '../../routes/paths';
 import { useConsoleScope } from '../../scope/ConsoleScopeProvider';
 import APIQuickSelector from './APIQuickSelector';
@@ -53,7 +56,9 @@ const TRUNCATED_OPTION_TEXT_SLOT_PROPS = {
  */
 export function HeaderScopeSwitchers() {
   const navigate = useNavigate();
+  const location = useLocation();
   const intl = useIntl();
+  const scope = useConsoleScope();
   const {
     component,
     organization,
@@ -63,31 +68,65 @@ export function HeaderScopeSwitchers() {
     projects,
     isLoading,
     projectsError,
-  } = useConsoleScope();
+  } = scope;
 
+  // Every switcher action below re-resolves the *current page* at the new
+  // scope (e.g. picking a project while on the organization's Settings tab
+  // lands on that project's Settings, not its Overview; clearing the project
+  // back out returns to the organization's Settings, not its Overview)
+  // instead of always bouncing to that scope's Home — see `findTargetAtScope`.
+  // Each falls back to its own Home route when the current page has no
+  // equivalent at the new scope (an API-only page, say, cleared down to the
+  // project that owns it).
   const changeOrganization = (orgHandle: string) => {
     if (!orgHandle || orgHandle === params.orgHandle) return;
-    navigate(routes.organizationHome(orgHandle));
+    const target = findTargetAtScope(location.pathname, scope, { orgHandle });
+    navigate(target ?? routes.organizationHome(orgHandle));
   };
 
   const changeProject = (projectHandler: string) => {
     if (!params.orgHandle || !projectHandler) return;
-    navigate(routes.projectHome(params.orgHandle, projectHandler));
+    const target = findTargetAtScope(location.pathname, scope, {
+      orgHandle: params.orgHandle,
+      projectHandler,
+    });
+    navigate(target ?? routes.projectHome(params.orgHandle, projectHandler));
   };
 
   const changeApi = (apiHandler: string) => {
     if (!params.orgHandle || !params.projectHandler || !apiHandler) return;
-    navigate(routes.api(params.orgHandle, params.projectHandler, apiHandler));
+    const isGraphQLApi = graphqlApiHandlers.has(apiHandler);
+    const scopeParams = { orgHandle: params.orgHandle, projectHandler: params.projectHandler };
+    // The current page at the new API, as for the switchers above. A GraphQL
+    // API only takes that target when the page has a GraphQL equivalent —
+    // a REST-only page (the Definition editor, say) resolves to a REST path,
+    // which a GraphQL handle would not open, so it falls back to the API's Home.
+    const target = findTargetAtScope(
+      location.pathname,
+      scope,
+      isGraphQLApi ? { ...scopeParams, graphqlApiHandler: apiHandler } : { ...scopeParams, apiHandler },
+    );
+    if (isGraphQLApi) {
+      const graphqlHome = routes.graphqlApi(params.orgHandle, params.projectHandler, apiHandler);
+      navigate(target?.startsWith(graphqlHome) ? target : graphqlHome);
+      return;
+    }
+    navigate(target ?? routes.api(params.orgHandle, params.projectHandler, apiHandler));
   };
 
   const clearProjectSelection = () => {
     if (!params.orgHandle) return;
-    navigate(routes.organizationHome(params.orgHandle));
+    const target = findTargetAtScope(location.pathname, scope, { orgHandle: params.orgHandle });
+    navigate(target ?? routes.organizationHome(params.orgHandle));
   };
 
   const clearApiSelection = () => {
     if (!params.orgHandle || !params.projectHandler) return;
-    navigate(routes.projectHome(params.orgHandle, params.projectHandler));
+    const target = findTargetAtScope(location.pathname, scope, {
+      orgHandle: params.orgHandle,
+      projectHandler: params.projectHandler,
+    });
+    navigate(target ?? routes.projectHome(params.orgHandle, params.projectHandler));
   };
 
   // organizations may not be loaded yet on first paint; keep the current org
@@ -105,11 +144,25 @@ export function HeaderScopeSwitchers() {
       : params.projectHandler && project ? [{ handler: params.projectHandler, name: project.displayName || params.projectHandler }]
         : [];
 
-  const apisQuery = useRestApis(
+  const restApisQuery = useAllRestApis({}, { projectId: project?.id, orgId: organization?.id });
+  const graphqlApisQuery = useAllGraphQLApis(
     {},
-    { projectId: project?.id, orgId: organization?.id }
+    { projectId: project?.id, orgId: organization?.id },
   );
-  const apis = apisQuery.data?.list ?? [];
+  const apisLoading = restApisQuery.isPending || graphqlApisQuery.isPending;
+  const apisErrorValue = restApisQuery.error ?? graphqlApisQuery.error;
+  const apis = [
+    ...(restApisQuery.data?.list ?? []).map(toRestListableApi),
+    ...(graphqlApisQuery.data?.list ?? []).map(toGraphQLListableApi),
+  ];
+  // The switcher only ever navigates by handler, so this is the one place
+  // that needs to remember which handlers are GraphQL — everything else
+  // downstream just carries `{handler, name}` through, same as before.
+  const graphqlApiHandlers = new Set(
+    (graphqlApisQuery.data?.list ?? [])
+      .map((api) => api.id)
+      .filter((id): id is string => typeof id === 'string' && id.length > 0),
+  );
   const loadedApiOptions: { handler: string; name: string }[] =
     (projects.length > 0 && project) ?
     apis
@@ -122,13 +175,19 @@ export function HeaderScopeSwitchers() {
       .map((api) => ({ handler: api.id, name: api.displayName ?? api.id }))
     : [];
 
+  // Whichever kind of API is in scope — REST's `apiHandler` or GraphQL's
+  // `graphqlApiHandler` (see `graphqlApiPath`'s doc comment for why they're
+  // separate params) — is "the selected API" for this switcher; the two are
+  // never both set at once.
+  const selectedApiHandler = params.apiHandler || params.graphqlApiHandler;
+
   // apis may not be loaded yet on first paint; keep the current API selectable
   // so the switcher never renders an out-of-range value.
   const apiOptions: { handler: string; name: string }[] =
     loadedApiOptions.length > 0
       ? loadedApiOptions
-      : params.apiHandler
-        ? [{ handler: params.apiHandler, name: component?.displayName || params.apiHandler }]
+      : selectedApiHandler
+        ? [{ handler: selectedApiHandler, name: component?.displayName || selectedApiHandler }]
         : [];
 
   // A single loaded organization is read-only; use the loaded list so the
@@ -158,16 +217,11 @@ export function HeaderScopeSwitchers() {
               name: item.name,
             }))}
             renderOptionContent={(option) => (
-              <>
-                <ComplexSelect.MenuItem.Icon>
-                  <Building size={18} />
-                </ComplexSelect.MenuItem.Icon>
-                <ComplexSelect.MenuItem.Text
-                  primary={option.name}
-                  secondary={option.id}
-                  slotProps={TRUNCATED_OPTION_TEXT_SLOT_PROPS}
-                />
-              </>
+              <ComplexSelect.MenuItem.Text
+                primary={option.name}
+                secondary={option.id}
+                slotProps={TRUNCATED_OPTION_TEXT_SLOT_PROPS}
+              />
             )}
             searchPlaceholder={intl.formatMessage({ id: 'appShell.header.org.placeholder', defaultMessage: 'Search organizations...' })}
             emptyMessage={intl.formatMessage({ id: 'appShell.header.org.empty', defaultMessage: 'No organizations found' })}
@@ -195,16 +249,11 @@ export function HeaderScopeSwitchers() {
               name: item.name,
             }))}
             renderOptionContent={(option) => (
-              <>
-                <ComplexSelect.MenuItem.Icon>
-                  <BoxIcon size={18} />
-                </ComplexSelect.MenuItem.Icon>
-                <ComplexSelect.MenuItem.Text
-                  primary={option.name}
-                  secondary={option.id}
-                  slotProps={TRUNCATED_OPTION_TEXT_SLOT_PROPS}
-                />
-              </>
+              <ComplexSelect.MenuItem.Text
+                primary={option.name}
+                secondary={option.id}
+                slotProps={TRUNCATED_OPTION_TEXT_SLOT_PROPS}
+              />
             )}
             searchPlaceholder={intl.formatMessage({ id: 'appShell.header.project.placeholder', defaultMessage: 'Search projects...' })}
             emptyMessage={intl.formatMessage({ id: 'appShell.header.project.empty', defaultMessage: 'No projects found' })}
@@ -254,13 +303,13 @@ export function HeaderScopeSwitchers() {
         />
       )}
 
-      {params.apiHandler && (
+      {selectedApiHandler && (
         <Box sx={{position: 'relative'}}>
           <SearchableComplexSelect
             aria-label={intl.formatMessage({ id: 'appShell.header.api.aria', defaultMessage: 'APIs' })}
             label={intl.formatMessage({ id: 'appShell.header.api.label', defaultMessage: 'APIs' })}
-            value={params.apiHandler}
-            selectedOption={apiOptions.filter((item) => item.handler === params.apiHandler).map(item => ({
+            value={selectedApiHandler}
+            selectedOption={apiOptions.filter((item) => item.handler === selectedApiHandler).map(item => ({
               id: item.handler,
               handler: item.handler,
               name: item.name,
@@ -274,16 +323,11 @@ export function HeaderScopeSwitchers() {
               name: item.name,
             }))}
             renderOptionContent={(option) => (
-              <>
-                <ComplexSelect.MenuItem.Icon>
-                  <Boxes size={18} />
-                </ComplexSelect.MenuItem.Icon>
-                <ComplexSelect.MenuItem.Text
-                  primary={option.name}
-                  secondary={option.id}
-                  slotProps={TRUNCATED_OPTION_TEXT_SLOT_PROPS}
-                />
-              </>
+              <ComplexSelect.MenuItem.Text
+                primary={option.name}
+                secondary={option.id}
+                slotProps={TRUNCATED_OPTION_TEXT_SLOT_PROPS}
+              />
             )}
             searchPlaceholder={intl.formatMessage({ id: 'appShell.header.api.placeholder', defaultMessage: 'Search APIs...' })}
             emptyMessage={intl.formatMessage({ id: 'appShell.header.api.empty', defaultMessage: 'No APIs found' })}
@@ -317,11 +361,11 @@ export function HeaderScopeSwitchers() {
         </Box>
       )}
 
-      {!params.apiHandler && params.projectHandler && (
+      {!selectedApiHandler && params.projectHandler && (
         <APIQuickSelector
           disabled={!params.projectHandler}
-          isApisLoading={apisQuery.isLoading}
-          apisError={apisQuery.error}
+          isApisLoading={apisLoading}
+          apisError={apisErrorValue}
           apiOptions={apiOptions.map((item) => ({
             id: item.handler,
             handler: item.handler,

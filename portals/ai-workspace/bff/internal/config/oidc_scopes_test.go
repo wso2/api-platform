@@ -113,6 +113,11 @@ var excludedScopeResources = []string{
 	// MCP proxy — that gets its own scopes (see ap:api_portal:mcp_proxy: above) once it
 	// ships. Consistent with ap:rest_api: itself being excluded.
 	"ap:api_portal:rest_api:",
+	// GraphQL API publishing is the same per-type flow as REST's, surfaced only in
+	// the API control plane console — the AI Workspace has no GraphQL publish page.
+	"ap:api_portal:graphql_api:",
+	"ap:docs:",
+	"ap:thumbnail:",
 }
 
 func isExcludedScope(scope string) bool {

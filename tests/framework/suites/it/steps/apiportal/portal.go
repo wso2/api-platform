@@ -242,9 +242,8 @@ func Register(sc *godog.ScenarioContext, topo *runtime.Topology, client *httpx.C
 	sc.Step(`^a webhook subscriber targeting the control plane is registered in the API Portal$`,
 		s.registerWebhookSubscriber)
 
-	// Credential-lifecycle steps (see steps_devportal_lifecycle_test.go for the legacy reference
-	// these mirror): key expiry/revoke/regenerate and subscription plan-switch/token-regenerate/
-	// pause/resume/remove.
+	// Credential-lifecycle steps: key expiry/revoke/regenerate and subscription
+	// plan-switch/token-regenerate/pause/resume/remove.
 	sc.Step(`^the API key "([^"]*)" for API "([^"]*)" is regenerated with expiry "([^"]*)" in the API Portal and stored as "([^"]*)"$`,
 		s.regenerateKeyExpiryAndStore)
 	sc.Step(`^the API key "([^"]*)" for API "([^"]*)" is revoked in the API Portal$`, s.revokeAPIKey)

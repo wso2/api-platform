@@ -28,6 +28,7 @@
 
 export type {
   DefinitionText,
+  DraftDefinitionBody,
   DraftDefinitionDocument,
   ListApiPublicationsQuery,
   ListApiPublicationsResponse,
@@ -36,11 +37,12 @@ export type {
   PublicationDraftDetailsInput,
   PublicationStatus,
   PublicationSummaryItem,
+  PublishableApiType,
 } from './apiPublications.endpoints';
 
 export type { ApiPublicationListFilters } from './apiPublications.hooks';
 
-export { REST_API_TYPE } from './apiPublications.endpoints';
+export { GRAPHQL_API_TYPE, REST_API_TYPE } from './apiPublications.endpoints';
 
 // ─── Hooks ──────────────────────────────────────────────────────────────────
 
@@ -50,9 +52,9 @@ export {
   useApiPublicationDraft,
   useApiPublicationDraftDefinition,
   useApiPublications,
-  useDeprecateRestApiOnApiPortal,
-  usePublishRestApiToApiPortal,
+  useDeprecateApiOnApiPortal,
+  usePublishApiToApiPortal,
   useSaveApiPublicationDraft,
   useSaveApiPublicationDraftDefinition,
-  useUnpublishRestApiFromApiPortal,
+  useUnpublishApiFromApiPortal,
 } from './apiPublications.hooks';

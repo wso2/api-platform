@@ -421,11 +421,18 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 		}
 	}
 
+	// Operation-scoped FAULT entries, attached the same way and with the same
+	// access-control guard as the normal entries above.
+	attachLLMOperationFaultPolicies(operationRegistry,
+		collectOperationFaultPolicies(proxy.Spec.OperationFaultPolicies),
+		&tmpl.Configuration.Spec, nil)
+
 	// Phase 3: Sort and Finalize Operations
 	for _, op := range operationRegistry {
 		ops = append(ops, *op)
 	}
 	ops = sortOperationsBySpecificity(ops)
+
 	// Translators must run before upstream auth so the request is rewritten into
 	// the selected provider's shape before the upstream key is added.
 	if len(transformerPolicies) > 0 {
@@ -468,6 +475,15 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 			spec.Policies = &merged
 		}
 	}
+
+	// Fault policies pass straight through, unmerged: nothing in this transformer injects a
+	// fault entry of its own, so there is never anything to merge with.
+	//
+	// The spelling changes across the assignment, and that is intended: an LlmProxy declares
+	// `globalFaultPolicies` to pair with its `globalPolicies`, while the derived RestApi
+	// declares `faultPolicies` to pair with its `policies`. Same scope, each name matching the
+	// normal-path field beside it.
+	spec.FaultPolicies = proxy.Spec.GlobalFaultPolicies
 
 	output.Spec = spec
 	return output, nil
@@ -721,6 +737,14 @@ func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConf
 			}
 		}
 
+		// Operation-scoped FAULT entries, attached the same way and with the same
+		// access-control guard as the normal entries above.
+		attachLLMOperationFaultPolicies(operationRegistry,
+			collectOperationFaultPolicies(provider.Spec.OperationFaultPolicies),
+			&tmpl.Configuration.Spec, func(path, method string) bool {
+				return !isDeniedByException(path, method, deniedPathMethods)
+			})
+
 		// Phase 4: Sort and Finalize
 		for _, op := range operationRegistry {
 			ops = append(ops, *op)
@@ -809,6 +833,14 @@ func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConf
 			}
 		}
 
+		// Operation-scoped FAULT entries, attached the same way and with the same
+		// access-control guard as the normal entries above.
+		attachLLMOperationFaultPolicies(operationRegistry,
+			collectOperationFaultPolicies(provider.Spec.OperationFaultPolicies),
+			&tmpl.Configuration.Spec, func(path, method string) bool {
+				return isAllowedByAccessControl(path, method, normalizedExceptions)
+			})
+
 		// Phase 4: Sort and Finalize - convert map to sorted slice
 		for _, op := range operationRegistry {
 			ops = append(ops, *op)
@@ -819,6 +851,7 @@ func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConf
 	}
 
 	ops = sortOperationsBySpecificity(ops)
+
 	if upstreamAuthPolicy != nil {
 		for i := range ops {
 			if ops[i].Policies == nil {
@@ -846,6 +879,9 @@ func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConf
 			spec.Policies = &merged
 		}
 	}
+
+	// See the proxy path above, including the deliberate change of spelling.
+	spec.FaultPolicies = provider.Spec.GlobalFaultPolicies
 
 	output.Spec = spec
 	return output, nil
@@ -1212,6 +1248,101 @@ func collectOperationLevelLLMPolicies(operationPolicies *[]api.OperationPolicy, 
 		}
 	}
 	return out
+}
+
+// collectOperationFaultPolicies dereferences the optional operation-fault list.
+//
+// There is no deprecated spelling to fold in, unlike collectOperationLevelLLMPolicies: the
+// field is new, so it has only ever had one name.
+func collectOperationFaultPolicies(operationFaultPolicies *[]api.OperationPolicy) []api.OperationPolicy {
+	if operationFaultPolicies == nil {
+		return nil
+	}
+	return append([]api.OperationPolicy(nil), *operationFaultPolicies...)
+}
+
+// attachLLMOperationFaultPolicies attaches operation-scoped FAULT entries to the operations
+// an LLM transform is building.
+//
+// It mirrors the normal operationPolicies attachment step deliberately and completely: the
+// same explicit-path registration, the same ordering, the same method expansion, the same
+// wildcard expansion against the template's declared resources, and the same
+// more-specific-attachment suppression. An operator who understands where operationPolicies
+// land does not have to learn a second set of rules for the fault list.
+//
+// Running it INSIDE the registry phase, rather than over the finished operations, is not a
+// stylistic choice. An allow_all provider derives exactly six catch-all `/*` operations, and
+// pathsMatch("/*", "/chat/completions") is false — so a specific path has no operation to
+// attach to until something materializes one. An earlier version of this ran after the
+// operations were final and refused to create any, on the theory that a fault list should not
+// be able to open a traffic path. That theory was wrong twice over: it made the feature attach
+// to nothing for the primary case, and the path it declined to create is one the catch-all
+// already serves, with API-level policies applying either way.
+//
+// shouldRegister carries the caller's access-control guard, exactly as the normal loop passes
+// it. That is what keeps the symmetry safe: where an exception denies a path for normal
+// policies, it denies it here too, so the fault list cannot materialize a route access control
+// meant to refuse.
+func attachLLMOperationFaultPolicies(
+	operationRegistry map[pathMethodKey]*api.Operation,
+	faultPolicies []api.OperationPolicy,
+	templateSpec *api.LLMProviderTemplateData,
+	shouldRegister func(path, method string) bool,
+) {
+	if len(faultPolicies) == 0 {
+		return
+	}
+	registerExplicitLLMPolicyOperations(operationRegistry, faultPolicies, shouldRegister)
+
+	for _, attachment := range orderedLLMPolicyAttachments(faultPolicies) {
+		for _, policyMethod := range expandLLMPolicyMethods(attachment.pathEntry.Methods) {
+			if shouldRegister != nil && !shouldRegister(attachment.pathEntry.Path, policyMethod) {
+				continue
+			}
+			attachedPaths := make(map[string]bool)
+			for _, op := range getOperationsForMethod(operationRegistry, policyMethod) {
+				if !pathsMatch(op.EffectivePath(), attachment.pathEntry.Path) {
+					continue
+				}
+				for _, targetPath := range expandPolicyTargetPaths(op.EffectivePath(), templateSpec) {
+					if attachedPaths[targetPath] {
+						continue
+					}
+					if moreSpecificPolicyAttachmentCovers(targetPath, policyMethod, attachment) {
+						continue
+					}
+					pol := api.Policy{
+						Name:               attachment.policy.Name,
+						Version:            attachment.policy.Version,
+						ExecutionCondition: attachment.policy.ExecutionCondition,
+					}
+					// No template params are merged in, unlike the normal path: those carry
+					// upstream/provider wiring for the request, and a fault handler is not
+					// forwarding anything upstream.
+					if len(attachment.pathEntry.Params) > 0 {
+						params := attachment.pathEntry.Params
+						pol.Params = &params
+					}
+					appendOperationFaultPolicy(ensureOperation(operationRegistry, targetPath, policyMethod), pol)
+					attachedPaths[targetPath] = true
+				}
+			}
+		}
+	}
+}
+
+// appendOperationFaultPolicy appends to an operation's fault list, creating it when absent.
+//
+// Absence must stay absence until something is actually attached: an operation that declares
+// no fault entries has to produce the same chain it did before the field existed, and an empty
+// non-nil slice is not the same thing downstream.
+func appendOperationFaultPolicy(op *api.Operation, pol api.Policy) {
+	if op.FaultPolicies == nil {
+		op.FaultPolicies = &[]api.Policy{pol}
+		return
+	}
+	existing := append(*op.FaultPolicies, pol)
+	op.FaultPolicies = &existing
 }
 
 func orderedLLMPolicyAttachments(policies []api.OperationPolicy) []llmPolicyAttachment {

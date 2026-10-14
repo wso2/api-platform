@@ -307,6 +307,12 @@ func (t *MCPTransformer) Transform(input any, output *api.RestAPI) (*api.RestAPI
 
 	apiData.Policies = &policies
 
+	// Fault policies pass straight through. The derived RestAPI is what the runtime
+	// transformer builds route chains from, so carrying the list here is the whole of what
+	// MCP needs — the chain building, the engine and the JSON-RPC error rendering are all
+	// kind-agnostic already.
+	apiData.FaultPolicies = mcpConfig.Spec.FaultPolicies
+
 	// Set vhost if present
 	if mcpConfig.Spec.Vhost != nil {
 		v := struct {

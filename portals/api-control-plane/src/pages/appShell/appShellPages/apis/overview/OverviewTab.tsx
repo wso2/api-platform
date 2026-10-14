@@ -21,10 +21,11 @@ import { Box, Card, Grid, Stack } from '@wso2/oxygen-ui';
 import type { Gateway } from '@/api/resources/gateways';
 import type { RestApi } from '@/api/resources/restApis';
 import type { Deployment } from '@/api/resources/restApis/deployments';
+import { routes } from '@/routes/paths';
 import { ApiKeysPanel } from './ApiKeysPanel';
 import { DeployedGatewaysPanel } from './DeployedGatewaysPanel';
+import { DocumentsPanel } from './DocumentsPanel';
 import { EndpointsPanel } from './EndpointsPanel';
-// import { DocumentsPanel } from './DocumentsPanel';
 import { InvokeUrlPanel } from './InvokeUrlPanel';
 import { ResourcesPanel } from './ResourcesPanel';
 
@@ -52,8 +53,7 @@ export function OverviewTab({
       <Grid size={{ lg: 8, xs: 12 }}>
         <Stack spacing={2} marginTop={1}>
           <ResourcesPanel api={api} />
-          {/* Uncomment DocumentsPanel when documents should be shown on the overview. */}
-          {/* <DocumentsPanel /> */}
+          <DocumentsPanel />
         </Stack>
       </Grid>
       <Grid size={{ lg: 4, xs: 12 }}>
@@ -62,15 +62,24 @@ export function OverviewTab({
             <>
               <Card sx={{ p: 2 }}>
                 <Stack spacing={2}>
-                  <InvokeUrlPanel context={api.context} gateways={deployedGateways} />
+                  <InvokeUrlPanel
+                    context={api.context}
+                    gateways={deployedGateways}
+                    version={api.version}
+                  />
                   {api.kind === 'RestApi' && (
                     <Box sx={{ borderTop: '1px solid', borderColor: 'divider', pt: 2 }}>
-                      <ApiKeysPanel restApiId={api.id ?? ''} />
+                      <ApiKeysPanel apiId={api.id ?? ''} />
                     </Box>
                   )}
                 </Stack>
               </Card>
-              <DeployedGatewaysPanel deployments={deployments} gateways={deployedGateways} />
+              <DeployedGatewaysPanel
+                apiId={api.id ?? ''}
+                deployTo={routes.apiDeploy}
+                deployments={deployments}
+                gateways={deployedGateways}
+              />
             </>
           )}
           <EndpointsPanel api={api} />

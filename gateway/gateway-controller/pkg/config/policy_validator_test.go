@@ -23,6 +23,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 )
@@ -48,7 +49,7 @@ func TestPolicyValidator_ValidateRestAPIPolicies_Success(t *testing.T) {
 		},
 	}
 
-	validator := NewPolicyValidator(policyDefs)
+	validator := NewPolicyValidator(policyDefs, nil)
 
 	// Create API config with valid policy
 	apiConfig := &api.RestAPI{
@@ -94,7 +95,7 @@ func TestPolicyValidator_ValidateRestAPIPolicies_Success(t *testing.T) {
 func TestPolicyValidator_PolicyNotFound(t *testing.T) {
 	// Empty policy definitions
 	policyDefs := map[string]models.PolicyDefinition{}
-	validator := NewPolicyValidator(policyDefs)
+	validator := NewPolicyValidator(policyDefs, nil)
 
 	// Create API config with non-existent policy
 	apiConfig := &api.RestAPI{
@@ -157,7 +158,7 @@ func TestPolicyValidator_InvalidParameters(t *testing.T) {
 		},
 	}
 
-	validator := NewPolicyValidator(policyDefs)
+	validator := NewPolicyValidator(policyDefs, nil)
 
 	// Create API config with invalid params (missing required field)
 	apiConfig := &api.RestAPI{
@@ -218,7 +219,7 @@ func TestPolicyValidator_OperationLevelPolicies(t *testing.T) {
 		},
 	}
 
-	validator := NewPolicyValidator(policyDefs)
+	validator := NewPolicyValidator(policyDefs, nil)
 
 	// Create API config with operation-level policy
 	apiConfig := &api.RestAPI{
@@ -269,7 +270,7 @@ func TestPolicyValidator_MultipleErrors(t *testing.T) {
 		},
 	}
 
-	validator := NewPolicyValidator(policyDefs)
+	validator := NewPolicyValidator(policyDefs, nil)
 
 	// Create API config with multiple invalid policies
 	apiConfig := &api.RestAPI{
@@ -335,7 +336,7 @@ func TestPolicyValidator_TypeMismatch(t *testing.T) {
 		},
 	}
 
-	validator := NewPolicyValidator(policyDefs)
+	validator := NewPolicyValidator(policyDefs, nil)
 
 	// Create API config with wrong type (string instead of integer)
 	apiConfig := &api.RestAPI{
@@ -398,7 +399,7 @@ func TestPolicyValidator_MissingRequiredParams(t *testing.T) {
 		},
 	}
 
-	validator := NewPolicyValidator(policyDefs)
+	validator := NewPolicyValidator(policyDefs, nil)
 
 	// Test case 1: Policy with nil params (should fail validation for required field)
 	apiConfig := &api.RestAPI{
@@ -479,7 +480,7 @@ func TestPolicyValidator_MixedMajorVersions_SamePolicyName(t *testing.T) {
 		},
 	}
 
-	validator := NewPolicyValidator(policyDefs)
+	validator := NewPolicyValidator(policyDefs, nil)
 
 	apiConfig := &api.RestAPI{
 		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1,
@@ -531,7 +532,7 @@ func TestPolicyValidator_FullSemverRejected(t *testing.T) {
 		},
 	}
 
-	validator := NewPolicyValidator(policyDefs)
+	validator := NewPolicyValidator(policyDefs, nil)
 
 	apiConfig := &api.RestAPI{
 		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1,
@@ -585,7 +586,7 @@ func TestPolicyValidator_MajorVersionResolution_Success(t *testing.T) {
 		},
 	}
 
-	validator := NewPolicyValidator(policyDefs)
+	validator := NewPolicyValidator(policyDefs, nil)
 
 	apiConfig := &api.RestAPI{
 		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1,
@@ -632,7 +633,7 @@ func TestPolicyValidator_MajorVersionResolution_NotFound(t *testing.T) {
 		},
 	}
 
-	validator := NewPolicyValidator(policyDefs)
+	validator := NewPolicyValidator(policyDefs, nil)
 
 	apiConfig := &api.RestAPI{
 		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1,
@@ -686,7 +687,7 @@ func TestPolicyValidator_MajorVersionResolution_MultipleMatches(t *testing.T) {
 		},
 	}
 
-	validator := NewPolicyValidator(policyDefs)
+	validator := NewPolicyValidator(policyDefs, nil)
 
 	apiConfig := &api.RestAPI{
 		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1,
@@ -744,7 +745,7 @@ func TestPolicyValidator_EmptyVersion_ResolvesToLatest(t *testing.T) {
 		t.Fatalf("Expected latest resolved version v1.0.0, got %s", resolved)
 	}
 
-	validator := NewPolicyValidator(policyDefs)
+	validator := NewPolicyValidator(policyDefs, nil)
 
 	apiConfig := &api.RestAPI{
 		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1,
@@ -782,7 +783,7 @@ func TestPolicyValidator_EmptyVersion_ResolvesToLatest(t *testing.T) {
 func TestPolicyValidator_EmptyVersion_PolicyNotFound(t *testing.T) {
 	policyDefs := map[string]models.PolicyDefinition{}
 
-	validator := NewPolicyValidator(policyDefs)
+	validator := NewPolicyValidator(policyDefs, nil)
 
 	apiConfig := &api.RestAPI{
 		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1,
@@ -865,7 +866,7 @@ func TestBuildLatestVersionIndex_EmptyDefinitions(t *testing.T) {
 
 func TestPolicyValidator_ValidateMCPProxyPolicies_NilPolicies(t *testing.T) {
 	policyDefs := map[string]models.PolicyDefinition{}
-	validator := NewPolicyValidator(policyDefs)
+	validator := NewPolicyValidator(policyDefs, nil)
 
 	mcpConfig := &api.MCPProxyConfiguration{
 		ApiVersion: api.MCPProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1,
@@ -888,7 +889,7 @@ func TestPolicyValidator_ValidateMCPProxyPolicies_ValidPolicy(t *testing.T) {
 			Version: "v1.0.0",
 		},
 	}
-	validator := NewPolicyValidator(policyDefs)
+	validator := NewPolicyValidator(policyDefs, nil)
 
 	policies := []api.Policy{
 		{Name: "allow-all", Version: "v1"},
@@ -910,7 +911,7 @@ func TestPolicyValidator_ValidateMCPProxyPolicies_ValidPolicy(t *testing.T) {
 
 func TestPolicyValidator_ValidateMCPProxyPolicies_PolicyNotFound(t *testing.T) {
 	policyDefs := map[string]models.PolicyDefinition{}
-	validator := NewPolicyValidator(policyDefs)
+	validator := NewPolicyValidator(policyDefs, nil)
 
 	policies := []api.Policy{
 		{Name: "missing-policy", Version: "v1"},
@@ -938,7 +939,7 @@ func TestPolicyValidator_ValidateMCPProxyPolicies_MultiplePoliciesWithErrors(t *
 			Version: "v1.0.0",
 		},
 	}
-	validator := NewPolicyValidator(policyDefs)
+	validator := NewPolicyValidator(policyDefs, nil)
 
 	policies := []api.Policy{
 		{Name: "good-policy", Version: "v1"},
@@ -979,18 +980,18 @@ func TestCoerceParamsBySchema_RenderedTemplateStrings(t *testing.T) {
 			Parameters: &map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
-					"limit": map[string]interface{}{"type": "integer"},
-					"burst": map[string]interface{}{"type": "integer"},
+					"limit":   map[string]interface{}{"type": "integer"},
+					"burst":   map[string]interface{}{"type": "integer"},
 					"enabled": map[string]interface{}{"type": "boolean"},
-					"ratio": map[string]interface{}{"type": "number"},
-					"name": map[string]interface{}{"type": "string"},
+					"ratio":   map[string]interface{}{"type": "number"},
+					"name":    map[string]interface{}{"type": "string"},
 				},
 				"required": []interface{}{"limit"},
 			},
 		},
 	}
 
-	pv := NewPolicyValidator(policyDefs)
+	pv := NewPolicyValidator(policyDefs, nil)
 
 	config := &api.RestAPI{
 		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1,
@@ -1060,7 +1061,7 @@ func TestCoerceParamsBySchema_UnparseableStringStaysString(t *testing.T) {
 		},
 	}
 
-	pv := NewPolicyValidator(policyDefs)
+	pv := NewPolicyValidator(policyDefs, nil)
 
 	config := &api.RestAPI{
 		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1,
@@ -1116,7 +1117,7 @@ func TestCoerceParamsBySchema_StringParamWithNumericValueIsUnchanged(t *testing.
 		},
 	}
 
-	pv := NewPolicyValidator(policyDefs)
+	pv := NewPolicyValidator(policyDefs, nil)
 
 	config := &api.RestAPI{
 		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1,
@@ -1273,4 +1274,39 @@ func stringContains(s, substr string) bool {
 		}
 	}
 	return false
+}
+
+// An operation-level fault entry gets the same validation as any other policy reference.
+// Without this it would be the one policy list in the spec that deploys unchecked.
+func TestPolicyValidator_OperationLevelFaultPoliciesAreValidated(t *testing.T) {
+	validator := NewPolicyValidator(map[string]models.PolicyDefinition{
+		"set-headers|v1.0.0": {Name: "set-headers", Version: "v1.0.0"},
+	}, nil)
+
+	apiConfig := &api.RestAPI{
+		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1,
+		Kind:       api.RestAPIKindRestApi,
+		Spec: api.APIConfigData{
+			DisplayName: "Test API", Version: "v1.0", Context: "/test",
+			Operations: []api.Operation{{
+				Method: api.Ptr(api.OperationMethod("GET")),
+				Path:   api.Ptr("/hello"),
+				FaultPolicies: &[]api.Policy{
+					{Name: "set-headers", Version: "v1"},
+					{Name: "no-such-policy", Version: "v1"},
+				},
+			}},
+		},
+	}
+
+	errs := validator.ValidateRestAPIPolicies(apiConfig)
+	require.NotEmpty(t, errs, "an unresolvable operation-level fault entry must be reported")
+
+	var found bool
+	for _, e := range errs {
+		if strings.HasPrefix(e.Field, "spec.operations[0].faultPolicies[1]") {
+			found = true
+		}
+	}
+	assert.True(t, found, "the error must identify the operation and the entry index, got %+v", errs)
 }

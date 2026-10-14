@@ -31,6 +31,7 @@ import {
   AI_WORKSPACE_GATEWAYS_NAV_REGION,
   AI_WORKSPACE_GATEWAYS_SLOT,
   AI_WORKSPACE_INSIGHTS_SLOT,
+  AI_WORKSPACE_AGENT_PROXY_DEPLOY_SLOT,
   AI_WORKSPACE_LLM_PROVIDER_DEPLOY_SLOT,
   AI_WORKSPACE_LLM_PROXY_DEPLOY_SLOT,
   AI_WORKSPACE_MCP_DEPLOY_SLOT,
@@ -177,14 +178,14 @@ export const cloudPluginFeatures: CloudPluginFeature<AIWorkspaceCloudEntry>[] =
       version: "0.1.0",
       // Registered once per artifact kind, each replacing that kind's built-in page
       // at its own route, so environments are what the AI Workspace shows for MCP
-      // servers, LLM proxies and LLM providers alike.
+      // servers, LLM proxies, Agent Proxies and LLM providers alike.
       //
-      // Two features, because the two kinds of artifact are deployed differently.
-      // MCP servers and LLM proxies belong to a PROJECT, so they are deployed through
-      // that project's pipeline: environments in promotion order, promoting between
-      // them. LLM providers belong to the ORGANIZATION — `llm_providers` has no
-      // project — so no pipeline can apply to them, and they are deployed straight to
-      // any of the organization's environments.
+      // Two shapes, because the two kinds of artifact are deployed differently.
+      // MCP servers, LLM proxies and Agent Proxies belong to a PROJECT, so they are
+      // deployed through that project's pipeline: environments in promotion order,
+      // promoting between them. LLM providers belong to the ORGANIZATION —
+      // `llm_providers` has no project — so no pipeline can apply to them, and they
+      // are deployed straight to any of the organization's environments.
       //
       // The artifact's handle comes from the route rather than the Port: these pages
       // are scoped to one artifact and the portal reads it off the URL (see
@@ -227,6 +228,23 @@ export const cloudPluginFeatures: CloudPluginFeature<AIWorkspaceCloudEntry>[] =
           render: (port, artifactHandle) => (
             <ProviderDeployFeature
               port={port}
+              artifactHandle={artifactHandle}
+            />
+          ),
+        },
+        {
+          id: "agent-proxy-deploy",
+          // Inert: a page override replaces one route's body, so there is nothing to
+          // order it against.
+          order: 0,
+          slot: AI_WORKSPACE_AGENT_PROXY_DEPLOY_SLOT,
+          // An Agent Proxy belongs to a project, same as an MCP server or an LLM
+          // proxy, so it goes through that project's pipeline rather than the
+          // provider's flat per-organization deploy.
+          render: (port, artifactHandle) => (
+            <DeployFeature
+              port={port}
+              kind="AgentProxy"
               artifactHandle={artifactHandle}
             />
           ),

@@ -42,13 +42,16 @@ import (
 	"google.golang.org/protobuf/encoding/prototext"
 	"google.golang.org/protobuf/types/known/structpb"
 
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics/correlation"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/config"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/constants"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/executor"
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/faultformat"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/registry"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/resolver"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/tracing"
+	policy "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
 	policyenginev1 "github.com/wso2/api-platform/sdk/core/policyengine"
 )
 
@@ -73,6 +76,72 @@ type ExternalProcessorServer struct {
 	// never decompressed without a ceiling.
 	maxRequestDecompressedBytes  int64
 	maxResponseDecompressedBytes int64
+
+	// errorFormatterKinds is the set of API kinds the gateway may synthesize an error
+	// body for. Defaults to faultformat.SupportedKinds(), which is empty today, so a
+	// server built the normal way formats nothing.
+	errorFormatterKinds faultformat.KindSet
+
+	// handleUpstreamFaults routes an UPSTREAM- or ROUTER-produced failure through the
+	// fault flow instead of the ordinary response policies. From
+	// policy_engine.fault_policies.handle_upstream_faults, off by default.
+	//
+	// A zero value means disabled, so a server constructed without the option keeps the
+	// behaviour every previous generation of this gateway had. That direction is
+	// deliberate: forgetting to wire the flag leaves an operator's existing response
+	// mediation running over backend errors, where the opposite default would silently
+	// move it.
+	handleUpstreamFaults bool
+
+	// correlationStore carries captured request/response headers and bodies to
+	// the ALS handler, keyed by a per-stream token, instead of round-tripping them
+	// through Envoy dynamic metadata (see storeInProcess and
+	// internal/analytics/correlation's package doc).
+	// Nil when the collector is disabled (Config.IsCollectorEnabled) -- nothing
+	// will ever read the store in that case, so nothing writes to it either.
+	correlationStore *correlation.Store
+}
+
+// ServerOption configures an ExternalProcessorServer at construction.
+//
+// Variadic rather than a further positional parameter: the constructor already takes six,
+// and every caller that does not care about a new one should not have to name it.
+type ServerOption func(*ExternalProcessorServer)
+
+// WithErrorFormatterKinds overrides which API kinds the gateway synthesizes an error body
+// for, replacing faultformat.SupportedKinds().
+//
+// # There is deliberately no production caller
+//
+// Which kinds format is a protocol fact, not a deployment choice, so it lives in
+// faultformat.supportedKinds rather than in configuration. This exists so a test can reach
+// the renderers at all: with the supported list empty, every kernel-level path through
+// ShouldFormat would otherwise stop at the kind gate and the renderers would be exercised
+// only through their own package.
+//
+// Unknown kind names are logged and ignored — see faultformat.NewKindSet.
+func WithErrorFormatterKinds(kinds []string) ServerOption {
+	return func(s *ExternalProcessorServer) {
+		set, unknown := faultformat.NewKindSet(kinds)
+		if len(unknown) > 0 {
+			slog.Warn("Ignoring unrecognized API kinds for the error formatter",
+				"unknown", unknown, "requested", kinds,
+				"hint", "spell the artifact kind, e.g. RestApi, Mcp, LlmProxy, LlmProvider, WebSubApi")
+		}
+		s.errorFormatterKinds = set
+	}
+}
+
+// WithHandleUpstreamFaults enables or disables the fault flow for upstream- and router-produced
+// failures, from policy_engine.fault_policies.handle_upstream_faults.
+//
+// Unlike WithErrorFormatterKinds this HAS a production caller: which failures an operator
+// wants their fault policies to handle is a deployment choice, not a protocol fact. See
+// config.FaultPoliciesConfig.HandleUpstreamFaults for why it is off by default.
+func WithHandleUpstreamFaults(enabled bool) ServerOption {
+	return func(s *ExternalProcessorServer) {
+		s.handleUpstreamFaults = enabled
+	}
 }
 
 // NewExternalProcessorServer creates a new ExternalProcessorServer.
@@ -80,7 +149,9 @@ type ExternalProcessorServer struct {
 // It takes no resolver registry: resolvers are prepared per route at xDS ingest, so
 // nothing on the request path looks one up by name. A route that could not be prepared
 // never reaches the kernel.
-func NewExternalProcessorServer(kernel *Kernel, chainExecutor *executor.ChainExecutor, tracingConfig config.TracingConfig, tracingServiceName string, maxRequestDecompressedBytes int64, maxResponseDecompressedBytes int64) *ExternalProcessorServer {
+//
+// corrStore may be nil (collector disabled): captured data then stays in Envoy metadata.
+func NewExternalProcessorServer(kernel *Kernel, chainExecutor *executor.ChainExecutor, tracingConfig config.TracingConfig, tracingServiceName string, maxRequestDecompressedBytes int64, maxResponseDecompressedBytes int64, corrStore *correlation.Store, opts ...ServerOption) *ExternalProcessorServer {
 	// Initialize tracer once - will be NoOp if tracing is disabled
 	serviceName := tracingServiceName
 	if serviceName == "" {
@@ -101,14 +172,20 @@ func NewExternalProcessorServer(kernel *Kernel, chainExecutor *executor.ChainExe
 		maxResponseDecompressedBytes = config.DefaultMaxDecompressedBytes
 	}
 
-	return &ExternalProcessorServer{
+	srv := &ExternalProcessorServer{
 		kernel:                       kernel,
 		executor:                     chainExecutor,
 		tracer:                       otel.Tracer(serviceName),
 		tracingEnabled:               tracingConfig.Enabled,
 		maxRequestDecompressedBytes:  maxRequestDecompressedBytes,
 		maxResponseDecompressedBytes: maxResponseDecompressedBytes,
+		errorFormatterKinds:          faultformat.SupportedKinds(),
+		correlationStore:             corrStore,
 	}
+	for _, opt := range opts {
+		opt(srv)
+	}
+	return srv
 }
 
 // traceContextCarrier builds a W3C trace-context carrier from the downstream
@@ -198,6 +275,15 @@ func (s *ExternalProcessorServer) Process(stream extprocv3.ExternalProcessor_Pro
 	// stamped when no phase ever resolved a status (execCtx nil, or the stream
 	// ended before the first message so span is nil); paths that terminate
 	// without an execCtx stamp parentSpan inline instead.
+	// Registered first (and so, by LIFO defer order, run LAST -- after the span
+	// has ended and the terminal outcome has been recorded) since it has nothing
+	// to do with tracing: it marks the request's correlation-store entry complete.
+	// See completeCorrelationEntry.
+	defer func() {
+		if execCtx != nil {
+			s.completeCorrelationEntry(execCtx)
+		}
+	}()
 	defer func() {
 		if span != nil {
 			span.End()
@@ -258,6 +344,9 @@ func (s *ExternalProcessorServer) Process(stream extprocv3.ExternalProcessor_Pro
 			slog.ErrorContext(ctx, "Error processing request", "error", err)
 			return err
 		}
+		if execCtx != nil && endsResponse(req, resp) {
+			execCtx.responseFinished = true
+		}
 
 		// Send response back to Envoy
 		if err := stream.Send(resp); err != nil {
@@ -269,7 +358,60 @@ func (s *ExternalProcessorServer) Process(stream extprocv3.ExternalProcessor_Pro
 			}
 			return status.Errorf(grpccodes.Unknown, "failed to send response: %v", err)
 		}
+		if execCtx != nil && execCtx.correlationToken != "" {
+			execCtx.correlationTokenSent = true
+		}
 	}
+}
+
+// completeCorrelationEntry tells the correlation store that execCtx's response has
+// finished, as seen by the ext_proc side. Captured fields were already merged into
+// the store as each phase's response was built (see storeInProcess); completing the
+// entry only makes it eligible for reclaim after the TTL if its access-log entry
+// never arrives.
+//
+// Called from a defer registered before every other per-stream teardown defer in
+// Process, so it runs on every terminal path out of that function. An entry is
+// completed only if the stream saw the response end (responseFinished): when the
+// stream closes first, the response may still be streaming to the client and its
+// access-log entry is still to come, so the entry is left for the ALS handler to
+// take (or for the store's max entry age). Any stream that issued a token is
+// considered, whatever later phases carry -- a loopback hop never stores, so it
+// has no token.
+//
+// A token that never reached Envoy (the phase that issued it failed before its
+// response was sent, and no later response carried it) cannot appear in any
+// access-log entry, so its entry is discarded instead of holding a slot until the
+// max entry age.
+func (s *ExternalProcessorServer) completeCorrelationEntry(execCtx *PolicyExecutionContext) {
+	if s.correlationStore == nil || execCtx.correlationToken == "" {
+		return
+	}
+	if !execCtx.correlationTokenSent {
+		s.correlationStore.Discard(execCtx.correlationToken)
+		return
+	}
+	if execCtx.responseFinished {
+		s.correlationStore.Complete(execCtx.correlationToken)
+	}
+}
+
+// endsResponse reports whether this exchange ends the response as seen by
+// ext_proc: the gateway answered with an immediate response, or Envoy sent the
+// last response headers/body message (end_of_stream) or the response trailers.
+func endsResponse(req *extprocv3.ProcessingRequest, resp *extprocv3.ProcessingResponse) bool {
+	if resp.GetImmediateResponse() != nil {
+		return true
+	}
+	switch r := req.GetRequest().(type) {
+	case *extprocv3.ProcessingRequest_ResponseHeaders:
+		return r.ResponseHeaders.GetEndOfStream()
+	case *extprocv3.ProcessingRequest_ResponseBody:
+		return r.ResponseBody.GetEndOfStream()
+	case *extprocv3.ProcessingRequest_ResponseTrailers:
+		return true
+	}
+	return false
 }
 
 // handleProcessingPhase routes processing to the appropriate phase handler
@@ -308,7 +450,8 @@ func (s *ExternalProcessorServer) handleProcessingPhase(ctx context.Context, req
 		// failure kind reaching only the log, the metric and the span. Never a fallback
 		// to the route-level chain — that would silently apply the wrong policies.
 		if outcome == bindFailed {
-			resp, failureOutcome := renderResolutionFailure(ctx, denial.resolverName, rm.RouteName, "",
+			resp, failureOutcome := s.renderResolutionFailure(ctx, denial.resolverName, rm.RouteName, "",
+				shapeSignalsFromHeaders(policy.APIKind(rm.APIKind), req.GetRequestHeaders()),
 				denial.failure,
 				resolutionFailureAnalytics(extractMetadataFromRouteMetadata(*rm), nil, denial.failure))
 			// Which resolver refused, in which of its phases, and why — bounded
@@ -341,26 +484,47 @@ func (s *ExternalProcessorServer) handleProcessingPhase(ctx context.Context, req
 			if span.IsRecording() {
 				span.SetAttributes(attribute.Int(constants.AttrPolicyCount, 0))
 			}
+			// Generated before the outcome so the span, the log and the rendered body all
+			// carry the same id. An id that reaches only one of the three correlates nothing.
+			errorID := uuid.New().String()
 			outcome := tracing.HTTPOutcome{
 				StatusCode: http.StatusInternalServerError,
 				Reason:     constants.TerminalReasonNoPolicyChain,
+				ErrorID:    errorID,
 			}
 			tracing.RecordHTTPOutcome(span, outcome)
 			tracing.RecordHTTPOutcome(parentSpan, outcome)
 			metrics.RouteLookupFailuresTotal.Inc()
 			metrics.RequestDurationSeconds.WithLabelValues("request_headers", rm.RouteName).Observe(time.Since(startTime).Seconds())
 			slog.ErrorContext(ctx, "Policy chain not found for route, returning 500",
+				"error_id", errorID,
 				"route", rm.RouteName,
 				"api_name", rm.APIName)
+
+			// The sterile body a caller has always received here. Left exactly as it was
+			// for any API kind the operator did not enable, and shaped for the caller's
+			// protocol where they did — an MCP client cannot parse this JSON, which is the
+			// case the formatter exists for. Fault POLICIES still cannot run: there is no
+			// chain to select them from, which is the whole reason we are on this branch.
+			sterileBody := []byte(`{"error":"Internal Server Error"}`)
+			body, contentType := s.formatSterileError(ctx,
+				shapeSignalsFromHeaders(policy.APIKind(rm.APIKind), req.GetRequestHeaders()),
+				policy.FaultDetails{
+					Code:      codeNoPolicyChain,
+					Type:      policy.FaultTypeInternal,
+					Direction: policy.DirectionRequest,
+					Message:   "Internal Server Error",
+				},
+				http.StatusInternalServerError, errorID, sterileBody, "application/json")
+
 			return &extprocv3.ProcessingResponse{
 				Response: &extprocv3.ProcessingResponse_ImmediateResponse{
 					ImmediateResponse: &extprocv3.ImmediateResponse{
 						Status: &typev3.HttpStatus{Code: typev3.StatusCode_InternalServerError},
 						Headers: buildHeaderValueOptions(map[string]string{
-							"content-type": "application/json",
+							"content-type": contentType,
 						}),
-						// TODO: (renuka) handle error codes in a separate issue: https://github.com/wso2/api-platform/issues/1637
-						Body: []byte(`{"error":"Internal Server Error"}`),
+						Body: body,
 					},
 				},
 			}, nil
@@ -493,6 +657,10 @@ func (s *ExternalProcessorServer) handleProcessingPhase(ctx context.Context, req
 
 		routeName := (*execCtx).routeKey
 		metrics.RequestsTotal.WithLabelValues("response_headers", routeName, "", "").Inc()
+
+		// Record who produced this response before any policy runs, so error handling
+		// can distinguish a backend's own error from one the router generated.
+		(*execCtx).responseCodeDetails = extractResponseProvenance(req)
 
 		resp, err := (*execCtx).processResponseHeaders(ctx, req.GetResponseHeaders())
 		metrics.RequestDurationSeconds.WithLabelValues("response_headers", routeName).Observe(time.Since(startTime).Seconds())
@@ -802,6 +970,13 @@ func (s *ExternalProcessorServer) newBoundExecutionContext(
 	ec.upstreamDefinitionPaths = routeMetadata.UpstreamDefinitionPaths
 	ec.defaultUpstream = routeMetadata.DefaultUpstream
 	ec.buildRequestContexts(req.GetRequestHeaders(), routeMetadata)
+
+	// req.Attributes lives on the ProcessingRequest, not the HttpHeaders message
+	// buildRequestContexts receives. Every phase shares this DownstreamContext,
+	// so setting TLS once covers the response phase too.
+	if ec.requestHeaderCtx != nil && ec.requestHeaderCtx.Downstream != nil {
+		ec.requestHeaderCtx.Downstream.TLS = extractDownstreamTLS(req.Attributes)
+	}
 	return ec
 }
 
@@ -821,6 +996,74 @@ func (s *ExternalProcessorServer) extractRouteKey(req *extprocv3.ProcessingReque
 		}
 	}
 	return "default"
+}
+
+// extractDownstreamTLS reads the connection.* ext_proc attributes into a
+// policy.DownstreamTLS, or returns nil when Envoy sent no ext_proc attributes
+// at all. PeerCertValid stays nil unless Envoy sent a verdict. Never log
+// PeerCertificatePEM or SHA256Thumbprint.
+func extractDownstreamTLS(attrs map[string]*structpb.Struct) *policy.DownstreamTLS {
+	extProcAttrs, ok := attrs[constants.ExtProcFilter]
+	if !ok || extProcAttrs == nil {
+		return nil
+	}
+	tls := &policy.DownstreamTLS{}
+	fields := extProcAttrs.Fields
+
+	if v, ok := fields[constants.ExtProcAttrConnectionMTLS]; ok {
+		tls.MTLS = v.GetBoolValue()
+	}
+	if v, ok := fields[constants.ExtProcAttrConnectionPeerCertificateDigest]; ok {
+		tls.SHA256Thumbprint = v.GetStringValue()
+	}
+	if v, ok := fields[constants.ExtProcAttrConnectionSubjectPeerCertificate]; ok {
+		tls.SubjectDN = v.GetStringValue()
+	}
+	if v, ok := fields[constants.ExtProcAttrConnectionURISANPeerCertificate]; ok {
+		tls.FirstURISAN = v.GetStringValue()
+	}
+	if v, ok := fields[constants.ExtProcAttrConnectionDNSSANPeerCertificate]; ok {
+		tls.FirstDNSSAN = v.GetStringValue()
+	}
+	if v, ok := fields[constants.ExtProcAttrConnectionPeerCertificate]; ok {
+		tls.PeerCertificatePEM = v.GetStringValue()
+	}
+	if v, ok := fields[constants.ExtProcAttrConnectionTLSVersion]; ok {
+		tls.TLSVersion = v.GetStringValue()
+	}
+	if v, ok := fields[constants.ExtProcAttrConnectionRequestedServerName]; ok {
+		tls.RequestedServerName = v.GetStringValue()
+	}
+	if v, ok := fields[constants.ExtProcAttrConnectionPeerCertificateValid]; ok {
+		valid := v.GetBoolValue()
+		tls.PeerCertValid = &valid
+	}
+	return tls
+}
+
+// responseCodeDetailsAttr is the CEL attribute name the router is configured to send
+// with the response-headers message (see the gateway-controller's createExtProcFilter).
+// Duplicated here rather than imported because the two components share no Go module.
+const responseCodeDetailsAttr = "response.code_details"
+
+// extractResponseProvenance reads Envoy's own account of who produced the response:
+// "via_upstream" when the backend answered, and a specific reason string when Envoy
+// generated the response itself.
+//
+// Empty when the router does not send the attribute, so every caller must treat "" as
+// "unknown" and fall back to previous behaviour rather than assuming a local reply.
+func extractResponseProvenance(req *extprocv3.ProcessingRequest) string {
+	if req == nil || req.Attributes == nil {
+		return ""
+	}
+	extProcAttrs, ok := req.Attributes[constants.ExtProcFilter]
+	if !ok || extProcAttrs.Fields == nil {
+		return ""
+	}
+	if v, ok := extProcAttrs.Fields[responseCodeDetailsAttr]; ok {
+		return v.GetStringValue()
+	}
+	return ""
 }
 
 // skipAllProcessing returns a response that skips all processing phases

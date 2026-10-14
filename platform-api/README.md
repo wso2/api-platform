@@ -327,6 +327,7 @@ All settings live under `[platform_api]` / `[platform_api.*]`. The main sections
 | `[platform_api.deployments]` | Deployment caps and stuck-deployment timeout handling |
 | `[platform_api.gateway]` | Gateway registration verification toggles |
 | `[platform_api.event_hub]` | Multi-replica event delivery polling/retention |
+| `[platform_api.api_portal_publication]` | Time and retry limits for calls to an API Portal when publishing: `request_timeout`, `listing_request_timeout`, `max_retries`, `retry_backoff`, `overall_timeout` (validated together at startup) |
 | `[platform_api.webhook]` | API Portal webhook receiver: `enabled`, `secret` (required when enabled), signature/body limits |
 | `[platform_api.read_only]` | **Temporary** (`TEMP-READ-ONLY-MODE`): freeze every organization except an allowlist during the v1 → v2 migration — see [Read-only mode](#read-only-maintenance-mode--temporary) |
 
@@ -492,10 +493,17 @@ Rules the translator follows:
   `Deployment artifact adapted for older gateway`, with `kind`, `field`, `deploymentID`,
   `gatewayID` and `gatewayVersion`.
 - Stored deployment content always keeps its `{{ secret }}` placeholders; plaintext is produced
-  only in the response to the gateway's fetch. A single fetch whose secret cannot be resolved fails.
-  In a startup-sync batch the deployment is left out instead, so one missing secret cannot block
-  the whole sync, and its status is set to `FAILED` with reason `SECRET_RESOLUTION_FAILED` (the
-  released gateways do not retry a missing batch entry): restore the secret and redeploy. A rotated secret therefore reaches a `1.0.0`/`1.1.0`
+  only in the response to the gateway's fetch. A deployment whose secret cannot be resolved
+  (missing, deprecated, or not decryptable with this instance's `security.encryption_key`) is not
+  delivered: a single fetch is refused with `422` and logged at `WARN` as
+  `Refused deployment fetch: secret could not be resolved for gateway`; in a startup-sync batch
+  the deployment is left out, so one missing secret cannot block the whole sync. On both paths
+  its status is set to `FAILED` with reason `SECRET_RESOLUTION_FAILED`, and the gateway's own
+  failed ack for that deploy event is discarded so the reason is not replaced by
+  `GATEWAY_PROCESSING_ERROR` (the released gateways do not retry a missing batch entry): restore
+  the secret and redeploy. A failure to look a secret up at all (the secret store unreachable)
+  is not the deployment's fault and is not recorded: the single fetch is a plain `500` and a
+  batch fails as a whole. A rotated secret therefore reaches a `1.0.0`/`1.1.0`
   gateway only through a redeploy, and a `1.2.0` gateway only after its controller reconnects (it
   caches each secret after the first fetch).
 - A gateway with no reported version (never connected, or a non-semver dev build) is treated as a

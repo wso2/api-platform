@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"github.com/moby/moby/client"
 	"github.com/stretchr/testify/require"
+	"github.com/wso2/api-platform/tests/framework/core/catalog/platformgateway"
 	"github.com/wso2/api-platform/tests/framework/core/components"
 	"github.com/wso2/api-platform/tests/framework/core/logcapture"
 	"github.com/wso2/api-platform/tests/framework/core/topology"
@@ -882,6 +883,13 @@ func TestReadAllString(t *testing.T) {
 	})
 }
 
+func TestReadLimitedStringKeepsAWholeLogOverTheOutputLimit(t *testing.T) {
+	input := bytes.Repeat([]byte{'x'}, int(maxOutputBytes)*2)
+	got, err := readLimitedString(bytes.NewReader(input), maxLogBytes)
+	require.NoError(t, err)
+	require.Len(t, got, len(input))
+}
+
 func TestCopyFileFromContainerEnforcesFileSizeLimit(t *testing.T) {
 	oldLimit := maxComponentDBFileBytes
 	maxComponentDBFileBytes = 4
@@ -1000,6 +1008,110 @@ func TestContainedSourceSkipsTheCheckWithoutARepositoryRoot(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Equal(t, "/anywhere/compose.yaml", resolved)
+}
+
+// A project that imports the framework has no api-platform checkout, so the gateway stack must
+// stage from the framework's embedded copies and generated key material alone.
+func TestStageComposeFilesStagesTheGatewayWithoutACheckout(t *testing.T) {
+	cache := t.TempDir()
+	t.Setenv("HOME", cache)
+	t.Setenv("XDG_CACHE_HOME", cache)
+	definition := platformgateway.PlatformGateway()
+
+	dir, err := stageComposeFiles(definition, definition.Compose, t.TempDir(), nil)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+
+	for _, name := range []string{
+		definition.Compose.StagingName(),
+		"aesgcm-keys/default-aesgcm256-v1.bin",
+		"listener-certs/default-listener.crt",
+		"listener-certs/default-listener.key",
+		"certificates/default-listener.crt",
+		"llm-pricing/model_prices.json",
+	} {
+		require.FileExists(t, filepath.Join(dir, filepath.FromSlash(name)))
+	}
+	key, err := os.ReadFile(filepath.Join(dir, "aesgcm-keys", "default-aesgcm256-v1.bin"))
+	require.NoError(t, err)
+	require.Len(t, key, 32)
+}
+
+// A generated file mount is sent to the container from memory; a host-path mount is read from
+// disk.
+func TestResolveFilesSendsGeneratedContentFromMemory(t *testing.T) {
+	definition := &components.Definition{
+		Name: "gateway-controller",
+		Files: []components.FileMount{
+			{Content: []byte("generated"), ContainerPath: "/app/key", Mode: 0o600},
+			{HostPath: "host/file", ContainerPath: "/app/file"},
+		},
+	}
+
+	files, err := resolveFiles(definition, Options{RepoRoot: "/workspace"})
+
+	require.NoError(t, err)
+	require.Len(t, files, 2)
+	require.Empty(t, files[0].HostFilePath)
+	require.NotNil(t, files[0].Reader)
+	require.Equal(t, int64(0o600), files[0].FileMode)
+	require.Equal(t, filepath.Join("/workspace", "host", "file"), files[1].HostFilePath)
+	require.Nil(t, files[1].Reader)
+}
+
+// A file the workspace holds wins over the embedded copy, so a run inside a checkout reads
+// the live source.
+func TestStageComposeFilesPrefersTheWorkspaceCopy(t *testing.T) {
+	cache := t.TempDir()
+	t.Setenv("HOME", cache)
+	t.Setenv("XDG_CACHE_HOME", cache)
+	workspace := t.TempDir()
+	live := filepath.Join(workspace, "gateway", "configs", "llm-pricing", "model_prices.json")
+	require.NoError(t, os.MkdirAll(filepath.Dir(live), 0o755))
+	require.NoError(t, os.WriteFile(live, []byte(`{"live":true}`), 0o644))
+	spec := &components.ComposeSpec{
+		ComposeFile: "tests/framework/core/catalog/platformgateway/docker-compose.yaml",
+		StagedFiles: map[string]string{"llm-pricing/model_prices.json": "gateway/configs/llm-pricing/model_prices.json"},
+	}
+
+	dir, err := stageComposeFiles(&components.Definition{Name: "platform-gateway"}, spec, workspace, nil)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+
+	content, err := os.ReadFile(filepath.Join(dir, "llm-pricing", "model_prices.json"))
+	require.NoError(t, err)
+	require.JSONEq(t, `{"live":true}`, string(content))
+}
+
+// The embedded directory is trusted only for files the framework carries; a source that
+// resolves outside both the workspace and the embedded tree is still refused.
+func TestContainedSourceStillRefusesFilesOutsideTheWorkspaceAndEmbeddedTree(t *testing.T) {
+	cache := t.TempDir()
+	t.Setenv("HOME", cache)
+	t.Setenv("XDG_CACHE_HOME", cache)
+	workspace := t.TempDir()
+	outside := filepath.Join(t.TempDir(), "secret")
+	require.NoError(t, os.WriteFile(outside, []byte("x"), 0o644))
+
+	_, err := containedSource(workspace, outside)
+
+	require.ErrorContains(t, err, "resolves outside the repository")
+}
+
+// A schema the workspace does not hold is read from the framework's embedded snapshot.
+func TestResolveDDLFallsBackToTheEmbeddedSchema(t *testing.T) {
+	cache := t.TempDir()
+	t.Setenv("HOME", cache)
+	t.Setenv("XDG_CACHE_HOME", cache)
+
+	for _, engine := range []string{"postgres", "sqlserver"} {
+		ddl := "gateway/gateway-controller/pkg/storage/gateway-controller-db." + engine + ".sql"
+
+		content, err := os.ReadFile(resolveDDL(t.TempDir(), ddl))
+
+		require.NoError(t, err, engine)
+		require.Contains(t, strings.ToUpper(string(content)), "CREATE TABLE", engine)
+	}
 }
 
 // Each replica must provision under its own identity; sharing one would hand every instance

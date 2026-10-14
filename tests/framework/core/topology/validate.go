@@ -68,6 +68,7 @@ func Validate(r *Resolved, registry *components.Registry) error {
 	seenBlock := map[string]bool{}
 	partitionOwner := map[string]string{}
 	featureOwners := map[string]map[string]featureOwner{}
+	policyRunnerBlocks := map[string]string{}
 
 	for i := range r.Blocks {
 		b := &r.Blocks[i]
@@ -94,17 +95,28 @@ func Validate(r *Resolved, registry *components.Registry) error {
 
 		errs.add(validateBlockComponents(b))
 		errs.add(validateBlockRunners(b, featureOwners))
+		if b.RunnersFrom != "" {
+			source := platformGatewayPolicySource(b)
+			if owner, taken := policyRunnerBlocks[source]; taken && owner != b.Source {
+				errs.addf("topology: blocks %q and %q both take runners from policy tree %q; each policy "+
+					"would run in both", owner, b.Source, source)
+			}
+			policyRunnerBlocks[source] = b.Source
+		}
 	}
 
 	for feature, owners := range featureOwners {
-		if len(owners) > 1 && !allowDatabaseVariantFeatureOwners(owners) && !allowGatewayVersionSeparatedFeatureOwners(owners) {
-			names := make([]string, 0, len(owners))
-			for owner := range owners {
-				names = append(names, owner)
+		for _, group := range featureOwnersByPolicySource(owners) {
+			if len(group) > 1 && !allowDatabaseVariantFeatureOwners(group) && !allowGatewayVersionSeparatedFeatureOwners(group) &&
+				!allowTopologyVariantFeatureOwners(group) {
+				names := make([]string, 0, len(group))
+				for owner := range group {
+					names = append(names, owner)
+				}
+				sort.Strings(names)
+				errs.addf("topology: feature %q is bound to %d runners (%s); it would run more than once",
+					feature, len(names), strings.Join(names, ", "))
 			}
-			sort.Strings(names)
-			errs.addf("topology: feature %q is bound to %d runners (%s); it would run more than once",
-				feature, len(names), strings.Join(names, ", "))
 		}
 	}
 
@@ -116,6 +128,43 @@ type featureOwner struct {
 	constraint *gatewayVersionConstraint
 	// Every matrix variant of the source block, not just the last one resolved.
 	databases map[components.DBType]bool
+	// topologies holds the topologySignature of every variant of the source block.
+	topologies map[string]bool
+	// policySource is the policy tree the block's platform gateway is built with, or empty
+	// for the policies bundled with the gateway.
+	policySource string
+}
+
+// featureOwnersByPolicySource groups a feature's owners by the policy tree their platform
+// gateway is built with. A gateway extended with a policy source is a distinct product
+// build, so repeated execution is checked within each group rather than across groups.
+func featureOwnersByPolicySource(owners map[string]featureOwner) map[string]map[string]featureOwner {
+	groups := map[string]map[string]featureOwner{}
+	for name, owner := range owners {
+		if groups[owner.policySource] == nil {
+			groups[owner.policySource] = map[string]featureOwner{}
+		}
+		groups[owner.policySource][name] = owner
+	}
+	return groups
+}
+
+// platformGatewayPolicySource returns the cleaned policy tree path a block's platform gateway
+// is built with, so different spellings of one tree compare equal, or empty when the block
+// has no platform gateway or uses the bundled policies.
+func platformGatewayPolicySource(b *ResolvedBlock) string {
+	if b == nil {
+		return ""
+	}
+	for _, component := range b.Components {
+		if component.Def != nil && component.Def.Name == "platform-gateway" {
+			if component.AddPoliciesFrom == "" {
+				return ""
+			}
+			return filepath.Clean(component.AddPoliciesFrom)
+		}
+	}
+	return ""
 }
 
 // allowGatewayVersionSeparatedFeatureOwners permits the same feature to be bound to
@@ -183,6 +232,58 @@ func allowDatabaseVariantFeatureOwners(owners map[string]featureOwner) bool {
 	return true
 }
 
+// allowTopologyVariantFeatureOwners permits a feature to be intentionally repeated by
+// same-named runners whose blocks run different topologies, such as a one- and a
+// two-controller gateway. Blocks that differ only in overlays, versions or engines run the
+// same topology and stay refused.
+func allowTopologyVariantFeatureOwners(owners map[string]featureOwner) bool {
+	if len(owners) < 2 {
+		return false
+	}
+	var runnerName string
+	seen := map[string]bool{}
+	for _, owner := range owners {
+		if runnerName == "" {
+			runnerName = owner.runner
+		} else if runnerName != owner.runner {
+			return false
+		}
+		if len(owner.topologies) != 1 {
+			return false
+		}
+		for signature := range owner.topologies {
+			if seen[signature] {
+				return false
+			}
+			seen[signature] = true
+		}
+	}
+	return true
+}
+
+// topologySignature names what a block runs: each component and the compose services
+// behind it, in order.
+func topologySignature(b *ResolvedBlock) string {
+	parts := make([]string, 0, len(b.Components))
+	for _, c := range b.Components {
+		if c.Def == nil {
+			continue
+		}
+		part := c.Def.Name
+		if c.Def.Compose != nil {
+			services := append([]string(nil), c.Def.Compose.Services...)
+			sort.Strings(services)
+			part += "[" + strings.Join(services, ",") + "]"
+		}
+		if c.Replicas > 1 {
+			part += fmt.Sprintf("x%d", c.Replicas)
+		}
+		parts = append(parts, part)
+	}
+	sort.Strings(parts)
+	return strings.Join(parts, " ")
+}
+
 func validateBlockComponents(b *ResolvedBlock) error {
 	var errs errorList
 
@@ -247,6 +348,9 @@ func validateBlockComponents(b *ResolvedBlock) error {
 func validateBlockRunners(b *ResolvedBlock, featureOwners map[string]map[string]featureOwner) error {
 	var errs errorList
 
+	if b.RunnersFrom != "" {
+		return validateRunnersFrom(b)
+	}
 	if len(b.Runners) == 0 {
 		errs.addf("block %q: declares no runners, so its topology would boot and do nothing", b.Name)
 	}
@@ -296,17 +400,38 @@ func validateBlockRunners(b *ResolvedBlock, featureOwners map[string]map[string]
 			}
 			entry, ok := featureOwners[f][owner]
 			if !ok {
-				entry = featureOwner{runner: run.Name, databases: map[components.DBType]bool{}}
+				entry = featureOwner{
+					runner: run.Name, databases: map[components.DBType]bool{}, topologies: map[string]bool{},
+					policySource: platformGatewayPolicySource(b),
+				}
 				if run.GatewayVersion != nil {
 					constraint := *run.GatewayVersion
 					entry.constraint = &constraint
 				}
 			}
 			entry.databases[platformAPIDatabase(b)] = true
+			entry.topologies[topologySignature(b)] = true
 			featureOwners[f][owner] = entry
 		}
 	}
 
+	return errs.err()
+}
+
+// validateRunnersFrom checks a block whose runners come from a policy tree. Its runners are
+// resolved at selection time, so only the declaration is checked here.
+func validateRunnersFrom(b *ResolvedBlock) error {
+	var errs errorList
+	if b.RunnersFrom != RunnersFromPolicies {
+		errs.addf("block %q: unsupported runnersFrom %q (supported: %s)", b.Name, b.RunnersFrom, RunnersFromPolicies)
+	}
+	if len(b.Runners) > 0 {
+		errs.addf("block %q: runnersFrom cannot be combined with runners", b.Name)
+	}
+	if platformGatewayPolicySource(b) == "" {
+		errs.addf("block %q: runnersFrom %s requires a platform-gateway component with addPoliciesFrom",
+			b.Name, b.RunnersFrom)
+	}
 	return errs.err()
 }
 
