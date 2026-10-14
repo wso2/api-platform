@@ -19,7 +19,7 @@
 
 /*
  * Per-organization token issuers (multi-organization mode,
- * auth.idp.issuer_pattern).
+ * auth.idp.issuer_template).
  *
  * Some IDPs issue each organization's tokens under that organization's own issuer and
  * signing keys — WSO2 IS / Asgardeo sub-organizations sign as
@@ -27,7 +27,7 @@
  * configured issuer and JWKS URL can only ever verify one organization's tokens.
  *
  * The issuer a token names is read before its signature is checked, so nothing from it
- * may steer where keys come from beyond one inert identifier: the configured pattern is
+ * may steer where keys come from beyond one inert identifier: the configured template is
  * matched against the whole `iss`, only the {org} segment is taken from it, that segment
  * must be a plain identifier (no '/', '.' runs, '%' or other URL syntax), and it is
  * substituted into a configured JWKS URL template — so the scheme, host and path of the
@@ -50,18 +50,18 @@ function escapeRegExp(s) {
 let compiledFor = null;
 let compiled = null;
 
-function issuerRegExp(pattern) {
-    if (compiledFor !== pattern) {
-        const [before, after] = pattern.split('{org}');
+function issuerRegExp(template) {
+    if (compiledFor !== template) {
+        const [before, after] = template.split('{org}');
         compiled = new RegExp(`^${escapeRegExp(before)}([^/]+)${escapeRegExp(after)}$`);
-        compiledFor = pattern;
+        compiledFor = template;
     }
     return compiled;
 }
 
 /**
  * If `iss` is a per-organization issuer (it fits
- * auth.idp.issuer_pattern), returns the organization it names and the
+ * auth.idp.issuer_template), returns the organization it names and the
  * JWKS URL to verify it with; otherwise null. Callers only consult this in
  * multi-organization mode.
  *
@@ -70,13 +70,13 @@ function issuerRegExp(pattern) {
  */
 function matchOrgIssuer(iss) {
     const idp = config.auth?.idp || {};
-    const pattern = idp.issuerPattern;
-    if (!pattern || typeof iss !== 'string') return null;
-    const match = issuerRegExp(pattern).exec(iss);
+    const issuerTemplate = idp.issuerTemplate;
+    if (!issuerTemplate || typeof iss !== 'string') return null;
+    const match = issuerRegExp(issuerTemplate).exec(iss);
     if (!match || !ORG_SEGMENT.test(match[1])) return null;
     const org = match[1];
-    const template = idp.jwksUrlTemplate;
-    const jwksUrl = template ? template.replace('{org}', org) : idp.jwksUrl;
+    const jwksTemplate = idp.jwksUrlTemplate;
+    const jwksUrl = jwksTemplate ? jwksTemplate.replace('{org}', org) : idp.jwksUrl;
     if (!jwksUrl) return null;
     return { org, issuer: iss, jwksUrl };
 }

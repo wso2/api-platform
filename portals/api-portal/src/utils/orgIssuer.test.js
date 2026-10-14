@@ -44,7 +44,7 @@ function load(idp) {
 
 const IS = {
     jwksUrl: 'https://is.example.com/oauth2/jwks',
-    issuerPattern: 'https://is.example.com/o/{org}/oauth2/token',
+    issuerTemplate: 'https://is.example.com/o/{org}/oauth2/token',
     jwksUrlTemplate: 'https://is.example.com/o/{org}/oauth2/jwks',
 };
 
@@ -62,7 +62,7 @@ test('without a template the configured jwks_url is used', () => {
     assert.strictEqual(matchOrgIssuer('https://is.example.com/o/acme/oauth2/token').jwksUrl, IS.jwksUrl);
 });
 
-test('an issuer that does not fit the whole pattern is not per-organization', () => {
+test('an issuer that does not fit the whole template is not per-organization', () => {
     const { matchOrgIssuer } = load(IS);
     for (const iss of [
         'https://is.example.com/oauth2/token',                     // the root issuer
@@ -83,7 +83,7 @@ test('an {org} segment that is not a plain identifier is refused', () => {
     }
 });
 
-test('nothing matches when no pattern is configured', () => {
+test('nothing matches when no template is configured', () => {
     const { matchOrgIssuer } = load({ jwksUrl: IS.jwksUrl });
     assert.strictEqual(matchOrgIssuer('https://is.example.com/o/acme/oauth2/token'), null);
     assert.strictEqual(matchOrgIssuer(undefined), null);

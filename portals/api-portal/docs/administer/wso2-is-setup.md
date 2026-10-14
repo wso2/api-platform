@@ -177,7 +177,7 @@ application, whose client ID differs. To accept those, add each organization's
 per-organization issuer to the same `[api_portal.auth.idp]` table:
 
 ```toml
-issuer_pattern    = "https://localhost:9443/o/{org}/oauth2/token"
+issuer_template    = "https://localhost:9443/o/{org}/oauth2/token"
 jwks_url_template = "https://host.docker.internal:9443/o/{org}/oauth2/jwks"
 # {org} is the organization's org_id. Keying organizations on org_handle or org_name
 # instead? Then also set: issuer_org_claim = "org_id"

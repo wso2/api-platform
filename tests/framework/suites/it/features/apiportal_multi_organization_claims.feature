@@ -188,7 +188,7 @@ Feature: API Portal multi-organization organization claims
     Then the response status code should be 401
     And the API Portal "api-portal-multi-organization" should have 0 organizations with IDP reference "${CTX:forged}"
 
-  Scenario Outline: A token from an issuer that fits neither the configured issuer nor the pattern is rejected
+  Scenario Outline: A token from an issuer that fits neither the configured issuer nor the template is rejected
     Given I generate a unique resource name from "stray" and store it as "stray"
     And I mint an API Portal IDP token stored as "token" with claims:
       | sub        | s5             |

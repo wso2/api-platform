@@ -193,17 +193,17 @@ configured issuer.
 
 Some IDPs sign each organization's tokens under that organization's own issuer and
 keys — WSO2 IS and Asgardeo sub-organizations issue as `.../o/<orgId>/oauth2/token`.
-To accept bearer tokens issued that way, describe the pattern:
+To accept bearer tokens issued that way, describe the issuer and its key URL as templates:
 
 ```toml
 [api_portal.auth.idp]
-issuer_pattern    = "https://is.example.com/o/{org}/oauth2/token"
+issuer_template    = "https://is.example.com/o/{org}/oauth2/token"
 jwks_url_template = "https://is.example.com/o/{org}/oauth2/jwks"   # empty: use jwks_url for every org
 issuer_org_claim  = "org_id"   # the claim that must equal {org}; empty: claim_mappings.organization
 ```
 
 - A token whose `iss` is `auth.idp.issuer` is verified as before. One whose `iss` fits
-  `issuer_pattern` is verified against that organization's keys and its exact issuer;
+  `issuer_template` is verified against that organization's keys and its exact issuer;
   any other issuer is rejected.
 - The token is bound to the organization in its issuer: the claim named by
   `issuer_org_claim` must equal the `{org}` in the issuer, and the token must carry the
@@ -213,7 +213,7 @@ issuer_org_claim  = "org_id"   # the claim that must equal {org}; empty: claim_m
   `issuer_org_claim = "org_id"`.
 - Only that one path segment is taken from the token. It must be a plain identifier
   (letters, digits, `-`, `_`), and the key URL is always built from configuration.
-- `issuer_pattern` and `jwks_url_template` must each contain exactly one `{org}`; both
+- `issuer_template` and `jwks_url_template` must each contain exactly one `{org}`; both
   empty (the default) means a single issuer. `jwks_url_template` must use `https`, like
   `auth.idp.jwks_url`.
 - Per-organization issuers need JWKS. With `auth.idp.certificate` set, bearer tokens are

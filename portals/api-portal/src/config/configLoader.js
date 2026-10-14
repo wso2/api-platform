@@ -758,7 +758,7 @@ function validateMultiOrganizationConfig(cfg) {
 validateMultiOrganizationConfig(config);
 
 /**
- * auth.idp.issuer_pattern / jwks_url_template: each, when set, must
+ * auth.idp.issuer_template / jwks_url_template: each, when set, must
  * carry exactly one {org} placeholder — without it every organization would share one
  * key set (or one issuer), and with two the extracted organization would be ambiguous.
  * The template must be an absolute URL once {org} is filled in, since it is fetched.
@@ -766,7 +766,7 @@ validateMultiOrganizationConfig(config);
 function validateOrgIssuerConfig(cfg) {
     const idp = cfg.auth?.idp || {};
     const placeholders = (v) => (String(v).match(/\{org\}/g) || []).length;
-    for (const [key, value] of [['issuer_pattern', idp.issuerPattern], ['jwks_url_template', idp.jwksUrlTemplate]]) {
+    for (const [key, value] of [['issuer_template', idp.issuerTemplate], ['jwks_url_template', idp.jwksUrlTemplate]]) {
         if (!value) continue;
         if (placeholders(value) !== 1) {
             process.stderr.write(`[FATAL] auth.idp.${key} must contain exactly one {org} placeholder, got "${value}".\n`);
@@ -776,11 +776,11 @@ function validateOrgIssuerConfig(cfg) {
     if (idp.jwksUrlTemplate && cfg.auth?.mode === 'idp') {
         requireSecureJwksUrl(cfg, idp.jwksUrlTemplate.replace('{org}', 'org'), 'auth.idp.jwks_url_template');
     }
-    if (idp.jwksUrlTemplate && !idp.issuerPattern) {
-        process.stderr.write('[WARN] auth.idp.jwks_url_template is set without issuer_pattern — it is never used.\n');
+    if (idp.jwksUrlTemplate && !idp.issuerTemplate) {
+        process.stderr.write('[WARN] auth.idp.jwks_url_template is set without issuer_template — it is never used.\n');
     }
-    if (idp.issuerPattern && !cfg.multiOrganization?.enabled) {
-        process.stderr.write('[WARN] auth.idp.issuer_pattern has no effect unless multi_organization.enabled = true.\n');
+    if (idp.issuerTemplate && !cfg.multiOrganization?.enabled) {
+        process.stderr.write('[WARN] auth.idp.issuer_template has no effect unless multi_organization.enabled = true.\n');
     }
 }
 
