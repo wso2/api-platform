@@ -1049,7 +1049,7 @@ func TestAgentValidator_OperationNamesAreNotCheckedAgainstAnUnknownVersion(t *te
 // operation and does not inherit the operation policies — so a validator that
 // checked only one scope would let unknown policies through the others.
 func TestAgentValidator_ValidatesEveryPolicyScope(t *testing.T) {
-	validator := NewAgentValidator().WithPolicyValidator(NewPolicyValidator(agentPolicyDefinitions()))
+	validator := NewAgentValidator().WithPolicyValidator(NewPolicyValidator(agentPolicyDefinitions(), nil))
 
 	scopes := map[string]func(*api.AgentConfiguration, []api.Policy){
 		"spec.a2a.operationConfigs.policies[0]": func(c *api.AgentConfiguration, p []api.Policy) {
@@ -1117,7 +1117,7 @@ func hasFieldWithPrefix(errs []ValidationError, prefix string) bool {
 // integer param arrives as "100" and would fail its own schema. The coerced
 // value has to reach the caller, not just the validation pass.
 func TestAgentValidator_CoercesRenderedPolicyParams(t *testing.T) {
-	validator := NewAgentValidator().WithPolicyValidator(NewPolicyValidator(agentPolicyDefinitions()))
+	validator := NewAgentValidator().WithPolicyValidator(NewPolicyValidator(agentPolicyDefinitions(), nil))
 
 	cfg := validAgent()
 	cfg.Spec.A2a.OperationConfigs.Policies = &[]api.Policy{{

@@ -44,7 +44,7 @@ func TestNewAPIValidator(t *testing.T) {
 
 func TestAPIValidator_SetPolicyValidator(t *testing.T) {
 	v := NewAPIValidator()
-	pv := NewPolicyValidator(nil)
+	pv := NewPolicyValidator(nil, nil)
 
 	v.SetPolicyValidator(pv)
 
