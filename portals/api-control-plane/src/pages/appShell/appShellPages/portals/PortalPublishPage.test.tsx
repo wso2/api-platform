@@ -374,6 +374,37 @@ describe('PortalPublishPage', () => {
     expect(screen.queryByRole('button', { name: 'Select all' })).not.toBeInTheDocument();
   });
 
+  it('is back to no unsaved changes once the plan selection matches the saved draft again, whatever the order', async () => {
+    const bronze = aSubscriptionPlan({ displayName: 'Bronze', id: 'bronze' });
+    const gold = aSubscriptionPlan({ displayName: 'Gold', id: 'gold' });
+    const silver = aSubscriptionPlan({ displayName: 'Silver', id: 'silver' });
+    servePublicationState({
+      draft: aPublicationDraftDetails({ subscriptionPlanIds: ['bronze', 'gold'] }),
+      plans: [bronze, gold, silver],
+    });
+
+    const { user } = renderPage();
+
+    await screen.findByDisplayValue('Loan Management Service');
+    await user.click(screen.getByRole('tab', { name: 'Subscription Plans' }));
+    const silverCard = await screen.findByRole('checkbox', { name: /Silver/ });
+    const bronzeCard = screen.getByRole('checkbox', { name: /Bronze/ });
+    expect(screen.queryByText(/Unsaved changes/)).not.toBeInTheDocument();
+
+    await user.click(silverCard);
+    expect(screen.getByText('Unsaved changes')).toBeInTheDocument();
+    await user.click(silverCard);
+    expect(screen.queryByText(/Unsaved changes/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save Draft' })).toBeDisabled();
+
+    // Toggled off and on, a plan lands last in the list; it is still the saved selection.
+    await user.click(bronzeCard);
+    expect(screen.getByText('Unsaved changes')).toBeInTheDocument();
+    await user.click(bronzeCard);
+    expect(screen.queryByText(/Unsaved changes/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save Draft' })).toBeDisabled();
+  });
+
   it('offers an inactive plan only while it is selected, and blocks Save Draft and Publish until an inactive selected plan is cleared', async () => {
     const gold = aSubscriptionPlan({ displayName: 'Gold', id: 'gold', status: 'ACTIVE' });
     const retired = aSubscriptionPlan({ displayName: 'Retired', id: 'retired', status: 'INACTIVE' });

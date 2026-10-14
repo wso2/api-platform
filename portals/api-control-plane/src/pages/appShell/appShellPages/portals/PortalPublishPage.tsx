@@ -238,6 +238,12 @@ const rethrowUnreported = (error: unknown): void => {
   if (!isApiError(error)) throw error;
 };
 
+/** The selection is a set: the server ignores order, and a plan toggled off and on moves to the end. */
+const samePlans = (a: string[], b: string[]) => {
+  const members = new Set(a);
+  return members.size === new Set(b).size && b.every((id) => members.has(id));
+};
+
 /** The fields that show a validation message. */
 const FORM_FIELDS: DraftFormField[] = ['displayName', 'version', 'productionUrl', 'sandboxUrl'];
 
@@ -363,7 +369,11 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
   const showingPublished = view === 'published';
   const hasUnsavedChanges =
     definitionText !== saved.definitionText ||
-    (Object.keys(values) as (keyof DraftFormValues)[]).some((field) => values[field] !== saved.values[field]);
+    (Object.keys(values) as (keyof DraftFormValues)[]).some((field) =>
+      field === 'subscriptionPlanIds'
+        ? !samePlans(values.subscriptionPlanIds, saved.values.subscriptionPlanIds)
+        : values[field] !== saved.values[field],
+    );
   const errors = validateDraftFormValues(values);
   const errorFor = (field: DraftFormField) => (touched[field] ? errors[field] : undefined);
   const formInvalid = Object.keys(errors).length > 0;
