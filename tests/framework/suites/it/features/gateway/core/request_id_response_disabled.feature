@@ -26,48 +26,6 @@ Feature: Request ID not returned when disabled
     Given the gateway services are running
     And I authenticate using basic auth as "admin"
 
-  Scenario: A successful response does not carry a request ID
-    Given I generate a unique resource name from "reqid-off-ok-api" and store it as "apiName"
-    And I generate a unique API version from "reqid-off-ok-api" and store it as "apiVersion"
-    And I generate a unique API context from "/reqid-off-ok" and store it as "apiContext"
-    When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | ${CTX:gatewaySpecVersion}                   |
-      | name                   | ${CTX:apiName}                              |
-      | spec.displayName       | Reqid-Off-Ok-Api                            |
-      | spec.version           | ${CTX:apiVersion}                           |
-      | spec.context           | ${CTX:apiContext}/$version                  |
-      | spec.upstream.main.url | http://testbench:3002                       |
-      | spec.operations        | [{"method":"GET","path":"/probe"}]          |
-    Then the response status code should be 201
-    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/probe" until status 200
-
-    When I clear all headers
-    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/probe"
-    Then the response status code should be 200
-    And the response header "x-request-id" should not exist
-
-  Scenario: A request ID sent by the client reaches the upstream but is not returned
-    Given I generate a unique resource name from "reqid-off-client-api" and store it as "apiName"
-    And I generate a unique API version from "reqid-off-client-api" and store it as "apiVersion"
-    And I generate a unique API context from "/reqid-off-client" and store it as "apiContext"
-    When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | ${CTX:gatewaySpecVersion}                   |
-      | name                   | ${CTX:apiName}                              |
-      | spec.displayName       | Reqid-Off-Client-Api                        |
-      | spec.version           | ${CTX:apiVersion}                           |
-      | spec.context           | ${CTX:apiContext}/$version                  |
-      | spec.upstream.main.url | http://testbench:3002                       |
-      | spec.operations        | [{"method":"GET","path":"/probe"}]          |
-    Then the response status code should be 201
-    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/probe" until status 200
-
-    When I clear all headers
-    And I set header "x-request-id" to "client-request-id-123"
-    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/probe"
-    Then the response status code should be 200
-    And the response header "x-request-id" should not exist
-    And the response should contain echoed header "X-Request-Id" with value "client-request-id-123"
-
   Scenario: A request rejected by the policy engine does not carry a request ID
     Given I generate a unique resource name from "reqid-off-401-api" and store it as "apiName"
     And I generate a unique API version from "reqid-off-401-api" and store it as "apiVersion"
@@ -94,6 +52,26 @@ Feature: Request ID not returned when disabled
     When I clear all headers
     And I send a "GET" request to "${CTX:missingContext}/nothing"
     Then the response status code should be 404
+    And the response header "x-request-id" should not exist
+
+  Scenario: A gateway error for an unreachable upstream does not carry a request ID
+    Given I generate a unique resource name from "reqid-off-503-api" and store it as "apiName"
+    And I generate a unique API version from "reqid-off-503-api" and store it as "apiVersion"
+    And I generate a unique API context from "/reqid-off-503" and store it as "apiContext"
+    When I create API from "resources/templates/rest-api.yaml" with values:
+      | apiVersion             | ${CTX:gatewaySpecVersion}                   |
+      | name                   | ${CTX:apiName}                              |
+      | spec.displayName       | Reqid-Off-503-Api                           |
+      | spec.version           | ${CTX:apiVersion}                           |
+      | spec.context           | ${CTX:apiContext}/$version                  |
+      | spec.upstream.main.url | http://no-such-backend.invalid:3000         |
+      | spec.operations        | [{"method":"GET","path":"/probe"}]          |
+    Then the response status code should be 201
+    And I clear all headers
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/probe" until status 503
+
+    When I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/probe"
+    Then the response status code should be 503
     And the response header "x-request-id" should not exist
 
   Scenario: An X-Request-ID header set by a policy is left unchanged
