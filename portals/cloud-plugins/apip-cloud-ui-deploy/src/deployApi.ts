@@ -24,7 +24,7 @@ import { managedGatewaysPath, toEnvironments, type ManagedGatewayDTO, type Stage
  * The artifact kinds this page can deploy, named as the platform names them. A
  * handle is unique only WITHIN a kind, so every call says which one it means.
  */
-export type ArtifactKind = 'RestApi' | 'GraphQLApi' | 'Mcp' | 'LlmProxy' | 'LlmProvider';
+export type ArtifactKind = 'RestApi' | 'Mcp' | 'LlmProxy' | 'LlmProvider' | 'AgentProxy' | 'GraphQLApi';
 
 /**
  * Each kind's own path on the platform API. The pipeline routes are shared, but a
@@ -37,6 +37,7 @@ const NATIVE_PATH: Record<ArtifactKind, string> = {
   Mcp: 'mcp-proxies',
   LlmProxy: 'llm-proxies',
   LlmProvider: 'llm-providers',
+  AgentProxy: 'agent-proxies',
 };
 
 /**
@@ -51,6 +52,7 @@ export const GATEWAY_TYPES_FOR_KIND: Record<ArtifactKind, readonly string[]> = {
   Mcp: ['ai'],
   LlmProxy: ['ai'],
   LlmProvider: ['ai'],
+  AgentProxy: ['ai'],
 };
 
 /**
@@ -72,6 +74,7 @@ const KIND_TAKES_ENDPOINT: Record<ArtifactKind, boolean> = {
   Mcp: false,
   LlmProxy: false,
   LlmProvider: false,
+  AgentProxy: false,
 };
 
 export const takesEndpointUrl = (kind: ArtifactKind): boolean => KIND_TAKES_ENDPOINT[kind] ?? false;
