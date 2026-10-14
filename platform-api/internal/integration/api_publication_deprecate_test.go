@@ -47,7 +47,7 @@ type deprecateRecorder struct {
 	onDeprecate func()
 }
 
-func (d *deprecateRecorder) Deprecate(_ context.Context, _ *model.APIPortal, _ string, live *model.Publication) error {
+func (d *deprecateRecorder) Deprecate(_ context.Context, _ *model.APIPortal, _, _ string, live *model.Publication) error {
 	d.pushed = append(d.pushed, live)
 	if d.onDeprecate != nil {
 		d.onDeprecate()

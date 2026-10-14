@@ -27,8 +27,6 @@ import (
 	"fmt"
 	"math"
 	"net/textproto"
-	"os"
-	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -41,6 +39,7 @@ import (
 	"github.com/wso2/api-platform/tests/framework/core/util/httpx"
 	"github.com/wso2/api-platform/tests/framework/core/util/retry"
 	"github.com/wso2/api-platform/tests/framework/core/util/tcontext"
+	"github.com/wso2/api-platform/tests/framework/suites/it/steps/aiworkspacecli"
 	"github.com/wso2/api-platform/tests/framework/suites/it/steps/apiportal"
 	stepscommon "github.com/wso2/api-platform/tests/framework/suites/it/steps/common"
 	"github.com/wso2/api-platform/tests/framework/suites/it/steps/platformapi"
@@ -166,22 +165,11 @@ func platformAPITLSConfig(caPEM []byte) (*tls.Config, error) {
 	return &tls.Config{RootCAs: rootCAs, ServerName: "platform-api"}, nil
 }
 
-// gatewayListenerCertPath is the repo-relative self-signed certificate the gateway serves on
-// its default HTTPS listener.
-const gatewayListenerCertPath = "gateway/gateway-controller/listener-certs/default-listener.crt"
-
-// gatewayListenerCertificate reads the gateway's default HTTPS listener certificate from the
-// checkout the framework runs in.
+// gatewayListenerCertificate returns the certificate the gateway serves on its default HTTPS
+// listener. The framework generates it once per process and mounts the same one into every
+// gateway stack, so the steps and the gateway always agree on it.
 func gatewayListenerCertificate() ([]byte, error) {
-	root, ok := shared.RepoRootFromCallerFile()
-	if !ok {
-		return nil, fmt.Errorf("locating the repository root for the gateway listener certificate")
-	}
-	pem, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(gatewayListenerCertPath)))
-	if err != nil {
-		return nil, fmt.Errorf("reading the gateway listener certificate: %w", err)
-	}
-	return pem, nil
+	return shared.GatewayListenerTLS().CertPEM, nil
 }
 
 // gatewayListenerTLSConfig trusts only the gateway's listener certificate. The name is pinned
@@ -201,6 +189,7 @@ func (s *Suite) Register(sc *godog.ScenarioContext) {
 	platformgateway.Register(sc, s.Base, s.topo, s.funnel)
 	platformapi.Register(sc, s.topo, s.funnel, s.featureRoot)
 	apiportal.Register(sc, s.topo, s.funnel.Client())
+	aiworkspacecli.Register(sc, s.topo, s.funnel, s.featureRoot)
 }
 
 // Request-shaping state is stored in the scenario context.
@@ -229,6 +218,7 @@ func (b *Base) registerBaseSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^the response should be successful$`, b.responseSuccessful)
 	sc.Step(`^the response should be a client error$`, b.responseClientError)
 	sc.Step(`^the response should be (valid JSON|empty)$`, b.responseShapeIs)
+	sc.Step(`^the response should match the expected error response "([^"]*)"$`, b.responseMatchesExpectedError)
 	sc.Step(`^the response body should be empty$`, func(ctx context.Context) error { return b.responseShapeIs(ctx, "empty") })
 	sc.Step(`^the response body should be:$`, b.responseBodyIs)
 	sc.Step(`^the response body should contain "([^"]*)"$`, b.responseContains)

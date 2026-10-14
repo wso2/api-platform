@@ -30,8 +30,10 @@ go test ./suites/it -count=1 -timeout=30m -blocks=gateway-core/sqlite
 # The full matrix (all database engines), bounded concurrency:
 go test ./suites/it -count=1 -timeout=45m -blocks=gateway-core -block-parallel=3
 
-# Gateway-controller policy smoke (requires ../gateway-controllers/policies)
-go test ./suites/it -count=1 -timeout=25m -args -blocks=gateway-controller-policies
+# The ap CLI's ai-workspace commands against platform-api (needs the ap binary, see below):
+make ap-cli
+go test ./suites/it -count=1 -timeout=30m -blocks=ai-workspace-cli
+
 #   On Apple silicon, cap coverage runs at -block-parallel=2: the arm64 SQL Server
 #   substitute crashes probabilistically when three instrumented stacks cold-boot at once.
 
@@ -53,7 +55,9 @@ go test ./suites/cloud -count=1 -timeout=15m \
 ```
 
 Prerequisite images: `make testbench` and, for blocks that list `a2a-trip-planner`,
-`make a2a-trip-planner` here. Coverage runs build source images through the
+`make a2a-trip-planner` here. The `ai-workspace-cli` block also needs the host `ap` binary:
+`make ap-cli` builds it to `cli/src/build/ap` (override the location with `AP_CLI_BINARY`); a
+missing binary fails the block rather than skipping it. Coverage runs build source images through the
 framework and use the product `VERSION` files for their tags; they do not require a separate
 product coverage-image target. See
 [`docs/coverage-architecture.md`](docs/coverage-architecture.md) for what coverage collects
@@ -77,6 +81,9 @@ framework/
   core/cleanup/     owner-tagged resource registry
   core/util/        HTTP, retry, runner context, and unique-name helpers
   core/taxonomy/    capability-map lint and coverage-tree renderer
+  core/assets/      resolves repository-relative files: workspace first, embedded copy second
+  core/suiterun/    the exported suite entry (Main and Run) any project's test binary calls
+  snapshots/        empty in git (.gitkeep); the release generates the embedded gateway schemas, current config and pricing file
 suites/
   it/  cloud/  ui/
 ```
@@ -94,6 +101,64 @@ their step contracts.
 
 Each package's `doc.go` carries its charter and the invariants it exists to protect. Read those
 before changing one — most encode a failure mode that presents as a passing test.
+
+## Using the framework from another repository
+
+The framework is a Go module, `github.com/wso2/api-platform/tests/framework`, released with the
+tag `tests/framework/vX.Y.Z` by the `Tests Framework Release` workflow. A project that owns its
+features, step definitions and resource templates imports it and runs without an api-platform
+checkout:
+
+```go
+func TestMain(m *testing.M) { suiterun.Main(m, options()) }
+func TestIntegrationSuite(t *testing.T) { suiterun.Run(t, options()) }
+```
+
+`options()` returns a `suiterun.Options` carrying the project's step definitions and cleanup
+handlers. `Main` registers the suite flags (`-blocks`, `-policies`, `-gateway-version`, `-host`,
+`-coverage`, `-logs`), and `Run` loads the suite file beside the test, builds images, applies the
+selection and runs the runners.
+
+A repository that keeps each policy's tests next to the policy declares one block with
+`runnersFrom: policies` and `addPoliciesFrom: <policy tree>`. Each policy lists its runners in
+`<policy>/it/it.yaml`; `-policies=a,b` limits a run to the policies a pull request changed. A
+selection that leaves nothing to run, for example because every selected policy needs a newer
+gateway, skips the test instead of failing it. Both are checked by `cmd/standards`, which
+accepts several feature directories and, with `-approved-imports`, the project's own step
+packages.
+
+Feature files name templates as `resources/templates/<kind>.yaml`. The suite directory is
+searched first and the framework's canonical templates (the ones api-platform's own suite uses)
+are the fallback, so a project keeps only the templates that differ. `Options.CleanupDeleters`
+takes `platformgateway.RegisterDeleters`, which removes what a scenario created through the
+gateway controller's management API.
+
+Paths in a suite resolve against the *workspace root*, the nearest ancestor of the suite that
+holds `go.work` or `.git`, or `Options.WorkspaceRoot`. A policy tree named by `addPoliciesFrom`
+is relative to it. The files the framework itself reads from the repository — compose files,
+gateway version profiles, configuration overlays, the gateway database schemas, the current gateway configuration and the LLM
+pricing file — are embedded: `core/assets` uses the workspace copy when one exists, so a run
+inside the api-platform checkout reads live source, and the embedded copy otherwise. The
+gateway's key material (listener certificate and key, AES key) is generated per run, never
+stored. Only the gateway is embedded today; a block that needs another product's files still
+needs the api-platform checkout.
+
+The default testbench image follows the framework version in the importing binary: release
+`vX.Y.Z` runs against `ghcr.io/wso2/api-platform/testbench:X.Y.Z`. A framework built from a
+checkout, a `replace` or an untagged revision uses the locally built `:test` image, and
+`APIP_IT_IMAGE_TESTBENCH` overrides either.
+
+The embedded copies of files that live outside the module (the gateway database schemas, the
+current gateway configuration and the pricing file, listed in `assets.SnapshotSources`) are not
+committed: `snapshots/` holds only a `.gitkeep`. The release workflow generates them from the
+repository and commits them on the release tag only, so a released module carries them and `main`
+does not. Inside an api-platform checkout nothing needs generating, because the engine reads the
+repository files. To use the module without a release, through a `replace` or an untagged
+revision, generate the copies yourself:
+
+```bash
+make snapshots
+```
 
 ## The division of labour
 
@@ -142,11 +207,24 @@ go test -gateway-version 1.1.0 -host registry.example/test-gateway -blocks gatew
 ```
 
 `-host` overrides the `ghcr.io/wso2/api-platform` image repository prefix for the
-Platform Gateway controller and runtime only. It must be used together with
+Platform Gateway controller and runtime, and for the `gateway-builder` that builds a policy
+image on them, so the repository must publish all three. It must be used together with
 `-gateway-version`; the version remains the Gateway release used for configuration,
 management paths, and compatibility selection. For example, the command above pulls
-`registry.example/test-gateway/gateway-controller:1.1.0` and
-`registry.example/test-gateway/gateway-runtime:1.1.0`.
+`registry.example/test-gateway/gateway-controller:1.1.0`,
+`registry.example/test-gateway/gateway-runtime:1.1.0` and
+`registry.example/test-gateway/gateway-builder:1.1.0`.
+
+`-gateway-version latest` pulls the images that `gateway-latest-image.yml` publishes after each
+merge to `main` (`gateway-controller`, `gateway-runtime` and `gateway-builder`, tagged `latest`
+and `main-<sha>`), so a project that has no gateway source can test against the current gateway.
+It is not a release: it uses the current configuration and contract, runners are matched as they
+are for a source build (`gateway-version>=1.2.0` runs, `gateway-version<1.2.0` is skipped), and
+policy images built on it are re-pulled each run because the tag moves.
+
+```bash
+go test -gateway-version latest -blocks gateway-core/sqlite
+```
 
 Two flags are deliberately NOT named after their `go test` counterparts, because the go tool
 consumes any flag it recognises and forwards only the rest:
@@ -182,6 +260,58 @@ defaults:
 The selector uses the same strict Gateway-version syntax as runner tags. Incompatible matrix
 variants are reported as skipped before their topology boots. Explicitly selecting an incompatible
 variant, such as `-blocks gateway-core/sqlserver -gateway-version 1.1.0`, is a configuration error.
+
+### Policy error compatibility
+
+The `policy-compat` blocks prove that changing a policy in gateway-controllers leaves the error
+response a client receives unchanged — status, contract headers and body — on every supported
+Gateway version. Each scenario drives one policy into its main rejection and checks the response
+with `the response should match the expected error response "<id>"`, against
+`suites/it/resources/expected-error-responses/<id>.json`. One file serves every Gateway version.
+If a version's response genuinely differs, record that version's own file as
+`expected-error-responses/<gateway version>/<id>.json`; it wins for that version. The source build's
+version is the one in `gateway/VERSION`.
+
+The policies under test come from `../gateway-controllers/policies`, a gateway-controllers
+checkout next to this repository: in gateway-controllers' CI that is the pull request. The
+expected responses were recorded from the policies as they were before the change being checked.
+
+On a released Gateway, only the policies that release ships are built (`releasedPoliciesOnly`
+on the block's `platform-gateway`): those are the ones its users would upgrade. The rest of the
+checkout can need what the release's gateway-builder lacks — a newer Go, a newer shared module.
+
+| Runner | Gateway versions | Covers |
+|---|---|---|
+| `policy-errors-from-1-1-0` | 1.1.0 and later | policies every supported release ships |
+| `policy-errors-from-1-2-0` | 1.2.0 and later | policies, and a streamed rejection, first shipped in 1.2.0 |
+| `policy-errors-latest` | the current source build | unreleased policies, the Python guardrails, Agent APIs |
+| `policy-errors-semantic-cache` | 1.1.0 and later | semantic-cache, in its own block with Redis |
+
+Run them alone, for one Gateway version (`-gateway-version` omitted means the source build):
+
+```bash
+cd tests/framework
+B=policy-compat/sqlite,policy-compat-semantic-ai/sqlite
+go test ./suites/it -count=1 -timeout=60m -v -args -blocks=$B -gateway-version=1.2.0
+```
+
+`-blocks` selects only these blocks; the `/sqlite` suffix picks one variant of each block's
+database matrix (drop it to run every database). To run one runner, add
+`-run 'TestIntegrationSuite/policy-compat/sqlite/policy-errors-from-1-2-0'` before `-args`.
+
+**Recording.** Check out the policies from before the change as `../gateway-controllers`, then
+run with `IT_RECORD_EXPECTED_ERRORS=1` on the source build, which runs every scenario. Then run
+the other Gateway versions without it: a difference there is either a real incompatibility or a
+version that genuinely answers differently. For the latter, copy the shared file into
+`<gateway version>/` and record again on that version, which then writes the override. A missing
+expected response fails rather than recording itself. Responses are stored with UUIDs,
+timestamps, hex IDs and the runner's generated names masked, and JSON bodies are compared
+structurally.
+
+**An intended difference** is recorded rather than left failing: run with
+`IT_ACCEPT_ERROR_CHANGES=1` and each differing response is written beside its expected response
+as `<id>.accepted.json`. A response then passes if it matches either file, and the accepted file
+is reviewed like any other change.
 
 ### Docker environment
 

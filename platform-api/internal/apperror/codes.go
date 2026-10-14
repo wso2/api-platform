@@ -96,6 +96,12 @@ const (
 	CodeDeploymentGatewayMismatch = "DEPLOYMENT_GATEWAY_MISMATCH"
 	CodeDeploymentActive          = "DEPLOYMENT_ACTIVE"
 	CodeDeploymentInvalidStatus   = "DEPLOYMENT_INVALID_STATUS"
+	// CodeDeploymentKindUnsupportedByGateway: the target gateway's release does not
+	// have the artifact kind (e.g. an Agent proxy on an LTS gateway).
+	CodeDeploymentKindUnsupportedByGateway = "DEPLOYMENT_KIND_UNSUPPORTED_BY_GATEWAY"
+	// CodeDeploymentSecretResolutionFailed: a gateway that needs secrets inlined
+	// fetched a deployment and a secret it references could not be resolved.
+	CodeDeploymentSecretResolutionFailed = "DEPLOYMENT_SECRET_RESOLUTION_FAILED"
 )
 
 // REST API domain codes.
@@ -190,6 +196,11 @@ const (
 	CodeArtifactDeployed         = "ARTIFACT_DEPLOYED"
 )
 
+// API document domain codes.
+const (
+	CodeAPIDocumentNameExists = "API_DOCUMENT_NAME_EXISTS"
+)
+
 // Custom policy domain codes.
 const (
 	CodeCustomPolicyNotFound        = "CUSTOM_POLICY_NOT_FOUND"
@@ -210,6 +221,14 @@ const (
 	CodeWebSubAPIExists      = "WEBSUB_API_EXISTS"
 	CodeWebBrokerAPINotFound = "WEBBROKER_API_NOT_FOUND"
 	CodeWebBrokerAPIExists   = "WEBBROKER_API_EXISTS"
+)
+
+// GraphQL API domain codes (GraphQL is a core artifact kind, not a plugin).
+const (
+	CodeGraphQLAPINotFound                   = "GRAPHQL_API_NOT_FOUND"
+	CodeGraphQLAPIExists                     = "GRAPHQL_API_EXISTS"
+	CodeGraphQLAPISchemaResolveFailed        = "GRAPHQL_API_SCHEMA_RESOLVE_FAILED"
+	CodeGraphQLAPIDeploymentValidationFailed = "GRAPHQL_API_DEPLOYMENT_VALIDATION_FAILED"
 )
 
 // HMAC secret domain codes (WebSub subscriber callback signing secrets).

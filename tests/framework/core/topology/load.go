@@ -85,6 +85,10 @@ type ResolvedBlock struct {
 	Parallel   int
 	Components []ResolvedComponent
 	Runners    []Runner
+
+	// RunnersFrom is the source that supplies Runners at selection time, or empty when the
+	// block declares them itself.
+	RunnersFrom string
 }
 
 // ResolvedComponent is one component with its engine and wiring resolved.
@@ -101,6 +105,9 @@ type ResolvedComponent struct {
 
 	// AddPoliciesFrom is the local policy tree used to build a custom gateway image.
 	AddPoliciesFrom string
+
+	// ReleasedPoliciesOnly builds only the policies a released Gateway ships; see Component.
+	ReleasedPoliciesOnly bool
 
 	// DB is the resolved component engine, or empty for a stateless component.
 	DB components.DBType
@@ -496,6 +503,8 @@ func resolveBlock(
 		DB:       v.db,
 		Parallel: block.EffectiveParallel(),
 		Runners:  block.Runners,
+
+		RunnersFrom: block.RunnersFrom,
 	}
 
 	var errs errorList
@@ -521,6 +530,8 @@ func resolveBlock(
 			} else if filepath.IsAbs(source) {
 				errs.addf("block %q: addPoliciesFrom must be a relative path, got %q", name, source)
 			}
+		} else if c.ReleasedPoliciesOnly {
+			errs.addf("block %q: component %q sets releasedPoliciesOnly without addPoliciesFrom", name, c.Name)
 		}
 
 		version := c.Version
@@ -573,7 +584,8 @@ func resolveBlock(
 
 		_, dbVariant, _ := componentVariant(c, v, defaults)
 		rb.Components = append(rb.Components, ResolvedComponent{
-			Def: def, Version: version, BuildFromSource: version == "", AddPoliciesFrom: strings.TrimSpace(c.AddPoliciesFrom), DB: dbType,
+			Def: def, Version: version, BuildFromSource: version == "", AddPoliciesFrom: strings.TrimSpace(c.AddPoliciesFrom),
+			ReleasedPoliciesOnly: c.ReleasedPoliciesOnly, DB: dbType,
 			DBCompatibility: maps.Clone(defaults[c.Name].DBCompatibility),
 			Image:           dbVariant.Image, Overlay: c.Overlay, StagedFiles: maps.Clone(c.StagedFiles),
 			Replicas: replicas, Wiring: wiring,

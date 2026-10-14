@@ -560,6 +560,64 @@ func TestAgentProxyHandler_ListShapeAndProtocolFilter(t *testing.T) {
 	}
 }
 
+func TestAgentProxyHandler_ListProjectFilter(t *testing.T) {
+	h, db := setupAgentProxyEnv(t)
+
+	if _, err := db.Exec(`INSERT INTO projects (uuid, handle, display_name, description, organization_uuid, created_at, updated_at)
+		VALUES ('project-second', 'second-project', 'Second Project', '', ?, datetime('now'), datetime('now'))`,
+		agentProxyOrg); err != nil {
+		t.Fatalf("seed second project: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO projects (uuid, handle, display_name, description, organization_uuid, created_at, updated_at)
+		VALUES ('project-foreign', 'foreign-project', 'Foreign Project', '', ?, datetime('now'), datetime('now'))`,
+		agentProxyOtherOrg); err != nil {
+		t.Fatalf("seed foreign project: %v", err)
+	}
+
+	decodeAgentProxyJSON(t,
+		callAgentProxy(t, h, http.MethodPost, agentProxyBase, minimalAgentProxyBody("alpha-agent", "Alpha Agent")),
+		http.StatusCreated)
+	inSecond := strings.Replace(minimalAgentProxyBody("beta-agent", "Beta Agent"),
+		fmt.Sprintf("%q", agentProxyProject), `"second-project"`, 1)
+	decodeAgentProxyJSON(t, callAgentProxy(t, h, http.MethodPost, agentProxyBase, inSecond), http.StatusCreated)
+
+	for project, want := range map[string]string{agentProxyProject: "alpha-agent", "second-project": "beta-agent"} {
+		body := decodeAgentProxyJSON(t,
+			callAgentProxy(t, h, http.MethodGet, agentProxyBase+"?projectId="+project, ""), http.StatusOK)
+		if body["count"].(float64) != 1 || body["pagination"].(map[string]any)["total"].(float64) != 1 {
+			t.Fatalf("projectId=%s: page and total must both be 1: %#v", project, body)
+		}
+		item := body["list"].([]any)[0].(map[string]any)
+		if item["id"] != want || item["projectId"] != project {
+			t.Fatalf("projectId=%s returned %#v, want %s", project, item, want)
+		}
+	}
+
+	// Combined with the protocol filter.
+	combined := decodeAgentProxyJSON(t,
+		callAgentProxy(t, h, http.MethodGet, agentProxyBase+"?protocol=a2a&projectId=second-project", ""), http.StatusOK)
+	if combined["count"].(float64) != 1 {
+		t.Fatalf("combined filter = %#v, want one item", combined)
+	}
+
+	// Without the filter, every project in the organization is listed.
+	all := decodeAgentProxyJSON(t, callAgentProxy(t, h, http.MethodGet, agentProxyBase, ""), http.StatusOK)
+	if all["pagination"].(map[string]any)["total"].(float64) != 2 {
+		t.Fatalf("unfiltered total = %#v, want 2", all["pagination"])
+	}
+
+	assertAgentProxyError(t, callAgentProxy(t, h, http.MethodGet, agentProxyBase+"?projectId=", ""),
+		http.StatusBadRequest, "VALIDATION_FAILED")
+
+	// Another organization's project answers exactly as one that exists nowhere.
+	foreign := callAgentProxy(t, h, http.MethodGet, agentProxyBase+"?projectId=foreign-project", "")
+	missing := callAgentProxy(t, h, http.MethodGet, agentProxyBase+"?projectId=no-such-project", "")
+	if foreign.Code != http.StatusNotFound || foreign.Code != missing.Code || foreign.Body.String() != missing.Body.String() {
+		t.Fatalf("foreign (%d %s) and missing (%d %s) projects must answer identically with 404",
+			foreign.Code, foreign.Body.String(), missing.Code, missing.Body.String())
+	}
+}
+
 func TestAgentProxyHandler_DeleteThenGetIsNotFound(t *testing.T) {
 	h, _ := setupAgentProxyEnv(t)
 

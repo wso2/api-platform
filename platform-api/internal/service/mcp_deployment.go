@@ -248,6 +248,11 @@ func (s *MCPDeploymentService) deployMCPProxy(proxyUUID string, req *api.DeployR
 		return nil, apperror.GatewayNotFound.New()
 	}
 	gatewayID := gateway.ID
+	// A gateway whose release predates the artifact kind cannot run it;
+	// refuse before anything is stored or sent.
+	if err := gatewaytranslator.EnsureKindSupported(constants.MCPProxy, gateway.Version); err != nil {
+		return nil, err
+	}
 
 	mcpProxy, err := s.mcpRepo.GetByUUID(proxyUUID, orgId)
 	if err != nil {
@@ -323,10 +328,11 @@ func (s *MCPDeploymentService) deployMCPProxy(proxyUUID string, req *api.DeployR
 		s.slogger.Debug("Endpoint URL overridden", "endpointURL", *endpointURL, "deploymentID", deploymentID)
 	}
 	sourceDataVersion := gatewaytranslator.PlatformDataVersion(source.DataVersion)
-	targetDataVersion := gatewaytranslator.GatewayDataVersionForGateway(gateway.Version)
-	if err := gatewaytranslator.Translate(constants.MCPProxy, sourceDataVersion, targetDataVersion, d); err != nil {
+	translation, err := gatewaytranslator.Translate(constants.MCPProxy, sourceDataVersion, gateway.Version, d)
+	if err != nil {
 		return nil, fmt.Errorf("failed to transform MCP proxy deployment for gateway %s: %w", gateway.Version, err)
 	}
+	LogTranslationWarnings(s.slogger, translation, constants.MCPProxy, deploymentID, gatewayID, gateway.Version)
 	contentBytes, err := yaml.Marshal(d)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal MCP deployment YAML: %w", err)
@@ -573,6 +579,10 @@ func (s *MCPDeploymentService) restoreMCPProxyDeployment(proxyUUID string, deplo
 	}
 	if gateway == nil || gateway.OrganizationID != orgId {
 		return nil, apperror.GatewayNotFound.New()
+	}
+	// A restore sends the artifact to the gateway again, so the kind gate applies here too.
+	if err := gatewaytranslator.EnsureKindSupported(constants.MCPProxy, gateway.Version); err != nil {
+		return nil, err
 	}
 
 	// Transitional until the gateway acknowledges the artifact.

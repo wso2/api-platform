@@ -237,8 +237,8 @@ func modernRequestParams() map[string]any {
 // 2026-07-28 is the only modern one, so a negotiated modern version is always the revision
 // modernRequestParams states in _meta.
 var implementedSpecVersions = []string{
-	"2025-06-18",
-	"2025-11-25",
+	constants.MCPSpecVersion20250618,
+	constants.MCPSpecVersion20251125,
 	SpecVersion20260728,
 }
 

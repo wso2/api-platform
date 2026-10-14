@@ -70,6 +70,16 @@ func (m *mockCELEvaluator) EvaluateResponseBodyCondition(expression string, ctx 
 	return m.responseResult, nil
 }
 
+// EvaluateFaultCondition mirrors the response-body behaviour: the fault chain's activation is
+// deliberately identical, so a mock that treated the two differently would let a real
+// divergence pass.
+func (m *mockCELEvaluator) EvaluateFaultCondition(_ string, _ *policy.FaultContext) (bool, error) {
+	if m.responseErr != nil {
+		return false, m.responseErr
+	}
+	return m.responseResult, nil
+}
+
 func (m *mockCELEvaluator) EvaluateStreamingRequestCondition(expression string, ctx *policy.RequestStreamContext) (bool, error) {
 	if m.requestErr != nil {
 		return false, m.requestErr

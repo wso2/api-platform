@@ -272,6 +272,11 @@ func (s *LLMProviderDeploymentService) DeployLLMProvider(providerID string, req 
 		return nil, apperror.GatewayNotFound.New()
 	}
 	gatewayID := gateway.ID
+	// A gateway whose release predates the artifact kind cannot run it;
+	// refuse before anything is stored or sent.
+	if err := gatewaytranslator.EnsureKindSupported(constants.LLMProvider, gateway.Version); err != nil {
+		return nil, err
+	}
 
 	// Get LLM provider
 	provider, err := s.providerRepo.GetByID(providerID, orgUUID)
@@ -356,13 +361,8 @@ func (s *LLMProviderDeploymentService) DeployLLMProvider(providerID string, req 
 	}
 
 	sourceDataVersion := gatewaytranslator.PlatformDataVersion(source.DataVersion)
-	targetDataVersion := gatewaytranslator.GatewayDataVersionForGateway(gateway.Version)
-	if err := gatewaytranslator.Translate(
-		constants.LLMProvider,
-		sourceDataVersion,
-		targetDataVersion,
-		providerDeployment,
-	); err != nil {
+	translation, err := gatewaytranslator.Translate(constants.LLMProvider, sourceDataVersion, gateway.Version, providerDeployment)
+	if err != nil {
 		return nil, fmt.Errorf("failed to transform LLM provider deployment for gateway %s: %w", gateway.Version, err)
 	}
 	contentBytes, err := yaml.Marshal(providerDeployment)
@@ -375,6 +375,7 @@ func (s *LLMProviderDeploymentService) DeployLLMProvider(providerID string, req 
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate deployment ID: %w", err)
 	}
+	LogTranslationWarnings(s.slogger, translation, constants.LLMProvider, deploymentID, gatewayID, gateway.Version)
 	deployed := model.DeploymentStatusDeployed
 
 	deployment := &model.Deployment{
@@ -508,6 +509,10 @@ func (s *LLMProviderDeploymentService) RestoreLLMProviderDeployment(providerID, 
 	}
 	if gateway == nil || gateway.OrganizationID != orgUUID {
 		return nil, apperror.GatewayNotFound.New()
+	}
+	// A restore sends the artifact to the gateway again, so the kind gate applies here too.
+	if err := gatewaytranslator.EnsureKindSupported(constants.LLMProvider, gateway.Version); err != nil {
+		return nil, err
 	}
 
 	// Transitional until the gateway acknowledges the artifact.
@@ -1685,6 +1690,11 @@ func (s *LLMProxyDeploymentService) DeployLLMProxy(proxyID string, req *api.Depl
 		return nil, apperror.GatewayNotFound.New()
 	}
 	gatewayID := gateway.ID
+	// A gateway whose release predates the artifact kind cannot run it;
+	// refuse before anything is stored or sent.
+	if err := gatewaytranslator.EnsureKindSupported(constants.LLMProxy, gateway.Version); err != nil {
+		return nil, err
+	}
 
 	// Get LLM proxy
 	proxy, err := s.proxyRepo.GetByID(proxyID, orgUUID)
@@ -1737,13 +1747,8 @@ func (s *LLMProxyDeploymentService) DeployLLMProxy(proxyID string, req *api.Depl
 		return nil, fmt.Errorf("artifact %s did not render as an LLM proxy definition", proxy.UUID)
 	}
 	sourceDataVersion := gatewaytranslator.PlatformDataVersion(source.DataVersion)
-	targetDataVersion := gatewaytranslator.GatewayDataVersionForGateway(gateway.Version)
-	if err := gatewaytranslator.Translate(
-		constants.LLMProxy,
-		sourceDataVersion,
-		targetDataVersion,
-		proxyDeployment,
-	); err != nil {
+	translation, err := gatewaytranslator.Translate(constants.LLMProxy, sourceDataVersion, gateway.Version, proxyDeployment)
+	if err != nil {
 		return nil, fmt.Errorf("failed to transform LLM proxy deployment for gateway %s: %w", gateway.Version, err)
 	}
 	contentBytes, err := yaml.Marshal(proxyDeployment)
@@ -1756,6 +1761,7 @@ func (s *LLMProxyDeploymentService) DeployLLMProxy(proxyID string, req *api.Depl
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate deployment ID: %w", err)
 	}
+	LogTranslationWarnings(s.slogger, translation, constants.LLMProxy, deploymentID, gatewayID, gateway.Version)
 	deployed := model.DeploymentStatusDeployed
 
 	deployment := &model.Deployment{
@@ -1880,6 +1886,10 @@ func (s *LLMProxyDeploymentService) RestoreLLMProxyDeployment(proxyID, deploymen
 	}
 	if gateway == nil || gateway.OrganizationID != orgUUID {
 		return nil, apperror.GatewayNotFound.New()
+	}
+	// A restore sends the artifact to the gateway again, so the kind gate applies here too.
+	if err := gatewaytranslator.EnsureKindSupported(constants.LLMProxy, gateway.Version); err != nil {
+		return nil, err
 	}
 
 	// Transitional until the gateway acknowledges the artifact.
@@ -2145,11 +2155,17 @@ func (s *LLMProxyDeploymentService) GetLLMProxyDeployment(proxyID, deploymentID,
 	return namingBuild(resp, err, deployment.BuildID)
 }
 
-func generateLLMProxyDeploymentYAML(proxy *model.LLMProxy) (dto.LLMProxyDeploymentYAML, error) {
+func generateLLMProxyDeploymentYAML(
+	proxy *model.LLMProxy,
+	primaryTemplate string,
+) (dto.LLMProxyDeploymentYAML, error) {
 	if proxy == nil {
 		return dto.LLMProxyDeploymentYAML{}, apperror.Internal.New().WithLogMessage("generateLLMProxyDeploymentYAML: proxy is nil")
 	}
-	if proxy.Configuration.Provider == "" {
+	// Normalise once, here: everything below emits from this list, so a proxy
+	// stored in either shape produces the same artifact.
+	attachments, err := model.NormaliseLLMProxyAttachments(proxy.Configuration)
+	if err != nil {
 		return dto.LLMProxyDeploymentYAML{}, apperror.LLMProxyDeploymentValidationFailed.New("The LLM proxy must reference a provider.")
 	}
 
@@ -2253,45 +2269,60 @@ func generateLLMProxyDeploymentYAML(proxy *model.LLMProxy) (dto.LLMProxyDeployme
 			Name: proxy.ID,
 		},
 		Spec: dto.LLMProxyDeploymentSpec{
-			DisplayName: proxy.Name,
-			Version:     proxy.Version,
-			Context:     contextValue,
-			VHost:       vhostValue,
-			Provider: dto.LLMProxyDeploymentProvider{
-				ID: proxy.Configuration.Provider,
-			},
+			DisplayName:       proxy.Name,
+			Version:           proxy.Version,
+			Context:           contextValue,
+			VHost:             vhostValue,
+			InboundTemplate:   proxy.Configuration.InboundTemplate,
 			GlobalPolicies:    proxyGlobalPolicies,
 			OperationPolicies: proxyOperationPolicies,
 			Policies:          proxyPolicies,
 		},
 	}
 
-	// Auth type. "none"/"other" carry only the type (no credentials);
-	// "api-key" carries the header and value. Absent auth => "none".
-	proxyDeployment.Spec.Provider.Auth = mapModelAuthToAPI(proxy.Configuration.UpstreamAuth)
-
-	// Carry additional providers (multi-provider proxies) into the deployment
-	// artifact so the gateway-controller can expose each as a selectable upstream.
-	if len(proxy.Configuration.AdditionalProviders) > 0 {
-		additional := make([]dto.LLMProxyDeploymentAdditionalProvider, 0, len(proxy.Configuration.AdditionalProviders))
-		for _, ap := range proxy.Configuration.AdditionalProviders {
-			entry := dto.LLMProxyDeploymentAdditionalProvider{
-				ID: ap.ID,
-				As: ap.As,
+	// Exactly one provider shape reaches the gateway: it rejects an artifact
+	// carrying both. Prefer the legacy pair wherever it says the same thing, so
+	// a released gateway that predates the canonical list keeps serving the
+	// proxy; a gateway that understands both normalises the pair back to these
+	// same attachments, so nothing is lost by preferring it.
+	if legacyPrimary, legacyAdditional, ok := legacyProvidersFor(
+		attachments, proxy.Configuration.InboundTemplate, primaryTemplate,
+	); ok {
+		proxyDeployment.Spec.Provider = legacyPrimary
+		proxyDeployment.Spec.AdditionalProviders = legacyAdditional
+		// The pair carries no inbound-interface slot, and the interface reached
+		// here only by restating the primary's own format — which is what its
+		// absence already means. Emitting it would put a field in the artifact
+		// that a gateway predating it silently drops, for no change in
+		// behaviour on one that does not.
+		proxyDeployment.Spec.InboundTemplate = ""
+	} else {
+		// Everything the pair cannot describe: each attachment carries its own
+		// credential, its own upstream name and its own transformer, so every
+		// provider a proxy routes to can authenticate — the gap this feature
+		// closes, and what the canonical list exists for.
+		providers := make([]dto.LLMProxyDeploymentProviderEntry, 0, len(attachments))
+		for _, attachment := range attachments {
+			entry := dto.LLMProxyDeploymentProviderEntry{
+				ID:          attachment.ID,
+				Alias:       attachment.Alias,
+				IsPrimary:   attachment.IsPrimary,
+				Transformer: mapTransformerModelToAPI(attachment.Transformer),
 			}
-			if ap.Transformer != nil {
-				entry.Transformer = &api.LLMProxyTransformer{
-					Type:    ap.Transformer.Type,
-					Version: ap.Transformer.Version,
-				}
-				if len(ap.Transformer.Params) > 0 {
-					params := ap.Transformer.Params
-					entry.Transformer.Params = &params
-				}
+			if attachment.IsPrimary {
+				// Auth type. "none"/"other" carry only the type (no credentials);
+				// "api-key" carries the header and value. Absent auth on the primary
+				// => "none", exactly as before.
+				entry.Auth = mapModelAuthToAPI(attachment.Auth)
+			} else if attachment.Auth != nil {
+				// An additional provider without a credential stays credential-less
+				// and is emitted without an auth block, rather than being
+				// defaulted to "none" the way the primary is.
+				entry.Auth = mapModelAuthToAPI(attachment.Auth)
 			}
-			additional = append(additional, entry)
+			providers = append(providers, entry)
 		}
-		proxyDeployment.Spec.AdditionalProviders = additional
+		proxyDeployment.Spec.Providers = providers
 	}
 
 	// Promote any legacy policies assembled by the generator into operationPolicies.
@@ -2313,6 +2344,89 @@ func generateLLMProxyDeploymentYAML(proxy *model.LLMProxy) (dto.LLMProxyDeployme
 	proxyDeployment.Spec.Policies = nil
 
 	return proxyDeployment, nil
+}
+
+// legacyProvidersFor expresses a proxy's providers as the `provider` /
+// `additionalProviders` pair a gateway released before the canonical list
+// reads, reporting whether the pair can say the same thing.
+//
+// That older pair is narrower than what the control plane stores, but in fewer
+// places than it first appears. Its primary carries a credential and has no
+// room for an upstream name or a transformer. Its additional providers carry
+// all three — an alias, a transformer and a credential of their own, which the
+// gateway has read since multi-provider routing landed there. It has no slot
+// for an inbound interface, so it can hold one only by saying nothing: an
+// interface restating the primary's own template is what its absence already
+// means, and that is expressible; one that differs is not.
+//
+// Where something genuinely beyond the pair is in play, the pair would describe
+// a different proxy than the one stored — quietly, since the gateway would
+// accept it — so report that it cannot, and let the caller emit the canonical
+// list instead. A gateway too old to read that list refuses the deployment
+// itself, which is why the failure is loud without anyone checking a version.
+func legacyProvidersFor(
+	attachments []model.LLMProxyAttachment,
+	inboundTemplate string,
+	primaryTemplate string,
+) (*dto.LLMProxyDeploymentProvider, []dto.LLMProxyDeploymentAdditionalProvider, bool) {
+	// An inbound interface that merely restates the primary provider's own
+	// format is exactly what omitting the field means: the gateway derives that
+	// same value from the primary. So the pair says it, and the artifact leaves
+	// it out. Only an interface that *differs* puts the proxy beyond the pair,
+	// which carries no slot for one. An unresolved primaryTemplate is empty,
+	// which makes any declared interface count as differing — the artifact then
+	// keeps it rather than risking a field a released gateway silently drops.
+	if declared := strings.TrimSpace(inboundTemplate); declared != "" && declared != primaryTemplate {
+		return nil, nil, false
+	}
+
+	primaryIndex := -1
+	for i, attachment := range attachments {
+		if !attachment.IsPrimary {
+			continue
+		}
+		if primaryIndex >= 0 {
+			// Two primaries is not a proxy either shape describes; leave it to
+			// the canonical path rather than silently picking one.
+			return nil, nil, false
+		}
+		primaryIndex = i
+	}
+	if primaryIndex < 0 {
+		return nil, nil, false
+	}
+
+	primary := attachments[primaryIndex]
+	if primary.Alias != "" || primary.Transformer != nil {
+		return nil, nil, false
+	}
+
+	additional := make([]dto.LLMProxyDeploymentAdditionalProvider, 0, len(attachments))
+	for i, attachment := range attachments {
+		if i == primaryIndex {
+			continue
+		}
+		entry := dto.LLMProxyDeploymentAdditionalProvider{
+			ID:          attachment.ID,
+			As:          attachment.Alias,
+			Transformer: mapTransformerModelToAPI(attachment.Transformer),
+		}
+		if attachment.Auth != nil {
+			// The pair has carried a credential per additional provider since
+			// multi-provider routing landed in the gateway, and a released
+			// gateway builds an upstream auth policy from it. An attachment
+			// with no credential stays credential-less rather than being
+			// defaulted to "none", matching the canonical branch.
+			entry.Auth = mapModelAuthToAPI(attachment.Auth)
+		}
+		additional = append(additional, entry)
+	}
+
+	return &dto.LLMProxyDeploymentProvider{
+		ID: primary.ID,
+		// Absent auth on the primary means "none", exactly as before.
+		Auth: mapModelAuthToAPI(primary.Auth),
+	}, additional, true
 }
 
 // mapModelAuthToAPI converts a stored model.UpstreamAuth into the api.UpstreamAuth

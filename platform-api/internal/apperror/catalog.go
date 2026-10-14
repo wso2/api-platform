@@ -138,6 +138,14 @@ var (
 	DeploymentGatewayMismatch = def(CodeDeploymentGatewayMismatch, http.StatusBadRequest, "Deployment is bound to a different gateway.")
 	DeploymentActive          = def(CodeDeploymentActive, http.StatusConflict, "Cannot delete an active deployment - undeploy it first.")
 	DeploymentInvalidStatus   = def(CodeDeploymentInvalidStatus, http.StatusBadRequest, "The specified deployment status filter is invalid.")
+	// Args: the control-plane kind name, what the gateway would need (gwversion.Requirement).
+	DeploymentKindUnsupportedByGateway = def(CodeDeploymentKindUnsupportedByGateway, http.StatusBadRequest,
+		"This gateway does not support %s artifacts; %s.")
+	// Raised by the gateway-facing fetch of a deployment whose {{ secret }}
+	// placeholder platform-api had to inline and could not (missing, deprecated
+	// or undecryptable secret). The message names no handle.
+	DeploymentSecretResolutionFailed = def(CodeDeploymentSecretResolutionFailed, http.StatusUnprocessableEntity,
+		"A secret referenced by this deployment could not be resolved for the gateway.")
 )
 
 // MCP proxy entries. MCPProxyUpstreamUnauthorized covers an upstream MCP
@@ -243,6 +251,21 @@ var (
 	WebBrokerAPIExists   = def(CodeWebBrokerAPIExists, http.StatusConflict, "A WebBroker API with this ID already exists.")
 )
 
+// GraphQL API entries (GraphQL is a core artifact kind, not a plugin).
+// GraphQLAPISchemaResolveFailed is the generic 422 for both "introspection
+// against upstream.main.url failed" and
+// "the supplied SDL could not be parsed" — the message never echoes the resolved
+// IP, the parser's internal error text, or which specific reason applied
+// (error-handling.md / ssrf-prevention.md).
+var (
+	GraphQLAPINotFound = def(CodeGraphQLAPINotFound, http.StatusNotFound, "The specified GraphQL API could not be found.")
+	// GraphQLAPIExists covers two distinct conflicts (handle, name+version) —
+	// the call site supplies which one, as for RESTAPIExists.
+	GraphQLAPIExists                     = def(CodeGraphQLAPIExists, http.StatusConflict, "%s")
+	GraphQLAPISchemaResolveFailed        = def(CodeGraphQLAPISchemaResolveFailed, http.StatusUnprocessableEntity, "The provided endpoint could not be used to derive a GraphQL schema, or the supplied SDL could not be parsed.")
+	GraphQLAPIDeploymentValidationFailed = def(CodeGraphQLAPIDeploymentValidationFailed, http.StatusBadRequest, "%s")
+)
+
 // HMAC secret entries. The 32-character minimum is a fixed, publicly
 // documented rule, so stating it in the client message reveals nothing the
 // API contract does not already.
@@ -288,4 +311,10 @@ var (
 	// the next publish.
 	APIPublicationDraftChanged = def(CodeAPIPublicationDraftChanged, http.StatusConflict,
 		"The draft changed while publishing. Review it and publish again.")
+)
+
+// API document entries.
+var (
+	APIDocumentNameExists = def(CodeAPIDocumentNameExists, http.StatusConflict,
+		"A document with this name already exists for this API.")
 )

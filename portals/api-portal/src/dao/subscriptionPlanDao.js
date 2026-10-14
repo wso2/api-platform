@@ -35,7 +35,9 @@ const buildSubscriptionPlanRow = (orgId, plan) => {
     handle: plan.handle,
     display_name: plan.displayName,
     description: plan.description,
-    ref_id: plan.refId ?? null,
+    // Platform API resolves subscription_plan.ref_id in webhook events as the
+    // plan handle, so a new plan defaults to it; updates keep the stored value.
+    ref_id: plan.refId ?? plan.handle ?? null,
   };
 };
 
@@ -174,9 +176,11 @@ const update = async (orgId, planId, plan, updatedBy, t) => {
   // when the caller explicitly supplied it.
   const setCols = ['handle = ?', 'display_name = ?', 'description = ?'];
   const params = [row.handle, row.display_name, row.description];
-  if (Object.prototype.hasOwnProperty.call(plan, 'refId')) {
+  // undefined counts as absent: the YAML mapper sets refId from spec.refId even
+  // when the document has none.
+  if (plan.refId !== undefined) {
     setCols.push('ref_id = ?');
-    params.push(row.ref_id);
+    params.push(plan.refId ?? null);
   }
   setCols.push('updated_by = ?', 'updated_at = ?');
   params.push(updatedBy, updatedAt);
@@ -244,7 +248,7 @@ const listByApi = async (apiId, t) => {
 const list = async (orgId, t) => {
   const exec = t || db;
   const plans = await exec.query(
-    `SELECT * FROM ${SUBSCRIPTION_PLANS_TABLE} WHERE org_uuid = ? AND portal_id = ?`,
+    `SELECT * FROM ${SUBSCRIPTION_PLANS_TABLE} WHERE org_uuid = ? AND portal_id = ? ORDER BY handle`,
     [orgId, getPortalId()]
   );
   await attachLimits(plans, t);

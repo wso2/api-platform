@@ -26,9 +26,6 @@ export const MAX_GATEWAY_HANDLE_LENGTH = 40;
 /** The longest name any environment can accommodate (a one-character one). */
 const MAX_GATEWAY_NAME_LENGTH = MAX_GATEWAY_HANDLE_LENGTH - 2;
 
-/** Reserved for the gateway provisioned automatically with the environment. */
-const RESERVED_GATEWAY_NAME = 'default';
-
 /** How many characters a gateway handle may use in the given environment. */
 export function gatewayNameBudget(environment: string): number {
   return environment
@@ -61,10 +58,13 @@ export function gatewayHandleFromName(name: string): string {
  *
  * The name is a display name: it may be written however the user likes, and the
  * handle is derived from it, so casing and spaces are not errors. What it cannot
- * be is a name no handle can be built from, the reserved bootstrap name, or one
- * whose handle does not fit the handle column alongside the environment. An
- * empty name is left to the field's own `required` handling rather than reported
- * here.
+ * be is a name no handle can be built from, or one whose handle does not fit the
+ * handle column alongside the environment. An empty name is left to the field's
+ * own `required` handling rather than reported here.
+ *
+ * A name already in use is not rejected here. The backend settles a collision by
+ * suffixing the handle, and that applies to the name an environment gives its own
+ * gateway too, so it stays available once that gateway is gone.
  */
 export function validateGatewayName(name: string, environment: string): string | undefined {
   if (!name.trim()) return undefined;
@@ -72,9 +72,6 @@ export function validateGatewayName(name: string, environment: string): string |
   const handle = gatewayHandleFromName(name);
   if (!handle) {
     return 'Include at least one letter or number.';
-  }
-  if (handle === RESERVED_GATEWAY_NAME) {
-    return `"${RESERVED_GATEWAY_NAME}" is reserved for the gateway created with the environment.`;
   }
 
   const budget = gatewayNameBudget(environment);

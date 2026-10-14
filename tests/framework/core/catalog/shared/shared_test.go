@@ -19,6 +19,9 @@
 package shared
 
 import (
+	"crypto/tls"
+	"crypto/x509"
+	"encoding/pem"
 	"os"
 	"path/filepath"
 	"strings"
@@ -93,4 +96,36 @@ func TestGatewayRunImagesRemainStableInCoverageMode(t *testing.T) {
 	t.Setenv(EnvCoverageMode, "true")
 	require.Equal(t, GatewayControllerImage(), GatewayControllerRunImage())
 	require.Equal(t, GatewayRuntimeImage(), GatewayRuntimeRunImage())
+}
+
+// The steps trust the listener certificate and the gateway serves it, so the two must be the
+// same certificate and it must be valid for the names the suite reaches the gateway by.
+func TestGatewayListenerTLSIsOneCertificateValidForLocalhost(t *testing.T) {
+	pair := GatewayListenerTLS()
+
+	require.Same(t, pair, GatewayListenerTLS())
+	_, err := tls.X509KeyPair(pair.CertPEM, pair.PrivateKeyPEM)
+	require.NoError(t, err, "the certificate and key must belong together")
+
+	block, _ := pem.Decode(pair.CertPEM)
+	require.NotNil(t, block)
+	certificate, err := x509.ParseCertificate(block.Bytes)
+	require.NoError(t, err)
+	roots := x509.NewCertPool()
+	roots.AddCert(certificate)
+	for _, name := range []string{"localhost", "api.localhost"} {
+		_, err := certificate.Verify(x509.VerifyOptions{DNSName: name, Roots: roots})
+		require.NoError(t, err, name)
+	}
+	_, err = certificate.Verify(x509.VerifyOptions{DNSName: "example.com", Roots: roots})
+	require.Error(t, err)
+}
+
+func TestGatewayEncryptionKeyIsA32ByteKeyAndEachCallGetsACopy(t *testing.T) {
+	key := GatewayEncryptionKey()
+
+	require.Len(t, key, 32)
+	require.NotEqual(t, make([]byte, 32), key)
+	key[0] ^= 0xff
+	require.NotEqual(t, key, GatewayEncryptionKey(), "mutating a returned key must not change the next one")
 }

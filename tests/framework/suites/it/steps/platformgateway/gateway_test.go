@@ -22,6 +22,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"iter"
 	"net"
@@ -31,6 +32,8 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 
@@ -129,6 +132,54 @@ func TestManagementBasePathForVersion(t *testing.T) {
 			require.Equal(t, tt.want, ManagementBasePathForVersion(tt.version))
 		})
 	}
+}
+
+// Releases before 1.2.0 lose a freshly created resource's route when a deletion's snapshot
+// rebuild finishes after it, so the framework waits there until the controller has applied the
+// deletion, and nowhere else.
+func TestAwaitDeletionAppliedPollsTheConfigDumpOnlyForReleasesWithTheRace(t *testing.T) {
+	const handle = "compat-api-abc123"
+	var mu sync.Mutex
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		requests++
+		n := requests
+		mu.Unlock()
+		require.Equal(t, "/api/admin/v0.9/config_dump", r.URL.Path)
+		require.Equal(t, "Basic token", r.Header.Get("Authorization"))
+		if n < 3 {
+			_, _ = io.WriteString(w, `{"apis":[{"configuration":{"metadata":{"name":"`+handle+`"}}}]}`)
+			return
+		}
+		_, _ = io.WriteString(w, `{"apis":[{"configuration":{"metadata":{"name":"`+handle+`-other"}}}]}`)
+	}))
+	defer server.Close()
+	client := httpx.NewClient(httpx.Options{})
+
+	require.NoError(t, AwaitDeletionApplied(t.Context(), client, server.URL, "1.1.0", "Basic token", handle))
+	require.Equal(t, 3, requests, "polls until the handle is gone, ignoring a longer handle that contains it")
+
+	for _, version := range []string{"1.2.0", "2026.09.24", ""} {
+		require.NoError(t, AwaitDeletionApplied(t.Context(), client, server.URL, version, "Basic token", handle))
+	}
+	require.Equal(t, 3, requests, "releases without the race are not polled")
+
+	require.Error(t, AwaitDeletionApplied(t.Context(), nil, server.URL, "1.1.0", "", handle))
+	require.Error(t, AwaitDeletionApplied(t.Context(), client, "", "1.1.0", "", handle))
+	require.Error(t, AwaitDeletionApplied(t.Context(), client, server.URL, "1.1.0", "", " "))
+}
+
+func TestAwaitDeletionAppliedFailsWhenTheDumpKeepsTheHandle(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, `{"apis":[{"configuration":{"metadata":{"name":"stuck"}}}]}`)
+	}))
+	defer server.Close()
+	ctx, cancel := context.WithTimeout(t.Context(), 300*time.Millisecond)
+	defer cancel()
+
+	err := AwaitDeletionApplied(ctx, httpx.NewClient(httpx.Options{}), server.URL, "1.1.0", "", "stuck")
+	require.Error(t, err)
 }
 
 func TestConfigDumpContainsPolicy(t *testing.T) {
@@ -630,9 +681,9 @@ func TestAnalyticsMetadataResolvesNestedPaths(t *testing.T) {
 func TestGatewayTemplatePathAndLiteralHelpers(t *testing.T) {
 	root := t.TempDir()
 	gateway := &Gateway{featureRoot: root}
-	path, err := gateway.templatePath("resources/templates/rest-api.yaml")
+	path, err := gateway.templatePath("resources/templates/custom.yaml")
 	require.NoError(t, err)
-	require.Equal(t, filepath.Join(root, "resources/templates/rest-api.yaml"), path)
+	require.Equal(t, filepath.Join(root, "resources/templates/custom.yaml"), path)
 	for _, name := range []string{"", "/tmp/api.yaml", "../api.yaml", "resources/templates/../../../api.yaml"} {
 		_, err = gateway.templatePath(name)
 		require.Error(t, err)
@@ -672,6 +723,14 @@ func TestAssertAPICreationSucceeded(t *testing.T) {
 		{
 			name:     "1.1 resource status",
 			version:  "1.1.0",
+			response: &httpx.Response{StatusCode: http.StatusCreated, Body: []byte(`{"status":{"id":"api-1","state":"deployed","createdAt":"now","updatedAt":"now"}}`)},
+		},
+		{
+			// A current source build's resolved version comes from gateway/VERSION,
+			// which is not a "1.x.y" release SemVer (e.g. a date-based version).
+			// It must still be treated as newer than 1.1, not legacy.
+			name:     "current source build with a non-release version",
+			version:  "2026.09.24",
 			response: &httpx.Response{StatusCode: http.StatusCreated, Body: []byte(`{"status":{"id":"api-1","state":"deployed","createdAt":"now","updatedAt":"now"}}`)},
 		},
 		{
@@ -1218,4 +1277,116 @@ func TestA2ATaskListedAndPushConfigAssertions(t *testing.T) {
 	require.NoError(t, g.a2aStreamPaced(ctx, "rpc"))
 	session.record(entry, &a2ax.Outcome{Method: "SubscribeToTask", Events: []a2ax.Event{{Offset: 0}}})
 	require.ErrorContains(t, g.a2aStreamPaced(ctx, "rpc"), "need at least 2")
+}
+
+// stubBase counts InvokeWith calls and answers each one from a script, so a test can say
+// what the socket did without standing up a component.
+type stubBase struct {
+	Base
+	errs  []error
+	calls int
+}
+
+func (s *stubBase) InvokeWith(context.Context, string, string, map[string]string, []byte) error {
+	s.calls++
+	if s.calls <= len(s.errs) {
+		return s.errs[s.calls-1]
+	}
+	return nil
+}
+
+// refused is what reaches a step when a live component's published port is briefly not
+// forwarding: the transport error, wrapped the way httpx wraps it. The inner errno differs
+// by platform, so the tests below cover both the value Unix reports and the one Windows
+// does, to pin that neither is what the check depends on.
+func refused(errno syscall.Errno) error {
+	return fmt.Errorf("httpx: GET http://127.0.0.1:46383/x: %w",
+		&net.OpError{Op: "dial", Net: "tcp", Err: &os.SyscallError{Syscall: "connect", Err: errno}})
+}
+
+func TestInvokeServiceRidesOutARefusedConnection(t *testing.T) {
+	t.Run("re-dials until the port answers", func(t *testing.T) {
+		stub := &stubBase{errs: []error{refused(syscall.ECONNREFUSED), refused(wsaeconnrefused)}}
+		gateway := &Gateway{base: stub}
+
+		require.NoError(t, gateway.invokeService(context.Background(), http.MethodGet, "http://x", nil, nil))
+		require.Equal(t, 3, stub.calls,
+			"should have re-dialled twice — once past a Unix refusal, once past a Winsock one")
+	})
+
+	t.Run("gives up rather than waiting forever", func(t *testing.T) {
+		stub := &stubBase{errs: []error{refused(wsaeconnrefused), refused(wsaeconnrefused), refused(wsaeconnrefused), refused(wsaeconnrefused), refused(wsaeconnrefused)}}
+		gateway := &Gateway{base: stub}
+
+		err := gateway.invokeService(context.Background(), http.MethodGet, "http://x", nil, nil)
+		require.ErrorIs(t, err, wsaeconnrefused)
+		require.Equal(t, serviceDialAttempts, stub.calls)
+	})
+
+	t.Run("does not spend the step's patience on a host that is not answering", func(t *testing.T) {
+		// A dial that timed out is not a moment's gap in forwarding. Retrying it
+		// would buy three more request timeouts to arrive at the same answer.
+		timedOut := fmt.Errorf("httpx: GET http://127.0.0.1:46383/x: %w",
+			&net.OpError{Op: "dial", Net: "tcp", Err: os.ErrDeadlineExceeded})
+		stub := &stubBase{errs: []error{timedOut}}
+		gateway := &Gateway{base: stub}
+
+		require.ErrorIs(t, gateway.invokeService(context.Background(), http.MethodGet, "http://x", nil, nil), os.ErrDeadlineExceeded)
+		require.Equal(t, 1, stub.calls, "a timed-out dial should not be repeated")
+	})
+
+	t.Run("reports anything that is not a refused connection at once", func(t *testing.T) {
+		// A component that answers has answered. Re-dialling past its reply would turn a
+		// scenario's real failure into a slow one, and could hide it behind a later success.
+		wanted := errors.New("httpx: GET http://127.0.0.1:46383/x: 500 Internal Server Error")
+		stub := &stubBase{errs: []error{wanted}}
+		gateway := &Gateway{base: stub}
+
+		require.ErrorIs(t, gateway.invokeService(context.Background(), http.MethodGet, "http://x", nil, nil), wanted)
+		require.Equal(t, 1, stub.calls, "an answered request should not be repeated")
+	})
+}
+
+func TestManagementEndpointDeleteSweepsAResourceThroughTheManagementAPI(t *testing.T) {
+	var method, path, authorization string
+	status := http.StatusNoContent
+	rest := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		method, path, authorization = r.Method, r.URL.Path, r.Header.Get("Authorization")
+		w.WriteHeader(status)
+	}))
+	t.Cleanup(rest.Close)
+	endpoint := managementEndpoint{restURL: rest.URL, version: "1.2.0", authorization: "Basic token"}
+	client := httpx.NewClient(httpx.Options{MaxRetries: 1})
+
+	require.NoError(t, endpoint.delete(t.Context(), client, "/llm-proxies", "proxy-1"))
+	require.Equal(t, http.MethodDelete, method)
+	require.Equal(t, ManagementBasePathForVersion("1.2.0")+"/llm-proxies/proxy-1", path)
+	require.Equal(t, "Basic token", authorization)
+
+	status = http.StatusNotFound
+	require.NoError(t, endpoint.delete(t.Context(), client, "/llm-proxies", "gone"), "an absent resource is deleted")
+
+	status = http.StatusInternalServerError
+	require.Error(t, endpoint.delete(t.Context(), client, "/llm-proxies", "stuck"))
+}
+
+func TestManagementEndpointDeleteWaitsForTheControllerOnReleasesWithTheRace(t *testing.T) {
+	rest := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	t.Cleanup(rest.Close)
+	var dumps atomic.Int32
+	admin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/api/admin/v0.9/config_dump", r.URL.Path)
+		if dumps.Add(1) == 1 {
+			_, _ = io.WriteString(w, `{"apis":[{"configuration":{"metadata":{"name":"api-1"}}}]}`)
+			return
+		}
+		_, _ = io.WriteString(w, `{"apis":[]}`)
+	}))
+	t.Cleanup(admin.Close)
+	endpoint := managementEndpoint{restURL: rest.URL, adminURL: admin.URL, version: "1.1.0", authorization: "Basic token"}
+
+	require.NoError(t, endpoint.delete(t.Context(), httpx.NewClient(httpx.Options{MaxRetries: 1}), "/rest-apis", "api-1"))
+	require.GreaterOrEqual(t, dumps.Load(), int32(2), "the sweep returned before the controller applied the deletion")
 }

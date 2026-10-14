@@ -145,3 +145,98 @@ describe('path builders', () => {
     );
   });
 });
+
+/*
+ * GraphQL API pages live under a literal `graphql-apis` segment (see
+ * `graphqlApiPath`), deliberately distinct from the `apis` segment
+ * `getRouteParamsFromPathname` matches positionally for `apiHandler`. That's
+ * not incidental — it's the entire mechanism by which `ConsoleScopeProvider`
+ * (mounted for every protected route) never resolves a REST `apiHandler` for
+ * these pages, so its unconditional `useRestApi(params.apiHandler)` fetch
+ * stays disabled. These tests pin that property directly, since the
+ * parameterized round-trip suite above only covers pages built from the
+ * generic `apiScopedPaths` alias family — GraphQL pages are deliberately
+ * excluded from it (no scope-less alias; see the plan's routing note).
+ */
+describe('GraphQL API routes stay outside REST scope resolution', () => {
+  const GRAPHQL_API = 'countries-graphql-api';
+
+  it('builds the graphql-apis-segmented path, not apis', () => {
+    expect(routes.graphqlApi(ORG, PROJECT, GRAPHQL_API)).toBe(
+      `/organizations/${ORG}/projects/${PROJECT}/graphql-apis/${GRAPHQL_API}`
+    );
+    expect(routes.graphqlApiDeploy(ORG, PROJECT, GRAPHQL_API)).toBe(
+      `/organizations/${ORG}/projects/${PROJECT}/graphql-apis/${GRAPHQL_API}/deploy`
+    );
+    expect(routes.graphqlApiTestConsole(ORG, PROJECT, GRAPHQL_API)).toBe(
+      `/organizations/${ORG}/projects/${PROJECT}/graphql-apis/${GRAPHQL_API}/test/console`
+    );
+    expect(routes.graphqlApiDevelopPolicies(ORG, PROJECT, GRAPHQL_API)).toBe(
+      `/organizations/${ORG}/projects/${PROJECT}/graphql-apis/${GRAPHQL_API}/develop/policies`
+    );
+    expect(routes.graphqlApiDevelopDocuments(ORG, PROJECT, GRAPHQL_API)).toBe(
+      `/organizations/${ORG}/projects/${PROJECT}/graphql-apis/${GRAPHQL_API}/develop/documents`
+    );
+    expect(routes.graphqlApiPublish(ORG, PROJECT, GRAPHQL_API)).toBe(
+      `/organizations/${ORG}/projects/${PROJECT}/graphql-apis/${GRAPHQL_API}/publish`
+    );
+    expect(routes.graphqlApiEdit(ORG, PROJECT, GRAPHQL_API)).toBe(
+      `/organizations/${ORG}/projects/${PROJECT}/graphql-apis/${GRAPHQL_API}/edit`
+    );
+  });
+
+  it.each([
+    ['graphqlApi', routes.graphqlApi],
+    ['graphqlApiDeploy', routes.graphqlApiDeploy],
+    ['graphqlApiTestConsole', routes.graphqlApiTestConsole],
+    ['graphqlApiDevelopPolicies', routes.graphqlApiDevelopPolicies],
+    ['graphqlApiDevelopDocuments', routes.graphqlApiDevelopDocuments],
+    ['graphqlApiPublish', routes.graphqlApiPublish],
+    ['graphqlApiEdit', routes.graphqlApiEdit],
+  ] as const)(
+    '%s: the positional scope parser resolves org/project but never apiHandler, even for a fully-scoped path',
+    (_id, build) => {
+      const params = getRouteParamsFromPathname(build(ORG, PROJECT, GRAPHQL_API));
+
+      expect(params.orgHandle).toBe(ORG);
+      expect(params.projectHandler).toBe(PROJECT);
+      // The whole point: no literal `apis` segment exists on this path, so
+      // ConsoleScopeProvider's REST-only `useRestApi` fetch stays disabled —
+      // these pages read their own id via `useParams()` instead.
+      expect(params.apiHandler).toBeUndefined();
+    }
+  );
+
+  it('degrades to the project-level select-scope alias when the GraphQL API handle is missing, same as apiPath', () => {
+    expect(routes.graphqlApiDeploy(ORG, PROJECT, null)).toBe(
+      `/organizations/${ORG}/projects/${PROJECT}/select-scope/deploy`
+    );
+  });
+
+  it('degrades to the org-level select-scope alias when the project is also missing', () => {
+    expect(routes.graphqlApiDeploy(ORG, null, null)).toBe(
+      `/organizations/${ORG}/select-scope/deploy`
+    );
+  });
+
+  it('never collides with a REST alias or another GraphQL builder at the same scope', () => {
+    const graphqlPaths = [
+      routes.graphqlApi(ORG, PROJECT, GRAPHQL_API),
+      routes.graphqlApiDeploy(ORG, PROJECT, GRAPHQL_API),
+      routes.graphqlApiTestConsole(ORG, PROJECT, GRAPHQL_API),
+      routes.graphqlApiDevelopPolicies(ORG, PROJECT, GRAPHQL_API),
+      routes.graphqlApiDevelopDocuments(ORG, PROJECT, GRAPHQL_API),
+      routes.graphqlApiPublish(ORG, PROJECT, GRAPHQL_API),
+      routes.graphqlApiEdit(ORG, PROJECT, GRAPHQL_API),
+    ];
+    const restPaths = [
+      routes.api(ORG, PROJECT, API),
+      routes.apiDeploy(ORG, PROJECT, API),
+      routes.apiTest(ORG, PROJECT, API),
+    ];
+
+    expect(new Set([...graphqlPaths, ...restPaths]).size).toBe(
+      graphqlPaths.length + restPaths.length
+    );
+  });
+});

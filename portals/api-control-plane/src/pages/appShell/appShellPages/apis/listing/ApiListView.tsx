@@ -19,16 +19,16 @@
 import { Box, Card, Stack, Typography } from '@wso2/oxygen-ui';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
-import type { RestApi } from '@/api/resources/restApis';
+import { thumbnailApiType, type ListableApi } from './apiListItem';
 import { openableProps } from '@/components/openable';
 import { focusRingSx } from '@/theme';
 import {
   apiDescriptionSx,
   ApiDeleteButton,
-  ApiKindAvatar,
   ApiKindChip,
   UpdatedLabel,
 } from './components/RestApiChips';
+import { ApiThumbnailAvatar } from '../components/ApiThumbnailAvatar';
 import { useCan } from '@/permissions/useCan';
 
 const AVATAR_SIZE = 40;
@@ -51,9 +51,9 @@ const rowGridSx = {
 } as const;
 
 type ApiRowProps = {
-  api: RestApi;
-  onOpen: (api: RestApi) => void;
-  onDelete?: (api: RestApi) => void;
+  api: ListableApi;
+  onOpen: (api: ListableApi) => void;
+  onDelete?: (api: ListableApi) => void;
 };
 
 /**
@@ -85,7 +85,12 @@ function ApiRow({ api, onOpen, onDelete }: ApiRowProps) {
     >
       {/* `minWidth: 0` lets long names truncate. */}
       <Stack alignItems="center" direction="row" spacing={1.5} sx={{ minWidth: 0 }}>
-        <ApiKindAvatar kind={api.kind} size={AVATAR_SIZE} />
+        <ApiThumbnailAvatar
+          apiId={api.id}
+          apiType={thumbnailApiType(api)}
+          displayName={api.displayName}
+          size={AVATAR_SIZE}
+        />
         <Box sx={{ minWidth: 0 }}>
           <Typography component="div" noWrap sx={{ fontWeight: 600 }} variant="subtitle2">
             {api.displayName}
@@ -134,9 +139,9 @@ function ApiRow({ api, onOpen, onDelete }: ApiRowProps) {
 }
 
 type ApiListViewProps = {
-  apis: RestApi[];
-  onOpen: (api: RestApi) => void;
-  onDelete?: (api: RestApi) => void;
+  apis: ListableApi[];
+  onOpen: (api: ListableApi) => void;
+  onDelete?: (api: ListableApi) => void;
 };
 
 /** Compact row layout for APIs, the list-view counterpart of ApiCardGrid. */

@@ -142,12 +142,20 @@ func scanSecret(row interface {
 	Scan(...interface{}) error
 }) (*model.Secret, error) {
 	s := &model.Secret{}
+	// description, created_by and updated_by are nullable in the schema. Rows
+	// written outside platform-api (the v1 -> v2 migration) leave them NULL,
+	// and database/sql refuses to scan NULL into a string.
+	var description, createdBy, updatedBy sql.NullString
 	err := row.Scan(
-		&s.UUID, &s.OrganizationID, &s.Handle, &s.DisplayName, &s.Description,
+		&s.UUID, &s.OrganizationID, &s.Handle, &s.DisplayName, &description,
 		&s.Ciphertext, &s.Hash, &s.Type, &s.Provider, &s.Status,
-		&s.CreatedAt, &s.CreatedBy, &s.UpdatedAt, &s.UpdatedBy,
+		&s.CreatedAt, &createdBy, &s.UpdatedAt, &updatedBy,
 	)
-	return s, err
+	if err != nil {
+		return nil, err
+	}
+	s.Description, s.CreatedBy, s.UpdatedBy = description.String, createdBy.String, updatedBy.String
+	return s, nil
 }
 
 func (r *SecretRepo) GetByHandle(orgID, handle string) (*model.Secret, error) {

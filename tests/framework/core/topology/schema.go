@@ -147,7 +147,16 @@ type Block struct {
 
 	// Runners are the feature groups to execute.
 	Runners []Runner `yaml:"runners"`
+
+	// RunnersFrom names a source that supplies the block's runners instead of Runners.
+	// The only supported source is RunnersFromPolicies: each policy in the block's
+	// platform-gateway addPoliciesFrom tree declares its own runners in
+	// <policy>/it/it.yaml.
+	RunnersFrom string `yaml:"runnersFrom"`
 }
+
+// RunnersFromPolicies takes a block's runners from the policy descriptors in its policy tree.
+const RunnersFromPolicies = "policies"
 
 // Component selects and configures one registered component for a block.
 type Component struct {
@@ -157,6 +166,11 @@ type Component struct {
 	// AddPoliciesFrom selects a local policy tree used to build a custom platform gateway.
 	// The path is resolved against the repository root when the build is prepared.
 	AddPoliciesFrom string `yaml:"addPoliciesFrom"`
+
+	// ReleasedPoliciesOnly, with addPoliciesFrom on a released Gateway version, builds only the
+	// policies that release ships — the ones its users would upgrade. The rest of the tree can
+	// need what the release's gateway-builder lacks. Ignored for a source build.
+	ReleasedPoliciesOnly bool `yaml:"releasedPoliciesOnly"`
 
 	// Overlay is an optional component configuration overlay.
 	Overlay string `yaml:"overlay"`

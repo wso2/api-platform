@@ -28,7 +28,13 @@ import (
 
 func cookieTestServer() *Server {
 	return &Server{cfg: &config.Config{
-		Cookie: config.CookieConfig{Name1: "_ai_workspace_session_1", Name2: "_ai_workspace_session_2", Secure: true, SameSite: "lax"},
+		Cookie: config.CookieConfig{
+			Name1:       "_ai_workspace_session_1",
+			Name2:       "_ai_workspace_session_2",
+			StatePrefix: "_ai_workspace_state_",
+			Secure:      true,
+			SameSite:    "lax",
+		},
 	}}
 }
 
@@ -106,6 +112,15 @@ func TestClearSessionCookieAlsoClearsLegacyRootPath(t *testing.T) {
 	}
 	byPath := map[string]map[string]bool{"/ai-workspace/": {}, "/": {}}
 	for _, c := range rec.Result().Cookies() {
+		// This server has no state codec, so clearSessionCookie also sweeps any
+		// sealed state cookies orphaned by a switch to store = "memory". They are
+		// not part of what this test is about — see TestDeleteClearsTheStateCookies.
+		if strings.HasPrefix(c.Name, s.cfg.Cookie.StatePrefix) {
+			if c.MaxAge >= 0 {
+				t.Errorf("orphan state cookie %q not expired: MaxAge=%d", c.Name, c.MaxAge)
+			}
+			continue
+		}
 		if !wantNames[c.Name] {
 			t.Fatalf("unexpected cookie %q", c.Name)
 		}

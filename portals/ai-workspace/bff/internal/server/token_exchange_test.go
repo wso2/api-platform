@@ -182,7 +182,7 @@ func newExchangeHarness(t *testing.T, cfgMut func(*config.TokenExchangeConfig)) 
 		context.Background(), idp.Client(),
 		idp.URL, "c", "s",
 		"https://localhost:9643"+paths.Base+"/api/auth/callback", "", "openid",
-		session.DefaultClaimMapping(), 8*time.Hour,
+		session.DefaultClaimMapping(), 8*time.Hour, testTxSealer(),
 	)
 	if err != nil {
 		t.Fatalf("build oidc client: %v", err)
@@ -192,7 +192,7 @@ func newExchangeHarness(t *testing.T, cfgMut func(*config.TokenExchangeConfig)) 
 	h.server = &Server{
 		cfg:           cfg,
 		claims:        session.DefaultClaimMapping(),
-		store:         session.NewMemoryStore(),
+		store:         newFakeStore(),
 		oidc:          oidcClient,
 		proxy:         proxy.ReverseProxy(target, paths.Base+paths.Proxy, http.DefaultTransport),
 		exchanger:     auth.NewExchanger(idp.Client(), teCfg, oidcClient.TokenEndpoint()),
@@ -479,7 +479,7 @@ func TestSessionReportsExchangedScopes(t *testing.T) {
 // returns the callback request the browser would send back.
 func (h *exchangeTestHarness) callbackRequest(t *testing.T) *http.Request {
 	t.Helper()
-	authURL, txID, err := h.server.oidc.AuthCodeURL(paths.Base + "/", nil)
+	authURL, txID, err := h.server.oidc.AuthCodeURL(paths.Base+"/", nil)
 	if err != nil {
 		t.Fatalf("AuthCodeURL: %v", err)
 	}

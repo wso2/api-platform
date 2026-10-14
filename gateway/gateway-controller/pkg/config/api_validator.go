@@ -419,36 +419,8 @@ func upstreamRefResolves(ref string, definitions *[]api.UpstreamDefinition) bool
 func (v *APIValidator) validateRestData(spec *api.APIConfigData) []ValidationError {
 	var errors []ValidationError
 
-	// Validate name
-	if spec.DisplayName == "" {
-		errors = append(errors, ValidationError{
-			Field:   "spec.displayName",
-			Message: "API display name is required",
-		})
-	} else if len(spec.DisplayName) > 100 {
-		errors = append(errors, ValidationError{
-			Field:   "spec.displayName",
-			Message: "API display name must be 1-100 characters",
-		})
-	} else if !v.urlFriendlyNameRegex.MatchString(spec.DisplayName) {
-		errors = append(errors, ValidationError{
-			Field:   "spec.displayName",
-			Message: "API display name must be URL-friendly (only letters, numbers, spaces, hyphens, underscores, and dots allowed)",
-		})
-	}
-
-	// Validate version
-	if spec.Version == "" {
-		errors = append(errors, ValidationError{
-			Field:   "spec.version",
-			Message: "API version is required",
-		})
-	} else if !v.versionRegex.MatchString(spec.Version) {
-		errors = append(errors, ValidationError{
-			Field:   "spec.version",
-			Message: "API version must follow semantic versioning pattern (e.g., v1.0, v2.1.3)",
-		})
-	}
+	errors = append(errors, v.ValidateDisplayName(spec.DisplayName)...)
+	errors = append(errors, v.ValidateVersion(spec.Version)...)
 
 	// Validate context
 	errors = append(errors, v.ValidateContext(spec.Context)...)
@@ -523,6 +495,39 @@ func validateResilienceTimeouts(fieldPrefix string, r *api.Resilience) []Validat
 // ValidateContext validates a resource's context path. Exported so it can be
 // reused by other kinds' validators (e.g. an event-gateway-controller binary
 // validating WebSubApi/WebBrokerApi configs).
+// ValidateDisplayName validates spec.displayName. Exported so every API kind
+// that shares RestApi's naming rules (GraphQLApi, for one) validates them with
+// the same rule rather than a copy of it.
+func (v *APIValidator) ValidateDisplayName(displayName string) []ValidationError {
+	switch {
+	case displayName == "":
+		return []ValidationError{{Field: "spec.displayName", Message: "API display name is required"}}
+	case len(displayName) > 100:
+		return []ValidationError{{Field: "spec.displayName", Message: "API display name must be 1-100 characters"}}
+	case !v.urlFriendlyNameRegex.MatchString(displayName):
+		return []ValidationError{{
+			Field:   "spec.displayName",
+			Message: "API display name must be URL-friendly (only letters, numbers, spaces, hyphens, underscores, and dots allowed)",
+		}}
+	}
+	return nil
+}
+
+// ValidateVersion validates spec.version against the semantic-version pattern.
+// Exported for the same reason as ValidateDisplayName.
+func (v *APIValidator) ValidateVersion(version string) []ValidationError {
+	switch {
+	case version == "":
+		return []ValidationError{{Field: "spec.version", Message: "API version is required"}}
+	case !v.versionRegex.MatchString(version):
+		return []ValidationError{{
+			Field:   "spec.version",
+			Message: "API version must follow semantic versioning pattern (e.g., v1.0, v2.1.3)",
+		}}
+	}
+	return nil
+}
+
 func (v *APIValidator) ValidateContext(context string) []ValidationError {
 	var errors []ValidationError
 
