@@ -1352,8 +1352,6 @@ func (t *Translator) createListener(virtualHosts []*route.VirtualHost, isHTTPS b
 		CodecType:         hcm.HttpConnectionManager_AUTO,
 		StatPrefix:        "http",
 		GenerateRequestId: wrapperspb.Bool(true),
-		// Return x-request-id in responses, including the gateway's own error replies.
-		AlwaysSetRequestIdInResponse: t.routerConfig.HTTPListener.ReturnRequestIDInResponse,
 		RouteSpecifier: &hcm.HttpConnectionManager_Rds{
 			Rds: &hcm.Rds{
 				ConfigSource: &core.ConfigSource{
@@ -1385,6 +1383,9 @@ func (t *Translator) createListener(virtualHosts []*route.VirtualHost, isHTTPS b
 		MergeSlashes:                 !t.routerConfig.HTTPListener.DisablePathNormalization,
 		PathWithEscapedSlashesAction: convertPathWithEscapedSlashesAction(t.routerConfig.HTTPListener.PathWithEscapedSlashesAction),
 	}
+
+	// Return x-request-id in responses, including the gateway's own error replies.
+	manager.AlwaysSetRequestIdInResponse = t.routerConfig.HTTPListener.ReturnRequestIDInResponse
 
 	// Add access logs if either consumer needs a sink: the operator-facing stdout
 	// log line (router.access_logs.enabled) or the gRPC ALS stream the collector
