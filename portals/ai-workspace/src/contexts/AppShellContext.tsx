@@ -33,6 +33,7 @@ import { useAppAuth } from './AppAuthContext';
 import { registerOrganization, getOrganizationById } from '../apis/platformApis';
 import type { PlatformOrganization } from '../apis/platformApis';
 import { DEFAULT_ORG_REGION } from '../config.env';
+import { slugifyOrgName } from '../utils/projectRouting';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -191,37 +192,42 @@ export const AppShellProvider: React.FC<AppShellProviderProps> = ({
   const initialize = useCallback(async () => {
     try {
       const tokenOrg = userRef.current?.org;
+      const pathSegments = window.location.pathname.split('/').filter(Boolean);
+      const urlOrgSlug =
+        pathSegments[0] === 'organizations' && pathSegments[1] ? pathSegments[1] : undefined;
+
+      const targetHandle = tokenOrg?.handle || slugifyOrgName(tokenOrg?.name) || tokenOrg?.id || urlOrgSlug;
+      const displayName = tokenOrg?.name || tokenOrg?.handle || targetHandle;
 
       const orgsPromise = getOrganizations();
 
-      if (tokenOrg?.handle) {
-        // Primary path: fetch org by handle from the token (works for both OIDC and file-based auth).
-        let platformOrg = await getOrganizationById(tokenOrg.handle);
+      if (targetHandle) {
+        // Primary path: fetch org by handle from the token or URL
+        let platformOrg = await getOrganizationById(targetHandle);
 
         if (!platformOrg) {
-          // Org not registered yet — provision it from token claims.
-          const displayName = tokenOrg.name || tokenOrg.handle;
-          logger.info('[AppShellContext] Auto-provisioning organization:', tokenOrg.handle);
+          // Org not registered yet — provision it from token claims or URL.
+          logger.info('[AppShellContext] Auto-provisioning organization:', targetHandle);
           setIsProvisioning(true);
           setProvisioningOrgName(displayName);
           try {
             await registerOrganization({
-              id: tokenOrg.handle,
+              id: targetHandle,
               displayName,
               region: DEFAULT_ORG_REGION,
             });
           } catch (provisionErr: any) {
             // 409 = already exists (race), safe to continue
-            if (!provisionErr?.message?.includes('already exists')) {
+            if (!provisionErr?.message?.includes('already exists') && provisionErr?.code !== 'ORGANIZATION_ALREADY_EXISTS') {
               throw provisionErr;
             }
           }
           setIsProvisioning(false);
-          platformOrg = await getOrganizationById(tokenOrg.handle);
+          platformOrg = await getOrganizationById(targetHandle);
         }
 
         if (!platformOrg) {
-          logger.warn('[AppShellContext] Org not found for handle:', tokenOrg.handle);
+          logger.warn('[AppShellContext] Org not found for handle:', targetHandle);
           setError('Organization not found. Please contact your administrator.');
           return;
         }
