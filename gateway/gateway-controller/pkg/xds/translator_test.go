@@ -1591,9 +1591,10 @@ func TestTranslator_CreateListener_ReturnRequestIDInResponse(t *testing.T) {
 			routerCfg.HTTPListener.ReturnRequestIDInResponse = tt.enabled
 			cfg := testConfig()
 			cfg.Router = *routerCfg
-			translator := NewTranslator(logger, routerCfg, nil, cfg)
+			translator, err := NewTranslator(logger, routerCfg, nil, cfg)
+			require.NoError(t, err)
 
-			lis, _, err := translator.createListener(nil, false)
+			lis, _, err := translator.createListener(nil, false, false)
 			require.NoError(t, err)
 
 			manager := extractHCM(t, lis)
@@ -1631,8 +1632,9 @@ func TestTranslator_CreateListener_ReturnRequestIDInResponse_LoadedDefaults(t *t
 			testCfg := testConfig()
 			testCfg.Router = *routerCfg
 
-			translator := NewTranslator(createTestLogger(), routerCfg, nil, testCfg)
-			lis, _, err := translator.createListener(nil, false)
+			translator, err := NewTranslator(createTestLogger(), routerCfg, nil, testCfg)
+			require.NoError(t, err)
+			lis, _, err := translator.createListener(nil, false, false)
 			require.NoError(t, err)
 
 			assert.Equal(t, tt.want, extractHCM(t, lis).GetAlwaysSetRequestIdInResponse())
