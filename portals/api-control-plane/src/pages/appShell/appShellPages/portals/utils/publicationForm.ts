@@ -20,7 +20,10 @@ import { defineMessages, type MessageDescriptor } from 'react-intl';
 
 import type { Publication, PublicationDraftDetails, PublicationDraftDetailsInput } from '@/api/resources/apiPublications';
 import type { RestApi } from '@/api/resources/restApis';
+import type { GraphQLApiGateway } from '@/api/resources/graphqlApis/apiGateways';
+import type { RestApiGateway } from '@/api/resources/restApis/apiGateways/apiGateways.endpoints';
 import { isHttpUrl } from '../../apis/utils/basicInfoRules';
+import { buildInvokeUrl, gatewayEndpoint } from '../../gateways/utils/gatewayDisplay';
 
 const messages = defineMessages({
   displayNameRequired: {
@@ -61,6 +64,22 @@ export type DraftFormValues = {
   agentVisibility: AgentVisibility;
 };
 
+/** A URL the Production URL can be picked from, and the gateway that serves it. */
+export type GatewayUrlOption = { gatewayName: string; url: string };
+
+/**
+ * The URLs the API is served at: one per gateway it is deployed to, in the
+ * order the API lists them. A gateway without an address has no URL to offer.
+ */
+export const buildProductionUrlOptions = (
+  gateways: readonly (RestApiGateway | GraphQLApiGateway)[],
+  context: string | undefined,
+): GatewayUrlOption[] =>
+  gateways
+    .filter((gateway) => gateway.isDeployed)
+    .map((gateway) => ({ gatewayName: gateway.displayName, url: buildInvokeUrl(gatewayEndpoint(gateway), context) }))
+    .filter((option) => option.url !== '');
+
 export const emptyDraftFormValues: DraftFormValues = {
   displayName: '',
   version: '',
@@ -70,17 +89,24 @@ export const emptyDraftFormValues: DraftFormValues = {
   agentVisibility: DEFAULT_AGENT_VISIBILITY,
 };
 
+/** The API fields a draft starts from — REST and GraphQL APIs both carry them. */
+export type PublishableApiDetails = Pick<RestApi, 'description' | 'displayName' | 'version'>;
+
 /**
  * The read chain, only for pre-filling the form: draft, then
  * publication, then the API's own — starting from the most recent edit,
  * published or not. No endpoint resolves this chain server-side, so it's
  * composed here from three independently-fetched tiers, each `undefined` when
  * that tier has nothing (a 404, not a real error — see `useApiPublicationDraft`).
+ * The API's own tier defaults the Production URL to `defaultProductionUrl`, a
+ * gateway URL, and leaves it empty without one; the Sandbox URL starts empty.
+ * The API's backend URLs are not exposed.
  */
 export const resolveDraftFormValues = (
   draft: PublicationDraftDetails | undefined,
   publication: Publication | undefined,
-  api: RestApi | undefined,
+  api: PublishableApiDetails | undefined,
+  defaultProductionUrl?: string,
 ): DraftFormValues => {
   if (draft) {
     return {
@@ -107,8 +133,8 @@ export const resolveDraftFormValues = (
       displayName: api.displayName ?? '',
       version: api.version ?? '',
       description: api.description ?? '',
-      productionUrl: api.upstream?.main?.url ?? '',
-      sandboxUrl: api.upstream?.sandbox?.url ?? '',
+      productionUrl: defaultProductionUrl ?? '',
+      sandboxUrl: '',
       agentVisibility: DEFAULT_AGENT_VISIBILITY,
     };
   }

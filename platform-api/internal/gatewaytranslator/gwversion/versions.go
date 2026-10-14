@@ -67,6 +67,10 @@ const (
 
 	// MinAgentKindGatewayVersion: no LTS release has the Agent artifact kind.
 	MinAgentKindGatewayVersion = NoLTSRelease
+
+	// MinGraphQLKindGatewayVersion: no LTS release has the GraphQLApi artifact
+	// kind.
+	MinGraphQLKindGatewayVersion = NoLTSRelease
 )
 
 // AtLeast reports whether a gateway that reported rawVersion has the

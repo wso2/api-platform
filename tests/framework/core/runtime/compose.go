@@ -37,6 +37,7 @@ import (
 	tccompose "github.com/testcontainers/testcontainers-go/modules/compose"
 	"github.com/testcontainers/testcontainers-go/wait"
 
+	"github.com/wso2/api-platform/tests/framework/core/assets"
 	"github.com/wso2/api-platform/tests/framework/core/components"
 	"github.com/wso2/api-platform/tests/framework/core/logcapture"
 )
@@ -365,8 +366,9 @@ func absoluteRealPath(path string) (string, error) {
 	return filepath.EvalSymlinks(abs)
 }
 
-// containedSource resolves src and asserts it stays inside repoRoot. Both sides are resolved
-// so a symlinked checkout compares in the same namespace as the sources it holds.
+// containedSource resolves src and asserts it stays inside repoRoot or the directory the
+// framework's embedded assets were extracted to. Both sides are resolved so a symlinked
+// checkout compares in the same namespace as the sources it holds.
 func containedSource(repoRoot, src string) (string, error) {
 	if strings.TrimSpace(repoRoot) == "" {
 		return src, nil
@@ -381,7 +383,8 @@ func containedSource(repoRoot, src string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("resolving %q: %w", src, err)
 	}
-	if resolved != root && !strings.HasPrefix(resolved, filepath.Clean(root)+string(filepath.Separator)) {
+	if resolved != root && !strings.HasPrefix(resolved, filepath.Clean(root)+string(filepath.Separator)) &&
+		!assets.Within(resolved) {
 		return "", fmt.Errorf("source %q resolves outside the repository", src)
 	}
 	return resolved, nil
@@ -418,11 +421,7 @@ func stageComposeFiles(
 		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 			return fmt.Errorf("runtime: creating %q: %w", filepath.Dir(target), err)
 		}
-		src := source
-		if !filepath.IsAbs(src) && repoRoot != "" {
-			src = filepath.Join(repoRoot, source)
-		}
-		src, err := containedSource(repoRoot, src)
+		src, err := containedSource(repoRoot, assets.Resolve(repoRoot, source))
 		if err != nil {
 			return fmt.Errorf("runtime: staging %s for %s: %w", source, def, err)
 		}

@@ -19,6 +19,12 @@
 import type { Policy, RestApi } from '@/api/resources/restApis';
 
 /**
+ * The part of an API this module reads: its own policies and, for a REST API,
+ * each operation's. A GraphQL API carries only the former.
+ */
+type PolicyCarrier = Pick<RestApi, 'policies'> & { operations?: RestApi['operations'] };
+
+/**
  * Determines whether the API requires an API key and where to send it.
  *
  * The gateway enforces API-key authentication only when the `api-key-auth`
@@ -66,13 +72,13 @@ const text = (value: unknown): string | undefined => {
  * for such an API and every secured call would 401 with nothing on screen to
  * explain it.
  */
-const allPolicies = (api: RestApi): Policy[] => [
+const allPolicies = (api: PolicyCarrier): Policy[] => [
   ...(api.policies ?? []),
   ...(api.operations ?? []).flatMap((operation) => operation.request?.policies ?? []),
 ];
 
 /** Reads the API's first case-insensitive `api-key-auth` policy, if any. */
-export const apiKeyAuthOf = (api: RestApi | undefined): ApiKeyAuth | undefined => {
+export const apiKeyAuthOf = (api: PolicyCarrier | undefined): ApiKeyAuth | undefined => {
   if (!api) return undefined;
 
   const policy = allPolicies(api).find(

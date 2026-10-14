@@ -35,7 +35,7 @@ import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
 import type { Gateway } from '@/api/resources/gateways';
 import { useNotifications } from '@/components/Notifications';
-import { gatewayEndpoint } from '../../gateways/utils/gatewayDisplay';
+import { buildInvokeUrl, gatewayEndpoint } from '../../gateways/utils/gatewayDisplay';
 import { MOCK_ENVIRONMENTS } from '../../gateways/utils/gatewayEnvironments';
 
 const messages = defineMessages({
@@ -79,22 +79,12 @@ const messages = defineMessages({
   },
 });
 
-/** `{endpoint}{context}` with a scheme ensured and slashes normalised. */
-export const buildInvokeUrl = (endpoint: string, context?: string): string => {
-  const trimmedEndpoint = endpoint.trim();
-  if (!trimmedEndpoint) return '';
-  const base = /^https?:\/\//i.test(trimmedEndpoint)
-    ? trimmedEndpoint.replace(/\/+$/, '')
-    : `https://${trimmedEndpoint.replace(/\/+$/, '')}`;
-  const trimmedContext = (context || '/').trim();
-  const path = trimmedContext.startsWith('/') ? trimmedContext : `/${trimmedContext}`;
-  return `${base}${path}`;
-};
-
 type InvokeUrlPanelProps = {
   /** Gateways the API is currently deployed on, most recent first. */
   gateways: Gateway[];
   context?: string;
+  /** Resolves a `$version` placeholder in `context`, same as the gateway does. */
+  version?: string;
 };
 
 const recordedEnvironmentName = (gateway: Gateway): string | undefined =>
@@ -110,7 +100,7 @@ const gatewayOptionLabel = (gateway: Gateway): string => {
  * Invoke URL section of the Overview tab (ai-workspace): pick a deployed
  * gateway, get the gateway-specific invoke URL with a copy affordance.
  */
-export function InvokeUrlPanel({ gateways, context }: InvokeUrlPanelProps) {
+export function InvokeUrlPanel({ gateways, context, version }: InvokeUrlPanelProps) {
   const intl = useIntl();
   const { notify } = useNotifications();
   const [selectedGatewayId, setSelectedGatewayId] = useState(gateways[0]?.id || '');
@@ -120,7 +110,7 @@ export function InvokeUrlPanel({ gateways, context }: InvokeUrlPanelProps) {
   // The spec models the address as an `endpoints` list; `gatewayEndpoint` picks
   // the one the console builds URLs from, as the whole gateway UI does.
   const invokeUrl = selectedGateway
-    ? buildInvokeUrl(gatewayEndpoint(selectedGateway), context)
+    ? buildInvokeUrl(gatewayEndpoint(selectedGateway), context, version)
     : '';
 
   const copyUrl = () => {

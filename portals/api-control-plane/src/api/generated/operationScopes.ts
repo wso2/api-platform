@@ -54,6 +54,10 @@ export type ApScope =
   | 'ap:api_portal:draft:manage'
   | 'ap:api_portal:draft:read'
   | 'ap:api_portal:draft:update'
+  | 'ap:api_portal:graphql_api:deprecate'
+  | 'ap:api_portal:graphql_api:manage'
+  | 'ap:api_portal:graphql_api:publish'
+  | 'ap:api_portal:graphql_api:unpublish'
   | 'ap:api_portal:manage'
   | 'ap:api_portal:publication:read'
   | 'ap:api_portal:read'
@@ -253,6 +257,10 @@ export const AP_SCOPES: readonly ApScope[] = [
   'ap:api_portal:draft:manage',
   'ap:api_portal:draft:read',
   'ap:api_portal:draft:update',
+  'ap:api_portal:graphql_api:deprecate',
+  'ap:api_portal:graphql_api:manage',
+  'ap:api_portal:graphql_api:publish',
+  'ap:api_portal:graphql_api:unpublish',
   'ap:api_portal:manage',
   'ap:api_portal:publication:read',
   'ap:api_portal:read',
@@ -641,6 +649,10 @@ export const OPERATION_SCOPES = {
     'ap:mcp_proxy:deployment:manage',
     'ap:mcp_proxy:manage',
   ],
+  deprecateGraphQLApiOnApiPortal: [
+    'ap:api_portal:graphql_api:deprecate',
+    'ap:api_portal:graphql_api:manage',
+  ],
   deprecateRestApiOnApiPortal: [
     'ap:api_portal:rest_api:deprecate',
     'ap:api_portal:rest_api:manage',
@@ -857,6 +869,10 @@ export const OPERATION_SCOPES = {
   ListSubscriptionPlans: ['ap:subscription_plan:manage', 'ap:subscription_plan:read'],
   ListSubscriptions: ['ap:subscription:manage', 'ap:subscription:read'],
   listUserAPIKeys: ['ap:api_key:all:manage', 'ap:api_key:read'],
+  publishGraphQLApiToApiPortal: [
+    'ap:api_portal:graphql_api:manage',
+    'ap:api_portal:graphql_api:publish',
+  ],
   publishRestApiToApiPortal: ['ap:api_portal:rest_api:manage', 'ap:api_portal:rest_api:publish'],
   RegisterOrganization: ['ap:organization:create', 'ap:organization:manage'],
   RemoveApplicationAPIKey: [
@@ -956,6 +972,10 @@ export const OPERATION_SCOPES = {
     'ap:mcp_proxy:deployment:manage',
     'ap:mcp_proxy:deployment:undeploy',
     'ap:mcp_proxy:manage',
+  ],
+  unpublishGraphQLApiFromApiPortal: [
+    'ap:api_portal:graphql_api:manage',
+    'ap:api_portal:graphql_api:unpublish',
   ],
   unpublishRestApiFromApiPortal: [
     'ap:api_portal:rest_api:manage',

@@ -27,12 +27,13 @@ import (
 // listing by the API's own handle; no portal-returned ID is stored locally.
 // HTTPPortalPublisher is the implementation.
 type PortalPublisher interface {
-	// Publish pushes pub, identified to the portal by apiHandle, together with
+	// Publish pushes pub, identified to the portal by apiHandle and listed as
+	// apiType (e.g. rest-api, graphql-api), together with
 	// its definition content (nil if none stored). A nil error means the portal
 	// accepted the push. A *PortalConflictError means the portal rejected it and
 	// will keep rejecting it (409 PUBLICATION_PORTAL_CONFLICT, never retried);
 	// any other error is treated as unavailable (503 PUBLICATION_PORTAL_UNAVAILABLE).
-	Publish(ctx context.Context, portal *model.APIPortal, apiHandle string, pub *model.Publication, definition *model.PublicationContent) error
+	Publish(ctx context.Context, portal *model.APIPortal, apiType, apiHandle string, pub *model.Publication, definition *model.PublicationContent) error
 
 	// Unpublish removes apiHandle's listing from portal. A nil error means the
 	// portal no longer carries the listing, including when it was already gone.
@@ -41,7 +42,7 @@ type PortalPublisher interface {
 
 	// Deprecate marks apiHandle's listing on portal as deprecated, re-sending live
 	// with only the status changed. Errors follow the same contract as Publish.
-	Deprecate(ctx context.Context, portal *model.APIPortal, apiHandle string, live *model.Publication) error
+	Deprecate(ctx context.Context, portal *model.APIPortal, apiType, apiHandle string, live *model.Publication) error
 }
 
 // PortalConflictError signals that the API Portal rejected a request and will

@@ -97,7 +97,7 @@ func faultIntegrationCtx(
 	// These fixtures exist to drive an UPSTREAM response through the engine, which the
 	// fault flow only handles when the deployment opts in — so they opt in. The disabled
 	// default is covered separately, by TestHandleUpstreamFaults_DisabledKeepsLegacyBehaviour.
-	server := NewExternalProcessorServer(k, chainExecutor, config.TracingConfig{}, "", 1<<20, 1<<20,
+	server := NewExternalProcessorServer(k, chainExecutor, config.TracingConfig{}, "", 1<<20, 1<<20, nil,
 		WithHandleUpstreamFaults(true))
 
 	chain := &registry.PolicyChain{
@@ -284,7 +284,7 @@ func faultIntegrationCtxNoBodyPolicy(
 	// These fixtures exist to drive an UPSTREAM response through the engine, which the
 	// fault flow only handles when the deployment opts in — so they opt in. The disabled
 	// default is covered separately, by TestHandleUpstreamFaults_DisabledKeepsLegacyBehaviour.
-	server := NewExternalProcessorServer(k, chainExecutor, config.TracingConfig{}, "", 1<<20, 1<<20,
+	server := NewExternalProcessorServer(k, chainExecutor, config.TracingConfig{}, "", 1<<20, 1<<20, nil,
 		WithHandleUpstreamFaults(true))
 
 	chain := &registry.PolicyChain{
@@ -456,7 +456,7 @@ func upstreamErrorThroughPhases(t *testing.T, handle bool, contentType string) (
 
 	k := NewKernel()
 	chainExecutor := executor.NewChainExecutor(nil, nil, noop.NewTracerProvider().Tracer(""))
-	server := NewExternalProcessorServer(k, chainExecutor, config.TracingConfig{}, "", 1<<20, 1<<20,
+	server := NewExternalProcessorServer(k, chainExecutor, config.TracingConfig{}, "", 1<<20, 1<<20, nil,
 		WithHandleUpstreamFaults(handle))
 
 	faultPolicies := []policy.Policy{&faultRecorderPolicy{name: "notifier", order: faultOrder}}
@@ -529,4 +529,37 @@ func TestHandleUpstreamFaults_Disabled_RunsTheResponsePolicies(t *testing.T) {
 
 	streamed, _, _ := upstreamErrorThroughPhases(t, false, "text/event-stream")
 	assert.True(t, streamed.isStreamingResponse, "a streamed error keeps streaming")
+}
+
+// The success side of the fault-only body requirement, through the real response-header
+// handler: a streamed 200 on an API whose only response-body need is its fault policies tells
+// Envoy to send no response body, so the stream reaches the client as it arrives instead of
+// being buffered through the engine.
+func TestFaultPoliciesIntegration_StreamedSuccessIsNotBuffered(t *testing.T) {
+	server := NewExternalProcessorServer(NewKernel(), executor.NewChainExecutor(nil, nil, noop.NewTracerProvider().Tracer("")),
+		config.TracingConfig{}, "", 1<<20, 1<<20, nil, WithHandleUpstreamFaults(true))
+	chain := &registry.PolicyChain{
+		FaultPolicies:    []policy.Policy{&faultRecorderPolicy{name: "notifier", order: &[]string{}}},
+		FaultPolicySpecs: specs(1),
+		HasFaultPolicies: true,
+	}
+	ApplyFaultPoliciesBodyRequirement(chain)
+	ec := newPolicyExecutionContext(server, "test-route", chain)
+	ec.buildRequestContexts(&extprocv3.HttpHeaders{Headers: &corev3.HeaderMap{Headers: []*corev3.HeaderValue{
+		{Key: ":path", RawValue: []byte("/events/v1/stream")},
+		{Key: ":method", RawValue: []byte("GET")},
+	}}}, RouteMetadata{APIKind: string(policy.APIKindRestApi)})
+
+	resp, err := ec.processResponseHeaders(context.Background(), &extprocv3.HttpHeaders{
+		Headers: &corev3.HeaderMap{Headers: []*corev3.HeaderValue{
+			{Key: ":status", RawValue: []byte("200")},
+			{Key: "content-type", RawValue: []byte("text/event-stream")},
+			{Key: "transfer-encoding", RawValue: []byte("chunked")},
+		}},
+		EndOfStream: false,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, resp.GetModeOverride())
+	assert.Equal(t, extprocconfigv3.ProcessingMode_NONE, resp.GetModeOverride().GetResponseBodyMode(),
+		"a successful streamed response must not be sent through the engine")
 }

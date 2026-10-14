@@ -23,7 +23,7 @@ import { resetHttpClient } from '@/api/core/http';
 import { accepts, recorder, type Recorder } from '@/test/msw';
 import { server } from '@/test/server';
 import { renderWithProviders, screen, waitFor } from '@/test/utils';
-import { CreateApiKeyDialog } from './CreateApiKeyDialog';
+import { CreateApiKeyDialog, type CreateApiKeyDialogProps } from './CreateApiKeyDialog';
 
 const ORG = 'api-platform-demo';
 const API_ID = 'pizza-shack';
@@ -41,11 +41,11 @@ beforeEach(() => {
 
 /** The mutation resolves its organization from `ApiScopeContext`, so the scope
  * provider has to be mounted for the request to be allowed out at all. */
-function setup() {
+function setup(props: Partial<Pick<CreateApiKeyDialogProps, 'apiId' | 'apiKind'>> = {}) {
   const onClose = vi.fn();
   const utils = renderWithProviders(
     <ApiScopeProvider orgId={ORG}>
-      <CreateApiKeyDialog onClose={onClose} open restApiId={API_ID} />
+      <CreateApiKeyDialog apiId={API_ID} onClose={onClose} open {...props} />
     </ApiScopeProvider>,
   );
   return { ...utils, onClose };
@@ -133,6 +133,30 @@ describe('CreateApiKeyDialog', () => {
 
     await user.click(screen.getByRole('button', { name: 'I have copied the key' }));
     expect(onClose).toHaveBeenCalled();
+  });
+
+  it('issues a GraphQL API’s key at the GraphQL-API-scoped endpoint', async () => {
+    const graphqlApiId = 'countries-graphql-api';
+    server.use(
+      accepts(
+        'post',
+        `/graphql-apis/${graphqlApiId}/api-keys`,
+        { status: 'success', message: 'created', keyId: 'key-1', apiKey: ISSUED },
+        { record: requests },
+      ),
+    );
+    const { user } = setup({ apiId: graphqlApiId, apiKind: 'graphql' });
+
+    await user.type(screen.getByLabelText(/Key name/), 'Production key');
+    await user.click(screen.getByRole('button', { name: 'Create key' }));
+
+    await waitFor(() => expect(requests.count()).toBe(1));
+    expect(requests.last()?.url.pathname).toContain(`/graphql-apis/${graphqlApiId}/api-keys`);
+    expect(JSON.parse(requests.last()!.body)).toEqual({
+      displayName: 'Production key',
+      expiresIn: { duration: 90, unit: 'days' },
+    });
+    expect(await screen.findByLabelText('API key')).toHaveValue(ISSUED);
   });
 
   it('sends the duration in the unit the user picked', async () => {

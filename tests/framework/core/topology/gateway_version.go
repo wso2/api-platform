@@ -26,6 +26,15 @@ import (
 
 const gatewayVersionPrefix = "gateway-version"
 
+// LatestGatewayVersion selects the gateway images published after each merge to main. It is
+// not a release: it carries the current development contract, so it is matched like a source
+// build, and its images are always pulled again because the tag moves.
+const LatestGatewayVersion = "latest"
+
+func isLatestGatewayVersion(version string) bool {
+	return strings.EqualFold(strings.TrimSpace(version), LatestGatewayVersion)
+}
+
 type gatewayReleaseVersion struct {
 	major uint64
 	minor uint64
@@ -147,7 +156,7 @@ func gatewayVersionFor(block *ResolvedBlock) (gatewayVersionTarget, error) {
 		if component.Def == nil || component.Def.Name != "platform-gateway" {
 			continue
 		}
-		if component.BuildFromSource {
+		if component.BuildFromSource || isLatestGatewayVersion(component.Version) {
 			return gatewayVersionTarget{source: true}, nil
 		}
 		version, err := parseGatewayReleaseVersion(component.Version)

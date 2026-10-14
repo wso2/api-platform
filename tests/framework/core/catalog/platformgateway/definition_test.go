@@ -286,7 +286,7 @@ func TestStagePolicyWorkspaceGeneratesDeterministicManifest(t *testing.T) {
 
 	relative, err := filepath.Rel(root, source)
 	require.NoError(t, err)
-	workspace, err := stagePolicyWorkspace(root, relative, nil)
+	workspace, err := stagePolicyWorkspace(root, relative, nil, true)
 	require.NoError(t, err)
 	data, err := os.ReadFile(workspace.BuildFile)
 	require.NoError(t, err)
@@ -328,6 +328,23 @@ func TestBuildVersionedWithPoliciesUsesGatewayBuilderAndDerivedImages(t *testing
 	require.Contains(t, strings.Join(runner.commands[2].Args, " "), "gateway-controller/Dockerfile")
 }
 
+func TestGatewayBuilderImageFollowsTheBaseImageRepository(t *testing.T) {
+	cases := []struct {
+		name, controllerBase, want string
+	}{
+		{"release registry", "ghcr.io/wso2/api-platform/gateway-controller:1.1.0", "ghcr.io/wso2/api-platform/gateway-builder:1.1.0"},
+		{"host override", "registry.example/test-gateway/gateway-controller:1.1.0", "registry.example/test-gateway/gateway-builder:1.1.0"},
+		{"registry with a port", "registry.example:5000/team/gateway-controller:1.1.0", "registry.example:5000/team/gateway-builder:1.1.0"},
+		{"unrecognised base image", "local/custom:1.1.0", "ghcr.io/wso2/api-platform/gateway-builder:1.1.0"},
+		{"empty base image", "", "ghcr.io/wso2/api-platform/gateway-builder:1.1.0"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, gatewayBuilderImage(tc.controllerBase, "1.1.0"))
+		})
+	}
+}
+
 func TestPolicyWorkspaceRejectsNonPolicyEntries(t *testing.T) {
 	root := unitRepoRoot(t)
 	source, err := os.MkdirTemp(root, ".framework-policy-source-")
@@ -349,7 +366,7 @@ func TestPolicyWorkspaceRejectsSourceOutsideApprovedRoots(t *testing.T) {
 	source, err := filepath.Rel(root, outside)
 	require.NoError(t, err)
 
-	_, err = stagePolicyWorkspace(root, source, nil)
+	_, err = stagePolicyWorkspace(root, source, nil, true)
 	require.ErrorContains(t, err, "must resolve within repository root or ../gateway-controllers/policies")
 }
 
@@ -557,7 +574,7 @@ func TestStagePolicyWorkspaceStagesOnlyTheNamedPolicies(t *testing.T) {
 	require.NoError(t, err)
 
 	staged := func(only map[string]bool) []string {
-		workspace, err := stagePolicyWorkspace(root, relative, only)
+		workspace, err := stagePolicyWorkspace(root, relative, only, false)
 		require.NoError(t, err)
 		t.Cleanup(workspace.close)
 		data, err := os.ReadFile(workspace.BuildFile)
@@ -598,4 +615,135 @@ func TestBuildVersionedWithPoliciesReadsTheReleasedPolicyList(t *testing.T) {
 	_, err = BuildVersionedWithPolicies(context.Background(), root, "1.1.0", relative,
 		"controller-base", "runtime-base", &policyRecordingRunner{}, true)
 	require.ErrorContains(t, err, "no docker")
+}
+
+func TestStagePolicyWorkspaceExcludesIntegrationTests(t *testing.T) {
+	root := unitRepoRoot(t)
+	source, err := os.MkdirTemp(root, ".framework-policy-source-")
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, os.RemoveAll(source)) })
+	dir := filepath.Join(source, "a-policy")
+	features := filepath.Join(dir, "it", "features")
+	require.NoError(t, os.MkdirAll(features, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "policy-definition.yaml"), []byte("name: a-policy\nversion: v1.0.0\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "policy.go"), []byte("package policy\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(features, "a.feature"), []byte("Feature: a\n"), 0o644))
+	relative, err := filepath.Rel(root, source)
+	require.NoError(t, err)
+
+	stage := func() policyWorkspace {
+		workspace, err := stagePolicyWorkspace(root, relative, nil, true)
+		require.NoError(t, err)
+		t.Cleanup(workspace.close)
+		return workspace
+	}
+
+	first := stage()
+	staged := filepath.Join(first.Policies, "a-policy")
+	require.FileExists(t, filepath.Join(staged, "policy.go"))
+	require.FileExists(t, filepath.Join(staged, "policy-definition.yaml"))
+	require.NoDirExists(t, filepath.Join(staged, "it"))
+
+	require.NoError(t, os.WriteFile(filepath.Join(features, "a.feature"), []byte("Feature: a, edited\n"), 0o644))
+	require.Equal(t, first.Digest, stage().Digest, "editing a feature must not change the image digest")
+
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "policy.go"), []byte("package policy // edited\n"), 0o644))
+	require.NotEqual(t, first.Digest, stage().Digest, "editing policy code must change the image digest")
+}
+
+// A project that imports the framework has no api-platform checkout. The version profiles and
+// overlays the gateway needs must come from the framework's embedded copies.
+func TestReleasedGatewayConfigAssemblesWithoutACheckout(t *testing.T) {
+	cache := t.TempDir()
+	t.Setenv("HOME", cache)
+	t.Setenv("XDG_CACHE_HOME", cache)
+	definition := PlatformGateway()
+
+	for _, version := range []string{"1.1.0", "1.2.0"} {
+		injection, err := definition.Config.ForVersion(version)
+		require.NoError(t, err, version)
+
+		out, err := components.Assemble(injection, t.TempDir(), "", components.Vars{components.VarBlock: "unit"})
+
+		require.NoError(t, err, version)
+		require.NotEmpty(t, out, version)
+	}
+}
+
+// writeMinimalPolicyProject creates a project that has a policy tree and nothing else, the
+// shape of a repository that imports the framework and has no gateway source.
+func writeMinimalPolicyProject(t *testing.T) string {
+	t.Helper()
+	cache := t.TempDir()
+	t.Setenv("HOME", cache)
+	t.Setenv("XDG_CACHE_HOME", cache)
+	root := t.TempDir()
+	dir := filepath.Join(root, "policies", "a-policy")
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "policy-definition.yaml"), []byte("name: a-policy\nversion: v1.0.0\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "policy.go"), []byte("package policy\n"), 0o644))
+	return root
+}
+
+func TestVersionedPolicyWorkspaceNeedsNoGatewaySource(t *testing.T) {
+	root := writeMinimalPolicyProject(t)
+
+	workspace, err := stagePolicyWorkspace(root, "policies", nil, false)
+	require.NoError(t, err)
+	t.Cleanup(workspace.close)
+
+	require.FileExists(t, workspace.BuildFile)
+	require.NoDirExists(t, workspace.Target)
+
+	_, err = stagePolicyWorkspace(root, "policies", nil, true)
+	require.ErrorContains(t, err, "staging LICENSE")
+}
+
+func TestBuildVersionedWithPoliciesNeedsNoGatewaySource(t *testing.T) {
+	root := writeMinimalPolicyProject(t)
+	runner := &policyRecordingRunner{}
+
+	images, err := BuildVersionedWithPolicies(context.Background(), root, "1.2.0", "policies",
+		"ghcr.io/wso2/api-platform/gateway-controller:1.2.0", "ghcr.io/wso2/api-platform/gateway-runtime:1.2.0", runner, false)
+
+	require.NoError(t, err)
+	require.NotEmpty(t, images.Controller)
+	require.NotEmpty(t, images.Runtime)
+	require.Len(t, runner.commands, 3)
+	require.Contains(t, runner.commands[0].Args, "ghcr.io/wso2/api-platform/gateway-builder:1.2.0")
+	for _, command := range runner.commands {
+		require.Equal(t, root, command.Directory)
+		for _, arg := range command.Args {
+			require.NotContains(t, arg, filepath.Join(root, "gateway"), "a released-version build must not read gateway source")
+		}
+	}
+}
+
+// The published latest tag moves with every merge, so a copy pulled for an earlier run must
+// not be reused; a release tag is immutable and its local copy is.
+func TestBuildVersionedWithPoliciesRepullsOnlyTheMovingLatestTag(t *testing.T) {
+	build := func(version string) []frameworkbuilder.Command {
+		root := writeMinimalPolicyProject(t)
+		runner := &policyRecordingRunner{}
+		_, err := BuildVersionedWithPolicies(context.Background(), root, version, "policies",
+			"registry.example/test-gateway/gateway-controller:"+version, "registry.example/test-gateway/gateway-runtime:"+version,
+			runner, false)
+		require.NoError(t, err)
+		require.Len(t, runner.commands, 3)
+		return runner.commands
+	}
+
+	latest := build("latest")
+	require.Contains(t, strings.Join(latest[0].Args, " "), "docker run --rm --pull always -v ")
+	require.Contains(t, latest[0].Args, "registry.example/test-gateway/gateway-builder:latest")
+	require.Contains(t, strings.Join(latest[1].Args, " "), "docker buildx build --pull -f ")
+	require.Contains(t, strings.Join(latest[2].Args, " "), "docker buildx build --pull -f ")
+
+	// A direct caller may spell the tag in any case; it is still the moving tag.
+	require.Contains(t, strings.Join(build(" LATEST ")[0].Args, " "), "--pull always")
+
+	release := build("1.2.0")
+	for _, command := range release {
+		require.NotContains(t, command.Args, "--pull")
+	}
 }

@@ -328,6 +328,13 @@ func (t *Translator) createRouteFromRDC(routeKey string, rdcRoute *models.Route,
 		operationPath == constants.MCP_RESOURCE_PATH &&
 		!t.appendMCPResourcePathToBackend()
 
+	// A GraphQLApi's single route likewise maps its whole gateway-facing path to exactly
+	// the configured upstream URL path — there is no operation suffix to carry over. It
+	// must share the MCP branch below rather than the default "(.*)" capture one: with a
+	// root upstream (e.g. "https://countries.trevorblades.com/") that branch substitutes
+	// "" + "" and Envoy forwards an empty path, which the backend rejects.
+	isGraphQLRoute := rdc.Metadata.Kind == string(models.KindGraphQLApi)
+
 	// Build route action with timeouts. Per-route resilience values (from the API/operation
 	// resilience block) take precedence; otherwise fall back to the global route defaults.
 	var routeResilienceTimeout, routeResilienceIdle *time.Duration
@@ -423,12 +430,12 @@ func (t *Translator) createRouteFromRDC(routeKey string, rdcRoute *models.Route,
 			},
 			Substitution: upstreamPath + rdcRoute.UpstreamPathOverride,
 		}
-	} else if isMCPResourceRoute {
+	} else if isMCPResourceRoute || isGraphQLRoute {
 		// MCP "/mcp" resource: the whole gateway-facing path ("<context>/mcp") maps to
 		// exactly the configured upstream URL path. We deliberately do NOT append "/mcp"
 		// to the backend, because some MCP backends serve at a different path (or root)
 		// and don't support a "/mcp" sub-path. When the upstream has no path, forward to
-		// "/".
+		// "/". A GraphQLApi route ("<context>") takes the same rewrite — see isGraphQLRoute.
 		mcpSubstitution := upstreamPath
 		if mcpSubstitution == "" {
 			mcpSubstitution = "/"

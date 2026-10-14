@@ -493,6 +493,30 @@ func (e GraphQLAPISchemaSource) Valid() bool {
 	}
 }
 
+// Defines values for GraphQLAPIDetailSchemaSource.
+const (
+	GraphQLAPIDetailSchemaSourceFile          GraphQLAPIDetailSchemaSource = "file"
+	GraphQLAPIDetailSchemaSourceInline        GraphQLAPIDetailSchemaSource = "inline"
+	GraphQLAPIDetailSchemaSourceIntrospection GraphQLAPIDetailSchemaSource = "introspection"
+	GraphQLAPIDetailSchemaSourceUrl           GraphQLAPIDetailSchemaSource = "url"
+)
+
+// Valid indicates whether the value is a known member of the GraphQLAPIDetailSchemaSource enum.
+func (e GraphQLAPIDetailSchemaSource) Valid() bool {
+	switch e {
+	case GraphQLAPIDetailSchemaSourceFile:
+		return true
+	case GraphQLAPIDetailSchemaSourceInline:
+		return true
+	case GraphQLAPIDetailSchemaSourceIntrospection:
+		return true
+	case GraphQLAPIDetailSchemaSourceUrl:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for GraphQLIntrospectionMode.
 const (
 	ENDPOINT GraphQLIntrospectionMode = "ENDPOINT"
@@ -2767,10 +2791,14 @@ type CreateGatewayRequestFunctionalityType string
 
 // CreateGraphQLAPIRequest defines model for CreateGraphQLAPIRequest.
 type CreateGraphQLAPIRequest struct {
-	// Context Base path for the single GraphQL endpoint. Suggested (not enforced)
-	// convention: end the path with `/graphql`, matching how most standalone
-	// GraphQL servers name their single endpoint — this is not validated.
-	Context     string     `json:"context" yaml:"context"`
+	// Context Base path for the single GraphQL endpoint. Optional: when omitted
+	// (or blank) on create/update, the server derives one from the API's
+	// handle and version (`/{handle}/{version}/graphql`) instead of
+	// rejecting the request. Suggested (not enforced) convention when
+	// supplied explicitly: end the path with `/graphql`, matching how
+	// most standalone GraphQL servers name their single endpoint — this
+	// is not validated.
+	Context     *string    `json:"context,omitempty" yaml:"context,omitempty"`
 	CreatedAt   *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
 	CreatedBy   *string    `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
 	Description *string    `json:"description,omitempty" yaml:"description,omitempty"`
@@ -2791,12 +2819,12 @@ type CreateGraphQLAPIRequest struct {
 	Kind *string `json:"kind,omitempty" yaml:"kind,omitempty"`
 
 	// Policies List of policies to be applied on the API. Reused unmodified from
-	// REST APIs. A `cors` policy applies only to the API's single `POST`
-	// route — a GraphQL API has no per-operation list to add an
-	// `OPTIONS` entry to, so a browser preflight request is not routed
-	// at all and a `cors` policy will not run for it; cross-origin
-	// browser clients that trigger a preflight are not currently
-	// supported.
+	// REST APIs. A GraphQL API has no per-operation list to add an
+	// explicit `OPTIONS` entry to the way a REST API does, so when a
+	// `cors` policy is attached, the gateway synthesizes an OPTIONS
+	// route for the same path itself, sharing this same policy chain —
+	// this is what lets `cors` (and every other policy in this list, in
+	// declared order) answer a browser's preflight request.
 	Policies  *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
 	ProjectId string    `json:"projectId" yaml:"projectId"`
 
@@ -3423,10 +3451,14 @@ type GatewayTokenListResponse struct {
 
 // GraphQLAPI defines model for GraphQLAPI.
 type GraphQLAPI struct {
-	// Context Base path for the single GraphQL endpoint. Suggested (not enforced)
-	// convention: end the path with `/graphql`, matching how most standalone
-	// GraphQL servers name their single endpoint — this is not validated.
-	Context     string     `json:"context" yaml:"context"`
+	// Context Base path for the single GraphQL endpoint. Optional: when omitted
+	// (or blank) on create/update, the server derives one from the API's
+	// handle and version (`/{handle}/{version}/graphql`) instead of
+	// rejecting the request. Suggested (not enforced) convention when
+	// supplied explicitly: end the path with `/graphql`, matching how
+	// most standalone GraphQL servers name their single endpoint — this
+	// is not validated.
+	Context     *string    `json:"context,omitempty" yaml:"context,omitempty"`
 	CreatedAt   *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
 	CreatedBy   *string    `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
 	Description *string    `json:"description,omitempty" yaml:"description,omitempty"`
@@ -3447,12 +3479,12 @@ type GraphQLAPI struct {
 	Kind *string `json:"kind,omitempty" yaml:"kind,omitempty"`
 
 	// Policies List of policies to be applied on the API. Reused unmodified from
-	// REST APIs. A `cors` policy applies only to the API's single `POST`
-	// route — a GraphQL API has no per-operation list to add an
-	// `OPTIONS` entry to, so a browser preflight request is not routed
-	// at all and a `cors` policy will not run for it; cross-origin
-	// browser clients that trigger a preflight are not currently
-	// supported.
+	// REST APIs. A GraphQL API has no per-operation list to add an
+	// explicit `OPTIONS` entry to the way a REST API does, so when a
+	// `cors` policy is attached, the gateway synthesizes an OPTIONS
+	// route for the same path itself, sharing this same policy chain —
+	// this is what lets `cors` (and every other policy in this list, in
+	// declared order) answer a browser's preflight request.
 	Policies  *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
 	ProjectId string    `json:"projectId" yaml:"projectId"`
 
@@ -3532,10 +3564,14 @@ type GraphQLAPISchemaSource string
 
 // GraphQLAPIDetail defines model for GraphQLAPIDetail.
 type GraphQLAPIDetail struct {
-	// Context Base path for the single GraphQL endpoint. Suggested (not enforced)
-	// convention: end the path with `/graphql`, matching how most standalone
-	// GraphQL servers name their single endpoint — this is not validated.
-	Context     string     `json:"context" yaml:"context"`
+	// Context Base path for the single GraphQL endpoint. Optional: when omitted
+	// (or blank) on create/update, the server derives one from the API's
+	// handle and version (`/{handle}/{version}/graphql`) instead of
+	// rejecting the request. Suggested (not enforced) convention when
+	// supplied explicitly: end the path with `/graphql`, matching how
+	// most standalone GraphQL servers name their single endpoint — this
+	// is not validated.
+	Context     *string    `json:"context,omitempty" yaml:"context,omitempty"`
 	CreatedAt   *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
 	CreatedBy   *string    `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
 	Description *string    `json:"description,omitempty" yaml:"description,omitempty"`
@@ -3556,17 +3592,27 @@ type GraphQLAPIDetail struct {
 	Kind *string `json:"kind,omitempty" yaml:"kind,omitempty"`
 
 	// Policies List of policies to be applied on the API. Reused unmodified from
-	// REST APIs. A `cors` policy applies only to the API's single `POST`
-	// route — a GraphQL API has no per-operation list to add an
-	// `OPTIONS` entry to, so a browser preflight request is not routed
-	// at all and a `cors` policy will not run for it; cross-origin
-	// browser clients that trigger a preflight are not currently
-	// supported.
+	// REST APIs. A GraphQL API has no per-operation list to add an
+	// explicit `OPTIONS` entry to the way a REST API does, so when a
+	// `cors` policy is attached, the gateway synthesizes an OPTIONS
+	// route for the same path itself, sharing this same policy chain —
+	// this is what lets `cors` (and every other policy in this list, in
+	// declared order) answer a browser's preflight request.
 	Policies  *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
 	ProjectId string    `json:"projectId" yaml:"projectId"`
 
 	// ReadOnly True if the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane.
 	ReadOnly *bool `json:"readOnly,omitempty" yaml:"readOnly,omitempty"`
+
+	// SchemaSource The exact source the current schema was declared with on the create or
+	// last successful update — a finer-grained sibling of `introspectionMode`,
+	// which only distinguishes the two-bucket SDL/ENDPOINT storage outcome.
+	// Resupply this value on a subsequent `PUT` that isn't meant to change the
+	// schema, together with material satisfying that same source (`sdl` for
+	// `inline`/`file`, `sdlUrl` for `url`, nothing extra for `introspection`
+	// since `upstream.main.url` already suffices) — omitting it, or resupplying
+	// a source without its required field, is a structural `400`, not a no-op.
+	SchemaSource *GraphQLAPIDetailSchemaSource `json:"schemaSource,omitempty" yaml:"schemaSource,omitempty"`
 
 	// SubscriptionPlans List of subscription plan names enabled for this API.
 	SubscriptionPlans *[]string  `json:"subscriptionPlans,omitempty" yaml:"subscriptionPlans,omitempty"`
@@ -3580,6 +3626,16 @@ type GraphQLAPIDetail struct {
 	Upstream Upstream `json:"upstream" yaml:"upstream"`
 	Version  string   `json:"version" yaml:"version"`
 }
+
+// GraphQLAPIDetailSchemaSource The exact source the current schema was declared with on the create or
+// last successful update — a finer-grained sibling of `introspectionMode`,
+// which only distinguishes the two-bucket SDL/ENDPOINT storage outcome.
+// Resupply this value on a subsequent `PUT` that isn't meant to change the
+// schema, together with material satisfying that same source (`sdl` for
+// `inline`/`file`, `sdlUrl` for `url`, nothing extra for `introspection`
+// since `upstream.main.url` already suffices) — omitting it, or resupplying
+// a source without its required field, is a structural `400`, not a no-op.
+type GraphQLAPIDetailSchemaSource string
 
 // GraphQLAPIListItem defines model for GraphQLAPIListItem.
 type GraphQLAPIListItem struct {
@@ -3633,6 +3689,18 @@ type GraphQLAPISDLResponse struct {
 
 // GraphQLIntrospectionMode defines model for GraphQLIntrospectionMode.
 type GraphQLIntrospectionMode string
+
+// GraphQLSdlValidationIssue defines model for GraphQLSdlValidationIssue.
+type GraphQLSdlValidationIssue struct {
+	// Column 1-based column number in the submitted SDL, when the parser could anchor the issue to one.
+	Column *int `json:"column,omitempty" yaml:"column,omitempty"`
+
+	// Line 1-based line number in the submitted SDL, when the parser could anchor the issue to one.
+	Line *int `json:"line,omitempty" yaml:"line,omitempty"`
+
+	// Message The parser's own error message for this issue.
+	Message string `json:"message" yaml:"message"`
+}
 
 // ImportOpenAPIRequest Multipart form for `POST /rest-apis/import-openapi`. Exactly one of
 // `file` or `url` must be provided; the backend rejects requests that
@@ -5568,6 +5636,16 @@ type ValidateGraphQLSchemaResponse struct {
 
 	// Sdl The resolved SDL text when `resolved` is `true`; empty otherwise.
 	Sdl string `json:"sdl" yaml:"sdl"`
+
+	// SdlErrors Set only when `resolved` is `false` and the failure was a parse
+	// error on SDL text the caller effectively authored: `schemaSource`
+	// `inline`/`file` always, and `url` once its fetch itself succeeded.
+	// Unlike `message`, these are safe to show verbatim — they describe
+	// the caller's own document, not a network outcome. Never set for a
+	// `url` fetch failure or an `introspection` failure, since revealing
+	// those could map internal topology (`error-handling.md`,
+	// `ssrf-prevention.md`).
+	SdlErrors *[]GraphQLSdlValidationIssue `json:"sdlErrors,omitempty" yaml:"sdlErrors,omitempty"`
 }
 
 // ValidateOpenAPIResponse defines model for ValidateOpenAPIResponse.
@@ -5857,7 +5935,7 @@ type SaveApiPublicationDraftThumbnailMultipartBody struct {
 
 // ListApiPublicationsParams defines parameters for ListApiPublications.
 type ListApiPublicationsParams struct {
-	// ApiType The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404.
+	// ApiType The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404.
 	ApiType ApiTypeQ `form:"apiType" json:"apiType" yaml:"apiType"`
 
 	// ApiId The API's handle, unique per organization within its own type.

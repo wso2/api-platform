@@ -24,7 +24,6 @@ import {
   Divider,
   Form,
   FormControl,
-  FormControlLabel,
   FormHelperText,
   FormLabel,
   Grid,
@@ -42,7 +41,12 @@ import { useState, type MouseEvent } from 'react';
 import { defineMessages, FormattedMessage, useIntl, type MessageDescriptor } from 'react-intl';
 
 import { apiInitials } from '../../apis/utils/restApiDisplay';
-import type { DraftFormField, DraftFormValues, FormFieldErrors } from '../utils/publicationForm';
+import type {
+  DraftFormField,
+  DraftFormValues,
+  FormFieldErrors,
+  GatewayUrlOption,
+} from '../utils/publicationForm';
 
 const messages = defineMessages({
   nameLabel: {
@@ -100,9 +104,6 @@ const THUMBNAIL_WIDTH = 72;
 const THUMBNAIL_MIN_HEIGHT = 64;
 const THUMBNAIL_FONT_SIZE = 28;
 const THUMBNAIL_ICON_SIZE = 24;
-
-/** A URL the Production URL can be picked from, and the gateway that serves it. */
-export type GatewayUrlOption = { gatewayName: string; url: string };
 
 export type ApiDetailsTabProps = {
   disabled?: boolean;
@@ -381,22 +382,20 @@ export function ApiDetailsTab({
         </Grid>
 
         <Stack alignItems="center" direction="row" spacing={1}>
-          <FormControlLabel
-            control={
-              <Switch
-                checked={values.agentVisibility === 'VISIBLE'}
-                disabled={disabled || readOnly}
-                onChange={(event) => setField('agentVisibility', event.target.checked ? 'VISIBLE' : 'HIDDEN')}
-              />
-            }
-            label={<FormattedMessage {...messages.agentVisibilityTitle} />}
-            sx={{ m: 0 }}
-          />
+          <Typography color={disabled || readOnly ? 'text.disabled' : 'text.primary'} component="label" htmlFor="publicationAgentVisibility">
+            <FormattedMessage {...messages.agentVisibilityTitle} />
+          </Typography>
           <Tooltip title={intl.formatMessage(messages.agentVisibilityDescription)}>
             <Box sx={{ color: 'text.secondary', display: 'flex' }}>
               <Info size={16} />
             </Box>
           </Tooltip>
+          <Switch
+            checked={values.agentVisibility === 'VISIBLE'}
+            disabled={disabled || readOnly}
+            id="publicationAgentVisibility"
+            onChange={(event) => setField('agentVisibility', event.target.checked ? 'VISIBLE' : 'HIDDEN')}
+          />
         </Stack>
       </Form.Stack>
     </Box>

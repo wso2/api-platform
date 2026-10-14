@@ -147,7 +147,16 @@ type Block struct {
 
 	// Runners are the feature groups to execute.
 	Runners []Runner `yaml:"runners"`
+
+	// RunnersFrom names a source that supplies the block's runners instead of Runners.
+	// The only supported source is RunnersFromPolicies: each policy in the block's
+	// platform-gateway addPoliciesFrom tree declares its own runners in
+	// <policy>/it/it.yaml.
+	RunnersFrom string `yaml:"runnersFrom"`
 }
+
+// RunnersFromPolicies takes a block's runners from the policy descriptors in its policy tree.
+const RunnersFromPolicies = "policies"
 
 // Component selects and configures one registered component for a block.
 type Component struct {
