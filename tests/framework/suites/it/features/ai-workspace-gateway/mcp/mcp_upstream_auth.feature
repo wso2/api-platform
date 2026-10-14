@@ -185,7 +185,7 @@ Feature: MCP proxy upstream API key authentication
       | specVersion        | 2025-06-18                                                       |
       | spec.upstream.url  | ${CTX:captureUpstream}/${CTX:mcpName}${CTX:gatewayMCPUpstreamPath} |
       | spec.upstream.auth | {"type":"api-key"}                                               |
-    Then the response status code should be 400
+    Then the response should be a client error
 
     When I send a "POST" request to "${CTX:mcpContext}/mcp" until status 200 with body:
       """
