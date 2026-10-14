@@ -21,6 +21,8 @@ package xds
 import (
 	"math"
 	"net/url"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -1491,6 +1493,41 @@ func TestTranslator_CreateListener_ReturnRequestIDInResponse(t *testing.T) {
 			// Envoy keeps generating/preserving x-request-id regardless of this flag; the flag
 			// only controls whether it is echoed back to the client.
 			assert.True(t, manager.GetGenerateRequestId().GetValue(), "generate_request_id must stay enabled")
+		})
+	}
+}
+
+// TestTranslator_CreateListener_ReturnRequestIDInResponse_LoadedDefaults drives the setting from
+// the HTTP listener configuration the controller actually loads: an empty config file must yield
+// a listener that returns the request ID, and an explicit opt-out must switch it off.
+func TestTranslator_CreateListener_ReturnRequestIDInResponse_LoadedDefaults(t *testing.T) {
+	tests := []struct {
+		name string
+		toml string
+		want bool
+	}{
+		{name: "empty config file returns the request ID", toml: "", want: true},
+		{name: "explicit opt-out", toml: "[router.http_listener]\nreturn_request_id_in_response = false\n", want: false},
+		{name: "explicit opt-in", toml: "[router.http_listener]\nreturn_request_id_in_response = true\n", want: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			configPath := filepath.Join(t.TempDir(), "config.toml")
+			require.NoError(t, os.WriteFile(configPath, []byte(tt.toml), 0o600))
+			cfg, err := config.LoadConfig(configPath)
+			require.NoError(t, err)
+
+			routerCfg := testRouterConfig()
+			routerCfg.HTTPListener = cfg.Router.HTTPListener
+			testCfg := testConfig()
+			testCfg.Router = *routerCfg
+
+			translator := NewTranslator(createTestLogger(), routerCfg, nil, testCfg)
+			lis, _, err := translator.createListener(nil, false)
+			require.NoError(t, err)
+
+			assert.Equal(t, tt.want, extractHCM(t, lis).GetAlwaysSetRequestIdInResponse())
 		})
 	}
 }
