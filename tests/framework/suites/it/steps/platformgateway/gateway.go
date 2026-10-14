@@ -873,10 +873,14 @@ func mcpModernBody(method, name, version string) string {
 
 // mcpToolArguments returns arguments matching the named testbench tool's own input schema.
 func mcpToolArguments(tool string) string {
-	if tool == "echo" {
+	switch tool {
+	case "echo":
 		return `{"message":"Hello, World!"}`
+	case "headers":
+		return `{"name":"Authorization"}`
+	default:
+		return `{"a":40,"b":60}`
 	}
-	return `{"a":40,"b":60}`
 }
 
 // mcpToolCallInvalidParams omits the required "name" field, which every JSON-RPC tools/call
