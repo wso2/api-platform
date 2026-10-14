@@ -230,8 +230,12 @@ function LLMProxyNewContent({
     error: templatesError,
   } = useProviderTemplates();
 
-  const { provider: selectedProvider, isLoading: isSelectedProviderLoading } =
-    useLLMProvider();
+  const {
+    provider: selectedProvider,
+    isLoading: isSelectedProviderLoading,
+    error: selectedProviderError,
+    refetch: refetchSelectedProvider,
+  } = useLLMProvider();
   const {
     currentProject,
     currentOrganization,
@@ -338,6 +342,18 @@ function LLMProxyNewContent({
   const [openProviderDetail, setOpenProviderDetail] =
     useState<LLMProvider | null>(null);
   const [isOpenProviderLoading, setIsOpenProviderLoading] = useState(false);
+  /**
+   * Why the open provider could not be read, when it could not be.
+   *
+   * Held apart from the detail itself: a read that failed and a read still in
+   * flight both leave no detail behind, and only one of them is worth waiting
+   * for.
+   */
+  const [openProviderError, setOpenProviderError] = useState<Error | null>(
+    null
+  );
+  /** Retried on demand, so a failed read is not the end of the form. */
+  const [openProviderReloadToken, setOpenProviderReloadToken] = useState(0);
   /** Which provider a generated key is being minted for. */
   const [apiKeyTarget, setApiKeyTarget] = useState<string>(PRIMARY_TARGET);
   /** Which provider the transformer drawer is acting on: the primary, or a draft key. */
@@ -760,6 +776,7 @@ function LLMProxyNewContent({
     // Dropped before the fetch, for the same reason the panel does: a detail
     // held over from the previous provider answers for the wrong one.
     setOpenProviderDetail(null);
+    setOpenProviderError(null);
     setIsOpenProviderLoading(true);
     getLLMProvider(
       openProviderId,
@@ -777,6 +794,9 @@ function LLMProxyNewContent({
         }
         logger.error('Failed to load the selected provider:', error);
         setOpenProviderDetail(null);
+        setOpenProviderError(
+          error instanceof Error ? error : new Error('Failed to load provider')
+        );
       })
       .finally(() => {
         if (!abandoned) {
@@ -786,7 +806,7 @@ function LLMProxyNewContent({
     return () => {
       abandoned = true;
     };
-  }, [openDraft?.providerId, currentOrganization?.uuid]);
+  }, [openDraft?.providerId, currentOrganization?.uuid, openProviderReloadToken]);
 
   /**
    * Opens the primary for editing, remembering what it was.
@@ -883,9 +903,14 @@ function LLMProxyNewContent({
    *
    * Nothing is pending where nothing is selected: an organization holding no
    * providers never selects one, and the sections stay out as they always did.
+   *
+   * A read that failed is not pending. Left as pending it would stand in
+   * forever, and a placeholder that never resolves says a request is coming
+   * back when none is.
    */
   const isPrimaryDetailPending =
-    isProvidersLoading || (Boolean(formState.providerId) && !providerDetail);
+    !selectedProviderError &&
+    (isProvidersLoading || (Boolean(formState.providerId) && !providerDetail));
   /**
    * Whether the provider whose form is open authenticates with a key at all. A
    * provider that does not gets no key field: an input nothing is done with
@@ -897,8 +922,20 @@ function LLMProxyNewContent({
   );
   /** The same wait, for the provider whose own form is open. */
   const isOpenDetailPending = Boolean(
-    openDraft?.providerId && openProviderDetail?.id !== openDraft.providerId
+    !openProviderError &&
+      openDraft?.providerId &&
+      openProviderDetail?.id !== openDraft.providerId
   );
+  /**
+   * Whether the open provider has been read at all.
+   *
+   * What the form writes back - whether a key is needed, and the header it goes
+   * in - is taken from this detail, so committing without it records a provider
+   * as needing no credential on no evidence. A failed read is not a licence to
+   * save; it is a reason to try again.
+   */
+  const isOpenProviderRead =
+    openProviderDetail?.id === openDraft?.providerId;
   const openProviderApiKeyName = resolveApiKeyAuthDisplay(
     openProviderDetail?.security,
     openProviderDetail?.globalPolicies
@@ -919,6 +956,34 @@ function LLMProxyNewContent({
       <Skeleton variant="text" width={72} height={18} />
       <Skeleton variant="rounded" height={56} />
     </Stack>
+  );
+
+  /**
+   * What the sections become when the provider could not be read.
+   *
+   * States the consequence rather than the fault. What translates for the
+   * provider is still known - that comes from the list - so the credential is
+   * what is actually lost, and saying so is what tells the reader why the field
+   * is absent and the form will not commit.
+   */
+  const renderProviderDetailError = (onRetry: () => void) => (
+    <Alert
+      severity="warning"
+      data-cyid="provider-detail-error"
+      action={
+        <Button color="inherit" size="small" onClick={onRetry}>
+          <FormattedMessage
+            id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyNew.provider.detail.retry"
+            defaultMessage="Retry"
+          />
+        </Button>
+      }
+    >
+      <FormattedMessage
+        id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyNew.provider.detail.error"
+        defaultMessage="Could not load this provider's configuration, so its credential cannot be set."
+      />
+    </Alert>
   );
 
   /** What stands in for the credential section, sized to a label and a field. */
@@ -971,7 +1036,11 @@ function LLMProxyNewContent({
     if (!formState.name.trim()) return 'Enter a name for the proxy.';
     if (!formState.providerId) return 'Select an LLM provider.';
     if (!effectiveProject?.id) return 'Select a project.';
-    if (!providerDetail) return 'Loading the selected provider details.';
+    if (!providerDetail) {
+      return selectedProviderError
+        ? 'Could not load the selected provider. Retry before creating.'
+        : 'Loading the selected provider details.';
+    }
     if (!isSelectedProviderApiKeyReady) {
       return canGenerateProviderApiKey
         ? 'This provider requires an API key. Generate one or enter it manually.'
@@ -1443,6 +1512,10 @@ function LLMProxyNewContent({
             </Select>
           </FormControl>
 
+          {openProviderError &&
+            renderProviderDetailError(() =>
+              setOpenProviderReloadToken((token) => token + 1)
+            )}
           {isOpenDetailPending && renderTransformerSkeleton()}
           {!isOpenDetailPending && (
             <TransformerStatusCard
@@ -1619,9 +1692,15 @@ function LLMProxyNewContent({
             </Button>
             <Button
               variant="contained"
-              // Not while the provider is still being read: whether it takes a
-              // key, and which header the key goes in, are unknown until then.
-              disabled={!draft.providerId || isOpenProviderLoading}
+              // Not until the provider has been read: whether it takes a key,
+              // and which header the key goes in, are unknown until then - and
+              // a read that failed leaves them just as unknown as one still in
+              // flight.
+              disabled={
+                !draft.providerId ||
+                isOpenProviderLoading ||
+                !isOpenProviderRead
+              }
               onClick={
                 isAdding
                   ? () => {
@@ -1725,6 +1804,10 @@ function LLMProxyNewContent({
         </Select>
       </FormControl>
 
+      {selectedProviderError &&
+        renderProviderDetailError(() => {
+          void refetchSelectedProvider();
+        })}
       {isPrimaryDetailPending && renderTransformerSkeleton()}
       {!isPrimaryDetailPending && (
         <TransformerStatusCard
