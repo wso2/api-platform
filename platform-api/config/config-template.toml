@@ -386,6 +386,20 @@ timeout_interval = 20   # seconds between timeout check sweeps
 timeout_duration = 60   # seconds before a stuck deployment is timed out
 
 # ---------------------------------------------------------------------------
+# API Portal publication — limits on the calls made to an API Portal
+# ---------------------------------------------------------------------------
+# Values are durations, e.g. "5s". Network errors and 5xx are retried, 4xx are not.
+# The plan list, all its pages together, gets the time of one call. Startup refuses an
+# overall_timeout below the worst case of a publish; keep it a few seconds below the
+# console's own request timeout, which cannot be checked here.
+[platform_api.api_portal_publication]
+request_timeout         = "5s"    # one attempt of any call except the listing push
+listing_request_timeout = "15s"   # one attempt of the listing push (>= request_timeout)
+max_retries             = 1       # retries after the first attempt (0 = no retries)
+retry_backoff           = "1s"    # wait between attempts of the same call
+overall_timeout         = "65s"   # deadline for all portal calls of one publish, unpublish or deprecate
+
+# ---------------------------------------------------------------------------
 # HTTP client — the single shared outbound *http.Client used by every
 # SSRF-guarded call this process makes whose destination is not fully trusted:
 # MCP reachability probes / JSON-RPC calls (an MCP proxy's own upstream URL),
