@@ -280,6 +280,56 @@ func TestUserFromClaims_NestedOrganization(t *testing.T) {
 	}
 }
 
+func TestUserFromClaims_MissingOrgHandleFallsBackToSlugifiedName(t *testing.T) {
+	claims := map[string]any{
+		"sub":          "a39ea41a-4382-47ed-84bf-56376168955d",
+		"email":        "bob@example.com",
+		"organization": "org-uuid-999",
+		"org_name":     "My Dev Organization",
+	}
+	m := DefaultClaimMapping()
+	u := UserFromClaims(claims, nil, m)
+	if u.Org == nil {
+		t.Fatal("Org is nil")
+	}
+	if u.Org.ID != "org-uuid-999" {
+		t.Errorf("Org.ID = %q, want org-uuid-999", u.Org.ID)
+	}
+	if u.Org.Name != "My Dev Organization" {
+		t.Errorf("Org.Name = %q, want My Dev Organization", u.Org.Name)
+	}
+	if u.Org.Handle != "my-dev-organization" {
+		t.Errorf("Org.Handle = %q, want my-dev-organization", u.Org.Handle)
+	}
+}
+
+func TestUserFromClaims_NestedOrganizationDefaultMapping(t *testing.T) {
+	claims := map[string]any{
+		"sub":   "a39ea41a-4382-47ed-84bf-56376168955d",
+		"email": "alice@example.com",
+		"organization": map[string]any{
+			"uuid": "nested-uuid",
+			"name": "Nested Team",
+		},
+	}
+	// Use default mapping (OrgID = "organization", OrgName = "org_name", OrgHandle = "org_handle")
+	m := DefaultClaimMapping()
+	u := UserFromClaims(claims, nil, m)
+	if u.Org == nil {
+		t.Fatal("Org is nil — nested organization was not auto-discovered with default mapping")
+	}
+	if u.Org.ID != "nested-uuid" {
+		t.Errorf("Org.ID = %q, want nested-uuid", u.Org.ID)
+	}
+	if u.Org.Name != "Nested Team" {
+		t.Errorf("Org.Name = %q, want Nested Team", u.Org.Name)
+	}
+	if u.Org.Handle != "nested-team" {
+		t.Errorf("Org.Handle = %q, want nested-team", u.Org.Handle)
+	}
+}
+
+
 // A dotted path must not invent values when the claim is missing, a leaf is not an
 // object, or the path runs past a string — each would otherwise scope the session to
 // a wrong or empty org rather than reporting none.

@@ -149,10 +149,32 @@ func UserFromClaims(claims, idClaims map[string]any, m ClaimMapping) User {
 	orgID := strClaim(claims, m.OrgID)
 	orgName := strClaim(claims, m.OrgName)
 	orgHandle := strClaim(claims, m.OrgHandle)
-	if orgID != "" || orgHandle != "" {
+
+	// If org claims were not resolved as flat strings, inspect if the configured
+	// claim is a nested object (e.g. {"organization": {"uuid": ..., "handle": ..., "name": ...}}).
+	if orgID == "" && orgHandle == "" {
+		if raw, ok := resolveClaimPath(claims, m.OrgID); ok {
+			if nested, isMap := raw.(map[string]any); isMap {
+				orgID = first(strClaim(nested, "uuid"), strClaim(nested, "id"))
+				orgHandle = strClaim(nested, "handle")
+				orgName = first(strClaim(nested, "name"), strClaim(nested, "displayName"))
+			}
+		}
+	}
+
+	if orgID != "" || orgHandle != "" || orgName != "" {
 		name := orgName
 		if name == "" {
-			name = orgHandle
+			name = first(orgHandle, orgID)
+		}
+		if orgHandle == "" {
+			orgHandle = slugify(name)
+			if orgHandle == "" {
+				orgHandle = orgID
+			}
+		}
+		if orgID == "" {
+			orgID = first(orgHandle, name)
 		}
 		u.Org = &Org{ID: orgID, Name: name, Handle: orgHandle}
 	}
@@ -285,3 +307,18 @@ func first(vals ...string) string {
 	}
 	return ""
 }
+
+func slugify(displayName string) string {
+	s := strings.ToLower(strings.TrimSpace(displayName))
+	var b strings.Builder
+	for _, r := range s {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9', r == '-':
+			b.WriteRune(r)
+		case r == ' ' || r == '_':
+			b.WriteRune('-')
+		}
+	}
+	return strings.Trim(b.String(), "-")
+}
+
