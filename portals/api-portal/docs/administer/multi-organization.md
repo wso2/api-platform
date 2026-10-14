@@ -140,7 +140,7 @@ unless the claim arrived over verified TLS:
   over that connection; it is also verified against `auth.idp.jwks_url`, as every
   login is.
 - **Bearer tokens:** a pinned `auth.idp.certificate`, or `auth.idp.jwks_url` over
-  `https` — and, when set, `auth.idp.multi_organization.jwks_url_template` over `https`
+  `https` — and, when set, `auth.idp.jwks_url_template` over `https`
   too.
 - Either way, `NODE_TLS_REJECT_UNAUTHORIZED=0` disables provisioning. To trust a
   self-signed IDP certificate, add it with `NODE_EXTRA_CA_CERTS` instead.
@@ -196,7 +196,7 @@ keys — WSO2 IS and Asgardeo sub-organizations issue as `.../o/<orgId>/oauth2/t
 To accept bearer tokens issued that way, describe the pattern:
 
 ```toml
-[api_portal.auth.idp.multi_organization]
+[api_portal.auth.idp]
 issuer_pattern    = "https://is.example.com/o/{org}/oauth2/token"
 jwks_url_template = "https://is.example.com/o/{org}/oauth2/jwks"   # empty: use jwks_url for every org
 issuer_org_claim  = "org_id"   # the claim that must equal {org}; empty: claim_mappings.organization

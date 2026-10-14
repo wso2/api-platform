@@ -202,14 +202,14 @@ async function verifyJwksWithRefresh(token, jwksURL, req) {
 
 /**
  * True when a token verified against `org`'s own issuer is bound to that organization:
- * the claim named by auth.idp.multi_organization.issuer_org_claim (the organization
+ * the claim named by auth.idp.issuer_org_claim (the organization
  * claim when unset) equals `org`. The token must also carry the organization claim
  * itself — a token without one would otherwise fall back to the configured organization,
  * letting one organization's issuer vouch for a credential acting in another.
  */
 function tokenClaimsOrg(payload, org) {
     const orgKey = config.auth.claimMappings?.organization;
-    const bindingKey = config.auth.idp?.multiOrganization?.issuerOrgClaim || orgKey;
+    const bindingKey = config.auth.idp?.issuerOrgClaim || orgKey;
     try {
         if (!orgKey || !orgContext.normalizeOrgClaim(getNestedClaim(payload, orgKey))) return false;
         return orgContext.normalizeOrgClaim(bindingKey ? getNestedClaim(payload, bindingKey) : undefined) === org;

@@ -265,11 +265,9 @@ const DEFAULTS = {
             // (claimMappings.organization when empty) must equal that {org}. Both
             // patterns empty — the default — means a single issuer: every token must
             // match `issuer` above and is verified against jwksUrl.
-            multiOrganization: {
-                issuerPattern: '',
-                jwksUrlTemplate: '',
-                issuerOrgClaim: '',
-            },
+            issuerPattern: '',
+            jwksUrlTemplate: '',
+            issuerOrgClaim: '',
             tokenRefreshTimeoutMs: 10000,
             silentSso: true,     // was: advanced.disableSilentSSO, inverted
             orgCallback: false,  // was: advanced.disableOrgCallback, inverted

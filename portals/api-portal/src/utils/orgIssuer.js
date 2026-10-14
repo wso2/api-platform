@@ -19,7 +19,7 @@
 
 /*
  * Per-organization token issuers (multi-organization mode,
- * auth.idp.multi_organization.issuer_pattern).
+ * auth.idp.issuer_pattern).
  *
  * Some IDPs issue each organization's tokens under that organization's own issuer and
  * signing keys — WSO2 IS / Asgardeo sub-organizations sign as
@@ -61,7 +61,7 @@ function issuerRegExp(pattern) {
 
 /**
  * If `iss` is a per-organization issuer (it fits
- * auth.idp.multi_organization.issuer_pattern), returns the organization it names and the
+ * auth.idp.issuer_pattern), returns the organization it names and the
  * JWKS URL to verify it with; otherwise null. Callers only consult this in
  * multi-organization mode.
  *
@@ -70,12 +70,12 @@ function issuerRegExp(pattern) {
  */
 function matchOrgIssuer(iss) {
     const idp = config.auth?.idp || {};
-    const pattern = idp.multiOrganization?.issuerPattern;
+    const pattern = idp.issuerPattern;
     if (!pattern || typeof iss !== 'string') return null;
     const match = issuerRegExp(pattern).exec(iss);
     if (!match || !ORG_SEGMENT.test(match[1])) return null;
     const org = match[1];
-    const template = idp.multiOrganization?.jwksUrlTemplate;
+    const template = idp.jwksUrlTemplate;
     const jwksUrl = template ? template.replace('{org}', org) : idp.jwksUrl;
     if (!jwksUrl) return null;
     return { org, issuer: iss, jwksUrl };

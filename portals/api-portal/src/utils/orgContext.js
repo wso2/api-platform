@@ -449,9 +449,9 @@ function provisioningChannelProblem(channel) {
     if (channel === 'login') return insecureUrlProblem(idp.tokenUrl, 'auth.idp.token_url');
     if (channel === 'bearer') {
         if (idp.certificate) return null;
-        const template = idp.multiOrganization?.jwksUrlTemplate;
+        const template = idp.jwksUrlTemplate;
         return insecureUrlProblem(idp.jwksUrl, 'auth.idp.jwks_url')
-            || (template ? insecureUrlProblem(template.replace('{org}', 'org'), 'auth.idp.multi_organization.jwks_url_template') : null);
+            || (template ? insecureUrlProblem(template.replace('{org}', 'org'), 'auth.idp.jwks_url_template') : null);
     }
     return 'unknown credential channel';
 }

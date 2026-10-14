@@ -758,33 +758,33 @@ function validateMultiOrganizationConfig(cfg) {
 validateMultiOrganizationConfig(config);
 
 /**
- * auth.idp.multi_organization.issuer_pattern / jwks_url_template: each, when set, must
+ * auth.idp.issuer_pattern / jwks_url_template: each, when set, must
  * carry exactly one {org} placeholder — without it every organization would share one
  * key set (or one issuer), and with two the extracted organization would be ambiguous.
  * The template must be an absolute URL once {org} is filled in, since it is fetched.
  */
-function validateIdpMultiOrganizationConfig(cfg) {
-    const mo = cfg.auth?.idp?.multiOrganization || {};
+function validateOrgIssuerConfig(cfg) {
+    const idp = cfg.auth?.idp || {};
     const placeholders = (v) => (String(v).match(/\{org\}/g) || []).length;
-    for (const [key, value] of [['issuer_pattern', mo.issuerPattern], ['jwks_url_template', mo.jwksUrlTemplate]]) {
+    for (const [key, value] of [['issuer_pattern', idp.issuerPattern], ['jwks_url_template', idp.jwksUrlTemplate]]) {
         if (!value) continue;
         if (placeholders(value) !== 1) {
-            process.stderr.write(`[FATAL] auth.idp.multi_organization.${key} must contain exactly one {org} placeholder, got "${value}".\n`);
+            process.stderr.write(`[FATAL] auth.idp.${key} must contain exactly one {org} placeholder, got "${value}".\n`);
             process.exit(1);
         }
     }
-    if (mo.jwksUrlTemplate && cfg.auth?.mode === 'idp') {
-        requireSecureJwksUrl(cfg, mo.jwksUrlTemplate.replace('{org}', 'org'), 'auth.idp.multi_organization.jwks_url_template');
+    if (idp.jwksUrlTemplate && cfg.auth?.mode === 'idp') {
+        requireSecureJwksUrl(cfg, idp.jwksUrlTemplate.replace('{org}', 'org'), 'auth.idp.jwks_url_template');
     }
-    if (mo.jwksUrlTemplate && !mo.issuerPattern) {
-        process.stderr.write('[WARN] auth.idp.multi_organization.jwks_url_template is set without issuer_pattern — it is never used.\n');
+    if (idp.jwksUrlTemplate && !idp.issuerPattern) {
+        process.stderr.write('[WARN] auth.idp.jwks_url_template is set without issuer_pattern — it is never used.\n');
     }
-    if (mo.issuerPattern && !cfg.multiOrganization?.enabled) {
-        process.stderr.write('[WARN] auth.idp.multi_organization.issuer_pattern has no effect unless multi_organization.enabled = true.\n');
+    if (idp.issuerPattern && !cfg.multiOrganization?.enabled) {
+        process.stderr.write('[WARN] auth.idp.issuer_pattern has no effect unless multi_organization.enabled = true.\n');
     }
 }
 
-validateIdpMultiOrganizationConfig(config);
+validateOrgIssuerConfig(config);
 
 /**
  * auth.idp.audience may name several accepted audiences — a comma-separated string or a

@@ -44,10 +44,8 @@ function load(idp) {
 
 const IS = {
     jwksUrl: 'https://is.example.com/oauth2/jwks',
-    multiOrganization: {
-        issuerPattern: 'https://is.example.com/o/{org}/oauth2/token',
-        jwksUrlTemplate: 'https://is.example.com/o/{org}/oauth2/jwks',
-    },
+    issuerPattern: 'https://is.example.com/o/{org}/oauth2/token',
+    jwksUrlTemplate: 'https://is.example.com/o/{org}/oauth2/jwks',
 };
 
 test('a per-organization issuer yields its organization and that organization\'s JWKS URL', () => {
@@ -60,7 +58,7 @@ test('a per-organization issuer yields its organization and that organization\'s
 });
 
 test('without a template the configured jwks_url is used', () => {
-    const { matchOrgIssuer } = load({ ...IS, multiOrganization: { issuerPattern: IS.multiOrganization.issuerPattern } });
+    const { matchOrgIssuer } = load({ ...IS, jwksUrlTemplate: '' });
     assert.strictEqual(matchOrgIssuer('https://is.example.com/o/acme/oauth2/token').jwksUrl, IS.jwksUrl);
 });
 

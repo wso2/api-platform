@@ -173,11 +173,10 @@ obtained directly from an organization's own token endpoint
 (`.../o/<organization id>/oauth2/token`) — for example a tenant's script calling the
 portal's REST API — is issued under that organization's issuer and to its copy of the
 application, whose client ID differs. To accept those, add each organization's
-*API Portal* client ID (shown on its **Applications** page) to `audience`, and describe the
-per-organization issuer:
+*API Portal* client ID (shown on its **Applications** page) to `audience`, and add the
+per-organization issuer to the same `[api_portal.auth.idp]` table:
 
 ```toml
-[api_portal.auth.idp.multi_organization]
 issuer_pattern    = "https://localhost:9443/o/{org}/oauth2/token"
 jwks_url_template = "https://host.docker.internal:9443/o/{org}/oauth2/jwks"
 # {org} is the organization's org_id. Keying organizations on org_handle or org_name
