@@ -1,0 +1,10 @@
+{
+  "body": {
+    "error": "Internal Server Error",
+    "message": "Content-Type must be application/json for downstream payload format json"
+  },
+  "headers": {
+    "content-type": "application/json"
+  },
+  "status": 500
+}

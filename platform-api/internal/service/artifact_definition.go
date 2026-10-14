@@ -140,14 +140,59 @@ func (d *restAPIDefinition) Decode(content []byte) (any, error) {
 	return definition, nil
 }
 
-// llmProxyDefinition renders LLM proxies.
+// llmProxyDefinition renders LLM proxies. It holds the provider and template
+// repositories as well as the proxy's own: the artifact's provider shape
+// depends on the primary provider's template, which the proxy row records only
+// by provider id and the provider row only by template uuid.
 type llmProxyDefinition struct {
-	proxyRepo repository.LLMProxyRepository
+	proxyRepo    repository.LLMProxyRepository
+	providerRepo repository.LLMProviderRepository
+	templateRepo repository.LLMProviderTemplateRepository
 }
 
 // NewLLMProxyDefinition returns the ArtifactDefinition for LLM proxies.
-func NewLLMProxyDefinition(proxyRepo repository.LLMProxyRepository) ArtifactDefinition {
-	return &llmProxyDefinition{proxyRepo: proxyRepo}
+func NewLLMProxyDefinition(
+	proxyRepo repository.LLMProxyRepository,
+	providerRepo repository.LLMProviderRepository,
+	templateRepo repository.LLMProviderTemplateRepository,
+) ArtifactDefinition {
+	return &llmProxyDefinition{
+		proxyRepo:    proxyRepo,
+		providerRepo: providerRepo,
+		templateRepo: templateRepo,
+	}
+}
+
+// primaryProviderTemplate is the template handle the proxy's primary provider
+// was created from, and it decides one thing: whether a declared inbound
+// interface merely restates that format. When it does, the artifact can omit
+// the interface and stay readable by a gateway released before the field
+// existed. Returning "" — no repository, no primary, an unresolvable provider —
+// makes any declared interface count as differing, so the artifact keeps it and
+// the canonical shape is emitted. That is the safe direction: a proxy that
+// needs a newer gateway fails loudly on an older one rather than deploying
+// there with a field silently dropped.
+func (d *llmProxyDefinition) primaryProviderTemplate(proxy *model.LLMProxy) string {
+	if d.providerRepo == nil || d.templateRepo == nil || proxy == nil {
+		return ""
+	}
+	primaryID := model.PrimaryLLMProxyProviderID(proxy.Configuration)
+	if primaryID == "" {
+		return ""
+	}
+	provider, err := d.providerRepo.GetByID(primaryID, proxy.OrganizationUUID)
+	if err != nil || provider == nil || provider.TemplateUUID == "" {
+		return ""
+	}
+	// The template is resolved through the provider's templateUuid, the only
+	// place a provider created here records it: the configuration's template
+	// field is filled in by an imported spec alone, so reading it would leave
+	// every provider created through the API looking template-less.
+	template, err := d.templateRepo.GetByUUID(provider.TemplateUUID, proxy.OrganizationUUID)
+	if err != nil || template == nil {
+		return ""
+	}
+	return template.ID
 }
 
 func (d *llmProxyDefinition) Kind() string { return constants.LLMProxy }
@@ -160,7 +205,7 @@ func (d *llmProxyDefinition) Current(artifact *model.Artifact) (*ArtifactSnapsho
 	if proxy == nil {
 		return nil, apperror.LLMProxyNotFound.New()
 	}
-	definition, err := generateLLMProxyDeploymentYAML(proxy)
+	definition, err := generateLLMProxyDeploymentYAML(proxy, d.primaryProviderTemplate(proxy))
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate LLM proxy deployment YAML: %w", err)
 	}
@@ -325,6 +370,58 @@ func (d *agentProxyDefinition) Decode(content []byte) (any, error) {
 	definition := &model.AgentProxyDeploymentYAML{}
 	if err := yaml.Unmarshal(content, definition); err != nil {
 		return nil, fmt.Errorf("failed to parse stored Agent proxy deployment YAML: %w", err)
+	}
+	return definition, nil
+}
+
+// graphqlAPIDefinition renders GraphQL APIs.
+//
+// It needs the project repository because a GraphQL API stores its project by
+// UUID, while the deployment YAML's project-id annotation must carry the
+// project's handle: the DP→CP import path resolves it by handle, so a UUID
+// there fails that import with PROJECT_NOT_FOUND.
+type graphqlAPIDefinition struct {
+	graphqlRepo repository.GraphQLAPIRepository
+	projectRepo repository.ProjectRepository
+}
+
+// NewGraphQLAPIDefinition returns the ArtifactDefinition for GraphQL APIs.
+func NewGraphQLAPIDefinition(graphqlRepo repository.GraphQLAPIRepository, projectRepo repository.ProjectRepository) ArtifactDefinition {
+	return &graphqlAPIDefinition{graphqlRepo: graphqlRepo, projectRepo: projectRepo}
+}
+
+func (d *graphqlAPIDefinition) Kind() string { return constants.GraphQLApi }
+
+func (d *graphqlAPIDefinition) Current(artifact *model.Artifact) (*ArtifactSnapshot, error) {
+	apiModel, err := d.graphqlRepo.GetByUUID(artifact.UUID, artifact.OrganizationUUID)
+	if err != nil {
+		return nil, err
+	}
+	if apiModel == nil {
+		return nil, apperror.GraphQLAPINotFound.New()
+	}
+	project, err := d.projectRepo.GetProjectByUUIDAndOrgID(apiModel.ProjectID, artifact.OrganizationUUID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve project for GraphQL API %s: %w", apiModel.ID, err)
+	}
+	if project == nil {
+		return nil, apperror.ProjectNotFound.New()
+	}
+	definition, err := generateGraphQLAPIDeploymentYAML(apiModel, project.Handle)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate GraphQL API deployment YAML: %w", err)
+	}
+	return &ArtifactSnapshot{
+		Definition:  &definition,
+		DataVersion: apiModel.DataVersion,
+		Origin:      apiModel.Origin,
+	}, nil
+}
+
+func (d *graphqlAPIDefinition) Decode(content []byte) (any, error) {
+	definition := &dto.GraphQLAPIDeploymentYAML{}
+	if err := yaml.Unmarshal(content, definition); err != nil {
+		return nil, fmt.Errorf("failed to parse stored GraphQL API deployment YAML: %w", err)
 	}
 	return definition, nil
 }

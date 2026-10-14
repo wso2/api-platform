@@ -303,6 +303,9 @@ logout_url = ""
 logout_redirect_uri = ""
 certificate = ""
 jwks_url = ""
+# Development only: accept a plain-http jwks_url when its host is localhost or
+# *.localhost. Any other http JWKS URL still refuses to start.
+allow_local_http_jwks = false
 token_refresh_timeout_ms = 10000
 silent_sso = true      # Enable silent SSO
 org_callback = false   # Redirect to the org's own landing page after login
@@ -474,6 +477,9 @@ enabled_types = ["apis", "mcp-servers", "api-workflows"]
 poll_interval_ms = 2000
 batch_size = 50
 signature_tolerance_sec = 300
+# Development only: skip certificate verification when delivering to a
+# subscriber with a self-signed certificate. Other outbound calls stay verified.
+tls_skip_verify = false
 
 # =============================================================================
 # UPLOAD LIMITS

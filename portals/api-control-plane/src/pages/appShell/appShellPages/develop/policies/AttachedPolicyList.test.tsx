@@ -42,27 +42,41 @@ describe('AttachedPolicyList', () => {
     expect(screen.getByText('v2.0')).toBeInTheDocument();
   });
 
-  it('lists policies but blocks every change when read-only', () => {
-    renderWithProviders(
+  it('lists policies without add, edit, remove or reorder when read-only', () => {
+    const { container } = renderWithProviders(
       <AttachedPolicyList
         canAdd
         onAdd={vi.fn()}
         onEdit={vi.fn()}
         onRemove={vi.fn()}
         onReorder={vi.fn()}
-        policies={[{ name: 'gateway-policy', version: 'v1' }]}
+        policies={[{ name: 'cors', version: 'v1' }]}
         readOnly
       />,
     );
 
-    expect(screen.getByText('gateway-policy')).toBeInTheDocument();
-    // `canAdd` is true, so only `readOnly` can be what hides Add and disables the rest.
+    expect(screen.getByText('cors')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Add Policy' })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Edit policy' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Remove policy' })).toBeDisabled();
-    expect(screen.getByText('gateway-policy').closest('[draggable]')).toHaveAttribute(
-      'draggable',
-      'false',
+    expect(screen.queryByLabelText('Edit policy')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Remove policy')).not.toBeInTheDocument();
+    expect(container.querySelector('[draggable="true"]')).toBeNull();
+  });
+
+  it('keeps every control when editable', () => {
+    const { container } = renderWithProviders(
+      <AttachedPolicyList
+        canAdd
+        onAdd={vi.fn()}
+        onEdit={vi.fn()}
+        onRemove={vi.fn()}
+        onReorder={vi.fn()}
+        policies={[{ name: 'cors', version: 'v1' }]}
+      />,
     );
+
+    expect(screen.getByRole('button', { name: 'Add Policy' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Edit policy')).toBeInTheDocument();
+    expect(screen.getByLabelText('Remove policy')).toBeInTheDocument();
+    expect(container.querySelector('[draggable="true"]')).not.toBeNull();
   });
 });

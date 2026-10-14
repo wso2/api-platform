@@ -1,0 +1,15 @@
+{
+  "body": {
+    "message": {
+      "action": "GUARDRAIL_INTERVENED",
+      "actionReason": "Violation of Azure content safety content moderation detected.",
+      "direction": "REQUEST",
+      "interveningGuardrail": "AzureContentSafetyContentModeration"
+    },
+    "type": "AZURE_CONTENT_SAFETY_CONTENT_MODERATION"
+  },
+  "headers": {
+    "content-type": "application/json"
+  },
+  "status": 422
+}

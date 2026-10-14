@@ -19,6 +19,7 @@
 package handlers
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -86,6 +87,11 @@ func (s *APIServer) CreateAPIKey(w http.ResponseWriter, r *http.Request, id stri
 			})
 		} else if storage.IsConflictError(err) || strings.Contains(err.Error(), "already exists") {
 			httputil.WriteJSON(w, http.StatusConflict, api.ErrorResponse{
+				Status:  "error",
+				Message: err.Error(),
+			})
+		} else if errors.Is(err, utils.ErrAPIKeyExpirationInPast) || errors.Is(err, utils.ErrUnsupportedAPIKeyExpirationUnit) {
+			httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{
 				Status:  "error",
 				Message: err.Error(),
 			})
@@ -243,6 +249,11 @@ func (s *APIServer) UpdateAPIKey(w http.ResponseWriter, r *http.Request, id stri
 				Status:  "error",
 				Message: err.Error(),
 			})
+		} else if errors.Is(err, utils.ErrAPIKeyExpirationInPast) || errors.Is(err, utils.ErrUnsupportedAPIKeyExpirationUnit) {
+			httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{
+				Status:  "error",
+				Message: err.Error(),
+			})
 		} else {
 			log.Error("Failed to update API key",
 				slog.Any("error", err),
@@ -314,6 +325,11 @@ func (s *APIServer) RegenerateAPIKey(w http.ResponseWriter, r *http.Request, id 
 		// Check error type to determine appropriate status code
 		if strings.Contains(err.Error(), "not found") {
 			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{
+				Status:  "error",
+				Message: err.Error(),
+			})
+		} else if errors.Is(err, utils.ErrAPIKeyExpirationInPast) || errors.Is(err, utils.ErrUnsupportedAPIKeyExpirationUnit) {
+			httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{
 				Status:  "error",
 				Message: err.Error(),
 			})

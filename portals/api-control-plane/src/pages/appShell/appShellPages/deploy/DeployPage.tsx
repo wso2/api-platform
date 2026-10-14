@@ -16,81 +16,73 @@
  * under the License.
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Box, PageTitle, TextField, Typography } from '@wso2/oxygen-ui';
-import { useNavigate } from 'react-router-dom';
-
-import { useGateways } from '@/api/resources/gateways';
-import { useRestApi } from '@/api/resources/restApis';
-import { useDeployments } from '@/api/resources/restApis/deployments';
 import { AppPage } from '@/components/AppPage';
-import { EmptyState, ErrorState, LoadingState } from '@/components/StateViews';
+import {
+  useDeleteDeployment,
+  useDeployApi,
+  useDeployments,
+  useRestoreDeployment,
+  useUndeployDeployment,
+} from '@/api/resources/restApis/deployments';
+import { useRestApi } from '@/api/resources/restApis';
 import { routes } from '@/routes/paths';
 import { ScopeGate } from '@/scope/ScopeGate';
 import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
-import { GatewayDeployCard } from './components/GatewayDeployCard';
-import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
+import { ApiDeployView, type DeployMutationHooks } from './components/ApiDeployView';
+import type { UseDeployMutationHook } from './components/GatewayDeployCard';
+import type { UseDeploymentMutationHook } from './components/GatewayDeploymentSelector';
 
-const messages = defineMessages({
-  title: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.DeployPage.title',
-    defaultMessage: 'Deploy {apiName}',
-    description:
-      'Page heading. {apiName} is the API display name, user-supplied; do not translate it.',
-  },
-  subtitle: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.DeployPage.subtitle',
-    defaultMessage:
-      'Deploy the current working copy to a gateway, and manage existing deployments.',
-  },
-  loading: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.DeployPage.loading',
-    defaultMessage: 'Loading deploy state',
-    description: 'Shown while the API, its gateways and its deployments are being fetched.',
-  },
-  apiNotFound: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.DeployPage.apiNotFound',
-    defaultMessage: 'API not found',
-  },
-  gatewayManaged: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.DeployPage.gatewayManaged',
-    defaultMessage:
-      'This API was created from a gateway. You can view its deployments, but deploy, redeploy, restore and undeploy actions are managed by the gateway and are unavailable in the API Control Plane.',
-    description:
-      'Info banner on the Deploy page of a read-only API, i.e. one that a gateway pushed to the control plane.',
-  },
-  searchPlaceholder: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.DeployPage.searchPlaceholder',
-    defaultMessage: 'Search gateways',
-  },
-  noGatewaysMatchSearch: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.DeployPage.noGatewaysMatchSearch',
-    defaultMessage: 'No gateways match your search',
-  },
-  emptyTitle: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.DeployPage.emptyTitle',
-    defaultMessage: 'No gateway added yet',
-    description: 'Empty state when the organization has no gateways to deploy to.',
-  },
-  emptyDescription: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.DeployPage.emptyDescription',
-    defaultMessage: 'Add a gateway to get started with deployment.',
-  },
-  addGateway: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.DeployPage.addGateway',
-    defaultMessage: 'Add Gateway',
-    description: 'Empty-state action opening the gateway creation page. Verb phrase.',
-  },
-});
+/** Adapts REST's `{ restApiId, ... }` mutations to the shared deploy-card
+ * subtree's uniform `{ apiId, ... }` shape — see `GatewayDeployCard` for why
+ * this lives at the caller rather than in the shared component. */
+const useDeployForCard: UseDeployMutationHook = () => {
+  const mutation = useDeployApi();
+  return {
+    isPending: mutation.isPending,
+    mutate: ({ apiId, body }, options) => mutation.mutate({ restApiId: apiId, body }, options),
+  };
+};
 
-/**
- * The deploy path, ai-workspace style: one expandable card per gateway with
- * a one-click Deploy (auto-named), per-gateway status and history.
- */
+const useUndeployForCard: UseDeploymentMutationHook = () => {
+  const mutation = useUndeployDeployment();
+  return {
+    isPending: mutation.isPending,
+    mutate: ({ apiId, deploymentId }, options) =>
+      mutation.mutate({ restApiId: apiId, deploymentId }, options),
+  };
+};
+
+const useRestoreForCard: UseDeploymentMutationHook = () => {
+  const mutation = useRestoreDeployment();
+  return {
+    isPending: mutation.isPending,
+    mutate: ({ apiId, deploymentId }, options) =>
+      mutation.mutate({ restApiId: apiId, deploymentId }, options),
+  };
+};
+
+const useDeleteForCard: UseDeploymentMutationHook = () => {
+  const mutation = useDeleteDeployment();
+  return {
+    isPending: mutation.isPending,
+    mutate: ({ apiId, deploymentId }, options) =>
+      mutation.mutate({ restApiId: apiId, deploymentId }, options),
+  };
+};
+
+const REST_DEPLOY_MUTATIONS: DeployMutationHooks = {
+  useDelete: useDeleteForCard,
+  useDeploy: useDeployForCard,
+  useRestore: useRestoreForCard,
+  useUndeploy: useUndeployForCard,
+};
+
+/** A REST API's Deploy page: the shared `ApiDeployView` over REST's data. */
 export function DeployPage() {
   return (
     <AppPage>
       <ScopeGate
+        graphqlTo={routes.graphqlApiDeploy}
         prompt="Deployments are made for a single API."
         requires="api"
         to={routes.apiDeploy}
@@ -102,136 +94,26 @@ export function DeployPage() {
 }
 
 function Deploy() {
-  const intl = useIntl();
   const { params } = useConsoleScope();
-  const orgHandle = params.orgHandle ?? '';
-  const navigate = useNavigate();
   const apiQuery = useRestApi(params.apiHandler);
-  const gatewaysQuery = useGateways();
   // The deployments query is gated on the handle rather than on the loaded API:
   // both are keyed by the same value, so waiting for the API detail would delay
   // this request for no benefit.
   const deploymentsQuery = useDeployments(params.apiHandler);
 
-  const [searchQuery, setSearchQuery] = useState('');
-  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
-
-  // Active (connected) gateways first, like ai-workspace.
-  const sortedGateways = useMemo(() => {
-    const gateways = gatewaysQuery.data?.list ?? [];
-    return [...gateways].sort((a, b) => {
-      const aActive = a.isActive === true;
-      const bActive = b.isActive === true;
-      if (aActive === bActive) return 0;
-      return aActive ? -1 : 1;
-    });
-  }, [gatewaysQuery.data]);
-
-  // Expand the first gateway once the list arrives.
-  const appliedInitialExpand = useRef(false);
-  useEffect(() => {
-    if (appliedInitialExpand.current || sortedGateways.length === 0) return;
-    appliedInitialExpand.current = true;
-    setExpandedIds(new Set([sortedGateways[0].id ?? '']));
-  }, [sortedGateways]);
-
-  // `isPending`, not `isLoading`: both queries are gated on scope, and a
-  // disabled query reports `isLoading: false` with no data — which would fall
-  // through to the error branch while the scope is still resolving.
-  if (apiQuery.isPending || gatewaysQuery.isPending) {
-    return <LoadingState label={intl.formatMessage(messages.loading)} />;
-  }
-  if (!apiQuery.data) return <ErrorState title={intl.formatMessage(messages.apiNotFound)} />;
-
-  const api = apiQuery.data;
-  const restApiId = api.id ?? params.apiHandler ?? '';
-  // A gateway-created API is owned by that gateway: its deployments are shown,
-  // but every action that changes them is disabled.
-  const readOnly = api.readOnly === true;
-  const deployments = deploymentsQuery.data?.list ?? [];
-
-  const filteredGateways = searchQuery.trim()
-    ? sortedGateways.filter((gateway) => {
-        const query = searchQuery.toLowerCase().trim();
-        // One field, not two: the domain type this replaced set its `name` from
-        // `displayName`, so matching both only ever matched the same string.
-        return gateway.displayName.toLowerCase().includes(query);
-      })
-    : sortedGateways;
-
-  const toggleExpand = (gatewayId: string, expanded: boolean) => {
-    setExpandedIds((previous) => {
-      const next = new Set(previous);
-      if (expanded) next.add(gatewayId);
-      else next.delete(gatewayId);
-      return next;
-    });
-  };
-
   return (
-    <>
-      <PageTitle>
-        <PageTitle.Header>
-          <FormattedMessage {...messages.title} values={{ apiName: api.displayName }} />
-        </PageTitle.Header>
-        <PageTitle.SubHeader>
-          <FormattedMessage {...messages.subtitle} />
-        </PageTitle.SubHeader>
-      </PageTitle>
-
-      {readOnly && (
-        <Box sx={{ pb: 1, pt: 3 }}>
-          <Alert severity="info">
-            <FormattedMessage {...messages.gatewayManaged} />
-          </Alert>
-        </Box>
-      )}
-
-      {sortedGateways.length === 0 ? (
-        <EmptyState
-          actionLabel={intl.formatMessage(messages.addGateway)}
-          description={intl.formatMessage(messages.emptyDescription)}
-          onAction={() => navigate(routes.newGateway(orgHandle))}
-          title={intl.formatMessage(messages.emptyTitle)}
-          operationId="CreateGateway"
-        />
-      ) : (
-        <>
-          <Box sx={{ mb: 3, width: '100%' }}>
-            <TextField
-              fullWidth
-              onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder={intl.formatMessage(messages.searchPlaceholder)}
-              size="small"
-              value={searchQuery}
-            />
-          </Box>
-
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-            {filteredGateways.length === 0 ? (
-              <Box sx={{ color: 'text.secondary', p: 6, textAlign: 'center' }}>
-                <Typography>
-                  <FormattedMessage {...messages.noGatewaysMatchSearch} />
-                </Typography>
-              </Box>
-            ) : (
-              filteredGateways.map((gateway) => (
-                <GatewayDeployCard
-                  deployments={deployments}
-                  gateway={gateway}
-                  isExpanded={expandedIds.has(gateway.id ?? '')}
-                  key={gateway.id}
-                  onRefresh={() => deploymentsQuery.refetch()}
-                  onToggleExpand={(expanded) => toggleExpand(gateway.id ?? '', expanded)}
-                  readOnly={readOnly}
-                  refreshing={deploymentsQuery.isFetching}
-                  restApiId={restApiId}
-                />
-              ))
-            )}
-          </Box>
-        </>
-      )}
-    </>
+    <ApiDeployView
+      api={apiQuery.data}
+      apiId={apiQuery.data?.id ?? params.apiHandler ?? ''}
+      apiPending={apiQuery.isPending}
+      deployments={deploymentsQuery.data?.list ?? []}
+      deploymentsFetching={deploymentsQuery.isFetching}
+      mutations={REST_DEPLOY_MUTATIONS}
+      onRefreshDeployments={() => void deploymentsQuery.refetch()}
+      orgHandle={params.orgHandle ?? ''}
+      // A gateway-created API is owned by that gateway: deployments are shown,
+      // but every action that changes them is disabled.
+      readOnly={apiQuery.data?.readOnly === true}
+    />
   );
 }

@@ -75,7 +75,7 @@ func setupAgentInternalEnv(t *testing.T) *agentInternalEnv {
 	gatewaySvc := service.NewGatewayService(gatewayRepo, nil, nil, nil, nil, slog.Default(), false, false, nil, identity)
 	internalSvc := service.NewGatewayInternalAPIService(
 		nil, nil, nil, nil, nil, nil,
-		repository.NewAgentProxyRepo(db),
+		repository.NewAgentProxyRepo(db), nil,
 		repository.NewDeploymentRepo(db, registry), gatewayRepo,
 		nil, nil,
 		repository.NewAPIKeyRepo(db, registry),

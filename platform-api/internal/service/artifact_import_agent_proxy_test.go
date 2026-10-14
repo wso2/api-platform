@@ -88,7 +88,7 @@ func setupAgentImportTest(t *testing.T) *agentImportDeps {
 	logs := &bytes.Buffer{}
 
 	svc := NewArtifactImportService(base.apiRepo, repository.NewLLMProviderRepo(db), base.templateRepo,
-		repository.NewLLMProxyRepo(db), repository.NewMCPProxyRepo(db), agentRepo,
+		repository.NewLLMProxyRepo(db), repository.NewMCPProxyRepo(db), agentRepo, nil,
 		base.artifactRepo, base.deployment, gatewayRepo, projectRepo, cfg,
 		slog.New(slog.NewTextHandler(logs, nil)), fakeMCPServerInfoFetcher{}, invalidator)
 

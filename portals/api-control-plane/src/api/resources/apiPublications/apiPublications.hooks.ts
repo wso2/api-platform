@@ -22,12 +22,13 @@ import type { ApiError } from '../../core/errors';
 import { HANDLED_LOCALLY } from '../../core/queryClient';
 import { useApiScope } from '../../core/scope';
 import {
-  deprecateRestApiOnApiPortal,
-  publishRestApiToApiPortal,
+  type DraftDefinitionBody,
+  type PublishableApiType,
+  deprecateApiOnApiPortal,
+  publishApiToApiPortal,
   saveApiPublicationDraft,
   saveApiPublicationDraftDefinition,
-  unpublishRestApiFromApiPortal,
-  type DraftDefinitionDocument,
+  unpublishApiFromApiPortal,
   type ListApiPublicationsQuery,
   type Publication,
   type PublicationDraftDetails,
@@ -218,7 +219,7 @@ export const useSaveApiPublicationDraftDefinition = (
   return useMutation<
     void,
     ApiError,
-    { apiPortalId: string; apiType: string; apiId: string; body: DraftDefinitionDocument }
+    { apiPortalId: string; apiType: string; apiId: string; body: DraftDefinitionBody }
   >({
     meta: overrides.handlesErrors ? HANDLED_LOCALLY : undefined,
     mutationFn: ({ apiPortalId, apiType, apiId, body }) =>
@@ -227,13 +228,13 @@ export const useSaveApiPublicationDraftDefinition = (
   });
 };
 
-export const usePublishRestApiToApiPortal = (overrides: { orgId?: string } = {}) => {
+export const usePublishApiToApiPortal = (overrides: { orgId?: string } = {}) => {
   const { orgId } = useApiScope(overrides);
   const cache = useApiPublicationCache(orgId);
 
-  return useMutation<Publication, ApiError, { apiPortalId: string; apiId: string }>({
-    mutationFn: ({ apiPortalId, apiId }) =>
-      publishRestApiToApiPortal(apiPortalId, apiId, { orgId }),
+  return useMutation<Publication, ApiError, { apiPortalId: string; apiType: PublishableApiType; apiId: string }>({
+    mutationFn: ({ apiPortalId, apiType, apiId }) =>
+      publishApiToApiPortal(apiPortalId, apiType, apiId, { orgId }),
     // On success the publish consumed the draft and the screen is on its way
     // out; on failure (e.g. the draft was already consumed elsewhere) it stays
     // and re-reads what it shows.
@@ -241,26 +242,26 @@ export const usePublishRestApiToApiPortal = (overrides: { orgId?: string } = {})
   });
 };
 
-export const useUnpublishRestApiFromApiPortal = (overrides: { orgId?: string } = {}) => {
+export const useUnpublishApiFromApiPortal = (overrides: { orgId?: string } = {}) => {
   const { orgId } = useApiScope(overrides);
   const cache = useApiPublicationCache(orgId);
 
-  return useMutation<void, ApiError, { apiPortalId: string; apiId: string }>({
-    mutationFn: ({ apiPortalId, apiId }) =>
-      unpublishRestApiFromApiPortal(apiPortalId, apiId, { orgId }),
+  return useMutation<void, ApiError, { apiPortalId: string; apiType: PublishableApiType; apiId: string }>({
+    mutationFn: ({ apiPortalId, apiType, apiId }) =>
+      unpublishApiFromApiPortal(apiPortalId, apiType, apiId, { orgId }),
     // Settled, not success-only: a failed unpublish (e.g. 409 PUBLICATION_STATE_CONFLICT
     // after another session already changed the listing) must re-read the real status.
     onSettled: (_data, error) => settleStatusChange(cache, error),
   });
 };
 
-export const useDeprecateRestApiOnApiPortal = (overrides: { orgId?: string } = {}) => {
+export const useDeprecateApiOnApiPortal = (overrides: { orgId?: string } = {}) => {
   const { orgId } = useApiScope(overrides);
   const cache = useApiPublicationCache(orgId);
 
-  return useMutation<Publication, ApiError, { apiPortalId: string; apiId: string }>({
-    mutationFn: ({ apiPortalId, apiId }) =>
-      deprecateRestApiOnApiPortal(apiPortalId, apiId, { orgId }),
+  return useMutation<Publication, ApiError, { apiPortalId: string; apiType: PublishableApiType; apiId: string }>({
+    mutationFn: ({ apiPortalId, apiType, apiId }) =>
+      deprecateApiOnApiPortal(apiPortalId, apiType, apiId, { orgId }),
     // Settled, not success-only, for the same reason as unpublish: a 409
     // PUBLICATION_STATE_CONFLICT must re-read the real status.
     onSettled: (_data, error) => settleStatusChange(cache, error),

@@ -29,7 +29,6 @@ import (
 	"net"
 	"net/url"
 	"os"
-	"path/filepath"
 	"reflect"
 	"sort"
 	"strconv"
@@ -38,6 +37,7 @@ import (
 
 	_ "github.com/microsoft/go-mssqldb"
 
+	"github.com/wso2/api-platform/tests/framework/core/assets"
 	"github.com/wso2/api-platform/tests/framework/core/components"
 	"github.com/wso2/api-platform/tests/framework/core/logcapture"
 )
@@ -166,11 +166,7 @@ func (postgresEngine) bootstrapScript(stores []*Store, repoRoot string) ([]byte,
 		}
 		fmt.Fprintf(&b, "\n\\connect %s\n", s.Database)
 		for _, ddl := range s.Schema {
-			path := ddl
-			if !filepath.IsAbs(path) {
-				path = filepath.Join(repoRoot, ddl)
-			}
-			content, err := os.ReadFile(path)
+			content, err := os.ReadFile(resolveDDL(repoRoot, ddl))
 			if err != nil {
 				return nil, fmt.Errorf("runtime: reading schema %q for store %q (owner %s): %w",
 					ddl, s.Database, s.Owner, err)
@@ -425,12 +421,10 @@ func splitBatches(script string) []string {
 	return batches
 }
 
-// resolveDDL resolves a schema path against the repository root when it is relative.
+// resolveDDL resolves a relative schema path to the workspace copy when one exists and to the
+// copy embedded in the framework otherwise.
 func resolveDDL(repoRoot, ddl string) string {
-	if filepath.IsAbs(ddl) || repoRoot == "" {
-		return ddl
-	}
-	return filepath.Join(repoRoot, ddl)
+	return assets.Resolve(repoRoot, ddl)
 }
 
 // Request describes one component's storage need within a block.
