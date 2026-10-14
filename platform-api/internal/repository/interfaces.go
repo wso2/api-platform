@@ -464,6 +464,9 @@ type GraphQLAPIRepository interface {
 	Update(a *model.GraphQLAPI) error
 	Delete(handle, orgUUID string) error
 	Exists(handle, orgUUID string) (bool, error)
+	// ExistsByNameAndVersion reports whether another GraphQL API in the org
+	// uses this display name and version; excludeHandle skips that API itself.
+	ExistsByNameAndVersion(name, version, orgUUID, excludeHandle string) (bool, error)
 
 	// API-Gateway association methods. These operate on the same
 	// artifact_gateway_mappings table as APIRepository's identically-named

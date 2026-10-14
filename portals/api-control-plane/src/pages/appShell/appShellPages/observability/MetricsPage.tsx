@@ -27,6 +27,7 @@ export function MetricsPage() {
   return (
     <AppPage>
       <ScopeGate
+        graphqlTo={routes.graphqlApiObservabilityMetrics}
         prompt="Metrics are reported per API."
         requires="api"
         to={routes.apiObservabilityMetrics}

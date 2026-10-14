@@ -46,15 +46,22 @@ export const gatewayMode = (gateway: Gateway): GatewayMode =>
  */
 export const gatewayEndpoint = (gateway: Gateway): string => gateway.endpoints?.[0] ?? '';
 
-/** `{endpoint}{context}` with a scheme ensured and slashes normalised. */
-export const buildInvokeUrl = (endpoint: string, context?: string): string => {
+/**
+ * `{endpoint}{context}` with a scheme ensured, slashes normalised, and any
+ * `$version` placeholder in `context` resolved against `version` — the same
+ * substitution gateway-controller's `ConstructFullPath` applies server-side
+ * when building the real route, so the URL shown here matches what the
+ * gateway actually answers on instead of a literal, unresolved `$version`
+ * segment.
+ */
+export const buildInvokeUrl = (endpoint: string, context?: string, version?: string): string => {
   const trimmedEndpoint = endpoint.trim();
   if (!trimmedEndpoint) return '';
   const base = /^https?:\/\//i.test(trimmedEndpoint)
     ? trimmedEndpoint.replace(/\/+$/, '')
     : `https://${trimmedEndpoint.replace(/\/+$/, '')}`;
-  const trimmedContext = (context || '/').trim();
-  const path = trimmedContext.startsWith('/') ? trimmedContext : `/${trimmedContext}`;
+  const resolvedContext = (context || '/').replace(/\$version/g, version ?? '').trim();
+  const path = resolvedContext.startsWith('/') ? resolvedContext : `/${resolvedContext}`;
   return `${base}${path}`;
 };
 

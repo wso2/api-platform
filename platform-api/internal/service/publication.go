@@ -607,7 +607,7 @@ func (s *PublicationService) Publish(ctx context.Context, apiType, apiId, apiPor
 		return nil, false, err
 	}
 
-	if err := s.portalPublisher.Publish(ctx, portal, apiId, draft, definition); err != nil {
+	if err := s.portalPublisher.Publish(ctx, portal, apiType, apiId, draft, definition); err != nil {
 		return nil, false, portalPushError(err)
 	}
 
@@ -700,7 +700,7 @@ func (s *PublicationService) Deprecate(ctx context.Context, apiType, apiId, apiP
 		return nil, err
 	}
 
-	if err := s.portalPublisher.Deprecate(ctx, portal, apiId, live); err != nil {
+	if err := s.portalPublisher.Deprecate(ctx, portal, apiType, apiId, live); err != nil {
 		return nil, portalPushError(err)
 	}
 

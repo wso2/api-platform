@@ -22,6 +22,7 @@ import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
 import { LoadingState } from '@/components/StateViews';
 import { parseSpecText, serializeSpec, type SpecFormat } from '../../apis/create/utils/specText';
+import type { DefinitionFormat } from '../utils/storedDefinition';
 
 /**
  * Same lazy split as `SpecSourceEditor`, and deliberately the same module:
@@ -38,7 +39,7 @@ const messages = defineMessages({
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.SpecificationTab.editorLabel',
     defaultMessage: 'API definition ({format})',
     description:
-      'Accessible name for the editor holding the definition\u2019s own text. {format} is JSON or YAML.',
+      'Accessible name for the editor holding the definition\u2019s own text. {format} is JSON, YAML or GraphQL.',
   },
   editorLoading: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.SpecificationTab.editorLoading',
@@ -47,7 +48,8 @@ const messages = defineMessages({
   malformed: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.SpecificationTab.malformed',
     defaultMessage: 'This is not valid {format}: {detail}',
-    description: '{format} is JSON or YAML; {detail} is the parser’s own message naming the line.',
+    description:
+      '{format} is JSON, YAML or GraphQL; {detail} is the parser’s own message naming the line.',
   },
   formatLabel: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.SpecificationTab.formatLabel',
@@ -57,18 +59,26 @@ const messages = defineMessages({
 });
 
 /** Format names are the same in every language. */
-const FORMAT_LABELS: Record<SpecFormat, string> = { json: 'JSON', yaml: 'YAML' };
+const FORMAT_LABELS: Record<DefinitionFormat, string> = {
+  graphql: 'GraphQL',
+  json: 'JSON',
+  yaml: 'YAML',
+};
 
 export type SpecificationTabProps = {
   disabled?: boolean;
-  /** The serialization the text is in, which is also the one it is parsed as on save. */
-  format: SpecFormat;
+  /**
+   * The serialization the text is in, which is also the one it is parsed as on
+   * save. A GraphQL SDL has only one, so it shows no JSON/YAML switch.
+   */
+  format: DefinitionFormat;
   /**
    * Every keystroke, or a format switch that re-prints the text, with the buffer's full text.
    * Never called when `readOnly`: the caller re-prints the text itself on `onFormatChange`.
    */
   onChange?: (text: string) => void;
-  onFormatChange: (format: SpecFormat) => void;
+  /** A JSON/YAML switch; never called for a GraphQL SDL, which has no other format. */
+  onFormatChange?: (format: SpecFormat) => void;
   /** The parser's own complaint, when the current buffer doesn't read in its format. */
   parseError?: string;
   /** Shows the definition without letting it be edited, for a version that can't be changed. */
@@ -97,44 +107,47 @@ export function SpecificationTab({
   const intl = useIntl();
 
   const switchFormat = (next: SpecFormat) => {
-    if (next === format || disabled) return;
+    if (next === format || disabled || format === 'graphql') return;
     const parsed = parseSpecText(text, format);
     // A buffer that doesn't parse can't be re-printed; only the language
     // switches, and the error is reported when it is saved.
     if (parsed.status === 'parsed' && !readOnly) onChange?.(serializeSpec(parsed.spec, next));
-    onFormatChange(next);
+    onFormatChange?.(next);
   };
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-      <Stack
-        alignItems="center"
-        direction="row"
-        spacing={1}
-        sx={{
-          borderBottom: 1,
-          borderColor: 'divider',
-          flexShrink: 0,
-          justifyContent: 'flex-end',
-          px: 2,
-          py: 1,
-        }}
-      >
-        <ToggleButtonGroup
-          aria-label={intl.formatMessage(messages.formatLabel)}
-          color="primary"
-          disabled={disabled}
-          exclusive
-          onChange={(_event, next: SpecFormat | null) => {
-            if (next !== null) switchFormat(next);
+      {/* A GraphQL SDL has a single serialization, so there is nothing to switch between. */}
+      {format !== 'graphql' && (
+        <Stack
+          alignItems="center"
+          direction="row"
+          spacing={1}
+          sx={{
+            borderBottom: 1,
+            borderColor: 'divider',
+            flexShrink: 0,
+            justifyContent: 'flex-end',
+            px: 2,
+            py: 1,
           }}
-          size="small"
-          value={format}
         >
-          <ToggleButton value="yaml">{FORMAT_LABELS.yaml}</ToggleButton>
-          <ToggleButton value="json">{FORMAT_LABELS.json}</ToggleButton>
-        </ToggleButtonGroup>
-      </Stack>
+          <ToggleButtonGroup
+            aria-label={intl.formatMessage(messages.formatLabel)}
+            color="primary"
+            disabled={disabled}
+            exclusive
+            onChange={(_event, next: SpecFormat | null) => {
+              if (next !== null) switchFormat(next);
+            }}
+            size="small"
+            value={format}
+          >
+            <ToggleButton value="yaml">{FORMAT_LABELS.yaml}</ToggleButton>
+            <ToggleButton value="json">{FORMAT_LABELS.json}</ToggleButton>
+          </ToggleButtonGroup>
+        </Stack>
+      )}
       {parseError && (
         <Alert severity="error" sx={{ borderRadius: 0, flexShrink: 0 }}>
           <FormattedMessage

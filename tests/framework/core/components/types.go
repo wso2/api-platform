@@ -287,8 +287,10 @@ type ConfigProfile struct {
 
 // FileMount describes a file copied into a container before startup.
 type FileMount struct {
-	// HostPath is relative to the repository root.
+	// HostPath is relative to the repository root. Exactly one of HostPath and Content is set.
 	HostPath string
+	// Content is the file's bytes, for a file the framework generates instead of reading.
+	Content []byte
 	// ContainerPath is the absolute destination.
 	ContainerPath string
 	// Mode is the file mode to set on the copy.

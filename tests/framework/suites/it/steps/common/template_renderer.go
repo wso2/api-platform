@@ -21,14 +21,24 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/cucumber/godog"
 	"gopkg.in/yaml.v3"
+
+	"github.com/wso2/api-platform/tests/framework/core/assets"
 )
 
 const templateValuePrefix = "${VALUE:"
+
+const (
+	// canonicalTemplateDir is the directory of canonical templates beneath a suite root.
+	canonicalTemplateDir = "resources/templates"
+	// embeddedSuiteRoot is where the framework's own suite sits in the repository.
+	embeddedSuiteRoot = "tests/framework/suites/it"
+)
 
 // RenderResourceTemplate renders a canonical or legacy suite resource template.
 func RenderResourceTemplate(ctx context.Context, name string, content []byte, table *godog.Table) (string, error) {
@@ -250,7 +260,9 @@ func templateValues(table *godog.Table) (map[string]string, error) {
 }
 
 // ResourceTemplatePath resolves a suite resource template name against the feature root,
-// refusing absolute names and any path, symlinked or not, that escapes the root.
+// refusing absolute names and any path, symlinked or not, that escapes the root. A canonical
+// template (resources/templates/<kind>.yaml) the root does not hold resolves to the copy the
+// framework ships, so a project supplies only the templates that differ from it.
 func ResourceTemplatePath(root, name string) (string, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
@@ -279,7 +291,25 @@ func ResourceTemplatePath(root, name string) (string, error) {
 	if err == nil && !isWithinPath(resolvedRoot, resolvedPath) {
 		return "", fmt.Errorf("resource template path escapes the suite resource root: %q", name)
 	}
+	if err != nil {
+		if shipped, ok := shippedTemplatePath(clean); ok {
+			return shipped, nil
+		}
+	}
 	return path, nil
+}
+
+// shippedTemplatePath returns the framework's copy of a canonical template, if it ships one.
+func shippedTemplatePath(clean string) (string, bool) {
+	relative := filepath.ToSlash(clean)
+	if !strings.HasPrefix(relative, canonicalTemplateDir+"/") {
+		return "", false
+	}
+	shipped := assets.Resolve("", embeddedSuiteRoot+"/"+relative)
+	if _, err := os.Stat(shipped); err != nil {
+		return "", false
+	}
+	return shipped, true
 }
 
 func isWithinPath(root, path string) bool {

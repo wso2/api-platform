@@ -1400,8 +1400,17 @@ func TestConfigAndFileValidation(t *testing.T) {
 		require.ErrorContains(t, err, "no baseConfigPath")
 		require.ErrorContains(t, err, "unsupported config format")
 		require.ErrorContains(t, err, "must be absolute")
-		require.ErrorContains(t, err, "no hostPath")
+		require.ErrorContains(t, err, "neither a hostPath nor content")
 		require.ErrorContains(t, err, "two file mounts target")
+	})
+
+	t.Run("a file mount carries either a host path or generated content, never both", func(t *testing.T) {
+		d := controllerLike()
+		d.Files = []FileMount{{Content: []byte("key"), ContainerPath: "/etc/app/key"}}
+		require.NoError(t, d.Validate())
+
+		d.Files = []FileMount{{HostPath: "key", Content: []byte("key"), ContainerPath: "/etc/app/key"}}
+		require.ErrorContains(t, d.Validate(), "both a hostPath and content")
 	})
 
 	t.Run("invalid versioned profiles are rejected", func(t *testing.T) {

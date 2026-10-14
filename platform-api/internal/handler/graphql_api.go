@@ -70,9 +70,11 @@ func (h *GraphQLAPIHandler) CreateGraphQLAPI(w http.ResponseWriter, r *http.Requ
 	if req.DisplayName == "" {
 		return apperror.ValidationFailed.New("API name is required")
 	}
-	if req.Context == "" {
-		return apperror.ValidationFailed.New("API context is required")
-	}
+	// Context is optional — unlike REST, a GraphQL API serves every operation
+	// from one path, so the service derives a sensible default from the
+	// handle/version when the caller doesn't supply one (see
+	// GraphQLAPIService.Create) rather than forcing every caller to spell it
+	// out.
 	if req.Version == "" {
 		return apperror.ValidationFailed.New("API version is required")
 	}
@@ -123,6 +125,9 @@ func (h *GraphQLAPIHandler) ValidateGraphQLSchema(w http.ResponseWriter, r *http
 	} else {
 		msg := apperror.GraphQLAPISchemaResolveFailed.New().Message
 		resp.Message = &msg
+		if len(resolution.SDLErrors) > 0 {
+			resp.SdlErrors = &resolution.SDLErrors
+		}
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, resp)

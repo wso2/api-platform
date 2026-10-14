@@ -27,7 +27,6 @@ import (
 	"log/slog"
 	"net"
 	"net/netip"
-	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -41,6 +40,7 @@ import (
 	tcexec "github.com/testcontainers/testcontainers-go/exec"
 	"github.com/testcontainers/testcontainers-go/wait"
 
+	"github.com/wso2/api-platform/tests/framework/core/assets"
 	"github.com/wso2/api-platform/tests/framework/core/components"
 	"github.com/wso2/api-platform/tests/framework/core/logcapture"
 )
@@ -258,18 +258,20 @@ func resolveFiles(def *components.Definition, opts Options) ([]testcontainers.Co
 	var files []testcontainers.ContainerFile
 
 	appendMount := func(m components.FileMount) error {
-		if m.HostPath == "" || m.ContainerPath == "" {
+		if (m.HostPath == "" && len(m.Content) == 0) || m.ContainerPath == "" {
 			return fmt.Errorf("runtime: %s has a file mount missing a path", def)
 		}
 		mode := m.Mode
 		if mode == 0 {
 			mode = 0o644
 		}
-		files = append(files, testcontainers.ContainerFile{
-			HostFilePath:      absPath(opts.RepoRoot, m.HostPath),
-			ContainerFilePath: m.ContainerPath,
-			FileMode:          mode,
-		})
+		file := testcontainers.ContainerFile{ContainerFilePath: m.ContainerPath, FileMode: mode}
+		if len(m.Content) > 0 {
+			file.Reader = bytes.NewReader(m.Content)
+		} else {
+			file.HostFilePath = absPath(opts.RepoRoot, m.HostPath)
+		}
+		files = append(files, file)
 		return nil
 	}
 
@@ -440,13 +442,7 @@ func readAllString(r io.Reader) (string, error) {
 // absolute path is returned untouched, so a caller that has resolved paths itself is
 // not second-guessed.
 func absPath(repoRoot, p string) string {
-	if p == "" || filepath.IsAbs(p) {
-		return p
-	}
-	if repoRoot == "" {
-		return p
-	}
-	return filepath.Join(repoRoot, p)
+	return assets.Resolve(repoRoot, p)
 }
 
 // applyLimits caps the container's host resources.

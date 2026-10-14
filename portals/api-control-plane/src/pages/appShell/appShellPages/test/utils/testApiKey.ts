@@ -29,6 +29,9 @@ import type { CreateApiKeyBody, CreateApiKeyResponse } from '@/api/resources/api
 /** How long a console-minted key stays valid. */
 export const TEST_KEY_TTL_HOURS = 1;
 
+/** How often a page refreshes a held key's expiry countdown. */
+export const KEY_COUNTDOWN_TICK_MS = 30_000;
+
 /** Stable, recognisable name for console-minted keys. */
 export const TEST_KEY_DISPLAY_NAME = 'Test console key';
 
@@ -41,7 +44,7 @@ export type TestApiKey = {
   /**
    * When the key stops working, as an epoch millisecond timestamp.
    *
-    * Estimated from `TEST_KEY_TTL_HOURS`; the response does not report expiry.
+   * Estimated from `TEST_KEY_TTL_HOURS`; the response does not report expiry.
    */
   expiresAt: number;
 };
@@ -67,10 +70,7 @@ export const testApiKeyBody = (): CreateApiKeyBody => ({
  * Throws if the response is unsuccessful or lacks `apiKey`; an empty credential
  * must never be handed to the console.
  */
-export const toTestApiKey = (
-  response: CreateApiKeyResponse,
-  requestedAt: number,
-): TestApiKey => {
+export const toTestApiKey = (response: CreateApiKeyResponse, requestedAt: number): TestApiKey => {
   if (response.status !== 'success' || !response.apiKey) {
     throw new Error('Test key creation returned no key value');
   }

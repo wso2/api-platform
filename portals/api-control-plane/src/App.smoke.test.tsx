@@ -67,7 +67,8 @@ describe('App smoke (mock mode, authenticated)', () => {
       collection('/projects', [
         aProject({ id: 'retail', displayName: 'Retail APIs' }),
       ]),
-      collection('/rest-apis', [])
+      collection('/rest-apis', []),
+      collection('/graphql-apis', [])
     );
     renderWithProviders(<AppRoutes />, {
       route: '/organizations/api-platform-demo/projects',
