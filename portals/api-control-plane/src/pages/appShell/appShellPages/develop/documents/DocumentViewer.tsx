@@ -92,19 +92,27 @@ const messages = defineMessages({
 
 type DocumentViewerProps = {
   apiHandle: string;
+  /** The `{apiType}` path segment — `rest-api` unless another artifact kind owns the documents. */
+  apiType?: string;
   docId: string;
   onEdit: () => void;
   onDeleted: () => void;
 };
 
 /** One document's metadata, its rendered Markdown, and the edit/delete actions. */
-export function DocumentViewer({ apiHandle, docId, onDeleted, onEdit }: DocumentViewerProps) {
+export function DocumentViewer({
+  apiHandle,
+  apiType = REST_API_TYPE,
+  docId,
+  onDeleted,
+  onEdit,
+}: DocumentViewerProps) {
   const intl = useIntl();
   const { notify } = useNotifications();
   // Metadata and body load in parallel: the header renders as soon as the
   // metadata arrives, the body fills in below it.
-  const documentQuery = useApiDocument(REST_API_TYPE, apiHandle, docId);
-  const contentQuery = useApiDocumentContent(REST_API_TYPE, apiHandle, docId);
+  const documentQuery = useApiDocument(apiType, apiHandle, docId);
+  const contentQuery = useApiDocumentContent(apiType, apiHandle, docId);
   const deleteMutation = useDeleteApiDocument();
   const [confirmOpen, setConfirmOpen] = useState(false);
 
@@ -129,7 +137,7 @@ export function DocumentViewer({ apiHandle, docId, onDeleted, onEdit }: Document
 
   const confirmDelete = () =>
     deleteMutation.mutate(
-      { apiId: apiHandle, apiType: REST_API_TYPE, docId },
+      { apiId: apiHandle, apiType, docId },
       {
         onSuccess: () => {
           setConfirmOpen(false);

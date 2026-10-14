@@ -255,7 +255,11 @@ func (m *minimalStorage) GetCertificateByName(name string) (*models.StoredCertif
 	return nil, nil
 }
 func (m *minimalStorage) ListCertificates() ([]*models.StoredCertificate, error) { return nil, nil }
+func (m *minimalStorage) ListCertificatesByUsage(usage string) ([]*models.StoredCertificate, error) {
+	return nil, nil
+}
 func (m *minimalStorage) DeleteCertificate(id string) error                      { return nil }
+func (m *minimalStorage) UpdateCertificate(cert *models.StoredCertificate) error { return nil }
 func (m *minimalStorage) SecretExists(handle string) (bool, error) {
 	_, ok := m.secrets[handle]
 	return ok, nil

@@ -70,7 +70,7 @@ func TestChecksSkipEmptyRoots(t *testing.T) {
 	require.Empty(t, checkScripts(""))
 	require.Empty(t, checkArchitecture(""))
 	require.Empty(t, checkUnitTestLayout(""))
-	require.Empty(t, checkDependencies(""))
+	require.Empty(t, checkDependencies("", nil))
 	require.Empty(t, checkDocumentation(""))
 }
 
@@ -82,6 +82,11 @@ func bind(sc interface{}) { sc.Step("^same$", nil); sc.Step(` + "`^same$`" + `, 
 	require.NoError(t, os.WriteFile(filepath.Join(root, "duplicate.go"), []byte(source), 0o600))
 	require.Len(t, checkSteps(root), 1)
 	require.Contains(t, checkSteps(root)[0], "duplicate step pattern")
+}
+
+func TestSplitRootsDropsBlankEntries(t *testing.T) {
+	require.Empty(t, splitRoots(""))
+	require.Equal(t, []string{"a", "b"}, splitRoots(" a, ,b,"))
 }
 
 func TestCheckFeaturesFindsLiteralNames(t *testing.T) {
@@ -230,9 +235,25 @@ import _ "example.com/unapproved/parser"
 `
 	require.NoError(t, os.WriteFile(filepath.Join(root, "steps.go"), []byte(source), 0o600))
 
-	issues := checkDependencies(root)
+	issues := checkDependencies(root, nil)
 	require.Len(t, issues, 1)
 	require.Contains(t, issues[0], "not approved")
+}
+
+func TestCheckDependenciesAcceptsAnImportingProjectsOwnPackages(t *testing.T) {
+	root := t.TempDir()
+	source := `package steps
+import (
+	_ "example.com/project/tests/it/steps/common"
+	_ "example.com/project/other"
+)
+`
+	require.NoError(t, os.WriteFile(filepath.Join(root, "steps.go"), []byte(source), 0o600))
+
+	issues := checkDependencies(root, []string{"example.com/project/tests/it/"})
+
+	require.Len(t, issues, 1)
+	require.Contains(t, issues[0], "example.com/project/other")
 }
 
 func TestCheckDocumentationRequiresDocGo(t *testing.T) {

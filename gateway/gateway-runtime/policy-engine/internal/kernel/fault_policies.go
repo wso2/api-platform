@@ -116,8 +116,8 @@ func (ec *PolicyExecutionContext) runFaultPoliciesOnRejection(
 // the client — one nothing short-circuited.
 //
 // Runs at the response-BODY phase so the error body exists for an entry to read. That phase
-// only executes when chain.RequiresResponseBody is set, which is why attaching fault policies
-// forces it on (ApplyFaultPoliciesBodyRequirement).
+// only executes when the response body is requested, which is why attaching fault policies
+// requests it for error responses (ApplyFaultPoliciesBodyRequirement, needsResponseBody).
 //
 // Results are merged into the caller's execResult, not only into the context: the translator
 // derives the outgoing ext_proc mutation from execResult.Results.
@@ -323,24 +323,30 @@ func (ec *PolicyExecutionContext) noteAuthoredBody(results []executor.FaultPolic
 // like one in traces would imply an entry an operator could remove.
 const errorFormatResultName = "__error_format"
 
-// ApplyFaultPoliciesBodyRequirement forces response-body processing on for a chain that
-// carries fault policies.
+// ApplyFaultPoliciesBodyRequirement makes sure a chain that carries fault policies gets the
+// response body for the responses those policies run on.
 //
 // This is load-bearing, not an optimisation. Every origin other than a rejection runs in the
-// response-body phase, and processResponseBody only executes policies when
-// RequiresResponseBody is set — a flag BuildPolicyChain computes from the route's normal
-// policies, which fault policies are deliberately not part of. Without this, attaching a
-// fault policies to an API that has no response-body policy of its own would produce a
-// sequence that silently never fires for a backend error or an Envoy local reply.
+// response-body phase, and processResponseBody only executes policies when the response body
+// is requested -- which BuildPolicyChain decides from the route's normal policies, and fault
+// policies are deliberately not part of those. Without this, attaching fault policies to an
+// API that has no response-body policy of its own would produce a sequence that silently
+// never fires for a backend error or an Envoy local reply.
 //
-// SupportsResponseStreaming is deliberately NOT touched: forcing it off would disable
-// streaming for the whole API. A streamed upstream error is buffered per response instead,
-// and only when handle_upstream_faults is on — see processResponseHeaders.
+// When a normal policy already needs the body, nothing changes. Otherwise the body is
+// requested per response, only for an error response (status >= faultMinStatus, the gate
+// runFaultPoliciesOnResponse applies to a response no policy claimed): see
+// PolicyExecutionContext.needsResponseBody. Forcing it for every response would send every
+// successful response body through the policy engine, and -- since no normal policy streams
+// it -- buffer streamed (SSE, chunked) responses that should reach the client as they arrive.
+//
+// SupportsResponseStreaming is deliberately NOT touched: an error response the fault
+// policies need is buffered per response (see processResponseHeaders).
 func ApplyFaultPoliciesBodyRequirement(chain *registry.PolicyChain) {
-	if chain == nil || !chain.HasFaultPolicies {
+	if chain == nil || !chain.HasFaultPolicies || chain.RequiresResponseBody {
 		return
 	}
-	chain.RequiresResponseBody = true
+	chain.RequiresResponseBodyOnFault = true
 }
 
 // responsePolicies returns the policies a response phase should run.

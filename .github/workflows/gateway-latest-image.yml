@@ -1,0 +1,193 @@
+# --------------------------------------------------------------------
+# Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+#
+# WSO2 LLC. licenses this file to you under the Apache License,
+# Version 2.0 (the "License"); you may not use this file except
+# in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+# --------------------------------------------------------------------
+
+# Publishes the gateway images built from the latest merged code.
+#
+# When a pull request that changes the gateway is merged into main, this builds the
+# gateway-controller, gateway-runtime and gateway-builder images and pushes them to the registry
+# that holds the released images, under two tags:
+#   latest          moves with every merge
+#   main-<sha>      the merged commit, never moved
+# The images are pushed and verified under main-<sha> first. latest is moved to them afterwards,
+# for all three images together, and only if no newer gateway change has merged in the meantime.
+# If moving latest fails partway, re-run the failed job: it rebuilds the same merge commit and
+# moves latest again.
+# Other repositories, such as gateway-controllers, pull the latest tag the same way they pull a
+# release, so they never build gateway source themselves.
+#
+# It runs only when a pull request is closed by a merge, and only in wso2/api-platform, so a fork
+# or a pull request closed without merging never publishes an image. The event is
+# pull_request_target so that a merged pull request from a fork still receives the registry
+# secret. It never checks out the pull request's own code: it checks out the merge commit, which
+# is already on main.
+
+name: Gateway Latest Image
+
+on:
+  pull_request_target:
+    types: [closed]
+    branches:
+      - main
+    paths:
+      - 'gateway/**'
+      - 'common/**'
+      - 'httpkit/**'
+      - 'sdk/**'
+      - 'sdk-python/**'
+      - '.github/workflows/gateway-latest-image.yml'
+
+permissions:
+  contents: read
+
+env:
+  DOCKER_REGISTRY: ghcr.io/wso2/api-platform
+  # The paths that trigger this workflow (see on.pull_request_target.paths). A later commit on
+  # main that touches any of them supersedes the merge being published.
+  GATEWAY_PATHS: gateway common httpkit sdk sdk-python .github/workflows/gateway-latest-image.yml
+
+jobs:
+  publish:
+    name: Build and push the latest gateway images
+    # Only a merged pull request in the upstream repository moves latest.
+    if: github.repository == 'wso2/api-platform' && github.event.pull_request.merged == true
+    # Runs queue instead of cancelling, so a merge that has started finishes before the next one
+    # moves latest. Only the newest queued run is kept. The group is on the job, not the
+    # workflow, so a pull request closed without merging, whose job is skipped, never replaces a
+    # queued publish. The group orders jobs by when they start waiting, not by merge order, so
+    # the "Check that this merge is still the newest" step keeps an older merge from moving
+    # latest backwards.
+    concurrency:
+      group: gateway-latest-image
+      cancel-in-progress: false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+          # The full history lets the freshness check compare this merge with main.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: '1.26.5'
+          cache: false
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3.7.0
+        with:
+          platforms: linux/amd64,linux/arm64
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
+        with:
+          install: true
+          driver: docker-container
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.API_PLATFORM_BOT_TOKEN }}
+
+      - name: Resolve the image tag
+        id: tag
+        env:
+          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+        run: echo "tag=main-${MERGE_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      # PUSH_LATEST=false makes the gateway Makefile push only <registry>/<image>:<VERSION>, so no
+      # latest tag moves until all three images have been built and verified.
+      - name: Build and push the multi-arch gateway images
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: make -C gateway build-and-push-multiarch VERSION="$TAG" DOCKER_REGISTRY="$DOCKER_REGISTRY" PUSH_LATEST=false
+
+      - name: Verify the pushed images
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          {
+            echo "### Gateway images"
+            echo
+            echo "| Image | Tag | Platforms |"
+            echo "| --- | --- | --- |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          for name in gateway-controller gateway-runtime gateway-builder; do
+            image="$DOCKER_REGISTRY/$name"
+            platforms="$(docker buildx imagetools inspect "$image:$TAG" --format '{{range .Manifest.Manifests}}{{.Platform.OS}}/{{.Platform.Architecture}} {{end}}')"
+            for platform in linux/amd64 linux/arm64; do
+              if [[ " $platforms" != *" $platform "* ]]; then
+                echo "::error::$name is missing $platform (has: $platforms)"
+                exit 1
+              fi
+            done
+            echo "| \`$image\` | \`$TAG\` | $platforms |" >> "$GITHUB_STEP_SUMMARY"
+          done
+
+      # A merge that waited in the concurrency group can reach this point after a newer merge has
+      # already published. Moving latest then would put it back on older code, so a merge that
+      # main has moved past leaves latest to the newer run.
+      - name: Check that this merge is still the newest
+        id: fresh
+        env:
+          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin main
+          # GATEWAY_PATHS is a fixed list of repository paths, so it is expanded unquoted.
+          # shellcheck disable=SC2086
+          newer="$(git log --format=%h "$MERGE_SHA..origin/main" -- $GATEWAY_PATHS)"
+          if [[ -n "$newer" ]]; then
+            echo "fresh=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::latest not moved: newer gateway changes are on main ($(echo "$newer" | tr '\n' ' '))"
+            echo "latest was not moved: newer gateway changes are on main, and their run moves it." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "fresh=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # imagetools create points latest at the already-pushed manifest, so the three tags move
+      # within seconds of each other and nothing is rebuilt. The step can be repeated safely.
+      - name: Move latest to the verified images
+        if: steps.fresh.outputs.fresh == 'true'
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          for name in gateway-controller gateway-runtime gateway-builder; do
+            image="$DOCKER_REGISTRY/$name"
+            docker buildx imagetools create --tag "$image:latest" "$image:$TAG"
+          done
+          for name in gateway-controller gateway-runtime gateway-builder; do
+            image="$DOCKER_REGISTRY/$name"
+            latest_digest="$(docker buildx imagetools inspect "$image:latest" --format '{{.Manifest.Digest}}')"
+            tag_digest="$(docker buildx imagetools inspect "$image:$TAG" --format '{{.Manifest.Digest}}')"
+            if [[ "$latest_digest" != "$tag_digest" ]]; then
+              echo "::error::$name: latest ($latest_digest) is not $TAG ($tag_digest)"
+              exit 1
+            fi
+          done
+          echo "latest now points at \`$TAG\` for all three images." >> "$GITHUB_STEP_SUMMARY"

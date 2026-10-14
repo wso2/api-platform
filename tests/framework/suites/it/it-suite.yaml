@@ -321,6 +321,11 @@ blocks:
         features:
           - features/gateway/core/cel_conditions.feature
       - name: certificates
+        tags: "gateway-version>1.2.0;~@certificate-refusal-1.2.0"
+        features:
+          - features/gateway/security/certificates.feature
+      - name: certificates-1.2.0
+        tags: "gateway-version<=1.2.0;~@certificate-refusal-current"
         features:
           - features/gateway/security/certificates.feature
       - name: secrets
@@ -432,6 +437,18 @@ blocks:
         tags: "gateway-version>1.2.0"
         features:
           - features/ai-workspace-gateway/mcp/mcp_legacy_upstream_modern_client.feature
+      - name: mcp-upstream-auth
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/ai-workspace-gateway/mcp/mcp_upstream_auth.feature
+      - name: graphql-deploy
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/graphql_deploy.feature
+      - name: graphql-api-keys
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/graphql_api_keys.feature
       - name: oauth2-auth
         tags: "gateway-version>1.2.0"
         features:
@@ -680,6 +697,10 @@ blocks:
         tags: "gateway-version>=1.2.0"
         features:
           - features/gateway/security-policies/jwt_auth_scope_claim_rules.feature
+      - name: graphql-policies
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/graphql_policies.feature
 
   - name: mcp-auth-gateway-host
     parallel: 1
@@ -718,6 +739,10 @@ blocks:
       - name: analytics-header-filter
         features:
           - features/gateway/observability-policies/analytics_header_filter.feature
+      - name: graphql-analytics
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/graphql_analytics.feature
       - name: subscription-analytics
         features:
           - features/gateway/observability/subscription_analytics.feature
@@ -1031,26 +1056,3 @@ blocks:
         tags: "gateway-version>=1.1.0"
         features:
           - features/gateway/policy-errors/policy_errors_semantic_cache.feature
-
-  # This block is intended for gateway-controllers pull requests. Its policy source is
-  # an adjacent checkout, so callers must check out gateway-controllers next to this
-  # repository and select this block explicitly.
-  - name: gateway-controller-policies
-    parallel: 1
-    components:
-      - name: platform-gateway
-        db:
-          matrix: [sqlite, postgres, sqlserver]
-        addPoliciesFrom: ../gateway-controllers/policies
-      - name: testbench
-    runners:
-      - name: time-based-model-routing
-        tags: "gateway-version>=1.2.0"
-        features:
-          - features/ai-workspace-gateway/llm-policies/time_based_model_routing.feature
-      - name: pii-masking-regex
-        features:
-          - features/gateway/guardrails-policies/pii_masking_regex.feature
-      - name: regex-guardrail
-        features:
-          - features/gateway/guardrails-policies/regex_guardrail.feature

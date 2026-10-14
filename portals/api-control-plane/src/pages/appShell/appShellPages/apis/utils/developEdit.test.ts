@@ -39,6 +39,7 @@ import {
   toSpecOperations,
   updateOperation,
   updatePolicy,
+  withMajorPolicyVersion,
   withPolicyEdits,
   withRoutingEdits,
 } from './developEdit';
@@ -251,6 +252,43 @@ describe('withRoutingEdits', () => {
     expect(body.description).toBe('Ordering');
     expect(body.policies).toEqual([{ name: 'cors', version: '1' }]);
     expect(body.version).toBe(api.version);
+  });
+});
+
+// Pins the fix for a real bug: the Policy Hub catalog always returns a full
+// version (e.g. "1.2.1"), but the backend only accepts a major-only version
+// ("v1") and — for both REST and GraphQL APIs — silently drops an
+// unresolvable policy from the deployed chain instead of rejecting it, so a
+// missed conversion here means a policy like api-key-auth deploys with no
+// effect at all. GraphqlPolicyPanel's save() must call this directly (it has
+// no per-operation policies to route through withPolicyEdits), so this needs
+// its own test now that it's an exported, independently-reused function.
+describe('withMajorPolicyVersion', () => {
+  it('derives the major-only version from a full Policy Hub version', () => {
+    expect(withMajorPolicyVersion({ name: 'api-key-auth', version: '1.2.1' })).toEqual({
+      name: 'api-key-auth',
+      version: 'v1',
+    });
+  });
+
+  it('derives the major-only version from a "v"-prefixed full version', () => {
+    expect(withMajorPolicyVersion({ name: 'cors', version: 'v2.4.1' })).toEqual({
+      name: 'cors',
+      version: 'v2',
+    });
+  });
+
+  it('leaves an already major-only version untouched', () => {
+    expect(withMajorPolicyVersion({ name: 'cors', version: 'v1' })).toEqual({
+      name: 'cors',
+      version: 'v1',
+    });
+  });
+
+  it('preserves params alongside the derived version', () => {
+    expect(
+      withMajorPolicyVersion({ name: 'api-key-auth', version: '1.2', params: { in: 'header' } }),
+    ).toEqual({ name: 'api-key-auth', version: 'v1', params: { in: 'header' } });
   });
 });
 

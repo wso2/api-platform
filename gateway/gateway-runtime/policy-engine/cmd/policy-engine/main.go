@@ -39,6 +39,7 @@ import (
 
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/admin"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics"
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics/correlation"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/config"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/constants"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/executor"
@@ -250,8 +251,23 @@ func main() {
 		os.Exit(1)
 	}
 
+	// The ext_proc↔ALS correlation store (see internal/analytics/correlation) is
+	// only used while the collector is active, and only when the ext_proc and ALS
+	// streams of a request are guaranteed to reach this process (see
+	// config.CorrelationStoreConfig.Mode). Without a store, every captured field
+	// travels through Envoy metadata.
+	var corrStore *correlation.Store
+	if cfg.CorrelationStoreEnabled() {
+		corrStore = correlation.NewStoreFromConfig(cfg.Collector)
+	} else if cfg.IsCollectorEnabled() {
+		slog.InfoContext(ctx, "Correlation store disabled; captured headers and bodies travel through Envoy metadata",
+			"mode", cfg.Collector.CorrelationStore.Mode,
+			"policy_engine_server_mode", cfg.PolicyEngine.Server.Mode,
+			"collector_server_mode", cfg.Collector.Server.Mode)
+	}
+
 	// Create and start ext_proc gRPC server
-	extprocServer := kernel.NewExternalProcessorServer(k, chainExecutor, cfg.TracingConfig, cfg.PolicyEngine.TracingServiceName, cfg.PolicyEngine.RequestBody.MaxDecompressedBytes, cfg.PolicyEngine.ResponseBody.MaxDecompressedBytes,
+	extprocServer := kernel.NewExternalProcessorServer(k, chainExecutor, cfg.TracingConfig, cfg.PolicyEngine.TracingServiceName, cfg.PolicyEngine.RequestBody.MaxDecompressedBytes, cfg.PolicyEngine.ResponseBody.MaxDecompressedBytes, corrStore,
 		kernel.WithHandleUpstreamFaults(cfg.PolicyEngine.FaultPolicies.HandleUpstreamFaults))
 
 	// Create listener based on mode (same pattern as gateway-controller)
@@ -336,7 +352,7 @@ func main() {
 	if cfg.IsCollectorEnabled() {
 		// Start the access log service server
 		slog.Info("Starting the ALS gRPC server...")
-		alsServer, alsAnalytics = utils.StartAccessLogServiceServer(cfg)
+		alsServer, alsAnalytics = utils.StartAccessLogServiceServer(cfg, corrStore)
 	}
 
 	// Setup graceful shutdown

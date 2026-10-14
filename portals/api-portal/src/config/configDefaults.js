@@ -125,8 +125,9 @@ const DEFAULTS = {
         encryptionKey: '',
         sessionSecret: '',
     },
-    // Shared-key S2S auth for platform-api publishing calls. Portal compares sha256(raw) against `hash`.
-    // A match grants only the platform-api-system role's five dp:*:manage scopes.
+    // Shared-key S2S auth for platform-api publishing + self-registration calls.
+    // Portal compares sha256(raw) against `hash`; a match grants only the
+    // platform-api-system role's dp:*:manage scopes (see role-to-scope-mapping.yaml).
     // Empty disables shared-key auth entirely; OAuth / session paths keep working.
     internalAuth: {
         hash: '',
@@ -252,6 +253,8 @@ const DEFAULTS = {
             logoutRedirectUri: '',
             certificate: '',
             jwksUrl: '',
+            // Development only: accept a plain-http jwks_url on localhost or *.localhost.
+            allowLocalHttpJwks: false,
             tokenRefreshTimeoutMs: 10000,
             silentSso: true,     // was: advanced.disableSilentSSO, inverted
             orgCallback: false,  // was: advanced.disableOrgCallback, inverted
@@ -348,6 +351,9 @@ const DEFAULTS = {
             pollIntervalMs: 2000,
             batchSize: 50,
             signatureToleranceSec: 300,
+            // Skips certificate verification for webhook delivery only, e.g. to a
+            // self-signed subscriber. Development only.
+            tlsSkipVerify: false,
         },
     },
     // Upload and archive-extraction limits.

@@ -19,6 +19,7 @@
 import { useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
+import { REST_API_TYPE } from '@/api/resources/apiPublications';
 import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
 import { DocumentEditor } from './DocumentEditor';
 import { DocumentsBrowser } from './DocumentsBrowser';
@@ -31,9 +32,22 @@ import { documentsSearchParams, readDocumentsView, type DocumentsView } from './
  * the URL's query string — see `documentsSearch.ts` — so every state can be
  * linked to and Back leaves the editor.
  */
-export function DocumentsPanel() {
+type DocumentsPanelProps = {
+  /**
+   * The API whose documents to show. Defaults to the REST API in console
+   * scope; a route outside that scope (a GraphQL API) passes its own.
+   */
+  apiHandle?: string;
+  /** The `{apiType}` path segment; defaults to `rest-api`. */
+  apiType?: string;
+};
+
+export function DocumentsPanel({
+  apiHandle: apiHandleProp,
+  apiType = REST_API_TYPE,
+}: DocumentsPanelProps) {
   const { params } = useConsoleScope();
-  const apiHandle = params.apiHandler;
+  const apiHandle = apiHandleProp ?? params.apiHandler;
   const [searchParams, setSearchParams] = useSearchParams();
   const view = readDocumentsView(searchParams);
 
@@ -55,6 +69,7 @@ export function DocumentsPanel() {
     return (
       <DocumentEditor
         apiHandle={apiHandle}
+        apiType={apiType}
         docId={view.mode === 'edit' ? view.docId : undefined}
         // Back to the document it came from; a fresh create lands on the new one.
         onCancel={() =>
@@ -69,6 +84,7 @@ export function DocumentsPanel() {
   return (
     <DocumentsBrowser
       apiHandle={apiHandle}
+      apiType={apiType}
       onCreate={() => show({ mode: 'create' })}
       onDeleted={() => show({ mode: 'browse' }, { replace: true })}
       onEdit={(docId) => show({ docId, mode: 'edit' })}

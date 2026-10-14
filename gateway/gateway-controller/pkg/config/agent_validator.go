@@ -134,6 +134,10 @@ type AgentValidator struct {
 	// skips policy checks entirely rather than rejecting every policy as
 	// unknown.
 	policyValidator *PolicyValidator
+	// upstreamTLSValidator validates the tls blocks on the Agent's
+	// upstreamDefinitions against the certificate store. Optional, like
+	// policyValidator.
+	upstreamTLSValidator *UpstreamTLSValidator
 }
 
 // NewAgentValidator creates an Agent configuration validator.
@@ -147,6 +151,13 @@ func NewAgentValidator() *AgentValidator {
 // WithPolicyValidator sets the policy validator and returns the receiver for chaining.
 func (v *AgentValidator) WithPolicyValidator(pv *PolicyValidator) *AgentValidator {
 	v.policyValidator = pv
+	return v
+}
+
+// WithUpstreamTLSValidator sets the upstream tls-block validator and returns
+// the receiver for chaining.
+func (v *AgentValidator) WithUpstreamTLSValidator(u *UpstreamTLSValidator) *AgentValidator {
+	v.upstreamTLSValidator = u
 	return v
 }
 
@@ -191,6 +202,9 @@ func (v *AgentValidator) validateAgentConfiguration(cfg *api.AgentConfiguration)
 		// "100" and would fail its own schema without this.
 		v.policyValidator.CoerceAgentPolicies(cfg)
 		errors = append(errors, v.policyValidator.ValidateAgentPolicies(cfg)...)
+	}
+	if v.upstreamTLSValidator != nil {
+		errors = append(errors, v.upstreamTLSValidator.ValidateAgent(cfg)...)
 	}
 
 	return errors
