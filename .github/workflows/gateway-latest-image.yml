@@ -54,9 +54,9 @@ permissions:
 
 env:
   DOCKER_REGISTRY: ghcr.io/wso2/api-platform
-  # The paths whose changes make a new gateway image. main-<sha> names the newest commit that
-  # touched any of them.
-  GATEWAY_PATHS: gateway common httpkit sdk sdk-python .github/workflows/gateway-latest-image.yml
+  # The paths whose changes make a new gateway image (the image builds also copy the root
+  # LICENSE). main-<sha> names the newest commit that touched any of them.
+  GATEWAY_PATHS: gateway common httpkit sdk sdk-python LICENSE .github/workflows/gateway-latest-image.yml
 
 jobs:
   publish:
@@ -77,6 +77,10 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
+          # The tip of main when this run starts, not the commit the event fired on. Runs are
+          # queued, so a delayed run must not see an older main than the run before it, or it
+          # would move latest back to older images.
+          ref: main
           # The history lets the next steps find the newest commit that changed the gateway.
           fetch-depth: 0
           persist-credentials: false
@@ -157,8 +161,10 @@ jobs:
           TAG: ${{ steps.plan.outputs.tag }}
         run: make -C gateway build-and-push-multiarch VERSION="$TAG" DOCKER_REGISTRY="$DOCKER_REGISTRY" PUSH_LATEST=false
 
+      # Also runs when only latest has to move, so a tag whose earlier verification failed is
+      # checked again before latest points at it.
       - name: Verify the pushed images
-        if: steps.plan.outputs.build == 'true'
+        if: steps.plan.outputs.build == 'true' || steps.plan.outputs.promote == 'true'
         env:
           TAG: ${{ steps.plan.outputs.tag }}
         run: |
