@@ -425,6 +425,16 @@ func TestInheritMCPProxyCredential(t *testing.T) {
 		assert.Equal(t, storedCred, *incoming.Spec.Upstream.Auth.Value)
 	})
 
+	t.Run("api-key update without a header does not inherit the stored header", func(t *testing.T) {
+		incoming := stored()
+		incoming.Spec.Upstream.Auth.Header = nil
+		incoming.Spec.Upstream.Auth.Value = nil
+		inheritMCPProxyCredential(&incoming, stored())
+		assert.Nil(t, incoming.Spec.Upstream.Auth.Header)
+		require.NotNil(t, incoming.Spec.Upstream.Auth.Value)
+		assert.Equal(t, storedCred, *incoming.Spec.Upstream.Auth.Value)
+	})
+
 	t.Run("explicit incoming header wins", func(t *testing.T) {
 		incoming := stored()
 		incoming.Spec.Upstream.Auth.Header = sp("X-Api-Key")

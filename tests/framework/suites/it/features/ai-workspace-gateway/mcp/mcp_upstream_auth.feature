@@ -151,6 +151,48 @@ Feature: MCP proxy upstream API key authentication
       """
     Then the response should contain echoed header "X-API-Key" with value "mcp-inherit-credential"
 
+  Scenario: An api-key update that omits the header is rejected and the stored credential keeps being sent
+    Given I generate a unique resource name from "mcp-noheader" and store it as "mcpName"
+    And I generate a unique value from "mcp-noheader" and store it as "mcpDisplayName"
+    And I generate a unique API version from "mcp-noheader" and store it as "mcpVersion"
+    And I generate a unique API context from "/mcp-noheader" and store it as "mcpContext"
+    When I create MCP proxy from "resources/templates/mcp.yaml" with values:
+      | apiVersion         | ${CTX:gatewaySpecVersion}                                        |
+      | name               | ${CTX:mcpName}                                                   |
+      | displayName        | ${CTX:mcpDisplayName}                                            |
+      | version            | ${CTX:mcpVersion}                                                |
+      | context            | ${CTX:mcpContext}                                                |
+      | specVersion        | 2025-06-18                                                       |
+      | spec.upstream.url  | ${CTX:captureUpstream}/${CTX:mcpName}${CTX:gatewayMCPUpstreamPath} |
+      | spec.upstream.auth | {"type":"api-key","header":"X-API-Key","value":"mcp-noheader-credential"} |
+    Then the response should be successful
+    When I set header "Content-Type" to "application/json"
+    And I set header "Accept" to "application/json, text/event-stream"
+    And I send a "POST" request to "${CTX:mcpContext}/mcp" until status 200 with body:
+      """
+      {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"it-suite","version":"1.0.0"}}}
+      """
+    Then the response should contain echoed header "X-API-Key" with value "mcp-noheader-credential"
+
+    # The stored value is still inherited, but the stored header is not, so the
+    # header/value form is incomplete and the update is refused.
+    When I update MCP proxy "${CTX:mcpName}" from "resources/templates/mcp.yaml" with values:
+      | apiVersion         | ${CTX:gatewaySpecVersion}                                        |
+      | name               | ${CTX:mcpName}                                                   |
+      | displayName        | ${CTX:mcpDisplayName}                                            |
+      | version            | ${CTX:mcpVersion}                                                |
+      | context            | ${CTX:mcpContext}                                                |
+      | specVersion        | 2025-06-18                                                       |
+      | spec.upstream.url  | ${CTX:captureUpstream}/${CTX:mcpName}${CTX:gatewayMCPUpstreamPath} |
+      | spec.upstream.auth | {"type":"api-key"}                                               |
+    Then the response status code should be 400
+
+    When I send a "POST" request to "${CTX:mcpContext}/mcp" until status 200 with body:
+      """
+      {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"it-suite","version":"1.0.0"}}}
+      """
+    Then the response should contain echoed header "X-API-Key" with value "mcp-noheader-credential"
+
   Scenario: Switching a header and value credential to policyParams sends the new credential
     Given I generate a unique resource name from "mcp-policyparams" and store it as "mcpName"
     And I generate a unique value from "mcp-policyparams" and store it as "mcpDisplayName"
