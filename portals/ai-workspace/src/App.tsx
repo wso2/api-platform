@@ -450,8 +450,22 @@ function LLMProviderDeployRoute() {
 
 function AgentProxyDeployRoute() {
   const { agentProxyId } = useParams<{ agentProxyId: string }>();
+  // Unlike `handle`, which the cloud override's own render takes as an
+  // argument, `projectHandle` is read off the Port — an Agent Proxy belongs
+  // to a project, and the override has no other way to learn which one. The
+  // organization-scoped copy of this route (reachable by a direct/bookmarked
+  // URL; every in-app link already goes to the project-scoped one) carries no
+  // project segment, so the Port falls back to whatever project is currently
+  // selected and may have none. Selecting the override without a resolved
+  // project would show it "Open an API within a project to deploy it."
+  // instead of the native page's own project-selection fallback, so this
+  // falls back to the native page until a project is actually known.
+  const { projectHandle } = usePort();
   return (
-    <ArtifactDeployRoute slot={AI_WORKSPACE_AGENT_PROXY_DEPLOY_SLOT} handle={agentProxyId}>
+    <ArtifactDeployRoute
+      slot={AI_WORKSPACE_AGENT_PROXY_DEPLOY_SLOT}
+      handle={projectHandle ? agentProxyId : undefined}
+    >
       <AgentProxiesDeploy />
     </ArtifactDeployRoute>
   );
