@@ -255,6 +255,21 @@ const DEFAULTS = {
             jwksUrl: '',
             // Development only: accept a plain-http jwks_url on localhost or *.localhost.
             allowLocalHttpJwks: false,
+            // Multi-organization mode, for IDPs that issue each organization's tokens
+            // under its own issuer and signing keys (WSO2 IS / Asgardeo
+            // sub-organizations, for example). issuerPattern is the per-organization
+            // issuer with the organization's id as {org}, e.g.
+            // "https://is.example.com/o/{org}/oauth2/token"; a bearer token whose `iss`
+            // fits it is verified against jwksUrlTemplate with the same {org} filled in
+            // (or jwksUrl when that is empty), and the claim named by issuerOrgClaim
+            // (claimMappings.organization when empty) must equal that {org}. Both
+            // patterns empty — the default — means a single issuer: every token must
+            // match `issuer` above and is verified against jwksUrl.
+            multiOrganization: {
+                issuerPattern: '',
+                jwksUrlTemplate: '',
+                issuerOrgClaim: '',
+            },
             tokenRefreshTimeoutMs: 10000,
             silentSso: true,     // was: advanced.disableSilentSSO, inverted
             orgCallback: false,  // was: advanced.disableOrgCallback, inverted

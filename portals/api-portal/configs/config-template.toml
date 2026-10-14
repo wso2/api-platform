@@ -310,6 +310,17 @@ token_refresh_timeout_ms = 10000
 silent_sso = true      # Enable silent SSO
 org_callback = false   # Redirect to the org's own landing page after login
 
+# Multi-organization mode, for IDPs that issue each organization's tokens under its own
+# issuer and keys (WSO2 IS / Asgardeo sub-organizations). A bearer token whose `iss`
+# fits issuer_pattern is verified against jwks_url_template with the same {org}, and the
+# claim named by issuer_org_claim (claim_mappings.organization when unset) must equal
+# that {org}. The token must also carry the organization claim. issuer_pattern and
+# jwks_url_template must each contain exactly one {org}. Unset: a single issuer, as above.
+# [api_portal.auth.idp.multi_organization]
+# issuer_pattern    = "https://localhost:9443/o/{org}/oauth2/token"
+# jwks_url_template = "https://localhost:9443/o/{org}/oauth2/jwks"
+# issuer_org_claim  = "org_id"
+
 # =============================================================================
 # AUTHORIZATION
 # =============================================================================
