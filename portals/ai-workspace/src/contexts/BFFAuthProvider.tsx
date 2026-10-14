@@ -34,7 +34,7 @@ import { LoginOptions, AppAuthContext, type AppUser, type AppOrg } from './AppAu
 import { checkPermission, isPlatformRole } from '../auth/permissions';
 import { AUTH_MODE, CSRF_HEADER, CSRF_VALUE } from '../config.env';
 import { BASE_PATH } from '../paths';
-import { slugifyOrgName } from '../utils/projectRouting';
+import { deriveValidOrgHandle } from '../utils/projectRouting';
 
 // BFF auth endpoints are same-origin (the BFF serves this SPA), and mounted under the
 // same base path it serves the SPA on — these are absolute paths, not router routes,
@@ -65,9 +65,9 @@ function toAppUser(u: SessionResponse['user']): AppUser | null {
   const rawOrg = u.org;
   let org: AppOrg | null = null;
   if (rawOrg && (rawOrg.id || rawOrg.handle || rawOrg.name)) {
-    const handle = rawOrg.handle || slugifyOrgName(rawOrg.name) || rawOrg.id || '';
+    const handle = deriveValidOrgHandle(rawOrg);
     const name = rawOrg.name || rawOrg.handle || rawOrg.id || '';
-    const id = rawOrg.id || rawOrg.handle || '';
+    const id = rawOrg.id || handle || '';
     if (id || handle) {
       org = { id, name, handle };
     }

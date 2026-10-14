@@ -33,7 +33,7 @@ import { useAppAuth } from './AppAuthContext';
 import { registerOrganization, getOrganizationById } from '../apis/platformApis';
 import type { PlatformOrganization } from '../apis/platformApis';
 import { DEFAULT_ORG_REGION } from '../config.env';
-import { slugifyOrgName } from '../utils/projectRouting';
+import { deriveValidOrgHandle } from '../utils/projectRouting';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -192,21 +192,17 @@ export const AppShellProvider: React.FC<AppShellProviderProps> = ({
   const initialize = useCallback(async () => {
     try {
       const tokenOrg = userRef.current?.org;
-      const pathSegments = window.location.pathname.split('/').filter(Boolean);
-      const urlOrgSlug =
-        pathSegments[0] === 'organizations' && pathSegments[1] ? pathSegments[1] : undefined;
-
-      const targetHandle = tokenOrg?.handle || slugifyOrgName(tokenOrg?.name) || tokenOrg?.id || urlOrgSlug;
+      const targetHandle = deriveValidOrgHandle(tokenOrg);
       const displayName = tokenOrg?.name || tokenOrg?.handle || targetHandle;
 
       const orgsPromise = getOrganizations();
 
       if (targetHandle) {
-        // Primary path: fetch org by handle from the token or URL
+        // Primary path: fetch org by handle from the token
         let platformOrg = await getOrganizationById(targetHandle);
 
         if (!platformOrg) {
-          // Org not registered yet — provision it from token claims or URL.
+          // Org not registered yet — provision it from token claims.
           logger.info('[AppShellContext] Auto-provisioning organization:', targetHandle);
           setIsProvisioning(true);
           setProvisioningOrgName(displayName);

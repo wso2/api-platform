@@ -35,7 +35,7 @@ import OrgProvisioningPage from './pages/register/OrgProvisioningPage';
 import { checkOrganizationExists, registerOrganization } from './apis/platformApis';
 import { forceLogoutAndRedirect } from './auth/logout';
 import { DEFAULT_ORG_REGION, isFeatureEnabled } from './config.env';
-import { slugifyOrgName } from './utils/projectRouting';
+import { deriveValidOrgHandle } from './utils/projectRouting';
 import { logger } from './utils/logger';
 
 // App Shell Pages
@@ -210,16 +210,18 @@ function PostSignInInit({ children }: { children: React.ReactNode }) {
     if (!user) return;
     initiated.current = true;
 
-    const pathSegments = location.pathname.split('/').filter(Boolean);
-    const urlOrgSlug =
-      pathSegments[0] === 'organizations' && pathSegments[1] ? pathSegments[1] : undefined;
-
     const org = user.org;
-    const targetHandle = org?.handle || slugifyOrgName(org?.name) || org?.id || urlOrgSlug;
-    const displayName = org?.name || org?.handle || targetHandle;
+    if (!org) {
+      // No org claims in token — render the app and let AppShellContext handle it.
+      setOrgState('done');
+      return;
+    }
+
+    const targetHandle = deriveValidOrgHandle(org);
+    const displayName = org.name || org.handle || targetHandle;
 
     if (!targetHandle) {
-      // No org claims in token and not an org-scoped URL — render the app and let AppShellContext handle it.
+      // No valid org handle could be derived — render the app and let AppShellContext handle it.
       setOrgState('done');
       return;
     }
