@@ -2504,7 +2504,7 @@ func TestPoliciesFlagAccumulates(t *testing.T) {
 	require.Equal(t, []string{"a", "b", "c"}, flags.Policies)
 }
 
-// "latest" selects the images published after each merge: they are pulled like a release
+// "latest" selects the images published nightly from main: they are pulled like a release
 // from the chosen repository, but they carry the current contract, so runners are matched as
 // they are for a source build and no release configuration profile is looked up.
 func TestGatewayVersionLatestPullsPublishedImagesWithTheCurrentContract(t *testing.T) {

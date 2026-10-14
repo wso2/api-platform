@@ -26,7 +26,7 @@ import (
 
 const gatewayVersionPrefix = "gateway-version"
 
-// LatestGatewayVersion selects the gateway images published after each merge to main. It is
+// LatestGatewayVersion selects the gateway images published nightly from main. It is
 // not a release: it carries the current development contract, so it is matched like a source
 // build, and its images are always pulled again because the tag moves.
 const LatestGatewayVersion = "latest"

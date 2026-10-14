@@ -63,7 +63,7 @@ type Selection struct {
 
 	// GatewayVersion overrides the image version for platform-gateway components. A release
 	// such as "1.2.0" pulls that release and uses its configuration and contract. "latest"
-	// pulls the images published after each merge, and uses the current configuration and
+	// pulls the images published nightly from main, and uses the current configuration and
 	// contract, as a source build does.
 	GatewayVersion string
 
@@ -108,7 +108,7 @@ func (s *Selection) Flags(fs *flag.FlagSet) {
 	fs.BoolVar(&s.Coverage, "coverage", false,
 		"build instrumented source images and collect runtime coverage")
 	fs.StringVar(&s.GatewayVersion, "gateway-version", "",
-		"override the platform-gateway image version for this run: a release such as 1.2.0, or latest for the images published after each merge")
+		"override the platform-gateway image version for this run: a release such as 1.2.0, or latest for the images published nightly from main")
 	fs.StringVar(&s.GatewayHost, "host", "",
 		"override the platform-gateway image repository prefix (requires -gateway-version)")
 	fs.StringVar(&s.CloudEnvironment, "cloud-env", "",

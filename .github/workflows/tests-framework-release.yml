@@ -22,8 +22,7 @@
 # workflow tags, and run against the testbench image published with that same version. The
 # module lives in a subdirectory, so its tag carries the directory prefix: tests/framework/vX.Y.Z.
 #
-# It runs only when started by hand, and only in wso2/api-platform, so a fork can never publish
-# a version of the module or its testbench image.
+# It runs only when started by hand, and only from main.
 
 name: Tests Framework Release
 
@@ -41,10 +40,9 @@ env:
 
 jobs:
   release:
-    # A version is permanent once the Go module proxy records it, so only reviewed code on main,
-    # in the upstream repository, is released. A manual run from another branch or a fork must
-    # not tag it.
-    if: github.repository == 'wso2/api-platform' && github.ref == 'refs/heads/main'
+    # A version is permanent once the Go module proxy records it, so only reviewed code on main
+    # is released. A manual run from another branch must not tag it.
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     permissions:
