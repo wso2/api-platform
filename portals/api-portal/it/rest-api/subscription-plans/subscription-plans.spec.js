@@ -112,7 +112,7 @@ describe('subscription plans', () => {
         await client.as('admin').post('/subscription-plans', [plan(c, 'C'), plan(a, 'A'), plan(b, 'B')]);
 
         const handles = [];
-        let total = 0;
+        let total;
         do {
             const res = await client.as('admin').get(`/subscription-plans?limit=100&offset=${handles.length}`);
             expect(res.status).toBe(200);
