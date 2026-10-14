@@ -215,11 +215,12 @@ management paths, and compatibility selection. For example, the command above pu
 `registry.example/test-gateway/gateway-runtime:1.1.0` and
 `registry.example/test-gateway/gateway-builder:1.1.0`.
 
-`-gateway-version latest` pulls the images that `gateway-latest-image.yml` publishes every night
-at 03:00 UTC from `main`, and whenever it is started by hand (`gateway-controller`,
-`gateway-runtime` and `gateway-builder`, tagged `latest` and `main-<sha>`, where `<sha>` is the
-newest commit that changed the gateway), so a project that has no gateway source can test against
-the current gateway. A merge reaches `latest` at the next run, so it can be up to a day behind.
+`-gateway-version latest` pulls the images that the `gateway-images` job of `daily-builds.yml`
+publishes every day at 03:00 UTC from `main`, and whenever it is started by hand with the
+`gateway` component (`gateway-controller`, `gateway-runtime` and `gateway-builder`, tagged `latest`
+and `main-<sha>`, where `<sha>` is the newest commit that changed the gateway), so a project that
+has no gateway source can test against the current gateway. A merge reaches `latest` at the next
+run, so it can be up to a day behind.
 It is not a release: it uses the current configuration and contract, runners are matched as they
 are for a source build (`gateway-version>=1.2.0` runs, `gateway-version<1.2.0` is skipped), and
 policy images built on it are re-pulled each run because the tag moves.

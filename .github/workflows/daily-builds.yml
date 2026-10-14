@@ -16,35 +16,23 @@
 # under the License.
 # --------------------------------------------------------------------
 
-# Publishes the gateway images built from the latest code on main.
-#
-# Every day at 03:00 UTC, and whenever it is started by hand, this builds the gateway-controller,
-# gateway-runtime and gateway-builder images from main and pushes them to the registry that holds
-# the released images, under two tags:
-#   latest          moves to the newest build
-#   main-<sha>      the newest commit that changed the gateway, never moved
-# Other repositories, such as gateway-controllers, pull the latest tag the same way they pull a
-# release, so they never build gateway source themselves.
-#
-# The images are pushed and verified under main-<sha> first. latest is moved to them afterwards,
-# for all three images together. A run that finds main-<sha> already published and latest already
-# on it does nothing, so a day without gateway changes builds nothing; a manual run can set force
-# to rebuild anyway. If moving latest fails partway, re-run the failed job: it moves latest again.
-#
-# It runs only from main, so a manual run from another branch never publishes an image. There is
-# no pull request context, so no pull request code is ever checked out with the registry secret
-# in reach.
-
-name: Gateway Latest Image
+name: Daily Builds
 
 on:
   schedule:
-    # 03:00 UTC every day.
     - cron: '0 3 * * *'
   workflow_dispatch:
     inputs:
+      component:
+        description: 'The component to build. A scheduled run builds all of them.'
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - gateway
       force:
-        description: 'Rebuild and push the images even if main-<sha> is already published.'
+        description: 'Rebuild and push the images even if main-<sha> is already published (gateway).'
         required: false
         default: false
         type: boolean
@@ -54,19 +42,17 @@ permissions:
 
 env:
   DOCKER_REGISTRY: ghcr.io/wso2/api-platform
-  # The paths whose changes make a new gateway image (the image builds also copy the root
-  # LICENSE). main-<sha> names the newest commit that touched any of them.
-  GATEWAY_PATHS: gateway common httpkit sdk sdk-python LICENSE .github/workflows/gateway-latest-image.yml
 
 jobs:
-  publish:
+  gateway-images:
     name: Build and push the latest gateway images
-    # A manual run from another branch must not move latest.
-    if: github.ref == 'refs/heads/main'
-    # Runs queue instead of cancelling, so a scheduled run and a manual run never overlap and the
-    # three images never end up from different builds.
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'schedule' || inputs.component == 'all' || inputs.component == 'gateway')
+    env:
+      GATEWAY_PATHS: gateway common httpkit sdk sdk-python LICENSE .github/workflows/daily-builds.yml
     concurrency:
-      group: gateway-latest-image
+      group: daily-builds-gateway-images
       cancel-in-progress: false
     runs-on: ubuntu-24.04
     timeout-minutes: 90
@@ -77,11 +63,8 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          # The tip of main when this run starts, not the commit the event fired on. Runs are
-          # queued, so a delayed run must not see an older main than the run before it, or it
-          # would move latest back to older images.
+          # The tip of main when the run starts, so a delayed run never moves latest backwards.
           ref: main
-          # The history lets the next steps find the newest commit that changed the gateway.
           fetch-depth: 0
           persist-credentials: false
 
@@ -92,17 +75,14 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.API_PLATFORM_BOT_TOKEN }}
 
-      # Decides what this run has to do. build: some image is missing under the tag, or force is
-      # set. promote: latest is not yet on the tag's images, for example after a release moved it.
       - name: Plan the publish
         id: plan
         env:
           FORCE: ${{ inputs.force }}
         run: |
           set -euo pipefail
-          # GATEWAY_PATHS is a fixed list of repository paths, so it is expanded unquoted.
-          # shellcheck disable=SC2086
-          source_sha="$(git log -1 --format=%H -- $GATEWAY_PATHS)"
+          read -ra paths <<< "$GATEWAY_PATHS"
+          source_sha="$(git log -1 --format=%H -- "${paths[@]}")"
           if [[ -z "$source_sha" ]]; then
             echo "::error::no commit found for the gateway paths"
             exit 1
@@ -153,16 +133,13 @@ jobs:
           install: true
           driver: docker-container
 
-      # PUSH_LATEST=false makes the gateway Makefile push only <registry>/<image>:<VERSION>, so no
-      # latest tag moves until all three images have been built and verified.
+      # PUSH_LATEST=false: latest moves only after the images are verified.
       - name: Build and push the multi-arch gateway images
         if: steps.plan.outputs.build == 'true'
         env:
           TAG: ${{ steps.plan.outputs.tag }}
         run: make -C gateway build-and-push-multiarch VERSION="$TAG" DOCKER_REGISTRY="$DOCKER_REGISTRY" PUSH_LATEST=false
 
-      # Also runs when only latest has to move, so a tag whose earlier verification failed is
-      # checked again before latest points at it.
       - name: Verify the pushed images
         if: steps.plan.outputs.build == 'true' || steps.plan.outputs.promote == 'true'
         env:
@@ -187,8 +164,6 @@ jobs:
             echo "| \`$image\` | \`$TAG\` | $platforms |" >> "$GITHUB_STEP_SUMMARY"
           done
 
-      # imagetools create points latest at the already-pushed manifest, so the three tags move
-      # within seconds of each other and nothing is rebuilt. The step can be repeated safely.
       - name: Move latest to the verified images
         if: steps.plan.outputs.build == 'true' || steps.plan.outputs.promote == 'true'
         env:

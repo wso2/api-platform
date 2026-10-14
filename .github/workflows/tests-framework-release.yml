@@ -16,18 +16,9 @@
 # under the License.
 # --------------------------------------------------------------------
 
-# Releases the integration-test framework as a Go module.
-#
-# Other repositories import github.com/wso2/api-platform/tests/framework at the version this
-# workflow tags, and run against the testbench image published with that same version. The
-# module lives in a subdirectory, so its tag carries the directory prefix: tests/framework/vX.Y.Z.
-#
-# It runs only when started by hand, and only from main.
-
 name: Tests Framework Release
 
 on:
-  # Releasing is manual-only so a merge never publishes a version by accident.
   workflow_dispatch:
     inputs:
       version:
@@ -40,8 +31,6 @@ env:
 
 jobs:
   release:
-    # A version is permanent once the Go module proxy records it, so only reviewed code on main
-    # is released. A manual run from another branch must not tag it.
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 45
@@ -61,7 +50,6 @@ jobs:
       - name: Validate the version
         id: version
         env:
-          # The input is untrusted: it is read from the environment, never interpolated into the script.
           INPUT_VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
@@ -82,15 +70,10 @@ jobs:
           go-version: '1.26.5'
           cache-dependency-path: tests/framework/go.sum
 
-      # A consumer has no checkout to read these files from, so the module embeds copies of
-      # them. The copies are not committed to main: they are generated here from the gateway
-      # files at the commit being released, and only the release tag carries them.
       - name: Generate the embedded snapshots
         run: go run ./cmd/syncassets
 
-      # TestGatewayBuildYAMLAgreesWithVERSION checks the gateway's own version files, not the
-      # framework, and gateway/VERSION and gateway/build.yaml disagree on main. A framework
-      # release must not wait on the gateway release process, so that one test is skipped.
+      # Skipped: it checks the gateway's own version files, which disagree on main.
       - name: Run the framework unit tests
         run: go test ./core/... ./cmd/... -count=1 -skip '^TestGatewayBuildYAMLAgreesWithVERSION$'
 
@@ -109,8 +92,6 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.API_PLATFORM_BOT_TOKEN }}
 
-      # The image is published before the tag, so a tag never points at a version whose
-      # testbench image does not exist.
       - name: Build and push the testbench image
         env:
           VERSION: ${{ steps.version.outputs.version }}
@@ -121,9 +102,6 @@ jobs:
             -t "${TESTBENCH_REPOSITORY}:${VERSION}" \
             --push .
 
-      # The tag points at a commit that adds the generated snapshots to the released commit.
-      # That commit is on no branch, so main stays free of them while a consumer who downloads
-      # the tagged module gets them. Only the tag is pushed.
       - name: Create and push the tag
         env:
           VERSION: ${{ steps.version.outputs.version }}
