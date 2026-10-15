@@ -69,7 +69,7 @@ func TestLoadPortalContent(t *testing.T) {
 	}
 
 	t.Run("packs the selected documents", func(t *testing.T) {
-		content, err := newContentService(docs).loadPortalContent("artifact", []string{"guide", "faq"}, "org")
+		content, err := newContentService(docs).loadPortalContent("artifact", []string{"guide", "faq"}, nil, "org")
 		if err != nil || content == nil {
 			t.Fatalf("got %v, %v", content, err)
 		}
@@ -80,14 +80,14 @@ func TestLoadPortalContent(t *testing.T) {
 	})
 
 	t.Run("no selection means no content", func(t *testing.T) {
-		content, err := newContentService(docs).loadPortalContent("artifact", nil, "org")
+		content, err := newContentService(docs).loadPortalContent("artifact", nil, nil, "org")
 		if err != nil || content != nil {
 			t.Fatalf("got %v, %v", content, err)
 		}
 	})
 
 	t.Run("rejects an unknown handle", func(t *testing.T) {
-		_, err := newContentService(docs).loadPortalContent("artifact", []string{"guide", "nope"}, "org")
+		_, err := newContentService(docs).loadPortalContent("artifact", []string{"guide", "nope"}, nil, "org")
 		if !apperror.APIPublicationValidationFailed.Is(err) || !strings.Contains(err.Error(), "nope") {
 			t.Fatalf("want a validation error naming the handle, got %v", err)
 		}
@@ -97,7 +97,7 @@ func TestLoadPortalContent(t *testing.T) {
 		big := map[string]*model.Document{
 			"big": {ID: "uuid-big", Handle: "big", Type: "DOC_HowTo", FileName: "big.md", Content: make([]byte, portalContentMaxFileBytes+1)},
 		}
-		_, err := newContentService(big).loadPortalContent("artifact", []string{"big"}, "org")
+		_, err := newContentService(big).loadPortalContent("artifact", []string{"big"}, nil, "org")
 		if !apperror.APIPublicationValidationFailed.Is(err) || !strings.Contains(err.Error(), "too large") {
 			t.Fatalf("want a too large error, got %v", err)
 		}
@@ -110,7 +110,7 @@ func TestLoadPortalContent(t *testing.T) {
 			many[h] = &model.Document{ID: "uuid-" + h, Handle: h, Type: "DOC_HowTo", FileName: h + ".md", Content: make([]byte, portalContentMaxFileBytes)}
 			handles = append(handles, h)
 		}
-		_, err := newContentService(many).loadPortalContent("artifact", handles, "org")
+		_, err := newContentService(many).loadPortalContent("artifact", handles, nil, "org")
 		if !apperror.APIPublicationValidationFailed.Is(err) || !strings.Contains(err.Error(), "too large") {
 			t.Fatalf("want a too large error, got %v", err)
 		}
@@ -124,7 +124,7 @@ func TestLoadPortalContent(t *testing.T) {
 			many[h] = &model.Document{ID: "uuid-" + h, Handle: h, Type: "DOC_HowTo", FileName: h + ".md"}
 			handles = append(handles, h)
 		}
-		_, err := newContentService(many).loadPortalContent("artifact", handles, "org")
+		_, err := newContentService(many).loadPortalContent("artifact", handles, nil, "org")
 		if !apperror.APIPublicationValidationFailed.Is(err) || !strings.Contains(err.Error(), "too large") {
 			t.Fatalf("want a too large error, got %v", err)
 		}
@@ -159,8 +159,16 @@ func (l *callLog) PublishContent(_ context.Context, _ *model.APIPortal, _ string
 // records whether the draft was promoted.
 type publishFlowDocsPublicationRepo struct {
 	publishFlowPublicationRepo
-	docUUIDs []string
-	promoted *bool
+	docUUIDs  []string
+	thumbnail *model.PublicationContent
+	promoted  *bool
+}
+
+func (r publishFlowDocsPublicationRepo) GetContent(draftUUID string, contentType model.PublicationContentType, orgUUID string) (*model.PublicationContent, error) {
+	if contentType == model.PublicationContentTypeImage {
+		return r.thumbnail, nil
+	}
+	return r.publishFlowPublicationRepo.GetContent(draftUUID, contentType, orgUUID)
 }
 
 func (r publishFlowDocsPublicationRepo) GetDraft(_, _, _ string) (*model.Publication, []string, []string, error) {
@@ -172,20 +180,20 @@ func (r publishFlowDocsPublicationRepo) PromoteDraftToPublication(_, _, _, _ str
 	return &model.Publication{UUID: "draft-uuid"}, false, nil
 }
 
-func newPublishDocsService(pub PortalPublisher, docUUIDs []string, promoted *bool) *PublicationService {
+func newPublishDocsService(pub PortalPublisher, docUUIDs []string, thumbnail *model.PublicationContent, promoted *bool) *PublicationService {
 	docs := map[string]*model.Document{
 		"guide": {ID: "uuid-guide", Handle: "guide", Type: "DOC_HowTo", FileName: "guide.md", Content: []byte("# guide")},
 	}
 	return NewPublicationService(
 		publishFlowArtifactRepo{}, publishFlowPortalRepo{}, contentDocumentRepo{docs: docs},
-		publishFlowPlanRepo{publicationTestPlans()}, publishFlowDocsPublicationRepo{docUUIDs: docUUIDs, promoted: promoted},
+		publishFlowPlanRepo{publicationTestPlans()}, publishFlowDocsPublicationRepo{docUUIDs: docUUIDs, thumbnail: thumbnail, promoted: promoted},
 		pub, time.Minute, 0, nil)
 }
 
 func TestPublish_PushesDocumentsAfterTheListing(t *testing.T) {
 	var promoted bool
 	pub := &callLog{}
-	svc := newPublishDocsService(pub, []string{"uuid-guide"}, &promoted)
+	svc := newPublishDocsService(pub, []string{"uuid-guide"}, nil, &promoted)
 
 	if _, _, err := svc.Publish(context.Background(), restAPITypeValue, "my-api", "my-portal", "org", "actor"); err != nil {
 		t.Fatalf("Publish: %v", err)
@@ -201,10 +209,27 @@ func TestPublish_PushesDocumentsAfterTheListing(t *testing.T) {
 	}
 }
 
-func TestPublish_SkipsTheContentPushWithoutDocuments(t *testing.T) {
+func TestPublish_PushesTheThumbnailWithoutDocuments(t *testing.T) {
 	var promoted bool
 	pub := &callLog{}
-	svc := newPublishDocsService(pub, nil, &promoted)
+	thumbnail := &model.PublicationContent{ContentType: "image/png", FileName: "logo.png", Content: []byte("img")}
+	svc := newPublishDocsService(pub, nil, thumbnail, &promoted)
+
+	if _, _, err := svc.Publish(context.Background(), restAPITypeValue, "my-api", "my-portal", "org", "actor"); err != nil {
+		t.Fatalf("Publish: %v", err)
+	}
+	if got := strings.Join(pub.calls, ","); got != "listing,content" {
+		t.Fatalf("want the listing then its content, got %s", got)
+	}
+	if files := readArchive(t, pub.archive); len(files) != 1 || files["content/web/api-icon.png"] != "img" {
+		t.Fatalf("unexpected archive: %v", files)
+	}
+}
+
+func TestPublish_SkipsTheContentPushWithoutDocumentsOrThumbnail(t *testing.T) {
+	var promoted bool
+	pub := &callLog{}
+	svc := newPublishDocsService(pub, nil, nil, &promoted)
 
 	if _, _, err := svc.Publish(context.Background(), restAPITypeValue, "my-api", "my-portal", "org", "actor"); err != nil {
 		t.Fatalf("Publish: %v", err)
@@ -227,7 +252,7 @@ func TestPublish_FailedContentPushDoesNotPromote(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			var promoted bool
 			pub := &callLog{contentErr: tc.err}
-			svc := newPublishDocsService(pub, []string{"uuid-guide"}, &promoted)
+			svc := newPublishDocsService(pub, []string{"uuid-guide"}, nil, &promoted)
 
 			published, _, err := svc.Publish(context.Background(), restAPITypeValue, "my-api", "my-portal", "org", "actor")
 			if !tc.is(err) || published != nil {
@@ -243,7 +268,7 @@ func TestPublish_FailedContentPushDoesNotPromote(t *testing.T) {
 func TestPublish_RejectsAnOversizeSelectionBeforeAnyPortalCall(t *testing.T) {
 	var promoted bool
 	pub := &callLog{}
-	svc := newPublishDocsService(pub, []string{"uuid-guide"}, &promoted)
+	svc := newPublishDocsService(pub, []string{"uuid-guide"}, nil, &promoted)
 	svc.archiveMaxBytes = 1
 
 	_, _, err := svc.Publish(context.Background(), restAPITypeValue, "my-api", "my-portal", "org", "actor")

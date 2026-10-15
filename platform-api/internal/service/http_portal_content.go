@@ -62,7 +62,7 @@ func (p *HTTPPortalPublisher) PublishContent(ctx context.Context, portal *model.
 	case isPortalAuthFailure(resp.StatusCode):
 		return portalAuthError(resp.StatusCode)
 	case isPortalRejection(resp.StatusCode):
-		return portalRejection(resp, "the API Portal rejected the documents of this listing")
+		return portalRejection(resp, "the API Portal rejected the content of this listing")
 	default:
 		return fmt.Errorf("portal content push failed: unexpected status %d", resp.StatusCode)
 	}

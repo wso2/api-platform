@@ -71,10 +71,10 @@ func (s *PublicationService) resolvePortalDocuments(artifactUUID string, handles
 }
 
 // loadPortalContent resolves the selected documents, loads their content and
-// packs it for the portal; it returns nil when no document is selected. The
-// portal's size limits are enforced here, while loading, so a selection over
-// them is never read into memory in full.
-func (s *PublicationService) loadPortalContent(artifactUUID string, handles []string, orgUUID string) (*PortalContent, error) {
+// packs it, with the thumbnail (nil for none), for the portal; it returns nil
+// when there is neither. The portal's size limits are enforced here, while
+// loading, so a selection over them is never read into memory in full.
+func (s *PublicationService) loadPortalContent(artifactUUID string, handles []string, thumbnail *model.PublicationContent, orgUUID string) (*PortalContent, error) {
 	docs, err := s.resolvePortalDocuments(artifactUUID, handles, orgUUID)
 	if err != nil {
 		return nil, err
@@ -100,7 +100,7 @@ func (s *PublicationService) loadPortalContent(artifactUUID string, handles []st
 		}
 		docs[i].Content = doc.Content
 	}
-	return buildContentArchive(docs, s.archiveMaxBytes)
+	return buildContentArchive(docs, thumbnail, s.archiveMaxBytes)
 }
 
 // docsForHandles returns the documents in handle order, or a validation error naming the

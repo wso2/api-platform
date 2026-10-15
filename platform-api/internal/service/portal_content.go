@@ -23,6 +23,7 @@ import (
 	"fmt"
 
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
+	"github.com/wso2/api-platform/platform-api/internal/model"
 )
 
 // The API Portal's upload limits; content over any of them is refused there.
@@ -39,16 +40,26 @@ const defaultPublicationArchiveMaxBytes int64 = 10 << 20
 // top-level entry is a folder as a wrapper, and would refuse one holding only docs/ or web/.
 const portalArchiveRoot = "content"
 
+// portalIconName is the thumbnail's base name; the portal shows "api-icon" as the API's icon.
+const portalIconName = "api-icon"
+
+// portalIconExtensions maps a thumbnail's content type to its file extension.
+var portalIconExtensions = map[string]string{
+	"image/png":  "png",
+	"image/jpeg": "jpg",
+}
+
 // portalContentTooLarge covers every size limit without saying which was hit.
 func portalContentTooLarge() error {
 	return apperror.APIPublicationValidationFailed.New("selected documents are too large to publish")
 }
 
-// buildContentArchive packs the documents into the ZIP the portal reads, each at
-// content/docs/<Folder>/<FileName>, and returns nil when there is nothing to send. A ZIP
-// over maxArchiveBytes is rejected.
-func buildContentArchive(docs []portalDocument, maxArchiveBytes int64) (*PortalContent, error) {
-	if len(docs) == 0 {
+// buildContentArchive packs the documents and the thumbnail (nil for none) into the
+// ZIP the portal reads: each document at content/docs/<Folder>/<FileName>, the thumbnail
+// at content/web/api-icon.<ext>. It returns nil when there is nothing to send. A ZIP over
+// maxArchiveBytes is rejected.
+func buildContentArchive(docs []portalDocument, thumbnail *model.PublicationContent, maxArchiveBytes int64) (*PortalContent, error) {
+	if len(docs) == 0 && thumbnail == nil {
 		return nil, nil
 	}
 
@@ -61,6 +72,19 @@ func buildContentArchive(docs []portalDocument, maxArchiveBytes int64) (*PortalC
 		}
 		if _, err := w.Write(doc.Content); err != nil {
 			return nil, fmt.Errorf("failed to write document %q to the content archive: %w", doc.Handle, err)
+		}
+	}
+	if thumbnail != nil {
+		ext, ok := portalIconExtensions[thumbnail.ContentType]
+		if !ok {
+			return nil, apperror.APIPublicationValidationFailed.New("thumbnail must be a PNG or JPEG image")
+		}
+		w, err := zw.Create(portalArchiveRoot + "/web/" + portalIconName + "." + ext)
+		if err != nil {
+			return nil, fmt.Errorf("failed to add the thumbnail to the content archive: %w", err)
+		}
+		if _, err := w.Write(thumbnail.Content); err != nil {
+			return nil, fmt.Errorf("failed to write the thumbnail to the content archive: %w", err)
 		}
 	}
 	if err := zw.Close(); err != nil {

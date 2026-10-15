@@ -219,7 +219,10 @@ func (publishFlowPublicationRepo) GetDraft(_, _, _ string) (*model.Publication, 
 	return &model.Publication{UUID: "draft-uuid"}, []string{"uuid-gold"}, nil, nil
 }
 
-func (publishFlowPublicationRepo) GetContent(_ string, _ model.PublicationContentType, _ string) (*model.PublicationContent, error) {
+func (publishFlowPublicationRepo) GetContent(_ string, contentType model.PublicationContentType, _ string) (*model.PublicationContent, error) {
+	if contentType != model.PublicationContentTypeDefinition {
+		return nil, nil
+	}
 	return &model.PublicationContent{ContentType: "application/json", Content: []byte(validRESTDefinitionSpec)}, nil
 }
 

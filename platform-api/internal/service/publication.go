@@ -580,21 +580,9 @@ func (s *PublicationService) getPublicationContent(apiType, apiId, apiPortalId, 
 // PublicationRepository.PromoteDraftToPublication flips the draft row in place on a first
 // publish, or merges it into the live row on a republish, so the live row's uuid never changes.
 //
-// Everything local (loading, validation, packing the documents) is done before the
-// portal deadline starts, so the deadline covers only the portal calls. The portal
-// is pushed first: nothing local changes unless that succeeds — the listing, then
-// its documents. On success, one transaction (PublicationRepository.PromoteDraftToPublication):
-// on a first publish, flip the draft row in place — same row, same uuid; on
-// a republish, merge the draft's content into the existing live row (the
-// anchor) instead, so the anchor's uuid — the durable identity for this
-// (API, portal) pairing — never changes across a republish. A repeat publish
-// with no intervening edit goes through the same path and is a normal
-// no-op refresh, not an error.
-//
-// A draft saved during the portal push is not promoted (APIPublicationDraftChanged).
-// The push is not undone, so the portal may differ until the caller publishes again;
-// so does a failed document push after the listing was accepted, and publishing again
-// repairs it.
+// A draft saved during the push is not promoted (APIPublicationDraftChanged). A push is never
+// undone, so a failed content push after the listing was accepted leaves the portal ahead of
+// local state until the next publish.
 func (s *PublicationService) Publish(ctx context.Context, apiType, apiId, apiPortalId, orgUUID, actor string) (*model.Publication, bool, error) {
 	artifactUUID, err := s.resolveArtifact(apiType, apiId, orgUUID)
 	if err != nil {
@@ -629,7 +617,11 @@ func (s *PublicationService) Publish(ctx context.Context, apiType, apiId, apiPor
 	if err != nil {
 		return nil, false, err
 	}
-	content, err := s.loadPortalContent(artifactUUID, draft.DocIds, orgUUID)
+	thumbnail, err := s.publicationRepo.GetContent(draft.UUID, model.PublicationContentTypeImage, orgUUID)
+	if err != nil {
+		return nil, false, fmt.Errorf("failed to get publication draft thumbnail: %w", err)
+	}
+	content, err := s.loadPortalContent(artifactUUID, draft.DocIds, thumbnail, orgUUID)
 	if err != nil {
 		return nil, false, err
 	}

@@ -25,6 +25,7 @@ import (
 	"testing"
 
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
+	"github.com/wso2/api-platform/platform-api/internal/model"
 )
 
 func readArchive(t *testing.T, archive []byte) map[string]string {
@@ -51,7 +52,7 @@ func TestBuildContentArchive(t *testing.T) {
 		content, err := buildContentArchive([]portalDocument{
 			{Handle: "guide", Folder: "HowTo", FileName: "guide.md", Content: []byte("# guide")},
 			{Handle: "faq", Folder: "FAQ", FileName: "faq.md", Content: []byte("# faq")},
-		}, defaultPublicationArchiveMaxBytes)
+		}, nil, defaultPublicationArchiveMaxBytes)
 		if err != nil || content == nil {
 			t.Fatalf("got %v, %v", content, err)
 		}
@@ -61,8 +62,39 @@ func TestBuildContentArchive(t *testing.T) {
 		}
 	})
 
+	t.Run("adds the thumbnail as content/web/api-icon with an extension from its type", func(t *testing.T) {
+		for contentType, name := range map[string]string{"image/png": "content/web/api-icon.png", "image/jpeg": "content/web/api-icon.jpg"} {
+			content, err := buildContentArchive(nil, &model.PublicationContent{ContentType: contentType, FileName: "logo.final.bin", Content: []byte("img")}, defaultPublicationArchiveMaxBytes)
+			if err != nil || content == nil {
+				t.Fatalf("%s: got %v, %v", contentType, content, err)
+			}
+			if files := readArchive(t, content.Archive); len(files) != 1 || files[name] != "img" {
+				t.Fatalf("%s: unexpected archive layout: %v", contentType, files)
+			}
+		}
+	})
+
+	t.Run("packs documents and the thumbnail together", func(t *testing.T) {
+		content, err := buildContentArchive(
+			[]portalDocument{{Handle: "guide", Folder: "HowTo", FileName: "guide.md", Content: []byte("# guide")}},
+			&model.PublicationContent{ContentType: "image/png", Content: []byte("img")}, defaultPublicationArchiveMaxBytes)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if files := readArchive(t, content.Archive); len(files) != 2 || files["content/docs/HowTo/guide.md"] == "" || files["content/web/api-icon.png"] == "" {
+			t.Fatalf("unexpected archive layout: %v", files)
+		}
+	})
+
+	t.Run("rejects a thumbnail that is not PNG or JPEG", func(t *testing.T) {
+		_, err := buildContentArchive(nil, &model.PublicationContent{ContentType: "image/gif", Content: []byte("img")}, defaultPublicationArchiveMaxBytes)
+		if !apperror.APIPublicationValidationFailed.Is(err) {
+			t.Fatalf("want a validation error, got %v", err)
+		}
+	})
+
 	t.Run("no documents means nothing to send", func(t *testing.T) {
-		content, err := buildContentArchive(nil, defaultPublicationArchiveMaxBytes)
+		content, err := buildContentArchive(nil, nil, defaultPublicationArchiveMaxBytes)
 		if err != nil || content != nil {
 			t.Fatalf("got %v, %v", content, err)
 		}
@@ -73,7 +105,7 @@ func TestBuildContentArchive(t *testing.T) {
 		if _, err := rand.Read(noise); err != nil {
 			t.Fatal(err)
 		}
-		_, err := buildContentArchive([]portalDocument{{Handle: "big", Folder: "HowTo", FileName: "big.md", Content: noise}}, 1024)
+		_, err := buildContentArchive([]portalDocument{{Handle: "big", Folder: "HowTo", FileName: "big.md", Content: noise}}, nil, 1024)
 		if !apperror.APIPublicationValidationFailed.Is(err) {
 			t.Fatalf("want a validation error, got %v", err)
 		}
