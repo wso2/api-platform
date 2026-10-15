@@ -88,15 +88,18 @@ info "Content size: ${#VERBOSE_PROMPT} bytes (content-length-guardrail limit: 51
 FULL=$(chat_req "${VERBOSE_PROMPT}")
 STATUS=$(echo "${FULL}" | tail -1)
 BODY=$(echo "${FULL}" | sed '$d')
-GUARDRAIL_TYPE=$(echo "${BODY}" | jq -r '.type // "unknown"' 2>/dev/null)
+# Which guardrail intervened. LLM routes return the OpenAI error envelope by default, with the
+# guardrail under error.guardrail; with policy_engine.llm_errors.disable_openai_format set it is
+# under message in the guardrail's own body. Both are read.
+GUARDRAIL_TYPE=$(echo "${BODY}" | jq -r '(.error | objects | .guardrail.interveningGuardrail) // (.message | objects | .interveningGuardrail) // "unknown"' 2>/dev/null)
 
 echo "Status         : HTTP ${STATUS}"
 echo "Body           : ${BODY}"
-echo "Guardrail type : ${GUARDRAIL_TYPE}"
-if [[ "${STATUS}" == "422" && "${GUARDRAIL_TYPE}" == "WORD_COUNT_GUARDRAIL" ]]; then
+echo "Guardrail      : ${GUARDRAIL_TYPE}"
+if [[ "${STATUS}" == "422" && "${GUARDRAIL_TYPE}" == "word-count-guardrail" ]]; then
   pass "Verbose prompt BLOCKED by word-count-guardrail."
 else
-  fail "Expected HTTP 422 / WORD_COUNT_GUARDRAIL, got HTTP ${STATUS} / ${GUARDRAIL_TYPE}."
+  fail "Expected HTTP 422 / word-count-guardrail, got HTTP ${STATUS} / ${GUARDRAIL_TYPE}."
   FAILURES=$((FAILURES + 1))
 fi
 

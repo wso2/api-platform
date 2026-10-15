@@ -1,0 +1,2665 @@
+{
+  "info": {
+    "name": "Gateway fault flows (LLM OpenAI-compatible errors)",
+    "description": "Exercises the policy-engine fault flow with `[policy_engine.llm_errors] disable_openai_format = false` against a mock LLM backend (`mock-backend.py`). See README.md in this folder.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "controllerUrl",
+      "value": "http://localhost:29090/api/management/v1"
+    },
+    {
+      "key": "routerUrl",
+      "value": "http://localhost:28080"
+    },
+    {
+      "key": "adminUser",
+      "value": "admin"
+    },
+    {
+      "key": "adminPassword",
+      "value": "admin"
+    },
+    {
+      "key": "mockUpstream",
+      "value": "http://mock-llm:8000",
+      "description": "The mock backend as the gateway runtime reaches it (compose service name)."
+    },
+    {
+      "key": "deadUpstream",
+      "value": "http://mock-llm:1",
+      "description": "A host:port that refuses connections."
+    },
+    {
+      "key": "waitAttempts",
+      "value": "0"
+    }
+  ],
+  "item": [
+    {
+      "name": "0. Setup",
+      "item": [
+        {
+          "name": "Pre-clean: delete proxy ff-proxy",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{controllerUrl}}/llm-proxies/ff-proxy"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"deleted (200/204) or already gone (404)\", () => pm.expect(pm.response.code).to.be.oneOf([200, 204, 404]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Pre-clean: delete provider ff-openai",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{controllerUrl}}/llm-providers/ff-openai"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"deleted (200/204) or already gone (404)\", () => pm.expect(pm.response.code).to.be.oneOf([200, 204, 404]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Pre-clean: delete provider ff-openai-bare",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{controllerUrl}}/llm-providers/ff-openai-bare"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"deleted (200/204) or already gone (404)\", () => pm.expect(pm.response.code).to.be.oneOf([200, 204, 404]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Pre-clean: delete provider ff-openai-dead",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{controllerUrl}}/llm-providers/ff-openai-dead"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"deleted (200/204) or already gone (404)\", () => pm.expect(pm.response.code).to.be.oneOf([200, 204, 404]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Pre-clean: delete provider ff-sdk",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{controllerUrl}}/llm-providers/ff-sdk"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"deleted (200/204) or already gone (404)\", () => pm.expect(pm.response.code).to.be.oneOf([200, 204, 404]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Pre-clean: delete provider ff-fp-upstream",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{controllerUrl}}/llm-providers/ff-fp-upstream"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"deleted (200/204) or already gone (404)\", () => pm.expect(pm.response.code).to.be.oneOf([200, 204, 404]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Pre-clean: delete provider ff-fp-dead",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{controllerUrl}}/llm-providers/ff-fp-dead"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"deleted (200/204) or already gone (404)\", () => pm.expect(pm.response.code).to.be.oneOf([200, 204, 404]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Pre-clean: delete provider ff-fp-body",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{controllerUrl}}/llm-providers/ff-fp-body"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"deleted (200/204) or already gone (404)\", () => pm.expect(pm.response.code).to.be.oneOf([200, 204, 404]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Pre-clean: delete REST API ff-rest",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{controllerUrl}}/rest-apis/ff-rest"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"deleted (200/204) or already gone (404)\", () => pm.expect(pm.response.code).to.be.oneOf([200, 204, 404]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Management API reachable",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{controllerUrl}}/llm-providers"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"authenticated (200)\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create provider ff-openai (policies)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{controllerUrl}}/llm-providers",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"apiVersion\": \"gateway.api-platform.wso2.com/v1\",\n  \"kind\": \"LlmProvider\",\n  \"metadata\": {\n    \"name\": \"ff-openai\"\n  },\n  \"spec\": {\n    \"displayName\": \"Fault flows - provider with policies\",\n    \"version\": \"v1.0\",\n    \"template\": \"openai\",\n    \"context\": \"/ff-openai\",\n    \"upstream\": {\n      \"url\": \"{{mockUpstream}}/v1\"\n    },\n    \"accessControl\": {\n      \"mode\": \"allow_all\"\n    },\n    \"policies\": [\n      {\n        \"name\": \"word-count-guardrail\",\n        \"version\": \"v1\",\n        \"paths\": [\n          {\n            \"path\": \"/chat/completions\",\n            \"methods\": [\n              \"POST\"\n            ],\n            \"params\": {\n              \"request\": {\n                \"enabled\": true,\n                \"min\": 1,\n                \"max\": 5,\n                \"jsonPath\": \"$.prompt\"\n              },\n              \"response\": {\n                \"enabled\": true,\n                \"min\": 1,\n                \"max\": 20,\n                \"jsonPath\": \"$.choices[0].message.content\"\n              }\n            }\n          }\n        ]\n      },\n      {\n        \"name\": \"respond\",\n        \"version\": \"v1\",\n        \"paths\": [\n          {\n            \"path\": \"/edge/rest-body\",\n            \"methods\": [\n              \"GET\"\n            ],\n            \"params\": {\n              \"statusCode\": 403,\n              \"body\": \"{\\\"error\\\":\\\"Forbidden\\\",\\\"message\\\":\\\"Caller is not allowed to use this model\\\"}\",\n              \"headers\": [\n                {\n                  \"name\": \"content-type\",\n                  \"value\": \"application/json\"\n                }\n              ]\n            }\n          }\n        ]\n      },\n      {\n        \"name\": \"respond\",\n        \"version\": \"v1\",\n        \"paths\": [\n          {\n            \"path\": \"/edge/plain-text\",\n            \"methods\": [\n              \"GET\"\n            ],\n            \"params\": {\n              \"statusCode\": 429,\n              \"body\": \"Slow down, quota exhausted\",\n              \"headers\": [\n                {\n                  \"name\": \"content-type\",\n                  \"value\": \"text/plain\"\n                }\n              ]\n            }\n          }\n        ]\n      },\n      {\n        \"name\": \"respond\",\n        \"version\": \"v1\",\n        \"paths\": [\n          {\n            \"path\": \"/edge/openai-body\",\n            \"methods\": [\n              \"GET\"\n            ],\n            \"params\": {\n              \"statusCode\": 400,\n              \"body\": \"{\\\"error\\\":{\\\"message\\\":\\\"Bad model\\\",\\\"type\\\":\\\"invalid_request_error\\\",\\\"param\\\":\\\"model\\\",\\\"code\\\":\\\"model_not_found\\\"}}\",\n              \"headers\": [\n                {\n                  \"name\": \"content-type\",\n                  \"value\": \"application/json\"\n                }\n              ]\n            }\n          }\n        ]\n      },\n      {\n        \"name\": \"respond\",\n        \"version\": \"v1\",\n        \"paths\": [\n          {\n            \"path\": \"/edge/empty\",\n            \"methods\": [\n              \"GET\"\n            ],\n            \"params\": {\n              \"statusCode\": 503,\n              \"body\": \"\",\n              \"headers\": [\n                {\n                  \"name\": \"content-type\",\n                  \"value\": \"application/json\"\n                }\n              ]\n            }\n          }\n        ]\n      }\n    ]\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"created (201)\", () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create provider ff-openai-bare (no policies, 2s timeout)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{controllerUrl}}/llm-providers",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"apiVersion\": \"gateway.api-platform.wso2.com/v1\",\n  \"kind\": \"LlmProvider\",\n  \"metadata\": {\n    \"name\": \"ff-openai-bare\"\n  },\n  \"spec\": {\n    \"displayName\": \"Fault flows - provider with no body-reading policy\",\n    \"version\": \"v1.0\",\n    \"template\": \"openai\",\n    \"context\": \"/ff-openai-bare\",\n    \"upstream\": {\n      \"url\": \"{{mockUpstream}}/v1\"\n    },\n    \"accessControl\": {\n      \"mode\": \"allow_all\"\n    },\n    \"resilience\": {\n      \"timeout\": \"2s\"\n    }\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"created (201)\", () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create provider ff-openai-dead (refused upstream)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{controllerUrl}}/llm-providers",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"apiVersion\": \"gateway.api-platform.wso2.com/v1\",\n  \"kind\": \"LlmProvider\",\n  \"metadata\": {\n    \"name\": \"ff-openai-dead\"\n  },\n  \"spec\": {\n    \"displayName\": \"Fault flows - provider whose upstream refuses connections\",\n    \"version\": \"v1.0\",\n    \"template\": \"openai\",\n    \"context\": \"/ff-openai-dead\",\n    \"upstream\": {\n      \"url\": \"{{deadUpstream}}/v1\"\n    },\n    \"accessControl\": {\n      \"mode\": \"allow_all\"\n    }\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"created (201)\", () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create proxy ff-proxy",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{controllerUrl}}/llm-proxies",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"apiVersion\": \"gateway.api-platform.wso2.com/v1\",\n  \"kind\": \"LlmProxy\",\n  \"metadata\": {\n    \"name\": \"ff-proxy\"\n  },\n  \"spec\": {\n    \"displayName\": \"Fault flows - proxy\",\n    \"version\": \"v1.0\",\n    \"context\": \"/ff-proxy\",\n    \"provider\": {\n      \"id\": \"ff-openai-bare\"\n    },\n    \"policies\": [\n      {\n        \"name\": \"word-count-guardrail\",\n        \"version\": \"v1\",\n        \"paths\": [\n          {\n            \"path\": \"/chat/completions\",\n            \"methods\": [\n              \"POST\"\n            ],\n            \"params\": {\n              \"request\": {\n                \"enabled\": true,\n                \"min\": 1,\n                \"max\": 5,\n                \"jsonPath\": \"$.prompt\",\n                \"showAssessment\": true\n              }\n            }\n          }\n        ]\n      }\n    ]\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"created (201)\", () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create REST API ff-rest (contrast)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{controllerUrl}}/rest-apis",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"apiVersion\": \"gateway.api-platform.wso2.com/v1\",\n  \"kind\": \"RestApi\",\n  \"metadata\": {\n    \"name\": \"ff-rest\"\n  },\n  \"spec\": {\n    \"displayName\": \"Fault flows - REST contrast\",\n    \"version\": \"v1.0\",\n    \"context\": \"/ff-rest/$version\",\n    \"upstream\": {\n      \"main\": {\n        \"url\": \"{{mockUpstream}}\"\n      }\n    },\n    \"operations\": [\n      {\n        \"method\": \"POST\",\n        \"path\": \"/chat/completions\"\n      },\n      {\n        \"method\": \"GET\",\n        \"path\": \"/edge/rest-body\",\n        \"policies\": [\n          {\n            \"name\": \"respond\",\n            \"version\": \"v1\",\n            \"params\": {\n              \"statusCode\": 403,\n              \"body\": \"{\\\"error\\\":\\\"Forbidden\\\",\\\"message\\\":\\\"Caller is not allowed to use this model\\\"}\",\n              \"headers\": [\n                {\n                  \"name\": \"content-type\",\n                  \"value\": \"application/json\"\n                }\n              ]\n            }\n          }\n        ]\n      }\n    ]\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"created (201)\", () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create provider ff-sdk (SDK faults + fault policies)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{controllerUrl}}/llm-providers",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"apiVersion\": \"gateway.api-platform.wso2.com/v1\",\n  \"kind\": \"LlmProvider\",\n  \"metadata\": {\n    \"name\": \"ff-sdk\"\n  },\n  \"spec\": {\n    \"displayName\": \"Fault flows - SDK faults and fault policies\",\n    \"version\": \"v1.0\",\n    \"template\": \"openai\",\n    \"context\": \"/ff-sdk\",\n    \"upstream\": {\n      \"url\": \"{{mockUpstream}}/v1\"\n    },\n    \"accessControl\": {\n      \"mode\": \"allow_all\"\n    },\n    \"operationPolicies\": [\n      {\n        \"name\": \"sample-sdk-fault\",\n        \"version\": \"v0\",\n        \"paths\": [\n          {\n            \"path\": \"/sdk/plain\",\n            \"methods\": [\n              \"GET\"\n            ],\n            \"params\": {\n              \"statusCode\": 401,\n              \"code\": \"900901\",\n              \"type\": \"authentication\",\n              \"message\": \"Invalid API key\",\n              \"description\": \"internal: key hash mismatch for tenant t-42\"\n            }\n          }\n        ]\n      },\n      {\n        \"name\": \"sample-sdk-fault\",\n        \"version\": \"v0\",\n        \"paths\": [\n          {\n            \"path\": \"/sdk/fallback\",\n            \"methods\": [\n              \"GET\"\n            ],\n            \"params\": {\n              \"statusCode\": 401,\n              \"code\": \"900901\",\n              \"type\": \"authentication\",\n              \"message\": \"Invalid API key\",\n              \"description\": \"internal: key hash mismatch for tenant t-42\",\n              \"fallbackBody\": \"{\\\"legacy\\\":\\\"fallback body the gateway must not send\\\"}\"\n            }\n          }\n        ]\n      },\n      {\n        \"name\": \"sample-sdk-fault\",\n        \"version\": \"v0\",\n        \"paths\": [\n          {\n            \"path\": \"/sdk/guardrail\",\n            \"methods\": [\n              \"GET\"\n            ],\n            \"params\": {\n              \"statusCode\": 422,\n              \"code\": \"906001\",\n              \"type\": \"guardrail\",\n              \"message\": \"Prompt blocked by content policy\",\n              \"guardrail\": {\n                \"interveningGuardrail\": \"sample-guardrail\",\n                \"action\": \"GUARDRAIL_INTERVENED\",\n                \"actionReason\": \"Blocked category: Hate\",\n                \"assessments\": {\n                  \"categories\": [\n                    {\n                      \"category\": \"Hate\",\n                      \"severity\": 4\n                    }\n                  ]\n                }\n              }\n            }\n          }\n        ]\n      },\n      {\n        \"name\": \"sample-sdk-fault\",\n        \"version\": \"v0\",\n        \"paths\": [\n          {\n            \"path\": \"/sdk/response\",\n            \"methods\": [\n              \"GET\"\n            ],\n            \"params\": {\n              \"phase\": \"response\",\n              \"statusCode\": 422,\n              \"type\": \"guardrail\",\n              \"message\": \"Completion blocked\",\n              \"guardrail\": {\n                \"interveningGuardrail\": \"sample-response-guardrail\",\n                \"action\": \"GUARDRAIL_INTERVENED\",\n                \"actionReason\": \"Unsafe completion\"\n              }\n            }\n          }\n        ]\n      },\n      {\n        \"name\": \"sample-sdk-fault\",\n        \"version\": \"v0\",\n        \"paths\": [\n          {\n            \"path\": \"/fp/stamp\",\n            \"methods\": [\n              \"GET\"\n            ],\n            \"params\": {\n              \"statusCode\": 401,\n              \"code\": \"900901\",\n              \"type\": \"authentication\",\n              \"message\": \"Invalid API key\",\n              \"description\": \"internal: key hash mismatch for tenant t-42\"\n            }\n          }\n        ]\n      },\n      {\n        \"name\": \"sample-sdk-fault\",\n        \"version\": \"v0\",\n        \"paths\": [\n          {\n            \"path\": \"/fp/redescribe\",\n            \"methods\": [\n              \"GET\"\n            ],\n            \"params\": {\n              \"statusCode\": 401,\n              \"code\": \"900901\",\n              \"type\": \"authentication\",\n              \"message\": \"Invalid API key\",\n              \"description\": \"internal: key hash mismatch for tenant t-42\"\n            }\n          }\n        ]\n      },\n      {\n        \"name\": \"sample-sdk-fault\",\n        \"version\": \"v0\",\n        \"paths\": [\n          {\n            \"path\": \"/fp/replace\",\n            \"methods\": [\n              \"GET\"\n            ],\n            \"params\": {\n              \"statusCode\": 401,\n              \"code\": \"900901\",\n              \"type\": \"authentication\",\n              \"message\": \"Invalid API key\",\n              \"description\": \"internal: key hash mismatch for tenant t-42\"\n            }\n          }\n        ]\n      },\n      {\n        \"name\": \"sample-sdk-fault\",\n        \"version\": \"v0\",\n        \"paths\": [\n          {\n            \"path\": \"/fp/body\",\n            \"methods\": [\n              \"GET\"\n            ],\n            \"params\": {\n              \"statusCode\": 401,\n              \"code\": \"900901\",\n              \"type\": \"authentication\",\n              \"message\": \"Invalid API key\",\n              \"description\": \"internal: key hash mismatch for tenant t-42\"\n            }\n          }\n        ]\n      },\n      {\n        \"name\": \"sample-sdk-fault\",\n        \"version\": \"v0\",\n        \"paths\": [\n          {\n            \"path\": \"/fp/status\",\n            \"methods\": [\n              \"GET\"\n            ],\n            \"params\": {\n              \"statusCode\": 401,\n              \"code\": \"900901\",\n              \"type\": \"authentication\",\n              \"message\": \"Invalid API key\",\n              \"description\": \"internal: key hash mismatch for tenant t-42\"\n            }\n          }\n        ]\n      },\n      {\n        \"name\": \"respond\",\n        \"version\": \"v1\",\n        \"paths\": [\n          {\n            \"path\": \"/fp/legacy\",\n            \"methods\": [\n              \"GET\"\n            ],\n            \"params\": {\n              \"statusCode\": 403,\n              \"body\": \"{\\\"error\\\":\\\"Forbidden\\\",\\\"message\\\":\\\"Caller is not allowed to use this model\\\"}\",\n              \"headers\": [\n                {\n                  \"name\": \"content-type\",\n                  \"value\": \"application/json\"\n                }\n              ]\n            }\n          }\n        ]\n      },\n      {\n        \"name\": \"word-count-guardrail\",\n        \"version\": \"v1\",\n        \"paths\": [\n          {\n            \"path\": \"/fp/guardrail\",\n            \"methods\": [\n              \"POST\"\n            ],\n            \"params\": {\n              \"request\": {\n                \"enabled\": true,\n                \"min\": 1,\n                \"max\": 5,\n                \"jsonPath\": \"$.prompt\"\n              }\n            }\n          }\n        ]\n      }\n    ],\n    \"operationFaultPolicies\": [\n      {\n        \"name\": \"sample-fault-handler\",\n        \"version\": \"v0\",\n        \"paths\": [\n          {\n            \"path\": \"/fp/stamp\",\n            \"methods\": [\n              \"GET\"\n            ],\n            \"params\": {\n              \"fault\": {}\n            }\n          }\n        ]\n      },\n      {\n        \"name\": \"sample-fault-handler\",\n        \"version\": \"v0\",\n        \"paths\": [\n          {\n            \"path\": \"/fp/redescribe\",\n            \"methods\": [\n              \"GET\"\n            ],\n            \"params\": {\n              \"fault\": {\n                \"message\": \"Re-described by the fault policy\",\n                \"code\": \"999001\"\n              }\n            }\n          }\n        ]\n      },\n      {\n        \"name\": \"sample-fault-handler\",\n        \"version\": \"v0\",\n        \"paths\": [\n          {\n            \"path\": \"/fp/replace\",\n            \"methods\": [\n              \"GET\"\n            ],\n            \"params\": {\n              \"fault\": {\n                \"code\": \"999002\",\n                \"inherit\": false\n              }\n            }\n          }\n        ]\n      },\n      {\n        \"name\": \"sample-fault-handler\",\n        \"version\": \"v0\",\n        \"paths\": [\n          {\n            \"path\": \"/fp/body\",\n            \"methods\": [\n              \"GET\"\n            ],\n            \"params\": {\n              \"fault\": {\n                \"body\": \"{\\\"custom\\\":\\\"fault policy body\\\"}\"\n              }\n            }\n          }\n        ]\n      },\n      {\n        \"name\": \"sample-fault-handler\",\n        \"version\": \"v0\",\n        \"paths\": [\n          {\n            \"path\": \"/fp/status\",\n            \"methods\": [\n              \"GET\"\n            ],\n            \"params\": {\n              \"fault\": {\n                \"statusCode\": 429,\n                \"type\": \"throttling\",\n                \"message\": \"Slow down (fault policy)\"\n              }\n            }\n          }\n        ]\n      },\n      {\n        \"name\": \"sample-fault-handler\",\n        \"version\": \"v0\",\n        \"paths\": [\n          {\n            \"path\": \"/fp/legacy\",\n            \"methods\": [\n              \"GET\"\n            ],\n            \"params\": {\n              \"fault\": {\n                \"message\": \"Forbidden (re-described)\",\n                \"code\": \"999003\"\n              }\n            }\n          }\n        ]\n      },\n      {\n        \"name\": \"sample-fault-handler\",\n        \"version\": \"v0\",\n        \"paths\": [\n          {\n            \"path\": \"/fp/guardrail\",\n            \"methods\": [\n              \"POST\"\n            ],\n            \"params\": {\n              \"fault\": {\n                \"code\": \"999004\"\n              }\n            }\n          }\n        ]\n      }\n    ]\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"created (201)\", () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create provider ff-fp-upstream",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{controllerUrl}}/llm-providers",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"apiVersion\": \"gateway.api-platform.wso2.com/v1\",\n  \"kind\": \"LlmProvider\",\n  \"metadata\": {\n    \"name\": \"ff-fp-upstream\"\n  },\n  \"spec\": {\n    \"displayName\": \"Fault flows - fault policy on upstream failures\",\n    \"version\": \"v1.0\",\n    \"template\": \"openai\",\n    \"context\": \"/ff-fp-upstream\",\n    \"upstream\": {\n      \"url\": \"{{mockUpstream}}/v1\"\n    },\n    \"accessControl\": {\n      \"mode\": \"allow_all\"\n    },\n    \"globalFaultPolicies\": [\n      {\n        \"name\": \"sample-fault-handler\",\n        \"version\": \"v0\",\n        \"params\": {\n          \"fault\": {\n            \"message\": \"Re-described upstream failure\"\n          }\n        }\n      }\n    ]\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"created (201)\", () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create provider ff-fp-dead",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{controllerUrl}}/llm-providers",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"apiVersion\": \"gateway.api-platform.wso2.com/v1\",\n  \"kind\": \"LlmProvider\",\n  \"metadata\": {\n    \"name\": \"ff-fp-dead\"\n  },\n  \"spec\": {\n    \"displayName\": \"Fault flows - fault policy on a router failure\",\n    \"version\": \"v1.0\",\n    \"template\": \"openai\",\n    \"context\": \"/ff-fp-dead\",\n    \"upstream\": {\n      \"url\": \"{{deadUpstream}}/v1\"\n    },\n    \"accessControl\": {\n      \"mode\": \"allow_all\"\n    },\n    \"globalFaultPolicies\": [\n      {\n        \"name\": \"sample-fault-handler\",\n        \"version\": \"v0\",\n        \"params\": {\n          \"fault\": {\n            \"message\": \"Re-described router failure\"\n          }\n        }\n      }\n    ]\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"created (201)\", () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create provider ff-fp-body",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{controllerUrl}}/llm-providers",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"apiVersion\": \"gateway.api-platform.wso2.com/v1\",\n  \"kind\": \"LlmProvider\",\n  \"metadata\": {\n    \"name\": \"ff-fp-body\"\n  },\n  \"spec\": {\n    \"displayName\": \"Fault flows - fault policy body on upstream failures\",\n    \"version\": \"v1.0\",\n    \"template\": \"openai\",\n    \"context\": \"/ff-fp-body\",\n    \"upstream\": {\n      \"url\": \"{{mockUpstream}}/v1\"\n    },\n    \"accessControl\": {\n      \"mode\": \"allow_all\"\n    },\n    \"globalFaultPolicies\": [\n      {\n        \"name\": \"sample-fault-handler\",\n        \"version\": \"v0\",\n        \"params\": {\n          \"fault\": {\n            \"body\": \"{\\\"custom\\\":\\\"fault policy body on a backend error\\\"}\"\n          }\n        }\n      }\n    ]\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"created (201)\", () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Wait for deployment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-mock-scenario",
+                "value": "ok"
+              }
+            ],
+            "url": "{{routerUrl}}/ff-proxy/chat/completions",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"gpt-4o\",\n  \"prompt\": \"say hello\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"say hello\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "setTimeout(() => {}, 2000);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const n = Number(pm.collectionVariables.get(\"waitAttempts\") || 0);",
+                  "if (pm.response.code !== 200 && n < 15) {",
+                  "  pm.collectionVariables.set(\"waitAttempts\", n + 1);",
+                  "  postman.setNextRequest(pm.info.requestName);",
+                  "} else {",
+                  "  pm.collectionVariables.set(\"waitAttempts\", 0);",
+                  "  pm.test(\"routes are deployed (200 through the proxy)\", () => pm.response.to.have.status(200));",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "description": "Deletes anything a previous run left behind, then creates every resource this collection uses (all prefixed `ff-`).",
+      "auth": {
+        "type": "basic",
+        "basic": [
+          {
+            "key": "username",
+            "value": "{{adminUser}}",
+            "type": "string"
+          },
+          {
+            "key": "password",
+            "value": "{{adminPassword}}",
+            "type": "string"
+          }
+        ]
+      }
+    },
+    {
+      "name": "1. Policy rejections -> OpenAI envelope",
+      "item": [
+        {
+          "name": "Request guardrail rejects (word-count -> 422)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-mock-scenario",
+                "value": "ok"
+              }
+            ],
+            "url": "{{routerUrl}}/ff-openai/chat/completions",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"gpt-4o\",\n  \"prompt\": \"this prompt has far more than five words in it\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"this prompt has far more than five words in it\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "word-count-guardrail writes its own REST-style body and describes no fault. The gateway reshapes it, keeping 422."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 422 (the formatter never changes it)\", () => pm.response.to.have.status(422));",
+                  "pm.test(\"content-type is application/json\", () => pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/json\"));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"top level carries only `error` (OpenAI envelope)\", () => pm.expect(Object.keys(body)).to.eql([\"error\"]));",
+                  "pm.test(\"error.message is a non-empty string\", () => pm.expect(body.error.message).to.be.a(\"string\").and.not.empty);",
+                  "pm.test(\"error.param and error.code are always present\", () => { pm.expect(body.error).to.have.property(\"param\"); pm.expect(body.error).to.have.property(\"code\"); });",
+                  "pm.test(\"not the backend's response\", () => pm.expect(pm.response.headers.get(\"x-mock-backend\")).to.not.eql(\"true\"));",
+                  "pm.test(\"error.type is invalid_request_error\", () => pm.expect(body.error.type).to.eql(\"invalid_request_error\"));",
+                  "pm.test(\"no Envoy internals leak into the message\", () => pm.expect(body.error.message.toLowerCase()).to.not.include(\"upstream connect error\"));",
+                  "const g = body.error.guardrail;",
+                  "pm.test(\"error.guardrail block is present\", () => pm.expect(g).to.be.an(\"object\"));",
+                  "pm.test(\"guardrail.interveningGuardrail is word-count-guardrail\", () => pm.expect(g.interveningGuardrail).to.eql(\"word-count-guardrail\"));",
+                  "pm.test(\"guardrail.action is GUARDRAIL_INTERVENED\", () => pm.expect(g.action).to.eql(\"GUARDRAIL_INTERVENED\"));",
+                  "pm.test(\"guardrail.direction is REQUEST\", () => pm.expect(g.direction).to.eql(\"REQUEST\"));",
+                  "pm.test(\"error.message is the guardrail's actionReason\", () => pm.expect(body.error.message).to.eql(g.actionReason).and.not.empty);",
+                  "pm.test(\"no assessments without showAssessment\", () => pm.expect(g).to.not.have.property(\"assessments\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Response guardrail rejects the backend's answer (-> 422)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-mock-scenario",
+                "value": "long"
+              }
+            ],
+            "url": "{{routerUrl}}/ff-openai/chat/completions",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"gpt-4o\",\n  \"prompt\": \"say hello\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"say hello\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "The mock answers 200 with a 60-word completion; the response-side guardrail (max 20) rejects it on the response path. The rejection replaces the status and body but keeps the backend's response headers, so x-mock-backend is still present."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 422 (the formatter never changes it)\", () => pm.response.to.have.status(422));",
+                  "pm.test(\"content-type is application/json\", () => pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/json\"));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"top level carries only `error` (OpenAI envelope)\", () => pm.expect(Object.keys(body)).to.eql([\"error\"]));",
+                  "pm.test(\"error.message is a non-empty string\", () => pm.expect(body.error.message).to.be.a(\"string\").and.not.empty);",
+                  "pm.test(\"error.param and error.code are always present\", () => { pm.expect(body.error).to.have.property(\"param\"); pm.expect(body.error).to.have.property(\"code\"); });",
+                  "pm.test(\"error.type is invalid_request_error\", () => pm.expect(body.error.type).to.eql(\"invalid_request_error\"));",
+                  "pm.test(\"no Envoy internals leak into the message\", () => pm.expect(body.error.message.toLowerCase()).to.not.include(\"upstream connect error\"));",
+                  "const g = body.error.guardrail;",
+                  "pm.test(\"error.guardrail block is present\", () => pm.expect(g).to.be.an(\"object\"));",
+                  "pm.test(\"guardrail.interveningGuardrail is word-count-guardrail\", () => pm.expect(g.interveningGuardrail).to.eql(\"word-count-guardrail\"));",
+                  "pm.test(\"guardrail.action is GUARDRAIL_INTERVENED\", () => pm.expect(g.action).to.eql(\"GUARDRAIL_INTERVENED\"));",
+                  "pm.test(\"guardrail.direction is RESPONSE\", () => pm.expect(g.direction).to.eql(\"RESPONSE\"));",
+                  "pm.test(\"error.message is the guardrail's actionReason\", () => pm.expect(body.error.message).to.eql(g.actionReason).and.not.empty);",
+                  "pm.test(\"no assessments without showAssessment\", () => pm.expect(g).to.not.have.property(\"assessments\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Policy's own REST body: message lifted (403)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{routerUrl}}/ff-openai/edge/rest-body"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 403 (the formatter never changes it)\", () => pm.response.to.have.status(403));",
+                  "pm.test(\"content-type is application/json\", () => pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/json\"));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"top level carries only `error` (OpenAI envelope)\", () => pm.expect(Object.keys(body)).to.eql([\"error\"]));",
+                  "pm.test(\"error.message is a non-empty string\", () => pm.expect(body.error.message).to.be.a(\"string\").and.not.empty);",
+                  "pm.test(\"error.param and error.code are always present\", () => { pm.expect(body.error).to.have.property(\"param\"); pm.expect(body.error).to.have.property(\"code\"); });",
+                  "pm.test(\"not the backend's response\", () => pm.expect(pm.response.headers.get(\"x-mock-backend\")).to.not.eql(\"true\"));",
+                  "pm.test(\"error.type is permission_error\", () => pm.expect(body.error.type).to.eql(\"permission_error\"));",
+                  "pm.test(\"error.message is Caller is not allowed to use this model\", () => pm.expect(body.error.message).to.eql(\"Caller is not allowed to use this model\"));",
+                  "pm.test(\"no Envoy internals leak into the message\", () => pm.expect(body.error.message.toLowerCase()).to.not.include(\"upstream connect error\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Policy's plain-text body becomes the message (429)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{routerUrl}}/ff-openai/edge/plain-text"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 429 (the formatter never changes it)\", () => pm.response.to.have.status(429));",
+                  "pm.test(\"content-type is application/json\", () => pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/json\"));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"top level carries only `error` (OpenAI envelope)\", () => pm.expect(Object.keys(body)).to.eql([\"error\"]));",
+                  "pm.test(\"error.message is a non-empty string\", () => pm.expect(body.error.message).to.be.a(\"string\").and.not.empty);",
+                  "pm.test(\"error.param and error.code are always present\", () => { pm.expect(body.error).to.have.property(\"param\"); pm.expect(body.error).to.have.property(\"code\"); });",
+                  "pm.test(\"not the backend's response\", () => pm.expect(pm.response.headers.get(\"x-mock-backend\")).to.not.eql(\"true\"));",
+                  "pm.test(\"error.type is rate_limit_error\", () => pm.expect(body.error.type).to.eql(\"rate_limit_error\"));",
+                  "pm.test(\"error.message is Slow down, quota exhausted\", () => pm.expect(body.error.message).to.eql(\"Slow down, quota exhausted\"));",
+                  "pm.test(\"no Envoy internals leak into the message\", () => pm.expect(body.error.message.toLowerCase()).to.not.include(\"upstream connect error\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Policy body already in OpenAI shape is kept byte-for-byte (400)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{routerUrl}}/ff-openai/edge/openai-body"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"kept as the policy wrote it\", () => pm.expect(pm.response.text()).to.eql(\"{\\\"error\\\":{\\\"message\\\":\\\"Bad model\\\",\\\"type\\\":\\\"invalid_request_error\\\",\\\"param\\\":\\\"model\\\",\\\"code\\\":\\\"model_not_found\\\"}}\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Policy's explicitly empty body stays empty (503)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{routerUrl}}/ff-openai/edge/empty"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 503\", () => pm.response.to.have.status(503));",
+                  "pm.test(\"no body\", () => pm.expect(pm.response.text()).to.eql(\"\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "LLM proxy guardrail with showAssessment rejects (-> 422, assessments carried)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-mock-scenario",
+                "value": "ok"
+              }
+            ],
+            "url": "{{routerUrl}}/ff-proxy/chat/completions",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"gpt-4o\",\n  \"prompt\": \"this prompt has far more than five words in it\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"this prompt has far more than five words in it\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "The proxy's guardrail sets showAssessment, so its string assessment is carried under guardrail.assessments.details."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 422 (the formatter never changes it)\", () => pm.response.to.have.status(422));",
+                  "pm.test(\"content-type is application/json\", () => pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/json\"));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"top level carries only `error` (OpenAI envelope)\", () => pm.expect(Object.keys(body)).to.eql([\"error\"]));",
+                  "pm.test(\"error.message is a non-empty string\", () => pm.expect(body.error.message).to.be.a(\"string\").and.not.empty);",
+                  "pm.test(\"error.param and error.code are always present\", () => { pm.expect(body.error).to.have.property(\"param\"); pm.expect(body.error).to.have.property(\"code\"); });",
+                  "pm.test(\"not the backend's response\", () => pm.expect(pm.response.headers.get(\"x-mock-backend\")).to.not.eql(\"true\"));",
+                  "pm.test(\"error.type is invalid_request_error\", () => pm.expect(body.error.type).to.eql(\"invalid_request_error\"));",
+                  "pm.test(\"no Envoy internals leak into the message\", () => pm.expect(body.error.message.toLowerCase()).to.not.include(\"upstream connect error\"));",
+                  "const g = body.error.guardrail;",
+                  "pm.test(\"error.guardrail block is present\", () => pm.expect(g).to.be.an(\"object\"));",
+                  "pm.test(\"guardrail.interveningGuardrail is word-count-guardrail\", () => pm.expect(g.interveningGuardrail).to.eql(\"word-count-guardrail\"));",
+                  "pm.test(\"guardrail.action is GUARDRAIL_INTERVENED\", () => pm.expect(g.action).to.eql(\"GUARDRAIL_INTERVENED\"));",
+                  "pm.test(\"guardrail.direction is REQUEST\", () => pm.expect(g.direction).to.eql(\"REQUEST\"));",
+                  "pm.test(\"error.message is the guardrail's actionReason\", () => pm.expect(body.error.message).to.eql(g.actionReason).and.not.empty);",
+                  "pm.test(\"guardrail.assessments carried (showAssessment on)\", () => pm.expect(g.assessments).to.eql({\"details\": \"Violation of word count detected. Expected word count to be between 1 and 5 words.\"}));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Streaming request rejected -> plain JSON error, not SSE",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-mock-scenario",
+                "value": "ok"
+              },
+              {
+                "key": "Accept",
+                "value": "text/event-stream"
+              }
+            ],
+            "url": "{{routerUrl}}/ff-openai/chat/completions",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"gpt-4o\",\n  \"prompt\": \"this prompt has far more than five words in it\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"this prompt has far more than five words in it\"\n    }\n  ],\n  \"stream\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 422 (the formatter never changes it)\", () => pm.response.to.have.status(422));",
+                  "pm.test(\"content-type is application/json\", () => pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/json\"));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"top level carries only `error` (OpenAI envelope)\", () => pm.expect(Object.keys(body)).to.eql([\"error\"]));",
+                  "pm.test(\"error.message is a non-empty string\", () => pm.expect(body.error.message).to.be.a(\"string\").and.not.empty);",
+                  "pm.test(\"error.param and error.code are always present\", () => { pm.expect(body.error).to.have.property(\"param\"); pm.expect(body.error).to.have.property(\"code\"); });",
+                  "pm.test(\"not the backend's response\", () => pm.expect(pm.response.headers.get(\"x-mock-backend\")).to.not.eql(\"true\"));",
+                  "pm.test(\"error.type is invalid_request_error\", () => pm.expect(body.error.type).to.eql(\"invalid_request_error\"));",
+                  "pm.test(\"no Envoy internals leak into the message\", () => pm.expect(body.error.message.toLowerCase()).to.not.include(\"upstream connect error\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Accept: application/xml still gets OpenAI JSON",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-mock-scenario",
+                "value": "ok"
+              },
+              {
+                "key": "Accept",
+                "value": "application/xml"
+              }
+            ],
+            "url": "{{routerUrl}}/ff-openai/chat/completions",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"gpt-4o\",\n  \"prompt\": \"this prompt has far more than five words in it\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"this prompt has far more than five words in it\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 422 (the formatter never changes it)\", () => pm.response.to.have.status(422));",
+                  "pm.test(\"content-type is application/json\", () => pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/json\"));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"top level carries only `error` (OpenAI envelope)\", () => pm.expect(Object.keys(body)).to.eql([\"error\"]));",
+                  "pm.test(\"error.message is a non-empty string\", () => pm.expect(body.error.message).to.be.a(\"string\").and.not.empty);",
+                  "pm.test(\"error.param and error.code are always present\", () => { pm.expect(body.error).to.have.property(\"param\"); pm.expect(body.error).to.have.property(\"code\"); });",
+                  "pm.test(\"not the backend's response\", () => pm.expect(pm.response.headers.get(\"x-mock-backend\")).to.not.eql(\"true\"));",
+                  "pm.test(\"error.type is invalid_request_error\", () => pm.expect(body.error.type).to.eql(\"invalid_request_error\"));",
+                  "pm.test(\"no Envoy internals leak into the message\", () => pm.expect(body.error.message.toLowerCase()).to.not.include(\"upstream connect error\"));"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "description": "Errors the gateway's own policies produce. Each becomes `{\"error\":{message,type,param,code}}` with the status kept.",
+      "auth": {
+        "type": "noauth"
+      }
+    },
+    {
+      "name": "2. Router failures -> OpenAI envelope",
+      "item": [
+        {
+          "name": "Upstream refuses connections (-> 503)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{routerUrl}}/ff-openai-dead/chat/completions",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"gpt-4o\",\n  \"prompt\": \"say hello\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"say hello\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 503 (the formatter never changes it)\", () => pm.response.to.have.status(503));",
+                  "pm.test(\"content-type is application/json\", () => pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/json\"));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"top level carries only `error` (OpenAI envelope)\", () => pm.expect(Object.keys(body)).to.eql([\"error\"]));",
+                  "pm.test(\"error.message is a non-empty string\", () => pm.expect(body.error.message).to.be.a(\"string\").and.not.empty);",
+                  "pm.test(\"error.param and error.code are always present\", () => { pm.expect(body.error).to.have.property(\"param\"); pm.expect(body.error).to.have.property(\"code\"); });",
+                  "pm.test(\"not the backend's response\", () => pm.expect(pm.response.headers.get(\"x-mock-backend\")).to.not.eql(\"true\"));",
+                  "pm.test(\"error.type is server_error\", () => pm.expect(body.error.type).to.eql(\"server_error\"));",
+                  "pm.test(\"error.code is 101503\", () => pm.expect(body.error.code).to.eql(\"101503\"));",
+                  "pm.test(\"no Envoy internals leak into the message\", () => pm.expect(body.error.message.toLowerCase()).to.not.include(\"upstream connect error\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Backend resets the connection, route with no policy (-> 503)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-mock-scenario",
+                "value": "reset"
+              }
+            ],
+            "url": "{{routerUrl}}/ff-openai-bare/chat/completions",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"gpt-4o\",\n  \"prompt\": \"say hello\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"say hello\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "The engine buffers only this error body (no policy on the route reads bodies) to rewrite Envoy's text."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 503 (the formatter never changes it)\", () => pm.response.to.have.status(503));",
+                  "pm.test(\"content-type is application/json\", () => pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/json\"));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"top level carries only `error` (OpenAI envelope)\", () => pm.expect(Object.keys(body)).to.eql([\"error\"]));",
+                  "pm.test(\"error.message is a non-empty string\", () => pm.expect(body.error.message).to.be.a(\"string\").and.not.empty);",
+                  "pm.test(\"error.param and error.code are always present\", () => { pm.expect(body.error).to.have.property(\"param\"); pm.expect(body.error).to.have.property(\"code\"); });",
+                  "pm.test(\"not the backend's response\", () => pm.expect(pm.response.headers.get(\"x-mock-backend\")).to.not.eql(\"true\"));",
+                  "pm.test(\"error.type is server_error\", () => pm.expect(body.error.type).to.eql(\"server_error\"));",
+                  "pm.test(\"error.code is 101503\", () => pm.expect(body.error.code).to.eql(\"101503\"));",
+                  "pm.test(\"no Envoy internals leak into the message\", () => pm.expect(body.error.message.toLowerCase()).to.not.include(\"upstream connect error\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Backend resets the connection, route with policies (-> 503)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-mock-scenario",
+                "value": "reset"
+              }
+            ],
+            "url": "{{routerUrl}}/ff-openai/chat/completions",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"gpt-4o\",\n  \"prompt\": \"say hello\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"say hello\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 503 (the formatter never changes it)\", () => pm.response.to.have.status(503));",
+                  "pm.test(\"content-type is application/json\", () => pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/json\"));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"top level carries only `error` (OpenAI envelope)\", () => pm.expect(Object.keys(body)).to.eql([\"error\"]));",
+                  "pm.test(\"error.message is a non-empty string\", () => pm.expect(body.error.message).to.be.a(\"string\").and.not.empty);",
+                  "pm.test(\"error.param and error.code are always present\", () => { pm.expect(body.error).to.have.property(\"param\"); pm.expect(body.error).to.have.property(\"code\"); });",
+                  "pm.test(\"not the backend's response\", () => pm.expect(pm.response.headers.get(\"x-mock-backend\")).to.not.eql(\"true\"));",
+                  "pm.test(\"error.type is server_error\", () => pm.expect(body.error.type).to.eql(\"server_error\"));",
+                  "pm.test(\"error.code is 101503\", () => pm.expect(body.error.code).to.eql(\"101503\"));",
+                  "pm.test(\"no Envoy internals leak into the message\", () => pm.expect(body.error.message.toLowerCase()).to.not.include(\"upstream connect error\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Backend too slow for the 2s route timeout (-> 504)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-mock-scenario",
+                "value": "slow"
+              },
+              {
+                "key": "x-mock-delay",
+                "value": "4"
+              }
+            ],
+            "url": "{{routerUrl}}/ff-openai-bare/chat/completions",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"gpt-4o\",\n  \"prompt\": \"say hello\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"say hello\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 504 (the formatter never changes it)\", () => pm.response.to.have.status(504));",
+                  "pm.test(\"content-type is application/json\", () => pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/json\"));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"top level carries only `error` (OpenAI envelope)\", () => pm.expect(Object.keys(body)).to.eql([\"error\"]));",
+                  "pm.test(\"error.message is a non-empty string\", () => pm.expect(body.error.message).to.be.a(\"string\").and.not.empty);",
+                  "pm.test(\"error.param and error.code are always present\", () => { pm.expect(body.error).to.have.property(\"param\"); pm.expect(body.error).to.have.property(\"code\"); });",
+                  "pm.test(\"not the backend's response\", () => pm.expect(pm.response.headers.get(\"x-mock-backend\")).to.not.eql(\"true\"));",
+                  "pm.test(\"error.type is server_error\", () => pm.expect(body.error.type).to.eql(\"server_error\"));",
+                  "pm.test(\"error.code is 101504\", () => pm.expect(body.error.code).to.eql(\"101504\"));",
+                  "pm.test(\"no Envoy internals leak into the message\", () => pm.expect(body.error.message.toLowerCase()).to.not.include(\"upstream connect error\"));"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "description": "Errors Envoy produces itself (no backend response). Envoy's own text never reaches the client.",
+      "auth": {
+        "type": "noauth"
+      }
+    },
+    {
+      "name": "3. Backend errors pass through untouched",
+      "item": [
+        {
+          "name": "[policies] OpenAI-shaped 429 passes through",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-mock-scenario",
+                "value": "openai-429"
+              }
+            ],
+            "url": "{{routerUrl}}/ff-openai/chat/completions",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"gpt-4o\",\n  \"prompt\": \"say hello\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"say hello\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 429\", () => pm.response.to.have.status(429));",
+                  "pm.test(\"the backend's own response (x-mock-backend: true)\", () => pm.expect(pm.response.headers.get(\"x-mock-backend\")).to.eql(\"true\"));",
+                  "pm.test(\"body passed through byte-for-byte\", () => pm.expect(pm.response.text()).to.eql(\"{\\\"error\\\": {\\\"message\\\": \\\"Rate limit reached for gpt-4o in organization org-mock.\\\", \\\"type\\\": \\\"requests\\\", \\\"param\\\": null, \\\"code\\\": \\\"rate_limit_exceeded\\\"}}\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "[policies] Anthropic-shaped 529 passes through",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-mock-scenario",
+                "value": "anthropic-529"
+              }
+            ],
+            "url": "{{routerUrl}}/ff-openai/chat/completions",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"gpt-4o\",\n  \"prompt\": \"say hello\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"say hello\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 529\", () => pm.response.to.have.status(529));",
+                  "pm.test(\"the backend's own response (x-mock-backend: true)\", () => pm.expect(pm.response.headers.get(\"x-mock-backend\")).to.eql(\"true\"));",
+                  "pm.test(\"body passed through byte-for-byte\", () => pm.expect(pm.response.text()).to.eql(\"{\\\"type\\\": \\\"error\\\", \\\"error\\\": {\\\"type\\\": \\\"overloaded_error\\\", \\\"message\\\": \\\"Overloaded\\\"}}\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "[policies] Vendor JSON 418 passes through",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-mock-scenario",
+                "value": "vendor-418"
+              }
+            ],
+            "url": "{{routerUrl}}/ff-openai/chat/completions",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"gpt-4o\",\n  \"prompt\": \"say hello\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"say hello\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 418\", () => pm.response.to.have.status(418));",
+                  "pm.test(\"the backend's own response (x-mock-backend: true)\", () => pm.expect(pm.response.headers.get(\"x-mock-backend\")).to.eql(\"true\"));",
+                  "pm.test(\"body passed through byte-for-byte\", () => pm.expect(pm.response.text()).to.eql(\"{\\\"vendor_error\\\": \\\"I am a teapot\\\"}\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "[policies] Plain-text 500 passes through",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-mock-scenario",
+                "value": "plain-500"
+              }
+            ],
+            "url": "{{routerUrl}}/ff-openai/chat/completions",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"gpt-4o\",\n  \"prompt\": \"say hello\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"say hello\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 500\", () => pm.response.to.have.status(500));",
+                  "pm.test(\"the backend's own response (x-mock-backend: true)\", () => pm.expect(pm.response.headers.get(\"x-mock-backend\")).to.eql(\"true\"));",
+                  "pm.test(\"body passed through byte-for-byte\", () => pm.expect(pm.response.text()).to.eql(\"Internal error inside the mock backend\"));",
+                  "pm.test(\"content-type kept (text/plain)\", () => pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"text/plain\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "[policies] HTML 502 passes through",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-mock-scenario",
+                "value": "html-502"
+              }
+            ],
+            "url": "{{routerUrl}}/ff-openai/chat/completions",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"gpt-4o\",\n  \"prompt\": \"say hello\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"say hello\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 502\", () => pm.response.to.have.status(502));",
+                  "pm.test(\"the backend's own response (x-mock-backend: true)\", () => pm.expect(pm.response.headers.get(\"x-mock-backend\")).to.eql(\"true\"));",
+                  "pm.test(\"body passed through byte-for-byte\", () => pm.expect(pm.response.text()).to.eql(\"<html><body><h1>502 Bad Gateway</h1><p>mock</p></body></html>\"));",
+                  "pm.test(\"content-type kept (text/html)\", () => pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"text/html\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "[policies] Bodyless 429 stays bodyless",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-mock-scenario",
+                "value": "empty-429"
+              }
+            ],
+            "url": "{{routerUrl}}/ff-openai/chat/completions",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"gpt-4o\",\n  \"prompt\": \"say hello\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"say hello\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 429\", () => pm.response.to.have.status(429));",
+                  "pm.test(\"the backend's own response (x-mock-backend: true)\", () => pm.expect(pm.response.headers.get(\"x-mock-backend\")).to.eql(\"true\"));",
+                  "pm.test(\"still no body\", () => pm.expect(pm.response.text()).to.eql(\"\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "[policies] Bodyless 500 stays bodyless",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-mock-scenario",
+                "value": "empty-500"
+              }
+            ],
+            "url": "{{routerUrl}}/ff-openai/chat/completions",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"gpt-4o\",\n  \"prompt\": \"say hello\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"say hello\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 500\", () => pm.response.to.have.status(500));",
+                  "pm.test(\"the backend's own response (x-mock-backend: true)\", () => pm.expect(pm.response.headers.get(\"x-mock-backend\")).to.eql(\"true\"));",
+                  "pm.test(\"still no body\", () => pm.expect(pm.response.text()).to.eql(\"\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "[no policy] OpenAI-shaped 429 passes through",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-mock-scenario",
+                "value": "openai-429"
+              }
+            ],
+            "url": "{{routerUrl}}/ff-openai-bare/chat/completions",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"gpt-4o\",\n  \"prompt\": \"say hello\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"say hello\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 429\", () => pm.response.to.have.status(429));",
+                  "pm.test(\"the backend's own response (x-mock-backend: true)\", () => pm.expect(pm.response.headers.get(\"x-mock-backend\")).to.eql(\"true\"));",
+                  "pm.test(\"body passed through byte-for-byte\", () => pm.expect(pm.response.text()).to.eql(\"{\\\"error\\\": {\\\"message\\\": \\\"Rate limit reached for gpt-4o in organization org-mock.\\\", \\\"type\\\": \\\"requests\\\", \\\"param\\\": null, \\\"code\\\": \\\"rate_limit_exceeded\\\"}}\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "[no policy] Anthropic-shaped 529 passes through",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-mock-scenario",
+                "value": "anthropic-529"
+              }
+            ],
+            "url": "{{routerUrl}}/ff-openai-bare/chat/completions",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"gpt-4o\",\n  \"prompt\": \"say hello\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"say hello\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 529\", () => pm.response.to.have.status(529));",
+                  "pm.test(\"the backend's own response (x-mock-backend: true)\", () => pm.expect(pm.response.headers.get(\"x-mock-backend\")).to.eql(\"true\"));",
+                  "pm.test(\"body passed through byte-for-byte\", () => pm.expect(pm.response.text()).to.eql(\"{\\\"type\\\": \\\"error\\\", \\\"error\\\": {\\\"type\\\": \\\"overloaded_error\\\", \\\"message\\\": \\\"Overloaded\\\"}}\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "[no policy] Vendor JSON 418 passes through",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-mock-scenario",
+                "value": "vendor-418"
+              }
+            ],
+            "url": "{{routerUrl}}/ff-openai-bare/chat/completions",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"gpt-4o\",\n  \"prompt\": \"say hello\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"say hello\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 418\", () => pm.response.to.have.status(418));",
+                  "pm.test(\"the backend's own response (x-mock-backend: true)\", () => pm.expect(pm.response.headers.get(\"x-mock-backend\")).to.eql(\"true\"));",
+                  "pm.test(\"body passed through byte-for-byte\", () => pm.expect(pm.response.text()).to.eql(\"{\\\"vendor_error\\\": \\\"I am a teapot\\\"}\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "[no policy] Plain-text 500 passes through",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-mock-scenario",
+                "value": "plain-500"
+              }
+            ],
+            "url": "{{routerUrl}}/ff-openai-bare/chat/completions",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"gpt-4o\",\n  \"prompt\": \"say hello\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"say hello\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 500\", () => pm.response.to.have.status(500));",
+                  "pm.test(\"the backend's own response (x-mock-backend: true)\", () => pm.expect(pm.response.headers.get(\"x-mock-backend\")).to.eql(\"true\"));",
+                  "pm.test(\"body passed through byte-for-byte\", () => pm.expect(pm.response.text()).to.eql(\"Internal error inside the mock backend\"));",
+                  "pm.test(\"content-type kept (text/plain)\", () => pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"text/plain\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "[no policy] HTML 502 passes through",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-mock-scenario",
+                "value": "html-502"
+              }
+            ],
+            "url": "{{routerUrl}}/ff-openai-bare/chat/completions",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"gpt-4o\",\n  \"prompt\": \"say hello\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"say hello\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 502\", () => pm.response.to.have.status(502));",
+                  "pm.test(\"the backend's own response (x-mock-backend: true)\", () => pm.expect(pm.response.headers.get(\"x-mock-backend\")).to.eql(\"true\"));",
+                  "pm.test(\"body passed through byte-for-byte\", () => pm.expect(pm.response.text()).to.eql(\"<html><body><h1>502 Bad Gateway</h1><p>mock</p></body></html>\"));",
+                  "pm.test(\"content-type kept (text/html)\", () => pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"text/html\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "[no policy] Bodyless 429 stays bodyless",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-mock-scenario",
+                "value": "empty-429"
+              }
+            ],
+            "url": "{{routerUrl}}/ff-openai-bare/chat/completions",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"gpt-4o\",\n  \"prompt\": \"say hello\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"say hello\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 429\", () => pm.response.to.have.status(429));",
+                  "pm.test(\"the backend's own response (x-mock-backend: true)\", () => pm.expect(pm.response.headers.get(\"x-mock-backend\")).to.eql(\"true\"));",
+                  "pm.test(\"still no body\", () => pm.expect(pm.response.text()).to.eql(\"\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "[no policy] Bodyless 500 stays bodyless",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-mock-scenario",
+                "value": "empty-500"
+              }
+            ],
+            "url": "{{routerUrl}}/ff-openai-bare/chat/completions",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"gpt-4o\",\n  \"prompt\": \"say hello\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"say hello\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 500\", () => pm.response.to.have.status(500));",
+                  "pm.test(\"the backend's own response (x-mock-backend: true)\", () => pm.expect(pm.response.headers.get(\"x-mock-backend\")).to.eql(\"true\"));",
+                  "pm.test(\"still no body\", () => pm.expect(pm.response.text()).to.eql(\"\"));"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "description": "The provider's own error is its contract with the client: status, body and headers are left alone, on a route whose policies read bodies and on one whose policies don't.",
+      "auth": {
+        "type": "noauth"
+      }
+    },
+    {
+      "name": "4. Successful responses are untouched",
+      "item": [
+        {
+          "name": "[ff-openai] 200 reaches the client as the backend sent it",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-mock-scenario",
+                "value": "ok"
+              }
+            ],
+            "url": "{{routerUrl}}/ff-openai/chat/completions",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"gpt-4o\",\n  \"prompt\": \"say hello\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"say hello\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"backend body\", () => pm.expect(pm.response.json().choices[0].message.content).to.eql(\"Hello from the mock backend.\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "[ff-openai-bare] 200 reaches the client as the backend sent it",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-mock-scenario",
+                "value": "ok"
+              }
+            ],
+            "url": "{{routerUrl}}/ff-openai-bare/chat/completions",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"gpt-4o\",\n  \"prompt\": \"say hello\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"say hello\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"backend body\", () => pm.expect(pm.response.json().choices[0].message.content).to.eql(\"Hello from the mock backend.\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "[ff-proxy] 200 reaches the client as the backend sent it",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-mock-scenario",
+                "value": "ok"
+              }
+            ],
+            "url": "{{routerUrl}}/ff-proxy/chat/completions",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"gpt-4o\",\n  \"prompt\": \"say hello\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"say hello\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"backend body\", () => pm.expect(pm.response.json().choices[0].message.content).to.eql(\"Hello from the mock backend.\"));"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "auth": {
+        "type": "noauth"
+      }
+    },
+    {
+      "name": "5. Contrast: REST API is never reshaped",
+      "item": [
+        {
+          "name": "Same policy body on a REST API stays as written (403)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{routerUrl}}/ff-rest/v1.0/edge/rest-body"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 403\", () => pm.response.to.have.status(403));",
+                  "let parsed = null; try { parsed = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"NOT reshaped into the OpenAI envelope\", () => pm.expect(parsed && parsed.error && typeof parsed.error === \"object\" && \"param\" in parsed.error).to.not.be.ok);",
+                  "pm.test(\"policy body kept\", () => pm.expect(pm.response.json().message).to.eql(\"Caller is not allowed to use this model\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Backend 429 on a REST API passes through",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-mock-scenario",
+                "value": "openai-429"
+              }
+            ],
+            "url": "{{routerUrl}}/ff-rest/v1.0/chat/completions",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"gpt-4o\",\n  \"prompt\": \"say hello\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"say hello\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 429\", () => pm.response.to.have.status(429));",
+                  "pm.test(\"the backend's own response (x-mock-backend: true)\", () => pm.expect(pm.response.headers.get(\"x-mock-backend\")).to.eql(\"true\"));",
+                  "pm.test(\"body passed through byte-for-byte\", () => pm.expect(pm.response.text()).to.eql(\"{\\\"error\\\": {\\\"message\\\": \\\"Rate limit reached for gpt-4o in organization org-mock.\\\", \\\"type\\\": \\\"requests\\\", \\\"param\\\": null, \\\"code\\\": \\\"rate_limit_exceeded\\\"}}\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Router failure on a REST API is not in the OpenAI shape",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-mock-scenario",
+                "value": "reset"
+              }
+            ],
+            "url": "{{routerUrl}}/ff-rest/v1.0/chat/completions",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"gpt-4o\",\n  \"prompt\": \"say hello\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"say hello\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 503\", () => pm.response.to.have.status(503));",
+                  "let parsed = null; try { parsed = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"NOT reshaped into the OpenAI envelope\", () => pm.expect(parsed && parsed.error && typeof parsed.error === \"object\" && \"param\" in parsed.error).to.not.be.ok);"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "description": "The option applies to LlmProvider / LlmProxy routes only.",
+      "auth": {
+        "type": "noauth"
+      }
+    },
+    {
+      "name": "6. Known limitations",
+      "item": [
+        {
+          "name": "Request matching no API: 404 is not reshaped (no API kind yet)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{routerUrl}}/ff-no-such-api/chat/completions",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"gpt-4o\",\n  \"prompt\": \"say hello\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"say hello\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 404\", () => pm.response.to.have.status(404));",
+                  "let parsed = null; try { parsed = pm.response.json(); } catch (e) {}",
+                  "pm.test(\"NOT reshaped into the OpenAI envelope\", () => pm.expect(parsed && parsed.error && typeof parsed.error === \"object\" && \"param\" in parsed.error).to.not.be.ok);"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "auth": {
+        "type": "noauth"
+      }
+    },
+    {
+      "name": "7. SDK FaultDetails and fault-policy priority",
+      "item": [
+        {
+          "name": "SDK fault: description rendered (401)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{routerUrl}}/ff-sdk/sdk/plain",
+            "description": "sample-sdk-fault returns ImmediateResponse{Fault: FaultDetails{...}} with no body."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 401 (the formatter never changes it)\", () => pm.response.to.have.status(401));",
+                  "pm.test(\"content-type is application/json\", () => pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/json\"));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"top level carries only `error` (OpenAI envelope)\", () => pm.expect(Object.keys(body)).to.eql([\"error\"]));",
+                  "pm.test(\"error.message is a non-empty string\", () => pm.expect(body.error.message).to.be.a(\"string\").and.not.empty);",
+                  "pm.test(\"error.param and error.code are always present\", () => { pm.expect(body.error).to.have.property(\"param\"); pm.expect(body.error).to.have.property(\"code\"); });",
+                  "pm.test(\"not the backend's response\", () => pm.expect(pm.response.headers.get(\"x-mock-backend\")).to.not.eql(\"true\"));",
+                  "pm.test(\"error.type is authentication_error\", () => pm.expect(body.error.type).to.eql(\"authentication_error\"));",
+                  "pm.test(\"error.code is 900901\", () => pm.expect(body.error.code).to.eql(\"900901\"));",
+                  "pm.test(\"error.message is Invalid API key\", () => pm.expect(body.error.message).to.eql(\"Invalid API key\"));",
+                  "pm.test(\"no Envoy internals leak into the message\", () => pm.expect(body.error.message.toLowerCase()).to.not.include(\"upstream connect error\"));",
+                  "pm.test(\"FaultDetails.Description never reaches the client\", () => pm.expect(pm.response.text()).to.not.include(\"key hash mismatch\"));",
+                  "pm.test(\"no fault policy on this route\", () => pm.expect(pm.response.headers.get(\"x-sample-fault-handler\")).to.be.undefined);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "SDK fault + fallback body: the description wins over the body",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{routerUrl}}/ff-sdk/sdk/fallback",
+            "description": "A body beside a description is a fallback for gateways that render nothing; this one renders."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 401 (the formatter never changes it)\", () => pm.response.to.have.status(401));",
+                  "pm.test(\"content-type is application/json\", () => pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/json\"));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"top level carries only `error` (OpenAI envelope)\", () => pm.expect(Object.keys(body)).to.eql([\"error\"]));",
+                  "pm.test(\"error.message is a non-empty string\", () => pm.expect(body.error.message).to.be.a(\"string\").and.not.empty);",
+                  "pm.test(\"error.param and error.code are always present\", () => { pm.expect(body.error).to.have.property(\"param\"); pm.expect(body.error).to.have.property(\"code\"); });",
+                  "pm.test(\"not the backend's response\", () => pm.expect(pm.response.headers.get(\"x-mock-backend\")).to.not.eql(\"true\"));",
+                  "pm.test(\"error.type is authentication_error\", () => pm.expect(body.error.type).to.eql(\"authentication_error\"));",
+                  "pm.test(\"error.code is 900901\", () => pm.expect(body.error.code).to.eql(\"900901\"));",
+                  "pm.test(\"error.message is Invalid API key\", () => pm.expect(body.error.message).to.eql(\"Invalid API key\"));",
+                  "pm.test(\"no Envoy internals leak into the message\", () => pm.expect(body.error.message.toLowerCase()).to.not.include(\"upstream connect error\"));",
+                  "pm.test(\"the fallback body is not sent\", () => pm.expect(pm.response.text()).to.not.include(\"fallback body\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "SDK guardrail fault: guardrail block with object assessments (422)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{routerUrl}}/ff-sdk/sdk/guardrail"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 422 (the formatter never changes it)\", () => pm.response.to.have.status(422));",
+                  "pm.test(\"content-type is application/json\", () => pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/json\"));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"top level carries only `error` (OpenAI envelope)\", () => pm.expect(Object.keys(body)).to.eql([\"error\"]));",
+                  "pm.test(\"error.message is a non-empty string\", () => pm.expect(body.error.message).to.be.a(\"string\").and.not.empty);",
+                  "pm.test(\"error.param and error.code are always present\", () => { pm.expect(body.error).to.have.property(\"param\"); pm.expect(body.error).to.have.property(\"code\"); });",
+                  "pm.test(\"not the backend's response\", () => pm.expect(pm.response.headers.get(\"x-mock-backend\")).to.not.eql(\"true\"));",
+                  "pm.test(\"error.type is invalid_request_error\", () => pm.expect(body.error.type).to.eql(\"invalid_request_error\"));",
+                  "pm.test(\"error.code is 906001\", () => pm.expect(body.error.code).to.eql(\"906001\"));",
+                  "pm.test(\"error.message is Prompt blocked by content policy\", () => pm.expect(body.error.message).to.eql(\"Prompt blocked by content policy\"));",
+                  "pm.test(\"no Envoy internals leak into the message\", () => pm.expect(body.error.message.toLowerCase()).to.not.include(\"upstream connect error\"));",
+                  "const g = body.error.guardrail;",
+                  "pm.test(\"guardrail block from FaultDetails.Guardrail\", () => { pm.expect(g.interveningGuardrail).to.eql(\"sample-guardrail\"); pm.expect(g.actionReason).to.eql(\"Blocked category: Hate\"); pm.expect(g.direction).to.eql(\"REQUEST\"); });",
+                  "pm.test(\"assessments object carried as is\", () => pm.expect(g.assessments).to.eql({categories: [{category: \"Hate\", severity: 4}]}));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "SDK fault on the response path (422, RESPONSE)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-mock-scenario",
+                "value": "ok"
+              }
+            ],
+            "url": "{{routerUrl}}/ff-sdk/sdk/response"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 422 (the formatter never changes it)\", () => pm.response.to.have.status(422));",
+                  "pm.test(\"content-type is application/json\", () => pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/json\"));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"top level carries only `error` (OpenAI envelope)\", () => pm.expect(Object.keys(body)).to.eql([\"error\"]));",
+                  "pm.test(\"error.message is a non-empty string\", () => pm.expect(body.error.message).to.be.a(\"string\").and.not.empty);",
+                  "pm.test(\"error.param and error.code are always present\", () => { pm.expect(body.error).to.have.property(\"param\"); pm.expect(body.error).to.have.property(\"code\"); });",
+                  "pm.test(\"error.type is invalid_request_error\", () => pm.expect(body.error.type).to.eql(\"invalid_request_error\"));",
+                  "pm.test(\"error.message is Completion blocked\", () => pm.expect(body.error.message).to.eql(\"Completion blocked\"));",
+                  "pm.test(\"no Envoy internals leak into the message\", () => pm.expect(body.error.message.toLowerCase()).to.not.include(\"upstream connect error\"));",
+                  "pm.test(\"guardrail direction RESPONSE\", () => pm.expect(body.error.guardrail.direction).to.eql(\"RESPONSE\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Fault policy only observes: response unchanged, header stamped",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{routerUrl}}/ff-sdk/fp/stamp"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 401 (the formatter never changes it)\", () => pm.response.to.have.status(401));",
+                  "pm.test(\"content-type is application/json\", () => pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/json\"));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"top level carries only `error` (OpenAI envelope)\", () => pm.expect(Object.keys(body)).to.eql([\"error\"]));",
+                  "pm.test(\"error.message is a non-empty string\", () => pm.expect(body.error.message).to.be.a(\"string\").and.not.empty);",
+                  "pm.test(\"error.param and error.code are always present\", () => { pm.expect(body.error).to.have.property(\"param\"); pm.expect(body.error).to.have.property(\"code\"); });",
+                  "pm.test(\"not the backend's response\", () => pm.expect(pm.response.headers.get(\"x-mock-backend\")).to.not.eql(\"true\"));",
+                  "pm.test(\"error.type is authentication_error\", () => pm.expect(body.error.type).to.eql(\"authentication_error\"));",
+                  "pm.test(\"error.code is 900901\", () => pm.expect(body.error.code).to.eql(\"900901\"));",
+                  "pm.test(\"error.message is Invalid API key\", () => pm.expect(body.error.message).to.eql(\"Invalid API key\"));",
+                  "pm.test(\"no Envoy internals leak into the message\", () => pm.expect(body.error.message.toLowerCase()).to.not.include(\"upstream connect error\"));",
+                  "pm.test(\"fault policy ran and saw source=gateway\", () => pm.expect(pm.response.headers.get(\"x-sample-fault-handler\") || \"\").to.include(\"source=gateway\"));",
+                  "pm.test(\"fault policy ran and saw policy=sample-sdk-fault\", () => pm.expect(pm.response.headers.get(\"x-sample-fault-handler\") || \"\").to.include(\"policy=sample-sdk-fault\"));",
+                  "pm.test(\"fault policy ran and saw code=900901\", () => pm.expect(pm.response.headers.get(\"x-sample-fault-handler\") || \"\").to.include(\"code=900901\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Fault policy re-describes: its message and code win",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{routerUrl}}/ff-sdk/fp/redescribe"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 401 (the formatter never changes it)\", () => pm.response.to.have.status(401));",
+                  "pm.test(\"content-type is application/json\", () => pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/json\"));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"top level carries only `error` (OpenAI envelope)\", () => pm.expect(Object.keys(body)).to.eql([\"error\"]));",
+                  "pm.test(\"error.message is a non-empty string\", () => pm.expect(body.error.message).to.be.a(\"string\").and.not.empty);",
+                  "pm.test(\"error.param and error.code are always present\", () => { pm.expect(body.error).to.have.property(\"param\"); pm.expect(body.error).to.have.property(\"code\"); });",
+                  "pm.test(\"not the backend's response\", () => pm.expect(pm.response.headers.get(\"x-mock-backend\")).to.not.eql(\"true\"));",
+                  "pm.test(\"error.type is authentication_error\", () => pm.expect(body.error.type).to.eql(\"authentication_error\"));",
+                  "pm.test(\"error.code is 999001\", () => pm.expect(body.error.code).to.eql(\"999001\"));",
+                  "pm.test(\"error.message is Re-described by the fault policy\", () => pm.expect(body.error.message).to.eql(\"Re-described by the fault policy\"));",
+                  "pm.test(\"no Envoy internals leak into the message\", () => pm.expect(body.error.message.toLowerCase()).to.not.include(\"upstream connect error\"));",
+                  "pm.test(\"fault policy ran and saw code=900901\", () => pm.expect(pm.response.headers.get(\"x-sample-fault-handler\") || \"\").to.include(\"code=900901\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Fault policy re-description REPLACES the producer's (inherit: false)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{routerUrl}}/ff-sdk/fp/replace",
+            "description": "The fault policy sends only code 999002. The producer's message is not merged in, so the status text is used."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 401 (the formatter never changes it)\", () => pm.response.to.have.status(401));",
+                  "pm.test(\"content-type is application/json\", () => pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/json\"));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"top level carries only `error` (OpenAI envelope)\", () => pm.expect(Object.keys(body)).to.eql([\"error\"]));",
+                  "pm.test(\"error.message is a non-empty string\", () => pm.expect(body.error.message).to.be.a(\"string\").and.not.empty);",
+                  "pm.test(\"error.param and error.code are always present\", () => { pm.expect(body.error).to.have.property(\"param\"); pm.expect(body.error).to.have.property(\"code\"); });",
+                  "pm.test(\"not the backend's response\", () => pm.expect(pm.response.headers.get(\"x-mock-backend\")).to.not.eql(\"true\"));",
+                  "pm.test(\"error.type is authentication_error\", () => pm.expect(body.error.type).to.eql(\"authentication_error\"));",
+                  "pm.test(\"error.code is 999002\", () => pm.expect(body.error.code).to.eql(\"999002\"));",
+                  "pm.test(\"error.message is Unauthorized\", () => pm.expect(body.error.message).to.eql(\"Unauthorized\"));",
+                  "pm.test(\"no Envoy internals leak into the message\", () => pm.expect(body.error.message.toLowerCase()).to.not.include(\"upstream connect error\"));",
+                  "pm.test(\"producer message dropped: the re-description is the whole account\", () => pm.expect(body.error.message).to.not.eql(\"Invalid API key\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Fault policy body wins over everything",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{routerUrl}}/ff-sdk/fp/body"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 401 (kept)\", () => pm.response.to.have.status(401));",
+                  "pm.test(\"the fault policy's body, byte-for-byte\", () => pm.expect(pm.response.text()).to.eql(\"{\\\"custom\\\":\\\"fault policy body\\\"}\"));",
+                  "pm.test(\"fault policy ran and saw code=900901\", () => pm.expect(pm.response.headers.get(\"x-sample-fault-handler\") || \"\").to.include(\"code=900901\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Fault policy changes the status and class (401 -> 429)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{routerUrl}}/ff-sdk/fp/status"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 429 (the formatter never changes it)\", () => pm.response.to.have.status(429));",
+                  "pm.test(\"content-type is application/json\", () => pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/json\"));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"top level carries only `error` (OpenAI envelope)\", () => pm.expect(Object.keys(body)).to.eql([\"error\"]));",
+                  "pm.test(\"error.message is a non-empty string\", () => pm.expect(body.error.message).to.be.a(\"string\").and.not.empty);",
+                  "pm.test(\"error.param and error.code are always present\", () => { pm.expect(body.error).to.have.property(\"param\"); pm.expect(body.error).to.have.property(\"code\"); });",
+                  "pm.test(\"not the backend's response\", () => pm.expect(pm.response.headers.get(\"x-mock-backend\")).to.not.eql(\"true\"));",
+                  "pm.test(\"error.type is rate_limit_error\", () => pm.expect(body.error.type).to.eql(\"rate_limit_error\"));",
+                  "pm.test(\"error.code is 900901\", () => pm.expect(body.error.code).to.eql(\"900901\"));",
+                  "pm.test(\"error.message is Slow down (fault policy)\", () => pm.expect(body.error.message).to.eql(\"Slow down (fault policy)\"));",
+                  "pm.test(\"no Envoy internals leak into the message\", () => pm.expect(body.error.message.toLowerCase()).to.not.include(\"upstream connect error\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Fault policy re-describes a policy's legacy body",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{routerUrl}}/ff-sdk/fp/legacy"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 403 (the formatter never changes it)\", () => pm.response.to.have.status(403));",
+                  "pm.test(\"content-type is application/json\", () => pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/json\"));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"top level carries only `error` (OpenAI envelope)\", () => pm.expect(Object.keys(body)).to.eql([\"error\"]));",
+                  "pm.test(\"error.message is a non-empty string\", () => pm.expect(body.error.message).to.be.a(\"string\").and.not.empty);",
+                  "pm.test(\"error.param and error.code are always present\", () => { pm.expect(body.error).to.have.property(\"param\"); pm.expect(body.error).to.have.property(\"code\"); });",
+                  "pm.test(\"not the backend's response\", () => pm.expect(pm.response.headers.get(\"x-mock-backend\")).to.not.eql(\"true\"));",
+                  "pm.test(\"error.type is permission_error\", () => pm.expect(body.error.type).to.eql(\"permission_error\"));",
+                  "pm.test(\"error.code is 999003\", () => pm.expect(body.error.code).to.eql(\"999003\"));",
+                  "pm.test(\"error.message is Forbidden (re-described)\", () => pm.expect(body.error.message).to.eql(\"Forbidden (re-described)\"));",
+                  "pm.test(\"no Envoy internals leak into the message\", () => pm.expect(body.error.message.toLowerCase()).to.not.include(\"upstream connect error\"));",
+                  "pm.test(\"fault policy ran and saw policy=respond\", () => pm.expect(pm.response.headers.get(\"x-sample-fault-handler\") || \"\").to.include(\"policy=respond\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Fault policy adds a code to a legacy guardrail body",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-mock-scenario",
+                "value": "ok"
+              }
+            ],
+            "url": "{{routerUrl}}/ff-sdk/fp/guardrail",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"gpt-4o\",\n  \"prompt\": \"this prompt has far more than five words in it\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"this prompt has far more than five words in it\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 422 (the formatter never changes it)\", () => pm.response.to.have.status(422));",
+                  "pm.test(\"content-type is application/json\", () => pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/json\"));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"top level carries only `error` (OpenAI envelope)\", () => pm.expect(Object.keys(body)).to.eql([\"error\"]));",
+                  "pm.test(\"error.message is a non-empty string\", () => pm.expect(body.error.message).to.be.a(\"string\").and.not.empty);",
+                  "pm.test(\"error.param and error.code are always present\", () => { pm.expect(body.error).to.have.property(\"param\"); pm.expect(body.error).to.have.property(\"code\"); });",
+                  "pm.test(\"not the backend's response\", () => pm.expect(pm.response.headers.get(\"x-mock-backend\")).to.not.eql(\"true\"));",
+                  "pm.test(\"error.type is invalid_request_error\", () => pm.expect(body.error.type).to.eql(\"invalid_request_error\"));",
+                  "pm.test(\"error.code is 999004\", () => pm.expect(body.error.code).to.eql(\"999004\"));",
+                  "pm.test(\"error.message is Violation of applied word count constraints detected\", () => pm.expect(body.error.message).to.eql(\"Violation of applied word count constraints detected\"));",
+                  "pm.test(\"no Envoy internals leak into the message\", () => pm.expect(body.error.message.toLowerCase()).to.not.include(\"upstream connect error\"));",
+                  "pm.test(\"guardrail block lifted from the legacy body survives\", () => pm.expect(body.error.guardrail.interveningGuardrail).to.eql(\"word-count-guardrail\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Backend error: a fault policy re-description does not reshape it",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-mock-scenario",
+                "value": "openai-429"
+              }
+            ],
+            "url": "{{routerUrl}}/ff-fp-upstream/chat/completions",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"gpt-4o\",\n  \"prompt\": \"say hello\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"say hello\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 429\", () => pm.response.to.have.status(429));",
+                  "pm.test(\"the backend's own response (x-mock-backend: true)\", () => pm.expect(pm.response.headers.get(\"x-mock-backend\")).to.eql(\"true\"));",
+                  "pm.test(\"body passed through byte-for-byte\", () => pm.expect(pm.response.text()).to.eql(\"{\\\"error\\\": {\\\"message\\\": \\\"Rate limit reached for gpt-4o in organization org-mock.\\\", \\\"type\\\": \\\"requests\\\", \\\"param\\\": null, \\\"code\\\": \\\"rate_limit_exceeded\\\"}}\"));",
+                  "pm.test(\"fault policy ran and saw source=backend\", () => pm.expect(pm.response.headers.get(\"x-sample-fault-handler\") || \"\").to.include(\"source=backend\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Router failure: the fault policy's re-description is rendered",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{routerUrl}}/ff-fp-dead/chat/completions",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"gpt-4o\",\n  \"prompt\": \"say hello\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"say hello\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 503 (the formatter never changes it)\", () => pm.response.to.have.status(503));",
+                  "pm.test(\"content-type is application/json\", () => pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/json\"));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"top level carries only `error` (OpenAI envelope)\", () => pm.expect(Object.keys(body)).to.eql([\"error\"]));",
+                  "pm.test(\"error.message is a non-empty string\", () => pm.expect(body.error.message).to.be.a(\"string\").and.not.empty);",
+                  "pm.test(\"error.param and error.code are always present\", () => { pm.expect(body.error).to.have.property(\"param\"); pm.expect(body.error).to.have.property(\"code\"); });",
+                  "pm.test(\"not the backend's response\", () => pm.expect(pm.response.headers.get(\"x-mock-backend\")).to.not.eql(\"true\"));",
+                  "pm.test(\"error.type is server_error\", () => pm.expect(body.error.type).to.eql(\"server_error\"));",
+                  "pm.test(\"error.code is 101503\", () => pm.expect(body.error.code).to.eql(\"101503\"));",
+                  "pm.test(\"error.message is Re-described router failure\", () => pm.expect(body.error.message).to.eql(\"Re-described router failure\"));",
+                  "pm.test(\"no Envoy internals leak into the message\", () => pm.expect(body.error.message.toLowerCase()).to.not.include(\"upstream connect error\"));",
+                  "pm.test(\"fault policy ran and saw source=router\", () => pm.expect(pm.response.headers.get(\"x-sample-fault-handler\") || \"\").to.include(\"source=router\"));",
+                  "pm.test(\"fault policy ran and saw code=101503\", () => pm.expect(pm.response.headers.get(\"x-sample-fault-handler\") || \"\").to.include(\"code=101503\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Backend error: a fault policy body replaces it",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-mock-scenario",
+                "value": "openai-429"
+              }
+            ],
+            "url": "{{routerUrl}}/ff-fp-body/chat/completions",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"gpt-4o\",\n  \"prompt\": \"say hello\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"say hello\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 429 (kept)\", () => pm.response.to.have.status(429));",
+                  "pm.test(\"the fault policy's body\", () => pm.expect(pm.response.text()).to.eql(\"{\\\"custom\\\":\\\"fault policy body on a backend error\\\"}\"));"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "description": "sample-sdk-fault describes its failure in FaultDetails (the SDK way); sample-fault-handler is a fault policy that stamps x-sample-fault-handler with what it saw and can re-describe, write a body, or change the status. Priority: fault-policy body > fault-policy re-description > producer FaultDetails > producer body (a fallback). Backend errors pass through unless a fault policy writes a body.",
+      "auth": {
+        "type": "noauth"
+      }
+    },
+    {
+      "name": "Z. Teardown",
+      "item": [
+        {
+          "name": "Delete proxy ff-proxy",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{controllerUrl}}/llm-proxies/ff-proxy"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"deleted (200/204) or already gone (404)\", () => pm.expect(pm.response.code).to.be.oneOf([200, 204, 404]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete provider ff-openai",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{controllerUrl}}/llm-providers/ff-openai"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"deleted (200/204) or already gone (404)\", () => pm.expect(pm.response.code).to.be.oneOf([200, 204, 404]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete provider ff-openai-bare",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{controllerUrl}}/llm-providers/ff-openai-bare"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"deleted (200/204) or already gone (404)\", () => pm.expect(pm.response.code).to.be.oneOf([200, 204, 404]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete provider ff-openai-dead",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{controllerUrl}}/llm-providers/ff-openai-dead"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"deleted (200/204) or already gone (404)\", () => pm.expect(pm.response.code).to.be.oneOf([200, 204, 404]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete REST API ff-rest",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{controllerUrl}}/rest-apis/ff-rest"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"deleted (200/204) or already gone (404)\", () => pm.expect(pm.response.code).to.be.oneOf([200, 204, 404]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete provider ff-sdk",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{controllerUrl}}/llm-providers/ff-sdk"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"deleted (200/204) or already gone (404)\", () => pm.expect(pm.response.code).to.be.oneOf([200, 204, 404]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete provider ff-fp-upstream",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{controllerUrl}}/llm-providers/ff-fp-upstream"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"deleted (200/204) or already gone (404)\", () => pm.expect(pm.response.code).to.be.oneOf([200, 204, 404]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete provider ff-fp-dead",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{controllerUrl}}/llm-providers/ff-fp-dead"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"deleted (200/204) or already gone (404)\", () => pm.expect(pm.response.code).to.be.oneOf([200, 204, 404]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete provider ff-fp-body",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{controllerUrl}}/llm-providers/ff-fp-body"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"deleted (200/204) or already gone (404)\", () => pm.expect(pm.response.code).to.be.oneOf([200, 204, 404]));"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "auth": {
+        "type": "basic",
+        "basic": [
+          {
+            "key": "username",
+            "value": "{{adminUser}}",
+            "type": "string"
+          },
+          {
+            "key": "password",
+            "value": "{{adminPassword}}",
+            "type": "string"
+          }
+        ]
+      }
+    }
+  ]
+}
