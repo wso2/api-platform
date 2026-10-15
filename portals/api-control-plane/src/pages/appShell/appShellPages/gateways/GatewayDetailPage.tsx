@@ -157,7 +157,10 @@ function GatewayDetailPageContent() {
           </Box>
 
           <Box sx={{ pt: 3 }}>
-            {tab === 'configurations' ? (
+            {/* The setup panel stays mounted, only hidden, while Policies is
+                open: a token it is showing exists nowhere else and cannot be
+                retrieved again, so a tab switch must not throw it away. */}
+            <Box sx={{ display: tab === 'configurations' ? 'block' : 'none' }}>
               <GatewayGetStartedPanel
                 controlPlaneHost={runtimeConfig.gatewayControlPlaneHost}
                 gateway={gateway}
@@ -165,9 +168,8 @@ function GatewayDetailPageContent() {
                 issueFirstToken={issueFirstToken}
                 onFirstTokenRequested={firstTokenRequested}
               />
-            ) : (
-              <GatewayPoliciesPanel gatewayId={gatewayId} />
-            )}
+            </Box>
+            {tab === 'policies' && <GatewayPoliciesPanel gatewayId={gatewayId} />}
           </Box>
         </Box>
       </Stack>

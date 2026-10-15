@@ -275,6 +275,28 @@ describe('GatewayDetailPage', () => {
     expect(tokenRotations.count()).toBe(1);
   });
 
+  it('keeps a shown token through a visit to the Policies tab', async () => {
+    server.use(
+      resource('/gateways/:gatewayId', gateway()),
+      accepts(
+        'post',
+        '/gateways/:gatewayId/tokens',
+        { id: 'token-1', token: 'plaintext-token-value' },
+        { record: tokenRotations },
+      ),
+    );
+
+    const { container, user } = renderPage({ justCreated: true });
+    await waitFor(() => expect(container.textContent).toContain('plaintext-token-value'));
+
+    // The token can't be fetched again, so leaving the tab must not lose it.
+    await user.click(screen.getByRole('tab', { name: 'Policies' }));
+    await user.click(screen.getByRole('tab', { name: 'Configurations' }));
+
+    expect(container.textContent).toContain('plaintext-token-value');
+    expect(tokenRotations.count()).toBe(1);
+  });
+
   it('leaves an existing token alone when arriving from the create page', async () => {
     server.use(
       resource('/gateways/:gatewayId', gateway()),
