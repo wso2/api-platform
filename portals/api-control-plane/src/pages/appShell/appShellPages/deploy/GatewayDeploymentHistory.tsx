@@ -21,9 +21,10 @@ import { Box, Button, Drawer, IconButton, Typography } from '@wso2/oxygen-ui';
 import { RefreshCw } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
-import { useDeleteDeployment, type Deployment } from '@/api/resources/restApis/deployments';
+import type { Deployment } from '@/api/resources/restApis/deployments';
 import { useNotifications } from '@/components/Notifications';
 import { GatewayDeploymentRow } from './components/GatewayDeploymentRow';
+import type { UseDeploymentMutationHook } from './components/GatewayDeploymentSelector';
 
 const messages = defineMessages({
   title: {
@@ -51,28 +52,33 @@ const messages = defineMessages({
 
 type GatewayDeploymentHistoryProps = {
   /** Handle of the API these deployments belong to. */
-  restApiId: string;
+  apiId: string;
   /** Deployments on this gateway, newest first. */
   deployments: Deployment[];
   onRefresh: () => void;
   refreshing: boolean;
+  /** The caller's own delete mutation, adapted to a uniform shape — REST's and
+   * GraphQL's hooks each expect a differently keyed variables object. */
+  useDelete: UseDeploymentMutationHook;
 };
 
 /**
  * Right panel of an expanded gateway card: the API deployment history —
  * newest three rows inline, the full list (with delete) in a drawer
- * (ai-workspace GatewayDeploymentHistory).
+ * (ai-workspace GatewayDeploymentHistory). Shared between REST and GraphQL
+ * APIs — see `DeployPage`/`GraphqlDeployPage` for the `useDelete` adapter.
  */
 export function GatewayDeploymentHistory({
-  restApiId,
+  apiId,
   deployments,
   onRefresh,
   refreshing,
+  useDelete,
 }: GatewayDeploymentHistoryProps) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const intl = useIntl();
   const { notify } = useNotifications();
-  const deleteMutation = useDeleteDeployment();
+  const deleteMutation = useDelete();
 
   if (deployments.length === 0) return null;
 
@@ -80,7 +86,7 @@ export function GatewayDeploymentHistory({
 
   const handleDelete = (deployment: Deployment) => {
     deleteMutation.mutate(
-      { restApiId, deploymentId: deployment.deploymentId },
+      { apiId, deploymentId: deployment.deploymentId },
       // No `onError`: the query client's `onMutationError` already notifies.
       {
         onSuccess: () =>

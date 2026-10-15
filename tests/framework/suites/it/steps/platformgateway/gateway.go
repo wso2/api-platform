@@ -23,14 +23,17 @@ import (
 	"context"
 	_ "embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
+	"net"
 	"net/http"
 	"net/url"
 	"reflect"
 	"sort"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/cucumber/godog"
@@ -69,6 +72,43 @@ func ManagementBasePathForVersion(version string) string {
 		return managementBasePathV11
 	}
 	return ManagementBasePath
+}
+
+// AwaitDeletionApplied waits, on a Gateway release with the xDS snapshot race, until the
+// controller has applied the deletion of handle, so the next change reaches it in a later poll.
+//
+// Releases before 1.2.0 apply each change from an event the controller polls for every three
+// seconds, and rebuild the route snapshot on a goroutine per event, without a lock (fixed in
+// 1.2.0 by "fix(xds): add mutex to SnapshotManager.UpdateSnapshot"). A deletion and a creation
+// applied in the same poll race, and the deletion's rebuild can publish last, leaving the new
+// resource without a route. The controller's config dump drops the handle when its poll applies
+// the deletion, so once the handle is gone a later creation is applied in a later poll. A kind
+// the dump does not list never rebuilds the route snapshot, so it passes at once. Later releases
+// are not polled.
+func AwaitDeletionApplied(
+	ctx context.Context, client *httpx.Client, adminURL, version, authorization, handle string,
+) error {
+	if !usesLegacyGatewayContract(version) {
+		return nil
+	}
+	if client == nil || strings.TrimSpace(adminURL) == "" || strings.TrimSpace(handle) == "" {
+		return errors.New("awaiting a deletion: client, admin URL and handle are required")
+	}
+	url := adminURL + adminBasePathForVersion(version) + "/config_dump"
+	quoted := `"` + handle + `"`
+	accept := func(r *httpx.Response) bool {
+		return r != nil && r.Succeeded() && !strings.Contains(r.Text(), quoted)
+	}
+	last, err := retry.Until(ctx,
+		retry.Options{Interval: 100 * time.Millisecond},
+		func(ctx context.Context) (*httpx.Response, error) {
+			return client.Do(ctx, httpx.Request{
+				Method: http.MethodGet, URL: url, Headers: map[string]string{"Authorization": authorization},
+			}, 0, 0)
+		},
+		accept,
+	)
+	return awaited(last, err, accept, fmt.Sprintf("the config dump still lists the deleted %q", handle))
 }
 
 func adminBasePathForVersion(version string) string {
@@ -833,10 +873,14 @@ func mcpModernBody(method, name, version string) string {
 
 // mcpToolArguments returns arguments matching the named testbench tool's own input schema.
 func mcpToolArguments(tool string) string {
-	if tool == "echo" {
+	switch tool {
+	case "echo":
 		return `{"message":"Hello, World!"}`
+	case "headers":
+		return `{"name":"Authorization"}`
+	default:
+		return `{"a":40,"b":60}`
 	}
-	return `{"a":40,"b":60}`
 }
 
 // mcpToolCallInvalidParams omits the required "name" field, which every JSON-RPC tools/call
@@ -1065,6 +1109,15 @@ type resourceMetadata struct {
 // register wires gateway, health, and timeout steps.
 func (g *Gateway) register(sc *godog.ScenarioContext) {
 	g.registerRawHTTPSteps(sc)
+	g.registerMTLSSteps(sc)
+	g.registerMTLSPoolSteps(sc)
+	g.registerOutboundMTLSSteps(sc)
+	g.registerMTLSHostnameSteps(sc)
+	g.registerWaitSteps(sc)
+	g.registerMTLSListenerSteps(sc)
+	g.registerMTLSHeaderBypassSteps(sc)
+	g.registerMTLSRelaySteps(sc)
+	g.registerMTLSObservabilitySteps(sc)
 	g.registerA2AClientSteps(sc)
 	g.registerAgentSteps(sc)
 	// Request state is runner-scoped, so clear it before each scenario.
@@ -1097,12 +1150,12 @@ func (g *Gateway) register(sc *godog.ScenarioContext) {
 		g.createResource)
 	sc.Step(`^I create API with JSON configuration:$`, g.createJSONAPI)
 	g.registerResourceTemplateSteps(sc)
-	sc.Step(`^I get the (API|LLM provider|LLM provider template|MCP proxy|LLM proxy|Agent) "([^"]*)"$`,
+	sc.Step(`^I get the (API|LLM provider|LLM provider template|MCP proxy|LLM proxy|Agent|GraphQL API) "([^"]*)"$`,
 		g.getResource)
 	sc.Step(`^I list all (LLM providers|LLM provider templates|MCP proxies|LLM proxies)$`,
 		g.listResources)
 	sc.Step(`^I update the (API|LLM provider|LLM provider template|MCP proxy|LLM proxy|Agent) "([^"]*)" with configuration:$`, g.updateResource)
-	sc.Step(`^I delete the (API|LLM provider|LLM provider template|MCP proxy|LLM proxy|Agent) "([^"]*)"$`, g.deleteResource)
+	sc.Step(`^I delete the (API|LLM provider|LLM provider template|MCP proxy|LLM proxy|Agent|GraphQL API) "([^"]*)"$`, g.deleteResource)
 	sc.Step(`^I send a "([^"]*)" request to the "([^"]*)" service at "([^"]*)"$`, g.serviceRequest)
 	sc.Step(`^I send a "([^"]*)" request to the "([^"]*)" service at "([^"]*)" with body:$`, g.serviceRequestWithBody)
 	sc.Step(`^I send a "([^"]*)" request to the "([^"]*)" service at "([^"]*)" until status (\d+)$`,
@@ -1132,6 +1185,8 @@ func (g *Gateway) register(sc *godog.ScenarioContext) {
 		g.analyticsRequestMethod)
 	sc.Step(`^the latest analytics event for path "([^"]*)" should have response status (\d+)$`,
 		g.analyticsResponseStatus)
+	sc.Step(`^the latest analytics event for API context "([^"]*)" should have response status (\d+)$`,
+		g.analyticsResponseStatusForAPIContext)
 	sc.Step(`^the latest analytics event for path "([^"]*)" should have metadata field "([^"]*)" with value "([^"]*)"$`,
 		g.analyticsMetadataField)
 	sc.Step(`^the response should be an oob-template list$`, g.oobTemplateList)
@@ -1428,6 +1483,7 @@ var resourceKinds = map[string]struct{ declared, collection string }{
 	"MCP proxy":             {"Mcp", collMCPProxies},
 	"LLM proxy":             {"LlmProxy", collLLMProxies},
 	"Agent":                 {"Agent", collAgents},
+	"GraphQL API":           {"GraphQLApi", collGraphQLAPIs},
 }
 
 // kindFromDefinition returns the top-level kind a definition declares.
@@ -1455,6 +1511,9 @@ func (g *Gateway) createAPI(ctx context.Context, body *godog.DocString, contentT
 
 	url, err := g.managementURL("/rest-apis")
 	if err != nil {
+		return err
+	}
+	if err := g.beforeAPIMutation(ctx); err != nil {
 		return err
 	}
 
@@ -1541,6 +1600,9 @@ func (g *Gateway) deleteAPI(ctx context.Context, name string) error {
 	if err != nil {
 		return err
 	}
+	if err := g.beforeAPIMutation(ctx); err != nil {
+		return err
+	}
 	resp, err := g.funnel.Delete(ctx, url, g.scenarioHeaders(ctx))
 	if err != nil {
 		return err
@@ -1579,15 +1641,19 @@ var serviceEndpoints = map[string]struct {
 }{
 	"gateway-controller":       {component: "platform-gateway", endpoint: "rest", basePath: ManagementBasePath},
 	"gateway-controller-admin": {component: "platform-gateway", endpoint: "admin", basePath: adminBasePath},
-	"policy-engine":            {component: "platform-gateway", endpoint: "policy-admin"},
-	"analytics":                {component: "testbench", endpoint: "analytics", partitioned: true},
-	"capture":                  {component: "testbench", endpoint: "capture", partitioned: true},
-	"oauth2":                   {component: "testbench", endpoint: "oauth2", partitioned: true},
+	// The admin API of the controller that feeds the runtime over xDS, on a gateway that
+	// runs it apart from the management controller.
+	"gateway-controller-xds-admin": {component: "platform-gateway", endpoint: "xds-admin", basePath: adminBasePath},
+	"policy-engine":                {component: "platform-gateway", endpoint: "policy-admin"},
+	"analytics":                    {component: "testbench", endpoint: "analytics", partitioned: true},
+	"capture":                      {component: "testbench", endpoint: "capture", partitioned: true},
+	"oauth2":                       {component: "testbench", endpoint: "oauth2", partitioned: true},
 	// Metrics live on a DIFFERENT compose service from the one tests normally address —
 	// controller metrics on the controller, policy-engine metrics on the runtime — which the
 	// component contract resolves via Endpoint.Service. No base path: a scrape is not an API.
 	"controller-metrics":    {component: "platform-gateway", endpoint: "metrics"},
 	"policy-engine-metrics": {component: "platform-gateway", endpoint: "pe-metrics"},
+	"envoy-admin":           {component: "platform-gateway", endpoint: "envoy-admin"},
 	// The A2A agent behind every Agent, addressed directly so a scenario can compare what the
 	// gateway serves with what the agent itself serves.
 	"a2a-trip-planner": {component: "a2a-trip-planner", endpoint: "http"},
@@ -1655,7 +1721,7 @@ func (g *Gateway) serviceBasePath(service, defaultPath string) string {
 	switch service {
 	case "gateway-controller":
 		return gatewayManagementBasePath(g.topo)
-	case "gateway-controller-admin":
+	case "gateway-controller-admin", "gateway-controller-xds-admin":
 		return gatewayAdminBasePath(g.topo)
 	default:
 		return defaultPath
@@ -1754,8 +1820,9 @@ func (g *Gateway) serviceRequestWithBody(
 	}
 
 	// The config dump lags the deploy by one event-hub poll and nothing else exposes that, so
-	// the framework waits here rather than making every scenario encode the timing.
-	if method == http.MethodGet && strings.HasPrefix(strings.TrimPrefix(path, "/"), "config_dump") {
+	// the framework waits here rather than making every scenario encode the timing. Envoy's own
+	// dump names no API handles, so it is read as it is.
+	if method == http.MethodGet && service != "envoy-admin" && strings.HasPrefix(strings.TrimPrefix(path, "/"), "config_dump") {
 		if err := g.awaitDumpConsistent(ctx, url); err != nil {
 			return err
 		}
@@ -1773,7 +1840,72 @@ func (g *Gateway) serviceRequestWithBody(
 			headers["Content-Type"] = "application/json"
 		}
 	}
-	return g.invokeWith(ctx, method, url, headers, payload)
+	return g.invokeService(ctx, method, url, headers, payload)
+}
+
+// A shared component is one container for the whole run, attached to each block's network
+// as that block boots and detached as it ends. Docker re-programs the container's
+// networking on every attachment, and its published host ports stop forwarding for a
+// moment while that happens — so a call over 127.0.0.1 landing in that window is refused,
+// by a container that is up, answered the same port moments earlier, and answers it again
+// moments later. The block that draws the short straw is whichever one happened to call
+// while a *different* block was booting, and it fails for a reason that has nothing to do
+// with what it was testing.
+//
+// StableHostPorts already exists for this hazard, and pins the port number across
+// attachments; it cannot keep the forwarding continuously live. A few short re-dials cover
+// the rest. Deliberately not the retry package: that one waits for a value to propagate and
+// floors its deadline at a minute, where this waits only for forwarding to come back, which
+// happens at once or not at all. Anything that answers — including an error status — is the
+// component's own reply and is returned as it is, so a scenario's real failure stays a fast
+// one.
+const (
+	serviceDialAttempts = 4
+	serviceDialPause    = 400 * time.Millisecond
+)
+
+// wsaeconnrefused is Winsock's code for a refused connection. Named here rather than taken
+// from golang.org/x/sys/windows so this file builds on every platform: on a non-Windows
+// build it is simply an errno nothing produces, which is exactly what makes it safe to test
+// for everywhere.
+const wsaeconnrefused = syscall.Errno(10061)
+
+// refusedConnection reports whether a request was turned away before a connection existed.
+//
+// Two conditions, both required. The dial is what must have failed — a component that
+// answered has answered, however badly, and its reply is never re-sent. And the failure
+// must be a refusal specifically: a dial that timed out is a host that is not coming back
+// within this step's patience, and retrying it three more times would spend three more
+// request timeouts to reach the same answer. Both platform spellings of "refused" count,
+// because the one Go names is a fabricated value on Windows.
+func refusedConnection(err error) bool {
+	var dialErr *net.OpError
+	if !errors.As(err, &dialErr) || dialErr.Op != "dial" {
+		return false
+	}
+	return errors.Is(err, syscall.ECONNREFUSED) || errors.Is(err, wsaeconnrefused)
+}
+
+// invokeService calls a component's own API, re-dialling through a refused connection.
+func (g *Gateway) invokeService(
+	ctx context.Context, method, url string, headers map[string]string, payload []byte,
+) error {
+	var err error
+	for attempt := range serviceDialAttempts {
+		err = g.invokeWith(ctx, method, url, headers, payload)
+		if err == nil || !refusedConnection(err) {
+			return err
+		}
+		if attempt == serviceDialAttempts-1 {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(serviceDialPause):
+		}
+	}
+	return err
 }
 
 // awaitMappedTestbenchService verifies the host-side mapped port used by a direct
@@ -2021,6 +2153,7 @@ type analyticsEvent struct {
 		Headers map[string][]string `json:"headers"`
 	} `json:"response"`
 	Metadata map[string]any `json:"metadata"`
+	UserID   string         `json:"user_id"`
 	// A2A is the event's first-class A2A dimension block, a sibling of metadata. It is decoded
 	// as a map because the assertions are about the published document: a typed mirror would
 	// let a renamed or relocated field compile and pass.
@@ -2066,14 +2199,30 @@ func (g *Gateway) analyticsHeader(
 }
 
 func (g *Gateway) latestAnalyticsEvent(ctx context.Context, path string) (*analyticsEvent, error) {
+	return g.latestMatchingAnalyticsEvent(ctx, fmt.Sprintf("path %q", path), func(event *analyticsEvent) bool {
+		return analyticsEventMatchesPath(event.Request.URI, path)
+	})
+}
+
+// latestAnalyticsEventForAPIContext selects the event by the API context the gateway records
+// in the metadata of every event, which a request answered before routing still carries.
+func (g *Gateway) latestAnalyticsEventForAPIContext(ctx context.Context, apiContext string) (*analyticsEvent, error) {
+	return g.latestMatchingAnalyticsEvent(ctx, fmt.Sprintf("API context %q", apiContext), func(event *analyticsEvent) bool {
+		return event.Metadata["apiContext"] == apiContext
+	})
+}
+
+// latestMatchingAnalyticsEvent polls the collector until an event satisfies match and returns
+// the latest such event; what names the selection in errors.
+func (g *Gateway) latestMatchingAnalyticsEvent(
+	ctx context.Context, what string, match func(*analyticsEvent) bool,
+) (*analyticsEvent, error) {
 	url, err := g.serviceURL(ctx, "analytics", "/test/events")
 	if err != nil {
 		return nil, err
 	}
 	var observed []string
-	accept := func(event *analyticsEvent) bool {
-		return event != nil && analyticsEventMatchesPath(event.Request.URI, path)
-	}
+	accept := func(event *analyticsEvent) bool { return event != nil && match(event) }
 	pollCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	last, err := retry.Until(pollCtx, retry.Options{Interval: time.Second},
@@ -2102,11 +2251,10 @@ func (g *Gateway) latestAnalyticsEvent(ctx context.Context, path string) (*analy
 			return nil, nil
 		}, accept)
 	if err != nil {
-		return nil, fmt.Errorf("reading analytics event for path %q (observed URIs: %v): %w",
-			path, observed, err)
+		return nil, fmt.Errorf("reading analytics event for %s (observed URIs: %v): %w", what, observed, err)
 	}
 	if last == nil {
-		return nil, fmt.Errorf("no analytics event found for request path %q (observed URIs: %v)", path, observed)
+		return nil, fmt.Errorf("no analytics event found for %s (observed URIs: %v)", what, observed)
 	}
 	return last, nil
 }
@@ -2174,13 +2322,24 @@ func (g *Gateway) analyticsEventCountAtLeast(ctx context.Context, want int) erro
 	return nil
 }
 
+// analyticsQuietWindow is how long the collector's count must stay unchanged for the events
+// to count as settled.
+const analyticsQuietWindow = 3 * time.Second
+
+// mtlsAnalyticsQuietWindow is the quiet window for mutual TLS scenarios.
+const mtlsAnalyticsQuietWindow = 2 * time.Second
+
 // settleAnalyticsEventCount waits for the collector's count to stop changing for a quiet
 // period. A bare threshold poll would return the instant the count first reaches a target and
 // could miss a late-arriving duplicate event landing just after - this is what actually
 // verifies "no more are coming", used both to check an exact count and to drain a prior
 // request's own publish delay before a scenario resets the collector for its real assertion.
 func (g *Gateway) settleAnalyticsEventCount(ctx context.Context) (retry.Settled, error) {
-	settled, err := retry.SettledCount(ctx, retry.Options{Timeout: 12 * time.Second}, 3*time.Second,
+	quiet := analyticsQuietWindow
+	if isMTLSScenario(ctx) {
+		quiet = mtlsAnalyticsQuietWindow
+	}
+	settled, err := retry.SettledCount(ctx, retry.Options{Timeout: 12 * time.Second}, quiet,
 		func(ctx context.Context) (int, error) { return g.analyticsEventCount(ctx) })
 	if err != nil {
 		return settled, err
@@ -2246,6 +2405,21 @@ func (g *Gateway) analyticsResponseStatus(ctx context.Context, path string, want
 	return nil
 }
 
+func (g *Gateway) analyticsResponseStatusForAPIContext(ctx context.Context, contextExpr string, want int) error {
+	apiContext, err := stepscommon.Expand(ctx, contextExpr)
+	if err != nil {
+		return err
+	}
+	event, err := g.latestAnalyticsEventForAPIContext(ctx, apiContext)
+	if err != nil {
+		return err
+	}
+	if event.Response.Status != want {
+		return fmt.Errorf("analytics event for API context %q has response status %d, want %d", apiContext, event.Response.Status, want)
+	}
+	return nil
+}
+
 func (g *Gateway) analyticsMetadataField(ctx context.Context, path, field, want string) error {
 	event, err := g.analyticsEventForPath(ctx, path)
 	if err != nil {
@@ -2306,6 +2480,9 @@ func (g *Gateway) updateAPI(ctx context.Context, name string, body *godog.DocStr
 	if err != nil {
 		return err
 	}
+	if err := g.beforeAPIMutation(ctx); err != nil {
+		return err
+	}
 	headers := g.headerWith(ctx, "Content-Type", "application/yaml")
 	return g.invokeWith(ctx, http.MethodPut, url, headers, []byte(definition))
 }
@@ -2323,6 +2500,7 @@ const (
 	collMCPProxies   = "/mcp-proxies"
 	collLLMProxies   = "/llm-proxies"
 	collAgents       = "/agents"
+	collGraphQLAPIs  = "/graphql-apis"
 )
 
 // mutateResource creates, replaces or removes a controller resource and waits for the change
@@ -2339,6 +2517,7 @@ const (
 func (g *Gateway) mutateResource(
 	ctx context.Context, method, collection, id string, body *godog.DocString,
 ) error {
+	markGatewayChanged(ctx)
 	resolvedID, err := stepscommon.Expand(ctx, id)
 	if err != nil {
 		return err
@@ -2487,6 +2666,8 @@ func cleanupKindForCollection(collection string) (cleanup.Kind, bool) {
 		return cleanup.KindMCPProxy, true
 	case collAgents:
 		return cleanup.KindAgent, true
+	case collGraphQLAPIs:
+		return cleanup.KindGraphQLAPI, true
 	default:
 		return cleanup.Kind{}, false
 	}

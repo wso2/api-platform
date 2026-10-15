@@ -38,6 +38,13 @@ type PolicyChain struct {
 	// Determines whether ext_proc uses SKIP or BUFFERED mode for response body.
 	RequiresResponseBody bool
 
+	// Computed flag: true when only the fault policies need the response body (no normal
+	// policy does). The body is then requested per response, and only for an error
+	// response -- the only kind the fault policies run on -- so a successful response,
+	// including a streamed one, never passes through the policy engine. See
+	// kernel.ApplyFaultPoliciesBodyRequirement.
+	RequiresResponseBodyOnFault bool
+
 	// Computed flag: true when every request-body policy also implements
 	// StreamingRequestPolicy. When false, the kernel forces BUFFERED mode
 	// for request body even if some policies support streaming.

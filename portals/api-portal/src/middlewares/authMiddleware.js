@@ -43,6 +43,7 @@ const { verifyPlatformJwtClaims, decodePlatformJwtClaims } = require('../utils/p
 const { accessTokenPresent, refreshAccessToken, verifyWithCertificate, resolveOrgIdp } = require('../utils/tokenUtil');
 const orgDao = require('../dao/organizationDao');
 const orgContext = require('../utils/orgContext');
+const { matchOrgIssuer } = require('../utils/orgIssuer');
 const userIdpReferenceDao = require('../dao/userIdpReferenceDao');
 const { effectiveScopes, isAuthorizationEnabled, isRoleMode } = require('./authorization');
 const { CustomError, NotFoundError } = require('../utils/errors/customErrors');
@@ -126,13 +127,51 @@ async function resolveUserUuid(req, sub) {
     return userUuid;
 }
 
+// Key sets for per-organization issuers (multi-organization mode), reused across requests so
+// each organization's JWKS is fetched once and then refreshed by jose on key-id misses
+// rather than on every call. Bounded: the issuer an entry is keyed from arrives in an
+// unverified token, so a caller could otherwise grow this without limit by varying it.
+const ORG_JWKS_CACHE_MAX_ENTRIES = 1000;
+const orgJwksCache = new Map(); // jwksUrl -> createRemoteJWKSet()
+
+function orgJwks(jwksUrl) {
+    let jwks = orgJwksCache.get(jwksUrl);
+    if (!jwks) {
+        if (orgJwksCache.size >= ORG_JWKS_CACHE_MAX_ENTRIES) orgJwksCache.clear();
+        jwks = createRemoteJWKSet(new URL(jwksUrl));
+        orgJwksCache.set(jwksUrl, jwks);
+    }
+    return jwks;
+}
+
+/**
+ * Multi-organization mode: when the token names a per-organization issuer
+ * (orgIssuer.js), the key set and exact issuer to verify it against, plus the
+ * organization the token must then carry. null — the single-issuer path — otherwise.
+ */
+function perOrgVerification(token) {
+    if (!orgContext.isMultiOrganizationEnabled()) return null;
+    const unverifiedIss = safeDecodeJwt(token)?.iss;
+    if (!unverifiedIss || unverifiedIss === config.auth.idp?.issuer) return null;
+    return matchOrgIssuer(unverifiedIss);
+}
+
 async function verifyJwksWithRefresh(token, jwksURL, req) {
     try {
-        const jwks = await createRemoteJWKSet(new URL(jwksURL));
+        const perOrg = perOrgVerification(token);
+        const jwks = perOrg ? orgJwks(perOrg.jwksUrl) : await createRemoteJWKSet(new URL(jwksURL));
         const jwtVerifyOptions = { algorithms: constants.JWT_ASYMMETRIC_ALGORITHMS };
-        if (config.auth.idp?.issuer) jwtVerifyOptions.issuer = config.auth.idp.issuer;
+        if (perOrg) jwtVerifyOptions.issuer = perOrg.issuer;
+        else if (config.auth.idp?.issuer) jwtVerifyOptions.issuer = config.auth.idp.issuer;
         if (config.auth.idp?.audience) jwtVerifyOptions.audience = config.auth.idp.audience;
         const { payload } = await jwtVerify(token, jwks, jwtVerifyOptions);
+        if (perOrg && !tokenClaimsOrg(payload, perOrg.org)) {
+            // Signed by one organization's keys but claiming another organization.
+            logger.warn('Rejected bearer token whose org claim does not match its issuer\'s organization', {
+                operation: 'verifyJwksWithRefresh',
+            });
+            return { valid: false, scopes: '' };
+        }
         const rawScope = payload.scope ?? payload.scp;
         const scopes = Array.isArray(rawScope) ? rawScope.join(' ') : (rawScope || '');
         return { valid: true, scopes };
@@ -158,6 +197,24 @@ async function verifyJwksWithRefresh(token, jwksURL, req) {
             operation: 'verifyJwksWithRefresh',
         });
         return { valid: false, scopes: '' };
+    }
+}
+
+/**
+ * True when a token verified against `org`'s own issuer is bound to that organization:
+ * the claim named by auth.idp.template_org_claim (the organization
+ * claim when unset) equals `org`. The token must also carry the organization claim
+ * itself — a token without one would otherwise fall back to the configured organization,
+ * letting one organization's issuer vouch for a credential acting in another.
+ */
+function tokenClaimsOrg(payload, org) {
+    const orgKey = config.auth.claimMappings?.organization;
+    const bindingKey = config.auth.idp?.templateOrgClaim || orgKey;
+    try {
+        if (!orgKey || !orgContext.normalizeOrgClaim(getNestedClaim(payload, orgKey))) return false;
+        return orgContext.normalizeOrgClaim(bindingKey ? getNestedClaim(payload, bindingKey) : undefined) === org;
+    } catch {
+        return false;
     }
 }
 

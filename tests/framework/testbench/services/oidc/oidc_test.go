@@ -127,8 +127,14 @@ func tokenForm(code string) url.Values {
 
 func publicKey(t *testing.T, s *Service) *rsa.PublicKey {
 	t.Helper()
+	return publicKeyAt(t, s, "/oauth2/jwks", keyID)
+}
+
+// publicKeyAt reads the single key the key set at path serves, which must carry kid.
+func publicKeyAt(t *testing.T, s *Service, path, kid string) *rsa.PublicKey {
+	t.Helper()
 	rec := httptest.NewRecorder()
-	s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/oauth2/jwks", nil))
+	s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
 	var set struct {
 		Keys []map[string]string `json:"keys"`
 	}
@@ -136,7 +142,7 @@ func publicKey(t *testing.T, s *Service) *rsa.PublicKey {
 		t.Fatalf("JWKS = %s, err = %v", rec.Body.String(), err)
 	}
 	key := set.Keys[0]
-	if key["kid"] != keyID || key["alg"] != "RS256" {
+	if key["kid"] != kid || key["alg"] != "RS256" {
 		t.Fatalf("JWK = %v", key)
 	}
 	n, err := base64.RawURLEncoding.DecodeString(key["n"])
@@ -526,4 +532,42 @@ func pemBlock(data []byte) ([]byte, bool) {
 		return nil, false
 	}
 	return block.Bytes, true
+}
+
+func TestATokenFromAnOrganizationsIssuerIsSignedWithThatOrganizationsKey(t *testing.T) {
+	s := newService(t)
+	rec := httptest.NewRecorder()
+	body := `{"sub":"s","iss":"https://idp.example/o/acme/oauth2/token"}`
+	s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/mint", strings.NewReader(body)))
+	var out map[string]string
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil || rec.Code != http.StatusOK {
+		t.Fatalf("mint = %d %s", rec.Code, rec.Body.String())
+	}
+	orgKey := publicKeyAt(t, s, "/o/acme/oauth2/jwks", orgKeyID("acme"))
+	keyFor := func(key *rsa.PublicKey) jwt.Keyfunc {
+		return func(*jwt.Token) (any, error) { return key, nil }
+	}
+	if _, err := jwt.Parse(out["token"], keyFor(orgKey), jwt.WithValidMethods([]string{"RS256"})); err != nil {
+		t.Fatalf("the token did not verify against the organization's key set: %v", err)
+	}
+	if _, err := jwt.Parse(out["token"], keyFor(publicKey(t, s)), jwt.WithValidMethods([]string{"RS256"})); err == nil {
+		t.Fatal("the token verified against the provider's own key set, not just the organization's")
+	}
+	if other := publicKeyAt(t, s, "/o/globex/oauth2/jwks", orgKeyID("globex")); other.N.Cmp(orgKey.N) == 0 {
+		t.Fatal("two organizations share a signing key")
+	}
+	if again := publicKeyAt(t, s, "/o/acme/oauth2/jwks", orgKeyID("acme")); again.N.Cmp(orgKey.N) != 0 {
+		t.Fatal("an organization's key changed between fetches")
+	}
+}
+
+func TestAnOrganizationKeySetNeedsAPlainOrganizationIdentifier(t *testing.T) {
+	s := newService(t)
+	for _, path := range []string{"/o/a.b/oauth2/jwks", "/o/-acme/oauth2/jwks"} {
+		rec := httptest.NewRecorder()
+		s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+		if rec.Code != http.StatusNotFound {
+			t.Errorf("%s = %d, want 404", path, rec.Code)
+		}
+	}
 }

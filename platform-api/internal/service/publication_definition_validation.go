@@ -42,7 +42,8 @@ type definitionValidator func(contentType string, data []byte) error
 // map to enable publishing it without changing any caller of
 // validateDefinitionContent.
 var definitionValidators = map[string]definitionValidator{
-	restAPITypeValue: validateRestAPIDefinition,
+	restAPITypeValue:                       validateRestAPIDefinition,
+	constants.PublicationAPITypeGraphQLAPI: validateGraphQLAPIDefinition,
 }
 
 // validateDefinitionContent validates a definition before publish. An
@@ -83,6 +84,26 @@ func validateRestAPIDefinition(contentType string, data []byte) error {
 		if len(result.Errors) > 1 {
 			msg += fmt.Sprintf(" (and %d more)", len(result.Errors)-1)
 		}
+	}
+	return apperror.APIPublicationValidationFailed.New(msg)
+}
+
+// validateGraphQLAPIDefinition rejects a GraphQL definition that is not a
+// valid SDL document defining a Query type — the same check the API's own
+// create/update and the validate-schema endpoint apply (validateGraphQLSDL).
+func validateGraphQLAPIDefinition(contentType string, data []byte) error {
+	if contentType != "application/graphql" {
+		return apperror.APIPublicationValidationFailed.New(
+			"A GraphQL API definition must be application/graphql")
+	}
+	issues := validateGraphQLSDL(string(data))
+	if len(issues) == 0 {
+		return nil
+	}
+	first := issues[0]
+	msg := "The definition is not a valid GraphQL SDL document: " + first.Message
+	if first.Line != nil && first.Column != nil {
+		msg += fmt.Sprintf(" (line %d, column %d)", *first.Line, *first.Column)
 	}
 	return apperror.APIPublicationValidationFailed.New(msg)
 }

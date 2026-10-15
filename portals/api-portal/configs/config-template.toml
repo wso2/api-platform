@@ -303,9 +303,25 @@ logout_url = ""
 logout_redirect_uri = ""
 certificate = ""
 jwks_url = ""
+# Development only: accept a plain-http jwks_url when its host is localhost or
+# *.localhost. Any other http JWKS URL still refuses to start.
+allow_local_http_jwks = false
 token_refresh_timeout_ms = 10000
 silent_sso = true      # Enable silent SSO
 org_callback = false   # Redirect to the org's own landing page after login
+# Multi-organization mode only, for IDPs that issue each organization's tokens under its
+# own issuer and keys, for example:
+#   issuer_template    = "https://idp.example.com/o/{org}/oauth2/token"
+#   jwks_url_template  = "https://idp.example.com/o/{org}/oauth2/jwks"
+#   template_org_claim = "org_id"
+# A bearer token whose `iss` fits issuer_template is verified against jwks_url_template
+# with the same {org}, and the claim named by template_org_claim (claim_mappings.organization
+# when empty) must equal that {org}. The token must also carry the organization claim.
+# issuer_template and jwks_url_template must each contain exactly one {org}. Empty: a
+# single issuer, as above.
+issuer_template = ""
+jwks_url_template = ""
+template_org_claim = ""
 
 # =============================================================================
 # AUTHORIZATION
@@ -474,6 +490,9 @@ enabled_types = ["apis", "mcp-servers", "api-workflows"]
 poll_interval_ms = 2000
 batch_size = 50
 signature_tolerance_sec = 300
+# Development only: skip certificate verification when delivering to a
+# subscriber with a self-signed certificate. Other outbound calls stay verified.
+tls_skip_verify = false
 
 # =============================================================================
 # UPLOAD LIMITS

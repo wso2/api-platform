@@ -287,8 +287,10 @@ type ConfigProfile struct {
 
 // FileMount describes a file copied into a container before startup.
 type FileMount struct {
-	// HostPath is relative to the repository root.
+	// HostPath is relative to the repository root. Exactly one of HostPath and Content is set.
 	HostPath string
+	// Content is the file's bytes, for a file the framework generates instead of reading.
+	Content []byte
 	// ContainerPath is the absolute destination.
 	ContainerPath string
 	// Mode is the file mode to set on the copy.
@@ -335,6 +337,11 @@ type Definition struct {
 
 	// Wiring decodes and validates component-specific block configuration.
 	Wiring WiringSpec
+
+	// ApplyWiring returns the definition a block's decoded wiring selects, for wiring that
+	// changes what the component runs. It must not modify def. Nil leaves the definition
+	// as registered.
+	ApplyWiring func(def *Definition, wiring any) (*Definition, error)
 
 	// Env is static environment applied to every instance, before DSN and wiring.
 	Env map[string]string

@@ -66,6 +66,7 @@ func defaultConfig() *Server {
 				"/api/internal/v1/subscription-plans",
 				"/api/internal/v1/mcp-proxies",
 				"/api/internal/v1/agents",
+				"/api/internal/v1/graphql-apis",
 				"/api/internal/v1/gateways",
 				"/api/internal/v1/deployments",
 				"/api/internal/v1/artifacts",
@@ -204,6 +205,13 @@ func defaultConfig() *Server {
 				MaxRedirects:   5,
 				AllowedSchemes: []string{"http", "https"},
 			},
+		},
+		APIPortalPublication: APIPortalPublication{
+			RequestTimeout:        5 * time.Second,
+			ListingRequestTimeout: 15 * time.Second,
+			MaxRetries:            1,
+			RetryBackoff:          1 * time.Second,
+			OverallTimeout:        65 * time.Second,
 		},
 		// Short enough that an operator fixing a broken upstream sees the result
 		// within about a minute without hunting for a flush, long enough that a

@@ -1,0 +1,21 @@
+{
+  "body": {
+    "error": {
+      "code": -32000,
+      "message": "Rate limit exceeded. Please try again later."
+    },
+    "id": 42,
+    "jsonrpc": "2.0"
+  },
+  "headers": {
+    "content-type": "application/json",
+    "ratelimit": "\"mcp-tools-0-add\";r=0;t=\u003cseconds\u003e",
+    "ratelimit-policy": "\"mcp-tools-0-add\";q=1;w=3600",
+    "retry-after": "\u003cpresent\u003e",
+    "x-ratelimit-limit": "1",
+    "x-ratelimit-quota": "mcp-tools-0-add",
+    "x-ratelimit-remaining": "0",
+    "x-ratelimit-reset": "\u003cpresent\u003e"
+  },
+  "status": 429
+}

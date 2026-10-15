@@ -1,0 +1,15 @@
+{
+  "body": {
+    "message": {
+      "action": "GUARDRAIL_INTERVENED",
+      "actionReason": "Violation of AWS Bedrock Guardrail detected.",
+      "direction": "REQUEST",
+      "interveningGuardrail": "AWS Bedrock Guardrail"
+    },
+    "type": "AWS_BEDROCK_GUARDRAIL"
+  },
+  "headers": {
+    "content-type": "application/json"
+  },
+  "status": 422
+}

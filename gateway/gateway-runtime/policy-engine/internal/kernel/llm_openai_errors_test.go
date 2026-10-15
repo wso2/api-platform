@@ -285,7 +285,7 @@ func llmRouteNoBodyPolicy(t *testing.T, enabled bool, status, codeDetails string
 	t.Helper()
 	k := NewKernel()
 	chainExecutor := executor.NewChainExecutor(nil, nil, noop.NewTracerProvider().Tracer(""))
-	server := NewExternalProcessorServer(k, chainExecutor, config.TracingConfig{}, "", 1<<20, 1<<20,
+	server := NewExternalProcessorServer(k, chainExecutor, config.TracingConfig{}, "", 1<<20, 1<<20, nil,
 		WithLLMOpenAIErrors(enabled))
 
 	ec := newPolicyExecutionContext(server, "test-route", &registry.PolicyChain{})
@@ -378,7 +378,7 @@ func llmRouteBodylessResponse(t *testing.T, requiresBody bool, status, codeDetai
 	t.Helper()
 	k := NewKernel()
 	chainExecutor := executor.NewChainExecutor(nil, nil, noop.NewTracerProvider().Tracer(""))
-	server := NewExternalProcessorServer(k, chainExecutor, config.TracingConfig{}, "", 1<<20, 1<<20,
+	server := NewExternalProcessorServer(k, chainExecutor, config.TracingConfig{}, "", 1<<20, 1<<20, nil,
 		WithLLMOpenAIErrors(true))
 	chain := &registry.PolicyChain{RequiresResponseBody: requiresBody}
 

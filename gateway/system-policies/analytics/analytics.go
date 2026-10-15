@@ -122,6 +122,17 @@ const (
 	// complete SSE event. Held so a stream that opens with a long run of heartbeats is
 	// not rescanned from the start on every chunk. Dropped once an event is found.
 	a2aStreamScanKey = "__a2a_stream_scan"
+
+	// graphqlTransportHTTP is the only transport this gateway delivers GraphQL over today
+	// (GraphQL-over-HTTP POST). Reserved as a named constant, not just an inline literal,
+	// so a future WebSocket/SSE subscription-delivery transport has one place to add a
+	// second value rather than a string sprinkled across the request path.
+	graphqlTransportHTTP = "HTTP"
+
+	// graphqlRequestTypeIntrospection/Operation classify a GraphQL request by whether its
+	// query targets the introspection meta-fields (__schema/__type) or a real operation.
+	graphqlRequestTypeIntrospection = "introspection"
+	graphqlRequestTypeOperation     = "operation"
 )
 
 // A2A resolution attribute names, as the a2a resolver in the policy engine spells
@@ -223,7 +234,16 @@ const (
 )
 
 // AnalyticsPolicy implements the default analytics data collection process.
-type AnalyticsPolicy struct{}
+// AnalyticsPolicy's body-processing modes are computed once at construction (see
+// computeBodyModes) rather than being a fixed constant, so a bodyless request only pays for
+// request/response body buffering when something actually needs the body -- see Mode().
+type AnalyticsPolicy struct {
+	// requestBodyMode/responseBodyMode are returned verbatim by Mode(). Set once in GetPolicy
+	// and never mutated afterward, so concurrent requests sharing this instance need no
+	// synchronization to read them.
+	requestBodyMode  policy.BodyProcessingMode
+	responseBodyMode policy.BodyProcessingMode
+}
 
 type McpRequestAnalyticsProperties struct {
 	JsonRpcMethod string `json:"jsonRpcMethod,omitempty"`
@@ -356,6 +376,60 @@ type A2AResponseAnalyticsProperties struct {
 	TaskState         string `json:"taskState,omitempty"`
 }
 
+// GraphQLRequestAnalyticsProperties captures the operation-level identity a
+// GraphQL API's single POST route otherwise carries no signal of (unlike
+// REST, where the method+path already is the operation identity):
+// OperationName is the client-supplied name when
+// present (most named-operation clients — Apollo, Relay — always send one);
+// OperationType is always derivable from the query document itself, even for
+// anonymous/shorthand queries. Deliberately NOT attempted: resolving an
+// anonymous query's top-level field name, which needs a real GraphQL parser —
+// out of scope for this lightweight, dependency-free extraction.
+//
+// RequestType/VariableCount/Transport are only meaningful for a single (non-batched)
+// operation, so they are left unset (omitted) when IsBatched is true — a batched
+// document has no single query/variables map to summarize, and reporting one
+// operation's values as if they represented the whole batch would misattribute data.
+// IsBatched itself and Transport are batch-independent and always set.
+type GraphQLRequestAnalyticsProperties struct {
+	OperationName string `json:"operationName,omitempty"`
+	OperationType string `json:"operationType,omitempty"`
+	// RequestType distinguishes schema-introspection traffic (IDE autocomplete, codegen
+	// tooling querying __schema/__type) from real operation invocations, so introspection
+	// doesn't inflate invocation-volume metrics. Heuristic, same class as OperationType:
+	// a regex over the query text, not a real parser.
+	RequestType string `json:"requestType,omitempty"`
+	// Transport is fixed to graphqlTransportHTTP today; see that constant's comment.
+	Transport string `json:"transport,omitempty"`
+	// VariableCount is a content-free request-complexity proxy (the GraphQL analogue of
+	// counting message parts) — never the variable values themselves.
+	VariableCount *int `json:"variableCount,omitempty"`
+	// VariableNames carries only the variable identifiers (e.g. "title"), never their
+	// values — structural metadata in the same spirit as OperationName, not a payload
+	// capture. Omitted (not an empty array) when there are no variables.
+	VariableNames []string `json:"variableNames,omitempty"`
+	// IsBatched flags a request body that is a JSON array of operations (the common
+	// GraphQL batching convention) rather than a single object. Always set (never omitted)
+	// so "not batched" is an explicit false, not an absent field.
+	IsBatched bool `json:"isBatched"`
+}
+
+// GraphQLResponseAnalyticsProperties captures whether a GraphQL response carried a
+// GraphQL-level error. Per the GraphQL-over-HTTP convention, an error is delivered
+// inside an HTTP 200 response body's top-level "errors" array (a resolver can partially
+// fail alongside partial "data") — the proxy response status code alone never reflects
+// this, so it must be derived by inspecting the body, same as MCP's isError/errorCode.
+type GraphQLResponseAnalyticsProperties struct {
+	IsError    *bool  `json:"isError,omitempty"`
+	ErrorCount *int   `json:"errorCount,omitempty"`
+	ErrorCode  string `json:"errorCode,omitempty"`
+	// IsPartialSuccess distinguishes a response that returned usable "data" alongside
+	// resolver "errors" from one that failed outright with no data — a case JSON-RPC's
+	// all-or-nothing errors don't have, but GraphQL resolvers do. Only set when IsError
+	// is true; a fully successful response has no notion of "partial".
+	IsPartialSuccess *bool `json:"isPartialSuccess,omitempty"`
+}
+
 // LLMProviderAnalyticsInfo holds extracted token-related information from LLM provider responses
 type LLMProviderAnalyticsInfo struct {
 	ProviderName        *string // Provider name
@@ -368,13 +442,21 @@ type LLMProviderAnalyticsInfo struct {
 	ResponseModel       *string // Model name from response
 }
 
-var ins = &AnalyticsPolicy{}
-
+// GetPolicy builds a fresh AnalyticsPolicy instance per policy-chain entry, capturing the
+// merged params (request_body/response_body/api_kind -- see computeBodyModes) into its body
+// modes. This intentionally does NOT return a shared package-level singleton: Mode() must be
+// config-aware per route/instance, and the registry's GetInstance contract explicitly allows a
+// factory to return either a new or a cached instance (see registry.go doc comment). A fresh
+// struct is cheap -- this only runs at policy-chain build time (config load / xDS update), never
+// per request -- and every other method already reads its parameters fresh from the params
+// argument passed at each request-time call, never from receiver state, so a per-chain instance
+// is safe with no synchronization.
 func GetPolicy(
 	metadata policy.PolicyMetadata,
 	params map[string]interface{},
 ) (policy.Policy, error) {
-	return ins, nil
+	reqMode, respMode := computeBodyModes(params)
+	return &AnalyticsPolicy{requestBodyMode: reqMode, responseBodyMode: respMode}, nil
 }
 
 // GetPolicyV2 is an alias for GetPolicy, provided for compatibility with the
@@ -386,16 +468,84 @@ func GetPolicyV2(
 	return GetPolicy(metadata, params)
 }
 
-// Mode returns the processing mode for this policy.
-// ResponseBodyMode is BodyModeStream so the kernel keeps streaming enabled when
+// computeBodyModes derives the request/response body processing modes from the params injected
+// at policy-chain build time: system_policies.go (gateway-controller) stamps request_body/
+// response_body from cfg.Collector whenever this policy is enabled, and transform/restapi.go
+// stamps api_kind from the StoredConfig's Kind field via the same additionalProps/"_shared"
+// mechanism (see utils.InjectSystemPolicies) -- both unconditionally, so both are present on
+// every request that goes through the real controller injection path.
+//
+// Safety rules, in order:
+//  1. MCP (mcp_session_id, JSON-RPC method/capability -- OnRequestBody/OnResponseBody) and LLM
+//     Provider/Proxy (token usage -- OnResponseBody) analytics are extracted from the body
+//     UNCONDITIONALLY, regardless of request_body/response_body, and so is Agent analytics
+//     (OnRequestBody/OnResponseBody). Those kinds therefore always need the body
+//     buffered/streamed -- skipping it would silently drop that analytics.
+//  2. When request_body/response_body/api_kind are absent (a caller that doesn't go through the
+//     standard controller injection path -- e.g. a policy constructed directly in a test) this
+//     falls back to needing the body, matching today's unconditional Buffer/Stream behavior,
+//     rather than risk silently dropping body-derived analytics for a route Mode() can't
+//     identify. Slower-but-correct beats faster-but-wrong.
+//  3. Otherwise (RestApi, WebSubApi, or any other kind not listed in rule 1) the body is
+//     genuinely optional: buffered/streamed only when request_body/response_body is explicitly
+//     true.
+func computeBodyModes(params map[string]interface{}) (requestMode, responseMode policy.BodyProcessingMode) {
+	_, hasReqBody := params["request_body"]
+	_, hasRespBody := params["response_body"]
+	if !hasReqBody || !hasRespBody || needsBodyRegardlessOfCaptureConfig(params) {
+		return policy.BodyModeBuffer, policy.BodyModeStream
+	}
+
+	sendReqBody, sendRespBody := getPayloadFlags(params)
+	requestMode = policy.BodyModeSkip
+	if sendReqBody {
+		requestMode = policy.BodyModeBuffer
+	}
+	responseMode = policy.BodyModeSkip
+	if sendRespBody {
+		responseMode = policy.BodyModeStream
+	}
+	return requestMode, responseMode
+}
+
+// needsBodyRegardlessOfCaptureConfig reports whether this policy instance's route needs the
+// body irrespective of the request_body/response_body capture flags -- true for MCP and LLM
+// Provider/Proxy routes (see computeBodyModes), and true (fail-safe) when api_kind is missing or
+// unrecognized.
+func needsBodyRegardlessOfCaptureConfig(params map[string]interface{}) bool {
+	kind, ok := params["api_kind"].(string)
+	if !ok || kind == "" {
+		return true
+	}
+	switch kind {
+	case "Mcp", "LlmProvider", "LlmProxy", "Agent":
+		return true
+	default:
+		return false
+	}
+}
+
+// Mode returns the processing mode for this policy instance, computed once at construction (see
+// computeBodyModes). A zero-value AnalyticsPolicy (e.g. constructed directly, bypassing
+// GetPolicy -- as some existing tests do for the header-phase methods) falls back to today's
+// unconditional Buffer/Stream rather than an invalid empty BodyProcessingMode.
+// ResponseBodyMode is BodyModeStream (never Buffer) so the kernel keeps streaming enabled when
 // all other policies in the chain also support streaming. The buffered fallback
 // (OnResponseBody) is still called when the chain cannot stream.
 func (a *AnalyticsPolicy) Mode() policy.ProcessingMode {
+	reqMode := a.requestBodyMode
+	if reqMode == "" {
+		reqMode = policy.BodyModeBuffer
+	}
+	respMode := a.responseBodyMode
+	if respMode == "" {
+		respMode = policy.BodyModeStream
+	}
 	return policy.ProcessingMode{
 		RequestHeaderMode:  policy.HeaderModeProcess,
-		RequestBodyMode:    policy.BodyModeBuffer,
+		RequestBodyMode:    reqMode,
 		ResponseHeaderMode: policy.HeaderModeProcess,
-		ResponseBodyMode:   policy.BodyModeStream,
+		ResponseBodyMode:   respMode,
 	}
 }
 
@@ -455,7 +605,7 @@ func (a *AnalyticsPolicy) OnRequestHeaders(_ context.Context, reqCtx *policy.Req
 	// Capture all request headers when enabled, so they flow into analytics events
 	// (and the stdout/log publisher) without attaching a per-API header policy.
 	if sendReqHeaders, _ := getHeaderFlags(params); sendReqHeaders && reqCtx.Headers != nil {
-		if headers := serializeHeaders(reqCtx.Headers); headers != "" {
+		if headers := flattenHeaders(reqCtx.Headers); len(headers) > 0 {
 			analyticsMetadata["request_headers"] = headers
 		}
 	}
@@ -628,7 +778,7 @@ func (a *AnalyticsPolicy) OnResponseHeaders(_ context.Context, respCtx *policy.R
 
 	// Capture all response headers when enabled.
 	if _, sendRespHeaders := getHeaderFlags(params); sendRespHeaders && respCtx.ResponseHeaders != nil {
-		if headers := serializeHeaders(respCtx.ResponseHeaders); headers != "" {
+		if headers := flattenHeaders(respCtx.ResponseHeaders); len(headers) > 0 {
 			analyticsMetadata["response_headers"] = headers
 		}
 	}
@@ -655,6 +805,59 @@ func (a *AnalyticsPolicy) OnRequestBody(_ context.Context, ctx *policy.RequestCo
 	switch apiKind {
 	case policy.APIKindRestApi:
 		// Collect analytics data for REST API scenario
+	case policy.APIKindGraphQL:
+		// Collect analytics data for GraphQL API scenario. A GraphQL API has a
+		// single POST route, so request.path/request.method carry no operation
+		// identity — extract it from the POST body instead, unconditionally,
+		// same gating as MCP above.
+		if ctx != nil && ctx.Body != nil && len(ctx.Body.Content) > 0 {
+			trimmed := bytes.TrimSpace(ctx.Body.Content)
+			isBatched := len(trimmed) > 0 && trimmed[0] == '['
+
+			props := GraphQLRequestAnalyticsProperties{
+				Transport: graphqlTransportHTTP,
+				IsBatched: isBatched,
+			}
+
+			if !isBatched {
+				// Decoded into a generic map (not a strict struct) so a malformed
+				// "variables" value (e.g. sent as a non-object) doesn't fail the
+				// whole unmarshal and lose operationName/operationType too - the
+				// same defensive-parsing style already used for MCP payloads below.
+				var graphqlPayload map[string]interface{}
+				if err := json.Unmarshal(trimmed, &graphqlPayload); err != nil {
+					slog.Error("Failed to unmarshal GraphQL request body for analytics", "error", err)
+					break
+				}
+
+				query, _ := graphqlPayload["query"].(string)
+				if operationName, ok := graphqlPayload["operationName"].(string); ok {
+					props.OperationName = operationName
+				}
+				props.OperationType = deriveGraphQLOperationType(query)
+				props.RequestType = deriveGraphQLRequestType(query)
+
+				variableCount := 0
+				if variables, ok := graphqlPayload["variables"].(map[string]interface{}); ok {
+					variableCount = len(variables)
+					if variableCount > 0 {
+						names := make([]string, 0, variableCount)
+						for name := range variables {
+							names = append(names, name)
+						}
+						sort.Strings(names) // deterministic order — map iteration order is not
+						props.VariableNames = names
+					}
+				}
+				props.VariableCount = &variableCount
+			}
+
+			if data, err := json.Marshal(props); err != nil {
+				slog.Error("Failed to marshal GraphQL request analytics properties", "error", err)
+			} else {
+				analyticsMetadata["graphql_request_properties"] = string(data)
+			}
+		}
 	case policy.APIKindLlmProvider:
 		// Collect analytics data for AI API(LLM Provider) specific scenario
 	case policy.APIKindLlmProxy:
@@ -770,6 +973,27 @@ func (a *AnalyticsPolicy) OnResponseBody(_ context.Context, ctx *policy.Response
 	switch apiKind {
 	case policy.APIKindRestApi:
 		// Collect analytics data for REST API specific scenario
+	case policy.APIKindGraphQL:
+		// GraphQL responses are always a single buffered JSON object (never SSE/streaming
+		// in this gateway), so only the buffered OnResponseBody path needs this check.
+		if ctx != nil && ctx.ResponseBody != nil && len(ctx.ResponseBody.Content) > 0 {
+			trimmed := bytes.TrimSpace(ctx.ResponseBody.Content)
+			if len(trimmed) > 0 && trimmed[0] == '{' {
+				var graphqlResponsePayload map[string]interface{}
+				if err := json.Unmarshal(trimmed, &graphqlResponsePayload); err != nil {
+					slog.Warn("Failed to unmarshal GraphQL response body for analytics", "error", err)
+				} else {
+					props := extractGraphQLResponseAnalyticsProps(graphqlResponsePayload)
+					if props != nil {
+						if data, err := json.Marshal(props); err != nil {
+							slog.Error("Failed to marshal GraphQL response analytics properties", "error", err)
+						} else {
+							analyticsMetadata["graphql_response_properties"] = string(data)
+						}
+					}
+				}
+			}
+		}
 	case policy.APIKindLlmProvider, policy.APIKindLlmProxy:
 		templateHandle, ok := ctx.SharedContext.Metadata["template_handle"].(string)
 		slog.Info("Template handle(extracted from route metadata): ", "templateHandle", templateHandle)
@@ -904,6 +1128,8 @@ func (a *AnalyticsPolicy) OnResponseBodyChunk(_ context.Context, ctx *policy.Res
 	switch apiKind {
 	case policy.APIKindRestApi:
 		// No body analytics for REST API
+	case policy.APIKindGraphQL:
+		// No streaming-body analytics for GraphQL API (GraphQL responses aren't SSE).
 	case policy.APIKindLlmProvider, policy.APIKindLlmProxy:
 		templateHandle, ok := ctx.SharedContext.Metadata["template_handle"].(string)
 		if ok && templateHandle != "" {
@@ -2235,6 +2461,51 @@ func extractMCPResponseAnalyticsProps(payload map[string]interface{}) *McpRespon
 	return nil
 }
 
+// extractGraphQLResponseAnalyticsProps derives GraphQL-level error info from a parsed
+// GraphQL response body. Returns nil when the body has no top-level "errors" field at
+// all — a response that never mentions errors carries no error signal to report, distinct
+// from a present-but-empty "errors": [] array, which is reported as IsError=false so
+// consumers can tell "no errors field" apart from "errors field explicitly empty".
+func extractGraphQLResponseAnalyticsProps(payload map[string]interface{}) *GraphQLResponseAnalyticsProperties {
+	errorsVal, hasErrors := payload["errors"]
+	if !hasErrors || errorsVal == nil {
+		return nil
+	}
+	errorsArr, ok := errorsVal.([]interface{})
+	if !ok {
+		return nil
+	}
+
+	isError := len(errorsArr) > 0
+	errorCount := len(errorsArr)
+	props := GraphQLResponseAnalyticsProperties{
+		IsError:    &isError,
+		ErrorCount: &errorCount,
+	}
+
+	// extensions.code is a widely-adopted (Apollo Server and others) but non-spec-mandated
+	// convention for a categorical GraphQL error identifier — best-effort only, from the
+	// first error entry.
+	if isError {
+		if firstErr, ok := errorsArr[0].(map[string]interface{}); ok {
+			if extensions, ok := firstErr["extensions"].(map[string]interface{}); ok {
+				if code, ok := extensions["code"].(string); ok {
+					props.ErrorCode = code
+				}
+			}
+		}
+
+		// isPartialSuccess only has meaning once we already know there are errors — a
+		// clean response has no partial/full distinction to make. A present, non-null
+		// "data" value alongside errors means the client still got usable data back.
+		dataVal, hasData := payload["data"]
+		isPartialSuccess := hasData && dataVal != nil
+		props.IsPartialSuccess = &isPartialSuccess
+	}
+
+	return &props
+}
+
 // isSSEContent returns true when content is Server-Sent Events format, detected via
 // Content-Type header or content structure.
 func isSSEContent(headers *policy.Headers, content []byte) bool {
@@ -2400,25 +2671,28 @@ func getHeaderFlags(params map[string]interface{}) (sendRequestHeaders, sendResp
 	return sendRequestHeaders, sendResponseHeaders
 }
 
-// serializeHeaders renders all headers as a JSON object string ({"name":"v1, v2"}),
-// matching the request_headers/response_headers format the analytics engine reads.
-// Returns "" when there are no headers. Sensitive values are not masked here; the
+// flattenHeaders renders all headers as a flat map[string]string ({"name": "v1, v2"}),
+// joining repeated header values with ", ". Returns nil when there are no headers.
+//
+// This used to JSON-encode that map into a string (serializeHeaders, removed) so it
+// could be carried inside a structpb.Value across the ext_proc -> Envoy -> ALS round
+// trip. That round trip is gone for captured headers specifically: the policy engine
+// now hands this map straight to its in-process ext_proc<->ALS correlation store,
+// keyed per ext_proc stream (see the policy engine's internal/analytics/correlation and
+// internal/kernel's buildAnalyticsStruct, which deliberately excludes the
+// request_headers/response_headers keys this policy stamps into AnalyticsMetadata
+// from what gets sent to Envoy). Sensitive values are not masked here; the
 // stdout/log publisher applies masked_headers on output.
-func serializeHeaders(headers *policy.Headers) string {
+func flattenHeaders(headers *policy.Headers) map[string]string {
 	all := headers.GetAll()
 	if len(all) == 0 {
-		return ""
+		return nil
 	}
 	flat := make(map[string]string, len(all))
 	for name, values := range all {
 		flat[name] = strings.Join(values, ", ")
 	}
-	data, err := json.Marshal(flat)
-	if err != nil {
-		slog.Error("Failed to marshal headers for analytics", "error", err)
-		return ""
-	}
-	return string(data)
+	return flat
 }
 
 // Helper to extract string values via JSONPath
@@ -2482,4 +2756,40 @@ func deriveMCPCapability(method string) string {
 	default:
 		return ""
 	}
+}
+
+// graphqlOperationTypeRegex matches an explicit leading "mutation"/"subscription"
+// keyword in a GraphQL query document. Anonymous shorthand queries (`{ ... }`) and
+// documents explicitly starting with "query" both fall through to the "query" default.
+var graphqlOperationTypeRegex = regexp.MustCompile(`(?i)^\s*(mutation|subscription)\b`)
+
+// deriveGraphQLOperationType derives a GraphQL operation's type (query/mutation/
+// subscription) from its query document text. This is a lightweight prefix check,
+// not a real GraphQL parser — sufficient to classify the operation for analytics
+// without pulling in a full parsing dependency.
+func deriveGraphQLOperationType(query string) string {
+	if m := graphqlOperationTypeRegex.FindStringSubmatch(query); m != nil {
+		return strings.ToLower(m[1])
+	}
+	return "query"
+}
+
+// graphqlIntrospectionFieldRegex matches the GraphQL introspection meta-fields __schema
+// and __type as whole identifiers — the trailing \b excludes "__typename" (a distinct,
+// commonly-used-in-production meta-field for polymorphic types, not introspection),
+// since after "__type" the next rune in "__typename" is a word character ('n'), so no
+// word boundary exists there.
+var graphqlIntrospectionFieldRegex = regexp.MustCompile(`\b__schema\b|\b__type\b`)
+
+// deriveGraphQLRequestType classifies a GraphQL request as schema introspection (IDE
+// autocomplete, codegen tooling querying __schema/__type) versus a real operation
+// invocation, so introspection traffic doesn't inflate invocation-volume metrics. Same
+// lightweight, regex-based heuristic as deriveGraphQLOperationType — not a real parser,
+// so an introspection field referenced only deep inside an unrelated identifier or a
+// query comment can false-positive; acceptable for this analytics use case.
+func deriveGraphQLRequestType(query string) string {
+	if graphqlIntrospectionFieldRegex.MatchString(query) {
+		return graphqlRequestTypeIntrospection
+	}
+	return graphqlRequestTypeOperation
 }

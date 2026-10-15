@@ -1,0 +1,73 @@
+# --------------------------------------------------------------------
+# Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+#
+# WSO2 LLC. licenses this file to you under the Apache License,
+# Version 2.0 (the "License"); you may not use this file except
+# in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+# --------------------------------------------------------------------
+
+
+# Two-controller Platform Gateway, merged over docker-compose.yaml. Both controllers read the
+# same database from api-platform.env. gateway-controller serves the management API;
+# gateway-controller-xds alone feeds the runtime over xDS and learns every change through
+# the event path between the controllers.
+
+services:
+  gateway-controller${INSTANCE:-}:
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:9092/api/admin/v1/health || exit 1"]
+      interval: 2s
+      timeout: 3s
+      retries: 90
+
+  gateway-controller-xds${INSTANCE:-}:
+    image: ${PG_CONTROLLER_IMAGE:-ghcr.io/wso2/api-platform/gateway-controller:1.2.0-SNAPSHOT}
+    command:
+      - "-config"
+      - "/etc/gateway-controller/config.toml"
+      - "-config"
+      - "/etc/gateway-controller/controller-xds.toml"
+    env_file:
+      - api-platform.env
+    environment:
+      - IT_TEMPLATE_PATH=/anything
+      - IT_RATE_LIMIT=5
+      - IT_ALLOW_CREDENTIALS=true
+      - GOCOVERDIR=${GOCOVERDIR:-}
+    volumes:
+      - ./config.toml:/etc/gateway-controller/config.toml:ro
+      - ./controller-xds.toml:/etc/gateway-controller/controller-xds.toml:ro
+      - ./aesgcm-keys/default-aesgcm256-v1.bin:/app/data/aesgcm-keys/default-aesgcm256-v1.bin:ro
+      - ./listener-certs:/app/listener-certs:ro
+      - ./certificates:/app/certificates
+    ports:
+      - "9094"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:9094/api/admin/v1/health || exit 1"]
+      interval: 2s
+      timeout: 3s
+      retries: 90
+    depends_on:
+      gateway-controller${INSTANCE:-}:
+        condition: service_healthy
+    networks:
+      - gateway
+
+  gateway-runtime${INSTANCE:-}:
+    environment:
+      - GATEWAY_CONTROLLER_HOST=gateway-controller-xds${INSTANCE:-}
+    depends_on:
+      gateway-controller-xds${INSTANCE:-}:
+        condition: service_healthy

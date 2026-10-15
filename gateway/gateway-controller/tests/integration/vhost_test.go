@@ -82,7 +82,8 @@ spec:
 		logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 		validator := config.NewAPIValidator()
 		fullCfg := &config.Config{Router: *routerCfg}
-		snapshotManager := xds.NewSnapshotManager(store, logger, routerCfg, db, fullCfg)
+		snapshotManager, err := xds.NewSnapshotManager(store, logger, routerCfg, db, fullCfg)
+		require.NoError(t, err)
 		svc := utils.NewAPIDeploymentService(store, db, snapshotManager, validator, routerCfg, integrationTestEventHub{}, "test-gateway", nil, nil)
 		return svc, db
 	}

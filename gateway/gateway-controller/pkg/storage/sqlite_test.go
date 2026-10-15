@@ -19,6 +19,7 @@
 package storage
 
 import (
+	"database/sql"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -87,6 +88,7 @@ func TestSQLiteStorage_SchemaInitialization(t *testing.T) {
 		"llm_providers",
 		"llm_proxies",
 		"mcp_proxies",
+		"graphql_apis",
 		"certificates",
 		"llm_provider_templates",
 		"agents",
@@ -710,6 +712,178 @@ func TestSQLiteStorage_GetCertificate_Success(t *testing.T) {
 	assert.Equal(t, retrieved.Subject, cert.Subject)
 }
 
+func TestSQLiteStorage_ListCertificatesByUsage(t *testing.T) {
+	store := setupTestStorage(t)
+	defer store.db.Close()
+
+	upstreamCert := createTestStoredCertificate()
+	upstreamCert.Name = "usage-filter-upstream-cert"
+	upstreamCert.Usage = models.CertificateUsageUpstream
+	assert.NilError(t, store.SaveCertificate(upstreamCert))
+
+	clientCert := createTestStoredCertificate()
+	clientCert.Name = "usage-filter-client-cert"
+	clientCert.Usage = models.CertificateUsageDownstream
+	assert.NilError(t, store.SaveCertificate(clientCert))
+
+	clientResults, err := store.ListCertificatesByUsage(models.CertificateUsageDownstream)
+	assert.NilError(t, err)
+	assert.Equal(t, len(clientResults), 1)
+	assert.Equal(t, clientResults[0].UUID, clientCert.UUID)
+
+	upstreamResults, err := store.ListCertificatesByUsage(models.CertificateUsageUpstream)
+	assert.NilError(t, err)
+	assert.Equal(t, len(upstreamResults), 1)
+	assert.Equal(t, upstreamResults[0].UUID, upstreamCert.UUID)
+}
+
+// An identity stores its role: default, keeps it across a rotation, and an
+// identity uploaded without a role reads back as today.
+func TestSQLiteStorage_DefaultIdentityRoleSurvivesRotation(t *testing.T) {
+	store := setupTestStorage(t)
+	defer store.db.Close()
+
+	defaultIdentity := createTestStoredCertificate()
+	defaultIdentity.UUID = "default-identity"
+	defaultIdentity.Name = "default-identity"
+	defaultIdentity.Usage = models.CertificateUsageIdentity
+	defaultIdentity.Role = models.CertificateRoleDefault
+	defaultIdentity.PrivateKeyCiphertext = "ciphertext-1"
+	assert.NilError(t, store.SaveCertificate(defaultIdentity))
+
+	namedIdentity := createTestStoredCertificate()
+	namedIdentity.UUID = "named-identity"
+	namedIdentity.Name = "named-identity"
+	namedIdentity.Usage = models.CertificateUsageIdentity
+	namedIdentity.PrivateKeyCiphertext = "ciphertext-2"
+	assert.NilError(t, store.SaveCertificate(namedIdentity))
+
+	rotated := createTestStoredCertificate()
+	rotated.UUID = defaultIdentity.UUID
+	rotated.Name = defaultIdentity.Name
+	rotated.Usage = models.CertificateUsageIdentity
+	rotated.PrivateKeyCiphertext = "ciphertext-rotated"
+	assert.NilError(t, store.UpdateCertificate(rotated))
+
+	got, err := store.GetCertificate(defaultIdentity.UUID)
+	assert.NilError(t, err)
+	assert.Equal(t, got.Role, models.CertificateRoleDefault)
+	assert.Equal(t, got.PrivateKeyCiphertext, "ciphertext-rotated")
+	assert.Assert(t, got.IsDefaultIdentity())
+
+	got, err = store.GetCertificate(namedIdentity.UUID)
+	assert.NilError(t, err)
+	assert.Equal(t, got.Role, models.CertificateRoleClient)
+	assert.Assert(t, !got.IsDefaultIdentity())
+}
+
+// A database at the previous schema version is migrated in place: its row
+// reads back with the column defaults and a new row saves with explicit usage
+// and role.
+func TestSQLite_UpgradeAddsCertificateUsageColumns(t *testing.T) {
+	const preMigrationSchemaVersion = previousSchemaVersion
+
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "upgrade-test.db")
+	gatewayID := "platform-gateway-id"
+
+	rawDB, err := sql.Open("sqlite3", dbPath)
+	assert.NilError(t, err)
+
+	_, err = rawDB.Exec(`
+		CREATE TABLE certificates (
+			uuid TEXT NOT NULL,
+			gateway_id TEXT NOT NULL,
+			name TEXT NOT NULL,
+			certificate BLOB NOT NULL,
+			subject TEXT NOT NULL,
+			issuer TEXT NOT NULL,
+			not_before TIMESTAMP NOT NULL,
+			not_after TIMESTAMP NOT NULL,
+			cert_count INTEGER NOT NULL DEFAULT 1,
+			created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY (gateway_id, uuid),
+			UNIQUE(gateway_id, name)
+		)
+	`)
+	assert.NilError(t, err)
+
+	notBefore := time.Now().Add(-24 * time.Hour)
+	notAfter := time.Now().Add(365 * 24 * time.Hour)
+	_, err = rawDB.Exec(`
+		INSERT INTO certificates (uuid, gateway_id, name, certificate, subject, issuer, not_before, not_after, cert_count)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`,
+		"pre-migration-cert", gatewayID, "pre-migration-cert",
+		[]byte("-----BEGIN CERTIFICATE-----\nMIIC...\n-----END CERTIFICATE-----"),
+		"CN=pre-migration.example.com", "CN=Test CA", notBefore, notAfter, 1,
+	)
+	assert.NilError(t, err)
+
+	_, err = rawDB.Exec(fmt.Sprintf("PRAGMA user_version = %d", preMigrationSchemaVersion))
+	assert.NilError(t, err)
+	assert.NilError(t, rawDB.Close())
+
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	upgraded, err := NewStorage(BackendConfig{Type: "sqlite", SQLitePath: dbPath, GatewayID: gatewayID}, logger)
+	assert.NilError(t, err)
+	defer upgraded.(*sqlStore).db.Close()
+
+	existing, err := upgraded.GetCertificate("pre-migration-cert")
+	assert.NilError(t, err)
+	assert.Equal(t, existing.Usage, models.CertificateUsageUpstream)
+	assert.Equal(t, existing.Role, models.CertificateRoleClient)
+	// match_json has no default, so the migrated row has a nil Match.
+	if existing.Match != nil {
+		t.Fatalf("expected a nil Match for the pre-migration row, got %+v", existing.Match)
+	}
+
+	newCert := createTestStoredCertificate()
+	newCert.Usage = models.CertificateUsageDownstream
+	assert.NilError(t, upgraded.SaveCertificate(newCert))
+
+	saved, err := upgraded.GetCertificate(newCert.UUID)
+	assert.NilError(t, err)
+	assert.Equal(t, saved.Usage, models.CertificateUsageDownstream)
+
+	// Probe the match_json column directly, then round-trip a relay row.
+	sqlDB := upgraded.(*sqlStore).db
+	rows, err := sqlDB.Query(`PRAGMA table_info(certificates)`)
+	assert.NilError(t, err)
+	defer rows.Close()
+	hasMatchJSONColumn := false
+	for rows.Next() {
+		var cid int
+		var name, colType string
+		var notNull, pk int
+		var dfltValue sql.NullString
+		assert.NilError(t, rows.Scan(&cid, &name, &colType, &notNull, &dfltValue, &pk))
+		if name == "match_json" {
+			hasMatchJSONColumn = true
+		}
+	}
+	assert.NilError(t, rows.Err())
+	if !hasMatchJSONColumn {
+		t.Fatal("expected the migrated schema to have a certificates.match_json column")
+	}
+
+	relayCert := createTestStoredCertificate()
+	relayCert.UUID = "post-upgrade-relay-cert"
+	relayCert.Name = "post-upgrade-relay-cert"
+	relayCert.Usage = models.CertificateUsageDownstream
+	relayCert.Role = models.CertificateRoleRelay
+	relayCert.Match = &models.CertificateMatch{DNSSANs: []string{"lb.corp.test"}}
+	assert.NilError(t, upgraded.SaveCertificate(relayCert))
+
+	savedRelay, err := upgraded.GetCertificate(relayCert.UUID)
+	assert.NilError(t, err)
+	if savedRelay.Match == nil {
+		t.Fatal("expected a non-nil Match for the relay row saved after upgrading a v4 database")
+	}
+	assert.DeepEqual(t, savedRelay.Match.DNSSANs, relayCert.Match.DNSSANs)
+}
+
 func TestSQLiteStorage_GetAPIKeyByID_NotFound(t *testing.T) {
 	storage := setupTestStorage(t)
 	defer storage.db.Close()
@@ -840,6 +1014,37 @@ func TestSQLiteStorage_GetAPIKeysByAPI_Success(t *testing.T) {
 	}
 	assert.Assert(t, keyIDs["0000-key1-0000-000000000000"])
 	assert.Assert(t, keyIDs["0000-key2-0000-000000000000"])
+}
+
+// TestSQLiteStorage_ListAPIKeysForArtifactsNotIn_ExcludesLocalKeys guards against
+// regressing the CP bulk-sync reconciliation into treating every locally-generated key as
+// stale. A source="local" key was generated on the gateway itself and was never reported
+// to the control plane, so its absence from a CP fetch (keyUUIDs) must never make it a
+// deletion candidate — only source="external" keys the control plane once knew about and
+// has since stopped reporting are genuinely stale.
+func TestSQLiteStorage_ListAPIKeysForArtifactsNotIn_ExcludesLocalKeys(t *testing.T) {
+	storage := setupTestStorage(t)
+	defer storage.db.Close()
+
+	config := createTestStoredConfig()
+	err := storage.SaveConfig(config)
+	assert.NilError(t, err)
+
+	localKey := createTestAPIKey()
+	localKey.ArtifactUUID = config.UUID
+	localKey.Source = "local"
+	assert.NilError(t, storage.SaveAPIKey(localKey))
+
+	externalKey := createTestAPIKey()
+	externalKey.ArtifactUUID = config.UUID
+	externalKey.Source = "external"
+	assert.NilError(t, storage.SaveAPIKey(externalKey))
+
+	// Simulate a CP bulk-sync round that reported zero keys for this artifact's kind.
+	stale, err := storage.ListAPIKeysForArtifactsNotIn([]string{config.UUID}, []string{})
+	assert.NilError(t, err)
+	assert.Equal(t, len(stale), 1, "only the control-plane-issued key should be reported stale")
+	assert.Equal(t, stale[0].UUID, externalKey.UUID)
 }
 
 func TestLoadAPIKeysFromDatabase_Success(t *testing.T) {

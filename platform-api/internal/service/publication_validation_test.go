@@ -21,6 +21,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 )
 
@@ -62,5 +63,19 @@ func TestValidateDraftFieldLengths(t *testing.T) {
 				t.Fatalf("got %v, want error containing %q", err, tt.wantErr)
 			}
 		})
+	}
+}
+
+func TestDocUUIDsForHandles(t *testing.T) {
+	resolved := map[string]string{"guide": "uuid-guide", "faq": "uuid-faq"}
+
+	uuids, err := docUUIDsForHandles([]string{"faq", "guide"}, resolved)
+	if err != nil || len(uuids) != 2 || uuids[0] != "uuid-faq" || uuids[1] != "uuid-guide" {
+		t.Fatalf("want UUIDs in handle order, got %v, %v", uuids, err)
+	}
+
+	_, err = docUUIDsForHandles([]string{"guide", "nope", "gone"}, resolved)
+	if !apperror.APIPublicationValidationFailed.Is(err) || !strings.Contains(err.Error(), "nope, gone") {
+		t.Fatalf("want a validation error listing the missing handles, got %v", err)
 	}
 }

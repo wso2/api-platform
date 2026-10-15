@@ -401,6 +401,16 @@ func (s *APIPortalService) UpdateAPIPortal(handle string, req *api.UpdateApiPort
 	if portal == nil {
 		return nil, apperror.APIPortalNotFound.New()
 	}
+	// A pending portal's URL is owned by its provisioner until it is active.
+	if req.Url != nil && portal.IsPending() {
+		requested, err := validateAPIPortalURL(*req.Url)
+		if err != nil {
+			return nil, err
+		}
+		if requested != portal.URL {
+			return nil, apperror.ValidationFailed.New("The url field cannot be changed while the API Portal is pending.")
+		}
+	}
 
 	if req.Name != nil {
 		name := strings.TrimSpace(*req.Name)

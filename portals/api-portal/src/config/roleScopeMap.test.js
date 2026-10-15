@@ -190,13 +190,19 @@ test('the shipped role-to-scope-mapping.yaml validates against the shipped OpenA
     );
 });
 
-test('the shipped platform-api-system role grants exactly the five publishing scopes', () => {
+test('the shipped platform-api-system role grants exactly the six publish + self-registration scopes', () => {
     // Pinned scope list, not just presence: this role is granted to Platform API's
     // outbound publish caller, so silently widening it (accidentally adding
     // application/subscription scopes, say) would hand a service identity powers
     // meant for a human admin. Silently narrowing it would leave publishing
     // broken for whichever resource lost its scope, which the role-name-only
     // assertion above would miss.
+    //
+    // dp:webhook_subscriber:manage is here because Platform API is expected to
+    // register itself as a webhook subscriber to receive subscription/apikey
+    // events (POST /webhook-subscribers) - the shared-key identity is the same
+    // actor already making publish calls, so keeping the grant on this role
+    // avoids introducing a second service credential.
     const map = roleScopeMap.loadRoleScopeMap(SHIPPED_MAPPING_PATH, SPEC_PATH);
     assert.deepEqual(map.get('platform-api-system'), [
         'dp:api:manage',
@@ -204,6 +210,7 @@ test('the shipped platform-api-system role grants exactly the five publishing sc
         'dp:mcp_server:manage',
         'dp:mcp_server_content:manage',
         'dp:subscription_plan:manage',
+        'dp:webhook_subscriber:manage',
     ]);
 });
 
@@ -394,5 +401,13 @@ test('the shipped platform-api-system role reaches exactly the pinned publish-op
         'getSubscriptionPlan',
         'listSubscriptionPlans',
         'putSubscriptionPlans',
+        // Webhook subscribers (dp:webhook_subscriber:manage) - Platform API
+        // registers itself as a subscriber to receive apikey/subscription events.
+        'createWebhookSubscriber',
+        'deleteWebhookSubscriber',
+        'getWebhookSubscriber',
+        'getWebhookSubscriberDeliveries',
+        'getWebhookSubscribers',
+        'updateWebhookSubscriber',
     ].sort());
 });
