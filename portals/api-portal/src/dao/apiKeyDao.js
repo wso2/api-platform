@@ -131,11 +131,13 @@ async function get(orgId, keyId, transaction) {
     return key;
 }
 
-// Resolves a key's handle (scoped to the given API) to its uuid, or null if not found.
-async function getIdByHandle(orgId, apiId, handle) {
+// Resolves a key's handle (scoped to the given API and user) to its uuid, or null if not found.
+async function getIdByHandle(orgId, apiId, handle, createdBy) {
+    if (!createdBy) throw new Error('getIdByHandle requires createdBy: API key handles are unique per owner');
     const key = await db.queryOne(
-        `SELECT uuid FROM ${API_KEYS_TABLE} WHERE org_uuid = ? AND portal_id = ? AND api_uuid = ? AND handle = ?`,
-        [orgId, getPortalId(), apiId, handle]
+        `SELECT uuid FROM ${API_KEYS_TABLE}
+         WHERE org_uuid = ? AND portal_id = ? AND api_uuid = ? AND handle = ? AND created_by = ?`,
+        [orgId, getPortalId(), apiId, handle, createdBy]
     );
     return key ? key.uuid : null;
 }
