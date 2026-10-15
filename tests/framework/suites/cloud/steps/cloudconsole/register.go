@@ -51,6 +51,13 @@ const (
 	keyEnvironmentName  = "cloudEnvironmentName"
 	keyManagedGatewayID = "cloudManagedGatewayID"
 
+	keyAPIDefinition        = "cloudAPIDefinition"
+	keyAPIKey               = "cloudAPIKey"
+	keyRejectedAPIID        = "cloudRejectedAPIID"
+	keyVersionAPIID         = "cloudVersionAPIID"
+	keyVersionDeploymentID  = "cloudVersionDeploymentID"
+	keyVersionAPIDefinition = "cloudVersionAPIDefinition"
+
 	cloudConsoleAccessTokenEnv = "CLOUD_CONSOLE_ACCESS_TOKEN"
 
 	resourceActor = "apip-console"
@@ -81,11 +88,21 @@ func Register(sc *godog.ScenarioContext, topo *frameworkruntime.Topology, funnel
 	sc.Step(`^I obtain an APIP cloud console token$`, s.obtainToken)
 	sc.Step(`^I find the default APIP project$`, s.findDefaultProject)
 	sc.Step(`^I find an active APIP gateway$`, s.findActiveGateway)
-	sc.Step(`^I create a synthetic REST API in the default project$`, s.createAPI)
-	sc.Step(`^I deploy the synthetic REST API to the active gateway$`, s.deployAPI)
-	sc.Step(`^the synthetic REST API deployment should become DEPLOYED$`, s.waitDeployment)
+	sc.Step(`^I create a synthetic REST API in the default project$`, s.createDefaultAPI)
+	sc.Step(`^I create a synthetic REST API in the default project with:$`, s.createAPIWithValues)
+	sc.Step(`^I create a new version "([^"]*)" of the synthetic REST API with:$`, s.createNewAPIVersion)
+	sc.Step(`^I submit a synthetic REST API creation request with:$`, s.submitAPICreation)
+	sc.Step(`^the cloud API response status code should be (\d+)$`, s.assertCloudResponseStatus)
+	sc.Step(`^I update the synthetic REST API with:$`, s.updateAPI)
+	sc.Step(`^I deploy the (synthetic REST API|new API version) to the active gateway$`, s.deployAPI)
+	sc.Step(`^I redeploy the synthetic REST API to the active gateway$`, s.redeployAPI)
+	sc.Step(`^I undeploy the synthetic REST API$`, s.undeployAPI)
+	sc.Step(`^the (synthetic REST API|new API version) deployment should become (DEPLOYED|UNDEPLOYED)$`, s.waitDeployment)
+	sc.Step(`^a "([^"]*)" request to "([^"]*)" should keep returning (\d+) until the redeployment is DEPLOYED$`, s.keepServingUntilDeployed)
+	sc.Step(`^I create an API key for the synthetic REST API$`, s.createAPIKey)
+	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" with header "([^"]*)" set to the API key until status (\d+)$`, s.sendWithAPIKeyUntilStatus)
 	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" until status (\d+)$`, s.sendUntilStatus)
-	sc.Step(`^the synthetic REST API data-plane response should contain post 1$`, s.assertAPIResponse)
+	sc.Step(`^the synthetic REST API data-plane response should contain post (\d+)$`, s.assertAPIResponse)
 	sc.Step(`^I delete the synthetic REST API$`, s.deleteAPI)
 	sc.Step(`^the synthetic REST API should eventually be absent$`, s.verifyAPIDeleted)
 
