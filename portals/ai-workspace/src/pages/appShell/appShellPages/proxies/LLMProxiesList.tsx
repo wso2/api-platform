@@ -451,7 +451,7 @@ export default function LLMProxiesList() {
                       <TableRow>
                         <TableCell>Name</TableCell>
                         <TableCell>Description</TableCell>
-                        <TableCell>Service Provider</TableCell>
+                        <TableCell>Primary Provider</TableCell>
                         <TableCell>Version</TableCell>
                         <TableCell>Last Updated</TableCell>
                         <TableCell align="right">Actions</TableCell>
