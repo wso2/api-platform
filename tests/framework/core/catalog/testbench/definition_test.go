@@ -21,6 +21,7 @@ package testbench
 import (
 	"crypto/x509"
 	"encoding/pem"
+	"runtime/debug"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -73,4 +74,29 @@ func TestTheIdentityProviderServesHTTPSWithTheSharedCertificate(t *testing.T) {
 
 	_, err = oidc.New(pair.CertPEM, pair.PrivateKeyPEM, OIDCIssuer)
 	require.NoError(t, err, "the identity provider must accept the certificate it is given")
+}
+
+func TestImageForModuleFollowsTheFrameworkRelease(t *testing.T) {
+	dependency := func(version string, replace *debug.Module) *debug.BuildInfo {
+		return &debug.BuildInfo{Deps: []*debug.Module{
+			{Path: "github.com/stretchr/testify", Version: "v1.12.1"},
+			{Path: frameworkModule, Version: version, Replace: replace},
+		}}
+	}
+
+	require.Equal(t, "ghcr.io/wso2/api-platform/testbench:0.3.1", imageForModule(dependency("v0.3.1", nil)))
+	require.Equal(t, "ghcr.io/wso2/api-platform/testbench:12.0.4", imageForModule(dependency("v12.0.4", nil)))
+}
+
+func TestImageForModuleUsesTheLocalImageWhenNoReleaseIsInUse(t *testing.T) {
+	const local = "ghcr.io/wso2/api-platform/testbench:test"
+	withVersion := func(version string, replace *debug.Module) *debug.BuildInfo {
+		return &debug.BuildInfo{Deps: []*debug.Module{{Path: frameworkModule, Version: version, Replace: replace}}}
+	}
+
+	require.Equal(t, local, imageForModule(&debug.BuildInfo{}), "the framework is the main module")
+	require.Equal(t, local, imageForModule(withVersion("v0.0.0-20261012010203-abcdef123456", nil)), "pseudo-version")
+	require.Equal(t, local, imageForModule(withVersion("v0.3.1-rc.1", nil)), "pre-release")
+	require.Equal(t, local, imageForModule(withVersion("v0.3.1", &debug.Module{Path: "../fw"})), "replaced module")
+	require.Equal(t, local, imageForModule(withVersion("(devel)", nil)), "development build")
 }

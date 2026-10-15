@@ -828,7 +828,8 @@ const createAPITemplate = async (req, res) => {
             });
             throw new Error(
                 `Required directories not found after extraction. Content path: ${contentPath}, Images path: ${imagesPath}
-                , Documents path: ${documentPath}`
+                , Documents path: ${documentPath}`,
+                { cause: err }
             );
         }
         let apiContent = [];
@@ -1000,7 +1001,8 @@ const updateAPITemplate = async (req, res) => {
             });
             throw new Error(
                 `Required directories not found after extraction. Content path: ${contentPath}, Images path: ${imagesPath},
-                Documents path: ${documentPath}`
+                Documents path: ${documentPath}`,
+                { cause: err }
             );
         }
         let apiContent = [];
@@ -1132,9 +1134,9 @@ const getAPIFile = async (req, res) => {
     // visitors, so ?orgId does select the organization whose icons are read — any
     // organization under this portal_id (orgContext.resolvePublicContentOrg).
     const isImageType = type === constants.DOC_TYPES.IMAGES;
-    let apiFileResponse = "";
+    let apiFileResponse;
     let apiFile;
-    let contentType = "";
+    let contentType;
     let apiId;
     // Declared out here so the catch below can log it; resolved inside the try
     // because getOrgUuid() hits the database and can throw.

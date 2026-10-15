@@ -153,6 +153,67 @@ func TestGraphQLAPITransformer_NoOperationsLoop(t *testing.T) {
 	assert.Len(t, rdc.Routes, 1)
 }
 
+func TestGraphQLAPITransformer_CorsPolicyAddsOptionsRoute(t *testing.T) {
+	// A GraphQLApi has no per-operation list to add an explicit OPTIONS entry to
+	// (unlike RestApi), so a cors policy attached at the API level must make the
+	// transformer synthesize the OPTIONS route itself — otherwise a browser's
+	// preflight 404s before cors (or any policy) ever runs.
+	defs := map[string]models.PolicyDefinition{"cors|v1.0.0": {Name: "cors", Version: "v1.0.0"}}
+	transformer := NewGraphQLAPITransformer(testRouterCfg(), &config.Config{}, defs)
+	cfg := makeGraphQLAPIStoredConfig(nil, []api.Policy{{Name: "cors"}})
+
+	rdc, err := transformer.Transform(cfg)
+	require.NoError(t, err)
+	assert.Len(t, rdc.Routes, 2)
+
+	postRouteKey := xds.GenerateRouteName("POST", "/countries/$version", "v1.0", "", "main.local")
+	optionsRouteKey := xds.GenerateRouteName("OPTIONS", "/countries/$version", "v1.0", "", "main.local")
+
+	require.Contains(t, rdc.Routes, postRouteKey)
+	optionsRoute, ok := rdc.Routes[optionsRouteKey]
+	require.True(t, ok, "expected an OPTIONS route keyed %q, got keys %v", optionsRouteKey, keysOf(rdc.Routes))
+
+	assert.Equal(t, "OPTIONS", optionsRoute.Method)
+	assert.Equal(t, "/countries/v1.0", optionsRoute.Path)
+	assert.Equal(t, "Exact", optionsRoute.PathMatchType)
+	assert.Equal(t, "main.local", optionsRoute.Vhost)
+	assert.Equal(t, rdc.Routes[postRouteKey].Upstream.ClusterKey, optionsRoute.Upstream.ClusterKey)
+
+	// The OPTIONS route must carry a policy chain too (the same one as POST) so
+	// cors actually gets to run against the preflight.
+	require.Contains(t, rdc.PolicyChains, optionsRouteKey)
+	assert.Equal(t, rdc.PolicyChains[postRouteKey], rdc.PolicyChains[optionsRouteKey])
+}
+
+func TestGraphQLAPITransformer_NoCorsPolicyNoOptionsRoute(t *testing.T) {
+	// Without cors attached, nothing should change from today's behavior — no
+	// OPTIONS route synthesized, matching TestGraphQLAPITransformer_SingleRoute.
+	defs := map[string]models.PolicyDefinition{"api-key-auth|v1.0.0": {Name: "api-key-auth", Version: "v1.0.0"}}
+	transformer := NewGraphQLAPITransformer(testRouterCfg(), &config.Config{}, defs)
+	cfg := makeGraphQLAPIStoredConfig(nil, []api.Policy{{Name: "api-key-auth"}})
+
+	rdc, err := transformer.Transform(cfg)
+	require.NoError(t, err)
+	assert.Len(t, rdc.Routes, 1)
+}
+
+func TestGraphQLAPITransformer_CorsPolicyAddsOptionsRouteForSandboxToo(t *testing.T) {
+	defs := map[string]models.PolicyDefinition{"cors|v1.0.0": {Name: "cors", Version: "v1.0.0"}}
+	transformer := NewGraphQLAPITransformer(testRouterCfg(), &config.Config{}, defs)
+	cfg := makeGraphQLAPIStoredConfig(ptrStr("http://sandbox-backend:8080/graphql"), []api.Policy{{Name: "cors"}})
+
+	rdc, err := transformer.Transform(cfg)
+	require.NoError(t, err)
+	// main POST + main OPTIONS + sandbox POST + sandbox OPTIONS.
+	assert.Len(t, rdc.Routes, 4)
+
+	sandboxOptionsRouteKey := xds.GenerateRouteName("OPTIONS", "/countries/$version", "v1.0", "", "sandbox.local")
+	sandboxOptionsRoute, ok := rdc.Routes[sandboxOptionsRouteKey]
+	require.True(t, ok, "expected a sandbox OPTIONS route keyed %q, got keys %v", sandboxOptionsRouteKey, keysOf(rdc.Routes))
+	assert.Equal(t, "sandbox.local", sandboxOptionsRoute.Vhost)
+	require.Contains(t, rdc.PolicyChains, sandboxOptionsRouteKey)
+}
+
 func TestGraphQLAPITransformer_WrongConfigurationType(t *testing.T) {
 	transformer := NewGraphQLAPITransformer(testRouterCfg(), &config.Config{}, map[string]models.PolicyDefinition{})
 	cfg := &models.StoredConfig{
@@ -163,6 +224,25 @@ func TestGraphQLAPITransformer_WrongConfigurationType(t *testing.T) {
 
 	_, err := transformer.Transform(cfg)
 	assert.Error(t, err)
+}
+
+// TestGraphQLAPITransformer_UnresolvablePolicyFailsDeployment pins the fix for a
+// silent-auth-bypass gap: an API-level policy that fails to resolve (not present
+// in the loaded policy definitions — e.g. api-key-auth on a gateway whose
+// default-policies directory is missing/incomplete) used to be logged and
+// silently dropped, so the route deployed with a *weaker* policy chain than
+// configured and no signal beyond a log line. A GraphQLApi has no
+// operation-level policies to fall back on — the API-level chain built here IS
+// the whole chain — so this must fail the deployment instead, matching
+// GO-AUTH-001's fail-closed principle applied to policy resolution.
+func TestGraphQLAPITransformer_UnresolvablePolicyFailsDeployment(t *testing.T) {
+	transformer := NewGraphQLAPITransformer(testRouterCfg(), &config.Config{}, map[string]models.PolicyDefinition{})
+	cfg := makeGraphQLAPIStoredConfig(nil, []api.Policy{{Name: "api-key-auth"}})
+
+	rdc, err := transformer.Transform(cfg)
+	require.Error(t, err, "expected Transform to fail when api-key-auth cannot be resolved, not silently drop it")
+	assert.Nil(t, rdc)
+	assert.Contains(t, err.Error(), "api-key-auth")
 }
 
 func keysOf(m map[string]*models.Route) []string {

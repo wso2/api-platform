@@ -131,14 +131,76 @@ Feature: API Portal multi-organization organization claims
     Then 10 concurrent API Portal "GET" requests to "/apis" using portal "api-portal-multi-organization" with token "token" should all return status 200
     And the API Portal "api-portal-multi-organization" should have 1 organization with IDP reference "${CTX:race}"
 
-  Scenario: A token from an issuer other than the configured one is rejected and provisions nothing
+  # Per-organization issuers: the testbench signs a token issued as ".../o/<org>/oauth2/token"
+  # with that organization's own key, served at ".../o/<org>/oauth2/jwks".
+
+  Scenario: A token from an organization's own issuer is verified with that organization's keys
     Given I generate a unique resource name from "suborg" and store it as "suborg"
     And I mint an API Portal IDP token stored as "token" with claims:
-      | sub      | s1                                                   |
-      | org_id   | ${CTX:suborg}                                        |
-      | org_name | Suborg ${CTX:suborg}                                 |
-      | iss      | https://testbench:3015/o/${CTX:suborg}/oauth2/token  |
-      | roles    | ["ap_admin"]                                         |
+      | sub        | s1                                                   |
+      | org_id     | ${CTX:suborg}                                        |
+      | org_name   | Suborg ${CTX:suborg}                                 |
+      | org_handle | ${CTX:suborg}                                        |
+      | iss        | https://testbench:3015/o/${CTX:suborg}/oauth2/token  |
+      | roles      | ["ap_admin"]                                         |
+    When I send an API Portal "GET" request to "/apis" using portal "api-portal-multi-organization" with token "token"
+    Then the response status code should be 200
+    And the API Portal "api-portal-multi-organization" should have 1 organizations with IDP reference "${CTX:suborg}"
+
+  Scenario: The template organization claim, not the organization claim, must name the issuer's organization
+    # org_id names the issuer's organization, but org_handle, the binding claim, doesn't.
+    Given I generate a unique resource name from "unbound" and store it as "unbound"
+    And I mint an API Portal IDP token stored as "token" with claims:
+      | sub        | s2                                                    |
+      | org_id     | ${CTX:unbound}                                        |
+      | org_handle | elsewhere-${CTX:unbound}                              |
+      | iss        | https://testbench:3015/o/${CTX:unbound}/oauth2/token  |
+      | roles      | ["ap_admin"]                                          |
     When I send an API Portal "GET" request to "/apis" using portal "api-portal-multi-organization" with token "token"
     Then the response status code should be 401
-    And the API Portal "api-portal-multi-organization" should have 0 organizations with IDP reference "${CTX:suborg}"
+    And the API Portal "api-portal-multi-organization" should have 0 organizations with IDP reference "${CTX:unbound}"
+
+  Scenario: A per-organization token without the organization claim is rejected, not admitted to the configured organization
+    # Bound through org_handle, but no org_id: one organization's issuer must not vouch
+    # for a credential that would fall back to the configured organization.
+    Given I generate a unique resource name from "noclaim" and store it as "noclaim"
+    And I mint an API Portal IDP token stored as "token" with claims:
+      | sub        | s3                                                    |
+      | org_handle | ${CTX:noclaim}                                        |
+      | iss        | https://testbench:3015/o/${CTX:noclaim}/oauth2/token  |
+      | roles      | ["ap_admin"]                                          |
+    When I send an API Portal "GET" request to "/organizations/default" using portal "api-portal-multi-organization" with token "token"
+    Then the response status code should be 401
+
+  Scenario: A token whose issuer names an organization whose keys didn't sign it is rejected
+    # Signed by "signer"'s key, but claiming to be issued by, and for, "forged": the portal
+    # fetches "forged"'s keys, which don't verify it.
+    Given I generate a unique resource name from "signer" and store it as "signer"
+    And I generate a unique resource name from "forged" and store it as "forged"
+    And I mint an API Portal IDP token stored as "token" with claims:
+      | sub        | s4                                                   |
+      | org_id     | ${CTX:forged}                                        |
+      | org_handle | ${CTX:forged}                                        |
+      | iss        | https://testbench:3015/o/${CTX:signer}/oauth2/token  |
+      | roles      | ["ap_admin"]                                         |
+    And I replace the issuer of API Portal token "token" with "https://testbench:3015/o/${CTX:forged}/oauth2/token"
+    When I send an API Portal "GET" request to "/apis" using portal "api-portal-multi-organization" with token "token"
+    Then the response status code should be 401
+    And the API Portal "api-portal-multi-organization" should have 0 organizations with IDP reference "${CTX:forged}"
+
+  Scenario Outline: A token from an issuer that fits neither the configured issuer nor the template is rejected
+    Given I generate a unique resource name from "stray" and store it as "stray"
+    And I mint an API Portal IDP token stored as "token" with claims:
+      | sub        | s5             |
+      | org_id     | ${CTX:stray}   |
+      | org_handle | ${CTX:stray}   |
+      | iss        | <issuer>       |
+      | roles      | ["ap_admin"]   |
+    When I send an API Portal "GET" request to "/apis" using portal "api-portal-multi-organization" with token "token"
+    Then the response status code should be 401
+    And the API Portal "api-portal-multi-organization" should have 0 organizations with IDP reference "${CTX:stray}"
+
+    Examples:
+      | issuer                                                    |
+      | https://testbench:3015/t/${CTX:stray}/oauth2/token        |
+      | https://testbench:3015/o/${CTX:stray}.x/oauth2/token      |

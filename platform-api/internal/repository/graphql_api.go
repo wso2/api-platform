@@ -288,6 +288,26 @@ func (r *GraphQLAPIRepo) Exists(handle, orgUUID string) (bool, error) {
 	return r.artifactRepo.Exists(constants.GraphQLApi, handle, orgUUID)
 }
 
+// ExistsByNameAndVersion reports whether another GraphQL API in the
+// organization already uses this display name and version. excludeHandle, when
+// set, skips that API itself, for an update. Mirrors APIRepo's
+// CheckAPIExistsByNameAndVersionInOrganization for REST APIs: uniqueness is per
+// kind, so a REST API with the same name and version does not count.
+func (r *GraphQLAPIRepo) ExistsByNameAndVersion(name, version, orgUUID, excludeHandle string) (bool, error) {
+	query := `SELECT COUNT(*) FROM graphql_apis WHERE display_name = ? AND version = ? AND organization_uuid = ?`
+	args := []interface{}{name, version, orgUUID}
+	if excludeHandle != "" {
+		query += ` AND handle != ?`
+		args = append(args, excludeHandle)
+	}
+
+	var count int
+	if err := r.db.QueryRow(r.db.Rebind(query), args...).Scan(&count); err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
 // scanGraphQLAPI scans a single Row into a GraphQLAPI.
 func (r *GraphQLAPIRepo) scanGraphQLAPI(row *sql.Row) (*model.GraphQLAPI, error) {
 	var a model.GraphQLAPI

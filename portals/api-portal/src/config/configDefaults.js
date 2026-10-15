@@ -125,8 +125,9 @@ const DEFAULTS = {
         encryptionKey: '',
         sessionSecret: '',
     },
-    // Shared-key S2S auth for platform-api publishing calls. Portal compares sha256(raw) against `hash`.
-    // A match grants only the platform-api-system role's five dp:*:manage scopes.
+    // Shared-key S2S auth for platform-api publishing + self-registration calls.
+    // Portal compares sha256(raw) against `hash`; a match grants only the
+    // platform-api-system role's dp:*:manage scopes (see role-to-scope-mapping.yaml).
     // Empty disables shared-key auth entirely; OAuth / session paths keep working.
     internalAuth: {
         hash: '',
@@ -252,6 +253,20 @@ const DEFAULTS = {
             logoutRedirectUri: '',
             certificate: '',
             jwksUrl: '',
+            // Development only: accept a plain-http jwks_url on localhost or *.localhost.
+            allowLocalHttpJwks: false,
+            // Multi-organization mode, for IDPs that issue each organization's tokens
+            // under its own issuer and signing keys. issuerTemplate is the per-organization
+            // issuer with the organization's id as {org}, e.g.
+            // "https://idp.example.com/o/{org}/oauth2/token"; a bearer token whose `iss`
+            // fits it is verified against jwksUrlTemplate with the same {org} filled in
+            // (or jwksUrl when that is empty), and the claim named by templateOrgClaim
+            // (claimMappings.organization when empty) must equal that {org}. Both
+            // templates empty — the default — means a single issuer: every token must
+            // match `issuer` above and is verified against jwksUrl.
+            issuerTemplate: '',
+            jwksUrlTemplate: '',
+            templateOrgClaim: '',
             tokenRefreshTimeoutMs: 10000,
             silentSso: true,     // was: advanced.disableSilentSSO, inverted
             orgCallback: false,  // was: advanced.disableOrgCallback, inverted
@@ -348,6 +363,9 @@ const DEFAULTS = {
             pollIntervalMs: 2000,
             batchSize: 50,
             signatureToleranceSec: 300,
+            // Skips certificate verification for webhook delivery only, e.g. to a
+            // self-signed subscriber. Development only.
+            tlsSkipVerify: false,
         },
     },
     // Upload and archive-extraction limits.

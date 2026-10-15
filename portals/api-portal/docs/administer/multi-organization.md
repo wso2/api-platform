@@ -140,7 +140,8 @@ unless the claim arrived over verified TLS:
   over that connection; it is also verified against `auth.idp.jwks_url`, as every
   login is.
 - **Bearer tokens:** a pinned `auth.idp.certificate`, or `auth.idp.jwks_url` over
-  `https`.
+  `https` — and, when set, `auth.idp.jwks_url_template` over `https`
+  too.
 - Either way, `NODE_TLS_REJECT_UNAUTHORIZED=0` disables provisioning. To trust a
   self-signed IDP certificate, add it with `NODE_EXTRA_CA_CERTS` instead.
 
@@ -184,8 +185,42 @@ one the token's organization claim names.
 
 A token issued under an organization's *own* issuer — for example one obtained directly
 from a WSO2 IS or Asgardeo sub-organization's token endpoint (`.../o/<orgId>/oauth2/token`)
-— is rejected, as it is by the Platform API. Browser sign-ins to every organization are
-unaffected: they go through the configured issuer.
+— is rejected unless you describe those issuers, as below. The Platform API doesn't accept
+such tokens. Browser sign-ins to every organization are unaffected: they go through the
+configured issuer.
+
+### Per-organization issuers
+
+Some IDPs sign each organization's tokens under that organization's own issuer and
+keys — WSO2 IS and Asgardeo sub-organizations issue as `.../o/<orgId>/oauth2/token`.
+To accept bearer tokens issued that way, describe the issuer and its key URL as templates:
+
+```toml
+[api_portal.auth.idp]
+issuer_template    = "https://is.example.com/o/{org}/oauth2/token"
+jwks_url_template  = "https://is.example.com/o/{org}/oauth2/jwks"   # empty: use jwks_url for every org
+template_org_claim = "org_id"   # the claim that must equal {org}; empty: claim_mappings.organization
+```
+
+- A token whose `iss` is `auth.idp.issuer` is verified as before. One whose `iss` fits
+  `issuer_template` is verified against that organization's keys and its exact issuer;
+  any other issuer is rejected.
+- The token is bound to the organization in its issuer: the claim named by
+  `template_org_claim` must equal the `{org}` in the issuer, and the token must carry the
+  organization claim too. Set `template_org_claim` when the issuer's `{org}` is a different
+  identifier from the one you key organizations on — with WSO2 IS, `{org}` is the
+  organization's `org_id`, so keying on `org_name` or `org_handle` needs
+  `template_org_claim = "org_id"`.
+- Only that one path segment is taken from the token. It must be a plain identifier
+  (letters, digits, `-`, `_`), and the key URL is always built from configuration.
+- `issuer_template` and `jwks_url_template` must each contain exactly one `{org}`; both
+  empty (the default) means a single issuer. `jwks_url_template` must use `https`, like
+  `auth.idp.jwks_url`.
+- Per-organization issuers need JWKS. With `auth.idp.certificate` set, bearer tokens are
+  verified against that certificate only, so a per-organization token is rejected.
+- The token's audience is still checked against `auth.idp.audience`. A token issued to an
+  organization's own copy of the application carries that copy's client ID, so list it
+  there too.
 
 ## Webhooks
 

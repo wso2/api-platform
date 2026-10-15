@@ -23,12 +23,13 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 	"time"
 
 	"github.com/knadh/koanf/parsers/toml/v2"
+
+	"github.com/wso2/api-platform/tests/framework/core/assets"
 )
 
 const (
@@ -271,12 +272,13 @@ func varNames(vars Vars) []string {
 	return out
 }
 
-// resolve maps a relative path beneath repoRoot and leaves empty paths unchanged.
+// resolve maps a repository-relative path to a path on disk: the workspace copy when one
+// exists, otherwise the copy embedded in the framework. Empty paths are left unchanged.
 func resolve(repoRoot, path string) string {
-	if path == "" || filepath.IsAbs(path) {
+	if path == "" {
 		return path
 	}
-	return filepath.Join(repoRoot, path)
+	return assets.Resolve(repoRoot, path)
 }
 
 // cloneTree deep-copies a TOML value tree.

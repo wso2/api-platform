@@ -51,4 +51,25 @@ describe('buildInvokeUrl', () => {
   it('is empty without an endpoint', () => {
     expect(buildInvokeUrl('  ', '/loans')).toBe('');
   });
+
+  it('resolves a $version placeholder in context against the given version', () => {
+    // The exact bug this guards: gateway-controller's ConstructFullPath
+    // resolves $version server-side, but the console built the invoke URL
+    // straight from the raw context — a real deployed API with context
+    // "/countries/$version/graphql" produced a URL with a literal,
+    // unresolved "$version" segment that 404s at the gateway.
+    expect(buildInvokeUrl('https://gw.test', '/countries/$version/graphql', 'v1.0')).toBe(
+      'https://gw.test/countries/v1.0/graphql',
+    );
+  });
+
+  it('leaves a context with no $version placeholder unchanged', () => {
+    expect(buildInvokeUrl('https://gw.test', '/graphqlsampleapi/v1.0.0', '1.0.0')).toBe(
+      'https://gw.test/graphqlsampleapi/v1.0.0',
+    );
+  });
+
+  it('substitutes $version as an empty string when no version is given', () => {
+    expect(buildInvokeUrl('https://gw.test', '/countries/$version/graphql')).toBe('https://gw.test/countries//graphql');
+  });
 });

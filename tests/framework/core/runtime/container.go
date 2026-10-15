@@ -27,7 +27,6 @@ import (
 	"log/slog"
 	"net"
 	"net/netip"
-	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -41,6 +40,7 @@ import (
 	tcexec "github.com/testcontainers/testcontainers-go/exec"
 	"github.com/testcontainers/testcontainers-go/wait"
 
+	"github.com/wso2/api-platform/tests/framework/core/assets"
 	"github.com/wso2/api-platform/tests/framework/core/components"
 	"github.com/wso2/api-platform/tests/framework/core/logcapture"
 )
@@ -53,8 +53,12 @@ const (
 
 	// defaultStartTimeout bounds container startup when no override is provided.
 	defaultStartTimeout = 5 * time.Minute
-	// maxOutputBytes bounds command and log output retained in memory for diagnostics.
+	// maxOutputBytes bounds command output retained in memory for diagnostics.
 	maxOutputBytes int64 = 1 << 20
+	// maxLogBytes bounds one container's log read. Steps that read what a service logged after
+	// a request count bytes from the start of the log, so a block whose runners share a stack
+	// must read all of it.
+	maxLogBytes int64 = 64 << 20
 )
 
 // Options contains the resolved values used to start one component instance.
@@ -258,18 +262,20 @@ func resolveFiles(def *components.Definition, opts Options) ([]testcontainers.Co
 	var files []testcontainers.ContainerFile
 
 	appendMount := func(m components.FileMount) error {
-		if m.HostPath == "" || m.ContainerPath == "" {
+		if (m.HostPath == "" && len(m.Content) == 0) || m.ContainerPath == "" {
 			return fmt.Errorf("runtime: %s has a file mount missing a path", def)
 		}
 		mode := m.Mode
 		if mode == 0 {
 			mode = 0o644
 		}
-		files = append(files, testcontainers.ContainerFile{
-			HostFilePath:      absPath(opts.RepoRoot, m.HostPath),
-			ContainerFilePath: m.ContainerPath,
-			FileMode:          mode,
-		})
+		file := testcontainers.ContainerFile{ContainerFilePath: m.ContainerPath, FileMode: mode}
+		if len(m.Content) > 0 {
+			file.Reader = bytes.NewReader(m.Content)
+		} else {
+			file.HostFilePath = absPath(opts.RepoRoot, m.HostPath)
+		}
+		files = append(files, file)
 		return nil
 	}
 
@@ -419,19 +425,21 @@ func (c *Container) Logs(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("runtime: reading logs for %s: %w", c.def, err)
 	}
 	defer func() { _ = rc.Close() }()
-	return readAllString(rc)
+	return readLimitedString(rc, maxLogBytes)
 }
 
 func bytesReader(b []byte) io.Reader { return bytes.NewReader(b) }
 
-func readAllString(r io.Reader) (string, error) {
+func readAllString(r io.Reader) (string, error) { return readLimitedString(r, maxOutputBytes) }
+
+func readLimitedString(r io.Reader, limit int64) (string, error) {
 	var buf bytes.Buffer
-	if _, err := io.Copy(&buf, io.LimitReader(r, maxOutputBytes+1)); err != nil {
+	if _, err := io.Copy(&buf, io.LimitReader(r, limit+1)); err != nil {
 		return "", err
 	}
-	if int64(buf.Len()) > maxOutputBytes {
-		return string(buf.Bytes()[:maxOutputBytes]), fmt.Errorf(
-			"runtime: output exceeds the %d-byte limit", maxOutputBytes)
+	if int64(buf.Len()) > limit {
+		return string(buf.Bytes()[:limit]), fmt.Errorf(
+			"runtime: output exceeds the %d-byte limit", limit)
 	}
 	return buf.String(), nil
 }
@@ -440,13 +448,7 @@ func readAllString(r io.Reader) (string, error) {
 // absolute path is returned untouched, so a caller that has resolved paths itself is
 // not second-guessed.
 func absPath(repoRoot, p string) string {
-	if p == "" || filepath.IsAbs(p) {
-		return p
-	}
-	if repoRoot == "" {
-		return p
-	}
-	return filepath.Join(repoRoot, p)
+	return assets.Resolve(repoRoot, p)
 }
 
 // applyLimits caps the container's host resources.

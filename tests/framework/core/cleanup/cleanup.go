@@ -62,7 +62,8 @@ var (
 	KindMCPProxy = Kind{Name: "mcp-proxy", Order: 52}
 	// gateway-controller's own Agent resource (the "/agents" collection). It deletes before the
 	// control plane's imported AgentProxy copy, which platform-api only lets go once the
-	// gateway has reported the Agent undeployed.
+	// gateway has reported the Agent undeployed. Like an API it can name certificates, so it
+	// also deletes before them.
 	KindAgent      = Kind{Name: "agent", Order: 52}
 	KindGraphQLAPI = Kind{Name: "graphql-api", Order: 53}
 	KindMCPServer  = Kind{Name: "mcp-server", Order: 55}

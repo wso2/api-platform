@@ -35,7 +35,7 @@ type publishRecorder struct {
 	onPublish func()
 }
 
-func (p *publishRecorder) Publish(_ context.Context, _ *model.APIPortal, _ string, _ *model.Publication, _ *model.PublicationContent) error {
+func (p *publishRecorder) Publish(_ context.Context, _ *model.APIPortal, _, _ string, _ *model.Publication, _ *model.PublicationContent) error {
 	if p.onPublish != nil {
 		p.onPublish()
 	}

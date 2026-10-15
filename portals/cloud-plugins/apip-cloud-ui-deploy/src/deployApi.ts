@@ -24,7 +24,7 @@ import { managedGatewaysPath, toEnvironments, type ManagedGatewayDTO, type Stage
  * The artifact kinds this page can deploy, named as the platform names them. A
  * handle is unique only WITHIN a kind, so every call says which one it means.
  */
-export type ArtifactKind = 'RestApi' | 'Mcp' | 'LlmProxy' | 'LlmProvider';
+export type ArtifactKind = 'RestApi' | 'Mcp' | 'LlmProxy' | 'LlmProvider' | 'AgentProxy' | 'GraphQLApi';
 
 /**
  * Each kind's own path on the platform API. The pipeline routes are shared, but a
@@ -33,9 +33,11 @@ export type ArtifactKind = 'RestApi' | 'Mcp' | 'LlmProxy' | 'LlmProvider';
  */
 const NATIVE_PATH: Record<ArtifactKind, string> = {
   RestApi: 'rest-apis',
+  GraphQLApi: 'graphql-apis',
   Mcp: 'mcp-proxies',
   LlmProxy: 'llm-proxies',
   LlmProvider: 'llm-providers',
+  AgentProxy: 'agent-proxies',
 };
 
 /**
@@ -46,9 +48,11 @@ const NATIVE_PATH: Record<ArtifactKind, string> = {
  */
 export const GATEWAY_TYPES_FOR_KIND: Record<ArtifactKind, readonly string[]> = {
   RestApi: ['regular'],
+  GraphQLApi: ['regular'],
   Mcp: ['ai'],
   LlmProxy: ['ai'],
   LlmProvider: ['ai'],
+  AgentProxy: ['ai'],
 };
 
 /**
@@ -57,16 +61,20 @@ export const GATEWAY_TYPES_FOR_KIND: Record<ArtifactKind, readonly string[]> = {
  * Only a REST API is: it proxies a backend, and which backend can differ per
  * gateway. An MCP server or an LLM proxy carries its upstream in its own
  * definition — there is nothing per-deployment to ask for, and asking made the
- * form impossible to complete, since nothing could fill it in either.
+ * form impossible to complete, since nothing could fill it in either. A GraphQL
+ * API is deployed against the endpoint in its own definition too: the platform's
+ * deploy request carries no per-gateway endpoint for it.
  *
  * An unclassified kind is assumed not to take one: the worst case is a parameter
  * nobody sets, rather than a required field with no answer.
  */
 const KIND_TAKES_ENDPOINT: Record<ArtifactKind, boolean> = {
   RestApi: true,
+  GraphQLApi: false,
   Mcp: false,
   LlmProxy: false,
   LlmProvider: false,
+  AgentProxy: false,
 };
 
 export const takesEndpointUrl = (kind: ArtifactKind): boolean => KIND_TAKES_ENDPOINT[kind] ?? false;

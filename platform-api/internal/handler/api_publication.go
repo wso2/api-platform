@@ -65,11 +65,15 @@ func decodeJSONBody(w http.ResponseWriter, r *http.Request, maxBytes int64, dst 
 	return nil
 }
 
-// restAPITypeValue is the type-agnostic path value for RestApi. The
-// publish/unpublish/deprecate routes are pinned to this one literal per
-// type — unlike the shared read/draft routes, apiType is not a path
-// variable here.
-const restAPITypeValue = constants.PublicationAPITypeRestAPI
+// publishableAPITypes are the API types the publish/unpublish/deprecate
+// routes are mounted for. Each is pinned to its own literal path segment —
+// unlike the shared read/draft routes, apiType is not a path variable here —
+// so every type carries its own scopes in the OpenAPI spec, and a new type
+// becomes publishable only by being added here and to the spec.
+var publishableAPITypes = []string{
+	constants.PublicationAPITypeRestAPI,
+	constants.PublicationAPITypeGraphQLAPI,
+}
 
 // defaultPublicationContentMaxBytes/defaultPublicationThumbnailMaxBytes apply
 // when the corresponding config field is <= 0 — same zero-means-default
@@ -122,10 +126,12 @@ func (h *PublicationHandler) RegisterRoutes(mux router.Router) {
 	mux.HandleFunc("GET "+base+"/publication/landing-page", middleware.MapErrors(h.slogger, h.GetPublicationLandingPage))
 	mux.HandleFunc("GET "+base+"/publication/thumbnail", middleware.MapErrors(h.slogger, h.GetPublicationThumbnail))
 	mux.HandleFunc("GET "+constants.APIBasePath+"/api-publications", middleware.MapErrors(h.slogger, h.ListPublications))
-	restAPIBase := constants.APIBasePath + "/api-portals/{apiPortalId}/apis/" + restAPITypeValue + "/{apiId}"
-	mux.HandleFunc("POST "+restAPIBase+"/publish", middleware.MapErrors(h.slogger, h.Publish))
-	mux.HandleFunc("POST "+restAPIBase+"/unpublish", middleware.MapErrors(h.slogger, h.Unpublish))
-	mux.HandleFunc("POST "+restAPIBase+"/deprecate", middleware.MapErrors(h.slogger, h.Deprecate))
+	for _, apiType := range publishableAPITypes {
+		typeBase := constants.APIBasePath + "/api-portals/{apiPortalId}/apis/" + apiType + "/{apiId}"
+		mux.HandleFunc("POST "+typeBase+"/publish", middleware.MapErrors(h.slogger, h.Publish(apiType)))
+		mux.HandleFunc("POST "+typeBase+"/unpublish", middleware.MapErrors(h.slogger, h.Unpublish(apiType)))
+		mux.HandleFunc("POST "+typeBase+"/deprecate", middleware.MapErrors(h.slogger, h.Deprecate(apiType)))
+	}
 }
 
 // draftPathParams extracts the three identity segments every route under
@@ -442,77 +448,83 @@ func (h *PublicationHandler) ListPublications(w http.ResponseWriter, r *http.Req
 	return nil
 }
 
-// Publish handles POST .../rest-api/{apiId}/publish. Bodyless: the client
+// Publish handles POST .../{apiType}/{apiId}/publish for one publishable type. Bodyless: the client
 // always saves the draft (PUT) immediately before calling this action, so
 // DRAFT_NOT_FOUND here is a defensive check, not a normal user-facing gate.
-func (h *PublicationHandler) Publish(w http.ResponseWriter, r *http.Request) error {
-	orgId, ok := middleware.GetOrganizationFromRequest(r)
-	if !ok {
-		return apperror.Unauthorized.New().WithLogMessage("organization claim not found in token")
-	}
-	apiPortalId, apiId := r.PathValue("apiPortalId"), r.PathValue("apiId")
+func (h *PublicationHandler) Publish(apiType string) func(http.ResponseWriter, *http.Request) error {
+	return func(w http.ResponseWriter, r *http.Request) error {
+		orgId, ok := middleware.GetOrganizationFromRequest(r)
+		if !ok {
+			return apperror.Unauthorized.New().WithLogMessage("organization claim not found in token")
+		}
+		apiPortalId, apiId := r.PathValue("apiPortalId"), r.PathValue("apiId")
 
-	actor, err := resolveActorErr(r, h.identity, "publish API")
-	if err != nil {
-		return err
-	}
+		actor, err := resolveActorErr(r, h.identity, "publish API")
+		if err != nil {
+			return err
+		}
 
-	pub, replaced, err := h.service.Publish(r.Context(), restAPITypeValue, apiId, apiPortalId, orgId, actor)
-	if err != nil {
-		return serviceError(err, "failed to publish API")
-	}
+		pub, replaced, err := h.service.Publish(r.Context(), apiType, apiId, apiPortalId, orgId, actor)
+		if err != nil {
+			return serviceError(err, "failed to publish API")
+		}
 
-	if replaced {
+		if replaced {
+			httputil.WriteJSON(w, http.StatusOK, publicationModelToResponse(pub))
+			return nil
+		}
+		w.Header().Set("Location", constants.APIBasePath+"/api-portals/"+apiPortalId+"/apis/"+apiType+"/"+apiId+"/publication")
+		httputil.WriteJSON(w, http.StatusCreated, publicationModelToResponse(pub))
+		return nil
+	}
+}
+
+// Unpublish handles POST .../{apiType}/{apiId}/unpublish. Valid only when
+// currently published or deprecated.
+func (h *PublicationHandler) Unpublish(apiType string) func(http.ResponseWriter, *http.Request) error {
+	return func(w http.ResponseWriter, r *http.Request) error {
+		orgId, ok := middleware.GetOrganizationFromRequest(r)
+		if !ok {
+			return apperror.Unauthorized.New().WithLogMessage("organization claim not found in token")
+		}
+		apiPortalId, apiId := r.PathValue("apiPortalId"), r.PathValue("apiId")
+
+		actor, err := resolveActorErr(r, h.identity, "unpublish API")
+		if err != nil {
+			return err
+		}
+
+		if err := h.service.Unpublish(r.Context(), apiType, apiId, apiPortalId, orgId, actor); err != nil {
+			return serviceError(err, "failed to unpublish API")
+		}
+
+		w.WriteHeader(http.StatusNoContent)
+		return nil
+	}
+}
+
+// Deprecate handles POST .../{apiType}/{apiId}/deprecate.
+func (h *PublicationHandler) Deprecate(apiType string) func(http.ResponseWriter, *http.Request) error {
+	return func(w http.ResponseWriter, r *http.Request) error {
+		orgId, ok := middleware.GetOrganizationFromRequest(r)
+		if !ok {
+			return apperror.Unauthorized.New().WithLogMessage("organization claim not found in token")
+		}
+		apiPortalId, apiId := r.PathValue("apiPortalId"), r.PathValue("apiId")
+
+		actor, err := resolveActorErr(r, h.identity, "deprecate API")
+		if err != nil {
+			return err
+		}
+
+		pub, err := h.service.Deprecate(r.Context(), apiType, apiId, apiPortalId, orgId, actor)
+		if err != nil {
+			return serviceError(err, "failed to deprecate API")
+		}
+
 		httputil.WriteJSON(w, http.StatusOK, publicationModelToResponse(pub))
 		return nil
 	}
-	w.Header().Set("Location", constants.APIBasePath+"/api-portals/"+apiPortalId+"/apis/"+restAPITypeValue+"/"+apiId+"/publication")
-	httputil.WriteJSON(w, http.StatusCreated, publicationModelToResponse(pub))
-	return nil
-}
-
-// Unpublish handles POST .../rest-api/{apiId}/unpublish. Valid only when
-// currently published or deprecated.
-func (h *PublicationHandler) Unpublish(w http.ResponseWriter, r *http.Request) error {
-	orgId, ok := middleware.GetOrganizationFromRequest(r)
-	if !ok {
-		return apperror.Unauthorized.New().WithLogMessage("organization claim not found in token")
-	}
-	apiPortalId, apiId := r.PathValue("apiPortalId"), r.PathValue("apiId")
-
-	actor, err := resolveActorErr(r, h.identity, "unpublish API")
-	if err != nil {
-		return err
-	}
-
-	if err := h.service.Unpublish(r.Context(), restAPITypeValue, apiId, apiPortalId, orgId, actor); err != nil {
-		return serviceError(err, "failed to unpublish API")
-	}
-
-	w.WriteHeader(http.StatusNoContent)
-	return nil
-}
-
-// Deprecate handles POST .../rest-api/{apiId}/deprecate.
-func (h *PublicationHandler) Deprecate(w http.ResponseWriter, r *http.Request) error {
-	orgId, ok := middleware.GetOrganizationFromRequest(r)
-	if !ok {
-		return apperror.Unauthorized.New().WithLogMessage("organization claim not found in token")
-	}
-	apiPortalId, apiId := r.PathValue("apiPortalId"), r.PathValue("apiId")
-
-	actor, err := resolveActorErr(r, h.identity, "deprecate API")
-	if err != nil {
-		return err
-	}
-
-	pub, err := h.service.Deprecate(r.Context(), restAPITypeValue, apiId, apiPortalId, orgId, actor)
-	if err != nil {
-		return serviceError(err, "failed to deprecate API")
-	}
-
-	httputil.WriteJSON(w, http.StatusOK, publicationModelToResponse(pub))
-	return nil
 }
 
 // writeContent writes a stored definition/landing-page/thumbnail as its raw

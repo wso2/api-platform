@@ -1,0 +1,3 @@
+# The controller propagates a change to the runtime when it next polls the event hub.
+[controller.event_hub]
+poll_interval = "200ms"

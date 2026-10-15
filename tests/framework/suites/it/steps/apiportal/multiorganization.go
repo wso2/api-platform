@@ -84,6 +84,7 @@ const (
 // through it, shared-key publishing, and the database state those modes leave behind.
 func (s *Steps) registerMultiOrganizationSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^I mint an API Portal IDP token stored as "([^"]*)" with claims:$`, s.mintIDPToken)
+	sc.Step(`^I replace the issuer of API Portal token "([^"]*)" with "([^"]*)"$`, s.replaceTokenIssuer)
 	sc.Step(`^I send an API Portal "([^"]*)" request to "([^"]*)" using portal "([^"]*)" with token "([^"]*)"$`,
 		s.sendWithToken)
 	sc.Step(`^I send an API Portal "([^"]*)" request to "([^"]*)" using portal "([^"]*)" with token "([^"]*)" and JSON body:$`,
@@ -216,6 +217,37 @@ func (s *Steps) mintIDPToken(ctx context.Context, storeAs string, table *godog.T
 		return fmt.Errorf("the identity provider returned no token: %s", response.Describe())
 	}
 	return tcontext.Set(ctx, storeAs, minted.Token)
+}
+
+// replaceTokenIssuer rewrites a stored token's iss claim without re-signing it, as a forger
+// would: the signature still belongs to the issuer the token was minted with.
+func (s *Steps) replaceTokenIssuer(ctx context.Context, tokenKey, issuer string) error {
+	issuer, err := stepscommon.Expand(ctx, issuer)
+	if err != nil {
+		return err
+	}
+	token, err := tcontext.ResolveString(ctx, tokenKey)
+	if err != nil {
+		return fmt.Errorf("API Portal token %q is unavailable: %w", tokenKey, err)
+	}
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 {
+		return fmt.Errorf("API Portal token %q is not a JWS", tokenKey)
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return fmt.Errorf("decoding API Portal token %q: %w", tokenKey, err)
+	}
+	var claims map[string]any
+	if err := json.Unmarshal(payload, &claims); err != nil {
+		return fmt.Errorf("decoding API Portal token %q: %w", tokenKey, err)
+	}
+	claims["iss"] = issuer
+	if payload, err = json.Marshal(claims); err != nil {
+		return err
+	}
+	parts[1] = base64.RawURLEncoding.EncodeToString(payload)
+	return tcontext.Set(ctx, tokenKey, strings.Join(parts, "."))
 }
 
 // tokenRequest issues one bearer-authenticated request and publishes its response.

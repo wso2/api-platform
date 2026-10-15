@@ -34,6 +34,7 @@ import (
 	"github.com/wso2/api-platform/tests/framework/core/catalog/platformgateway"
 	"github.com/wso2/api-platform/tests/framework/core/catalog/shared"
 	"github.com/wso2/api-platform/tests/framework/core/catalog/testbench"
+	"github.com/wso2/api-platform/tests/framework/core/catalog/tlsbackend"
 	"github.com/wso2/api-platform/tests/framework/core/components"
 	"github.com/wso2/api-platform/tests/framework/core/topology"
 )
@@ -244,6 +245,7 @@ func All() []*components.Definition {
 		browser.Browser(),
 		cloudconsole.CloudConsole(),
 		testbench.Testbench(),
+		tlsbackend.TLSBackend(),
 		infrastructure.Redis(),
 		a2aagent.TripPlanner(),
 	}

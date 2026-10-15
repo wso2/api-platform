@@ -31,19 +31,20 @@ import {
   ProjectPipelinesFeature,
 } from '@wso2-enterprise/apip-cloud-ui-pipelines';
 import type { BrandLogo } from '../../../../api-control-plane/src/branding/BrandLogoProvider';
+import { AppPage } from '../../../../api-control-plane/src/components/AppPage';
 import {
   HEADER_ACTIONS_SLOT,
   PAGE_API_DEPLOY_SLOT,
   PAGE_API_OBSERVABILITY_LOGS_SLOT,
+  PAGE_GRAPHQL_API_DEPLOY_SLOT,
   PAGE_GATEWAYS_SLOT,
   type ApiControlPlaneCloudEntry,
   type ApiControlPlaneExtension,
 } from '../../../../api-control-plane/src/extensions';
-import { AppPage } from '../../../../api-control-plane/src/components/AppPage';
 import type { CloudHostPort } from '../../../../api-control-plane/src/hostPort';
 import { routes } from '../../../../api-control-plane/src/routes/paths';
-import { ScopeGate } from '../../../../api-control-plane/src/scope/ScopeGate';
 import { useConsoleScope } from '../../../../api-control-plane/src/scope/ConsoleScopeContext';
+import { ScopeGate } from '../../../../api-control-plane/src/scope/ScopeGate';
 import { defineCloudPlugin, getCloudExtensions, type CloudPluginFeature } from '../plugin';
 import { filterExtensionsForRuntime } from '../runtimeFlags';
 import cloudLogoDark from '../assets/logos/apiplatform_white.svg';
@@ -61,6 +62,27 @@ export const cloudBrandLogo: BrandLogo = {
  * fresh array on every render would make that request repeat.
  */
 const API_GATEWAY_TYPES: GatewayType[] = ['regular', 'event'];
+
+/**
+ * The API Deploy override. The built-in Deploy page sits inside `AppPage`, which
+ * supplies the page padding and breadcrumbs, so the scope picker shown before an
+ * API is in scope gets that same container here; without it the picker card
+ * renders flush against the shell. Once the API is in scope `DeployFeature`
+ * renders bare, since it brings its own `PageContent` and would be padded twice.
+ */
+function CloudDeployPage({ port }: { port: CloudHostPort }) {
+  const { isApiScope } = useConsoleScope();
+  const gate = (
+    <ScopeGate
+      prompt="Deployments are made for a single API."
+      requires="api"
+      to={routes.apiDeploy}
+    >
+      <DeployFeature port={port} />
+    </ScopeGate>
+  );
+  return isApiScope ? gate : <AppPage>{gate}</AppPage>;
+}
 
 /** Where the project/API notices send a reader for the organization's logs. */
 const observabilityLogsPath = (orgHandle: string) =>
@@ -94,6 +116,7 @@ const observabilityLogsPath = (orgHandle: string) =>
  * to the platform-api REST endpoints.
  *
  * `deploy` overrides the built-in API Deploy page via the `page.apiDeploy` slot,
+ * and the GraphQL API Deploy page via `page.graphqlApiDeploy` with the same feature,
  * the same way `gateways` does: the nav entry and route stay native, and only
  * what renders there changes. It is the one API-scoped feature here, so it needs
  * the API in scope, which the Port carries as `apiHandle`. Because the override
@@ -126,24 +149,6 @@ const observabilityLogsPath = (orgHandle: string) =>
  * (Metrics, Alerts) in place and replaces only its Logs page, through
  * `PAGE_API_OBSERVABILITY_LOGS_SLOT`.
  */
-
-/**
- * The `deploy` override's render: `AppPage` only wraps the scope picker, not
- * `DeployFeature` itself. `DeployFeature`'s own page already carries its own
- * `PageContent` padding (shared with the AI Workspace host, which renders it
- * with no `AppPage`/`ScopeGate` of its own) — wrapping it here too would nest
- * two padded containers. Checking scope ourselves, rather than always wrapping
- * `ScopeGate` in `AppPage`, is what keeps the padding singular either way.
- */
-function ApiDeployPage({ port }: { port: CloudHostPort }) {
-  const { isApiScope } = useConsoleScope();
-  const gated = (
-    <ScopeGate prompt="Deployments are made for a single API." requires="api" to={routes.apiDeploy}>
-      <DeployFeature port={port} />
-    </ScopeGate>
-  );
-  return isApiScope ? gated : <AppPage>{gated}</AppPage>;
-}
 
 export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[] = [
   defineCloudPlugin({
@@ -215,7 +220,22 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[
         // Settings-tab pipeline, which only match `sidebar.*` / `settings.*.tabs`.
         order: 0,
         routePath: 'deploy',
-        render: (port) => <ApiDeployPage port={port} />,
+        render: (port) => <CloudDeployPage port={port} />,
+        label: 'Deploy',
+        level: 'api',
+      },
+      {
+        // The same Deploy feature for a GraphQL API, so both kinds deploy through
+        // one page. Its route is reached only with the API in its URL, which is
+        // where the handle comes from — the Port's `apiHandle` is REST-only — so
+        // there is no scope to gate on. `routePath`/`level` are inert, as above.
+        id: 'graphql-api-deploy',
+        slot: PAGE_GRAPHQL_API_DEPLOY_SLOT,
+        order: 0,
+        routePath: 'deploy',
+        render: (port, artifactHandle) => (
+          <DeployFeature artifactHandle={artifactHandle} kind="GraphQLApi" port={port} />
+        ),
         label: 'Deploy',
         level: 'api',
       },

@@ -79,17 +79,35 @@ const PREVIEW_COUNT = 5;
  * The API's most recently updated documents. Each row opens that document on
  * Develop › Documents, and "View More" opens the full list there.
  */
-export function DocumentsPanel() {
+type DocumentsPanelProps = {
+  /**
+   * The API whose documents to show. Defaults to the REST API in console
+   * scope; an API outside that scope (a GraphQL API) passes its own.
+   */
+  apiHandle?: string;
+  /** The `{apiType}` path segment; defaults to `rest-api`. */
+  apiType?: string;
+  /** Its Develop › Documents page; defaults to the REST API's. */
+  documentsPath?: string;
+};
+
+export function DocumentsPanel({
+  apiHandle,
+  apiType = REST_API_TYPE,
+  documentsPath: documentsPathProp,
+}: DocumentsPanelProps = {}) {
   const intl = useIntl();
   const { relativeTime } = useFormatters();
   const { params } = useConsoleScope();
   const { apiHandler, orgHandle, projectHandler } = params;
-  const documentsQuery = useApiDocuments(REST_API_TYPE, apiHandler, { limit: PREVIEW_COUNT });
+  const handle = apiHandle ?? apiHandler;
+  const documentsQuery = useApiDocuments(apiType, handle, { limit: PREVIEW_COUNT });
 
   const documentsPath =
-    orgHandle && projectHandler && apiHandler
+    documentsPathProp ??
+    (orgHandle && projectHandler && apiHandler
       ? routes.apiDevelopDocuments(orgHandle, projectHandler, apiHandler)
-      : undefined;
+      : undefined);
 
   const documents = documentsQuery.data?.list ?? [];
   const total = documentsQuery.data?.pagination.total ?? 0;

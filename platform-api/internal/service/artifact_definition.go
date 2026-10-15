@@ -375,13 +375,19 @@ func (d *agentProxyDefinition) Decode(content []byte) (any, error) {
 }
 
 // graphqlAPIDefinition renders GraphQL APIs.
+//
+// It needs the project repository because a GraphQL API stores its project by
+// UUID, while the deployment YAML's project-id annotation must carry the
+// project's handle: the DP→CP import path resolves it by handle, so a UUID
+// there fails that import with PROJECT_NOT_FOUND.
 type graphqlAPIDefinition struct {
 	graphqlRepo repository.GraphQLAPIRepository
+	projectRepo repository.ProjectRepository
 }
 
 // NewGraphQLAPIDefinition returns the ArtifactDefinition for GraphQL APIs.
-func NewGraphQLAPIDefinition(graphqlRepo repository.GraphQLAPIRepository) ArtifactDefinition {
-	return &graphqlAPIDefinition{graphqlRepo: graphqlRepo}
+func NewGraphQLAPIDefinition(graphqlRepo repository.GraphQLAPIRepository, projectRepo repository.ProjectRepository) ArtifactDefinition {
+	return &graphqlAPIDefinition{graphqlRepo: graphqlRepo, projectRepo: projectRepo}
 }
 
 func (d *graphqlAPIDefinition) Kind() string { return constants.GraphQLApi }
@@ -394,7 +400,14 @@ func (d *graphqlAPIDefinition) Current(artifact *model.Artifact) (*ArtifactSnaps
 	if apiModel == nil {
 		return nil, apperror.GraphQLAPINotFound.New()
 	}
-	definition, err := generateGraphQLAPIDeploymentYAML(apiModel)
+	project, err := d.projectRepo.GetProjectByUUIDAndOrgID(apiModel.ProjectID, artifact.OrganizationUUID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve project for GraphQL API %s: %w", apiModel.ID, err)
+	}
+	if project == nil {
+		return nil, apperror.ProjectNotFound.New()
+	}
+	definition, err := generateGraphQLAPIDeploymentYAML(apiModel, project.Handle)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate GraphQL API deployment YAML: %w", err)
 	}

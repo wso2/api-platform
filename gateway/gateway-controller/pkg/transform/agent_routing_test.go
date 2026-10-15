@@ -136,7 +136,8 @@ func agentEnvoyRoutes(t *testing.T, stored *models.StoredConfig) []*route.Route 
 
 	routerCfg := routingTestRouterConfig()
 	systemCfg := &config.Config{Router: *routerCfg}
-	translator := xds.NewTranslator(slog.New(slog.NewTextHandler(io.Discard, nil)), routerCfg, nil, systemCfg)
+	translator, err := xds.NewTranslator(slog.New(slog.NewTextHandler(io.Discard, nil)), routerCfg, nil, systemCfg)
+	require.NoError(t, err)
 	registry := transform.NewRegistry(
 		transform.NewRestAPITransformer(routerCfg, systemCfg, map[string]models.PolicyDefinition{}),
 		nil,
