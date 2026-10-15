@@ -129,11 +129,17 @@ const EnvironmentsList: FC<EnvironmentsListProps> = ({ port, readOnly, onCreateC
     }
   };
 
-  if (loadError) {
+  // Nothing to show underneath yet, so the whole page gives way to the
+  // illustrated state rather than a banner over an empty table. A refetch
+  // failure with environments already on screen keeps the lighter inline
+  // Alert below instead, so existing data never disappears because of a
+  // transient reload error.
+  if (loadError && environments.length === 0) {
     return (
       <PageContent fullWidth>
         <UnexpectedErrorState
           description="We couldn't load your environments. This is usually temporary - try again in a moment."
+          detail={loadError}
           onRetry={refetch}
         />
       </PageContent>
@@ -151,6 +157,16 @@ const EnvironmentsList: FC<EnvironmentsListProps> = ({ port, readOnly, onCreateC
       </Box>
 
       {readOnly ? <Alert severity="info" sx={{ mb: 3 }}>Environments can be managed only at Organization level.</Alert> : null}
+
+      {loadError ? (
+        <Alert
+          severity="error"
+          sx={{ mb: 3 }}
+          action={<Button color="inherit" size="small" onClick={refetch}>Retry</Button>}
+        >
+          {loadError}
+        </Alert>
+      ) : null}
 
       <TextField
         fullWidth

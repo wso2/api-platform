@@ -142,6 +142,7 @@ const PipelinesFeature: FC<PipelinesFeatureProps> = ({ port }) => {
     return (
       <UnexpectedErrorState
         description="We couldn't load your pipelines. This is usually temporary - try again in a moment."
+        detail={error}
         onRetry={() => void load()}
       />
     );

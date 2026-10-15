@@ -197,6 +197,7 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
     return (
       <UnexpectedErrorState
         description="We couldn't load your gateways. This is usually temporary - try again in a moment."
+        detail={error}
         onRetry={() => void load()}
       />
     );

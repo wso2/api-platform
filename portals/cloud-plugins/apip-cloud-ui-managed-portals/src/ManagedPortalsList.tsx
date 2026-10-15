@@ -9,6 +9,7 @@
 
 import { useMemo, useState } from "react";
 import {
+  Alert,
   Box,
   Button,
   Card,
@@ -107,11 +108,17 @@ export default function ManagedPortalsList({
     }
   };
 
-  if (error) {
+  // Nothing to show underneath yet, so the whole page gives way to the
+  // illustrated state rather than a header over an empty grid. A refetch
+  // failure with portals already on screen keeps the lighter inline Alert
+  // below instead, so existing data never disappears because of a
+  // transient reload error.
+  if (error && portals.length === 0) {
     return (
       <PageContent fullWidth>
         <UnexpectedErrorState
           description="We couldn't load your API portals. This is usually temporary - try again in a moment."
+          detail={error.message}
           onRetry={refetch}
         />
       </PageContent>
@@ -155,6 +162,17 @@ export default function ManagedPortalsList({
             </Stack>
           </Box>
         </Grid>
+
+        {error ? (
+          <Grid size={{ xs: 12 }}>
+            <Alert
+              severity="error"
+              action={<Button color="inherit" size="small" onClick={refetch}>Retry</Button>}
+            >
+              {error.message}
+            </Alert>
+          </Grid>
+        ) : null}
 
         {isLoading ? (
           <Grid size={{ xs: 12 }}>

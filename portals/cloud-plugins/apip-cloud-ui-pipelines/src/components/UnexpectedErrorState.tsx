@@ -58,6 +58,13 @@ const BrokenPageIllustration: FC = () => {
 export type UnexpectedErrorStateProps = {
   /** What specifically failed to load, e.g. "your pipelines". */
   description: string;
+  /**
+   * The actual error message, when there is one worth showing. Covers the
+   * failure a plain Retry can't fix (a permissions error, a validation
+   * rejection surfaced as a load failure) — without it the page says only
+   * "try again", which is actively unhelpful when trying again can't work.
+   */
+  detail?: string;
   onRetry: () => void;
   retryLabel?: string;
 };
@@ -73,6 +80,7 @@ export type UnexpectedErrorStateProps = {
  */
 const UnexpectedErrorState: FC<UnexpectedErrorStateProps> = ({
   description,
+  detail,
   onRetry,
   retryLabel = 'Retry',
 }) => (
@@ -94,6 +102,15 @@ const UnexpectedErrorState: FC<UnexpectedErrorStateProps> = ({
       <Typography color="text.secondary" sx={{ textAlign: 'center' }}>
         {description}
       </Typography>
+      {detail && (
+        <Typography
+          color="text.disabled"
+          sx={{ fontFamily: 'monospace', textAlign: 'center', wordBreak: 'break-word' }}
+          variant="caption"
+        >
+          {detail}
+        </Typography>
+      )}
       <Button onClick={onRetry} startIcon={<RotateCcw size={16} />} sx={{ mt: 2 }} variant="contained">
         {retryLabel}
       </Button>
