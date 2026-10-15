@@ -84,6 +84,8 @@ type mockAPIPortalRepository struct {
 	// Status-family capture + canned returns.
 	updateStatusCalledWith updateStatusCall
 	updateStatusErr        error
+	reopenCalledWith       updateStatusCall
+	reopenErr              error
 
 	getStatusCalledWith [2]string
 	getStatusResult     string
@@ -153,6 +155,11 @@ func (m *mockAPIPortalRepository) UpdateStatus(portalID, orgUUID, updatedBy, sta
 		PortalID: portalID, OrgUUID: orgUUID, UpdatedBy: updatedBy, Status: status,
 	}
 	return m.updateStatusErr
+}
+
+func (m *mockAPIPortalRepository) Reopen(portalID, orgUUID, updatedBy string) error {
+	m.reopenCalledWith = updateStatusCall{PortalID: portalID, OrgUUID: orgUUID, UpdatedBy: updatedBy}
+	return m.reopenErr
 }
 
 func (m *mockAPIPortalRepository) GetStatusByHandle(handle, orgUUID string) (string, error) {
@@ -986,6 +993,25 @@ func TestAPIPortalService_UpdateAPIPortalStatus_HappyPath(t *testing.T) {
 	}
 }
 
+// With no actor the row's updated_by stays, and the audit names that user.
+func TestAPIPortalService_UpdateAPIPortalStatus_EmptyActorAuditsLastUser(t *testing.T) {
+	portalRepo := &mockAPIPortalRepository{
+		getResult: &model.APIPortal{ID: "portal-uuid", Handle: "acme", UpdatedBy: "user-1"},
+	}
+	audit := &mockAPIPortalAuditRepository{}
+	svc := newTestAPIPortalService(t, portalRepo, &mockAPIPortalOrgRepository{}, audit)
+
+	if err := svc.UpdateAPIPortalStatus("acme", "org-1", " ", constants.APIPortalStatusActive); err != nil {
+		t.Fatalf("UpdateAPIPortalStatus: %v", err)
+	}
+	if got := portalRepo.updateStatusCalledWith.UpdatedBy; got != "" {
+		t.Errorf("repo must get an empty actor to keep updated_by, got %q", got)
+	}
+	if len(audit.records) != 1 || audit.records[0].performedBy != "user-1" {
+		t.Errorf("audit: %+v", audit.records)
+	}
+}
+
 func TestAPIPortalService_UpdateAPIPortalStatus_RejectsUnknownStatus(t *testing.T) {
 	// Guard must run before we bother reading the row; otherwise a bogus
 	// status turns into a repo call that then rejects it, wasting a round-trip
@@ -1149,5 +1175,31 @@ func TestAPIPortalService_ListAPIPortalsByStatus_RejectsUnknownStatus(t *testing
 	}
 	if portalRepo.listByStatusCalledWith != "" {
 		t.Error("repo must not be hit when status validation fails")
+	}
+}
+
+// ReopenAPIPortal threads the user to the repository, audits the change, and
+// passes "already pending" through for errors.Is.
+func TestAPIPortalService_ReopenAPIPortal(t *testing.T) {
+	portalRepo := &mockAPIPortalRepository{getResult: &model.APIPortal{ID: "portal-uuid", Handle: "acme", UpdatedBy: "user-1"}}
+	audit := &mockAPIPortalAuditRepository{}
+	svc := newTestAPIPortalService(t, portalRepo, &mockAPIPortalOrgRepository{}, audit)
+	if err := svc.ReopenAPIPortal("acme", "org-1", "user-2"); err != nil {
+		t.Fatalf("ReopenAPIPortal: %v", err)
+	}
+	if got := portalRepo.reopenCalledWith; got.PortalID != "portal-uuid" || got.OrgUUID != "org-1" || got.UpdatedBy != "user-2" {
+		t.Errorf("repo args: %+v", got)
+	}
+	if len(audit.records) != 1 || audit.records[0].performedBy != "user-2" {
+		t.Errorf("audit: %+v", audit.records)
+	}
+
+	portalRepo.reopenErr = repository.ErrAPIPortalPending
+	if err := svc.ReopenAPIPortal("acme", "org-1", "user-2"); !errors.Is(err, api.ErrAPIPortalPending) {
+		t.Errorf("err = %v, want ErrAPIPortalPending", err)
+	}
+	portalRepo.getResult = nil
+	if err := svc.ReopenAPIPortal("missing", "org-1", "user-2"); err == nil {
+		t.Error("missing portal must fail")
 	}
 }

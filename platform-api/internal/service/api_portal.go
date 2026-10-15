@@ -274,10 +274,41 @@ func (s *APIPortalService) UpdateAPIPortalStatus(handle, orgID, updatedBy, statu
 	// repository.ErrAPIPortalNotPending is a normal outcome for concurrent pollers
 	// racing the state machine (see repository docs); it flows through unchanged
 	// so plugin callers can detect it via errors.Is and drop their write silently.
-	if err := s.portalRepo.UpdateStatus(portal.ID, orgID, strings.TrimSpace(updatedBy), status); err != nil {
+	updatedBy = strings.TrimSpace(updatedBy)
+	if err := s.portalRepo.UpdateStatus(portal.ID, orgID, updatedBy, status); err != nil {
 		return err
 	}
-	_ = s.auditRepo.Record("UPDATE_STATUS", portal.ID, "api_portal", orgID, strings.TrimSpace(updatedBy))
+	// A transition no user made keeps the row's updated_by; the audit names
+	// the same user.
+	actor := updatedBy
+	if actor == "" {
+		actor = portal.UpdatedBy
+	}
+	_ = s.auditRepo.Record("UPDATE_STATUS", portal.ID, "api_portal", orgID, actor)
+	return nil
+}
+
+// ReopenAPIPortal moves an active or failed portal back to pending, for a
+// change that takes it out of service until the change completes; the change's
+// owner later moves it on with UpdateAPIPortalStatus. A portal that is already
+// pending returns ErrAPIPortalPending (unwrapped, for errors.Is).
+func (s *APIPortalService) ReopenAPIPortal(handle, orgID, updatedBy string) error {
+	portal, err := s.portalRepo.GetByHandleAndOrgID(strings.TrimSpace(handle), orgID)
+	if err != nil {
+		return err
+	}
+	if portal == nil {
+		return apperror.APIPortalNotFound.New()
+	}
+	updatedBy = strings.TrimSpace(updatedBy)
+	if err := s.portalRepo.Reopen(portal.ID, orgID, updatedBy); err != nil {
+		return err
+	}
+	actor := updatedBy
+	if actor == "" {
+		actor = portal.UpdatedBy
+	}
+	_ = s.auditRepo.Record("UPDATE_STATUS", portal.ID, "api_portal", orgID, actor)
 	return nil
 }
 

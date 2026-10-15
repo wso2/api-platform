@@ -315,9 +315,9 @@ func (r *APIPortalRepo) Exists(handle, orgUUID string) (bool, error) {
 }
 
 // UpdateStatus mutates only the status column, scoped to (portalID, orgUUID),
-// and stamps updated_by / updated_at. Kept separate from Update so a poller
-// tick does not accidentally rewrite the whitelisted mutable-metadata fields
-// Update covers.
+// and stamps updated_at, and updated_by unless updatedBy is empty. Kept
+// separate from Update so a poller tick does not accidentally rewrite the
+// whitelisted mutable-metadata fields Update covers.
 //
 // The WHERE predicate includes `status = 'pending'` so the write is atomic
 // with the transition guard: no two callers can race each other into a
@@ -330,7 +330,7 @@ func (r *APIPortalRepo) UpdateStatus(portalID, orgUUID, updatedBy, status string
 	now := time.Now().UTC()
 	query := `
 		UPDATE api_portals
-		SET status = ?, updated_by = ?, updated_at = ?
+		SET status = ?, updated_by = COALESCE(NULLIF(?, ''), updated_by), updated_at = ?
 		WHERE uuid = ? AND organization_uuid = ? AND status = ?
 	`
 	result, err := r.db.Exec(r.db.Rebind(query), status, updatedBy, now, portalID, orgUUID, constants.APIPortalStatusPending)
@@ -350,6 +350,43 @@ func (r *APIPortalRepo) UpdateStatus(portalID, orgUUID, updatedBy, status string
 			return fmt.Errorf("api portal not found: uuid=%q organization_uuid=%q", portalID, orgUUID)
 		}
 		return ErrAPIPortalNotPending
+	}
+	return nil
+}
+
+// ErrAPIPortalPending is re-exported from the api package, like
+// ErrAPIPortalNotPending.
+var ErrAPIPortalPending = api.ErrAPIPortalPending
+
+// Reopen moves an active or failed portal back to pending and stamps
+// updated_at, and updated_by unless updatedBy is empty. The status guard in
+// the WHERE clause makes it atomic: of two concurrent changes, one wins and
+// the other gets ErrAPIPortalPending.
+func (r *APIPortalRepo) Reopen(portalID, orgUUID, updatedBy string) error {
+	now := time.Now().UTC()
+	query := `
+		UPDATE api_portals
+		SET status = ?, updated_by = COALESCE(NULLIF(?, ''), updated_by), updated_at = ?
+		WHERE uuid = ? AND organization_uuid = ? AND status IN (?, ?)
+	`
+	result, err := r.db.Exec(r.db.Rebind(query), constants.APIPortalStatusPending, updatedBy, now,
+		portalID, orgUUID, constants.APIPortalStatusActive, constants.APIPortalStatusFailed)
+	if err != nil {
+		return err
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		exists, err := r.existsByUUID(portalID, orgUUID)
+		if err != nil {
+			return err
+		}
+		if !exists {
+			return fmt.Errorf("api portal not found: uuid=%q organization_uuid=%q", portalID, orgUUID)
+		}
+		return ErrAPIPortalPending
 	}
 	return nil
 }
