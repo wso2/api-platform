@@ -59,11 +59,14 @@ curl -sk -X POST https://localhost:8443/assistant/chat/completions \
   -d '{"model":"gpt-4o-mini","messages":[{"role":"user","content":"Hello"}]}'
 ```
 
-Expected response:
+Expected response — the OpenAI error envelope, which LLM APIs return by default:
 
 ```json
-{"error": "Too Many Requests", "message": "Rate limit exceeded. Please try again later."}
+{"error":{"message":"Rate limit exceeded. Please try again later.","type":"rate_limit_error","param":null,"code":null}}
 ```
+
+With `[policy_engine.llm_errors] disable_openai_format = true` the rate-limit policy's own body is returned instead:
+`{"error": "Too Many Requests", "message": "Rate limit exceeded. Please try again later."}`.
 
 > The rate limit resets at the start of each fixed 1-minute window.
 

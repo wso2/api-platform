@@ -83,15 +83,18 @@ info "Prompt : ${DENIED_PROMPT}"
 FULL=$(chat_req "${DENIED_PROMPT}")
 STATUS=$(echo "${FULL}" | tail -1)
 BODY=$(echo "${FULL}" | sed '$d')
-GUARDRAIL_TYPE=$(echo "${BODY}" | jq -r '.type // "unknown"' 2>/dev/null)
+# Which guardrail intervened. LLM routes return the OpenAI error envelope by default, with the
+# guardrail under error.guardrail; with policy_engine.llm_errors.disable_openai_format set it is
+# under message in the guardrail's own body. Both are read.
+GUARDRAIL_TYPE=$(echo "${BODY}" | jq -r '(.error | objects | .guardrail.interveningGuardrail) // (.message | objects | .interveningGuardrail) // "unknown"' 2>/dev/null)
 
 echo "Status         : HTTP ${STATUS}"
 echo "Body           : ${BODY}"
-echo "Guardrail type : ${GUARDRAIL_TYPE}"
-if [[ "${STATUS}" == "422" && "${GUARDRAIL_TYPE}" == "SEMANTIC_PROMPT_GUARD" ]]; then
+echo "Guardrail      : ${GUARDRAIL_TYPE}"
+if [[ "${STATUS}" == "422" && "${GUARDRAIL_TYPE}" == "SemanticPromptGuard" ]]; then
   pass "Denied topic BLOCKED by semantic-prompt-guard."
 else
-  fail "Expected HTTP 422 / SEMANTIC_PROMPT_GUARD, got HTTP ${STATUS} / ${GUARDRAIL_TYPE}."
+  fail "Expected HTTP 422 / SemanticPromptGuard, got HTTP ${STATUS} / ${GUARDRAIL_TYPE}."
   FAILURES=$((FAILURES + 1))
 fi
 

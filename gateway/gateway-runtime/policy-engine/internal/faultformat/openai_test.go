@@ -362,7 +362,7 @@ func TestShouldFormat_OpenAIKeepsAuthoredBodies(t *testing.T) {
 }
 
 // On an LLM route the OpenAI shape renders a failure no policy described — a router error,
-// the engine's own 500 — because the shape is opt-in and there is no shipped body to keep.
+// the engine's own 500 — because an OpenAI SDK can read nothing else.
 func TestShouldFormat_OpenAIRendersAnUndescribedFailure(t *testing.T) {
 	in := llmInput()
 	in.Status = http.StatusServiceUnavailable

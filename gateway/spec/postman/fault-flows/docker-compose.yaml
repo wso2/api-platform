@@ -1,0 +1,45 @@
+# Isolated gateway + mock LLM backend for the fault-flows Postman collection.
+# Host ports are shifted (28080 router, 29090 management API) so it can run beside a stock gateway.
+#
+#   docker compose -f gateway/spec/postman/fault-flows/docker-compose.yaml up -d
+#
+# Images default to the ones run.sh builds (./run.sh build).
+name: fault-flows
+services:
+  gateway-controller:
+    image: ${CONTROLLER_IMAGE:-local/fault-flows-gateway-controller:fault-flows}
+    command: ["-config", "/etc/gateway-controller/config.toml"]
+    ports: ["29090:9090"]
+    env_file: [{path: fault-flows.env, required: true, format: raw}]
+    volumes:
+      - controller-data:/app/data
+      - ./config.toml:/etc/gateway-controller/config.toml:ro
+      - ../../../gateway-controller/certificates:/app/certificates
+      - ../../../gateway-controller/listener-certs:/app/listener-certs:ro
+      - ../../../gateway-controller/aesgcm-keys/default-aesgcm256-v1.bin:/app/data/aesgcm-keys/default-aesgcm256-v1.bin:ro
+    networks: [fault-flows]
+
+  gateway-runtime:
+    image: ${RUNTIME_IMAGE:-local/fault-flows-gateway-runtime:fault-flows}
+    mem_limit: 768m
+    command: ["--pol.config", "/etc/policy-engine/config.toml"]
+    ports: ["28080:8080", "29002:9002", "29004:9004"]
+    env_file: [{path: fault-flows.env, required: true, format: raw}]
+    volumes:
+      - ./config.toml:/etc/policy-engine/config.toml:ro
+      - ../../../configs/llm-pricing/model_prices.json:/etc/policy-engine/llm-pricing/model_prices.json:ro
+    depends_on: [gateway-controller]
+    networks: [fault-flows]
+
+  mock-llm:
+    image: python:3.12-alpine
+    command: ["python3", "-u", "/app/mock-backend.py"]
+    ports: ["28009:8000"]
+    volumes:
+      - ./mock-backend.py:/app/mock-backend.py:ro
+    networks: [fault-flows]
+
+volumes:
+  controller-data:
+networks:
+  fault-flows:

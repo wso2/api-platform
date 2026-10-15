@@ -1,0 +1,49 @@
+name: sample-fault-handler
+version: v0.1.0
+description: |
+  TEST FAULT POLICY for the fault-flows Postman kit. Runs only on the fault path. Always stamps
+  x-sample-fault-handler with what it saw (source, policy, code), and can optionally re-describe
+  the failure, write its own body, or change the status. Use it to check the priority between a
+  producing policy's description, a fault policy's re-description, and a fault policy's body.
+  Not for production.
+
+parameters:
+  type: object
+  additionalProperties: false
+  properties:
+    fault:
+      type: object
+      additionalProperties: false
+      description: Fault-path settings.
+      properties:
+        message:
+          type: string
+          description: Re-describe with this message.
+        code:
+          type: string
+          description: Re-describe with this code.
+        type:
+          type: string
+          description: Re-describe with this failure class.
+        inherit:
+          type: boolean
+          default: true
+          description: |
+            Start the re-description from the producing policy's description (true), or send only
+            the fields set here (false). A re-description replaces the producer's as a whole.
+        body:
+          type: string
+          description: Write this body. A fault policy's body always wins over the gateway's rendering.
+        contentType:
+          type: string
+          default: application/json
+          description: Content type sent with body.
+        statusCode:
+          type: integer
+          minimum: 400
+          maximum: 599
+          description: Override the status.
+
+systemParameters:
+  type: object
+  properties: {}
