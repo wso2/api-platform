@@ -35,13 +35,17 @@ const (
 // defaultPublicationArchiveMaxBytes applies when the configured ZIP ceiling is <= 0.
 const defaultPublicationArchiveMaxBytes int64 = 10 << 20
 
+// portalArchiveRoot wraps everything in one folder: the portal treats a ZIP whose only
+// top-level entry is a folder as a wrapper, and would refuse one holding only docs/ or web/.
+const portalArchiveRoot = "content"
+
 // portalContentTooLarge covers every size limit without saying which was hit.
 func portalContentTooLarge() error {
 	return apperror.APIPublicationValidationFailed.New("selected documents are too large to publish")
 }
 
 // buildContentArchive packs the documents into the ZIP the portal reads, each at
-// docs/<Folder>/<FileName>, and returns nil when there is nothing to send. A ZIP
+// content/docs/<Folder>/<FileName>, and returns nil when there is nothing to send. A ZIP
 // over maxArchiveBytes is rejected.
 func buildContentArchive(docs []portalDocument, maxArchiveBytes int64) (*PortalContent, error) {
 	if len(docs) == 0 {
@@ -51,7 +55,7 @@ func buildContentArchive(docs []portalDocument, maxArchiveBytes int64) (*PortalC
 	var buf bytes.Buffer
 	zw := zip.NewWriter(&buf)
 	for _, doc := range docs {
-		w, err := zw.Create("docs/" + doc.Folder + "/" + doc.FileName)
+		w, err := zw.Create(portalArchiveRoot + "/docs/" + doc.Folder + "/" + doc.FileName)
 		if err != nil {
 			return nil, fmt.Errorf("failed to add document %q to the content archive: %w", doc.Handle, err)
 		}

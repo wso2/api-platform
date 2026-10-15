@@ -47,7 +47,7 @@ func readArchive(t *testing.T, archive []byte) map[string]string {
 }
 
 func TestBuildContentArchive(t *testing.T) {
-	t.Run("lays each document out under docs/<Type>/<file>", func(t *testing.T) {
+	t.Run("lays each document out under content/docs/<Type>/<file>", func(t *testing.T) {
 		content, err := buildContentArchive([]portalDocument{
 			{Handle: "guide", Folder: "HowTo", FileName: "guide.md", Content: []byte("# guide")},
 			{Handle: "faq", Folder: "FAQ", FileName: "faq.md", Content: []byte("# faq")},
@@ -56,7 +56,7 @@ func TestBuildContentArchive(t *testing.T) {
 			t.Fatalf("got %v, %v", content, err)
 		}
 		files := readArchive(t, content.Archive)
-		if len(files) != 2 || files["docs/HowTo/guide.md"] != "# guide" || files["docs/FAQ/faq.md"] != "# faq" {
+		if len(files) != 2 || files["content/docs/HowTo/guide.md"] != "# guide" || files["content/docs/FAQ/faq.md"] != "# faq" {
 			t.Fatalf("unexpected archive layout: %v", files)
 		}
 	})

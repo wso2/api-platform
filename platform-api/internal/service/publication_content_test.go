@@ -74,7 +74,7 @@ func TestLoadPortalContent(t *testing.T) {
 			t.Fatalf("got %v, %v", content, err)
 		}
 		files := readArchive(t, content.Archive)
-		if len(files) != 2 || files["docs/HowTo/guide.md"] != "# guide" || files["docs/FAQ/faq.md"] != "# faq" {
+		if len(files) != 2 || files["content/docs/HowTo/guide.md"] != "# guide" || files["content/docs/FAQ/faq.md"] != "# faq" {
 			t.Fatalf("unexpected archive layout: %v", files)
 		}
 	})
@@ -193,7 +193,7 @@ func TestPublish_PushesDocumentsAfterTheListing(t *testing.T) {
 	if got := strings.Join(pub.calls, ","); got != "listing,content" {
 		t.Fatalf("want the listing then its content, got %s", got)
 	}
-	if files := readArchive(t, pub.archive); files["docs/HowTo/guide.md"] != "# guide" {
+	if files := readArchive(t, pub.archive); files["content/docs/HowTo/guide.md"] != "# guide" {
 		t.Fatalf("unexpected archive: %v", files)
 	}
 	if !promoted {

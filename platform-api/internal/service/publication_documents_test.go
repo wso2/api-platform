@@ -97,6 +97,17 @@ func TestPlaceDocuments(t *testing.T) {
 		}
 	})
 
+	t.Run("rejects a name with two dots in a row, which the portal refuses", func(t *testing.T) {
+		_, err := placeDocuments([]*model.Document{doc("guide", "DOC_HowTo", "release..notes.md")})
+		if !apperror.APIPublicationValidationFailed.Is(err) || !strings.Contains(err.Error(), "file name") {
+			t.Fatalf("want a file name validation error, got %v", err)
+		}
+		_, err = placeDocuments([]*model.Document{doc("guide", "DOC_Release..Notes", "guide.md")})
+		if !apperror.APIPublicationValidationFailed.Is(err) || !strings.Contains(err.Error(), "type") {
+			t.Fatalf("want a type validation error, got %v", err)
+		}
+	})
+
 	t.Run("rejects two documents on the same path ignoring case", func(t *testing.T) {
 		_, err := placeDocuments([]*model.Document{
 			doc("guide", "DOC_HowTo", "Guide.md"),

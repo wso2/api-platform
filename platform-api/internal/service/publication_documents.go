@@ -161,11 +161,10 @@ func portalFileName(doc *model.Document) string {
 	return name
 }
 
-// isSafePathElement reports whether s can be one folder or file name inside the
-// content ZIP: non-empty, no separators, not a relative-path marker, no control
-// characters.
+// isSafePathElement reports whether s is one folder or file name for the ZIP. ".." is
+// refused anywhere in it, because the portal rejects any entry path containing one.
 func isSafePathElement(s string) bool {
-	if s == "" || s == "." || s == ".." {
+	if s == "" || s == "." || strings.Contains(s, "..") {
 		return false
 	}
 	return !strings.ContainsFunc(s, func(r rune) bool {
