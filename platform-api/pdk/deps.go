@@ -116,6 +116,10 @@ type APIPortals interface {
 	// UpdateAPIPortalStatus moves a pending portal to active or failed. An empty
 	// updatedBy keeps the row's updated_by, for transitions no user made.
 	UpdateAPIPortalStatus(handle, orgID, updatedBy, status string) error
+	// ReopenAPIPortal moves an active or failed portal back to pending for a
+	// change that runs in the background; api.ErrAPIPortalPending when one is
+	// already in progress.
+	ReopenAPIPortal(handle, orgID, updatedBy string) error
 	DeleteAPIPortal(handle, orgID, actor string) error
 	// AuthHeaderForPortal returns the "SharedKey <raw>" Authorization header for
 	// calling the portal's admin API. The shared key is stored encrypted and only

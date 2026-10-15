@@ -288,6 +288,30 @@ func (s *APIPortalService) UpdateAPIPortalStatus(handle, orgID, updatedBy, statu
 	return nil
 }
 
+// ReopenAPIPortal moves an active or failed portal back to pending, for a
+// change that takes it out of service until the change completes; the change's
+// owner later moves it on with UpdateAPIPortalStatus. A portal that is already
+// pending returns ErrAPIPortalPending (unwrapped, for errors.Is).
+func (s *APIPortalService) ReopenAPIPortal(handle, orgID, updatedBy string) error {
+	portal, err := s.portalRepo.GetByHandleAndOrgID(strings.TrimSpace(handle), orgID)
+	if err != nil {
+		return err
+	}
+	if portal == nil {
+		return apperror.APIPortalNotFound.New()
+	}
+	updatedBy = strings.TrimSpace(updatedBy)
+	if err := s.portalRepo.Reopen(portal.ID, orgID, updatedBy); err != nil {
+		return err
+	}
+	actor := updatedBy
+	if actor == "" {
+		actor = portal.UpdatedBy
+	}
+	_ = s.auditRepo.Record("UPDATE_STATUS", portal.ID, "api_portal", orgID, actor)
+	return nil
+}
+
 // GetAPIPortalStatus returns just the provisioning status column for a portal.
 // Cheaper than GetAPIPortal when the caller (typically the cloud plugin's Get
 // projection) only needs the status. Missing portal surfaces as an

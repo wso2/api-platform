@@ -834,3 +834,39 @@ func TestAPIPortalRepo_ListByStatus_CrossOrg(t *testing.T) {
 		t.Errorf("cross-org selection missed a row; got %+v", seen)
 	}
 }
+
+// Reopen takes an active or a failed portal back to pending; a portal that is
+// already pending is refused, so two changes cannot run at once.
+func TestAPIPortalRepo_Reopen(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	const orgUUID = "org-portal-reopen"
+	createTestAPIPortalOrg(t, db, orgUUID)
+	repo := NewAPIPortalRepo(db)
+
+	for _, from := range []string{constants.APIPortalStatusActive, constants.APIPortalStatusFailed} {
+		portal := newTestAPIPortal("portal-reopen-"+from, orgUUID, "reopen-"+from)
+		portal.Status = from
+		portal.UpdatedBy = "user-1"
+		if err := repo.Create(portal); err != nil {
+			t.Fatalf("Create: %v", err)
+		}
+		if err := repo.Reopen(portal.ID, orgUUID, "user-2"); err != nil {
+			t.Fatalf("Reopen from %s: %v", from, err)
+		}
+		got, err := repo.GetByUUID(portal.ID, orgUUID)
+		if err != nil {
+			t.Fatalf("GetByUUID: %v", err)
+		}
+		if got.Status != constants.APIPortalStatusPending || got.UpdatedBy != "user-2" {
+			t.Errorf("from %s: status %q updated_by %q", from, got.Status, got.UpdatedBy)
+		}
+		if err := repo.Reopen(portal.ID, orgUUID, "user-3"); !errors.Is(err, ErrAPIPortalPending) {
+			t.Errorf("second Reopen from %s: %v, want ErrAPIPortalPending", from, err)
+		}
+	}
+	if err := repo.Reopen("no-such-portal", orgUUID, "user-1"); err == nil || errors.Is(err, ErrAPIPortalPending) {
+		t.Errorf("missing portal: %v", err)
+	}
+}

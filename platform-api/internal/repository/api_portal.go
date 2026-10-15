@@ -354,6 +354,43 @@ func (r *APIPortalRepo) UpdateStatus(portalID, orgUUID, updatedBy, status string
 	return nil
 }
 
+// ErrAPIPortalPending is re-exported from the api package, like
+// ErrAPIPortalNotPending.
+var ErrAPIPortalPending = api.ErrAPIPortalPending
+
+// Reopen moves an active or failed portal back to pending and stamps
+// updated_at, and updated_by unless updatedBy is empty. The status guard in
+// the WHERE clause makes it atomic: of two concurrent changes, one wins and
+// the other gets ErrAPIPortalPending.
+func (r *APIPortalRepo) Reopen(portalID, orgUUID, updatedBy string) error {
+	now := time.Now().UTC()
+	query := `
+		UPDATE api_portals
+		SET status = ?, updated_by = COALESCE(NULLIF(?, ''), updated_by), updated_at = ?
+		WHERE uuid = ? AND organization_uuid = ? AND status IN (?, ?)
+	`
+	result, err := r.db.Exec(r.db.Rebind(query), constants.APIPortalStatusPending, updatedBy, now,
+		portalID, orgUUID, constants.APIPortalStatusActive, constants.APIPortalStatusFailed)
+	if err != nil {
+		return err
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		exists, err := r.existsByUUID(portalID, orgUUID)
+		if err != nil {
+			return err
+		}
+		if !exists {
+			return fmt.Errorf("api portal not found: uuid=%q organization_uuid=%q", portalID, orgUUID)
+		}
+		return ErrAPIPortalPending
+	}
+	return nil
+}
+
 // existsByUUID reports whether a row exists for the given (uuid, org) pair.
 // Used by UpdateStatus to disambiguate a zero-rows-affected update between
 // "row missing" and "status was not pending".
