@@ -37,8 +37,10 @@ import (
 	"github.com/wso2/api-platform/common/authenticators"
 	commonmodels "github.com/wso2/api-platform/common/models"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/certificate"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/restapi"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/subscription"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
@@ -334,20 +336,57 @@ func TestWriteRefusesBeforeReachingTheService(t *testing.T) {
 	}
 }
 
-// The service's validation detail is surfaced on purpose: it is how the model
-// learns what to correct in the manifest.
+// The service's validation detail is surfaced the way the REST handlers surface
+// it: every field and message, which is how the model learns what to correct in
+// the manifest. The stubs return the typed errors the real RestAPIService
+// returns - create and update use different types - because a plain string
+// error would pass whether or not write() unpacks the list.
 func TestWriteSurfacesTheServiceValidationError(t *testing.T) {
 	f := newToolsHandler(false)
-	f.rest.createErr = errors.New("spec.context must start with '/'")
-	f.rest.updateErr = errors.New("spec.version is required")
+	f.rest.createErr = &utils.ValidationErrorListError{Errors: []config.ValidationError{
+		{Field: "spec.context", Message: "must start with '/'"},
+		{Field: "spec.upstream.main.url", Message: "Upstream URL must use http or https scheme"},
+	}}
+	f.rest.updateErr = &restapi.ValidationError{Errors: []config.ValidationError{
+		{Field: "spec.version", Message: "API version is required"},
+	}}
 
 	_, _, err := f.h.deployAPI(toolsCtx("developer"), nil, deployInput{Kind: "RestApi", Yaml: "x"})
 	require.Error(t, err)
-	assert.Equal(t, "failed to create RestApi: spec.context must start with '/'", err.Error())
+	assert.Equal(t, "failed to create RestApi: Configuration validation failed (2 errors):\n"+
+		"  1. spec.context: must start with '/'\n"+
+		"  2. spec.upstream.main.url: Upstream URL must use http or https scheme", err.Error())
 
 	_, _, err = f.h.deployAPI(toolsCtx("developer"), nil, deployInput{Kind: "RestApi", Yaml: "x", ID: "orders"})
 	require.Error(t, err)
-	assert.Equal(t, `failed to update RestApi "orders": spec.version is required`, err.Error())
+	assert.Equal(t, `failed to update RestApi "orders": Configuration validation failed (1 error):`+"\n"+
+		"  1. spec.version: API version is required", err.Error())
+}
+
+// An internal failure is not echoed, matching the REST handlers' 500 bodies;
+// the full error goes to the log only.
+func TestWriteHidesInternalErrorsLikeREST(t *testing.T) {
+	f := newToolsHandler(false)
+	f.rest.updateErr = fmt.Errorf("failed to persist configuration update: %w", errors.New("database is locked"))
+
+	_, _, err := f.h.deployAPI(toolsCtx("developer"), nil, deployInput{Kind: "RestApi", Yaml: "x", ID: "orders"})
+
+	require.Error(t, err)
+	assert.Equal(t, `failed to update RestApi "orders": Failed to update configuration`, err.Error())
+	assert.NotContains(t, err.Error(), "database is locked")
+}
+
+// Kinds whose REST handler passes the service error through keep doing so over
+// MCP — their services put the validation detail in the error string itself.
+func TestWritePassesThroughForPassThroughKinds(t *testing.T) {
+	f := newToolsHandler(false)
+	f.mcp.createErr = errors.New("configuration validation failed with 1 error(s): 1. spec.tools: is required")
+
+	_, _, err := f.h.deployAPI(toolsCtx("developer"), nil, deployInput{Kind: "Mcp", Yaml: "x"})
+
+	require.Error(t, err)
+	assert.Equal(t, "failed to create Mcp: configuration validation failed with 1 error(s): "+
+		"1. spec.tools: is required", err.Error())
 }
 
 func TestWriteDeniesWithoutTheGate(t *testing.T) {
