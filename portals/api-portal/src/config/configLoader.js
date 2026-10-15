@@ -651,6 +651,44 @@ function resolvePortalIdConfig(cfg) {
 resolvePortalIdConfig(config);
 
 /**
+ * JWKS fetches feed the signature-verification path directly, so a plain http:// URL
+ * would let a network attacker swap the key set and sign accepted tokens. jose's
+ * createRemoteJWKSet does not enforce HTTPS itself. Refuses to start unless `raw` is
+ * https://, or plain http:// to a localhost host with the development-only
+ * auth.idp.allow_local_http_jwks opt-in.
+ */
+function requireSecureJwksUrl(cfg, raw, setting) {
+    let jwksProtocol;
+    let jwksHostname;
+    try {
+        ({ protocol: jwksProtocol, hostname: jwksHostname } = new URL(raw));
+    } catch (_) {
+        process.stderr.write(
+            `[FATAL] ${setting} is not a valid URL: ${raw}\n`
+        );
+        process.exit(1);
+    }
+    if (jwksProtocol !== 'https:') {
+        // Development-only opt-in. Limited to localhost hosts so the flag can
+        // never expose a remote key set to an on-path attacker.
+        const devHttpAllowed =
+            cfg.auth.idp.allowLocalHttpJwks === true &&
+            jwksProtocol === 'http:' &&
+            (jwksHostname === 'localhost' || jwksHostname.endsWith('.localhost'));
+        if (!devHttpAllowed) {
+            process.stderr.write(
+                `[FATAL] ${setting} must use https:// (got ${jwksProtocol}//${raw.replace(/^\S+?:\/\//, '')}). ` +
+                'A plain http:// JWKS URL lets a network attacker substitute the key set and sign accepted tokens.\n'
+            );
+            process.exit(1);
+        }
+        process.stderr.write(
+            `[WARN] ${setting} is plain http:// (${raw}); allowed because auth.idp.allow_local_http_jwks=true and the host is local. Development only.\n`
+        );
+    }
+}
+
+/**
  * Refuses to start when auth.mode = "idp" is selected without the settings OIDC login
  * actually needs.
  *
@@ -691,38 +729,7 @@ function validateIdpConfig(cfg) {
         );
         process.exit(1);
     }
-    // JWKS fetches feed the signature-verification path directly, so a plain
-    // http:// URL would let a network attacker swap the key set and sign
-    // accepted tokens. jose's createRemoteJWKSet does not enforce HTTPS itself.
-    const jwksUrlRaw = String(cfg.auth.idp.jwksUrl).trim();
-    let jwksProtocol;
-    let jwksHostname;
-    try {
-        ({ protocol: jwksProtocol, hostname: jwksHostname } = new URL(jwksUrlRaw));
-    } catch (_) {
-        process.stderr.write(
-            `[FATAL] auth.idp.jwks_url is not a valid URL: ${jwksUrlRaw}\n`
-        );
-        process.exit(1);
-    }
-    if (jwksProtocol !== 'https:') {
-        // Development-only opt-in. Limited to localhost hosts so the flag can
-        // never expose a remote key set to an on-path attacker.
-        const devHttpAllowed =
-            cfg.auth.idp.allowLocalHttpJwks === true &&
-            jwksProtocol === 'http:' &&
-            (jwksHostname === 'localhost' || jwksHostname.endsWith('.localhost'));
-        if (!devHttpAllowed) {
-            process.stderr.write(
-                `[FATAL] auth.idp.jwks_url must use https:// (got ${jwksProtocol}//${jwksUrlRaw.replace(/^\S+?:\/\//, '')}). ` +
-                'A plain http:// JWKS URL lets a network attacker substitute the key set and sign accepted tokens.\n'
-            );
-            process.exit(1);
-        }
-        process.stderr.write(
-            `[WARN] auth.idp.jwks_url is plain http:// (${jwksUrlRaw}); allowed because auth.idp.allow_local_http_jwks=true and the host is local. Development only.\n`
-        );
-    }
+    requireSecureJwksUrl(cfg, String(cfg.auth.idp.jwksUrl).trim(), 'auth.idp.jwks_url');
 }
 
 validateIdpConfig(config);
@@ -749,6 +756,35 @@ function validateMultiOrganizationConfig(cfg) {
 }
 
 validateMultiOrganizationConfig(config);
+
+/**
+ * auth.idp.issuer_template / jwks_url_template: each, when set, must
+ * carry exactly one {org} placeholder — without it every organization would share one
+ * key set (or one issuer), and with two the extracted organization would be ambiguous.
+ * The template must be an absolute URL once {org} is filled in, since it is fetched.
+ */
+function validateOrgIssuerConfig(cfg) {
+    const idp = cfg.auth?.idp || {};
+    const placeholders = (v) => (String(v).match(/\{org\}/g) || []).length;
+    for (const [key, value] of [['issuer_template', idp.issuerTemplate], ['jwks_url_template', idp.jwksUrlTemplate]]) {
+        if (!value) continue;
+        if (placeholders(value) !== 1) {
+            process.stderr.write(`[FATAL] auth.idp.${key} must contain exactly one {org} placeholder, got "${value}".\n`);
+            process.exit(1);
+        }
+    }
+    if (idp.jwksUrlTemplate && cfg.auth?.mode === 'idp') {
+        requireSecureJwksUrl(cfg, idp.jwksUrlTemplate.replace('{org}', 'org'), 'auth.idp.jwks_url_template');
+    }
+    if (idp.jwksUrlTemplate && !idp.issuerTemplate) {
+        process.stderr.write('[WARN] auth.idp.jwks_url_template is set without issuer_template — it is never used.\n');
+    }
+    if (idp.issuerTemplate && !cfg.multiOrganization?.enabled) {
+        process.stderr.write('[WARN] auth.idp.issuer_template has no effect unless multi_organization.enabled = true.\n');
+    }
+}
+
+validateOrgIssuerConfig(config);
 
 /**
  * auth.idp.audience may name several accepted audiences — a comma-separated string or a
