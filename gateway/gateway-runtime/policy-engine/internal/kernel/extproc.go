@@ -273,12 +273,11 @@ func (s *ExternalProcessorServer) Process(stream extprocv3.ExternalProcessor_Pro
 	metrics.ActiveStreams.Inc()
 	defer metrics.ActiveStreams.Dec()
 
-	// The root span and its context are created lazily on the first message.
-	// The downstream request's W3C trace context (traceparent/tracestate) is
-	// delivered by Envoy inside the RequestHeaders ProcessingRequest body — NOT
-	// as ext_proc gRPC stream metadata — so it cannot be extracted until the
-	// first message arrives. Until then, ctx is the raw stream context and span
-	// is nil. NoOp if tracing is disabled.
+	// The root span and its context are created lazily on the first message. Its
+	// parent comes from Envoy's context in the stream's gRPC metadata, falling back
+	// to a traceparent in the RequestHeaders body, and that fallback needs the
+	// first message (see startRootSpan). Until then, ctx is the raw stream context
+	// and span is nil. NoOp if tracing is disabled.
 	ctx := stream.Context()
 	var span trace.Span
 
@@ -330,10 +329,9 @@ func (s *ExternalProcessorServer) Process(stream extprocv3.ExternalProcessor_Pro
 		}
 		if err != nil {
 			// Ensure the root span exists even when the stream fails before the
-			// first message ever arrives: there is no request trace context to
-			// parent on yet, so this is the same new root we would otherwise
-			// start below — created here only so a stream-level failure is still
-			// observable.
+			// first message ever arrives, so a stream-level failure is still
+			// observable. With no message there is no header fallback, but the
+			// stream metadata is still read, so it joins Envoy's trace when present.
 			if span == nil {
 				ctx, span = s.startRootSpan(ctx, nil)
 			}
@@ -353,9 +351,9 @@ func (s *ExternalProcessorServer) Process(stream extprocv3.ExternalProcessor_Pro
 			return status.Errorf(grpccodes.Unknown, "failed to receive request: %v", err)
 		}
 
-		// Start the root span on the first message, parented on the request's
-		// trace context extracted from its HTTP headers (RequestHeaders phase).
-		// Subsequent messages on this stream reuse the same span and context.
+		// Start the root span on the first message, parented on Envoy's client
+		// span for this stream (see startRootSpan). Subsequent messages on this
+		// stream reuse the same span and context.
 		if span == nil {
 			ctx, span = s.startRootSpan(ctx, req)
 		}

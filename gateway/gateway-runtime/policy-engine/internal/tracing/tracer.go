@@ -170,15 +170,9 @@ func InitTracer(cfg *config.Config) (func(), error) {
 }
 
 // ExtractTraceContext extracts the W3C Trace Context (traceparent/tracestate)
-// from the given carrier and returns a context parented on the remote span.
-//
-// The carrier must be built from the downstream HTTP request headers that Envoy
-// delivers inside the RequestHeaders ProcessingRequest body — NOT from the
-// ext_proc gRPC stream metadata. The request's traceparent travels in the
-// message body, and the long-lived bidirectional ext_proc stream sets its gRPC
-// metadata only once at stream establishment, so it never carries a per-request
-// traceparent. Reading it from stream metadata always yielded an empty span
-// context, producing a new (unparented) root trace for every request.
+// from the given carrier and returns a context parented on the remote span. It
+// is agnostic to the carrier's source; the ext_proc server builds it from the
+// stream's gRPC metadata first and the RequestHeaders body as the fallback.
 //
 // When the carrier holds no valid traceparent, the input context is returned
 // unchanged and the caller will start a fresh root trace — an ordinary,
