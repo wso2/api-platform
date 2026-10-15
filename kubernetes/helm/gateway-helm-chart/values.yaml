@@ -1019,7 +1019,15 @@ gateway:
       env:
         gatewayControllerHost: ""
         logLevel: info
+        # Moesif collector key (application ID), passed to the gateway runtime as the
+        # MOESIF_KEY env var. Set it either as a plaintext value (moesifKey) or as a
+        # reference to a key in an existing Kubernetes Secret in the release namespace
+        # (moesifKeySecretRef). When moesifKeySecretRef.name is set it takes precedence
+        # and moesifKey is ignored.
         moesifKey: ""
+        moesifKeySecretRef:
+          name: ""
+          key: moesif-key
         # Router (Envoy) admin interface (config_dump, stats, /runtime_modify, etc.).
         # Off by default — it isn't even present in the static Envoy bootstrap unless
         # this is true, and is bound to loopback-only when enabled, so it's never
