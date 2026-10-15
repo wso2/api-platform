@@ -8,9 +8,10 @@
  */
 
 import { useCallback, useEffect, useRef, useState, type FC } from 'react';
-import { Box, Button, CircularProgress, Typography } from '@wso2/oxygen-ui';
+import { Box, CircularProgress } from '@wso2/oxygen-ui';
 import PipelineCreatePage from './PipelineCreatePage';
 import PipelinesListPage from './PipelinesListPage';
+import UnexpectedErrorState from './components/UnexpectedErrorState';
 import type { AIWorkspaceHostPort } from './hostPort';
 import type { CreatePipelineInput, Environment, Pipeline } from './types';
 import {
@@ -139,23 +140,10 @@ const PipelinesFeature: FC<PipelinesFeatureProps> = ({ port }) => {
 
   if (error) {
     return (
-      <Box
-        sx={{
-          border: '1px dashed',
-          borderColor: 'divider',
-          borderRadius: 1.5,
-          py: 6,
-          px: 3,
-          textAlign: 'center',
-        }}
-      >
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          {error}
-        </Typography>
-        <Button variant="outlined" size="small" onClick={() => void load()}>
-          Retry
-        </Button>
-      </Box>
+      <UnexpectedErrorState
+        description="We couldn't load your pipelines. This is usually temporary - try again in a moment."
+        onRetry={() => void load()}
+      />
     );
   }
 

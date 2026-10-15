@@ -41,6 +41,7 @@ import {
 import { useManagedPortalList } from "./hooks";
 import type { ManagedPortal } from "./types";
 import { PortalIllustration } from "./PortalIllustration";
+import UnexpectedErrorState from "./components/UnexpectedErrorState";
 
 const devportalLogo = new URL("./images/devportal-logo.png", import.meta.url)
   .href;
@@ -75,7 +76,7 @@ export default function ManagedPortalsList({
   onCreate,
   onEdit,
 }: ManagedPortalsListProps) {
-  const { portals, isLoading, error, remove } = useManagedPortalList();
+  const { portals, isLoading, error, refetch, remove } = useManagedPortalList();
   const [deleteTarget, setDeleteTarget] = useState<ManagedPortal | null>(null);
   const [deleting, setDeleting] = useState(false);
 
@@ -105,6 +106,17 @@ export default function ManagedPortalsList({
       setDeleting(false);
     }
   };
+
+  if (error) {
+    return (
+      <PageContent fullWidth>
+        <UnexpectedErrorState
+          description="We couldn't load your API portals. This is usually temporary - try again in a moment."
+          onRetry={refetch}
+        />
+      </PageContent>
+    );
+  }
 
   return (
     <PageContent fullWidth>
@@ -148,12 +160,6 @@ export default function ManagedPortalsList({
           <Grid size={{ xs: 12 }}>
             <Typography variant="body2" color="text.secondary">
               Loading portals…
-            </Typography>
-          </Grid>
-        ) : error ? (
-          <Grid size={{ xs: 12 }}>
-            <Typography variant="body2" color="error">
-              {error.message}
             </Typography>
           </Grid>
         ) : portals.length === 0 ? (

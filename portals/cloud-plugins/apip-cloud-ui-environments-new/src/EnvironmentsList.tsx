@@ -43,6 +43,7 @@ import {
   Typography,
 } from '@wso2/oxygen-ui';
 import { Clock3, Plus, Search, Trash2 } from '@wso2/oxygen-ui-icons-react';
+import UnexpectedErrorState from './components/UnexpectedErrorState';
 import type { NotifySeverity } from './hostPort';
 import type { Environment, EnvironmentPort } from './types';
 
@@ -128,6 +129,17 @@ const EnvironmentsList: FC<EnvironmentsListProps> = ({ port, readOnly, onCreateC
     }
   };
 
+  if (loadError) {
+    return (
+      <PageContent fullWidth>
+        <UnexpectedErrorState
+          description="We couldn't load your environments. This is usually temporary - try again in a moment."
+          onRetry={refetch}
+        />
+      </PageContent>
+    );
+  }
+
   return (
     <PageContent fullWidth>
       <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', mb: 3 }}>
@@ -139,16 +151,6 @@ const EnvironmentsList: FC<EnvironmentsListProps> = ({ port, readOnly, onCreateC
       </Box>
 
       {readOnly ? <Alert severity="info" sx={{ mb: 3 }}>Environments can be managed only at Organization level.</Alert> : null}
-
-      {loadError ? (
-        <Alert
-          severity="error"
-          sx={{ mb: 3 }}
-          action={<Button color="inherit" size="small" onClick={refetch}>Retry</Button>}
-        >
-          {loadError}
-        </Alert>
-      ) : null}
 
       <TextField
         fullWidth
