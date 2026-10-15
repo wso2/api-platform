@@ -241,6 +241,9 @@ func (h *McpHandler) keyBearingKinds() []string {
 // its canonical form. Models are inconsistent about casing and separators, so
 // "rest_api", "REST-API" and "RestApi" all settle on one value before reaching
 // any service or database query.
+//
+// If adding a new kind, Also add its write-error mapping to mcpWriteErrorMappers
+// (mcp_management_errors.go); TestEveryKindHasAWriteErrorMapping enforces it.
 var kindAliases = map[string]string{
 	"agent":               models.KindAgent,
 	"restapi":             models.KindRestApi,
@@ -287,6 +290,9 @@ func canonicalKinds() []string {
 // (secrets need an encryption provider, which not every deployment configures).
 // Skipping the entry means the kind is simply not advertised, rather than a nil
 // dereference the first time a cross-kind list touches it.
+//
+// If adding a new kind, Also add its write-error mapping to mcpWriteErrorMappers
+// (mcp_management_errors.go); TestEveryKindHasAWriteErrorMapping enforces it.
 func (h *McpHandler) buildKindRegistry() map[string]*kindOps {
 	registry := make(map[string]*kindOps)
 	for _, ops := range []*kindOps{
@@ -845,7 +851,7 @@ func (h *McpHandler) secretOps() *kindOps {
 func (h *McpHandler) mcpProxyBody(log *slog.Logger, cfg *models.StoredConfig) (any, error) {
 	proxy, err := rematerializeMCPProxyConfig(log, cfg.UUID, cfg.DisplayName, cfg.SourceConfiguration)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read stored MCP proxy configuration")
+		return nil, &mcpReadBackError{msg: "failed to read stored MCP proxy configuration"}
 	}
 	return buildResourceResponseFromStored(proxy, cfg), nil
 }
@@ -854,7 +860,7 @@ func (h *McpHandler) mcpProxyBody(log *slog.Logger, cfg *models.StoredConfig) (a
 func (h *McpHandler) llmProxyBody(log *slog.Logger, cfg *models.StoredConfig) (any, error) {
 	proxy, err := rematerializeLLMProxyConfig(log, cfg.UUID, cfg.DisplayName, cfg.SourceConfiguration)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read stored LLM proxy configuration")
+		return nil, &mcpReadBackError{msg: "failed to read stored LLM proxy configuration"}
 	}
 	return buildResourceResponseFromStored(proxy, cfg), nil
 }
@@ -863,7 +869,7 @@ func (h *McpHandler) llmProxyBody(log *slog.Logger, cfg *models.StoredConfig) (a
 func (h *McpHandler) llmProviderBody(log *slog.Logger, cfg *models.StoredConfig) (any, error) {
 	prov, err := rematerializeLLMProviderConfig(log, cfg.UUID, cfg.DisplayName, cfg.SourceConfiguration)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read stored LLM provider configuration")
+		return nil, &mcpReadBackError{msg: "failed to read stored LLM provider configuration"}
 	}
 	return buildResourceResponseFromStored(prov, cfg), nil
 }
@@ -873,7 +879,7 @@ func (h *McpHandler) llmProviderBody(log *slog.Logger, cfg *models.StoredConfig)
 func (h *McpHandler) agentBody(log *slog.Logger, cfg *models.StoredConfig) (any, error) {
 	agentConfig, err := rematerializeAgentConfig(log, cfg.UUID, cfg.DisplayName, cfg.SourceConfiguration)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read stored agent configuration")
+		return nil, &mcpReadBackError{msg: "failed to read stored agent configuration"}
 	}
 	if resolved, err := cfg.GetContext(); err == nil && resolved != "" {
 		agentConfig.Spec.Context = &resolved

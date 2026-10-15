@@ -668,9 +668,10 @@ func (h *McpHandler) write(ctx context.Context, class kindClass, tool string, in
 		resource, err := ops.Update(in.ID, []byte(in.Yaml), correlationID, log)
 		if err != nil {
 			log.Error("MCP update failed", slog.String("id", in.ID), slog.Any("error", err))
-			// The validation detail is surfaced deliberately: it is how the
-			// model learns to correct the manifest and retry.
-			return nil, nil, fmt.Errorf("failed to update %s %q: %w", ops.Kind, in.ID, err)
+			// Validation details are how the model learns to correct the manifest and retry,
+			// So its Mapped exactly as the kind's REST handler maps it
+			// while internal failures stay generic to prevent any data leaks
+			return nil, nil, mcpWriteError(ops.Kind, mcpWriteOpUpdate, in.ID, err, log)
 		}
 		return nil, map[string]any{
 			"status": "success", "operation": "update",
@@ -681,7 +682,7 @@ func (h *McpHandler) write(ctx context.Context, class kindClass, tool string, in
 	resource, err := ops.Create([]byte(in.Yaml), correlationID, log)
 	if err != nil {
 		log.Error("MCP create failed", slog.Any("error", err))
-		return nil, nil, fmt.Errorf("failed to create %s: %w", ops.Kind, err)
+		return nil, nil, mcpWriteError(ops.Kind, mcpWriteOpCreate, "", err, log)
 	}
 	return nil, map[string]any{
 		"status": "success", "operation": "create",
