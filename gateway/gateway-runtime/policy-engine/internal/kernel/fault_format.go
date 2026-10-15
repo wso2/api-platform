@@ -258,7 +258,7 @@ func (ec *PolicyExecutionContext) needsErrorBodyForFormatting() bool {
 }
 
 // llmOpenAIErrors reports whether this route's errors render in the OpenAI envelope: the
-// operator turned llm_openai_compatible_errors on, and the route serves an LLM API kind.
+// operator left llm_errors.disable_openai_format off, and the route serves an LLM API kind.
 func (ec *PolicyExecutionContext) llmOpenAIErrors() bool {
 	return ec.server != nil && ec.server.llmOpenAIErrors &&
 		slices.Contains(faultformat.OpenAIErrorKinds(), ec.apiKind())

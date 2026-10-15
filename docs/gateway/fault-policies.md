@@ -214,8 +214,8 @@ a log; an operator who genuinely wants it in the client body asks for it with a
 `${Description}` placeholder in an `error-response-formatter` template — a template the
 operator wrote is the opt-in.
 
-`Fault.Guardrail` is the opposite: where the gateway renders the error body — today only for
-`Agent` APIs, see [Protocol-specific error bodies](#protocol-specific-error-bodies) — it **is**
+`Fault.Guardrail` is the opposite: where the gateway renders the error body — `Agent`, and
+`LlmProvider`/`LlmProxy` by default, see [Protocol-specific error bodies](#protocol-specific-error-bodies) — it **is**
 returned, and the operator's `showAssessment` parameter decides how much of it. The shipped guardrails attach the block on every intervention
 — `interveningGuardrail`, `action` and `actionReason` name which guardrail fired and why, which
 is safe to return — and fill in `assessments` only when `showAssessment` permits, because that
@@ -772,12 +772,49 @@ Some clients cannot read a REST-shaped JSON error body at all. A JSON-RPC client
 object it is required to understand, and a SOAP client needs a fault envelope matching the
 version it used.
 
-The gateway supplies one itself **only for `Agent` APIs**, whose A2A callers speak JSON-RPC, and
-only **when a policy described the failure**: a policy that rejects a request describes it in its
-`Fault` — code, type, message — and the gateway renders that as a JSON-RPC error. Every other kind
-is left as the policy, the backend or the router wrote it: MCP policies already write their own
-JSON-RPC envelope, and a SOAP API gets a conformant fault only from a fault policy such as
+The gateway supplies one itself for two kinds. **`Agent` APIs**, whose A2A callers speak
+JSON-RPC, get one **when a policy described the failure**: a policy that rejects a request
+describes it in its `Fault` — code, type, message — and the gateway renders that as a JSON-RPC
+error. **`LlmProvider` and `LlmProxy` APIs** get the OpenAI error envelope by default — see
+[OpenAI-format errors on LLM APIs](#openai-format-errors-on-llm-apis). Every other kind is left as
+the policy, the backend or the router wrote it: MCP policies already write their own JSON-RPC
+envelope, and a SOAP API gets a conformant fault only from a fault policy such as
 `error-response-formatter`.
+
+### OpenAI-format errors on LLM APIs
+
+LLM clients are mostly OpenAI SDKs, which read `error.message` and nothing else. So every error
+the gateway produces on an `LlmProvider` or `LlmProxy` route is returned as
+
+```json
+{"error":{"message":"…","type":"…","param":null,"code":"…"}}
+```
+
+| The error | What the client receives |
+|---|---|
+| A policy that described its failure in `Fault` | The envelope from that description |
+| A policy that wrote only its own body | The envelope, with the body's message lifted out (`message`, `error_description`, `detail` or `error`); a guardrail's body also yields an `error.guardrail` block (`interveningGuardrail`, `action`, `actionReason`, `direction`, and `assessments` when the guardrail's `showAssessment` put it there) |
+| A policy body already in the OpenAI envelope, or an explicitly empty body | Kept as written |
+| A router failure (refused, reset, timeout, no healthy upstream) or an engine error | The envelope, with `server_error` and the failure's code (`101503`, `101504`, …) |
+| A body written by one of the API's fault policies | Kept as written |
+| The provider's own error response | Passed through unchanged, bodyless or not |
+
+`type` follows the failure class, then the status (`authentication_error` for 401,
+`permission_error` 403, `not_found_error` 404, `rate_limit_error` 429, `invalid_request_error`
+other 4xx and guardrails, `server_error` 5xx). `param` is always `null`; `code` is the fault code,
+or `null` when nothing supplied one. The status code is never changed, and other response headers
+are kept.
+
+To send errors as they are produced instead — the bodies the policies write themselves, for
+clients that parse, say, a guardrail's `{"type":"WORD_COUNT_GUARDRAIL","message":{…}}` — turn the
+envelope off. Fault policies run either way:
+
+```toml
+[policy_engine.llm_errors]
+disable_openai_format = true
+```
+
+A request that matches no API is not reshaped: without a matched API there is no kind to decide by.
 
 ### Shaping an error body yourself
 
@@ -958,7 +995,8 @@ API-level list only.
 Everything downstream of the declaration is **kind-agnostic**. Each non-REST kind is
 normalised into a `RestApi` before route chains are built, so a kind only has to carry the list
 across that conversion; chain building and the engine already work for every kind. Which kinds
-the gateway renders an error body for is a separate setting — today only `Agent`.
+the gateway renders an error body for is a separate setting — `Agent`, and the LLM kinds unless
+`[policy_engine.llm_errors] disable_openai_format` turns them off.
 
 ### Where the codes come from
 

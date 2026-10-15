@@ -36,8 +36,8 @@ import (
 	policy "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
 )
 
-// llmCtx is an LlmProxy execution context with policy_engine.llm_openai_compatible_errors.enabled
-// switched on through the real ServerOption.
+// llmCtx is an LlmProxy execution context with the OpenAI envelope switched on through the real
+// ServerOption, as it is when policy_engine.llm_errors.disable_openai_format is left off.
 func llmCtx(t *testing.T, faultPolicies []policy.Policy, faultSpecs []policy.PolicySpec) *PolicyExecutionContext {
 	t.Helper()
 	ec := faultExecCtx(t, faultPolicies, faultSpecs)

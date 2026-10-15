@@ -288,7 +288,7 @@ func main() {
 	// Create and start ext_proc gRPC server
 	extprocServer := kernel.NewExternalProcessorServer(k, chainExecutor, cfg.TracingConfig, cfg.PolicyEngine.TracingServiceName, cfg.PolicyEngine.RequestBody.MaxDecompressedBytes, cfg.PolicyEngine.ResponseBody.MaxDecompressedBytes, corrStore,
 		kernel.WithHandleUpstreamFaults(cfg.PolicyEngine.FaultPolicies.HandleUpstreamFaults),
-		kernel.WithLLMOpenAIErrors(cfg.PolicyEngine.LLMOpenAICompatibleErrors.Enabled))
+		kernel.WithLLMOpenAIErrors(!cfg.PolicyEngine.LLMErrors.DisableOpenAIFormat))
 
 	// Create listener based on mode (same pattern as gateway-controller)
 	var lis net.Listener

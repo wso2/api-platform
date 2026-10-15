@@ -30,10 +30,10 @@ import (
 
 // OpenAIErrorKinds returns the API kinds whose errors render in the OpenAI shape.
 //
-// Unlike supportedKinds these are NOT enabled by default: an LLM API has shipped with the error
-// bodies its policies write, so switching them is an operator decision —
-// policy_engine.llm_openai_compatible_errors.enabled. The kernel adds these to its KindSet when the
-// option is on.
+// Unlike supportedKinds these are not built into the formatter: they follow
+// policy_engine.llm_errors.disable_openai_format, which is false by default and which an operator
+// sets to keep the bodies policies write themselves. The kernel adds these to its KindSet unless
+// the option is set.
 func OpenAIErrorKinds() []policy.APIKind {
 	return []policy.APIKind{policy.APIKindLlmProvider, policy.APIKindLlmProxy}
 }
@@ -173,7 +173,7 @@ func openAITypeFor(faultType string, status int) string {
 // Every other shape treats such a body as the policy's decision, because their clients can
 // read a plain JSON body. An OpenAI SDK cannot: it reads `error.message`, and a
 // `{"error":"Unauthorized"}` from a policy written for REST APIs surfaces as an error with no
-// message. The operator turning llm_openai_compatible_errors on is the decision that every LLM
+// message. Leaving llm_errors.disable_openai_format off is the decision that every LLM
 // error is to be readable by those SDKs, and the policy catalogue has not all moved into
 // FaultDetails yet — so the caller describes the failure from the body and the formatter
 // renders that. Usually that is only the body's message; a guardrail's body carries the whole

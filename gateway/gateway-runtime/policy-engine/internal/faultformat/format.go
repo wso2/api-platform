@@ -248,9 +248,9 @@ func ShouldFormat(r *Registry, in Input) Decision {
 		// Checked after authorship only so the log keeps naming an authored body as the
 		// reason when both apply; the outcome is the same either way.
 		//
-		// OpenAI is exempt: it is reached only when the operator enables it
-		// (llm_openai_compatible_errors), so there is no shipped response to keep
-		// byte-for-byte, and an OpenAI SDK cannot read anything but its envelope — a router
+		// OpenAI is exempt: it is reached only while llm_errors.disable_openai_format is off,
+		// which is the decision that LLM clients get the envelope rather than the bodies
+		// sent before it, and an OpenAI SDK cannot read anything but its envelope — a router
 		// error or the engine's own 500 included.
 		return Decision{Reason: "no policy described the failure"}
 	}

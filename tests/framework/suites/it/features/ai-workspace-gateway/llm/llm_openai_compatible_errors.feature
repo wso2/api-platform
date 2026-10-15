@@ -15,8 +15,8 @@
 # under the License.
 # --------------------------------------------------------------------
 
-# Runs in the llm-openai-compatible-errors block, whose overlay sets
-# [policy_engine.llm_openai_compatible_errors] enabled = true.
+# Runs in the llm-openai-compatible-errors block on the default config, where
+# [policy_engine.llm_errors] disable_openai_format is false.
 
 @llm @llm-openai-compatible-errors
 Feature: OpenAI-compatible error responses for LLM APIs
