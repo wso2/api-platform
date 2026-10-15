@@ -273,6 +273,10 @@ describe('GatewayDetailPage', () => {
     expect(container.textContent).toContain('APIP_GW_CONTROLLER_CONTROLPLANE_TOKEN=');
     expect(await screen.findByRole('button', { name: 'Generate another token' })).toBeEnabled();
     expect(tokenRotations.count()).toBe(1);
+    // With the token on screen, the step says to run the command; it no longer
+    // asks for a token to be generated.
+    expect(container.textContent).toContain('Run this command to add the registration token');
+    expect(container.textContent).not.toContain('Generate a registration token, then');
   });
 
   it('keeps a shown token through a visit to the Policies tab', async () => {

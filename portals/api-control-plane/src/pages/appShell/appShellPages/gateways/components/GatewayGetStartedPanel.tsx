@@ -29,7 +29,7 @@ import {
   TextField,
   Typography,
 } from '@wso2/oxygen-ui';
-import { Server } from '@wso2/oxygen-ui-icons-react';
+import { RefreshCw, Server } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, FormattedMessage, useIntl, type MessageDescriptor } from 'react-intl';
 
 import { useGatewayTokens, useRotateGatewayToken, type Gateway } from '@/api/resources/gateways';
@@ -210,6 +210,17 @@ const messages = defineMessages({
     id: 'gateways.detail.GetStarted.token.notice.helm',
     defaultMessage:
       'Generate a registration token. It is added to the install command below, and shown only once.',
+  },
+  tokenReadyCompose: {
+    id: 'gateways.detail.GetStarted.token.ready.compose',
+    defaultMessage:
+      'Run this command to add the registration token, with this control plane’s address, to the gateway’s settings.',
+    description: 'Step 2 text once a token is on screen (Docker and VM paths).',
+  },
+  tokenReadyHelm: {
+    id: 'gateways.detail.GetStarted.token.ready.helm',
+    defaultMessage: 'The registration token is already in the install command below.',
+    description: 'Step 2 text once a token is on screen (Kubernetes path).',
   },
   tokenOnce: {
     id: 'gateways.detail.GetStarted.token.once',
@@ -425,27 +436,51 @@ export function GatewayGetStartedPanel({
    * Step 2 is the same on every path: the same warning, the same button, and —
    * once a token exists; the same env file. Only Kubernetes leaves out the
    * file, because the token goes into the Helm command instead.
+   *
+   * Two states. Before a token is on screen, generating one is the step, so
+   * the button leads. Once one is shown, running the command is the step, and
+   * the button would read as a second instruction: it moves below the command
+   * as a small "another token" action for anyone who needs a replacement.
    */
-  const configureStep = (notice: MessageDescriptor, showEnvFile: boolean) => (
+  const configureStep = (
+    notice: MessageDescriptor,
+    readyNotice: MessageDescriptor,
+    showEnvFile: boolean,
+  ) => (
     <SetupStep title={messages.stepConfigure}>
       <Typography color="text.secondary" variant="body2">
-        <FormattedMessage {...notice} />
+        <FormattedMessage {...(token ? readyNotice : notice)} />
       </Typography>
-      <Box>
-        <Button
-          disabled={rotateToken.isPending || tokensQuery.isPending}
-          onClick={hasActiveToken ? () => setConfirmOpen(true) : generateToken}
-          variant={hasActiveToken ? 'outlined' : 'contained'}
-        >
-          <FormattedMessage {...tokenButtonLabel} />
-        </Button>
-      </Box>
+      {!token && (
+        <Box>
+          <Button
+            disabled={rotateToken.isPending || tokensQuery.isPending}
+            onClick={hasActiveToken ? () => setConfirmOpen(true) : generateToken}
+            variant={hasActiveToken ? 'outlined' : 'contained'}
+          >
+            <FormattedMessage {...tokenButtonLabel} />
+          </Button>
+        </Box>
+      )}
       {token && (
         <Alert severity="warning">
           <FormattedMessage {...messages.tokenOnce} />
         </Alert>
       )}
       {token && showEnvFile && <CopyableCommand code={configureCommand(target, token)} />}
+      {token && (
+        <Box>
+          <Button
+            disabled={rotateToken.isPending}
+            onClick={() => setConfirmOpen(true)}
+            size="small"
+            startIcon={<RefreshCw size={16} />}
+            variant="text"
+          >
+            <FormattedMessage {...tokenButtonLabel} />
+          </Button>
+        </Box>
+      )}
     </SetupStep>
   );
 
@@ -523,7 +558,7 @@ export function GatewayGetStartedPanel({
 
           {tab === 'kubernetes' ? (
             <>
-              {configureStep(messages.tokenNoticeHelm, false)}
+              {configureStep(messages.tokenNoticeHelm, messages.tokenReadyHelm, false)}
               <SetupStep title={messages.chartHeading}>
                 <Typography color="text.secondary" variant="body2">
                   <FormattedMessage {...messages.chartIntro} />
@@ -548,7 +583,7 @@ export function GatewayGetStartedPanel({
                 <CopyableCommand code={prepareCommand(target)} />
               </SetupStep>
 
-              {configureStep(messages.tokenNoticeCompose, true)}
+              {configureStep(messages.tokenNoticeCompose, messages.tokenReadyCompose, true)}
 
               <SetupStep title={messages.stepStart}>
                 <Typography color="text.secondary" variant="body2">

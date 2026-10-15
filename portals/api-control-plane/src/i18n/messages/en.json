@@ -3725,6 +3725,14 @@
   "gateways.detail.GetStarted.token.once": {
     "defaultMessage": "Copy this now. The token is shown only once and cannot be retrieved again."
   },
+  "gateways.detail.GetStarted.token.ready.compose": {
+    "defaultMessage": "Run this command to add the registration token, with this control plane’s address, to the gateway’s settings.",
+    "description": "Step 2 text once a token is on screen (Docker and VM paths)."
+  },
+  "gateways.detail.GetStarted.token.ready.helm": {
+    "defaultMessage": "The registration token is already in the install command below.",
+    "description": "Step 2 text once a token is on screen (Kubernetes path)."
+  },
   "gateways.detail.GetStarted.url.label": {
     "defaultMessage": "URL"
   },
