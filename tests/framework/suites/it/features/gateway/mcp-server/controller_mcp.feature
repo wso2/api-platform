@@ -136,7 +136,9 @@ Feature: Gateway controller management MCP endpoint
       | spec.operations          | [{"method":"GET","path":"/endpoint"}] |
     Then the response status code should be 200
     And the JSON response field "result.isError" should be "true"
-    And the JSON response field "result.content[0].text" should contain "failed to create RestApi: configuration validation failed"
+    And the JSON response field "result.content[0].text" should contain "failed to create RestApi: Configuration validation failed"
+    And the JSON response field "result.content[0].text" should contain "spec.upstreamDefinitions[0].upstreams[0].url"
+    And the JSON response field "result.content[0].text" should contain "URL must not include a query string"
     When I call the MCP tool "wso2_apip_gw_get_resource" on the "gateway-controller" service with arguments:
       """
       {"kind":"RestApi","id":"${CTX:apiName}"}
