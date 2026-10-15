@@ -70,6 +70,39 @@ func (s *PublicationService) resolvePortalDocuments(artifactUUID string, handles
 	return placeDocuments(docs)
 }
 
+// loadPortalContent resolves the selected documents, loads their content and
+// packs it for the portal; it returns nil when no document is selected. The
+// portal's size limits are enforced here, while loading, so a selection over
+// them is never read into memory in full.
+func (s *PublicationService) loadPortalContent(artifactUUID string, handles []string, orgUUID string) (*PortalContent, error) {
+	docs, err := s.resolvePortalDocuments(artifactUUID, handles, orgUUID)
+	if err != nil {
+		return nil, err
+	}
+	if len(docs) > portalContentMaxEntries {
+		return nil, portalContentTooLarge()
+	}
+
+	var total int64
+	for i := range docs {
+		doc, err := s.documentRepo.GetDocument(artifactUUID, docs[i].Handle, orgUUID, "")
+		if err != nil {
+			return nil, fmt.Errorf("failed to load document content: %w", err)
+		}
+		if doc == nil {
+			return nil, apperror.APIPublicationValidationFailed.New(
+				fmt.Sprintf("document %q was removed", docs[i].Handle))
+		}
+		size := int64(len(doc.Content))
+		total += size
+		if size > portalContentMaxFileBytes || total > portalContentMaxExtractedBytes {
+			return nil, portalContentTooLarge()
+		}
+		docs[i].Content = doc.Content
+	}
+	return buildContentArchive(docs, s.archiveMaxBytes)
+}
+
 // docsForHandles returns the documents in handle order, or a validation error naming the
 // handles with none.
 func docsForHandles(handles []string, resolved map[string]*model.Document) ([]*model.Document, error) {

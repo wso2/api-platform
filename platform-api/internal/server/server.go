@@ -411,7 +411,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize API Portal publisher: %w", err)
 	}
-	publicationService := service.NewPublicationService(artifactRepo, apiPortalRepo, documentRepo, subscriptionPlanRepo, publicationRepo, portalPublisher, cfg.APIPortalPublication.OverallTimeout, slogger)
+	publicationService := service.NewPublicationService(artifactRepo, apiPortalRepo, documentRepo, subscriptionPlanRepo, publicationRepo, portalPublisher, cfg.APIPortalPublication.OverallTimeout, cfg.PublicationArchiveMaxBytes, slogger)
 
 	// Initialize handlers
 	orgHandler := handler.NewOrganizationHandler(orgService, identityService, slogger)

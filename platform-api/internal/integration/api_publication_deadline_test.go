@@ -107,8 +107,8 @@ func TestPublicationOperations_PortalCallsShareOneDeadline(t *testing.T) {
 
 	started := time.Now()
 	publishedListing(t, it, svc, g)
-	if len(portal.deadlines) != 2 || !portal.deadlines["plans"].Equal(portal.deadlines["publish"]) {
-		t.Fatalf("[%s] want the plan step and the push under the same deadline, got %v", it.driver, portal.deadlines)
+	if len(portal.deadlines) != 3 || !portal.deadlines["plans"].Equal(portal.deadlines["publish"]) || !portal.deadlines["content"].Equal(portal.deadlines["publish"]) {
+		t.Fatalf("[%s] want the plan step, the listing push and the content push under the same deadline, got %v", it.driver, portal.deadlines)
 	}
 	assertDeadlineWithin(t, it, "publish", portal.deadlines["publish"], started, publicationTestOperationTimeout)
 

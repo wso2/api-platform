@@ -68,6 +68,8 @@ type PublicationService struct {
 	slogger              *slog.Logger
 
 	portalOperationTimeout time.Duration
+	// archiveMaxBytes bounds the content ZIP pushed to the portal.
+	archiveMaxBytes int64
 }
 
 // NewPublicationService creates a new API Publication service.
@@ -79,10 +81,14 @@ func NewPublicationService(
 	publicationRepo repository.PublicationRepository,
 	portalPublisher PortalPublisher,
 	portalOperationTimeout time.Duration,
+	archiveMaxBytes int64,
 	slogger *slog.Logger,
 ) *PublicationService {
 	if slogger == nil {
 		slogger = slog.Default()
+	}
+	if archiveMaxBytes <= 0 {
+		archiveMaxBytes = defaultPublicationArchiveMaxBytes
 	}
 	return &PublicationService{
 		artifactRepo:         artifactRepo,
@@ -94,6 +100,7 @@ func NewPublicationService(
 		slogger:              slogger,
 
 		portalOperationTimeout: portalOperationTimeout,
+		archiveMaxBytes:        archiveMaxBytes,
 	}
 }
 
@@ -573,8 +580,10 @@ func (s *PublicationService) getPublicationContent(apiType, apiId, apiPortalId, 
 // PublicationRepository.PromoteDraftToPublication flips the draft row in place on a first
 // publish, or merges it into the live row on a republish, so the live row's uuid never changes.
 //
-// The portal is pushed first: nothing local changes unless that succeeds. On
-// success, one transaction (PublicationRepository.PromoteDraftToPublication):
+// Everything local (loading, validation, packing the documents) is done before the
+// portal deadline starts, so the deadline covers only the portal calls. The portal
+// is pushed first: nothing local changes unless that succeeds — the listing, then
+// its documents. On success, one transaction (PublicationRepository.PromoteDraftToPublication):
 // on a first publish, flip the draft row in place — same row, same uuid; on
 // a republish, merge the draft's content into the existing live row (the
 // anchor) instead, so the anchor's uuid — the durable identity for this
@@ -583,11 +592,10 @@ func (s *PublicationService) getPublicationContent(apiType, apiId, apiPortalId, 
 // no-op refresh, not an error.
 //
 // A draft saved during the portal push is not promoted (APIPublicationDraftChanged).
-// The push is not undone, so the portal may differ until the caller publishes again.
+// The push is not undone, so the portal may differ until the caller publishes again;
+// so does a failed document push after the listing was accepted, and publishing again
+// repairs it.
 func (s *PublicationService) Publish(ctx context.Context, apiType, apiId, apiPortalId, orgUUID, actor string) (*model.Publication, bool, error) {
-	ctx, cancel := s.portalOperationContext(ctx)
-	defer cancel()
-
 	artifactUUID, err := s.resolveArtifact(apiType, apiId, orgUUID)
 	if err != nil {
 		return nil, false, err
@@ -617,12 +625,29 @@ func (s *PublicationService) Publish(ctx context.Context, apiType, apiId, apiPor
 		return nil, false, err
 	}
 
-	if err := s.createMissingPortalPlans(ctx, portal, orgUUID, draft.SubscriptionPlanIds); err != nil {
+	plans, err := s.activePlansInOrder(draft.SubscriptionPlanIds, orgUUID)
+	if err != nil {
+		return nil, false, err
+	}
+	content, err := s.loadPortalContent(artifactUUID, draft.DocIds, orgUUID)
+	if err != nil {
+		return nil, false, err
+	}
+
+	ctx, cancel := s.portalOperationContext(ctx)
+	defer cancel()
+
+	if err := s.createMissingPortalPlans(ctx, portal, plans); err != nil {
 		return nil, false, err
 	}
 
 	if err := s.portalPublisher.Publish(ctx, portal, apiType, apiId, draft, definition); err != nil {
 		return nil, false, portalPushError(err)
+	}
+	if content != nil {
+		if err := s.portalPublisher.PublishContent(ctx, portal, apiId, content); err != nil {
+			return nil, false, portalPushError(err)
+		}
 	}
 
 	published, wasReplace, err := s.publicationRepo.PromoteDraftToPublication(artifactUUID, portal.ID, orgUUID, actor, draft.UpdatedAt)
@@ -735,21 +760,29 @@ func (s *PublicationService) Deprecate(ctx context.Context, apiType, apiId, apiP
 	return s.getPublicationRow(apiType, apiId, apiPortalId, orgUUID)
 }
 
-// createMissingPortalPlans makes sure the portal has every plan the draft selects,
-// creating those it lacks. Failures come back already mapped for the caller.
-func (s *PublicationService) createMissingPortalPlans(ctx context.Context, portal *model.APIPortal, orgUUID string, handles []string) error {
+// activePlansInOrder loads the plans for handles, in handle order, rejecting any that
+// is unknown or not active.
+func (s *PublicationService) activePlansInOrder(handles []string, orgUUID string) ([]*model.SubscriptionPlan, error) {
 	if len(handles) == 0 {
-		return nil
+		return nil, nil
 	}
 	byHandle, err := s.loadActivePlans(handles, orgUUID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	plans := make([]*model.SubscriptionPlan, 0, len(handles))
 	for _, h := range handles {
 		plans = append(plans, byHandle[h])
 	}
+	return plans, nil
+}
 
+// createMissingPortalPlans makes sure the portal has every plan the draft selects,
+// creating those it lacks. Failures come back already mapped for the caller.
+func (s *PublicationService) createMissingPortalPlans(ctx context.Context, portal *model.APIPortal, plans []*model.SubscriptionPlan) error {
+	if len(plans) == 0 {
+		return nil
+	}
 	if err := s.portalPublisher.CreateMissingPlans(ctx, portal, plans); err != nil {
 		return portalPushError(err)
 	}

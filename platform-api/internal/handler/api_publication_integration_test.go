@@ -116,6 +116,7 @@ func setupPublicationTestEnv(t *testing.T) (http.Handler, *database.DB, func()) 
 		repository.NewPublicationRepo(db),
 		alwaysSucceedsPortalPublisher{},
 		time.Minute,
+		0,
 		slog.Default(),
 	)
 	h := NewPublicationHandler(publicationService, identityService, 0, 0, slog.Default())

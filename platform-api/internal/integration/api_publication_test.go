@@ -83,6 +83,7 @@ func newPublicationTestServiceWithTimeout(it *itDB, portalPublisher service.Port
 		repository.NewPublicationRepo(it.db),
 		portalPublisher,
 		operationTimeout,
+		0,
 		nil,
 	)
 }
@@ -632,6 +633,7 @@ func TestPublicationUnpublish_PortalConflict(t *testing.T) {
 		repository.NewPublicationRepo(it.db),
 		unpublishConflictPublisher{},
 		publicationTestOperationTimeout,
+		0,
 		nil,
 	)
 
@@ -708,6 +710,7 @@ func TestPublicationUnpublish_PortalConflictReasonSurfaced(t *testing.T) {
 		repository.NewPublicationRepo(it.db),
 		unpublishSubscriptionConflictPublisher{},
 		publicationTestOperationTimeout,
+		0,
 		nil,
 	)
 
