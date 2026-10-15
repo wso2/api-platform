@@ -377,39 +377,6 @@ func (s *PublicationService) resolvePlanUUIDs(handles []string, orgUUID string) 
 	return uuids, nil
 }
 
-// resolveDocUUIDs resolves each document handle to its doc_uuid, scoped to
-// artifactUUID (a handle can legitimately repeat across two APIs in the same
-// org), rejecting any handle absent for this artifact.
-func (s *PublicationService) resolveDocUUIDs(artifactUUID string, handles []string, orgUUID string) ([]string, error) {
-	if len(handles) == 0 {
-		return nil, nil
-	}
-	resolved, err := s.documentRepo.GetDocumentUUIDsByHandles(artifactUUID, handles, orgUUID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to resolve document handles: %w", err)
-	}
-	return docUUIDsForHandles(handles, resolved)
-}
-
-// docUUIDsForHandles returns the UUID of every document handle in order, or a
-// validation error listing the handles that have none.
-func docUUIDsForHandles(handles []string, resolved map[string]string) ([]string, error) {
-	uuids := make([]string, 0, len(handles))
-	var unresolved []string
-	for _, h := range handles {
-		if id, ok := resolved[h]; ok {
-			uuids = append(uuids, id)
-		} else {
-			unresolved = append(unresolved, h)
-		}
-	}
-	if len(unresolved) > 0 {
-		return nil, apperror.APIPublicationValidationFailed.New(
-			"docIds not found in the organization's documents: " + strings.Join(unresolved, ", "))
-	}
-	return uuids, nil
-}
-
 // GetDraftDefinition returns the draft's stored definition content.
 func (s *PublicationService) GetDraftDefinition(apiType, apiId, apiPortalId, orgUUID string) (*model.PublicationContent, error) {
 	return s.getDraftContent(apiType, apiId, apiPortalId, orgUUID, model.PublicationContentTypeDefinition)
@@ -597,16 +564,14 @@ func (s *PublicationService) getPublicationContent(apiType, apiId, apiPortalId, 
 	return content, nil
 }
 
-// Publish publishes the current draft to the API Portal. In the UI's own
-// flow, the client always saves the draft (draft PUT) immediately before
-// calling this bodyless action, so a draft is guaranteed to exist by the
-// time this runs — APIPublicationDraftNotFound here is a defensive,
-// fail-closed check for a client bug or a failed prior save proceeding
-// anyway, not a normal user-facing gate.
+// Publish publishes the current draft to the API Portal. The client saves the draft just
+// before calling, so APIPublicationDraftNotFound is a fail-closed check, not a normal gate.
+// This is the one place a definition must exist and be valid.
 //
-// This is the one place a definition is required to exist and be valid —
-// SaveDraftDefinition accepts anything (or nothing), so nothing upstream can
-// be assumed to have checked it.
+// The portal is pushed first (listing, then content), after the content is loaded and packed
+// outside the portal deadline; nothing local changes unless the push succeeds. Then
+// PublicationRepository.PromoteDraftToPublication flips the draft row in place on a first
+// publish, or merges it into the live row on a republish, so the live row's uuid never changes.
 //
 // The portal is pushed first: nothing local changes unless that succeeds. On
 // success, one transaction (PublicationRepository.PromoteDraftToPublication):

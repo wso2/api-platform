@@ -565,13 +565,10 @@ type DocumentRepository interface {
 	DeleteDocument(artifactUUID, handle, orgUUID, docType string) error
 	DocumentHandleExistsForArtifact(artifactUUID, handle string) (bool, error)
 	DocumentDisplayNameExistsForArtifact(artifactUUID, displayName, excludeHandle string) (bool, error)
-	// GetDocumentUUIDsByHandles resolves each handle to its document uuid,
-	// scoped to one artifact (api_documents' real unique index is
-	// (artifact_uuid, handle) — a handle is only guaranteed unique per
-	// artifact, not per org). A handle absent from the returned map does not
-	// exist for this artifact. Used by API Publication draft/publish save to
-	// validate and resolve docIds.
-	GetDocumentUUIDsByHandles(artifactUUID string, handles []string, orgUUID string) (map[string]string, error)
+	// GetDocumentsByHandles looks up each handle's document (uuid, handle, type, file name;
+	// no content) within one artifact. Reserved types (DEFINITION, THUMBNAIL) are never
+	// returned; a handle missing from the map is not selectable for this artifact.
+	GetDocumentsByHandles(artifactUUID string, handles []string, orgUUID string) (map[string]*model.Document, error)
 	// GetDocumentHandlesByUUIDs is the inverse, for reconstructing a docIds
 	// response from stored api_publication_doc_mappings rows. Scoped to the
 	// organization only (not a single artifact) since a mapping row's
