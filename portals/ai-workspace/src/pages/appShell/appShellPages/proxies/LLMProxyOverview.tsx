@@ -519,19 +519,6 @@ function ProxyOverviewContent() {
                         {formatRelativeTime(proxy.updatedAt)}
                       </Typography>
                     </Stack>
-                    {proxy.createdBy && (
-                      <Stack direction="row" alignItems="center" gap={2}>
-                        <Typography variant="caption" color="text.secondary">
-                          <FormattedMessage
-                            id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyOverview.created.by"
-                            defaultMessage={'Created by :'}
-                          />
-                        </Typography>
-                        <Typography variant="body2">
-                          {proxy.createdBy}
-                        </Typography>
-                      </Stack>
-                    )}
                   </Stack>
                 </Box>
               </Box>

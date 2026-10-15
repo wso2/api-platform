@@ -72,7 +72,6 @@ import GatewaysLayout from './pages/appShell/appShellPages/gateways/GatewaysLayo
 import CustomPoliciesList from './pages/appShell/appShellPages/gateways/CustomPoliciesList';
 import OrgRegisterPage from './pages/register/OrgRegisterPage';
 import Insights from './pages/appShell/appShellPages/insights/Main';
-import QuickStart from './pages/appShell/appShellPages/quickStart/Main';
 import QuickStartWizard from './pages/appShell/appShellPages/quickStartWizard/Main';
 import Settings, { SettingsIndexRedirect } from './pages/appShell/appShellPages/settings/Main';
 import ProviderTemplatesList from './pages/appShell/appShellPages/providerTemplate/ProviderTemplatesList';
@@ -775,16 +774,6 @@ function WorkspaceRoutes({ extensions = [] }: AppProps) {
                 </WithPageBoundary>
               }
             />
-            <Route
-              path="quick-start"
-              element={
-                <WithPageBoundary>
-                  <LLMProvidersProvider>
-                    <QuickStart />
-                  </LLMProvidersProvider>
-                </WithPageBoundary>
-              }
-            />
             {/* Full-screen first-run onboarding. Organization-scoped only: the
                 wizard picks the project itself when it creates an MCP server. */}
             <Route
@@ -1085,16 +1074,6 @@ function WorkspaceRoutes({ extensions = [] }: AppProps) {
                 element={
                   <WithPageBoundary>
                     <EditExternalServer />
-                  </WithPageBoundary>
-                }
-              />
-              <Route
-                path="quick-start"
-                element={
-                  <WithPageBoundary>
-                    <LLMProvidersProvider>
-                      <QuickStart />
-                    </LLMProvidersProvider>
                   </WithPageBoundary>
                 }
               />
