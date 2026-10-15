@@ -257,10 +257,7 @@ func (t *AgentTransformer) Transform(cfg *models.StoredConfig) (*models.RuntimeD
 	// only when the card is proxied — rather than being attached once at the
 	// artifact level, because a managed card is answered by the gateway and the
 	// credential has no business travelling in a chain that never forwards.
-	upstreamAuth, err := agentUpstreamAuthPolicy(spec.Upstream.Auth)
-	if err != nil {
-		return nil, err
-	}
+	upstreamAuth := agentUpstreamAuthPolicy(spec.Upstream.Auth)
 
 	// Operation policies, resolved once and shared by every partition. The chain
 	// order is system policies, then the operation-common policies, then the
@@ -1132,15 +1129,15 @@ func agentUpstreamAuthPolicy(auth *struct {
 	PolicyVersion *string                             `json:"policyVersion,omitempty" yaml:"policyVersion,omitempty"`
 	Type          api.AgentConfigDataUpstreamAuthType `json:"type" yaml:"type"`
 	Value         *string                             `json:"value,omitempty" yaml:"value,omitempty"`
-}) (*api.Policy, error) {
+}) *api.Policy {
 	if auth == nil || auth.Type == api.AgentConfigDataUpstreamAuthTypeNone {
-		return nil, nil
+		return nil
 	}
 	if auth.Header == nil || *auth.Header == "" || auth.Value == nil || *auth.Value == "" {
-		return nil, nil
+		return nil
 	}
 	params := utils.SetHeadersParams(*auth.Header, *auth.Value)
-	return &api.Policy{Name: constants.SET_HEADERS_POLICY_NAME, Params: &params}, nil
+	return &api.Policy{Name: constants.SET_HEADERS_POLICY_NAME, Params: &params}
 }
 
 // withPolicy returns base with extra appended, without mutating base. A nil

@@ -27,19 +27,18 @@ import (
 
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 )
 
-// upstreamWithAPIKeyAuth decodes an upstream block the way an Agent configuration
-// arrives, since its auth field is an anonymous struct.
+// upstreamWithAPIKeyAuth returns an Agent's deprecated header/value upstream
+// auth. The auth field is an anonymous struct, so it is decoded rather than
+// spelled out.
 func upstreamWithAPIKeyAuth(t *testing.T, header, value string) api.AgentConfigData_Upstream {
 	t.Helper()
-	raw, err := json.Marshal(map[string]any{
-		"url":  "http://echo:8080",
-		"auth": map[string]any{"type": "api-key", "header": header, "value": value},
-	})
+	raw, err := json.Marshal(map[string]any{"type": "api-key", "header": header, "value": value})
 	require.NoError(t, err)
 	var upstream api.AgentConfigData_Upstream
-	require.NoError(t, json.Unmarshal(raw, &upstream))
+	require.NoError(t, json.Unmarshal(raw, &upstream.Auth))
 	return upstream
 }
 
@@ -54,18 +53,11 @@ func TestAgentUpstreamAuthPolicy_KeepsHeaderVerbatim(t *testing.T) {
 	} {
 		t.Run(value, func(t *testing.T) {
 			upstream := upstreamWithAPIKeyAuth(t, "X-Up-Auth", value)
-			policy, err := agentUpstreamAuthPolicy(upstream.Auth)
-			require.NoError(t, err)
+			policy := agentUpstreamAuthPolicy(upstream.Auth)
 			require.NotNil(t, policy)
 			assert.Equal(t, constants.SET_HEADERS_POLICY_NAME, policy.Name)
 			require.NotNil(t, policy.Params)
-			assert.Equal(t, map[string]any{
-				"request": map[string]any{
-					"headers": []any{
-						map[string]any{"name": "X-Up-Auth", "value": value},
-					},
-				},
-			}, *policy.Params)
+			assert.Equal(t, utils.SetHeadersParams("X-Up-Auth", value), *policy.Params)
 		})
 	}
 }

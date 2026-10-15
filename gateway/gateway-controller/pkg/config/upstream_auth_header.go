@@ -29,13 +29,13 @@ import "strings"
 // The messages never quote the value: it may be a resolved secret.
 func validateUpstreamAuthHeader(fieldPrefix string, header, value *string) []ValidationError {
 	var errors []ValidationError
-	if header != nil && *header != "" && !isHTTPToken(*header) {
+	if header != nil && *header != "" && !httpHeaderTokenPattern.MatchString(*header) {
 		errors = append(errors, ValidationError{
 			Field:   fieldPrefix + ".header",
 			Message: "Auth header must be a valid HTTP header name (letters, digits and !#$%&'*+-.^_`|~ only)",
 		})
 	}
-	if value != nil && *value != "" && !isHTTPFieldValue(*value) {
+	if value != nil && *value != "" && strings.ContainsFunc(*value, isHTTPControlChar) {
 		errors = append(errors, ValidationError{
 			Field:   fieldPrefix + ".value",
 			Message: "Auth value must be a valid HTTP header value (no control characters such as CR, LF or NUL)",
@@ -44,26 +44,8 @@ func validateUpstreamAuthHeader(fieldPrefix string, header, value *string) []Val
 	return errors
 }
 
-// isHTTPToken reports whether s is an RFC 9110 token, the grammar of a header name.
-func isHTTPToken(s string) bool {
-	for i := 0; i < len(s); i++ {
-		c := s[i]
-		isAlnum := 'a' <= c && c <= 'z' || 'A' <= c && c <= 'Z' || '0' <= c && c <= '9'
-		if !isAlnum && !strings.ContainsRune("!#$%&'*+-.^_`|~", rune(c)) {
-			return false
-		}
-	}
-	return true
-}
-
-// isHTTPFieldValue reports whether s holds only RFC 9110 field-value octets:
-// visible characters, space, horizontal tab and obs-text, never other controls.
-func isHTTPFieldValue(s string) bool {
-	for i := 0; i < len(s); i++ {
-		c := s[i]
-		if c < ' ' && c != '\t' || c == 0x7f {
-			return false
-		}
-	}
-	return true
+// isHTTPControlChar reports whether r may not appear in an RFC 9110 field
+// value: a control character other than horizontal tab, or DEL.
+func isHTTPControlChar(r rune) bool {
+	return r < ' ' && r != '\t' || r == 0x7f
 }
