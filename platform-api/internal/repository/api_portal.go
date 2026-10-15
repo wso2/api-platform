@@ -315,9 +315,9 @@ func (r *APIPortalRepo) Exists(handle, orgUUID string) (bool, error) {
 }
 
 // UpdateStatus mutates only the status column, scoped to (portalID, orgUUID),
-// and stamps updated_by / updated_at. Kept separate from Update so a poller
-// tick does not accidentally rewrite the whitelisted mutable-metadata fields
-// Update covers.
+// and stamps updated_at, and updated_by unless updatedBy is empty. Kept
+// separate from Update so a poller tick does not accidentally rewrite the
+// whitelisted mutable-metadata fields Update covers.
 //
 // The WHERE predicate includes `status = 'pending'` so the write is atomic
 // with the transition guard: no two callers can race each other into a
@@ -330,7 +330,7 @@ func (r *APIPortalRepo) UpdateStatus(portalID, orgUUID, updatedBy, status string
 	now := time.Now().UTC()
 	query := `
 		UPDATE api_portals
-		SET status = ?, updated_by = ?, updated_at = ?
+		SET status = ?, updated_by = COALESCE(NULLIF(?, ''), updated_by), updated_at = ?
 		WHERE uuid = ? AND organization_uuid = ? AND status = ?
 	`
 	result, err := r.db.Exec(r.db.Rebind(query), status, updatedBy, now, portalID, orgUUID, constants.APIPortalStatusPending)

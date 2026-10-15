@@ -552,6 +552,36 @@ func TestAPIPortalRepo_UpdateStatus_HappyPath(t *testing.T) {
 	}
 }
 
+// A transition with no actor keeps the user who last changed the portal.
+func TestAPIPortalRepo_UpdateStatus_EmptyActorKeepsUpdatedBy(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	const orgUUID = "org-portal-status-keep-actor"
+	createTestAPIPortalOrg(t, db, orgUUID)
+
+	repo := NewAPIPortalRepo(db)
+	portal := newTestAPIPortal("portal-keep", orgUUID, "keep-target")
+	portal.Status = constants.APIPortalStatusPending
+	portal.CreatedBy = "user-1"
+	portal.UpdatedBy = "user-1"
+	if err := repo.Create(portal); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	if err := repo.UpdateStatus(portal.ID, orgUUID, "", constants.APIPortalStatusActive); err != nil {
+		t.Fatalf("UpdateStatus: %v", err)
+	}
+	got, err := repo.GetByUUID(portal.ID, orgUUID)
+	if err != nil {
+		t.Fatalf("GetByUUID: %v", err)
+	}
+	if got.Status != constants.APIPortalStatusActive || got.UpdatedBy != "user-1" || got.CreatedBy != "user-1" {
+		t.Errorf("want active, created/updated by user-1; got status %q created %q updated %q",
+			got.Status, got.CreatedBy, got.UpdatedBy)
+	}
+}
+
 func TestAPIPortalRepo_UpdateStatus_MissingRow(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()

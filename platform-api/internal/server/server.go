@@ -571,6 +571,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		// reaches the same services the platform's own per-kind paths do.
 		Deployments:   deploymentsByKind,
 		Organizations: orgService,
+		Identity:      identityService,
 		Config:        cfg,
 		Logger:        slogger,
 	}

@@ -20,6 +20,7 @@ package pdk
 import (
 	"context"
 	"log/slog"
+	"net/http"
 
 	"github.com/wso2/api-platform/platform-api/api"
 	"github.com/wso2/api-platform/platform-api/config"
@@ -42,6 +43,7 @@ type Deps struct {
 	APIPortals    APIPortals
 	Deployments   Deployments
 	Organizations Organizations
+	Identity      Identity
 	// add more capability groups as external plugins need them
 	// (APIs, Subscriptions, Applications, LLM, MCP, …)
 
@@ -84,6 +86,15 @@ type Projects interface {
 	DeleteProject(handle, orgID, actor string) error
 }
 
+// Identity resolves the user behind a request in the form the platform keeps
+// in created_by / updated_by columns, so records a plugin writes name the same
+// user the platform's own handlers would.
+type Identity interface {
+	// InternalUserID returns the internal user id for the request's
+	// authenticated user.
+	InternalUserID(r *http.Request) (string, error)
+}
+
 // APIPortals exposes CRUD on API Portal records, scoped by organization.
 // orgID is always the request-context org (GO-AUTH-005), never caller input.
 //
@@ -102,6 +113,8 @@ type APIPortals interface {
 	ListAPIPortalStatuses(orgID string) (map[string]string, error)
 	ListAPIPortalsByStatus(status string) ([]api.APIPortalIdentity, error)
 	UpdateAPIPortal(handle string, req *api.UpdateApiPortalRequest, orgID, updatedBy string) (*api.ApiPortalResponse, error)
+	// UpdateAPIPortalStatus moves a pending portal to active or failed. An empty
+	// updatedBy keeps the row's updated_by, for transitions no user made.
 	UpdateAPIPortalStatus(handle, orgID, updatedBy, status string) error
 	DeleteAPIPortal(handle, orgID, actor string) error
 	// AuthHeaderForPortal returns the "SharedKey <raw>" Authorization header for

@@ -986,6 +986,25 @@ func TestAPIPortalService_UpdateAPIPortalStatus_HappyPath(t *testing.T) {
 	}
 }
 
+// With no actor the row's updated_by stays, and the audit names that user.
+func TestAPIPortalService_UpdateAPIPortalStatus_EmptyActorAuditsLastUser(t *testing.T) {
+	portalRepo := &mockAPIPortalRepository{
+		getResult: &model.APIPortal{ID: "portal-uuid", Handle: "acme", UpdatedBy: "user-1"},
+	}
+	audit := &mockAPIPortalAuditRepository{}
+	svc := newTestAPIPortalService(t, portalRepo, &mockAPIPortalOrgRepository{}, audit)
+
+	if err := svc.UpdateAPIPortalStatus("acme", "org-1", " ", constants.APIPortalStatusActive); err != nil {
+		t.Fatalf("UpdateAPIPortalStatus: %v", err)
+	}
+	if got := portalRepo.updateStatusCalledWith.UpdatedBy; got != "" {
+		t.Errorf("repo must get an empty actor to keep updated_by, got %q", got)
+	}
+	if len(audit.records) != 1 || audit.records[0].performedBy != "user-1" {
+		t.Errorf("audit: %+v", audit.records)
+	}
+}
+
 func TestAPIPortalService_UpdateAPIPortalStatus_RejectsUnknownStatus(t *testing.T) {
 	// Guard must run before we bother reading the row; otherwise a bogus
 	// status turns into a repo call that then rejects it, wasting a round-trip
