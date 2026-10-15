@@ -19,6 +19,7 @@
 const path = require('path');
 const fs = require('fs');
 const marked = require('marked');
+const { sanitizeMarkdownHtml } = require('./sanitizeDocs');
 const Handlebars = require('handlebars');
 const logger = require('../config/logger');
 const { CustomError, NotFoundError, ValidationError } = require('../utils/errors/customErrors');
@@ -40,7 +41,7 @@ async function loadMarkdown(filename, dirName) {
     const filePath = path.join(process.cwd(), dirName, filename);
     if (fs.existsSync(filePath)) {
         const fileContent = fs.readFileSync(filePath, constants.CHARSET_UTF8);
-        return marked.parse(fileContent);
+        return sanitizeMarkdownHtml(marked.parse(fileContent), null);
     } else {
         return null;
     }

@@ -17,30 +17,6 @@
  */
 
 /**
- * Render markdown content into the markdownViewer container
- */
-function renderMarkdownPreview(content) {
-    const container = document.getElementById('markdownViewer');
-    if (!container) return;
-
-    if (!content) {
-        container.innerHTML = '<p class="af-md-empty">No workflow description available.</p>';
-        return;
-    }
-
-    if (window.marked && window.DOMPurify) {
-        marked.setOptions({ breaks: true, gfm: true });
-        const rawHtml = marked.parse(content);
-        container.innerHTML = DOMPurify.sanitize(rawHtml);
-    } else {
-        const pre = document.createElement('pre');
-        pre.className = 'af-md-fallback';
-        pre.textContent = content;
-        container.replaceChildren(pre);
-    }
-}
-
-/**
  * Initialise the Arazzo UI viewer with the given spec content
  */
 function initArazzoUI(specContent) {
@@ -121,12 +97,9 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    const specContent = document.getElementById('specContent').value.trim();
     const contentType = document.querySelector('[data-flow-handle]').dataset.flowContentType;
-
-    if (contentType === 'MD') {
-        renderMarkdownPreview(specContent);
-    } else {
+    if (contentType !== 'MD') {
+        const specContent = document.getElementById('specContent').value.trim();
         initArazzoUI(specContent);
     }
 });

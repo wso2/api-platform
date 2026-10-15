@@ -11,10 +11,6 @@
     <script src="https://cdn.jsdelivr.net/npm/@jentic/arazzo-ui@1.0.0-alpha.30/dist/arazzo-ui.js" integrity="sha256-OYzURPQLK+lup5rGo+IQmVbjWOjVgjURBWDDtMHIOaw=" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js" integrity="sha256-Rdw90D3AegZwWiwpibjH9wkBPwS9U4bjJ51ORH8H69c=" crossorigin="anonymous"></script>
     {{/unless}}
-    {{#if (eq flow.contentType "MD")}}
-    <script src="https://cdn.jsdelivr.net/npm/marked@13.0.3/marked.min.js" integrity="sha256-Wt6n2O5BpwD8zBS7nVAxBPBHDMF6hK0+Fn0/UlHq4No=" crossorigin="anonymous"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.2.7/purify.min.js" integrity="sha512-78KH17QLT5e55GJqP76vutp1D2iAoy06WcYBXB6iBCsmO6wWzx0Qdg8EDpm8mKXv68BcvHOyeeP4wxAL0twJGQ==" crossorigin="anonymous"></script>
-    {{/if}}
 {{/pageHead}}
 
 <div data-flow-handle="{{flow.handle}}" data-flow-content-type="{{flow.contentType}}">
@@ -47,7 +43,7 @@
         <div class="flow-detail-content">
             {{#if (eq flow.contentType "MD")}}
             {{!-- Markdown Preview --}}
-            <div class="af-md-detail-container" id="markdownViewer"></div>
+            <div class="af-md-detail-container" id="markdownViewer">{{{flow.renderedHtml}}}</div>
             {{else}}
             {{!-- Arazzo UI Viewer --}}
             <div class="arazzo-viewer-container">
@@ -66,8 +62,10 @@
     {{/unless}}
     {{/if}}
 
-    {{!-- Hidden container for spec content --}}
+    {{!-- Hidden container for spec content (Arazzo viewer only) --}}
+    {{#unless (eq flow.contentType "MD")}}
     <textarea id="specContent" style="display: none;">{{flow.content}}</textarea>
+    {{/unless}}
 </div>
 {{#pageScripts}}
 <script src='{{basePath}}/technical-scripts/api-workflow-detail.js' defer></script>

@@ -37,6 +37,7 @@ const apiWorkflowService = require('../services/apiWorkflowService');
 const { buildSchema, getIntrospectionQuery, graphql: executeGraphQL } = require('graphql');
 const yaml = require('../utils/yaml');
 const markdown = require('marked');
+const { sanitizeMarkdownHtml, safeJsonForScript } = require('../utils/sanitizeDocs');
 const generateArray = (length) => Array.from({ length });
 
 const loadAPIs = async (req, res, next) => {
@@ -243,7 +244,7 @@ const loadAPIContent = async (req, res, next) => {
             let apiDefinition = {};
             const markdownResponse = await apiFileDao.get(constants.FILE_NAME.API_MD_CONTENT_FILE_NAME, constants.DOC_TYPES.API_LANDING, orgId, apiId);
             const apiContentHtml = markdownResponse
-                ? markdown.parse(markdownResponse.file_content.toString(constants.CHARSET_UTF8))
+                ? sanitizeMarkdownHtml(markdown.parse(markdownResponse.file_content.toString(constants.CHARSET_UTF8)), orgDetails.configuration)
                 : '';
             if (!markdownResponse) {
                 let additionalAPIContentResponse = await apiFileDao.get(constants.FILE_NAME.API_HBS_CONTENT_FILE_NAME, constants.DOC_TYPES.API_LANDING, orgId, apiId);
@@ -458,7 +459,7 @@ const getAPIDefinition = async (orgName, viewName, apiHandle) => {
         templateContent.metaData = metaData;
         if (metaData.type === constants.API_TYPE.MCP) {
             const productionURL = metaData.endPoints?.productionURL || '';
-            templateContent.swagger = JSON.stringify({ servers: [{ url: productionURL }] });
+            templateContent.swagger = safeJsonForScript({ servers: [{ url: productionURL }] });
         } else {
             const definitionContent = sampleApiLoader.getDefinition(apiHandle, resolveSamplesPath(apiHandle));
             if (definitionContent) {
@@ -478,7 +479,7 @@ const getAPIDefinition = async (orgName, viewName, apiHandle) => {
         let apiDefinition;
         if (metaData.type === constants.API_TYPE.MCP) {
             const productionURL = metaData.endPoints?.productionURL || '';
-            templateContent.swagger = JSON.stringify({ servers: [{ url: productionURL }] });
+            templateContent.swagger = safeJsonForScript({ servers: [{ url: productionURL }] });
             // Load MCP schema so loadAPIDefinitionRaw can serve it via SPEC_FORMAT_MAP field:'schema'
             try {
                 const rawSchema = await apiFileDao.getByType(constants.DOC_TYPES.SCHEMA_DEFINITION, orgId, apiId);
@@ -621,28 +622,28 @@ const loadDocument = async (req, res, next) => {
             const tryoutEnabled = req.query.tryout === true || req.query.tryout === 'true';
             templateContent.isTryout = templateContent.supportsTryout && tryoutEnabled;
             if (specType === constants.API_TYPE.WS || specType === constants.API_TYPE.WEBSUB) {
-                templateContent.asyncapi = JSON.stringify(parseApiDefinitionContent(definitionResponse.swagger));
+                templateContent.asyncapi = safeJsonForScript(parseApiDefinitionContent(definitionResponse.swagger));
                 templateContent.isWebSocketTryout = tryoutEnabled;
             } else if (specType === constants.API_TYPE.GRAPHQL) {
                 templateContent.isGraphQLTryout = tryoutEnabled;
                 if (tryoutEnabled) {
                     const schemaAsIntrospectionJSON = await convertSDLToIntrospection(definitionResponse.swagger);
-                    templateContent.graphqlSchemaAsIntrospectionJSON = schemaAsIntrospectionJSON ? JSON.stringify(schemaAsIntrospectionJSON) : null;
+                    templateContent.graphqlSchemaAsIntrospectionJSON = schemaAsIntrospectionJSON ? safeJsonForScript(schemaAsIntrospectionJSON) : null;
                     templateContent.graphqlSecurityScheme = '[]';
                     templateContent.graphqlApiKeyHeader = 'apikey';
                     templateContent.apiMetadata = metaData;
                 } else {
-                    templateContent.graphql = JSON.stringify(definitionResponse.swagger);
-                    templateContent.apiMetadataJSON = JSON.stringify(metaData || {});
+                    templateContent.graphql = safeJsonForScript(definitionResponse.swagger);
+                    templateContent.apiMetadataJSON = safeJsonForScript(metaData || {});
                 }
             } else if (specType !== constants.API_TYPE.SOAP) {
-                templateContent.swagger = JSON.stringify(parseApiDefinitionContent(definitionResponse.swagger));
+                templateContent.swagger = safeJsonForScript(parseApiDefinitionContent(definitionResponse.swagger));
             }
             templateContent.isAPIDefinition = true;
         }
         if (!isSpecPage && docType !== undefined && docName !== undefined) {
             const raw = sampleApiLoader.getDocMarkdown(apiHandle, docName, resolveSamplesPath(apiHandle), docType) || '';
-            templateContent.apiMD = raw ? require('marked').parse(raw) : '';
+            templateContent.apiMD = raw ? sanitizeMarkdownHtml(require('marked').parse(raw), null) : '';
         }
         templateContent.baseUrl = constants.ROUTE.BASE_PATH + constants.ROUTE.VIEWS_PATH + viewName;
         templateContent.baseDocUrl = constants.ROUTE.BASE_PATH + constants.ROUTE.VIEWS_PATH + viewName + '/api/' + apiHandle;
@@ -704,7 +705,7 @@ const loadDocument = async (req, res, next) => {
                 // remotes when present, otherwise fall back to endPoints.
                 const remoteUrl = (apiMetadata?.remotes || [])[0]?.url;
                 templateContent.swagger = remoteUrl
-                    ? JSON.stringify({ servers: [{ url: remoteUrl }] })
+                    ? safeJsonForScript({ servers: [{ url: remoteUrl }] })
                     : definitionResponse.swagger;
             } else if (definitionResponse.apiType !== constants.API_TYPE.WS && definitionResponse.apiType !== constants.API_TYPE.GRAPHQL && definitionResponse.apiType !== constants.API_TYPE.WEBSUB) {
                 let modifiedSwagger;
@@ -755,24 +756,24 @@ const loadDocument = async (req, res, next) => {
                         }
                     }
 
-                    templateContent.swagger = JSON.stringify(modifiedSwagger);
+                    templateContent.swagger = safeJsonForScript(modifiedSwagger);
                 }
             } else if (definitionResponse.apiType === constants.API_TYPE.GRAPHQL) {
                 if (templateContent.isGraphQLTryout && definitionResponse.graphql) {
                     const schemaAsIntrospectionJSON = await convertSDLToIntrospection(definitionResponse.graphql);
-                    templateContent.graphqlSchemaAsIntrospectionJSON = schemaAsIntrospectionJSON ? JSON.stringify(schemaAsIntrospectionJSON) : null;
+                    templateContent.graphqlSchemaAsIntrospectionJSON = schemaAsIntrospectionJSON ? safeJsonForScript(schemaAsIntrospectionJSON) : null;
                     templateContent.graphqlSecurityScheme = '[]';
                     templateContent.graphqlApiKeyHeader = 'apikey';
                 } else {
-                    templateContent.graphql = definitionResponse.graphql ? JSON.stringify(definitionResponse.graphql) : '""';
-                    templateContent.apiMetadataJSON = JSON.stringify(apiMetadata || {});
+                    templateContent.graphql = definitionResponse.graphql ? safeJsonForScript(definitionResponse.graphql) : '""';
+                    templateContent.apiMetadataJSON = safeJsonForScript(apiMetadata || {});
                 }
                 templateContent.apiMetadata = apiMetadata;
             }
              else {
                 const parsedAsyncAPI = parseApiDefinitionContent(definitionResponse.asyncapi);
                 let modifiedAsyncAPI = replaceEndpointParamsAsyncAPI(parsedAsyncAPI, apiMetadata.endPoints.productionURL, apiMetadata.endPoints.sandboxURL);
-                templateContent.asyncapi = JSON.stringify(modifiedAsyncAPI);
+                templateContent.asyncapi = safeJsonForScript(modifiedAsyncAPI);
             }
             templateContent.isAPIDefinition = true;
         }
