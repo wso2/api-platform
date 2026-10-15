@@ -73,7 +73,8 @@ func TestAsClientError_ReportsThePlatformAnswerThroughWrapping(t *testing.T) {
 // Validation failures keep the message that names the field.
 func TestAsClientError_KeepsTheValidationMessage(t *testing.T) {
 	got, ok := AsClientError(apperror.ValidationFailed.New("The name field cannot be empty."))
-	if !ok || got.Status != http.StatusBadRequest || got.Message != "The name field cannot be empty." {
+	if !ok || got.Status != http.StatusBadRequest || got.Code != apperror.CodeCommonValidationFailed ||
+		got.Message != "The name field cannot be empty." {
 		t.Errorf("got %+v ok=%v", got, ok)
 	}
 }
@@ -97,6 +98,18 @@ func TestAsClientError_RecognisesTheStandInForPluginTests(t *testing.T) {
 	got, ok := AsClientError(fmt.Errorf("create: %w", stand))
 	if !ok || got != *stand {
 		t.Errorf("got %+v ok=%v", got, ok)
+	}
+}
+
+// A typed nil stored in an error must not panic when printed.
+func TestClientError_NilReceiverDoesNotPanic(t *testing.T) {
+	var stand *ClientError
+	var err error = stand
+	if err.Error() == "" {
+		t.Error("want a stable message")
+	}
+	if _, ok := AsClientError(err); ok {
+		t.Error("a nil *ClientError should not be classified")
 	}
 }
 

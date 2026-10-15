@@ -55,6 +55,10 @@ type ClientError struct {
 }
 
 func (e *ClientError) Error() string {
+	// A nil *ClientError held in an error interface is not a nil error.
+	if e == nil {
+		return "<nil client error>"
+	}
 	return e.Code + ": " + e.Message
 }
 
