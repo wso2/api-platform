@@ -1139,10 +1139,7 @@ func agentUpstreamAuthPolicy(auth *struct {
 	if auth.Header == nil || *auth.Header == "" || auth.Value == nil || *auth.Value == "" {
 		return nil, nil
 	}
-	params, err := utils.GetParamsOfPolicy(constants.SET_HEADERS_POLICY_PARAMS, *auth.Header, *auth.Value)
-	if err != nil {
-		return nil, fmt.Errorf("failed to build upstream auth params: %w", err)
-	}
+	params := utils.SetHeadersParams(*auth.Header, *auth.Value)
 	return &api.Policy{Name: constants.SET_HEADERS_POLICY_NAME, Params: &params}, nil
 }
 

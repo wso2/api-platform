@@ -71,7 +71,7 @@ func buildSetHeadersParams(header, value *string) (map[string]interface{}, error
 	if value == nil || *value == "" {
 		return nil, fmt.Errorf("upstream.auth.value is required")
 	}
-	return GetParamsOfPolicy(constants.SET_HEADERS_POLICY_PARAMS, *header, *value)
+	return SetHeadersParams(*header, *value), nil
 }
 
 // protocolVersionComparator compares two MCP protocol version strings in YYYY-MM-DD format
