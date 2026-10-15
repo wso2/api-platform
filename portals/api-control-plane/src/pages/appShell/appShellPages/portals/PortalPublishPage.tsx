@@ -268,7 +268,8 @@ type PendingAction = 'idle' | 'saving' | 'publishing' | 'unpublishing' | 'deprec
  */
 export function PortalPublishPage() {
   return (
-    <AppPage>
+    // Less room under the buttons than the standard page, so the tab area gets the height.
+    <AppPage sx={{ pb: 2 }}>
       <RestPortalPublish />
     </AppPage>
   );
@@ -634,7 +635,7 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
   return (
     <>
       <Box ref={fill.ref} sx={{ display: 'flex', flexDirection: 'column', height: fill.height, minHeight: 0 }}>
-        <PageTitle>
+        <PageTitle sx={{ mb: 3 }}>
           <PageTitle.BackButton component={<Link to={target.portalsPath} />}>
             <FormattedMessage {...messages.back} />
           </PageTitle.BackButton>
