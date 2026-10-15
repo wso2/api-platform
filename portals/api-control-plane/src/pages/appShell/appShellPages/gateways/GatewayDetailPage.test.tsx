@@ -61,7 +61,8 @@ let manifestReads: Recorder;
  * provider is mounted here — without it every query stays `enabled: false` and
  * the page renders its loading state forever.
  */
-function renderPage() {
+function renderPage({ justCreated = false } = {}) {
+  const pathname = `/organizations/${ORG}/gateways/${GATEWAY_ID}`;
   return renderWithProviders(
     <ApiScopeProvider orgId={ORG}>
       <Routes>
@@ -72,7 +73,8 @@ function renderPage() {
       </Routes>
     </ApiScopeProvider>,
     {
-      route: `/organizations/${ORG}/gateways/${GATEWAY_ID}`,
+      // Arriving from the create page carries the flag in router state.
+      routerEntries: [justCreated ? { pathname, state: { issueFirstToken: true } } : pathname],
       scope: makeConsoleScope(),
     },
   );
@@ -251,6 +253,51 @@ describe('GatewayDetailPage', () => {
     await waitFor(() => expect(container.textContent).toContain('plaintext-token-value'));
     expect(tokenRotations.count()).toBe(1);
   });
+
+  it('issues the first token by itself when arriving from the create page', async () => {
+    server.use(
+      resource('/gateways/:gatewayId', gateway()),
+      accepts(
+        'post',
+        '/gateways/:gatewayId/tokens',
+        { id: 'token-1', token: 'plaintext-token-value' },
+        { record: tokenRotations },
+      ),
+    );
+
+    const { container } = renderPage({ justCreated: true });
+
+    // No click: the commands are complete on arrival, and only one token is
+    // issued however many times the panel renders.
+    await waitFor(() => expect(container.textContent).toContain('plaintext-token-value'));
+    expect(container.textContent).toContain('APIP_GW_CONTROLLER_CONTROLPLANE_TOKEN=');
+    expect(await screen.findByRole('button', { name: 'Generate another token' })).toBeEnabled();
+    expect(tokenRotations.count()).toBe(1);
+  });
+
+  it('leaves an existing token alone when arriving from the create page', async () => {
+    server.use(
+      resource('/gateways/:gatewayId', gateway()),
+      resource('/gateways/:gatewayId/tokens', {
+        ...noTokens,
+        count: 1,
+        list: [{ createdAt: '2026-07-01T10:00:00Z', id: 'token-0', status: 'active' }],
+        pagination: { ...noTokens.pagination, total: 1 },
+      }),
+      accepts(
+        'post',
+        '/gateways/:gatewayId/tokens',
+        { id: 'token-1', token: 'plaintext-token-value' },
+        { record: tokenRotations },
+      ),
+    );
+
+    renderPage({ justCreated: true });
+
+    await screen.findByRole('button', { name: 'Generate another token' });
+    expect(tokenRotations.count()).toBe(0);
+  });
+
   it('still asks before generating a token when the token list fails to load', async () => {
     server.use(
       resource('/gateways/:gatewayId', gateway()),

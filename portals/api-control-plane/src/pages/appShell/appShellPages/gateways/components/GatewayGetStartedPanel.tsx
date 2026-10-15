@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { useState, type ReactElement, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactElement, type ReactNode } from 'react';
 import {
   Alert,
   Box,
@@ -330,11 +330,24 @@ function SetupStep({ children, title }: { children: ReactNode; title: MessageDes
   );
 }
 
+/**
+ * Router state the create page hands to the gateway page. Only a flag, never
+ * the token: history state survives a reload, and a one-time secret must not.
+ */
+export type GatewaySetupLocationState = { issueFirstToken?: boolean };
+
 export type GatewayGetStartedPanelProps = {
   /** Control plane host the gateway agent registers against. */
   controlPlaneHost: string;
   gateway: Gateway;
   gatewayId: string;
+  /**
+   * The gateway was created a moment ago: issue its first token without
+   * waiting for a click, so the commands below are complete on arrival.
+   */
+  issueFirstToken?: boolean;
+  /** Called once the first token has been asked for, so it is never asked for twice. */
+  onFirstTokenRequested?: () => void;
 };
 
 /**
@@ -350,6 +363,8 @@ export function GatewayGetStartedPanel({
   controlPlaneHost,
   gateway,
   gatewayId,
+  issueFirstToken = false,
+  onFirstTokenRequested,
 }: GatewayGetStartedPanelProps) {
   const intl = useIntl();
   const { notify } = useNotifications();
@@ -382,6 +397,23 @@ export function GatewayGetStartedPanel({
       },
     });
   };
+
+  // A gateway created a moment ago gets its first token on arrival, the way the
+  // console has always done it: the user came here to set the gateway up, and
+  // the commands are only runnable with a token in them. Only when the list
+  // has loaded and is empty — a gateway that already has a token keeps it.
+  // The ref holds through StrictMode's second effect run, before the parent
+  // has cleared the flag.
+  const firstTokenRequested = useRef(false);
+  useEffect(() => {
+    if (!issueFirstToken || firstTokenRequested.current || !tokensQuery.isSuccess) return;
+    firstTokenRequested.current = true;
+    onFirstTokenRequested?.();
+    if ((tokensQuery.data?.list?.length ?? 0) === 0) generateToken();
+    // generateToken and onFirstTokenRequested are recreated each render; the
+    // ref is what makes this run once.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [issueFirstToken, tokensQuery.isSuccess, tokensQuery.data]);
 
   const tokenButtonLabel = rotateToken.isPending
     ? messages.reconfiguring

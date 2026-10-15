@@ -41,6 +41,7 @@ import { AppPage } from '@/components/AppPage';
 import { useCreateGateway, type CreateGatewayBody } from '@/api/resources/gateways';
 import { useNotifications } from '@/components/Notifications';
 import { routes } from '@/routes/paths';
+import type { GatewaySetupLocationState } from './components/GatewayGetStartedPanel';
 import { GatewayTypeSelector } from './components/GatewayTypeSelector';
 import type { GatewayFunctionality } from './utils/gatewayDisplay';
 import { MOCK_ENVIRONMENTS } from './utils/gatewayEnvironments';
@@ -322,7 +323,10 @@ function GatewayCreatePageContent() {
           }),
           'success',
         );
-        navigate(routes.gateway(orgHandle, gateway.id ?? ''));
+        // The gateway page issues the first token on arrival; this only says
+        // the gateway is new. The token itself never goes into history.
+        const state: GatewaySetupLocationState = { issueFirstToken: true };
+        navigate(routes.gateway(orgHandle, gateway.id ?? ''), { state });
       },
       onError: (error) => {
         // The global mutation handler already surfaces the failure; this only
