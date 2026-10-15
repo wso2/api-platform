@@ -5,6 +5,12 @@
 {{- if not (has $termination (list "passthrough" "reencrypt")) -}}
 {{- fail (printf "openshift.routes.platformApi: tls.termination must be passthrough or reencrypt (got %q); the Platform API Service serves HTTPS only, so edge termination cannot reach it" $termination) -}}
 {{- end }}
+{{- /* A reencrypt Route must trust the backend certificate. Without destinationCACertificate the router
+       trusts only the OpenShift service CA, which can sign only a certificate supplied as a Secret. */}}
+{{- $provider := toString (default "" (dig "certificateProvider" "" (default (dict) .Values.tls))) -}}
+{{- if and (eq $termination "reencrypt") (not $tls.destinationCACertificate) (ne $provider "secret") -}}
+{{- fail (printf "openshift.routes.platformApi: reencrypt termination needs tls.destinationCACertificate, because the Platform API certificate (tls.certificateProvider=%s) is not signed by the OpenShift service CA. Set openshift.routes.tls.destinationCACertificate to the CA that issued it (with cert-manager, the ca.crt key of the %s-tls Secret), or use passthrough termination" $provider (include "apip.platformApi.fullname" .)) -}}
+{{- end }}
 apiVersion: route.openshift.io/v1
 kind: Route
 metadata:

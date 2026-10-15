@@ -15,6 +15,12 @@
 {{- if and (eq $targetPort "websocket") (ne $termination "edge") -}}
 {{- fail (printf "openshift.routes.websocket: %s termination needs a TLS backend, but target port \"websocket\" serves plain HTTP. Use edge termination." $termination) -}}
 {{- end }}
+{{- /* A reencrypt Route must trust the backend certificate. Without destinationCACertificate the router
+       trusts only the OpenShift service CA, which can sign only a certificate supplied as a Secret. */}}
+{{- $provider := toString (default "" (dig "tls" "certificateProvider" "" (default (dict) .Values.eventGateway.gatewayRuntime))) -}}
+{{- if and (eq $termination "reencrypt") (not $tls.destinationCACertificate) (ne $provider "secret") -}}
+{{- fail (printf "openshift.routes.websocket: reencrypt termination needs tls.destinationCACertificate, because the gateway runtime certificate (eventGateway.gatewayRuntime.tls.certificateProvider=%s) is not signed by the OpenShift service CA. Set openshift.routes.tls.destinationCACertificate to the CA that issued it (with cert-manager, the ca.crt key of the %s-runtime-tls Secret), or use passthrough termination" $provider (include "event-gateway.fullname" .)) -}}
+{{- end }}
 {{- $annotations := merge (deepCopy (default (dict) .Values.commonAnnotations)) (default (dict) $route.annotations) }}
 apiVersion: route.openshift.io/v1
 kind: Route

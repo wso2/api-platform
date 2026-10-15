@@ -217,7 +217,8 @@ openshift:
       certificate: ""
       key: ""
       caCertificate: ""
-      # PEM CA that signed the backend certificate (reencrypt only).
+      # PEM CA that signed the backend certificate (reencrypt only). Required for reencrypt unless
+      # tls.certificateProvider=secret holds a certificate signed by the OpenShift service CA.
       destinationCACertificate: ""
     # AI Workspace UI.
     aiWorkspace:

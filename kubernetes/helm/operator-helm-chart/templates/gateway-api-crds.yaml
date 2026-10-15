@@ -22,8 +22,14 @@
   {{- end }}
 {{- end }}
 {{- if or (not $existing) $ownedByThisRelease }}
+{{- /* keep: Helm must never delete the bundle's CRDs (and with them every Gateway API resource), or
+       the policy that guards them, when a later upgrade leaves them out, for example after a
+       takeover or installStandardCRDs=false. Uninstall leaves them in place too. */}}
+{{- $annotations := default (dict) $obj.metadata.annotations }}
+{{- $_ := set $annotations "helm.sh/resource-policy" "keep" }}
+{{- $_ := set $obj.metadata "annotations" $annotations }}
 ---
-{{ trim $doc }}
+{{ toYaml $obj }}
 {{- end }}
 {{- end }}
 {{- end }}

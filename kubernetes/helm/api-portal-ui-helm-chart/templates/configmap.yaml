@@ -141,7 +141,8 @@ data:
     {{- if not (trim $portalId) }}
       {{- fail "config.organization.portalId is required" }}
     {{- end }}
-    {{- if regexMatch "\\s" $portalId }}
+    {{- /* Same set as JavaScript's \s, which the portal checks at startup: Go's \s is ASCII only. */}}
+    {{- if regexMatch "[\\s\\v\\p{Z}\\x{FEFF}]" $portalId }}
       {{- fail "config.organization.portalId must not contain whitespace" }}
     {{- end }}
     [api_portal.organization]
