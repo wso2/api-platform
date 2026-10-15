@@ -266,6 +266,7 @@ data:
     server_header_value = {{ $router.http_listener.server_header_value | quote }}
     per_connection_buffer_limit_bytes = {{ $router.http_listener.per_connection_buffer_limit_bytes | int64 }}
     disable_path_normalization = {{ $router.http_listener.disable_path_normalization }}
+    return_request_id_in_response = {{ $router.http_listener.return_request_id_in_response }}
     path_with_escaped_slashes_action = {{ $router.http_listener.path_with_escaped_slashes_action | quote }}
 
     [router.http_listener.timeouts]

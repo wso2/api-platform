@@ -931,8 +931,8 @@ Feature: Respond Policy Integration Tests
                       value: value3
                     - name: Cache-Control
                       value: max-age=3600
-                    - name: X-Request-ID
-                      value: req-abc-123
+                    - name: X-Custom-Header-4
+                      value: value4
       """
     Then the response should be successful
     And I wait for the endpoint "http://localhost:8080/respond-multi-headers/v1.0.0/test" to be ready
@@ -942,7 +942,7 @@ Feature: Respond Policy Integration Tests
     And the response header "X-Custom-Header-2" should be "value2"
     And the response header "X-Custom-Header-3" should be "value3"
     And the response header "Cache-Control" should be "max-age=3600"
-    And the response header "X-Request-ID" should be "req-abc-123"
+    And the response header "X-Custom-Header-4" should be "value4"
 
   Scenario: Large JSON response body
     When I deploy an API with the following configuration:

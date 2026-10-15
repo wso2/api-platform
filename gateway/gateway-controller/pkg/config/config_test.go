@@ -2337,6 +2337,38 @@ disable_path_normalization = true
 	})
 }
 
+func TestDefaultConfig_ReturnRequestIDInResponseEnabledByDefault(t *testing.T) {
+	cfg := defaultConfig()
+	assert.True(t, cfg.Router.HTTPListener.ReturnRequestIDInResponse,
+		"x-request-id must be returned in responses by default")
+}
+
+func TestLoadConfig_ReturnRequestIDInResponse(t *testing.T) {
+	t.Run("omitted section defaults to enabled", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		configPath := filepath.Join(tmpDir, "config.toml")
+		require.NoError(t, os.WriteFile(configPath, []byte(""), 0o644))
+
+		cfg, err := LoadConfig(configPath)
+		require.NoError(t, err)
+		assert.True(t, cfg.Router.HTTPListener.ReturnRequestIDInResponse)
+	})
+
+	t.Run("explicit opt-out parses from toml", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		configPath := filepath.Join(tmpDir, "config.toml")
+		toml := `
+[router.http_listener]
+return_request_id_in_response = false
+`
+		require.NoError(t, os.WriteFile(configPath, []byte(toml), 0o644))
+
+		cfg, err := LoadConfig(configPath)
+		require.NoError(t, err)
+		assert.False(t, cfg.Router.HTTPListener.ReturnRequestIDInResponse)
+	})
+}
+
 func TestDefaultConfig_PathWithEscapedSlashesActionKeepUnchangedByDefault(t *testing.T) {
 	cfg := defaultConfig()
 	assert.Equal(t, commonconstants.KEEP_UNCHANGED, cfg.Router.HTTPListener.PathWithEscapedSlashesAction,

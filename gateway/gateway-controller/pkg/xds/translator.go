@@ -1479,6 +1479,8 @@ func (t *Translator) createListenerWithCertRequest(virtualHosts []*route.Virtual
 		CodecType:         hcm.HttpConnectionManager_AUTO,
 		StatPrefix:        "http",
 		GenerateRequestId: wrapperspb.Bool(true),
+		// Return x-request-id in responses, including the gateway's own error replies.
+		AlwaysSetRequestIdInResponse: t.routerConfig.HTTPListener.ReturnRequestIDInResponse,
 		RouteSpecifier: &hcm.HttpConnectionManager_Rds{
 			Rds: &hcm.Rds{
 				ConfigSource: &core.ConfigSource{
