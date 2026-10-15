@@ -18,6 +18,7 @@ package cloudconsole
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -25,6 +26,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cucumber/godog"
 	"github.com/stretchr/testify/require"
 	"github.com/wso2/api-platform/tests/framework/core/util/httpx"
 	"github.com/wso2/api-platform/tests/framework/core/util/tcontext"
@@ -179,4 +181,168 @@ func TestStringField(t *testing.T) {
 	require.ErrorContains(t, err, "missing or empty")
 	_, err = stringField(&httpx.Response{Body: []byte("invalid")}, "id")
 	require.Error(t, err)
+}
+
+func valuesTable(t *testing.T, rows ...[]string) *godog.Table {
+	t.Helper()
+	type cell struct {
+		Value string `json:"value"`
+	}
+	type row struct {
+		Cells []cell `json:"cells"`
+	}
+	payload := struct {
+		Rows []row `json:"rows"`
+	}{}
+	for _, values := range rows {
+		cells := make([]cell, len(values))
+		for i, value := range values {
+			cells[i] = cell{Value: value}
+		}
+		payload.Rows = append(payload.Rows, row{Cells: cells})
+	}
+	raw, err := json.Marshal(payload)
+	require.NoError(t, err)
+	var table godog.Table
+	require.NoError(t, json.Unmarshal(raw, &table))
+	return &table
+}
+
+func TestTableValuesReadsKeyValueRows(t *testing.T) {
+	values, err := tableValues(valuesTable(t, []string{"version", "2.0.0"}, []string{" context ", "/x"}))
+	require.NoError(t, err)
+	require.Equal(t, map[string]string{"version": "2.0.0", "context": "/x"}, values)
+
+	values, err = tableValues(nil)
+	require.NoError(t, err)
+	require.Empty(t, values)
+}
+
+func TestTableValuesRejectsMalformedTables(t *testing.T) {
+	for name, table := range map[string]*godog.Table{
+		"one cell":      valuesTable(t, []string{"version"}),
+		"three cells":   valuesTable(t, []string{"a", "b", "c"}),
+		"empty key":     valuesTable(t, []string{" ", "value"}),
+		"duplicate key": valuesTable(t, []string{"version", "1"}, []string{"version", "2"}),
+	} {
+		_, err := tableValues(table)
+		require.Error(t, err, name)
+	}
+}
+
+func TestNewAPIDefinitionDefaults(t *testing.T) {
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("cloud-runner"))
+
+	definition, err := newAPIDefinition(ctx, "syn-api-1", "default", nil)
+	require.NoError(t, err)
+	require.Equal(t, "syn-api-1", definition["id"])
+	require.Equal(t, "Synthetic syn-api-1", definition["displayName"])
+	require.Equal(t, "/syn-api-1/v1", definition["context"])
+	require.Equal(t, "1.0.0", definition["version"])
+	require.Equal(t, "default", definition["projectId"])
+	require.Equal(t, map[string]bool{"enabled": false}, definition["security"])
+	operations, ok := definition["operations"].([]any)
+	require.True(t, ok)
+	require.Len(t, operations, 1)
+}
+
+func TestApplyAPIOverridesReplacesStringsAndJSON(t *testing.T) {
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("cloud-runner"))
+	local, ok := tcontext.LocalOf(ctx)
+	require.True(t, ok)
+	local.Set("apiID", "syn-api-2")
+
+	definition := map[string]any{"context": "/old", "version": "1.0.0"}
+	err := applyAPIOverrides(ctx, definition, map[string]string{
+		"context":  "/${CTX:apiID}/2.0.0",
+		"version":  "2.0.0",
+		"policies": `[{"name":"api-key-auth","version":"v1"}]`,
+	})
+	require.NoError(t, err)
+	require.Equal(t, "/syn-api-2/2.0.0", definition["context"])
+	require.Equal(t, "2.0.0", definition["version"])
+	policies, ok := definition["policies"].([]any)
+	require.True(t, ok)
+	require.Len(t, policies, 1)
+}
+
+func TestApplyAPIOverridesRejectsUnsupportedAndMalformedValues(t *testing.T) {
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("cloud-runner"))
+
+	err := applyAPIOverrides(ctx, map[string]any{}, map[string]string{"projectId": "other"})
+	require.ErrorContains(t, err, `unsupported REST API value "projectId"`)
+
+	err = applyAPIOverrides(ctx, map[string]any{}, map[string]string{"operations": "not json"})
+	require.ErrorContains(t, err, "not valid JSON")
+
+	err = applyAPIOverrides(ctx, map[string]any{}, map[string]string{"context": "${CTX:missing}"})
+	require.Error(t, err)
+}
+
+func TestAPIRefForSelectsPrimaryOrNewVersion(t *testing.T) {
+	require.Equal(t, primaryAPI, apiRefFor("synthetic REST API"))
+	require.Equal(t, versionAPI, apiRefFor(newVersionAPILabel))
+	require.NotEqual(t, primaryAPI.id, versionAPI.id)
+	require.NotEqual(t, primaryAPI.deployment, versionAPI.deployment)
+}
+
+func TestSendUntilStatusWithSendsHeaders(t *testing.T) {
+	var gotKey string
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotKey = r.Header.Get("X-API-Key")
+		if gotKey == "" {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("cloud-runner"))
+	steps := &Steps{funnel: httpx.NewFunnel(httpx.NewClient(httpx.Options{
+		Timeout:            5 * time.Second,
+		InsecureSkipVerify: true,
+	}), 0, 0), dataPlaneURLResolver: func(_ context.Context, target string) (string, error) {
+		return target, nil
+	}}
+
+	require.NoError(t, steps.sendUntilStatusWith(ctx, http.MethodGet, server.URL, http.StatusOK,
+		map[string]string{"X-API-Key": "secret"}))
+	require.Equal(t, "secret", gotKey)
+}
+
+func TestSendWithAPIKeyRequiresStoredKeyAndHeader(t *testing.T) {
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("cloud-runner"))
+	steps := &Steps{}
+
+	err := steps.sendWithAPIKeyUntilStatus(ctx, http.MethodGet, "https://x.gateway.wso2.com", "X-API-Key", http.StatusOK)
+	require.ErrorContains(t, err, keyAPIKey)
+
+	local, ok := tcontext.LocalOf(ctx)
+	require.True(t, ok)
+	local.Set(keyAPIKey, "secret")
+	err = steps.sendWithAPIKeyUntilStatus(ctx, http.MethodGet, "https://x.gateway.wso2.com", " ", http.StatusOK)
+	require.ErrorContains(t, err, "header name is required")
+}
+
+func TestAssertCloudResponseStatus(t *testing.T) {
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("cloud-runner"))
+	funnel := httpx.NewFunnel(httpx.NewClient(httpx.Options{}), 0, 0)
+	steps := &Steps{funnel: funnel}
+
+	require.Error(t, steps.assertCloudResponseStatus(ctx, http.StatusConflict))
+
+	require.NoError(t, funnel.Publish(ctx, &httpx.Response{StatusCode: http.StatusConflict}))
+	require.NoError(t, steps.assertCloudResponseStatus(ctx, http.StatusConflict))
+	require.ErrorContains(t, steps.assertCloudResponseStatus(ctx, http.StatusBadRequest), "expected response status 400")
+}
+
+func TestAssertAPIResponseMatchesRequestedPost(t *testing.T) {
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("cloud-runner"))
+	funnel := httpx.NewFunnel(httpx.NewClient(httpx.Options{}), 0, 0)
+	steps := &Steps{funnel: funnel}
+
+	require.NoError(t, funnel.Publish(ctx, &httpx.Response{StatusCode: http.StatusOK, Body: []byte(`{"id":2}`)}))
+	require.NoError(t, steps.assertAPIResponse(ctx, 2))
+	require.ErrorContains(t, steps.assertAPIResponse(ctx, 1), "contain post 1")
 }

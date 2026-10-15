@@ -123,112 +123,13 @@ func (s *Steps) findActiveGateway(ctx context.Context) error {
 	return fmt.Errorf("no usable APIP gateway among %d listed: %s", len(items), strings.Join(skipped, "; "))
 }
 
-func (s *Steps) createAPI(ctx context.Context) error {
-	projectID, err := requiredValue(ctx, keyProjectID)
-	if err != nil {
-		return err
-	}
-	if err := generateResourceAndStore(ctx, "syn-api", keyAPIID); err != nil {
-		return err
-	}
-	apiID, err := requiredValue(ctx, keyAPIID)
-	if err != nil {
-		return err
-	}
-	if err := cleanup.Register(ctx, cleanup.Resource{
-		Kind: cleanup.KindAPI, ID: apiID, Actor: resourceActor, Description: "REST API " + apiID,
-	}); err != nil {
-		return fmt.Errorf("registering API %q for cleanup: %w", apiID, err)
-	}
-	body := map[string]any{
-		"id": apiID, "displayName": "Synthetic " + apiID,
-		"description": "Created and deleted by the APIP cloud integration test. Safe to delete.",
-		"context":     "/" + apiID + "/v1", "version": "1.0.0", "projectId": projectID,
-		"upstream": map[string]any{"main": map[string]string{"url": "https://jsonplaceholder.typicode.com"}},
-		"security": map[string]bool{"enabled": false},
-		"operations": []any{map[string]any{
-			"name": "getPost", "request": map[string]string{"method": http.MethodGet, "path": "/posts/1"},
-		}},
-	}
-	resp, err := s.doAuthenticated(ctx, http.MethodPost, "/rest-apis", body)
-	if err != nil {
-		return err
-	}
-	if resp.StatusCode != http.StatusCreated {
-		return responseError(resp)
-	}
-	createdID, err := stringField(resp, "id")
-	if err != nil {
-		return fmt.Errorf("creating APIP REST API: %w", err)
-	}
-	if createdID != apiID {
-		deregister(ctx, cleanup.KindAPI, apiID)
-		if err := cleanup.Register(ctx, cleanup.Resource{
-			Kind: cleanup.KindAPI, ID: createdID, Actor: resourceActor, Description: "REST API " + createdID,
-		}); err != nil {
-			return fmt.Errorf("registering API %q for cleanup: %w", createdID, err)
-		}
-	}
-	return tcontext.Set(ctx, keyAPIID, createdID)
-}
-
-func (s *Steps) deployAPI(ctx context.Context) error {
-	apiID, err := requiredValue(ctx, keyAPIID)
-	if err != nil {
-		return err
-	}
-	gatewayID, err := requiredValue(ctx, keyGatewayID)
-	if err != nil {
-		return err
-	}
-	resp, err := s.doAuthenticated(ctx, http.MethodPost, "/rest-apis/"+url.PathEscape(apiID)+"/deployments", map[string]string{
-		"name": apiID + "-deploy", "base": "current", "gatewayId": gatewayID,
-	})
-	if err != nil {
-		return err
-	}
-	if resp.StatusCode != http.StatusCreated {
-		return responseError(resp)
-	}
-	deploymentID, err := stringField(resp, "deploymentId")
-	if err != nil {
-		return fmt.Errorf("deploying APIP REST API: %w", err)
-	}
-	return tcontext.Set(ctx, keyDeploymentID, deploymentID)
-}
-
-func (s *Steps) waitDeployment(ctx context.Context) error {
-	apiID, err := requiredValue(ctx, keyAPIID)
-	if err != nil {
-		return err
-	}
-	gatewayID, err := requiredValue(ctx, keyGatewayID)
-	if err != nil {
-		return err
-	}
-	var last *httpx.Response
-	last, err = retry.Until(ctx, retry.Options{Timeout: 3 * time.Minute, Interval: 5 * time.Second},
-		func(ctx context.Context) (*httpx.Response, error) {
-			return s.doAuthenticatedRaw(ctx, http.MethodGet,
-				"/rest-apis/"+url.PathEscape(apiID)+"/deployments?gatewayId="+url.QueryEscape(gatewayID), nil)
-		}, func(resp *httpx.Response) bool {
-			if resp == nil || resp.StatusCode != http.StatusOK {
-				return false
-			}
-			items, decodeErr := listItems(resp)
-			return decodeErr == nil && len(items) > 0 && items[0]["status"] == "DEPLOYED"
-		})
-	if err != nil {
-		return fmt.Errorf("waiting for APIP REST API deployment: %w", err)
-	}
-	if last == nil {
-		return fmt.Errorf("waiting for APIP REST API deployment: no response")
-	}
-	return nil
-}
-
 // sendUntilStatus invokes an absolute cloud data-plane URL until it returns the exact status.
 func (s *Steps) sendUntilStatus(ctx context.Context, method, target string, want int) error {
+	return s.sendUntilStatusWith(ctx, method, target, want, nil)
+}
+
+// sendUntilStatusWith is sendUntilStatus with extra request headers.
+func (s *Steps) sendUntilStatusWith(ctx context.Context, method, target string, want int, headers map[string]string) error {
 	if s.funnel == nil {
 		return fmt.Errorf("sending %s request: HTTP funnel is required", strings.ToUpper(method))
 	}
@@ -249,7 +150,7 @@ func (s *Steps) sendUntilStatus(ctx context.Context, method, target string, want
 	}
 	return retry.Await(ctx, retry.Options{Timeout: propagationTimeout(s.topo)},
 		func(ctx context.Context) (*httpx.Response, error) {
-			response, sendErr := s.funnel.Send(ctx, httpx.Request{Method: method, URL: target})
+			response, sendErr := s.funnel.Send(ctx, httpx.Request{Method: method, URL: target, Headers: headers})
 			if sendErr != nil {
 				return nil, retry.Transient(sendErr)
 			}
@@ -261,7 +162,7 @@ func (s *Steps) sendUntilStatus(ctx context.Context, method, target string, want
 		fmt.Sprintf("waiting for %s %s to return %d", method, target, want))
 }
 
-func (s *Steps) assertAPIResponse(ctx context.Context) error {
+func (s *Steps) assertAPIResponse(ctx context.Context, post int) error {
 	response, err := httpx.Published(ctx)
 	if err != nil {
 		return err
@@ -270,8 +171,8 @@ func (s *Steps) assertAPIResponse(ctx context.Context) error {
 	if err := json.Unmarshal(response.Body, &body); err != nil {
 		return fmt.Errorf("decoding the synthetic REST API response: %w (%s)", err, response.Describe())
 	}
-	if body["id"] != float64(1) {
-		return fmt.Errorf("expected the synthetic REST API response to contain post 1, got %s", response.Describe())
+	if body["id"] != float64(post) {
+		return fmt.Errorf("expected the synthetic REST API response to contain post %d, got %s", post, response.Describe())
 	}
 	return nil
 }
