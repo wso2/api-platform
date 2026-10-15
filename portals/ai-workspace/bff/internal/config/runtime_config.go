@@ -59,7 +59,7 @@ var browserSafeKeys = []string{
 	"auth.claim_mappings.organizations",
 
 	// External links and SPA-only endpoints
-	"dev_portal_base_url",
+	"api_portal_url",
 	"api_policy_hub",
 	"policy_hub_web_url",
 	"moesif_web_url",
@@ -81,7 +81,7 @@ func runtimeKey(configKey string) string {
 // Values are read straight from the parsed config (k, rooted at [ai_workspace]), not
 // from the resolved Config struct, so only keys actually present in config.toml are
 // surfaced — a code default is used internally by the BFF but never pushed to the
-// browser. Most browser-safe keys (gateway.*, moesif_*, dev_portal_base_url, ...) are
+// browser. Most browser-safe keys (gateway.*, moesif_*, api_portal_url, ...) are
 // browser-only and not modeled on Config at all; this is where they flow out.
 func buildRuntimeConfig(cfg *Config, k *koanf.Koanf) map[string]string {
 	out := make(map[string]string, len(browserSafeKeys)+1)

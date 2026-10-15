@@ -84,6 +84,7 @@ import {
   extractSecretHandle,
 } from '../../../../apis/secretApis';
 import { getGuardrails } from '../../../../apis/policyHubApis';
+import { resolveApiPortalUrl } from '../../../../apis/apiPortalApis';
 import { getMCPServerDeployments } from '../../../../apis/MCP/mcpServerDeployApis';
 import { getGateways } from '../../../../apis/gatewayApis';
 import type { Gateway } from '../../../../apis/gatewayTypes';
@@ -280,6 +281,13 @@ export default function ExternalServersOverview(): JSX.Element {
   const [isAPIPortalAvailable, setIsAPIPortalAvailable] = useState(false);
   const [isPublished, setIsPublished] = useState(false)
   const [isPublishStatusUnknown, setIsPublishStatusUnknown] = useState(true);
+  /**
+   * Where "View in API Portal" points: the PORTAL's own address, resolved
+   * once per organization (see `resolveApiPortalUrl`) rather than taken from
+   * the listing's `endpoints.productionUrl`, which is the API's invocation
+   * endpoint — for an MCP proxy, the gateway URL — and sent this link at the
+   * gateway instead of the portal.
+   */
   const [apiPortalUrl, setApiPortalUrl] = useState<string | undefined>();
   const [isPublishStatusLoading, setIsPublishStatusLoading] = useState(false);
   const [isPublishActionLoading, setIsPublishActionLoading] = useState(false);
@@ -984,11 +992,25 @@ export default function ExternalServersOverview(): JSX.Element {
     setIsAPIPortalAvailable(API_PORTAL_ENABLED && deployedGateways.length > 0);
   }, [deployedGateways]);
 
+  // The portal's address, not the listing's: read once per organization, and
+  // independent of whether this server is published — it is the same portal for
+  // every listing, so it is not re-read on publish/unpublish.
+  useEffect(() => {
+    if (!isAPIPortalAvailable || !organizationId) return;
+    let cancelled = false;
+    void (async () => {
+      const url = await resolveApiPortalUrl(DEFAULT_API_PORTAL_ID, apimBaseUrl);
+      if (!cancelled) setApiPortalUrl(url);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [apimBaseUrl, isAPIPortalAvailable, organizationId]);
+
   useEffect(() => {
     if (!isAPIPortalAvailable || isLoading || !server || !organizationId) return;
     setIsPublishStatusUnknown(true);
     setIsPublished(false);
-    setApiPortalUrl(undefined);
     let cancelled = false;
     void (async () => {
       setIsPublishStatusLoading(true);
@@ -1000,14 +1022,12 @@ export default function ExternalServersOverview(): JSX.Element {
         );
         if (cancelled) return;
         setIsPublished(true);
-        setApiPortalUrl(publication.endpoints?.productionUrl);
         setIsPublishStatusUnknown(false);
       } catch (err) {
         if (cancelled) return;
         if (getHttpStatus(err) === 404) {
           // No publication record — not published, not an error.
           setIsPublished(false);
-          setApiPortalUrl(undefined);
           setIsPublishStatusUnknown(false);
         } else {
           // Status is genuinely unknown (e.g. the publish backend for this
@@ -1084,13 +1104,12 @@ export default function ExternalServersOverview(): JSX.Element {
         },
       };
 
-      const publication = await mcpProxiesApis.publishMcpProxyToApiPortal(
+      await mcpProxiesApis.publishMcpProxyToApiPortal(
         DEFAULT_API_PORTAL_ID,
         server.id,
         draft
       );
       setIsPublished(true);
-      setApiPortalUrl(publication.endpoints?.productionUrl);
       showSnackbar('MCP Proxy published to the API Portal.', 'success');
     } catch (err) {
       showSnackbar(getErrorMessage(err, 'Failed to publish MCP Proxy.'), 'error');
@@ -1106,7 +1125,6 @@ export default function ExternalServersOverview(): JSX.Element {
     try {
       await mcpProxiesApis.unpublishMcpProxyFromApiPortal(DEFAULT_API_PORTAL_ID, server.id, apimBaseUrl);
       setIsPublished(false);
-      setApiPortalUrl(undefined);
       showSnackbar('MCP Proxy unpublished from the API Portal.', 'success');
     } catch (err) {
       showSnackbar(getErrorMessage(err, 'Failed to unpublish MCP Proxy.'), 'error');
