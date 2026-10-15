@@ -884,7 +884,7 @@
     "description": "Label for the built-in first tab of the Settings page. A noun naming the section, not a command."
   },
   "apiControlPlane.navigation.useSettingsTabs.subscriptionPlansTab": {
-    "defaultMessage": "Subscription plans",
+    "defaultMessage": "Subscription Plans",
     "description": "Label for the built-in organization-level Settings tab listing rate-limit tiers."
   },
   "apiControlPlane.pages.appShell.APIQuickSelector.apis": {
@@ -2725,7 +2725,7 @@
     "description": "Plan card value when the plan has no configured limit."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.PortalPublicationCard.goToPublish": {
-    "defaultMessage": "Go to publish",
+    "defaultMessage": "Go to Publish",
     "description": "Card action opening the publish flow for this API on this portal."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.PortalPublicationCard.statusLabel": {
@@ -2733,7 +2733,7 @@
     "description": "Row label for the API's publication status on this portal."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.PortalPublicationCard.viewInPortal": {
-    "defaultMessage": "View in portal",
+    "defaultMessage": "View in Portal",
     "description": "Link opening this API's own page on the portal, in a new tab."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.PublicationLoadError.forbiddenMessage": {
@@ -3087,7 +3087,7 @@
     "defaultMessage": "Define the rate and quota tiers applications can subscribe to."
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.title": {
-    "defaultMessage": "Subscription plans"
+    "defaultMessage": "Subscription Plans"
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.unlimitedChip": {
     "defaultMessage": "req · ∞",
