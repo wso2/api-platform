@@ -393,8 +393,8 @@ timeout_duration = 60   # seconds before a stuck deployment is timed out
 # overall_timeout below the worst case of a publish; keep it a few seconds below the
 # console's own request timeout, which cannot be checked here.
 [platform_api.api_portal_publication]
-request_timeout         = "5s"    # one attempt of any call except the listing push
-listing_request_timeout = "15s"   # one attempt of the listing push (>= request_timeout)
+request_timeout         = "5s"    # one attempt of any call except the content push
+content_request_timeout = "10s"   # one attempt of the content push (>= request_timeout)
 max_retries             = 1       # retries after the first attempt (0 = no retries)
 retry_backoff           = "1s"    # wait between attempts of the same call
 overall_timeout         = "65s"   # deadline for all portal calls of one publish, unpublish or deprecate

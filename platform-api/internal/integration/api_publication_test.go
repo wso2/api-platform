@@ -54,6 +54,10 @@ func (alwaysSucceedsPortalPublisher) Deprecate(_ context.Context, _ *model.APIPo
 	return nil
 }
 
+func (alwaysSucceedsPortalPublisher) PublishContent(_ context.Context, _ *model.APIPortal, _ string, _ *service.PortalContent) error {
+	return nil
+}
+
 // newPublicationTestService wires a real PublicationService against it.db,
 // using the same repositories production code uses. Unlike the rest of this
 // package (which drives repositories directly), these tests go through the
@@ -609,6 +613,10 @@ func (unpublishConflictPublisher) Deprecate(_ context.Context, _ *model.APIPorta
 	return nil
 }
 
+func (unpublishConflictPublisher) PublishContent(_ context.Context, _ *model.APIPortal, _ string, _ *service.PortalContent) error {
+	return nil
+}
+
 // TestPublicationUnpublish_PortalConflict verifies a portal rejection (active
 // consumers) maps to APIPublicationPortalConflict and leaves the live row
 // untouched — the local write only happens after the portal call succeeds.
@@ -678,6 +686,10 @@ func (unpublishSubscriptionConflictPublisher) CreateMissingPlans(_ context.Conte
 }
 
 func (unpublishSubscriptionConflictPublisher) Deprecate(_ context.Context, _ *model.APIPortal, _, _ string, _ *model.Publication) error {
+	return nil
+}
+
+func (unpublishSubscriptionConflictPublisher) PublishContent(_ context.Context, _ *model.APIPortal, _ string, _ *service.PortalContent) error {
 	return nil
 }
 

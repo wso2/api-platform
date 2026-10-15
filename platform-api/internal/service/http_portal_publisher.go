@@ -42,13 +42,12 @@ import (
 // /apis/{handle}), both addressed by the API's own handle — no
 // portal-returned reference ID is stored locally.
 //
-// Only the metadata and definition are pushed; the content ZIP (thumbnail,
-// landing page, documents) is not implemented yet.
+// Documents, thumbnail and landing page travel separately, as a content ZIP (PublishContent).
 type HTTPPortalPublisher struct {
 	client *client.RetryableHTTPClient
-	// pushClient carries the listing pushes under a longer attempt limit.
-	pushClient   *client.RetryableHTTPClient
-	authRegistry *APIPortalAuthRegistry
+	// contentClient carries the content push under a longer attempt limit.
+	contentClient *client.RetryableHTTPClient
+	authRegistry  *APIPortalAuthRegistry
 	// plansListingTimeout bounds the plan listing, all its pages together.
 	plansListingTimeout time.Duration
 }
@@ -57,8 +56,8 @@ type HTTPPortalPublisher struct {
 // API Portal over HTTP, authenticating via the shared-key S2S auth scheme —
 // the raw key is resolved per-portal through authRegistry (each api_portals
 // row carries its own encrypted key), never a single server-wide secret.
-func NewHTTPPortalPublisher(authRegistry *APIPortalAuthRegistry, lightClient, pushClient *client.RetryableHTTPClient, plansListingTimeout time.Duration) PortalPublisher {
-	return &HTTPPortalPublisher{client: lightClient, pushClient: pushClient, authRegistry: authRegistry, plansListingTimeout: plansListingTimeout}
+func NewHTTPPortalPublisher(authRegistry *APIPortalAuthRegistry, lightClient, contentClient *client.RetryableHTTPClient, plansListingTimeout time.Duration) PortalPublisher {
+	return &HTTPPortalPublisher{client: lightClient, contentClient: contentClient, authRegistry: authRegistry, plansListingTimeout: plansListingTimeout}
 }
 
 // authHeader resolves the Authorization header for this specific portal via
@@ -205,7 +204,7 @@ func (p *HTTPPortalPublisher) pushMetadata(ctx context.Context, portal *model.AP
 	req.Header.Set("Content-Type", contentType)
 	req.Header.Set("Authorization", authHeader)
 
-	resp, err := p.pushClient.Do(req)
+	resp, err := p.client.Do(req)
 	if err != nil {
 		return fmt.Errorf("portal metadata push failed: %w", err)
 	}

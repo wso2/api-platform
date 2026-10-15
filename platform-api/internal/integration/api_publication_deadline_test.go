@@ -62,6 +62,11 @@ func (d *deadlineRecorder) Deprecate(ctx context.Context, _ *model.APIPortal, _ 
 	return nil
 }
 
+func (d *deadlineRecorder) PublishContent(ctx context.Context, _ *model.APIPortal, _ string, _ *service.PortalContent) error {
+	d.record("content", ctx)
+	return nil
+}
+
 // stalledPortal never answers: every call waits for its context to end.
 type stalledPortal struct{}
 
@@ -81,6 +86,11 @@ func (stalledPortal) Unpublish(ctx context.Context, _ *model.APIPortal, _ string
 }
 
 func (stalledPortal) Deprecate(ctx context.Context, _ *model.APIPortal, _ string, _ string, _ *model.Publication) error {
+	<-ctx.Done()
+	return ctx.Err()
+}
+
+func (stalledPortal) PublishContent(ctx context.Context, _ *model.APIPortal, _ string, _ *service.PortalContent) error {
 	<-ctx.Done()
 	return ctx.Err()
 }

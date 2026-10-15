@@ -139,7 +139,7 @@ type Server struct {
 // which this process cannot see.
 type APIPortalPublication struct {
 	RequestTimeout        time.Duration `koanf:"request_timeout"`
-	ListingRequestTimeout time.Duration `koanf:"listing_request_timeout"`
+	ContentRequestTimeout time.Duration `koanf:"content_request_timeout"`
 	MaxRetries            int           `koanf:"max_retries"`
 	RetryBackoff          time.Duration `koanf:"retry_backoff"`
 	OverallTimeout        time.Duration `koanf:"overall_timeout"`
@@ -154,8 +154,9 @@ func (c *APIPortalPublication) RequestWorstCase() time.Duration {
 	return c.callWorstCase(c.RequestTimeout)
 }
 
-func (c *APIPortalPublication) ListingRequestWorstCase() time.Duration {
-	return c.callWorstCase(c.ListingRequestTimeout)
+// ContentRequestWorstCase is the worst case of the content push, which gets a longer attempt.
+func (c *APIPortalPublication) ContentRequestWorstCase() time.Duration {
+	return c.callWorstCase(c.ContentRequestTimeout)
 }
 
 // PlanListingBudget bounds the plan listing, all its pages together, to the worst case of
@@ -164,8 +165,10 @@ func (c *APIPortalPublication) PlanListingBudget() time.Duration {
 	return c.RequestWorstCase()
 }
 
+// PublishWorstCase adds up a publish's calls: plan listing, plan create, existence check,
+// listing push and content push.
 func (c *APIPortalPublication) PublishWorstCase() time.Duration {
-	return c.PlanListingBudget() + 2*c.RequestWorstCase() + c.ListingRequestWorstCase()
+	return c.PlanListingBudget() + 3*c.RequestWorstCase() + c.ContentRequestWorstCase()
 }
 
 // AgentCardCache configures the in-process cache sitting in front of the
@@ -988,7 +991,7 @@ func validateAPIPortalPublicationConfig(cfg *APIPortalPublication, writeTimeout 
 		value time.Duration
 	}{
 		{"api_portal_publication.request_timeout", cfg.RequestTimeout},
-		{"api_portal_publication.listing_request_timeout", cfg.ListingRequestTimeout},
+		{"api_portal_publication.content_request_timeout", cfg.ContentRequestTimeout},
 		{"api_portal_publication.overall_timeout", cfg.OverallTimeout},
 	} {
 		if f.value <= 0 {
@@ -1001,10 +1004,10 @@ func validateAPIPortalPublicationConfig(cfg *APIPortalPublication, writeTimeout 
 	if cfg.RetryBackoff < 0 {
 		return fmt.Errorf("api_portal_publication.retry_backoff must not be negative (got %s)", cfg.RetryBackoff)
 	}
-	if cfg.ListingRequestTimeout < cfg.RequestTimeout {
+	if cfg.ContentRequestTimeout < cfg.RequestTimeout {
 		return fmt.Errorf(
-			"api_portal_publication.listing_request_timeout (%s) must not be shorter than api_portal_publication.request_timeout (%s)",
-			cfg.ListingRequestTimeout, cfg.RequestTimeout,
+			"api_portal_publication.content_request_timeout (%s) must not be shorter than api_portal_publication.request_timeout (%s)",
+			cfg.ContentRequestTimeout, cfg.RequestTimeout,
 		)
 	}
 	if worst := cfg.PublishWorstCase(); cfg.OverallTimeout < worst {
