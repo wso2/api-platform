@@ -246,7 +246,7 @@ describe('GatewayDetailPage', () => {
 
     const { container, user } = renderPage();
 
-    await user.click(await screen.findByRole('button', { name: 'Generate another token' }));
+    await user.click(await screen.findByRole('button', { name: 'Generate new token' }));
     expect(tokenRotations.count()).toBe(0);
     await user.click(screen.getByRole('button', { name: 'Generate new token' }));
 
@@ -271,7 +271,7 @@ describe('GatewayDetailPage', () => {
     // issued however many times the panel renders.
     await waitFor(() => expect(container.textContent).toContain('plaintext-token-value'));
     expect(container.textContent).toContain('APIP_GW_CONTROLLER_CONTROLPLANE_TOKEN=');
-    expect(await screen.findByRole('button', { name: 'Generate another token' })).toBeEnabled();
+    expect(await screen.findByRole('button', { name: 'Generate new token' })).toBeEnabled();
     expect(tokenRotations.count()).toBe(1);
     // With the token on screen, the step says to run the command; it no longer
     // asks for a token to be generated.
@@ -320,7 +320,7 @@ describe('GatewayDetailPage', () => {
 
     renderPage({ justCreated: true });
 
-    await screen.findByRole('button', { name: 'Generate another token' });
+    await screen.findByRole('button', { name: 'Generate new token' });
     expect(tokenRotations.count()).toBe(0);
   });
 
@@ -340,7 +340,7 @@ describe('GatewayDetailPage', () => {
 
     // An unreadable list may hide an active token, so this can't be treated as
     // a gateway's first token.
-    await user.click(await screen.findByRole('button', { name: 'Generate another token' }));
+    await user.click(await screen.findByRole('button', { name: 'Generate new token' }));
     expect(tokenRotations.count()).toBe(0);
     await user.click(screen.getByRole('button', { name: 'Generate new token' }));
 

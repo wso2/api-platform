@@ -3669,8 +3669,8 @@
     "defaultMessage": "Prerequisites"
   },
   "gateways.detail.GetStarted.reconfigure": {
-    "defaultMessage": "Generate another token",
-    "description": "Generates an additional registration token. The previous one stays active until revoked."
+    "defaultMessage": "Generate new token",
+    "description": "Generates an additional registration token. The previous one stays active until revoked, so this is deliberately not \"Regenerate\"."
   },
   "gateways.detail.GetStarted.reconfigure.confirm.body": {
     "defaultMessage": "The current token keeps working until you revoke it. A gateway can have at most two active tokens, so if it already has two, revoke one first."

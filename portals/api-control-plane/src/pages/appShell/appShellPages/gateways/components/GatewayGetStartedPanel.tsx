@@ -110,9 +110,9 @@ const messages = defineMessages({
   },
   reconfigure: {
     id: 'gateways.detail.GetStarted.reconfigure',
-    defaultMessage: 'Generate another token',
+    defaultMessage: 'Generate new token',
     description:
-      'Generates an additional registration token. The previous one stays active until revoked.',
+      'Generates an additional registration token. The previous one stays active until revoked, so this is deliberately not "Regenerate".',
   },
   reconfigureConfirmBody: {
     id: 'gateways.detail.GetStarted.reconfigure.confirm.body',
@@ -470,11 +470,28 @@ export function GatewayGetStartedPanel({
       {token && showEnvFile && <CopyableCommand code={configureCommand(target, token)} />}
       {token && (
         <Box>
+          {/* Tertiary: grey and underlined like a link, so it neither competes
+              with the command above nor reads as part of the next step's
+              orange heading. No horizontal padding, so it lines up with the
+              block's edge and sits tight under it. */}
           <Button
             disabled={rotateToken.isPending}
             onClick={() => setConfirmOpen(true)}
             size="small"
-            startIcon={<RefreshCw size={16} />}
+            startIcon={<RefreshCw size={14} />}
+            sx={{
+              color: 'text.secondary',
+              minWidth: 0,
+              mt: -0.5,
+              px: 0,
+              py: 0.25,
+              textDecoration: 'underline',
+              '&:hover': {
+                backgroundColor: 'transparent',
+                color: 'text.primary',
+                textDecoration: 'underline',
+              },
+            }}
             variant="text"
           >
             <FormattedMessage {...tokenButtonLabel} />
