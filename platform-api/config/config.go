@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"sync"
@@ -91,9 +92,28 @@ type Logging struct {
 	Format string `koanf:"format"`
 }
 
+// Health holds configuration for gateway health evaluation and its dedicated log.
+type Health struct {
+	// CheckTimeout is the deadline for a single health check.
+	CheckTimeout time.Duration `koanf:"check_timeout"`
+	// CacheTTL is how long an evaluated health result is reused before it is re-evaluated.
+	CacheTTL time.Duration `koanf:"cache_ttl"`
+	// LogFile is the health log file path; empty writes to stdout only.
+	LogFile string `koanf:"log_file"`
+	// LogMaxSizeMB is the size in MiB at which the health log file is rotated.
+	LogMaxSizeMB int `koanf:"log_max_size_mb"`
+	// LogMaxFiles is the number of rotated health log backups kept.
+	LogMaxFiles int `koanf:"log_max_files"`
+	// BackoffInitial is the delay before the first repeated failure line is logged.
+	BackoffInitial time.Duration `koanf:"backoff_initial"`
+	// BackoffMax caps the interval between repeated failure lines.
+	BackoffMax time.Duration `koanf:"backoff_max"`
+}
+
 // Server holds the configuration parameters for the application.
 type Server struct {
 	Logging Logging `koanf:"logging"`
+	Health  Health  `koanf:"health"`
 
 	DBSchemaPath               string `koanf:"db_schema_path"`
 	OpenAPISpecPath            string `koanf:"openapi_spec_path"`
@@ -853,6 +873,9 @@ func LoadConfig(configPaths ...string) (*Server, error) {
 	if err := validateLoggingConfig(cfg.Logging.Level, cfg.Logging.Format); err != nil {
 		return nil, err
 	}
+	if err := validateHealthConfig(&cfg.Health); err != nil {
+		return nil, err
+	}
 	if err := validateTimeoutsConfig(&cfg.Listeners.Timeouts); err != nil {
 		return nil, err
 	}
@@ -1164,6 +1187,53 @@ func validateLoggingConfig(level, format string) error {
 	case "text", "json":
 	default:
 		return fmt.Errorf("logging.format must be \"text\" or \"json\" (got %q)", format)
+	}
+	return nil
+}
+
+// healthProbeTimeout is the default timeout a gateway probe applies to a health
+// request; a check timeout at or above it lets the probe give up first.
+const healthProbeTimeout = 5 * time.Second
+
+// validateHealthConfig rejects non-positive durations and limits, an inverted
+// backoff range, and an unusable log file path at startup. The log file path is
+// stored back in cleaned form.
+func validateHealthConfig(cfg *Health) error {
+	for _, f := range []struct {
+		name  string
+		value time.Duration
+	}{
+		{"check_timeout", cfg.CheckTimeout},
+		{"cache_ttl", cfg.CacheTTL},
+		{"backoff_initial", cfg.BackoffInitial},
+		{"backoff_max", cfg.BackoffMax},
+	} {
+		if f.value <= 0 {
+			return fmt.Errorf("platform_api.health.%s must be > 0 (got %s)", f.name, f.value)
+		}
+	}
+	if cfg.BackoffMax < cfg.BackoffInitial {
+		return fmt.Errorf("platform_api.health.backoff_max must be >= platform_api.health.backoff_initial")
+	}
+	if cfg.LogMaxSizeMB < 1 {
+		return fmt.Errorf("platform_api.health.log_max_size_mb must be >= 1 (got %d)", cfg.LogMaxSizeMB)
+	}
+	if cfg.LogMaxFiles < 1 {
+		return fmt.Errorf("platform_api.health.log_max_files must be >= 1 (got %d)", cfg.LogMaxFiles)
+	}
+	if cfg.LogFile != "" {
+		if strings.ContainsRune(cfg.LogFile, 0) {
+			return fmt.Errorf("platform_api.health.log_file must not contain a NUL byte")
+		}
+		if !filepath.IsAbs(cfg.LogFile) {
+			return fmt.Errorf("platform_api.health.log_file must be an absolute path")
+		}
+		cfg.LogFile = filepath.Clean(cfg.LogFile)
+	}
+	if cfg.CheckTimeout >= healthProbeTimeout {
+		slog.Warn("health check timeout is at or above the default probe timeout, so probes may give up before a check completes",
+			slog.Duration("check_timeout", cfg.CheckTimeout),
+			slog.Duration("probe_timeout", healthProbeTimeout))
 	}
 	return nil
 }

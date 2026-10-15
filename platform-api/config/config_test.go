@@ -807,3 +807,84 @@ func TestJWT_EffectiveAlgorithm(t *testing.T) {
 	assert.Equal(t, JWTAlgorithmRS256, (&JWT{Algorithm: JWTAlgorithmRS256}).EffectiveAlgorithm())
 	assert.Equal(t, "ML-DSA-65", (&JWT{Algorithm: "ML-DSA-65"}).EffectiveAlgorithm())
 }
+
+func TestLoadConfig_Health_DefaultsWhenSectionAbsent(t *testing.T) {
+	cfg, err := loadWithKeys(t, "")
+	require.NoError(t, err)
+	assert.Equal(t, 2*time.Second, cfg.Health.CheckTimeout)
+	assert.Equal(t, 3*time.Second, cfg.Health.CacheTTL)
+	assert.Empty(t, cfg.Health.LogFile)
+	assert.Equal(t, 10, cfg.Health.LogMaxSizeMB)
+	assert.Equal(t, 5, cfg.Health.LogMaxFiles)
+	assert.Equal(t, 10*time.Second, cfg.Health.BackoffInitial)
+	assert.Equal(t, 5*time.Minute, cfg.Health.BackoffMax)
+}
+
+func TestLoadConfig_Health_TOMLOverridesDefaults(t *testing.T) {
+	cfg, err := loadWithKeys(t, `
+[platform_api.health]
+check_timeout   = "1s"
+cache_ttl       = "7s"
+log_file        = "/app/logs/../logs/health.log"
+log_max_size_mb = 20
+log_max_files   = 3
+backoff_initial = "30s"
+backoff_max     = "10m"
+`)
+	require.NoError(t, err)
+	assert.Equal(t, time.Second, cfg.Health.CheckTimeout)
+	assert.Equal(t, 7*time.Second, cfg.Health.CacheTTL)
+	assert.Equal(t, "/app/logs/health.log", cfg.Health.LogFile)
+	assert.Equal(t, 20, cfg.Health.LogMaxSizeMB)
+	assert.Equal(t, 3, cfg.Health.LogMaxFiles)
+	assert.Equal(t, 30*time.Second, cfg.Health.BackoffInitial)
+	assert.Equal(t, 10*time.Minute, cfg.Health.BackoffMax)
+}
+
+func TestValidateHealthConfig(t *testing.T) {
+	valid := func() Health { return defaultConfig().Health }
+
+	tests := []struct {
+		name    string
+		mutate  func(h *Health)
+		wantErr string
+		want    string
+	}{
+		{"defaults are accepted", func(h *Health) {}, "", ""},
+		{"check_timeout zero", func(h *Health) { h.CheckTimeout = 0 }, "platform_api.health.check_timeout must be > 0", ""},
+		{"check_timeout negative", func(h *Health) { h.CheckTimeout = -time.Second }, "platform_api.health.check_timeout must be > 0", ""},
+		{"cache_ttl zero", func(h *Health) { h.CacheTTL = 0 }, "platform_api.health.cache_ttl must be > 0", ""},
+		{"backoff_initial zero", func(h *Health) { h.BackoffInitial = 0 }, "platform_api.health.backoff_initial must be > 0", ""},
+		{"backoff_max zero", func(h *Health) { h.BackoffMax = 0 }, "platform_api.health.backoff_max must be > 0", ""},
+		{
+			"backoff_max below backoff_initial",
+			func(h *Health) { h.BackoffInitial = time.Minute; h.BackoffMax = time.Second },
+			"platform_api.health.backoff_max must be >= platform_api.health.backoff_initial", "",
+		},
+		{"backoff_max equal to backoff_initial", func(h *Health) { h.BackoffMax = h.BackoffInitial }, "", ""},
+		{"log_max_size_mb zero", func(h *Health) { h.LogMaxSizeMB = 0 }, "platform_api.health.log_max_size_mb must be >= 1", ""},
+		{"log_max_files zero", func(h *Health) { h.LogMaxFiles = 0 }, "platform_api.health.log_max_files must be >= 1", ""},
+		{"log_file relative", func(h *Health) { h.LogFile = "logs/health.log" }, "platform_api.health.log_file must be an absolute path", ""},
+		{"log_file NUL byte", func(h *Health) { h.LogFile = "/app/logs/health\x00.log" }, "platform_api.health.log_file must not contain a NUL byte", ""},
+		{"log_file is cleaned", func(h *Health) { h.LogFile = "/app/logs/../logs/health.log" }, "", "/app/logs/health.log"},
+		{"log_file empty is allowed", func(h *Health) { h.LogFile = "" }, "", ""},
+		{"check_timeout at the probe timeout is accepted", func(h *Health) { h.CheckTimeout = 5 * time.Second }, "", ""},
+		{"check_timeout above the probe timeout is accepted", func(h *Health) { h.CheckTimeout = 30 * time.Second }, "", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h := valid()
+			tt.mutate(&h)
+			err := validateHealthConfig(&h)
+			if tt.wantErr != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.wantErr)
+				return
+			}
+			require.NoError(t, err)
+			if tt.want != "" {
+				assert.Equal(t, tt.want, h.LogFile)
+			}
+		})
+	}
+}

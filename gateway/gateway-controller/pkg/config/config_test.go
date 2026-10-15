@@ -58,6 +58,14 @@ func validConfig() *Config {
 				Level:  "info",
 				Format: "json",
 			},
+			Health: HealthConfig{
+				CheckTimeout:   2 * time.Second,
+				CacheTTL:       3 * time.Second,
+				LogMaxSizeMB:   10,
+				LogMaxFiles:    5,
+				BackoffInitial: 10 * time.Second,
+				BackoffMax:     5 * time.Minute,
+			},
 			ControlPlane: ControlPlaneConfig{
 				Host:             "localhost",
 				ReconnectInitial: 1 * time.Second,
@@ -2270,6 +2278,108 @@ idle_timeout = "30m"
 		assert.Equal(t, time.Duration(0), hcm.RequestHeadersTimeout)
 		assert.Equal(t, 5*time.Minute, hcm.StreamIdleTimeout)
 		assert.Equal(t, time.Hour, hcm.IdleTimeout)
+	})
+}
+
+func TestDefaultConfig_HealthDefaults(t *testing.T) {
+	h := defaultConfig().Controller.Health
+	assert.Equal(t, 2*time.Second, h.CheckTimeout)
+	assert.Equal(t, 3*time.Second, h.CacheTTL)
+	assert.Equal(t, "", h.LogFile)
+	assert.Equal(t, 10, h.LogMaxSizeMB)
+	assert.Equal(t, 5, h.LogMaxFiles)
+	assert.Equal(t, 10*time.Second, h.BackoffInitial)
+	assert.Equal(t, 5*time.Minute, h.BackoffMax)
+}
+
+func TestLoadConfig_Health(t *testing.T) {
+	t.Run("explicit values parse from toml", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		configPath := filepath.Join(tmpDir, "config.toml")
+		logFile := filepath.Join(tmpDir, "health.log")
+		toml := `
+[controller.health]
+check_timeout = "1500ms"
+cache_ttl = "7s"
+log_file = "` + filepath.ToSlash(logFile) + `"
+log_max_size_mb = 25
+log_max_files = 3
+backoff_initial = "20s"
+backoff_max = "10m"
+`
+		require.NoError(t, os.WriteFile(configPath, []byte(toml), 0o644))
+
+		cfg, err := LoadConfig(configPath)
+		require.NoError(t, err)
+		h := cfg.Controller.Health
+		assert.Equal(t, 1500*time.Millisecond, h.CheckTimeout)
+		assert.Equal(t, 7*time.Second, h.CacheTTL)
+		assert.Equal(t, filepath.Clean(logFile), h.LogFile)
+		assert.Equal(t, 25, h.LogMaxSizeMB)
+		assert.Equal(t, 3, h.LogMaxFiles)
+		assert.Equal(t, 20*time.Second, h.BackoffInitial)
+		assert.Equal(t, 10*time.Minute, h.BackoffMax)
+	})
+
+	t.Run("omitted section falls back to defaults", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		configPath := filepath.Join(tmpDir, "config.toml")
+		require.NoError(t, os.WriteFile(configPath, []byte(""), 0o644))
+
+		cfg, err := LoadConfig(configPath)
+		require.NoError(t, err)
+		assert.Equal(t, defaultConfig().Controller.Health, cfg.Controller.Health)
+	})
+}
+
+func TestConfig_ValidateHealthConfig(t *testing.T) {
+	absLog := filepath.Join(t.TempDir(), "health.log")
+
+	tests := []struct {
+		name        string
+		mutate      func(h *HealthConfig)
+		errContains string
+	}{
+		{name: "Defaults are valid", mutate: func(h *HealthConfig) {}},
+		{name: "Zero check_timeout", mutate: func(h *HealthConfig) { h.CheckTimeout = 0 }, errContains: "controller.health.check_timeout must be > 0"},
+		{name: "Negative check_timeout", mutate: func(h *HealthConfig) { h.CheckTimeout = -time.Second }, errContains: "controller.health.check_timeout must be > 0"},
+		{name: "Zero cache_ttl", mutate: func(h *HealthConfig) { h.CacheTTL = 0 }, errContains: "controller.health.cache_ttl must be > 0"},
+		{name: "Zero backoff_initial", mutate: func(h *HealthConfig) { h.BackoffInitial = 0 }, errContains: "controller.health.backoff_initial must be > 0"},
+		{name: "Zero backoff_max", mutate: func(h *HealthConfig) { h.BackoffMax = 0 }, errContains: "controller.health.backoff_max must be > 0"},
+		{
+			name:        "backoff_max below backoff_initial",
+			mutate:      func(h *HealthConfig) { h.BackoffInitial = time.Minute; h.BackoffMax = 30 * time.Second },
+			errContains: "controller.health.backoff_max must be >= controller.health.backoff_initial",
+		},
+		{name: "backoff_max equal to backoff_initial", mutate: func(h *HealthConfig) { h.BackoffInitial = time.Minute; h.BackoffMax = time.Minute }},
+		{name: "Zero log_max_size_mb", mutate: func(h *HealthConfig) { h.LogMaxSizeMB = 0 }, errContains: "controller.health.log_max_size_mb must be >= 1"},
+		{name: "Zero log_max_files", mutate: func(h *HealthConfig) { h.LogMaxFiles = 0 }, errContains: "controller.health.log_max_files must be >= 1"},
+		{name: "Absolute log_file", mutate: func(h *HealthConfig) { h.LogFile = absLog }},
+		{name: "Relative log_file", mutate: func(h *HealthConfig) { h.LogFile = "logs/health.log" }, errContains: "controller.health.log_file must be an absolute path"},
+		{name: "NUL in log_file", mutate: func(h *HealthConfig) { h.LogFile = absLog + "\x00.log" }, errContains: "controller.health.log_file must not contain NUL bytes"},
+		{name: "check_timeout at default probe timeout", mutate: func(h *HealthConfig) { h.CheckTimeout = 5 * time.Second }},
+		{name: "check_timeout above default probe timeout", mutate: func(h *HealthConfig) { h.CheckTimeout = 8 * time.Second }},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := validConfig()
+			tt.mutate(&cfg.Controller.Health)
+			err := cfg.Validate()
+			if tt.errContains != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.errContains)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+
+	t.Run("log_file is cleaned", func(t *testing.T) {
+		cfg := validConfig()
+		cfg.Controller.Health.LogFile = filepath.Join(filepath.Dir(absLog), "sub", "..", "health.log")
+		require.NoError(t, cfg.Validate())
+		assert.Equal(t, absLog, cfg.Controller.Health.LogFile)
 	})
 }
 
