@@ -32,7 +32,7 @@ import {
 } from '@/test/msw';
 import { makeConsoleScope } from '@/test/mockScope';
 import { server } from '@/test/server';
-import { renderWithProviders, screen, waitFor } from '@/test/utils';
+import { renderWithProviders, screen, waitFor, within } from '@/test/utils';
 import { GatewayDetailPage } from './GatewayDetailPage';
 
 const ORG = 'api-platform-demo';
@@ -282,6 +282,7 @@ describe('GatewayDetailPage', () => {
   it('keeps a shown token through a visit to the Policies tab', async () => {
     server.use(
       resource('/gateways/:gatewayId', gateway()),
+      resource('/gateways/:gatewayId/manifest', {}),
       accepts(
         'post',
         '/gateways/:gatewayId/tokens',
@@ -322,6 +323,33 @@ describe('GatewayDetailPage', () => {
 
     await screen.findByRole('button', { name: 'Generate new token' });
     expect(tokenRotations.count()).toBe(0);
+  });
+
+  it('says why when the gateway is already at its two-token limit', async () => {
+    server.use(
+      resource('/gateways/:gatewayId', gateway()),
+      resource('/gateways/:gatewayId/tokens', {
+        ...noTokens,
+        count: 2,
+        list: [
+          { createdAt: '2026-07-01T10:00:00Z', id: 'token-0', status: 'active' },
+          { createdAt: '2026-07-02T10:00:00Z', id: 'token-1', status: 'active' },
+        ],
+        pagination: { ...noTokens.pagination, total: 2 },
+      }),
+      failure('post', '/gateways/:gatewayId/tokens', 409, 'GATEWAY_TOKEN_LIMIT_REACHED'),
+    );
+
+    const { container, user } = renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'Generate new token' }));
+    await user.click(
+      within(await screen.findByRole('dialog')).getByRole('button', { name: 'Generate new token' }),
+    );
+
+    await waitFor(() =>
+      expect(container.textContent).toContain('already has two active tokens'),
+    );
   });
 
   it('still asks before generating a token when the token list fails to load', async () => {

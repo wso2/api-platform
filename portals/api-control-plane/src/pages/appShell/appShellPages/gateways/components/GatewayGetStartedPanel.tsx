@@ -211,6 +211,13 @@ const messages = defineMessages({
     defaultMessage:
       'Generate a registration token. It is added to the install command below, and shown only once.',
   },
+  tokenLimitReached: {
+    id: 'gateways.detail.GetStarted.token.limitReached',
+    defaultMessage:
+      'This gateway already has two active tokens, the most a gateway can have. Another can be generated once one of them is revoked.',
+    description:
+      'Shown under the token button when platform-api refuses a new token because the gateway is at its two-token limit.',
+  },
   tokenReadyCompose: {
     id: 'gateways.detail.GetStarted.token.ready.compose',
     defaultMessage:
@@ -465,6 +472,13 @@ export function GatewayGetStartedPanel({
       {token && (
         <Alert severity="warning">
           <FormattedMessage {...messages.tokenOnce} />
+        </Alert>
+      )}
+      {/* The toast names the refusal and then goes; this says why, and stays
+          until a token is generated. */}
+      {rotateToken.error?.code === 'GATEWAY_TOKEN_LIMIT_REACHED' && (
+        <Alert severity="info">
+          <FormattedMessage {...messages.tokenLimitReached} />
         </Alert>
       )}
       {token && showEnvFile && <CopyableCommand code={configureCommand(target, token)} />}

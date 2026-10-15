@@ -3716,6 +3716,10 @@
   "gateways.detail.GetStarted.title": {
     "defaultMessage": "Get Started"
   },
+  "gateways.detail.GetStarted.token.limitReached": {
+    "defaultMessage": "This gateway already has two active tokens, the most a gateway can have. Another can be generated once one of them is revoked.",
+    "description": "Shown under the token button when platform-api refuses a new token because the gateway is at its two-token limit."
+  },
   "gateways.detail.GetStarted.token.notice.compose": {
     "defaultMessage": "Generate a registration token, then run the command that appears to add it, with this control plane’s address, to the gateway’s settings. The token is shown only once."
   },
