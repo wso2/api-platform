@@ -124,12 +124,7 @@ func InitTracer(cfg *config.Config) (func(), error) {
 		samplingRate = 1.0 // Default to sampling all requests
 	}
 
-	var sampler sdktrace.Sampler
-	if samplingRate >= 1.0 {
-		sampler = sdktrace.AlwaysSample()
-	} else {
-		sampler = sdktrace.TraceIDRatioBased(samplingRate)
-	}
+	sampler := newSampler(samplingRate)
 
 	slog.InfoContext(ctx, "Using trace sampler", "sampling_rate", samplingRate)
 
@@ -168,15 +163,9 @@ func InitTracer(cfg *config.Config) (func(), error) {
 }
 
 // ExtractTraceContext extracts the W3C Trace Context (traceparent/tracestate)
-// from the given carrier and returns a context parented on the remote span.
-//
-// The carrier must be built from the downstream HTTP request headers that Envoy
-// delivers inside the RequestHeaders ProcessingRequest body — NOT from the
-// ext_proc gRPC stream metadata. The request's traceparent travels in the
-// message body, and the long-lived bidirectional ext_proc stream sets its gRPC
-// metadata only once at stream establishment, so it never carries a per-request
-// traceparent. Reading it from stream metadata always yielded an empty span
-// context, producing a new (unparented) root trace for every request.
+// from the given carrier and returns a context parented on the remote span. It
+// is agnostic to the carrier's source; the ext_proc server builds it from the
+// stream's gRPC metadata first and the RequestHeaders body as the fallback.
 //
 // When the carrier holds no valid traceparent, the input context is returned
 // unchanged and the caller will start a fresh root trace — an ordinary,
@@ -187,10 +176,20 @@ func ExtractTraceContext(ctx context.Context, carrier propagation.TextMapCarrier
 
 	span := trace.SpanContextFromContext(newCtx)
 	if span.IsValid() {
-		slog.DebugContext(ctx, "Extracted trace context from request headers", "trace_id", span.TraceID().String())
+		slog.DebugContext(ctx, "Extracted trace context", "trace_id", span.TraceID().String())
 	} else {
-		slog.DebugContext(ctx, "No trace context in request headers; starting a new root trace")
+		slog.DebugContext(ctx, "No trace context found; starting a new root trace")
 	}
 
 	return newCtx
+}
+
+// newSampler applies samplingRate only to traces that start in the engine. For a
+// request with a parent, the parent's sampled flag decides, so the engine records
+// exactly the requests Envoy records.
+func newSampler(samplingRate float64) sdktrace.Sampler {
+	if samplingRate >= 1.0 {
+		return sdktrace.ParentBased(sdktrace.AlwaysSample())
+	}
+	return sdktrace.ParentBased(sdktrace.TraceIDRatioBased(samplingRate))
 }
