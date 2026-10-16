@@ -319,3 +319,45 @@ func TestEvaluateKeepsRawCauseForDebugOnly(t *testing.T) {
 	assert.ErrorIs(t, got.cause, raw)
 	assert.False(t, strings.Contains(got.Error, "10.0.0.5"))
 }
+
+func TestEvaluateUsesExplicitFailureStart(t *testing.T) {
+	c, clk := newTestChecker(testOptions())
+	var failingSince atomic.Pointer[time.Time]
+	c.Register("xds_connection", func(context.Context) error {
+		if start := failingSince.Load(); start != nil {
+			return FailingSince(Reason("disconnected from the controller for 6m10s"), *start)
+		}
+		return nil
+	})
+
+	graceExpired := clk.Now().Add(-70 * time.Second)
+	failingSince.Store(&graceExpired)
+	first := c.Evaluate()
+	assert.Equal(t, StatusDown, first.Checks["xds_connection"].Status)
+	assert.Equal(t, graceExpired, first.Checks["xds_connection"].Since, "the explicit start is used, not the evaluation time")
+	assert.Equal(t, "disconnected from the controller for 6m10s", first.Checks["xds_connection"].Error)
+
+	later := graceExpired.Add(time.Minute)
+	failingSince.Store(&later)
+	clk.Advance(10 * time.Second)
+	second := c.Evaluate()
+	assert.Equal(t, graceExpired, second.Checks["xds_connection"].Since, "the start does not move while the check stays down")
+
+	failingSince.Store(nil)
+	clk.Advance(10 * time.Second)
+	assert.Equal(t, StatusUp, c.Evaluate().Checks["xds_connection"].Status)
+
+	newLoss := clk.Now().Add(-5 * time.Second)
+	failingSince.Store(&newLoss)
+	clk.Advance(10 * time.Second)
+	assert.Equal(t, newLoss, c.Evaluate().Checks["xds_connection"].Since, "a new failure uses its own explicit start")
+}
+
+func TestFailingSinceKeepsTheWrappedError(t *testing.T) {
+	cause := Reason("no configuration received yet")
+	err := FailingSince(cause, time.Now())
+
+	assert.Equal(t, cause.Error(), err.Error())
+	assert.ErrorIs(t, err, cause)
+	assert.Equal(t, "timed out after 2s", safeReason(FailingSince(context.DeadlineExceeded, time.Now()), 2*time.Second))
+}

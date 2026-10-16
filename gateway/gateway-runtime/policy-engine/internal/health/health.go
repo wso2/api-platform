@@ -51,6 +51,24 @@ var errCheckPanicked = errors.New("health check panicked")
 // means the dependency is usable.
 type CheckFunc func(ctx context.Context) error
 
+// failingSince is a check error that carries the moment the failure began.
+type failingSince struct {
+	err   error
+	since time.Time
+}
+
+func (f *failingSince) Error() string { return f.err.Error() }
+func (f *failingSince) Unwrap() error { return f.err }
+
+// FailingSince marks a check error with the moment the failure actually began, for a
+// check that knows it better than the time it was first evaluated as failing (for
+// example, when a grace period expired). The time is used when the check starts
+// failing; while it stays down, the original start is kept. The reason shown is
+// still derived from err.
+func FailingSince(err error, since time.Time) error {
+	return &failingSince{err: err, since: since}
+}
+
 // Options configures a Checker.
 type Options struct {
 	// Component names the reporting component in every result.
@@ -251,6 +269,10 @@ func (c *Checker) buildResult(started time.Time, errs map[string]error) Result {
 		since, failing := c.since[name]
 		if !failing {
 			since = started
+			var explicit *failingSince
+			if errors.As(err, &explicit) {
+				since = explicit.since
+			}
 			c.since[name] = since
 		}
 		res.Healthy = false
