@@ -794,8 +794,8 @@ func buildGatewayHealthRoutes() ([]*route.Route, error) {
 	}
 
 	return []*route.Route{
-		newHealthRoute("gateway-ready", constants.GatewayReadyPath, `{"status":"ready"}`),
-		newHealthRoute("gateway-healthy", constants.GatewayHealthyPath, `{"status":"healthy"}`),
+		newHealthRoute(constants.GatewayReadyRouteName, constants.GatewayReadyPath, `{"status":"ready"}`),
+		newHealthRoute(constants.GatewayHealthyRouteName, constants.GatewayHealthyPath, `{"status":"healthy"}`),
 	}, nil
 }
 

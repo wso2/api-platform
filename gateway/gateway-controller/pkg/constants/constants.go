@@ -138,6 +138,12 @@ const (
 	GatewayReadyPath        = GatewayHealthPathPrefix + "/ready"
 	GatewayHealthyPath      = GatewayHealthPathPrefix + "/healthy"
 
+	// GatewayReadyRouteName and GatewayHealthyRouteName name the Envoy routes for
+	// GatewayReadyPath and GatewayHealthyPath. The policy engine recognises health
+	// requests by these route names, so they must not change independently of it.
+	GatewayReadyRouteName   = "gateway-ready"
+	GatewayHealthyRouteName = "gateway-healthy"
+
 	// gRPC Access Log Service
 	GRPCAccessLogClusterName = "apip_als_cluster"
 	DefaultALSSocketPath     = "/var/run/api-platform/gateway-analytics.sock"
