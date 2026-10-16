@@ -155,7 +155,7 @@ function ServiceProviderDeployContent() {
   }
 
   return (
-    <AIEntityProvider type="llm-provider" id={providerId} initialEntity={provider}>
+    <AIEntityProvider type="llm-provider" id={providerId}>
       <GatewayDeployProvider apiId={providerId} readOnly={Boolean(provider?.readOnly)}>
         <ServiceProviderDeployLayout providerId={providerId} />
       </GatewayDeployProvider>

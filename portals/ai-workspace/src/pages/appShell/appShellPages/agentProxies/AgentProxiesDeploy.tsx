@@ -36,7 +36,6 @@ import {
   AgentProxyProvider,
   useAgentProxy,
 } from '../../../../contexts/agentProxy';
-import { AIEntityProvider } from '../../../../contexts/AIEntitiesContext';
 import type { AgentProxy } from '../../../../utils/types';
 import ExternalServerStepBanner from '../quickStart/ExternalServerStepBanner';
 import type { ExternalServerStepBannerStepId } from '../quickStart/ExternalServerStepBanner';
@@ -144,15 +143,13 @@ function AgentProxiesDeployContent({
   }
 
   return (
-    <AIEntityProvider type="agent-proxy" id={agentProxyId} initialEntity={agentProxy}>
-      <GatewayDeployProvider
-        apiId={agentProxyId}
-        resourceType="agent-proxy"
-        readOnly={Boolean(agentProxy.readOnly)}
-      >
-        <AgentProxiesDeployLayout agentProxy={agentProxy} />
-      </GatewayDeployProvider>
-    </AIEntityProvider>
+    <GatewayDeployProvider
+      apiId={agentProxyId}
+      resourceType="agent-proxy"
+      readOnly={Boolean(agentProxy.readOnly)}
+    >
+      <AgentProxiesDeployLayout agentProxy={agentProxy} />
+    </GatewayDeployProvider>
   );
 }
 

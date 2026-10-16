@@ -24,7 +24,6 @@ import { GatewayDeployProvider } from '../../../../contexts/GatewayDeployContext
 import { GatewayDeployMainSection } from '../../../../Components/GatewayDeploy';
 import { FormattedMessage } from 'react-intl';
 import { ProxyProvider, useProxy } from '../../../../contexts/proxy';
-import { AIEntityProvider } from '../../../../contexts/AIEntitiesContext';
 
 function LLMProxyDeployContent() {
   const { proxyId } = useParams<{ proxyId: string }>();
@@ -54,36 +53,34 @@ function LLMProxyDeployContent() {
         Back to App LLM Proxy
       </Button>
 
-      <AIEntityProvider type="llm-proxy" id={proxyId} initialEntity={proxy}>
-        <GatewayDeployProvider
-          apiId={proxyId}
-          resourceType="proxy"
-          readOnly={Boolean(proxy?.readOnly)}
-        >
-          <Stack spacing={2} sx={{ mt: 2 }}>
-            <Typography variant="h3">
-              <FormattedMessage
-                id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyDeploy.deploy.to.gateway"
-                defaultMessage={'Deploy to Gateway'}
-              />
-            </Typography>
-            <Typography variant="subtitle2">
-              <FormattedMessage
-                id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyDeploy.deploy.llm.proxy.to.your.gateways"
-                defaultMessage={'Deploy App LLM Proxy to your Gateways'}
-              />
-            </Typography>
-            {proxy?.readOnly && (
-              <Alert severity="info">
-                This proxy was created from a gateway. You can view its deployments,
-                but deploy, redeploy, restore and undeploy actions are managed by the
-                gateway and are unavailable in AI Workspace.
-              </Alert>
-            )}
-            <GatewayDeployMainSection showConfigureOption={false} />
-          </Stack>
-        </GatewayDeployProvider>
-      </AIEntityProvider>
+      <GatewayDeployProvider
+        apiId={proxyId}
+        resourceType="proxy"
+        readOnly={Boolean(proxy?.readOnly)}
+      >
+        <Stack spacing={2} sx={{ mt: 2 }}>
+          <Typography variant="h3">
+            <FormattedMessage
+              id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyDeploy.deploy.to.gateway"
+              defaultMessage={'Deploy to Gateway'}
+            />
+          </Typography>
+          <Typography variant="subtitle2">
+            <FormattedMessage
+              id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyDeploy.deploy.llm.proxy.to.your.gateways"
+              defaultMessage={'Deploy App LLM Proxy to your Gateways'}
+            />
+          </Typography>
+          {proxy?.readOnly && (
+            <Alert severity="info">
+              This proxy was created from a gateway. You can view its deployments,
+              but deploy, redeploy, restore and undeploy actions are managed by the
+              gateway and are unavailable in AI Workspace.
+            </Alert>
+          )}
+          <GatewayDeployMainSection showConfigureOption={false} />
+        </Stack>
+      </GatewayDeployProvider>
     </PageContent>
   );
 }

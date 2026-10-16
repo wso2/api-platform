@@ -27,7 +27,6 @@
  *   'llm-provider'  → LLMProvider
  *   'llm-proxy'     → Proxy
  *   'mcp-server'    → MCPServer
- *   'agent-proxy'   → AgentProxy
  *   'application'   → Application  (Gen AI application)
  */
 
@@ -43,13 +42,11 @@ import type {
   LLMProvider,
   Proxy,
   MCPServer,
-  AgentProxy,
   Application,
 } from '../utils/types';
 import * as llmProviderApis from '../apis/llmProviderApis';
 import * as proxyApis from '../apis/proxyApis';
 import { mcpProxiesApis } from '../apis/MCP/mcpProxiesApis';
-import { getAgentProxy } from '../apis/agent/agentProxiesApis';
 import { applicationApis } from '../apis/applicationApis';
 import { useAppShell } from './AppShellContext';
 import { PLATFORM_API_BASE_URL } from '../paths';
@@ -63,7 +60,6 @@ export type AIEntityType =
   | 'llm-provider'
   | 'llm-proxy'
   | 'mcp-server'
-  | 'agent-proxy'
   | 'application';
 
 /** Discriminated union — narrow on `entityType` to access the typed `data`. */
@@ -71,7 +67,6 @@ export type AIEntityResult =
   | { entityType: 'llm-provider'; data: LLMProvider }
   | { entityType: 'llm-proxy'; data: Proxy }
   | { entityType: 'mcp-server'; data: MCPServer }
-  | { entityType: 'agent-proxy'; data: AgentProxy }
   | { entityType: 'application'; data: Application };
 
 // ============================================================================
@@ -92,7 +87,7 @@ type AIEntityContextValue = {
    *   const provider = entity as LLMProvider;
    * }
    */
-  entity: LLMProvider | Proxy | MCPServer | AgentProxy | Application | null;
+  entity: LLMProvider | Proxy | MCPServer | Application | null;
   isLoading: boolean;
   error: Error | null;
   /** Re-fetch the entity from the API. */
@@ -124,7 +119,7 @@ async function fetchEntityData(
   organizationId: string,
   apimBaseUrl: string,
   publisherBaseUrl: string
-): Promise<LLMProvider | Proxy | MCPServer | AgentProxy | Application> {
+): Promise<LLMProvider | Proxy | MCPServer | Application> {
   switch (type) {
     case 'llm-provider':
       return llmProviderApis.getLLMProvider(id, organizationId, apimBaseUrl);
@@ -132,8 +127,6 @@ async function fetchEntityData(
       return proxyApis.getProxy(id, organizationId, publisherBaseUrl);
     case 'mcp-server':
       return mcpProxiesApis.getMCPServer(id, publisherBaseUrl);
-    case 'agent-proxy':
-      return getAgentProxy(id, publisherBaseUrl);
     case 'application':
       return applicationApis.getApplication(id, publisherBaseUrl);
     default: {
@@ -147,23 +140,11 @@ async function fetchEntityData(
 // Provider component
 // ============================================================================
 
-type PolicyEntityUnion = LLMProvider | Proxy | MCPServer | AgentProxy | Application;
-
 interface AIEntityProviderProps {
   /** The kind of entity to load. */
   type: AIEntityType;
   /** The entity's ID (from route params or props). */
   id: string;
-  /**
-   * Skip this provider's own fetch and mirror an entity a parent
-   * context/page has already loaded for the same id (e.g.
-   * `LLMProviderProvider`/`useLLMProvider()`, `ProxyProvider`,
-   * `AgentProxyProvider`, or a page's own local fetch). Pass the parent's
-   * current value — `null` while it's still loading is fine, the mirrored
-   * `entity`/`isLoading` here track it as it resolves. Omit this prop
-   * entirely (not `undefined`) to have this provider fetch independently.
-   */
-  initialEntity?: PolicyEntityUnion | null;
   children: React.ReactNode;
 }
 
@@ -181,80 +162,46 @@ interface AIEntityProviderProps {
  * <AIEntityProvider type="llm-proxy" id={proxyId}>
  *   <Outlet />
  * </AIEntityProvider>
- *
- * // Mirroring an entity a sibling context already fetched, instead of a
- * // second independent round-trip for the same resource:
- * const { proxy } = useProxy();
- * <AIEntityProvider type="llm-proxy" id={proxyId} initialEntity={proxy}>
- *   ...
- * </AIEntityProvider>
  */
-export function AIEntityProvider({ type, id, initialEntity, children }: AIEntityProviderProps) {
+export function AIEntityProvider({ type, id, children }: AIEntityProviderProps) {
   const { currentOrganization } = useAppShell();
   const apimBaseUrl = PLATFORM_API_BASE_URL;
   const publisherBaseUrl = PLATFORM_API_BASE_URL;
 
   const organizationId = currentOrganization?.uuid ?? '';
 
-  // Presence of the prop (not its value) decides the mode: passing `null`
-  // while a parent's own fetch is still in flight still means "mirror it,
-  // don't fetch independently" — only omitting the prop means "fetch here".
-  const useInitialEntity = initialEntity !== undefined;
-
-  // Independent-fetch mode's own state. Left untouched (and unread) while
-  // mirroring — `entity`/`isLoading`/`error` below are derived straight from
-  // `initialEntity` in that mode instead, on purpose: routing a mirrored prop
-  // through useState+useEffect would echo it one render late (the effect
-  // fires after the commit that already painted the stale value), which is
-  // exactly the kind of gap a deploy-blocking compatibility check can't
-  // afford. Computing it inline during render has no such lag.
-  const [fetchedEntity, setFetchedEntity] = useState<PolicyEntityUnion | null>(null);
-  const [isFetchLoading, setIsFetchLoading] = useState(!useInitialEntity);
-  const [fetchError, setFetchError] = useState<Error | null>(null);
+  const [entity, setEntity] = useState<LLMProvider | Proxy | MCPServer | Application | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<Error | null>(null);
 
   const fetchEntity = useCallback(async () => {
     if (!id || !organizationId) {
-      setFetchedEntity(null);
-      setIsFetchLoading(false);
+      setEntity(null);
+      setIsLoading(false);
       return;
     }
 
     try {
-      setIsFetchLoading(true);
-      setFetchError(null);
+      setIsLoading(true);
+      setError(null);
       const result = await fetchEntityData(type, id, organizationId, apimBaseUrl, publisherBaseUrl);
-      setFetchedEntity(result);
+      setEntity(result);
     } catch (err) {
       logger.error(`[AIEntity] Failed to fetch ${type} with id ${id}:`, err);
-      setFetchError(err instanceof Error ? err : new Error(`Failed to fetch ${type}`));
-      setFetchedEntity(null);
+      setError(err instanceof Error ? err : new Error(`Failed to fetch ${type}`));
+      setEntity(null);
     } finally {
-      setIsFetchLoading(false);
+      setIsLoading(false);
     }
   }, [type, id, organizationId, apimBaseUrl, publisherBaseUrl]);
 
   useEffect(() => {
-    if (useInitialEntity) return; // mirrored inline during render — nothing to fetch here
     fetchEntity();
-  }, [useInitialEntity, fetchEntity]);
+  }, [fetchEntity]);
 
   const refetch = useCallback(async () => {
-    if (useInitialEntity) {
-      // There's no independent fetch to re-run here — the parent
-      // context/page owns refetching its own copy. Logged rather than a
-      // silent no-op so a future caller wiring this up on a mirroring page
-      // gets an immediate signal instead of quietly-stale data.
-      logger.warn(
-        `[AIEntity] refetch() called on a provider mirroring an externally-loaded ${type} — this is a no-op; refetch via the entity's own context/page instead.`
-      );
-      return;
-    }
     await fetchEntity();
-  }, [useInitialEntity, type, fetchEntity]);
-
-  const entity = useInitialEntity ? initialEntity : fetchedEntity;
-  const isLoading = useInitialEntity ? initialEntity === null : isFetchLoading;
-  const error = useInitialEntity ? null : fetchError;
+  }, [fetchEntity]);
 
   const value = useMemo<AIEntityContextValue>(
     () => ({

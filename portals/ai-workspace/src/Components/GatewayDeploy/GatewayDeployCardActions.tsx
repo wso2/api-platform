@@ -11,8 +11,8 @@
  * associated services.
  */
 
-import { useState, type ReactElement } from 'react';
-import { Button, CircularProgress, ButtonGroup, Menu, MenuItem, Tooltip } from '@wso2/oxygen-ui';
+import { useState } from 'react';
+import { Button, CircularProgress, ButtonGroup, Menu, MenuItem } from '@wso2/oxygen-ui';
 import { ChevronDown } from '@wso2/oxygen-ui-icons-react';
 import type { HybridGateway } from '../../apis/gateway/types';
 import { useGatewayDeploy } from '../../contexts/GatewayDeployContext';
@@ -21,13 +21,6 @@ interface GatewayDeployCardActionsProps {
   gateway: HybridGateway;
   onConfigureAndDeploy?: (gateway: HybridGateway) => void;
   disabled?: boolean;
-  /**
-   * When set, the deploy action is forced disabled and wrapped in a tooltip
-   * showing this short reason on hover (e.g. why deployment is blocked for
-   * this gateway). Kept generic by the caller — this is not the place to
-   * enumerate specifics like missing policy names.
-   */
-  disabledReason?: string;
 }
 
 /**
@@ -37,7 +30,6 @@ export default function GatewayDeployCardActions({
   gateway,
   onConfigureAndDeploy,
   disabled,
-  disabledReason,
 }: GatewayDeployCardActionsProps) {
   const {
     deployToGateway,
@@ -63,27 +55,11 @@ export default function GatewayDeployCardActions({
   };
 
   const isButtonDisabled =
-    disabled ||
-    Boolean(disabledReason) ||
-    readOnly ||
-    isDeployingToGateway ||
-    isLoadingDeployments;
-
-  // MUI disabled buttons don't fire pointer events, so a Tooltip needs a
-  // wrapping span to still receive hover — only applied when there's an
-  // actual reason to show, not for every other disabled state.
-  const withDisabledReasonTooltip = (content: ReactElement): ReactElement =>
-    disabledReason ? (
-      <Tooltip title={disabledReason}>
-        <span>{content}</span>
-      </Tooltip>
-    ) : (
-      content
-    );
+    disabled || readOnly || isDeployingToGateway || isLoadingDeployments;
 
   // If no onConfigureAndDeploy callback, show simple button
   if (!onConfigureAndDeploy) {
-    return withDisabledReasonTooltip(
+    return (
       <Button
         variant="contained"
         color="primary"
@@ -104,29 +80,27 @@ export default function GatewayDeployCardActions({
   // Otherwise show split button with configure option
   return (
     <>
-      {withDisabledReasonTooltip(
-        <ButtonGroup variant="contained" color="primary" size="small">
-          <Button
-            onClick={handleDeploy}
-            disabled={isButtonDisabled}
-            startIcon={
-              isThisGatewayDeploying ? (
-                <CircularProgress color="inherit" size={14} />
-              ) : undefined
-            }
-          >
-            {isThisGatewayDeploying ? 'Deploying...' : 'Deploy'}
-          </Button>
-          <Button
-            size="small"
-            onClick={(e) => setDeployMenuAnchor(e.currentTarget)}
-            disabled={isButtonDisabled}
-            sx={{ px: 1, minWidth: 'auto' }}
-          >
-            <ChevronDown />
-          </Button>
-        </ButtonGroup>
-      )}
+      <ButtonGroup variant="contained" color="primary" size="small">
+        <Button
+          onClick={handleDeploy}
+          disabled={isButtonDisabled}
+          startIcon={
+            isThisGatewayDeploying ? (
+              <CircularProgress color="inherit" size={14} />
+            ) : undefined
+          }
+        >
+          {isThisGatewayDeploying ? 'Deploying...' : 'Deploy'}
+        </Button>
+        <Button
+          size="small"
+          onClick={(e) => setDeployMenuAnchor(e.currentTarget)}
+          disabled={isButtonDisabled}
+          sx={{ px: 1, minWidth: 'auto' }}
+        >
+          <ChevronDown />
+        </Button>
+      </ButtonGroup>
       <Menu
         anchorEl={deployMenuAnchor}
         open={Boolean(deployMenuAnchor)}

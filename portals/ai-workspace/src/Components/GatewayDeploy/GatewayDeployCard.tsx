@@ -16,23 +16,13 @@ import {
   Accordion,
   AccordionSummary,
   AccordionDetails,
-  Alert,
   Box,
   Chip,
   Typography,
 } from '@wso2/oxygen-ui';
-import { ChevronDown, TriangleAlert } from '@wso2/oxygen-ui-icons-react';
+import { ChevronDown } from '@wso2/oxygen-ui-icons-react';
 import type { HybridGateway } from '../../apis/gateway/types';
 import { useGatewayDeploy } from '../../contexts/GatewayDeployContext';
-import { useAIEntity } from '../../contexts/AIEntitiesContext';
-import { useAppAuth } from '../../contexts/AppAuthContext';
-import { SCOPES } from '../../auth/permissions';
-import { useGatewayPolicyManifestNames } from '../../hooks/useGatewayPolicyManifestNames';
-import {
-  getAIEntityTypeLabel,
-  getEntityPolicyNames,
-  getMissingGatewayPolicies,
-} from '../../utils/policyCompatibility';
 import GatewayDeployCardActions from './GatewayDeployCardActions';
 import GatewayDeployCardContent from './GatewayDeployCardContent';
 
@@ -54,58 +44,6 @@ export default function GatewayDeployCard({
 }: GatewayDeployCardProps) {
   const isActive = gateway.status === 'connected';
   const { deployments } = useGatewayDeploy();
-
-  // Gateway-policy compatibility check: shared across LLM Providers, LLM
-  // Proxies, MCP Proxies and Agents since they all render through this same
-  // card. `useAIEntity()` safely returns `entity: null` when no
-  // `AIEntityProvider` is mounted above this card (entity kinds not yet
-  // wired up), so the check is a no-op there rather than throwing.
-  const {
-    entityType,
-    entity,
-    isLoading: isLoadingEntity,
-  } = useAIEntity();
-  const { hasPermission } = useAppAuth();
-  const canViewManifest = hasPermission(SCOPES.GATEWAY_MANIFEST_READ);
-
-  const entityPolicyNames = useMemo(
-    () => getEntityPolicyNames(entityType, entity),
-    [entityType, entity]
-  );
-
-  const { policyNameSet: gatewayPolicyNameSet } = useGatewayPolicyManifestNames(
-    canViewManifest && entityPolicyNames.length > 0 ? gateway.id : null
-  );
-
-  const missingPolicies = useMemo(() => {
-    if (!gatewayPolicyNameSet || entityPolicyNames.length === 0) return [];
-    return getMissingGatewayPolicies(entityPolicyNames, gatewayPolicyNameSet);
-  }, [entityPolicyNames, gatewayPolicyNameSet]);
-
-  const entityTypeLabel = getAIEntityTypeLabel(entityType);
-
-  // Whether the compatibility verdict is still unknown — either the entity
-  // itself hasn't loaded yet (its policy names aren't known), or it has
-  // policies and the gateway's manifest hasn't resolved yet. Deploy must stay
-  // disabled through this window too, not just once a mismatch is confirmed —
-  // otherwise a click in the gap before either fetch resolves bypasses the
-  // check entirely. Deliberately keyed off `gatewayPolicyNameSet === null`
-  // rather than the hook's own `isLoading` flag: `policyNameSet` is the value
-  // actually consumed below, with no separate loading boolean that could lag
-  // it by a render — one fewer piece of state to get out of sync. Gated on
-  // `canViewManifest`: without that scope the verdict can never be
-  // determined, so there's nothing to wait for.
-  const isCheckingPolicyCompatibility =
-    canViewManifest &&
-    (isLoadingEntity || (entityPolicyNames.length > 0 && gatewayPolicyNameSet === null));
-
-  // Generic on purpose — the tooltip is a quick hover hint, not the place to
-  // enumerate which policies are missing. The full list is in the banner below.
-  const deployDisabledReason = isCheckingPolicyCompatibility
-    ? 'Checking gateway policy compatibility…'
-    : missingPolicies.length > 0
-      ? `This gateway is missing ${missingPolicies.length === 1 ? 'a policy' : 'policies'} required by this ${entityTypeLabel}.`
-      : undefined;
 
   const hasDeployments = useMemo(() => {
     if (!deployments?.list) return false;
@@ -191,15 +129,6 @@ export default function GatewayDeployCard({
               label={isActive ? 'Active' : 'Not Active'}
               color={isActive ? 'success' : 'error'}
             />
-            {missingPolicies.length > 0 && (
-              <Chip
-                size="small"
-                variant="outlined"
-                color="warning"
-                icon={<TriangleAlert size={14} />}
-                label={`Missing ${missingPolicies.length} ${missingPolicies.length === 1 ? 'policy' : 'policies'}`}
-              />
-            )}
             {currentDeploymentDisplay != null && (
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                 <Typography
@@ -224,7 +153,6 @@ export default function GatewayDeployCard({
                 gateway={gateway}
                 onConfigureAndDeploy={onConfigureAndDeploy}
                 disabled={!isActive}
-                disabledReason={deployDisabledReason}
               />
             </Box>
             <ChevronDown
@@ -238,15 +166,6 @@ export default function GatewayDeployCard({
         </Box>
       </AccordionSummary>
       <AccordionDetails sx={{ px: 3, py: 2 }}>
-        {missingPolicies.length > 0 && (
-          <Alert severity="warning" sx={{ mb: 2 }}>
-            Deployment is disabled because this gateway is missing{' '}
-            {missingPolicies.length === 1 ? 'a policy' : 'policies'} used by
-            this {entityTypeLabel}: {missingPolicies.join(', ')}. Install{' '}
-            {missingPolicies.length === 1 ? 'it' : 'them'} on the gateway to
-            enable deployment here.
-          </Alert>
-        )}
         <GatewayDeployCardContent
           gateway={gateway}
           hasDeployments={hasDeployments}
