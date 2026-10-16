@@ -345,7 +345,7 @@ const GatewaySettingsDrawer: FC<GatewaySettingsDrawerProps> = ({
 
         <Box sx={{ flex: 1, minHeight: 0, overflowY: 'auto', px: 3 }}>
           {loading && !config ? (
-            <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
+            <Box sx={{ alignItems: 'center', display: 'flex', justifyContent: 'center', py: 6, width: '100%' }}>
               <CircularProgress size={28} />
             </Box>
           ) : null}
