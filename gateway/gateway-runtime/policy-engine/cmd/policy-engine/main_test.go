@@ -475,3 +475,31 @@ func TestExtProcServerOptions(t *testing.T) {
 	require.NotNil(t, srv)
 	srv.Stop()
 }
+
+func TestNewLogHandler_WritesToTheGivenWriter(t *testing.T) {
+	t.Run("json carries the component field", func(t *testing.T) {
+		var buf bytes.Buffer
+		cfg := &config.Config{PolicyEngine: config.PolicyEngine{Logging: config.LoggingConfig{Level: "info", Format: "json"}}}
+
+		slog.New(newLogHandler(cfg, &buf)).Info("hello")
+
+		var rec map[string]any
+		require.NoError(t, json.Unmarshal(buf.Bytes(), &rec))
+		assert.Equal(t, logComponentValue, rec[logComponentField])
+		assert.Equal(t, "hello", rec["msg"])
+	})
+
+	t.Run("text carries the component prefix and applies the level", func(t *testing.T) {
+		var buf bytes.Buffer
+		cfg := &config.Config{PolicyEngine: config.PolicyEngine{Logging: config.LoggingConfig{Level: "warn", Format: "text"}}}
+		l := slog.New(newLogHandler(cfg, &buf))
+
+		l.Info("dropped")
+		l.Warn("kept")
+
+		out := buf.String()
+		assert.True(t, strings.HasPrefix(out, logComponentPrefix), out)
+		assert.NotContains(t, out, "dropped")
+		assert.Contains(t, out, "msg=kept")
+	})
+}

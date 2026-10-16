@@ -440,6 +440,13 @@ func applyFlagOverrides(cfg *config.Config) {
 
 // setupLogger creates a logger based on configuration
 func setupLogger(cfg *config.Config) *slog.Logger {
+	return slog.New(newLogHandler(cfg, os.Stdout))
+}
+
+// newLogHandler builds the handler setupLogger uses, writing to w instead of stdout,
+// so a second destination (such as the health log file) gets the same level, format
+// and component tag as the main log.
+func newLogHandler(cfg *config.Config, w io.Writer) slog.Handler {
 	var level slog.Level
 	switch cfg.PolicyEngine.Logging.Level {
 	case "debug":
@@ -459,14 +466,10 @@ func setupLogger(cfg *config.Config) *slog.Logger {
 	// Tagging is per logger, never process-wide on stdout: the traffic-log
 	// publisher writes bare JSON to os.Stdout on the same descriptor, and a
 	// process-wide prefix would corrupt it.
-	var handler slog.Handler
 	if cfg.PolicyEngine.Logging.Format == "json" {
-		handler = slog.NewJSONHandler(os.Stdout, opts)
-		return slog.New(handler).With(slog.String(logComponentField, logComponentValue))
+		return slog.NewJSONHandler(w, opts).WithAttrs([]slog.Attr{slog.String(logComponentField, logComponentValue)})
 	}
-	handler = slog.NewTextHandler(newComponentPrefixWriter(os.Stdout, logComponentPrefix), opts)
-
-	return slog.New(handler)
+	return slog.NewTextHandler(newComponentPrefixWriter(w, logComponentPrefix), opts)
 }
 
 const (
