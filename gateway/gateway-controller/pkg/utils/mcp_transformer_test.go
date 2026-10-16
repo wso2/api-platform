@@ -779,24 +779,13 @@ func TestAddMCPSpecificOperations_OlderVersion(t *testing.T) {
 	}
 }
 
-func TestGetParamsOfPolicy_MCP(t *testing.T) {
-	params, err := GetParamsOfPolicy(constants.SET_HEADERS_POLICY_PARAMS, "X-Custom-Header", "custom-value")
-	if err != nil {
-		t.Fatalf("GetParamsOfPolicy returned error: %v", err)
-	}
-
-	if params == nil {
-		t.Fatal("Expected non-nil params")
-	}
-
-	// Check that request is present
-	request, ok := params["request"].(map[string]any)
-	if !ok {
-		t.Fatal("Expected request object in params")
-	}
-	if _, ok := request["headers"]; !ok {
-		t.Error("Expected request.headers in params")
-	}
+// A value carrying '%' and a quote used to be doubled or rejected on its way
+// into the set-headers params (#3791); it must arrive unchanged.
+func TestBuildSetHeadersParams_KeepsValueVerbatim(t *testing.T) {
+	header, value := "X-Custom-Header", "it's abc%2F"
+	params, err := buildSetHeadersParams(&header, &value)
+	require.NoError(t, err)
+	assert.Equal(t, SetHeadersParams(header, value), params)
 }
 
 // ============================================================================

@@ -179,15 +179,10 @@ const (
 	WEBSUB_HUB_DYNAMIC_HTTP_PORT   = 8082
 	WEBSUB_HUB_DYNAMIC_HTTPS_PORT  = 8445
 
-	API_KEY_AUTH_POLICY_NAME           = "api-key-auth"
-	UPSTREAM_AUTH_APIKEY_POLICY_NAME   = "set-headers"
-	UPSTREAM_AUTH_APIKEY_POLICY_PARAMS = "request:\n" +
-		"  headers:\n" +
-		"    - name: '%s'\n" +
-		"      value: '%s'\n"
+	API_KEY_AUTH_POLICY_NAME         = "api-key-auth"
+	UPSTREAM_AUTH_APIKEY_POLICY_NAME = "set-headers"
 	UPSTREAM_AUTH_OAUTH2_POLICY_NAME = "oauth2-generator"
 	PROXY_HOST__HEADER_POLICY_NAME   = "host-rewrite"
-	PROXY_HOST__HEADER_POLICY_PARAMS = "host: '%s'\n"
 
 	ACCESS_CONTROL_DENY_POLICY_NAME = "respond"
 	// YAML for default 404 respond policy params
@@ -197,11 +192,7 @@ const (
 		"  - name: Content-Type\n" +
 		"    value: application/json\n"
 
-	SET_HEADERS_POLICY_NAME   = "set-headers"
-	SET_HEADERS_POLICY_PARAMS = "request:\n" +
-		"  headers:\n" +
-		"    - name: '%s'\n" +
-		"      value: '%s'\n"
+	SET_HEADERS_POLICY_NAME = "set-headers"
 	// set-headers request.phase: "body" applies request headers after the request
 	// body phase has run (set-headers v1.2.0+).
 	SET_HEADERS_REQUEST_PHASE_PARAM = "phase"

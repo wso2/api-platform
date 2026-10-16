@@ -732,6 +732,46 @@ func TestMCPValidator_ValidateUpstreamAuth(t *testing.T) {
 			errField:  "spec.upstream.auth.value",
 		},
 		{
+			// '%' and quotes are ordinary header-value characters (#3791).
+			name: "API key value with percent and quote",
+			auth: &authConfig{
+				Type:   api.MCPProxyConfigDataUpstreamAuthTypeApiKey,
+				Header: stringPtr("X-API-Key"),
+				Value:  stringPtr("it's abc%2F"),
+			},
+			wantError: false,
+		},
+		{
+			name: "API key value with a line break",
+			auth: &authConfig{
+				Type:   api.MCPProxyConfigDataUpstreamAuthTypeApiKey,
+				Header: stringPtr("X-API-Key"),
+				Value:  stringPtr("a\r\nX-Injected: z"),
+			},
+			wantError: true,
+			errField:  "spec.upstream.auth.value",
+		},
+		{
+			name: "API key header that is not an HTTP token",
+			auth: &authConfig{
+				Type:   api.MCPProxyConfigDataUpstreamAuthTypeApiKey,
+				Header: stringPtr("X API Key"),
+				Value:  stringPtr("secret"),
+			},
+			wantError: true,
+			errField:  "spec.upstream.auth.header",
+		},
+		{
+			name: "Bearer value with a line break",
+			auth: &authConfig{
+				Type:   api.MCPProxyConfigDataUpstreamAuthType("bearer"),
+				Header: stringPtr("Authorization"),
+				Value:  stringPtr("Bearer a\nb"),
+			},
+			wantError: true,
+			errField:  "spec.upstream.auth.value",
+		},
+		{
 			name: "Valid oauth2 auth via policyParams",
 			auth: &authConfig{
 				Type: api.MCPProxyConfigDataUpstreamAuthTypeOauth2,
