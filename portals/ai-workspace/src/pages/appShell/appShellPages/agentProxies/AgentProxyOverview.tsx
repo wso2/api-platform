@@ -1118,15 +1118,6 @@ function AgentProxyOverviewContent(): React.JSX.Element {
                       {formatRelativeTime(agentProxy.updatedAt)}
                     </Typography>
                   </Stack>
-                  {agentProxy.createdBy ? (
-                    <Typography variant="caption" color="text.secondary">
-                      <FormattedMessage
-                        id="aiWorkspace.pages.appShell.appShellPages.agentProxies.overview.createdBy"
-                        defaultMessage="Created by: {createdBy}"
-                        values={{ createdBy: agentProxy.createdBy }}
-                      />
-                    </Typography>
-                  ) : null}
                 </Stack>
               </Stack>
             </Box>

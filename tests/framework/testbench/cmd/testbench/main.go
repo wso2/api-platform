@@ -94,6 +94,10 @@ func services() ([]testbench.Service, error) {
 	if err != nil {
 		return nil, fmt.Errorf("building oidc service: %w", err)
 	}
+	oauth2Svc, err := oauth2.New()
+	if err != nil {
+		return nil, fmt.Errorf("building oauth2 service: %w", err)
+	}
 	return []testbench.Service{
 		jwksSvc,
 		echo.New(),
@@ -107,7 +111,7 @@ func services() ([]testbench.Service, error) {
 		contentsafety.New(),
 		analytics.New(),
 		capture.New(),
-		oauth2.New(),
+		oauth2Svc,
 		webhook.New(),
 		agentcard.New(),
 		oidcSvc,

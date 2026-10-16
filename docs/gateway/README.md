@@ -10,6 +10,7 @@ Run the AI Gateway when AI traffic needs the controls you already apply to your 
 - Serve one OpenAI-compatible endpoint that routes requests to multiple LLM providers.
 - Expose MCP servers through a central gateway, and apply authentication and access control to MCP traffic.
 - Give an A2A agent one governed address, serve its Agent Card from the gateway, and apply policies to individual A2A operations. See [Agent governance](agent-governance/index.md).
+- Authenticate callers by the client certificates they present, and present the gateway's own certificate to backends that require mutual TLS. See [Mutual TLS](mutual-tls/index.md).
 - Collect logs, traces, and analytics for the traffic the gateway handles.
 - Run the gateway on its own, or register it with AI Workspace to govern the gateways across your organization.
 
@@ -123,4 +124,5 @@ When an upstream service streams its response, the gateway relays it to the clie
 | [Quick start guide](quick-start-guide.md) | Start the gateway and route a first LLM request |
 | [Agent governance](agent-governance/index.md) | Expose, secure, and govern A2A agents |
 | [Agent configuration reference](reference/agent-configuration.md) | Every field of the `Agent` artifact and its deploy-time rules |
+| [Mutual TLS](mutual-tls/index.md) | Authenticate clients by certificate and connect to backends with mutual TLS |
 | [Gateway REST APIs](../rest-apis/gateway/README.md) | Gateway-Controller management API reference |

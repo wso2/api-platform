@@ -1387,15 +1387,6 @@ export default function ExternalServersOverview(): JSX.Element {
                       {formatRelativeTime(server.updatedAt)}
                     </Typography>
                   </Stack>
-                  {server.createdBy && (
-                    <Typography variant="caption" color="text.secondary">
-                      <FormattedMessage
-                        id="aiWorkspace.pages.appShell.appShellPages.externalServers.overview.createdBy"
-                        defaultMessage="Created by: {createdBy}"
-                        values={{ createdBy: server.createdBy }}
-                      />
-                    </Typography>
-                  )}
                 </Stack>
               </Stack>
             </Box>

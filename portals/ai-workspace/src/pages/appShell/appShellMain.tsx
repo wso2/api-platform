@@ -281,10 +281,6 @@ export default function AppLayout(): JSX.Element {
       shellActions.setActiveMenuItem('overview');
       return;
     }
-    if (primarySegment === 'quick-start') {
-      shellActions.setActiveMenuItem('quick-start');
-      return;
-    }
     if (primarySegment === 'projects') {
       if (!secondarySegment) {
         shellActions.setActiveMenuItem('projects');
@@ -335,10 +331,6 @@ export default function AppLayout(): JSX.Element {
       }
       if (tertiarySegment === 'insights') {
         shellActions.setActiveMenuItem('insights');
-        return;
-      }
-      if (tertiarySegment === 'quick-start') {
-        shellActions.setActiveMenuItem('quick-start');
         return;
       }
       if (tertiarySegment === 'settings') {
