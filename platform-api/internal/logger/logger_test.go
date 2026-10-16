@@ -18,7 +18,13 @@
 
 package logger
 
-import "testing"
+import (
+	"bytes"
+	"encoding/json"
+	"log/slog"
+	"strings"
+	"testing"
+)
 
 func TestShortenSource(t *testing.T) {
 	// shortenSource must derive the module-relative path from the tail after the
@@ -59,4 +65,65 @@ func TestShortenSource(t *testing.T) {
 			t.Errorf("shortenSource(%q) = %q, want %q (unchanged)", in, got, in)
 		}
 	})
+}
+
+func TestNewHandlerDefaultsToJSON(t *testing.T) {
+	var buf bytes.Buffer
+	slog.New(NewHandler(Config{Level: "info"}, &buf)).Info("hello", "key", "value")
+
+	var rec map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &rec); err != nil {
+		t.Fatalf("output is not JSON: %v (%q)", err, buf.String())
+	}
+	if rec["msg"] != "hello" || rec["key"] != "value" {
+		t.Errorf("unexpected record: %v", rec)
+	}
+	src, _ := rec["source"].(string)
+	if !strings.HasPrefix(src, "logger/logger_test.go:") {
+		t.Errorf("source = %q, want the shortened module-relative path", src)
+	}
+}
+
+func TestNewHandlerTextFormat(t *testing.T) {
+	var buf bytes.Buffer
+	slog.New(NewHandler(Config{Level: "info", Format: "TEXT"}, &buf)).Info("hello")
+
+	out := buf.String()
+	if !strings.Contains(out, "level=INFO") || !strings.Contains(out, "msg=hello") {
+		t.Errorf("expected text output, got %q", out)
+	}
+}
+
+func TestNewHandlerAppliesLevel(t *testing.T) {
+	var buf bytes.Buffer
+	l := slog.New(NewHandler(Config{Level: "warn", Format: "text"}, &buf))
+	l.Info("dropped")
+	l.Warn("kept")
+
+	out := buf.String()
+	if strings.Contains(out, "dropped") || !strings.Contains(out, "kept") {
+		t.Errorf("level not applied: %q", out)
+	}
+}
+
+func TestParseLevel(t *testing.T) {
+	cases := map[string]slog.Level{
+		"debug":   slog.LevelDebug,
+		"INFO":    slog.LevelInfo,
+		"warn":    slog.LevelWarn,
+		"warning": slog.LevelWarn,
+		"error":   slog.LevelError,
+		"bogus":   slog.LevelInfo,
+	}
+	for in, want := range cases {
+		if got := ParseLevel(in); got != want {
+			t.Errorf("ParseLevel(%q) = %v, want %v", in, got, want)
+		}
+	}
+}
+
+func TestNewLoggerReturnsUsableLogger(t *testing.T) {
+	if NewLogger(Config{Level: "error"}) == nil {
+		t.Fatal("NewLogger returned nil")
+	}
 }
