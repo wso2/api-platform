@@ -30,6 +30,8 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/config"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	"go.opentelemetry.io/otel/trace"
 	coltracepb "go.opentelemetry.io/proto/otlp/collector/trace/v1"
 	"google.golang.org/grpc"
@@ -354,6 +356,42 @@ func TestInitTracerConfig_SamplingRates(t *testing.T) {
 			shutdown, err := InitTracer(cfg)
 			require.NoError(t, err)
 			shutdown()
+		})
+	}
+}
+
+func TestNewSampler_FollowsParentDecision(t *testing.T) {
+	traceID, _ := trace.TraceIDFromHex("4bf92f3577b34da6a3ce929d0e0e4736")
+	spanID, _ := trace.SpanIDFromHex("00f067aa0ba902b7")
+	childOf := func(flags trace.TraceFlags) context.Context {
+		return trace.ContextWithRemoteSpanContext(context.Background(), trace.NewSpanContext(trace.SpanContextConfig{
+			TraceID:    traceID,
+			SpanID:     spanID,
+			TraceFlags: flags,
+			Remote:     true,
+		}))
+	}
+
+	for _, tc := range []struct {
+		name string
+		rate float64
+	}{
+		{"full_rate", 1.0},
+		{"half_rate", 0.5},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			sr := tracetest.NewSpanRecorder()
+			tp := sdktrace.NewTracerProvider(sdktrace.WithSampler(newSampler(tc.rate)), sdktrace.WithSpanProcessor(sr))
+			t.Cleanup(func() { _ = tp.Shutdown(context.Background()) })
+			tracer := tp.Tracer("test")
+
+			_, span := tracer.Start(childOf(0), "unsampled-parent")
+			span.End()
+			assert.Empty(t, sr.Ended(), "a parent with flag 00 must produce no spans")
+
+			_, span = tracer.Start(childOf(trace.FlagsSampled), "sampled-parent")
+			span.End()
+			assert.Len(t, sr.Ended(), 1, "a parent with flag 01 must be recorded")
 		})
 	}
 }

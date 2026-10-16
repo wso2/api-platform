@@ -124,14 +124,7 @@ func InitTracer(cfg *config.Config) (func(), error) {
 		samplingRate = 1.0 // Default to sampling all requests
 	}
 
-	var sampler sdktrace.Sampler
-	if samplingRate >= 1.0 {
-		sampler = sdktrace.AlwaysSample()
-	} else {
-		sampler = sdktrace.TraceIDRatioBased(samplingRate)
-	}
-
-	sampler = sdktrace.ParentBased(sampler)
+	sampler := newSampler(samplingRate)
 
 	slog.InfoContext(ctx, "Using trace sampler", "sampling_rate", samplingRate)
 
@@ -183,10 +176,20 @@ func ExtractTraceContext(ctx context.Context, carrier propagation.TextMapCarrier
 
 	span := trace.SpanContextFromContext(newCtx)
 	if span.IsValid() {
-		slog.DebugContext(ctx, "Extracted trace context from request headers", "trace_id", span.TraceID().String())
+		slog.DebugContext(ctx, "Extracted trace context", "trace_id", span.TraceID().String())
 	} else {
-		slog.DebugContext(ctx, "No trace context in request headers; starting a new root trace")
+		slog.DebugContext(ctx, "No trace context found; starting a new root trace")
 	}
 
 	return newCtx
+}
+
+// newSampler applies samplingRate only to traces that start in the engine. For a
+// request with a parent, the parent's sampled flag decides, so the engine records
+// exactly the requests Envoy records.
+func newSampler(samplingRate float64) sdktrace.Sampler {
+	if samplingRate >= 1.0 {
+		return sdktrace.ParentBased(sdktrace.AlwaysSample())
+	}
+	return sdktrace.ParentBased(sdktrace.TraceIDRatioBased(samplingRate))
 }
