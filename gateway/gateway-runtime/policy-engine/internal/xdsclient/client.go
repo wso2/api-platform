@@ -318,6 +318,7 @@ func (c *Client) dial() (*grpc.ClientConn, error) {
 
 	// Add keepalive parameters
 	opts = append(opts,
+		grpc.WithKeepaliveParams(c.config.keepaliveParams()),
 		grpc.WithBlock(),
 		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(maxRecvMsgSize)),
 	)

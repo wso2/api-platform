@@ -517,6 +517,8 @@ func initializeXDSClient(ctx context.Context, cfg *config.Config, serverAddr str
 		TLSCAPath:             cfg.PolicyEngine.XDS.TLS.CAPath,
 		TLSCiphers:            cfg.PolicyEngine.XDS.TLS.Ciphers,
 		TLSEcdhCurves:         cfg.PolicyEngine.XDS.TLS.EcdhCurves,
+		KeepaliveTime:         xdsclient.DefaultKeepaliveTime,
+		KeepaliveTimeout:      xdsclient.DefaultKeepaliveTimeout,
 	}
 
 	client, err := xdsclient.NewClient(xdsConfig, k, reg, resolvers)
