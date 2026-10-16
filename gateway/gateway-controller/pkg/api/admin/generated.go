@@ -33,6 +33,18 @@ const (
 	Undeployed ConfigDumpAPIMetadataStatus = "undeployed"
 )
 
+// Defines values for HealthCheckStatus.
+const (
+	Down HealthCheckStatus = "down"
+	Up   HealthCheckStatus = "up"
+)
+
+// Defines values for HealthResponseStatus.
+const (
+	Healthy   HealthResponseStatus = "healthy"
+	Unhealthy HealthResponseStatus = "unhealthy"
+)
+
 // CertificateResponse defines model for CertificateResponse.
 type CertificateResponse struct {
 	Count    *int       `json:"count,omitempty" yaml:"count,omitempty"`
@@ -101,14 +113,38 @@ type ForbiddenResponse struct {
 	Message string `json:"message" yaml:"message"`
 }
 
+// HealthCheck defines model for HealthCheck.
+type HealthCheck struct {
+	// Error Generic reason the check is down; present only when down
+	Error *string `json:"error,omitempty" yaml:"error,omitempty"`
+
+	// Since When the check started failing; present only when down
+	Since *time.Time `json:"since,omitempty" yaml:"since,omitempty"`
+
+	// Status Whether the dependency is usable
+	Status HealthCheckStatus `json:"status" yaml:"status"`
+}
+
+// HealthCheckStatus Whether the dependency is usable
+type HealthCheckStatus string
+
 // HealthResponse defines model for HealthResponse.
 type HealthResponse struct {
-	// Status Health status ("healthy")
-	Status *string `json:"status,omitempty" yaml:"status,omitempty"`
+	// Checks Result of each dependency check, keyed by check name (for example `database`)
+	Checks *map[string]HealthCheck `json:"checks,omitempty" yaml:"checks,omitempty"`
+
+	// Component The reporting component
+	Component *string `json:"component,omitempty" yaml:"component,omitempty"`
+
+	// Status Health status ("healthy" when every check is up, otherwise "unhealthy")
+	Status HealthResponseStatus `json:"status" yaml:"status"`
 
 	// Timestamp Timestamp of the health check
-	Timestamp *time.Time `json:"timestamp,omitempty" yaml:"timestamp,omitempty"`
+	Timestamp time.Time `json:"timestamp" yaml:"timestamp"`
 }
+
+// HealthResponseStatus Health status ("healthy" when every check is up, otherwise "unhealthy")
+type HealthResponseStatus string
 
 // UnauthorizedResponse defines model for UnauthorizedResponse.
 type UnauthorizedResponse struct {
@@ -332,34 +368,39 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"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",
+	"H4sIAAAAAAAC/+xZX2/byBH/KoNtHxJAkZykfTjlSYmvOaMNasQurkBkWCvuSNwLucvuDm2rgb57Mbv8",
+	"K1KyfchdH9qnMNzh7Pz9/WbkbyKxeWENGvJi/k34JMVchscP6EhvdCIJP6MvrPHIrwtnCz7BIJTY0hA/",
+	"0K5AMRfaEG7Rif1EaNV578lpsw2vvS/RjR4ZmeP4gaXFhuJXG+tySWIulCR8RTpHMRl+4UlS6UeV+XL9",
+	"CyY0crZvFNkosp+ID9Zs9Pa8zIvF5cUFYc7fKfSJ0wVpa8RcLC4vQBPmoA0kQRxUmRfg6qhNBkFjodLJ",
+	"qOCbkEppfpbZZUeQXIkjFsW4NmEoS63GIpAjSSVJsvAfHW7EXPxh1iZ7VmV61nPwU/3R47H41NHfj0d9",
+	"AhvrIASnF5dhOBxKQrWgp6dXYZHZ3fO+aUsCTZmL+RdRoFF82OoTE7GROgsPpWne3oyoKwv1PKtPR/R4",
+	"i8lCh3+5xPyzshnKtb1WOid3/P+k7exnaB6BgxHdhc10og/0Pqu+DzVy3rQnnfhhbMiSzBZVgIYQFI47",
+	"hr/fVR4/LnpK7LLj46HIWJZPgBGXiieZF0+v4wflb/3OJE8vhX+eX13xB4+UYC02aOiH8yvgG6HGFNAm",
+	"yUqF6rHWDtWwu01Sqc3tHTpfAV5f/9843gRRGIIwVMJQlOtM+xQVrHdAKfJ15GyWoXtai/3onHXHuytH",
+	"7+V2nHaO5m0/EQ7/VWqHinGkkps0ym5G7PiLdWutFJquLfgg8yLDSAqKP9jUYh113bf7IZkoHIY0eA18",
+	"NgGcbqewbHUsxXScMI5F4sDdcONpZ39CmVH6IcXk6zDkyLYNTf6IBp1OwKH01sRcswLQHpS9N++gcOjR",
+	"EFiT7eA+RRPej2K9NslIVH7mb1rFnqQjVMCQr832xAXPZZjBtZSiCzcrZNZBk+zYr9LLdca6akoquYfC",
+	"pTeTp1Xd8fCfmNrY/RPIfBpYuskNXNz19TP6MiOwG0CZpF13w6UT+Iq72MwxBzzzwQueFKpegBUjzFp6",
+	"XL0UI741Bg3jfJ0iOCysI2220ApO2j4TW0l4L3evTsHI8UxG1yEew4ulSMOL3VLEcsE7dLu2bMtiApZT",
+	"f689wlKUppF/2Ul69TLMHPXz2MjRI4sD1+sjjjzXWdQTTXliAR9DtfbasVr7h5Elpdbpf6M6DW0sh4aY",
+	"XrU1t82g1cJcXwIqiV8PeaM3/g7wVzHpVYjgqeWpU8oDg35n7vwVs8iQbrl1MCmdpt0Vo0X0cy29ThYl",
+	"pSMNdX19Ce/5HA6SX3pu4mC1Q8UHMvNQr06ogOdztzSr1qkpq5iG21ZTYDTo6OQvPDrIS08gM28htZni",
+	"C5ZmJVWuzQqczXAKi6LINHogW/VzOAU0qrDaEOBDggV1u6xwdo3TJTNFAEkOSTCjjVlKVIg9B0ibja22",
+	"QJJxD42Lr/j56u9vwsJ0mUniBMA1ynyIsQu2Z6ZwXW6DOKPnx4hr8KGNxtIszXWKHhvTPUiH4NHdoYKK",
+	"YxWqKjzRzXDqgFEUXijcyDKjOfxw9sObl0HjIss6+o7EAqqGgUfyuzT8pWcOOJJl9o1lcmnkFnNmZ3b5",
+	"xZG0v5wsjTQhrceT33BetmuKAPo18N5SGmujaiZUsJrJQs+C2Ozu9Sz6u4JCUgp8pyYPGW5lsoNVcyoz",
+	"LUPYl4Z3BNNcnOGGoDQ9I0MFkabAVMOMQkg8+y8mokEE8Xp6Nj3jKrEFGlloMRdvp2fTtzyNS0pDC85i",
+	"SG/DlD7/JrY4wp+fkZzGO6ywguGbEJLSOQ478wHW9DJiXNwJtNnOl+YVcJnU+3PIWO9HD1+LZFbyGlHB",
+	"l8KNNron4HCrPSGXQndt5eOrnSfMazLmDNT7SYgjI2247EKF6ZLaTUcwokdUDtF5c3ZWd2SFxpIxIFbq",
+	"7BcfgTfOP09fu9o1eT9o4Q9NdLthiUvUfiL+dPb6uxk0StAjJn3SPkCu5VTeyUyrbk9Gq95+N6uG69CI",
+	"SYthB2cy+epDCdacXOEW9y0b+efvmMv+7jhi4IUhdEZmNWrG1aZLg2L+pUeAX272NxPhyzyXbifmggul",
+	"abF+MYSGY0CQW8+DR6x3ccPqK3w51cqlM74LzFWfVA1czcGdkWDSdjAPs2Fj0eSXpp7HeaJ1PNXzzjKF",
+	"Hw/m+3DKtFFzM6zinrF6B7LesZYmDseJdI45NmxaEra93S9yt4ubhPaQyCStqEDCBu/BY2KN8lPmN+1b",
+	"ZubnB8wLgo2zOawZxA9opyaHi0u4TzVhpj2Bt0xEkuDcJl/RBaG/lmt0Bgl9j9nYGhPDAJqipfFObc3S",
+	"yHZ2WEcK0R5aCmm4gk0Y54rpOHjFzeO3BK6DpXGk2j8OaoYjXm8soffe/tfNaVaodyAJMpSe9/mD3xIO",
+	"W7TXkj/1V6fR9qt/hLttN8VH+7Du8t6s/nB+1c7rzqoyacf1YY8eKY7evvFb1sj4YjPGby2i1blhTyvX",
+	"w4+JVeT+z3b/Q2z3EelYHYw12uOagyE+HB7sxTaRPIHeYWaLsDZ01xsxEaXLqrVsPptlLJ1aT3NedHpz",
+	"vthPDnVHlph1GOKU7uEvTmOX3DT+H95WjbkVCTF5VEzebGGi/tNpHbr9zf4/AQAA///o+0j+2R0AAA==",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file
