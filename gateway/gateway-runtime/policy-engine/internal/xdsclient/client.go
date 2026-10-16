@@ -81,6 +81,16 @@ type Client struct {
 	subscriptionStateVersion string
 	routeConfigVersion       string
 	currentNonce             string
+	// disconnectedSince is when the connection to the controller was last lost; zero
+	// while connected. It is kept across failed reconnect attempts, so it marks the
+	// start of the whole outage.
+	disconnectedSince time.Time
+	// configReceived reports whether any configuration has ever been accepted from the
+	// controller. It is never reset: the last configuration keeps being served while
+	// the connection is down.
+	configReceived bool
+	// now is the clock used for connection state; replaceable in tests.
+	now func() time.Time
 
 	// resolvers is the frozen operation-resolver registry this runtime supports.
 	// Advertised in Node.Metadata on every discovery request so the control plane
@@ -111,10 +121,13 @@ func NewClient(config *Config, k *kernel.Kernel, reg *registry.PolicyRegistry, r
 		resolvers:        resolvers,
 		reconnectManager: NewReconnectManager(config),
 		state:            StateDisconnected,
-		ctx:              ctx,
-		cancel:           cancel,
-		stoppedCh:        make(chan struct{}),
-		reconnectCh:      make(chan struct{}, 1),
+		// The client starts without a connection.
+		disconnectedSince: time.Now(),
+		now:               time.Now,
+		ctx:               ctx,
+		cancel:            cancel,
+		stoppedCh:         make(chan struct{}),
+		reconnectCh:       make(chan struct{}, 1),
 	}, nil
 }
 
@@ -171,6 +184,29 @@ func (c *Client) GetPolicyChainVersion() string {
 	return c.policyChainVersion
 }
 
+// ConnectionStatus describes the client's connection to the controller.
+type ConnectionStatus struct {
+	State ClientState
+	// Connected reports whether the configuration stream is established.
+	Connected bool
+	// DisconnectedSince is when the connection was last lost; zero while connected.
+	DisconnectedSince time.Time
+	// ConfigReceived reports whether any configuration has ever been accepted.
+	ConfigReceived bool
+}
+
+// ConnectionStatus returns the current state of the connection to the controller.
+func (c *Client) ConnectionStatus() ConnectionStatus {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return ConnectionStatus{
+		State:             c.state,
+		Connected:         c.state == StateConnected,
+		DisconnectedSince: c.disconnectedSince,
+		ConfigReceived:    c.configReceived,
+	}
+}
+
 // IsHealthy reports whether the xDS client has received its first policy chain configuration.
 func (c *Client) IsHealthy() bool {
 	c.mu.RLock()
@@ -192,9 +228,11 @@ func (c *Client) setState(state ClientState) {
 		// otherwise every reconnect cycle would leave it one higher.
 		if oldState == StateConnected {
 			metrics.GRPCConnectionsActive.WithLabelValues("xds").Dec()
+			c.disconnectedSince = c.now()
 		}
 		switch state {
 		case StateConnected:
+			c.disconnectedSince = time.Time{}
 			metrics.XDSConnectionState.WithLabelValues("connected").Set(1)
 			metrics.GRPCConnectionsActive.WithLabelValues("xds").Inc()
 		case StateDisconnected, StateReconnecting, StateStopped:
@@ -572,6 +610,7 @@ func (c *Client) processStream(stream discoveryv3.AggregatedDiscoveryService_Str
 			c.routeConfigVersion = resp.VersionInfo
 		}
 		c.currentNonce = resp.Nonce
+		c.configReceived = true
 		c.mu.Unlock()
 
 		// Send ACK for this specific resource type
