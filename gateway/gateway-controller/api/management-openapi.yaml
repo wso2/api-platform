@@ -1201,7 +1201,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "409":
-          description: Conflict - subscription already exists
+          description: Conflict - the subscription conflicts with an existing subscription
           content:
             application/json:
               schema:
@@ -1309,8 +1309,20 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SubscriptionResponse"
+        "400":
+          description: Bad request (invalid status, invalid token, or plan not found, not active or not enabled for the API)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "404":
           description: Subscription not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Conflict - the subscription conflicts with an existing subscription
           content:
             application/json:
               schema:
@@ -4999,6 +5011,15 @@ components:
         - apiId
         - subscriptionToken
       properties:
+        externalRefId:
+          type: string
+          description: |
+            Optional caller-supplied reference ID. When provided, it is used as the subscription ID
+            instead of a gateway-generated one. Must be unique within the gateway.
+          pattern: "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+          minLength: 1
+          maxLength: 64
+          example: "apim-sub-7f1c2a9e"
         apiId:
           type: string
           description: API identifier (deployment ID or handle)
@@ -5025,15 +5046,32 @@ components:
           default: ACTIVE
     SubscriptionUpdateRequest:
       type: object
+      description: |
+        Partial update. Fields that are omitted are left unchanged.
       properties:
         status:
           type: string
           enum: [ACTIVE, INACTIVE, REVOKED]
+        subscriptionPlanId:
+          type: string
+          nullable: true
+          description: |
+            Subscription plan UUID. The plan must exist, be ACTIVE and be enabled for the subscribed API.
+            Send an explicit null to remove the plan from the subscription.
+        subscriptionToken:
+          type: string
+          writeOnly: true
+          minLength: 1
+          description: |
+            New opaque subscription token. Rotates the token in place.
     SubscriptionResponse:
       type: object
       properties:
         id:
           type: string
+        externalRefId:
+          type: string
+          description: Caller-facing reference ID of the subscription.
         apiId:
           type: string
         applicationId:

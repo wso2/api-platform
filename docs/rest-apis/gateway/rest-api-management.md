@@ -1584,6 +1584,7 @@ Subscribe an application to a RestAPI in the Gateway.
 
 ```json
 {
+  "externalRefId": "apim-sub-7f1c2a9e",
   "apiId": "c9f2b6ae-1234-5678-9abc-def012345678",
   "subscriptionToken": "sub-token-abc123xyz",
   "applicationId": "string",
@@ -1616,6 +1617,7 @@ Required roles: `admin`
 ```json
 {
   "id": "string",
+  "externalRefId": "string",
   "apiId": "string",
   "applicationId": "string",
   "subscriptionToken": "string",
@@ -1635,7 +1637,7 @@ Required roles: `admin`
 |---|---|---|---|
 |201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|Subscription created|[SubscriptionResponse](schemas.md#schemasubscriptionresponse)|
 |400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict - subscription already exists|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict - the subscription conflicts with an existing subscription|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
 ## List subscriptions
@@ -1690,6 +1692,7 @@ Required roles: `admin`
   "subscriptions": [
     {
       "id": "string",
+      "externalRefId": "string",
       "apiId": "string",
       "applicationId": "string",
       "subscriptionToken": "string",
@@ -1753,6 +1756,7 @@ Required roles: `admin`
 ```json
 {
   "id": "string",
+  "externalRefId": "string",
   "apiId": "string",
   "applicationId": "string",
   "subscriptionToken": "string",
@@ -1798,7 +1802,9 @@ Update an existing subscription in the Gateway.
 
 ```json
 {
-  "status": "ACTIVE"
+  "status": "ACTIVE",
+  "subscriptionPlanId": "string",
+  "subscriptionToken": "string"
 }
 ```
 
@@ -1825,6 +1831,7 @@ Required roles: `admin`
 ```json
 {
   "id": "string",
+  "externalRefId": "string",
   "apiId": "string",
   "applicationId": "string",
   "subscriptionToken": "string",
@@ -1843,7 +1850,9 @@ Required roles: `admin`
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
 |200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Subscription updated|[SubscriptionResponse](schemas.md#schemasubscriptionresponse)|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request (invalid status, invalid token, or plan not found, not active or not enabled for the API)|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Subscription not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict - the subscription conflicts with an existing subscription|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
 ## Delete a subscription

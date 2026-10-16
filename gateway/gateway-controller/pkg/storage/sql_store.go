@@ -3415,6 +3415,9 @@ func (s *sqlStore) UpdateSubscription(sub *models.Subscription) error {
 		sub.SubscriptionPlanID, sub.BillingCustomerID, sub.BillingSubscriptionID,
 		string(sub.Status), sub.UpdatedAt, sub.ID, s.gatewayId)
 	if err != nil {
+		if s.isUniqueViolation(err) {
+			return fmt.Errorf("%w: subscription token already exists for this API", ErrConflict)
+		}
 		return fmt.Errorf("failed to update subscription: %w", err)
 	}
 	rows, err := result.RowsAffected()

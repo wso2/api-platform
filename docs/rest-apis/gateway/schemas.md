@@ -1218,6 +1218,7 @@ Details of an API key
 
 ```json
 {
+  "externalRefId": "apim-sub-7f1c2a9e",
   "apiId": "c9f2b6ae-1234-5678-9abc-def012345678",
   "subscriptionToken": "sub-token-abc123xyz",
   "applicationId": "string",
@@ -1233,6 +1234,7 @@ Details of an API key
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
+|externalRefId|string|false|none|Optional caller-supplied reference ID. When provided, it is used as the subscription ID<br>instead of a gateway-generated one. Must be unique within the gateway.|
 |apiId|string|true|none|API identifier (deployment ID or handle)|
 |subscriptionToken|string|true|none|Opaque subscription token for API invocation (required; stored as hash only)|
 |applicationId|string|false|none|Application identifier (from DevPortal/STS). Optional for token-based subscriptions.|
@@ -1258,16 +1260,22 @@ Details of an API key
 
 ```json
 {
-  "status": "ACTIVE"
+  "status": "ACTIVE",
+  "subscriptionPlanId": "string",
+  "subscriptionToken": "string"
 }
 
 ```
+
+Partial update. Fields that are omitted are left unchanged.
 
 #### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |status|string|false|none|none|
+|subscriptionPlanId|string¦null|false|none|Subscription plan UUID. The plan must exist, be ACTIVE and be enabled for the subscribed API.<br>Send an explicit null to remove the plan from the subscription.|
+|subscriptionToken|string|false|write-only|New opaque subscription token. Rotates the token in place.|
 
 ##### Enumerated Values
 
@@ -1287,6 +1295,7 @@ Details of an API key
 ```json
 {
   "id": "string",
+  "externalRefId": "string",
   "apiId": "string",
   "applicationId": "string",
   "subscriptionToken": "string",
@@ -1306,6 +1315,7 @@ Details of an API key
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |id|string|false|none|none|
+|externalRefId|string|false|none|Caller-facing reference ID of the subscription.|
 |apiId|string|false|none|none|
 |applicationId|string|false|none|none|
 |subscriptionToken|string|false|none|Opaque subscription token (returned only on create; use Platform-API to retrieve for existing subscriptions)|
@@ -1337,6 +1347,7 @@ Details of an API key
   "subscriptions": [
     {
       "id": "string",
+      "externalRefId": "string",
       "apiId": "string",
       "applicationId": "string",
       "subscriptionToken": "string",

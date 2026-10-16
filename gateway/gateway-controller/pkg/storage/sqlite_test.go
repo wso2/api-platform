@@ -1199,6 +1199,108 @@ func TestSQLiteStorage_SaveSubscription_AllowsUndeployedAPI(t *testing.T) {
 	assert.Assert(t, retrieved.SubscriptionTokenHash != "")
 }
 
+func TestSQLiteStorage_UpdateSubscription_RotatesTokenAndRejectsDuplicate(t *testing.T) {
+	storage := setupTestStorage(t)
+	defer storage.db.Close()
+
+	first := createTestSubscription()
+	assert.NilError(t, storage.SaveSubscription(first))
+	second := createTestSubscription()
+	second.APIID = first.APIID
+	assert.NilError(t, storage.SaveSubscription(second))
+
+	// Rotating to a fresh token replaces the stored hash.
+	loaded, err := storage.GetSubscriptionByID(first.ID, storage.gatewayId)
+	assert.NilError(t, err)
+	oldHash := loaded.SubscriptionTokenHash
+	loaded.SubscriptionToken = "rotated-token"
+	assert.NilError(t, storage.UpdateSubscription(loaded))
+	rotated, err := storage.GetSubscriptionByID(first.ID, storage.gatewayId)
+	assert.NilError(t, err)
+	assert.Equal(t, rotated.SubscriptionTokenHash, hashSubscriptionToken("rotated-token"))
+	assert.Assert(t, rotated.SubscriptionTokenHash != oldHash)
+
+	// Rotating to a token another subscription on the same API uses is a conflict.
+	rotated.SubscriptionToken = second.SubscriptionToken
+	err = storage.UpdateSubscription(rotated)
+	assert.Assert(t, IsConflictError(err), "expected conflict, got %v", err)
+}
+
+func TestSQLiteStorage_UpdateSubscription_StatusOnlyKeepsTokenHash(t *testing.T) {
+	storage := setupTestStorage(t)
+	defer storage.db.Close()
+
+	sub := createTestSubscription()
+	assert.NilError(t, storage.SaveSubscription(sub))
+
+	// A DB-loaded subscription has no plain token; the stored hash must be kept as is.
+	loaded, err := storage.GetSubscriptionByID(sub.ID, storage.gatewayId)
+	assert.NilError(t, err)
+	originalHash := loaded.SubscriptionTokenHash
+	loaded.Status = models.SubscriptionStatusRevoked
+	assert.NilError(t, storage.UpdateSubscription(loaded))
+
+	updated, err := storage.GetSubscriptionByID(sub.ID, storage.gatewayId)
+	assert.NilError(t, err)
+	assert.Equal(t, updated.Status, models.SubscriptionStatusRevoked)
+	assert.Equal(t, updated.SubscriptionTokenHash, originalHash)
+}
+
+func TestSQLiteStorage_UpdateSubscription_SetsAndClearsPlan(t *testing.T) {
+	storage := setupTestStorage(t)
+	defer storage.db.Close()
+
+	for _, id := range []string{"plan-a", "plan-b"} {
+		assert.NilError(t, storage.SaveSubscriptionPlan(&models.SubscriptionPlan{
+			ID: id, PlanName: "name-" + id, Status: models.SubscriptionPlanStatusActive,
+		}))
+	}
+	sub := createTestSubscription()
+	planA := "plan-a"
+	sub.SubscriptionPlanID = &planA
+	assert.NilError(t, storage.SaveSubscription(sub))
+
+	loaded, err := storage.GetSubscriptionByID(sub.ID, storage.gatewayId)
+	assert.NilError(t, err)
+	planB := "plan-b"
+	loaded.SubscriptionPlanID = &planB
+	assert.NilError(t, storage.UpdateSubscription(loaded))
+	moved, err := storage.GetSubscriptionByID(sub.ID, storage.gatewayId)
+	assert.NilError(t, err)
+	assert.Equal(t, *moved.SubscriptionPlanID, "plan-b")
+
+	moved.SubscriptionPlanID = nil
+	assert.NilError(t, storage.UpdateSubscription(moved))
+	cleared, err := storage.GetSubscriptionByID(sub.ID, storage.gatewayId)
+	assert.NilError(t, err)
+	assert.Assert(t, cleared.SubscriptionPlanID == nil)
+}
+
+func TestSQLiteStorage_UpdateSubscription_NotFound(t *testing.T) {
+	storage := setupTestStorage(t)
+	defer storage.db.Close()
+
+	sub := createTestSubscription()
+	sub.SubscriptionTokenHash = "some-hash"
+	err := storage.UpdateSubscription(sub)
+	assert.Assert(t, IsNotFoundError(err), "expected not found, got %v", err)
+}
+
+func TestSQLiteStorage_SaveSubscription_DuplicateIDIsConflict(t *testing.T) {
+	storage := setupTestStorage(t)
+	defer storage.db.Close()
+
+	first := createTestSubscription()
+	first.ID = "caller-supplied-ref"
+	assert.NilError(t, storage.SaveSubscription(first))
+
+	// A caller-supplied externalRefId that is already taken must fail on the primary key.
+	second := createTestSubscription()
+	second.ID = "caller-supplied-ref"
+	err := storage.SaveSubscription(second)
+	assert.Assert(t, IsConflictError(err), "expected conflict, got %v", err)
+}
+
 func TestSQLiteStorage_ReplaceApplicationAPIKeyMappings_Success(t *testing.T) {
 	storage := setupTestStorage(t)
 	defer storage.db.Close()

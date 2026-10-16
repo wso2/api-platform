@@ -506,6 +506,10 @@ func (m *MockStorage) SaveSubscription(sub *models.Subscription) error {
 	if m.subscriptions == nil {
 		m.subscriptions = make(map[string]*models.Subscription)
 	}
+	// Mirror the subscriptions primary key: a duplicate ID is a conflict, not an overwrite.
+	if _, exists := m.subscriptions[sub.ID]; exists {
+		return fmt.Errorf("%w: subscription already exists: %s", storage.ErrConflict, sub.ID)
+	}
 	m.subscriptions[sub.ID] = sub
 	return nil
 }
