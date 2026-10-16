@@ -640,6 +640,10 @@ type HealthConfig struct {
 	BackoffInitial time.Duration `koanf:"backoff_initial"`
 	// BackoffMax caps the interval between repeated failure lines.
 	BackoffMax time.Duration `koanf:"backoff_max"`
+	// XDSGrace is how long the connection to the controller may be down before the
+	// runtime stops counting as ready. The last configuration keeps being served
+	// meanwhile, so a routine controller restart never takes runtimes out of service.
+	XDSGrace time.Duration `koanf:"xds_grace"`
 }
 
 // FaultPoliciesConfig tunes which failures reach an API's fault policies
@@ -1361,6 +1365,7 @@ func defaultConfig() *Config {
 				LogMaxFiles:    5,
 				BackoffInitial: 10 * time.Second,
 				BackoffMax:     5 * time.Minute,
+				XDSGrace:       5 * time.Minute,
 			},
 			PythonExecutor: PythonExecutorConfig{
 				Server: PythonExecutorServerConfig{
@@ -2142,6 +2147,9 @@ func (c *Config) validateHealthConfig() error {
 	}
 	if h.BackoffMax < h.BackoffInitial {
 		return fmt.Errorf("policy_engine.health.backoff_max must be >= policy_engine.health.backoff_initial")
+	}
+	if h.XDSGrace <= 0 {
+		return fmt.Errorf("policy_engine.health.xds_grace must be > 0")
 	}
 	if h.LogMaxSizeMB < 1 {
 		return fmt.Errorf("policy_engine.health.log_max_size_mb must be >= 1, got %d", h.LogMaxSizeMB)

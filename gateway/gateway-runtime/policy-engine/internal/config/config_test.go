@@ -69,6 +69,7 @@ func validConfig() *Config {
 				LogMaxFiles:    5,
 				BackoffInitial: 10 * time.Second,
 				BackoffMax:     5 * time.Minute,
+				XDSGrace:       5 * time.Minute,
 			},
 			PythonExecutor: PythonExecutorConfig{
 				Server: PythonExecutorServerConfig{
@@ -2388,6 +2389,7 @@ func TestDefaultConfig_Health(t *testing.T) {
 	assert.Equal(t, 5, h.LogMaxFiles)
 	assert.Equal(t, 10*time.Second, h.BackoffInitial)
 	assert.Equal(t, 5*time.Minute, h.BackoffMax)
+	assert.Equal(t, 5*time.Minute, h.XDSGrace)
 }
 
 func TestLoad_HealthDefaultsWhenUnconfigured(t *testing.T) {
@@ -2429,6 +2431,7 @@ log_max_size_mb = 20
 log_max_files = 3
 backoff_initial = "15s"
 backoff_max = "10m"
+xds_grace = "60s"
 `
 	require.NoError(t, os.WriteFile(configPath, []byte(configContent), 0644))
 
@@ -2443,6 +2446,7 @@ backoff_max = "10m"
 	assert.Equal(t, 3, h.LogMaxFiles)
 	assert.Equal(t, 15*time.Second, h.BackoffInitial)
 	assert.Equal(t, 10*time.Minute, h.BackoffMax)
+	assert.Equal(t, 60*time.Second, h.XDSGrace)
 }
 
 func TestValidate_HealthConfig(t *testing.T) {
@@ -2478,6 +2482,16 @@ func TestValidate_HealthConfig(t *testing.T) {
 			name:      "zero backoff_initial",
 			mutate:    func(h *HealthConfig) { h.BackoffInitial = 0 },
 			wantError: "policy_engine.health.backoff_initial must be > 0",
+		},
+		{
+			name:      "zero xds_grace",
+			mutate:    func(h *HealthConfig) { h.XDSGrace = 0 },
+			wantError: "policy_engine.health.xds_grace must be > 0",
+		},
+		{
+			name:      "negative xds_grace",
+			mutate:    func(h *HealthConfig) { h.XDSGrace = -time.Minute },
+			wantError: "policy_engine.health.xds_grace must be > 0",
 		},
 		{
 			name:      "zero backoff_max",

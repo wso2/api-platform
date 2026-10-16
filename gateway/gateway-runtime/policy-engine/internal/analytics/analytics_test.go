@@ -70,6 +70,7 @@ func validAnalyticsConfigForValidation(analytics config.AnalyticsConfig) *config
 				LogMaxFiles:    5,
 				BackoffInitial: 10 * time.Second,
 				BackoffMax:     5 * time.Minute,
+				XDSGrace:       5 * time.Minute,
 			},
 			PythonExecutor: config.PythonExecutorConfig{
 				Server:  config.PythonExecutorServerConfig{Port: 9010, Host: "localhost"},
