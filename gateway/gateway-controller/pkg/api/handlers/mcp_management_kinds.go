@@ -376,7 +376,7 @@ func (h *McpHandler) restAPIOps() *kindOps {
 			if err != nil {
 				return nil, err
 			}
-			return buildResourceResponseFromStored(result.StoredConfig.SourceConfiguration, result.StoredConfig), nil
+			return h.restAPIDeployBody(result.StoredConfig, log), nil
 		},
 
 		Update: func(handle string, manifest []byte, correlationID string, log *slog.Logger) (any, error) {
@@ -390,7 +390,7 @@ func (h *McpHandler) restAPIOps() *kindOps {
 			if err != nil {
 				return nil, err
 			}
-			return buildResourceResponseFromStored(result.Config.SourceConfiguration, result.Config), nil
+			return h.restAPIDeployBody(result.Config, log), nil
 		},
 
 		Delete: func(handle, correlationID string, log *slog.Logger) error {
@@ -845,6 +845,40 @@ func (h *McpHandler) secretOps() *kindOps {
 }
 
 // Shared adapter helpers
+
+// restAPIDeployBody renders a RestApi create or update result the way
+// RestAPIHandler.buildDeployResponse (rest_api_handler.go) does: the mtls-auth
+// accept-list echo plus every deploy warning, each one logged. It is a copy
+// rather than a call because buildDeployResponse is a RestAPIHandler method;
+// TestMcpRestAPIDeployWarningsMatchREST fails if the two drift apart.
+func (h *McpHandler) restAPIDeployBody(stored *models.StoredConfig, log *slog.Logger) any {
+	var source api.RestAPI
+	switch cfg := stored.SourceConfiguration.(type) {
+	case api.RestAPI:
+		source = cfg
+	case *api.RestAPI:
+		if cfg == nil {
+			return buildResourceResponseFromStored(stored.SourceConfiguration, stored)
+		}
+		source = *cfg
+	default:
+		return buildResourceResponseFromStored(stored.SourceConfiguration, stored)
+	}
+
+	resolved, warnings := h.restAPIService.ResolveMtlsAuthForResponse(source)
+	if rendered, ok := renderedRestAPI(stored); ok {
+		warnings = append(warnings, h.restAPIService.ResolveHostnameScopeWarnings(rendered)...)
+	}
+	warnings = append(warnings, h.restAPIService.ResolveUpstreamTLSWarnings(resolved)...)
+	for _, w := range warnings {
+		log.Warn("Deployment warning",
+			slog.String("code", w.Code),
+			slog.String("field", w.Field),
+			slog.String("message", w.Message),
+			slog.String("api", stored.UUID))
+	}
+	return buildRestAPIResourceResponseWithWarnings(resolved, stored, warnings)
+}
 
 // mcpProxyBody re-materialises a stored MCP proxy into the typed k8s-shaped
 // response body GET /mcp-proxies/{id} returns.
