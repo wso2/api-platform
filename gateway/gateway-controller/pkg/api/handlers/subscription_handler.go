@@ -400,24 +400,34 @@ func (s *APIServer) validateSubscriptionPlanForAPI(w http.ResponseWriter, planID
 }
 
 // bindSubscriptionUpdateBody binds the update body into req and reports whether subscriptionPlanId
-// was present in it. The generated *string can't tell an omitted field from an explicit null, so the
-// body is also bound into a generic map to check for the key.
+// was present in it.
 func (s *APIServer) bindSubscriptionUpdateBody(r *http.Request, req *api.SubscriptionUpdateRequest) (bool, error) {
-	body, err := io.ReadAll(r.Body)
+	fields, err := s.bindRequestBodyWithFields(r, req)
 	if err != nil {
-		return false, err
-	}
-	r.Body = io.NopCloser(bytes.NewReader(body))
-	if err := s.bindRequestBody(r, req); err != nil {
-		return false, err
-	}
-	var fields map[string]interface{}
-	r.Body = io.NopCloser(bytes.NewReader(body))
-	if err := s.bindRequestBody(r, &fields); err != nil {
 		return false, err
 	}
 	_, present := fields["subscriptionPlanId"]
 	return present, nil
+}
+
+// bindRequestBodyWithFields binds the body into dst and also returns the body's top-level fields.
+// The generated pointer fields can't tell an omitted field from an explicit null, so partial-update
+// handlers use the returned map to check whether a key was sent.
+func (s *APIServer) bindRequestBodyWithFields(r *http.Request, dst interface{}) (map[string]interface{}, error) {
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		return nil, err
+	}
+	r.Body = io.NopCloser(bytes.NewReader(body))
+	if err := s.bindRequestBody(r, dst); err != nil {
+		return nil, err
+	}
+	var fields map[string]interface{}
+	r.Body = io.NopCloser(bytes.NewReader(body))
+	if err := s.bindRequestBody(r, &fields); err != nil {
+		return nil, err
+	}
+	return fields, nil
 }
 
 // writeSubscriptionBodyError writes 413 for an oversized body and 400 for any other unreadable body.

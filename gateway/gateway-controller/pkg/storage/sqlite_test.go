@@ -1301,6 +1301,80 @@ func TestSQLiteStorage_SaveSubscription_DuplicateIDIsConflict(t *testing.T) {
 	assert.Assert(t, IsConflictError(err), "expected conflict, got %v", err)
 }
 
+func TestSQLiteStorage_UpdateSubscriptionPlan_RenameToTakenNameIsConflict(t *testing.T) {
+	storage := setupTestStorage(t)
+	defer storage.db.Close()
+
+	assert.NilError(t, storage.SaveSubscriptionPlan(&models.SubscriptionPlan{
+		ID: "plan-gold", PlanName: "Gold", Status: models.SubscriptionPlanStatusActive,
+	}))
+	silver := &models.SubscriptionPlan{ID: "plan-silver", PlanName: "Silver", Status: models.SubscriptionPlanStatusActive}
+	assert.NilError(t, storage.SaveSubscriptionPlan(silver))
+
+	silver.PlanName = "Gold"
+	err := storage.UpdateSubscriptionPlan(silver)
+	assert.Assert(t, IsConflictError(err), "expected conflict, got %v", err)
+
+	stored, err := storage.GetSubscriptionPlanByID("plan-silver", "")
+	assert.NilError(t, err)
+	assert.Equal(t, stored.PlanName, "Silver")
+}
+
+func TestSQLiteStorage_UpdateSubscriptionPlan_ClearsOptionalFields(t *testing.T) {
+	storage := setupTestStorage(t)
+	defer storage.db.Close()
+
+	billing, unit, count := "COMMERCIAL", "Min", 100
+	expiry := time.Date(2027, 1, 1, 0, 0, 0, 0, time.UTC)
+	plan := &models.SubscriptionPlan{
+		ID: "plan-gold", PlanName: "Gold", BillingPlan: &billing, ThrottleLimitCount: &count,
+		ThrottleLimitUnit: &unit, ExpiryTime: &expiry, Status: models.SubscriptionPlanStatusActive,
+	}
+	assert.NilError(t, storage.SaveSubscriptionPlan(plan))
+
+	plan.BillingPlan, plan.ThrottleLimitCount, plan.ThrottleLimitUnit, plan.ExpiryTime = nil, nil, nil, nil
+	assert.NilError(t, storage.UpdateSubscriptionPlan(plan))
+
+	stored, err := storage.GetSubscriptionPlanByID("plan-gold", "")
+	assert.NilError(t, err)
+	assert.Assert(t, stored.BillingPlan == nil || *stored.BillingPlan == "")
+	assert.Assert(t, stored.ThrottleLimitCount == nil)
+	assert.Assert(t, stored.ThrottleLimitUnit == nil || *stored.ThrottleLimitUnit == "")
+	assert.Assert(t, stored.ExpiryTime == nil)
+}
+
+func TestSQLiteStorage_DeleteSubscriptionPlan_InUseIsConflict(t *testing.T) {
+	storage := setupTestStorage(t)
+	defer storage.db.Close()
+
+	assert.NilError(t, storage.SaveSubscriptionPlan(&models.SubscriptionPlan{
+		ID: "plan-gold", PlanName: "Gold", Status: models.SubscriptionPlanStatusActive,
+	}))
+	sub := createTestSubscription()
+	planID := "plan-gold"
+	sub.SubscriptionPlanID = &planID
+	assert.NilError(t, storage.SaveSubscription(sub))
+
+	err := storage.DeleteSubscriptionPlan("plan-gold", "")
+	assert.Assert(t, IsConflictError(err), "expected conflict, got %v", err)
+	_, err = storage.GetSubscriptionPlanByID("plan-gold", "")
+	assert.NilError(t, err)
+
+	// Once no subscription uses the plan, it can be deleted.
+	assert.NilError(t, storage.DeleteSubscription(sub.ID, ""))
+	assert.NilError(t, storage.DeleteSubscriptionPlan("plan-gold", ""))
+	_, err = storage.GetSubscriptionPlanByID("plan-gold", "")
+	assert.Assert(t, IsNotFoundError(err), "expected not found, got %v", err)
+}
+
+func TestSQLiteStorage_DeleteSubscriptionPlan_NotFound(t *testing.T) {
+	storage := setupTestStorage(t)
+	defer storage.db.Close()
+
+	err := storage.DeleteSubscriptionPlan("missing", "")
+	assert.Assert(t, IsNotFoundError(err), "expected not found, got %v", err)
+}
+
 func TestSQLiteStorage_ReplaceApplicationAPIKeyMappings_Success(t *testing.T) {
 	storage := setupTestStorage(t)
 	defer storage.db.Close()

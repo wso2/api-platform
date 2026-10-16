@@ -1132,8 +1132,20 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SubscriptionPlanResponse"
+        "400":
+          description: Bad request (invalid field values, or throttle limits not set or cleared together)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "404":
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Conflict - another subscription plan already uses this planName
           content:
             application/json:
               schema:
@@ -1146,7 +1158,7 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
     delete:
       summary: Delete a subscription plan
-      description: Delete a subscription plan from the Gateway.
+      description: Delete a subscription plan from the Gateway. A plan that any subscription still uses cannot be deleted.
       operationId: deleteSubscriptionPlan
       x-basicauth-roles: [admin]
       tags:
@@ -1162,6 +1174,12 @@ paths:
           description: Subscription plan deleted
         "404":
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Conflict - the subscription plan is still used by one or more subscriptions
           content:
             application/json:
               schema:
@@ -4948,21 +4966,37 @@ components:
           example: ACTIVE
     SubscriptionPlanUpdateRequest:
       type: object
+      description: |
+        Partial update. Fields that are omitted are left unchanged.
       properties:
         planName:
           type: string
+          description: |
+            New plan name. Must not be empty or already used by another plan. APIs refer to plans
+            by name, so an API that lists the old name no longer accepts this plan after a rename.
         billingPlan:
           type: string
+          nullable: true
+          description: Send an explicit null (or an empty string) to remove the billing plan.
         stopOnQuotaReach:
           type: boolean
         throttleLimitCount:
           type: integer
+          nullable: true
+          description: |
+            Set together with throttleLimitUnit. Send an explicit null for both fields to remove the
+            limit, which makes the plan unlimited.
         throttleLimitUnit:
           type: string
+          nullable: true
           enum: [Min, Hour, Day, Month]
+          description: |
+            Set together with throttleLimitCount. Send an explicit null for both fields to remove the limit.
         expiryTime:
           type: string
           format: date-time
+          nullable: true
+          description: Send an explicit null to remove the expiry time.
         status:
           type: string
           enum: [ACTIVE, INACTIVE]

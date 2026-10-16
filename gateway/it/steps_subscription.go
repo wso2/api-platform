@@ -136,6 +136,15 @@ func RegisterSubscriptionSteps(ctx *godog.ScenarioContext, state *TestState, htt
 		return nil
 	})
 
+	ctx.Step(`^I create a subscription plan via the management API with body:$`, func(body *godog.DocString) error {
+		httpSteps.SetHeader("Content-Type", "application/json")
+		if err := httpSteps.SendPOSTToService("gateway-controller", "/subscription-plans", body); err != nil {
+			return err
+		}
+		time.Sleep(policyPropagationDelay)
+		return nil
+	})
+
 	ctx.Step(`^I update the subscription plan with stored id "([^"]*)" with body:$`, func(planKey string, body *godog.DocString) error {
 		planID, ok := state.GetContextString(planKey)
 		if !ok {

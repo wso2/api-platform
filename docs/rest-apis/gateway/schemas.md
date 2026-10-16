@@ -1103,16 +1103,18 @@ Details of an API key
 
 ```
 
+Partial update. Fields that are omitted are left unchanged.
+
 #### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|planName|string|false|none|none|
-|billingPlan|string|false|none|none|
+|planName|string|false|none|New plan name. Must not be empty or already used by another plan. APIs refer to plans<br>by name, so an API that lists the old name no longer accepts this plan after a rename.|
+|billingPlan|string¦null|false|none|Send an explicit null (or an empty string) to remove the billing plan.|
 |stopOnQuotaReach|boolean|false|none|none|
-|throttleLimitCount|integer|false|none|none|
-|throttleLimitUnit|string|false|none|none|
-|expiryTime|string(date-time)|false|none|none|
+|throttleLimitCount|integer¦null|false|none|Set together with throttleLimitUnit. Send an explicit null for both fields to remove the<br>limit, which makes the plan unlimited.|
+|throttleLimitUnit|string¦null|false|none|Set together with throttleLimitCount. Send an explicit null for both fields to remove the limit.|
+|expiryTime|string(date-time)¦null|false|none|Send an explicit null to remove the expiry time.|
 |status|string|false|none|none|
 
 ##### Enumerated Values
