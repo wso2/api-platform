@@ -1,0 +1,10 @@
+# Manual dependencies for the gateway-runtime component build.
+# The runtime image is built FROM envoyproxy/envoy at the ENVOY_VERSION pinned
+# in gateway/gateway-runtime/Dockerfile; the Envoy binary is not visible to a
+# source scan, so it is declared here as a referenced git dependency. Keep the
+# version in step with the Dockerfile. Passed with --fossa-deps-file by
+# .github/workflows/fossa-component-scan.yml for gateway-runtime only.
+referenced-dependencies:
+  - type: git
+    name: https://github.com/envoyproxy/envoy
+    version: v1.39.0

@@ -1,0 +1,9 @@
+# FOSSA scope for the platform-api component build (shipped in both the
+# API Portal and the AI Workspace distributions, scanned once per build).
+# `common/` and `httpkit/` enter through the replace directives with
+# `--experimental-analyze-path-dependencies`. Used by
+# .github/workflows/fossa-component-scan.yml.
+version: 3
+paths:
+  only:
+    - platform-api

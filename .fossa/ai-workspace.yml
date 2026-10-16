@@ -1,0 +1,14 @@
+# FOSSA scope for the ai-workspace component build.
+# The directory holds both package-lock.json and pnpm-lock.yaml; the image is
+# built with `npm ci` from package-lock.json, so this file selects targets by
+# type (npm, and the Go BFF) instead of by path, which keeps the pnpm lockfile
+# out of the analysis. `common/` and `httpkit/` enter the BFF graph through
+# the replace directives with `--experimental-analyze-path-dependencies`.
+# Used by .github/workflows/fossa-component-scan.yml.
+version: 3
+targets:
+  only:
+    - type: npm
+      path: portals/ai-workspace
+    - type: gomod
+      path: portals/ai-workspace/bff

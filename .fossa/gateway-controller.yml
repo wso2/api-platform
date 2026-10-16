@@ -1,0 +1,9 @@
+# FOSSA scope for the gateway-controller component build.
+# Selects the controller's Go module only. The root `common/` and `httpkit/`
+# modules enter the graph through the go.mod replace directives when
+# `fossa analyze` runs with `--experimental-analyze-path-dependencies`, so
+# they are not listed here. Used by .github/workflows/fossa-component-scan.yml.
+version: 3
+paths:
+  only:
+    - gateway/gateway-controller

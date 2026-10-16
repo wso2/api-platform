@@ -1,0 +1,164 @@
+# Uploads a FOSSA source analysis for one component build (one Jenkins tag).
+#
+# Runs on the component tags Jenkins pushes (<component>-<x.y.z.N>).
+# Configuration (.fossa/, scripts/fossa/) is taken from the head of the
+# support branch; the source is the tag. Manual runs are not available
+# because the repository's default branch carries no workflows. Builds
+# tagged before this file existed are scanned with scripts/fossa/backfill.sh
+# from a machine holding a push-only key. See security-internal-tools:
+# security-portal/docs/api-platform-fossa-onboarding.md, section 5.1.
+#
+# FOSSA project id: wso2apip-<component>-<x.y.z>, where x.y.z is the
+# component's own version line read from its VERSION file at the tag (not
+# from the tag name: platform-api's line is 0.16.0 while the support line is
+# 1.0.0). Revision: the Jenkins build version. Branch: the support branch.
+name: fossa-component-scan
+
+on:
+  push:
+    tags:
+      - 'gateway-controller-[0-9]*'
+      - 'gateway-runtime-[0-9]*'
+      - 'platform-api-[0-9]*'
+      - 'api-portal-[0-9]*'
+      - 'ai-workspace-[0-9]*'
+
+permissions:
+  contents: read
+
+env:
+  FOSSA_CLI_VERSION: 3.20.2
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      # Runs before any checkout, so everything here is inline and needs only
+      # the event payload, the GitHub API and the tag name.
+      - name: Resolve component, build version and support branch
+        id: meta
+        env:
+          REF_NAME: ${{ github.ref_name }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          tag="$REF_NAME"                                     # <component>-<x.y.z.N>
+          component="${tag%%-[0-9]*}"
+          build_version="${tag#"$component"-}"
+          case "$component" in
+            gateway-controller) gomod_dir=gateway/gateway-controller;        version_file=gateway/VERSION;            branch_glob='support-*-gw-full' ;;
+            gateway-runtime)    gomod_dir=gateway/gateway-runtime/policy-engine; version_file=gateway/VERSION;        branch_glob='support-*-gw-full' ;;
+            platform-api)       gomod_dir=platform-api;                      version_file=platform-api/VERSION;       branch_glob='support-*-cp-full' ;;
+            api-portal)         gomod_dir='';                                version_file=portals/api-portal/VERSION; branch_glob='support-*-cp-full' ;;
+            ai-workspace)       gomod_dir=portals/ai-workspace/bff;          version_file=portals/ai-workspace/VERSION; branch_glob='support-*-cp-full' ;;
+            *) echo "::error::unknown component '$component' (tag $tag)"; exit 1 ;;
+          esac
+          [[ "$build_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] \
+            || { echo "::error::build version '$build_version' is not x.y.z.N (tag $tag)"; exit 1; }
+
+          # Support branch: the support-*-{gw,cp}-full branch that contains the
+          # tagged commit, found with the compare API (no checkout needed).
+          # "behind" or "identical" means the tag commit is an ancestor of the
+          # branch head. If several match (a line was branched again), the
+          # highest version wins and a warning is emitted; if none matches
+          # the run fails and the build is scanned with scripts/fossa/backfill.sh.
+          sha="$(gh api "repos/$GH_REPO/git/ref/tags/$tag" --jq '.object.sha')"
+          otype="$(gh api "repos/$GH_REPO/git/ref/tags/$tag" --jq '.object.type')"
+          [ "$otype" != tag ] || sha="$(gh api "repos/$GH_REPO/git/tags/$sha" --jq '.object.sha')"
+          candidates="$(gh api --paginate "repos/$GH_REPO/branches?per_page=100" --jq '.[].name' \
+            | grep -E "^${branch_glob//\*/.+}$" | sort -V -r || true)"
+          support_branch=''; matches=''
+          for b in $candidates; do
+            status="$(gh api "repos/$GH_REPO/compare/$b...$sha" --jq '.status' 2>/dev/null || echo unknown)"
+            if [ "$status" = behind ] || [ "$status" = identical ]; then
+              matches="$matches $b"; [ -n "$support_branch" ] || support_branch="$b"
+            fi
+          done
+          [ -n "$support_branch" ] \
+            || { echo "::error::no $branch_glob branch contains $tag ($sha); scan it with scripts/fossa/backfill.sh"; exit 1; }
+          [ "$(echo $matches | wc -w)" -eq 1 ] \
+            || echo "::warning::$tag is on several support branches ($matches); using $support_branch"
+          {
+            echo "component=$component"
+            echo "build_version=$build_version"
+            echo "tag=$tag"
+            echo "support_branch=$support_branch"
+            echo "gomod_dir=$gomod_dir"
+            echo "version_file=$version_file"
+          } >> "$GITHUB_OUTPUT"
+          echo "component=$component build_version=$build_version tag=$tag support_branch=$support_branch"
+
+      - name: Check out configuration (support branch head)
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ steps.meta.outputs.support_branch }}
+          path: tools
+          sparse-checkout: |
+            .fossa
+            scripts/fossa
+          persist-credentials: false
+
+      - name: Check out source (the component build tag)
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: refs/tags/${{ steps.meta.outputs.tag }}
+          path: src
+          persist-credentials: false
+
+      # The project id carries the component's own version line, which is in
+      # the tree, so it can only be read after the source checkout.
+      - name: Resolve version line
+        id: line
+        env:
+          VERSION_FILE: ${{ steps.meta.outputs.version_file }}
+          BUILD_VERSION: ${{ steps.meta.outputs.build_version }}
+        run: |
+          set -euo pipefail
+          raw="$(tr -d '[:space:]' < "src/$VERSION_FILE")"
+          line="${raw%%-*}"
+          [[ "$line" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::$VERSION_FILE holds '$raw', expected x.y.z"; exit 1; }
+          [[ "$BUILD_VERSION" == "$line".* ]] || { echo "::error::build version $BUILD_VERSION is not on line $line ($VERSION_FILE)"; exit 1; }
+          echo "line=$line" >> "$GITHUB_OUTPUT"
+          echo "line=$line"
+
+      - name: Set up Go
+        if: steps.meta.outputs.gomod_dir != ''
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: src/${{ steps.meta.outputs.gomod_dir }}/go.mod
+          cache: false
+
+      - name: Install fossa-cli
+        run: tools/scripts/fossa/install-cli.sh "$FOSSA_CLI_VERSION"
+
+      - name: Prepare component source
+        env:
+          COMPONENT: ${{ steps.meta.outputs.component }}
+        run: |
+          set -euo pipefail
+          script="tools/scripts/fossa/prepare-$COMPONENT.sh"
+          if [ -x "$script" ]; then "$script" src; else echo "no preparation step for $COMPONENT"; fi
+
+      - name: Analyze
+        working-directory: src
+        env:
+          FOSSA_API_KEY: ${{ secrets.FOSSA_PUSH_ONLY_API_KEY }}
+          COMPONENT: ${{ steps.meta.outputs.component }}
+          LINE: ${{ steps.line.outputs.line }}
+          BUILD_VERSION: ${{ steps.meta.outputs.build_version }}
+          SUPPORT_BRANCH: ${{ steps.meta.outputs.support_branch }}
+          # The images are built without go.work (contexts are copied in, or
+          # GOWORK=off is set); the scan must resolve each module on its own.
+          GOWORK: off
+        run: |
+          set -euo pipefail
+          args=(--config "$GITHUB_WORKSPACE/tools/.fossa/$COMPONENT.yml")
+          deps="$GITHUB_WORKSPACE/tools/.fossa/$COMPONENT-deps.yml"
+          [ ! -f "$deps" ] || args+=(--fossa-deps-file "$deps")
+          fossa analyze "${args[@]}" \
+            --project "wso2apip-$COMPONENT-$LINE" \
+            --revision "$BUILD_VERSION" \
+            --branch "$SUPPORT_BRANCH" \
+            --experimental-analyze-path-dependencies

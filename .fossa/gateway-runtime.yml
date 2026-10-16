@@ -1,0 +1,11 @@
+# FOSSA scope for the gateway-runtime component build.
+# Selects the policy-engine Go module and the python-executor requirements.
+# scripts/fossa/prepare-gateway-runtime.sh must run first so policy-engine's
+# go.mod carries the policy modules the gateway-builder resolves at image
+# build time. `common/` enters through the replace directive with
+# `--experimental-analyze-path-dependencies`. Envoy is declared in
+# gateway-runtime-deps.yml. Used by .github/workflows/fossa-component-scan.yml.
+version: 3
+paths:
+  only:
+    - gateway/gateway-runtime

@@ -1,0 +1,14 @@
+# FOSSA scope for the api-portal component build.
+# The root package-lock.json gives the runtime graph (`npm ci --omit=dev`);
+# libs/async-api-viewer and libs/graphql-schema-viewer have their own
+# lockfiles and ship as prebuilt bundles, so they are listed explicitly.
+# it/ holds integration-test packages and is excluded. Used by
+# .github/workflows/fossa-component-scan.yml.
+version: 3
+paths:
+  only:
+    - portals/api-portal
+    - portals/api-portal/libs/async-api-viewer
+    - portals/api-portal/libs/graphql-schema-viewer
+  exclude:
+    - portals/api-portal/it
