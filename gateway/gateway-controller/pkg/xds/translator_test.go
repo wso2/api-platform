@@ -2077,7 +2077,15 @@ func TestTranslator_TranslateConfigs_GatewayHealthRoutes(t *testing.T) {
 		assert.Less(t, healthyIdx, catchAllIdx,
 			"gateway-healthy must be evaluated before the Prefix:\"/\" catch-all or it will be shadowed")
 
+		// Health requests go through the policy engine; only the catch-all skips it.
+		assert.NotContains(t, readyRoute.GetTypedPerFilterConfig(), constants.ExtProcFilterName,
+			"gateway-ready must not bypass the policy engine")
+		assert.NotContains(t, healthyRoute.GetTypedPerFilterConfig(), constants.ExtProcFilterName,
+			"gateway-healthy must not bypass the policy engine")
+
 		catchAllRoute := vh.Routes[catchAllIdx]
+		assert.Contains(t, catchAllRoute.GetTypedPerFilterConfig(), constants.ExtProcFilterName,
+			"the no-api-found catch-all still bypasses the policy engine")
 		assert.Nil(t, catchAllRoute.GetTracing(),
 			"tracing suppression must be scoped to the health routes only, not the no-api-found catch-all")
 	}
