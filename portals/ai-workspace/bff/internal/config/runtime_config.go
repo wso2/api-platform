@@ -60,6 +60,7 @@ var browserSafeKeys = []string{
 
 	// External links and SPA-only endpoints
 	"api_portal_url",
+	"billing_console_url",
 	"api_policy_hub",
 	"policy_hub_web_url",
 	"moesif_web_url",
