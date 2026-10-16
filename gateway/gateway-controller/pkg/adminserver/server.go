@@ -31,11 +31,14 @@ type apiServer interface {
 type Server struct {
 	cfg       *config.AdminServerConfig
 	apiServer apiServer
+	health    http.Handler
 	httpSrv   *http.Server
 	logger    *slog.Logger
 }
 
 // NewServer creates a new admin HTTP server.
+//
+// health serves the public health probe on both the versioned and the legacy path.
 //
 // authMiddleware is the protection chain applied to every admin endpoint except
 // the public health probe. In production it composes the shared authentication
@@ -44,10 +47,12 @@ type Server struct {
 // A nil authMiddleware disables that protection entirely and is intended only for
 // tests that exercise the handlers or IP allowlist in isolation — production
 // callers must always pass a configured chain.
-func NewServer(cfg *config.AdminServerConfig, apiServer apiServer, authMiddleware func(http.Handler) http.Handler, logger *slog.Logger) *Server {
+func NewServer(cfg *config.AdminServerConfig, apiServer apiServer, health http.Handler,
+	authMiddleware func(http.Handler) http.Handler, logger *slog.Logger) *Server {
 	s := &Server{
 		cfg:       cfg,
 		apiServer: apiServer,
+		health:    health,
 		logger:    logger,
 	}
 
@@ -158,16 +163,10 @@ func (s *Server) GetXDSSyncStatus(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(resp)
 }
 
-// GetHealth implements adminapi.ServerInterface.
+// GetHealth implements adminapi.ServerInterface. It reports whether the controller and
+// its dependencies are usable: 200 when healthy, 503 otherwise.
 func (s *Server) GetHealth(w http.ResponseWriter, r *http.Request) {
-	resp := map[string]string{
-		"status":    "healthy",
-		"timestamp": time.Now().UTC().Format(time.RFC3339),
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	_ = json.NewEncoder(w).Encode(resp)
+	s.health.ServeHTTP(w, r)
 }
 
 // createSelectiveIPWhitelistMiddleware creates a middleware that applies IP whitelist

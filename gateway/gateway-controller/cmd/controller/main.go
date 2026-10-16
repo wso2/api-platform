@@ -155,6 +155,10 @@ func main() {
 		slog.Bool("skip_invalid_deployments_on_startup", cfg.Controller.Server.SkipInvalidDeploymentsOnStartup),
 	)
 
+	// The health checker answers the admin health endpoints; its log file, if any, is
+	// closed on shutdown.
+	healthChecker, healthLog := newHealthChecker(cfg, log)
+
 	if !cfg.Controller.Auth.Basic.Enabled && !cfg.Controller.Auth.IDP.Enabled {
 		log.Warn("No authentication configured: both basic auth and IDP are disabled. Gateway Controller API will allow all requests without authentication")
 	}
@@ -198,6 +202,7 @@ func main() {
 		os.Exit(1)
 	}
 	defer db.Close()
+	healthChecker.Register("database", newDatabaseCheck(db.GetDB()))
 
 	// Initialize EventHub for multi-replica sync (requires persistent storage)
 	var eventHubInstance eventhub.EventHub
@@ -827,7 +832,7 @@ func main() {
 		adminProtect := func(next http.Handler) http.Handler {
 			return authMiddleWare(adminAuthz(next))
 		}
-		controllerAdminServer = adminserver.NewServer(&cfg.Controller.AdminServer, apiServer, adminProtect, log)
+		controllerAdminServer = adminserver.NewServer(&cfg.Controller.AdminServer, apiServer, healthChecker.Handler(), adminProtect, log)
 		go func() {
 			if err := controllerAdminServer.Start(); err != nil {
 				log.Error("Controller admin server failed", slog.Any("error", err))
@@ -990,6 +995,8 @@ func main() {
 			log.Error("Failed to stop controller admin server", slog.Any("error", err))
 		}
 	}
+
+	_ = healthLog.Close()
 
 	log.Info("Gateway-Controller stopped")
 }
