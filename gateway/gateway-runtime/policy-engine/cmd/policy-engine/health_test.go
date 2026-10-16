@@ -31,6 +31,11 @@ import (
 
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/config"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/health"
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/kernel"
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/metrics"
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/registry"
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/resolver"
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/xdsclient"
 )
 
 func healthTestConfig(t *testing.T) *config.Config {
@@ -53,7 +58,7 @@ func healthTestConfig(t *testing.T) *config.Config {
 func TestBuildHealthCheckers(t *testing.T) {
 	cfg := healthTestConfig(t)
 
-	liveness, readiness, closer := buildHealthCheckers(cfg, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	liveness, readiness, closer := buildHealthCheckers(cfg, slog.New(slog.NewTextHandler(io.Discard, nil)), nil)
 	defer closer.Close()
 
 	live := liveness.Evaluate()
@@ -65,6 +70,7 @@ func TestBuildHealthCheckers(t *testing.T) {
 	ready := readiness.Evaluate()
 	assert.Equal(t, "ready", ready.Status)
 	assert.Equal(t, runtimeComponent, ready.Component)
+	assert.NotContains(t, ready.Checks, "xds_connection", "no configuration link in file mode")
 
 	body, err := health.RenderBody(live)
 	require.NoError(t, err)
@@ -72,4 +78,21 @@ func TestBuildHealthCheckers(t *testing.T) {
 
 	_, err = os.Stat(cfg.PolicyEngine.Health.LogFile)
 	assert.NoError(t, err, "the health log file is created when configured")
+}
+
+func TestBuildHealthCheckersWithConfigurationLink(t *testing.T) {
+	metrics.Init()
+	cfg := healthTestConfig(t)
+	client, err := xdsclient.NewClient(xdsclient.NewDefaultConfig("localhost:18000"), kernel.NewKernel(),
+		registry.GetRegistry(), resolver.DefaultRegistry())
+	require.NoError(t, err)
+
+	liveness, readiness, closer := buildHealthCheckers(cfg, slog.New(slog.NewTextHandler(io.Discard, nil)), client)
+	defer closer.Close()
+
+	ready := readiness.Evaluate()
+	require.Contains(t, ready.Checks, "xds_connection")
+	assert.Equal(t, health.StatusDown, ready.Checks["xds_connection"].Status)
+	assert.Equal(t, "no configuration received yet", ready.Checks["xds_connection"].Error)
+	assert.NotContains(t, liveness.Evaluate().Checks, "xds_connection", "liveness never depends on the controller")
 }

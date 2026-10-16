@@ -24,6 +24,7 @@ import (
 
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/config"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/health"
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/xdsclient"
 )
 
 // runtimeComponent names the gateway runtime in every health answer.
@@ -32,8 +33,10 @@ const runtimeComponent = "gateway-runtime"
 // buildHealthCheckers builds the checkers behind the gateway's health routes, and a
 // closer for the health log file, if one is configured. Liveness has no checks of its
 // own: the policy engine answering at all is what it proves. Readiness adds the
-// dependencies a runtime needs to serve traffic correctly.
-func buildHealthCheckers(cfg *config.Config, logger *slog.Logger) (liveness, readiness *health.Checker, closer io.Closer) {
+// dependencies a runtime needs to serve traffic correctly: the configuration link to
+// the controller (when configuration comes over xDS; xdsClient is nil otherwise),
+// tolerated down for the configured grace window.
+func buildHealthCheckers(cfg *config.Config, logger *slog.Logger, xdsClient *xdsclient.Client) (liveness, readiness *health.Checker, closer io.Closer) {
 	hc := cfg.PolicyEngine.Health
 	healthLogger, closer := health.NewLogger(logger,
 		func(w io.Writer) slog.Handler { return newLogHandler(cfg, w) },
@@ -50,5 +53,10 @@ func buildHealthCheckers(cfg *config.Config, logger *slog.Logger) (liveness, rea
 			BackoffMax:     hc.BackoffMax,
 		}
 	}
-	return health.NewChecker(options("healthy")), health.NewChecker(options("ready")), closer
+	liveness = health.NewChecker(options("healthy"))
+	readiness = health.NewChecker(options("ready"))
+	if xdsClient != nil {
+		readiness.Register("xds_connection", xdsClient.ConnectionCheck(hc.XDSGrace))
+	}
+	return liveness, readiness, closer
 }

@@ -269,7 +269,7 @@ func main() {
 	// Create and start ext_proc gRPC server
 	// The gateway's health routes reach the policy engine like API traffic and are
 	// answered by these checkers; the health log file, if any, is closed on shutdown.
-	livenessChecker, readinessChecker, healthLog := buildHealthCheckers(cfg, logger)
+	livenessChecker, readinessChecker, healthLog := buildHealthCheckers(cfg, logger, xdsClient)
 	defer healthLog.Close()
 
 	extprocServer := kernel.NewExternalProcessorServer(k, chainExecutor, cfg.TracingConfig, cfg.PolicyEngine.TracingServiceName, cfg.PolicyEngine.RequestBody.MaxDecompressedBytes, cfg.PolicyEngine.ResponseBody.MaxDecompressedBytes, corrStore,
