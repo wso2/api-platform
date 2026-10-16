@@ -22,12 +22,33 @@
 # Checks both Router (Envoy) and Policy Engine return HTTP 200.
 # Used by Docker Compose healthcheck and Kubernetes liveness/readiness probes.
 #
+# With GATEWAY_HEALTH_ROUTE set to "ready" or "healthy", the script instead calls the
+# gateway's own health route (/_gateway-health/ready or /_gateway-health/healthy) on
+# the router, which the policy engine answers with its readiness or liveness result.
+#
 # Exit 0 = healthy, Exit 1 = unhealthy
 
 ROUTER_ADMIN_ENABLED="${ROUTER_ADMIN_ENABLED:-false}"
 ROUTER_ADMIN_PORT="${ROUTER_ADMIN_PORT:-9901}"
 ROUTER_HTTP_PORT="${ROUTER_HTTP_PORT:-8080}"
 POLICY_ENGINE_ADMIN_PORT="${POLICY_ENGINE_ADMIN_PORT:-9002}"
+GATEWAY_HEALTH_ROUTE="${GATEWAY_HEALTH_ROUTE:-}"
+
+if [ -n "${GATEWAY_HEALTH_ROUTE}" ]; then
+  case "${GATEWAY_HEALTH_ROUTE}" in
+    ready|healthy) ;;
+    *)
+      echo "unsupported GATEWAY_HEALTH_ROUTE '${GATEWAY_HEALTH_ROUTE}' (use ready or healthy)"
+      exit 1
+      ;;
+  esac
+  ROUTE_STATUS=$(curl -s -o /dev/null -w '%{http_code}' "http://localhost:${ROUTER_HTTP_PORT}/_gateway-health/${GATEWAY_HEALTH_ROUTE}")
+  if [ "${ROUTE_STATUS}" != "200" ]; then
+    echo "Gateway not ${GATEWAY_HEALTH_ROUTE} (HTTP ${ROUTE_STATUS})"
+    exit 1
+  fi
+  exit 0
+fi
 
 # Check Router (Envoy) readiness.
 # The admin interface (/ready) is disabled by default (see docker-entrypoint.sh /
