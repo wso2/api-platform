@@ -2564,6 +2564,9 @@ func TestTranslator_CreateGRPCAccessLog(t *testing.T) {
 	assert.False(t, evalAccessLogFilter(t, accessLog.Filter, map[string]string{
 		":path": constants.GatewayHealthyPath,
 	}), "gateway health-check path is suppressed even with no ignore_path_prefixes configured")
+	assert.False(t, evalAccessLogFilter(t, accessLog.Filter, map[string]string{
+		":path": constants.GatewayReadyPath,
+	}), "the readiness path is suppressed too, so probes never reach analytics")
 	assert.True(t, evalAccessLogFilter(t, accessLog.Filter, map[string]string{
 		":path": "/orders",
 	}), "non-health path is still logged")
