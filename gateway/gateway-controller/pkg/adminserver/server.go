@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/pprof"
+	"sync/atomic"
 	"time"
 
 	adminapi "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/admin"
@@ -27,18 +28,28 @@ type apiServer interface {
 	GetXDSSyncStatusResponse() adminapi.XDSSyncStatusResponse
 }
 
+// apiServerRef holds the API server so it can be swapped in atomically.
+type apiServerRef struct {
+	apiServer
+}
+
 // Server is the controller admin HTTP server for debug endpoints.
 type Server struct {
-	cfg       *config.AdminServerConfig
-	apiServer apiServer
-	health    http.Handler
-	httpSrv   *http.Server
-	logger    *slog.Logger
+	cfg *config.AdminServerConfig
+	// api serves config_dump and xds_sync_status. It is set by SetAPIServer once the
+	// controller has finished starting; until then those endpoints answer 503, while
+	// the health probe is already served.
+	api     atomic.Pointer[apiServerRef]
+	health  http.Handler
+	httpSrv *http.Server
+	logger  *slog.Logger
 }
 
 // NewServer creates a new admin HTTP server.
 //
 // health serves the public health probe on both the versioned and the legacy path.
+// The server can be started before the rest of the controller, so health probes get
+// an answer during startup; call SetAPIServer once the debug endpoints can be served.
 //
 // authMiddleware is the protection chain applied to every admin endpoint except
 // the public health probe. In production it composes the shared authentication
@@ -47,13 +58,12 @@ type Server struct {
 // A nil authMiddleware disables that protection entirely and is intended only for
 // tests that exercise the handlers or IP allowlist in isolation — production
 // callers must always pass a configured chain.
-func NewServer(cfg *config.AdminServerConfig, apiServer apiServer, health http.Handler,
+func NewServer(cfg *config.AdminServerConfig, health http.Handler,
 	authMiddleware func(http.Handler) http.Handler, logger *slog.Logger) *Server {
 	s := &Server{
-		cfg:       cfg,
-		apiServer: apiServer,
-		health:    health,
-		logger:    logger,
+		cfg:    cfg,
+		health: health,
+		logger: logger,
 	}
 
 	// Authentication is the primary gate; the IP allowlist is defense-in-depth.
@@ -119,6 +129,22 @@ func NewServer(cfg *config.AdminServerConfig, apiServer apiServer, health http.H
 	return s
 }
 
+// SetAPIServer makes the config_dump and xds_sync_status endpoints available.
+func (s *Server) SetAPIServer(api apiServer) {
+	s.api.Store(&apiServerRef{api})
+}
+
+// apiServerOrUnavailable returns the API server, or answers 503 and returns nil while
+// the controller is still starting.
+func (s *Server) apiServerOrUnavailable(w http.ResponseWriter) apiServer {
+	ref := s.api.Load()
+	if ref == nil {
+		http.Error(w, "Service unavailable: the gateway controller is starting", http.StatusServiceUnavailable)
+		return nil
+	}
+	return ref.apiServer
+}
+
 // Start starts the admin HTTP server in a blocking manner.
 func (s *Server) Start() error {
 	s.logger.Info("Starting controller admin HTTP server",
@@ -143,7 +169,11 @@ func (s *Server) GetConfigDump(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	body, err := s.apiServer.ConfigDumpJSON(s.logger)
+	api := s.apiServerOrUnavailable(w)
+	if api == nil {
+		return
+	}
+	body, err := api.ConfigDumpJSON(s.logger)
 	if err != nil {
 		http.Error(w, "Failed to retrieve configuration dump", http.StatusInternalServerError)
 		return
@@ -156,7 +186,11 @@ func (s *Server) GetConfigDump(w http.ResponseWriter, r *http.Request) {
 
 // GetXDSSyncStatus implements adminapi.ServerInterface.
 func (s *Server) GetXDSSyncStatus(w http.ResponseWriter, r *http.Request) {
-	resp := s.apiServer.GetXDSSyncStatusResponse()
+	api := s.apiServerOrUnavailable(w)
+	if api == nil {
+		return
+	}
+	resp := api.GetXDSSyncStatusResponse()
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)

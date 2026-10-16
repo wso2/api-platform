@@ -9,14 +9,12 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"runtime"
 	"strings"
 	"syscall"
 	"time"
 
 	"github.com/wso2/api-platform/common/eventhub"
 	"github.com/wso2/api-platform/common/webhooksecret"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/adminserver"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/apikeyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/encryption"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/encryption/aesgcm"
@@ -159,6 +157,11 @@ func main() {
 	// closed on shutdown.
 	healthChecker, healthLog := newHealthChecker(cfg, log)
 
+	// Shutdown signals are caught from here on, so one arriving while startup waits for
+	// the database stops the controller cleanly.
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+
 	if !cfg.Controller.Auth.Basic.Enabled && !cfg.Controller.Auth.IDP.Enabled {
 		log.Warn("No authentication configured: both basic auth and IDP are disabled. Gateway Controller API will allow all requests without authentication")
 	}
@@ -186,9 +189,10 @@ func main() {
 		}
 	}
 
-	// Initialize storage based on type
+	// Initialize storage based on type. A network database is not connected to here;
+	// startup waits for it below, while health is already served.
 	var db storage.Storage
-	db, err = storage.NewStorage(toBackendConfig(cfg), log)
+	db, err = storage.Open(toBackendConfig(cfg), log)
 	if err != nil {
 		if strings.EqualFold(cfg.Controller.Storage.Type, "sqlite") && errors.Is(err, storage.ErrDatabaseLocked) {
 			log.Error("Database is locked by another process",
@@ -202,7 +206,10 @@ func main() {
 		os.Exit(1)
 	}
 	defer db.Close()
-	healthChecker.Register("database", newDatabaseCheck(db.GetDB()))
+	controllerAdminServer, exitCode, ok := serveHealthWhileWaiting(cfg, log, healthChecker, healthLog, db, authMiddleWare, quit)
+	if !ok {
+		os.Exit(exitCode)
+	}
 
 	// Initialize EventHub for multi-replica sync (requires persistent storage)
 	var eventHubInstance eventhub.EventHub
@@ -809,36 +816,10 @@ func main() {
 	}
 	handler := gohttpkit.Chain(outerMiddlewares...)(mux)
 
-	// Enable block/mutex profiling sampling when pprof is enabled. These are the
-	// only profiles that need explicit rate setup; 0 leaves them disabled. Gated so
-	// the sampling overhead is never paid unless pprof is deliberately turned on.
-	if cfg.Controller.AdminServer.Pprof.Enabled {
-		runtime.SetBlockProfileRate(cfg.Controller.AdminServer.Pprof.BlockProfileRate)
-		runtime.SetMutexProfileFraction(cfg.Controller.AdminServer.Pprof.MutexProfileFraction)
-	}
-
-	// Start controller admin server for debug endpoints if enabled.
-	var controllerAdminServer *adminserver.Server
-	if cfg.Controller.AdminServer.Enabled {
-		// Gate the admin/debug server behind the same authentication middleware as
-		// the management API, plus a deny-by-default admin-role authorization check.
-		// The health probe stays public; every other admin
-		// endpoint (config_dump, xds_sync_status, pprof) requires an authenticated
-		// caller from controller.auth.basic who also holds the "admin" role.
-		// Authentication runs first (outermost) to populate the auth context, then
-		// authorization consumes it — the same ordering the management API uses.
-		adminAuthz := authenticators.AuthorizationMiddleware(
-			commonmodels.AuthConfig{ResourceRoles: adminResourceRoles()}, log)
-		adminProtect := func(next http.Handler) http.Handler {
-			return authMiddleWare(adminAuthz(next))
-		}
-		controllerAdminServer = adminserver.NewServer(&cfg.Controller.AdminServer, apiServer, healthChecker.Handler(), adminProtect, log)
-		go func() {
-			if err := controllerAdminServer.Start(); err != nil {
-				log.Error("Controller admin server failed", slog.Any("error", err))
-				os.Exit(1)
-			}
-		}()
+	// The admin server has been serving health since startup; its debug endpoints
+	// become available now that the controller is running.
+	if controllerAdminServer != nil {
+		controllerAdminServer.SetAPIServer(apiServer)
 	}
 
 	// Start metrics server if enabled
@@ -932,8 +913,6 @@ func main() {
 	}()
 
 	// Wait for interrupt signal
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
 	log.Info("Shutting down Gateway-Controller")

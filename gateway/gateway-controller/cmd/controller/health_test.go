@@ -22,8 +22,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
+	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -35,6 +38,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/health"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 )
 
 // pingFunc adapts a function to the pinger interface.
@@ -190,4 +194,217 @@ func TestDatabaseCheckReportsHungPingAsTimeout(t *testing.T) {
 		assert.Equal(t, "down", b.Checks["database"].Status, "evaluation %d", i)
 		assert.Equal(t, "timed out after 200ms", b.Checks["database"].Error, "evaluation %d", i)
 	}
+}
+
+// fakeWait drives a databaseWait with a scripted health sequence and a fake clock that
+// advances by each requested delay.
+type fakeWait struct {
+	healthy []bool
+	calls   int
+	clock   time.Time
+	delays  []time.Duration
+	logs    strings.Builder
+}
+
+func (f *fakeWait) newWait(wait time.Duration, stop <-chan os.Signal) *databaseWait {
+	f.clock = time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	w := newDatabaseWait(func() health.Result {
+		ok := f.calls < len(f.healthy) && f.healthy[f.calls]
+		f.calls++
+		return health.Result{Healthy: ok}
+	}, wait, stop, slog.New(slog.NewTextHandler(&f.logs, nil)))
+	w.now = func() time.Time { return f.clock }
+	w.after = func(d time.Duration) <-chan time.Time {
+		f.delays = append(f.delays, d)
+		f.clock = f.clock.Add(d)
+		ch := make(chan time.Time, 1)
+		ch <- f.clock
+		return ch
+	}
+	return w
+}
+
+func TestDatabaseWaitHealthyAtOnce(t *testing.T) {
+	f := &fakeWait{healthy: []bool{true}}
+
+	require.NoError(t, f.newWait(5*time.Minute, nil).run())
+	assert.Empty(t, f.delays)
+	assert.Empty(t, f.logs.String(), "no wait, so no log line")
+}
+
+func TestDatabaseWaitRetriesWithBackoff(t *testing.T) {
+	f := &fakeWait{healthy: []bool{false, false, false, true}}
+
+	require.NoError(t, f.newWait(5*time.Minute, nil).run())
+	assert.Equal(t, []time.Duration{time.Second, 2 * time.Second, 4 * time.Second}, f.delays)
+	assert.Contains(t, f.logs.String(), `msg="waiting for the database before completing startup" startup_wait=5m0s`)
+}
+
+func TestDatabaseWaitExpires(t *testing.T) {
+	f := &fakeWait{}
+
+	err := f.newWait(time.Minute, nil).run()
+
+	assert.ErrorIs(t, err, errStartupWaitExpired)
+	s := time.Second
+	want := []time.Duration{s, 2 * s, 4 * s, 8 * s, 10 * s, 10 * s, 10 * s, 10 * s, 5 * s}
+	assert.Equal(t, want, f.delays, "doubling, capped, then the remainder of the wait")
+	assert.Equal(t, len(want)+1, f.calls, "evaluated once more after the last delay")
+	assert.Contains(t, f.logs.String(), `level=ERROR msg="database not reachable within the startup wait" startup_wait=1m0s`)
+}
+
+func TestDatabaseWaitStopsOnSignal(t *testing.T) {
+	f := &fakeWait{}
+	stop := make(chan os.Signal, 1)
+	stop <- os.Interrupt
+	w := f.newWait(time.Minute, stop)
+	w.after = func(time.Duration) <-chan time.Time { return nil } // never fires
+
+	assert.ErrorIs(t, w.run(), errStartupInterrupted)
+}
+
+func TestDatabaseWaitUsesRealClock(t *testing.T) {
+	w := newDatabaseWait(func() health.Result { return health.Result{} }, 30*time.Millisecond, nil, discardLogger())
+
+	start := time.Now()
+	err := w.run()
+
+	assert.ErrorIs(t, err, errStartupWaitExpired)
+	assert.WithinDuration(t, start.Add(30*time.Millisecond), time.Now(), 2*time.Second)
+}
+
+func freePort(t *testing.T) int {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	port := ln.Addr().(*net.TCPAddr).Port
+	require.NoError(t, ln.Close())
+	return port
+}
+
+// rejectAll stands in for the authentication middleware: no request is authenticated.
+func rejectAll(http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	})
+}
+
+func TestStartAdminServerServesHealthBeforeStartupCompletes(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.Controller.AdminServer = config.AdminServerConfig{Enabled: true, Port: freePort(t), AllowedIPs: []string{"*"}}
+	checker := newTestChecker(pingFunc(func(context.Context) error { return errors.New("connection refused") }))
+
+	server := startAdminServer(cfg, checker.Handler(), rejectAll, discardLogger())
+	require.NotNil(t, server)
+	defer endStartupWithoutDatabase(errStartupInterrupted, server, time.Second, discardLogger())
+
+	base := fmt.Sprintf("http://127.0.0.1:%d", cfg.Controller.AdminServer.Port)
+	var resp *http.Response
+	require.Eventually(t, func() bool {
+		var err error
+		resp, err = http.Get(base + "/api/admin/v1/health")
+		return err == nil
+	}, 2*time.Second, 20*time.Millisecond, "admin server must come up")
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	assert.Equal(t, http.StatusServiceUnavailable, resp.StatusCode)
+	assert.Contains(t, string(body), `"database":{"status":"down"`)
+
+	resp, err := http.Get(base + "/api/admin/v1/xds_sync_status")
+	require.NoError(t, err)
+	resp.Body.Close()
+	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode, "debug endpoints stay protected while starting")
+}
+
+func TestStartAdminServerDisabled(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.Controller.AdminServer = config.AdminServerConfig{Enabled: false}
+
+	assert.Nil(t, startAdminServer(cfg, http.NotFoundHandler(), rejectAll, discardLogger()))
+}
+
+type recordingCloser struct{ closed bool }
+
+func (c *recordingCloser) Close() error {
+	c.closed = true
+	return nil
+}
+
+func TestEndStartupWithoutDatabase(t *testing.T) {
+	for _, tt := range []struct {
+		name     string
+		err      error
+		wantCode int
+		wantLog  string
+	}{
+		{"shutdown signal", errStartupInterrupted, 0, "Received shutdown signal during startup"},
+		{"wait expired", errStartupWaitExpired, 1, ""},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			var logs strings.Builder
+			db, healthLog := &recordingCloser{}, &recordingCloser{}
+
+			code := endStartupWithoutDatabase(tt.err, nil, time.Second, slog.New(slog.NewTextHandler(&logs, nil)), db, healthLog)
+
+			assert.Equal(t, tt.wantCode, code)
+			assert.True(t, db.closed && healthLog.closed, "everything acquired before the wait must be released")
+			if tt.wantLog != "" {
+				assert.Contains(t, logs.String(), tt.wantLog)
+			}
+		})
+	}
+}
+
+// waitConfig returns a configuration with the admin server on a free port and short
+// health timings, so a wait for an unreachable database ends quickly.
+func waitConfig(t *testing.T, startupWait time.Duration) *config.Config {
+	cfg := &config.Config{}
+	cfg.Controller.AdminServer = config.AdminServerConfig{Enabled: true, Port: freePort(t), AllowedIPs: []string{"*"}}
+	cfg.Controller.Server.ShutdownTimeout = time.Second
+	cfg.Controller.Health = config.HealthConfig{CheckTimeout: 100 * time.Millisecond, CacheTTL: time.Nanosecond,
+		LogMaxSizeMB: 1, LogMaxFiles: 1, BackoffInitial: 10 * time.Second, BackoffMax: time.Minute, StartupWait: startupWait}
+	return cfg
+}
+
+func newWaitChecker(cfg *config.Config) *health.Checker {
+	return health.NewChecker(health.Options{
+		Component: "gateway-controller", HealthyStatus: "healthy",
+		CheckTimeout: cfg.Controller.Health.CheckTimeout, CacheTTL: cfg.Controller.Health.CacheTTL,
+	})
+}
+
+func TestServeHealthWhileWaitingWithReachableDatabase(t *testing.T) {
+	cfg := waitConfig(t, time.Minute)
+	db, err := storage.Open(storage.BackendConfig{Type: "sqlite", SQLitePath: filepath.Join(t.TempDir(), "gw.db")}, discardLogger())
+	require.NoError(t, err)
+	defer db.Close()
+	checker := newWaitChecker(cfg)
+
+	admin, code, ok := serveHealthWhileWaiting(cfg, discardLogger(), checker, &recordingCloser{}, db, rejectAll, nil)
+
+	require.True(t, ok)
+	assert.Equal(t, 0, code)
+	require.NotNil(t, admin)
+	defer endStartupWithoutDatabase(errStartupInterrupted, admin, time.Second, discardLogger())
+	assert.True(t, checker.Evaluate().Healthy, "the database check is registered on the opened database")
+}
+
+func TestServeHealthWhileWaitingGivesUp(t *testing.T) {
+	cfg := waitConfig(t, 300*time.Millisecond)
+	db, err := storage.Open(storage.BackendConfig{Type: "postgres", Postgres: storage.PostgresConnectionConfig{
+		Host: "127.0.0.1", Port: freePort(t), Database: "gateway", User: "gateway", SSLMode: "disable",
+	}}, discardLogger())
+	require.NoError(t, err)
+	healthLog := &recordingCloser{}
+
+	admin, code, ok := serveHealthWhileWaiting(cfg, discardLogger(), newWaitChecker(cfg), healthLog, db, rejectAll, nil)
+
+	assert.False(t, ok)
+	assert.Equal(t, 1, code)
+	assert.Nil(t, admin)
+	assert.True(t, healthLog.closed)
+	assert.Error(t, db.GetDB().Ping(), "the database pool must be closed")
+	ln, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.Controller.AdminServer.Port))
+	require.NoError(t, err, "the admin server port must be released")
+	ln.Close()
 }
