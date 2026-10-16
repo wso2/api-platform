@@ -18,8 +18,10 @@
 package database
 
 import (
+	"context"
 	"io"
 	"log/slog"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -170,5 +172,115 @@ func TestSplitSQLStatements_RealSchemas(t *testing.T) {
 				t.Fatalf("%s: statement does not start with a SQL keyword (comment leak?):\n%q", f, preview)
 			}
 		}
+	}
+}
+
+// closedPort returns a local TCP port with nothing listening on it, so a dial to it
+// is refused at once.
+func closedPort(t *testing.T) int {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	port := ln.Addr().(*net.TCPAddr).Port
+	ln.Close()
+	return port
+}
+
+func TestOpen_DoesNotConnect(t *testing.T) {
+	slogger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	port := closedPort(t)
+
+	for _, driver := range []string{DriverPostgres, DriverSQLServer} {
+		t.Run(driver, func(t *testing.T) {
+			db, err := Open(&config.Database{
+				Driver:       driver,
+				Host:         "127.0.0.1",
+				Port:         port,
+				Name:         "platform",
+				User:         "user",
+				Password:     "secret",
+				SSLMode:      "disable",
+				MaxOpenConns: 2,
+				MaxIdleConns: 1,
+			}, slogger)
+			if err != nil {
+				t.Fatalf("Open() against an unreachable database error = %v, want nil", err)
+			}
+			t.Cleanup(func() { db.Close() })
+
+			if err := db.PingContext(context.Background()); err == nil {
+				t.Fatal("PingContext() succeeded, want an error from the unreachable database")
+			}
+			if err := db.VerifyConnection(context.Background()); err != nil {
+				t.Fatalf("VerifyConnection() = %v, want nil for a non-SQLite driver", err)
+			}
+		})
+	}
+}
+
+func TestOpen_UnsupportedDriver(t *testing.T) {
+	slogger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	if _, err := Open(&config.Database{Driver: "oracle"}, slogger); err == nil {
+		t.Fatal("Open() with an unsupported driver succeeded, want an error")
+	}
+}
+
+func TestNewConnection_UnreachableDatabase(t *testing.T) {
+	slogger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	_, err := NewConnection(&config.Database{
+		Driver:  DriverPostgres,
+		Host:    "127.0.0.1",
+		Port:    closedPort(t),
+		Name:    "platform",
+		User:    "user",
+		SSLMode: "disable",
+	}, slogger)
+	if err == nil || !strings.Contains(err.Error(), "failed to ping database") {
+		t.Fatalf("NewConnection() error = %v, want a ping failure", err)
+	}
+}
+
+func TestVerifyConnection_SQLite(t *testing.T) {
+	slogger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	db, err := Open(&config.Database{
+		Driver: DriverSQLite,
+		Path:   filepath.Join(t.TempDir(), "verify.db"),
+	}, slogger)
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	t.Cleanup(func() { db.Close() })
+
+	if err := db.VerifyConnection(context.Background()); err != nil {
+		t.Fatalf("VerifyConnection() = %v, want foreign keys enforced", err)
+	}
+}
+
+func TestNewConnection_UnsupportedDriver(t *testing.T) {
+	slogger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	if _, err := NewConnection(&config.Database{Driver: "oracle"}, slogger); err == nil {
+		t.Fatal("NewConnection() with an unsupported driver succeeded, want an error")
+	}
+}
+
+func TestVerifyConnection_SQLiteUnavailable(t *testing.T) {
+	slogger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	db, err := Open(&config.Database{
+		Driver: DriverSQLite,
+		Path:   filepath.Join(t.TempDir(), "closed.db"),
+	}, slogger)
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	db.Close()
+
+	if err := db.VerifyConnection(context.Background()); err == nil ||
+		!strings.Contains(err.Error(), "failed to verify foreign key enforcement") {
+		t.Fatalf("VerifyConnection() on a closed pool = %v, want a verification error", err)
 	}
 }
