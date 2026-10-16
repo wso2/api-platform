@@ -114,3 +114,95 @@ mode                  = '{{ env "APIP_ACP_AUTH_AUTHORIZATION_MODE" "scope" }}'
 # otherwise). Mount the SAME file the Platform API reads, so the console and the API
 # cannot disagree about what a role grants. Ignored in scope mode.
 role_to_scope_mapping = '{{ env "APIP_ACP_AUTH_AUTHORIZATION_ROLE_TO_SCOPE_MAPPING" "" }}'
+
+# ---------------------------------------------------------------------------
+# Test console relay
+# ---------------------------------------------------------------------------
+# The Test page's Swagger console sends its try-out requests through the BFF
+# rather than straight at the gateway, which is what makes them work at all
+# when the gateway is a different origin (every deployment), speaks plain http
+# from an https portal, or sits on a cluster-internal address the browser
+# cannot route to. The browser never names a URL: it names the API and the
+# gateway, and the BFF resolves the address through Platform API using the
+# caller's own token. See bff/internal/testproxy.
+#
+# Each value below is a limit that lets this feature ship enabled. To turn the
+# feature off, set `enabled = false` rather than relaxing them. Each default
+# matches the built-in value in bff/internal/config/default_config.go. Load
+# overlays the parsed keys unconditionally, so a present-but-empty key replaces
+# the built-in default instead of falling back to it.
+[api_control_plane.test_console]
+
+enabled            = '{{ env "APIP_ACP_TEST_CONSOLE_ENABLED" "true" }}'
+# One relayed call, end to end. The route's own write deadline sits just above
+# this, so a stuck gateway is caught here rather than by the outer bound.
+request_timeout    = '{{ env "APIP_ACP_TEST_CONSOLE_REQUEST_TIMEOUT" "30s" }}'
+# Bounds the decoded request body. The JSON envelope carrying it is allowed to
+# be correspondingly larger, since a binary body travels base64-encoded.
+max_request_bytes  = '{{ env "APIP_ACP_TEST_CONSOLE_MAX_REQUEST_BYTES" "2097152" }}'   # 2 MiB
+# Hitting this truncates the response body and says so, rather than failing the
+# call — a partial response is more use to someone testing an API than an error.
+max_response_bytes = '{{ env "APIP_ACP_TEST_CONSOLE_MAX_RESPONSE_BYTES" "8388608" }}'  # 8 MiB
+# Relayed calls in flight at once, and how many may queue for a slot before new
+# ones are rejected with 503. The queue is bounded on purpose: an unbounded one
+# in front of a bounded pool is only delayed memory growth.
+max_concurrent     = '{{ env "APIP_ACP_TEST_CONSOLE_MAX_CONCURRENT" "32" }}'
+max_pending        = '{{ env "APIP_ACP_TEST_CONSOLE_MAX_PENDING" "64" }}'
+# How long a resolved (caller, org, api, gateway) target is reused. Also the
+# window in which a just-revoked entitlement still resolves, hence short.
+resolve_cache_ttl  = '{{ env "APIP_ACP_TEST_CONSOLE_RESOLVE_CACHE_TTL" "60s" }}'
+resolve_cache_size = '{{ env "APIP_ACP_TEST_CONSOLE_RESOLVE_CACHE_SIZE" "1024" }}'
+# PEM bundle to trust for gateway certificates, appended to the system roots.
+ca_file            = '{{ env "APIP_ACP_TEST_CONSOLE_CA_FILE" "" }}'
+# Dev/demo only, and deliberately an operator setting rather than a per-request
+# field — a browser-selectable "skip TLS verification" would be a
+# request-forgeable MITM switch. Prefer ca_file.
+tls_skip_verify    = '{{ env "APIP_ACP_TEST_CONSOLE_TLS_SKIP_VERIFY" "false" }}'
+
+# Where the relay may connect.
+#
+# Target resolution is the primary containment — the relay only ever dials a
+# gateway Platform API named as this API's deployed gateway, for this caller.
+# This block is the second layer, and it is what holds if the first is ever
+# weakened. A gateway's endpoint is tenant-settable data, so these settings are
+# how a deployment says what a gateway address is allowed to look like.
+#
+# Two rules, and that is the whole model:
+#   1. deny always wins.
+#   2. allow narrows when set, and is ignored when empty.
+#
+# There is deliberately no setting that re-opens something deny closed.
+#
+# ALWAYS REFUSED, not configurable: link-local (where the 169.254.169.254 cloud
+# metadata endpoint lives), the unspecified address, multicast/broadcast, and
+# the IPv6 ranges that translate onward to IPv4 (6to4 2002::/16, NAT64
+# 64:ff9b::/96 — these reach an IPv4 address without matching an IPv4 denylist
+# entry naming it).
+[api_control_plane.test_console.egress]
+
+# The three allow_* lists are CONSTRAINTS: a non-empty list means the target
+# must match it, so they can only ever shrink what is reachable. All three are
+# empty by default, because a correct value is specific to a deployment and a
+# wrong guess here breaks every try-out.
+#
+# Set as many as you can state confidently. allow_ports in particular is worth
+# setting: private space has to stay dialable for gateways on ClusterIPs to
+# work at all, which leaves the port as the only thing distinguishing a gateway
+# from any other HTTP service in the same subnet (Elasticsearch :9200, etcd
+# :2379, kubelet :10250, a Spring actuator).
+#
+# allow_hosts entries are an exact host or a single leading "*." wildcard, and
+# the separating dot is part of the match — "*.gw.example.com" matches
+# "a.gw.example.com" but not "evilgw.example.com" or "gw.example.com.evil.net".
+# A bare "*" and an interior wildcard are refused at startup.
+#
+# allow_hosts = ["gw.api.example.com", "*.gw.svc.cluster.local"]
+# allow_cidrs = ["10.42.0.0/16"]
+# allow_ports = [443, 8443, 9443]
+
+# Always refused, whatever allow says. Entries are CIDRs or one of the group
+# names "private" (RFC 1918 plus IPv6 unique-local), "loopback" and "cgnat".
+# Use the group names rather than hand-written ranges — "private" through the
+# guard covers fc00::/7, which a CIDR list usually forgets.
+#
+# deny = ["10.42.9.0/24", "loopback"]
