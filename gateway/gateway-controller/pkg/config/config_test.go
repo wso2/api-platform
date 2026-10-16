@@ -65,6 +65,7 @@ func validConfig() *Config {
 				LogMaxFiles:    5,
 				BackoffInitial: 10 * time.Second,
 				BackoffMax:     5 * time.Minute,
+				StartupWait:    5 * time.Minute,
 			},
 			ControlPlane: ControlPlaneConfig{
 				Host:             "localhost",
@@ -2290,6 +2291,7 @@ func TestDefaultConfig_HealthDefaults(t *testing.T) {
 	assert.Equal(t, 5, h.LogMaxFiles)
 	assert.Equal(t, 10*time.Second, h.BackoffInitial)
 	assert.Equal(t, 5*time.Minute, h.BackoffMax)
+	assert.Equal(t, 5*time.Minute, h.StartupWait)
 }
 
 func TestLoadConfig_Health(t *testing.T) {
@@ -2306,6 +2308,7 @@ log_max_size_mb = 25
 log_max_files = 3
 backoff_initial = "20s"
 backoff_max = "10m"
+startup_wait = "90s"
 `
 		require.NoError(t, os.WriteFile(configPath, []byte(toml), 0o644))
 
@@ -2319,6 +2322,7 @@ backoff_max = "10m"
 		assert.Equal(t, 3, h.LogMaxFiles)
 		assert.Equal(t, 20*time.Second, h.BackoffInitial)
 		assert.Equal(t, 10*time.Minute, h.BackoffMax)
+		assert.Equal(t, 90*time.Second, h.StartupWait)
 	})
 
 	t.Run("omitted section falls back to defaults", func(t *testing.T) {
@@ -2346,6 +2350,8 @@ func TestConfig_ValidateHealthConfig(t *testing.T) {
 		{name: "Zero cache_ttl", mutate: func(h *HealthConfig) { h.CacheTTL = 0 }, errContains: "controller.health.cache_ttl must be > 0"},
 		{name: "Zero backoff_initial", mutate: func(h *HealthConfig) { h.BackoffInitial = 0 }, errContains: "controller.health.backoff_initial must be > 0"},
 		{name: "Zero backoff_max", mutate: func(h *HealthConfig) { h.BackoffMax = 0 }, errContains: "controller.health.backoff_max must be > 0"},
+		{name: "Zero startup_wait", mutate: func(h *HealthConfig) { h.StartupWait = 0 }, errContains: "controller.health.startup_wait must be > 0"},
+		{name: "Negative startup_wait", mutate: func(h *HealthConfig) { h.StartupWait = -time.Minute }, errContains: "controller.health.startup_wait must be > 0"},
 		{
 			name:        "backoff_max below backoff_initial",
 			mutate:      func(h *HealthConfig) { h.BackoffInitial = time.Minute; h.BackoffMax = 30 * time.Second },

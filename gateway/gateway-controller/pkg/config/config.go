@@ -861,6 +861,7 @@ type HealthConfig struct {
 	LogMaxFiles    int           `koanf:"log_max_files"`   // Number of rotated health log backups to keep
 	BackoffInitial time.Duration `koanf:"backoff_initial"` // Delay before the first repeated failure line is logged
 	BackoffMax     time.Duration `koanf:"backoff_max"`     // Upper bound on the interval between repeated failure lines
+	StartupWait    time.Duration `koanf:"startup_wait"`    // How long startup waits for the database before exiting
 }
 
 // ControlPlaneConfig holds control plane connection configuration
@@ -1268,6 +1269,7 @@ func defaultConfig() *Config {
 				LogMaxFiles:    5,
 				BackoffInitial: 10 * time.Second,
 				BackoffMax:     5 * time.Minute,
+				StartupWait:    5 * time.Minute,
 			},
 			Metrics: MetricsConfig{
 				Enabled: false,
@@ -2237,6 +2239,9 @@ func (c *Config) validateHealthConfig() error {
 	}
 	if h.BackoffMax <= 0 {
 		return fmt.Errorf("controller.health.backoff_max must be > 0, got: %s", h.BackoffMax)
+	}
+	if h.StartupWait <= 0 {
+		return fmt.Errorf("controller.health.startup_wait must be > 0, got: %s", h.StartupWait)
 	}
 	if h.BackoffMax < h.BackoffInitial {
 		return fmt.Errorf("controller.health.backoff_max must be >= controller.health.backoff_initial, got: %s < %s",
