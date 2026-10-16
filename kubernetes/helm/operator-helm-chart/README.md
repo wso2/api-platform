@@ -77,7 +77,7 @@ helm install apip-operator oci://ghcr.io/wso2/api-platform/helm-charts/gateway-o
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
-| `gatewayApi.installStandardCRDs` | Install the standard-channel Gateway API CRDs. Each CRD is skipped if it already exists and is not owned by this release. The installed CRDs carry `helm.sh/resource-policy: keep`, so Helm never deletes them (see [Upgrading](#upgrading)). Set `false` on OpenShift 4.19+, where the Ingress Operator manages these CRDs | `true` |
+| `gatewayApi.installStandardCRDs` | Install the standard-channel Gateway API CRDs. Set `false` on OpenShift 4.19+, where the Ingress Operator manages these CRDs | `true` |
 | `gatewayApi.managedGatewayClassNames` | `gatewayClassName` values this operator reconciles | `[wso2-api-platform]` |
 | `gatewayApi.clusterDomain` | Cluster DNS suffix for in-cluster Service URLs | `cluster.local` |
 
@@ -394,27 +394,6 @@ helm upgrade apip-operator ./operator-helm-chart \
 
 > **Note:** CRDs in `crds/` are **not** re-applied on `helm upgrade` (a Helm limitation). If a chart upgrade includes CRD schema changes, apply the updated CRDs manually with `kubectl apply -f crds/`. Because the operator requires the `v1` version to be served, do this **before** rolling out an operator image that expects it.
 
-### Gateway API CRDs installed by an earlier chart version
-
-The Gateway API CRDs that this chart installs (`gatewayApi.installStandardCRDs: true`) carry `helm.sh/resource-policy: keep`. Without it, Helm deletes a CRD that a later upgrade leaves out, for example after setting `installStandardCRDs: false` or after another owner takes the CRD over, and deleting a CRD deletes every resource of that kind in the cluster.
-
-Earlier chart versions installed these CRDs without the annotation. Before upgrading such a release with `installStandardCRDs: false`, or if another tool now manages the CRDs, add the annotation once:
-
-```bash
-kubectl annotate crd \
-  backendtlspolicies.gateway.networking.k8s.io \
-  gatewayclasses.gateway.networking.k8s.io \
-  gateways.gateway.networking.k8s.io \
-  grpcroutes.gateway.networking.k8s.io \
-  httproutes.gateway.networking.k8s.io \
-  listenersets.gateway.networking.k8s.io \
-  referencegrants.gateway.networking.k8s.io \
-  tlsroutes.gateway.networking.k8s.io \
-  helm.sh/resource-policy=keep --overwrite
-```
-
-Annotating a CRD that doesn't exist on the cluster fails for that CRD only; the others are still annotated.
-
 ### Upgrade with New Values
 
 ```bash
@@ -431,7 +410,7 @@ helm upgrade apip-operator ./operator-helm-chart \
 helm uninstall apip-operator --namespace gateway-operator-system
 ```
 
-**Note:** This does not delete the CRDs. Helm never removes CRDs installed from `crds/`, and the Gateway API CRDs installed through `gatewayApi.installStandardCRDs` carry `helm.sh/resource-policy: keep`, because other controllers may use them. To delete the operator's CRDs manually:
+**Note:** This does not delete the CRDs (Helm never removes CRDs installed from `crds/`). To delete them manually:
 
 ```bash
 kubectl get crd -o name | grep gateway.api-platform.wso2.com | xargs -r kubectl delete

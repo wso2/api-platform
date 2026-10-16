@@ -95,7 +95,7 @@ The chart creates OpenShift Routes when `openshift.enabled=true`:
 | `openshift.routes.websocket` | `websocket-https`, passthrough | on |
 | `openshift.routes.managementApi` | `rest`, edge (plain HTTP) | off |
 
-Shared TLS settings live in `openshift.routes.tls`, and each route's own `tls` block overrides them. A TLS target port accepts `passthrough` or `reencrypt`, and a plain one (`websub-http`, `websocket`) accepts `edge`; other combinations fail at install time. Security contexts are set per component through `eventGateway.<component>.deployment.podSecurityContext` / `securityContext`, rendered as given. See the [OpenShift deployment guide](../../../openshift/event-gateway/deployment-guide.md).
+Shared TLS settings live in `openshift.routes.tls`, and each route's own `tls` block overrides them. A TLS target port accepts `passthrough` or `reencrypt`, and a plain one (`websub-http`, `websocket`) accepts `edge`; other combinations fail at install time. The management API Route also fails at install time while `eventGateway.config.controller.auth` still has the chart's default `admin` password, or no authentication (no basic auth users and IDP off). Security contexts are set per component through `eventGateway.<component>.deployment.podSecurityContext` / `securityContext`, rendered as given. See the [OpenShift deployment guide](../../../openshift/event-gateway/deployment-guide.md).
 
 ## Port Reference
 

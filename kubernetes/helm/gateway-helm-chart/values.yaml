@@ -45,7 +45,8 @@ openshift:
   enabled: false
   routes:
     # Gateway-controller management REST API (plain HTTP, so edge termination only).
-    # Off by default: it is an administrative surface.
+    # Off by default: it is an administrative surface. Install fails while
+    # gateway.config.controller.auth still has the default password or no authentication.
     managementApi:
       enabled: false
       # Empty lets OpenShift generate <route-name>-<namespace>.<apps-domain>.

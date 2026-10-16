@@ -8,11 +8,9 @@ nameOverride: ""
 # Override the full name used for resource naming
 fullnameOverride: ""
 
-# Kubernetes Gateway API (gateway.networking.k8s.io) — standard-channel CRDs v1.3.0.
-# Each object in the bundle is installed only if it does not exist yet or is owned by this
-# release; objects owned by anyone else (cloud add-on, Traefik "crd" chart, etc.) are skipped.
-# Set false on OpenShift 4.19+: the Ingress Operator manages these CRDs and an admission
-# policy rejects any other writer, including creating the ones OpenShift does not ship.
+# Set `true` only if no Kubernetes Gateway API CRDs (`gateway*.gateway.networking.k8s.io`) exist in the cluster. 
+# Set `false` if CRDs are already managed by another Helm release, a cloud add-on, Traefik, or 
+# OpenShift 4.19+ to avoid ownership and upgrade conflicts.
 gatewayApi:
   installStandardCRDs: true
   # Passed through to operator config.yaml as gateway_api.gateway_class_names (Gateway API / HTTPRoute flow).

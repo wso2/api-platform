@@ -56,7 +56,8 @@ openshift:
       labels: {}
       tls: {}
     # Controller management REST API (plain HTTP, so edge termination only).
-    # Off by default: it is an administrative surface.
+    # Off by default: it is an administrative surface. Install fails while
+    # eventGateway.config.controller.auth still has the default password or no authentication.
     managementApi:
       enabled: false
       hostname: ""

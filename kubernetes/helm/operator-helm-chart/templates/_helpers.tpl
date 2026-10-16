@@ -64,9 +64,6 @@ clusterrole-gatewayclass.yaml + binding.
   - update
 {{- end }}
 
-{{- /*
-Common RBAC rules shared between ClusterRole (global) and Role (scoped)
-*/ -}}
 {{/*
 Renders "true" when deploying to OpenShift (openshift.enabled true, or auto and the
 cluster serves route.openshift.io/v1), else empty.
@@ -81,6 +78,9 @@ true
 {{- end -}}
 {{- end -}}
 
+{{- /*
+Common RBAC rules shared between ClusterRole (global) and Role (scoped)
+*/ -}}
 {{- define "gateway-operator.rbacRules" -}}
 - apiGroups:
   - ""

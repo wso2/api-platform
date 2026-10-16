@@ -5,6 +5,22 @@
 {{- if ne $termination "edge" -}}
 {{- fail (printf "openshift.routes.managementApi: the management API serves plain HTTP, so tls.termination must be edge (got %q)" $termination) -}}
 {{- end }}
+{{- /* The Route publishes the management API outside the cluster, so refuse it while the API would
+       accept the chart's default password, or every request (no basic auth users and no IDP). */}}
+{{- $auth := default (dict) .Values.gateway.config.controller.auth -}}
+{{- $basic := default (dict) $auth.basic -}}
+{{- $basicUsers := list -}}
+{{- if $basic.enabled -}}
+{{- $basicUsers = default (list) $basic.users -}}
+{{- end -}}
+{{- if not (or $basicUsers (dig "idp" "enabled" false $auth)) -}}
+{{- fail "openshift.routes.managementApi: the management API would accept every request, because basic auth has no users and IDP auth is off. Configure gateway.config.controller.auth before enabling this Route." -}}
+{{- end -}}
+{{- range $user := $basicUsers -}}
+{{- if and (not $user.password_hashed) (eq (toString $user.password) "admin") -}}
+{{- fail (printf "openshift.routes.managementApi: basic auth user %q still has the chart's default password. Set a new one before enabling this Route, preferably a bcrypt hash with password_hashed: true, or a password read from a Secret through a file or env token." (toString $user.username)) -}}
+{{- end -}}
+{{- end }}
 apiVersion: route.openshift.io/v1
 kind: Route
 metadata:
