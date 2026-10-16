@@ -92,7 +92,7 @@ type Logging struct {
 	Format string `koanf:"format"`
 }
 
-// Health holds configuration for gateway health evaluation and its dedicated log.
+// Health holds configuration for platform-api's own health evaluation and its dedicated log.
 type Health struct {
 	// CheckTimeout is the deadline for a single health check.
 	CheckTimeout time.Duration `koanf:"check_timeout"`
