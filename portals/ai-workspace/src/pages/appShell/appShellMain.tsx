@@ -554,10 +554,34 @@ export default function AppLayout(): JSX.Element {
 
       <AppShell.Main>
         <PortProvider value={port}>
-          {appGates.map((gate) => (
-            <Fragment key={gate.id}>{gate.render(port)}</Fragment>
-          ))}
-          <Outlet />
+          {/* The shell renders this slot's children into a `display: flex` box
+              with the default ROW direction, so anything mounted beside the
+              page would sit next to it as a second column rather than above it.
+              Every app gate used to render nothing, which hid that; one that
+              draws (the cloud read-only banner) came out as a full-height strip
+              covering the page. Stack them instead: gates first, page below. */}
+          <Box
+            sx={{
+              flex: 1,
+              minWidth: 0,
+              display: 'flex',
+              flexDirection: 'column',
+            }}
+          >
+            {appGates.map((gate) => (
+              <Fragment key={gate.id}>{gate.render(port)}</Fragment>
+            ))}
+            {/* Reproduces the box the page used to be a child of — a row flex
+                container filling the space left over — so nothing about how a
+                page lays itself out changes. It matters: `PageContent` is
+                `height: 100%`, which without this would resolve against the
+                WHOLE column and overflow by exactly the height of whatever a
+                gate drew above it. `minHeight: 0` lets this shrink instead of
+                pushing the page past the bottom. */}
+            <Box sx={{ flex: 1, minHeight: 0, display: 'flex' }}>
+              <Outlet />
+            </Box>
+          </Box>
         </PortProvider>
       </AppShell.Main>
 
