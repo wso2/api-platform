@@ -23,6 +23,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -38,6 +39,8 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/client"
 	"github.com/wso2/api-platform/platform-api/internal/database"
 	"github.com/wso2/api-platform/platform-api/internal/handler"
+	"github.com/wso2/api-platform/platform-api/internal/health"
+	"github.com/wso2/api-platform/platform-api/internal/logger"
 	"github.com/wso2/api-platform/platform-api/internal/middleware"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/plugin"
@@ -53,7 +56,6 @@ import (
 	"github.com/wso2/api-platform/common/authenticators"
 	"github.com/wso2/api-platform/common/eventhub"
 	commonmodels "github.com/wso2/api-platform/common/models"
-	"github.com/wso2/api-platform/httpkit/httputil"
 	gohttpkit "github.com/wso2/api-platform/httpkit/middleware"
 )
 
@@ -70,6 +72,8 @@ type Server struct {
 	eventHub       eventhub.EventHub
 	logger         *slog.Logger
 	plugins        []plugin.Plugin // internal plugins + wrapped external plugins
+	health         *health.Checker // serves /health
+	healthLog      io.Closer       // closes the health log file, if one is configured
 }
 
 // validateServerConfig enforces request-security requirements at startup that
@@ -114,12 +118,23 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	}
 	// TEMP-READ-ONLY-MODE: end
 
+	healthChecker, healthLog := newHealthChecker(cfg, slogger)
+	// Every failure path from here on must close the health log file again; built is
+	// set only on the success path.
+	built := false
+	defer func() {
+		if !built {
+			_ = healthLog.Close()
+		}
+	}()
+
 	// Initialize database using configuration
 	db, err := database.NewConnection(&cfg.Database, slogger)
 	if err != nil {
 		slogger.Error("Failed to connect to database", "error", err)
 		return nil, err
 	}
+	healthChecker.Register("database", newDatabaseCheck(db))
 
 	// Schema DDL is executed only for SQLite, which is used for local/demo
 	// deployments. For all other (server) drivers the schema must be
@@ -792,6 +807,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	)
 
 	startupOK = true
+	built = true
 	return &Server{
 		mux:            mux,
 		handler:        gohttpkit.Chain(chain...)(mux),
@@ -805,7 +821,34 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		eventHub:       eventHub,
 		logger:         slogger,
 		plugins:        plugins,
+		health:         healthChecker,
+		healthLog:      healthLog,
 	}, nil
+}
+
+// newHealthChecker builds the checker behind /health and the logger it reports check
+// failures and recoveries to: the main log plus, when configured, the health log file
+// in the same format. The returned closer closes that file.
+func newHealthChecker(cfg *config.Server, slogger *slog.Logger) (*health.Checker, io.Closer) {
+	logCfg := logger.Config{Level: cfg.Logging.Level, Format: cfg.Logging.Format}
+	healthLogger, closer := health.NewLogger(slogger,
+		func(w io.Writer) slog.Handler { return logger.NewHandler(logCfg, w) },
+		health.FileLogConfig{
+			Path:      cfg.Health.LogFile,
+			MaxSizeMB: cfg.Health.LogMaxSizeMB,
+			MaxFiles:  cfg.Health.LogMaxFiles,
+		})
+	checker := health.NewChecker(health.Options{
+		Component:      "platform-api",
+		HealthyStatus:  "ok",
+		CheckTimeout:   cfg.Health.CheckTimeout,
+		CacheTTL:       cfg.Health.CacheTTL,
+		Logger:         healthLogger,
+		DebugLogger:    slogger,
+		BackoffInitial: cfg.Health.BackoffInitial,
+		BackoffMax:     cfg.Health.BackoffMax,
+	})
+	return checker, closer
 }
 
 // buildClaimMappings adapts the config-level claim name mapping (shared by all
@@ -1032,11 +1075,10 @@ func (s *Server) Start(listeners config.ServerListeners, timeouts config.Timeout
 		}
 	}
 
-	// Add a health endpoint. Routes added to s.mux after startup are reachable
-	// because s.handler wraps s.mux by reference.
-	s.mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
-		httputil.WriteJSON(w, http.StatusOK, map[string]any{"status": "ok"})
-	})
+	// Add the health endpoint, which reports whether the database is reachable. Routes
+	// added to s.mux after startup are reachable because s.handler wraps s.mux by
+	// reference.
+	s.mux.Handle("GET /health", s.health.Handler())
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -1114,6 +1156,7 @@ func (s *Server) Start(listeners config.ServerListeners, timeouts config.Timeout
 		if err := s.eventHub.Close(); err != nil {
 			s.logger.Error("EventHub close error", "error", err)
 		}
+		_ = s.healthLog.Close()
 	}
 
 	select {
