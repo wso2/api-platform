@@ -111,6 +111,9 @@ function Deploy() {
       mutations={REST_DEPLOY_MUTATIONS}
       onRefreshDeployments={() => void deploymentsQuery.refetch()}
       orgHandle={params.orgHandle ?? ''}
+      // A gateway-created API is owned by that gateway: deployments are shown,
+      // but every action that changes them is disabled.
+      readOnly={apiQuery.data?.readOnly === true}
     />
   );
 }

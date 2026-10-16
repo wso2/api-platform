@@ -93,6 +93,8 @@ type BuildDTO = {
  */
 type RestApiDTO = {
   upstream?: { main?: { url?: string } };
+  /** True when a gateway created the API; its deployments are then the gateway's to manage. */
+  readOnly?: boolean;
 };
 
 /**
@@ -166,17 +168,17 @@ export function createDeployClient(
     },
 
     /**
-     * The backend URL the API is defined against, which the deploy and promote
-     * forms start from so a first deployment does not have to be typed out.
-     * Absent when the API declares its upstream by reference rather than by URL.
+     * What the page needs from the API itself: the backend URL the deploy and
+     * promote forms start from (absent when the upstream is declared by reference
+     * rather than by URL), and whether the API is read-only because a gateway
+     * created it.
      */
-    async readApiEndpointUrl(): Promise<string | undefined> {
-      // Only REST APIs declare a backend URL this form can start from; the other
-      // kinds either have none or shape it differently, so the field is simply left
-      // empty for them rather than guessed at.
-      if (kind !== 'RestApi') return undefined;
+    async readApi(): Promise<{ endpointUrl?: string; readOnly: boolean }> {
+      // Only REST APIs are read here; the other kinds either have no backend URL or
+      // shape it differently, so it is left empty for them rather than guessed at.
+      if (kind !== 'RestApi') return { readOnly: false };
       const api = await apiFetch<RestApiDTO>('GET', `/rest-apis/${encodeURIComponent(apiHandle)}`);
-      return api?.upstream?.main?.url;
+      return { endpointUrl: api?.upstream?.main?.url, readOnly: api?.readOnly === true };
     },
 
     /**
