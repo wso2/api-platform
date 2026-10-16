@@ -21,7 +21,6 @@ import (
 	"context"
 	"crypto/rsa"
 	"crypto/tls"
-	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -30,17 +29,12 @@ import (
 	"os/signal"
 	"path/filepath"
 	"slices"
-	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/wso2/api-platform/platform-api/config"
 	"github.com/wso2/api-platform/platform-api/internal/client"
-	"github.com/wso2/api-platform/platform-api/internal/database"
 	"github.com/wso2/api-platform/platform-api/internal/handler"
-	"github.com/wso2/api-platform/platform-api/internal/health"
-	"github.com/wso2/api-platform/platform-api/internal/logger"
 	"github.com/wso2/api-platform/platform-api/internal/middleware"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/plugin"
@@ -72,8 +66,9 @@ type Server struct {
 	eventHub       eventhub.EventHub
 	logger         *slog.Logger
 	plugins        []plugin.Plugin // internal plugins + wrapped external plugins
-	health         *health.Checker // serves /health
 	healthLog      io.Closer       // closes the health log file, if one is configured
+	listeners      *listenerSet    // bound during startup, before the database is reached
+	quit           chan os.Signal  // shutdown signals, caught from the start of startup
 }
 
 // validateServerConfig enforces request-security requirements at startup that
@@ -118,23 +113,19 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	}
 	// TEMP-READ-ONLY-MODE: end
 
-	healthChecker, healthLog := newHealthChecker(cfg, slogger)
-	// Every failure path from here on must close the health log file again; built is
+	serving, err := (&Server{logger: slogger}).startServing(cfg)
+	if err != nil {
+		return nil, err
+	}
+	// Every failure path from here on must release what startServing acquired; built is
 	// set only on the success path.
 	built := false
 	defer func() {
 		if !built {
-			_ = healthLog.Close()
+			serving.release()
 		}
 	}()
-
-	// Initialize database using configuration
-	db, err := database.NewConnection(&cfg.Database, slogger)
-	if err != nil {
-		slogger.Error("Failed to connect to database", "error", err)
-		return nil, err
-	}
-	healthChecker.Register("database", newDatabaseCheck(db))
+	db := serving.db
 
 	// Schema DDL is executed only for SQLite, which is used for local/demo
 	// deployments. For all other (server) drivers the schema must be
@@ -806,6 +797,10 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		slog.Int("rateLimitPerMin", cfg.Listeners.WebSocket.RateLimitPerMin),
 	)
 
+	// The health endpoint reports whether the database is reachable. It is the same
+	// checker that answered during the startup wait, so failure tracking carries over.
+	mux.Handle("GET /health", serving.health.Handler())
+
 	startupOK = true
 	built = true
 	return &Server{
@@ -821,34 +816,10 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		eventHub:       eventHub,
 		logger:         slogger,
 		plugins:        plugins,
-		health:         healthChecker,
-		healthLog:      healthLog,
+		healthLog:      serving.healthLog,
+		listeners:      serving.listeners,
+		quit:           serving.quit,
 	}, nil
-}
-
-// newHealthChecker builds the checker behind /health and the logger it reports check
-// failures and recoveries to: the main log plus, when configured, the health log file
-// in the same format. The returned closer closes that file.
-func newHealthChecker(cfg *config.Server, slogger *slog.Logger) (*health.Checker, io.Closer) {
-	logCfg := logger.Config{Level: cfg.Logging.Level, Format: cfg.Logging.Format}
-	healthLogger, closer := health.NewLogger(slogger,
-		func(w io.Writer) slog.Handler { return logger.NewHandler(logCfg, w) },
-		health.FileLogConfig{
-			Path:      cfg.Health.LogFile,
-			MaxSizeMB: cfg.Health.LogMaxSizeMB,
-			MaxFiles:  cfg.Health.LogMaxFiles,
-		})
-	checker := health.NewChecker(health.Options{
-		Component:      "platform-api",
-		HealthyStatus:  "ok",
-		CheckTimeout:   cfg.Health.CheckTimeout,
-		CacheTTL:       cfg.Health.CacheTTL,
-		Logger:         healthLogger,
-		DebugLogger:    slogger,
-		BackoffInitial: cfg.Health.BackoffInitial,
-		BackoffMax:     cfg.Health.BackoffMax,
-	})
-	return checker, closer
 }
 
 // buildClaimMappings adapts the config-level claim name mapping (shared by all
@@ -1044,108 +1015,22 @@ func (s *Server) buildTLSConfig(httpsCfg config.HTTPSListener) (*tls.Config, err
 	}, nil
 }
 
-// Start brings up the enabled listeners. The plain-HTTP and TLS listeners are
-// independent: either or both may run, each on its own port. This mirrors the
-// gateway router's http/https listener split. At least one listener must be
-// enabled.
-//
-// timeouts bounds connection lifetime on both listeners so a slow or idle peer
-// cannot hold one open indefinitely (Slowloris). It is validated at config load.
-func (s *Server) Start(listeners config.ServerListeners, timeouts config.Timeouts) error {
-	httpCfg := listeners.HTTP
-	httpsCfg := listeners.HTTPS
-	if !httpCfg.Enabled && !httpsCfg.Enabled {
-		s.logger.Error("No listeners enabled")
-		return fmt.Errorf("no listeners enabled: set server.http.enabled=true and/or server.https.enabled=true in config")
-	}
-
-	// Preflight: validate listener configuration and build the TLS config before
-	// starting any listener, background job, or goroutine
-	if httpCfg.Enabled && (httpCfg.Port <= 0 || httpCfg.Port > 65535) {
-		return fmt.Errorf("HTTP listener enabled but server.http.port is invalid (got %d)", httpCfg.Port)
-	}
-	var tlsConfig *tls.Config
-	if httpsCfg.Enabled {
-		if httpsCfg.Port <= 0 || httpsCfg.Port > 65535 {
-			return fmt.Errorf("HTTPS listener enabled but server.https.port is invalid (got %d)", httpsCfg.Port)
-		}
-		var err error
-		if tlsConfig, err = s.buildTLSConfig(httpsCfg); err != nil {
-			return err
-		}
-	}
-
-	// Add the health endpoint, which reports whether the database is reachable. Routes
-	// added to s.mux after startup are reachable because s.handler wraps s.mux by
-	// reference.
-	s.mux.Handle("GET /health", s.health.Handler())
-
+// Start switches the listeners bound during startup to the full API and blocks until
+// a listener fails or a shutdown signal arrives, then shuts everything down.
+func (s *Server) Start() error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	defer signal.Stop(s.quit)
 
 	go s.timeoutService.Start(ctx)
 
-	// errCh is buffered for both listeners so a failing goroutine never blocks,
-	// even while the other listener is still being shut down.
-	errCh := make(chan error, 2)
-	var httpServers []*http.Server
-
-	// Plain-HTTP listener.
-	if httpCfg.Enabled {
-		// Plain HTTP is only safe when something upstream terminates TLS, or for
-		// internal traffic. Say so loudly.
-		s.logger.Warn("Plain-HTTP listener is enabled (server.http.enabled=true); " +
-			"terminate TLS at an ingress or service-mesh sidecar and never expose this listener " +
-			"directly to untrusted networks.")
-		httpPort := strconv.Itoa(httpCfg.Port)
-		httpServer := &http.Server{
-			Addr:              ":" + httpPort,
-			Handler:           s.handler,
-			ReadHeaderTimeout: timeouts.ReadHeader,
-			ReadTimeout:       timeouts.Read,
-			WriteTimeout:      timeouts.Write,
-			IdleTimeout:       timeouts.Idle,
-		}
-		httpServers = append(httpServers, httpServer)
-		s.logger.Info("Starting HTTP listener", "address", "http://localhost:"+httpPort)
-		go func() {
-			errCh <- httpServer.ListenAndServe()
-		}()
-	}
-
-	// TLS listener.
-	if httpsCfg.Enabled {
-		httpsPort := strconv.Itoa(httpsCfg.Port)
-		httpsServer := &http.Server{
-			Addr:              ":" + httpsPort,
-			Handler:           s.handler,
-			TLSConfig:         tlsConfig,
-			ReadHeaderTimeout: timeouts.ReadHeader,
-			ReadTimeout:       timeouts.Read,
-			WriteTimeout:      timeouts.Write,
-			IdleTimeout:       timeouts.Idle,
-		}
-		httpServers = append(httpServers, httpsServer)
-		s.logger.Info("Starting HTTPS listener", "address", "https://localhost:"+httpsPort)
-		go func() {
-			errCh <- httpsServer.ListenAndServeTLS("", "")
-		}()
-	}
-
+	s.listeners.useHandler(s.handler)
 	s.logger.Info("Platform API started")
-
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	defer signal.Stop(quit)
 
 	teardown := func() {
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer shutdownCancel()
-		for _, srv := range httpServers {
-			if err := srv.Shutdown(shutdownCtx); err != nil {
-				s.logger.Error("HTTP server shutdown error", "addr", srv.Addr, "error", err)
-			}
-		}
+		s.listeners.shutdown(shutdownCtx)
 		for _, p := range s.plugins {
 			if err := p.Shutdown(shutdownCtx); err != nil {
 				s.logger.Error("Plugin shutdown error", "plugin", p.Name(), "error", err)
@@ -1159,22 +1044,10 @@ func (s *Server) Start(listeners config.ServerListeners, timeouts config.Timeout
 		_ = s.healthLog.Close()
 	}
 
-	select {
-	case err := <-errCh:
-		cancel()
-		teardown()
-		// A graceful Shutdown surfaces http.ErrServerClosed on the listener
-		// goroutine; that is a clean exit, not a startup failure.
-		if err != nil && !errors.Is(err, http.ErrServerClosed) {
-			return err
-		}
-		return nil
-	case sig := <-quit:
-		s.logger.Info("Received shutdown signal", "signal", sig)
-		cancel()
-		teardown()
-		return nil
-	}
+	err := s.waitForStop()
+	cancel()
+	teardown()
+	return err
 }
 
 // GetMux returns the raw ServeMux for testing purposes.
