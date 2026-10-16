@@ -100,6 +100,7 @@ export function AttachedPolicyList({
   // Defaulted here rather than in the signature: a default parameter is
   // evaluated before `useIntl` exists, so the fallback could not be translated.
   const emptyLabel = emptyText ?? intl.formatMessage(messages.empty);
+  const canModify = canAdd && !readOnly;
   const editable = !readOnly;
 
   return (
@@ -116,7 +117,7 @@ export function AttachedPolicyList({
           <Typography sx={{ fontWeight: 600 }} variant="body2">
             <FormattedMessage {...messages.heading} />
           </Typography>
-          {canAdd && editable && (
+          {canModify && (
             <Button onClick={onAdd} size="small" startIcon={<Plus size={14} />} variant="outlined">
               <FormattedMessage {...messages.addPolicy} />
             </Button>

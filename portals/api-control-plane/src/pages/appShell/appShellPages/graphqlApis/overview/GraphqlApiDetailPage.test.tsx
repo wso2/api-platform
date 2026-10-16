@@ -141,7 +141,7 @@ describe('GraphqlApiDetailPage', () => {
     expect(screen.queryByText(/could not be parsed/)).not.toBeInTheDocument();
   });
 
-  it('hides the edit button and shows a Gateway-managed chip for a read-only API', async () => {
+  it('hides the edit button and offers View Deployments for a read-only API', async () => {
     const readOnlyApi = { ...api, readOnly: true };
     server.use(
       resource('/graphql-apis/:graphqlApiId', readOnlyApi),
@@ -153,9 +153,13 @@ describe('GraphqlApiDetailPage', () => {
     renderPage();
 
     await screen.findByRole('heading', { name: 'Countries GraphQL API' });
-    expect(screen.getByText('Gateway-managed')).toBeInTheDocument();
+    // A gateway owns a read-only API's deployments: the header links to them
+    // instead of offering to deploy.
+    expect(screen.getByRole('link', { name: 'View Deployments' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Deploy to Gateway' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Edit API details' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Edit endpoint' })).not.toBeInTheDocument();
+    // The endpoint stays visible but cannot be edited: the gateway owns it.
+    expect(screen.getByRole('button', { name: 'Edit endpoint' })).toBeDisabled();
   });
 
   it('shows only the endpoint, not invoke URL or API keys, before anything is deployed', async () => {

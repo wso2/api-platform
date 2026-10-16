@@ -60,10 +60,6 @@ var browserSafeKeys = []string{
 
 	// External links and SPA-only endpoints
 	"api_portal_url",
-	// Billing console origin, for the read-only banner's link. CLOUD ONLY and
-	// absent from the shipped config template: a deployment that sets no
-	// such key emits nothing here, and the banner (if it shows at all) just
-	// carries no link.
 	"billing_console_url",
 	"api_policy_hub",
 	"policy_hub_web_url",
