@@ -187,30 +187,22 @@ func (c *Client) setState(state ClientState) {
 		oldState := c.state
 		c.state = state
 
-		// Update metrics based on state
+		// Update metrics based on state. The active-connection gauge counts the
+		// established stream, so it moves only on entering or leaving Connected;
+		// otherwise every reconnect cycle would leave it one higher.
+		if oldState == StateConnected {
+			metrics.GRPCConnectionsActive.WithLabelValues("xds").Dec()
+		}
 		switch state {
 		case StateConnected:
 			metrics.XDSConnectionState.WithLabelValues("connected").Set(1)
 			metrics.GRPCConnectionsActive.WithLabelValues("xds").Inc()
-			slog.InfoContext(c.ctx, "Client state changed",
-				"old_state", oldState,
-				"new_state", state)
-		case StateDisconnected, StateStopped:
+		case StateDisconnected, StateReconnecting, StateStopped:
 			metrics.XDSConnectionState.WithLabelValues("connected").Set(0)
-			metrics.GRPCConnectionsActive.WithLabelValues("xds").Dec()
-			slog.InfoContext(c.ctx, "Client state changed",
-				"old_state", oldState,
-				"new_state", state)
-		case StateReconnecting:
-			metrics.XDSConnectionState.WithLabelValues("connected").Set(0)
-			slog.InfoContext(c.ctx, "Client state changed",
-				"old_state", oldState,
-				"new_state", state)
-		default:
-			slog.InfoContext(c.ctx, "Client state changed",
-				"old_state", oldState,
-				"new_state", state)
 		}
+		slog.InfoContext(c.ctx, "Client state changed",
+			"old_state", oldState,
+			"new_state", state)
 	}
 }
 
