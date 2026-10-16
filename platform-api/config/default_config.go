@@ -39,6 +39,7 @@ func defaultConfig() *Server {
 			LogMaxFiles:    5,
 			BackoffInitial: 10 * time.Second,
 			BackoffMax:     5 * time.Minute,
+			StartupWait:    5 * time.Minute,
 		},
 		DBSchemaPath:               "./internal/database/schema.sql",
 		OpenAPISpecPath:            "./resources/openapi.yaml",

@@ -818,6 +818,7 @@ func TestLoadConfig_Health_DefaultsWhenSectionAbsent(t *testing.T) {
 	assert.Equal(t, 5, cfg.Health.LogMaxFiles)
 	assert.Equal(t, 10*time.Second, cfg.Health.BackoffInitial)
 	assert.Equal(t, 5*time.Minute, cfg.Health.BackoffMax)
+	assert.Equal(t, 5*time.Minute, cfg.Health.StartupWait)
 }
 
 func TestLoadConfig_Health_TOMLOverridesDefaults(t *testing.T) {
@@ -830,6 +831,7 @@ log_max_size_mb = 20
 log_max_files   = 3
 backoff_initial = "30s"
 backoff_max     = "10m"
+startup_wait    = "90s"
 `)
 	require.NoError(t, err)
 	assert.Equal(t, time.Second, cfg.Health.CheckTimeout)
@@ -839,6 +841,7 @@ backoff_max     = "10m"
 	assert.Equal(t, 3, cfg.Health.LogMaxFiles)
 	assert.Equal(t, 30*time.Second, cfg.Health.BackoffInitial)
 	assert.Equal(t, 10*time.Minute, cfg.Health.BackoffMax)
+	assert.Equal(t, 90*time.Second, cfg.Health.StartupWait)
 }
 
 func TestValidateHealthConfig(t *testing.T) {
@@ -856,6 +859,8 @@ func TestValidateHealthConfig(t *testing.T) {
 		{"cache_ttl zero", func(h *Health) { h.CacheTTL = 0 }, "platform_api.health.cache_ttl must be > 0", ""},
 		{"backoff_initial zero", func(h *Health) { h.BackoffInitial = 0 }, "platform_api.health.backoff_initial must be > 0", ""},
 		{"backoff_max zero", func(h *Health) { h.BackoffMax = 0 }, "platform_api.health.backoff_max must be > 0", ""},
+		{"startup_wait zero", func(h *Health) { h.StartupWait = 0 }, "platform_api.health.startup_wait must be > 0", ""},
+		{"startup_wait negative", func(h *Health) { h.StartupWait = -time.Minute }, "platform_api.health.startup_wait must be > 0", ""},
 		{
 			"backoff_max below backoff_initial",
 			func(h *Health) { h.BackoffInitial = time.Minute; h.BackoffMax = time.Second },

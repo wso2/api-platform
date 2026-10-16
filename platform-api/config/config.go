@@ -108,6 +108,9 @@ type Health struct {
 	BackoffInitial time.Duration `koanf:"backoff_initial"`
 	// BackoffMax caps the interval between repeated failure lines.
 	BackoffMax time.Duration `koanf:"backoff_max"`
+	// StartupWait is how long startup waits for the database to become reachable
+	// before giving up and exiting.
+	StartupWait time.Duration `koanf:"startup_wait"`
 }
 
 // Server holds the configuration parameters for the application.
@@ -1207,6 +1210,7 @@ func validateHealthConfig(cfg *Health) error {
 		{"cache_ttl", cfg.CacheTTL},
 		{"backoff_initial", cfg.BackoffInitial},
 		{"backoff_max", cfg.BackoffMax},
+		{"startup_wait", cfg.StartupWait},
 	} {
 		if f.value <= 0 {
 			return fmt.Errorf("platform_api.health.%s must be > 0 (got %s)", f.name, f.value)
