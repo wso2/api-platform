@@ -1749,8 +1749,10 @@ var adminResourceKinds = map[string]struct {
 	kind       cleanup.Kind
 	collection string
 }{
-	"certificate": {cleanup.KindCertificate, "/certificates"},
-	"secret":      {cleanup.KindSecret, "/secrets"},
+	"certificate":       {cleanup.KindCertificate, "/certificates"},
+	"secret":            {cleanup.KindSecret, "/secrets"},
+	"subscription":      {cleanup.KindSubscription, "/subscriptions"},
+	"subscription-plan": {cleanup.KindSubscriptionPlan, "/subscription-plans"},
 }
 
 // registerAdminResourceForCleanup registers a resource managed through the gateway-controller

@@ -455,6 +455,14 @@ blocks:
       - name: api-keys
         features:
           - features/gateway/security/api_keys.feature
+      - name: subscription-management
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/core/subscription_management.feature
+      - name: subscription-plan-management
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/core/subscription_plan_management.feature
       - name: api-with-policies
         features:
           - features/gateway/core/api_with_policies.feature
