@@ -38,7 +38,7 @@ const TEMPLATE_ENDPOINTS: Record<string, EndpointOption> = {
   openai: {
     path: '/chat/completions',
     body: {
-      model: 'gpt-4o-mini',
+      model: 'gpt-5-mini',
       messages: [{ role: 'user', content: 'Say hello!' }],
     },
   },
@@ -53,7 +53,7 @@ const TEMPLATE_ENDPOINTS: Record<string, EndpointOption> = {
     path: '/v1/messages',
     extraHeaders: { 'anthropic-version': '2023-06-01' },
     body: {
-      model: 'claude-sonnet-4-6',
+      model: 'claude-sonnet-5-5',
       max_tokens: 1024,
       messages: [{ role: 'user', content: 'Say hello!' }],
     },
@@ -84,17 +84,27 @@ const TEMPLATE_ENDPOINTS: Record<string, EndpointOption> = {
     },
   },
   awsbedrock: {
-    path: '/model/amazon.titan-text-express-v1/invoke',
+    path: '/model/us.amazon.nova-lite-v1:0/converse',
     body: {
-      inputText: 'Say hello!',
-      textGenerationConfig: { maxTokenCount: 256, temperature: 0.7 },
+      messages: [
+        {
+          role: 'user',
+          content: [{ text: 'Say hello!' }],
+        },
+      ],
+      inferenceConfig: { maxTokens: 256, temperature: 0.7 },
     },
   },
   'aws-bedrock': {
-    path: '/model/amazon.titan-text-express-v1/invoke',
+    path: '/model/us.amazon.nova-lite-v1:0/converse',
     body: {
-      inputText: 'Say hello!',
-      textGenerationConfig: { maxTokenCount: 256, temperature: 0.7 },
+      messages: [
+        {
+          role: 'user',
+          content: [{ text: 'Say hello!' }],
+        },
+      ],
+      inferenceConfig: { maxTokens: 256, temperature: 0.7 },
     },
   },
   'google-vertex': {
