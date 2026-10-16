@@ -348,6 +348,7 @@ format = "text"
 # log_max_files   = {{ env "APIP_GW_CONTROLLER_HEALTH_LOG_MAX_FILES" "5" }}      # rotated backups to keep
 # backoff_initial = '{{ env "APIP_GW_CONTROLLER_HEALTH_BACKOFF_INITIAL" "10s" }}' # delay before the first repeated failure line
 # backoff_max     = '{{ env "APIP_GW_CONTROLLER_HEALTH_BACKOFF_MAX" "5m" }}'      # cap on the repeat interval
+# startup_wait    = '{{ env "APIP_GW_CONTROLLER_HEALTH_STARTUP_WAIT" "5m" }}'     # how long startup waits for the database before exiting
 
 [controller.metrics]
 enabled = false
