@@ -21,6 +21,7 @@ package kernel
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"testing"
 
@@ -328,6 +329,97 @@ func TestTraceContextCarrier(t *testing.T) {
 
 		assert.Empty(t, traceContextCarrier(req).Keys())
 	})
+}
+
+func TestProcess_RootSpanParentsOnStreamMetadata(t *testing.T) {
+	installW3CPropagator(t)
+	const (
+		envoyTraceID  = "11111111111111111111111111111111"
+		envoySpanID   = "2222222222222222"
+		clientTraceID = "33333333333333333333333333333333"
+		clientSpanID  = "4444444444444444"
+	)
+
+	rootParent := func(t *testing.T, streamMetadata metadata.MD) (traceID, parentSpanID string) {
+		t.Helper()
+		server, k, sr := newSpanStatusServer(t)
+		server.tracingEnabled = true
+		registerTestRoute(k, "test-route", emptyChain())
+
+		stream := newMockStream([]*extprocv3.ProcessingRequest{
+			withTraceparent(requestHeadersReq("test-route", "GET", "/pets"),
+				"00-"+clientTraceID+"-"+clientSpanID+"-01"),
+		})
+		if streamMetadata != nil {
+			stream.ctx = metadata.NewIncomingContext(context.Background(), streamMetadata)
+		}
+		require.NoError(t, server.Process(stream))
+
+		root := spanByName(sr.Ended(), constants.SpanExternalProcessingProcess)
+		require.NotNil(t, root)
+		return root.SpanContext().TraceID().String(), root.Parent().SpanID().String()
+	}
+
+	t.Run("stream metadata wins over the request header", func(t *testing.T) {
+		traceID, parentSpanID := rootParent(t, metadata.Pairs("traceparent", "00-"+envoyTraceID+"-"+envoySpanID+"-01"))
+		assert.Equal(t, envoyTraceID, traceID)
+		assert.Equal(t, envoySpanID, parentSpanID,
+			"the root must be a child of Envoy's span, not a sibling of it under the caller's")
+	})
+
+	t.Run("the request header is the fallback when the metadata has none", func(t *testing.T) {
+		traceID, parentSpanID := rootParent(t, nil)
+		assert.Equal(t, clientTraceID, traceID)
+		assert.Equal(t, clientSpanID, parentSpanID)
+	})
+}
+
+// headerPhasesPolicy takes part in both header phases and nothing else.
+type headerPhasesPolicy struct{}
+
+func (p *headerPhasesPolicy) Mode() policy.ProcessingMode {
+	return policy.ProcessingMode{
+		RequestHeaderMode:  policy.HeaderModeProcess,
+		RequestBodyMode:    policy.BodyModeSkip,
+		ResponseHeaderMode: policy.HeaderModeProcess,
+		ResponseBodyMode:   policy.BodyModeSkip,
+	}
+}
+
+func (p *headerPhasesPolicy) OnRequestHeaders(context.Context, *policy.RequestHeaderContext, map[string]interface{}) policy.RequestHeaderAction {
+	return policy.UpstreamRequestHeaderModifications{}
+}
+
+func (p *headerPhasesPolicy) OnResponseHeaders(context.Context, *policy.ResponseHeaderContext, map[string]interface{}) policy.ResponseHeaderAction {
+	return policy.DownstreamResponseHeaderModifications{}
+}
+
+func TestProcess_PolicySpansNestUnderTheirPhase(t *testing.T) {
+	server, k, sr := newSpanStatusServer(t)
+	registerTestRoute(k, "test-route", buildChainWithPolicy(t, "header-policy", &headerPhasesPolicy{}, map[string]interface{}{}))
+
+	require.NoError(t, server.Process(newMockStream([]*extprocv3.ProcessingRequest{
+		requestHeadersReq("test-route", "GET", "/pets"),
+		responseHeadersReq("200"),
+	})))
+
+	spans := sr.Ended()
+	root := spanByName(spans, constants.SpanExternalProcessingProcess)
+	require.NotNil(t, root)
+
+	for phase, policySpan := range map[string]string{
+		constants.SpanProcessRequestHeaders:  fmt.Sprintf(constants.SpanPolicyRequestFormat, "header-policy"),
+		constants.SpanProcessResponseHeaders: fmt.Sprintf(constants.SpanPolicyResponseFormat, "header-policy"),
+	} {
+		phaseSpan := spanByName(spans, phase)
+		pol := spanByName(spans, policySpan)
+		require.NotNil(t, phaseSpan, phase)
+		require.NotNil(t, pol, policySpan)
+		assert.Equal(t, phaseSpan.SpanContext().SpanID(), pol.Parent().SpanID(),
+			"%s must be a child of %s", policySpan, phase)
+		assert.Equal(t, root.SpanContext().SpanID(), phaseSpan.Parent().SpanID(),
+			"%s must be a child of the root", phase)
+	}
 }
 
 func TestProcess_UnknownRequestType(t *testing.T) {
