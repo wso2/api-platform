@@ -43,6 +43,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/config"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/constants"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/executor"
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/health"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/kernel"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/pkg/cel"
@@ -269,7 +270,11 @@ func main() {
 	// Create and start ext_proc gRPC server
 	// The gateway's health routes reach the policy engine like API traffic and are
 	// answered by these checkers; the health log file, if any, is closed on shutdown.
-	livenessChecker, readinessChecker, healthLog := buildHealthCheckers(cfg, logger, xdsClient)
+	var pythonExecutorCheck health.CheckFunc
+	if pythonbridge.IsAvailable(cfg.PolicyEngine.PythonExecutor) {
+		pythonExecutorCheck = pythonbridge.NewHealthCheck(pythonbridge.GetStreamManager())
+	}
+	livenessChecker, readinessChecker, healthLog := buildHealthCheckers(cfg, logger, xdsClient, pythonExecutorCheck)
 	defer healthLog.Close()
 
 	extprocServer := kernel.NewExternalProcessorServer(k, chainExecutor, cfg.TracingConfig, cfg.PolicyEngine.TracingServiceName, cfg.PolicyEngine.RequestBody.MaxDecompressedBytes, cfg.PolicyEngine.ResponseBody.MaxDecompressedBytes, corrStore,

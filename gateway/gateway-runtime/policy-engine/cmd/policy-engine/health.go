@@ -35,8 +35,10 @@ const runtimeComponent = "gateway-runtime"
 // own: the policy engine answering at all is what it proves. Readiness adds the
 // dependencies a runtime needs to serve traffic correctly: the configuration link to
 // the controller (when configuration comes over xDS; xdsClient is nil otherwise),
-// tolerated down for the configured grace window.
-func buildHealthCheckers(cfg *config.Config, logger *slog.Logger, xdsClient *xdsclient.Client) (liveness, readiness *health.Checker, closer io.Closer) {
+// tolerated down for the configured grace window, and the Python executor (when one is
+// configured; pythonExecutor is nil otherwise).
+func buildHealthCheckers(cfg *config.Config, logger *slog.Logger, xdsClient *xdsclient.Client,
+	pythonExecutor health.CheckFunc) (liveness, readiness *health.Checker, closer io.Closer) {
 	hc := cfg.PolicyEngine.Health
 	healthLogger, closer := health.NewLogger(logger,
 		func(w io.Writer) slog.Handler { return newLogHandler(cfg, w) },
@@ -57,6 +59,9 @@ func buildHealthCheckers(cfg *config.Config, logger *slog.Logger, xdsClient *xds
 	readiness = health.NewChecker(options("ready"))
 	if xdsClient != nil {
 		readiness.Register("xds_connection", xdsClient.ConnectionCheck(hc.XDSGrace))
+	}
+	if pythonExecutor != nil {
+		readiness.Register("python_executor", pythonExecutor)
 	}
 	return liveness, readiness, closer
 }

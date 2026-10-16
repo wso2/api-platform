@@ -19,6 +19,7 @@
 package main
 
 import (
+	"context"
 	"io"
 	"log/slog"
 	"os"
@@ -58,7 +59,7 @@ func healthTestConfig(t *testing.T) *config.Config {
 func TestBuildHealthCheckers(t *testing.T) {
 	cfg := healthTestConfig(t)
 
-	liveness, readiness, closer := buildHealthCheckers(cfg, slog.New(slog.NewTextHandler(io.Discard, nil)), nil)
+	liveness, readiness, closer := buildHealthCheckers(cfg, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, nil)
 	defer closer.Close()
 
 	live := liveness.Evaluate()
@@ -71,6 +72,7 @@ func TestBuildHealthCheckers(t *testing.T) {
 	assert.Equal(t, "ready", ready.Status)
 	assert.Equal(t, runtimeComponent, ready.Component)
 	assert.NotContains(t, ready.Checks, "xds_connection", "no configuration link in file mode")
+	assert.NotContains(t, ready.Checks, "python_executor", "no Python executor configured")
 
 	body, err := health.RenderBody(live)
 	require.NoError(t, err)
@@ -87,7 +89,7 @@ func TestBuildHealthCheckersWithConfigurationLink(t *testing.T) {
 		registry.GetRegistry(), resolver.DefaultRegistry())
 	require.NoError(t, err)
 
-	liveness, readiness, closer := buildHealthCheckers(cfg, slog.New(slog.NewTextHandler(io.Discard, nil)), client)
+	liveness, readiness, closer := buildHealthCheckers(cfg, slog.New(slog.NewTextHandler(io.Discard, nil)), client, nil)
 	defer closer.Close()
 
 	ready := readiness.Evaluate()
@@ -95,4 +97,17 @@ func TestBuildHealthCheckersWithConfigurationLink(t *testing.T) {
 	assert.Equal(t, health.StatusDown, ready.Checks["xds_connection"].Status)
 	assert.Equal(t, "no configuration received yet", ready.Checks["xds_connection"].Error)
 	assert.NotContains(t, liveness.Evaluate().Checks, "xds_connection", "liveness never depends on the controller")
+}
+
+func TestBuildHealthCheckersWithPythonExecutor(t *testing.T) {
+	cfg := healthTestConfig(t)
+	executorDown := func(context.Context) error { return health.Reason("python executor unreachable") }
+
+	liveness, readiness, closer := buildHealthCheckers(cfg, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, executorDown)
+	defer closer.Close()
+
+	ready := readiness.Evaluate()
+	require.Contains(t, ready.Checks, "python_executor")
+	assert.Equal(t, "python executor unreachable", ready.Checks["python_executor"].Error)
+	assert.True(t, liveness.Evaluate().Healthy, "liveness never depends on the Python executor")
 }
