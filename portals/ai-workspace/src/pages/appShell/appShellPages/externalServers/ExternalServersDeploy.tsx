@@ -34,6 +34,7 @@ import {
 } from '../../../../contexts/GatewayDeployContext';
 import { GatewayDeployMainSection } from '../../../../Components/GatewayDeploy';
 import { mcpProxiesApis } from '../../../../apis/MCP/mcpProxiesApis';
+import { AIEntityProvider } from '../../../../contexts/AIEntitiesContext';
 import { useAppShell } from '../../../../contexts/AppShellContext';
 import { PLATFORM_API_BASE_URL } from '../../../../paths';
 import type { MCPServer } from '../../../../utils/types';
@@ -164,12 +165,14 @@ export default function ExternalServersDeploy() {
   }
 
   return (
-    <GatewayDeployProvider
-      apiId={serverId}
-      resourceType="mcp-server"
-      readOnly={Boolean(server.readOnly)}
-    >
-      <ExternalServersDeployLayout server={server} />
-    </GatewayDeployProvider>
+    <AIEntityProvider type="mcp-server" id={serverId} initialEntity={server}>
+      <GatewayDeployProvider
+        apiId={serverId}
+        resourceType="mcp-server"
+        readOnly={Boolean(server.readOnly)}
+      >
+        <ExternalServersDeployLayout server={server} />
+      </GatewayDeployProvider>
+    </AIEntityProvider>
   );
 }
