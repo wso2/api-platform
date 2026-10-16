@@ -23,6 +23,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"net/http"
 	"strings"
 	"testing"
 
@@ -696,4 +697,38 @@ func TestAPIKeyOpsPassTheKindExplicitly(t *testing.T) {
 		api.APIKeyCreationRequest{Name: &keyName}, kindsCaller, "c", kindsDiscard)
 	require.Error(t, err)
 	assert.True(t, storage.IsNotFoundError(err), "openai is an LlmProvider, not a RestApi: %v", err)
+}
+
+// The MCP RestApi adapter copies RestAPIHandler.buildDeployResponse rather than
+// calling it, so this runs the same deploy through both: an mtls-auth API on
+// the gateway's default hostname draws MTLS_HOSTNAME_NOT_SCOPED. If the REST
+// side changes and restAPIDeployBody does not, the warnings stop matching.
+func TestMcpRestAPIDeployWarningsMatchREST(t *testing.T) {
+	warningsOf := func(t *testing.T, body []byte) []api.Warning {
+		t.Helper()
+		var resp struct {
+			Status struct {
+				Warnings []api.Warning `json:"warnings"`
+			} `json:"status"`
+		}
+		require.NoError(t, json.Unmarshal(body, &resp))
+		return resp.Status.Warnings
+	}
+
+	// REST: a fresh server, through the real handler.
+	restServer, _ := createDedicatedHostnameTestServer(t, false)
+	w := createMtlsAuthRestAPI(t, restServer, "mtls-parity", "")
+	require.Equal(t, http.StatusCreated, w.Code, w.Body.String())
+	restWarnings := warningsOf(t, w.Body.Bytes())
+	require.NotEmpty(t, restWarnings, "the fixture must draw at least one warning")
+
+	// MCP: an identical fresh server, through the MCP adapter.
+	mcpServer, _ := createDedicatedHostnameTestServer(t, false)
+	h := &McpHandler{restAPIService: mcpServer.restAPIService, logger: toolsDiscard}
+	out, err := h.restAPIOps().Create(mtlsAuthRestAPIBody(t, "mtls-parity", ""), "corr-1", toolsDiscard)
+	require.NoError(t, err)
+	mcpBody, err := json.Marshal(out)
+	require.NoError(t, err)
+
+	assert.Equal(t, restWarnings, warningsOf(t, mcpBody))
 }
