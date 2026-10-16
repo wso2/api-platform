@@ -87,6 +87,7 @@ format = "text"   # text | json
 # log_max_files   = 5       # rotated backups to keep
 # backoff_initial = "10s"   # delay before the first repeated failure line
 # backoff_max     = "5m"    # cap on the repeat interval
+# startup_wait    = "5m"    # how long startup waits for the database before exiting
 
 # ---------------------------------------------------------------------------
 # Security
