@@ -18,6 +18,7 @@
 
 import { get } from '../clients/choreoApiClient';
 import { API_PORTAL_URL } from '../config.env';
+import { getHttpStatus } from '../utils/apiError';
 import { logger } from '../utils/logger';
 
 /**
@@ -78,10 +79,19 @@ export async function resolveApiPortalUrl(
     const registered = portal.url?.trim();
     if (registered) return registered;
   } catch (error) {
-    // A portal that is not registered (404) is the normal case for a
-    // deployment that relies on the configured URL below; anything else is
-    // still not worth failing the page over.
-    logger.error('Failed to read the API Portal registration:', error);
+    const status = getHttpStatus(error);
+    // Expected, not a fault: 404 is a deployment that never registers its
+    // portal, and 401/403 a viewer without `ap:api_portal:read`. Both fall
+    // through to the configured URL below.
+    if (status === 401 || status === 403 || status === 404) {
+      logger.debug(
+        `API Portal registration not readable (${status}); using the configured URL.`
+      );
+    } else {
+      logger.error('Failed to read the API Portal registration:', error);
+    }
   }
+  // Reached whenever step 1 produced nothing — a failure above, or a
+  // registration that carries no `url`.
   return API_PORTAL_URL.trim() || undefined;
 }
