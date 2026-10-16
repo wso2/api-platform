@@ -3907,6 +3907,28 @@ func TestManagementEndpointDeleteSweepsAResourceThroughTheManagementAPI(t *testi
 	require.Error(t, endpoint.delete(t.Context(), client, "/llm-proxies", "stuck"))
 }
 
+func TestSubscriptionsAndPlansRegisterForCleanupInDeletionOrder(t *testing.T) {
+	ctx := tcontext.WithLocal(tcontext.WithShared(context.Background(), tcontext.NewShared("block")), tcontext.NewLocal("runner"))
+	require.NoError(t, cleanup.Install(ctx, cleanup.NewRegistry(nil)))
+	g := &Gateway{}
+
+	require.NoError(t, g.registerAdminResourceForCleanup(ctx, "subscription-plan", "plan-1"))
+	require.NoError(t, g.registerAdminResourceForCleanup(ctx, "subscription", "sub-ref-1"))
+	require.ErrorContains(t, g.registerAdminResourceForCleanup(ctx, "subscriptions", "sub-ref-2"), "unknown cleanup resource kind")
+
+	registry, err := cleanup.Of(ctx)
+	require.NoError(t, err)
+	pending := registry.Pending()
+	require.Len(t, pending, 2)
+	require.Equal(t, cleanup.KindSubscription.Name, pending[0].Kind.Name, "a subscription deletes before the plan it references")
+	require.Equal(t, "sub-ref-1", pending[0].ID)
+	require.Equal(t, cleanup.KindSubscriptionPlan.Name, pending[1].Kind.Name)
+	require.Equal(t, "plan-1", pending[1].ID)
+
+	require.Equal(t, "/subscriptions", managementCollections[cleanup.KindSubscription])
+	require.Equal(t, "/subscription-plans", managementCollections[cleanup.KindSubscriptionPlan])
+}
+
 func TestManagementEndpointDeleteWaitsOutCertificateConflicts(t *testing.T) {
 	var calls atomic.Int32
 	rest := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

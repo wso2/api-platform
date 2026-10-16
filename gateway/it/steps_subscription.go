@@ -21,10 +21,7 @@ package it
 import (
 	"encoding/json"
 	"fmt"
-	"net/http"
-	"regexp"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/cucumber/godog"
@@ -103,91 +100,6 @@ func RegisterSubscriptionSteps(ctx *godog.ScenarioContext, state *TestState, htt
 			return nil
 		})
 
-	// The steps below call the gateway management REST API directly, instead of going through the
-	// mock platform-api, so the REST create/update paths are covered end to end. Bodies and paths
-	// accept ${key} placeholders, filled from values stored with "I store the last response field".
-	ctx.Step(`^I create a subscription via the management API with body:$`, func(body *godog.DocString) error {
-		resolved, err := resolveContextPlaceholders(state, body.Content)
-		if err != nil {
-			return err
-		}
-		httpSteps.SetHeader("Content-Type", "application/json")
-		if err := httpSteps.SendPOSTToService("gateway-controller", "/subscriptions", &godog.DocString{Content: resolved}); err != nil {
-			return err
-		}
-		time.Sleep(policyPropagationDelay)
-		return nil
-	})
-
-	ctx.Step(`^I update the subscription "([^"]*)" via the management API with body:$`, func(subscriptionID string, body *godog.DocString) error {
-		path, err := resolveContextPlaceholders(state, "/subscriptions/"+subscriptionID)
-		if err != nil {
-			return err
-		}
-		resolved, err := resolveContextPlaceholders(state, body.Content)
-		if err != nil {
-			return err
-		}
-		httpSteps.SetHeader("Content-Type", "application/json")
-		if err := httpSteps.SendPUTToService("gateway-controller", path, &godog.DocString{Content: resolved}); err != nil {
-			return err
-		}
-		time.Sleep(policyPropagationDelay)
-		return nil
-	})
-
-	ctx.Step(`^I create a subscription plan via the management API with body:$`, func(body *godog.DocString) error {
-		httpSteps.SetHeader("Content-Type", "application/json")
-		if err := httpSteps.SendPOSTToService("gateway-controller", "/subscription-plans", body); err != nil {
-			return err
-		}
-		time.Sleep(policyPropagationDelay)
-		return nil
-	})
-
-	ctx.Step(`^I update the subscription plan with stored id "([^"]*)" with body:$`, func(planKey string, body *godog.DocString) error {
-		planID, ok := state.GetContextString(planKey)
-		if !ok {
-			return fmt.Errorf("%q not found in context", planKey)
-		}
-		httpSteps.SetHeader("Content-Type", "application/json")
-		if err := httpSteps.SendPUTToService("gateway-controller", "/subscription-plans/"+planID, body); err != nil {
-			return err
-		}
-		time.Sleep(policyPropagationDelay)
-		return nil
-	})
-
-	ctx.Step(`^I send a (GET|DELETE) request to the management API at "([^"]*)"$`, func(method, path string) error {
-		resolved, err := resolveContextPlaceholders(state, path)
-		if err != nil {
-			return err
-		}
-		if method == http.MethodGet {
-			return httpSteps.SendGETToService("gateway-controller", resolved)
-		}
-		if err := httpSteps.SendDELETEToService("gateway-controller", resolved); err != nil {
-			return err
-		}
-		time.Sleep(policyPropagationDelay)
-		return nil
-	})
-
-	ctx.Step(`^the response field "([^"]*)" should equal the stored value "([^"]*)"$`, func(fieldName, contextKey string) error {
-		want, ok := state.GetContextString(contextKey)
-		if !ok {
-			return fmt.Errorf("%q not found in context", contextKey)
-		}
-		var m map[string]interface{}
-		if err := json.Unmarshal(httpSteps.LastBody(), &m); err != nil {
-			return err
-		}
-		if got := fmt.Sprintf("%v", m[fieldName]); got != want {
-			return fmt.Errorf("response field %q = %q, want %q", fieldName, got, want)
-		}
-		return nil
-	})
-
 	ctx.Step(`^I delete the subscription plan with stored id "([^"]*)"$`, func(contextKey string) error {
 		planID, ok := state.GetContextString(contextKey)
 		if !ok {
@@ -195,24 +107,4 @@ func RegisterSubscriptionSteps(ctx *godog.ScenarioContext, state *TestState, htt
 		}
 		return httpSteps.SendDELETEToService("gateway-controller", "/subscription-plans/"+planID)
 	})
-}
-
-var contextPlaceholder = regexp.MustCompile(`\$\{([A-Za-z0-9_]+)\}`)
-
-// resolveContextPlaceholders replaces each ${key} in s with the stored context value for key.
-func resolveContextPlaceholders(state *TestState, s string) (string, error) {
-	var missing []string
-	out := contextPlaceholder.ReplaceAllStringFunc(s, func(m string) string {
-		key := contextPlaceholder.FindStringSubmatch(m)[1]
-		v, ok := state.GetContextString(key)
-		if !ok {
-			missing = append(missing, key)
-			return m
-		}
-		return v
-	})
-	if len(missing) > 0 {
-		return "", fmt.Errorf("context values not found for placeholders: %s", strings.Join(missing, ", "))
-	}
-	return out, nil
 }

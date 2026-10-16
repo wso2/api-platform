@@ -148,8 +148,6 @@ func getFeaturePaths() []string {
 		"features/dynamic-endpoint.feature",
 		"features/subscription-validation.feature",
 		"features/subscription-analytics.feature",
-		"features/subscription-management-api.feature",
-		"features/subscription-plan-management-api.feature",
 		"features/llm-cost-based-ratelimit.feature",
 		"features/llm-provider-global-ratelimit.feature",
 		"features/log-message.feature",
