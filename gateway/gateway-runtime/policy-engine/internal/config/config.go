@@ -416,6 +416,9 @@ type TrafficLoggingConfig struct {
 	// generically for any authenticated request; other values are emitted as
 	// literal strings.
 	Properties map[string]string `koanf:"properties"`
+	// JSONFields, when set, replaces the default line: each key becomes a top-level
+	// field, and each value is a literal or a "$ctx:" expression, as in Properties.
+	JSONFields map[string]string `koanf:"json_fields"`
 }
 
 // TrafficLogFileConfig configures the "file" traffic-log sink

@@ -61,6 +61,9 @@ type Log struct {
 	// exclusions is traffic_logging.exclude_fields compiled for the struct-level
 	// fast path (see fieldExclusions). Nil when nothing is excluded.
 	exclusions *fieldExclusions
+	// jsonFields resolves traffic_logging.json_fields. When non-nil, its result is
+	// the whole line. Nil when json_fields is not set.
+	jsonFields *globalPropertyEvaluator
 	// sinks are the destinations each serialized line is written to, built from
 	// traffic_logging.outputs. Each sink owns its own synchronization, so no lock
 	// is held here across the fan-out.
@@ -94,6 +97,11 @@ func NewLog(logCfg *config.TrafficLoggingConfig) (*Log, error) {
 		globalDir:        buildGlobalDirective(*logCfg),
 		globalProperties: newGlobalPropertyEvaluator(logCfg.Properties, masked),
 		exclusions:       compileFieldExclusions(logCfg.ExcludeFields),
+	}
+	if len(logCfg.JSONFields) > 0 {
+		l.jsonFields = newGlobalPropertyEvaluator(logCfg.JSONFields, masked)
+		l.jsonFields.excludedRequestHeaders = l.exclusions.excludedRequestHeaders()
+		l.jsonFields.excludedResponseHeaders = l.exclusions.excludedResponseHeaders()
 	}
 
 	// Only build sinks when traffic logging is on: Publish is a no-op otherwise,
@@ -151,6 +159,16 @@ func (l *Log) resolveGlobalDirective(event *dto.Event) *dto.TrafficLogDirective 
 // [traffic_logging] config. If traffic logging is disabled, the event is skipped.
 func (l *Log) Publish(event *dto.Event) {
 	if event == nil || l.globalDir == nil {
+		return
+	}
+
+	if l.jsonFields != nil {
+		data, err := json.Marshal(l.jsonFields.resolve(event))
+		if err != nil {
+			slog.Error("Failed to marshal traffic-log json_fields line", "error", err)
+			return
+		}
+		l.write(data)
 		return
 	}
 

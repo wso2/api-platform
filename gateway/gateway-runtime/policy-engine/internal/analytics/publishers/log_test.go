@@ -896,3 +896,76 @@ func TestLog_Publish_DoesNotMutateSharedError(t *testing.T) {
 	assert.Equal(t, "Valid credentials required", event.Error.Summary,
 		"exclusion is a projection of the emitted JSON, never an edit to the shared event")
 }
+
+func TestLog_Publish_JSONFieldsDefinesWholeLine(t *testing.T) {
+	l, read := newLogToFile(t, &config.TrafficLoggingConfig{
+		Enabled:       true,
+		Properties:    map[string]string{"ignored": "yes"},
+		ExcludeFields: []string{"api"},
+		JSONFields: map[string]string{
+			"meth":   "$ctx:request.method",
+			"respCd": "$ctx:response.status",
+			"api":    "$ctx:api.name + '/' + api.version",
+			"env":    "prod",
+		},
+	})
+
+	l.Publish(createBaseEvent())
+
+	assert.Equal(t, map[string]interface{}{
+		"meth":   "GET",
+		"respCd": float64(200),
+		"api":    "test-api/v1.0",
+		"env":    "prod",
+	}, decodeLine(t, read()))
+}
+
+func TestLog_Publish_JSONFieldsMasksHeaders(t *testing.T) {
+	l, read := newLogToFile(t, &config.TrafficLoggingConfig{
+		Enabled:       true,
+		MaskedHeaders: []string{"authorization"},
+		JSONFields:    map[string]string{"auth": "$ctx:request.header['authorization']"},
+	})
+	event := createBaseEvent()
+	event.Properties["requestHeaders"] = `{"authorization":"Bearer secret"}`
+
+	l.Publish(event)
+
+	assert.Equal(t, maskedHeaderValue, decodeLine(t, read())["auth"])
+}
+
+func TestLog_Publish_JSONFieldsExcludesHeaders(t *testing.T) {
+	l, read := newLogToFile(t, &config.TrafficLoggingConfig{
+		Enabled:       true,
+		MaskedHeaders: []string{"x-api-key"},
+		ExcludeFields: []string{"requestHeaders.Authorization", "responseHeaders.set-cookie"},
+		JSONFields: map[string]string{
+			"reqHdrs":  "$ctx:request.header",
+			"respHdrs": "$ctx:response.header",
+		},
+	})
+	event := createBaseEvent()
+	event.Properties["requestHeaders"] = `{"authorization":"Bearer secret","x-api-key":"key","x-foo":"bar"}`
+	event.Properties["responseHeaders"] = `{"set-cookie":"s=1","content-type":"application/json"}`
+
+	l.Publish(event)
+
+	line := decodeLine(t, read())
+	assert.Equal(t, map[string]interface{}{"x-api-key": maskedHeaderValue, "x-foo": "bar"}, line["reqHdrs"])
+	assert.Equal(t, map[string]interface{}{"content-type": "application/json"}, line["respHdrs"])
+}
+
+func TestLog_Publish_PropertiesHeadersUnchangedByExcludeFields(t *testing.T) {
+	l, read := newLogToFile(t, &config.TrafficLoggingConfig{
+		Enabled:       true,
+		ExcludeFields: []string{"requestHeaders.x-foo"},
+		Properties:    map[string]string{"foo": "$ctx:request.header['x-foo']"},
+	})
+	event := createBaseEvent()
+	event.Properties["requestHeaders"] = `{"x-foo":"bar"}`
+
+	l.Publish(event)
+
+	props, _ := decodeLine(t, read())["properties"].(map[string]interface{})
+	assert.Equal(t, "bar", props["foo"])
+}

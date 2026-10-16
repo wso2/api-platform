@@ -68,6 +68,11 @@ type globalPropertyEvaluator struct {
 	// property expression cannot re-expose a header (e.g. authorization) that the
 	// emitted requestHeaders/responseHeaders map already redacts.
 	maskedHeaders map[string]bool
+	// excludedRequestHeaders/excludedResponseHeaders hold lower-cased header names
+	// removed from request.header/response.header. Set only for json_fields, from
+	// the "requestHeaders.<name>"/"responseHeaders.<name>" entries of exclude_fields.
+	excludedRequestHeaders  map[string]bool
+	excludedResponseHeaders map[string]bool
 	// referencedVars is the union, across every compiled expression, of the declared
 	// variable names (see globalPropertyVariables) actually referenced. Computed once at
 	// construction (the expression set is static config) and consulted by
@@ -184,6 +189,7 @@ var globalPropertyVariables = []globalPropertyVariable{
 	{"request.pathTemplate", cel.StringType, ""},
 	{"request.method", cel.StringType, ""},
 	{"request.id", cel.StringType, ""},
+	{"request.timestamp", cel.StringType, ""},
 	{"request.header", cel.MapType(cel.StringType, cel.StringType), map[string]string{}},
 
 	{"response.status", cel.IntType, 0},
@@ -199,6 +205,26 @@ var globalPropertyVariables = []globalPropertyVariable{
 
 	{"target.statusCode", cel.IntType, 0},
 	{"target.destination", cel.StringType, ""},
+
+	// Named after the default traffic-log line's JSON fields.
+	{"client.ip", cel.StringType, ""},
+	{"client.userAgent", cel.StringType, ""},
+	{"latencies.durationUs", cel.IntType, 0},
+	{"latencies.requestMediationLatencyUs", cel.IntType, 0},
+	{"latencies.responseMediationLatencyUs", cel.IntType, 0},
+	{"latencies.backendLatencyUs", cel.IntType, 0},
+	{"errorType", cel.StringType, ""},
+	{"error.errorCode", cel.IntType, 0},
+	{"error.errorMessage", cel.StringType, ""},
+	{"error.wso2ErrorCode", cel.IntType, 0},
+	{"error.type", cel.StringType, ""},
+	{"error.direction", cel.StringType, ""},
+	{"error.summary", cel.StringType, ""},
+	{"error.policy", cel.StringType, ""},
+	{"error.policyPhase", cel.StringType, ""},
+	{"error.source", cel.StringType, ""},
+	{"error.originalStatus", cel.IntType, 0},
+	{"error.jsonRpcCode", cel.IntType, 0},
 
 	{"application.id", cel.StringType, ""},
 	{"application.name", cel.StringType, ""},
@@ -262,7 +288,7 @@ func (e *globalPropertyEvaluator) resolve(event *dto.Event) map[string]interface
 		return result
 	}
 
-	evalCtx := buildGlobalPropertyEvalCtx(event, e.referencedVars, e.maskedHeaders)
+	evalCtx := buildGlobalPropertyEvalCtx(event, e.referencedVars, e.maskedHeaders, e.excludedRequestHeaders, e.excludedResponseHeaders)
 	for name, program := range e.compiled {
 		out, _, err := program.Eval(evalCtx)
 		if err != nil {
@@ -284,14 +310,15 @@ func (e *globalPropertyEvaluator) resolve(event *dto.Event) map[string]interface
 // variables actually used (see globalPropertyEvaluator.referencedVars) — rather than the
 // full declared set. Every populated variable is always bound (to its zero value when the
 // corresponding event field is absent) so evaluation never fails merely because a nested
-// pointer was nil. request.header/response.header are masked with the same maskedHeaders
+// pointer was nil. request.header/response.header drop the excluded header names (json_fields
+// only; nil for properties) and are masked with the same maskedHeaders
 // config applied to the emitted requestHeaders/responseHeaders maps (see maskHeaders in
 // log.go), so a property expression like "$ctx:request.header['authorization']" cannot
 // bypass masking and leak a credential the operator explicitly asked to redact — that
 // parse+lowercase+mask work (and the json.Unmarshal calls for auth.property/metadata) is
 // itself skipped whenever the corresponding variable isn't referenced by any configured
 // expression, which is the whole point of this function taking referenced at all.
-func buildGlobalPropertyEvalCtx(event *dto.Event, referenced map[string]bool, maskedHeaders map[string]bool) map[string]interface{} {
+func buildGlobalPropertyEvalCtx(event *dto.Event, referenced map[string]bool, maskedHeaders, excludedRequestHeaders, excludedResponseHeaders map[string]bool) map[string]interface{} {
 	ctx := make(map[string]interface{}, len(referenced))
 	for _, v := range globalPropertyVariables {
 		if referenced[v.name] {
@@ -319,9 +346,12 @@ func buildGlobalPropertyEvalCtx(event *dto.Event, referenced map[string]bool, ma
 	if referenced["request.id"] && event.MetaInfo != nil {
 		ctx["request.id"] = event.MetaInfo.CorrelationID
 	}
+	if referenced["request.timestamp"] && !event.RequestTimestamp.IsZero() {
+		ctx["request.timestamp"] = event.RequestTimestamp.UTC().Format(trafficLogTimestampFormat)
+	}
 	if referenced["request.header"] {
 		if headers := hdrs.Flatten(event.Properties[dto.PropKeyRequestHeaders]); headers != nil {
-			ctx["request.header"] = maskHeaders(lowerCaseHeaderKeys(headers), maskedHeaders)
+			ctx["request.header"] = filterAndMaskHeaders(lowerCaseHeaderKeys(headers), maskedHeaders, excludedRequestHeaders)
 		}
 	}
 
@@ -330,7 +360,7 @@ func buildGlobalPropertyEvalCtx(event *dto.Event, referenced map[string]bool, ma
 	}
 	if referenced["response.header"] {
 		if headers := hdrs.Flatten(event.Properties[dto.PropKeyResponseHeaders]); headers != nil {
-			ctx["response.header"] = maskHeaders(lowerCaseHeaderKeys(headers), maskedHeaders)
+			ctx["response.header"] = filterAndMaskHeaders(lowerCaseHeaderKeys(headers), maskedHeaders, excludedResponseHeaders)
 		}
 	}
 
@@ -362,6 +392,33 @@ func buildGlobalPropertyEvalCtx(event *dto.Event, referenced map[string]bool, ma
 		if referenced["target.destination"] {
 			ctx["target.destination"] = event.Target.Destination
 		}
+	}
+
+	if referenced["client.ip"] {
+		ctx["client.ip"] = event.UserIP
+	}
+	if referenced["client.userAgent"] {
+		ctx["client.userAgent"] = event.UserAgentHeader
+	}
+	if l := event.TrafficLogLatencies; l != nil {
+		setIfReferenced(ctx, referenced, "latencies.durationUs", l.DurationUs)
+		setIfReferenced(ctx, referenced, "latencies.requestMediationLatencyUs", l.RequestMediationLatencyUs)
+		setIfReferenced(ctx, referenced, "latencies.responseMediationLatencyUs", l.ResponseMediationLatencyUs)
+		setIfReferenced(ctx, referenced, "latencies.backendLatencyUs", l.BackendLatencyUs)
+	}
+	setIfReferenced(ctx, referenced, "errorType", event.ErrorType)
+	if e := event.Error; e != nil {
+		setIfReferenced(ctx, referenced, "error.errorCode", e.ErrorCode)
+		setIfReferenced(ctx, referenced, "error.errorMessage", string(e.ErrorMessage))
+		setIfReferenced(ctx, referenced, "error.wso2ErrorCode", e.Wso2ErrorCode)
+		setIfReferenced(ctx, referenced, "error.type", e.Type)
+		setIfReferenced(ctx, referenced, "error.direction", e.Direction)
+		setIfReferenced(ctx, referenced, "error.summary", e.Summary)
+		setIfReferenced(ctx, referenced, "error.policy", e.Policy)
+		setIfReferenced(ctx, referenced, "error.policyPhase", e.PolicyPhase)
+		setIfReferenced(ctx, referenced, "error.source", e.Source)
+		setIfReferenced(ctx, referenced, "error.originalStatus", e.OriginalStatus)
+		setIfReferenced(ctx, referenced, "error.jsonRpcCode", e.JSONRPCCode)
 	}
 
 	if a := event.Application; a != nil {
@@ -459,6 +516,13 @@ func buildGlobalPropertyEvalCtx(event *dto.Event, referenced map[string]bool, ma
 	}
 
 	return ctx
+}
+
+// setIfReferenced sets ctx[name] only when an expression uses that variable.
+func setIfReferenced(ctx map[string]interface{}, referenced map[string]bool, name string, value interface{}) {
+	if referenced[name] {
+		ctx[name] = value
+	}
 }
 
 // lowerCaseHeaderKeys returns a copy of headers with all keys lower-cased.
