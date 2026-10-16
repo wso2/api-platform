@@ -961,6 +961,19 @@ func TestKeyOpErrorNeverEchoesTheCause(t *testing.T) {
 	}
 }
 
+// The API-key service's expiry sentinels are client-input errors. The REST
+// api-key handlers return them as 400 with the service's message, so keyOpError
+// echoes it too, unlike every other cause.
+func TestKeyOpErrorEchoesExpiryErrors(t *testing.T) {
+	for _, err := range []error{
+		fmt.Errorf("%w, got: 2020-01-01T00:00:00Z (current time: 2026-10-16T00:00:00Z)", utils.ErrAPIKeyExpirationInPast),
+		fmt.Errorf("%w: fortnights", utils.ErrUnsupportedAPIKeyExpirationUnit),
+	} {
+		got := keyOpError("issue an API key for", "RestApi", "orders", err)
+		assert.Equal(t, `cannot issue an API key for RestApi "orders": `+err.Error(), got.Error())
+	}
+}
+
 // stubCertStore and stubSnapshot stand in for the router-side collaborators the
 // certificate service reaches through its XDSResolver, so the MCP certificate
 // tool's success paths are reachable without a real *xds.SnapshotManager.
