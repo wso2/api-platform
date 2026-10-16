@@ -694,6 +694,7 @@ format = "text"
 # log_max_files   = 5       # rotated backups to keep
 # backoff_initial = "10s"   # delay before the first repeated failure line
 # backoff_max     = "5m"    # cap on the repeat interval
+# xds_grace       = "5m"    # how long the controller link may be down before readiness fails
 
 # Configures the single shared outbound *http.Client that the policy engine builds once at
 # startup and injects into every policy instance via PolicyMetadata.SharedHTTPClient (see
