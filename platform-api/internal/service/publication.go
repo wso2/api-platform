@@ -283,7 +283,7 @@ func (s *PublicationService) SaveDraftDetails(apiType, apiId, apiPortalId, orgUU
 	if err != nil {
 		return nil, err
 	}
-	docUUIDs, err := s.resolveDocUUIDs(artifactUUID, docHandles, orgUUID)
+	docUUIDs, err := s.validateAndResolveDocUUIDs(artifactUUID, docHandles, orgUUID)
 	if err != nil {
 		return nil, err
 	}
@@ -621,7 +621,17 @@ func (s *PublicationService) Publish(ctx context.Context, apiType, apiId, apiPor
 	if err != nil {
 		return nil, false, fmt.Errorf("failed to get publication draft thumbnail: %w", err)
 	}
-	content, err := s.loadPortalContent(artifactUUID, draft.DocIds, thumbnail, orgUUID)
+	landingPage, err := s.publicationRepo.GetContent(draft.UUID, model.PublicationContentTypeMarketing, orgUUID)
+	if err != nil {
+		return nil, false, fmt.Errorf("failed to get publication draft landing page: %w", err)
+	}
+	content, err := s.loadPortalContent(portalContentSource{
+		ArtifactUUID: artifactUUID,
+		OrgUUID:      orgUUID,
+		DocHandles:   draft.DocIds,
+		Thumbnail:    thumbnail,
+		LandingPage:  landingPage,
+	})
 	if err != nil {
 		return nil, false, err
 	}

@@ -38,11 +38,10 @@ type portalDocument struct {
 	Content  []byte
 }
 
-// resolveDocUUIDs resolves each document handle to its doc_uuid, scoped to
-// artifactUUID (a handle can legitimately repeat across two APIs in the same
-// org), rejecting any handle absent for this artifact and any selection the
-// portal cannot hold.
-func (s *PublicationService) resolveDocUUIDs(artifactUUID string, handles []string, orgUUID string) ([]string, error) {
+// validateAndResolveDocUUIDs resolves each handle to its doc_uuid within artifactUUID (a
+// handle can repeat across APIs in an org), rejecting unknown handles and any selection
+// the portal cannot hold.
+func (s *PublicationService) validateAndResolveDocUUIDs(artifactUUID string, handles []string, orgUUID string) ([]string, error) {
 	docs, err := s.resolvePortalDocuments(artifactUUID, handles, orgUUID)
 	if err != nil {
 		return nil, err
@@ -70,22 +69,32 @@ func (s *PublicationService) resolvePortalDocuments(artifactUUID string, handles
 	return placeDocuments(docs)
 }
 
-// loadPortalContent resolves the selected documents, loads their content and
-// packs it, with the thumbnail (nil for none), for the portal; it returns nil
-// when there is neither. The portal's size limits are enforced here, while
-// loading, so a selection over them is never read into memory in full.
-func (s *PublicationService) loadPortalContent(artifactUUID string, handles []string, thumbnail *model.PublicationContent, orgUUID string) (*PortalContent, error) {
-	docs, err := s.resolvePortalDocuments(artifactUUID, handles, orgUUID)
+// portalContentSource is what a publication sends besides its listing; nil means none.
+type portalContentSource struct {
+	ArtifactUUID string
+	OrgUUID      string
+	DocHandles   []string
+	Thumbnail    *model.PublicationContent
+	LandingPage  *model.PublicationContent
+}
+
+// loadPortalContent loads the selected documents and packs them with the thumbnail and
+// landing page; it returns nil when there is nothing to send. The count and running size
+// are checked here as well as in buildContentArchive, so an oversized selection is refused
+// before every document is read.
+func (s *PublicationService) loadPortalContent(src portalContentSource) (*PortalContent, error) {
+	docs, err := s.resolvePortalDocuments(src.ArtifactUUID, src.DocHandles, src.OrgUUID)
 	if err != nil {
 		return nil, err
 	}
+
 	if len(docs) > portalContentMaxEntries {
 		return nil, portalContentTooLarge()
 	}
 
 	var total int64
 	for i := range docs {
-		doc, err := s.documentRepo.GetDocument(artifactUUID, docs[i].Handle, orgUUID, "")
+		doc, err := s.documentRepo.GetDocument(src.ArtifactUUID, docs[i].Handle, src.OrgUUID, "")
 		if err != nil {
 			return nil, fmt.Errorf("failed to load document content: %w", err)
 		}
@@ -100,7 +109,7 @@ func (s *PublicationService) loadPortalContent(artifactUUID string, handles []st
 		}
 		docs[i].Content = doc.Content
 	}
-	return buildContentArchive(docs, thumbnail, s.archiveMaxBytes)
+	return buildContentArchive(docs, src.Thumbnail, src.LandingPage, s.archiveMaxBytes)
 }
 
 // docsForHandles returns the documents in handle order, or a validation error naming the

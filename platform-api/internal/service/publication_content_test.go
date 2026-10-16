@@ -34,6 +34,8 @@ import (
 type contentDocumentRepo struct {
 	repository.DocumentRepository
 	docs map[string]*model.Document
+	// loads counts GetDocument calls when set.
+	loads *int
 }
 
 func (r contentDocumentRepo) GetDocumentsByHandles(_ string, handles []string, _ string) (map[string]*model.Document, error) {
@@ -47,6 +49,9 @@ func (r contentDocumentRepo) GetDocumentsByHandles(_ string, handles []string, _
 }
 
 func (r contentDocumentRepo) GetDocument(_, handle, _, _ string) (*model.Document, error) {
+	if r.loads != nil {
+		*r.loads++
+	}
 	return r.docs[handle], nil
 }
 
@@ -69,7 +74,7 @@ func TestLoadPortalContent(t *testing.T) {
 	}
 
 	t.Run("packs the selected documents", func(t *testing.T) {
-		content, err := newContentService(docs).loadPortalContent("artifact", []string{"guide", "faq"}, nil, "org")
+		content, err := newContentService(docs).loadPortalContent(portalContentSource{ArtifactUUID: "artifact", OrgUUID: "org", DocHandles: []string{"guide", "faq"}})
 		if err != nil || content == nil {
 			t.Fatalf("got %v, %v", content, err)
 		}
@@ -80,14 +85,14 @@ func TestLoadPortalContent(t *testing.T) {
 	})
 
 	t.Run("no selection means no content", func(t *testing.T) {
-		content, err := newContentService(docs).loadPortalContent("artifact", nil, nil, "org")
+		content, err := newContentService(docs).loadPortalContent(portalContentSource{ArtifactUUID: "artifact", OrgUUID: "org", DocHandles: nil})
 		if err != nil || content != nil {
 			t.Fatalf("got %v, %v", content, err)
 		}
 	})
 
 	t.Run("rejects an unknown handle", func(t *testing.T) {
-		_, err := newContentService(docs).loadPortalContent("artifact", []string{"guide", "nope"}, nil, "org")
+		_, err := newContentService(docs).loadPortalContent(portalContentSource{ArtifactUUID: "artifact", OrgUUID: "org", DocHandles: []string{"guide", "nope"}})
 		if !apperror.APIPublicationValidationFailed.Is(err) || !strings.Contains(err.Error(), "nope") {
 			t.Fatalf("want a validation error naming the handle, got %v", err)
 		}
@@ -97,7 +102,7 @@ func TestLoadPortalContent(t *testing.T) {
 		big := map[string]*model.Document{
 			"big": {ID: "uuid-big", Handle: "big", Type: "DOC_HowTo", FileName: "big.md", Content: make([]byte, portalContentMaxFileBytes+1)},
 		}
-		_, err := newContentService(big).loadPortalContent("artifact", []string{"big"}, nil, "org")
+		_, err := newContentService(big).loadPortalContent(portalContentSource{ArtifactUUID: "artifact", OrgUUID: "org", DocHandles: []string{"big"}})
 		if !apperror.APIPublicationValidationFailed.Is(err) || !strings.Contains(err.Error(), "too large") {
 			t.Fatalf("want a too large error, got %v", err)
 		}
@@ -110,7 +115,7 @@ func TestLoadPortalContent(t *testing.T) {
 			many[h] = &model.Document{ID: "uuid-" + h, Handle: h, Type: "DOC_HowTo", FileName: h + ".md", Content: make([]byte, portalContentMaxFileBytes)}
 			handles = append(handles, h)
 		}
-		_, err := newContentService(many).loadPortalContent("artifact", handles, nil, "org")
+		_, err := newContentService(many).loadPortalContent(portalContentSource{ArtifactUUID: "artifact", OrgUUID: "org", DocHandles: handles})
 		if !apperror.APIPublicationValidationFailed.Is(err) || !strings.Contains(err.Error(), "too large") {
 			t.Fatalf("want a too large error, got %v", err)
 		}
@@ -124,9 +129,14 @@ func TestLoadPortalContent(t *testing.T) {
 			many[h] = &model.Document{ID: "uuid-" + h, Handle: h, Type: "DOC_HowTo", FileName: h + ".md"}
 			handles = append(handles, h)
 		}
-		_, err := newContentService(many).loadPortalContent("artifact", handles, nil, "org")
+		var loads int
+		svc := NewPublicationService(nil, nil, contentDocumentRepo{docs: many, loads: &loads}, nil, nil, nil, time.Minute, 0, nil)
+		_, err := svc.loadPortalContent(portalContentSource{ArtifactUUID: "artifact", OrgUUID: "org", DocHandles: handles})
 		if !apperror.APIPublicationValidationFailed.Is(err) || !strings.Contains(err.Error(), "too large") {
 			t.Fatalf("want a too large error, got %v", err)
+		}
+		if loads != 0 {
+			t.Fatalf("loaded %d documents before refusing the selection", loads)
 		}
 	})
 }

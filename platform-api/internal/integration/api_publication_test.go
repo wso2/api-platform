@@ -21,7 +21,10 @@
 package integration
 
 import (
+	"archive/zip"
+	"bytes"
 	"context"
+	"io"
 	"strings"
 	"testing"
 	"time"
@@ -733,4 +736,47 @@ func TestPublicationUnpublish_PortalConflictReasonSurfaced(t *testing.T) {
 	if !strings.Contains(err.Error(), "active subscriptions are removed") {
 		t.Fatalf("[%s] want the curated ERR_SUB_EXIST reason in the message, got %v", it.driver, err)
 	}
+}
+
+// contentRecorder keeps the content archive Publish pushes.
+type contentRecorder struct {
+	alwaysSucceedsPortalPublisher
+	archive []byte
+}
+
+func (c *contentRecorder) PublishContent(_ context.Context, _ *model.APIPortal, _ string, content *service.PortalContent) error {
+	c.archive = content.Archive
+	return nil
+}
+
+// TestPublish_PushesTheDraftLandingPage checks the stored landing page reaches the portal as
+// web/apiContent.md in the content archive.
+func TestPublish_PushesTheDraftLandingPage(t *testing.T) {
+	it := openITDB(t)
+	defer it.db.Close()
+	g := seedOrgGraph(t, it)
+	recorder := &contentRecorder{}
+	svc := newPublicationTestServiceWith(it, recorder)
+
+	publishedListing(t, it, svc, g)
+
+	zr, err := zip.NewReader(bytes.NewReader(recorder.archive), int64(len(recorder.archive)))
+	if err != nil {
+		t.Fatalf("[%s] pushed content is not a ZIP: %v", it.driver, err)
+	}
+	for _, f := range zr.File {
+		if f.Name != "content/web/apiContent.md" {
+			continue
+		}
+		rc, err := f.Open()
+		if err != nil {
+			t.Fatalf("[%s] open %s: %v", it.driver, f.Name, err)
+		}
+		defer rc.Close()
+		if body, _ := io.ReadAll(rc); string(body) != "# live landing page" {
+			t.Fatalf("[%s] want the saved landing page, got %q", it.driver, body)
+		}
+		return
+	}
+	t.Fatalf("[%s] pushed content has no web/apiContent.md", it.driver)
 }

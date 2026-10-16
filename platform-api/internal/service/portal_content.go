@@ -43,6 +43,10 @@ const portalArchiveRoot = "content"
 // portalIconName is the thumbnail's base name; the portal shows "api-icon" as the API's icon.
 const portalIconName = "api-icon"
 
+// portalLandingPageName must match exactly: the portal reads this file, not the hyphenated
+// spelling its docs use, and renders it in place of its default Endpoints and Resources section.
+const portalLandingPageName = "apiContent.md"
+
 // portalIconExtensions maps a thumbnail's content type to its file extension.
 var portalIconExtensions = map[string]string{
 	"image/png":  "png",
@@ -51,40 +55,50 @@ var portalIconExtensions = map[string]string{
 
 // portalContentTooLarge covers every size limit without saying which was hit.
 func portalContentTooLarge() error {
-	return apperror.APIPublicationValidationFailed.New("selected documents are too large to publish")
+	return apperror.APIPublicationValidationFailed.New("the content selected for publishing is too large")
 }
 
-// buildContentArchive packs the documents and the thumbnail (nil for none) into the
-// ZIP the portal reads: each document at content/docs/<Folder>/<FileName>, the thumbnail
-// at content/web/api-icon.<ext>. It returns nil when there is nothing to send. A ZIP over
-// maxArchiveBytes is rejected.
-func buildContentArchive(docs []portalDocument, thumbnail *model.PublicationContent, maxArchiveBytes int64) (*PortalContent, error) {
-	if len(docs) == 0 && thumbnail == nil {
-		return nil, nil
-	}
+// archiveFile is one file of the content ZIP.
+type archiveFile struct {
+	name    string
+	content []byte
+}
 
-	var buf bytes.Buffer
-	zw := zip.NewWriter(&buf)
+// buildContentArchive packs the documents, thumbnail and landing page (nil for none) into the
+// ZIP layout the portal reads: content/docs/<Folder>/<FileName>, content/web/api-icon.<ext>
+// and content/web/apiContent.md. A blank landing page is left out, since the portal would
+// show it as an empty page. It returns nil when there is nothing to send.
+func buildContentArchive(docs []portalDocument, thumbnail, landingPage *model.PublicationContent, maxArchiveBytes int64) (*PortalContent, error) {
+	files := make([]archiveFile, 0, len(docs)+2)
 	for _, doc := range docs {
-		w, err := zw.Create(portalArchiveRoot + "/docs/" + doc.Folder + "/" + doc.FileName)
-		if err != nil {
-			return nil, fmt.Errorf("failed to add document %q to the content archive: %w", doc.Handle, err)
-		}
-		if _, err := w.Write(doc.Content); err != nil {
-			return nil, fmt.Errorf("failed to write document %q to the content archive: %w", doc.Handle, err)
-		}
+		files = append(files, archiveFile{portalArchiveRoot + "/docs/" + doc.Folder + "/" + doc.FileName, doc.Content})
 	}
 	if thumbnail != nil {
 		ext, ok := portalIconExtensions[thumbnail.ContentType]
 		if !ok {
 			return nil, apperror.APIPublicationValidationFailed.New("thumbnail must be a PNG or JPEG image")
 		}
-		w, err := zw.Create(portalArchiveRoot + "/web/" + portalIconName + "." + ext)
+		files = append(files, archiveFile{portalArchiveRoot + "/web/" + portalIconName + "." + ext, thumbnail.Content})
+	}
+	if landingPage != nil && len(bytes.TrimSpace(landingPage.Content)) > 0 {
+		files = append(files, archiveFile{portalArchiveRoot + "/web/" + portalLandingPageName, landingPage.Content})
+	}
+	if len(files) == 0 {
+		return nil, nil
+	}
+	if err := checkPortalContentLimits(files); err != nil {
+		return nil, err
+	}
+
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	for _, f := range files {
+		w, err := zw.Create(f.name)
 		if err != nil {
-			return nil, fmt.Errorf("failed to add the thumbnail to the content archive: %w", err)
+			return nil, fmt.Errorf("failed to add %q to the content archive: %w", f.name, err)
 		}
-		if _, err := w.Write(thumbnail.Content); err != nil {
-			return nil, fmt.Errorf("failed to write the thumbnail to the content archive: %w", err)
+		if _, err := w.Write(f.content); err != nil {
+			return nil, fmt.Errorf("failed to write %q to the content archive: %w", f.name, err)
 		}
 	}
 	if err := zw.Close(); err != nil {
@@ -95,4 +109,20 @@ func buildContentArchive(docs []portalDocument, thumbnail *model.PublicationCont
 		return nil, portalContentTooLarge()
 	}
 	return &PortalContent{Archive: buf.Bytes()}, nil
+}
+
+// checkPortalContentLimits rejects a file set the portal would refuse.
+func checkPortalContentLimits(files []archiveFile) error {
+	if len(files) > portalContentMaxEntries {
+		return portalContentTooLarge()
+	}
+	var total int64
+	for _, f := range files {
+		size := int64(len(f.content))
+		total += size
+		if size > portalContentMaxFileBytes || total > portalContentMaxExtractedBytes {
+			return portalContentTooLarge()
+		}
+	}
+	return nil
 }
