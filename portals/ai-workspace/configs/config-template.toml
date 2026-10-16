@@ -71,6 +71,17 @@ default_org_region = "us"
 # https://github.com/wso2/api-platform/discussions/3242) are not yet implemented.
 api_portal_enabled = false
 
+# Address of the API Portal this deployment publishes to — the same portal
+# `api_portal_enabled` turns publishing on for. Browser-safe. Used by
+# "View in API Portal" to link a published listing to the portal it now
+# lives in.
+#
+# Only consulted when the organization's own API Portal registration carries no
+# `url` (GET /api-portals/{id}), which is authoritative when present. Leave
+# empty when every deployment registers its portal with a URL — the link is then
+# simply not shown rather than pointing somewhere wrong.
+# api_portal_url = "https://portal.example.com"
+
 # Externally-reachable host:port for this deployment, shown only in the startup log
 # banner ("Visit https://..."). Not browser-safe — the SPA never needs it, since the
 # browser already knows its own address via window.location. Leave unset to fall back

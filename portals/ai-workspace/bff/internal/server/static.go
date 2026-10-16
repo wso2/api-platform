@@ -23,6 +23,10 @@ import (
 	"strings"
 )
 
+// assetsPrefix is Vite's build output directory, as it appears in a cleaned
+// request path: everything under it is content-hashed and immutable.
+const assetsPrefix = "/assets"
+
 // spaHandler serves the built SPA: real files when they exist, otherwise it
 // falls back to index.html so client-side routing works (replaces nginx
 // try_files $uri /index.html). index.html is served no-store; hashed assets are
@@ -54,7 +58,23 @@ func spaHandler(staticDir string) http.Handler {
 			return
 		}
 
-		// Fallback to index.html for SPA routes.
+		// A missing file under assets/ is NEVER a client-side route: those paths
+		// are content-hashed build output, so one that is absent means the
+		// index.html the browser is running was built against a different
+		// bundle than this process serves (a half-finished rollout, or replicas
+		// on two images). Answering index.html there returns 200 text/html for
+		// a `<script type="module">`, which the browser rejects on MIME grounds
+		// with an error naming neither the file nor the cause. 404 says it
+		// plainly, and keeps a cacheable asset URL from holding an HTML body.
+		if clean == assetsPrefix || strings.HasPrefix(clean, assetsPrefix+"/") {
+			http.NotFound(w, r)
+			return
+		}
+
+		// Fallback to index.html for SPA routes. Deliberately NOT narrowed by
+		// Accept: a health probe or a curl of a client-side route sends no
+		// Accept at all, and 404ing those to catch a mistyped asset path would
+		// trade a clear failure for an outage.
 		w.Header().Set("Cache-Control", "no-store")
 		http.ServeFile(w, r, indexPath)
 	})
