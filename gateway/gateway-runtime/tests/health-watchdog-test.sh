@@ -14,6 +14,9 @@
 # software distributed under the License is distributed on an
 # "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
 # KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+# --------------------------------------------------------------------
 
 # Tests for health-watchdog.sh. Runs the watchdog against a local HTTP responder whose
 # answer can be switched between 200, 503 and no answer, and checks what it logs.
