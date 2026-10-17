@@ -233,6 +233,35 @@ func TestPublish_WithInvalidResponseHeaders(t *testing.T) {
 	assert.Empty(t, headers)
 }
 
+// TestPublish_HeaderSourceIndependent is the Moesif half of the "Step 4" safety
+// net (see log_test.go's TestLog_Publish_GoldenLine_HeaderSourceIndependent):
+// event.Properties[dto.PropKeyRequestHeaders/PropKeyResponseHeaders] can now
+// arrive as either an already-typed map[string]string (a correlation-store hit)
+// or a JSON string (the metadata-decode fallback path). Both must produce an
+// identical Headers payload for the same logical content.
+func TestPublish_HeaderSourceIndependent(t *testing.T) {
+	moesifString := createTestMoesifWithoutAPI()
+	eventString := createBaseEvent()
+	eventString.Properties[dto.PropKeyRequestHeaders] = `{"Content-Type":"application/json","X-Custom":"value"}`
+	eventString.Properties[dto.PropKeyResponseHeaders] = `{"Content-Type":"text/html"}`
+	moesifString.Publish(eventString)
+
+	moesifTyped := createTestMoesifWithoutAPI()
+	eventTyped := createBaseEvent()
+	eventTyped.Properties[dto.PropKeyRequestHeaders] = map[string]string{"Content-Type": "application/json", "X-Custom": "value"}
+	eventTyped.Properties[dto.PropKeyResponseHeaders] = map[string]string{"Content-Type": "text/html"}
+	moesifTyped.Publish(eventTyped)
+
+	require.Len(t, moesifString.events, 1)
+	require.Len(t, moesifTyped.events, 1)
+	assert.Equal(t, moesifString.events[0].Request.Headers, moesifTyped.events[0].Request.Headers)
+	assert.Equal(t, moesifString.events[0].Response.Headers, moesifTyped.events[0].Response.Headers)
+
+	headers := moesifTyped.events[0].Request.Headers.(map[string]interface{})
+	assert.Equal(t, "application/json", headers["Content-Type"])
+	assert.Equal(t, "value", headers["X-Custom"])
+}
+
 func TestPublish_NoHeadersConfigured(t *testing.T) {
 	moesif := createTestMoesifWithoutAPI()
 
@@ -568,6 +597,105 @@ func TestPublish_ErrorTypeIsAlwaysAFaultCategory(t *testing.T) {
 		metadata := getMetadata(moesif.events[0])
 		assert.Equal(t, string(category), metadata["errorType"])
 	}
+}
+
+func TestPublish_GraphQLAPIType(t *testing.T) {
+	moesif := createTestMoesifWithoutAPI()
+
+	event := createBaseEvent()
+	event.API.APIType = "GraphQLApi"
+	event.Properties["graphqlAnalytics"] = map[string]interface{}{
+		"operationName": "CreatePost",
+		"operationType": "mutation",
+	}
+
+	moesif.Publish(event)
+
+	assert.Len(t, moesif.events, 1)
+	metadata := getMetadata(moesif.events[0])
+	assert.NotNil(t, metadata["graphqlAnalytics"])
+	graphqlAnalytics := metadata["graphqlAnalytics"].(map[string]interface{})
+	assert.Equal(t, "CreatePost", graphqlAnalytics["operationName"])
+	assert.Equal(t, "mutation", graphqlAnalytics["operationType"])
+}
+
+// TestPublish_APIResourceTemplateMetadata pins metadata.apiResourceTemplate —
+// the field legacy WSO2 APIM's Moesif publisher (SynapseAnalyticsDataProvider)
+// writes and existing Moesif charts (e.g. "Top Queries/Mutations") group on via
+// metadata.apiResourceTemplate.raw — so those charts keep working unmodified
+// for API-Platform-origin traffic too.
+func TestPublish_APIResourceTemplateMetadata(t *testing.T) {
+	t.Run("REST mirrors Operation.APIResourceTemplate", func(t *testing.T) {
+		moesif := createTestMoesifWithoutAPI()
+
+		event := createBaseEvent()
+		event.Operation.APIResourceTemplate = "/pets/{petId}"
+
+		moesif.Publish(event)
+
+		metadata := getMetadata(moesif.events[0])
+		assert.Equal(t, "/pets/{petId}", metadata["apiResourceTemplate"])
+	})
+
+	t.Run("GraphQL uses operationName when present", func(t *testing.T) {
+		moesif := createTestMoesifWithoutAPI()
+
+		event := createBaseEvent()
+		event.API.APIType = "GraphQLApi"
+		event.Operation.APIResourceTemplate = "/graphql" // fixed single route, not operation identity
+		event.Properties["graphqlAnalytics"] = map[string]interface{}{
+			"operationName": "CreatePost",
+			"operationType": "mutation",
+		}
+
+		moesif.Publish(event)
+
+		metadata := getMetadata(moesif.events[0])
+		assert.Equal(t, "CreatePost", metadata["apiResourceTemplate"])
+	})
+
+	t.Run("GraphQL falls back to operationType when unnamed", func(t *testing.T) {
+		moesif := createTestMoesifWithoutAPI()
+
+		event := createBaseEvent()
+		event.API.APIType = "GraphQLApi"
+		event.Operation.APIResourceTemplate = "/graphql"
+		event.Properties["graphqlAnalytics"] = map[string]interface{}{
+			"operationType": "query",
+		}
+
+		moesif.Publish(event)
+
+		metadata := getMetadata(moesif.events[0])
+		assert.Equal(t, "query", metadata["apiResourceTemplate"])
+	})
+
+	t.Run("GraphQL without graphqlAnalytics falls back to the fixed route", func(t *testing.T) {
+		moesif := createTestMoesifWithoutAPI()
+
+		event := createBaseEvent()
+		event.API.APIType = "GraphQLApi"
+		event.Operation.APIResourceTemplate = "/graphql"
+
+		moesif.Publish(event)
+
+		metadata := getMetadata(moesif.events[0])
+		assert.Equal(t, "/graphql", metadata["apiResourceTemplate"])
+	})
+}
+
+func TestPublish_NonGraphQLAPIDoesNotIncludeGraphQLAnalytics(t *testing.T) {
+	moesif := createTestMoesifWithoutAPI()
+
+	event := createBaseEvent()
+	event.API.APIType = "RestApi"
+	event.Properties["graphqlAnalytics"] = map[string]interface{}{"operationName": "should-not-appear"}
+
+	moesif.Publish(event)
+
+	assert.Len(t, moesif.events, 1)
+	metadata := getMetadata(moesif.events[0])
+	assert.Nil(t, metadata["graphqlAnalytics"])
 }
 
 func TestPublish_WithPayloads(t *testing.T) {

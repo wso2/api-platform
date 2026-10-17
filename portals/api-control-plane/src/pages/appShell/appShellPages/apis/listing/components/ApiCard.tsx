@@ -19,8 +19,7 @@
 import { Box, Card, CardContent, Divider, Stack, Typography } from '@wso2/oxygen-ui';
 import { useIntl } from 'react-intl';
 
-import { REST_API_TYPE } from '@/api/resources/apiPublications';
-import type { RestApi } from '@/api/resources/restApis';
+import { thumbnailApiType, type ListableApi } from '../apiListItem';
 import { openableProps } from '@/components/openable';
 import { focusRingSx, interactiveCardSx } from '@/theme';
 import {
@@ -34,15 +33,16 @@ import { ApiThumbnailAvatar } from '../../components/ApiThumbnailAvatar';
 import { useCan } from '@/permissions/useCan';
 
 type ApiCardProps = {
-  api: RestApi;
-  onOpen: (api: RestApi) => void;
-  onDelete?: (api: RestApi) => void;
+  api: ListableApi;
+  onOpen: (api: ListableApi) => void;
+  onDelete?: (api: ListableApi) => void;
 };
 
 const AVATAR_SIZE = 42;
 
 /**
- * API card for the grid view, rendering the spec's `RESTAPI` shape.
+ * API card for the grid view. Renders either a REST or a GraphQL API — see
+ * `ListableApi` for why the two need no per-type branching here.
  */
 export function ApiCard({ api, onOpen, onDelete }: ApiCardProps) {
   const intl = useIntl();
@@ -68,7 +68,7 @@ export function ApiCard({ api, onOpen, onDelete }: ApiCardProps) {
           <Stack alignItems="flex-start" direction="row" spacing={1.5}>
             <ApiThumbnailAvatar
               apiId={api.id}
-              apiType={REST_API_TYPE}
+              apiType={thumbnailApiType(api)}
               displayName={api.displayName}
               size={AVATAR_SIZE}
             />

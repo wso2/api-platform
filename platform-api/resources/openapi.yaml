@@ -1924,6 +1924,127 @@ paths:
         '503':
           $ref: '#/components/responses/PortalUnavailable'
 
+  /api-portals/{apiPortalId}/apis/graphql-api/{apiId}/publish:
+    parameters:
+      - $ref: '#/components/parameters/apiPortalId'
+      - $ref: '#/components/parameters/apiHandle'
+    post:
+      summary: Publish GraphQL API to API Portal
+      description: |
+        Publishes the current draft. Takes no request body: details, plans, documents, definition,
+        landing page and thumbnail all come from the draft alone — publish never reads the API's
+        own content or the current publication to fill a gap. Requires a draft to exist.
+
+        The content is pushed to the API Portal before anything is written locally, so a failed
+        call leaves the draft intact and can simply be repeated.
+
+        Returns 201 on a first publish or a re-publish after unpublish, 200 otherwise.
+      operationId: publishGraphQLApiToApiPortal
+      security:
+        - OAuth2Security:
+            - ap:api_portal:graphql_api:publish
+            - ap:api_portal:graphql_api:manage
+      tags:
+        - API Publications
+      responses:
+        '200':
+          description: Listing updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Publication'
+        '201':
+          description: Listing created
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Publication'
+        '400':
+          $ref: '#/components/responses/PublicationPublishBadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/PublicationConflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/PortalUnavailable'
+
+  /api-portals/{apiPortalId}/apis/graphql-api/{apiId}/unpublish:
+    parameters:
+      - $ref: '#/components/parameters/apiPortalId'
+      - $ref: '#/components/parameters/apiHandle'
+    post:
+      summary: Unpublish GraphQL API from API Portal
+      description: |
+        Removes the listing from the API Portal, along with its subscriptions and API keys, then
+        writes locally: if no draft exists, the publication is demoted into the draft in place; if
+        one exists, the publication is deleted and the existing draft is kept. A draft always
+        survives. Valid only when currently published or deprecated.
+      operationId: unpublishGraphQLApiFromApiPortal
+      security:
+        - OAuth2Security:
+            - ap:api_portal:graphql_api:unpublish
+            - ap:api_portal:graphql_api:manage
+      tags:
+        - API Publications
+      responses:
+        '204':
+          description: Listing removed
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/PublicationConflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/PortalUnavailable'
+
+  /api-portals/{apiPortalId}/apis/graphql-api/{apiId}/deprecate:
+    parameters:
+      - $ref: '#/components/parameters/apiPortalId'
+      - $ref: '#/components/parameters/apiHandle'
+    post:
+      summary: Deprecate GraphQL API on API Portal
+      description: Marks the live listing deprecated on the API Portal, where it stays visible and is flagged as deprecated. Nothing is deleted and any draft is untouched. Valid only when currently published.
+      operationId: deprecateGraphQLApiOnApiPortal
+      security:
+        - OAuth2Security:
+            - ap:api_portal:graphql_api:deprecate
+            - ap:api_portal:graphql_api:manage
+      tags:
+        - API Publications
+      responses:
+        '200':
+          description: Listing deprecated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Publication'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/PublicationConflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/PortalUnavailable'
+
   /apis/{apiType}/{apiId}/docs:
     parameters:
       - $ref: '#/components/parameters/apiType'
@@ -8750,6 +8871,10 @@ components:
             ap:api_portal:manage: Full access to API Portals
             ap:api_portal:publication:read: Read an API's live listing on one portal
             ap:api_portal:read: Read API Portals
+            ap:api_portal:graphql_api:deprecate: Close a GraphQL API's live listing to new subscriptions
+            ap:api_portal:graphql_api:manage: Publish, unpublish and deprecate a GraphQL API on a portal
+            ap:api_portal:graphql_api:publish: Publish, or re-publish, a GraphQL API's current draft to a portal
+            ap:api_portal:graphql_api:unpublish: Remove a GraphQL API's live listing from a portal
             ap:api_portal:rest_api:deprecate: Close a REST API's live listing to new subscriptions
             ap:api_portal:rest_api:manage: Publish, unpublish and deprecate a REST API on a portal
             ap:api_portal:rest_api:publish: Publish, or re-publish, a REST API's current draft to a portal
@@ -10512,7 +10637,6 @@ components:
       title: GraphQL API object
       required:
         - displayName
-        - context
         - version
         - projectId
         - upstream
@@ -10537,12 +10661,15 @@ components:
           example: Public GraphQL API for querying country/region reference data
         context:
           maxLength: 232
-          minLength: 1
           type: string
           description: |
-            Base path for the single GraphQL endpoint. Suggested (not enforced)
-            convention: end the path with `/graphql`, matching how most standalone
-            GraphQL servers name their single endpoint — this is not validated.
+            Base path for the single GraphQL endpoint. Optional: when omitted
+            (or blank) on create/update, the server derives one from the API's
+            handle and version (`/{handle}/{version}/graphql`) instead of
+            rejecting the request. Suggested (not enforced) convention when
+            supplied explicitly: end the path with `/graphql`, matching how
+            most standalone GraphQL servers name their single endpoint — this
+            is not validated.
           example: /countries/graphql
         version:
           maxLength: 30
@@ -10668,12 +10795,12 @@ components:
           type: array
           description: |
             List of policies to be applied on the API. Reused unmodified from
-            REST APIs. A `cors` policy applies only to the API's single `POST`
-            route — a GraphQL API has no per-operation list to add an
-            `OPTIONS` entry to, so a browser preflight request is not routed
-            at all and a `cors` policy will not run for it; cross-origin
-            browser clients that trigger a preflight are not currently
-            supported.
+            REST APIs. A GraphQL API has no per-operation list to add an
+            explicit `OPTIONS` entry to the way a REST API does, so when a
+            `cors` policy is attached, the gateway synthesizes an OPTIONS
+            route for the same path itself, sharing this same policy chain —
+            this is what lets `cors` (and every other policy in this list, in
+            declared order) answer a browser's preflight request.
           items:
             $ref: '#/components/schemas/Policy'
         subscriptionPlans:
@@ -10691,7 +10818,6 @@ components:
       title: GraphQL API detail (without sdl)
       required:
         - displayName
-        - context
         - version
         - projectId
         - upstream
@@ -10716,12 +10842,15 @@ components:
           example: Public GraphQL API for querying country/region reference data
         context:
           maxLength: 232
-          minLength: 1
           type: string
           description: |
-            Base path for the single GraphQL endpoint. Suggested (not enforced)
-            convention: end the path with `/graphql`, matching how most standalone
-            GraphQL servers name their single endpoint — this is not validated.
+            Base path for the single GraphQL endpoint. Optional: when omitted
+            (or blank) on create/update, the server derives one from the API's
+            handle and version (`/{handle}/{version}/graphql`) instead of
+            rejecting the request. Suggested (not enforced) convention when
+            supplied explicitly: end the path with `/graphql`, matching how
+            most standalone GraphQL servers name their single endpoint — this
+            is not validated.
           example: /countries/graphql
         version:
           maxLength: 30
@@ -10782,16 +10911,30 @@ components:
             creation time. Informational only — storage and downstream behavior are
             identical either way.
           example: ENDPOINT
+        schemaSource:
+          type: string
+          readOnly: true
+          enum: [inline, url, file, introspection]
+          description: |
+            The exact source the current schema was declared with on the create or
+            last successful update — a finer-grained sibling of `introspectionMode`,
+            which only distinguishes the two-bucket SDL/ENDPOINT storage outcome.
+            Resupply this value on a subsequent `PUT` that isn't meant to change the
+            schema, together with material satisfying that same source (`sdl` for
+            `inline`/`file`, `sdlUrl` for `url`, nothing extra for `introspection`
+            since `upstream.main.url` already suffices) — omitting it, or resupplying
+            a source without its required field, is a structural `400`, not a no-op.
+          example: introspection
         policies:
           type: array
           description: |
             List of policies to be applied on the API. Reused unmodified from
-            REST APIs. A `cors` policy applies only to the API's single `POST`
-            route — a GraphQL API has no per-operation list to add an
-            `OPTIONS` entry to, so a browser preflight request is not routed
-            at all and a `cors` policy will not run for it; cross-origin
-            browser clients that trigger a preflight are not currently
-            supported.
+            REST APIs. A GraphQL API has no per-operation list to add an
+            explicit `OPTIONS` entry to the way a REST API does, so when a
+            `cors` policy is attached, the gateway synthesizes an OPTIONS
+            route for the same path itself, sharing this same policy chain —
+            this is what lets `cors` (and every other policy in this list, in
+            declared order) answer a browser's preflight request.
           items:
             $ref: '#/components/schemas/Policy'
         subscriptionPlans:
@@ -10830,7 +10973,6 @@ components:
         - type: object
           required:
             - displayName
-            - context
             - version
             - projectId
             - upstream
@@ -11003,6 +11145,38 @@ components:
             the same sterile message `GraphQLAPISchemaResolveFailed` uses
             elsewhere (`error-handling.md`).
           example: The provided endpoint could not be used to derive a GraphQL schema, or the supplied SDL could not be parsed.
+        sdlErrors:
+          type: array
+          items:
+            $ref: '#/components/schemas/GraphQLSdlValidationIssue'
+          description: |
+            Set only when `resolved` is `false` and the failure was a parse
+            error on SDL text the caller effectively authored: `schemaSource`
+            `inline`/`file` always, and `url` once its fetch itself succeeded.
+            Unlike `message`, these are safe to show verbatim — they describe
+            the caller's own document, not a network outcome. Never set for a
+            `url` fetch failure or an `introspection` failure, since revealing
+            those could map internal topology (`error-handling.md`,
+            `ssrf-prevention.md`).
+
+    GraphQLSdlValidationIssue:
+      title: GraphQL SDL validation issue
+      type: object
+      required:
+        - message
+      properties:
+        message:
+          type: string
+          description: The parser's own error message for this issue.
+          example: "Unexpected Name \"this\""
+        line:
+          type: integer
+          description: 1-based line number in the submitted SDL, when the parser could anchor the issue to one.
+          example: 3
+        column:
+          type: integer
+          description: 1-based column number in the submitted SDL, when the parser could anchor the issue to one.
+          example: 12
 
     TimeUnit:
       type: string
@@ -12778,7 +12952,6 @@ components:
         - displayName
         - version
         - projectId
-        - provider
       properties:
         id:
           type: string
@@ -12852,8 +13025,38 @@ components:
             selectable upstreams. Policies route requests to any of these by
             setting the upstream name. The primary `provider` field above
             remains the default upstream and the FK target.
+            Legacy shape: prefer `providers`, which expresses the same thing
+            uniformly. Always populated on a read alongside `providers`.
           items:
             $ref: '#/components/schemas/LLMProxyAdditionalProvider'
+        providers:
+          type: array
+          minItems: 1
+          description: >
+            Canonical list of providers attached to this proxy. Each entry is
+            uniform and exactly one carries `isPrimary: true`, which supplies the
+            proxy's provider identity and default upstream.
+
+            On a request this is an alternative to the legacy `provider` plus
+            `additionalProviders` pair, not an addition to it: when both are
+            supplied `providers` wins and the legacy fields are ignored, so a
+            client can write back a response it just read. Whichever shape
+            arrives, only this one is stored.
+
+            On a response both representations are always populated and always
+            agree, so a client written against either contract works.
+          items:
+            $ref: '#/components/schemas/LLMProxyProviderEntry'
+        inboundTemplate:
+          type: string
+          description: >
+            Handle of the provider template describing the wire format this proxy
+            accepts from clients. Drives the extraction fields (model and token
+            locations) merged into every attached policy. When omitted, the primary
+            provider's own template is used, preserving existing behaviour.
+          minLength: 1
+          maxLength: 253
+          example: openai
         openapi:
           type: string
           description: OpenAPI specification (JSON or YAML) for the proxy endpoint
@@ -12988,6 +13191,9 @@ components:
       type: object
       required:
         - id
+      description: >
+        The proxy's primary provider in the legacy shape. Equivalent to the entry
+        carrying `isPrimary: true` in the canonical `providers` list.
       properties:
         id:
           type: string
@@ -12995,8 +13201,20 @@ components:
           minLength: 1
           maxLength: 40
           example: wso2-openai-provider
+        as:
+          type: string
+          description: >
+            Logical LLM Provider name used by policies to select this provider. Must
+            be unique across the primary and all additional providers. Defaults to
+            `id` when omitted. The same field as `alias` in the canonical shape.
+          pattern: '^[a-zA-Z0-9\-_]+$'
+          minLength: 1
+          maxLength: 100
+          example: openai-upstream
         auth:
           $ref: '#/components/schemas/UpstreamAuth'
+        transformer:
+          $ref: '#/components/schemas/LLMProxyTransformer'
 
     LLMProxyAdditionalProvider:
       type: object
@@ -13019,6 +13237,46 @@ components:
           minLength: 1
           maxLength: 100
           example: anthropic-upstream
+        auth:
+          $ref: '#/components/schemas/UpstreamAuth'
+        transformer:
+          $ref: '#/components/schemas/LLMProxyTransformer'
+
+    LLMProxyProviderEntry:
+      type: object
+      required:
+        - id
+        - isPrimary
+      description: >
+        One provider attached to this proxy in the canonical `providers` list.
+        Every entry is uniform: exactly one carries `isPrimary: true` and becomes
+        the proxy's provider identity and default upstream; the rest are
+        selectable upstreams. Equivalent to the legacy `provider` plus
+        `additionalProviders` shape, which remains supported.
+      properties:
+        id:
+          type: string
+          description: Unique id of a deployed llm provider
+          example: anthropic-provider
+        alias:
+          type: string
+          description: >
+            Logical LLM Provider name used by policies to select this provider. Must
+            be unique within the proxy. Defaults to `id` when omitted. The same field
+            as `as` in the legacy shape.
+          pattern: '^[a-zA-Z0-9\-_]+$'
+          minLength: 1
+          maxLength: 100
+          example: anthropic-upstream
+        isPrimary:
+          type: boolean
+          description: >
+            Marks this entry as the proxy's primary provider. Exactly one entry in
+            the list must set it to true. Required on every entry, so a non-primary
+            entry sends false explicitly rather than omitting it.
+          example: true
+        auth:
+          $ref: '#/components/schemas/UpstreamAuth'
         transformer:
           $ref: '#/components/schemas/LLMProxyTransformer'
 
@@ -14778,7 +15036,7 @@ components:
             trackingId: 4f1c6f2e-8a4b-4c93-b1de-9f2f6f0c2a11
 
     PublicationBadRequest:
-      description: The payload failed validation — a plan handle or document handle absent from the organization, or content over the configured size ceiling.
+      description: The payload failed validation — a plan handle or document handle absent from the organization, a plan that is not active, or content over the configured size ceiling.
       content:
         application/json:
           schema:
@@ -14793,8 +15051,9 @@ components:
     PublicationPublishBadRequest:
       description: >-
         Either this API type has no projection onto the API Portal's own API types, so no listing can be
-        created for it, or the draft's stored definition is not a valid OpenAPI 3.x document — publish is the
-        one point definition validity is enforced; the draft itself may hold anything.
+        created for it, the draft's stored definition is not a valid OpenAPI 3.x document — publish is the
+        one point definition validity is enforced; the draft itself may hold anything — or a selected
+        subscription plan is no longer active.
       content:
         application/json:
           schema:
@@ -14815,17 +15074,14 @@ components:
     PublicationConflict:
       description: >-
         Conflict. code identifies which: PUBLICATION_STATE_CONFLICT when the action is not valid
-        for the publication's current status (unpublish needs a published or deprecated listing,
-        deprecate a published one), PUBLICATION_DRAFT_CHANGED when the draft was saved while a
-        publish of it was in flight (the API Portal may already hold the earlier copy while the
-        local listing is unchanged; review the draft and publish again to bring them in line),
-        or PUBLICATION_PORTAL_CONFLICT when the API Portal refused the
-        change — another API already holds this handle or display name and version, or the listing
-        still has subscriptions or active API keys and so cannot be removed. A portal conflict does
-        not clear on retry: the operator renames, removes the consumers, or deprecates instead. A
-        state conflict clears once the publication is in a status that allows the action. No local
-        state was changed by any of these; only a draft-changed conflict can leave the API Portal
-        ahead of it until the next publish.
+        for the publication's current status, PUBLICATION_DRAFT_CHANGED when the draft was saved
+        while a publish of it was in flight (the API Portal may hold the earlier copy; review the
+        draft and publish again), or PUBLICATION_PORTAL_CONFLICT when the API Portal refused the
+        change: the handle or display name and version is taken, the listing still has
+        subscriptions or active API keys, or a subscription plan could not be created because the
+        portal already holds it. A portal conflict does not clear on retry (rename, remove the
+        consumers, or deprecate instead), except a plan conflict from a concurrent publish, which
+        usually does. No local state was changed by any of these.
       content:
         application/json:
           schema:
@@ -15169,7 +15425,7 @@ components:
       required: true
       description: >-
         The API's type, required alongside apiId because a handle is unique only within its own
-        type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime,
+        type. Known values: rest-api, graphql-api, websub-api, webbroker-api. Values are resolved at runtime,
         so a type contributed by a plugin is accepted only on a build that includes it. An
         unrecognised value returns 404.
       schema:
@@ -15212,7 +15468,7 @@ components:
       required: true
       description: >-
         The API's type, required alongside apiId because a handle is unique only within its own
-        type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime,
+        type. Known values: rest-api, graphql-api, websub-api, webbroker-api. Values are resolved at runtime,
         so a type contributed by a plugin is accepted only on a build that includes it. An
         unrecognised value returns 404.
       schema:

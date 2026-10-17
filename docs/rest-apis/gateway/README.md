@@ -41,6 +41,19 @@ Base URLs:
 - [Update a subscription](rest-api-management.md#update-a-subscription)
 - [Delete a subscription](rest-api-management.md#delete-a-subscription)
 
+### [GraphQL API Management](graphql-api-management.md)
+
+- [Create a new GraphQLApi](graphql-api-management.md#create-a-new-graphqlapi)
+- [List all GraphQLApis](graphql-api-management.md#list-all-graphqlapis)
+- [Get GraphQLApi by id](graphql-api-management.md#get-graphqlapi-by-id)
+- [Update an existing GraphQLApi](graphql-api-management.md#update-an-existing-graphqlapi)
+- [Delete a GraphQLApi](graphql-api-management.md#delete-a-graphqlapi)
+- [Create a new API key for a GraphQL API](graphql-api-management.md#create-a-new-api-key-for-a-graphql-api)
+- [Get the list of API keys for a GraphQL API](graphql-api-management.md#get-the-list-of-api-keys-for-a-graphql-api)
+- [Regenerate API key for a GraphQL API](graphql-api-management.md#regenerate-api-key-for-a-graphql-api)
+- [Update an API key with a new regenerated value](graphql-api-management.md#update-an-api-key-with-a-new-regenerated-value)
+- [Revoke an API key](graphql-api-management.md#revoke-an-api-key)
+
 ### [MCP Proxy Management](mcp-proxy-management.md)
 
 - [Create a new MCPProxy](mcp-proxy-management.md#create-a-new-mcpproxy)
@@ -66,6 +79,7 @@ Base URLs:
 
 - [List all custom certificates](certificate-management.md#list-all-custom-certificates)
 - [Upload a new certificate](certificate-management.md#upload-a-new-certificate)
+- [Rotate a gateway identity's certificate and key](certificate-management.md#rotate-a-gateway-identitys-certificate-and-key)
 - [Delete a certificate](certificate-management.md#delete-a-certificate)
 - [Manually reload certificates](certificate-management.md#manually-reload-certificates)
 
@@ -114,10 +128,14 @@ Base URLs:
 ### [Schemas](schemas.md)
 
 - [ResourceStatus](schemas.md#resourcestatus)
+- [Warning](schemas.md#warning)
 - [RestAPIRequest](schemas.md#restapirequest)
 - [RestAPI](schemas.md#restapi)
 - [Metadata](schemas.md#metadata)
 - [APIConfigData](schemas.md#apiconfigdata)
+- [GraphQLAPIConfigData](schemas.md#graphqlapiconfigdata)
+- [GraphQLAPIRequest](schemas.md#graphqlapirequest)
+- [GraphQLAPI](schemas.md#graphqlapi)
 - [UpstreamDefinition](schemas.md#upstreamdefinition)
 - [UpstreamTimeout](schemas.md#upstreamtimeout)
 - [Resilience](schemas.md#resilience)
@@ -179,6 +197,7 @@ Base URLs:
 - [UpstreamAuth](schemas.md#upstreamauth)
 - [LLMUpstreamAuth](schemas.md#llmupstreamauth)
 - [LLMProxyProvider](schemas.md#llmproxyprovider)
+- [LLMProxyProviderEntry](schemas.md#llmproxyproviderentry)
 - [LLMProxyAdditionalProvider](schemas.md#llmproxyadditionalprovider)
 - [LLMProxyTransformer](schemas.md#llmproxytransformer)
 - [LLMAccessControl](schemas.md#llmaccesscontrol)
@@ -196,7 +215,9 @@ Base URLs:
 - [SecretConfigListData](schemas.md#secretconfiglistdata)
 - [SecretListItem](schemas.md#secretlistitem)
 - [CertificateUploadRequest](schemas.md#certificateuploadrequest)
+- [CertificateMatch](schemas.md#certificatematch)
 - [CertificateResponse](schemas.md#certificateresponse)
+- [CertificateWarning](schemas.md#certificatewarning)
 - [CertificateListResponse](schemas.md#certificatelistresponse)
 - [APIKeyListResponse](schemas.md#apikeylistresponse)
 - [SecretListResponse](schemas.md#secretlistresponse)

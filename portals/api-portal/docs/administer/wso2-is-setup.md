@@ -166,11 +166,24 @@ at IS's certificate (in Docker, mount it into the container first). Don't use
 the portal provisioning organizations (see
 [Provisioning](multi-organization.md#provisioning)).
 
-**Bearer tokens for the REST API** must come from the root organization's issuer
-(`auth.idp.issuer`). A token obtained directly from an organization's own token endpoint
-(`.../o/<organization id>/oauth2/token`) is rejected. Browser sign-ins, including every
-organization's users, go through the root organization's endpoints, so their tokens carry
-that issuer too.
+**Bearer tokens for the REST API** come from the root organization's issuer
+(`auth.idp.issuer`) by default. Browser sign-ins, including every organization's users, go
+through the root organization's endpoints, so their tokens carry that issuer too. A token
+obtained directly from an organization's own token endpoint
+(`.../o/<organization id>/oauth2/token`) — for example a tenant's script calling the
+portal's REST API — is issued under that organization's issuer and to its copy of the
+application, whose client ID differs. To accept those, add each organization's
+*API Portal* client ID (shown on its **Applications** page) to `audience`, and add the
+per-organization issuer to the same `[api_portal.auth.idp]` table:
+
+```toml
+issuer_template    = "https://localhost:9443/o/{org}/oauth2/token"
+jwks_url_template  = "https://host.docker.internal:9443/o/{org}/oauth2/jwks"
+# {org} is the organization's org_id. Keying organizations on org_handle or org_name
+# instead? Then also set: template_org_claim = "org_id"
+```
+
+See [Per-organization issuers](multi-organization.md#per-organization-issuers).
 
 To confirm the issuer, open the root organization's OIDC discovery document in a browser,
 `https://localhost:9443/oauth2/token/.well-known/openid-configuration`, and copy its

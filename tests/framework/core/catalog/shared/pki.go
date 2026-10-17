@@ -38,6 +38,12 @@ var (
 
 	identityProviderTLSOnce sync.Once
 	identityProviderTLSData *KeyPairPEM
+
+	gatewayListenerOnce sync.Once
+	gatewayListenerData *KeyPairPEM
+
+	gatewayEncryptionOnce sync.Once
+	gatewayEncryptionData []byte
 )
 
 // IdentityProviderHost is the host name the testbench identity provider is reached at from
@@ -144,6 +150,34 @@ func IdentityProviderTLS() *KeyPairPEM {
 		identityProviderTLSData = pair
 	})
 	return identityProviderTLSData
+}
+
+// GatewayListenerTLS returns the certificate and key the gateway serves its default HTTPS
+// listener with. It is generated once per process, so the gateway that serves it and the steps
+// that trust it always hold the same certificate, and no key material is stored in the
+// repository. The certificate is issued for localhost and its subdomains.
+func GatewayListenerTLS() *KeyPairPEM {
+	gatewayListenerOnce.Do(func() {
+		pair, err := SelfSignedCert("localhost", []string{"localhost", "*.localhost"})
+		if err != nil {
+			panic(err)
+		}
+		gatewayListenerData = pair
+	})
+	return gatewayListenerData
+}
+
+// GatewayEncryptionKey returns the 32-byte AES-256 key the gateway encrypts stored secrets
+// with. It is generated once per process.
+func GatewayEncryptionKey() []byte {
+	gatewayEncryptionOnce.Do(func() {
+		key := make([]byte, 32)
+		if _, err := rand.Read(key); err != nil {
+			panic(fmt.Sprintf("catalog: generating the gateway encryption key: %v", err))
+		}
+		gatewayEncryptionData = key
+	})
+	return append([]byte(nil), gatewayEncryptionData...)
 }
 
 func mustPKCS8(key *rsa.PrivateKey) []byte {

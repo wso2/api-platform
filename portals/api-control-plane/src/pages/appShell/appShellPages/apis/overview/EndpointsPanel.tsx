@@ -20,13 +20,14 @@ import {
   Typography,
 } from '@wso2/oxygen-ui';
 import { ChevronLeft, Globe, Pencil } from '@wso2/oxygen-ui-icons-react';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
 import { useUpdateRestApi, type RestApi } from '@/api/resources/restApis';
 import { useNotifications } from '@/components/Notifications';
 import { isValidUrl } from '../utils/developEdit';
-import { Can } from '@/permissions/Can';
+import { useActionPermission } from '@/permissions/useCan';
+import type { PermissionOperation } from '@/permissions';
 
 const messages = defineMessages({
   cancel: {
@@ -53,6 +54,17 @@ const messages = defineMessages({
     id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.EndpointsPanel.edit',
     defaultMessage: 'Edit endpoint',
   },
+  notEditable: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.EndpointsPanel.notEditable',
+    defaultMessage: 'This endpoint cannot be edited here.',
+    description: 'Tooltip on the disabled Edit endpoint button when no more specific reason applies.',
+  },
+  gatewayManaged: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.EndpointsPanel.gatewayManaged',
+    defaultMessage:
+      'This API was created from a gateway, so its endpoint is managed by the gateway and cannot be edited here.',
+    description: 'Tooltip on the disabled Edit endpoint button of a read-only (gateway-created) API.',
+  },
   notConfigured: {
     id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.EndpointsPanel.notConfigured',
     defaultMessage: 'No endpoint configured',
@@ -75,15 +87,52 @@ const messages = defineMessages({
   },
 });
 
-type Props = {
-  api: RestApi;
+export type EndpointCardProps = {
+  /** The card heading; defaults to "Endpoints". */
+  title?: ReactNode;
+  /** The backend URL shown; absent when none is configured. */
+  url?: string;
+  /** Whether the endpoint may be edited at all (e.g. not a read-only API). */
+  editable?: boolean;
+  /**
+   * Set when `editable` is false because a gateway created the API, so the
+   * disabled button can say why rather than give a generic reason.
+   */
+  gatewayManaged?: boolean;
+  /** The operation the edit button is gated on. */
+  editOperation: PermissionOperation;
+  /** True while a save is in flight. */
+  saving: boolean;
+  /** Persists a new URL; the card reports the outcome and closes on success. */
+  onSave: (url: string) => Promise<unknown>;
 };
 
-export function EndpointsPanel({ api }: Props) {
+/**
+ * The backend endpoint card with its edit drawer. Shared by every API kind's
+ * overview; each supplies how its API is saved and who may edit it.
+ */
+export function EndpointCard({
+  editable = true,
+  editOperation,
+  gatewayManaged = false,
+  onSave,
+  saving,
+  title,
+  url,
+}: EndpointCardProps) {
   const intl = useIntl();
+  // Each API kind passes its own update operation, so a GraphQL API is never
+  // gated on the REST permission. `tooltip` is the shared "not permitted" text.
+  const permission = useActionPermission(editOperation);
+  const canUpdate = permission.allowed;
+  // Explain a disabled button: why it can't be edited, or that the user lacks
+  // permission; otherwise just name the action.
+  const editTooltip = !editable
+    ? intl.formatMessage(gatewayManaged ? messages.gatewayManaged : messages.notEditable)
+    : !canUpdate
+      ? (permission.tooltip ?? intl.formatMessage(messages.edit))
+      : intl.formatMessage(messages.edit);
   const { notify } = useNotifications();
-  const updateApi = useUpdateRestApi();
-  const url = api.upstream?.main?.url;
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [endpointUrl, setEndpointUrl] = useState('');
   const [touched, setTouched] = useState(false);
@@ -97,32 +146,20 @@ export function EndpointsPanel({ api }: Props) {
   };
 
   const closeDrawer = () => {
-    if (updateApi.isPending) return;
+    if (saving) return;
     setDrawerOpen(false);
   };
 
   const saveEndpoint = () => {
     setTouched(true);
-    if (!api.id || !endpointValid) return;
+    if (!endpointValid) return;
 
-    updateApi.mutate(
-      {
-        restApiId: api.id,
-        body: {
-          ...api,
-          upstream: {
-            ...api.upstream,
-            main: { ...api.upstream?.main, url: trimmedUrl },
-          },
-        },
+    onSave(trimmedUrl).then(
+      () => {
+        notify(intl.formatMessage(messages.saved), 'success');
+        setDrawerOpen(false);
       },
-      {
-        onError: () => notify(intl.formatMessage(messages.saveError), 'error'),
-        onSuccess: () => {
-          notify(intl.formatMessage(messages.saved), 'success');
-          setDrawerOpen(false);
-        },
-      },
+      () => notify(intl.formatMessage(messages.saveError), 'error'),
     );
   };
 
@@ -135,19 +172,22 @@ export function EndpointsPanel({ api }: Props) {
           sx={{ justifyContent: 'space-between', px: 2, py: 1.5 }}
         >
           <Typography sx={{ fontWeight: 600 }} variant="h6">
-            <FormattedMessage {...messages.title} />
+            {title ?? <FormattedMessage {...messages.title} />}
           </Typography>
-          <Can do="UpdateRESTAPI" denied="hide">
-            <Tooltip title={intl.formatMessage(messages.edit)}>
+          <Tooltip title={editTooltip}>
+            {/* A disabled button gets no pointer events, so the span receives
+                the hover that shows why it is disabled. */}
+            <span>
               <IconButton
                 aria-label={intl.formatMessage(messages.edit)}
                 onClick={openDrawer}
                 size="small"
+                disabled={!canUpdate || !editable}
               >
                 <Pencil size={16} />
               </IconButton>
-            </Tooltip>
-          </Can>
+            </span>
+          </Tooltip>
         </Stack>
         <Divider />
         <Stack alignItems="center" direction="row" spacing={1.25} sx={{ px: 2, py: 1.5 }}>
@@ -208,7 +248,7 @@ export function EndpointsPanel({ api }: Props) {
           >
             <IconButton
               aria-label={intl.formatMessage(messages.close)}
-              disabled={updateApi.isPending}
+              disabled={saving}
               onClick={closeDrawer}
               size="small"
             >
@@ -248,12 +288,12 @@ export function EndpointsPanel({ api }: Props) {
             spacing={1}
             sx={{ borderTop: 1, borderColor: 'divider', justifyContent: 'flex-end', p: 2 }}
           >
-            <Button disabled={updateApi.isPending} onClick={closeDrawer} variant="outlined">
+            <Button disabled={saving} onClick={closeDrawer} variant="outlined">
               <FormattedMessage {...messages.cancel} />
             </Button>
             <Button
-              disabled={!endpointValid || updateApi.isPending || trimmedUrl === (url ?? '')}
-              loading={updateApi.isPending}
+              disabled={!endpointValid || saving || trimmedUrl === (url ?? '')}
+              loading={saving}
               onClick={saveEndpoint}
               variant="contained"
             >
@@ -263,5 +303,29 @@ export function EndpointsPanel({ api }: Props) {
         </Box>
       </Drawer>
     </>
+  );
+}
+
+/** A REST API's backend endpoint: the shared card over REST's update. */
+export function EndpointsPanel({ api }: { api: RestApi }) {
+  const updateApi = useUpdateRestApi();
+
+  return (
+    <EndpointCard
+      editable={!api.readOnly}
+      editOperation="UpdateRESTAPI"
+      gatewayManaged={api.readOnly === true}
+      onSave={(endpointUrl) =>
+        updateApi.mutateAsync({
+          restApiId: api.id ?? '',
+          body: {
+            ...api,
+            upstream: { ...api.upstream, main: { ...api.upstream?.main, url: endpointUrl } },
+          },
+        })
+      }
+      saving={updateApi.isPending}
+      url={api.upstream?.main?.url}
+    />
   );
 }

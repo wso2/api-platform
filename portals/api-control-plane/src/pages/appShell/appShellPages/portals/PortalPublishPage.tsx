@@ -16,19 +16,18 @@
  * under the License.
  */
 
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { alpha, Box, PageTitle, Stack, Tab, Tabs } from '@wso2/oxygen-ui';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 
 import {
-  REST_API_TYPE,
-  useDeprecateRestApiOnApiPortal,
-  usePublishRestApiToApiPortal,
+  useDeprecateApiOnApiPortal,
+  usePublishApiToApiPortal,
   useSaveApiPublicationDraft,
   useSaveApiPublicationDraftDefinition,
-  useUnpublishRestApiFromApiPortal,
-  type DraftDefinitionDocument,
+  useUnpublishApiFromApiPortal,
+  type DraftDefinitionBody,
 } from '@/api/resources/apiPublications';
 import { isApiError, isErrorCode } from '@/api/core/errors';
 import { AppPage } from '@/components/AppPage';
@@ -38,9 +37,9 @@ import { useFrozenWhile } from '@/hooks/useFrozenWhile';
 import { useFormatters } from '@/i18n/useFormatters';
 import { useNotifications } from '@/components/Notifications';
 import { LoadingState } from '@/components/StateViews';
-import { routes } from '@/routes/paths';
 import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
-import { parseSpecText, type SpecFormat } from '../apis/create/utils/specText';
+import { parseGraphQLSdl } from '../apis/create/utils/graphqlSchema';
+import { parseSpecText } from '../apis/create/utils/specText';
 import { ApiDetailsTab } from './components/ApiDetailsTab';
 import { PublicationLoadError } from './components/PublicationLoadError';
 import { PublicationVersionCard, type PublicationVersionTone } from './components/PublicationVersionCard';
@@ -48,7 +47,9 @@ import { PublicationVersionToggle } from './components/PublicationVersionToggle'
 import { PublishActionsBar } from './components/PublishActionsBar';
 import { PublishedSpecificationTab } from './components/PublishedSpecificationTab';
 import { SpecificationTab } from './components/SpecificationTab';
+import { restPublishTarget, type PublishTarget } from './publishTarget';
 import { usePublishPageData } from './usePublishPageData';
+import type { DefinitionFormat } from './utils/storedDefinition';
 import {
   draftFormValuesToInput,
   emptyDraftFormValues,
@@ -254,13 +255,30 @@ type PendingAction = 'idle' | 'saving' | 'publishing' | 'unpublishing' | 'deprec
  */
 export function PortalPublishPage() {
   return (
-    <AppPage hideBreadcrumbs>
-      <PortalPublishPageContent />
+    <AppPage>
+      <RestPortalPublish />
     </AppPage>
   );
 }
 
-function PortalPublishPageContent() {
+/** A REST API in console scope, published through the shared page body. */
+function RestPortalPublish() {
+  const { params } = useConsoleScope();
+  const orgHandle = params.orgHandle ?? '';
+  const projectHandler = params.projectHandler ?? '';
+  const apiHandler = params.apiHandler ?? '';
+  const target = useMemo(
+    () => restPublishTarget(orgHandle, projectHandler, apiHandler),
+    [apiHandler, orgHandle, projectHandler],
+  );
+  return <PortalPublishPageContent target={target} />;
+}
+
+/**
+ * The page body for one API on one portal, shared by every API kind: each
+ * supplies a `PublishTarget` naming the API, its type and where it links.
+ */
+export function PortalPublishPageContent({ target }: { target: PublishTarget }) {
   const { apiPortalId = '' } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
@@ -270,10 +288,8 @@ function PortalPublishPageContent() {
   // or opening the editor never moves the header or the action buttons.
   const fill = useFillScrollArea<HTMLDivElement>(MIN_PAGE_HEIGHT);
   const { notify } = useNotifications();
-  const { params } = useConsoleScope();
-  const orgHandle = params.orgHandle ?? '';
-  const projectHandler = params.projectHandler ?? '';
-  const apiHandler = params.apiHandler ?? '';
+  const { apiHandle: apiHandler, apiType } = target;
+  const isGraphQL = target.definitionKind === 'graphql';
 
   // Passed by the portal card that linked here; falls back to the handle on a
   // direct link or refresh, where there is no navigation state.
@@ -282,18 +298,18 @@ function PortalPublishPageContent() {
   const [tab, setTab] = useState<PublishTab>('details');
   // Which version the user picked; until they pick, the live version if there is one, else the draft.
   const [chosenView, setChosenView] = useState<PublicationVersionTone>();
-  const data = usePublishPageData(apiPortalId, apiHandler, chosenView !== 'draft' && tab === 'specification');
+  const data = usePublishPageData(apiPortalId, target, chosenView !== 'draft' && tab === 'specification');
 
   const saveDraftMutation = useSaveApiPublicationDraft();
   const saveDefinitionMutation = useSaveApiPublicationDraftDefinition({ handlesErrors: true });
-  const publishMutation = usePublishRestApiToApiPortal();
-  const unpublishMutation = useUnpublishRestApiFromApiPortal();
-  const deprecateMutation = useDeprecateRestApiOnApiPortal();
+  const publishMutation = usePublishApiToApiPortal();
+  const unpublishMutation = useUnpublishApiFromApiPortal();
+  const deprecateMutation = useDeprecateApiOnApiPortal();
 
   const [values, setValues] = useState<DraftFormValues>(emptyDraftFormValues);
   const [touched, setTouched] = useState<Partial<Record<DraftFormField, boolean>>>({});
   const [definitionText, setDefinitionText] = useState('');
-  const [definitionFormat, setDefinitionFormat] = useState<SpecFormat>('json');
+  const [definitionFormat, setDefinitionFormat] = useState<DefinitionFormat>(isGraphQL ? 'graphql' : 'json');
   const [definitionParseError, setDefinitionParseError] = useState<string>();
   // What the server holds for the fields shown, so edits made since can be told apart.
   const [saved, setSaved] = useState({ definitionText: '', values: emptyDraftFormValues });
@@ -312,7 +328,7 @@ function PortalPublishPageContent() {
     setValues(data.seed.values);
     setDefinitionText(data.seed.definition?.text ?? '');
     setSaved({ definitionText: data.seed.definition?.text ?? '', values: data.seed.values });
-    setDefinitionFormat(data.seed.definition?.format ?? 'json');
+    setDefinitionFormat(data.seed.definition?.format ?? (isGraphQL ? 'graphql' : 'json'));
     setInitialized(true);
   }, [initialized, data.seed]);
 
@@ -360,9 +376,20 @@ function PortalPublishPageContent() {
    * is a work in progress — whether it's a genuinely valid, complete OpenAPI
    * document is checked only at publish, not here — so this only blocks the
    * save when the text isn't even parseable JSON/YAML, since that can't be
-   * sent as a definition at all.
+   * sent as a definition at all. A GraphQL SDL is sent as its own text, and
+   * blocked the same way when it doesn't parse as a schema.
    */
-  const parseDefinition = (): DraftDefinitionDocument | undefined => {
+  const parseDefinition = (): DraftDefinitionBody | undefined => {
+    if (definitionFormat === 'graphql') {
+      const sdlResult = definitionText.trim() === '' ? undefined : parseGraphQLSdl(definitionText);
+      if (sdlResult && 'error' in sdlResult) {
+        setDefinitionParseError(sdlResult.error);
+        setTab('specification');
+        return undefined;
+      }
+      setDefinitionParseError(undefined);
+      return { sdl: definitionText };
+    }
     if (definitionText.trim() === '') return {};
     const result = parseSpecText(definitionText, definitionFormat);
     if (result.status !== 'parsed') {
@@ -404,7 +431,7 @@ function PortalPublishPageContent() {
     }
     await saveDraftMutation.mutateAsync({
       apiPortalId,
-      apiType: REST_API_TYPE,
+      apiType,
       apiId: apiHandler,
       body: draftFormValuesToInput(values),
     });
@@ -423,7 +450,7 @@ function PortalPublishPageContent() {
     await reportingMissingDraft(
       saveDefinitionMutation.mutateAsync({
         apiPortalId,
-        apiType: REST_API_TYPE,
+        apiType,
         apiId: apiHandler,
         body: definitionDocument,
       }),
@@ -457,7 +484,7 @@ function PortalPublishPageContent() {
   // Each terminal action leaves this one portal's page behind for the listing,
   // where the card now reflects the new status — there's nothing left to do
   // on this page once the action the user came here for has gone through.
-  const backToPortalsList = () => navigate(routes.apiPortals(orgHandle, projectHandler, apiHandler));
+  const backToPortalsList = () => navigate(target.portalsPath);
 
   const handlePublish = () =>
     runAction('publishing', async () => {
@@ -467,7 +494,7 @@ function PortalPublishPageContent() {
       // there rather than what the user is looking at.
       if (!(await saveDefinition())) return;
       try {
-        await publishMutation.mutateAsync({ apiPortalId, apiId: apiHandler });
+        await publishMutation.mutateAsync({ apiPortalId, apiType, apiId: apiHandler });
       } catch (error) {
         // The message itself is already reported by the global snackbar;
         // this only sends the user to where they'd fix it.
@@ -481,7 +508,7 @@ function PortalPublishPageContent() {
   const confirmUnpublish = () => {
     setConfirmingUnpublish(false);
     return runAction('unpublishing', async () => {
-      await unpublishMutation.mutateAsync({ apiPortalId, apiId: apiHandler });
+      await unpublishMutation.mutateAsync({ apiPortalId, apiType, apiId: apiHandler });
       notify(intl.formatMessage(messages.unpublished, { portalName }), 'success');
       backToPortalsList();
     });
@@ -490,7 +517,7 @@ function PortalPublishPageContent() {
   const confirmDeprecate = () => {
     setConfirmingDeprecate(false);
     return runAction('deprecating', async () => {
-      await deprecateMutation.mutateAsync({ apiPortalId, apiId: apiHandler });
+      await deprecateMutation.mutateAsync({ apiPortalId, apiType, apiId: apiHandler });
       notify(intl.formatMessage(messages.deprecated, { portalName }), 'success');
       backToPortalsList();
     });
@@ -537,6 +564,7 @@ function PortalPublishPageContent() {
         }}
         onBlurField={markTouched}
         onChange={handleChange}
+        productionUrlOptions={data.productionUrlOptions}
         values={values}
       />
     ) : (
@@ -558,7 +586,7 @@ function PortalPublishPageContent() {
     <>
       <Box ref={fill.ref} sx={{ display: 'flex', flexDirection: 'column', height: fill.height, minHeight: 0 }}>
         <PageTitle>
-          <PageTitle.BackButton component={<Link to={routes.apiPortals(orgHandle, projectHandler, apiHandler)} />}>
+          <PageTitle.BackButton component={<Link to={target.portalsPath} />}>
             <FormattedMessage {...messages.back} />
           </PageTitle.BackButton>
           <PageTitle.Header>

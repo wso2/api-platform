@@ -101,6 +101,52 @@ type PolicyExecutionContext struct {
 	// Request ID for correlation
 	requestID string
 
+	// correlationToken keys this stream's correlation-store entry. It is unique
+	// per ext_proc stream (see newCorrelationToken) rather than the request id,
+	// which a client can supply and repeat. Empty until the store accepts the
+	// stream's first captured field; once set, later fields only update that entry
+	// (correlation.Store.Update), so a phase that runs after the ALS handler took
+	// the entry cannot leave an orphan behind.
+	correlationToken string
+
+	// responseFinished is set once this stream has seen the end of the response:
+	// the gateway answered with an immediate response, or Envoy sent the last
+	// response headers/body message (end_of_stream) or the response trailers. Only
+	// then is the correlation entry completed (see completeCorrelationEntry). The
+	// stream can close earlier -- when response body processing is skipped, Envoy
+	// ends it after the response headers while the body is still streaming to the
+	// client -- and that must not start the entry's TTL.
+	responseFinished bool
+
+	// correlationTokenSent is set once a response carrying the correlation token
+	// reached Envoy. A stream that ends with a token Envoy never received has an
+	// entry no access-log entry can point to, so its entry is discarded.
+	correlationTokenSent bool
+
+	// encodedFields caches the analytics_data encoding of captured fields that stay
+	// in metadata, so an unchanged value re-sent by a later phase is not encoded
+	// again (see encodeAnalyticsValue).
+	encodedFields map[string]encodedField
+
+	// storedFields records the value of each field the store accepted, so a phase
+	// that re-sends an unchanged value (response phases re-send the request-phase
+	// analytics) does not merge it again.
+	storedFields map[string]any
+
+	// clientPath is the request's :path as the client sent it, before any policy
+	// rewrites it; routedPath is the :path after the latest policy rewrite (empty
+	// when none). Envoy's access-log filter matches collector.ignore_path_prefixes
+	// against x-envoy-original-path, which the router sets from the path after
+	// ext_proc, so either can make Envoy skip the access-log entry.
+	clientPath string
+	routedPath string
+
+	// pathIgnored caches whether clientPath or routedPath is under
+	// collector.ignore_path_prefixes; pathIgnoredKnown is false until it is computed
+	// and again whenever routedPath changes.
+	pathIgnored      bool
+	pathIgnoredKnown bool
+
 	// Analytics metadata to be shared across request and response phases.
 	// Used internally to propagate analytics data between phases without
 	// contaminating the policy-visible metadata map.
@@ -902,7 +948,7 @@ func (ec *PolicyExecutionContext) getModeOverride() *extprocconfigv3.ProcessingM
 		mode.RequestBodyMode = extprocconfigv3.ProcessingMode_NONE
 	}
 
-	if ec.policyChain.RequiresResponseBody {
+	if ec.needsResponseBody() {
 		if ec.isStreamingResponse {
 			mode.ResponseBodyMode = extprocconfigv3.ProcessingMode_FULL_DUPLEX_STREAMED
 			slog.Debug("[mode] upgraded response body mode to FULL_DUPLEX_STREAMED",
@@ -931,6 +977,7 @@ func (ec *PolicyExecutionContext) getModeOverride() *extprocconfigv3.ProcessingM
 		"route", ec.routeKey,
 		"requires_request_body", ec.policyChain.RequiresRequestBody,
 		"requires_response_body", ec.policyChain.RequiresResponseBody,
+		"requires_response_body_on_fault", ec.policyChain.RequiresResponseBodyOnFault,
 		"supports_response_streaming", ec.policyChain.SupportsResponseStreaming,
 		"is_streaming_request", ec.isStreamingRequest,
 		"request_body_mode", mode.RequestBodyMode.String(),
@@ -1051,7 +1098,20 @@ func (ec *PolicyExecutionContext) requestEncodingBlocksBodyPolicies() bool {
 // requestEncodingBlocksBodyPolicies. Header and body phases must agree on it: a response the
 // header phase let through must not be failed later at the body phase.
 func (ec *PolicyExecutionContext) responseEncodingBlocksBodyPolicies() bool {
-	return ec.responseEncodingUnsupported && ec.policyChain.RequiresResponseBody && !ec.responseHasNoBody()
+	return ec.responseEncodingUnsupported && ec.needsResponseBody() && !ec.responseHasNoBody()
+}
+
+// needsResponseBody reports whether this response's body must reach the policy engine:
+// always when a normal policy needs it, and, when only the fault policies do, for an error
+// response -- the only kind they run on when no policy claimed the response
+// (runFaultPoliciesOnResponse). Before the response headers arrive there is no status yet,
+// so a fault-only chain asks for no response body; the response-headers phase decides.
+func (ec *PolicyExecutionContext) needsResponseBody() bool {
+	if ec.policyChain.RequiresResponseBody {
+		return true
+	}
+	return ec.policyChain.RequiresResponseBodyOnFault && ec.responseHeaderCtx != nil &&
+		isFaultResponse(ec.responseHeaderCtx.ResponseStatus, false)
 }
 
 // processRequestBodyForEmptyRequest executes body policies inline during the headers phase
@@ -1519,11 +1579,11 @@ func (ec *PolicyExecutionContext) processResponseHeaders(
 
 	// A pass-through error is handed to the fault policies in the response-BODY phase, not
 	// here, so the error body is available to them (runFaultPoliciesOnResponse). Attaching
-	// fault policies forces RequiresResponseBody so that phase always runs.
+	// fault policies requests the body for error responses so that phase runs for them.
 
 	// For bodyless responses Envoy skips the ResponseBody ext_proc phase entirely.
 	// Execute body policies inline now so they run on every response, receiving a nil body.
-	if !execResult.ShortCircuited && ec.policyChain.RequiresResponseBody && ec.responseHasNoBody() {
+	if !execResult.ShortCircuited && ec.needsResponseBody() && ec.responseHasNoBody() {
 		return ec.processResponseBodyForEmptyResponse(ctx, execResult)
 	}
 
@@ -1572,7 +1632,7 @@ func (ec *PolicyExecutionContext) processResponseBody(
 		"end_of_stream", body.EndOfStream,
 	)
 
-	if ec.policyChain.RequiresResponseBody {
+	if ec.needsResponseBody() {
 		// Decompress body if Content-Encoding was set, so policies receive plain JSON.
 		bodyContent := body.Body
 		if ec.responseContentEncoding != "" {
@@ -1972,6 +2032,7 @@ func (ec *PolicyExecutionContext) buildRequestContexts(headers *extprocv3.HttpHe
 		Scheme:    scheme,
 	}}
 
+	ec.clientPath = path
 	ec.requestHeaderCtx = &policy.RequestHeaderContext{
 		SharedContext: sharedCtx,
 		Headers:       wrappedHeaders,

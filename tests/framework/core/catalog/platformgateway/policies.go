@@ -28,12 +28,14 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
 	"gopkg.in/yaml.v3"
 
 	"github.com/wso2/api-platform/tests/framework/core/builder"
+	"github.com/wso2/api-platform/tests/framework/core/catalog/shared"
 )
 
 const (
@@ -69,7 +71,7 @@ func BuildSourceWithPolicies(
 	if err != nil {
 		return DerivedImages{}, err
 	}
-	workspace, err := stagePolicyWorkspace(root, source, nil)
+	workspace, err := stagePolicyWorkspace(root, source, nil, true)
 	if err != nil {
 		return DerivedImages{}, err
 	}
@@ -131,7 +133,7 @@ func BuildVersionedWithPolicies(
 		only = names
 	}
 
-	workspace, err := stagePolicyWorkspace(root, source, only)
+	workspace, err := stagePolicyWorkspace(root, source, only, false)
 	if err != nil {
 		return DerivedImages{}, err
 	}
@@ -202,11 +204,6 @@ type policyDefinition struct {
 	Version string `yaml:"version"`
 }
 
-// gatewayBuilderImage is the gateway-builder image for a released gateway version.
-func gatewayBuilderImage(version string) string {
-	return "ghcr.io/wso2/api-platform/gateway-builder:" + version
-}
-
 // releasedPolicyNames returns the names of the policies a released gateway ships, read from
 // the build manifest its runtime image carries. A variable so tests can stand in for docker.
 var releasedPolicyNames = func(ctx context.Context, runtimeImage string) (map[string]bool, error) {
@@ -236,10 +233,13 @@ var releasedPolicyNames = func(ctx context.Context, runtimeImage string) (map[st
 	return names, nil
 }
 
-// stagePolicyWorkspace stages the policies under source into a fresh build workspace.
+// stagePolicyWorkspace copies the policy tree into a Docker-accessible build workspace.
 //
-// only, when non-nil, names the policies to stage; the rest are left out.
-func stagePolicyWorkspace(repoRoot, source string, only map[string]bool) (policyWorkspace, error) {
+// only, when non-nil, names the policies to stage; the rest are left out. A source build also
+// stages the gateway files only the repository checkout holds (LICENSE and the LLM pricing
+// configuration); a build on a released gateway needs none of them, so it runs from a project
+// that has no gateway source.
+func stagePolicyWorkspace(repoRoot, source string, only map[string]bool, sourceBuild bool) (policyWorkspace, error) {
 	if strings.TrimSpace(repoRoot) == "" {
 		return policyWorkspace{}, fmt.Errorf("platform-gateway: repository root is required")
 	}
@@ -324,8 +324,10 @@ func stagePolicyWorkspace(repoRoot, source string, only map[string]bool) (policy
 	if err := os.MkdirAll(workspace.ControllerPolicies, 0o755); err != nil {
 		return policyWorkspace{}, fmt.Errorf("platform-gateway: creating controller policy directory: %w", err)
 	}
-	if err := prepareSourceBuildTarget(root, workspace.Target); err != nil {
-		return policyWorkspace{}, err
+	if sourceBuild {
+		if err := prepareSourceBuildTarget(root, workspace.Target); err != nil {
+			return policyWorkspace{}, err
+		}
 	}
 
 	manifest := policyBuildFile{
@@ -359,7 +361,7 @@ func stagePolicyWorkspace(repoRoot, source string, only map[string]bool) (policy
 		seen[definition.Name] = entry.Name()
 
 		dst := filepath.Join(workspace.Policies, entry.Name())
-		if err := copyTree(src, dst); err != nil {
+		if err := copyPolicyTree(src, dst); err != nil {
 			return policyWorkspace{}, fmt.Errorf("platform-gateway: staging policy %q: %w", entry.Name(), err)
 		}
 		manifest.Policies = append(manifest.Policies, policyBuildEntry{
@@ -375,18 +377,20 @@ func stagePolicyWorkspace(repoRoot, source string, only map[string]bool) (policy
 	if err := os.WriteFile(workspace.BuildFile, data, 0o644); err != nil {
 		return policyWorkspace{}, fmt.Errorf("platform-gateway: writing policy build manifest: %w", err)
 	}
-	sourceManifest := manifest
-	for i := range sourceManifest.Policies {
-		sourceManifest.Policies[i].FilePath = strings.Replace(
-			sourceManifest.Policies[i].FilePath, policyWorkspaceDir+"/", "dev-policies/", 1,
-		)
-	}
-	sourceData, err := yaml.Marshal(&sourceManifest)
-	if err != nil {
-		return policyWorkspace{}, fmt.Errorf("platform-gateway: encoding source policy build manifest: %w", err)
-	}
-	if err := os.WriteFile(filepath.Join(workspace.Target, "build.yaml"), sourceData, 0o644); err != nil {
-		return policyWorkspace{}, fmt.Errorf("platform-gateway: writing source build manifest: %w", err)
+	if sourceBuild {
+		sourceManifest := manifest
+		for i := range sourceManifest.Policies {
+			sourceManifest.Policies[i].FilePath = strings.Replace(
+				sourceManifest.Policies[i].FilePath, policyWorkspaceDir+"/", "dev-policies/", 1,
+			)
+		}
+		sourceData, err := yaml.Marshal(&sourceManifest)
+		if err != nil {
+			return policyWorkspace{}, fmt.Errorf("platform-gateway: encoding source policy build manifest: %w", err)
+		}
+		if err := os.WriteFile(filepath.Join(workspace.Target, "build.yaml"), sourceData, 0o644); err != nil {
+			return policyWorkspace{}, fmt.Errorf("platform-gateway: writing source build manifest: %w", err)
+		}
 	}
 
 	digest, err := directoryDigest(workspace.Root)
@@ -520,33 +524,47 @@ func sourcePolicyBuildCommands(
 func versionedPolicyBuildCommands(
 	repoRoot, version string, workspace policyWorkspace, controllerBase, runtimeBase string, images DerivedImages,
 ) []builder.Command {
-	builderImage := gatewayBuilderImage(version)
+	builderImage := gatewayBuilderImage(controllerBase, version)
+	// The published latest images move with every merge, so a copy pulled earlier must not be
+	// reused. A release tag never changes, so its local copy is.
+	runPull, buildPull := []string{}, []string{}
+	if strings.EqualFold(strings.TrimSpace(version), "latest") {
+		runPull, buildPull = []string{"--pull", "always"}, []string{"--pull"}
+	}
 	return []builder.Command{
 		{
 			Directory: repoRoot,
-			Args: []string{
-				"docker", "run", "--rm", "-v", workspace.Root + ":/workspace", builderImage,
+			Args: slices.Concat([]string{"docker", "run", "--rm"}, runPull, []string{
+				"-v", workspace.Root + ":/workspace", builderImage,
 				"-gateway-controller-base-image", controllerBase,
 				"-gateway-runtime-base-image", runtimeBase,
 				"-build-file", "/workspace/build.yaml",
 				"-out-dir", "/workspace/output",
-			},
+			}),
 		},
 		{
 			Directory: repoRoot,
-			Args: []string{
-				"docker", "buildx", "build", "-f", filepath.Join(workspace.Root, policyOutputDir, "gateway-runtime", "Dockerfile"),
+			Args: slices.Concat([]string{"docker", "buildx", "build"}, buildPull, []string{
+				"-f", filepath.Join(workspace.Root, policyOutputDir, "gateway-runtime", "Dockerfile"),
 				"--tag", images.Runtime, "--load", filepath.Join(workspace.Root, policyOutputDir, "gateway-runtime"),
-			},
+			}),
 		},
 		{
 			Directory: repoRoot,
-			Args: []string{
-				"docker", "buildx", "build", "-f", filepath.Join(workspace.Root, policyOutputDir, "gateway-controller", "Dockerfile"),
+			Args: slices.Concat([]string{"docker", "buildx", "build"}, buildPull, []string{
+				"-f", filepath.Join(workspace.Root, policyOutputDir, "gateway-controller", "Dockerfile"),
 				"--tag", images.Controller, "--load", filepath.Join(workspace.Root, policyOutputDir, "gateway-controller"),
-			},
+			}),
 		},
 	}
+}
+
+func gatewayBuilderImage(controllerBase, version string) string {
+	const controllerRepository = "/gateway-controller:"
+	if i := strings.LastIndex(controllerBase, controllerRepository); i > 0 {
+		return controllerBase[:i] + "/gateway-builder:" + version
+	}
+	return shared.GatewayReleaseRegistry + "/gateway-builder:" + version
 }
 
 func derivedImages(version, digest string) DerivedImages {
@@ -619,6 +637,40 @@ func directoryDigest(root string) (string, error) {
 		}
 	}
 	return hex.EncodeToString(hash.Sum(nil)), nil
+}
+
+// policyIntegrationDir holds a policy's integration tests. It is left out of the staged
+// policy so editing a feature does not change the workspace digest or rebuild the gateway.
+const policyIntegrationDir = "it"
+
+// copyPolicyTree copies one policy directory without its integration tests.
+func copyPolicyTree(source, destination string) error {
+	entries, err := os.ReadDir(source)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(destination, 0o755); err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		src := filepath.Join(source, entry.Name())
+		dst := filepath.Join(destination, entry.Name())
+		switch {
+		case entry.Type()&os.ModeSymlink != 0:
+			return fmt.Errorf("symlink %q is not allowed", src)
+		case entry.IsDir() && entry.Name() == policyIntegrationDir:
+			continue
+		case entry.IsDir():
+			if err := copyTree(src, dst); err != nil {
+				return err
+			}
+		default:
+			if err := copyFile(src, dst); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func copyTree(source, destination string) error {

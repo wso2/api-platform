@@ -51,6 +51,8 @@ declare module 'axios' {
     requestId?: string;
     /** Human label for logs/telemetry, e.g. `ListRESTAPIs`. */
     operationName?: string;
+    /** A `TextBody`'s own content type, which replaces the JSON default. */
+    textContentType?: string;
   }
 }
 
@@ -105,6 +107,8 @@ const attachRequestContext = (
     // a body the server cannot split.
     if (config.data instanceof FormData) {
         config.headers.delete('Content-Type');
+    } else if (config.textContentType) {
+        config.headers.set('Content-Type', config.textContentType);
     } else {
         config.headers.set('Content-Type', 'application/json');
     }
@@ -338,6 +342,18 @@ export type RequestOptions = {
 const isFormData = (value: unknown): value is FormData =>
   typeof FormData !== 'undefined' && value instanceof FormData;
 
+/**
+ * A request body sent as-is under its own content type, for an endpoint that
+ * takes a document rather than JSON (e.g. a GraphQL SDL as
+ * `application/graphql`). Anything else is JSON-encoded.
+ */
+export class TextBody {
+  constructor(
+    readonly text: string,
+    readonly contentType: string,
+  ) {}
+}
+
 
 /**
  * Turns the raw response body into `T`.
@@ -409,13 +425,15 @@ async function send(
     ...(responseType ? { responseType } : {}),
     // FormData is passed through untouched; anything else is serialized here
     // so the Content-Type set above is always accurate.
-    ...(options.body !== undefined
-      ? {
-          data: isFormData(options.body)
-            ? options.body
-            : JSON.stringify(options.body),
-        }
-      : {}),
+    ...(options.body instanceof TextBody
+      ? { data: options.body.text, textContentType: options.body.contentType }
+      : options.body !== undefined
+        ? {
+            data: isFormData(options.body)
+              ? options.body
+              : JSON.stringify(options.body),
+          }
+        : {}),
   };
 
   let response: AxiosResponse<unknown>;

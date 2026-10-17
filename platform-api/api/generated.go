@@ -493,6 +493,30 @@ func (e GraphQLAPISchemaSource) Valid() bool {
 	}
 }
 
+// Defines values for GraphQLAPIDetailSchemaSource.
+const (
+	GraphQLAPIDetailSchemaSourceFile          GraphQLAPIDetailSchemaSource = "file"
+	GraphQLAPIDetailSchemaSourceInline        GraphQLAPIDetailSchemaSource = "inline"
+	GraphQLAPIDetailSchemaSourceIntrospection GraphQLAPIDetailSchemaSource = "introspection"
+	GraphQLAPIDetailSchemaSourceUrl           GraphQLAPIDetailSchemaSource = "url"
+)
+
+// Valid indicates whether the value is a known member of the GraphQLAPIDetailSchemaSource enum.
+func (e GraphQLAPIDetailSchemaSource) Valid() bool {
+	switch e {
+	case GraphQLAPIDetailSchemaSourceFile:
+		return true
+	case GraphQLAPIDetailSchemaSourceInline:
+		return true
+	case GraphQLAPIDetailSchemaSourceIntrospection:
+		return true
+	case GraphQLAPIDetailSchemaSourceUrl:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for GraphQLIntrospectionMode.
 const (
 	ENDPOINT GraphQLIntrospectionMode = "ENDPOINT"
@@ -2199,7 +2223,7 @@ type APIDocumentMetadata struct {
 	// Id URL-safe handle used in the `{docId}` path segment.
 	Id string `json:"id" yaml:"id"`
 
-	// Type Document type as stored. Fixed types (HOW_TO, SAMPLE_SDK, SUPPORT_FORUM, PUBLIC_FORUM) are returned as-is; custom OTHER types are returned as the bare custom name (e.g. FAQ).
+	// Type Document type as stored. Fixed types (HowTo, Samples, SupportForum, PublicForum, Other) are returned as-is; custom OTHER types are returned as the bare custom name (e.g. FAQ).
 	Type      string     `json:"type" yaml:"type"`
 	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
 
@@ -2767,10 +2791,14 @@ type CreateGatewayRequestFunctionalityType string
 
 // CreateGraphQLAPIRequest defines model for CreateGraphQLAPIRequest.
 type CreateGraphQLAPIRequest struct {
-	// Context Base path for the single GraphQL endpoint. Suggested (not enforced)
-	// convention: end the path with `/graphql`, matching how most standalone
-	// GraphQL servers name their single endpoint — this is not validated.
-	Context     string     `json:"context" yaml:"context"`
+	// Context Base path for the single GraphQL endpoint. Optional: when omitted
+	// (or blank) on create/update, the server derives one from the API's
+	// handle and version (`/{handle}/{version}/graphql`) instead of
+	// rejecting the request. Suggested (not enforced) convention when
+	// supplied explicitly: end the path with `/graphql`, matching how
+	// most standalone GraphQL servers name their single endpoint — this
+	// is not validated.
+	Context     *string    `json:"context,omitempty" yaml:"context,omitempty"`
 	CreatedAt   *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
 	CreatedBy   *string    `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
 	Description *string    `json:"description,omitempty" yaml:"description,omitempty"`
@@ -2791,12 +2819,12 @@ type CreateGraphQLAPIRequest struct {
 	Kind *string `json:"kind,omitempty" yaml:"kind,omitempty"`
 
 	// Policies List of policies to be applied on the API. Reused unmodified from
-	// REST APIs. A `cors` policy applies only to the API's single `POST`
-	// route — a GraphQL API has no per-operation list to add an
-	// `OPTIONS` entry to, so a browser preflight request is not routed
-	// at all and a `cors` policy will not run for it; cross-origin
-	// browser clients that trigger a preflight are not currently
-	// supported.
+	// REST APIs. A GraphQL API has no per-operation list to add an
+	// explicit `OPTIONS` entry to the way a REST API does, so when a
+	// `cors` policy is attached, the gateway synthesizes an OPTIONS
+	// route for the same path itself, sharing this same policy chain —
+	// this is what lets `cors` (and every other policy in this list, in
+	// declared order) answer a browser's preflight request.
 	Policies  *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
 	ProjectId string    `json:"projectId" yaml:"projectId"`
 
@@ -3423,10 +3451,14 @@ type GatewayTokenListResponse struct {
 
 // GraphQLAPI defines model for GraphQLAPI.
 type GraphQLAPI struct {
-	// Context Base path for the single GraphQL endpoint. Suggested (not enforced)
-	// convention: end the path with `/graphql`, matching how most standalone
-	// GraphQL servers name their single endpoint — this is not validated.
-	Context     string     `json:"context" yaml:"context"`
+	// Context Base path for the single GraphQL endpoint. Optional: when omitted
+	// (or blank) on create/update, the server derives one from the API's
+	// handle and version (`/{handle}/{version}/graphql`) instead of
+	// rejecting the request. Suggested (not enforced) convention when
+	// supplied explicitly: end the path with `/graphql`, matching how
+	// most standalone GraphQL servers name their single endpoint — this
+	// is not validated.
+	Context     *string    `json:"context,omitempty" yaml:"context,omitempty"`
 	CreatedAt   *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
 	CreatedBy   *string    `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
 	Description *string    `json:"description,omitempty" yaml:"description,omitempty"`
@@ -3447,12 +3479,12 @@ type GraphQLAPI struct {
 	Kind *string `json:"kind,omitempty" yaml:"kind,omitempty"`
 
 	// Policies List of policies to be applied on the API. Reused unmodified from
-	// REST APIs. A `cors` policy applies only to the API's single `POST`
-	// route — a GraphQL API has no per-operation list to add an
-	// `OPTIONS` entry to, so a browser preflight request is not routed
-	// at all and a `cors` policy will not run for it; cross-origin
-	// browser clients that trigger a preflight are not currently
-	// supported.
+	// REST APIs. A GraphQL API has no per-operation list to add an
+	// explicit `OPTIONS` entry to the way a REST API does, so when a
+	// `cors` policy is attached, the gateway synthesizes an OPTIONS
+	// route for the same path itself, sharing this same policy chain —
+	// this is what lets `cors` (and every other policy in this list, in
+	// declared order) answer a browser's preflight request.
 	Policies  *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
 	ProjectId string    `json:"projectId" yaml:"projectId"`
 
@@ -3532,10 +3564,14 @@ type GraphQLAPISchemaSource string
 
 // GraphQLAPIDetail defines model for GraphQLAPIDetail.
 type GraphQLAPIDetail struct {
-	// Context Base path for the single GraphQL endpoint. Suggested (not enforced)
-	// convention: end the path with `/graphql`, matching how most standalone
-	// GraphQL servers name their single endpoint — this is not validated.
-	Context     string     `json:"context" yaml:"context"`
+	// Context Base path for the single GraphQL endpoint. Optional: when omitted
+	// (or blank) on create/update, the server derives one from the API's
+	// handle and version (`/{handle}/{version}/graphql`) instead of
+	// rejecting the request. Suggested (not enforced) convention when
+	// supplied explicitly: end the path with `/graphql`, matching how
+	// most standalone GraphQL servers name their single endpoint — this
+	// is not validated.
+	Context     *string    `json:"context,omitempty" yaml:"context,omitempty"`
 	CreatedAt   *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
 	CreatedBy   *string    `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
 	Description *string    `json:"description,omitempty" yaml:"description,omitempty"`
@@ -3556,17 +3592,27 @@ type GraphQLAPIDetail struct {
 	Kind *string `json:"kind,omitempty" yaml:"kind,omitempty"`
 
 	// Policies List of policies to be applied on the API. Reused unmodified from
-	// REST APIs. A `cors` policy applies only to the API's single `POST`
-	// route — a GraphQL API has no per-operation list to add an
-	// `OPTIONS` entry to, so a browser preflight request is not routed
-	// at all and a `cors` policy will not run for it; cross-origin
-	// browser clients that trigger a preflight are not currently
-	// supported.
+	// REST APIs. A GraphQL API has no per-operation list to add an
+	// explicit `OPTIONS` entry to the way a REST API does, so when a
+	// `cors` policy is attached, the gateway synthesizes an OPTIONS
+	// route for the same path itself, sharing this same policy chain —
+	// this is what lets `cors` (and every other policy in this list, in
+	// declared order) answer a browser's preflight request.
 	Policies  *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
 	ProjectId string    `json:"projectId" yaml:"projectId"`
 
 	// ReadOnly True if the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane.
 	ReadOnly *bool `json:"readOnly,omitempty" yaml:"readOnly,omitempty"`
+
+	// SchemaSource The exact source the current schema was declared with on the create or
+	// last successful update — a finer-grained sibling of `introspectionMode`,
+	// which only distinguishes the two-bucket SDL/ENDPOINT storage outcome.
+	// Resupply this value on a subsequent `PUT` that isn't meant to change the
+	// schema, together with material satisfying that same source (`sdl` for
+	// `inline`/`file`, `sdlUrl` for `url`, nothing extra for `introspection`
+	// since `upstream.main.url` already suffices) — omitting it, or resupplying
+	// a source without its required field, is a structural `400`, not a no-op.
+	SchemaSource *GraphQLAPIDetailSchemaSource `json:"schemaSource,omitempty" yaml:"schemaSource,omitempty"`
 
 	// SubscriptionPlans List of subscription plan names enabled for this API.
 	SubscriptionPlans *[]string  `json:"subscriptionPlans,omitempty" yaml:"subscriptionPlans,omitempty"`
@@ -3580,6 +3626,16 @@ type GraphQLAPIDetail struct {
 	Upstream Upstream `json:"upstream" yaml:"upstream"`
 	Version  string   `json:"version" yaml:"version"`
 }
+
+// GraphQLAPIDetailSchemaSource The exact source the current schema was declared with on the create or
+// last successful update — a finer-grained sibling of `introspectionMode`,
+// which only distinguishes the two-bucket SDL/ENDPOINT storage outcome.
+// Resupply this value on a subsequent `PUT` that isn't meant to change the
+// schema, together with material satisfying that same source (`sdl` for
+// `inline`/`file`, `sdlUrl` for `url`, nothing extra for `introspection`
+// since `upstream.main.url` already suffices) — omitting it, or resupplying
+// a source without its required field, is a structural `400`, not a no-op.
+type GraphQLAPIDetailSchemaSource string
 
 // GraphQLAPIListItem defines model for GraphQLAPIListItem.
 type GraphQLAPIListItem struct {
@@ -3633,6 +3689,18 @@ type GraphQLAPISDLResponse struct {
 
 // GraphQLIntrospectionMode defines model for GraphQLIntrospectionMode.
 type GraphQLIntrospectionMode string
+
+// GraphQLSdlValidationIssue defines model for GraphQLSdlValidationIssue.
+type GraphQLSdlValidationIssue struct {
+	// Column 1-based column number in the submitted SDL, when the parser could anchor the issue to one.
+	Column *int `json:"column,omitempty" yaml:"column,omitempty"`
+
+	// Line 1-based line number in the submitted SDL, when the parser could anchor the issue to one.
+	Line *int `json:"line,omitempty" yaml:"line,omitempty"`
+
+	// Message The parser's own error message for this issue.
+	Message string `json:"message" yaml:"message"`
+}
 
 // ImportOpenAPIRequest Multipart form for `POST /rest-apis/import-openapi`. Exactly one of
 // `file` or `url` must be provided; the backend rejects requests that
@@ -3978,7 +4046,7 @@ type LLMProviderTemplateResourceMappings struct {
 
 // LLMProxy defines model for LLMProxy.
 type LLMProxy struct {
-	// AdditionalProviders Optional list of additional LLM providers attached to this proxy as selectable upstreams. Policies route requests to any of these by setting the upstream name. The primary `provider` field above remains the default upstream and the FK target.
+	// AdditionalProviders Optional list of additional LLM providers attached to this proxy as selectable upstreams. Policies route requests to any of these by setting the upstream name. The primary `provider` field above remains the default upstream and the FK target. Legacy shape: prefer `providers`, which expresses the same thing uniformly. Always populated on a read alongside `providers`.
 	AdditionalProviders *[]LLMProxyAdditionalProvider `json:"additionalProviders,omitempty" yaml:"additionalProviders,omitempty"`
 
 	// AssociatedGateways Optional list of gateways this LLM proxy can be deployed to, along with per-gateway configuration overrides. This field is optional; omitting it does not change existing behaviour.
@@ -4005,6 +4073,9 @@ type LLMProxy struct {
 	// Id Unique handle for the proxy
 	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
 
+	// InboundTemplate Handle of the provider template describing the wire format this proxy accepts from clients. Drives the extraction fields (model and token locations) merged into every attached policy. When omitted, the primary provider's own template is used, preserving existing behaviour.
+	InboundTemplate *string `json:"inboundTemplate,omitempty" yaml:"inboundTemplate,omitempty"`
+
 	// Openapi OpenAPI specification (JSON or YAML) for the proxy endpoint
 	Openapi *string `json:"openapi,omitempty" yaml:"openapi,omitempty"`
 
@@ -4016,8 +4087,15 @@ type LLMProxy struct {
 	Policies *[]LLMPolicy `json:"policies,omitempty" yaml:"policies,omitempty"`
 
 	// ProjectId Handle (URL-friendly slug) of the project this proxy belongs to
-	ProjectId string           `json:"projectId" yaml:"projectId"`
-	Provider  LLMProxyProvider `json:"provider" yaml:"provider"`
+	ProjectId string `json:"projectId" yaml:"projectId"`
+
+	// Provider The proxy's primary provider in the legacy shape. Equivalent to the entry carrying `isPrimary: true` in the canonical `providers` list.
+	Provider *LLMProxyProvider `json:"provider,omitempty" yaml:"provider,omitempty"`
+
+	// Providers Canonical list of providers attached to this proxy. Each entry is uniform and exactly one carries `isPrimary: true`, which supplies the proxy's provider identity and default upstream.
+	// On a request this is an alternative to the legacy `provider` plus `additionalProviders` pair, not an addition to it: when both are supplied `providers` wins and the legacy fields are ignored, so a client can write back a response it just read. Whichever shape arrives, only this one is stored.
+	// On a response both representations are always populated and always agree, so a client written against either contract works.
+	Providers *[]LLMProxyProviderEntry `json:"providers,omitempty" yaml:"providers,omitempty"`
 
 	// ReadOnly True if the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane; false for control-plane created artifacts.
 	ReadOnly *bool `json:"readOnly,omitempty" yaml:"readOnly,omitempty"`
@@ -4052,6 +4130,9 @@ type LLMProxyAPIKeyListResponse struct {
 type LLMProxyAdditionalProvider struct {
 	// As Logical LLM Provider name used by policies to select this provider. Must be unique within the proxy. Defaults to `id` when omitted.
 	As *string `json:"as,omitempty" yaml:"as,omitempty"`
+
+	// Auth Authentication configuration for upstream endpoints
+	Auth *UpstreamAuth `json:"auth,omitempty" yaml:"auth,omitempty"`
 
 	// Id Unique id of a deployed llm provider
 	Id string `json:"id" yaml:"id"`
@@ -4097,13 +4178,37 @@ type LLMProxyListResponse struct {
 	Pagination Pagination         `json:"pagination" yaml:"pagination"`
 }
 
-// LLMProxyProvider defines model for LLMProxyProvider.
+// LLMProxyProvider The proxy's primary provider in the legacy shape. Equivalent to the entry carrying `isPrimary: true` in the canonical `providers` list.
 type LLMProxyProvider struct {
+	// As Logical LLM Provider name used by policies to select this provider. Must be unique across the primary and all additional providers. Defaults to `id` when omitted. The same field as `alias` in the canonical shape.
+	As *string `json:"as,omitempty" yaml:"as,omitempty"`
+
 	// Auth Authentication configuration for upstream endpoints
 	Auth *UpstreamAuth `json:"auth,omitempty" yaml:"auth,omitempty"`
 
 	// Id Unique id of a deployed llm provider
 	Id string `json:"id" yaml:"id"`
+
+	// Transformer Request/response translator applied when this provider is the selected upstream. The proxy injects the translator as a conditional policy whose execution condition matches this provider, so it runs only when the provider is selected. The provider's `as` name (defaults to `id`) is passed to the translator as its target upstream.
+	Transformer *LLMProxyTransformer `json:"transformer,omitempty" yaml:"transformer,omitempty"`
+}
+
+// LLMProxyProviderEntry One provider attached to this proxy in the canonical `providers` list. Every entry is uniform: exactly one carries `isPrimary: true` and becomes the proxy's provider identity and default upstream; the rest are selectable upstreams. Equivalent to the legacy `provider` plus `additionalProviders` shape, which remains supported.
+type LLMProxyProviderEntry struct {
+	// Alias Logical LLM Provider name used by policies to select this provider. Must be unique within the proxy. Defaults to `id` when omitted. The same field as `as` in the legacy shape.
+	Alias *string `json:"alias,omitempty" yaml:"alias,omitempty"`
+
+	// Auth Authentication configuration for upstream endpoints
+	Auth *UpstreamAuth `json:"auth,omitempty" yaml:"auth,omitempty"`
+
+	// Id Unique id of a deployed llm provider
+	Id string `json:"id" yaml:"id"`
+
+	// IsPrimary Marks this entry as the proxy's primary provider. Exactly one entry in the list must set it to true. Required on every entry, so a non-primary entry sends false explicitly rather than omitting it.
+	IsPrimary bool `json:"isPrimary" yaml:"isPrimary"`
+
+	// Transformer Request/response translator applied when this provider is the selected upstream. The proxy injects the translator as a conditional policy whose execution condition matches this provider, so it runs only when the provider is selected. The provider's `as` name (defaults to `id`) is passed to the translator as its target upstream.
+	Transformer *LLMProxyTransformer `json:"transformer,omitempty" yaml:"transformer,omitempty"`
 }
 
 // LLMProxyTransformer Request/response translator applied when this provider is the selected upstream. The proxy injects the translator as a conditional policy whose execution condition matches this provider, so it runs only when the provider is selected. The provider's `as` name (defaults to `id`) is passed to the translator as its target upstream.
@@ -5531,6 +5636,16 @@ type ValidateGraphQLSchemaResponse struct {
 
 	// Sdl The resolved SDL text when `resolved` is `true`; empty otherwise.
 	Sdl string `json:"sdl" yaml:"sdl"`
+
+	// SdlErrors Set only when `resolved` is `false` and the failure was a parse
+	// error on SDL text the caller effectively authored: `schemaSource`
+	// `inline`/`file` always, and `url` once its fetch itself succeeded.
+	// Unlike `message`, these are safe to show verbatim — they describe
+	// the caller's own document, not a network outcome. Never set for a
+	// `url` fetch failure or an `introspection` failure, since revealing
+	// those could map internal topology (`error-handling.md`,
+	// `ssrf-prevention.md`).
+	SdlErrors *[]GraphQLSdlValidationIssue `json:"sdlErrors,omitempty" yaml:"sdlErrors,omitempty"`
 }
 
 // ValidateOpenAPIResponse defines model for ValidateOpenAPIResponse.
@@ -5820,7 +5935,7 @@ type SaveApiPublicationDraftThumbnailMultipartBody struct {
 
 // ListApiPublicationsParams defines parameters for ListApiPublications.
 type ListApiPublicationsParams struct {
-	// ApiType The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404.
+	// ApiType The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404.
 	ApiType ApiTypeQ `form:"apiType" json:"apiType" yaml:"apiType"`
 
 	// ApiId The API's handle, unique per organization within its own type.

@@ -1,0 +1,311 @@
+# --------------------------------------------------------------------
+# Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+#
+# WSO2 LLC. licenses this file to you under the Apache License,
+# Version 2.0 (the "License"); you may not use this file except
+# in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+# --------------------------------------------------------------------
+
+name: Daily Builds
+
+on:
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+    inputs:
+      component:
+        description: 'The component to build. A scheduled run builds all of them.'
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - gateway
+          - platform-api
+      force:
+        description: 'Rebuild and push the images even if main-<sha> is already published.'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+env:
+  DOCKER_REGISTRY: ghcr.io/wso2/api-platform
+
+jobs:
+  gateway-images:
+    name: Build and push the latest gateway images
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'schedule' || inputs.component == 'all' || inputs.component == 'gateway')
+    env:
+      GATEWAY_PATHS: gateway common httpkit sdk sdk-python LICENSE .github/workflows/daily-builds.yml
+    concurrency:
+      group: daily-builds-gateway-images
+      cancel-in-progress: false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          # The tip of main when the run starts, so a delayed run never moves latest backwards.
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.API_PLATFORM_BOT_TOKEN }}
+
+      - name: Plan the publish
+        id: plan
+        env:
+          FORCE: ${{ inputs.force }}
+        run: |
+          set -euo pipefail
+          read -ra paths <<< "$GATEWAY_PATHS"
+          source_sha="$(git log -1 --format=%H -- "${paths[@]}")"
+          if [[ -z "$source_sha" ]]; then
+            echo "::error::no commit found for the gateway paths"
+            exit 1
+          fi
+          tag="main-${source_sha::7}"
+          build=false
+          promote=false
+          if [[ "${FORCE:-false}" == "true" ]]; then
+            build=true
+          fi
+          for name in gateway-controller gateway-runtime gateway-builder; do
+            image="$DOCKER_REGISTRY/$name"
+            if ! tag_digest="$(docker buildx imagetools inspect "$image:$tag" --format '{{.Manifest.Digest}}' 2>/dev/null)"; then
+              build=true
+              continue
+            fi
+            latest_digest="$(docker buildx imagetools inspect "$image:latest" --format '{{.Manifest.Digest}}' 2>/dev/null || true)"
+            if [[ "$latest_digest" != "$tag_digest" ]]; then
+              promote=true
+            fi
+          done
+          {
+            echo "tag=$tag"
+            echo "build=$build"
+            echo "promote=$promote"
+          } >> "$GITHUB_OUTPUT"
+          if [[ "$build" == "false" && "$promote" == "false" ]]; then
+            echo "latest is already on $tag for all three images; nothing to publish." | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Set up Go
+        if: steps.plan.outputs.build == 'true'
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: '1.26.5'
+          cache: false
+
+      - name: Set up QEMU
+        if: steps.plan.outputs.build == 'true'
+        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3.7.0
+        with:
+          platforms: linux/amd64,linux/arm64
+
+      - name: Set up Docker Buildx
+        if: steps.plan.outputs.build == 'true'
+        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
+        with:
+          install: true
+          driver: docker-container
+
+      # PUSH_LATEST=false: latest moves only after the images are verified.
+      - name: Build and push the multi-arch gateway images
+        if: steps.plan.outputs.build == 'true'
+        env:
+          TAG: ${{ steps.plan.outputs.tag }}
+        run: make -C gateway build-and-push-multiarch VERSION="$TAG" DOCKER_REGISTRY="$DOCKER_REGISTRY" PUSH_LATEST=false
+
+      - name: Verify the pushed images
+        if: steps.plan.outputs.build == 'true' || steps.plan.outputs.promote == 'true'
+        env:
+          TAG: ${{ steps.plan.outputs.tag }}
+        run: |
+          set -euo pipefail
+          {
+            echo "### Gateway images"
+            echo
+            echo "| Image | Tag | Platforms |"
+            echo "| --- | --- | --- |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          for name in gateway-controller gateway-runtime gateway-builder; do
+            image="$DOCKER_REGISTRY/$name"
+            platforms="$(docker buildx imagetools inspect "$image:$TAG" --format '{{range .Manifest.Manifests}}{{.Platform.OS}}/{{.Platform.Architecture}} {{end}}')"
+            for platform in linux/amd64 linux/arm64; do
+              if [[ " $platforms" != *" $platform "* ]]; then
+                echo "::error::$name is missing $platform (has: $platforms)"
+                exit 1
+              fi
+            done
+            echo "| \`$image\` | \`$TAG\` | $platforms |" >> "$GITHUB_STEP_SUMMARY"
+          done
+
+      - name: Move latest to the verified images
+        if: steps.plan.outputs.build == 'true' || steps.plan.outputs.promote == 'true'
+        env:
+          TAG: ${{ steps.plan.outputs.tag }}
+        run: |
+          set -euo pipefail
+          for name in gateway-controller gateway-runtime gateway-builder; do
+            image="$DOCKER_REGISTRY/$name"
+            docker buildx imagetools create --tag "$image:latest" "$image:$TAG"
+          done
+          for name in gateway-controller gateway-runtime gateway-builder; do
+            image="$DOCKER_REGISTRY/$name"
+            latest_digest="$(docker buildx imagetools inspect "$image:latest" --format '{{.Manifest.Digest}}')"
+            tag_digest="$(docker buildx imagetools inspect "$image:$TAG" --format '{{.Manifest.Digest}}')"
+            if [[ "$latest_digest" != "$tag_digest" ]]; then
+              echo "::error::$name: latest ($latest_digest) is not $TAG ($tag_digest)"
+              exit 1
+            fi
+          done
+          echo "latest now points at \`$TAG\` for all three images." >> "$GITHUB_STEP_SUMMARY"
+
+  platform-api-image:
+    name: Build and push the latest platform-api image
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'schedule' || inputs.component == 'all' || inputs.component == 'platform-api')
+    env:
+      PLATFORM_API_PATHS: platform-api common httpkit .github/workflows/daily-builds.yml
+    concurrency:
+      group: daily-builds-platform-api-image
+      cancel-in-progress: false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          # The tip of main when the run starts, so a delayed run never moves latest backwards.
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.API_PLATFORM_BOT_TOKEN }}
+
+      - name: Plan the publish
+        id: plan
+        env:
+          FORCE: ${{ inputs.force }}
+        run: |
+          set -euo pipefail
+          read -ra paths <<< "$PLATFORM_API_PATHS"
+          source_sha="$(git log -1 --format=%H -- "${paths[@]}")"
+          if [[ -z "$source_sha" ]]; then
+            echo "::error::no commit found for the platform-api paths"
+            exit 1
+          fi
+          tag="main-${source_sha::7}"
+          build=false
+          promote=false
+          if [[ "${FORCE:-false}" == "true" ]]; then
+            build=true
+          fi
+          image="$DOCKER_REGISTRY/platform-api"
+          if ! tag_digest="$(docker buildx imagetools inspect "$image:$tag" --format '{{.Manifest.Digest}}' 2>/dev/null)"; then
+            build=true
+          else
+            latest_digest="$(docker buildx imagetools inspect "$image:latest" --format '{{.Manifest.Digest}}' 2>/dev/null || true)"
+            if [[ "$latest_digest" != "$tag_digest" ]]; then
+              promote=true
+            fi
+          fi
+          {
+            echo "tag=$tag"
+            echo "build=$build"
+            echo "promote=$promote"
+          } >> "$GITHUB_OUTPUT"
+          if [[ "$build" == "false" && "$promote" == "false" ]]; then
+            echo "latest is already on $tag for platform-api; nothing to publish." | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Set up QEMU
+        if: steps.plan.outputs.build == 'true'
+        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3.7.0
+        with:
+          platforms: linux/amd64,linux/arm64
+
+      - name: Set up Docker Buildx
+        if: steps.plan.outputs.build == 'true'
+        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
+        with:
+          install: true
+          driver: docker-container
+
+      - name: Build and push the multi-arch platform-api image
+        if: steps.plan.outputs.build == 'true'
+        env:
+          TAG: ${{ steps.plan.outputs.tag }}
+        run: make -C platform-api build-and-push-multiarch VERSION="$TAG" DOCKER_REGISTRY="$DOCKER_REGISTRY"
+
+      - name: Verify the pushed image
+        if: steps.plan.outputs.build == 'true' || steps.plan.outputs.promote == 'true'
+        env:
+          TAG: ${{ steps.plan.outputs.tag }}
+        run: |
+          set -euo pipefail
+          image="$DOCKER_REGISTRY/platform-api"
+          platforms="$(docker buildx imagetools inspect "$image:$TAG" --format '{{range .Manifest.Manifests}}{{.Platform.OS}}/{{.Platform.Architecture}} {{end}}')"
+          for platform in linux/amd64 linux/arm64; do
+            if [[ " $platforms" != *" $platform "* ]]; then
+              echo "::error::platform-api is missing $platform (has: $platforms)"
+              exit 1
+            fi
+          done
+          {
+            echo "### Platform API image"
+            echo
+            echo "| Image | Tag | Platforms |"
+            echo "| --- | --- | --- |"
+            echo "| \`$image\` | \`$TAG\` | $platforms |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Move latest to the verified image
+        if: steps.plan.outputs.build == 'true' || steps.plan.outputs.promote == 'true'
+        env:
+          TAG: ${{ steps.plan.outputs.tag }}
+        run: |
+          set -euo pipefail
+          image="$DOCKER_REGISTRY/platform-api"
+          docker buildx imagetools create --tag "$image:latest" "$image:$TAG"
+          latest_digest="$(docker buildx imagetools inspect "$image:latest" --format '{{.Manifest.Digest}}')"
+          tag_digest="$(docker buildx imagetools inspect "$image:$TAG" --format '{{.Manifest.Digest}}')"
+          if [[ "$latest_digest" != "$tag_digest" ]]; then
+            echo "::error::platform-api: latest ($latest_digest) is not $TAG ($tag_digest)"
+            exit 1
+          fi
+          echo "latest now points at \`$TAG\` for platform-api." >> "$GITHUB_STEP_SUMMARY"

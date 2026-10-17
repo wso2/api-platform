@@ -218,14 +218,14 @@ type SubscriptionPlanRepository interface {
 	Update(plan *model.SubscriptionPlan) error
 	Delete(planID, orgUUID string) error
 	ExistsByHandleAndOrg(handle, orgUUID string) (bool, error)
-	// GetUUIDsByHandles resolves each handle to its subscription_plan_uuid,
+	// GetByHandles loads each plan whose handle is in handles, keyed by handle,
 	// scoped to the organization. A handle absent from the returned map does
-	// not exist in the org's catalog. Used by API Publication draft/publish
-	// save to validate and resolve subscriptionPlanIds.
-	GetUUIDsByHandles(handles []string, orgUUID string) (map[string]string, error)
-	// GetHandlesByIDs is the inverse of GetUUIDsByHandles: subscription_plan_uuid
-	// to handle, for reconstructing a subscriptionPlanIds response from stored
-	// mapping rows.
+	// not exist in the org's catalog. Used by API Publication to validate
+	// subscriptionPlanIds (existence and status) and to create missing plans on
+	// the API Portal.
+	GetByHandles(handles []string, orgUUID string) (map[string]*model.SubscriptionPlan, error)
+	// GetHandlesByIDs maps subscription_plan_uuid to handle, for reconstructing
+	// a subscriptionPlanIds response from stored mapping rows.
 	GetHandlesByIDs(planUUIDs []string, orgUUID string) (map[string]string, error)
 }
 
@@ -370,10 +370,8 @@ type LLMProxyRepository interface {
 	GetByID(proxyID, orgUUID string) (*model.LLMProxy, error)
 	List(orgUUID string, limit, offset int) ([]*model.LLMProxy, error)
 	ListByProject(orgUUID, projectUUID string, limit, offset int) ([]*model.LLMProxy, error)
-	ListByProvider(orgUUID, providerID string, limit, offset int) ([]*model.LLMProxy, error)
 	Count(orgUUID string) (int, error)
 	CountByProject(orgUUID, projectUUID string) (int, error)
-	CountByProvider(orgUUID, providerID string) (int, error)
 	Update(p *model.LLMProxy) error
 	Delete(proxyID, orgUUID string) error
 	Exists(proxyID, orgUUID string) (bool, error)
@@ -466,6 +464,9 @@ type GraphQLAPIRepository interface {
 	Update(a *model.GraphQLAPI) error
 	Delete(handle, orgUUID string) error
 	Exists(handle, orgUUID string) (bool, error)
+	// ExistsByNameAndVersion reports whether another GraphQL API in the org
+	// uses this display name and version; excludeHandle skips that API itself.
+	ExistsByNameAndVersion(name, version, orgUUID, excludeHandle string) (bool, error)
 
 	// API-Gateway association methods. These operate on the same
 	// artifact_gateway_mappings table as APIRepository's identically-named

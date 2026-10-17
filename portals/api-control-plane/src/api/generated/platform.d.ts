@@ -541,7 +541,7 @@ export interface paths {
             path: {
                 /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
                 apiPortalId: components["parameters"]["apiPortalId"];
-                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
                 apiType: components["parameters"]["apiType"];
                 /** @description The API's handle, unique per organization within its own type. */
                 apiId: components["parameters"]["apiHandle"];
@@ -568,7 +568,7 @@ export interface paths {
             path: {
                 /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
                 apiPortalId: components["parameters"]["apiPortalId"];
-                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
                 apiType: components["parameters"]["apiType"];
                 /** @description The API's handle, unique per organization within its own type. */
                 apiId: components["parameters"]["apiHandle"];
@@ -595,7 +595,7 @@ export interface paths {
             path: {
                 /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
                 apiPortalId: components["parameters"]["apiPortalId"];
-                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
                 apiType: components["parameters"]["apiType"];
                 /** @description The API's handle, unique per organization within its own type. */
                 apiId: components["parameters"]["apiHandle"];
@@ -622,7 +622,7 @@ export interface paths {
             path: {
                 /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
                 apiPortalId: components["parameters"]["apiPortalId"];
-                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
                 apiType: components["parameters"]["apiType"];
                 /** @description The API's handle, unique per organization within its own type. */
                 apiId: components["parameters"]["apiHandle"];
@@ -649,7 +649,7 @@ export interface paths {
             path: {
                 /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
                 apiPortalId: components["parameters"]["apiPortalId"];
-                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
                 apiType: components["parameters"]["apiType"];
                 /** @description The API's handle, unique per organization within its own type. */
                 apiId: components["parameters"]["apiHandle"];
@@ -680,7 +680,7 @@ export interface paths {
             path: {
                 /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
                 apiPortalId: components["parameters"]["apiPortalId"];
-                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
                 apiType: components["parameters"]["apiType"];
                 /** @description The API's handle, unique per organization within its own type. */
                 apiId: components["parameters"]["apiHandle"];
@@ -711,7 +711,7 @@ export interface paths {
             path: {
                 /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
                 apiPortalId: components["parameters"]["apiPortalId"];
-                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
                 apiType: components["parameters"]["apiType"];
                 /** @description The API's handle, unique per organization within its own type. */
                 apiId: components["parameters"]["apiHandle"];
@@ -742,7 +742,7 @@ export interface paths {
             path: {
                 /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
                 apiPortalId: components["parameters"]["apiPortalId"];
-                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
                 apiType: components["parameters"]["apiType"];
                 /** @description The API's handle, unique per organization within its own type. */
                 apiId: components["parameters"]["apiHandle"];
@@ -851,12 +851,97 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api-portals/{apiPortalId}/apis/graphql-api/{apiId}/publish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
+                apiPortalId: components["parameters"]["apiPortalId"];
+                /** @description The API's handle, unique per organization within its own type. */
+                apiId: components["parameters"]["apiHandle"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Publish GraphQL API to API Portal
+         * @description Publishes the current draft. Takes no request body: details, plans, documents, definition,
+         *     landing page and thumbnail all come from the draft alone — publish never reads the API's
+         *     own content or the current publication to fill a gap. Requires a draft to exist.
+         *
+         *     The content is pushed to the API Portal before anything is written locally, so a failed
+         *     call leaves the draft intact and can simply be repeated.
+         *
+         *     Returns 201 on a first publish or a re-publish after unpublish, 200 otherwise.
+         */
+        post: operations["publishGraphQLApiToApiPortal"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api-portals/{apiPortalId}/apis/graphql-api/{apiId}/unpublish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
+                apiPortalId: components["parameters"]["apiPortalId"];
+                /** @description The API's handle, unique per organization within its own type. */
+                apiId: components["parameters"]["apiHandle"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Unpublish GraphQL API from API Portal
+         * @description Removes the listing from the API Portal, along with its subscriptions and API keys, then
+         *     writes locally: if no draft exists, the publication is demoted into the draft in place; if
+         *     one exists, the publication is deleted and the existing draft is kept. A draft always
+         *     survives. Valid only when currently published or deprecated.
+         */
+        post: operations["unpublishGraphQLApiFromApiPortal"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api-portals/{apiPortalId}/apis/graphql-api/{apiId}/deprecate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
+                apiPortalId: components["parameters"]["apiPortalId"];
+                /** @description The API's handle, unique per organization within its own type. */
+                apiId: components["parameters"]["apiHandle"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Deprecate GraphQL API on API Portal
+         * @description Marks the live listing deprecated on the API Portal, where it stays visible and is flagged as deprecated. Nothing is deleted and any draft is untouched. Valid only when currently published.
+         */
+        post: operations["deprecateGraphQLApiOnApiPortal"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/apis/{apiType}/{apiId}/docs": {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
                 apiType: components["parameters"]["apiType"];
                 /** @description The API's handle, unique per organization within its own type. */
                 apiId: components["parameters"]["apiHandle"];
@@ -885,7 +970,7 @@ export interface paths {
             query?: never;
             header?: never;
             path: {
-                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
                 apiType: components["parameters"]["apiType"];
                 /** @description The API's handle, unique per organization within its own type. */
                 apiId: components["parameters"]["apiHandle"];
@@ -921,7 +1006,7 @@ export interface paths {
             query?: never;
             header?: never;
             path: {
-                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
                 apiType: components["parameters"]["apiType"];
                 /** @description The API's handle, unique per organization within its own type. */
                 apiId: components["parameters"]["apiHandle"];
@@ -953,7 +1038,7 @@ export interface paths {
             query?: never;
             header?: never;
             path: {
-                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
                 apiType: components["parameters"]["apiType"];
                 /** @description The API's handle, unique per organization within its own type. */
                 apiId: components["parameters"]["apiHandle"];
@@ -4544,12 +4629,16 @@ export interface components {
             /** @example Public GraphQL API for querying country/region reference data */
             description?: string;
             /**
-             * @description Base path for the single GraphQL endpoint. Suggested (not enforced)
-             *     convention: end the path with `/graphql`, matching how most standalone
-             *     GraphQL servers name their single endpoint — this is not validated.
+             * @description Base path for the single GraphQL endpoint. Optional: when omitted
+             *     (or blank) on create/update, the server derives one from the API's
+             *     handle and version (`/{handle}/{version}/graphql`) instead of
+             *     rejecting the request. Suggested (not enforced) convention when
+             *     supplied explicitly: end the path with `/graphql`, matching how
+             *     most standalone GraphQL servers name their single endpoint — this
+             *     is not validated.
              * @example /countries/graphql
              */
-            context: string;
+            context?: string;
             /** @example v1.0 */
             version: string;
             /** @example john.doe */
@@ -4657,12 +4746,12 @@ export interface components {
             readonly introspectionMode?: components["schemas"]["GraphQLIntrospectionMode"];
             /**
              * @description List of policies to be applied on the API. Reused unmodified from
-             *     REST APIs. A `cors` policy applies only to the API's single `POST`
-             *     route — a GraphQL API has no per-operation list to add an
-             *     `OPTIONS` entry to, so a browser preflight request is not routed
-             *     at all and a `cors` policy will not run for it; cross-origin
-             *     browser clients that trigger a preflight are not currently
-             *     supported.
+             *     REST APIs. A GraphQL API has no per-operation list to add an
+             *     explicit `OPTIONS` entry to the way a REST API does, so when a
+             *     `cors` policy is attached, the gateway synthesizes an OPTIONS
+             *     route for the same path itself, sharing this same policy chain —
+             *     this is what lets `cors` (and every other policy in this list, in
+             *     declared order) answer a browser's preflight request.
              */
             policies?: components["schemas"]["Policy"][];
             /**
@@ -4689,12 +4778,16 @@ export interface components {
             /** @example Public GraphQL API for querying country/region reference data */
             description?: string;
             /**
-             * @description Base path for the single GraphQL endpoint. Suggested (not enforced)
-             *     convention: end the path with `/graphql`, matching how most standalone
-             *     GraphQL servers name their single endpoint — this is not validated.
+             * @description Base path for the single GraphQL endpoint. Optional: when omitted
+             *     (or blank) on create/update, the server derives one from the API's
+             *     handle and version (`/{handle}/{version}/graphql`) instead of
+             *     rejecting the request. Suggested (not enforced) convention when
+             *     supplied explicitly: end the path with `/graphql`, matching how
+             *     most standalone GraphQL servers name their single endpoint — this
+             *     is not validated.
              * @example /countries/graphql
              */
-            context: string;
+            context?: string;
             /** @example v1.0 */
             version: string;
             /** @example john.doe */
@@ -4740,13 +4833,26 @@ export interface components {
              */
             readonly introspectionMode?: components["schemas"]["GraphQLIntrospectionMode"];
             /**
+             * @description The exact source the current schema was declared with on the create or
+             *     last successful update — a finer-grained sibling of `introspectionMode`,
+             *     which only distinguishes the two-bucket SDL/ENDPOINT storage outcome.
+             *     Resupply this value on a subsequent `PUT` that isn't meant to change the
+             *     schema, together with material satisfying that same source (`sdl` for
+             *     `inline`/`file`, `sdlUrl` for `url`, nothing extra for `introspection`
+             *     since `upstream.main.url` already suffices) — omitting it, or resupplying
+             *     a source without its required field, is a structural `400`, not a no-op.
+             * @example introspection
+             * @enum {string}
+             */
+            readonly schemaSource?: "inline" | "url" | "file" | "introspection";
+            /**
              * @description List of policies to be applied on the API. Reused unmodified from
-             *     REST APIs. A `cors` policy applies only to the API's single `POST`
-             *     route — a GraphQL API has no per-operation list to add an
-             *     `OPTIONS` entry to, so a browser preflight request is not routed
-             *     at all and a `cors` policy will not run for it; cross-origin
-             *     browser clients that trigger a preflight are not currently
-             *     supported.
+             *     REST APIs. A GraphQL API has no per-operation list to add an
+             *     explicit `OPTIONS` entry to the way a REST API does, so when a
+             *     `cors` policy is attached, the gateway synthesizes an OPTIONS
+             *     route for the same path itself, sharing this same policy chain —
+             *     this is what lets `cors` (and every other policy in this list, in
+             *     declared order) answer a browser's preflight request.
              */
             policies?: components["schemas"]["Policy"][];
             /**
@@ -4891,6 +4997,35 @@ export interface components {
              * @example The provided endpoint could not be used to derive a GraphQL schema, or the supplied SDL could not be parsed.
              */
             message?: string;
+            /**
+             * @description Set only when `resolved` is `false` and the failure was a parse
+             *     error on SDL text the caller effectively authored: `schemaSource`
+             *     `inline`/`file` always, and `url` once its fetch itself succeeded.
+             *     Unlike `message`, these are safe to show verbatim — they describe
+             *     the caller's own document, not a network outcome. Never set for a
+             *     `url` fetch failure or an `introspection` failure, since revealing
+             *     those could map internal topology (`error-handling.md`,
+             *     `ssrf-prevention.md`).
+             */
+            sdlErrors?: components["schemas"]["GraphQLSdlValidationIssue"][];
+        };
+        /** GraphQL SDL validation issue */
+        GraphQLSdlValidationIssue: {
+            /**
+             * @description The parser's own error message for this issue.
+             * @example Unexpected Name "this"
+             */
+            message: string;
+            /**
+             * @description 1-based line number in the submitted SDL, when the parser could anchor the issue to one.
+             * @example 3
+             */
+            line?: number;
+            /**
+             * @description 1-based column number in the submitted SDL, when the parser could anchor the issue to one.
+             * @example 12
+             */
+            column?: number;
         };
         /**
          * @description Time unit for API key expiration duration
@@ -6331,9 +6466,20 @@ export interface components {
              * @example api.openai.com
              */
             vhost?: string;
-            provider: components["schemas"]["LLMProxyProvider"];
-            /** @description Optional list of additional LLM providers attached to this proxy as selectable upstreams. Policies route requests to any of these by setting the upstream name. The primary `provider` field above remains the default upstream and the FK target. */
+            provider?: components["schemas"]["LLMProxyProvider"];
+            /** @description Optional list of additional LLM providers attached to this proxy as selectable upstreams. Policies route requests to any of these by setting the upstream name. The primary `provider` field above remains the default upstream and the FK target. Legacy shape: prefer `providers`, which expresses the same thing uniformly. Always populated on a read alongside `providers`. */
             additionalProviders?: components["schemas"]["LLMProxyAdditionalProvider"][];
+            /**
+             * @description Canonical list of providers attached to this proxy. Each entry is uniform and exactly one carries `isPrimary: true`, which supplies the proxy's provider identity and default upstream.
+             *     On a request this is an alternative to the legacy `provider` plus `additionalProviders` pair, not an addition to it: when both are supplied `providers` wins and the legacy fields are ignored, so a client can write back a response it just read. Whichever shape arrives, only this one is stored.
+             *     On a response both representations are always populated and always agree, so a client written against either contract works.
+             */
+            providers?: components["schemas"]["LLMProxyProviderEntry"][];
+            /**
+             * @description Handle of the provider template describing the wire format this proxy accepts from clients. Drives the extraction fields (model and token locations) merged into every attached policy. When omitted, the primary provider's own template is used, preserving existing behaviour.
+             * @example openai
+             */
+            inboundTemplate?: string;
             /**
              * @description OpenAPI specification (JSON or YAML) for the proxy endpoint
              * @example openapi: 3.0.3
@@ -6437,13 +6583,20 @@ export interface components {
             list: components["schemas"]["LLMProxyListItem"][];
             pagination: components["schemas"]["Pagination"];
         };
+        /** @description The proxy's primary provider in the legacy shape. Equivalent to the entry carrying `isPrimary: true` in the canonical `providers` list. */
         LLMProxyProvider: {
             /**
              * @description Unique id of a deployed llm provider
              * @example wso2-openai-provider
              */
             id: string;
+            /**
+             * @description Logical LLM Provider name used by policies to select this provider. Must be unique across the primary and all additional providers. Defaults to `id` when omitted. The same field as `alias` in the canonical shape.
+             * @example openai-upstream
+             */
+            as?: string;
             auth?: components["schemas"]["UpstreamAuth"];
+            transformer?: components["schemas"]["LLMProxyTransformer"];
         };
         /** @description Additional LLM provider attached to this proxy as a selectable upstream. Policies route to it by referring to the `as` name (defaults to `id`). */
         LLMProxyAdditionalProvider: {
@@ -6457,6 +6610,27 @@ export interface components {
              * @example anthropic-upstream
              */
             as?: string;
+            auth?: components["schemas"]["UpstreamAuth"];
+            transformer?: components["schemas"]["LLMProxyTransformer"];
+        };
+        /** @description One provider attached to this proxy in the canonical `providers` list. Every entry is uniform: exactly one carries `isPrimary: true` and becomes the proxy's provider identity and default upstream; the rest are selectable upstreams. Equivalent to the legacy `provider` plus `additionalProviders` shape, which remains supported. */
+        LLMProxyProviderEntry: {
+            /**
+             * @description Unique id of a deployed llm provider
+             * @example anthropic-provider
+             */
+            id: string;
+            /**
+             * @description Logical LLM Provider name used by policies to select this provider. Must be unique within the proxy. Defaults to `id` when omitted. The same field as `as` in the legacy shape.
+             * @example anthropic-upstream
+             */
+            alias?: string;
+            /**
+             * @description Marks this entry as the proxy's primary provider. Exactly one entry in the list must set it to true. Required on every entry, so a non-primary entry sends false explicitly rather than omitting it.
+             * @example true
+             */
+            isPrimary: boolean;
+            auth?: components["schemas"]["UpstreamAuth"];
             transformer?: components["schemas"]["LLMProxyTransformer"];
         };
         /** @description Request/response translator applied when this provider is the selected upstream. The proxy injects the translator as a conditional policy whose execution condition matches this provider, so it runs only when the provider is selected. The provider's `as` name (defaults to `id`) is passed to the translator as its target upstream. */
@@ -7712,7 +7886,7 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
-        /** @description The payload failed validation — a plan handle or document handle absent from the organization, or content over the configured size ceiling. */
+        /** @description The payload failed validation — a plan handle or document handle absent from the organization, a plan that is not active, or content over the configured size ceiling. */
         PublicationBadRequest: {
             headers: {
                 [name: string]: unknown;
@@ -7734,7 +7908,7 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
-        /** @description Either this API type has no projection onto the API Portal's own API types, so no listing can be created for it, or the draft's stored definition is not a valid OpenAPI 3.x document — publish is the one point definition validity is enforced; the draft itself may hold anything. */
+        /** @description Either this API type has no projection onto the API Portal's own API types, so no listing can be created for it, the draft's stored definition is not a valid OpenAPI 3.x document — publish is the one point definition validity is enforced; the draft itself may hold anything — or a selected subscription plan is no longer active. */
         PublicationPublishBadRequest: {
             headers: {
                 [name: string]: unknown;
@@ -7743,7 +7917,7 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
-        /** @description Conflict. code identifies which: PUBLICATION_STATE_CONFLICT when the action is not valid for the publication's current status (unpublish needs a published or deprecated listing, deprecate a published one), PUBLICATION_DRAFT_CHANGED when the draft was saved while a publish of it was in flight (the API Portal may already hold the earlier copy while the local listing is unchanged; review the draft and publish again to bring them in line), or PUBLICATION_PORTAL_CONFLICT when the API Portal refused the change — another API already holds this handle or display name and version, or the listing still has subscriptions or active API keys and so cannot be removed. A portal conflict does not clear on retry: the operator renames, removes the consumers, or deprecates instead. A state conflict clears once the publication is in a status that allows the action. No local state was changed by any of these; only a draft-changed conflict can leave the API Portal ahead of it until the next publish. */
+        /** @description Conflict. code identifies which: PUBLICATION_STATE_CONFLICT when the action is not valid for the publication's current status, PUBLICATION_DRAFT_CHANGED when the draft was saved while a publish of it was in flight (the API Portal may hold the earlier copy; review the draft and publish again), or PUBLICATION_PORTAL_CONFLICT when the API Portal refused the change: the handle or display name and version is taken, the listing still has subscriptions or active API keys, or a subscription plan could not be created because the portal already holds it. A portal conflict does not clear on retry (rename, remove the consumers, or deprecate instead), except a plan conflict from a concurrent publish, which usually does. No local state was changed by any of these. */
         PublicationConflict: {
             headers: {
                 [name: string]: unknown;
@@ -7887,7 +8061,7 @@ export interface components {
         "sortOrder-Q": "asc" | "desc";
         /** @description Case-insensitive substring filter matched against the resource display name and id (handle). */
         "query-Q": string;
-        /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+        /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
         apiType: string;
         /** @description The API's handle, unique per organization within its own type. */
         apiHandle: string;
@@ -7899,7 +8073,7 @@ export interface components {
          *     the reserved `DEFINITION` type is never returned via this endpoint.
          */
         "docType-Q": string;
-        /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+        /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
         "apiType-Q": string;
         /** @description The API's handle, unique per organization within its own type. */
         "apiHandle-Q": string;
@@ -8986,7 +9160,7 @@ export interface operations {
     listApiPublications: {
         parameters: {
             query: {
-                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
                 apiType: components["parameters"]["apiType-Q"];
                 /** @description The API's handle, unique per organization within its own type. */
                 apiId: components["parameters"]["apiHandle-Q"];
@@ -9030,7 +9204,7 @@ export interface operations {
             path: {
                 /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
                 apiPortalId: components["parameters"]["apiPortalId"];
-                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
                 apiType: components["parameters"]["apiType"];
                 /** @description The API's handle, unique per organization within its own type. */
                 apiId: components["parameters"]["apiHandle"];
@@ -9061,7 +9235,7 @@ export interface operations {
             path: {
                 /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
                 apiPortalId: components["parameters"]["apiPortalId"];
-                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
                 apiType: components["parameters"]["apiType"];
                 /** @description The API's handle, unique per organization within its own type. */
                 apiId: components["parameters"]["apiHandle"];
@@ -9084,7 +9258,7 @@ export interface operations {
             path: {
                 /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
                 apiPortalId: components["parameters"]["apiPortalId"];
-                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
                 apiType: components["parameters"]["apiType"];
                 /** @description The API's handle, unique per organization within its own type. */
                 apiId: components["parameters"]["apiHandle"];
@@ -9107,7 +9281,7 @@ export interface operations {
             path: {
                 /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
                 apiPortalId: components["parameters"]["apiPortalId"];
-                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
                 apiType: components["parameters"]["apiType"];
                 /** @description The API's handle, unique per organization within its own type. */
                 apiId: components["parameters"]["apiHandle"];
@@ -9130,7 +9304,7 @@ export interface operations {
             path: {
                 /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
                 apiPortalId: components["parameters"]["apiPortalId"];
-                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
                 apiType: components["parameters"]["apiType"];
                 /** @description The API's handle, unique per organization within its own type. */
                 apiId: components["parameters"]["apiHandle"];
@@ -9161,7 +9335,7 @@ export interface operations {
             path: {
                 /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
                 apiPortalId: components["parameters"]["apiPortalId"];
-                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
                 apiType: components["parameters"]["apiType"];
                 /** @description The API's handle, unique per organization within its own type. */
                 apiId: components["parameters"]["apiHandle"];
@@ -9198,7 +9372,7 @@ export interface operations {
             path: {
                 /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
                 apiPortalId: components["parameters"]["apiPortalId"];
-                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
                 apiType: components["parameters"]["apiType"];
                 /** @description The API's handle, unique per organization within its own type. */
                 apiId: components["parameters"]["apiHandle"];
@@ -9221,7 +9395,7 @@ export interface operations {
             path: {
                 /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
                 apiPortalId: components["parameters"]["apiPortalId"];
-                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
                 apiType: components["parameters"]["apiType"];
                 /** @description The API's handle, unique per organization within its own type. */
                 apiId: components["parameters"]["apiHandle"];
@@ -9260,7 +9434,7 @@ export interface operations {
             path: {
                 /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
                 apiPortalId: components["parameters"]["apiPortalId"];
-                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
                 apiType: components["parameters"]["apiType"];
                 /** @description The API's handle, unique per organization within its own type. */
                 apiId: components["parameters"]["apiHandle"];
@@ -9283,7 +9457,7 @@ export interface operations {
             path: {
                 /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
                 apiPortalId: components["parameters"]["apiPortalId"];
-                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
                 apiType: components["parameters"]["apiType"];
                 /** @description The API's handle, unique per organization within its own type. */
                 apiId: components["parameters"]["apiHandle"];
@@ -9319,7 +9493,7 @@ export interface operations {
             path: {
                 /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
                 apiPortalId: components["parameters"]["apiPortalId"];
-                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
                 apiType: components["parameters"]["apiType"];
                 /** @description The API's handle, unique per organization within its own type. */
                 apiId: components["parameters"]["apiHandle"];
@@ -9342,7 +9516,7 @@ export interface operations {
             path: {
                 /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
                 apiPortalId: components["parameters"]["apiPortalId"];
-                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
                 apiType: components["parameters"]["apiType"];
                 /** @description The API's handle, unique per organization within its own type. */
                 apiId: components["parameters"]["apiHandle"];
@@ -9476,6 +9650,108 @@ export interface operations {
             503: components["responses"]["PortalUnavailable"];
         };
     };
+    publishGraphQLApiToApiPortal: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
+                apiPortalId: components["parameters"]["apiPortalId"];
+                /** @description The API's handle, unique per organization within its own type. */
+                apiId: components["parameters"]["apiHandle"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Listing updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Publication"];
+                };
+            };
+            /** @description Listing created */
+            201: {
+                headers: {
+                    Location: components["headers"]["Location"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Publication"];
+                };
+            };
+            400: components["responses"]["PublicationPublishBadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["PublicationConflict"];
+            500: components["responses"]["InternalServerError"];
+            503: components["responses"]["PortalUnavailable"];
+        };
+    };
+    unpublishGraphQLApiFromApiPortal: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
+                apiPortalId: components["parameters"]["apiPortalId"];
+                /** @description The API's handle, unique per organization within its own type. */
+                apiId: components["parameters"]["apiHandle"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Listing removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["PublicationConflict"];
+            500: components["responses"]["InternalServerError"];
+            503: components["responses"]["PortalUnavailable"];
+        };
+    };
+    deprecateGraphQLApiOnApiPortal: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
+                apiPortalId: components["parameters"]["apiPortalId"];
+                /** @description The API's handle, unique per organization within its own type. */
+                apiId: components["parameters"]["apiHandle"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Listing deprecated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Publication"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["PublicationConflict"];
+            500: components["responses"]["InternalServerError"];
+            503: components["responses"]["PortalUnavailable"];
+        };
+    };
     ListAPIDocuments: {
         parameters: {
             query?: {
@@ -9492,7 +9768,7 @@ export interface operations {
             };
             header?: never;
             path: {
-                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
                 apiType: components["parameters"]["apiType"];
                 /** @description The API's handle, unique per organization within its own type. */
                 apiId: components["parameters"]["apiHandle"];
@@ -9521,7 +9797,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
                 apiType: components["parameters"]["apiType"];
                 /** @description The API's handle, unique per organization within its own type. */
                 apiId: components["parameters"]["apiHandle"];
@@ -9559,7 +9835,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
                 apiType: components["parameters"]["apiType"];
                 /** @description The API's handle, unique per organization within its own type. */
                 apiId: components["parameters"]["apiHandle"];
@@ -9590,7 +9866,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
                 apiType: components["parameters"]["apiType"];
                 /** @description The API's handle, unique per organization within its own type. */
                 apiId: components["parameters"]["apiHandle"];
@@ -9627,7 +9903,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
                 apiType: components["parameters"]["apiType"];
                 /** @description The API's handle, unique per organization within its own type. */
                 apiId: components["parameters"]["apiHandle"];
@@ -9656,7 +9932,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
                 apiType: components["parameters"]["apiType"];
                 /** @description The API's handle, unique per organization within its own type. */
                 apiId: components["parameters"]["apiHandle"];
@@ -9694,7 +9970,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
                 apiType: components["parameters"]["apiType"];
                 /** @description The API's handle, unique per organization within its own type. */
                 apiId: components["parameters"]["apiHandle"];
@@ -9731,7 +10007,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
                 apiType: components["parameters"]["apiType"];
                 /** @description The API's handle, unique per organization within its own type. */
                 apiId: components["parameters"]["apiHandle"];
@@ -9764,7 +10040,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
                 apiType: components["parameters"]["apiType"];
                 /** @description The API's handle, unique per organization within its own type. */
                 apiId: components["parameters"]["apiHandle"];

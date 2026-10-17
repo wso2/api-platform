@@ -18,6 +18,8 @@
 package kinds
 
 import (
+	"fmt"
+
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/dto"
 	"github.com/wso2/api-platform/platform-api/internal/gatewaytranslator/gwversion"
@@ -95,16 +97,40 @@ func llmProxyDropAdditionalProviders(artifact any, r *translate.Report) error {
 			ap.ID, gwversion.MinGatewayV1Version)
 	}
 	a.Spec.AdditionalProviders = nil
+	// The canonical list is not readable by these gateways either, and unlike the
+	// additional-provider list it cannot be dropped: doing so would leave the proxy
+	// with no provider at all. Report it instead, so the deployment fails against a
+	// gateway that cannot serve it rather than arriving silently degraded.
+	if len(a.Spec.Providers) > 0 {
+		r.Warn(constants.LLMProxy, "spec.providers",
+			"the canonical providers list needs a gateway at %s or later; this proxy cannot be served by an older one",
+			gwversion.MinGatewayV1Version)
+	}
 	return nil
 }
 
-// llmProxyProviderAuth applies the shared upstream-auth rule to
-// spec.provider.auth.
+// llmProxyProviderAuth applies the shared upstream-auth rule to every provider's
+// auth block, in whichever shape the artifact carries them.
+//
+// spec.provider is optional: a proxy using the canonical spec.providers list
+// supplies none. Dereferencing it unconditionally panicked on exactly those
+// proxies. The rule is about which auth *types* an older validator accepts, so
+// it applies per provider regardless of which shape names them.
 func llmProxyProviderAuth(artifact any, r *translate.Report) error {
 	a, err := expect[*dto.LLMProxyDeploymentYAML](artifact)
 	if err != nil {
 		return err
 	}
-	downConvertAPIUpstreamAuth(llmUpstreamAuthRule, &a.Spec.Provider.Auth, constants.LLMProxy, "spec.provider.auth", r)
+	if a.Spec.Provider != nil {
+		downConvertAPIUpstreamAuth(llmUpstreamAuthRule, &a.Spec.Provider.Auth, constants.LLMProxy, "spec.provider.auth", r)
+	}
+	for i := range a.Spec.AdditionalProviders {
+		downConvertAPIUpstreamAuth(llmUpstreamAuthRule, &a.Spec.AdditionalProviders[i].Auth, constants.LLMProxy,
+			fmt.Sprintf("spec.additionalProviders[%d].auth", i), r)
+	}
+	for i := range a.Spec.Providers {
+		downConvertAPIUpstreamAuth(llmUpstreamAuthRule, &a.Spec.Providers[i].Auth, constants.LLMProxy,
+			fmt.Sprintf("spec.providers[%d].auth", i), r)
+	}
 	return nil
 }

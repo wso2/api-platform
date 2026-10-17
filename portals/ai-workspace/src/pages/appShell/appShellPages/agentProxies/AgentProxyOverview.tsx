@@ -591,7 +591,7 @@ function AgentProxyOverviewContent(): React.JSX.Element {
     if (stepId === 'add-policies') {
       setTabIndex(2);
     } else if (stepId === 'deploy-to-gateway') {
-      navigate('deploy');
+      navigate(`${listPath}/${agentProxyId}/deploy`);
     }
   };
 
@@ -1118,15 +1118,6 @@ function AgentProxyOverviewContent(): React.JSX.Element {
                       {formatRelativeTime(agentProxy.updatedAt)}
                     </Typography>
                   </Stack>
-                  {agentProxy.createdBy ? (
-                    <Typography variant="caption" color="text.secondary">
-                      <FormattedMessage
-                        id="aiWorkspace.pages.appShell.appShellPages.agentProxies.overview.createdBy"
-                        defaultMessage="Created by: {createdBy}"
-                        values={{ createdBy: agentProxy.createdBy }}
-                      />
-                    </Typography>
-                  ) : null}
                 </Stack>
               </Stack>
             </Box>
@@ -1137,7 +1128,11 @@ function AgentProxyOverviewContent(): React.JSX.Element {
               spacing={1.5}
               sx={{ alignSelf: 'stretch' }}
             >
-              <Button variant="contained" component={RouterLink} to="deploy">
+              <Button
+                variant="contained"
+                component={RouterLink}
+                to={`${listPath}/${agentProxyId}/deploy`}
+              >
                 <FormattedMessage
                   id="aiWorkspace.pages.appShell.appShellPages.agentProxies.overview.deploy"
                   defaultMessage="Deploy to Gateway"

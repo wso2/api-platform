@@ -40,6 +40,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/apikeyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/controlplane"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/encryption"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/lazyresourcexds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
@@ -82,6 +83,24 @@ type APIServer struct {
 	gatewayID                   string
 	subscriptionSnapshotUpdater utils.SubscriptionSnapshotUpdater
 	subscriptionResourceService *utils.SubscriptionResourceService
+
+	// clientAuthorities republishes the client certificate authority pool to
+	// the policy engine after every certificate write that can change it.
+	clientAuthorities *utils.ClientAuthorityPublisher
+
+	// encryptionManager encrypts gateway identity private keys at rest.
+	// While nil, identity uploads are refused so no key is stored in clear.
+	encryptionManager *encryption.ProviderManager
+
+	// defaultIdentityMu serialises the role: default check with the save,
+	// so one replica never stores two default identities.
+	defaultIdentityMu sync.Mutex
+}
+
+// SetEncryptionManager wires the encryption provider manager used to
+// encrypt a gateway identity's private key before it is persisted.
+func (s *APIServer) SetEncryptionManager(mgr *encryption.ProviderManager) {
+	s.encryptionManager = mgr
 }
 
 // NewAPIServer creates a new API server with dependencies
@@ -91,6 +110,7 @@ func NewAPIServer(
 	snapshotManager *xds.SnapshotManager,
 	policyManager *policyxds.PolicyManager,
 	lazyResourceManager *lazyresourcexds.LazyResourceStateManager,
+	clientAuthorities *utils.ClientAuthorityPublisher,
 	logger *slog.Logger,
 	controlPlaneClient controlplane.ControlPlaneClient,
 	policyDefinitions map[string]models.PolicyDefinition,
@@ -114,6 +134,9 @@ func NewAPIServer(
 	if systemConfig == nil {
 		panic("APIServer requires non-nil system config")
 	}
+	if clientAuthorities == nil {
+		panic("APIServer requires a non-nil client authority publisher")
+	}
 	gatewayID := strings.TrimSpace(systemConfig.Controller.Server.GatewayID)
 	if gatewayID == "" {
 		panic("APIServer requires non-empty gateway ID")
@@ -124,7 +147,7 @@ func NewAPIServer(
 	subscriptionResourceService := utils.NewSubscriptionResourceService(db, subscriptionSnapshotUpdater, eventHub, gatewayID)
 
 	policyVersionResolver := utils.NewLoadedPolicyVersionResolver(policyDefinitions)
-	policyValidator := config.NewPolicyValidator(policyDefinitions)
+	policyValidator := config.NewPolicyValidator(policyDefinitions, nil)
 	parser := config.NewParser()
 	routerConfig := &systemConfig.Router
 	mcpDeploymentService := utils.NewMCPDeploymentService(store, db, snapshotManager, policyManager, policyValidator, eventHub, gatewayID, secretService, policyVersionResolver)
@@ -153,6 +176,7 @@ func NewAPIServer(
 		gatewayID:                   gatewayID,
 		subscriptionSnapshotUpdater: subscriptionSnapshotUpdater,
 		subscriptionResourceService: subscriptionResourceService,
+		clientAuthorities:           clientAuthorities,
 	}
 	// Wire the DP->CP push into the LLM/MCP deployment services so create flows push to the
 	// control plane from the service layer (mirroring the REST API service), instead of the
@@ -250,7 +274,8 @@ func (s *APIServer) SearchDeployments(w http.ResponseWriter, r *http.Request, ki
 	}
 
 	configs := s.store.GetAllByKind(kind)
-	if kind == string(api.MCPProxyConfigurationKindMcp) && s.mcpDeploymentService != nil {
+	switch {
+	case kind == string(api.MCPProxyConfigurationKindMcp) && s.mcpDeploymentService != nil:
 		var err error
 		configs, err = s.mcpDeploymentService.ListMCPProxies()
 		if err != nil {
@@ -258,6 +283,22 @@ func (s *APIServer) SearchDeployments(w http.ResponseWriter, r *http.Request, ki
 			httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{
 				Status:  "error",
 				Message: "Failed to list MCP proxies",
+			})
+			return
+		}
+	case kind == string(api.GraphQLAPIKindGraphQLApi):
+		// GraphQL APIs have no eventlistener processor keeping `s.store` in
+		// sync (unlike REST/MCP/Agent/etc — see pkg/eventlistener), so
+		// `s.store.GetAllByKind` above is always empty for this kind. Read
+		// straight from the DB instead, the same source ListGraphQLAPIs uses
+		// for its own unfiltered path.
+		var err error
+		configs, err = s.db.GetAllConfigsByKind(kind)
+		if err != nil {
+			s.logger.Error("Failed to get GraphQL APIs", slog.Any("error", err))
+			httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{
+				Status:  "error",
+				Message: "Failed to retrieve GraphQL API configurations",
 			})
 			return
 		}
@@ -309,6 +350,8 @@ func (s *APIServer) SearchDeployments(w http.ResponseWriter, r *http.Request, ki
 		envelopeKey = "websubApis"
 	case string(api.AgentConfigurationKindAgent):
 		envelopeKey = "agents"
+	case string(api.GraphQLAPIKindGraphQLApi):
+		envelopeKey = "graphqlApis"
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{

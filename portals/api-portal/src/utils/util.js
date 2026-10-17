@@ -1329,7 +1329,7 @@ function appendAPIImageURL(subList, req, orgId) {
 
     subList.forEach(element => {
         const images = element.apiImageMetadata;
-        let apiImageUrl = '';
+        let apiImageUrl;
         for (const key in images) {
             apiImageUrl = `${constants.API_PORTAL_API.orgPath(orgId)}${constants.ROUTE.API_FILE_PATH}${element.id}${constants.API_TEMPLATE_FILE_NAME}`;
             // orgId is appended so the (public) image endpoint can resolve the view for

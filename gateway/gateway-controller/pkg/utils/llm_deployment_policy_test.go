@@ -37,7 +37,7 @@ import (
 func ratelimitPolicyValidator() *config.PolicyValidator {
 	return config.NewPolicyValidator(map[string]models.PolicyDefinition{
 		"basic-ratelimit|v1.0.0": {Name: "basic-ratelimit", Version: "v1.0.0"},
-	})
+	}, nil)
 }
 
 // TestLLMDeploymentService_DeployLLMProviderConfiguration_RejectsUnresolvablePolicy reproduces

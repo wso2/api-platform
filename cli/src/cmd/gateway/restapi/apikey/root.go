@@ -19,34 +19,23 @@
 package apikey
 
 import (
-	"github.com/spf13/cobra"
+	"github.com/wso2/api-platform/cli/cmd/gateway/apikeycmd"
+	"github.com/wso2/api-platform/cli/utils"
 )
 
-const (
-	APIKeyCmdLiteral = "api-key"
-	APIKeyCmdExample = `# List API keys for a REST API
-ap gateway rest-api api-key list --id reading-list-api-v1.0
-
-# Generate a new API key from a CR file
-ap gateway rest-api api-key create --file api-key.yaml`
-)
+// apiKeyConfig parameterizes the shared api-key request logic and root-group
+// builder (see cmd/gateway/apikeycmd) for REST APIs. create.go/update.go are
+// not templated - see apikeycmd's package doc for why.
+var apiKeyConfig = apikeycmd.Config{
+	KindLabel:       "REST API",
+	KindPathSegment: "rest-api",
+	ExampleAPIID:    "reading-list-api-v1.0",
+	KeysPath:        utils.GatewayAPIKeysPath,
+	KeyByNamePath:   utils.GatewayAPIKeyByNamePath,
+	RegeneratePath:  utils.GatewayAPIKeyRegeneratePath,
+	CreateExample:   "# Generate a new API key from a CR file\nap gateway rest-api api-key create --file api-key.yaml",
+}
 
 // APIKeyCmd represents the gateway REST API api-key command group. API keys are
 // scoped to a REST API via the /rest-apis/{id}/api-keys management endpoints.
-var APIKeyCmd = &cobra.Command{
-	Use:     APIKeyCmdLiteral,
-	Short:   "Manage API keys for a REST API on the gateway",
-	Long:    "This command allows you to create, list, regenerate, update, and revoke API keys for a REST API on the WSO2 API Platform Gateway.",
-	Example: APIKeyCmdExample,
-	Run: func(cmd *cobra.Command, args []string) {
-		cmd.Help()
-	},
-}
-
-func init() {
-	APIKeyCmd.AddCommand(createCmd)
-	APIKeyCmd.AddCommand(listCmd)
-	APIKeyCmd.AddCommand(regenerateCmd)
-	APIKeyCmd.AddCommand(updateCmd)
-	APIKeyCmd.AddCommand(revokeCmd)
-}
+var APIKeyCmd = apikeycmd.NewRootCmd(apiKeyConfig, createCmd, listCmd, regenerateCmd, updateCmd, revokeCmd)

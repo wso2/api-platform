@@ -228,7 +228,8 @@ function decryptField(value, field, keyManagerUuid) {
         });
         throw new Error(
             'A stored key manager credential could not be decrypted. '
-            + 'Re-enter it in Settings — the portal\'s encryption key may have changed.'
+            + 'Re-enter it in Settings — the portal\'s encryption key may have changed.',
+            { cause: error }
         );
     }
 }

@@ -77,8 +77,13 @@ export type ResourceLimitsPort = {
   readOnly: boolean;
   /** Why the workspace is read-only; '' when it is not. */
   readOnlyMessage: string;
+  /**
+   * The banner's content when the supplier gave one — its own markup, so the
+   * wording and any link belong to it rather than to this portal.
+   */
+  readOnlyBanner: ReactNode;
   /** Supply the read-only verdict. Only the extension that supplies limits calls it. */
-  setReadOnly: (readOnly: boolean, reason?: string) => void;
+  setReadOnly: (readOnly: boolean, reason?: string, banner?: ReactNode) => void;
   /**
    * Ask the supplier to re-read the limits — call it after an extension creates
    * or deletes a capped component, so `canCreate` stops reflecting a count taken

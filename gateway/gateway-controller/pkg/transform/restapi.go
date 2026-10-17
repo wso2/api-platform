@@ -19,9 +19,13 @@
 package transform
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -125,20 +129,27 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 		return nil, err
 	}
 
+	// Hint the analytics system policy at injection time with this API's kind (RestApi, Mcp,
+	// LlmProvider, LlmProxy), via the existing additionalProps/"_shared" mechanism
+	// InjectSystemPolicies already supports (see utils.SharedParamsKey doc comment). The
+	// analytics policy's Mode() (gateway/system-policies/analytics/analytics.go) uses this to
+	// decide whether request/response body buffering can be skipped when request_body/
+	// response_body capture is off: MCP (session id, JSON-RPC method) and LLM Provider/Proxy
+	// (token usage) derive analytics from the body unconditionally, so skipping body processing
+	// for those kinds would silently break that analytics. cfg.Kind is constant for the whole
+	// API, so this is computed once outside the per-operation loop below.
+	systemPolicyProps := map[string]any{
+		utils.SharedParamsKey: map[string]interface{}{
+			"api_kind": cfg.Kind,
+		},
+	}
+
 	// Determine effective vhosts. vhosts.main may carry several production hostnames separated
 	// by ";" (e.g. when a Gateway-API HTTPRoute attaches to multiple listener hostnames); every
 	// entry serves the main upstream and the first is the primary vhost. When unset, the gateway
-	// default applies. Sandbox is always a single hostname.
-	effectiveSandboxVHost := t.routerConfig.VHosts.Sandbox.Default
-	mainVhosts := []string{t.routerConfig.VHosts.Main.Default}
-	if apiData.Vhosts != nil {
-		if parsed := splitVhosts(apiData.Vhosts.Main); len(parsed) > 0 {
-			mainVhosts = parsed
-		}
-		if apiData.Vhosts.Sandbox != nil && strings.TrimSpace(*apiData.Vhosts.Sandbox) != "" {
-			effectiveSandboxVHost = *apiData.Vhosts.Sandbox
-		}
-	}
+	// default applies. Sandbox is always a single hostname, active when a sandbox upstream is
+	// configured via either url or ref.
+	mainVhosts, effectiveSandboxVHost, hasSandbox := config.RestAPIVhosts(apiData, t.routerConfig.VHosts)
 
 	// Build main upstream cluster
 	mainUpstream, err := addUpstreamCluster(rdc, "main", &apiData.Upstream.Main, apiData.UpstreamDefinitions)
@@ -146,12 +157,6 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 		return nil, fmt.Errorf("failed to resolve main upstream: %w", err)
 	}
 	mainUpstreamInfo := mainUpstream.UpstreamInfo()
-
-	// Determine vhosts to create routes for.
-	// Sandbox is active when a sandbox upstream is configured via either url or ref.
-	hasSandbox := apiData.Upstream.Sandbox != nil &&
-		((apiData.Upstream.Sandbox.Url != nil && strings.TrimSpace(*apiData.Upstream.Sandbox.Url) != "") ||
-			(apiData.Upstream.Sandbox.Ref != nil && strings.TrimSpace(*apiData.Upstream.Sandbox.Ref) != ""))
 
 	// Check if dynamic cluster selection should be used. Enabled whenever the API has named
 	// upstream definitions (so a policy can select one) OR a sandbox upstream (so a policy can
@@ -258,7 +263,7 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 
 			// Build policy chain: API-level + operation-level + system policies
 			chain := t.buildPolicyChain(apiPolicies, op.Policies)
-			injected := utils.InjectSystemPolicies(chain, t.systemConfig, nil)
+			injected := utils.InjectSystemPolicies(chain, t.systemConfig, systemPolicyProps)
 			routeChain := sdkChainToModel(injected)
 			// Fault policies: this operation's entries then the API's, which is the order
 			// they execute in, and then the fault-path system policies LAST.
@@ -336,7 +341,7 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 				Name:           def.Name,
 				BasePath:       basePath,
 				Endpoints:      endpoints,
-				TLS:            &models.UpstreamTLS{Enabled: tlsExists},
+				TLS:            upstreamTLSFromParams(def.Tls, tlsExists),
 				ConnectTimeout: defConnectTimeout,
 			}
 		}
@@ -385,26 +390,10 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 	return rdc, nil
 }
 
-// splitVhosts parses a vhosts.main value into its individual production hostnames. Multiple
-// hostnames may be provided separated by ";" (each serves the main upstream); surrounding
-// whitespace is trimmed, empty entries are dropped, and duplicates are removed while preserving
-// order. A single hostname (the common case) returns a one-element slice.
+// splitVhosts parses a vhosts.main value into its individual hostnames; see
+// config.SplitVhosts.
 func splitVhosts(raw string) []string {
-	parts := strings.Split(raw, ";")
-	out := make([]string, 0, len(parts))
-	seen := make(map[string]struct{}, len(parts))
-	for _, p := range parts {
-		p = strings.TrimSpace(p)
-		if p == "" {
-			continue
-		}
-		if _, ok := seen[p]; ok {
-			continue
-		}
-		seen[p] = struct{}{}
-		out = append(out, p)
-	}
-	return out
+	return config.SplitVhosts(raw)
 }
 
 // routeHeaderMatches converts an operation's Gateway-API-style header matchers into the model form
@@ -654,27 +643,41 @@ func addUpstreamCluster(
 		basePath = "/"
 	}
 
-	// The connect timeout can only come from a referenced upstreamDefinition
-	// (direct-URL upstreams have no timeout field). Resolve it here so the RDC->Envoy
-	// translation applies it to this cluster instead of falling back to the global default.
+	// Only a referenced upstreamDefinition can carry a connect timeout or a
+	// tls block; a direct-URL upstream has neither.
 	var connectTimeout *time.Duration
+	var refDef *api.UpstreamDefinition
 	if up != nil && up.Ref != nil && strings.TrimSpace(*up.Ref) != "" {
-		ct, terr := definitionConnectTimeout(lookupUpstreamDefinition(*up.Ref, upstreamDefinitions))
+		refDef = lookupUpstreamDefinition(*up.Ref, upstreamDefinitions)
+		ct, terr := definitionConnectTimeout(refDef)
 		if terr != nil {
 			return nil, fmt.Errorf("%s upstream: %w", upstreamName, terr)
 		}
 		connectTimeout = ct
 	}
 
-	clusterKey := fmt.Sprintf("upstream_%s_%s_%d", upstreamName, parsedURL.Hostname(), port)
+	var tls *map[string]interface{}
+	if refDef != nil {
+		tls = refDef.Tls
+	}
+	upstreamTLS := upstreamTLSFromParams(tls, parsedURL.Scheme == "https")
+	clusterKey := upstreamClusterKey(upstreamName, parsedURL.Hostname(), port, parsedURL.Scheme, upstreamTLS)
+
+	// The definition name keys the per-upstream trust secret, so it must
+	// match the one the definitions loop uses.
+	defName := ""
+	if refDef != nil {
+		defName = refDef.Name
+	}
 
 	rdc.UpstreamClusters[clusterKey] = &models.UpstreamCluster{
+		Name:     defName,
 		BasePath: basePath,
 		Endpoints: []models.Endpoint{{
 			Host: parsedURL.Hostname(),
 			Port: port,
 		}},
-		TLS:            &models.UpstreamTLS{Enabled: parsedURL.Scheme == "https"},
+		TLS:            upstreamTLS,
 		ConnectTimeout: connectTimeout,
 	}
 
@@ -684,6 +687,29 @@ func addUpstreamCluster(
 		BasePath:         basePath,
 		URL:              fmt.Sprintf("%s://%s", parsedURL.Scheme, parsedURL.Host),
 	}, nil
+}
+
+// upstreamClusterKey names the Envoy cluster for an API's main or sandbox
+// upstream. Envoy keeps one cluster per name across every deployed API, so an
+// upstream without a tls block is named by host and port alone, while one with
+// a tls block also carries a suffix derived from its TLS settings: two APIs
+// reach the same host:port through one cluster only when they present the same
+// identity and trust the same authorities.
+func upstreamClusterKey(upstreamName, host string, port int, scheme string, tls *models.UpstreamTLS) string {
+	key := fmt.Sprintf("upstream_%s_%s_%d", upstreamName, host, port)
+	if tls == nil || !tls.HasTLSBlock {
+		return key
+	}
+	trustedCAs := append([]string{}, tls.TrustedCANames...)
+	sort.Strings(trustedCAs)
+	settings, _ := json.Marshal(struct {
+		Scheme         string   `json:"scheme"`
+		Identity       string   `json:"identity"`
+		TrustedCAs     []string `json:"trustedCAs"`
+		VerifyHostName bool     `json:"verifyHostName"`
+	}{scheme, tls.IdentityName, trustedCAs, tls.VerifyHostName})
+	sum := sha256.Sum256(settings)
+	return key + "_" + hex.EncodeToString(sum[:4])
 }
 
 // sanitizeEnvoyClusterName computes the Envoy cluster name from a URL host and scheme,
@@ -772,6 +798,24 @@ func ResolvePort(u *url.URL) int {
 		return 443
 	}
 	return 80
+}
+
+// upstreamTLSFromParams builds the runtime TLS model for one API-traffic
+// upstream cluster. tls is the validated tls block, or nil; enabled is
+// whether the target uses https.
+func upstreamTLSFromParams(tls *map[string]interface{}, enabled bool) *models.UpstreamTLS {
+	if tls == nil {
+		return &models.UpstreamTLS{Enabled: enabled, APITraffic: true}
+	}
+	identity, trustedCAs, verifyHostName := config.ResolveUpstreamTLSFromParams(*tls)
+	return &models.UpstreamTLS{
+		Enabled:        enabled,
+		APITraffic:     true,
+		HasTLSBlock:    true,
+		IdentityName:   identity,
+		TrustedCANames: trustedCAs,
+		VerifyHostName: verifyHostName,
+	}
 }
 
 // SanitizeUpstreamDefinitionName replaces dots and colons for Envoy cluster name compatibility.
