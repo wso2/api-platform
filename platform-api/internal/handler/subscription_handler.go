@@ -184,6 +184,10 @@ func (h *SubscriptionHandler) ListSubscriptions(w http.ResponseWriter, r *http.R
 	if err != nil {
 		return serviceError(err, fmt.Sprintf("failed to bulk fetch plan names for list in org %s", orgId))
 	}
+	planHandleMap, err := h.subscriptionPlanService.GetPlanHandleMap(planIDs, orgId)
+	if err != nil {
+		return serviceError(err, fmt.Sprintf("failed to bulk fetch plan handles for list in org %s", orgId))
+	}
 	// Bulk-resolve createdBy UUIDs to their raw identity to avoid N+1 lookups.
 	createdByUUIDs := make([]string, 0, len(list))
 	for _, sub := range list {
@@ -195,7 +199,7 @@ func (h *SubscriptionHandler) ListSubscriptions(w http.ResponseWriter, r *http.R
 	}
 	items := make([]map[string]any, 0, len(list))
 	for _, sub := range list {
-		items = append(items, h.toSubscriptionResponseWithMaps(sub, orgId, artifactMetaMap, planNameMap, createdByMap))
+		items = append(items, h.toSubscriptionResponseWithMaps(sub, orgId, artifactMetaMap, planHandleMap, planNameMap, createdByMap))
 	}
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"list":  items,
@@ -360,8 +364,9 @@ func (h *SubscriptionHandler) toSubscriptionResponse(sub *model.Subscription, or
 	if sub.SubscriptionPlanID != nil {
 		resp["subscriptionPlanId"] = *sub.SubscriptionPlanID
 		if h.subscriptionPlanService != nil {
-			plan, err := h.subscriptionPlanService.GetPlan(*sub.SubscriptionPlanID, orgId)
+			plan, err := h.subscriptionPlanService.GetPlanByID(*sub.SubscriptionPlanID, orgId)
 			if err == nil && plan != nil {
+				resp["subscriptionPlanId"] = plan.Handle
 				resp["subscriptionPlanName"] = plan.Name
 			}
 		}
@@ -375,7 +380,7 @@ func (h *SubscriptionHandler) toSubscriptionResponse(sub *model.Subscription, or
 
 // toSubscriptionResponseWithMaps builds a subscription response using pre-fetched lookup maps.
 // Used by ListSubscriptions to avoid N+1 queries.
-func (h *SubscriptionHandler) toSubscriptionResponseWithMaps(sub *model.Subscription, orgId string, artifactMetaMap map[string]*model.APIMetadata, planNameMap map[string]string, createdByMap map[string]string) map[string]any {
+func (h *SubscriptionHandler) toSubscriptionResponseWithMaps(sub *model.Subscription, orgId string, artifactMetaMap map[string]*model.APIMetadata, planHandleMap map[string]string, planNameMap map[string]string, createdByMap map[string]string) map[string]any {
 	artifactIdForResponse := sub.ArtifactUUID // fallback to UUID
 	var kind string
 	if meta := artifactMetaMap[sub.ArtifactUUID]; meta != nil {
@@ -406,6 +411,9 @@ func (h *SubscriptionHandler) toSubscriptionResponseWithMaps(sub *model.Subscrip
 	}
 	if sub.SubscriptionPlanID != nil {
 		resp["subscriptionPlanId"] = *sub.SubscriptionPlanID
+		if handle := planHandleMap[*sub.SubscriptionPlanID]; handle != "" {
+			resp["subscriptionPlanId"] = handle
+		}
 		if name := planNameMap[*sub.SubscriptionPlanID]; name != "" {
 			resp["subscriptionPlanName"] = name
 		}

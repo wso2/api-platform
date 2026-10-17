@@ -148,6 +148,26 @@ func (s *SubscriptionPlanService) GetPlanNameMap(planIDs []string, orgUUID strin
 	return s.planRepo.GetByIDs(planIDs, orgUUID)
 }
 
+// GetPlanByID returns a subscription plan by UUID
+func (s *SubscriptionPlanService) GetPlanByID(id, orgUUID string) (*model.SubscriptionPlan, error) {
+	plan, err := s.planRepo.GetByID(id, orgUUID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, apperror.SubscriptionPlanNotFound.New()
+		}
+		return nil, err
+	}
+	if plan == nil {
+		return nil, apperror.SubscriptionPlanNotFound.New()
+	}
+	return plan, nil
+}
+
+// GetPlanHandleMap returns a map of plan UUID to plan handle for bulk lookup (avoids N+1 queries).
+func (s *SubscriptionPlanService) GetPlanHandleMap(planIDs []string, orgUUID string) (map[string]string, error) {
+	return s.planRepo.GetHandlesByIDs(planIDs, orgUUID)
+}
+
 // ListPlans returns subscription plans for an organization with pagination and an
 // optional name or handle search
 func (s *SubscriptionPlanService) ListPlans(orgUUID string, opts repository.ListOptions) ([]*model.SubscriptionPlan, error) {

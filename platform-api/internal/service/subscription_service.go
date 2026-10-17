@@ -22,8 +22,10 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
+	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
 )
@@ -37,6 +39,7 @@ type SubscriptionService struct {
 	orgRepo          repository.OrganizationRepository
 	gatewayEvents    *GatewayEventsService
 	auditRepo        repository.AuditRepository
+	graphqlRepo      repository.GraphQLAPIRepository
 	slogger          *slog.Logger
 }
 
@@ -66,6 +69,11 @@ func NewSubscriptionService(
 	}
 }
 
+// SetGraphQLAPIRepository sets the GraphQL API repository for artifact plan resolution.
+func (s *SubscriptionService) SetGraphQLAPIRepository(repo repository.GraphQLAPIRepository) {
+	s.graphqlRepo = repo
+}
+
 // ResolveOrgHandle returns the organization handle for display (organizationId in
 // responses should be the handle, not the internal UUID).
 func (s *SubscriptionService) ResolveOrgHandle(orgUUID string) string {
@@ -91,9 +99,99 @@ func (s *SubscriptionService) resolveArtifactUUIDByKind(apiId, kind, orgUUID str
 		return "", fmt.Errorf("failed to resolve artifact by handle and kind: %w", err)
 	}
 	if metadata == nil {
+		art, err := s.artifactRepo.GetByUUID(apiId, orgUUID)
+		if err == nil && art != nil && (strings.EqualFold(art.Type, kind) || strings.EqualFold(art.Kind, kind)) {
+			return art.UUID, nil
+		}
 		return "", apperror.ArtifactNotFound.New()
 	}
 	return metadata.ID, nil
+}
+
+// getArtifactSubscriptionPlans returns the subscription plans enabled on the artifact,
+// or (nil, nil) if the artifact kind does not configure subscription plans.
+func (s *SubscriptionService) getArtifactSubscriptionPlans(apiUUID, kind, orgUUID string) ([]string, error) {
+	switch {
+	case strings.EqualFold(kind, constants.RestApi) || strings.EqualFold(kind, "rest-api"):
+		apiModel, err := s.apiRepo.GetAPIByUUID(apiUUID, orgUUID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load API for subscription plan validation: %w", err)
+		}
+		if apiModel == nil {
+			return nil, apperror.ArtifactNotFound.New()
+		}
+		return apiModel.Configuration.SubscriptionPlans, nil
+
+	case strings.EqualFold(kind, constants.GraphQLApi) || strings.EqualFold(kind, "graphql-api"):
+		if s.graphqlRepo != nil {
+			gqlModel, err := s.graphqlRepo.GetByUUID(apiUUID, orgUUID)
+			if err != nil {
+				return nil, fmt.Errorf("failed to load GraphQL API for subscription plan validation: %w", err)
+			}
+			if gqlModel == nil {
+				return nil, apperror.ArtifactNotFound.New()
+			}
+			return gqlModel.Configuration.SubscriptionPlans, nil
+		}
+	}
+	return nil, nil
+}
+
+// validateAndResolvePlan validates the subscription plan against the artifact's allowed plans
+// and resolves its handle to its UUID.
+// If the artifact has subscription plans configured:
+// - A subscription plan must be supplied.
+// - The plan must exist in the organization, be ACTIVE, and be enabled for this artifact.
+// If the artifact does not have subscription plans configured:
+// - A plan is optional (nil means unlimited).
+// - If supplied, the plan must exist and be ACTIVE.
+func (s *SubscriptionService) validateAndResolvePlan(apiUUID, kind, orgUUID string, subscriptionPlanId *string) (*string, error) {
+	allowedPlans, err := s.getArtifactSubscriptionPlans(apiUUID, kind, orgUUID)
+	if err != nil {
+		return nil, err
+	}
+
+	hasAllowedPlans := len(allowedPlans) > 0
+	hasPlan := subscriptionPlanId != nil && strings.TrimSpace(*subscriptionPlanId) != ""
+
+	if hasAllowedPlans && !hasPlan {
+		return nil, apperror.ValidationFailed.New("Subscription plan is required for this API")
+	}
+
+	if !hasPlan {
+		return nil, nil
+	}
+
+	planHandle := strings.TrimSpace(*subscriptionPlanId)
+	plan, err := s.planRepo.GetByHandleAndOrg(planHandle, orgUUID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, apperror.SubscriptionPlanNotFound.New()
+		}
+		return nil, err
+	}
+	if plan == nil {
+		return nil, apperror.SubscriptionPlanNotFound.New()
+	}
+
+	if plan.Status != model.SubscriptionPlanStatusActive {
+		return nil, apperror.ValidationFailed.New("Subscription plan is not active")
+	}
+
+	if hasAllowedPlans {
+		enabled := false
+		for _, allowed := range allowedPlans {
+			if strings.EqualFold(allowed, plan.Handle) || strings.EqualFold(allowed, plan.Name) {
+				enabled = true
+				break
+			}
+		}
+		if !enabled {
+			return nil, apperror.ValidationFailed.New(fmt.Sprintf("Subscription plan %q is not enabled for this API", plan.Handle))
+		}
+	}
+
+	return &plan.UUID, nil
 }
 
 // resolveAPIUUID resolves apiId (handle or UUID) to rest_apis.uuid for the organization
@@ -182,21 +280,13 @@ func (s *SubscriptionService) CreateSubscription(apiId, kind, orgUUID string, su
 		return nil, apperror.SubscriptionExists.New()
 	}
 
-	// subscriptionPlanId carries the API Portal subscription plan handle. Resolve it to the
-	// plan's UUID, which is what the subscriptions.subscription_plan_uuid foreign key references.
-	if subscriptionPlanId != nil && *subscriptionPlanId != "" {
-		plan, err := s.planRepo.GetByHandleAndOrg(*subscriptionPlanId, orgUUID)
-		if err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				return nil, apperror.SubscriptionPlanNotFound.New()
-			}
-			return nil, err
-		}
-		if plan == nil {
-			return nil, apperror.SubscriptionPlanNotFound.New()
-		}
-		subscriptionPlanId = &plan.UUID
+	// subscriptionPlanId carries the subscription plan handle. Validate against the artifact's
+	// allowed plans and resolve to the plan's UUID.
+	resolvedPlanUUID, err := s.validateAndResolvePlan(apiUUID, kind, orgUUID, subscriptionPlanId)
+	if err != nil {
+		return nil, err
 	}
+	subscriptionPlanId = resolvedPlanUUID
 
 	// A non-empty subscriptionToken is the token imported from the API Portal (the
 	// value shown to the user); the repository persists it as-is. When empty (interactive
@@ -393,20 +483,28 @@ func (s *SubscriptionService) ChangePlan(subscriptionId, orgUUID, subscriberID, 
 		return nil, apperror.SubscriptionForbidden.New()
 	}
 
-	// planHandle carries the API Portal subscription plan handle. Resolve it to the plan's
-	// UUID, which is what the subscriptions.subscription_plan_uuid foreign key references.
-	planRecord, err := s.planRepo.GetByHandleAndOrg(planHandle, orgUUID)
+	art, err := s.artifactRepo.GetByUUID(sub.ArtifactUUID, orgUUID)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, apperror.SubscriptionPlanNotFound.New()
-		}
+		return nil, fmt.Errorf("failed to resolve artifact for subscription: %w", err)
+	}
+	if art == nil {
+		return nil, apperror.ArtifactNotFound.New()
+	}
+
+	trimmedPlanHandle := strings.TrimSpace(planHandle)
+	if trimmedPlanHandle == "" {
+		return nil, apperror.ValidationFailed.New("Subscription plan is required")
+	}
+
+	resolvedPlanUUID, err := s.validateAndResolvePlan(sub.ArtifactUUID, art.Type, orgUUID, &trimmedPlanHandle)
+	if err != nil {
 		return nil, err
 	}
-	if planRecord == nil {
-		return nil, apperror.SubscriptionPlanNotFound.New()
+	if resolvedPlanUUID == nil {
+		return nil, apperror.ValidationFailed.New("Subscription plan is required")
 	}
-	plan := planRecord.UUID
-	sub.SubscriptionPlanID = &plan
+
+	sub.SubscriptionPlanID = resolvedPlanUUID
 	if err := s.subscriptionRepo.Update(sub); err != nil {
 		return nil, err
 	}
