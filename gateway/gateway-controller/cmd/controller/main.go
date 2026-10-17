@@ -9,14 +9,12 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"runtime"
 	"strings"
 	"syscall"
 	"time"
 
 	"github.com/wso2/api-platform/common/eventhub"
 	"github.com/wso2/api-platform/common/webhooksecret"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/adminserver"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/apikeyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/encryption"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/encryption/aesgcm"
@@ -155,8 +153,24 @@ func main() {
 		slog.Bool("skip_invalid_deployments_on_startup", cfg.Controller.Server.SkipInvalidDeploymentsOnStartup),
 	)
 
+	// The health checker answers the admin health endpoints; its log file, if any, is
+	// closed on shutdown.
+	healthChecker, healthLog := newHealthChecker(cfg, log)
+
+	// Shutdown signals are caught from here on, so one arriving while startup waits for
+	// the database stops the controller cleanly.
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+
 	if !cfg.Controller.Auth.Basic.Enabled && !cfg.Controller.Auth.IDP.Enabled {
 		log.Warn("No authentication configured: both basic auth and IDP are disabled. Gateway Controller API will allow all requests without authentication")
+	}
+	// Authentication depends only on configuration, so it is built up front: the admin
+	// server needs it before anything that depends on the database starts.
+	authConfig, authMiddleWare, err := newAuthentication(cfg, log)
+	if err != nil {
+		log.Error("Failed to set up authentication", slog.Any("error", err))
+		os.Exit(1)
 	}
 
 	if cfg.Router.DownstreamTLS.ClientCertificateHeader.TrustAny {
@@ -175,9 +189,10 @@ func main() {
 		}
 	}
 
-	// Initialize storage based on type
+	// Initialize storage based on type. A network database is not connected to here;
+	// startup waits for it below, while health is already served.
 	var db storage.Storage
-	db, err = storage.NewStorage(toBackendConfig(cfg), log)
+	db, err = storage.Open(toBackendConfig(cfg), log)
 	if err != nil {
 		if strings.EqualFold(cfg.Controller.Storage.Type, "sqlite") && errors.Is(err, storage.ErrDatabaseLocked) {
 			log.Error("Database is locked by another process",
@@ -191,6 +206,12 @@ func main() {
 		os.Exit(1)
 	}
 	defer db.Close()
+	startup := &startupGate{}
+	controllerAdminServer, exitCode, ok := serveHealthWhileWaiting(cfg, log, healthChecker, healthLog, db, startup,
+		authMiddleWare, quit)
+	if !ok {
+		os.Exit(exitCode)
+	}
 
 	// Initialize EventHub for multi-replica sync (requires persistent storage)
 	var eventHubInstance eventhub.EventHub
@@ -675,20 +696,6 @@ func main() {
 
 	igw := immutable.NewImmutableGW(cfg.ImmutableGateway, restAPIService, llmSvc, mcpSvc, agentSvc)
 
-	authConfig, err := generateAuthConfig(cfg)
-	if err != nil {
-		log.Error("Failed to generate auth config", slog.Any("error", err))
-		os.Exit(1)
-	}
-	if cfg.Controller.Auth.IDP.Enabled && len(cfg.Controller.Auth.IDP.Audience) == 0 {
-		log.Warn("IDP auth is enabled but no auth.idp.audience is configured - token audience ('aud') will NOT be " +
-			"validated; set auth.idp.audience to the expected audience(s) to restrict this")
-	}
-	authMiddleWare, err := authenticators.AuthMiddleware(authConfig, log)
-	if err != nil {
-		log.Error("Failed to create auth middleware", slog.Any("error", err))
-		os.Exit(1)
-	}
 	// Per-route middlewares: auth runs first, then authz (needs r.Pattern set by mux).
 	// The generated wrapper applies middlewares via `handler = mw(handler)`, so the
 	// last entry in the slice is outermost and executes first. authMiddleWare must be
@@ -811,36 +818,10 @@ func main() {
 	}
 	handler := gohttpkit.Chain(outerMiddlewares...)(mux)
 
-	// Enable block/mutex profiling sampling when pprof is enabled. These are the
-	// only profiles that need explicit rate setup; 0 leaves them disabled. Gated so
-	// the sampling overhead is never paid unless pprof is deliberately turned on.
-	if cfg.Controller.AdminServer.Pprof.Enabled {
-		runtime.SetBlockProfileRate(cfg.Controller.AdminServer.Pprof.BlockProfileRate)
-		runtime.SetMutexProfileFraction(cfg.Controller.AdminServer.Pprof.MutexProfileFraction)
-	}
-
-	// Start controller admin server for debug endpoints if enabled.
-	var controllerAdminServer *adminserver.Server
-	if cfg.Controller.AdminServer.Enabled {
-		// Gate the admin/debug server behind the same authentication middleware as
-		// the management API, plus a deny-by-default admin-role authorization check.
-		// The health probe stays public; every other admin
-		// endpoint (config_dump, xds_sync_status, pprof) requires an authenticated
-		// caller from controller.auth.basic who also holds the "admin" role.
-		// Authentication runs first (outermost) to populate the auth context, then
-		// authorization consumes it — the same ordering the management API uses.
-		adminAuthz := authenticators.AuthorizationMiddleware(
-			commonmodels.AuthConfig{ResourceRoles: adminResourceRoles()}, log)
-		adminProtect := func(next http.Handler) http.Handler {
-			return authMiddleWare(adminAuthz(next))
-		}
-		controllerAdminServer = adminserver.NewServer(&cfg.Controller.AdminServer, apiServer, adminProtect, log)
-		go func() {
-			if err := controllerAdminServer.Start(); err != nil {
-				log.Error("Controller admin server failed", slog.Any("error", err))
-				os.Exit(1)
-			}
-		}()
+	// The admin server has been serving health since startup; its debug endpoints
+	// become available now that the controller is running.
+	if controllerAdminServer != nil {
+		controllerAdminServer.SetAPIServer(apiServer)
 	}
 
 	// Start metrics server if enabled
@@ -913,6 +894,8 @@ func main() {
 		}()
 	}
 
+	// Every server is running, so health may now report the controller healthy.
+	startup.markStarted()
 	log.Info("Gateway Controller started successfully")
 
 	// Print banner when both router and policy engine have sent their first ACK,
@@ -934,8 +917,6 @@ func main() {
 	}()
 
 	// Wait for interrupt signal
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
 	log.Info("Shutting down Gateway-Controller")
@@ -998,7 +979,27 @@ func main() {
 		}
 	}
 
+	_ = healthLog.Close()
+
 	log.Info("Gateway-Controller stopped")
+}
+
+// newAuthentication builds the authentication configuration and middleware shared by the
+// management and admin APIs. It depends only on configuration.
+func newAuthentication(cfg *config.Config, log *slog.Logger) (commonmodels.AuthConfig, func(http.Handler) http.Handler, error) {
+	authConfig, err := generateAuthConfig(cfg)
+	if err != nil {
+		return commonmodels.AuthConfig{}, nil, fmt.Errorf("failed to generate auth config: %w", err)
+	}
+	if cfg.Controller.Auth.IDP.Enabled && len(cfg.Controller.Auth.IDP.Audience) == 0 {
+		log.Warn("IDP auth is enabled but no auth.idp.audience is configured - token audience ('aud') will NOT be " +
+			"validated; set auth.idp.audience to the expected audience(s) to restrict this")
+	}
+	authMiddleware, err := authenticators.AuthMiddleware(authConfig, log)
+	if err != nil {
+		return commonmodels.AuthConfig{}, nil, fmt.Errorf("failed to create auth middleware: %w", err)
+	}
+	return authConfig, authMiddleware, nil
 }
 
 func generateAuthConfig(config *config.Config) (commonmodels.AuthConfig, error) {

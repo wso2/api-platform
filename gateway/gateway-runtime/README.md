@@ -98,6 +98,9 @@ make test-python
 
 # All tests
 make test
+
+# Health watchdog script (needs bash, curl and python3)
+bash tests/health-watchdog-test.sh
 ```
 
 ### Regenerate Protobuf Bindings
@@ -127,6 +130,12 @@ Configuration is via environment variables. The `docker-entrypoint.sh` script ap
 | `PYTHON_POLICY_WORKERS` | `4` | Python Executor gRPC worker pool size |
 | `PYTHON_POLICY_MAX_CONCURRENT` | `100` | Max concurrent Python policy executions |
 | `PYTHON_POLICY_TIMEOUT` | `30` | Python policy execution timeout (seconds) |
+| `HEALTH_WATCHDOG_ENABLED` | `true` | Run the health watchdog, which logs when the gateway stops answering `/_gateway-health/healthy` (for example, a hung Policy Engine) and when it answers again |
+| `HEALTH_WATCHDOG_INTERVAL_SECONDS` | `5` | Seconds between the watchdog's checks |
+| `HEALTH_WATCHDOG_TIMEOUT_SECONDS` | `3` | Seconds the watchdog waits for an answer |
+| `HEALTH_WATCHDOG_BACKOFF_INITIAL_SECONDS` | `10` | Delay before the watchdog repeats a failure line; it doubles after each repeat |
+| `HEALTH_WATCHDOG_BACKOFF_MAX_SECONDS` | `300` | Cap on the watchdog's repeat interval |
+| `GATEWAY_HEALTH_LOG_FILE` | _(empty)_ | Absolute path the watchdog also appends its lines to, usually the Policy Engine's health log file; empty logs to stdout only |
 
 > These are read directly by the container entrypoint. Policy-engine settings (metrics, logging,
 > analytics, etc.) are **not** configured via `APIP_GW_` environment variables — that prefix override
@@ -168,6 +177,7 @@ gateway-runtime/
 ├── docker-entrypoint.sh            # Process orchestration
 ├── docker-entrypoint-debug.sh      # Debug variant (dlv on port 2346)
 ├── health-check.sh                 # Liveness/readiness probe
+├── health-watchdog.sh              # Logs when the gateway stops answering its health route
 ├── api/
 │   └── proto/
 │       └── python_executor.proto   # gRPC contract for Python execution
@@ -177,6 +187,8 @@ gateway-runtime/
     └── config/
         ├── envoy-bootstrap.yaml    # Envoy bootstrap config
         └── config-override.yaml   # xDS cluster definition
+└── tests/
+    └── health-watchdog-test.sh     # Tests for health-watchdog.sh
 ```
 
 ### Debug Mode

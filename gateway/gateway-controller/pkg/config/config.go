@@ -21,6 +21,7 @@ package config
 import (
 	"fmt"
 	"log/slog"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -200,6 +201,7 @@ type Controller struct {
 	AdminServer  AdminServerConfig  `koanf:"admin_server"`
 	Storage      StorageConfig      `koanf:"storage"`
 	Logging      LoggingConfig      `koanf:"logging"`
+	Health       HealthConfig       `koanf:"health"`
 	ControlPlane ControlPlaneConfig `koanf:"controlplane"`
 	HTTPClient   HTTPClientConfig   `koanf:"http_client"`
 	PolicyServer PolicyServerConfig `koanf:"policy_server"`
@@ -850,6 +852,18 @@ type LoggingConfig struct {
 	Format string `koanf:"format"` // "json" (default) or "text"
 }
 
+// HealthConfig holds health check configuration
+type HealthConfig struct {
+	CheckTimeout   time.Duration `koanf:"check_timeout"`   // Deadline for each individual dependency check
+	CacheTTL       time.Duration `koanf:"cache_ttl"`       // How long an evaluated health result is reused
+	LogFile        string        `koanf:"log_file"`        // Health log file path (absolute); empty logs to stdout only
+	LogMaxSizeMB   int           `koanf:"log_max_size_mb"` // Size in MiB at which the health log file is rotated
+	LogMaxFiles    int           `koanf:"log_max_files"`   // Number of rotated health log backups to keep
+	BackoffInitial time.Duration `koanf:"backoff_initial"` // Delay before the first repeated failure line is logged
+	BackoffMax     time.Duration `koanf:"backoff_max"`     // Upper bound on the interval between repeated failure lines
+	StartupWait    time.Duration `koanf:"startup_wait"`    // How long startup waits for the database before exiting
+}
+
 // ControlPlaneConfig holds control plane connection configuration
 type ControlPlaneConfig struct {
 	Host                  string        `koanf:"host"`                    // Control plane hostname
@@ -1246,6 +1260,16 @@ func defaultConfig() *Config {
 			Logging: LoggingConfig{
 				Level:  "info",
 				Format: "text",
+			},
+			Health: HealthConfig{
+				CheckTimeout:   2 * time.Second,
+				CacheTTL:       3 * time.Second,
+				LogFile:        "",
+				LogMaxSizeMB:   10,
+				LogMaxFiles:    5,
+				BackoffInitial: 10 * time.Second,
+				BackoffMax:     5 * time.Minute,
+				StartupWait:    5 * time.Minute,
 			},
 			Metrics: MetricsConfig{
 				Enabled: false,
@@ -1936,6 +1960,11 @@ func (c *Config) Validate() error {
 		return err
 	}
 
+	// Validate health check configuration
+	if err := c.validateHealthConfig(); err != nil {
+		return err
+	}
+
 	// Validate subscriptions configuration (subscription token encryption key when set)
 	if err := c.validateSubscriptionsConfig(); err != nil {
 		return err
@@ -2188,6 +2217,59 @@ func validateEcdhCurves(fieldPath, curves string) error {
 		if strings.TrimSpace(curve) == "" {
 			return fmt.Errorf("%s cannot contain an empty curve name (use comma-separated values)", fieldPath)
 		}
+	}
+	return nil
+}
+
+// healthProbeTimeoutDefault is the default timeout of the probes that consume
+// the health endpoints.
+const healthProbeTimeoutDefault = 5 * time.Second
+
+// validateHealthConfig validates the health check configuration
+func (c *Config) validateHealthConfig() error {
+	h := &c.Controller.Health
+
+	if h.CheckTimeout <= 0 {
+		return fmt.Errorf("controller.health.check_timeout must be > 0, got: %s", h.CheckTimeout)
+	}
+	if h.CacheTTL <= 0 {
+		return fmt.Errorf("controller.health.cache_ttl must be > 0, got: %s", h.CacheTTL)
+	}
+	if h.BackoffInitial <= 0 {
+		return fmt.Errorf("controller.health.backoff_initial must be > 0, got: %s", h.BackoffInitial)
+	}
+	if h.BackoffMax <= 0 {
+		return fmt.Errorf("controller.health.backoff_max must be > 0, got: %s", h.BackoffMax)
+	}
+	if h.StartupWait <= 0 {
+		return fmt.Errorf("controller.health.startup_wait must be > 0, got: %s", h.StartupWait)
+	}
+	if h.BackoffMax < h.BackoffInitial {
+		return fmt.Errorf("controller.health.backoff_max must be >= controller.health.backoff_initial, got: %s < %s",
+			h.BackoffMax, h.BackoffInitial)
+	}
+	if h.LogMaxSizeMB < 1 {
+		return fmt.Errorf("controller.health.log_max_size_mb must be >= 1, got: %d", h.LogMaxSizeMB)
+	}
+	if h.LogMaxFiles < 1 {
+		return fmt.Errorf("controller.health.log_max_files must be >= 1, got: %d", h.LogMaxFiles)
+	}
+
+	if h.LogFile != "" {
+		if strings.ContainsRune(h.LogFile, 0) {
+			return fmt.Errorf("controller.health.log_file must not contain NUL bytes")
+		}
+		if !filepath.IsAbs(h.LogFile) {
+			return fmt.Errorf("controller.health.log_file must be an absolute path, got: %s", h.LogFile)
+		}
+		h.LogFile = filepath.Clean(h.LogFile)
+	}
+
+	// Warn rather than fail: a slower check is a legitimate choice, but a probe
+	// that gives up first reports the gateway unhealthy while the check is still running.
+	if h.CheckTimeout >= healthProbeTimeoutDefault {
+		slog.Warn("controller.health.check_timeout is at or above the default 5s probe timeout; probes may give up before checks complete",
+			slog.Duration("check_timeout", h.CheckTimeout))
 	}
 	return nil
 }

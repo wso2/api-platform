@@ -20,6 +20,7 @@ package logger
 
 import (
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"strings"
@@ -33,6 +34,13 @@ type Config struct {
 
 // NewLogger creates a new slog logger with configurable log level and format
 func NewLogger(cfg Config) *slog.Logger {
+	return slog.New(NewHandler(cfg, os.Stdout))
+}
+
+// NewHandler builds the handler NewLogger uses, writing to w instead of stdout, so a
+// second destination (such as the health log file) gets the same level, format and
+// source attribute as the main log.
+func NewHandler(cfg Config, w io.Writer) slog.Handler {
 	level := ParseLevel(cfg.Level)
 
 	opts := &slog.HandlerOptions{
@@ -48,17 +56,11 @@ func NewLogger(cfg Config) *slog.Logger {
 		},
 	}
 
-	format := strings.ToLower(cfg.Format)
-
-	var handler slog.Handler
-	if format == "text" {
-		handler = slog.NewTextHandler(os.Stdout, opts)
-	} else {
-		// Default to JSON
-		handler = slog.NewJSONHandler(os.Stdout, opts)
+	if strings.ToLower(cfg.Format) == "text" {
+		return slog.NewTextHandler(w, opts)
 	}
-
-	return slog.New(handler)
+	// Default to JSON
+	return slog.NewJSONHandler(w, opts)
 }
 
 // shortenSource turns an absolute compile-time file path into a compact,

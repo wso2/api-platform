@@ -20,6 +20,7 @@ package logger
 
 import (
 	"bytes"
+	"encoding/json"
 	"log/slog"
 	"strings"
 	"testing"
@@ -156,5 +157,37 @@ func TestXDSLoggerAllLevels(t *testing.T) {
 				t.Errorf("Expected log level %s not found in output: %s", tt.expect, buf.String())
 			}
 		})
+	}
+}
+
+func TestNewHandlerDefaultsToJSON(t *testing.T) {
+	var buf bytes.Buffer
+	slog.New(NewHandler(Config{Level: "info"}, &buf)).Info("hello", "key", "value")
+
+	var rec map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &rec); err != nil {
+		t.Fatalf("output is not JSON: %v (%q)", err, buf.String())
+	}
+	if rec["msg"] != "hello" || rec["key"] != "value" {
+		t.Errorf("unexpected record: %v", rec)
+	}
+	src, _ := rec["source"].(string)
+	if !strings.HasPrefix(src, "pkg/logger/logger_test.go:") {
+		t.Errorf("source = %q, want the path relative to the module", src)
+	}
+}
+
+func TestNewHandlerTextFormatAndLevel(t *testing.T) {
+	var buf bytes.Buffer
+	l := slog.New(NewHandler(Config{Level: "warn", Format: "Text"}, &buf))
+	l.Info("dropped")
+	l.Warn("kept")
+
+	out := buf.String()
+	if strings.Contains(out, "dropped") {
+		t.Errorf("record below the level was written: %q", out)
+	}
+	if !strings.Contains(out, "level=WARN") || !strings.Contains(out, "msg=kept") {
+		t.Errorf("expected a text record, got %q", out)
 	}
 }

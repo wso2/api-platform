@@ -280,6 +280,23 @@ gateway:
         # - text: Human-readable text format (recommended for development)
         format: json
 
+      # Health checks behind the admin health endpoint. Failures are logged when a check
+      # starts failing, repeated at doubling intervals up to backoff_max, and recovery is
+      # logged once.
+      health:
+        check_timeout: 2s       # per-check deadline
+        cache_ttl: 3s           # how long an evaluated health result is reused
+        # Health log file, in addition to stdout. It must sit under gateway.controller.healthLogVolume.mountPath
+        # while that volume is mounted. "" logs to stdout only and mounts no volume.
+        log_file: /app/logs/health.log
+        log_max_size_mb: 10     # rotate the log file at this size
+        log_max_files: 5        # rotated backups to keep
+        backoff_initial: 10s    # delay before the first repeated failure line
+        backoff_max: 5m         # cap on the repeat interval
+        # How long startup waits for the database before the controller exits. Keep it
+        # below the gateway.controller.deployment.startupProbe allowance (6 minutes).
+        startup_wait: 5m
+
     # Router (Envoy) configuration
     router:
       # Gateway host for incoming requests
@@ -490,10 +507,11 @@ gateway:
 
       # Admin HTTP server configuration
       admin:
-        # Kept enabled by default because it also serves /health, used by the
-        # gateway-runtime's exec health-check.sh probe — disabling this would
-        # crash-loop the pod. Gate the sensitive /config_dump route
-        # specifically via config_dump.enabled below instead.
+        # Kept enabled by default because it also serves /health, used for local
+        # diagnostics and by the health-check script in docker-compose setups. The
+        # Kubernetes probes do not use it: they call the gateway health routes on the
+        # traffic listener (see gateway.gatewayRuntime.deployment). Gate the sensitive
+        # /config_dump route specifically via config_dump.enabled below instead.
         enabled: true
 
         # Port for admin HTTP server
@@ -560,6 +578,23 @@ gateway:
 
         # Log format: json, text
         format: json
+
+      # Health checks behind the gateway health routes. Failures are logged when a check
+      # starts failing, repeated at doubling intervals up to backoff_max, and recovery is
+      # logged once. log_file is also where the runtime's health watchdog writes.
+      health:
+        check_timeout: 2s       # per-check deadline
+        cache_ttl: 3s           # how long an evaluated health result is reused
+        # Health log file, in addition to stdout. It must sit under gateway.gatewayRuntime.healthLogVolume.mountPath
+        # while that volume is mounted. "" logs to stdout only and mounts no volume.
+        log_file: /app/logs/health.log
+        log_max_size_mb: 10     # rotate the log file at this size
+        log_max_files: 5        # rotated backups to keep
+        backoff_initial: 10s    # delay before the first repeated failure line
+        backoff_max: 5m         # cap on the repeat interval
+        # How long the controller link may be down before readiness fails. Liveness never
+        # depends on it.
+        xds_grace: 5m
 
       # Prometheus metrics server (policy-engine side)
       metrics:
@@ -632,6 +667,11 @@ gateway:
   #   - `{{ file "/path" }}` reads a mounted file — mount the Secret via
   #     gateway.gatewayRuntime.deployment.extraVolumes / extraVolumeMounts and
   #     point the token at that mount path.
+  #
+  # Do not redefine a table the chart already renders (for example [controller.health]
+  # or [policy_engine.health]; use gateway.config.controller.health and
+  # gateway.config.policy_engine.health instead): a second copy of a table is a TOML
+  # error and the controller and runtime will not start.
   #
   # Example — a [custom_section] table:
   #   config_toml: |
@@ -808,6 +848,15 @@ gateway:
       #   annotations:
       #     helm.sh/resource-policy: keep
       annotations: {}
+    # Writable, per-pod volume for the controller's health log file. Mounted when
+    # gateway.config.controller.health.log_file is set (uncomment enabled to override).
+    # Keep sizeLimit above log_max_size_mb x (log_max_files + 1) so rotation bounds the
+    # file, not the kubelet — the kubelet's limit EVICTS the pod.
+    healthLogVolume:
+      # enabled: true
+      mountPath: /app/logs
+      sizeLimit: 128Mi
+      # medium: "Memory"         # tmpfs — off disk, but counts against the memory limit.
     deployment:
       enabled: true
       replicaCount: 1
@@ -826,30 +875,35 @@ gateway:
       podAnnotations: {}
       podLabels: {}
       priorityClassName: ""
+      # The health endpoint answers 503 while the controller's database is down and while
+      # the controller is still starting. Readiness takes the pod out of the Service after
+      # about 15 s of failed answers; liveness restarts it only after about 2 minutes, so
+      # a short database outage never causes a restart.
       livenessProbe:
         httpGet:
           # Admin API is served under /api/admin/v1 (see gateway-controller admin OpenAPI spec).
           path: /api/admin/v1/health
           port: admin
-        initialDelaySeconds: 10
         periodSeconds: 10
         timeoutSeconds: 5
-        failureThreshold: 3
+        failureThreshold: 12
       readinessProbe:
         httpGet:
           path: /api/admin/v1/health
           port: admin
-        initialDelaySeconds: 5
         periodSeconds: 5
         timeoutSeconds: 3
         failureThreshold: 3
-      # Optional startup probe for slow-starting environments. Uncomment to enable.
-      # startupProbe:
-      #   httpGet:
-      #     path: /api/admin/v1/health
-      #     port: admin
-      #   periodSeconds: 5
-      #   failureThreshold: 30
+      # Holds off the liveness probe while the controller starts. It allows 6 minutes;
+      # keep this above gateway.config.controller.health.startup_wait so the controller,
+      # not the probe, decides when a database wait gives up. Set to null to disable.
+      startupProbe:
+        httpGet:
+          path: /api/admin/v1/health
+          port: admin
+        periodSeconds: 5
+        timeoutSeconds: 3
+        failureThreshold: 72
       # Resource limits and requests
       # Uncomment and adjust based on your workload
       resources: {}
@@ -956,6 +1010,16 @@ gateway:
       # medium: "Memory"         # tmpfs — off disk entirely, but counts against
                                  # the container's memory limit.
 
+    # Writable, per-pod volume for the runtime's health log file (policy engine and
+    # health watchdog). Mounted when gateway.config.policy_engine.health.log_file is set
+    # (uncomment enabled to override). Keep sizeLimit above
+    # log_max_size_mb x (log_max_files + 1) so rotation bounds the file, not the kubelet.
+    healthLogVolume:
+      # enabled: true
+      mountPath: /app/logs
+      sizeLimit: 128Mi
+      # medium: "Memory"
+
     service:
       type: LoadBalancer
       annotations: {}
@@ -1024,9 +1088,10 @@ gateway:
         # Off by default — it isn't even present in the static Envoy bootstrap unless
         # this is true, and is bound to loopback-only when enabled, so it's never
         # reachable outside the pod's network namespace either way. Enabling it also
-        # restores graceful-drain-on-SIGTERM (see docker-entrypoint.sh), at the cost of
-        # health-check.sh falling back to a raw TCP check instead of Envoy's own
-        # /ready when this is off. See also gateway.gatewayRuntime.service.expose.routerAdmin
+        # restores graceful-drain-on-SIGTERM (see docker-entrypoint.sh). It does not affect
+        # the Kubernetes probes, which use the gateway health routes; only the legacy mode
+        # of the compose health-check script falls back to a raw TCP check instead of
+        # Envoy's own /ready when this is off. See also gateway.gatewayRuntime.service.expose.routerAdmin
         # to control whether the port is published on the k8s Service (separate concern).
         routerAdminEnabled: false
       extraEnv: []
@@ -1041,35 +1106,42 @@ gateway:
       podAnnotations: {}
       podLabels: {}
       priorityClassName: ""
+      # Both routes are served on the main traffic listener and answered by the policy
+      # engine through the router, so they fail when the policy engine is down. The port
+      # and scheme below are replaced by the template to follow the router listener
+      # configuration. Liveness does not depend on the controller link: a controller
+      # outage never restarts the runtime. Readiness also fails once the controller link
+      # has been down longer than gateway.config.policy_engine.health.xds_grace, and takes
+      # the pod out of the Service after about 15 s of failed answers; liveness restarts
+      # it only after about 2 minutes.
       livenessProbe:
         httpGet:
-          # Direct-response route served by the router (Envoy) on the main
-          # traffic listener — see constants.GatewayHealthyPath.
+          # See constants.GatewayHealthyPath.
           path: /_gateway-health/healthy
           port: https
           scheme: HTTPS
-        initialDelaySeconds: 30
         periodSeconds: 10
         timeoutSeconds: 5
-        failureThreshold: 3
+        failureThreshold: 12
       readinessProbe:
         httpGet:
           # See constants.GatewayReadyPath.
           path: /_gateway-health/ready
           port: https
           scheme: HTTPS
-        initialDelaySeconds: 10
         periodSeconds: 5
         timeoutSeconds: 3
-        failureThreshold: 6
-      # Optional startup probe for slow-starting environments. Uncomment to enable.
-      # startupProbe:
-      #   httpGet:
-      #     path: /_gateway-health/ready
-      #     port: https
-      #     scheme: HTTPS
-      #   periodSeconds: 5
-      #   failureThreshold: 30
+        failureThreshold: 3
+      # Holds off the liveness probe until the runtime has received its first
+      # configuration from the controller. It allows 5 minutes; set to null to disable.
+      startupProbe:
+        httpGet:
+          path: /_gateway-health/ready
+          port: https
+          scheme: HTTPS
+        periodSeconds: 5
+        timeoutSeconds: 3
+        failureThreshold: 60
       # Resource limits and requests
       # Uncomment and adjust based on your workload
       resources: {}

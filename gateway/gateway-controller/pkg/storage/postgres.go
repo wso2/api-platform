@@ -61,28 +61,14 @@ type PostgresStorage struct {
 	logger *slog.Logger
 }
 
-// newPostgresStorage creates a new PostgreSQL storage instance.
+// newPostgresStorage creates a new PostgreSQL storage instance and confirms the database answers.
 func newPostgresStorage(cfg PostgresConnectionConfig, logger *slog.Logger) (*PostgresStorage, error) {
 	cfg = withDefaultPostgresConfig(cfg)
-	dsn, err := buildPostgresDSN(cfg)
+	storage, dsn, err := openPostgresStorage(cfg, logger)
 	if err != nil {
-		return nil, fmt.Errorf("failed to build postgres dsn: %w", err)
+		return nil, err
 	}
-
-	db, err := sql.Open("pgx", dsn)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open postgres database: %w", err)
-	}
-
-	db.SetMaxOpenConns(cfg.MaxOpenConns)
-	db.SetMaxIdleConns(cfg.MaxIdleConns)
-	db.SetConnMaxLifetime(cfg.ConnMaxLifetime)
-	db.SetConnMaxIdleTime(cfg.ConnMaxIdleTime)
-
-	storage := &PostgresStorage{
-		db:     db,
-		logger: logger,
-	}
+	db := storage.db
 
 	pingTimeout := cfg.ConnectTimeout
 	if pingTimeout <= 0 {
@@ -107,6 +93,32 @@ func newPostgresStorage(cfg PostgresConnectionConfig, logger *slog.Logger) (*Pos
 		slog.String("dsn", sanitizePostgresDSN(dsn)))
 
 	return storage, nil
+}
+
+// openPostgresStorage opens the PostgreSQL connection pool without connecting, so only
+// configuration errors fail here. It also returns the DSN, for logging in sanitized form.
+func openPostgresStorage(cfg PostgresConnectionConfig, logger *slog.Logger) (*PostgresStorage, string, error) {
+	cfg = withDefaultPostgresConfig(cfg)
+	dsn, err := buildPostgresDSN(cfg)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to build postgres dsn: %w", err)
+	}
+
+	db, err := sql.Open("pgx", dsn)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to open postgres database: %w", err)
+	}
+
+	db.SetMaxOpenConns(cfg.MaxOpenConns)
+	db.SetMaxIdleConns(cfg.MaxIdleConns)
+	db.SetConnMaxLifetime(cfg.ConnMaxLifetime)
+	db.SetConnMaxIdleTime(cfg.ConnMaxIdleTime)
+
+	storage := &PostgresStorage{
+		db:     db,
+		logger: logger,
+	}
+	return storage, dsn, nil
 }
 
 func withDefaultPostgresConfig(cfg PostgresConnectionConfig) PostgresConnectionConfig {

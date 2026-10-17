@@ -19,12 +19,16 @@
 package storage
 
 import (
+	"context"
 	"errors"
 	"io"
 	"log/slog"
+	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 )
 
 func TestNewStorage_SQLite(t *testing.T) {
@@ -83,5 +87,98 @@ func TestNewStorage_UnsupportedType(t *testing.T) {
 	}
 	if !errors.Is(err, ErrUnsupportedStorageType) {
 		t.Fatalf("expected ErrUnsupportedStorageType, got: %v", err)
+	}
+}
+
+// unreachableBackends returns network backend configurations pointing at a local port
+// that nothing listens on, so any connection attempt is refused at once.
+func unreachableBackends(t *testing.T) []BackendConfig {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	port := ln.Addr().(*net.TCPAddr).Port
+	ln.Close()
+	return []BackendConfig{
+		{Type: "postgres", Postgres: PostgresConnectionConfig{
+			Host: "127.0.0.1", Port: port, Database: "gateway", User: "gateway", Password: "secret",
+			SSLMode: "disable", ConnectTimeout: time.Second,
+		}},
+		{Type: "sqlserver", SQLServer: SQLServerConnectionConfig{
+			Host: "127.0.0.1", Port: port, Database: "gateway", User: "gateway", Password: "secret",
+			Encrypt: "disable", ConnectTimeout: time.Second,
+		}},
+	}
+}
+
+func TestOpen_NetworkBackendsDoNotConnect(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	for _, cfg := range unreachableBackends(t) {
+		t.Run(cfg.Type, func(t *testing.T) {
+			s, err := Open(cfg, logger)
+			if err != nil {
+				t.Fatalf("Open() against an unreachable database error = %v, want nil", err)
+			}
+			defer s.Close()
+
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel()
+			if err := s.GetDB().PingContext(ctx); err == nil {
+				t.Fatal("PingContext() succeeded, want an error from the unreachable database")
+			}
+		})
+	}
+}
+
+func TestNewStorage_NetworkBackendsRequireTheDatabase(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	for _, cfg := range unreachableBackends(t) {
+		t.Run(cfg.Type, func(t *testing.T) {
+			_, err := NewStorage(cfg, logger)
+			if err == nil || !strings.Contains(err.Error(), "failed to ping") {
+				t.Fatalf("NewStorage() error = %v, want a ping failure", err)
+			}
+		})
+	}
+}
+
+func TestOpen_SQLite(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	s, err := Open(BackendConfig{Type: "sqlite", SQLitePath: filepath.Join(t.TempDir(), "open.db")}, logger)
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	defer s.Close()
+	if err := s.GetDB().PingContext(context.Background()); err != nil {
+		t.Fatalf("PingContext() = %v, want a usable SQLite database", err)
+	}
+}
+
+func TestOpen_UnsupportedType(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	if _, err := Open(BackendConfig{Type: "mysql"}, logger); !errors.Is(err, ErrUnsupportedStorageType) {
+		t.Fatalf("Open() error = %v, want ErrUnsupportedStorageType", err)
+	}
+}
+
+func TestOpen_IncompleteConnectionSettingsFailAtOnce(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	for _, cfg := range []BackendConfig{
+		{Type: "postgres", Postgres: PostgresConnectionConfig{Host: "127.0.0.1"}},
+		{Type: "sqlserver", SQLServer: SQLServerConnectionConfig{Host: "127.0.0.1"}},
+	} {
+		t.Run(cfg.Type, func(t *testing.T) {
+			for name, open := range map[string]func(BackendConfig, *slog.Logger) (Storage, error){
+				"Open": Open, "NewStorage": NewStorage,
+			} {
+				_, err := open(cfg, logger)
+				if err == nil || !strings.Contains(err.Error(), "dsn") {
+					t.Fatalf("%s() error = %v, want a configuration error naming the dsn", name, err)
+				}
+			}
+		})
 	}
 }

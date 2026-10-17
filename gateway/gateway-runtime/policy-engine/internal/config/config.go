@@ -601,6 +601,7 @@ type PolicyEngine struct {
 	XDS            XDSConfig            `koanf:"xds"`
 	FileConfig     FileConfigConfig     `koanf:"file_config"`
 	Logging        LoggingConfig        `koanf:"logging"`
+	Health         HealthConfig         `koanf:"health"`
 	PythonExecutor PythonExecutorConfig `koanf:"python_executor"`
 	FaultPolicies  FaultPoliciesConfig  `koanf:"fault_policies"`
 	// HTTPClient configures the single shared outbound *http.Client built once at
@@ -620,6 +621,29 @@ type PolicyEngine struct {
 	// This is used for resolving ${config} CEL expressions in policy systemParameters
 	// Note: No struct tag - populated manually via k.Raw()
 	RawConfig map[string]interface{}
+}
+
+// HealthConfig tunes the policy engine's health checks.
+type HealthConfig struct {
+	// CheckTimeout is the deadline for each individual health check.
+	CheckTimeout time.Duration `koanf:"check_timeout"`
+	// CacheTTL is how long an evaluated health result is reused before the
+	// checks run again.
+	CacheTTL time.Duration `koanf:"cache_ttl"`
+	// LogFile is the health log file path. Empty logs to stdout only.
+	LogFile string `koanf:"log_file"`
+	// LogMaxSizeMB is the size in MiB at which the health log file is rotated.
+	LogMaxSizeMB int `koanf:"log_max_size_mb"`
+	// LogMaxFiles is the number of rotated health log backups kept.
+	LogMaxFiles int `koanf:"log_max_files"`
+	// BackoffInitial is the delay before the first repeated failure line is logged.
+	BackoffInitial time.Duration `koanf:"backoff_initial"`
+	// BackoffMax caps the interval between repeated failure lines.
+	BackoffMax time.Duration `koanf:"backoff_max"`
+	// XDSGrace is how long the connection to the controller may be down before the
+	// runtime stops counting as ready. The last configuration keeps being served
+	// meanwhile, so a routine controller restart never takes runtimes out of service.
+	XDSGrace time.Duration `koanf:"xds_grace"`
 }
 
 // FaultPoliciesConfig tunes which failures reach an API's fault policies
@@ -1333,6 +1357,16 @@ func defaultConfig() *Config {
 				Level:  "info",
 				Format: "text",
 			},
+			Health: HealthConfig{
+				CheckTimeout:   2 * time.Second,
+				CacheTTL:       3 * time.Second,
+				LogFile:        "",
+				LogMaxSizeMB:   10,
+				LogMaxFiles:    5,
+				BackoffInitial: 10 * time.Second,
+				BackoffMax:     5 * time.Minute,
+				XDSGrace:       5 * time.Minute,
+			},
 			PythonExecutor: PythonExecutorConfig{
 				Server: PythonExecutorServerConfig{
 					Mode: "",
@@ -1639,6 +1673,9 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("invalid logging.format: %s (must be json or text)", c.PolicyEngine.Logging.Format)
 	}
 
+	if err := c.validateHealthConfig(); err != nil {
+		return err
+	}
 	if err := c.validateCollectorConfig(); err != nil {
 		return err
 	}
@@ -2084,6 +2121,54 @@ func (c *Config) validateAnalyticsConfig() error {
 				return fmt.Errorf("unknown publisher type in enabled_publishers: %s", publisherName)
 			}
 		}
+	}
+	return nil
+}
+
+// defaultProbeTimeout is the probe timeout health checkers apply by default;
+// a check deadline at or above it can outlast the probe that asked for it.
+const defaultProbeTimeout = 5 * time.Second
+
+// validateHealthConfig validates the health section and normalises the log file path.
+func (c *Config) validateHealthConfig() error {
+	h := &c.PolicyEngine.Health
+
+	if h.CheckTimeout <= 0 {
+		return fmt.Errorf("policy_engine.health.check_timeout must be > 0")
+	}
+	if h.CacheTTL <= 0 {
+		return fmt.Errorf("policy_engine.health.cache_ttl must be > 0")
+	}
+	if h.BackoffInitial <= 0 {
+		return fmt.Errorf("policy_engine.health.backoff_initial must be > 0")
+	}
+	if h.BackoffMax <= 0 {
+		return fmt.Errorf("policy_engine.health.backoff_max must be > 0")
+	}
+	if h.BackoffMax < h.BackoffInitial {
+		return fmt.Errorf("policy_engine.health.backoff_max must be >= policy_engine.health.backoff_initial")
+	}
+	if h.XDSGrace <= 0 {
+		return fmt.Errorf("policy_engine.health.xds_grace must be > 0")
+	}
+	if h.LogMaxSizeMB < 1 {
+		return fmt.Errorf("policy_engine.health.log_max_size_mb must be >= 1, got %d", h.LogMaxSizeMB)
+	}
+	if h.LogMaxFiles < 1 {
+		return fmt.Errorf("policy_engine.health.log_max_files must be >= 1, got %d", h.LogMaxFiles)
+	}
+	if h.LogFile != "" {
+		if strings.ContainsRune(h.LogFile, 0) {
+			return fmt.Errorf("policy_engine.health.log_file must not contain NUL bytes")
+		}
+		if !filepath.IsAbs(h.LogFile) {
+			return fmt.Errorf("policy_engine.health.log_file must be an absolute path")
+		}
+		h.LogFile = filepath.Clean(h.LogFile)
+	}
+	if h.CheckTimeout >= defaultProbeTimeout {
+		slog.Warn("policy_engine.health.check_timeout is at or above the default 5s probe timeout; "+
+			"probes may give up before a health check completes", "check_timeout", h.CheckTimeout)
 	}
 	return nil
 }

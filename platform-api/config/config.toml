@@ -3,6 +3,19 @@
 [platform_api.logging]
 level = '{{ env "APIP_CP_LOGGING_LEVEL" "info" }}'
 
+# Health check behaviour. Every key is optional; the values shown are the defaults.
+# Failures are logged when a check starts failing, repeated at doubling intervals up to
+# backoff_max, and recovery is logged once.
+# [platform_api.health]
+# check_timeout   = '{{ env "APIP_CP_HEALTH_CHECK_TIMEOUT" "2s" }}'    # per-check deadline
+# cache_ttl       = '{{ env "APIP_CP_HEALTH_CACHE_TTL" "3s" }}'        # how long an evaluated health result is reused
+# log_file        = '{{ env "APIP_CP_HEALTH_LOG_FILE" "" }}'           # absolute path of the health log file; empty = stdout only
+# log_max_size_mb = '{{ env "APIP_CP_HEALTH_LOG_MAX_SIZE_MB" "10" }}' # rotate the log file at this size
+# log_max_files   = '{{ env "APIP_CP_HEALTH_LOG_MAX_FILES" "5" }}'    # rotated backups to keep
+# backoff_initial = '{{ env "APIP_CP_HEALTH_BACKOFF_INITIAL" "10s" }}' # delay before the first repeated failure line
+# backoff_max     = '{{ env "APIP_CP_HEALTH_BACKOFF_MAX" "5m" }}'      # cap on the repeat interval
+# startup_wait    = '{{ env "APIP_CP_HEALTH_STARTUP_WAIT" "5m" }}'     # how long startup waits for the database before exiting
+
 [platform_api.security]
 encryption_key = '{{ file "/etc/platform-api/keys/encryption.key" }}'
 

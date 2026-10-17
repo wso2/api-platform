@@ -177,6 +177,8 @@ services:
       # host-published port, so admin must bind the container interface, not loopback.
       - ROUTER_ADMIN_ENABLED=true
       - ROUTER_ADMIN_HOST=0.0.0.0
+      # The healthcheck asks the gateway's readiness route, answered by the policy engine.
+      - GATEWAY_HEALTH_ROUTE=ready
       # Override AWS Bedrock Runtime endpoint for testing with mock service
       - AWS_ENDPOINT_URL_BEDROCK_RUNTIME=http://mock-aws-bedrock-guardrail:8080
       - GOCOVERDIR=/coverage

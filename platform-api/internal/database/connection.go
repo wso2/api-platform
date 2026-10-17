@@ -18,6 +18,7 @@
 package database
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -73,8 +74,31 @@ func (db *DB) Driver() string {
 	return db.driver
 }
 
-// NewConnection creates a new database connection using configuration
+// NewConnection creates a new database connection using configuration and confirms
+// the database answers.
 func NewConnection(cfg *config.Database, slogger *slog.Logger) (*DB, error) {
+	db, err := Open(cfg, slogger)
+	if err != nil {
+		return nil, err
+	}
+
+	// Test the connection
+	if err := db.Ping(); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("failed to ping database: %w", err)
+	}
+	if err := db.VerifyConnection(context.Background()); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+	return db, nil
+}
+
+// Open creates the database connection pool from configuration without connecting:
+// only configuration errors (an unsupported driver, a DSN the driver rejects, an
+// SQLite directory that cannot be created) fail here. Whether the database answers is
+// left to the caller, which can then wait for it.
+func Open(cfg *config.Database, slogger *slog.Logger) (*DB, error) {
 	var db *sql.DB
 	var err error
 
@@ -151,23 +175,6 @@ func NewConnection(cfg *config.Database, slogger *slog.Logger) (*DB, error) {
 	db.SetMaxIdleConns(maxIdle)
 	db.SetConnMaxLifetime(time.Duration(cfg.ConnMaxLifetime) * time.Second)
 
-	// Test the connection
-	if err := db.Ping(); err != nil {
-		return nil, fmt.Errorf("failed to ping database: %w", err)
-	}
-
-	// Drawn from the pool, not the DSN-opening connection, so a misconfigured
-	// DSN is caught here rather than only downstream.
-	if strings.ToLower(cfg.Driver) == DriverSQLite {
-		var enabled int
-		if err := db.QueryRow("PRAGMA foreign_keys").Scan(&enabled); err != nil {
-			return nil, fmt.Errorf("failed to verify foreign key enforcement: %w", err)
-		}
-		if enabled != 1 {
-			return nil, fmt.Errorf("foreign key enforcement is not active on the SQLite connection")
-		}
-	}
-
 	// Normalize driver name so that all PostgreSQL aliases are treated the same
 	normalizedDriver := strings.ToLower(cfg.Driver)
 	if normalizedDriver == DriverPGX || normalizedDriver == DriverPostgreSQL {
@@ -178,6 +185,25 @@ func NewConnection(cfg *config.Database, slogger *slog.Logger) (*DB, error) {
 	}
 
 	return &DB{DB: db, driver: normalizedDriver}, nil
+}
+
+// VerifyConnection checks settings that must hold on every pooled connection once the
+// database answers. For SQLite that is foreign-key enforcement; other drivers need no
+// check.
+func (db *DB) VerifyConnection(ctx context.Context) error {
+	if db.driver != DriverSQLite {
+		return nil
+	}
+	// Drawn from the pool, not the DSN-opening connection, so a misconfigured
+	// DSN is caught here rather than only downstream.
+	var enabled int
+	if err := db.QueryRowContext(ctx, "PRAGMA foreign_keys").Scan(&enabled); err != nil {
+		return fmt.Errorf("failed to verify foreign key enforcement: %w", err)
+	}
+	if enabled != 1 {
+		return fmt.Errorf("foreign key enforcement is not active on the SQLite connection")
+	}
+	return nil
 }
 
 // InitSchema initializes the database schema

@@ -43,6 +43,17 @@ const (
 	DefaultRequestTimeout        = 5 * time.Second
 	DefaultMaxReconnectDelay     = 60 * time.Second
 	DefaultInitialReconnectDelay = 1 * time.Second
+
+	// DefaultKeepaliveTime is how often the client pings an idle connection to the
+	// controller. It must stay at or above the minimum ping interval the controller's
+	// policy xDS server permits (5s); a shorter interval would make the controller
+	// close healthy connections for pinging too often. grpc-go also raises anything
+	// below 10s to 10s.
+	DefaultKeepaliveTime = 10 * time.Second
+	// DefaultKeepaliveTimeout is how long the client waits for a ping to be
+	// acknowledged before treating the connection as dead, so a frozen or half-open
+	// controller connection is detected within DefaultKeepaliveTime plus this.
+	DefaultKeepaliveTimeout = 10 * time.Second
 )
 
 // ClientState represents the current state of the xDS client

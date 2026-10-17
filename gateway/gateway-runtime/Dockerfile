@@ -215,10 +215,11 @@ COPY router/config/envoy-bootstrap.yaml /etc/envoy/envoy.yaml
 COPY router/config/config-override.yaml /etc/envoy/config-override.yaml
 COPY docker-entrypoint-debug.sh /usr/local/bin/docker-entrypoint.sh
 COPY health-check.sh /usr/local/bin/health-check.sh
+COPY health-watchdog.sh /usr/local/bin/health-watchdog.sh
 COPY --from=target configs/llm-pricing/ /home/wso2/conf/llm-pricing/
 COPY --from=target LICENSE /app/LICENSE
 
-RUN chmod +x /app/policy-engine /usr/local/bin/dlv /usr/local/bin/docker-entrypoint.sh /usr/local/bin/health-check.sh
+RUN chmod +x /app/policy-engine /usr/local/bin/dlv /usr/local/bin/docker-entrypoint.sh /usr/local/bin/health-check.sh /usr/local/bin/health-watchdog.sh
 
 ENV GATEWAY_CONTROLLER_HOST=gateway-controller \
     LOG_LEVEL=info
@@ -269,10 +270,11 @@ COPY router/config/envoy-bootstrap.yaml /etc/envoy/envoy.yaml
 COPY router/config/config-override.yaml /etc/envoy/config-override.yaml
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 COPY health-check.sh /usr/local/bin/health-check.sh
+COPY health-watchdog.sh /usr/local/bin/health-watchdog.sh
 COPY --from=target configs/llm-pricing/ /home/wso2/conf/llm-pricing/
 COPY --from=target LICENSE /app/LICENSE
 
-RUN chmod +x /app/policy-engine /usr/local/bin/docker-entrypoint.sh /usr/local/bin/health-check.sh
+RUN chmod +x /app/policy-engine /usr/local/bin/docker-entrypoint.sh /usr/local/bin/health-check.sh /usr/local/bin/health-watchdog.sh
 
 RUN groupadd -r -g 10001 wso2 && \
     useradd -r -u 10001 -g wso2 -s /sbin/nologin -c "WSO2 Application User" wso2 && \
