@@ -9,4 +9,13 @@ metadata:
     app.kubernetes.io/managed-by: {{ .Release.Service }}
 data:
   gateway_values.yaml: |
-{{ toYaml .Values.gateway.values | indent 4 }}
+{{- $gatewayValues := deepCopy (default (dict) .Values.gateway.values) }}
+{{- if include "gateway-operator.isOpenShift" . }}
+{{- /* Turn on the gateway chart's OpenShift support unless gateway.values sets it. */}}
+{{- $gwOpenShift := default (dict) $gatewayValues.openshift }}
+{{- if not (hasKey $gwOpenShift "enabled") }}
+{{- $_ := set $gwOpenShift "enabled" true }}
+{{- $_ := set $gatewayValues "openshift" $gwOpenShift }}
+{{- end }}
+{{- end }}
+{{ toYaml $gatewayValues | indent 4 }}

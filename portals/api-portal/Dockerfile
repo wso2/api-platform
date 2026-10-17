@@ -63,9 +63,10 @@ RUN addgroup -g 10001 appgroup && adduser -u 10001 -G appgroup -s /bin/sh -D -H 
 # Pre-create the logs and data directories owned by the non-root user so the
 # app can write log files and its database. The TLS certificate is bind-mounted
 # read-only at /etc/api-portal/tls (generated host-side by setup.sh) — never
-# written to by the container.
-RUN mkdir -p /app/logs /app/data && chown -R 10001:10001 /app/logs /app/data
-RUN if [ "$ENABLE_COVERAGE" = "true" ]; then mkdir -p /coverage && chown 10001:10001 /coverage; fi
+# written to by the container. Both are owned by the root group with group perms
+# matching the owner, so OpenShift's arbitrary UID (always in GID 0) can write to them.
+RUN mkdir -p /app/logs /app/data && chown -R 10001:0 /app/logs /app/data && chmod -R g=u /app/logs /app/data
+RUN if [ "$ENABLE_COVERAGE" = "true" ]; then mkdir -p /coverage && chown 10001:0 /coverage && chmod g=u /coverage; fi
 
 RUN chmod +x /app/docker-entrypoint.sh
 

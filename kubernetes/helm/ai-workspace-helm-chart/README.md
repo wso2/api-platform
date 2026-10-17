@@ -277,6 +277,10 @@ list for each component is in that component's README and `values.yaml`:
 - [`ai-workspace-ui`](../ai-workspace-ui-helm-chart/README.md) — auth mode (`basic` / `oidc`),
   Platform API hop, gateway onboarding hints, sessions, TLS, HPA.
 
+On OpenShift, each component creates its own Route when `<component>.openshift.enabled=true`
+(`platform-api.openshift.*` and `ai-workspace-ui.openshift.*`). See the
+[OpenShift deployment guide](../../../openshift/portals/ai-workspace/deployment-guide.md).
+
 Common umbrella-level settings:
 
 | Key | Description |
