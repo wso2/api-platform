@@ -320,3 +320,23 @@ func TestBackoffIntervalIsCapped(t *testing.T) {
 	assert.Equal(t, 5, len(logs.healthLines()))
 	assert.Equal(t, 4*time.Second, b.failures["database"].interval)
 }
+
+func TestBackoffSkipsUnloggedChecks(t *testing.T) {
+	var logs logCapture
+	c, clk := newTestChecker(logs.options())
+	var startErr error = Reason("starting")
+	c.RegisterUnlogged("startup", func(context.Context) error { return startErr })
+	c.Register("database", func(context.Context) error { return errors.New("connection refused") })
+
+	probeFor(c, clk, 30*time.Second)
+	startErr = nil
+	clk.Advance(5 * time.Second)
+	res := c.Evaluate()
+
+	assert.Equal(t, StatusUp, res.Checks["startup"].Status)
+	lines := logs.healthLines()
+	assert.Zero(t, countContaining(lines, "check=startup"), "unlogged check must not log: %v", lines)
+	assert.NotZero(t, countContaining(lines, "check=database"))
+	assert.NotContains(t, logs.debug.String(), "check=startup")
+	assert.NotContains(t, c.logger.failures, "startup")
+}
