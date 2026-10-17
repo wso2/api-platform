@@ -56,10 +56,13 @@ func newBackoffLogger(health, debug *slog.Logger, initial, max time.Duration) *b
 
 // observe records one completed evaluation and logs the state changes and due repeats it
 // implies. The health logger only ever receives the safe failure reason; the raw cause
-// goes to the debug logger.
+// goes to the debug logger. Checks registered as unlogged are skipped entirely.
 func (b *backoffLogger) observe(res Result, now time.Time) {
 	names := make([]string, 0, len(res.Checks))
-	for name := range res.Checks {
+	for name, chk := range res.Checks {
+		if chk.unlogged {
+			continue
+		}
 		names = append(names, name)
 	}
 	sort.Strings(names)

@@ -319,3 +319,25 @@ func TestEvaluateKeepsRawCauseForDebugOnly(t *testing.T) {
 	assert.ErrorIs(t, got.cause, raw)
 	assert.False(t, strings.Contains(got.Error, "10.0.0.5"))
 }
+
+func TestUnloggedCheckDecidesHealth(t *testing.T) {
+	c, clk := newTestChecker(testOptions())
+	var startErr error = Reason("starting")
+	c.Register("database", passing)
+	c.RegisterUnlogged("startup", func(context.Context) error { return startErr })
+
+	res := c.Evaluate()
+	require.False(t, res.Healthy)
+	assert.Equal(t, UnhealthyStatus, res.Status)
+	assert.Equal(t, StatusUp, res.Checks["database"].Status)
+	startup := res.Checks["startup"]
+	assert.Equal(t, StatusDown, startup.Status)
+	assert.Equal(t, "starting", startup.Error)
+	assert.False(t, startup.Since.IsZero())
+
+	startErr = nil
+	clk.Advance(4 * time.Second)
+	res = c.Evaluate()
+	assert.True(t, res.Healthy)
+	assert.Equal(t, StatusUp, res.Checks["startup"].Status)
+}
