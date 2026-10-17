@@ -1960,11 +1960,12 @@ func (c *Config) Validate() error {
 		return err
 	}
 
-	// Validate subscriptions configuration (subscription token encryption key when set)
+	// Validate health check configuration
 	if err := c.validateHealthConfig(); err != nil {
 		return err
 	}
 
+	// Validate subscriptions configuration (subscription token encryption key when set)
 	if err := c.validateSubscriptionsConfig(); err != nil {
 		return err
 	}
