@@ -19,6 +19,7 @@
 const { renderTemplate, renderTemplateFromAPI, loadMarkdown, filePrefix, pageErrorStatus } = require('../utils/util');
 const { config } = require('../config/configLoader');
 const markdown = require('marked');
+const { sanitizeMarkdownHtml } = require('../utils/sanitizeDocs');
 const fs = require('fs');
 const path = require('path');
 const orgDao = require('../dao/organizationDao');
@@ -95,7 +96,10 @@ const loadCustomContent = async (req, res, next) => {
             if (markDownFiles.length > 0) {
                 markDownFiles.forEach((item) => {
                     const tempKey = item.file_name.split('.md')[0];
-                    content[tempKey] = markdown.parse(item.file_content.toString(constants.CHARSET_UTF8));
+                    content[tempKey] = sanitizeMarkdownHtml(
+                        markdown.parse(item.file_content.toString(constants.CHARSET_UTF8)),
+                        orgDetails.configuration
+                    );
                 });
             }
             content[constants.BASE_URL_NAME] = constants.ROUTE.BASE_PATH + '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName;

@@ -25,6 +25,8 @@ const logger = require('../config/logger');
 const util = require('../utils/util');
 const { loadLayoutFromAPI, renderGivenTemplate, renderTemplateFromAPI, rewriteViewStyles, isAiDisabledForPortal, resolveAiEnabled } = require('../utils/util');
 const constants = require('../utils/constants');
+const { marked } = require('marked');
+const { sanitizeMarkdownHtml } = require('../utils/sanitizeDocs');
 const fs = require('fs');
 const path = require('path');
 const Handlebars = require('handlebars');
@@ -182,6 +184,12 @@ const loadAPIWorkflowDetail = async (req, res, next) => {
             fileContentStr = Buffer.isBuffer(rawContent) ? rawContent.toString('utf8') : String(rawContent);
         }
 
+        let renderedHtml = null;
+        if (apiWorkflow.content_type === constants.API_WORKFLOW_CONTENT_TYPE.MD && fileContentStr) {
+            const rawHtml = marked.parse(fileContentStr, { breaks: true, gfm: true });
+            renderedHtml = sanitizeMarkdownHtml(rawHtml, orgDetails.configuration);
+        }
+
         const templateContent = {
             flow: {
                 flowId: apiWorkflow.uuid,
@@ -192,6 +200,7 @@ const loadAPIWorkflowDetail = async (req, res, next) => {
                 agentVisibility: apiWorkflow.agent_visibility || constants.AGENT_VISIBILITY.VISIBLE,
                 contentType: apiWorkflow.content_type,
                 content: fileContentStr,
+                renderedHtml,
                 createdAt: apiWorkflow.created_at ? new Date(apiWorkflow.created_at).toLocaleDateString() : '',
                 updatedAt: apiWorkflow.updated_at ? new Date(apiWorkflow.updated_at).toLocaleDateString() : ''
             },

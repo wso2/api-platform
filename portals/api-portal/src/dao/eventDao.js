@@ -246,7 +246,8 @@ async function claimDueDeliveries(batchSize, orgUuid) {
  */
 async function markDelivered(deliveryId, httpStatus) {
     await db.execute(
-        `UPDATE ${DELIVERIES_TABLE} SET status = ?, last_http_status = ?, delivered_at = ? WHERE uuid = ? AND portal_id = ?`,
+        `UPDATE ${DELIVERIES_TABLE} SET status = ?, last_http_status = ?, delivered_at = ?, encrypted_fields = NULL
+         WHERE uuid = ? AND portal_id = ?`,
         ['DELIVERED', httpStatus, new Date(), deliveryId, getPortalId()]
     );
     const delivery = await db.queryOne(`SELECT * FROM ${DELIVERIES_TABLE} WHERE uuid = ? AND portal_id = ?`, [deliveryId, getPortalId()]);
