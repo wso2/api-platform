@@ -143,8 +143,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           credentials: 'same-origin',
           headers: mutatingHeaders,
         });
-        if (response.status === 200) {
-          const body = (await response.json()) as { logoutUrl?: string };
+        // Any 2xx ends the session server-side. The body is only read for the
+        // IDP end-session URL, which a file-based logout (204, no body) has not
+        // got — so a parse failure is expected there, not an error. Mirrors the
+        // AI Workspace BFF provider.
+        if (response.ok) {
+          const body = (await response.json().catch(() => ({}))) as { logoutUrl?: string };
           logoutUrl = body.logoutUrl;
         }
       } catch {
