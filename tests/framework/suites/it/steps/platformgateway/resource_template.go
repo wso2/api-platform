@@ -30,6 +30,7 @@ import (
 	"github.com/cucumber/godog"
 	"gopkg.in/yaml.v3"
 
+	frameworkruntime "github.com/wso2/api-platform/tests/framework/core/runtime"
 	"github.com/wso2/api-platform/tests/framework/core/util/httpx"
 	stepscommon "github.com/wso2/api-platform/tests/framework/suites/it/steps/common"
 )
@@ -86,23 +87,58 @@ func (g *Gateway) createResourceFromTemplate(
 func (g *Gateway) renderResourceTemplate(
 	ctx context.Context, kind, templateName string, content []byte, table *godog.Table,
 ) (string, error) {
+	return renderForRelease(ctx, gatewayVersion(g.topo), kind, templateName, content, table)
+}
+
+// RenderResourceTemplate renders the canonical template of a resource kind ("API", "MCP
+// proxy", ...) with a scenario's values table, in the request contract of the Gateway release
+// under test. It is for steps that hand the document to another client, such as the ap CLI,
+// instead of posting it to the management API themselves.
+func RenderResourceTemplate(
+	ctx context.Context, topo *frameworkruntime.Topology, featureRoot, kind, templateName string, table *godog.Table,
+) (string, error) {
+	if topo == nil {
+		return "", fmt.Errorf("rendering resource template %q: topology is required", templateName)
+	}
+	if _, ok := resourceKinds[kind]; !ok {
+		return "", fmt.Errorf("unknown resource kind %q", kind)
+	}
+	path, err := stepscommon.ResourceTemplatePath(featureRoot, templateName)
+	if err != nil {
+		return "", err
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("read resource template %q: %w", templateName, err)
+	}
+	definition, err := renderForRelease(ctx, gatewayVersion(topo), kind, templateName, content, table)
+	if err != nil {
+		return "", fmt.Errorf("resource template %q: %w", templateName, err)
+	}
+	return definition, nil
+}
+
+// renderForRelease renders a template and translates it to the contract of a Gateway release.
+func renderForRelease(
+	ctx context.Context, version, kind, templateName string, content []byte, table *godog.Table,
+) (string, error) {
 	definition, err := stepscommon.RenderResourceTemplate(ctx, templateName, content, table)
 	if err != nil {
 		return "", err
 	}
-	if kind == "API" && usesLegacyUpstreamPath(gatewayVersion(g.topo)) {
+	if kind == "API" && usesLegacyUpstreamPath(version) {
 		definition, err = legacyRestAPIUpstreamDefinition(definition)
 		if err != nil {
 			return "", err
 		}
 	}
-	if kind == "API" && usesLegacyGatewayContract(gatewayVersion(g.topo)) {
+	if kind == "API" && usesLegacyGatewayContract(version) {
 		definition, err = legacySemanticCacheDefinition(definition)
 		if err != nil {
 			return "", err
 		}
 	}
-	if !usesLegacyLLMResource(kind, gatewayVersion(g.topo)) {
+	if !usesLegacyLLMResource(kind, version) {
 		return definition, nil
 	}
 	return legacyLLMPolicyDefinition(definition)

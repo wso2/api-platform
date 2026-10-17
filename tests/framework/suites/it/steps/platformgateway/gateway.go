@@ -1162,7 +1162,7 @@ func (g *Gateway) register(sc *godog.ScenarioContext) {
 		g.serviceRequestUntilStatus)
 	sc.Step(`^I send a "([^"]*)" request to the "([^"]*)" service at "([^"]*)" until the response body does not contain "([^"]*)"$`,
 		g.serviceRequestUntilBodyNotContains)
-	sc.Step(`^I resolve the "([^"]*)" service URL at "([^"]*)" and store it as "([^"]*)"$`,
+	sc.Step(`^I resolve the "([^"]*)" service( host)? URL at "([^"]*)" and store it as "([^"]*)"$`,
 		g.resolveServiceURLAndStore)
 	sc.Step(`^I register the "([^"]*)" "([^"]*)" for cleanup$`, g.registerAdminResourceForCleanup)
 	sc.Step(`^the "([^"]*)" service logs should contain "([^"]*)"$`, g.serviceLogsContain)
@@ -1648,6 +1648,8 @@ var serviceEndpoints = map[string]struct {
 	"analytics":                    {component: "testbench", endpoint: "analytics", partitioned: true},
 	"capture":                      {component: "testbench", endpoint: "capture", partitioned: true},
 	"oauth2":                       {component: "testbench", endpoint: "oauth2", partitioned: true},
+	// The streamable-HTTP MCP server, addressed directly by clients that discover its tools.
+	"mcp": {component: "testbench", endpoint: "mcp"},
 	// Metrics live on a DIFFERENT compose service from the one tests normally address —
 	// controller metrics on the controller, policy-engine metrics on the runtime — which the
 	// component contract resolves via Endpoint.Service. No base path: a scrape is not an API.
@@ -1728,11 +1730,17 @@ func (g *Gateway) serviceBasePath(service, defaultPath string) string {
 	}
 }
 
-// resolveServiceURLAndStore resolves a testbench service's URL and stores it in local scope, for
-// use as an upstream target elsewhere in the scenario — most notably a partitioned service like
-// "capture", whose address includes a block key a feature cannot know in advance.
-func (g *Gateway) resolveServiceURLAndStore(ctx context.Context, service, path, key string) error {
-	url, err := g.serviceUpstreamURL(ctx, service, path)
+// resolveServiceURLAndStore resolves a service's URL and stores it in local scope. By default it
+// is the address inside the block network, for use as an upstream target elsewhere in the
+// scenario — most notably a partitioned service like "capture", whose address includes a block
+// key a feature cannot know in advance. The "host" form is the host-mapped address, for a client
+// that runs outside the block network, such as the ap CLI.
+func (g *Gateway) resolveServiceURLAndStore(ctx context.Context, service, host, path, key string) error {
+	resolve := g.serviceUpstreamURL
+	if host != "" {
+		resolve = g.serviceURL
+	}
+	url, err := resolve(ctx, service, path)
 	if err != nil {
 		return err
 	}
