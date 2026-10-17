@@ -2641,3 +2641,48 @@ func TestLoadConfig_ClientCertificateRequest(t *testing.T) {
 		})
 	}
 }
+
+// shippedControllerHealthExample returns the commented [controller.health] example from
+// the shipped config template, uncommented, as an operator would enable it.
+func shippedControllerHealthExample(t *testing.T) string {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join("..", "..", "..", "configs", "config-template.toml"))
+	require.NoError(t, err)
+	var lines []string
+	inBlock := false
+	for _, line := range strings.Split(string(raw), "\n") {
+		if line == "# [controller.health]" {
+			inBlock = true
+		}
+		if !inBlock {
+			continue
+		}
+		if !strings.HasPrefix(line, "# ") {
+			break
+		}
+		lines = append(lines, strings.TrimPrefix(line, "# "))
+	}
+	require.NotEmpty(t, lines, "the config template must carry the commented [controller.health] example")
+	return strings.Join(lines, "\n") + "\n"
+}
+
+// The commented health example in the shipped config template loads once uncommented,
+// with its quoted integer tokens decoded as integers and still overridable from the
+// environment.
+func TestLoadConfig_ShippedHealthExampleIsValid(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.toml")
+	require.NoError(t, os.WriteFile(configPath, []byte(shippedControllerHealthExample(t)), 0o644))
+
+	cfg, err := LoadConfig(configPath)
+	require.NoError(t, err)
+	assert.Equal(t, 10, cfg.Controller.Health.LogMaxSizeMB)
+	assert.Equal(t, 5, cfg.Controller.Health.LogMaxFiles)
+	assert.Equal(t, 5*time.Minute, cfg.Controller.Health.StartupWait)
+
+	t.Setenv("APIP_GW_CONTROLLER_HEALTH_LOG_MAX_SIZE_MB", "20")
+	t.Setenv("APIP_GW_CONTROLLER_HEALTH_LOG_MAX_FILES", "3")
+	cfg, err = LoadConfig(configPath)
+	require.NoError(t, err)
+	assert.Equal(t, 20, cfg.Controller.Health.LogMaxSizeMB)
+	assert.Equal(t, 3, cfg.Controller.Health.LogMaxFiles)
+}

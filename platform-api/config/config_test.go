@@ -25,6 +25,7 @@ import (
 	"encoding/pem"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -892,4 +893,47 @@ func TestValidateHealthConfig(t *testing.T) {
 			}
 		})
 	}
+}
+
+// shippedHealthExample returns the commented [platform_api.health] example from the
+// shipped config.toml, uncommented, as an operator would enable it.
+func shippedHealthExample(t *testing.T) string {
+	t.Helper()
+	raw, err := os.ReadFile("config.toml")
+	require.NoError(t, err)
+	var lines []string
+	inBlock := false
+	for _, line := range strings.Split(string(raw), "\n") {
+		if line == "# [platform_api.health]" {
+			inBlock = true
+		}
+		if !inBlock {
+			continue
+		}
+		if !strings.HasPrefix(line, "# ") {
+			break
+		}
+		lines = append(lines, strings.TrimPrefix(line, "# "))
+	}
+	require.NotEmpty(t, lines, "config.toml must carry the commented [platform_api.health] example")
+	return strings.Join(lines, "\n") + "\n"
+}
+
+// The commented health example in the shipped config.toml loads once uncommented, with
+// its quoted integer tokens decoded as integers and still overridable from the environment.
+func TestLoadConfig_ShippedHealthExampleIsValid(t *testing.T) {
+	example := shippedHealthExample(t)
+
+	cfg, err := loadWithKeys(t, example)
+	require.NoError(t, err)
+	assert.Equal(t, 10, cfg.Health.LogMaxSizeMB)
+	assert.Equal(t, 5, cfg.Health.LogMaxFiles)
+	assert.Equal(t, 5*time.Minute, cfg.Health.StartupWait)
+
+	t.Setenv("APIP_CP_HEALTH_LOG_MAX_SIZE_MB", "20")
+	t.Setenv("APIP_CP_HEALTH_LOG_MAX_FILES", "3")
+	cfg, err = loadWithKeys(t, example)
+	require.NoError(t, err)
+	assert.Equal(t, 20, cfg.Health.LogMaxSizeMB)
+	assert.Equal(t, 3, cfg.Health.LogMaxFiles)
 }

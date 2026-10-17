@@ -344,8 +344,8 @@ format = "text"
 # check_timeout   = '{{ env "APIP_GW_CONTROLLER_HEALTH_CHECK_TIMEOUT" "2s" }}'    # per-check deadline
 # cache_ttl       = '{{ env "APIP_GW_CONTROLLER_HEALTH_CACHE_TTL" "3s" }}'        # how long an evaluated health result is reused
 # log_file        = '{{ env "APIP_GW_CONTROLLER_HEALTH_LOG_FILE" "" }}'           # absolute path of the health log file; empty = stdout only
-# log_max_size_mb = {{ env "APIP_GW_CONTROLLER_HEALTH_LOG_MAX_SIZE_MB" "10" }}   # rotate the log file at this size
-# log_max_files   = {{ env "APIP_GW_CONTROLLER_HEALTH_LOG_MAX_FILES" "5" }}      # rotated backups to keep
+# log_max_size_mb = '{{ env "APIP_GW_CONTROLLER_HEALTH_LOG_MAX_SIZE_MB" "10" }}' # rotate the log file at this size
+# log_max_files   = '{{ env "APIP_GW_CONTROLLER_HEALTH_LOG_MAX_FILES" "5" }}'    # rotated backups to keep
 # backoff_initial = '{{ env "APIP_GW_CONTROLLER_HEALTH_BACKOFF_INITIAL" "10s" }}' # delay before the first repeated failure line
 # backoff_max     = '{{ env "APIP_GW_CONTROLLER_HEALTH_BACKOFF_MAX" "5m" }}'      # cap on the repeat interval
 # startup_wait    = '{{ env "APIP_GW_CONTROLLER_HEALTH_STARTUP_WAIT" "5m" }}'     # how long startup waits for the database before exiting
