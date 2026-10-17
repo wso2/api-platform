@@ -58,8 +58,8 @@ export function makeTestQueryClient(): QueryClient {
 export type RenderWithProvidersOptions = Omit<RenderOptions, 'wrapper'> & {
   /** Initial router entry (default `/`). */
   route?: string;
-  /** All router entries (overrides `route` when provided). */
-  routerEntries?: string[];
+  /** All router entries (overrides `route` when provided); an entry may carry router state. */
+  routerEntries?: ComponentProps<typeof MemoryRouter>['initialEntries'];
   /** Injected auth state (default: authenticated via `makeAuthState()`). */
   authState?: AuthState;
   /** Injected console scope. Omit for tests that don't read `useConsoleScope`. */

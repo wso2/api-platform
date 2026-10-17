@@ -185,6 +185,14 @@ export const fillPathParameters = (
       return filled.split(`{${parameter.name}}`).join(encodePathValue(value));
     }, path);
 
+/**
+ * A trailing wildcard segment (`/*`, the catch-all route an endpoint API is
+ * created with) as a path someone can actually send. Copied literally, the `*`
+ * reaches the backend as a real path segment; a backend that reads segments as
+ * IDs then answers 404 and the API looks broken.
+ */
+export const sendablePath = (path: string): string => path.replace(/\/\*$/, '/');
+
 export type BuildConsoleRequestArgs = {
   spec: Record<string, unknown>;
   path: string;
@@ -262,7 +270,7 @@ export const buildConsoleRequest = ({
   return {
     method: normalizedMethod,
     baseUrl: baseUrl.trim().replace(/\/+$/, ''),
-    path: fillPathParameters(path, parameters, parameterValues),
+    path: sendablePath(fillPathParameters(path, parameters, parameterValues)),
     queryParams: [
       ...declaredQuery.filter((queryRow) => !extraQueryNames.has(queryRow.name.trim())),
       ...extraQueryParams,
