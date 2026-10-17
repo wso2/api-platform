@@ -436,34 +436,6 @@ CREATE INDEX idx_subscription_api_uuid ON dbo.subscriptions(api_uuid);
 -- token IS NOT NULL reproduces the intended "many token-less subscriptions" behavior.
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'uq_subscription_token' AND object_id = OBJECT_ID(N'dbo.subscriptions'))
 CREATE UNIQUE INDEX uq_subscription_token ON dbo.subscriptions(token) WHERE token IS NOT NULL;
--- Enforce at most one subscription per API per user per organization.
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'uq_subscriptions_org_api_user' AND object_id = OBJECT_ID(N'dbo.subscriptions'))
-BEGIN
-    UPDATE dbo.api_keys
-    SET subscription_uuid = NULL
-    WHERE subscription_uuid IN (
-        SELECT s1.uuid
-        FROM dbo.subscriptions s1
-        JOIN dbo.subscriptions s2 ON s1.org_uuid = s2.org_uuid
-            AND s1.api_uuid = s2.api_uuid
-            AND s1.created_by = s2.created_by
-            AND s1.portal_id = s2.portal_id
-            AND (s1.created_at > s2.created_at OR (s1.created_at = s2.created_at AND s1.uuid > s2.uuid))
-    );
-
-    DELETE FROM dbo.subscriptions
-    WHERE uuid IN (
-        SELECT s1.uuid
-        FROM dbo.subscriptions s1
-        JOIN dbo.subscriptions s2 ON s1.org_uuid = s2.org_uuid
-            AND s1.api_uuid = s2.api_uuid
-            AND s1.created_by = s2.created_by
-            AND s1.portal_id = s2.portal_id
-            AND (s1.created_at > s2.created_at OR (s1.created_at = s2.created_at AND s1.uuid > s2.uuid))
-    );
-
-    CREATE UNIQUE INDEX uq_subscriptions_org_api_user ON dbo.subscriptions(org_uuid, api_uuid, created_by, portal_id);
-END;
 
 -- API Keys table (portal-scoped standalone, non-OAuth2 API key credentials for an API)
 IF OBJECT_ID(N'dbo.api_keys', N'U') IS NULL
@@ -505,6 +477,40 @@ CREATE INDEX idx_api_key_api_uuid ON dbo.api_keys(api_uuid);
 -- unique per (org, portal, api). Enforced here for a race-free guarantee.
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'uq_api_key_org_api_handle' AND object_id = OBJECT_ID(N'dbo.api_keys'))
 CREATE UNIQUE INDEX uq_api_key_org_api_handle ON dbo.api_keys(org_uuid, api_uuid, handle, portal_id);
+
+-- Enforce at most one subscription per API per user per organization.
+-- Reconcile any historical duplicate subscriptions before creating the unique index,
+-- preserving the earliest created subscription (the one backing Platform API/gateway)
+-- and nullifying any referencing api_keys.
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'uq_subscriptions_org_api_user' AND object_id = OBJECT_ID(N'dbo.subscriptions'))
+BEGIN
+    UPDATE dbo.api_keys
+    SET subscription_uuid = NULL
+    WHERE subscription_uuid IN (
+        SELECT s1.uuid
+        FROM dbo.subscriptions s1
+        JOIN dbo.subscriptions s2 ON s1.org_uuid = s2.org_uuid
+            AND s1.api_uuid = s2.api_uuid
+            AND s1.created_by = s2.created_by
+            AND s1.portal_id = s2.portal_id
+            AND (ISNULL(s1.created_at, '9999-12-31') > ISNULL(s2.created_at, '9999-12-31')
+                OR (ISNULL(s1.created_at, '9999-12-31') = ISNULL(s2.created_at, '9999-12-31') AND s1.uuid > s2.uuid))
+    );
+
+    DELETE FROM dbo.subscriptions
+    WHERE uuid IN (
+        SELECT s1.uuid
+        FROM dbo.subscriptions s1
+        JOIN dbo.subscriptions s2 ON s1.org_uuid = s2.org_uuid
+            AND s1.api_uuid = s2.api_uuid
+            AND s1.created_by = s2.created_by
+            AND s1.portal_id = s2.portal_id
+            AND (ISNULL(s1.created_at, '9999-12-31') > ISNULL(s2.created_at, '9999-12-31')
+                OR (ISNULL(s1.created_at, '9999-12-31') = ISNULL(s2.created_at, '9999-12-31') AND s1.uuid > s2.uuid))
+    );
+
+    CREATE UNIQUE INDEX uq_subscriptions_org_api_user ON dbo.subscriptions(org_uuid, api_uuid, created_by, portal_id);
+END;
 
 -- API Key-Application mappings (which application an API key was issued to)
 IF OBJECT_ID(N'dbo.api_key_app_mappings', N'U') IS NULL
