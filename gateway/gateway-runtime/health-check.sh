@@ -42,7 +42,10 @@ if [ -n "${GATEWAY_HEALTH_ROUTE}" ]; then
       exit 1
       ;;
   esac
-  ROUTE_STATUS=$(curl -s -o /dev/null -w '%{http_code}' "http://localhost:${ROUTER_HTTP_PORT}/_gateway-health/${GATEWAY_HEALTH_ROUTE}")
+  # Bounded, so a router that accepts the connection but never answers still fails the
+  # check instead of holding it open.
+  ROUTE_STATUS=$(curl -s --max-time 3 -o /dev/null -w '%{http_code}' \
+    "http://localhost:${ROUTER_HTTP_PORT}/_gateway-health/${GATEWAY_HEALTH_ROUTE}") || ROUTE_STATUS="000"
   if [ "${ROUTE_STATUS}" != "200" ]; then
     echo "Gateway not ${GATEWAY_HEALTH_ROUTE} (HTTP ${ROUTE_STATUS})"
     exit 1
