@@ -41,6 +41,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/encryption"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/encryption/aesgcm"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
+	commonconstants "github.com/wso2/api-platform/common/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/testutil/pki"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
@@ -1508,3 +1509,105 @@ func TestAppendFaultSystemPolicies_NoCollectorLeavesTheChainAlone(t *testing.T) 
 	require.Len(t, got, 1)
 	assert.Equal(t, "log-message", got[0].Name)
 }
+
+func TestExtractProjectID(t *testing.T) {
+	t.Run("annotation preferred over labels", func(t *testing.T) {
+		anns := map[string]string{
+			commonconstants.AnnotationProjectID: "annotation-project",
+		}
+		labels := map[string]string{
+			commonconstants.DeprecatedLabelProjectID: "label-project",
+			"projectId":                              "wrong-label-project",
+		}
+		cfg := &models.StoredConfig{
+			Configuration: api.RestAPI{
+				Metadata: api.Metadata{
+					Annotations: &anns,
+					Labels:      &labels,
+				},
+			},
+		}
+		assert.Equal(t, "annotation-project", extractProjectID(cfg))
+	})
+
+	t.Run("deprecated project-id label fallback", func(t *testing.T) {
+		labels := map[string]string{
+			commonconstants.DeprecatedLabelProjectID: "label-project",
+			"projectId":                              "wrong-label-project",
+		}
+		cfg := &models.StoredConfig{
+			Configuration: api.RestAPI{
+				Metadata: api.Metadata{
+					Labels: &labels,
+				},
+			},
+		}
+		assert.Equal(t, "label-project", extractProjectID(cfg))
+	})
+
+	t.Run("projectId label fallback", func(t *testing.T) {
+		labels := map[string]string{
+			"projectId": "fallback-project",
+		}
+		cfg := &models.StoredConfig{
+			Configuration: api.RestAPI{
+				Metadata: api.Metadata{
+					Labels: &labels,
+				},
+			},
+		}
+		assert.Equal(t, "fallback-project", extractProjectID(cfg))
+	})
+
+	t.Run("empty when no project metadata", func(t *testing.T) {
+		cfg := &models.StoredConfig{
+			Configuration: api.RestAPI{
+				Metadata: api.Metadata{},
+			},
+		}
+		assert.Equal(t, "", extractProjectID(cfg))
+	})
+
+	t.Run("works with MCP proxy source configuration", func(t *testing.T) {
+		anns := map[string]string{
+			commonconstants.AnnotationProjectID: "mcp-project",
+		}
+		cfg := &models.StoredConfig{
+			SourceConfiguration: api.MCPProxyConfiguration{
+				Metadata: api.Metadata{
+					Annotations: &anns,
+				},
+			},
+		}
+		assert.Equal(t, "mcp-project", extractProjectID(cfg))
+	})
+
+	t.Run("works with LLM proxy configuration", func(t *testing.T) {
+		anns := map[string]string{
+			commonconstants.AnnotationProjectID: "llm-project",
+		}
+		cfg := &models.StoredConfig{
+			SourceConfiguration: api.LLMProxyConfiguration{
+				Metadata: api.Metadata{
+					Annotations: &anns,
+				},
+			},
+		}
+		assert.Equal(t, "llm-project", extractProjectID(cfg))
+	})
+
+	t.Run("works with Agent configuration", func(t *testing.T) {
+		anns := map[string]string{
+			commonconstants.AnnotationProjectID: "agent-project",
+		}
+		cfg := &models.StoredConfig{
+			Configuration: api.AgentConfiguration{
+				Metadata: api.Metadata{
+					Annotations: &anns,
+				},
+			},
+		}
+		assert.Equal(t, "agent-project", extractProjectID(cfg))
+	})
+}
+

@@ -2,6 +2,10 @@ apiVersion: gateway.api-platform.wso2.com/v1
 kind: LlmProxy
 metadata:
     name: compat-aliases
+    labels:
+        project-id: project-1
+    annotations:
+        gateway.api-platform.wso2.com/project-id: project-1
 spec:
     displayName: Compat Provider Aliases
     version: v1.0
