@@ -181,7 +181,7 @@ const normalizeBasePath = (value?: string) => {
   return `/${value.replace(/^\/|\/$/g, '')}`;
 };
 
-// VITE_ override wins so a local BML can be targeted in dev even when the
+// VITE_ override wins so a local platform-api can be targeted in dev even when the
 // runtime config injects a hosted "connect" gateway URL.
 const resolvedPlatformApiBaseUrl =
   import.meta.env.VITE_PLATFORM_API_BASE_URL ||
