@@ -33,6 +33,9 @@ export type AuthUser = {
    * a token in the browser, which never holds one.
    */
   org?: AuthOrg | null;
+  /** Avatar URL from the IDP's picture claim; the header falls back to
+   * initials when the IDP supplies none. */
+  picture?: string;
   scopes?: string[],
   role?: string,
 };
