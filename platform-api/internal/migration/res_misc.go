@@ -29,7 +29,7 @@ func init() {
 	register(&deploymentsMigrator{baseMigrator{name: "deployments", dependsOn: []string{"artifacts", "gateways"}}})
 	register(&deploymentStatusMigrator{baseMigrator{name: "deployment_status", dependsOn: []string{"artifacts", "gateways"}}})
 	register(&artifactGatewayMappingsMigrator{baseMigrator{name: "artifact_gateway_mappings", dependsOn: []string{"artifacts", "gateways"}}})
-	register(&appArtifactMappingsMigrator{baseMigrator{name: "application_artifact_mappings", dependsOn: []string{"applications", "artifacts"}}})
+	register(&appArtifactMappingsMigrator{baseMigrator{name: "application_artifact_mappings", dependsOn: []string{"applications", "api_keys"}}})
 	register(&appAPIKeyMappingsMigrator{baseMigrator{name: "application_api_key_mappings", dependsOn: []string{"applications", "api_keys"}}})
 }
 
@@ -375,7 +375,14 @@ func (m *artifactGatewayMappingsMigrator) Verify(ctx context.Context, rc *RunCon
 }
 
 // ---------------------------------------------------------------------------
-// application_artifact_mappings (from v1 application_artifacts) — carry created_at
+// application_artifact_mappings — DERIVED from application_api_keys ⋈ api_keys,
+// not copied from v1 application_artifacts. v1 fills that table only through
+// POST /applications/{id}/associations, which AI Workspace v1 never calls, so it
+// is empty or stale (the dev dump: 2 rows against 10 derivable pairs) and older
+// v1 schemas do not have it at all. v2's Associations tab lists an application's
+// artifacts from this table and resolves its keys per association, so every
+// (application, artifact) pair the application holds a key for gets one row;
+// created_at is the earliest such key mapping.
 // ---------------------------------------------------------------------------
 
 type appArtifactMappingsMigrator struct{ baseMigrator }
@@ -385,30 +392,62 @@ type appArtifactRow struct {
 	createdAt                     sql.NullTime
 }
 
+// appArtifactPairsQuery lists every key mapping with the artifact its key belongs
+// to, oldest first, so the first row seen per pair carries the earliest created_at.
+const appArtifactPairsQuery = `SELECT m.application_uuid, k.artifact_uuid, m.created_at
+	FROM application_api_keys m
+	INNER JOIN api_keys k ON k.uuid = m.api_key_id
+	ORDER BY m.created_at, m.application_uuid, k.artifact_uuid`
+
+// appArtifactPairsCountQuery counts the distinct pairs the query above yields.
+const appArtifactPairsCountQuery = `SELECT COUNT(*) FROM (
+	SELECT DISTINCT m.application_uuid, k.artifact_uuid
+	FROM application_api_keys m
+	INNER JOIN api_keys k ON k.uuid = m.api_key_id) p`
+
+// deriveAppArtifactPairs keeps one row per (application, artifact) in first-seen
+// order; rows must arrive oldest first for created_at to be the earliest mapping.
+func deriveAppArtifactPairs(rows []appArtifactRow) []appArtifactRow {
+	seen := make(map[[2]string]struct{}, len(rows))
+	out := make([]appArtifactRow, 0, len(rows))
+	for _, r := range rows {
+		key := [2]string{r.applicationUUID, r.artifactUUID}
+		if _, dup := seen[key]; dup {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, r)
+	}
+	return out
+}
+
 func (m *appArtifactMappingsMigrator) Migrate(ctx context.Context, rc *RunContext) (*ResourceReport, error) {
 	rep := newReport(m.name)
 	if rc.Direction == DirectionReverse {
 		return m.migrateReverse(ctx, rc, rep)
 	}
-	rows, err := rc.Src.QueryContext(ctx, `SELECT application_uuid, artifact_uuid, created_at FROM application_artifacts`)
+	rows, err := rc.Src.QueryContext(ctx, appArtifactPairsQuery)
 	if err != nil {
 		return nil, err
 	}
-	var items []appArtifactRow
+	var mappings []appArtifactRow
 	for rows.Next() {
 		var r appArtifactRow
 		if err := rows.Scan(&r.applicationUUID, &r.artifactUUID, &r.createdAt); err != nil {
 			rows.Close()
 			return nil, err
 		}
-		items = append(items, r)
+		mappings = append(mappings, r)
 	}
 	if err := rows.Err(); err != nil {
 		rows.Close()
 		return nil, err
 	}
 	rows.Close()
+	items := deriveAppArtifactPairs(mappings)
 	rep.SrcCount = int64(len(items))
+	rc.Log.Info("application artifact associations derived from API key mappings",
+		"keyMappings", len(mappings), "associations", len(items))
 
 	err = runResource(ctx, rc, items, func(ctx context.Context, q queryer, r appArtifactRow) error {
 		if q == nil {
@@ -424,7 +463,7 @@ func (m *appArtifactMappingsMigrator) Migrate(ctx context.Context, rc *RunContex
 
 func (m *appArtifactMappingsMigrator) Verify(ctx context.Context, rc *RunContext) (*ResourceReport, error) {
 	rep := newReport(m.name)
-	verifyRowCounts(ctx, rc, rep, "SELECT COUNT(*) FROM application_artifacts", "SELECT COUNT(*) FROM application_artifact_mappings", false)
+	verifyRowCounts(ctx, rc, rep, appArtifactPairsCountQuery, "SELECT COUNT(*) FROM application_artifact_mappings", false)
 	return rep, nil
 }
 
