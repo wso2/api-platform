@@ -57,6 +57,7 @@ Feature: ap CLI MCP proxy commands
       | context           | ${CTX:mcpContext}                                 |
       | specVersion       | 2025-06-18                                        |
       | spec.upstream.url | http://testbench:3009${CTX:gatewayMCPUpstreamPath} |
+    And the CLI command should succeed
     When I run ap with arguments "gateway mcp list"
     Then the CLI command should succeed
     And the CLI output should contain "${CTX:mcpName}"
@@ -82,6 +83,7 @@ Feature: ap CLI MCP proxy commands
       | context           | ${CTX:mcpContext}                                 |
       | specVersion       | 2025-06-18                                        |
       | spec.upstream.url | http://testbench:3009${CTX:gatewayMCPUpstreamPath} |
+    And the CLI command should succeed
     When I run ap with arguments "gateway mcp get --id ${CTX:mcpName}"
     Then the CLI command should succeed
     And the CLI output should contain "${CTX:mcpName}"
@@ -108,6 +110,7 @@ Feature: ap CLI MCP proxy commands
       | context           | ${CTX:mcpContext}                                 |
       | specVersion       | 2025-06-18                                        |
       | spec.upstream.url | http://testbench:3009${CTX:gatewayMCPUpstreamPath} |
+    And the CLI command should succeed
     When I run ap with arguments "gateway mcp delete --id ${CTX:mcpName}"
     Then the CLI command should succeed
 

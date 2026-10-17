@@ -34,6 +34,7 @@ Feature: ap CLI REST API commands
       | apiVersion | ${CTX:gatewaySpecVersion} |
       | name       | ${CTX:apiName}            |
       | spec       | {"displayName":"${CTX:apiName}","version":"v1.0","context":"${CTX:apiContext}","upstream":{"main":{"url":"http://testbench:3000"}},"operations":[{"method":"GET","path":"/data"}]} |
+    And the CLI command should succeed
     When I run ap with arguments "gateway rest-api list"
     Then the CLI command should succeed
     And the CLI output should contain "${CTX:apiName}"
@@ -48,6 +49,7 @@ Feature: ap CLI REST API commands
       | apiVersion | ${CTX:gatewaySpecVersion} |
       | name       | ${CTX:apiName}            |
       | spec       | {"displayName":"${CTX:apiName}","version":"v1.0","context":"${CTX:apiContext}","upstream":{"main":{"url":"http://testbench:3000"}},"operations":[{"method":"GET","path":"/data"}]} |
+    And the CLI command should succeed
     And I run ap with arguments "gateway rest-api delete --id ${CTX:apiName}"
     And the CLI command should succeed
     When I run ap with arguments "gateway rest-api list"
@@ -62,6 +64,7 @@ Feature: ap CLI REST API commands
       | apiVersion | ${CTX:gatewaySpecVersion} |
       | name       | ${CTX:apiName}            |
       | spec       | {"displayName":"${CTX:apiName}","version":"v1.0","context":"${CTX:apiContext}","upstream":{"main":{"url":"http://testbench:3000"}},"operations":[{"method":"GET","path":"/data"}]} |
+    And the CLI command should succeed
     When I run ap with arguments "gateway rest-api get --id ${CTX:apiName}"
     Then the CLI command should succeed
     And the CLI output should contain "${CTX:apiName}"
@@ -81,6 +84,7 @@ Feature: ap CLI REST API commands
       | apiVersion | ${CTX:gatewaySpecVersion} |
       | name       | ${CTX:apiName}            |
       | spec       | {"displayName":"${CTX:apiName}","version":"v1.0","context":"${CTX:apiContext}","upstream":{"main":{"url":"http://testbench:3000"}},"operations":[{"method":"GET","path":"/data"}]} |
+    And the CLI command should succeed
     When I run ap with arguments "gateway rest-api delete --id ${CTX:apiName}"
     Then the CLI command should succeed
     When I run ap with arguments "gateway rest-api get --id ${CTX:apiName}"

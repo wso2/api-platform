@@ -473,6 +473,10 @@ blocks:
           - features/cli/gateway/rest_api.feature
           - features/cli/gateway/mcp.feature
           - features/cli/gateway/image_build.feature
+      - name: ap-cli-subscription
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/cli/gateway/subscription.feature
       - name: api-with-policies
         features:
           - features/gateway/core/api_with_policies.feature

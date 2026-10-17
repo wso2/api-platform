@@ -20,6 +20,7 @@ package apcli
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -50,11 +51,23 @@ const (
 // gatewayAtTarget extracts the server URL from a `a gateway at "<url>"` target.
 var gatewayAtTarget = regexp.MustCompile(`^a gateway at "([^"]*)"$`)
 
-// cliGroups maps the resource kinds the apply step deploys to the ap gateway command group
-// that reads and deletes them.
-var cliGroups = map[string]string{
-	"API":       "rest-api",
-	"MCP proxy": "mcp",
+// cliResource describes how the CLI deploys one resource kind: the verb a feature uses, the ap
+// gateway command group that creates, reads and deletes it, and whether it is a gateway artifact
+// rendered in the request contract of the Gateway release under test. A resource that is not an
+// artifact names its own cleanup kind; an artifact's comes from the platform gateway steps.
+type cliResource struct {
+	verb     string
+	group    string
+	artifact bool
+	cleanup  cleanup.Kind
+}
+
+// cliResources lists the resource kinds the CLI deploy step supports. Artifacts are deployed
+// with `ap gateway apply`; the others with `ap gateway <group> create`.
+var cliResources = map[string]cliResource{
+	"API":          {verb: "apply", group: "rest-api", artifact: true},
+	"MCP proxy":    {verb: "apply", group: "mcp", artifact: true},
+	"subscription": {verb: "create", group: "subscription", cleanup: cleanup.KindSubscription},
 }
 
 // Steps holds one scenario's CLI session. Register builds a fresh instance for every
@@ -79,7 +92,7 @@ func Register(sc *godog.ScenarioContext, topo *runtime.Topology, featureRoot str
 	sc.Step(`^the "ap" CLI is available$`, s.cliAvailable)
 	sc.Step(`^the CLI uses (the platform gateway|a gateway at "[^"]*") as "([^"]*)"$`, s.useGateway)
 	sc.Step(`^I run ap with arguments "([^"]*)"$`, s.runWithArguments)
-	sc.Step(`^I apply (API|MCP proxy) from "([^"]*)" through the CLI with values:$`, s.applyFromTemplate)
+	sc.Step(`^I (apply|create) (API|MCP proxy|subscription) from "([^"]*)" through the CLI with values:$`, s.deployFromTemplate)
 	sc.Step(`^the CLI command should (succeed|fail)$`, s.commandOutcome)
 	sc.Step(`^the CLI (output|error output) should (contain|not contain) "([^"]*)"$`, s.outputContains)
 }
@@ -259,19 +272,20 @@ func flagValue(args []string, flag string) string {
 	return ""
 }
 
-// applyFromTemplate renders the canonical template of a resource kind, writes it to the CLI
-// workspace and deploys it to the current gateway with `ap gateway apply`. The resource is
-// registered for cleanup as soon as the CLI reports it applied, before any assertion can fail.
-func (s *Steps) applyFromTemplate(ctx context.Context, kind, templateName string, table *godog.Table) error {
-	group, ok := cliGroups[kind]
+// deployFromTemplate renders the canonical template of a resource kind, writes it to the CLI
+// workspace and deploys it with ap: an artifact with `ap gateway apply`, any other resource with
+// `ap gateway <group> create`. The result is published for the assertions that follow, so a
+// scenario can assert a rejected deployment. A deployed resource is registered for cleanup as
+// soon as the CLI reports it, before any assertion can fail.
+func (s *Steps) deployFromTemplate(ctx context.Context, verb, kind, templateName string, table *godog.Table) error {
+	resource, ok := cliResources[kind]
 	if !ok {
-		return fmt.Errorf("the CLI cannot apply resource kind %q", kind)
+		return fmt.Errorf("the CLI cannot deploy resource kind %q", kind)
 	}
-	cleanupKind, err := platformgateway.CleanupKindForResource(kind)
-	if err != nil {
-		return err
+	if verb != resource.verb {
+		return fmt.Errorf("the CLI deploys %s with %q, not %q", kind, resource.verb, verb)
 	}
-	definition, err := platformgateway.RenderResourceTemplate(ctx, s.topo, s.featureRoot, kind, templateName, table)
+	cleanupKind, definition, err := s.renderResource(ctx, kind, resource, templateName, table)
 	if err != nil {
 		return err
 	}
@@ -287,21 +301,81 @@ func (s *Steps) applyFromTemplate(ctx context.Context, kind, templateName string
 	if err := os.WriteFile(file, []byte(definition), 0o600); err != nil {
 		return fmt.Errorf("writing %s %q for the CLI: %w", kind, name, err)
 	}
-	if err := s.mustSucceed(ctx, "gateway", "apply", "-f", file); err != nil {
+	args := []string{"gateway", "apply", "-f", file}
+	if !resource.artifact {
+		args = []string{"gateway", resource.group, "create", "-f", file}
+	}
+	res, err := s.execute(ctx, args...)
+	if err != nil {
 		return err
 	}
-	applied := s.last
-	if err := cleanup.Register(ctx, cleanup.Resource{
-		Kind: cleanupKind, ID: name, Actor: "admin", Description: "applied through the ap CLI",
-	}); err != nil {
-		if _, deleteErr := s.execute(ctx, "gateway", group, "delete", "--id", name); deleteErr != nil {
-			return fmt.Errorf("registering %s %q for cleanup: %w; compensation failed: %v", kind, name, err, deleteErr)
-		}
-		return fmt.Errorf("registering %s %q for cleanup: %w", kind, name, err)
+	if res.Exit != 0 {
+		return nil // nothing was deployed; the published result carries the rejection
 	}
-	s.deployed[group+"/"+name] = cleanupKind
-	s.last = applied
+	id := name
+	if !resource.artifact {
+		if id, err = createdID(res.Stdout); err != nil {
+			return fmt.Errorf("the CLI created %s %q: %w", kind, name, err)
+		}
+	}
+	if err := cleanup.Register(ctx, cleanup.Resource{
+		Kind: cleanupKind, ID: id, Actor: "admin", Description: "deployed through the ap CLI",
+	}); err != nil {
+		if _, deleteErr := s.execute(ctx, "gateway", resource.group, "delete", "--id", id); deleteErr != nil {
+			return fmt.Errorf("registering %s %q for cleanup: %w; compensation failed: %v", kind, id, err, deleteErr)
+		}
+		return fmt.Errorf("registering %s %q for cleanup: %w", kind, id, err)
+	}
+	s.deployed[resource.group+"/"+id] = cleanupKind
+	s.last = res
 	return nil
+}
+
+// renderResource renders a resource template and returns the cleanup kind that deletes the
+// resource. Gateway artifacts are rendered in the contract of the Gateway release under test.
+func (s *Steps) renderResource(
+	ctx context.Context, kind string, resource cliResource, templateName string, table *godog.Table,
+) (cleanup.Kind, string, error) {
+	if resource.artifact {
+		cleanupKind, err := platformgateway.CleanupKindForResource(kind)
+		if err != nil {
+			return cleanup.Kind{}, "", err
+		}
+		definition, err := platformgateway.RenderResourceTemplate(ctx, s.topo, s.featureRoot, kind, templateName, table)
+		return cleanupKind, definition, err
+	}
+	path, err := stepscommon.ResourceTemplatePath(s.featureRoot, templateName)
+	if err != nil {
+		return cleanup.Kind{}, "", err
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return cleanup.Kind{}, "", fmt.Errorf("read resource template %q: %w", templateName, err)
+	}
+	definition, err := stepscommon.RenderResourceTemplate(ctx, templateName, content, table)
+	if err != nil {
+		return cleanup.Kind{}, "", fmt.Errorf("resource template %q: %w", templateName, err)
+	}
+	return resource.cleanup, definition, nil
+}
+
+// createdID reads the id of the resource a `create` command printed: a status line followed by
+// the gateway's JSON response.
+func createdID(stdout string) (string, error) {
+	start := strings.Index(stdout, "{")
+	if start < 0 {
+		return "", errors.New("the output has no JSON response")
+	}
+	var created struct {
+		ID string `json:"id"`
+	}
+	if err := json.NewDecoder(strings.NewReader(stdout[start:])).Decode(&created); err != nil {
+		return "", fmt.Errorf("reading the JSON response: %w", err)
+	}
+	if strings.TrimSpace(created.ID) == "" {
+		return "", errors.New("the JSON response has no id")
+	}
+	return created.ID, nil
 }
 
 // resourceName returns metadata.name of a rendered resource document.

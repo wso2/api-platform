@@ -20,6 +20,7 @@ package apcli
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -45,14 +46,15 @@ func testContext(t *testing.T) (context.Context, *cleanup.Registry) {
 }
 
 // fakeCLI writes an executable stand-in for ap. It prints its arguments, HOME, working
-// directory and gateway username, appends its arguments to $HOME/calls.log, writes "oops" to
-// stderr and exits with the status in FAKE_AP_EXIT.
+// directory, gateway username and FAKE_AP_OUT, appends its arguments to $HOME/calls.log, writes
+// "oops" to stderr and exits with the status in FAKE_AP_EXIT.
 func fakeCLI(t *testing.T) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "ap")
 	script := "#!/bin/sh\n" +
 		"echo \"args=$*\"\necho \"home=$HOME\"\necho \"pwd=$(pwd)\"\necho \"user=$WSO2AP_GW_USERNAME\"\n" +
-		"echo \"$*\" >> \"$HOME/calls.log\"\necho \"oops\" >&2\nexit ${FAKE_AP_EXIT:-0}\n"
+		"echo \"$*\" >> \"$HOME/calls.log\"\n[ -n \"$FAKE_AP_OUT\" ] && printf '%s\\n' \"$FAKE_AP_OUT\"\n" +
+		"echo \"oops\" >&2\nexit ${FAKE_AP_EXIT:-0}\n"
 	require.NoError(t, os.WriteFile(path, []byte(script), 0o755))
 	return path
 }
@@ -395,10 +397,97 @@ func TestResourceName(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestApplyFromTemplateRejectsKindsTheCLICannotApply(t *testing.T) {
+func TestDeployFromTemplateRejectsUnsupportedKindsAndVerbs(t *testing.T) {
 	ctx, _ := testContext(t)
 	s := &Steps{deployed: map[string]cleanup.Kind{}}
-	err := s.applyFromTemplate(ctx, "LLM provider", "resources/templates/llm-provider.yaml", &godog.Table{})
-	require.ErrorContains(t, err, "cannot apply")
-	require.Nil(t, s.session)
+	err := s.deployFromTemplate(ctx, "apply", "LLM provider", "resources/templates/llm-provider.yaml", &godog.Table{})
+	require.ErrorContains(t, err, "cannot deploy")
+	err = s.deployFromTemplate(ctx, "create", "API", "resources/templates/rest-api.yaml", &godog.Table{})
+	require.ErrorContains(t, err, `with "apply", not "create"`)
+	err = s.deployFromTemplate(ctx, "apply", "subscription", "resources/templates/subscription.yaml", &godog.Table{})
+	require.ErrorContains(t, err, `with "create", not "apply"`)
+	require.Nil(t, s.session, "nothing runs for an unsupported deployment")
+}
+
+// valueTable builds a two-column values table from key/value pairs.
+func valueTable(t *testing.T, pairs ...string) *godog.Table {
+	t.Helper()
+	require.Zero(t, len(pairs)%2)
+	type cell struct {
+		Value string `json:"value"`
+	}
+	type row struct {
+		Cells []cell `json:"cells"`
+	}
+	payload := struct {
+		Rows []row `json:"rows"`
+	}{}
+	for i := 0; i < len(pairs); i += 2 {
+		payload.Rows = append(payload.Rows, row{Cells: []cell{{Value: pairs[i]}, {Value: pairs[i+1]}}})
+	}
+	data, err := json.Marshal(payload)
+	require.NoError(t, err)
+	table := &godog.Table{}
+	require.NoError(t, json.Unmarshal(data, table))
+	return table
+}
+
+func TestDeployFromTemplateCreatesASubscriptionAndRegistersItsID(t *testing.T) {
+	ctx, reg := testContext(t)
+	t.Setenv(EnvBinary, fakeCLI(t))
+	t.Setenv("FAKE_AP_OUT", "Subscription \"orders-sub\" created successfully.\n{\"id\": \"ref-01\", \"apiId\": \"orders\"}")
+	reg.RegisterDeleter(cleanup.KindSubscription, func(context.Context, cleanup.Resource) error { return nil })
+	s := &Steps{featureRoot: t.TempDir(), deployed: map[string]cleanup.Kind{}}
+
+	require.NoError(t, s.deployFromTemplate(ctx, "create", "subscription", "resources/templates/subscription.yaml",
+		valueTable(t, "apiVersion", "gateway.api-platform.wso2.com/v1", "name", "orders-sub",
+			"spec.externalRefId", "ref-01", "spec.apiId", "orders")))
+	invocations := calls(t, s)
+	require.Len(t, invocations, 1)
+	require.Contains(t, invocations[0], "gateway subscription create -f ")
+	written, err := os.ReadFile(filepath.Join(s.session.Workspace(), "orders-sub.yaml"))
+	require.NoError(t, err)
+	require.Contains(t, string(written), "kind: Subscription")
+	require.Contains(t, string(written), "externalRefId: ref-01")
+	require.NoError(t, s.commandOutcome(ctx, "succeed"))
+
+	var registered []string
+	for _, pending := range reg.Pending() {
+		if pending.Kind == cleanup.KindSubscription {
+			registered = append(registered, pending.ID)
+		}
+	}
+	require.Equal(t, []string{"ref-01"}, registered, "the id the gateway returned is registered for cleanup")
+	require.Equal(t, cleanup.KindSubscription, s.deployed["subscription/ref-01"])
+}
+
+func TestDeployFromTemplatePublishesARejectedCreateWithoutRegisteringIt(t *testing.T) {
+	ctx, reg := testContext(t)
+	t.Setenv(EnvBinary, fakeCLI(t))
+	t.Setenv("FAKE_AP_EXIT", "1")
+	s := &Steps{featureRoot: t.TempDir(), deployed: map[string]cleanup.Kind{}}
+
+	require.NoError(t, s.deployFromTemplate(ctx, "create", "subscription", "resources/templates/subscription.yaml",
+		valueTable(t, "apiVersion", "gateway.api-platform.wso2.com/v1", "name", "orders-sub")),
+		"a rejected create is a result to assert on, not a step failure")
+	require.NoError(t, s.commandOutcome(ctx, "fail"))
+	for _, pending := range reg.Pending() {
+		require.NotEqual(t, cleanup.KindSubscription, pending.Kind)
+	}
+	require.Empty(t, s.deployed)
+}
+
+func TestCreatedID(t *testing.T) {
+	id, err := createdID("Subscription \"a\" created successfully.\n{\n  \"id\": \"sub-1\"\n}\n")
+	require.NoError(t, err)
+	require.Equal(t, "sub-1", id)
+
+	_, err = createdID("created")
+	require.ErrorContains(t, err, "no JSON response")
+	_, err = createdID("{\"apiId\": \"x\"}")
+	require.ErrorContains(t, err, "no id")
+	_, err = createdID("{not json")
+	require.Error(t, err)
+	_, err = createdID("")
+	require.Error(t, err)
 }
