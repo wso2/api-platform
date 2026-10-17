@@ -211,7 +211,7 @@ func (f *fakeWait) newWait(wait time.Duration, stop <-chan os.Signal) *databaseW
 	w := newDatabaseWait(func() health.Result {
 		ok := f.calls < len(f.healthy) && f.healthy[f.calls]
 		f.calls++
-		return health.Result{Healthy: ok}
+		return databaseResult(ok)
 	}, wait, stop, slog.New(slog.NewTextHandler(&f.logs, nil)))
 	w.now = func() time.Time { return f.clock }
 	w.after = func(d time.Duration) <-chan time.Time {
@@ -222,6 +222,27 @@ func (f *fakeWait) newWait(wait time.Duration, stop <-chan os.Signal) *databaseW
 		return ch
 	}
 	return w
+}
+
+// databaseResult is a health result whose database check is up or down, with the
+// startup check always down, as during a real startup wait.
+func databaseResult(up bool) health.Result {
+	db := health.CheckResult{Status: health.StatusDown}
+	if up {
+		db = health.CheckResult{Status: health.StatusUp}
+	}
+	return health.Result{Checks: map[string]health.CheckResult{
+		"database": db,
+		"startup":  {Status: health.StatusDown, Error: "starting"},
+	}}
+}
+
+func TestStartupGate(t *testing.T) {
+	gate := &startupGate{}
+
+	assert.ErrorIs(t, gate.check(context.Background()), errStarting)
+	gate.markStarted()
+	assert.NoError(t, gate.check(context.Background()))
 }
 
 func TestDatabaseWaitHealthyAtOnce(t *testing.T) {
@@ -378,15 +399,43 @@ func TestServeHealthWhileWaitingWithReachableDatabase(t *testing.T) {
 	db, err := storage.Open(storage.BackendConfig{Type: "sqlite", SQLitePath: filepath.Join(t.TempDir(), "gw.db")}, discardLogger())
 	require.NoError(t, err)
 	defer db.Close()
-	checker := newWaitChecker(cfg)
+	var healthLogs strings.Builder
+	checker := health.NewChecker(health.Options{
+		Component: "gateway-controller", HealthyStatus: "healthy",
+		CheckTimeout: cfg.Controller.Health.CheckTimeout, CacheTTL: cfg.Controller.Health.CacheTTL,
+		Logger:         slog.New(slog.NewTextHandler(&healthLogs, nil)),
+		BackoffInitial: cfg.Controller.Health.BackoffInitial, BackoffMax: cfg.Controller.Health.BackoffMax,
+	})
+	gate := &startupGate{}
 
-	admin, code, ok := serveHealthWhileWaiting(cfg, discardLogger(), checker, &recordingCloser{}, db, rejectAll, nil)
+	admin, code, ok := serveHealthWhileWaiting(cfg, discardLogger(), checker, &recordingCloser{}, db, gate, rejectAll, nil)
 
-	require.True(t, ok)
+	require.True(t, ok, "the wait ends on the database alone, while the startup check is still down")
 	assert.Equal(t, 0, code)
 	require.NotNil(t, admin)
 	defer endStartupWithoutDatabase(errStartupInterrupted, admin, time.Second, discardLogger())
-	assert.True(t, checker.Evaluate().Healthy, "the database check is registered on the opened database")
+
+	url := fmt.Sprintf("http://127.0.0.1:%d/api/admin/v1/health", cfg.Controller.AdminServer.Port)
+	var resp *http.Response
+	require.Eventually(t, func() bool {
+		var err error
+		resp, err = http.Get(url)
+		return err == nil
+	}, 2*time.Second, 20*time.Millisecond, "admin server must come up")
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	assert.Equal(t, http.StatusServiceUnavailable, resp.StatusCode, "not healthy before every server has started")
+	assert.Contains(t, string(body), `"database":{"status":"up"}`)
+	assert.Contains(t, string(body), `"startup":{"status":"down","error":"starting"`)
+
+	gate.markStarted()
+	resp, err = http.Get(url)
+	require.NoError(t, err)
+	body, _ = io.ReadAll(resp.Body)
+	resp.Body.Close()
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Contains(t, string(body), `"startup":{"status":"up"}`)
+	assert.NotContains(t, healthLogs.String(), "startup", "the startup check is never logged")
 }
 
 func TestServeHealthWhileWaitingGivesUp(t *testing.T) {
@@ -397,7 +446,8 @@ func TestServeHealthWhileWaitingGivesUp(t *testing.T) {
 	require.NoError(t, err)
 	healthLog := &recordingCloser{}
 
-	admin, code, ok := serveHealthWhileWaiting(cfg, discardLogger(), newWaitChecker(cfg), healthLog, db, rejectAll, nil)
+	admin, code, ok := serveHealthWhileWaiting(cfg, discardLogger(), newWaitChecker(cfg), healthLog, db, &startupGate{},
+		rejectAll, nil)
 
 	assert.False(t, ok)
 	assert.Equal(t, 1, code)

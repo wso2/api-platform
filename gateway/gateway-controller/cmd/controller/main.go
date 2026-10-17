@@ -206,7 +206,9 @@ func main() {
 		os.Exit(1)
 	}
 	defer db.Close()
-	controllerAdminServer, exitCode, ok := serveHealthWhileWaiting(cfg, log, healthChecker, healthLog, db, authMiddleWare, quit)
+	startup := &startupGate{}
+	controllerAdminServer, exitCode, ok := serveHealthWhileWaiting(cfg, log, healthChecker, healthLog, db, startup,
+		authMiddleWare, quit)
 	if !ok {
 		os.Exit(exitCode)
 	}
@@ -892,6 +894,8 @@ func main() {
 		}()
 	}
 
+	// Every server is running, so health may now report the controller healthy.
+	startup.markStarted()
 	log.Info("Gateway Controller started successfully")
 
 	// Print banner when both router and policy engine have sent their first ACK,
