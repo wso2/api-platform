@@ -826,30 +826,35 @@ gateway:
       podAnnotations: {}
       podLabels: {}
       priorityClassName: ""
+      # The health endpoint answers 503 while the controller's database is down and while
+      # the controller is still starting. Readiness takes the pod out of the Service after
+      # about 15 s of failed answers; liveness restarts it only after about 2 minutes, so
+      # a short database outage never causes a restart.
       livenessProbe:
         httpGet:
           # Admin API is served under /api/admin/v1 (see gateway-controller admin OpenAPI spec).
           path: /api/admin/v1/health
           port: admin
-        initialDelaySeconds: 10
         periodSeconds: 10
         timeoutSeconds: 5
-        failureThreshold: 3
+        failureThreshold: 12
       readinessProbe:
         httpGet:
           path: /api/admin/v1/health
           port: admin
-        initialDelaySeconds: 5
         periodSeconds: 5
         timeoutSeconds: 3
         failureThreshold: 3
-      # Optional startup probe for slow-starting environments. Uncomment to enable.
-      # startupProbe:
-      #   httpGet:
-      #     path: /api/admin/v1/health
-      #     port: admin
-      #   periodSeconds: 5
-      #   failureThreshold: 30
+      # Holds off the liveness probe while the controller starts. It allows 6 minutes;
+      # keep this above gateway.config.controller.health.startup_wait so the controller,
+      # not the probe, decides when a database wait gives up. Set to null to disable.
+      startupProbe:
+        httpGet:
+          path: /api/admin/v1/health
+          port: admin
+        periodSeconds: 5
+        timeoutSeconds: 3
+        failureThreshold: 72
       # Resource limits and requests
       # Uncomment and adjust based on your workload
       resources: {}
@@ -1041,35 +1046,42 @@ gateway:
       podAnnotations: {}
       podLabels: {}
       priorityClassName: ""
+      # Both routes are served on the main traffic listener and answered by the policy
+      # engine through the router, so they fail when the policy engine is down. The port
+      # and scheme below are replaced by the template to follow the router listener
+      # configuration. Liveness does not depend on the controller link: a controller
+      # outage never restarts the runtime. Readiness also fails once the controller link
+      # has been down longer than gateway.config.policy_engine.health.xds_grace, and takes
+      # the pod out of the Service after about 15 s of failed answers; liveness restarts
+      # it only after about 2 minutes.
       livenessProbe:
         httpGet:
-          # Direct-response route served by the router (Envoy) on the main
-          # traffic listener — see constants.GatewayHealthyPath.
+          # See constants.GatewayHealthyPath.
           path: /_gateway-health/healthy
           port: https
           scheme: HTTPS
-        initialDelaySeconds: 30
         periodSeconds: 10
         timeoutSeconds: 5
-        failureThreshold: 3
+        failureThreshold: 12
       readinessProbe:
         httpGet:
           # See constants.GatewayReadyPath.
           path: /_gateway-health/ready
           port: https
           scheme: HTTPS
-        initialDelaySeconds: 10
         periodSeconds: 5
         timeoutSeconds: 3
-        failureThreshold: 6
-      # Optional startup probe for slow-starting environments. Uncomment to enable.
-      # startupProbe:
-      #   httpGet:
-      #     path: /_gateway-health/ready
-      #     port: https
-      #     scheme: HTTPS
-      #   periodSeconds: 5
-      #   failureThreshold: 30
+        failureThreshold: 3
+      # Holds off the liveness probe until the runtime has received its first
+      # configuration from the controller. It allows 5 minutes; set to null to disable.
+      startupProbe:
+        httpGet:
+          path: /_gateway-health/ready
+          port: https
+          scheme: HTTPS
+        periodSeconds: 5
+        timeoutSeconds: 3
+        failureThreshold: 60
       # Resource limits and requests
       # Uncomment and adjust based on your workload
       resources: {}
