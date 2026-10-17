@@ -157,8 +157,13 @@ schemas do not have it. v2's Associations tab lists an application's artifacts f
 `application_artifact_mappings` step derives one row per distinct
 `(application_uuid, artifact_uuid)` from `application_api_keys ⋈ api_keys`, with
 `created_at` = the earliest of those key mappings and `created_by` NULL (what v2's own
-insert leaves). Verify compares the v2 count with the same derivation. The step is
-not reversible (SKIP in reverse).
+insert leaves). It follows v2's own association rule
+(`validateAssociationTargetForApplication`): only applications of type `genai` (the
+Gen AI apps that have the tab), only keys of LLM providers and LLM proxies in the
+application's organization, and an LLM proxy only from the application's project. A
+key mapping outside that rule is still migrated as a key mapping but yields no
+association and is reported as a WARN naming the rule it breaks. Verify compares the
+v2 count with the same derivation. The step is not reversible (SKIP in reverse).
 
 ## NULL vs empty string
 
