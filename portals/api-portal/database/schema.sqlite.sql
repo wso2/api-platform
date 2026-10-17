@@ -371,6 +371,8 @@ CREATE INDEX IF NOT EXISTS idx_subscription_status ON subscriptions(status);
 -- api_uuid is only ever a trailing column above (org_uuid, api_uuid) -- add a
 -- dedicated leading index so single-column api_uuid lookups/joins stay indexed.
 CREATE INDEX IF NOT EXISTS idx_subscription_api_uuid ON subscriptions(api_uuid);
+-- Enforce at most one subscription per API per user per organization.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_subscriptions_org_api_user ON subscriptions(org_uuid, api_uuid, created_by, portal_id);
 
 -- API Keys table (portal-scoped standalone, non-OAuth2 API key credentials for an API)
 CREATE TABLE IF NOT EXISTS api_keys (

@@ -436,6 +436,9 @@ CREATE INDEX idx_subscription_api_uuid ON dbo.subscriptions(api_uuid);
 -- token IS NOT NULL reproduces the intended "many token-less subscriptions" behavior.
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'uq_subscription_token' AND object_id = OBJECT_ID(N'dbo.subscriptions'))
 CREATE UNIQUE INDEX uq_subscription_token ON dbo.subscriptions(token) WHERE token IS NOT NULL;
+-- Enforce at most one subscription per API per user per organization.
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'uq_subscriptions_org_api_user' AND object_id = OBJECT_ID(N'dbo.subscriptions'))
+CREATE UNIQUE INDEX uq_subscriptions_org_api_user ON dbo.subscriptions(org_uuid, api_uuid, created_by, portal_id);
 
 -- API Keys table (portal-scoped standalone, non-OAuth2 API key credentials for an API)
 IF OBJECT_ID(N'dbo.api_keys', N'U') IS NULL
