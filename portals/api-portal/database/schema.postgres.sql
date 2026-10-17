@@ -372,6 +372,32 @@ CREATE INDEX IF NOT EXISTS idx_subscription_status ON subscriptions(status);
 -- api_uuid is only ever a trailing column above (org_uuid, api_uuid) -- add a
 -- dedicated leading index so single-column api_uuid lookups/joins stay indexed.
 CREATE INDEX IF NOT EXISTS idx_subscription_api_uuid ON subscriptions(api_uuid);
+-- Reconcile any historical duplicate subscriptions before creating the unique index,
+-- preserving the earliest created subscription (the one backing Platform API/gateway)
+-- and nullifying any referencing api_keys.
+UPDATE api_keys
+SET subscription_uuid = NULL
+WHERE subscription_uuid IN (
+    SELECT s1.uuid
+    FROM subscriptions s1
+    JOIN subscriptions s2 ON s1.org_uuid = s2.org_uuid
+        AND s1.api_uuid = s2.api_uuid
+        AND s1.created_by = s2.created_by
+        AND s1.portal_id = s2.portal_id
+        AND (s1.created_at > s2.created_at OR (s1.created_at = s2.created_at AND s1.uuid > s2.uuid))
+);
+
+DELETE FROM subscriptions
+WHERE uuid IN (
+    SELECT s1.uuid
+    FROM subscriptions s1
+    JOIN subscriptions s2 ON s1.org_uuid = s2.org_uuid
+        AND s1.api_uuid = s2.api_uuid
+        AND s1.created_by = s2.created_by
+        AND s1.portal_id = s2.portal_id
+        AND (s1.created_at > s2.created_at OR (s1.created_at = s2.created_at AND s1.uuid > s2.uuid))
+);
+
 -- Enforce at most one subscription per API per user per organization.
 CREATE UNIQUE INDEX IF NOT EXISTS uq_subscriptions_org_api_user ON subscriptions(org_uuid, api_uuid, created_by, portal_id);
 

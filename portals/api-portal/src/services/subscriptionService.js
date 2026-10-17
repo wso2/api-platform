@@ -78,6 +78,13 @@ function formatSubscriptionResponse(sub, audit) {
     };
 }
 
+/**
+ * Handles creation of a subscription to an API, rejecting duplicate requests with 409 Conflict.
+ *
+ * @param {object} req - Express request object.
+ * @param {object} res - Express response object.
+ * @returns {Promise<object>} Express response.
+ */
 const createSubscription = async (req, res) => {
     const orgId = req.orgId;
     const { artifactId: apiHandle, subscriptionPlanId: reqPlanHandle } = req.body;
@@ -141,6 +148,12 @@ const createSubscription = async (req, res) => {
         const audit = await userIdpReferenceDao.buildSingleAuditFields(created);
         return res.status(201).json(formatSubscriptionResponse(created, audit));
     } catch (error) {
+        if (error.isTokenCollision) {
+            logger.error('Token collision limit reached while creating subscription', {
+                error: error.message, orgId, apiId,
+            });
+            return util.sendError(res, 500, 'Internal Server Error', { errors: [{ message: 'Failed to generate subscription token' }] });
+        }
         if (db.isDuplicateKeyError(error) || error.isDuplicate) {
             return util.sendError(res, 409, 'Conflict', { errors: [{ message: 'A subscription for this API already exists' }] });
         }

@@ -180,3 +180,24 @@ test('createSubscription converts database duplicate key error to 409 Conflict',
     assert.strictEqual(res.status, 409);
     assert.strictEqual(res.body.errors[0].message, 'A subscription for this API already exists');
 });
+
+test('createSubscription handles exhausted token collision with 500 error', async () => {
+    const service = loadService({
+        subDao: {
+            findByApiAndUser: async () => null,
+            create: async () => {
+                const err = new Error('Failed to generate unique subscription token after multiple attempts');
+                err.isTokenCollision = true;
+                throw err;
+            },
+        },
+    });
+
+    const res = await call(service.createSubscription, {
+        artifactId: 'test-api',
+        subscriptionPlanId: 'gold',
+    });
+
+    assert.strictEqual(res.status, 500);
+    assert.strictEqual(res.body.errors[0].message, 'Failed to generate subscription token');
+});

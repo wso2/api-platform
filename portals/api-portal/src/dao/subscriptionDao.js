@@ -103,6 +103,17 @@ async function attachApiAndPlan(subs) {
     return subs;
 }
 
+/**
+ * Creates a new subscription record for an API and plan.
+ *
+ * @param {string} orgId - Organization UUID.
+ * @param {string} apiId - API UUID.
+ * @param {string|null} planId - Subscription plan UUID.
+ * @param {string} createdBy - Identifier of the creating actor.
+ * @param {object} [transaction] - Optional database transaction.
+ * @param {object} [opts] - Additional options such as external subToken.
+ * @returns {Promise<object>} The created subscription object with plaintext token.
+ */
 async function create(orgId, apiId, planId, createdBy, transaction, opts = {}) {
     const exec = transaction || db;
     const now = new Date();
@@ -160,7 +171,12 @@ async function create(orgId, apiId, planId, createdBy, transaction, opts = {}) {
                 (typeof err.message === 'string' && (err.message.includes('subscriptions.token') || err.message.includes('uq_subscription_token'))) ||
                 (typeof err.constraint === 'string' && (err.constraint.includes('token') || err.constraint.includes('uq_subscription_token')))
             );
-            if (isTokenCollision && attempt < 2) continue;
+            if (isTokenCollision) {
+                if (attempt < 2) continue;
+                const tokenErr = new Error('Failed to generate unique subscription token after multiple attempts');
+                tokenErr.isTokenCollision = true;
+                throw tokenErr;
+            }
             throw err;
         }
     }
@@ -313,6 +329,15 @@ const findByKey = async (orgId, apiId, planId, t) => {
     }
 };
 
+/**
+ * Finds an existing subscription for a given API and user within an organization.
+ *
+ * @param {string} orgId - Organization UUID.
+ * @param {string} apiId - API UUID.
+ * @param {string} userId - Identifier of the creating user.
+ * @param {object} [t] - Optional database transaction.
+ * @returns {Promise<object|null>} The subscription row if found, or null otherwise.
+ */
 const findByApiAndUser = async (orgId, apiId, userId, t) => {
     const exec = t || db;
     try {

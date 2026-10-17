@@ -89,3 +89,67 @@ test('findByApiAndUser returns null when not found', async () => {
     const result = await dao.findByApiAndUser('org-1', 'api-1', 'user-1');
     assert.strictEqual(result, null);
 });
+
+test('create throws immediately on subscription unique violation without retrying', async () => {
+    let attempts = 0;
+    const stubs = {
+        driver: {
+            execute: async () => {
+                attempts++;
+                const err = new Error('UNIQUE constraint failed: subscriptions.org_uuid, subscriptions.api_uuid, subscriptions.created_by, subscriptions.portal_id');
+                err.code = 'SQLITE_CONSTRAINT_UNIQUE';
+                throw err;
+            },
+            queryOne: async () => null,
+            query: async () => [],
+            isDuplicateKeyError: (err) => Boolean(err && (err.code === 'SQLITE_CONSTRAINT_UNIQUE' || err.message?.includes('UNIQUE constraint failed'))),
+        },
+        orgContext: { getPortalId: () => 'portal-a' },
+    };
+    for (const [k, exports] of Object.entries(stubs)) {
+        require.cache[PATHS[k]] = { id: PATHS[k], filename: PATHS[k], loaded: true, exports };
+    }
+    delete require.cache[PATHS.dao];
+    const dao = require(PATHS.dao);
+
+    await assert.rejects(
+        () => dao.create('org-1', 'api-1', 'plan-1', 'user-1'),
+        (err) => {
+            assert.strictEqual(attempts, 1);
+            assert.strictEqual(err.isTokenCollision, undefined);
+            return true;
+        }
+    );
+});
+
+test('create marks exhausted token collisions with isTokenCollision = true', async () => {
+    let attempts = 0;
+    const stubs = {
+        driver: {
+            execute: async () => {
+                attempts++;
+                const err = new Error('UNIQUE constraint failed: subscriptions.token');
+                err.code = 'SQLITE_CONSTRAINT_UNIQUE';
+                throw err;
+            },
+            queryOne: async () => null,
+            query: async () => [],
+            isDuplicateKeyError: (err) => Boolean(err && (err.code === 'SQLITE_CONSTRAINT_UNIQUE' || err.message?.includes('UNIQUE constraint failed'))),
+        },
+        orgContext: { getPortalId: () => 'portal-a' },
+    };
+    for (const [k, exports] of Object.entries(stubs)) {
+        require.cache[PATHS[k]] = { id: PATHS[k], filename: PATHS[k], loaded: true, exports };
+    }
+    delete require.cache[PATHS.dao];
+    const dao = require(PATHS.dao);
+
+    await assert.rejects(
+        () => dao.create('org-1', 'api-1', 'plan-1', 'user-1'),
+        (err) => {
+            assert.strictEqual(attempts, 3);
+            assert.strictEqual(err.isTokenCollision, true);
+            return true;
+        }
+    );
+});
