@@ -32,6 +32,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -261,7 +262,7 @@ func (f *fakeWait) newWait(wait time.Duration, stop <-chan os.Signal) *databaseW
 			ok = f.healthy[f.calls]
 		}
 		f.calls++
-		return health.Result{Healthy: ok}
+		return databaseResult(ok)
 	}, wait, stop, slog.New(slog.NewTextHandler(&f.logs, nil)))
 	w.now = func() time.Time { return f.clock }
 	w.after = func(d time.Duration) <-chan time.Time {
@@ -272,6 +273,32 @@ func (f *fakeWait) newWait(wait time.Duration, stop <-chan os.Signal) *databaseW
 		return ch
 	}
 	return w
+}
+
+// databaseResult is a health result whose database check is up or down, with the
+// startup check always down, as during a real startup wait.
+func databaseResult(up bool) health.Result {
+	db := health.CheckResult{Status: health.StatusDown}
+	if up {
+		db = health.CheckResult{Status: health.StatusUp}
+	}
+	return health.Result{Checks: map[string]health.CheckResult{
+		"database": db,
+		"startup":  {Status: health.StatusDown, Error: "starting"},
+	}}
+}
+
+func TestStartupCheck(t *testing.T) {
+	started := new(atomic.Bool)
+	check := newStartupCheck(started)
+
+	if err := check(context.Background()); !errors.Is(err, errStarting) {
+		t.Fatalf("before start: %v, want errStarting", err)
+	}
+	started.Store(true)
+	if err := check(context.Background()); err != nil {
+		t.Fatalf("after start: %v, want nil", err)
+	}
 }
 
 func TestDatabaseWaitHealthyAtOnce(t *testing.T) {
@@ -393,15 +420,29 @@ func TestStartServingWithReachableDatabase(t *testing.T) {
 	}
 	base := fmt.Sprintf("http://127.0.0.1:%d", cfg.Listeners.HTTP.Port)
 
+	resp, err := http.Get(base + "/health")
+	if err != nil {
+		t.Fatalf("GET /health: %v", err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusServiceUnavailable || !strings.Contains(string(body), `"database":{"status":"up"}`) ||
+		!strings.Contains(string(body), `"startup":{"status":"down","error":"starting"`) {
+		t.Errorf("/health before the full API serves = %d %s, want 503 with database up and startup down",
+			resp.StatusCode, body)
+	}
+	sv.started.Store(true)
 	if body := getBody(t, http.DefaultClient, base+"/health"); !strings.Contains(body, `"status":"ok"`) ||
-		!strings.Contains(body, `"database":{"status":"up"}`) {
-		t.Errorf("/health = %s, want ok with database up", body)
+		!strings.Contains(body, `"startup":{"status":"up"}`) {
+		t.Errorf("/health once started = %s, want ok with startup up", body)
 	}
 	if body := getBody(t, http.DefaultClient, base+"/api/internal/v1/gateways"); !strings.Contains(body, "SERVICE_UNAVAILABLE") {
 		t.Errorf("other paths before the full server takes over = %s, want 503 SERVICE_UNAVAILABLE", body)
 	}
-	if _, err := os.Stat(cfg.Health.LogFile); err != nil {
+	if logged, err := os.ReadFile(cfg.Health.LogFile); err != nil {
 		t.Errorf("health log file not created: %v", err)
+	} else if strings.Contains(string(logged), "startup") {
+		t.Errorf("health log mentions the startup check: %s", logged)
 	}
 	if err := sv.db.Ping(); err != nil {
 		t.Errorf("database pool not usable: %v", err)

@@ -57,25 +57,33 @@ var ErrStartupInterrupted = errors.New("shutdown signal received during startup"
 // of the startup wait.
 var errStartupWaitExpired = errors.New("database not reachable within the startup wait")
 
+// errStarting is the startup check's reason until the full API serves.
+var errStarting = health.Reason("starting")
+
 // serving is what startup acquires before the full server is built: the health
-// checker and its log file, the database pool, the bound listeners and the channel
-// that receives shutdown signals.
+// checker and its log file, the database pool, the bound listeners, the channel that
+// receives shutdown signals, and the flag that ends the health check's startup phase.
 type serving struct {
 	health    *health.Checker
 	healthLog io.Closer
 	db        *database.DB
 	listeners *listenerSet
 	quit      chan os.Signal
+	// started is set once the full API serves on the listeners; until then the startup
+	// check keeps health down.
+	started *atomic.Bool
 }
 
 // startServing opens the database pool, binds the listeners and waits for the database
 // to answer. The listeners are bound before the wait, so health probes get a real
-// answer (503, database down) while it lasts instead of a refused connection; every
-// other request gets 503 until the full server takes over. On any failure, everything
-// acquired so far is released again.
+// answer (503) while it lasts instead of a refused connection; every other request gets
+// 503 until the full server takes over. Health stays down, through the startup check,
+// until the caller sets started. On any failure, everything acquired so far is released
+// again.
 func (s *Server) startServing(cfg *config.Server) (*serving, error) {
-	sv := &serving{quit: make(chan os.Signal, 1)}
+	sv := &serving{quit: make(chan os.Signal, 1), started: new(atomic.Bool)}
 	sv.health, sv.healthLog = newHealthChecker(cfg, s.logger)
+	sv.health.RegisterUnlogged("startup", newStartupCheck(sv.started))
 	// Shutdown signals are caught from here on, so one arriving during the wait stops
 	// startup cleanly; Start keeps receiving them afterwards.
 	signal.Notify(sv.quit, syscall.SIGINT, syscall.SIGTERM)
@@ -135,6 +143,17 @@ func (sv *serving) release() {
 		_ = sv.db.Close()
 	}
 	_ = sv.healthLog.Close()
+}
+
+// newStartupCheck reports the platform as starting until started is set. It is
+// registered unlogged: it fails on every start, so its failure is not news.
+func newStartupCheck(started *atomic.Bool) health.CheckFunc {
+	return func(context.Context) error {
+		if started.Load() {
+			return nil
+		}
+		return errStarting
+	}
 }
 
 // newHealthChecker builds the checker behind /health and the logger it reports check
@@ -332,7 +351,8 @@ func newStartupHandler(checker *health.Checker) http.Handler {
 }
 
 // databaseWait waits at startup for the database health check to pass, retrying with
-// backoff, for at most wait.
+// backoff, for at most wait. Only the database check counts: the startup check stays
+// down until startup has finished, so it cannot be part of the wait.
 type databaseWait struct {
 	evaluate func() health.Result
 	wait     time.Duration
@@ -360,7 +380,7 @@ func newDatabaseWait(evaluate func() health.Result, wait time.Duration, stop <-c
 // Check failures and the recovery are logged by the health checker, on its own
 // backoff schedule, so the retries here add no log lines of their own.
 func (w *databaseWait) run() error {
-	if w.evaluate().Healthy {
+	if w.databaseUp() {
 		return nil
 	}
 	w.logger.Info("waiting for the database before completing startup", slog.Duration("startup_wait", w.wait))
@@ -378,9 +398,14 @@ func (w *databaseWait) run() error {
 			return ErrStartupInterrupted
 		case <-w.after(min(interval, remaining)):
 		}
-		if w.evaluate().Healthy {
+		if w.databaseUp() {
 			return nil
 		}
 		interval = min(2*interval, startupRetryMax)
 	}
+}
+
+// databaseUp evaluates health and reports whether the database check passed.
+func (w *databaseWait) databaseUp() bool {
+	return w.evaluate().Checks["database"].Status == health.StatusUp
 }
