@@ -280,6 +280,23 @@ gateway:
         # - text: Human-readable text format (recommended for development)
         format: json
 
+      # Health checks behind the admin health endpoint. Failures are logged when a check
+      # starts failing, repeated at doubling intervals up to backoff_max, and recovery is
+      # logged once.
+      health:
+        check_timeout: 2s       # per-check deadline
+        cache_ttl: 3s           # how long an evaluated health result is reused
+        # Health log file, in addition to stdout. It must sit under gateway.controller.healthLogVolume.mountPath
+        # while that volume is mounted. "" logs to stdout only and mounts no volume.
+        log_file: /app/logs/health.log
+        log_max_size_mb: 10     # rotate the log file at this size
+        log_max_files: 5        # rotated backups to keep
+        backoff_initial: 10s    # delay before the first repeated failure line
+        backoff_max: 5m         # cap on the repeat interval
+        # How long startup waits for the database before the controller exits. Keep it
+        # below the gateway.controller.deployment.startupProbe allowance (6 minutes).
+        startup_wait: 5m
+
     # Router (Envoy) configuration
     router:
       # Gateway host for incoming requests
@@ -561,6 +578,23 @@ gateway:
         # Log format: json, text
         format: json
 
+      # Health checks behind the gateway health routes. Failures are logged when a check
+      # starts failing, repeated at doubling intervals up to backoff_max, and recovery is
+      # logged once. log_file is also where the runtime's health watchdog writes.
+      health:
+        check_timeout: 2s       # per-check deadline
+        cache_ttl: 3s           # how long an evaluated health result is reused
+        # Health log file, in addition to stdout. It must sit under gateway.gatewayRuntime.healthLogVolume.mountPath
+        # while that volume is mounted. "" logs to stdout only and mounts no volume.
+        log_file: /app/logs/health.log
+        log_max_size_mb: 10     # rotate the log file at this size
+        log_max_files: 5        # rotated backups to keep
+        backoff_initial: 10s    # delay before the first repeated failure line
+        backoff_max: 5m         # cap on the repeat interval
+        # How long the controller link may be down before readiness fails. Liveness never
+        # depends on it.
+        xds_grace: 5m
+
       # Prometheus metrics server (policy-engine side)
       metrics:
         # Defaults to false to match the policy-engine binary's own code default
@@ -632,6 +666,11 @@ gateway:
   #   - `{{ file "/path" }}` reads a mounted file — mount the Secret via
   #     gateway.gatewayRuntime.deployment.extraVolumes / extraVolumeMounts and
   #     point the token at that mount path.
+  #
+  # Do not redefine a table the chart already renders (for example [controller.health]
+  # or [policy_engine.health]; use gateway.config.controller.health and
+  # gateway.config.policy_engine.health instead): a second copy of a table is a TOML
+  # error and the controller and runtime will not start.
   #
   # Example — a [custom_section] table:
   #   config_toml: |
@@ -808,6 +847,15 @@ gateway:
       #   annotations:
       #     helm.sh/resource-policy: keep
       annotations: {}
+    # Writable, per-pod volume for the controller's health log file. Mounted when
+    # gateway.config.controller.health.log_file is set (uncomment enabled to override).
+    # Keep sizeLimit above log_max_size_mb x (log_max_files + 1) so rotation bounds the
+    # file, not the kubelet — the kubelet's limit EVICTS the pod.
+    healthLogVolume:
+      # enabled: true
+      mountPath: /app/logs
+      sizeLimit: 128Mi
+      # medium: "Memory"         # tmpfs — off disk, but counts against the memory limit.
     deployment:
       enabled: true
       replicaCount: 1
@@ -961,6 +1009,16 @@ gateway:
       # medium: "Memory"         # tmpfs — off disk entirely, but counts against
                                  # the container's memory limit.
 
+    # Writable, per-pod volume for the runtime's health log file (policy engine and
+    # health watchdog). Mounted when gateway.config.policy_engine.health.log_file is set
+    # (uncomment enabled to override). Keep sizeLimit above
+    # log_max_size_mb x (log_max_files + 1) so rotation bounds the file, not the kubelet.
+    healthLogVolume:
+      # enabled: true
+      mountPath: /app/logs
+      sizeLimit: 128Mi
+      # medium: "Memory"
+
     service:
       type: LoadBalancer
       annotations: {}
@@ -1029,9 +1087,10 @@ gateway:
         # Off by default — it isn't even present in the static Envoy bootstrap unless
         # this is true, and is bound to loopback-only when enabled, so it's never
         # reachable outside the pod's network namespace either way. Enabling it also
-        # restores graceful-drain-on-SIGTERM (see docker-entrypoint.sh), at the cost of
-        # health-check.sh falling back to a raw TCP check instead of Envoy's own
-        # /ready when this is off. See also gateway.gatewayRuntime.service.expose.routerAdmin
+        # restores graceful-drain-on-SIGTERM (see docker-entrypoint.sh). It does not affect
+        # the Kubernetes probes, which use the gateway health routes; only the legacy mode
+        # of the compose health-check script falls back to a raw TCP check instead of
+        # Envoy's own /ready when this is off. See also gateway.gatewayRuntime.service.expose.routerAdmin
         # to control whether the port is published on the k8s Service (separate concern).
         routerAdminEnabled: false
       extraEnv: []
