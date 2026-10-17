@@ -155,7 +155,11 @@ async function create(orgId, apiId, planId, createdBy, transaction, opts = {}) {
                 updated_at: now,
             };
         } catch (err) {
-            const isTokenCollision = db.isDuplicateKeyError(err);
+            const isDup = db.isDuplicateKeyError(err);
+            const isTokenCollision = isDup && (
+                (typeof err.message === 'string' && (err.message.includes('subscriptions.token') || err.message.includes('uq_subscription_token'))) ||
+                (typeof err.constraint === 'string' && (err.constraint.includes('token') || err.constraint.includes('uq_subscription_token')))
+            );
             if (isTokenCollision && attempt < 2) continue;
             throw err;
         }
@@ -309,6 +313,19 @@ const findByKey = async (orgId, apiId, planId, t) => {
     }
 };
 
+const findByApiAndUser = async (orgId, apiId, userId, t) => {
+    const exec = t || db;
+    try {
+        return await exec.queryOne(
+            `SELECT * FROM ${SUBSCRIPTIONS_TABLE} WHERE org_uuid = ? AND portal_id = ? AND api_uuid = ? AND created_by = ?`,
+            [orgId, getPortalId(), apiId, userId]
+        );
+    } catch (error) {
+        if (error instanceof NotFoundError) return null;
+        throw error;
+    }
+};
+
 module.exports = {
     create,
     list,
@@ -322,4 +339,5 @@ module.exports = {
     listByOrg,
     listByUser,
     findByKey,
+    findByApiAndUser,
 };
