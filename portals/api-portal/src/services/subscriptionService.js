@@ -111,8 +111,19 @@ const createSubscription = async (req, res) => {
         }
         const planId = matchedPlan.uuid;
 
+        const existingSub = await subDao.findByApiAndUser(orgId, apiId, createdBy);
+        if (existingSub) {
+            return util.sendError(res, 409, 'Conflict', { errors: [{ message: 'A subscription for this API already exists' }] });
+        }
+
         let newSub;
         await db.withTransaction(async (t) => {
+            const existingInTx = await subDao.findByApiAndUser(orgId, apiId, createdBy, t);
+            if (existingInTx) {
+                const err = new Error('A subscription for this API already exists');
+                err.isDuplicate = true;
+                throw err;
+            }
             newSub = await subDao.create(
                 orgId, apiId, planId, createdBy, t
             );
@@ -130,7 +141,7 @@ const createSubscription = async (req, res) => {
         const audit = await userIdpReferenceDao.buildSingleAuditFields(created);
         return res.status(201).json(formatSubscriptionResponse(created, audit));
     } catch (error) {
-        if (db.isDuplicateKeyError(error)) {
+        if (db.isDuplicateKeyError(error) || error.isDuplicate) {
             return util.sendError(res, 409, 'Conflict', { errors: [{ message: 'A subscription for this API already exists' }] });
         }
         logger.error('Error creating subscription', {
