@@ -59,7 +59,7 @@ import { Navigate, useLocation } from 'react-router-dom';
 import { useBrandLogo } from '@/branding/BrandLogoProvider';
 import { LoadingState } from '../../components/StateViews';
 import { runtimeConfig } from '../../config/runtime';
-import { useAuth } from '../../contexts/auth/AuthProvider';
+import { consumeSignedOutMarker, useAuth } from '../../contexts/auth/AuthProvider';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 import { hairline } from '../../theme/receipes';
 
@@ -316,7 +316,14 @@ export function LoginPage() {
     !isBrowserSupported || (isInvitation && state.displayOrgName) || oidcError || auth.error,
   );
 
-  const shouldAutoRedirect = !auth.isAuthenticated && isOidcMode && !isInvitation && !oidcError;
+  // Read once on mount, and clear it: a deliberate sign-out suppresses exactly
+  // one auto-redirect. Without this the IDP's post-logout redirect lands here and
+  // the effect below signs the user straight back in, so they never reach a
+  // signed-out state.
+  const [justSignedOut] = useState(consumeSignedOutMarker);
+
+  const shouldAutoRedirect =
+    !auth.isAuthenticated && isOidcMode && !isInvitation && !oidcError && !justSignedOut;
 
   // Redirect to the IdP in OIDC mode unless showing an invitation or OIDC
   // error. Use an effect because auth.login() navigates and mutates a ref.

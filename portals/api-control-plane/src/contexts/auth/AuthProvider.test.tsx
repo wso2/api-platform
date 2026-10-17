@@ -21,7 +21,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { fireEvent, render, screen, waitFor } from '../../test/utils';
 import { server } from '../../test/server';
-import { AuthProvider, useAuth } from './AuthProvider';
+import { AuthProvider, consumeSignedOutMarker, useAuth } from './AuthProvider';
 import { CSRF_HEADER } from './authConstants';
 
 // A minimal consumer that renders the auth state as text, so tests can assert
@@ -175,6 +175,36 @@ describe('AuthProvider', () => {
     // Still authenticated locally: the browser is leaving for the IDP, and
     // clearing it here is exactly what cancelled the request.
     expect(screen.getByTestId('status')).toHaveTextContent('authenticated');
+  });
+
+  // The login page auto-redirects in OIDC mode, and the IDP's post-logout redirect
+  // lands on it. Without a marker the two combine into an immediate re-login and the
+  // user never reaches a signed-out state.
+  it('logout marks the sign-out so the login page does not auto-redirect', async () => {
+    server.use(
+      http.get('/api/session', () =>
+        HttpResponse.json({ authenticated: true, user: { name: 'Alice', email: 'alice@example.com' } })
+      ),
+      http.post('/api/logout', () =>
+        HttpResponse.json({ logoutUrl: 'https://idp.example.com/logout' })
+      )
+    );
+    const assign = vi.fn();
+    vi.stubGlobal('location', { ...window.location, assign });
+    sessionStorage.clear();
+    renderProvider();
+    await waitFor(() =>
+      expect(screen.getByTestId('status')).toHaveTextContent('authenticated')
+    );
+
+    fireEvent.click(screen.getByText('logout'));
+
+    await waitFor(() =>
+      expect(assign).toHaveBeenCalledWith('https://idp.example.com/logout')
+    );
+    // Reading it clears it, so it suppresses exactly one auto-redirect.
+    expect(consumeSignedOutMarker()).toBe(true);
+    expect(consumeSignedOutMarker()).toBe(false);
   });
 
   it('logout falls back to a login path when the BFF returns no logoutUrl', async () => {

@@ -29,6 +29,38 @@ const LOGIN_URL = '/api/login';
 const LOGOUT_URL = '/api/logout';
 const OIDC_LOGIN_URL = '/api/auth/login';
 
+/**
+ * Marks that the user signed out deliberately, so the login page shows the
+ * sign-in card instead of bouncing straight back to the IDP.
+ *
+ * In OIDC mode the login page auto-redirects, and the IDP sends the browser back
+ * to that same page after an end-session call. Without this the two combine into
+ * an immediate re-login: the user never reaches a signed-out state, and a
+ * re-authentication that needs a prompt has nowhere to show it. sessionStorage
+ * survives the round trip through the IDP and is scoped to the tab, so a second
+ * tab is unaffected.
+ */
+const SIGNED_OUT_KEY = 'apip.console.signedOut';
+
+function markSignedOut(): void {
+  try {
+    sessionStorage.setItem(SIGNED_OUT_KEY, '1');
+  } catch {
+    // Private mode or blocked storage: the auto-redirect simply stands.
+  }
+}
+
+/** Reads the marker and clears it, so it only suppresses one auto-redirect. */
+export function consumeSignedOutMarker(): boolean {
+  try {
+    if (sessionStorage.getItem(SIGNED_OUT_KEY) === null) return false;
+    sessionStorage.removeItem(SIGNED_OUT_KEY);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 type SessionResponse = {
   authenticated: boolean;
   user?: AuthUser;
@@ -156,6 +188,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // in-flight end-session request — the IDP logs "context canceled" and the
       // session it was asked to end survives.
       if (logoutUrl) {
+        markSignedOut();
         window.location.assign(logoutUrl);
         return;
       }
