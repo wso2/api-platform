@@ -35,6 +35,16 @@ data:
     level = {{ $cfg.logging.level | quote }}
     format = {{ $cfg.logging.format | quote }}
 
+    [platform_api.health]
+    check_timeout = {{ $cfg.health.checkTimeout | quote }}
+    cache_ttl = {{ $cfg.health.cacheTtl | quote }}
+    log_file = {{ $cfg.health.logFile | default "" | quote }}
+    log_max_size_mb = {{ $cfg.health.logMaxSizeMb | int }}
+    log_max_files = {{ $cfg.health.logMaxFiles | int }}
+    backoff_initial = {{ $cfg.health.backoffInitial | quote }}
+    backoff_max = {{ $cfg.health.backoffMax | quote }}
+    startup_wait = {{ $cfg.health.startupWait | quote }}
+
     [platform_api.security]
     encryption_key = {{ `'{{ env "APIP_CP_ENCRYPTION_KEY" }}'` }}
 
