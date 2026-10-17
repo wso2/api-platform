@@ -421,32 +421,37 @@ deployment:
   podAnnotations: {}
   podLabels: {}
   priorityClassName: ""
+  # /health answers 503 while a dependency (the database) is down and while the server
+  # is still starting. Readiness takes the pod out of the Service after about 15 s of
+  # failed answers; liveness restarts it only after about 2 minutes, so a short
+  # database outage never causes a restart.
   livenessProbe:
     httpGet:
       path: /health
       port: http
       scheme: HTTPS
-    initialDelaySeconds: 20
     periodSeconds: 10
     timeoutSeconds: 5
-    failureThreshold: 3
+    failureThreshold: 12
   readinessProbe:
     httpGet:
       path: /health
       port: http
       scheme: HTTPS
-    initialDelaySeconds: 10
     periodSeconds: 5
     timeoutSeconds: 3
     failureThreshold: 3
-  # Optional startup probe for slow first starts (uncomment to enable):
-  # startupProbe:
-  #   httpGet:
-  #     path: /health
-  #     port: http
-  #     scheme: HTTPS
-  #   periodSeconds: 5
-  #   failureThreshold: 30
+  # Holds off the liveness probe while the server starts. It allows 6 minutes; keep this
+  # above config.health.startupWait so the server, not the probe, decides when a
+  # database wait gives up. Set to null to disable.
+  startupProbe:
+    httpGet:
+      path: /health
+      port: http
+      scheme: HTTPS
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 72
   # CPU/memory requests & limits. NOTE: set CPU requests if you enable the HPA,
   # otherwise it can't compute utilization.
   resources: {}
