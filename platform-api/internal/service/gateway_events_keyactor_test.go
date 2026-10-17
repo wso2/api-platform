@@ -19,6 +19,7 @@ package service
 
 import (
 	"encoding/json"
+	"errors"
 	"testing"
 
 	"github.com/wso2/api-platform/platform-api/internal/constants"
@@ -28,19 +29,62 @@ import (
 
 // The service resolves the creator through the identity service before the
 // translator decides (gatewaytranslator.KeyEventActor has the version table):
-// a creator that resolves to the migration actor yields the empty id, and
-// without an identity service the creator id is still sent, never the caller.
+// a creator that resolves to the migration actor (current or legacy subject)
+// yields the empty id, and without an identity service the creator id is still
+// sent, never the caller.
 func TestKeyEventActor_ResolvesTheCreator(t *testing.T) {
 	withIdentity := NewGatewayEventsService(&capturingEventHub{}, newTestIdentityService(), newTestLogger())
-	if got := withIdentity.KeyEventActor("1.1.0", constants.MigrationActorSub, "admin-1"); got != "" {
-		t.Fatalf("migrated key: got %q, want the empty id", got)
-	}
-	if got := withIdentity.KeyEventActor("1.1.0", "creator-1", "admin-1"); got != "creator-1" {
-		t.Fatalf("own key: got %q, want creator-1", got)
-	}
 	withoutIdentity := NewGatewayEventsService(&capturingEventHub{}, nil, newTestLogger())
-	if got := withoutIdentity.KeyEventActor("1.1.0", "creator-1", "admin-1"); got != "creator-1" {
-		t.Fatalf("no identity service: got %q, want creator-1", got)
+	cases := []struct {
+		name, createdBy, want string
+		svc                   *GatewayEventsService
+	}{
+		{"migrated key, migration actor", constants.MigrationActorSub, "", withIdentity},
+		{"migrated key, legacy migration actor", constants.LegacyMigrationActorSub, "", withIdentity},
+		{"own key", "creator-1", "creator-1", withIdentity},
+		{"no identity service", "creator-1", "creator-1", withoutIdentity},
+	}
+	for _, tc := range cases {
+		got, err := tc.svc.KeyEventActor("1.1.0", tc.createdBy, "admin-1")
+		if err != nil {
+			t.Fatalf("%s: unexpected error %v", tc.name, err)
+		}
+		if got != tc.want {
+			t.Fatalf("%s: got %q, want %q", tc.name, got, tc.want)
+		}
+	}
+}
+
+// failingIdentityRepo fails every lookup, standing in for a database error.
+type failingIdentityRepo struct{ passthroughIdentityRepo }
+
+func (failingIdentityRepo) GetSubByUUID(string) (string, bool, error) {
+	return "", false, errors.New("database unavailable")
+}
+
+// When the creator cannot be resolved, a gateway that re-checks ownership gets
+// no event and the caller gets the error: guessing the creator's UUID would
+// reach the gateway as the migration actor for a key Platform API v1 created
+// without a creator, and the gateway would drop it. Gateways that trust the
+// control plane need no lookup and still receive the caller.
+func TestKeyEventActor_CreatorLookupFailure(t *testing.T) {
+	hub := &capturingEventHub{}
+	svc := NewGatewayEventsService(hub, NewIdentityService(failingIdentityRepo{}), newTestLogger())
+	event := &model.APIKeyRevokedEvent{ApiId: "api-1", KeyName: "key-1"}
+
+	if _, err := svc.KeyEventActor("1.1.0", "creator-uuid", "admin-1"); err == nil {
+		t.Fatal("1.1.0: want an error when the creator cannot be resolved")
+	}
+	if err := svc.BroadcastAPIKeyRevokedEventFor(&model.APIGatewayWithDetails{ID: "gw-110", Version: "1.1.0"}, "creator-uuid", "admin-1", event); err == nil {
+		t.Fatal("1.1.0: want the broadcast to fail")
+	}
+	if len(hub.published) != 0 {
+		t.Fatalf("1.1.0: published %d events, want none", len(hub.published))
+	}
+
+	got, err := svc.KeyEventActor("1.2.0", "creator-uuid", "admin-1")
+	if err != nil || got != "admin-1" {
+		t.Fatalf("1.2.0: got (%q, %v), want (admin-1, nil) without a lookup", got, err)
 	}
 }
 
@@ -60,6 +104,7 @@ func TestBroadcastAPIKeyRevokedEventFor_StampsGatewayAcceptedIdentity(t *testing
 	}{
 		{&model.APIGatewayWithDetails{ID: "gw-110", Version: "1.1.0"}, "creator-1", "creator-1"},
 		{&model.APIGatewayWithDetails{ID: "gw-110-migrated", Version: "1.1.0"}, constants.MigrationActorSub, ""},
+		{&model.APIGatewayWithDetails{ID: "gw-110-migrated-legacy", Version: "1.1.0"}, constants.LegacyMigrationActorSub, ""},
 		{&model.APIGatewayWithDetails{ID: "gw-120", Version: "1.2.0"}, "creator-1", "admin-1"},
 	}
 	for _, g := range gateways {

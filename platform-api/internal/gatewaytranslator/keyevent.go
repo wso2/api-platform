@@ -34,16 +34,29 @@ import (
 // no roles, so no caller is ever an admin there. For those gateways the event
 // is stamped with what they hold: keyCreatedBy for a key created here (the
 // create event carried the creator's identity, which the gateway stored), and
-// the empty id for a key the migration brought over — Platform API v1 created
-// it on the gateway without a creator, and in v2 its creator resolves to the
-// migration actor (constants.MigrationActorSub). creatorSub is keyCreatedBy
-// resolved to its IdP subject, or "" when it could not be resolved.
+// the empty id for a key Platform API v1 created without a creator (no
+// x-user-id header) — the migration records the migration actor as its
+// creator, so in v2 it resolves to the migration actor (constants.MigrationActorSub, or LegacyMigrationActorSub in a
+// database migrated before the subject was namespaced). creatorSub is
+// keyCreatedBy resolved to its IdP subject; callers resolve it first and do not
+// publish when that fails (see GatewayEventsService.KeyEventActor), because a
+// guess would stamp an identity the gateway rejects.
+//
+// A non-empty result is keyCreatedBy, the internal UUID: the broadcaster
+// resolves it to the subject the gateway stored, which is also how a key
+// migrated with a v1 creator reaches the gateway under that v1 creator.
 func KeyEventActor(gatewayVersion, keyCreatedBy, creatorSub, callerUserID string) string {
 	if !gwversion.RechecksKeyEventOwnership(gatewayVersion) {
 		return callerUserID
 	}
-	if keyCreatedBy == "" || creatorSub == constants.MigrationActorSub {
+	if keyCreatedBy == "" || IsMigrationActorSub(creatorSub) {
 		return ""
 	}
 	return keyCreatedBy
+}
+
+// IsMigrationActorSub reports whether sub is the migration client's synthetic
+// actor, under the current or the legacy subject.
+func IsMigrationActorSub(sub string) bool {
+	return sub == constants.MigrationActorSub || sub == constants.LegacyMigrationActorSub
 }

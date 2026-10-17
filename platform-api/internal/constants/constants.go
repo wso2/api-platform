@@ -167,6 +167,11 @@ const DeletedUser = "deleted_user"
 // real subject.
 const MigrationActorSub = "system:platform-api-migration"
 
+// LegacyMigrationActorSub is the subject the migration client seeded before
+// MigrationActorSub was namespaced. Databases migrated with those builds carry
+// it, so code that recognises the migration actor accepts both.
+const LegacyMigrationActorSub = "platform-api-migration"
+
 // Deployment limit constants
 const (
 	// DeploymentLimitBuffer is the buffer added to MaxPerAPIGateway for hard limit enforcement

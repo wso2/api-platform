@@ -38,8 +38,10 @@ func TestKeyEventActor(t *testing.T) {
 		{"1.1.0: the key's creator, whoever revokes", "1.1.0", "creator-1", "alice", "admin-1", "creator-1"},
 		{"1.0.0: the creator revoking their own key", "1.0.0", "creator-1", "alice", "creator-1", "creator-1"},
 		{"1.1.0: migrated key (creator is the migration actor) -> empty id", "1.1.0", "actor-uuid", constants.MigrationActorSub, "admin-1", ""},
+		{"1.1.0: key migrated by an older client (legacy migration actor) -> empty id", "1.1.0", "actor-uuid", constants.LegacyMigrationActorSub, "admin-1", ""},
+		{"1.1.0: key migrated with a v1 creator -> the creator's uuid (resolved to the v1 creator on publish)", "1.1.0", "derived-uuid", "v1-creator", "admin-1", "derived-uuid"},
 		{"1.1.0: key with no creator -> empty id", "1.1.0", "", "", "admin-1", ""},
-		{"1.1.0: creator could not be resolved -> still the creator", "1.1.0", "creator-1", "", "admin-1", "creator-1"},
+		{"1.1.0: no subject passed (no identity service) -> still the creator", "1.1.0", "creator-1", "", "admin-1", "creator-1"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
