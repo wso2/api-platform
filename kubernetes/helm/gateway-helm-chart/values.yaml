@@ -507,10 +507,11 @@ gateway:
 
       # Admin HTTP server configuration
       admin:
-        # Kept enabled by default because it also serves /health, used by the
-        # gateway-runtime's exec health-check.sh probe — disabling this would
-        # crash-loop the pod. Gate the sensitive /config_dump route
-        # specifically via config_dump.enabled below instead.
+        # Kept enabled by default because it also serves /health, used for local
+        # diagnostics and by the health-check script in docker-compose setups. The
+        # Kubernetes probes do not use it: they call the gateway health routes on the
+        # traffic listener (see gateway.gatewayRuntime.deployment). Gate the sensitive
+        # /config_dump route specifically via config_dump.enabled below instead.
         enabled: true
 
         # Port for admin HTTP server
