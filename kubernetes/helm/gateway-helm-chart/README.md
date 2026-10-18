@@ -147,8 +147,8 @@ kubectl logs -l app.kubernetes.io/component=gateway-runtime
 helm-chart/
 ├── templates/
 │   ├── gateway/
-│   │   ├── controller/       # Deployment, Service, ConfigMap, PVC
-│   │   └── gateway-runtime/  # Deployment and Service
+│   │   ├── controller/       # Deployment, Service, ConfigMap, PVC, Route
+│   │   └── gateway-runtime/  # Deployment, Service
 │   ├── serviceaccount.yaml
 │   └── _helpers.tpl
 ├── values.yaml
@@ -173,6 +173,8 @@ All configurable values are documented in `values.yaml`. Component blocks are fu
 - `gateway.controller.upstreamCerts.*` – Custom CA certificates for upstream backend TLS verification.
 - `gateway.config.policy_engine.*` – policy engine configuration including xDS client settings and admin API.
 - `gateway.config.api_key` / `gateway.config.subscriptions` – API-key policy tuning (length/algorithm/issuer) and opt-in application-subscription validation.
+- `gateway.<component>.deployment.podSecurityContext` / `securityContext` – pod and container security contexts, rendered as given (empty by default).
+- `openshift.*` – OpenShift support, rendered only when `openshift.enabled=true`: an optional Route to the management API (`openshift.routes.managementApi`, off by default, edge termination). That Route fails at install time while `gateway.config.controller.auth` still has the chart's default `admin` password, or no authentication (no basic auth users and IDP off). The chart does not create Routes for API traffic, because the hostnames the gateway runtime serves come from the virtual hosts configured in `gateway.config.router.vhosts` and in each API definition. Create a Route to the `<release>-gateway-runtime` Service for each hostname you use.
 
 Refer to the inline comments inside `values.yaml` for a complete matrix of options and the expected data types for each block.
 
