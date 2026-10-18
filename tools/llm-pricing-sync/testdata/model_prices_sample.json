@@ -1,0 +1,57 @@
+{
+  "1024-x-1024/dall-e-2": {
+    "provider": "openai",
+    "input_cost_per_pixel": 1.9e-08,
+    "output_cost_per_pixel": 0.0
+  },
+  "azure/global-standard/gpt-4o-2024-08-06": {
+    "cache_read_input_token_cost": 1.25e-06,
+    "input_cost_per_token": 2.5e-06,
+    "output_cost_per_token": 1e-05,
+    "provider": "azure"
+  },
+  "azure/global-standard/gpt-5.6-sol": {
+    "input_cost_per_token": 4e-06,
+    "output_cost_per_token": 2e-05,
+    "provider": "azure"
+  },
+  "azure/global/gpt-5.1": {
+    "input_cost_per_token": 1.25e-06,
+    "output_cost_per_token": 1e-05,
+    "provider": "azure"
+  },
+  "azure/gpt-4o-2024-08-06": {
+    "cache_read_input_token_cost": 1.25e-06,
+    "input_cost_per_token": 2.5e-06,
+    "output_cost_per_token": 1e-05,
+    "provider": "azure"
+  },
+  "azure_ai/Llama-3.3-70B-Instruct": {
+    "input_cost_per_token": 7.1e-07,
+    "input_cost_per_token_priority": 1e-06,
+    "max_tokens": 2048,
+    "mode": "chat",
+    "output_cost_per_token": 7.1e-07,
+    "provider": "azure_ai",
+    "search_context_cost_per_query": {
+      "search_context_size_high": 0.01,
+      "search_context_size_low": 0.01
+    },
+    "source": "https://azuremarketplace.microsoft.com/en/marketplace/apps/metagenai.llama-3-3-70b-instruct-offer"
+  },
+  "azure_ai/global/grok-3": {
+    "input_cost_per_token": 3e-06,
+    "output_cost_per_token": 1.5e-05,
+    "provider": "azure_ai"
+  },
+  "azure_ai/model_router": {
+    "input_cost_per_token": 1.4e-07,
+    "output_cost_per_token": 0,
+    "provider": "azure_ai"
+  },
+  "gpt-4o": {
+    "input_cost_per_token": 2.5e-06,
+    "output_cost_per_token": 1e-05,
+    "provider": "openai"
+  }
+}

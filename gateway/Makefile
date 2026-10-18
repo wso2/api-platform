@@ -158,7 +158,7 @@ build-and-push-multiarch-gateway-runtime: ## Build and push gateway-runtime Dock
 
 # Test Targets
 .PHONY: test
-test: test-controller test-gateway-builder test-policy-engine ## Run all tests
+test: test-controller test-gateway-builder test-policy-engine test-llm-pricing-sync ## Run all tests
 
 .PHONY: test-controller
 test-controller: ## Test gateway-controller
@@ -178,6 +178,23 @@ test-integration: ## Run integration tests
 
 .PHONY: test-integration-all
 test-integration-all: build-coverage test-integration ## Build coverage images and run integration tests
+
+# LLM Pricing Targets
+LLM_PRICING_SYNC_DIR := ../tools/llm-pricing-sync
+LLM_PRICING_FILES := $(CURDIR)/configs/llm-pricing/model_prices.json \
+	$(CURDIR)/../kubernetes/helm/gateway-helm-chart/files/llm-pricing/model_prices.json
+
+.PHONY: test-llm-pricing-sync
+test-llm-pricing-sync: ## Test the LLM pricing sync tool
+	cd $(LLM_PRICING_SYNC_DIR) && go test ./...
+
+.PHONY: sync-llm-pricing
+sync-llm-pricing: ## Refresh the Azure entries of the LLM pricing files from the Azure Retail Prices API
+	cd $(LLM_PRICING_SYNC_DIR) && go run . $(foreach f,$(LLM_PRICING_FILES),-file $(f))
+
+.PHONY: check-llm-pricing
+check-llm-pricing: ## Fail if the Azure entries of the LLM pricing files are behind the Azure Retail Prices API
+	cd $(LLM_PRICING_SYNC_DIR) && go run . -check $(foreach f,$(LLM_PRICING_FILES),-file $(f))
 
 # Version Management Targets
 .PHONY: version-set
