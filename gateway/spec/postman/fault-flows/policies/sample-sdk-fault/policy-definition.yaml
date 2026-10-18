@@ -1,0 +1,56 @@
+name: sample-sdk-fault
+version: v0.1.0
+description: |
+  TEST POLICY for the fault-flows Postman kit. Rejects every request (or every response) and
+  describes the failure the SDK way, in FaultDetails, optionally with a fallback body. Use it to
+  see what the gateway renders from a described failure and how fault policies interact with it.
+  Not for production.
+
+parameters:
+  type: object
+  additionalProperties: false
+  properties:
+    phase:
+      type: string
+      enum: [request, response]
+      default: request
+      description: Reject in the request phase (ImmediateResponse) or the response phase (DownstreamResponseModifications).
+    statusCode:
+      type: integer
+      minimum: 400
+      maximum: 599
+      default: 403
+    code:
+      type: string
+      description: FaultDetails.Code.
+    type:
+      type: string
+      description: FaultDetails.Type, e.g. authorization, guardrail, throttling.
+    message:
+      type: string
+      description: FaultDetails.Message, shown to the client.
+    description:
+      type: string
+      description: FaultDetails.Description, internal only. Never rendered to the client.
+    guardrail:
+      type: object
+      additionalProperties: false
+      description: FaultDetails.Guardrail.
+      properties:
+        interveningGuardrail:
+          type: string
+        action:
+          type: string
+        actionReason:
+          type: string
+        assessments:
+          type: object
+    fallbackBody:
+      type: string
+      description: |
+        Body sent with the description, for a gateway that renders nothing. A body beside a
+        description is a fallback, so the gateway renders the description instead.
+
+systemParameters:
+  type: object
+  properties: {}

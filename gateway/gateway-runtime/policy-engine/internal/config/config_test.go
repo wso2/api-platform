@@ -2369,3 +2369,50 @@ handle_upstream_faults = true
 	assert.True(t, cfg.PolicyEngine.FaultPolicies.HandleUpstreamFaults,
 		"policy_engine.fault_policies.handle_upstream_faults must reach the engine")
 }
+
+// LLM errors are OpenAI-shaped unless a deployment says otherwise, so a config that says
+// nothing gets them.
+func TestLoad_LLMErrorsOpenAIFormatByDefault(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.toml")
+
+	// Deliberately no [policy_engine.llm_errors] section at all.
+	configContent := `
+[policy_engine.config_mode]
+mode = "file"
+
+[policy_engine.file_config]
+path = "/tmp/policies.yaml"
+`
+	require.NoError(t, os.WriteFile(configPath, []byte(configContent), 0644))
+
+	cfg, err := Load(configPath)
+	require.NoError(t, err)
+
+	assert.False(t, cfg.PolicyEngine.LLMErrors.DisableOpenAIFormat,
+		"an unconfigured deployment renders LLM errors in the OpenAI envelope")
+}
+
+// A deployment whose LLM clients parse the policies' own bodies can switch the envelope off.
+func TestLoad_LLMErrorsDisableOpenAIFormat(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.toml")
+
+	configContent := `
+[policy_engine.config_mode]
+mode = "file"
+
+[policy_engine.file_config]
+path = "/tmp/policies.yaml"
+
+[policy_engine.llm_errors]
+disable_openai_format = true
+`
+	require.NoError(t, os.WriteFile(configPath, []byte(configContent), 0644))
+
+	cfg, err := Load(configPath)
+	require.NoError(t, err)
+
+	assert.True(t, cfg.PolicyEngine.LLMErrors.DisableOpenAIFormat,
+		"policy_engine.llm_errors.disable_openai_format = true must reach the engine")
+}

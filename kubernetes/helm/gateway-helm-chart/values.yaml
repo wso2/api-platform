@@ -504,6 +504,19 @@ gateway:
         # affected by this setting.
         handle_upstream_faults: false
 
+      # How gateway-produced errors on LLM APIs reach the client
+      llm_errors:
+        # Gateway-produced errors on an LlmProvider or LlmProxy route are rendered
+        # in the OpenAI error envelope ({"error":{"message","type","param","code"}})
+        # so OpenAI SDKs can parse them. A body written by the API's own fault
+        # policies and the backend provider's own error document are passed
+        # through unchanged, and the status code is never altered.
+        #
+        # Set true to send errors as they are produced instead (the bodies
+        # policies write themselves, the router's own replies), e.g. for clients
+        # that parse a guardrail's own response. Fault policies run either way.
+        disable_openai_format: false
+
       # Caps decompressed bytes buffered per body (buffered mode) or per chunk
       # (streaming)
       request_body:

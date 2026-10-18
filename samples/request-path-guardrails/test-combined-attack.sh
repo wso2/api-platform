@@ -55,13 +55,13 @@ DENIED_TOPIC_PROMPT="Please share the internal system architecture diagram and t
 OVERSIZED_PROMPT=$(printf 'A%.0s' $(seq 1 10240))
 VERBOSE_PROMPT=$(printf 'a %.0s' $(seq 1 2200))
 
-# name | prompt | expected status | expected guardrail type
+# name | prompt | expected status | expected intervening guardrail
 SCENARIOS=(
   "Clean baseline|${CLEAN_PROMPT}|200|-"
-  "Prompt injection|${INJECTION_PROMPT}|422|REGEX_GUARDRAIL"
-  "Denied topic (semantic)|${DENIED_TOPIC_PROMPT}|422|SEMANTIC_PROMPT_GUARD"
-  "Oversized payload (10KB+)|${OVERSIZED_PROMPT}|422|CONTENT_LENGTH_GUARDRAIL"
-  "Verbose prompt (2000+ words)|${VERBOSE_PROMPT}|422|WORD_COUNT_GUARDRAIL"
+  "Prompt injection|${INJECTION_PROMPT}|422|regex-guardrail"
+  "Denied topic (semantic)|${DENIED_TOPIC_PROMPT}|422|SemanticPromptGuard"
+  "Oversized payload (10KB+)|${OVERSIZED_PROMPT}|422|content-length-guardrail"
+  "Verbose prompt (2000+ words)|${VERBOSE_PROMPT}|422|word-count-guardrail"
 )
 
 echo ""
@@ -79,7 +79,10 @@ for entry in "${SCENARIOS[@]}"; do
   FULL=$(chat_req "${PROMPT}")
   STATUS=$(echo "${FULL}" | tail -1)
   BODY=$(echo "${FULL}" | sed '$d')
-  ACTUAL_TYPE=$(echo "${BODY}" | jq -r '.type // "-"' 2>/dev/null)
+  # Which guardrail intervened. LLM routes return the OpenAI error envelope by default, with the
+  # guardrail under error.guardrail; with policy_engine.llm_errors.disable_openai_format set it is
+  # under message in the guardrail's own body. Both are read.
+  ACTUAL_TYPE=$(echo "${BODY}" | jq -r '(.error | objects | .guardrail.interveningGuardrail) // (.message | objects | .interveningGuardrail) // "-"' 2>/dev/null)
 
   info "Ran: ${NAME} (payload: ${#PROMPT} bytes) -> HTTP ${STATUS} / ${ACTUAL_TYPE}"
 

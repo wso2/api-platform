@@ -58,6 +58,9 @@ const (
 	ShapeJSONRPCEventStream ShapeID = "jsonrpc-eventstream"
 	// ShapeXML is a plain XML error document, for a REST caller that asked for XML.
 	ShapeXML ShapeID = "xml"
+	// ShapeOpenAI is the OpenAI API's error envelope, for an LLM API whose callers are OpenAI
+	// SDKs. Reached only when the operator enables it — see OpenAIErrorKinds.
+	ShapeOpenAI ShapeID = "openai"
 
 	// ShapeSOAP11 and ShapeSOAP12 are declared so Negotiate can name them, but are NOT
 	// registered, so they render as passthrough.
@@ -133,6 +136,7 @@ func NewRegistry() *Registry {
 			ShapeJSONRPC:            jsonRPCRenderer{},
 			ShapeJSONRPCEventStream: jsonRPCEventStreamRenderer{},
 			ShapeXML:                xmlRenderer{},
+			ShapeOpenAI:             openAIRenderer{},
 		},
 	}
 }
@@ -198,6 +202,11 @@ func Negotiate(req Request) ShapeID {
 			return ShapeJSONRPCEventStream
 		}
 		return ShapeJSONRPC
+	case policy.APIKindLlmProvider, policy.APIKindLlmProxy:
+		// An OpenAI SDK reads the OpenAI envelope and nothing else, whatever it put in Accept.
+		// A streaming call is no exception: an error is returned before the stream opens, as a
+		// plain JSON body, exactly as the reference API does.
+		return ShapeOpenAI
 	}
 	// 2. Protocols identified by the request's own media type. SOAP is the case this
 	// exists for: a single SOAP API serves both versions, and the version is carried

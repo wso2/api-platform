@@ -1,0 +1,3535 @@
+{
+  "info": {
+    "_postman_id": "6d2f0d3c-5e1b-4b7e-9a3e-1f0c2b7a9e11",
+    "name": "Gateway - LLM OpenAI-compatible errors",
+    "description": "Exercises [policy_engine.llm_errors] disable_openai_format = false (the default) on the WSO2 API Platform gateway. Run the folders in order: Setup, the template folders, Edge cases, Known limitations, Teardown. See README.md next to this file.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "controllerUrl",
+      "value": "http://localhost:9090/api/management/v1"
+    },
+    {
+      "key": "routerUrl",
+      "value": "http://localhost:8080"
+    },
+    {
+      "key": "adminUser",
+      "value": "admin"
+    },
+    {
+      "key": "adminPassword",
+      "value": ""
+    },
+    {
+      "key": "selfUpstream",
+      "value": "http://gateway-runtime:8080",
+      "description": "How the gateway reaches its OWN router from inside the runtime container (the LLM providers' upstream is the REST backend simulator)."
+    },
+    {
+      "key": "deadUpstream",
+      "value": "http://gateway-runtime:1",
+      "description": "A host:port that refuses connections."
+    },
+    {
+      "key": "restSampleUpstream",
+      "value": "http://sample-backend:5000",
+      "description": "Any reachable URL; the simulator's operations all respond locally and never call it."
+    }
+  ],
+  "item": [
+    {
+      "name": "0. Setup",
+      "item": [
+        {
+          "name": "Create REST backend simulator",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{controllerUrl}}/rest-apis",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"apiVersion\": \"gateway.api-platform.wso2.com/v1\",\n  \"kind\": \"RestApi\",\n  \"metadata\": {\n    \"name\": \"oai-pm-backend-sim\"\n  },\n  \"spec\": {\n    \"displayName\": \"OpenAI errors Postman backend simulator\",\n    \"version\": \"v1.0\",\n    \"context\": \"/oai-pm-backend-sim/$version\",\n    \"upstream\": {\n      \"main\": {\n        \"url\": \"{{restSampleUpstream}}\"\n      }\n    },\n    \"operations\": [\n      {\n        \"method\": \"POST\",\n        \"path\": \"/chat/completions\",\n        \"policies\": [\n          {\n            \"name\": \"respond\",\n            \"version\": \"v1\",\n            \"params\": {\n              \"statusCode\": 200,\n              \"body\": \"{\\\"id\\\":\\\"chatcmpl-1\\\",\\\"object\\\":\\\"chat.completion\\\",\\\"choices\\\":[{\\\"index\\\":0,\\\"message\\\":{\\\"role\\\":\\\"assistant\\\",\\\"content\\\":\\\"hello\\\"},\\\"finish_reason\\\":\\\"stop\\\"}],\\\"usage\\\":{\\\"prompt_tokens\\\":3,\\\"completion_tokens\\\":1,\\\"total_tokens\\\":4}}\",\n              \"headers\": [\n                {\n                  \"name\": \"content-type\",\n                  \"value\": \"application/json\"\n                }\n              ]\n            }\n          }\n        ]\n      },\n      {\n        \"method\": \"GET\",\n        \"path\": \"/teapot\",\n        \"policies\": [\n          {\n            \"name\": \"respond\",\n            \"version\": \"v1\",\n            \"params\": {\n              \"statusCode\": 418,\n              \"body\": \"{\\\"vendor_error\\\":\\\"I am a teapot\\\"}\",\n              \"headers\": [\n                {\n                  \"name\": \"content-type\",\n                  \"value\": \"application/json\"\n                }\n              ]\n            }\n          }\n        ]\n      },\n      {\n        \"method\": \"GET\",\n        \"path\": \"/openai-shaped\",\n        \"policies\": [\n          {\n            \"name\": \"respond\",\n            \"version\": \"v1\",\n            \"params\": {\n              \"statusCode\": 429,\n              \"body\": \"{\\\"error\\\":{\\\"message\\\":\\\"Rate limit reached for gpt-4o in organization org-x\\\",\\\"type\\\":\\\"requests\\\",\\\"param\\\":null,\\\"code\\\":\\\"rate_limit_exceeded\\\"}}\",\n              \"headers\": [\n                {\n                  \"name\": \"content-type\",\n                  \"value\": \"application/json\"\n                }\n              ]\n            }\n          }\n        ]\n      },\n      {\n        \"method\": \"GET\",\n        \"path\": \"/anthropic-shaped\",\n        \"policies\": [\n          {\n            \"name\": \"respond\",\n            \"version\": \"v1\",\n            \"params\": {\n              \"statusCode\": 529,\n              \"body\": \"{\\\"type\\\":\\\"error\\\",\\\"error\\\":{\\\"type\\\":\\\"overloaded_error\\\",\\\"message\\\":\\\"Overloaded\\\"}}\",\n              \"headers\": [\n                {\n                  \"name\": \"content-type\",\n                  \"value\": \"application/json\"\n                }\n              ]\n            }\n          }\n        ]\n      },\n      {\n        \"method\": \"GET\",\n        \"path\": \"/empty-429\",\n        \"policies\": [\n          {\n            \"name\": \"respond\",\n            \"version\": \"v1\",\n            \"params\": {\n              \"statusCode\": 429,\n              \"body\": \"\",\n              \"headers\": [\n                {\n                  \"name\": \"content-type\",\n                  \"value\": \"application/json\"\n                }\n              ]\n            }\n          }\n        ]\n      },\n      {\n        \"method\": \"GET\",\n        \"path\": \"/empty-500\",\n        \"policies\": [\n          {\n            \"name\": \"respond\",\n            \"version\": \"v1\",\n            \"params\": {\n              \"statusCode\": 500,\n              \"body\": \"\",\n              \"headers\": [\n                {\n                  \"name\": \"content-type\",\n                  \"value\": \"application/json\"\n                }\n              ]\n            }\n          }\n        ]\n      }\n    ]\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{adminUser}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{adminPassword}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "A REST API that returns canned upstream responses through the `respond` policy. LLM providers use it as their upstream (the gateway calling itself), so backend errors can be simulated with nothing but a stock gateway. REST APIs are never reshaped, so its bodies reach the LLM provider exactly as written."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"created (201) or already exists (409)\", () => pm.expect(pm.response.code).to.be.oneOf([201, 409]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create provider oai-pm-openai",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{controllerUrl}}/llm-providers",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"apiVersion\": \"gateway.api-platform.wso2.com/v1\",\n  \"kind\": \"LlmProvider\",\n  \"metadata\": {\n    \"name\": \"oai-pm-openai\"\n  },\n  \"spec\": {\n    \"displayName\": \"OpenAI errors Postman openai\",\n    \"version\": \"v1.0\",\n    \"template\": \"openai\",\n    \"context\": \"/oai-pm-openai\",\n    \"upstream\": {\n      \"url\": \"{{selfUpstream}}/oai-pm-backend-sim/v1.0\"\n    },\n    \"accessControl\": {\n      \"mode\": \"allow_all\"\n    },\n    \"policies\": [\n      {\n        \"name\": \"word-count-guardrail\",\n        \"version\": \"v1\",\n        \"paths\": [\n          {\n            \"path\": \"/chat/completions\",\n            \"methods\": [\n              \"POST\"\n            ],\n            \"params\": {\n              \"request\": {\n                \"min\": 1,\n                \"max\": 5,\n                \"jsonPath\": \"$.prompt\"\n              }\n            }\n          }\n        ]\n      },\n      {\n        \"name\": \"respond\",\n        \"version\": \"v1\",\n        \"paths\": [\n          {\n            \"path\": \"/edge/message\",\n            \"methods\": [\n              \"GET\",\n              \"HEAD\"\n            ],\n            \"params\": {\n              \"statusCode\": 403,\n              \"body\": \"{\\\"error\\\":\\\"Forbidden\\\",\\\"message\\\":\\\"Caller is not allowed to use this model\\\"}\",\n              \"headers\": [\n                {\n                  \"name\": \"content-type\",\n                  \"value\": \"application/json\"\n                }\n              ]\n            }\n          }\n        ]\n      },\n      {\n        \"name\": \"respond\",\n        \"version\": \"v1\",\n        \"paths\": [\n          {\n            \"path\": \"/edge/error-description\",\n            \"methods\": [\n              \"GET\"\n            ],\n            \"params\": {\n              \"statusCode\": 401,\n              \"body\": \"{\\\"error\\\":\\\"invalid_token\\\",\\\"error_description\\\":\\\"Token expired\\\"}\",\n              \"headers\": [\n                {\n                  \"name\": \"content-type\",\n                  \"value\": \"application/json\"\n                }\n              ]\n            }\n          }\n        ]\n      },\n      {\n        \"name\": \"respond\",\n        \"version\": \"v1\",\n        \"paths\": [\n          {\n            \"path\": \"/edge/detail\",\n            \"methods\": [\n              \"GET\"\n            ],\n            \"params\": {\n              \"statusCode\": 404,\n              \"body\": \"{\\\"detail\\\":\\\"Model gpt-9 does not exist\\\"}\",\n              \"headers\": [\n                {\n                  \"name\": \"content-type\",\n                  \"value\": \"application/json\"\n                }\n              ]\n            }\n          }\n        ]\n      },\n      {\n        \"name\": \"respond\",\n        \"version\": \"v1\",\n        \"paths\": [\n          {\n            \"path\": \"/edge/error-string\",\n            \"methods\": [\n              \"GET\"\n            ],\n            \"params\": {\n              \"statusCode\": 400,\n              \"body\": \"{\\\"error\\\":\\\"Malformed request\\\"}\",\n              \"headers\": [\n                {\n                  \"name\": \"content-type\",\n                  \"value\": \"application/json\"\n                }\n              ]\n            }\n          }\n        ]\n      },\n      {\n        \"name\": \"respond\",\n        \"version\": \"v1\",\n        \"paths\": [\n          {\n            \"path\": \"/edge/object-message\",\n            \"methods\": [\n              \"GET\"\n            ],\n            \"params\": {\n              \"statusCode\": 422,\n              \"body\": \"{\\\"type\\\":\\\"WORD_COUNT_GUARDRAIL\\\",\\\"message\\\":{\\\"action\\\":\\\"GUARDRAIL_INTERVENED\\\",\\\"actionReason\\\":\\\"too long\\\"}}\",\n              \"headers\": [\n                {\n                  \"name\": \"content-type\",\n                  \"value\": \"application/json\"\n                }\n              ]\n            }\n          }\n        ]\n      },\n      {\n        \"name\": \"respond\",\n        \"version\": \"v1\",\n        \"paths\": [\n          {\n            \"path\": \"/edge/plain-text\",\n            \"methods\": [\n              \"GET\"\n            ],\n            \"params\": {\n              \"statusCode\": 429,\n              \"body\": \"Slow down, too many requests\",\n              \"headers\": [\n                {\n                  \"name\": \"content-type\",\n                  \"value\": \"text/plain\"\n                }\n              ]\n            }\n          }\n        ]\n      },\n      {\n        \"name\": \"respond\",\n        \"version\": \"v1\",\n        \"paths\": [\n          {\n            \"path\": \"/edge/html\",\n            \"methods\": [\n              \"GET\"\n            ],\n            \"params\": {\n              \"statusCode\": 502,\n              \"body\": \"<html><body><h1>Bad Gateway</h1></body></html>\",\n              \"headers\": [\n                {\n                  \"name\": \"content-type\",\n                  \"value\": \"text/html\"\n                }\n              ]\n            }\n          }\n        ]\n      },\n      {\n        \"name\": \"respond\",\n        \"version\": \"v1\",\n        \"paths\": [\n          {\n            \"path\": \"/edge/empty\",\n            \"methods\": [\n              \"GET\"\n            ],\n            \"params\": {\n              \"statusCode\": 503,\n              \"body\": \"\",\n              \"headers\": [\n                {\n                  \"name\": \"content-type\",\n                  \"value\": \"text/plain\"\n                }\n              ]\n            }\n          }\n        ]\n      },\n      {\n        \"name\": \"respond\",\n        \"version\": \"v1\",\n        \"paths\": [\n          {\n            \"path\": \"/edge/unusual-status\",\n            \"methods\": [\n              \"GET\"\n            ],\n            \"params\": {\n              \"statusCode\": 451,\n              \"body\": \"{\\\"message\\\":\\\"Unavailable for legal reasons\\\"}\",\n              \"headers\": [\n                {\n                  \"name\": \"content-type\",\n                  \"value\": \"application/json\"\n                }\n              ]\n            }\n          }\n        ]\n      },\n      {\n        \"name\": \"respond\",\n        \"version\": \"v1\",\n        \"paths\": [\n          {\n            \"path\": \"/edge/nested-error-message\",\n            \"methods\": [\n              \"GET\"\n            ],\n            \"params\": {\n              \"statusCode\": 409,\n              \"body\": \"{\\\"error\\\":{\\\"message\\\":\\\"Conflict on resource\\\",\\\"reason\\\":\\\"x\\\"}}\",\n              \"headers\": [\n                {\n                  \"name\": \"content-type\",\n                  \"value\": \"application/json\"\n                }\n              ]\n            }\n          }\n        ]\n      },\n      {\n        \"name\": \"respond\",\n        \"version\": \"v1\",\n        \"paths\": [\n          {\n            \"path\": \"/edge/already-openai\",\n            \"methods\": [\n              \"GET\"\n            ],\n            \"params\": {\n              \"statusCode\": 400,\n              \"body\": \"{\\\"error\\\":{\\\"message\\\":\\\"The model gpt-9 does not exist\\\",\\\"type\\\":\\\"invalid_request_error\\\",\\\"param\\\":\\\"model\\\",\\\"code\\\":\\\"model_not_found\\\"}}\",\n              \"headers\": [\n                {\n                  \"name\": \"content-type\",\n                  \"value\": \"application/json\"\n                }\n              ]\n            }\n          }\n        ]\n      },\n      {\n        \"name\": \"respond\",\n        \"version\": \"v1\",\n        \"paths\": [\n          {\n            \"path\": \"/edge/success\",\n            \"methods\": [\n              \"GET\"\n            ],\n            \"params\": {\n              \"statusCode\": 200,\n              \"body\": \"{\\\"ok\\\":true}\",\n              \"headers\": [\n                {\n                  \"name\": \"content-type\",\n                  \"value\": \"application/json\"\n                }\n              ]\n            }\n          }\n        ]\n      }\n    ]\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{adminUser}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{adminPassword}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"created (201) or already exists (409)\", () => pm.expect(pm.response.code).to.be.oneOf([201, 409]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create provider oai-pm-azure-openai",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{controllerUrl}}/llm-providers",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"apiVersion\": \"gateway.api-platform.wso2.com/v1\",\n  \"kind\": \"LlmProvider\",\n  \"metadata\": {\n    \"name\": \"oai-pm-azure-openai\"\n  },\n  \"spec\": {\n    \"displayName\": \"OpenAI errors Postman azure-openai\",\n    \"version\": \"v1.0\",\n    \"template\": \"azure-openai\",\n    \"context\": \"/oai-pm-azure-openai\",\n    \"upstream\": {\n      \"url\": \"{{selfUpstream}}/oai-pm-backend-sim/v1.0\"\n    },\n    \"accessControl\": {\n      \"mode\": \"allow_all\"\n    },\n    \"policies\": [\n      {\n        \"name\": \"word-count-guardrail\",\n        \"version\": \"v1\",\n        \"paths\": [\n          {\n            \"path\": \"/chat/completions\",\n            \"methods\": [\n              \"POST\"\n            ],\n            \"params\": {\n              \"request\": {\n                \"min\": 1,\n                \"max\": 5,\n                \"jsonPath\": \"$.prompt\"\n              }\n            }\n          }\n        ]\n      }\n    ]\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{adminUser}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{adminPassword}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"created (201) or already exists (409)\", () => pm.expect(pm.response.code).to.be.oneOf([201, 409]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create provider oai-pm-azureai-foundry",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{controllerUrl}}/llm-providers",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"apiVersion\": \"gateway.api-platform.wso2.com/v1\",\n  \"kind\": \"LlmProvider\",\n  \"metadata\": {\n    \"name\": \"oai-pm-azureai-foundry\"\n  },\n  \"spec\": {\n    \"displayName\": \"OpenAI errors Postman azureai-foundry\",\n    \"version\": \"v1.0\",\n    \"template\": \"azureai-foundry\",\n    \"context\": \"/oai-pm-azureai-foundry\",\n    \"upstream\": {\n      \"url\": \"{{selfUpstream}}/oai-pm-backend-sim/v1.0\"\n    },\n    \"accessControl\": {\n      \"mode\": \"allow_all\"\n    },\n    \"policies\": [\n      {\n        \"name\": \"word-count-guardrail\",\n        \"version\": \"v1\",\n        \"paths\": [\n          {\n            \"path\": \"/chat/completions\",\n            \"methods\": [\n              \"POST\"\n            ],\n            \"params\": {\n              \"request\": {\n                \"min\": 1,\n                \"max\": 5,\n                \"jsonPath\": \"$.prompt\"\n              }\n            }\n          }\n        ]\n      }\n    ]\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{adminUser}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{adminPassword}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"created (201) or already exists (409)\", () => pm.expect(pm.response.code).to.be.oneOf([201, 409]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create provider oai-pm-anthropic",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{controllerUrl}}/llm-providers",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"apiVersion\": \"gateway.api-platform.wso2.com/v1\",\n  \"kind\": \"LlmProvider\",\n  \"metadata\": {\n    \"name\": \"oai-pm-anthropic\"\n  },\n  \"spec\": {\n    \"displayName\": \"OpenAI errors Postman anthropic\",\n    \"version\": \"v1.0\",\n    \"template\": \"anthropic\",\n    \"context\": \"/oai-pm-anthropic\",\n    \"upstream\": {\n      \"url\": \"{{selfUpstream}}/oai-pm-backend-sim/v1.0\"\n    },\n    \"accessControl\": {\n      \"mode\": \"allow_all\"\n    },\n    \"policies\": [\n      {\n        \"name\": \"word-count-guardrail\",\n        \"version\": \"v1\",\n        \"paths\": [\n          {\n            \"path\": \"/chat/completions\",\n            \"methods\": [\n              \"POST\"\n            ],\n            \"params\": {\n              \"request\": {\n                \"min\": 1,\n                \"max\": 5,\n                \"jsonPath\": \"$.prompt\"\n              }\n            }\n          }\n        ]\n      }\n    ]\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{adminUser}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{adminPassword}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"created (201) or already exists (409)\", () => pm.expect(pm.response.code).to.be.oneOf([201, 409]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create provider oai-pm-gemini",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{controllerUrl}}/llm-providers",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"apiVersion\": \"gateway.api-platform.wso2.com/v1\",\n  \"kind\": \"LlmProvider\",\n  \"metadata\": {\n    \"name\": \"oai-pm-gemini\"\n  },\n  \"spec\": {\n    \"displayName\": \"OpenAI errors Postman gemini\",\n    \"version\": \"v1.0\",\n    \"template\": \"gemini\",\n    \"context\": \"/oai-pm-gemini\",\n    \"upstream\": {\n      \"url\": \"{{selfUpstream}}/oai-pm-backend-sim/v1.0\"\n    },\n    \"accessControl\": {\n      \"mode\": \"allow_all\"\n    },\n    \"policies\": [\n      {\n        \"name\": \"word-count-guardrail\",\n        \"version\": \"v1\",\n        \"paths\": [\n          {\n            \"path\": \"/chat/completions\",\n            \"methods\": [\n              \"POST\"\n            ],\n            \"params\": {\n              \"request\": {\n                \"min\": 1,\n                \"max\": 5,\n                \"jsonPath\": \"$.prompt\"\n              }\n            }\n          }\n        ]\n      }\n    ]\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{adminUser}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{adminPassword}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"created (201) or already exists (409)\", () => pm.expect(pm.response.code).to.be.oneOf([201, 409]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create provider oai-pm-mistralai",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{controllerUrl}}/llm-providers",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"apiVersion\": \"gateway.api-platform.wso2.com/v1\",\n  \"kind\": \"LlmProvider\",\n  \"metadata\": {\n    \"name\": \"oai-pm-mistralai\"\n  },\n  \"spec\": {\n    \"displayName\": \"OpenAI errors Postman mistralai\",\n    \"version\": \"v1.0\",\n    \"template\": \"mistralai\",\n    \"context\": \"/oai-pm-mistralai\",\n    \"upstream\": {\n      \"url\": \"{{selfUpstream}}/oai-pm-backend-sim/v1.0\"\n    },\n    \"accessControl\": {\n      \"mode\": \"allow_all\"\n    },\n    \"policies\": [\n      {\n        \"name\": \"word-count-guardrail\",\n        \"version\": \"v1\",\n        \"paths\": [\n          {\n            \"path\": \"/chat/completions\",\n            \"methods\": [\n              \"POST\"\n            ],\n            \"params\": {\n              \"request\": {\n                \"min\": 1,\n                \"max\": 5,\n                \"jsonPath\": \"$.prompt\"\n              }\n            }\n          }\n        ]\n      }\n    ]\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{adminUser}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{adminPassword}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"created (201) or already exists (409)\", () => pm.expect(pm.response.code).to.be.oneOf([201, 409]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create provider oai-pm-awsbedrock",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{controllerUrl}}/llm-providers",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"apiVersion\": \"gateway.api-platform.wso2.com/v1\",\n  \"kind\": \"LlmProvider\",\n  \"metadata\": {\n    \"name\": \"oai-pm-awsbedrock\"\n  },\n  \"spec\": {\n    \"displayName\": \"OpenAI errors Postman awsbedrock\",\n    \"version\": \"v1.0\",\n    \"template\": \"awsbedrock\",\n    \"context\": \"/oai-pm-awsbedrock\",\n    \"upstream\": {\n      \"url\": \"{{selfUpstream}}/oai-pm-backend-sim/v1.0\"\n    },\n    \"accessControl\": {\n      \"mode\": \"allow_all\"\n    },\n    \"policies\": [\n      {\n        \"name\": \"word-count-guardrail\",\n        \"version\": \"v1\",\n        \"paths\": [\n          {\n            \"path\": \"/chat/completions\",\n            \"methods\": [\n              \"POST\"\n            ],\n            \"params\": {\n              \"request\": {\n                \"min\": 1,\n                \"max\": 5,\n                \"jsonPath\": \"$.prompt\"\n              }\n            }\n          }\n        ]\n      }\n    ]\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{adminUser}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{adminPassword}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"created (201) or already exists (409)\", () => pm.expect(pm.response.code).to.be.oneOf([201, 409]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create provider oai-pm-down-openai (dead upstream)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{controllerUrl}}/llm-providers",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"apiVersion\": \"gateway.api-platform.wso2.com/v1\",\n  \"kind\": \"LlmProvider\",\n  \"metadata\": {\n    \"name\": \"oai-pm-down-openai\"\n  },\n  \"spec\": {\n    \"displayName\": \"OpenAI errors Postman down openai\",\n    \"version\": \"v1.0\",\n    \"template\": \"openai\",\n    \"context\": \"/oai-pm-down-openai\",\n    \"upstream\": {\n      \"url\": \"{{deadUpstream}}\"\n    },\n    \"accessControl\": {\n      \"mode\": \"allow_all\"\n    },\n    \"globalPolicies\": [\n      {\n        \"name\": \"set-headers\",\n        \"version\": \"v1\",\n        \"params\": {\n          \"request\": {\n            \"headers\": [\n              {\n                \"name\": \"x-oai-pm\",\n                \"value\": \"down\"\n              }\n            ]\n          }\n        }\n      }\n    ]\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{adminUser}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{adminPassword}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"created (201) or already exists (409)\", () => pm.expect(pm.response.code).to.be.oneOf([201, 409]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create provider oai-pm-down-azure-openai (dead upstream)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{controllerUrl}}/llm-providers",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"apiVersion\": \"gateway.api-platform.wso2.com/v1\",\n  \"kind\": \"LlmProvider\",\n  \"metadata\": {\n    \"name\": \"oai-pm-down-azure-openai\"\n  },\n  \"spec\": {\n    \"displayName\": \"OpenAI errors Postman down azure-openai\",\n    \"version\": \"v1.0\",\n    \"template\": \"azure-openai\",\n    \"context\": \"/oai-pm-down-azure-openai\",\n    \"upstream\": {\n      \"url\": \"{{deadUpstream}}\"\n    },\n    \"accessControl\": {\n      \"mode\": \"allow_all\"\n    },\n    \"globalPolicies\": [\n      {\n        \"name\": \"set-headers\",\n        \"version\": \"v1\",\n        \"params\": {\n          \"request\": {\n            \"headers\": [\n              {\n                \"name\": \"x-oai-pm\",\n                \"value\": \"down\"\n              }\n            ]\n          }\n        }\n      }\n    ]\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{adminUser}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{adminPassword}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"created (201) or already exists (409)\", () => pm.expect(pm.response.code).to.be.oneOf([201, 409]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create provider oai-pm-down-azureai-foundry (dead upstream)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{controllerUrl}}/llm-providers",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"apiVersion\": \"gateway.api-platform.wso2.com/v1\",\n  \"kind\": \"LlmProvider\",\n  \"metadata\": {\n    \"name\": \"oai-pm-down-azureai-foundry\"\n  },\n  \"spec\": {\n    \"displayName\": \"OpenAI errors Postman down azureai-foundry\",\n    \"version\": \"v1.0\",\n    \"template\": \"azureai-foundry\",\n    \"context\": \"/oai-pm-down-azureai-foundry\",\n    \"upstream\": {\n      \"url\": \"{{deadUpstream}}\"\n    },\n    \"accessControl\": {\n      \"mode\": \"allow_all\"\n    },\n    \"globalPolicies\": [\n      {\n        \"name\": \"set-headers\",\n        \"version\": \"v1\",\n        \"params\": {\n          \"request\": {\n            \"headers\": [\n              {\n                \"name\": \"x-oai-pm\",\n                \"value\": \"down\"\n              }\n            ]\n          }\n        }\n      }\n    ]\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{adminUser}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{adminPassword}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"created (201) or already exists (409)\", () => pm.expect(pm.response.code).to.be.oneOf([201, 409]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create provider oai-pm-down-anthropic (dead upstream)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{controllerUrl}}/llm-providers",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"apiVersion\": \"gateway.api-platform.wso2.com/v1\",\n  \"kind\": \"LlmProvider\",\n  \"metadata\": {\n    \"name\": \"oai-pm-down-anthropic\"\n  },\n  \"spec\": {\n    \"displayName\": \"OpenAI errors Postman down anthropic\",\n    \"version\": \"v1.0\",\n    \"template\": \"anthropic\",\n    \"context\": \"/oai-pm-down-anthropic\",\n    \"upstream\": {\n      \"url\": \"{{deadUpstream}}\"\n    },\n    \"accessControl\": {\n      \"mode\": \"allow_all\"\n    },\n    \"globalPolicies\": [\n      {\n        \"name\": \"set-headers\",\n        \"version\": \"v1\",\n        \"params\": {\n          \"request\": {\n            \"headers\": [\n              {\n                \"name\": \"x-oai-pm\",\n                \"value\": \"down\"\n              }\n            ]\n          }\n        }\n      }\n    ]\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{adminUser}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{adminPassword}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"created (201) or already exists (409)\", () => pm.expect(pm.response.code).to.be.oneOf([201, 409]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create provider oai-pm-down-gemini (dead upstream)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{controllerUrl}}/llm-providers",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"apiVersion\": \"gateway.api-platform.wso2.com/v1\",\n  \"kind\": \"LlmProvider\",\n  \"metadata\": {\n    \"name\": \"oai-pm-down-gemini\"\n  },\n  \"spec\": {\n    \"displayName\": \"OpenAI errors Postman down gemini\",\n    \"version\": \"v1.0\",\n    \"template\": \"gemini\",\n    \"context\": \"/oai-pm-down-gemini\",\n    \"upstream\": {\n      \"url\": \"{{deadUpstream}}\"\n    },\n    \"accessControl\": {\n      \"mode\": \"allow_all\"\n    },\n    \"globalPolicies\": [\n      {\n        \"name\": \"set-headers\",\n        \"version\": \"v1\",\n        \"params\": {\n          \"request\": {\n            \"headers\": [\n              {\n                \"name\": \"x-oai-pm\",\n                \"value\": \"down\"\n              }\n            ]\n          }\n        }\n      }\n    ]\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{adminUser}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{adminPassword}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"created (201) or already exists (409)\", () => pm.expect(pm.response.code).to.be.oneOf([201, 409]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create provider oai-pm-down-mistralai (dead upstream)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{controllerUrl}}/llm-providers",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"apiVersion\": \"gateway.api-platform.wso2.com/v1\",\n  \"kind\": \"LlmProvider\",\n  \"metadata\": {\n    \"name\": \"oai-pm-down-mistralai\"\n  },\n  \"spec\": {\n    \"displayName\": \"OpenAI errors Postman down mistralai\",\n    \"version\": \"v1.0\",\n    \"template\": \"mistralai\",\n    \"context\": \"/oai-pm-down-mistralai\",\n    \"upstream\": {\n      \"url\": \"{{deadUpstream}}\"\n    },\n    \"accessControl\": {\n      \"mode\": \"allow_all\"\n    },\n    \"globalPolicies\": [\n      {\n        \"name\": \"set-headers\",\n        \"version\": \"v1\",\n        \"params\": {\n          \"request\": {\n            \"headers\": [\n              {\n                \"name\": \"x-oai-pm\",\n                \"value\": \"down\"\n              }\n            ]\n          }\n        }\n      }\n    ]\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{adminUser}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{adminPassword}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"created (201) or already exists (409)\", () => pm.expect(pm.response.code).to.be.oneOf([201, 409]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create provider oai-pm-down-awsbedrock (dead upstream)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{controllerUrl}}/llm-providers",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"apiVersion\": \"gateway.api-platform.wso2.com/v1\",\n  \"kind\": \"LlmProvider\",\n  \"metadata\": {\n    \"name\": \"oai-pm-down-awsbedrock\"\n  },\n  \"spec\": {\n    \"displayName\": \"OpenAI errors Postman down awsbedrock\",\n    \"version\": \"v1.0\",\n    \"template\": \"awsbedrock\",\n    \"context\": \"/oai-pm-down-awsbedrock\",\n    \"upstream\": {\n      \"url\": \"{{deadUpstream}}\"\n    },\n    \"accessControl\": {\n      \"mode\": \"allow_all\"\n    },\n    \"globalPolicies\": [\n      {\n        \"name\": \"set-headers\",\n        \"version\": \"v1\",\n        \"params\": {\n          \"request\": {\n            \"headers\": [\n              {\n                \"name\": \"x-oai-pm\",\n                \"value\": \"down\"\n              }\n            ]\n          }\n        }\n      }\n    ]\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{adminUser}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{adminPassword}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"created (201) or already exists (409)\", () => pm.expect(pm.response.code).to.be.oneOf([201, 409]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create proxy oai-pm-proxy",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{controllerUrl}}/llm-proxies",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"apiVersion\": \"gateway.api-platform.wso2.com/v1\",\n  \"kind\": \"LlmProxy\",\n  \"metadata\": {\n    \"name\": \"oai-pm-proxy\"\n  },\n  \"spec\": {\n    \"displayName\": \"OpenAI errors Postman proxy\",\n    \"version\": \"v1.0\",\n    \"context\": \"/oai-pm-proxy\",\n    \"provider\": {\n      \"id\": \"oai-pm-openai\"\n    },\n    \"policies\": [\n      {\n        \"name\": \"word-count-guardrail\",\n        \"version\": \"v1\",\n        \"paths\": [\n          {\n            \"path\": \"/chat/completions\",\n            \"methods\": [\n              \"POST\"\n            ],\n            \"params\": {\n              \"request\": {\n                \"min\": 1,\n                \"max\": 5,\n                \"jsonPath\": \"$.prompt\"\n              }\n            }\n          }\n        ]\n      }\n    ]\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{adminUser}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{adminPassword}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"created (201) or already exists (409)\", () => pm.expect(pm.response.code).to.be.oneOf([201, 409]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Wait for deployment",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{routerUrl}}/oai-pm-backend-sim/v1.0/teapot",
+            "description": "Gives the controller a moment to push the routes. If this fails, wait a few seconds and run it again."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "setTimeout(() => {}, 3000);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"backend simulator is routable\", () => pm.response.to.have.status(418));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Template: openai",
+      "item": [
+        {
+          "name": "Policy rejection is reshaped (word-count-guardrail -> 422)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{routerUrl}}/oai-pm-openai/chat/completions",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"gpt-4o\",\n  \"prompt\": \"this prompt has far more than five words in it\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "The guardrail writes its own REST-style JSON and describes no fault. With the option on, the gateway reshapes it into the OpenAI envelope and keeps 422."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 422 (never changed by the formatter)\", () => pm.response.to.have.status(422));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"content-type is application/json\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\"));",
+                  "pm.test(\"top level carries only `error`\", () => pm.expect(Object.keys(body)).to.eql([\"error\"]));",
+                  "pm.test(\"error.message is a non-empty string\", () => pm.expect(body.error.message).to.be.a(\"string\").and.not.empty);",
+                  "pm.test(\"error.type is a string\", () => pm.expect(body.error.type).to.be.a(\"string\"));",
+                  "pm.test(\"error.param and error.code are always present\", () => { pm.expect(body.error).to.have.property(\"param\"); pm.expect(body.error).to.have.property(\"code\"); });",
+                  "pm.test(\"error.type is invalid_request_error\", () => pm.expect(body.error.type).to.eql(\"invalid_request_error\"));",
+                  "pm.test(\"error.param is null\", () => pm.expect(body.error.param).to.be.null);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Allowed request reaches the upstream untouched",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{routerUrl}}/oai-pm-openai/chat/completions",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"gpt-4o\",\n  \"prompt\": \"short and sweet\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200 (never changed by the formatter)\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"completion body passed through\", () => pm.expect(pm.response.json().object).to.eql(\"chat.completion\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Router failure (upstream refused) -> 503 server_error",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{routerUrl}}/oai-pm-down-openai/chat/completions",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"gpt-4o\",\n  \"prompt\": \"short and sweet\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "The upstream refuses connections, so Envoy produces the 503. The route's only policy never reads response bodies, so this also exercises the error-only body buffering."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 503 (never changed by the formatter)\", () => pm.response.to.have.status(503));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"content-type is application/json\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\"));",
+                  "pm.test(\"top level carries only `error`\", () => pm.expect(Object.keys(body)).to.eql([\"error\"]));",
+                  "pm.test(\"error.message is a non-empty string\", () => pm.expect(body.error.message).to.be.a(\"string\").and.not.empty);",
+                  "pm.test(\"error.type is a string\", () => pm.expect(body.error.type).to.be.a(\"string\"));",
+                  "pm.test(\"error.param and error.code are always present\", () => { pm.expect(body.error).to.have.property(\"param\"); pm.expect(body.error).to.have.property(\"code\"); });",
+                  "pm.test(\"error.type is server_error\", () => pm.expect(body.error.type).to.eql(\"server_error\"));",
+                  "pm.test(\"error.param is null\", () => pm.expect(body.error.param).to.be.null);",
+                  "pm.test(\"error.code is set from the router description\", () => pm.expect(pm.response.json().error.code).to.be.a(\"string\").and.not.empty);",
+                  "pm.test(\"Envoy's plain-text reply is gone\", () => pm.expect(pm.response.text()).to.not.include(\"upstream connect error\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Backend error WITH a body passes through (418)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{routerUrl}}/oai-pm-openai/teapot"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 418 (never changed by the formatter)\", () => pm.response.to.have.status(418));",
+                  "pm.test(\"body passed through byte-for-byte\", () => pm.expect(pm.response.text()).to.eql(\"{\\\"vendor_error\\\":\\\"I am a teapot\\\"}\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Backend error already in OpenAI shape passes through (429)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{routerUrl}}/oai-pm-openai/openai-shaped"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 429 (never changed by the formatter)\", () => pm.response.to.have.status(429));",
+                  "pm.test(\"body passed through byte-for-byte\", () => pm.expect(pm.response.text()).to.eql(\"{\\\"error\\\":{\\\"message\\\":\\\"Rate limit reached for gpt-4o in organization org-x\\\",\\\"type\\\":\\\"requests\\\",\\\"param\\\":null,\\\"code\\\":\\\"rate_limit_exceeded\\\"}}\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Backend error in another vendor's shape passes through (529)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{routerUrl}}/oai-pm-openai/anthropic-shaped",
+            "description": "Option B: a provider's own error document is never rewritten, even when it is not OpenAI-shaped."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 529 (never changed by the formatter)\", () => pm.response.to.have.status(529));",
+                  "pm.test(\"body passed through byte-for-byte\", () => pm.expect(pm.response.text()).to.eql(\"{\\\"type\\\":\\\"error\\\",\\\"error\\\":{\\\"type\\\":\\\"overloaded_error\\\",\\\"message\\\":\\\"Overloaded\\\"}}\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Backend error with NO body is passed through empty (429)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{routerUrl}}/oai-pm-openai/empty-429",
+            "description": "Nothing to preserve, so the gateway renders one. On a route that buffers bodies this is added in the response-header phase."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 429 (never changed by the formatter)\", () => pm.response.to.have.status(429));",
+                  "pm.test(\"the provider sent no body, and the gateway adds none\", () => pm.expect(pm.response.text()).to.eql(\"\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Backend error with NO body is passed through empty (500)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{routerUrl}}/oai-pm-openai/empty-500"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 500 (never changed by the formatter)\", () => pm.response.to.have.status(500));",
+                  "pm.test(\"the provider sent no body, and the gateway adds none\", () => pm.expect(pm.response.text()).to.eql(\"\"));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Template: azure-openai",
+      "item": [
+        {
+          "name": "Policy rejection is reshaped (word-count-guardrail -> 422)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{routerUrl}}/oai-pm-azure-openai/chat/completions",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"gpt-4o\",\n  \"prompt\": \"this prompt has far more than five words in it\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "The guardrail writes its own REST-style JSON and describes no fault. With the option on, the gateway reshapes it into the OpenAI envelope and keeps 422."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 422 (never changed by the formatter)\", () => pm.response.to.have.status(422));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"content-type is application/json\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\"));",
+                  "pm.test(\"top level carries only `error`\", () => pm.expect(Object.keys(body)).to.eql([\"error\"]));",
+                  "pm.test(\"error.message is a non-empty string\", () => pm.expect(body.error.message).to.be.a(\"string\").and.not.empty);",
+                  "pm.test(\"error.type is a string\", () => pm.expect(body.error.type).to.be.a(\"string\"));",
+                  "pm.test(\"error.param and error.code are always present\", () => { pm.expect(body.error).to.have.property(\"param\"); pm.expect(body.error).to.have.property(\"code\"); });",
+                  "pm.test(\"error.type is invalid_request_error\", () => pm.expect(body.error.type).to.eql(\"invalid_request_error\"));",
+                  "pm.test(\"error.param is null\", () => pm.expect(body.error.param).to.be.null);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Allowed request reaches the upstream untouched",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{routerUrl}}/oai-pm-azure-openai/chat/completions",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"gpt-4o\",\n  \"prompt\": \"short and sweet\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200 (never changed by the formatter)\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"completion body passed through\", () => pm.expect(pm.response.json().object).to.eql(\"chat.completion\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Router failure (upstream refused) -> 503 server_error",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{routerUrl}}/oai-pm-down-azure-openai/chat/completions",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"gpt-4o\",\n  \"prompt\": \"short and sweet\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "The upstream refuses connections, so Envoy produces the 503. The route's only policy never reads response bodies, so this also exercises the error-only body buffering."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 503 (never changed by the formatter)\", () => pm.response.to.have.status(503));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"content-type is application/json\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\"));",
+                  "pm.test(\"top level carries only `error`\", () => pm.expect(Object.keys(body)).to.eql([\"error\"]));",
+                  "pm.test(\"error.message is a non-empty string\", () => pm.expect(body.error.message).to.be.a(\"string\").and.not.empty);",
+                  "pm.test(\"error.type is a string\", () => pm.expect(body.error.type).to.be.a(\"string\"));",
+                  "pm.test(\"error.param and error.code are always present\", () => { pm.expect(body.error).to.have.property(\"param\"); pm.expect(body.error).to.have.property(\"code\"); });",
+                  "pm.test(\"error.type is server_error\", () => pm.expect(body.error.type).to.eql(\"server_error\"));",
+                  "pm.test(\"error.param is null\", () => pm.expect(body.error.param).to.be.null);",
+                  "pm.test(\"error.code is set from the router description\", () => pm.expect(pm.response.json().error.code).to.be.a(\"string\").and.not.empty);",
+                  "pm.test(\"Envoy's plain-text reply is gone\", () => pm.expect(pm.response.text()).to.not.include(\"upstream connect error\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Backend error WITH a body passes through (418)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{routerUrl}}/oai-pm-azure-openai/teapot"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 418 (never changed by the formatter)\", () => pm.response.to.have.status(418));",
+                  "pm.test(\"body passed through byte-for-byte\", () => pm.expect(pm.response.text()).to.eql(\"{\\\"vendor_error\\\":\\\"I am a teapot\\\"}\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Backend error already in OpenAI shape passes through (429)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{routerUrl}}/oai-pm-azure-openai/openai-shaped"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 429 (never changed by the formatter)\", () => pm.response.to.have.status(429));",
+                  "pm.test(\"body passed through byte-for-byte\", () => pm.expect(pm.response.text()).to.eql(\"{\\\"error\\\":{\\\"message\\\":\\\"Rate limit reached for gpt-4o in organization org-x\\\",\\\"type\\\":\\\"requests\\\",\\\"param\\\":null,\\\"code\\\":\\\"rate_limit_exceeded\\\"}}\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Backend error in another vendor's shape passes through (529)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{routerUrl}}/oai-pm-azure-openai/anthropic-shaped",
+            "description": "Option B: a provider's own error document is never rewritten, even when it is not OpenAI-shaped."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 529 (never changed by the formatter)\", () => pm.response.to.have.status(529));",
+                  "pm.test(\"body passed through byte-for-byte\", () => pm.expect(pm.response.text()).to.eql(\"{\\\"type\\\":\\\"error\\\",\\\"error\\\":{\\\"type\\\":\\\"overloaded_error\\\",\\\"message\\\":\\\"Overloaded\\\"}}\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Backend error with NO body is passed through empty (429)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{routerUrl}}/oai-pm-azure-openai/empty-429",
+            "description": "Nothing to preserve, so the gateway renders one. On a route that buffers bodies this is added in the response-header phase."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 429 (never changed by the formatter)\", () => pm.response.to.have.status(429));",
+                  "pm.test(\"the provider sent no body, and the gateway adds none\", () => pm.expect(pm.response.text()).to.eql(\"\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Backend error with NO body is passed through empty (500)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{routerUrl}}/oai-pm-azure-openai/empty-500"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 500 (never changed by the formatter)\", () => pm.response.to.have.status(500));",
+                  "pm.test(\"the provider sent no body, and the gateway adds none\", () => pm.expect(pm.response.text()).to.eql(\"\"));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Template: azureai-foundry",
+      "item": [
+        {
+          "name": "Policy rejection is reshaped (word-count-guardrail -> 422)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{routerUrl}}/oai-pm-azureai-foundry/chat/completions",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"gpt-4o\",\n  \"prompt\": \"this prompt has far more than five words in it\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "The guardrail writes its own REST-style JSON and describes no fault. With the option on, the gateway reshapes it into the OpenAI envelope and keeps 422."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 422 (never changed by the formatter)\", () => pm.response.to.have.status(422));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"content-type is application/json\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\"));",
+                  "pm.test(\"top level carries only `error`\", () => pm.expect(Object.keys(body)).to.eql([\"error\"]));",
+                  "pm.test(\"error.message is a non-empty string\", () => pm.expect(body.error.message).to.be.a(\"string\").and.not.empty);",
+                  "pm.test(\"error.type is a string\", () => pm.expect(body.error.type).to.be.a(\"string\"));",
+                  "pm.test(\"error.param and error.code are always present\", () => { pm.expect(body.error).to.have.property(\"param\"); pm.expect(body.error).to.have.property(\"code\"); });",
+                  "pm.test(\"error.type is invalid_request_error\", () => pm.expect(body.error.type).to.eql(\"invalid_request_error\"));",
+                  "pm.test(\"error.param is null\", () => pm.expect(body.error.param).to.be.null);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Allowed request reaches the upstream untouched",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{routerUrl}}/oai-pm-azureai-foundry/chat/completions",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"gpt-4o\",\n  \"prompt\": \"short and sweet\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200 (never changed by the formatter)\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"completion body passed through\", () => pm.expect(pm.response.json().object).to.eql(\"chat.completion\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Router failure (upstream refused) -> 503 server_error",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{routerUrl}}/oai-pm-down-azureai-foundry/chat/completions",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"gpt-4o\",\n  \"prompt\": \"short and sweet\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "The upstream refuses connections, so Envoy produces the 503. The route's only policy never reads response bodies, so this also exercises the error-only body buffering."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 503 (never changed by the formatter)\", () => pm.response.to.have.status(503));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"content-type is application/json\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\"));",
+                  "pm.test(\"top level carries only `error`\", () => pm.expect(Object.keys(body)).to.eql([\"error\"]));",
+                  "pm.test(\"error.message is a non-empty string\", () => pm.expect(body.error.message).to.be.a(\"string\").and.not.empty);",
+                  "pm.test(\"error.type is a string\", () => pm.expect(body.error.type).to.be.a(\"string\"));",
+                  "pm.test(\"error.param and error.code are always present\", () => { pm.expect(body.error).to.have.property(\"param\"); pm.expect(body.error).to.have.property(\"code\"); });",
+                  "pm.test(\"error.type is server_error\", () => pm.expect(body.error.type).to.eql(\"server_error\"));",
+                  "pm.test(\"error.param is null\", () => pm.expect(body.error.param).to.be.null);",
+                  "pm.test(\"error.code is set from the router description\", () => pm.expect(pm.response.json().error.code).to.be.a(\"string\").and.not.empty);",
+                  "pm.test(\"Envoy's plain-text reply is gone\", () => pm.expect(pm.response.text()).to.not.include(\"upstream connect error\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Backend error WITH a body passes through (418)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{routerUrl}}/oai-pm-azureai-foundry/teapot"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 418 (never changed by the formatter)\", () => pm.response.to.have.status(418));",
+                  "pm.test(\"body passed through byte-for-byte\", () => pm.expect(pm.response.text()).to.eql(\"{\\\"vendor_error\\\":\\\"I am a teapot\\\"}\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Backend error already in OpenAI shape passes through (429)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{routerUrl}}/oai-pm-azureai-foundry/openai-shaped"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 429 (never changed by the formatter)\", () => pm.response.to.have.status(429));",
+                  "pm.test(\"body passed through byte-for-byte\", () => pm.expect(pm.response.text()).to.eql(\"{\\\"error\\\":{\\\"message\\\":\\\"Rate limit reached for gpt-4o in organization org-x\\\",\\\"type\\\":\\\"requests\\\",\\\"param\\\":null,\\\"code\\\":\\\"rate_limit_exceeded\\\"}}\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Backend error in another vendor's shape passes through (529)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{routerUrl}}/oai-pm-azureai-foundry/anthropic-shaped",
+            "description": "Option B: a provider's own error document is never rewritten, even when it is not OpenAI-shaped."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 529 (never changed by the formatter)\", () => pm.response.to.have.status(529));",
+                  "pm.test(\"body passed through byte-for-byte\", () => pm.expect(pm.response.text()).to.eql(\"{\\\"type\\\":\\\"error\\\",\\\"error\\\":{\\\"type\\\":\\\"overloaded_error\\\",\\\"message\\\":\\\"Overloaded\\\"}}\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Backend error with NO body is passed through empty (429)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{routerUrl}}/oai-pm-azureai-foundry/empty-429",
+            "description": "Nothing to preserve, so the gateway renders one. On a route that buffers bodies this is added in the response-header phase."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 429 (never changed by the formatter)\", () => pm.response.to.have.status(429));",
+                  "pm.test(\"the provider sent no body, and the gateway adds none\", () => pm.expect(pm.response.text()).to.eql(\"\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Backend error with NO body is passed through empty (500)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{routerUrl}}/oai-pm-azureai-foundry/empty-500"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 500 (never changed by the formatter)\", () => pm.response.to.have.status(500));",
+                  "pm.test(\"the provider sent no body, and the gateway adds none\", () => pm.expect(pm.response.text()).to.eql(\"\"));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Template: anthropic",
+      "item": [
+        {
+          "name": "Policy rejection is reshaped (word-count-guardrail -> 422)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{routerUrl}}/oai-pm-anthropic/chat/completions",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"gpt-4o\",\n  \"prompt\": \"this prompt has far more than five words in it\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "The guardrail writes its own REST-style JSON and describes no fault. With the option on, the gateway reshapes it into the OpenAI envelope and keeps 422."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 422 (never changed by the formatter)\", () => pm.response.to.have.status(422));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"content-type is application/json\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\"));",
+                  "pm.test(\"top level carries only `error`\", () => pm.expect(Object.keys(body)).to.eql([\"error\"]));",
+                  "pm.test(\"error.message is a non-empty string\", () => pm.expect(body.error.message).to.be.a(\"string\").and.not.empty);",
+                  "pm.test(\"error.type is a string\", () => pm.expect(body.error.type).to.be.a(\"string\"));",
+                  "pm.test(\"error.param and error.code are always present\", () => { pm.expect(body.error).to.have.property(\"param\"); pm.expect(body.error).to.have.property(\"code\"); });",
+                  "pm.test(\"error.type is invalid_request_error\", () => pm.expect(body.error.type).to.eql(\"invalid_request_error\"));",
+                  "pm.test(\"error.param is null\", () => pm.expect(body.error.param).to.be.null);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Allowed request reaches the upstream untouched",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{routerUrl}}/oai-pm-anthropic/chat/completions",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"gpt-4o\",\n  \"prompt\": \"short and sweet\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200 (never changed by the formatter)\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"completion body passed through\", () => pm.expect(pm.response.json().object).to.eql(\"chat.completion\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Router failure (upstream refused) -> 503 server_error",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{routerUrl}}/oai-pm-down-anthropic/chat/completions",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"gpt-4o\",\n  \"prompt\": \"short and sweet\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "The upstream refuses connections, so Envoy produces the 503. The route's only policy never reads response bodies, so this also exercises the error-only body buffering."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 503 (never changed by the formatter)\", () => pm.response.to.have.status(503));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"content-type is application/json\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\"));",
+                  "pm.test(\"top level carries only `error`\", () => pm.expect(Object.keys(body)).to.eql([\"error\"]));",
+                  "pm.test(\"error.message is a non-empty string\", () => pm.expect(body.error.message).to.be.a(\"string\").and.not.empty);",
+                  "pm.test(\"error.type is a string\", () => pm.expect(body.error.type).to.be.a(\"string\"));",
+                  "pm.test(\"error.param and error.code are always present\", () => { pm.expect(body.error).to.have.property(\"param\"); pm.expect(body.error).to.have.property(\"code\"); });",
+                  "pm.test(\"error.type is server_error\", () => pm.expect(body.error.type).to.eql(\"server_error\"));",
+                  "pm.test(\"error.param is null\", () => pm.expect(body.error.param).to.be.null);",
+                  "pm.test(\"error.code is set from the router description\", () => pm.expect(pm.response.json().error.code).to.be.a(\"string\").and.not.empty);",
+                  "pm.test(\"Envoy's plain-text reply is gone\", () => pm.expect(pm.response.text()).to.not.include(\"upstream connect error\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Backend error WITH a body passes through (418)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{routerUrl}}/oai-pm-anthropic/teapot"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 418 (never changed by the formatter)\", () => pm.response.to.have.status(418));",
+                  "pm.test(\"body passed through byte-for-byte\", () => pm.expect(pm.response.text()).to.eql(\"{\\\"vendor_error\\\":\\\"I am a teapot\\\"}\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Backend error already in OpenAI shape passes through (429)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{routerUrl}}/oai-pm-anthropic/openai-shaped"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 429 (never changed by the formatter)\", () => pm.response.to.have.status(429));",
+                  "pm.test(\"body passed through byte-for-byte\", () => pm.expect(pm.response.text()).to.eql(\"{\\\"error\\\":{\\\"message\\\":\\\"Rate limit reached for gpt-4o in organization org-x\\\",\\\"type\\\":\\\"requests\\\",\\\"param\\\":null,\\\"code\\\":\\\"rate_limit_exceeded\\\"}}\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Backend error in another vendor's shape passes through (529)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{routerUrl}}/oai-pm-anthropic/anthropic-shaped",
+            "description": "Option B: a provider's own error document is never rewritten, even when it is not OpenAI-shaped."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 529 (never changed by the formatter)\", () => pm.response.to.have.status(529));",
+                  "pm.test(\"body passed through byte-for-byte\", () => pm.expect(pm.response.text()).to.eql(\"{\\\"type\\\":\\\"error\\\",\\\"error\\\":{\\\"type\\\":\\\"overloaded_error\\\",\\\"message\\\":\\\"Overloaded\\\"}}\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Backend error with NO body is passed through empty (429)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{routerUrl}}/oai-pm-anthropic/empty-429",
+            "description": "Nothing to preserve, so the gateway renders one. On a route that buffers bodies this is added in the response-header phase."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 429 (never changed by the formatter)\", () => pm.response.to.have.status(429));",
+                  "pm.test(\"the provider sent no body, and the gateway adds none\", () => pm.expect(pm.response.text()).to.eql(\"\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Backend error with NO body is passed through empty (500)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{routerUrl}}/oai-pm-anthropic/empty-500"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 500 (never changed by the formatter)\", () => pm.response.to.have.status(500));",
+                  "pm.test(\"the provider sent no body, and the gateway adds none\", () => pm.expect(pm.response.text()).to.eql(\"\"));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Template: gemini",
+      "item": [
+        {
+          "name": "Policy rejection is reshaped (word-count-guardrail -> 422)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{routerUrl}}/oai-pm-gemini/chat/completions",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"gpt-4o\",\n  \"prompt\": \"this prompt has far more than five words in it\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "The guardrail writes its own REST-style JSON and describes no fault. With the option on, the gateway reshapes it into the OpenAI envelope and keeps 422."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 422 (never changed by the formatter)\", () => pm.response.to.have.status(422));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"content-type is application/json\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\"));",
+                  "pm.test(\"top level carries only `error`\", () => pm.expect(Object.keys(body)).to.eql([\"error\"]));",
+                  "pm.test(\"error.message is a non-empty string\", () => pm.expect(body.error.message).to.be.a(\"string\").and.not.empty);",
+                  "pm.test(\"error.type is a string\", () => pm.expect(body.error.type).to.be.a(\"string\"));",
+                  "pm.test(\"error.param and error.code are always present\", () => { pm.expect(body.error).to.have.property(\"param\"); pm.expect(body.error).to.have.property(\"code\"); });",
+                  "pm.test(\"error.type is invalid_request_error\", () => pm.expect(body.error.type).to.eql(\"invalid_request_error\"));",
+                  "pm.test(\"error.param is null\", () => pm.expect(body.error.param).to.be.null);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Allowed request reaches the upstream untouched",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{routerUrl}}/oai-pm-gemini/chat/completions",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"gpt-4o\",\n  \"prompt\": \"short and sweet\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200 (never changed by the formatter)\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"completion body passed through\", () => pm.expect(pm.response.json().object).to.eql(\"chat.completion\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Router failure (upstream refused) -> 503 server_error",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{routerUrl}}/oai-pm-down-gemini/chat/completions",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"gpt-4o\",\n  \"prompt\": \"short and sweet\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "The upstream refuses connections, so Envoy produces the 503. The route's only policy never reads response bodies, so this also exercises the error-only body buffering."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 503 (never changed by the formatter)\", () => pm.response.to.have.status(503));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"content-type is application/json\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\"));",
+                  "pm.test(\"top level carries only `error`\", () => pm.expect(Object.keys(body)).to.eql([\"error\"]));",
+                  "pm.test(\"error.message is a non-empty string\", () => pm.expect(body.error.message).to.be.a(\"string\").and.not.empty);",
+                  "pm.test(\"error.type is a string\", () => pm.expect(body.error.type).to.be.a(\"string\"));",
+                  "pm.test(\"error.param and error.code are always present\", () => { pm.expect(body.error).to.have.property(\"param\"); pm.expect(body.error).to.have.property(\"code\"); });",
+                  "pm.test(\"error.type is server_error\", () => pm.expect(body.error.type).to.eql(\"server_error\"));",
+                  "pm.test(\"error.param is null\", () => pm.expect(body.error.param).to.be.null);",
+                  "pm.test(\"error.code is set from the router description\", () => pm.expect(pm.response.json().error.code).to.be.a(\"string\").and.not.empty);",
+                  "pm.test(\"Envoy's plain-text reply is gone\", () => pm.expect(pm.response.text()).to.not.include(\"upstream connect error\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Backend error WITH a body passes through (418)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{routerUrl}}/oai-pm-gemini/teapot"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 418 (never changed by the formatter)\", () => pm.response.to.have.status(418));",
+                  "pm.test(\"body passed through byte-for-byte\", () => pm.expect(pm.response.text()).to.eql(\"{\\\"vendor_error\\\":\\\"I am a teapot\\\"}\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Backend error already in OpenAI shape passes through (429)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{routerUrl}}/oai-pm-gemini/openai-shaped"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 429 (never changed by the formatter)\", () => pm.response.to.have.status(429));",
+                  "pm.test(\"body passed through byte-for-byte\", () => pm.expect(pm.response.text()).to.eql(\"{\\\"error\\\":{\\\"message\\\":\\\"Rate limit reached for gpt-4o in organization org-x\\\",\\\"type\\\":\\\"requests\\\",\\\"param\\\":null,\\\"code\\\":\\\"rate_limit_exceeded\\\"}}\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Backend error in another vendor's shape passes through (529)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{routerUrl}}/oai-pm-gemini/anthropic-shaped",
+            "description": "Option B: a provider's own error document is never rewritten, even when it is not OpenAI-shaped."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 529 (never changed by the formatter)\", () => pm.response.to.have.status(529));",
+                  "pm.test(\"body passed through byte-for-byte\", () => pm.expect(pm.response.text()).to.eql(\"{\\\"type\\\":\\\"error\\\",\\\"error\\\":{\\\"type\\\":\\\"overloaded_error\\\",\\\"message\\\":\\\"Overloaded\\\"}}\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Backend error with NO body is passed through empty (429)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{routerUrl}}/oai-pm-gemini/empty-429",
+            "description": "Nothing to preserve, so the gateway renders one. On a route that buffers bodies this is added in the response-header phase."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 429 (never changed by the formatter)\", () => pm.response.to.have.status(429));",
+                  "pm.test(\"the provider sent no body, and the gateway adds none\", () => pm.expect(pm.response.text()).to.eql(\"\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Backend error with NO body is passed through empty (500)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{routerUrl}}/oai-pm-gemini/empty-500"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 500 (never changed by the formatter)\", () => pm.response.to.have.status(500));",
+                  "pm.test(\"the provider sent no body, and the gateway adds none\", () => pm.expect(pm.response.text()).to.eql(\"\"));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Template: mistralai",
+      "item": [
+        {
+          "name": "Policy rejection is reshaped (word-count-guardrail -> 422)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{routerUrl}}/oai-pm-mistralai/chat/completions",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"gpt-4o\",\n  \"prompt\": \"this prompt has far more than five words in it\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "The guardrail writes its own REST-style JSON and describes no fault. With the option on, the gateway reshapes it into the OpenAI envelope and keeps 422."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 422 (never changed by the formatter)\", () => pm.response.to.have.status(422));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"content-type is application/json\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\"));",
+                  "pm.test(\"top level carries only `error`\", () => pm.expect(Object.keys(body)).to.eql([\"error\"]));",
+                  "pm.test(\"error.message is a non-empty string\", () => pm.expect(body.error.message).to.be.a(\"string\").and.not.empty);",
+                  "pm.test(\"error.type is a string\", () => pm.expect(body.error.type).to.be.a(\"string\"));",
+                  "pm.test(\"error.param and error.code are always present\", () => { pm.expect(body.error).to.have.property(\"param\"); pm.expect(body.error).to.have.property(\"code\"); });",
+                  "pm.test(\"error.type is invalid_request_error\", () => pm.expect(body.error.type).to.eql(\"invalid_request_error\"));",
+                  "pm.test(\"error.param is null\", () => pm.expect(body.error.param).to.be.null);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Allowed request reaches the upstream untouched",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{routerUrl}}/oai-pm-mistralai/chat/completions",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"gpt-4o\",\n  \"prompt\": \"short and sweet\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200 (never changed by the formatter)\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"completion body passed through\", () => pm.expect(pm.response.json().object).to.eql(\"chat.completion\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Router failure (upstream refused) -> 503 server_error",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{routerUrl}}/oai-pm-down-mistralai/chat/completions",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"gpt-4o\",\n  \"prompt\": \"short and sweet\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "The upstream refuses connections, so Envoy produces the 503. The route's only policy never reads response bodies, so this also exercises the error-only body buffering."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 503 (never changed by the formatter)\", () => pm.response.to.have.status(503));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"content-type is application/json\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\"));",
+                  "pm.test(\"top level carries only `error`\", () => pm.expect(Object.keys(body)).to.eql([\"error\"]));",
+                  "pm.test(\"error.message is a non-empty string\", () => pm.expect(body.error.message).to.be.a(\"string\").and.not.empty);",
+                  "pm.test(\"error.type is a string\", () => pm.expect(body.error.type).to.be.a(\"string\"));",
+                  "pm.test(\"error.param and error.code are always present\", () => { pm.expect(body.error).to.have.property(\"param\"); pm.expect(body.error).to.have.property(\"code\"); });",
+                  "pm.test(\"error.type is server_error\", () => pm.expect(body.error.type).to.eql(\"server_error\"));",
+                  "pm.test(\"error.param is null\", () => pm.expect(body.error.param).to.be.null);",
+                  "pm.test(\"error.code is set from the router description\", () => pm.expect(pm.response.json().error.code).to.be.a(\"string\").and.not.empty);",
+                  "pm.test(\"Envoy's plain-text reply is gone\", () => pm.expect(pm.response.text()).to.not.include(\"upstream connect error\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Backend error WITH a body passes through (418)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{routerUrl}}/oai-pm-mistralai/teapot"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 418 (never changed by the formatter)\", () => pm.response.to.have.status(418));",
+                  "pm.test(\"body passed through byte-for-byte\", () => pm.expect(pm.response.text()).to.eql(\"{\\\"vendor_error\\\":\\\"I am a teapot\\\"}\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Backend error already in OpenAI shape passes through (429)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{routerUrl}}/oai-pm-mistralai/openai-shaped"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 429 (never changed by the formatter)\", () => pm.response.to.have.status(429));",
+                  "pm.test(\"body passed through byte-for-byte\", () => pm.expect(pm.response.text()).to.eql(\"{\\\"error\\\":{\\\"message\\\":\\\"Rate limit reached for gpt-4o in organization org-x\\\",\\\"type\\\":\\\"requests\\\",\\\"param\\\":null,\\\"code\\\":\\\"rate_limit_exceeded\\\"}}\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Backend error in another vendor's shape passes through (529)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{routerUrl}}/oai-pm-mistralai/anthropic-shaped",
+            "description": "Option B: a provider's own error document is never rewritten, even when it is not OpenAI-shaped."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 529 (never changed by the formatter)\", () => pm.response.to.have.status(529));",
+                  "pm.test(\"body passed through byte-for-byte\", () => pm.expect(pm.response.text()).to.eql(\"{\\\"type\\\":\\\"error\\\",\\\"error\\\":{\\\"type\\\":\\\"overloaded_error\\\",\\\"message\\\":\\\"Overloaded\\\"}}\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Backend error with NO body is passed through empty (429)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{routerUrl}}/oai-pm-mistralai/empty-429",
+            "description": "Nothing to preserve, so the gateway renders one. On a route that buffers bodies this is added in the response-header phase."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 429 (never changed by the formatter)\", () => pm.response.to.have.status(429));",
+                  "pm.test(\"the provider sent no body, and the gateway adds none\", () => pm.expect(pm.response.text()).to.eql(\"\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Backend error with NO body is passed through empty (500)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{routerUrl}}/oai-pm-mistralai/empty-500"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 500 (never changed by the formatter)\", () => pm.response.to.have.status(500));",
+                  "pm.test(\"the provider sent no body, and the gateway adds none\", () => pm.expect(pm.response.text()).to.eql(\"\"));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Template: awsbedrock",
+      "item": [
+        {
+          "name": "Policy rejection is reshaped (word-count-guardrail -> 422)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{routerUrl}}/oai-pm-awsbedrock/chat/completions",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"gpt-4o\",\n  \"prompt\": \"this prompt has far more than five words in it\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "The guardrail writes its own REST-style JSON and describes no fault. With the option on, the gateway reshapes it into the OpenAI envelope and keeps 422."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 422 (never changed by the formatter)\", () => pm.response.to.have.status(422));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"content-type is application/json\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\"));",
+                  "pm.test(\"top level carries only `error`\", () => pm.expect(Object.keys(body)).to.eql([\"error\"]));",
+                  "pm.test(\"error.message is a non-empty string\", () => pm.expect(body.error.message).to.be.a(\"string\").and.not.empty);",
+                  "pm.test(\"error.type is a string\", () => pm.expect(body.error.type).to.be.a(\"string\"));",
+                  "pm.test(\"error.param and error.code are always present\", () => { pm.expect(body.error).to.have.property(\"param\"); pm.expect(body.error).to.have.property(\"code\"); });",
+                  "pm.test(\"error.type is invalid_request_error\", () => pm.expect(body.error.type).to.eql(\"invalid_request_error\"));",
+                  "pm.test(\"error.param is null\", () => pm.expect(body.error.param).to.be.null);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Allowed request reaches the upstream untouched",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{routerUrl}}/oai-pm-awsbedrock/chat/completions",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"gpt-4o\",\n  \"prompt\": \"short and sweet\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200 (never changed by the formatter)\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"completion body passed through\", () => pm.expect(pm.response.json().object).to.eql(\"chat.completion\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Router failure (upstream refused) -> 503 server_error",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{routerUrl}}/oai-pm-down-awsbedrock/chat/completions",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"gpt-4o\",\n  \"prompt\": \"short and sweet\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "The upstream refuses connections, so Envoy produces the 503. The route's only policy never reads response bodies, so this also exercises the error-only body buffering."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 503 (never changed by the formatter)\", () => pm.response.to.have.status(503));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"content-type is application/json\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\"));",
+                  "pm.test(\"top level carries only `error`\", () => pm.expect(Object.keys(body)).to.eql([\"error\"]));",
+                  "pm.test(\"error.message is a non-empty string\", () => pm.expect(body.error.message).to.be.a(\"string\").and.not.empty);",
+                  "pm.test(\"error.type is a string\", () => pm.expect(body.error.type).to.be.a(\"string\"));",
+                  "pm.test(\"error.param and error.code are always present\", () => { pm.expect(body.error).to.have.property(\"param\"); pm.expect(body.error).to.have.property(\"code\"); });",
+                  "pm.test(\"error.type is server_error\", () => pm.expect(body.error.type).to.eql(\"server_error\"));",
+                  "pm.test(\"error.param is null\", () => pm.expect(body.error.param).to.be.null);",
+                  "pm.test(\"error.code is set from the router description\", () => pm.expect(pm.response.json().error.code).to.be.a(\"string\").and.not.empty);",
+                  "pm.test(\"Envoy's plain-text reply is gone\", () => pm.expect(pm.response.text()).to.not.include(\"upstream connect error\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Backend error WITH a body passes through (418)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{routerUrl}}/oai-pm-awsbedrock/teapot"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 418 (never changed by the formatter)\", () => pm.response.to.have.status(418));",
+                  "pm.test(\"body passed through byte-for-byte\", () => pm.expect(pm.response.text()).to.eql(\"{\\\"vendor_error\\\":\\\"I am a teapot\\\"}\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Backend error already in OpenAI shape passes through (429)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{routerUrl}}/oai-pm-awsbedrock/openai-shaped"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 429 (never changed by the formatter)\", () => pm.response.to.have.status(429));",
+                  "pm.test(\"body passed through byte-for-byte\", () => pm.expect(pm.response.text()).to.eql(\"{\\\"error\\\":{\\\"message\\\":\\\"Rate limit reached for gpt-4o in organization org-x\\\",\\\"type\\\":\\\"requests\\\",\\\"param\\\":null,\\\"code\\\":\\\"rate_limit_exceeded\\\"}}\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Backend error in another vendor's shape passes through (529)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{routerUrl}}/oai-pm-awsbedrock/anthropic-shaped",
+            "description": "Option B: a provider's own error document is never rewritten, even when it is not OpenAI-shaped."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 529 (never changed by the formatter)\", () => pm.response.to.have.status(529));",
+                  "pm.test(\"body passed through byte-for-byte\", () => pm.expect(pm.response.text()).to.eql(\"{\\\"type\\\":\\\"error\\\",\\\"error\\\":{\\\"type\\\":\\\"overloaded_error\\\",\\\"message\\\":\\\"Overloaded\\\"}}\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Backend error with NO body is passed through empty (429)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{routerUrl}}/oai-pm-awsbedrock/empty-429",
+            "description": "Nothing to preserve, so the gateway renders one. On a route that buffers bodies this is added in the response-header phase."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 429 (never changed by the formatter)\", () => pm.response.to.have.status(429));",
+                  "pm.test(\"the provider sent no body, and the gateway adds none\", () => pm.expect(pm.response.text()).to.eql(\"\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Backend error with NO body is passed through empty (500)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{routerUrl}}/oai-pm-awsbedrock/empty-500"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 500 (never changed by the formatter)\", () => pm.response.to.have.status(500));",
+                  "pm.test(\"the provider sent no body, and the gateway adds none\", () => pm.expect(pm.response.text()).to.eql(\"\"));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Edge cases (openai provider, proxy, REST)",
+      "item": [
+        {
+          "name": "403 /edge/message - `message` beats the short `error` name",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{routerUrl}}/oai-pm-openai/edge/message",
+            "description": "`respond` returns 403 with `{\"error\":\"Forbidden\",\"message\":\"Caller is not allowed to use this model\"}` (application/json) and no fault description. Expected: `message` beats the short `error` name."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 403 (never changed by the formatter)\", () => pm.response.to.have.status(403));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"content-type is application/json\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\"));",
+                  "pm.test(\"top level carries only `error`\", () => pm.expect(Object.keys(body)).to.eql([\"error\"]));",
+                  "pm.test(\"error.message is a non-empty string\", () => pm.expect(body.error.message).to.be.a(\"string\").and.not.empty);",
+                  "pm.test(\"error.type is a string\", () => pm.expect(body.error.type).to.be.a(\"string\"));",
+                  "pm.test(\"error.param and error.code are always present\", () => { pm.expect(body.error).to.have.property(\"param\"); pm.expect(body.error).to.have.property(\"code\"); });",
+                  "pm.test(\"error.type is permission_error\", () => pm.expect(body.error.type).to.eql(\"permission_error\"));",
+                  "pm.test(\"error.message is Caller is not allowed to use this model\", () => pm.expect(body.error.message).to.eql(\"Caller is not allowed to use this model\"));",
+                  "pm.test(\"error.code is null (failure not classified)\", () => pm.expect(body.error.code).to.be.null);",
+                  "pm.test(\"error.param is null\", () => pm.expect(body.error.param).to.be.null);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "401 /edge/error-description - `error_description` (OAuth style)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{routerUrl}}/oai-pm-openai/edge/error-description",
+            "description": "`respond` returns 401 with `{\"error\":\"invalid_token\",\"error_description\":\"Token expired\"}` (application/json) and no fault description. Expected: `error_description` (OAuth style)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 401 (never changed by the formatter)\", () => pm.response.to.have.status(401));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"content-type is application/json\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\"));",
+                  "pm.test(\"top level carries only `error`\", () => pm.expect(Object.keys(body)).to.eql([\"error\"]));",
+                  "pm.test(\"error.message is a non-empty string\", () => pm.expect(body.error.message).to.be.a(\"string\").and.not.empty);",
+                  "pm.test(\"error.type is a string\", () => pm.expect(body.error.type).to.be.a(\"string\"));",
+                  "pm.test(\"error.param and error.code are always present\", () => { pm.expect(body.error).to.have.property(\"param\"); pm.expect(body.error).to.have.property(\"code\"); });",
+                  "pm.test(\"error.type is authentication_error\", () => pm.expect(body.error.type).to.eql(\"authentication_error\"));",
+                  "pm.test(\"error.message is Token expired\", () => pm.expect(body.error.message).to.eql(\"Token expired\"));",
+                  "pm.test(\"error.code is null (failure not classified)\", () => pm.expect(body.error.code).to.be.null);",
+                  "pm.test(\"error.param is null\", () => pm.expect(body.error.param).to.be.null);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "404 /edge/detail - `detail` (FastAPI style)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{routerUrl}}/oai-pm-openai/edge/detail",
+            "description": "`respond` returns 404 with `{\"detail\":\"Model gpt-9 does not exist\"}` (application/json) and no fault description. Expected: `detail` (FastAPI style)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 404 (never changed by the formatter)\", () => pm.response.to.have.status(404));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"content-type is application/json\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\"));",
+                  "pm.test(\"top level carries only `error`\", () => pm.expect(Object.keys(body)).to.eql([\"error\"]));",
+                  "pm.test(\"error.message is a non-empty string\", () => pm.expect(body.error.message).to.be.a(\"string\").and.not.empty);",
+                  "pm.test(\"error.type is a string\", () => pm.expect(body.error.type).to.be.a(\"string\"));",
+                  "pm.test(\"error.param and error.code are always present\", () => { pm.expect(body.error).to.have.property(\"param\"); pm.expect(body.error).to.have.property(\"code\"); });",
+                  "pm.test(\"error.type is not_found_error\", () => pm.expect(body.error.type).to.eql(\"not_found_error\"));",
+                  "pm.test(\"error.message is Model gpt-9 does not exist\", () => pm.expect(body.error.message).to.eql(\"Model gpt-9 does not exist\"));",
+                  "pm.test(\"error.code is null (failure not classified)\", () => pm.expect(body.error.code).to.be.null);",
+                  "pm.test(\"error.param is null\", () => pm.expect(body.error.param).to.be.null);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "400 /edge/error-string - `error` as a plain string",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{routerUrl}}/oai-pm-openai/edge/error-string",
+            "description": "`respond` returns 400 with `{\"error\":\"Malformed request\"}` (application/json) and no fault description. Expected: `error` as a plain string."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 400 (never changed by the formatter)\", () => pm.response.to.have.status(400));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"content-type is application/json\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\"));",
+                  "pm.test(\"top level carries only `error`\", () => pm.expect(Object.keys(body)).to.eql([\"error\"]));",
+                  "pm.test(\"error.message is a non-empty string\", () => pm.expect(body.error.message).to.be.a(\"string\").and.not.empty);",
+                  "pm.test(\"error.type is a string\", () => pm.expect(body.error.type).to.be.a(\"string\"));",
+                  "pm.test(\"error.param and error.code are always present\", () => { pm.expect(body.error).to.have.property(\"param\"); pm.expect(body.error).to.have.property(\"code\"); });",
+                  "pm.test(\"error.type is invalid_request_error\", () => pm.expect(body.error.type).to.eql(\"invalid_request_error\"));",
+                  "pm.test(\"error.message is Malformed request\", () => pm.expect(body.error.message).to.eql(\"Malformed request\"));",
+                  "pm.test(\"error.code is null (failure not classified)\", () => pm.expect(body.error.code).to.be.null);",
+                  "pm.test(\"error.param is null\", () => pm.expect(body.error.param).to.be.null);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "422 /edge/object-message - a non-string `message` (guardrail assessment object) is skipped -> status text",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{routerUrl}}/oai-pm-openai/edge/object-message",
+            "description": "`respond` returns 422 with `{\"type\":\"WORD_COUNT_GUARDRAIL\",\"message\":{\"action\":\"GUARDRAIL_INTERVENED\",\"actionReason\":\"too long\"}}` (application/json) and no fault description. Expected: a non-string `message` (guardrail assessment object) is skipped -> status text."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 422 (never changed by the formatter)\", () => pm.response.to.have.status(422));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"content-type is application/json\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\"));",
+                  "pm.test(\"top level carries only `error`\", () => pm.expect(Object.keys(body)).to.eql([\"error\"]));",
+                  "pm.test(\"error.message is a non-empty string\", () => pm.expect(body.error.message).to.be.a(\"string\").and.not.empty);",
+                  "pm.test(\"error.type is a string\", () => pm.expect(body.error.type).to.be.a(\"string\"));",
+                  "pm.test(\"error.param and error.code are always present\", () => { pm.expect(body.error).to.have.property(\"param\"); pm.expect(body.error).to.have.property(\"code\"); });",
+                  "pm.test(\"error.type is invalid_request_error\", () => pm.expect(body.error.type).to.eql(\"invalid_request_error\"));",
+                  "pm.test(\"error.message is Unprocessable Entity\", () => pm.expect(body.error.message).to.eql(\"Unprocessable Entity\"));",
+                  "pm.test(\"error.code is null (failure not classified)\", () => pm.expect(body.error.code).to.be.null);",
+                  "pm.test(\"error.param is null\", () => pm.expect(body.error.param).to.be.null);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "429 /edge/plain-text - plain text becomes the message",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{routerUrl}}/oai-pm-openai/edge/plain-text",
+            "description": "`respond` returns 429 with `Slow down, too many requests` (text/plain) and no fault description. Expected: plain text becomes the message."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 429 (never changed by the formatter)\", () => pm.response.to.have.status(429));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"content-type is application/json\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\"));",
+                  "pm.test(\"top level carries only `error`\", () => pm.expect(Object.keys(body)).to.eql([\"error\"]));",
+                  "pm.test(\"error.message is a non-empty string\", () => pm.expect(body.error.message).to.be.a(\"string\").and.not.empty);",
+                  "pm.test(\"error.type is a string\", () => pm.expect(body.error.type).to.be.a(\"string\"));",
+                  "pm.test(\"error.param and error.code are always present\", () => { pm.expect(body.error).to.have.property(\"param\"); pm.expect(body.error).to.have.property(\"code\"); });",
+                  "pm.test(\"error.type is rate_limit_error\", () => pm.expect(body.error.type).to.eql(\"rate_limit_error\"));",
+                  "pm.test(\"error.message is Slow down, too many requests\", () => pm.expect(body.error.message).to.eql(\"Slow down, too many requests\"));",
+                  "pm.test(\"error.code is null (failure not classified)\", () => pm.expect(body.error.code).to.be.null);",
+                  "pm.test(\"error.param is null\", () => pm.expect(body.error.param).to.be.null);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "502 /edge/html - markup is never a message -> status text",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{routerUrl}}/oai-pm-openai/edge/html",
+            "description": "`respond` returns 502 with `<html><body><h1>Bad Gateway</h1></body></html>` (text/html) and no fault description. Expected: markup is never a message -> status text."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 502 (never changed by the formatter)\", () => pm.response.to.have.status(502));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"content-type is application/json\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\"));",
+                  "pm.test(\"top level carries only `error`\", () => pm.expect(Object.keys(body)).to.eql([\"error\"]));",
+                  "pm.test(\"error.message is a non-empty string\", () => pm.expect(body.error.message).to.be.a(\"string\").and.not.empty);",
+                  "pm.test(\"error.type is a string\", () => pm.expect(body.error.type).to.be.a(\"string\"));",
+                  "pm.test(\"error.param and error.code are always present\", () => { pm.expect(body.error).to.have.property(\"param\"); pm.expect(body.error).to.have.property(\"code\"); });",
+                  "pm.test(\"error.type is server_error\", () => pm.expect(body.error.type).to.eql(\"server_error\"));",
+                  "pm.test(\"error.message is Bad Gateway\", () => pm.expect(body.error.message).to.eql(\"Bad Gateway\"));",
+                  "pm.test(\"error.code is null (failure not classified)\", () => pm.expect(body.error.code).to.be.null);",
+                  "pm.test(\"error.param is null\", () => pm.expect(body.error.param).to.be.null);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "503 /edge/empty - backend sent no body -> passed through empty",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{routerUrl}}/oai-pm-openai/edge/empty",
+            "description": "`respond` returns 503 with `` (text/plain) and no fault description. Expected: empty body -> status text."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 503 (never changed by the formatter)\", () => pm.response.to.have.status(503));",
+                  "pm.test(\"the provider sent no body, and the gateway adds none\", () => pm.expect(pm.response.text()).to.eql(\"\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "451 /edge/unusual-status - an unusual 4xx keeps its status, type falls back to invalid_request_error",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{routerUrl}}/oai-pm-openai/edge/unusual-status",
+            "description": "`respond` returns 451 with `{\"message\":\"Unavailable for legal reasons\"}` (application/json) and no fault description. Expected: an unusual 4xx keeps its status, type falls back to invalid_request_error."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 451 (never changed by the formatter)\", () => pm.response.to.have.status(451));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"content-type is application/json\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\"));",
+                  "pm.test(\"top level carries only `error`\", () => pm.expect(Object.keys(body)).to.eql([\"error\"]));",
+                  "pm.test(\"error.message is a non-empty string\", () => pm.expect(body.error.message).to.be.a(\"string\").and.not.empty);",
+                  "pm.test(\"error.type is a string\", () => pm.expect(body.error.type).to.be.a(\"string\"));",
+                  "pm.test(\"error.param and error.code are always present\", () => { pm.expect(body.error).to.have.property(\"param\"); pm.expect(body.error).to.have.property(\"code\"); });",
+                  "pm.test(\"error.type is invalid_request_error\", () => pm.expect(body.error.type).to.eql(\"invalid_request_error\"));",
+                  "pm.test(\"error.message is Unavailable for legal reasons\", () => pm.expect(body.error.message).to.eql(\"Unavailable for legal reasons\"));",
+                  "pm.test(\"error.code is null (failure not classified)\", () => pm.expect(body.error.code).to.be.null);",
+                  "pm.test(\"error.param is null\", () => pm.expect(body.error.param).to.be.null);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "400 /edge/already-openai - an OpenAI-shaped policy body is left byte-for-byte",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{routerUrl}}/oai-pm-openai/edge/already-openai"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 400 (never changed by the formatter)\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"body passed through byte-for-byte\", () => pm.expect(pm.response.text()).to.eql(\"{\\\"error\\\":{\\\"message\\\":\\\"The model gpt-9 does not exist\\\",\\\"type\\\":\\\"invalid_request_error\\\",\\\"param\\\":\\\"model\\\",\\\"code\\\":\\\"model_not_found\\\"}}\"));",
+                  "pm.test(\"the author's param and code survive\", () => { const e = pm.response.json().error; pm.expect(e.param).to.eql(\"model\"); pm.expect(e.code).to.eql(\"model_not_found\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "409 /edge/nested-error-message - a body with a string error.message is already readable, left as-is",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{routerUrl}}/oai-pm-openai/edge/nested-error-message",
+            "description": "The formatter treats any body whose `error.message` is a string as OpenAI-shaped: an SDK can read it, and reshaping could only lose fields its author set."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 409 (never changed by the formatter)\", () => pm.response.to.have.status(409));",
+                  "pm.test(\"body passed through byte-for-byte\", () => pm.expect(pm.response.text()).to.eql(\"{\\\"error\\\":{\\\"message\\\":\\\"Conflict on resource\\\",\\\"reason\\\":\\\"x\\\"}}\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "200 /edge/success - a successful response is never touched",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{routerUrl}}/oai-pm-openai/edge/success"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200 (never changed by the formatter)\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"body passed through byte-for-byte\", () => pm.expect(pm.response.text()).to.eql(\"{\\\"ok\\\":true}\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Accept: application/xml still gets the OpenAI JSON",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/xml"
+              }
+            ],
+            "url": "{{routerUrl}}/oai-pm-openai/edge/message",
+            "description": "An OpenAI SDK reads only the OpenAI envelope, so Accept is ignored on LLM routes."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 403 (never changed by the formatter)\", () => pm.response.to.have.status(403));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"content-type is application/json\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\"));",
+                  "pm.test(\"top level carries only `error`\", () => pm.expect(Object.keys(body)).to.eql([\"error\"]));",
+                  "pm.test(\"error.message is a non-empty string\", () => pm.expect(body.error.message).to.be.a(\"string\").and.not.empty);",
+                  "pm.test(\"error.type is a string\", () => pm.expect(body.error.type).to.be.a(\"string\"));",
+                  "pm.test(\"error.param and error.code are always present\", () => { pm.expect(body.error).to.have.property(\"param\"); pm.expect(body.error).to.have.property(\"code\"); });",
+                  "pm.test(\"error.type is permission_error\", () => pm.expect(body.error.type).to.eql(\"permission_error\"));",
+                  "pm.test(\"error.message is Caller is not allowed to use this model\", () => pm.expect(body.error.message).to.eql(\"Caller is not allowed to use this model\"));",
+                  "pm.test(\"error.code is null (failure not classified)\", () => pm.expect(body.error.code).to.be.null);",
+                  "pm.test(\"error.param is null\", () => pm.expect(body.error.param).to.be.null);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Streaming request (stream: true) still gets a JSON error",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "text/event-stream"
+              }
+            ],
+            "url": "{{routerUrl}}/oai-pm-openai/chat/completions",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"gpt-4o\",\n  \"stream\": true,\n  \"prompt\": \"this prompt has far more than five words in it\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Errors are returned before the stream opens, as a plain JSON body, like the reference API."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 422 (never changed by the formatter)\", () => pm.response.to.have.status(422));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"content-type is application/json\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\"));",
+                  "pm.test(\"top level carries only `error`\", () => pm.expect(Object.keys(body)).to.eql([\"error\"]));",
+                  "pm.test(\"error.message is a non-empty string\", () => pm.expect(body.error.message).to.be.a(\"string\").and.not.empty);",
+                  "pm.test(\"error.type is a string\", () => pm.expect(body.error.type).to.be.a(\"string\"));",
+                  "pm.test(\"error.param and error.code are always present\", () => { pm.expect(body.error).to.have.property(\"param\"); pm.expect(body.error).to.have.property(\"code\"); });",
+                  "pm.test(\"error.type is invalid_request_error\", () => pm.expect(body.error.type).to.eql(\"invalid_request_error\"));",
+                  "pm.test(\"error.param is null\", () => pm.expect(body.error.param).to.be.null);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "HEAD request gets no body",
+          "request": {
+            "method": "HEAD",
+            "header": [],
+            "url": "{{routerUrl}}/oai-pm-openai/edge/message"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 403 (never changed by the formatter)\", () => pm.response.to.have.status(403));",
+                  "pm.test(\"no body on HEAD\", () => pm.expect(pm.response.text()).to.eql(\"\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "LLM proxy rejection is reshaped",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{routerUrl}}/oai-pm-proxy/chat/completions",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"gpt-4o\",\n  \"prompt\": \"this prompt has far more than five words in it\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 422 (never changed by the formatter)\", () => pm.response.to.have.status(422));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"content-type is application/json\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\"));",
+                  "pm.test(\"top level carries only `error`\", () => pm.expect(Object.keys(body)).to.eql([\"error\"]));",
+                  "pm.test(\"error.message is a non-empty string\", () => pm.expect(body.error.message).to.be.a(\"string\").and.not.empty);",
+                  "pm.test(\"error.type is a string\", () => pm.expect(body.error.type).to.be.a(\"string\"));",
+                  "pm.test(\"error.param and error.code are always present\", () => { pm.expect(body.error).to.have.property(\"param\"); pm.expect(body.error).to.have.property(\"code\"); });",
+                  "pm.test(\"error.type is invalid_request_error\", () => pm.expect(body.error.type).to.eql(\"invalid_request_error\"));",
+                  "pm.test(\"error.param is null\", () => pm.expect(body.error.param).to.be.null);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "LLM proxy allowed request reaches the upstream",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{routerUrl}}/oai-pm-proxy/chat/completions",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"gpt-4o\",\n  \"prompt\": \"short and sweet\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200 (never changed by the formatter)\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "REST API errors are NOT reshaped",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{routerUrl}}/oai-pm-backend-sim/v1.0/teapot",
+            "description": "The option is scoped to LlmProvider/LlmProxy. The same kind of body on a REST API stays as written."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 418 (never changed by the formatter)\", () => pm.response.to.have.status(418));",
+                  "pm.test(\"body passed through byte-for-byte\", () => pm.expect(pm.response.text()).to.eql(\"{\\\"vendor_error\\\":\\\"I am a teapot\\\"}\"));",
+                  "pm.test(\"body is NOT the OpenAI envelope\", () => { let j = null; try { j = JSON.parse(pm.response.text()); } catch (e) {} pm.expect(j && j.error && typeof j.error === \"object\" && \"type\" in j.error && \"param\" in j.error).to.not.be.ok; });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Known limitations",
+      "item": [
+        {
+          "name": "Unmatched route is NOT reshaped (no API, so no API kind)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{routerUrl}}/oai-pm-no-such-api/chat/completions",
+            "description": "Documents current behaviour: a request that matches no API has no kind, so it cannot be identified as an LLM request."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"404\", () => pm.response.to.have.status(404));",
+                  "pm.test(\"body is NOT the OpenAI envelope\", () => { let j = null; try { j = JSON.parse(pm.response.text()); } catch (e) {} pm.expect(j && j.error && typeof j.error === \"object\" && \"type\" in j.error && \"param\" in j.error).to.not.be.ok; });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Z. Teardown",
+      "item": [
+        {
+          "name": "Delete proxy oai-pm-proxy",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{controllerUrl}}/llm-proxies/oai-pm-proxy",
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{adminUser}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{adminPassword}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"deleted (200/204) or already gone (404)\", () => pm.expect(pm.response.code).to.be.oneOf([200, 204, 404]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete provider oai-pm-openai",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{controllerUrl}}/llm-providers/oai-pm-openai",
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{adminUser}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{adminPassword}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"deleted (200/204) or already gone (404)\", () => pm.expect(pm.response.code).to.be.oneOf([200, 204, 404]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete provider oai-pm-down-openai",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{controllerUrl}}/llm-providers/oai-pm-down-openai",
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{adminUser}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{adminPassword}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"deleted (200/204) or already gone (404)\", () => pm.expect(pm.response.code).to.be.oneOf([200, 204, 404]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete provider oai-pm-azure-openai",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{controllerUrl}}/llm-providers/oai-pm-azure-openai",
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{adminUser}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{adminPassword}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"deleted (200/204) or already gone (404)\", () => pm.expect(pm.response.code).to.be.oneOf([200, 204, 404]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete provider oai-pm-down-azure-openai",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{controllerUrl}}/llm-providers/oai-pm-down-azure-openai",
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{adminUser}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{adminPassword}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"deleted (200/204) or already gone (404)\", () => pm.expect(pm.response.code).to.be.oneOf([200, 204, 404]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete provider oai-pm-azureai-foundry",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{controllerUrl}}/llm-providers/oai-pm-azureai-foundry",
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{adminUser}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{adminPassword}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"deleted (200/204) or already gone (404)\", () => pm.expect(pm.response.code).to.be.oneOf([200, 204, 404]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete provider oai-pm-down-azureai-foundry",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{controllerUrl}}/llm-providers/oai-pm-down-azureai-foundry",
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{adminUser}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{adminPassword}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"deleted (200/204) or already gone (404)\", () => pm.expect(pm.response.code).to.be.oneOf([200, 204, 404]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete provider oai-pm-anthropic",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{controllerUrl}}/llm-providers/oai-pm-anthropic",
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{adminUser}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{adminPassword}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"deleted (200/204) or already gone (404)\", () => pm.expect(pm.response.code).to.be.oneOf([200, 204, 404]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete provider oai-pm-down-anthropic",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{controllerUrl}}/llm-providers/oai-pm-down-anthropic",
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{adminUser}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{adminPassword}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"deleted (200/204) or already gone (404)\", () => pm.expect(pm.response.code).to.be.oneOf([200, 204, 404]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete provider oai-pm-gemini",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{controllerUrl}}/llm-providers/oai-pm-gemini",
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{adminUser}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{adminPassword}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"deleted (200/204) or already gone (404)\", () => pm.expect(pm.response.code).to.be.oneOf([200, 204, 404]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete provider oai-pm-down-gemini",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{controllerUrl}}/llm-providers/oai-pm-down-gemini",
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{adminUser}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{adminPassword}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"deleted (200/204) or already gone (404)\", () => pm.expect(pm.response.code).to.be.oneOf([200, 204, 404]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete provider oai-pm-mistralai",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{controllerUrl}}/llm-providers/oai-pm-mistralai",
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{adminUser}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{adminPassword}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"deleted (200/204) or already gone (404)\", () => pm.expect(pm.response.code).to.be.oneOf([200, 204, 404]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete provider oai-pm-down-mistralai",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{controllerUrl}}/llm-providers/oai-pm-down-mistralai",
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{adminUser}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{adminPassword}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"deleted (200/204) or already gone (404)\", () => pm.expect(pm.response.code).to.be.oneOf([200, 204, 404]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete provider oai-pm-awsbedrock",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{controllerUrl}}/llm-providers/oai-pm-awsbedrock",
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{adminUser}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{adminPassword}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"deleted (200/204) or already gone (404)\", () => pm.expect(pm.response.code).to.be.oneOf([200, 204, 404]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete provider oai-pm-down-awsbedrock",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{controllerUrl}}/llm-providers/oai-pm-down-awsbedrock",
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{adminUser}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{adminPassword}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"deleted (200/204) or already gone (404)\", () => pm.expect(pm.response.code).to.be.oneOf([200, 204, 404]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete REST backend simulator",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{controllerUrl}}/rest-apis/oai-pm-backend-sim",
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{adminUser}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{adminPassword}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"deleted (200/204) or already gone (404)\", () => pm.expect(pm.response.code).to.be.oneOf([200, 204, 404]));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
