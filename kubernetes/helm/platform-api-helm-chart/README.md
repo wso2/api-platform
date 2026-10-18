@@ -196,6 +196,7 @@ platform-api-helm-chart/
 │   ├── issuer.yaml        # optional self-signed Issuer
 │   ├── hpa.yaml
 │   ├── pdb.yaml
+│   ├── route.yaml         # OpenShift Route (openshift.enabled)
 │   └── _helpers.tpl       # shared apip.* helpers (naming, labels, images, secrets)
 ├── values.yaml
 ├── values-local.yaml      # local development overrides
@@ -247,6 +248,11 @@ every key below with `platform-api.`.
 - `hpa.*` / `podDisruptionBudget.*` — autoscaling and the PDB. The HPA requires `postgres`
   or `sqlserver`, plus CPU requests.
 - `configMap.*`, `global.commonLabels`, `global.commonAnnotations` — extra metadata.
+- `openshift.*`: an OpenShift Route to the Platform API (`openshift.routes.platformApi`),
+  rendered only when `openshift.enabled=true`. The Service serves HTTPS only, so the Route
+  uses `passthrough` (default) or `reencrypt`. Security contexts are set through
+  `deployment.podSecurityContext` / `deployment.securityContext`, rendered as given. See the
+  [OpenShift deployment guide](../../../openshift/portals/platform-api/deployment-guide.md).
 
 ### How secrets reach the config
 

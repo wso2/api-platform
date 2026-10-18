@@ -274,11 +274,13 @@ COPY --from=target LICENSE /app/LICENSE
 
 RUN chmod +x /app/policy-engine /usr/local/bin/docker-entrypoint.sh /usr/local/bin/health-check.sh
 
+# Writable paths are owned by the root group with group perms matching the owner,
+# so OpenShift's arbitrary UID (always in GID 0) can write to them.
 RUN groupadd -r -g 10001 wso2 && \
     useradd -r -u 10001 -g wso2 -s /sbin/nologin -c "WSO2 Application User" wso2 && \
     mkdir -p /home/wso2/conf/llm-pricing && \
-    chown -R wso2:wso2 /app /var/run/api-platform /coverage /home/wso2 && \
-    chmod -R 755 /app /var/run/api-platform /coverage /home/wso2
+    chown -R wso2:0 /app /var/run/api-platform /coverage /home/wso2 && \
+    chmod -R 775 /app /var/run/api-platform /coverage /home/wso2
 
 # Set GOCOVERDIR for coverage data collection (only effective when binary is built with -cover)
 ENV GOCOVERDIR=/coverage
