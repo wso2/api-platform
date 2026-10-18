@@ -1,0 +1,37 @@
+post:
+  summary: Azure OpenAI model served from a US Data Zone deployment on Foundry
+  operationId: createFoundryDataZoneChatCompletion
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required:
+            - model
+          properties:
+            model:
+              type: string
+  responses:
+    "200":
+      description: Chat completions report the model; the tier comes from the deployment mapping
+      content:
+        application/json:
+          # azure/us/gpt-4.1-2025-04-14: input=2.2e-6, output=8.8e-6
+          # cost = 1000*2.2e-6 + 200*8.8e-6 = 2.2e-3 + 1.76e-3 = 0.0039600000
+          # (Global would be 1000*2e-6 + 200*8e-6 = 0.0036000000)
+          example:
+            id: chatcmpl-FoundryDataZone
+            object: chat.completion
+            created: 1792368000
+            model: gpt-4.1-2025-04-14
+            choices:
+              - index: 0
+                message:
+                  role: assistant
+                  content: "Hello from a Data Zone deployment."
+                finish_reason: stop
+            usage:
+              prompt_tokens: 1000
+              completion_tokens: 200
+              total_tokens: 1200
