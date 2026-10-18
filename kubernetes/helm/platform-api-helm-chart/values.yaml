@@ -337,6 +337,37 @@ service:
 containerPort: 9243
 
 # ----------------------------------------------------------------------------
+# openshift: OpenShift Routes, rendered only when openshift.enabled=true.
+# Security contexts are configured under deployment.podSecurityContext and
+# deployment.securityContext.
+# ----------------------------------------------------------------------------
+openshift:
+  enabled: false
+  routes:
+    # Default TLS settings; the route's own `tls` block overrides them key by key.
+    tls:
+      # passthrough | reencrypt (the Service serves HTTPS only, so edge cannot reach it)
+      termination: passthrough
+      # None | Redirect
+      insecureEdgeTerminationPolicy: None
+      # PEM certificate, key and CA chain served by the router (reencrypt only).
+      # Leave empty to use the router's default certificate.
+      certificate: ""
+      key: ""
+      caCertificate: ""
+      # PEM CA that signed the backend certificate (reencrypt only). Required for reencrypt unless
+      # tls.certificateProvider=secret holds a certificate signed by the OpenShift service CA.
+      destinationCACertificate: ""
+    # Platform API (gateways and the portals reach it on this host when they run outside the cluster).
+    platformApi:
+      enabled: true
+      # Empty lets OpenShift generate <route-name>-<namespace>.<apps-domain>.
+      hostname: ""
+      annotations: {}
+      labels: {}
+      tls: {}
+
+# ----------------------------------------------------------------------------
 # tls — where the HTTPS listener's certificate comes from (used when
 # config.server.https.enabled). The Platform API has NO self-signed fallback,
 # so a real cert MUST be supplied via one of the providers below.
