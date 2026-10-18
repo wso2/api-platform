@@ -1249,6 +1249,53 @@ func TestLLMProviderServiceCreateAllowsAggregatorTemplate(t *testing.T) {
 	}
 }
 
+// Create and Update both gate on validateModelProviders, which is keyed by the
+// template handle a provider carries.
+func TestValidateModelProvidersAggregatorHandles(t *testing.T) {
+	twoProviders := &[]api.LLMModelProvider{
+		{Id: strPointer("anthropic"), DisplayName: "Anthropic", Models: &[]api.LLMModel{{Id: strPointer("claude-sonnet-5"), DisplayName: "Claude Sonnet 5"}}},
+		{Id: strPointer("deepseek"), DisplayName: "DeepSeek", Models: &[]api.LLMModel{{Id: strPointer("deepseek-v3.2"), DisplayName: "DeepSeek V3.2"}}},
+	}
+	tests := []struct {
+		template string
+		wantErr  bool
+	}{
+		{"awsbedrock", false},
+		{"azureai-foundry", false},
+		{"azureaifoundry", true},
+		{"openai", true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.template, func(t *testing.T) {
+			err := validateModelProviders(tc.template, twoProviders)
+			if tc.wantErr && !apperror.ValidationFailed.Is(err) {
+				t.Fatalf("expected a validation failure for %q, got: %v", tc.template, err)
+			}
+			if !tc.wantErr && err != nil {
+				t.Fatalf("expected %q to accept several model providers, got: %v", tc.template, err)
+			}
+		})
+	}
+}
+
+// The aggregator list must name templates that actually ship, or the check
+// silently treats them as single-provider.
+func TestAggregatorHandlesMatchShippedTemplates(t *testing.T) {
+	templates, err := utils.LoadLLMProviderTemplatesFromDirectory("../../resources/default-llm-provider-templates")
+	if err != nil {
+		t.Fatalf("failed to load shipped templates: %v", err)
+	}
+	shipped := make(map[string]bool, len(templates))
+	for _, tpl := range templates {
+		shipped[tpl.ID] = true
+	}
+	for handle := range aggregatorTemplateHandles {
+		if !shipped[handle] {
+			t.Errorf("aggregator handle %q is not a shipped template ID", handle)
+		}
+	}
+}
+
 // TestLLMProviderServiceCreateMigratesLegacyPolicies verifies Phase 10 save-time
 // migration: a provider created with the deprecated `policies` list has it split into
 // globalPolicies (for path "/*" + methods ["*"]) and operationPolicies (all other paths).
