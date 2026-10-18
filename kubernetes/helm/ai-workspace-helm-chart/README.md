@@ -278,8 +278,7 @@ list for each component is in that component's README and `values.yaml`:
   Platform API hop, gateway onboarding hints, sessions, TLS, HPA.
 
 On OpenShift, each component creates its own Route when `<component>.openshift.enabled=true`
-(`platform-api.openshift.*` and `ai-workspace-ui.openshift.*`). See the
-[OpenShift deployment guide](../../../openshift/portals/ai-workspace/deployment-guide.md).
+(`platform-api.openshift.*` and `ai-workspace-ui.openshift.*`).
 
 Common umbrella-level settings:
 

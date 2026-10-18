@@ -251,8 +251,7 @@ every key below with `platform-api.`.
 - `openshift.*`: an OpenShift Route to the Platform API (`openshift.routes.platformApi`),
   rendered only when `openshift.enabled=true`. The Service serves HTTPS only, so the Route
   uses `passthrough` (default) or `reencrypt`. Security contexts are set through
-  `deployment.podSecurityContext` / `deployment.securityContext`, rendered as given. See the
-  [OpenShift deployment guide](../../../openshift/portals/platform-api/deployment-guide.md).
+  `deployment.podSecurityContext` / `deployment.securityContext`, rendered as given.
 
 ### How secrets reach the config
 

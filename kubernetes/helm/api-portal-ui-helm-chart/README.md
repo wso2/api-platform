@@ -234,5 +234,4 @@ every key below with `api-portal-ui.`.
 - `openshift.*`: an OpenShift Route to the portal (`openshift.routes.apiPortal`), rendered
   only when `openshift.enabled=true`. The Service serves HTTPS only, so the Route uses
   `passthrough` (default) or `reencrypt`. Security contexts are set through
-  `deployment.podSecurityContext` / `deployment.securityContext`, rendered as given. See the
-  [OpenShift deployment guide](../../../openshift/portals/api-portal/deployment-guide.md).
+  `deployment.podSecurityContext` / `deployment.securityContext`, rendered as given.
