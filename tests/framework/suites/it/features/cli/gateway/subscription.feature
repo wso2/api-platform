@@ -168,12 +168,17 @@ Feature: ap CLI subscription commands
     And the CLI error output should contain "<message>"
 
     Examples:
-      | options                                                 | message                   |
-      |                                                         | nothing to update         |
-      | --subscription-plan-id plan-a --clear-subscription-plan | cannot be used together   |
-      | --rotate-token --subscription-token token-a             | cannot be used together   |
-      | --subscription-token=                                   | must not be empty         |
-      | --rotate-token                                          | failed to read password   |
+      | options                                                 | message                                  |
+      |                                                         | nothing to update                        |
+      | --subscription-plan-id plan-a --clear-subscription-plan | cannot be used together                  |
+      | --rotate-token --subscription-token token-a             | cannot be used together                  |
+      | --subscription-token=                                   | must not be empty                        |
+      | --status=                                               | --status must not be empty               |
+      | --status= --subscription-plan-id plan-a                 | --status must not be empty               |
+      | --subscription-plan-id=                                 | --subscription-plan-id must not be empty |
+      | --subscription-plan-id= --status ACTIVE                 | --subscription-plan-id must not be empty |
+      | --subscription-plan-id= --clear-subscription-plan       | cannot be used together                  |
+      | --rotate-token                                          | failed to read password                  |
 
   Scenario: The gateway's reason is shown when it rejects an update, and nothing changes
     Given I create subscription from "resources/templates/subscription.yaml" through the CLI with values:

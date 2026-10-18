@@ -83,10 +83,13 @@ func init() {
 	updateCmd.MarkFlagRequired(utils.FlagID)
 }
 
-// subscriptionUpdateOptions holds the requested changes for a subscription update.
+// subscriptionUpdateOptions holds the requested changes for a subscription update. statusSet and
+// planSet record whether the --status and --subscription-plan-id flags were supplied at all.
 type subscriptionUpdateOptions struct {
 	status    string
+	statusSet bool
 	planID    string
+	planSet   bool
 	clearPlan bool
 	token     string
 }
@@ -98,8 +101,14 @@ func buildUpdatePayload(opts subscriptionUpdateOptions) (map[string]interface{},
 	planID := strings.TrimSpace(opts.planID)
 	token := strings.TrimSpace(opts.token)
 
-	if opts.clearPlan && planID != "" {
+	if opts.clearPlan && opts.planSet {
 		return nil, fmt.Errorf("--%s and --%s cannot be used together", utils.FlagSubscriptionPlanID, utils.FlagClearSubscriptionPlan)
+	}
+	if opts.statusSet && status == "" {
+		return nil, fmt.Errorf("--%s must not be empty", utils.FlagStatus)
+	}
+	if opts.planSet && planID == "" {
+		return nil, fmt.Errorf("--%s must not be empty", utils.FlagSubscriptionPlanID)
 	}
 
 	payload := map[string]interface{}{}
@@ -147,7 +156,9 @@ func runUpdateCommand(cmd *cobra.Command) error {
 
 	payload, err := buildUpdatePayload(subscriptionUpdateOptions{
 		status:    updateStatus,
+		statusSet: cmd.Flags().Changed(utils.FlagStatus),
 		planID:    updatePlanID,
+		planSet:   cmd.Flags().Changed(utils.FlagSubscriptionPlanID),
 		clearPlan: updateClearPlan,
 		token:     token,
 	})

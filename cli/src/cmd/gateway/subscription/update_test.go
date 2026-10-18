@@ -42,12 +42,12 @@ func TestBuildUpdatePayload(t *testing.T) {
 	}{
 		{
 			name: "status only",
-			opts: subscriptionUpdateOptions{status: " REVOKED "},
+			opts: subscriptionUpdateOptions{status: " REVOKED ", statusSet: true},
 			want: map[string]interface{}{"status": "REVOKED"},
 		},
 		{
 			name: "move to another plan",
-			opts: subscriptionUpdateOptions{planID: "gold-plan-id"},
+			opts: subscriptionUpdateOptions{planID: "gold-plan-id", planSet: true},
 			want: map[string]interface{}{"subscriptionPlanId": "gold-plan-id"},
 		},
 		{
@@ -57,17 +57,47 @@ func TestBuildUpdatePayload(t *testing.T) {
 		},
 		{
 			name: "rotate token with status",
-			opts: subscriptionUpdateOptions{status: "ACTIVE", token: "new-token"},
+			opts: subscriptionUpdateOptions{status: "ACTIVE", statusSet: true, token: "new-token"},
 			want: map[string]interface{}{"status": "ACTIVE", "subscriptionToken": "new-token"},
 		},
 		{
 			name:    "plan and clear plan together",
-			opts:    subscriptionUpdateOptions{planID: "gold-plan-id", clearPlan: true},
+			opts:    subscriptionUpdateOptions{planID: "gold-plan-id", planSet: true, clearPlan: true},
 			wantErr: "cannot be used together",
 		},
 		{
+			name:    "blank plan and clear plan together",
+			opts:    subscriptionUpdateOptions{planID: "  ", planSet: true, clearPlan: true},
+			wantErr: "cannot be used together",
+		},
+		{
+			name:    "blank status is rejected, not dropped",
+			opts:    subscriptionUpdateOptions{status: "  ", statusSet: true, planID: "gold-plan-id", planSet: true},
+			wantErr: "--status must not be empty",
+		},
+		{
+			name:    "blank plan is rejected, not dropped",
+			opts:    subscriptionUpdateOptions{status: "ACTIVE", statusSet: true, planID: " ", planSet: true},
+			wantErr: "--subscription-plan-id must not be empty",
+		},
+		{
+			name:    "blank status alone is rejected, not reported as nothing to update",
+			opts:    subscriptionUpdateOptions{status: "", statusSet: true},
+			wantErr: "--status must not be empty",
+		},
+		{
+			name:    "blank plan alone is rejected, not reported as nothing to update",
+			opts:    subscriptionUpdateOptions{planID: "\t", planSet: true},
+			wantErr: "--subscription-plan-id must not be empty",
+		},
+		{
+			name:    "blank status beside a token change is rejected",
+			opts:    subscriptionUpdateOptions{status: " ", statusSet: true, token: "new-token"},
+			wantErr: "--status must not be empty",
+		},
+		{
 			name:    "nothing to update",
-			opts:    subscriptionUpdateOptions{status: "  ", planID: " "},
+			opts:    subscriptionUpdateOptions{},
 			wantErr: "nothing to update",
 		},
 	}
@@ -91,13 +121,15 @@ func TestBuildUpdatePayload(t *testing.T) {
 	}
 }
 
-// newUpdateTestCommand registers the selection flags plus the token flag that
+// newUpdateTestCommand registers the selection flags plus the flags whose presence
 // runUpdateCommand inspects via cmd.Flags().Changed.
 func newUpdateTestCommand() *cobra.Command {
 	cmd := &cobra.Command{}
 	gateway.AddSelectionFlags(cmd)
-	var token string
+	var token, status, planID string
 	utils.AddStringFlag(cmd, utils.FlagSubscriptionToken, &token, "", "")
+	utils.AddStringFlag(cmd, utils.FlagStatus, &status, "", "")
+	utils.AddStringFlag(cmd, utils.FlagSubscriptionPlanID, &planID, "", "")
 	return cmd
 }
 
@@ -197,5 +229,30 @@ func TestRunUpdate_RequiresID(t *testing.T) {
 
 	if err := runUpdateCommand(newUpdateTestCommand()); err == nil {
 		t.Fatal("expected an --id validation error, got nil")
+	}
+}
+
+func TestRunUpdate_RejectsSuppliedButBlankFlags(t *testing.T) {
+	testutil.WithTempHome(t)
+
+	setUpdateFlags(t, "sub-1", "  ", "gold-plan-id", false, "", false)
+	cmd := newUpdateTestCommand()
+	if err := cmd.Flags().Set(utils.FlagStatus, "  "); err != nil {
+		t.Fatal(err)
+	}
+	if err := cmd.Flags().Set(utils.FlagSubscriptionPlanID, "gold-plan-id"); err != nil {
+		t.Fatal(err)
+	}
+	if err := runUpdateCommand(cmd); err == nil || !strings.Contains(err.Error(), "--status must not be empty") {
+		t.Fatalf("expected a blank --status to be rejected, got %v", err)
+	}
+
+	setUpdateFlags(t, "sub-1", "", " ", true, "", false)
+	cmd = newUpdateTestCommand()
+	if err := cmd.Flags().Set(utils.FlagSubscriptionPlanID, " "); err != nil {
+		t.Fatal(err)
+	}
+	if err := runUpdateCommand(cmd); err == nil || !strings.Contains(err.Error(), "cannot be used together") {
+		t.Fatalf("expected a blank --subscription-plan-id with --clear-subscription-plan to conflict, got %v", err)
 	}
 }
