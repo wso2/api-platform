@@ -129,9 +129,11 @@ func Run(ctx context.Context, cfg *Config) error {
 			continue
 		}
 
+		var migrated *ResourceReport
 		if !cfg.VerifyOnly {
 			log.Info("migrating resource", "resource", name, "direction", cfg.Direction)
-			if _, err := m.Migrate(ctx, rc); err != nil {
+			rep, err := m.Migrate(ctx, rc)
+			if err != nil {
 				if errors.Is(err, ErrReverseUnsupported) {
 					log.Warn("reverse not supported for resource — skipping", "resource", name)
 					reports = append(reports, &ResourceReport{Name: name, Status: StatusSkip, Messages: []string{"reverse unsupported (§13)"}})
@@ -144,6 +146,7 @@ func Run(ctx context.Context, cfg *Config) error {
 				reports = append(reports, &ResourceReport{Name: name, Status: StatusFail, Messages: []string{err.Error()}})
 				continue
 			}
+			migrated = rep
 			if !cfg.DryRun {
 				if err := cp.MarkComplete(name); err != nil {
 					log.Warn("failed to checkpoint completion", "resource", name, "error", err.Error())
@@ -151,16 +154,18 @@ func Run(ctx context.Context, cfg *Config) error {
 			}
 		}
 
-		// Verify (read-only) whenever a target is available.
+		// Verify (read-only) whenever a target is available. What the migrate pass
+		// itself noticed is carried into the same row: Verify only checks parity.
+		var rep *ResourceReport
 		if tgt != nil {
-			rep, verr := m.Verify(ctx, rc)
-			if verr != nil {
+			var verr error
+			if rep, verr = m.Verify(ctx, rc); verr != nil {
 				rep = &ResourceReport{Name: name, Status: StatusFail, Messages: []string{"verify error: " + verr.Error()}}
 			}
-			reports = append(reports, rep)
 		} else {
-			reports = append(reports, &ResourceReport{Name: name, Status: StatusSkip, Messages: []string{"no target — verify skipped (dry-run)"}})
+			rep = &ResourceReport{Name: name, Status: StatusSkip, Messages: []string{"no target — verify skipped (dry-run)"}}
 		}
+		reports = append(reports, mergeMigrateReport(migrated, rep))
 	}
 
 	printReport(log, reports, cfg)
@@ -186,4 +191,24 @@ func Run(ctx context.Context, cfg *Config) error {
 		}
 	}
 	return nil
+}
+
+// mergeMigrateReport folds what a migrator's Migrate pass reported (its WARNs
+// and messages — a renamed API key, for instance) into the Verify report that
+// reaches the table and the log. Verify only compares row counts, so without
+// this a transform-time warning would be computed and then never printed. The
+// migrate messages come first; a WARN or FAIL from the migrate pass is never
+// downgraded by a clean parity check.
+func mergeMigrateReport(migrated, verified *ResourceReport) *ResourceReport {
+	if migrated == nil || (len(migrated.Messages) == 0 && migrated.Status != StatusWarn && migrated.Status != StatusFail) {
+		return verified
+	}
+	verified.Messages = append(append([]string{}, migrated.Messages...), verified.Messages...)
+	switch {
+	case migrated.Status == StatusFail:
+		verified.Status = StatusFail
+	case migrated.Status == StatusWarn && verified.Status != StatusFail:
+		verified.Status = StatusWarn
+	}
+	return verified
 }

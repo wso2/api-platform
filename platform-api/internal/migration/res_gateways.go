@@ -52,7 +52,6 @@ type gatewayRow struct {
 	isCritical        sql.NullBool
 	functionalityType sql.NullString
 	version           sql.NullString
-	isActive          sql.NullBool
 	createdAt         time.Time
 	updatedAt         time.Time
 }
@@ -64,7 +63,7 @@ func (m *gatewaysMigrator) Migrate(ctx context.Context, rc *RunContext) (*Resour
 	}
 	rows, err := rc.Src.QueryContext(ctx,
 		`SELECT uuid, organization_uuid, name, display_name, description, properties, manifest,
-		        vhost, is_critical, gateway_functionality_type, version, is_active, created_at, updated_at
+		        vhost, is_critical, gateway_functionality_type, version, created_at, updated_at
 		 FROM gateways`)
 	if err != nil {
 		return nil, err
@@ -73,7 +72,7 @@ func (m *gatewaysMigrator) Migrate(ctx context.Context, rc *RunContext) (*Resour
 	for rows.Next() {
 		var r gatewayRow
 		if err := rows.Scan(&r.uuid, &r.orgUUID, &r.name, &r.displayName, &r.description, &r.properties, &r.manifest,
-			&r.vhost, &r.isCritical, &r.functionalityType, &r.version, &r.isActive, &r.createdAt, &r.updatedAt); err != nil {
+			&r.vhost, &r.isCritical, &r.functionalityType, &r.version, &r.createdAt, &r.updatedAt); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -100,11 +99,14 @@ func (m *gatewaysMigrator) Migrate(ctx context.Context, rc *RunContext) (*Resour
 		if q == nil {
 			return nil
 		}
+		// is_active is a connection flag v2 sets when the gateway connects and clears
+		// when it disconnects; a migrated gateway has not connected to v2 yet, so it
+		// starts inactive rather than carrying v1's flag.
 		if err := insertRow(ctx, q, "gateways",
 			[]string{"uuid", "organization_uuid", "handle", "display_name", "description", "properties",
 				"is_critical", "gateway_functionality_type", "version", "is_active", "created_by", "updated_by", "created_at", "updated_at"},
 			[]any{r.uuid, r.orgUUID, handle, nullOrString(r.displayName), textOrEmpty(r.description), nullOrBytes(r.properties),
-				boolToSmallint(r.isCritical), nullOrString(r.functionalityType), nullOrString(r.version), boolToSmallint(r.isActive),
+				boolToSmallint(r.isCritical), nullOrString(r.functionalityType), nullOrString(r.version), boolToSmallint(sql.NullBool{Valid: true}),
 				actor, actor, tsToTstz(r.createdAt, rc.Kernels.appZone()), tsToTstz(r.updatedAt, rc.Kernels.appZone())},
 			conflictUUIDNothing); err != nil {
 			return err

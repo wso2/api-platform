@@ -8,12 +8,9 @@ nameOverride: ""
 # Override the full name used for resource naming
 fullnameOverride: ""
 
-# Kubernetes Gateway API (gateway.networking.k8s.io) — standard-channel CRDs v1.3.0.
-# Leave false if Gateway API CRDs already exist (cloud add-on, Traefik "crd" chart, etc.).
-# Setting true when those CRDs are owned by another Helm release fails with:
-# "exists and cannot be imported into the current release: invalid ownership metadata".
-# Duplicate CRDs can also cause server-side apply conflicts on upgrade.
-# Set true only when no gateway*.gateway.networking.k8s.io CRDs are present yet.
+# Set `true` only if no Kubernetes Gateway API CRDs (`gateway*.gateway.networking.k8s.io`) exist in the cluster. 
+# Set `false` if CRDs are already managed by another Helm release, a cloud add-on, Traefik, or 
+# OpenShift 4.19+ to avoid ownership and upgrade conflicts.
 gatewayApi:
   installStandardCRDs: true
   # Passed through to operator config.yaml as gateway_api.gateway_class_names (Gateway API / HTTPRoute flow).
@@ -54,16 +51,34 @@ debug:
   # use the same image by default; if your build image doesn't include dlv, set a debugImage
   debugImage: ""
 
-# Pod-level security context defaults. Many images run as root by default; set
-# runAsNonRoot: true only if your image runs as a non-root user. The chart will
-# still force runAsUser: 0 when debug.enabled=true (Delve needs root privileges).
-securityContext:
+# Pod-level security context, rendered as given.
+podSecurityContext:
   runAsNonRoot: true
-  # If you want the pod to run as a specific uid, set this (e.g. 1000). Leave
-  # null to not set runAsUser and let the image default decide.
-  runAsUser: 10001
   seccompProfile:
     type: RuntimeDefault
+
+# Container-level security context for the operator (manager) container, rendered as given.
+# Both blocks are ignored when debug.enabled=true: Delve needs root (runAsUser: 0) and
+# SYS_PTRACE, so debug mode cannot run under OpenShift's restricted SCCs.
+securityContext:
+  # Set to null to leave the UID unset, so the image default (65532) is used or, on
+  # OpenShift, the UID is assigned from the project's range.
+  runAsUser: 10001
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: true
+
+# OpenShift support: false, true, or auto (enabled when the cluster serves route.openshift.io/v1).
+# When enabled: the operator may manage Routes, and gateways get openshift.enabled=true unless
+# gateway.values.openshift.enabled is set, so the gateway chart's optional management API Route
+# (gateway.values.openshift.routes.managementApi) can be turned on. No Routes are created for API
+# traffic: create them for the hostnames your gateways serve. Security contexts are not changed:
+# on OpenShift, set securityContext.runAsUser to null (or a UID your SCC allows). auto needs a live
+# cluster: helm template and dry runs render it as false.
+openshift:
+  enabled: false
 
 # Operator config.yaml contents (YAML block, indented)
 gateway:
@@ -262,6 +277,12 @@ gateway:
             # Cipher suites (comma-separated)
             ciphers: "ECDHE-ECDSA-AES128-GCM-SHA256,ECDHE-RSA-AES128-GCM-SHA256,ECDHE-ECDSA-AES128-SHA,ECDHE-RSA-AES128-SHA,AES128-GCM-SHA256,AES128-SHA,ECDHE-ECDSA-AES256-GCM-SHA384,ECDHE-RSA-AES256-GCM-SHA384,ECDHE-ECDSA-AES256-SHA,ECDHE-RSA-AES256-SHA,AES256-GCM-SHA384,AES256-SHA"
 
+            # HTTPS connections asked for a client certificate while an API attaches mtls-auth:
+            # mtls_hostnames (default; every connection while one has no own hostname or a relay entry exists) | all_connections
+            client_certificate_request: mtls_hostnames
+            # Refuse (HTTP 400) to deploy an mtls-auth API without its own hostname. Only with mtls_hostnames. true | false (default)
+            mtls_requires_dedicated_hostname: false
+
           # Upstream configuration (TLS and timeouts for Envoy upstream)
           upstream:
             # TLS configuration for upstream connections
@@ -273,6 +294,9 @@ gateway:
               custom_certs_path: ./certificates  # Directory containing custom trusted certificates (e.g., self-signed certs)
               verify_host_name: true
               disable_ssl_verification: false
+              # Present a client certificate to HTTPS backends whose upstream names no tls.identity:
+              # the role "default" identity, else the HTTPS listener certificate. true (default) | false
+              present_default_identity: true
 
             # Timeout configurations for upstream connections (milliseconds)
             timeouts:
@@ -653,3 +677,6 @@ cleanupJob:
     repository: bitnami/kubectl
     tag: latest
     pullPolicy: IfNotPresent
+  # Pod- and container-level security contexts for the pre-delete cleanup Job, rendered as given.
+  podSecurityContext: {}
+  securityContext: {}

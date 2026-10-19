@@ -28,7 +28,7 @@ const logger = require('../config/logger');
 
 const loadCustomContent = async (req, res, next) => {
 
-    let html = "";
+    let html;
     const { orgName, viewName } = req.params;
     let filePath = req.originalUrl.split("/" + orgName + constants.ROUTE.VIEWS_PATH + viewName + "/")[1];
     

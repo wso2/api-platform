@@ -507,7 +507,7 @@ const getAPIDefinition = async (orgName, viewName, apiHandle) => {
 const loadDocsPage = async (req, res, next) => {
 
     const { orgName, apiHandle, viewName } = req.params;
-    let html = "";
+    let html;
     if (config.designMode?.enabled) {
         const layoutPath = config.designMode.pathToLayout;
         const apiMetadata = await loadAPIMetaDataFromFile(apiHandle);
@@ -875,8 +875,7 @@ async function loadAPIMetaDataListFromAPI(req, orgId, orgName, searchTerm, tags,
 
 async function loadAPIMetaData(req, orgId, apiId, viewName) {
 
-    let metaData = {};
-    metaData = await apiMetadataService.getMetadataFromDB(orgId, apiId, viewName);
+    let metaData = await apiMetadataService.getMetadataFromDB(orgId, apiId, viewName);
     if (metaData !== "") {
         const data = metaData ? JSON.stringify(metaData) : {};
         metaData = JSON.parse(data);
@@ -979,11 +978,11 @@ function parseApiDefinitionContent(apiDefinitionContent) {
         try {
             const parsedYaml = yaml.load(apiDefinitionContent);
             if (!parsedYaml || typeof parsedYaml !== 'object') {
-                throw new Error('Parsed API definition is empty or invalid');
+                throw new Error('Parsed API definition is empty or invalid', { cause: jsonError });
             }
             return parsedYaml;
         } catch (yamlError) {
-            throw new Error(`Failed to parse API definition as JSON or YAML: ${yamlError.message}`);
+            throw new Error(`Failed to parse API definition as JSON or YAML: ${yamlError.message}`, { cause: yamlError });
         }
     }
 }

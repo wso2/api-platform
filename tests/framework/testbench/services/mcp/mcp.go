@@ -49,6 +49,11 @@ type echoInput struct {
 	Message string `json:"message" jsonschema:"Message to echo"`
 }
 
+// headersInput names the inbound HTTP request header the headers tool reports back.
+type headersInput struct {
+	Name string `json:"name" jsonschema:"Header name to read from the request"`
+}
+
 // Service implements the testbench MCP service.
 type Service struct {
 	handler http.Handler
@@ -85,6 +90,10 @@ func newServer() *mcpsdk.Server {
 		Name:        "echo",
 		Description: "Echoes back the input",
 	}, echo)
+	mcpsdk.AddTool(server, &mcpsdk.Tool{
+		Name:        "headers",
+		Description: "Reports the value of a header on the inbound HTTP request",
+	}, headers)
 	return server
 }
 
@@ -125,6 +134,18 @@ func add(_ context.Context, _ *mcpsdk.CallToolRequest, in addInput) (*mcpsdk.Cal
 // echo returns the supplied message.
 func echo(_ context.Context, _ *mcpsdk.CallToolRequest, in echoInput) (*mcpsdk.CallToolResult, any, error) {
 	return textResult("Echo: " + in.Message), nil, nil
+}
+
+// headers reports the first value of the named inbound HTTP request header, or an empty
+// string if the header was absent. The tool handler itself is never given an *http.Request;
+// it exists so a test can assert, at the backend, which credential a gateway policy chain
+// actually forwarded upstream - not only that the gateway's own response was successful.
+func headers(_ context.Context, req *mcpsdk.CallToolRequest, in headersInput) (*mcpsdk.CallToolResult, any, error) {
+	var value string
+	if req.Extra != nil {
+		value = req.Extra.Header.Get(in.Name)
+	}
+	return textResult(in.Name + ": " + value), nil, nil
 }
 
 // textResult creates a result containing one text content block.

@@ -45,6 +45,7 @@ import (
 	"github.com/wso2/api-platform/tests/framework/testbench/services/oauth2"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/oidc"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/openai"
+	"github.com/wso2/api-platform/tests/framework/testbench/services/tlsbackend"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/webhook"
 )
 
@@ -79,7 +80,12 @@ func run() error {
 	return testbench.Serve(ctx, reg, log)
 }
 
+// services returns the mock services to run: the TLS backends alone when their environment
+// is set, as in the container that serves them, otherwise the general-purpose set.
 func services() ([]testbench.Service, error) {
+	if value, set := os.LookupEnv(tlsbackend.EnvBackends); set {
+		return tlsbackend.FromEnv(value)
+	}
 	jwksSvc, err := jwks.New()
 	if err != nil {
 		return nil, fmt.Errorf("building jwks service: %w", err)
@@ -87,6 +93,10 @@ func services() ([]testbench.Service, error) {
 	oidcSvc, err := oidc.FromEnvironment()
 	if err != nil {
 		return nil, fmt.Errorf("building oidc service: %w", err)
+	}
+	oauth2Svc, err := oauth2.New()
+	if err != nil {
+		return nil, fmt.Errorf("building oauth2 service: %w", err)
 	}
 	return []testbench.Service{
 		jwksSvc,
@@ -101,7 +111,7 @@ func services() ([]testbench.Service, error) {
 		contentsafety.New(),
 		analytics.New(),
 		capture.New(),
-		oauth2.New(),
+		oauth2Svc,
 		webhook.New(),
 		agentcard.New(),
 		oidcSvc,

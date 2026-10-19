@@ -30,14 +30,12 @@ export type AppPageProps = PageContentProps & {
 };
 
 /**
- * The outer container of every page in the app shell: `PageContent` with the
- * scope breadcrumb trail above the page's own content.
+ * The outer container of every page in the app shell: `PageContent` around the
+ * page's own content.
  *
  * Each page renders this itself; the shell adds no container of its own, so a
  * page decides its width and padding. Defaults match the console's standard
- * layout (full width, `py: 5`); any `PageContent` prop overrides them. The
- * trail renders inside the page's `PageContent`, so it always lines up with
- * the page body whatever width the page picks.
+ * layout (full width, `py: 5`); any `PageContent` prop overrides them.
  */
 export function AppPage({
   children,
@@ -52,14 +50,7 @@ export function AppPage({
       sx={[{ py: 5 }, ...(sx === undefined ? [] : Array.isArray(sx) ? sx : [sx])]}
       {...pageContentProps}
     >
-      <Stack spacing={1}>
-        {/* {showBreadcrumbs && (
-          <Box sx={{ pb: 1 }}>
-            <AppBreadcrumbs items={breadcrumbs} sx={breadcrumbSx} />
-          </Box>
-        )} */}
-        {children}
-      </Stack>
+      <Stack spacing={1}>{children}</Stack>
     </PageContent>
   );
 }

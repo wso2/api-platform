@@ -939,20 +939,16 @@
     "defaultMessage": "Edit API details",
     "description": "Accessible label and tooltip for the button beside the API name, which opens the edit page."
   },
-  "apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.gatewayManaged": {
-    "defaultMessage": "Gateway-managed",
-    "description": "Chip marking an API that was discovered from a gateway and cannot be edited here."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.gatewayManagedHint": {
-    "defaultMessage": "Discovered from a data-plane gateway, so it is read-only in this console.",
-    "description": "Tooltip explaining the gateway-managed chip."
-  },
   "apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.transports.label": {
     "defaultMessage": "Transports",
     "description": "Label for the protocols an API is exposed over (HTTP, HTTPS)."
   },
   "apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.unknownCreator": {
     "defaultMessage": "—"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.viewDeployments": {
+    "defaultMessage": "View Deployments",
+    "description": "Button on the API overview header that opens the API's deployment page."
   },
   "apiControlPlane.pages.appShell.appShellPages.apis.ApiThumbnailManager.changeThumbnail": {
     "defaultMessage": "Change thumbnail"
@@ -1332,8 +1328,16 @@
   "apiControlPlane.pages.appShell.appShellPages.apis.overview.EndpointsPanel.endpointRequired": {
     "defaultMessage": "Enter a valid endpoint URL."
   },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.EndpointsPanel.gatewayManaged": {
+    "defaultMessage": "This API was created from a gateway, so its endpoint is managed by the gateway and cannot be edited here.",
+    "description": "Tooltip on the disabled Edit endpoint button of a read-only (gateway-created) API."
+  },
   "apiControlPlane.pages.appShell.appShellPages.apis.overview.EndpointsPanel.notConfigured": {
     "defaultMessage": "No endpoint configured"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.EndpointsPanel.notEditable": {
+    "defaultMessage": "This endpoint cannot be edited here.",
+    "description": "Tooltip on the disabled Edit endpoint button when no more specific reason applies."
   },
   "apiControlPlane.pages.appShell.appShellPages.apis.overview.EndpointsPanel.save": {
     "defaultMessage": "Save"
@@ -1422,6 +1426,10 @@
   "apiControlPlane.pages.appShell.appShellPages.deploy.DeployPage.emptyTitle": {
     "defaultMessage": "No gateway added yet",
     "description": "Empty state when the organization has no gateways to deploy to."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.deploy.DeployPage.gatewayManaged": {
+    "defaultMessage": "This API was created from a gateway. You can view its deployments, but deploy, redeploy, restore and undeploy actions are managed by the gateway and are unavailable in the API Control Plane.",
+    "description": "Info banner on the Deploy page of a read-only API, i.e. one that a gateway pushed to the control plane."
   },
   "apiControlPlane.pages.appShell.appShellPages.deploy.DeployPage.loading": {
     "defaultMessage": "Loading deploy state",
@@ -1940,6 +1948,14 @@
     "defaultMessage": "Policies are attached to a single API.",
     "description": "Explains why an API must be picked before this page can render."
   },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.PoliciesPageTitle.subtitle": {
+    "defaultMessage": "Policies the gateway applies to this API’s traffic, such as authentication, rate limiting and header changes.",
+    "description": "Description under the Policies page heading."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.PoliciesPageTitle.title": {
+    "defaultMessage": "Policies",
+    "description": "Heading of the Policies page of an API. Noun."
+  },
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyConfigDrawer.attachPolicy": {
     "defaultMessage": "Attach policy",
     "description": "Attaches the configured policy to the selected scope. Verb phrase."
@@ -2031,12 +2047,8 @@
     "defaultMessage": "Search resources"
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.ReadOnlyPoliciesNotice.body": {
-    "defaultMessage": "This API was discovered from a data-plane gateway, so its policies are read-only in this console. Change them on the gateway.",
-    "description": "Explains why the policies of a gateway-managed API cannot be added, edited or removed."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.develop.policies.ReadOnlyPoliciesNotice.title": {
-    "defaultMessage": "Policies cannot be changed here",
-    "description": "Title of the notice shown on the policies page of a gateway-managed API."
+    "defaultMessage": "This API was created from a gateway. You can view its policies, but attach, edit, remove and reorder actions are managed by the gateway and are unavailable in the API Control Plane.",
+    "description": "Info banner on the Policies page of a read-only API, i.e. one that a gateway pushed to the control plane."
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.SchemaField.addEntry": {
     "defaultMessage": "Add entry",

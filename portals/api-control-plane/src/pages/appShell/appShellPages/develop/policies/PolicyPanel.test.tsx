@@ -50,7 +50,7 @@ describe('PolicyPanel', () => {
     const { user } = renderPanel(true);
 
     expect(screen.getByText('cors')).toBeInTheDocument();
-    expect(screen.getByText('Policies cannot be changed here')).toBeInTheDocument();
+    expect(screen.getByText(/This API was created from a gateway/)).toBeInTheDocument();
     expect(screen.queryByLabelText('Edit policy')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Remove policy')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument();
@@ -63,7 +63,16 @@ describe('PolicyPanel', () => {
     renderPanel(false);
 
     expect(screen.getByText('cors')).toBeInTheDocument();
-    expect(screen.queryByText('Policies cannot be changed here')).not.toBeInTheDocument();
+    expect(screen.queryByText(/This API was created from a gateway/)).not.toBeInTheDocument();
     expect(screen.getAllByLabelText('Remove policy').length).toBeGreaterThan(0);
+  });
+
+  it('opens with the resource-wise policies section expanded', () => {
+    renderPanel(false);
+
+    expect(screen.getByRole('button', { name: /Resource-wise policies/ })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    );
   });
 });

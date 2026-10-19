@@ -29,6 +29,7 @@ func Register(sc *godog.ScenarioContext, base Base, topo *runtime.Topology, funn
 	g := &Gateway{base: base, topo: topo, funnel: funnel, featureRoot: base.FeatureRoot()}
 	s := &Steps{topo: topo, funnel: funnel}
 	g.register(sc)
+	g.registerDefaultIdentitySteps(sc)
 	sc.Step(`^I send a GET request to the gateway controller admin health endpoint$`, s.controllerHealth)
 	sc.Step(`^I send a GET request to the router ready endpoint$`, s.routerReady)
 	sc.Step(`^I send a GET request to the router ready endpoint until status (\d+)$`, s.routerReadyUntil)

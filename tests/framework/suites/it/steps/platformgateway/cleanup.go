@@ -25,6 +25,7 @@ import (
 	"github.com/wso2/api-platform/tests/framework/core/cleanup"
 	"github.com/wso2/api-platform/tests/framework/core/runtime"
 	"github.com/wso2/api-platform/tests/framework/core/util/httpx"
+	"github.com/wso2/api-platform/tests/framework/core/util/retry"
 )
 
 // managementCollections maps each resource kind a gateway scenario creates to the collection of
@@ -36,8 +37,10 @@ var managementCollections = map[cleanup.Kind]string{
 	cleanup.KindLLMProviderTemplate: "/llm-provider-templates",
 	cleanup.KindMCPProxy:            "/mcp-proxies",
 	cleanup.KindAgent:               "/agents",
-	cleanup.KindCertificate:         "/certificates",
+	cleanup.KindCertificate:         certificatesCollection,
 	cleanup.KindSecret:              "/secrets",
+	cleanup.KindSubscription:        "/subscriptions",
+	cleanup.KindSubscriptionPlan:    "/subscription-plans",
 }
 
 // RegisterDeleters registers how the cleanup sweep deletes each resource kind a gateway
@@ -87,14 +90,28 @@ func managementEndpointOf(topo *runtime.Topology) (managementEndpoint, error) {
 	}, nil
 }
 
+// certificatesCollection is deleted waiting out 409 Conflict: the controller refuses to delete a
+// certificate while it still counts an API that was just removed as a reference, and a
+// certificate left behind changes the pool the next scenario sees.
+const certificatesCollection = "/certificates"
+
 // delete removes one resource. A 404 means it is already gone, which is success for a sweep;
 // any other failure is a leak signal and is reported.
 func (e managementEndpoint) delete(ctx context.Context, client *httpx.Client, collection, id string) error {
-	resp, err := client.Do(ctx, httpx.Request{
+	request := httpx.Request{
 		Method:  http.MethodDelete,
 		URL:     e.restURL + ManagementBasePathForVersion(e.version) + collection + "/" + id,
 		Headers: map[string]string{"Authorization": e.authorization},
-	}, 1, 0)
+	}
+	send := func(ctx context.Context) (*httpx.Response, error) { return client.Do(ctx, request, 1, 0) }
+	var resp *httpx.Response
+	var err error
+	if collection == certificatesCollection {
+		resp, err = retry.Until(ctx, retry.Options{}, send,
+			func(r *httpx.Response) bool { return r != nil && r.StatusCode != http.StatusConflict })
+	} else {
+		resp, err = send(ctx)
+	}
 	if err != nil {
 		return err
 	}

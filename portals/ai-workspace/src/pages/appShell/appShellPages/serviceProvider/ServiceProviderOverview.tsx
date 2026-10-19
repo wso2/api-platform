@@ -1329,15 +1329,6 @@ function ServiceProviderOverviewContent() {
                           {lastUpdated ? formatRelativeTime(lastUpdated) : '—'}
                         </Typography>
                       </Stack>
-                      {provider.createdBy && (
-                        <Typography variant="caption" color="text.secondary">
-                          <FormattedMessage
-                            id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProviderOverview.createdBy"
-                            defaultMessage="Created by: {createdBy}"
-                            values={{ createdBy: provider.createdBy }}
-                          />
-                        </Typography>
-                      )}
                     </Stack>
                   </Stack>
                 </Box>
@@ -1615,15 +1606,6 @@ function ServiceProviderOverviewContent() {
                       {lastUpdated ? formatRelativeTime(lastUpdated) : '—'}
                     </Typography>
                   </Stack>
-                  {provider.createdBy && (
-                    <Typography variant="caption" color="text.secondary">
-                      <FormattedMessage
-                        id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProviderOverview.createdBy.2"
-                        defaultMessage="Created by: {createdBy}"
-                        values={{ createdBy: provider.createdBy }}
-                      />
-                    </Typography>
-                  )}
                 </Stack>
               </Stack>
             </Box>

@@ -54,14 +54,14 @@ func TestBearerTokenRequiresEnvironmentToken(t *testing.T) {
 
 func TestCloudAPIURLUsesResolvedEndpointAsBase(t *testing.T) {
 	require.Equal(t,
-		"https://cloud.example.com/apip-bml-apip-bml-endpoint/api/v0.9/projects",
-		cloudAPIURL("https://cloud.example.com/apip-bml-apip-bml-endpoint/api/v0.9/", "/projects"))
+		"https://cloud.example.com/apip-platform-api-apip-platform-api-endpoint/api/v0.9/projects",
+		cloudAPIURL("https://cloud.example.com/apip-platform-api-apip-platform-api-endpoint/api/v0.9/", "/projects"))
 }
 
 func TestCloudResourceURLEscapesID(t *testing.T) {
 	require.Equal(t,
-		"https://cloud.example.com/apip-bml-apip-bml-endpoint/api/v0.9/projects/id%2Fwith%20separator",
-		cloudResourceURL("https://cloud.example.com/apip-bml-apip-bml-endpoint/api/v0.9", "/projects", "id/with separator"))
+		"https://cloud.example.com/apip-platform-api-apip-platform-api-endpoint/api/v0.9/projects/id%2Fwith%20separator",
+		cloudResourceURL("https://cloud.example.com/apip-platform-api-apip-platform-api-endpoint/api/v0.9", "/projects", "id/with separator"))
 }
 
 func TestResolveCloudDataPlaneURLRequiresHTTPSAndApproval(t *testing.T) {

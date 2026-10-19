@@ -24,7 +24,7 @@ import { managedGatewaysPath, toEnvironments, type ManagedGatewayDTO, type Stage
  * The artifact kinds this page can deploy, named as the platform names them. A
  * handle is unique only WITHIN a kind, so every call says which one it means.
  */
-export type ArtifactKind = 'RestApi' | 'GraphQLApi' | 'Mcp' | 'LlmProxy' | 'LlmProvider';
+export type ArtifactKind = 'RestApi' | 'Mcp' | 'LlmProxy' | 'LlmProvider' | 'AgentProxy' | 'GraphQLApi';
 
 /**
  * Each kind's own path on the platform API. The pipeline routes are shared, but a
@@ -37,6 +37,7 @@ const NATIVE_PATH: Record<ArtifactKind, string> = {
   Mcp: 'mcp-proxies',
   LlmProxy: 'llm-proxies',
   LlmProvider: 'llm-providers',
+  AgentProxy: 'agent-proxies',
 };
 
 /**
@@ -51,6 +52,7 @@ export const GATEWAY_TYPES_FOR_KIND: Record<ArtifactKind, readonly string[]> = {
   Mcp: ['ai'],
   LlmProxy: ['ai'],
   LlmProvider: ['ai'],
+  AgentProxy: ['ai'],
 };
 
 /**
@@ -72,6 +74,7 @@ const KIND_TAKES_ENDPOINT: Record<ArtifactKind, boolean> = {
   Mcp: false,
   LlmProxy: false,
   LlmProvider: false,
+  AgentProxy: false,
 };
 
 export const takesEndpointUrl = (kind: ArtifactKind): boolean => KIND_TAKES_ENDPOINT[kind] ?? false;
@@ -90,6 +93,8 @@ type BuildDTO = {
  */
 type RestApiDTO = {
   upstream?: { main?: { url?: string } };
+  /** True when a gateway created the API; its deployments are then the gateway's to manage. */
+  readOnly?: boolean;
 };
 
 /**
@@ -163,17 +168,17 @@ export function createDeployClient(
     },
 
     /**
-     * The backend URL the API is defined against, which the deploy and promote
-     * forms start from so a first deployment does not have to be typed out.
-     * Absent when the API declares its upstream by reference rather than by URL.
+     * What the page needs from the API itself: the backend URL the deploy and
+     * promote forms start from (absent when the upstream is declared by reference
+     * rather than by URL), and whether the API is read-only because a gateway
+     * created it.
      */
-    async readApiEndpointUrl(): Promise<string | undefined> {
-      // Only REST APIs declare a backend URL this form can start from; the other
-      // kinds either have none or shape it differently, so the field is simply left
-      // empty for them rather than guessed at.
-      if (kind !== 'RestApi') return undefined;
+    async readApi(): Promise<{ endpointUrl?: string; readOnly: boolean }> {
+      // Only REST APIs are read here; the other kinds either have no backend URL or
+      // shape it differently, so it is left empty for them rather than guessed at.
+      if (kind !== 'RestApi') return { readOnly: false };
       const api = await apiFetch<RestApiDTO>('GET', `/rest-apis/${encodeURIComponent(apiHandle)}`);
-      return api?.upstream?.main?.url;
+      return { endpointUrl: api?.upstream?.main?.url, readOnly: api?.readOnly === true };
     },
 
     /**

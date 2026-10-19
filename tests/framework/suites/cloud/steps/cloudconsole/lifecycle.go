@@ -671,7 +671,7 @@ func (s *Steps) doAuthenticatedRaw(ctx context.Context, method, path string, bod
 	if err != nil {
 		return nil, err
 	}
-	base, err := s.topo.URL(corecatalog.Name, corecatalog.EndpointAPIPBML)
+	base, err := s.topo.URL(corecatalog.Name, corecatalog.EndpointAPIPPlatformAPI)
 	if err != nil {
 		return nil, err
 	}

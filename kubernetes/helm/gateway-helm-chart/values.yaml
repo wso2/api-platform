@@ -35,6 +35,34 @@ serviceAccount:
   # Individual pods can override via gateway.<component>.deployment.automountServiceAccountToken.
   automountServiceAccountToken: true
 
+# OpenShift-specific resources, rendered only when openshift.enabled=true. The chart does
+# not create Routes for API traffic: the hostnames the gateway runtime serves come from the
+# virtual hosts configured at the gateway level (gateway.config.router.vhosts) and in each
+# API definition, so create Routes to the gateway-runtime Service for the hostnames you use.
+# Security contexts are configured per component under
+# gateway.<component>.deployment.{podSecurityContext,securityContext}.
+openshift:
+  enabled: false
+  routes:
+    # Gateway-controller management REST API (plain HTTP, so edge termination only).
+    # Off by default: it is an administrative surface. Install fails while
+    # gateway.config.controller.auth still has the default password or no authentication.
+    managementApi:
+      enabled: false
+      # Empty lets OpenShift generate <route-name>-<namespace>.<apps-domain>.
+      hostname: ""
+      annotations: {}
+      labels: {}
+      tls:
+        termination: edge
+        # None | Allow | Redirect
+        insecureEdgeTerminationPolicy: Redirect
+        # PEM certificate, key and CA chain served by the router.
+        # Leave empty to use the router's default certificate.
+        certificate: ""
+        key: ""
+        caCertificate: ""
+
 ## moved to each component's deployment block below
 
 # Component-level configuration
@@ -362,6 +390,12 @@ gateway:
         # Cipher suites (comma-separated)
         ciphers: "ECDHE-ECDSA-AES128-GCM-SHA256,ECDHE-RSA-AES128-GCM-SHA256,ECDHE-ECDSA-AES128-SHA,ECDHE-RSA-AES128-SHA,AES128-GCM-SHA256,AES128-SHA,ECDHE-ECDSA-AES256-GCM-SHA384,ECDHE-RSA-AES256-GCM-SHA384,ECDHE-ECDSA-AES256-SHA,ECDHE-RSA-AES256-SHA,AES256-GCM-SHA384,AES256-SHA"
 
+        # HTTPS connections asked for a client certificate while an API attaches mtls-auth:
+        # mtls_hostnames (default; every connection while one has no own hostname or a relay entry exists) | all_connections
+        client_certificate_request: mtls_hostnames
+        # Refuse (HTTP 400) to deploy an mtls-auth API without its own hostname. Only with mtls_hostnames. true | false (default)
+        mtls_requires_dedicated_hostname: false
+
       # Upstream configuration (TLS and timeouts for Envoy upstream)
       upstream:
         # TLS configuration for upstream connections
@@ -373,6 +407,9 @@ gateway:
           custom_certs_path: ./certificates  # Directory containing custom trusted certificates (e.g., self-signed certs)
           verify_host_name: true
           disable_ssl_verification: false
+          # Present a client certificate to HTTPS backends whose upstream names no tls.identity:
+          # the role "default" identity, else the HTTPS listener certificate. true (default) | false
+          present_default_identity: true
 
         # Timeout configurations for upstream connections (milliseconds)
         timeouts:

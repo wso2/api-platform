@@ -42,6 +42,12 @@ audience          = "api-portal-it-client"
 callback_url      = '{{ env "APIP_AP_AUTH_IDP_CALLBACK_URL" }}'
 scope             = "openid profile email"
 silent_sso        = true
+# Per-organization issuers. Organizations are keyed on org_id, but a per-organization
+# token is bound to its issuer through org_handle, so the scenarios can tell the binding
+# claim from the organization claim.
+issuer_template    = "https://testbench:3015/o/{org}/oauth2/token"
+jwks_url_template  = "https://testbench:3015/o/{org}/oauth2/jwks"
+template_org_claim = "org_handle"
 
 [api_portal.auth.authorization.portal_roles]
 admin      = "ap_admin"

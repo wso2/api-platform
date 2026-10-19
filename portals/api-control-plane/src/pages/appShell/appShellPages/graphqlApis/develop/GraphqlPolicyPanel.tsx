@@ -27,6 +27,7 @@ import { useGraphQLApiSdl, useUpdateGraphQLApi } from '@/api/resources/graphqlAp
 import type { Policy } from '@/api/resources/restApis';
 import { useNotifications } from '@/components/Notifications';
 import { AttachedPolicyList } from '../../develop/policies/AttachedPolicyList';
+import { PoliciesPageTitle } from '../../develop/policies/PoliciesPageTitle';
 import { ReadOnlyPoliciesNotice } from '../../develop/policies/ReadOnlyPoliciesNotice';
 import { AvailablePoliciesPanel } from '../../develop/policies/AvailablePoliciesPanel';
 import { getDraggedPolicy } from '../../develop/policies/policyDnd';
@@ -200,6 +201,7 @@ export function GraphqlPolicyPanel({ api }: { api: GraphQLApiDetail }) {
 
   return (
     <Stack spacing={2}>
+      <PoliciesPageTitle />
       {readOnly && <ReadOnlyPoliciesNotice />}
       <Stack alignItems="flex-start" direction={{ xs: 'column', md: 'row' }} spacing={2}>
         <Box sx={{ flex: 1, minWidth: 0, width: '100%' }}>
@@ -272,12 +274,16 @@ export function GraphqlPolicyPanel({ api }: { api: GraphQLApiDetail }) {
           </Card>
         </Box>
 
-        {hubEnabled && !readOnly && (
+        {/* Shown disabled, not hidden, for a read-only API: still browsable,
+            but nothing can be attached. */}
+        {hubEnabled && (
           <Box sx={{ flexShrink: 0, width: { xs: '100%', md: 400 } }}>
             <Card sx={{ height: '100%', overflow: 'hidden' }} variant="outlined">
               <CardContent sx={{ height: 620, p: 2 }}>
                 <AvailablePoliciesPanel
+                  disabled={readOnly}
                   onSelect={(policy) => {
+                    if (readOnly) return;
                     setEditing(null);
                     setPicked(policy);
                   }}

@@ -69,6 +69,7 @@ function EndpointPanel({ api, sdl }: { api: GraphQLApiDetail; sdl?: string }) {
   return (
     <EndpointCard
       editable={canEdit}
+      gatewayManaged={api.readOnly === true}
       editOperation="UpdateGraphQLAPI"
       onSave={(endpointUrl) => {
         if (!api.id || sdl === undefined) {

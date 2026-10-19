@@ -71,6 +71,7 @@ export function AppHeader() {
 
   const userName = auth.user?.name || 'User';
   const userEmail = auth.user?.email || '';
+  const userPicture = auth.user?.picture || undefined;
 
   const { orgHandle } = getRouteParamsFromPathname(location.pathname);
   const goToOrganizationHome = () => {
@@ -130,8 +131,8 @@ export function AppHeader() {
           </IconButton>
         </Tooltip> */}
         <UserMenu>
-          <UserMenu.Trigger name={userName} />
-          <UserMenu.Header name={userName} email={userEmail} />
+          <UserMenu.Trigger name={userName} avatar={userPicture} />
+          <UserMenu.Header name={userName} email={userEmail} avatar={userPicture} />
           <UserMenu.Divider />
           <UserMenu.Item
             icon={<LogOut />}

@@ -231,6 +231,7 @@ func New(ctx context.Context, cfg *config.Config) (*Server, error) {
 			ctx, upstream,
 			cfg.Auth.OIDC.Issuer, cfg.Auth.OIDC.ClientID, cfg.Auth.OIDC.ClientSecret,
 			cfg.Auth.OIDC.RedirectURL, cfg.Auth.OIDC.PostLogoutRedirectURL, cfg.Auth.OIDC.Scopes,
+			cfg.Auth.OIDC.RequireHTTPS,
 			claims, cfg.Session.AbsoluteTTL, txSealer,
 		)
 		if err != nil {

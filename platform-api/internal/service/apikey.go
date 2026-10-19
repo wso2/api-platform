@@ -745,7 +745,7 @@ func (s *APIKeyService) UpdateAPIKey(ctx context.Context, apiHandle, kind, orgId
 		s.slogger.Info("Broadcasting API key updated event", "apiHandle", apiHandle, "gatewayId", gatewayID, "keyName", keyName)
 
 		// Broadcast with retries
-		err := s.gatewayEventsService.BroadcastAPIKeyUpdatedEvent(gatewayID, userId, event)
+		err := s.gatewayEventsService.BroadcastAPIKeyUpdatedEventFor(gateway, existingKey.CreatedBy, userId, event)
 		if err != nil {
 			failureCount++
 			lastError = err
@@ -837,7 +837,7 @@ func (s *APIKeyService) RevokeAPIKey(ctx context.Context, apiHandle, kind, orgId
 		s.slogger.Info("Broadcasting API key revoked event", "apiHandle", apiId, "gatewayId", gatewayID, "keyName", keyName)
 
 		// Broadcast with retries
-		err := s.gatewayEventsService.BroadcastAPIKeyRevokedEvent(gatewayID, userId, event)
+		err := s.gatewayEventsService.BroadcastAPIKeyRevokedEventFor(gateway, revokeKey.CreatedBy, userId, event)
 		if err != nil {
 			failureCount++
 			lastError = err
@@ -918,7 +918,7 @@ func (s *APIKeyService) DeleteAPIKey(ctx context.Context, apiHandle, kind, orgId
 		KeyName: keyName,
 	}
 	for _, gateway := range filterAPIGatewaysByAllowedTargets(gateways, existingKey.AllowedTargets) {
-		if err := s.gatewayEventsService.BroadcastAPIKeyRevokedEvent(gateway.ID, userId, event); err != nil {
+		if err := s.gatewayEventsService.BroadcastAPIKeyRevokedEventFor(gateway, existingKey.CreatedBy, userId, event); err != nil {
 			s.slogger.Error("Failed to broadcast API key revoked event", "apiHandle", apiHandle, "gatewayId", gateway.ID, "keyName", keyName, "error", err)
 		} else {
 			s.slogger.Info("Successfully broadcast API key revoked event", "apiHandle", apiHandle, "gatewayId", gateway.ID, "keyName", keyName)

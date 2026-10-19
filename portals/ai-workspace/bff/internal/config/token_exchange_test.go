@@ -756,6 +756,80 @@ encryption_key = "test-session-key-at-least-32-characters"
 	}
 }
 
+// TestOIDCRequireHTTPSDefaultsOn: an OIDC config that never mentions require_https
+// keeps the secure default; only an explicit false turns the check off.
+func TestOIDCRequireHTTPSDefaultsOn(t *testing.T) {
+	const tmpl = `
+[ai_workspace.auth]
+mode = "oidc"
+
+[ai_workspace.auth.oidc]
+authority     = "https://idp.example.com"
+client_id     = "login-client"
+client_secret = "login-secret"
+redirect_url  = "https://localhost:9643/ai-workspace/api/auth/callback"
+%s
+
+[ai_workspace.session.cookie]
+encryption_key = "test-session-key-at-least-32-characters"
+`
+	for _, tc := range []struct {
+		line string
+		want bool
+	}{
+		{"", true},
+		{"require_https = true", true},
+		{"require_https = false", false},
+	} {
+		cfg, err := loadWithAuth(t, fmt.Sprintf(tmpl, tc.line))
+		if err != nil {
+			t.Fatalf("%q: unexpected error: %v", tc.line, err)
+		}
+		if cfg.Auth.OIDC.RequireHTTPS != tc.want {
+			t.Errorf("%q: RequireHTTPS = %v, want %v", tc.line, cfg.Auth.OIDC.RequireHTTPS, tc.want)
+		}
+	}
+}
+
+// TestTokenExchangeAllowsPlaintextWhenHTTPSNotRequired: require_https = false lifts
+// the plaintext check on token_endpoint for a local setup, and only that check.
+func TestTokenExchangeAllowsPlaintextWhenHTTPSNotRequired(t *testing.T) {
+	const tmpl = `
+[ai_workspace.auth]
+mode = "oidc"
+
+[ai_workspace.auth.oidc]
+authority     = "http://idp.example.com"
+client_id     = "login-client"
+client_secret = "login-secret"
+redirect_url  = "https://localhost:9643/ai-workspace/api/auth/callback"
+require_https = false
+
+[ai_workspace.auth.oidc.token_exchange]
+enabled        = true
+audience       = "platform-api"
+token_endpoint = "%s"
+
+[ai_workspace.session.cookie]
+encryption_key = "test-session-key-at-least-32-characters"
+`
+	for _, tc := range []struct {
+		endpoint string
+		wantErr  bool
+	}{
+		{"http://idp.example.com/oauth2/token", false},
+		{"http://user:pw@idp.example.com/oauth2/token", true},
+	} {
+		_, err := loadWithAuth(t, fmt.Sprintf(tmpl, tc.endpoint))
+		if tc.wantErr && err == nil {
+			t.Errorf("token_endpoint %q: expected a validation error", tc.endpoint)
+		}
+		if !tc.wantErr && err != nil {
+			t.Errorf("token_endpoint %q: unexpected error: %v", tc.endpoint, err)
+		}
+	}
+}
+
 // TestTokenExchangeClaimMappingsInheritPerField: the issued token's claim names
 // default to the login token's, FIELD BY FIELD. Per-field matters — an STS that
 // nests only the org still uses the login names for everything else, and inheriting

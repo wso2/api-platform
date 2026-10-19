@@ -104,7 +104,7 @@ const messages = defineMessages({
 });
 
 export const ApiCreationWizard = () => (
-  <AppPage hideBreadcrumbs>
+  <AppPage>
     <ApiCreationWizardContent />
   </AppPage>
 );
