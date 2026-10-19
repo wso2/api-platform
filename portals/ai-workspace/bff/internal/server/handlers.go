@@ -199,9 +199,12 @@ func (s *Server) handleOIDCLogin(w http.ResponseWriter, r *http.Request) {
 // This exists so a portal can put the identity-provider choice on its own page — a
 // "Continue with Google" button links to <base>/api/auth/login?fidp=google, and the
 // user lands on Google rather than on the IDP's provider chooser. login_hint does the
-// same for an account, prefilling the address on an enterprise sign-in.
+// same for an account, prefilling the address on an enterprise sign-in, and username
+// carries that same address for WSO2 Identity Server / Asgardeo, whose federated
+// authenticators (the EnterpriseIDP connection that picks an organization's IDP by the
+// address's domain) read it under that name rather than login_hint.
 //
-// Strictly two names, never the caller's whole query string. Everything else in the
+// Strictly three names, never the caller's whole query string. Everything else in the
 // authorization request is the BFF's to decide, and forwarding freely would let a
 // crafted link alter it — a wider scope, a different redirect_uri, prompt=none to
 // probe for an existing session. AuthCodeURL writes the protocol parameters after
@@ -214,7 +217,7 @@ func (s *Server) handleOIDCLogin(w http.ResponseWriter, r *http.Request) {
 func forwardableAuthParams(q url.Values) url.Values {
 	const maxParamLen = 256
 	out := url.Values{}
-	for _, name := range []string{"fidp", "login_hint"} {
+	for _, name := range []string{"fidp", "login_hint", "username"} {
 		value := strings.TrimSpace(q.Get(name))
 		if value == "" || len(value) > maxParamLen || !isSafeAuthParamValue(value) {
 			continue

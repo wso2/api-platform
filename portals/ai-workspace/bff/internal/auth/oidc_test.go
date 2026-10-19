@@ -262,6 +262,7 @@ func TestAuthCodeURLExtrasCannotOverrideProtocolParams(t *testing.T) {
 
 	authURL, _, err := o.AuthCodeURL("/", url.Values{
 		"fidp":          {"google"},
+		"username":      {"someone@example.com"},
 		"scope":         {"openid admin"},
 		"redirect_uri":  {"https://evil.example.com/steal"},
 		"response_type": {"token"},
@@ -278,6 +279,9 @@ func TestAuthCodeURLExtrasCannotOverrideProtocolParams(t *testing.T) {
 
 	if q.Get("fidp") != "google" {
 		t.Errorf("fidp = %q, want it forwarded", q.Get("fidp"))
+	}
+	if q.Get("username") != "someone@example.com" {
+		t.Errorf("username = %q, want it forwarded", q.Get("username"))
 	}
 	for name, want := range map[string]string{
 		"response_type": "code",

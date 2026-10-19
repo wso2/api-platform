@@ -235,12 +235,13 @@ func requireSecureEndpoint(name, raw string, requireHTTPS bool) error {
 // AuthCodeURL creates a new login transaction and returns the IDP authorize URL.
 //
 // `extra` carries additional authorization-request parameters the caller wants the IDP
-// to see — `fidp` to name a federated provider, `login_hint` to prefill the account —
-// so a portal can put the provider choice on its OWN page and send the user straight
-// to Google or GitHub instead of through the IDP's chooser. The caller is responsible
-// for deciding which parameters are allowed (see the server's handleOIDCLogin): a
-// parameter set here CANNOT override the protocol ones below, which are written after
-// it precisely so that a stray `redirect_uri` or `scope` cannot widen the request.
+// to see — `fidp` to name a federated provider, `login_hint` (and, for WSO2 Identity
+// Server / Asgardeo, `username`) to prefill the account — so a portal can put the
+// provider choice on its OWN page and send the user straight to Google or GitHub
+// instead of through the IDP's chooser. The caller is responsible for deciding which
+// parameters are allowed (see the server's handleOIDCLogin): a parameter set here
+// CANNOT override the protocol ones below, which are written after it precisely so
+// that a stray `redirect_uri` or `scope` cannot widen the request.
 // plus the opaque tx id to store in the short-lived tx cookie.
 func (o *OIDC) AuthCodeURL(returnURL string, extra url.Values) (authURL, txID string, err error) {
 	state, err := randString(32)
