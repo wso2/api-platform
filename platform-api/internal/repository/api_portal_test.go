@@ -537,7 +537,7 @@ func TestAPIPortalRepo_UpdateStatus_HappyPath(t *testing.T) {
 		t.Fatalf("Create: %v", err)
 	}
 
-	if err := repo.UpdateStatus(portal.ID, orgUUID, "poller", constants.APIPortalStatusActive); err != nil {
+	if _, err := repo.UpdateStatus(portal.ID, orgUUID, "poller", constants.APIPortalStatusActive); err != nil {
 		t.Fatalf("UpdateStatus: %v", err)
 	}
 	got, err := repo.GetByUUID(portal.ID, orgUUID)
@@ -569,12 +569,16 @@ func TestAPIPortalRepo_UpdateStatus_EmptyActorKeepsUpdatedBy(t *testing.T) {
 		t.Fatalf("Create: %v", err)
 	}
 
-	if err := repo.UpdateStatus(portal.ID, orgUUID, "", constants.APIPortalStatusActive); err != nil {
+	kept, err := repo.UpdateStatus(portal.ID, orgUUID, "", constants.APIPortalStatusActive)
+	if err != nil {
 		t.Fatalf("UpdateStatus: %v", err)
 	}
 	got, err := repo.GetByUUID(portal.ID, orgUUID)
 	if err != nil {
 		t.Fatalf("GetByUUID: %v", err)
+	}
+	if kept != "user-1" {
+		t.Errorf("returned updater = %q, want user-1", kept)
 	}
 	if got.Status != constants.APIPortalStatusActive || got.UpdatedBy != "user-1" || got.CreatedBy != "user-1" {
 		t.Errorf("want active, created/updated by user-1; got status %q created %q updated %q",
@@ -590,7 +594,7 @@ func TestAPIPortalRepo_UpdateStatus_MissingRow(t *testing.T) {
 	// UpdateStatus must return an error when no row matches; a silent zero-rows
 	// update would let the poller mark a deleted portal as active/failed against
 	// a row that no longer exists.
-	err := repo.UpdateStatus("nonexistent-uuid", "nonexistent-org", "poller", constants.APIPortalStatusActive)
+	_, err := repo.UpdateStatus("nonexistent-uuid", "nonexistent-org", "poller", constants.APIPortalStatusActive)
 	if err == nil {
 		t.Fatal("UpdateStatus on missing row must return an error")
 	}
@@ -615,13 +619,13 @@ func TestAPIPortalRepo_UpdateStatus_RejectsNonPendingSource(t *testing.T) {
 	if err := repo.Create(portal); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	if err := repo.UpdateStatus(portal.ID, orgUUID, "poller", constants.APIPortalStatusActive); err != nil {
+	if _, err := repo.UpdateStatus(portal.ID, orgUUID, "poller", constants.APIPortalStatusActive); err != nil {
 		t.Fatalf("first UpdateStatus (pending -> active) must succeed: %v", err)
 	}
 	// Second UpdateStatus on the now-active row is the race we're protecting
 	// against: a late poller tick from a lagging replica trying to write
 	// "failed" over a portal that has already reached "active".
-	err := repo.UpdateStatus(portal.ID, orgUUID, "poller", constants.APIPortalStatusFailed)
+	_, err := repo.UpdateStatus(portal.ID, orgUUID, "poller", constants.APIPortalStatusFailed)
 	if !errors.Is(err, ErrAPIPortalNotPending) {
 		t.Fatalf("update on non-pending row must return ErrAPIPortalNotPending; got %v", err)
 	}
@@ -852,8 +856,12 @@ func TestAPIPortalRepo_Reopen(t *testing.T) {
 		if err := repo.Create(portal); err != nil {
 			t.Fatalf("Create: %v", err)
 		}
-		if err := repo.Reopen(portal.ID, orgUUID, "user-2"); err != nil {
+		kept, err := repo.Reopen(portal.ID, orgUUID, "user-2")
+		if err != nil {
 			t.Fatalf("Reopen from %s: %v", from, err)
+		}
+		if kept != "user-2" {
+			t.Errorf("returned updater = %q, want user-2", kept)
 		}
 		got, err := repo.GetByUUID(portal.ID, orgUUID)
 		if err != nil {
@@ -862,11 +870,11 @@ func TestAPIPortalRepo_Reopen(t *testing.T) {
 		if got.Status != constants.APIPortalStatusPending || got.UpdatedBy != "user-2" {
 			t.Errorf("from %s: status %q updated_by %q", from, got.Status, got.UpdatedBy)
 		}
-		if err := repo.Reopen(portal.ID, orgUUID, "user-3"); !errors.Is(err, ErrAPIPortalPending) {
+		if _, err := repo.Reopen(portal.ID, orgUUID, "user-3"); !errors.Is(err, ErrAPIPortalPending) {
 			t.Errorf("second Reopen from %s: %v, want ErrAPIPortalPending", from, err)
 		}
 	}
-	if err := repo.Reopen("no-such-portal", orgUUID, "user-1"); err == nil || errors.Is(err, ErrAPIPortalPending) {
+	if _, err := repo.Reopen("no-such-portal", orgUUID, "user-1"); err == nil || errors.Is(err, ErrAPIPortalPending) {
 		t.Errorf("missing portal: %v", err)
 	}
 }

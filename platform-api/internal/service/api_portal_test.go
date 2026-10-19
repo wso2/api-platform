@@ -86,6 +86,8 @@ type mockAPIPortalRepository struct {
 	updateStatusErr        error
 	reopenCalledWith       updateStatusCall
 	reopenErr              error
+	// rowUpdatedBy is the row's updated_by at the time of a status write.
+	rowUpdatedBy string
 
 	getStatusCalledWith [2]string
 	getStatusResult     string
@@ -150,16 +152,24 @@ func (m *mockAPIPortalRepository) Delete(portalID, orgUUID string) error {
 
 // Status-family stubs; each tests specific behaviour by populating the fields it
 // needs. Unset returns match the zero-value semantics real callers expect.
-func (m *mockAPIPortalRepository) UpdateStatus(portalID, orgUUID, updatedBy, status string) error {
+// keptUpdater mirrors the repository: an empty updater leaves the row's.
+func keptUpdater(updatedBy, row string) string {
+	if updatedBy != "" {
+		return updatedBy
+	}
+	return row
+}
+
+func (m *mockAPIPortalRepository) UpdateStatus(portalID, orgUUID, updatedBy, status string) (string, error) {
 	m.updateStatusCalledWith = updateStatusCall{
 		PortalID: portalID, OrgUUID: orgUUID, UpdatedBy: updatedBy, Status: status,
 	}
-	return m.updateStatusErr
+	return keptUpdater(updatedBy, m.rowUpdatedBy), m.updateStatusErr
 }
 
-func (m *mockAPIPortalRepository) Reopen(portalID, orgUUID, updatedBy string) error {
+func (m *mockAPIPortalRepository) Reopen(portalID, orgUUID, updatedBy string) (string, error) {
 	m.reopenCalledWith = updateStatusCall{PortalID: portalID, OrgUUID: orgUUID, UpdatedBy: updatedBy}
-	return m.reopenErr
+	return keptUpdater(updatedBy, m.rowUpdatedBy), m.reopenErr
 }
 
 func (m *mockAPIPortalRepository) GetStatusByHandle(handle, orgUUID string) (string, error) {
@@ -993,10 +1003,12 @@ func TestAPIPortalService_UpdateAPIPortalStatus_HappyPath(t *testing.T) {
 	}
 }
 
-// With no actor the row's updated_by stays, and the audit names that user.
+// With no actor the row's updated_by stays, and the audit names the user the
+// row kept, even when it changed after the portal was read.
 func TestAPIPortalService_UpdateAPIPortalStatus_EmptyActorAuditsLastUser(t *testing.T) {
 	portalRepo := &mockAPIPortalRepository{
-		getResult: &model.APIPortal{ID: "portal-uuid", Handle: "acme", UpdatedBy: "user-1"},
+		getResult:    &model.APIPortal{ID: "portal-uuid", Handle: "acme", UpdatedBy: "user-0"},
+		rowUpdatedBy: "user-1",
 	}
 	audit := &mockAPIPortalAuditRepository{}
 	svc := newTestAPIPortalService(t, portalRepo, &mockAPIPortalOrgRepository{}, audit)

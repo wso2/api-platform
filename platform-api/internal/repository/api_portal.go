@@ -326,32 +326,14 @@ func (r *APIPortalRepo) Exists(handle, orgUUID string) (bool, error) {
 // longer exists or its status is no longer pending; a follow-up existence
 // probe disambiguates so callers can distinguish "not found" (surfacing as
 // APIPortalNotFound) from "someone got here first" (ErrAPIPortalNotPending).
-func (r *APIPortalRepo) UpdateStatus(portalID, orgUUID, updatedBy, status string) error {
-	now := time.Now().UTC()
+func (r *APIPortalRepo) UpdateStatus(portalID, orgUUID, updatedBy, status string) (string, error) {
 	query := `
 		UPDATE api_portals
 		SET status = ?, updated_by = COALESCE(NULLIF(?, ''), updated_by), updated_at = ?
 		WHERE uuid = ? AND organization_uuid = ? AND status = ?
 	`
-	result, err := r.db.Exec(r.db.Rebind(query), status, updatedBy, now, portalID, orgUUID, constants.APIPortalStatusPending)
-	if err != nil {
-		return err
-	}
-	rows, err := result.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if rows == 0 {
-		exists, err := r.existsByUUID(portalID, orgUUID)
-		if err != nil {
-			return err
-		}
-		if !exists {
-			return fmt.Errorf("api portal not found: uuid=%q organization_uuid=%q", portalID, orgUUID)
-		}
-		return ErrAPIPortalNotPending
-	}
-	return nil
+	return r.transitionStatus(query, []any{status, updatedBy, time.Now().UTC(), portalID, orgUUID,
+		constants.APIPortalStatusPending}, portalID, orgUUID, ErrAPIPortalNotPending)
 }
 
 // ErrAPIPortalPending is re-exported from the api package, like
@@ -362,45 +344,56 @@ var ErrAPIPortalPending = api.ErrAPIPortalPending
 // updated_at, and updated_by unless updatedBy is empty. The status guard in
 // the WHERE clause makes it atomic: of two concurrent changes, one wins and
 // the other gets ErrAPIPortalPending.
-func (r *APIPortalRepo) Reopen(portalID, orgUUID, updatedBy string) error {
-	now := time.Now().UTC()
+func (r *APIPortalRepo) Reopen(portalID, orgUUID, updatedBy string) (string, error) {
 	query := `
 		UPDATE api_portals
 		SET status = ?, updated_by = COALESCE(NULLIF(?, ''), updated_by), updated_at = ?
 		WHERE uuid = ? AND organization_uuid = ? AND status IN (?, ?)
 	`
-	result, err := r.db.Exec(r.db.Rebind(query), constants.APIPortalStatusPending, updatedBy, now,
-		portalID, orgUUID, constants.APIPortalStatusActive, constants.APIPortalStatusFailed)
+	return r.transitionStatus(query, []any{constants.APIPortalStatusPending, updatedBy, time.Now().UTC(),
+		portalID, orgUUID, constants.APIPortalStatusActive, constants.APIPortalStatusFailed},
+		portalID, orgUUID, ErrAPIPortalPending)
+}
+
+// transitionStatus runs a guarded status update and returns the row's
+// updated_by as written, read in the same transaction so it is the value the
+// update left even when the caller passed no updater. A guard that matched no
+// row is notMatched, or not found when the portal is gone.
+func (r *APIPortalRepo) transitionStatus(query string, args []any, portalID, orgUUID string, notMatched error) (string, error) {
+	tx, err := r.db.Begin()
 	if err != nil {
-		return err
+		return "", err
+	}
+	defer tx.Rollback()
+
+	result, err := tx.Exec(r.db.Rebind(query), args...)
+	if err != nil {
+		return "", err
 	}
 	rows, err := result.RowsAffected()
 	if err != nil {
-		return err
+		return "", err
 	}
 	if rows == 0 {
-		exists, err := r.existsByUUID(portalID, orgUUID)
-		if err != nil {
-			return err
+		var count int
+		if err := tx.QueryRow(r.db.Rebind(`SELECT COUNT(1) FROM api_portals WHERE uuid = ? AND organization_uuid = ?`),
+			portalID, orgUUID).Scan(&count); err != nil {
+			return "", err
 		}
-		if !exists {
-			return fmt.Errorf("api portal not found: uuid=%q organization_uuid=%q", portalID, orgUUID)
+		if count == 0 {
+			return "", fmt.Errorf("api portal not found: uuid=%q organization_uuid=%q", portalID, orgUUID)
 		}
-		return ErrAPIPortalPending
+		return "", notMatched
 	}
-	return nil
-}
-
-// existsByUUID reports whether a row exists for the given (uuid, org) pair.
-// Used by UpdateStatus to disambiguate a zero-rows-affected update between
-// "row missing" and "status was not pending".
-func (r *APIPortalRepo) existsByUUID(portalID, orgUUID string) (bool, error) {
-	var count int
-	query := `SELECT COUNT(1) FROM api_portals WHERE uuid = ? AND organization_uuid = ?`
-	if err := r.db.QueryRow(r.db.Rebind(query), portalID, orgUUID).Scan(&count); err != nil {
-		return false, err
+	var updatedBy sql.NullString
+	if err := tx.QueryRow(r.db.Rebind(`SELECT updated_by FROM api_portals WHERE uuid = ? AND organization_uuid = ?`),
+		portalID, orgUUID).Scan(&updatedBy); err != nil {
+		return "", err
 	}
-	return count > 0, nil
+	if err := tx.Commit(); err != nil {
+		return "", err
+	}
+	return updatedBy.String, nil
 }
 
 // GetStatusByHandle returns the status column for one portal. Cheaper than a
