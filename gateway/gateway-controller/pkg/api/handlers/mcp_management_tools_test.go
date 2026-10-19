@@ -20,6 +20,7 @@ package handlers
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -38,11 +39,13 @@ import (
 	commonmodels "github.com/wso2/api-platform/common/models"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/encryption"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/certificate"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/restapi"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/subscription"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/testutil/pki"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 )
 
@@ -992,15 +995,38 @@ type stubSnapshot struct {
 func (s *stubSnapshot) UpdateSnapshot(_ context.Context, _ string) error { return s.err }
 
 func toolsCertService(db storage.Storage, store *stubCertStore, snapshot *stubSnapshot) *certificate.CertificateService {
-	return certificate.NewCertificateService(db, func() *certificate.XDSTargets {
-		return &certificate.XDSTargets{Store: store, Snapshot: snapshot}
-	}, toolsDiscard)
+	return certificate.NewCertificateService(certificate.Dependencies{
+		DB: db,
+		ResolveXDS: func() *certificate.XDSTargets {
+			return &certificate.XDSTargets{Store: store, Snapshot: snapshot}
+		},
+		Logger: toolsDiscard,
+	})
 }
 
 func certToolsHandler(db storage.Storage, store *stubCertStore, snapshot *stubSnapshot) *McpHandler {
 	h := newAuthzTestHandler(false)
 	h.logger = toolsDiscard
 	h.certificateService = toolsCertService(db, store, snapshot)
+	return h
+}
+
+// certToolsHandlerWithIdentity is certToolsHandler with an encryption
+// provider, so usage: identity certificates can be stored. log receives the
+// handler's and the service's log lines.
+func certToolsHandlerWithIdentity(t *testing.T, db storage.Storage, log *slog.Logger) *McpHandler {
+	t.Helper()
+	mgr := testEncryptionManager(t)
+	h := newAuthzTestHandler(false)
+	h.logger = log
+	h.certificateService = certificate.NewCertificateService(certificate.Dependencies{
+		DB: db,
+		ResolveXDS: func() *certificate.XDSTargets {
+			return &certificate.XDSTargets{Store: &stubCertStore{}, Snapshot: &stubSnapshot{}}
+		},
+		EncryptionManager: func() *encryption.ProviderManager { return mgr },
+		Logger:            log,
+	})
 	return h
 }
 
@@ -1052,7 +1078,21 @@ func TestManageCertificatesFailures(t *testing.T) {
 			Action: "apply", Name: "bad", Certificate: "not a certificate",
 		})
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "the supplied PEM data is not a usable certificate chain")
+		assert.Contains(t, err.Error(), "the Gateway refused the certificate: certificate upload is invalid:\n  1. certificate:")
+	})
+
+	// As on REST, a private key pasted into "certificate" is refused rather
+	// than silently skipped and the chain stored.
+	t.Run("a pasted private key is refused", func(t *testing.T) {
+		db := NewMockStorage()
+		h := certToolsHandler(db, &stubCertStore{}, &stubSnapshot{})
+		withKey := validTestCert + "\n-----BEGIN PRIVATE KEY-----\nAAAA\n-----END PRIVATE KEY-----\n"
+		_, _, err := h.manageCertificates(toolsSkippedCtx, nil, manageCertificatesInput{
+			Action: "apply", Name: "upstream-ca", Certificate: withKey,
+		})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "the private key belongs in privateKey")
+		assert.Empty(t, db.certs, "nothing may be stored")
 	})
 
 	t.Run("name already taken", func(t *testing.T) {
@@ -1097,6 +1137,32 @@ func TestManageCertificatesFailures(t *testing.T) {
 		assert.Contains(t, err.Error(), `cannot delete certificate "no-such-cert": no certificate with that id`)
 	})
 
+	// As on REST, a certificate a deployed API trusts cannot be deleted, and
+	// the error names that API so the model can remove the reference first.
+	t.Run("delete refused while a deployed API trusts it", func(t *testing.T) {
+		db := NewMockStorage()
+		db.certs = []*models.StoredCertificate{{
+			UUID: "cert-1", Name: "upstream-ca", Usage: models.CertificateUsageUpstream,
+			Certificate: []byte(validTestCert),
+		}}
+		tls := map[string]interface{}{"trustedCAs": []interface{}{"upstream-ca"}}
+		defs := []api.UpstreamDefinition{{Tls: &tls}}
+		db.configs["cfg-orders"] = &models.StoredConfig{
+			UUID: "cfg-orders", Handle: "orders", Kind: models.KindRestApi, DesiredState: models.StateDeployed,
+			Configuration: api.RestAPI{Spec: api.APIConfigData{UpstreamDefinitions: &defs}},
+		}
+		h := certToolsHandler(db, &stubCertStore{}, &stubSnapshot{})
+
+		_, _, err := h.manageCertificates(toolsSkippedCtx, nil, manageCertificatesInput{
+			Action: "delete", ID: "cert-1", Confirm: true,
+		})
+
+		require.Error(t, err)
+		assert.Equal(t, `cannot delete certificate "cert-1": certificate 'upstream-ca' is named by 1 deployed API; remove those references first:`+"\n"+
+			`  1. API "orders" (spec.upstreamDefinitions[0].tls.trustedCAs[0])`, err.Error())
+		assert.Len(t, db.certs, 1, "nothing is deleted")
+	})
+
 	t.Run("list failure is generic", func(t *testing.T) {
 		db := NewMockStorage()
 		db.getErr = errors.New("database is locked")
@@ -1107,12 +1173,221 @@ func TestManageCertificatesFailures(t *testing.T) {
 	})
 }
 
-func TestMcpCertErrorMapsTheRemainingSentinels(t *testing.T) {
-	err := mcpCertError(certActionApply, "ca", certificate.ErrMissingFields)
-	assert.Equal(t, `apply requires both "name" and "certificate"`, err.Error())
+func TestManageCertificatesDownstream(t *testing.T) {
+	db := NewMockStorage()
+	h := certToolsHandler(db, &stubCertStore{}, &stubSnapshot{})
 
-	err = mcpCertError(certActionApply, "ca", &certificate.MetadataError{Cause: errors.New("bad asn1")})
-	assert.Equal(t, "the certificate decoded but its metadata could not be read: bad asn1", err.Error())
+	t.Run("a client authority defaults to role client", func(t *testing.T) {
+		_, out, err := h.manageCertificates(toolsSkippedCtx, nil, manageCertificatesInput{
+			Action: "apply", Name: "client-ca", Usage: "downstream",
+			Certificate: string(pki.NewRootCA(t, "MCP Client CA").PEM()),
+		})
+		require.NoError(t, err)
+		created := toolsAs[CertificateResponse](t, resultMap(t, out)["certificate"])
+		assert.Equal(t, models.CertificateUsageDownstream, created.Usage)
+		assert.Equal(t, models.CertificateRoleClient, created.Role)
+	})
+
+	t.Run("a relay entry keeps its match", func(t *testing.T) {
+		_, out, err := h.manageCertificates(toolsSkippedCtx, nil, manageCertificatesInput{
+			Action: "apply", Name: "relay-ca", Usage: "downstream", Role: "relay",
+			Certificate: string(pki.NewRootCA(t, "MCP Relay CA").PEM()),
+			Match:       &certificateMatchInput{URISANs: []string{"spiffe://example.org/proxy"}},
+		})
+		require.NoError(t, err)
+		created := toolsAs[CertificateResponse](t, resultMap(t, out)["certificate"])
+		assert.Equal(t, models.CertificateRoleRelay, created.Role)
+		require.NotNil(t, created.Match)
+		assert.Equal(t, []string{"spiffe://example.org/proxy"}, created.Match.URISANs)
+	})
+
+	// REST refuses an empty match object; the tool must too, rather than store
+	// a relay entry its caller believed was narrowed.
+	t.Run("an empty match is refused", func(t *testing.T) {
+		_, _, err := h.manageCertificates(toolsSkippedCtx, nil, manageCertificatesInput{
+			Action: "apply", Name: "relay-empty", Usage: "downstream", Role: "relay",
+			Certificate: string(pki.NewRootCA(t, "MCP Empty CA").PEM()),
+			Match:       &certificateMatchInput{},
+		})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "match: match must list uriSANs or dnsSANs, or be omitted")
+	})
+
+	t.Run("list filters by usage and reports references", func(t *testing.T) {
+		require.NoError(t, db.SaveCertificate(&models.StoredCertificate{
+			UUID: "up-1", Name: "upstream-only", Usage: models.CertificateUsageUpstream, Certificate: []byte(validTestCert),
+		}))
+		_, out, err := h.manageCertificates(toolsSkippedCtx, nil, manageCertificatesInput{Action: "list", Usage: "downstream"})
+		require.NoError(t, err)
+		items := toolsAs[[]CertificateResponse](t, resultMap(t, out)["items"])
+		require.Len(t, items, 2)
+		for _, item := range items {
+			assert.Equal(t, models.CertificateUsageDownstream, item.Usage)
+			assert.NotNil(t, item.ReferencedByApis)
+		}
+	})
+
+	t.Run("an unknown usage filter is refused", func(t *testing.T) {
+		_, _, err := h.manageCertificates(toolsSkippedCtx, nil, manageCertificatesInput{Action: "list", Usage: "sideways"})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "the Gateway refused the listing: invalid usage filter")
+	})
+}
+
+func TestManageCertificatesIdentity(t *testing.T) {
+	var logs bytes.Buffer
+	log := slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	db := NewMockStorage()
+	h := certToolsHandlerWithIdentity(t, db, log)
+
+	first := gatewayIdentityLeaf(t, "mcp-identity-v1")
+	second := gatewayIdentityLeaf(t, "mcp-identity-v2")
+	var transcript []string // every output and error the model would see
+	record := func(out any, err error) {
+		if out != nil {
+			encoded, mErr := json.Marshal(out)
+			require.NoError(t, mErr)
+			transcript = append(transcript, string(encoded))
+		}
+		if err != nil {
+			transcript = append(transcript, err.Error())
+		}
+	}
+
+	_, out, err := h.manageCertificates(toolsSkippedCtx, nil, manageCertificatesInput{
+		Action: "apply", Name: "gw-identity", Usage: "identity", Certificate: string(first.PEM()),
+	})
+	record(out, err)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "privateKey: both certificate and privateKey are required for usage: identity")
+
+	_, out, err = h.manageCertificates(toolsSkippedCtx, nil, manageCertificatesInput{
+		Action: "apply", Name: "gw-identity", Usage: "identity", Role: "default",
+		Certificate: string(first.PEM()), PrivateKey: string(first.KeyPEM()),
+	})
+	record(out, err)
+	require.NoError(t, err)
+	created := toolsAs[CertificateResponse](t, resultMap(t, out)["certificate"])
+	assert.Equal(t, models.CertificateUsageIdentity, created.Usage)
+	assert.Equal(t, models.CertificateRoleDefault, created.Role)
+	assert.NotEmpty(t, created.KeyAlgorithm)
+	assert.Equal(t, 1, created.ChainLength)
+
+	_, out, err = h.manageCertificates(toolsSkippedCtx, nil, manageCertificatesInput{
+		Action: "update", ID: created.ID, Confirm: true,
+		Certificate: string(second.PEM()), PrivateKey: string(second.KeyPEM()),
+	})
+	record(out, err)
+	require.NoError(t, err)
+	res := resultMap(t, out)
+	assert.Equal(t, "update", res["operation"])
+	rotated := toolsAs[CertificateResponse](t, res["certificate"])
+	assert.Equal(t, created.ID, rotated.ID, "rotation keeps the id")
+	assert.Equal(t, "gw-identity", rotated.Name, "rotation keeps the name")
+	assert.Equal(t, models.CertificateRoleDefault, rotated.Role, "rotation keeps the role")
+	assert.Contains(t, rotated.Subject, "mcp-identity-v2")
+
+	_, out, err = h.manageCertificates(toolsSkippedCtx, nil, manageCertificatesInput{Action: "list", Usage: "identity"})
+	record(out, err)
+	require.NoError(t, err)
+
+	// The key must never reach the model or the log, on success or failure.
+	keyLine := strings.Split(string(second.KeyPEM()), "\n")[1]
+	for _, text := range append(transcript, logs.String()) {
+		assert.NotContains(t, text, "PRIVATE KEY")
+		assert.NotContains(t, text, keyLine)
+	}
+}
+
+func TestManageCertificatesUpdateFailures(t *testing.T) {
+	db := NewMockStorage()
+	db.certs = []*models.StoredCertificate{{
+		UUID: "up-1", Name: "upstream-ca", Usage: models.CertificateUsageUpstream, Certificate: []byte(validTestCert),
+	}}
+	h := certToolsHandlerWithIdentity(t, db, toolsDiscard)
+	leaf := gatewayIdentityLeaf(t, "mcp-update-failures")
+
+	_, _, err := h.manageCertificates(toolsSkippedCtx, nil, manageCertificatesInput{
+		Action: "update", ID: "up-1", Confirm: true, Certificate: string(leaf.PEM()), PrivateKey: string(leaf.KeyPEM()),
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "usage: only usage: identity certificates can be updated")
+
+	_, _, err = h.manageCertificates(toolsSkippedCtx, nil, manageCertificatesInput{
+		Action: "update", ID: "no-such-cert", Confirm: true, Certificate: string(leaf.PEM()), PrivateKey: string(leaf.KeyPEM()),
+	})
+	require.Error(t, err)
+	assert.Equal(t, `no certificate with id "no-such-cert"; call this tool with action=list to find it`, err.Error())
+}
+
+// Without an encryption provider a gateway identity is never stored.
+func TestManageCertificatesIdentityNeedsEncryption(t *testing.T) {
+	db := NewMockStorage()
+	h := certToolsHandler(db, &stubCertStore{}, &stubSnapshot{})
+	leaf := gatewayIdentityLeaf(t, "mcp-no-encryption")
+
+	_, _, err := h.manageCertificates(toolsSkippedCtx, nil, manageCertificatesInput{
+		Action: "apply", Name: "gw-identity", Usage: "identity",
+		Certificate: string(leaf.PEM()), PrivateKey: string(leaf.KeyPEM()),
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no encryption provider configured")
+	assert.Empty(t, db.certs)
+}
+
+// The certificate tool enforces the limit POST /certificates does, without
+// stating it.
+func TestManageCertificatesRequestSizeLimit(t *testing.T) {
+	db := NewMockStorage()
+	h := certToolsHandler(db, &stubCertStore{}, &stubSnapshot{})
+	h.maxCertificateUploadBytes = 256
+
+	_, _, err := h.manageCertificates(toolsSkippedCtx, nil, manageCertificatesInput{
+		Action: "apply", Name: "upstream-ca", Certificate: validTestCert,
+	})
+	require.Error(t, err)
+	assert.Equal(t, "the certificate request is too large for this Gateway; nothing was stored", err.Error())
+	assert.Empty(t, db.certs)
+
+	// As PUT /certificates/{id}, update checks the stored certificate before
+	// the size, so an unknown id is reported as unknown, not as too large.
+	_, _, err = h.manageCertificates(toolsSkippedCtx, nil, manageCertificatesInput{
+		Action: "update", ID: "no-such-cert", Confirm: true, Certificate: validTestCert, PrivateKey: validTestCert,
+	})
+	require.Error(t, err)
+	assert.Equal(t, `no certificate with id "no-such-cert"; call this tool with action=list to find it`, err.Error())
+}
+
+func TestMcpCertErrorMapsTheServiceErrors(t *testing.T) {
+	err := mcpCertError(certActionApply, "ca", &certificate.ValidationError{
+		Message: certificate.MsgUploadInvalid,
+		Fields:  []certificate.FieldError{{Field: "name", Message: "name may contain only letters, digits, ., _ and -"}},
+	})
+	assert.Equal(t, "the Gateway refused the certificate: certificate upload is invalid:\n"+
+		"  1. name: name may contain only letters, digits, ., _ and -", err.Error())
+
+	err = mcpCertError(certActionDelete, "ca-id", &certificate.InUseError{
+		Message:    "certificate 'ca' is named by 1 deployed API; remove those references first",
+		References: []certificate.Reference{{Field: "spec.upstreamDefinitions[0].tls.trustedCAs[0]", API: "orders"}},
+	})
+	assert.Equal(t, `cannot delete certificate "ca-id": certificate 'ca' is named by 1 deployed API; remove those references first:`+"\n"+
+		`  1. API "orders" (spec.upstreamDefinitions[0].tls.trustedCAs[0])`, err.Error())
+
+	// The read failure behind a refused delete stays in the log.
+	err = mcpCertError(certActionDelete, "ca-id", &certificate.ReferenceCheckError{
+		Message: "Failed to verify certificate references", Cause: errors.New("database is locked"),
+	})
+	assert.Contains(t, err.Error(), "nothing was deleted")
+	assert.NotContains(t, err.Error(), "database is locked")
+
+	err = mcpCertError(certActionApply, "gw", &certificate.DefaultIdentityExistsError{Name: "first"})
+	assert.Equal(t, "gateway identity first already has role: default; delete it before uploading another default identity", err.Error())
+
+	err = mcpCertError(certActionApply, "gw", certificate.ErrIdentityStorageUnavailable)
+	assert.Equal(t, "this Gateway has no encryption provider configured, so gateway identities cannot be stored", err.Error())
+
+	err = mcpCertError(certActionApply, "gw", &certificate.EncryptionError{Cause: errors.New("kms down")})
+	assert.NotContains(t, err.Error(), "kms down")
 }
 
 func toolsSubscriptionService(db storage.Storage) *subscription.SubscriptionService {
