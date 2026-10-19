@@ -16,11 +16,11 @@
  * under the License.
  */
 
-import { alpha, Box, Chip, Form, Tooltip, Typography } from '@wso2/oxygen-ui';
+import { alpha, Box, Chip, Form, Tooltip, Typography, type Theme } from '@wso2/oxygen-ui';
 import { Check, TriangleAlert } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, FormattedMessage, FormattedNumber, useIntl } from 'react-intl';
 
-import { focusRingSx, selectableCardSx } from '@/theme/receipes';
+import { focusRingSx } from '@/theme/receipes';
 import type { PlanLimitDisplay } from '../utils/subscriptionPlanLimit';
 
 const messages = defineMessages({
@@ -50,8 +50,65 @@ type PlanCardProps = {
   selected: boolean;
 };
 
+/** Palette colour a card is drawn in: success when live, warning when it must be cleared. */
+type Accent = 'primary' | 'success' | 'warning';
+
 /** Side of the leading checkbox square. */
 const CHECK_SIZE = 20;
+
+/** The drawn checkbox at the card's left; a real checkbox cannot nest inside a button. */
+function SelectionSquare({ accent, selected }: { accent: Accent; selected: boolean }) {
+  return (
+    <Box
+      sx={(theme) => {
+        const color = theme.palette[accent].main;
+        return {
+          alignItems: 'center',
+          bgcolor: selected ? color : 'transparent',
+          border: 1.5,
+          borderColor: selected ? color : 'text.disabled',
+          borderRadius: '6px', // explicit: the theme's base radius would make a 20px square nearly round
+          display: 'flex',
+          flexShrink: 0,
+          height: CHECK_SIZE,
+          justifyContent: 'center',
+          width: CHECK_SIZE,
+        };
+      }}
+    >
+      {selected && <Check color="#fff" size={14} strokeWidth={3} />}
+    </Box>
+  );
+}
+
+/**
+ * The card surface: selected border and tint in the accent, then layout, then the read-only block.
+ * `Form.CardButton` paints its hover border primary, so a selected card restates it in the accent;
+ * a `disabled` card keeps the component's own (suppressed) hover.
+ */
+const planCardSx = (
+  theme: Theme,
+  {
+    accent,
+    disabled,
+    readOnly,
+    selected,
+  }: { accent: Accent; disabled?: boolean; readOnly?: boolean; selected: boolean },
+) => ({
+  borderColor: selected ? `${accent}.main` : 'divider',
+  ...(selected && {
+    backgroundColor: alpha(theme.palette[accent].main, 0.06),
+    boxShadow: theme.shadows[1],
+    ...(!disabled && { '&:hover': { borderColor: `${accent}.main` } }),
+  }),
+  ...focusRingSx(theme),
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 2.5,
+  p: 3,
+  width: '100%',
+  ...(readOnly && { cursor: 'default', pointerEvents: 'none' }),
+});
 
 /**
  * One plan in the grid: a single `Form.CardButton` wearing the `checkbox` role, so the whole card
@@ -74,7 +131,7 @@ export function PlanCard({
 }: PlanCardProps) {
   const intl = useIntl();
   const needsClearing = inactive && selected && !readOnly;
-  const accent = readOnly ? 'success' : inactive && selected ? 'warning' : 'primary';
+  const accent: Accent = readOnly ? 'success' : needsClearing ? 'warning' : 'primary';
   const tooltip = needsClearing ? intl.formatMessage(messages.inactiveSelected) : '';
 
   return (
@@ -88,36 +145,12 @@ export function PlanCard({
         onClick={readOnly ? undefined : onToggle}
         role="checkbox"
         selected={selected}
-        sx={(theme) => ({
-          ...selectableCardSx(theme, { selected }, accent),
-          ...focusRingSx(theme),
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 2.5,
-          p: 3,
-          width: '100%',
-          ...(readOnly && { cursor: 'default', pointerEvents: 'none' }),
-        })}
+        sx={(theme) => planCardSx(theme, { accent, disabled: !readOnly && disabled, readOnly, selected })}
         tabIndex={readOnly ? -1 : 0}
       >
         <Box sx={{ alignItems: 'center', display: 'flex', gap: 1.5, justifyContent: 'space-between', width: '100%' }}>
           <Box sx={{ alignItems: 'center', display: 'flex', flex: 1, gap: 1.5, minWidth: 0 }}>
-            <Box
-              sx={(theme) => ({
-                alignItems: 'center',
-                bgcolor: selected ? theme.palette[accent].main : 'transparent',
-                border: 1.5,
-                borderColor: selected ? theme.palette[accent].main : 'text.disabled',
-                borderRadius: '6px', // explicit: the theme's base radius would make a 20px square nearly round
-                display: 'flex',
-                flexShrink: 0,
-                height: CHECK_SIZE,
-                justifyContent: 'center',
-                width: CHECK_SIZE,
-              })}
-            >
-              {selected && <Check color="#fff" size={14} strokeWidth={3} />}
-            </Box>
+            <SelectionSquare accent={accent} selected={selected} />
             <Typography noWrap sx={{ fontSize: '1rem', fontWeight: 600, minWidth: 0 }} variant="subtitle1">
               {displayName}
             </Typography>
