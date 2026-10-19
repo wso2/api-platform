@@ -73,4 +73,7 @@ func TestBuildRuntimeConfig_AbsentFeatureFlagIsOmitted(t *testing.T) {
 	if _, ok := out["APIP_AIW_FEATURE_FLAGS_AGENT_PROXY_ENABLED"]; ok {
 		t.Error("agent_proxy_enabled was emitted although the config never declares it")
 	}
+	if _, ok := out["APIP_AIW_FEATURE_FLAGS_MANAGED_API_PORTALS_ENABLED"]; ok {
+		t.Error("managed_api_portals_enabled was emitted although the config never declares it")
+	}
 }
