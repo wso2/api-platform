@@ -49,3 +49,8 @@
 
 [ai_workspace.feature_flags]
 agent_proxy_enabled = true
+# Cloud-only: the WSO2-managed API Portals page (create / edit / delete an
+# organization's hosted API Portal), contributed by the cloud plugins. Inert in
+# an OSS build, which registers no such page. Read by the cloud host file
+# (cloud-plugins/apip-cloud-ui/src/hosts/ai-workspace.tsx), not src/config.env.ts.
+managed_api_portals_enabled = true
