@@ -2,8 +2,12 @@
 {{- if and .Values.openshift.enabled $route.enabled .Values.gateway.controller.deployment.enabled }}
 {{- $tls := default (dict) $route.tls -}}
 {{- $termination := default "edge" $tls.termination -}}
-{{- if ne $termination "edge" -}}
-{{- fail (printf "openshift.routes.managementApi: the management API serves plain HTTP, so tls.termination must be edge (got %q)" $termination) -}}
+{{- $serverTls := dig "server" "tls" "enabled" false .Values.gateway.config.controller -}}
+{{- if and (not $serverTls) (ne $termination "edge") -}}
+{{- fail (printf "openshift.routes.managementApi: the management API serves plain HTTP, so tls.termination must be edge (got %q). Enable gateway.config.controller.server.tls to use passthrough or reencrypt." $termination) -}}
+{{- end }}
+{{- if and $serverTls (not (has $termination (list "passthrough" "reencrypt"))) -}}
+{{- fail (printf "openshift.routes.managementApi: the management API serves HTTPS (gateway.config.controller.server.tls.enabled=true), so tls.termination must be passthrough or reencrypt (got %q)" $termination) -}}
 {{- end }}
 {{- /* The Route publishes the management API outside the cluster, so refuse it while the API would
        accept the chart's default password, or every request (no basic auth users and no IDP). */}}
@@ -40,12 +44,13 @@ spec:
     name: {{ include "gateway-operator.fullname" . }}-controller
     weight: 100
   port:
-    targetPort: rest
+    targetPort: {{ if $serverTls }}rest-tls{{ else }}rest{{ end }}
   tls:
-    termination: edge
+    termination: {{ $termination }}
     {{- with $tls.insecureEdgeTerminationPolicy }}
     insecureEdgeTerminationPolicy: {{ . }}
     {{- end }}
+    {{- if ne $termination "passthrough" }}
     {{- with $tls.certificate }}
     certificate: {{ . | toJson }}
     {{- end }}
@@ -54,6 +59,12 @@ spec:
     {{- end }}
     {{- with $tls.caCertificate }}
     caCertificate: {{ . | toJson }}
+    {{- end }}
+    {{- end }}
+    {{- if eq $termination "reencrypt" }}
+    {{- with $tls.destinationCACertificate }}
+    destinationCACertificate: {{ . | toJson }}
+    {{- end }}
     {{- end }}
   wildcardPolicy: None
 {{- end }}

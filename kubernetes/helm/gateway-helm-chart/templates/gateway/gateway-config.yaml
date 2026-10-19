@@ -45,6 +45,17 @@ data:
     shutdown_timeout = {{ $gc.server.shutdown_timeout | quote }}
     gateway_id = {{ $gc.server.gateway_id | quote }}
     skip_invalid_deployments_on_startup = {{ $gc.server.skip_invalid_deployments_on_startup }}
+    {{- $serverTls := default (dict) $gc.server.tls }}
+
+    [controller.server.tls]
+    enabled = {{ $serverTls.enabled | default false }}
+    port = {{ $serverTls.port | default 9093 }}
+    cert_path = {{ $serverTls.cert_path | default "" | quote }}
+    key_path = {{ $serverTls.key_path | default "" | quote }}
+    minimum_protocol_version = {{ $serverTls.minimum_protocol_version | default "TLS1_2" | quote }}
+    maximum_protocol_version = {{ $serverTls.maximum_protocol_version | default "TLS1_3" | quote }}
+    ciphers = {{ $serverTls.ciphers | default "" | quote }}
+    ecdh_curves = {{ $serverTls.ecdh_curves | default "X25519MLKEM768,X25519,P-256" | quote }}
 
     [controller.admin_server]
     enabled = {{ $gc.admin_server.enabled }}

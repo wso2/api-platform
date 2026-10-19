@@ -346,6 +346,36 @@ helm install ap-gateway . \
   --set gateway.controller.tls.secret.name=gateway-tls
 ```
 
+### HTTPS for the Controller REST API
+
+The gateway controller's management REST API serves plain HTTP on 9090 by default. Set
+`gateway.config.controller.server.tls.enabled=true` to serve it over HTTPS on 9093 instead.
+When TLS is on, the controller does **not** start the plaintext listener, and the
+controller Service publishes `rest-tls` (`gateway.controller.service.ports.restTls`) in
+place of `rest`.
+
+The certificate comes from `gateway.controller.restApiTls` and is mounted at
+`/app/rest-api-certs` (the default `cert_path`/`key_path`):
+
+```bash
+# cert-manager, chart's self-signed Issuer; certificate covers the controller Service DNS names
+helm install ap-gateway . \
+  --set gateway.config.controller.server.tls.enabled=true
+
+# Existing secret
+kubectl create secret tls controller-rest-api-tls --cert=path/to/tls.crt --key=path/to/tls.key
+helm install ap-gateway . \
+  --set gateway.config.controller.server.tls.enabled=true \
+  --set gateway.controller.restApiTls.certificateProvider=secret \
+  --set gateway.controller.restApiTls.secret.name=controller-rest-api-tls
+```
+
+For production with cert-manager, set `gateway.controller.restApiTls.certManager.issuerRef`
+to your own Issuer/ClusterIssuer. Protocol versions, cipher suites and key-exchange groups
+are under `gateway.config.controller.server.tls`. With `openshift.routes.managementApi`
+enabled, set its `tls.termination` to `passthrough` or `reencrypt` (with
+`destinationCACertificate`); `edge` is rejected while the API serves HTTPS.
+
 ### Custom Upstream Certificates
 
 For backends with self-signed or custom CA certificates:
