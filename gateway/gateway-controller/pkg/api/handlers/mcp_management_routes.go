@@ -61,6 +61,7 @@ var apiKeyRouteSuffixes = []struct {
 const (
 	certActionList   = "list"
 	certActionApply  = "apply"
+	certActionUpdate = "update"
 	certActionDelete = "delete"
 	certActionReload = "reload"
 )
@@ -81,6 +82,7 @@ var certActions = map[string]certAction{
 	certActionApply:  {Action: certActionApply, RouteKey: "POST /certificates", Mutating: true},
 	certActionDelete: {Action: certActionDelete, RouteKey: "DELETE /certificates/{id}", Mutating: true, NeedsConfirm: true},
 	certActionReload: {Action: certActionReload, RouteKey: "POST /certificates/reload", Mutating: true, NeedsConfirm: true},
+	certActionUpdate: {Action: certActionUpdate, RouteKey: "PUT /certificates/{id}", Mutating: true, NeedsConfirm: true},
 }
 
 // certActionAliases resolves an accepted spelling to its canonical action.
@@ -90,6 +92,9 @@ var certActionAliases = map[string]string{
 	"upload":  certActionApply,
 	"create":  certActionApply,
 	"add":     certActionApply,
+	"update":  certActionUpdate,
+	"rotate":  certActionUpdate,
+	"replace": certActionUpdate,
 	"delete":  certActionDelete,
 	"remove":  certActionDelete,
 	"reload":  certActionReload,
@@ -102,7 +107,7 @@ func resolveCertAction(rawAction string) (certAction, error) {
 	canonical, ok := certActionAliases[normalizeToolWord(rawAction)]
 	if !ok {
 		return certAction{}, fmt.Errorf(
-			"unknown action %q; wso2_apip_gw_manage_certificates accepts: list, apply, delete, reload",
+			"unknown action %q; wso2_apip_gw_manage_certificates accepts: list, apply, update, delete, reload",
 			rawAction)
 	}
 	return certActions[canonical], nil

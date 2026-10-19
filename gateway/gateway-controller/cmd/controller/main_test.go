@@ -565,7 +565,7 @@ func TestMCPToolRouteKeysAreAuthorized(t *testing.T) {
 	require.NoError(t, err)
 
 	keys := append(handlers.MCPCertificateRouteKeys(), handlers.MCPSubscriptionRouteKeys()...)
-	require.Len(t, keys, 14, "expected 4 certificate and 10 subscription route keys")
+	require.Len(t, keys, 15, "expected 5 certificate and 10 subscription route keys")
 
 	for _, key := range keys {
 		roles, ok := authConfig.ResourceRoles[key]
@@ -578,6 +578,7 @@ func TestMCPToolRouteKeysAreAuthorized(t *testing.T) {
 	for _, key := range []string{
 		"GET /certificates",
 		"POST /certificates",
+		"PUT /certificates/{id}",
 		"DELETE /certificates/{id}",
 		"POST /certificates/reload",
 		"GET /subscriptions",

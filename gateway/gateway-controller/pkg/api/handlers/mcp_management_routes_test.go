@@ -108,6 +108,7 @@ func TestMCPCertificateRouteKeys(t *testing.T) {
 		"GET /certificates",
 		"POST /certificates",
 		"POST /certificates/reload",
+		"PUT /certificates/{id}",
 	}, MCPCertificateRouteKeys(), "sorted, and one key per action")
 }
 
@@ -188,6 +189,8 @@ func TestRouteKeysForCallMapsEveryTool(t *testing.T) {
 			[]string{"DELETE /rest-apis/{id}/api-keys/{apiKeyName}"}},
 		{"certificate action", "wso2_apip_gw_manage_certificates", manageCertificatesInput{Action: "Refresh"},
 			[]string{"POST /certificates/reload"}},
+		{"certificate update", "wso2_apip_gw_manage_certificates", manageCertificatesInput{Action: "rotate"},
+			[]string{"PUT /certificates/{id}"}},
 		{"subscription action", "wso2_apip_gw_manage_subscriptions",
 			manageSubscriptionsInput{Type: "plan", Action: "apply", ID: "p1"},
 			[]string{"PUT /subscription-plans/{planId}"}},
@@ -249,7 +252,7 @@ func TestRouteKeysForCallUnmappableCalls(t *testing.T) {
 		{"revoke with no key service", bare, "wso2_apip_gw_revoke_api_key",
 			routesArgs(t, revokeKeyInput{Kind: "RestApi", ID: "o", KeyName: "k"})},
 		{"unknown certificate action", h, "wso2_apip_gw_manage_certificates",
-			routesArgs(t, manageCertificatesInput{Action: "rotate"})},
+			routesArgs(t, manageCertificatesInput{Action: "patch"})},
 		{"unknown subscription type", h, "wso2_apip_gw_manage_subscriptions",
 			routesArgs(t, manageSubscriptionsInput{Type: "Application", Action: "list"})},
 	}
