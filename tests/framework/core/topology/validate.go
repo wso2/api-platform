@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -435,7 +436,21 @@ func validateRunnersFrom(b *ResolvedBlock) error {
 	return errs.err()
 }
 
-// ValidateFeatureFiles checks that referenced feature files exist and are files.
+// featureSelector matches a feature entry that selects one scenario by the line it starts on,
+// such as "features/api.feature:34". The file part must be a .feature file and the line positive.
+var featureSelector = regexp.MustCompile(`^(.+\.feature):[1-9][0-9]*$`)
+
+// FeatureFile returns the file part of a runner feature entry, which may carry a trailing
+// ":<line>" that restricts the run to the scenario starting on that line.
+func FeatureFile(entry string) string {
+	if m := featureSelector.FindStringSubmatch(entry); m != nil {
+		return m[1]
+	}
+	return entry
+}
+
+// ValidateFeatureFiles checks that referenced feature files exist and are files. An entry may
+// select one scenario with a ":<line>" suffix; the file part is what is checked.
 func ValidateFeatureFiles(r *Resolved, root string) error {
 	var errs errorList
 	if r == nil {
@@ -453,9 +468,10 @@ func ValidateFeatureFiles(r *Resolved, root string) error {
 				}
 				checked[f] = true
 
-				path := f
+				file := FeatureFile(f)
+				path := file
 				if !filepath.IsAbs(path) && root != "" {
-					path = filepath.Join(root, f)
+					path = filepath.Join(root, file)
 				}
 				info, err := os.Stat(path)
 				switch {
@@ -463,7 +479,7 @@ func ValidateFeatureFiles(r *Resolved, root string) error {
 					errs.addf("block %q runner %q: feature %q does not exist", b.Name, run.Name, f)
 				case info.IsDir():
 					errs.addf("block %q runner %q: feature %q is a directory", b.Name, run.Name, f)
-				case !strings.HasSuffix(f, ".feature"):
+				case !strings.HasSuffix(file, ".feature"):
 					errs.addf("block %q runner %q: %q is not a .feature file", b.Name, run.Name, f)
 				}
 			}

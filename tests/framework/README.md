@@ -148,6 +148,15 @@ The default testbench image follows the framework version in the importing binar
 checkout, a `replace` or an untagged revision uses the locally built `:test` image, and
 `APIP_IT_IMAGE_TESTBENCH` overrides either.
 
+A block can use a testbench hosted outside the run instead of the container. `TESTBENCH_URL` is
+the base URL used for every testbench endpoint, `TESTBENCH_URL_<ENDPOINT>` (upper-case, `-` as
+`_`, e.g. `TESTBENCH_URL_CONTENT_SAFETY`) overrides one endpoint, and `TESTBENCH_ACCESS_TOKEN` is
+sent as a bearer token on the test process's own calls to a testbench service. The URL is used both
+by the test process and for upstreams handed to the components under test, so it must be reachable
+from both. With none of them set the container is used, exactly as before. The resolver is
+`core/catalog/testbench` (`HostURL`, `UpstreamURL`, `AuthHeaders`); steps resolve testbench
+addresses through it rather than from the topology.
+
 The embedded copies of files that live outside the module (the gateway database schemas, the
 current gateway configuration and the pricing file, listed in `assets.SnapshotSources`) are not
 committed: `snapshots/` holds only a `.gitkeep`. The release workflow generates them from the
@@ -228,6 +237,11 @@ policy images built on it are re-pulled each run because the tag moves.
 ```bash
 go test -gateway-version latest -blocks gateway-core/sqlite
 ```
+
+A runner `features` entry is a path relative to the suite directory, and may point at a feature
+file owned by another suite (for example `../it/features/...`). Append `:<line>` to run only the
+scenario that starts on that line, e.g. `features/api.feature:34`; the line must be the `Scenario`
+or `Scenario Outline` line. An entry without a line runs the whole file.
 
 Two flags are deliberately NOT named after their `go test` counterparts, because the go tool
 consumes any flag it recognises and forwards only the rest:

@@ -63,6 +63,7 @@ import (
 	"github.com/wso2/api-platform/tests/framework/core/actor"
 	controlplane "github.com/wso2/api-platform/tests/framework/core/catalog/platformapi"
 	"github.com/wso2/api-platform/tests/framework/core/catalog/shared"
+	"github.com/wso2/api-platform/tests/framework/core/catalog/testbench"
 	"github.com/wso2/api-platform/tests/framework/core/cleanup"
 	"github.com/wso2/api-platform/tests/framework/core/runtime"
 	"github.com/wso2/api-platform/tests/framework/core/util/httpx"
@@ -768,7 +769,7 @@ func (s *Steps) waitForWebhookEventMatch(ctx context.Context, eventType, marker 
 	if err != nil {
 		return err
 	}
-	base, err := s.topo.URL("testbench", "webhook")
+	base, err := testbench.HostURL(s.topo, "webhook")
 	if err != nil {
 		return err
 	}
@@ -885,7 +886,7 @@ func (s *Steps) assertWebhookSignature(ctx context.Context, eventType, marker, s
 	if err != nil {
 		return err
 	}
-	base, err := s.topo.URL("testbench", "webhook")
+	base, err := testbench.HostURL(s.topo, "webhook")
 	if err != nil {
 		return err
 	}
@@ -1088,7 +1089,7 @@ func (s *Steps) verifyNoWebhookEventMatch(ctx context.Context, eventType, marker
 	if err != nil {
 		return err
 	}
-	base, err := s.topo.URL("testbench", "webhook")
+	base, err := testbench.HostURL(s.topo, "webhook")
 	if err != nil {
 		return err
 	}
@@ -1117,7 +1118,7 @@ func (s *Steps) resetWebhookEvents(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	base, err := s.topo.URL("testbench", "webhook")
+	base, err := testbench.HostURL(s.topo, "webhook")
 	if err != nil {
 		return err
 	}

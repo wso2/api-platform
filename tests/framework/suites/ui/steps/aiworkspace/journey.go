@@ -26,6 +26,7 @@ import (
 
 	playwright "github.com/mxschmitt/playwright-go"
 
+	"github.com/wso2/api-platform/tests/framework/core/catalog/testbench"
 	"github.com/wso2/api-platform/tests/framework/core/cleanup"
 	"github.com/wso2/api-platform/tests/framework/core/util/retry"
 	"github.com/wso2/api-platform/tests/framework/core/util/tcontext"
@@ -54,11 +55,7 @@ func fillCyidTextarea(page playwright.Page, id, value string) error {
 // mockLLMURL is the upstream every provider in this suite points at: the testbench's
 // openai-dialect service, resolved on the block's network.
 func (u *Steps) mockLLMURL() (string, error) {
-	inst, err := u.topo.Component("testbench")
-	if err != nil {
-		return "", err
-	}
-	base, err := inst.InternalURL("openai")
+	base, err := testbench.UpstreamURL(u.topo, "openai")
 	if err != nil {
 		return "", err
 	}

@@ -27,6 +27,7 @@ import (
 
 	playwright "github.com/mxschmitt/playwright-go"
 
+	"github.com/wso2/api-platform/tests/framework/core/catalog/testbench"
 	"github.com/wso2/api-platform/tests/framework/core/util/retry"
 	"github.com/wso2/api-platform/tests/framework/core/util/tcontext"
 )
@@ -54,11 +55,7 @@ func (u *Steps) mcpCaptureUpstream(ctx context.Context, proxyID string) (string,
 // captureBaseURL is the testbench capture service's address on the block's network, including
 // the block partition the service keys its records by.
 func (u *Steps) captureBaseURL() (string, error) {
-	inst, err := u.topo.Component("testbench")
-	if err != nil {
-		return "", err
-	}
-	base, err := inst.InternalURL("capture")
+	base, err := testbench.UpstreamURL(u.topo, "capture")
 	if err != nil {
 		return "", err
 	}

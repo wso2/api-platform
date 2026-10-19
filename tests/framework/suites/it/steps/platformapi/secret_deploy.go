@@ -30,6 +30,7 @@ import (
 
 	"github.com/cucumber/godog"
 
+	"github.com/wso2/api-platform/tests/framework/core/catalog/testbench"
 	"github.com/wso2/api-platform/tests/framework/core/cleanup"
 	"github.com/wso2/api-platform/tests/framework/core/util/httpx"
 	"github.com/wso2/api-platform/tests/framework/core/util/tcontext"
@@ -322,7 +323,11 @@ func (s *Steps) createLLMProvider(ctx context.Context, id, resourceContext, temp
 		return err
 	}
 
-	upstream := map[string]any{"url": "http://testbench:3000"}
+	backendURL, urlErr := s.testbenchUpstream("backend")
+	if urlErr != nil {
+		return urlErr
+	}
+	upstream := map[string]any{"url": backendURL}
 	if secretHandle != "" {
 		resolvedSecret, err := stepscommon.Expand(ctx, secretHandle)
 		if err != nil {
@@ -419,6 +424,11 @@ func (s *Steps) createMCPProxy(ctx context.Context, id, resourceContext, secretH
 		return err
 	}
 
+	mcpURL, urlErr := s.testbenchUpstream("mcp")
+	if urlErr != nil {
+		return urlErr
+	}
+
 	if err := s.postJSON(ctx, base, bearer, "/mcp-proxies", map[string]any{
 		"id":             resolvedID,
 		"displayName":    resolvedID,
@@ -427,7 +437,7 @@ func (s *Steps) createMCPProxy(ctx context.Context, id, resourceContext, secretH
 		"mcpSpecVersion": "2025-06-18",
 		"upstream": map[string]any{
 			"main": map[string]any{
-				"url": "http://testbench:3009",
+				"url": mcpURL,
 				"auth": map[string]any{
 					"type":   "api-key",
 					"header": "Authorization",
@@ -462,6 +472,11 @@ func (s *Steps) createMCPProxySpecVersions(ctx context.Context, id, resourceCont
 		return err
 	}
 
+	mcpURL, urlErr := s.testbenchUpstream("mcp")
+	if urlErr != nil {
+		return urlErr
+	}
+
 	// The deprecated scalar is deliberately absent: platform-api rejects a request that sets
 	// both forms, since the two could disagree about what the proxy serves.
 	if err := s.postJSON(ctx, base, bearer, "/mcp-proxies", map[string]any{
@@ -471,7 +486,7 @@ func (s *Steps) createMCPProxySpecVersions(ctx context.Context, id, resourceCont
 		"context":         resolvedContext,
 		"mcpSpecVersions": strings.Split(resolvedVersions, ","),
 		"upstream": map[string]any{
-			"main": map[string]any{"url": "http://testbench:3009/mcp"},
+			"main": map[string]any{"url": mcpURL + "/mcp"},
 		},
 	}, nil); err != nil {
 		return err
@@ -526,8 +541,12 @@ func (s *Steps) createRestAPIUpstreamSecret(ctx context.Context, id, projectHand
 	if err != nil {
 		return err
 	}
+	backendURL, urlErr := s.testbenchUpstream("backend")
+	if urlErr != nil {
+		return urlErr
+	}
 	return s.createRestAPIWithSecret(ctx, id, projectHandle, apiContext, nil, map[string]any{
-		"url": "http://testbench:3000",
+		"url": backendURL,
 		"auth": map[string]any{
 			"type":   "api-key",
 			"header": "Authorization",
@@ -565,8 +584,12 @@ func (s *Steps) createRestAPIPolicySecret(ctx context.Context, id, projectHandle
 			},
 		},
 	}
+	backendURL, urlErr := s.testbenchUpstream("backend")
+	if urlErr != nil {
+		return urlErr
+	}
 	return s.createRestAPIWithSecret(ctx, id, projectHandle, apiContext, operations, map[string]any{
-		"url": "http://testbench:3000",
+		"url": backendURL,
 	})
 }
 
@@ -576,8 +599,12 @@ func (s *Steps) createRestAPIPlain(ctx context.Context, id, projectHandle, apiCo
 	operations := []map[string]any{
 		{"request": map[string]any{"method": "GET", "path": "/health"}},
 	}
+	backendURL, urlErr := s.testbenchUpstream("backend")
+	if urlErr != nil {
+		return urlErr
+	}
 	return s.createRestAPIWithSecret(ctx, id, projectHandle, apiContext, operations, map[string]any{
-		"url": "http://testbench:3000",
+		"url": backendURL,
 	})
 }
 
@@ -590,8 +617,12 @@ func (s *Steps) createRestAPIKeyAuth(ctx context.Context, id, projectHandle, api
 	policies := []map[string]any{
 		{"name": "api-key-auth", "version": "v1", "params": map[string]any{"key": apiKeyHeader, "in": "header"}},
 	}
+	backendURL, urlErr := s.testbenchUpstream("backend")
+	if urlErr != nil {
+		return urlErr
+	}
 	return s.createRestAPI(ctx, id, projectHandle, apiContext, operations, map[string]any{
-		"url": "http://testbench:3000",
+		"url": backendURL,
 	}, policies)
 }
 
@@ -943,6 +974,11 @@ func (s *Steps) createSecuredRestAPI(ctx context.Context, id, projectHandle, api
 		return err
 	}
 
+	backendURL, urlErr := s.testbenchUpstream("backend")
+	if urlErr != nil {
+		return urlErr
+	}
+
 	if err := s.postJSON(ctx, base, bearer, "/rest-apis", map[string]any{
 		"displayName":       resolvedID,
 		"context":           resolvedContext,
@@ -950,7 +986,7 @@ func (s *Steps) createSecuredRestAPI(ctx context.Context, id, projectHandle, api
 		"projectId":         resolvedProject,
 		"lifeCycleStatus":   "PUBLISHED",
 		"subscriptionPlans": []string{resolvedPlan},
-		"upstream":          map[string]any{"main": map[string]any{"url": "http://testbench:3000"}},
+		"upstream":          map[string]any{"main": map[string]any{"url": backendURL}},
 		"policies": []map[string]any{
 			{"name": "api-key-auth", "version": "v1", "params": map[string]any{"key": apiKeyHeader, "in": "header"}},
 			{"name": "subscription-validation", "version": "v1", "params": map[string]any{"subscriptionKeyHeader": subscriptionKeyHeader}},
@@ -1046,4 +1082,10 @@ func (s *Steps) issueAPIKey(ctx context.Context, keyValue, apiHandle string) err
 		"displayName": "key-" + resolvedAPI,
 		"apiKey":      resolvedKey,
 	}, nil)
+}
+
+// testbenchUpstream returns the testbench endpoint address the gateway under test dials, from a
+// configured hosted testbench or the testbench container on the block network.
+func (s *Steps) testbenchUpstream(endpoint string) (string, error) {
+	return testbench.UpstreamURL(s.topo, endpoint)
 }
