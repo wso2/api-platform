@@ -66,9 +66,9 @@ openshift:
         key: ""
         caCertificate: ""
         # reencrypt only: PEM CA that signed the controller's REST API certificate
-        # (gateway.controller.restApiTls), so the router can verify the backend. reencrypt is
-        # rejected with the chart's self-signed Issuer; use a real issuer or a Secret signed by
-        # the OpenShift service CA (trusted by the router without this field).
+        # (gateway.controller.restApiTls), so the router can verify the backend. reencrypt with
+        # the chart's self-signed Issuer is rejected unless this is set; otherwise use a real
+        # issuer or a Secret signed by the OpenShift service CA (trusted by the router without it).
         destinationCACertificate: ""
 
 ## moved to each component's deployment block below

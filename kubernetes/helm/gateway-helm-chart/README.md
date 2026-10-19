@@ -377,7 +377,8 @@ enabled, set its `tls.termination` to `passthrough` or `reencrypt`; `edge` is re
 the API serves HTTPS. With `passthrough`, the default certificate also covers the Route
 `hostname`. `reencrypt` needs a certificate the router can verify: a real issuer (plus
 `destinationCACertificate` if the router does not already trust it) or a Secret signed by the
-OpenShift service CA — the chart's self-signed Issuer is rejected.
+OpenShift service CA. The chart's self-signed Issuer is rejected unless
+`destinationCACertificate` is set.
 
 The controller loads the certificate at startup, so restart the controller after the
 certificate is renewed.
