@@ -261,6 +261,11 @@ var globalPropertyVariables = []globalPropertyVariable{
 	{"latencies.requestMediationLatencyUs", cel.IntType, 0},
 	{"latencies.responseMediationLatencyUs", cel.IntType, 0},
 	{"latencies.backendLatencyUs", cel.IntType, 0},
+	// The same latencies in decimal milliseconds.
+	{"latencies.durationMs", cel.DoubleType, 0.0},
+	{"latencies.requestMediationLatencyMs", cel.DoubleType, 0.0},
+	{"latencies.responseMediationLatencyMs", cel.DoubleType, 0.0},
+	{"latencies.backendLatencyMs", cel.DoubleType, 0.0},
 	{"errorType", cel.StringType, ""},
 	{"error.errorCode", cel.IntType, 0},
 	{"error.errorMessage", cel.StringType, ""},
@@ -465,6 +470,10 @@ func buildGlobalPropertyEvalCtx(event *dto.Event, referenced map[string]bool, ma
 		setIfReferenced(ctx, referenced, "latencies.requestMediationLatencyUs", l.RequestMediationLatencyUs)
 		setIfReferenced(ctx, referenced, "latencies.responseMediationLatencyUs", l.ResponseMediationLatencyUs)
 		setIfReferenced(ctx, referenced, "latencies.backendLatencyUs", l.BackendLatencyUs)
+		setIfReferenced(ctx, referenced, "latencies.durationMs", microsToMillis(l.DurationUs))
+		setIfReferenced(ctx, referenced, "latencies.requestMediationLatencyMs", microsToMillis(l.RequestMediationLatencyUs))
+		setIfReferenced(ctx, referenced, "latencies.responseMediationLatencyMs", microsToMillis(l.ResponseMediationLatencyUs))
+		setIfReferenced(ctx, referenced, "latencies.backendLatencyMs", microsToMillis(l.BackendLatencyUs))
 	}
 	setIfReferenced(ctx, referenced, "errorType", event.ErrorType)
 	if e := event.Error; e != nil {
@@ -600,6 +609,12 @@ func capturedBody(event *dto.Event, key string) string {
 	}
 	body, _ := event.Properties[key].(string)
 	return body
+}
+
+// microsToMillis converts microseconds to decimal milliseconds, so sub-millisecond
+// latencies are not rounded down to 0.
+func microsToMillis(us int64) float64 {
+	return float64(us) / 1000
 }
 
 // setIfReferenced sets ctx[name] only when an expression uses that variable.

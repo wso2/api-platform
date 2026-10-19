@@ -1259,7 +1259,8 @@ insecure_skip_verify = false
 # response.header['<name>'], api.id, api.name, api.version, api.context,
 # api.kind, project.id, target.statusCode, target.destination,
 # request.timestamp, client.ip, client.userAgent, latencies.durationUs/
-# requestMediationLatencyUs/responseMediationLatencyUs/backendLatencyUs, errorType,
+# requestMediationLatencyUs/responseMediationLatencyUs/backendLatencyUs (microseconds;
+# use the ...Ms names, e.g. latencies.durationMs, for decimal milliseconds), errorType,
 # error.errorCode/errorMessage/wso2ErrorCode/type/direction/summary/policy/
 # policyPhase/source/originalStatus/jsonRpcCode (named after the default line's fields),
 # application.id/name/owner/keyType (populated only when an auth policy that
@@ -1313,6 +1314,7 @@ insecure_skip_verify = false
 # meth   = "$ctx:request.method"
 # respCd = "$ctx:response.status"
 # api    = "$ctx:api.name + '/' + api.version"
+# durMs  = "$ctx:latencies.durationMs"
 # body   = "$ctx:request.body"
 # env    = "prod"
 

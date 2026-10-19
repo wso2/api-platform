@@ -456,3 +456,29 @@ func TestGlobalPropertyEvaluator_BodiesNotAvailableToProperties(t *testing.T) {
 
 	assert.NotContains(t, e.resolve(event), "body")
 }
+
+func TestGlobalPropertyEvaluator_ResolvesLatenciesInMilliseconds(t *testing.T) {
+	e := newGlobalPropertyEvaluator(map[string]string{
+		"durMs":     "$ctx:latencies.durationMs",
+		"reqMedMs":  "$ctx:latencies.requestMediationLatencyMs",
+		"respMedMs": "$ctx:latencies.responseMediationLatencyMs",
+		"backendMs": "$ctx:latencies.backendLatencyMs",
+	}, nil)
+	event := createBaseEvent()
+	event.TrafficLogLatencies = &dto.TrafficLogLatencies{
+		DurationUs:                 18342,
+		RequestMediationLatencyUs:  412,
+		ResponseMediationLatencyUs: 298,
+		BackendLatencyUs:           17102,
+	}
+
+	resolved := e.resolve(event)
+
+	assert.Equal(t, 18.342, resolved["durMs"])
+	assert.Equal(t, 0.412, resolved["reqMedMs"])
+	assert.Equal(t, 0.298, resolved["respMedMs"])
+	assert.Equal(t, 17.102, resolved["backendMs"])
+
+	event.TrafficLogLatencies = nil
+	assert.Equal(t, 0.0, e.resolve(event)["durMs"], "no backend call: zero, like the Us variables")
+}
