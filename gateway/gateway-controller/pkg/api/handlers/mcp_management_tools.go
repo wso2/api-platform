@@ -321,13 +321,7 @@ not by this tool.
 
 The Gateway validates the manifest and returns the validation error when it is
 rejected. Read that error, correct the manifest, and retry. Ask the user for any
-value you do not have rather than inventing one.
-
-A RestApi that deploys may still carry warnings, listed in
-resource.status.warnings (for example an mTLS API whose hostname is not
-dedicated to it). Report every warning to the user: each describes a problem the
-deploy did not refuse.`,
-
+value you do not have rather than inventing one.`,
 		Annotations: &mcp.ToolAnnotations{
 			Title:           "Deploy or update a routable resource",
 			DestructiveHint: ptr(false),
