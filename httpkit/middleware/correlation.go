@@ -40,7 +40,14 @@ func CorrelationIDMiddleware(log *slog.Logger) func(http.Handler) http.Handler {
 // GetCorrelationID returns the correlation ID stored by CorrelationIDMiddleware.
 // Returns an empty string when the middleware has not run.
 func GetCorrelationID(r *http.Request) string {
-	id, _ := r.Context().Value(correlationIDKeyType{}).(string)
+	return GetCorrelationIDFromContext(r.Context())
+}
+
+// GetCorrelationIDFromContext returns the correlation ID stored in ctx by
+// CorrelationIDMiddleware. Returns an empty string when the middleware has not
+// run or when ctx carries no correlation ID (e.g. context.Background()).
+func GetCorrelationIDFromContext(ctx context.Context) string {
+	id, _ := ctx.Value(correlationIDKeyType{}).(string)
 	return id
 }
 

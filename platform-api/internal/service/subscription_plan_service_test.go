@@ -18,6 +18,7 @@
 package service
 
 import (
+	"context"
 	"strings"
 	"testing"
 	"time"
@@ -76,7 +77,7 @@ func TestUpdatePlan_ExpiryTime(t *testing.T) {
 			repo := &fakePlanRepo{plan: &model.SubscriptionPlan{Handle: "gold", Name: "Gold", ExpiryTime: &expiry}}
 			svc := NewSubscriptionPlanService(repo, nil, nil, nil, nil, nil)
 
-			if _, err := svc.UpdatePlan("gold", "org-1", "actor", &tt.update); err != nil {
+			if _, err := svc.UpdatePlan(context.Background(), "gold", "org-1", "actor", &tt.update); err != nil {
 				t.Fatalf("UpdatePlan: %v", err)
 			}
 			got := repo.updated.ExpiryTime
@@ -150,7 +151,7 @@ func TestUpdatePlan_LocksPortalValuesWhileInUse(t *testing.T) {
 			repo := &fakePlanRepo{plan: plan, usage: tt.usage}
 			svc := NewSubscriptionPlanService(repo, nil, nil, nil, nil, nil)
 
-			_, err := svc.UpdatePlan("gold", "org-1", "actor", &tt.update)
+			_, err := svc.UpdatePlan(context.Background(), "gold", "org-1", "actor", &tt.update)
 			if tt.refused {
 				if !apperror.SubscriptionPlanInUse.Is(err) {
 					t.Fatalf("UpdatePlan error = %v, want SubscriptionPlanInUse", err)
@@ -178,7 +179,7 @@ func TestUpdatePlan_InUseMessage(t *testing.T) {
 	}
 	svc := NewSubscriptionPlanService(repo, nil, nil, nil, nil, nil)
 
-	_, err := svc.UpdatePlan("gold", "org-1", "actor", &model.SubscriptionPlanUpdate{Name: &name})
+	_, err := svc.UpdatePlan(context.Background(), "gold", "org-1", "actor", &model.SubscriptionPlanUpdate{Name: &name})
 	want := "The plan Gold is in use. To change its name or limit, create a new plan."
 	if err == nil || !strings.Contains(err.Error(), want) {
 		t.Fatalf("UpdatePlan error = %v, want message %q", err, want)
@@ -194,7 +195,7 @@ func TestUpsertPlanFromWebhook_IgnoresTheLock(t *testing.T) {
 	svc := NewSubscriptionPlanService(repo, nil, nil, nil, nil, nil)
 
 	newLimit := 2000
-	if _, err := svc.UpsertPlanFromWebhook("org-1", "partner", "Partner Plus", &newLimit, "MINUTE", nil, time.Now()); err != nil {
+	if _, err := svc.UpsertPlanFromWebhook(context.Background(), "org-1", "partner", "Partner Plus", &newLimit, "MINUTE", nil, time.Now()); err != nil {
 		t.Fatalf("UpsertPlanFromWebhook: %v", err)
 	}
 	if repo.updated == nil || repo.updated.Name != "Partner Plus" || *repo.updated.ThrottleLimitCount != 2000 {

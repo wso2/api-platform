@@ -18,6 +18,7 @@
 package service
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -514,7 +515,7 @@ func (s *APIService) ensureRESTRuntimeArtifactUnchanged(existing, updated *model
 }
 
 // DeleteAPI deletes an API
-func (s *APIService) DeleteAPI(apiUUID, orgUUID, deletedBy string) error {
+func (s *APIService) DeleteAPI(ctx context.Context, apiUUID, orgUUID, deletedBy string) error {
 	if apiUUID == "" {
 		return apperror.ValidationFailed.New("API id is required")
 	}
@@ -564,7 +565,7 @@ func (s *APIService) DeleteAPI(apiUUID, orgUUID, deletedBy string) error {
 				ApiId: apiUUID,
 			}
 
-			if err := s.gatewayEventsService.BroadcastAPIDeletionEvent(gateway.ID, deletionEvent); err != nil {
+			if err := s.gatewayEventsService.BroadcastAPIDeletionEvent(ctx, gateway.ID, deletionEvent); err != nil {
 				s.slogger.Warn("Failed to broadcast API deletion event", "gatewayID", gateway.ID, "apiUUID", apiUUID, "error", err)
 			} else {
 				s.slogger.Info("API deletion event sent", "gatewayID", gateway.ID, "apiUUID", apiUUID)
@@ -591,7 +592,7 @@ func (s *APIService) UpdateAPIByHandle(handle string, req *api.RESTAPI, orgId, u
 }
 
 // DeleteAPIByHandle deletes an API identified by handle
-func (s *APIService) DeleteAPIByHandle(handle, orgId, deletedBy string) error {
+func (s *APIService) DeleteAPIByHandle(ctx context.Context, handle, orgId, deletedBy string) error {
 	// Get API UUID by handle
 	apiUUID, err := s.getAPIUUIDByHandle(handle, orgId)
 	if err != nil {
@@ -599,7 +600,7 @@ func (s *APIService) DeleteAPIByHandle(handle, orgId, deletedBy string) error {
 	}
 
 	// Delete API using existing UUID-based method
-	return s.DeleteAPI(apiUUID, orgId, deletedBy)
+	return s.DeleteAPI(ctx, apiUUID, orgId, deletedBy)
 }
 
 // AddGatewaysToAPIByHandle associates multiple gateways with an API identified by handle

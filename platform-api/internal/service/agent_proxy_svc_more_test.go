@@ -24,6 +24,7 @@
 package service
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -704,7 +705,7 @@ func TestAgentProxyDelete_NotifiesEveryGatewayAndDropsCache(t *testing.T) {
 	key := agentCardCacheKey{orgUUID: agentTestOrg, proxyUUID: stored.UUID}
 	svc.cardCache.storeCard(key, svc.cardCache.begin(key), []byte(`{"name":"x"}`))
 
-	if err := svc.Delete(agentTestOrg, stored.Handle, "alice"); err != nil {
+	if err := svc.Delete(context.Background(), agentTestOrg, stored.Handle, "alice"); err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
 	if repo.deleteCalls != 1 {
@@ -728,7 +729,7 @@ func TestAgentProxyDelete_GatewayListingFailureStillDeletes(t *testing.T) {
 	svc.gatewayEventsService = NewGatewayEventsService(hub, newTestIdentityService(), newTestLogger())
 	svc.gatewayRepo = &apsTGatewayRepo{err: errors.New("db")}
 
-	if err := svc.Delete(agentTestOrg, "weather-agent", "alice"); err != nil {
+	if err := svc.Delete(context.Background(), agentTestOrg, "weather-agent", "alice"); err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
 	if repo.deleteCalls != 1 || len(hub.published) != 0 {
@@ -765,7 +766,7 @@ func TestAgentProxyDelete_Rejections(t *testing.T) {
 			repo := newAPSTRepo(storedAgentProxy(tc.origin))
 			svc := newAPSTService(repo)
 			tc.mutate(svc, repo)
-			if err := svc.Delete(agentTestOrg, "weather-agent", "alice"); !tc.check(err) {
+			if err := svc.Delete(context.Background(), agentTestOrg, "weather-agent", "alice"); !tc.check(err) {
 				t.Fatalf("unexpected error: %v", err)
 			}
 			if got := repo.deleteCalls > 0; got != tc.wantDelete {
@@ -780,7 +781,7 @@ func TestAgentProxyDelete_UndeployedGatewayOriginatedProxyIsDeletable(t *testing
 	svc := newAPSTService(repo)
 	svc.deploymentRepo = &apsTDeploymentRepo{active: false}
 
-	if err := svc.Delete(agentTestOrg, "weather-agent", "alice"); err != nil {
+	if err := svc.Delete(context.Background(), agentTestOrg, "weather-agent", "alice"); err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
 	if repo.deleteCalls != 1 {

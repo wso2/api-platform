@@ -18,6 +18,7 @@
 package service
 
 import (
+	"context"
 	"database/sql"
 	"testing"
 	"time"
@@ -98,7 +99,7 @@ func TestUpsertPlanFromWebhook_CreatesMissingPlan(t *testing.T) {
 	repo := &webhookPlanRepo{plans: map[string]*model.SubscriptionPlan{}}
 	svc := NewSubscriptionPlanService(repo, nil, nil, nil, nil, nil)
 
-	plan, err := svc.UpsertPlanFromWebhook("org-1", "gold", "Gold", intPtr(5000), "MINUTE", nil, planEventT0)
+	plan, err := svc.UpsertPlanFromWebhook(context.Background(), "org-1", "gold", "Gold", intPtr(5000), "MINUTE", nil, planEventT0)
 	if err != nil {
 		t.Fatalf("UpsertPlanFromWebhook: %v", err)
 	}
@@ -117,7 +118,7 @@ func TestUpsertPlanFromWebhook_UnchangedPlanIsNotWritten(t *testing.T) {
 	}}
 	svc := NewSubscriptionPlanService(repo, nil, nil, nil, nil, nil)
 
-	if _, err := svc.UpsertPlanFromWebhook("org-1", "gold", "Gold", intPtr(5000), "MINUTE", nil, planEventT0); err != nil {
+	if _, err := svc.UpsertPlanFromWebhook(context.Background(), "org-1", "gold", "Gold", intPtr(5000), "MINUTE", nil, planEventT0); err != nil {
 		t.Fatalf("UpsertPlanFromWebhook: %v", err)
 	}
 	if repo.creates != 0 || repo.updates != 0 {
@@ -132,7 +133,7 @@ func TestUpsertPlanFromWebhook_UpdatesChangedFieldsOnly(t *testing.T) {
 	}}
 	svc := NewSubscriptionPlanService(repo, nil, nil, nil, nil, nil)
 
-	if _, err := svc.UpsertPlanFromWebhook("org-1", "gold", "Gold Plus", intPtr(100), "HOUR", nil, planEventT0); err != nil {
+	if _, err := svc.UpsertPlanFromWebhook(context.Background(), "org-1", "gold", "Gold Plus", intPtr(100), "HOUR", nil, planEventT0); err != nil {
 		t.Fatalf("UpsertPlanFromWebhook: %v", err)
 	}
 	got := repo.plans["gold"]
@@ -151,7 +152,7 @@ func TestUpsertPlanFromWebhook_ClearsRemovedLimit(t *testing.T) {
 	}}
 	svc := NewSubscriptionPlanService(repo, nil, nil, nil, nil, nil)
 
-	if _, err := svc.UpsertPlanFromWebhook("org-1", "gold", "Gold", nil, "", nil, planEventT0); err != nil {
+	if _, err := svc.UpsertPlanFromWebhook(context.Background(), "org-1", "gold", "Gold", nil, "", nil, planEventT0); err != nil {
 		t.Fatalf("UpsertPlanFromWebhook: %v", err)
 	}
 	if got := repo.plans["gold"]; got.ThrottleLimitCount != nil || got.ThrottleLimitUnit != "" {
@@ -165,10 +166,10 @@ func TestDeletePlanFromWebhook_MissingPlanIsDeleted(t *testing.T) {
 	}}
 	svc := NewSubscriptionPlanService(repo, nil, nil, nil, nil, nil)
 
-	if err := svc.DeletePlanFromWebhook("org-1", "gold", planEventT0); err != nil || repo.deletes != 1 {
+	if err := svc.DeletePlanFromWebhook(context.Background(), "org-1", "gold", planEventT0); err != nil || repo.deletes != 1 {
 		t.Fatalf("delete: err = %v, deletes = %d", err, repo.deletes)
 	}
-	if err := svc.DeletePlanFromWebhook("org-1", "gold", planEventT0); err != nil {
+	if err := svc.DeletePlanFromWebhook(context.Background(), "org-1", "gold", planEventT0); err != nil {
 		t.Fatalf("a repeated delete must succeed, got %v", err)
 	}
 }
@@ -180,7 +181,7 @@ func TestDeletePlanFromWebhook_FollowsThePortalEvenWhenThePlanIsUsed(t *testing.
 		usage: model.SubscriptionPlanUsage{RESTAPIs: 1, Subscriptions: 3}}
 	svc := NewSubscriptionPlanService(repo, nil, nil, nil, nil, nil)
 
-	if err := svc.DeletePlanFromWebhook("org-1", "gold", planEventT0); err != nil || repo.deletes != 1 {
+	if err := svc.DeletePlanFromWebhook(context.Background(), "org-1", "gold", planEventT0); err != nil || repo.deletes != 1 {
 		t.Fatalf("delete: err = %v, deletes = %d", err, repo.deletes)
 	}
 }
@@ -193,7 +194,7 @@ func TestDeletePlanFromWebhook_LeavesAPlanCreatedAfterTheDeletion(t *testing.T) 
 	}}
 	svc := NewSubscriptionPlanService(repo, nil, nil, nil, nil, nil)
 
-	if err := svc.DeletePlanFromWebhook("org-1", "gold", planEventT0); err != nil || repo.deletes != 0 {
+	if err := svc.DeletePlanFromWebhook(context.Background(), "org-1", "gold", planEventT0); err != nil || repo.deletes != 0 {
 		t.Fatalf("late deletion: err = %v, deletes = %d; want the newer plan kept", err, repo.deletes)
 	}
 	if got := repo.plans["gold"]; got == nil || got.Name != "Gold" {
@@ -202,7 +203,7 @@ func TestDeletePlanFromWebhook_LeavesAPlanCreatedAfterTheDeletion(t *testing.T) 
 
 	// A plan created before the deletion is the one deleted.
 	repo.plans["gold"].CreatedAt = planEventT0.Add(-time.Minute)
-	if err := svc.DeletePlanFromWebhook("org-1", "gold", planEventT0); err != nil || repo.deletes != 1 {
+	if err := svc.DeletePlanFromWebhook(context.Background(), "org-1", "gold", planEventT0); err != nil || repo.deletes != 1 {
 		t.Fatalf("deletion: err = %v, deletes = %d", err, repo.deletes)
 	}
 }
@@ -214,13 +215,13 @@ func TestDeletePlanFromWebhook_DeletesACopyCreatedFromAnEarlierEvent(t *testing.
 	repo := &webhookPlanRepo{plans: map[string]*model.SubscriptionPlan{}, now: planEventT0.Add(5 * time.Second)}
 	svc := NewSubscriptionPlanService(repo, nil, nil, nil, nil, nil)
 
-	if _, err := svc.UpsertPlanFromWebhook("org-1", "gold", "Gold", nil, "", nil, planEventT0); err != nil {
+	if _, err := svc.UpsertPlanFromWebhook(context.Background(), "org-1", "gold", "Gold", nil, "", nil, planEventT0); err != nil {
 		t.Fatalf("created event: %v", err)
 	}
 	if got := repo.plans["gold"]; got == nil || !got.CreatedAt.Equal(planEventT0) {
 		t.Fatalf("plan = %+v, want it dated at the created event's time", got)
 	}
-	if err := svc.DeletePlanFromWebhook("org-1", "gold", planEventT0.Add(time.Second)); err != nil || repo.deletes != 1 {
+	if err := svc.DeletePlanFromWebhook(context.Background(), "org-1", "gold", planEventT0.Add(time.Second)); err != nil || repo.deletes != 1 {
 		t.Fatalf("deleted event: err = %v, deletes = %d; want the copy deleted", err, repo.deletes)
 	}
 }
@@ -250,7 +251,7 @@ func TestUpsertPlanFromWebhook_StoresANewPlanWithItsPricing(t *testing.T) {
 		BillingPeriod: "MONTH", Prices: []model.SubscriptionPlanPrice{
 			{MeterHandle: "calls", PricingModel: model.PricingModelPerUnit, UnitAmount: &unit, Filters: []model.PriceFilter{}}}}
 
-	plan, err := svc.UpsertPlanFromWebhook("org-1", "gold", "Gold", intPtr(5000), "MINUTE", pricing, planEventT0)
+	plan, err := svc.UpsertPlanFromWebhook(context.Background(), "org-1", "gold", "Gold", intPtr(5000), "MINUTE", pricing, planEventT0)
 	if err != nil {
 		t.Fatalf("UpsertPlanFromWebhook: %v", err)
 	}
@@ -270,7 +271,7 @@ func TestUpsertPlanFromWebhook_NeedsEveryMeter(t *testing.T) {
 		BillingPeriod: "MONTH", Prices: []model.SubscriptionPlanPrice{
 			{MeterHandle: "tokens", PricingModel: model.PricingModelPerUnit, UnitAmount: &unit, Filters: []model.PriceFilter{}}}}
 
-	_, err := svc.UpsertPlanFromWebhook("org-1", "gold", "Gold", nil, "", pricing, planEventT0)
+	_, err := svc.UpsertPlanFromWebhook(context.Background(), "org-1", "gold", "Gold", nil, "", pricing, planEventT0)
 	if !apperror.ValidationFailed.Is(err) || repo.creates != 0 {
 		t.Fatalf("err = %v, creates = %d; want a refusal and nothing stored", err, repo.creates)
 	}
@@ -280,19 +281,19 @@ func TestUpsertPlanFromWebhook_NeedsEveryMeter(t *testing.T) {
 // accepted, and other pricing or none is refused, storing nothing.
 func TestUpsertPlanFromWebhook_APaidPlanHereKeepsItsPricing(t *testing.T) {
 	svc, repo, pricing := newPricedPlanService()
-	if _, err := svc.UpsertPlanFromWebhook("org-1", "gold", "Gold", nil, "", flatPricing("10.00"), planEventT0); err != nil {
+	if _, err := svc.UpsertPlanFromWebhook(context.Background(), "org-1", "gold", "Gold", nil, "", flatPricing("10.00"), planEventT0); err != nil {
 		t.Fatalf("first delivery: %v", err)
 	}
 	pricing.pricing["uuid-gold"] = repo.pricing
 
-	if _, err := svc.UpsertPlanFromWebhook("org-1", "gold", "Gold Plus", nil, "", flatPricing("10"), planEventT0); err != nil {
+	if _, err := svc.UpsertPlanFromWebhook(context.Background(), "org-1", "gold", "Gold Plus", nil, "", flatPricing("10"), planEventT0); err != nil {
 		t.Fatalf("the same pricing again must be accepted: %v", err)
 	}
 	if repo.plans["gold"].Name != "Gold Plus" {
 		t.Errorf("name = %q, want the update applied", repo.plans["gold"].Name)
 	}
 	for name, other := range map[string]*model.SubscriptionPlanPricing{"other pricing": flatPricing("20.00"), "no pricing": nil} {
-		if _, err := svc.UpsertPlanFromWebhook("org-1", "gold", "Gold", nil, "", other, planEventT0); !apperror.SubscriptionPlanPricingLocked.Is(err) {
+		if _, err := svc.UpsertPlanFromWebhook(context.Background(), "org-1", "gold", "Gold", nil, "", other, planEventT0); !apperror.SubscriptionPlanPricingLocked.Is(err) {
 			t.Errorf("%s: got %v, want the pricing-locked conflict", name, err)
 		}
 	}
@@ -306,7 +307,7 @@ func TestUpsertPlanFromWebhook_APaidPlanHereKeepsItsPricing(t *testing.T) {
 // handle: it is refused and stays free.
 func TestUpsertPlanFromWebhook_AnUpdateRecoversAMissedCreatedEvent(t *testing.T) {
 	svc, repo, pricing := newPricedPlanService()
-	if _, err := svc.UpsertPlanFromWebhook("org-1", "gold", "Gold", nil, "", flatPricing("10.00"), planEventT0); err != nil {
+	if _, err := svc.UpsertPlanFromWebhook(context.Background(), "org-1", "gold", "Gold", nil, "", flatPricing("10.00"), planEventT0); err != nil {
 		t.Fatalf("an update as the first event: %v", err)
 	}
 	if repo.creates != 1 || repo.pricing == nil || *repo.pricing.FlatAmount != "10.00" {
@@ -314,7 +315,7 @@ func TestUpsertPlanFromWebhook_AnUpdateRecoversAMissedCreatedEvent(t *testing.T)
 	}
 
 	repo.plans["silver"] = &model.SubscriptionPlan{UUID: "uuid-silver", Handle: "silver", Name: "Silver"}
-	if _, err := svc.UpsertPlanFromWebhook("org-1", "silver", "Silver", nil, "", flatPricing("5.00"), planEventT0); !apperror.SubscriptionPlanPricingLocked.Is(err) {
+	if _, err := svc.UpsertPlanFromWebhook(context.Background(), "org-1", "silver", "Silver", nil, "", flatPricing("5.00"), planEventT0); !apperror.SubscriptionPlanPricingLocked.Is(err) {
 		t.Errorf("pricing for a free plan here: got %v, want the pricing-locked conflict", err)
 	}
 	if pricing.pricing["uuid-silver"] != nil || repo.plans["silver"].Name != "Silver" {

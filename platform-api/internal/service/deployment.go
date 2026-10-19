@@ -18,6 +18,7 @@
 package service
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"net/url"
@@ -178,7 +179,7 @@ func toAPIBuildResponse(build *model.Build) *api.BuildResponse {
 // earlier, and base "current" renders one from the API's definition and stores it
 // with the deployment, so what a gateway is serving is always traceable to a
 // snapshot and the next environment always has something to promote.
-func (s *DeploymentService) DeployAPI(apiUUID string, req *api.DeployRequest, orgUUID, createdBy string) (*api.DeploymentResponse, error) {
+func (s *DeploymentService) DeployAPI(ctx context.Context, apiUUID string, req *api.DeployRequest, orgUUID, createdBy string) (*api.DeploymentResponse, error) {
 	// Validate request
 	if req == nil {
 		return nil, apperror.RESTAPIDeploymentValidationFailed.New("A request body is required.")
@@ -458,14 +459,14 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *api.DeployRequest, or
 			PerformedAt:  performedAt,
 		}
 
-		if err := s.gatewayEventsService.BroadcastDeploymentEvent(gatewayID, deploymentEvent); err != nil {
+		if err := s.gatewayEventsService.BroadcastDeploymentEvent(ctx, gatewayID, deploymentEvent); err != nil {
 			s.slogger.Warn("Failed to broadcast deployment event", "error", err)
 		}
 
 		// Push existing active API keys for this artifact to the (possibly newly
 		// associated) gateway so keys created before this association are recognized
 		// immediately, rather than only after the controller's next reconnect sync.
-		s.backfillAPIKeysToGateway(apiUUID, gatewayID, createdBy)
+		s.backfillAPIKeysToGateway(ctx, apiUUID, gatewayID, createdBy)
 	}
 
 	resp, err := toAPIDeploymentResponse(
@@ -488,7 +489,7 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *api.DeployRequest, or
 }
 
 // RestoreDeployment restores a previous deployment (can be ARCHIVED or UNDEPLOYED)
-func (s *DeploymentService) RestoreDeployment(apiUUID, deploymentID, gatewayID, orgUUID, actor string) (*api.DeploymentResponse, error) {
+func (s *DeploymentService) RestoreDeployment(ctx context.Context, apiUUID, deploymentID, gatewayID, orgUUID, actor string) (*api.DeploymentResponse, error) {
 	// DP-originated artifacts are read-only in the control plane; their deployment
 	// lifecycle is owned by the data-plane gateway, so restore cannot be CP-initiated.
 	if err := ensureArtifactMutableByUUID(s.artifactRepo, apiUUID, orgUUID); err != nil {
@@ -551,13 +552,13 @@ func (s *DeploymentService) RestoreDeployment(apiUUID, deploymentID, gatewayID, 
 			PerformedAt:  performedAt,
 		}
 
-		if err := s.gatewayEventsService.BroadcastDeploymentEvent(targetDeployment.GatewayID, deploymentEvent); err != nil {
+		if err := s.gatewayEventsService.BroadcastDeploymentEvent(ctx, targetDeployment.GatewayID, deploymentEvent); err != nil {
 			s.slogger.Warn("Failed to broadcast deployment event", "error", err)
 		}
 
 		// Push existing active API keys for this artifact to the gateway so a restored
 		// deployment recognizes pre-existing keys immediately (see backfillAPIKeysToGateway).
-		s.backfillAPIKeysToGateway(apiUUID, targetDeployment.GatewayID, actor)
+		s.backfillAPIKeysToGateway(ctx, apiUUID, targetDeployment.GatewayID, actor)
 	}
 
 	if s.auditRepo != nil {
@@ -584,7 +585,7 @@ func (s *DeploymentService) RestoreDeployment(apiUUID, deploymentID, gatewayID, 
 }
 
 // UndeployDeployment undeploys an active deployment
-func (s *DeploymentService) UndeployDeployment(apiUUID, deploymentID, gatewayID, orgUUID, actor string) (*api.DeploymentResponse, error) {
+func (s *DeploymentService) UndeployDeployment(ctx context.Context, apiUUID, deploymentID, gatewayID, orgUUID, actor string) (*api.DeploymentResponse, error) {
 	// DP-originated artifacts are read-only in the control plane: their deploy/undeploy
 	// lifecycle is owned by the data-plane gateway (driven by the DP->CP push), so the
 	// control plane must not initiate an undeployment for them.
@@ -640,7 +641,7 @@ func (s *DeploymentService) UndeployDeployment(apiUUID, deploymentID, gatewayID,
 			PerformedAt:  performedAt,
 		}
 
-		if err := s.gatewayEventsService.BroadcastUndeploymentEvent(deployment.GatewayID, undeploymentEvent); err != nil {
+		if err := s.gatewayEventsService.BroadcastUndeploymentEvent(ctx, deployment.GatewayID, undeploymentEvent); err != nil {
 			s.slogger.Warn("Failed to broadcast undeployment event", "error", err)
 		}
 	}
@@ -1008,8 +1009,8 @@ func (s *DeploymentService) ensureAPIGatewayAssociation(apiUUID, gatewayID, orgU
 // backfillAPIKeysToGateway delegates to the shared BackfillAPIKeysToGateway helper so
 // every deploy path (REST, LLM provider/proxy, MCP, WebSub, WebBroker) pushes existing
 // keys identically.
-func (s *DeploymentService) backfillAPIKeysToGateway(apiUUID, gatewayID, actor string) {
-	BackfillAPIKeysToGateway(s.apiKeyRepo, s.gatewayRepo, s.gatewayEventsService, s.slogger, apiUUID, gatewayID, actor)
+func (s *DeploymentService) backfillAPIKeysToGateway(ctx context.Context, apiUUID, gatewayID, actor string) {
+	BackfillAPIKeysToGateway(ctx, s.apiKeyRepo, s.gatewayRepo, s.gatewayEventsService, s.slogger, apiUUID, gatewayID, actor)
 }
 
 // CreateBuildByHandle prepares a build of an API identified by its handle.
@@ -1051,18 +1052,18 @@ func (s *DeploymentService) DeleteBuildByHandle(apiHandle, buildID, orgUUID stri
 }
 
 // DeployAPIByHandle creates a new immutable deployment artifact using API handle
-func (s *DeploymentService) DeployAPIByHandle(apiHandle string, req *api.DeployRequest, orgUUID, createdBy string) (*api.DeploymentResponse, error) {
+func (s *DeploymentService) DeployAPIByHandle(ctx context.Context, apiHandle string, req *api.DeployRequest, orgUUID, createdBy string) (*api.DeploymentResponse, error) {
 	// Convert API handle to UUID
 	apiUUID, err := s.getUUIDByHandle(apiHandle, orgUUID)
 	if err != nil {
 		return nil, err
 	}
 
-	return s.DeployAPI(apiUUID, req, orgUUID, createdBy)
+	return s.DeployAPI(ctx, apiUUID, req, orgUUID, createdBy)
 }
 
 // RestoreDeploymentByHandle restores a previous deployment using API handle
-func (s *DeploymentService) RestoreDeploymentByHandle(apiHandle, deploymentID, gatewayHandle, orgUUID, actor string) (*api.DeploymentResponse, error) {
+func (s *DeploymentService) RestoreDeploymentByHandle(ctx context.Context, apiHandle, deploymentID, gatewayHandle, orgUUID, actor string) (*api.DeploymentResponse, error) {
 	// Convert API handle to UUID
 	apiUUID, err := s.getUUIDByHandle(apiHandle, orgUUID)
 	if err != nil {
@@ -1078,7 +1079,7 @@ func (s *DeploymentService) RestoreDeploymentByHandle(apiHandle, deploymentID, g
 		return nil, apperror.GatewayNotFound.New()
 	}
 
-	return s.RestoreDeployment(apiUUID, deploymentID, gateway.ID, orgUUID, actor)
+	return s.RestoreDeployment(ctx, apiUUID, deploymentID, gateway.ID, orgUUID, actor)
 }
 
 // getUUIDByHandle retrieves the artifact UUID by its handle from the artifact table
@@ -1147,7 +1148,7 @@ func (s *DeploymentService) GetDeploymentsByHandle(apiHandle, gatewayID, status,
 // UndeployDeploymentByHandle undeploys a deployment using the API handle and the
 // gateway handle. Deploy/attach both identify the gateway by handle, so undeploy
 // resolves the handle to the gateway UUID here to keep the contract consistent.
-func (s *DeploymentService) UndeployDeploymentByHandle(apiHandle, deploymentID, gatewayHandle, orgUUID, actor string) (*api.DeploymentResponse, error) {
+func (s *DeploymentService) UndeployDeploymentByHandle(ctx context.Context, apiHandle, deploymentID, gatewayHandle, orgUUID, actor string) (*api.DeploymentResponse, error) {
 	// Convert API handle to UUID
 	apiUUID, err := s.getUUIDByHandle(apiHandle, orgUUID)
 	if err != nil {
@@ -1163,7 +1164,7 @@ func (s *DeploymentService) UndeployDeploymentByHandle(apiHandle, deploymentID, 
 		return nil, apperror.GatewayNotFound.New()
 	}
 
-	return s.UndeployDeployment(apiUUID, deploymentID, gateway.ID, orgUUID, actor)
+	return s.UndeployDeployment(ctx, apiUUID, deploymentID, gateway.ID, orgUUID, actor)
 }
 
 // DeleteDeploymentByHandle deletes a deployment using API handle

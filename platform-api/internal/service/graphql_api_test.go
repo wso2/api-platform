@@ -18,6 +18,7 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"log/slog"
@@ -1885,7 +1886,7 @@ func TestGraphQLDelete_NotFound(t *testing.T) {
 	}
 	svc := newGraphQLTestService(repo, nil)
 
-	err := svc.Delete("org-1", "does-not-exist", "deleter-uuid")
+	err := svc.Delete(context.Background(), "org-1", "does-not-exist", "deleter-uuid")
 	if err == nil {
 		t.Fatal("expected an error deleting a nonexistent GraphQL API")
 	}
@@ -1958,7 +1959,7 @@ func TestGraphQLDelete_BroadcastsDeletionEventToAllOrgGateways(t *testing.T) {
 	svc := NewGraphQLAPIService(repo, &mockGraphQLProjectRepo{}, &noopAuditRepo{}, nil,
 		gatewayRepo, &mockOrganizationRepo{}, events, newTestIdentityService(), slog.Default())
 
-	if err := svc.Delete("org-1", "countries-graphql-api", "deleter-uuid"); err != nil {
+	if err := svc.Delete(context.Background(), "org-1", "countries-graphql-api", "deleter-uuid"); err != nil {
 		t.Fatalf("Delete() = %v, want success", err)
 	}
 	if !repo.deleted {
@@ -1996,7 +1997,7 @@ func TestGraphQLDelete_DPOriginated_BlockedWhileDeployed(t *testing.T) {
 	svc := NewGraphQLAPIService(repo, &mockGraphQLProjectRepo{}, &noopAuditRepo{}, deploymentRepo,
 		&mockGatewayRepository{}, &mockOrganizationRepo{}, nil, newTestIdentityService(), slog.Default())
 
-	err := svc.Delete("org-1", "countries-graphql-api", "deleter-uuid")
+	err := svc.Delete(context.Background(), "org-1", "countries-graphql-api", "deleter-uuid")
 	if err == nil {
 		t.Fatal("expected an error deleting a DP-originated GraphQL API that is still deployed")
 	}
@@ -2031,7 +2032,7 @@ func TestGraphQLDelete_DPOriginated_SucceedsOnceUndeployed(t *testing.T) {
 	svc := NewGraphQLAPIService(repo, &mockGraphQLProjectRepo{}, &noopAuditRepo{}, deploymentRepo,
 		&stubOrgGatewaysRepo{}, &mockOrganizationRepo{}, nil, newTestIdentityService(), slog.Default())
 
-	if err := svc.Delete("org-1", "countries-graphql-api", "deleter-uuid"); err != nil {
+	if err := svc.Delete(context.Background(), "org-1", "countries-graphql-api", "deleter-uuid"); err != nil {
 		t.Fatalf("Delete() = %v, want success for a DP-originated artifact with no active deployment", err)
 	}
 	if !repo.deleted {

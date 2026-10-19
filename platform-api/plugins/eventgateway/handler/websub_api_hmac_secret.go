@@ -110,7 +110,7 @@ func (h *WebSubAPIHmacSecretHandler) CreateHmacSecret(w http.ResponseWriter, r *
 	if !ok {
 		return
 	}
-	secret, plaintext, err := h.secretService.Generate(orgID, apiHandle, req.DisplayName, externalSecret, userID)
+	secret, plaintext, err := h.secretService.Generate(r.Context(), orgID, apiHandle, req.DisplayName, externalSecret, userID)
 	if err != nil {
 		h.handleServiceError(w, err)
 		return
@@ -187,7 +187,7 @@ func (h *WebSubAPIHmacSecretHandler) DeleteHmacSecret(w http.ResponseWriter, r *
 		return
 	}
 
-	if err := h.secretService.Delete(orgID, apiHandle, secretName); err != nil {
+	if err := h.secretService.Delete(r.Context(), orgID, apiHandle, secretName); err != nil {
 		h.handleServiceError(w, err)
 		return
 	}
@@ -233,7 +233,7 @@ func (h *WebSubAPIHmacSecretHandler) RegenerateHmacSecret(w http.ResponseWriter,
 	if !ok {
 		return
 	}
-	secret, plaintext, err := h.secretService.Regenerate(orgID, apiHandle, secretName, externalSecret, userID)
+	secret, plaintext, err := h.secretService.Regenerate(r.Context(), orgID, apiHandle, secretName, externalSecret, userID)
 	if err != nil {
 		h.handleServiceError(w, err)
 		return

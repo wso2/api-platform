@@ -20,6 +20,7 @@
 package service
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -81,30 +82,30 @@ func NewWebBrokerAPIDeploymentService(
 }
 
 // DeployWebBrokerAPIByHandle creates a new immutable deployment using WebBroker API handle
-func (s *WebBrokerAPIDeploymentService) DeployWebBrokerAPIByHandle(apiHandle string, req *api.DeployRequest, orgUUID, createdBy string) (*api.DeploymentResponse, error) {
+func (s *WebBrokerAPIDeploymentService) DeployWebBrokerAPIByHandle(ctx context.Context, apiHandle string, req *api.DeployRequest, orgUUID, createdBy string) (*api.DeploymentResponse, error) {
 	apiUUID, err := s.getWebBrokerAPIUUIDByHandle(apiHandle, orgUUID)
 	if err != nil {
 		return nil, err
 	}
-	return s.deployWebBrokerAPI(apiUUID, req, orgUUID, createdBy)
+	return s.deployWebBrokerAPI(ctx, apiUUID, req, orgUUID, createdBy)
 }
 
 // RestoreWebBrokerAPIDeploymentByHandle restores a previous deployment using WebBroker API handle
-func (s *WebBrokerAPIDeploymentService) RestoreWebBrokerAPIDeploymentByHandle(apiHandle, deploymentID, gatewayID, orgUUID string) (*api.DeploymentResponse, error) {
+func (s *WebBrokerAPIDeploymentService) RestoreWebBrokerAPIDeploymentByHandle(ctx context.Context, apiHandle, deploymentID, gatewayID, orgUUID string) (*api.DeploymentResponse, error) {
 	apiUUID, err := s.getWebBrokerAPIUUIDByHandle(apiHandle, orgUUID)
 	if err != nil {
 		return nil, err
 	}
-	return s.restoreWebBrokerAPIDeployment(apiUUID, &deploymentID, &gatewayID, orgUUID)
+	return s.restoreWebBrokerAPIDeployment(ctx, apiUUID, &deploymentID, &gatewayID, orgUUID)
 }
 
 // UndeployWebBrokerAPIDeploymentByHandle undeploys a deployment using WebBroker API handle
-func (s *WebBrokerAPIDeploymentService) UndeployWebBrokerAPIDeploymentByHandle(apiHandle, deploymentID, gatewayID, orgUUID string) (*api.DeploymentResponse, error) {
+func (s *WebBrokerAPIDeploymentService) UndeployWebBrokerAPIDeploymentByHandle(ctx context.Context, apiHandle, deploymentID, gatewayID, orgUUID string) (*api.DeploymentResponse, error) {
 	apiUUID, err := s.getWebBrokerAPIUUIDByHandle(apiHandle, orgUUID)
 	if err != nil {
 		return nil, err
 	}
-	return s.undeployWebBrokerAPIDeployment(apiUUID, &deploymentID, &gatewayID, orgUUID)
+	return s.undeployWebBrokerAPIDeployment(ctx, apiUUID, &deploymentID, &gatewayID, orgUUID)
 }
 
 // DeleteWebBrokerAPIDeploymentByHandle deletes a deployment using WebBroker API handle
@@ -155,7 +156,7 @@ func (s *WebBrokerAPIDeploymentService) GetWebBrokerAPIDeploymentsByHandle(apiHa
 }
 
 // deployWebBrokerAPI deploys a WebBroker API to a gateway
-func (s *WebBrokerAPIDeploymentService) deployWebBrokerAPI(apiUUID string, req *api.DeployRequest, orgID, createdBy string) (*api.DeploymentResponse, error) {
+func (s *WebBrokerAPIDeploymentService) deployWebBrokerAPI(ctx context.Context, apiUUID string, req *api.DeployRequest, orgID, createdBy string) (*api.DeploymentResponse, error) {
 	if req == nil {
 		return nil, apperror.ValidationFailed.New("A request body is required.")
 	}
@@ -271,12 +272,12 @@ func (s *WebBrokerAPIDeploymentService) deployWebBrokerAPI(apiUUID string, req *
 			DeploymentID: deploymentID,
 			PerformedAt:  performedAt,
 		}
-		if err := s.gatewayEventsService.BroadcastWebBrokerAPIDeploymentEvent(gatewayID, deploymentEvent); err != nil {
+		if err := s.gatewayEventsService.BroadcastWebBrokerAPIDeploymentEvent(ctx, gatewayID, deploymentEvent); err != nil {
 			s.slogger.Warn("Failed to broadcast WebBroker API deployment event", "error", err)
 		}
 
 		// Push existing active API keys for this API to the gateway (see BackfillAPIKeysToGateway).
-		coreservice.BackfillAPIKeysToGateway(s.apiKeyRepo, s.gatewayRepo, s.gatewayEventsService, s.slogger, apiUUID, gatewayID, createdBy)
+		coreservice.BackfillAPIKeysToGateway(ctx, s.apiKeyRepo, s.gatewayRepo, s.gatewayEventsService, s.slogger, apiUUID, gatewayID, createdBy)
 	}
 
 	return toAPIDeploymentResponse(
@@ -294,7 +295,7 @@ func (s *WebBrokerAPIDeploymentService) deployWebBrokerAPI(apiUUID string, req *
 }
 
 // undeployWebBrokerAPIDeployment undeploys a WebBroker API from a gateway
-func (s *WebBrokerAPIDeploymentService) undeployWebBrokerAPIDeployment(apiUUID string, deploymentId *string, gatewayId *string, orgID string) (*api.DeploymentResponse, error) {
+func (s *WebBrokerAPIDeploymentService) undeployWebBrokerAPIDeployment(ctx context.Context, apiUUID string, deploymentId *string, gatewayId *string, orgID string) (*api.DeploymentResponse, error) {
 	// DP-originated artifacts are read-only in the control plane: their deploy/undeploy
 	// lifecycle is owned by the data-plane gateway, so the control plane must not
 	// initiate an undeployment for them.
@@ -374,7 +375,7 @@ func (s *WebBrokerAPIDeploymentService) undeployWebBrokerAPIDeployment(apiUUID s
 			DeploymentID: deployment.DeploymentID,
 			PerformedAt:  performedAt,
 		}
-		if err := s.gatewayEventsService.BroadcastWebBrokerAPIUndeploymentEvent(deployment.GatewayID, undeploymentEvent); err != nil {
+		if err := s.gatewayEventsService.BroadcastWebBrokerAPIUndeploymentEvent(ctx, deployment.GatewayID, undeploymentEvent); err != nil {
 			s.slogger.Warn("Failed to broadcast WebBroker API undeployment event", "error", err)
 		}
 	}
@@ -394,7 +395,7 @@ func (s *WebBrokerAPIDeploymentService) undeployWebBrokerAPIDeployment(apiUUID s
 }
 
 // restoreWebBrokerAPIDeployment restores a previously undeployed WebBroker API deployment
-func (s *WebBrokerAPIDeploymentService) restoreWebBrokerAPIDeployment(apiUUID string, deploymentId *string, gatewayId *string, orgID string) (*api.DeploymentResponse, error) {
+func (s *WebBrokerAPIDeploymentService) restoreWebBrokerAPIDeployment(ctx context.Context, apiUUID string, deploymentId *string, gatewayId *string, orgID string) (*api.DeploymentResponse, error) {
 	// DP-originated artifacts are read-only in the control plane; their deployment
 	// lifecycle is owned by the data-plane gateway, so restore cannot be CP-initiated.
 	if err := ensureArtifactMutableByUUID(s.artifactRepo, apiUUID, orgID); err != nil {
@@ -457,12 +458,12 @@ func (s *WebBrokerAPIDeploymentService) restoreWebBrokerAPIDeployment(apiUUID st
 			DeploymentID: *deploymentId,
 			PerformedAt:  performedAt,
 		}
-		if err := s.gatewayEventsService.BroadcastWebBrokerAPIDeploymentEvent(targetDeployment.GatewayID, deploymentEvent); err != nil {
+		if err := s.gatewayEventsService.BroadcastWebBrokerAPIDeploymentEvent(ctx, targetDeployment.GatewayID, deploymentEvent); err != nil {
 			s.slogger.Warn("Failed to broadcast WebBroker API deployment event", "error", err)
 		}
 
 		// Backfill existing active API keys to the gateway (see BackfillAPIKeysToGateway).
-		coreservice.BackfillAPIKeysToGateway(s.apiKeyRepo, s.gatewayRepo, s.gatewayEventsService, s.slogger, apiUUID, targetDeployment.GatewayID, "")
+		coreservice.BackfillAPIKeysToGateway(ctx, s.apiKeyRepo, s.gatewayRepo, s.gatewayEventsService, s.slogger, apiUUID, targetDeployment.GatewayID, "")
 	}
 
 	return toAPIDeploymentResponse(

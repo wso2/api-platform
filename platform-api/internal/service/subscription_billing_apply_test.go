@@ -18,6 +18,7 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"testing"
@@ -118,7 +119,7 @@ func unpaid(at time.Time) *model.SubscriptionBilling {
 func TestApplyBillingFromWebhook_RefusesWhatItCannotApply(t *testing.T) {
 	now := time.Now()
 	withoutBilling, _ := newBillingApplyService(nil, billingApplyGateways{})
-	if err := withoutBilling.ApplyBillingFromWebhook("org-1", "weather", "RestApi", "alice", unpaid(now)); !apperror.ValidationFailed.Is(err) {
+	if err := withoutBilling.ApplyBillingFromWebhook(context.Background(), "org-1", "weather", "RestApi", "alice", unpaid(now)); !apperror.ValidationFailed.Is(err) {
 		t.Errorf("without billing: err = %v, want a validation failure", err)
 	}
 	svc, _ := newBillingApplyService(&billingApplyStore{}, billingApplyGateways{})
@@ -126,17 +127,17 @@ func TestApplyBillingFromWebhook_RefusesWhatItCannotApply(t *testing.T) {
 		"no state":       nil,
 		"unknown status": {Status: "OVERDUE", UpdatedAt: now},
 	} {
-		if err := svc.ApplyBillingFromWebhook("org-1", "weather", "RestApi", "alice", billing); !apperror.ValidationFailed.Is(err) {
+		if err := svc.ApplyBillingFromWebhook(context.Background(), "org-1", "weather", "RestApi", "alice", billing); !apperror.ValidationFailed.Is(err) {
 			t.Errorf("%s: err = %v, want a validation failure", name, err)
 		}
 	}
-	if err := svc.ApplyBillingFromWebhook("org-1", "missing", "RestApi", "alice", unpaid(now)); !apperror.ArtifactNotFound.Is(err) {
+	if err := svc.ApplyBillingFromWebhook(context.Background(), "org-1", "missing", "RestApi", "alice", unpaid(now)); !apperror.ArtifactNotFound.Is(err) {
 		t.Errorf("unknown API: err = %v, want artifact not found", err)
 	}
-	if err := svc.ApplyBillingFromWebhook("org-1", "broken", "RestApi", "alice", unpaid(now)); err == nil {
+	if err := svc.ApplyBillingFromWebhook(context.Background(), "org-1", "broken", "RestApi", "alice", unpaid(now)); err == nil {
 		t.Error("an API that can't be read: want an error")
 	}
-	if err := svc.ApplyBillingFromWebhook("org-1", "weather", "RestApi", "bob", unpaid(now)); !apperror.SubscriptionNotFound.Is(err) {
+	if err := svc.ApplyBillingFromWebhook(context.Background(), "org-1", "weather", "RestApi", "bob", unpaid(now)); !apperror.SubscriptionNotFound.Is(err) {
 		t.Errorf("no subscription: err = %v, want subscription not found", err)
 	}
 }
@@ -147,7 +148,7 @@ func TestApplyBillingFromWebhook_StoresTheStateAndTellsTheGateways(t *testing.T)
 	now := time.Now()
 	store := &billingApplyStore{}
 	svc, hub := newBillingApplyService(store, billingApplyGateways{})
-	if err := svc.ApplyBillingFromWebhook("org-1", "weather", "RestApi", "alice", unpaid(now)); err != nil {
+	if err := svc.ApplyBillingFromWebhook(context.Background(), "org-1", "weather", "RestApi", "alice", unpaid(now)); err != nil {
 		t.Fatalf("apply: %v", err)
 	}
 	if store.writes != 1 || store.stored.SubscriptionUUID != "sub-1" || store.stored.OrganizationUUID != "org-1" {
@@ -168,7 +169,7 @@ func TestApplyBillingFromWebhook_StoresTheStateAndTellsTheGateways(t *testing.T)
 		t.Errorf("event = %+v, want sub-1 on gold for app-1, billed to cus_1 and stopped", event)
 	}
 
-	if err := svc.ApplyBillingFromWebhook("org-1", "weather", "RestApi", "alice", unpaid(now.Add(-time.Hour))); err != nil {
+	if err := svc.ApplyBillingFromWebhook(context.Background(), "org-1", "weather", "RestApi", "alice", unpaid(now.Add(-time.Hour))); err != nil {
 		t.Fatalf("a stale state: %v", err)
 	}
 	if store.writes != 1 || len(hub.published) != 2 {
@@ -182,7 +183,7 @@ func TestApplyBillingFromWebhook_Failures(t *testing.T) {
 	now := time.Now()
 	store := &billingApplyStore{}
 	svc, hub := newBillingApplyService(store, billingApplyGateways{err: errors.New("gateways unavailable")})
-	if err := svc.ApplyBillingFromWebhook("org-1", "weather", "RestApi", "alice", unpaid(now)); err != nil {
+	if err := svc.ApplyBillingFromWebhook(context.Background(), "org-1", "weather", "RestApi", "alice", unpaid(now)); err != nil {
 		t.Fatalf("apply with the gateways unavailable: %v", err)
 	}
 	if store.writes != 1 || len(hub.published) != 0 {
@@ -191,12 +192,12 @@ func TestApplyBillingFromWebhook_Failures(t *testing.T) {
 
 	readErr := errors.New("billing read failed")
 	failing, _ := newBillingApplyService(&billingApplyStore{readErr: readErr}, billingApplyGateways{})
-	if err := failing.ApplyBillingFromWebhook("org-1", "weather", "RestApi", "alice", unpaid(now)); !errors.Is(err, readErr) {
+	if err := failing.ApplyBillingFromWebhook(context.Background(), "org-1", "weather", "RestApi", "alice", unpaid(now)); !errors.Is(err, readErr) {
 		t.Errorf("read failure: err = %v, want it", err)
 	}
 	writeErr := errors.New("billing write failed")
 	failing, _ = newBillingApplyService(&billingApplyStore{writeErr: writeErr}, billingApplyGateways{})
-	if err := failing.ApplyBillingFromWebhook("org-1", "weather", "RestApi", "alice", unpaid(now)); !errors.Is(err, writeErr) {
+	if err := failing.ApplyBillingFromWebhook(context.Background(), "org-1", "weather", "RestApi", "alice", unpaid(now)); !errors.Is(err, writeErr) {
 		t.Errorf("write failure: err = %v, want it", err)
 	}
 }

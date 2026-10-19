@@ -2,6 +2,7 @@ package service
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -1459,7 +1460,7 @@ func TestLLMProxyServiceCreateFailsWhenProviderNotFound(t *testing.T) {
 	projectRepo := &mockProjectRepo{project: &model.Project{ID: "project-1", OrganizationID: "org-1"}}
 	service := NewLLMProxyService(proxyRepo, providerRepo, projectRepo, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
 
-	_, err := service.Create("org-1", "alice", validProxyRequest("provider-1", "project-1"))
+	_, err := service.Create(context.Background(), "org-1", "alice", validProxyRequest("provider-1", "project-1"))
 	if !apperror.LLMProviderNotFound.Is(err) {
 		t.Fatalf("expected ErrLLMProviderNotFound, got: %v", err)
 	}
@@ -1477,7 +1478,7 @@ func TestLLMProxyServiceCreateRejectsInvalidPolicyVersion(t *testing.T) {
 	request := validProxyRequest("provider-1", "project-1")
 	request.GlobalPolicies = &[]api.Policy{{Name: "api-key-auth", Version: "v1.0.0"}}
 
-	_, err := service.Create("org-1", "alice", request)
+	_, err := service.Create(context.Background(), "org-1", "alice", request)
 	if !apperror.ValidationFailed.Is(err) {
 		t.Fatalf("expected ErrInvalidPolicyVersion, got: %v", err)
 	}
@@ -1510,7 +1511,7 @@ func TestLLMProxyServiceCreateReturnsConflictForDuplicateHandle(t *testing.T) {
 	}
 	service := NewLLMProxyService(proxyRepo, providerRepo, nil, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
 
-	_, err := service.Create("org-1", "alice", validProxyRequest("provider-1", "project-1"))
+	_, err := service.Create(context.Background(), "org-1", "alice", validProxyRequest("provider-1", "project-1"))
 	if !apperror.LLMProxyExists.Is(err) {
 		t.Fatalf("expected ErrLLMProxyExists, got: %v", err)
 	}
@@ -1735,7 +1736,7 @@ func TestLLMProxyServiceCreate_MissingSecretRef_Rejected(t *testing.T) {
 		Value:  stringPtr(`{{ secret "nonexistent-proxy-secret" }}`),
 	}
 
-	_, err := service.Create("org-1", "alice", request)
+	_, err := service.Create(context.Background(), "org-1", "alice", request)
 	if err == nil {
 		t.Fatal("expected error for non-existent secret placeholder, got nil")
 	}
@@ -1958,7 +1959,7 @@ func TestLLMProxyServiceCreateFailsWhenAdditionalProviderNotFound(t *testing.T) 
 	req := validProxyRequest("provider-1", "project-1")
 	req.AdditionalProviders = &[]api.LLMProxyAdditionalProvider{{Id: "missing-provider"}}
 
-	if _, err := service.Create("org-1", "alice", req); !apperror.LLMProviderRefNotFound.Is(err) {
+	if _, err := service.Create(context.Background(), "org-1", "alice", req); !apperror.LLMProviderRefNotFound.Is(err) {
 		t.Fatalf("expected LLMProviderRefNotFound, got: %v", err)
 	}
 }
@@ -1979,7 +1980,7 @@ func TestLLMProxyServiceCreateFailsWhenAdditionalProviderNameCollides(t *testing
 		{Id: "provider-2", As: stringPtr("provider-1")},
 	}
 
-	if _, err := service.Create("org-1", "alice", req); !apperror.ValidationFailed.Is(err) {
+	if _, err := service.Create(context.Background(), "org-1", "alice", req); !apperror.ValidationFailed.Is(err) {
 		t.Fatalf("expected ValidationFailed, got: %v", err)
 	}
 }
@@ -2188,11 +2189,11 @@ func canonicalShapedProxyRequest() *api.LLMProxy {
 // response, the artefact, the deletion guard — can tell which shape was used.
 func TestLLMProxyBothShapesStoreIdenticalRows(t *testing.T) {
 	legacyService, legacyRepo := newProxyServiceForShapeTest(t, nil)
-	if _, err := legacyService.Create("org-1", "alice", legacyShapedProxyRequest()); err != nil {
+	if _, err := legacyService.Create(context.Background(), "org-1", "alice", legacyShapedProxyRequest()); err != nil {
 		t.Fatalf("legacy create failed: %v", err)
 	}
 	canonicalService, canonicalRepo := newProxyServiceForShapeTest(t, nil)
-	if _, err := canonicalService.Create("org-1", "alice", canonicalShapedProxyRequest()); err != nil {
+	if _, err := canonicalService.Create(context.Background(), "org-1", "alice", canonicalShapedProxyRequest()); err != nil {
 		t.Fatalf("canonical create failed: %v", err)
 	}
 
@@ -2213,7 +2214,7 @@ func TestLLMProxyBothShapesStoreIdenticalRows(t *testing.T) {
 // database receives the canonical list and none of the legacy fields.
 func TestLLMProxyStoresCanonicalShapeOnly(t *testing.T) {
 	service, repo := newProxyServiceForShapeTest(t, nil)
-	if _, err := service.Create("org-1", "alice", legacyShapedProxyRequest()); err != nil {
+	if _, err := service.Create(context.Background(), "org-1", "alice", legacyShapedProxyRequest()); err != nil {
 		t.Fatalf("create failed: %v", err)
 	}
 
@@ -2564,7 +2565,7 @@ func TestLLMProxyRejectsMalformedProviderList(t *testing.T) {
 			request := canonicalShapedProxyRequest()
 			tc.mutate(request)
 
-			_, err := service.Create("org-1", "alice", request)
+			_, err := service.Create(context.Background(), "org-1", "alice", request)
 			if !apperror.ValidationFailed.Is(err) {
 				t.Fatalf("expected a validation failure, got: %v", err)
 			}
@@ -2585,7 +2586,7 @@ func TestLLMProxyProvidersWinsWhenBothShapesSupplied(t *testing.T) {
 	request.Provider = &api.LLMProxyProvider{Id: "stale-provider"}
 	request.AdditionalProviders = &[]api.LLMProxyAdditionalProvider{{Id: "stale-additional"}}
 
-	if _, err := service.Create("org-1", "alice", request); err != nil {
+	if _, err := service.Create(context.Background(), "org-1", "alice", request); err != nil {
 		t.Fatalf("expected both shapes to be accepted, got: %v", err)
 	}
 	stored := repo.created.Configuration
@@ -2608,7 +2609,7 @@ func TestLLMProxyPrimaryCarriesTransformerAndAlias(t *testing.T) {
 	request.Provider.As = stringPtr("openai-upstream")
 	request.Provider.Transformer = &api.LLMProxyTransformer{Type: "openai-to-openai", Version: "v0"}
 
-	created, err := service.Create("org-1", "alice", request)
+	created, err := service.Create(context.Background(), "org-1", "alice", request)
 	if err != nil {
 		t.Fatalf("create failed: %v", err)
 	}
@@ -2636,7 +2637,7 @@ func TestLLMProxyRejectsAliasCollisionWithPrimary(t *testing.T) {
 	request := legacyShapedProxyRequest()
 	request.Provider.As = stringPtr("claude") // already used by an additional provider
 
-	_, err := service.Create("org-1", "alice", request)
+	_, err := service.Create(context.Background(), "org-1", "alice", request)
 	if !apperror.ValidationFailed.Is(err) {
 		t.Fatalf("expected the collision to be rejected, got: %v", err)
 	}
@@ -2653,7 +2654,7 @@ func TestLLMProxyRejectsMalformedAlias(t *testing.T) {
 		request := legacyShapedProxyRequest()
 		request.Provider.As = stringPtr(alias)
 
-		if _, err := service.Create("org-1", "alice", request); !apperror.ValidationFailed.Is(err) {
+		if _, err := service.Create(context.Background(), "org-1", "alice", request); !apperror.ValidationFailed.Is(err) {
 			t.Fatalf("expected alias %q to be rejected, got: %v", alias, err)
 		}
 	}
@@ -2668,7 +2669,7 @@ func TestLLMProxyInboundTemplate(t *testing.T) {
 		request := canonicalShapedProxyRequest()
 		request.InboundTemplate = stringPtr("openai")
 
-		created, err := service.Create("org-1", "alice", request)
+		created, err := service.Create(context.Background(), "org-1", "alice", request)
 		if err != nil {
 			t.Fatalf("create failed: %v", err)
 		}
@@ -2688,7 +2689,7 @@ func TestLLMProxyInboundTemplate(t *testing.T) {
 		request := canonicalShapedProxyRequest()
 		request.InboundTemplate = stringPtr("disabled-template")
 
-		if _, err := service.Create("org-1", "alice", request); err != nil {
+		if _, err := service.Create(context.Background(), "org-1", "alice", request); err != nil {
 			t.Fatalf("expected a disabled template to be accepted, got: %v", err)
 		}
 	})
@@ -2700,7 +2701,7 @@ func TestLLMProxyInboundTemplate(t *testing.T) {
 		request := canonicalShapedProxyRequest()
 		request.InboundTemplate = stringPtr("no-such-template")
 
-		_, err := service.Create("org-1", "alice", request)
+		_, err := service.Create(context.Background(), "org-1", "alice", request)
 		if !apperror.ValidationFailed.Is(err) {
 			t.Fatalf("expected the template to be rejected, got: %v", err)
 		}
@@ -2711,7 +2712,7 @@ func TestLLMProxyInboundTemplate(t *testing.T) {
 
 	t.Run("a proxy stored without one has none invented for it", func(t *testing.T) {
 		service, repo := newProxyServiceForShapeTest(t, nil)
-		if _, err := service.Create("org-1", "alice", canonicalShapedProxyRequest()); err != nil {
+		if _, err := service.Create(context.Background(), "org-1", "alice", canonicalShapedProxyRequest()); err != nil {
 			t.Fatalf("create failed: %v", err)
 		}
 		if repo.created.Configuration.InboundTemplate != "" {
@@ -2823,7 +2824,7 @@ func TestLLMProviderDeleteRefusesWhileReferenced(t *testing.T) {
 				slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
 			service.SetProxyRepository(&mockLLMProxyRepo{listItems: tc.proxies})
 
-			err := service.Delete("org-1", "target-provider", "alice")
+			err := service.Delete(context.Background(), "org-1", "target-provider", "alice")
 			if !tc.wantRefuse {
 				if err != nil {
 					t.Fatalf("expected an unreferenced provider to be deletable, got: %v", err)
@@ -2856,7 +2857,7 @@ func TestLLMProviderDeleteRespectsOrganizationScoping(t *testing.T) {
 		slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
 	service.SetProxyRepository(proxyRepo)
 
-	if err := service.Delete("org-1", "target-provider", "alice"); err != nil {
+	if err := service.Delete(context.Background(), "org-1", "target-provider", "alice"); err != nil {
 		t.Fatalf("expected the delete to succeed, got: %v", err)
 	}
 	if scannedOrg != "org-1" {

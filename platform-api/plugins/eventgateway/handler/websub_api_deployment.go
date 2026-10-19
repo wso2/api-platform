@@ -98,7 +98,7 @@ func (h *WebSubAPIDeploymentHandler) DeployWebSubAPI(w http.ResponseWriter, r *h
 	if !ok {
 		return
 	}
-	deployment, err := h.websubAPIDeploymentService.DeployWebSubAPIByHandle(apiId, &req, orgId, createdBy)
+	deployment, err := h.websubAPIDeploymentService.DeployWebSubAPIByHandle(r.Context(), apiId, &req, orgId, createdBy)
 	if err != nil {
 		h.handleDeploymentError(w, err, apiId)
 		return
@@ -127,7 +127,7 @@ func (h *WebSubAPIDeploymentHandler) UndeployDeployment(w http.ResponseWriter, r
 		return
 	}
 
-	deployment, err := h.websubAPIDeploymentService.UndeployWebSubAPIDeploymentByHandle(apiId, deploymentId, gatewayId, orgId)
+	deployment, err := h.websubAPIDeploymentService.UndeployWebSubAPIDeploymentByHandle(r.Context(), apiId, deploymentId, gatewayId, orgId)
 	if err != nil {
 		h.handleDeploymentError(w, err, apiId)
 		return
@@ -156,7 +156,7 @@ func (h *WebSubAPIDeploymentHandler) RestoreDeployment(w http.ResponseWriter, r 
 		return
 	}
 
-	deployment, err := h.websubAPIDeploymentService.RestoreWebSubAPIDeploymentByHandle(apiId, deploymentId, gatewayId, orgId)
+	deployment, err := h.websubAPIDeploymentService.RestoreWebSubAPIDeploymentByHandle(r.Context(), apiId, deploymentId, gatewayId, orgId)
 	if err != nil {
 		h.handleDeploymentError(w, err, apiId)
 		return

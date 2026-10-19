@@ -18,6 +18,7 @@
 package service
 
 import (
+	"context"
 	"database/sql"
 	"testing"
 
@@ -60,7 +61,7 @@ func TestUndeployDeployment_BlockedForDPOrigin(t *testing.T) {
 		},
 	}
 
-	_, err := svc.UndeployDeployment("artifact-1", "deployment-1", "gateway-1", "org-1", "tester")
+	_, err := svc.UndeployDeployment(context.Background(), "artifact-1", "deployment-1", "gateway-1", "org-1", "tester")
 	if !apperror.ArtifactReadOnly.Is(err) {
 		t.Fatalf("UndeployDeployment(DP origin) error = %v, want ARTIFACT_READ_ONLY", err)
 	}
@@ -75,7 +76,7 @@ func TestRestoreDeployment_BlockedForDPOrigin(t *testing.T) {
 		},
 	}
 
-	_, err := svc.RestoreDeployment("artifact-1", "deployment-1", "gateway-1", "org-1", "tester")
+	_, err := svc.RestoreDeployment(context.Background(), "artifact-1", "deployment-1", "gateway-1", "org-1", "tester")
 	if !apperror.ArtifactReadOnly.Is(err) {
 		t.Fatalf("RestoreDeployment(DP origin) error = %v, want ARTIFACT_READ_ONLY", err)
 	}

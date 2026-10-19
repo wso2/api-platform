@@ -20,6 +20,7 @@
 package service
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -113,20 +114,20 @@ func (s *MCPDeploymentService) DeleteBuildByHandle(proxyHandle, buildID, orgUUID
 }
 
 // DeployMCPProxyByHandle creates a new immutable deployment artifact using MCP proxy handle
-func (s *MCPDeploymentService) DeployMCPProxyByHandle(proxyHandle string, req *api.DeployRequest, orgUUID, createdBy string) (*api.DeploymentResponse, error) {
+func (s *MCPDeploymentService) DeployMCPProxyByHandle(ctx context.Context, proxyHandle string, req *api.DeployRequest, orgUUID, createdBy string) (*api.DeploymentResponse, error) {
 	// Convert MCP proxy handle to UUID
 	proxyUUID, err := s.getMCPProxyUUIDByHandle(proxyHandle, orgUUID)
 	if err != nil {
 		return nil, err
 	}
 
-	return s.deployMCPProxy(proxyUUID, req, orgUUID, createdBy)
+	return s.deployMCPProxy(ctx, proxyUUID, req, orgUUID, createdBy)
 }
 
 // RestoreMCPDeploymentByHandle restores a previous deployment using the MCP proxy
 // handle and the gateway handle. Deploy resolves the gateway by handle, so restore
 // resolves the handle to the gateway UUID here to keep the contract consistent.
-func (s *MCPDeploymentService) RestoreMCPDeploymentByHandle(proxyHandle, deploymentID, gatewayHandle, orgUUID string) (*api.DeploymentResponse, error) {
+func (s *MCPDeploymentService) RestoreMCPDeploymentByHandle(ctx context.Context, proxyHandle, deploymentID, gatewayHandle, orgUUID string) (*api.DeploymentResponse, error) {
 	// Convert MCP proxy handle to UUID
 	proxyUUID, err := s.getMCPProxyUUIDByHandle(proxyHandle, orgUUID)
 	if err != nil {
@@ -143,13 +144,13 @@ func (s *MCPDeploymentService) RestoreMCPDeploymentByHandle(proxyHandle, deploym
 	}
 	gatewayUUID := gateway.ID
 
-	return s.restoreMCPProxyDeployment(proxyUUID, &deploymentID, &gatewayUUID, orgUUID)
+	return s.restoreMCPProxyDeployment(ctx, proxyUUID, &deploymentID, &gatewayUUID, orgUUID)
 }
 
 // UndeployDeploymentByHandle undeploys a deployment using the MCP proxy handle and
 // the gateway handle. Deploy resolves the gateway by handle, so undeploy resolves
 // the handle to the gateway UUID here to keep the contract consistent.
-func (s *MCPDeploymentService) UndeployDeploymentByHandle(proxyHandle, deploymentID, gatewayHandle, orgUUID string) (*api.DeploymentResponse, error) {
+func (s *MCPDeploymentService) UndeployDeploymentByHandle(ctx context.Context, proxyHandle, deploymentID, gatewayHandle, orgUUID string) (*api.DeploymentResponse, error) {
 	// Convert MCP proxy handle to UUID
 	proxyUUID, err := s.getMCPProxyUUIDByHandle(proxyHandle, orgUUID)
 	if err != nil {
@@ -166,7 +167,7 @@ func (s *MCPDeploymentService) UndeployDeploymentByHandle(proxyHandle, deploymen
 	}
 	gatewayUUID := gateway.ID
 
-	return s.undeployMCPProxyDeployment(proxyUUID, &deploymentID, &gatewayUUID, orgUUID)
+	return s.undeployMCPProxyDeployment(ctx, proxyUUID, &deploymentID, &gatewayUUID, orgUUID)
 }
 
 // DeleteDeploymentByHandle deletes a deployment using MCP proxy handle
@@ -224,7 +225,7 @@ func (s *MCPDeploymentService) GetDeploymentsByHandle(proxyHandle, gatewayID, st
 }
 
 // deployMCPProxy deploys an MCP proxy to a gateway
-func (s *MCPDeploymentService) deployMCPProxy(proxyUUID string, req *api.DeployRequest, orgId, createdBy string) (*api.DeploymentResponse, error) {
+func (s *MCPDeploymentService) deployMCPProxy(ctx context.Context, proxyUUID string, req *api.DeployRequest, orgId, createdBy string) (*api.DeploymentResponse, error) {
 	if req == nil {
 		return nil, apperror.MCPProxyDeploymentValidationFailed.New("A request body is required.")
 	}
@@ -393,12 +394,12 @@ func (s *MCPDeploymentService) deployMCPProxy(proxyUUID string, req *api.DeployR
 			PerformedAt:  performedAt,
 		}
 
-		if err := s.gatewayEventsService.BroadcastMCPProxyDeploymentEvent(gatewayID, deploymentEvent); err != nil {
+		if err := s.gatewayEventsService.BroadcastMCPProxyDeploymentEvent(ctx, gatewayID, deploymentEvent); err != nil {
 			s.slogger.Warn("Failed to broadcast MCP proxy deployment event", "error", err)
 		}
 
 		// Push existing active API keys for this proxy to the gateway (see BackfillAPIKeysToGateway).
-		BackfillAPIKeysToGateway(s.apiKeyRepo, s.gatewayRepo, s.gatewayEventsService, s.slogger, proxyUUID, gatewayID, createdBy)
+		BackfillAPIKeysToGateway(ctx, s.apiKeyRepo, s.gatewayRepo, s.gatewayEventsService, s.slogger, proxyUUID, gatewayID, createdBy)
 	}
 
 	// Return deployment response
@@ -441,7 +442,7 @@ func extractEndpointURLOverride(metadata map[string]interface{}) (*string, error
 }
 
 // UndeployMCPProxyDeployment undeploys an MCP proxy from a gateway
-func (s *MCPDeploymentService) undeployMCPProxyDeployment(proxyUUID string, deploymentId *string, gatewayId *string, orgId string) (*api.DeploymentResponse, error) {
+func (s *MCPDeploymentService) undeployMCPProxyDeployment(ctx context.Context, proxyUUID string, deploymentId *string, gatewayId *string, orgId string) (*api.DeploymentResponse, error) {
 	// DP-originated artifacts are read-only in the control plane; their deployment
 	// lifecycle is owned by the data-plane gateway, so undeploy cannot be CP-initiated.
 	if err := ensureArtifactMutableByUUID(s.artifactRepo, proxyUUID, orgId); err != nil {
@@ -521,7 +522,7 @@ func (s *MCPDeploymentService) undeployMCPProxyDeployment(proxyUUID string, depl
 			PerformedAt:  performedAt,
 		}
 
-		if err := s.gatewayEventsService.BroadcastMCPProxyUndeploymentEvent(deployment.GatewayID, undeploymentEvent); err != nil {
+		if err := s.gatewayEventsService.BroadcastMCPProxyUndeploymentEvent(ctx, deployment.GatewayID, undeploymentEvent); err != nil {
 			s.slogger.Warn("Failed to broadcast MCP proxy undeployment event", "error", err)
 		}
 	}
@@ -542,7 +543,7 @@ func (s *MCPDeploymentService) undeployMCPProxyDeployment(proxyUUID string, depl
 }
 
 // restoreMCPProxyDeployment restores a previously undeployed MCP proxy deployment
-func (s *MCPDeploymentService) restoreMCPProxyDeployment(proxyUUID string, deploymentId *string, gatewayId *string, orgId string) (*api.DeploymentResponse, error) {
+func (s *MCPDeploymentService) restoreMCPProxyDeployment(ctx context.Context, proxyUUID string, deploymentId *string, gatewayId *string, orgId string) (*api.DeploymentResponse, error) {
 	// DP-originated artifacts are read-only in the control plane; their deployment
 	// lifecycle is owned by the data-plane gateway, so restore cannot be CP-initiated.
 	if err := ensureArtifactMutableByUUID(s.artifactRepo, proxyUUID, orgId); err != nil {
@@ -605,12 +606,12 @@ func (s *MCPDeploymentService) restoreMCPProxyDeployment(proxyUUID string, deplo
 			PerformedAt:  performedAt,
 		}
 
-		if err := s.gatewayEventsService.BroadcastMCPProxyDeploymentEvent(targetDeployment.GatewayID, deploymentEvent); err != nil {
+		if err := s.gatewayEventsService.BroadcastMCPProxyDeploymentEvent(ctx, targetDeployment.GatewayID, deploymentEvent); err != nil {
 			s.slogger.Warn("Failed to broadcast MCP proxy deployment event", "error", err)
 		}
 
 		// Backfill existing active API keys to the gateway (see BackfillAPIKeysToGateway).
-		BackfillAPIKeysToGateway(s.apiKeyRepo, s.gatewayRepo, s.gatewayEventsService, s.slogger, proxyUUID, targetDeployment.GatewayID, "")
+		BackfillAPIKeysToGateway(ctx, s.apiKeyRepo, s.gatewayRepo, s.gatewayEventsService, s.slogger, proxyUUID, targetDeployment.GatewayID, "")
 	}
 
 	resp, err := toAPIDeploymentResponse(

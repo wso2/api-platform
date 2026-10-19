@@ -20,6 +20,7 @@
 package service
 
 import (
+	"context"
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
@@ -81,7 +82,7 @@ func NewWebSubAPIHmacSecretService(
 // Generate creates a new HMAC secret for the given WebSub API.
 // externalSecret is an optional caller-supplied value; if empty, one is auto-generated.
 // Returns the metadata and the plaintext value (returned once, never stored).
-func (s *WebSubAPIHmacSecretService) Generate(orgUUID, apiHandle, name, externalSecret, userID string) (*model.WebSubAPIHmacSecret, string, error) {
+func (s *WebSubAPIHmacSecretService) Generate(ctx context.Context, orgUUID, apiHandle, name, externalSecret, userID string) (*model.WebSubAPIHmacSecret, string, error) {
 	api, err := s.websubRepo.GetByHandle(apiHandle, orgUUID)
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to look up WebSub API: %w", err)
@@ -142,7 +143,7 @@ func (s *WebSubAPIHmacSecretService) Generate(orgUUID, apiHandle, name, external
 		return nil, "", fmt.Errorf("failed to persist HMAC secret: %w", err)
 	}
 
-	s.broadcastSecretEvent(orgUUID, api.UUID, handle, "CREATED")
+	s.broadcastSecretEvent(ctx, orgUUID, api.UUID, handle, "CREATED")
 	return secret, plaintext, nil
 }
 
@@ -161,7 +162,7 @@ func (s *WebSubAPIHmacSecretService) List(orgUUID, apiHandle string) ([]*model.W
 // Regenerate replaces the secret value for an existing named secret.
 // externalSecret is an optional caller-supplied value; if empty, a new value is auto-generated.
 // Returns the metadata and new plaintext (returned once, never stored).
-func (s *WebSubAPIHmacSecretService) Regenerate(orgUUID, apiHandle, secretName, externalSecret, userID string) (*model.WebSubAPIHmacSecret, string, error) {
+func (s *WebSubAPIHmacSecretService) Regenerate(ctx context.Context, orgUUID, apiHandle, secretName, externalSecret, userID string) (*model.WebSubAPIHmacSecret, string, error) {
 	api, err := s.websubRepo.GetByHandle(apiHandle, orgUUID)
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to look up WebSub API: %w", err)
@@ -205,12 +206,12 @@ func (s *WebSubAPIHmacSecretService) Regenerate(orgUUID, apiHandle, secretName, 
 		return nil, "", fmt.Errorf("failed to update HMAC secret: %w", err)
 	}
 
-	s.broadcastSecretEvent(orgUUID, api.UUID, secretName, "UPDATED")
+	s.broadcastSecretEvent(ctx, orgUUID, api.UUID, secretName, "UPDATED")
 	return existing, plaintext, nil
 }
 
 // Delete permanently removes a named HMAC secret.
-func (s *WebSubAPIHmacSecretService) Delete(orgUUID, apiHandle, secretName string) error {
+func (s *WebSubAPIHmacSecretService) Delete(ctx context.Context, orgUUID, apiHandle, secretName string) error {
 	api, err := s.websubRepo.GetByHandle(apiHandle, orgUUID)
 	if err != nil {
 		return fmt.Errorf("failed to look up WebSub API: %w", err)
@@ -234,7 +235,7 @@ func (s *WebSubAPIHmacSecretService) Delete(orgUUID, apiHandle, secretName strin
 		return fmt.Errorf("failed to delete HMAC secret: %w", err)
 	}
 
-	s.broadcastSecretEvent(orgUUID, api.UUID, secretName, "DELETED")
+	s.broadcastSecretEvent(ctx, orgUUID, api.UUID, secretName, "DELETED")
 	return nil
 }
 
@@ -249,7 +250,7 @@ func (s *WebSubAPIHmacSecretService) ListByArtifactUUID(artifactUUID string) ([]
 }
 
 // broadcastSecretEvent sends a HMAC secret change event to all gateways in the org.
-func (s *WebSubAPIHmacSecretService) broadcastSecretEvent(orgUUID, artifactUUID, secretName, action string) {
+func (s *WebSubAPIHmacSecretService) broadcastSecretEvent(ctx context.Context, orgUUID, artifactUUID, secretName, action string) {
 	if s.gatewayEventsService == nil || s.gatewayRepo == nil {
 		return
 	}
@@ -264,7 +265,7 @@ func (s *WebSubAPIHmacSecretService) broadcastSecretEvent(orgUUID, artifactUUID,
 		SecretName:   secretName,
 	}
 	for _, gw := range gateways {
-		if err := s.gatewayEventsService.BroadcastWebSubAPIHmacSecretEvent(gw.ID, action, event); err != nil {
+		if err := s.gatewayEventsService.BroadcastWebSubAPIHmacSecretEvent(ctx, gw.ID, action, event); err != nil {
 			s.slogger.Warn("Failed to broadcast HMAC secret event",
 				slog.String("gatewayID", gw.ID), slog.String("action", action), slog.Any("error", err))
 		}

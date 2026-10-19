@@ -102,7 +102,7 @@ func (r *Receiver) handleSubscriptionPlanUpserted(ctx context.Context, env *Enve
 		}
 	}
 	limitCount, limitUnit := requestLimit(d.Limits)
-	_, err := r.plans.UpsertPlanFromWebhook(env.OrgID, d.Handle, name, limitCount, limitUnit, pricing, occurredAt(env))
+	_, err := r.plans.UpsertPlanFromWebhook(ctx, env.OrgID, d.Handle, name, limitCount, limitUnit, pricing, occurredAt(env))
 	return err
 }
 
@@ -116,5 +116,5 @@ func (r *Receiver) handleSubscriptionPlanDeleted(ctx context.Context, env *Envel
 	if err := d.validateHandle(); err != nil {
 		return err
 	}
-	return r.plans.DeletePlanFromWebhook(env.OrgID, d.Handle, occurredAt(env))
+	return r.plans.DeletePlanFromWebhook(ctx, env.OrgID, d.Handle, occurredAt(env))
 }

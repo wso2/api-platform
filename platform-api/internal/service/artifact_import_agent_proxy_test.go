@@ -19,6 +19,7 @@ package service
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -530,14 +531,14 @@ func TestAgentImport_PublicResponseIsReadOnlyAndOnlyMetadataIsEditable(t *testin
 		t.Errorf("readOnly = %v after update, want true", updated.ReadOnly)
 	}
 	// Delete is refused while the gateway still runs it.
-	if err := proxySvc.Delete(importTestOrgID, "weather-agent", "someone"); !apperror.ArtifactDeployed.Is(err) {
+	if err := proxySvc.Delete(context.Background(), importTestOrgID, "weather-agent", "someone"); !apperror.ArtifactDeployed.Is(err) {
 		t.Errorf("Delete() error = %v, want ARTIFACT_DEPLOYED while deployed", err)
 	}
 
 	// No public redeploy of a gateway-origin Agent proxy.
 	deploySvc := NewAgentDeploymentService(d.agentRepo, d.deployment, d.gatewayRepo, d.artifactRepo, d.apiKeyRepo,
 		nil, nil, nil, cfg, slog.New(slog.NewTextHandler(io.Discard, nil)))
-	_, err = deploySvc.DeployByHandle("weather-agent",
+	_, err = deploySvc.DeployByHandle(context.Background(), "weather-agent",
 		&api.DeployRequest{Name: "redeploy", Base: "current", GatewayId: "gw1"}, importTestOrgID, "someone")
 	if !apperror.ArtifactReadOnly.Is(err) {
 		t.Errorf("DeployByHandle() error = %v, want ARTIFACT_READ_ONLY", err)

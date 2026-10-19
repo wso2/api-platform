@@ -353,7 +353,7 @@ func (s *AgentProxyService) Update(orgUUID, handle, updatedBy string, req *api.A
 // gateway that never hears the deletion. As for the other kinds, notification
 // is best-effort once the row is deleted; a gateway that misses the event
 // drops the artifact at its next reconnect sync.
-func (s *AgentProxyService) Delete(orgUUID, handle, deletedBy string) error {
+func (s *AgentProxyService) Delete(ctx context.Context, orgUUID, handle, deletedBy string) error {
 	m, err := s.load(orgUUID, handle)
 	if err != nil {
 		return err
@@ -393,7 +393,7 @@ func (s *AgentProxyService) Delete(orgUUID, handle, deletedBy string) error {
 				ProxyId: m.UUID,
 			}
 
-			if err := s.gatewayEventsService.BroadcastAgentDeletionEvent(gateway.ID, deletionEvent); err != nil {
+			if err := s.gatewayEventsService.BroadcastAgentDeletionEvent(ctx, gateway.ID, deletionEvent); err != nil {
 				s.slogger.Warn("Failed to broadcast Agent proxy deletion event", "error", err, "gatewayID", gateway.ID, "proxyUUID", m.UUID)
 			} else {
 				s.slogger.Info("Agent proxy deletion event sent", "gatewayID", gateway.ID, "proxyUUID", m.UUID)

@@ -86,7 +86,7 @@ func (h *DeploymentHandler) DeployAPI(w http.ResponseWriter, r *http.Request) er
 	if err != nil {
 		return err
 	}
-	deployment, err := h.deploymentService.DeployAPIByHandle(apiId, &req, orgId, createdBy)
+	deployment, err := h.deploymentService.DeployAPIByHandle(r.Context(), apiId, &req, orgId, createdBy)
 	if err != nil {
 		return serviceError(err, fmt.Sprintf("failed to deploy API %s", apiId))
 	}
@@ -124,7 +124,7 @@ func (h *DeploymentHandler) UndeployDeployment(w http.ResponseWriter, r *http.Re
 	if err != nil {
 		return err
 	}
-	deployment, err := h.deploymentService.UndeployDeploymentByHandle(apiId, deploymentId, gatewayId, orgId, actor)
+	deployment, err := h.deploymentService.UndeployDeploymentByHandle(r.Context(), apiId, deploymentId, gatewayId, orgId, actor)
 	if err != nil {
 		// DP-originated artifacts are read-only: undeployment cannot be initiated from the CP.
 		return serviceError(err, fmt.Sprintf("failed to undeploy API %s deployment %s from gateway %s", apiId, deploymentId, gatewayId))
@@ -162,7 +162,7 @@ func (h *DeploymentHandler) RestoreDeployment(w http.ResponseWriter, r *http.Req
 	if err != nil {
 		return err
 	}
-	deployment, err := h.deploymentService.RestoreDeploymentByHandle(apiId, deploymentId, gatewayId, orgId, actor)
+	deployment, err := h.deploymentService.RestoreDeploymentByHandle(r.Context(), apiId, deploymentId, gatewayId, orgId, actor)
 	if err != nil {
 		// DP-originated artifacts are read-only: restore cannot be initiated from the CP.
 		return serviceError(err, fmt.Sprintf("failed to restore API %s deployment %s on gateway %s", apiId, deploymentId, gatewayId))

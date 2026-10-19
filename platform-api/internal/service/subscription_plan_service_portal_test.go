@@ -17,6 +17,7 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -44,7 +45,7 @@ func TestDeletePlan_IsRefusedWhileInUse(t *testing.T) {
 	svc, repo := newPlanTestService()
 	repo.usage = model.SubscriptionPlanUsage{RESTAPIs: 1, Subscriptions: 2}
 
-	err := svc.DeletePlan("gold", "org-1", "actor")
+	err := svc.DeletePlan(context.Background(), "gold", "org-1", "actor")
 	var appErr *apperror.Error
 	if !apperror.SubscriptionPlanInUse.Is(err) || !errors.As(err, &appErr) || appErr.HTTPStatus != http.StatusConflict ||
 		appErr.Message != "The plan Gold is in use and can't be deleted." {
@@ -55,10 +56,10 @@ func TestDeletePlan_IsRefusedWhileInUse(t *testing.T) {
 	}
 
 	repo.usage = model.SubscriptionPlanUsage{}
-	if err := svc.DeletePlan("gold", "org-1", "actor"); err != nil || repo.deletes != 1 {
+	if err := svc.DeletePlan(context.Background(), "gold", "org-1", "actor"); err != nil || repo.deletes != 1 {
 		t.Fatalf("unused plan: err = %v, deletes = %d", err, repo.deletes)
 	}
-	if err := svc.DeletePlan("gold", "org-1", "actor"); !apperror.SubscriptionPlanNotFound.Is(err) {
+	if err := svc.DeletePlan(context.Background(), "gold", "org-1", "actor"); !apperror.SubscriptionPlanNotFound.Is(err) {
 		t.Fatalf("a deleted plan is not found, got %v", err)
 	}
 }
@@ -86,7 +87,7 @@ const threeUsagePrices = `{"pricingType":"USAGE_BASED","currency":"USD","billing
 // A plan's pricing is checked and stored with the plan, in the same create.
 func TestCreatePlan_StoresThePricingWithThePlan(t *testing.T) {
 	svc, repo := newPricingTestService()
-	if _, err := svc.CreatePlan("org", "actor", &model.SubscriptionPlan{Handle: "gold", Name: "Gold"},
+	if _, err := svc.CreatePlan(context.Background(), "org", "actor", &model.SubscriptionPlan{Handle: "gold", Name: "Gold"},
 		[]byte(`{"pricingType":"flat_rate","currency":"usd","billingPeriod":"MONTH","flatAmount":"99.00"}`)); err != nil {
 		t.Fatalf("CreatePlan: %v", err)
 	}
@@ -96,7 +97,7 @@ func TestCreatePlan_StoresThePricingWithThePlan(t *testing.T) {
 		t.Fatalf("stored %+v", p)
 	}
 
-	if _, err := svc.CreatePlan("org", "actor", &model.SubscriptionPlan{Handle: "silver", Name: "Silver"}, []byte(threeUsagePrices)); err != nil {
+	if _, err := svc.CreatePlan(context.Background(), "org", "actor", &model.SubscriptionPlan{Handle: "silver", Name: "Silver"}, []byte(threeUsagePrices)); err != nil {
 		t.Fatalf("CreatePlan: %v", err)
 	}
 	usage := repo.pricing
@@ -119,7 +120,7 @@ func TestCreatePlan_StoresThePricingWithThePlan(t *testing.T) {
 	}
 
 	// A free plan has no pricing.
-	if _, err := svc.CreatePlan("org", "actor", &model.SubscriptionPlan{Handle: "free", Name: "Free"}, nil); err != nil || repo.pricing != nil {
+	if _, err := svc.CreatePlan(context.Background(), "org", "actor", &model.SubscriptionPlan{Handle: "free", Name: "Free"}, nil); err != nil || repo.pricing != nil {
 		t.Fatalf("free plan: err = %v, pricing = %+v", err, repo.pricing)
 	}
 }
@@ -133,7 +134,7 @@ func TestCreatePlan_StoresComparisons(t *testing.T) {
 			{"field":" prompt tokens ","operator":"greater_than","values":[333]}]},
 		{"meterId":"llm-input","pricingModel":"PER_UNIT","unitAmount":"2","filters":[
 			{"field":"Prompt tokens","operator":"LESS_THAN_OR_EQUAL","values":["0333"]}]}]}`
-	if _, err := svc.CreatePlan("org", "actor", &model.SubscriptionPlan{Handle: "gold", Name: "Gold"}, []byte(body)); err != nil {
+	if _, err := svc.CreatePlan(context.Background(), "org", "actor", &model.SubscriptionPlan{Handle: "gold", Name: "Gold"}, []byte(body)); err != nil {
 		t.Fatalf("CreatePlan: %v", err)
 	}
 	for i, want := range [][]model.PriceFilter{
@@ -234,7 +235,7 @@ func TestCreatePlan_PricingIsCheckedBeforeThePlanIsCreated(t *testing.T) {
 	}
 	for _, c := range cases {
 		svc, repo := newPricingTestService()
-		_, err := svc.CreatePlan("org", "actor", &model.SubscriptionPlan{Handle: "gold", Name: "Gold"}, []byte(c.body))
+		_, err := svc.CreatePlan(context.Background(), "org", "actor", &model.SubscriptionPlan{Handle: "gold", Name: "Gold"}, []byte(c.body))
 		var appErr *apperror.Error
 		if !apperror.ValidationFailed.Is(err) || !errors.As(err, &appErr) || appErr.Message != c.msg {
 			t.Errorf("%s: want validation error %q, got %v", c.body, c.msg, err)

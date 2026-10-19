@@ -18,6 +18,7 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
 	"log/slog"
 	"testing"
@@ -83,7 +84,7 @@ func TestBroadcastAgentEvents(t *testing.T) {
 		{
 			name: "deployed",
 			publish: func(s *GatewayEventsService) error {
-				return s.BroadcastAgentDeploymentEvent("gw-1", &model.AgentDeploymentEvent{
+				return s.BroadcastAgentDeploymentEvent(context.Background(), "gw-1", &model.AgentDeploymentEvent{
 					ProxyId: "artifact-uuid", DeploymentID: "dep-1", PerformedAt: performedAt})
 			},
 			wantType:   "agent.deployed",
@@ -94,7 +95,7 @@ func TestBroadcastAgentEvents(t *testing.T) {
 		{
 			name: "undeployed",
 			publish: func(s *GatewayEventsService) error {
-				return s.BroadcastAgentUndeploymentEvent("gw-1", &model.AgentUndeploymentEvent{
+				return s.BroadcastAgentUndeploymentEvent(context.Background(), "gw-1", &model.AgentUndeploymentEvent{
 					ProxyId: "artifact-uuid", DeploymentID: "dep-1", PerformedAt: performedAt})
 			},
 			wantType:   "agent.undeployed",
@@ -105,7 +106,7 @@ func TestBroadcastAgentEvents(t *testing.T) {
 		{
 			name: "deleted",
 			publish: func(s *GatewayEventsService) error {
-				return s.BroadcastAgentDeletionEvent("gw-1", &model.AgentDeletionEvent{ProxyId: "artifact-uuid"})
+				return s.BroadcastAgentDeletionEvent(context.Background(), "gw-1", &model.AgentDeletionEvent{ProxyId: "artifact-uuid"})
 			},
 			wantType:    "agent.deleted",
 			wantAction:  "DELETE",

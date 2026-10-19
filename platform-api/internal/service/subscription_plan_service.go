@@ -18,6 +18,7 @@
 package service
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -95,7 +96,7 @@ func (s *SubscriptionPlanService) ResolveOrgHandle(orgUUID string) string {
 // (SubscriptionPlanPricingRequest) of a paid plan, or nil for a free plan. The pricing is checked
 // with the API Portal's rules and stored with the plan, in one transaction. This is the only place
 // pricing is set: it cannot change once the plan exists.
-func (s *SubscriptionPlanService) CreatePlan(orgUUID, actor string, plan *model.SubscriptionPlan, pricingBody []byte) (*model.SubscriptionPlan, error) {
+func (s *SubscriptionPlanService) CreatePlan(ctx context.Context, orgUUID, actor string, plan *model.SubscriptionPlan, pricingBody []byte) (*model.SubscriptionPlan, error) {
 	if plan.Handle == "" {
 		return nil, apperror.ValidationFailed.New("handle is required")
 	}
@@ -117,12 +118,12 @@ func (s *SubscriptionPlanService) CreatePlan(orgUUID, actor string, plan *model.
 		}
 		pricing.CreatedAt = time.Now().UTC()
 	}
-	return s.createPlan(orgUUID, actor, plan, pricing)
+	return s.createPlan(ctx, orgUUID, actor, plan, pricing)
 }
 
 // createPlan stores a new plan with its checked pricing (nil for a free plan) in one transaction and
 // sends it to the gateways.
-func (s *SubscriptionPlanService) createPlan(orgUUID, actor string, plan *model.SubscriptionPlan, pricing *model.SubscriptionPlanPricing) (*model.SubscriptionPlan, error) {
+func (s *SubscriptionPlanService) createPlan(ctx context.Context, orgUUID, actor string, plan *model.SubscriptionPlan, pricing *model.SubscriptionPlanPricing) (*model.SubscriptionPlan, error) {
 	exists, err := s.planRepo.ExistsByHandleAndOrg(plan.Handle, orgUUID)
 	if err != nil {
 		return nil, err
@@ -148,7 +149,7 @@ func (s *SubscriptionPlanService) createPlan(orgUUID, actor string, plan *model.
 		_ = s.auditRepo.Record("CREATE", plan.UUID, "subscription_plan", orgUUID, actor)
 	}
 
-	s.broadcastPlanEvent(orgUUID, "created", &model.SubscriptionPlanCreatedEvent{
+	s.broadcastPlanEvent(ctx, orgUUID, "created", &model.SubscriptionPlanCreatedEvent{
 		PlanId:             plan.UUID,
 		Handle:             plan.Handle,
 		PlanName:           plan.Name,
@@ -206,7 +207,7 @@ func (s *SubscriptionPlanService) CountPlans(orgUUID, search, status string) (in
 // the API Portals that have the plan, and they show its name and request limit. So the name and
 // limit can change only while nothing offers or uses the plan; the next publish that offers it then
 // brings each portal's copy up to date. Pricing never changes.
-func (s *SubscriptionPlanService) UpdatePlan(handle, orgUUID, actor string, update *model.SubscriptionPlanUpdate) (*model.SubscriptionPlan, error) {
+func (s *SubscriptionPlanService) UpdatePlan(ctx context.Context, handle, orgUUID, actor string, update *model.SubscriptionPlanUpdate) (*model.SubscriptionPlan, error) {
 	existing, err := s.planRepo.GetByHandleAndOrg(handle, orgUUID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -226,7 +227,7 @@ func (s *SubscriptionPlanService) UpdatePlan(handle, orgUUID, actor string, upda
 			return nil, apperror.SubscriptionPlanInUse.New(planEditInUseMessage(existing.Name))
 		}
 	}
-	return s.applyPlanUpdate(existing, orgUUID, actor, update)
+	return s.applyPlanUpdate(ctx, existing, orgUUID, actor, update)
 }
 
 // changesPortalValues reports whether update changes what an API Portal shows of the plan: its
@@ -249,7 +250,7 @@ func changesPortalValues(existing *model.SubscriptionPlan, update *model.Subscri
 }
 
 // applyPlanUpdate applies update to existing, saves it and tells the gateways.
-func (s *SubscriptionPlanService) applyPlanUpdate(existing *model.SubscriptionPlan, orgUUID, actor string, update *model.SubscriptionPlanUpdate) (*model.SubscriptionPlan, error) {
+func (s *SubscriptionPlanService) applyPlanUpdate(ctx context.Context, existing *model.SubscriptionPlan, orgUUID, actor string, update *model.SubscriptionPlanUpdate) (*model.SubscriptionPlan, error) {
 	if update.Name != nil {
 		if *update.Name == "" {
 			return nil, apperror.ValidationFailed.New("name is required")
@@ -294,7 +295,7 @@ func (s *SubscriptionPlanService) applyPlanUpdate(existing *model.SubscriptionPl
 		_ = s.auditRepo.Record("UPDATE", existing.UUID, "subscription_plan", orgUUID, actor)
 	}
 
-	s.broadcastPlanEvent(orgUUID, "updated", &model.SubscriptionPlanUpdatedEvent{
+	s.broadcastPlanEvent(ctx, orgUUID, "updated", &model.SubscriptionPlanUpdatedEvent{
 		PlanId:             existing.UUID,
 		Handle:             existing.Handle,
 		PlanName:           existing.Name,
@@ -311,7 +312,7 @@ func (s *SubscriptionPlanService) applyPlanUpdate(existing *model.SubscriptionPl
 
 // DeletePlan deletes a subscription plan through the REST API, only while nothing here offers or
 // uses it. API Portals that have the plan keep it: a delete made here is not sent to them.
-func (s *SubscriptionPlanService) DeletePlan(handle, orgUUID, actor string) error {
+func (s *SubscriptionPlanService) DeletePlan(ctx context.Context, handle, orgUUID, actor string) error {
 	existing, err := s.GetPlan(handle, orgUUID)
 	if err != nil {
 		return err
@@ -323,7 +324,7 @@ func (s *SubscriptionPlanService) DeletePlan(handle, orgUUID, actor string) erro
 	if usage.InUse() {
 		return apperror.SubscriptionPlanInUse.New(planInUseMessage(existing.Name))
 	}
-	return s.deletePlanWithReferences(existing, orgUUID, actor)
+	return s.deletePlanWithReferences(ctx, existing, orgUUID, actor)
 }
 
 // deletePlanWithReferences deletes a plan and its references, in one transaction:
@@ -335,7 +336,7 @@ func (s *SubscriptionPlanService) DeletePlan(handle, orgUUID, actor string) erro
 // The gateways are then told the plan is deleted. DeletePlan calls it only once nothing uses the
 // plan, so there it deletes just the plan. DeletePlanFromWebhook calls it for a plan the API Portal
 // deleted, which may still be offered or used here.
-func (s *SubscriptionPlanService) deletePlanWithReferences(plan *model.SubscriptionPlan, orgUUID, actor string) error {
+func (s *SubscriptionPlanService) deletePlanWithReferences(ctx context.Context, plan *model.SubscriptionPlan, orgUUID, actor string) error {
 	deleted, err := s.planRepo.DeleteWithReferences(plan.UUID, plan.Handle, orgUUID)
 	if err != nil {
 		return err
@@ -348,7 +349,7 @@ func (s *SubscriptionPlanService) deletePlanWithReferences(plan *model.Subscript
 		_ = s.auditRepo.Record("DELETE", plan.UUID, "subscription_plan", orgUUID, actor)
 	}
 
-	s.broadcastPlanEvent(orgUUID, "deleted", &model.SubscriptionPlanDeletedEvent{
+	s.broadcastPlanEvent(ctx, orgUUID, "deleted", &model.SubscriptionPlanDeletedEvent{
 		PlanId:   plan.UUID,
 		Handle:   plan.Handle,
 		PlanName: plan.Name,
@@ -382,7 +383,7 @@ func planEditInUseMessage(name string) string {
 // Each meter the prices count with must already be here. Created and updated plans are sent to
 // the gateways as for REST changes. Webhook events carry no user, so the actor is empty, as for
 // applications.
-func (s *SubscriptionPlanService) UpsertPlanFromWebhook(orgUUID, handle, name string, limitCount *int, limitUnit string, pricing *model.SubscriptionPlanPricing, occurredAt time.Time) (*model.SubscriptionPlan, error) {
+func (s *SubscriptionPlanService) UpsertPlanFromWebhook(ctx context.Context, orgUUID, handle, name string, limitCount *int, limitUnit string, pricing *model.SubscriptionPlanPricing, occurredAt time.Time) (*model.SubscriptionPlan, error) {
 	if pricing != nil {
 		if s.meterRepo == nil || s.pricingRepo == nil {
 			return nil, apperror.Internal.New().WithLogMessage("plan pricing storage is not configured")
@@ -405,7 +406,7 @@ func (s *SubscriptionPlanService) UpsertPlanFromWebhook(orgUUID, handle, name st
 			ThrottleLimitUnit:  limitUnit,
 			CreatedAt:          occurredAt.UTC(),
 		}
-		created, err := s.createPlan(orgUUID, "", plan, pricing)
+		created, err := s.createPlan(ctx, orgUUID, "", plan, pricing)
 		if err == nil || !apperror.SubscriptionPlanExists.Is(err) {
 			return created, err
 		}
@@ -440,7 +441,7 @@ func (s *SubscriptionPlanService) UpsertPlanFromWebhook(orgUUID, handle, name st
 	}
 	// The change comes from the portal itself, so UpdatePlan's rule that a plan in use keeps its
 	// name and limit does not apply.
-	return s.applyPlanUpdate(existing, orgUUID, "", update)
+	return s.applyPlanUpdate(ctx, existing, orgUUID, "", update)
 }
 
 // reconcilePricing accepts an event for a plan that is already here only when it carries the
@@ -474,7 +475,7 @@ func (s *SubscriptionPlanService) reconcilePricing(plan *model.SubscriptionPlan,
 //
 // A plan copied from a portal is dated when it was made in the portal (UpsertPlanFromWebhook), so
 // the portal's deletion of it is always later than that date.
-func (s *SubscriptionPlanService) DeletePlanFromWebhook(orgUUID, handle string, occurredAt time.Time) error {
+func (s *SubscriptionPlanService) DeletePlanFromWebhook(ctx context.Context, orgUUID, handle string, occurredAt time.Time) error {
 	existing, err := s.planRepo.GetByHandleAndOrg(handle, orgUUID)
 	if errors.Is(err, sql.ErrNoRows) || (err == nil && existing == nil) {
 		return nil
@@ -486,11 +487,11 @@ func (s *SubscriptionPlanService) DeletePlanFromWebhook(orgUUID, handle string, 
 		s.slogger.Info("Ignoring the deletion of an older subscription plan with the same handle", "orgId", orgUUID, "plan", handle)
 		return nil
 	}
-	return s.deletePlanWithReferences(existing, orgUUID, "")
+	return s.deletePlanWithReferences(ctx, existing, orgUUID, "")
 }
 
 // broadcastPlanEvent sends a subscriptionPlan.* event to all gateways in the organization.
-func (s *SubscriptionPlanService) broadcastPlanEvent(orgUUID, action string, payload interface{}) {
+func (s *SubscriptionPlanService) broadcastPlanEvent(ctx context.Context, orgUUID, action string, payload interface{}) {
 	if s.gatewayEvents == nil || s.gatewayRepo == nil {
 		return
 	}
@@ -507,11 +508,11 @@ func (s *SubscriptionPlanService) broadcastPlanEvent(orgUUID, action string, pay
 		var broadcastErr error
 		switch action {
 		case "created":
-			broadcastErr = s.gatewayEvents.BroadcastSubscriptionPlanCreatedEvent(gw.ID, payload.(*model.SubscriptionPlanCreatedEvent))
+			broadcastErr = s.gatewayEvents.BroadcastSubscriptionPlanCreatedEvent(ctx, gw.ID, payload.(*model.SubscriptionPlanCreatedEvent))
 		case "updated":
-			broadcastErr = s.gatewayEvents.BroadcastSubscriptionPlanUpdatedEvent(gw.ID, payload.(*model.SubscriptionPlanUpdatedEvent))
+			broadcastErr = s.gatewayEvents.BroadcastSubscriptionPlanUpdatedEvent(ctx, gw.ID, payload.(*model.SubscriptionPlanUpdatedEvent))
 		case "deleted":
-			broadcastErr = s.gatewayEvents.BroadcastSubscriptionPlanDeletedEvent(gw.ID, payload.(*model.SubscriptionPlanDeletedEvent))
+			broadcastErr = s.gatewayEvents.BroadcastSubscriptionPlanDeletedEvent(ctx, gw.ID, payload.(*model.SubscriptionPlanDeletedEvent))
 		}
 		if broadcastErr != nil {
 			s.slogger.Warn("Failed to broadcast subscriptionPlan event",

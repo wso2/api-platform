@@ -152,7 +152,7 @@ func (h *ApplicationHandler) UpdateApplication(w http.ResponseWriter, r *http.Re
 		return apperror.NewValidation(err)
 	}
 
-	app, err := h.applicationService.UpdateApplication(appID, &req, orgID, userID)
+	app, err := h.applicationService.UpdateApplication(r.Context(), appID, &req, orgID, userID)
 	if err != nil {
 		return serviceError(err, fmt.Sprintf("failed to update application %s in org %s by user %s", appID, orgID, userID))
 	}
@@ -177,7 +177,7 @@ func (h *ApplicationHandler) DeleteApplication(w http.ResponseWriter, r *http.Re
 		return err
 	}
 
-	if err := h.applicationService.DeleteApplication(appID, orgID, userID); err != nil {
+	if err := h.applicationService.DeleteApplication(r.Context(), appID, orgID, userID); err != nil {
 		return serviceError(err, fmt.Sprintf("failed to delete application %s in org %s by user %s", appID, orgID, userID))
 	}
 
@@ -335,7 +335,7 @@ func (h *ApplicationHandler) AddApplicationAPIKeys(w http.ResponseWriter, r *htt
 		return apperror.ValidationFailed.New("At least one API key mapping is required")
 	}
 
-	keys, err := h.applicationService.AddMappedAPIKeys(appID, &req, orgID, userID, h.isKeyAdmin(r))
+	keys, err := h.applicationService.AddMappedAPIKeys(r.Context(), appID, &req, orgID, userID, h.isKeyAdmin(r))
 	if err != nil {
 		return serviceError(err, fmt.Sprintf("failed to add mapped API keys for application %s in org %s by user %s", appID, orgID, userID))
 	}
@@ -368,7 +368,7 @@ func (h *ApplicationHandler) RemoveApplicationAPIKey(w http.ResponseWriter, r *h
 		return apperror.ValidationFailed.New("Entity ID is required")
 	}
 
-	if err := h.applicationService.RemoveMappedAPIKey(appID, keyID, entityID, orgID, userID); err != nil {
+	if err := h.applicationService.RemoveMappedAPIKey(r.Context(), appID, keyID, entityID, orgID, userID); err != nil {
 		return serviceError(err, fmt.Sprintf("failed to remove mapped API key %s for application %s in org %s by user %s", keyID, appID, orgID, userID))
 	}
 

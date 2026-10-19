@@ -18,6 +18,7 @@
 package service
 
 import (
+	"context"
 	"errors"
 	"testing"
 	"time"
@@ -563,7 +564,7 @@ func TestAddMappedAPIKeys_RejectsWhenRequesterIsNotCreator(t *testing.T) {
 
 	svc := &ApplicationService{appRepo: appRepo, identity: newTestIdentityService()}
 
-	_, err := svc.AddMappedAPIKeys("my-app", &api.AddApplicationAPIKeysRequest{ApiKeys: []api.APIKeyMappingSelector{{
+	_, err := svc.AddMappedAPIKeys(context.Background(), "my-app", &api.AddApplicationAPIKeysRequest{ApiKeys: []api.APIKeyMappingSelector{{
 		KeyId: "key-1",
 		AssociatedEntity: api.APIKeyMappingAssociatedEntity{
 			Id: "orders-api",
@@ -591,7 +592,7 @@ func TestRemoveMappedAPIKey_AllowsWhenRequesterIsNotCreator(t *testing.T) {
 
 	svc := &ApplicationService{appRepo: appRepo, identity: newTestIdentityService()}
 
-	err := svc.RemoveMappedAPIKey("my-app", "key-1", "orders-api", "org-1", "different-user")
+	err := svc.RemoveMappedAPIKey(context.Background(), "my-app", "key-1", "orders-api", "org-1", "different-user")
 	if err != nil {
 		t.Fatalf("expected nil error, got %v", err)
 	}
@@ -619,7 +620,7 @@ func TestAddMappedAPIKeys_ResolvesByAssociatedEntityID(t *testing.T) {
 
 	svc := &ApplicationService{appRepo: appRepo, identity: newTestIdentityService()}
 
-	_, err := svc.AddMappedAPIKeys("my-app", &api.AddApplicationAPIKeysRequest{ApiKeys: []api.APIKeyMappingSelector{{
+	_, err := svc.AddMappedAPIKeys(context.Background(), "my-app", &api.AddApplicationAPIKeysRequest{ApiKeys: []api.APIKeyMappingSelector{{
 		KeyId: "shared-key",
 		AssociatedEntity: api.APIKeyMappingAssociatedEntity{
 			Id: "entity-b",
@@ -651,7 +652,7 @@ func TestAddMappedAPIKeys_DoesNotFailWhenBroadcastResolutionFails(t *testing.T) 
 
 	svc := &ApplicationService{appRepo: appRepo, gatewayEventsService: &GatewayEventsService{}, identity: newTestIdentityService()}
 
-	_, err := svc.AddMappedAPIKeys("my-app", &api.AddApplicationAPIKeysRequest{ApiKeys: []api.APIKeyMappingSelector{{
+	_, err := svc.AddMappedAPIKeys(context.Background(), "my-app", &api.AddApplicationAPIKeysRequest{ApiKeys: []api.APIKeyMappingSelector{{
 		KeyId: "key-1",
 		AssociatedEntity: api.APIKeyMappingAssociatedEntity{
 			Id: "orders-api",
@@ -804,7 +805,7 @@ func TestRemoveMappedAPIKey_DoesNotFailWhenBroadcastResolutionFails(t *testing.T
 
 	svc := &ApplicationService{appRepo: appRepo, gatewayEventsService: &GatewayEventsService{}, identity: newTestIdentityService()}
 
-	err := svc.RemoveMappedAPIKey("my-app", "key-1", "orders-api", "org-1", "creator-user")
+	err := svc.RemoveMappedAPIKey(context.Background(), "my-app", "key-1", "orders-api", "org-1", "creator-user")
 	if err != nil {
 		t.Fatalf("expected nil error when broadcast fails, got %v", err)
 	}
@@ -844,7 +845,7 @@ func TestSetAPIKeyApplication_DissociateBroadcastsToPriorApp(t *testing.T) {
 	svc := &ApplicationService{appRepo: appRepo, gatewayEventsService: &GatewayEventsService{}}
 
 	// appIDOrHandle empty => dissociation.
-	if err := svc.SetAPIKeyApplication("my-key", "artifact-1", constants.RestApi, "", orgID, ""); err != nil {
+	if err := svc.SetAPIKeyApplication(context.Background(), "my-key", "artifact-1", constants.RestApi, "", orgID, ""); err != nil {
 		t.Fatalf("expected nil error on dissociation, got %v", err)
 	}
 
@@ -887,7 +888,7 @@ func TestDeleteApplication_BroadcastsMappingClear(t *testing.T) {
 
 	svc := &ApplicationService{appRepo: appRepo, gatewayEventsService: &GatewayEventsService{}, auditRepo: &noopAuditRepo{}}
 
-	if err := svc.DeleteApplication("my-app", orgID, ""); err != nil {
+	if err := svc.DeleteApplication(context.Background(), "my-app", orgID, ""); err != nil {
 		t.Fatalf("expected nil error deleting application, got %v", err)
 	}
 	if !appRepo.deleteCalled {
@@ -1007,7 +1008,7 @@ func TestUpdateApplication_RejectsHandleChange(t *testing.T) {
 	}
 	svc := &ApplicationService{appRepo: appRepo, identity: newTestIdentityService()}
 
-	resp, err := svc.UpdateApplication("my-app", &api.Application{
+	resp, err := svc.UpdateApplication(context.Background(), "my-app", &api.Application{
 		Id: "renamed-app",
 	}, orgID, "user-1")
 	if !apperror.ValidationFailed.Is(err) {

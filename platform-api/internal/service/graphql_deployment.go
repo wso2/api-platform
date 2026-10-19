@@ -18,6 +18,7 @@
 package service
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -224,7 +225,7 @@ func (s *GraphQLAPIDeploymentService) DeleteBuildByHandle(apiHandle, buildID, or
 
 // DeployGraphQLAPI creates a new immutable deployment artifact and deploys it to a
 // gateway. Mirrors LLMProviderDeploymentService.DeployLLMProvider.
-func (s *GraphQLAPIDeploymentService) DeployGraphQLAPI(apiID string, req *api.DeployRequest, orgUUID, createdBy string) (*api.DeploymentResponse, error) {
+func (s *GraphQLAPIDeploymentService) DeployGraphQLAPI(ctx context.Context, apiID string, req *api.DeployRequest, orgUUID, createdBy string) (*api.DeploymentResponse, error) {
 	if req == nil {
 		return nil, apperror.GraphQLAPIDeploymentValidationFailed.New("A request body is required.")
 	}
@@ -363,13 +364,13 @@ func (s *GraphQLAPIDeploymentService) DeployGraphQLAPI(apiID string, req *api.De
 			DeploymentID: deploymentID,
 			PerformedAt:  performedAt,
 		}
-		if err := s.gatewayEventsService.BroadcastGraphQLAPIDeploymentEvent(gatewayID, deploymentEvent); err != nil {
+		if err := s.gatewayEventsService.BroadcastGraphQLAPIDeploymentEvent(ctx, gatewayID, deploymentEvent); err != nil {
 			s.slogger.Warn("Failed to broadcast GraphQL API deployment event", "error", err)
 		}
 
 		// Push existing active API keys for this artifact to the (possibly newly
 		// associated) gateway — see BackfillAPIKeysToGateway.
-		BackfillAPIKeysToGateway(s.apiKeyRepo, s.gatewayRepo, s.gatewayEventsService, s.slogger, apiModel.ID, gatewayID, createdBy)
+		BackfillAPIKeysToGateway(ctx, s.apiKeyRepo, s.gatewayRepo, s.gatewayEventsService, s.slogger, apiModel.ID, gatewayID, createdBy)
 	}
 
 	resp, err := toAPIDeploymentResponse(
@@ -389,7 +390,7 @@ func (s *GraphQLAPIDeploymentService) DeployGraphQLAPI(apiID string, req *api.De
 
 // RestoreGraphQLAPIDeployment restores a previous deployment (ARCHIVED or
 // UNDEPLOYED). Mirrors LLMProviderDeploymentService.RestoreLLMProviderDeployment.
-func (s *GraphQLAPIDeploymentService) RestoreGraphQLAPIDeployment(apiID, deploymentID, gatewayID, orgUUID string) (*api.DeploymentResponse, error) {
+func (s *GraphQLAPIDeploymentService) RestoreGraphQLAPIDeployment(ctx context.Context, apiID, deploymentID, gatewayID, orgUUID string) (*api.DeploymentResponse, error) {
 	apiModel, err := s.graphqlRepo.GetByHandle(apiID, orgUUID)
 	if err != nil {
 		return nil, err
@@ -455,10 +456,10 @@ func (s *GraphQLAPIDeploymentService) RestoreGraphQLAPIDeployment(apiID, deploym
 			DeploymentID: deploymentID,
 			PerformedAt:  performedAt,
 		}
-		if err := s.gatewayEventsService.BroadcastGraphQLAPIDeploymentEvent(targetDeployment.GatewayID, deploymentEvent); err != nil {
+		if err := s.gatewayEventsService.BroadcastGraphQLAPIDeploymentEvent(ctx, targetDeployment.GatewayID, deploymentEvent); err != nil {
 			s.slogger.Warn("Failed to broadcast GraphQL API deployment event", "error", err)
 		}
-		BackfillAPIKeysToGateway(s.apiKeyRepo, s.gatewayRepo, s.gatewayEventsService, s.slogger, apiModel.ID, targetDeployment.GatewayID, "")
+		BackfillAPIKeysToGateway(ctx, s.apiKeyRepo, s.gatewayRepo, s.gatewayEventsService, s.slogger, apiModel.ID, targetDeployment.GatewayID, "")
 	}
 
 	resp, err := toAPIDeploymentResponse(
@@ -478,7 +479,7 @@ func (s *GraphQLAPIDeploymentService) RestoreGraphQLAPIDeployment(apiID, deploym
 
 // UndeployGraphQLAPIDeployment undeploys an active deployment. Mirrors
 // LLMProviderDeploymentService.UndeployLLMProviderDeployment.
-func (s *GraphQLAPIDeploymentService) UndeployGraphQLAPIDeployment(apiID, deploymentID, gatewayID, orgUUID string) (*api.DeploymentResponse, error) {
+func (s *GraphQLAPIDeploymentService) UndeployGraphQLAPIDeployment(ctx context.Context, apiID, deploymentID, gatewayID, orgUUID string) (*api.DeploymentResponse, error) {
 	apiModel, err := s.graphqlRepo.GetByHandle(apiID, orgUUID)
 	if err != nil {
 		return nil, err
@@ -536,7 +537,7 @@ func (s *GraphQLAPIDeploymentService) UndeployGraphQLAPIDeployment(apiID, deploy
 			DeploymentID: deploymentID,
 			PerformedAt:  performedAt,
 		}
-		if err := s.gatewayEventsService.BroadcastGraphQLAPIUndeploymentEvent(deployment.GatewayID, undeploymentEvent); err != nil {
+		if err := s.gatewayEventsService.BroadcastGraphQLAPIUndeploymentEvent(ctx, deployment.GatewayID, undeploymentEvent); err != nil {
 			s.slogger.Warn("Failed to broadcast GraphQL API undeployment event", "error", err)
 		}
 	}

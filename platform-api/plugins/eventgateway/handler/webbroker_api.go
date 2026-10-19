@@ -203,7 +203,7 @@ func (h *WebBrokerAPIHandler) DeleteWebBrokerAPI(w http.ResponseWriter, r *http.
 		return
 	}
 
-	if err := h.webbrokerAPIService.Delete(orgID, id, deletedBy); err != nil {
+	if err := h.webbrokerAPIService.Delete(r.Context(), orgID, id, deletedBy); err != nil {
 		h.handleServiceError(w, err)
 		return
 	}

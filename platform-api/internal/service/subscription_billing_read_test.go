@@ -18,6 +18,7 @@
 package service
 
 import (
+	"context"
 	"errors"
 	"io"
 	"log/slog"
@@ -95,15 +96,15 @@ func TestSubscriptionChanges_FailWithoutChangingWhenTheBillingStateCannotBeRead(
 	readErr := errors.New("database is unavailable")
 	changes := map[string]func(*SubscriptionService) error{
 		"status": func(s *SubscriptionService) error {
-			_, err := s.UpdateSubscription("sub-1", "org-1", "alice", "INACTIVE", "alice")
+			_, err := s.UpdateSubscription(context.Background(), "sub-1", "org-1", "alice", "INACTIVE", "alice")
 			return err
 		},
 		"plan": func(s *SubscriptionService) error {
-			_, err := s.ChangePlan("sub-1", "org-1", "alice", "gold")
+			_, err := s.ChangePlan(context.Background(), "sub-1", "org-1", "alice", "gold")
 			return err
 		},
 		"token": func(s *SubscriptionService) error {
-			_, err := s.RegenerateToken("sub-1", "org-1", "alice", "new-token")
+			_, err := s.RegenerateToken(context.Background(), "sub-1", "org-1", "alice", "new-token")
 			return err
 		},
 	}

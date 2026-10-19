@@ -18,6 +18,7 @@
 package service
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -196,13 +197,13 @@ func (s *SubscriptionService) GetArtifactMetadataMap(uuids []string, orgUUID str
 // identity); subscriptionToken, when non-empty, is the token imported from the
 // API Portal (empty means generate one); actor is the authenticated caller's
 // internal UUID, used for created_by/updated_by/audit.
-func (s *SubscriptionService) CreateSubscription(apiId, kind, orgUUID string, subscriberID string, applicationId *string, subscriptionPlanId *string, subscriptionToken string, status string, actor string) (*model.Subscription, error) {
-	return s.CreateSubscriptionWithBilling(apiId, kind, orgUUID, subscriberID, applicationId, subscriptionPlanId, subscriptionToken, status, actor, nil)
+func (s *SubscriptionService) CreateSubscription(ctx context.Context, apiId, kind, orgUUID string, subscriberID string, applicationId *string, subscriptionPlanId *string, subscriptionToken string, status string, actor string) (*model.Subscription, error) {
+	return s.CreateSubscriptionWithBilling(ctx, apiId, kind, orgUUID, subscriberID, applicationId, subscriptionPlanId, subscriptionToken, status, actor, nil)
 }
 
 // CreateSubscriptionWithBilling is CreateSubscription with the billing state of a paid
 // subscription (nil for a free one).
-func (s *SubscriptionService) CreateSubscriptionWithBilling(apiId, kind, orgUUID string, subscriberID string, applicationId *string, subscriptionPlanId *string, subscriptionToken string, status string, actor string, billing *model.SubscriptionBilling) (*model.Subscription, error) {
+func (s *SubscriptionService) CreateSubscriptionWithBilling(ctx context.Context, apiId, kind, orgUUID string, subscriberID string, applicationId *string, subscriptionPlanId *string, subscriptionToken string, status string, actor string, billing *model.SubscriptionBilling) (*model.Subscription, error) {
 	if billing != nil && (s.billingRepo == nil || !model.ValidBillingStatuses[billing.Status]) {
 		return nil, apperror.ValidationFailed.New("invalid billing state")
 	}
@@ -307,7 +308,7 @@ func (s *SubscriptionService) CreateSubscriptionWithBilling(apiId, kind, orgUUID
 				if gw == nil || gw.ID == "" {
 					continue
 				}
-				if err := s.gatewayEvents.BroadcastSubscriptionCreatedEvent(gw.ID, event); err != nil {
+				if err := s.gatewayEvents.BroadcastSubscriptionCreatedEvent(ctx, gw.ID, event); err != nil {
 					s.slogger.Warn("Failed to broadcast subscription.created event",
 						"gatewayId", gw.ID, "subscriptionId", sub.UUID, "error", err)
 				}
@@ -378,7 +379,7 @@ func (s *SubscriptionService) FindByArtifactKindAndSubscriber(orgUUID, apiHandle
 // UpdateSubscription updates a subscription (e.g. status). subscriberID must match the
 // stored subscriber_id; actor is the authenticated caller's internal UUID, used for
 // updated_by/audit.
-func (s *SubscriptionService) UpdateSubscription(subscriptionId, orgUUID, subscriberID, status, actor string) (*model.Subscription, error) {
+func (s *SubscriptionService) UpdateSubscription(ctx context.Context, subscriptionId, orgUUID, subscriberID, status, actor string) (*model.Subscription, error) {
 	sub, err := s.subscriptionRepo.GetByID(subscriptionId, orgUUID)
 	if err != nil {
 		if apperror.SubscriptionNotFound.Is(err) {
@@ -435,7 +436,7 @@ func (s *SubscriptionService) UpdateSubscription(subscriptionId, orgUUID, subscr
 				if gw == nil || gw.ID == "" {
 					continue
 				}
-				if err := s.gatewayEvents.BroadcastSubscriptionUpdatedEvent(gw.ID, event); err != nil {
+				if err := s.gatewayEvents.BroadcastSubscriptionUpdatedEvent(ctx, gw.ID, event); err != nil {
 					s.slogger.Warn("Failed to broadcast subscription.updated event",
 						"gatewayId", gw.ID, "subscriptionId", sub.UUID, "error", err)
 				}
@@ -449,7 +450,7 @@ func (s *SubscriptionService) UpdateSubscription(subscriptionId, orgUUID, subscr
 // ApplyBillingFromWebhook stores the billing state the API Portal reports for a paid subscription
 // (subscription.billing_updated) and sends it to the gateways. A state older than the stored one is
 // ignored.
-func (s *SubscriptionService) ApplyBillingFromWebhook(orgUUID, apiHandle, kind, subscriberID string, billing *model.SubscriptionBilling) error {
+func (s *SubscriptionService) ApplyBillingFromWebhook(ctx context.Context, orgUUID, apiHandle, kind, subscriberID string, billing *model.SubscriptionBilling) error {
 	if s.billingRepo == nil {
 		return apperror.ValidationFailed.New("billing is not supported")
 	}
@@ -502,7 +503,7 @@ func (s *SubscriptionService) ApplyBillingFromWebhook(orgUUID, apiHandle, kind, 
 			if gw == nil || gw.ID == "" {
 				continue
 			}
-			if err := s.gatewayEvents.BroadcastSubscriptionUpdatedEvent(gw.ID, event); err != nil {
+			if err := s.gatewayEvents.BroadcastSubscriptionUpdatedEvent(ctx, gw.ID, event); err != nil {
 				s.slogger.Warn("Failed to broadcast subscription.updated event",
 					"gatewayId", gw.ID, "subscriptionId", sub.UUID, "error", err)
 			}
@@ -513,7 +514,7 @@ func (s *SubscriptionService) ApplyBillingFromWebhook(orgUUID, apiHandle, kind, 
 
 // ChangePlan switches the subscription plan of an existing subscription and broadcasts the change
 // to the gateways where the API is deployed. subscriberID must match the stored subscriber_id.
-func (s *SubscriptionService) ChangePlan(subscriptionId, orgUUID, subscriberID, planHandle string) (*model.Subscription, error) {
+func (s *SubscriptionService) ChangePlan(ctx context.Context, subscriptionId, orgUUID, subscriberID, planHandle string) (*model.Subscription, error) {
 	sub, err := s.subscriptionRepo.GetByID(subscriptionId, orgUUID)
 	if err != nil {
 		if apperror.SubscriptionNotFound.Is(err) {
@@ -568,7 +569,7 @@ func (s *SubscriptionService) ChangePlan(subscriptionId, orgUUID, subscriberID, 
 				if gw == nil || gw.ID == "" {
 					continue
 				}
-				if err := s.gatewayEvents.BroadcastSubscriptionUpdatedEvent(gw.ID, event); err != nil {
+				if err := s.gatewayEvents.BroadcastSubscriptionUpdatedEvent(ctx, gw.ID, event); err != nil {
 					s.slogger.Warn("Failed to broadcast subscription plan change event",
 						"gatewayId", gw.ID, "subscriptionId", sub.UUID, "error", err)
 				}
@@ -583,7 +584,7 @@ func (s *SubscriptionService) ChangePlan(subscriptionId, orgUUID, subscriberID, 
 // (delivered encrypted in the subscription.token_regenerated event). The old token is invalidated;
 // the new token is persisted (hashed + encrypted) and broadcast to the gateways where the API is
 // deployed. subscriberID must match the stored subscriber_id.
-func (s *SubscriptionService) RegenerateToken(subscriptionId, orgUUID, subscriberID, newToken string) (*model.Subscription, error) {
+func (s *SubscriptionService) RegenerateToken(ctx context.Context, subscriptionId, orgUUID, subscriberID, newToken string) (*model.Subscription, error) {
 	if newToken == "" {
 		return nil, apperror.ValidationFailed.New("subscription token is required")
 	}
@@ -629,7 +630,7 @@ func (s *SubscriptionService) RegenerateToken(subscriptionId, orgUUID, subscribe
 				if gw == nil || gw.ID == "" {
 					continue
 				}
-				if err := s.gatewayEvents.BroadcastSubscriptionUpdatedEvent(gw.ID, event); err != nil {
+				if err := s.gatewayEvents.BroadcastSubscriptionUpdatedEvent(ctx, gw.ID, event); err != nil {
 					s.slogger.Warn("Failed to broadcast subscription token regeneration event",
 						"gatewayId", gw.ID, "subscriptionId", sub.UUID, "error", err)
 				}
@@ -642,7 +643,7 @@ func (s *SubscriptionService) RegenerateToken(subscriptionId, orgUUID, subscribe
 
 // DeleteSubscription removes a subscription. subscriberID must match the stored
 // subscriber_id; actor is the authenticated caller's internal UUID, used for audit.
-func (s *SubscriptionService) DeleteSubscription(subscriptionId, orgUUID, subscriberID, actor string) error {
+func (s *SubscriptionService) DeleteSubscription(ctx context.Context, subscriptionId, orgUUID, subscriberID, actor string) error {
 	sub, err := s.subscriptionRepo.GetByID(subscriptionId, orgUUID)
 	if err != nil {
 		if apperror.SubscriptionNotFound.Is(err) {
@@ -679,7 +680,7 @@ func (s *SubscriptionService) DeleteSubscription(subscriptionId, orgUUID, subscr
 			if gw == nil || gw.ID == "" {
 				continue
 			}
-			if err := s.gatewayEvents.BroadcastSubscriptionDeletedEvent(gw.ID, event); err != nil {
+			if err := s.gatewayEvents.BroadcastSubscriptionDeletedEvent(ctx, gw.ID, event); err != nil {
 				s.slogger.Warn("Failed to broadcast subscription.deleted event",
 					"gatewayId", gw.ID, "subscriptionId", sub.UUID, "error", err)
 			}

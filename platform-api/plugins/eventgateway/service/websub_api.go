@@ -20,6 +20,7 @@
 package service
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -319,7 +320,7 @@ func (s *WebSubAPIService) Update(orgUUID, handle, updatedBy string, req *api.We
 }
 
 // Delete deletes a WebSub API by its handle
-func (s *WebSubAPIService) Delete(orgUUID, handle, deletedBy string) error {
+func (s *WebSubAPIService) Delete(ctx context.Context, orgUUID, handle, deletedBy string) error {
 	if handle == "" {
 		return apperror.ValidationFailed.New("The WebSub API id is required.")
 	}
@@ -364,7 +365,7 @@ func (s *WebSubAPIService) Delete(orgUUID, handle, deletedBy string) error {
 			deletionEvent := &model.WebSubAPIDeletionEvent{
 				ApiId: websubAPI.UUID,
 			}
-			if err := s.gatewayEventsService.BroadcastWebSubAPIDeletionEvent(gateway.ID, deletionEvent); err != nil {
+			if err := s.gatewayEventsService.BroadcastWebSubAPIDeletionEvent(ctx, gateway.ID, deletionEvent); err != nil {
 				s.slogger.Warn("Failed to broadcast WebSub API deletion event", "error", err, "gatewayID", gateway.ID, "apiUUID", websubAPI.UUID)
 			} else {
 				s.slogger.Info("WebSub API deletion event sent", "gatewayID", gateway.ID, "apiUUID", websubAPI.UUID)

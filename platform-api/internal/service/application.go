@@ -18,6 +18,7 @@
 package service
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -253,7 +254,7 @@ func (s *ApplicationService) GetApplicationsByOrganization(orgID, projectHandle 
 	return response, nil
 }
 
-func (s *ApplicationService) UpdateApplication(appIDOrHandle string, req *api.Application, orgID, userID string) (*api.Application, error) {
+func (s *ApplicationService) UpdateApplication(ctx context.Context, appIDOrHandle string, req *api.Application, orgID, userID string) (*api.Application, error) {
 	app, err := s.appRepo.GetApplicationByIDOrHandle(appIDOrHandle, orgID)
 	if err != nil {
 		return nil, err
@@ -306,14 +307,14 @@ func (s *ApplicationService) UpdateApplication(appIDOrHandle string, req *api.Ap
 		return nil, err
 	}
 
-	if err := s.broadcastApplicationMappingUpdate(app, userID, broadcastKeys); err != nil && s.slogger != nil {
+	if err := s.broadcastApplicationMappingUpdate(ctx, app, userID, broadcastKeys); err != nil && s.slogger != nil {
 		s.slogger.Warn("Application update succeeded but failed to broadcast application mapping update event", "applicationId", app.Handle, "error", err)
 	}
 
 	return s.modelToApplicationResponse(app)
 }
 
-func (s *ApplicationService) DeleteApplication(appIDOrHandle, orgID, actor string) error {
+func (s *ApplicationService) DeleteApplication(ctx context.Context, appIDOrHandle, orgID, actor string) error {
 	app, err := s.appRepo.GetApplicationByIDOrHandle(appIDOrHandle, orgID)
 	if err != nil {
 		return err
@@ -347,7 +348,7 @@ func (s *ApplicationService) DeleteApplication(appIDOrHandle, orgID, actor strin
 				hints = append(hints, key.ArtifactID)
 			}
 		}
-		if berr := s.broadcastApplicationMappingUpdateWithArtifactHints(app, actor, nil, hints); berr != nil && s.slogger != nil {
+		if berr := s.broadcastApplicationMappingUpdateWithArtifactHints(ctx, app, actor, nil, hints); berr != nil && s.slogger != nil {
 			s.slogger.Warn("Application delete succeeded but failed to broadcast mapping clear",
 				"applicationId", app.Handle, "error", berr)
 		}
@@ -409,7 +410,7 @@ func (s *ApplicationService) ListApplicationAssociations(appIDOrHandle, orgID st
 	return associations, nil
 }
 
-func (s *ApplicationService) AddMappedAPIKeys(appIDOrHandle string, req *api.AddApplicationAPIKeysRequest, orgID, userID string, keyAdmin bool) (*api.MappedAPIKeyListResponse, error) {
+func (s *ApplicationService) AddMappedAPIKeys(ctx context.Context, appIDOrHandle string, req *api.AddApplicationAPIKeysRequest, orgID, userID string, keyAdmin bool) (*api.MappedAPIKeyListResponse, error) {
 	app, err := s.getApplication(appIDOrHandle, orgID)
 	if err != nil {
 		return nil, err
@@ -433,7 +434,7 @@ func (s *ApplicationService) AddMappedAPIKeys(appIDOrHandle string, req *api.Add
 		return nil, err
 	}
 
-	if err := s.broadcastApplicationMappingUpdate(app, userID, broadcastKeys); err != nil && s.slogger != nil {
+	if err := s.broadcastApplicationMappingUpdate(ctx, app, userID, broadcastKeys); err != nil && s.slogger != nil {
 		s.slogger.Warn("Add mapped API keys succeeded but failed to broadcast application mapping update event", "applicationId", app.Handle, "error", err)
 	}
 
@@ -462,7 +463,7 @@ func (s *ApplicationService) CreateApplicationFromWebhook(handle, name, descript
 // application, this first removes the key from any application it is currently mapped to, then —
 // when appIDOrHandle is non-empty — maps it to that application and broadcasts the change to the
 // deployed gateways. A blank appIDOrHandle dissociates the key.
-func (s *ApplicationService) SetAPIKeyApplication(keyName, artifactRef, kind, appIDOrHandle, orgID, userID string) error {
+func (s *ApplicationService) SetAPIKeyApplication(ctx context.Context, keyName, artifactRef, kind, appIDOrHandle, orgID, userID string) error {
 	// Resolve artifactRef (artifact UUID or handle) to the artifact handle used by the key lookup.
 	artifactHandle := strings.TrimSpace(artifactRef)
 	if art, err := s.appRepo.GetAssociationTargetByUUID(artifactHandle, orgID); err == nil && art != nil {
@@ -515,7 +516,7 @@ func (s *ApplicationService) SetAPIKeyApplication(keyName, artifactRef, kind, ap
 				}
 				continue
 			}
-			if berr := s.broadcastApplicationMappingUpdateWithArtifactHints(app, userID, remaining, []string{key.ArtifactID}); berr != nil && s.slogger != nil {
+			if berr := s.broadcastApplicationMappingUpdateWithArtifactHints(ctx, app, userID, remaining, []string{key.ArtifactID}); berr != nil && s.slogger != nil {
 				s.slogger.Warn("Dissociation succeeded but failed to broadcast application mapping update",
 					"applicationId", app.Handle, "error", berr)
 			}
@@ -532,7 +533,7 @@ func (s *ApplicationService) SetAPIKeyApplication(keyName, artifactRef, kind, ap
 	}
 	broadcastKeys, err := s.listMappedAPIKeysForBroadcast(app.UUID)
 	if err == nil {
-		if berr := s.broadcastApplicationMappingUpdateWithArtifactHints(app, userID, broadcastKeys, []string{key.ArtifactID}); berr != nil && s.slogger != nil {
+		if berr := s.broadcastApplicationMappingUpdateWithArtifactHints(ctx, app, userID, broadcastKeys, []string{key.ArtifactID}); berr != nil && s.slogger != nil {
 			s.slogger.Warn("Set API key application succeeded but failed to broadcast application mapping update",
 				"applicationId", app.Handle, "error", berr)
 		}
@@ -558,7 +559,7 @@ func (s *ApplicationService) AddApplicationAssociations(appIDOrHandle string, re
 	return s.buildApplicationAssociationListPaginated(app.UUID, -1, 0)
 }
 
-func (s *ApplicationService) RemoveMappedAPIKey(appIDOrHandle, keyID, entityID, orgID, userID string) error {
+func (s *ApplicationService) RemoveMappedAPIKey(ctx context.Context, appIDOrHandle, keyID, entityID, orgID, userID string) error {
 	app, err := s.getApplication(appIDOrHandle, orgID)
 	if err != nil {
 		return err
@@ -583,7 +584,7 @@ func (s *ApplicationService) RemoveMappedAPIKey(appIDOrHandle, keyID, entityID, 
 		return err
 	}
 
-	if err := s.broadcastApplicationMappingUpdateWithArtifactHints(app, userID, broadcastKeys, []string{key.ArtifactID}); err != nil && s.slogger != nil {
+	if err := s.broadcastApplicationMappingUpdateWithArtifactHints(ctx, app, userID, broadcastKeys, []string{key.ArtifactID}); err != nil && s.slogger != nil {
 		s.slogger.Warn("Remove mapped API key succeeded but failed to broadcast application mapping update event", "applicationId", app.Handle, "error", err)
 	}
 
@@ -1007,11 +1008,11 @@ func normalizeApplicationType(appType string) (string, error) {
 	return "", apperror.ValidationFailed.New("Invalid application type. Only 'genai' and 'web' are supported.")
 }
 
-func (s *ApplicationService) broadcastApplicationMappingUpdate(app *model.Application, userID string, keys []*model.ApplicationAPIKey) error {
-	return s.broadcastApplicationMappingUpdateWithArtifactHints(app, userID, keys, nil)
+func (s *ApplicationService) broadcastApplicationMappingUpdate(ctx context.Context, app *model.Application, userID string, keys []*model.ApplicationAPIKey) error {
+	return s.broadcastApplicationMappingUpdateWithArtifactHints(ctx, app, userID, keys, nil)
 }
 
-func (s *ApplicationService) broadcastApplicationMappingUpdateWithArtifactHints(app *model.Application, userID string, keys []*model.ApplicationAPIKey, artifactHints []string) error {
+func (s *ApplicationService) broadcastApplicationMappingUpdateWithArtifactHints(ctx context.Context, app *model.Application, userID string, keys []*model.ApplicationAPIKey, artifactHints []string) error {
 	if s.appRepo == nil || s.gatewayEventsService == nil {
 		return nil
 	}
@@ -1102,7 +1103,7 @@ func (s *ApplicationService) broadcastApplicationMappingUpdateWithArtifactHints(
 	var lastError error
 
 	for gatewayID := range gatewayIDs {
-		err := s.gatewayEventsService.BroadcastApplicationUpdatedEvent(gatewayID, userID, event)
+		err := s.gatewayEventsService.BroadcastApplicationUpdatedEvent(ctx, gatewayID, userID, event)
 		if err != nil {
 			failureCount++
 			lastError = err

@@ -100,7 +100,7 @@ func (h *SubscriptionHandler) CreateSubscription(w http.ResponseWriter, r *http.
 	if err != nil {
 		return err
 	}
-	sub, err := h.subscriptionService.CreateSubscription(req.ArtifactID, req.Kind, orgId, req.SubscriberID, req.ApplicationID, req.SubscriptionPlanID, "", req.Status, actor)
+	sub, err := h.subscriptionService.CreateSubscription(r.Context(), req.ArtifactID, req.Kind, orgId, req.SubscriberID, req.ApplicationID, req.SubscriptionPlanID, "", req.Status, actor)
 	if err != nil {
 		var appErr *apperror.Error
 		if errors.As(err, &appErr) {
@@ -281,7 +281,7 @@ func (h *SubscriptionHandler) UpdateSubscription(w http.ResponseWriter, r *http.
 	if err != nil {
 		return err
 	}
-	sub, err := h.subscriptionService.UpdateSubscription(subscriptionId, orgId, subscriberID, status, actor)
+	sub, err := h.subscriptionService.UpdateSubscription(r.Context(), subscriptionId, orgId, subscriberID, status, actor)
 	if err != nil {
 		var appErr *apperror.Error
 		if errors.As(err, &appErr) {
@@ -316,7 +316,7 @@ func (h *SubscriptionHandler) DeleteSubscription(w http.ResponseWriter, r *http.
 	if err != nil {
 		return err
 	}
-	if err := h.subscriptionService.DeleteSubscription(subscriptionId, orgId, subscriberID, actor); err != nil {
+	if err := h.subscriptionService.DeleteSubscription(r.Context(), subscriptionId, orgId, subscriberID, actor); err != nil {
 		return serviceError(err, fmt.Sprintf("failed to delete subscription %s in org %s", subscriptionId, orgId))
 	}
 	w.WriteHeader(http.StatusNoContent)

@@ -18,6 +18,7 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 
@@ -129,7 +130,7 @@ func depTDeployReq(name, gateway string) *api.DeployRequest {
 // deploy creates a deployment of depTProxyHandle on the gateway and returns its id.
 func (e *depTEnv) deploy(t *testing.T, gateway string) string {
 	t.Helper()
-	resp, err := e.svc.DeployByHandle(depTProxyHandle, depTDeployReq("dep", gateway), importTestOrgID, "deployer")
+	resp, err := e.svc.DeployByHandle(context.Background(), depTProxyHandle, depTDeployReq("dep", gateway), importTestOrgID, "deployer")
 	if err != nil {
 		t.Fatalf("DeployByHandle(%s): %v", gateway, err)
 	}
@@ -183,7 +184,7 @@ func TestAgentDeployment_DeployValidatesTheRequestBeforeAnyLookup(t *testing.T) 
 		t.Run(tc.name, func(t *testing.T) {
 			// The handle does not exist: a validation failure proves the request is
 			// checked before the Agent proxy is resolved.
-			_, err := env.svc.DeployByHandle("no-such-agent", tc.req, importTestOrgID, "deployer")
+			_, err := env.svc.DeployByHandle(context.Background(), "no-such-agent", tc.req, importTestOrgID, "deployer")
 			depTWantErr(t, "DeployByHandle", err, apperror.AgentProxyDeploymentValidationFailed)
 		})
 	}
@@ -200,7 +201,7 @@ func TestAgentDeployment_DeployUnknownOrForeignAgentProxyIsNotFound(t *testing.T
 		{name: "another organization's caller", handle: depTProxyHandle, org: depTOtherOrg},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := env.svc.DeployByHandle(tc.handle, depTDeployReq("dep", "gw1"), tc.org, "deployer")
+			_, err := env.svc.DeployByHandle(context.Background(), tc.handle, depTDeployReq("dep", "gw1"), tc.org, "deployer")
 			depTWantErr(t, "DeployByHandle", err, apperror.AgentProxyNotFound)
 		})
 	}
@@ -209,7 +210,7 @@ func TestAgentDeployment_DeployUnknownOrForeignAgentProxyIsNotFound(t *testing.T
 func TestAgentDeployment_DeployToUnknownOrForeignGatewayIsGatewayNotFound(t *testing.T) {
 	env := depTSetup(t)
 	for _, gw := range []string{"no-such-gateway", "gw-foreign"} {
-		_, err := env.svc.DeployByHandle(depTProxyHandle, depTDeployReq("dep", gw), importTestOrgID, "deployer")
+		_, err := env.svc.DeployByHandle(context.Background(), depTProxyHandle, depTDeployReq("dep", gw), importTestOrgID, "deployer")
 		depTWantErr(t, "DeployByHandle("+gw+")", err, apperror.GatewayNotFound)
 	}
 	var n int
@@ -227,7 +228,7 @@ func TestAgentDeployment_DeployCreatesADeployingRecordAndNotifiesTheGateway(t *t
 	req := depTDeployReq("first", "gw1")
 	req.Metadata = &meta
 
-	resp, err := env.svc.DeployByHandle(depTProxyHandle, req, importTestOrgID, "deployer")
+	resp, err := env.svc.DeployByHandle(context.Background(), depTProxyHandle, req, importTestOrgID, "deployer")
 	if err != nil {
 		t.Fatalf("DeployByHandle: %v", err)
 	}
@@ -275,12 +276,12 @@ func TestAgentDeployment_DeployKeepsAnExistingAssociationsMetadata(t *testing.T)
 	first := map[string]interface{}{"team": "weather"}
 	req := depTDeployReq("first", "gw1")
 	req.Metadata = &first
-	if _, err := env.svc.DeployByHandle(depTProxyHandle, req, importTestOrgID, "deployer"); err != nil {
+	if _, err := env.svc.DeployByHandle(context.Background(), depTProxyHandle, req, importTestOrgID, "deployer"); err != nil {
 		t.Fatalf("first deploy: %v", err)
 	}
 
 	// No metadata on the redeploy: the association's stored metadata applies.
-	resp, err := env.svc.DeployByHandle(depTProxyHandle, depTDeployReq("second", "gw1"), importTestOrgID, "deployer")
+	resp, err := env.svc.DeployByHandle(context.Background(), depTProxyHandle, depTDeployReq("second", "gw1"), importTestOrgID, "deployer")
 	if err != nil {
 		t.Fatalf("second deploy: %v", err)
 	}
@@ -292,7 +293,7 @@ func TestAgentDeployment_DeployKeepsAnExistingAssociationsMetadata(t *testing.T)
 func TestAgentDeployment_DeployRefusesAMisconfiguredDeploymentLimit(t *testing.T) {
 	env := depTSetup(t)
 	env.cfg.Deployments.MaxPerAPIGateway = 0
-	if _, err := env.svc.DeployByHandle(depTProxyHandle, depTDeployReq("dep", "gw1"), importTestOrgID, "deployer"); err == nil {
+	if _, err := env.svc.DeployByHandle(context.Background(), depTProxyHandle, depTDeployReq("dep", "gw1"), importTestOrgID, "deployer"); err == nil {
 		t.Fatal("DeployByHandle succeeded with MaxPerAPIGateway = 0, want an error")
 	}
 	if n := len(env.hub.published); n != 0 {
@@ -304,7 +305,7 @@ func TestAgentDeployment_DeployFromAnUnknownBuildIsBuildNotFound(t *testing.T) {
 	env := depTSetup(t)
 	missing := "no-such-build"
 	req := &api.DeployRequest{Name: "dep", Base: "build", BuildId: &missing, GatewayId: "gw1"}
-	_, err := env.svc.DeployByHandle(depTProxyHandle, req, importTestOrgID, "deployer")
+	_, err := env.svc.DeployByHandle(context.Background(), depTProxyHandle, req, importTestOrgID, "deployer")
 	depTWantErr(t, "DeployByHandle", err, apperror.BuildNotFound)
 }
 
@@ -312,11 +313,11 @@ func TestAgentDeployment_DataPlaneOriginIsReadOnlyForEveryLifecycleOperation(t *
 	env := depTSetup(t)
 	env.createProxy(t, "dp-agent", constants.OriginDP)
 
-	_, err := env.svc.DeployByHandle("dp-agent", depTDeployReq("dep", "gw1"), importTestOrgID, "deployer")
+	_, err := env.svc.DeployByHandle(context.Background(), "dp-agent", depTDeployReq("dep", "gw1"), importTestOrgID, "deployer")
 	depTWantErr(t, "DeployByHandle", err, apperror.ArtifactReadOnly)
-	_, err = env.svc.UndeployByHandle("dp-agent", "any", "gw1", importTestOrgID)
+	_, err = env.svc.UndeployByHandle(context.Background(), "dp-agent", "any", "gw1", importTestOrgID)
 	depTWantErr(t, "UndeployByHandle", err, apperror.ArtifactReadOnly)
-	_, err = env.svc.RestoreByHandle("dp-agent", "any", "gw1", importTestOrgID)
+	_, err = env.svc.RestoreByHandle(context.Background(), "dp-agent", "any", "gw1", importTestOrgID)
 	depTWantErr(t, "RestoreByHandle", err, apperror.ArtifactReadOnly)
 	err = env.svc.DeleteByHandle("dp-agent", "any", importTestOrgID)
 	depTWantErr(t, "DeleteByHandle", err, apperror.ArtifactReadOnly)
@@ -346,7 +347,7 @@ func TestAgentDeployment_BuildsLifecycleByHandle(t *testing.T) {
 
 	// The prepared build deploys as-is.
 	id := build.BuildId
-	resp, err := env.svc.DeployByHandle(depTProxyHandle,
+	resp, err := env.svc.DeployByHandle(context.Background(), depTProxyHandle,
 		&api.DeployRequest{Name: "from-build", Base: "build", BuildId: &id, GatewayId: "gw1"}, importTestOrgID, "deployer")
 	if err != nil {
 		t.Fatalf("DeployByHandle(base=build): %v", err)
@@ -396,7 +397,7 @@ func TestAgentDeployment_UndeployMovesAnActiveDeploymentToUndeploying(t *testing
 	env.ack(t, depID, model.DeploymentStatusDeployed, "")
 	env.hub.published = nil
 
-	resp, err := env.svc.UndeployByHandle(depTProxyHandle, depID, "gw1", importTestOrgID)
+	resp, err := env.svc.UndeployByHandle(context.Background(), depTProxyHandle, depID, "gw1", importTestOrgID)
 	if err != nil {
 		t.Fatalf("UndeployByHandle: %v", err)
 	}
@@ -415,19 +416,19 @@ func TestAgentDeployment_UndeployRefusals(t *testing.T) {
 	env := depTSetup(t)
 	depID := env.deploy(t, "gw1")
 
-	_, err := env.svc.UndeployByHandle("no-such-agent", depID, "gw1", importTestOrgID)
+	_, err := env.svc.UndeployByHandle(context.Background(), "no-such-agent", depID, "gw1", importTestOrgID)
 	depTWantErr(t, "unknown Agent proxy", err, apperror.AgentProxyNotFound)
-	_, err = env.svc.UndeployByHandle(depTProxyHandle, depID, " ", importTestOrgID)
+	_, err = env.svc.UndeployByHandle(context.Background(), depTProxyHandle, depID, " ", importTestOrgID)
 	depTWantErr(t, "blank gateway", err, apperror.AgentProxyDeploymentValidationFailed)
-	_, err = env.svc.UndeployByHandle(depTProxyHandle, depID, "gw-foreign", importTestOrgID)
+	_, err = env.svc.UndeployByHandle(context.Background(), depTProxyHandle, depID, "gw-foreign", importTestOrgID)
 	depTWantErr(t, "foreign gateway", err, apperror.GatewayNotFound)
-	_, err = env.svc.UndeployByHandle(depTProxyHandle, "00000000-0000-0000-0000-000000000000", "gw1", importTestOrgID)
+	_, err = env.svc.UndeployByHandle(context.Background(), depTProxyHandle, "00000000-0000-0000-0000-000000000000", "gw1", importTestOrgID)
 	depTWantErr(t, "unknown deployment", err, apperror.DeploymentNotFound)
-	_, err = env.svc.UndeployByHandle(depTProxyHandle, depID, depTSecondGWHandle, importTestOrgID)
+	_, err = env.svc.UndeployByHandle(context.Background(), depTProxyHandle, depID, depTSecondGWHandle, importTestOrgID)
 	depTWantErr(t, "other gateway of the org", err, apperror.DeploymentGatewayMismatch)
 
 	env.ack(t, depID, model.DeploymentStatusUndeployed, "")
-	_, err = env.svc.UndeployByHandle(depTProxyHandle, depID, "gw1", importTestOrgID)
+	_, err = env.svc.UndeployByHandle(context.Background(), depTProxyHandle, depID, "gw1", importTestOrgID)
 	depTWantErr(t, "already undeployed", err, apperror.DeploymentNotActive)
 }
 
@@ -439,7 +440,7 @@ func TestAgentDeployment_RestoreRedeploysAPreviousDeployment(t *testing.T) {
 	env.ack(t, second, model.DeploymentStatusDeployed, "")
 	env.hub.published = nil
 
-	resp, err := env.svc.RestoreByHandle(depTProxyHandle, first, "gw1", importTestOrgID)
+	resp, err := env.svc.RestoreByHandle(context.Background(), depTProxyHandle, first, "gw1", importTestOrgID)
 	if err != nil {
 		t.Fatalf("RestoreByHandle: %v", err)
 	}
@@ -460,22 +461,22 @@ func TestAgentDeployment_RestoreRefusals(t *testing.T) {
 	depID := env.deploy(t, "gw1")
 	env.ack(t, depID, model.DeploymentStatusDeployed, "")
 
-	_, err := env.svc.RestoreByHandle(depTProxyHandle, depID, "gw1", importTestOrgID)
+	_, err := env.svc.RestoreByHandle(context.Background(), depTProxyHandle, depID, "gw1", importTestOrgID)
 	depTWantErr(t, "restore the current deployment", err, apperror.DeploymentRestoreConflict)
-	_, err = env.svc.RestoreByHandle(depTProxyHandle, "00000000-0000-0000-0000-000000000000", "gw1", importTestOrgID)
+	_, err = env.svc.RestoreByHandle(context.Background(), depTProxyHandle, "00000000-0000-0000-0000-000000000000", "gw1", importTestOrgID)
 	depTWantErr(t, "unknown deployment", err, apperror.DeploymentNotFound)
-	_, err = env.svc.RestoreByHandle(depTProxyHandle, depID, depTSecondGWHandle, importTestOrgID)
+	_, err = env.svc.RestoreByHandle(context.Background(), depTProxyHandle, depID, depTSecondGWHandle, importTestOrgID)
 	depTWantErr(t, "other gateway of the org", err, apperror.DeploymentGatewayMismatch)
-	_, err = env.svc.RestoreByHandle(depTProxyHandle, depID, "", importTestOrgID)
+	_, err = env.svc.RestoreByHandle(context.Background(), depTProxyHandle, depID, "", importTestOrgID)
 	depTWantErr(t, "blank gateway", err, apperror.AgentProxyDeploymentValidationFailed)
-	_, err = env.svc.RestoreByHandle(depTProxyHandle, depID, "no-such-gateway", importTestOrgID)
+	_, err = env.svc.RestoreByHandle(context.Background(), depTProxyHandle, depID, "no-such-gateway", importTestOrgID)
 	depTWantErr(t, "unknown gateway", err, apperror.GatewayNotFound)
-	_, err = env.svc.RestoreByHandle(depTProxyHandle, depID, "gw1", depTOtherOrg)
+	_, err = env.svc.RestoreByHandle(context.Background(), depTProxyHandle, depID, "gw1", depTOtherOrg)
 	depTWantErr(t, "another organization", err, apperror.AgentProxyNotFound)
 
 	// Once undeployed, the same deployment is restorable.
 	env.ack(t, depID, model.DeploymentStatusUndeployed, "")
-	if _, err := env.svc.RestoreByHandle(depTProxyHandle, depID, "gw1", importTestOrgID); err != nil {
+	if _, err := env.svc.RestoreByHandle(context.Background(), depTProxyHandle, depID, "gw1", importTestOrgID); err != nil {
 		t.Fatalf("RestoreByHandle after undeploy: %v", err)
 	}
 }

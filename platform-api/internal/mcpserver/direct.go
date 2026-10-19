@@ -42,12 +42,12 @@ type direct struct {
 type directAPIs interface {
 	list(org, projectID string, opts repository.ListOptions) ([]any, int, error)
 	get(org, id string) (any, error)
-	create(org, user string, payload []byte) (any, error)
-	update(org, user, id string, whole []byte) (any, error)
-	delete(org, user, id string) error
+	create(ctx context.Context, org, user string, payload []byte) (any, error)
+	update(ctx context.Context, org, user, id string, whole []byte) (any, error)
+	delete(ctx context.Context, org, user, id string) error
 	deployments(org, id, gatewayID, status string) ([]api.DeploymentResponse, error)
-	deploy(org, user, id string, req *api.DeployRequest) (*api.DeploymentResponse, error)
-	undeploy(org, user, id, deploymentID, gatewayID string) (*api.DeploymentResponse, error)
+	deploy(ctx context.Context, org, user, id string, req *api.DeployRequest) (*api.DeploymentResponse, error)
+	undeploy(ctx context.Context, org, user, id, deploymentID, gatewayID string) (*api.DeploymentResponse, error)
 }
 
 // newDirect fails when an API type has no adapter, so no call has to check.
@@ -104,24 +104,24 @@ func (d direct) getAPI(_ context.Context, c caller, t *apiType, id string) (obje
 	return toObject(d.apis[t.name].get(c.org, id))
 }
 
-func (d direct) createAPI(_ context.Context, c caller, t *apiType, payload object) (object, error) {
+func (d direct) createAPI(ctx context.Context, c caller, t *apiType, payload object) (object, error) {
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return nil, err
 	}
-	return toObject(d.apis[t.name].create(c.org, c.user, body))
+	return toObject(d.apis[t.name].create(ctx, c.org, c.user, body))
 }
 
-func (d direct) updateAPI(_ context.Context, c caller, t *apiType, id string, whole object) (object, error) {
+func (d direct) updateAPI(ctx context.Context, c caller, t *apiType, id string, whole object) (object, error) {
 	body, err := json.Marshal(whole)
 	if err != nil {
 		return nil, err
 	}
-	return toObject(d.apis[t.name].update(c.org, c.user, id, body))
+	return toObject(d.apis[t.name].update(ctx, c.org, c.user, id, body))
 }
 
-func (d direct) deleteAPI(_ context.Context, c caller, t *apiType, id string) error {
-	return d.apis[t.name].delete(c.org, c.user, id)
+func (d direct) deleteAPI(ctx context.Context, c caller, t *apiType, id string) error {
+	return d.apis[t.name].delete(ctx, c.org, c.user, id)
 }
 
 func (d direct) listDeployments(_ context.Context, c caller, t *apiType, id, gatewayID, status string, p page) ([]api.DeploymentResponse, int, error) {
@@ -132,12 +132,12 @@ func (d direct) listDeployments(_ context.Context, c caller, t *apiType, id, gat
 	return pagination.Window(all, p.limit, p.offset), len(all), nil
 }
 
-func (d direct) deploy(_ context.Context, c caller, t *apiType, id string, req api.DeployRequest) (*api.DeploymentResponse, error) {
-	return d.apis[t.name].deploy(c.org, c.user, id, &req)
+func (d direct) deploy(ctx context.Context, c caller, t *apiType, id string, req api.DeployRequest) (*api.DeploymentResponse, error) {
+	return d.apis[t.name].deploy(ctx, c.org, c.user, id, &req)
 }
 
-func (d direct) undeploy(_ context.Context, c caller, t *apiType, id, deploymentID, gatewayID string) (*api.DeploymentResponse, error) {
-	return d.apis[t.name].undeploy(c.org, c.user, id, deploymentID, gatewayID)
+func (d direct) undeploy(ctx context.Context, c caller, t *apiType, id, deploymentID, gatewayID string) (*api.DeploymentResponse, error) {
+	return d.apis[t.name].undeploy(ctx, c.org, c.user, id, deploymentID, gatewayID)
 }
 
 func (d direct) listProjects(_ context.Context, c caller, p page) ([]api.Project, int, error) {
@@ -177,7 +177,7 @@ func (r restAPIs) list(org, projectID string, opts repository.ListOptions) ([]an
 
 func (r restAPIs) get(org, id string) (any, error) { return r.apis.GetAPIByHandle(id, org) }
 
-func (r restAPIs) create(org, user string, payload []byte) (any, error) {
+func (r restAPIs) create(ctx context.Context, org, user string, payload []byte) (any, error) {
 	req, err := decode[api.CreateRESTAPIRequest](payload, "rest-api")
 	if err != nil {
 		return nil, err
@@ -189,7 +189,7 @@ func (r restAPIs) create(org, user string, payload []byte) (any, error) {
 	return created, err
 }
 
-func (r restAPIs) update(org, user, id string, whole []byte) (any, error) {
+func (r restAPIs) update(ctx context.Context, org, user, id string, whole []byte) (any, error) {
 	req, err := decode[api.RESTAPI](whole, "rest-api")
 	if err != nil {
 		return nil, err
@@ -200,7 +200,9 @@ func (r restAPIs) update(org, user, id string, whole []byte) (any, error) {
 	return r.apis.UpdateAPIByHandle(id, req, org, user)
 }
 
-func (r restAPIs) delete(org, user, id string) error { return r.apis.DeleteAPIByHandle(id, org, user) }
+func (r restAPIs) delete(ctx context.Context, org, user, id string) error {
+	return r.apis.DeleteAPIByHandle(ctx, id, org, user)
+}
 
 func (r restAPIs) deployments(org, id, gatewayID, status string) ([]api.DeploymentResponse, error) {
 	res, err := r.deploys.GetDeploymentsByHandle(id, gatewayID, status, org)
@@ -210,12 +212,12 @@ func (r restAPIs) deployments(org, id, gatewayID, status string) ([]api.Deployme
 	return res.List, nil
 }
 
-func (r restAPIs) deploy(org, user, id string, req *api.DeployRequest) (*api.DeploymentResponse, error) {
-	return r.deploys.DeployAPIByHandle(id, req, org, user)
+func (r restAPIs) deploy(ctx context.Context, org, user, id string, req *api.DeployRequest) (*api.DeploymentResponse, error) {
+	return r.deploys.DeployAPIByHandle(ctx, id, req, org, user)
 }
 
-func (r restAPIs) undeploy(org, user, id, deploymentID, gatewayID string) (*api.DeploymentResponse, error) {
-	return r.deploys.UndeployDeploymentByHandle(id, deploymentID, gatewayID, org, user)
+func (r restAPIs) undeploy(ctx context.Context, org, user, id, deploymentID, gatewayID string) (*api.DeploymentResponse, error) {
+	return r.deploys.UndeployDeploymentByHandle(ctx, id, deploymentID, gatewayID, org, user)
 }
 
 // llmProviders is the llm-provider type. A provider belongs to the
@@ -235,7 +237,7 @@ func (l llmProviders) list(org, _ string, opts repository.ListOptions) ([]any, i
 
 func (l llmProviders) get(org, id string) (any, error) { return l.providers.Get(org, id) }
 
-func (l llmProviders) create(org, user string, payload []byte) (any, error) {
+func (l llmProviders) create(ctx context.Context, org, user string, payload []byte) (any, error) {
 	req, err := decode[api.LLMProvider](payload, "llm-provider")
 	if err != nil {
 		return nil, err
@@ -243,7 +245,7 @@ func (l llmProviders) create(org, user string, payload []byte) (any, error) {
 	return l.providers.Create(org, user, req)
 }
 
-func (l llmProviders) update(org, user, id string, whole []byte) (any, error) {
+func (l llmProviders) update(ctx context.Context, org, user, id string, whole []byte) (any, error) {
 	req, err := decode[api.LLMProvider](whole, "llm-provider")
 	if err != nil {
 		return nil, err
@@ -251,7 +253,9 @@ func (l llmProviders) update(org, user, id string, whole []byte) (any, error) {
 	return l.providers.Update(org, id, user, req)
 }
 
-func (l llmProviders) delete(org, user, id string) error { return l.providers.Delete(org, id, user) }
+func (l llmProviders) delete(ctx context.Context, org, user, id string) error {
+	return l.providers.Delete(ctx, org, id, user)
+}
 
 func (l llmProviders) deployments(org, id, gatewayID, status string) ([]api.DeploymentResponse, error) {
 	res, err := l.deploys.GetLLMProviderDeployments(id, org, optional(gatewayID), optional(status))
@@ -261,12 +265,12 @@ func (l llmProviders) deployments(org, id, gatewayID, status string) ([]api.Depl
 	return res.List, nil
 }
 
-func (l llmProviders) deploy(org, user, id string, req *api.DeployRequest) (*api.DeploymentResponse, error) {
-	return l.deploys.DeployLLMProvider(id, req, org, user)
+func (l llmProviders) deploy(ctx context.Context, org, user, id string, req *api.DeployRequest) (*api.DeploymentResponse, error) {
+	return l.deploys.DeployLLMProvider(ctx, id, req, org, user)
 }
 
-func (l llmProviders) undeploy(org, _, id, deploymentID, gatewayID string) (*api.DeploymentResponse, error) {
-	return l.deploys.UndeployLLMProviderDeployment(id, deploymentID, gatewayID, org)
+func (l llmProviders) undeploy(ctx context.Context, org, _, id, deploymentID, gatewayID string) (*api.DeploymentResponse, error) {
+	return l.deploys.UndeployLLMProviderDeployment(ctx, id, deploymentID, gatewayID, org)
 }
 
 // llmProxies is the llm-proxy type.
@@ -285,15 +289,15 @@ func (l llmProxies) list(org, projectID string, opts repository.ListOptions) ([]
 
 func (l llmProxies) get(org, id string) (any, error) { return l.proxies.Get(org, id) }
 
-func (l llmProxies) create(org, user string, payload []byte) (any, error) {
+func (l llmProxies) create(ctx context.Context, org, user string, payload []byte) (any, error) {
 	req, err := decode[api.LLMProxy](payload, "llm-proxy")
 	if err != nil {
 		return nil, err
 	}
-	return l.proxies.Create(org, user, req)
+	return l.proxies.Create(ctx, org, user, req)
 }
 
-func (l llmProxies) update(org, user, id string, whole []byte) (any, error) {
+func (l llmProxies) update(ctx context.Context, org, user, id string, whole []byte) (any, error) {
 	req, err := decode[api.LLMProxy](whole, "llm-proxy")
 	if err != nil {
 		return nil, err
@@ -301,7 +305,9 @@ func (l llmProxies) update(org, user, id string, whole []byte) (any, error) {
 	return l.proxies.Update(org, id, user, req)
 }
 
-func (l llmProxies) delete(org, user, id string) error { return l.proxies.Delete(org, id, user) }
+func (l llmProxies) delete(ctx context.Context, org, user, id string) error {
+	return l.proxies.Delete(ctx, org, id, user)
+}
 
 func (l llmProxies) deployments(org, id, gatewayID, status string) ([]api.DeploymentResponse, error) {
 	res, err := l.deploys.GetLLMProxyDeployments(id, org, optional(gatewayID), optional(status))
@@ -311,12 +317,12 @@ func (l llmProxies) deployments(org, id, gatewayID, status string) ([]api.Deploy
 	return res.List, nil
 }
 
-func (l llmProxies) deploy(org, user, id string, req *api.DeployRequest) (*api.DeploymentResponse, error) {
-	return l.deploys.DeployLLMProxy(id, req, org, user)
+func (l llmProxies) deploy(ctx context.Context, org, user, id string, req *api.DeployRequest) (*api.DeploymentResponse, error) {
+	return l.deploys.DeployLLMProxy(ctx, id, req, org, user)
 }
 
-func (l llmProxies) undeploy(org, _, id, deploymentID, gatewayID string) (*api.DeploymentResponse, error) {
-	return l.deploys.UndeployLLMProxyDeployment(id, deploymentID, gatewayID, org)
+func (l llmProxies) undeploy(ctx context.Context, org, _, id, deploymentID, gatewayID string) (*api.DeploymentResponse, error) {
+	return l.deploys.UndeployLLMProxyDeployment(ctx, id, deploymentID, gatewayID, org)
 }
 
 // mcpProxies is the mcp-proxy type.
@@ -335,7 +341,7 @@ func (m mcpProxies) list(org, projectID string, opts repository.ListOptions) ([]
 
 func (m mcpProxies) get(org, id string) (any, error) { return m.proxies.Get(org, id) }
 
-func (m mcpProxies) create(org, user string, payload []byte) (any, error) {
+func (m mcpProxies) create(ctx context.Context, org, user string, payload []byte) (any, error) {
 	req, err := decode[api.MCPProxy](payload, "mcp-proxy")
 	if err != nil {
 		return nil, err
@@ -343,7 +349,7 @@ func (m mcpProxies) create(org, user string, payload []byte) (any, error) {
 	return m.proxies.Create(org, user, req)
 }
 
-func (m mcpProxies) update(org, user, id string, whole []byte) (any, error) {
+func (m mcpProxies) update(ctx context.Context, org, user, id string, whole []byte) (any, error) {
 	req, err := decode[api.MCPProxy](whole, "mcp-proxy")
 	if err != nil {
 		return nil, err
@@ -351,7 +357,9 @@ func (m mcpProxies) update(org, user, id string, whole []byte) (any, error) {
 	return m.proxies.Update(org, id, user, req)
 }
 
-func (m mcpProxies) delete(org, user, id string) error { return m.proxies.Delete(org, id, user) }
+func (m mcpProxies) delete(ctx context.Context, org, user, id string) error {
+	return m.proxies.Delete(ctx, org, id, user)
+}
 
 func (m mcpProxies) deployments(org, id, gatewayID, status string) ([]api.DeploymentResponse, error) {
 	res, err := m.deploys.GetDeploymentsByHandle(id, gatewayID, status, org)
@@ -361,12 +369,12 @@ func (m mcpProxies) deployments(org, id, gatewayID, status string) ([]api.Deploy
 	return res.List, nil
 }
 
-func (m mcpProxies) deploy(org, user, id string, req *api.DeployRequest) (*api.DeploymentResponse, error) {
-	return m.deploys.DeployMCPProxyByHandle(id, req, org, user)
+func (m mcpProxies) deploy(ctx context.Context, org, user, id string, req *api.DeployRequest) (*api.DeploymentResponse, error) {
+	return m.deploys.DeployMCPProxyByHandle(ctx, id, req, org, user)
 }
 
-func (m mcpProxies) undeploy(org, _, id, deploymentID, gatewayID string) (*api.DeploymentResponse, error) {
-	return m.deploys.UndeployDeploymentByHandle(id, deploymentID, gatewayID, org)
+func (m mcpProxies) undeploy(ctx context.Context, org, _, id, deploymentID, gatewayID string) (*api.DeploymentResponse, error) {
+	return m.deploys.UndeployDeploymentByHandle(ctx, id, deploymentID, gatewayID, org)
 }
 
 // agentProxies is the agent-proxy type. Its body is a union over protocols,
@@ -386,7 +394,7 @@ func (a agentProxies) list(org, projectID string, opts repository.ListOptions) (
 
 func (a agentProxies) get(org, id string) (any, error) { return a.proxies.Get(org, id) }
 
-func (a agentProxies) create(org, user string, payload []byte) (any, error) {
+func (a agentProxies) create(ctx context.Context, org, user string, payload []byte) (any, error) {
 	req, err := dto.DecodeAgentProxyRequest(payload)
 	if err != nil {
 		return nil, fail("%v", err)
@@ -394,7 +402,7 @@ func (a agentProxies) create(org, user string, payload []byte) (any, error) {
 	return a.proxies.Create(org, user, req)
 }
 
-func (a agentProxies) update(org, user, id string, whole []byte) (any, error) {
+func (a agentProxies) update(ctx context.Context, org, user, id string, whole []byte) (any, error) {
 	req, err := dto.DecodeAgentProxyRequest(whole)
 	if err != nil {
 		return nil, fail("%v", err)
@@ -402,7 +410,9 @@ func (a agentProxies) update(org, user, id string, whole []byte) (any, error) {
 	return a.proxies.Update(org, id, user, req)
 }
 
-func (a agentProxies) delete(org, user, id string) error { return a.proxies.Delete(org, id, user) }
+func (a agentProxies) delete(ctx context.Context, org, user, id string) error {
+	return a.proxies.Delete(ctx, org, id, user)
+}
 
 func (a agentProxies) deployments(org, id, gatewayID, status string) ([]api.DeploymentResponse, error) {
 	res, err := a.deploys.ListByHandle(id, gatewayID, status, org)
@@ -412,12 +422,12 @@ func (a agentProxies) deployments(org, id, gatewayID, status string) ([]api.Depl
 	return res.List, nil
 }
 
-func (a agentProxies) deploy(org, user, id string, req *api.DeployRequest) (*api.DeploymentResponse, error) {
-	return a.deploys.DeployByHandle(id, req, org, user)
+func (a agentProxies) deploy(ctx context.Context, org, user, id string, req *api.DeployRequest) (*api.DeploymentResponse, error) {
+	return a.deploys.DeployByHandle(ctx, id, req, org, user)
 }
 
-func (a agentProxies) undeploy(org, _, id, deploymentID, gatewayID string) (*api.DeploymentResponse, error) {
-	return a.deploys.UndeployByHandle(id, deploymentID, gatewayID, org)
+func (a agentProxies) undeploy(ctx context.Context, org, _, id, deploymentID, gatewayID string) (*api.DeploymentResponse, error) {
+	return a.deploys.UndeployByHandle(ctx, id, deploymentID, gatewayID, org)
 }
 
 // anyList turns a typed list into the []any the adapters return.

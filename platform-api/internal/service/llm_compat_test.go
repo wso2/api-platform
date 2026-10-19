@@ -18,6 +18,7 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -138,7 +139,7 @@ func createProxyForCompat(t *testing.T, request *api.LLMProxy) (*api.LLMProxy, *
 	service := NewLLMProxyService(proxyRepo, providerRepo, projectRepo, nil, nil, nil,
 		slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
 
-	response, err := service.Create("org-1", "compat-user", request)
+	response, err := service.Create(context.Background(), "org-1", "compat-user", request)
 	if err != nil {
 		t.Fatalf("failed to create proxy: %v", err)
 	}

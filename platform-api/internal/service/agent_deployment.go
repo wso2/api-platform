@@ -20,6 +20,7 @@
 package service
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -118,7 +119,7 @@ func (s *AgentDeploymentService) DeleteBuildByHandle(handle, buildID, orgUUID st
 // DeployByHandle creates an immutable deployment of an Agent proxy on one
 // gateway. The returned deployment is DEPLOYING: the record exists, the gateway
 // has not yet acknowledged it.
-func (s *AgentDeploymentService) DeployByHandle(handle string, req *api.DeployRequest, orgUUID, createdBy string) (*api.DeploymentResponse, error) {
+func (s *AgentDeploymentService) DeployByHandle(ctx context.Context, handle string, req *api.DeployRequest, orgUUID, createdBy string) (*api.DeploymentResponse, error) {
 	if req == nil {
 		return nil, apperror.AgentProxyDeploymentValidationFailed.New("A request body is required.")
 	}
@@ -269,12 +270,12 @@ func (s *AgentDeploymentService) DeployByHandle(handle string, req *api.DeployRe
 			PerformedAt:  performedAt,
 		}
 
-		if err := s.gatewayEventsService.BroadcastAgentDeploymentEvent(gateway.ID, deploymentEvent); err != nil {
+		if err := s.gatewayEventsService.BroadcastAgentDeploymentEvent(ctx, gateway.ID, deploymentEvent); err != nil {
 			s.slogger.Warn("Failed to broadcast Agent proxy deployment event", "error", err)
 		}
 
 		// Push the Agent proxy's existing active API keys to the gateway.
-		BackfillAPIKeysToGateway(s.apiKeyRepo, s.gatewayRepo, s.gatewayEventsService, s.slogger, proxyUUID, gateway.ID, createdBy)
+		BackfillAPIKeysToGateway(ctx, s.apiKeyRepo, s.gatewayRepo, s.gatewayEventsService, s.slogger, proxyUUID, gateway.ID, createdBy)
 	}
 
 	resp, err := toAPIDeploymentResponse(
@@ -319,7 +320,7 @@ func (s *AgentDeploymentService) translateForGateway(gatewayKind string, definit
 
 // UndeployByHandle begins undeploying a deployment from its bound gateway. The
 // gatewayHandle must name that gateway; the returned deployment is UNDEPLOYING.
-func (s *AgentDeploymentService) UndeployByHandle(handle, deploymentID, gatewayHandle, orgUUID string) (*api.DeploymentResponse, error) {
+func (s *AgentDeploymentService) UndeployByHandle(ctx context.Context, handle, deploymentID, gatewayHandle, orgUUID string) (*api.DeploymentResponse, error) {
 	proxy, err := s.resolveAgentProxy(handle, orgUUID)
 	if err != nil {
 		return nil, err
@@ -368,7 +369,7 @@ func (s *AgentDeploymentService) UndeployByHandle(handle, deploymentID, gatewayH
 			PerformedAt:  performedAt,
 		}
 
-		if err := s.gatewayEventsService.BroadcastAgentUndeploymentEvent(deployment.GatewayID, undeploymentEvent); err != nil {
+		if err := s.gatewayEventsService.BroadcastAgentUndeploymentEvent(ctx, deployment.GatewayID, undeploymentEvent); err != nil {
 			s.slogger.Warn("Failed to broadcast Agent proxy undeployment event", "error", err)
 		}
 	}
@@ -392,7 +393,7 @@ func (s *AgentDeploymentService) UndeployByHandle(handle, deploymentID, gatewayH
 // The stored snapshot is shipped as it is — never re-rendered or re-translated —
 // so a restore puts back exactly what was deployed. The returned deployment is
 // DEPLOYING.
-func (s *AgentDeploymentService) RestoreByHandle(handle, deploymentID, gatewayHandle, orgUUID string) (*api.DeploymentResponse, error) {
+func (s *AgentDeploymentService) RestoreByHandle(ctx context.Context, handle, deploymentID, gatewayHandle, orgUUID string) (*api.DeploymentResponse, error) {
 	proxy, err := s.resolveAgentProxy(handle, orgUUID)
 	if err != nil {
 		return nil, err
@@ -456,11 +457,11 @@ func (s *AgentDeploymentService) RestoreByHandle(handle, deploymentID, gatewayHa
 			PerformedAt:  performedAt,
 		}
 
-		if err := s.gatewayEventsService.BroadcastAgentDeploymentEvent(target.GatewayID, deploymentEvent); err != nil {
+		if err := s.gatewayEventsService.BroadcastAgentDeploymentEvent(ctx, target.GatewayID, deploymentEvent); err != nil {
 			s.slogger.Warn("Failed to broadcast Agent proxy deployment event", "error", err)
 		}
 
-		BackfillAPIKeysToGateway(s.apiKeyRepo, s.gatewayRepo, s.gatewayEventsService, s.slogger, proxyUUID, target.GatewayID, "")
+		BackfillAPIKeysToGateway(ctx, s.apiKeyRepo, s.gatewayRepo, s.gatewayEventsService, s.slogger, proxyUUID, target.GatewayID, "")
 	}
 
 	resp, err := toAPIDeploymentResponse(

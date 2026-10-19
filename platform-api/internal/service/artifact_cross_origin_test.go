@@ -18,6 +18,7 @@
 package service
 
 import (
+	"context"
 	"io"
 	"log/slog"
 	"testing"
@@ -319,7 +320,7 @@ func TestCPProxyFromDPProvider(t *testing.T) {
 		NewIdentityService(repository.NewUserIdentityMappingRepo(d.db)),
 	)
 
-	created, err := proxySvc.Create(importTestOrgID, "tester", &api.LLMProxy{
+	created, err := proxySvc.Create(context.Background(), importTestOrgID, "tester", &api.LLMProxy{
 		Id:          strPointer("cp-proxy"),
 		DisplayName: "CP Proxy",
 		Version:     "v1.0",
@@ -387,7 +388,7 @@ func TestLLMProxyCreate_DefaultsUpstreamAuthToNone(t *testing.T) {
 		NewIdentityService(repository.NewUserIdentityMappingRepo(d.db)),
 	)
 
-	created, err := proxySvc.Create(importTestOrgID, "tester", &api.LLMProxy{
+	created, err := proxySvc.Create(context.Background(), importTestOrgID, "tester", &api.LLMProxy{
 		Id: strPointer("cp-create-none-proxy"), DisplayName: "X", Version: "v1.0", ProjectId: "default",
 		Provider: &api.LLMProxyProvider{Id: providerHandle},
 	})
@@ -480,7 +481,7 @@ func TestLLMProxyUpdate_DefaultsUpstreamAuthToNone(t *testing.T) {
 	)
 
 	apiKey := api.UpstreamAuthType(api.ApiKey)
-	created, err := proxySvc.Create(importTestOrgID, "tester", &api.LLMProxy{
+	created, err := proxySvc.Create(context.Background(), importTestOrgID, "tester", &api.LLMProxy{
 		Id:          strPointer("cp-none-proxy"),
 		DisplayName: "CP None Proxy",
 		Version:     "v1.0",
@@ -586,7 +587,7 @@ func TestLLMProxyUpdate_SwitchApiKeyToOther_ClearsStoredCredential(t *testing.T)
 	)
 
 	apiKey := api.UpstreamAuthType(api.ApiKey)
-	created, err := proxySvc.Create(importTestOrgID, "tester", &api.LLMProxy{
+	created, err := proxySvc.Create(context.Background(), importTestOrgID, "tester", &api.LLMProxy{
 		Id: strPointer("cp-switch-proxy"), DisplayName: "X", Version: "v1.0", ProjectId: "default",
 		Provider: &api.LLMProxyProvider{
 			Id:   providerHandle,

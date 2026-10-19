@@ -18,6 +18,7 @@
 package service
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/wso2/api-platform/platform-api/api"
@@ -40,9 +41,9 @@ type ArtifactDeployments interface {
 	GetBuildsByHandle(handle, orgID string, limit int) (*api.BuildListResponse, error)
 	DeleteBuildByHandle(handle, buildID, orgID string) error
 
-	Deploy(handle string, req *api.DeployRequest, orgID, actor string) (*api.DeploymentResponse, error)
-	Undeploy(handle, deploymentID, gatewayHandle, orgID, actor string) (*api.DeploymentResponse, error)
-	Restore(handle, deploymentID, gatewayHandle, orgID, actor string) (*api.DeploymentResponse, error)
+	Deploy(ctx context.Context, handle string, req *api.DeployRequest, orgID, actor string) (*api.DeploymentResponse, error)
+	Undeploy(ctx context.Context, handle, deploymentID, gatewayHandle, orgID, actor string) (*api.DeploymentResponse, error)
+	Restore(ctx context.Context, handle, deploymentID, gatewayHandle, orgID, actor string) (*api.DeploymentResponse, error)
 	GetDeployment(handle, deploymentID, orgID string) (*api.DeploymentResponse, error)
 	ListDeployments(handle, gatewayID, status, orgID string) (*api.DeploymentListResponse, error)
 }
@@ -92,16 +93,16 @@ func NewDeploymentsByKind(
 // already match, including the actor.
 type restDeployments struct{ *DeploymentService }
 
-func (a restDeployments) Deploy(handle string, req *api.DeployRequest, orgID, actor string) (*api.DeploymentResponse, error) {
-	return a.DeployAPIByHandle(handle, req, orgID, actor)
+func (a restDeployments) Deploy(ctx context.Context, handle string, req *api.DeployRequest, orgID, actor string) (*api.DeploymentResponse, error) {
+	return a.DeployAPIByHandle(ctx, handle, req, orgID, actor)
 }
 
-func (a restDeployments) Undeploy(handle, deploymentID, gatewayHandle, orgID, actor string) (*api.DeploymentResponse, error) {
-	return a.UndeployDeploymentByHandle(handle, deploymentID, gatewayHandle, orgID, actor)
+func (a restDeployments) Undeploy(ctx context.Context, handle, deploymentID, gatewayHandle, orgID, actor string) (*api.DeploymentResponse, error) {
+	return a.UndeployDeploymentByHandle(ctx, handle, deploymentID, gatewayHandle, orgID, actor)
 }
 
-func (a restDeployments) Restore(handle, deploymentID, gatewayHandle, orgID, actor string) (*api.DeploymentResponse, error) {
-	return a.RestoreDeploymentByHandle(handle, deploymentID, gatewayHandle, orgID, actor)
+func (a restDeployments) Restore(ctx context.Context, handle, deploymentID, gatewayHandle, orgID, actor string) (*api.DeploymentResponse, error) {
+	return a.RestoreDeploymentByHandle(ctx, handle, deploymentID, gatewayHandle, orgID, actor)
 }
 
 func (a restDeployments) GetDeployment(handle, deploymentID, orgID string) (*api.DeploymentResponse, error) {
@@ -115,16 +116,16 @@ func (a restDeployments) ListDeployments(handle, gatewayID, status, orgID string
 // mcpDeployments adapts the MCP proxy service, which records no actor of its own.
 type mcpDeployments struct{ *MCPDeploymentService }
 
-func (a mcpDeployments) Deploy(handle string, req *api.DeployRequest, orgID, actor string) (*api.DeploymentResponse, error) {
-	return a.DeployMCPProxyByHandle(handle, req, orgID, actor)
+func (a mcpDeployments) Deploy(ctx context.Context, handle string, req *api.DeployRequest, orgID, actor string) (*api.DeploymentResponse, error) {
+	return a.DeployMCPProxyByHandle(ctx, handle, req, orgID, actor)
 }
 
-func (a mcpDeployments) Undeploy(handle, deploymentID, gatewayHandle, orgID, _ string) (*api.DeploymentResponse, error) {
-	return a.UndeployDeploymentByHandle(handle, deploymentID, gatewayHandle, orgID)
+func (a mcpDeployments) Undeploy(ctx context.Context, handle, deploymentID, gatewayHandle, orgID, _ string) (*api.DeploymentResponse, error) {
+	return a.UndeployDeploymentByHandle(ctx, handle, deploymentID, gatewayHandle, orgID)
 }
 
-func (a mcpDeployments) Restore(handle, deploymentID, gatewayHandle, orgID, _ string) (*api.DeploymentResponse, error) {
-	return a.RestoreMCPDeploymentByHandle(handle, deploymentID, gatewayHandle, orgID)
+func (a mcpDeployments) Restore(ctx context.Context, handle, deploymentID, gatewayHandle, orgID, _ string) (*api.DeploymentResponse, error) {
+	return a.RestoreMCPDeploymentByHandle(ctx, handle, deploymentID, gatewayHandle, orgID)
 }
 
 func (a mcpDeployments) GetDeployment(handle, deploymentID, orgID string) (*api.DeploymentResponse, error) {
@@ -139,16 +140,16 @@ func (a mcpDeployments) ListDeployments(handle, gatewayID, status, orgID string)
 // and whose listing takes optional filters as pointers.
 type llmProxyDeployments struct{ *LLMProxyDeploymentService }
 
-func (a llmProxyDeployments) Deploy(handle string, req *api.DeployRequest, orgID, actor string) (*api.DeploymentResponse, error) {
-	return a.DeployLLMProxy(handle, req, orgID, actor)
+func (a llmProxyDeployments) Deploy(ctx context.Context, handle string, req *api.DeployRequest, orgID, actor string) (*api.DeploymentResponse, error) {
+	return a.DeployLLMProxy(ctx, handle, req, orgID, actor)
 }
 
-func (a llmProxyDeployments) Undeploy(handle, deploymentID, gatewayHandle, orgID, _ string) (*api.DeploymentResponse, error) {
-	return a.UndeployLLMProxyDeployment(handle, deploymentID, gatewayHandle, orgID)
+func (a llmProxyDeployments) Undeploy(ctx context.Context, handle, deploymentID, gatewayHandle, orgID, _ string) (*api.DeploymentResponse, error) {
+	return a.UndeployLLMProxyDeployment(ctx, handle, deploymentID, gatewayHandle, orgID)
 }
 
-func (a llmProxyDeployments) Restore(handle, deploymentID, gatewayHandle, orgID, _ string) (*api.DeploymentResponse, error) {
-	return a.RestoreLLMProxyDeployment(handle, deploymentID, gatewayHandle, orgID)
+func (a llmProxyDeployments) Restore(ctx context.Context, handle, deploymentID, gatewayHandle, orgID, _ string) (*api.DeploymentResponse, error) {
+	return a.RestoreLLMProxyDeployment(ctx, handle, deploymentID, gatewayHandle, orgID)
 }
 
 func (a llmProxyDeployments) GetDeployment(handle, deploymentID, orgID string) (*api.DeploymentResponse, error) {
@@ -162,16 +163,16 @@ func (a llmProxyDeployments) ListDeployments(handle, gatewayID, status, orgID st
 // llmProviderDeployments adapts the LLM provider service.
 type llmProviderDeployments struct{ *LLMProviderDeploymentService }
 
-func (a llmProviderDeployments) Deploy(handle string, req *api.DeployRequest, orgID, actor string) (*api.DeploymentResponse, error) {
-	return a.DeployLLMProvider(handle, req, orgID, actor)
+func (a llmProviderDeployments) Deploy(ctx context.Context, handle string, req *api.DeployRequest, orgID, actor string) (*api.DeploymentResponse, error) {
+	return a.DeployLLMProvider(ctx, handle, req, orgID, actor)
 }
 
-func (a llmProviderDeployments) Undeploy(handle, deploymentID, gatewayHandle, orgID, _ string) (*api.DeploymentResponse, error) {
-	return a.UndeployLLMProviderDeployment(handle, deploymentID, gatewayHandle, orgID)
+func (a llmProviderDeployments) Undeploy(ctx context.Context, handle, deploymentID, gatewayHandle, orgID, _ string) (*api.DeploymentResponse, error) {
+	return a.UndeployLLMProviderDeployment(ctx, handle, deploymentID, gatewayHandle, orgID)
 }
 
-func (a llmProviderDeployments) Restore(handle, deploymentID, gatewayHandle, orgID, _ string) (*api.DeploymentResponse, error) {
-	return a.RestoreLLMProviderDeployment(handle, deploymentID, gatewayHandle, orgID)
+func (a llmProviderDeployments) Restore(ctx context.Context, handle, deploymentID, gatewayHandle, orgID, _ string) (*api.DeploymentResponse, error) {
+	return a.RestoreLLMProviderDeployment(ctx, handle, deploymentID, gatewayHandle, orgID)
 }
 
 func (a llmProviderDeployments) GetDeployment(handle, deploymentID, orgID string) (*api.DeploymentResponse, error) {
@@ -186,16 +187,16 @@ func (a llmProviderDeployments) ListDeployments(handle, gatewayID, status, orgID
 // undeploy or restore.
 type agentDeployments struct{ *AgentDeploymentService }
 
-func (a agentDeployments) Deploy(handle string, req *api.DeployRequest, orgID, actor string) (*api.DeploymentResponse, error) {
-	return a.DeployByHandle(handle, req, orgID, actor)
+func (a agentDeployments) Deploy(ctx context.Context, handle string, req *api.DeployRequest, orgID, actor string) (*api.DeploymentResponse, error) {
+	return a.DeployByHandle(ctx, handle, req, orgID, actor)
 }
 
-func (a agentDeployments) Undeploy(handle, deploymentID, gatewayHandle, orgID, _ string) (*api.DeploymentResponse, error) {
-	return a.UndeployByHandle(handle, deploymentID, gatewayHandle, orgID)
+func (a agentDeployments) Undeploy(ctx context.Context, handle, deploymentID, gatewayHandle, orgID, _ string) (*api.DeploymentResponse, error) {
+	return a.UndeployByHandle(ctx, handle, deploymentID, gatewayHandle, orgID)
 }
 
-func (a agentDeployments) Restore(handle, deploymentID, gatewayHandle, orgID, _ string) (*api.DeploymentResponse, error) {
-	return a.RestoreByHandle(handle, deploymentID, gatewayHandle, orgID)
+func (a agentDeployments) Restore(ctx context.Context, handle, deploymentID, gatewayHandle, orgID, _ string) (*api.DeploymentResponse, error) {
+	return a.RestoreByHandle(ctx, handle, deploymentID, gatewayHandle, orgID)
 }
 
 func (a agentDeployments) GetDeployment(handle, deploymentID, orgID string) (*api.DeploymentResponse, error) {
@@ -210,16 +211,16 @@ func (a agentDeployments) ListDeployments(handle, gatewayID, status, orgID strin
 // handle and whose listing takes optional filters as pointers, same as LLM.
 type graphqlDeployments struct{ *GraphQLAPIDeploymentService }
 
-func (a graphqlDeployments) Deploy(handle string, req *api.DeployRequest, orgID, actor string) (*api.DeploymentResponse, error) {
-	return a.DeployGraphQLAPI(handle, req, orgID, actor)
+func (a graphqlDeployments) Deploy(ctx context.Context, handle string, req *api.DeployRequest, orgID, actor string) (*api.DeploymentResponse, error) {
+	return a.DeployGraphQLAPI(ctx, handle, req, orgID, actor)
 }
 
-func (a graphqlDeployments) Undeploy(handle, deploymentID, gatewayHandle, orgID, _ string) (*api.DeploymentResponse, error) {
-	return a.UndeployGraphQLAPIDeployment(handle, deploymentID, gatewayHandle, orgID)
+func (a graphqlDeployments) Undeploy(ctx context.Context, handle, deploymentID, gatewayHandle, orgID, _ string) (*api.DeploymentResponse, error) {
+	return a.UndeployGraphQLAPIDeployment(ctx, handle, deploymentID, gatewayHandle, orgID)
 }
 
-func (a graphqlDeployments) Restore(handle, deploymentID, gatewayHandle, orgID, _ string) (*api.DeploymentResponse, error) {
-	return a.RestoreGraphQLAPIDeployment(handle, deploymentID, gatewayHandle, orgID)
+func (a graphqlDeployments) Restore(ctx context.Context, handle, deploymentID, gatewayHandle, orgID, _ string) (*api.DeploymentResponse, error) {
+	return a.RestoreGraphQLAPIDeployment(ctx, handle, deploymentID, gatewayHandle, orgID)
 }
 
 func (a graphqlDeployments) GetDeployment(handle, deploymentID, orgID string) (*api.DeploymentResponse, error) {
@@ -287,7 +288,7 @@ func (d DeploymentsByKind) DeployByHandle(handle, kind string, req *api.DeployRe
 	if err != nil {
 		return nil, err
 	}
-	return deployments.Deploy(handle, req, orgID, actor)
+	return deployments.Deploy(context.Background(), handle, req, orgID, actor)
 }
 
 // GetDeploymentsByHandle lists an artifact's deployments.
@@ -315,7 +316,7 @@ func (d DeploymentsByKind) UndeployDeploymentByHandle(handle, kind, deploymentID
 	if err != nil {
 		return nil, err
 	}
-	return deployments.Undeploy(handle, deploymentID, gatewayHandle, orgID, actor)
+	return deployments.Undeploy(context.Background(), handle, deploymentID, gatewayHandle, orgID, actor)
 }
 
 // RestoreDeploymentByHandle puts a suspended or superseded deployment back on its
@@ -326,7 +327,7 @@ func (d DeploymentsByKind) RestoreDeploymentByHandle(handle, kind, deploymentID,
 	if err != nil {
 		return nil, err
 	}
-	return deployments.Restore(handle, deploymentID, gatewayHandle, orgID, actor)
+	return deployments.Restore(context.Background(), handle, deploymentID, gatewayHandle, orgID, actor)
 }
 
 // ArtifactProjects resolves the project an artifact belongs to. Satisfied by

@@ -194,7 +194,7 @@ func (h *WebSubAPIHandler) DeleteWebSubAPI(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	if err := h.websubAPIService.Delete(orgID, id, deletedBy); err != nil {
+	if err := h.websubAPIService.Delete(r.Context(), orgID, id, deletedBy); err != nil {
 		h.handleServiceError(w, err)
 		return
 	}

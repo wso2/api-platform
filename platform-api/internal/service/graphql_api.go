@@ -784,7 +784,7 @@ func (s *GraphQLAPIService) Update(orgUUID, handle, updatedBy string, req *api.G
 }
 
 // Delete deletes a GraphQL API by its handle.
-func (s *GraphQLAPIService) Delete(orgUUID, handle, deletedBy string) error {
+func (s *GraphQLAPIService) Delete(ctx context.Context, orgUUID, handle, deletedBy string) error {
 	if handle == "" {
 		return apperror.ValidationFailed.New("The GraphQL API id is required.")
 	}
@@ -832,7 +832,7 @@ func (s *GraphQLAPIService) Delete(orgUUID, handle, deletedBy string) error {
 			deletionEvent := &model.GraphQLAPIDeletionEvent{
 				ApiId: existing.ID,
 			}
-			if err := s.gatewayEventsService.BroadcastGraphQLAPIDeletionEvent(gateway.ID, deletionEvent); err != nil {
+			if err := s.gatewayEventsService.BroadcastGraphQLAPIDeletionEvent(ctx, gateway.ID, deletionEvent); err != nil {
 				s.slogger.Warn("Failed to broadcast GraphQL API deletion event", "error", err, "gatewayID", gateway.ID, "apiUUID", existing.ID)
 			} else {
 				s.slogger.Info("GraphQL API deletion event sent", "gatewayID", gateway.ID, "apiUUID", existing.ID)

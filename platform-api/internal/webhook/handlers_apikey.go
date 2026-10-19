@@ -297,5 +297,5 @@ func (r *Receiver) handleAPIKeyApplicationUpdated(ctx context.Context, env *Enve
 			return fmt.Errorf("%w: data.application.handle is required when application is present (send null to dissociate)", ErrInvalidEnvelope)
 		}
 	}
-	return r.apps.SetAPIKeyApplication(*d.handlePtr(), d.API.RefID, d.API.kind(), appHandle, env.OrgID, "")
+	return r.apps.SetAPIKeyApplication(ctx, *d.handlePtr(), d.API.RefID, d.API.kind(), appHandle, env.OrgID, "")
 }

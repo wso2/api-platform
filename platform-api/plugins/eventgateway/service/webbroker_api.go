@@ -20,6 +20,7 @@
 package service
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -321,7 +322,7 @@ func (s *WebBrokerAPIService) Update(orgUUID, handle, updatedBy string, req *api
 }
 
 // Delete deletes a WebBroker API by its handle
-func (s *WebBrokerAPIService) Delete(orgUUID, handle, deletedBy string) error {
+func (s *WebBrokerAPIService) Delete(ctx context.Context, orgUUID, handle, deletedBy string) error {
 	if handle == "" {
 		return apperror.ValidationFailed.New("The WebBroker API id is required.")
 	}
@@ -366,7 +367,7 @@ func (s *WebBrokerAPIService) Delete(orgUUID, handle, deletedBy string) error {
 			deletionEvent := &model.WebBrokerAPIDeletionEvent{
 				ApiId: webbrokerAPI.UUID,
 			}
-			if err := s.gatewayEventsService.BroadcastWebBrokerAPIDeletionEvent(gateway.ID, deletionEvent); err != nil {
+			if err := s.gatewayEventsService.BroadcastWebBrokerAPIDeletionEvent(ctx, gateway.ID, deletionEvent); err != nil {
 				s.slogger.Warn("Failed to broadcast WebBroker API deletion event", "error", err, "gatewayID", gateway.ID, "apiUUID", webbrokerAPI.UUID)
 			} else {
 				s.slogger.Info("WebBroker API deletion event sent", "gatewayID", gateway.ID, "apiUUID", webbrokerAPI.UUID)

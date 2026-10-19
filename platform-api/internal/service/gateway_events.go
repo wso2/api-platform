@@ -17,6 +17,7 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -26,6 +27,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/wso2/api-platform/common/eventhub"
+	httpmiddleware "github.com/wso2/api-platform/httpkit/middleware"
 
 	"github.com/wso2/api-platform/platform-api/internal/dto"
 	"github.com/wso2/api-platform/platform-api/internal/gatewaytranslator"
@@ -110,129 +112,129 @@ func NewGatewayEventsService(hub eventhub.EventHub, identity *IdentityService, s
 }
 
 // BroadcastDeploymentEvent sends an API deployment event to target gateway.
-func (s *GatewayEventsService) BroadcastDeploymentEvent(gatewayID string, deployment *model.DeploymentEvent) error {
-	return s.broadcastEvent(gatewayID, EventTypeAPIDeployed, deployment)
+func (s *GatewayEventsService) BroadcastDeploymentEvent(ctx context.Context, gatewayID string, deployment *model.DeploymentEvent) error {
+	return s.broadcastEvent(ctx, gatewayID, EventTypeAPIDeployed, deployment)
 }
 
 // BroadcastUndeploymentEvent sends an API undeployment event to target gateway.
-func (s *GatewayEventsService) BroadcastUndeploymentEvent(gatewayID string, undeployment *model.APIUndeploymentEvent) error {
-	return s.broadcastEvent(gatewayID, EventTypeAPIUndeployed, undeployment)
+func (s *GatewayEventsService) BroadcastUndeploymentEvent(ctx context.Context, gatewayID string, undeployment *model.APIUndeploymentEvent) error {
+	return s.broadcastEvent(ctx, gatewayID, EventTypeAPIUndeployed, undeployment)
 }
 
 // BroadcastAPIDeletionEvent sends an API deletion event to target gateway.
-func (s *GatewayEventsService) BroadcastAPIDeletionEvent(gatewayID string, deletion *model.APIDeletionEvent) error {
-	return s.broadcastEvent(gatewayID, EventTypeAPIDeleted, deletion)
+func (s *GatewayEventsService) BroadcastAPIDeletionEvent(ctx context.Context, gatewayID string, deletion *model.APIDeletionEvent) error {
+	return s.broadcastEvent(ctx, gatewayID, EventTypeAPIDeleted, deletion)
 }
 
 // BroadcastLLMProviderDeploymentEvent sends an LLM provider deployment event to target gateway.
-func (s *GatewayEventsService) BroadcastLLMProviderDeploymentEvent(gatewayID string, deployment *model.LLMProviderDeploymentEvent) error {
-	return s.broadcastEvent(gatewayID, EventTypeLLMProviderDeployed, deployment)
+func (s *GatewayEventsService) BroadcastLLMProviderDeploymentEvent(ctx context.Context, gatewayID string, deployment *model.LLMProviderDeploymentEvent) error {
+	return s.broadcastEvent(ctx, gatewayID, EventTypeLLMProviderDeployed, deployment)
 }
 
 // BroadcastLLMProviderUndeploymentEvent sends an LLM provider undeployment event to target gateway.
-func (s *GatewayEventsService) BroadcastLLMProviderUndeploymentEvent(gatewayID string, undeployment *model.LLMProviderUndeploymentEvent) error {
-	return s.broadcastEvent(gatewayID, EventTypeLLMProviderUndeployed, undeployment)
+func (s *GatewayEventsService) BroadcastLLMProviderUndeploymentEvent(ctx context.Context, gatewayID string, undeployment *model.LLMProviderUndeploymentEvent) error {
+	return s.broadcastEvent(ctx, gatewayID, EventTypeLLMProviderUndeployed, undeployment)
 }
 
 // BroadcastLLMProxyDeploymentEvent sends an LLM proxy deployment event to target gateway.
-func (s *GatewayEventsService) BroadcastLLMProxyDeploymentEvent(gatewayID string, deployment *model.LLMProxyDeploymentEvent) error {
-	return s.broadcastEvent(gatewayID, EventTypeLLMProxyDeployed, deployment)
+func (s *GatewayEventsService) BroadcastLLMProxyDeploymentEvent(ctx context.Context, gatewayID string, deployment *model.LLMProxyDeploymentEvent) error {
+	return s.broadcastEvent(ctx, gatewayID, EventTypeLLMProxyDeployed, deployment)
 }
 
 // BroadcastLLMProxyUndeploymentEvent sends an LLM proxy undeployment event to target gateway.
-func (s *GatewayEventsService) BroadcastLLMProxyUndeploymentEvent(gatewayID string, undeployment *model.LLMProxyUndeploymentEvent) error {
-	return s.broadcastEvent(gatewayID, EventTypeLLMProxyUndeployed, undeployment)
+func (s *GatewayEventsService) BroadcastLLMProxyUndeploymentEvent(ctx context.Context, gatewayID string, undeployment *model.LLMProxyUndeploymentEvent) error {
+	return s.broadcastEvent(ctx, gatewayID, EventTypeLLMProxyUndeployed, undeployment)
 }
 
 // BroadcastMCPProxyDeploymentEvent sends an MCP proxy deployment event to target gateway.
-func (s *GatewayEventsService) BroadcastMCPProxyDeploymentEvent(gatewayID string, deployment *model.MCPProxyDeploymentEvent) error {
-	return s.broadcastEvent(gatewayID, EventTypeMCPProxyDeployed, deployment)
+func (s *GatewayEventsService) BroadcastMCPProxyDeploymentEvent(ctx context.Context, gatewayID string, deployment *model.MCPProxyDeploymentEvent) error {
+	return s.broadcastEvent(ctx, gatewayID, EventTypeMCPProxyDeployed, deployment)
 }
 
 // BroadcastMCPProxyUndeploymentEvent sends an MCP proxy undeployment event to target gateway.
-func (s *GatewayEventsService) BroadcastMCPProxyUndeploymentEvent(gatewayID string, undeployment *model.MCPProxyUndeploymentEvent) error {
-	return s.broadcastEvent(gatewayID, EventTypeMCPProxyUndeployed, undeployment)
+func (s *GatewayEventsService) BroadcastMCPProxyUndeploymentEvent(ctx context.Context, gatewayID string, undeployment *model.MCPProxyUndeploymentEvent) error {
+	return s.broadcastEvent(ctx, gatewayID, EventTypeMCPProxyUndeployed, undeployment)
 }
 
 // BroadcastMCPProxyDeletionEvent sends an MCP proxy deletion event to target gateway.
-func (s *GatewayEventsService) BroadcastMCPProxyDeletionEvent(gatewayID string, deletion *model.MCPProxyDeletionEvent) error {
-	return s.broadcastEvent(gatewayID, EventTypeMCPProxyDeleted, deletion)
+func (s *GatewayEventsService) BroadcastMCPProxyDeletionEvent(ctx context.Context, gatewayID string, deletion *model.MCPProxyDeletionEvent) error {
+	return s.broadcastEvent(ctx, gatewayID, EventTypeMCPProxyDeleted, deletion)
 }
 
 // BroadcastAgentDeploymentEvent sends an Agent proxy deployment event to target gateway.
 // Restoring a deployment sends the same event.
-func (s *GatewayEventsService) BroadcastAgentDeploymentEvent(gatewayID string, deployment *model.AgentDeploymentEvent) error {
-	return s.broadcastEvent(gatewayID, EventTypeAgentDeployed, deployment)
+func (s *GatewayEventsService) BroadcastAgentDeploymentEvent(ctx context.Context, gatewayID string, deployment *model.AgentDeploymentEvent) error {
+	return s.broadcastEvent(ctx, gatewayID, EventTypeAgentDeployed, deployment)
 }
 
 // BroadcastAgentUndeploymentEvent sends an Agent proxy undeployment event to target gateway.
-func (s *GatewayEventsService) BroadcastAgentUndeploymentEvent(gatewayID string, undeployment *model.AgentUndeploymentEvent) error {
-	return s.broadcastEvent(gatewayID, EventTypeAgentUndeployed, undeployment)
+func (s *GatewayEventsService) BroadcastAgentUndeploymentEvent(ctx context.Context, gatewayID string, undeployment *model.AgentUndeploymentEvent) error {
+	return s.broadcastEvent(ctx, gatewayID, EventTypeAgentUndeployed, undeployment)
 }
 
 // BroadcastAgentDeletionEvent sends an Agent proxy deletion event to target gateway.
-func (s *GatewayEventsService) BroadcastAgentDeletionEvent(gatewayID string, deletion *model.AgentDeletionEvent) error {
-	return s.broadcastEvent(gatewayID, EventTypeAgentDeleted, deletion)
+func (s *GatewayEventsService) BroadcastAgentDeletionEvent(ctx context.Context, gatewayID string, deletion *model.AgentDeletionEvent) error {
+	return s.broadcastEvent(ctx, gatewayID, EventTypeAgentDeleted, deletion)
 }
 
 // BroadcastWebSubAPIDeploymentEvent sends a WebSub API deployment event to target gateway.
-func (s *GatewayEventsService) BroadcastWebSubAPIDeploymentEvent(gatewayID string, deployment *model.WebSubAPIDeploymentEvent) error {
-	return s.broadcastEvent(gatewayID, EventTypeWebSubAPIDeployed, deployment)
+func (s *GatewayEventsService) BroadcastWebSubAPIDeploymentEvent(ctx context.Context, gatewayID string, deployment *model.WebSubAPIDeploymentEvent) error {
+	return s.broadcastEvent(ctx, gatewayID, EventTypeWebSubAPIDeployed, deployment)
 }
 
 // BroadcastWebSubAPIUndeploymentEvent sends a WebSub API undeployment event to target gateway.
-func (s *GatewayEventsService) BroadcastWebSubAPIUndeploymentEvent(gatewayID string, undeployment *model.WebSubAPIUndeploymentEvent) error {
-	return s.broadcastEvent(gatewayID, EventTypeWebSubAPIUndeployed, undeployment)
+func (s *GatewayEventsService) BroadcastWebSubAPIUndeploymentEvent(ctx context.Context, gatewayID string, undeployment *model.WebSubAPIUndeploymentEvent) error {
+	return s.broadcastEvent(ctx, gatewayID, EventTypeWebSubAPIUndeployed, undeployment)
 }
 
 // BroadcastWebSubAPIDeletionEvent sends a WebSub API deletion event to target gateway.
-func (s *GatewayEventsService) BroadcastWebSubAPIDeletionEvent(gatewayID string, deletion *model.WebSubAPIDeletionEvent) error {
-	return s.broadcastEvent(gatewayID, EventTypeWebSubAPIDeleted, deletion)
+func (s *GatewayEventsService) BroadcastWebSubAPIDeletionEvent(ctx context.Context, gatewayID string, deletion *model.WebSubAPIDeletionEvent) error {
+	return s.broadcastEvent(ctx, gatewayID, EventTypeWebSubAPIDeleted, deletion)
 }
 
 // BroadcastWebBrokerAPIDeploymentEvent sends a WebBroker API deployment event to target gateway.
-func (s *GatewayEventsService) BroadcastWebBrokerAPIDeploymentEvent(gatewayID string, deployment *model.WebBrokerAPIDeploymentEvent) error {
-	return s.broadcastEvent(gatewayID, EventTypeWebBrokerAPIDeployed, deployment)
+func (s *GatewayEventsService) BroadcastWebBrokerAPIDeploymentEvent(ctx context.Context, gatewayID string, deployment *model.WebBrokerAPIDeploymentEvent) error {
+	return s.broadcastEvent(ctx, gatewayID, EventTypeWebBrokerAPIDeployed, deployment)
 }
 
 // BroadcastWebBrokerAPIUndeploymentEvent sends a WebBroker API undeployment event to target gateway.
-func (s *GatewayEventsService) BroadcastWebBrokerAPIUndeploymentEvent(gatewayID string, undeployment *model.WebBrokerAPIUndeploymentEvent) error {
-	return s.broadcastEvent(gatewayID, EventTypeWebBrokerAPIUndeployed, undeployment)
+func (s *GatewayEventsService) BroadcastWebBrokerAPIUndeploymentEvent(ctx context.Context, gatewayID string, undeployment *model.WebBrokerAPIUndeploymentEvent) error {
+	return s.broadcastEvent(ctx, gatewayID, EventTypeWebBrokerAPIUndeployed, undeployment)
 }
 
 // BroadcastWebBrokerAPIDeletionEvent sends a WebBroker API deletion event to target gateway.
-func (s *GatewayEventsService) BroadcastWebBrokerAPIDeletionEvent(gatewayID string, deletion *model.WebBrokerAPIDeletionEvent) error {
-	return s.broadcastEvent(gatewayID, EventTypeWebBrokerAPIDeleted, deletion)
+func (s *GatewayEventsService) BroadcastWebBrokerAPIDeletionEvent(ctx context.Context, gatewayID string, deletion *model.WebBrokerAPIDeletionEvent) error {
+	return s.broadcastEvent(ctx, gatewayID, EventTypeWebBrokerAPIDeleted, deletion)
 }
 
 // BroadcastGraphQLAPIDeploymentEvent sends a GraphQL API deployment event to target gateway.
-func (s *GatewayEventsService) BroadcastGraphQLAPIDeploymentEvent(gatewayID string, deployment *model.GraphQLAPIDeploymentEvent) error {
-	return s.broadcastEvent(gatewayID, EventTypeGraphQLAPIDeployed, deployment)
+func (s *GatewayEventsService) BroadcastGraphQLAPIDeploymentEvent(ctx context.Context, gatewayID string, deployment *model.GraphQLAPIDeploymentEvent) error {
+	return s.broadcastEvent(ctx, gatewayID, EventTypeGraphQLAPIDeployed, deployment)
 }
 
 // BroadcastGraphQLAPIUndeploymentEvent sends a GraphQL API undeployment event to target gateway.
-func (s *GatewayEventsService) BroadcastGraphQLAPIUndeploymentEvent(gatewayID string, undeployment *model.GraphQLAPIUndeploymentEvent) error {
-	return s.broadcastEvent(gatewayID, EventTypeGraphQLAPIUndeployed, undeployment)
+func (s *GatewayEventsService) BroadcastGraphQLAPIUndeploymentEvent(ctx context.Context, gatewayID string, undeployment *model.GraphQLAPIUndeploymentEvent) error {
+	return s.broadcastEvent(ctx, gatewayID, EventTypeGraphQLAPIUndeployed, undeployment)
 }
 
 // BroadcastGraphQLAPIDeletionEvent sends a GraphQL API deletion event to target gateway.
-func (s *GatewayEventsService) BroadcastGraphQLAPIDeletionEvent(gatewayID string, deletion *model.GraphQLAPIDeletionEvent) error {
-	return s.broadcastEvent(gatewayID, EventTypeGraphQLAPIDeleted, deletion)
+func (s *GatewayEventsService) BroadcastGraphQLAPIDeletionEvent(ctx context.Context, gatewayID string, deletion *model.GraphQLAPIDeletionEvent) error {
+	return s.broadcastEvent(ctx, gatewayID, EventTypeGraphQLAPIDeleted, deletion)
 }
 
 // BroadcastLLMProviderDeletionEvent sends an LLM provider deletion event to target gateway.
-func (s *GatewayEventsService) BroadcastLLMProviderDeletionEvent(gatewayID string, deletion *model.LLMProviderDeletionEvent) error {
-	return s.broadcastEvent(gatewayID, EventTypeLLMProviderDeleted, deletion)
+func (s *GatewayEventsService) BroadcastLLMProviderDeletionEvent(ctx context.Context, gatewayID string, deletion *model.LLMProviderDeletionEvent) error {
+	return s.broadcastEvent(ctx, gatewayID, EventTypeLLMProviderDeleted, deletion)
 }
 
 // BroadcastLLMProxyDeletionEvent sends an LLM proxy deletion event to target gateway.
-func (s *GatewayEventsService) BroadcastLLMProxyDeletionEvent(gatewayID string, deletion *model.LLMProxyDeletionEvent) error {
-	return s.broadcastEvent(gatewayID, EventTypeLLMProxyDeleted, deletion)
+func (s *GatewayEventsService) BroadcastLLMProxyDeletionEvent(ctx context.Context, gatewayID string, deletion *model.LLMProxyDeletionEvent) error {
+	return s.broadcastEvent(ctx, gatewayID, EventTypeLLMProxyDeleted, deletion)
 }
 
 // BroadcastWebSubAPIHmacSecretEvent sends a WebSub API HMAC secret lifecycle event to target gateway.
 // action should be "CREATED", "UPDATED", or "DELETED".
-func (s *GatewayEventsService) BroadcastWebSubAPIHmacSecretEvent(gatewayID, action string, event *model.WebSubAPIHmacSecretEvent) error {
+func (s *GatewayEventsService) BroadcastWebSubAPIHmacSecretEvent(ctx context.Context, gatewayID, action string, event *model.WebSubAPIHmacSecretEvent) error {
 	var eventType string
 	switch action {
 	case "CREATED":
@@ -244,44 +246,44 @@ func (s *GatewayEventsService) BroadcastWebSubAPIHmacSecretEvent(gatewayID, acti
 	default:
 		eventType = EventTypeWebSubAPIHmacSecretUpdated
 	}
-	return s.broadcastEvent(gatewayID, eventType, event)
+	return s.broadcastEvent(ctx, gatewayID, eventType, event)
 }
 
 // BroadcastAPIKeyCreatedEvent sends an API key created event to target gateway.
-func (s *GatewayEventsService) BroadcastAPIKeyCreatedEvent(gatewayID, userId string, event *model.APIKeyCreatedEvent) error {
-	return s.broadcastEventWithUserID(gatewayID, userId, EventTypeAPIKeyCreated, event)
+func (s *GatewayEventsService) BroadcastAPIKeyCreatedEvent(ctx context.Context, gatewayID, userId string, event *model.APIKeyCreatedEvent) error {
+	return s.broadcastEventWithUserID(ctx, gatewayID, userId, EventTypeAPIKeyCreated, event)
 }
 
 // BroadcastAPIKeyRevokedEvent sends an API key revoked event to target gateway.
-func (s *GatewayEventsService) BroadcastAPIKeyRevokedEvent(gatewayID, userId string, event *model.APIKeyRevokedEvent) error {
-	return s.broadcastEventWithUserID(gatewayID, userId, EventTypeAPIKeyRevoked, event)
+func (s *GatewayEventsService) BroadcastAPIKeyRevokedEvent(ctx context.Context, gatewayID, userId string, event *model.APIKeyRevokedEvent) error {
+	return s.broadcastEventWithUserID(ctx, gatewayID, userId, EventTypeAPIKeyRevoked, event)
 }
 
 // BroadcastAPIKeyUpdatedEvent sends an API key updated event to target gateway.
-func (s *GatewayEventsService) BroadcastAPIKeyUpdatedEvent(gatewayID, userId string, event *model.APIKeyUpdatedEvent) error {
-	return s.broadcastEventWithUserID(gatewayID, userId, EventTypeAPIKeyUpdated, event)
+func (s *GatewayEventsService) BroadcastAPIKeyUpdatedEvent(ctx context.Context, gatewayID, userId string, event *model.APIKeyUpdatedEvent) error {
+	return s.broadcastEventWithUserID(ctx, gatewayID, userId, EventTypeAPIKeyUpdated, event)
 }
 
 // BroadcastAPIKeyRevokedEventFor sends an API key revoked event to gateway gw,
 // stamped with the identity that gateway's release accepts (see KeyEventActor).
 // keyCreatedBy is the revoked key's creator; userId is the caller platform-api
 // has already authorized.
-func (s *GatewayEventsService) BroadcastAPIKeyRevokedEventFor(gw *model.APIGatewayWithDetails, keyCreatedBy, userId string, event *model.APIKeyRevokedEvent) error {
+func (s *GatewayEventsService) BroadcastAPIKeyRevokedEventFor(ctx context.Context, gw *model.APIGatewayWithDetails, keyCreatedBy, userId string, event *model.APIKeyRevokedEvent) error {
 	actor, err := s.KeyEventActor(gw.Version, keyCreatedBy, userId)
 	if err != nil {
 		return fmt.Errorf("%s event for gateway %s: %w", EventTypeAPIKeyRevoked, gw.ID, err)
 	}
-	return s.broadcastEventWithUserID(gw.ID, actor, EventTypeAPIKeyRevoked, event)
+	return s.broadcastEventWithUserID(ctx, gw.ID, actor, EventTypeAPIKeyRevoked, event)
 }
 
 // BroadcastAPIKeyUpdatedEventFor is BroadcastAPIKeyRevokedEventFor for an
 // updated event.
-func (s *GatewayEventsService) BroadcastAPIKeyUpdatedEventFor(gw *model.APIGatewayWithDetails, keyCreatedBy, userId string, event *model.APIKeyUpdatedEvent) error {
+func (s *GatewayEventsService) BroadcastAPIKeyUpdatedEventFor(ctx context.Context, gw *model.APIGatewayWithDetails, keyCreatedBy, userId string, event *model.APIKeyUpdatedEvent) error {
 	actor, err := s.KeyEventActor(gw.Version, keyCreatedBy, userId)
 	if err != nil {
 		return fmt.Errorf("%s event for gateway %s: %w", EventTypeAPIKeyUpdated, gw.ID, err)
 	}
-	return s.broadcastEventWithUserID(gw.ID, actor, EventTypeAPIKeyUpdated, event)
+	return s.broadcastEventWithUserID(ctx, gw.ID, actor, EventTypeAPIKeyUpdated, event)
 }
 
 // KeyEventActor returns the user id to stamp on an API key revoke/update event
@@ -308,43 +310,43 @@ func (s *GatewayEventsService) KeyEventActor(gatewayVersion, keyCreatedBy, userI
 }
 
 // BroadcastApplicationUpdatedEvent sends an application updated event to target gateway.
-func (s *GatewayEventsService) BroadcastApplicationUpdatedEvent(gatewayID, userId string, event *model.ApplicationUpdatedEvent) error {
-	return s.broadcastEventWithUserID(gatewayID, userId, "application.updated", event)
+func (s *GatewayEventsService) BroadcastApplicationUpdatedEvent(ctx context.Context, gatewayID, userId string, event *model.ApplicationUpdatedEvent) error {
+	return s.broadcastEventWithUserID(ctx, gatewayID, userId, "application.updated", event)
 }
 
 // BroadcastSubscriptionCreatedEvent sends a subscription.created event to the target gateway.
-func (s *GatewayEventsService) BroadcastSubscriptionCreatedEvent(gatewayID string, event *model.SubscriptionCreatedEvent) error {
-	return s.broadcastEvent(gatewayID, EventTypeSubscriptionCreated, event)
+func (s *GatewayEventsService) BroadcastSubscriptionCreatedEvent(ctx context.Context, gatewayID string, event *model.SubscriptionCreatedEvent) error {
+	return s.broadcastEvent(ctx, gatewayID, EventTypeSubscriptionCreated, event)
 }
 
 // BroadcastSubscriptionUpdatedEvent sends a subscription.updated event to the target gateway.
-func (s *GatewayEventsService) BroadcastSubscriptionUpdatedEvent(gatewayID string, event *model.SubscriptionUpdatedEvent) error {
-	return s.broadcastEvent(gatewayID, EventTypeSubscriptionUpdated, event)
+func (s *GatewayEventsService) BroadcastSubscriptionUpdatedEvent(ctx context.Context, gatewayID string, event *model.SubscriptionUpdatedEvent) error {
+	return s.broadcastEvent(ctx, gatewayID, EventTypeSubscriptionUpdated, event)
 }
 
 // BroadcastSubscriptionDeletedEvent sends a subscription.deleted event to the target gateway.
-func (s *GatewayEventsService) BroadcastSubscriptionDeletedEvent(gatewayID string, event *model.SubscriptionDeletedEvent) error {
-	return s.broadcastEvent(gatewayID, EventTypeSubscriptionDeleted, event)
+func (s *GatewayEventsService) BroadcastSubscriptionDeletedEvent(ctx context.Context, gatewayID string, event *model.SubscriptionDeletedEvent) error {
+	return s.broadcastEvent(ctx, gatewayID, EventTypeSubscriptionDeleted, event)
 }
 
 // BroadcastSubscriptionPlanCreatedEvent sends a subscriptionPlan.created event to the target gateway.
-func (s *GatewayEventsService) BroadcastSubscriptionPlanCreatedEvent(gatewayID string, event *model.SubscriptionPlanCreatedEvent) error {
-	return s.broadcastEvent(gatewayID, EventTypeSubscriptionPlanCreated, event)
+func (s *GatewayEventsService) BroadcastSubscriptionPlanCreatedEvent(ctx context.Context, gatewayID string, event *model.SubscriptionPlanCreatedEvent) error {
+	return s.broadcastEvent(ctx, gatewayID, EventTypeSubscriptionPlanCreated, event)
 }
 
 // BroadcastSubscriptionPlanUpdatedEvent sends a subscriptionPlan.updated event to the target gateway.
-func (s *GatewayEventsService) BroadcastSubscriptionPlanUpdatedEvent(gatewayID string, event *model.SubscriptionPlanUpdatedEvent) error {
-	return s.broadcastEvent(gatewayID, EventTypeSubscriptionPlanUpdated, event)
+func (s *GatewayEventsService) BroadcastSubscriptionPlanUpdatedEvent(ctx context.Context, gatewayID string, event *model.SubscriptionPlanUpdatedEvent) error {
+	return s.broadcastEvent(ctx, gatewayID, EventTypeSubscriptionPlanUpdated, event)
 }
 
 // BroadcastSubscriptionPlanDeletedEvent sends a subscriptionPlan.deleted event to the target gateway.
-func (s *GatewayEventsService) BroadcastSubscriptionPlanDeletedEvent(gatewayID string, event *model.SubscriptionPlanDeletedEvent) error {
-	return s.broadcastEvent(gatewayID, EventTypeSubscriptionPlanDeleted, event)
+func (s *GatewayEventsService) BroadcastSubscriptionPlanDeletedEvent(ctx context.Context, gatewayID string, event *model.SubscriptionPlanDeletedEvent) error {
+	return s.broadcastEvent(ctx, gatewayID, EventTypeSubscriptionPlanDeleted, event)
 }
 
 // broadcastEvent is the generic helper for broadcasting gateway events without a userId.
-func (s *GatewayEventsService) broadcastEvent(gatewayID, eventType string, payload interface{}) error {
-	return s.broadcastEventWithUserID(gatewayID, "", eventType, payload)
+func (s *GatewayEventsService) broadcastEvent(ctx context.Context, gatewayID, eventType string, payload interface{}) error {
+	return s.broadcastEventWithUserID(ctx, gatewayID, "", eventType, payload)
 }
 
 // broadcastEventWithUserID serializes the payload into a GatewayEventDTO and publishes it
@@ -358,8 +360,11 @@ func (s *GatewayEventsService) broadcastEvent(gatewayID, eventType string, paylo
 // if the UUID has no mapping) before the event leaves the process — the internal UUID must
 // never reach the data plane. An empty userId is left empty (no actor to resolve), not
 // turned into constants.DeletedUser.
-func (s *GatewayEventsService) broadcastEventWithUserID(gatewayID, userId, eventType string, payload interface{}) error {
-	correlationID := uuid.New().String()
+func (s *GatewayEventsService) broadcastEventWithUserID(ctx context.Context, gatewayID, userId, eventType string, payload interface{}) error {
+	correlationID := httpmiddleware.GetCorrelationIDFromContext(ctx)
+	if correlationID == "" {
+		correlationID = uuid.New().String()
+	}
 
 	if payload == nil {
 		return fmt.Errorf("%s payload is nil", eventType)

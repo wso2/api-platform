@@ -18,6 +18,7 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"testing"
@@ -35,8 +36,8 @@ type capturingEventHub struct {
 	published []eventhub.Event
 }
 
-func (h *capturingEventHub) Initialize() error                    { return nil }
-func (h *capturingEventHub) RegisterGateway(string) error         { return nil }
+func (h *capturingEventHub) Initialize() error            { return nil }
+func (h *capturingEventHub) RegisterGateway(string) error { return nil }
 func (h *capturingEventHub) PublishEvent(_ string, e eventhub.Event) error {
 	h.published = append(h.published, e)
 	return nil
@@ -109,7 +110,7 @@ func TestBackfillAPIKeysToGateway(t *testing.T) {
 		slogger:              newTestLogger(),
 	}
 
-	svc.backfillAPIKeysToGateway("api-1", "gw-B", "actor-1")
+	svc.backfillAPIKeysToGateway(context.Background(), "api-1", "gw-B", "actor-1")
 
 	// Only the two active, non-expired keys should be broadcast.
 	if len(hub.published) != 2 {
@@ -144,7 +145,7 @@ func TestBackfillAPIKeysToGateway_NoKeys(t *testing.T) {
 		slogger:              newTestLogger(),
 	}
 
-	svc.backfillAPIKeysToGateway("api-1", "gw-B", "actor-1")
+	svc.backfillAPIKeysToGateway(context.Background(), "api-1", "gw-B", "actor-1")
 
 	if len(hub.published) != 0 {
 		t.Fatalf("expected no broadcast events, got %d", len(hub.published))
@@ -155,7 +156,7 @@ func TestBackfillAPIKeysToGateway_NoKeys(t *testing.T) {
 func TestBackfillAPIKeysToGateway_NilDeps(t *testing.T) {
 	svc := &DeploymentService{slogger: newTestLogger()}
 	// Must not panic despite nil apiKeyRepo / gatewayEventsService.
-	svc.backfillAPIKeysToGateway("api-1", "gw-B", "actor-1")
+	svc.backfillAPIKeysToGateway(context.Background(), "api-1", "gw-B", "actor-1")
 }
 
 // TestBackfillAPIKeysToGateway_ExportedSharedByAllKinds exercises the exported helper
@@ -172,7 +173,7 @@ func TestBackfillAPIKeysToGateway_ExportedSharedByAllKinds(t *testing.T) {
 	events := NewGatewayEventsService(hub, newTestIdentityService(), newTestLogger())
 
 	// nil slogger must not panic and must still broadcast.
-	BackfillAPIKeysToGateway(repo, nil, events, nil, "artifact-1", "gw-X", "")
+	BackfillAPIKeysToGateway(context.Background(), repo, nil, events, nil, "artifact-1", "gw-X", "")
 
 	if len(hub.published) != 2 {
 		t.Fatalf("expected 2 broadcast events, got %d", len(hub.published))
@@ -191,7 +192,7 @@ func TestBackfillAPIKeysToGateway_RepoError(t *testing.T) {
 	hub := &capturingEventHub{}
 	events := NewGatewayEventsService(hub, newTestIdentityService(), newTestLogger())
 
-	BackfillAPIKeysToGateway(repo, nil, events, newTestLogger(), "artifact-1", "gw-X", "")
+	BackfillAPIKeysToGateway(context.Background(), repo, nil, events, newTestLogger(), "artifact-1", "gw-X", "")
 
 	if len(hub.published) != 0 {
 		t.Fatalf("expected no broadcasts on repo error, got %d", len(hub.published))
@@ -211,7 +212,7 @@ func TestBackfillAPIKeysToGateway_HonorsAllowedTargets(t *testing.T) {
 
 	// Target gateway "gw-target": the ALL key and the key that lists gw-target should go through;
 	// the key restricted to "other-gw" must be skipped.
-	BackfillAPIKeysToGateway(&stubBackfillAPIKeyRepo{keys: keys}, &stubBackfillGatewayRepo{name: "gw-target"},
+	BackfillAPIKeysToGateway(context.Background(), &stubBackfillAPIKeyRepo{keys: keys}, &stubBackfillGatewayRepo{name: "gw-target"},
 		events, newTestLogger(), "api-1", "gw-uuid", "")
 
 	if len(hub.published) != 2 {

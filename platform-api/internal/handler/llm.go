@@ -407,7 +407,7 @@ func (h *LLMHandler) DeleteLLMProvider(w http.ResponseWriter, r *http.Request) e
 		return err
 	}
 
-	if err := h.providerService.Delete(orgID, id, deletedBy); err != nil {
+	if err := h.providerService.Delete(r.Context(), orgID, id, deletedBy); err != nil {
 		return serviceError(err, fmt.Sprintf("failed to delete LLM provider %s in org %s", id, orgID))
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -435,7 +435,7 @@ func (h *LLMHandler) CreateLLMProxy(w http.ResponseWriter, r *http.Request) erro
 		return err
 	}
 
-	created, err := h.proxyService.Create(orgID, createdBy, &req)
+	created, err := h.proxyService.Create(r.Context(), orgID, createdBy, &req)
 	if err != nil {
 		return serviceError(err, fmt.Sprintf("failed to create LLM proxy in org %s", orgID))
 	}
@@ -540,7 +540,7 @@ func (h *LLMHandler) DeleteLLMProxy(w http.ResponseWriter, r *http.Request) erro
 		return err
 	}
 
-	if err := h.proxyService.Delete(orgID, id, deletedBy); err != nil {
+	if err := h.proxyService.Delete(r.Context(), orgID, id, deletedBy); err != nil {
 		return serviceError(err, fmt.Sprintf("failed to delete LLM proxy %s in org %s", id, orgID))
 	}
 	w.WriteHeader(http.StatusNoContent)

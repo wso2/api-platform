@@ -18,6 +18,7 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"testing"
@@ -75,7 +76,7 @@ func TestKeyEventActor_CreatorLookupFailure(t *testing.T) {
 	if _, err := svc.KeyEventActor("1.1.0", "creator-uuid", "admin-1"); err == nil {
 		t.Fatal("1.1.0: want an error when the creator cannot be resolved")
 	}
-	if err := svc.BroadcastAPIKeyRevokedEventFor(&model.APIGatewayWithDetails{ID: "gw-110", Version: "1.1.0"}, "creator-uuid", "admin-1", event); err == nil {
+	if err := svc.BroadcastAPIKeyRevokedEventFor(context.Background(), &model.APIGatewayWithDetails{ID: "gw-110", Version: "1.1.0"}, "creator-uuid", "admin-1", event); err == nil {
 		t.Fatal("1.1.0: want the broadcast to fail")
 	}
 	if len(hub.published) != 0 {
@@ -108,7 +109,7 @@ func TestBroadcastAPIKeyRevokedEventFor_StampsGatewayAcceptedIdentity(t *testing
 		{&model.APIGatewayWithDetails{ID: "gw-120", Version: "1.2.0"}, "creator-1", "admin-1"},
 	}
 	for _, g := range gateways {
-		if err := svc.BroadcastAPIKeyRevokedEventFor(g.gw, g.createdBy, "admin-1", event); err != nil {
+		if err := svc.BroadcastAPIKeyRevokedEventFor(context.Background(), g.gw, g.createdBy, "admin-1", event); err != nil {
 			t.Fatalf("broadcast to %s: %v", g.gw.ID, err)
 		}
 	}

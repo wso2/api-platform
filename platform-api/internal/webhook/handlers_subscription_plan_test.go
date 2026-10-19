@@ -18,6 +18,7 @@
 package webhook
 
 import (
+	"context"
 	"bytes"
 	"errors"
 	"io"
@@ -61,12 +62,12 @@ type fakePlanService struct {
 	deleteErr        error
 }
 
-func (f *fakePlanService) UpsertPlanFromWebhook(orgUUID, handle, name string, limitCount *int, limitUnit string, pricing *model.SubscriptionPlanPricing, occurredAt time.Time) (*model.SubscriptionPlan, error) {
+func (f *fakePlanService) UpsertPlanFromWebhook(_ context.Context, orgUUID, handle, name string, limitCount *int, limitUnit string, pricing *model.SubscriptionPlanPricing, occurredAt time.Time) (*model.SubscriptionPlan, error) {
 	f.upserts = append(f.upserts, upsertCall{orgUUID, handle, name, limitCount, limitUnit, occurredAt, pricing})
 	return &model.SubscriptionPlan{Handle: handle, Name: name}, nil
 }
 
-func (f *fakePlanService) DeletePlanFromWebhook(orgUUID, handle string, occurredAt time.Time) error {
+func (f *fakePlanService) DeletePlanFromWebhook(_ context.Context, orgUUID, handle string, occurredAt time.Time) error {
 	f.deletes = append(f.deletes, orgUUID+"/"+handle)
 	f.deleteOccurredAt = occurredAt
 	return f.deleteErr

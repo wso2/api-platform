@@ -92,7 +92,7 @@ func (r *Receiver) handleApplicationUpdated(ctx context.Context, env *Envelope) 
 		Description: &desc,
 		Type:        api.ApplicationType(strings.TrimSpace(d.Type)),
 	}
-	_, err := r.apps.UpdateApplication(handle, req, env.OrgID, "")
+	_, err := r.apps.UpdateApplication(ctx, handle, req, env.OrgID, "")
 	if err == nil {
 		return nil
 	}
@@ -116,7 +116,7 @@ func (r *Receiver) handleApplicationDeleted(ctx context.Context, env *Envelope) 
 	if strings.TrimSpace(d.Handle) == "" {
 		return fmt.Errorf("%w: data.handle is required", ErrInvalidEnvelope)
 	}
-	if err := r.apps.DeleteApplication(d.Handle, env.OrgID, ""); err != nil {
+	if err := r.apps.DeleteApplication(ctx, d.Handle, env.OrgID, ""); err != nil {
 		// Domain-level idempotency: already gone is success.
 		if apperror.ApplicationNotFound.Is(err) {
 			return nil

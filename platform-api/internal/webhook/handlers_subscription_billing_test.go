@@ -18,6 +18,7 @@
 package webhook
 
 import (
+	"context"
 	"errors"
 	"io"
 	"log/slog"
@@ -36,13 +37,13 @@ type billingSubsFake struct {
 	keys    []string
 }
 
-func (f *billingSubsFake) CreateSubscriptionWithBilling(apiID, kind, orgUUID, subscriberID string, _, _ *string, _, _, _ string, billing *model.SubscriptionBilling) (*model.Subscription, error) {
+func (f *billingSubsFake) CreateSubscriptionWithBilling(_ context.Context, apiID, kind, orgUUID, subscriberID string, _, _ *string, _, _, _ string, billing *model.SubscriptionBilling) (*model.Subscription, error) {
 	f.created = append(f.created, billing)
 	f.keys = append(f.keys, orgUUID+"/"+apiID+"/"+subscriberID)
 	return &model.Subscription{UUID: "sub-1"}, nil
 }
 
-func (f *billingSubsFake) ApplyBillingFromWebhook(orgUUID, apiHandle, _, subscriberID string, billing *model.SubscriptionBilling) error {
+func (f *billingSubsFake) ApplyBillingFromWebhook(_ context.Context, orgUUID, apiHandle, _, subscriberID string, billing *model.SubscriptionBilling) error {
 	f.applied = append(f.applied, billing)
 	f.keys = append(f.keys, orgUUID+"/"+apiHandle+"/"+subscriberID)
 	return nil

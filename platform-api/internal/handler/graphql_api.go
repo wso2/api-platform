@@ -253,7 +253,7 @@ func (h *GraphQLAPIHandler) DeleteGraphQLAPI(w http.ResponseWriter, r *http.Requ
 	if err != nil {
 		return err
 	}
-	if err := h.graphqlAPIService.Delete(orgId, apiId, deletedBy); err != nil {
+	if err := h.graphqlAPIService.Delete(r.Context(), orgId, apiId, deletedBy); err != nil {
 		return serviceError(err, fmt.Sprintf("failed to delete GraphQL API %s in org %s", apiId, orgId))
 	}
 

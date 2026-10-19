@@ -144,7 +144,7 @@ func (r *Receiver) handleSubscriptionCreated(ctx context.Context, env *Envelope)
 			return err
 		}
 	}
-	_, err := r.subs.CreateSubscriptionWithBilling(d.API.RefID, d.API.kind(), env.OrgID, d.SubscriberID, d.applicationIDPtr(), &d.SubscriptionPlan.RefID, token, d.Status, "", billing)
+	_, err := r.subs.CreateSubscriptionWithBilling(ctx, d.API.RefID, d.API.kind(), env.OrgID, d.SubscriberID, d.applicationIDPtr(), &d.SubscriptionPlan.RefID, token, d.Status, "", billing)
 	if err != nil {
 		// Domain-level idempotency: a duplicate delivery whose subscription already exists is success.
 		if apperror.SubscriptionExists.Is(err) {
@@ -177,7 +177,7 @@ func (r *Receiver) handleSubscriptionUpdated(ctx context.Context, env *Envelope)
 		return apperror.SubscriptionNotFound.New()
 	}
 
-	_, err = r.subs.UpdateSubscription(sub.UUID, env.OrgID, d.SubscriberID, d.Status, "")
+	_, err = r.subs.UpdateSubscription(ctx, sub.UUID, env.OrgID, d.SubscriberID, d.Status, "")
 	return err
 }
 
@@ -201,7 +201,7 @@ func (r *Receiver) handleSubscriptionPlanChanged(ctx context.Context, env *Envel
 		return apperror.SubscriptionNotFound.New()
 	}
 
-	_, err = r.subs.ChangePlan(sub.UUID, env.OrgID, d.SubscriberID, d.SubscriptionPlan.RefID)
+	_, err = r.subs.ChangePlan(ctx, sub.UUID, env.OrgID, d.SubscriberID, d.SubscriptionPlan.RefID)
 	return err
 }
 
@@ -233,7 +233,7 @@ func (r *Receiver) handleSubscriptionTokenRegenerated(ctx context.Context, env *
 		return apperror.SubscriptionNotFound.New()
 	}
 
-	_, err = r.subs.RegenerateToken(sub.UUID, env.OrgID, d.SubscriberID, token)
+	_, err = r.subs.RegenerateToken(ctx, sub.UUID, env.OrgID, d.SubscriberID, token)
 	return err
 }
 
@@ -256,7 +256,7 @@ func (r *Receiver) handleSubscriptionDeleted(ctx context.Context, env *Envelope)
 		return nil
 	}
 
-	if err := r.subs.DeleteSubscription(sub.UUID, env.OrgID, d.SubscriberID, ""); err != nil {
+	if err := r.subs.DeleteSubscription(ctx, sub.UUID, env.OrgID, d.SubscriberID, ""); err != nil {
 		if apperror.SubscriptionNotFound.Is(err) {
 			return nil
 		}
@@ -282,5 +282,5 @@ func (r *Receiver) handleSubscriptionBillingUpdated(ctx context.Context, env *En
 	if err != nil {
 		return err
 	}
-	return r.subs.ApplyBillingFromWebhook(env.OrgID, d.API.RefID, d.API.kind(), d.SubscriberID, billing)
+	return r.subs.ApplyBillingFromWebhook(ctx, env.OrgID, d.API.RefID, d.API.kind(), d.SubscriberID, billing)
 }

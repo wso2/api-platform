@@ -20,6 +20,7 @@
 package service
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -81,30 +82,30 @@ func NewWebSubAPIDeploymentService(
 }
 
 // DeployWebSubAPIByHandle creates a new immutable deployment using WebSub API handle
-func (s *WebSubAPIDeploymentService) DeployWebSubAPIByHandle(apiHandle string, req *api.DeployRequest, orgUUID, createdBy string) (*api.DeploymentResponse, error) {
+func (s *WebSubAPIDeploymentService) DeployWebSubAPIByHandle(ctx context.Context, apiHandle string, req *api.DeployRequest, orgUUID, createdBy string) (*api.DeploymentResponse, error) {
 	apiUUID, err := s.getWebSubAPIUUIDByHandle(apiHandle, orgUUID)
 	if err != nil {
 		return nil, err
 	}
-	return s.deployWebSubAPI(apiUUID, req, orgUUID, createdBy)
+	return s.deployWebSubAPI(ctx, apiUUID, req, orgUUID, createdBy)
 }
 
 // RestoreWebSubAPIDeploymentByHandle restores a previous deployment using WebSub API handle
-func (s *WebSubAPIDeploymentService) RestoreWebSubAPIDeploymentByHandle(apiHandle, deploymentID, gatewayID, orgUUID string) (*api.DeploymentResponse, error) {
+func (s *WebSubAPIDeploymentService) RestoreWebSubAPIDeploymentByHandle(ctx context.Context, apiHandle, deploymentID, gatewayID, orgUUID string) (*api.DeploymentResponse, error) {
 	apiUUID, err := s.getWebSubAPIUUIDByHandle(apiHandle, orgUUID)
 	if err != nil {
 		return nil, err
 	}
-	return s.restoreWebSubAPIDeployment(apiUUID, &deploymentID, &gatewayID, orgUUID)
+	return s.restoreWebSubAPIDeployment(ctx, apiUUID, &deploymentID, &gatewayID, orgUUID)
 }
 
 // UndeployWebSubAPIDeploymentByHandle undeploys a deployment using WebSub API handle
-func (s *WebSubAPIDeploymentService) UndeployWebSubAPIDeploymentByHandle(apiHandle, deploymentID, gatewayID, orgUUID string) (*api.DeploymentResponse, error) {
+func (s *WebSubAPIDeploymentService) UndeployWebSubAPIDeploymentByHandle(ctx context.Context, apiHandle, deploymentID, gatewayID, orgUUID string) (*api.DeploymentResponse, error) {
 	apiUUID, err := s.getWebSubAPIUUIDByHandle(apiHandle, orgUUID)
 	if err != nil {
 		return nil, err
 	}
-	return s.undeployWebSubAPIDeployment(apiUUID, &deploymentID, &gatewayID, orgUUID)
+	return s.undeployWebSubAPIDeployment(ctx, apiUUID, &deploymentID, &gatewayID, orgUUID)
 }
 
 // DeleteWebSubAPIDeploymentByHandle deletes a deployment using WebSub API handle
@@ -155,7 +156,7 @@ func (s *WebSubAPIDeploymentService) GetWebSubAPIDeploymentsByHandle(apiHandle, 
 }
 
 // deployWebSubAPI deploys a WebSub API to a gateway
-func (s *WebSubAPIDeploymentService) deployWebSubAPI(apiUUID string, req *api.DeployRequest, orgID, createdBy string) (*api.DeploymentResponse, error) {
+func (s *WebSubAPIDeploymentService) deployWebSubAPI(ctx context.Context, apiUUID string, req *api.DeployRequest, orgID, createdBy string) (*api.DeploymentResponse, error) {
 	if req == nil {
 		return nil, apperror.ValidationFailed.New("A request body is required.")
 	}
@@ -271,12 +272,12 @@ func (s *WebSubAPIDeploymentService) deployWebSubAPI(apiUUID string, req *api.De
 			DeploymentID: deploymentID,
 			PerformedAt:  performedAt,
 		}
-		if err := s.gatewayEventsService.BroadcastWebSubAPIDeploymentEvent(gatewayID, deploymentEvent); err != nil {
+		if err := s.gatewayEventsService.BroadcastWebSubAPIDeploymentEvent(ctx, gatewayID, deploymentEvent); err != nil {
 			s.slogger.Warn("Failed to broadcast WebSub API deployment event", "error", err)
 		}
 
 		// Push existing active API keys for this API to the gateway (see BackfillAPIKeysToGateway).
-		coreservice.BackfillAPIKeysToGateway(s.apiKeyRepo, s.gatewayRepo, s.gatewayEventsService, s.slogger, apiUUID, gatewayID, createdBy)
+		coreservice.BackfillAPIKeysToGateway(ctx, s.apiKeyRepo, s.gatewayRepo, s.gatewayEventsService, s.slogger, apiUUID, gatewayID, createdBy)
 	}
 
 	return toAPIDeploymentResponse(
@@ -294,7 +295,7 @@ func (s *WebSubAPIDeploymentService) deployWebSubAPI(apiUUID string, req *api.De
 }
 
 // undeployWebSubAPIDeployment undeploys a WebSub API from a gateway
-func (s *WebSubAPIDeploymentService) undeployWebSubAPIDeployment(apiUUID string, deploymentId *string, gatewayId *string, orgID string) (*api.DeploymentResponse, error) {
+func (s *WebSubAPIDeploymentService) undeployWebSubAPIDeployment(ctx context.Context, apiUUID string, deploymentId *string, gatewayId *string, orgID string) (*api.DeploymentResponse, error) {
 	// DP-originated artifacts are read-only in the control plane: their deploy/undeploy
 	// lifecycle is owned by the data-plane gateway, so the control plane must not
 	// initiate an undeployment for them.
@@ -373,7 +374,7 @@ func (s *WebSubAPIDeploymentService) undeployWebSubAPIDeployment(apiUUID string,
 			DeploymentID: deployment.DeploymentID,
 			PerformedAt:  performedAt,
 		}
-		if err := s.gatewayEventsService.BroadcastWebSubAPIUndeploymentEvent(deployment.GatewayID, undeploymentEvent); err != nil {
+		if err := s.gatewayEventsService.BroadcastWebSubAPIUndeploymentEvent(ctx, deployment.GatewayID, undeploymentEvent); err != nil {
 			s.slogger.Warn("Failed to broadcast WebSub API undeployment event", "error", err)
 		}
 	}
@@ -393,7 +394,7 @@ func (s *WebSubAPIDeploymentService) undeployWebSubAPIDeployment(apiUUID string,
 }
 
 // restoreWebSubAPIDeployment restores a previously undeployed WebSub API deployment
-func (s *WebSubAPIDeploymentService) restoreWebSubAPIDeployment(apiUUID string, deploymentId *string, gatewayId *string, orgID string) (*api.DeploymentResponse, error) {
+func (s *WebSubAPIDeploymentService) restoreWebSubAPIDeployment(ctx context.Context, apiUUID string, deploymentId *string, gatewayId *string, orgID string) (*api.DeploymentResponse, error) {
 	// DP-originated artifacts are read-only in the control plane; their deployment
 	// lifecycle is owned by the data-plane gateway, so restore cannot be CP-initiated.
 	if err := ensureArtifactMutableByUUID(s.artifactRepo, apiUUID, orgID); err != nil {
@@ -455,12 +456,12 @@ func (s *WebSubAPIDeploymentService) restoreWebSubAPIDeployment(apiUUID string, 
 			DeploymentID: *deploymentId,
 			PerformedAt:  performedAt,
 		}
-		if err := s.gatewayEventsService.BroadcastWebSubAPIDeploymentEvent(targetDeployment.GatewayID, deploymentEvent); err != nil {
+		if err := s.gatewayEventsService.BroadcastWebSubAPIDeploymentEvent(ctx, targetDeployment.GatewayID, deploymentEvent); err != nil {
 			s.slogger.Warn("Failed to broadcast WebSub API deployment event", "error", err)
 		}
 
 		// Backfill existing active API keys to the gateway (see BackfillAPIKeysToGateway).
-		coreservice.BackfillAPIKeysToGateway(s.apiKeyRepo, s.gatewayRepo, s.gatewayEventsService, s.slogger, apiUUID, targetDeployment.GatewayID, "")
+		coreservice.BackfillAPIKeysToGateway(ctx, s.apiKeyRepo, s.gatewayRepo, s.gatewayEventsService, s.slogger, apiUUID, targetDeployment.GatewayID, "")
 	}
 
 	return toAPIDeploymentResponse(

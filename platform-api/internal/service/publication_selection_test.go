@@ -95,7 +95,7 @@ func TestPublicationSelections_SurviveThePortalDeletingThePlan(t *testing.T) {
 	apiType, apiHandle, portalHandle := listingWithDraft(t, tdb, svc, g)
 	plans := service.NewSubscriptionPlanService(repository.NewSubscriptionPlanRepo(tdb.db), nil, nil, nil, nil, nil)
 
-	if err := plans.DeletePlanFromWebhook(g.org, planHandleFor(g), time.Now().Add(time.Hour)); err != nil {
+	if err := plans.DeletePlanFromWebhook(context.Background(), g.org, planHandleFor(g), time.Now().Add(time.Hour)); err != nil {
 		t.Fatalf("DeletePlanFromWebhook failed: %v", err)
 	}
 

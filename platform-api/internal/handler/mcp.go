@@ -178,7 +178,7 @@ func (h *MCPProxyHandler) DeleteMCPProxy(w http.ResponseWriter, r *http.Request)
 		return err
 	}
 
-	if err := h.service.Delete(orgID, id, deletedBy); err != nil {
+	if err := h.service.Delete(r.Context(), orgID, id, deletedBy); err != nil {
 		return h.mapServiceError(err)
 	}
 

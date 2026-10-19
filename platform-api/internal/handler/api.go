@@ -40,21 +40,22 @@ import (
 
 	"github.com/wso2/api-platform/httpkit/httputil"
 )
+
 type APIHandler struct {
-	apiService   *service.APIService
-	identity     *service.IdentityService
+	apiService         *service.APIService
+	identity           *service.IdentityService
 	apiDocumentService *service.APIDocumentService
-	slogger      *slog.Logger
-	cfg          *config.Server
+	slogger            *slog.Logger
+	cfg                *config.Server
 }
 
-func NewAPIHandler(apiService *service.APIService, identity *service.IdentityService, apiDocumentService *service.APIDocumentService, slogger *slog.Logger,cfg *config.Server) *APIHandler {
+func NewAPIHandler(apiService *service.APIService, identity *service.IdentityService, apiDocumentService *service.APIDocumentService, slogger *slog.Logger, cfg *config.Server) *APIHandler {
 	return &APIHandler{
-		apiService:   apiService,
-		identity:     identity,
+		apiService:         apiService,
+		identity:           identity,
 		apiDocumentService: apiDocumentService,
-		slogger:      slogger,
-		cfg:          cfg,
+		slogger:            slogger,
+		cfg:                cfg,
 	}
 }
 
@@ -250,7 +251,7 @@ func (h *APIHandler) DeleteAPI(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	if err := h.apiService.DeleteAPIByHandle(apiId, orgId, deletedBy); err != nil {
+	if err := h.apiService.DeleteAPIByHandle(r.Context(), apiId, orgId, deletedBy); err != nil {
 		return serviceError(err, fmt.Sprintf("failed to delete API %s in org %s", apiId, orgId))
 	}
 
@@ -413,19 +414,19 @@ func (h *APIHandler) ImportOpenAPI(w http.ResponseWriter, r *http.Request) error
 	// Persist the spec document
 	// If this fails, rollback the API creation
 	docReq := &dto.CreateAPIDocumentRequest{
-		Type:             constants.DocumentTypeDefinition,
-		Handle:           constants.DocumentHandleDefinition,
-		DisplayName:      constants.DocumentDisplayNameDefinition,
-		FileName:         specFileName,
-		Content:		  specContent,
+		Type:        constants.DocumentTypeDefinition,
+		Handle:      constants.DocumentHandleDefinition,
+		DisplayName: constants.DocumentDisplayNameDefinition,
+		FileName:    specFileName,
+		Content:     specContent,
 	}
 
 	_, docErr := h.apiDocumentService.CreateDocument(docReq, orgId, createdBy, artifactUUID)
 	if docErr != nil {
-		h.slogger.Error("Failed to persist OpenAPI spec document; rolling back API", 
+		h.slogger.Error("Failed to persist OpenAPI spec document; rolling back API",
 			"apiId", artifactUUID, "error", docErr)
-		if rollbackErr := h.apiService.DeleteAPI(artifactUUID, orgId, createdBy); rollbackErr != nil {
-			h.slogger.Error("Rollback after document creation failure also failed", 
+		if rollbackErr := h.apiService.DeleteAPI(r.Context(), artifactUUID, orgId, createdBy); rollbackErr != nil {
+			h.slogger.Error("Rollback after document creation failure also failed",
 				"apiId", artifactUUID, "error", rollbackErr)
 		}
 		return apperror.Internal.Wrap(docErr).WithLogMessage("failed to persist API specification")
@@ -581,7 +582,7 @@ func (h *APIHandler) ValidateOpenAPI(w http.ResponseWriter, r *http.Request) err
 type openAPISpecUpload struct {
 	content  []byte
 	filename string
-	fromURL bool
+	fromURL  bool
 }
 
 // Parses the incoming multipart form under a body cap.

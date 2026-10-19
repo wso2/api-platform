@@ -724,8 +724,8 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	slogger.Info("Registered API routes successfully")
 
 	// Build the middleware chain that wraps the mux.
-	// Order: [plugin preChain] → CORS → auth → org resolver → scope enforcer →
-	//        read-only guard (TEMP-READ-ONLY-MODE) → [plugin postChain] → mux
+	// Order: [plugin preChain] → correlation ID → CORS → auth → org resolver →
+	//        scope enforcer → read-only guard (TEMP-READ-ONLY-MODE) → [plugin postChain] → mux
 	var chain []func(http.Handler) http.Handler
 
 	// Plugin "before" middleware — outermost, before CORS/auth. No authenticated
@@ -734,6 +734,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	for _, mw := range preChain {
 		chain = append(chain, mw)
 	}
+	chain = append(chain, gohttpkit.CorrelationIDMiddleware(slogger))
 
 	// validateServerConfig already rejected a wildcard allowlist.
 	// Cross-origin access is disabled by default (empty AllowedOrigins fails closed in the
