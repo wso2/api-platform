@@ -504,6 +504,9 @@ data:
             gatewayControllerHost: ""
             logLevel: info
             moesifKey: ""
+            moesifKeySecretRef:
+              name: ""
+              key: moesif-key
           extraEnv: []
           extraEnvFrom: []
           extraVolumeMounts: []
