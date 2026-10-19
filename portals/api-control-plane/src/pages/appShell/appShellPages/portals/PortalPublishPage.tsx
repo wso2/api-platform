@@ -160,6 +160,11 @@ const messages = defineMessages({
     defaultMessage: 'Clear inactive plans to save or publish: {names}.',
     description: 'Warning when Save Draft or Publish is blocked because the selection still holds inactive plans. {names} is a comma-separated list of plan names.',
   },
+  removedPlans: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.removedPlans',
+    defaultMessage: 'A selected subscription plan no longer exists and was removed from the selection.',
+    description: 'Notice when a plan deleted elsewhere is dropped from the selected plans.',
+  },
   published: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.published',
     defaultMessage: 'Published to {portalName}.',
@@ -347,6 +352,22 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
     setDefinitionFormat(data.seed.definition?.format ?? (isGraphQL ? 'graphql' : 'json'));
     setInitialized(true);
   }, [initialized, data.seed]);
+
+  // A plan deleted elsewhere has no card to clear but would still be submitted, so drop it and say so.
+  useEffect(() => {
+    if (!initialized || !plansQuery.isSuccess) return;
+    const known = new Set(plansQuery.data.list.map((plan) => plan.id));
+    const isKnown = (id: string) => known.has(id);
+    if (values.subscriptionPlanIds.every(isKnown)) return;
+    const withoutUnknown = (current: DraftFormValues) => ({
+      ...current,
+      subscriptionPlanIds: current.subscriptionPlanIds.filter(isKnown),
+    });
+    setValues(withoutUnknown);
+    // The server dropped it from the saved draft too, so this isn't an edit to save.
+    setSaved((current) => ({ ...current, values: withoutUnknown(current.values) }));
+    notify(intl.formatMessage(messages.removedPlans), 'warning');
+  }, [initialized, intl, notify, plansQuery.data, plansQuery.isSuccess, values.subscriptionPlanIds]);
 
   if (data.isLoading) {
     return <LoadingState label={intl.formatMessage(messages.loading)} />;

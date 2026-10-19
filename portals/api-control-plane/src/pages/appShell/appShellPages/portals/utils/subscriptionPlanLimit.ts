@@ -21,52 +21,31 @@ import { defineMessages, type MessageDescriptor } from 'react-intl';
 import type { SubscriptionPlan } from '@/api/resources/subscriptionPlans';
 
 const messages = defineMessages({
-  unitRequestPerMinute: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.portals.utils.subscriptionPlanLimit.unitRequestPerMinute',
-    defaultMessage: 'requests / minute',
-  },
-  unitRequestPerHour: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.portals.utils.subscriptionPlanLimit.unitRequestPerHour',
-    defaultMessage: 'requests / hour',
-  },
-  unitRequestPerDay: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.portals.utils.subscriptionPlanLimit.unitRequestPerDay',
-    defaultMessage: 'requests / day',
-  },
-  unitRequestPerMonth: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.portals.utils.subscriptionPlanLimit.unitRequestPerMonth',
-    defaultMessage: 'requests / month',
+  unitRequests: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.utils.subscriptionPlanLimit.unitRequests',
+    defaultMessage:
+      'requests / {amount, plural, one {{timeUnit, select, MINUTE {minute} HOUR {hour} DAY {day} other {month}}} other {# {timeUnit, select, MINUTE {minutes} HOUR {hours} DAY {days} other {months}}}}',
+    description:
+      'Request-count limit unit. {amount} is how many time units the window spans; {timeUnit} is MINUTE, HOUR, DAY or MONTH.',
   },
   unitBandwidth: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.utils.subscriptionPlanLimit.unitBandwidth',
-    defaultMessage: '{unit} / {window}',
+    defaultMessage:
+      '{unit} / {amount, plural, one {{timeUnit, select, MINUTE {minute} HOUR {hour} DAY {day} other {month}}} other {# {timeUnit, select, MINUTE {minutes} HOUR {hours} DAY {days} other {months}}}}',
     description:
-      'Bandwidth limit unit. {unit} is the server-supplied limitCountUnit (e.g. "MB"); {window} is the lowercase time window (e.g. "month").',
+      'Bandwidth limit unit. {unit} is the server-supplied limitCountUnit (e.g. "MB"); {amount} and {timeUnit} describe the window.',
   },
   unitTokens: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.utils.subscriptionPlanLimit.unitTokens',
-    defaultMessage: 'tokens / {window}',
-    description: 'Token-count limit unit. {window} is the lowercase time window (e.g. "month").',
+    defaultMessage:
+      'tokens / {amount, plural, one {{timeUnit, select, MINUTE {minute} HOUR {hour} DAY {day} other {month}}} other {# {timeUnit, select, MINUTE {minutes} HOUR {hours} DAY {days} other {months}}}}',
+    description: 'Token-count limit unit. {amount} and {timeUnit} describe the window.',
   },
   noRequestCap: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.utils.subscriptionPlanLimit.noRequestCap',
     defaultMessage: 'no request cap',
   },
 });
-
-const TIME_WINDOW_LABEL: Record<NonNullable<SubscriptionPlan['limits']>[number]['timeUnit'], string> = {
-  MINUTE: 'minute',
-  HOUR: 'hour',
-  DAY: 'day',
-  MONTH: 'month',
-};
-
-const REQUEST_UNIT_BY_WINDOW: Record<string, MessageDescriptor> = {
-  minute: messages.unitRequestPerMinute,
-  hour: messages.unitRequestPerHour,
-  day: messages.unitRequestPerDay,
-  month: messages.unitRequestPerMonth,
-};
 
 /**
  * `unit`/`unitValues` always describe the caption under the big number — one
@@ -75,7 +54,7 @@ const REQUEST_UNIT_BY_WINDOW: Record<string, MessageDescriptor> = {
  */
 export type PlanLimitDisplay =
   | { unlimited: true; unit: MessageDescriptor }
-  | { unlimited: false; count: number; unit: MessageDescriptor; unitValues?: Record<string, string> };
+  | { unlimited: false; count: number; unit: MessageDescriptor; unitValues?: Record<string, string | number> };
 
 /**
  * The plan card's big number and its unit caption. A plan with no limits
@@ -87,18 +66,18 @@ export const getPlanLimitDisplay = (plan: SubscriptionPlan): PlanLimitDisplay =>
   const limit = plan.limits?.[0];
   if (!limit) return { unit: messages.noRequestCap, unlimited: true };
 
-  const window = TIME_WINDOW_LABEL[limit.timeUnit];
+  const timeWindow = { amount: limit.timeAmount ?? 1, timeUnit: limit.timeUnit };
 
   if (limit.limitType === 'BANDWIDTH') {
     return {
       count: limit.limitCount,
       unit: messages.unitBandwidth,
-      unitValues: { unit: limit.limitCountUnit ?? '', window },
+      unitValues: { ...timeWindow, unit: limit.limitCountUnit ?? '' },
       unlimited: false,
     };
   }
   if (limit.limitType === 'TOTAL_TOKEN_COUNT') {
-    return { count: limit.limitCount, unit: messages.unitTokens, unitValues: { window }, unlimited: false };
+    return { count: limit.limitCount, unit: messages.unitTokens, unitValues: timeWindow, unlimited: false };
   }
-  return { count: limit.limitCount, unit: REQUEST_UNIT_BY_WINDOW[window], unlimited: false };
+  return { count: limit.limitCount, unit: messages.unitRequests, unitValues: timeWindow, unlimited: false };
 };

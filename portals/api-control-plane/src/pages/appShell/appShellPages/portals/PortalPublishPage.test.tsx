@@ -446,6 +446,33 @@ describe('PortalPublishPage', () => {
     expect(JSON.parse(draftRequests.last()?.body ?? '{}')).toMatchObject({ subscriptionPlanIds: ['gold'] });
   });
 
+  it('drops a selected plan that no longer exists, says so, and does not send it', async () => {
+    const gold = aSubscriptionPlan({ displayName: 'Gold', id: 'gold' });
+    servePublicationState({
+      draft: aPublicationDraftDetails({ subscriptionPlanIds: ['gold', 'deleted'] }),
+      plans: [gold],
+    });
+    const draftRequests = recorder();
+    server.use(
+      accepts('put', DRAFT_PATH, aPublicationDraftDetails(), { record: draftRequests }),
+      accepts('put', DRAFT_DEFINITION_PATH, undefined),
+    );
+
+    const { user } = renderPage();
+
+    await screen.findByDisplayValue('Loan Management Service');
+    expect(
+      await screen.findByText('A selected subscription plan no longer exists and was removed from the selection.'),
+    ).toBeInTheDocument();
+
+    // It was never an edit of the user's, so nothing is left to save until they make one.
+    expect(screen.queryByText('Unsaved changes', { exact: false })).not.toBeInTheDocument();
+    await makeEdit(user);
+    await user.click(screen.getByRole('button', { name: 'Save Draft' }));
+    await waitFor(() => expect(draftRequests.count()).toBe(1));
+    expect(JSON.parse(draftRequests.last()?.body ?? '{}')).toMatchObject({ subscriptionPlanIds: ['gold'] });
+  });
+
   it('lists the saved inactive plan first, then the saved selection, then the other plans, and keeps that order when a plan is selected', async () => {
     const bronze = aSubscriptionPlan({ displayName: 'Bronze', id: 'bronze' });
     const gold = aSubscriptionPlan({ displayName: 'Gold', id: 'gold' });
