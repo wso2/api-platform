@@ -66,7 +66,9 @@ openshift:
         key: ""
         caCertificate: ""
         # reencrypt only: PEM CA that signed the controller's REST API certificate
-        # (gateway.controller.restApiTls), so the router can verify the backend.
+        # (gateway.controller.restApiTls), so the router can verify the backend. reencrypt is
+        # rejected with the chart's self-signed Issuer; use a real issuer or a Secret signed by
+        # the OpenShift service CA (trusted by the router without this field).
         destinationCACertificate: ""
 
 ## moved to each component's deployment block below
@@ -824,7 +826,9 @@ gateway:
           # group: cert-manager.io
         # Certificate common name. Empty = the controller Service name.
         commonName: ""
-        # DNS names for the certificate. Empty = the controller Service's in-cluster names.
+        # DNS names for the certificate. Empty = the controller Service's in-cluster names and
+        # localhost (for kubectl port-forward), plus openshift.routes.managementApi.hostname
+        # when that Route uses passthrough.
         dnsNames: []
         duration: 2160h
         renewBefore: 720h

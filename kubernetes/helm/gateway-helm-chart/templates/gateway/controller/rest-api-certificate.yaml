@@ -5,7 +5,12 @@
 {{- $svc := printf "%s-controller" (include "gateway-operator.fullname" .) -}}
 {{- $dnsNames := $cm.dnsNames -}}
 {{- if not $dnsNames -}}
-{{- $dnsNames = list $svc (printf "%s.%s" $svc .Release.Namespace) (printf "%s.%s.svc" $svc .Release.Namespace) (printf "%s.%s.svc.cluster.local" $svc .Release.Namespace) -}}
+{{- $dnsNames = list $svc (printf "%s.%s" $svc .Release.Namespace) (printf "%s.%s.svc" $svc .Release.Namespace) (printf "%s.%s.svc.cluster.local" $svc .Release.Namespace) "localhost" -}}
+{{- /* A passthrough Route hands this certificate straight to external clients, so it must name the Route host. */ -}}
+{{- $route := .Values.openshift.routes.managementApi -}}
+{{- if and .Values.openshift.enabled $route.enabled $route.hostname (eq (dig "tls" "termination" "edge" $route) "passthrough") -}}
+{{- $dnsNames = append $dnsNames $route.hostname -}}
+{{- end -}}
 {{- end }}
 apiVersion: cert-manager.io/v1
 kind: Certificate

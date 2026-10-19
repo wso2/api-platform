@@ -9,6 +9,13 @@
 {{- if and $serverTls (not (has $termination (list "passthrough" "reencrypt"))) -}}
 {{- fail (printf "openshift.routes.managementApi: the management API serves HTTPS (gateway.config.controller.server.tls.enabled=true), so tls.termination must be passthrough or reencrypt (got %q)" $termination) -}}
 {{- end }}
+{{- /* The chart's self-signed Issuer mints a certificate the router cannot trust, and its CA only exists
+       after install, so reencrypt cannot work with it. Other sources (a real issuer, or a Secret from
+       the OpenShift service CA) may already be trusted by the router without destinationCACertificate. */}}
+{{- $restApiTls := .Values.gateway.controller.restApiTls -}}
+{{- if and $serverTls (eq $termination "reencrypt") (not $tls.destinationCACertificate) (eq $restApiTls.certificateProvider "cert-manager") (not $restApiTls.certManager.issuerRef.name) -}}
+{{- fail "openshift.routes.managementApi: reencrypt cannot verify the controller certificate issued by the chart's self-signed Issuer. Set gateway.controller.restApiTls.certManager.issuerRef to a real issuer (and destinationCACertificate if the router does not already trust it), use a Secret signed by the OpenShift service CA, or use passthrough." -}}
+{{- end }}
 {{- /* The Route publishes the management API outside the cluster, so refuse it while the API would
        accept the chart's default password, or every request (no basic auth users and no IDP). */}}
 {{- $auth := default (dict) .Values.gateway.config.controller.auth -}}

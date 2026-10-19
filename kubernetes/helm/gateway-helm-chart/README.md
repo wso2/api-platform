@@ -373,8 +373,14 @@ helm install ap-gateway . \
 For production with cert-manager, set `gateway.controller.restApiTls.certManager.issuerRef`
 to your own Issuer/ClusterIssuer. Protocol versions, cipher suites and key-exchange groups
 are under `gateway.config.controller.server.tls`. With `openshift.routes.managementApi`
-enabled, set its `tls.termination` to `passthrough` or `reencrypt` (with
-`destinationCACertificate`); `edge` is rejected while the API serves HTTPS.
+enabled, set its `tls.termination` to `passthrough` or `reencrypt`; `edge` is rejected while
+the API serves HTTPS. With `passthrough`, the default certificate also covers the Route
+`hostname`. `reencrypt` needs a certificate the router can verify: a real issuer (plus
+`destinationCACertificate` if the router does not already trust it) or a Secret signed by the
+OpenShift service CA — the chart's self-signed Issuer is rejected.
+
+The controller loads the certificate at startup, so restart the controller after the
+certificate is renewed.
 
 ### Custom Upstream Certificates
 
