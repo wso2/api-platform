@@ -399,7 +399,11 @@ type APIPortalRepository interface {
 	// the cloud plugin's provisioning poller for pending -> active/failed
 	// transitions without touching the whitelisted mutable-metadata fields
 	// Update covers.
-	UpdateStatus(portalID, orgUUID, updatedBy, status string) error
+	// It returns the row's updated_by after the write.
+	UpdateStatus(portalID, orgUUID, updatedBy, status string) (string, error)
+	// Reopen moves an active or failed portal back to pending, for a change
+	// that takes the portal out of service until it completes.
+	Reopen(portalID, orgUUID, updatedBy string) (string, error)
 	// GetStatusByHandle returns just the status column for one portal.
 	GetStatusByHandle(handle, orgUUID string) (string, error)
 	// ListStatusesByOrg returns handle -> status for every portal in the org

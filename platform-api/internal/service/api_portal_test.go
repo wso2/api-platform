@@ -84,6 +84,10 @@ type mockAPIPortalRepository struct {
 	// Status-family capture + canned returns.
 	updateStatusCalledWith updateStatusCall
 	updateStatusErr        error
+	reopenCalledWith       updateStatusCall
+	reopenErr              error
+	// rowUpdatedBy is the row's updated_by at the time of a status write.
+	rowUpdatedBy string
 
 	getStatusCalledWith [2]string
 	getStatusResult     string
@@ -148,11 +152,24 @@ func (m *mockAPIPortalRepository) Delete(portalID, orgUUID string) error {
 
 // Status-family stubs; each tests specific behaviour by populating the fields it
 // needs. Unset returns match the zero-value semantics real callers expect.
-func (m *mockAPIPortalRepository) UpdateStatus(portalID, orgUUID, updatedBy, status string) error {
+// keptUpdater mirrors the repository: an empty updater leaves the row's.
+func keptUpdater(updatedBy, row string) string {
+	if updatedBy != "" {
+		return updatedBy
+	}
+	return row
+}
+
+func (m *mockAPIPortalRepository) UpdateStatus(portalID, orgUUID, updatedBy, status string) (string, error) {
 	m.updateStatusCalledWith = updateStatusCall{
 		PortalID: portalID, OrgUUID: orgUUID, UpdatedBy: updatedBy, Status: status,
 	}
-	return m.updateStatusErr
+	return keptUpdater(updatedBy, m.rowUpdatedBy), m.updateStatusErr
+}
+
+func (m *mockAPIPortalRepository) Reopen(portalID, orgUUID, updatedBy string) (string, error) {
+	m.reopenCalledWith = updateStatusCall{PortalID: portalID, OrgUUID: orgUUID, UpdatedBy: updatedBy}
+	return keptUpdater(updatedBy, m.rowUpdatedBy), m.reopenErr
 }
 
 func (m *mockAPIPortalRepository) GetStatusByHandle(handle, orgUUID string) (string, error) {
@@ -986,6 +1003,27 @@ func TestAPIPortalService_UpdateAPIPortalStatus_HappyPath(t *testing.T) {
 	}
 }
 
+// With no actor the row's updated_by stays, and the audit names the user the
+// row kept, even when it changed after the portal was read.
+func TestAPIPortalService_UpdateAPIPortalStatus_EmptyActorAuditsLastUser(t *testing.T) {
+	portalRepo := &mockAPIPortalRepository{
+		getResult:    &model.APIPortal{ID: "portal-uuid", Handle: "acme", UpdatedBy: "user-0"},
+		rowUpdatedBy: "user-1",
+	}
+	audit := &mockAPIPortalAuditRepository{}
+	svc := newTestAPIPortalService(t, portalRepo, &mockAPIPortalOrgRepository{}, audit)
+
+	if err := svc.UpdateAPIPortalStatus("acme", "org-1", " ", constants.APIPortalStatusActive); err != nil {
+		t.Fatalf("UpdateAPIPortalStatus: %v", err)
+	}
+	if got := portalRepo.updateStatusCalledWith.UpdatedBy; got != "" {
+		t.Errorf("repo must get an empty actor to keep updated_by, got %q", got)
+	}
+	if len(audit.records) != 1 || audit.records[0].performedBy != "user-1" {
+		t.Errorf("audit: %+v", audit.records)
+	}
+}
+
 func TestAPIPortalService_UpdateAPIPortalStatus_RejectsUnknownStatus(t *testing.T) {
 	// Guard must run before we bother reading the row; otherwise a bogus
 	// status turns into a repo call that then rejects it, wasting a round-trip
@@ -1149,5 +1187,69 @@ func TestAPIPortalService_ListAPIPortalsByStatus_RejectsUnknownStatus(t *testing
 	}
 	if portalRepo.listByStatusCalledWith != "" {
 		t.Error("repo must not be hit when status validation fails")
+	}
+}
+
+// ReopenAPIPortal threads the user to the repository, audits the change, and
+// passes "already pending" through for errors.Is.
+func TestAPIPortalService_ReopenAPIPortal(t *testing.T) {
+	portalRepo := &mockAPIPortalRepository{getResult: &model.APIPortal{ID: "portal-uuid", Handle: "acme", UpdatedBy: "user-1"}}
+	audit := &mockAPIPortalAuditRepository{}
+	svc := newTestAPIPortalService(t, portalRepo, &mockAPIPortalOrgRepository{}, audit)
+	if err := svc.ReopenAPIPortal("acme", "org-1", "user-2"); err != nil {
+		t.Fatalf("ReopenAPIPortal: %v", err)
+	}
+	if got := portalRepo.reopenCalledWith; got.PortalID != "portal-uuid" || got.OrgUUID != "org-1" || got.UpdatedBy != "user-2" {
+		t.Errorf("repo args: %+v", got)
+	}
+	if len(audit.records) != 1 || audit.records[0].performedBy != "user-2" {
+		t.Errorf("audit: %+v", audit.records)
+	}
+
+	portalRepo.reopenErr = repository.ErrAPIPortalPending
+	if err := svc.ReopenAPIPortal("acme", "org-1", "user-2"); !errors.Is(err, api.ErrAPIPortalPending) {
+		t.Errorf("err = %v, want ErrAPIPortalPending", err)
+	}
+	portalRepo.getResult = nil
+	if err := svc.ReopenAPIPortal("missing", "org-1", "user-2"); err == nil {
+		t.Error("missing portal must fail")
+	}
+}
+
+// A failed read or status write is returned, and nothing is audited.
+func TestAPIPortalService_StatusChangesReturnRepositoryErrors(t *testing.T) {
+	boom := errors.New("db down")
+	cases := map[string]struct {
+		repo *mockAPIPortalRepository
+		call func(*APIPortalService) error
+	}{
+		"update status read": {
+			&mockAPIPortalRepository{getErr: boom},
+			func(s *APIPortalService) error {
+				return s.UpdateAPIPortalStatus("acme", "org-1", "", constants.APIPortalStatusActive)
+			},
+		},
+		"update status write": {
+			&mockAPIPortalRepository{getResult: &model.APIPortal{ID: "portal-uuid", Handle: "acme"}, updateStatusErr: boom},
+			func(s *APIPortalService) error {
+				return s.UpdateAPIPortalStatus("acme", "org-1", "", constants.APIPortalStatusActive)
+			},
+		},
+		"reopen read": {
+			&mockAPIPortalRepository{getErr: boom},
+			func(s *APIPortalService) error { return s.ReopenAPIPortal("acme", "org-1", "user-1") },
+		},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			audit := &mockAPIPortalAuditRepository{}
+			svc := newTestAPIPortalService(t, tc.repo, &mockAPIPortalOrgRepository{}, audit)
+			if err := tc.call(svc); !errors.Is(err, boom) {
+				t.Errorf("err = %v, want %v", err, boom)
+			}
+			if len(audit.records) != 0 {
+				t.Errorf("nothing may be audited: %+v", audit.records)
+			}
+		})
 	}
 }
