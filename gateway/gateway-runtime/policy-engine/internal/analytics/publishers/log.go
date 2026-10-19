@@ -100,6 +100,7 @@ func NewLog(logCfg *config.TrafficLoggingConfig) (*Log, error) {
 	}
 	if len(logCfg.JSONFields) > 0 {
 		l.jsonFields = newGlobalPropertyEvaluator(logCfg.JSONFields, masked,
+			withSection(jsonFieldsSection),
 			withExcludedHeaders(l.exclusions.excludedRequestHeaders(), l.exclusions.excludedResponseHeaders()),
 			withBodies(l.truncatePayload))
 	}

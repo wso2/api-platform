@@ -18,9 +18,11 @@
 package publishers
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -1001,4 +1003,38 @@ func TestLog_Publish_JSONFieldsBodyEmptyWhenNotCaptured(t *testing.T) {
 	l.Publish(createBaseEvent())
 
 	assert.Equal(t, "", decodeLine(t, read())["reqBody"])
+}
+
+// captureLogs sends the default slog logger's output to a buffer for the rest of the test.
+func captureLogs(t *testing.T) *bytes.Buffer {
+	t.Helper()
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+	return &buf
+}
+
+func TestNewLog_InvalidExpressionLogsItsSection(t *testing.T) {
+	const invalid = "$ctx:latencies.totaltime"
+	tests := []struct {
+		name string
+		cfg  config.TrafficLoggingConfig
+		want string
+	}{
+		{"properties", config.TrafficLoggingConfig{Properties: map[string]string{"d": invalid}},
+			"traffic_logging.properties: failed to compile expression"},
+		{"json_fields", config.TrafficLoggingConfig{JSONFields: map[string]string{"d": invalid}},
+			"traffic_logging.json_fields: failed to compile expression"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			logs := captureLogs(t)
+
+			_, err := NewLog(&tt.cfg)
+
+			require.NoError(t, err)
+			assert.Contains(t, logs.String(), tt.want)
+		})
+	}
 }
