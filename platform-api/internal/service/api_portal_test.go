@@ -1215,3 +1215,41 @@ func TestAPIPortalService_ReopenAPIPortal(t *testing.T) {
 		t.Error("missing portal must fail")
 	}
 }
+
+// A failed read or status write is returned, and nothing is audited.
+func TestAPIPortalService_StatusChangesReturnRepositoryErrors(t *testing.T) {
+	boom := errors.New("db down")
+	cases := map[string]struct {
+		repo *mockAPIPortalRepository
+		call func(*APIPortalService) error
+	}{
+		"update status read": {
+			&mockAPIPortalRepository{getErr: boom},
+			func(s *APIPortalService) error {
+				return s.UpdateAPIPortalStatus("acme", "org-1", "", constants.APIPortalStatusActive)
+			},
+		},
+		"update status write": {
+			&mockAPIPortalRepository{getResult: &model.APIPortal{ID: "portal-uuid", Handle: "acme"}, updateStatusErr: boom},
+			func(s *APIPortalService) error {
+				return s.UpdateAPIPortalStatus("acme", "org-1", "", constants.APIPortalStatusActive)
+			},
+		},
+		"reopen read": {
+			&mockAPIPortalRepository{getErr: boom},
+			func(s *APIPortalService) error { return s.ReopenAPIPortal("acme", "org-1", "user-1") },
+		},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			audit := &mockAPIPortalAuditRepository{}
+			svc := newTestAPIPortalService(t, tc.repo, &mockAPIPortalOrgRepository{}, audit)
+			if err := tc.call(svc); !errors.Is(err, boom) {
+				t.Errorf("err = %v, want %v", err, boom)
+			}
+			if len(audit.records) != 0 {
+				t.Errorf("nothing may be audited: %+v", audit.records)
+			}
+		})
+	}
+}

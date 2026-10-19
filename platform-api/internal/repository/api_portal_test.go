@@ -878,3 +878,54 @@ func TestAPIPortalRepo_Reopen(t *testing.T) {
 		t.Errorf("missing portal: %v", err)
 	}
 }
+
+// A status transition reports database failures as errors, not as a result
+// or as "not pending".
+func TestAPIPortalRepo_TransitionStatusReportsDatabaseErrors(t *testing.T) {
+	const orgUUID = "org-transition-errors"
+	updateOrg := `UPDATE organizations SET handle = handle WHERE uuid = ?`
+
+	t.Run("begin", func(t *testing.T) {
+		db, cleanup := setupTestDB(t)
+		repo := NewAPIPortalRepo(db)
+		cleanup()
+		if _, err := repo.UpdateStatus("p", orgUUID, "", constants.APIPortalStatusActive); err == nil {
+			t.Fatal("want an error from a closed database")
+		}
+	})
+	t.Run("update", func(t *testing.T) {
+		db, cleanup := setupTestDB(t)
+		defer cleanup()
+		repo := NewAPIPortalRepo(db).(*APIPortalRepo)
+		_, err := repo.transitionStatus(`UPDATE api_portals SET no_such_column = 1`, nil, "p", orgUUID, ErrAPIPortalPending)
+		if err == nil || errors.Is(err, ErrAPIPortalPending) {
+			t.Fatalf("err = %v, want the update error", err)
+		}
+	})
+	// With api_portals gone, the update below (on another table) succeeds and
+	// the portal reads that follow it fail.
+	dropPortals := func(t *testing.T) (*APIPortalRepo, func()) {
+		t.Helper()
+		db, cleanup := setupTestDBWithoutForeignKeys(t)
+		createTestAPIPortalOrg(t, db, orgUUID)
+		if _, err := db.Exec(`DROP TABLE api_portals`); err != nil {
+			t.Fatalf("drop api_portals: %v", err)
+		}
+		return NewAPIPortalRepo(db).(*APIPortalRepo), cleanup
+	}
+	t.Run("existence check", func(t *testing.T) {
+		repo, cleanup := dropPortals(t)
+		defer cleanup()
+		_, err := repo.transitionStatus(updateOrg, []any{"no-such-org"}, "p", orgUUID, ErrAPIPortalPending)
+		if err == nil || errors.Is(err, ErrAPIPortalPending) {
+			t.Fatalf("err = %v, want the existence check error", err)
+		}
+	})
+	t.Run("read back", func(t *testing.T) {
+		repo, cleanup := dropPortals(t)
+		defer cleanup()
+		if _, err := repo.transitionStatus(updateOrg, []any{orgUUID}, "p", orgUUID, ErrAPIPortalPending); err == nil {
+			t.Fatal("want the read-back error")
+		}
+	})
+}
