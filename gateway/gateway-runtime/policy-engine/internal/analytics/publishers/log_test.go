@@ -969,3 +969,36 @@ func TestLog_Publish_PropertiesHeadersUnchangedByExcludeFields(t *testing.T) {
 	props, _ := decodeLine(t, read())["properties"].(map[string]interface{})
 	assert.Equal(t, "bar", props["foo"])
 }
+
+// Naming a body in json_fields is the opt-in, so the request_body/response_body
+// toggles are left off here; max_payload_size still caps each body.
+func TestLog_Publish_JSONFieldsWritesBodiesCappedByMaxPayloadSize(t *testing.T) {
+	l, read := newLogToFile(t, &config.TrafficLoggingConfig{
+		Enabled:        true,
+		MaxPayloadSize: 5,
+		JSONFields: map[string]string{
+			"reqBody":  "$ctx:request.body",
+			"respBody": "$ctx:response.body",
+		},
+	})
+	event := createBaseEvent()
+	event.Properties[dto.PropKeyRequestPayload] = `{"q":"hi"}`
+	event.Properties[dto.PropKeyResponsePayload] = "ok"
+
+	l.Publish(event)
+
+	line := decodeLine(t, read())
+	assert.Equal(t, `{"q":`, line["reqBody"])
+	assert.Equal(t, "ok", line["respBody"])
+}
+
+func TestLog_Publish_JSONFieldsBodyEmptyWhenNotCaptured(t *testing.T) {
+	l, read := newLogToFile(t, &config.TrafficLoggingConfig{
+		Enabled:    true,
+		JSONFields: map[string]string{"reqBody": "$ctx:request.body"},
+	})
+
+	l.Publish(createBaseEvent())
+
+	assert.Equal(t, "", decodeLine(t, read())["reqBody"])
+}

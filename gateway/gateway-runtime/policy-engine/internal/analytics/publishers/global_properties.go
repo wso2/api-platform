@@ -73,6 +73,9 @@ type globalPropertyEvaluator struct {
 	// the "requestHeaders.<name>"/"responseHeaders.<name>" entries of exclude_fields.
 	excludedRequestHeaders  map[string]bool
 	excludedResponseHeaders map[string]bool
+	// truncateBody, when set, declares request.body/response.body and cuts each
+	// body to max_payload_size. Set only for json_fields (see withBodies).
+	truncateBody func(string) string
 	// referencedVars is the union, across every compiled expression, of the declared
 	// variable names (see globalPropertyVariables) actually referenced. Computed once at
 	// construction (the expression set is static config) and consulted by
@@ -91,18 +94,25 @@ type globalPropertyEvaluator struct {
 // here is permanent (logged once) since it can never succeed on a later
 // request the way a per-request nil AuthContext might resolve differently
 // request to request.
-func newGlobalPropertyEvaluator(properties map[string]string, maskedHeaders map[string]bool) *globalPropertyEvaluator {
+func newGlobalPropertyEvaluator(properties map[string]string, maskedHeaders map[string]bool, opts ...evaluatorOption) *globalPropertyEvaluator {
 	e := &globalPropertyEvaluator{
 		literals:       make(map[string]string),
 		compiled:       make(map[string]cel.Program),
 		maskedHeaders:  maskedHeaders,
 		referencedVars: make(map[string]bool),
 	}
+	for _, opt := range opts {
+		opt(e)
+	}
 	if len(properties) == 0 {
 		return e
 	}
 
-	env, err := createGlobalPropertyEnv()
+	var extraVariables []globalPropertyVariable
+	if e.truncateBody != nil {
+		extraVariables = bodyVariables
+	}
+	env, err := createGlobalPropertyEnv(extraVariables...)
 	if err != nil {
 		slog.Error("traffic_logging.properties: failed to create CEL environment; all properties disabled", "error", err)
 		return e
@@ -138,6 +148,27 @@ func newGlobalPropertyEvaluator(properties map[string]string, maskedHeaders map[
 		}
 	}
 	return e
+}
+
+// evaluatorOption configures a globalPropertyEvaluator beyond what properties needs.
+// json_fields uses them, since it replaces the default line and so takes over its
+// header exclusions and bodies.
+type evaluatorOption func(*globalPropertyEvaluator)
+
+// withExcludedHeaders removes the given lower-cased header names from
+// request.header and response.header.
+func withExcludedHeaders(request, response map[string]bool) evaluatorOption {
+	return func(e *globalPropertyEvaluator) {
+		e.excludedRequestHeaders = request
+		e.excludedResponseHeaders = response
+	}
+}
+
+// withBodies declares request.body and response.body, each passed through truncate.
+func withBodies(truncate func(string) string) evaluatorOption {
+	return func(e *globalPropertyEvaluator) {
+		e.truncateBody = truncate
+	}
 }
 
 // referencedGlobalPropertyVariables returns the set of declared variable names (see
@@ -256,12 +287,23 @@ var globalPropertyVariables = []globalPropertyVariable{
 	{"metadata", cel.MapType(cel.StringType, cel.DynType), map[string]interface{}{}},
 }
 
-// createGlobalPropertyEnv declares every variable in globalPropertyVariables in the CEL
-// environment used to compile "$ctx:" expressions.
-func createGlobalPropertyEnv() (*cel.Env, error) {
-	opts := make([]cel.EnvOption, 0, len(globalPropertyVariables)+1)
+// bodyVariables are declared only for an evaluator built withBodies (json_fields).
+// properties adds to the default line, whose bodies stay governed by the
+// traffic_logging.request_body/response_body toggles.
+var bodyVariables = []globalPropertyVariable{
+	{"request.body", cel.StringType, ""},
+	{"response.body", cel.StringType, ""},
+}
+
+// createGlobalPropertyEnv declares every variable in globalPropertyVariables, plus
+// extra, in the CEL environment used to compile "$ctx:" expressions.
+func createGlobalPropertyEnv(extra ...globalPropertyVariable) (*cel.Env, error) {
+	opts := make([]cel.EnvOption, 0, len(globalPropertyVariables)+len(extra)+1)
 	opts = append(opts, ext.Strings())
 	for _, v := range globalPropertyVariables {
+		opts = append(opts, cel.Variable(v.name, v.typ))
+	}
+	for _, v := range extra {
 		opts = append(opts, cel.Variable(v.name, v.typ))
 	}
 	return cel.NewEnv(opts...)
@@ -289,6 +331,7 @@ func (e *globalPropertyEvaluator) resolve(event *dto.Event) map[string]interface
 	}
 
 	evalCtx := buildGlobalPropertyEvalCtx(event, e.referencedVars, e.maskedHeaders, e.excludedRequestHeaders, e.excludedResponseHeaders)
+	e.bindBodies(evalCtx, event)
 	for name, program := range e.compiled {
 		out, _, err := program.Eval(evalCtx)
 		if err != nil {
@@ -516,6 +559,30 @@ func buildGlobalPropertyEvalCtx(event *dto.Event, referenced map[string]bool, ma
 	}
 
 	return ctx
+}
+
+// bindBodies sets request.body/response.body for the expressions that use them: the
+// body the collector captured, cut to max_payload_size, or "" when none was captured.
+// It does nothing unless the evaluator was built withBodies.
+func (e *globalPropertyEvaluator) bindBodies(ctx map[string]interface{}, event *dto.Event) {
+	if e.truncateBody == nil {
+		return
+	}
+	if e.referencedVars["request.body"] {
+		ctx["request.body"] = e.truncateBody(capturedBody(event, dto.PropKeyRequestPayload))
+	}
+	if e.referencedVars["response.body"] {
+		ctx["response.body"] = e.truncateBody(capturedBody(event, dto.PropKeyResponsePayload))
+	}
+}
+
+// capturedBody returns the body stored under key in the event, or "" when there is none.
+func capturedBody(event *dto.Event, key string) string {
+	if event == nil {
+		return ""
+	}
+	body, _ := event.Properties[key].(string)
+	return body
 }
 
 // setIfReferenced sets ctx[name] only when an expression uses that variable.

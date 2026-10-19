@@ -1305,10 +1305,15 @@ insecure_skip_verify = false
 # these fields are written, and properties is not applied. Of exclude_fields, only the
 # "requestHeaders.<name>"/"responseHeaders.<name>" entries apply: they remove that
 # header from request.header/response.header.
+# json_fields can also use request.body and response.body, which properties cannot.
+# They need [collector] request_body/response_body and are cut to max_payload_size.
+# Like a header, a body named here is written without the request_body/response_body
+# toggles above.
 [traffic_logging.json_fields]
 # meth   = "$ctx:request.method"
 # respCd = "$ctx:response.status"
 # api    = "$ctx:api.name + '/' + api.version"
+# body   = "$ctx:request.body"
 # env    = "prod"
 
 

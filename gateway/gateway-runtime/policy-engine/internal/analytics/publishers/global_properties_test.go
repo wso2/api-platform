@@ -446,3 +446,13 @@ func TestGlobalPropertyEvaluator_DefaultLineFieldsZeroWhenAbsent(t *testing.T) {
 	assert.Equal(t, float64(0), resolved["durUs"])
 	assert.Equal(t, "", resolved["policy"])
 }
+
+// request.body is declared only for json_fields, so a properties expression using it
+// fails to compile and the property is left out.
+func TestGlobalPropertyEvaluator_BodiesNotAvailableToProperties(t *testing.T) {
+	e := newGlobalPropertyEvaluator(map[string]string{"body": "$ctx:request.body"}, nil)
+	event := createBaseEvent()
+	event.Properties[dto.PropKeyRequestPayload] = "secret"
+
+	assert.NotContains(t, e.resolve(event), "body")
+}

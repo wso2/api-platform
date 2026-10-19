@@ -99,9 +99,9 @@ func NewLog(logCfg *config.TrafficLoggingConfig) (*Log, error) {
 		exclusions:       compileFieldExclusions(logCfg.ExcludeFields),
 	}
 	if len(logCfg.JSONFields) > 0 {
-		l.jsonFields = newGlobalPropertyEvaluator(logCfg.JSONFields, masked)
-		l.jsonFields.excludedRequestHeaders = l.exclusions.excludedRequestHeaders()
-		l.jsonFields.excludedResponseHeaders = l.exclusions.excludedResponseHeaders()
+		l.jsonFields = newGlobalPropertyEvaluator(logCfg.JSONFields, masked,
+			withExcludedHeaders(l.exclusions.excludedRequestHeaders(), l.exclusions.excludedResponseHeaders()),
+			withBodies(l.truncatePayload))
 	}
 
 	// Only build sinks when traffic logging is on: Publish is a no-op otherwise,
