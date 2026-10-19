@@ -20,6 +20,7 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -32,6 +33,7 @@ import (
 
 	commonmodels "github.com/wso2/api-platform/common/models"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/secrets"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/agent"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/certificate"
@@ -74,42 +76,48 @@ type McpHandler struct {
 	// the write tools enforce the invariant themselves.
 	immutable bool
 
+	// MaxCertificateUploadBytes is the body limit POST and PUT /certificates
+	// enforce, applied to the certificate tool. Mirrors server.max_certificate_upload_bytes
+	maxCertificateUploadBytes int64
+
 	maxRequestBytes int64
 	logger          *slog.Logger
 }
 
 // McpHandlerParams collects newMcpHandler's dependencies.
 type McpHandlerParams struct {
-	RestAPIService       *restapi.RestAPIService
-	MCPDeploymentService *utils.MCPDeploymentService
-	LLMDeploymentService *utils.LLMDeploymentService
-	AgentService         *agent.AgentService
-	SecretService        *secrets.SecretService
-	APIKeyService        *utils.APIKeyService
-	CertificateService   *certificate.CertificateService
-	SubscriptionService  *subscription.SubscriptionService
-	ResourceRoles        map[string][]string
-	RoleMapping          map[string][]string
-	ResourceMetadataURL  string
-	Immutable            bool
-	MaxRequestBytes      int64
-	Logger               *slog.Logger
+	RestAPIService            *restapi.RestAPIService
+	MCPDeploymentService      *utils.MCPDeploymentService
+	LLMDeploymentService      *utils.LLMDeploymentService
+	AgentService              *agent.AgentService
+	SecretService             *secrets.SecretService
+	APIKeyService             *utils.APIKeyService
+	CertificateService        *certificate.CertificateService
+	SubscriptionService       *subscription.SubscriptionService
+	ResourceRoles             map[string][]string
+	RoleMapping               map[string][]string
+	ResourceMetadataURL       string
+	Immutable                 bool
+	MaxRequestBytes           int64
+	MaxCertificateUploadBytes int64
+	Logger                    *slog.Logger
 }
 
 // newMcpHandler builds the MCP server, registers the tools, and wraps the
 // SDK handler in the authorization gate.
 func newMcpHandler(p McpHandlerParams) *McpHandler {
 	h := &McpHandler{
-		restAPIService:       p.RestAPIService,
-		mcpDeploymentService: p.MCPDeploymentService,
-		llmDeploymentService: p.LLMDeploymentService,
-		agentService:         p.AgentService,
-		secretService:        p.SecretService,
-		apiKeyService:        p.APIKeyService,
-		certificateService:   p.CertificateService,
-		subscriptionService:  p.SubscriptionService,
-		immutable:            p.Immutable,
-		logger:               p.Logger,
+		restAPIService:            p.RestAPIService,
+		mcpDeploymentService:      p.MCPDeploymentService,
+		llmDeploymentService:      p.LLMDeploymentService,
+		agentService:              p.AgentService,
+		secretService:             p.SecretService,
+		apiKeyService:             p.APIKeyService,
+		certificateService:        p.CertificateService,
+		subscriptionService:       p.SubscriptionService,
+		immutable:                 p.Immutable,
+		logger:                    p.Logger,
+		maxCertificateUploadBytes: p.MaxCertificateUploadBytes,
 		authz: newMcpAuthz(mcpAuthzParams{
 			ResourceRoles:       p.ResourceRoles,
 			RoleMapping:         p.RoleMapping,
@@ -236,11 +244,22 @@ type revokeKeyInput struct {
 // the authorization gate and the handler both call.
 
 type manageCertificatesInput struct {
-	Action      string `json:"action" jsonschema:"the operation to perform: list, apply, delete or reload"`
-	Name        string `json:"name,omitempty" jsonschema:"unique certificate name; required for apply, ignored otherwise"`
-	Certificate string `json:"certificate,omitempty" jsonschema:"PEM-encoded X.509 certificate chain; required for apply. Include only CERTIFICATE blocks, never a private key"`
-	ID          string `json:"id,omitempty" jsonschema:"certificate id as returned by the list action; required for delete"`
-	Confirm     bool   `json:"confirm,omitempty" jsonschema:"must be true for delete and reload"`
+	Action      string                 `json:"action" jsonschema:"the operation to perform: list, apply, update, delete or reload"`
+	Name        string                 `json:"name,omitempty" jsonschema:"unique certificate name; required for apply, ignored otherwise"`
+	Certificate string                 `json:"certificate,omitempty" jsonschema:"PEM-encoded X.509 certificate chain, leaf first; required for apply and update. Include only CERTIFICATE blocks, never a private key"`
+	Usage       string                 `json:"usage,omitempty" jsonschema:"upstream (the default), downstream or identity. On apply, this represents what the certificate is for; on list, show only certificates of this usage. Ignored by update"`
+	Role        string                 `json:"role,omitempty" jsonschema:"apply only: client (the default) or relay for usage downstream; default for usage identity"`
+	Match       *certificateMatchInput `json:"match,omitempty" jsonschema:"apply only, for role relay: accept the relaying proxy only when its certificate carries one of these SANs"`
+	PrivateKey  string                 `json:"privateKey,omitempty" jsonschema:"unencrypted PEM private key of a usage identity certificate; required for apply of an identity and for update, refused otherwise. Only pass a key the user supplied for this purpose; never invent one or repeat it back"`
+	ID          string                 `json:"id,omitempty" jsonschema:"certificate id as returned by the list action; required for update and delete"`
+	Confirm     bool                   `json:"confirm,omitempty" jsonschema:"must be true for update, delete and reload"`
+}
+
+// certificateMatchInput is a relay entry's SAN narrowing, as the match field
+// of POST /certificates takes it.
+type certificateMatchInput struct {
+	URISANs []string `json:"uriSANs,omitempty" jsonschema:"URI SANs, e.g. spiffe://example.org/proxy; at least one non-empty entry when given"`
+	DNSSANs []string `json:"dnsSANs,omitempty" jsonschema:"DNS SANs, e.g. proxy.example.com; at least one non-empty entry when given"`
 }
 
 type manageSubscriptionsInput struct {
@@ -540,39 +559,68 @@ what is actually present, call wso2_apip_gw_list_api_keys.`,
 	if h.certificateService != nil {
 		mcp.AddTool(server, &mcp.Tool{
 			Name:  "wso2_apip_gw_manage_certificates",
-			Title: "Manage upstream TLS certificates",
-			Description: `Manage the custom upstream TLS certificates this Gateway trusts.
+			Title: "Manage TLS certificates",
+			Description: `Manage the TLS certificates this Gateway stores. Every certificate has one
+"usage":
 
-One tool, four actions, chosen with "action":
+  - upstream    (the default) a certificate or CA the Gateway trusts when it
+                calls a backend over TLS. An API names it in
+                upstreamDefinitions[].tls.trustedCAs.
+  - downstream  a client certificate authority for mTLS: API callers presenting
+                a certificate it issued are accepted. role "client" (the
+                default) verifies the certificate on the connection; role
+                "relay" trusts a front proxy that relays the caller's
+                certificate in a header, optionally narrowed with "match" to
+                proxies whose certificate carries one of the listed SANs.
+  - identity    a certificate chain and its private key that the Gateway
+                presents to backends requiring mTLS. An API names it in
+                upstreamDefinitions[].tls.identity. At most one identity can have
+                role "default".
 
-  - list    Every stored certificate: id, name, subject, issuer, expiry, and how
-            many certificates the stored chain holds. Start here — delete needs
+One tool, five actions, chosen with "action":
+
+  - list    Stored certificates: id, name, usage, role, subject, issuer,
+            expiry, chain size, whether it is a leaf, expiry warnings, and for
+            downstream and identity how many deployed APIs name it. Pass
+            "usage" to list one usage only. Start here — update and delete need
             an id, and this is the only way to obtain one.
-  - apply   Store a new certificate chain and push it to the router. Requires
-            "name" and "certificate".
-  - delete  Remove one certificate by "id" and push the resulting trust store.
-            Requires confirm=true.
-  - reload  Re-read every stored certificate and republish it to the router,
-            changing nothing stored. Requires confirm=true, because it pushes to
-            the running data plane.
+  - apply   Store a new certificate and push it to the router. Requires "name"
+            and "certificate"; "usage" defaults to upstream. usage identity also
+            requires "privateKey".
+  - update  Rotate a usage: identity certificate in place: replace its chain
+            and private key, keeping its id, name and role. Requires "id",
+            "certificate", "privateKey" and confirm=true. Other usages cannot be
+            updated: delete them and apply the replacement.
+  - delete  Remove one certificate by "id" and push the result. Requires
+            confirm=true. Refused while a deployed API still uses the
+            certificate; the error names each API and the field that uses it.
+            Remove those references first, then retry.
+  - reload  Re-read every stored certificate and republish it, changing nothing
+            stored. Requires confirm=true, because it pushes to the running data
+            plane.
 
-"certificate" is PEM text. Include only CERTIFICATE blocks — never a private
-key. Blocks of any other type are skipped rather than rejected, so a pasted key
-would be stored without a warning. Put a whole chain in one PEM string.
+"certificate" is PEM text holding only CERTIFICATE blocks, leaf first; a
+private key in it is refused. Put a whole chain in one PEM string.
 
-apply only creates. There is no update: names are unique, so applying a name
-that already exists is refused. To replace a certificate, delete it and apply
-the new one. Do not pass "id" to apply.
+"privateKey" (identity only) is an unencrypted PEM key: RSA of at least 2048
+bits, ECDSA on P-256, P-384 or P-521, or Ed25519. Only pass a key the user gave
+you for this purpose. Never invent one, never repeat it back, and never include
+it in a summary. The Gateway encrypts it at rest and never returns it.
 
-reload is also the recovery path. If apply or delete reports that the change was
-stored but could not be pushed to the router, the stored state is already
-correct — call reload to retry the push rather than repeating the write.
+Names are unique across every usage and may contain only letters, digits, ., _
+and -; applying a name that exists is refused. Every problem with a request is
+reported at once, field by field. Warnings such as CERT_EXPIRES_SOON do not
+block the write; pass them on to the user.
+
+reload is also the recovery path. If apply, update or delete reports that the
+change was stored but could not be pushed, the stored state is already correct
+— call reload to retry the push rather than repeating the write.
 
 Authorization follows the equivalent management REST operation: list accepts the
 developer scope, every other action requires admin. A call you lack the scope
 for is refused at the HTTP layer with a step-up challenge, not by this tool.`,
 			Annotations: &mcp.ToolAnnotations{
-				Title: "Manage upstream TLS certificates",
+				Title: "Manage TLS certificates",
 				// One tool spans read-only and destructive actions, so the hints
 				// describe its worst case: a client that gates on
 				// DestructiveHint should prompt before any call here.
@@ -1187,8 +1235,7 @@ func (h *McpHandler) manageCertificates(ctx context.Context, _ *mcp.CallToolRequ
 		return nil, nil, err
 	}
 	// The immutable middleware rejects every POST/PUT/DELETE on the management
-	// router, so REST already refuses all three of these — reload included, it
-	// being a POST.
+	// router, so REST already refuses every mutating action
 	if op.Mutating && h.immutable {
 		return nil, nil, fmt.Errorf(
 			"this Gateway runs in immutable mode; certificates are loaded at startup and cannot be changed at runtime")
@@ -1201,6 +1248,12 @@ func (h *McpHandler) manageCertificates(ctx context.Context, _ *mcp.CallToolRequ
 		return nil, nil, err
 	}
 
+	// POST and PUT /certificates cap their body at max_certificate_upload_bytes.
+	// Update checks it after the stored certificate, as PUT does, in its case.
+	if op.Action == certActionApply && h.certificateRequestTooLarge(in) {
+		return nil, nil, fmt.Errorf("the certificate request is too large for this Gateway; nothing was stored")
+	}
+
 	correlationID := uuid.NewString()
 	log := h.logger.With(
 		slog.String("correlation_id", correlationID),
@@ -1210,38 +1263,44 @@ func (h *McpHandler) manageCertificates(ctx context.Context, _ *mcp.CallToolRequ
 
 	switch op.Action {
 	case certActionList:
-		result, err := h.certificateService.List()
+		result, err := h.certificateService.List(certificate.ListParams{Usage: in.Usage, Logger: log})
 		if err != nil {
 			log.Error("MCP certificate listing failed", slog.Any("error", err))
 			return nil, nil, mcpCertError(certActionList, "", err)
 		}
-		// certificateToResponse, not the stored model: StoredCertificate marshals
-		// its PEM bytes under "certificate", so returning rows directly would put
-		// every stored chain into the transcript.
-		items := make([]CertificateResponse, 0, len(result.Certificates))
-		for _, cert := range result.Certificates {
-			items = append(items, certificateToResponse(cert))
+		// Rendered as GET /certificates renders it. CertificateResponse, not the
+		// stored model: StoredCertificate marshals its PEM bytes under
+		// "certificate", so returning rows directly would put every stored chain
+		// into the transcript.
+		items := make([]CertificateResponse, 0, len(result.Items))
+		for _, item := range result.Items {
+			items = append(items, listedCertificateToResponse(item))
 		}
 		return nil, map[string]any{
 			"count": len(items), "totalBytes": result.TotalBytes, "items": items,
 		}, nil
 
 	case certActionApply:
-		// An id on apply means the caller expected an update. There is none, and
-		// quietly creating a second certificate instead is the wrong recovery.
+		// An id on apply means the caller expected an update. Quietly creating a
+		// second certificate instead is the wrong recovery.
 		if strings.TrimSpace(in.ID) != "" {
 			return nil, nil, fmt.Errorf(
-				"certificates cannot be updated, so apply does not take an id; " +
-					"delete the existing certificate and apply the new one")
+				"apply only creates, so it does not take an id. To replace a usage: identity certificate's " +
+					"chain and key in place, use action=update with that id; to replace any other certificate, " +
+					"delete it and apply the new one")
 		}
-		if strings.TrimSpace(in.Name) == "" || strings.TrimSpace(in.Certificate) == "" {
-			return nil, nil, fmt.Errorf(`apply requires both "name" and "certificate"`)
-		}
+		match, matchErrors := certificateMatchFromInput(in.Match)
+
 		result, err := h.certificateService.Upload(certificate.UploadParams{
-			Name:           in.Name,
-			CertificatePEM: []byte(in.Certificate),
-			CorrelationID:  correlationID,
-			Logger:         log,
+			Name:          in.Name,
+			Certificate:   in.Certificate,
+			Usage:         in.Usage,
+			Role:          in.Role,
+			Match:         match,
+			PrivateKey:    in.PrivateKey,
+			FieldErrors:   matchErrors,
+			CorrelationID: correlationID,
+			Logger:        log,
 		})
 		if err != nil {
 			log.Error("MCP certificate upload failed", slog.String("name", in.Name), slog.Any("error", err))
@@ -1249,8 +1308,42 @@ func (h *McpHandler) manageCertificates(ctx context.Context, _ *mcp.CallToolRequ
 		}
 		return nil, map[string]any{
 			"status": "success", "operation": "create",
-			"certificate": certificateToResponse(result.Certificate),
+			"certificate": uploadResultToResponse(result),
 			"message":     "Certificate stored and pushed to the router.",
+		}, nil
+
+	case certActionUpdate:
+		if strings.TrimSpace(in.ID) == "" {
+			return nil, nil, fmt.Errorf(`update requires "id"; call this tool with action=list to find it`)
+		}
+		// As PUT /certificates/{id}: the stored certificate is checked first,
+		// then the size of what is sent.
+		existing, err := h.certificateService.PrepareUpdate(in.ID, log)
+		if err != nil {
+			log.Error("MCP certificate update failed", slog.String("id", in.ID), slog.Any("error", err))
+			return nil, nil, mcpCertError(certActionUpdate, in.ID, err)
+		}
+		if h.certificateRequestTooLarge(in) {
+			return nil, nil, fmt.Errorf("the certificate request is too large for this Gateway; nothing was stored")
+		}
+		// Name, usage, role and match never change on rotation, so only the
+		// certificate and key are passed.
+		result, err := h.certificateService.Update(certificate.UpdateParams{
+			ID:            in.ID,
+			Existing:      existing,
+			Certificate:   in.Certificate,
+			PrivateKey:    in.PrivateKey,
+			CorrelationID: correlationID,
+			Logger:        log,
+		})
+		if err != nil {
+			log.Error("MCP certificate update failed", slog.String("id", in.ID), slog.Any("error", err))
+			return nil, nil, mcpCertError(certActionUpdate, in.ID, err)
+		}
+		return nil, map[string]any{
+			"status": "success", "operation": "update",
+			"certificate": updateResultToResponse(result),
+			"message":     "Certificate and private key replaced and pushed to the router.",
 		}, nil
 
 	case certActionDelete:
@@ -1286,6 +1379,44 @@ func (h *McpHandler) manageCertificates(ctx context.Context, _ *mcp.CallToolRequ
 	}
 }
 
+// certificateMatchFromInput converts the tool's match argument. An empty
+// object is refused and dropped, exactly as POST /certificates refuses it;
+// unknown keys and non-list values are already refused by the tool's input
+// schema, as REST's decoder refuses them.
+func certificateMatchFromInput(in *certificateMatchInput) (*models.CertificateMatch, []certificate.FieldError) {
+	if in == nil {
+		return nil, nil
+	}
+	if in.URISANs == nil && in.DNSSANs == nil {
+		return nil, []certificate.FieldError{{
+			Field:   "match",
+			Message: "match must list uriSANs or dnsSANs, or be omitted",
+		}}
+	}
+	return &models.CertificateMatch{URISANs: in.URISANs, DNSSANs: in.DNSSANs}, nil
+}
+
+// certificateRequestTooLarge reports whether the REST request equivalent to in
+// would exceed the body limit POST and PUT /certificates enforce.
+func (h *McpHandler) certificateRequestTooLarge(in manageCertificatesInput) bool {
+	if h.maxCertificateUploadBytes <= 0 {
+		return false
+	}
+	match, _ := certificateMatchFromInput(in.Match)
+	body, err := json.Marshal(UploadCertificateRequest{
+		Name:        in.Name,
+		Certificate: in.Certificate,
+		Usage:       in.Usage,
+		Role:        in.Role,
+		Match:       match,
+		PrivateKey:  in.PrivateKey,
+	})
+	if err != nil {
+		return true
+	}
+	return int64(len(body)) > h.maxCertificateUploadBytes
+}
+
 // mcpCertError maps a CertificateService failure to a message for the model,
 // reading the service's sentinels rather than its error strings.
 func mcpCertError(action, subject string, err error) error {
@@ -1295,37 +1426,80 @@ func mcpCertError(action, subject string, err error) error {
 		// retries into a name conflict it cannot clear (delete is refused too).
 		if action == certActionApply {
 			return fmt.Errorf(
-				"certificate %q was stored, but this Gateway has no custom certificate store "+
-					"(router.upstream.tls.customCertsPath is unset), so the router is not using it. "+
-					"Do not repeat this call: the name is now taken, and certificates cannot be deleted "+
-					"or reloaded on this Gateway until a certificate store is configured. Tell the user; "+
+				"certificate %q was stored, but the Gateway's certificate store is unavailable, so the "+
+					"router is not using it. Do not repeat this call: the name is now taken, and certificates "+
+					"cannot be deleted or reloaded until the certificate store is available. Tell the user; "+
 					"the certificate appears in action=list", subject)
 		}
-		return fmt.Errorf(
-			"this Gateway was started without a custom certificate store " +
-				"(router.upstream.tls.customCertsPath is unset), so certificate operations are unavailable")
+		// Update writes the new chain and key before it finds there is no cert
+		// store, so it too has changed state.
+		if action == certActionUpdate {
+			return fmt.Errorf(
+				"the new certificate and key for %q were stored, but the Gateway's certificate store is "+
+					"unavailable, so the router is not using them. Do not repeat this call. Tell the user", subject)
+		}
+		return fmt.Errorf("the Gateway's certificate store is unavailable, so certificate operations cannot run right now")
 	}
-	if errors.Is(err, certificate.ErrMissingFields) {
-		return fmt.Errorf(`apply requires both "name" and "certificate"`)
+	// Every problem in the request at once, field by field, as REST reports them in its 400.
+	var validationErr *certificate.ValidationError
+	if errors.As(err, &validationErr) {
+		lines := make([]string, 0, len(validationErr.Fields))
+		for i, f := range validationErr.Fields {
+			lines = append(lines, fmt.Sprintf("  %d. %s: %s", i+1, f.Field, f.Message))
+		}
+		refused := "the Gateway refused the certificate"
+		if action == certActionList {
+			refused = "the Gateway refused the listing"
+		}
+		return fmt.Errorf("%s: %s:\n%s", refused, validationErr.Message, strings.Join(lines, "\n"))
 	}
 
-	var invalidCert *certificate.InvalidCertificateError
-	if errors.As(err, &invalidCert) {
-		return fmt.Errorf("the supplied PEM data is not a usable certificate chain: %v. "+
-			"Check that it holds at least one complete BEGIN/END CERTIFICATE block", invalidCert.Cause)
+	if errors.Is(err, certificate.ErrNotFound) {
+		return fmt.Errorf("no certificate with id %q; call this tool with action=list to find it", subject)
+	}
+	// A failed read before an update or delete. Nothing was changed; the
+	// storage error itself stays in the log.
+	var readErr *certificate.PersistError
+	if errors.As(err, &readErr) && readErr.Op == certificate.OpLoad {
+		return fmt.Errorf("the Gateway could not read certificate %q, so nothing was changed. Retry later", subject)
 	}
 
-	var metadataErr *certificate.MetadataError
-	if errors.As(err, &metadataErr) {
-		return fmt.Errorf("the certificate decoded but its metadata could not be read: %v", metadataErr.Cause)
+	// Delete refused because deployed APIs still depend on the certificate.
+	// Naming each one is what lets the model remove those references first.
+	var inUse *certificate.InUseError
+	if errors.As(err, &inUse) {
+		lines := make([]string, 0, len(inUse.References))
+		for i, ref := range inUse.References {
+			lines = append(lines, fmt.Sprintf("  %d. API %q (%s)", i+1, ref.API, ref.Field))
+		}
+		return fmt.Errorf("cannot delete certificate %q: %s:\n%s", subject, inUse.Message, strings.Join(lines, "\n"))
+	}
+
+	var refCheck *certificate.ReferenceCheckError
+	if errors.As(err, &refCheck) {
+		return fmt.Errorf("cannot delete certificate %q: the Gateway could not check whether a deployed API "+
+			"still uses it, so nothing was deleted. Retry later", subject)
+	}
+
+	var defaultErr *certificate.DefaultIdentityExistsError
+	if errors.As(err, &defaultErr) {
+		return errors.New(defaultErr.Error())
+	}
+	if errors.Is(err, certificate.ErrIdentityStorageUnavailable) {
+		return fmt.Errorf("this Gateway has no encryption provider configured, so gateway identities cannot be stored")
+	}
+	var encryptErr *certificate.EncryptionError
+	if errors.As(err, &encryptErr) {
+		return fmt.Errorf("the Gateway could not store the gateway identity's private key; nothing was stored")
 	}
 
 	// Checked before PersistError: SaveCertificate's duplicate-name conflict
 	// arrives wrapped in one, and "that name is taken" is the actionable half.
 	if storage.IsConflictError(err) {
 		return fmt.Errorf(
-			"a certificate named %q already exists. Names are unique and certificates cannot be updated: "+
-				"delete that one first, or choose a different name", subject)
+			"a certificate named %q already exists. Names are unique across every usage: choose a different "+
+				"name, or delete that one first. To rotate a usage: identity certificate's chain and key in "+
+				"place, use action=update with its id", subject)
 	}
 
 	var syncErr *certificate.SyncError

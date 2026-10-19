@@ -44,6 +44,7 @@ func TestResolveCertAction(t *testing.T) {
 		{"apply", "apply", certActionApply, "POST /certificates", true, false},
 		{"delete", "delete", certActionDelete, "DELETE /certificates/{id}", true, true},
 		{"reload", "reload", certActionReload, "POST /certificates/reload", true, true},
+		{"update", "update", certActionUpdate, "PUT /certificates/{id}", true, true},
 
 		// Alias and spelling tolerance: a model reaching for a different verb,
 		// or a different casing, must land on the same operation.
@@ -51,6 +52,8 @@ func TestResolveCertAction(t *testing.T) {
 		{"create aliases to apply", "create", certActionApply, "POST /certificates", true, false},
 		{"remove aliases to delete", "remove", certActionDelete, "DELETE /certificates/{id}", true, true},
 		{"refresh aliases to reload", "refresh", certActionReload, "POST /certificates/reload", true, true},
+		{"rotate aliases to update", "rotate", certActionUpdate, "PUT /certificates/{id}", true, true},
+		{"replace aliases to update", "replace", certActionUpdate, "PUT /certificates/{id}", true, true},
 		{"upper case", "LIST", certActionList, "GET /certificates", false, false},
 		{"surrounding space", "  Apply  ", certActionApply, "POST /certificates", true, false},
 	}
@@ -68,10 +71,10 @@ func TestResolveCertAction(t *testing.T) {
 }
 
 func TestResolveCertActionRejectsUnknown(t *testing.T) {
-	for _, action := range []string{"", "get", "rotate", "drop"} {
+	for _, action := range []string{"", "get", "patch", "drop"} {
 		_, err := resolveCertAction(action)
 		require.Error(t, err, "action %q should not resolve", action)
-		assert.Contains(t, err.Error(), "list, apply, delete, reload",
+		assert.Contains(t, err.Error(), "list, apply, update, delete, reload",
 			"the rejection should name the actions that would have worked")
 	}
 }
@@ -82,7 +85,7 @@ func TestResolveCertActionRejectsUnknown(t *testing.T) {
 func TestCertificateGateAgreesWithHandler(t *testing.T) {
 	h := &McpHandler{}
 
-	for _, action := range []string{"list", "apply", "delete", "reload", "UPLOAD"} {
+	for _, action := range []string{"list", "apply", "update", "delete", "reload", "UPLOAD", "Rotate"} {
 		t.Run(action, func(t *testing.T) {
 			args, err := json.Marshal(manageCertificatesInput{Action: action, ID: "cert-1"})
 			require.NoError(t, err)
@@ -116,7 +119,7 @@ func TestManageCertificatesGuards(t *testing.T) {
 
 	t.Run("immutable mode refuses every mutating action", func(t *testing.T) {
 		h := newAuthzTestHandler(true)
-		for _, action := range []string{"apply", "delete", "reload"} {
+		for _, action := range []string{"apply", "update", "delete", "reload"} {
 			_, _, err := h.manageCertificates(authorized, nil, manageCertificatesInput{
 				Action: action, Confirm: true, ID: "cert-1", Name: "n", Certificate: "pem",
 			})
@@ -125,9 +128,9 @@ func TestManageCertificatesGuards(t *testing.T) {
 		}
 	})
 
-	t.Run("delete and reload require confirm", func(t *testing.T) {
+	t.Run("update, delete and reload require confirm", func(t *testing.T) {
 		h := newAuthzTestHandler(false)
-		for _, action := range []string{"delete", "reload"} {
+		for _, action := range []string{"update", "delete", "reload"} {
 			_, _, err := h.manageCertificates(authorized, nil, manageCertificatesInput{
 				Action: action, ID: "cert-1",
 			})
@@ -142,16 +145,26 @@ func TestManageCertificatesGuards(t *testing.T) {
 			Action: "apply", ID: "cert-1", Name: "n", Certificate: "pem",
 		})
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "cannot be updated")
+		assert.Contains(t, err.Error(), "action=update")
 	})
 
-	t.Run("apply requires name and certificate", func(t *testing.T) {
-		h := newAuthzTestHandler(false)
+	// No pre-check: the service reports the missing field, as REST does.
+	t.Run("apply reports a missing certificate field by field", func(t *testing.T) {
+		h := certToolsHandler(NewMockStorage(), &stubCertStore{}, &stubSnapshot{})
 		_, _, err := h.manageCertificates(authorized, nil, manageCertificatesInput{
 			Action: "apply", Name: "n",
 		})
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "certificate")
+		assert.Contains(t, err.Error(), "1. certificate: both name and certificate are required")
+	})
+
+	t.Run("update requires an id", func(t *testing.T) {
+		h := newAuthzTestHandler(false)
+		_, _, err := h.manageCertificates(authorized, nil, manageCertificatesInput{
+			Action: "update", Confirm: true,
+		})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "action=list")
 	})
 
 	t.Run("delete requires an id", func(t *testing.T) {
@@ -185,4 +198,12 @@ func TestMcpCertErrorWithoutCertStore(t *testing.T) {
 		assert.NotContains(t, err.Error(), "was stored", action)
 		assert.Contains(t, err.Error(), "unavailable", action)
 	}
+
+	// Update also writes before it finds there is no cert store; the error
+	// arrives wrapped in the SyncError of the failed push.
+	err = mcpCertError(certActionUpdate, "cert-1", &certificate.SyncError{
+		Stage: certificate.StageSnapshot, Persisted: true, Cause: certificate.ErrCertStoreNotConfigured,
+	})
+	assert.Contains(t, err.Error(), `"cert-1" were stored`)
+	assert.Contains(t, err.Error(), "Do not repeat this call")
 }

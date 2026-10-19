@@ -199,7 +199,7 @@ func NewAPIServer(
 	server.RestAPIHandler = NewRestAPIHandler(restAPIService, logger)
 
 	server.subscriptionService = subscription.NewSubscriptionService(db, subscriptionResourceService)
-	server.certificateService = certificate.NewCertificateService(db, server.resolveCertXDS, logger)
+	server.certificateService = certificate.NewCertificateService(server.certificateDependencies())
 
 	// Register status update callback
 	snapshotManager.SetStatusCallback(server.handleStatusUpdate)
@@ -233,7 +233,8 @@ func (s *APIServer) getSubscriptionService() *subscription.SubscriptionService {
 }
 
 // resolveCertXDS returns the live cert store and snapshot manager, or nil when
-// this gateway has no custom cert store. It is handed to the certificate
+// either is missing. The controller always builds both; a hand-constructed
+// server, as in tests, may not. It is handed to the certificate
 // service as a function so that service never has to know the snapshot manager
 // is a concrete type whose GetTranslator panics on a nil receiver — a shape
 // every hand-constructed APIServer in the tests has.
@@ -263,9 +264,26 @@ func (s *APIServer) getCertificateService() *certificate.CertificateService {
 		return s.certificateService
 	}
 
-	s.certificateService = certificate.NewCertificateService(s.db, s.resolveCertXDS, s.logger)
+	s.certificateService = certificate.NewCertificateService(s.certificateDependencies())
 
 	return s.certificateService
+}
+
+// certificateDependencies wires the certificate service to this server. The
+// store, snapshot manager, encryption manager, client authority publisher and
+// event hub are read through functions at the moment of use, because they can
+// be set after the server is built (SetEncryptionManager, and tests).
+func (s *APIServer) certificateDependencies() certificate.Dependencies {
+	return certificate.Dependencies{
+		DB:                       s.db,
+		Store:                    func() *storage.ConfigStore { return s.store },
+		ResolveXDS:               s.resolveCertXDS,
+		EncryptionManager:        func() *encryption.ProviderManager { return s.encryptionManager },
+		PublishClientAuthorities: s.publishClientAuthorities,
+		PublishEvent:             s.publishCertificateEvent,
+		DefaultIdentityMu:        &s.defaultIdentityMu,
+		Logger:                   s.logger,
+	}
 }
 
 // handleStatusUpdate is called by SnapshotManager after xDS deployment
@@ -767,6 +785,8 @@ func (s *APIServer) EnableMCP(
 		Immutable:            s.systemConfig.ImmutableGateway.Enabled,
 		MaxRequestBytes:      s.systemConfig.Controller.Server.MCPServer.MaxRequestBytes,
 		Logger:               s.logger,
+
+		MaxCertificateUploadBytes: s.systemConfig.Controller.Server.MaxCertificateUploadBytes,
 	})
 	s.mcpHandler = h
 	return h

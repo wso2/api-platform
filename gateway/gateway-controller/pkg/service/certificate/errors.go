@@ -21,63 +21,125 @@ package certificate
 import (
 	"errors"
 	"fmt"
+	"strings"
 )
 
 var (
 	// ErrNotFound is returned when a certificate does not exist.
 	ErrNotFound = errors.New("certificate not found")
 
-	// ErrCertStoreNotConfigured is returned when the router was started without
-	// router.upstream.tls.customCertsPath, so there is no cert store to reload.
+	// ErrCertStoreNotConfigured is returned when there is no certificate store
+	// or snapshot manager to sync with. The controller always builds both, so
+	// in production this cannot happen; it means a hand-constructed server
+	// without an xDS layer, as in tests.
 	ErrCertStoreNotConfigured = errors.New("certificate store not configured")
 
-	// ErrMissingFields is returned when name or certificate is blank.
-	ErrMissingFields = errors.New("name and certificate are required fields")
+	// ErrMissingID is returned when a delete names no certificate.
+	ErrMissingID = errors.New("certificate ID is required")
 
 	// ErrIDGeneration is returned when a certificate ID could not be minted.
 	ErrIDGeneration = errors.New("failed to generate certificate ID")
+
+	// ErrIdentityStorageUnavailable is returned when a gateway identity is
+	// uploaded or rotated with no encryption provider configured, so its
+	// private key is never stored in clear.
+	ErrIdentityStorageUnavailable = errors.New("gateway identity storage is not available")
+)
+
+// Top-level messages of a ValidationError, as the REST API reports them.
+const (
+	MsgUploadInvalid      = "certificate upload is invalid"
+	MsgInvalidUsageFilter = "invalid usage filter"
 )
 
 // Persist operation names carried by PersistError.
 const (
 	OpSave   = "save"
+	OpUpdate = "update"
 	OpDelete = "delete"
 	OpList   = "list"
 	OpLoad   = "load"
 )
 
-// SyncStage identifies which half of the cert-store sync failed.
+// SyncStage identifies which part of propagating a change failed.
 type SyncStage string
 
 const (
-	// StageReload is a failure to re-read the trust store from the database.
+	// StageReload is a failure to re-read the certificate store.
 	StageReload SyncStage = "reload"
-	// StageSnapshot is a failure to push the reloaded bundle to the router.
+	// StageSnapshot is a failure to push the store to the router over SDS.
 	StageSnapshot SyncStage = "snapshot"
+	// StagePolicyEngine is a failure to republish the client certificate
+	// authority pool to the policy engine.
+	StagePolicyEngine SyncStage = "policy-engine"
 )
 
-// InvalidCertificateError means the supplied PEM data is not a usable
-// certificate chain.
-type InvalidCertificateError struct {
+// FieldError is one request-level problem, named by the field it is about.
+type FieldError struct {
+	Field   string
+	Message string
+}
+
+// ValidationError reports every problem found in a request at once.
+type ValidationError struct {
+	Message string
+	Fields  []FieldError
+}
+
+func (e *ValidationError) Error() string {
+	parts := make([]string, 0, len(e.Fields))
+	for _, f := range e.Fields {
+		parts = append(parts, f.Field+": "+f.Message)
+	}
+	return fmt.Sprintf("%s: %s", e.Message, strings.Join(parts, "; "))
+}
+
+// DefaultIdentityExistsError is returned when a second role: default gateway
+// identity is uploaded.
+type DefaultIdentityExistsError struct {
+	Name string
+}
+
+func (e *DefaultIdentityExistsError) Error() string {
+	return fmt.Sprintf("gateway identity %s already has role: default; delete it before uploading another default identity", e.Name)
+}
+
+// EncryptionError wraps a failure to encrypt a gateway identity's private key.
+type EncryptionError struct {
 	Cause error
 }
 
-func (e *InvalidCertificateError) Error() string {
-	return fmt.Sprintf("invalid certificate: %v", e.Cause)
+func (e *EncryptionError) Error() string {
+	return fmt.Sprintf("failed to encrypt private key: %v", e.Cause)
 }
 
-func (e *InvalidCertificateError) Unwrap() error { return e.Cause }
+func (e *EncryptionError) Unwrap() error { return e.Cause }
 
-// MetadataError means the PEM decoded but x509 metadata could not be extracted.
-type MetadataError struct {
-	Cause error
+// Reference is one deployed API's use of a certificate.
+type Reference struct {
+	Field string // e.g. spec.upstreamDefinitions[0].tls.trustedCAs[0]
+	API   string // the API's handle
 }
 
-func (e *MetadataError) Error() string {
-	return fmt.Sprintf("failed to parse certificate metadata: %v", e.Cause)
+// InUseError is returned when a delete is refused because deployed APIs still
+// depend on the certificate.
+type InUseError struct {
+	Message    string
+	References []Reference
 }
 
-func (e *MetadataError) Unwrap() error { return e.Cause }
+func (e *InUseError) Error() string { return e.Message }
+
+// ReferenceCheckError is returned when a delete is refused because the
+// deployed configurations could not be read to check for references.
+type ReferenceCheckError struct {
+	Message string
+	Cause   error
+}
+
+func (e *ReferenceCheckError) Error() string { return fmt.Sprintf("%s: %v", e.Message, e.Cause) }
+
+func (e *ReferenceCheckError) Unwrap() error { return e.Cause }
 
 // PersistError wraps a storage failure and names the operation that failed, so
 // a caller can tell a save failure from an ID-generation failure — both are
@@ -93,9 +155,10 @@ func (e *PersistError) Error() string {
 
 func (e *PersistError) Unwrap() error { return e.Cause }
 
-// SyncError reports a failure to propagate a committed database change to the
-// router. Persisted is true whenever the database write already succeeded, so a
-// caller knows the certificate table and the router have diverged.
+// SyncError reports a failure to propagate a change to the router or the
+// policy engine. Persisted is true whenever the database write already
+// succeeded, so a caller knows the certificate table and the data plane have
+// diverged.
 type SyncError struct {
 	Stage     SyncStage
 	Persisted bool
