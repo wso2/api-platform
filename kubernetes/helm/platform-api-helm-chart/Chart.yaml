@@ -5,7 +5,7 @@ description: >-
   released component chart; consumed by the product charts
   (ai-workspace, api-portal) and installable standalone.
 type: application
-version: 0.16.0
+version: 0.16.1
 appVersion: "0.16.0"
 home: https://github.com/wso2/api-platform
 sources:
