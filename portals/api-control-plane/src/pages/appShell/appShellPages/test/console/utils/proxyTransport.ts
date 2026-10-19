@@ -79,8 +79,12 @@ import { splitAgainstBase } from './swaggerRequest';
  * total time experienced by the user.
  */
 
-/** BFF-owned endpoint, mounted beside /api/login rather than under the proxy prefix. */
-const INVOKE_URL = '/api/test-console/invoke';
+/**
+ * BFF-owned endpoint, mounted beside /api/login rather than under the proxy
+ * prefix. Named for what it is on the BFF side — a relay to a gateway — rather
+ * than for this page, since nothing about it is specific to the Test console.
+ */
+const INVOKE_URL = '/api/gateway-relay/invoke';
 
 const messages = defineMessages({
   busy: {
@@ -88,6 +92,24 @@ const messages = defineMessages({
     defaultMessage:
       'The portal is handling too many test requests right now. Try again in a moment.',
     description: 'Shown when the portal-side relay is at capacity. Not a gateway failure.',
+  },
+  apiNotFound: {
+    id: 'apiControlPlane.pages.test.console.proxyTransport.apiNotFound',
+    defaultMessage: 'This API could not be found. Try reloading the page.',
+    description: 'Shown when the control plane does not return the API being tested.',
+  },
+  gatewayNoEndpoint: {
+    id: 'apiControlPlane.pages.test.console.proxyTransport.gatewayNoEndpoint',
+    defaultMessage: 'The selected gateway has no endpoint configured.',
+  },
+  gatewayNotDeployed: {
+    id: 'apiControlPlane.pages.test.console.proxyTransport.gatewayNotDeployed',
+    defaultMessage: 'This API is not deployed to the selected gateway. Deploy it first, then try again.',
+    description: 'Actionable: the gateway exists but the API has not been deployed to it.',
+  },
+  gatewayUnsupportedScheme: {
+    id: 'apiControlPlane.pages.test.console.proxyTransport.gatewayUnsupportedScheme',
+    defaultMessage: 'The selected gateway’s endpoint is not an HTTP address, so it cannot be called from here.',
   },
   invalidRequest: {
     id: 'apiControlPlane.pages.test.console.proxyTransport.invalidRequest',
@@ -106,7 +128,9 @@ const messages = defineMessages({
   targetNotAllowed: {
     id: 'apiControlPlane.pages.test.console.proxyTransport.targetNotAllowed',
     defaultMessage:
-      'This API cannot be tested on the selected gateway. Check that it is still deployed there.',
+      'The portal is not configured to reach this gateway. Ask an administrator to allow it.',
+    description:
+      'Shown only when the egress policy refuses the target — an operator setting, not something the user can fix. Deliberately vague about the policy itself.',
   },
   tooLarge: {
     id: 'apiControlPlane.pages.test.console.proxyTransport.tooLarge',
@@ -131,6 +155,10 @@ const messages = defineMessages({
 
 /** Maps each BFF failure code to its own wording. */
 const ERROR_MESSAGES: Record<string, (typeof messages)[keyof typeof messages]> = {
+  API_NOT_FOUND: messages.apiNotFound,
+  GATEWAY_NOT_DEPLOYED: messages.gatewayNotDeployed,
+  GATEWAY_NO_ENDPOINT: messages.gatewayNoEndpoint,
+  GATEWAY_UNSUPPORTED_SCHEME: messages.gatewayUnsupportedScheme,
   INVALID_REQUEST_BODY: messages.invalidRequest,
   INVALID_TEST_REQUEST: messages.invalidRequest,
   RELAY_BUSY: messages.busy,

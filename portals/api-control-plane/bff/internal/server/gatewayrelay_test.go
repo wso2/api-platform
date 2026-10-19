@@ -19,6 +19,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -29,16 +30,16 @@ import (
 	"time"
 
 	"api-control-plane-bff/internal/config"
-	"api-control-plane-bff/internal/testproxy"
+	"api-control-plane-bff/internal/gatewayrelay"
 )
 
-const invokePath = "/api/test-console/invoke"
+const invokePath = "/api/gateway-relay/invoke"
 
-// testConsoleConfig returns the config the relay tests share: the feature on,
+// gatewayRelayConfig returns the config the relay tests share: the feature on,
 // with bounds small enough that a test can reach them.
-func testConsoleConfig(controlPlaneURL string) *config.Config {
+func gatewayRelayConfig(controlPlaneURL string) *config.Config {
 	cfg := newTestConfig(controlPlaneURL)
-	cfg.TestConsole = config.TestConsoleConfig{
+	cfg.GatewayRelay = config.GatewayRelayConfig{
 		Enabled:          true,
 		RequestTimeout:   5 * time.Second,
 		MaxRequestBytes:  4096,
@@ -47,7 +48,14 @@ func testConsoleConfig(controlPlaneURL string) *config.Config {
 		MaxPending:       4,
 		ResolveCacheTTL:  time.Minute,
 		ResolveCacheSize: 16,
-		Egress:           config.EgressConfig{},
+		// Nothing is reachable unless allow_hosts names it; these tests dial
+		// httptest servers on loopback, which production refuses both as a
+		// private address and as an IP literal. Cases that exercise the
+		// policy itself override this.
+		Egress: config.EgressConfig{
+			Environment: "development",
+			AllowHosts:  []string{"*"},
+		},
 	}
 	return cfg
 }
@@ -122,9 +130,9 @@ func (f *invokeFixture) post(t *testing.T, body string, withSession bool) *http.
 	return res
 }
 
-func decodeResult(t *testing.T, res *http.Response) testproxy.Result {
+func decodeResult(t *testing.T, res *http.Response) gatewayrelay.Result {
 	t.Helper()
-	var out testproxy.Result
+	var out gatewayrelay.Result
 	if err := json.NewDecoder(res.Body).Decode(&out); err != nil {
 		t.Fatalf("decode result: %v", err)
 	}
@@ -153,7 +161,7 @@ func TestInvokeRelaysToTheResolvedGateway(t *testing.T) {
 	defer gateway.Close()
 
 	platform := platformAPIFor(t, gateway.URL)
-	f := newInvokeFixture(t, testConsoleConfig(platform.URL))
+	f := newInvokeFixture(t, gatewayRelayConfig(platform.URL))
 
 	res := f.post(t, `{
 		"orgHandle":"acme","restApiId":"api-1","gatewayId":"gw-prod",
@@ -197,7 +205,7 @@ func TestInvokeReportsAGatewayErrorAsDataNotAsARelayFailure(t *testing.T) {
 	defer gateway.Close()
 
 	platform := platformAPIFor(t, gateway.URL)
-	f := newInvokeFixture(t, testConsoleConfig(platform.URL))
+	f := newInvokeFixture(t, gatewayRelayConfig(platform.URL))
 
 	res := f.post(t, `{"orgHandle":"acme","restApiId":"api-1","gatewayId":"gw-prod","method":"GET","path":"/order"}`, true)
 
@@ -216,7 +224,7 @@ func TestInvokeReportsAGatewayErrorAsDataNotAsARelayFailure(t *testing.T) {
 
 func TestInvokeRequiresASession(t *testing.T) {
 	platform := platformAPIFor(t, "https://gw.example.com")
-	f := newInvokeFixture(t, testConsoleConfig(platform.URL))
+	f := newInvokeFixture(t, gatewayRelayConfig(platform.URL))
 
 	res := f.post(t, `{"orgHandle":"acme","restApiId":"api-1","gatewayId":"gw-prod","method":"GET","path":"/"}`, false)
 	assertStatus(t, res, http.StatusUnauthorized)
@@ -224,7 +232,7 @@ func TestInvokeRequiresASession(t *testing.T) {
 
 func TestInvokeRequiresTheCSRFHeader(t *testing.T) {
 	platform := platformAPIFor(t, "https://gw.example.com")
-	f := newInvokeFixture(t, testConsoleConfig(platform.URL))
+	f := newInvokeFixture(t, gatewayRelayConfig(platform.URL))
 
 	req, _ := http.NewRequest(http.MethodPost, f.bff.URL+invokePath, strings.NewReader(`{}`))
 	req.AddCookie(f.cookie)
@@ -241,8 +249,8 @@ func TestInvokeRequiresTheCSRFHeader(t *testing.T) {
 
 func TestInvoke404sWhenTheRelayIsDisabled(t *testing.T) {
 	platform := platformAPIFor(t, "https://gw.example.com")
-	cfg := testConsoleConfig(platform.URL)
-	cfg.TestConsole.Enabled = false
+	cfg := gatewayRelayConfig(platform.URL)
+	cfg.GatewayRelay.Enabled = false
 	f := newInvokeFixture(t, cfg)
 
 	res := f.post(t, `{"orgHandle":"acme","restApiId":"api-1","gatewayId":"gw-prod","method":"GET","path":"/"}`, true)
@@ -257,11 +265,11 @@ func TestInvokeReportsAResolutionTimeoutAsATimeout(t *testing.T) {
 	}))
 	defer stalled.Close()
 
-	original := testResolveTimeout
-	testResolveTimeout = 150 * time.Millisecond
-	defer func() { testResolveTimeout = original }()
+	original := gatewayResolveTimeout
+	gatewayResolveTimeout = 150 * time.Millisecond
+	defer func() { gatewayResolveTimeout = original }()
 
-	f := newInvokeFixture(t, testConsoleConfig(stalled.URL))
+	f := newInvokeFixture(t, gatewayRelayConfig(stalled.URL))
 
 	res := f.post(t, `{"orgHandle":"acme","restApiId":"api-1","gatewayId":"gw-prod","method":"GET","path":"/"}`, true)
 
@@ -277,8 +285,8 @@ func TestInvokeRefusesAGatewayOutsideAllowHosts(t *testing.T) {
 	// happy. The egress policy is the thing that refuses it, which is the
 	// second layer this configuration exists to provide.
 	platform := platformAPIFor(t, "https://gw.example.com")
-	cfg := testConsoleConfig(platform.URL)
-	cfg.TestConsole.Egress.AllowHosts = []string{"*.gw.svc.cluster.local"}
+	cfg := gatewayRelayConfig(platform.URL)
+	cfg.GatewayRelay.Egress.AllowHosts = []string{"*.gw.svc.cluster.local"}
 	f := newInvokeFixture(t, cfg)
 
 	res := f.post(t, `{"orgHandle":"acme","restApiId":"api-1","gatewayId":"gw-prod","method":"GET","path":"/"}`, true)
@@ -302,8 +310,8 @@ func TestInvokeRefusesAGatewayOnADisallowedPort(t *testing.T) {
 	// Port is the only dimension left separating a gateway from any other
 	// in-cluster HTTP service, since the stance has to permit private space.
 	platform := platformAPIFor(t, "https://gw.example.com:9200")
-	cfg := testConsoleConfig(platform.URL)
-	cfg.TestConsole.Egress.AllowPorts = []int{443, 9443}
+	cfg := gatewayRelayConfig(platform.URL)
+	cfg.GatewayRelay.Egress.AllowHosts = []string{"gw.example.com:9443"}
 	f := newInvokeFixture(t, cfg)
 
 	res := f.post(t, `{"orgHandle":"acme","restApiId":"api-1","gatewayId":"gw-prod","method":"GET","path":"/"}`, true)
@@ -328,9 +336,10 @@ func TestInvokeAllowsAGatewayThatSatisfiesEveryConstraint(t *testing.T) {
 	}
 
 	platform := platformAPIFor(t, gateway.URL)
-	cfg := testConsoleConfig(platform.URL)
-	cfg.TestConsole.Egress.AllowHosts = []string{gatewayURL.Hostname()}
-	cfg.TestConsole.Egress.AllowPorts = []int{port}
+	cfg := gatewayRelayConfig(platform.URL)
+	cfg.GatewayRelay.Egress.AllowHosts = []string{
+		fmt.Sprintf("http://%s:%d", gatewayURL.Hostname(), port),
+	}
 	f := newInvokeFixture(t, cfg)
 
 	res := f.post(t, `{"orgHandle":"acme","restApiId":"api-1","gatewayId":"gw-prod","method":"GET","path":"/"}`, true)
@@ -340,11 +349,14 @@ func TestInvokeAllowsAGatewayThatSatisfiesEveryConstraint(t *testing.T) {
 func TestInvokeDoesNotLeakTheResolvedTarget(t *testing.T) {
 	// A gateway record naming the cloud metadata endpoint is refused by the
 	// dial-time guard, whose error names the address. The response must not.
+	//
+	// Answered as a refusal rather than as an unreachable gateway: the
+	// address check is the policy speaking, same as the host check.
 	platform := platformAPIFor(t, "http://169.254.169.254")
-	f := newInvokeFixture(t, testConsoleConfig(platform.URL))
+	f := newInvokeFixture(t, gatewayRelayConfig(platform.URL))
 
 	res := f.post(t, `{"orgHandle":"acme","restApiId":"api-1","gatewayId":"gw-prod","method":"GET","path":"/latest/meta-data/"}`, true)
-	assertStatus(t, res, http.StatusBadGateway)
+	assertStatus(t, res, http.StatusForbidden)
 
 	body, _ := io.ReadAll(res.Body)
 	for _, leak := range []string{"169.254", "disallowed", "netguard", "meta-data"} {
@@ -365,12 +377,149 @@ func TestInvokeRefusesAGatewayTheAPIIsNotDeployedTo(t *testing.T) {
 	}))
 	defer platform.Close()
 
-	f := newInvokeFixture(t, testConsoleConfig(platform.URL))
+	f := newInvokeFixture(t, gatewayRelayConfig(platform.URL))
 	res := f.post(t, `{"orgHandle":"acme","restApiId":"api-1","gatewayId":"gw-prod","method":"GET","path":"/"}`, true)
 
-	assertStatus(t, res, http.StatusForbidden)
-	if code := decodeError(t, res)["code"]; code != "TARGET_NOT_ALLOWED" {
-		t.Errorf("code = %v, want TARGET_NOT_ALLOWED", code)
+	// Its own code, not the egress policy's: "deploy the API first" and "an
+	// operator has not allowed this address" are fixed by different people.
+	assertStatus(t, res, http.StatusNotFound)
+	if code := decodeError(t, res)["code"]; code != "GATEWAY_NOT_DEPLOYED" {
+		t.Errorf("code = %v, want GATEWAY_NOT_DEPLOYED", code)
+	}
+}
+
+func TestInvokeReportsADialTimePolicyRefusalAsARefusal(t *testing.T) {
+	// Host and address checks are one policy. A dial-time address refusal
+	// should not look like a gateway connectivity failure.
+	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer gateway.Close()
+	port := strings.TrimPrefix(gateway.URL, "http://127.0.0.1:")
+
+	for _, tc := range []struct{ name, endpoint string }{
+		// Refused up front: production takes no IP-literal target.
+		{"ip literal", "http://127.0.0.1:" + port},
+		// Refused at dial: the name is fine, what it resolves to is not.
+		{"name resolving to loopback", "http://localhost:" + port},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			platform := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				if strings.HasSuffix(r.URL.Path, "/gateways") {
+					_, _ = w.Write([]byte(`{"list":[{"id":"gw-prod","endpoints":["` + tc.endpoint + `"],"isDeployed":true}]}`))
+					return
+				}
+				_, _ = w.Write([]byte(`{"context":"/"}`))
+			}))
+			defer platform.Close()
+
+			cfg := gatewayRelayConfig(platform.URL)
+			cfg.GatewayRelay.Egress.Environment = "production"
+			cfg.GatewayRelay.Egress.AllowHosts = []string{"localhost", "127.0.0.1"}
+			f := newInvokeFixture(t, cfg)
+
+			res := f.post(t, `{"orgHandle":"acme","restApiId":"api-1","gatewayId":"gw-prod","method":"GET","path":"/"}`, true)
+
+			assertStatus(t, res, http.StatusForbidden)
+			if code := decodeError(t, res)["code"]; code != "TARGET_NOT_ALLOWED" {
+				t.Errorf("code = %v, want TARGET_NOT_ALLOWED", code)
+			}
+		})
+	}
+}
+
+func TestInvokeStillReportsAGenuinelyDownGatewayAsUnreachable(t *testing.T) {
+	// The other half of the split: a policy that permits the address, and a
+	// gateway that simply is not listening, must still read as unreachable.
+	platform := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if strings.HasSuffix(r.URL.Path, "/gateways") {
+			// Port 1 accepts nothing.
+			_, _ = w.Write([]byte(`{"list":[{"id":"gw-prod","endpoints":["http://127.0.0.1:1"],"isDeployed":true}]}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"context":"/"}`))
+	}))
+	defer platform.Close()
+
+	f := newInvokeFixture(t, gatewayRelayConfig(platform.URL))
+
+	res := f.post(t, `{"orgHandle":"acme","restApiId":"api-1","gatewayId":"gw-prod","method":"GET","path":"/"}`, true)
+
+	assertStatus(t, res, http.StatusBadGateway)
+	if code := decodeError(t, res)["code"]; code != "UPSTREAM_UNREACHABLE" {
+		t.Errorf("code = %v, want UPSTREAM_UNREACHABLE", code)
+	}
+}
+
+func TestInvokeDistinguishesResolutionFailuresFromEachOther(t *testing.T) {
+	// The whole point of splitting these: a caller can tell what to go and
+	// fix without reading the server log.
+	for _, tc := range []struct {
+		name       string
+		gateways   string
+		wantStatus int
+		wantCode   string
+	}{
+		{
+			name:       "gateway has no endpoint",
+			gateways:   `{"list":[{"id":"gw-prod","endpoints":[],"isDeployed":true}]}`,
+			wantStatus: http.StatusUnprocessableEntity,
+			wantCode:   "GATEWAY_NO_ENDPOINT",
+		},
+		{
+			name:       "endpoint is not http",
+			gateways:   `{"list":[{"id":"gw-prod","endpoints":["wss://gw.example.com"],"isDeployed":true}]}`,
+			wantStatus: http.StatusUnprocessableEntity,
+			wantCode:   "GATEWAY_UNSUPPORTED_SCHEME",
+		},
+		{
+			// Answers exactly as an undeployed gateway does, so the response
+			// never confirms a gateway id exists in a tenant the caller
+			// cannot see.
+			name:       "gateway belongs to another organization",
+			gateways:   `{"list":[{"id":"gw-prod","organizationId":"other","endpoints":["https://gw.example.com"],"isDeployed":true}]}`,
+			wantStatus: http.StatusNotFound,
+			wantCode:   "GATEWAY_NOT_DEPLOYED",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			platform := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				if strings.HasSuffix(r.URL.Path, "/gateways") {
+					_, _ = w.Write([]byte(tc.gateways))
+					return
+				}
+				_, _ = w.Write([]byte(`{"context":"/pizza"}`))
+			}))
+			defer platform.Close()
+
+			f := newInvokeFixture(t, gatewayRelayConfig(platform.URL))
+			res := f.post(t, `{"orgHandle":"acme","restApiId":"api-1","gatewayId":"gw-prod","method":"GET","path":"/"}`, true)
+
+			assertStatus(t, res, tc.wantStatus)
+			if code := decodeError(t, res)["code"]; code != tc.wantCode {
+				t.Errorf("code = %v, want %v", code, tc.wantCode)
+			}
+		})
+	}
+}
+
+func TestInvokeReportsAnInaccessibleAPISeparately(t *testing.T) {
+	// A session that cannot read the API is a different problem from a
+	// gateway that is not deployed to it.
+	platform := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer platform.Close()
+
+	f := newInvokeFixture(t, gatewayRelayConfig(platform.URL))
+	res := f.post(t, `{"orgHandle":"acme","restApiId":"api-1","gatewayId":"gw-prod","method":"GET","path":"/"}`, true)
+
+	assertStatus(t, res, http.StatusNotFound)
+	if code := decodeError(t, res)["code"]; code != "API_NOT_FOUND" {
+		t.Errorf("code = %v, want API_NOT_FOUND", code)
 	}
 }
 
@@ -382,7 +531,7 @@ func TestInvokeRejectsARequestShapeTheRelayRefuses(t *testing.T) {
 	defer gateway.Close()
 
 	platform := platformAPIFor(t, gateway.URL)
-	f := newInvokeFixture(t, testConsoleConfig(platform.URL))
+	f := newInvokeFixture(t, gatewayRelayConfig(platform.URL))
 
 	for _, tc := range []struct{ name, body string }{
 		{"traversal out of the API context", `{"orgHandle":"acme","restApiId":"api-1","gatewayId":"gw-prod","method":"GET","path":"/../admin"}`},
@@ -402,8 +551,8 @@ func TestInvokeRejectsARequestShapeTheRelayRefuses(t *testing.T) {
 
 func TestInvokeRejectsAnOversizedEnvelope(t *testing.T) {
 	platform := platformAPIFor(t, "https://gw.example.com")
-	cfg := testConsoleConfig(platform.URL)
-	cfg.TestConsole.MaxRequestBytes = 128
+	cfg := gatewayRelayConfig(platform.URL)
+	cfg.GatewayRelay.MaxRequestBytes = 128
 	f := newInvokeFixture(t, cfg)
 
 	body := `{"orgHandle":"acme","restApiId":"api-1","gatewayId":"gw-prod","method":"POST","path":"/","body":"` +
@@ -427,8 +576,8 @@ func TestInvokeAcceptsABodyOfExactlyMaxRequestBytes(t *testing.T) {
 	defer gateway.Close()
 
 	platform := platformAPIFor(t, gateway.URL)
-	cfg := testConsoleConfig(platform.URL)
-	cfg.TestConsole.MaxRequestBytes = 4096
+	cfg := gatewayRelayConfig(platform.URL)
+	cfg.GatewayRelay.MaxRequestBytes = 4096
 	f := newInvokeFixture(t, cfg)
 
 	body := `{"orgHandle":"acme","restApiId":"api-1","gatewayId":"gw-prod","method":"POST","path":"/","body":"` +
@@ -452,8 +601,8 @@ func TestInvokeRejectsABodyOverMaxRequestBytes(t *testing.T) {
 	defer gateway.Close()
 
 	platform := platformAPIFor(t, gateway.URL)
-	cfg := testConsoleConfig(platform.URL)
-	cfg.TestConsole.MaxRequestBytes = 4096
+	cfg := gatewayRelayConfig(platform.URL)
+	cfg.GatewayRelay.MaxRequestBytes = 4096
 	f := newInvokeFixture(t, cfg)
 
 	body := `{"orgHandle":"acme","restApiId":"api-1","gatewayId":"gw-prod","method":"POST","path":"/","body":"` +
@@ -471,7 +620,7 @@ func TestInvokeRejectsUnknownEnvelopeFields(t *testing.T) {
 	// target URL, a per-request TLS override) from being silently accepted by
 	// an older BFF that does not implement it.
 	platform := platformAPIFor(t, "https://gw.example.com")
-	f := newInvokeFixture(t, testConsoleConfig(platform.URL))
+	f := newInvokeFixture(t, gatewayRelayConfig(platform.URL))
 
 	res := f.post(t, `{"orgHandle":"acme","restApiId":"api-1","gatewayId":"gw-prod","method":"GET","path":"/","targetUrl":"https://evil.example.com"}`, true)
 	assertStatus(t, res, http.StatusBadRequest)
@@ -488,7 +637,7 @@ func TestInvokeResponseIsAlwaysInertJSON(t *testing.T) {
 	defer gateway.Close()
 
 	platform := platformAPIFor(t, gateway.URL)
-	f := newInvokeFixture(t, testConsoleConfig(platform.URL))
+	f := newInvokeFixture(t, gatewayRelayConfig(platform.URL))
 
 	res := f.post(t, `{"orgHandle":"acme","restApiId":"api-1","gatewayId":"gw-prod","method":"GET","path":"/"}`, true)
 	assertStatus(t, res, http.StatusOK)

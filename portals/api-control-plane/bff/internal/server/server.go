@@ -30,9 +30,9 @@ import (
 
 	"api-control-plane-bff/internal/auth"
 	"api-control-plane-bff/internal/config"
+	"api-control-plane-bff/internal/gatewayrelay"
 	"api-control-plane-bff/internal/proxy"
 	"api-control-plane-bff/internal/session"
-	"api-control-plane-bff/internal/testproxy"
 )
 
 // refreshLock is the single-flight coordinator for refreshing one access
@@ -63,11 +63,11 @@ type Server struct {
 	proxies   []mountedProxy
 	handler   http.Handler
 
-	// Test-console relay. Both are nil when [test_console] is disabled. The
+	// Gateway-relay relay. Both are nil when [gateway_relay] is disabled. The
 	// tenant-controlled target is resolved per request and never receives the
-	// session bearer token (see internal/testproxy).
-	testResolver *testproxy.Resolver
-	testRelay    *testproxy.Relay
+	// session bearer token (see internal/gatewayrelay).
+	gatewayResolver *gatewayrelay.Resolver
+	gatewayRelay    *gatewayrelay.Relay
 
 	refreshMu    sync.Mutex
 	refreshLocks map[string]*refreshLock
@@ -169,34 +169,33 @@ func New(ctx context.Context, cfg *config.Config) (*Server, error) {
 		s.oidc = o
 	}
 
-	if cfg.TestConsole.Enabled {
+	if cfg.GatewayRelay.Enabled {
 		// The resolver uses the primary client; the relay gets its own guarded
 		// client because the upstreams have different threat models.
-		s.testResolver = testproxy.NewResolver(
+		s.gatewayResolver = gatewayrelay.NewResolver(
 			upstream,
 			cfg.ControlPlane.URL,
-			cfg.ControlPlane.ManagementBasePath,
-			cfg.TestConsole.ResolveCacheTTL,
-			cfg.TestConsole.ResolveCacheSize,
+			cfg.GatewayRelay.ResolveCacheTTL,
+			cfg.GatewayRelay.ResolveCacheSize,
 		)
-		egressPolicy, err := cfg.TestConsole.Egress.Policy()
+		egressPolicy, err := cfg.GatewayRelay.Egress.Policy()
 		if err != nil {
 			return nil, err
 		}
-		relay, err := testproxy.NewRelay(testproxy.RelayOptions{
-			RequestTimeout:   cfg.TestConsole.RequestTimeout,
-			MaxRequestBytes:  cfg.TestConsole.MaxRequestBytes,
-			MaxResponseBytes: cfg.TestConsole.MaxResponseBytes,
-			MaxConcurrent:    cfg.TestConsole.MaxConcurrent,
-			MaxPending:       cfg.TestConsole.MaxPending,
-			CAFile:           cfg.TestConsole.CAFile,
-			TLSSkipVerify:    cfg.TestConsole.TLSSkipVerify,
+		relay, err := gatewayrelay.NewRelay(gatewayrelay.RelayOptions{
+			RequestTimeout:   cfg.GatewayRelay.RequestTimeout,
+			MaxRequestBytes:  cfg.GatewayRelay.MaxRequestBytes,
+			MaxResponseBytes: cfg.GatewayRelay.MaxResponseBytes,
+			MaxConcurrent:    cfg.GatewayRelay.MaxConcurrent,
+			MaxPending:       cfg.GatewayRelay.MaxPending,
+			CAFile:           cfg.GatewayRelay.CAFile,
+			TLSSkipVerify:    cfg.GatewayRelay.TLSSkipVerify,
 			Egress:           egressPolicy,
 		})
 		if err != nil {
 			return nil, err
 		}
-		s.testRelay = relay
+		s.gatewayRelay = relay
 	}
 
 	s.handler = s.routes()
@@ -235,7 +234,7 @@ func withWriteDeadline(next http.HandlerFunc) http.HandlerFunc {
 }
 
 // withWriteDeadlineOf is withWriteDeadline for a handler whose own bound is not
-// the generic one; the test-console relay, which already bounds itself by its
+// the generic one; the gateway relay, which already bounds itself by its
 // configured request timeout and needs an outer deadline sized just above that
 // rather than a fixed default that could be either far looser or far tighter.
 func withWriteDeadlineOf(d time.Duration, next http.HandlerFunc) http.HandlerFunc {
@@ -263,9 +262,9 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /api/auth/login", withWriteDeadline(s.handleOIDCLogin))
 	mux.HandleFunc("GET /api/auth/callback", withWriteDeadline(s.handleOIDCCallback))
 
-	// Test-console relay. The handler returns 404 when disabled.
-	mux.HandleFunc("POST /api/test-console/invoke",
-		withWriteDeadlineOf(s.testInvokeWriteDeadline(), s.handleTestInvoke))
+	// Gateway-relay relay. The handler returns 404 when disabled.
+	mux.HandleFunc("POST /api/gateway-relay/invoke",
+		withWriteDeadlineOf(s.gatewayInvokeWriteDeadline(), s.handleGatewayInvoke))
 
 	// Same-origin reverse proxy(ies): the primary control plane, plus any
 	// named upstream. Each Rewrite hook already strips its own prefix, so the

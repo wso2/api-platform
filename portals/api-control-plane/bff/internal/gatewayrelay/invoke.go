@@ -14,7 +14,7 @@
  * under the License.
  */
 
-// Package testproxy relays a Test-console request through the BFF to the
+// Package gatewayrelay relays a Gateway-relay request through the BFF to the
 // gateway hosting the API and returns the complete gateway response as data.
 //
 // The relay avoids browser CORS and mixed-content restrictions and supports
@@ -27,7 +27,7 @@
 // forwards only headers from the sanitized envelope and assumes the BFF can
 // reach cloud-managed gateways. Unreachable targets return
 // UPSTREAM_UNREACHABLE; no browser-side fallback is provided.
-package testproxy
+package gatewayrelay
 
 import (
 	"encoding/base64"

@@ -14,7 +14,7 @@
  * under the License.
  */
 
-package testproxy
+package gatewayrelay
 
 import (
 	"errors"
@@ -76,7 +76,7 @@ var allowedMethods = map[string]bool{
 //   - Cookie and the forwarding headers would let the browser attach ambient
 //     credentials or forge the apparent client address. Nothing the browser
 //     holds should travel to a tenant-controlled gateway implicitly; a tester
-//     who wants a cookie sent can still say so via the Test console's own
+//     who wants a cookie sent can still say so via the Gateway relay's own
 //     header list under a name that is not Cookie.
 //
 // Authorization is NOT in this list: an API under test legitimately needs one,

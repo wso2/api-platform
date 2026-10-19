@@ -14,7 +14,7 @@
  * under the License.
  */
 
-package testproxy
+package gatewayrelay
 
 import (
 	"context"
@@ -79,14 +79,21 @@ type resolveEntry struct {
 	expires time.Time
 }
 
-// NewResolver builds a Resolver. platformBaseURL is the Platform API origin and
-// managementBasePath its REST mount path (e.g. "/api/v0.9"). client should be
-// the BFF's existing upstream client, this talks to the Platform API, not to a
-// gateway, so it deliberately does not use the relay's guarded client.
-func NewResolver(client *http.Client, platformBaseURL, managementBasePath string, ttl time.Duration, maxSize int) *Resolver {
+// managementBasePath is the Platform API's REST mount path, matching its own
+// constants.APIBasePath.
+//
+// Not configurable: the BFF and Platform API are released together. A mismatch
+// would be an implementation error, manifesting as resolution failures.
+const managementBasePath = "/api/v0.9"
+
+// NewResolver builds a Resolver. platformBaseURL is the Platform API origin.
+// client should be the BFF's existing upstream client; this talks to the
+// Platform API, not to a gateway, so it deliberately does not use the relay's
+// guarded client.
+func NewResolver(client *http.Client, platformBaseURL string, ttl time.Duration, maxSize int) *Resolver {
 	return &Resolver{
 		client:  client,
-		baseURL: strings.TrimRight(platformBaseURL, "/") + "/" + strings.Trim(managementBasePath, "/"),
+		baseURL: strings.TrimRight(platformBaseURL, "/") + managementBasePath,
 		ttl:     ttl,
 		maxSize: maxSize,
 		entries: make(map[string]resolveEntry),

@@ -2870,9 +2870,35 @@
   "apiControlPlane.pages.appShell.appShellPages.projects.components.ProjectMetadata.unknown": {
     "defaultMessage": "Unknown"
   },
-  "apiControlPlane.pages.appShell.appShellPages.settings.GeneralSettingsPage.mvpScope": {
-    "defaultMessage": "Advanced organization admin settings, governance, marketplace, and developer portal configuration are intentionally excluded from the MVP replacement app.",
-    "description": "Body copy explaining which settings areas the MVP deliberately leaves out."
+  "apiControlPlane.pages.appShell.appShellPages.settings.GeneralSettingsPage.copyFailed": {
+    "defaultMessage": "Unable to copy the ID."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.GeneralSettingsPage.copyId": {
+    "defaultMessage": "Copy ID"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.GeneralSettingsPage.copySucceeded": {
+    "defaultMessage": "ID copied to clipboard."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.GeneralSettingsPage.created": {
+    "defaultMessage": "Created"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.GeneralSettingsPage.loading": {
+    "defaultMessage": "Loading settings"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.GeneralSettingsPage.organizationDetailsTitle": {
+    "defaultMessage": "Organization Details"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.GeneralSettingsPage.organizationNotFound": {
+    "defaultMessage": "Organization not found"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.GeneralSettingsPage.projectDetailsTitle": {
+    "defaultMessage": "Project Details"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.GeneralSettingsPage.projectNotFound": {
+    "defaultMessage": "Project not found"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.GeneralSettingsPage.region": {
+    "defaultMessage": "Region"
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.SettingsLayout.title": {
     "defaultMessage": "Settings",
@@ -3632,9 +3658,23 @@
     "defaultMessage": "Test key",
     "description": "Heading of the section holding the credential the console sends. A noun."
   },
+  "apiControlPlane.pages.test.console.proxyTransport.apiNotFound": {
+    "defaultMessage": "This API could not be found. Try reloading the page.",
+    "description": "Shown when the control plane does not return the API being tested."
+  },
   "apiControlPlane.pages.test.console.proxyTransport.busy": {
     "defaultMessage": "The portal is handling too many test requests right now. Try again in a moment.",
     "description": "Shown when the portal-side relay is at capacity. Not a gateway failure."
+  },
+  "apiControlPlane.pages.test.console.proxyTransport.gatewayNoEndpoint": {
+    "defaultMessage": "The selected gateway has no endpoint configured."
+  },
+  "apiControlPlane.pages.test.console.proxyTransport.gatewayNotDeployed": {
+    "defaultMessage": "This API is not deployed to the selected gateway. Deploy it first, then try again.",
+    "description": "Actionable: the gateway exists but the API has not been deployed to it."
+  },
+  "apiControlPlane.pages.test.console.proxyTransport.gatewayUnsupportedScheme": {
+    "defaultMessage": "The selected gateway’s endpoint is not an HTTP address, so it cannot be called from here."
   },
   "apiControlPlane.pages.test.console.proxyTransport.invalidRequest": {
     "defaultMessage": "This request cannot be sent as written. Check the path, headers and parameters.",
@@ -3647,7 +3687,8 @@
     "defaultMessage": "Your session has expired. Sign in again to continue testing."
   },
   "apiControlPlane.pages.test.console.proxyTransport.targetNotAllowed": {
-    "defaultMessage": "This API cannot be tested on the selected gateway. Check that it is still deployed there."
+    "defaultMessage": "The portal is not configured to reach this gateway. Ask an administrator to allow it.",
+    "description": "Shown only when the egress policy refuses the target — an operator setting, not something the user can fix. Deliberately vague about the policy itself."
   },
   "apiControlPlane.pages.test.console.proxyTransport.tooLarge": {
     "defaultMessage": "This request is too large to send from the console. Use the cURL command instead."

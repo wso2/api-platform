@@ -14,7 +14,7 @@
  * under the License.
  */
 
-package testproxy
+package gatewayrelay
 
 import (
 	"context"
@@ -32,9 +32,15 @@ import (
 	"api-control-plane-bff/internal/egress"
 )
 
-func testRelay(t *testing.T, mutate func(*RelayOptions)) *Relay {
+func gatewayRelay(t *testing.T, mutate func(*RelayOptions)) *Relay {
 	t.Helper()
-	policy, err := egress.Parse(egress.Spec{})
+	// Nothing is reachable unless allow_hosts names it, and these tests dial
+	// httptest servers on loopback — which production refuses both as a
+	// private address and as an IP literal.
+	policy, err := egress.Parse(egress.Spec{
+		Environment: egress.EnvDevelopment,
+		AllowHosts:  []string{"*"},
+	})
 	require.NoError(t, err)
 	opts := RelayOptions{
 		RequestTimeout:   5 * time.Second,
@@ -64,7 +70,7 @@ func targetFor(t *testing.T, rawURL string) Target {
 //
 // The BFF holds a Platform API bearer token for every logged-in caller, and the
 // sibling reverse proxy in internal/proxy injects it on everything it forwards.
-// A test-console target is a URL a tenant admin controls, so the same injection
+// A gateway-relay target is a URL a tenant admin controls, so the same injection
 // here would hand that token to whoever runs the gateway. This asserts the
 // outbound request carries the envelope's headers and nothing else at all.
 func TestRelayForwardsOnlyTheSanitizedHeaders(t *testing.T) {
@@ -75,7 +81,7 @@ func TestRelayForwardsOnlyTheSanitizedHeaders(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	relay := testRelay(t, nil)
+	relay := gatewayRelay(t, nil)
 	_, err := relay.Do(context.Background(), targetFor(t, srv.URL), Envelope{
 		Method:  "GET",
 		Path:    "/order",
@@ -109,7 +115,7 @@ func TestRelayReturnsGatewayErrorStatusAsData(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	relayed, err := testRelay(t, nil).Do(context.Background(), targetFor(t, srv.URL), Envelope{Method: "GET", Path: "/"})
+	relayed, err := gatewayRelay(t, nil).Do(context.Background(), targetFor(t, srv.URL), Envelope{Method: "GET", Path: "/"})
 
 	// The relay succeeded; the gateway is what failed. Collapsing these two
 	// into one error would leave the console unable to tell them apart.
@@ -135,7 +141,7 @@ func TestRelaySendsMethodPathQueryAndBody(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	_, err := testRelay(t, nil).Do(context.Background(), targetFor(t, srv.URL+"/pizza/v1"), Envelope{
+	_, err := gatewayRelay(t, nil).Do(context.Background(), targetFor(t, srv.URL+"/pizza/v1"), Envelope{
 		Method: "post",
 		Path:   "/order",
 		Query:  []Header{{Name: "dryRun", Value: "true"}},
@@ -154,7 +160,7 @@ func TestRelayTruncatesRatherThanFailsAnOversizedResponse(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	relay := testRelay(t, func(o *RelayOptions) { o.MaxResponseBytes = 1000 })
+	relay := gatewayRelay(t, func(o *RelayOptions) { o.MaxResponseBytes = 1000 })
 	relayed, err := relay.Do(context.Background(), targetFor(t, srv.URL), Envelope{Method: "GET", Path: "/"})
 
 	require.NoError(t, err, "someone testing an API learns more from a truncated body than from an error")
@@ -171,7 +177,7 @@ func TestRelayKeepsATruncatedTextBodyReadable(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	relay := testRelay(t, func(o *RelayOptions) { o.MaxResponseBytes = 9 })
+	relay := gatewayRelay(t, func(o *RelayOptions) { o.MaxResponseBytes = 9 })
 	relayed, err := relay.Do(context.Background(), targetFor(t, srv.URL), Envelope{Method: "GET", Path: "/"})
 
 	require.NoError(t, err)
@@ -181,7 +187,7 @@ func TestRelayKeepsATruncatedTextBodyReadable(t *testing.T) {
 }
 
 func TestRelayRefusesAnOversizedRequestBody(t *testing.T) {
-	relay := testRelay(t, func(o *RelayOptions) { o.MaxRequestBytes = 10 })
+	relay := gatewayRelay(t, func(o *RelayOptions) { o.MaxRequestBytes = 10 })
 	_, err := relay.Do(context.Background(), targetFor(t, "http://127.0.0.1:1"), Envelope{
 		Method: "POST",
 		Path:   "/",
@@ -202,7 +208,7 @@ func TestRelayDoesNotFollowRedirects(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	relayed, err := testRelay(t, nil).Do(context.Background(), targetFor(t, srv.URL), Envelope{
+	relayed, err := gatewayRelay(t, nil).Do(context.Background(), targetFor(t, srv.URL), Envelope{
 		Method:  "GET",
 		Path:    "/",
 		Headers: []Header{{Name: "X-API-Key", Value: "test-key"}},
@@ -234,7 +240,7 @@ func TestRelaySurfacesEveryResponseHeaderIncludingRepeats(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	relayed, err := testRelay(t, nil).Do(context.Background(), targetFor(t, srv.URL), Envelope{Method: "GET", Path: "/"})
+	relayed, err := gatewayRelay(t, nil).Do(context.Background(), targetFor(t, srv.URL), Envelope{Method: "GET", Path: "/"})
 	require.NoError(t, err)
 
 	var cookies []string
@@ -256,7 +262,7 @@ func TestRelayRejectsWhenPoolAndQueueAreBothFull(t *testing.T) {
 	defer srv.Close()
 	defer unblock()
 
-	relay := testRelay(t, func(o *RelayOptions) {
+	relay := gatewayRelay(t, func(o *RelayOptions) {
 		o.MaxConcurrent = 1
 		o.MaxPending = 1
 	})
@@ -283,7 +289,7 @@ func TestRelayRejectsWhenPoolAndQueueAreBothFull(t *testing.T) {
 func TestRelayRefusesLinkLocalMetadataEvenIfResolutionYieldsIt(t *testing.T) {
 	// Defense in depth behind the resolver: if a gateway record ever named the
 	// cloud metadata endpoint, the dial-time guard still refuses it.
-	relay := testRelay(t, func(o *RelayOptions) { o.RequestTimeout = 2 * time.Second })
+	relay := gatewayRelay(t, func(o *RelayOptions) { o.RequestTimeout = 2 * time.Second })
 	_, err := relay.Do(context.Background(), targetFor(t, "http://169.254.169.254"), Envelope{Method: "GET", Path: "/latest/meta-data/"})
 	require.Error(t, err)
 	// Asserted as "refused at all" rather than on the wording: the guard

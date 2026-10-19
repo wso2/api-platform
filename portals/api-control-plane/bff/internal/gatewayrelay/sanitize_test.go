@@ -14,7 +14,7 @@
  * under the License.
  */
 
-package testproxy
+package gatewayrelay
 
 import (
 	"strings"

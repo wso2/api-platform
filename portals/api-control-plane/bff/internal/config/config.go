@@ -52,13 +52,13 @@ type Config struct {
 	Session      SessionConfig      `koanf:"session"`
 	Auth         AuthConfig         `koanf:"auth"`
 	PolicyHub    PolicyHubConfig    `koanf:"policy_hub"`
-	TestConsole  TestConsoleConfig  `koanf:"test_console"`
+	GatewayRelay GatewayRelayConfig `koanf:"gateway_relay"`
 
 	RuntimeConfig map[string]string `koanf:"-"`
 }
 
-// TestConsoleConfig configures the bounded relay for the Test page's Swagger console.
-type TestConsoleConfig struct {
+// GatewayRelayConfig configures the bounded relay for the Test page's Swagger console.
+type GatewayRelayConfig struct {
 	// Enabled turns the relay on. When false the route 404s and no outbound
 	// client is built at all.
 	Enabled bool `koanf:"enabled"`
@@ -99,37 +99,32 @@ type TestConsoleConfig struct {
 // Policy parses this block into the object that enforces it.
 func (e EgressConfig) Policy() (*egress.Policy, error) {
 	policy, err := egress.Parse(egress.Spec{
-		AllowHosts: e.AllowHosts,
-		AllowCIDRs: e.AllowCIDRs,
-		AllowPorts: e.AllowPorts,
-		Deny:       e.Deny,
+		Environment: e.Environment,
+		AllowHosts:  e.AllowHosts,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("[test_console.egress] %w", err)
+		return nil, fmt.Errorf("[gateway_relay.egress] %w", err)
 	}
 	return policy, nil
 }
 
-// EgressConfig is [test_console.egress]: where the relay may connect.
+// EgressConfig is [gateway_relay.egress]: where the relay may connect.
 //
-// Two rules: deny always wins, and allow narrows when set. There is no
-// setting that re-opens something deny closed. See internal/egress.
+// One rule: nothing is reachable unless an allow_hosts entry matches it. See
+// internal/egress.
 type EgressConfig struct {
-	// AllowHosts limits which gateway hostnames may be dialed. Each entry is
-	// an exact host or a single leading "*." wildcard. Empty means no host
-	// constraint.
+	// Environment is "production" by default, or "development".
+	//
+	// Production rejects private, loopback, carrier-grade NAT, and IP-literal
+	// target addresses. Development permits these addresses. Both reject
+	// metadata and link-local addresses.
+	Environment string `koanf:"environment"`
+	// AllowHosts is the complete set of targets the relay may dial. Each entry
+	// has the form "[scheme://]host[:port]"; "*" may appear anywhere in host.
+	// Scheme and port constrain matching only when specified.
+	//
+	// An empty list permits no targets by design.
 	AllowHosts []string `koanf:"allow_hosts"`
-	// AllowCIDRs limits which resolved addresses may be dialed. Empty means
-	// no address constraint beyond deny.
-	AllowCIDRs []string `koanf:"allow_cidrs"`
-	// AllowPorts limits which ports may be dialed. Empty means any port —
-	// which, since a gateway legitimately lives in private space, leaves the
-	// port as the only dimension separating a gateway from any other
-	// in-cluster HTTP service.
-	AllowPorts []int `koanf:"allow_ports"`
-	// Deny is always refused. Entries are CIDRs or the group names
-	// "private", "loopback" and "cgnat".
-	Deny []string `koanf:"deny"`
 }
 
 // PolicyHubConfig configures the public catalog called directly by the browser.
@@ -194,10 +189,6 @@ type ControlPlaneConfig struct {
 	// /api/portal/v0.9), used to build paths for BFF-initiated calls (file-based
 	// login today).
 	PortalBasePath string `koanf:"portal_base_path"`
-	// ManagementBasePath is the primary upstream's management route prefix
-	// (e.g. /api/v0.9), used for BFF-initiated management API calls. Keeping
-	// it configurable allows REST version changes without code changes.
-	ManagementBasePath string `koanf:"management_base_path"`
 	// ProxyPrefix is the same-origin reverse-proxy prefix the SPA calls for the
 	// primary upstream; it is stripped before forwarding, so the browser only
 	// ever talks to this BFF's own origin.
@@ -423,7 +414,6 @@ func (c *Config) normalize() {
 
 	c.ControlPlane.URL = strings.TrimRight(c.ControlPlane.URL, "/")
 	c.ControlPlane.PortalBasePath = strings.TrimRight(c.ControlPlane.PortalBasePath, "/")
-	c.ControlPlane.ManagementBasePath = strings.TrimRight(c.ControlPlane.ManagementBasePath, "/")
 	c.ControlPlane.ProxyPrefix = strings.TrimRight(c.ControlPlane.ProxyPrefix, "/")
 	for i := range c.ControlPlane.Upstreams {
 		c.ControlPlane.Upstreams[i].URL = strings.TrimRight(c.ControlPlane.Upstreams[i].URL, "/")
@@ -459,7 +449,7 @@ func (c *Config) validate() error {
 	if c.Auth.Authorization.Mode == AuthzModeRole && c.Auth.Authorization.RoleToScopeMapping == "" {
 		return fmt.Errorf("[auth.authorization] role_to_scope_mapping is required when mode = %q", AuthzModeRole)
 	}
-	if err := c.validateTestConsole(); err != nil {
+	if err := c.validateGatewayRelay(); err != nil {
 		return err
 	}
 	if !c.Server.HTTP.Enabled && !c.Server.HTTPS.Enabled {
@@ -577,39 +567,39 @@ func validateAbsoluteURL(label, rawURL string) error {
 	return nil
 }
 
-// validateTestConsole checks the relay's bounds and builds its egress policy.
+// validateGatewayRelay checks the relay's bounds and builds its egress policy.
 //
 // The policy is parsed here, not at wiring time, so a bad range refuses the
 // process at startup with the key that caused it — and so exactly one parse of
 // those strings exists, by the package that also enforces them.
-func (c *Config) validateTestConsole() error {
-	t := &c.TestConsole
+func (c *Config) validateGatewayRelay() error {
+	t := &c.GatewayRelay
 	if !t.Enabled {
 		return nil
 	}
 	if t.RequestTimeout <= 0 {
-		return fmt.Errorf("[test_console] request_timeout must be positive when enabled = true, got %s", t.RequestTimeout)
+		return fmt.Errorf("[gateway_relay] request_timeout must be positive when enabled = true, got %s", t.RequestTimeout)
 	}
 	if t.MaxRequestBytes <= 0 {
-		return fmt.Errorf("[test_console] max_request_bytes must be positive when enabled = true, got %d", t.MaxRequestBytes)
+		return fmt.Errorf("[gateway_relay] max_request_bytes must be positive when enabled = true, got %d", t.MaxRequestBytes)
 	}
 	if t.MaxResponseBytes <= 0 {
-		return fmt.Errorf("[test_console] max_response_bytes must be positive when enabled = true, got %d", t.MaxResponseBytes)
+		return fmt.Errorf("[gateway_relay] max_response_bytes must be positive when enabled = true, got %d", t.MaxResponseBytes)
 	}
 	if t.MaxConcurrent <= 0 {
-		return fmt.Errorf("[test_console] max_concurrent must be positive when enabled = true, got %d", t.MaxConcurrent)
-	}
-	if t.MaxPending < 0 {
-		return fmt.Errorf("[test_console] max_pending must not be negative, got %d", t.MaxPending)
+		return fmt.Errorf("[gateway_relay] max_concurrent must be positive when enabled = true, got %d", t.MaxConcurrent)
 	}
 	if t.ResolveCacheTTL < 0 {
-		return fmt.Errorf("[test_console] resolve_cache_ttl must not be negative, got %s", t.ResolveCacheTTL)
+		return fmt.Errorf("[gateway_relay] resolve_cache_ttl must not be negative, got %s", t.ResolveCacheTTL)
 	}
 	if t.ResolveCacheSize < 0 {
-		return fmt.Errorf("[test_console] resolve_cache_size must not be negative, got %d", t.ResolveCacheSize)
+		return fmt.Errorf("[gateway_relay] resolve_cache_size must not be negative, got %d", t.ResolveCacheSize)
+	}
+	if t.MaxPending < 0 {
+		return fmt.Errorf("[gateway_relay] max_pending must not be negative, got %d", t.MaxPending)
 	}
 	if t.TLSSkipVerify && t.CAFile != "" {
-		return fmt.Errorf("[test_console] ca_file and tls_skip_verify are mutually exclusive — skipping verification ignores the bundle entirely")
+		return fmt.Errorf("[gateway_relay] ca_file and tls_skip_verify are mutually exclusive — skipping verification ignores the bundle entirely")
 	}
 
 	// Parsed here only to fail at startup, with the offending key named,
@@ -619,11 +609,15 @@ func (c *Config) validateTestConsole() error {
 	if err != nil {
 		return err
 	}
+	if len(t.Egress.AllowHosts) == 0 {
+		slog.Warn("[gateway_relay.egress] allow_hosts is empty, so every gateway-relay request will be refused. " +
+			"List the gateway targets the relay may dial, or set [gateway_relay] enabled = false.")
+	}
 
 	if t.TLSSkipVerify {
-		slog.Warn("[test_console] tls_skip_verify = true — gateway certificate verification is DISABLED for test-console requests. " +
+		slog.Warn("[gateway_relay] tls_skip_verify = true — gateway certificate verification is DISABLED for gateway-relay requests. " +
 			"Trust the gateway certificate with ca_file instead.")
 	}
-	slog.Info("test-console egress policy", "policy", policy.Describe())
+	slog.Info("gateway-relay egress policy", "policy", policy.Describe())
 	return nil
 }

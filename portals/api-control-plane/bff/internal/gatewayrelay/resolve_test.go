@@ -14,7 +14,7 @@
  * under the License.
  */
 
-package testproxy
+package gatewayrelay
 
 import (
 	"context"
@@ -72,7 +72,7 @@ func newTestResolver(t *testing.T, stub *platformStub, ttl time.Duration) (*Reso
 	t.Helper()
 	srv := httptest.NewServer(stub.handler())
 	t.Cleanup(srv.Close)
-	return NewResolver(srv.Client(), srv.URL, "/api/v0.9", ttl, 16), srv
+	return NewResolver(srv.Client(), srv.URL, ttl, 16), srv
 }
 
 const deployedGatewayJSON = `{"list":[

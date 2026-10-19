@@ -25,10 +25,10 @@ import (
 	"time"
 
 	"api-control-plane-bff/internal/egress"
-	"api-control-plane-bff/internal/testproxy"
+	"api-control-plane-bff/internal/gatewayrelay"
 )
 
-// handleTestInvoke (POST /api/test-console/invoke) relays one Test-console
+// handleGatewayInvoke (POST /api/gateway-relay/invoke) relays one Gateway-relay
 // try-out request to the gateway the API is deployed on.
 //
 // This is a BFF-owned endpoint, mounted beside /api/login and /api/session
@@ -38,12 +38,12 @@ import (
 //
 // It is always POST, so the global requireCSRF middleware covers it even when
 // the API operation being tested is a GET.
-func (s *Server) handleTestInvoke(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleGatewayInvoke(w http.ResponseWriter, r *http.Request) {
 	// Nothing about a relayed response is cacheable, and some of it is
 	// per-session by construction.
 	w.Header().Set("Cache-Control", "no-store")
 
-	if s.testRelay == nil || s.testResolver == nil {
+	if s.gatewayRelay == nil || s.gatewayResolver == nil {
 		writeErrorJSON(w, http.StatusNotFound, "NOT_FOUND", "not found")
 		return
 	}
@@ -64,7 +64,7 @@ func (s *Server) handleTestInvoke(w http.ResponseWriter, r *http.Request) {
 	}
 
 	r.Body = http.MaxBytesReader(w, r.Body, s.maxEnvelopeBytes())
-	var env testproxy.Envelope
+	var env gatewayrelay.Envelope
 	dec := json.NewDecoder(r.Body)
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&env); err != nil {
@@ -84,8 +84,8 @@ func (s *Server) handleTestInvoke(w http.ResponseWriter, r *http.Request) {
 
 	// Bound separately because resolution performs two sequential Platform API
 	// reads and must finish before the route's write deadline.
-	resolveCtx, cancelResolve := context.WithTimeout(r.Context(), testResolveTimeout)
-	target, err := s.testResolver.Resolve(resolveCtx, token, env.OrgHandle, env.RestAPIID, env.GatewayID)
+	resolveCtx, cancelResolve := context.WithTimeout(r.Context(), gatewayResolveTimeout)
+	target, err := s.gatewayResolver.Resolve(resolveCtx, token, env.OrgHandle, env.RestAPIID, env.GatewayID)
 	// Captured before cancelling, so the deadline is distinguishable from the
 	// cancellation this defer-free call performs itself.
 	resolveErr := resolveCtx.Err()
@@ -95,7 +95,7 @@ func (s *Server) handleTestInvoke(w http.ResponseWriter, r *http.Request) {
 		// tested, so it must not answer as though it did: a 403 would send the
 		// user off to check a deployment that is perfectly fine.
 		if errors.Is(resolveErr, context.DeadlineExceeded) {
-			slog.Warn("test console target resolution timed out",
+			slog.Warn("gateway relay target resolution timed out",
 				"rest_api_id", env.RestAPIID,
 				"gateway_id", env.GatewayID,
 				"req_id", requestID)
@@ -103,25 +103,22 @@ func (s *Server) handleTestInvoke(w http.ResponseWriter, r *http.Request) {
 				"the control plane did not respond in time", requestID)
 			return
 		}
-		// The specific reason stays server-side. Telling a caller whether the
-		// API id exists, whether the gateway is merely undeployed, or what the
-		// resolved address was would map the tenant's topology for them.
-		slog.Warn("test console target rejected",
+		slog.Warn("gateway relay target rejected",
 			"err", err,
 			"rest_api_id", env.RestAPIID,
 			"gateway_id", env.GatewayID,
 			"req_id", requestID)
-		writeErrorJSON(w, http.StatusForbidden, "TARGET_NOT_ALLOWED", "this gateway cannot be tested from the portal")
+		writeResolveError(w, err)
 		return
 	}
 
-	relayed, err := s.testRelay.Do(r.Context(), target, env)
+	relayed, err := s.gatewayRelay.Do(r.Context(), target, env)
 	if err != nil {
 		s.writeRelayError(w, err, env, target, requestID)
 		return
 	}
 
-	slog.Info("test console invoke",
+	slog.Info("gateway relay invoke",
 		"rest_api_id", env.RestAPIID,
 		"gateway_id", target.GatewayID,
 		"method", relayedMethod(env),
@@ -130,7 +127,7 @@ func (s *Server) handleTestInvoke(w http.ResponseWriter, r *http.Request) {
 		"truncated", relayed.Truncated,
 		"req_id", requestID)
 
-	writeJSON(w, http.StatusOK, testproxy.Result{Outcome: "response", Response: relayed})
+	writeJSON(w, http.StatusOK, gatewayrelay.Result{Outcome: "response", Response: relayed})
 }
 
 // envelopeStructuralBytes reserves space for envelope metadata, headers, and JSON syntax.
@@ -139,45 +136,73 @@ const envelopeStructuralBytes = 32 << 10
 // maxEnvelopeBytes allows for base64 encoding, JSON escaping, and envelope
 // metadata while keeping the decoded body within MaxRequestBytes.
 func (s *Server) maxEnvelopeBytes() int64 {
-	return s.cfg.TestConsole.MaxRequestBytes/3*4 + envelopeStructuralBytes
+	return s.cfg.GatewayRelay.MaxRequestBytes/3*4 + envelopeStructuralBytes
+}
+
+// writeResolveError maps resolution failures to client-facing codes. API and
+// deployment errors are distinct; cross-organization gateways remain
+// indistinguishable from undeployed ones to avoid confirming their existence.
+func writeResolveError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, gatewayrelay.ErrAPINotFound):
+		writeErrorJSON(w, http.StatusNotFound, "API_NOT_FOUND",
+			"this API could not be found, or this session cannot access it")
+	case errors.Is(err, gatewayrelay.ErrGatewayNotFound),
+		errors.Is(err, gatewayrelay.ErrGatewayOtherOrg):
+		writeErrorJSON(w, http.StatusNotFound, "GATEWAY_NOT_DEPLOYED",
+			"this API is not deployed to the selected gateway")
+	case errors.Is(err, gatewayrelay.ErrGatewayNoEndpoint):
+		writeErrorJSON(w, http.StatusUnprocessableEntity, "GATEWAY_NO_ENDPOINT",
+			"the selected gateway has no endpoint configured")
+	case errors.Is(err, gatewayrelay.ErrUnsupportedScheme):
+		writeErrorJSON(w, http.StatusUnprocessableEntity, "GATEWAY_UNSUPPORTED_SCHEME",
+			"the selected gateway's endpoint is not an http or https address")
+	default:
+		// An unrecognised resolution failure is a bug or an upstream shape
+		// change, not a statement about this caller's target.
+		writeErrorJSON(w, http.StatusBadGateway, "UPSTREAM_UNREACHABLE",
+			"the control plane could not be reached")
+	}
 }
 
 // writeRelayError maps a relay failure onto a distinct client-facing code.
 //
 // Only the relay's own failures reach here; a gateway that answered with any
-// status at all is a success (see testproxy.Relayed). Keeping the two apart is
+// status at all is a success (see gatewayrelay.Relayed). Keeping the two apart is
 // what lets the console say "your backend returned 502" and "the portal could
 // not reach your gateway" as different sentences, instead of showing one 502
 // that could mean either.
-func (s *Server) writeRelayError(w http.ResponseWriter, err error, env testproxy.Envelope, target testproxy.Target, requestID string) {
+func (s *Server) writeRelayError(w http.ResponseWriter, err error, env gatewayrelay.Envelope, target gatewayrelay.Target, requestID string) {
 	switch {
-	case errors.Is(err, egress.ErrHostNotAllowed),
-		errors.Is(err, egress.ErrPortNotAllowed),
-		errors.Is(err, egress.ErrNoTargetHost):
+	case errors.Is(err, egress.ErrTargetNotAllowed),
+		errors.Is(err, egress.ErrIPLiteralTarget),
+		errors.Is(err, egress.ErrNoTargetHost),
+		// Policy refusal, even when discovered during dialing.
+		errors.Is(err, egress.ErrAddressNotAllowed):
 		// The target resolved fine; the egress policy refused it. Same
 		// generic answer as any other refused target, with the specific
 		// reason kept server-side.
-		slog.Warn("test console target refused by egress policy",
+		slog.Warn("gateway relay target refused by egress policy",
 			"err", err, "gateway_id", target.GatewayID,
 			"rest_api_id", env.RestAPIID, "req_id", requestID)
 		writeErrorJSON(w, http.StatusForbidden, "TARGET_NOT_ALLOWED",
 			"this gateway cannot be tested from the portal")
-	case errors.Is(err, testproxy.ErrBusy):
+	case errors.Is(err, gatewayrelay.ErrBusy):
 		writeErrorJSON(w, http.StatusServiceUnavailable, "RELAY_BUSY",
 			"too many test requests are in flight, try again shortly")
 	case isRequestRejected(err):
-		slog.Warn("test console request rejected", "err", err, "req_id", requestID)
+		slog.Warn("gateway relay request rejected", "err", err, "req_id", requestID)
 		writeErrorJSON(w, http.StatusBadRequest, "INVALID_TEST_REQUEST",
 			"this request cannot be sent as written")
 	case errors.Is(err, context.DeadlineExceeded):
-		slog.Warn("test console upstream timed out",
+		slog.Warn("gateway relay upstream timed out",
 			"gateway_id", target.GatewayID, "rest_api_id", env.RestAPIID, "req_id", requestID)
 		writeServerErrorJSON(w, http.StatusGatewayTimeout, "UPSTREAM_TIMEOUT",
 			"the gateway did not respond in time", requestID)
 	default:
 		// The underlying error frequently names the resolved host or IP, so it
 		// is logged and never returned.
-		slog.Warn("test console upstream unreachable",
+		slog.Warn("gateway relay upstream unreachable",
 			"err", err, "gateway_id", target.GatewayID, "rest_api_id", env.RestAPIID, "req_id", requestID)
 		writeServerErrorJSON(w, http.StatusBadGateway, "UPSTREAM_UNREACHABLE",
 			"the gateway could not be reached from the portal", requestID)
@@ -189,18 +214,18 @@ func (s *Server) writeRelayError(w http.ResponseWriter, err error, env testproxy
 // fix, so they are a 4xx rather than a 5xx.
 func isRequestRejected(err error) bool {
 	for _, sentinel := range []error{
-		testproxy.ErrInvalidMethod,
-		testproxy.ErrInvalidPath,
-		testproxy.ErrPathEscapesAPI,
-		testproxy.ErrInvalidHeaderName,
-		testproxy.ErrInvalidHeaderValue,
-		testproxy.ErrForbiddenHeader,
-		testproxy.ErrTooManyHeaders,
-		testproxy.ErrHeadersTooLarge,
-		testproxy.ErrTooManyQueryParams,
-		testproxy.ErrInvalidQueryName,
-		testproxy.ErrInvalidBodyEncoding,
-		testproxy.ErrBodyTooLarge,
+		gatewayrelay.ErrInvalidMethod,
+		gatewayrelay.ErrInvalidPath,
+		gatewayrelay.ErrPathEscapesAPI,
+		gatewayrelay.ErrInvalidHeaderName,
+		gatewayrelay.ErrInvalidHeaderValue,
+		gatewayrelay.ErrForbiddenHeader,
+		gatewayrelay.ErrTooManyHeaders,
+		gatewayrelay.ErrHeadersTooLarge,
+		gatewayrelay.ErrTooManyQueryParams,
+		gatewayrelay.ErrInvalidQueryName,
+		gatewayrelay.ErrInvalidBodyEncoding,
+		gatewayrelay.ErrBodyTooLarge,
 	} {
 		if errors.Is(err, sentinel) {
 			return true
@@ -211,27 +236,27 @@ func isRequestRejected(err error) bool {
 
 // relayedMethod returns the normalized method for the audit line, falling back
 // to the raw value when it was the thing that failed validation.
-func relayedMethod(env testproxy.Envelope) string {
-	if m, err := testproxy.NormalizeMethod(env.Method); err == nil {
+func relayedMethod(env gatewayrelay.Envelope) string {
+	if m, err := gatewayrelay.NormalizeMethod(env.Method); err == nil {
 		return m
 	}
 	return "INVALID"
 }
 
-// testResolveTimeout bounds target resolution: two sequential Platform API
+// gatewayResolveTimeout bounds target resolution: two sequential Platform API
 // reads, against a control plane the BFF is co-deployed with. Deliberately far
 // below the shared upstream client's own 60s ceiling, which is sized for user
 // -facing proxying rather than for a phase that has to finish before the relay
 // has even started.
 // A var rather than a const so a test can shorten it; nothing else writes it.
-var testResolveTimeout = 10 * time.Second
+var gatewayResolveTimeout = 10 * time.Second
 
-// testInvokeWriteDeadline bounds how long this handler may take to write its
+// gatewayInvokeWriteDeadline bounds how long this handler may take to write its
 // response. It is the sum of the two phases it actually performs — resolution
 // and the relayed call — plus a margin to write the result, rather than the
 // generic nonStreamingWriteDeadline. Sized this way the inner bounds always
 // fire first, so a stuck gateway or a slow control plane surfaces as a clean
 // error rather than a connection cut off mid-response.
-func (s *Server) testInvokeWriteDeadline() time.Duration {
-	return testResolveTimeout + s.cfg.TestConsole.RequestTimeout + 5*time.Second
+func (s *Server) gatewayInvokeWriteDeadline() time.Duration {
+	return gatewayResolveTimeout + s.cfg.GatewayRelay.RequestTimeout + 5*time.Second
 }

@@ -17,304 +17,336 @@
 package egress
 
 import (
-	"errors"
-	"net"
 	"net/url"
 	"strings"
 	"testing"
 
-	"github.com/wso2/api-platform/httpkit/netguard"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-func mustPolicy(t *testing.T, spec Spec) *Policy {
+// policyFor builds a development policy: most cases here are about host
+// matching, and development is the mode that does not also refuse the
+// loopback and private addresses those cases use.
+func policyFor(t *testing.T, hosts ...string) *Policy {
 	t.Helper()
-	p, err := Parse(spec)
-	if err != nil {
-		t.Fatalf("Parse(%+v) = %v, want nil", spec, err)
-	}
+	p, err := Parse(Spec{Environment: EnvDevelopment, AllowHosts: hosts})
+	require.NoError(t, err)
 	return p
 }
 
-func mustURL(t *testing.T, raw string) *url.URL {
+// prodPolicyFor builds a production policy.
+func prodPolicyFor(t *testing.T, hosts ...string) *Policy {
 	t.Helper()
-	u, err := url.Parse(raw)
-	if err != nil {
-		t.Fatalf("url.Parse(%q) = %v", raw, err)
-	}
-	return u
+	p, err := Parse(Spec{Environment: EnvProduction, AllowHosts: hosts})
+	require.NoError(t, err)
+	return p
 }
 
-// allows runs the resulting netguard policy against one address the same way
-// a dial would. netguard exports no predicate, so this goes through the
-// exported dialer's own decision indirectly via the policy's fields — which
-// is why the assertions below are written against CheckTarget and the policy
-// shape rather than against a raw IP verdict.
-func addrIn(cidrs []*net.IPNet, raw string) bool {
-	ip := net.ParseIP(raw)
-	for _, c := range cidrs {
-		if c.Contains(ip) {
-			return true
-		}
-	}
-	return false
+func check(t *testing.T, p *Policy, rawURL string) error {
+	t.Helper()
+	u, err := url.Parse(rawURL)
+	require.NoError(t, err)
+	return p.CheckTarget(u)
 }
 
-func TestAllowCIDRsNarrowAndNothingWidens(t *testing.T) {
-	// allow_cidrs becomes netguard's RequireCIDRs, which can only remove
-	// addresses from the permitted set. The widening field is never set by
-	// this package at all, which is what makes "a carve-out re-opened the
-	// metadata endpoint" unrepresentable rather than merely rejected.
-	p := mustPolicy(t, Spec{AllowCIDRs: []string{"10.42.0.0/16"}})
+func TestEmptyAllowHostsReachesNothing(t *testing.T) {
+	// The whole point of the model: a deployment that configures no policy
+	// refuses every target, rather than dialing wherever a gateway record
+	// happens to point.
+	p := policyFor(t)
 
-	if len(p.requireCIDRs) != 1 || !addrIn(p.requireCIDRs, "10.42.0.1") {
-		t.Errorf("allow_cidrs should become the local require list, got %+v", p.requireCIDRs)
-	}
-	// netguard's AllowCIDRs is the field that widens, and it is evaluated
-	// ahead of every built-in refusal. Never populating it is what keeps a
-	// configuration from re-opening a refused range.
-	if len(p.NetguardPolicy().AllowCIDRs) != 0 {
-		t.Errorf("nothing may populate netguard's widening AllowCIDRs, got %+v", p.NetguardPolicy().AllowCIDRs)
-	}
-}
-
-func TestDenyGroupsMapOntoNetguardCategories(t *testing.T) {
-	// Groups exist so "private" covers IPv6 unique-local space too; a
-	// hand-written CIDR list almost always forgets fc00::/7.
-	for _, tc := range []struct {
-		group string
-		check func(n netguardFlags) bool
-	}{
-		{GroupPrivate, func(n netguardFlags) bool { return n.private }},
-		{GroupLoopback, func(n netguardFlags) bool { return n.loopback }},
-		{GroupCGNAT, func(n netguardFlags) bool { return n.cgnat }},
+	for _, target := range []string{
+		"https://gw.example.com/pizza",
+		"http://10.1.2.3:8080/pizza",
+		"https://anything.at.all",
 	} {
-		t.Run(tc.group, func(t *testing.T) {
-			ng := mustPolicy(t, Spec{Deny: []string{tc.group}}).NetguardPolicy()
-			if !tc.check(flagsOf(ng)) {
-				t.Errorf("deny = [%q] should set the matching netguard category", tc.group)
+		assert.ErrorIs(t, check(t, p, target), ErrTargetNotAllowed, target)
+	}
+}
+
+func TestExactHostEntry(t *testing.T) {
+	p := policyFor(t, "gw.example.com")
+
+	assert.NoError(t, check(t, p, "https://gw.example.com/pizza"))
+	assert.NoError(t, check(t, p, "http://gw.example.com:8080/pizza"), "no scheme or port named, so neither constrains")
+	assert.NoError(t, check(t, p, "https://GW.Example.COM/pizza"), "host matching is case-insensitive")
+	assert.NoError(t, check(t, p, "https://gw.example.com./pizza"), "a trailing root dot is the same host")
+
+	assert.ErrorIs(t, check(t, p, "https://other.example.com/pizza"), ErrTargetNotAllowed)
+	assert.ErrorIs(t, check(t, p, "https://gw.example.com.evil.net/pizza"), ErrTargetNotAllowed)
+}
+
+func TestSchemeConstrainsOnlyWhenWritten(t *testing.T) {
+	pinned := policyFor(t, "https://gw.example.com")
+	assert.NoError(t, check(t, pinned, "https://gw.example.com/x"))
+	assert.ErrorIs(t, check(t, pinned, "http://gw.example.com/x"), ErrTargetNotAllowed)
+
+	open := policyFor(t, "gw.example.com")
+	assert.NoError(t, check(t, open, "http://gw.example.com/x"))
+}
+
+func TestPortConstrainsOnlyWhenWritten(t *testing.T) {
+	pinned := policyFor(t, "gw.example.com:8443")
+	assert.NoError(t, check(t, pinned, "https://gw.example.com:8443/x"))
+	assert.ErrorIs(t, check(t, pinned, "https://gw.example.com:9200/x"), ErrTargetNotAllowed)
+
+	open := policyFor(t, "gw.example.com")
+	assert.NoError(t, check(t, open, "https://gw.example.com:9200/x"))
+}
+
+func TestPortDefaultsToTheSchemeDefault(t *testing.T) {
+	// "https://gw.example.com" dials 443, so an entry pinning 443 must match
+	// it even though the URL names no port.
+	https := policyFor(t, "gw.example.com:443")
+	assert.NoError(t, check(t, https, "https://gw.example.com/x"))
+	assert.ErrorIs(t, check(t, https, "http://gw.example.com/x"), ErrTargetNotAllowed)
+
+	http := policyFor(t, "gw.example.com:80")
+	assert.NoError(t, check(t, http, "http://gw.example.com/x"))
+}
+
+func TestWildcardMatchesAnywhereInTheHost(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		entry   string
+		target  string
+		allowed bool
+	}{
+		{"leading wildcard, one label", "*.gw.example.com", "https://a.gw.example.com/x", true},
+		{"leading wildcard, several labels", "*.gw.example.com", "https://a.b.gw.example.com/x", true},
+		{"leading wildcard excludes the parent", "*.gw.example.com", "https://gw.example.com/x", false},
+		{"leading wildcard is not a substring test", "*.gw.example.com", "https://evilgw.example.com/x", false},
+		{"leading wildcard excludes a suffixed lookalike", "*.gw.example.com", "https://a.gw.example.com.evil.net/x", false},
+		{"interior wildcard", "gw-*.example.com", "https://gw-eu.example.com/x", true},
+		{"interior wildcard needs the prefix", "gw-*.example.com", "https://gw.example.com/x", false},
+		{"trailing wildcard", "*.gw.*", "https://a.gw.internal/x", true},
+		{"bare star matches everything", "*", "https://anything.at.all:9999/x", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := check(t, policyFor(t, tc.entry), tc.target)
+			if tc.allowed {
+				assert.NoError(t, err)
+				return
 			}
+			assert.ErrorIs(t, err, ErrTargetNotAllowed)
 		})
 	}
 }
 
-func TestDenyGroupNamesAreCaseInsensitive(t *testing.T) {
-	ng := mustPolicy(t, Spec{Deny: []string{"PRIVATE", " Loopback "}}).NetguardPolicy()
-	if !ng.BlockPrivate || !ng.BlockLoopback {
-		t.Error("group names should be matched case-insensitively and trimmed")
+func TestWildcardCombinesWithSchemeAndPort(t *testing.T) {
+	p := policyFor(t, "https://*.gw.svc.cluster.local:9443")
+
+	assert.NoError(t, check(t, p, "https://a.gw.svc.cluster.local:9443/pizza"))
+	assert.ErrorIs(t, check(t, p, "http://a.gw.svc.cluster.local:9443/pizza"), ErrTargetNotAllowed)
+	assert.ErrorIs(t, check(t, p, "https://a.gw.svc.cluster.local:9200/pizza"), ErrTargetNotAllowed)
+	assert.ErrorIs(t, check(t, p, "https://a.other.svc.cluster.local:9443/pizza"), ErrTargetNotAllowed)
+}
+
+func TestAnyMatchingEntryAllows(t *testing.T) {
+	p := policyFor(t, "https://gw.eu.example.com:443", "https://gw.us.example.com:443")
+
+	assert.NoError(t, check(t, p, "https://gw.eu.example.com/x"))
+	assert.NoError(t, check(t, p, "https://gw.us.example.com/x"))
+	assert.ErrorIs(t, check(t, p, "https://gw.ap.example.com/x"), ErrTargetNotAllowed)
+}
+
+func TestIPLiteralEntries(t *testing.T) {
+	v4 := policyFor(t, "10.1.2.3:8080")
+	assert.NoError(t, check(t, v4, "http://10.1.2.3:8080/x"))
+	assert.ErrorIs(t, check(t, v4, "http://10.1.2.4:8080/x"), ErrTargetNotAllowed)
+
+	// An IPv6 literal is bracketed in both the entry and the URL, so the
+	// address's own colons are not read as a port separator.
+	v6 := policyFor(t, "[fd00::1]:8443")
+	assert.NoError(t, check(t, v6, "https://[fd00::1]:8443/x"))
+	assert.ErrorIs(t, check(t, v6, "https://[fd00::2]:8443/x"), ErrTargetNotAllowed)
+}
+
+func TestCheckTargetRejectsAURLWithNoHost(t *testing.T) {
+	p := policyFor(t, "*")
+	u, err := url.Parse("/just/a/path")
+	require.NoError(t, err)
+	assert.ErrorIs(t, p.CheckTarget(u), ErrNoTargetHost)
+	assert.ErrorIs(t, p.CheckTarget(nil), ErrNoTargetHost)
+}
+
+func TestParseRejectsEntriesThatWouldNotDoWhatTheyRead(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		entry string
+		says  string
+	}{
+		{"empty", "", "empty entry"},
+		{"whitespace only", "   ", "empty entry"},
+		{"unsupported scheme", "ftp://gw.example.com", "only http and https"},
+		{"carries a path", "gw.example.com/pizza", "path or query"},
+		{"carries a query", "gw.example.com?a=1", "path or query"},
+		{"port out of range", "gw.example.com:70000", "not a valid TCP port"},
+		{"port not a number", "gw.example.com:https", "not a valid TCP port"},
+		{"unbracketed ipv6", "fd00::1:8443", "bracket an IPv6 literal"},
+		{"no host", "https://", "names no host"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := Parse(Spec{AllowHosts: []string{tc.entry}})
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tc.says)
+		})
 	}
 }
 
-func TestDenyAcceptsCIDRsAlongsideGroups(t *testing.T) {
-	ng := mustPolicy(t, Spec{Deny: []string{"private", "10.42.9.0/24"}}).NetguardPolicy()
-	if !ng.BlockPrivate {
-		t.Error("group entry should still apply")
-	}
-	// Alongside the built-in translated ranges this package always denies.
-	if !addrIn(ng.DenyCIDRs, "10.42.9.1") {
-		t.Errorf("CIDR entry should land in DenyCIDRs, got %+v", ng.DenyCIDRs)
-	}
-}
-
-func TestHazardsStayRefusedWithNoConfigurationAtAll(t *testing.T) {
-	// The base policy is what makes an empty config safe. These are not
-	// reachable by any setting.
-	p := mustPolicy(t, Spec{})
+func TestAlwaysRefusedRangesAreNotConfigurable(t *testing.T) {
+	// allow_hosts matches names. A name an operator trusts can still resolve
+	// to the metadata endpoint, so the floor is checked against the resolved
+	// address and no entry can re-open it.
+	p := policyFor(t, "*")
 	ng := p.NetguardPolicy()
-	for name, on := range map[string]bool{
-		"link-local":  ng.BlockLinkLocal,
-		"unspecified": ng.BlockUnspecified,
-		"multicast":   ng.BlockMulticastBroadcast,
-	} {
-		if !on {
-			t.Errorf("%s must be refused even with no egress configuration", name)
+
+	assert.True(t, ng.BlockLinkLocal, "link-local carries the cloud metadata endpoint")
+	assert.True(t, ng.BlockUnspecified)
+	assert.True(t, ng.BlockMulticastBroadcast)
+	assert.Empty(t, ng.AllowCIDRs, "a widening list would let an entry re-open a refused range")
+
+	var has6to4, hasNAT64 bool
+	for _, cidr := range ng.DenyCIDRs {
+		switch cidr.String() {
+		case "2002::/16":
+			has6to4 = true
+		case "64:ff9b::/96":
+			hasNAT64 = true
 		}
 	}
-	// 6to4 and NAT64 have no netguard category, so this package denies them
-	// as ranges. 2002:a9fe:a9fe:: reaches 169.254.169.254 while being
-	// neither link-local nor IPv4, so without these the metadata refusal
-	// above is bypassable.
-	for _, addr := range []string{"2002:a9fe:a9fe::", "64:ff9b::a9fe:a9fe"} {
-		if !addrIn(ng.DenyCIDRs, addr) {
-			t.Errorf("%s must be refused even with no egress configuration", addr)
-		}
-	}
-	// ...and the stance categories are NOT on by default, because a gateway
-	// legitimately lives on a ClusterIP.
-	if ng.BlockPrivate || ng.BlockLoopback || ng.BlockCGNAT {
-		t.Error("private space must stay dialable by default")
-	}
+	assert.True(t, has6to4, "2002:a9fe:a9fe:: reaches 169.254.169.254 without being link-local")
+	assert.True(t, hasNAT64)
 }
 
-func TestParseRefusesAnUnknownDenyEntry(t *testing.T) {
-	// A typo must not silently widen the policy by being ignored.
-	_, err := Parse(Spec{Deny: []string{"intranet"}})
-	if err == nil {
-		t.Fatal("Parse should refuse a deny entry that is neither a CIDR nor a group")
-	}
-	if !strings.Contains(err.Error(), "private") {
-		t.Errorf("the error should list the valid group names, got %q", err)
-	}
+func TestDevelopmentKeepsPrivateAndLoopbackDialable(t *testing.T) {
+	// A gateway in development genuinely is on localhost or a ClusterIP.
+	ng := policyFor(t, "*").NetguardPolicy()
+
+	assert.False(t, ng.BlockPrivate)
+	assert.False(t, ng.BlockLoopback)
+	assert.False(t, ng.BlockCGNAT)
+	assert.ElementsMatch(t, []string{"http", "https"}, ng.AllowedSchemes)
 }
 
-func TestParseRefusesADenyCoveringEverything(t *testing.T) {
-	// It would disable the console behind a generic 403 rather than a clear
-	// "the feature is off".
-	for _, cidr := range []string{"0.0.0.0/0", "::/0"} {
-		if _, err := Parse(Spec{Deny: []string{cidr}}); err == nil {
-			t.Errorf("Parse should refuse deny = [%q]", cidr)
-		}
-	}
+func TestProductionRefusesPrivateLoopbackAndCGNAT(t *testing.T) {
+	// Where everything else in a cluster lives, and never a gateway reachable
+	// from a production control plane.
+	ng := prodPolicyFor(t, "*").NetguardPolicy()
+
+	assert.True(t, ng.BlockPrivate)
+	assert.True(t, ng.BlockLoopback)
+	assert.True(t, ng.BlockCGNAT)
 }
 
-func TestParseRefusesAnAllowCIDRCoveringEverything(t *testing.T) {
-	// A constraint that constrains nothing is never what an operator means.
-	for _, cidr := range []string{"0.0.0.0/0", "::/0"} {
-		if _, err := Parse(Spec{AllowCIDRs: []string{cidr}}); err == nil {
-			t.Errorf("Parse should refuse allow_cidrs = [%q]", cidr)
-		}
-	}
-}
+func TestProductionRefusesAnIPLiteralTarget(t *testing.T) {
+	// A literal sidesteps the naming allow_hosts is written in terms of, and
+	// a public literal would not be caught by the address checks at all.
+	p := prodPolicyFor(t, "*")
 
-func TestBothSchemesStayDialable(t *testing.T) {
-	// netguard defaults AllowedSchemes to https alone, which would refuse a
-	// plain-http gateway — an ordinary serving mode here.
-	ng := mustPolicy(t, Spec{}).NetguardPolicy()
-	if len(ng.AllowedSchemes) != 2 {
-		t.Errorf("AllowedSchemes = %v, want http and https", ng.AllowedSchemes)
-	}
-}
-
-// netguardFlags is a readable view of the three stance categories.
-type netguardFlags struct{ private, loopback, cgnat bool }
-
-func flagsOf(n netguard.Policy) netguardFlags {
-	return netguardFlags{private: n.BlockPrivate, loopback: n.BlockLoopback, cgnat: n.BlockCGNAT}
-}
-
-func TestCheckTargetHostConstraint(t *testing.T) {
-	p := mustPolicy(t, Spec{AllowHosts: []string{"gw.example.com", "*.gw.svc.cluster.local"}})
-
-	for _, tc := range []struct {
-		raw  string
-		want bool // true = allowed
-	}{
-		{"https://gw.example.com/pizza", true},
-		{"https://GW.EXAMPLE.COM/pizza", true},   // host comparison is case-insensitive
-		{"https://gw.example.com./pizza", true},  // trailing root dot is the same host
-		{"https://a.gw.svc.cluster.local", true}, // wildcard matches one label
-		{"https://a.b.gw.svc.cluster.local", true},
-		// The separating dot is part of the match, so a lookalike host that
-		// merely ends with the same characters is refused. This is the
-		// substring-matching bug go-cors-validation.md exists to prevent.
-		{"https://evilgw.example.com", false},
-		{"https://gw.example.com.evil.net", false},
-		{"https://gw.svc.cluster.local", false}, // the bare suffix is not a match for "*."
-		{"https://other.internal", false},
+	for _, target := range []string{
+		"http://10.0.0.5/x",
+		"http://127.0.0.1:9780/x",
+		"http://169.254.169.254/x",
+		"https://203.0.113.5/x", // public, so only this rule refuses it
+		"http://[fd00::1]:8443/x",
+		"http://[::1]:8080/x",
 	} {
-		t.Run(tc.raw, func(t *testing.T) {
-			err := p.CheckTarget(mustURL(t, tc.raw))
-			if tc.want && err != nil {
-				t.Errorf("CheckTarget(%s) = %v, want allowed", tc.raw, err)
-			}
-			if !tc.want && !errors.Is(err, ErrHostNotAllowed) {
-				t.Errorf("CheckTarget(%s) = %v, want ErrHostNotAllowed", tc.raw, err)
-			}
-		})
+		assert.ErrorIs(t, check(t, p, target), ErrIPLiteralTarget, target)
 	}
 }
 
-func TestCheckTargetPortConstraint(t *testing.T) {
-	// Port is the only dimension separating a gateway from any other
-	// in-cluster HTTP service, because the stance has to permit private space.
-	p := mustPolicy(t, Spec{AllowPorts: []int{443, 9443}})
+func TestProductionStillAllowsNamedHosts(t *testing.T) {
+	p := prodPolicyFor(t, "https://*.gw.example.com:443")
 
-	for _, tc := range []struct {
-		raw  string
-		want bool
-	}{
-		{"https://gw.internal:9443/x", true},
-		{"https://gw.internal/x", true}, // https defaults to 443, which is listed
-		{"https://gw.internal:9200/x", false},
-		// Port 0 is not a dialable port. It used to be refused only because
-		// allow_ports can never contain it; targetPort now rejects it outright.
-		{"https://gw.internal:0/x", false},
-		{"http://gw.internal/x", false}, // http defaults to 80, which is not
+	assert.NoError(t, check(t, p, "https://a.gw.example.com/pizza"))
+	assert.ErrorIs(t, check(t, p, "https://a.other.example.com/pizza"), ErrTargetNotAllowed)
+}
+
+func TestDevelopmentAllowsAnIPLiteralTarget(t *testing.T) {
+	p := policyFor(t, "*")
+
+	assert.NoError(t, check(t, p, "http://127.0.0.1:8080/x"))
+	assert.NoError(t, check(t, p, "http://10.0.0.5/x"))
+}
+
+func TestEnvironmentDefaultsToProduction(t *testing.T) {
+	// Absent and empty both mean production: the stricter stance has to be
+	// what a deployment gets by forgetting to choose.
+	for _, spec := range []Spec{
+		{AllowHosts: []string{"*"}},
+		{Environment: "", AllowHosts: []string{"*"}},
+		{Environment: "  PRODUCTION  ", AllowHosts: []string{"*"}},
 	} {
-		t.Run(tc.raw, func(t *testing.T) {
-			err := p.CheckTarget(mustURL(t, tc.raw))
-			if tc.want && err != nil {
-				t.Errorf("CheckTarget(%s) = %v, want allowed", tc.raw, err)
-			}
-			if !tc.want && !errors.Is(err, ErrPortNotAllowed) {
-				t.Errorf("CheckTarget(%s) = %v, want ErrPortNotAllowed", tc.raw, err)
-			}
-		})
+		p, err := Parse(spec)
+		require.NoError(t, err)
+		assert.True(t, p.NetguardPolicy().BlockPrivate)
+		assert.ErrorIs(t, check(t, p, "http://10.0.0.5/x"), ErrIPLiteralTarget)
 	}
 }
 
-func TestCheckTargetIsOpenWhenNothingIsConstrained(t *testing.T) {
-	// An empty list means "no constraint", not "allow nothing" — otherwise
-	// the shipped default would refuse every gateway.
-	p := mustPolicy(t, Spec{})
-	if err := p.CheckTarget(mustURL(t, "https://anything.example.com:8443/x")); err != nil {
-		t.Errorf("CheckTarget() = %v, want nil with no host/port constraints", err)
+func TestUnknownEnvironmentRefusesToStart(t *testing.T) {
+	// A typo must not quietly land on the permissive mode.
+	for _, env := range []string{"prod", "dev", "staging", "Production!"} {
+		_, err := Parse(Spec{Environment: env, AllowHosts: []string{"*"}})
+		assert.ErrorIs(t, err, ErrInvalidEnv, env)
 	}
 }
 
-func TestCheckTargetRejectsAHostlessURL(t *testing.T) {
-	if err := mustPolicy(t, Spec{}).CheckTarget(mustURL(t, "/relative")); !errors.Is(err, ErrNoTargetHost) {
-		t.Errorf("CheckTarget(relative) = %v, want ErrNoTargetHost", err)
-	}
-	if err := mustPolicy(t, Spec{}).CheckTarget(nil); !errors.Is(err, ErrNoTargetHost) {
-		t.Errorf("CheckTarget(nil) = %v, want ErrNoTargetHost", err)
-	}
-}
-
-func TestParseRefusesOverBroadHostPatterns(t *testing.T) {
-	for _, host := range []string{
-		"*",                // matches everything
-		"*.com",            // one label short of meaning anything
-		"gw.*.example.com", // interior wildcard
-		"*.gw.*.com",       // more than one
-		"",                 // empty entry
-	} {
-		t.Run(host, func(t *testing.T) {
-			if _, err := Parse(Spec{AllowHosts: []string{host}}); err == nil {
-				t.Errorf("Parse should refuse allow_hosts entry %q", host)
-			}
-		})
-	}
-}
-
-func TestParseRefusesInvalidPortsAndCIDRs(t *testing.T) {
-	for name, spec := range map[string]Spec{
-		"port zero":       {AllowPorts: []int{0}},
-		"port too large":  {AllowPorts: []int{65536}},
-		"negative port":   {AllowPorts: []int{-1}},
-		"bare ip as cidr": {Deny: []string{"10.0.0.1"}},
-		"nonsense cidr":   {AllowCIDRs: []string{"nonsense"}},
-		"empty deny":      {Deny: []string{"  "}},
-	} {
-		t.Run(name, func(t *testing.T) {
-			if _, err := Parse(spec); err == nil {
-				t.Errorf("Parse(%+v) should refuse this", spec)
-			}
-		})
+func TestMetadataFloorHoldsInBothEnvironments(t *testing.T) {
+	// The one thing environment never relaxes.
+	for _, p := range []*Policy{policyFor(t, "*"), prodPolicyFor(t, "*")} {
+		ng := p.NetguardPolicy()
+		assert.True(t, ng.BlockLinkLocal)
+		assert.True(t, ng.BlockUnspecified)
+		assert.True(t, ng.BlockMulticastBroadcast)
+		assert.Empty(t, ng.AllowCIDRs)
 	}
 }
 
 func TestDescribeNamesTheEffectivePolicy(t *testing.T) {
-	// The startup line is how an operator confirms what is in force without
-	// re-reading config.toml, so it has to mention the carve-out.
-	p := mustPolicy(t, Spec{
-		AllowHosts: []string{"gw.example.com"},
-		AllowPorts: []int{443},
-		Deny:       []string{"private", "10.0.7.0/24"},
-	})
-	got := p.Describe()
-	for _, want := range []string{"allow_hosts=1", "allow_ports=1", "deny_cidrs=1", "deny_groups=private"} {
-		if !strings.Contains(got, want) {
-			t.Errorf("Describe() = %q, want it to mention %q", got, want)
-		}
+	empty := policyFor(t).Describe()
+	assert.Contains(t, empty, "nothing is reachable", "an operator reading the log should see why every call fails")
+
+	set := policyFor(t, "https://*.gw.internal:9443").Describe()
+	assert.Contains(t, set, "https://*.gw.internal:9443")
+	assert.Contains(t, set, "environment=development")
+	assert.Contains(t, prodPolicyFor(t, "a.b.com").Describe(), "environment=production")
+}
+
+func TestGlobMatch(t *testing.T) {
+	for _, tc := range []struct {
+		pattern, input string
+		want           bool
+	}{
+		{"*", "", true},
+		{"*", "anything", true},
+		{"a*c", "abc", true},
+		{"a*c", "ac", true},
+		{"a*c", "abdc", true},
+		{"a*c", "abd", false},
+		{"*.example.com", ".example.com", true},
+		{"*.example.com", "a.b.example.com", true},
+		{"*.example.com", "example.com", false},
+		{"exact", "exact", true},
+		{"exact", "exactly", false},
+		{"**", "anything", true},
+		{"*a*b*", "xaybz", true},
+		{"*a*b*", "xbya", false},
+	} {
+		t.Run(tc.pattern+"/"+tc.input, func(t *testing.T) {
+			assert.Equal(t, tc.want, globMatch(tc.pattern, tc.input))
+		})
 	}
+}
+
+func TestRefusalDoesNotNameTheCheckThatFired(t *testing.T) {
+	// The handler answers generically; this is only about what the error
+	// carries for the log. It should name the target, not the policy.
+	err := check(t, policyFor(t, "gw.example.com"), "https://other.example.com/x")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "other.example.com")
+	assert.False(t, strings.Contains(err.Error(), "gw.example.com"),
+		"the log line should not print the allowlist back on every refusal")
 }

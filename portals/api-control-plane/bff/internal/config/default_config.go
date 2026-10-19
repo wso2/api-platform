@@ -50,9 +50,8 @@ func defaultConfig() *Config {
 			Format: "text",
 		},
 		ControlPlane: ControlPlaneConfig{
-			PortalBasePath:     "/api/portal/v0.9",
-			ManagementBasePath: "/api/v0.9",
-			ProxyPrefix:        "/proxy",
+			PortalBasePath: "/api/portal/v0.9",
+			ProxyPrefix:    "/proxy",
 		},
 		Session: SessionConfig{
 			Store:       "memory",
@@ -64,7 +63,7 @@ func defaultConfig() *Config {
 				SameSite: "lax",
 			},
 		},
-		// The test-console relay ships ON: the Test page's console is unusable
+		// The gateway relay ships ON: the Test page's console is unusable
 		// without it in any deployment where the gateway is a different origin
 		// from the portal, which is every deployment. The bounds below are what
 		// make that safe by default; an operator turns the feature off rather
@@ -74,7 +73,7 @@ func defaultConfig() *Config {
 		// legitimately lives on a ClusterIP, so a default that denied private
 		// space would break the ordinary deployment. The allow_* lists are
 		// where a deployment that knows where its gateways live says so.
-		TestConsole: TestConsoleConfig{
+		GatewayRelay: GatewayRelayConfig{
 			Enabled:          true,
 			RequestTimeout:   30 * time.Second,
 			MaxRequestBytes:  2 << 20, // 2 MiB
@@ -83,6 +82,7 @@ func defaultConfig() *Config {
 			MaxPending:       64,
 			ResolveCacheTTL:  60 * time.Second,
 			ResolveCacheSize: 1024,
+			Egress:           EgressConfig{Environment: "production"},
 		},
 		Auth: AuthConfig{
 			Mode: "basic",

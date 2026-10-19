@@ -14,7 +14,7 @@
  * under the License.
  */
 
-package testproxy
+package gatewayrelay
 
 import (
 	"bytes"
@@ -36,7 +36,7 @@ import (
 // ErrBusy is returned when the relay is already at its concurrency ceiling and
 // its pending queue is full. Surfaced as 503 rather than queued indefinitely:
 // an unbounded queue in front of a bounded pool is only delayed memory growth.
-var ErrBusy = errors.New("test-console relay is at capacity")
+var ErrBusy = errors.New("gateway relay is at capacity")
 
 // RelayOptions configures the relay. Everything here has a validated,
 // non-zero default in the config package; New does not invent one, so a
@@ -77,11 +77,11 @@ type Relay struct {
 // NewRelay builds the relay and its guarded outbound client.
 func NewRelay(opts RelayOptions) (*Relay, error) {
 	if opts.RequestTimeout <= 0 || opts.MaxRequestBytes <= 0 || opts.MaxResponseBytes <= 0 || opts.MaxConcurrent <= 0 {
-		return nil, fmt.Errorf("testproxy: RequestTimeout, MaxRequestBytes, MaxResponseBytes and MaxConcurrent must all be positive")
+		return nil, fmt.Errorf("gatewayrelay: RequestTimeout, MaxRequestBytes, MaxResponseBytes and MaxConcurrent must all be positive")
 	}
 
 	if opts.Egress == nil {
-		return nil, fmt.Errorf("testproxy: Egress policy is required")
+		return nil, fmt.Errorf("gatewayrelay: Egress policy is required")
 	}
 
 	cfg := httpclient.DefaultConfig()
@@ -93,10 +93,10 @@ func NewRelay(opts RelayOptions) (*Relay, error) {
 	cfg.Timeouts.MaxResponseBytes = opts.MaxResponseBytes * 2
 	// cfg.SSRF stays off, and the guard is supplied as the dial function
 	// instead. httpclient's own SSRF mode installs netguard.DialContext,
-	// which covers the address categories but has no concept of allow_cidrs
-	// and reports a refusal without naming the address — see
-	// egress.Policy.DialContext, which adds both while still running every
-	// categorical check through netguard rather than restating it.
+	// which covers the address categories but reports a refusal without
+	// naming the address — see egress.Policy.DialContext, which logs the
+	// address and reason while still running every categorical check through
+	// netguard rather than restating it.
 	dial := opts.Egress.DialContext(cfg.Timeouts.Dial)
 	cfg.TLS = httpclient.TLSConfig{
 		MinVersion: "TLS1_2",
@@ -112,7 +112,7 @@ func NewRelay(opts RelayOptions) (*Relay, error) {
 
 	client, err := httpclient.New(cfg, httpclient.WithDialContext(dial))
 	if err != nil {
-		return nil, fmt.Errorf("testproxy: build relay client: %w", err)
+		return nil, fmt.Errorf("gatewayrelay: build relay client: %w", err)
 	}
 	// Never follow a redirect. A 3xx is a result the tester wants to see, and
 	// chasing it would send the caller's headers, the test key among them, to

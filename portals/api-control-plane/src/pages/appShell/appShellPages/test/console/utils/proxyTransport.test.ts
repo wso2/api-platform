@@ -29,7 +29,7 @@ import {
   type RelayContext,
 } from './proxyTransport';
 
-const INVOKE_URL = 'http://localhost:3000/api/test-console/invoke';
+const INVOKE_URL = 'http://localhost:3000/api/gateway-relay/invoke';
 
 const intl = createIntl({ locale: 'en', messages: {} }, createIntlCache());
 
@@ -217,7 +217,11 @@ describe('createRelayFetch — what comes back', () => {
 
   it('translates each relay failure into its own wording', async () => {
     for (const [code, expected] of [
-      ['TARGET_NOT_ALLOWED', /cannot be tested on the selected gateway/i],
+      ['TARGET_NOT_ALLOWED', /not configured to reach this gateway/i],
+      ['GATEWAY_NOT_DEPLOYED', /not deployed to the selected gateway/i],
+      ['API_NOT_FOUND', /API could not be found/i],
+      ['GATEWAY_NO_ENDPOINT', /no endpoint configured/i],
+      ['GATEWAY_UNSUPPORTED_SCHEME', /not an HTTP address/i],
       ['UPSTREAM_TIMEOUT', /did not respond in time/i],
       ['UPSTREAM_UNREACHABLE', /could not reach this gateway/i],
       ['RELAY_BUSY', /too many test requests/i],

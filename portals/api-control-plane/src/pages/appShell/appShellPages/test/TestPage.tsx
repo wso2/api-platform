@@ -124,18 +124,6 @@ const messages = defineMessages({
 
 type ConsoleView = 'console' | 'curl';
 
-/** Refresh the test key countdown every 30 seconds. */
-const KEY_COUNTDOWN_TICK_MS = 30_000;
-
-/** Gateway label as "Name — Environment", matching the Invoke URL panel. */
-const gatewayOptionLabel = (gateway: Gateway): string => {
-  const name = gateway.displayName || gateway.id || '';
-  const environment = MOCK_ENVIRONMENTS.find(
-    (candidate) => candidate.id === gateway.properties?.environment,
-  )?.name;
-  return environment ? `${name} — ${environment}` : name;
-};
-
 export function TestPage() {
   const intl = useIntl();
   const { params } = useConsoleScope();
