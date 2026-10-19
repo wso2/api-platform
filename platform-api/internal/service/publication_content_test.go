@@ -36,9 +36,17 @@ type contentDocumentRepo struct {
 	docs map[string]*model.Document
 	// loads counts GetDocument calls when set.
 	loads *int
+	// resolveErr fails the handle lookup; loadErr fails the content load.
+	resolveErr, loadErr error
+	// removedOnLoad makes the content load find nothing, as if the document was deleted after
+	// it was selected.
+	removedOnLoad bool
 }
 
 func (r contentDocumentRepo) GetDocumentsByHandles(_ string, handles []string, _ string) (map[string]*model.Document, error) {
+	if r.resolveErr != nil {
+		return nil, r.resolveErr
+	}
 	found := map[string]*model.Document{}
 	for _, h := range handles {
 		if d, ok := r.docs[h]; ok {
@@ -51,6 +59,12 @@ func (r contentDocumentRepo) GetDocumentsByHandles(_ string, handles []string, _
 func (r contentDocumentRepo) GetDocument(_, handle, _, _ string) (*model.Document, error) {
 	if r.loads != nil {
 		*r.loads++
+	}
+	if r.loadErr != nil {
+		return nil, r.loadErr
+	}
+	if r.removedOnLoad {
+		return nil, nil
 	}
 	return r.docs[handle], nil
 }
@@ -121,6 +135,23 @@ func TestLoadPortalContent(t *testing.T) {
 		}
 	})
 
+	t.Run("rejects a document removed after it was selected", func(t *testing.T) {
+		svc := NewPublicationService(nil, nil, contentDocumentRepo{docs: docs, removedOnLoad: true}, nil, nil, nil, time.Minute, 0, nil)
+		_, err := svc.loadPortalContent(portalContentSource{ArtifactUUID: "artifact", OrgUUID: "org", DocHandles: []string{"guide"}})
+		if !apperror.APIPublicationValidationFailed.Is(err) || !strings.Contains(err.Error(), `"guide" was removed`) {
+			t.Fatalf("want a validation error naming the document, got %v", err)
+		}
+	})
+
+	t.Run("reports a failure to load a document", func(t *testing.T) {
+		loadErr := errors.New("db down")
+		svc := NewPublicationService(nil, nil, contentDocumentRepo{docs: docs, loadErr: loadErr}, nil, nil, nil, time.Minute, 0, nil)
+		_, err := svc.loadPortalContent(portalContentSource{ArtifactUUID: "artifact", OrgUUID: "org", DocHandles: []string{"guide"}})
+		if !errors.Is(err, loadErr) || apperror.APIPublicationValidationFailed.Is(err) {
+			t.Fatalf("want the repository failure, not a validation error, got %v", err)
+		}
+	})
+
 	t.Run("rejects a selection of too many documents before loading any", func(t *testing.T) {
 		many := map[string]*model.Document{}
 		var handles []string
@@ -169,20 +200,26 @@ func (l *callLog) PublishContent(_ context.Context, _ *model.APIPortal, _ string
 // records whether the draft was promoted.
 type publishFlowDocsPublicationRepo struct {
 	publishFlowPublicationRepo
+	planUUIDs []string
 	docUUIDs  []string
 	thumbnail *model.PublicationContent
 	promoted  *bool
+	// thumbnailErr and landingPageErr fail the load of that content.
+	thumbnailErr, landingPageErr error
 }
 
 func (r publishFlowDocsPublicationRepo) GetContent(draftUUID string, contentType model.PublicationContentType, orgUUID string) (*model.PublicationContent, error) {
-	if contentType == model.PublicationContentTypeImage {
-		return r.thumbnail, nil
+	switch contentType {
+	case model.PublicationContentTypeImage:
+		return r.thumbnail, r.thumbnailErr
+	case model.PublicationContentTypeMarketing:
+		return nil, r.landingPageErr
 	}
 	return r.publishFlowPublicationRepo.GetContent(draftUUID, contentType, orgUUID)
 }
 
 func (r publishFlowDocsPublicationRepo) GetDraft(_, _, _ string) (*model.Publication, []string, []string, error) {
-	return &model.Publication{UUID: "draft-uuid"}, nil, r.docUUIDs, nil
+	return &model.Publication{UUID: "draft-uuid"}, r.planUUIDs, r.docUUIDs, nil
 }
 
 func (r publishFlowDocsPublicationRepo) PromoteDraftToPublication(_, _, _, _ string, _ time.Time) (*model.Publication, bool, error) {
@@ -287,5 +324,49 @@ func TestPublish_RejectsAnOversizeSelectionBeforeAnyPortalCall(t *testing.T) {
 	}
 	if len(pub.calls) != 0 {
 		t.Fatalf("want no portal call, got %v", pub.calls)
+	}
+}
+
+func TestPublish_StopsBeforeAnyPortalCallWhenTheContentCannotBeLoaded(t *testing.T) {
+	loadErr := errors.New("db down")
+	inactiveGold := &publicationPlanRepo{plans: map[string]*model.SubscriptionPlan{
+		"gold": {UUID: "uuid-gold", Handle: "gold", Status: model.SubscriptionPlanStatusInactive},
+	}}
+	guide := map[string]*model.Document{
+		"guide": {ID: "uuid-guide", Handle: "guide", Type: "DOC_HowTo", FileName: "guide.md"},
+	}
+	tests := []struct {
+		name  string
+		repo  publishFlowDocsPublicationRepo
+		plans *publicationPlanRepo
+		docs  contentDocumentRepo
+		is    func(error) bool
+	}{
+		{"inactive plan", publishFlowDocsPublicationRepo{planUUIDs: []string{"uuid-gold"}}, inactiveGold, contentDocumentRepo{},
+			apperror.APIPublicationValidationFailed.Is},
+		{"thumbnail failure", publishFlowDocsPublicationRepo{thumbnailErr: loadErr}, publicationTestPlans(), contentDocumentRepo{},
+			func(err error) bool { return errors.Is(err, loadErr) }},
+		{"landing page failure", publishFlowDocsPublicationRepo{landingPageErr: loadErr}, publicationTestPlans(), contentDocumentRepo{},
+			func(err error) bool { return errors.Is(err, loadErr) }},
+		{"document removed", publishFlowDocsPublicationRepo{docUUIDs: []string{"uuid-guide"}}, publicationTestPlans(), contentDocumentRepo{docs: guide, removedOnLoad: true},
+			apperror.APIPublicationValidationFailed.Is},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var promoted bool
+			tc.repo.promoted = &promoted
+			pub := &callLog{}
+			svc := NewPublicationService(
+				publishFlowArtifactRepo{}, publishFlowPortalRepo{}, tc.docs,
+				publishFlowPlanRepo{tc.plans}, tc.repo, pub, time.Minute, 0, nil)
+
+			published, _, err := svc.Publish(context.Background(), restAPITypeValue, "my-api", "my-portal", "org", "actor")
+			if !tc.is(err) || published != nil {
+				t.Fatalf("want the load error and no publication, got %v, %v", published, err)
+			}
+			if len(pub.calls) != 0 || promoted {
+				t.Fatalf("want no portal call and no promotion, got calls %v, promoted %v", pub.calls, promoted)
+			}
+		})
 	}
 }

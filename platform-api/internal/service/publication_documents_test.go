@@ -18,12 +18,63 @@
 package service
 
 import (
+	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 )
+
+func TestValidateAndResolveDocUUIDs(t *testing.T) {
+	docs := map[string]*model.Document{
+		"guide": {ID: "uuid-guide", Handle: "guide", Type: "DOC_HowTo", FileName: "guide.md"},
+		"faq":   {ID: "uuid-faq", Handle: "faq", Type: "DOC_FAQ", FileName: "faq.md"},
+	}
+	newService := func(repo contentDocumentRepo) *PublicationService {
+		return NewPublicationService(nil, nil, repo, nil, nil, nil, time.Minute, 0, nil)
+	}
+
+	t.Run("returns the UUIDs in handle order", func(t *testing.T) {
+		uuids, err := newService(contentDocumentRepo{docs: docs}).validateAndResolveDocUUIDs("artifact", []string{"faq", "guide"}, "org")
+		if err != nil || strings.Join(uuids, ",") != "uuid-faq,uuid-guide" {
+			t.Fatalf("got %v, %v", uuids, err)
+		}
+	})
+
+	t.Run("no selection resolves to nothing", func(t *testing.T) {
+		uuids, err := newService(contentDocumentRepo{resolveErr: errors.New("must not be queried")}).validateAndResolveDocUUIDs("artifact", nil, "org")
+		if err != nil || uuids != nil {
+			t.Fatalf("got %v, %v", uuids, err)
+		}
+	})
+
+	t.Run("rejects an unknown handle", func(t *testing.T) {
+		_, err := newService(contentDocumentRepo{docs: docs}).validateAndResolveDocUUIDs("artifact", []string{"guide", "nope"}, "org")
+		if !apperror.APIPublicationValidationFailed.Is(err) || !strings.Contains(err.Error(), "nope") {
+			t.Fatalf("want a validation error naming the handle, got %v", err)
+		}
+	})
+
+	t.Run("reports a repository failure", func(t *testing.T) {
+		lookupErr := errors.New("db down")
+		_, err := newService(contentDocumentRepo{resolveErr: lookupErr}).validateAndResolveDocUUIDs("artifact", []string{"guide"}, "org")
+		if !errors.Is(err, lookupErr) || apperror.APIPublicationValidationFailed.Is(err) {
+			t.Fatalf("want the repository failure, not a validation error, got %v", err)
+		}
+	})
+}
+
+func TestSaveDraftDetails_RejectsAnUnknownDocument(t *testing.T) {
+	svc := NewPublicationService(publishFlowArtifactRepo{}, publishFlowPortalRepo{}, contentDocumentRepo{}, nil, nil, nil, time.Minute, 0, nil)
+	draft := &model.Publication{DisplayName: "My API", Version: "1.0"}
+
+	_, err := svc.SaveDraftDetails(restAPITypeValue, "my-api", "my-portal", "org", "actor", draft, nil, []string{"nope"})
+	if !apperror.APIPublicationValidationFailed.Is(err) || !strings.Contains(err.Error(), "nope") {
+		t.Fatalf("want a validation error naming the handle, got %v", err)
+	}
+}
 
 func TestDocsForHandles(t *testing.T) {
 	resolved := map[string]*model.Document{

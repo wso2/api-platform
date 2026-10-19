@@ -1020,3 +1020,35 @@ func TestHTTPPortalPublisher_PublishContent_ErrorMapping(t *testing.T) {
 		})
 	}
 }
+
+func TestHTTPPortalPublisher_PublishContent_FailuresBeforeAResponseAreNotRejections(t *testing.T) {
+	closed := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	closed.Close()
+
+	tests := []struct {
+		name    string
+		portal  *model.APIPortal
+		setup   func(*HTTPPortalPublisher)
+		wantMsg string
+	}{
+		{"credential cannot be resolved", &model.APIPortal{URL: closed.URL}, func(p *HTTPPortalPublisher) {
+			p.authRegistry = NewAPIPortalAuthRegistry(&mockAPIPortalRepository{getErr: errors.New("db down")}, newTestVault(t))
+		}, "failed to resolve API Portal auth"},
+		{"portal URL is malformed", &model.APIPortal{URL: "http://[::1"}, nil, "failed to build portal content request"},
+		{"portal is unreachable", &model.APIPortal{URL: closed.URL}, nil, "portal content push failed"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			p := newTestHTTPPortalPublisher(t, "key")
+			if tc.setup != nil {
+				tc.setup(p)
+			}
+
+			err := p.PublishContent(context.Background(), tc.portal, "my-api", &PortalContent{Archive: []byte("zip")})
+			var conflict *PortalConflictError
+			if err == nil || errors.As(err, &conflict) || !strings.Contains(err.Error(), tc.wantMsg) {
+				t.Fatalf("want a plain error containing %q, got %v", tc.wantMsg, err)
+			}
+		})
+	}
+}
