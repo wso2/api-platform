@@ -28,7 +28,7 @@ import {
   resource,
   type Recorder,
 } from '../../../test/msw';
-import { renderApiHook } from '../../../test/renderApiHook';
+import { renderApiHook, settle } from '../../../test/renderApiHook';
 import { server } from '../../../test/server';
 import { resetHttpClient } from '../../core/http';
 import {
@@ -110,7 +110,8 @@ describe('saving a draft', () => {
       }),
     );
 
-    expect(result.current.draft.data?.displayName).toBe('Saved Name');
+    await waitFor(() => expect(result.current.draft.data?.displayName).toBe('Saved Name'));
+    await settle();
     expect(draftReads.count()).toBe(1);
   });
 });

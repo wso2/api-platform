@@ -46,6 +46,7 @@ describe('AppRoutes GraphQL deploy page override', () => {
       collection('/projects', [project]),
       resource('/projects/:projectId', project),
       collection('/rest-apis', []),
+      collection('/graphql-apis', []),
       resource('/graphql-apis/:graphqlApiId', api),
     );
   });

@@ -29,6 +29,7 @@ const VALUES: DraftFormValues = {
   productionUrl: 'https://api.example.com',
   sandboxUrl: 'https://sandbox.example.com',
   agentVisibility: 'VISIBLE',
+  subscriptionPlanIds: [],
 };
 
 describe('ApiDetailsTab', () => {
