@@ -46,6 +46,7 @@ import {
   type RenderableExtension,
 } from '@/extensions';
 import type { NavigationLevel } from '@/navigation/navigationTypes';
+import { isServiceAccountsEnabled } from '@/navigation/useSettingsTabs';
 import { usePort } from '@/hostPort';
 import { Hideable, useSlot } from '@/slots';
 import { ProtectedRoute } from './ProtectedRoute';
@@ -582,7 +583,9 @@ export function AppRoutes({ extensions = [] }: AppRoutesProps) {
             {/* Organization-scoped only — platform-api has no project-level
                 subscription-plan endpoint, so this isn't registered below. */}
             <Route path="subscription-plans" element={<SubscriptionPlansSettingsPage />} />
-            <Route path="service-accounts" element={<ServiceAccountsSettingsPage />} />
+            {isServiceAccountsEnabled() && (
+              <Route path="service-accounts" element={<ServiceAccountsSettingsPage />} />
+            )}
             {settingsTabRoutes('organization')}
           </Route>
           <Route path={routes.projectSettings()} element={<SettingsLayout level="project" />}>

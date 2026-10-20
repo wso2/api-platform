@@ -20,6 +20,7 @@ import type { ReactNode } from 'react';
 import { defineMessages, useIntl } from 'react-intl';
 import { Gauge, Laptop, Settings } from '@wso2/oxygen-ui-icons-react';
 
+import { runtimeConfig } from '../config/runtime';
 import { useConsoleScope } from '../scope/ConsoleScopeProvider';
 import {
   settingsTabExtensions,
@@ -50,6 +51,10 @@ const messages = defineMessages({
       'Label for the organization-level Settings tab listing machine identities (service accounts).',
   },
 });
+
+/** Service accounts stay hidden unless `FEATURE_FLAGS` lists `service-accounts`. */
+export const isServiceAccountsEnabled = () =>
+  runtimeConfig.featureFlags.includes('service-accounts');
 
 export type SettingsTab = {
   id: string;
@@ -114,7 +119,12 @@ export const useSettingsTabs = (level: NavigationLevel): SettingsTab[] => {
     });
   }
 
-  if (level === 'organization' && canManageServiceAccounts && !serviceAccountsTabHidden) {
+  if (
+    level === 'organization' &&
+    isServiceAccountsEnabled() &&
+    canManageServiceAccounts &&
+    !serviceAccountsTabHidden
+  ) {
     builtInTabs.push({
       icon: <Laptop size={18} />,
       id: 'service-accounts',
