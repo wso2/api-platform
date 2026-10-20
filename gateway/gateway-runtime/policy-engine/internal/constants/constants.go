@@ -98,14 +98,22 @@ const (
 	SpanPolicyResponseFormat      = "policy.response.%s"
 
 	// Tracing Attributes
-	AttrRouteName                 = "route_name"
-	AttrAPIName                   = "api_name"
-	AttrAPIVersion                = "api_version"
-	AttrAPIContext                = "api_context"
-	AttrOperationPath             = "operation_path"
-	AttrPolicyCount               = "policy_count"
+	AttrRouteName     = "route_name"
+	AttrAPIName       = "api_name"
+	AttrAPIVersion    = "api_version"
+	AttrAPIContext    = "api_context"
+	AttrOperationPath = "operation_path"
+	AttrPolicyCount   = "policy_count"
 	// AttrStreamChunkCount is the number of body messages a streamed body phase span covers.
 	AttrStreamChunkCount = "stream.chunk_count"
+	// AttrPolicyAction is what a policy did with the message: allow, modify or deny.
+	// AttrGuardrailName names the guardrail that denied it. No OpenTelemetry convention
+	// exists for either yet (semantic-conventions-genai PR 427), so they are wso2.*.
+	AttrPolicyAction              = "wso2.policy.action"
+	AttrGuardrailName             = "wso2.guardrail.name"
+	PolicyActionAllow             = "allow"
+	PolicyActionModify            = "modify"
+	PolicyActionDeny              = "deny"
 	AttrError                     = "error"
 	AttrErrorReasonNoContext      = "no_execution_context"
 	AttrPolicyName                = "policy.name"
