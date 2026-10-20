@@ -30,12 +30,6 @@ services:
       - ./resources/keys:/etc/platform-api/keys:ro
     ports:
       - "9243:9243"
-    healthcheck:
-      test: ["CMD", "curl", "-fk", "https://localhost:9243/health"]
-      interval: 30s
-      timeout: 5s
-      start_period: 20s
-      retries: 3
     networks:
       - api-portal-network
 
@@ -44,9 +38,6 @@ services:
     container_name: api-portal
     restart: unless-stopped
     profiles: ["api-portal"]
-    depends_on:
-      platform-api:
-        condition: service_healthy
     env_file:
       - path: api-platform.env
         required: true
@@ -81,9 +72,6 @@ services:
     image: ghcr.io/wso2/api-platform/ai-workspace:1.0.0-SNAPSHOT
     restart: unless-stopped
     profiles: ["ai-workspace"]
-    depends_on:
-      platform-api:
-        condition: service_healthy
     env_file:
       - path: api-platform.env
         required: true
