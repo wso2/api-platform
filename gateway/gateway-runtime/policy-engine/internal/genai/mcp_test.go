@@ -91,21 +91,21 @@ func TestRewriteMCPMeta(t *testing.T) {
 	}
 }
 
-func TestParseMCPResponse(t *testing.T) {
+func TestParseJSONRPCResponse(t *testing.T) {
 	cases := map[string]struct {
 		body string
-		want MCPOutcome
+		want JSONRPCOutcome
 		ok   bool
 	}{
-		"result":         {`{"jsonrpc":"2.0","id":1,"result":{"content":[]}}`, MCPOutcome{}, true},
-		"tool error":     {`{"jsonrpc":"2.0","id":1,"result":{"isError":true,"content":[]}}`, MCPOutcome{ToolError: true}, true},
-		"jsonrpc error":  {`{"jsonrpc":"2.0","id":1,"error":{"code":-32602,"message":"bad"}}`, MCPOutcome{ErrorCode: "-32602"}, true},
-		"sse after note": {"event: message\ndata: {\"jsonrpc\":\"2.0\",\"method\":\"notifications/progress\"}\n\ndata: {\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32601}}\n\n", MCPOutcome{ErrorCode: "-32601"}, true},
-		"empty":          {``, MCPOutcome{}, false},
+		"result":         {`{"jsonrpc":"2.0","id":1,"result":{"content":[]}}`, JSONRPCOutcome{}, true},
+		"tool error":     {`{"jsonrpc":"2.0","id":1,"result":{"isError":true,"content":[]}}`, JSONRPCOutcome{ToolError: true}, true},
+		"jsonrpc error":  {`{"jsonrpc":"2.0","id":1,"error":{"code":-32602,"message":"bad"}}`, JSONRPCOutcome{ErrorCode: "-32602"}, true},
+		"sse after note": {"event: message\ndata: {\"jsonrpc\":\"2.0\",\"method\":\"notifications/progress\"}\n\ndata: {\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32601}}\n\n", JSONRPCOutcome{ErrorCode: "-32601"}, true},
+		"empty":          {``, JSONRPCOutcome{}, false},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
-			got, ok := ParseMCPResponse([]byte(tc.body))
+			got, ok := ParseJSONRPCResponse([]byte(tc.body))
 			assert.Equal(t, tc.ok, ok)
 			assert.Equal(t, tc.want, got)
 		})

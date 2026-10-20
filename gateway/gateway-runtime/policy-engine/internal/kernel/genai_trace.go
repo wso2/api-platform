@@ -55,6 +55,8 @@ func (ec *PolicyExecutionContext) startGenAISpan(req *extprocv3.ProcessingReques
 	switch ec.genai.kind {
 	case policy.APIKindLlmProvider:
 		ec.startInferenceSpan()
+	case policy.APIKindAgent:
+		ec.startAgentSpan()
 	}
 }
 
@@ -110,6 +112,8 @@ func (ec *PolicyExecutionContext) endGenAISpan() {
 			ec.finishInferenceSpan(span)
 		case policy.APIKindMCP:
 			ec.finishMCPSpan(span)
+		case policy.APIKindAgent:
+			ec.finishAgentSpan(span)
 		}
 	}
 	span.End()
