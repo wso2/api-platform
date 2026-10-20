@@ -51,10 +51,13 @@ export {
   useApiPublicationDefinition,
   useApiPublicationDraft,
   useApiPublicationDraftDefinition,
+  useApiPublicationDraftThumbnail,
+  useApiPublicationThumbnail,
   useApiPublications,
   useDeprecateApiOnApiPortal,
   usePublishApiToApiPortal,
   useSaveApiPublicationDraft,
   useSaveApiPublicationDraftDefinition,
+  useSaveApiPublicationDraftThumbnail,
   useUnpublishApiFromApiPortal,
 } from './apiPublications.hooks';
