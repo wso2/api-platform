@@ -49,3 +49,4 @@
 
 [ai_workspace.feature_flags]
 agent_proxy_enabled = true
+service_accounts_enabled = false
