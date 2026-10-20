@@ -3545,7 +3545,7 @@
     "description": "Toggle option sending the request from the browser straight to the gateway. An adverb describing how the request travels, not a command."
   },
   "apiControlPlane.pages.test.console.ExecuteModeSwitch.proxyHint": {
-    "defaultMessage": "Requests go through a WSO2 Managed proxy, so the gateway does not need a CORS policy.",
+    "defaultMessage": "Requests go through the portal server, so the gateway does not need a CORS policy.",
     "description": "Tooltip shown while Through proxy is selected. Explains the benefit of the default, so the user can tell what they would give up by switching."
   },
   "apiControlPlane.pages.test.console.ExecuteModeSwitch.proxyMode": {

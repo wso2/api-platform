@@ -19,15 +19,7 @@
 import { PageContent, Stack } from '@wso2/oxygen-ui';
 import type { PageContentProps } from '@wso2/oxygen-ui';
 
-export type AppPageProps = PageContentProps & {
-  /**
-   * Leaves the breadcrumb trail out. For full-page flows (creation wizards, the
-   * portal publication page): a wizard is building the very scope a trail would
-   * describe, and a page with its own back button would only have the crumbs
-   * repeat where the user came from.
-   */
-  hideBreadcrumbs?: boolean;
-};
+export type AppPageProps = PageContentProps;
 
 /**
  * The outer container of every page in the app shell: `PageContent` around the

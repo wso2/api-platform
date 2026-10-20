@@ -45,7 +45,7 @@ const messages = defineMessages({
   },
   proxyHint: {
     id: 'apiControlPlane.pages.test.console.ExecuteModeSwitch.proxyHint',
-    defaultMessage: 'Requests go through a WSO2 Managed proxy, so the gateway does not need a CORS policy.',
+    defaultMessage: 'Requests go through the portal server, so the gateway does not need a CORS policy.',
     description:
       'Tooltip shown while Through proxy is selected. Explains the benefit of the default, so the user can tell what they would give up by switching.',
   },

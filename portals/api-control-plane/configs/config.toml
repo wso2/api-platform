@@ -124,7 +124,7 @@ role_to_scope_mapping = '{{ env "APIP_ACP_AUTH_AUTHORIZATION_ROLE_TO_SCOPE_MAPPI
 # from an https portal, or sits on a cluster-internal address the browser
 # cannot route to. The browser never names a URL: it names the API and the
 # gateway, and the BFF resolves the address through Platform API using the
-# caller's own token. See bff/internal/testproxy.
+# caller's own token. See bff/internal/gatewayrelay.
 #
 # Each value below is a limit that lets this feature ship enabled. To turn the
 # feature off, set `enabled = false` rather than relaxing them. Each default
@@ -165,9 +165,10 @@ tls_skip_verify    = '{{ env "APIP_ACP_GATEWAY_RELAY_TLS_SKIP_VERIFY" "false" }}
 # weakened. A gateway's endpoint is tenant-settable data, so these settings are
 # how a deployment says what a gateway address is allowed to look like.
 #
-# Two rules, and that is the whole model:
-#   1. deny always wins.
-#   2. allow narrows when set, and is ignored when empty.
+#Two rules, and that is the whole model:
+#   1. the always-refused ranges below win over any allow_hosts entry.
+#   2. nothing is reachable unless an allow_hosts entry matches; an empty
+#      list refuses every target.
 #
 # There is deliberately no setting that re-opens something deny closed.
 #
@@ -186,7 +187,7 @@ tls_skip_verify    = '{{ env "APIP_ACP_GATEWAY_RELAY_TLS_SKIP_VERIFY" "false" }}
 # Development permits these addresses for gateways running on localhost or a
 # ClusterIP. It does not relax the non-configurable restrictions below; the
 # metadata endpoint remains unreachable.
-environment = '{{ env "APIP_ACP_GATEWAY_RELAY_EGRESS_ENVIRONMENT" "development" }}'
+environment = '{{ env "APIP_ACP_GATEWAY_RELAY_EGRESS_ENVIRONMENT" "production" }}'
 
 # Complete set of targets the relay may dial. An empty list refuses all requests
 # with TARGET_NOT_ALLOWED.

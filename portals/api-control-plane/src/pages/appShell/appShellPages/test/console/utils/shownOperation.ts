@@ -111,10 +111,13 @@ export const resolveShownOperation = (
 
     const operation = asImmutable(record?.get?.('operation'));
     const operationId = operation?.get?.('operationId');
-    const synthesised = `${method}${path}`.replace(/[^\w]/g, '');
+    const originalOperationId = operation?.get?.('__originalOperationId');
+    // Matches swagger-client's idFromPathMethod: non-word characters become `_`.
+    const synthesised = `${method.toLowerCase()}${path.replace(/[^\w]/g, '_')}`;
 
     candidates.push({
       ids: [
+        ...(typeof originalOperationId === 'string' ? [originalOperationId] : []),
         ...(typeof operationId === 'string' ? [operationId] : []),
         synthesised,
         `${method.toLowerCase()}-${path}`,
