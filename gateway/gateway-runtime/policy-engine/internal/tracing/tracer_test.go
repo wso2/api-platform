@@ -24,6 +24,9 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -929,4 +932,38 @@ func TestInitTracer_SecureConnectionWithoutCerts(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, shutdown)
 	defer shutdown()
+}
+
+// With protocol "http" the engine exports OTLP/HTTP protobuf to POST /v1/traces.
+func TestNewExporter_HTTP(t *testing.T) {
+	type received struct{ method, path, contentType string }
+	got := make(chan received, 1)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case got <- received{r.Method, r.URL.Path, r.Header.Get("Content-Type")}:
+		default:
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	exporter, err := newExporter(context.Background(), config.TracingConfig{
+		Endpoint: strings.TrimPrefix(srv.URL, "http://"),
+		Protocol: config.TracingProtocolHTTP,
+		Insecure: true,
+	})
+	require.NoError(t, err)
+	tp := sdktrace.NewTracerProvider(sdktrace.WithSyncer(exporter))
+	_, span := tp.Tracer("test").Start(context.Background(), "op")
+	span.End()
+	require.NoError(t, tp.Shutdown(context.Background()))
+
+	select {
+	case r := <-got:
+		assert.Equal(t, http.MethodPost, r.method)
+		assert.Equal(t, "/v1/traces", r.path)
+		assert.Equal(t, "application/x-protobuf", r.contentType)
+	case <-time.After(5 * time.Second):
+		t.Fatal("no OTLP/HTTP export reached the collector")
+	}
 }

@@ -1389,6 +1389,31 @@ func TestValidate_TracingConfig(t *testing.T) {
 			errMsg:    "tracing.endpoint is required",
 		},
 		{
+			name: "tracing enabled - http protocol",
+			setup: func(cfg *Config) {
+				cfg.TracingConfig.Enabled = true
+				cfg.TracingConfig.Endpoint = "otel-collector:4318"
+				cfg.TracingConfig.Protocol = TracingProtocolHTTP
+				cfg.TracingConfig.BatchTimeout = 1 * time.Second
+				cfg.TracingConfig.MaxExportBatchSize = 512
+				cfg.TracingConfig.SamplingRate = 1.0
+			},
+			expectErr: false,
+		},
+		{
+			name: "tracing enabled - unknown protocol",
+			setup: func(cfg *Config) {
+				cfg.TracingConfig.Enabled = true
+				cfg.TracingConfig.Endpoint = "otel-collector:4318"
+				cfg.TracingConfig.Protocol = "http/json"
+				cfg.TracingConfig.BatchTimeout = 1 * time.Second
+				cfg.TracingConfig.MaxExportBatchSize = 512
+				cfg.TracingConfig.SamplingRate = 1.0
+			},
+			expectErr: true,
+			errMsg:    `tracing.protocol must be "grpc" or "http"`,
+		},
+		{
 			name: "tracing enabled - invalid batch timeout",
 			setup: func(cfg *Config) {
 				cfg.TracingConfig.Enabled = true
