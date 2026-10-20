@@ -143,8 +143,6 @@ func Testbench() *components.Definition {
 			{Name: "oidc", Port: oidc.Port, Scheme: "https", AwaitListening: true},
 			{Name: "guardian", Port: guardian.Port, Scheme: "http", AwaitListening: true},
 			{Name: "graphql-backend", Port: graphqlbackend.Port, Scheme: "http", AwaitListening: true},
-			// opa is a stateless OPA data API whose decision is a function of the request; see
-			// testbench/services/opa for the rules a scenario can select.
 			{Name: "opa", Port: opa.Port, Scheme: "http", AwaitListening: true},
 		},
 		Env: map[string]string{
