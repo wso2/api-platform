@@ -1436,6 +1436,19 @@ func TestValidate_TracingConfig(t *testing.T) {
 			expectErr: false,
 		},
 		{
+			name: "tracing enabled - genai with no content budget",
+			setup: func(cfg *Config) {
+				cfg.TracingConfig.Enabled = true
+				cfg.TracingConfig.Endpoint = "otel-collector:4317"
+				cfg.TracingConfig.BatchTimeout = 1 * time.Second
+				cfg.TracingConfig.MaxExportBatchSize = 512
+				cfg.TracingConfig.SamplingRate = 1.0
+				cfg.TracingConfig.GenAI = GenAITracingConfig{Enabled: true, MaxContentBytes: 0}
+			},
+			expectErr: true,
+			errMsg:    "tracing.genai.max_content_bytes must be positive",
+		},
+		{
 			name: "tracing enabled - unknown protocol",
 			setup: func(cfg *Config) {
 				cfg.TracingConfig.Enabled = true
@@ -2714,4 +2727,12 @@ func TestValidate_HealthConfigWarnsWhenPythonExecutorTimeoutReachesProbeTimeout(
 			}
 		})
 	}
+}
+
+// GenAI spans are on whenever tracing is; content capture is opt-in.
+func TestDefaultConfig_GenAITracing(t *testing.T) {
+	genai := defaultConfig().TracingConfig.GenAI
+	assert.True(t, genai.Enabled)
+	assert.False(t, genai.CaptureContent)
+	assert.Equal(t, 16384, genai.MaxContentBytes)
 }
