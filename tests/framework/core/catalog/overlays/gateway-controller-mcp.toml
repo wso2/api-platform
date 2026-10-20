@@ -1,0 +1,17 @@
+# Enables the gateway controller's management and admin MCP endpoints.
+#
+# Startup validation requires each enabled endpoint to name its public origin. With basic
+# authentication only, the origins are never dialed and no OAuth discovery is published; they
+# only have to be absolute URLs.
+
+[controller.server]
+external_base_url = "http://gateway-controller:9090"
+
+[controller.server.mcp_server]
+enabled = true
+
+[controller.admin_server]
+external_base_url = "http://gateway-controller:9092"
+
+[controller.admin_server.mcp_server]
+enabled = true

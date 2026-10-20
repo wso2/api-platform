@@ -42,12 +42,6 @@ import (
 type RestAPIHandler struct {
 	service *restapi.RestAPIService
 	logger  *slog.Logger
-
-	// pushArtifactUndeploy is the shared control-plane (DP->CP)
-	// push hook, wired from APIServer so REST APIs use the same push path as every other
-	// artifact kind. Internally gated (origin/connection/enabled) and run asynchronously;
-	// they are nil when no control plane is configured (e.g. in unit tests).
-	pushArtifactUndeploy func(cfg *models.StoredConfig, log *slog.Logger)
 }
 
 // NewRestAPIHandler creates a new RestAPIHandler.
@@ -250,7 +244,7 @@ func (h *RestAPIHandler) DeleteRestAPI(w http.ResponseWriter, r *http.Request, i
 
 	correlationID := middleware.GetCorrelationID(r)
 
-	result, err := h.service.Delete(restapi.DeleteParams{
+	_, err := h.service.Delete(restapi.DeleteParams{
 		Handle:        id,
 		CorrelationID: correlationID,
 		Logger:        log,
@@ -264,12 +258,6 @@ func (h *RestAPIHandler) DeleteRestAPI(w http.ResponseWriter, r *http.Request, i
 	metrics.APIOperationsTotal.WithLabelValues(operation, "success", "rest_api").Inc()
 	metrics.APIOperationDurationSeconds.WithLabelValues(operation, "rest_api").Observe(time.Since(startTime).Seconds())
 	metrics.APIsTotal.WithLabelValues("rest_api", "active").Dec()
-
-	// Notify the control plane (DP->CP) that this artifact was deleted via the shared
-	// handler path; it keeps the artifact and marks it undeployed.
-	if h.pushArtifactUndeploy != nil {
-		h.pushArtifactUndeploy(result.Config, log)
-	}
 
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"status":  "success",
