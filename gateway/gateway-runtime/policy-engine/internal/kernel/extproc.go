@@ -311,6 +311,13 @@ func (s *ExternalProcessorServer) Process(stream extprocv3.ExternalProcessor_Pro
 			span.End()
 		}
 	}()
+	// Ends any streamed body still open when the stream closes first (a cancel, an
+	// error or an immediate response), before the root span ends.
+	defer func() {
+		if execCtx != nil {
+			execCtx.endStreamTraces()
+		}
+	}()
 	defer func() {
 		if execCtx != nil {
 			tracing.RecordHTTPOutcome(span, execCtx.terminal)
@@ -614,10 +621,14 @@ func (s *ExternalProcessorServer) handleProcessingPhase(ctx context.Context, req
 	case *extprocv3.ProcessingRequest_RequestBody:
 		startTime := time.Now()
 
-		// Create span for request body processing - NoOp if tracing disabled
-		ctx, span := s.tracer.Start(ctx, constants.SpanProcessRequestBody,
-			trace.WithSpanKind(trace.SpanKindInternal))
-		defer span.End()
+		// Create span for request body processing - NoOp if tracing disabled. Every
+		// message of a streamed body shares one span (#3736).
+		var stream *bodyStreamTrace
+		if *execCtx != nil && (*execCtx).requestStream.active((*execCtx).isStreamingRequest) {
+			stream = &(*execCtx).requestStream
+		}
+		ctx, span, endSpan := s.startBodyPhaseSpan(ctx, constants.SpanProcessRequestBody, stream)
+		defer endSpan()
 
 		if *execCtx == nil {
 			slog.WarnContext(ctx, "Request body received before request headers")
@@ -677,6 +688,9 @@ func (s *ExternalProcessorServer) handleProcessingPhase(ctx context.Context, req
 		}
 		if slog.Default().Enabled(ctx, slog.LevelDebug) {
 			slog.DebugContext(ctx, "ext_proc response", "phase", "request_body", "resp", prototext.Format(resp))
+		}
+		if stream != nil && (req.GetRequestBody().GetEndOfStream() || err != nil || resp.GetImmediateResponse() != nil) {
+			stream.end()
 		}
 		return resp, err
 
@@ -741,10 +755,14 @@ func (s *ExternalProcessorServer) handleProcessingPhase(ctx context.Context, req
 	case *extprocv3.ProcessingRequest_ResponseBody:
 		startTime := time.Now()
 
-		// Create span for response body processing - NoOp if tracing disabled
-		ctx, span := s.tracer.Start(ctx, constants.SpanProcessResponseBody,
-			trace.WithSpanKind(trace.SpanKindInternal))
-		defer span.End()
+		// Create span for response body processing - NoOp if tracing disabled. Every
+		// message of a streamed body shares one span (#3736).
+		var stream *bodyStreamTrace
+		if *execCtx != nil && (*execCtx).responseStream.active((*execCtx).isStreamingResponse) {
+			stream = &(*execCtx).responseStream
+		}
+		ctx, span, endSpan := s.startBodyPhaseSpan(ctx, constants.SpanProcessResponseBody, stream)
+		defer endSpan()
 
 		if *execCtx == nil {
 			slog.WarnContext(ctx, "Response body received without execution context")
@@ -798,6 +816,9 @@ func (s *ExternalProcessorServer) handleProcessingPhase(ctx context.Context, req
 		}
 		if slog.Default().Enabled(ctx, slog.LevelDebug) {
 			slog.DebugContext(ctx, "ext_proc response", "phase", "response_body", "resp", prototext.Format(resp))
+		}
+		if stream != nil && (req.GetResponseBody().GetEndOfStream() || err != nil || resp.GetImmediateResponse() != nil) {
+			stream.end()
 		}
 		return resp, err
 
