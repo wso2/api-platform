@@ -215,7 +215,52 @@ func (ec *PolicyExecutionContext) startInferenceSpan() {
 		attrs = append(attrs, attribute.Bool(genai.AttrRequestStream, true))
 	}
 	attrs = append(attrs, ec.serverAttributes()...)
+	if operation == genai.OperationChat {
+		attrs = append(attrs, ec.requestContentAttributes(body)...)
+	}
 	ec.startClientSpan(name, attrs...)
+}
+
+// requestContentAttributes are the input messages and system instructions, when
+// content capture is on and the provider speaks a converted shape.
+func (ec *PolicyExecutionContext) requestContentAttributes(body []byte) []attribute.KeyValue {
+	shape := genai.Shape(ec.templateName())
+	if !ec.server.genai.CaptureContent || shape == "" {
+		return nil
+	}
+	input, system, ok := genai.RequestContent(shape, body)
+	if !ok {
+		return nil
+	}
+	limit := ec.server.genai.MaxContentBytes
+	encoded, cut := genai.Encode(input, limit)
+	attrs := []attribute.KeyValue{attribute.String(genai.AttrInputMessages, encoded)}
+	if len(system) > 0 {
+		s, systemCut := genai.Encode(system, limit)
+		attrs = append(attrs, attribute.String(genai.AttrSystemInstructions, s))
+		cut = cut || systemCut
+	}
+	if cut {
+		attrs = append(attrs, attribute.Bool(genai.AttrContentTruncated, true))
+	}
+	return attrs
+}
+
+// recordOutputContent records the output messages, when content capture is on.
+func (ec *PolicyExecutionContext) recordOutputContent(span trace.Span, body []byte) {
+	shape := genai.Shape(ec.templateName())
+	if !ec.server.genai.CaptureContent || shape == "" || genai.OperationName(ec.resourcePath()) != genai.OperationChat {
+		return
+	}
+	output, ok := genai.ResponseContent(shape, body)
+	if !ok {
+		return
+	}
+	encoded, cut := genai.Encode(output, ec.server.genai.MaxContentBytes)
+	span.SetAttributes(attribute.String(genai.AttrOutputMessages, encoded))
+	if cut {
+		span.SetAttributes(attribute.Bool(genai.AttrContentTruncated, true))
+	}
 }
 
 // requestModel is the model the request asks for: where the route's template declares
@@ -271,8 +316,9 @@ func (ec *PolicyExecutionContext) finishInferenceSpan(span trace.Span) {
 		span.SetAttributes(attribute.StringSlice(genai.AttrResponseFinishReasons, meta.FinishReasons))
 	}
 	if ec.upstreamStatus() >= 400 {
-		return // an error body carries no usage
+		return // an error body carries no usage or output
 	}
+	ec.recordOutputContent(span, body)
 	// Called only now, after every response policy ran: Get memoises its result in the
 	// shared context, so an earlier call would decide what llm-cost reads.
 	usage, err := llmusage.Get(ec.sharedCtx, body, ec.genaiRequestBody(), ec.resourcePath())
