@@ -70,6 +70,20 @@ export const useApiDocuments = (
   });
 };
 
+/** Every document's metadata, across all pages. */
+export const useAllApiDocuments = (
+  apiType: string,
+  apiId: string | undefined,
+  overrides: Overrides = {}
+) => {
+  const { org } = useApiScope(overrides);
+
+  return useQuery({
+    ...apiDocumentQueries.listAll(org!, apiType, apiId!),
+    enabled: Boolean(org && apiId),
+  });
+};
+
 /** Document metadata loaded a page at a time; call `fetchNextPage` to append the next one. */
 export const useApiDocumentPages = (
   apiType: string,

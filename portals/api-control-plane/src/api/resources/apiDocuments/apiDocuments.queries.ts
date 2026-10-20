@@ -55,12 +55,67 @@ export const nextDocumentsOffset = (last: ApiDocumentListResponse): number | und
   return last.list.length > 0 && next < total ? next : undefined;
 };
 
+/** The server's maximum page size. */
+const DOCUMENTS_PAGE_SIZE = 100;
+/** Bounds the fetch so a wrong `pagination.total` cannot make it request without end. */
+const DOCUMENTS_MAX_PAGES = 50;
+
+/**
+ * Reads the first page, then the rest in parallel, as one list. `pagination.total` stays the
+ * server's, so a list cut off at `DOCUMENTS_MAX_PAGES` still shows it is incomplete
+ * (`list.length < pagination.total`). Duplicates from a mid-fetch create are dropped.
+ */
+const fetchAllApiDocuments = async (
+  org: OrgScope,
+  apiType: string,
+  apiId: string,
+  signal: AbortSignal
+): Promise<ApiDocumentListResponse> => {
+  const fetchPage = (offset: number) =>
+    listApiDocuments(apiType, apiId, { limit: DOCUMENTS_PAGE_SIZE, offset }, { orgId: org, signal });
+
+  const first = await fetchPage(0);
+  const { total } = first.pagination;
+  // Step by what the server returned, in case it caps a page below the size asked for.
+  const step = first.list.length;
+  const extraPages = step > 0 ? Math.min(Math.ceil((total - step) / step), DOCUMENTS_MAX_PAGES - 1) : 0;
+  const rest = await Promise.all(
+    Array.from({ length: Math.max(extraPages, 0) }, (_, i) => fetchPage((i + 1) * step))
+  );
+
+  const documents: ApiDocumentListResponse['list'] = [];
+  const seen = new Set<string>();
+  for (const response of [first, ...rest]) {
+    for (const document of response.list) {
+      if (seen.has(document.id)) continue;
+      seen.add(document.id);
+      documents.push(document);
+    }
+  }
+
+  return {
+    list: documents,
+    count: documents.length,
+    pagination: { total, offset: 0, limit: documents.length },
+  };
+};
+
 export const apiDocumentQueries = {
   /** One explicit page — the overview's numbered pagination. */
   list: (org: OrgScope, apiType: string, apiId: string, query: ListApiDocumentsQuery = {}) =>
     queryOptions({
       queryKey: apiDocumentKeys.child(org, apiDocumentParentId(apiType, apiId), 'documents', query),
       queryFn: ({ signal }) => listApiDocuments(apiType, apiId, query, { orgId: org, signal }),
+      staleTime: staleTimes.standard,
+    }),
+
+  /** Every document of the API, across all pages, in the shape of a single list response. */
+  listAll: (org: OrgScope, apiType: string, apiId: string) =>
+    queryOptions({
+      queryKey: apiDocumentKeys.child(org, apiDocumentParentId(apiType, apiId), 'documents', {
+        pages: 'all',
+      }),
+      queryFn: ({ signal }) => fetchAllApiDocuments(org, apiType, apiId, signal),
       staleTime: staleTimes.standard,
     }),
 

@@ -24,6 +24,8 @@ import { Route, Routes } from 'react-router-dom';
 import { ApiScopeProvider } from '@/api/core/ApiScopeProvider';
 import { resetHttpClient } from '@/api/core/http';
 import { orgScope } from '@/api/core/queryKeys';
+import { apiDocumentQueries } from '@/api/resources/apiDocuments/apiDocuments.queries';
+import type { ApiDocumentListResponse } from '@/api/resources/apiDocuments/apiDocuments.endpoints';
 import { apiGatewayQueries } from '@/api/resources/restApis/apiGateways/apiGateways.queries';
 import type { RestApiGatewayListResponse } from '@/api/resources/restApis/apiGateways/apiGateways.endpoints';
 import { routes } from '@/routes/paths';
@@ -115,6 +117,7 @@ const PUBLICATION_DEFINITION_PATH = `${PUBLICATION_PATH}/definition`;
 const PUBLISH_PATH = `/api-portals/${PORTAL}/apis/rest-api/${API}/publish`;
 const UNPUBLISH_PATH = `/api-portals/${PORTAL}/apis/rest-api/${API}/unpublish`;
 const DEPRECATE_PATH = `/api-portals/${PORTAL}/apis/rest-api/${API}/deprecate`;
+const DOCS_PATH = `/apis/rest-api/${API}/docs`;
 const API_OPENAPI_PATH = `/rest-apis/${API}/openapi`;
 const GATEWAYS_PATH = `/rest-apis/${API}/gateways`;
 
@@ -327,17 +330,56 @@ describe('PortalPublishPage', () => {
     expect(await screen.findByText('Enter a full URL, for example https://api.example.com.')).toBeInTheDocument();
   });
 
-  it('disables Documentation and Landing Page for this alpha', async () => {
+  it('disables the Landing Page tab for this alpha', async () => {
     servePublicationState();
 
     renderPage();
 
     await screen.findByDisplayValue('Loan Management Service');
-    expect(screen.getByRole('tab', { name: 'Documentation' })).toBeDisabled();
     expect(screen.getByRole('tab', { name: 'Landing Page' })).toBeDisabled();
     expect(screen.getByRole('tab', { name: 'API Details' })).toBeEnabled();
     expect(screen.getByRole('tab', { name: 'Specification' })).toBeEnabled();
     expect(screen.getByRole('tab', { name: 'Subscription Plans' })).toBeEnabled();
+    expect(screen.getByRole('tab', { name: 'Documentation' })).toBeEnabled();
+  });
+
+  it('Documentation tab saves the selection as part of the draft, and reads it back from the publication in the published view', async () => {
+    servePublicationState({
+      draft: aPublicationDraftDetails({ docIds: [] }),
+      publication: aPublication({ docIds: ['guide'] }),
+    });
+    server.use(
+      collection(DOCS_PATH, [
+        { contentType: 'text/markdown', displayName: 'Getting started', id: 'guide', type: 'HowTo' },
+        { contentType: 'text/markdown', displayName: 'Common questions', id: 'faq', type: 'FAQ' },
+      ]),
+      mswHttp.get(
+        apiUrl(`${DOCS_PATH}/:docId/content`),
+        () => new HttpResponse('Body', { headers: { 'Content-Type': 'text/markdown' } }),
+      ),
+    );
+    const draftRequests = recorder();
+    server.use(
+      accepts('put', DRAFT_PATH, aPublicationDraftDetails(), { record: draftRequests }),
+      accepts('put', DRAFT_DEFINITION_PATH, undefined),
+    );
+
+    const { user } = renderPage();
+
+    await screen.findByDisplayValue('Loan Management Service');
+    await showDraft(user);
+    await user.click(screen.getByRole('tab', { name: 'Documentation' }));
+    await user.click(await screen.findByRole('checkbox', { name: 'Common questions' }));
+    await user.click(screen.getByRole('button', { name: 'Save Draft' }));
+
+    await waitFor(() => expect(draftRequests.count()).toBe(1));
+    expect(JSON.parse(draftRequests.last()?.body ?? '{}')).toMatchObject({ docIds: ['faq'] });
+
+    await user.click(screen.getByRole('button', { name: 'Published' }));
+
+    expect(await screen.findByText('Getting started')).toBeInTheDocument();
+    expect(screen.queryByText('Common questions')).not.toBeInTheDocument();
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
   });
 
   it('Subscription Plans tab saves the selection as part of the draft, and reads it back from the publication in the published view', async () => {
@@ -471,6 +513,126 @@ describe('PortalPublishPage', () => {
     await user.click(screen.getByRole('button', { name: 'Save Draft' }));
     await waitFor(() => expect(draftRequests.count()).toBe(1));
     expect(JSON.parse(draftRequests.last()?.body ?? '{}')).toMatchObject({ subscriptionPlanIds: ['gold'] });
+  });
+
+  it('drops a selected document that no longer exists, says so, and does not send it', async () => {
+    servePublicationState({ draft: aPublicationDraftDetails({ docIds: ['guide', 'deleted'] }) });
+    server.use(
+      collection(DOCS_PATH, [{ contentType: 'text/markdown', displayName: 'Getting started', id: 'guide', type: 'HowTo' }]),
+    );
+    const draftRequests = recorder();
+    server.use(
+      accepts('put', DRAFT_PATH, aPublicationDraftDetails(), { record: draftRequests }),
+      accepts('put', DRAFT_DEFINITION_PATH, undefined),
+    );
+
+    const { user } = renderPage();
+
+    await screen.findByDisplayValue('Loan Management Service');
+    expect(
+      await screen.findByText('A selected document no longer exists and was removed from the selection.'),
+    ).toBeInTheDocument();
+
+    // It was never an edit of the user's, so nothing is left to save until they make one.
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Save Draft' })).toBeDisabled());
+    expect(screen.queryByText('Unsaved changes', { exact: false })).not.toBeInTheDocument();
+    await makeEdit(user);
+    await user.click(screen.getByRole('button', { name: 'Save Draft' }));
+    await waitFor(() => expect(draftRequests.count()).toBe(1));
+    expect(JSON.parse(draftRequests.last()?.body ?? '{}')).toMatchObject({ docIds: ['guide'] });
+  });
+
+  it('keeps a selected document it cannot check because the document list was cut short', async () => {
+    servePublicationState({ draft: aPublicationDraftDetails({ docIds: ['doc-0', 'beyond'] }) });
+    server.use(
+      mswHttp.get(apiUrl(DOCS_PATH), ({ request }) => {
+        const offset = Number(new URL(request.url).searchParams.get('offset') ?? 0);
+        const list = Array.from({ length: 100 }, (_, i) => ({
+          contentType: 'text/markdown',
+          displayName: `Doc ${offset + i}`,
+          id: `doc-${offset + i}`,
+          type: 'HowTo',
+        }));
+        return HttpResponse.json({ count: list.length, list, pagination: { limit: 100, offset, total: 6000 } });
+      }),
+    );
+    const draftRequests = recorder();
+    server.use(
+      accepts('put', DRAFT_PATH, aPublicationDraftDetails(), { record: draftRequests }),
+      accepts('put', DRAFT_DEFINITION_PATH, undefined),
+    );
+
+    const { user } = renderPage();
+
+    await screen.findByDisplayValue('Loan Management Service');
+    // Past the 50 pages read, so the list cannot say whether it was deleted.
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(
+      screen.queryByText('A selected document no longer exists and was removed from the selection.'),
+    ).not.toBeInTheDocument();
+    await makeEdit(user);
+    await user.click(screen.getByRole('button', { name: 'Save Draft' }));
+    await waitFor(() => expect(draftRequests.count()).toBe(1));
+    expect(JSON.parse(draftRequests.last()?.body ?? '{}')).toMatchObject({ docIds: ['doc-0', 'beyond'] });
+  });
+
+  it('keeps a selected document that an older cached document list predates, once the list is read again', async () => {
+    servePublicationState({ draft: aPublicationDraftDetails({ docIds: ['guide', 'added'] }) });
+    server.use(
+      collection(DOCS_PATH, [
+        { contentType: 'text/markdown', displayName: 'Getting started', id: 'guide', type: 'HowTo' },
+        { contentType: 'text/markdown', displayName: 'Added elsewhere', id: 'added', type: 'HowTo' },
+      ]),
+    );
+    const draftRequests = recorder();
+    server.use(
+      accepts('put', DRAFT_PATH, aPublicationDraftDetails(), { record: draftRequests }),
+      accepts('put', DRAFT_DEFINITION_PATH, undefined),
+    );
+    const queryClient = makeTestQueryClient();
+    queryClient.setQueryData(
+      apiDocumentQueries.listAll(orgScope(ORG)!, 'rest-api', API).queryKey,
+      {
+        count: 1,
+        list: [{ contentType: 'text/markdown', displayName: 'Getting started', id: 'guide', type: 'HowTo' }],
+        pagination: { limit: 1, offset: 0, total: 1 },
+      } as ApiDocumentListResponse,
+      { updatedAt: 0 },
+    );
+
+    const { user } = renderPage(queryClient);
+
+    await screen.findByDisplayValue('Loan Management Service');
+    await user.click(screen.getByRole('tab', { name: 'Documentation' }));
+    expect(await screen.findByText('Added elsewhere')).toBeInTheDocument();
+
+    expect(
+      screen.queryByText('A selected document no longer exists and was removed from the selection.'),
+    ).not.toBeInTheDocument();
+    await user.click(screen.getByRole('tab', { name: 'API Details' }));
+    await makeEdit(user);
+    await user.click(screen.getByRole('button', { name: 'Save Draft' }));
+    await waitFor(() => expect(draftRequests.count()).toBe(1));
+    expect(JSON.parse(draftRequests.last()?.body ?? '{}')).toMatchObject({ docIds: ['guide', 'added'] });
+  });
+
+  it("sends the draft's selected documents with every save, so saving other fields keeps them", async () => {
+    servePublicationState({ draft: aPublicationDraftDetails({ docIds: ['guide'] }) });
+    const draftRequests = recorder();
+    server.use(
+      collection(DOCS_PATH, [{ contentType: 'text/markdown', displayName: 'Getting started', id: 'guide', type: 'HowTo' }]),
+      accepts('put', DRAFT_PATH, aPublicationDraftDetails(), { record: draftRequests }),
+      accepts('put', DRAFT_DEFINITION_PATH, undefined),
+    );
+
+    const { user } = renderPage();
+
+    await screen.findByDisplayValue(API_NAME);
+    await makeEdit(user);
+    await user.click(screen.getByRole('button', { name: 'Save Draft' }));
+
+    await waitFor(() => expect(draftRequests.count()).toBe(1));
+    expect(JSON.parse(draftRequests.last()?.body ?? '{}')).toMatchObject({ docIds: ['guide'] });
   });
 
   it('lists the saved inactive plan first, then the saved selection, then the other plans, and keeps that order when a plan is selected', async () => {
@@ -1205,6 +1367,25 @@ describe('PortalPublishPage', () => {
     );
     expect(screen.getByRole('button', { name: 'Publish' })).toBeEnabled();
     expect(screen.queryByText('Published to acme-portal.')).not.toBeInTheDocument();
+  });
+
+  it('stays on the Documentation tab when Publish fails validation', async () => {
+    servePublicationState();
+    server.use(
+      collection(DOCS_PATH, []),
+      accepts('put', DRAFT_PATH, aPublicationDraftDetails()),
+      accepts('put', DRAFT_DEFINITION_PATH, undefined),
+      failure('post', PUBLISH_PATH, 400, 'PUBLICATION_VALIDATION_FAILED'),
+    );
+
+    const { user } = renderPage();
+
+    await screen.findByDisplayValue('Loan Management Service');
+    await user.click(screen.getByRole('tab', { name: 'Documentation' }));
+    await user.click(screen.getByRole('button', { name: 'Publish' }));
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Publish' })).toBeEnabled());
+    expect(screen.getByRole('tab', { name: 'Documentation' })).toHaveAttribute('aria-selected', 'true');
   });
 
   it('does not switch tabs when Publish fails for a reason unrelated to the definition', async () => {

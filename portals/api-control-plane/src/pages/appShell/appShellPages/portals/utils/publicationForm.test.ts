@@ -24,6 +24,7 @@ import {
   draftFormValuesToInput,
   emptyDraftFormValues,
   resolveDraftFormValues,
+  sameSelection,
 } from './publicationForm';
 
 const api = aRestApi({
@@ -59,7 +60,17 @@ describe('resolveDraftFormValues', () => {
       version: '2.0.0',
       agentVisibility: 'VISIBLE',
       subscriptionPlanIds: [],
+      docIds: [],
     });
+  });
+
+  it('reads the selected documents from the draft, then the publication', () => {
+    const draft = aPublicationDraftDetails({ docIds: ['guide'] });
+    const publication = aPublication({ docIds: ['faq'] });
+
+    expect(resolveDraftFormValues(draft, publication, api).docIds).toEqual(['guide']);
+    expect(resolveDraftFormValues(undefined, publication, api).docIds).toEqual(['faq']);
+    expect(resolveDraftFormValues(aPublicationDraftDetails({ docIds: undefined }), undefined, api).docIds).toEqual([]);
   });
 
   it('defaults the Production URL to the given gateway URL', () => {
@@ -88,6 +99,22 @@ describe('draftFormValuesToInput', () => {
     expect(draftFormValuesToInput({ ...emptyDraftFormValues, agentVisibility: 'HIDDEN' })).toMatchObject({
       agentVisibility: 'HIDDEN',
     });
+  });
+});
+
+describe('draftFormValuesToInput documents', () => {
+  it('always sends the selected documents, an empty selection included', () => {
+    expect(draftFormValuesToInput({ ...emptyDraftFormValues, docIds: ['guide'] }).docIds).toEqual(['guide']);
+    expect(draftFormValuesToInput(emptyDraftFormValues).docIds).toEqual([]);
+  });
+});
+
+describe('sameSelection', () => {
+  it('ignores order and compares membership', () => {
+    expect(sameSelection(['a', 'b'], ['b', 'a'])).toBe(true);
+    expect(sameSelection(['a'], ['a', 'b'])).toBe(false);
+    expect(sameSelection(['a', 'b'], ['a', 'c'])).toBe(false);
+    expect(sameSelection([], [])).toBe(true);
   });
 });
 

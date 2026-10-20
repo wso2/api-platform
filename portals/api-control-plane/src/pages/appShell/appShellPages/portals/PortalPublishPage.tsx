@@ -36,12 +36,14 @@ import { useFillScrollArea } from '@/hooks/useFillScrollArea';
 import { useFrozenWhile } from '@/hooks/useFrozenWhile';
 import { useFormatters } from '@/i18n/useFormatters';
 import { useNotifications } from '@/components/Notifications';
+import { useAllApiDocuments } from '@/api/resources/apiDocuments';
 import { useAllSubscriptionPlans } from '@/api/resources/subscriptionPlans';
 import { LoadingState } from '@/components/StateViews';
 import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
 import { parseGraphQLSdl } from '../apis/create/utils/graphqlSchema';
 import { parseSpecText } from '../apis/create/utils/specText';
 import { ApiDetailsTab } from './components/ApiDetailsTab';
+import { DocumentsTab } from './components/DocumentsTab';
 import { PublicationLoadError } from './components/PublicationLoadError';
 import { PublicationVersionCard, type PublicationVersionTone } from './components/PublicationVersionCard';
 import { PublicationVersionToggle } from './components/PublicationVersionToggle';
@@ -56,6 +58,7 @@ import {
   draftFormValuesToInput,
   emptyDraftFormValues,
   resolveDraftFormValues,
+  sameSelection,
   validateDraftFormValues,
   type DraftFormField,
   type DraftFormValues,
@@ -165,6 +168,11 @@ const messages = defineMessages({
     defaultMessage: 'A selected subscription plan no longer exists and was removed from the selection.',
     description: 'Notice when a plan deleted elsewhere is dropped from the selected plans.',
   },
+  removedDocuments: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.removedDocuments',
+    defaultMessage: 'A selected document no longer exists and was removed from the selection.',
+    description: 'Notice when a document deleted elsewhere is dropped from the selected documents.',
+  },
   published: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.published',
     defaultMessage: 'Published to {portalName}.',
@@ -243,16 +251,10 @@ const rethrowUnreported = (error: unknown): void => {
   if (!isApiError(error)) throw error;
 };
 
-/** The selection is a set: the server ignores order, and a plan toggled off and on moves to the end. */
-const samePlans = (a: string[], b: string[]) => {
-  const members = new Set(a);
-  return members.size === new Set(b).size && b.every((id) => members.has(id));
-};
-
 /** The fields that show a validation message. */
 const FORM_FIELDS: DraftFormField[] = ['displayName', 'version', 'productionUrl', 'sandboxUrl'];
 
-type PublishTab = 'details' | 'specification' | 'subscriptionPlans';
+type PublishTab = 'details' | 'specification' | 'subscriptionPlans' | 'documentations';
 
 /** Which action is currently in flight, so the right button (and only that one) shows busy. */
 type PendingAction = 'idle' | 'saving' | 'publishing' | 'unpublishing' | 'deprecating';
@@ -260,9 +262,9 @@ type PendingAction = 'idle' | 'saving' | 'publishing' | 'unpublishing' | 'deprec
 /**
  * The publish/unpublish/deprecate flow for one API on one API Portal.
  *
- * "API Details", "Specification" and "Subscription Plans" are editable; the
- * other tabs still render disabled. Save Draft and Publish each enforce their
- * own rule: Save Draft always writes `.../draft`, and writes
+ * "API Details", "Specification", "Subscription Plans" and "Documentation" are
+ * editable; the Landing Page tab still renders disabled. Save Draft and Publish
+ * each enforce their own rule: Save Draft always writes `.../draft`, and writes
  * `.../draft/definition` too only when the specification text parses,
  * reporting honestly when it couldn't; Publish requires both saves to succeed
  * before it calls `.../publish`, since the server's publish takes no body and
@@ -369,6 +371,24 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
     notify(intl.formatMessage(messages.removedPlans), 'warning');
   }, [initialized, intl, notify, plansQuery.data, plansQuery.isSuccess, values.subscriptionPlanIds]);
 
+  // A document deleted elsewhere has no checkbox to clear but would still be submitted, so drop it
+  // and say so. Read only while a selection is held; the Documentation tab shares this query.
+  // Not while it is being read again: an older cached list may predate a document added since.
+  const documentsQuery = useAllApiDocuments(apiType, values.docIds.length > 0 ? apiHandler : undefined);
+  useEffect(() => {
+    if (!initialized || !documentsQuery.isSuccess || documentsQuery.isFetching) return;
+    // A list cut short can't tell a deleted document from one it never loaded.
+    if (documentsQuery.data.list.length < documentsQuery.data.pagination.total) return;
+    const known = new Set(documentsQuery.data.list.map((doc) => doc.id));
+    const isKnown = (id: string) => known.has(id);
+    if (values.docIds.every(isKnown)) return;
+    const withoutUnknown = (current: DraftFormValues) => ({ ...current, docIds: current.docIds.filter(isKnown) });
+    setValues(withoutUnknown);
+    // The server dropped it from the saved draft too, so this isn't an edit to save.
+    setSaved((current) => ({ ...current, values: withoutUnknown(current.values) }));
+    notify(intl.formatMessage(messages.removedDocuments), 'warning');
+  }, [initialized, intl, notify, documentsQuery.data, documentsQuery.isFetching, documentsQuery.isSuccess, values.docIds]);
+
   if (data.isLoading) {
     return <LoadingState label={intl.formatMessage(messages.loading)} />;
   }
@@ -391,11 +411,13 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
   const showingPublished = view === 'published';
   const hasUnsavedChanges =
     definitionText !== saved.definitionText ||
-    (Object.keys(values) as (keyof DraftFormValues)[]).some((field) =>
-      field === 'subscriptionPlanIds'
-        ? !samePlans(values.subscriptionPlanIds, saved.values.subscriptionPlanIds)
-        : values[field] !== saved.values[field],
-    );
+    (Object.keys(values) as (keyof DraftFormValues)[]).some((field) => {
+      const current = values[field];
+      const savedValue = saved.values[field];
+      return Array.isArray(current) && Array.isArray(savedValue)
+        ? !sameSelection(current, savedValue)
+        : current !== savedValue;
+    });
   const errors = validateDraftFormValues(values);
   const errorFor = (field: DraftFormField) => (touched[field] ? errors[field] : undefined);
   const formInvalid = Object.keys(errors).length > 0;
@@ -553,9 +575,9 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
       try {
         await publishMutation.mutateAsync({ apiPortalId, apiType, apiId: apiHandler });
       } catch (error) {
-        // The message itself is already reported by the global snackbar;
-        // this only sends the user to where they'd fix it.
-        if (isErrorCode(error, 'PUBLICATION_VALIDATION_FAILED')) setTab('specification');
+        // The message is already reported by the global snackbar; this only sends the
+        // user to the definition, unless they are already on the Documentation tab.
+        if (isErrorCode(error, 'PUBLICATION_VALIDATION_FAILED') && tab !== 'documentations') setTab('specification');
         throw error;
       }
       notify(intl.formatMessage(messages.published, { portalName }), 'success');
@@ -603,6 +625,9 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
     if (showingPublished) {
       if (tab === 'details') return <ApiDetailsTab readOnly values={publishedValues} />;
       if (tab === 'subscriptionPlans') return <SubscriptionPlansTab readOnly values={publishedValues} />;
+      if (tab === 'documentations') {
+        return <DocumentsTab apiHandle={apiHandler} apiType={apiType} readOnly values={publishedValues} />;
+      }
       return (
         <PublishedSpecificationTab
           definition={data.publishedDefinition.definition}
@@ -634,6 +659,17 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
           disabled={pendingAction !== 'idle'}
           onChange={handleChange}
           savedPlanIds={savedPlanIds}
+          values={values}
+        />
+      );
+    }
+    if (tab === 'documentations') {
+      return (
+        <DocumentsTab
+          apiHandle={apiHandler}
+          apiType={apiType}
+          disabled={pendingAction !== 'idle'}
+          onChange={handleChange}
           values={values}
         />
       );
@@ -687,7 +723,7 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
               <Tab label={intl.formatMessage(messages.tabDetails)} value="details" />
               <Tab label={intl.formatMessage(messages.tabSpecification)} value="specification" />
               <Tab label={intl.formatMessage(messages.tabSubscriptionPlans)} value="subscriptionPlans" />
-              <Tab disabled label={intl.formatMessage(messages.tabDocumentations)} value="documentations" />
+              <Tab label={intl.formatMessage(messages.tabDocumentations)} value="documentations" />
               <Tab disabled label={intl.formatMessage(messages.tabLandingPage)} value="landingPage" />
             </Tabs>
             <PublicationVersionToggle

@@ -57,6 +57,7 @@ describe('apiDocumentQueries key shape', () => {
     const parentPrefix = apiDocumentKeys.detail(org, apiDocumentParentId('rest-api', 'orders'));
 
     const list = apiDocumentQueries.list(org, 'rest-api', 'orders', { limit: 20 }).queryKey;
+    const listAll = apiDocumentQueries.listAll(org, 'rest-api', 'orders').queryKey;
     const pages = apiDocumentQueries.pages(org, 'rest-api', 'orders', { type: 'HowTo' })
       .queryKey;
     const detail = apiDocumentQueries.detail(org, 'rest-api', 'orders', 'getting-started')
@@ -64,19 +65,20 @@ describe('apiDocumentQueries key shape', () => {
     const content = apiDocumentQueries.content(org, 'rest-api', 'orders', 'getting-started')
       .queryKey;
 
-    for (const key of [list, pages, detail, content]) {
+    for (const key of [list, listAll, pages, detail, content]) {
       expect(key.slice(0, parentPrefix.length)).toEqual([...parentPrefix]);
     }
   });
 
   it('produces structurally distinct keys for each variant', () => {
     const list = apiDocumentQueries.list(org, 'rest-api', 'orders').queryKey;
+    const listAll = apiDocumentQueries.listAll(org, 'rest-api', 'orders').queryKey;
     const pages = apiDocumentQueries.pages(org, 'rest-api', 'orders').queryKey;
     const detail = apiDocumentQueries.detail(org, 'rest-api', 'orders', 'a').queryKey;
     const content = apiDocumentQueries.content(org, 'rest-api', 'orders', 'a').queryKey;
 
-    const serialised = new Set([list, pages, detail, content].map((k) => JSON.stringify(k)));
-    expect(serialised.size).toBe(4);
+    const serialised = new Set([list, listAll, pages, detail, content].map((k) => JSON.stringify(k)));
+    expect(serialised.size).toBe(5);
   });
 
   it('two detail requests for the same doc produce equal keys so React Query dedupes', () => {
