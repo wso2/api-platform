@@ -850,14 +850,16 @@ function WorkspaceRoutes({ extensions = [] }: AppProps) {
                     </WithPageBoundary>
                   }
                 />
-                <Route
-                  path="service-accounts"
-                  element={
-                    <WithPageBoundary>
-                      <ServiceAccountsList />
-                    </WithPageBoundary>
-                  }
-                />
+                {isFeatureEnabled('service-accounts') && (
+                  <Route
+                    path="service-accounts"
+                    element={
+                      <WithPageBoundary>
+                        <ServiceAccountsList />
+                      </WithPageBoundary>
+                    }
+                  />
+                )}
               </Route>
             </Route>
             {extensionRoutes}
