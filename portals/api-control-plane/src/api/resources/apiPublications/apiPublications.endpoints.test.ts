@@ -23,19 +23,24 @@ import { apiUrl, failure, recorder, type Recorder } from '../../../test/msw';
 import { server } from '../../../test/server';
 import { http, resetHttpClient } from '../../core/http';
 import {
+  getApiPublicationDraftLandingPage,
   getApiPublicationDraftThumbnail,
+  getApiPublicationLandingPage,
   getApiPublicationThumbnail,
+  saveApiPublicationDraftLandingPage,
   saveApiPublicationDraftThumbnail,
 } from './apiPublications.endpoints';
 
 /**
  * Contract tests for the thumbnail reads on one API's draft and publication, which return raw
- * bytes (a Blob with the stored content type). The upload is checked at the http client, as jsdom
- * cannot send multipart.
+ * bytes (a Blob with the stored content type), and for the landing page, which is Markdown text
+ * both ways. The thumbnail upload is checked at the http client, as jsdom cannot send multipart.
  */
 
 const DRAFT_THUMBNAIL = '/api-portals/acme-portal/apis/rest-api/orders-api/draft/thumbnail';
 const PUBLICATION_THUMBNAIL = '/api-portals/acme-portal/apis/rest-api/orders-api/publication/thumbnail';
+const DRAFT_LANDING_PAGE = '/api-portals/acme-portal/apis/rest-api/orders-api/draft/landing-page';
+const PUBLICATION_LANDING_PAGE = '/api-portals/acme-portal/apis/rest-api/orders-api/publication/landing-page';
 const PNG_BYTES = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
 let requests: Recorder;
@@ -108,5 +113,49 @@ describe('saveApiPublicationDraftThumbnail', () => {
     } finally {
       put.mockRestore();
     }
+  });
+});
+
+describe('landing page', () => {
+  const serveMarkdown = (method: 'get' | 'put', path: string, body?: string) =>
+    mswHttp[method](apiUrl(path), async ({ request }) => {
+      await requests.capture(request);
+      return body === undefined
+        ? new HttpResponse(null, { status: 204 })
+        : new HttpResponse(body, { headers: { 'Content-Type': 'text/markdown' } });
+    });
+
+  it('reads the draft and the published landing page as text', async () => {
+    server.use(
+      serveMarkdown('get', DRAFT_LANDING_PAGE, '# Draft'),
+      serveMarkdown('get', PUBLICATION_LANDING_PAGE, '# Published'),
+    );
+
+    await expect(getApiPublicationDraftLandingPage('acme-portal', 'rest-api', 'orders-api')).resolves.toEqual({
+      contentType: 'text/markdown',
+      text: '# Draft',
+    });
+    await expect(getApiPublicationLandingPage('acme-portal', 'rest-api', 'orders-api')).resolves.toMatchObject({
+      text: '# Published',
+    });
+  });
+
+  it('PUTs the Markdown as it is, labelled text/markdown', async () => {
+    server.use(serveMarkdown('put', DRAFT_LANDING_PAGE));
+
+    await saveApiPublicationDraftLandingPage('acme-portal', 'rest-api', 'orders-api', '# Orders\n\n- **GET** /orders');
+
+    const call = requests.last();
+    expect(call?.url.pathname).toBe(`/api/v0.9${DRAFT_LANDING_PAGE}`);
+    expect(call?.headers.get('content-type')).toContain('text/markdown');
+    expect(call?.body).toBe('# Orders\n\n- **GET** /orders');
+  });
+
+  it('surfaces a 404 as ApiError, since a page the flag does not announce is not read', async () => {
+    server.use(failure('get', DRAFT_LANDING_PAGE, 404, 'NOT_FOUND'));
+
+    await expect(
+      getApiPublicationDraftLandingPage('acme-portal', 'rest-api', 'orders-api'),
+    ).rejects.toMatchObject({ status: 404 });
   });
 });

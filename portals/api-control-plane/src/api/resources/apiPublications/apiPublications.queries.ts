@@ -25,7 +25,9 @@ import {
   getApiPublicationDefinition,
   getApiPublicationDraft,
   getApiPublicationDraftDefinition,
+  getApiPublicationDraftLandingPage,
   getApiPublicationDraftThumbnail,
+  getApiPublicationLandingPage,
   getApiPublicationThumbnail,
   listApiPublications,
   type ListApiPublicationsQuery,
@@ -54,6 +56,14 @@ export const apiPublicationQueries = {
       queryKey: apiPublicationKeys.child(org, apiId, 'draftDefinition', { apiPortalId, apiType }),
       queryFn: ({ signal }) =>
         getApiPublicationDraftDefinition(apiPortalId, apiType, apiId, { orgId: org, signal }),
+      staleTime: staleTimes.standard,
+    }),
+
+  draftLandingPage: (org: OrgScope, apiPortalId: string, apiType: string, apiId: string) =>
+    queryOptions({
+      queryKey: apiPublicationKeys.child(org, apiId, 'draftLandingPage', { apiPortalId, apiType }),
+      queryFn: ({ signal }) =>
+        getApiPublicationDraftLandingPage(apiPortalId, apiType, apiId, { orgId: org, signal }),
       staleTime: staleTimes.standard,
     }),
 
@@ -89,6 +99,14 @@ export const apiPublicationQueries = {
       queryKey: apiPublicationKeys.child(org, apiId, 'publicationThumbnail', { apiPortalId, apiType }),
       queryFn: ({ signal }) =>
         getApiPublicationThumbnail(apiPortalId, apiType, apiId, { orgId: org, signal }),
+      staleTime: staleTimes.standard,
+    }),
+
+  publicationLandingPage: (org: OrgScope, apiPortalId: string, apiType: string, apiId: string) =>
+    queryOptions({
+      queryKey: apiPublicationKeys.child(org, apiId, 'publicationLandingPage', { apiPortalId, apiType }),
+      queryFn: ({ signal }) =>
+        getApiPublicationLandingPage(apiPortalId, apiType, apiId, { orgId: org, signal }),
       staleTime: staleTimes.standard,
     }),
 };

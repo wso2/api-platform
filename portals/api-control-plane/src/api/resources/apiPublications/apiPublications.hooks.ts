@@ -28,6 +28,7 @@ import {
   publishApiToApiPortal,
   saveApiPublicationDraft,
   saveApiPublicationDraftDefinition,
+  saveApiPublicationDraftLandingPage,
   saveApiPublicationDraftThumbnail,
   unpublishApiFromApiPortal,
   type ListApiPublicationsQuery,
@@ -103,6 +104,21 @@ export const useApiPublicationDraftDefinition = (
   });
 };
 
+/** The draft's landing page. Pass `undefined` for `apiId` unless `hasLandingPage` is set; it 404s otherwise. */
+export const useApiPublicationDraftLandingPage = (
+  apiPortalId: string | undefined,
+  apiType: string | undefined,
+  apiId: string | undefined,
+  overrides: { orgId?: string } = {},
+) => {
+  const { org } = useApiScope(overrides);
+
+  return useQuery({
+    ...apiPublicationQueries.draftLandingPage(org!, apiPortalId!, apiType!, apiId!),
+    enabled: Boolean(org && apiPortalId && apiType && apiId),
+  });
+};
+
 /** The draft's thumbnail. Pass `undefined` for `apiId` unless `hasThumbnail` is set; it 404s otherwise. */
 export const useApiPublicationDraftThumbnail = (
   apiPortalId: string | undefined,
@@ -129,6 +145,21 @@ export const useApiPublicationThumbnail = (
 
   return useQuery({
     ...apiPublicationQueries.publicationThumbnail(org!, apiPortalId!, apiType!, apiId!),
+    enabled: Boolean(org && apiPortalId && apiType && apiId),
+  });
+};
+
+/** The live landing page. Pass `undefined` for `apiId` unless `hasLandingPage` is set; it 404s otherwise. */
+export const useApiPublicationLandingPage = (
+  apiPortalId: string | undefined,
+  apiType: string | undefined,
+  apiId: string | undefined,
+  overrides: { orgId?: string } = {},
+) => {
+  const { org } = useApiScope(overrides);
+
+  return useQuery({
+    ...apiPublicationQueries.publicationLandingPage(org!, apiPortalId!, apiType!, apiId!),
     enabled: Boolean(org && apiPortalId && apiType && apiId),
   });
 };
@@ -255,6 +286,24 @@ export const useSaveApiPublicationDraftDefinition = (
     meta: overrides.handlesErrors ? HANDLED_LOCALLY : undefined,
     mutationFn: ({ apiPortalId, apiType, apiId, body }) =>
       saveApiPublicationDraftDefinition(apiPortalId, apiType, apiId, body, { orgId }),
+    onSuccess: () => cache.markStale('none'),
+  });
+};
+
+export const useSaveApiPublicationDraftLandingPage = (
+  overrides: { handlesErrors?: boolean; orgId?: string } = {},
+) => {
+  const { orgId } = useApiScope(overrides);
+  const cache = useApiPublicationCache(orgId);
+
+  return useMutation<
+    void,
+    ApiError,
+    { apiPortalId: string; apiType: string; apiId: string; markdown: string }
+  >({
+    meta: overrides.handlesErrors ? HANDLED_LOCALLY : undefined,
+    mutationFn: ({ apiPortalId, apiType, apiId, markdown }) =>
+      saveApiPublicationDraftLandingPage(apiPortalId, apiType, apiId, markdown, { orgId }),
     onSuccess: () => cache.markStale('none'),
   });
 };
