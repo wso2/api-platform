@@ -467,6 +467,20 @@ blocks:
         tags: "gateway-version>1.2.0"
         features:
           - features/gateway/core/subscription_plan_management.feature
+      # The ap CLI built from this checkout, driving the gateway through its management and
+      # admin APIs. The CLI follows the current contracts, so it is not run against 1.1.0.
+      - name: ap-cli-gateway
+        tags: "gateway-version>1.1.0"
+        features:
+          - features/cli/gateway/management.feature
+          - features/cli/gateway/apply.feature
+          - features/cli/gateway/rest_api.feature
+          - features/cli/gateway/mcp.feature
+          - features/cli/gateway/image_build.feature
+      - name: ap-cli-subscription
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/cli/gateway/subscription.feature
       - name: api-with-policies
         features:
           - features/gateway/core/api_with_policies.feature

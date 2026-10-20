@@ -46,6 +46,7 @@ ap gateway subscription create -f subscription.json
 #   metadata:
 #     name: petstore-acme-bronze
 #   spec:
+#     externalRefId: acme-petstore-sub-01   # optional; used as the subscription ID
 #     apiId: petstore-api-v1.0
 #     subscriptionPlanId: bronze-1k-per-min
 #     status: ACTIVE
@@ -58,6 +59,7 @@ var createCmd = &cobra.Command{
 	Use:   CreateCmdLiteral,
 	Short: "Create a subscription on the gateway",
 	Long: "Creates a new subscription from a Subscription custom resource file (YAML or JSON). The resource spec is sent to the gateway management API. " +
+		"Set spec.externalRefId to use your own reference ID as the subscription ID instead of a gateway-generated one. " +
 		"spec.subscriptionToken must be a plain string; secret references (valueFrom) are an operator-only feature and are not resolved by the CLI.",
 	Example: CreateCmdExample,
 	Run: func(cmd *cobra.Command, args []string) {
@@ -86,6 +88,11 @@ func runCreateCommand(cmd *cobra.Command) error {
 
 	if apiID, ok := cr.Spec["apiId"].(string); !ok || strings.TrimSpace(apiID) == "" {
 		return fmt.Errorf("invalid %s: spec.apiId is required", kindSubscription)
+	}
+	if ref, present := cr.Spec["externalRefId"]; present {
+		if _, ok := ref.(string); !ok {
+			return fmt.Errorf("invalid %s: spec.externalRefId must be a string", kindSubscription)
+		}
 	}
 	if token, present := cr.Spec["subscriptionToken"]; present {
 		if _, ok := token.(string); !ok {

@@ -16,7 +16,7 @@
  * under the License.
  */
 
-package aiworkspacecli
+package apcli
 
 import (
 	"bytes"
@@ -34,8 +34,8 @@ import (
 )
 
 const (
-	// envCLIBinary overrides the location of the ap binary under test.
-	envCLIBinary = "AP_CLI_BINARY"
+	// EnvBinary overrides the location of the ap binary under test.
+	EnvBinary = "AP_CLI_BINARY"
 
 	// commandTimeout bounds one ap invocation.
 	commandTimeout = 60 * time.Second
@@ -48,31 +48,38 @@ const (
 // the CLI created has been deleted.
 var scratchKind = cleanup.Kind{Name: "ap-cli-scratch", Order: 200}
 
-// cliResult captures one ap invocation.
-type cliResult struct {
-	stdout string
-	stderr string
-	exit   int
+// Result captures one ap invocation.
+type Result struct {
+	Stdout string
+	Stderr string
+	Exit   int
 }
 
-func (r cliResult) combined() string { return r.stdout + r.stderr }
+// Combined returns stdout followed by stderr.
+func (r Result) Combined() string { return r.Stdout + r.Stderr }
 
-// cli runs the ap binary with an isolated HOME, so its configuration never touches the
-// developer's real ~/.wso2ap, and a scratch workspace where projects are scaffolded.
-type cli struct {
+// Session runs the ap binary with an isolated HOME, so its configuration never touches the
+// developer's real ~/.wso2ap, and from a scratch workspace that relative paths resolve against.
+type Session struct {
 	bin       string
 	home      string
 	workspace string
 }
 
-// resolveBinary locates the ap binary: AP_CLI_BINARY when set, otherwise the build output
+// Workspace returns the directory ap runs from.
+func (s *Session) Workspace() string { return s.workspace }
+
+// Home returns the HOME directory ap keeps its configuration under.
+func (s *Session) Home() string { return s.home }
+
+// ResolveBinary locates the ap binary: AP_CLI_BINARY when set, otherwise the build output
 // of 'make -C cli/src build-skip-tests' in this checkout.
-func resolveBinary() (string, error) {
-	bin := os.Getenv(envCLIBinary)
+func ResolveBinary() (string, error) {
+	bin := os.Getenv(EnvBinary)
 	if bin == "" {
 		root, ok := shared.RepoRootFromCallerFile()
 		if !ok {
-			return "", fmt.Errorf("cannot locate the repository root; set %s or %s", envCLIBinary, buildHint)
+			return "", fmt.Errorf("cannot locate the repository root; set %s or %s", EnvBinary, buildHint)
 		}
 		bin = filepath.Join(root, "cli", "src", "build", "ap")
 	}
@@ -90,19 +97,19 @@ func resolveBinary() (string, error) {
 	return bin, nil
 }
 
-// newCLI creates the isolated HOME and workspace and registers them for cleanup, so a failing
-// scenario still removes them.
-func newCLI(ctx context.Context, bin string) (*cli, error) {
-	home, err := os.MkdirTemp("", "aiwscli-home-*")
+// NewSession creates the isolated HOME and workspace and registers them for cleanup, so a
+// failing scenario still removes them.
+func NewSession(ctx context.Context, bin string) (*Session, error) {
+	home, err := os.MkdirTemp("", "apcli-home-*")
 	if err != nil {
 		return nil, fmt.Errorf("creating the CLI home: %w", err)
 	}
-	workspace, err := os.MkdirTemp("", "aiwscli-work-*")
+	workspace, err := os.MkdirTemp("", "apcli-work-*")
 	if err != nil {
 		_ = os.RemoveAll(home)
 		return nil, fmt.Errorf("creating the CLI workspace: %w", err)
 	}
-	c := &cli{bin: bin, home: home, workspace: workspace}
+	s := &Session{bin: bin, home: home, workspace: workspace}
 	for _, dir := range []string{home, workspace} {
 		if err := registerScratch(ctx, dir); err != nil {
 			_ = os.RemoveAll(home)
@@ -110,7 +117,7 @@ func newCLI(ctx context.Context, bin string) (*cli, error) {
 			return nil, err
 		}
 	}
-	return c, nil
+	return s, nil
 }
 
 func registerScratch(ctx context.Context, dir string) error {
@@ -128,15 +135,15 @@ func registerScratch(ctx context.Context, dir string) error {
 	})
 }
 
-// run executes ap with extraEnv appended to the process environment. A non-zero exit is
+// Run executes ap with extraEnv appended to the process environment. A non-zero exit is
 // returned in the result; an error means the process could not run at all.
-func (c *cli) run(ctx context.Context, extraEnv []string, args ...string) (cliResult, error) {
+func (s *Session) Run(ctx context.Context, extraEnv []string, args ...string) (Result, error) {
 	ctx, cancel := context.WithTimeout(ctx, commandTimeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, c.bin, args...)
-	cmd.Dir = c.workspace
-	cmd.Env = append(os.Environ(), "AP_NO_COLOR=true", "HOME="+c.home)
+	cmd := exec.CommandContext(ctx, s.bin, args...)
+	cmd.Dir = s.workspace
+	cmd.Env = append(os.Environ(), "AP_NO_COLOR=true", "HOME="+s.home)
 	cmd.Env = append(cmd.Env, extraEnv...)
 
 	var stdout, stderr bytes.Buffer
@@ -144,14 +151,14 @@ func (c *cli) run(ctx context.Context, extraEnv []string, args ...string) (cliRe
 	cmd.Stderr = &stderr
 	err := cmd.Run()
 
-	res := cliResult{stdout: stdout.String(), stderr: stderr.String()}
+	res := Result{Stdout: stdout.String(), Stderr: stderr.String()}
 	var exitErr *exec.ExitError
 	if errors.As(err, &exitErr) {
-		res.exit = exitErr.ExitCode()
+		res.Exit = exitErr.ExitCode()
 		return res, nil
 	}
 	if err != nil {
-		res.exit = -1
+		res.Exit = -1
 		return res, fmt.Errorf("running ap %s: %w", strings.Join(args, " "), err)
 	}
 	return res, nil
