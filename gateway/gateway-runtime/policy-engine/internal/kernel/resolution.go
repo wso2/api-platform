@@ -411,6 +411,12 @@ func (ec *PolicyExecutionContext) bindPendingChainAndProcess(
 		ec.handleFault(ctx, f)
 	}
 
+	// Last, so the span starts as the request leaves and its _meta rewrite applies to
+	// the body as the policies left it. Nothing is forwarded when a policy answered.
+	if !headerResult.ShortCircuited && !bodyResult.ShortCircuited {
+		ec.startMCPSpan(bodyResult)
+	}
+
 	return TranslateRequestBodyActionsWithHeaderMerge(headerResult, bodyResult, ec)
 }
 

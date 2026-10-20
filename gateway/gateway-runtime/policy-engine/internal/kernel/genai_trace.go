@@ -84,11 +84,15 @@ func (ec *PolicyExecutionContext) requestForwarded(req *extprocv3.ProcessingRequ
 
 // startClientSpan starts a GenAI client span as a child of the root span.
 func (ec *PolicyExecutionContext) startClientSpan(name string, attrs ...attribute.KeyValue) {
-	ctx := trace.ContextWithSpan(context.Background(), ec.rootSpan)
-	_, span := ec.server.tracer.Start(ctx, name,
-		trace.WithSpanKind(trace.SpanKindClient), trace.WithAttributes(attrs...))
+	ec.startClientSpanUnder(trace.ContextWithSpan(context.Background(), ec.rootSpan), name, trace.WithAttributes(attrs...))
+}
+
+// startClientSpanUnder starts the GenAI client span under parent and returns its context.
+func (ec *PolicyExecutionContext) startClientSpanUnder(parent context.Context, name string, opts ...trace.SpanStartOption) context.Context {
+	ctx, span := ec.server.tracer.Start(parent, name, append(opts, trace.WithSpanKind(trace.SpanKindClient))...)
 	ec.genai.span = span
 	ec.genai.startedAt = time.Now()
+	return ctx
 }
 
 // endGenAISpan finishes and ends the client span. Safe to call more than once and when
@@ -104,6 +108,8 @@ func (ec *PolicyExecutionContext) endGenAISpan() {
 		switch ec.genai.kind {
 		case policy.APIKindLlmProvider:
 			ec.finishInferenceSpan(span)
+		case policy.APIKindMCP:
+			ec.finishMCPSpan(span)
 		}
 	}
 	span.End()
