@@ -574,7 +574,8 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
   /**
    * Saves the thumbnail alone, unless the draft already stores the one shown. A draft that
    * has none yet cannot take one (the save 404s), which `reportingMissingDraft` explains.
-   * A refused image is dropped for the last saved one, so it can't fail every later save.
+   * An image the server refuses is dropped for the last saved one, so it can't fail every later
+   * save; any other failure keeps it, so the next save retries it.
    */
   const saveThumbnail = async () => {
     if (!thumbnail || thumbnail === storedThumbnail) return;
@@ -583,7 +584,7 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
         saveThumbnailMutation.mutateAsync({ apiPortalId, apiType, apiId: apiHandler, file: thumbnail }),
       );
     } catch (error) {
-      setThumbnail(saved.thumbnail);
+      if (isApiError(error) && (error.isValidation || error.status === 413)) setThumbnail(saved.thumbnail);
       throw error;
     }
     setStoredThumbnail(thumbnail);

@@ -138,6 +138,20 @@ describe('DocumentList — group collapse', () => {
     );
     expect(screen.getByRole('button', { name: /^s1 Updated/ })).toBeInTheDocument();
   });
+
+  it('points each group header at its own region, even for a type name with a space', async () => {
+    const docs = [aDoc('h1', { type: 'HowTo' }), aDoc('r1', { type: 'Release Notes' })];
+    renderList({ documents: docs });
+
+    const regionIds = new Set<string>();
+    for (const name of ['How To (1)', 'Release Notes (1)']) {
+      const regionId = (await screen.findByRole('button', { name })).getAttribute('aria-controls') ?? '';
+      expect(regionId).not.toMatch(/\s/);
+      expect(document.getElementById(regionId)).toBeInTheDocument();
+      regionIds.add(regionId);
+    }
+    expect(regionIds.size).toBe(2);
+  });
 });
 
 describe('DocumentList — selection', () => {

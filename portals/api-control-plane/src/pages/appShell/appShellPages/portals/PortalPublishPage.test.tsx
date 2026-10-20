@@ -22,8 +22,7 @@ import { http as mswHttp, HttpResponse } from 'msw';
 import { Route, Routes } from 'react-router-dom';
 
 import { ApiScopeProvider } from '@/api/core/ApiScopeProvider';
-import { ApiError } from '@/api/core/errors';
-import { http, resetHttpClient } from '@/api/core/http';
+import { resetHttpClient } from '@/api/core/http';
 import { orgScope } from '@/api/core/queryKeys';
 import { apiDocumentQueries } from '@/api/resources/apiDocuments/apiDocuments.queries';
 import type { ApiDocumentListResponse } from '@/api/resources/apiDocuments/apiDocuments.endpoints';
@@ -214,6 +213,29 @@ beforeEach(() => {
 });
 
 const API_NAME = 'Loan Management Service';
+
+type ThumbnailSaveAnswer = { code: string; status: number } | 'network' | undefined;
+
+/**
+ * Answers each thumbnail save: the nth save gets the nth answer (the last one repeats), a failure
+ * to reject with or `undefined` to succeed.
+ */
+function answerThumbnailSaves(...answers: ThumbnailSaveAnswer[]) {
+  let saves = 0;
+  server.use(
+    mswHttp.put(apiUrl(DRAFT_THUMBNAIL_PATH), () => {
+      const answer = answers[Math.min(saves, answers.length - 1)];
+      saves += 1;
+      if (answer === 'network') return HttpResponse.error();
+      if (!answer) return new HttpResponse(null, { status: 204 });
+      return HttpResponse.json(
+        { code: answer.code, message: 'The request could not be completed.', status: 'error' } as never,
+        { status: answer.status },
+      );
+    }),
+  );
+  return { saves: () => saves };
+}
 
 /** Save Draft is off until something changes; a trailing space does, and is trimmed away on save. */
 const makeEdit = (user: ReturnType<typeof renderPage>['user']) =>
@@ -745,36 +767,57 @@ describe('PortalPublishPage', () => {
       accepts('put', DRAFT_PATH, aPublicationDraftDetails()),
       accepts('put', DRAFT_DEFINITION_PATH, undefined),
     );
-    // jsdom cannot send the multipart upload, so the refusal is raised where the client would.
-    let thumbnailSaves = 0;
-    const realPut = http.put;
-    const put = vi.spyOn(http, 'put').mockImplementation(((path: string, ...args: never[]) => {
-      if (!path.endsWith('/draft/thumbnail')) return realPut(path, ...args);
-      thumbnailSaves += 1;
-      return Promise.reject(new ApiError('Too large.', { kind: 'http', status: 413 }));
-    }) as typeof http.put);
+    const thumbnail = answerThumbnailSaves({ code: 'PAYLOAD_TOO_LARGE', status: 413 });
 
-    try {
-      const { container, user } = renderPage();
+    const { container, user } = renderPage();
 
-      await screen.findByDisplayValue(API_NAME);
-      await user.upload(
-        container.querySelector<HTMLInputElement>('input[type="file"]')!,
-        new File(['png'], 'logo.png', { type: 'image/png' }),
-      );
-      await user.click(screen.getByRole('button', { name: 'Save Draft' }));
+    await screen.findByDisplayValue(API_NAME);
+    await user.upload(
+      container.querySelector<HTMLInputElement>('input[type="file"]')!,
+      new File(['png'], 'logo.png', { type: 'image/png' }),
+    );
+    await user.click(screen.getByRole('button', { name: 'Save Draft' }));
 
-      await waitFor(() => expect(thumbnailSaves).toBe(1));
-      await waitFor(() => expect(screen.queryByText('Unsaved changes')).not.toBeInTheDocument());
+    await waitFor(() => expect(thumbnail.saves()).toBe(1));
+    await waitFor(() => expect(screen.queryByText('Unsaved changes')).not.toBeInTheDocument());
 
-      await makeEdit(user);
-      await user.click(screen.getByRole('button', { name: 'Save Draft' }));
+    await makeEdit(user);
+    await user.click(screen.getByRole('button', { name: 'Save Draft' }));
 
-      expect(await screen.findByText('Draft saved.')).toBeInTheDocument();
-      expect(thumbnailSaves).toBe(1);
-    } finally {
-      put.mockRestore();
-    }
+    expect(await screen.findByText('Draft saved.')).toBeInTheDocument();
+    expect(thumbnail.saves()).toBe(1);
+  });
+
+  it.each([
+    ['a server error', { code: 'INTERNAL_ERROR', status: 500 }],
+    ['a network failure', 'network'],
+    ['a draft that is gone', { code: 'DRAFT_NOT_FOUND', status: 404 }],
+  ] as [string, ThumbnailSaveAnswer][])('keeps a picked thumbnail when its save fails with %s, so the next save sends it again', async (_name, failure) => {
+    servePublicationState({ draft: aPublicationDraftDetails() });
+    server.use(
+      accepts('put', DRAFT_PATH, aPublicationDraftDetails()),
+      accepts('put', DRAFT_DEFINITION_PATH, undefined),
+    );
+    const thumbnail = answerThumbnailSaves(failure, undefined);
+
+    const { container, user } = renderPage();
+
+    await screen.findByDisplayValue(API_NAME);
+    await user.upload(
+      container.querySelector<HTMLInputElement>('input[type="file"]')!,
+      new File(['png'], 'logo.png', { type: 'image/png' }),
+    );
+    await user.click(screen.getByRole('button', { name: 'Save Draft' }));
+
+    await waitFor(() => expect(thumbnail.saves()).toBe(1));
+    expect(screen.getByText('Unsaved changes')).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: API_NAME })).toHaveAttribute('src', 'blob:test/thumbnail');
+    expect(screen.getByRole('button', { name: 'Save Draft' })).toBeEnabled();
+
+    await user.click(screen.getByRole('button', { name: 'Save Draft' }));
+
+    expect(await screen.findByText('Draft saved.')).toBeInTheDocument();
+    expect(thumbnail.saves()).toBe(2);
   });
 
   it('lists the saved inactive plan first, then the saved selection, then the other plans, and keeps that order when a plan is selected', async () => {

@@ -18,7 +18,7 @@
 
 import { act, waitFor } from '@testing-library/react';
 import { http as mswHttp, HttpResponse } from 'msw';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 
 import {
   accepts,
@@ -33,7 +33,7 @@ import {
 } from '../../../test/msw';
 import { renderApiHook, settle } from '../../../test/renderApiHook';
 import { server } from '../../../test/server';
-import { http, resetHttpClient } from '../../core/http';
+import { resetHttpClient } from '../../core/http';
 import {
   useApiPublicationDraft,
   useApiPublicationDraftLandingPage,
@@ -191,30 +191,25 @@ describe('reading a thumbnail', () => {
 
 describe('saving a thumbnail', () => {
   it('marks what the screen has read stale once saved, without reading the draft again', async () => {
-    // jsdom cannot put real multipart on the wire, so the upload itself is stubbed.
-    const put = vi.spyOn(http, 'put').mockResolvedValue(undefined);
-    try {
-      const { result } = renderApiHook(() => ({
-        draft: useApiPublicationDraft(PORTAL, TYPE, API),
-        save: useSaveApiPublicationDraftThumbnail(),
-      }));
-      await waitFor(() => expect(result.current.draft.isSuccess).toBe(true));
+    server.use(noContent('put', `${DRAFT}/thumbnail`));
+    const { result } = renderApiHook(() => ({
+      draft: useApiPublicationDraft(PORTAL, TYPE, API),
+      save: useSaveApiPublicationDraftThumbnail(),
+    }));
+    await waitFor(() => expect(result.current.draft.isSuccess).toBe(true));
 
-      await act(() =>
-        result.current.save.mutateAsync({
-          apiPortalId: PORTAL,
-          apiType: TYPE,
-          apiId: API,
-          file: new Blob(['img'], { type: 'image/png' }),
-        }),
-      );
-      await settle();
+    await act(() =>
+      result.current.save.mutateAsync({
+        apiPortalId: PORTAL,
+        apiType: TYPE,
+        apiId: API,
+        file: new Blob(['img'], { type: 'image/png' }),
+      }),
+    );
+    await settle();
 
-      expect(draftReads.count()).toBe(1);
-      expect(result.current.draft.isStale).toBe(true);
-    } finally {
-      put.mockRestore();
-    }
+    expect(draftReads.count()).toBe(1);
+    expect(result.current.draft.isStale).toBe(true);
   });
 });
 

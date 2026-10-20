@@ -33,7 +33,7 @@ import {
   Typography,
 } from '@wso2/oxygen-ui';
 import { FileSearch, FileText, Minus, Plus, X } from '@wso2/oxygen-ui-icons-react';
-import { Fragment, useState } from 'react';
+import { Fragment, useId, useState } from 'react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
 import { useAllApiDocuments, type ApiDocumentMetadata } from '@/api/resources/apiDocuments';
@@ -128,6 +128,8 @@ export function DocumentsTab({ apiHandle, apiType, disabled, onChange, readOnly,
   const selectedIds = values.docIds;
   const selectedSet = new Set(selectedIds);
   const [previewId, setPreviewId] = useState<string>();
+  // A type name can hold spaces, which an id cannot, so each group's id is built from its position.
+  const groupsId = useId();
   // Collapsed groups, by type.
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set());
 
@@ -225,14 +227,14 @@ export function DocumentsTab({ apiHandle, apiType, disabled, onChange, readOnly,
           return (
             <Fragment key={group.type}>
               <DocumentGroupHeader
-                controlsId={`document-group-${group.type}`}
+                controlsId={`${groupsId}-group-${groupIndex}`}
                 count={group.items.length}
                 first={groupIndex === 0}
                 label={group.label}
                 onToggle={() => toggleGroup(group.type)}
                 open={open}
               />
-              <Collapse id={`document-group-${group.type}`} in={open} timeout="auto">
+              <Collapse id={`${groupsId}-group-${groupIndex}`} in={open} timeout="auto">
                 {group.items.map((doc) => (
                   <DocumentRow
                     disabled={disabled}

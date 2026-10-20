@@ -97,6 +97,20 @@ describe('DocumentsTab', () => {
     expect(screen.getByRole('checkbox', { name: 'Common questions' })).toBeInTheDocument();
   });
 
+  it('points each group header at its own region, even for a type name with a space', async () => {
+    serveDocuments([guide, aDoc('notes', 'Version 1.2', 'Release Notes')]);
+    renderTab();
+
+    const regionIds = new Set<string>();
+    for (const name of ['How To (1)', 'Release Notes (1)']) {
+      const regionId = (await screen.findByRole('button', { name })).getAttribute('aria-controls') ?? '';
+      expect(regionId).not.toMatch(/\s/);
+      expect(document.getElementById(regionId)).toBeInTheDocument();
+      regionIds.add(regionId);
+    }
+    expect(regionIds.size).toBe(2);
+  });
+
   it('shows which documents are selected, and how many of the total', async () => {
     serveDocuments(docs);
     renderTab({ values: values({ docIds: ['guide', 'faq'] }) });

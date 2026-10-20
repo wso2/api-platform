@@ -30,7 +30,7 @@ import {
   Typography,
 } from '@wso2/oxygen-ui';
 import { FileText } from '@wso2/oxygen-ui-icons-react';
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
 import type { ApiDocumentMetadata } from '@/api/resources/apiDocuments';
@@ -111,6 +111,8 @@ export function DocumentList({
   // Groups the user has collapsed, by type. Everything starts expanded, and a
   // collapsed group stays collapsed as more pages load into it.
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set());
+  // A type name can hold spaces, which an id cannot, so each group's id is built from its position.
+  const groupsId = useId();
   const toggleGroup = (type: string) =>
     setCollapsed((current) => {
       const next = new Set(current);
@@ -152,14 +154,14 @@ export function DocumentList({
           return (
             <Fragment key={group.type}>
               <DocumentGroupHeader
-                controlsId={`document-group-${group.type}`}
+                controlsId={`${groupsId}-group-${groupIndex}`}
                 count={group.items.length}
                 first={groupIndex === 0}
                 label={group.label}
                 onToggle={() => toggleGroup(group.type)}
                 open={open}
               />
-              <Collapse id={`document-group-${group.type}`} in={open} timeout="auto">
+              <Collapse id={`${groupsId}-group-${groupIndex}`} in={open} timeout="auto">
                 {group.items.map((document) => (
                   <ListItemButton
                     aria-current={document.id === selectedId ? 'true' : undefined}
