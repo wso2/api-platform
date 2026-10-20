@@ -259,6 +259,36 @@ function ProxyOverviewContent() {
     return found?.displayName ?? providerId;
   };
 
+  /**
+   * Every provider the proxy routes to, primary first and named as the
+   * catalogue names them.
+   *
+   * The whole list rather than the single legacy field: that field names only
+   * the primary, so a proxy with several would read here as though it had one.
+   */
+  const attachedProviderNames = withPrimaryFirst(proxy?.providers ?? []).map(
+    (entry) => resolveProviderName(entry.id)
+  );
+  /**
+   * Trimmed after the third.
+   *
+   * This is a summary line, not the list: the Providers tab holds the full one,
+   * and a header that grows with every attachment stops being a header. The
+   * names left out are still reachable without leaving the page - the line
+   * carries them in its tooltip.
+   */
+  const HEADER_PROVIDER_LIMIT = 3;
+  const isProviderListTruncated =
+    attachedProviderNames.length > HEADER_PROVIDER_LIMIT;
+  const headerProviderNames = attachedProviderNames
+    .slice(0, HEADER_PROVIDER_LIMIT)
+    .join(', ');
+  const headerProviderLabel = !attachedProviderNames.length
+    ? resolveProviderName(proxy?.provider)
+    : isProviderListTruncated
+      ? `${headerProviderNames}, \u2026`
+      : headerProviderNames;
+
   useEffect(() => {
     const state = location.state as LLMProxyOverviewLocationState;
     if (state?.proxyAdded) {
@@ -490,12 +520,27 @@ function ProxyOverviewContent() {
                       <Typography variant="caption" color="text.secondary">
                         <FormattedMessage
                           id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyOverview.provider"
-                          defaultMessage="Provider :"
+                          defaultMessage="{count, plural, one {Provider} other {Providers}} :"
+                          values={{
+                            count: Math.max(attachedProviderNames.length, 1),
+                          }}
                         />
                       </Typography>
-                      <Typography variant="body2">
-                        {resolveProviderName(proxy.provider)}
-                      </Typography>
+                      {/*
+                        The names dropped from the line are still readable here,
+                        so trimming it costs nothing.
+                      */}
+                      <Tooltip
+                        title={
+                          isProviderListTruncated
+                            ? attachedProviderNames.join(', ')
+                            : ''
+                        }
+                      >
+                        <Typography variant="body2" data-cyid="proxy-providers">
+                          {headerProviderLabel}
+                        </Typography>
+                      </Tooltip>
                     </Stack>
                     <Stack direction="row" alignItems="center" gap={2}>
                       <Typography variant="caption" color="text.secondary">
