@@ -29,11 +29,11 @@ dependencies:
   #
   # Shared control plane. On by default; the portal reaches it in-cluster.
   - name: platform-api
-    version: "0.16.0"
+    version: "0.16.1"
     repository: "oci://ghcr.io/wso2/api-platform/helm-charts"
     condition: platform-api.enabled
   # API Portal — this package's headline component.
   - name: api-portal-ui
-    version: "1.0.0"
+    version: "1.0.1"
     repository: "oci://ghcr.io/wso2/api-platform/helm-charts"
     condition: api-portal-ui.enabled
