@@ -22,7 +22,8 @@ import { http as mswHttp, HttpResponse } from 'msw';
 import { Route, Routes } from 'react-router-dom';
 
 import { ApiScopeProvider } from '@/api/core/ApiScopeProvider';
-import { resetHttpClient } from '@/api/core/http';
+import { ApiError } from '@/api/core/errors';
+import { http, resetHttpClient } from '@/api/core/http';
 import { orgScope } from '@/api/core/queryKeys';
 import { apiDocumentQueries } from '@/api/resources/apiDocuments/apiDocuments.queries';
 import type { ApiDocumentListResponse } from '@/api/resources/apiDocuments/apiDocuments.endpoints';
@@ -118,6 +119,9 @@ const PUBLISH_PATH = `/api-portals/${PORTAL}/apis/rest-api/${API}/publish`;
 const UNPUBLISH_PATH = `/api-portals/${PORTAL}/apis/rest-api/${API}/unpublish`;
 const DEPRECATE_PATH = `/api-portals/${PORTAL}/apis/rest-api/${API}/deprecate`;
 const DOCS_PATH = `/apis/rest-api/${API}/docs`;
+const API_THUMBNAIL_PATH = `/apis/rest-api/${API}/thumbnail`;
+const DRAFT_THUMBNAIL_PATH = `${DRAFT_PATH}/thumbnail`;
+const PUBLICATION_THUMBNAIL_PATH = `${PUBLICATION_PATH}/thumbnail`;
 const API_OPENAPI_PATH = `/rest-apis/${API}/openapi`;
 const GATEWAYS_PATH = `/rest-apis/${API}/gateways`;
 
@@ -144,14 +148,17 @@ function servePublicationState({
   definitionRecorders = definitionTierRecorders(),
   gateways = [],
   plans = [],
+  apiThumbnail = apiWithoutThumbnail(),
 }: {
   draft?: PublicationDraftDetailsFixture;
   publication?: PublicationFixture;
   definitionRecorders?: ReturnType<typeof definitionTierRecorders>;
   gateways?: ReturnType<typeof deployedGateway>[];
   plans?: ReturnType<typeof aSubscriptionPlan>[];
+  apiThumbnail?: ReturnType<typeof apiWithoutThumbnail>;
 } = {}) {
   server.use(
+    apiThumbnail,
     collection('/subscription-plans', plans),
     resource('/rest-apis/:restApiId', api),
     collection(GATEWAYS_PATH, gateways),
@@ -173,6 +180,20 @@ function servePublicationState({
   return definitionRecorders;
 }
 
+/** An image as the thumbnail endpoints serve it. */
+const pngResponse = () => new HttpResponse(new Uint8Array([0x89, 0x50]), { headers: { 'Content-Type': 'image/png' } });
+
+/** Serves a thumbnail at `path`, and counts the reads. */
+const thumbnailAt = (path: string, reads: Recorder) =>
+  mswHttp.get(apiUrl(path), async ({ request }) => {
+    await reads.capture(request);
+    return pngResponse();
+  });
+
+/** The API has no thumbnail of its own: the endpoint answers 204. */
+const apiWithoutThumbnail = () =>
+  mswHttp.get(apiUrl(API_THUMBNAIL_PATH), () => new HttpResponse(null, { status: 204 }));
+
 /** A stored definition served as text in the given serialization, as the backend returns it. */
 const definitionText = (path: string, text: string, contentType: string) =>
   mswHttp.get(
@@ -186,6 +207,8 @@ const YAML_DEFINITION =
 beforeEach(() => {
   requests = recorder();
   resetHttpClient();
+  URL.createObjectURL = vi.fn(() => 'blob:test/thumbnail');
+  URL.revokeObjectURL = vi.fn();
 });
 
 const API_NAME = 'Loan Management Service';
@@ -633,6 +656,125 @@ describe('PortalPublishPage', () => {
 
     await waitFor(() => expect(draftRequests.count()).toBe(1));
     expect(JSON.parse(draftRequests.last()?.body ?? '{}')).toMatchObject({ docIds: ['guide'] });
+  });
+
+  it("shows the draft's thumbnail, without reading the publication's or the API's own", async () => {
+    const apiReads = recorder();
+    const publicationReads = recorder();
+    const draftReads = recorder();
+    servePublicationState({
+      draft: aPublicationDraftDetails({ hasThumbnail: true }),
+      publication: aPublication({ hasThumbnail: true }),
+      apiThumbnail: thumbnailAt(API_THUMBNAIL_PATH, apiReads),
+    });
+    server.use(
+      thumbnailAt(DRAFT_THUMBNAIL_PATH, draftReads),
+      thumbnailAt(PUBLICATION_THUMBNAIL_PATH, publicationReads),
+    );
+
+    const { user } = renderPage();
+
+    await screen.findByDisplayValue('Loan Management Service');
+    await showDraft(user);
+    expect(await screen.findByRole('img', { name: 'Loan Management Service' })).toHaveAttribute('src', 'blob:test/thumbnail');
+    expect(draftReads.count()).toBe(1);
+    expect(apiReads.count()).toBe(0);
+  });
+
+  it("falls back to the publication's thumbnail, then to the API's own", async () => {
+    const apiReads = recorder();
+    servePublicationState({
+      publication: aPublication({ hasThumbnail: true }),
+      apiThumbnail: thumbnailAt(API_THUMBNAIL_PATH, apiReads),
+    });
+    server.use(thumbnailAt(PUBLICATION_THUMBNAIL_PATH, recorder()));
+
+    const first = renderPage();
+    await screen.findByDisplayValue('Loan Management Service');
+    await showDraft(first.user);
+    expect(await screen.findByRole('img', { name: 'Loan Management Service' })).toBeInTheDocument();
+    expect(apiReads.count()).toBe(0);
+    first.unmount();
+
+    resetHttpClient();
+    servePublicationState({ apiThumbnail: thumbnailAt(API_THUMBNAIL_PATH, apiReads) });
+    renderPage();
+    await screen.findByDisplayValue('Loan Management Service');
+    expect(await screen.findByRole('img', { name: 'Loan Management Service' })).toBeInTheDocument();
+    expect(apiReads.count()).toBe(1);
+  });
+
+  it('shows the published thumbnail read-only in the published view', async () => {
+    servePublicationState({
+      publication: aPublication({ hasThumbnail: true }),
+    });
+    server.use(thumbnailAt(PUBLICATION_THUMBNAIL_PATH, recorder()));
+
+    const { user } = renderPage();
+
+    await screen.findByDisplayValue('Loan Management Service');
+    expect(await screen.findByRole('img', { name: 'Loan Management Service' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Change thumbnail' })).not.toBeInTheDocument();
+
+    await showDraft(user);
+    expect(screen.getByRole('button', { name: 'Change thumbnail' })).toBeInTheDocument();
+  });
+
+  it('counts a picked thumbnail as an unsaved change, and refuses one that is too large', async () => {
+    servePublicationState({ draft: aPublicationDraftDetails() });
+    const { container, user } = renderPage();
+
+    await screen.findByDisplayValue('Loan Management Service');
+    const input = container.querySelector<HTMLInputElement>('input[type="file"]')!;
+    expect(screen.getByRole('button', { name: 'Save Draft' })).toBeDisabled();
+
+    const tooLarge = new File([new Uint8Array(2 * 1024 * 1024 + 1)], 'big.png', { type: 'image/png' });
+    await user.upload(input, tooLarge);
+    expect(await screen.findByText('The image must be 2 MB or smaller.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save Draft' })).toBeDisabled();
+
+    await user.upload(input, new File(['png'], 'logo.png', { type: 'image/png' }));
+    expect(screen.getByRole('button', { name: 'Save Draft' })).toBeEnabled();
+    expect(screen.getByRole('img', { name: 'Loan Management Service' })).toHaveAttribute('src', 'blob:test/thumbnail');
+    expect(screen.getByText('Unsaved changes')).toBeInTheDocument();
+  });
+
+  it('drops a thumbnail the server refuses, so the next save does not send it again', async () => {
+    servePublicationState({ draft: aPublicationDraftDetails() });
+    server.use(
+      accepts('put', DRAFT_PATH, aPublicationDraftDetails()),
+      accepts('put', DRAFT_DEFINITION_PATH, undefined),
+    );
+    // jsdom cannot send the multipart upload, so the refusal is raised where the client would.
+    let thumbnailSaves = 0;
+    const realPut = http.put;
+    const put = vi.spyOn(http, 'put').mockImplementation(((path: string, ...args: never[]) => {
+      if (!path.endsWith('/draft/thumbnail')) return realPut(path, ...args);
+      thumbnailSaves += 1;
+      return Promise.reject(new ApiError('Too large.', { kind: 'http', status: 413 }));
+    }) as typeof http.put);
+
+    try {
+      const { container, user } = renderPage();
+
+      await screen.findByDisplayValue(API_NAME);
+      await user.upload(
+        container.querySelector<HTMLInputElement>('input[type="file"]')!,
+        new File(['png'], 'logo.png', { type: 'image/png' }),
+      );
+      await user.click(screen.getByRole('button', { name: 'Save Draft' }));
+
+      await waitFor(() => expect(thumbnailSaves).toBe(1));
+      await waitFor(() => expect(screen.queryByText('Unsaved changes')).not.toBeInTheDocument());
+
+      await makeEdit(user);
+      await user.click(screen.getByRole('button', { name: 'Save Draft' }));
+
+      expect(await screen.findByText('Draft saved.')).toBeInTheDocument();
+      expect(thumbnailSaves).toBe(1);
+    } finally {
+      put.mockRestore();
+    }
   });
 
   it('lists the saved inactive plan first, then the saved selection, then the other plans, and keeps that order when a plan is selected', async () => {

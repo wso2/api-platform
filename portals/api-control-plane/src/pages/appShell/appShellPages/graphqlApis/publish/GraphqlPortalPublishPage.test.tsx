@@ -105,6 +105,7 @@ function renderPage() {
 /** Nothing saved for this portal yet: the page opens on the API's own details and SDL. */
 function serveFreshApi() {
   server.use(
+    mswHttp.get(apiUrl(`/apis/graphql-api/${API}/thumbnail`), () => new HttpResponse(null, { status: 204 })),
     resource('/graphql-apis/:graphqlApiId', api),
     resource('/graphql-apis/:graphqlApiId/sdl', { sdl: SDL }),
     collection(`/graphql-apis/${API}/gateways`, [deployedGateway]),

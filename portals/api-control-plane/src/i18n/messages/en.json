@@ -2691,6 +2691,9 @@
   "apiControlPlane.pages.appShell.appShellPages.portals.components.ApiDetailsTab.agentVisibilityTitle": {
     "defaultMessage": "Make this API discoverable by AI agents"
   },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.ApiDetailsTab.changeThumbnail": {
+    "defaultMessage": "Change thumbnail"
+  },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.ApiDetailsTab.chooseGatewayUrl": {
     "defaultMessage": "Choose from gateway URLs"
   },
@@ -2893,6 +2896,12 @@
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.utils.publicationForm.displayNameRequired": {
     "defaultMessage": "Enter a name."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.utils.publicationForm.thumbnailSize": {
+    "defaultMessage": "The image must be 2 MB or smaller."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.utils.publicationForm.thumbnailType": {
+    "defaultMessage": "Only JPEG and PNG images are supported."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.utils.publicationForm.urlInvalid": {
     "defaultMessage": "Enter a full URL, for example https://api.example.com."

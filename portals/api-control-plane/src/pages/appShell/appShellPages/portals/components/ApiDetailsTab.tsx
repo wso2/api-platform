@@ -17,6 +17,7 @@
  */
 
 import {
+  alpha,
   Autocomplete,
   Avatar,
   Box,
@@ -36,8 +37,8 @@ import {
   Tooltip,
   Typography,
 } from '@wso2/oxygen-ui';
-import { Boxes, ChevronDown, Info, List, SquarePen, X } from '@wso2/oxygen-ui-icons-react';
-import { useState, type MouseEvent } from 'react';
+import { Boxes, Camera, ChevronDown, Info, List, SquarePen, X } from '@wso2/oxygen-ui-icons-react';
+import { useRef, useState, type ChangeEvent, type MouseEvent } from 'react';
 import { defineMessages, FormattedMessage, useIntl, type MessageDescriptor } from 'react-intl';
 
 import { apiInitials } from '../../apis/utils/restApiDisplay';
@@ -93,6 +94,10 @@ const messages = defineMessages({
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.ApiDetailsTab.agentVisibilityTitle',
     defaultMessage: 'Make this API discoverable by AI agents',
   },
+  changeThumbnail: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.ApiDetailsTab.changeThumbnail',
+    defaultMessage: 'Change thumbnail',
+  },
   agentVisibilityDescription: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.ApiDetailsTab.agentVisibilityDescription',
     defaultMessage: 'Let agents in the API Portal discover and invoke this API on behalf of users.',
@@ -112,8 +117,12 @@ export type ApiDetailsTabProps = {
   readOnly?: boolean;
   onBlurField?: (field: DraftFormField) => void;
   onChange?: (values: DraftFormValues) => void;
+  /** Called with the image picked as the new thumbnail; without it the thumbnail is read-only. */
+  onThumbnailPick?: (file: File) => void;
   /** URLs the Production URL can be picked from; any other URL can still be typed. */
   productionUrlOptions?: GatewayUrlOption[];
+  /** The thumbnail to show; the API name's monogram stands in without one. */
+  thumbnailUrl?: string;
   values: DraftFormValues;
 };
 
@@ -284,43 +293,110 @@ function UrlField({
   );
 }
 
+type ThumbnailProps = {
+  disabled?: boolean;
+  displayName: string;
+  onPick?: (file: File) => void;
+  url?: string;
+};
+
 /**
- * Placeholder for the API's portal thumbnail, drawn like the API Overview's
- * avatar. It is not editable, uploaded or saved.
+ * The API's portal thumbnail, drawn like the API Overview's avatar (the name's monogram stands
+ * in without an image). With `onPick`, hovering or focusing it offers a replacement picker; the
+ * choice is only reported, not stored.
  */
-function ThumbnailPlaceholder({ displayName }: { displayName: string }) {
+function Thumbnail({ disabled, displayName, onPick, url }: ThumbnailProps) {
+  const intl = useIntl();
+  const inputRef = useRef<HTMLInputElement>(null);
+  const editable = Boolean(onPick) && !disabled;
+
+  const handleFile = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    // Cleared so choosing the same file again still fires a change.
+    event.target.value = '';
+    if (file) onPick?.(file);
+  };
+
   return (
-    <Avatar
+    <Box
       sx={{
-        bgcolor: 'primary.light',
-        color: 'primary.contrastText',
         alignSelf: 'stretch',
-        fontSize: THUMBNAIL_FONT_SIZE,
         // Fills the row's height, label to input, less the reserved error line under the input.
-        height: 'auto',
+        display: 'flex',
         mb: ERROR_LINE_HEIGHT,
         minHeight: THUMBNAIL_MIN_HEIGHT,
+        position: 'relative',
         width: THUMBNAIL_WIDTH,
+        '&:hover .thumbnail-overlay, &:focus-within .thumbnail-overlay': { opacity: 1 },
       }}
-      variant="rounded"
     >
-      {apiInitials(displayName) || <Boxes size={THUMBNAIL_ICON_SIZE} />}
-    </Avatar>
+      <Avatar
+        alt={displayName}
+        imgProps={{ style: { objectFit: 'contain' } }}
+        src={url}
+        sx={{
+          bgcolor: url ? 'background.paper' : 'primary.light',
+          color: 'primary.contrastText',
+          fontSize: THUMBNAIL_FONT_SIZE,
+          height: 'auto',
+          width: '100%',
+        }}
+        variant="rounded"
+      >
+        {apiInitials(displayName) || <Boxes size={THUMBNAIL_ICON_SIZE} />}
+      </Avatar>
+      {editable && (
+        <>
+          <Box
+            className="thumbnail-overlay"
+            sx={(theme) => ({
+              alignItems: 'center',
+              bgcolor: alpha(theme.palette.common.black, 0.5),
+              borderRadius: 1,
+              display: 'flex',
+              inset: 0,
+              justifyContent: 'center',
+              opacity: 0,
+              position: 'absolute',
+              transition: 'opacity 150ms ease',
+            })}
+          >
+            <IconButton
+              aria-label={intl.formatMessage(messages.changeThumbnail)}
+              onClick={() => inputRef.current?.click()}
+              size="small"
+              sx={{ color: 'common.white' }}
+            >
+              <Camera size={THUMBNAIL_ICON_SIZE} />
+            </IconButton>
+          </Box>
+          <Box
+            accept="image/png,image/jpeg"
+            component="input"
+            onChange={handleFile}
+            ref={inputRef}
+            sx={{ display: 'none' }}
+            type="file"
+          />
+        </>
+      )}
+    </Box>
   );
 }
 
 /**
- * "API Details": thumbnail placeholder, name, version, description, the two
- * endpoint URLs and agent visibility in a single card. The document picker is
- * left out of this release.
+ * "API Details": thumbnail, name, version, description, the two endpoint URLs
+ * and agent visibility in a single card.
  */
 export function ApiDetailsTab({
   disabled,
   errors = {},
   onBlurField,
   onChange,
+  onThumbnailPick,
   productionUrlOptions = [],
   readOnly,
+  thumbnailUrl,
   values,
 }: ApiDetailsTabProps) {
   const intl = useIntl();
@@ -346,7 +422,12 @@ export function ApiDetailsTab({
       <Form.Stack spacing={1}>
         <Grid container spacing={2}>
           <Grid size={{ md: 'auto', xs: 12 }} sx={{ display: 'flex' }}>
-            <ThumbnailPlaceholder displayName={values.displayName} />
+            <Thumbnail
+              disabled={disabled}
+              displayName={values.displayName}
+              onPick={readOnly ? undefined : onThumbnailPick}
+              url={thumbnailUrl}
+            />
           </Grid>
           <Grid size={{ md: 'grow', xs: 12 }}>
             <DetailField {...fieldProps('displayName', 'publicationDisplayName', messages.nameLabel)} required />

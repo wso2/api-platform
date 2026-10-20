@@ -26,6 +26,7 @@ import {
   usePublishApiToApiPortal,
   useSaveApiPublicationDraft,
   useSaveApiPublicationDraftDefinition,
+  useSaveApiPublicationDraftThumbnail,
   useUnpublishApiFromApiPortal,
   type DraftDefinitionBody,
 } from '@/api/resources/apiPublications';
@@ -34,6 +35,7 @@ import { AppPage } from '@/components/AppPage';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useFillScrollArea } from '@/hooks/useFillScrollArea';
 import { useFrozenWhile } from '@/hooks/useFrozenWhile';
+import { useObjectUrl } from '@/api/core/objectUrl';
 import { useFormatters } from '@/i18n/useFormatters';
 import { useNotifications } from '@/components/Notifications';
 import { useAllApiDocuments } from '@/api/resources/apiDocuments';
@@ -60,6 +62,7 @@ import {
   resolveDraftFormValues,
   sameSelection,
   validateDraftFormValues,
+  validateThumbnailFile,
   type DraftFormField,
   type DraftFormValues,
 } from './utils/publicationForm';
@@ -266,9 +269,10 @@ type PendingAction = 'idle' | 'saving' | 'publishing' | 'unpublishing' | 'deprec
  * editable; the Landing Page tab still renders disabled. Save Draft and Publish
  * each enforce their own rule: Save Draft always writes `.../draft`, and writes
  * `.../draft/definition` too only when the specification text parses,
- * reporting honestly when it couldn't; Publish requires both saves to succeed
- * before it calls `.../publish`, since the server's publish takes no body and
- * only publishes what the draft already holds.
+ * reporting honestly when it couldn't, and `.../draft/thumbnail` when the
+ * thumbnail shown is not the one the draft already stores; Publish requires the
+ * details and the definition to save before it calls `.../publish`, since the
+ * server's publish takes no body and only publishes what the draft already holds.
  *
  * No `ScopeGate`: this page is only reachable from the Portals listing's card,
  * which is already fully API-scoped.
@@ -325,6 +329,7 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
 
   const saveDraftMutation = useSaveApiPublicationDraft();
   const saveDefinitionMutation = useSaveApiPublicationDraftDefinition({ handlesErrors: true });
+  const saveThumbnailMutation = useSaveApiPublicationDraftThumbnail({ handlesErrors: true });
   const publishMutation = usePublishApiToApiPortal();
   const unpublishMutation = useUnpublishApiFromApiPortal();
   const deprecateMutation = useDeprecateApiOnApiPortal();
@@ -334,8 +339,14 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
   const [definitionText, setDefinitionText] = useState('');
   const [definitionFormat, setDefinitionFormat] = useState<DefinitionFormat>(isGraphQL ? 'graphql' : 'json');
   const [definitionParseError, setDefinitionParseError] = useState<string>();
+  // The thumbnail shown, and the draft's own; saving sends it only when they differ.
+  const [thumbnail, setThumbnail] = useState<Blob>();
+  const [storedThumbnail, setStoredThumbnail] = useState<Blob>();
   // What the server holds for the fields shown, so edits made since can be told apart.
-  const [saved, setSaved] = useState({ definitionText: '', values: emptyDraftFormValues });
+  const [saved, setSaved] = useState<{ definitionText: string; thumbnail?: Blob; values: DraftFormValues }>({
+    definitionText: '',
+    values: emptyDraftFormValues,
+  });
   const [pendingAction, setPendingAction] = useState<PendingAction>('idle');
   // An action saves in steps, each refetching these; they are shown once, when it ends.
   const draft = useFrozenWhile(data.draft, pendingAction !== 'idle');
@@ -350,7 +361,13 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
     if (initialized || !data.seed) return;
     setValues(data.seed.values);
     setDefinitionText(data.seed.definition?.text ?? '');
-    setSaved({ definitionText: data.seed.definition?.text ?? '', values: data.seed.values });
+    setThumbnail(data.seed.thumbnail?.blob);
+    setStoredThumbnail(data.seed.thumbnail?.inDraft ? data.seed.thumbnail.blob : undefined);
+    setSaved({
+      definitionText: data.seed.definition?.text ?? '',
+      thumbnail: data.seed.thumbnail?.blob,
+      values: data.seed.values,
+    });
     setDefinitionFormat(data.seed.definition?.format ?? (isGraphQL ? 'graphql' : 'json'));
     setInitialized(true);
   }, [initialized, data.seed]);
@@ -389,6 +406,9 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
     notify(intl.formatMessage(messages.removedDocuments), 'warning');
   }, [initialized, intl, notify, documentsQuery.data, documentsQuery.isFetching, documentsQuery.isSuccess, values.docIds]);
 
+  const thumbnailUrl = useObjectUrl(thumbnail);
+  const publishedThumbnailUrl = useObjectUrl(data.publishedThumbnail);
+
   if (data.isLoading) {
     return <LoadingState label={intl.formatMessage(messages.loading)} />;
   }
@@ -411,6 +431,7 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
   const showingPublished = view === 'published';
   const hasUnsavedChanges =
     definitionText !== saved.definitionText ||
+    thumbnail !== saved.thumbnail ||
     (Object.keys(values) as (keyof DraftFormValues)[]).some((field) => {
       const current = values[field];
       const savedValue = saved.values[field];
@@ -522,6 +543,35 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
     return true;
   };
 
+  /**
+   * Saves the thumbnail alone, unless the draft already stores the one shown. A draft that
+   * has none yet cannot take one (the save 404s), which `reportingMissingDraft` explains.
+   * A refused image is dropped for the last saved one, so it can't fail every later save.
+   */
+  const saveThumbnail = async () => {
+    if (!thumbnail || thumbnail === storedThumbnail) return;
+    try {
+      await reportingMissingDraft(
+        saveThumbnailMutation.mutateAsync({ apiPortalId, apiType, apiId: apiHandler, file: thumbnail }),
+      );
+    } catch (error) {
+      setThumbnail(saved.thumbnail);
+      throw error;
+    }
+    setStoredThumbnail(thumbnail);
+    setSaved((current) => ({ ...current, thumbnail }));
+  };
+
+  /** Takes an image the user picked as the thumbnail, unless the server would refuse it. */
+  const pickThumbnail = (file: File) => {
+    const problem = validateThumbnailFile(file);
+    if (problem) {
+      notify(intl.formatMessage(problem), 'error');
+      return;
+    }
+    setThumbnail(file);
+  };
+
   /** Runs one action with its button shown busy; API failures are already reported globally. */
   const runAction = async (action: PendingAction, perform: () => Promise<void>) => {
     setPendingAction(action);
@@ -553,6 +603,7 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
       if (blockedByInactivePlans()) return;
       if (!(await saveDetails())) return;
       const definitionSaved = await saveDefinition();
+      await saveThumbnail();
       notify(
         intl.formatMessage(definitionSaved ? messages.draftSaved : messages.draftSavedDetailsOnly),
         definitionSaved ? 'success' : 'warning',
@@ -572,6 +623,7 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
       // partial save, which would publish whatever definition was already
       // there rather than what the user is looking at.
       if (!(await saveDefinition())) return;
+      await saveThumbnail();
       try {
         await publishMutation.mutateAsync({ apiPortalId, apiType, apiId: apiHandler });
       } catch (error) {
@@ -623,7 +675,9 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
 
   const renderContent = () => {
     if (showingPublished) {
-      if (tab === 'details') return <ApiDetailsTab readOnly values={publishedValues} />;
+      if (tab === 'details') {
+        return <ApiDetailsTab readOnly thumbnailUrl={publishedThumbnailUrl} values={publishedValues} />;
+      }
       if (tab === 'subscriptionPlans') return <SubscriptionPlansTab readOnly values={publishedValues} />;
       if (tab === 'documentations') {
         return <DocumentsTab apiHandle={apiHandler} apiType={apiType} readOnly values={publishedValues} />;
@@ -648,7 +702,9 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
           }}
           onBlurField={markTouched}
           onChange={handleChange}
+          onThumbnailPick={pickThumbnail}
           productionUrlOptions={data.productionUrlOptions}
+          thumbnailUrl={thumbnailUrl}
           values={values}
         />
       );
