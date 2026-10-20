@@ -368,6 +368,7 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 		RegisterSecretSteps(ctx, testState, httpSteps)
 		RegisterTemplateSteps(ctx, testState, httpSteps)
 		RegisterDPToCPSteps(ctx, testState)
+		RegisterTracingSteps(ctx, testState, httpSteps)
 	}
 
 	// Register common HTTP and assertion steps

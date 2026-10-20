@@ -1,0 +1,62 @@
+# --------------------------------------------------------------------
+# Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+#
+# WSO2 LLC. licenses this file to you under the Apache License,
+# Version 2.0 (the "License"); you may not use this file except
+# in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+# --------------------------------------------------------------------
+# Override layered on top of docker-compose.test.yaml for the tracing ITs: turns tracing
+# on in the router and the policy engine, exporting to a mock OTLP collector the steps
+# read spans back from, and adds a backend whose LLM responses really stream. Combine
+# via COMPOSE_FILE (see the test-tracing Makefile targets):
+#   COMPOSE_FILE=docker-compose.test.yaml:docker-compose.test.tracing.override.yaml
+#
+# IT_TRACING_PROTOCOL picks the OTLP transport (grpc or http); IT_ANALYTICS_ENABLED and
+# IT_ANALYTICS_PUBLISHER switch analytics off (so the GenAI body reads run on their own)
+# or to the otel publisher (so analytics records can be checked for their trace).
+x-tracing-env: &tracing-env
+  IT_TRACING_ENABLED: "true"
+  IT_TRACING_PROTOCOL: ${IT_TRACING_PROTOCOL:-grpc}
+  IT_TRACING_ENDPOINT: ${IT_TRACING_ENDPOINT:-it-mock-otlp-collector:4317}
+  IT_TRACING_CAPTURE_CONTENT: "true"
+  IT_ANALYTICS_ENABLED: ${IT_ANALYTICS_ENABLED:-false}
+  IT_ANALYTICS_PUBLISHER: ${IT_ANALYTICS_PUBLISHER:-moesif}
+
+services:
+  gateway-controller:
+    environment: *tracing-env
+  gateway-runtime:
+    environment: *tracing-env
+    depends_on:
+      mock-otlp-collector:
+        condition: service_started
+
+  mock-otlp-collector:
+    container_name: it-mock-otlp-collector
+    image: ghcr.io/wso2/api-platform/mock-otlp-collector:test
+    build:
+      context: ../../tests/mock-servers/mock-otlp-collector
+      dockerfile: Dockerfile
+    ports:
+      - "8089:8080"   # test API: /test/spans, /test/logs, /test/reset
+    networks:
+      - it-gateway-runtime-network
+
+  mock-llm-stream:
+    container_name: it-mock-llm-stream
+    image: ghcr.io/wso2/api-platform/mock-llm-stream:test
+    build:
+      context: ../../tests/mock-servers/mock-llm-stream
+      dockerfile: Dockerfile
+    networks:
+      - it-gateway-runtime-network
