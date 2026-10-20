@@ -756,6 +756,12 @@ data:
     {{- if .Values.gateway.config.tracing.resource_attributes }}
     resource_attributes = { {{- $first := true }}{{- range $key, $value := .Values.gateway.config.tracing.resource_attributes }}{{- if not $first }}, {{ end }}{{- $first = false }}{{ $key | quote }} = {{ $value | quote }}{{- end }} }
     {{- end }}
+    {{- with .Values.gateway.config.tracing.genai }}
+    [tracing.genai]
+    enabled = {{ if hasKey . "enabled" }}{{ .enabled }}{{ else }}true{{ end }}
+    capture_content = {{ .capture_content | default false }}
+    max_content_bytes = {{ .max_content_bytes | default 16384 }}
+    {{- end }}
     {{- end }}
 
     {{- if .Values.gateway.config.subscriptions }}

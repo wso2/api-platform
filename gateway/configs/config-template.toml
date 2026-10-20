@@ -1335,3 +1335,15 @@ service_version = "1.0.0"
 batch_timeout = "1s"
 max_export_batch_size = 512
 sampling_rate = 1.0
+
+# GenAI, MCP and A2A client spans, following the OpenTelemetry GenAI semantic
+# conventions. Applies only when tracing is enabled. To report token usage, the
+# policy engine reads the request and response bodies of LLM provider and MCP
+# routes even when no policy needs them.
+[tracing.genai]
+enabled = true
+# Record prompts, completions and tool arguments and results on the spans. They can
+# hold personal or confidential data, so this is off by default.
+capture_content = false
+# Truncate each captured content attribute to this many bytes.
+max_content_bytes = 16384

@@ -629,6 +629,13 @@ gateway:
     #   batch_timeout: "1s"
     #   max_export_batch_size: 512
     #   sampling_rate: 1.0
+    #   # GenAI, MCP and A2A client spans. On by default when tracing is; to report
+    #   # token usage the policy engine reads the bodies of LLM provider and MCP routes.
+    #   genai:
+    #     enabled: true
+    #     # Prompts, completions and tool input and output. Can hold personal data.
+    #     capture_content: false
+    #     max_content_bytes: 16384
 
   # Raw TOML injected at the TOP of the generated config.toml, above every [table]
   # section. Use it for configuration the chart doesn't model as structured values.
