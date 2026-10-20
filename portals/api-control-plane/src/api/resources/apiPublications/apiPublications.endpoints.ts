@@ -208,6 +208,44 @@ export const getApiPublicationThumbnail = async (
     operationName: 'getApiPublicationThumbnail',
   });
 
+/** The draft's landing page as Markdown; 404s when it has none (`hasLandingPage`). */
+export const getApiPublicationDraftLandingPage = async (
+  apiPortalId: string,
+  apiType: string,
+  apiId: string,
+  options?: RequestOptions,
+): Promise<TextResponse> =>
+  http.getText(portalApiPath(apiPortalId, apiType, apiId, '/draft/landing-page'), {
+    ...options,
+    operationName: 'getApiPublicationDraftLandingPage',
+  });
+
+/** Creates or replaces the draft's landing page as `text/markdown`. */
+export const saveApiPublicationDraftLandingPage = async (
+  apiPortalId: string,
+  apiType: string,
+  apiId: string,
+  markdown: string,
+  options?: RequestOptions,
+): Promise<void> =>
+  http.put<void>(
+    portalApiPath(apiPortalId, apiType, apiId, '/draft/landing-page'),
+    new TextBody(markdown, 'text/markdown'),
+    { ...options, operationName: 'saveApiPublicationDraftLandingPage' },
+  );
+
+/** The published landing page as Markdown; 404s when it has none (`hasLandingPage`). */
+export const getApiPublicationLandingPage = async (
+  apiPortalId: string,
+  apiType: string,
+  apiId: string,
+  options?: RequestOptions,
+): Promise<TextResponse> =>
+  http.getText(portalApiPath(apiPortalId, apiType, apiId, '/publication/landing-page'), {
+    ...options,
+    operationName: 'getApiPublicationLandingPage',
+  });
+
 export const getApiPublication = async (
   apiPortalId: string,
   apiType: string,

@@ -23,7 +23,9 @@ import {
   useApiPublicationDefinition,
   useApiPublicationDraft,
   useApiPublicationDraftDefinition,
+  useApiPublicationDraftLandingPage,
   useApiPublicationDraftThumbnail,
+  useApiPublicationLandingPage,
   useApiPublicationThumbnail,
 } from '@/api/resources/apiPublications';
 import { isApiError } from '@/api/core/errors';
@@ -43,8 +45,20 @@ import { readStoredDefinition, readStoredSdl, type StoredDefinition } from './ut
 /** `inDraft`: the draft already stores it, so saving need not send it. */
 export type ThumbnailSeed = { blob: Blob; inDraft: boolean };
 
-/** What the editor opens with: the details, the definition and the thumbnail, from the freshest tier that has them. */
-export type PublishSeed = { definition?: StoredDefinition; thumbnail?: ThumbnailSeed; values: DraftFormValues };
+/** `inDraft`: the draft already stores it, so saving need not send it. */
+export type LandingPageSeed = { text: string; inDraft: boolean };
+
+/**
+ * What the editor opens with, from the freshest tier that has each part.
+ * `landingPageFailed`: a tier has a landing page but reading it failed.
+ */
+export type PublishSeed = {
+  definition?: StoredDefinition;
+  landingPage?: LandingPageSeed;
+  landingPageFailed: boolean;
+  thumbnail?: ThumbnailSeed;
+  values: DraftFormValues;
+};
 
 const isNotFound = (error: unknown): boolean => isApiError(error) && error.isNotFound;
 
@@ -71,11 +85,10 @@ const liveData = <T,>(query: { data: T | undefined; error: unknown }): T | undef
  * default (the first); they gate the seed so the default is there when it is
  * made, but a failed read only leaves the choices empty.
  *
- * The thumbnail follows the same chain (draft, publication, the API's own), but a tier is
- * chosen by the flag the tier above it carries (`hasThumbnail`), never by whether reading
- * it worked: a failed read shows no image rather than falling through to another tier's,
- * which saving would then store over the draft's own. The published thumbnail is read
- * whenever the listing has one, for its read-only view.
+ * The thumbnail (draft, publication, the API's own) and the landing page (draft, publication)
+ * pick their tier by the `hasThumbnail` / `hasLandingPage` flags, never by whether a read worked.
+ * A failed read must not fall through to another tier, or saving would overwrite the draft's own
+ * with it. The published ones are read whenever the listing has them, for the read-only view.
  *
  * The published definition is also fetched, on demand, when `wantPublishedDefinition`
  * is set and the API is live — the same query as the fallback tier, so a definition already read
@@ -120,6 +133,18 @@ export function usePublishPageData(apiPortalId: string, target: PublishTarget, w
     apiType,
     publicationHasThumbnail ? apiHandler : undefined,
   );
+  const draftHasLandingPage = Boolean(draft?.hasLandingPage);
+  const publicationHasLandingPage = Boolean(publication?.hasLandingPage);
+  const draftLandingPageQuery = useApiPublicationDraftLandingPage(
+    apiPortalId,
+    apiType,
+    draftHasLandingPage ? apiHandler : undefined,
+  );
+  const publicationLandingPageQuery = useApiPublicationLandingPage(
+    apiPortalId,
+    apiType,
+    publicationHasLandingPage ? apiHandler : undefined,
+  );
   // Last tier, asked for only once the two above are known to have nothing.
   const apiOwnThumbnailNeeded =
     !draftQuery.isPending && !publicationQuery.isPending && !draftHasThumbnail && !publicationHasThumbnail;
@@ -159,6 +184,8 @@ export function usePublishPageData(apiPortalId: string, target: PublishTarget, w
     (publicationDefinitionAbsent && apiOpenApiQuery.isPending) ||
     (draftHasThumbnail && draftThumbnailQuery.isPending) ||
     (!draftHasThumbnail && publicationHasThumbnail && publicationThumbnailQuery.isPending) ||
+    (draftHasLandingPage && draftLandingPageQuery.isPending) ||
+    (!draftHasLandingPage && publicationHasLandingPage && publicationLandingPageQuery.isPending) ||
     (apiOwnThumbnailNeeded && apiThumbnailQuery.isPending);
   const isRevalidating = [
     apiQuery,
@@ -170,6 +197,8 @@ export function usePublishPageData(apiPortalId: string, target: PublishTarget, w
     apiOpenApiQuery,
     draftThumbnailQuery,
     publicationThumbnailQuery,
+    draftLandingPageQuery,
+    publicationLandingPageQuery,
   ].some((query) => query.isFetching);
 
   // Latched: the page is loading until everything it opens on is current, and
@@ -213,8 +242,10 @@ export function usePublishPageData(apiPortalId: string, target: PublishTarget, w
   const draftThumbnail = liveData(draftThumbnailQuery)?.blob;
   const publishedThumbnail = liveData(publicationThumbnailQuery)?.blob;
 
-  // The freshest tier that has a definition wins: draft, publication, the API's own. The
-  // thumbnail's tier is the one its flags name, which may have no image to show if its read failed.
+  const draftLandingPage = liveData(draftLandingPageQuery)?.text;
+  const publishedLandingPage = liveData(publicationLandingPageQuery)?.text;
+
+  // The freshest tier that has a definition wins: draft, publication, the API's own.
   const seed = useMemo<PublishSeed | undefined>(() => {
     if (isLoading) return undefined;
     const definition =
@@ -227,8 +258,15 @@ export function usePublishPageData(apiPortalId: string, target: PublishTarget, w
       : publicationHasThumbnail
         ? publishedThumbnail
         : apiOwnThumbnail;
+    const landingPageText = draftHasLandingPage
+      ? draftLandingPage
+      : publicationHasLandingPage
+        ? publishedLandingPage
+        : undefined;
     return {
       definition,
+      landingPage: landingPageText === undefined ? undefined : { text: landingPageText, inDraft: draftHasLandingPage },
+      landingPageFailed: (draftHasLandingPage || publicationHasLandingPage) && landingPageText === undefined,
       thumbnail: thumbnailBlob && { blob: thumbnailBlob, inDraft: draftHasThumbnail },
       values: resolveDraftFormValues(draft, publication, apiQuery.data, productionUrlOptions[0]?.url),
     };
@@ -237,10 +275,14 @@ export function usePublishPageData(apiPortalId: string, target: PublishTarget, w
     apiQuery.data,
     apiThumbnailQuery.blob,
     draft,
+    draftHasLandingPage,
     draftHasThumbnail,
+    draftLandingPage,
     draftThumbnail,
     publication,
+    publicationHasLandingPage,
     publicationHasThumbnail,
+    publishedLandingPage,
     publishedThumbnail,
     draftDefinitionData,
     publishedDefinition,
@@ -259,6 +301,11 @@ export function usePublishPageData(apiPortalId: string, target: PublishTarget, w
       definition: publishedDefinition,
       failed: isApiError(publicationDefinitionQuery.error) && !publicationDefinitionQuery.error.isNotFound,
       isLoading: publicationDefinitionQuery.isLoading,
+    },
+    publishedLandingPage: {
+      failed: publicationHasLandingPage && publicationLandingPageQuery.isError,
+      isLoading: publicationLandingPageQuery.isLoading,
+      text: publishedLandingPage,
     },
     publishedThumbnail,
     seed,

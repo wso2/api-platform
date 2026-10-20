@@ -26,6 +26,7 @@ import {
   aPublication,
   aPublicationDraftDetails,
   failure,
+  noContent,
   recorder,
   resource,
   type Recorder,
@@ -35,11 +36,14 @@ import { server } from '../../../test/server';
 import { http, resetHttpClient } from '../../core/http';
 import {
   useApiPublicationDraft,
+  useApiPublicationDraftLandingPage,
   useApiPublicationDraftThumbnail,
+  useApiPublicationLandingPage,
   useApiPublicationThumbnail,
   useApiPublications,
   usePublishApiToApiPortal,
   useSaveApiPublicationDraft,
+  useSaveApiPublicationDraftLandingPage,
   useSaveApiPublicationDraftThumbnail,
   useUnpublishApiFromApiPortal,
 } from './apiPublications.hooks';
@@ -211,5 +215,66 @@ describe('saving a thumbnail', () => {
     } finally {
       put.mockRestore();
     }
+  });
+});
+
+describe('the landing page', () => {
+  const LANDING_PAGE = `${DRAFT}/landing-page`;
+  const serveLandingPages = () =>
+    server.use(
+      ...['draft', 'publication'].map((tier) =>
+        mswHttp.get(apiUrl(`/api-portals/${PORTAL}/apis/${TYPE}/${API}/${tier}/landing-page`), async ({ request }) => {
+          await landingReads.capture(request);
+          return new HttpResponse(`# ${tier}`, { headers: { 'Content-Type': 'text/markdown' } });
+        }),
+      ),
+    );
+
+  let landingReads: Recorder;
+  beforeEach(() => {
+    landingReads = recorder();
+  });
+
+  it('waits until the caller knows there is one to read', async () => {
+    serveLandingPages();
+
+    renderApiHook(() => ({
+      draft: useApiPublicationDraftLandingPage(PORTAL, TYPE, undefined),
+      publication: useApiPublicationLandingPage(PORTAL, TYPE, undefined),
+    }));
+    await settle();
+
+    expect(landingReads.count()).toBe(0);
+  });
+
+  it('reads the draft and the publication landing page as text', async () => {
+    serveLandingPages();
+
+    const { result } = renderApiHook(() => ({
+      draft: useApiPublicationDraftLandingPage(PORTAL, TYPE, API),
+      publication: useApiPublicationLandingPage(PORTAL, TYPE, API),
+    }));
+
+    await waitFor(() => {
+      expect(result.current.draft.data?.text).toBe('# draft');
+      expect(result.current.publication.data?.text).toBe('# publication');
+    });
+  });
+
+  it('marks what the screen has read stale once saved, without reading the draft again', async () => {
+    server.use(noContent('put', LANDING_PAGE));
+    const { result } = renderApiHook(() => ({
+      draft: useApiPublicationDraft(PORTAL, TYPE, API),
+      save: useSaveApiPublicationDraftLandingPage(),
+    }));
+    await waitFor(() => expect(result.current.draft.isSuccess).toBe(true));
+
+    await act(() =>
+      result.current.save.mutateAsync({ apiPortalId: PORTAL, apiType: TYPE, apiId: API, markdown: '# Loans' }),
+    );
+    await settle();
+
+    expect(draftReads.count()).toBe(1);
+    expect(result.current.draft.isStale).toBe(true);
   });
 });
