@@ -40,6 +40,7 @@ import { FormattedMessage } from 'react-intl';
 import { useAppShell } from '../../../../contexts/AppShellContext';
 import { useAppAuthScopes } from '../../../../contexts/AppAuthContext';
 import { SCOPES } from '../../../../auth/permissions';
+import { type FeatureId, isFeatureEnabled } from '../../../../config.env';
 import { buildOrgPath } from '../../../../utils/projectRouting';
 
 interface NavItem {
@@ -50,6 +51,8 @@ interface NavItem {
   path: string;
   // Permission required to see/use this item.
   scope: string;
+  // Feature flag the item is hidden behind, if any.
+  feature?: FeatureId;
 }
 
 // Settings navigation. LLM Provider Templates is first/default.
@@ -74,12 +77,19 @@ const NAV_ITEMS: NavItem[] = [
     icon: <Laptop size={18} />,
     path: '/settings/service-accounts',
     scope: SCOPES.SERVICE_ACCOUNT_MANAGE,
+    feature: 'service-accounts',
   },
 ];
 
+const visibleItems = (hasPermission: (scope: string) => boolean) =>
+  NAV_ITEMS.filter(
+    (item) =>
+      (!item.feature || isFeatureEnabled(item.feature)) && hasPermission(item.scope)
+  );
+
 /** Whether the user can open any Settings section; the sidebar link keys off this. */
 export const canSeeSettings = (hasPermission: (scope: string) => boolean) =>
-  NAV_ITEMS.some((item) => hasPermission(item.scope));
+  visibleItems(hasPermission).length > 0;
 
 export default function Settings() {
   const navigate = useNavigate();
@@ -87,7 +97,7 @@ export default function Settings() {
   const { currentOrganization } = useAppShell();
   const { hasPermission } = useAppAuthScopes();
 
-  const visibleNavItems = NAV_ITEMS.filter((item) => hasPermission(item.scope));
+  const visibleNavItems = visibleItems(hasPermission);
   const selectedKey = visibleNavItems.find((item) =>
     location.pathname.includes(item.path)
   )?.key;
@@ -152,7 +162,7 @@ export default function Settings() {
 export function SettingsIndexRedirect() {
   const { currentOrganization } = useAppShell();
   const { hasPermission } = useAppAuthScopes();
-  const firstVisibleItem = NAV_ITEMS.find((item) => hasPermission(item.scope));
+  const [firstVisibleItem] = visibleItems(hasPermission);
   const target = firstVisibleItem ? firstVisibleItem.path : '/home';
 
   return <Navigate to={buildOrgPath(currentOrganization, target)} replace />;
