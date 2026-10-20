@@ -21,6 +21,8 @@ package kernel
 import (
 	"time"
 
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/genai"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/resolver"
 	policy "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
@@ -47,6 +49,14 @@ type genaiCapture struct {
 	responseComplete bool
 	// firstChunkAt is when the first response body bytes arrived.
 	firstChunkAt time.Time
+
+	// span is the client span (genai_trace.go), started when the request is
+	// forwarded, at startedAt, and ended once.
+	span      trace.Span
+	startedAt time.Time
+	ended     bool
+	// streaming reports that the request asked for a streamed response.
+	streaming bool
 }
 
 // genaiKindFor returns the API kind a client span is recorded for on a route of kind,
