@@ -91,8 +91,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      platform-api:
-        condition: service_healthy
       # cert.pem must exist in the certs volume before Node reads NODE_EXTRA_CA_CERTS
       # at startup (a missing file is silently ignored with a warning).
       platform-api-certgen:
@@ -192,12 +190,6 @@ services:
         condition: service_completed_successfully
       platform-api-jwtkeygen:
         condition: service_completed_successfully
-    healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "-O", "/dev/null", "--no-check-certificate", "https://localhost:9243/health"]
-      interval: 30s
-      timeout: 10s
-      start_period: 5s
-      retries: 3
 
   management-portal:
     build:
@@ -205,9 +197,6 @@ services:
       dockerfile: Dockerfile
     ports:
       - "5173:5173"
-    depends_on:
-      platform-api:
-        condition: service_healthy
 
 volumes:
   platform-api-data:
