@@ -66,7 +66,7 @@ helm install apip-operator oci://ghcr.io/wso2/api-platform/helm-charts/gateway-o
 |-----------|-------------|---------|
 | `gateway.controlPlaneHost` | Control plane API endpoint | `http://platform-api:3001` |
 | `gateway.helm.chartName` | Gateway Helm chart OCI or repo reference (ignored if `chartPath` is set) | `oci://ghcr.io/wso2/api-platform/helm-charts/gateway` |
-| `gateway.helm.chartVersion` | Gateway chart version (for remote pulls; also used in upgrade signatures) | `1.2.3` |
+| `gateway.helm.chartVersion` | Gateway chart version (for remote pulls; also used in upgrade signatures) | `1.2.4` |
 | `gateway.helm.chartPath` | Local chart dir or `.tgz` path **inside the operator pod**; when non-empty, remote chart lookup (`chartName`/`chartVersion`) and registry auth are ignored | `""` |
 | `gateway.helm.valuesFilePath` | Path to gateway values file | `/config/gateway_values.yaml` |
 | `gateway.helm.insecureRegistry` | Skip TLS verification for OCI registries (still HTTPS) | `false` |
@@ -77,7 +77,7 @@ helm install apip-operator oci://ghcr.io/wso2/api-platform/helm-charts/gateway-o
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
-| `gatewayApi.installStandardCRDs` | Install the standard-channel Gateway API CRDs | `true` |
+| `gatewayApi.installStandardCRDs` | Install the standard-channel Gateway API CRDs. Set `false` on OpenShift 4.19+, where the Ingress Operator manages these CRDs | `true` |
 | `gatewayApi.managedGatewayClassNames` | `gatewayClassName` values this operator reconciles | `[wso2-api-platform]` |
 | `gatewayApi.clusterDomain` | Cluster DNS suffix for in-cluster Service URLs | `cluster.local` |
 
@@ -109,10 +109,35 @@ Component container image tags come from the gateway chart; do not hardcode them
 
 ### Security Context
 
+Both blocks are rendered as given, so any valid `PodSecurityContext` / `SecurityContext` field can be set. They are ignored when `debug.enabled=true` (Delve needs root and `SYS_PTRACE`).
+
+> [!NOTE]
+> **Upgrading from earlier chart versions:** `securityContext` is now the container-level security context. Earlier versions treated it as pod-level but rendered only `runAsUser` and `runAsNonRoot`, which work at both levels, so existing values keep their effect. Move any pod-only fields (`fsGroup`, `supplementalGroups`, `sysctls`) to `podSecurityContext`.
+>
+> Upgrade by passing your values file again, or with `--reset-then-reuse-values` (Helm 3.14 or later), not `--reuse-values`. `--reuse-values` renders this chart with the previous version's defaults, so the operator container loses `allowPrivilegeEscalation: false`, `capabilities.drop: [ALL]` and `readOnlyRootFilesystem: true`, and a namespace that enforces the `restricted` Pod Security level rejects the new pod.
+
 | Parameter | Description | Default |
 |-----------|-------------|---------|
-| `securityContext.runAsNonRoot` | Run as non-root user | `true` |
-| `securityContext.runAsUser` | User ID to run as | `10001` |
+| `podSecurityContext` | Pod-level security context for the operator | `runAsNonRoot: true`, `seccompProfile.type: RuntimeDefault` |
+| `securityContext` | Container-level security context for the operator | `runAsUser: 10001`, `allowPrivilegeEscalation: false`, `capabilities.drop: [ALL]`, `readOnlyRootFilesystem: true` |
+| `securityContext.runAsUser` | UID for the operator container. Set to `null` to leave it unset (the image default `65532` is used, or OpenShift assigns one from the project range) | `10001` |
+| `cleanupJob.podSecurityContext` | Pod-level security context for the pre-delete cleanup Job | `{}` |
+| `cleanupJob.securityContext` | Container-level security context for the pre-delete cleanup Job | `{}` |
+
+### OpenShift
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `openshift.enabled` | `true`, `false` or `auto`. `auto` turns OpenShift support on when the cluster serves `route.openshift.io/v1`; `helm template`, dry runs and GitOps renderers such as Argo CD resolve it to `false`, so use `true` there | `false` |
+
+With OpenShift support on, the chart:
+
+- grants the operator permission to manage Routes (`routes` and `routes/custom-host`);
+- sets `openshift.enabled: true` in the rendered gateway values, so the gateway chart's optional management API Route (`gateway.values.openshift.routes.managementApi`, off by default) can be turned on. A value set in `gateway.values.openshift.enabled` takes precedence. Gateway charts earlier than `1.2.4` have no OpenShift support and ignore it.
+
+The chart does not create Routes for API traffic. The hostnames a gateway serves come from its virtual hosts (`gateway.values.gateway.config.router.vhosts`) and from each API definition, so create a Route to the gateway's `gateway-runtime` Service for each hostname you use.
+
+`openshift.enabled` does not change the security contexts. On OpenShift, set `securityContext.runAsUser: null` so the `restricted-v2` SCC assigns a UID from the project's range, or set a UID your SCC allows.
 
 ## Custom Resource Definitions (CRDs)
 
