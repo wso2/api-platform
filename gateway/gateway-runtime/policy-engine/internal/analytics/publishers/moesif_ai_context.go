@@ -40,6 +40,7 @@ import (
 
 	"github.com/moesif/moesifapi-go/models"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics/dto"
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/genai"
 )
 
 // moesifAIProviders maps an LLM provider template name onto the provider name Moesif
@@ -83,7 +84,7 @@ func aiContextBlock(event *dto.Event, route string) *models.AiContextModel {
 	return &models.AiContextModel{
 		Provider:  nonEmpty(moesifAIProvider(aiMetadata.VendorName)),
 		Model:     nonEmpty(aiMetadata.Model),
-		ModelType: nonEmpty(moesifAIModelTypes[otelGenAIOperationName(route)]),
+		ModelType: nonEmpty(moesifAIModelTypes[genai.OperationName(route)]),
 		Usage:     usage,
 	}
 }
