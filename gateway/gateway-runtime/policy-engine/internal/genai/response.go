@@ -138,8 +138,7 @@ func bedrockResponse(doc map[string]any, reasons map[int]string) (string, string
 // jsonEvents splits a body into its JSON documents: the payload of every server-sent
 // event, or the body itself when it is not a stream.
 func jsonEvents(body []byte) [][]byte {
-	trimmed := bytes.TrimLeft(body, " \t\r\n")
-	if !bytes.HasPrefix(trimmed, []byte("data:")) && !bytes.HasPrefix(trimmed, []byte("event:")) {
+	if !isEventStream(body) {
 		return [][]byte{body}
 	}
 	var events [][]byte
@@ -165,6 +164,12 @@ func jsonEvents(body []byte) [][]byte {
 	}
 	flush()
 	return events
+}
+
+// isEventStream reports whether body is a server-sent event stream.
+func isEventStream(body []byte) bool {
+	trimmed := bytes.TrimLeft(body, " \t\r\n")
+	return bytes.HasPrefix(trimmed, []byte("data:")) || bytes.HasPrefix(trimmed, []byte("event:"))
 }
 
 func orderedReasons(byIndex map[int]string) []string {

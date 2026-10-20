@@ -97,8 +97,8 @@ func TestParseJSONRPCResponse(t *testing.T) {
 		want JSONRPCOutcome
 		ok   bool
 	}{
-		"result":         {`{"jsonrpc":"2.0","id":1,"result":{"content":[]}}`, JSONRPCOutcome{}, true},
-		"tool error":     {`{"jsonrpc":"2.0","id":1,"result":{"isError":true,"content":[]}}`, JSONRPCOutcome{ToolError: true}, true},
+		"result":         {`{"jsonrpc":"2.0","id":1,"result":{"content":[]}}`, JSONRPCOutcome{Result: []byte(`{"content":[]}`)}, true},
+		"tool error":     {`{"jsonrpc":"2.0","id":1,"result":{"isError":true,"content":[]}}`, JSONRPCOutcome{ToolError: true, Result: []byte(`{"isError":true,"content":[]}`)}, true},
 		"jsonrpc error":  {`{"jsonrpc":"2.0","id":1,"error":{"code":-32602,"message":"bad"}}`, JSONRPCOutcome{ErrorCode: "-32602"}, true},
 		"sse after note": {"event: message\ndata: {\"jsonrpc\":\"2.0\",\"method\":\"notifications/progress\"}\n\ndata: {\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32601}}\n\n", JSONRPCOutcome{ErrorCode: "-32601"}, true},
 		"empty":          {``, JSONRPCOutcome{}, false},
@@ -110,4 +110,9 @@ func TestParseJSONRPCResponse(t *testing.T) {
 			assert.Equal(t, tc.want, got)
 		})
 	}
+}
+
+func TestMCPToolArguments(t *testing.T) {
+	assert.JSONEq(t, `{"city":"Colombo"}`, string(MCPToolArguments([]byte(`{"params":{"name":"f","arguments":{"city":"Colombo"}}}`))))
+	assert.Nil(t, MCPToolArguments([]byte(`{"params":{}}`)))
 }
