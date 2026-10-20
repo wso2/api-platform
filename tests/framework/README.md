@@ -52,6 +52,12 @@ go test ./suites/ui -count=1 -timeout=25m
 CLOUD_CONSOLE_ACCESS_TOKEN=<access-token> \
 go test ./suites/cloud -count=1 -timeout=15m \
   -args -blocks=apip-cloud -cloud-env=development
+
+# Integration-suite scenarios run against the same organization (see below); the API's
+# upstream is the hosted testbench, so TESTBENCH_URL is required:
+CLOUD_CONSOLE_ACCESS_TOKEN=<access-token> TESTBENCH_URL=https://webhook.site/<uuid> \
+go test ./suites/cloud -count=1 -timeout=15m \
+  -args -blocks=apip-cloud-it -cloud-env=development
 ```
 
 Prerequisite images: `make testbench` and, for blocks that list `a2a-trip-planner`,
@@ -98,6 +104,15 @@ provider itself. Its suite defaults match the integration suite: a 5-minute boot
 and a 60-second propagation deadline. Cloud data-plane availability and eventual reads use the
 propagation deadline; the longer deployment and environment-finalizer waits remain explicit in
 their step contracts.
+
+The `apip-cloud-it` block of `cloud-suite.yaml` runs feature files of the integration suite
+against the cloud organization without copying them: a runner lists the file by relative path
+(`../it/features/...`, optionally `:<line>` for one scenario) and the cloud step package binds the
+phrases those files use, with the same text, against the cloud API
+(`suites/cloud/steps/cloudconsole/itbridge.go`). Add a feature or scenario to the block's runner
+and bind any phrase it uses that the bridge lacks. The API's upstream is the testbench, so the
+block needs `TESTBENCH_URL` (a testbench the cloud gateway can reach) and its scenarios skip
+without it.
 
 Each package's `doc.go` carries its charter and the invariants it exists to protect. Read those
 before changing one — most encode a failure mode that presents as a passing test.
@@ -156,6 +171,20 @@ by the test process and for upstreams handed to the components under test, so it
 from both. With none of them set the container is used, exactly as before. The resolver is
 `core/catalog/testbench` (`HostURL`, `UpstreamURL`, `AuthHeaders`); steps resolve testbench
 addresses through it rather than from the topology.
+
+```bash
+# Point every testbench endpoint the steps resolve at a hosted service, for example a
+# request-recording URL from webhook.site, instead of the testbench container:
+TESTBENCH_URL=https://webhook.site/<uuid> \
+go test ./suites/it -count=1 -timeout=30m -blocks=platform-api-sqlite \
+  -run 'TestIntegrationSuite/platform-api-sqlite/sqlite/platform-api-deployment'
+```
+
+Only addresses the steps resolve through the resolver follow the variables. A feature file that
+spells out `http://testbench:<port>` in a table still reaches the container, the block still
+starts the testbench container it declares, and a recording service can stand in only for
+endpoints that need no behaviour of their own, such as a gateway upstream, not for the mock
+identity, JWKS or model services.
 
 The embedded copies of files that live outside the module (the gateway database schemas, the
 current gateway configuration and the pricing file, listed in `assets.SnapshotSources`) are not
