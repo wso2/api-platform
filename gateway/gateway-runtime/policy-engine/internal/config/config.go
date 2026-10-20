@@ -778,13 +778,24 @@ type MetricsConfig struct {
 	Port int `koanf:"port"`
 }
 
+// OTLP transports for TracingConfig.Protocol.
+const (
+	TracingProtocolGRPC = "grpc"
+	TracingProtocolHTTP = "http"
+)
+
 // TracingConfig holds OpenTelemetry tracing configuration
 type TracingConfig struct {
 	// Enabled toggles tracing on/off
 	Enabled bool `koanf:"enabled"`
 
-	// Endpoint is the OTLP gRPC endpoint (host:port)
+	// Endpoint is the OTLP collector endpoint (host:port): the gRPC port (4317) for
+	// protocol "grpc", the HTTP port (4318) for protocol "http".
 	Endpoint string `koanf:"endpoint"`
+
+	// Protocol is the OTLP transport: "grpc" (default) or "http" (OTLP/HTTP protobuf,
+	// POST /v1/traces). Collectors that accept only OTLP/HTTP need "http".
+	Protocol string `koanf:"protocol"`
 
 	// Insecure indicates whether to use an insecure connection (no TLS)
 	Insecure bool `koanf:"insecure"`
@@ -1443,6 +1454,7 @@ func defaultConfig() *Config {
 		TracingConfig: TracingConfig{
 			Enabled:            false,
 			Endpoint:           "otel-collector:4317",
+			Protocol:           TracingProtocolGRPC,
 			Insecure:           true,
 			ServiceVersion:     "1.0.0",
 			BatchTimeout:       1 * time.Second,
@@ -1665,6 +1677,9 @@ func (c *Config) Validate() error {
 	if c.TracingConfig.Enabled {
 		if c.TracingConfig.Endpoint == "" {
 			return fmt.Errorf("tracing.endpoint is required when tracing is enabled")
+		}
+		if p := c.TracingConfig.Protocol; p != "" && p != TracingProtocolGRPC && p != TracingProtocolHTTP {
+			return fmt.Errorf("tracing.protocol must be %q or %q, got %q", TracingProtocolGRPC, TracingProtocolHTTP, p)
 		}
 		if c.TracingConfig.BatchTimeout <= 0 {
 			return fmt.Errorf("tracing.batch_timeout must be positive")

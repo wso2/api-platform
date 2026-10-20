@@ -616,6 +616,20 @@ gateway:
       # Default (false) forwards to exactly the configured upstream path.
       append_resource_path_to_backend: false
 
+    # OpenTelemetry tracing for the router and the policy engine. Absent by default,
+    # which leaves tracing off. Uncomment to enable:
+    # tracing:
+    #   enabled: true
+    #   # "grpc" (OTLP/gRPC, port 4317) or "http" (OTLP/HTTP, port 4318). Match the
+    #   # endpoint's port to the protocol.
+    #   protocol: grpc
+    #   endpoint: "otel-collector:4317"
+    #   insecure: true
+    #   service_version: "1.0.0"
+    #   batch_timeout: "1s"
+    #   max_export_batch_size: 512
+    #   sampling_rate: 1.0
+
   # Raw TOML injected at the TOP of the generated config.toml, above every [table]
   # section. Use it for configuration the chart doesn't model as structured values.
   # Because it leads the file, it can carry BARE ROOT keys — e.g. policy "system

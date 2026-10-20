@@ -747,6 +747,7 @@ data:
     [tracing]
     enabled = {{ .Values.gateway.config.tracing.enabled }}
     endpoint = {{ .Values.gateway.config.tracing.endpoint | quote }}
+    protocol = {{ .Values.gateway.config.tracing.protocol | default "grpc" | quote }}
     insecure = {{ .Values.gateway.config.tracing.insecure }}
     service_version = {{ .Values.gateway.config.tracing.service_version | quote }}
     batch_timeout = {{ .Values.gateway.config.tracing.batch_timeout | quote }}

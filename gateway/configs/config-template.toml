@@ -1326,6 +1326,9 @@ append_resource_path_to_backend = false
 
 [tracing]
 enabled = false
+# OTLP transport: "grpc" (port 4317) or "http" (OTLP/HTTP protobuf, port 4318). Match
+# the endpoint's port to the protocol.
+protocol = "grpc"
 endpoint = "otel-collector:4317"
 insecure = true
 service_version = "1.0.0"
