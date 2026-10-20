@@ -95,6 +95,9 @@ func (ec *PolicyExecutionContext) startMCPSpan(bodyResult *executor.RequestExecu
 	attrs = append(attrs, ec.serverAttributes()...)
 
 	body := ec.genaiRequestBody()
+	if method == "tools/call" {
+		attrs = append(attrs, ec.rawContentAttribute(genai.AttrToolCallArguments, genai.MCPToolArguments(body))...)
+	}
 	parent := trace.ContextWithSpan(context.Background(), ec.rootSpan)
 	opts := []trace.SpanStartOption{trace.WithAttributes(attrs...)}
 	carried := trace.SpanContextFromContext(propagation.TraceContext{}.Extract(context.Background(), genai.MCPMetaContext(body)))
@@ -120,6 +123,9 @@ func (ec *PolicyExecutionContext) finishMCPSpan(span trace.Span) {
 		return
 	}
 	outcome, ok := genai.ParseJSONRPCResponse(ec.genai.response.Bytes())
+	if ok && ec.resolutionAttributes[resolver.AttrMCPBodyMethod] == "tools/call" {
+		span.SetAttributes(ec.rawContentAttribute(genai.AttrToolCallResult, outcome.Result)...)
+	}
 	switch {
 	case !ok:
 	case outcome.ErrorCode != "":
@@ -145,4 +151,17 @@ func jsonRPCID(token string) string {
 		return s
 	}
 	return token
+}
+
+// rawContentAttribute records tool input or output as the JSON it was, when content
+// capture is on. JSON over the budget cannot be cut and stay what it was, so it is left
+// out and the span marked truncated.
+func (ec *PolicyExecutionContext) rawContentAttribute(key string, raw json.RawMessage) []attribute.KeyValue {
+	if !ec.server.genai.CaptureContent || len(raw) == 0 {
+		return nil
+	}
+	if len(raw) > ec.server.genai.MaxContentBytes {
+		return []attribute.KeyValue{attribute.Bool(genai.AttrContentTruncated, true)}
+	}
+	return []attribute.KeyValue{attribute.String(key, string(raw))}
 }

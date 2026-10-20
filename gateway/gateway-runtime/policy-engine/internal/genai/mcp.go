@@ -118,6 +118,8 @@ type JSONRPCOutcome struct {
 	// ToolError reports an MCP tool call whose result says isError: the tool ran and
 	// failed.
 	ToolError bool
+	// Result is the result as the server sent it.
+	Result json.RawMessage
 }
 
 // ParseJSONRPCResponse reads the JSON-RPC response from a JSON body or, for a streamed
@@ -126,10 +128,8 @@ type JSONRPCOutcome struct {
 func ParseJSONRPCResponse(body []byte) (JSONRPCOutcome, bool) {
 	for _, event := range jsonEvents(body) {
 		var resp struct {
-			Result *struct {
-				IsError bool `json:"isError"`
-			} `json:"result"`
-			Error *struct {
+			Result json.RawMessage `json:"result"`
+			Error  *struct {
 				Code json.Number `json:"code"`
 			} `json:"error"`
 		}
@@ -140,8 +140,25 @@ func ParseJSONRPCResponse(body []byte) (JSONRPCOutcome, bool) {
 		case resp.Error != nil:
 			return JSONRPCOutcome{ErrorCode: resp.Error.Code.String()}, true
 		case resp.Result != nil:
-			return JSONRPCOutcome{ToolError: resp.Result.IsError}, true
+			var result struct {
+				IsError bool `json:"isError"`
+			}
+			_ = json.Unmarshal(resp.Result, &result)
+			return JSONRPCOutcome{ToolError: result.IsError, Result: resp.Result}, true
 		}
 	}
 	return JSONRPCOutcome{}, false
+}
+
+// MCPToolArguments returns a tools/call request's arguments as the client sent them.
+func MCPToolArguments(body []byte) json.RawMessage {
+	var req struct {
+		Params struct {
+			Arguments json.RawMessage `json:"arguments"`
+		} `json:"params"`
+	}
+	if json.Unmarshal(body, &req) != nil {
+		return nil
+	}
+	return req.Params.Arguments
 }
