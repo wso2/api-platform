@@ -30,8 +30,8 @@
 //	authz/context/allow    allow only when the input carries the request metadata the gateway is
 //	                       expected to send (method, path, headers, apiContext.apiName)
 //	authz/token/allow      allow only when the input carries apiContext.accessToken
-//	au    allow only when the input carries no apiContext.accessToken
-//	authz/secured/allow thz/notoken/allow   allow, but only for a caller presenting "Authorization: Bearer
+//	authz/notoken/allow    allow only when the input carries no apiContext.accessToken
+//	authz/secured/allow    allow, but only for a caller presenting "Authorization: Bearer
 //	                       opa-test-key"; any other caller is answered 401
 //	authz/slow/allow       allow, after SlowDelay
 //
