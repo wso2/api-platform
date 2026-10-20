@@ -123,6 +123,8 @@ const API_THUMBNAIL_PATH = `/apis/rest-api/${API}/thumbnail`;
 const DRAFT_THUMBNAIL_PATH = `${DRAFT_PATH}/thumbnail`;
 const PUBLICATION_THUMBNAIL_PATH = `${PUBLICATION_PATH}/thumbnail`;
 const API_OPENAPI_PATH = `/rest-apis/${API}/openapi`;
+const DRAFT_LANDING_PATH = `${DRAFT_PATH}/landing-page`;
+const PUBLICATION_LANDING_PATH = `${PUBLICATION_PATH}/landing-page`;
 const GATEWAYS_PATH = `/rest-apis/${API}/gateways`;
 
 /** A gateway the API is deployed to, as the API's gateway list returns it. */
@@ -353,17 +355,15 @@ describe('PortalPublishPage', () => {
     expect(await screen.findByText('Enter a full URL, for example https://api.example.com.')).toBeInTheDocument();
   });
 
-  it('disables the Landing Page tab for this alpha', async () => {
+  it('enables every tab', async () => {
     servePublicationState();
 
     renderPage();
 
     await screen.findByDisplayValue('Loan Management Service');
-    expect(screen.getByRole('tab', { name: 'Landing Page' })).toBeDisabled();
-    expect(screen.getByRole('tab', { name: 'API Details' })).toBeEnabled();
-    expect(screen.getByRole('tab', { name: 'Specification' })).toBeEnabled();
-    expect(screen.getByRole('tab', { name: 'Subscription Plans' })).toBeEnabled();
-    expect(screen.getByRole('tab', { name: 'Documentation' })).toBeEnabled();
+    for (const name of ['API Details', 'Specification', 'Subscription Plans', 'Documentation', 'Landing Page']) {
+      expect(screen.getByRole('tab', { name })).toBeEnabled();
+    }
   });
 
   it('Documentation tab saves the selection as part of the draft, and reads it back from the publication in the published view', async () => {
@@ -1511,6 +1511,47 @@ describe('PortalPublishPage', () => {
     expect(screen.queryByText('Published to acme-portal.')).not.toBeInTheDocument();
   });
 
+  it('sends the user to the Specification tab from any tab when the server names the definition', async () => {
+    servePublicationState();
+    server.use(
+      accepts('put', DRAFT_PATH, aPublicationDraftDetails()),
+      accepts('put', DRAFT_DEFINITION_PATH, undefined),
+      failure('post', PUBLISH_PATH, 400, 'PUBLICATION_VALIDATION_FAILED', {
+        errors: [{ field: 'definition', message: 'A definition is required to publish this API' }],
+      }),
+    );
+
+    const { user } = renderPage();
+
+    await screen.findByDisplayValue('Loan Management Service');
+    await user.click(screen.getByRole('tab', { name: 'Landing Page' }));
+    await user.click(screen.getByRole('button', { name: 'Publish' }));
+
+    await waitFor(() =>
+      expect(screen.getByRole('tab', { name: 'Specification' })).toHaveAttribute('aria-selected', 'true'),
+    );
+  });
+
+  it('stays on the current tab when the server names a field that is not the definition', async () => {
+    servePublicationState();
+    server.use(
+      accepts('put', DRAFT_PATH, aPublicationDraftDetails()),
+      accepts('put', DRAFT_DEFINITION_PATH, undefined),
+      failure('post', PUBLISH_PATH, 400, 'PUBLICATION_VALIDATION_FAILED', {
+        errors: [{ field: 'thumbnail', message: 'thumbnail must be a PNG or JPEG image' }],
+      }),
+    );
+
+    const { user } = renderPage();
+
+    await screen.findByDisplayValue('Loan Management Service');
+    await user.click(screen.getByRole('tab', { name: 'Landing Page' }));
+    await user.click(screen.getByRole('button', { name: 'Publish' }));
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Publish' })).toBeEnabled());
+    expect(screen.getByRole('tab', { name: 'Landing Page' })).toHaveAttribute('aria-selected', 'true');
+  });
+
   it('stays on the Documentation tab when Publish fails validation', async () => {
     servePublicationState();
     server.use(
@@ -1955,5 +1996,229 @@ describe('PortalPublishPage — saving a draft', () => {
 
     expect(await screen.findByText(/^Edited/)).toBeInTheDocument();
     expect(draftReads.count()).toBe(1);
+  });
+});
+
+describe('PortalPublishPage — landing page', () => {
+  const EDITOR = 'Landing page (Markdown)';
+
+  /** A landing page served as Markdown text at `path`, with its reads counted. */
+  const landingPageAt = (path: string, text: string, reads: Recorder = recorder()) =>
+    mswHttp.get(apiUrl(path), async ({ request }) => {
+      await reads.capture(request);
+      return new HttpResponse(text, { headers: { 'Content-Type': 'text/markdown' } });
+    });
+
+  const openLandingPage = async (user: ReturnType<typeof renderPage>['user']) => {
+    await screen.findByDisplayValue('Loan Management Service');
+    await user.click(screen.getByRole('tab', { name: 'Landing Page' }));
+  };
+
+  it('offers to create one from the API details when none is stored, and reads nothing for it', async () => {
+    servePublicationState({ draft: aPublicationDraftDetails() });
+    const reads = recorder();
+    server.use(
+      landingPageAt(DRAFT_LANDING_PATH, '# draft', reads),
+      landingPageAt(PUBLICATION_LANDING_PATH, '# published', reads),
+      definitionText(
+        DRAFT_DEFINITION_PATH,
+        JSON.stringify({ openapi: '3.0.3', paths: { '/loans': { get: { summary: 'List loans' } } } }),
+        'application/json',
+      ),
+    );
+    const { user } = renderPage();
+
+    await openLandingPage(user);
+    expect(screen.getByText('No landing page')).toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: EDITOR })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save Draft' })).toBeDisabled();
+
+    await user.click(screen.getByRole('button', { name: 'Create from API details' }));
+
+    const editor = screen.getByRole('textbox', { name: EDITOR }) as HTMLTextAreaElement;
+    expect(editor.value).toBe(
+      [
+        '## Overview',
+        '',
+        'Manage loan applications and repayments.',
+        '',
+        '## Endpoints',
+        '',
+        '- **Production:** https://api.example.com/loans',
+        '',
+        '## Resources',
+        '',
+        '- **GET** `/loans` — List loans',
+        '',
+      ].join('\n'),
+    );
+    expect(screen.getByRole('region', { name: 'Preview' })).toHaveTextContent('List loans');
+    expect(screen.getByText(/Publishing replaces the portal’s default section/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save Draft' })).toBeEnabled();
+    expect(reads.count()).toBe(0);
+
+    await user.type(editor, '!');
+    expect(screen.queryByText(/Publishing replaces the portal’s default section/)).not.toBeInTheDocument();
+  });
+
+  it('drops the generated-page notice once the page is edited, and never shows it for a page that was already there', async () => {
+    servePublicationState({ draft: aPublicationDraftDetails({ hasLandingPage: true }) });
+    server.use(landingPageAt(DRAFT_LANDING_PATH, '# Existing'));
+    const { user } = renderPage();
+
+    await openLandingPage(user);
+    expect(await screen.findByRole('textbox', { name: EDITOR })).toHaveValue('# Existing');
+    expect(screen.queryByText(/Publishing replaces the portal’s default section/)).not.toBeInTheDocument();
+  });
+
+  it('shows what is typed in the preview as it is typed', async () => {
+    servePublicationState({ draft: aPublicationDraftDetails({ hasLandingPage: true }) });
+    server.use(landingPageAt(DRAFT_LANDING_PATH, ''));
+    const { user } = renderPage();
+
+    await openLandingPage(user);
+    expect(await screen.findByText('Your landing page appears here as you write.')).toBeInTheDocument();
+    await user.type(screen.getByRole('textbox', { name: EDITOR }), '# Loans');
+
+    expect(await within(screen.getByRole('region', { name: 'Preview' })).findByRole('heading', { name: 'Loans' })).toBeInTheDocument();
+  });
+
+  it('opens on the draft’s own page rather than the published one, and does not save it again', async () => {
+    servePublicationState({
+      draft: aPublicationDraftDetails({ hasLandingPage: true }),
+      publication: aPublication({ hasLandingPage: true }),
+    });
+    const draftReads = recorder();
+    const saves = recorder();
+    server.use(
+      landingPageAt(DRAFT_LANDING_PATH, '# Draft page', draftReads),
+      landingPageAt(PUBLICATION_LANDING_PATH, '# Published page'),
+      accepts('put', DRAFT_PATH, aPublicationDraftDetails()),
+      accepts('put', DRAFT_DEFINITION_PATH, undefined),
+      noContent('put', DRAFT_LANDING_PATH, { record: saves }),
+    );
+    const { user } = renderPage();
+
+    await showDraft(user);
+    await user.click(screen.getByRole('tab', { name: 'Landing Page' }));
+    expect(await screen.findByDisplayValue('# Draft page')).toBeInTheDocument();
+    expect(draftReads.count()).toBe(1);
+
+    await user.click(screen.getByRole('tab', { name: 'API Details' }));
+    await makeEdit(user);
+    await user.click(screen.getByRole('button', { name: 'Save Draft' }));
+    expect(await screen.findByText('Draft saved.')).toBeInTheDocument();
+    expect(saves.count()).toBe(0);
+  });
+
+  it('opens on the published page when the draft has none, and saves it into the draft', async () => {
+    servePublicationState({
+      draft: aPublicationDraftDetails(),
+      publication: aPublication({ hasLandingPage: true }),
+    });
+    const saves = recorder();
+    server.use(
+      landingPageAt(PUBLICATION_LANDING_PATH, '# Published page'),
+      accepts('put', DRAFT_PATH, aPublicationDraftDetails()),
+      accepts('put', DRAFT_DEFINITION_PATH, undefined),
+      noContent('put', DRAFT_LANDING_PATH, { record: saves }),
+    );
+    const { user } = renderPage();
+
+    await showDraft(user);
+    await user.click(screen.getByRole('tab', { name: 'Landing Page' }));
+    expect(await screen.findByDisplayValue('# Published page')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save Draft' })).toBeDisabled();
+
+    await user.click(screen.getByRole('tab', { name: 'API Details' }));
+    await makeEdit(user);
+    await user.click(screen.getByRole('button', { name: 'Save Draft' }));
+
+    await waitFor(() => expect(saves.count()).toBe(1));
+    expect(saves.last()?.body).toBe('# Published page');
+    expect(saves.last()?.headers.get('content-type')).toContain('text/markdown');
+  });
+
+  it('saves the edited page with Save Draft', async () => {
+    servePublicationState({ draft: aPublicationDraftDetails({ hasLandingPage: true }) });
+    const saves = recorder();
+    server.use(
+      landingPageAt(DRAFT_LANDING_PATH, '# Draft page'),
+      accepts('put', DRAFT_PATH, aPublicationDraftDetails()),
+      accepts('put', DRAFT_DEFINITION_PATH, undefined),
+      noContent('put', DRAFT_LANDING_PATH, { record: saves }),
+    );
+    const { user } = renderPage();
+
+    await openLandingPage(user);
+    await user.type(await screen.findByRole('textbox', { name: EDITOR }), ' edited');
+    expect(screen.getByText('Unsaved changes')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Save Draft' }));
+
+    await waitFor(() => expect(saves.count()).toBe(1));
+    expect(saves.last()?.body).toBe('# Draft page edited');
+    expect(await screen.findByText('Draft saved.')).toBeInTheDocument();
+    expect(screen.queryByText('Unsaved changes')).not.toBeInTheDocument();
+  });
+
+  it('Publish saves the landing page before it publishes', async () => {
+    servePublicationState({ draft: aPublicationDraftDetails() });
+    const order: string[] = [];
+    server.use(
+      definitionText(DRAFT_DEFINITION_PATH, YAML_DEFINITION, 'application/yaml'),
+      accepts('put', DRAFT_PATH, aPublicationDraftDetails()),
+      accepts('put', DRAFT_DEFINITION_PATH, undefined),
+      mswHttp.put(apiUrl(DRAFT_LANDING_PATH), () => {
+        order.push('landing page');
+        return new HttpResponse(null, { status: 204 });
+      }),
+      mswHttp.post(apiUrl(PUBLISH_PATH), () => {
+        order.push('publish');
+        return HttpResponse.json(aPublication());
+      }),
+    );
+    const { user } = renderPage();
+
+    await openLandingPage(user);
+    await user.click(screen.getByRole('button', { name: 'Create from API details' }));
+    await user.click(screen.getByRole('button', { name: 'Publish' }));
+
+    expect(await screen.findByText('portals listing')).toBeInTheDocument();
+    expect(order).toEqual(['landing page', 'publish']);
+  });
+
+  it('opens no editor when a stored page could not be read, so it is not written over', async () => {
+    servePublicationState({ draft: aPublicationDraftDetails({ hasLandingPage: true }) });
+    server.use(failure('get', DRAFT_LANDING_PATH, 500, 'INTERNAL_ERROR'));
+    const { user } = renderPage();
+
+    await openLandingPage(user);
+
+    expect(await screen.findByText('Unable to load the landing page.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Create from API details' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: EDITOR })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save Draft' })).toBeDisabled();
+  });
+
+  it('shows the published page as rendered text only in the published view', async () => {
+    servePublicationState({ publication: aPublication({ hasLandingPage: true }) });
+    server.use(landingPageAt(PUBLICATION_LANDING_PATH, '# Live page'));
+    const { user } = renderPage();
+
+    await openLandingPage(user);
+
+    expect(await screen.findByRole('heading', { name: 'Live page' })).toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: EDITOR })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Create from API details' })).not.toBeInTheDocument();
+  });
+
+  it('says the portal shows its default page when none is published, with nothing to create', async () => {
+    servePublicationState({ publication: aPublication() });
+    const { user } = renderPage();
+
+    await openLandingPage(user);
+
+    expect(await screen.findByText('The portal shows its default page.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Create from API details' })).not.toBeInTheDocument();
   });
 });

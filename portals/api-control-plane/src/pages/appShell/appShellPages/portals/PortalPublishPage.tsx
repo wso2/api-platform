@@ -26,6 +26,7 @@ import {
   usePublishApiToApiPortal,
   useSaveApiPublicationDraft,
   useSaveApiPublicationDraftDefinition,
+  useSaveApiPublicationDraftLandingPage,
   useSaveApiPublicationDraftThumbnail,
   useUnpublishApiFromApiPortal,
   type DraftDefinitionBody,
@@ -46,6 +47,7 @@ import { parseGraphQLSdl } from '../apis/create/utils/graphqlSchema';
 import { parseSpecText } from '../apis/create/utils/specText';
 import { ApiDetailsTab } from './components/ApiDetailsTab';
 import { DocumentsTab } from './components/DocumentsTab';
+import { LandingPageTab } from './components/LandingPageTab';
 import { PublicationLoadError } from './components/PublicationLoadError';
 import { PublicationVersionCard, type PublicationVersionTone } from './components/PublicationVersionCard';
 import { PublicationVersionToggle } from './components/PublicationVersionToggle';
@@ -55,6 +57,7 @@ import { SpecificationTab } from './components/SpecificationTab';
 import { SubscriptionPlansTab } from './components/SubscriptionPlansTab';
 import { restPublishTarget, type PublishTarget } from './publishTarget';
 import { usePublishPageData } from './usePublishPageData';
+import { buildLandingPageStarter } from './utils/landingPageStarter';
 import type { DefinitionFormat } from './utils/storedDefinition';
 import {
   draftFormValuesToInput,
@@ -246,6 +249,16 @@ const bold = (name: ReactNode) => (
 );
 
 /**
+ * Whether a failed publish is about the definition. The server names the field at fault; an
+ * error that names none (an older server) is taken to be the definition unless the user is
+ * already on the Documentation tab.
+ */
+const definitionAtFault = (error: unknown, tab: PublishTab): boolean => {
+  if (!isApiError(error) || error.fieldErrors.length === 0) return tab !== 'documentations';
+  return error.fieldErrors.some((fieldError) => fieldError.field === 'definition');
+};
+
+/**
  * A failed API call is already reported by the global mutation snackbar, so the
  * action handlers only need to stop it from surfacing again as an unhandled
  * rejection. Anything that is not an `ApiError` is a real bug and still throws.
@@ -257,7 +270,7 @@ const rethrowUnreported = (error: unknown): void => {
 /** The fields that show a validation message. */
 const FORM_FIELDS: DraftFormField[] = ['displayName', 'version', 'productionUrl', 'sandboxUrl'];
 
-type PublishTab = 'details' | 'specification' | 'subscriptionPlans' | 'documentations';
+type PublishTab = 'details' | 'specification' | 'subscriptionPlans' | 'documentations' | 'landingPage';
 
 /** Which action is currently in flight, so the right button (and only that one) shows busy. */
 type PendingAction = 'idle' | 'saving' | 'publishing' | 'unpublishing' | 'deprecating';
@@ -265,14 +278,11 @@ type PendingAction = 'idle' | 'saving' | 'publishing' | 'unpublishing' | 'deprec
 /**
  * The publish/unpublish/deprecate flow for one API on one API Portal.
  *
- * "API Details", "Specification", "Subscription Plans" and "Documentation" are
- * editable; the Landing Page tab still renders disabled. Save Draft and Publish
- * each enforce their own rule: Save Draft always writes `.../draft`, and writes
- * `.../draft/definition` too only when the specification text parses,
- * reporting honestly when it couldn't, and `.../draft/thumbnail` when the
- * thumbnail shown is not the one the draft already stores; Publish requires the
- * details and the definition to save before it calls `.../publish`, since the
- * server's publish takes no body and only publishes what the draft already holds.
+ * Save Draft always writes `.../draft`. It writes `.../draft/definition` only when the
+ * specification parses (and says so when it doesn't), and `.../draft/thumbnail` and
+ * `.../draft/landing-page` only when the one shown differs from the draft's. Publish needs
+ * all of those saves to succeed before it calls `.../publish`, which takes no body and
+ * publishes only what the draft already holds.
  *
  * No `ScopeGate`: this page is only reachable from the Portals listing's card,
  * which is already fully API-scoped.
@@ -330,6 +340,7 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
   const saveDraftMutation = useSaveApiPublicationDraft();
   const saveDefinitionMutation = useSaveApiPublicationDraftDefinition({ handlesErrors: true });
   const saveThumbnailMutation = useSaveApiPublicationDraftThumbnail({ handlesErrors: true });
+  const saveLandingPageMutation = useSaveApiPublicationDraftLandingPage({ handlesErrors: true });
   const publishMutation = usePublishApiToApiPortal();
   const unpublishMutation = useUnpublishApiFromApiPortal();
   const deprecateMutation = useDeprecateApiOnApiPortal();
@@ -342,8 +353,20 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
   // The thumbnail shown, and the draft's own; saving sends it only when they differ.
   const [thumbnail, setThumbnail] = useState<Blob>();
   const [storedThumbnail, setStoredThumbnail] = useState<Blob>();
+  // The landing page's Markdown, and the draft's own; `undefined` until one exists.
+  const [landingPage, setLandingPage] = useState<string>();
+  const [storedLandingPage, setStoredLandingPage] = useState<string>();
+  // The generated starter, to tell it apart from a page edited since.
+  const [generatedLandingPage, setGeneratedLandingPage] = useState<string>();
+  // Set once when the page opens, so a later refetch can't turn a loaded page into an error.
+  const [landingPageFailed, setLandingPageFailed] = useState(false);
   // What the server holds for the fields shown, so edits made since can be told apart.
-  const [saved, setSaved] = useState<{ definitionText: string; thumbnail?: Blob; values: DraftFormValues }>({
+  const [saved, setSaved] = useState<{
+    definitionText: string;
+    landingPage?: string;
+    thumbnail?: Blob;
+    values: DraftFormValues;
+  }>({
     definitionText: '',
     values: emptyDraftFormValues,
   });
@@ -363,8 +386,12 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
     setDefinitionText(data.seed.definition?.text ?? '');
     setThumbnail(data.seed.thumbnail?.blob);
     setStoredThumbnail(data.seed.thumbnail?.inDraft ? data.seed.thumbnail.blob : undefined);
+    setLandingPage(data.seed.landingPage?.text);
+    setStoredLandingPage(data.seed.landingPage?.inDraft ? data.seed.landingPage.text : undefined);
+    setLandingPageFailed(data.seed.landingPageFailed);
     setSaved({
       definitionText: data.seed.definition?.text ?? '',
+      landingPage: data.seed.landingPage?.text,
       thumbnail: data.seed.thumbnail?.blob,
       values: data.seed.values,
     });
@@ -432,6 +459,7 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
   const hasUnsavedChanges =
     definitionText !== saved.definitionText ||
     thumbnail !== saved.thumbnail ||
+    landingPage !== saved.landingPage ||
     (Object.keys(values) as (keyof DraftFormValues)[]).some((field) => {
       const current = values[field];
       const savedValue = saved.values[field];
@@ -562,6 +590,29 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
     setSaved((current) => ({ ...current, thumbnail }));
   };
 
+  /**
+   * Saves the landing page alone, unless the draft already stores the one shown. A draft that
+   * has none yet cannot take one (the save 404s), which `reportingMissingDraft` explains.
+   */
+  const saveLandingPage = async () => {
+    if (landingPage === undefined || landingPage === storedLandingPage) return;
+    await reportingMissingDraft(
+      saveLandingPageMutation.mutateAsync({ apiPortalId, apiType, apiId: apiHandler, markdown: landingPage }),
+    );
+    setStoredLandingPage(landingPage);
+    setSaved((current) => ({ ...current, landingPage }));
+  };
+
+  /** Starts the landing page from the details and the definition as they stand now. */
+  const createLandingPage = () => {
+    const starter = buildLandingPageStarter(
+      values,
+      definitionText.trim() ? { format: definitionFormat, text: definitionText } : undefined,
+    );
+    setLandingPage(starter);
+    setGeneratedLandingPage(starter);
+  };
+
   /** Takes an image the user picked as the thumbnail, unless the server would refuse it. */
   const pickThumbnail = (file: File) => {
     const problem = validateThumbnailFile(file);
@@ -604,6 +655,7 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
       if (!(await saveDetails())) return;
       const definitionSaved = await saveDefinition();
       await saveThumbnail();
+      await saveLandingPage();
       notify(
         intl.formatMessage(definitionSaved ? messages.draftSaved : messages.draftSavedDetailsOnly),
         definitionSaved ? 'success' : 'warning',
@@ -624,12 +676,13 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
       // there rather than what the user is looking at.
       if (!(await saveDefinition())) return;
       await saveThumbnail();
+      await saveLandingPage();
       try {
         await publishMutation.mutateAsync({ apiPortalId, apiType, apiId: apiHandler });
       } catch (error) {
-        // The message is already reported by the global snackbar; this only sends the
-        // user to the definition, unless they are already on the Documentation tab.
-        if (isErrorCode(error, 'PUBLICATION_VALIDATION_FAILED') && tab !== 'documentations') setTab('specification');
+        // The message is already reported by the global snackbar; this only sends the user to
+        // the definition when it is the one at fault.
+        if (isErrorCode(error, 'PUBLICATION_VALIDATION_FAILED') && definitionAtFault(error, tab)) setTab('specification');
         throw error;
       }
       notify(intl.formatMessage(messages.published, { portalName }), 'success');
@@ -682,6 +735,16 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
       if (tab === 'documentations') {
         return <DocumentsTab apiHandle={apiHandler} apiType={apiType} readOnly values={publishedValues} />;
       }
+      if (tab === 'landingPage') {
+        return (
+          <LandingPageTab
+            failed={data.publishedLandingPage.failed}
+            isLoading={data.publishedLandingPage.isLoading}
+            readOnly
+            text={data.publishedLandingPage.text}
+          />
+        );
+      }
       return (
         <PublishedSpecificationTab
           definition={data.publishedDefinition.definition}
@@ -727,6 +790,18 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
           disabled={pendingAction !== 'idle'}
           onChange={handleChange}
           values={values}
+        />
+      );
+    }
+    if (tab === 'landingPage') {
+      return (
+        <LandingPageTab
+          disabled={pendingAction !== 'idle'}
+          failed={landingPageFailed}
+          generated={generatedLandingPage !== undefined && landingPage === generatedLandingPage}
+          onChange={setLandingPage}
+          onCreate={createLandingPage}
+          text={landingPage}
         />
       );
     }
@@ -780,7 +855,7 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
               <Tab label={intl.formatMessage(messages.tabSpecification)} value="specification" />
               <Tab label={intl.formatMessage(messages.tabSubscriptionPlans)} value="subscriptionPlans" />
               <Tab label={intl.formatMessage(messages.tabDocumentations)} value="documentations" />
-              <Tab disabled label={intl.formatMessage(messages.tabLandingPage)} value="landingPage" />
+              <Tab label={intl.formatMessage(messages.tabLandingPage)} value="landingPage" />
             </Tabs>
             <PublicationVersionToggle
               disabled={pendingAction !== 'idle'}

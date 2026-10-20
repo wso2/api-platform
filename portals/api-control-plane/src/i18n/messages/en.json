@@ -2769,6 +2769,53 @@
     "defaultMessage": "{count} of {total} documents selected",
     "description": "{count} is a styled number rendered as a React element, not plain text; {total} is a plain number."
   },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.LandingPageTab.blankNotice": {
+    "defaultMessage": "A blank landing page is not published."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.LandingPageTab.create": {
+    "defaultMessage": "Create from API details"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.LandingPageTab.editorLabel": {
+    "defaultMessage": "Landing page (Markdown)",
+    "description": "Accessible name for the text area holding the landing page’s Markdown."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.LandingPageTab.editorPlaceholder": {
+    "defaultMessage": "# Write your landing page in Markdown…"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.LandingPageTab.editorTitle": {
+    "defaultMessage": "Markdown"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.LandingPageTab.emptyDescription": {
+    "defaultMessage": "The portal currently shows its default page with your endpoints and resources. Add a landing page to replace it with your own content."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.LandingPageTab.emptyTitle": {
+    "defaultMessage": "No landing page"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.LandingPageTab.error": {
+    "defaultMessage": "Unable to load the landing page."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.LandingPageTab.loading": {
+    "defaultMessage": "Loading the landing page"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.LandingPageTab.notice": {
+    "defaultMessage": "Copied from your API details when created. Update it here if they change. Publishing replaces the portal’s default section."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.LandingPageTab.preview": {
+    "defaultMessage": "Preview",
+    "description": "Title of the rendered view of the landing page beside its editor."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.LandingPageTab.previewEmpty": {
+    "defaultMessage": "Your landing page appears here as you write."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.LandingPageTab.publishedEmpty": {
+    "defaultMessage": "Nothing is published yet."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.LandingPageTab.publishedEmptyDescription": {
+    "defaultMessage": "The portal shows its default page."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.LandingPageTab.publishedTitle": {
+    "defaultMessage": "Published page"
+  },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.PlanCard.inactive": {
     "defaultMessage": "Inactive",
     "description": "Status pill on a plan card."
