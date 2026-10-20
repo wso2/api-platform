@@ -164,6 +164,7 @@ func (c *ChainExecutor) ExecuteRequestHeaderPolicies(
 		}
 
 		metrics.PolicyExecutionsTotal.WithLabelValues(spec.Name, spec.Version, api, route, executionStatus(action)).Inc()
+		recordPolicyDecision(span, action, nil)
 		metrics.PolicyDurationSeconds.WithLabelValues(spec.Name, spec.Version, api, route).Observe(executionTime.Seconds())
 
 		if span.IsRecording() {
@@ -312,6 +313,7 @@ func (c *ChainExecutor) ExecuteRequestPolicies(ctx context.Context, policyList [
 
 		// Record policy execution metrics
 		metrics.PolicyExecutionsTotal.WithLabelValues(spec.Name, spec.Version, api, route, executionStatus(action)).Inc()
+		recordPolicyDecision(span, action, nil)
 		metrics.PolicyDurationSeconds.WithLabelValues(spec.Name, spec.Version, api, route).Observe(executionTime.Seconds())
 
 		// Add execution time attribute
@@ -478,6 +480,7 @@ func (c *ChainExecutor) ExecuteResponseHeaderPolicies(
 		}
 
 		metrics.PolicyExecutionsTotal.WithLabelValues(spec.Name, spec.Version, api, route, executionStatus(action)).Inc()
+		recordPolicyDecision(span, action, nil)
 		metrics.PolicyDurationSeconds.WithLabelValues(spec.Name, spec.Version, api, route).Observe(executionTime.Seconds())
 
 		if span.IsRecording() {
@@ -627,6 +630,7 @@ func (c *ChainExecutor) ExecuteResponsePolicies(ctx context.Context, policyList 
 
 		// Record policy execution metrics
 		metrics.PolicyExecutionsTotal.WithLabelValues(spec.Name, spec.Version, api, route, executionStatus(action)).Inc()
+		recordPolicyDecision(span, action, nil)
 		metrics.PolicyDurationSeconds.WithLabelValues(spec.Name, spec.Version, api, route).Observe(executionTime.Seconds())
 
 		// Add execution time attribute
@@ -776,6 +780,7 @@ func (c *ChainExecutor) ExecuteStreamingRequestPolicies(
 		executionTime := time.Since(policyStartTime)
 
 		metrics.PolicyExecutionsTotal.WithLabelValues(spec.Name, spec.Version, api, route, executionStatus(action)).Inc()
+		recordPolicyDecision(span, action, &ps.decision)
 		metrics.PolicyDurationSeconds.WithLabelValues(spec.Name, spec.Version, api, route).Observe(executionTime.Seconds())
 
 		ps.addExecutionTime(executionTime)
@@ -916,6 +921,7 @@ func (c *ChainExecutor) ExecuteStreamingResponsePolicies(
 		executionTime := time.Since(policyStartTime)
 
 		metrics.PolicyExecutionsTotal.WithLabelValues(spec.Name, spec.Version, api, route, executionStatus(action)).Inc()
+		recordPolicyDecision(span, action, &ps.decision)
 		metrics.PolicyDurationSeconds.WithLabelValues(spec.Name, spec.Version, api, route).Observe(executionTime.Seconds())
 
 		ps.addExecutionTime(executionTime)
@@ -992,6 +998,7 @@ type streamPolicySpan struct {
 	span       trace.Span
 	persistent bool
 	execNS     int64
+	decision   string // the strongest decision so far across the stream
 }
 
 // startStreamPolicySpan returns the span for the policy at index. With spans nil it is a
@@ -1032,6 +1039,93 @@ func (ps *streamPolicySpan) addExecutionTime(d time.Duration) {
 	if ps.span.IsRecording() {
 		ps.span.SetAttributes(attribute.Int64(constants.AttrPolicyExecutionTimeNS, ps.execNS))
 	}
+}
+
+// ─── Policy decisions ────────────────────────────────────────────────────────
+
+// recordPolicyDecision stamps what the policy did with the message on its span, and the
+// guardrail when one denied it. prev, when non-nil, holds the stream's decision so far: a
+// stream's span keeps the strongest decision any chunk produced, deny over modify over
+// allow, rather than whatever the last chunk did.
+func recordPolicyDecision(span trace.Span, action any, prev *string) {
+	if !span.IsRecording() {
+		return
+	}
+	decision, guardrail := policyDecision(action)
+	if prev != nil {
+		if decisionRank[decision] < decisionRank[*prev] {
+			decision = *prev
+		}
+		*prev = decision
+	}
+	span.SetAttributes(attribute.String(constants.AttrPolicyAction, decision))
+	if guardrail != "" {
+		span.SetAttributes(attribute.String(constants.AttrGuardrailName, guardrail))
+	}
+}
+
+var decisionRank = map[string]int{
+	constants.PolicyActionAllow:  0,
+	constants.PolicyActionModify: 1,
+	constants.PolicyActionDeny:   2,
+}
+
+// policyDecision classifies a policy action: deny when the policy answered in place of
+// the upstream, cut the stream short or turned the response into a failure; modify when
+// it changed the message; allow otherwise. Analytics and dynamic metadata alone do not
+// change the message. guardrail is the guardrail that denied it, if one said so.
+func policyDecision(action any) (decision, guardrail string) {
+	switch a := action.(type) {
+	case policy.ImmediateResponse:
+		return constants.PolicyActionDeny, guardrailName(a.Fault, a.AnalyticsMetadata)
+	case policy.TerminateResponseChunk:
+		return constants.PolicyActionDeny, guardrailName(a.Fault, a.AnalyticsMetadata)
+	case policy.DownstreamResponseModifications:
+		if a.IsFault || (a.StatusCode != nil && *a.StatusCode >= 400) {
+			return constants.PolicyActionDeny, guardrailName(a.Fault, a.AnalyticsMetadata)
+		}
+		return modifiedIf(a.Body != nil || a.StatusCode != nil ||
+			headersChanged(a.HeadersToSet, a.HeadersToAppend, a.HeadersToRemove)), ""
+	case policy.UpstreamRequestModifications:
+		return modifiedIf(a.Body != nil || headersChanged(a.HeadersToSet, a.HeadersToAppend, a.HeadersToRemove) ||
+			a.UpstreamName != nil || a.UpstreamSlot != nil || a.Path != nil || a.Host != nil || a.Method != nil ||
+			len(a.QueryParametersToAdd) > 0 || len(a.QueryParametersToRemove) > 0), ""
+	case policy.UpstreamRequestHeaderModifications:
+		return modifiedIf(headersChanged(a.HeadersToSet, a.HeadersToAppend, a.HeadersToRemove) ||
+			a.UpstreamName != nil || a.UpstreamSlot != nil || a.Path != nil || a.Host != nil || a.Method != nil ||
+			len(a.QueryParametersToAdd) > 0 || len(a.QueryParametersToRemove) > 0), ""
+	case policy.DownstreamResponseHeaderModifications:
+		return modifiedIf(headersChanged(a.HeadersToSet, a.HeadersToAppend, a.HeadersToRemove)), ""
+	case policy.ForwardRequestChunk:
+		return modifiedIf(a.Body != nil), ""
+	case policy.ForwardResponseChunk:
+		return modifiedIf(a.Body != nil), ""
+	}
+	return constants.PolicyActionAllow, ""
+}
+
+func modifiedIf(changed bool) string {
+	if changed {
+		return constants.PolicyActionModify
+	}
+	return constants.PolicyActionAllow
+}
+
+func headersChanged(set map[string]string, appendHeaders map[string][]string, remove []string) bool {
+	return len(set) > 0 || len(appendHeaders) > 0 || len(remove) > 0
+}
+
+// guardrailName names the guardrail behind a denial: the fault's own assessment first,
+// then the analytics metadata guardrail policies have long set.
+func guardrailName(fault *policy.FaultDetails, analytics map[string]any) string {
+	if fault != nil && fault.Guardrail != nil && fault.Guardrail.InterveningGuardrail != "" {
+		return fault.Guardrail.InterveningGuardrail
+	}
+	if hit, _ := analytics[constants.GuardrailHitMetadataKey].(bool); hit {
+		name, _ := analytics[constants.GuardrailNameMetadataKey].(string)
+		return name
+	}
+	return ""
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
