@@ -914,7 +914,7 @@ func TestExecuteStreamingRequestPolicies_ModeFirstGating(t *testing.T) {
 				[]policy.PolicySpec{newPolicySpec("stream", "v1.0.0", true, nil)},
 				"api",
 				"route",
-				false,
+				false, nil,
 			)
 
 			require.NoError(t, err)
@@ -962,7 +962,7 @@ func TestExecuteStreamingResponsePolicies_ModeFirstGating(t *testing.T) {
 				[]policy.PolicySpec{newPolicySpec("stream", "v1.0.0", true, nil)},
 				"api",
 				"route",
-				false,
+				false, nil,
 			)
 
 			require.NoError(t, err)
@@ -1036,7 +1036,7 @@ func TestExecuteStreamingResponsePolicies_IndexSurvivesBodyTransformation(t *tes
 			specs,
 			"api",
 			"route",
-			false,
+			false, nil,
 		)
 		require.NoError(t, err)
 	}
@@ -1229,7 +1229,7 @@ func TestChainExecutor_PolicySeesItsOwnSpan_AllPhases(t *testing.T) {
 		chunk := &policy.StreamBody{Chunk: []byte("hello"), EndOfStream: true}
 
 		_, err := executor.ExecuteStreamingRequestPolicies(context.Background(), []policy.Policy{pol}, reqCtx, chunk,
-			[]policy.PolicySpec{newPolicySpec("stream", "v1.0.0", true, nil)}, "api", "route", false)
+			[]policy.PolicySpec{newPolicySpec("stream", "v1.0.0", true, nil)}, "api", "route", false, nil)
 		require.NoError(t, err)
 
 		span := findSpanByName(sr.Ended(), "policy.request.stream")
@@ -1252,7 +1252,7 @@ func TestChainExecutor_PolicySeesItsOwnSpan_AllPhases(t *testing.T) {
 		chunk := &policy.StreamBody{Chunk: []byte("hello"), EndOfStream: true}
 
 		_, err := executor.ExecuteStreamingResponsePolicies(context.Background(), []policy.Policy{pol}, respCtx, chunk,
-			[]policy.PolicySpec{newPolicySpec("respstream", "v1.0.0", true, nil)}, "api", "route", false)
+			[]policy.PolicySpec{newPolicySpec("respstream", "v1.0.0", true, nil)}, "api", "route", false, nil)
 		require.NoError(t, err)
 
 		span := findSpanByName(sr.Ended(), "policy.response.respstream")

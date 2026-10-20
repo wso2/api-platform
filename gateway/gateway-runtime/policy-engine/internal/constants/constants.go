@@ -104,6 +104,8 @@ const (
 	AttrAPIContext                = "api_context"
 	AttrOperationPath             = "operation_path"
 	AttrPolicyCount               = "policy_count"
+	// AttrStreamChunkCount is the number of body messages a streamed body phase span covers.
+	AttrStreamChunkCount = "stream.chunk_count"
 	AttrError                     = "error"
 	AttrErrorReasonNoContext      = "no_execution_context"
 	AttrPolicyName                = "policy.name"

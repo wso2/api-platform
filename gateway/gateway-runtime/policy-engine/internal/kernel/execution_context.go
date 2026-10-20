@@ -255,6 +255,11 @@ type PolicyExecutionContext struct {
 	// downstream are silently suppressed — forwarding more data would be undefined.
 	streamTerminated bool
 
+	// requestStream / responseStream trace a streamed body as one phase span with one
+	// span per policy. Unused for a buffered body.
+	requestStream  bodyStreamTrace
+	responseStream bodyStreamTrace
+
 	// Reference to server components
 	server *ExternalProcessorServer
 
@@ -1381,6 +1386,7 @@ func (ec *PolicyExecutionContext) processStreamingRequestBody(
 			ec.sharedCtx.APIName,
 			ec.routeKey,
 			ec.policyChain.HasExecutionConditions,
+			ec.requestStream.policySpans(),
 		)
 		if err != nil {
 			return ec.handlePolicyError(ctx, err, "request_body_streaming"), nil
@@ -1467,6 +1473,7 @@ func (ec *PolicyExecutionContext) processStreamingRequestBody(
 		ec.sharedCtx.APIName,
 		ec.routeKey,
 		ec.policyChain.HasExecutionConditions,
+		ec.requestStream.policySpans(),
 	)
 	if err != nil {
 		ec.requestStreamAccumulator = nil
@@ -1884,6 +1891,7 @@ func (ec *PolicyExecutionContext) processStreamingResponseBody(
 		ec.sharedCtx.APIName,
 		ec.routeKey,
 		ec.policyChain.HasExecutionConditions,
+		ec.responseStream.policySpans(),
 	)
 	if err != nil {
 		ec.streamAccumulator = nil
