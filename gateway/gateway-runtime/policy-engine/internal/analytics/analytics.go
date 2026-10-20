@@ -522,6 +522,8 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 		metaInfo.CorrelationID = logEntry.GetRequest().GetRequestId()
 	}
 	metaInfo.RegionID = keyValuePairsFromMetadata[RegionKey]
+	metaInfo.TraceID = keyValuePairsFromMetadata[TraceIDKey]
+	metaInfo.SpanID = keyValuePairsFromMetadata[SpanIDKey]
 
 	userAgent := logEntry.GetRequest().GetUserAgent()
 	userName := keyValuePairsFromMetadata[APIUserNameKey]

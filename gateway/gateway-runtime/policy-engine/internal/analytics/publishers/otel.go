@@ -821,7 +821,7 @@ func (o *OTel) buildRecord(event *dto.Event) *otelLogRecord {
 		body = event.Operation.APIMethod + " " + route
 	}
 
-	return &otelLogRecord{
+	record := &otelLogRecord{
 		TimeUnixNano:         strconv.FormatInt(requestTime.UnixNano(), 10),
 		ObservedTimeUnixNano: strconv.FormatInt(now.UnixNano(), 10),
 		SeverityNumber:       otelSeverityNumberInfo,
@@ -830,6 +830,11 @@ func (o *OTel) buildRecord(event *dto.Event) *otelLogRecord {
 		Body:                 otelAnyValue{StringValue: &body},
 		Attributes:           attrs.list(),
 	}
+	if event.MetaInfo != nil {
+		record.TraceID = event.MetaInfo.TraceID
+		record.SpanID = event.MetaInfo.SpanID
+	}
+	return record
 }
 
 // appendHeaderAttributes emits one attribute per header under the given prefix,
@@ -1132,13 +1137,16 @@ type otelScope struct {
 }
 
 type otelLogRecord struct {
-	TimeUnixNano         string         `json:"timeUnixNano"`
-	ObservedTimeUnixNano string         `json:"observedTimeUnixNano"`
-	SeverityNumber       int            `json:"severityNumber"`
-	SeverityText         string         `json:"severityText"`
-	EventName            string         `json:"eventName,omitempty"`
-	Body                 otelAnyValue   `json:"body"`
-	Attributes           []otelKeyValue `json:"attributes"`
+	TimeUnixNano         string `json:"timeUnixNano"`
+	ObservedTimeUnixNano string `json:"observedTimeUnixNano"`
+	SeverityNumber       int    `json:"severityNumber"`
+	SeverityText         string `json:"severityText"`
+	EventName            string `json:"eventName,omitempty"`
+	// TraceID and SpanID join the record to its trace. OTLP/JSON encodes both as hex.
+	TraceID    string         `json:"traceId,omitempty"`
+	SpanID     string         `json:"spanId,omitempty"`
+	Body       otelAnyValue   `json:"body"`
+	Attributes []otelKeyValue `json:"attributes"`
 }
 
 // otelExportResponse is the OTLP ExportLogsServiceResponse. A 2xx can still

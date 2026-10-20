@@ -260,6 +260,10 @@ type PolicyExecutionContext struct {
 	requestStream  bodyStreamTrace
 	responseStream bodyStreamTrace
 
+	// rootSpan is the stream's external_processing.process span. Its context is
+	// stamped on analytics events, and GenAI client spans are its children.
+	rootSpan trace.Span
+
 	// Reference to server components
 	server *ExternalProcessorServer
 
