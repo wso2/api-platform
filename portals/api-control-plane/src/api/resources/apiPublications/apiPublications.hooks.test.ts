@@ -17,13 +17,16 @@
  */
 
 import { act, waitFor } from '@testing-library/react';
+import { http as mswHttp, HttpResponse } from 'msw';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import {
   accepts,
+  apiUrl,
   aPublication,
   aPublicationDraftDetails,
   failure,
+  noContent,
   recorder,
   resource,
   type Recorder,
@@ -33,9 +36,12 @@ import { server } from '../../../test/server';
 import { resetHttpClient } from '../../core/http';
 import {
   useApiPublicationDraft,
+  useApiPublicationDraftThumbnail,
+  useApiPublicationThumbnail,
   useApiPublications,
   usePublishApiToApiPortal,
   useSaveApiPublicationDraft,
+  useSaveApiPublicationDraftThumbnail,
   useUnpublishApiFromApiPortal,
 } from './apiPublications.hooks';
 
@@ -133,5 +139,73 @@ describe('a status change that fails', () => {
     await act(() => result.current.publish.mutateAsync({ apiPortalId: PORTAL, apiType: 'rest-api', apiId: API }).catch(() => undefined));
 
     await waitFor(() => expect(draftReads.count()).toBe(2));
+  });
+});
+
+describe('reading a thumbnail', () => {
+  const serveThumbnails = () =>
+    server.use(
+      ...['draft', 'publication'].map((tier) =>
+        mswHttp.get(apiUrl(`/api-portals/${PORTAL}/apis/${TYPE}/${API}/${tier}/thumbnail`), async ({ request }) => {
+          await thumbnailReads.capture(request);
+          return new HttpResponse(new Uint8Array([0x89, 0x50]), { headers: { 'Content-Type': 'image/png' } });
+        }),
+      ),
+    );
+
+  let thumbnailReads: Recorder;
+  beforeEach(() => {
+    thumbnailReads = recorder();
+  });
+
+  it('waits until the caller knows there is one to read', async () => {
+    serveThumbnails();
+
+    renderApiHook(() => ({
+      draft: useApiPublicationDraftThumbnail(PORTAL, TYPE, undefined),
+      publication: useApiPublicationThumbnail(PORTAL, TYPE, undefined),
+    }));
+    await settle();
+
+    expect(thumbnailReads.count()).toBe(0);
+  });
+
+  it('reads the draft and the publication thumbnail as an image', async () => {
+    serveThumbnails();
+
+    const { result } = renderApiHook(() => ({
+      draft: useApiPublicationDraftThumbnail(PORTAL, TYPE, API),
+      publication: useApiPublicationThumbnail(PORTAL, TYPE, API),
+    }));
+
+    await waitFor(() => {
+      expect(result.current.draft.data?.contentType).toBe('image/png');
+      expect(result.current.publication.data?.contentType).toBe('image/png');
+    });
+    expect(thumbnailReads.count()).toBe(2);
+  });
+});
+
+describe('saving a thumbnail', () => {
+  it('marks what the screen has read stale once saved, without reading the draft again', async () => {
+    server.use(noContent('put', `${DRAFT}/thumbnail`));
+    const { result } = renderApiHook(() => ({
+      draft: useApiPublicationDraft(PORTAL, TYPE, API),
+      save: useSaveApiPublicationDraftThumbnail(),
+    }));
+    await waitFor(() => expect(result.current.draft.isSuccess).toBe(true));
+
+    await act(() =>
+      result.current.save.mutateAsync({
+        apiPortalId: PORTAL,
+        apiType: TYPE,
+        apiId: API,
+        file: new Blob(['img'], { type: 'image/png' }),
+      }),
+    );
+    await settle();
+
+    expect(draftReads.count()).toBe(1);
+    expect(result.current.draft.isStale).toBe(true);
   });
 });

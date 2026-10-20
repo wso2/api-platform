@@ -28,6 +28,7 @@ import {
   publishApiToApiPortal,
   saveApiPublicationDraft,
   saveApiPublicationDraftDefinition,
+  saveApiPublicationDraftThumbnail,
   unpublishApiFromApiPortal,
   type ListApiPublicationsQuery,
   type Publication,
@@ -98,6 +99,36 @@ export const useApiPublicationDraftDefinition = (
 
   return useQuery({
     ...apiPublicationQueries.draftDefinition(org!, apiPortalId!, apiType!, apiId!),
+    enabled: Boolean(org && apiPortalId && apiType && apiId),
+  });
+};
+
+/** The draft's thumbnail. Pass `undefined` for `apiId` unless `hasThumbnail` is set; it 404s otherwise. */
+export const useApiPublicationDraftThumbnail = (
+  apiPortalId: string | undefined,
+  apiType: string | undefined,
+  apiId: string | undefined,
+  overrides: { orgId?: string } = {},
+) => {
+  const { org } = useApiScope(overrides);
+
+  return useQuery({
+    ...apiPublicationQueries.draftThumbnail(org!, apiPortalId!, apiType!, apiId!),
+    enabled: Boolean(org && apiPortalId && apiType && apiId),
+  });
+};
+
+/** The live thumbnail. Pass `undefined` for `apiId` unless `hasThumbnail` is set; it 404s otherwise. */
+export const useApiPublicationThumbnail = (
+  apiPortalId: string | undefined,
+  apiType: string | undefined,
+  apiId: string | undefined,
+  overrides: { orgId?: string } = {},
+) => {
+  const { org } = useApiScope(overrides);
+
+  return useQuery({
+    ...apiPublicationQueries.publicationThumbnail(org!, apiPortalId!, apiType!, apiId!),
     enabled: Boolean(org && apiPortalId && apiType && apiId),
   });
 };
@@ -224,6 +255,24 @@ export const useSaveApiPublicationDraftDefinition = (
     meta: overrides.handlesErrors ? HANDLED_LOCALLY : undefined,
     mutationFn: ({ apiPortalId, apiType, apiId, body }) =>
       saveApiPublicationDraftDefinition(apiPortalId, apiType, apiId, body, { orgId }),
+    onSuccess: () => cache.markStale('none'),
+  });
+};
+
+export const useSaveApiPublicationDraftThumbnail = (
+  overrides: { handlesErrors?: boolean; orgId?: string } = {},
+) => {
+  const { orgId } = useApiScope(overrides);
+  const cache = useApiPublicationCache(orgId);
+
+  return useMutation<
+    void,
+    ApiError,
+    { apiPortalId: string; apiType: string; apiId: string; file: Blob }
+  >({
+    meta: overrides.handlesErrors ? HANDLED_LOCALLY : undefined,
+    mutationFn: ({ apiPortalId, apiType, apiId, file }) =>
+      saveApiPublicationDraftThumbnail(apiPortalId, apiType, apiId, file, { orgId }),
     onSuccess: () => cache.markStale('none'),
   });
 };
