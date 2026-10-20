@@ -22,6 +22,8 @@ import (
 	"fmt"
 	"math"
 	"net/url"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -1566,6 +1568,76 @@ func TestTranslator_CreateListener_PathNormalization(t *testing.T) {
 			require.NotNil(t, manager.GetNormalizePath(), "normalize_path must be explicitly set")
 			assert.Equal(t, tt.wantNormalizePath, manager.GetNormalizePath().GetValue(), "normalize_path")
 			assert.Equal(t, tt.wantMergeSlashes, manager.GetMergeSlashes(), "merge_slashes")
+		})
+	}
+}
+
+// The HTTP and HTTPS listeners are built by the same createListener code path, so exercising the
+// HTTP listener covers the HCM setting for both.
+func TestTranslator_CreateListener_ReturnRequestIDInResponse(t *testing.T) {
+	tests := []struct {
+		name         string
+		enabled      bool
+		wantReturned bool
+	}{
+		{name: "disabled via config", enabled: false, wantReturned: false},
+		{name: "enabled via config", enabled: true, wantReturned: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			logger := createTestLogger()
+			routerCfg := testRouterConfig()
+			routerCfg.HTTPListener.ReturnRequestIDInResponse = tt.enabled
+			cfg := testConfig()
+			cfg.Router = *routerCfg
+			translator, err := NewTranslator(logger, routerCfg, nil, cfg)
+			require.NoError(t, err)
+
+			lis, _, err := translator.createListener(nil, false, false)
+			require.NoError(t, err)
+
+			manager := extractHCM(t, lis)
+			assert.Equal(t, tt.wantReturned, manager.GetAlwaysSetRequestIdInResponse(), "always_set_request_id_in_response")
+			// Envoy keeps generating/preserving x-request-id regardless of this flag; the flag
+			// only controls whether it is echoed back to the client.
+			assert.True(t, manager.GetGenerateRequestId().GetValue(), "generate_request_id must stay enabled")
+		})
+	}
+}
+
+// TestTranslator_CreateListener_ReturnRequestIDInResponse_LoadedDefaults drives the setting from
+// the HTTP listener configuration the controller actually loads: an empty config file must yield
+// a listener that returns the request ID, and an explicit opt-out must switch it off.
+func TestTranslator_CreateListener_ReturnRequestIDInResponse_LoadedDefaults(t *testing.T) {
+	tests := []struct {
+		name string
+		toml string
+		want bool
+	}{
+		{name: "empty config file returns the request ID", toml: "", want: true},
+		{name: "explicit opt-out", toml: "[router.http_listener]\nreturn_request_id_in_response = false\n", want: false},
+		{name: "explicit opt-in", toml: "[router.http_listener]\nreturn_request_id_in_response = true\n", want: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			configPath := filepath.Join(t.TempDir(), "config.toml")
+			require.NoError(t, os.WriteFile(configPath, []byte(tt.toml), 0o600))
+			cfg, err := config.LoadConfig(configPath)
+			require.NoError(t, err)
+
+			routerCfg := testRouterConfig()
+			routerCfg.HTTPListener = cfg.Router.HTTPListener
+			testCfg := testConfig()
+			testCfg.Router = *routerCfg
+
+			translator, err := NewTranslator(createTestLogger(), routerCfg, nil, testCfg)
+			require.NoError(t, err)
+			lis, _, err := translator.createListener(nil, false, false)
+			require.NoError(t, err)
+
+			assert.Equal(t, tt.want, extractHCM(t, lis).GetAlwaysSetRequestIdInResponse())
 		})
 	}
 }

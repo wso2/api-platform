@@ -805,6 +805,7 @@ type HTTPListenerConfig struct {
 	Timeouts                      HCMTimeouts `koanf:"timeouts"`                          // HTTP Connection Manager (downstream) timeouts
 	PerConnectionBufferLimitBytes uint32      `koanf:"per_connection_buffer_limit_bytes"` // Downstream per-connection buffer limit in bytes
 	DisablePathNormalization      bool        `koanf:"disable_path_normalization"`
+	ReturnRequestIDInResponse     bool        `koanf:"return_request_id_in_response"`    // Return x-request-id in responses
 	PathWithEscapedSlashesAction  string      `koanf:"path_with_escaped_slashes_action"` // Options: "KEEP_UNCHANGED", "REJECT_REQUEST", "UNESCAPE_AND_REDIRECT", "UNESCAPE_AND_FORWARD"
 }
 
@@ -1437,6 +1438,7 @@ func defaultConfig() *Config {
 				},
 				PerConnectionBufferLimitBytes: 1048576,                        // 1 MiB, matches Envoy's built-in default
 				DisablePathNormalization:      false,                          // Path normalization enabled by default
+				ReturnRequestIDInResponse:     true,                           // x-request-id returned by default
 				PathWithEscapedSlashesAction:  commonconstants.KEEP_UNCHANGED, // Leave escaped-slash paths unchanged by default
 			},
 		},

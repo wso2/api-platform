@@ -427,6 +427,8 @@ gateway:
         per_connection_buffer_limit_bytes: 1048576
         # Disable RFC 3986 dot-segment normalization and duplicate-slash merging
         disable_path_normalization: false
+        # Return the request ID in the x-request-id response header
+        return_request_id_in_response: true
         # Escaped slash handling: KEEP_UNCHANGED | REJECT_REQUEST |
         # UNESCAPE_AND_REDIRECT | UNESCAPE_AND_FORWARD
         path_with_escaped_slashes_action: KEEP_UNCHANGED
