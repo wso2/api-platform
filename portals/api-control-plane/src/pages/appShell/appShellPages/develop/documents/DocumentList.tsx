@@ -19,7 +19,6 @@
 import {
   Box,
   Card,
-  Chip,
   CircularProgress,
   Collapse,
   Divider,
@@ -27,28 +26,19 @@ import {
   ListItemButton,
   ListItemIcon,
   ListItemText,
-  ListSubheader,
   Stack,
   Typography,
-  alpha,
-  type Theme,
 } from '@wso2/oxygen-ui';
-import { ChevronDown, ChevronRight, FileText } from '@wso2/oxygen-ui-icons-react';
+import { FileText } from '@wso2/oxygen-ui-icons-react';
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
 import type { ApiDocumentMetadata } from '@/api/resources/apiDocuments';
 import { useFormatters } from '@/i18n/useFormatters';
-import { hairline } from '@/theme/receipes';
-import { DOCUMENT_TYPES, documentTypeName, isCustomDocumentType } from './documentTypes';
+import { DocumentGroupHeader, documentItemSx } from './DocumentGroupHeader';
+import { groupDocumentsByType } from './documentGroups';
 
 const messages = defineMessages({
-  toggleGroup: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentList.toggleGroup',
-    defaultMessage: '{type} ({count})',
-    description:
-      'Accessible name of a document-type group header that expands or collapses the group.',
-  },
   heading: {
     id: 'apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentList.heading',
     defaultMessage: 'All documents',
@@ -68,26 +58,6 @@ const messages = defineMessages({
     defaultMessage: 'Loading documents…',
   },
 });
-
-/** The fixed catch-all type; documents with no more specific type group here, last. */
-const PLAIN_OTHER = 'Other';
-
-/**
- * The theme's `action.selected` fill is close to invisible on the dark acrylic
- * surface, so the selected document also gets a primary-coloured stroke. Every
- * item carries a transparent border of the same width, so selecting one never
- * shifts the list.
- */
-const selectedItemSx = (theme: Theme) =>
-  ({
-    border: hairline(theme),
-    borderColor: 'transparent',
-    mb: 0.5,
-    '&.Mui-selected, &.Mui-selected:hover': {
-      backgroundColor: alpha(theme.palette.primary.main, 0.08),
-      borderColor: 'primary.main',
-    },
-  }) as const;
 
 /** Start loading the next page this far before the end of the list is reached. */
 const LOAD_AHEAD = '120px';
@@ -149,27 +119,7 @@ export function DocumentList({
       return next;
     });
 
-  // Fixed types first, in their usual order; then each custom type (stored as
-  // the name the user typed) as its own group, alphabetically; then plain
-  // "Other".
-  const groups = useMemo(() => {
-    const fixed = DOCUMENT_TYPES.filter((type) => type !== PLAIN_OTHER);
-    const buckets = new Map<string, ApiDocumentMetadata[]>();
-    for (const document of documents) {
-      const key =
-        (fixed as readonly string[]).includes(document.type) ||
-        (document.type && isCustomDocumentType(document.type))
-          ? document.type
-          : PLAIN_OTHER;
-      buckets.set(key, [...(buckets.get(key) ?? []), document]);
-    }
-    const custom = [...buckets.keys()]
-      .filter((type) => type !== PLAIN_OTHER && isCustomDocumentType(type))
-      .sort((a, b) => documentTypeName(intl, a).localeCompare(documentTypeName(intl, b)));
-    return [...fixed, ...custom, PLAIN_OTHER]
-      .filter((type) => buckets.has(type))
-      .map((type) => ({ items: buckets.get(type)!, label: documentTypeName(intl, type), type }));
-  }, [documents, intl]);
+  const groups = useMemo(() => groupDocumentsByType(documents, intl), [documents, intl]);
 
   return (
     <Card sx={{ display: 'flex', flexDirection: 'column', height }}>
@@ -201,42 +151,14 @@ export function DocumentList({
           const open = !collapsed.has(group.type);
           return (
             <Fragment key={group.type}>
-              <ListSubheader
-                disableGutters
-                disableSticky
-                sx={{
-                  bgcolor: 'transparent',
-                  lineHeight: 'normal',
-                  mb: open ? 1 : 0,
-                  mt: groupIndex === 0 ? 0.5 : 1.5,
-                }}
-              >
-                {/* The header is the toggle: a real button, so it is reachable by keyboard. */}
-                <ListItemButton
-                  aria-controls={`document-group-${group.type}`}
-                  aria-expanded={open}
-                  aria-label={intl.formatMessage(messages.toggleGroup, {
-                    count: group.items.length,
-                    type: group.label,
-                  })}
-                  dense
-                  onClick={() => toggleGroup(group.type)}
-                  sx={{ gap: 1, px: 1, py: 0.5 }}
-                >
-                  <Box sx={{ color: 'text.secondary', display: 'flex' }}>
-                    {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                  </Box>
-                  <Typography
-                    color="text.secondary"
-                    sx={{ flex: 1, fontWeight: 600, minWidth: 0, textTransform: 'none' }}
-                    noWrap
-                    variant="body2"
-                  >
-                    {group.label}
-                  </Typography>
-                  <Chip label={group.items.length} size="small" sx={{ typography: 'caption' }} />
-                </ListItemButton>
-              </ListSubheader>
+              <DocumentGroupHeader
+                controlsId={`document-group-${group.type}`}
+                count={group.items.length}
+                first={groupIndex === 0}
+                label={group.label}
+                onToggle={() => toggleGroup(group.type)}
+                open={open}
+              />
               <Collapse id={`document-group-${group.type}`} in={open} timeout="auto">
                 {group.items.map((document) => (
                   <ListItemButton
@@ -245,7 +167,7 @@ export function DocumentList({
                     onClick={() => onSelect(document.id)}
                     selected={document.id === selectedId}
                     sx={(theme) => ({
-                      ...selectedItemSx(theme),
+                      ...documentItemSx(theme),
                       // Icon centred on the name + updated-time block.
                       alignItems: 'center',
                     })}
