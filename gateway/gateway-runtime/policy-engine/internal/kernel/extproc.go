@@ -70,6 +70,9 @@ type ExternalProcessorServer struct {
 	// the tracer is a no-op anyway, so building the carrier and running the
 	// propagator would be wasted work on the request hot path — skip it.
 	tracingEnabled bool
+	// genai configures the GenAI client spans; its zero value, with tracing off,
+	// records none.
+	genai config.GenAITracingConfig
 
 	// Per-direction caps on decompressed bytes buffered per body (buffered mode)
 	// or per chunk (streaming), from policy_engine.request_body/.response_body config.
@@ -183,6 +186,9 @@ func NewExternalProcessorServer(kernel *Kernel, chainExecutor *executor.ChainExe
 		maxResponseDecompressedBytes: maxResponseDecompressedBytes,
 		errorFormatterKinds:          faultformat.SupportedKinds(),
 		correlationStore:             corrStore,
+	}
+	if tracingConfig.Enabled {
+		srv.genai = tracingConfig.GenAI
 	}
 	for _, opt := range opts {
 		opt(srv)
@@ -1039,6 +1045,7 @@ func (s *ExternalProcessorServer) newBoundExecutionContext(
 	ec.apiContext = routeMetadata.Context
 	ec.upstreamDefinitionPaths = routeMetadata.UpstreamDefinitionPaths
 	ec.defaultUpstream = routeMetadata.DefaultUpstream
+	ec.genai.kind = s.genaiKindFor(policy.APIKind(routeMetadata.APIKind))
 	ec.buildRequestContexts(req.GetRequestHeaders(), routeMetadata)
 
 	// req.Attributes lives on the ProcessingRequest, not the HttpHeaders message
