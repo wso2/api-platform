@@ -109,6 +109,11 @@ func (s *Steps) findActiveGateway(ctx context.Context) error {
 		if err := tcontext.Set(ctx, keyGatewayID, id); err != nil {
 			return err
 		}
+		if environment, _ := item["environment"].(string); strings.TrimSpace(environment) != "" {
+			if err := tcontext.Set(ctx, keyGatewayEnv, strings.TrimSpace(environment)); err != nil {
+				return err
+			}
+		}
 		return tcontext.Set(ctx, keyGatewayEndpoint, endpoint)
 	}
 	if len(items) == 0 {

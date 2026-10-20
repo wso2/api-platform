@@ -367,13 +367,22 @@ func (s *Steps) undeployAPI(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	resp, err := s.doAuthenticated(ctx, http.MethodPost,
-		"/rest-apis/"+url.PathEscape(apiID)+"/deployments/"+url.PathEscape(deploymentID)+
-			"/undeploy?gatewayId="+url.QueryEscape(gatewayID), nil)
+	environment, err := requiredValue(ctx, keyGatewayEnv)
+	if err != nil {
+		return fmt.Errorf("the active gateway does not report its environment: %w", err)
+	}
+	projectID, err := requiredValue(ctx, keyProjectID)
 	if err != nil {
 		return err
 	}
-	if resp.StatusCode != http.StatusOK {
+	resp, err := s.doAuthenticated(ctx, http.MethodPost,
+		"/projects/"+url.PathEscape(projectID)+"/apis/"+url.PathEscape(apiID)+
+			"/deployments/"+url.PathEscape(deploymentID)+"/undeploy?environment="+url.QueryEscape(environment)+
+			"&gatewayId="+url.QueryEscape(gatewayID), nil)
+	if err != nil {
+		return err
+	}
+	if resp.StatusCode != http.StatusNoContent {
 		return responseError(resp)
 	}
 	return nil
