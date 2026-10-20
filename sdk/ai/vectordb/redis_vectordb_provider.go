@@ -215,6 +215,9 @@ func (r *RedisVectorDBProvider) Retrieve(embeddings []float32, filter map[string
 		`:`, `\:`,
 		`.`, `\.`,
 		`-`, `\-`,
+		`$`, `\$`,
+		`{`, `\{`,
+		`}`, `\}`,
 	)
 	apiID = replacer.Replace(apiID)
 
