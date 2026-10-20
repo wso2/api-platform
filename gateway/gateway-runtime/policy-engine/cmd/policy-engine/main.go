@@ -43,6 +43,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/config"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/constants"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/executor"
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/health"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/kernel"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/pkg/cel"
@@ -267,8 +268,18 @@ func main() {
 	}
 
 	// Create and start ext_proc gRPC server
+	// The gateway's health routes reach the policy engine like API traffic and are
+	// answered by these checkers; the health log file, if any, is closed on shutdown.
+	var pythonExecutorCheck health.CheckFunc
+	if pythonbridge.IsAvailable(cfg.PolicyEngine.PythonExecutor) {
+		pythonExecutorCheck = pythonbridge.NewHealthCheck(pythonbridge.GetStreamManager())
+	}
+	livenessChecker, readinessChecker, healthLog := buildHealthCheckers(cfg, logger, xdsClient, pythonExecutorCheck)
+	defer healthLog.Close()
+
 	extprocServer := kernel.NewExternalProcessorServer(k, chainExecutor, cfg.TracingConfig, cfg.PolicyEngine.TracingServiceName, cfg.PolicyEngine.RequestBody.MaxDecompressedBytes, cfg.PolicyEngine.ResponseBody.MaxDecompressedBytes, corrStore,
-		kernel.WithHandleUpstreamFaults(cfg.PolicyEngine.FaultPolicies.HandleUpstreamFaults))
+		kernel.WithHandleUpstreamFaults(cfg.PolicyEngine.FaultPolicies.HandleUpstreamFaults),
+		kernel.WithHealthRoutes(livenessChecker, readinessChecker))
 
 	// Create listener based on mode (same pattern as gateway-controller)
 	var lis net.Listener
@@ -440,6 +451,13 @@ func applyFlagOverrides(cfg *config.Config) {
 
 // setupLogger creates a logger based on configuration
 func setupLogger(cfg *config.Config) *slog.Logger {
+	return slog.New(newLogHandler(cfg, os.Stdout))
+}
+
+// newLogHandler builds the handler setupLogger uses, writing to w instead of stdout,
+// so a second destination (such as the health log file) gets the same level, format
+// and component tag as the main log.
+func newLogHandler(cfg *config.Config, w io.Writer) slog.Handler {
 	var level slog.Level
 	switch cfg.PolicyEngine.Logging.Level {
 	case "debug":
@@ -459,14 +477,10 @@ func setupLogger(cfg *config.Config) *slog.Logger {
 	// Tagging is per logger, never process-wide on stdout: the traffic-log
 	// publisher writes bare JSON to os.Stdout on the same descriptor, and a
 	// process-wide prefix would corrupt it.
-	var handler slog.Handler
 	if cfg.PolicyEngine.Logging.Format == "json" {
-		handler = slog.NewJSONHandler(os.Stdout, opts)
-		return slog.New(handler).With(slog.String(logComponentField, logComponentValue))
+		return slog.NewJSONHandler(w, opts).WithAttrs([]slog.Attr{slog.String(logComponentField, logComponentValue)})
 	}
-	handler = slog.NewTextHandler(newComponentPrefixWriter(os.Stdout, logComponentPrefix), opts)
-
-	return slog.New(handler)
+	return slog.NewTextHandler(newComponentPrefixWriter(w, logComponentPrefix), opts)
 }
 
 const (
@@ -517,6 +531,8 @@ func initializeXDSClient(ctx context.Context, cfg *config.Config, serverAddr str
 		TLSCAPath:             cfg.PolicyEngine.XDS.TLS.CAPath,
 		TLSCiphers:            cfg.PolicyEngine.XDS.TLS.Ciphers,
 		TLSEcdhCurves:         cfg.PolicyEngine.XDS.TLS.EcdhCurves,
+		KeepaliveTime:         xdsclient.DefaultKeepaliveTime,
+		KeepaliveTimeout:      xdsclient.DefaultKeepaliveTimeout,
 	}
 
 	client, err := xdsclient.NewClient(xdsConfig, k, reg, resolvers)

@@ -65,7 +65,9 @@ paths:
     get:
       summary: Health check
       description: |
-        Returns the health status of the gateway controller.
+        Returns the health status of the gateway controller, including whether its
+        database is reachable. Each dependency is reported under `checks`; a failing
+        check carries only a generic reason. The result is cached for a few seconds.
         This endpoint is exempt from both authentication and the IP whitelist so
         that Docker and Kubernetes health probes can reach it. The exemption
         applies to both this versioned path and the legacy `/health` alias.
@@ -76,6 +78,12 @@ paths:
       responses:
         "200":
           description: Gateway controller is healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+        "503":
+          description: Gateway controller is unhealthy; at least one check is down
           content:
             application/json:
               schema:
@@ -269,14 +277,44 @@ components:
 
     HealthResponse:
       type: object
+      required:
+        - status
+        - timestamp
       properties:
         status:
           type: string
-          description: Health status ("healthy")
+          enum: [healthy, unhealthy]
+          description: Health status ("healthy" when every check is up, otherwise "unhealthy")
+        component:
+          type: string
+          description: The reporting component
+          example: gateway-controller
         timestamp:
           type: string
           format: date-time
           description: Timestamp of the health check
+        checks:
+          type: object
+          description: Result of each dependency check, keyed by check name (for example `database`)
+          additionalProperties:
+            $ref: "#/components/schemas/HealthCheck"
+
+    HealthCheck:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum: [up, down]
+          description: Whether the dependency is usable
+        error:
+          type: string
+          description: Generic reason the check is down; present only when down
+        since:
+          type: string
+          format: date-time
+          description: When the check started failing; present only when down
 
     XDSSyncStatusResponse:
       type: object

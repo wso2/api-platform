@@ -62,6 +62,15 @@ func validConfig() *Config {
 				Level:  "info",
 				Format: "json",
 			},
+			Health: HealthConfig{
+				CheckTimeout:   2 * time.Second,
+				CacheTTL:       3 * time.Second,
+				LogMaxSizeMB:   10,
+				LogMaxFiles:    5,
+				BackoffInitial: 10 * time.Second,
+				BackoffMax:     5 * time.Minute,
+				XDSGrace:       5 * time.Minute,
+			},
 			PythonExecutor: PythonExecutorConfig{
 				Server: PythonExecutorServerConfig{
 					Port: 9010,
@@ -2368,4 +2377,198 @@ handle_upstream_faults = true
 
 	assert.True(t, cfg.PolicyEngine.FaultPolicies.HandleUpstreamFaults,
 		"policy_engine.fault_policies.handle_upstream_faults must reach the engine")
+}
+
+func TestDefaultConfig_Health(t *testing.T) {
+	h := defaultConfig().PolicyEngine.Health
+
+	assert.Equal(t, 2*time.Second, h.CheckTimeout)
+	assert.Equal(t, 3*time.Second, h.CacheTTL)
+	assert.Equal(t, "", h.LogFile)
+	assert.Equal(t, 10, h.LogMaxSizeMB)
+	assert.Equal(t, 5, h.LogMaxFiles)
+	assert.Equal(t, 10*time.Second, h.BackoffInitial)
+	assert.Equal(t, 5*time.Minute, h.BackoffMax)
+	assert.Equal(t, 5*time.Minute, h.XDSGrace)
+}
+
+func TestLoad_HealthDefaultsWhenUnconfigured(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.toml")
+
+	configContent := `
+[policy_engine.config_mode]
+mode = "file"
+
+[policy_engine.file_config]
+path = "/tmp/policies.yaml"
+`
+	require.NoError(t, os.WriteFile(configPath, []byte(configContent), 0644))
+
+	cfg, err := Load(configPath)
+	require.NoError(t, err)
+
+	assert.Equal(t, defaultConfig().PolicyEngine.Health, cfg.PolicyEngine.Health)
+}
+
+func TestLoad_HealthOverrides(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.toml")
+	logFile := filepath.Join(tmpDir, "health.log")
+
+	configContent := `
+[policy_engine.config_mode]
+mode = "file"
+
+[policy_engine.file_config]
+path = "/tmp/policies.yaml"
+
+[policy_engine.health]
+check_timeout = "1s"
+cache_ttl = "7s"
+log_file = "` + filepath.ToSlash(logFile) + `"
+log_max_size_mb = 20
+log_max_files = 3
+backoff_initial = "15s"
+backoff_max = "10m"
+xds_grace = "60s"
+`
+	require.NoError(t, os.WriteFile(configPath, []byte(configContent), 0644))
+
+	cfg, err := Load(configPath)
+	require.NoError(t, err)
+
+	h := cfg.PolicyEngine.Health
+	assert.Equal(t, time.Second, h.CheckTimeout)
+	assert.Equal(t, 7*time.Second, h.CacheTTL)
+	assert.Equal(t, filepath.Clean(logFile), h.LogFile)
+	assert.Equal(t, 20, h.LogMaxSizeMB)
+	assert.Equal(t, 3, h.LogMaxFiles)
+	assert.Equal(t, 15*time.Second, h.BackoffInitial)
+	assert.Equal(t, 10*time.Minute, h.BackoffMax)
+	assert.Equal(t, 60*time.Second, h.XDSGrace)
+}
+
+func TestValidate_HealthConfig(t *testing.T) {
+	logFile := filepath.Join(t.TempDir(), "logs", "health.log")
+
+	tests := []struct {
+		name      string
+		mutate    func(h *HealthConfig)
+		wantError string
+		checkFile bool
+		wantFile  string
+	}{
+		{
+			name:   "defaults are valid",
+			mutate: func(h *HealthConfig) {},
+		},
+		{
+			name:      "zero check_timeout",
+			mutate:    func(h *HealthConfig) { h.CheckTimeout = 0 },
+			wantError: "policy_engine.health.check_timeout must be > 0",
+		},
+		{
+			name:      "negative check_timeout",
+			mutate:    func(h *HealthConfig) { h.CheckTimeout = -time.Second },
+			wantError: "policy_engine.health.check_timeout must be > 0",
+		},
+		{
+			name:      "zero cache_ttl",
+			mutate:    func(h *HealthConfig) { h.CacheTTL = 0 },
+			wantError: "policy_engine.health.cache_ttl must be > 0",
+		},
+		{
+			name:      "zero backoff_initial",
+			mutate:    func(h *HealthConfig) { h.BackoffInitial = 0 },
+			wantError: "policy_engine.health.backoff_initial must be > 0",
+		},
+		{
+			name:      "zero xds_grace",
+			mutate:    func(h *HealthConfig) { h.XDSGrace = 0 },
+			wantError: "policy_engine.health.xds_grace must be > 0",
+		},
+		{
+			name:      "negative xds_grace",
+			mutate:    func(h *HealthConfig) { h.XDSGrace = -time.Minute },
+			wantError: "policy_engine.health.xds_grace must be > 0",
+		},
+		{
+			name:      "zero backoff_max",
+			mutate:    func(h *HealthConfig) { h.BackoffMax = 0 },
+			wantError: "policy_engine.health.backoff_max must be > 0",
+		},
+		{
+			name: "backoff_max below backoff_initial",
+			mutate: func(h *HealthConfig) {
+				h.BackoffInitial = time.Minute
+				h.BackoffMax = time.Second
+			},
+			wantError: "policy_engine.health.backoff_max must be >= policy_engine.health.backoff_initial",
+		},
+		{
+			name: "backoff_max equal to backoff_initial",
+			mutate: func(h *HealthConfig) {
+				h.BackoffInitial = time.Minute
+				h.BackoffMax = time.Minute
+			},
+		},
+		{
+			name:      "zero log_max_size_mb",
+			mutate:    func(h *HealthConfig) { h.LogMaxSizeMB = 0 },
+			wantError: "policy_engine.health.log_max_size_mb must be >= 1",
+		},
+		{
+			name:      "zero log_max_files",
+			mutate:    func(h *HealthConfig) { h.LogMaxFiles = 0 },
+			wantError: "policy_engine.health.log_max_files must be >= 1",
+		},
+		{
+			name:      "relative log_file",
+			mutate:    func(h *HealthConfig) { h.LogFile = "logs/health.log" },
+			wantError: "policy_engine.health.log_file must be an absolute path",
+		},
+		{
+			name:      "log_file with NUL byte",
+			mutate:    func(h *HealthConfig) { h.LogFile = "/var/log/health\x00.log" },
+			wantError: "policy_engine.health.log_file must not contain NUL bytes",
+		},
+		{
+			name:      "log_file is cleaned",
+			mutate:    func(h *HealthConfig) { h.LogFile = filepath.Dir(logFile) + "/../logs/./health.log" },
+			checkFile: true,
+			wantFile:  logFile,
+		},
+		{
+			name:      "empty log_file stays empty",
+			mutate:    func(h *HealthConfig) { h.LogFile = "" },
+			checkFile: true,
+		},
+		{
+			name:   "check_timeout at default probe timeout is accepted",
+			mutate: func(h *HealthConfig) { h.CheckTimeout = 5 * time.Second },
+		},
+		{
+			name:   "check_timeout above default probe timeout is accepted",
+			mutate: func(h *HealthConfig) { h.CheckTimeout = 30 * time.Second },
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := validConfig()
+			tt.mutate(&cfg.PolicyEngine.Health)
+
+			err := cfg.Validate()
+			if tt.wantError != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.wantError)
+				return
+			}
+			require.NoError(t, err)
+			if tt.checkFile {
+				assert.Equal(t, tt.wantFile, cfg.PolicyEngine.Health.LogFile)
+			}
+		})
+	}
 }

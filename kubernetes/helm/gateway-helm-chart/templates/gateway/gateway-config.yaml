@@ -332,6 +332,16 @@ data:
     level = {{ $gc.logging.level | quote }}
     format = {{ $gc.logging.format | quote }}
 
+    [controller.health]
+    check_timeout = {{ $gc.health.check_timeout | quote }}
+    cache_ttl = {{ $gc.health.cache_ttl | quote }}
+    log_file = {{ $gc.health.log_file | default "" | quote }}
+    log_max_size_mb = {{ $gc.health.log_max_size_mb | int }}
+    log_max_files = {{ $gc.health.log_max_files | int }}
+    backoff_initial = {{ $gc.health.backoff_initial | quote }}
+    backoff_max = {{ $gc.health.backoff_max | quote }}
+    startup_wait = {{ $gc.health.startup_wait | quote }}
+
     [controller.metrics]
     enabled = {{ .Values.gateway.controller.metrics.enabled }}
     port = {{ .Values.gateway.controller.metrics.port }}
@@ -383,6 +393,16 @@ data:
     [policy_engine.logging]
     level = {{ $pe.logging.level | quote }}
     format = {{ $pe.logging.format | quote }}
+
+    [policy_engine.health]
+    check_timeout = {{ $pe.health.check_timeout | quote }}
+    cache_ttl = {{ $pe.health.cache_ttl | quote }}
+    log_file = {{ $pe.health.log_file | default "" | quote }}
+    log_max_size_mb = {{ $pe.health.log_max_size_mb | int }}
+    log_max_files = {{ $pe.health.log_max_files | int }}
+    backoff_initial = {{ $pe.health.backoff_initial | quote }}
+    backoff_max = {{ $pe.health.backoff_max | quote }}
+    xds_grace = {{ $pe.health.xds_grace | quote }}
 
     [policy_engine.metrics]
     enabled = {{ $pe.metrics.enabled }}

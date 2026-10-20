@@ -1,5 +1,17 @@
 {{- $controller := .Values.gateway.controller -}}
 {{- $deployment := $controller.deployment -}}
+{{- $healthLogFile := .Values.gateway.config.controller.health.log_file | default "" -}}
+{{- $healthLogVolume := merge (dict) ($controller.healthLogVolume | default dict) (dict "mountPath" "/app/logs" "sizeLimit" "128Mi") -}}
+{{- if not (hasKey $healthLogVolume "enabled") -}}
+  {{- $healthLogVolume = set $healthLogVolume "enabled" (ne $healthLogFile "") -}}
+{{- end -}}
+{{- if and $healthLogVolume.enabled $healthLogFile -}}
+  {{- /* clean first, so a path that only looks like it is under the mount ("/app/logs/../x") is caught. */ -}}
+  {{- $healthMount := printf "%s/" (trimSuffix "/" (clean $healthLogVolume.mountPath)) -}}
+  {{- if not (hasPrefix $healthMount (clean $healthLogFile)) -}}
+    {{- fail (printf "gateway.config.controller.health.log_file (%q) is not under gateway.controller.healthLogVolume.mountPath (%q), so it would not land on the mounted volume and the controller could not open it. Move the file under the mount, change the mountPath, or set gateway.controller.healthLogVolume.enabled=false if you mount your own volume." $healthLogFile $healthLogVolume.mountPath) -}}
+  {{- end -}}
+{{- end -}}
 {{- if $deployment.enabled }}
 {{- if not $controller.encryptionKeys.enabled }}
 {{- fail "gateway.controller.encryptionKeys must be enabled: at-rest encryption is mandatory. Provision the AES-256 key secret and set gateway.controller.encryptionKeys.enabled=true with a secretName." }}
@@ -179,6 +191,10 @@ spec:
               mountPath: {{ $controller.encryptionKeys.mountPath }}
               readOnly: true
             {{- end }}
+            {{- if $healthLogVolume.enabled }}
+            - name: health-log
+              mountPath: {{ $healthLogVolume.mountPath | quote }}
+            {{- end }}
             {{- with $deployment.extraVolumeMounts }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -225,6 +241,17 @@ spec:
         - name: encryption-keys
           secret:
             secretName: {{ $controller.encryptionKeys.secretName }}
+        {{- end }}
+        {{- if $healthLogVolume.enabled }}
+        # Writable, size-limited volume for the health log file.
+        - name: health-log
+          emptyDir:
+            {{- if $healthLogVolume.sizeLimit }}
+            sizeLimit: {{ $healthLogVolume.sizeLimit }}
+            {{- end }}
+            {{- if $healthLogVolume.medium }}
+            medium: {{ $healthLogVolume.medium | quote }}
+            {{- end }}
         {{- end }}
         {{- with $deployment.extraVolumes }}
         {{- toYaml . | nindent 8 }}

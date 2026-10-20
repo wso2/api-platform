@@ -74,6 +74,22 @@ config:
     level: info                  # debug | info | warn | error
     format: json                 # text | json
 
+  # Health checks behind /health. Failures are logged when a check starts failing,
+  # repeated at doubling intervals up to backoffMax, and recovery is logged once.
+  health:
+    checkTimeout: 2s             # per-check deadline
+    cacheTtl: 3s                 # how long an evaluated health result is reused
+    # Health log file, in addition to stdout. It must sit under healthLogVolume.mountPath
+    # while that volume is mounted. "" logs to stdout only and mounts no volume.
+    logFile: /app/logs/health.log
+    logMaxSizeMb: 10             # rotate the log file at this size
+    logMaxFiles: 5               # rotated backups to keep
+    backoffInitial: 10s          # delay before the first repeated failure line
+    backoffMax: 5m               # cap on the repeat interval
+    # How long startup waits for the database before the server exits. Keep it below
+    # the deployment.startupProbe allowance (6 minutes by default).
+    startupWait: 5m
+
   security:
     apiKey:
       # Accepted API-key hashing algorithms, e.g. "sha256" or "sha256,sha512".
@@ -295,7 +311,9 @@ config:
     signatureHeader: X-Api-Portal-Signature
 
 # Escape hatch: raw TOML appended verbatim to the generated config file, for keys
-# not exposed as structured values above.
+# not exposed as structured values above. Do not redefine a table the chart already
+# renders (for example [platform_api.health]; use config.health instead): a second copy
+# of a table is a TOML error and the server will not start.
 configToml: ""
 
 # ----------------------------------------------------------------------------
@@ -435,6 +453,19 @@ persistence:
     helm.sh/resource-policy: keep
 
 # ----------------------------------------------------------------------------
+# healthLogVolume — writable, per-pod volume for the health log file
+# ----------------------------------------------------------------------------
+# Mounted when config.health.logFile is set (uncomment enabled to override). It is an
+# emptyDir: read it with `kubectl exec ... -- cat /app/logs/health.log` or ship it with a
+# sidecar. Keep sizeLimit above logMaxSizeMb x (logMaxFiles + 1) so rotation bounds the
+# file, not the kubelet — the kubelet's limit EVICTS the pod.
+healthLogVolume:
+  # enabled: true
+  mountPath: /app/logs
+  sizeLimit: 128Mi
+  # medium: "Memory"             # tmpfs — off disk, but counts against the memory limit.
+
+# ----------------------------------------------------------------------------
 # deployment — the pod/Deployment spec
 # ----------------------------------------------------------------------------
 deployment:
@@ -452,32 +483,37 @@ deployment:
   podAnnotations: {}
   podLabels: {}
   priorityClassName: ""
+  # /health answers 503 while a dependency (the database) is down and while the server
+  # is still starting. Readiness takes the pod out of the Service after about 15 s of
+  # failed answers; liveness restarts it only after about 2 minutes, so a short
+  # database outage never causes a restart.
   livenessProbe:
     httpGet:
       path: /health
       port: http
       scheme: HTTPS
-    initialDelaySeconds: 20
     periodSeconds: 10
     timeoutSeconds: 5
-    failureThreshold: 3
+    failureThreshold: 12
   readinessProbe:
     httpGet:
       path: /health
       port: http
       scheme: HTTPS
-    initialDelaySeconds: 10
     periodSeconds: 5
     timeoutSeconds: 3
     failureThreshold: 3
-  # Optional startup probe for slow first starts (uncomment to enable):
-  # startupProbe:
-  #   httpGet:
-  #     path: /health
-  #     port: http
-  #     scheme: HTTPS
-  #   periodSeconds: 5
-  #   failureThreshold: 30
+  # Holds off the liveness probe while the server starts. It allows 6 minutes; keep this
+  # above config.health.startupWait so the server, not the probe, decides when a
+  # database wait gives up. Set to null to disable.
+  startupProbe:
+    httpGet:
+      path: /health
+      port: http
+      scheme: HTTPS
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 72
   # CPU/memory requests & limits. NOTE: set CPU requests if you enable the HPA,
   # otherwise it can't compute utilization.
   resources: {}

@@ -76,6 +76,19 @@ level = "info"   # debug | info | warn | error
 # Log encoding. Use "json" when shipping logs to an aggregator.
 format = "text"   # text | json
 
+# Health check behaviour. Every key is optional; the values shown are the defaults.
+# Failures are logged when a check starts failing, repeated at doubling intervals up to
+# backoff_max, and recovery is logged once.
+# [platform_api.health]
+# check_timeout   = "2s"    # per-check deadline
+# cache_ttl       = "3s"    # how long an evaluated health result is reused
+# log_file        = ""      # absolute path of the health log file; empty = stdout only
+# log_max_size_mb = 10      # rotate the log file at this size
+# log_max_files   = 5       # rotated backups to keep
+# backoff_initial = "10s"   # delay before the first repeated failure line
+# backoff_max     = "5m"    # cap on the repeat interval
+# startup_wait    = "5m"    # how long startup waits for the database before exiting
+
 # ---------------------------------------------------------------------------
 # Security
 # ---------------------------------------------------------------------------

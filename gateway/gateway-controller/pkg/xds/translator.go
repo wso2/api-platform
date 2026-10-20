@@ -739,21 +739,17 @@ func (t *Translator) createWeightedCluster(
 
 // TranslateConfigs translates all API configurations to Envoy resources
 // The correlationID parameter is optional and used for request tracing in logs
-// buildGatewayHealthRoutes builds the gateway's own readiness/liveness
-// direct-response routes (constants.GatewayReadyPath, constants.GatewayHealthyPath).
-// They are exact-path matches under a reserved namespace (constants.
-// GatewayHealthPathPrefix) that API/LLMProvider/LLMProxy path validation must
-// reject, bypass the policy-engine ext_proc filter like the "no-api-found"
-// catch-all, and return a static, sterile body — no internal state is ever
-// disclosed through them.
-func buildGatewayHealthRoutes() ([]*route.Route, error) {
-	disabledAny, err := anypb.New(&extproc.ExtProcPerRoute{
-		Override: &extproc.ExtProcPerRoute_Disabled{Disabled: true},
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal ExtProcPerRoute for gateway health routes: %w", err)
-	}
-
+// buildGatewayHealthRoutes builds the gateway's own readiness/liveness routes
+// (constants.GatewayReadyPath, constants.GatewayHealthyPath). They are exact-path
+// matches under a reserved namespace (constants.GatewayHealthPathPrefix) that
+// API/LLMProvider/LLMProxy path validation must reject.
+//
+// Health requests go through the policy-engine ext_proc filter, the same path API
+// traffic takes, and the policy engine answers them with its health result. A policy
+// engine that is down or not answering therefore fails the probe, since the filter
+// fails closed. The static, sterile direct response is reached only when a policy
+// engine that predates this handling passes a health request through.
+func buildGatewayHealthRoutes() []*route.Route {
 	newHealthRoute := func(name, path, body string) *route.Route {
 		return &route.Route{
 			Name: name,
@@ -776,9 +772,6 @@ func buildGatewayHealthRoutes() ([]*route.Route, error) {
 					},
 				},
 			},
-			TypedPerFilterConfig: map[string]*anypb.Any{
-				constants.ExtProcFilterName: disabledAny,
-			},
 			// Health probes fire every few seconds per pod (k8s readiness/liveness). Sampling
 			// them produces pure noise in the trace backend, so force the route's effective
 			// sampling to zero — overall_sampling is the final upper bound Envoy applies after
@@ -794,9 +787,9 @@ func buildGatewayHealthRoutes() ([]*route.Route, error) {
 	}
 
 	return []*route.Route{
-		newHealthRoute("gateway-ready", constants.GatewayReadyPath, `{"status":"ready"}`),
-		newHealthRoute("gateway-healthy", constants.GatewayHealthyPath, `{"status":"healthy"}`),
-	}, nil
+		newHealthRoute(constants.GatewayReadyRouteName, constants.GatewayReadyPath, `{"status":"ready"}`),
+		newHealthRoute(constants.GatewayHealthyRouteName, constants.GatewayHealthyPath, `{"status":"healthy"}`),
+	}
 }
 
 func (t *Translator) TranslateConfigs(
@@ -926,10 +919,7 @@ func (t *Translator) TranslateConfigs(
 	// Built once, after every API/LLMProvider/LLMProxy config above has
 	// contributed its routes to allRoutes, and reused for every vhost below —
 	// this is the single registration point for the gateway's own health routes.
-	gatewayHealthRoutes, err := buildGatewayHealthRoutes()
-	if err != nil {
-		return nil, err
-	}
+	gatewayHealthRoutes := buildGatewayHealthRoutes()
 
 	// Create a virtual host for each vhost
 	var virtualHosts []*route.VirtualHost

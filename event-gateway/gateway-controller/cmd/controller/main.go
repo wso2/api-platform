@@ -724,7 +724,8 @@ func main() {
 		adminProtect := func(next http.Handler) http.Handler {
 			return authMiddleWare(adminAuthz(next))
 		}
-		controllerAdminServer = adminserver.NewServer(&cfg.Controller.AdminServer, apiServer, adminProtect, log)
+		controllerAdminServer = adminserver.NewServer(&cfg.Controller.AdminServer, newFixedHealthHandler(), adminProtect, log)
+		controllerAdminServer.SetAPIServer(apiServer)
 		go func() {
 			if err := controllerAdminServer.Start(); err != nil {
 				log.Error("Controller admin server failed", slog.Any("error", err))

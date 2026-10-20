@@ -244,7 +244,16 @@ every key below with `platform-api.`.
 - `persistence.*` — PVC for the SQLite file (1Gi, `ReadWriteOnce`, kept on uninstall). It can
   be disabled with an external database.
 - `deployment.*` — replicas, probes (`/health` over HTTPS), resources, security contexts,
-  scheduling, `extraEnv`/`extraEnvFrom`/`extraVolumes`/`extraVolumeMounts`.
+  scheduling, `extraEnv`/`extraEnvFrom`/`extraVolumes`/`extraVolumeMounts`. `/health` answers
+  503 while the database is down or the server is still starting. Readiness (period 5 s ×
+  failureThreshold 3, ~15 s) takes the pod out of service; liveness (period 10 s ×
+  failureThreshold 12, ~2 min) restarts it only after a long outage. The startup probe allows
+  6 minutes, above `config.health.startupWait` (5m); set it to `null` to disable it.
+- `config.health.*` — health check timings and the health log file (`logFile`, default
+  `/app/logs/health.log`; `""` logs to stdout only). `healthLogVolume.*` mounts a per-pod,
+  size-limited `emptyDir` (128Mi) at `/app/logs` whenever a log file is set; rendering fails
+  if the file is outside the mount. Read it with
+  `kubectl exec <pod> -- cat /app/logs/health.log`.
 - `hpa.*` / `podDisruptionBudget.*` — autoscaling and the PDB. The HPA requires `postgres`
   or `sqlserver`, plus CPU requests.
 - `configMap.*`, `global.commonLabels`, `global.commonAnnotations` — extra metadata.

@@ -30,6 +30,18 @@
     {{- fail (printf "gateway.config.traffic_logging.file.path (%q) is not under gateway.gatewayRuntime.trafficLogVolume.mountPath (%q), so it would not land on the mounted volume and the gateway-runtime pod would fail to start. Move the path under the mount, change the mountPath, or set trafficLogVolume.enabled=false if you are mounting your own volume." $logPath $trafficLogVolume.mountPath) -}}
   {{- end -}}
 {{- end -}}
+{{- $healthLogFile := $config.policy_engine.health.log_file | default "" -}}
+{{- $healthLogVolume := merge (dict) ($unified.healthLogVolume | default dict) (dict "mountPath" "/app/logs" "sizeLimit" "128Mi") -}}
+{{- if not (hasKey $healthLogVolume "enabled") -}}
+  {{- $healthLogVolume = set $healthLogVolume "enabled" (ne $healthLogFile "") -}}
+{{- end -}}
+{{- if and $healthLogVolume.enabled $healthLogFile -}}
+  {{- /* clean first, so a path that only looks like it is under the mount ("/app/logs/../x") is caught. */ -}}
+  {{- $healthMount := printf "%s/" (trimSuffix "/" (clean $healthLogVolume.mountPath)) -}}
+  {{- if not (hasPrefix $healthMount (clean $healthLogFile)) -}}
+    {{- fail (printf "gateway.config.policy_engine.health.log_file (%q) is not under gateway.gatewayRuntime.healthLogVolume.mountPath (%q), so it would not land on the mounted volume and the policy engine could not open it. Move the file under the mount, change the mountPath, or set gateway.gatewayRuntime.healthLogVolume.enabled=false if you mount your own volume." $healthLogFile $healthLogVolume.mountPath) -}}
+  {{- end -}}
+{{- end -}}
 {{- if $deployment.enabled }}
 apiVersion: apps/v1
 kind: Deployment
@@ -207,6 +219,10 @@ spec:
             - name: traffic-log
               mountPath: {{ $trafficLogVolume.mountPath | quote }}
             {{- end }}
+            {{- if $healthLogVolume.enabled }}
+            - name: health-log
+              mountPath: {{ $healthLogVolume.mountPath | quote }}
+            {{- end }}
             {{- with $deployment.extraVolumeMounts }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -234,6 +250,17 @@ spec:
             {{- end }}
             {{- if $trafficLogVolume.medium }}
             medium: {{ $trafficLogVolume.medium | quote }}
+            {{- end }}
+        {{- end }}
+        {{- if $healthLogVolume.enabled }}
+        # Writable, size-limited volume for the health log file.
+        - name: health-log
+          emptyDir:
+            {{- if $healthLogVolume.sizeLimit }}
+            sizeLimit: {{ $healthLogVolume.sizeLimit }}
+            {{- end }}
+            {{- if $healthLogVolume.medium }}
+            medium: {{ $healthLogVolume.medium | quote }}
             {{- end }}
         {{- end }}
         {{- with $deployment.extraVolumes }}

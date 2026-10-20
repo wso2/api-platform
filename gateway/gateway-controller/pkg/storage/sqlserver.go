@@ -68,28 +68,14 @@ type SQLServerStorage struct {
 	logger *slog.Logger
 }
 
-// newSQLServerStorage creates a new SQL Server storage instance.
+// newSQLServerStorage creates a new SQL Server storage instance and confirms the database answers.
 func newSQLServerStorage(cfg SQLServerConnectionConfig, logger *slog.Logger) (*SQLServerStorage, error) {
 	cfg = withDefaultSQLServerConfig(cfg)
-	dsn, err := buildSQLServerDSN(cfg)
+	storage, dsn, err := openSQLServerStorage(cfg, logger)
 	if err != nil {
-		return nil, fmt.Errorf("failed to build sqlserver dsn: %w", err)
+		return nil, err
 	}
-
-	db, err := sql.Open("sqlserver", dsn)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open sqlserver database: %w", err)
-	}
-
-	db.SetMaxOpenConns(cfg.MaxOpenConns)
-	db.SetMaxIdleConns(cfg.MaxIdleConns)
-	db.SetConnMaxLifetime(cfg.ConnMaxLifetime)
-	db.SetConnMaxIdleTime(cfg.ConnMaxIdleTime)
-
-	storage := &SQLServerStorage{
-		db:     db,
-		logger: logger,
-	}
+	db := storage.db
 
 	pingTimeout := cfg.ConnectTimeout
 	if pingTimeout <= 0 {
@@ -115,6 +101,32 @@ func newSQLServerStorage(cfg SQLServerConnectionConfig, logger *slog.Logger) (*S
 		slog.String("dsn", sanitizeSQLServerDSN(dsn)))
 
 	return storage, nil
+}
+
+// openSQLServerStorage opens the SQL Server connection pool without connecting, so only
+// configuration errors fail here. It also returns the DSN, for logging in sanitized form.
+func openSQLServerStorage(cfg SQLServerConnectionConfig, logger *slog.Logger) (*SQLServerStorage, string, error) {
+	cfg = withDefaultSQLServerConfig(cfg)
+	dsn, err := buildSQLServerDSN(cfg)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to build sqlserver dsn: %w", err)
+	}
+
+	db, err := sql.Open("sqlserver", dsn)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to open sqlserver database: %w", err)
+	}
+
+	db.SetMaxOpenConns(cfg.MaxOpenConns)
+	db.SetMaxIdleConns(cfg.MaxIdleConns)
+	db.SetConnMaxLifetime(cfg.ConnMaxLifetime)
+	db.SetConnMaxIdleTime(cfg.ConnMaxIdleTime)
+
+	storage := &SQLServerStorage{
+		db:     db,
+		logger: logger,
+	}
+	return storage, dsn, nil
 }
 
 func withDefaultSQLServerConfig(cfg SQLServerConnectionConfig) SQLServerConnectionConfig {
