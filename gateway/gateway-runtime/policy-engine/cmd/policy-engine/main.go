@@ -189,7 +189,11 @@ func main() {
 		slog.ErrorContext(ctx, "Invalid policy_engine.http_client configuration", "error", err)
 		os.Exit(1)
 	}
-	sharedHTTPClient, err := httpclient.New(sharedHTTPClientCfg)
+	var sharedHTTPClientOpts []httpclient.Option
+	if cfg.TracingConfig.Enabled {
+		sharedHTTPClientOpts = append(sharedHTTPClientOpts, httpclient.WithRoundTripperWrapper(tracing.WrapTransport))
+	}
+	sharedHTTPClient, err := httpclient.New(sharedHTTPClientCfg, sharedHTTPClientOpts...)
 	if err != nil {
 		slog.ErrorContext(ctx, "Failed to build shared outbound HTTP client for policies", "error", err)
 		os.Exit(1)
