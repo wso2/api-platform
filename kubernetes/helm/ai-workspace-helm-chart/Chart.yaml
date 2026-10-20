@@ -29,11 +29,11 @@ dependencies:
   #
   # Shared control plane. On by default; the UI reaches it in-cluster.
   - name: platform-api
-    version: "0.16.0"
+    version: "0.16.1"
     repository: "oci://ghcr.io/wso2/api-platform/helm-charts"
     condition: platform-api.enabled
   # AI Workspace UI — this package's headline component.
   - name: ai-workspace-ui
-    version: "1.0.0"
+    version: "1.0.1"
     repository: "oci://ghcr.io/wso2/api-platform/helm-charts"
     condition: ai-workspace-ui.enabled
