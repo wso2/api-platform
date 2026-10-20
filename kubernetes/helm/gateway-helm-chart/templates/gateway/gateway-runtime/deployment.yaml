@@ -139,11 +139,6 @@ spec:
             {{- end }}
             - name: ROUTER_ADMIN_ENABLED
               value: {{ default false $deployment.env.routerAdminEnabled | quote }}
-            {{- if $healthLogFile }}
-            # The health watchdog appends to the policy engine's health log file.
-            - name: GATEWAY_HEALTH_LOG_FILE
-              value: {{ $healthLogFile | quote }}
-            {{- end }}
             {{- range $deployment.extraEnv }}
             - {{- toYaml . | nindent 14 }}
             {{- end }}

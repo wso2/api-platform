@@ -316,7 +316,6 @@ fi
 PY_PID=""
 PE_PID=""
 ENVOY_PID=""
-HEALTH_WATCHDOG_PID=""
 
 # Gracefully drain the Router (Envoy) listeners via its admin API so in-flight requests
 # complete and keep-alive connections close cleanly (Connection: close) rather than being
@@ -350,10 +349,6 @@ stop_proc() {
 # Shutdown handler - gracefully drain the Router, then terminate all processes
 shutdown() {
     log "Received shutdown signal..."
-
-    # Stop the health watchdog first, so an intentional shutdown is never logged as the
-    # gateway failing its health route.
-    stop_proc HEALTH_WATCHDOG_PID "Health watchdog"
 
     # Drain the Router first so in-flight requests finish and keep-alive connections are
     # closed cleanly — prevents client-visible connection resets during rolling restarts.
@@ -466,15 +461,6 @@ log "Starting Envoy..."
 ENVOY_PID=$!
 log "Envoy started (PID $ENVOY_PID)"
 
-# Start the health watchdog, which logs when the gateway stops answering its liveness
-# route (for example, a hung Policy Engine that cannot log for itself) and when it answers
-# again. It is not one of the monitored processes below: its exit never stops the runtime.
-if [ "${HEALTH_WATCHDOG_ENABLED:-true}" != "false" ]; then
-    /usr/local/bin/health-watchdog.sh &
-    HEALTH_WATCHDOG_PID=$!
-    log "Health watchdog started (PID $HEALTH_WATCHDOG_PID)"
-fi
-
 log "Gateway Runtime running"
 if [ -n "$PY_PID" ]; then
     log "  - Python Executor (PID $PY_PID)"
@@ -491,12 +477,6 @@ else
 fi
 EXIT_CODE=$?
 set -e
-
-# Stop the health watchdog before the others, so their shutdown is not logged as a failure
-if [ -n "$HEALTH_WATCHDOG_PID" ] && kill -0 "$HEALTH_WATCHDOG_PID" 2>/dev/null; then
-    kill -TERM "$HEALTH_WATCHDOG_PID" 2>/dev/null || true
-    wait "$HEALTH_WATCHDOG_PID" 2>/dev/null || true
-fi
 
 # Determine which process exited and clean up the others
 for pid_var in PY_PID PE_PID ENVOY_PID; do

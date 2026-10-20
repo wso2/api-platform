@@ -581,7 +581,7 @@ gateway:
 
       # Health checks behind the gateway health routes. Failures are logged when a check
       # starts failing, repeated at doubling intervals up to backoff_max, and recovery is
-      # logged once. log_file is also where the runtime's health watchdog writes.
+      # logged once.
       health:
         check_timeout: 2s       # per-check deadline
         cache_ttl: 3s           # how long an evaluated health result is reused
@@ -1010,10 +1010,10 @@ gateway:
       # medium: "Memory"         # tmpfs — off disk entirely, but counts against
                                  # the container's memory limit.
 
-    # Writable, per-pod volume for the runtime's health log file (policy engine and
-    # health watchdog). Mounted when gateway.config.policy_engine.health.log_file is set
-    # (uncomment enabled to override). Keep sizeLimit above
-    # log_max_size_mb x (log_max_files + 1) so rotation bounds the file, not the kubelet.
+    # Writable, per-pod volume for the policy engine's health log file. Mounted when
+    # gateway.config.policy_engine.health.log_file is set (uncomment enabled to override).
+    # Keep sizeLimit above log_max_size_mb x (log_max_files + 1) so rotation bounds the
+    # file, not the kubelet.
     healthLogVolume:
       # enabled: true
       mountPath: /app/logs
