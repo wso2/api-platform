@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"log/slog"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -85,6 +86,11 @@ type globalPropertyEvaluator struct {
 	truncateBody func(string) string
 	// section is the config section named in log messages (see withSection).
 	section string
+	// excludedVariables/excludedMapKeys hold the "$ctx:" entries of exclude_fields:
+	// an expression that uses an excluded variable is dropped at construction, and
+	// excluded keys are removed from map variables per request (see withCtxExclusions).
+	excludedVariables map[string]bool
+	excludedMapKeys   map[string]map[string]bool
 	// referencedVars is the union, across every compiled expression, of the declared
 	// variable names (see globalPropertyVariables) actually referenced. Computed once at
 	// construction (the expression set is static config) and consulted by
@@ -140,6 +146,12 @@ func newGlobalPropertyEvaluator(properties map[string]string, maskedHeaders map[
 				"property", name, "expression", rest, "error", issues.Err())
 			continue
 		}
+		refs := referencedGlobalPropertyVariables(ast)
+		if excluded := e.excludedVariablesIn(refs); len(excluded) > 0 {
+			slog.Warn(e.section+": expression uses a variable excluded by exclude_fields; property will be omitted from every line",
+				"property", name, "variables", excluded)
+			continue
+		}
 		program, err := env.Program(ast)
 		if err != nil {
 			slog.Error(e.section+": failed to build CEL program; property will be omitted from every line",
@@ -153,16 +165,28 @@ func newGlobalPropertyEvaluator(properties map[string]string, maskedHeaders map[
 		// reads cel-go's own checked reference map, so it can only under-report if cel-go's
 		// checker itself failed to resolve a reference — and an unresolved reference means
 		// Compile would already have failed above, so this expression wouldn't be here.
-		for varName := range referencedGlobalPropertyVariables(ast) {
+		for varName := range refs {
 			e.referencedVars[varName] = true
 		}
 	}
 	return e
 }
 
+// excludedVariablesIn returns, sorted, the variables in refs that exclude_fields excludes.
+func (e *globalPropertyEvaluator) excludedVariablesIn(refs map[string]bool) []string {
+	var out []string
+	for v := range refs {
+		if e.excludedVariables[v] {
+			out = append(out, v)
+		}
+	}
+	slices.Sort(out)
+	return out
+}
+
 // evaluatorOption configures a globalPropertyEvaluator beyond what properties needs.
 // json_fields uses them, since it replaces the default line and so takes over its
-// header exclusions and bodies.
+// header exclusions and bodies, and is the target of "$ctx:" exclude_fields entries.
 type evaluatorOption func(*globalPropertyEvaluator)
 
 // withExcludedHeaders removes the given lower-cased header names from
@@ -178,6 +202,15 @@ func withExcludedHeaders(request, response map[string]bool) evaluatorOption {
 func withBodies(truncate func(string) string) evaluatorOption {
 	return func(e *globalPropertyEvaluator) {
 		e.truncateBody = truncate
+	}
+}
+
+// withCtxExclusions applies the "$ctx:" entries of exclude_fields, so json_fields never
+// logs data excluded there, whatever an expression asks for.
+func withCtxExclusions(variables map[string]bool, mapKeys map[string]map[string]bool) evaluatorOption {
+	return func(e *globalPropertyEvaluator) {
+		e.excludedVariables = variables
+		e.excludedMapKeys = mapKeys
 	}
 }
 
@@ -229,7 +262,8 @@ type globalPropertyVariable struct {
 // Zero values that are slices/maps (auth.audience, auth.property, metadata, the two header
 // maps, ...) are never mutated in place anywhere in this file — every assignment in
 // buildGlobalPropertyEvalCtx replaces the ctx entry wholesale rather than appending/writing
-// into the existing value — so the same empty instance declared here is safely reused
+// into the existing value, and removeExcludedMapKeys skips empty maps — so the same empty
+// instance declared here is safely reused
 // (read-only) across every request and goroutine instead of allocating a fresh empty
 // collection per call.
 var globalPropertyVariables = []globalPropertyVariable{
@@ -317,6 +351,13 @@ var bodyVariables = []globalPropertyVariable{
 	{"response.body", cel.StringType, ""},
 }
 
+// isDeclaredVariable reports whether name is a "$ctx:" variable, including the body
+// variables only json_fields can use.
+func isDeclaredVariable(name string) bool {
+	isNamed := func(v globalPropertyVariable) bool { return v.name == name }
+	return slices.ContainsFunc(globalPropertyVariables, isNamed) || slices.ContainsFunc(bodyVariables, isNamed)
+}
+
 // createGlobalPropertyEnv declares every variable in globalPropertyVariables, plus
 // extra, in the CEL environment used to compile "$ctx:" expressions.
 func createGlobalPropertyEnv(extra ...globalPropertyVariable) (*cel.Env, error) {
@@ -354,6 +395,7 @@ func (e *globalPropertyEvaluator) resolve(event *dto.Event) map[string]interface
 
 	evalCtx := buildGlobalPropertyEvalCtx(event, e.referencedVars, e.maskedHeaders, e.excludedRequestHeaders, e.excludedResponseHeaders)
 	e.bindBodies(evalCtx, event)
+	e.removeExcludedMapKeys(evalCtx)
 	for name, program := range e.compiled {
 		out, _, err := program.Eval(evalCtx)
 		if err != nil {
@@ -377,8 +419,8 @@ func (e *globalPropertyEvaluator) resolve(event *dto.Event) map[string]interface
 // corresponding event field is absent) so evaluation never fails merely because a nested
 // pointer was nil. request.header/response.header drop the excluded header names (json_fields
 // only; nil for properties) and are masked with the same maskedHeaders
-// config applied to the emitted requestHeaders/responseHeaders maps (see maskHeaders in
-// log.go), so a property expression like "$ctx:request.header['authorization']" cannot
+// config applied to the emitted requestHeaders/responseHeaders maps (see filterAndMaskHeaders
+// in log.go), so a property expression like "$ctx:request.header['authorization']" cannot
 // bypass masking and leak a credential the operator explicitly asked to redact — that
 // parse+lowercase+mask work (and the json.Unmarshal calls for auth.property/metadata) is
 // itself skipped whenever the corresponding variable isn't referenced by any configured
@@ -599,6 +641,31 @@ func (e *globalPropertyEvaluator) bindBodies(ctx map[string]interface{}, event *
 	}
 	if e.referencedVars["response.body"] {
 		ctx["response.body"] = e.truncateBody(capturedBody(event, dto.PropKeyResponsePayload))
+	}
+}
+
+// removeExcludedMapKeys deletes the keys excluded by "$ctx:<map variable>.<key>"
+// entries from the auth.property and metadata maps in ctx. Those maps are parsed
+// afresh for every request, so deleting from them never changes the event.
+func (e *globalPropertyEvaluator) removeExcludedMapKeys(ctx map[string]interface{}) {
+	for mapVar, keys := range e.excludedMapKeys {
+		switch m := ctx[mapVar].(type) {
+		case map[string]string:
+			deleteKeys(m, keys)
+		case map[string]interface{}:
+			deleteKeys(m, keys)
+		}
+	}
+}
+
+// deleteKeys removes keys from m. An empty m is left untouched, since it may be the
+// shared zero value declared in globalPropertyVariables.
+func deleteKeys[V any](m map[string]V, keys map[string]bool) {
+	if len(m) == 0 {
+		return
+	}
+	for k := range keys {
+		delete(m, k)
 	}
 }
 

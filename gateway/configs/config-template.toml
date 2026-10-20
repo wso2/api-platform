@@ -1067,6 +1067,12 @@ exclude_fields = []
 # map wholesale (e.g. `claims = "$ctx:auth.property"`, whose keys vary per token)
 # instead of one flattened property per claim — reach into it to drop just one:
 # exclude_fields = ["properties.claims.internal_debug"]
+# An entry starting with "$ctx:" names data instead of a field, and applies only to
+# json_fields below: "$ctx:<variable>" drops every json_fields entry that uses that
+# variable (logged once at startup), and "$ctx:auth.property.<key>" or
+# "$ctx:metadata.<key>" removes just that key from the map. Properties are excluded
+# by name instead, e.g. "properties.<key>".
+# exclude_fields = ["$ctx:error.policy", "$ctx:auth.property.email"]
 
 # -----------------------------------------------------------------------------
 # "file" sink — read only when outputs contains "file".
@@ -1303,9 +1309,10 @@ insecure_skip_verify = false
 # Optional: define the whole log line yourself, like [router.access_logs.json_fields].
 # Each key becomes a top-level field; each value is a literal or a "$ctx:" expression
 # using the same variables (and header masking) as properties above. When set, only
-# these fields are written, and properties is not applied. Of exclude_fields, only the
-# "requestHeaders.<name>"/"responseHeaders.<name>" entries apply: they remove that
-# header from request.header/response.header.
+# these fields are written, and properties is ignored (with a warning at startup).
+# Of exclude_fields, only "requestHeaders.<name>"/"responseHeaders.<name>" entries,
+# which remove that header from request.header/response.header, and "$ctx:" entries
+# apply.
 # json_fields can also use request.body and response.body, which properties cannot.
 # They need [collector] request_body/response_body and are cut to max_payload_size.
 # Like a header, a body named here is written without the request_body/response_body
