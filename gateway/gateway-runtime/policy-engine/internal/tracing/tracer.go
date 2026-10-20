@@ -31,6 +31,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
@@ -48,20 +49,7 @@ func InitTracer(cfg *config.Config) (func(), error) {
 		return func() {}, nil
 	}
 
-	endpoint := cfg.TracingConfig.Endpoint
-	if endpoint == "" {
-		endpoint = "otel-collector:4317"
-	}
-
-	slog.InfoContext(ctx, "Initializing OTLP exporter", "endpoint", endpoint)
-
-	// Create OTLP exporter with configured options
-	opts := []otlptracegrpc.Option{otlptracegrpc.WithEndpoint(endpoint)}
-	if cfg.TracingConfig.Insecure {
-		opts = append(opts, otlptracegrpc.WithInsecure())
-	}
-
-	exporter, err := otlptracegrpc.New(ctx, opts...)
+	exporter, err := newExporter(ctx, cfg.TracingConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -160,6 +148,31 @@ func InitTracer(cfg *config.Config) (func(), error) {
 			slog.ErrorContext(ctx, "Error shutting down tracer provider", "error", err)
 		}
 	}, nil
+}
+
+// newExporter creates the OTLP span exporter for the configured transport.
+func newExporter(ctx context.Context, cfg config.TracingConfig) (sdktrace.SpanExporter, error) {
+	endpoint := cfg.Endpoint
+	if cfg.Protocol == config.TracingProtocolHTTP {
+		if endpoint == "" {
+			endpoint = "otel-collector:4318"
+		}
+		slog.InfoContext(ctx, "Initializing OTLP exporter", "endpoint", endpoint, "protocol", cfg.Protocol)
+		opts := []otlptracehttp.Option{otlptracehttp.WithEndpoint(endpoint)}
+		if cfg.Insecure {
+			opts = append(opts, otlptracehttp.WithInsecure())
+		}
+		return otlptracehttp.New(ctx, opts...)
+	}
+	if endpoint == "" {
+		endpoint = "otel-collector:4317"
+	}
+	slog.InfoContext(ctx, "Initializing OTLP exporter", "endpoint", endpoint, "protocol", config.TracingProtocolGRPC)
+	opts := []otlptracegrpc.Option{otlptracegrpc.WithEndpoint(endpoint)}
+	if cfg.Insecure {
+		opts = append(opts, otlptracegrpc.WithInsecure())
+	}
+	return otlptracegrpc.New(ctx, opts...)
 }
 
 // ExtractTraceContext extracts the W3C Trace Context (traceparent/tracestate)
