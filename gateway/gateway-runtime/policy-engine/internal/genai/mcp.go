@@ -110,18 +110,20 @@ func encode(v any) (json.RawMessage, error) {
 	return bytes.TrimSuffix(buf.Bytes(), []byte("\n")), nil
 }
 
-// MCPOutcome is how an MCP server answered a request.
-type MCPOutcome struct {
+// JSONRPCOutcome is how a JSON-RPC server (an MCP server or an A2A agent) answered a
+// request.
+type JSONRPCOutcome struct {
 	// ErrorCode is the JSON-RPC error code, "" when the server returned a result.
 	ErrorCode string
-	// ToolError reports a tool call whose result says isError: the tool ran and failed.
+	// ToolError reports an MCP tool call whose result says isError: the tool ran and
+	// failed.
 	ToolError bool
 }
 
-// ParseMCPResponse reads the JSON-RPC response from a JSON body or, for a streamed
+// ParseJSONRPCResponse reads the JSON-RPC response from a JSON body or, for a streamed
 // response, the first event carrying a result or an error. ok is false when no
 // response is found, as for a notification the server accepted with no body.
-func ParseMCPResponse(body []byte) (MCPOutcome, bool) {
+func ParseJSONRPCResponse(body []byte) (JSONRPCOutcome, bool) {
 	for _, event := range jsonEvents(body) {
 		var resp struct {
 			Result *struct {
@@ -136,10 +138,10 @@ func ParseMCPResponse(body []byte) (MCPOutcome, bool) {
 		}
 		switch {
 		case resp.Error != nil:
-			return MCPOutcome{ErrorCode: resp.Error.Code.String()}, true
+			return JSONRPCOutcome{ErrorCode: resp.Error.Code.String()}, true
 		case resp.Result != nil:
-			return MCPOutcome{ToolError: resp.Result.IsError}, true
+			return JSONRPCOutcome{ToolError: resp.Result.IsError}, true
 		}
 	}
-	return MCPOutcome{}, false
+	return JSONRPCOutcome{}, false
 }
