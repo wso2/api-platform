@@ -28,6 +28,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/url"
+	"reflect"
 	"strings"
 	"time"
 
@@ -385,7 +386,10 @@ func Load(paths ...string) (*Config, error) {
 			TagName:          "koanf",
 			WeaklyTypedInput: true,
 			Result:           cfg,
-			DecodeHook:       mapstructure.StringToTimeDurationHookFunc(),
+			DecodeHook: mapstructure.ComposeDecodeHookFunc(
+				mapstructure.StringToTimeDurationHookFunc(),
+				commaSeparatedStringToSliceHook,
+			),
 		},
 	}); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
@@ -398,6 +402,21 @@ func Load(paths ...string) (*Config, error) {
 
 	cfg.RuntimeConfig = buildRuntimeConfig(cfg)
 	return cfg, nil
+}
+
+// commaSeparatedStringToSliceHook supports comma-separated strings for []string
+// values, trimming entries and dropping blanks.
+func commaSeparatedStringToSliceHook(from, to reflect.Type, data any) (any, error) {
+	if from.Kind() != reflect.String || to.Kind() != reflect.Slice || to.Elem().Kind() != reflect.String {
+		return data, nil
+	}
+	out := []string{}
+	for entry := range strings.SplitSeq(data.(string), ",") {
+		if entry = strings.TrimSpace(entry); entry != "" {
+			out = append(out, entry)
+		}
+	}
+	return out, nil
 }
 
 // normalize resolves the derived fields that are not a straight copy of a config

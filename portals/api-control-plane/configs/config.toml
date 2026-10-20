@@ -209,9 +209,16 @@ environment = '{{ env "APIP_ACP_GATEWAY_RELAY_EGRESS_ENVIRONMENT" "production" }
 # Prefer narrow entries. Broad private-network patterns can expose other
 # in-cluster services; pinning the port helps distinguish the gateway.
 #
-# allow_hosts = ["https://*.gw.svc.cluster.local:9443", "https://gw.api.example.com"]
+# Set from the environment as a comma-separated list (whitespace around entries
+# is ignored; an empty value means an empty list):
+#
+#   APIP_ACP_GATEWAY_RELAY_EGRESS_ALLOW_HOSTS="https://*.gw.svc.cluster.local:9443,https://gw.api.example.com"
+#
+# A TOML array is still accepted in place of the token:
+#
+#   allow_hosts = ["https://*.gw.svc.cluster.local:9443", "https://gw.api.example.com"]
 
 # Always refused, regardless of allow_hosts: link-local, unspecified,
 # multicast/broadcast, and IPv6 prefixes that embed IPv4 addresses. Checked
 # against every resolved address at dial time.
-allow_hosts = [ "https://localhost:8443"]
+allow_hosts = '{{ env "APIP_ACP_GATEWAY_RELAY_EGRESS_ALLOW_HOSTS" "https://localhost:8443" }}'

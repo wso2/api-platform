@@ -85,6 +85,10 @@ environment = "production"
 allow_hosts = ["https://*.gw.svc.cluster.local:9443"]
 ```
 
+The shipped `config.toml` reads it from `APIP_ACP_GATEWAY_RELAY_EGRESS_ALLOW_HOSTS`
+as a comma-separated list, e.g.
+`APIP_ACP_GATEWAY_RELAY_EGRESS_ALLOW_HOSTS="https://gw-a:8443,https://*.gw.svc.cluster.local:9443"`.
+
 **Nothing is reachable unless an entry matches.** An empty list — the shipped
 default — refuses every try-out with `TARGET_NOT_ALLOWED` and warns at startup.
 A gateway endpoint is tenant-settable data, so resolution can only promise

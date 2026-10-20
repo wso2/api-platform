@@ -19,6 +19,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -101,5 +102,50 @@ mode = "roles"
 	}
 	if !strings.Contains(err.Error(), "invalid [auth.authorization] mode") {
 		t.Errorf("error = %v, want it to name [auth.authorization] mode", err)
+	}
+}
+
+// {{ env }} renders only into strings, so a comma-separated env var must decode
+// into a list of entries rather than one entry containing the commas.
+func TestLoad_AllowHostsFromCommaSeparatedEnv(t *testing.T) {
+	body := minimalControlPlane + `
+[api_control_plane.gateway_relay.egress]
+allow_hosts = '{{ env "TEST_ACP_ALLOW_HOSTS" "" }}'
+`
+	tests := []struct {
+		name string
+		env  string
+		want []string
+	}{
+		{"several", " https://a.example.com:8443 , *.gw.example.com,,", []string{"https://a.example.com:8443", "*.gw.example.com"}},
+		{"single", "https://a.example.com", []string{"https://a.example.com"}},
+		{"unset", "", []string{}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("TEST_ACP_ALLOW_HOSTS", tc.env)
+			cfg, err := Load(writeConfig(t, body))
+			if err != nil {
+				t.Fatalf("Load() error = %v", err)
+			}
+			if got := cfg.GatewayRelay.Egress.AllowHosts; !slices.Equal(got, tc.want) {
+				t.Errorf("AllowHosts = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// A TOML array keeps working alongside the env-token form.
+func TestLoad_AllowHostsFromTOMLArray(t *testing.T) {
+	cfg, err := Load(writeConfig(t, minimalControlPlane+`
+[api_control_plane.gateway_relay.egress]
+allow_hosts = ["https://a.example.com", "https://b.example.com:9443"]
+`))
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	want := []string{"https://a.example.com", "https://b.example.com:9443"}
+	if got := cfg.GatewayRelay.Egress.AllowHosts; !slices.Equal(got, want) {
+		t.Errorf("AllowHosts = %q, want %q", got, want)
 	}
 }
