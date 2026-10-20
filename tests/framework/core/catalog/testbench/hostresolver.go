@@ -20,8 +20,10 @@ package testbench
 
 import (
 	"fmt"
+	"net"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/wso2/api-platform/tests/framework/core/components"
@@ -68,7 +70,7 @@ func HostURL(topo Topology, endpoint string) (string, error) {
 
 // UpstreamURL returns the testbench endpoint address that components under test call, for
 // example a gateway upstream. A configured hosted testbench wins; otherwise the endpoint is
-// the address the testbench container has on the block network.
+// the address the testbench has on the block network, whether or not the block declares it.
 func UpstreamURL(topo Topology, endpoint string) (string, error) {
 	if hosted, ok, err := override(endpoint); err != nil || ok {
 		return hosted, err
@@ -76,11 +78,26 @@ func UpstreamURL(topo Topology, endpoint string) (string, error) {
 	if topo == nil {
 		return "", fmt.Errorf("testbench: no topology to resolve endpoint %q", endpoint)
 	}
-	inst, err := topo.Component(componentName)
-	if err != nil {
-		return "", err
+	if inst, err := topo.Component(componentName); err == nil {
+		return inst.InternalURL(endpoint)
 	}
-	return inst.InternalURL(endpoint)
+	return networkURL(endpoint)
+}
+
+// networkURL returns the address the testbench has on a block network, from its definition. A
+// block that does not declare the testbench still gets this address, because an upstream only
+// has to name it: the gateway dials it when a request is served, not when the API is created.
+func networkURL(endpoint string) (string, error) {
+	def := Testbench()
+	e, ok := def.Endpoint(endpoint)
+	if !ok {
+		return "", fmt.Errorf("testbench: no endpoint %q", endpoint)
+	}
+	address := net.JoinHostPort(def.Alias, strconv.Itoa(e.Port)) + e.PathPrefix
+	if e.Scheme != "" {
+		address = e.Scheme + "://" + address
+	}
+	return address, nil
 }
 
 // AuthHeaders returns the headers a request to a hosted testbench carries, or nil when no

@@ -108,14 +108,14 @@ func TestImageForModuleUsesTheLocalImageWhenNoReleaseIsInUse(t *testing.T) {
 type stubTopology struct{ inst *components.Instance }
 
 func (s stubTopology) URL(component, endpoint string) (string, error) {
-	if component != "testbench" {
+	if component != "testbench" || s.inst == nil {
 		return "", fmt.Errorf("no component %q", component)
 	}
 	return s.inst.URL(endpoint)
 }
 
 func (s stubTopology) Component(name string) (*components.Instance, error) {
-	if name != "testbench" {
+	if name != "testbench" || s.inst == nil {
 		return nil, fmt.Errorf("no component %q", name)
 	}
 	return s.inst, nil
@@ -229,6 +229,27 @@ func TestHostResolverWithoutTopologyOrComponentFails(t *testing.T) {
 	require.Error(t, err)
 	_, err = UpstreamURL(topo, "no-such-endpoint")
 	require.Error(t, err)
+}
+
+// A block without a testbench component (the AI workspace CLI block, for one) still creates APIs
+// whose upstream names the testbench, so the upstream address must not need the component.
+func TestUpstreamURLDoesNotNeedTheTestbenchInTheBlock(t *testing.T) {
+	clearResolverEnv(t)
+	topo := stubTopology{}
+
+	upstream, err := UpstreamURL(topo, "backend")
+	require.NoError(t, err)
+	require.Equal(t, "http://testbench:3000", upstream)
+
+	upstream, err = UpstreamURL(topo, "mcp")
+	require.NoError(t, err)
+	require.Equal(t, "http://testbench:3009", upstream)
+
+	_, err = UpstreamURL(topo, "no-such-endpoint")
+	require.ErrorContains(t, err, "no endpoint")
+
+	_, err = HostURL(topo, "backend")
+	require.Error(t, err, "the test process cannot reach a testbench the block does not run")
 }
 
 func TestAuthHeadersCarryTheBearerToken(t *testing.T) {
