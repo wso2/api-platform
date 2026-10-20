@@ -119,7 +119,7 @@ func (ec *PolicyExecutionContext) finishMCPSpan(span trace.Span) {
 	if ec.genai.response == nil {
 		return
 	}
-	outcome, ok := genai.ParseMCPResponse(ec.genai.response.Bytes())
+	outcome, ok := genai.ParseJSONRPCResponse(ec.genai.response.Bytes())
 	switch {
 	case !ok:
 	case outcome.ErrorCode != "":
