@@ -107,6 +107,12 @@ const (
 	// from policy-supplied analytics metadata, so a policy cannot point a request's
 	// access-log entry at another request's stored fields.
 	CorrelationTokenKey = Wso2MetadataPrefix + "correlation-token"
+	// TraceIDKey and SpanIDKey carry the request's trace context (W3C hex) in
+	// analytics_data, so an analytics event can be joined to its trace. The ext_proc
+	// handler stamps them from its root span when that span is sampled, and drops any
+	// policy-supplied value, as it does for CorrelationTokenKey.
+	TraceIDKey = Wso2MetadataPrefix + "trace-id"
+	SpanIDKey  = Wso2MetadataPrefix + "span-id"
 	// APIIDKey is the key for the API ID.
 	APIIDKey = Wso2MetadataPrefix + "api-id"
 	// APICreatorKey is the key for the API creator.

@@ -501,6 +501,9 @@ func (s *ExternalProcessorServer) handleProcessingPhase(ctx context.Context, req
 			trace.WithSpanKind(trace.SpanKindInternal))
 		rm, outcome, denial := s.initializeExecutionContext(bindCtx, req, execCtx)
 		bindSpan.End()
+		if *execCtx != nil {
+			(*execCtx).rootSpan = parentSpan
+		}
 		if parentSpan.IsRecording() {
 			parentSpan.SetAttributes(
 				attribute.String(constants.AttrRouteName, rm.RouteName),
