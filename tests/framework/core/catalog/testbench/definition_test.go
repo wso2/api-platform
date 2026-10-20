@@ -151,7 +151,7 @@ func TestHostResolverDefaultsToTheContainer(t *testing.T) {
 	configured, err := Configured("backend")
 	require.NoError(t, err)
 	require.False(t, configured)
-	require.Nil(t, AuthHeaders())
+	require.Nil(t, AuthHeaders("backend"))
 }
 
 func TestHostResolverUsesTheConfiguredBaseURLForEveryEndpoint(t *testing.T) {
@@ -252,11 +252,79 @@ func TestUpstreamURLDoesNotNeedTheTestbenchInTheBlock(t *testing.T) {
 	require.Error(t, err, "the test process cannot reach a testbench the block does not run")
 }
 
-func TestAuthHeadersCarryTheBearerToken(t *testing.T) {
+func TestAuthHeadersCarryTheBearerTokenToAHostedEndpointOnly(t *testing.T) {
 	clearResolverEnv(t)
 	t.Setenv(EnvAccessToken, "  abc.def  ")
-	require.Equal(t, map[string]string{"Authorization": "Bearer abc.def"}, AuthHeaders())
+
+	require.Nil(t, AuthHeaders("backend"), "the container is not sent the token")
+
+	t.Setenv(EnvEndpointURLPrefix+"JWKS", "https://jwks.example.com")
+	require.Equal(t, map[string]string{"Authorization": "Bearer abc.def"}, AuthHeaders("jwks"))
+	require.Nil(t, AuthHeaders("backend"), "an endpoint that is not hosted is not sent the token")
+
+	t.Setenv(EnvURL, "https://hosted.example.com")
+	require.Equal(t, map[string]string{"Authorization": "Bearer abc.def"}, AuthHeaders("backend"))
 
 	t.Setenv(EnvAccessToken, "   ")
-	require.Nil(t, AuthHeaders())
+	require.Nil(t, AuthHeaders("backend"))
+}
+
+func TestTheTokenIsNeverSentInClearText(t *testing.T) {
+	const token = "tok3n-must-not-leak"
+	for _, hosted := range []string{"http://hosted.example.com", "http://10.0.0.5:3000", "http://testbench.svc:3000"} {
+		t.Run(hosted, func(t *testing.T) {
+			clearResolverEnv(t)
+			t.Setenv(EnvURL, hosted)
+			t.Setenv(EnvAccessToken, token)
+
+			_, err := HostURL(nil, "backend")
+			require.ErrorContains(t, err, EnvURL)
+			require.ErrorContains(t, err, EnvAccessToken)
+			require.NotContains(t, err.Error(), token)
+			_, err = UpstreamURL(nil, "backend")
+			require.Error(t, err)
+			require.Nil(t, AuthHeaders("backend"))
+		})
+	}
+
+	for _, local := range []string{"http://localhost:3000", "http://127.0.0.1:3000", "http://[::1]:3000", "https://hosted.example.com"} {
+		t.Run(local, func(t *testing.T) {
+			clearResolverEnv(t)
+			t.Setenv(EnvURL, local)
+			t.Setenv(EnvAccessToken, token)
+
+			_, err := HostURL(nil, "backend")
+			require.NoError(t, err)
+			require.NotNil(t, AuthHeaders("backend"))
+		})
+	}
+
+	clearResolverEnv(t)
+	t.Setenv(EnvURL, "http://hosted.example.com")
+	_, err := HostURL(nil, "backend")
+	require.NoError(t, err, "plain http is allowed when there is no token to protect")
+}
+
+func TestWithAuthKeepsACallersAuthorization(t *testing.T) {
+	clearResolverEnv(t)
+	t.Setenv(EnvURL, "https://hosted.example.com")
+	t.Setenv(EnvAccessToken, "abc.def")
+
+	merged := WithAuth("backend", map[string]string{"X-Scenario": "one"})
+	require.Equal(t, map[string]string{"X-Scenario": "one", "Authorization": "Bearer abc.def"}, merged)
+
+	require.Equal(t, map[string]string{"Authorization": "Bearer abc.def"}, WithAuth("backend", nil))
+
+	for _, name := range []string{"Authorization", "authorization", "AUTHORIZATION"} {
+		own := map[string]string{name: "Basic own", "X-Scenario": "one"}
+		require.Equal(t, own, WithAuth("backend", own), name)
+	}
+
+	caller := map[string]string{"X-Scenario": "one"}
+	WithAuth("backend", caller)
+	require.Len(t, caller, 1, "the caller's map is not modified")
+
+	t.Setenv(EnvAccessToken, "")
+	require.Equal(t, caller, WithAuth("backend", caller))
+	require.Nil(t, WithAuth("backend", nil))
 }

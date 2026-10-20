@@ -166,7 +166,9 @@ checkout, a `replace` or an untagged revision uses the locally built `:test` ima
 A block can use a testbench hosted outside the run instead of the container. `TESTBENCH_URL` is
 the base URL used for every testbench endpoint, `TESTBENCH_URL_<ENDPOINT>` (upper-case, `-` as
 `_`, e.g. `TESTBENCH_URL_CONTENT_SAFETY`) overrides one endpoint, and `TESTBENCH_ACCESS_TOKEN` is
-sent as a bearer token on the test process's own calls to a testbench service. The URL is used both
+sent as a bearer token on the test process's own calls to a hosted testbench endpoint, never to the
+container. With a token set, a hosted URL must use https (a loopback address may use http); any
+other combination is rejected rather than sending the token in clear text. The URL is used both
 by the test process and for upstreams handed to the components under test, so it must be reachable
 from both. With none of them set the container is used, exactly as before. The resolver is
 `core/catalog/testbench` (`HostURL`, `UpstreamURL`, `AuthHeaders`); steps resolve testbench

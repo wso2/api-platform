@@ -100,14 +100,38 @@ func networkURL(endpoint string) (string, error) {
 	return address, nil
 }
 
-// AuthHeaders returns the headers a request to a hosted testbench carries, or nil when no
-// access token is configured. The token is read from the environment on every call.
-func AuthHeaders() map[string]string {
+// AuthHeaders returns the headers a request to a hosted testbench endpoint carries, or nil when
+// no access token is configured or the endpoint is served by the testbench container, so the
+// token never reaches a container. The token is read from the environment on every call.
+func AuthHeaders(endpoint string) map[string]string {
 	token := strings.TrimSpace(os.Getenv(EnvAccessToken))
 	if token == "" {
 		return nil
 	}
+	if _, hosted, err := override(endpoint); err != nil || !hosted {
+		return nil
+	}
 	return map[string]string{"Authorization": "Bearer " + token}
+}
+
+// WithAuth returns headers together with the credential AuthHeaders names for endpoint. A request
+// that already carries an Authorization header, in any capitalisation, keeps its own.
+func WithAuth(endpoint string, headers map[string]string) map[string]string {
+	auth := AuthHeaders(endpoint)
+	if len(auth) == 0 {
+		return headers
+	}
+	merged := make(map[string]string, len(headers)+len(auth))
+	for name, value := range headers {
+		if strings.EqualFold(name, "Authorization") {
+			return headers
+		}
+		merged[name] = value
+	}
+	for name, value := range auth {
+		merged[name] = value
+	}
+	return merged
 }
 
 // override returns the hosted URL configured for endpoint, if any. The configured value is
@@ -122,6 +146,16 @@ func override(endpoint string) (string, bool, error) {
 		return normalize(EnvURL)
 	}
 	return "", false, nil
+}
+
+// isLoopbackHost reports whether host names this machine, where a plain-http testbench is not
+// exposed to the network.
+func isLoopbackHost(host string) bool {
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 func endpointEnvSuffix(endpoint string) string {
@@ -143,6 +177,9 @@ func normalize(name string) (string, bool, error) {
 		return "", false, fmt.Errorf("testbench: %s must not carry credentials; use %s", name, EnvAccessToken)
 	case u.RawQuery != "" || u.Fragment != "":
 		return "", false, fmt.Errorf("testbench: %s must not carry a query or fragment", name)
+	case u.Scheme == "http" && !isLoopbackHost(u.Hostname()) && strings.TrimSpace(os.Getenv(EnvAccessToken)) != "":
+		return "", false, fmt.Errorf("testbench: %s must use https when %s is set, so the token is not sent in clear text",
+			name, EnvAccessToken)
 	}
 	return strings.TrimRight(raw, "/"), true, nil
 }

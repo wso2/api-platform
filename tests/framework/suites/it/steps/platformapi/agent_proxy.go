@@ -682,8 +682,9 @@ func (s *Steps) agentCardFixtureCount(ctx context.Context, scope string) (int, e
 		return 0, fmt.Errorf("the Agent Card fixture requires a block partition, but the topology has no block")
 	}
 	resp, err := s.client.Do(ctx, httpx.Request{
-		Method: http.MethodGet,
-		URL:    base + "/" + s.topo.Block.PartitionKey() + "/test/requests?scope=" + url.QueryEscape(scope),
+		Method:  http.MethodGet,
+		URL:     base + "/" + s.topo.Block.PartitionKey() + "/test/requests?scope=" + url.QueryEscape(scope),
+		Headers: testbench.AuthHeaders(agentCardFixtureEndpoint),
 	}, 0, 0)
 	if err != nil {
 		return 0, retry.Transient(fmt.Errorf("reading the Agent Card fixture counter: %w", err))

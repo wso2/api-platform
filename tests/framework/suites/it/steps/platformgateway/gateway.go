@@ -932,7 +932,7 @@ func (g *Gateway) jwtToken(ctx context.Context, issuer, scope, claims, key strin
 		func(ctx context.Context) (*httpx.Response, error) {
 			r, requestErr := g.funnel.Client().Do(ctx, httpx.Request{
 				Method: http.MethodGet, URL: base + "/token?" + q.Encode(),
-				Headers: testbench.AuthHeaders(),
+				Headers: testbench.AuthHeaders("jwks"),
 			}, 0, 0)
 			if requestErr != nil {
 				return nil, retry.Transient(requestErr)
@@ -1735,23 +1735,11 @@ func (g *Gateway) serviceUpstreamURL(ctx context.Context, service, path string) 
 // serves, unless the request already carries its own Authorization. Other services are returned
 // unchanged so the credential is never sent to a gateway component.
 func withTestbenchAuth(service string, headers map[string]string) map[string]string {
-	if serviceEndpoints[service].component != "testbench" {
+	spec := serviceEndpoints[service]
+	if spec.component != "testbench" {
 		return headers
 	}
-	auth := testbench.AuthHeaders()
-	if len(auth) == 0 {
-		return headers
-	}
-	merged := make(map[string]string, len(headers)+len(auth))
-	for k, v := range headers {
-		merged[k] = v
-	}
-	for k, v := range auth {
-		if _, ok := merged[k]; !ok {
-			merged[k] = v
-		}
-	}
-	return merged
+	return testbench.WithAuth(spec.endpoint, headers)
 }
 
 func (g *Gateway) serviceBasePath(service, defaultPath string) string {
@@ -1964,8 +1952,9 @@ func (g *Gateway) awaitMappedTestbenchService(ctx context.Context, service strin
 	return retry.Await(ctx, retry.Options{Interval: 2 * time.Second},
 		func(ctx context.Context) (*httpx.Response, error) {
 			resp, requestErr := g.funnel.Client().Do(ctx, httpx.Request{
-				Method: http.MethodGet,
-				URL:    healthURL,
+				Method:  http.MethodGet,
+				URL:     healthURL,
+				Headers: testbench.AuthHeaders(spec.endpoint),
 			}, 0, 0)
 			if requestErr != nil {
 				return nil, retry.Transient(requestErr)

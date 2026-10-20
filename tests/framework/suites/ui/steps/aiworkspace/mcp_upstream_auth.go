@@ -205,7 +205,8 @@ func (u *Steps) mcpUpstreamReceivedHeader(ctx context.Context, header, value str
 	if err != nil {
 		return err
 	}
-	resp, err := page.Context().Request().Get(base + "/test/captured?path=" + url.QueryEscape(capturePath))
+	resp, err := page.Context().Request().Get(base+"/test/captured?path="+url.QueryEscape(capturePath),
+		playwright.APIRequestContextGetOptions{Headers: testbench.AuthHeaders("capture")})
 	if err != nil {
 		return fmt.Errorf("reading the captured upstream request: %w", err)
 	}

@@ -204,6 +204,7 @@ func (s *Steps) mintIDPToken(ctx context.Context, storeAs string, table *godog.T
 	}
 	response, err := s.idp.Do(ctx, httpx.Request{
 		Method: http.MethodPost, URL: base + "/mint", Body: body, ContentType: "application/json",
+		Headers: testbench.AuthHeaders("oidc"),
 	}, 0, 0)
 	if err != nil {
 		return fmt.Errorf("minting an API Portal IDP token: %w", err)
@@ -645,7 +646,9 @@ func (s *Steps) sinkDeliveries(ctx context.Context, sink string) ([]map[string]a
 	if err != nil {
 		return nil, err
 	}
-	response, err := s.client.Do(ctx, httpx.Request{Method: http.MethodGet, URL: base + "/" + partition + "/test/deliveries"}, 0, 0)
+	response, err := s.client.Do(ctx, httpx.Request{
+		Method: http.MethodGet, URL: base + "/" + partition + "/test/deliveries", Headers: testbench.AuthHeaders("webhook"),
+	}, 0, 0)
 	if err != nil {
 		return nil, retry.Transient(err)
 	}
@@ -829,7 +832,8 @@ func (s *Steps) authorizeAtIDP(ctx context.Context, browser string, location *ur
 		headers[oidc.LoginHeader] = session
 	}
 	response, err := s.idp.Do(ctx, httpx.Request{
-		Method: http.MethodGet, URL: base + location.Path + "?" + location.RawQuery, Headers: headers,
+		Method: http.MethodGet, URL: base + location.Path + "?" + location.RawQuery,
+		Headers: testbench.WithAuth("oidc", headers),
 	}, 0, 0)
 	if err != nil {
 		return nil, fmt.Errorf("API Portal browser authorization at the identity provider: %w", err)
