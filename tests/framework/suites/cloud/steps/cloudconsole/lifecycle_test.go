@@ -28,6 +28,9 @@ import (
 
 	"github.com/cucumber/godog"
 	"github.com/stretchr/testify/require"
+	corecatalog "github.com/wso2/api-platform/tests/framework/core/catalog/cloudconsole"
+	"github.com/wso2/api-platform/tests/framework/core/components"
+	frameworkruntime "github.com/wso2/api-platform/tests/framework/core/runtime"
 	"github.com/wso2/api-platform/tests/framework/core/util/httpx"
 	"github.com/wso2/api-platform/tests/framework/core/util/tcontext"
 )
@@ -345,4 +348,73 @@ func TestAssertAPIResponseMatchesRequestedPost(t *testing.T) {
 	require.NoError(t, funnel.Publish(ctx, &httpx.Response{StatusCode: http.StatusOK, Body: []byte(`{"id":2}`)}))
 	require.NoError(t, steps.assertAPIResponse(ctx, 2))
 	require.ErrorContains(t, steps.assertAPIResponse(ctx, 1), "contain post 1")
+}
+
+// cloudAPIStub serves handler as the organization's platform API endpoint.
+func cloudAPIStub(t *testing.T, handler http.HandlerFunc) *frameworkruntime.Topology {
+	t.Helper()
+	server := httptest.NewServer(handler)
+	t.Cleanup(server.Close)
+	inst, err := components.NewExternalInstance(corecatalog.CloudConsole(), 0, 1,
+		map[string]string{corecatalog.EndpointAPIPPlatformAPI: server.URL})
+	require.NoError(t, err)
+	set := components.NewSet()
+	require.NoError(t, set.Add(inst))
+	return &frameworkruntime.Topology{Instances: set}
+}
+
+func TestFindActiveGatewayRecordsItsEnvironment(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	topo := cloudAPIStub(t, func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/managed-gateways", r.URL.Path)
+		_ = json.NewEncoder(w).Encode(map[string]any{"list": []map[string]any{
+			{"id": "inactive", "isActive": false},
+			{"id": "gw-1", "isActive": true, "environment": " development ", "endpoints": []string{"https://gw.example.com/"}},
+		}})
+	})
+	steps := &Steps{topo: topo, client: httpx.NewClient(httpx.Options{Timeout: 5 * time.Second}),
+		dataPlaneURLResolver: func(_ context.Context, target string) (string, error) { return target, nil }}
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("cloud-runner"))
+
+	require.NoError(t, steps.findActiveGateway(ctx))
+	for key, want := range map[string]string{
+		keyGatewayID: "gw-1", keyGatewayEnv: "development", keyGatewayEndpoint: "https://gw.example.com",
+	} {
+		got, err := requiredValue(ctx, key)
+		require.NoError(t, err, key)
+		require.Equal(t, want, got, key)
+	}
+}
+
+func TestUndeployAPIUsesTheProjectAndEnvironmentRoute(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	var method, path, environment, gateway string
+	status := http.StatusNoContent
+	topo := cloudAPIStub(t, func(w http.ResponseWriter, r *http.Request) {
+		method, path = r.Method, r.URL.Path
+		environment, gateway = r.URL.Query().Get("environment"), r.URL.Query().Get("gatewayId")
+		w.WriteHeader(status)
+	})
+	steps := &Steps{topo: topo, client: httpx.NewClient(httpx.Options{Timeout: 5 * time.Second})}
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("cloud-runner"))
+	local, _ := tcontext.LocalOf(ctx)
+	local.Set(keyAPIID, "syn-api-1")
+	local.Set(keyDeploymentID, "dep 1")
+	local.Set(keyGatewayID, "gw-1")
+	local.Set(keyProjectID, "default")
+
+	err := steps.undeployAPI(ctx)
+	require.ErrorContains(t, err, "environment", "the environment is required by the route")
+	local.Set(keyGatewayEnv, "development")
+
+	require.NoError(t, steps.undeployAPI(ctx))
+	require.Equal(t, http.MethodPost, method)
+	require.Equal(t, "/projects/default/apis/syn-api-1/deployments/dep 1/undeploy", path)
+	require.Equal(t, "development", environment)
+	require.Equal(t, "gw-1", gateway)
+
+	for _, rejected := range []int{http.StatusOK, http.StatusNotFound} {
+		status = rejected
+		require.Error(t, steps.undeployAPI(ctx), "only 204 is the documented success")
+	}
 }
