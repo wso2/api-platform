@@ -667,12 +667,11 @@ func (ec *PolicyExecutionContext) noChainPassThroughResponseBody() *extprocv3.Pr
 // one keeps them meaningful: an operator filtering on the chain key sees only spans
 // where a chain was really chosen, instead of every deferred request carrying "".
 //
-// The request facts are recorded under the names their producing protocol gave them
-// (already namespaced — "a2a.context.id"), so a trace can be searched by the
-// conversation or task a request belonged to. A span is the right home for a
-// caller-supplied identifier: it is per-request storage, unlike a metric label, whose
-// cardinality it would multiply. Count and length are already bounded by
-// ValidateResolution.
+// Only the closed-set request facts are recorded (resolver.IsSpanSafeAttribute), under
+// the names their producing protocol gave them ("a2a.operation"). Caller-chosen values
+// — tool names, JSON-RPC ids, A2A message, context and task ids — stay off these spans:
+// they belong on the per-call GenAI spans, and policies still read them all from the
+// shared context.
 func (ec *PolicyExecutionContext) recordResolutionAttributes(span trace.Span) {
 	if span == nil || !span.IsRecording() || ec.resolverName == "" {
 		// An identity route has no resolver, and its chain key equals the route name
@@ -688,7 +687,9 @@ func (ec *PolicyExecutionContext) recordResolutionAttributes(span trace.Span) {
 		attrs = append(attrs, attribute.String(constants.AttrResolvedOperation, ec.operation))
 	}
 	for name, value := range ec.resolutionAttributes {
-		attrs = append(attrs, attribute.String(name, value))
+		if resolver.IsSpanSafeAttribute(name) {
+			attrs = append(attrs, attribute.String(name, value))
+		}
 	}
 	span.SetAttributes(attrs...)
 }

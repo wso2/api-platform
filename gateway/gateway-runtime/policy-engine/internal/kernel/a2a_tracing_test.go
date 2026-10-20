@@ -111,10 +111,16 @@ func TestA2A_TraceContextAndResolutionAttributesEndToEnd(t *testing.T) {
 		"a2a.operation":                 "SendMessage",
 		"a2a.transport":                 string(agentproto.TransportJSONRPC),
 		"a2a.protocol.version":          "1.0",
-		"a2a.message.id":                "msg-1",
-		"a2a.context.id":                "ctx-1",
-		"a2a.task.id":                   "task-1",
 	})
+
+	// The caller-chosen ids are one value per request, so they stay off the ext_proc
+	// spans (#3737). Policies still read them from the shared context.
+	for _, span := range []sdktrace.ReadOnlySpan{root, bodySpan} {
+		for _, name := range []string{"a2a.message.id", "a2a.context.id", "a2a.task.id"} {
+			_, present := attrOf(span, attribute.Key(name))
+			assert.False(t, present, "%s must not be on span %q", name, span.Name())
+		}
+	}
 }
 
 // A request with no incoming traceparent still records the A2A attributes; it simply
