@@ -43,6 +43,7 @@ import (
 	hdrs "github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics/headers"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/config"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/constants"
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/genai"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/metrics"
 )
 
@@ -905,7 +906,7 @@ func (o *OTel) appendAIAttributes(event *dto.Event, attrs *otelAttrs, route stri
 
 	md, hasAIMetadata := event.Properties["aiMetadata"].(dto.AIMetadata)
 	if hasAIMetadata {
-		attrs.str("gen_ai.provider.name", otelGenAIProviderName(md.VendorName))
+		attrs.str("gen_ai.provider.name", genai.ProviderName(md.VendorName))
 		attrs.str(ns("gen_ai.provider.template_name"), md.VendorName)
 		// aitoken:modelid is the response model when the provider returns one,
 		// falling back to the request model.
@@ -918,7 +919,7 @@ func (o *OTel) appendAIAttributes(event *dto.Event, attrs *otelAttrs, route stri
 			attrs.str(ns("gen_ai.cost.total"), cost)
 		}
 
-		if op := otelGenAIOperationName(route); op != "" {
+		if op := genai.OperationName(route); op != "" {
 			attrs.str("gen_ai.operation.name", op)
 		}
 	}
@@ -1064,49 +1065,6 @@ func otelSnakeCase(s string) string {
 		out.WriteByte(c)
 	}
 	return out.String()
-}
-
-// otelGenAIProviderName maps a WSO2 LLM provider template name onto the
-// gen_ai.provider.name enum. An unrecognised provider yields "" so the enum
-// attribute is left unset rather than carrying a non-member value; the raw name
-// is always kept in wso2.gen_ai.provider.template_name.
-func otelGenAIProviderName(templateName string) string {
-	switch strings.ToLower(templateName) {
-	case "openai":
-		return "openai"
-	case "anthropic":
-		return "anthropic"
-	case "awsbedrock":
-		return "aws.bedrock"
-	case "azure-openai":
-		return "azure.ai.openai"
-	case "azureai-foundry":
-		return "azure.ai.inference"
-	case "gemini":
-		return "gcp.gemini"
-	case "mistralai":
-		return "mistral_ai"
-	default:
-		return ""
-	}
-}
-
-// otelGenAIOperationName derives the gen_ai.operation.name enum value from the
-// route. "" when the route is not a recognised inference endpoint.
-func otelGenAIOperationName(route string) string {
-	r := strings.ToLower(route)
-	switch {
-	case strings.Contains(r, "/chat/completions"), strings.Contains(r, "/messages"):
-		return "chat"
-	case strings.Contains(r, "/embeddings"):
-		return "embeddings"
-	case strings.Contains(r, "/generatecontent"):
-		return "generate_content"
-	case strings.Contains(r, "/completions"):
-		return "text_completion"
-	default:
-		return ""
-	}
 }
 
 // --- OTLP/HTTP JSON wire types -----------------------------------------------

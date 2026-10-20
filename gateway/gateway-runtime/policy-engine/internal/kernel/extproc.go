@@ -48,6 +48,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/config"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/constants"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/executor"
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/genai"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/faultformat"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/registry"
@@ -317,10 +318,12 @@ func (s *ExternalProcessorServer) Process(stream extprocv3.ExternalProcessor_Pro
 			span.End()
 		}
 	}()
-	// Ends any streamed body still open when the stream closes first (a cancel, an
-	// error or an immediate response), before the root span ends.
+	// Ends the GenAI client span and any streamed body still open when the stream
+	// closes first (a cancel, an error or an immediate response), before the root
+	// span ends.
 	defer func() {
 		if execCtx != nil {
+			execCtx.endGenAISpan()
 			execCtx.endStreamTraces()
 		}
 	}()
@@ -395,8 +398,12 @@ func (s *ExternalProcessorServer) Process(stream extprocv3.ExternalProcessor_Pro
 			slog.ErrorContext(ctx, "Error processing request", "error", err)
 			return err
 		}
-		if execCtx != nil && endsResponse(req, resp) {
-			execCtx.responseFinished = true
+		if execCtx != nil {
+			execCtx.startGenAISpan(req, resp)
+			if endsResponse(req, resp) {
+				execCtx.responseFinished = true
+				execCtx.endGenAISpan()
+			}
 		}
 
 		// Send response back to Envoy
@@ -497,6 +504,11 @@ func (s *ExternalProcessorServer) handleProcessingPhase(ctx context.Context, req
 				attribute.String(constants.AttrAPIContext, rm.Context),
 				attribute.String(constants.AttrOperationPath, rm.OperationPath),
 			)
+			// An LLM proxy route records no inference span (its provider route does), so
+			// its root names the proxy the call went through.
+			if policy.APIKind(rm.APIKind) == policy.APIKindLlmProxy {
+				parentSpan.SetAttributes(attribute.String(genai.AttrAIProxy, rm.APIName))
+			}
 			// A deferred route has no chain yet, so only the resolver is known here;
 			// the chain key is stamped from the request-body branch once binding
 			// actually happens (recordResolutionAttributes).
