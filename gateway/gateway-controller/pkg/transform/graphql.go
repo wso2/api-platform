@@ -95,7 +95,14 @@ func (t *GraphQLAPITransformer) Transform(cfg *models.StoredConfig) (*models.Run
 		return nil, err
 	}
 	chain := t.buildPolicyChain(apiPolicies)
-	injected := utils.InjectSystemPolicies(chain, t.systemConfig, nil)
+	// api_kind lets the analytics system policy skip body processing when request/response
+	// body capture is off, as the REST transformer does (see transform/restapi.go). Without
+	// it the policy fails safe and always buffers the body; GraphQL analytics derive nothing
+	// from the body, so the skip is safe here.
+	systemPolicyProps := map[string]any{
+		utils.SharedParamsKey: map[string]interface{}{"api_kind": cfg.Kind},
+	}
+	injected := utils.InjectSystemPolicies(chain, t.systemConfig, systemPolicyProps)
 
 	// A GraphQLApi has no per-operation list to add an OPTIONS entry to the way a
 	// RestApi does, so a cors policy's route never exists and a browser's preflight
