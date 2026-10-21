@@ -1446,6 +1446,31 @@ func TestManageSubscriptionPlanLifecycle(t *testing.T) {
 		err.Error())
 }
 
+// The plan update keeps what it always did: a field the spec sets is applied,
+// a field it leaves out is kept.
+func TestManageSubscriptionPlanUpdateKeepsWhatItDoesNotSet(t *testing.T) {
+	h := subscriptionToolsHandler(NewMockStorage())
+	call := func(in manageSubscriptionsInput) map[string]any {
+		in.Type = "SubscriptionPlan"
+		_, out, err := h.manageSubscriptions(toolsSkippedCtx, nil, in)
+		require.NoError(t, err)
+		return resultMap(t, out)
+	}
+
+	plan := toolsAs[api.SubscriptionPlanResponse](t, call(manageSubscriptionsInput{Action: "apply", Spec: &subscriptionSpec{
+		PlanName: ptr("gold"), BillingPlan: ptr("stripe-gold"), ThrottleLimitCount: ptr(100), ThrottleLimitUnit: ptr("Min"),
+	}})["resource"])
+
+	updated := toolsAs[api.SubscriptionPlanResponse](t, call(manageSubscriptionsInput{Action: "apply", ID: *plan.Id, Spec: &subscriptionSpec{
+		ThrottleLimitCount: ptr(500), ThrottleLimitUnit: ptr("hour"),
+	}})["resource"])
+
+	assert.Equal(t, 500, *updated.ThrottleLimitCount)
+	assert.Equal(t, "Hour", *updated.ThrottleLimitUnit)
+	assert.Equal(t, "stripe-gold", *updated.BillingPlan, "a field the spec leaves out is kept")
+	assert.Equal(t, "gold", *updated.PlanName)
+}
+
 // A whitespace-only id carries no id, so apply creates: the same decision the
 // authorization gate made when it authorized POST on the collection.
 func TestManageSubscriptionPlanBlankIDCreates(t *testing.T) {
@@ -1524,7 +1549,7 @@ func TestManageSubscriptionLifecycle(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "update", res["operation"])
 	assert.Equal(t, api.SubscriptionResponseStatus("INACTIVE"), *toolsAs[api.SubscriptionResponse](t, res["resource"]).Status)
-	assert.Contains(t, res["notice"], "changes its status only")
+	assert.Contains(t, res["notice"], "changes only a subscription's status, plan and token")
 
 	res, err = call(manageSubscriptionsInput{Action: "delete", ID: subID, Confirm: true})
 	require.NoError(t, err)
@@ -1557,18 +1582,222 @@ func TestManageSubscriptionFailures(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), `no RestApi with identifier "nope"`)
 
+	// As PUT /subscriptions/{id}, the stored subscription is read first, so an
+	// unknown id is reported whatever the spec contains.
 	err = call(manageSubscriptionsInput{Action: "apply", ID: "sub-1", Spec: &subscriptionSpec{}})
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "spec.status was not set")
+	assert.Contains(t, err.Error(), `no Subscription with id "sub-1"`)
 
 	err = call(manageSubscriptionsInput{Action: "delete", ID: "no-such-sub", Confirm: true})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), `no Subscription with id "no-such-sub"`)
 }
 
+// specJSON decodes a spec as the SDK does, so the keys it carried, nulls
+// included, are recorded exactly as an agent's call would record them.
+func specJSON(t *testing.T, raw string) *subscriptionSpec {
+	t.Helper()
+	var spec subscriptionSpec
+	require.NoError(t, json.Unmarshal([]byte(raw), &spec))
+	return &spec
+}
+
+func TestSubscriptionSpecRecordsSentKeys(t *testing.T) {
+	spec := specJSON(t, `{"billingPlan":null,"planName":"gold"}`)
+	assert.Nil(t, spec.BillingPlan)
+	assert.Equal(t, "gold", *spec.PlanName)
+	fields := spec.sentFields()
+	assert.Contains(t, fields, "billingPlan", "an explicit null is a sent key")
+	assert.Contains(t, fields, "planName")
+	assert.NotContains(t, fields, "expiryTime", "a key left out is not")
+
+	// A spec built in code has no record, so its non-nil fields count as sent.
+	built := (&subscriptionSpec{BillingPlan: ptr(""), PlanName: ptr("gold")}).sentFields()
+	assert.Contains(t, built, "billingPlan")
+	assert.Contains(t, built, "planName")
+	assert.NotContains(t, built, "expiryTime")
+}
+
+// The subscription update has REST parity: PUT /subscriptions/{id} changes the
+// status, moves or removes the plan, and rotates the token, each only when sent.
+func TestManageSubscriptionPartialUpdate(t *testing.T) {
+	db := NewMockStorage()
+	require.NoError(t, db.SaveConfig(&models.StoredConfig{UUID: "api-uuid-1", Kind: models.KindRestApi, Handle: "petstore"}))
+	h := subscriptionToolsHandler(db)
+	call := func(in manageSubscriptionsInput) (map[string]any, error) {
+		_, out, err := h.manageSubscriptions(toolsSkippedCtx, nil, in)
+		if err != nil {
+			return nil, err
+		}
+		return resultMap(t, out), nil
+	}
+	createPlan := func(name string) string {
+		res, err := call(manageSubscriptionsInput{Type: "SubscriptionPlan", Action: "apply", Spec: &subscriptionSpec{PlanName: ptr(name)}})
+		require.NoError(t, err)
+		return *toolsAs[api.SubscriptionPlanResponse](t, res["resource"]).Id
+	}
+	update := func(raw string) (api.SubscriptionResponse, error) {
+		res, err := call(manageSubscriptionsInput{Type: "Subscription", Action: "apply", ID: "apim-sub-1", Spec: specJSON(t, raw)})
+		if err != nil {
+			return api.SubscriptionResponse{}, err
+		}
+		return toolsAs[api.SubscriptionResponse](t, res["resource"]), nil
+	}
+	gold, silver := createPlan("gold"), createPlan("silver")
+
+	// externalRefId becomes the subscription's id, so get and apply take it.
+	res, err := call(manageSubscriptionsInput{Type: "Subscription", Action: "apply", Spec: &subscriptionSpec{
+		ApiId: ptr("petstore"), SubscriptionToken: ptr("tok-1"), ExternalRefId: ptr("apim-sub-1"), SubscriptionPlanId: ptr(gold),
+	}})
+	require.NoError(t, err)
+	assert.Equal(t, "apim-sub-1", *toolsAs[api.SubscriptionResponse](t, res["resource"]).Id)
+
+	_, err = call(manageSubscriptionsInput{Type: "Subscription", Action: "apply", Spec: &subscriptionSpec{
+		ApiId: ptr("petstore"), SubscriptionToken: ptr("tok-2"), ExternalRefId: ptr("apim-sub-1"),
+	}})
+	require.Error(t, err)
+	assert.Equal(t, "the subscription conflicts with an existing subscription", err.Error())
+
+	_, err = call(manageSubscriptionsInput{Type: "Subscription", Action: "apply", Spec: &subscriptionSpec{
+		ApiId: ptr("petstore"), SubscriptionToken: ptr("tok-2"), ExternalRefId: ptr("-bad"),
+	}})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "externalRefId must be 1-64 characters")
+
+	sub, err := update(`{"subscriptionPlanId":"` + silver + `"}`)
+	require.NoError(t, err)
+	assert.Equal(t, silver, *sub.SubscriptionPlanId, "the subscription moves to the plan sent")
+	assert.EqualValues(t, "ACTIVE", *sub.Status)
+
+	_, err = call(manageSubscriptionsInput{Type: "SubscriptionPlan", Action: "delete", ID: silver, Confirm: true})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "is in use by one or more subscriptions, so it was not deleted")
+
+	sub, err = update(`{"status":"inactive","subscriptionToken":"tok-rotated"}`)
+	require.NoError(t, err)
+	assert.EqualValues(t, "INACTIVE", *sub.Status)
+	assert.Equal(t, silver, *sub.SubscriptionPlanId, "a plan left out is kept")
+	assert.Nil(t, sub.SubscriptionToken, "an update never returns the token, as PUT /subscriptions/{id}")
+	assert.Equal(t, "tok-rotated", db.subscriptions["apim-sub-1"].SubscriptionToken)
+
+	sub, err = update(`{"subscriptionPlanId":null}`)
+	require.NoError(t, err)
+	assert.Nil(t, sub.SubscriptionPlanId, "an explicit null removes the plan")
+
+	_, err = update(`{"subscriptionToken":"  "}`)
+	require.Error(t, err)
+	assert.Equal(t, "subscriptionToken must not be empty", err.Error())
+
+	// With no subscription on it any more, the plan can be deleted.
+	_, err = call(manageSubscriptionsInput{Type: "SubscriptionPlan", Action: "delete", ID: silver, Confirm: true})
+	require.NoError(t, err)
+}
+
+// The plan update has REST parity: PUT /subscription-plans/{id} keeps a field
+// left out and removes one sent as null.
+func TestManageSubscriptionPlanNullRemoves(t *testing.T) {
+	h := subscriptionToolsHandler(NewMockStorage())
+	call := func(in manageSubscriptionsInput) (api.SubscriptionPlanResponse, error) {
+		in.Type = "SubscriptionPlan"
+		_, out, err := h.manageSubscriptions(toolsSkippedCtx, nil, in)
+		if err != nil {
+			return api.SubscriptionPlanResponse{}, err
+		}
+		return toolsAs[api.SubscriptionPlanResponse](t, resultMap(t, out)["resource"]), nil
+	}
+
+	plan, err := call(manageSubscriptionsInput{Action: "apply", Spec: specJSON(t,
+		`{"planName":"gold","billingPlan":"stripe-gold","throttleLimitCount":100,"throttleLimitUnit":"Min","expiryTime":"2027-01-31T23:59:59Z"}`)})
+	require.NoError(t, err)
+	_, err = call(manageSubscriptionsInput{Action: "apply", Spec: &subscriptionSpec{PlanName: ptr("silver")}})
+	require.NoError(t, err)
+
+	_, err = call(manageSubscriptionsInput{Action: "apply", ID: *plan.Id, Spec: specJSON(t, `{"throttleLimitCount":null}`)})
+	require.Error(t, err)
+	assert.Equal(t, "throttleLimitCount and throttleLimitUnit must be set or cleared together", err.Error())
+
+	_, err = call(manageSubscriptionsInput{Action: "apply", ID: *plan.Id, Spec: specJSON(t, `{"planName":"silver"}`)})
+	require.Error(t, err)
+	assert.Equal(t, "a subscription plan with this name already exists; choose a different spec.planName", err.Error())
+
+	updated, err := call(manageSubscriptionsInput{Action: "apply", ID: *plan.Id, Spec: specJSON(t,
+		`{"billingPlan":null,"throttleLimitCount":null,"throttleLimitUnit":null,"expiryTime":null}`)})
+	require.NoError(t, err)
+	assert.Nil(t, updated.BillingPlan)
+	assert.Nil(t, updated.ThrottleLimitCount)
+	assert.Nil(t, updated.ThrottleLimitUnit)
+	assert.Nil(t, updated.ExpiryTime)
+	assert.Equal(t, "gold", *updated.PlanName, "a field left out is kept")
+}
+
+// The tool applies the body limit POST and PUT on both collections enforce,
+// checked after the stored resource on update, as PUT checks it.
+func TestManageSubscriptionsRequestSizeLimit(t *testing.T) {
+	db := NewMockStorage()
+	require.NoError(t, db.SaveConfig(&models.StoredConfig{UUID: "api-uuid-1", Kind: models.KindRestApi, Handle: "petstore"}))
+	h := subscriptionToolsHandler(db)
+	huge := strings.Repeat("x", maxSubscriptionRequestBodyBytes)
+
+	_, _, err := h.manageSubscriptions(toolsSkippedCtx, nil, manageSubscriptionsInput{
+		Type: "Subscription", Action: "apply", Spec: &subscriptionSpec{ApiId: ptr("petstore"), SubscriptionToken: ptr(huge)},
+	})
+	require.Error(t, err)
+	assert.Equal(t, "the Subscription request is too large for this Gateway; nothing was stored", err.Error())
+	assert.Empty(t, db.subscriptions)
+
+	_, _, err = h.manageSubscriptions(toolsSkippedCtx, nil, manageSubscriptionsInput{
+		Type: "SubscriptionPlan", Action: "apply", Spec: &subscriptionSpec{PlanName: ptr("gold"), BillingPlan: ptr(huge)},
+	})
+	require.Error(t, err)
+	assert.Equal(t, "the SubscriptionPlan request is too large for this Gateway; nothing was stored", err.Error())
+	assert.Empty(t, db.subscriptionPlans)
+
+	_, _, err = h.manageSubscriptions(toolsSkippedCtx, nil, manageSubscriptionsInput{
+		Type: "SubscriptionPlan", Action: "apply", ID: "no-such-plan", Spec: &subscriptionSpec{BillingPlan: ptr(huge)},
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `no SubscriptionPlan with id "no-such-plan"`)
+}
+
+// Through the real MCP endpoint, a null in spec reaches the tool as a sent key:
+// the SDK's input schema accepts it, and the spec records it on decode.
+func TestManageSubscriptionsNullThroughTheEndpoint(t *testing.T) {
+	server := createTestAPIServerWithDB(NewMockStorage())
+	h := server.EnableMCP(map[string][]string{
+		"POST /subscription-plans":         {"admin"},
+		"PUT /subscription-plans/{planId}": {"admin"},
+	}, map[string][]string{"admin": {"gw-admin"}}, "")
+	admin := &commonmodels.AuthContext{UserID: "alice", Roles: []string{"admin"}}
+	callTool := func(args map[string]any) api.SubscriptionPlanResponse {
+		rec := mcpPost(t, h, admin, "tools/call", map[string]any{
+			"name": "wso2_apip_gw_manage_subscriptions", "arguments": args,
+		})
+		require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+		result := toolsAs[map[string]any](t, decodeMCPResponse(t, rec)["result"])
+		require.NotEqual(t, true, result["isError"], rec.Body.String())
+		raw, err := json.Marshal(toolsAs[map[string]any](t, result["structuredContent"])["resource"])
+		require.NoError(t, err)
+		var plan api.SubscriptionPlanResponse
+		require.NoError(t, json.Unmarshal(raw, &plan))
+		return plan
+	}
+
+	plan := callTool(map[string]any{"type": "SubscriptionPlan", "action": "apply",
+		"spec": map[string]any{"planName": "gold", "billingPlan": "stripe-gold"}})
+	require.NotNil(t, plan.BillingPlan)
+
+	updated := callTool(map[string]any{"type": "SubscriptionPlan", "action": "apply", "id": *plan.Id,
+		"spec": map[string]any{"billingPlan": nil}})
+	assert.Nil(t, updated.BillingPlan)
+	assert.Equal(t, "gold", *updated.PlanName)
+}
+
 func TestMcpSubscriptionError(t *testing.T) {
-	planOp := subAction{Type: subTypePlan, Action: subActionApply}
-	subOp := subAction{Type: subTypeSubscription, Action: subActionApply}
+	planOp := subAction{Type: subTypePlan, Action: subActionApply, RouteKey: "POST /subscription-plans"}
+	planUpdateOp := subAction{Type: subTypePlan, Action: subActionApply, RouteKey: "PUT /subscription-plans/{planId}"}
+	planDeleteOp := subAction{Type: subTypePlan, Action: subActionDelete, RouteKey: "DELETE /subscription-plans/{planId}"}
+	subOp := subAction{Type: subTypeSubscription, Action: subActionApply, RouteKey: "POST /subscriptions"}
+	subUpdateOp := subAction{Type: subTypeSubscription, Action: subActionApply, RouteKey: "PUT /subscriptions/{subscriptionId}"}
 
 	for _, tt := range []struct {
 		name string
@@ -1588,8 +1817,20 @@ func TestMcpSubscriptionError(t *testing.T) {
 			`no SubscriptionPlan with id "petstore"; call this tool with action=list to see what exists`},
 		{"duplicate plan", planOp, fmt.Errorf("%w: plan name", storage.ErrConflict),
 			`a subscription plan named "petstore" already exists`},
-		{"duplicate subscription", subOp, fmt.Errorf("%w: pair", storage.ErrConflict),
-			`that application is already subscribed to API "petstore"`},
+		{"plan renamed onto another plan's name", planUpdateOp, fmt.Errorf("%w: plan name", storage.ErrConflict),
+			"a subscription plan with this name already exists; choose a different spec.planName"},
+		{"plan still in use", planDeleteOp, fmt.Errorf("%w: in use", storage.ErrConflict),
+			`subscription plan "petstore" is in use by one or more subscriptions, so it was not deleted; ` +
+				"move those subscriptions to another plan, or delete them, first"},
+		// One message for every subscription conflict, as the REST API's 409.
+		{"subscription create conflict", subOp, fmt.Errorf("%w: token", storage.ErrConflict),
+			"the subscription conflicts with an existing subscription"},
+		{"subscription update conflict", subUpdateOp, &subscription.OpError{Op: subscription.OpUpdate,
+			Cause: fmt.Errorf("%w: token", storage.ErrConflict)},
+			"the subscription conflicts with an existing subscription"},
+		{"plan validation could not run", subOp, &subscription.OpError{Op: subscription.OpValidate,
+			Cause: errors.New("database is locked")},
+			"the Gateway could not validate the subscription plan"},
 		{"anything else stays generic", subOp, errors.New("database is locked"),
 			"the Gateway could not apply the Subscription"},
 	} {
