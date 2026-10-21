@@ -1385,7 +1385,7 @@ func (ec *PolicyExecutionContext) processStreamingRequestBody(
 		if err != nil {
 			return ec.handlePolicyError(ctx, err, "request_body_streaming"), nil
 		}
-		return TranslateStreamingRequestChunkAction(execResult, chunk, ec)
+		return TranslateStreamingRequestChunkAction(ctx, execResult, chunk, ec)
 	}
 
 	// Uncompressed (chunked): use the existing accumulation path.
@@ -1473,7 +1473,7 @@ func (ec *PolicyExecutionContext) processStreamingRequestBody(
 		return ec.handlePolicyError(ctx, err, "request_body_streaming"), nil
 	}
 
-	return TranslateStreamingRequestChunkAction(execResult, flushChunk, ec)
+	return TranslateStreamingRequestChunkAction(ctx, execResult, flushChunk, ec)
 }
 
 // suppressedRequestChunk emits nothing for this request chunk while keeping
@@ -1903,7 +1903,7 @@ func (ec *PolicyExecutionContext) processStreamingResponseBody(
 			ec.handleFault(ctx, faultFromStream(nil, declared))
 		}
 	}
-	return TranslateStreamingResponseChunkAction(execResult, flushChunk, ec)
+	return TranslateStreamingResponseChunkAction(ctx, execResult, flushChunk, ec)
 }
 
 // ─── Context builders ────────────────────────────────────────────────────────

@@ -32,6 +32,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc"
 
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/config"
@@ -411,6 +412,35 @@ func TestSetupLogger_JSONFormatCarriesComponentField(t *testing.T) {
 	require.NoError(t, json.Unmarshal([]byte(strings.TrimSpace(out)), &rec), "JSON log line must parse, got: %q", out)
 	assert.Equal(t, "pol", rec["component"])
 	assert.Equal(t, "hello", rec["msg"])
+}
+
+// TestSetupLogger_ErrorRecordsCarryTraceIDs checks that both log formats are built
+// through the trace log handler, so an error logged with a span carries its IDs.
+func TestSetupLogger_ErrorRecordsCarryTraceIDs(t *testing.T) {
+	traceID, _ := trace.TraceIDFromHex("4bf92f3577b34da6a3ce929d0e0e4736")
+	spanID, _ := trace.SpanIDFromHex("00f067aa0ba902b7")
+	ctx := trace.ContextWithSpanContext(context.Background(), trace.NewSpanContext(trace.SpanContextConfig{
+		TraceID:    traceID,
+		SpanID:     spanID,
+		TraceFlags: trace.FlagsSampled,
+	}))
+
+	for _, format := range []string{"text", "json"} {
+		t.Run(format, func(t *testing.T) {
+			cfg := &config.Config{
+				PolicyEngine: config.PolicyEngine{
+					Logging: config.LoggingConfig{Level: "info", Format: format},
+				},
+			}
+
+			out := captureStdout(t, func() {
+				setupLogger(cfg).ErrorContext(ctx, "boom")
+			})
+
+			assert.Contains(t, out, traceID.String())
+			assert.Contains(t, out, spanID.String())
+		})
+	}
 }
 
 type countingWriter struct {
