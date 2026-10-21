@@ -120,6 +120,7 @@ func getFeaturePaths() []string {
 		"features/analytics-header-filter.feature",
 		"features/lazy-resources-xds.feature",
 		"features/content-length-guardrail.feature",
+		"features/request-body-size.feature",
 		"features/azure-content-safety.feature",
 		"features/aws-bedrock-guardrail.feature",
 		"features/semantic-cache.feature",
