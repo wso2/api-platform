@@ -112,7 +112,9 @@ type Server struct {
 	// icon, not a spec document, so it gets its own, tighter default (2 MiB) when <= 0.
 	PublicationThumbnailMaxBytes int64 `koanf:"publication_thumbnail_max_bytes"`
 	// PublicationArchiveMaxBytes bounds the content ZIP pushed to an API Portal on publish;
-	// a larger one is rejected before any portal call. <= 0 falls back to 10 MiB.
+	// a larger one is rejected before any portal call. <= 0 falls back to 10 MiB. A publish
+	// holds the loaded documents (up to 50 MiB) and two copies of the archive in memory
+	// until the push ends, so peak heap per concurrent publish is about 50 MiB plus twice this.
 	PublicationArchiveMaxBytes int64 `koanf:"publication_archive_max_bytes"`
 	// ThumbnailMaxFetchBytes bounds a single-artifact thumbnail upload.
 	ThumbnailMaxFetchBytes int64 `koanf:"thumbnail_max_fetch_bytes"`
