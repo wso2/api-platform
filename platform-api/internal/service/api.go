@@ -249,8 +249,15 @@ func (s *APIService) GetAPIByHandle(handle, orgId string) (*api.RESTAPI, error) 
 
 // HandleExistsCheck returns a function that checks if an API handle exists in the organization.
 // This is designed to be used with utils.GenerateHandle for handle generation with collision detection.
+//
+// A generated handle competes for the same namespace as a user-supplied one, so a
+// reserved candidate counts as taken and generation moves on to a suffixed one.
+// Deriving a handle from a display name is not a way around reservedAPIHandles.
 func (s *APIService) HandleExistsCheck(orgUUID string) func(string) bool {
 	return func(handle string) bool {
+		if reservedAPIHandles[strings.ToLower(handle)] {
+			return true
+		}
 		exists, err := s.apiRepo.CheckAPIExistsByHandleInOrganization(handle, orgUUID)
 		if err != nil {
 			// On error, assume it exists to be safe (will trigger retry)

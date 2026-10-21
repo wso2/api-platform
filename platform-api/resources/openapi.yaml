@@ -15415,8 +15415,16 @@ components:
       description: |
         **Display name** shared by every version of a REST API. Matched exactly
         (case-sensitive) and scoped to the organization in the JWT token.
+
+        Must hold at least one non-whitespace character; an empty or
+        whitespace-only value is a 400. Surrounding whitespace is trimmed
+        before the lookup, so it is accepted but not significant.
       schema:
         type: string
+        minLength: 1
+        # Unanchored, so leading/trailing whitespace stays legal (it is trimmed
+        # server-side) while a wholly blank value is rejected.
+        pattern: '\S'
         example: "reading-list-api"
 
     gatewayId-Q:

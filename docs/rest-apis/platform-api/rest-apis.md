@@ -594,6 +594,10 @@ Required scopes (the token must carry at least one of): `ap:rest_api:read`, `ap:
 **displayName**: **Display name** shared by every version of a REST API. Matched exactly
 (case-sensitive) and scoped to the organization in the JWT token.
 
+Must hold at least one non-whitespace character; an empty or
+whitespace-only value is a 400. Surrounding whitespace is trimmed
+before the lookup, so it is accepted but not significant.
+
 > Example responses
 >
 > 200 Response

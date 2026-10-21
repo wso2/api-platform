@@ -19,6 +19,7 @@ package service
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/wso2/api-platform/platform-api/api"
@@ -976,5 +977,37 @@ func TestValidateCreateAPIRequest_RejectsReservedHandle(t *testing.T) {
 	}
 	if err := service.validateCreateAPIRequest(req, "org-1"); err != nil {
 		t.Errorf("handle %q was rejected: %v", allowed, err)
+	}
+}
+
+// The reservation has to survive handle generation too: a display name that
+// sanitizes to "versions" must not hand out the reserved handle just because no
+// API holds it yet.
+func TestHandleExistsCheck_TreatsReservedHandleAsTaken(t *testing.T) {
+	service := &APIService{apiRepo: &mockAPIRepository{}}
+	existsCheck := service.HandleExistsCheck("org-1")
+
+	for _, handle := range []string{"versions", "VERSIONS", "Versions"} {
+		if !existsCheck(handle) {
+			t.Errorf("existsCheck(%q) = false; a reserved handle must count as taken", handle)
+		}
+	}
+
+	// A free, non-reserved handle is still generated as-is.
+	if existsCheck("my-versions-api") {
+		t.Error(`existsCheck("my-versions-api") = true; want false for a non-reserved handle`)
+	}
+
+	// End to end through the generator: the reserved base is skipped in favour
+	// of a suffixed handle rather than failing the create.
+	generated, err := utils.GenerateHandle("Versions", existsCheck)
+	if err != nil {
+		t.Fatalf("GenerateHandle failed: %v", err)
+	}
+	if generated == "versions" {
+		t.Error("GenerateHandle returned the reserved handle \"versions\"")
+	}
+	if !strings.HasPrefix(generated, "versions-") {
+		t.Errorf("generated handle = %q; want a suffixed \"versions-\" form", generated)
 	}
 }

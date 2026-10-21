@@ -6488,6 +6488,10 @@ type ListRESTAPIsParamsSortOrder string
 type ListRESTAPIVersionsParams struct {
 	// DisplayName **Display name** shared by every version of a REST API. Matched exactly
 	// (case-sensitive) and scoped to the organization in the JWT token.
+	//
+	// Must hold at least one non-whitespace character; an empty or
+	// whitespace-only value is a 400. Surrounding whitespace is trimmed
+	// before the lookup, so it is accepted but not significant.
 	DisplayName DisplayNameQ `form:"displayName" json:"displayName" yaml:"displayName"`
 }
 
