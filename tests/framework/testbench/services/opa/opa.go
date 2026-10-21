@@ -48,7 +48,7 @@ import (
 	"github.com/wso2/api-platform/tests/framework/testbench"
 )
 
-// Port is the container port used by the testbench. Features address http://testbench:3018.
+// Features address http://testbench:3018.
 const Port = 3018
 
 const (
