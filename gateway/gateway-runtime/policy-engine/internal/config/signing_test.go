@@ -62,7 +62,7 @@ func TestLoad_SigningAbsentKeepsDefaults(t *testing.T) {
 	assert.Empty(t, cfg.Signing.Keys)
 	assert.Equal(t, DefaultJWKSCacheMaxAge, cfg.Signing.EffectiveJWKSCacheMaxAge())
 
-	kr, err := BuildSigningKeyring(cfg.Signing, nil)
+	kr, err := BuildSigningKeyring(cfg.Signing)
 	require.NoError(t, err)
 	signing.Install(kr)
 	t.Cleanup(func() { signing.Install(nil) })
@@ -94,7 +94,7 @@ kid = "previous"
 	assert.Equal(t, 10*time.Minute, cfg.Signing.EffectiveJWKSCacheMaxAge())
 	require.Len(t, cfg.Signing.Keys, 2)
 
-	kr, err := BuildSigningKeyring(cfg.Signing, FileSourceAllowlist())
+	kr, err := BuildSigningKeyring(cfg.Signing)
 	require.NoError(t, err)
 	signing.Install(kr)
 	t.Cleanup(func() { signing.Install(nil) })
@@ -160,24 +160,35 @@ public_jwks_url = "https://user:pass@gw.example.com/.well-known/jwks.json"`, "pu
 	}
 }
 
-func TestBuildSigningKeyring_KeyFileOutsideAllowlistIsRejected(t *testing.T) {
-	allowed, outside := t.TempDir(), t.TempDir()
-	key := writeECKey(t, outside, "k.pem", 0o400)
+func TestBuildSigningKeyring_OversizeKeyFileIsRejected(t *testing.T) {
+	key := filepath.Join(t.TempDir(), "k.pem")
+	require.NoError(t, os.WriteFile(key, make([]byte, maxKeyFileBytes+1), 0o400))
 
-	_, err := BuildSigningKeyring(SigningConfig{Keys: []SigningKeyConfig{{Path: key, Active: true}}}, []string{allowed})
+	_, err := BuildSigningKeyring(SigningConfig{Keys: []SigningKeyConfig{{Path: key, Active: true}}})
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "not in an allowed source directory")
+	assert.Contains(t, err.Error(), "exceeds the maximum allowed size")
 }
 
-func TestBuildSigningKeyring_SymlinkEscapingAllowlistIsRejected(t *testing.T) {
-	allowed, outside := t.TempDir(), t.TempDir()
-	target := writeECKey(t, outside, "k.pem", 0o400)
-	link := filepath.Join(allowed, "k.pem")
-	require.NoError(t, os.Symlink(target, link))
-
-	_, err := BuildSigningKeyring(SigningConfig{Keys: []SigningKeyConfig{{Path: link, Active: true}}}, []string{allowed})
+func TestBuildSigningKeyring_KeyPathMustBeARegularFile(t *testing.T) {
+	_, err := BuildSigningKeyring(SigningConfig{Keys: []SigningKeyConfig{{Path: t.TempDir(), Active: true}}})
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "not in an allowed source directory")
+	assert.Contains(t, err.Error(), "not a regular file")
+
+	_, err = BuildSigningKeyring(SigningConfig{Keys: []SigningKeyConfig{{Path: filepath.Join(t.TempDir(), "missing.pem"), Active: true}}})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "is not found")
+}
+
+// A key path is operator configuration, so it is not confined to the
+// {{ file }} source allowlist.
+func TestBuildSigningKeyring_ReadsKeyOutsideFileSourceAllowlist(t *testing.T) {
+	t.Setenv("APIP_CONFIG_FILE_SOURCE_ALLOWLIST", t.TempDir())
+	key := writeECKey(t, t.TempDir(), "k.pem", 0o400)
+
+	kr, err := BuildSigningKeyring(SigningConfig{Keys: []SigningKeyConfig{{Path: key, Active: true}}})
+	require.NoError(t, err)
+	_, ok := kr.ActiveKey()
+	assert.True(t, ok)
 }
 
 func TestBuildSigningKeyring_PermissiveKeyFileFailsClosed(t *testing.T) {
@@ -185,7 +196,7 @@ func TestBuildSigningKeyring_PermissiveKeyFileFailsClosed(t *testing.T) {
 		t.Run(fmt.Sprintf("%04o", perm), func(t *testing.T) {
 			dir := t.TempDir()
 			key := writeECKey(t, dir, "k.pem", perm)
-			_, err := BuildSigningKeyring(SigningConfig{Keys: []SigningKeyConfig{{Path: key, Active: true}}}, []string{dir})
+			_, err := BuildSigningKeyring(SigningConfig{Keys: []SigningKeyConfig{{Path: key, Active: true}}})
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), "must not be group-writable or accessible to others")
 		})
@@ -201,7 +212,7 @@ func TestBuildSigningKeyring_ErrorsDoNotLeakKeyMaterial(t *testing.T) {
 	_, err = BuildSigningKeyring(SigningConfig{Keys: []SigningKeyConfig{
 		{Path: key, Active: true},
 		{Inline: string(pemBytes)}, // same key twice
-	}}, []string{dir})
+	}})
 	require.Error(t, err)
 	assert.False(t, strings.Contains(err.Error(), "PRIVATE KEY"), "error leaks key material: %v", err)
 }

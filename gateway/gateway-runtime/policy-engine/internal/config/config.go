@@ -1156,14 +1156,6 @@ func Load(configPaths ...string) (*Config, error) {
 	return cfg, nil
 }
 
-// FileSourceAllowlist is the effective set of directories the policy engine
-// reads config-referenced files from: {{ file }} tokens and file paths named
-// directly in configuration, such as [[signing.keys]] path. It is the
-// policy-engine default, overridable via APIP_CONFIG_FILE_SOURCE_ALLOWLIST.
-func FileSourceAllowlist() []string {
-	return configinterpolate.ResolveAllowlist(defaultFileSourceAllowlist)
-}
-
 // interpolate resolves Go template tokens ({{ env }} / {{ file }}) in the merged
 // config and returns a fresh koanf instance holding the expanded values. It uses a
 // new instance (rather than reloading into k) so no un-expanded leaves survive. The
@@ -1172,7 +1164,7 @@ func FileSourceAllowlist() []string {
 // reference counts are emitted at info level.
 func interpolate(k *koanf.Koanf) (*koanf.Koanf, error) {
 	opts := configinterpolate.Options{
-		FileAllowlist: FileSourceAllowlist(),
+		FileAllowlist: configinterpolate.ResolveAllowlist(defaultFileSourceAllowlist),
 	}
 	expanded, stats, err := configinterpolate.Expand(k.Raw(), opts)
 	if err != nil {

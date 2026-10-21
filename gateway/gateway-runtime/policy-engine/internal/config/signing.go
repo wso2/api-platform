@@ -20,12 +20,12 @@ package config
 
 import (
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"path/filepath"
 	"time"
 
-	"github.com/wso2/api-platform/common/configinterpolate"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/signing"
 )
 
@@ -63,8 +63,8 @@ type SigningConfig struct {
 
 // SigningKeyConfig is one [[signing.keys]] entry.
 type SigningKeyConfig struct {
-	// Path is a PEM private key file. It must be inside the config file-source
-	// allowlist and not readable or writable by "other".
+	// Path is a PEM private key file. It must not be group-writable or
+	// accessible to "other" (0400 or 0440).
 	Path string `koanf:"path"`
 	// Inline is the PEM private key itself. Prefer Path: config.toml is also
 	// read by the gateway-controller, which expands every {{ file }} and
@@ -121,11 +121,14 @@ func (c *Config) validateSigningConfig() error {
 // BuildSigningKeyring reads and parses the [signing] keys into the keyring that
 // the policy engine installs for every policy (sdk/core/signing.Install); the
 // keyring is the engine's implementation of the SDK signing service.
-// Key files are read with the same containment rules as {{ file }} tokens, from
-// the given allowlist; a key file accessible to "other" fails startup rather
-// than being used. With no keys configured it returns an empty keyring, which
-// publishes an empty JWKS and cannot sign.
-func BuildSigningKeyring(s SigningConfig, fileAllowlist []string) (*signing.Keyring, error) {
+//
+// A key path is operator configuration, like the config file itself, so it is
+// read from wherever it points; it is not subject to the {{ file }} source
+// allowlist. A key file that is group-writable or accessible to "other", or
+// larger than any PEM private key, fails startup rather than being used. With
+// no keys configured it returns an empty keyring, which publishes an empty
+// JWKS and cannot sign.
+func BuildSigningKeyring(s SigningConfig) (*signing.Keyring, error) {
 	cfg := signing.Config{
 		PublicJWKSURL:   s.PublicJWKSURL,
 		JWKSCacheMaxAge: s.EffectiveJWKSCacheMaxAge(),
@@ -135,11 +138,8 @@ func BuildSigningKeyring(s SigningConfig, fileAllowlist []string) (*signing.Keyr
 	for i, k := range s.Keys {
 		pemBytes := []byte(k.Inline)
 		if k.Path != "" {
-			data, err := configinterpolate.ReadAllowedFile(k.Path, configinterpolate.Options{FileAllowlist: fileAllowlist})
+			data, err := readKeyFile(k.Path)
 			if err != nil {
-				return nil, fmt.Errorf("signing.keys[%d]: %w", i, err)
-			}
-			if err := checkKeyFilePermissions(k.Path); err != nil {
 				return nil, fmt.Errorf("signing.keys[%d]: %w", i, err)
 			}
 			pemBytes = data
@@ -159,20 +159,36 @@ func BuildSigningKeyring(s SigningConfig, fileAllowlist []string) (*signing.Keyr
 	return kr, nil
 }
 
-// checkKeyFilePermissions fails closed on a private key file that "other" can
-// read or write. Group read is allowed: Kubernetes Secret volumes mounted with
-// fsGroup are group-owned, and 0440 is the usual mode for them.
-func checkKeyFilePermissions(path string) error {
-	resolved, err := filepath.EvalSymlinks(filepath.Clean(path))
+// maxKeyFileBytes bounds a key file read. A PEM private key of the largest
+// supported size (RSA-4096) is about 3.3 KiB; anything near this is not a key.
+const maxKeyFileBytes = 64 << 10
+
+// readKeyFile reads a private key file, failing closed on one that "other" can
+// read or write or that its group can write. Group read is allowed: Kubernetes
+// Secret volumes mounted with fsGroup are group-owned, and 0440 is the usual
+// mode for them. The permissions are checked on the opened file, so the file
+// that is checked is the file that is read.
+func readKeyFile(path string) ([]byte, error) {
+	f, err := os.Open(filepath.Clean(path))
 	if err != nil {
-		return fmt.Errorf("required file %q is not found", path)
+		return nil, fmt.Errorf("required file %q is not found", path)
 	}
-	info, err := os.Stat(resolved)
-	if err != nil {
-		return fmt.Errorf("required file %q is not found", path)
+	defer f.Close()
+
+	info, err := f.Stat()
+	if err != nil || !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("required file %q is not a regular file", path)
 	}
 	if perm := info.Mode().Perm(); perm&0o027 != 0 {
-		return fmt.Errorf("private key file %q has permissions %04o; it must not be group-writable or accessible to others (use 0400 or 0440)", path, perm)
+		return nil, fmt.Errorf("private key file %q has permissions %04o; it must not be group-writable or accessible to others (use 0400 or 0440)", path, perm)
 	}
-	return nil
+
+	data, err := io.ReadAll(io.LimitReader(f, maxKeyFileBytes+1))
+	if err != nil {
+		return nil, fmt.Errorf("required file %q could not be read", path)
+	}
+	if len(data) > maxKeyFileBytes {
+		return nil, fmt.Errorf("file %q exceeds the maximum allowed size for a private key", path)
+	}
+	return data, nil
 }
