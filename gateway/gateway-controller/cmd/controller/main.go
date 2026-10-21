@@ -32,6 +32,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/certmetrics"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/controlplane"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/immutable"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/logger"
@@ -446,7 +447,27 @@ func main() {
 	// registry learns to transform cannot be silently left off this map — WebSubApi's exclusion
 	// (it keeps the async-specific legacy translation path) is declared alongside the registry's
 	// own kind list instead.
+	// The gateway JWKS route (/.well-known/jwks.json) is gateway-owned: present
+	// on every virtual host whatever is deployed, its chain carried to the policy
+	// engine beside the deployed ones. Both halves are decided here, once, so
+	// Envoy never routes to a chain the policy engine was not given.
+	//
+	// [signing] jwks_endpoint_enabled = false turns it off and frees the path, for
+	// a gateway where a deployed API already serves it.
+	var gatewayJWKSConfig *models.RuntimeDeployConfig
+	gatewayJWKSEnabled := false
+	if !cfg.Signing.JWKSEndpointEnabled {
+		log.Info("Gateway JWKS endpoint disabled by configuration ([signing] jwks_endpoint_enabled = false)")
+	} else if gatewayJWKSConfig, gatewayJWKSEnabled = transform.GatewayJWKSRuntimeConfig(cfg, policyDefinitions); gatewayJWKSEnabled {
+		log.Info("Gateway JWKS route enabled", slog.String("path", constants.GatewayJWKSPath))
+	} else {
+		log.Info("Gateway JWKS system policy not in this build; JWKS route disabled")
+	}
+	// The path is reserved only while the gateway actually serves it.
+	config.SetGatewayJWKSPathReserved(gatewayJWKSEnabled)
+
 	if translator != nil {
+		translator.SetGatewayJWKSRoute(gatewayJWKSEnabled)
 		envoyTransformers := make(map[string]models.ConfigTransformer)
 		for _, kind := range transform.EnvoyTranslatorKinds() {
 			envoyTransformers[kind] = transformerRegistry
@@ -505,6 +526,9 @@ func main() {
 	runtimeStore := storage.NewRuntimeConfigStore()
 	policySnapshotManager.SetRuntimeStore(runtimeStore)
 	policySnapshotManager.SetConfigStore(configStore)
+	if gatewayJWKSEnabled {
+		policySnapshotManager.SetGatewayRuntimeConfigs(gatewayJWKSConfig)
+	}
 
 	// Initialize subscription snapshot manager (driven by DB storage)
 	subscriptionSnapshotManager := subscriptionxds.NewSnapshotManager(db, log)
@@ -539,6 +563,14 @@ func main() {
 		slog.Int("total_apis", len(loadedAPIs)),
 		slog.Int("configs_loaded", loadedCount))
 	warnMtlsAPIsWithoutDedicatedHostname(loadedAPIs, &cfg.Router, log)
+	if gatewayJWKSEnabled {
+		if conflicts := transform.GatewayJWKSConflicts(runtimeStore.GetAll()); len(conflicts) > 0 {
+			log.Warn("Deployed routes use the gateway JWKS path and are shadowed by the gateway JWKS endpoint; "+
+				"move them to another path, or set [signing] jwks_endpoint_enabled = false to keep serving them",
+				slog.String("path", constants.GatewayJWKSPath),
+				slog.Any("routes", conflicts))
+		}
+	}
 
 	// Generate initial policy snapshot
 	log.Info("Generating initial policy xDS snapshot")

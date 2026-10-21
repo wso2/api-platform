@@ -216,3 +216,37 @@ func TestSlogAdapter(t *testing.T) {
 		adapter.Errorf("error message %s %d", "error", 500)
 	})
 }
+
+// Gateway-owned runtime configs (the JWKS route) belong in every snapshot,
+// including one with nothing deployed, without ever entering the runtime store.
+func TestSnapshotManager_IncludesGatewayRuntimeConfigs(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+	sm := NewSnapshotManager(logger)
+	store := storage.NewRuntimeConfigStore()
+	sm.SetRuntimeStore(store)
+
+	const key = "GET|/.well-known/jwks.json|*"
+	sm.SetGatewayRuntimeConfigs(&models.RuntimeDeployConfig{
+		Metadata:            models.Metadata{UUID: "gateway-jwks", Kind: "GatewayJWKS", Handle: "gateway-jwks"},
+		PolicyChainResolver: models.RouteKeyResolverName,
+		Routes: map[string]*models.Route{
+			key: {Method: "GET", Path: "/.well-known/jwks.json", OperationPath: "/.well-known/jwks.json", Vhost: "*"},
+		},
+		PolicyChains: map[string]*models.PolicyChain{
+			key: {Policies: []models.Policy{{Name: "wso2_apip_sys_jwks", Version: "v1"}}},
+		},
+	})
+
+	if err := sm.UpdateSnapshot(t.Context()); err != nil {
+		t.Fatalf("UpdateSnapshot: %v", err)
+	}
+	if _, ok := sm.policyCache.GetResources()[key]; !ok {
+		t.Fatal("the gateway JWKS chain is missing from the policy snapshot")
+	}
+	if _, ok := sm.routeCache.GetResources()[key]; !ok {
+		t.Fatal("the gateway JWKS route config is missing from the route snapshot")
+	}
+	if got := len(store.GetAll()); got != 0 {
+		t.Fatalf("gateway configs leaked into the runtime store: %d entries", got)
+	}
+}
