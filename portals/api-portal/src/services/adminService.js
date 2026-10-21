@@ -504,6 +504,7 @@ const applyTheme = async (req, res) => {
         if (tempZipPath) fs.rmSync(tempZipPath, { force: true });
         const organization = await orgDao.getByUuid(orgId);
         res.status(200).json({ id: organization.handle, fileName: zipFile.originalname });
+        logUserAction('THEME_APPLIED', req, { orgId, viewId: viewName, fileName: zipFile.originalname, resourceUuid: orgId, resourceType: 'theme' });
     } catch (error) {
         logger.error('Apply theme failed', { error: error.message, stack: error.stack, orgId, viewName });
         fs.rmSync(extractPath, { recursive: true, force: true });
@@ -518,6 +519,7 @@ const resetTheme = async (req, res) => {
     try {
         await orgDao.deleteThemeContent(orgId, viewName);
         res.status(204).send();
+        logUserAction('THEME_RESET', req, { orgId, viewId: viewName, resourceUuid: orgId, resourceType: 'theme' });
     } catch (error) {
         logger.error('Reset theme failed', { error: error.message, stack: error.stack, orgId, viewName });
         util.handleError(res, error);

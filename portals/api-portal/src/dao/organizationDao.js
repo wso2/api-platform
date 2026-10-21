@@ -101,7 +101,9 @@ const get = async (param, t) => {
 // auth middleware) — not for public REST lookups, which should use get()/handle instead.
 const getByUuid = async (uuid, t) => {
     const exec = t || db;
-    const organization = await exec.queryOne(`SELECT * FROM ${ORG_TABLE} WHERE uuid = ? AND portal_id = ?`, [uuid, getPortalId()]);
+    const organization = normalizeOrgRow(
+        await exec.queryOne(`SELECT * FROM ${ORG_TABLE} WHERE uuid = ? AND portal_id = ?`, [uuid, getPortalId()])
+    );
     if (!organization) {
         throw new NotFoundError('Organization not found');
     }
