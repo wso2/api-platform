@@ -44,7 +44,9 @@ serviceAccount:
 openshift:
   enabled: false
   routes:
-    # Gateway-controller management REST API (plain HTTP, so edge termination only).
+    # Gateway-controller management REST API. Uses edge termination while the API serves
+    # plain HTTP; when gateway.config.controller.server.tls.enabled=true, set termination
+    # to passthrough or reencrypt instead.
     # Off by default: it is an administrative surface. Install fails while
     # gateway.config.controller.auth still has the default password or no authentication.
     managementApi:
@@ -54,14 +56,20 @@ openshift:
       annotations: {}
       labels: {}
       tls:
+        # edge (plain HTTP API) | passthrough | reencrypt (HTTPS API)
         termination: edge
-        # None | Allow | Redirect
+        # None | Allow | Redirect (passthrough supports None or Redirect)
         insecureEdgeTerminationPolicy: Redirect
         # PEM certificate, key and CA chain served by the router.
         # Leave empty to use the router's default certificate.
         certificate: ""
         key: ""
         caCertificate: ""
+        # reencrypt only: PEM CA that signed the controller's REST API certificate
+        # (gateway.controller.restApiTls), so the router can verify the backend. reencrypt with
+        # the chart's self-signed Issuer is rejected unless this is set; otherwise use a real
+        # issuer or a Secret signed by the OpenShift service CA (trusted by the router without it).
+        destinationCACertificate: ""
 
 ## moved to each component's deployment block below
 
@@ -105,6 +113,26 @@ gateway:
         # instead of blocking gateway startup entirely. Off by default: an invalid
         # deployment fails startup loudly so the issue can't go unnoticed.
         skip_invalid_deployments_on_startup: false
+
+        # HTTPS for the REST management API. When enabled, the controller serves
+        # the API over TLS on `port` ONLY — the plaintext api_port listener is not
+        # started. The Service publishes this port as "rest-tls" in place of "rest".
+        # The certificate is provisioned by gateway.controller.restApiTls and
+        # mounted at /app/rest-api-certs (matching the cert_path/key_path defaults).
+        tls:
+          enabled: false
+          port: 9093
+          cert_path: "./rest-api-certs/tls.crt"
+          key_path: "./rest-api-certs/tls.key"
+          # TLS1_0 | TLS1_1 | TLS1_2 | TLS1_3
+          minimum_protocol_version: TLS1_2
+          maximum_protocol_version: TLS1_3
+          # Comma-separated Go crypto/tls cipher suite names (TLS 1.2 and below).
+          # Empty = Go's secure defaults.
+          ciphers: ""
+          # TLS 1.3 key-exchange groups, most preferred first. Hybrid post-quantum
+          # first, with classical fallbacks for clients that don't offer it.
+          ecdh_curves: "X25519MLKEM768,X25519,P-256"
 
       # Dedicated admin/debug HTTP server (config dump, xDS sync status). Already
       # effectively active today even though this block was previously absent from
@@ -691,6 +719,8 @@ gateway:
       labels: {}
       ports:
         rest: 9090
+        # Published instead of `rest` when gateway.config.controller.server.tls.enabled
+        restTls: 9093
         xds: 18000
         policy: 18001
         admin: 9092
@@ -721,6 +751,7 @@ gateway:
       # LoadBalancer; empty = auto-allocate.
       nodePorts:
         rest: ""
+        restTls: ""
         xds: ""
         policy: ""
         admin: ""
@@ -774,6 +805,38 @@ gateway:
         # Name of existing secret containing tls.crt and tls.key
         name: gateway-tls
         # Key names in the secret
+        certKey: tls.crt
+        keyKey: tls.key
+    # Certificate for the HTTPS REST management API, used only when
+    # gateway.config.controller.server.tls.enabled=true. Mounted at /app/rest-api-certs
+    # as tls.crt / tls.key.
+    restApiTls:
+      # Certificate provisioning method: "cert-manager", "secret", or "none"
+      # - cert-manager: Issue a Certificate with cert-manager
+      # - secret: Use an existing Kubernetes secret
+      # - none: Mount the certificate yourself (deployment.extraVolumes/extraVolumeMounts)
+      #         and point gateway.config.controller.server.tls.cert_path/key_path at it
+      certificateProvider: cert-manager
+      certManager:
+        # Create a Certificate resource
+        create: true
+        # Issuer for the Certificate. An empty name uses the chart's self-signed Issuer
+        # (<release>-selfsigned-issuer, created if needed) — for development only.
+        issuerRef:
+          name: ""
+          kind: Issuer
+          # group: cert-manager.io
+        # Certificate common name. Empty = the controller Service name.
+        commonName: ""
+        # DNS names for the certificate. Empty = the controller Service's in-cluster names and
+        # localhost (for kubectl port-forward), plus openshift.routes.managementApi.hostname
+        # when that Route uses passthrough.
+        dnsNames: []
+        duration: 2160h
+        renewBefore: 720h
+      secret:
+        # Name of existing secret containing the certificate and key (required for provider=secret)
+        name: ""
         certKey: tls.crt
         keyKey: tls.key
     # Upstream certificate configuration for backend TLS verification

@@ -40,6 +40,15 @@ spec:
   selector:
     {{- include "gateway-operator.componentSelectorLabels" (list . "controller") | nindent 4 }}
   ports:
+    {{- if dig "server" "tls" "enabled" false .Values.gateway.config.controller }}
+    - name: rest-tls
+      port: {{ $service.ports.restTls }}
+      targetPort: rest-tls
+      protocol: TCP
+      {{- if and $isNodePortCapable $nodePorts.restTls }}
+      nodePort: {{ $nodePorts.restTls }}
+      {{- end }}
+    {{- else }}
     - name: rest
       port: {{ $service.ports.rest }}
       targetPort: rest
@@ -47,6 +56,7 @@ spec:
       {{- if and $isNodePortCapable $nodePorts.rest }}
       nodePort: {{ $nodePorts.rest }}
       {{- end }}
+    {{- end }}
     - name: xds
       port: {{ $service.ports.xds }}
       targetPort: xds
