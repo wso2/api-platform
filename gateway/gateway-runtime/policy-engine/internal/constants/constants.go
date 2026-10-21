@@ -93,6 +93,7 @@ const (
 	SpanBindRoute                 = "external_processing.bind_route"
 	SpanBuildResponseContext      = "external_processing.build_response_context"
 	SpanTranslateActions          = "external_processing.translate_actions"
+	SpanAwaitNextMessage          = "external_processing.await_next_message"
 	SpanPolicyRequestFormat       = "policy.request.%s"
 	SpanPolicyResponseFormat      = "policy.response.%s"
 

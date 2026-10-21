@@ -22,6 +22,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"sort"
 	"testing"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
@@ -804,4 +805,66 @@ func TestProcessSpanStatus_TracingDisabled(t *testing.T) {
 	imm := stream.responses[0].GetImmediateResponse()
 	require.NotNil(t, imm)
 	assert.EqualValues(t, 401, imm.GetStatus().GetCode())
+}
+
+// TestProcess_AwaitSpansCoverTheGapsBetweenPhases checks that the time the engine
+// spends blocked in Recv between phases is recorded under the root, placed inside
+// the gap rather than overlapping either phase, and not recorded at all when
+// tracing is disabled.
+func TestProcess_AwaitSpansCoverTheGapsBetweenPhases(t *testing.T) {
+	messages := func() []*extprocv3.ProcessingRequest {
+		return []*extprocv3.ProcessingRequest{
+			requestHeadersReq("test-route", "GET", "/pets"),
+			responseHeadersReq("200"),
+			responseBodyReq("OK"),
+		}
+	}
+
+	t.Run("one span per gap, between the phases it separates", func(t *testing.T) {
+		server, k, sr := newSpanStatusServer(t)
+		server.tracingEnabled = true
+		registerTestRoute(k, "test-route", emptyChain())
+
+		require.NoError(t, server.Process(newMockStream(messages())))
+
+		spans := sr.Ended()
+		root := spanByName(spans, constants.SpanExternalProcessingProcess)
+		require.NotNil(t, root)
+
+		var awaits []sdktrace.ReadOnlySpan
+		for _, s := range spans {
+			if s.Name() == constants.SpanAwaitNextMessage {
+				awaits = append(awaits, s)
+			}
+		}
+		require.Len(t, awaits, 2)
+		sort.Slice(awaits, func(i, j int) bool { return awaits[i].StartTime().Before(awaits[j].StartTime()) })
+
+		phases := []string{
+			constants.SpanProcessRequestHeaders,
+			constants.SpanProcessResponseHeaders,
+			constants.SpanProcessResponseBody,
+		}
+		for i, await := range awaits {
+			assert.Equal(t, root.SpanContext().SpanID(), await.Parent().SpanID(),
+				"await span %d must be a child of the root", i)
+			before := spanByName(spans, phases[i])
+			after := spanByName(spans, phases[i+1])
+			require.NotNil(t, before)
+			require.NotNil(t, after)
+			assert.False(t, await.StartTime().Before(before.EndTime()),
+				"await span %d must start after %s ends", i, phases[i])
+			assert.False(t, await.EndTime().After(after.StartTime()),
+				"await span %d must end before %s starts", i, phases[i+1])
+		}
+	})
+
+	t.Run("none when tracing is disabled", func(t *testing.T) {
+		server, k, sr := newSpanStatusServer(t)
+		registerTestRoute(k, "test-route", emptyChain())
+
+		require.NoError(t, server.Process(newMockStream(messages())))
+
+		assert.Nil(t, spanByName(sr.Ended(), constants.SpanAwaitNextMessage))
+	})
 }
