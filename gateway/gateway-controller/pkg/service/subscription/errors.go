@@ -39,13 +39,14 @@ var (
 // a failed load during an update said "Failed to get subscription plan", not
 // "Failed to update subscription plan".
 const (
-	OpLoad     = "load"
-	OpCreate   = "create"
-	OpUpdate   = "update"
-	OpDelete   = "delete"
-	OpList     = "list"
-	OpResolve  = "resolve"
-	OpValidate = "validate"
+	OpLoad            = "load"
+	OpCreate          = "create"
+	OpUpdate          = "update"
+	OpDelete          = "delete"
+	OpList            = "list"
+	OpValidate        = "validate"
+	OpResolveByID     = "resolve-by-id"
+	OpResolveByHandle = "resolve-by-handle"
 )
 
 // ValidationError is a request-shaped validation failure. Its Message reaches
