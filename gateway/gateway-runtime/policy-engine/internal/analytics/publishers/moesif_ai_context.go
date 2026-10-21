@@ -43,11 +43,18 @@ import (
 
 // moesifAIProviders maps an LLM provider template name onto the provider name Moesif
 // prices by. A name not listed here is sent unchanged.
+//
+// Moesif files Bedrock models under two names and prices a model only when the
+// provider matches the name it is filed under. bedrock_converse holds the current
+// models (Claude 3.7 and later, Nova, ...); older ones (Claude 3.5, Llama 3.1, ...)
+// are under bedrock and go unpriced with this name. bedrock instead leaves current
+// Claude models unpriced or prices them at the AWS GovCloud rate, so an older model
+// without a cost is the safer gap.
 var moesifAIProviders = map[string]string{
 	"openai":          "openai",
 	"anthropic":       "anthropic",
 	"gemini":          "gemini",
-	"awsbedrock":      "bedrock",
+	"awsbedrock":      "bedrock_converse",
 	"azure-openai":    "azure",
 	"azureai-foundry": "azure_ai",
 	"mistralai":       "mistral",

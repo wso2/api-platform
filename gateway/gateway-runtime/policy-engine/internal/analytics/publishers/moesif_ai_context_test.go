@@ -31,7 +31,7 @@ func TestMoesifAIProvider(t *testing.T) {
 		"openai":          "openai",
 		"anthropic":       "anthropic",
 		"gemini":          "gemini",
-		"awsbedrock":      "bedrock",
+		"awsbedrock":      "bedrock_converse",
 		"azure-openai":    "azure",
 		"azureai-foundry": "azure_ai",
 		"mistralai":       "mistral",
