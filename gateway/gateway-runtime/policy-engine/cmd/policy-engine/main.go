@@ -203,7 +203,7 @@ func main() {
 	// before the registry builds any policy instance, and never replaced. With
 	// no [signing] keys an empty keyring is installed: the JWKS is empty and
 	// signing.Available() is false, so policies keep their own fallback.
-	signingKeyring, err := config.BuildSigningKeyring(cfg.Signing, config.FileSourceAllowlist())
+	signingKeyring, err := config.BuildSigningKeyring(cfg.Signing)
 	if err != nil {
 		slog.ErrorContext(ctx, "Failed to load gateway signing keys", "error", err)
 		os.Exit(1)

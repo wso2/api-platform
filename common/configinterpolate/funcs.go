@@ -72,18 +72,6 @@ func fileFunc(opts *Options, stats *Stats) func(string) (string, error) {
 	}
 }
 
-// ReadAllowedFile reads a file named directly in configuration (rather than
-// through a {{ file }} token), such as a key file path, under exactly the same
-// rules as {{ file }}: allowlist containment before and after symlink
-// resolution, traversal and null-byte rejection, and the opts.MaxFileBytes cap
-// (DefaultMaxFileBytes when unset). Contents are returned verbatim, untrimmed.
-func ReadAllowedFile(path string, opts Options) ([]byte, error) {
-	if opts.MaxFileBytes <= 0 {
-		opts.MaxFileBytes = DefaultMaxFileBytes
-	}
-	return readAllowedFile(path, &opts)
-}
-
 // readAllowedFile enforces the file-access security rules before reading:
 // null-byte/traversal rejection, allowlist containment on the input path, symlink
 // resolution and re-check against the allowlist roots before opening (prevents
