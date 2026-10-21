@@ -29,6 +29,12 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/model"
 )
 
+// Just enough leading bytes for http.DetectContentType to recognise the format.
+var (
+	pngHeader  = []byte("\x89PNG\r\n\x1a\n")
+	jpegHeader = []byte{0xFF, 0xD8, 0xFF, 0xE0}
+)
+
 func readArchive(t *testing.T, archive []byte) map[string]string {
 	t.Helper()
 	zr, err := zip.NewReader(bytes.NewReader(archive), int64(len(archive)))
@@ -64,13 +70,21 @@ func TestBuildContentArchive(t *testing.T) {
 	})
 
 	t.Run("adds the thumbnail as content/web/api-icon with an extension from its type", func(t *testing.T) {
-		for contentType, name := range map[string]string{"image/png": "content/web/api-icon.png", "image/jpeg": "content/web/api-icon.jpg"} {
-			content, err := buildContentArchive(nil, &model.PublicationContent{ContentType: contentType, FileName: "logo.final.bin", Content: []byte("img")}, nil, defaultPublicationArchiveMaxBytes)
+		tests := []struct {
+			contentType string
+			bytes       []byte
+			name        string
+		}{
+			{"image/png", pngHeader, "content/web/api-icon.png"},
+			{"image/jpeg", jpegHeader, "content/web/api-icon.jpg"},
+		}
+		for _, tt := range tests {
+			content, err := buildContentArchive(nil, &model.PublicationContent{ContentType: tt.contentType, FileName: "logo.final.bin", Content: tt.bytes}, nil, defaultPublicationArchiveMaxBytes)
 			if err != nil || content == nil {
-				t.Fatalf("%s: got %v, %v", contentType, content, err)
+				t.Fatalf("%s: got %v, %v", tt.contentType, content, err)
 			}
-			if files := readArchive(t, content.Archive); len(files) != 1 || files[name] != "img" {
-				t.Fatalf("%s: unexpected archive layout: %v", contentType, files)
+			if files := readArchive(t, content.Archive); len(files) != 1 || files[tt.name] != string(tt.bytes) {
+				t.Fatalf("%s: unexpected archive layout: %v", tt.contentType, files)
 			}
 		}
 	})
@@ -78,7 +92,7 @@ func TestBuildContentArchive(t *testing.T) {
 	t.Run("packs documents and the thumbnail together", func(t *testing.T) {
 		content, err := buildContentArchive(
 			[]portalDocument{{Handle: "guide", Folder: "HowTo", FileName: "guide.md", Content: []byte("# guide")}},
-			&model.PublicationContent{ContentType: "image/png", Content: []byte("img")}, nil, defaultPublicationArchiveMaxBytes)
+			&model.PublicationContent{ContentType: "image/png", Content: pngHeader}, nil, defaultPublicationArchiveMaxBytes)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -99,7 +113,7 @@ func TestBuildContentArchive(t *testing.T) {
 
 	t.Run("packs the landing page beside the thumbnail under web/", func(t *testing.T) {
 		content, err := buildContentArchive(nil,
-			&model.PublicationContent{ContentType: "image/png", Content: []byte("img")},
+			&model.PublicationContent{ContentType: "image/png", Content: pngHeader},
 			&model.PublicationContent{ContentType: "text/markdown", Content: []byte("# Loans")}, defaultPublicationArchiveMaxBytes)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -129,6 +143,23 @@ func TestBuildContentArchive(t *testing.T) {
 		_, err := buildContentArchive(nil, &model.PublicationContent{ContentType: "image/gif", Content: []byte("img")}, nil, defaultPublicationArchiveMaxBytes)
 		if !apperror.APIPublicationValidationFailed.Is(err) {
 			t.Fatalf("want a validation error, got %v", err)
+		}
+	})
+
+	t.Run("rejects a thumbnail whose bytes do not match its declared type", func(t *testing.T) {
+		tests := map[string]*model.PublicationContent{
+			"not an image":  {ContentType: "image/png", Content: []byte("img")},
+			"JPEG as PNG":   {ContentType: "image/png", Content: jpegHeader},
+			"PNG as JPEG":   {ContentType: "image/jpeg", Content: pngHeader},
+			"empty content": {ContentType: "image/png"},
+		}
+		for name, thumbnail := range tests {
+			t.Run(name, func(t *testing.T) {
+				_, err := buildContentArchive(nil, thumbnail, nil, defaultPublicationArchiveMaxBytes)
+				if !apperror.APIPublicationValidationFailed.Is(err) {
+					t.Fatalf("want a validation error, got %v", err)
+				}
+			})
 		}
 	})
 
@@ -166,7 +197,7 @@ func TestBuildContentArchive(t *testing.T) {
 		for i := range docs {
 			docs[i] = portalDocument{Handle: fmt.Sprintf("d%d", i), Folder: "HowTo", FileName: fmt.Sprintf("d%d.md", i)}
 		}
-		thumbnail := &model.PublicationContent{ContentType: "image/png", Content: []byte("img")}
+		thumbnail := &model.PublicationContent{ContentType: "image/png", Content: pngHeader}
 		landingPage := &model.PublicationContent{Content: []byte("# Loans")}
 
 		if _, err := buildContentArchive(docs, thumbnail, nil, defaultPublicationArchiveMaxBytes); err != nil {
@@ -186,7 +217,7 @@ func TestBuildContentArchive(t *testing.T) {
 			{Handle: "d", Folder: "HowTo", FileName: "d.md", Content: make([]byte, portalContentMaxFileBytes)},
 		}
 		landingPage := &model.PublicationContent{Content: bytes.Repeat([]byte("a"), int(portalContentMaxFileBytes))}
-		thumbnail := &model.PublicationContent{ContentType: "image/png", Content: []byte("img")}
+		thumbnail := &model.PublicationContent{ContentType: "image/png", Content: pngHeader}
 
 		if _, err := buildContentArchive(docs, nil, landingPage, 1<<30); err != nil {
 			t.Fatalf("at the limit: %v", err)

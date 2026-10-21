@@ -21,6 +21,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"fmt"
+	"net/http"
 
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/model"
@@ -77,6 +78,10 @@ func buildContentArchive(docs []portalDocument, thumbnail, landingPage *model.Pu
 		ext, ok := portalIconExtensions[thumbnail.ContentType]
 		if !ok {
 			return nil, apperror.APIPublicationValidationFailed.New("thumbnail must be a PNG or JPEG image")
+		}
+		// The stored type picks the extension, so make sure the bytes agree with it.
+		if http.DetectContentType(thumbnail.Content) != thumbnail.ContentType {
+			return nil, apperror.APIPublicationValidationFailed.New("thumbnail content does not match its declared type")
 		}
 		files = append(files, archiveFile{portalArchiveRoot + "/web/" + portalIconName + "." + ext, thumbnail.Content})
 	}

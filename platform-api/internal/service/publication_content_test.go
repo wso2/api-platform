@@ -259,7 +259,7 @@ func TestPublish_PushesDocumentsAfterTheListing(t *testing.T) {
 func TestPublish_PushesTheThumbnailWithoutDocuments(t *testing.T) {
 	var promoted bool
 	pub := &callLog{}
-	thumbnail := &model.PublicationContent{ContentType: "image/png", FileName: "logo.png", Content: []byte("img")}
+	thumbnail := &model.PublicationContent{ContentType: "image/png", FileName: "logo.png", Content: pngHeader}
 	svc := newPublishDocsService(pub, nil, thumbnail, &promoted)
 
 	if _, _, err := svc.Publish(context.Background(), restAPITypeValue, "my-api", "my-portal", "org", "actor"); err != nil {
@@ -268,7 +268,7 @@ func TestPublish_PushesTheThumbnailWithoutDocuments(t *testing.T) {
 	if got := strings.Join(pub.calls, ","); got != "listing,content" {
 		t.Fatalf("want the listing then its content, got %s", got)
 	}
-	if files := readArchive(t, pub.archive); len(files) != 1 || files["content/web/api-icon.png"] != "img" {
+	if files := readArchive(t, pub.archive); len(files) != 1 || files["content/web/api-icon.png"] != string(pngHeader) {
 		t.Fatalf("unexpected archive: %v", files)
 	}
 }
