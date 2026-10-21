@@ -26,7 +26,7 @@ import (
 	"time"
 
 	"github.com/wso2/api-platform/common/configinterpolate"
-	"github.com/wso2/api-platform/sdk/core/signing"
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/signing"
 )
 
 const (
@@ -119,7 +119,8 @@ func (c *Config) validateSigningConfig() error {
 }
 
 // BuildSigningKeyring reads and parses the [signing] keys into the keyring that
-// the policy engine installs for every policy (sdk/core/signing.Install).
+// the policy engine installs for every policy (sdk/core/signing.Install); the
+// keyring is the engine's implementation of the SDK signing service.
 // Key files are read with the same containment rules as {{ file }} tokens, from
 // the given allowlist; a key file accessible to "other" fails startup rather
 // than being used. With no keys configured it returns an empty keyring, which

@@ -20,12 +20,7 @@ package jwks
 
 import (
 	"context"
-	"crypto/ecdsa"
-	"crypto/elliptic"
-	"crypto/rand"
-	"crypto/x509"
 	"encoding/json"
-	"encoding/pem"
 	"os"
 	"strings"
 	"testing"
@@ -58,24 +53,39 @@ func respond(t *testing.T, method string, headers map[string][]string) policy.Im
 	return resp
 }
 
+// stubService stands in for the policy engine's keyring: this policy only
+// relays what the installed signing service publishes, and the JWKS document
+// itself is generated (and tested) in the engine.
+type stubService struct{ kid string }
+
+func (s stubService) Sign([]byte) ([]byte, signing.KeyInfo, error) {
+	return nil, signing.KeyInfo{}, signing.ErrNotConfigured
+}
+
+func (s stubService) SignJWS([]byte, signing.Options) (string, signing.KeyInfo, error) {
+	return "", signing.KeyInfo{}, signing.ErrNotConfigured
+}
+
+func (s stubService) SignDetachedJWS([]byte, signing.Options) (signing.DetachedJWS, signing.KeyInfo, error) {
+	return signing.DetachedJWS{}, signing.KeyInfo{}, signing.ErrNotConfigured
+}
+
+func (s stubService) ActiveKey() (signing.KeyInfo, bool) {
+	return signing.KeyInfo{Kid: s.kid, Algorithm: signing.ES256}, true
+}
+
+func (s stubService) JWKS() ([]byte, string) {
+	return []byte(`{"keys":[{"kty":"EC","kid":"` + s.kid + `","use":"sig","alg":"ES256","crv":"P-256","x":"x","y":"y"}]}`), `"0123456789abcdef"`
+}
+
+func (s stubService) JWKSCacheMaxAge() time.Duration { return 10 * time.Minute }
+
 func installKey(t *testing.T) string {
 	t.Helper()
-	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
-	der, _ := x509.MarshalPKCS8PrivateKey(k)
-	kr, err := signing.NewKeyring(signing.Config{
-		JWKSCacheMaxAge: 10 * time.Minute,
-		Keys:            []signing.KeyEntry{{PEM: pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der}), Active: true}},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	signing.Install(kr)
+	const kid = "gw-test"
+	signing.Install(stubService{kid: kid})
 	t.Cleanup(func() { signing.Install(nil) })
-	info, _ := signing.ActiveKey()
-	return info.Kid
+	return kid
 }
 
 func TestServesTheKeySet(t *testing.T) {
