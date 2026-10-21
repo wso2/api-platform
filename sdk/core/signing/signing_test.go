@@ -87,6 +87,10 @@ func TestNothingInstalled(t *testing.T) {
 	if string(body) != `{"keys":[]}` || etag == "" {
 		t.Fatalf("JWKS() = %s %s", body, etag)
 	}
+	body[0] = 'X'
+	if again, againETag := JWKS(); string(again) != `{"keys":[]}` || againETag != etag {
+		t.Fatalf("JWKS() after mutating a returned body = %s %s", again, againETag)
+	}
 	if JWKSCacheMaxAge() != DefaultJWKSCacheMaxAge {
 		t.Fatalf("JWKSCacheMaxAge() = %s", JWKSCacheMaxAge())
 	}
