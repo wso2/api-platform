@@ -364,6 +364,11 @@ func TestBuildRecordAIRouteKeepsGenAIOperation(t *testing.T) {
 		"/v1/chat/completions": "chat",
 		"/v1/messages":         "chat",
 		"/v1/embeddings":       "embeddings",
+		// Gemini's native API names the method after a colon on the model.
+		"/v1beta/models/gemini-2.5-pro:generateContent":        "generate_content",
+		"/v1beta/models/gemini-2.5-pro:streamGenerateContent":  "generate_content",
+		"/v1beta/models/text-embedding-004:embedContent":       "embeddings",
+		"/v1beta/models/text-embedding-004:batchEmbedContents": "embeddings",
 	} {
 		t.Run(route, func(t *testing.T) {
 			event := restEvent()
