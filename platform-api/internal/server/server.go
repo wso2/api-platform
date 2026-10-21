@@ -567,6 +567,9 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		Gateways:   gatewayService,
 		Projects:   projectService,
 		APIPortals: apiPortalService,
+		// Read-only lookups, so a plugin can tell a brand-new API from another
+		// version of an existing one — which no route answers on its own.
+		APIs: apiService,
 		// Kind-routed, so a plugin names the artifact kind alongside the handle and
 		// reaches the same services the platform's own per-kind paths do.
 		Deployments:   deploymentsByKind,

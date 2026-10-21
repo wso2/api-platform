@@ -40,12 +40,13 @@ import (
 type Deps struct {
 	Gateways      Gateways
 	Projects      Projects
+	APIs          APIs
 	APIPortals    APIPortals
 	Deployments   Deployments
 	Organizations Organizations
 	Identity      Identity
 	// add more capability groups as external plugins need them
-	// (APIs, Subscriptions, Applications, LLM, MCP, …)
+	// (Subscriptions, Applications, LLM, MCP, …)
 
 	Config *config.Server
 	Logger *slog.Logger
@@ -84,6 +85,28 @@ type Projects interface {
 
 	// DeleteProject removes a project within an organization (Delete).
 	DeleteProject(handle, orgID, actor string) error
+}
+
+// APIs exposes read-only lookups over the platform's REST APIs, scoped by
+// organization. Every method mirrors an existing APIService method verbatim and
+// takes the organization id explicitly — callers MUST pass the org resolved from
+// the request context, never one from request input (GO-AUTH-005). The parameter
+// order differs per method, inherited from those services; normalizing it would
+// cost the no-adapter assignment.
+type APIs interface {
+	// GetAPIVersions returns every REST API sharing displayName in an organization
+	// (Read). Org-wide, since (displayName, version) uniqueness is, so versions of
+	// one API may sit in different projects.
+	GetAPIVersions(orgUUID, displayName string) (*api.RESTAPIVersionListResponse, error)
+
+	// GetAPIByHandle returns a single REST API by its handle within an
+	// organization (Read).
+	GetAPIByHandle(handle, orgId string) (*api.RESTAPI, error)
+
+	// GetArtifactUUID resolves the internal artifact UUID for a REST API handle
+	// (Read). Every REST API route addresses an API by handle, so this is the only
+	// way a plugin reaches its UUID.
+	GetArtifactUUID(handle, orgUUID string) (string, error)
 }
 
 // Identity resolves the user behind a request in the form the platform keeps
