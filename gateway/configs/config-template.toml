@@ -1253,9 +1253,7 @@ insecure_skip_verify = false
 # A value prefixed "$ctx:" is evaluated as a CEL expression against context
 # built from the collected event; other values are literal strings.
 #
-# Available variables: request.path, request.pathTemplate (matched operation
-# path as configured, e.g. "/orders/{id}", relative to the API context, so use
-# "$ctx:api.context + request.pathTemplate" for the full template),
+# Available variables: request.path, request.pathTemplate,
 # request.method, request.id,
 # request.header['<name>'] (lower-case keys), response.status,
 # response.header['<name>'], api.id, api.name, api.version, api.context,
