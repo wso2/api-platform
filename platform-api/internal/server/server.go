@@ -411,7 +411,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize API Portal publisher: %w", err)
 	}
-	publicationService := service.NewPublicationService(artifactRepo, apiPortalRepo, documentRepo, subscriptionPlanRepo, publicationRepo, portalPublisher, cfg.APIPortalPublication.OverallTimeout, slogger)
+	publicationService := service.NewPublicationService(artifactRepo, apiPortalRepo, documentRepo, subscriptionPlanRepo, publicationRepo, portalPublisher, cfg.APIPortalPublication.OverallTimeout, cfg.PublicationArchiveMaxBytes, slogger)
 
 	// Initialize handlers
 	orgHandler := handler.NewOrganizationHandler(orgService, identityService, slogger)
@@ -1204,19 +1204,19 @@ func newPortalPublisher(authRegistry *service.APIPortalAuthRegistry, cfg *config
 	if err != nil {
 		return nil, fmt.Errorf("failed to build the API Portal HTTP client: %w", err)
 	}
-	pushClient, err := client.NewRetryableHTTPClient(client.RetryConfig{
+	contentClient, err := client.NewRetryableHTTPClient(client.RetryConfig{
 		MaxRetries:     cfg.MaxRetries,
-		AttemptTimeout: cfg.ListingRequestTimeout,
+		AttemptTimeout: cfg.ContentRequestTimeout,
 		Backoff:        cfg.RetryBackoff,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to build the API Portal push HTTP client: %w", err)
+		return nil, fmt.Errorf("failed to build the API Portal content HTTP client: %w", err)
 	}
 	slogger.Info("Initialized the real HTTP publisher for API Publication",
 		"requestTimeout", cfg.RequestTimeout,
-		"listingRequestTimeout", cfg.ListingRequestTimeout,
+		"contentRequestTimeout", cfg.ContentRequestTimeout,
 		"maxRetries", cfg.MaxRetries,
 		"retryBackoff", cfg.RetryBackoff,
 		"overallTimeout", cfg.OverallTimeout)
-	return service.NewHTTPPortalPublisher(authRegistry, lightClient, pushClient, cfg.PlanListingBudget()), nil
+	return service.NewHTTPPortalPublisher(authRegistry, lightClient, contentClient, cfg.PlanListingBudget()), nil
 }

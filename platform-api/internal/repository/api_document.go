@@ -398,43 +398,48 @@ func (r *DocumentRepo) DocumentDisplayNameExistsForArtifact(artifactUUID, displa
 	return true, nil
 }
 
-// GetDocumentUUIDsByHandles resolves each handle to its document uuid,
-// scoped to one artifact — api_documents' real unique index is
-// (artifact_uuid, handle), so a handle is only guaranteed unique per
-// artifact, not per org. Returns an empty map for empty input.
-func (r *DocumentRepo) GetDocumentUUIDsByHandles(artifactUUID string, handles []string, orgUUID string) (map[string]string, error) {
+// GetDocumentsByHandles looks up each handle's document (uuid, handle, type, file name; no
+// content) within one artifact, since the unique index is (artifact_uuid, handle), not per
+// org. Reserved types (DEFINITION, THUMBNAIL) are never returned. Empty input gives an empty map.
+func (r *DocumentRepo) GetDocumentsByHandles(artifactUUID string, handles []string, orgUUID string) (map[string]*model.Document, error) {
 	if len(handles) == 0 {
-		return map[string]string{}, nil
+		return map[string]*model.Document{}, nil
 	}
 	placeholders := make([]string, len(handles))
-	args := make([]interface{}, 0, len(handles)+2)
+	reservedPlaceholders := make([]string, len(constants.ReservedAPIDocumentTypes))
+	args := make([]interface{}, 0, len(handles)+len(reservedPlaceholders)+2)
 	for i, h := range handles {
 		placeholders[i] = "?"
 		args = append(args, h)
 	}
 	args = append(args, artifactUUID, orgUUID)
+	for i, t := range constants.ReservedAPIDocumentTypes {
+		reservedPlaceholders[i] = "?"
+		args = append(args, t)
+	}
 	query := fmt.Sprintf(`
-		SELECT handle, uuid
+		SELECT uuid, handle, type, COALESCE(file_name, '')
 		FROM api_documents
 		WHERE handle IN (%s) AND artifact_uuid = ? AND organization_uuid = ?
-	`, strings.Join(placeholders, ","))
+		  AND type NOT IN (%s)
+	`, strings.Join(placeholders, ","), strings.Join(reservedPlaceholders, ", "))
 	rows, err := r.db.Query(r.db.Rebind(query), args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve document handles: %w", err)
 	}
 	defer rows.Close()
-	m := make(map[string]string)
+	m := make(map[string]*model.Document)
 	for rows.Next() {
-		var handle, id string
-		if err := rows.Scan(&handle, &id); err != nil {
+		doc := &model.Document{}
+		if err := rows.Scan(&doc.ID, &doc.Handle, &doc.Type, &doc.FileName); err != nil {
 			return nil, err
 		}
-		m[handle] = id
+		m[doc.Handle] = doc
 	}
 	return m, rows.Err()
 }
 
-// GetDocumentHandlesByUUIDs is the inverse of GetDocumentUUIDsByHandles, for
+// GetDocumentHandlesByUUIDs is the inverse of GetDocumentsByHandles, for
 // reconstructing a docIds response from stored api_publication_doc_mappings
 // rows. Scoped to the organization only — a mapping row's doc_uuid already
 // came from that same artifact's own resolved set. Returns an empty map for

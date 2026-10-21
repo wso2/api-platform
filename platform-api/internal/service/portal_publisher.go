@@ -45,9 +45,19 @@ type PortalPublisher interface {
 	// follow the same contract as Publish.
 	CreateMissingPlans(ctx context.Context, portal *model.APIPortal, plans []*model.SubscriptionPlan) error
 
+	// PublishContent adds the files in content to apiHandle's listing on portal, replacing
+	// any with the same path; nothing else is removed. Errors follow the same contract as
+	// Publish.
+	PublishContent(ctx context.Context, portal *model.APIPortal, apiHandle string, content *PortalContent) error
+
 	// Deprecate marks apiHandle's listing on portal as deprecated, re-sending live
 	// with only the status changed. Errors follow the same contract as Publish.
 	Deprecate(ctx context.Context, portal *model.APIPortal, apiType, apiHandle string, live *model.Publication) error
+}
+
+// PortalContent is what PublishContent pushes: a ZIP in the layout the portal reads.
+type PortalContent struct {
+	Archive []byte
 }
 
 // PortalConflictError signals that the API Portal rejected a request and will

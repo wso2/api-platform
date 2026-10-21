@@ -63,6 +63,10 @@ func (alwaysSucceedsPortalPublisher) Deprecate(_ context.Context, _ *model.APIPo
 	return nil
 }
 
+func (alwaysSucceedsPortalPublisher) PublishContent(_ context.Context, _ *model.APIPortal, _ string, _ *service.PortalContent) error {
+	return nil
+}
+
 // setupPublicationTestEnv creates a full PublicationHandler stack backed by an
 // in-memory SQLite DB, seeded with one org, one rest_apis artifact ("my-api"),
 // one active API Portal ("my-portal") and one subscription plan ("gold") — the
@@ -112,6 +116,7 @@ func setupPublicationTestEnv(t *testing.T) (http.Handler, *database.DB, func()) 
 		repository.NewPublicationRepo(db),
 		alwaysSucceedsPortalPublisher{},
 		time.Minute,
+		0,
 		slog.Default(),
 	)
 	h := NewPublicationHandler(publicationService, identityService, 0, 0, slog.Default())

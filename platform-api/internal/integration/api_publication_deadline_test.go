@@ -62,6 +62,11 @@ func (d *deadlineRecorder) Deprecate(ctx context.Context, _ *model.APIPortal, _ 
 	return nil
 }
 
+func (d *deadlineRecorder) PublishContent(ctx context.Context, _ *model.APIPortal, _ string, _ *service.PortalContent) error {
+	d.record("content", ctx)
+	return nil
+}
+
 // stalledPortal never answers: every call waits for its context to end.
 type stalledPortal struct{}
 
@@ -85,6 +90,11 @@ func (stalledPortal) Deprecate(ctx context.Context, _ *model.APIPortal, _ string
 	return ctx.Err()
 }
 
+func (stalledPortal) PublishContent(ctx context.Context, _ *model.APIPortal, _ string, _ *service.PortalContent) error {
+	<-ctx.Done()
+	return ctx.Err()
+}
+
 const stalledOperationTimeout = 100 * time.Millisecond
 
 func TestPublicationOperations_PortalCallsShareOneDeadline(t *testing.T) {
@@ -97,8 +107,8 @@ func TestPublicationOperations_PortalCallsShareOneDeadline(t *testing.T) {
 
 	started := time.Now()
 	publishedListing(t, it, svc, g)
-	if len(portal.deadlines) != 2 || !portal.deadlines["plans"].Equal(portal.deadlines["publish"]) {
-		t.Fatalf("[%s] want the plan step and the push under the same deadline, got %v", it.driver, portal.deadlines)
+	if len(portal.deadlines) != 3 || !portal.deadlines["plans"].Equal(portal.deadlines["publish"]) || !portal.deadlines["content"].Equal(portal.deadlines["publish"]) {
+		t.Fatalf("[%s] want the plan step, the listing push and the content push under the same deadline, got %v", it.driver, portal.deadlines)
 	}
 	assertDeadlineWithin(t, it, "publish", portal.deadlines["publish"], started, publicationTestOperationTimeout)
 
