@@ -1091,10 +1091,13 @@ func otelGenAIProviderName(templateName string) string {
 //
 // Gemini's native API names the method after a colon on the model
 // (/models/{model}:generateContent), so its routes are matched on that suffix.
+// Bedrock's Converse API (/model/{id}/converse, /converse-stream) is chat; its
+// /invoke serves chat and embedding models alike, so it is left unclassified.
 func otelGenAIOperationName(route string) string {
 	r := strings.ToLower(route)
 	switch {
-	case strings.Contains(r, "/chat/completions"), strings.Contains(r, "/messages"):
+	case strings.Contains(r, "/chat/completions"), strings.Contains(r, "/messages"),
+		strings.Contains(r, "/converse"):
 		return "chat"
 	case strings.Contains(r, "/embeddings"),
 		strings.Contains(r, ":embedcontent"), strings.Contains(r, ":batchembedcontents"):

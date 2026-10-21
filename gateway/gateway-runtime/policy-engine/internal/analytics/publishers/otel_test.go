@@ -369,6 +369,9 @@ func TestBuildRecordAIRouteKeepsGenAIOperation(t *testing.T) {
 		"/v1beta/models/gemini-2.5-pro:streamGenerateContent":  "generate_content",
 		"/v1beta/models/text-embedding-004:embedContent":       "embeddings",
 		"/v1beta/models/text-embedding-004:batchEmbedContents": "embeddings",
+		// Bedrock's Converse API is chat.
+		"/model/us.anthropic.claude-sonnet-4-5-20250929-v1:0/converse":        "chat",
+		"/model/us.anthropic.claude-sonnet-4-5-20250929-v1:0/converse-stream": "chat",
 	} {
 		t.Run(route, func(t *testing.T) {
 			event := restEvent()

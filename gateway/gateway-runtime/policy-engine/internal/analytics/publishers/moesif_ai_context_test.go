@@ -46,14 +46,16 @@ func TestMoesifAIProvider(t *testing.T) {
 
 func TestAIContextBlock_ModelType(t *testing.T) {
 	tests := map[string]string{
-		"/openai/v1/chat/completions":                         "chat",
-		"/anthropic/v1/messages":                              "chat",
-		"/v1beta/models/gemini-2.5-pro:generateContent":       "chat",
-		"/v1beta/models/gemini-2.5-pro:streamGenerateContent": "chat",
-		"/v1beta/models/text-embedding-004:embedContent":      "embeddings",
-		"/openai/v1/completions":                              "completion",
-		"/openai/v1/embeddings":                               "embeddings",
-		"/bedrock/model/anthropic.claude-v2/invoke":           "",
+		"/openai/v1/chat/completions":                                                 "chat",
+		"/anthropic/v1/messages":                                                      "chat",
+		"/v1beta/models/gemini-2.5-pro:generateContent":                               "chat",
+		"/v1beta/models/gemini-2.5-pro:streamGenerateContent":                         "chat",
+		"/v1beta/models/text-embedding-004:embedContent":                              "embeddings",
+		"/openai/v1/completions":                                                      "completion",
+		"/openai/v1/embeddings":                                                       "embeddings",
+		"/bedrock/model/us.anthropic.claude-sonnet-4-5-20250929-v1:0/converse":        "chat",
+		"/bedrock/model/us.anthropic.claude-sonnet-4-5-20250929-v1:0/converse-stream": "chat",
+		"/bedrock/model/anthropic.claude-v2/invoke":                                   "",
 		"": "",
 	}
 	for route, want := range tests {
