@@ -188,6 +188,44 @@ func TestEmptyKeyringCannotSign(t *testing.T) {
 	}
 }
 
+// sdksigning.Install stores any non-nil interface value, so a nil *Keyring
+// counts as installed. Every call a policy can make must then behave like an
+// empty keyring instead of panicking.
+func TestNilKeyringInstalledBehavesAsEmpty(t *testing.T) {
+	var kr *Keyring
+	sdksigning.Install(kr)
+	t.Cleanup(func() { sdksigning.Install(nil) })
+
+	if sdksigning.Available() {
+		t.Fatal("Available() with a nil keyring")
+	}
+	if _, ok := sdksigning.ActiveKey(); ok {
+		t.Fatal("ActiveKey() reported a key for a nil keyring")
+	}
+	if _, _, err := sdksigning.Sign([]byte("x")); !errors.Is(err, sdksigning.ErrNotConfigured) {
+		t.Fatalf("Sign err = %v, want ErrNotConfigured", err)
+	}
+	if _, _, err := sdksigning.SignJWT(map[string]any{"sub": "x"}); !errors.Is(err, sdksigning.ErrNotConfigured) {
+		t.Fatalf("SignJWT err = %v, want ErrNotConfigured", err)
+	}
+	if _, _, err := sdksigning.SignDetachedJWS([]byte("x")); !errors.Is(err, sdksigning.ErrNotConfigured) {
+		t.Fatalf("SignDetachedJWS err = %v, want ErrNotConfigured", err)
+	}
+
+	empty, err := NewKeyring(Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantBody, wantETag := empty.JWKS()
+	body, etag := sdksigning.JWKS()
+	if string(body) != `{"keys":[]}` || string(body) != string(wantBody) || etag != wantETag {
+		t.Fatalf("JWKS() = %s %s, want %s %s", body, etag, wantBody, wantETag)
+	}
+	if got := sdksigning.JWKSCacheMaxAge(); got != sdksigning.DefaultJWKSCacheMaxAge {
+		t.Fatalf("JWKSCacheMaxAge() = %s", got)
+	}
+}
+
 // Options is a plain struct, so the engine must not rely on the SDK option
 // builders alone to keep reserved headers out.
 func TestReservedHeadersRejectedInRawOptions(t *testing.T) {

@@ -40,6 +40,9 @@ func buildJWKS(keys []PublicJWK) (body []byte, etag string, err error) {
 	return body, jwksETag(body), nil
 }
 
+// emptyJWKS is the JWK Set of a keyring with no keys, served by a nil Keyring.
+var emptyJWKS, emptyJWKSETag, _ = buildJWKS(nil)
+
 // jwksETag is the quoted strong entity tag of a JWKS body: the first 128 bits
 // of its SHA-256, hex-encoded.
 func jwksETag(body []byte) string {
