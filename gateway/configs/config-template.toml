@@ -1318,6 +1318,9 @@ pricing_file = "/etc/policy-engine/llm-pricing/model_prices.json"
 # thumbprint of the public key, which is derived from the private key (no
 # certificate needed). Key files must sit under the config file-source allowlist
 # (/etc/gateway-runtime, /secrets/gateway-runtime) with mode 0400 or 0440.
+# Use `path`: this file is also read by the gateway-controller, which expands
+# every {{ file }}/{{ env }} token in it, so an `inline` key supplied through a
+# token would be read by the controller as well.
 #
 # Rotation: (1) add the new key without `active` and roll out; (2) after at least
 # jwks_cache_max_age, move `active = true` to it and roll out; (3) after the
@@ -1332,10 +1335,10 @@ pricing_file = "/etc/policy-engine/llm-pricing/model_prices.json"
 # [signing]
 # jwks_endpoint_enabled = true
 # jwks_cache_max_age = "5m"
-# public_jwks_url = "https://gateway.example.com/.well-known/jwks.json"   # optional, sent as jku when a policy asks
+# public_jwks_url = "https://gateway.example.com/.well-known/jwks.json"   # optional, https only; sent as jku when a policy asks
 #
 # [[signing.keys]]
-# path = "/secrets/gateway-runtime/signing/current.key"   # or: inline = '{{ file "/secrets/gateway-runtime/signing/current.key" }}'
+# path = "/secrets/gateway-runtime/signing/current.key"
 # active = true
 #
 # [[signing.keys]]

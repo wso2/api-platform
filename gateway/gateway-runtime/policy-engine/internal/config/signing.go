@@ -52,7 +52,9 @@ type SigningConfig struct {
 	// Zero means DefaultJWKSCacheMaxAge; read it through EffectiveJWKSCacheMaxAge.
 	JWKSCacheMaxAge time.Duration `koanf:"jwks_cache_max_age"`
 	// PublicJWKSURL is the externally reachable JWKS URL, advertised as "jku"
-	// in signatures whose policy asks for it. Optional.
+	// in signatures whose policy asks for it. Optional; https only, because a
+	// verifier that follows jku must fetch it with integrity protection
+	// (RFC 7515 §4.1.2).
 	PublicJWKSURL string `koanf:"public_jwks_url"`
 	// Keys lists every signing key. Exactly one is marked active and signs;
 	// all of them are published so signatures made by any of them verify.
@@ -64,8 +66,10 @@ type SigningKeyConfig struct {
 	// Path is a PEM private key file. It must be inside the config file-source
 	// allowlist and not readable or writable by "other".
 	Path string `koanf:"path"`
-	// Inline is the PEM private key itself, typically supplied through a
-	// {{ file }} or {{ env }} token rather than written into config.toml.
+	// Inline is the PEM private key itself. Prefer Path: config.toml is also
+	// read by the gateway-controller, which expands every {{ file }} and
+	// {{ env }} token, so a key supplied inline through a token is read by the
+	// controller too.
 	Inline string `koanf:"inline"`
 	// Kid overrides the default key ID (the RFC 7638 JWK thumbprint).
 	Kid string `koanf:"kid"`
@@ -94,8 +98,8 @@ func (c *Config) validateSigningConfig() error {
 	}
 	if s.PublicJWKSURL != "" {
 		u, err := url.Parse(s.PublicJWKSURL)
-		if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" || u.User != nil {
-			return fmt.Errorf("signing.public_jwks_url must be an absolute http(s) URL without credentials")
+		if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil {
+			return fmt.Errorf("signing.public_jwks_url must be an absolute https URL without credentials")
 		}
 	}
 
