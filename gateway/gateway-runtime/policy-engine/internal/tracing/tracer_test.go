@@ -19,7 +19,10 @@
 package tracing
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"log/slog"
 	"net"
 	"sync"
 	"testing"
@@ -392,6 +395,47 @@ func TestNewSampler_FollowsParentDecision(t *testing.T) {
 			_, span = tracer.Start(childOf(trace.FlagsSampled), "sampled-parent")
 			span.End()
 			assert.Len(t, sr.Ended(), 1, "a parent with flag 01 must be recorded")
+		})
+	}
+}
+
+func TestTraceLogHandler(t *testing.T) {
+	traceID, _ := trace.TraceIDFromHex("4bf92f3577b34da6a3ce929d0e0e4736")
+	spanID, _ := trace.SpanIDFromHex("00f067aa0ba902b7")
+	withSpan := func(flags trace.TraceFlags) context.Context {
+		return trace.ContextWithSpanContext(context.Background(), trace.NewSpanContext(trace.SpanContextConfig{
+			TraceID:    traceID,
+			SpanID:     spanID,
+			TraceFlags: flags,
+		}))
+	}
+
+	for _, tc := range []struct {
+		name    string
+		log     func(*slog.Logger)
+		stamped bool
+	}{
+		{"error with a sampled span", func(l *slog.Logger) { l.ErrorContext(withSpan(trace.FlagsSampled), "boom") }, true},
+		{"error with an unsampled span", func(l *slog.Logger) { l.ErrorContext(withSpan(0), "boom") }, true},
+		{"error through a derived logger", func(l *slog.Logger) {
+			l.With("component", "test").ErrorContext(withSpan(trace.FlagsSampled), "boom")
+		}, true},
+		{"error without a span", func(l *slog.Logger) { l.Error("boom") }, false},
+		{"warn with a span", func(l *slog.Logger) { l.WarnContext(withSpan(trace.FlagsSampled), "boom") }, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			tc.log(slog.New(NewTraceLogHandler(slog.NewJSONHandler(&buf, nil))))
+
+			var record map[string]any
+			require.NoError(t, json.Unmarshal(buf.Bytes(), &record))
+			if !tc.stamped {
+				assert.NotContains(t, record, "trace_id")
+				assert.NotContains(t, record, "span_id")
+				return
+			}
+			assert.Equal(t, traceID.String(), record["trace_id"])
+			assert.Equal(t, spanID.String(), record["span_id"])
 		})
 	}
 }
