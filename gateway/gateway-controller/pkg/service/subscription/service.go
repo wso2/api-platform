@@ -24,6 +24,7 @@ package subscription
 import (
 	"fmt"
 	"log/slog"
+	"regexp"
 	"strings"
 
 	"github.com/google/uuid"
@@ -80,6 +81,12 @@ func NewSubscriptionService(db storage.Storage, resources *utils.SubscriptionRes
 	}
 }
 
+// MaxExternalRefIDLength matches the width of the subscriptions.uuid column.
+const MaxExternalRefIDLength = 64
+
+// externalRefIDPattern restricts caller-supplied subscription IDs to characters that are safe in a URL path segment.
+var externalRefIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
+
 // Subscriptions
 
 // ListFilter narrows a subscription listing. APIID is an already-resolved
@@ -115,6 +122,17 @@ func (s *SubscriptionService) Create(params CreateParams) (*Result, error) {
 	if strings.TrimSpace(req.SubscriptionToken) == "" {
 		return nil, &ValidationError{Message: "subscriptionToken is required"}
 	}
+	// An empty externalRefId is treated as absent, like the other optional identifiers on this request.
+	externalRefID := ""
+	if req.ExternalRefId != nil && *req.ExternalRefId != "" {
+		externalRefID = *req.ExternalRefId
+		if len(externalRefID) > MaxExternalRefIDLength || !externalRefIDPattern.MatchString(externalRefID) {
+			return nil, &ValidationError{
+				Message: fmt.Sprintf("externalRefId must be 1-%d characters of letters, digits, '.', '_' or '-', "+
+					"starting with a letter or digit", MaxExternalRefIDLength),
+			}
+		}
+	}
 
 	apiID, err := s.ResolveAPIID(req.ApiId)
 	if err != nil {
@@ -141,8 +159,12 @@ func (s *SubscriptionService) Create(params CreateParams) (*Result, error) {
 		appID = req.ApplicationId
 	}
 
+	subID := uuid.New().String()
+	if externalRefID != "" {
+		subID = externalRefID
+	}
 	sub := &models.Subscription{
-		ID:                    uuid.New().String(),
+		ID:                    subID,
 		APIID:                 apiID,
 		ApplicationID:         appID,
 		SubscriptionPlanID:    req.SubscriptionPlanId,
@@ -161,44 +183,82 @@ func (s *SubscriptionService) Create(params CreateParams) (*Result, error) {
 
 // UpdateParams holds parameters for the Update operation.
 type UpdateParams struct {
-	ID            string
-	Request       api.SubscriptionUpdateRequest
+	// Existing is the stored subscription, as Get returned it. The caller reads
+	// it first (the REST handler before it reads the request body), so a
+	// missing subscription is reported before anything else. Update changes it
+	// in place.
+	Existing *models.Subscription
+	Request  api.SubscriptionUpdateRequest
+	// Fields holds the request's top-level keys. The generated pointer fields
+	// cannot tell an omitted subscriptionPlanId from an explicit null, and the
+	// two mean different things.
+	Fields        map[string]interface{}
 	CorrelationID string
 	Logger        *slog.Logger
 }
 
-// Update applies a partial update to an existing subscription.
-//
-// api.SubscriptionUpdateRequest carries exactly one field, Status, so this is a
-// status change and nothing else: the API, application, plan and billing
-// identifiers of an existing subscription cannot be re-pointed.
+// Update applies a partial update to an existing subscription: its status, its
+// plan and its token. Omitted fields are left unchanged.
 func (s *SubscriptionService) Update(params UpdateParams) (*Result, error) {
 	log := params.Logger
 	if log == nil {
 		log = slog.Default()
 	}
+	sub := params.Existing
+	req := params.Request
+	_, planIDPresent := params.Fields["subscriptionPlanId"]
 
-	existing, err := s.loadSubscription(params.ID)
-	if err != nil {
-		return nil, err
-	}
-
-	if params.Request.Status != nil {
-		parsed, err := parseSubscriptionStatus(string(*params.Request.Status))
+	// Validate every field before changing sub, so a rejected request leaves it untouched.
+	var newStatus *models.SubscriptionStatus
+	if req.Status != nil {
+		st, err := parseSubscriptionStatus(string(*req.Status))
 		if err != nil {
 			return nil, err
 		}
-		existing.Status = parsed
+		newStatus = &st
 	}
 
-	if err := s.resources.UpdateSubscription(existing, params.CorrelationID, log); err != nil {
+	// An omitted subscriptionPlanId leaves the plan unchanged; an explicit null or empty string removes it.
+	var newPlanID *string
+	if planIDPresent && req.SubscriptionPlanId != nil && strings.TrimSpace(*req.SubscriptionPlanId) != "" {
+		planID := strings.TrimSpace(*req.SubscriptionPlanId)
+		newPlanID = &planID
+		// Re-validate only on an actual change, so an unchanged plan that was later deactivated
+		// doesn't block an unrelated status or token update.
+		if sub.SubscriptionPlanID == nil || *sub.SubscriptionPlanID != planID {
+			if err := s.validatePlanForAPI(planID, sub.APIID, log); err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	newToken := ""
+	if req.SubscriptionToken != nil {
+		newToken = strings.TrimSpace(*req.SubscriptionToken)
+		if newToken == "" {
+			return nil, &ValidationError{Message: "subscriptionToken must not be empty"}
+		}
+	}
+
+	if newStatus != nil {
+		sub.Status = *newStatus
+	}
+	if planIDPresent {
+		sub.SubscriptionPlanID = newPlanID
+	}
+	if newToken != "" {
+		// UpdateSubscription re-hashes a non-empty plain token; otherwise it keeps the stored hash.
+		sub.SubscriptionToken = newToken
+	}
+
+	if err := s.resources.UpdateSubscription(sub, params.CorrelationID, log); err != nil {
 		if storage.IsNotFoundError(err) {
 			return nil, ErrSubscriptionNotFound
 		}
 		return nil, &OpError{Op: OpUpdate, Cause: err}
 	}
 
-	return &Result{Subscription: existing}, nil
+	return &Result{Subscription: sub}, nil
 }
 
 // Get retrieves a subscription by ID.
@@ -252,7 +312,7 @@ func (s *SubscriptionService) ResolveAPIID(identifier string) (string, error) {
 	cfgByID, err := s.db.GetConfig(identifier)
 	if err != nil {
 		if !storage.IsNotFoundError(err) {
-			return "", &OpError{Op: OpResolve, Cause: err}
+			return "", &OpError{Op: OpResolveByID, Cause: err}
 		}
 	} else if cfgByID != nil {
 		if cfgByID.Kind != string(api.RestAPIKindRestApi) {
@@ -266,7 +326,7 @@ func (s *SubscriptionService) ResolveAPIID(identifier string) (string, error) {
 		if storage.IsNotFoundError(err) {
 			return "", fmt.Errorf("%w: %s", ErrAPINotFound, identifier)
 		}
-		return "", &OpError{Op: OpResolve, Cause: err}
+		return "", &OpError{Op: OpResolveByHandle, Cause: err}
 	}
 	if cfg == nil {
 		return "", fmt.Errorf("%w: %s", ErrAPINotFound, identifier)
@@ -275,13 +335,11 @@ func (s *SubscriptionService) ResolveAPIID(identifier string) (string, error) {
 	return cfg.UUID, nil
 }
 
-// validatePlanForAPI checks that the plan exists, is ACTIVE, and — when the API
-// declares an explicit plan list — that it is one of the plans that API offers.
-// An API with no declared list accepts any active plan.
+// validatePlanForAPI checks that the plan exists, is ACTIVE and is enabled for the API.
 func (s *SubscriptionService) validatePlanForAPI(planID, apiID string, log *slog.Logger) error {
 	plan, err := s.db.GetSubscriptionPlanByID(planID, "")
 	if err != nil || plan == nil {
-		log.Warn("Subscription plan not found for subscription creation",
+		log.Warn("Subscription plan not found for subscription",
 			slog.String("subscription_plan_id", planID),
 			slog.String("api_id", apiID))
 		return &ValidationError{Message: "Subscription plan not found or not enabled"}
@@ -289,33 +347,31 @@ func (s *SubscriptionService) validatePlanForAPI(planID, apiID string, log *slog
 	if plan.Status != models.SubscriptionPlanStatusActive {
 		return &ValidationError{Message: "Subscription plan is not active"}
 	}
-
 	cfg, err := s.db.GetConfig(apiID)
 	if err != nil || cfg == nil {
 		log.Error("Failed to load API configuration for subscription plan validation",
 			slog.String("api_id", apiID), slog.Any("error", err))
 		return &OpError{Op: OpValidate, Cause: err}
 	}
-	if cfg.Kind != string(api.RestAPIKindRestApi) {
-		return nil
-	}
-
-	restAPI, ok := cfg.Configuration.(api.RestAPI)
-	if !ok {
-		return nil
-	}
-	if restAPI.Spec.SubscriptionPlans == nil || len(*restAPI.Spec.SubscriptionPlans) == 0 {
-		return nil
-	}
-	for _, name := range *restAPI.Spec.SubscriptionPlans {
-		if strings.EqualFold(name, plan.PlanName) {
-			return nil
+	if cfg.Kind == string(api.RestAPIKindRestApi) {
+		if restAPI, ok := cfg.Configuration.(api.RestAPI); ok {
+			if restAPI.Spec.SubscriptionPlans != nil && len(*restAPI.Spec.SubscriptionPlans) > 0 {
+				enabled := false
+				for _, name := range *restAPI.Spec.SubscriptionPlans {
+					if strings.EqualFold(name, plan.PlanName) {
+						enabled = true
+						break
+					}
+				}
+				if !enabled {
+					return &ValidationError{
+						Message: fmt.Sprintf("Subscription plan %q is not enabled for this API", plan.PlanName),
+					}
+				}
+			}
 		}
 	}
-
-	return &ValidationError{
-		Message: fmt.Sprintf("Subscription plan %q is not enabled for this API", plan.PlanName),
-	}
+	return nil
 }
 
 // loadSubscription reads one subscription, normalising both a not-found error
@@ -419,71 +475,102 @@ func (s *SubscriptionService) CreatePlan(params CreatePlanParams) (*PlanResult, 
 
 // UpdatePlanParams holds parameters for the UpdatePlan operation.
 type UpdatePlanParams struct {
-	ID            string
-	Request       api.SubscriptionPlanUpdateRequest
+	// Existing is the stored plan, as GetPlan returned it. The caller reads it
+	// first (the REST handler before it reads the request body).
+	Existing *models.SubscriptionPlan
+	Request  api.SubscriptionPlanUpdateRequest
+	// Fields holds the request's top-level keys, so an explicit null can be
+	// told apart from an omitted field.
+	Fields        map[string]interface{}
 	CorrelationID string
 	Logger        *slog.Logger
 }
 
 // UpdatePlan applies a partial update to an existing subscription plan.
+// Omitted fields are left unchanged; an explicit null removes billingPlan,
+// expiryTime or, sent for both throttle fields, the throttle limit.
 func (s *SubscriptionService) UpdatePlan(params UpdatePlanParams) (*PlanResult, error) {
 	log := params.Logger
 	if log == nil {
 		log = slog.Default()
 	}
-
-	existing, err := s.loadPlan(params.ID)
-	if err != nil {
-		return nil, err
-	}
 	req := params.Request
+	fields := params.Fields
 
-	// Throttle limits are validated before any field is applied, matching the
-	// order the REST handler used: a bad limit rejects the whole request rather
-	// than half-applying it.
-	var unitStr *string
-	if req.ThrottleLimitUnit != nil {
-		unit := string(*req.ThrottleLimitUnit)
-		unitStr = &unit
-	}
-	if err := validateThrottleLimits(req.ThrottleLimitCount, unitStr); err != nil {
-		return nil, &ValidationError{Message: err.Error()}
-	}
+	// Apply the changes to a copy, so a rejected request leaves the stored plan untouched.
+	updated := *params.Existing
 
 	if req.PlanName != nil {
 		trimmed := strings.TrimSpace(*req.PlanName)
 		if trimmed == "" {
 			return nil, &ValidationError{Message: "planName cannot be empty"}
 		}
-		existing.PlanName = trimmed
+		updated.PlanName = trimmed
 	}
-	if req.BillingPlan != nil {
-		existing.BillingPlan = req.BillingPlan
+
+	// Omitted fields stay unchanged; an explicit null (or empty string) removes billingPlan.
+	if _, sent := fields["billingPlan"]; sent {
+		if req.BillingPlan == nil || strings.TrimSpace(*req.BillingPlan) == "" {
+			updated.BillingPlan = nil
+		} else {
+			billingPlan := *req.BillingPlan
+			updated.BillingPlan = &billingPlan
+		}
 	}
+
 	if req.StopOnQuotaReach != nil {
-		existing.StopOnQuotaReach = *req.StopOnQuotaReach
+		updated.StopOnQuotaReach = *req.StopOnQuotaReach
 	}
-	if req.ThrottleLimitCount != nil && req.ThrottleLimitUnit != nil {
-		unit := string(*req.ThrottleLimitUnit)
-		existing.ThrottleLimitCount = req.ThrottleLimitCount
-		existing.ThrottleLimitUnit = &unit
+
+	// The throttle limit is a pair: both fields are set together, or both sent as null to make the
+	// plan unlimited.
+	_, countSent := fields["throttleLimitCount"]
+	_, unitSent := fields["throttleLimitUnit"]
+	if countSent || unitSent {
+		countCleared := countSent && req.ThrottleLimitCount == nil
+		unitCleared := unitSent && (req.ThrottleLimitUnit == nil || *req.ThrottleLimitUnit == "")
+		switch {
+		case countCleared && unitCleared:
+			updated.ThrottleLimitCount = nil
+			updated.ThrottleLimitUnit = nil
+		case countCleared || unitCleared:
+			return nil, &ValidationError{Message: "throttleLimitCount and throttleLimitUnit must be set or cleared together"}
+		default:
+			var unitStr *string
+			if req.ThrottleLimitUnit != nil {
+				unit := string(*req.ThrottleLimitUnit)
+				unitStr = &unit
+			}
+			if err := validateThrottleLimits(req.ThrottleLimitCount, unitStr); err != nil {
+				return nil, &ValidationError{Message: err.Error()}
+			}
+			count := *req.ThrottleLimitCount
+			updated.ThrottleLimitCount = &count
+			updated.ThrottleLimitUnit = unitStr
+		}
 	}
-	if req.ExpiryTime != nil {
-		existing.ExpiryTime = req.ExpiryTime
+
+	// Omitted expiryTime stays unchanged; an explicit null removes it.
+	if _, sent := fields["expiryTime"]; sent {
+		updated.ExpiryTime = req.ExpiryTime
 	}
+
 	if req.Status != nil {
 		parsed, err := parseSubscriptionPlanStatus(string(*req.Status))
 		if err != nil {
 			return nil, err
 		}
-		existing.Status = parsed
+		updated.Status = parsed
 	}
 
-	if err := s.resources.UpdateSubscriptionPlan(existing, params.CorrelationID, log); err != nil {
+	if err := s.resources.UpdateSubscriptionPlan(&updated, params.CorrelationID, log); err != nil {
+		if storage.IsNotFoundError(err) {
+			return nil, ErrPlanNotFound
+		}
 		return nil, &OpError{Op: OpUpdate, Cause: err}
 	}
 
-	return &PlanResult{Plan: existing}, nil
+	return &PlanResult{Plan: &updated}, nil
 }
 
 // GetPlan retrieves a subscription plan by ID.

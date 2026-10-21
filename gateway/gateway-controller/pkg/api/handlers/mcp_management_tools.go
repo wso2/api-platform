@@ -265,7 +265,7 @@ type certificateMatchInput struct {
 type manageSubscriptionsInput struct {
 	Type    string            `json:"type" jsonschema:"which resource to act on: Subscription or SubscriptionPlan"`
 	Action  string            `json:"action" jsonschema:"the operation to perform: list, get, apply or delete"`
-	ID      string            `json:"id,omitempty" jsonschema:"the server-generated UUID of the subscription or plan, exactly as the list action returns it — never an API handle, an application id, or a plan name. Required for get and delete. On apply, present means update and absent means create"`
+	ID      string            `json:"id,omitempty" jsonschema:"the id of the subscription or plan, exactly as the list action returns it: a server-generated UUID, or for a subscription created with spec.externalRefId, that value. Never an API handle, an application id, or a plan name. Required for get and delete. On apply, present means update and absent means create"`
 	Spec    *subscriptionSpec `json:"spec,omitempty" jsonschema:"the fields to write on apply. On the list action, apiId, applicationId and status inside this object act as filters instead — they are NOT top-level arguments, e.g. {\"type\":\"Subscription\",\"action\":\"list\",\"spec\":{\"apiId\":\"petstore\"}}"`
 	Confirm bool              `json:"confirm,omitempty" jsonschema:"must be true for delete"`
 }
@@ -275,23 +275,61 @@ type manageSubscriptionsInput struct {
 // depends on "type" — stated per field so the model does not have to infer it.
 type subscriptionSpec struct {
 	// Subscription fields.
-	ApiId                 *string `json:"apiId,omitempty" jsonschema:"Subscription only: the API this subscription is against, as a deployment id or a handle (metadata.name). Required when creating. On the list action, narrows the result to one API"`
-	ApplicationId         *string `json:"applicationId,omitempty" jsonschema:"Subscription only: application identifier. On the list action, narrows the result to one application"`
-	SubscriptionToken     *string `json:"subscriptionToken,omitempty" jsonschema:"Subscription only: the opaque token the client will present. Required when creating. Ask the user for it — never invent one"`
-	SubscriptionPlanId    *string `json:"subscriptionPlanId,omitempty" jsonschema:"Subscription only: the plan's UUID. Unlike apiId, a plan name is NOT accepted. If you have the name rather than the UUID, call this tool with type=SubscriptionPlan and action=list, find the entry whose planName matches, and pass its id field. A RestApi manifest's spec.subscriptionPlans lists plans by name, so any value taken from there needs that lookup first. The plan must be ACTIVE, and if the API declares spec.subscriptionPlans its name must appear there"`
-	BillingCustomerId     *string `json:"billingCustomerId,omitempty" jsonschema:"Subscription only: billing customer identifier, for analytics"`
-	BillingSubscriptionId *string `json:"billingSubscriptionId,omitempty" jsonschema:"Subscription only: billing subscription identifier, for analytics"`
+	ApiId                 *string `json:"apiId,omitempty" jsonschema:"Subscription only: the API this subscription is against, as a deployment id or a handle (metadata.name). Required when creating, and cannot be changed later. On the list action, narrows the result to one API"`
+	ExternalRefId         *string `json:"externalRefId,omitempty" jsonschema:"Subscription only, create only: an id of the caller's own to use as the subscription's id instead of a generated UUID, e.g. the id the subscription has in another system. 1-64 letters, digits, '.', '_' or '-', starting with a letter or digit. Leave it out unless the user gave one"`
+	ApplicationId         *string `json:"applicationId,omitempty" jsonschema:"Subscription only: application identifier. Set when creating, and cannot be changed later. On the list action, narrows the result to one application"`
+	SubscriptionToken     *string `json:"subscriptionToken,omitempty" jsonschema:"Subscription only: the opaque token the client will present. Required when creating; on update, a new token that replaces the current one. This is a credential: ask the user for it, never invent one, and never repeat it back"`
+	SubscriptionPlanId    *string `json:"subscriptionPlanId,omitempty" jsonschema:"Subscription only: the plan's UUID. Unlike apiId, a plan name is NOT accepted. If you have the name rather than the UUID, call this tool with type=SubscriptionPlan and action=list, find the entry whose planName matches, and pass its id field. A RestApi manifest's spec.subscriptionPlans lists plans by name, so any value taken from there needs that lookup first. The plan must be ACTIVE, and if the API declares spec.subscriptionPlans its name must appear there. On update, moves the subscription to this plan; null or an empty string removes its plan"`
+	BillingCustomerId     *string `json:"billingCustomerId,omitempty" jsonschema:"Subscription only: billing customer identifier, for analytics. Set when creating, and cannot be changed later"`
+	BillingSubscriptionId *string `json:"billingSubscriptionId,omitempty" jsonschema:"Subscription only: billing subscription identifier, for analytics. Set when creating, and cannot be changed later"`
 
 	// SubscriptionPlan fields.
 	PlanName           *string `json:"planName,omitempty" jsonschema:"SubscriptionPlan only: the plan's name. Required when creating"`
-	BillingPlan        *string `json:"billingPlan,omitempty" jsonschema:"SubscriptionPlan only: associated billing plan identifier"`
+	BillingPlan        *string `json:"billingPlan,omitempty" jsonschema:"SubscriptionPlan only: associated billing plan identifier. On update, null or an empty string removes it"`
 	StopOnQuotaReach   *bool   `json:"stopOnQuotaReach,omitempty" jsonschema:"SubscriptionPlan only: whether to stop serving once the quota is reached. Defaults to true"`
-	ThrottleLimitCount *int    `json:"throttleLimitCount,omitempty" jsonschema:"SubscriptionPlan only: request allowance per unit. Must be positive and supplied together with throttleLimitUnit"`
+	ThrottleLimitCount *int    `json:"throttleLimitCount,omitempty" jsonschema:"SubscriptionPlan only: request allowance per unit. Must be positive and supplied together with throttleLimitUnit. On update, null for both throttleLimitCount and throttleLimitUnit removes the limit"`
 	ThrottleLimitUnit  *string `json:"throttleLimitUnit,omitempty" jsonschema:"SubscriptionPlan only: one of Min, Hour, Day, Month - if no unit or a different unit is given explicitly inform the user and never substitute a different unit silently. Must be supplied together with throttleLimitCount"`
-	ExpiryTime         *string `json:"expiryTime,omitempty" jsonschema:"SubscriptionPlan only: expiry as an RFC 3339 timestamp, e.g. 2027-01-31T23:59:59Z"`
+	ExpiryTime         *string `json:"expiryTime,omitempty" jsonschema:"SubscriptionPlan only: expiry as an RFC 3339 timestamp, e.g. 2027-01-31T23:59:59Z. On update, null removes it"`
 
 	// Shared, with a different set of values per type.
 	Status *string `json:"status,omitempty" jsonschema:"for Subscription one of ACTIVE, INACTIVE, REVOKED; for SubscriptionPlan one of ACTIVE, INACTIVE. On the list action this narrows the result for Subscription only — SubscriptionPlan list ignores every filter and always returns all plans"`
+
+	// sent holds the spec's keys as the caller sent them. See UnmarshalJSON.
+	sent map[string]interface{}
+}
+
+// UnmarshalJSON decodes a spec and also records the keys it carried, as
+// bindRequestBodyWithFields does for the REST API. The pointer fields alone
+// cannot tell a key that was left out from one sent as null, and on update the
+// two mean different things: keep the stored value, or remove it.
+func (s *subscriptionSpec) UnmarshalJSON(data []byte) error {
+	type plain subscriptionSpec
+	var decoded plain
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	var sent map[string]interface{}
+	if err := json.Unmarshal(data, &sent); err != nil {
+		return err
+	}
+	*s = subscriptionSpec(decoded)
+	s.sent = sent
+	return nil
+}
+
+// sentFields returns the spec's keys, in the form the service reads, to tell a
+// field that was sent, from one that was left out. A spec built in code rather
+// than decoded from JSON has no record of its keys, so its non-nil fields count
+// as sent.
+func (s *subscriptionSpec) sentFields() map[string]interface{} {
+	if s.sent != nil {
+		return s.sent
+	}
+	fields := map[string]interface{}{}
+	if body, err := json.Marshal(s); err == nil {
+		_ = json.Unmarshal(body, &fields)
+	}
+	return fields
 }
 
 // Tool registrations
@@ -647,15 +685,25 @@ the API's handle (metadata.name), so the handle you already know is enough.
 
 Creating a Subscription requires spec.apiId and spec.subscriptionToken. The
 token is the credential the client will present; only its hash is stored. Ask
-the user for it — never invent one.
+the user for it — never invent one. spec.externalRefId optionally gives the
+subscription an id of the caller's own, such as the id it has in another
+system, instead of a generated UUID; "id" then takes that value.
 
-Updating a Subscription changes its status and nothing else. The API,
-application, plan and billing identifiers of an existing subscription cannot be
-re-pointed; to change any of those, delete it and create a new one. A
-SubscriptionPlan, by contrast, updates every field in "spec".
+Updating a Subscription can change three things: its status, its plan
+(spec.subscriptionPlanId) and its token (spec.subscriptionToken, which replaces
+the current one). The API, application, externalRefId and billing identifiers
+of an existing subscription cannot be changed; to change any of those, delete
+it and create a new one.
+
+An update changes only the fields "spec" sends. A field left out keeps its
+current value, and a field sent as null removes it: a subscription's
+subscriptionPlanId, or a plan's billingPlan, expiryTime, or throttle limit
+(throttleLimitCount and throttleLimitUnit both null). Send null only when the
+user asked to remove that value.
 
 A plan named in spec.subscriptionPlanId must exist, be ACTIVE, and be one of the
-plans the target API offers, or the subscription is refused.
+plans the target API offers, or the subscription is refused. A plan that
+subscriptions still use cannot be deleted.
 
 Every operation here requires the admin scope. A call you lack the scope for is
 refused at the HTTP layer with a step-up challenge, not by this tool.`,
@@ -1625,28 +1673,40 @@ func (h *McpHandler) manageSubscription(op subAction, in manageSubscriptionsInpu
 	}
 
 	if strings.TrimSpace(in.ID) != "" {
-		req, err := spec.toSubscriptionUpdate()
+		// As PUT /subscriptions/{id}: the stored subscription is read before the
+		// request, so an unknown id is reported first.
+		existing, err := svc.Get(in.ID)
 		if err != nil {
-			return nil, nil, err
+			log.Warn("MCP subscription lookup failed", slog.String("id", in.ID), slog.Any("error", err))
+			return nil, nil, mcpSubscriptionError(op, in.ID, err)
+		}
+		req := spec.toSubscriptionUpdate()
+		if subscriptionRequestTooLarge(req) {
+			return nil, nil, errSubscriptionRequestTooLarge(op)
 		}
 		result, err := svc.Update(subscription.UpdateParams{
-			ID: in.ID, Request: req, CorrelationID: correlationID, Logger: log,
+			Existing: existing.Subscription, Request: req, Fields: spec.sentFields(),
+			CorrelationID: correlationID, Logger: log,
 		})
 		if err != nil {
 			log.Error("MCP subscription update failed", slog.String("id", in.ID), slog.Any("error", err))
 			return nil, nil, mcpSubscriptionError(op, in.ID, err)
 		}
+		// Mirrors PUT /subscriptions/{id}, which never returns the token
 		return nil, map[string]any{
 			"status": "success", "operation": "update", "type": op.Type, "id": in.ID,
 			"resource": subscriptionToResponse(result.Subscription),
-			"notice": "Updating a subscription changes its status only. Every other field is unchanged, " +
-				"whatever the spec contained.",
+			"notice": "An update changes only a subscription's status, plan and token. Its API, application, " +
+				"externalRefId and billing identifiers are unchanged, whatever the spec contained.",
 		}, nil
 	}
 
 	req, err := spec.toSubscriptionCreate()
 	if err != nil {
 		return nil, nil, err
+	}
+	if subscriptionRequestTooLarge(req) {
+		return nil, nil, errSubscriptionRequestTooLarge(op)
 	}
 	result, err := svc.Create(subscription.CreateParams{
 		Request: req, CorrelationID: correlationID, Logger: log,
@@ -1712,12 +1772,23 @@ func (h *McpHandler) manageSubscriptionPlan(op subAction, in manageSubscriptions
 	}
 
 	if strings.TrimSpace(in.ID) != "" {
+		// As PUT /subscription-plans/{id}: the stored plan is read before the
+		// request, so an unknown id is reported first.
+		existing, err := svc.GetPlan(in.ID)
+		if err != nil {
+			log.Warn("MCP subscription plan lookup failed", slog.String("id", in.ID), slog.Any("error", err))
+			return nil, nil, mcpSubscriptionError(op, in.ID, err)
+		}
 		req, err := spec.toPlanUpdate()
 		if err != nil {
 			return nil, nil, err
 		}
+		if subscriptionRequestTooLarge(req) {
+			return nil, nil, errSubscriptionRequestTooLarge(op)
+		}
 		result, err := svc.UpdatePlan(subscription.UpdatePlanParams{
-			ID: in.ID, Request: req, CorrelationID: correlationID, Logger: log,
+			Existing: existing.Plan, Request: req, Fields: spec.sentFields(),
+			CorrelationID: correlationID, Logger: log,
 		})
 		if err != nil {
 			log.Error("MCP subscription plan update failed", slog.String("id", in.ID), slog.Any("error", err))
@@ -1732,6 +1803,9 @@ func (h *McpHandler) manageSubscriptionPlan(op subAction, in manageSubscriptions
 	req, err := spec.toPlanCreate()
 	if err != nil {
 		return nil, nil, err
+	}
+	if subscriptionRequestTooLarge(req) {
+		return nil, nil, errSubscriptionRequestTooLarge(op)
 	}
 	result, err := svc.CreatePlan(subscription.CreatePlanParams{
 		Request: req, CorrelationID: correlationID, Logger: log,
@@ -1756,6 +1830,7 @@ func (h *McpHandler) manageSubscriptionPlan(op subAction, in manageSubscriptions
 
 func (s *subscriptionSpec) toSubscriptionCreate() (api.SubscriptionCreateRequest, error) {
 	req := api.SubscriptionCreateRequest{
+		ExternalRefId:         s.ExternalRefId,
 		ApplicationId:         s.ApplicationId,
 		SubscriptionPlanId:    s.SubscriptionPlanId,
 		BillingCustomerId:     s.BillingCustomerId,
@@ -1773,25 +1848,22 @@ func (s *subscriptionSpec) toSubscriptionCreate() (api.SubscriptionCreateRequest
 	return req, nil
 }
 
-func (s *subscriptionSpec) toSubscriptionUpdate() (api.SubscriptionUpdateRequest, error) {
-	var req api.SubscriptionUpdateRequest
+// toSubscriptionUpdate carries a nil field through as nil: whether the key was
+// left out or sent as null is read from sentFields, as PUT /subscriptions/{id}
+// reads it from the body's keys.
+func (s *subscriptionSpec) toSubscriptionUpdate() api.SubscriptionUpdateRequest {
+	req := api.SubscriptionUpdateRequest{
+		SubscriptionPlanId: s.SubscriptionPlanId,
+		SubscriptionToken:  s.SubscriptionToken,
+	}
 	if status := normalizeSubscriptionStatus(s.Status); status != nil {
 		req.Status = ptr(api.SubscriptionUpdateRequestStatus(*status))
 	}
-	// SubscriptionUpdateRequest carries exactly one field, so a spec with no
-	// status is a no-op write. Refusing is better than reporting success for a
-	// call that changed nothing.
-	if req.Status == nil {
-		return req, fmt.Errorf(
-			"updating a subscription changes its status only, and spec.status was not set; " +
-				"set it to ACTIVE, INACTIVE or REVOKED, or delete and recreate the subscription " +
-				"to change anything else")
-	}
-	return req, nil
+	return req
 }
 
 func (s *subscriptionSpec) toPlanCreate() (api.SubscriptionPlanCreateRequest, error) {
-	expiry, err := parseTimestamp("spec.expiryTime", derefString(s.ExpiryTime))
+	expiry, err := s.planExpiry()
 	if err != nil {
 		return api.SubscriptionPlanCreateRequest{}, err
 	}
@@ -1814,7 +1886,7 @@ func (s *subscriptionSpec) toPlanCreate() (api.SubscriptionPlanCreateRequest, er
 }
 
 func (s *subscriptionSpec) toPlanUpdate() (api.SubscriptionPlanUpdateRequest, error) {
-	expiry, err := parseTimestamp("spec.expiryTime", derefString(s.ExpiryTime))
+	expiry, err := s.planExpiry()
 	if err != nil {
 		return api.SubscriptionPlanUpdateRequest{}, err
 	}
@@ -1832,6 +1904,37 @@ func (s *subscriptionSpec) toPlanUpdate() (api.SubscriptionPlanUpdateRequest, er
 		req.Status = ptr(api.SubscriptionPlanUpdateRequestStatus(*status))
 	}
 	return req, nil
+}
+
+// planExpiry parses spec.expiryTime. Null or absent gives nil; an empty string
+// is refused rather than read as null, because the REST API rejects it as an
+// invalid body.
+func (s *subscriptionSpec) planExpiry() (*time.Time, error) {
+	if s.ExpiryTime == nil {
+		return nil, nil
+	}
+	if strings.TrimSpace(*s.ExpiryTime) == "" {
+		return nil, fmt.Errorf(
+			"spec.expiryTime is empty; use an RFC 3339 timestamp such as 2027-01-31T23:59:59Z, " +
+				"or null for a plan that does not expire")
+	}
+	return parseTimestamp("spec.expiryTime", *s.ExpiryTime)
+}
+
+// subscriptionRequestTooLarge reports whether the REST request equivalent to
+// req would exceed the body limit the subscription and plan endpoints enforce.
+func subscriptionRequestTooLarge(req any) bool {
+	body, err := json.Marshal(req)
+	if err != nil {
+		return true
+	}
+	return len(body) > maxSubscriptionRequestBodyBytes
+}
+
+// errSubscriptionRequestTooLarge is the refusal for a request over that limit.
+// Like the REST API's 413, it does not state the limit.
+func errSubscriptionRequestTooLarge(op subAction) error {
+	return fmt.Errorf("the %s request is too large for this Gateway; nothing was stored", op.Type)
 }
 
 // normalizeSubscriptionStatus upper-cases a status so "active" reaches the
@@ -1891,11 +1994,26 @@ func mcpSubscriptionError(op subAction, subject string, err error) error {
 			"no %s with id %q; call this tool with action=list to see what exists", op.Type, subject)
 	}
 
+	var opErr *subscription.OpError
+	if errors.As(err, &opErr) && opErr.Op == subscription.OpValidate {
+		return fmt.Errorf("the Gateway could not validate the subscription plan")
+	}
+
 	if storage.IsConflictError(err) {
-		if op.Type == subTypePlan {
+		switch {
+		case op.Type == subTypeSubscription:
+			// Generic for the same reason as the REST API's 409: naming the
+			// clash would confirm that a token is in use.
+			return fmt.Errorf("the subscription conflicts with an existing subscription")
+		case op.Action == subActionDelete:
+			return fmt.Errorf(
+				"subscription plan %q is in use by one or more subscriptions, so it was not deleted; "+
+					"move those subscriptions to another plan, or delete them, first", subject)
+		case strings.HasPrefix(op.RouteKey, http.MethodPut+" "):
+			return fmt.Errorf("a subscription plan with this name already exists; choose a different spec.planName")
+		default:
 			return fmt.Errorf("a subscription plan named %q already exists", subject)
 		}
-		return fmt.Errorf("that application is already subscribed to API %q", subject)
 	}
 
 	return fmt.Errorf("the Gateway could not %s the %s", op.Action, op.Type)

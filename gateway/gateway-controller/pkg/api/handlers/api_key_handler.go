@@ -421,12 +421,27 @@ func (s *APIServer) ListAPIKeys(w http.ResponseWriter, r *http.Request, id strin
 // errors onto the responses the REST API has always returned.
 func (s *APIServer) resolveAPIIDByHandle(w http.ResponseWriter, r *http.Request, handle string, log *slog.Logger) (string, error) {
 	apiID, err := s.getSubscriptionService().ResolveAPIID(handle)
-	if err == nil {
-		return apiID, nil
+	if err != nil {
+		writeAPIIdentifierError(w, handle, log, err)
+		return "", err
 	}
+	return apiID, nil
+}
 
+// isAPIIdentifierError reports whether err came from resolving an API identifier.
+func isAPIIdentifierError(err error) bool {
 	var notRestAPI *subscription.NotRestAPIError
-	if errors.As(err, &notRestAPI) {
+	var opErr *subscription.OpError
+	return errors.As(err, &notRestAPI) || errors.Is(err, subscription.ErrAPINotFound) ||
+		(errors.As(err, &opErr) && (opErr.Op == subscription.OpResolveByID || opErr.Op == subscription.OpResolveByHandle))
+}
+
+// writeAPIIdentifierError writes the response, and logs the line, for a failed API identifier resolution.
+func writeAPIIdentifierError(w http.ResponseWriter, handle string, log *slog.Logger, err error) {
+	var notRestAPI *subscription.NotRestAPIError
+	var opErr *subscription.OpError
+	switch {
+	case errors.As(err, &notRestAPI):
 		log.Warn("Configuration is not a REST API",
 			slog.String("id", handle),
 			slog.String("kind", notRestAPI.Kind))
@@ -434,25 +449,27 @@ func (s *APIServer) resolveAPIIDByHandle(w http.ResponseWriter, r *http.Request,
 			Status:  "error",
 			Message: fmt.Sprintf("Configuration with identifier '%s' is not a REST API", handle),
 		})
-		return "", err
-	}
-
-	if errors.Is(err, subscription.ErrAPINotFound) {
+	case errors.Is(err, subscription.ErrAPINotFound):
 		log.Warn("API configuration not found", slog.String("handle_or_id", handle))
 		httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{
 			Status:  "error",
 			Message: fmt.Sprintf("RestAPI with identifier '%s' not found", handle),
 		})
-		return "", err
+	case errors.As(err, &opErr) && opErr.Op == subscription.OpResolveByID:
+		log.Error("Failed to look up API configuration by ID",
+			slog.String("id", handle),
+			slog.Any("error", opErr.Cause))
+		httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{
+			Status:  "error",
+			Message: "Failed to resolve API identifier",
+		})
+	default:
+		log.Error("Failed to look up API configuration by handle",
+			slog.String("handle", handle),
+			slog.Any("error", storageCause(err)))
+		httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{
+			Status:  "error",
+			Message: "Failed to resolve API identifier",
+		})
 	}
-
-	log.Error("Failed to look up API configuration",
-		slog.String("handle_or_id", handle),
-		slog.Any("error", err))
-	httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{
-		Status:  "error",
-		Message: "Failed to resolve API identifier",
-	})
-
-	return "", err
 }

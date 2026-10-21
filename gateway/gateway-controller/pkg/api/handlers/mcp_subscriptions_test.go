@@ -224,17 +224,39 @@ func TestSubscriptionSpecMapping(t *testing.T) {
 		assert.EqualValues(t, "ACTIVE", *req.Status, "status should reach the service upper-cased")
 	})
 
-	t.Run("subscription update refuses a spec with no status", func(t *testing.T) {
-		// SubscriptionUpdateRequest carries only Status, so a spec without one
-		// would report success for a call that changed nothing.
-		_, err := (&subscriptionSpec{ApiId: ptr("my-api")}).toSubscriptionUpdate()
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "status only")
-
-		req, err := (&subscriptionSpec{Status: ptr("REVOKED")}).toSubscriptionUpdate()
+	t.Run("subscription create carries externalRefId through", func(t *testing.T) {
+		req, err := (&subscriptionSpec{ApiId: ptr("my-api"), ExternalRefId: ptr("apim-sub-1")}).toSubscriptionCreate()
 		require.NoError(t, err)
+		require.NotNil(t, req.ExternalRefId)
+		assert.Equal(t, "apim-sub-1", *req.ExternalRefId)
+	})
+
+	t.Run("subscription update carries status, plan and token, and nothing else", func(t *testing.T) {
+		req := (&subscriptionSpec{
+			ApiId: ptr("other-api"), Status: ptr("revoked"),
+			SubscriptionPlanId: ptr("plan-2"), SubscriptionToken: ptr("new-token"),
+		}).toSubscriptionUpdate()
 		require.NotNil(t, req.Status)
 		assert.EqualValues(t, "REVOKED", *req.Status)
+		assert.Equal(t, "plan-2", *req.SubscriptionPlanId)
+		assert.Equal(t, "new-token", *req.SubscriptionToken)
+
+		// As PUT /subscriptions/{id}, a spec with none of the three is a valid,
+		// empty update rather than an error.
+		empty := (&subscriptionSpec{}).toSubscriptionUpdate()
+		assert.Nil(t, empty.Status)
+		assert.Nil(t, empty.SubscriptionPlanId)
+		assert.Nil(t, empty.SubscriptionToken)
+	})
+
+	t.Run("an empty expiry is refused rather than read as null", func(t *testing.T) {
+		_, err := (&subscriptionSpec{PlanName: ptr("gold"), ExpiryTime: ptr("")}).toPlanCreate()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "spec.expiryTime is empty")
+
+		_, err = (&subscriptionSpec{ExpiryTime: ptr("  ")}).toPlanUpdate()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "spec.expiryTime is empty")
 	})
 
 	t.Run("plan create parses expiry and normalises the throttle unit", func(t *testing.T) {
