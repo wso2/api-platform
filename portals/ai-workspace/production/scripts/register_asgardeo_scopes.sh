@@ -295,7 +295,6 @@ SCOPES=(
   # service_account
   "ap:service_account:read"
   "ap:service_account:manage"
-  "ap:service_account:token:introspect"
 )
 
 # Derive a human-readable display name: "ap:llm_proxy:manage" -> "llm proxy manage"

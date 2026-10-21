@@ -192,7 +192,7 @@ func TestDisabledKeyMapRefusesServiceAccountTokens(t *testing.T) {
 		}
 	}
 	if _, err := m.VerifyServiceAccountToken(signToken(t, local, "auto", saClaims("platform-api"))); err == nil {
-		t.Fatal("introspection path accepted an SA token with service accounts disabled")
+		t.Fatal("VerifyServiceAccountToken accepted an SA token with service accounts disabled")
 	}
 }
 
@@ -334,7 +334,7 @@ func TestIssuerRoutingMiddleware(t *testing.T) {
 	}
 }
 
-// Introspection must refuse a valid login token: it is not an SA token.
+// A valid login token is not an SA token.
 func TestVerifyServiceAccountTokenRefusesLoginTokens(t *testing.T) {
 	local := mustKey(t)
 	m, _ := NewIssuerKeyMap("platform-api", IssuerKeys{Issuer: "platform-api", Kind: IssuerKindLocal, Current: &local.PublicKey})

@@ -61,7 +61,7 @@ func defaultConfig() *Server {
 				"/api/portal/v0.9/auth/login",
 				// Public: the caller has no token yet, and a public key is public.
 				// Skip matching covers every child path, so nothing authenticated may
-				// live under these. Introspection is a sibling for that reason.
+				// live under these.
 				constants.APIBasePath + "/service-accounts/token",
 				constants.APIBasePath + "/service-accounts/jwks.json",
 				"/api/internal/v1/ws/gateways/connect",

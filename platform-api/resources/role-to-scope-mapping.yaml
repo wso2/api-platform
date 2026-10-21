@@ -84,8 +84,6 @@ roles:
       - ap:secret:manage
       # Creating a service account creates privilege, so manage is admin-only.
       - ap:service_account:manage
-      # ap:service_account:token:introspect is deliberately in no shipped role:
-      # it is meant for a validating component, not for people.
       - ap:api_key:read
       # Administrative access to every user's API keys, not just the caller's.
       - ap:api_key:all:manage

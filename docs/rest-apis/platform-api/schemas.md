@@ -5683,66 +5683,6 @@ Send client_id and client_secret here, or with HTTP Basic instead.
 |expires_in|integer|true|none|Lifetime in seconds|
 |scope|string|false|none|none|
 
-## IntrospectionRequest
-
-<a id="schemaintrospectionrequest"></a>
-<a id="schema_IntrospectionRequest"></a>
-<a id="tocSintrospectionrequest"></a>
-<a id="tocsintrospectionrequest"></a>
-
-```json
-{
-  "token": "string",
-  "token_type_hint": "string"
-}
-
-```
-
-#### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|token|string|true|none|none|
-|token_type_hint|string|false|none|none|
-
-## IntrospectionResponse
-
-<a id="schemaintrospectionresponse"></a>
-<a id="schema_IntrospectionResponse"></a>
-<a id="tocSintrospectionresponse"></a>
-<a id="tocsintrospectionresponse"></a>
-
-```json
-{
-  "active": true,
-  "scope": "string",
-  "client_id": "string",
-  "sub": "string",
-  "aud": "string",
-  "iss": "string",
-  "exp": 0,
-  "iat": 0,
-  "jti": "string",
-  "token_type": "string"
-}
-
-```
-
-#### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|active|boolean|true|none|none|
-|scope|string|false|none|none|
-|client_id|string|false|none|none|
-|sub|string|false|none|none|
-|aud|string|false|none|none|
-|iss|string|false|none|none|
-|exp|integer|false|none|none|
-|iat|integer|false|none|none|
-|jti|string|false|none|none|
-|token_type|string|false|none|none|
-
 ## JWKSResponse
 
 <a id="schemajwksresponse"></a>

@@ -3479,27 +3479,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/service-accounts/introspect": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Introspect a service-account token
-         * @description RFC 7662 token introspection. Every inactive cause returns exactly
-         *     `{"active": false}`.
-         */
-        post: operations["introspectServiceAccountToken"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/service-accounts/jwks.json": {
         parameters: {
             query?: never;
@@ -7384,22 +7363,6 @@ export interface components {
             expires_in: number;
             /** @example ap:rest_api:read ap:rest_api:deployment:manage */
             scope?: string;
-        };
-        IntrospectionRequest: {
-            token: string;
-            token_type_hint?: string;
-        };
-        IntrospectionResponse: {
-            active: boolean;
-            scope?: string;
-            client_id?: string;
-            sub?: string;
-            aud?: string;
-            iss?: string;
-            exp?: number;
-            iat?: number;
-            jti?: string;
-            token_type?: string;
         };
         JWKSResponse: {
             keys: components["schemas"]["JWK"][];
@@ -15402,33 +15365,6 @@ export interface operations {
             };
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
-            500: components["responses"]["InternalServerError"];
-        };
-    };
-    introspectServiceAccountToken: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/x-www-form-urlencoded": components["schemas"]["IntrospectionRequest"];
-            };
-        };
-        responses: {
-            /** @description Introspection result */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["IntrospectionResponse"];
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
             500: components["responses"]["InternalServerError"];
         };
     };

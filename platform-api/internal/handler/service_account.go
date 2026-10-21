@@ -25,41 +25,36 @@ import (
 	"net/http"
 	"net/url"
 
-	"github.com/golang-jwt/jwt/v5"
 	"github.com/wso2/api-platform/httpkit/httputil"
 
 	"github.com/wso2/api-platform/platform-api/api"
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/middleware"
-	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/router"
 	"github.com/wso2/api-platform/platform-api/internal/service"
 	"github.com/wso2/api-platform/platform-api/internal/utils"
 )
 
 // ServiceAccountHandler serves the service-account management API, the token
-// endpoint, introspection and the JWKS.
+// endpoint and the JWKS.
 type ServiceAccountHandler struct {
-	svc         *service.ServiceAccountService
-	identity    *service.IdentityService
-	keyMap      *middleware.IssuerKeyMap
-	revocations middleware.RevocationChecker
-	jwks        api.JWKSResponse
-	slogger     *slog.Logger
+	svc      *service.ServiceAccountService
+	identity *service.IdentityService
+	jwks     api.JWKSResponse
+	slogger  *slog.Logger
 }
 
 // NewServiceAccountHandler creates the handler. publicKeys are the SA keys the
 // JWKS publishes: the current one first, then any retired ones.
 func NewServiceAccountHandler(svc *service.ServiceAccountService, identity *service.IdentityService,
-	keyMap *middleware.IssuerKeyMap, revocations middleware.RevocationChecker, publicKeys []*rsa.PublicKey,
-	slogger *slog.Logger) *ServiceAccountHandler {
+	publicKeys []*rsa.PublicKey, slogger *slog.Logger) *ServiceAccountHandler {
 	jwks := api.JWKSResponse{Keys: make([]api.JWK, 0, len(publicKeys))}
 	for _, pub := range publicKeys {
 		k := utils.NewRSAPublicJWK(pub)
 		jwks.Keys = append(jwks.Keys, api.JWK{Kty: k.Kty, Kid: k.Kid, Use: &k.Use, Alg: &k.Alg, N: k.N, E: k.E})
 	}
-	return &ServiceAccountHandler{svc: svc, identity: identity, keyMap: keyMap, revocations: revocations, jwks: jwks, slogger: slogger}
+	return &ServiceAccountHandler{svc: svc, identity: identity, jwks: jwks, slogger: slogger}
 }
 
 func (h *ServiceAccountHandler) RegisterRoutes(mux router.Router) {
@@ -73,7 +68,6 @@ func (h *ServiceAccountHandler) RegisterRoutes(mux router.Router) {
 	mux.HandleFunc("DELETE "+base+"/{serviceAccountId}", middleware.MapErrors(h.slogger, h.humansOnly(h.Delete)))
 	mux.HandleFunc("POST "+base+"/{serviceAccountId}/regenerate-secret", middleware.MapErrors(h.slogger, h.humansOnly(h.RegenerateSecret)))
 	mux.HandleFunc("POST "+base+"/token", middleware.MapErrors(h.slogger, h.Token))
-	mux.HandleFunc("POST "+base+"/introspect", middleware.MapErrors(h.slogger, h.Introspect))
 	mux.HandleFunc("GET "+base+"/jwks.json", middleware.MapErrors(h.slogger, h.JWKS))
 	// A sibling path: under /service-accounts, "roles" would shadow an account
 	// with that handle.
@@ -227,64 +221,10 @@ func (h *ServiceAccountHandler) Token(w http.ResponseWriter, r *http.Request) er
 	return nil
 }
 
-// Introspect is RFC 7662. Every inactive cause returns exactly {"active":false},
-// so the endpoint cannot tell a caller why a token failed.
-func (h *ServiceAccountHandler) Introspect(w http.ResponseWriter, r *http.Request) error {
-	inactive := api.IntrospectionResponse{Active: false}
-	if err := r.ParseForm(); err != nil {
-		httputil.WriteJSON(w, http.StatusOK, inactive)
-		return nil
-	}
-	claims, err := h.keyMap.VerifyServiceAccountToken(r.PostForm.Get("token"))
-	if err != nil {
-		h.slogger.Debug("introspection: inactive token", "reason", err.Error())
-		httputil.WriteJSON(w, http.StatusOK, inactive)
-		return nil
-	}
-	sub, _ := claims["sub"].(string)
-	accountUUID, ok := model.AccountUUIDFromSubject(sub)
-	version, hasVersion := middleware.ServiceAccountTokenVersion(claims)
-	if !ok || !hasVersion || h.revocations.IsRevoked(accountUUID, version) {
-		httputil.WriteJSON(w, http.StatusOK, inactive)
-		return nil
-	}
-	resp := activeIntrospection(claims)
-	if scope := h.svc.TokenScope(claims); scope != "" {
-		resp.Scope = &scope
-	}
-	httputil.WriteJSON(w, http.StatusOK, resp)
-	return nil
-}
-
 // JWKS publishes the SA verification keys. Public: a public key is public.
 func (h *ServiceAccountHandler) JWKS(w http.ResponseWriter, r *http.Request) error {
 	httputil.WriteJSON(w, http.StatusOK, h.jwks)
 	return nil
-}
-
-func activeIntrospection(claims jwt.MapClaims) api.IntrospectionResponse {
-	str := func(k string) *string {
-		if v, ok := claims[k].(string); ok && v != "" {
-			return &v
-		}
-		return nil
-	}
-	num := func(k string) *int {
-		if v, ok := claims[k].(float64); ok {
-			n := int(v)
-			return &n
-		}
-		return nil
-	}
-	tokenType := "Bearer"
-	resp := api.IntrospectionResponse{
-		Active: true, Sub: str("sub"), Iss: str("iss"), Jti: str("jti"), ClientId: str("azp"),
-		Exp: num("exp"), Iat: num("iat"), TokenType: &tokenType,
-	}
-	if aud, err := claims.GetAudience(); err == nil && len(aud) > 0 {
-		resp.Aud = &aud[0]
-	}
-	return resp
 }
 
 // clientCredentials reads the client ID and secret from HTTP Basic or from the
