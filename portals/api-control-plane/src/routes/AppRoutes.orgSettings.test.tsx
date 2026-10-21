@@ -19,8 +19,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AppRoutes } from './AppRoutes';
-import { runtimeConfig } from '../config/runtime';
-import { anOrganization, aProject, collection, recorder, resource } from '../test/msw';
+import { anOrganization, aProject, collection, resource } from '../test/msw';
 import { authStatePresets } from '../test/mockAuthState';
 import { server } from '../test/server';
 import { renderWithProviders, screen } from '../test/utils';
@@ -93,45 +92,5 @@ describe('Org-level Settings', () => {
       'href',
       '/organizations/api-platform-demo/projects/retail-apis/settings',
     );
-  });
-
-  describe('service accounts', () => {
-    const route = '/organizations/api-platform-demo/settings/service-accounts';
-    let accountRequests = recorder();
-
-    const stubFeatureFlags = (flags: string[]) =>
-      vi.spyOn(runtimeConfig, 'featureFlags', 'get').mockReturnValue(flags);
-
-    beforeEach(() => {
-      accountRequests = recorder();
-      server.use(
-        collection('/service-accounts', [], { record: accountRequests }),
-        collection('/service-account-roles', []),
-      );
-    });
-    afterEach(() => vi.restoreAllMocks());
-
-    it('serves the page while the service-accounts flag is on', async () => {
-      stubFeatureFlags(['service-accounts']);
-      renderWithProviders(<AppRoutes />, {
-        route,
-        authState: authStatePresets.authenticated(),
-      });
-
-      expect(
-        await screen.findByText('New service account', {}, LAZY_ROUTE_TIMEOUT),
-      ).toBeInTheDocument();
-    });
-
-    it('has no page, and calls nothing, while the flag is off', async () => {
-      stubFeatureFlags([]);
-      renderWithProviders(<AppRoutes />, {
-        route,
-        authState: authStatePresets.authenticated(),
-      });
-
-      expect(await screen.findByText('Page not found', {}, LAZY_ROUTE_TIMEOUT)).toBeInTheDocument();
-      expect(accountRequests.count()).toBe(0);
-    });
   });
 });

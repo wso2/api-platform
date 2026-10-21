@@ -50,9 +50,6 @@ type Config struct {
 	Session      SessionConfig      `koanf:"session"`
 	Auth         AuthConfig         `koanf:"auth"`
 	PolicyHub    PolicyHubConfig    `koanf:"policy_hub"`
-	// FeatureFlags is [api_control_plane.feature_flags]: <feature>_enabled = true
-	// shows a feature still rolling out. Absent or false hides it.
-	FeatureFlags map[string]bool `koanf:"feature_flags"`
 
 	RuntimeConfig map[string]string `koanf:"-"`
 }

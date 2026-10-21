@@ -16,11 +16,6 @@
 
 package config
 
-import (
-	"slices"
-	"strings"
-)
-
 // buildRuntimeConfig collects the values the SPA reads from
 // window.__RUNTIME_CONFIG__ (see src/config/runtime.ts's fromWindow()). Unlike
 // ai-workspace's BFF — which invented its own APIP_AIW_* runtime-config
@@ -64,25 +59,5 @@ func buildRuntimeConfig(cfg *Config) map[string]string {
 		out["moesifAppUrl"] = cfg.ControlPlane.MoesifAppURL
 	}
 
-	// Emitted only when something is on, so a build-time VITE_FEATURE_FLAGS
-	// still applies to every deployment that sets no flags here.
-	if features := enabledFeatures(cfg.FeatureFlags); len(features) > 0 {
-		out["FEATURE_FLAGS"] = strings.Join(features, ",")
-	}
-
 	return out
-}
-
-// enabledFeatures turns [feature_flags] into the comma-list ids the SPA checks
-// for: service_accounts_enabled = true becomes "service-accounts". Sorted so the
-// output is stable.
-func enabledFeatures(flags map[string]bool) []string {
-	var features []string
-	for key, on := range flags {
-		if on {
-			features = append(features, strings.ReplaceAll(strings.TrimSuffix(key, "_enabled"), "_", "-"))
-		}
-	}
-	slices.Sort(features)
-	return features
 }

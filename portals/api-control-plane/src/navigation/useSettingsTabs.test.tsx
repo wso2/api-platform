@@ -16,9 +16,8 @@
  * under the License.
  */
 
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
-import { runtimeConfig } from '../config/runtime';
 import { makeAuthState } from '../test/mockAuthState';
 import { makeConsoleScope } from '../test/mockScope';
 import { renderWithProviders, screen } from '../test/utils';
@@ -43,20 +42,7 @@ const renderTabs = (level: NavigationLevel, scopes: string[]) =>
     scope: makeConsoleScope(),
   });
 
-const stubFeatureFlags = (flags: string[]) =>
-  vi.spyOn(runtimeConfig, 'featureFlags', 'get').mockReturnValue(flags);
-
 describe('useSettingsTabs — service accounts', () => {
-  beforeEach(() => stubFeatureFlags(['service-accounts']));
-  afterEach(() => vi.restoreAllMocks());
-
-  it('hides the tab while the service-accounts flag is off', () => {
-    stubFeatureFlags([]);
-    renderTabs('organization', ['ap:service_account:manage']);
-    expect(screen.queryByText('Service accounts')).not.toBeInTheDocument();
-    expect(screen.getByText('General')).toBeInTheDocument();
-  });
-
   it('offers the tab to someone who can manage service accounts', () => {
     renderTabs('organization', ['ap:service_account:manage']);
     expect(screen.getByText('Service accounts')).toBeInTheDocument();

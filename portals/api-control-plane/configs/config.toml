@@ -33,12 +33,6 @@ tls_skip_verify = '{{ env "APIP_ACP_CONTROL_PLANE_TLS_SKIP_VERIFY" "false" }}'
 base_url = '{{ env "APIP_ACP_POLICY_HUB_BASE_URL" "" }}'
 
 
-[api_control_plane.feature_flags]
-
-# Features still rolling out. Each stays hidden unless its key is true.
-service_accounts_enabled = '{{ env "APIP_ACP_FEATURE_FLAGS_SERVICE_ACCOUNTS_ENABLED" "false" }}'
-
-
 [api_control_plane.session]
 
 # Local dev runs the BFF over plain HTTP (no cert generation set up for this
