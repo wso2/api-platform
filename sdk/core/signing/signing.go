@@ -34,6 +34,7 @@
 package signing
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -194,12 +195,12 @@ func SignDetachedJWS(payload []byte, opts ...Option) (DetachedJWS, KeyInfo, erro
 
 // JWKS returns the gateway JWK Set (every configured key, active or not) and
 // its strong entity tag, quoted and ready for an ETag header. With nothing
-// installed it returns an empty set.
+// installed it returns an empty set. The body is the caller's own copy.
 func JWKS() (body []byte, etag string) {
 	if svc := current(); svc != nil {
 		return svc.JWKS()
 	}
-	return emptyJWKS, emptyJWKSETag
+	return bytes.Clone(emptyJWKS), emptyJWKSETag
 }
 
 // JWKSCacheMaxAge is how long a receiver may cache the JWKS, for the
