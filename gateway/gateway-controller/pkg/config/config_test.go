@@ -2557,3 +2557,34 @@ func TestLoadConfig_ClientCertificateRequest(t *testing.T) {
 		})
 	}
 }
+
+func TestLoadConfig_SigningJWKSEndpointEnabled(t *testing.T) {
+	load := func(t *testing.T, toml string) *Config {
+		t.Helper()
+		configPath := filepath.Join(t.TempDir(), "config.toml")
+		require.NoError(t, os.WriteFile(configPath, []byte(toml), 0o644))
+		cfg, err := LoadConfig(configPath)
+		require.NoError(t, err)
+		return cfg
+	}
+
+	t.Run("enabled by default", func(t *testing.T) {
+		assert.True(t, load(t, "").Signing.JWKSEndpointEnabled)
+	})
+	t.Run("disabled explicitly", func(t *testing.T) {
+		assert.False(t, load(t, "[signing]\njwks_endpoint_enabled = false\n").Signing.JWKSEndpointEnabled)
+	})
+	// The policy engine owns the rest of [signing]; the controller must load a
+	// config.toml that carries it.
+	t.Run("keys for the policy engine are tolerated", func(t *testing.T) {
+		cfg := load(t, `
+[signing]
+jwks_cache_max_age = "10m"
+
+[[signing.keys]]
+path = "/secrets/gateway-runtime/signing/k.pem"
+active = true
+`)
+		assert.True(t, cfg.Signing.JWKSEndpointEnabled)
+	})
+}
