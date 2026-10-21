@@ -25,6 +25,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"reflect"
 	"strings"
 	"time"
 
@@ -326,6 +327,7 @@ func (s *ExternalProcessorServer) Process(stream extprocv3.ExternalProcessor_Pro
 	// and that interval is recorded after the fact as an await span. Zero until the
 	// first Send, and stays zero when tracing is disabled.
 	var lastSentAt time.Time
+	var lastKind reflect.Type
 
 	for {
 		// Receive request from Envoy
@@ -365,12 +367,14 @@ func (s *ExternalProcessorServer) Process(stream extprocv3.ExternalProcessor_Pro
 			ctx, span = s.startRootSpan(ctx, req)
 		}
 
-		if !lastSentAt.IsZero() {
+		kind := reflect.TypeOf(req.GetRequest())
+		if !lastSentAt.IsZero() && kind != lastKind {
 			_, waitSpan := s.tracer.Start(ctx, constants.SpanAwaitNextMessage,
 				trace.WithSpanKind(trace.SpanKindInternal),
 				trace.WithTimestamp(lastSentAt))
 			waitSpan.End(trace.WithTimestamp(recvAt))
 		}
+		lastKind = kind
 
 		// Handle the request based on phase
 		resp, err := s.handleProcessingPhase(ctx, req, &execCtx, span)
