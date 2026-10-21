@@ -326,9 +326,16 @@ func (s *ExternalProcessorServer) Process(stream extprocv3.ExternalProcessor_Pro
 	}()
 
 	firstMessage := true
+	// When the last response went back to Envoy. Between that and the next Recv the
+	// engine is idle while Envoy works — forwarding upstream, collecting the body —
+	// and that interval is recorded after the fact as an await span. Zero until the
+	// first Send, and stays zero when tracing is disabled.
+	var lastSentAt time.Time
+
 	for {
 		// Receive request from Envoy
 		req, err := stream.Recv()
+		recvAt := time.Now()
 		if err == io.EOF {
 			return nil
 		}
@@ -379,6 +386,13 @@ func (s *ExternalProcessorServer) Process(stream extprocv3.ExternalProcessor_Pro
 			ctx, span = s.startRootSpan(ctx, req)
 		}
 
+		if !lastSentAt.IsZero() {
+			_, waitSpan := s.tracer.Start(ctx, constants.SpanAwaitNextMessage,
+				trace.WithSpanKind(trace.SpanKindInternal),
+				trace.WithTimestamp(lastSentAt))
+			waitSpan.End(trace.WithTimestamp(recvAt))
+		}
+
 		// Handle the request based on phase
 		resp, err := s.handleProcessingPhase(ctx, req, &execCtx, span)
 		if err != nil {
@@ -401,6 +415,9 @@ func (s *ExternalProcessorServer) Process(stream extprocv3.ExternalProcessor_Pro
 		}
 		if execCtx != nil && execCtx.correlationToken != "" {
 			execCtx.correlationTokenSent = true
+		}
+		if s.tracingEnabled {
+			lastSentAt = time.Now()
 		}
 	}
 }
