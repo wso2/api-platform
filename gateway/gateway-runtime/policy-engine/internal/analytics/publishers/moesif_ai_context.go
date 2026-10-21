@@ -35,6 +35,7 @@ package publishers
 // OTel publisher uses, so both sinks describe a call the same way.
 
 import (
+	"math"
 	"strings"
 
 	"github.com/moesif/moesifapi-go/models"
@@ -98,16 +99,22 @@ func moesifAIProvider(templateName string) string {
 
 // moesifAIUsage returns the reported token counts, or nil when none was reported.
 // An unreported count stays nil: sending it as 0 would price the call at zero tokens.
+// A negative count is dropped the same way. Counts come from the upstream response,
+// and Moesif would price a negative one as a negative cost.
 func moesifAIUsage(property any) *models.AiUsageModel {
 	usage, ok := property.(dto.AIUsage)
-	if !ok || (usage.PromptTokens == nil && usage.CompletionTokens == nil && usage.TotalTokens == nil) {
+	if !ok {
 		return nil
 	}
-	return &models.AiUsageModel{
-		PromptTokens:     usage.PromptTokens,
-		CompletionTokens: usage.CompletionTokens,
-		TotalTokens:      usage.TotalTokens,
+	block := &models.AiUsageModel{
+		PromptTokens:     moesifBoundedInt(usage.PromptTokens, 0, math.MaxInt),
+		CompletionTokens: moesifBoundedInt(usage.CompletionTokens, 0, math.MaxInt),
+		TotalTokens:      moesifBoundedInt(usage.TotalTokens, 0, math.MaxInt),
 	}
+	if block.PromptTokens == nil && block.CompletionTokens == nil && block.TotalTokens == nil {
+		return nil
+	}
+	return block
 }
 
 func nonEmpty(value string) *string {

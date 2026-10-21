@@ -129,6 +129,28 @@ func TestAIContextBlock_PartialUsage(t *testing.T) {
 	assert.Equal(t, 8, *block.Usage.TotalTokens)
 }
 
+// A negative count is not a usage Moesif can price: it is dropped like an unreported
+// one, and a usage left with no count is omitted.
+func TestAIContextBlock_NegativeUsageDropped(t *testing.T) {
+	event := createBaseEvent()
+	event.Properties["aiMetadata"] = dto.AIMetadata{VendorName: "openai", Model: "gpt-4o"}
+	event.Properties[dto.PropKeyAIUsage] = dto.AIUsage{PromptTokens: ptr(-5), CompletionTokens: ptr(50), TotalTokens: ptr(0)}
+
+	block := aiContextBlock(event, "/chat/completions")
+
+	require.NotNil(t, block)
+	require.NotNil(t, block.Usage)
+	assert.Nil(t, block.Usage.PromptTokens)
+	assert.Equal(t, 50, *block.Usage.CompletionTokens)
+	assert.Equal(t, 0, *block.Usage.TotalTokens)
+
+	event.Properties[dto.PropKeyAIUsage] = dto.AIUsage{PromptTokens: ptr(-1), CompletionTokens: ptr(-1), TotalTokens: ptr(-2)}
+	block = aiContextBlock(event, "/chat/completions")
+
+	require.NotNil(t, block)
+	assert.Nil(t, block.Usage)
+}
+
 // The published document is the contract: ai_context sits beside metadata at the top
 // level, and the aiMetadata and aiTokenUsage metadata keys keep their existing shape.
 func TestPublish_LlmEventsCarryAIContextAlongsideMetadata(t *testing.T) {
