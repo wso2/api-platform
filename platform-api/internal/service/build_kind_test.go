@@ -75,6 +75,7 @@ func newKindTestBuildService(t *testing.T, kind string, depRepo repository.Deplo
 		&kindTestArtifactRepo{kind: kind},
 		depRepo,
 		NewArtifactDefinitions(definitions...),
+		newTestIdentityService(),
 		&testConfig,
 		slog.Default(),
 	)
@@ -124,6 +125,7 @@ func TestBuildService_MissingArtifactIsNotFound(t *testing.T) {
 		&kindTestArtifactRepo{kind: "Mcp", missing: true},
 		&buildTestDeploymentRepo{},
 		NewArtifactDefinitions(&fakeDefinition{kind: "Mcp"}),
+		newTestIdentityService(),
 		&testConfig,
 		slog.Default(),
 	)

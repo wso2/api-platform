@@ -536,7 +536,7 @@ func TestAgentImport_PublicResponseIsReadOnlyAndOnlyMetadataIsEditable(t *testin
 
 	// No public redeploy of a gateway-origin Agent proxy.
 	deploySvc := NewAgentDeploymentService(d.agentRepo, d.deployment, d.gatewayRepo, d.artifactRepo, d.apiKeyRepo,
-		nil, nil, cfg, slog.New(slog.NewTextHandler(io.Discard, nil)))
+		nil, nil, nil, cfg, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	_, err = deploySvc.DeployByHandle("weather-agent",
 		&api.DeployRequest{Name: "redeploy", Base: "current", GatewayId: "gw1"}, importTestOrgID, "someone")
 	if !apperror.ArtifactReadOnly.Is(err) {

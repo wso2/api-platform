@@ -26,6 +26,7 @@ import (
 
 	"github.com/wso2/api-platform/platform-api/config"
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
+	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/dto"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
@@ -344,9 +345,20 @@ func (m *mockDeploymentRepo) CreateFromBuildWithLimitEnforcement(deployment *mod
 	return m.CreateWithLimitEnforcement(deployment, hardLimit)
 }
 
-func (m *mockDeploymentRepo) CreateWithBuild(deployment *model.Deployment, _ *model.Build,
+func (m *mockDeploymentRepo) CreateWithBuild(deployment *model.Deployment, build *model.Build,
 	_, hardLimit int) error {
-	return m.CreateWithLimitEnforcement(deployment, hardLimit)
+	if err := m.CreateWithLimitEnforcement(deployment, hardLimit); err != nil {
+		return err
+	}
+	if build != nil {
+		// The real repository assigns the readable id when it stores the build.
+		if build.BuildID == "" {
+			build.BuildID = "mock-build-1"
+		}
+		deployment.BuildUUID = &build.UUID
+		deployment.BuildID = &build.BuildID
+	}
+	return nil
 }
 
 func (m *mockDeploymentRepo) CreateWithLimitEnforcement(deployment *model.Deployment, hardLimit int) error {
@@ -1953,4 +1965,49 @@ func (m *mockDeploymentAPIRepository) FailCurrentDeployment(string, string, stri
 
 func (m *mockDeploymentRepo) FailCurrentDeployment(string, string, string, string, string) (int64, error) {
 	return 0, nil
+}
+
+// Handles are unique only within a kind, so a REST API and an MCP proxy may share one.
+// Each kind's endpoints must resolve their own artifact, whichever row the database
+// happens to return first.
+func TestHandleResolution_SameHandleInTwoKinds(t *testing.T) {
+	d := setupImportTest(t)
+	const handle = "shared"
+	const restUUID = "aaaaaaaa-0000-0000-0000-000000000001"
+	const mcpUUID = "aaaaaaaa-0000-0000-0000-000000000002"
+	seed := []struct {
+		query string
+		args  []interface{}
+	}{
+		{`INSERT INTO artifacts (uuid, type, organization_uuid) VALUES (?, ?, ?)`,
+			[]interface{}{restUUID, constants.RestApi, importTestOrgID}},
+		{`INSERT INTO rest_apis (uuid, organization_uuid, handle, display_name, project_uuid, configuration) VALUES (?, ?, ?, 'Shared', ?, '{}')`,
+			[]interface{}{restUUID, importTestOrgID, handle, importTestProjectID}},
+		{`INSERT INTO artifacts (uuid, type, organization_uuid) VALUES (?, ?, ?)`,
+			[]interface{}{mcpUUID, constants.MCPProxy, importTestOrgID}},
+		{`INSERT INTO mcp_proxies (uuid, organization_uuid, handle, display_name, project_uuid, configuration) VALUES (?, ?, ?, 'Shared', ?, '{}')`,
+			[]interface{}{mcpUUID, importTestOrgID, handle, importTestProjectID}},
+	}
+	for _, s := range seed {
+		if _, err := d.db.Exec(s.query, s.args...); err != nil {
+			t.Fatalf("seed: %v", err)
+		}
+	}
+
+	rest := &DeploymentService{artifactRepo: d.artifactRepo}
+	if got, err := rest.getUUIDByHandle(handle, importTestOrgID); err != nil || got != restUUID {
+		t.Fatalf("REST resolution = (%q, %v), want %q", got, err, restUUID)
+	}
+	mcp := &MCPDeploymentService{artifactRepo: d.artifactRepo}
+	if got, err := mcp.getMCPProxyUUIDByHandle(handle, importTestOrgID); err != nil || got != mcpUUID {
+		t.Fatalf("MCP resolution = (%q, %v), want %q", got, err, mcpUUID)
+	}
+
+	var appErr *apperror.Error
+	if _, err := rest.getUUIDByHandle("missing", importTestOrgID); !errors.As(err, &appErr) || appErr.Code != apperror.CodeRESTAPINotFound {
+		t.Fatalf("unknown REST handle error = %v, want REST_API_NOT_FOUND", err)
+	}
+	if _, err := mcp.getMCPProxyUUIDByHandle("missing", importTestOrgID); !errors.As(err, &appErr) || appErr.Code != apperror.CodeMCPProxyNotFound {
+		t.Fatalf("unknown MCP handle error = %v, want MCP_PROXY_NOT_FOUND", err)
+	}
 }

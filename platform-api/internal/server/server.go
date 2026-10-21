@@ -291,7 +291,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		service.NewAgentProxyDefinition(agentProxyRepo, &utils.AgentProxyUtils{}),
 		service.NewGraphQLAPIDefinition(graphqlAPIRepo, projectRepo),
 	)
-	deploymentService := service.NewDeploymentService(apiRepo, artifactRepo, deploymentRepo, gatewayRepo, orgRepo, apiKeyRepo, gatewayEventsService, auditRepo, apiUtil, artifactDefinitions, cfg, slogger)
+	deploymentService := service.NewDeploymentService(apiRepo, artifactRepo, deploymentRepo, gatewayRepo, orgRepo, apiKeyRepo, gatewayEventsService, auditRepo, apiUtil, artifactDefinitions, identityService, cfg, slogger)
 	llmTemplateService := service.NewLLMProviderTemplateService(llmTemplateRepo, auditRepo, identityService)
 	llmProviderService := service.NewLLMProviderService(llmProviderRepo, llmTemplateRepo, orgRepo, llmTemplateSeeder, deploymentRepo, gatewayRepo, gatewayEventsService, slogger, auditRepo, cfg, identityService)
 	llmProviderService.SetCustomPolicyRepository(customPolicyRepo)
@@ -313,6 +313,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		gatewayEventsService,
 		artifactRepo,
 		artifactDefinitions,
+		identityService,
 		cfg,
 		slogger,
 	)
@@ -329,6 +330,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		gatewayEventsService,
 		artifactRepo,
 		artifactDefinitions,
+		identityService,
 		cfg,
 		slogger,
 	)
@@ -341,6 +343,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		apiKeyRepo,
 		gatewayEventsService,
 		artifactDefinitions,
+		identityService,
 		cfg,
 		slogger,
 	)
@@ -352,6 +355,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		apiKeyRepo,
 		gatewayEventsService,
 		artifactDefinitions,
+		identityService,
 		cfg,
 		slogger,
 	)
@@ -364,6 +368,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		artifactRepo,
 		gatewayEventsService,
 		artifactDefinitions,
+		identityService,
 		cfg,
 		slogger,
 	)
