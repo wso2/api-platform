@@ -107,6 +107,7 @@ type Config struct {
 	Analytics            AnalyticsConfig        `koanf:"analytics"`
 	TrafficLogging       TrafficLoggingConfig   `koanf:"traffic_logging"`
 	TracingConfig        TracingConfig          `koanf:"tracing"`
+	Signing              SigningConfig          `koanf:"signing"`
 }
 
 // CollectorConfig holds the data-collection ("collector") configuration. The
@@ -1155,6 +1156,14 @@ func Load(configPaths ...string) (*Config, error) {
 	return cfg, nil
 }
 
+// FileSourceAllowlist is the effective set of directories the policy engine
+// reads config-referenced files from: {{ file }} tokens and file paths named
+// directly in configuration, such as [[signing.keys]] path. It is the
+// policy-engine default, overridable via APIP_CONFIG_FILE_SOURCE_ALLOWLIST.
+func FileSourceAllowlist() []string {
+	return configinterpolate.ResolveAllowlist(defaultFileSourceAllowlist)
+}
+
 // interpolate resolves Go template tokens ({{ env }} / {{ file }}) in the merged
 // config and returns a fresh koanf instance holding the expanded values. It uses a
 // new instance (rather than reloading into k) so no un-expanded leaves survive. The
@@ -1163,7 +1172,7 @@ func Load(configPaths ...string) (*Config, error) {
 // reference counts are emitted at info level.
 func interpolate(k *koanf.Koanf) (*koanf.Koanf, error) {
 	opts := configinterpolate.Options{
-		FileAllowlist: configinterpolate.ResolveAllowlist(defaultFileSourceAllowlist),
+		FileAllowlist: FileSourceAllowlist(),
 	}
 	expanded, stats, err := configinterpolate.Expand(k.Raw(), opts)
 	if err != nil {
@@ -1440,6 +1449,9 @@ func defaultConfig() *Config {
 			SendRequestBody:      false,
 			SendResponseBody:     false,
 		},
+		Signing: SigningConfig{
+			JWKSCacheMaxAge: DefaultJWKSCacheMaxAge,
+		},
 		TracingConfig: TracingConfig{
 			Enabled:            false,
 			Endpoint:           "otel-collector:4317",
@@ -1661,6 +1673,9 @@ func (c *Config) Validate() error {
 		if err := c.validateAnalyticsConfig(); err != nil {
 			return fmt.Errorf("analytics configuration validation failed: %v", err)
 		}
+	}
+	if err := c.validateSigningConfig(); err != nil {
+		return err
 	}
 	if c.TracingConfig.Enabled {
 		if c.TracingConfig.Endpoint == "" {
