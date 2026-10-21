@@ -2100,6 +2100,9 @@ func (c *Config) validateTrafficLoggingConfig() error {
 		if len(tl.Properties) > 0 {
 			slog.Warn("traffic_logging.properties is set but traffic_logging.enabled is false; it has no effect")
 		}
+		if len(tl.JSONFields) > 0 {
+			slog.Warn("traffic_logging.json_fields is set but traffic_logging.enabled is false; it has no effect")
+		}
 		return nil
 	}
 

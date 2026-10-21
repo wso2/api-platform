@@ -121,8 +121,8 @@ func compileFieldExclusions(exclude []string) *fieldExclusions {
 }
 
 // addCtxExclusion records a "$ctx:" exclude_fields entry: a key of a keyed map
-// variable, or else a whole variable. A name that is no declared variable is
-// logged, since a typo would otherwise silently log the data it meant to hide.
+// variable, or else a whole variable. An unknown variable is logged, since a typo
+// would otherwise leave the data it meant to hide in the log.
 func (fe *fieldExclusions) addCtxExclusion(path string) {
 	for _, mapVar := range keyedMapVariables {
 		if key, ok := strings.CutPrefix(path, mapVar+"."); ok && key != "" {

@@ -351,12 +351,9 @@ func filterNestedKeys(m map[string]json.RawMessage, top string, keep func(string
 	m[top] = filtered
 }
 
-// filterAndMaskHeaders returns a copy of headers without the names in exclude and
-// with the values of the names in mask redacted. Both hold lower-cased names and are
-// matched case-insensitively, so any casing Envoy delivers matches; header-level
-// exclude_fields entries therefore cost nothing beyond the copy masking already
-// makes. The input is not modified. Returns nil when every header is excluded, so
-// the field is omitted like the JSON projection does.
+// filterAndMaskHeaders returns a copy of headers without the names in exclude and with
+// the values of the names in mask redacted. Both hold lower-cased names and match any
+// casing. Returns nil when every header is excluded, so the field is omitted.
 func filterAndMaskHeaders(headers map[string]string, mask, exclude map[string]bool) map[string]string {
 	result := make(map[string]string, len(headers))
 	for name, value := range headers {

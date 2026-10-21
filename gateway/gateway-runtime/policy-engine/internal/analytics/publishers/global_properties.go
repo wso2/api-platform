@@ -86,9 +86,9 @@ type globalPropertyEvaluator struct {
 	truncateBody func(string) string
 	// section is the config section named in log messages (see withSection).
 	section string
-	// excludedVariables/excludedMapKeys hold the "$ctx:" entries of exclude_fields:
-	// an expression that uses an excluded variable is dropped at construction, and
-	// excluded keys are removed from map variables per request (see withCtxExclusions).
+	// excludedVariables/excludedMapKeys hold the "$ctx:" entries of exclude_fields. Set
+	// only for json_fields: expressions using an excluded variable are dropped at
+	// construction, and excluded keys are removed from map variables per request.
 	excludedVariables map[string]bool
 	excludedMapKeys   map[string]map[string]bool
 	// referencedVars is the union, across every compiled expression, of the declared
@@ -185,8 +185,7 @@ func (e *globalPropertyEvaluator) excludedVariablesIn(refs map[string]bool) []st
 }
 
 // evaluatorOption configures a globalPropertyEvaluator beyond what properties needs.
-// json_fields uses them, since it replaces the default line and so takes over its
-// header exclusions and bodies, and is the target of "$ctx:" exclude_fields entries.
+// Only json_fields uses them.
 type evaluatorOption func(*globalPropertyEvaluator)
 
 // withExcludedHeaders removes the given lower-cased header names from
@@ -263,9 +262,8 @@ type globalPropertyVariable struct {
 // maps, ...) are never mutated in place anywhere in this file — every assignment in
 // buildGlobalPropertyEvalCtx replaces the ctx entry wholesale rather than appending/writing
 // into the existing value, and removeExcludedMapKeys skips empty maps — so the same empty
-// instance declared here is safely reused
-// (read-only) across every request and goroutine instead of allocating a fresh empty
-// collection per call.
+// instance declared here is safely reused (read-only) across every request and goroutine
+// instead of allocating a fresh empty collection per call.
 var globalPropertyVariables = []globalPropertyVariable{
 	{"request.path", cel.StringType, ""},
 	{"request.pathTemplate", cel.StringType, ""},
@@ -417,14 +415,14 @@ func (e *globalPropertyEvaluator) resolve(event *dto.Event) map[string]interface
 // variables actually used (see globalPropertyEvaluator.referencedVars) — rather than the
 // full declared set. Every populated variable is always bound (to its zero value when the
 // corresponding event field is absent) so evaluation never fails merely because a nested
-// pointer was nil. request.header/response.header drop the excluded header names (json_fields
-// only; nil for properties) and are masked with the same maskedHeaders
+// pointer was nil. request.header/response.header are masked with the same maskedHeaders
 // config applied to the emitted requestHeaders/responseHeaders maps (see filterAndMaskHeaders
 // in log.go), so a property expression like "$ctx:request.header['authorization']" cannot
 // bypass masking and leak a credential the operator explicitly asked to redact — that
 // parse+lowercase+mask work (and the json.Unmarshal calls for auth.property/metadata) is
 // itself skipped whenever the corresponding variable isn't referenced by any configured
 // expression, which is the whole point of this function taking referenced at all.
+// Header names in excludedRequestHeaders/excludedResponseHeaders are dropped (json_fields only).
 func buildGlobalPropertyEvalCtx(event *dto.Event, referenced map[string]bool, maskedHeaders, excludedRequestHeaders, excludedResponseHeaders map[string]bool) map[string]interface{} {
 	ctx := make(map[string]interface{}, len(referenced))
 	for _, v := range globalPropertyVariables {

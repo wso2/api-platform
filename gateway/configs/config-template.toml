@@ -1271,6 +1271,9 @@ insecure_skip_verify = false
 # policyPhase/source/originalStatus/jsonRpcCode (named after the default line's fields),
 # application.id/name/owner/keyType (populated only when an auth policy that
 # stamps application identity, e.g. api-key-auth, actually ran).
+# For other latency units, use arithmetic: latencies.durationUs * 1000 (nanoseconds, at
+# microsecond precision) or latencies.durationMs / 1000.0 (seconds). Write 1000.0, not
+# 1000: CEL won't mix decimal and whole numbers.
 # request.header/response.header are masked with the same masked_headers list
 # above, so a property expression cannot re-expose a header (e.g.
 # request.header['authorization']) that masked_headers already redacts.
@@ -1310,12 +1313,9 @@ insecure_skip_verify = false
 # Each key becomes a top-level field; each value is a literal or a "$ctx:" expression
 # using the same variables (and header masking) as properties above. When set, only
 # these fields are written, and properties is ignored (with a warning at startup).
-# Of exclude_fields, only "requestHeaders.<name>"/"responseHeaders.<name>" entries,
-# which remove that header from request.header/response.header, and "$ctx:" entries
-# apply.
-# json_fields can also use request.body and response.body, which properties cannot.
-# They need [collector] request_body/response_body and are cut to max_payload_size.
-# Like a header, a body named here is written without the request_body/response_body
+# Of exclude_fields, only header entries ("requestHeaders.<name>") and "$ctx:" entries
+# apply. json_fields can also use request.body and response.body: they need [collector]
+# capture, are cut to max_payload_size, and don't need the request_body/response_body
 # toggles above.
 [traffic_logging.json_fields]
 # meth   = "$ctx:request.method"
