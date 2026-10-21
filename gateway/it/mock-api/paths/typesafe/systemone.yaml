@@ -1,0 +1,36 @@
+post:
+  summary: Evaluate TypeSafe System One questions
+  operationId: evaluateTypeSafeSystemOne
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required:
+            - state
+            - model
+            - questions
+          properties:
+            state: {}
+            model:
+              type: string
+            questions:
+              type: object
+
+  responses:
+    "200":
+      description: Successful response
+      content:
+        application/json:
+          # usage carries input/output tokens only (no total), and model reports
+          # the versioned ID even when the request used an alias.
+          example:
+            model: jev-1.13.0
+            answers:
+              is_urgent:
+                type: noul
+                noul: 0.95
+            usage:
+              input_tokens: 100
+              output_tokens: 50

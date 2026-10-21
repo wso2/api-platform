@@ -1806,6 +1806,57 @@ Feature: Token-Based Rate Limiting
     When I delete the LLM provider "prov-wide-mistral-provider"
     Then the response status code should be 200
 
+  Scenario: Total token quota charges input plus output tokens for the TypeSafe template
+    # The "typesafe" built-in template maps promptTokens/completionTokens to
+    # usage.input_tokens/usage.output_tokens and defines no totalTokens, because
+    # TypeSafe's /v1/systemone response carries no total. The total_tokens quota
+    # must fall back to the sum (100 + 50 = 150), not a flat 1 per request.
+    Given I authenticate using basic auth as "admin"
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProvider
+      metadata:
+        name: prov-wide-typesafe-provider
+      spec:
+        displayName: Provider Wide TypeSafe Provider
+        version: v1.0
+        context: /prov-wide-typesafe
+        template: typesafe
+        upstream:
+          url: http://mock-openapi:4010
+          auth:
+            type: api-key
+            header: Authorization
+            value: Bearer test-key
+        accessControl:
+          mode: allow_all
+        globalPolicies:
+          - name: token-based-ratelimit
+            version: v1
+            params:
+              totalTokenLimits:
+                - count: 1000
+                  duration: "1h"
+      """
+    Then the response status code should be 201
+    And I wait for 2 seconds
+    And I wait for policy snapshot sync
+
+    Given I set header "Content-Type" to "application/json"
+
+    When I send a POST request to "http://localhost:8080/prov-wide-typesafe/typesafe/v1/systemone" with body:
+      """ json
+      {"state": "Help! My payouts have been failing for 3 days.", "model": "jev-latest", "questions": {"is_urgent": {"type": "noul", "instructions": "Does this convey urgency?"}}}
+      """
+    Then the response status code should be 200
+    And the response header "X-Ratelimit-Remaining" should be "850"
+
+    # Cleanup
+    Given I authenticate using basic auth as "admin"
+    When I delete the LLM provider "prov-wide-typesafe-provider"
+    Then the response status code should be 200
+
   Scenario: Consumer-level total token quota also charges actual token usage, not a flat 1 per request
     Given I authenticate using basic auth as "admin"
     When I create this LLM provider:
