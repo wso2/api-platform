@@ -35,12 +35,8 @@ import (
 func gatewayRelay(t *testing.T, mutate func(*RelayOptions)) *Relay {
 	t.Helper()
 	// Nothing is reachable unless allow_hosts names it, and these tests dial
-	// httptest servers on loopback — which production refuses both as a
-	// private address and as an IP literal.
-	policy, err := egress.Parse(egress.Spec{
-		Environment: egress.EnvDevelopment,
-		AllowHosts:  []string{"*"},
-	})
+	// httptest servers on loopback.
+	policy, err := egress.Parse(egress.Spec{AllowHosts: []string{"*"}})
 	require.NoError(t, err)
 	opts := RelayOptions{
 		RequestTimeout:   5 * time.Second,

@@ -80,8 +80,6 @@ func TestGatewayRelayValidateRejectsUnboundedValues(t *testing.T) {
 		{"allow host port out of range", func(c *GatewayRelayConfig) { c.Egress.AllowHosts = []string{"gw.example.com:70000"} }},
 		{"unbracketed ipv6 allow host", func(c *GatewayRelayConfig) { c.Egress.AllowHosts = []string{"fd00::1:8443"} }},
 		// A typo must not quietly land on the permissive environment.
-		{"unknown environment", func(c *GatewayRelayConfig) { c.Egress.Environment = "staging" }},
-		{"abbreviated environment", func(c *GatewayRelayConfig) { c.Egress.Environment = "prod" }},
 		{"contradictory tls settings", func(c *GatewayRelayConfig) {
 			c.TLSSkipVerify = true
 			c.CAFile = "/etc/ca.pem"
@@ -120,21 +118,11 @@ func TestGatewayRelayValidateAcceptsANarrowedEgressPolicy(t *testing.T) {
 	}
 }
 
-func TestGatewayRelayDefaultsToProductionEgress(t *testing.T) {
-	// The shipped default must be the strict one: a deployment that never
-	// touches this key gets private, loopback and IP-literal targets refused.
-	policy, err := defaultConfig().GatewayRelay.Egress.Policy()
-	if err != nil {
-		t.Fatalf("the shipped default egress block must parse: %v", err)
-	}
-	if ng := policy.NetguardPolicy(); !ng.BlockPrivate || !ng.BlockLoopback || !ng.BlockCGNAT {
-		t.Errorf("default egress is not the production stance: %s", policy.Describe())
-	}
-}
-
-func TestGatewayRelayValidateAcceptsDevelopmentEgress(t *testing.T) {
+func TestGatewayRelayValidateAcceptsALoopbackAllowHost(t *testing.T) {
+	// Reaching localhost is a thing an operator may choose; nothing in the
+	// policy second-guesses it.
 	tcc := validGatewayRelay()
-	tcc.Egress = EgressConfig{Environment: "development", AllowHosts: []string{"http://localhost:8080"}}
+	tcc.Egress = EgressConfig{AllowHosts: []string{"http://localhost:8080"}}
 	cfg := &Config{GatewayRelay: tcc}
 	if err := cfg.validateGatewayRelay(); err != nil {
 		t.Fatalf("validateGatewayRelay() = %v, want nil", err)

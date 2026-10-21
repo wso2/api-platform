@@ -82,7 +82,6 @@ func defaultConfig() *Config {
 			MaxPending:       64,
 			ResolveCacheTTL:  60 * time.Second,
 			ResolveCacheSize: 1024,
-			Egress:           EgressConfig{Environment: "production"},
 		},
 		Auth: AuthConfig{
 			Mode: "basic",

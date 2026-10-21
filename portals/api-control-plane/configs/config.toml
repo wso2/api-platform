@@ -179,18 +179,12 @@ tls_skip_verify    = '{{ env "APIP_ACP_GATEWAY_RELAY_TLS_SKIP_VERIFY" "false" }}
 # entry naming it).
 [api_control_plane.gateway_relay.egress]
 
-# "production" (default, including when omitted) or "development".
-#
-# Production rejects private, loopback, and carrier-grade NAT addresses, as
-# well as IP-literal hosts. This ensures allow_hosts governs target selection.
-#
-# Development permits these addresses for gateways running on localhost or a
-# ClusterIP. It does not relax the non-configurable restrictions below; the
-# metadata endpoint remains unreachable.
-environment = '{{ env "APIP_ACP_GATEWAY_RELAY_EGRESS_ENVIRONMENT" "production" }}'
-
 # Complete set of targets the relay may dial. An empty list refuses all requests
 # with TARGET_NOT_ALLOWED.
+#
+# This list is the whole of the decision. Private, loopback and ClusterIP
+# addresses are all dialable, because that is where gateways legitimately
+# live — so an entry naming one is an operator choosing to reach it.
 #
 # Entries use "[scheme://]host[:port]":
 #

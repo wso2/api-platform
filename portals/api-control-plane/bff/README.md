@@ -81,7 +81,6 @@ allowed to look like:
 
 ```toml
 [api_control_plane.gateway_relay.egress]
-environment = "production"
 allow_hosts = ["https://*.gw.svc.cluster.local:9443"]
 ```
 
@@ -112,20 +111,15 @@ separating a gateway from any other in-cluster HTTP service (Elasticsearch
 `:9200`, etcd `:2379`, kubelet `:10250`). Pinning the port is the cheapest way
 to tell them apart.
 
-`environment` is `production` (the default, including when the key is absent)
-or `development`:
+Private, loopback and ClusterIP addresses are all dialable, and an IP literal
+matches like any other host. A gateway legitimately lives on a ClusterIP, and
+on loopback in development, so refusing those by category would break the
+ordinary case when `allow_hosts` already decides the question. The flip side
+is that a wide entry is a wide grant — `*` reaches anything the floor below
+does not refuse, this BFF's own host included. An operator listing `localhost`
+has chosen to reach it.
 
-| | `production` | `development` |
-|---|---|---|
-| Private, loopback, CGNAT addresses | refused | allowed |
-| IP-literal target host | refused | allowed |
-| Link-local / metadata | refused | refused |
-
-Production is what a deployment gets by forgetting to choose. Development
-exists because a gateway there genuinely is on `localhost` or a ClusterIP; it
-does not relax the floor below.
-
-Refused in both and not configurable: link-local (where the cloud metadata
+Refused regardless and not configurable: link-local (where the cloud metadata
 endpoint `169.254.169.254` lives), the unspecified address, multicast and
 broadcast, and the IPv6 prefixes that embed an IPv4 address and route to it.
 These are checked against each **resolved** address at dial time, and the

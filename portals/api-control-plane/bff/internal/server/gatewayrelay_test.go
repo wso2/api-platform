@@ -49,12 +49,10 @@ func gatewayRelayConfig(controlPlaneURL string) *config.Config {
 		ResolveCacheTTL:  time.Minute,
 		ResolveCacheSize: 16,
 		// Nothing is reachable unless allow_hosts names it; these tests dial
-		// httptest servers on loopback, which production refuses both as a
-		// private address and as an IP literal. Cases that exercise the
-		// policy itself override this.
+		// httptest servers on loopback. Cases that exercise the policy
+		// itself override this.
 		Egress: config.EgressConfig{
-			Environment: "development",
-			AllowHosts:  []string{"*"},
+			AllowHosts: []string{"*"},
 		},
 	}
 	return cfg
@@ -389,43 +387,20 @@ func TestInvokeRefusesAGatewayTheAPIIsNotDeployedTo(t *testing.T) {
 }
 
 func TestInvokeReportsADialTimePolicyRefusalAsARefusal(t *testing.T) {
-	// Host and address checks are one policy. A dial-time address refusal
-	// should not look like a gateway connectivity failure.
-	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer gateway.Close()
-	port := strings.TrimPrefix(gateway.URL, "http://127.0.0.1:")
+	// The host check and the address check are two halves of one policy and
+	// must answer the same way. The address half runs at dial time, so it
+	// used to surface as "the gateway could not be reached" — sending someone
+	// off to debug a network that was perfectly healthy.
+	//
+	// allow_hosts admits it, so what refuses here is the always-on floor.
+	platform := platformAPIFor(t, "http://169.254.169.254")
+	f := newInvokeFixture(t, gatewayRelayConfig(platform.URL))
 
-	for _, tc := range []struct{ name, endpoint string }{
-		// Refused up front: production takes no IP-literal target.
-		{"ip literal", "http://127.0.0.1:" + port},
-		// Refused at dial: the name is fine, what it resolves to is not.
-		{"name resolving to loopback", "http://localhost:" + port},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			platform := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				w.Header().Set("Content-Type", "application/json")
-				if strings.HasSuffix(r.URL.Path, "/gateways") {
-					_, _ = w.Write([]byte(`{"list":[{"id":"gw-prod","endpoints":["` + tc.endpoint + `"],"isDeployed":true}]}`))
-					return
-				}
-				_, _ = w.Write([]byte(`{"context":"/"}`))
-			}))
-			defer platform.Close()
+	res := f.post(t, `{"orgHandle":"acme","restApiId":"api-1","gatewayId":"gw-prod","method":"GET","path":"/"}`, true)
 
-			cfg := gatewayRelayConfig(platform.URL)
-			cfg.GatewayRelay.Egress.Environment = "production"
-			cfg.GatewayRelay.Egress.AllowHosts = []string{"localhost", "127.0.0.1"}
-			f := newInvokeFixture(t, cfg)
-
-			res := f.post(t, `{"orgHandle":"acme","restApiId":"api-1","gatewayId":"gw-prod","method":"GET","path":"/"}`, true)
-
-			assertStatus(t, res, http.StatusForbidden)
-			if code := decodeError(t, res)["code"]; code != "TARGET_NOT_ALLOWED" {
-				t.Errorf("code = %v, want TARGET_NOT_ALLOWED", code)
-			}
-		})
+	assertStatus(t, res, http.StatusForbidden)
+	if code := decodeError(t, res)["code"]; code != "TARGET_NOT_ALLOWED" {
+		t.Errorf("code = %v, want TARGET_NOT_ALLOWED", code)
 	}
 }
 

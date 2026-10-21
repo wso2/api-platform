@@ -35,13 +35,18 @@
 // configurable — allow_hosts matches names, and a name an operator trusts can
 // still resolve to one of these, deliberately or otherwise.
 //
-// # Environment
+// # What is NOT refused by category
 //
-// Production rejects private, loopback, carrier-grade NAT, and IP-literal
-// targets. Development permits these addresses for local and cluster gateways,
-// but retains the restrictions above, including metadata endpoint protection.
+// Private, loopback and carrier-grade-NAT addresses are all dialable, and an
+// IP literal is matched like any other host. That is deliberate: a gateway
+// legitimately lives on a ClusterIP, and on loopback during development, so
+// refusing those by category would break the ordinary case while allow_hosts
+// already decides the question.
 //
-// Production is the default, including when the key is absent.
+// It does mean a wide entry is a wide grant — "*" reaches anything the floor
+// above does not refuse, the BFF's own host included. An operator listing
+// localhost has chosen to reach localhost; the policy does not second-guess
+// it, so the narrower the list, the better.
 //
 // # Why the checks live in two places
 //
@@ -74,20 +79,10 @@ import (
 var (
 	ErrTargetNotAllowed = errors.New("gateway target does not match any allow_hosts entry")
 	ErrNoTargetHost     = errors.New("resolved target has no host")
-	ErrIPLiteralTarget  = errors.New("target names an IP address rather than a hostname")
-	ErrInvalidEnv       = errors.New("environment must be \"production\" or \"development\"")
-)
-
-// Environments supported by an egress policy. Production is the default.
-const (
-	EnvProduction  = "production"
-	EnvDevelopment = "development"
 )
 
 // Spec is the operator's setting as written in config.toml, before parsing.
 type Spec struct {
-	// Environment selects the network assumptions. Empty means production.
-	Environment string
 	// AllowHosts lists the relay's permitted targets. Empty permits none.
 	AllowHosts []string
 }
@@ -99,9 +94,6 @@ type Policy struct {
 	// be able to re-open a refused range.
 	netguardPolicy netguard.Policy
 	allow          []targetPattern
-	environment    string
-	// rejectIPLiterals rejects IP hosts in production, where gateways use DNS.
-	rejectIPLiterals bool
 }
 
 // targetPattern is one allow_hosts entry: a host glob, with an optional
@@ -163,29 +155,7 @@ func globMatch(pattern, s string) bool {
 // are never configurable. Everything the operator writes only ever decides
 // which names may be dialed at all; nothing widens that base.
 func Parse(spec Spec) (*Policy, error) {
-	environment := strings.ToLower(strings.TrimSpace(spec.Environment))
-	if environment == "" {
-		environment = EnvProduction
-	}
-	if environment != EnvProduction && environment != EnvDevelopment {
-		return nil, fmt.Errorf("%w, got %q", ErrInvalidEnv, spec.Environment)
-	}
-
-	policy := &Policy{
-		netguardPolicy: netguard.PermitPrivateBlockMetadata(),
-		environment:    environment,
-	}
-	if environment == EnvProduction {
-		// A gateway reachable from a production control plane is a routable,
-		// named service. Private, loopback and carrier-grade-NAT space is
-		// where everything else in the cluster lives, so none of it is a
-		// legitimate target there — and an IP literal bypasses the naming
-		// that allow_hosts is written in terms of.
-		policy.netguardPolicy.BlockPrivate = true
-		policy.netguardPolicy.BlockLoopback = true
-		policy.netguardPolicy.BlockCGNAT = true
-		policy.rejectIPLiterals = true
-	}
+	policy := &Policy{netguardPolicy: netguard.PermitPrivateBlockMetadata()}
 	// Both schemes are ordinary serving modes for a gateway; netguard
 	// defaults to https alone, which would refuse a plain-http one.
 	policy.netguardPolicy.AllowedSchemes = []string{"http", "https"}
@@ -306,13 +276,6 @@ func (p *Policy) CheckTarget(u *url.URL) error {
 	host := strings.ToLower(strings.TrimSuffix(u.Hostname(), "."))
 	scheme := strings.ToLower(u.Scheme)
 
-	// Checked ahead of the allow list so the log says which rule fired. The
-	// dial-time address checks would refuse a private literal anyway, but a
-	// public one would not be caught there at all.
-	if p.rejectIPLiterals && net.ParseIP(host) != nil {
-		return fmt.Errorf("%w: %s", ErrIPLiteralTarget, host)
-	}
-
 	port, err := targetPort(u)
 	if err != nil {
 		return err
@@ -337,14 +300,13 @@ func (p *Policy) CheckTarget(u *url.URL) error {
 // can confirm what is in force without re-reading config.toml.
 func (p *Policy) Describe() string {
 	if len(p.allow) == 0 {
-		return "environment=" + p.environment +
-			" allow_hosts=[] (nothing is reachable — set allow_hosts to use the gateway relay)"
+		return "allow_hosts=[] (nothing is reachable — set allow_hosts to use the gateway relay)"
 	}
 	entries := make([]string, 0, len(p.allow))
 	for _, pattern := range p.allow {
 		entries = append(entries, pattern.raw)
 	}
-	return "environment=" + p.environment + " allow_hosts=[" + strings.Join(entries, " ") + "]"
+	return "allow_hosts=[" + strings.Join(entries, " ") + "]"
 }
 
 // targetPort returns the port the URL dials, filling in the scheme default

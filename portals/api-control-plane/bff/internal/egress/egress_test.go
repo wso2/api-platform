@@ -25,20 +25,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// policyFor builds a development policy: most cases here are about host
-// matching, and development is the mode that does not also refuse the
-// loopback and private addresses those cases use.
 func policyFor(t *testing.T, hosts ...string) *Policy {
 	t.Helper()
-	p, err := Parse(Spec{Environment: EnvDevelopment, AllowHosts: hosts})
-	require.NoError(t, err)
-	return p
-}
-
-// prodPolicyFor builds a production policy.
-func prodPolicyFor(t *testing.T, hosts ...string) *Policy {
-	t.Helper()
-	p, err := Parse(Spec{Environment: EnvProduction, AllowHosts: hosts})
+	p, err := Parse(Spec{AllowHosts: hosts})
 	require.NoError(t, err)
 	return p
 }
@@ -220,8 +209,10 @@ func TestAlwaysRefusedRangesAreNotConfigurable(t *testing.T) {
 	assert.True(t, hasNAT64)
 }
 
-func TestDevelopmentKeepsPrivateAndLoopbackDialable(t *testing.T) {
-	// A gateway in development genuinely is on localhost or a ClusterIP.
+func TestPrivateAndLoopbackAreDialable(t *testing.T) {
+	// Gateways live on ClusterIPs and, in local development, on loopback, so
+	// neither is refused by category. allow_hosts is the whole of the
+	// decision — an operator who lists localhost has chosen to reach it.
 	ng := policyFor(t, "*").NetguardPolicy()
 
 	assert.False(t, ng.BlockPrivate)
@@ -230,79 +221,36 @@ func TestDevelopmentKeepsPrivateAndLoopbackDialable(t *testing.T) {
 	assert.ElementsMatch(t, []string{"http", "https"}, ng.AllowedSchemes)
 }
 
-func TestProductionRefusesPrivateLoopbackAndCGNAT(t *testing.T) {
-	// Where everything else in a cluster lives, and never a gateway reachable
-	// from a production control plane.
-	ng := prodPolicyFor(t, "*").NetguardPolicy()
+func TestIPLiteralTargetsAreMatchedLikeAnyOtherHost(t *testing.T) {
+	// No special rule for literals: they match allow_hosts or they do not.
+	p := policyFor(t, "10.1.2.3:8080")
+	assert.NoError(t, check(t, p, "http://10.1.2.3:8080/x"))
+	assert.ErrorIs(t, check(t, p, "http://10.1.2.4:8080/x"), ErrTargetNotAllowed)
 
-	assert.True(t, ng.BlockPrivate)
-	assert.True(t, ng.BlockLoopback)
-	assert.True(t, ng.BlockCGNAT)
+	// And "*" admits them, which is what makes a narrow list matter.
+	assert.NoError(t, check(t, policyFor(t, "*"), "http://127.0.0.1:9780/x"))
 }
 
-func TestProductionRefusesAnIPLiteralTarget(t *testing.T) {
-	// A literal sidesteps the naming allow_hosts is written in terms of, and
-	// a public literal would not be caught by the address checks at all.
-	p := prodPolicyFor(t, "*")
+func TestTheAlwaysRefusedFloorIsNotConfigurable(t *testing.T) {
+	// The one thing allow_hosts cannot re-open, whatever it lists.
+	ng := policyFor(t, "*").NetguardPolicy()
 
-	for _, target := range []string{
-		"http://10.0.0.5/x",
-		"http://127.0.0.1:9780/x",
-		"http://169.254.169.254/x",
-		"https://203.0.113.5/x", // public, so only this rule refuses it
-		"http://[fd00::1]:8443/x",
-		"http://[::1]:8080/x",
-	} {
-		assert.ErrorIs(t, check(t, p, target), ErrIPLiteralTarget, target)
+	assert.True(t, ng.BlockLinkLocal, "link-local carries the cloud metadata endpoint")
+	assert.True(t, ng.BlockUnspecified)
+	assert.True(t, ng.BlockMulticastBroadcast)
+	assert.Empty(t, ng.AllowCIDRs, "a widening list would let an entry re-open a refused range")
+
+	var has6to4, hasNAT64 bool
+	for _, cidr := range ng.DenyCIDRs {
+		switch cidr.String() {
+		case "2002::/16":
+			has6to4 = true
+		case "64:ff9b::/96":
+			hasNAT64 = true
+		}
 	}
-}
-
-func TestProductionStillAllowsNamedHosts(t *testing.T) {
-	p := prodPolicyFor(t, "https://*.gw.example.com:443")
-
-	assert.NoError(t, check(t, p, "https://a.gw.example.com/pizza"))
-	assert.ErrorIs(t, check(t, p, "https://a.other.example.com/pizza"), ErrTargetNotAllowed)
-}
-
-func TestDevelopmentAllowsAnIPLiteralTarget(t *testing.T) {
-	p := policyFor(t, "*")
-
-	assert.NoError(t, check(t, p, "http://127.0.0.1:8080/x"))
-	assert.NoError(t, check(t, p, "http://10.0.0.5/x"))
-}
-
-func TestEnvironmentDefaultsToProduction(t *testing.T) {
-	// Absent and empty both mean production: the stricter stance has to be
-	// what a deployment gets by forgetting to choose.
-	for _, spec := range []Spec{
-		{AllowHosts: []string{"*"}},
-		{Environment: "", AllowHosts: []string{"*"}},
-		{Environment: "  PRODUCTION  ", AllowHosts: []string{"*"}},
-	} {
-		p, err := Parse(spec)
-		require.NoError(t, err)
-		assert.True(t, p.NetguardPolicy().BlockPrivate)
-		assert.ErrorIs(t, check(t, p, "http://10.0.0.5/x"), ErrIPLiteralTarget)
-	}
-}
-
-func TestUnknownEnvironmentRefusesToStart(t *testing.T) {
-	// A typo must not quietly land on the permissive mode.
-	for _, env := range []string{"prod", "dev", "staging", "Production!"} {
-		_, err := Parse(Spec{Environment: env, AllowHosts: []string{"*"}})
-		assert.ErrorIs(t, err, ErrInvalidEnv, env)
-	}
-}
-
-func TestMetadataFloorHoldsInBothEnvironments(t *testing.T) {
-	// The one thing environment never relaxes.
-	for _, p := range []*Policy{policyFor(t, "*"), prodPolicyFor(t, "*")} {
-		ng := p.NetguardPolicy()
-		assert.True(t, ng.BlockLinkLocal)
-		assert.True(t, ng.BlockUnspecified)
-		assert.True(t, ng.BlockMulticastBroadcast)
-		assert.Empty(t, ng.AllowCIDRs)
-	}
+	assert.True(t, has6to4, "2002:a9fe:a9fe:: reaches 169.254.169.254 without being link-local")
+	assert.True(t, hasNAT64)
 }
 
 func TestDescribeNamesTheEffectivePolicy(t *testing.T) {
@@ -311,8 +259,6 @@ func TestDescribeNamesTheEffectivePolicy(t *testing.T) {
 
 	set := policyFor(t, "https://*.gw.internal:9443").Describe()
 	assert.Contains(t, set, "https://*.gw.internal:9443")
-	assert.Contains(t, set, "environment=development")
-	assert.Contains(t, prodPolicyFor(t, "a.b.com").Describe(), "environment=production")
 }
 
 func TestGlobMatch(t *testing.T) {

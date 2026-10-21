@@ -175,7 +175,6 @@ func writeResolveError(w http.ResponseWriter, err error) {
 func (s *Server) writeRelayError(w http.ResponseWriter, err error, env gatewayrelay.Envelope, target gatewayrelay.Target, requestID string) {
 	switch {
 	case errors.Is(err, egress.ErrTargetNotAllowed),
-		errors.Is(err, egress.ErrIPLiteralTarget),
 		errors.Is(err, egress.ErrNoTargetHost),
 		// Policy refusal, even when discovered during dialing.
 		errors.Is(err, egress.ErrAddressNotAllowed):

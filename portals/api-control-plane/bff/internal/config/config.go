@@ -99,10 +99,7 @@ type GatewayRelayConfig struct {
 
 // Policy parses this block into the object that enforces it.
 func (e EgressConfig) Policy() (*egress.Policy, error) {
-	policy, err := egress.Parse(egress.Spec{
-		Environment: e.Environment,
-		AllowHosts:  e.AllowHosts,
-	})
+	policy, err := egress.Parse(egress.Spec{AllowHosts: e.AllowHosts})
 	if err != nil {
 		return nil, fmt.Errorf("[gateway_relay.egress] %w", err)
 	}
@@ -114,12 +111,6 @@ func (e EgressConfig) Policy() (*egress.Policy, error) {
 // One rule: nothing is reachable unless an allow_hosts entry matches it. See
 // internal/egress.
 type EgressConfig struct {
-	// Environment is "production" by default, or "development".
-	//
-	// Production rejects private, loopback, carrier-grade NAT, and IP-literal
-	// target addresses. Development permits these addresses. Both reject
-	// metadata and link-local addresses.
-	Environment string `koanf:"environment"`
 	// AllowHosts is the complete set of targets the relay may dial. Each entry
 	// has the form "[scheme://]host[:port]"; "*" may appear anywhere in host.
 	// Scheme and port constrain matching only when specified.
