@@ -427,7 +427,8 @@ func (m *MockStorage) GetAPIKeysByAPIAndName(apiId, name string) (*models.APIKey
 			return cloneAPIKey(key), nil
 		}
 	}
-	return nil, errors.New("API key not found")
+	// Mirrors the SQL store, which returns storage.ErrNotFound for a missing name.
+	return nil, fmt.Errorf("%w: API key not found", storage.ErrNotFound)
 }
 
 func (m *MockStorage) UpdateAPIKey(apiKey *models.APIKey) error {
@@ -2432,7 +2433,7 @@ func TestCreateAPIKeyExpirationInPast_ReturnsBadRequest(t *testing.T) {
 	request := api.APIKeyCreationRequest{
 		Name: &name,
 		ExpiresIn: &struct {
-			Duration int                                        `json:"duration" yaml:"duration"`
+			Duration int                                    `json:"duration" yaml:"duration"`
 			Unit     api.APIKeyCreationRequestExpiresInUnit `json:"unit" yaml:"unit"`
 		}{Duration: -10, Unit: api.APIKeyCreationRequestExpiresInUnitSeconds},
 	}

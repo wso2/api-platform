@@ -51,7 +51,18 @@ import (
 var (
 	ErrAPIKeyExpirationInPast          = errors.New("API key expiration time must be in the future")
 	ErrUnsupportedAPIKeyExpirationUnit = errors.New("unsupported expiration unit")
+	// ErrInvalidAPIKeyName is wrapped into the error for a client-supplied key
+	// name that fails ValidateAPIKeyName — also client input, not a server fault.
+	ErrInvalidAPIKeyName = errors.New("invalid API key name")
 )
+
+// IsAPIKeyBadRequest reports whether err is an API key client-input error the
+// handlers answer with 400.
+func IsAPIKeyBadRequest(err error) bool {
+	return errors.Is(err, ErrAPIKeyExpirationInPast) ||
+		errors.Is(err, ErrUnsupportedAPIKeyExpirationUnit) ||
+		errors.Is(err, ErrInvalidAPIKeyName)
+}
 
 // APIKeyCreationParams contains parameters for API key creation operations.
 // Handles both local key generation and external key injection.
@@ -328,6 +339,22 @@ func (s *APIKeyService) CreateAPIKey(params APIKeyCreationParams) (*APIKeyCreati
 			slog.String("handle", params.Handle),
 			slog.String("correlation_id", params.CorrelationID))
 		return nil, fmt.Errorf("failed to generate API key: %w", err)
+	}
+
+	// A create request from the REST API (UUID unset) must not reuse the name of a
+	// live key: the upsert below is keyed on the name, so it would overwrite that
+	// key's row while the runtime keeps honoring the original key — which a later
+	// revoke, acting on the overwritten row, could then never reach. A revoked
+	// key's name may be reused. Platform events (UUID set) replay keys on purpose
+	// and keep the upsert semantics.
+	if params.UUID == nil {
+		existing, err := s.getAPIKeyByAPIAndName(config.UUID, apiKey.Name)
+		if err != nil && !storage.IsNotFoundError(err) {
+			return nil, fmt.Errorf("failed to check existing API key name: %w", err)
+		}
+		if existing != nil && existing.Status != models.APIKeyStatusRevoked {
+			return nil, fmt.Errorf("%w: API key with name '%s' already exists", storage.ErrConflict, apiKey.Name)
+		}
 	}
 
 	// Persist to database.
@@ -1041,7 +1068,7 @@ func (s *APIKeyService) createAPIKeyFromRequest(handle string, request *api.APIK
 		// User provided a name
 		name = strings.TrimSpace(*request.Name)
 		if err := ValidateAPIKeyName(name); err != nil {
-			return nil, fmt.Errorf("invalid name: %w", err)
+			return nil, fmt.Errorf("%w: %w", ErrInvalidAPIKeyName, err)
 		}
 	} else {
 		// Generate unique URL-safe name: use handle + short ID portion as base

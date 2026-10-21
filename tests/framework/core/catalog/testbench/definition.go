@@ -44,6 +44,7 @@ import (
 	"github.com/wso2/api-platform/tests/framework/testbench/services/opa"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/openai"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/webhook"
+	"github.com/wso2/api-platform/tests/framework/testbench/services/websocket"
 )
 
 // EnvImageTestbench overrides the testbench image, for CI to pin a build.
@@ -144,6 +145,9 @@ func Testbench() *components.Definition {
 			{Name: "guardian", Port: guardian.Port, Scheme: "http", AwaitListening: true},
 			{Name: "graphql-backend", Port: graphqlbackend.Port, Scheme: "http", AwaitListening: true},
 			{Name: "opa", Port: opa.Port, Scheme: "http", AwaitListening: true},
+			// Handshake is plain HTTP/1.1 until a client sends the Upgrade request itself, so
+			// the readiness probe uses the same "http" scheme as every other service here.
+			{Name: "websocket", Port: websocket.Port, Scheme: "http", AwaitListening: true},
 		},
 		Env: map[string]string{
 			oidc.EnvTLSCert: string(shared.IdentityProviderTLS().CertPEM),

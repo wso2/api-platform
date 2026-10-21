@@ -79,6 +79,16 @@ func buildResourceResponse(cfg any, status api.ResourceStatus) any {
 		cp := *v
 		cp.Status = &status
 		return cp
+	case api.WebSocketAPI:
+		v.Status = &status
+		return v
+	case *api.WebSocketAPI:
+		if v == nil {
+			return nil
+		}
+		cp := *v
+		cp.Status = &status
+		return cp
 	case api.MCPProxyConfiguration:
 		v.Status = &status
 		return v

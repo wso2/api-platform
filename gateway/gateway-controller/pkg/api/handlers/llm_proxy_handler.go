@@ -307,7 +307,7 @@ func (s *APIServer) CreateLLMProxyAPIKey(w http.ResponseWriter, r *http.Request,
 			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: fmt.Sprintf("LLM proxy '%s' not found", handle)})
 		} else if storage.IsConflictError(err) {
 			httputil.WriteJSON(w, http.StatusConflict, api.ErrorResponse{Status: "error", Message: err.Error()})
-		} else if errors.Is(err, utils.ErrAPIKeyExpirationInPast) || errors.Is(err, utils.ErrUnsupportedAPIKeyExpirationUnit) {
+		} else if utils.IsAPIKeyBadRequest(err) {
 			httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: err.Error()})
 		} else {
 			log.Error("Failed to create LLM proxy API key", slog.String("handle", handle), slog.Any("error", err))
@@ -395,7 +395,7 @@ func (s *APIServer) UpdateLLMProxyAPIKey(w http.ResponseWriter, r *http.Request,
 			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: fmt.Sprintf("LLM proxy or API key '%s' not found", apiKeyName)})
 		} else if storage.IsConflictError(err) {
 			httputil.WriteJSON(w, http.StatusConflict, api.ErrorResponse{Status: "error", Message: err.Error()})
-		} else if errors.Is(err, utils.ErrAPIKeyExpirationInPast) || errors.Is(err, utils.ErrUnsupportedAPIKeyExpirationUnit) {
+		} else if utils.IsAPIKeyBadRequest(err) {
 			httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: err.Error()})
 		} else {
 			log.Error("Failed to update LLM proxy API key", slog.String("handle", handle), slog.String("key", apiKeyName), slog.Any("error", err))
@@ -439,7 +439,7 @@ func (s *APIServer) RegenerateLLMProxyAPIKey(w http.ResponseWriter, r *http.Requ
 	if err != nil {
 		if storage.IsNotFoundError(err) {
 			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: fmt.Sprintf("LLM proxy or API key '%s' not found", apiKeyName)})
-		} else if errors.Is(err, utils.ErrAPIKeyExpirationInPast) || errors.Is(err, utils.ErrUnsupportedAPIKeyExpirationUnit) {
+		} else if utils.IsAPIKeyBadRequest(err) {
 			httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: err.Error()})
 		} else {
 			log.Error("Failed to regenerate LLM proxy API key", slog.String("handle", handle), slog.String("key", apiKeyName), slog.Any("error", err))

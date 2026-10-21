@@ -1043,3 +1043,91 @@ spec:
 	require.NoError(t, err)
 	assert.Equal(t, cpUUID, stored.UUID)
 }
+
+// spec.deploymentState on a registered kind must reach the stored config: an
+// "undeployed" WebSocketApi stays stored but is skipped by the router translator.
+func TestDeployAPIConfiguration_HonorsUndeployedStateForRegisteredKind(t *testing.T) {
+	store := storage.NewConfigStore()
+	db := newTestMockDB()
+	service := newTestAPIDeploymentService(store, db, nil, config.NewAPIValidator(), &config.RouterConfig{
+		VHosts: config.VHostsConfig{Main: config.VHostEntry{Default: "api.example.com"}},
+	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	payload := func(state string) []byte {
+		return []byte(`
+apiVersion: gateway.api-platform.wso2.com/v1
+kind: WebSocketApi
+metadata:
+  name: chat-websocket-v1.0
+spec:
+  displayName: Chat
+  version: v1.0
+  context: /chat/$version
+` + state + `
+  upstream:
+    main:
+      url: ws://chat-backend:8080/ws
+  channels:
+    - path: /rooms/general
+`)
+	}
+	deploy := func(id, state string) *APIDeploymentResult {
+		at := time.Now()
+		result, err := service.DeployAPIConfiguration(APIDeploymentParams{
+			Data: payload(state), ContentType: "application/yaml", Kind: "WebSocketApi", APIID: id,
+			Origin: models.OriginGatewayAPI, DeployedAt: &at, CorrelationID: "test-corr", Logger: logger,
+		})
+		require.NoError(t, err)
+		return result
+	}
+
+	created := deploy("", "  deploymentState: undeployed")
+	assert.Equal(t, models.StateUndeployed, created.StoredConfig.DesiredState)
+
+	time.Sleep(2 * time.Millisecond) // the upsert is guarded by a strictly newer DeployedAt
+	redeployed := deploy(created.StoredConfig.UUID, "")
+	assert.Equal(t, models.StateDeployed, redeployed.StoredConfig.DesiredState,
+		"omitting deploymentState redeploys the API")
+}
+
+// Two deployed WebSocket APIs on one resolved context would be served by
+// whichever route Envoy matched first; the second must be rejected instead.
+func TestDeployAPIConfiguration_RejectsSharedRouteContextForRegisteredKind(t *testing.T) {
+	service := newTestAPIDeploymentService(storage.NewConfigStore(), newTestMockDB(), nil, config.NewAPIValidator(), &config.RouterConfig{
+		VHosts: config.VHostsConfig{Main: config.VHostEntry{Default: "api.example.com"}},
+	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	deploy := func(name, context, state string) error {
+		at := time.Now()
+		_, err := service.DeployAPIConfiguration(APIDeploymentParams{
+			Data: []byte(`
+apiVersion: gateway.api-platform.wso2.com/v1
+kind: WebSocketApi
+metadata:
+  name: ` + name + `
+spec:
+  displayName: ` + name + `
+  version: v1.0
+  context: ` + context + `
+` + state + `
+  upstream:
+    main:
+      url: ws://chat-backend:8080/ws
+  channels:
+    - path: /rooms/general
+`), ContentType: "application/yaml", Kind: "WebSocketApi",
+			Origin: models.OriginGatewayAPI, DeployedAt: &at, CorrelationID: "test-corr", Logger: logger,
+		})
+		return err
+	}
+
+	require.NoError(t, deploy("chat-a", "/chat/$version", ""))
+	err := deploy("chat-b", "/chat/v1.0", "")
+	require.Error(t, err)
+	assert.True(t, storage.IsConflictError(err), "a shared context is a conflict (409), got %v", err)
+
+	assert.NoError(t, deploy("chat-c", "/chat/$version", "  deploymentState: undeployed"),
+		"an undeployed API holds no route, so it does not conflict")
+	assert.NoError(t, deploy("other", "/other/$version", ""))
+}

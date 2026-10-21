@@ -48,6 +48,7 @@ import (
 	"github.com/wso2/api-platform/tests/framework/testbench/services/openai"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/tlsbackend"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/webhook"
+	"github.com/wso2/api-platform/tests/framework/testbench/services/websocket"
 )
 
 func main() {
@@ -119,6 +120,7 @@ func services() ([]testbench.Service, error) {
 		guardian.New(),
 		graphqlbackend.New(),
 		opa.New(),
+		websocket.New(),
 	}, nil
 }
 

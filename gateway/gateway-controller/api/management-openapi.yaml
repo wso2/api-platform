@@ -1014,6 +1014,505 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /websocket-apis:
+    post:
+      summary: Create a new WebSocketApi
+      description: Add a new WebSocketApi to the Gateway.
+      operationId: createWebSocketAPI
+      x-basicauth-roles: [admin, developer]
+      tags:
+        - WebSocket API Management
+      requestBody:
+        required: true
+        content:
+          application/yaml:
+            schema:
+              $ref: "#/components/schemas/WebSocketAPIRequest"
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WebSocketAPIRequest"
+      responses:
+        "201":
+          description: WebSocketApi created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebSocketAPI"
+        "400":
+          description: Invalid configuration (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Conflict - API with same name and version already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    get:
+      summary: List all WebSocketApis
+      description: List WebSocketApis registered in the Gateway, optionally filtered by name, version, context, or status.
+      operationId: listWebSocketAPIs
+      x-basicauth-roles: [admin, developer]
+      tags:
+        - WebSocket API Management
+      parameters:
+        - name: displayName
+          in: query
+          required: false
+          description: Filter by API display name
+          schema:
+            type: string
+          example: Chat
+        - name: version
+          in: query
+          required: false
+          description: Filter by API version
+          schema:
+            type: string
+          example: v1.0
+        - name: context
+          in: query
+          required: false
+          description: Filter by API context/path
+          schema:
+            type: string
+          example: /chat/v1.0
+        - name: status
+          in: query
+          required: false
+          description: Filter by deployment status
+          schema:
+            type: string
+            enum: [ deployed, undeployed ]
+          example: undeployed
+      responses:
+        "200":
+          description: List of WebSocketApis
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  count:
+                    type: integer
+                    example: 1
+                  websocketApis:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/WebSocketAPI"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /websocket-apis/{id}:
+    get:
+      summary: Get WebSocketApi by id
+      description: Get a WebSocketApi by its ID.
+      operationId: getWebSocketAPIById
+      x-basicauth-roles: [admin, developer]
+      tags:
+        - WebSocket API Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: |
+            Unique public identifier for the API.
+          schema:
+            type: string
+          example: chat-websocket-v1.0
+      responses:
+        "200":
+          description: WebSocketApi details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebSocketAPI"
+            application/yaml:
+              schema:
+                $ref: "#/components/schemas/WebSocketAPI"
+        "404":
+          description: WebSocketApi not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    put:
+      summary: Update an existing WebSocketApi
+      description: Update an existing WebSocketApi in the Gateway.
+      operationId: updateWebSocketAPI
+      x-basicauth-roles: [admin, developer]
+      tags:
+        - WebSocket API Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: |
+            Unique public identifier of the API to update.
+          schema:
+            type: string
+          example: chat-websocket-v1.0
+      requestBody:
+        required: true
+        content:
+          application/yaml:
+            schema:
+              $ref: "#/components/schemas/WebSocketAPIRequest"
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WebSocketAPIRequest"
+      responses:
+        "200":
+          description: WebSocketApi updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebSocketAPI"
+        "400":
+          description: Invalid configuration (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: WebSocketApi not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    delete:
+      summary: Delete a WebSocketApi
+      description: Delete a WebSocketApi from the Gateway.
+      operationId: deleteWebSocketAPI
+      x-basicauth-roles: [admin, developer]
+      tags:
+        - WebSocket API Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: |
+            Unique public identifier of the API to delete.
+          schema:
+            type: string
+          example: chat-websocket-v1.0
+      responses:
+        "200":
+          description: WebSocketApi deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  message:
+                    type: string
+                    example: WebSocketApi deleted successfully
+                  id:
+                    type: string
+                    example: chat-websocket-v1.0
+        "404":
+          description: WebSocketApi not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /websocket-apis/{id}/api-keys:
+    post:
+      summary: Create a new API key for a WebSocket API
+      description: Generate a new API key for a WebSocketApi in the Gateway. The key is a 32-byte random value encoded in hexadecimal, prefixed with `apip_`. Use the API Key policy on the API to validate incoming handshakes with this key.
+      operationId: createWebSocketAPIKey
+      x-basicauth-roles: [admin, consumer]
+      tags:
+        - WebSocket API Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: |
+            Unique public identifier of the API to generate the key for
+          schema:
+            type: string
+          example: chat-websocket-api
+      requestBody:
+        required: true
+        content:
+          application/yaml:
+            schema:
+              $ref: "#/components/schemas/APIKeyCreationRequest"
+          application/json:
+            schema:
+              $ref: "#/components/schemas/APIKeyCreationRequest"
+      responses:
+        '201':
+          description: API key created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIKeyCreationResponse"
+        "400":
+          description: Invalid configuration (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: WebSocketApi not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    get:
+      summary: Get the list of API keys for a WebSocket API
+      description: List all API keys for a WebSocketApi in the Gateway.
+      operationId: listWebSocketAPIKeys
+      x-basicauth-roles: [admin, consumer]
+      tags:
+        - WebSocket API Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: |
+            Unique public identifier of the API to retrieve the keys for
+          schema:
+            type: string
+          example: chat-websocket-api
+      responses:
+        "200":
+          description: List of API keys
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIKeyListResponse"
+        "404":
+          description: WebSocketApi not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /websocket-apis/{id}/api-keys/{apiKeyName}/regenerate:
+    post:
+      summary: Regenerate API key for a WebSocket API
+      description: Regenerate an existing API key for a WebSocketApi in the Gateway. The previous key is revoked and replaced with a new 32-byte random value encoded in hexadecimal, prefixed with `apip_`.
+      operationId: regenerateWebSocketAPIKey
+      x-basicauth-roles: [admin, consumer]
+      tags:
+        - WebSocket API Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: |
+            Unique public identifier of the API to generate the key for
+          schema:
+            type: string
+          example: chat-websocket-api
+        - name: apiKeyName
+          in: path
+          required: true
+          description: |
+            Name of the API key to regenerate
+          schema:
+            type: string
+          example: chat-websocket-api-key
+      requestBody:
+        required: true
+        content:
+          application/yaml:
+            schema:
+              $ref: "#/components/schemas/APIKeyRegenerationRequest"
+          application/json:
+            schema:
+              $ref: "#/components/schemas/APIKeyRegenerationRequest"
+      responses:
+        '200':
+          description: API key rotated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIKeyCreationResponse"
+        "400":
+          description: Invalid configuration (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: WebSocketApi not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /websocket-apis/{id}/api-keys/{apiKeyName}:
+    put:
+      summary: Update an API key with a new regenerated value
+      description: Update an API key with a custom value instead of auto-generating one.
+      operationId: updateWebSocketAPIKey
+      x-basicauth-roles: [admin, consumer]
+      tags:
+        - WebSocket API Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: |
+            Unique public identifier of the API
+          schema:
+            type: string
+          example: chat-websocket-api
+        - name: apiKeyName
+          in: path
+          required: true
+          description: |
+            Name of the API key to update
+          schema:
+            type: string
+          example: chat-websocket-api-key
+      requestBody:
+        required: true
+        content:
+          application/yaml:
+            schema:
+              $ref: "#/components/schemas/APIKeyUpdateRequest"
+          application/json:
+            schema:
+              $ref: "#/components/schemas/APIKeyUpdateRequest"
+      responses:
+        '200':
+          description: API key updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIKeyCreationResponse"
+        "400":
+          description: Invalid request (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: API or API key not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      summary: Revoke an API key
+      description: Revoke an API key. Once revoked, it can no longer be used to authenticate handshakes.
+      operationId: revokeWebSocketAPIKey
+      x-basicauth-roles: [admin, consumer]
+      tags:
+        - WebSocket API Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: |
+            Unique public identifier of the API to revoke the key for
+          schema:
+            type: string
+          example: chat-websocket-api
+        - name: apiKeyName
+          in: path
+          required: true
+          description: |
+            Name of the API key to revoke
+          schema:
+            type: string
+          example: chat-websocket-api-key
+      responses:
+        '200':
+          description: API key revoked successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIKeyRevocationResponse"
+        "400":
+          description: Invalid configuration (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: WebSocketApi not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /subscription-plans:
     post:
       summary: Create a subscription plan
@@ -4397,6 +4896,217 @@ components:
           updatedAt: 2026-08-11T10:00:00Z
           deployedAt: 2026-08-11T10:00:00Z
 
+    WebSocketChannel:
+      type: object
+      description: >
+        One WebSocket channel - a single path clients open a connection to. Mirrors an AsyncAPI
+        channel. A channel handshake is always a GET upgrade, so no method field is carried.
+      required:
+        - path
+      properties:
+        path:
+          type: string
+          description: >
+            Channel path relative to the API context, optionally containing {parameter} segments.
+            Each parameter matches exactly one path segment.
+          pattern: '^\/.*$'
+          example: /rooms/{roomId}
+        policies:
+          type: array
+          description: >
+            Policies applied only to this channel, in addition to the API-level policies. Every
+            entry must be handshake-only - a policy declaring request- or response-body processing
+            is rejected at deploy time.
+          items:
+            $ref: "#/components/schemas/Policy"
+
+    WebSocketConnectionSettings:
+      type: object
+      description: >
+        Downstream (client-facing) connection settings for a WebSocketApi. Bounded by the
+        gateway-wide defaults and upper limits; distinct from each upstream slot's own
+        `upstream.<slot>.timeout` settings, which bound the gateway-to-backend connection.
+      properties:
+        idleTimeout:
+          type: string
+          description: >
+            How long a client connection may sit with no frames - data or ping/pong - before the
+            gateway closes it. Falls back to the gateway-wide default when omitted; a value above
+            the gateway-configured upper bound is rejected at deploy time.
+          pattern: '^\d+(\.\d+)?(ms|s|m|h)$'
+          example: 300s
+        maxConnectionDuration:
+          type: string
+          description: >
+            Hard ceiling on a client connection's total lifetime, regardless of activity. Always
+            resolves to a finite value - the gateway-wide default applies when omitted, and
+            "unlimited" is never the effective value. This bounds how long access already granted
+            at the handshake can outlive its revocation.
+          pattern: '^\d+(\.\d+)?(ms|s|m|h)$'
+          example: 1h
+        maxConnections:
+          type: integer
+          description: >
+            Maximum concurrent client connections accepted for this API on one gateway instance.
+            Excess handshakes are rejected immediately with 503, never queued.
+          minimum: 1
+          example: 1000
+
+    WebSocketAPIConfigData:
+      type: object
+      required:
+        - displayName
+        - version
+        - context
+        - upstream
+        - channels
+      properties:
+        displayName:
+          type: string
+          description: Human-readable API name (must be URL-friendly - only letters, numbers, spaces, hyphens, underscores, and dots allowed)
+          minLength: 1
+          maxLength: 100
+          pattern: '^[a-zA-Z0-9\-_\. ]+$'
+          example: Chat
+        version:
+          type: string
+          description: Semantic version of the API. Both major-only (v1) and major.minor (v1.0) forms are accepted.
+          pattern: '^v\d+(\.\d+)?$'
+          example: v1.0
+        context:
+          type: string
+          description: >
+            Base path for the API (must start with /, no trailing slash). Use $version to embed
+            the version in the path (e.g., /chat/$version resolves to /chat/v1.0). Each channel's
+            path is appended to this context to form the route a client connects to.
+          pattern: '^\/([a-zA-Z0-9_\-\/]*[^\/])?$'
+          minLength: 1
+          maxLength: 200
+          example: /chat/$version
+        upstream:
+          type: object
+          required:
+            - main
+          description: >
+            API-level upstream configuration. Only a direct `ws://`/`wss://` url is supported -
+            WebSocketAPIConfigData has no upstreamDefinitions list, so upstream.ref (used by
+            RestApi to reference a predefined upstreamDefinition) cannot be resolved and is
+            rejected. Each slot may carry its own `timeout` block bounding the gateway-to-backend
+            connection pool, independently of the API-level `connection` settings.
+          properties:
+            main:
+              $ref: "#/components/schemas/Upstream"
+            sandbox:
+              $ref: "#/components/schemas/Upstream"
+        connection:
+          $ref: "#/components/schemas/WebSocketConnectionSettings"
+        channels:
+          type: array
+          description: >
+            The channels this API exposes. At least one is required, and channel paths must be
+            unique within the API.
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/WebSocketChannel"
+        subscriptionPlans:
+          type: array
+          description: List of subscription plan names available for this API
+          items:
+            type: string
+          example: ["Gold", "Silver"]
+        policies:
+          type: array
+          description: >
+            API-level policies, applied to every channel's handshake. Every entry must be
+            handshake-only - a policy declaring request- or response-body processing deadlocks the
+            upgrade and is rejected at deploy time.
+          items:
+            $ref: "#/components/schemas/Policy"
+        deploymentState:
+          type: string
+          description: Desired deployment state - 'deployed' (default) or 'undeployed'. When set to 'undeployed', the API is removed from router traffic but configuration, API keys, and policies are preserved for potential redeployment.
+          enum: [deployed, undeployed]
+          default: deployed
+          example: deployed
+
+    # Request body for create/update: user/resource fields only (no server-managed status).
+    WebSocketAPIRequest:
+      type: object
+      required:
+        - apiVersion
+        - metadata
+        - kind
+        - spec
+      properties:
+        apiVersion:
+          type: string
+          description: API specification version
+          example: gateway.api-platform.wso2.com/v1
+          enum:
+            - gateway.api-platform.wso2.com/v1
+        kind:
+          type: string
+          description: API type
+          example: WebSocketApi
+          enum:
+            - WebSocketApi
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+        spec:
+          $ref: '#/components/schemas/WebSocketAPIConfigData'
+      example:
+        apiVersion: gateway.api-platform.wso2.com/v1
+        kind: WebSocketApi
+        metadata:
+          name: chat-websocket-v1.0
+        spec:
+          displayName: Chat
+          version: v1.0
+          context: /chat/$version
+          upstream:
+            main:
+              url: wss://chat-backend:8443/ws
+          connection:
+            idleTimeout: 300s
+            maxConnectionDuration: 1h
+          channels:
+            - path: /rooms/{roomId}
+          policies:
+            - name: jwt-auth
+              version: v1
+
+    # Full resource including server-managed status (list/get responses).
+    WebSocketAPI:
+      allOf:
+        - $ref: '#/components/schemas/WebSocketAPIRequest'
+        - type: object
+          properties:
+            status:
+              readOnly: true
+              description: Server-managed lifecycle fields. Populated on responses.
+              allOf:
+                - $ref: '#/components/schemas/ResourceStatus'
+      example:
+        apiVersion: gateway.api-platform.wso2.com/v1
+        kind: WebSocketApi
+        metadata:
+          name: chat-websocket-v1.0
+        spec:
+          displayName: Chat
+          version: v1.0
+          context: /chat/$version
+          upstream:
+            main:
+              url: wss://chat-backend:8443/ws
+          channels:
+            - path: /rooms/{roomId}
+        status:
+          id: chat-websocket-v1.0
+          state: deployed
+          createdAt: 2026-08-11T10:00:00Z
+          updatedAt: 2026-08-11T10:00:00Z
+          deployedAt: 2026-08-11T10:00:00Z
+
     UpstreamDefinition:
       type: object
       required:
@@ -4459,13 +5169,43 @@ components:
 
     UpstreamTimeout:
       type: object
-      description: Timeout configuration for upstream requests
+      description: >
+        Timeout and connection-pool configuration for upstream connections. Reachable both
+        through `UpstreamDefinition.timeout` (RestApi's reusable upstream definitions) and
+        directly through `Upstream.timeout`. The idle/duration/connection-count fields below are
+        currently honoured only for `WebSocketApi` upstreams, whose long-lived connections need
+        them; other kinds accept them without effect.
       properties:
         connect:
           type: string
           description: Connection timeout duration (e.g., "5s", "500ms")
           pattern: '^\d+(\.\d+)?(ms|s|m|h)$'
           example: 5s
+        idleTimeout:
+          type: string
+          description: >
+            How long an upstream connection may sit idle in the connection pool before the
+            gateway closes it. Falls back to the gateway-wide default when omitted; a value above
+            the gateway-configured upper bound is rejected at deploy time.
+          pattern: '^\d+(\.\d+)?(ms|s|m|h)$'
+          example: 120s
+        maxConnectionDuration:
+          type: string
+          description: >
+            Hard ceiling on the lifetime of a single upstream connection, regardless of activity.
+            Always resolves to a finite value - the gateway-wide default applies when omitted, and
+            "unlimited" is never the effective value.
+          pattern: '^\d+(\.\d+)?(ms|s|m|h)$'
+          example: 30m
+        maxConnections:
+          type: integer
+          description: >
+            Maximum concurrent connections this gateway instance opens to the upstream, enforced
+            by the cluster's circuit breaker. Best-effort rather than exact - Envoy guarantees at
+            least one connection per selected host, so a multi-host upstream can exceed this by a
+            small amount.
+          minimum: 1
+          example: 500
 
     Resilience:
       type: object
@@ -4519,6 +5259,13 @@ components:
             entry); a tls block placed here is rejected at deploy time. Put
             it on the upstreamDefinitions entry referenced via `ref`.
           additionalProperties: true
+        timeout:
+          description: >
+            Per-slot upstream timeout and connection-pool settings. Applied independently to each
+            upstream slot (`main`/`sandbox`), and independently of any downstream/client-facing
+            connection settings the API declares.
+          allOf:
+            - $ref: "#/components/schemas/UpstreamTimeout"
 
     Operation:
       type: object

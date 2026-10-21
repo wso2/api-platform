@@ -161,7 +161,7 @@ func TestProxyPayload_OmitsAuthBlockWhenRuntimeOmitsIt(t *testing.T) {
 	if err := json.Unmarshal(raw, &decoded); err != nil {
 		t.Fatalf("failed to decode payload: %v", err)
 	}
-	
+
 	provider, ok := decoded["provider"].(map[string]interface{})
 	if !ok {
 		t.Fatalf("provider key should be present in the marshalled payload: %s", raw)
