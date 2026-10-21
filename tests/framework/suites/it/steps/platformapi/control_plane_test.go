@@ -29,6 +29,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -225,14 +226,14 @@ func created(location string) *httpx.Response {
 	return &httpx.Response{StatusCode: http.StatusCreated, Headers: http.Header{"Location": []string{location}}}
 }
 
-func TestTrackAgentProxyResourceRegistersWhatTheControlPlaneCreated(t *testing.T) {
+func TestTrackControlPlaneResourceRegistersWhatTheControlPlaneCreated(t *testing.T) {
 	ctx, reg := trackingContext(t)
 	s := &Steps{}
 
-	require.NoError(t, s.trackAgentProxyResource(ctx, http.MethodPost, nil, created("/api/v0.9/agent-proxies/weather")))
-	require.NoError(t, s.trackAgentProxyResource(ctx, http.MethodPost, []byte(`{"name":"d","gatewayId":"it-gateway"}`),
+	require.NoError(t, s.trackControlPlaneResource(ctx, http.MethodPost, nil, created("/api/v0.9/agent-proxies/weather")))
+	require.NoError(t, s.trackControlPlaneResource(ctx, http.MethodPost, []byte(`{"name":"d","gatewayId":"it-gateway"}`),
 		created("/api/v0.9/agent-proxies/weather/deployments/dep-1")))
-	require.NoError(t, s.trackAgentProxyResource(ctx, http.MethodPost, nil,
+	require.NoError(t, s.trackControlPlaneResource(ctx, http.MethodPost, nil,
 		created("/api/v0.9/agent-proxies/weather/api-keys/key%2D1")))
 
 	require.Equal(t, []string{"weather"}, pendingIDs(reg, platformAgentProxyKind))
@@ -246,11 +247,11 @@ func TestTrackAgentProxyResourceRegistersWhatTheControlPlaneCreated(t *testing.T
 	require.Less(t, platformAgentProxyKind.Order, platformSecretKind.Order)
 
 	// A repeated registration of the same resource is not a second record.
-	require.NoError(t, s.trackAgentProxyResource(ctx, http.MethodPost, nil, created("/api/v0.9/agent-proxies/weather")))
+	require.NoError(t, s.trackControlPlaneResource(ctx, http.MethodPost, nil, created("/api/v0.9/agent-proxies/weather")))
 	require.Len(t, pendingIDs(reg, platformAgentProxyKind), 1)
 }
 
-func TestTrackAgentProxyResourceIgnoresWhatIsNotAnAgentProxyCreate(t *testing.T) {
+func TestTrackControlPlaneResourceIgnoresWhatIsNotATrackedCreate(t *testing.T) {
 	ctx, reg := trackingContext(t)
 	s := &Steps{}
 	for _, tc := range []struct {
@@ -259,55 +260,141 @@ func TestTrackAgentProxyResourceIgnoresWhatIsNotAnAgentProxyCreate(t *testing.T)
 	}{
 		{http.MethodPost, &httpx.Response{StatusCode: http.StatusOK, Headers: http.Header{"Location": []string{"/api/v0.9/agent-proxies/a"}}}},
 		{http.MethodPost, &httpx.Response{StatusCode: http.StatusBadRequest}},
-		{http.MethodPost, created("/api/v0.9/rest-apis/a")},
 		{http.MethodPost, created("")},
 		{http.MethodPut, created("/api/v0.9/agent-proxies/a")},
+		{http.MethodPut, created("/api/v0.9/rest-apis/a")},
 		{http.MethodPost, created("/api/v0.9/agent-proxies/a/builds/b")},
+		{http.MethodPost, created("/api/v0.9/rest-apis/a/builds/b")},
+		{http.MethodPost, created("/api/v0.9/rest-apis/a/api-keys/k")},
+		{http.MethodPost, created("/api/v0.9/organizations/o")},
+		{http.MethodPost, created("/api/v0.9/subscriptions/s")},
+		{http.MethodPost, created("/api/v1/rest-apis/a")},
 	} {
-		require.NoError(t, s.trackAgentProxyResource(ctx, tc.method, nil, tc.resp))
+		require.NoError(t, s.trackControlPlaneResource(ctx, tc.method, nil, tc.resp))
 	}
 	require.Empty(t, reg.Pending())
 }
 
-func TestTrackAgentProxyResourceRequiresTheDeploymentGateway(t *testing.T) {
+func TestTrackControlPlaneResourceRequiresTheDeploymentGateway(t *testing.T) {
 	ctx, reg := trackingContext(t)
 	s := &Steps{}
 	for _, body := range [][]byte{nil, []byte(`{`), []byte(`{"name":"d"}`), []byte(`{"gatewayId":"  "}`)} {
-		err := s.trackAgentProxyResource(ctx, http.MethodPost, body, created("/api/v0.9/agent-proxies/a/deployments/d"))
+		err := s.trackControlPlaneResource(ctx, http.MethodPost, body, created("/api/v0.9/agent-proxies/a/deployments/d"))
 		require.Error(t, err, string(body))
 	}
 	require.Empty(t, reg.Pending())
 }
 
-func TestTrackAgentProxyResourceDeregistersWhatTheScenarioDeleted(t *testing.T) {
+func TestTrackControlPlaneResourceDeregistersWhatTheScenarioDeleted(t *testing.T) {
 	ctx, reg := trackingContext(t)
 	s := &Steps{}
-	require.NoError(t, s.trackAgentProxyResource(ctx, http.MethodPost, nil, created("/api/v0.9/agent-proxies/weather")))
-	require.NoError(t, s.trackAgentProxyResource(ctx, http.MethodPost, nil, created("/api/v0.9/agent-proxies/other")))
-	require.NoError(t, s.trackAgentProxyResource(ctx, http.MethodPost, []byte(`{"gatewayId":"gw"}`),
+	require.NoError(t, s.trackControlPlaneResource(ctx, http.MethodPost, nil, created("/api/v0.9/agent-proxies/weather")))
+	require.NoError(t, s.trackControlPlaneResource(ctx, http.MethodPost, nil, created("/api/v0.9/agent-proxies/other")))
+	require.NoError(t, s.trackControlPlaneResource(ctx, http.MethodPost, []byte(`{"gatewayId":"gw"}`),
 		created("/api/v0.9/agent-proxies/weather/deployments/dep-1")))
-	require.NoError(t, s.trackAgentProxyResource(ctx, http.MethodPost, []byte(`{"gatewayId":"gw"}`),
+	require.NoError(t, s.trackControlPlaneResource(ctx, http.MethodPost, []byte(`{"gatewayId":"gw"}`),
 		created("/api/v0.9/agent-proxies/weather/deployments/dep-12")))
-	require.NoError(t, s.trackAgentProxyResource(ctx, http.MethodPost, nil, created("/api/v0.9/agent-proxies/weather/api-keys/k")))
+	require.NoError(t, s.trackControlPlaneResource(ctx, http.MethodPost, nil, created("/api/v0.9/agent-proxies/weather/api-keys/k")))
 
 	deleted := func(url string) *httpx.Response {
 		return &httpx.Response{StatusCode: http.StatusNoContent, URL: url}
 	}
 	// A failed delete leaves the record in place.
-	require.NoError(t, s.trackAgentProxyResource(ctx, http.MethodDelete, nil,
+	require.NoError(t, s.trackControlPlaneResource(ctx, http.MethodDelete, nil,
 		&httpx.Response{StatusCode: http.StatusConflict, URL: "https://cp/api/v0.9/agent-proxies/weather/deployments/dep-1"}))
 	require.Len(t, pendingIDs(reg, platformAgentDeploymentKind), 2)
 
-	require.NoError(t, s.trackAgentProxyResource(ctx, http.MethodDelete, nil,
+	require.NoError(t, s.trackControlPlaneResource(ctx, http.MethodDelete, nil,
 		deleted("https://cp:9243/api/v0.9/agent-proxies/weather/deployments/dep-1")))
 	require.Equal(t, []string{"weather\x00dep-12\x00gw"}, pendingIDs(reg, platformAgentDeploymentKind),
 		"only the deleted deployment is dropped, not one whose id shares its prefix")
-	require.NoError(t, s.trackAgentProxyResource(ctx, http.MethodDelete, nil,
+	require.NoError(t, s.trackControlPlaneResource(ctx, http.MethodDelete, nil,
 		deleted("https://cp:9243/api/v0.9/agent-proxies/weather/api-keys/k")))
 	require.Empty(t, pendingIDs(reg, platformAgentAPIKeyKind))
-	require.NoError(t, s.trackAgentProxyResource(ctx, http.MethodDelete, nil,
+	require.NoError(t, s.trackControlPlaneResource(ctx, http.MethodDelete, nil,
 		deleted("https://cp:9243/api/v0.9/agent-proxies/weather?force=true")))
 	require.Equal(t, []string{"other"}, pendingIDs(reg, platformAgentProxyKind))
+}
+
+func TestTrackControlPlaneResourceRegistersEveryTrackedCollection(t *testing.T) {
+	ctx, reg := trackingContext(t)
+	s := &Steps{}
+	for collection := range platformCollectionKinds {
+		require.NoError(t, s.trackControlPlaneResource(ctx, http.MethodPost, nil, created("/api/v0.9/"+collection+"/x")))
+	}
+	for collection, kind := range platformCollectionKinds {
+		require.Equal(t, []string{"x"}, pendingIDs(reg, kind), collection)
+	}
+
+	for _, collection := range []string{"rest-apis", "graphql-apis", "mcp-proxies", "llm-providers", "llm-proxies"} {
+		require.NoError(t, s.trackControlPlaneResource(ctx, http.MethodPost, []byte(`{"gatewayId":"gw"}`),
+			created("/api/v0.9/"+collection+"/x/deployments/d")))
+	}
+	require.ElementsMatch(t, []string{
+		"rest-apis\x00x\x00d\x00gw", "graphql-apis\x00x\x00d\x00gw", "mcp-proxies\x00x\x00d\x00gw",
+		"llm-providers\x00x\x00d\x00gw", "llm-proxies\x00x\x00d\x00gw",
+	}, pendingIDs(reg, platformDeploymentKind))
+
+	// A deployment undeploys before the artifact that owns it deletes, and an artifact deletes
+	// before the gateway, project and portal it depends on.
+	for _, artifact := range []cleanup.Kind{platformRESTAPIKind, platformGraphQLAPIKind, platformMCPKind,
+		platformProviderKind, platformProxyKind} {
+		require.Less(t, platformDeploymentKind.Order, artifact.Order, artifact.Name)
+		require.Less(t, artifact.Order, platformGatewayKind.Order, artifact.Name)
+		require.Less(t, artifact.Order, platformProjectKind.Order, artifact.Name)
+	}
+	require.Less(t, platformRESTAPIKind.Order, platformAPIPortalKind.Order)
+	require.Less(t, platformGraphQLAPIKind.Order, platformAPIPortalKind.Order)
+}
+
+func TestTrackControlPlaneResourceRequiresTheGatewayOfEveryDeployment(t *testing.T) {
+	ctx, reg := trackingContext(t)
+	s := &Steps{}
+	for _, body := range [][]byte{nil, []byte(`{`), []byte(`{"name":"d"}`)} {
+		err := s.trackControlPlaneResource(ctx, http.MethodPost, body, created("/api/v0.9/rest-apis/a/deployments/d"))
+		require.Error(t, err, string(body))
+	}
+	require.Empty(t, reg.Pending())
+}
+
+func TestTrackControlPlaneResourceDeregistersDeletedPlatformResources(t *testing.T) {
+	ctx, reg := trackingContext(t)
+	s := &Steps{}
+	require.NoError(t, s.trackControlPlaneResource(ctx, http.MethodPost, nil, created("/api/v0.9/rest-apis/a")))
+	require.NoError(t, s.trackControlPlaneResource(ctx, http.MethodPost, nil, created("/api/v0.9/rest-apis/b")))
+	require.NoError(t, s.trackControlPlaneResource(ctx, http.MethodPost, []byte(`{"gatewayId":"gw"}`),
+		created("/api/v0.9/rest-apis/a/deployments/d1")))
+	require.NoError(t, s.trackControlPlaneResource(ctx, http.MethodPost, []byte(`{"gatewayId":"gw"}`),
+		created("/api/v0.9/rest-apis/a/deployments/d12")))
+
+	deleted := func(url string) *httpx.Response {
+		return &httpx.Response{StatusCode: http.StatusNoContent, URL: url}
+	}
+	require.NoError(t, s.trackControlPlaneResource(ctx, http.MethodDelete, nil,
+		&httpx.Response{StatusCode: http.StatusConflict, URL: "https://cp/api/v0.9/rest-apis/a"}))
+	require.Len(t, pendingIDs(reg, platformRESTAPIKind), 2, "a failed delete leaves the record in place")
+
+	require.NoError(t, s.trackControlPlaneResource(ctx, http.MethodDelete, nil,
+		deleted("https://cp:9243/api/v0.9/rest-apis/a/deployments/d1")))
+	require.Equal(t, []string{"rest-apis\x00a\x00d12\x00gw"}, pendingIDs(reg, platformDeploymentKind),
+		"only the deleted deployment is dropped, not one whose id shares its prefix")
+	require.NoError(t, s.trackControlPlaneResource(ctx, http.MethodDelete, nil,
+		deleted("https://cp:9243/api/v0.9/rest-apis/a")))
+	require.Equal(t, []string{"b"}, pendingIDs(reg, platformRESTAPIKind))
+}
+
+func TestIsDeploymentNotActive(t *testing.T) {
+	notActive := []byte(`{"code":"DEPLOYMENT_NOT_ACTIVE","message":"No active deployment"}`)
+	require.True(t, isDeploymentNotActive(&httpx.Response{StatusCode: http.StatusConflict, Body: notActive}))
+	for _, resp := range []*httpx.Response{
+		nil,
+		{StatusCode: http.StatusBadRequest, Body: notActive},
+		{StatusCode: http.StatusConflict, Body: []byte(`{"code":"DEPLOYMENT_ACTIVE"}`)},
+		{StatusCode: http.StatusConflict, Body: []byte(`not json`)},
+		{StatusCode: http.StatusConflict},
+	} {
+		require.False(t, isDeploymentNotActive(resp))
+	}
 }
 
 func TestImportedAgentProxyCleanup(t *testing.T) {
@@ -322,7 +409,7 @@ func TestImportedAgentProxyCleanup(t *testing.T) {
 		"the imported copy must delete after the gateway Agent it was imported from")
 
 	// A scenario that deletes the imported copy itself drops only that record.
-	require.NoError(t, s.trackAgentProxyResource(ctx, http.MethodDelete, nil,
+	require.NoError(t, s.trackControlPlaneResource(ctx, http.MethodDelete, nil,
 		&httpx.Response{StatusCode: http.StatusNoContent, URL: "https://cp/api/v0.9/agent-proxies/imported"}))
 	require.Equal(t, []string{"other"}, pendingIDs(reg, platformImportedAgentProxyKind))
 }
@@ -346,10 +433,10 @@ func TestImportedAgentProxyCleanupNeedsARegistry(t *testing.T) {
 	require.ErrorContains(t, (&Steps{}).registerImportedAgentProxy(ctx, "imported"), "no registry")
 }
 
-func TestTrackAgentProxyResourceNeedsARegistry(t *testing.T) {
+func TestTrackControlPlaneResourceNeedsARegistry(t *testing.T) {
 	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("runner"))
 	s := &Steps{}
-	err := s.trackAgentProxyResource(ctx, http.MethodDelete, nil,
+	err := s.trackControlPlaneResource(ctx, http.MethodDelete, nil,
 		&httpx.Response{StatusCode: http.StatusNoContent, URL: "https://cp/api/v0.9/agent-proxies/a"})
 	require.ErrorContains(t, err, "no registry")
 }
@@ -761,4 +848,25 @@ func TestDocumentIDCarriesTheAPI(t *testing.T) {
 		_, _, _, err := splitDocumentID(bad)
 		require.ErrorContains(t, err, "malformed document id", bad)
 	}
+}
+
+// A block whose scenarios register gateways of their own must still deploy to its own gateway,
+// so the block's gateway is fetched by handle rather than taken from the head of the list.
+func TestGatewayUUIDResolvesTheBlockGatewayAmongOthers(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case apiBase + "/gateways":
+			_, _ = w.Write([]byte(`{"list":[{"id":"tok-gw-abc"},{"id":"it-gateway"}]}`))
+		case apiBase + "/gateways/" + blockGatewayHandle:
+			_, _ = w.Write([]byte(`{"id":"it-gateway"}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	s := &Steps{client: httpx.NewClient(httpx.Options{Timeout: 5 * time.Second})}
+	id, err := s.gatewayUUID(context.Background(), server.URL, "token")
+	require.NoError(t, err)
+	require.Equal(t, "it-gateway", id)
 }
