@@ -115,4 +115,3 @@ func WriteJSONFixture(t *testing.T, dir, name string, body []byte) string {
 	}
 	return jsonPath
 }
-

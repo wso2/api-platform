@@ -108,6 +108,47 @@ func (s *APIDeploymentService) validateArtifactConflicts(kind, currentID, displa
 	return nil
 }
 
+// KindRouteContextResolver returns the context a configuration of a kind not
+// known to core is served at, with any $version placeholder substituted.
+type KindRouteContextResolver func(cfg any) string
+
+// kindRouteContextResolvers holds KindRouteContextResolver functions. Only kinds
+// whose routes all land on the same virtual hosts register one: for them a
+// shared context is always a routing conflict, so the second deployment is
+// rejected instead of being silently shadowed by the first.
+var kindRouteContextResolvers = map[string]KindRouteContextResolver{}
+
+// RegisterKindRouteContextResolver registers a route-context resolver for a
+// resource kind not known to core.
+func RegisterKindRouteContextResolver(resourceKind string, fn KindRouteContextResolver) {
+	kindRouteContextResolvers[resourceKind] = fn
+}
+
+// validateRouteContextConflict rejects a deployed configuration whose resolved
+// context is already served by another deployed configuration of the same kind.
+// Undeployed configurations hold no route, so they neither conflict nor block.
+func (s *APIDeploymentService) validateRouteContextConflict(cfg *models.StoredConfig) error {
+	resolve, ok := kindRouteContextResolvers[cfg.Kind]
+	if !ok || cfg.DesiredState == models.StateUndeployed {
+		return nil
+	}
+	routeContext := resolve(cfg.Configuration)
+	others, err := s.db.GetAllConfigsByKind(cfg.Kind)
+	if err != nil {
+		return fmt.Errorf("failed to check existing %s context conflict: %w", cfg.Kind, err)
+	}
+	for _, other := range others {
+		if other.UUID == cfg.UUID || other.DesiredState == models.StateUndeployed {
+			continue
+		}
+		if resolve(other.Configuration) == routeContext {
+			return fmt.Errorf("%w: context '%s' is already used by '%s'",
+				storage.ErrConflict, routeContext, other.Handle)
+		}
+	}
+	return nil
+}
+
 // NewAPIDeploymentService creates a new API deployment service. httpClient is the single
 // shared outbound *http.Client for this process (built once in cmd/controller/main.go and
 // injected by every caller), used for RegisterTopicWithHub/UnregisterTopicWithHub-style calls
@@ -195,6 +236,21 @@ var kindConfigValidators = map[string]KindConfigValidator{}
 // links in support for that kind (e.g. event-gateway-controller).
 func RegisterKindConfigValidator(resourceKind string, fn KindConfigValidator) {
 	kindConfigValidators[resourceKind] = fn
+}
+
+// KindDesiredStateResolver reports the deployment state a parsed configuration
+// of a kind not known to core asks for through its spec.deploymentState field.
+type KindDesiredStateResolver func(parsedConfig any) models.DesiredState
+
+// kindDesiredStateResolvers holds KindDesiredStateResolver functions for kinds
+// not known to core. A kind without one is always stored as deployed.
+var kindDesiredStateResolvers = map[string]KindDesiredStateResolver{}
+
+// RegisterKindDesiredStateResolver registers a desired-state resolver for a
+// resource kind not known to core, so a spec.deploymentState of "undeployed"
+// keeps the configuration stored but removes it from the router.
+func RegisterKindDesiredStateResolver(resourceKind string, fn KindDesiredStateResolver) {
+	kindDesiredStateResolvers[resourceKind] = fn
 }
 
 // DeployAPIConfiguration handles the complete API configuration deployment process
@@ -290,13 +346,17 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 		truncated := now.Truncate(time.Millisecond)
 		deployedAt = &truncated
 	}
+	desiredState := models.StateDeployed
+	if fn, ok := kindDesiredStateResolvers[kind]; ok {
+		desiredState = fn(parsedConfig)
+	}
 	storedCfg := &models.StoredConfig{
 		UUID:                apiID,
 		Kind:                kind,
 		Handle:              handle,
 		Configuration:       parsedConfig,
 		SourceConfiguration: parsedConfig,
-		DesiredState:        models.StateDeployed,
+		DesiredState:        desiredState,
 		DeploymentID:        params.DeploymentID,
 		Origin:              params.Origin,
 		CPSyncStatus:        cpSyncStatusForOrigin(params.Origin),
@@ -353,6 +413,9 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 	storedCfg.Version = apiVersion
 
 	if err := s.validateArtifactConflicts(kind, apiID, apiName, apiVersion, handle); err != nil {
+		return nil, err
+	}
+	if err := s.validateRouteContextConflict(storedCfg); err != nil {
 		return nil, err
 	}
 

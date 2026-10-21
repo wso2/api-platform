@@ -1120,6 +1120,7 @@ func (g *Gateway) register(sc *godog.ScenarioContext) {
 	g.registerMTLSObservabilitySteps(sc)
 	g.registerA2AClientSteps(sc)
 	g.registerAgentSteps(sc)
+	g.registerWebSocketSteps(sc)
 	// Request state is runner-scoped, so clear it before each scenario.
 	sc.Before(func(ctx context.Context, _ *godog.Scenario) (context.Context, error) {
 		if err := tcontext.Set(ctx, keyGatewaySpecVersion, gatewaySpecVersionForVersion(gatewayVersion(g.topo))); err != nil {
@@ -1150,12 +1151,12 @@ func (g *Gateway) register(sc *godog.ScenarioContext) {
 		g.createResource)
 	sc.Step(`^I create API with JSON configuration:$`, g.createJSONAPI)
 	g.registerResourceTemplateSteps(sc)
-	sc.Step(`^I get the (API|LLM provider|LLM provider template|MCP proxy|LLM proxy|Agent|GraphQL API) "([^"]*)"$`,
+	sc.Step(`^I get the (API|LLM provider|LLM provider template|MCP proxy|LLM proxy|Agent|GraphQL API|WebSocket API) "([^"]*)"$`,
 		g.getResource)
 	sc.Step(`^I list all (LLM providers|LLM provider templates|MCP proxies|LLM proxies)$`,
 		g.listResources)
 	sc.Step(`^I update the (API|LLM provider|LLM provider template|MCP proxy|LLM proxy|Agent) "([^"]*)" with configuration:$`, g.updateResource)
-	sc.Step(`^I delete the (API|LLM provider|LLM provider template|MCP proxy|LLM proxy|Agent|GraphQL API) "([^"]*)"$`, g.deleteResource)
+	sc.Step(`^I delete the (API|LLM provider|LLM provider template|MCP proxy|LLM proxy|Agent|GraphQL API|WebSocket API) "([^"]*)"$`, g.deleteResource)
 	sc.Step(`^I send a "([^"]*)" request to the "([^"]*)" service at "([^"]*)"$`, g.serviceRequest)
 	sc.Step(`^I send a "([^"]*)" request to the "([^"]*)" service at "([^"]*)" with body:$`, g.serviceRequestWithBody)
 	sc.Step(`^I send a "([^"]*)" request to the "([^"]*)" service at "([^"]*)" until status (\d+)$`,
@@ -1487,6 +1488,7 @@ var resourceKinds = map[string]struct{ declared, collection string }{
 	"LLM proxy":             {"LlmProxy", collLLMProxies},
 	"Agent":                 {"Agent", collAgents},
 	"GraphQL API":           {"GraphQLApi", collGraphQLAPIs},
+	"WebSocket API":         {"WebSocketApi", collWebSocketAPIs},
 }
 
 // kindFromDefinition returns the top-level kind a definition declares.
@@ -2570,12 +2572,13 @@ func handleFromDefinition(def string) string {
 
 // Controller-managed resource collections, by the path segment that addresses them.
 const (
-	collLLMProviders = "/llm-providers"
-	collLLMTemplates = "/llm-provider-templates"
-	collMCPProxies   = "/mcp-proxies"
-	collLLMProxies   = "/llm-proxies"
-	collAgents       = "/agents"
-	collGraphQLAPIs  = "/graphql-apis"
+	collLLMProviders  = "/llm-providers"
+	collLLMTemplates  = "/llm-provider-templates"
+	collMCPProxies    = "/mcp-proxies"
+	collLLMProxies    = "/llm-proxies"
+	collAgents        = "/agents"
+	collGraphQLAPIs   = "/graphql-apis"
+	collWebSocketAPIs = "/websocket-apis"
 )
 
 // mutateResource creates, replaces or removes a controller resource and waits for the change
@@ -2743,6 +2746,8 @@ func cleanupKindForCollection(collection string) (cleanup.Kind, bool) {
 		return cleanup.KindAgent, true
 	case collGraphQLAPIs:
 		return cleanup.KindGraphQLAPI, true
+	case collWebSocketAPIs:
+		return cleanup.KindWebSocketAPI, true
 	default:
 		return cleanup.Kind{}, false
 	}

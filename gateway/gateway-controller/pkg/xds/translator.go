@@ -57,6 +57,7 @@ import (
 	hcm "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/http_connection_manager/v3"
 	otelresourcedetectorsv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/tracers/opentelemetry/resource_detectors/v3"
 	tlsv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/transport_sockets/tls/v3"
+	upstreamhttpv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/upstreams/http/v3"
 	matcher "github.com/envoyproxy/go-control-plane/envoy/type/matcher/v3"
 	metadatav3 "github.com/envoyproxy/go-control-plane/envoy/type/metadata/v3"
 	tracingv3 "github.com/envoyproxy/go-control-plane/envoy/type/tracing/v3"
@@ -294,6 +295,11 @@ func (t *Translator) appendMCPResourcePathToBackend() bool {
 // SetTransformers sets the kind-to-transformer map used by TranslateConfigs.
 // When a transformer is available for a config's kind, the translator will
 // produce a RuntimeDeployConfig first, then convert it to Envoy resources.
+// websocketUpgradeType is Envoy's name for the RFC 6455 upgrade. It appears in
+// two places that must agree: the HCM declares it disabled for all routes, and a
+// WebSocketApi route re-enables it for itself.
+const websocketUpgradeType = "websocket"
+
 func (t *Translator) SetTransformers(transformers map[string]models.ConfigTransformer) {
 	t.transformers = transformers
 }
@@ -335,12 +341,18 @@ func (t *Translator) translateRuntimeConfig(rdc *models.RuntimeDeployConfig) ([]
 			if err != nil {
 				return nil, nil, fmt.Errorf("upstream cluster %q: %w", clusterName, err)
 			}
+			if err := applyUpstreamConnectionBounds(c, uc); err != nil {
+				return nil, nil, fmt.Errorf("cluster %s: %w", clusterName, err)
+			}
 			clusters = append(clusters, c)
 			continue
 		}
 		c, err := t.createWeightedCluster(clusterName, uc.Endpoints, uc.TLS, connectTimeout, validationSecretName)
 		if err != nil {
 			return nil, nil, fmt.Errorf("upstream cluster %q: %w", clusterName, err)
+		}
+		if err := applyUpstreamConnectionBounds(c, uc); err != nil {
+			return nil, nil, fmt.Errorf("cluster %s: %w", clusterName, err)
 		}
 		clusters = append(clusters, c)
 	}
@@ -417,6 +429,32 @@ func (t *Translator) createRouteFromRDC(routeKey string, rdcRoute *models.Route,
 			Timeout:     t.routeTimeoutOrDefault(routeResilienceTimeout, t.routerConfig.Upstream.Timeouts.RouteTimeoutMs),
 			IdleTimeout: t.routeTimeoutOrDefault(routeResilienceIdle, t.routerConfig.Upstream.Timeouts.RouteIdleTimeoutMs),
 		},
+	}
+
+	// A WebSocketApi route opts into the protocol upgrade individually. The HCM
+	// disables websocket upgrades for every route (see createListener), so this is
+	// the only thing that lets one through — which is what stops a REST, GraphQL,
+	// MCP or LLM route from becoming a tunnel whenever its backend would accept an
+	// upgrade.
+	if rdcRoute.UpgradeWebSocket {
+		routeAction.Route.UpgradeConfigs = []*route.RouteAction_UpgradeConfig{{
+			UpgradeType: websocketUpgradeType,
+			Enabled:     &wrapperspb.BoolValue{Value: true},
+		}}
+
+		// Bound the upgraded connection's total lifetime. The ordinary route
+		// Timeout above does not end an upgraded stream at all, so without this a
+		// connection authorized once at its handshake could outlive the revocation
+		// of that authorization indefinitely.
+		if rdcRoute.Timeout != nil && rdcRoute.Timeout.MaxStreamDuration != nil {
+			routeAction.Route.MaxStreamDuration = &route.RouteAction_MaxStreamDuration{
+				MaxStreamDuration: durationpb.New(*rdcRoute.Timeout.MaxStreamDuration),
+			}
+		}
+
+		// A retry policy is meaningless once the stream is upgraded (there is no
+		// idempotent request to replay) and actively harmful during the handshake,
+		// so leave RetryPolicy unset for these routes.
 	}
 
 	// Set cluster specifier
@@ -783,6 +821,74 @@ func buildGatewayInternalSinkCluster() *cluster.Cluster {
 			ClusterName: constants.GatewayInternalSinkClusterName,
 		},
 	}
+}
+
+// applyUpstreamConnectionBounds applies a cluster's connection-pool bounds —
+// idle timeout, maximum connection duration, and maximum concurrent connections.
+//
+// These are set only by kinds whose upstream connections are long-lived enough to
+// need them (today, WebSocketApi); for every other kind all three are nil and this
+// leaves the cluster exactly as createCluster built it.
+//
+// Note on max connections: the circuit breaker is a best-effort bound, not an
+// exact one. Envoy guarantees at least one connection per selected host, so a
+// cluster resolving to several hosts can exceed the configured value by a small
+// amount. That is acceptable because the resource being bounded — this gateway
+// instance's outbound sockets — is itself per-instance; it is the same property
+// that makes a circuit breaker the wrong tool for bounding *downstream* client
+// connections, where an exact per-API count is what's wanted.
+func applyUpstreamConnectionBounds(c *cluster.Cluster, uc *models.UpstreamCluster) error {
+	if uc.IdleTimeout == nil && uc.MaxConnectionDuration == nil && uc.MaxConnections == nil {
+		return nil
+	}
+
+	if uc.MaxConnections != nil {
+		c.CircuitBreakers = &cluster.CircuitBreakers{
+			Thresholds: []*cluster.CircuitBreakers_Thresholds{{
+				Priority:       corev3.RoutingPriority_DEFAULT,
+				MaxConnections: &wrapperspb.UInt32Value{Value: *uc.MaxConnections},
+			}},
+		}
+	}
+
+	if uc.IdleTimeout == nil && uc.MaxConnectionDuration == nil {
+		return nil
+	}
+
+	common := &corev3.HttpProtocolOptions{}
+	if uc.IdleTimeout != nil {
+		common.IdleTimeout = durationpb.New(*uc.IdleTimeout)
+	}
+	if uc.MaxConnectionDuration != nil {
+		common.MaxConnectionDuration = durationpb.New(*uc.MaxConnectionDuration)
+	}
+
+	// Setting typed_extension_protocol_options stops Envoy inferring the upstream
+	// protocol from the cluster, so the HTTP version has to be stated explicitly.
+	// HTTP/1.1 is the right and only choice here: an upgrade is an HTTP/1.1
+	// mechanism, and HTTP/2 upstreams would need RFC 8441 extended CONNECT support
+	// on the backend, which this phase does not support.
+	protocolOptions := &upstreamhttpv3.HttpProtocolOptions{
+		CommonHttpProtocolOptions: common,
+		UpstreamProtocolOptions: &upstreamhttpv3.HttpProtocolOptions_ExplicitHttpConfig_{
+			ExplicitHttpConfig: &upstreamhttpv3.HttpProtocolOptions_ExplicitHttpConfig{
+				ProtocolConfig: &upstreamhttpv3.HttpProtocolOptions_ExplicitHttpConfig_HttpProtocolOptions{
+					HttpProtocolOptions: &corev3.Http1ProtocolOptions{},
+				},
+			},
+		},
+	}
+
+	any, err := anypb.New(protocolOptions)
+	if err != nil {
+		return fmt.Errorf("failed to marshal upstream HttpProtocolOptions: %w", err)
+	}
+	if c.TypedExtensionProtocolOptions == nil {
+		c.TypedExtensionProtocolOptions = map[string]*anypb.Any{}
+	}
+	c.TypedExtensionProtocolOptions["envoy.extensions.upstreams.http.v3.HttpProtocolOptions"] = any
+
+	return nil
 }
 
 // TranslateConfigs translates all API configurations to Envoy resources
@@ -1577,6 +1683,28 @@ func (t *Translator) createListenerWithCertRequest(virtualHosts []*route.Virtual
 			Uri:     true,
 			Dns:     true,
 		},
+		// Declare the websocket upgrade at the HCM but leave it disabled, so that
+		// only a route that re-enables it (a WebSocketApi channel route) can be
+		// upgraded. Envoy requires the upgrade type to be named here before a route
+		// may enable it, so omitting this block entirely would make every
+		// route-level enable a no-op; naming it with Enabled=false is what makes
+		// the per-route opt-in the single switch that matters.
+		UpgradeConfigs: []*hcm.HttpConnectionManager_UpgradeConfig{{
+			UpgradeType: websocketUpgradeType,
+			Enabled:     &wrapperspb.BoolValue{Value: false},
+		}},
+	}
+
+	// RFC 8441 extended CONNECT, letting an HTTP/2 client open a WebSocket as a
+	// stream on its existing connection. Off unless an operator turns it on:
+	// browsers fall back to a separate HTTP/1.1 connection on their own, so this
+	// saves a connection rather than enabling anything new, and the extended
+	// CONNECT path is much less exercised than the plain upgrade path.
+	if t.routerConfig.WebSocket.AllowHTTP2Connect {
+		if manager.Http2ProtocolOptions == nil {
+			manager.Http2ProtocolOptions = &core.Http2ProtocolOptions{}
+		}
+		manager.Http2ProtocolOptions.AllowConnect = true
 	}
 
 	// Add access logs if either consumer needs a sink: the operator-facing stdout

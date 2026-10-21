@@ -645,6 +645,61 @@ type RouterConfig struct {
 
 	// HTTPListener configuration
 	HTTPListener HTTPListenerConfig `koanf:"http_listener"`
+
+	// WebSocket holds WebSocketApi connection-lifetime defaults and upper bounds.
+	WebSocket WebSocketConfig `koanf:"websocket"`
+}
+
+// WebSocketConfig holds the gateway-wide defaults and upper bounds for
+// WebSocketApi connections.
+//
+// Every WebSocketApi resolves to a finite idle timeout and a finite maximum
+// connection duration, whether or not the artifact sets them: a WebSocket
+// handshake is authenticated once and then the connection is a byte pipe, so
+// an unbounded connection is also an unbounded window for access that has
+// since been revoked. The `.Max` bounds cap what an individual artifact may
+// ask for; a value above its bound is rejected at deploy time rather than
+// silently clamped, so an operator's limit cannot be exceeded by an API author
+// without anyone noticing.
+type WebSocketConfig struct {
+	// Downstream bounds the client-to-gateway connection.
+	Downstream WebSocketConnectionLimits `koanf:"downstream"`
+
+	// Upstream bounds each gateway-to-backend connection pool, per upstream
+	// slot. Separate from Downstream: a backend connection and the client
+	// connection in front of it are bounded independently.
+	Upstream WebSocketConnectionLimits `koanf:"upstream"`
+
+	// AllowHTTP2Connect enables RFC 8441 extended CONNECT, letting a browser
+	// open a WebSocket as a stream on its existing HTTP/2 connection instead of
+	// a separate HTTP/1.1 one.
+	//
+	// Off by default: browsers fall back to HTTP/1.1 on their own, so this buys
+	// one saved connection rather than any new capability, and the extended
+	// CONNECT path is far less exercised than the plain upgrade path.
+	AllowHTTP2Connect bool `koanf:"allow_http2_connect"`
+
+	// GlobalDownstreamMaxConnections is a gateway-wide ceiling on concurrent
+	// downstream connections across every API, applied as Envoy's overload
+	// manager resource monitor. 0 leaves it unset.
+	GlobalDownstreamMaxConnections uint32 `koanf:"global_downstream_max_connections"`
+}
+
+// WebSocketConnectionLimits is one side's connection-lifetime policy: the value
+// used when an artifact does not set its own, and the ceiling on what an
+// artifact may set.
+type WebSocketConnectionLimits struct {
+	IdleTimeoutDefault time.Duration `koanf:"idle_timeout_default"`
+	IdleTimeoutMax     time.Duration `koanf:"idle_timeout_max"`
+
+	MaxConnectionDurationDefault time.Duration `koanf:"max_connection_duration_default"`
+	MaxConnectionDurationMax     time.Duration `koanf:"max_connection_duration_max"`
+
+	// MaxConnectionsDefault is the per-API (downstream) or per-upstream-slot
+	// concurrent connection ceiling applied when the artifact does not set one.
+	// 0 means no default ceiling is imposed.
+	MaxConnectionsDefault uint32 `koanf:"max_connections_default"`
+	MaxConnectionsMax     uint32 `koanf:"max_connections_max"`
 }
 
 // RouterUpstream holds upstream-side configuration (TLS and timeouts for Envoy upstream).
@@ -1453,6 +1508,26 @@ func defaultConfig() *Config {
 				DisablePathNormalization:      false,                          // Path normalization enabled by default
 				ReturnRequestIDInResponse:     true,                           // x-request-id returned by default
 				PathWithEscapedSlashesAction:  commonconstants.KEEP_UNCHANGED, // Leave escaped-slash paths unchanged by default
+			},
+			WebSocket: WebSocketConfig{
+				Downstream: WebSocketConnectionLimits{
+					IdleTimeoutDefault:           5 * time.Minute,
+					IdleTimeoutMax:               1 * time.Hour,
+					MaxConnectionDurationDefault: 1 * time.Hour,
+					MaxConnectionDurationMax:     24 * time.Hour,
+					MaxConnectionsDefault:        0, // no per-API ceiling unless the artifact asks for one
+					MaxConnectionsMax:            100000,
+				},
+				Upstream: WebSocketConnectionLimits{
+					IdleTimeoutDefault:           5 * time.Minute,
+					IdleTimeoutMax:               1 * time.Hour,
+					MaxConnectionDurationDefault: 1 * time.Hour,
+					MaxConnectionDurationMax:     24 * time.Hour,
+					MaxConnectionsDefault:        0, // leave Envoy's own cluster default alone
+					MaxConnectionsMax:            100000,
+				},
+				AllowHTTP2Connect:              false, // RFC 8441 off by default; browsers fall back to HTTP/1.1
+				GlobalDownstreamMaxConnections: 0,     // unset
 			},
 		},
 		Analytics: AnalyticsConfig{

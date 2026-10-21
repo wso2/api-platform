@@ -445,7 +445,12 @@ func main() {
 	// silently fail to ever deploy; build one exactly the way restTransformer
 	// is built above so it actually can.
 	graphqlTransformer := transform.NewGraphQLAPITransformer(&cfg.Router, cfg, policyDefinitions)
-	transformerRegistry := transform.NewRegistry(restTransformer, llmTransformer, agentTransformer, graphqlTransformer)
+	// No WebSocketApi transformer: WebSocket APIs are proxied by the standalone
+	// gateway, not the event gateway, whose WebSocket-adjacent kind is the
+	// separate WebBrokerApi (WebSocket<->broker bridging). A nil here makes the
+	// registry report WebSocketApi as an unsupported kind rather than pretending
+	// this runtime can deploy one.
+	transformerRegistry := transform.NewRegistry(restTransformer, llmTransformer, agentTransformer, graphqlTransformer, nil)
 
 	// Derived from the registry rather than hand-listed, for the same reason the
 	// gateway controller derives it: a hand-written map beside the registry's own
