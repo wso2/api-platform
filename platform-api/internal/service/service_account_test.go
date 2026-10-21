@@ -184,7 +184,7 @@ func newSAFixtureMode(t *testing.T, mode string) *saFixture {
 		"ap_operator":    {"ap:gateway:read"},
 	}
 	f.svc = NewServiceAccountService(f.repo, fakeOrgRepo{}, f.audit, newTestIdentityService(), roles, signer,
-		15*time.Minute, mode, config.ClaimMappings{}, logger)
+		15*time.Minute, mode, logger)
 	return f
 }
 
@@ -455,7 +455,7 @@ func TestServiceAccountExchange_ScopeMode(t *testing.T) {
 	if _, err := jwt.ParseWithClaims(resp.AccessToken, claims, func(*jwt.Token) (interface{}, error) { return &f.key.PublicKey, nil }); err != nil {
 		t.Fatal(err)
 	}
-	if claims["scope"] != "ap:gateway:read" || f.svc.TokenScope(claims) != "ap:gateway:read" {
+	if claims["scope"] != "ap:gateway:read" {
 		t.Fatalf("token scope = %v, want exactly the request", claims["scope"])
 	}
 }
@@ -497,9 +497,6 @@ func TestServiceAccountExchange_RoleMode(t *testing.T) {
 		}
 		if roles, _ := claims["roles"].([]any); len(roles) != 1 || roles[0] != "ap_sa_operator" {
 			t.Fatalf("roles claim = %v", claims["roles"])
-		}
-		if got := f.svc.TokenScope(claims); got != "ap:gateway:read ap:rest_api:read" {
-			t.Fatalf("TokenScope = %q", got)
 		}
 	}
 }
@@ -697,12 +694,12 @@ func TestServiceAccountExchange_InternalFailuresAreUniform(t *testing.T) {
 	req := ExchangeRequest{ClientID: creds.ClientId, ClientSecret: creds.ClientSecret, Scope: "ap:rest_api:read"}
 
 	noSigner := NewServiceAccountService(f.repo, fakeOrgRepo{}, f.audit, newTestIdentityService(),
-		map[string][]string{"ap_sa_operator": {"ap:rest_api:read"}}, nil, time.Minute, config.AuthzModeScope, config.ClaimMappings{}, quietLogger())
+		map[string][]string{"ap_sa_operator": {"ap:rest_api:read"}}, nil, time.Minute, config.AuthzModeScope, quietLogger())
 	if _, err := noSigner.Exchange(req); !apperror.Unauthorized.Is(err) {
 		t.Fatalf("no signing key: got %v", err)
 	}
 	lookupFails := NewServiceAccountService(errLookupRepo{f.repo}, fakeOrgRepo{}, f.audit, newTestIdentityService(),
-		nil, nil, time.Minute, config.AuthzModeScope, config.ClaimMappings{}, quietLogger())
+		nil, nil, time.Minute, config.AuthzModeScope, quietLogger())
 	if _, err := lookupFails.Exchange(req); !apperror.Unauthorized.Is(err) {
 		t.Fatalf("lookup error: got %v", err)
 	}
@@ -747,7 +744,7 @@ func TestServiceAccountCreate_RolesTooLong(t *testing.T) {
 	}
 	f := newSAFixture(t)
 	svc := NewServiceAccountService(f.repo, fakeOrgRepo{}, f.audit, newTestIdentityService(), mapping, nil,
-		time.Minute, config.AuthzModeScope, config.ClaimMappings{}, quietLogger())
+		time.Minute, config.AuthzModeScope, quietLogger())
 	req := createReq("ci-bot")
 	req.Roles = roles
 	if _, err := svc.Create("org-1", "admin", req); !apperror.ValidationFailed.Is(err) {

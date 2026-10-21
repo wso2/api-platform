@@ -9294,38 +9294,6 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /service-accounts/introspect:
-    post:
-      summary: Introspect a service-account token
-      description: |
-        RFC 7662 token introspection. Every inactive cause returns exactly
-        `{"active": false}`.
-      operationId: introspectServiceAccountToken
-      security:
-        - OAuth2Security:
-            - ap:service_account:token:introspect
-      tags:
-        - Service Accounts
-      requestBody:
-        required: true
-        content:
-          application/x-www-form-urlencoded:
-            schema:
-              $ref: '#/components/schemas/IntrospectionRequest'
-      responses:
-        '200':
-          description: Introspection result
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/IntrospectionResponse'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
   /service-accounts/jwks.json:
     get:
       summary: Service-account signing keys
@@ -9617,7 +9585,6 @@ components:
             ap:secret:update: Update a secret
             ap:service_account:manage: Full access to service accounts
             ap:service_account:read: Read service accounts
-            ap:service_account:token:introspect: Introspect service-account tokens
             ap:subscription:create: Create a subscription
             ap:subscription:delete: Delete a subscription
             ap:subscription:manage: Full access to subscriptions
@@ -15089,9 +15056,9 @@ components:
         clientSecret:
           type: string
           description: "apsa_ followed by 64 hex characters"
-    # ServiceAccountTokenRequest, ServiceAccountTokenResponse, IntrospectionRequest
-    # and IntrospectionResponse use snake_case on purpose: they are the RFC 6749 /
-    # RFC 7662 wire formats that OAuth2 client libraries already parse.
+    # ServiceAccountTokenRequest and ServiceAccountTokenResponse use snake_case on
+    # purpose: they are the RFC 6749 wire format that OAuth2 client libraries
+    # already parse.
     ServiceAccountTokenRequest:
       type: object
       description: Send client_id and client_secret here, or with HTTP Basic instead.
@@ -15132,42 +15099,6 @@ components:
         scope:
           type: string
           example: ap:rest_api:read ap:rest_api:deployment:manage
-
-    IntrospectionRequest:
-      type: object
-      required:
-        - token
-      properties:
-        token:
-          type: string
-        token_type_hint:
-          type: string
-
-    IntrospectionResponse:
-      type: object
-      required:
-        - active
-      properties:
-        active:
-          type: boolean
-        scope:
-          type: string
-        client_id:
-          type: string
-        sub:
-          type: string
-        aud:
-          type: string
-        iss:
-          type: string
-        exp:
-          type: integer
-        iat:
-          type: integer
-        jti:
-          type: string
-        token_type:
-          type: string
 
     JWKSResponse:
       type: object

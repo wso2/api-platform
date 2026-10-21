@@ -4015,26 +4015,6 @@ type ImportOpenAPIRequest struct {
 	Version string  `json:"version" yaml:"version"`
 }
 
-// IntrospectionRequest defines model for IntrospectionRequest.
-type IntrospectionRequest struct {
-	Token         string  `json:"token" yaml:"token"`
-	TokenTypeHint *string `json:"token_type_hint,omitempty" yaml:"token_type_hint,omitempty"`
-}
-
-// IntrospectionResponse defines model for IntrospectionResponse.
-type IntrospectionResponse struct {
-	Active    bool    `json:"active" yaml:"active"`
-	Aud       *string `json:"aud,omitempty" yaml:"aud,omitempty"`
-	ClientId  *string `json:"client_id,omitempty" yaml:"client_id,omitempty"`
-	Exp       *int    `json:"exp,omitempty" yaml:"exp,omitempty"`
-	Iat       *int    `json:"iat,omitempty" yaml:"iat,omitempty"`
-	Iss       *string `json:"iss,omitempty" yaml:"iss,omitempty"`
-	Jti       *string `json:"jti,omitempty" yaml:"jti,omitempty"`
-	Scope     *string `json:"scope,omitempty" yaml:"scope,omitempty"`
-	Sub       *string `json:"sub,omitempty" yaml:"sub,omitempty"`
-	TokenType *string `json:"token_type,omitempty" yaml:"token_type,omitempty"`
-}
-
 // JWK An RSA public key (RFC 7517)
 type JWK struct {
 	Alg *string `json:"alg,omitempty" yaml:"alg,omitempty"`
@@ -7485,9 +7465,6 @@ type RotateSecretMultipartRequestBody = SecretUpdateRequest
 
 // CreateServiceAccountJSONRequestBody defines body for CreateServiceAccount for application/json ContentType.
 type CreateServiceAccountJSONRequestBody = ServiceAccountCreateRequest
-
-// IntrospectServiceAccountTokenFormdataRequestBody defines body for IntrospectServiceAccountToken for application/x-www-form-urlencoded ContentType.
-type IntrospectServiceAccountTokenFormdataRequestBody = IntrospectionRequest
 
 // IssueServiceAccountTokenFormdataRequestBody defines body for IssueServiceAccountToken for application/x-www-form-urlencoded ContentType.
 type IssueServiceAccountTokenFormdataRequestBody = ServiceAccountTokenRequest

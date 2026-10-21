@@ -27,8 +27,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/golang-jwt/jwt/v5"
-
 	"github.com/wso2/api-platform/platform-api/api"
 	"github.com/wso2/api-platform/platform-api/config"
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
@@ -63,8 +61,7 @@ type ServiceAccountService struct {
 	roleScopeMap map[string][]string
 	signer       *SATokenSigner // nil when no signing key is configured
 	tokenTTL     time.Duration
-	authzMode    string // auth.authorization.mode: picks the token's one authorization claim
-	claims       config.ClaimMappings
+	authzMode    string           // auth.authorization.mode: picks the token's one authorization claim
 	revocations  *RevocationCache // optional; applies local revokes at once
 	slogger      *slog.Logger
 }
@@ -77,11 +74,11 @@ func (s *ServiceAccountService) SetRevocationCache(c *RevocationCache) { s.revoc
 // in which case every exchange fails with the uniform 401.
 func NewServiceAccountService(repo repository.ServiceAccountRepository, orgRepo repository.OrganizationRepository,
 	auditRepo repository.AuditRepository, identity *IdentityService, roleScopeMap map[string][]string,
-	signer *SATokenSigner, tokenTTL time.Duration, authzMode string, claims config.ClaimMappings,
+	signer *SATokenSigner, tokenTTL time.Duration, authzMode string,
 	slogger *slog.Logger) *ServiceAccountService {
 	return &ServiceAccountService{
 		repo: repo, orgRepo: orgRepo, auditRepo: auditRepo, identity: identity, roleScopeMap: roleScopeMap,
-		signer: signer, tokenTTL: tokenTTL, authzMode: authzMode, claims: claims, slogger: slogger,
+		signer: signer, tokenTTL: tokenTTL, authzMode: authzMode, slogger: slogger,
 	}
 }
 
@@ -421,25 +418,6 @@ func (s *ServiceAccountService) audit(action string, sa *model.ServiceAccount, a
 		s.slogger.Error("failed to write service account audit row",
 			"action", action, "accountUuid", sa.UUID, "orgUuid", sa.OrganizationID, "error", err)
 	}
-}
-
-// TokenScope is what a verified SA token authorizes: its scope claim in scope
-// mode, its roles expanded through the mapping in role mode.
-func (s *ServiceAccountService) TokenScope(claims jwt.MapClaims) string {
-	if s.authzMode != config.AuthzModeRole {
-		v, _ := utils.GetClaim(claims, utils.ClaimKey(s.claims.Scope, "scope"))
-		scope, _ := v.(string)
-		return scope
-	}
-	v, _ := utils.GetClaim(claims, utils.ClaimKey(s.claims.Roles, "roles"))
-	raw, _ := v.([]any)
-	roles := make([]string, 0, len(raw))
-	for _, r := range raw {
-		if role, ok := r.(string); ok {
-			roles = append(roles, role)
-		}
-	}
-	return expandRoles(roles, s.roleScopeMap)
 }
 
 // validateRoles accepts one or more roles from the mapping file; a role missing

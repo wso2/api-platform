@@ -213,7 +213,6 @@ export type ApScope =
   | 'ap:secret:update'
   | 'ap:service_account:manage'
   | 'ap:service_account:read'
-  | 'ap:service_account:token:introspect'
   | 'ap:subscription:create'
   | 'ap:subscription:delete'
   | 'ap:subscription:manage'
@@ -419,7 +418,6 @@ export const AP_SCOPES: readonly ApScope[] = [
   'ap:secret:update',
   'ap:service_account:manage',
   'ap:service_account:read',
-  'ap:service_account:token:introspect',
   'ap:subscription:create',
   'ap:subscription:delete',
   'ap:subscription:manage',
@@ -811,7 +809,6 @@ export const OPERATION_SCOPES = {
   ],
   HeadOrganization: ['ap:organization:manage', 'ap:organization:read'],
   ImportOpenAPI: ['ap:rest_api:create', 'ap:rest_api:manage'],
-  introspectServiceAccountToken: ['ap:service_account:token:introspect'],
   issueServiceAccountToken: [],
   listAgentProxies: ['ap:agent_proxy:manage', 'ap:agent_proxy:read'],
   listAgentProxyAPIKeys: [
