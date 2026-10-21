@@ -67,6 +67,10 @@ type Config struct {
 
 // Keyring is an immutable, validated set of gateway signing keys. It
 // implements sdksigning.Service.
+//
+// A nil *Keyring behaves as an empty keyring: it publishes {"keys":[]} and
+// cannot sign. sdksigning.Install treats any non-nil interface value as
+// installed, so a nil *Keyring handed to it must not panic on first use.
 type Keyring struct {
 	active  *signingKey
 	info    sdksigning.KeyInfo
@@ -146,7 +150,7 @@ func NewKeyring(cfg Config) (*Keyring, error) {
 
 // ActiveKey returns the kid and algorithm of the key that signs.
 func (kr *Keyring) ActiveKey() (sdksigning.KeyInfo, bool) {
-	if kr.active == nil {
+	if kr == nil || kr.active == nil {
 		return sdksigning.KeyInfo{}, false
 	}
 	return kr.info, true
@@ -155,10 +159,16 @@ func (kr *Keyring) ActiveKey() (sdksigning.KeyInfo, bool) {
 // JWKS returns the gateway JWK Set (every configured key, active or not) and
 // its strong entity tag, quoted and ready for an ETag header.
 func (kr *Keyring) JWKS() (body []byte, etag string) {
+	if kr == nil {
+		return emptyJWKS, emptyJWKSETag
+	}
 	return kr.jwks, kr.etag
 }
 
 // JWKSCacheMaxAge is how long a receiver may cache the JWKS.
 func (kr *Keyring) JWKSCacheMaxAge() time.Duration {
+	if kr == nil {
+		return sdksigning.DefaultJWKSCacheMaxAge
+	}
 	return kr.maxAge
 }

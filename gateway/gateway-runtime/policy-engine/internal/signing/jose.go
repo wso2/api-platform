@@ -27,7 +27,7 @@ import (
 // Sign returns the raw signature over data made with the active key, in the
 // JWS encoding for its algorithm (RFC 7518 §3; r||s for ECDSA).
 func (kr *Keyring) Sign(data []byte) ([]byte, sdksigning.KeyInfo, error) {
-	if kr.active == nil {
+	if kr == nil || kr.active == nil {
 		return nil, sdksigning.KeyInfo{}, sdksigning.ErrNotConfigured
 	}
 	sig, err := kr.active.sign(data)
@@ -63,7 +63,7 @@ func (kr *Keyring) SignDetachedJWS(payload []byte, opts sdksigning.Options) (sdk
 // alg and kid are always taken from the key that signs, and jku only ever from
 // the operator-configured URL.
 func (kr *Keyring) signJWS(payload []byte, o sdksigning.Options) (protected, sig string, info sdksigning.KeyInfo, err error) {
-	if kr.active == nil {
+	if kr == nil || kr.active == nil {
 		return "", "", sdksigning.KeyInfo{}, sdksigning.ErrNotConfigured
 	}
 
