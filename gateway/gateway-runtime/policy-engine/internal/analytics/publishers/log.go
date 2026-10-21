@@ -177,7 +177,11 @@ func (l *Log) Publish(event *dto.Event) {
 	}
 
 	if l.jsonFields != nil {
-		data, err := json.Marshal(l.jsonFields.resolve(event))
+		fields := l.jsonFields.resolve(event)
+		if fields == nil {
+			fields = map[string]interface{}{}
+		}
+		data, err := json.Marshal(fields)
 		if err != nil {
 			slog.Error("Failed to marshal traffic-log json_fields line", "error", err)
 			return

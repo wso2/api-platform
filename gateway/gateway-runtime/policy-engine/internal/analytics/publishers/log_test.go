@@ -922,6 +922,22 @@ func TestLog_Publish_JSONFieldsDefinesWholeLine(t *testing.T) {
 	}, decodeLine(t, read()))
 }
 
+// Every entry dropped at startup still writes an object, not "null".
+func TestLog_Publish_JSONFieldsAllDroppedWritesEmptyObject(t *testing.T) {
+	l, read := newLogToFile(t, &config.TrafficLoggingConfig{
+		Enabled:       true,
+		ExcludeFields: []string{"$ctx:error.policy"},
+		JSONFields: map[string]string{
+			"bad":    "$ctx:latencies.totaltime",
+			"denied": "$ctx:error.policy",
+		},
+	})
+
+	l.Publish(createBaseEvent())
+
+	assert.Equal(t, "{}", strings.TrimSpace(read()))
+}
+
 func TestLog_Publish_JSONFieldsMasksHeaders(t *testing.T) {
 	l, read := newLogToFile(t, &config.TrafficLoggingConfig{
 		Enabled:       true,

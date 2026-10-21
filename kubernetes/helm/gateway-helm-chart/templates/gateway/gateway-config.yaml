@@ -621,7 +621,7 @@ data:
 
     [traffic_logging.json_fields]
     {{- range $key, $value := .Values.gateway.config.traffic_logging.json_fields }}
-    {{ $key }} = {{ $value | quote }}
+    {{ $key | quote }} = {{ $value | quote }}
     {{- end }}
     {{- end }}
     {{- with .Values.gateway.config.traffic_logging.file }}
