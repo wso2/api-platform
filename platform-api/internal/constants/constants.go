@@ -225,9 +225,8 @@ const (
 // Service-account scopes. Manage creates privilege (an account and its roles),
 // so keep it out of self-service roles, as with ScopeAPIKeyAllManage.
 const (
-	ScopeServiceAccountRead            = "ap:service_account:read"
-	ScopeServiceAccountManage          = "ap:service_account:manage"
-	ScopeServiceAccountTokenIntrospect = "ap:service_account:token:introspect"
+	ScopeServiceAccountRead   = "ap:service_account:read"
+	ScopeServiceAccountManage = "ap:service_account:manage"
 )
 
 // ServiceAccountSubPrefix namespaces a service account's sub claim so it cannot

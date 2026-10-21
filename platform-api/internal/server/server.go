@@ -668,9 +668,9 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 			saPublicKeys = saKeys.PublicKeys()
 		}
 		serviceAccountService := service.NewServiceAccountService(serviceAccountRepo, orgRepo, auditRepo, identityService,
-			roleScopeMap, saSigner, saCfg.TokenTTL, cfg.Auth.Authorization.Mode, cfg.Auth.ClaimMappings, slogger)
+			roleScopeMap, saSigner, saCfg.TokenTTL, cfg.Auth.Authorization.Mode, slogger)
 		serviceAccountService.SetRevocationCache(revocations)
-		handler.NewServiceAccountHandler(serviceAccountService, identityService, keyMap, revocations, saPublicKeys, slogger).
+		handler.NewServiceAccountHandler(serviceAccountService, identityService, saPublicKeys, slogger).
 			RegisterRoutes(core)
 	} else {
 		keyMap.DisableServiceAccounts()

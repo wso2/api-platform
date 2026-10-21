@@ -49,10 +49,11 @@ import (
 const saTestBasePath = constants.APIBasePath + "/service-accounts"
 
 type saTestEnv struct {
-	handler http.Handler
-	keyMap  *middleware.IssuerKeyMap
-	repo    *repository.ServiceAccountRepo
-	logger  *slog.Logger
+	handler     http.Handler
+	keyMap      *middleware.IssuerKeyMap
+	revocations *service.RevocationCache
+	repo        *repository.ServiceAccountRepo
+	logger      *slog.Logger
 }
 
 // setupSATestEnv wires the real service, repository and revocation cache over
@@ -99,17 +100,18 @@ func setupSATestEnv(t *testing.T) *saTestEnv {
 	identity := service.NewIdentityService(repository.NewUserIdentityMappingRepo(db))
 	roles := map[string][]string{"ap_sa_reader": {"ap:rest_api:read", "ap:gateway:read"}, "ap_sa_writer": {"ap:rest_api:manage"}}
 	svc := service.NewServiceAccountService(saRepo, repository.NewOrganizationRepo(db), repository.NewAuditRepo(db), identity,
-		roles, service.NewSATokenSigner(keys, cfg), 15*time.Minute, config.AuthzModeScope, config.ClaimMappings{}, logger)
+		roles, service.NewSATokenSigner(keys, cfg), 15*time.Minute, config.AuthzModeScope, logger)
 	revocations := service.NewRevocationCache(saRepo, logger)
 	if err := revocations.Load(); err != nil {
 		t.Fatal(err)
 	}
 	svc.SetRevocationCache(revocations)
 
-	h := NewServiceAccountHandler(svc, identity, keyMap, revocations, keys.PublicKeys(), logger)
+	h := NewServiceAccountHandler(svc, identity, keys.PublicKeys(), logger)
 	mux := http.NewServeMux()
 	h.RegisterRoutes(mux)
-	return &saTestEnv{handler: middleware.NewTestContextMiddleware(mux), keyMap: keyMap, repo: saRepo, logger: logger}
+	return &saTestEnv{handler: middleware.NewTestContextMiddleware(mux), keyMap: keyMap,
+		revocations: revocations, repo: saRepo, logger: logger}
 }
 
 // otherReplica is a fresh cache loaded from the DB: it sees a revoke only if
@@ -176,11 +178,18 @@ func (e *saTestEnv) mint(t *testing.T, form url.Values) (tok, accountUUID string
 	return tok, accountUUID, version
 }
 
-func (e *saTestEnv) introspectActive(t *testing.T, tok string) bool {
+// active reports whether this replica still accepts tok: it verifies and its
+// version is not revoked in the local cache.
+func (e *saTestEnv) active(t *testing.T, tok string) bool {
 	t.Helper()
-	rec := e.raw(http.MethodPost, saTestBasePath+"/introspect", "application/x-www-form-urlencoded",
-		url.Values{"token": {tok}}.Encode(), true)
-	return decodeSAJSON[api.IntrospectionResponse](t, rec).Active
+	claims, err := e.keyMap.VerifyServiceAccountToken(tok)
+	if err != nil {
+		return false
+	}
+	sub, _ := claims["sub"].(string)
+	accountUUID, _ := model.AccountUUIDFromSubject(sub)
+	version, _ := middleware.ServiceAccountTokenVersion(claims)
+	return !e.revocations.IsRevoked(accountUUID, version)
 }
 
 func decodeSAJSON[T any](t *testing.T, rec *httptest.ResponseRecorder) T {
@@ -260,7 +269,7 @@ func TestServiceAccountHandler_Lifecycle(t *testing.T) {
 	if got := decodeSAJSON[api.ServiceAccount](t, rec); rec.Code != http.StatusOK || got.DisplayName != "CI v2" || got.Roles[0] != "ap_sa_writer" {
 		t.Fatalf("update: %d %+v", rec.Code, got)
 	}
-	if !e.otherReplica(t).IsRevoked(account, version) || e.introspectActive(t, tok) {
+	if !e.otherReplica(t).IsRevoked(account, version) || e.active(t, tok) {
 		t.Fatal("removing a role must revoke tokens already issued")
 	}
 
@@ -272,7 +281,7 @@ func TestServiceAccountHandler_Lifecycle(t *testing.T) {
 	if rec.Code != http.StatusOK || regen.ClientSecret == creds.ClientSecret {
 		t.Fatalf("regenerate: %d", rec.Code)
 	}
-	if !e.otherReplica(t).IsRevoked(account, version) || e.introspectActive(t, tok) {
+	if !e.otherReplica(t).IsRevoked(account, version) || e.active(t, tok) {
 		t.Fatal("regenerate must revoke tokens already issued")
 	}
 	if rec := e.token(form, "", ""); rec.Code != http.StatusUnauthorized {
@@ -280,7 +289,7 @@ func TestServiceAccountHandler_Lifecycle(t *testing.T) {
 	}
 	form.Set("client_secret", regen.ClientSecret)
 	tok, _, version = e.mint(t, form)
-	if !e.introspectActive(t, tok) {
+	if !e.active(t, tok) {
 		t.Fatal("a token from the new secret must be active")
 	}
 
@@ -288,7 +297,7 @@ func TestServiceAccountHandler_Lifecycle(t *testing.T) {
 	if rec := e.call(t, http.MethodDelete, saTestBasePath+"/ci-bot", nil, true); rec.Code != http.StatusNoContent {
 		t.Fatalf("delete: %d", rec.Code)
 	}
-	if !e.otherReplica(t).IsRevoked(account, version) || e.introspectActive(t, tok) {
+	if !e.otherReplica(t).IsRevoked(account, version) || e.active(t, tok) {
 		t.Fatal("delete must revoke tokens already issued")
 	}
 	if rec := e.token(form, "", ""); rec.Code != http.StatusUnauthorized {
@@ -320,14 +329,14 @@ func TestServiceAccountHandler_DisableAndEnable(t *testing.T) {
 	if rec := e.token(form, "", ""); rec.Code != http.StatusUnauthorized {
 		t.Fatalf("token while disabled: %d, want 401", rec.Code)
 	}
-	if !e.otherReplica(t).IsRevoked(account, version) || e.introspectActive(t, tok) {
+	if !e.otherReplica(t).IsRevoked(account, version) || e.active(t, tok) {
 		t.Fatal("disable must revoke tokens already issued")
 	}
 
 	if rec := e.call(t, http.MethodPut, saTestBasePath+"/ci-bot", api.ServiceAccountUpdateRequest{Status: &active}, true); rec.Code != http.StatusOK {
 		t.Fatalf("enable: %d %s", rec.Code, rec.Body)
 	}
-	if tok, _, _ := e.mint(t, form); !e.introspectActive(t, tok) {
+	if tok, _, _ := e.mint(t, form); !e.active(t, tok) {
 		t.Fatal("a token minted after re-enabling must be active")
 	}
 }
