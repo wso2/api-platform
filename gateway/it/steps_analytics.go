@@ -59,6 +59,9 @@ type AnalyticsEvent struct {
 	// document: a typed mirror of the schema here would make a renamed or relocated
 	// field compile and pass, which is the failure the step exists to catch.
 	A2A map[string]interface{} `json:"a2a"`
+	// AIContext is Moesif's first-class ai_context block, decoded as a map for the
+	// same reason as A2A.
+	AIContext map[string]interface{} `json:"ai_context"`
 }
 
 // RegisterAnalyticsSteps registers all analytics step definitions
@@ -78,6 +81,8 @@ func RegisterAnalyticsSteps(ctx *godog.ScenarioContext, state *TestState, httpSt
 	ctx.Step(`^the latest analytics event should not have A2A field "([^"]*)"$`, a.theLatestAnalyticsEventShouldNotHaveA2AField)
 	ctx.Step(`^the latest analytics event should carry only A2A field "([^"]*)"$`, a.theLatestAnalyticsEventShouldCarryOnlyA2AField)
 	ctx.Step(`^the latest analytics event should have a non-empty A2A field "([^"]*)"$`, a.theLatestAnalyticsEventShouldHaveNonEmptyA2AField)
+	ctx.Step(`^the latest analytics event should have AI context field "([^"]*)" with value "([^"]*)"$`, a.theLatestAnalyticsEventShouldHaveAIContextField)
+	ctx.Step(`^the latest analytics event should not have AI context field "([^"]*)"$`, a.theLatestAnalyticsEventShouldNotHaveAIContextField)
 	ctx.Step(`^I send a GET request to the analytics collector events endpoint$`, a.iSendGETRequestToAnalyticsCollectorEvents)
 }
 
@@ -373,7 +378,7 @@ func (a *AnalyticsSteps) theLatestAnalyticsEventShouldHaveA2AField(fieldName, ex
 		return err
 	}
 
-	actualValue, err := a2aField(block, fieldName)
+	actualValue, err := blockField("A2A analytics", block, fieldName)
 	if err != nil {
 		return err
 	}
@@ -385,21 +390,22 @@ func (a *AnalyticsSteps) theLatestAnalyticsEventShouldHaveA2AField(fieldName, ex
 	return nil
 }
 
-// a2aField reads one dimension out of the A2A block by its published path.
+// blockField reads one dimension out of a first-class event block (a2a, ai_context)
+// by its published path; label names the block in error messages.
 //
-// The block nests the two directions, so a scenario names a dimension the way the
+// The A2A block nests the two directions, so a scenario names a dimension the way the
 // document spells it: "operation" at the top level, "response.task_state" inside one
 // of the sub-blocks. Spelling the path out rather than searching every level is what
 // makes the assertion catch a field that moved between them — a request identifier
 // appearing under response is exactly the confusion the nesting exists to prevent.
-func a2aField(block map[string]interface{}, path string) (interface{}, error) {
+func blockField(label string, block map[string]interface{}, path string) (interface{}, error) {
 	current := block
 	segments := strings.Split(path, ".")
 	for _, segment := range segments[:len(segments)-1] {
 		nested, ok := current[segment].(map[string]interface{})
 		if !ok {
-			return nil, fmt.Errorf("A2A analytics field '%s' not found: no '%s' sub-block in {%s}",
-				path, segment, sortedKeys(current))
+			return nil, fmt.Errorf("%s field '%s' not found: no '%s' sub-block in {%s}",
+				label, path, segment, sortedKeys(current))
 		}
 		current = nested
 	}
@@ -407,8 +413,8 @@ func a2aField(block map[string]interface{}, path string) (interface{}, error) {
 	name := segments[len(segments)-1]
 	value, ok := current[name]
 	if !ok {
-		return nil, fmt.Errorf("A2A analytics field '%s' not found in {%s}",
-			path, sortedKeys(current))
+		return nil, fmt.Errorf("%s field '%s' not found in {%s}",
+			label, path, sortedKeys(current))
 	}
 	return value, nil
 }
@@ -424,7 +430,7 @@ func (a *AnalyticsSteps) theLatestAnalyticsEventShouldNotHaveA2AField(fieldName 
 	if err != nil {
 		return err
 	}
-	if value, err := a2aField(block, fieldName); err == nil {
+	if value, err := blockField("A2A analytics", block, fieldName); err == nil {
 		return fmt.Errorf("expected no A2A analytics field '%s', but it is present with value '%v'", fieldName, value)
 	}
 	return nil
@@ -496,7 +502,7 @@ func (a *AnalyticsSteps) theLatestAnalyticsEventShouldHaveNonEmptyA2AField(field
 		return err
 	}
 
-	value, err := a2aField(block, fieldName)
+	value, err := blockField("A2A analytics", block, fieldName)
 	if err != nil {
 		return err
 	}
@@ -504,6 +510,53 @@ func (a *AnalyticsSteps) theLatestAnalyticsEventShouldHaveNonEmptyA2AField(field
 		return fmt.Errorf("A2A analytics field '%s' is present but empty", fieldName)
 	}
 	return nil
+}
+
+// theLatestAnalyticsEventShouldHaveAIContextField asserts one dimension of the
+// published ai_context block, named by its path — "usage.prompt_tokens".
+func (a *AnalyticsSteps) theLatestAnalyticsEventShouldHaveAIContextField(fieldName, expectedValue string) error {
+	block, err := a.aiContextBlock()
+	if err != nil {
+		return err
+	}
+	actualValue, err := blockField("AI context", block, fieldName)
+	if err != nil {
+		return err
+	}
+	if actualValueStr := fmt.Sprintf("%v", actualValue); actualValueStr != expectedValue {
+		return fmt.Errorf("expected AI context field '%s' to be '%s', but got '%s'", fieldName, expectedValue, actualValueStr)
+	}
+	return nil
+}
+
+// theLatestAnalyticsEventShouldNotHaveAIContextField asserts a dimension is absent: a
+// count the provider did not report must be left out, never sent as 0.
+func (a *AnalyticsSteps) theLatestAnalyticsEventShouldNotHaveAIContextField(fieldName string) error {
+	block, err := a.aiContextBlock()
+	if err != nil {
+		return err
+	}
+	if value, err := blockField("AI context", block, fieldName); err == nil {
+		return fmt.Errorf("expected no AI context field '%s', but it is present with value '%v'", fieldName, value)
+	}
+	return nil
+}
+
+// aiContextBlock returns the published ai_context block on the selected event.
+func (a *AnalyticsSteps) aiContextBlock() (map[string]interface{}, error) {
+	event := a.lastMatchedEvent
+	if event == nil {
+		var err error
+		event, err = a.getLatestAnalyticsEvent("")
+		if err != nil {
+			return nil, err
+		}
+	}
+	if event.AIContext == nil {
+		return nil, fmt.Errorf("event carries no ai_context block (metadata keys: %s)",
+			sortedKeys(event.Metadata))
+	}
+	return event.AIContext, nil
 }
 
 // a2aAnalyticsBlock returns the published a2a block on the selected event.

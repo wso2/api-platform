@@ -698,9 +698,21 @@ func TestPrepareAnalyticEvent_WithAIMetadata(t *testing.T) {
 	require.NotNil(t, aiMetadata)
 
 	// Check token usage
-	aiTokenUsage, ok := event.Properties["aiTokenUsage"]
+	aiTokenUsage, ok := event.Properties["aiTokenUsage"].(dto.AITokenUsage)
 	require.True(t, ok)
-	require.NotNil(t, aiTokenUsage)
+	assert.Equal(t, 100, aiTokenUsage.PromptToken)
+	assert.Equal(t, 50, aiTokenUsage.CompletionToken)
+	assert.Equal(t, 150, aiTokenUsage.TotalToken)
+	require.NotNil(t, aiTokenUsage.Hour)
+
+	aiUsage, ok := event.Properties[dto.PropKeyAIUsage].(dto.AIUsage)
+	require.True(t, ok)
+	require.NotNil(t, aiUsage.PromptTokens)
+	require.NotNil(t, aiUsage.CompletionTokens)
+	require.NotNil(t, aiUsage.TotalTokens)
+	assert.Equal(t, 100, *aiUsage.PromptTokens)
+	assert.Equal(t, 50, *aiUsage.CompletionTokens)
+	assert.Equal(t, 150, *aiUsage.TotalTokens)
 }
 
 func TestPrepareAnalyticEvent_WithAIMetadataInvalidTokens(t *testing.T) {
@@ -719,6 +731,48 @@ func TestPrepareAnalyticEvent_WithAIMetadataInvalidTokens(t *testing.T) {
 	event := analytics.prepareAnalyticEvent(logEntry)
 
 	require.NotNil(t, event)
+
+	// The published metadata keeps reporting an unreadable count as 0, while the
+	// usage that feeds ai_context reports it as not reported.
+	aiTokenUsage, ok := event.Properties["aiTokenUsage"].(dto.AITokenUsage)
+	require.True(t, ok)
+	assert.Zero(t, aiTokenUsage.PromptToken)
+	assert.Zero(t, aiTokenUsage.CompletionToken)
+	assert.Zero(t, aiTokenUsage.TotalToken)
+
+	aiUsage, ok := event.Properties[dto.PropKeyAIUsage].(dto.AIUsage)
+	require.True(t, ok)
+	assert.Nil(t, aiUsage.PromptTokens)
+	assert.Nil(t, aiUsage.CompletionTokens)
+	assert.Nil(t, aiUsage.TotalTokens)
+}
+
+// An embeddings response reports no completion count. It must stay unreported rather
+// than become 0, while the other counts are still read.
+func TestPrepareAnalyticEvent_WithAIMetadataMissingCompletionTokens(t *testing.T) {
+	analytics := NewAnalytics(&config.Config{})
+
+	logEntry := createLogEntryWithMetadata(map[string]string{
+		AIProviderNameMetadataKey:   "openai",
+		ModelIDMetadataKey:          "text-embedding-3-small",
+		PromptTokenCountMetadataKey: "8",
+		TotalTokenCountMetadataKey:  "8",
+	})
+
+	event := analytics.prepareAnalyticEvent(logEntry)
+	require.NotNil(t, event)
+
+	aiUsage, ok := event.Properties[dto.PropKeyAIUsage].(dto.AIUsage)
+	require.True(t, ok)
+	require.NotNil(t, aiUsage.PromptTokens)
+	assert.Equal(t, 8, *aiUsage.PromptTokens)
+	assert.Nil(t, aiUsage.CompletionTokens)
+	require.NotNil(t, aiUsage.TotalTokens)
+	assert.Equal(t, 8, *aiUsage.TotalTokens)
+
+	aiTokenUsage, ok := event.Properties["aiTokenUsage"].(dto.AITokenUsage)
+	require.True(t, ok)
+	assert.Zero(t, aiTokenUsage.CompletionToken)
 }
 
 func TestPrepareAnalyticEvent_WithLatencies(t *testing.T) {
