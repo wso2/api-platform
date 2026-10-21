@@ -1549,7 +1549,9 @@ var pathParamRegexCache sync.Map // map[string]*regexp.Regexp
 // path (e.g. /model/{modelId}/converse), which is why request/response model is
 // declared with `location: pathParam`. The path is present for both buffered
 // and streaming responses, so the model meters in either case. Go's regexp is
-// RE2 — identifiers must use a capture group, not lookaround.
+// RE2 — identifiers must use a capture group, not lookaround. The value is
+// percent-decoded, matching sdk/ai/llmusage: AWS clients send ARN model ids
+// encoded because their resource component can contain a slash.
 func extractPathParam(requestPath, pattern string) (string, error) {
 	if requestPath == "" {
 		return "", fmt.Errorf("request path not available")
@@ -1562,10 +1564,14 @@ func extractPathParam(requestPath, pattern string) (string, error) {
 	if match == nil {
 		return "", fmt.Errorf("pathParam identifier did not match request path")
 	}
+	value := match[0]
 	if len(match) > 1 {
-		return match[1], nil
+		value = match[1]
 	}
-	return match[0], nil
+	if decoded, err := url.PathUnescape(value); err == nil {
+		return decoded, nil
+	}
+	return value, nil
 }
 
 // compilePathParamRegex compiles (and caches) a pathParam identifier regex.
