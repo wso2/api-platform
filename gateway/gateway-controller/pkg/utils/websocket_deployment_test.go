@@ -313,7 +313,11 @@ func TestValidateWebSocketAPIConfig_NoGatewayMaximumConfigured(t *testing.T) {
 }
 
 func TestValidateWebSocketAPIConfig_VersionFormat(t *testing.T) {
-	for version, valid := range map[string]bool{"v1": true, "v1.0": true, "v12.3": true, "1.0": false, "v1.0.0": false, "version1": false} {
+	// Same rule as RestApi and GraphQLApi: optional "v", then major[.minor[.patch]].
+	for version, valid := range map[string]bool{
+		"v1": true, "v1.0": true, "v12.3": true, "v1.0.0": true, "1.0": true,
+		"": false, "version1": false, "v1.0.0.0": false, "v1.x": false,
+	} {
 		cfg := validWebSocketAPI(func(s *api.WebSocketAPIConfigData) { s.Version = version })
 		_, _, errs := validateWebSocketAPIConfig(cfg)
 		assert.Equal(t, !valid, fieldsWithErrors(errs)["spec.version"], "version %q", version)

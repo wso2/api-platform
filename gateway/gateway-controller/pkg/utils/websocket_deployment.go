@@ -21,7 +21,6 @@ package utils
 import (
 	"fmt"
 	"net/url"
-	"regexp"
 	"strings"
 	"time"
 
@@ -45,9 +44,9 @@ func init() {
 
 const webSocketApiKind = string(api.WebSocketAPIKindWebSocketApi)
 
-// webSocketVersionPattern is the spec.version format the WebSocketApi schema
-// declares: major-only (v1) or major.minor (v1.0).
-var webSocketVersionPattern = regexp.MustCompile(`^v\d+(\.\d+)?$`)
+// webSocketSpecRules supplies the spec.version rule WebSocketApi shares with
+// RestApi and GraphQLApi, so every kind accepts the same version formats.
+var webSocketSpecRules = config.NewAPIValidator()
 
 // webSocketValidation holds the gateway-level inputs validateWebSocketAPIConfig
 // needs but a KindConfigValidator is not handed. Zero values (an unconfigured
@@ -137,14 +136,7 @@ func validateWebSocketAPIConfig(cfg any) (apiName, apiVersion string, validation
 	if strings.TrimSpace(spec.DisplayName) == "" {
 		errors = append(errors, config.ValidationError{Field: "spec.displayName", Message: "displayName is required"})
 	}
-	if strings.TrimSpace(spec.Version) == "" {
-		errors = append(errors, config.ValidationError{Field: "spec.version", Message: "version is required"})
-	} else if !webSocketVersionPattern.MatchString(spec.Version) {
-		errors = append(errors, config.ValidationError{
-			Field:   "spec.version",
-			Message: "version must look like 'v1' or 'v1.0'",
-		})
-	}
+	errors = append(errors, webSocketSpecRules.ValidateVersion(strings.TrimSpace(spec.Version))...)
 	if strings.TrimSpace(spec.Context) == "" {
 		errors = append(errors, config.ValidationError{Field: "spec.context", Message: "context is required"})
 	} else if !strings.HasPrefix(spec.Context, "/") {

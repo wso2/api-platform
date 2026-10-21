@@ -59,7 +59,9 @@ Feature: WebSocket API CRUD and connectivity
     And the response should be valid JSON
     And the JSON response field "status" should be "success"
 
-  Scenario: Update a deployed WebSocket API's upstream, and verify the change takes effect
+  # The update adds a channel, so its effect is observable on the data plane: the new path is
+  # rejected before the update and upgrades after it, while the existing channel keeps working.
+  Scenario: Update a deployed WebSocket API, and verify the change takes effect
     Given I generate a unique resource name from "websocket-update" and store it as "wsName"
     And I generate a unique value from "websocket-update" and store it as "wsDisplayName"
     And I generate a unique API version from "websocket-update" and store it as "wsVersion"
@@ -70,28 +72,61 @@ Feature: WebSocket API CRUD and connectivity
       | spec.displayName       | ${CTX:wsDisplayName}           |
       | spec.version           | ${CTX:wsVersion}               |
       | spec.context           | ${CTX:wsContext}               |
-      | spec.upstream.main.url | ws://testbench:3019/ws?subprotocol=v1 |
+      | spec.upstream.main.url | ws://testbench:3019/ws         |
       | spec.channels          | [{"path":"/rooms"}]            |
     Then the response should be successful
 
-    When I open a WebSocket connection to "${CTX:wsContext}/rooms" with subprotocol "v1" until status 101
+    When I open a WebSocket connection to "${CTX:wsContext}/rooms" until status 101
     Then the response status code should be 101
     When I close the WebSocket connection
+    When I open a WebSocket connection to "${CTX:wsContext}/lobby"
+    Then the response status code should be 403
 
     When I update WebSocket API "${CTX:wsName}" from "resources/templates/websocket-api.yaml" with values:
-      | apiVersion             | ${CTX:gatewaySpecVersion}      |
-      | name                   | ${CTX:wsName}                  |
-      | spec.displayName       | ${CTX:wsDisplayName} v2        |
-      | spec.version           | ${CTX:wsVersion}               |
-      | spec.context           | ${CTX:wsContext}               |
-      | spec.upstream.main.url | ws://testbench:3019/ws?subprotocol=v2 |
-      | spec.channels          | [{"path":"/rooms"}]            |
+      | apiVersion             | ${CTX:gatewaySpecVersion}               |
+      | name                   | ${CTX:wsName}                           |
+      | spec.displayName       | ${CTX:wsDisplayName} v2                 |
+      | spec.version           | ${CTX:wsVersion}                        |
+      | spec.context           | ${CTX:wsContext}                        |
+      | spec.upstream.main.url | ws://testbench:3019/ws                  |
+      | spec.channels          | [{"path":"/rooms"},{"path":"/lobby"}]   |
     Then the response should be successful
     And the response should be valid JSON
     And the JSON response field "spec.displayName" should be "${CTX:wsDisplayName} v2"
 
-    When I open a WebSocket connection to "${CTX:wsContext}/rooms" with subprotocol "v2" until status 101
+    When I open a WebSocket connection to "${CTX:wsContext}/lobby" until status 101
     Then the response status code should be 101
+    When I send a WebSocket text frame "lobby"
+    Then I should receive the WebSocket text frame "lobby"
+    When I close the WebSocket connection
+
+    When I open a WebSocket connection to "${CTX:wsContext}/rooms"
+    Then the response status code should be 101
+    When I close the WebSocket connection
+
+    When I delete the WebSocket API "${CTX:wsName}"
+    Then the response should be successful
+
+  # The client's query string reaches the backend, so ?subprotocol asks the testbench to accept
+  # the offered subprotocol; the gateway must pass the negotiated value back unchanged.
+  Scenario: Subprotocol negotiation passes through the gateway
+    Given I generate a unique resource name from "websocket-subprotocol" and store it as "wsName"
+    And I generate a unique value from "websocket-subprotocol" and store it as "wsDisplayName"
+    And I generate a unique API version from "websocket-subprotocol" and store it as "wsVersion"
+    And I generate a unique API context from "/websocket-subprotocol" and store it as "wsContext"
+    When I create WebSocket API from "resources/templates/websocket-api.yaml" with values:
+      | apiVersion             | ${CTX:gatewaySpecVersion}      |
+      | name                   | ${CTX:wsName}                  |
+      | spec.displayName       | ${CTX:wsDisplayName}           |
+      | spec.version           | ${CTX:wsVersion}               |
+      | spec.context           | ${CTX:wsContext}               |
+      | spec.upstream.main.url | ws://testbench:3019/ws         |
+      | spec.channels          | [{"path":"/rooms"}]            |
+    Then the response should be successful
+
+    When I open a WebSocket connection to "${CTX:wsContext}/rooms?subprotocol=v2" with subprotocol "v2" until status 101
+    Then the response status code should be 101
+    And the response header "Sec-WebSocket-Protocol" should be "v2"
     When I close the WebSocket connection
 
     When I delete the WebSocket API "${CTX:wsName}"
@@ -99,11 +134,9 @@ Feature: WebSocket API CRUD and connectivity
 
   # The upstream's own handshake rejection must pass through unmodified rather than being
   # swallowed or rewritten — this is what proves the gateway proxies the handshake rather than
-  # terminating it as its own HTTP response. "until status 403" absorbs the same deploy-to-xDS
-  # propagation gap every other first data-plane call in this suite retries through; without it,
-  # a handshake fired before the channel route propagates would still land on 403 (Envoy rejects
-  # any Upgrade request against a route that hasn't enabled that upgrade type), making the
-  # scenario pass without ever actually reaching the backend it claims to exercise.
+  # terminating it as its own HTTP response. The route is first confirmed ready with an upgrade,
+  # then the client's ?rejectStatus asks the testbench to refuse with 418: a status the gateway
+  # never produces itself, so it can only have come from the backend.
   Scenario: A rejected upstream handshake is passed through to the client
     Given I generate a unique resource name from "websocket-reject" and store it as "wsName"
     And I generate a unique value from "websocket-reject" and store it as "wsDisplayName"
@@ -115,12 +148,99 @@ Feature: WebSocket API CRUD and connectivity
       | spec.displayName       | ${CTX:wsDisplayName}           |
       | spec.version           | ${CTX:wsVersion}               |
       | spec.context           | ${CTX:wsContext}               |
-      | spec.upstream.main.url | ws://testbench:3019/ws?rejectStatus=403 |
+      | spec.upstream.main.url | ws://testbench:3019/ws         |
       | spec.channels          | [{"path":"/rooms"}]            |
     Then the response should be successful
 
-    When I open a WebSocket connection to "${CTX:wsContext}/rooms" until status 403
-    Then the response status code should be 403
+    When I open a WebSocket connection to "${CTX:wsContext}/rooms" until status 101
+    Then the response status code should be 101
+    When I close the WebSocket connection
+
+    When I open a WebSocket connection to "${CTX:wsContext}/rooms?rejectStatus=418"
+    Then the response status code should be 418
+
+    When I delete the WebSocket API "${CTX:wsName}"
+    Then the response should be successful
+
+  # api-key-auth runs at the handshake. A 401 without a key proves the policy chain is bound;
+  # the first upgrade with a generated key proves the key reached the policy engine; and a 401
+  # with that same key after revocation proves revocation reaches the data plane.
+  Scenario: An API-level API key policy secures the WebSocket handshake
+    Given I generate a unique resource name from "websocket-apikey" and store it as "wsName"
+    And I generate a unique value from "websocket-apikey" and store it as "wsDisplayName"
+    And I generate a unique API version from "websocket-apikey" and store it as "wsVersion"
+    And I generate a unique API context from "/websocket-apikey" and store it as "wsContext"
+    And I generate a unique value from "websocket-key" and store it as "keyName"
+    When I create WebSocket API from "resources/templates/websocket-api.yaml" with values:
+      | apiVersion             | ${CTX:gatewaySpecVersion}                                                          |
+      | name                   | ${CTX:wsName}                                                                      |
+      | spec.displayName       | ${CTX:wsDisplayName}                                                               |
+      | spec.version           | ${CTX:wsVersion}                                                                   |
+      | spec.context           | ${CTX:wsContext}                                                                   |
+      | spec.upstream.main.url | ws://testbench:3019/ws                                                             |
+      | spec.channels          | [{"path":"/rooms"}]                                                                |
+      | spec.policies          | [{"name":"api-key-auth","version":"v1","params":{"key":"X-API-Key","in":"header"}}] |
+    Then the response should be successful
+
+    When I open a WebSocket connection to "${CTX:wsContext}/rooms" until status 401
+    Then the response status code should be 401
+
+    When I set header "X-API-Key" to "not-a-valid-key"
+    And I open a WebSocket connection to "${CTX:wsContext}/rooms"
+    Then the response status code should be 401
+
+    When I send a "POST" request to the "gateway-controller" service at "/websocket-apis/${CTX:wsName}/api-keys" with body:
+      """
+      {
+        "name": "${CTX:keyName}"
+      }
+      """
+    Then the response status should be 201
+    And the response should be valid JSON
+    And I store the JSON response field "apiKey.apiKey" as "wsKey"
+
+    When I set header "X-API-Key" to "${CTX:wsKey}"
+    And I open a WebSocket connection to "${CTX:wsContext}/rooms" until status 101
+    Then the response status code should be 101
+    When I send a WebSocket text frame "secured"
+    Then I should receive the WebSocket text frame "secured"
+    When I close the WebSocket connection
+
+    When I send a "DELETE" request to the "gateway-controller" service at "/websocket-apis/${CTX:wsName}/api-keys/${CTX:keyName}"
+    Then the response status should be 200
+
+    When I set header "X-API-Key" to "${CTX:wsKey}"
+    And I open a WebSocket connection to "${CTX:wsContext}/rooms" until status 401
+    Then the response status code should be 401
+
+    When I delete the WebSocket API "${CTX:wsName}"
+    Then the response should be successful
+
+  # A channel's own policies apply to that channel only: /private requires a key while /public,
+  # on the same API, keeps accepting handshakes without one.
+  Scenario: A channel-level API key policy secures only its own channel
+    Given I generate a unique resource name from "websocket-channel-key" and store it as "wsName"
+    And I generate a unique value from "websocket-channel-key" and store it as "wsDisplayName"
+    And I generate a unique API version from "websocket-channel-key" and store it as "wsVersion"
+    And I generate a unique API context from "/websocket-channel-key" and store it as "wsContext"
+    When I create WebSocket API from "resources/templates/websocket-api.yaml" with values:
+      | apiVersion             | ${CTX:gatewaySpecVersion}                                                                                                     |
+      | name                   | ${CTX:wsName}                                                                                                                 |
+      | spec.displayName       | ${CTX:wsDisplayName}                                                                                                          |
+      | spec.version           | ${CTX:wsVersion}                                                                                                              |
+      | spec.context           | ${CTX:wsContext}                                                                                                              |
+      | spec.upstream.main.url | ws://testbench:3019/ws                                                                                                        |
+      | spec.channels          | [{"path":"/public"},{"path":"/private","policies":[{"name":"api-key-auth","version":"v1","params":{"key":"X-API-Key","in":"header"}}]}] |
+    Then the response should be successful
+
+    When I open a WebSocket connection to "${CTX:wsContext}/private" until status 401
+    Then the response status code should be 401
+
+    When I open a WebSocket connection to "${CTX:wsContext}/public"
+    Then the response status code should be 101
+    When I send a WebSocket text frame "open"
+    Then I should receive the WebSocket text frame "open"
+    When I close the WebSocket connection
 
     When I delete the WebSocket API "${CTX:wsName}"
     Then the response should be successful
