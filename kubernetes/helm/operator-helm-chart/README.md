@@ -66,7 +66,7 @@ helm install apip-operator oci://ghcr.io/wso2/api-platform/helm-charts/gateway-o
 |-----------|-------------|---------|
 | `gateway.controlPlaneHost` | Control plane API endpoint | `http://platform-api:3001` |
 | `gateway.helm.chartName` | Gateway Helm chart OCI or repo reference (ignored if `chartPath` is set) | `oci://ghcr.io/wso2/api-platform/helm-charts/gateway` |
-| `gateway.helm.chartVersion` | Gateway chart version (for remote pulls; also used in upgrade signatures) | `1.2.4` |
+| `gateway.helm.chartVersion` | Gateway chart version (for remote pulls; also used in upgrade signatures) | `1.2.5` |
 | `gateway.helm.chartPath` | Local chart dir or `.tgz` path **inside the operator pod**; when non-empty, remote chart lookup (`chartName`/`chartVersion`) and registry auth are ignored | `""` |
 | `gateway.helm.valuesFilePath` | Path to gateway values file | `/config/gateway_values.yaml` |
 | `gateway.helm.insecureRegistry` | Skip TLS verification for OCI registries (still HTTPS) | `false` |
