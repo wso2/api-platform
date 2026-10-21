@@ -59,6 +59,15 @@ const (
 	keyVersionDeploymentID  = "cloudVersionDeploymentID"
 	keyVersionAPIDefinition = "cloudVersionAPIDefinition"
 
+	keyBuildID           = "cloudBuildID"
+	keyBuildIDs          = "cloudBuildIDs"
+	keyBuildsOwner       = "cloudBuildsOwner"
+	keyBuildMetadata     = "cloudBuildMetadata"
+	keyDeployedBuildID   = "cloudDeployedBuildID"
+	keyDeployedTargets   = "cloudDeployedTargets"
+	keySyntheticGateways = "cloudSyntheticGatewayIDs"
+	keyEchoBackendURL    = "cloudEchoBackendURL"
+
 	cloudConsoleAccessTokenEnv = "CLOUD_CONSOLE_ACCESS_TOKEN"
 
 	resourceActor = "apip-console"
@@ -98,7 +107,7 @@ func Register(sc *godog.ScenarioContext, topo *frameworkruntime.Topology, funnel
 	sc.Step(`^I deploy the (synthetic REST API|new API version) to the active gateway$`, s.deployAPI)
 	sc.Step(`^I redeploy the synthetic REST API to the active gateway$`, s.redeployAPI)
 	sc.Step(`^I undeploy the synthetic REST API$`, s.undeployAPI)
-	sc.Step(`^the (synthetic REST API|new API version) deployment should become (DEPLOYED|UNDEPLOYED)$`, s.waitDeployment)
+	sc.Step(`^the (synthetic REST API|new API version) deployment should become (DEPLOYED|UNDEPLOYED|FAILED)$`, s.waitDeployment)
 	sc.Step(`^a "([^"]*)" request to "([^"]*)" should keep returning (\d+) until the redeployment is DEPLOYED$`, s.keepServingUntilDeployed)
 	sc.Step(`^I create an API key for the synthetic REST API$`, s.createAPIKey)
 	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" with header "([^"]*)" set to the API key until status (\d+)$`, s.sendWithAPIKeyUntilStatus)
@@ -106,6 +115,9 @@ func Register(sc *godog.ScenarioContext, topo *frameworkruntime.Topology, funnel
 	sc.Step(`^the synthetic REST API data-plane response should contain post (\d+)$`, s.assertAPIResponse)
 	sc.Step(`^I delete the synthetic REST API$`, s.deleteAPI)
 	sc.Step(`^the synthetic REST API should eventually be absent$`, s.verifyAPIDeleted)
+
+	s.registerIdentitySteps(sc)
+	s.registerDeploymentSteps(sc)
 
 	sc.Step(`^I create a synthetic APIP project$`, s.createProject)
 	sc.Step(`^the synthetic APIP project should be retrievable by handle$`, s.getProject)
@@ -122,6 +134,52 @@ func Register(sc *godog.ScenarioContext, topo *frameworkruntime.Topology, funnel
 	sc.Step(`^the managed APIP gateway should be retrievable through the managed-gateway endpoint$`, s.getManagedGateway)
 	sc.Step(`^I delete the synthetic managed APIP gateway$`, s.deleteManagedGateway)
 	sc.Step(`^the managed APIP gateway should eventually be absent$`, s.verifyManagedGatewayDeleted)
+}
+
+// registerIdentitySteps binds the steps that inspect the console token and send requests with
+// controlled credentials.
+func (s *Steps) registerIdentitySteps(sc *godog.ScenarioContext) {
+	sc.Step(`^the APIP cloud console token should be a JWT that has not expired$`, s.assertTokenIsLiveJWT)
+	sc.Step(`^the APIP cloud console token should carry an organisation claim$`, s.assertTokenCarriesOrganisation)
+	sc.Step(`^I send an authenticated "([^"]*)" request to the APIP cloud path "([^"]*)"$`, s.sendAuthenticatedRequest)
+	sc.Step(`^a "([^"]*)" request to the APIP cloud path "([^"]*)" should give the same result when the "([^"]*)" header names another organisation$`,
+		s.assertForeignOrganisationHeaderIgnored)
+	sc.Step(`^I send a "([^"]*)" request to the APIP cloud path "([^"]*)" without an Authorization header$`, s.sendWithoutAuthorization)
+	sc.Step(`^I send a "([^"]*)" request to the APIP cloud path "([^"]*)" with the Authorization header "([^"]*)"$`, s.sendWithAuthorizationHeader)
+	sc.Step(`^I send a "([^"]*)" request to the APIP cloud path "([^"]*)" bearing a token (that expired an hour ago|with no signature|signed with an unknown key|signed with an unknown shared secret)$`,
+		s.sendWithForgedToken)
+	sc.Step(`^the cloud API error response should not expose internal detail$`, s.assertNoInternalDetail)
+	sc.Step(`^the cloud API response status code should be a client error$`, s.assertCloudResponseClientError)
+	sc.Step(`^the cloud API response body should contain "([^"]*)"$`, s.assertCloudResponseContains)
+	sc.Step(`^the cloud API error code should be "([^"]*)"$`, s.assertCloudErrorCode)
+}
+
+// registerDeploymentSteps binds the build, deployment and synthetic-gateway steps.
+func (s *Steps) registerDeploymentSteps(sc *godog.ScenarioContext) {
+	sc.Step(`^I choose a synthetic REST API handle without creating the API$`, s.chooseUnusedAPIHandle)
+	sc.Step(`^I prepare a build of the synthetic REST API$`, func(ctx context.Context) error { return s.prepareBuild(ctx, nil) })
+	sc.Step(`^I prepare a build of the synthetic REST API with metadata:$`, s.prepareBuild)
+	sc.Step(`^the prepared build should have a day-and-index identifier$`, s.assertBuildIDShape)
+	sc.Step(`^the synthetic REST API builds should include the prepared build$`, s.assertBuildListed)
+	sc.Step(`^the synthetic REST API builds should list the prepared builds newest first$`, s.assertBuildsNewestFirst)
+	sc.Step(`^the synthetic REST API builds should list the rendered builds newest first$`, s.assertBuildsNewestFirst)
+	sc.Step(`^the deployment should have rendered a build of the API$`, s.recordRenderedBuild)
+	sc.Step(`^the synthetic REST API should hold (\d+) builds$`, s.assertBuildCount)
+	sc.Step(`^I request a deployment of the synthetic REST API with:$`, s.requestDeployment)
+	sc.Step(`^the deployment response should list the active gateway$`, s.assertDeploymentListsActiveGateway)
+	sc.Step(`^the deployment response should list (\d+) gateways$`, s.assertDeploymentCount)
+	sc.Step(`^the deployed build should be the prepared build$`, s.assertDeployedBuildIsPrepared)
+	sc.Step(`^the deployed build should be the rendered build$`, s.assertDeployedBuildIsPrepared)
+	sc.Step(`^the synthetic REST API should be DEPLOYED on every gateway the deployment request named$`, s.waitDeployedOnTargets)
+	sc.Step(`^the synthetic REST API deployments should have one stage per environment of its project's deployment pipeline$`, s.assertStagesMatchPipeline)
+	sc.Step(`^the deployment stage of the active gateway's environment should show the active gateway as ([A-Z_]+)$`, s.assertActiveGatewayStageStatus)
+	sc.Step(`^the synthetic REST API deployment should report a status reason code$`, s.assertDeploymentStatusReason)
+	sc.Step(`^an echo backend is available for deployment overrides$`, s.useEchoBackend)
+	sc.Step(`^the deployment response should report the echo backend as the production endpoint$`, s.assertDeploymentReportsEchoEndpoint)
+	sc.Step(`^the echo backend should have received a request for "([^"]*)"$`, s.assertEchoBackendReceived)
+	sc.Step(`^I create (\d+) synthetic managed APIP gateways? in the active gateway's environment$`, s.createGatewaysInActiveEnvironment)
+	sc.Step(`^the synthetic managed APIP gateways should become active$`, s.waitSyntheticGatewaysActive)
+	sc.Step(`^I deploy a build of the synthetic REST API to the active gateway and every synthetic gateway$`, s.deployBuildPerGateway)
 }
 
 // RegisterDeleters installs cloud-target cleanup handlers for a block containing cloud-console.
@@ -148,6 +206,41 @@ func RegisterDeleters(reg *cleanup.Registry, topo *frameworkruntime.Topology) er
 	return reg.RegisterDeleter(cleanup.KindGateway, cloudDeleter(topo, client, "/managed-gateways", false))
 }
 
+// environmentsCollection is the collection an environment is deleted from.
+const environmentsCollection = "/environments"
+
+// emptyEnvironment deletes the managed gateways of an environment, which the platform refuses
+// to delete the environment while it holds, including a gateway the platform created with it.
+func emptyEnvironment(ctx context.Context, client *httpx.Client, base, bearer, environment string) error {
+	headers := map[string]string{"Authorization": "Bearer " + bearer}
+	listed, err := client.Do(ctx, httpx.Request{Method: http.MethodGet, URL: cloudAPIURL(base, "/managed-gateways"), Headers: headers}, 0, 0)
+	if err != nil {
+		return err
+	}
+	if listed.StatusCode != http.StatusOK {
+		return responseError(listed)
+	}
+	items, err := listItems(listed)
+	if err != nil {
+		return fmt.Errorf("decoding managed gateways: %w", err)
+	}
+	for _, item := range items {
+		id, _ := item["id"].(string)
+		if item["environment"] != environment || id == "" {
+			continue
+		}
+		resp, err := client.Do(ctx, httpx.Request{Method: http.MethodDelete,
+			URL: cloudResourceURL(base, "/managed-gateways", id), Headers: headers}, 0, 0)
+		if err != nil {
+			return err
+		}
+		if resp.StatusCode != http.StatusNotFound && !resp.Succeeded() {
+			return responseError(resp)
+		}
+	}
+	return nil
+}
+
 func cloudDeleter(topo *frameworkruntime.Topology, client *httpx.Client, collection string, waitForNotFound bool) cleanup.Deleter {
 	return func(ctx context.Context, resource cleanup.Resource) error {
 		base, err := topo.URL(corecatalog.Name, corecatalog.EndpointAPIPPlatformAPI)
@@ -157,6 +250,11 @@ func cloudDeleter(topo *frameworkruntime.Topology, client *httpx.Client, collect
 		bearer, err := bearerToken(ctx)
 		if err != nil {
 			return err
+		}
+		if collection == environmentsCollection {
+			if err := emptyEnvironment(ctx, client, base, bearer, resource.ID); err != nil {
+				return err
+			}
 		}
 		deleteOne := func(ctx context.Context) (*httpx.Response, error) {
 			return client.Do(ctx, httpx.Request{

@@ -464,6 +464,13 @@ func (s *Steps) createManagedGateway(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	_, err = s.createManagedGatewayIn(ctx, environment)
+	return err
+}
+
+// createManagedGatewayIn creates a uniquely named managed gateway in an environment, registers it
+// for cleanup before the request, and keeps its id as the scenario's managed gateway.
+func (s *Steps) createManagedGatewayIn(ctx context.Context, environment string) (string, error) {
 	// "sgw", not "syn-gateway": a managed gateway's handle is bounded by the
 	// release label the control plane renders from it, which spends the
 	// environment name twice and leaves 15 characters in a "development"
@@ -471,11 +478,11 @@ func (s *Steps) createManagedGateway(ctx context.Context) error {
 	// the rest. A longer base is accepted at create time and then fails to apply,
 	// leaving a gateway that never becomes ready.
 	if err := generateResourceAndStore(ctx, "sgw", keyManagedGatewayID); err != nil {
-		return err
+		return "", err
 	}
 	name, err := requiredValue(ctx, keyManagedGatewayID)
 	if err != nil {
-		return err
+		return "", err
 	}
 	// The managed-gateway API normally derives its registration id from the
 	// environment and display name. Keep that deterministic fallback registered so
@@ -484,30 +491,30 @@ func (s *Steps) createManagedGateway(ctx context.Context) error {
 	if err := cleanup.Register(ctx, cleanup.Resource{
 		Kind: cleanup.KindGateway, ID: cleanupID, Actor: resourceActor, Description: "managed gateway " + cleanupID,
 	}); err != nil {
-		return fmt.Errorf("registering managed gateway %q for cleanup: %w", cleanupID, err)
+		return "", fmt.Errorf("registering managed gateway %q for cleanup: %w", cleanupID, err)
 	}
 	resp, err := s.doAuthenticated(ctx, http.MethodPost, "/managed-gateways", map[string]string{
 		"displayName": name, "environment": environment,
 	})
 	if err != nil {
-		return err
+		return "", err
 	}
 	if resp.StatusCode != http.StatusCreated {
-		return responseError(resp)
+		return "", responseError(resp)
 	}
 	id, err := stringField(resp, "id")
 	if err != nil {
-		return fmt.Errorf("creating APIP managed gateway: %w", err)
+		return "", fmt.Errorf("creating APIP managed gateway: %w", err)
 	}
 	if id != cleanupID {
 		deregister(ctx, cleanup.KindGateway, cleanupID)
 		if err := cleanup.Register(ctx, cleanup.Resource{
 			Kind: cleanup.KindGateway, ID: id, Actor: resourceActor, Description: "managed gateway " + id,
 		}); err != nil {
-			return fmt.Errorf("registering managed gateway %q for cleanup: %w", id, err)
+			return "", fmt.Errorf("registering managed gateway %q for cleanup: %w", id, err)
 		}
 	}
-	return tcontext.Set(ctx, keyManagedGatewayID, id)
+	return id, tcontext.Set(ctx, keyManagedGatewayID, id)
 }
 
 func (s *Steps) getManagedGateway(ctx context.Context) error {

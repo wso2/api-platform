@@ -388,40 +388,50 @@ func (s *Steps) undeployAPI(ctx context.Context) error {
 	return nil
 }
 
-// deploymentStatus reads the status of the deployment a ref points at; it is empty when the list
+// deploymentRecord reads the record of the deployment a ref points at; it is nil when the list
 // does not contain that deployment.
-func (s *Steps) deploymentStatus(ctx context.Context, ref apiRef) (string, error) {
+func (s *Steps) deploymentRecord(ctx context.Context, ref apiRef) (map[string]any, error) {
 	apiID, err := requiredValue(ctx, ref.id)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	deploymentID, err := requiredValue(ctx, ref.deployment)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	gatewayID, err := requiredValue(ctx, keyGatewayID)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	resp, err := s.doAuthenticatedRaw(ctx, http.MethodGet,
 		"/rest-apis/"+url.PathEscape(apiID)+"/deployments?gatewayId="+url.QueryEscape(gatewayID), nil)
 	if err != nil {
-		return "", retry.Transient(err)
+		return nil, retry.Transient(err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return "", retry.Transient(responseError(resp))
+		return nil, retry.Transient(responseError(resp))
 	}
 	items, err := listItems(resp)
 	if err != nil {
-		return "", retry.Transient(fmt.Errorf("decoding APIP deployments: %w", err))
+		return nil, retry.Transient(fmt.Errorf("decoding APIP deployments: %w", err))
 	}
 	for _, item := range items {
 		if item["deploymentId"] == deploymentID {
-			status, _ := item["status"].(string)
-			return status, nil
+			return item, nil
 		}
 	}
-	return "", nil
+	return nil, nil
+}
+
+// deploymentStatus reads the status of the deployment a ref points at; it is empty when the list
+// does not contain that deployment.
+func (s *Steps) deploymentStatus(ctx context.Context, ref apiRef) (string, error) {
+	record, err := s.deploymentRecord(ctx, ref)
+	if err != nil || record == nil {
+		return "", err
+	}
+	status, _ := record["status"].(string)
+	return status, nil
 }
 
 func (s *Steps) waitDeployment(ctx context.Context, label, status string) error {
