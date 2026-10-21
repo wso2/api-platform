@@ -563,3 +563,30 @@ signature_header    = "X-Api-Portal-Signature"     # header carrying the "t=...,
 [platform_api.read_only]
 enabled                = false
 writable_organizations = []
+
+# -----------------------------------------------------------------------------
+# MCP server: /api/v0.9/mcp lets an MCP client (an AI agent) manage APIs,
+# projects and gateways for the signed-in user. Off by default. Not the same as
+# MCP proxies, which put a customer's MCP server behind a gateway.
+#
+# /mcp signs in like every other route. When auth.authorization is enabled, each
+# tool checks the scopes of the REST routes it stands for. In read-only mode a
+# frozen organization gets 503 on every /mcp call, reads included (/mcp is all
+# POST).
+#
+# In idp mode, mcp_server.auth.audience is required, and so is public_url: how
+# clients reach the Platform API, for login discovery. If auth.idp.audience is
+# set, it must list the MCP audience too, so REST routes then also accept
+# tokens meant for /mcp.
+#
+# Startup fails if a plugin overrides a route one of the tools uses. A reverse
+# proxy on the same host must connect on a non-loopback address or send a
+# loopback Host header, or /mcp answers 403 "invalid Host header".
+# -----------------------------------------------------------------------------
+[platform_api.mcp_server]
+enabled           = false
+max_request_bytes = 1048576
+public_url        = ""
+
+[platform_api.mcp_server.auth]
+audience = ""
