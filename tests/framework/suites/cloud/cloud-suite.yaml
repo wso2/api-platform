@@ -24,3 +24,12 @@ blocks:
       - name: apip-gateway
         features:
           - features/apip_gateway.feature
+      - name: apip-auth
+        features:
+          - features/apip_auth.feature
+      - name: apip-deploy
+        features:
+          - features/apip_deploy.feature
+      - name: apip-promotion
+        features:
+          - features/apip_promotion.feature
