@@ -572,8 +572,7 @@ func (r *APIRepo) CheckAPIExistsByNameAndVersionInOrganization(name, version, or
 }
 
 // GetAPIVersionsByDisplayName returns every REST API sharing the given display name in an
-// organization, ordered by version. The lookup is org-wide with no project filter, since
-// versions of one API may live in different projects.
+// organization, ordered by version.
 func (r *APIRepo) GetAPIVersionsByDisplayName(orgUUID, displayName string) ([]*model.API, error) {
 	query := `
 		SELECT uuid, handle, display_name, description, version, created_by, updated_by,

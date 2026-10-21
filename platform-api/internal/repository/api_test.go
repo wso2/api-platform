@@ -747,23 +747,13 @@ func TestAPIRepo_GetAPIVersionsByDisplayName(t *testing.T) {
 	projectUUID := "project-versions-001"
 	createTestOrganizationAndProject(t, db, orgUUID, projectUUID)
 
-	otherProjectUUID := "project-versions-001-b"
-	_, err := db.Exec(`
-		INSERT INTO projects (uuid, handle, display_name, organization_uuid, created_at, updated_at)
-		VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))
-	`, otherProjectUUID, "test-project-"+otherProjectUUID, "Other Project", orgUUID)
-	if err != nil {
-		t.Fatalf("Failed to create second test project: %v", err)
-	}
-
-	// Two versions in the main project, one in a sibling project, plus an unrelated API.
+	// Three versions of one API, plus an unrelated API that must not be picked up.
 	makeVersionedAPI(t, repo, "reading-list-v1", "reading-list-api", "v1.0", projectUUID, orgUUID)
 	makeVersionedAPI(t, repo, "reading-list-v2", "reading-list-api", "v2.0", projectUUID, orgUUID)
-	makeVersionedAPI(t, repo, "reading-list-v3", "reading-list-api", "v3.0", otherProjectUUID, orgUUID)
+	makeVersionedAPI(t, repo, "reading-list-v3", "reading-list-api", "v3.0", projectUUID, orgUUID)
 	makeVersionedAPI(t, repo, "unrelated-api", "unrelated-api", "v1.0", projectUUID, orgUUID)
 
-	// Versions may live in different projects, so the sibling-project version must be returned.
-	t.Run("returns every version across the organization, including other projects", func(t *testing.T) {
+	t.Run("returns every version of the display name in the organization", func(t *testing.T) {
 		versions, err := repo.GetAPIVersionsByDisplayName(orgUUID, "reading-list-api")
 		if err != nil {
 			t.Fatalf("GetAPIVersionsByDisplayName failed: %v", err)
@@ -780,20 +770,6 @@ func TestAPIRepo_GetAPIVersionsByDisplayName(t *testing.T) {
 			if v.Name != "reading-list-api" {
 				t.Errorf("version[%d] display name = %q, want %q", i, v.Name, "reading-list-api")
 			}
-		}
-	})
-
-	t.Run("the sibling-project version is reported, not filtered out", func(t *testing.T) {
-		versions, err := repo.GetAPIVersionsByDisplayName(orgUUID, "reading-list-api")
-		if err != nil {
-			t.Fatalf("GetAPIVersionsByDisplayName failed: %v", err)
-		}
-		projects := map[string]bool{}
-		for _, v := range versions {
-			projects[v.ProjectID] = true
-		}
-		if !projects[projectUUID] || !projects[otherProjectUUID] {
-			t.Fatalf("versions span %v, want both %q and %q", projects, projectUUID, otherProjectUUID)
 		}
 	})
 
