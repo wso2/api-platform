@@ -124,7 +124,8 @@ export interface paths {
          * Get all REST APIs for an organization
          * @description Retrieves all REST APIs belonging to an organization.
          *     Requires the projectId query parameter to filter APIs by project.
-         *     Provide name and version together to check uniqueness (empty result = name/version combination is available).
+         *     To discover the versions of an API, or to check whether a version is available, use
+         *     GET /rest-apis/versions instead.
          *     Access is validated against the organization in the JWT token.
          */
         get: operations["ListRESTAPIs"];
@@ -185,6 +186,41 @@ export interface paths {
          *     raw spec as the API definition document.
          */
         post: operations["ImportOpenAPI"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/rest-apis/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the versions of a REST API
+         * @description Returns every version of a REST API that shares the given displayName within the
+         *     organization resolved from the JWT token.
+         *
+         *     Versions of a single API are grouped by displayName: each version is a distinct REST API
+         *     resource with its own id (handle), and they share a displayName while differing by version.
+         *
+         *     Use this before creating a REST API to tell the two cases apart: versionsAvailable true
+         *     means the displayName is already in use, so the create is a new version of an existing API;
+         *     false means it is a brand-new API. The returned list gives the versions already taken.
+         *
+         *     The lookup is organization-scoped and deliberately takes no project filter: uniqueness of
+         *     (displayName, version) is enforced across the whole organization, so narrowing by project
+         *     could report a displayName as free when a create for it would be rejected. Each returned
+         *     version still carries the projectId it lives in.
+         *
+         *     An empty result is a 200 with versionsAvailable false, not a 404.
+         */
+        get: operations["ListRESTAPIVersions"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -4372,6 +4408,58 @@ export interface components {
             list: components["schemas"]["RESTAPI"][];
             pagination: components["schemas"]["Pagination"];
         };
+        RESTAPIVersionListResponse: {
+            /**
+             * @description The display name the versions were looked up by
+             * @example reading-list-api
+             */
+            displayName: string;
+            /**
+             * @description True when at least one REST API already uses this display name, meaning a create for
+             *     this display name adds a version to an existing API rather than creating a new one.
+             * @example true
+             */
+            versionsAvailable: boolean;
+            /**
+             * @description Number of versions in this response
+             * @example 2
+             */
+            count: number;
+            list: components["schemas"]["RESTAPIVersion"][];
+        };
+        RESTAPIVersion: {
+            /**
+             * @description Unique handle/identifier of the REST API resource holding this version. Use it to
+             *     address the version through the other /rest-apis endpoints.
+             * @example 69942b1952c01e01cb249a9b
+             */
+            id: string;
+            /**
+             * @description Version identifier
+             * @example v1.0
+             */
+            version: string;
+            /**
+             * @description Handle (URL-friendly slug) of the project this version belongs to
+             * @example default-project
+             */
+            projectId: string;
+            /**
+             * @description Context path this version is served on
+             * @example /default-project/reading-list-api/v1.0
+             */
+            context?: string;
+            /**
+             * @description Current lifecycle status of this version
+             * @example PUBLISHED
+             */
+            lifeCycleStatus?: string;
+            /**
+             * Format: date-time
+             * @description Timestamp when this version was created
+             */
+            createdAt?: string;
+        };
         TokenRotationResponse: {
             /**
              * Format: uuid
@@ -8041,6 +8129,15 @@ export interface components {
         "entityID-Q": string;
         /** @description **Project ID** consisting of the **handle** (unique slug identifier) of the Project whose resources should be returned. */
         "projectId-Q": string;
+        /**
+         * @description **Display name** shared by every version of a REST API. Matched exactly
+         *     (case-sensitive) and scoped to the organization in the JWT token.
+         *
+         *     Must hold at least one non-whitespace character; an empty or
+         *     whitespace-only value is a 400. Surrounding whitespace is trimmed
+         *     before the lookup, so it is accepted but not significant.
+         */
+        "displayName-Q": string;
         /** @description **Gateway ID** consisting of the **handle** (unique slug identifier) of the Gateway to filter status by. */
         "gatewayId-Q": string;
         /** @description **Gateway ID** consisting of the **handle** (unique slug identifier) of the Gateway. */
@@ -8519,6 +8616,41 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             409: components["responses"]["Conflict"];
             413: components["responses"]["PayloadTooLarge"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    ListRESTAPIVersions: {
+        parameters: {
+            query: {
+                /**
+                 * @description **Display name** shared by every version of a REST API. Matched exactly
+                 *     (case-sensitive) and scoped to the organization in the JWT token.
+                 *
+                 *     Must hold at least one non-whitespace character; an empty or
+                 *     whitespace-only value is a 400. Surrounding whitespace is trimmed
+                 *     before the lookup, so it is accepted but not significant.
+                 */
+                displayName: components["parameters"]["displayName-Q"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Versions retrieved successfully */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RESTAPIVersionListResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
             500: components["responses"]["InternalServerError"];
         };
     };
