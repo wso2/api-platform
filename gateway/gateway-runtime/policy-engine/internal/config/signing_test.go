@@ -144,6 +144,9 @@ jwks_cache_max_age = "48h"`, "jwks_cache_max_age"},
 		{"relative jwks url", `
 [signing]
 public_jwks_url = "/.well-known/jwks.json"`, "public_jwks_url"},
+		{"plain http jwks url", `
+[signing]
+public_jwks_url = "http://gw.example.com/.well-known/jwks.json"`, "public_jwks_url"},
 		{"jwks url with credentials", `
 [signing]
 public_jwks_url = "https://user:pass@gw.example.com/.well-known/jwks.json"`, "public_jwks_url"},
