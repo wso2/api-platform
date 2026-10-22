@@ -124,9 +124,8 @@ func (t *WebSocketAPITransformer) Transform(cfg *models.StoredConfig) (*models.R
 	}
 
 	// Resolve the downstream connection bounds once: every channel of this API
-	// shares them, and both always resolve to a finite value even when the
-	// artifact sets neither.
-	routeTimeout, err := t.resolveDownstreamTimeout(apiData.Connection)
+	// shares the gateway-wide values, and both always resolve to a finite value.
+	routeTimeout, err := t.resolveDownstreamTimeout()
 	if err != nil {
 		return nil, err
 	}
@@ -134,7 +133,7 @@ func (t *WebSocketAPITransformer) Transform(cfg *models.StoredConfig) (*models.R
 	apiPolicies := t.collectAPIPolicies(apiData.Policies)
 
 	mainVhost := t.routerConfig.VHosts.Main.Default
-	mainUpstream, err := t.addWebSocketUpstreamCluster(rdc, "main", &apiData.Upstream.Main)
+	mainUpstream, err := t.addWebSocketUpstreamCluster(rdc, "main", &apiData.Upstream.Main, apiData.UpstreamDefinitions)
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve main upstream: %w", err)
 	}
@@ -143,10 +142,10 @@ func (t *WebSocketAPITransformer) Transform(cfg *models.StoredConfig) (*models.R
 		return nil, err
 	}
 
-	// Sandbox is active when a sandbox upstream is configured. A WebSocketApi
-	// only supports a direct url (see validateWebSocketUpstream), never a ref.
-	hasSandbox := apiData.Upstream.Sandbox != nil &&
-		apiData.Upstream.Sandbox.Url != nil && strings.TrimSpace(*apiData.Upstream.Sandbox.Url) != ""
+	// Sandbox is active when a sandbox upstream is configured, by url or by ref.
+	sb := apiData.Upstream.Sandbox
+	hasSandbox := sb != nil &&
+		((sb.Url != nil && strings.TrimSpace(*sb.Url) != "") || (sb.Ref != nil && strings.TrimSpace(*sb.Ref) != ""))
 
 	if hasSandbox {
 		sandboxVhost := t.routerConfig.VHosts.Sandbox.Default
@@ -154,7 +153,7 @@ func (t *WebSocketAPITransformer) Transform(cfg *models.StoredConfig) (*models.R
 			return nil, fmt.Errorf("sandbox upstream is configured but resolves to the same vhost %q as the main upstream; configure distinct vhosts to avoid route conflicts", sandboxVhost)
 		}
 
-		sbUpstream, err := t.addWebSocketUpstreamCluster(rdc, "sandbox", apiData.Upstream.Sandbox)
+		sbUpstream, err := t.addWebSocketUpstreamCluster(rdc, "sandbox", apiData.Upstream.Sandbox, apiData.UpstreamDefinitions)
 		if err != nil {
 			return nil, fmt.Errorf("failed to resolve sandbox upstream: %w", err)
 		}
@@ -240,61 +239,32 @@ func pathMatchTypeForChannel(channelPath string) string {
 	return "Exact"
 }
 
-// resolveDownstreamTimeout turns the artifact's connection block into the route
-// timeouts, filling in the gateway-wide defaults for anything it omits and
-// rejecting anything above the gateway-wide bounds.
+// resolveDownstreamTimeout returns the route timeouts every channel of a
+// WebSocketApi uses: the gateway-wide downstream idle timeout and maximum
+// connection duration. Client-facing connection bounds are gateway-level
+// configuration, not part of the API.
 //
 // The ordinary route Timeout is deliberately left nil: it does not apply once the
 // stream is upgraded, so setting it would only constrain the handshake itself,
 // which the gateway's own defaults already cover.
-func (t *WebSocketAPITransformer) resolveDownstreamTimeout(conn *api.WebSocketConnectionSettings) (*models.RouteTimeout, error) {
+func (t *WebSocketAPITransformer) resolveDownstreamTimeout() (*models.RouteTimeout, error) {
 	limits := t.routerConfig.WebSocket.Downstream
 
-	idle, err := resolveBoundedDuration(
-		connIdleTimeout(conn),
-		orFallback(limits.IdleTimeoutDefault, fallbackWebSocketIdleTimeout),
-		limits.IdleTimeoutMax,
-		"connection.idleTimeout",
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	maxDuration, err := resolveBoundedDuration(
-		connMaxConnectionDuration(conn),
-		orFallback(limits.MaxConnectionDurationDefault, fallbackWebSocketMaxConnectionDuration),
-		limits.MaxConnectionDurationMax,
-		"connection.maxConnectionDuration",
-	)
-	if err != nil {
-		return nil, err
-	}
+	idle := orFallback(limits.IdleTimeoutDefault, fallbackWebSocketIdleTimeout)
+	maxDuration := orFallback(limits.MaxConnectionDurationDefault, fallbackWebSocketMaxConnectionDuration)
 
 	// Guard the invariant the whole design leans on rather than trusting config:
-	// a zero here would hand Envoy "no limit", turning every connection on this
-	// API into an unbounded window for access granted at the handshake.
-	if maxDuration == nil || *maxDuration <= 0 {
-		return nil, fmt.Errorf("connection.maxConnectionDuration resolved to no limit; a WebSocketApi must always have a finite maximum connection duration")
+	// a zero here would hand Envoy "no limit", turning every connection into an
+	// unbounded window for access granted at the handshake. orFallback already
+	// substitutes a finite value, so this only trips on a negative configuration.
+	if maxDuration <= 0 {
+		return nil, fmt.Errorf("websocket downstream max connection duration resolved to no limit; a WebSocketApi must always have a finite maximum connection duration")
 	}
 
 	return &models.RouteTimeout{
-		IdleTimeout:       idle,
-		MaxStreamDuration: maxDuration,
+		IdleTimeout:       &idle,
+		MaxStreamDuration: &maxDuration,
 	}, nil
-}
-
-func connIdleTimeout(conn *api.WebSocketConnectionSettings) *string {
-	if conn == nil {
-		return nil
-	}
-	return conn.IdleTimeout
-}
-
-func connMaxConnectionDuration(conn *api.WebSocketConnectionSettings) *string {
-	if conn == nil {
-		return nil
-	}
-	return conn.MaxConnectionDuration
 }
 
 // resolveBoundedDuration resolves one duration setting: the artifact's value when
@@ -358,37 +328,113 @@ func resolveBoundedConnections(raw *int, defaultValue, maxValue uint32, field st
 	return &value, nil
 }
 
-// addWebSocketUpstreamCluster registers the cluster for one upstream slot.
+// addWebSocketUpstreamCluster registers the cluster for one upstream slot: a
+// direct ws/wss url, which uses the gateway-wide upstream connection defaults, or
+// a ref to one of the API's upstream definitions, which carries its own targets,
+// basePath, connect and idle timeouts, connection-pool bounds and tls.
 //
 // It exists instead of reusing addUpstreamCluster because that helper rejects any
 // scheme but http/https, and a WebSocketApi's upstream is ws/wss. The mapping is
 // direct — ws is a plain TCP cluster, wss a TLS one — because the backend leg is
 // an ordinary HTTP/1.1 connection that carries an Upgrade header; the WebSocket
 // part is the route's business, not the cluster's.
+//
+// The cluster carries this API's connection-pool bounds, so it is keyed by the API
+// rather than by the backend: the translator merges clusters by name, and two
+// WebSocketApis pointing at one backend would otherwise share a cluster whose
+// bounds came from whichever was translated last. A definition's cluster uses the
+// RestApi upstreamDefinition key, so main and sandbox referencing one definition
+// share one cluster.
 func (t *WebSocketAPITransformer) addWebSocketUpstreamCluster(
 	rdc *models.RuntimeDeployConfig,
 	slotName string,
 	up *api.Upstream,
+	defs *[]api.WebSocketUpstreamDefinition,
 ) (*upstreamClusterResult, error) {
-	// Check ref before url: someone who wrote a ref did configure an upstream, so
-	// "ref is not supported" explains the problem, where "url is required" would
-	// just look wrong to them.
-	if up != nil && up.Ref != nil && strings.TrimSpace(*up.Ref) != "" {
-		return nil, fmt.Errorf("%s upstream: ref is not supported for WebSocketApi; use a direct url", slotName)
+	if up == nil {
+		return nil, fmt.Errorf("%s upstream is required", slotName)
 	}
-	if up == nil || up.Url == nil || strings.TrimSpace(*up.Url) == "" {
-		return nil, fmt.Errorf("%s upstream URL is required", slotName)
+	if up.Ref != nil && strings.TrimSpace(*up.Ref) != "" {
+		def := lookupWebSocketUpstreamDefinition(*up.Ref, defs)
+		if def == nil {
+			return nil, fmt.Errorf("%s upstream: ref %q does not match any upstreamDefinitions entry", slotName, strings.TrimSpace(*up.Ref))
+		}
+		clusterKey := "upstream_" + rdc.Metadata.Kind + "_" + rdc.Metadata.UUID + "_" + SanitizeUpstreamDefinitionName(def.Name)
+		return t.addWebSocketCluster(rdc, clusterKey, def.Name, def.BasePath, def.Upstreams, def.Timeout, def.Connection, def.Tls,
+			fmt.Sprintf("upstreamDefinitions[%s]", def.Name))
+	}
+	if up.Url == nil || strings.TrimSpace(*up.Url) == "" {
+		return nil, fmt.Errorf("%s upstream url or ref is required", slotName)
 	}
 
 	parsedURL, err := url.Parse(strings.TrimSpace(*up.Url))
 	if err != nil {
 		return nil, fmt.Errorf("invalid %s upstream URL: %w", slotName, err)
 	}
-	if parsedURL.Host == "" || (parsedURL.Scheme != "ws" && parsedURL.Scheme != "wss") {
-		return nil, fmt.Errorf("invalid %s upstream URL: must include host and ws/wss scheme", slotName)
+	var basePath *string
+	if parsedURL.Path != "" {
+		basePath = &parsedURL.Path
+	}
+	origin := parsedURL.Scheme + "://" + parsedURL.Host
+	targets := []struct {
+		Url    string `json:"url" yaml:"url"`
+		Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
+	}{{Url: origin}}
+	clusterKey := "upstream_" + rdc.Metadata.Kind + "_" + rdc.Metadata.UUID + "_" + slotName
+	return t.addWebSocketCluster(rdc, clusterKey, "", basePath, targets, nil, nil, nil, "upstream."+slotName)
+}
+
+// addWebSocketCluster builds one upstream cluster from its targets and optional
+// definition settings. Idle timeout and connection-pool values the definition omits resolve to the
+// gateway-wide upstream defaults; values above the gateway maximums are rejected.
+func (t *WebSocketAPITransformer) addWebSocketCluster(
+	rdc *models.RuntimeDeployConfig,
+	clusterKey, defName string,
+	basePathOverride *string,
+	targets []struct {
+		Url    string `json:"url" yaml:"url"`
+		Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
+	},
+	timeout *api.WebSocketUpstreamTimeout,
+	conn *api.WebSocketUpstreamConnection,
+	tls *map[string]interface{},
+	field string,
+) (*upstreamClusterResult, error) {
+	if len(targets) == 0 {
+		return nil, fmt.Errorf("%s: at least one upstream target is required", field)
 	}
 
-	secure := parsedURL.Scheme == "wss"
+	endpoints := make([]models.Endpoint, 0, len(targets))
+	var first *url.URL
+	secure, plain := false, false
+	for _, target := range targets {
+		parsedURL, err := url.Parse(strings.TrimSpace(target.Url))
+		if err != nil {
+			return nil, fmt.Errorf("invalid %s upstream URL: %w", field, err)
+		}
+		if parsedURL.Host == "" || (parsedURL.Scheme != "ws" && parsedURL.Scheme != "wss") {
+			return nil, fmt.Errorf("invalid %s upstream URL: must include host and ws/wss scheme", field)
+		}
+		isSecure := parsedURL.Scheme == "wss"
+		if isSecure {
+			secure = true
+		} else {
+			plain = true
+		}
+		endpoints = append(endpoints, models.Endpoint{
+			Host:   parsedURL.Hostname(),
+			Port:   resolveWebSocketPort(parsedURL, isSecure),
+			Weight: target.Weight,
+		})
+		if first == nil {
+			first = parsedURL
+		}
+	}
+	// One cluster has one transport socket, so a definition cannot mix ws and wss.
+	if secure && plain {
+		return nil, fmt.Errorf("%s mixes ws and wss targets; all targets must use the same scheme", field)
+	}
+
 	// Envoy knows this cluster by its transport, not by the application protocol
 	// riding on it, so the cluster is named and built as http/https.
 	transportScheme := "http"
@@ -396,63 +442,49 @@ func (t *WebSocketAPITransformer) addWebSocketUpstreamCluster(
 		transportScheme = "https"
 	}
 
-	port := resolveWebSocketPort(parsedURL, secure)
-
-	basePath := parsedURL.Path
-	if basePath == "" {
-		basePath = "/"
+	basePath := "/"
+	if basePathOverride != nil && *basePathOverride != "" {
+		basePath = *basePathOverride
 	}
 
-	connectTimeout, err := parseOptionalDuration(
-		upstreamSlotDuration(up, func(ut *api.UpstreamTimeout) *string { return ut.Connect }),
-		fmt.Sprintf("upstream.%s.timeout.connect", slotName),
-	)
+	var rawConnect, rawIdle *string
+	if timeout != nil {
+		rawConnect, rawIdle = timeout.Connect, timeout.IdleTimeout
+	}
+	connectTimeout, err := parseOptionalDuration(rawConnect, field+".timeout.connect")
 	if err != nil {
 		return nil, err
 	}
 
 	limits := t.routerConfig.WebSocket.Upstream
-
-	idleTimeout, err := resolveBoundedDuration(
-		upstreamSlotDuration(up, func(ut *api.UpstreamTimeout) *string { return ut.IdleTimeout }),
+	var rawMaxDuration *string
+	var rawMaxConnections *int
+	if conn != nil {
+		rawMaxDuration, rawMaxConnections = conn.MaxConnectionDuration, conn.MaxConnections
+	}
+	idleTimeout, err := resolveBoundedDuration(rawIdle,
 		orFallback(limits.IdleTimeoutDefault, fallbackWebSocketIdleTimeout), limits.IdleTimeoutMax,
-		fmt.Sprintf("upstream.%s.timeout.idleTimeout", slotName))
+		field+".timeout.idleTimeout")
 	if err != nil {
 		return nil, err
 	}
-
-	maxConnectionDuration, err := resolveBoundedDuration(
-		upstreamSlotDuration(up, func(ut *api.UpstreamTimeout) *string { return ut.MaxConnectionDuration }),
+	maxConnectionDuration, err := resolveBoundedDuration(rawMaxDuration,
 		orFallback(limits.MaxConnectionDurationDefault, fallbackWebSocketMaxConnectionDuration), limits.MaxConnectionDurationMax,
-		fmt.Sprintf("upstream.%s.timeout.maxConnectionDuration", slotName))
+		field+".connection.maxConnectionDuration")
 	if err != nil {
 		return nil, err
 	}
-
-	var maxConnectionsRaw *int
-	if up.Timeout != nil {
-		maxConnectionsRaw = up.Timeout.MaxConnections
-	}
-	maxConnections, err := resolveBoundedConnections(maxConnectionsRaw, limits.MaxConnectionsDefault, limits.MaxConnectionsMax,
-		fmt.Sprintf("upstream.%s.timeout.maxConnections", slotName))
+	maxConnections, err := resolveBoundedConnections(rawMaxConnections, limits.MaxConnectionsDefault, limits.MaxConnectionsMax,
+		field+".connection.maxConnections")
 	if err != nil {
 		return nil, err
 	}
-
-	// The cluster carries this API's connection-pool bounds, so it is keyed by the API
-	// rather than by the backend: the translator merges clusters by name, and two
-	// WebSocketApis pointing at one backend would otherwise share a cluster whose
-	// bounds came from whichever was translated last. Same scheme as RestApi
-	// upstreamDefinitions.
-	clusterKey := "upstream_" + rdc.Metadata.Kind + "_" + rdc.Metadata.UUID + "_" + slotName
 
 	rdc.UpstreamClusters[clusterKey] = &models.UpstreamCluster{
-		BasePath: basePath,
-		Endpoints: []models.Endpoint{{
-			Host: parsedURL.Hostname(),
-			Port: port,
-		}},
-		TLS:                   &models.UpstreamTLS{Enabled: secure},
+		Name:                  defName,
+		BasePath:              basePath,
+		Endpoints:             endpoints,
+		TLS:                   upstreamTLSFromParams(tls, secure),
 		ConnectTimeout:        connectTimeout,
 		IdleTimeout:           idleTimeout,
 		MaxConnectionDuration: maxConnectionDuration,
@@ -461,10 +493,25 @@ func (t *WebSocketAPITransformer) addWebSocketUpstreamCluster(
 
 	return &upstreamClusterResult{
 		ClusterKey:       clusterKey,
-		EnvoyClusterName: sanitizeEnvoyClusterName(parsedURL.Host, transportScheme),
+		EnvoyClusterName: sanitizeEnvoyClusterName(first.Host, transportScheme),
 		BasePath:         basePath,
-		URL:              fmt.Sprintf("%s://%s", transportScheme, parsedURL.Host),
+		URL:              fmt.Sprintf("%s://%s", transportScheme, first.Host),
 	}, nil
+}
+
+// lookupWebSocketUpstreamDefinition returns the definition named ref (after
+// trimming whitespace), or nil when none matches.
+func lookupWebSocketUpstreamDefinition(ref string, defs *[]api.WebSocketUpstreamDefinition) *api.WebSocketUpstreamDefinition {
+	if defs == nil {
+		return nil
+	}
+	ref = strings.TrimSpace(ref)
+	for i := range *defs {
+		if strings.TrimSpace((*defs)[i].Name) == ref {
+			return &(*defs)[i]
+		}
+	}
+	return nil
 }
 
 // resolveWebSocketPort returns the explicit port, or the default for the scheme.
@@ -481,15 +528,6 @@ func resolveWebSocketPort(u *url.URL, secure bool) int {
 		return 443
 	}
 	return 80
-}
-
-// upstreamSlotDuration reads one duration field off a slot's timeout block,
-// returning nil when the slot or the field is absent.
-func upstreamSlotDuration(up *api.Upstream, pick func(*api.UpstreamTimeout) *string) *string {
-	if up == nil || up.Timeout == nil {
-		return nil
-	}
-	return pick(up.Timeout)
 }
 
 // parseOptionalDuration parses a duration that has no gateway-wide default behind

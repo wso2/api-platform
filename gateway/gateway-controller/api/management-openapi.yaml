@@ -4920,37 +4920,114 @@ components:
           items:
             $ref: "#/components/schemas/Policy"
 
-    WebSocketConnectionSettings:
+    WebSocketUpstreamConnection:
       type: object
       description: >
-        Downstream (client-facing) connection settings for a WebSocketApi. Bounded by the
-        gateway-wide defaults and upper limits; distinct from each upstream slot's own
-        `upstream.<slot>.timeout` settings, which bound the gateway-to-backend connection.
+        Connection-pool bounds for the gateway-to-backend connections of one WebSocket upstream
+        definition. Each value falls back to the gateway-wide default when omitted, and a value
+        above the gateway-configured upper bound is rejected at deploy time.
       properties:
-        idleTimeout:
-          type: string
-          description: >
-            How long a client connection may sit with no frames - data or ping/pong - before the
-            gateway closes it. Falls back to the gateway-wide default when omitted; a value above
-            the gateway-configured upper bound is rejected at deploy time.
-          pattern: '^\d+(\.\d+)?(ms|s|m|h)$'
-          example: 300s
         maxConnectionDuration:
           type: string
           description: >
-            Hard ceiling on a client connection's total lifetime, regardless of activity. Always
-            resolves to a finite value - the gateway-wide default applies when omitted, and
-            "unlimited" is never the effective value. This bounds how long access already granted
-            at the handshake can outlive its revocation.
+            Hard ceiling on the lifetime of a pooled upstream connection. Always resolves to a
+            finite value - "unlimited" is never the effective value.
           pattern: '^\d+(\.\d+)?(ms|s|m|h)$'
-          example: 1h
+          example: 30m
         maxConnections:
           type: integer
           description: >
-            Maximum concurrent client connections accepted for this API on one gateway instance.
-            Excess handshakes are rejected immediately with 503, never queued.
+            Maximum concurrent connections this gateway instance opens to the backend. At the
+            limit, at most this many further handshakes wait for a free connection; beyond that a
+            handshake is rejected with 503. Best-effort rather than exact - Envoy guarantees at least
+            one connection per selected host, so a multi-target definition can exceed this by a
+            small amount.
           minimum: 1
-          example: 1000
+          example: 500
+
+    WebSocketUpstreamTimeout:
+      type: object
+      description: >
+        Timeouts for the gateway-to-backend connections of one WebSocket upstream definition.
+        WebSocket-specific rather than the shared UpstreamTimeout, because idleTimeout only has
+        meaning for the long-lived connections a WebSocketApi holds.
+      properties:
+        connect:
+          type: string
+          description: Connection timeout duration (e.g., "5s", "500ms")
+          pattern: '^\d+(\.\d+)?(ms|s|m|h)$'
+          example: 5s
+        idleTimeout:
+          type: string
+          description: >
+            How long an upstream connection may sit idle before the gateway closes it. Falls back
+            to the gateway-wide default when omitted; a value above the gateway-configured upper
+            bound is rejected at deploy time.
+          pattern: '^\d+(\.\d+)?(ms|s|m|h)$'
+          example: 120s
+
+    WebSocketUpstreamDefinition:
+      type: object
+      required:
+        - name
+        - upstreams
+      description: >
+        Reusable WebSocket backend, referenced from upstream.main / upstream.sandbox by name. Same
+        shape as a RestApi upstreamDefinition, with ws:// / wss:// targets, an idleTimeout in
+        `timeout`, and a `connection` block for the long-lived backend connections a WebSocketApi
+        holds.
+      properties:
+        name:
+          type: string
+          description: Unique identifier for this upstream definition
+          minLength: 1
+          maxLength: 100
+          pattern: '^[a-zA-Z0-9\-_]+$'
+          example: chat-backend
+        basePath:
+          type: string
+          description: Base path prefix sent to the backend for every channel (e.g., /ws).
+          pattern: '^/[a-zA-Z0-9\-._~!$&''()*+,;=:@%/]*[^/]$'
+          example: /ws
+        timeout:
+          $ref: "#/components/schemas/WebSocketUpstreamTimeout"
+        connection:
+          $ref: "#/components/schemas/WebSocketUpstreamConnection"
+        upstreams:
+          type: array
+          description: >
+            Backend targets. Every target uses the same scheme - all ws:// or all wss:// - and
+            carries host and port only; the path comes from basePath.
+          minItems: 1
+          items:
+            type: object
+            required:
+              - url
+            properties:
+              url:
+                type: string
+                format: uri
+                description: Backend URL (ws:// or wss://, host and port only)
+                example: wss://chat-backend:8443
+              weight:
+                type: integer
+                description: Relative weight for load balancing across multiple targets.
+                minimum: 0
+                maximum: 100
+                example: 80
+        tls:
+          type: object
+          description: >
+            Optional mutual-TLS presentation and trust for a wss:// backend, with the same fields
+            as a RestApi upstreamDefinition: `identity` names a gateway identity certificate to
+            present, `trustedCAs` lists usage: upstream certificates to trust in place of the
+            gateway-wide bundle, and `verifyHostName` (default true) controls hostname
+            verification. Every target in a definition carrying `tls` must use wss://.
+          additionalProperties: true
+          example:
+            identity: chat-identity
+            trustedCAs: [chat-ca]
+            verifyHostName: true
 
     WebSocketAPIConfigData:
       type: object
@@ -4988,18 +5065,21 @@ components:
           required:
             - main
           description: >
-            API-level upstream configuration. Only a direct `ws://`/`wss://` url is supported -
-            WebSocketAPIConfigData has no upstreamDefinitions list, so upstream.ref (used by
-            RestApi to reference a predefined upstreamDefinition) cannot be resolved and is
-            rejected. Each slot may carry its own `timeout` block bounding the gateway-to-backend
-            connection pool, independently of the API-level `connection` settings.
+            API-level upstream configuration. Each slot takes either a direct `ws://`/`wss://`
+            url, which uses the gateway-wide connection defaults, or a `ref` naming an entry in
+            upstreamDefinitions, which carries connect timeout, connection-pool bounds and tls.
           properties:
             main:
               $ref: "#/components/schemas/Upstream"
             sandbox:
               $ref: "#/components/schemas/Upstream"
-        connection:
-          $ref: "#/components/schemas/WebSocketConnectionSettings"
+        upstreamDefinitions:
+          type: array
+          description: >
+            Reusable WebSocket backends referenced from upstream.main / upstream.sandbox via `ref`.
+            Definition names are unique within the API.
+          items:
+            $ref: "#/components/schemas/WebSocketUpstreamDefinition"
         channels:
           type: array
           description: >
@@ -5169,43 +5249,13 @@ components:
 
     UpstreamTimeout:
       type: object
-      description: >
-        Timeout and connection-pool configuration for upstream connections. Reachable both
-        through `UpstreamDefinition.timeout` (RestApi's reusable upstream definitions) and
-        directly through `Upstream.timeout`. The idle/duration/connection-count fields below are
-        currently honoured only for `WebSocketApi` upstreams, whose long-lived connections need
-        them; other kinds accept them without effect.
+      description: Timeout configuration for upstream requests
       properties:
         connect:
           type: string
           description: Connection timeout duration (e.g., "5s", "500ms")
           pattern: '^\d+(\.\d+)?(ms|s|m|h)$'
           example: 5s
-        idleTimeout:
-          type: string
-          description: >
-            How long an upstream connection may sit idle in the connection pool before the
-            gateway closes it. Falls back to the gateway-wide default when omitted; a value above
-            the gateway-configured upper bound is rejected at deploy time.
-          pattern: '^\d+(\.\d+)?(ms|s|m|h)$'
-          example: 120s
-        maxConnectionDuration:
-          type: string
-          description: >
-            Hard ceiling on the lifetime of a single upstream connection, regardless of activity.
-            Always resolves to a finite value - the gateway-wide default applies when omitted, and
-            "unlimited" is never the effective value.
-          pattern: '^\d+(\.\d+)?(ms|s|m|h)$'
-          example: 30m
-        maxConnections:
-          type: integer
-          description: >
-            Maximum concurrent connections this gateway instance opens to the upstream, enforced
-            by the cluster's circuit breaker. Best-effort rather than exact - Envoy guarantees at
-            least one connection per selected host, so a multi-host upstream can exceed this by a
-            small amount.
-          minimum: 1
-          example: 500
 
     Resilience:
       type: object
@@ -5259,13 +5309,6 @@ components:
             entry); a tls block placed here is rejected at deploy time. Put
             it on the upstreamDefinitions entry referenced via `ref`.
           additionalProperties: true
-        timeout:
-          description: >
-            Per-slot upstream timeout and connection-pool settings. Applied independently to each
-            upstream slot (`main`/`sandbox`), and independently of any downstream/client-facing
-            connection settings the API declares.
-          allOf:
-            - $ref: "#/components/schemas/UpstreamTimeout"
 
     Operation:
       type: object

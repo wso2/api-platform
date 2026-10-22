@@ -33,8 +33,5 @@ spec:
   upstream:
     main:
       url: ws://host.docker.internal:3019/ws
-  connection:
-    idleTimeout: 300s
-    maxConnectionDuration: 1h
   channels:
     - path: /rooms/general

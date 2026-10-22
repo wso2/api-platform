@@ -21,6 +21,7 @@ package utils
 import (
 	"fmt"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
@@ -53,19 +54,20 @@ var webSocketSpecRules = config.NewAPIValidator()
 // needs but a KindConfigValidator is not handed. Zero values (an unconfigured
 // binary) skip the bound and policy checks rather than failing every deploy.
 var webSocketValidation struct {
-	downstream      config.WebSocketConnectionLimits
-	upstream        config.WebSocketConnectionLimits
-	policyValidator *config.PolicyValidator
+	upstream             config.WebSocketConnectionLimits
+	policyValidator      *config.PolicyValidator
+	upstreamTLSValidator *config.UpstreamTLSValidator
 }
 
-// ConfigureWebSocketAPIValidation supplies the gateway's WebSocket connection
-// bounds and policy definitions to deploy-time validation, so an out-of-bounds
-// setting or an unknown policy is rejected with a 400 instead of being accepted
-// and then failing silently when the route is built. Call once at startup.
-func ConfigureWebSocketAPIValidation(limits config.WebSocketConfig, policyValidator *config.PolicyValidator) {
-	webSocketValidation.downstream = limits.Downstream
+// ConfigureWebSocketAPIValidation supplies the gateway's upstream connection
+// bounds, policy definitions and upstream TLS validator to deploy-time
+// validation, so an out-of-bounds setting, an unknown policy or an unusable tls
+// block is rejected with a 400 instead of being accepted and then failing
+// silently when the route is built. Call once at startup.
+func ConfigureWebSocketAPIValidation(limits config.WebSocketConfig, policyValidator *config.PolicyValidator, upstreamTLSValidator *config.UpstreamTLSValidator) {
 	webSocketValidation.upstream = limits.Upstream
 	webSocketValidation.policyValidator = policyValidator
+	webSocketValidation.upstreamTLSValidator = upstreamTLSValidator
 }
 
 // webSocketAPIRouteContext is the KindRouteContextResolver for WebSocketApi.
@@ -104,9 +106,9 @@ func parseWebSocketAPIDeployment(parser *config.Parser, data []byte, contentType
 }
 
 // validateWebSocketAPIConfig is the KindConfigValidator for WebSocketApi. It
-// mirrors validateGraphQLAPIConfig's structural checks and adds the two things a
-// WebSocketApi has that a GraphQLApi does not: a channel list, and connection
-// settings on both the downstream connection and each upstream slot.
+// mirrors validateGraphQLAPIConfig's structural checks and adds what a
+// WebSocketApi has that a GraphQLApi does not: a channel list, and upstream
+// definitions carrying connection-pool bounds for the backend connections.
 //
 // Policy references are checked through the PolicyValidator supplied by
 // ConfigureWebSocketAPIValidation. Rejecting a policy that needs the message
@@ -144,16 +146,20 @@ func validateWebSocketAPIConfig(cfg any) (apiName, apiVersion string, validation
 		errors = append(errors, config.ValidationError{Field: "spec.context", Message: "Context cannot end with / (except for root context)"})
 	}
 
-	errors = append(errors, validateWebSocketUpstream("main", &spec.Upstream.Main)...)
+	defNames, defErrors := validateWebSocketUpstreamDefinitions(spec.UpstreamDefinitions)
+	errors = append(errors, defErrors...)
+	errors = append(errors, validateWebSocketUpstream("main", &spec.Upstream.Main, defNames)...)
 	if spec.Upstream.Sandbox != nil {
-		errors = append(errors, validateWebSocketUpstream("sandbox", spec.Upstream.Sandbox)...)
+		errors = append(errors, validateWebSocketUpstream("sandbox", spec.Upstream.Sandbox, defNames)...)
 	}
 
 	errors = append(errors, validateWebSocketChannels(spec.Channels)...)
-	errors = append(errors, validateWebSocketConnectionSettings(spec.Connection)...)
 
 	if webSocketValidation.policyValidator != nil {
 		errors = append(errors, webSocketValidation.policyValidator.ValidateWebSocketAPIPolicies(&websocketConfig)...)
+	}
+	if webSocketValidation.upstreamTLSValidator != nil {
+		errors = append(errors, webSocketValidation.upstreamTLSValidator.ValidateWebSocketAPI(&websocketConfig)...)
 	}
 
 	return spec.DisplayName, spec.Version, errors
@@ -196,31 +202,6 @@ func validateWebSocketChannels(channels []api.WebSocketChannel) []config.Validat
 			continue
 		}
 		seen[path] = i
-	}
-
-	return errors
-}
-
-// validateWebSocketConnectionSettings checks the downstream connection block's
-// durations parse, are positive, and stay within the gateway's configured
-// maximums — the same bounds the transformer enforces when it builds the route,
-// checked here so an out-of-bounds value fails the deploy instead of leaving a
-// stored API with no route.
-func validateWebSocketConnectionSettings(conn *api.WebSocketConnectionSettings) []config.ValidationError {
-	var errors []config.ValidationError
-	if conn == nil {
-		return errors
-	}
-	limits := webSocketValidation.downstream
-
-	if conn.IdleTimeout != nil {
-		errors = append(errors, validateBoundedDuration("spec.connection.idleTimeout", *conn.IdleTimeout, limits.IdleTimeoutMax)...)
-	}
-	if conn.MaxConnectionDuration != nil {
-		errors = append(errors, validateBoundedDuration("spec.connection.maxConnectionDuration", *conn.MaxConnectionDuration, limits.MaxConnectionDurationMax)...)
-	}
-	if conn.MaxConnections != nil {
-		errors = append(errors, validateBoundedConnections("spec.connection.maxConnections", *conn.MaxConnections, limits.MaxConnectionsMax)...)
 	}
 
 	return errors
@@ -278,89 +259,170 @@ func validatePositiveDuration(field, raw string) []config.ValidationError {
 	return nil
 }
 
-// validateWebSocketUpstream validates one upstream slot. A WebSocketApi has no
-// upstreamDefinitions list, so a ref cannot be resolved; and the URL must be a
-// WebSocket scheme, since the gateway opens the backend leg as a WebSocket.
-func validateWebSocketUpstream(label string, up *api.Upstream) []config.ValidationError {
+// webSocketUpstreamDefinitionNamePattern is the name rule a RestApi upstream
+// definition follows, so a definition name means the same thing on every kind.
+var webSocketUpstreamDefinitionNamePattern = regexp.MustCompile(`^[a-zA-Z0-9\-_]+$`)
+
+// validateWebSocketUpstreamDefinitions validates spec.upstreamDefinitions and
+// returns the set of valid definition names, which upstream slots may reference.
+// Every target in a definition shares one cluster, and so one scheme: all ws://
+// or all wss://. A tls block is only meaningful on wss:// targets.
+func validateWebSocketUpstreamDefinitions(defs *[]api.WebSocketUpstreamDefinition) (map[string]bool, []config.ValidationError) {
+	names := map[string]bool{}
+	var errors []config.ValidationError
+	if defs == nil {
+		return names, errors
+	}
+
+	for i, def := range *defs {
+		fieldBase := fmt.Sprintf("spec.upstreamDefinitions[%d]", i)
+		name := strings.TrimSpace(def.Name)
+		switch {
+		case name == "":
+			errors = append(errors, config.ValidationError{Field: fieldBase + ".name", Message: "Upstream definition name is required"})
+		case len(name) > 100 || !webSocketUpstreamDefinitionNamePattern.MatchString(name):
+			errors = append(errors, config.ValidationError{
+				Field:   fieldBase + ".name",
+				Message: "Upstream definition name must be 1-100 characters of letters, numbers, hyphens and underscores",
+			})
+		case names[name]:
+			errors = append(errors, config.ValidationError{Field: fieldBase + ".name", Message: fmt.Sprintf("Duplicate upstream definition name %q", name)})
+		default:
+			names[name] = true
+		}
+
+		if def.BasePath != nil {
+			if bp := *def.BasePath; !strings.HasPrefix(bp, "/") || (len(bp) > 1 && strings.HasSuffix(bp, "/")) {
+				errors = append(errors, config.ValidationError{
+					Field:   fieldBase + ".basePath",
+					Message: "basePath must start with '/' and must not end with '/'",
+				})
+			}
+		}
+
+		if len(def.Upstreams) == 0 {
+			errors = append(errors, config.ValidationError{Field: fieldBase + ".upstreams", Message: "At least one upstream target is required"})
+		}
+		secure, plain := false, false
+		for t, target := range def.Upstreams {
+			field := fmt.Sprintf("%s.upstreams[%d].url", fieldBase, t)
+			parsedURL, err := url.Parse(strings.TrimSpace(target.Url))
+			switch {
+			case strings.TrimSpace(target.Url) == "":
+				errors = append(errors, config.ValidationError{Field: field, Message: "Upstream URL is required"})
+				continue
+			case err != nil:
+				errors = append(errors, config.ValidationError{Field: field, Message: fmt.Sprintf("Invalid URL format: %v", err)})
+				continue
+			case parsedURL.Scheme != "ws" && parsedURL.Scheme != "wss":
+				errors = append(errors, config.ValidationError{Field: field, Message: "Upstream URL must use ws or wss scheme"})
+				continue
+			case parsedURL.Host == "":
+				errors = append(errors, config.ValidationError{Field: field, Message: "Upstream URL must include a host"})
+				continue
+			case parsedURL.Path != "" && parsedURL.Path != "/":
+				errors = append(errors, config.ValidationError{Field: field, Message: "Upstream URL must be host and port only; set the path with basePath"})
+				continue
+			}
+			if parsedURL.Scheme == "wss" {
+				secure = true
+			} else {
+				plain = true
+			}
+		}
+		if secure && plain {
+			errors = append(errors, config.ValidationError{
+				Field:   fieldBase + ".upstreams",
+				Message: "All targets in an upstream definition must use the same scheme (all ws:// or all wss://)",
+			})
+		}
+		if def.Tls != nil && plain {
+			errors = append(errors, config.ValidationError{Field: fieldBase + ".tls", Message: "tls requires every target in the definition to use wss://"})
+		}
+
+		if def.Timeout != nil {
+			if def.Timeout.Connect != nil {
+				errors = append(errors, validatePositiveDuration(fieldBase+".timeout.connect", *def.Timeout.Connect)...)
+			}
+			if def.Timeout.IdleTimeout != nil {
+				errors = append(errors, validateBoundedDuration(fieldBase+".timeout.idleTimeout", *def.Timeout.IdleTimeout,
+					webSocketValidation.upstream.IdleTimeoutMax)...)
+			}
+		}
+		errors = append(errors, validateWebSocketUpstreamConnection(fieldBase+".connection", def.Connection)...)
+	}
+
+	return names, errors
+}
+
+// validateWebSocketUpstreamConnection checks a definition's connection-pool
+// bounds parse, are positive, and stay within the gateway's configured upstream
+// maximums — the same bounds the transformer enforces when it builds the
+// cluster, checked here so an out-of-bounds value fails the deploy instead of
+// leaving a stored API with no route.
+func validateWebSocketUpstreamConnection(fieldBase string, conn *api.WebSocketUpstreamConnection) []config.ValidationError {
+	var errors []config.ValidationError
+	if conn == nil {
+		return errors
+	}
+	limits := webSocketValidation.upstream
+
+	if conn.MaxConnectionDuration != nil {
+		errors = append(errors, validateBoundedDuration(fieldBase+".maxConnectionDuration", *conn.MaxConnectionDuration, limits.MaxConnectionDurationMax)...)
+	}
+	if conn.MaxConnections != nil {
+		errors = append(errors, validateBoundedConnections(fieldBase+".maxConnections", *conn.MaxConnections, limits.MaxConnectionsMax)...)
+	}
+
+	return errors
+}
+
+// validateWebSocketUpstream validates one upstream slot: either a direct ws/wss
+// url, which uses the gateway-wide connection defaults, or a ref to one of the
+// API's upstream definitions, which carries its own connection settings and tls.
+func validateWebSocketUpstream(label string, up *api.Upstream, defNames map[string]bool) []config.ValidationError {
 	var errors []config.ValidationError
 	if up == nil {
 		return errors
 	}
 
 	fieldBase := "spec.upstream." + label
+	hasURL := up.Url != nil && strings.TrimSpace(*up.Url) != ""
+	hasRef := up.Ref != nil && strings.TrimSpace(*up.Ref) != ""
 
-	if up.Ref != nil && strings.TrimSpace(*up.Ref) != "" {
-		errors = append(errors, config.ValidationError{
-			Field:   fieldBase + ".ref",
-			Message: "Upstream ref is not supported for WebSocketApi (no upstreamDefinitions list); use a direct url",
-		})
-	}
-
-	// A tls block would otherwise be accepted and silently ignored: a wss upstream
-	// is built with TLS enabled and nothing else, so a custom CA, client
-	// certificate or verification setting placed here would never take effect.
+	// As on a RestApi, connection settings and tls belong to an upstream
+	// definition; on an inline url a tls block would otherwise be silently ignored.
 	if up.Tls != nil {
 		errors = append(errors, config.ValidationError{
 			Field:   fieldBase + ".tls",
-			Message: "Upstream tls is not supported for WebSocketApi; use a wss:// url for an encrypted upstream",
+			Message: "tls is not supported on an inline upstream; put it on an upstreamDefinitions entry and reference it with ref",
 		})
 	}
 
-	if up.Url == nil || strings.TrimSpace(*up.Url) == "" {
-		errors = append(errors, config.ValidationError{
-			Field:   fieldBase + ".url",
-			Message: "Upstream URL is required",
-		})
-		return append(errors, validateWebSocketUpstreamTimeout(fieldBase, up.Timeout)...)
-	}
-
-	parsedURL, err := url.Parse(*up.Url)
-	if err != nil {
-		errors = append(errors, config.ValidationError{
-			Field:   fieldBase + ".url",
-			Message: fmt.Sprintf("Invalid URL format: %v", err),
-		})
-		return append(errors, validateWebSocketUpstreamTimeout(fieldBase, up.Timeout)...)
-	}
-
-	if parsedURL.Scheme != "ws" && parsedURL.Scheme != "wss" {
-		errors = append(errors, config.ValidationError{
-			Field:   fieldBase + ".url",
-			Message: "Upstream URL must use ws or wss scheme",
-		})
-	}
-	if parsedURL.Host == "" {
-		errors = append(errors, config.ValidationError{
-			Field:   fieldBase + ".url",
-			Message: "Upstream URL must include a host",
-		})
-	}
-
-	return append(errors, validateWebSocketUpstreamTimeout(fieldBase, up.Timeout)...)
-}
-
-// validateWebSocketUpstreamTimeout checks one slot's connection-pool settings.
-// These bound the gateway-to-backend connection and are independent of the
-// API-level (downstream) connection block.
-func validateWebSocketUpstreamTimeout(fieldBase string, timeout *api.UpstreamTimeout) []config.ValidationError {
-	var errors []config.ValidationError
-	if timeout == nil {
+	switch {
+	case hasURL && hasRef:
+		return append(errors, config.ValidationError{Field: fieldBase, Message: "Set either url or ref, not both"})
+	case !hasURL && !hasRef:
+		return append(errors, config.ValidationError{Field: fieldBase + ".url", Message: "Upstream url or ref is required"})
+	case hasRef:
+		if ref := strings.TrimSpace(*up.Ref); !defNames[ref] {
+			errors = append(errors, config.ValidationError{
+				Field:   fieldBase + ".ref",
+				Message: fmt.Sprintf("Upstream ref %q does not match any upstreamDefinitions entry", ref),
+			})
+		}
 		return errors
 	}
 
-	if timeout.Connect != nil {
-		errors = append(errors, validatePositiveDuration(fieldBase+".timeout.connect", *timeout.Connect)...)
+	parsedURL, err := url.Parse(strings.TrimSpace(*up.Url))
+	if err != nil {
+		return append(errors, config.ValidationError{Field: fieldBase + ".url", Message: fmt.Sprintf("Invalid URL format: %v", err)})
 	}
-	limits := webSocketValidation.upstream
-	if timeout.IdleTimeout != nil {
-		errors = append(errors, validateBoundedDuration(fieldBase+".timeout.idleTimeout", *timeout.IdleTimeout, limits.IdleTimeoutMax)...)
+	if parsedURL.Scheme != "ws" && parsedURL.Scheme != "wss" {
+		errors = append(errors, config.ValidationError{Field: fieldBase + ".url", Message: "Upstream URL must use ws or wss scheme"})
 	}
-	if timeout.MaxConnectionDuration != nil {
-		errors = append(errors, validateBoundedDuration(fieldBase+".timeout.maxConnectionDuration", *timeout.MaxConnectionDuration, limits.MaxConnectionDurationMax)...)
+	if parsedURL.Host == "" {
+		errors = append(errors, config.ValidationError{Field: fieldBase + ".url", Message: "Upstream URL must include a host"})
 	}
-	if timeout.MaxConnections != nil {
-		errors = append(errors, validateBoundedConnections(fieldBase+".timeout.maxConnections", *timeout.MaxConnections, limits.MaxConnectionsMax)...)
-	}
-
 	return errors
 }

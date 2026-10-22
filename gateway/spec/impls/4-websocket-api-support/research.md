@@ -72,7 +72,7 @@ Access log: one line per connection, written at close, with `code=101`, `duratio
 
 ### 2. Connection lifetime from route `idle_timeout` and `max_stream_duration`
 
-- **Decision:** Per-API `idleTimeout` → route `idle_timeout`; `maxConnectionDuration` → route `max_stream_duration`. Both are bounded by gateway config, and the maximum duration is always finite.
+- **Decision:** Gateway config `router.websocket.downstream.idle_timeout_default` → route `idle_timeout`; `router.websocket.downstream.max_connection_duration_default` → route `max_stream_duration`. The maximum duration is always finite. *(Revised 2026-10-22, see decision 8: originally per-API `idleTimeout`/`maxConnectionDuration` bounded by gateway config; the API-level `connection` block was removed, so these are gateway-level only.)*
 - **Rationale:** Both enforced exactly (scenarios 05, 10). Pings keep a connection alive. The route `timeout` does not end upgraded connections (03), so it needs no special casing.
 
 ### 3. Handshake-only policy chains
@@ -92,6 +92,8 @@ Access log: one line per connection, written at close, with `code=101`, `duratio
 
 ### 5. A dedicated connection limit instead of circuit breakers
 
+> **Superseded 2026-10-22 (decision 8).** The per-API downstream connection limit was removed, so no dedicated counter is built. The rationale below remains the record of why circuit breakers cannot give an exact downstream admission count.
+
 - **Decision:** Implement a per-API concurrent connection limit that rejects immediately.
 - **Rationale:** Cluster circuit breakers are per pod, sensitive to bursts (11b), and either reject everything (11) or leave handshakes queued (11c).
 
@@ -101,11 +103,22 @@ Access log: one line per connection, written at close, with `code=101`, `duratio
 
 ### 7. The same circuit breaker rejected for downstream (decision 5) is the right tool for upstream (FR-016)
 
-- **Decision:** Use the cluster's native `circuit_breakers.thresholds.max_connections` to cap concurrent connections to each upstream slot (`main`/`sandbox`), despite decision 5 rejecting the identical mechanism for the downstream per-API limit.
+- **Decision:** Use the cluster's native `circuit_breakers.thresholds.max_connections` to cap concurrent connections to each upstream cluster — since decision 8, one per `upstreamDefinitions` entry (`connection.maxConnections`) or inline-`url` slot (gateway default), keyed per API — despite decision 5 rejecting the identical mechanism for the downstream per-API limit.
 - **Rationale:** Decision 5 rejected circuit breakers for downstream because the *resource being protected* (how many clients may connect to the gateway) is exactly what a per-pod, best-effort mechanism can't bound precisely. For upstream, the resource being protected — outbound connections *this gateway instance* opens to the backend — genuinely is a per-instance quantity, so the same per-pod scope is the correct scope, not a limitation.
 - **Re-reading spikes 11/11b/11c for this purpose:** these spikes already exercised the upstream cluster's circuit breaker against live WebSocket connections (not a theoretical reading of the Envoy docs). Spike 11c's result — 3 connected, 1 rejected, 1 queued ~8s **until a slot freed** — confirms a long-lived upgraded connection is held counted as active against the threshold for its *entire* open duration, not just during the initial handshake. That resolves the question of whether `max_connections` even applies to upgraded connections at all: it does.
 - **Caveat carried over, not resolved by re-reading:** the same spikes show outcome depends on arrival timing, not just the configured number — identical `max_connections: 3` produced "reject all 5" (11), "admit 2 of 5" (11b), and "admit 3 of 5, queue 1" (11c). For upstream protection this is acceptable (erring toward rejecting more under contention is a safe failure mode for protecting a backend), unlike for downstream where SC-005 requires an exact, predictable admission count.
 - **Still not covered:** all three spikes ran against a single-host echo backend (Spike Setup, above). Envoy's documented guarantee of *at least one connection per selected host* — the mechanism's actual precision floor — only produces overshoot above the configured `max_connections` when a cluster resolves to multiple hosts. That case was never exercised. See "Not Covered by the Spike."
+
+### 8. WebSocketApi upstreams follow the RestApi model (2026-10-22)
+
+- **Decision:** WebSocketApi upstreams follow the RestApi model: `upstreamDefinitions` with a WebSocket-only `connection` block (maxConnectionDuration, maxConnections; `idleTimeout` was moved into a WebSocket-only `timeout` on 2026-10-22, see decision 9); inline `url` kept; API-level downstream `connection` removed — client-facing bounds are gateway-level config; shared `Upstream.timeout` and widened `UpstreamTimeout` reverted.
+- **Consequences:** `upstream.main`/`sandbox` take exactly one of `url`/`ref`; a definition `timeout.idleTimeout` or `connection` value above `router.websocket.upstream.*_max` is rejected at deploy time (`400`); at `maxConnections`, at most that many further handshakes wait (bounded pending) and beyond that a handshake gets `503`; clusters are keyed per API (`upstream_WebSocketApi_<uuid>_<definition-name>` / `..._<slot>`), so two APIs on one backend never share pool bounds. Decision 5's per-API downstream counter is dropped.
+
+### 9. `idleTimeout` moved into `timeout` (2026-10-22)
+
+- **Decision:** `spec.upstreamDefinitions[].timeout` uses a new WebSocket-only schema `WebSocketUpstreamTimeout` with `connect` and `idleTimeout`; `connection` (`WebSocketUpstreamConnection`) now holds only `maxConnectionDuration` and `maxConnections`. Validation path is `spec.upstreamDefinitions[i].timeout.idleTimeout` (previously under `connection`); semantics unchanged — optional, falls back to `router.websocket.upstream.idle_timeout_default`, must be positive, rejected above `router.websocket.upstream.idle_timeout_max`, and maps to the cluster's `HttpProtocolOptions` `idle_timeout`.
+- **Rationale:** Adding `idleTimeout` to the shared `UpstreamTimeout` instead was rejected: `UpstreamTimeout` is also used by `RestApi.upstreamDefinitions[].timeout`, so RestApi would accept a field it doesn't honour — and since the deploy-time parser silently ignores unknown/unhonoured fields, a REST user setting it would get a silent no-op. It would also change the shared generated Go type and the API reference for every kind. The RestApi `UpstreamTimeout` schema is unchanged.
+- **Unchanged:** the client-facing (downstream) idle timeout and maximum connection duration stay gateway-level config (`router.websocket.downstream.*`, decision 4).
 
 ## Implications for Analytics
 
@@ -124,5 +137,5 @@ Access log: one line per connection, written at close, with `code=101`, `duratio
   mechanism holds a connection counted for its full lifetime (decision 7), but never exercised
   Envoy's documented guarantee of *at least one connection per selected host* — the actual source
   of overshoot above the configured threshold, which only manifests when the upstream cluster
-  resolves to multiple hosts (e.g. a `main` upstream backed by several DNS-resolved instances).
+  resolves to multiple hosts (e.g. an upstream definition with several targets, or one backed by several DNS-resolved instances).
   Needs its own spike before FR-016 is considered fully verified.

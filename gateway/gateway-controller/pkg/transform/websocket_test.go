@@ -101,8 +101,8 @@ func TestWebSocketTransform_OnlyGetIsRouted(t *testing.T) {
 	}
 }
 
-// FR-012/FR-031: both bounds resolve to a finite value even when the artifact
-// sets neither, so a connection can never outlive revocation indefinitely.
+// FR-012/FR-031: both bounds resolve to a finite value even when the gateway
+// configures neither, so a connection can never outlive revocation indefinitely.
 func TestWebSocketTransform_ConnectionBoundsAlwaysFinite(t *testing.T) {
 	rdc, err := websocketTransformer().Transform(testWebSocketAPI(nil))
 	require.NoError(t, err)
@@ -116,69 +116,33 @@ func TestWebSocketTransform_ConnectionBoundsAlwaysFinite(t *testing.T) {
 	}
 }
 
-func TestWebSocketTransform_ArtifactConnectionSettingsWin(t *testing.T) {
-	stored := testWebSocketAPI(func(spec *api.WebSocketAPIConfigData) {
-		spec.Connection = &api.WebSocketConnectionSettings{
-			IdleTimeout:           strPtr("10s"),
-			MaxConnectionDuration: strPtr("30s"),
-		}
-	})
+// Client-facing connection bounds are gateway-level configuration: every channel
+// takes the gateway's downstream defaults.
+func TestWebSocketTransform_DownstreamBoundsComeFromGateway(t *testing.T) {
+	routerCfg := testRouterCfg()
+	routerCfg.WebSocket.Downstream.IdleTimeoutDefault = 10 * time.Second
+	routerCfg.WebSocket.Downstream.MaxConnectionDurationDefault = 30 * time.Second
+	transformer := NewWebSocketAPITransformer(routerCfg, &config.Config{}, map[string]models.PolicyDefinition{})
 
-	rdc, err := websocketTransformer().Transform(stored)
+	rdc, err := transformer.Transform(testWebSocketAPI(nil))
 	require.NoError(t, err)
-
 	for _, r := range rdc.Routes {
 		assert.Equal(t, 10*time.Second, *r.Timeout.IdleTimeout)
 		assert.Equal(t, 30*time.Second, *r.Timeout.MaxStreamDuration)
 	}
 }
 
-// A value above the gateway's ceiling is rejected rather than clamped: silently
-// lowering it would let an API author believe a bound applies that does not.
-func TestWebSocketTransform_RejectsValueAboveGatewayBound(t *testing.T) {
-	routerCfg := testRouterCfg()
-	routerCfg.WebSocket.Downstream.MaxConnectionDurationMax = 24 * time.Hour
-	transformer := NewWebSocketAPITransformer(routerCfg, &config.Config{}, map[string]models.PolicyDefinition{})
-
-	stored := testWebSocketAPI(func(spec *api.WebSocketAPIConfigData) {
-		spec.Connection = &api.WebSocketConnectionSettings{
-			MaxConnectionDuration: strPtr("240h"), // ten times the configured ceiling
-		}
-	})
-
-	_, err := transformer.Transform(stored)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "exceeds the gateway's configured maximum")
-}
-
-// An unset ceiling (0) means the operator configured none, so nothing is
-// enforced — distinct from a ceiling of zero duration.
-func TestWebSocketTransform_NoCeilingConfiguredMeansNoCeiling(t *testing.T) {
-	stored := testWebSocketAPI(func(spec *api.WebSocketAPIConfigData) {
-		spec.Connection = &api.WebSocketConnectionSettings{
-			MaxConnectionDuration: strPtr("240h"),
-		}
-	})
-
-	rdc, err := websocketTransformer().Transform(stored)
-	require.NoError(t, err)
-	for _, r := range rdc.Routes {
-		assert.Equal(t, 240*time.Hour, *r.Timeout.MaxStreamDuration)
-	}
-}
-
 func TestWebSocketTransform_UpstreamSchemeMapping(t *testing.T) {
 	for _, tc := range []struct {
-		name       string
-		url        string
-		wantTLS    bool
-		wantPort   int
-		wantPrefix string
+		name     string
+		url      string
+		wantTLS  bool
+		wantPort int
 	}{
-		{"plaintext", "ws://chat-backend:8080/ws", false, 8080, "http://"},
-		{"tls", "wss://chat-backend:8443/ws", true, 8443, "https://"},
-		{"tls default port", "wss://chat-backend/ws", true, 443, "https://"},
-		{"plaintext default port", "ws://chat-backend/ws", false, 80, "http://"},
+		{"plaintext", "ws://chat-backend:8080/ws", false, 8080},
+		{"tls", "wss://chat-backend:8443/ws", true, 8443},
+		{"tls default port", "wss://chat-backend/ws", true, 443},
+		{"plaintext default port", "ws://chat-backend/ws", false, 80},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			stored := testWebSocketAPI(func(spec *api.WebSocketAPIConfigData) {
@@ -192,6 +156,7 @@ func TestWebSocketTransform_UpstreamSchemeMapping(t *testing.T) {
 			for _, uc := range rdc.UpstreamClusters {
 				require.Len(t, uc.Endpoints, 1)
 				assert.Equal(t, tc.wantPort, uc.Endpoints[0].Port)
+				assert.Equal(t, "/ws", uc.BasePath, "an inline url's path is the backend base path")
 				require.NotNil(t, uc.TLS)
 				assert.Equal(t, tc.wantTLS, uc.TLS.Enabled, "ws maps to a plain cluster, wss to a TLS one")
 			}
@@ -199,33 +164,101 @@ func TestWebSocketTransform_UpstreamSchemeMapping(t *testing.T) {
 	}
 }
 
-// FR-015/FR-016: each slot's pool bounds are read from its own timeout block.
-func TestWebSocketTransform_UpstreamPoolBounds(t *testing.T) {
-	maxConns := 500
-	stored := testWebSocketAPI(func(spec *api.WebSocketAPIConfigData) {
-		spec.Upstream.Main = api.Upstream{
-			Url: strPtr("wss://chat-backend:8443/ws"),
-			Timeout: &api.UpstreamTimeout{
-				Connect:               strPtr("5s"),
-				IdleTimeout:           strPtr("120s"),
-				MaxConnectionDuration: strPtr("30m"),
-				MaxConnections:        &maxConns,
-			},
-		}
-	})
+// wsDefinition builds an upstream definition for one or more targets.
+func wsDefinition(name string, urls ...string) api.WebSocketUpstreamDefinition {
+	def := api.WebSocketUpstreamDefinition{Name: name}
+	for _, u := range urls {
+		def.Upstreams = append(def.Upstreams, struct {
+			Url    string `json:"url" yaml:"url"`
+			Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
+		}{Url: u})
+	}
+	return def
+}
+
+// withDefinitions puts defs on the spec and points main at the first.
+func withDefinitions(spec *api.WebSocketAPIConfigData, defs ...api.WebSocketUpstreamDefinition) {
+	spec.UpstreamDefinitions = &defs
+	spec.Upstream.Main = api.Upstream{Ref: strPtr(defs[0].Name)}
+}
+
+// FR-015/FR-016: a referenced definition supplies the cluster's targets, base
+// path, connect and idle timeouts, connection-pool bounds and tls.
+func TestWebSocketTransform_UpstreamDefinitionSettings(t *testing.T) {
+	maxConns, w1, w2 := 500, 80, 20
+	def := wsDefinition("chat-backend", "wss://chat-1:8443", "wss://chat-2:8443")
+	def.Upstreams[0].Weight, def.Upstreams[1].Weight = &w1, &w2
+	def.BasePath = strPtr("/ws")
+	def.Timeout = &api.WebSocketUpstreamTimeout{Connect: strPtr("5s"), IdleTimeout: strPtr("120s")}
+	def.Connection = &api.WebSocketUpstreamConnection{
+		MaxConnectionDuration: strPtr("30m"),
+		MaxConnections:        &maxConns,
+	}
+	def.Tls = &map[string]interface{}{"identity": "chat-identity", "trustedCAs": []interface{}{"chat-ca"}}
+	stored := testWebSocketAPI(func(spec *api.WebSocketAPIConfigData) { withDefinitions(spec, def) })
 
 	rdc, err := websocketTransformer().Transform(stored)
 	require.NoError(t, err)
+	require.Len(t, rdc.UpstreamClusters, 1)
 
+	uc, ok := rdc.UpstreamClusters["upstream_WebSocketApi_ws-uuid_chat-backend"]
+	require.True(t, ok, "a definition's cluster uses the RestApi upstreamDefinition key, got %v", rdc.UpstreamClusters)
+	assert.Equal(t, "/ws", uc.BasePath)
+	require.Len(t, uc.Endpoints, 2)
+	assert.Equal(t, 80, *uc.Endpoints[0].Weight)
+	assert.Equal(t, 20, *uc.Endpoints[1].Weight)
+	assert.Equal(t, 5*time.Second, *uc.ConnectTimeout)
+	assert.Equal(t, 120*time.Second, *uc.IdleTimeout)
+	assert.Equal(t, 30*time.Minute, *uc.MaxConnectionDuration)
+	assert.Equal(t, uint32(500), *uc.MaxConnections)
+	require.NotNil(t, uc.TLS)
+	assert.True(t, uc.TLS.Enabled)
+	assert.Equal(t, "chat-identity", uc.TLS.IdentityName)
+	assert.Equal(t, []string{"chat-ca"}, uc.TLS.TrustedCANames)
+}
+
+// An inline url carries no connection settings: its cluster takes the gateway's
+// upstream defaults.
+func TestWebSocketTransform_InlineURLUsesGatewayDefaults(t *testing.T) {
+	routerCfg := testRouterCfg()
+	routerCfg.WebSocket.Upstream.IdleTimeoutDefault = 90 * time.Second
+	routerCfg.WebSocket.Upstream.MaxConnectionDurationDefault = 2 * time.Hour
+	routerCfg.WebSocket.Upstream.MaxConnectionsDefault = 50
+	transformer := NewWebSocketAPITransformer(routerCfg, &config.Config{}, map[string]models.PolicyDefinition{})
+
+	rdc, err := transformer.Transform(testWebSocketAPI(nil))
+	require.NoError(t, err)
 	for _, uc := range rdc.UpstreamClusters {
-		require.NotNil(t, uc.ConnectTimeout)
-		assert.Equal(t, 5*time.Second, *uc.ConnectTimeout)
-		require.NotNil(t, uc.IdleTimeout)
-		assert.Equal(t, 120*time.Second, *uc.IdleTimeout)
-		require.NotNil(t, uc.MaxConnectionDuration)
-		assert.Equal(t, 30*time.Minute, *uc.MaxConnectionDuration)
-		require.NotNil(t, uc.MaxConnections)
-		assert.Equal(t, uint32(500), *uc.MaxConnections)
+		assert.Equal(t, 90*time.Second, *uc.IdleTimeout)
+		assert.Equal(t, 2*time.Hour, *uc.MaxConnectionDuration)
+		assert.Equal(t, uint32(50), *uc.MaxConnections)
+		assert.Nil(t, uc.ConnectTimeout)
+	}
+}
+
+// A value above the gateway's ceiling is rejected rather than clamped: silently
+// lowering it would let an API author believe a bound applies that does not.
+func TestWebSocketTransform_RejectsValueAboveGatewayBound(t *testing.T) {
+	routerCfg := testRouterCfg()
+	routerCfg.WebSocket.Upstream.MaxConnectionDurationMax = 24 * time.Hour
+	transformer := NewWebSocketAPITransformer(routerCfg, &config.Config{}, map[string]models.PolicyDefinition{})
+
+	def := wsDefinition("chat-backend", "ws://chat-backend:8080")
+	def.Connection = &api.WebSocketUpstreamConnection{MaxConnectionDuration: strPtr("240h")} // ten times the ceiling
+	_, err := transformer.Transform(testWebSocketAPI(func(spec *api.WebSocketAPIConfigData) { withDefinitions(spec, def) }))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "exceeds the gateway's configured maximum")
+}
+
+// An unset ceiling (0) means the operator configured none, so nothing is
+// enforced — distinct from a ceiling of zero duration.
+func TestWebSocketTransform_NoCeilingConfiguredMeansNoCeiling(t *testing.T) {
+	def := wsDefinition("chat-backend", "ws://chat-backend:8080")
+	def.Connection = &api.WebSocketUpstreamConnection{MaxConnectionDuration: strPtr("240h")}
+	rdc, err := websocketTransformer().Transform(testWebSocketAPI(func(spec *api.WebSocketAPIConfigData) { withDefinitions(spec, def) }))
+	require.NoError(t, err)
+	for _, uc := range rdc.UpstreamClusters {
+		assert.Equal(t, 240*time.Hour, *uc.MaxConnectionDuration)
 	}
 }
 
@@ -233,9 +266,9 @@ func TestWebSocketTransform_UpstreamPoolBounds(t *testing.T) {
 // its own API's pool bounds, and a shared one would silently take another API's.
 func TestWebSocketTransform_ClusterIsPerAPI(t *testing.T) {
 	withMax := func(uuid string, maxConns int) *models.StoredConfig {
-		stored := testWebSocketAPI(func(spec *api.WebSocketAPIConfigData) {
-			spec.Upstream.Main.Timeout = &api.UpstreamTimeout{MaxConnections: &maxConns}
-		})
+		def := wsDefinition("chat-backend", "ws://chat-backend:8080")
+		def.Connection = &api.WebSocketUpstreamConnection{MaxConnections: &maxConns}
+		stored := testWebSocketAPI(func(spec *api.WebSocketAPIConfigData) { withDefinitions(spec, def) })
 		stored.UUID = uuid
 		return stored
 	}
@@ -264,21 +297,19 @@ func TestWebSocketTransform_ClusterIsPerAPI(t *testing.T) {
 // sandbox, and neither inherits the other's settings.
 func TestWebSocketTransform_SandboxIsIndependent(t *testing.T) {
 	mainMax, sandboxMax := 500, 5
+	mainDef := wsDefinition("chat-main", "wss://chat-backend:8443")
+	mainDef.Connection = &api.WebSocketUpstreamConnection{MaxConnections: &mainMax}
+	sbDef := wsDefinition("chat-sandbox", "ws://chat-sandbox:8080")
+	sbDef.Connection = &api.WebSocketUpstreamConnection{MaxConnections: &sandboxMax}
 	stored := testWebSocketAPI(func(spec *api.WebSocketAPIConfigData) {
-		spec.Upstream.Main = api.Upstream{
-			Url:     strPtr("wss://chat-backend:8443/ws"),
-			Timeout: &api.UpstreamTimeout{MaxConnections: &mainMax},
-		}
-		spec.Upstream.Sandbox = &api.Upstream{
-			Url:     strPtr("ws://chat-sandbox:8080/ws"),
-			Timeout: &api.UpstreamTimeout{MaxConnections: &sandboxMax},
-		}
+		withDefinitions(spec, mainDef, sbDef)
+		spec.Upstream.Sandbox = &api.Upstream{Ref: strPtr("chat-sandbox")}
 	})
 
 	rdc, err := websocketTransformer().Transform(stored)
 	require.NoError(t, err)
 
-	assert.Len(t, rdc.UpstreamClusters, 2, "one cluster per slot")
+	assert.Len(t, rdc.UpstreamClusters, 2, "one cluster per definition")
 	assert.Len(t, rdc.Routes, 2, "one channel on each of two slots")
 
 	seen := map[uint32]bool{}
@@ -287,6 +318,19 @@ func TestWebSocketTransform_SandboxIsIndependent(t *testing.T) {
 		seen[*uc.MaxConnections] = true
 	}
 	assert.True(t, seen[500] && seen[5], "each slot keeps its own ceiling, got %v", seen)
+}
+
+// Main and sandbox referencing one definition share its single cluster.
+func TestWebSocketTransform_SlotsSharingADefinitionShareItsCluster(t *testing.T) {
+	stored := testWebSocketAPI(func(spec *api.WebSocketAPIConfigData) {
+		withDefinitions(spec, wsDefinition("chat-backend", "ws://chat-backend:8080"))
+		spec.Upstream.Sandbox = &api.Upstream{Ref: strPtr("chat-backend")}
+	})
+
+	rdc, err := websocketTransformer().Transform(stored)
+	require.NoError(t, err)
+	assert.Len(t, rdc.UpstreamClusters, 1)
+	assert.Len(t, rdc.Routes, 2)
 }
 
 func TestWebSocketTransform_RejectsNonWebSocketScheme(t *testing.T) {
@@ -299,14 +343,25 @@ func TestWebSocketTransform_RejectsNonWebSocketScheme(t *testing.T) {
 	assert.Contains(t, err.Error(), "ws/wss scheme")
 }
 
-func TestWebSocketTransform_RejectsUpstreamRef(t *testing.T) {
+func TestWebSocketTransform_RejectsUnknownRef(t *testing.T) {
 	stored := testWebSocketAPI(func(spec *api.WebSocketAPIConfigData) {
-		spec.Upstream.Main = api.Upstream{Ref: strPtr("some-definition")}
+		spec.Upstream.Main = api.Upstream{Ref: strPtr("no-such-definition")}
 	})
 
 	_, err := websocketTransformer().Transform(stored)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "ref is not supported")
+	assert.Contains(t, err.Error(), "does not match any upstreamDefinitions entry")
+}
+
+// One cluster has one transport socket, so a definition cannot mix ws and wss.
+func TestWebSocketTransform_RejectsMixedSchemeDefinition(t *testing.T) {
+	stored := testWebSocketAPI(func(spec *api.WebSocketAPIConfigData) {
+		withDefinitions(spec, wsDefinition("chat-backend", "ws://chat-1:8080", "wss://chat-2:8443"))
+	})
+
+	_, err := websocketTransformer().Transform(stored)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "mixes ws and wss")
 }
 
 func TestWebSocketTransform_RejectsWrongConfigurationType(t *testing.T) {
