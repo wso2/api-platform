@@ -125,7 +125,16 @@ func (s *Steps) registerPlatformResource(ctx context.Context, kind cleanup.Kind,
 	if err != nil {
 		return err
 	}
-	if err := reg.RegisterDeleter(kind, func(ctx context.Context, res cleanup.Resource) error {
+	if err := reg.RegisterDeleter(kind, s.pathDeleter(kind, path)); err != nil {
+		return err
+	}
+	return reg.Register(cleanup.Resource{Kind: kind, ID: id, Actor: "admin", Description: "created via platform-api"})
+}
+
+// pathDeleter deletes a resource of the kind at path/<id> as the administrator; a resource that
+// is already gone is not an error.
+func (s *Steps) pathDeleter(kind cleanup.Kind, path string) cleanup.Deleter {
+	return func(ctx context.Context, res cleanup.Resource) error {
 		base, bearer, err := s.authed(ctx)
 		if err != nil {
 			return err
@@ -146,10 +155,7 @@ func (s *Steps) registerPlatformResource(ctx context.Context, kind cleanup.Kind,
 			return fmt.Errorf("deleting %s: %s", res.ID, resp.Describe())
 		}
 		return nil
-	}); err != nil {
-		return err
 	}
-	return reg.Register(cleanup.Resource{Kind: kind, ID: id, Actor: "admin", Description: "created via platform-api"})
 }
 
 func isLastProjectValidation(resp *httpx.Response) bool {

@@ -113,7 +113,9 @@ type Steps struct {
 // publishing an API, applications, subscriptions, and API keys. Portal requests go through a
 // client that trusts the portal's certificate; the shared client every other suite request
 // funnels through trusts only the control plane's, and serves the calls made to platform-api.
-func Register(sc *godog.ScenarioContext, topo *runtime.Topology, controlPlane *httpx.Client) {
+// It returns the function that removes a plan from the portal when the scenario ends, for the
+// control-plane steps that publish plans to it.
+func Register(sc *godog.ScenarioContext, topo *runtime.Topology, controlPlane *httpx.Client) func(ctx context.Context, handle string) error {
 	s := &Steps{topo: topo, controlPlane: controlPlane}
 	s.client = newPortalClient()
 	idp, idpErr := newIdentityProviderClient()
@@ -238,6 +240,7 @@ func Register(sc *godog.ScenarioContext, topo *runtime.Topology, controlPlane *h
 		s.createMCPKey)
 	sc.Step(`^the subscription plan "([^"]*)" is synced to the API Portal$`, s.syncSubscriptionPlan)
 	sc.Step(`^the "([^"]*)" API is published to the API Portal offering plan "([^"]*)"$`, s.publishAPI)
+	registerPublication(sc, s)
 	sc.Step(`^an application subscribed to API "([^"]*)" plan "([^"]*)" is created in the API Portal, the token is stored as "([^"]*)" and the subscription is stored as "([^"]*)"$`,
 		s.subscribeToAPIAndStore)
 	sc.Step(`^an API key for API "([^"]*)" is generated in the API Portal, the value is stored as "([^"]*)" and the handle is stored as "([^"]*)"$`,
@@ -258,6 +261,7 @@ func Register(sc *godog.ScenarioContext, topo *runtime.Topology, controlPlane *h
 	sc.Step(`^the subscription "([^"]*)" status is set to "([^"]*)" in the API Portal$`, s.setSubscriptionStatus)
 	sc.Step(`^the subscription "([^"]*)" is removed in the API Portal$`, s.removeSubscription)
 	s.registerMultiOrganizationSteps(sc)
+	return s.trackPublishedPlan
 }
 
 const portalRESTDefinition = `{
