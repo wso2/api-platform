@@ -193,3 +193,33 @@ func newSampler(samplingRate float64) sdktrace.Sampler {
 	}
 	return sdktrace.ParentBased(sdktrace.TraceIDRatioBased(samplingRate))
 }
+
+// traceLogHandler stamps error records with the trace and span IDs of the span
+// active in the logging call's context, so an error log can be found in its trace.
+type traceLogHandler struct {
+	slog.Handler
+}
+
+func NewTraceLogHandler(next slog.Handler) slog.Handler {
+	return traceLogHandler{next}
+}
+
+func (h traceLogHandler) Handle(ctx context.Context, r slog.Record) error {
+	if r.Level >= slog.LevelError {
+		if sc := trace.SpanContextFromContext(ctx); sc.IsValid() {
+			r.AddAttrs(
+				slog.String("trace_id", sc.TraceID().String()),
+				slog.String("span_id", sc.SpanID().String()),
+			)
+		}
+	}
+	return h.Handler.Handle(ctx, r)
+}
+
+func (h traceLogHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	return traceLogHandler{h.Handler.WithAttrs(attrs)}
+}
+
+func (h traceLogHandler) WithGroup(name string) slog.Handler {
+	return traceLogHandler{h.Handler.WithGroup(name)}
+}
