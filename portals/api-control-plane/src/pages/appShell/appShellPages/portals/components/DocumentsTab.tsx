@@ -21,25 +21,22 @@ import {
   Box,
   Button,
   Checkbox,
-  Collapse,
+  Chip,
   Divider,
   Drawer,
   IconButton,
-  List,
-  ListItem,
-  ListItemIcon,
-  ListItemText,
+  ListingTable,
   Stack,
+  type Theme,
   Typography,
 } from '@wso2/oxygen-ui';
-import { FileSearch, FileText, Minus, Plus, X } from '@wso2/oxygen-ui-icons-react';
-import { Fragment, useId, useState } from 'react';
+import { FileSearch, Minus, Plus, X } from '@wso2/oxygen-ui-icons-react';
+import { useState } from 'react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
-import { useAllApiDocuments, type ApiDocumentMetadata } from '@/api/resources/apiDocuments';
+import { useAllApiDocuments } from '@/api/resources/apiDocuments';
 import { EmptyState, ErrorState, LoadingState } from '@/components/StateViews';
 import { DocumentBody } from '../../develop/documents/DocumentBody';
-import { DocumentGroupHeader } from '../../develop/documents/DocumentGroupHeader';
 import { groupDocumentsByType } from '../../develop/documents/documentGroups';
 import type { DraftFormValues } from '../utils/publicationForm';
 
@@ -82,6 +79,18 @@ const messages = defineMessages({
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.DocumentsTab.clearAll',
     defaultMessage: 'Clear all',
   },
+  columnName: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.DocumentsTab.columnName',
+    defaultMessage: 'Name',
+  },
+  columnType: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.DocumentsTab.columnType',
+    defaultMessage: 'Type',
+  },
+  columnActions: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.DocumentsTab.columnActions',
+    defaultMessage: 'Actions',
+  },
   preview: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.DocumentsTab.preview',
     defaultMessage: 'Preview',
@@ -105,6 +114,16 @@ const messages = defineMessages({
   },
 });
 
+// Cancels a control's own left padding so its content starts under the column heading.
+const TYPE_CHIP_OFFSET = '-9px'; // outlined small chip: 1px border + 8px label padding
+const PREVIEW_BUTTON_OFFSET = -0.625; // small text button: 5px side padding
+
+const selectedRowSx = (theme: Theme) => ({
+  '&.Mui-selected, &.Mui-selected:hover': {
+    backgroundColor: alpha(theme.palette.primary.main, 0.08),
+  },
+});
+
 export type DocumentsTabProps = {
   apiHandle: string;
   /** The `{apiType}` path segment of the API that owns the documents. */
@@ -117,10 +136,12 @@ export type DocumentsTabProps = {
 };
 
 /**
- * "Documentation": which of the API's documents are published with it, listed by type.
+ * "Documentation": which of the API's documents are published with it, as a table of name and type
+ * ordered by type.
  *
- * The draft lists every document with a checkbox and a Preview button that opens its content.
- * The published view lists exactly the documents the live listing holds, with neither.
+ * The draft adds a select column (select all in its header) and an Actions column whose Preview
+ * button opens the document's content. The published view lists exactly the documents the live
+ * listing holds, with neither.
  */
 export function DocumentsTab({ apiHandle, apiType, disabled, onChange, readOnly, values }: DocumentsTabProps) {
   const intl = useIntl();
@@ -128,10 +149,6 @@ export function DocumentsTab({ apiHandle, apiType, disabled, onChange, readOnly,
   const selectedIds = values.docIds;
   const selectedSet = new Set(selectedIds);
   const [previewId, setPreviewId] = useState<string>();
-  // A type name can hold spaces, which an id cannot, so each group's id is built from its position.
-  const groupsId = useId();
-  // Collapsed groups, by type.
-  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set());
 
   const documents = documentsQuery.data?.list ?? [];
   const shownDocuments = readOnly ? documents.filter((doc) => selectedSet.has(doc.id)) : documents;
@@ -153,9 +170,12 @@ export function DocumentsTab({ apiHandle, apiType, disabled, onChange, readOnly,
     );
   }
 
-  const groups = groupDocumentsByType(shownDocuments, intl);
+  const rows = groupDocumentsByType(shownDocuments, intl).flatMap((group) =>
+    group.items.map((doc) => ({ doc, typeLabel: group.label })),
+  );
   const selectedCount = documents.filter((doc) => selectedSet.has(doc.id)).length;
   const allSelected = selectedCount === documents.length;
+  const someSelected = selectedCount > 0 && !allSelected;
   const previewed = documents.find((doc) => doc.id === previewId);
 
   const commitSelection = (nextIds: string[]) => onChange?.({ ...values, docIds: nextIds });
@@ -168,14 +188,6 @@ export function DocumentsTab({ apiHandle, apiType, disabled, onChange, readOnly,
   };
 
   const toggleAll = () => commitSelection(allSelected ? [] : documents.map((doc) => doc.id));
-
-  const toggleGroup = (type: string) =>
-    setCollapsed((current) => {
-      const next = new Set(current);
-      if (next.has(type)) next.delete(type);
-      else next.add(type);
-      return next;
-    });
 
   // Same summary row as the Subscription Plans tab.
   const countStyle = {
@@ -214,43 +226,84 @@ export function DocumentsTab({ apiHandle, apiType, disabled, onChange, readOnly,
             />
           )}
         </Typography>
-        {!readOnly && (
-          <Button disabled={disabled} onClick={toggleAll} size="small" variant="text">
-            <FormattedMessage {...(allSelected ? messages.clearAll : messages.selectAll)} />
-          </Button>
-        )}
       </Box>
 
-      <List dense disablePadding>
-        {groups.map((group, groupIndex) => {
-          const open = !collapsed.has(group.type);
-          return (
-            <Fragment key={group.type}>
-              <DocumentGroupHeader
-                controlsId={`${groupsId}-group-${groupIndex}`}
-                count={group.items.length}
-                first={groupIndex === 0}
-                label={group.label}
-                onToggle={() => toggleGroup(group.type)}
-                open={open}
-              />
-              <Collapse id={`${groupsId}-group-${groupIndex}`} in={open} timeout="auto">
-                {group.items.map((doc) => (
-                  <DocumentRow
-                    disabled={disabled}
-                    doc={doc}
-                    key={doc.id}
-                    onPreview={() => setPreviewId(doc.id)}
-                    onToggle={() => toggle(doc.id)}
-                    readOnly={readOnly}
-                    selected={selectedSet.has(doc.id)}
-                  />
-                ))}
-              </Collapse>
-            </Fragment>
-          );
-        })}
-      </List>
+      <ListingTable.Provider>
+        <ListingTable.Container>
+          {/* Type 35% and Actions 15% of the row; Name takes the rest and truncates. */}
+          <ListingTable sx={{ minWidth: 640, tableLayout: 'fixed' }}>
+            <ListingTable.Head>
+              <ListingTable.Row>
+                {!readOnly && (
+                  <ListingTable.Cell padding="checkbox" sx={{ width: 48 }}>
+                    <Checkbox
+                      checked={allSelected}
+                      disabled={disabled}
+                      indeterminate={someSelected}
+                      onChange={toggleAll}
+                      slotProps={{
+                        input: { 'aria-label': intl.formatMessage(allSelected ? messages.clearAll : messages.selectAll) },
+                      }}
+                    />
+                  </ListingTable.Cell>
+                )}
+                <ListingTable.Cell>
+                  <FormattedMessage {...messages.columnName} />
+                </ListingTable.Cell>
+                <ListingTable.Cell sx={{ width: '35%' }}>
+                  <FormattedMessage {...messages.columnType} />
+                </ListingTable.Cell>
+                {!readOnly && (
+                  <ListingTable.Cell sx={{ width: '15%' }}>
+                    <FormattedMessage {...messages.columnActions} />
+                  </ListingTable.Cell>
+                )}
+              </ListingTable.Row>
+            </ListingTable.Head>
+            <ListingTable.Body>
+              {rows.map(({ doc, typeLabel }) => {
+                const selected = selectedSet.has(doc.id);
+                return (
+                  <ListingTable.Row key={doc.id} selected={!readOnly && selected} sx={selectedRowSx}>
+                    {!readOnly && (
+                      <ListingTable.Cell padding="checkbox">
+                        <Checkbox
+                          checked={selected}
+                          disabled={disabled}
+                          onChange={() => toggle(doc.id)}
+                          slotProps={{ input: { 'aria-label': doc.displayName } }}
+                        />
+                      </ListingTable.Cell>
+                    )}
+                    <ListingTable.Cell truncate>
+                      <Typography noWrap variant="body2">
+                        {doc.displayName}
+                      </Typography>
+                    </ListingTable.Cell>
+                    <ListingTable.Cell>
+                      <Chip label={typeLabel} size="small" sx={{ ml: TYPE_CHIP_OFFSET }} variant="outlined" />
+                    </ListingTable.Cell>
+                    {!readOnly && (
+                      <ListingTable.Cell>
+                        <Button
+                          aria-label={intl.formatMessage(messages.previewDocument, { name: doc.displayName })}
+                          onClick={() => setPreviewId(doc.id)}
+                          size="small"
+                          startIcon={<FileSearch size={16} />}
+                          sx={{ ml: PREVIEW_BUTTON_OFFSET, whiteSpace: 'nowrap' }}
+                          variant="text"
+                        >
+                          <FormattedMessage {...messages.preview} />
+                        </Button>
+                      </ListingTable.Cell>
+                    )}
+                  </ListingTable.Row>
+                );
+              })}
+            </ListingTable.Body>
+          </ListingTable>
+        </ListingTable.Container>
+      </ListingTable.Provider>
 
       <Drawer
         anchor="right"
@@ -292,59 +345,5 @@ export function DocumentsTab({ apiHandle, apiType, disabled, onChange, readOnly,
         )}
       </Drawer>
     </Box>
-  );
-}
-
-type DocumentRowProps = {
-  disabled?: boolean;
-  doc: ApiDocumentMetadata;
-  onPreview: () => void;
-  onToggle: () => void;
-  /** The published view: a plain row, no checkbox, no preview. */
-  readOnly?: boolean;
-  selected: boolean;
-};
-
-/** One document: its checkbox and name, and a button that opens its content. */
-function DocumentRow({ disabled, doc, onPreview, onToggle, readOnly, selected }: DocumentRowProps) {
-  const intl = useIntl();
-  if (readOnly) {
-    return (
-      <ListItem component="div" dense>
-        <ListItemIcon sx={{ minWidth: 32 }}>
-          <FileText size={16} />
-        </ListItemIcon>
-        <ListItemText primary={doc.displayName} slotProps={{ primary: { noWrap: true } }} />
-      </ListItem>
-    );
-  }
-  return (
-    <Stack
-      direction="row"
-      sx={(theme) => ({
-        alignItems: 'center',
-        borderRadius: 1,
-        bgcolor: selected ? alpha(theme.palette.primary.main, 0.06) : undefined,
-        mb: 0.5,
-        pr: 1,
-      })}
-    >
-      <Checkbox
-        checked={selected}
-        disabled={disabled}
-        onChange={onToggle}
-        slotProps={{ input: { 'aria-label': doc.displayName } }}
-      />
-      <ListItemText primary={doc.displayName} slotProps={{ primary: { noWrap: true } }} sx={{ flex: 1, minWidth: 0 }} />
-      <Button
-        aria-label={intl.formatMessage(messages.previewDocument, { name: doc.displayName })}
-        onClick={onPreview}
-        size="small"
-        startIcon={<FileSearch size={16} />}
-        variant="text"
-      >
-        <FormattedMessage {...messages.preview} />
-      </Button>
-    </Stack>
   );
 }

@@ -87,28 +87,18 @@ beforeEach(() => {
 });
 
 describe('DocumentsTab', () => {
-  it('groups the documents by type, each group with its count', async () => {
+  it('lists each document with its name and type, ordered by type', async () => {
     serveDocuments(docs);
     renderTab();
 
-    expect(await screen.findByRole('button', { name: 'How To (2)' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'FAQ (1)' })).toBeInTheDocument();
-    expect(screen.getByRole('checkbox', { name: 'Getting started' })).toBeInTheDocument();
-    expect(screen.getByRole('checkbox', { name: 'Common questions' })).toBeInTheDocument();
-  });
+    expect(await screen.findByRole('columnheader', { name: 'Name' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Type' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Actions' })).toBeInTheDocument();
 
-  it('points each group header at its own region, even for a type name with a space', async () => {
-    serveDocuments([guide, aDoc('notes', 'Version 1.2', 'Release Notes')]);
-    renderTab();
-
-    const regionIds = new Set<string>();
-    for (const name of ['How To (1)', 'Release Notes (1)']) {
-      const regionId = (await screen.findByRole('button', { name })).getAttribute('aria-controls') ?? '';
-      expect(regionId).not.toMatch(/\s/);
-      expect(document.getElementById(regionId)).toBeInTheDocument();
-      regionIds.add(regionId);
-    }
-    expect(regionIds.size).toBe(2);
+    const rowOf = (name: string) => screen.getByRole('checkbox', { name }).closest('tr') as HTMLElement;
+    expect(within(rowOf('Getting started')).getByText('How To')).toBeInTheDocument();
+    expect(within(rowOf('First call')).getByText('How To')).toBeInTheDocument();
+    expect(within(rowOf('Common questions')).getByText('FAQ')).toBeInTheDocument();
   });
 
   it('shows which documents are selected, and how many of the total', async () => {
@@ -139,7 +129,7 @@ describe('DocumentsTab', () => {
     const onChange = vi.fn();
     const { rerender, user } = renderTab({ onChange, values: values({ docIds: ['guide'] }) });
 
-    await user.click(await screen.findByRole('button', { name: 'Select all' }));
+    await user.click(await screen.findByRole('checkbox', { name: 'Select all' }));
     const selectedIds: string[] = onChange.mock.calls[0][0].docIds;
     expect([...selectedIds].sort()).toEqual(['faq', 'guide', 'tutorial']);
 
@@ -148,7 +138,7 @@ describe('DocumentsTab', () => {
         <DocumentsTab apiHandle={API} apiType={API_TYPE} onChange={onChange} values={values({ docIds: selectedIds })} />
       </ApiScopeProvider>,
     );
-    await user.click(await screen.findByRole('button', { name: 'Clear all' }));
+    await user.click(await screen.findByRole('checkbox', { name: 'Clear all' }));
     expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ docIds: [] }));
   });
 
@@ -189,18 +179,13 @@ describe('DocumentsTab', () => {
     expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ docIds: ['guide'] }));
   });
 
-  it('collapses a group without changing the selection', async () => {
+  it('marks the select-all checkbox indeterminate for a partial selection', async () => {
     serveDocuments(docs);
-    const onChange = vi.fn();
-    const { user } = renderTab({ onChange });
+    renderTab({ values: values({ docIds: ['guide'] }) });
 
-    const header = await screen.findByRole('button', { name: 'FAQ (1)' });
-    expect(header).toHaveAttribute('aria-expanded', 'true');
-    await user.click(header);
-
-    expect(header).toHaveAttribute('aria-expanded', 'false');
-    await waitFor(() => expect(screen.queryByRole('checkbox', { name: 'Common questions' })).not.toBeInTheDocument());
-    expect(onChange).not.toHaveBeenCalled();
+    const selectAll = await screen.findByRole('checkbox', { name: 'Select all' });
+    expect(selectAll).toHaveAttribute('data-indeterminate', 'true');
+    expect(selectAll).not.toBeChecked();
   });
 
   it('disables the checkboxes and Select all while disabled', async () => {
@@ -208,7 +193,7 @@ describe('DocumentsTab', () => {
     renderTab({ disabled: true });
 
     expect(await screen.findByRole('checkbox', { name: 'Getting started' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Select all' })).toBeDisabled();
+    expect(screen.getByRole('checkbox', { name: 'Select all' })).toBeDisabled();
   });
 
   it('says there are no documents to choose from', async () => {
@@ -216,7 +201,7 @@ describe('DocumentsTab', () => {
     renderTab();
 
     expect(await screen.findByText('No documents')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Select all' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('checkbox', { name: 'Select all' })).not.toBeInTheDocument();
   });
 
   it('reports a failure to load the documents', async () => {
@@ -238,7 +223,8 @@ describe('DocumentsTab — published view', () => {
     expect(screen.queryByText('First call')).not.toBeInTheDocument();
     expect(summaryText('2 documents published')).toBeInTheDocument();
     expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Select all' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: 'Actions' })).not.toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Type' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /^Preview/ })).not.toBeInTheDocument();
     expect(onChange).not.toHaveBeenCalled();
   });

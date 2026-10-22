@@ -2733,6 +2733,15 @@
   "apiControlPlane.pages.appShell.appShellPages.portals.components.DocumentsTab.closePreview": {
     "defaultMessage": "Close"
   },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.DocumentsTab.columnActions": {
+    "defaultMessage": "Actions"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.DocumentsTab.columnName": {
+    "defaultMessage": "Name"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.DocumentsTab.columnType": {
+    "defaultMessage": "Type"
+  },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.DocumentsTab.emptyDescription": {
     "defaultMessage": "Add documents to this API in Develop to choose from here."
   },
