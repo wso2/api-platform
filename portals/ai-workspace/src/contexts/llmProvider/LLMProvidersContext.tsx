@@ -41,6 +41,7 @@ import {
 import { useAppShell } from '../AppShellContext';
 import { PLATFORM_API_BASE_URL } from '../../paths';
 import { logger } from '../../utils/logger';
+import { fetchAllPages } from '../../utils/pagination';
 import {
   trackLLMProviderCreate,
   trackLLMProviderUpdate,
@@ -120,9 +121,11 @@ export function LLMProvidersProvider({ children }: LLMProvidersProviderProps) {
     try {
       setIsLoading(true);
       setError(null);
-      const response = await llmProviderApis.getLLMProviders(
-        organizationId,
-        PLATFORM_API_BASE_URL
+      // The collection endpoint defaults to limit=20 when unpaged, and this
+      // list has no pager of its own — walk every page so organizations with
+      // more than 20 providers aren't silently truncated.
+      const response = await fetchAllPages<LLMProvider>((limit, offset) =>
+        llmProviderApis.getLLMProviders(organizationId, PLATFORM_API_BASE_URL, limit, offset)
       );
       // Store the full API response as-is
       setProvidersResponse(response as LLMProvidersResponse);

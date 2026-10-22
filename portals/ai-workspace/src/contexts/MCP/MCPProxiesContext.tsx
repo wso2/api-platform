@@ -41,6 +41,7 @@ import {
 import { useAppShell } from '../AppShellContext';
 import { PLATFORM_API_BASE_URL } from '../../paths';
 import { logger } from '../../utils/logger';
+import { fetchAllPages } from '../../utils/pagination';
 
 // ============================================================================
 // MCP Servers List Context - For managing the list of all MCP servers
@@ -110,9 +111,11 @@ export function MCPServersProvider({ children }: MCPServersProviderProps) {
     try {
       setIsLoading(true);
       setError(null);
-      const response = await mcpProxiesApis.getMCPServers(
-        projectId,
-        apimBaseUrl
+      // The collection endpoint defaults to limit=20 when unpaged, and this
+      // list has no pager of its own — walk every page so projects with more
+      // than 20 MCP servers aren't silently truncated.
+      const response = await fetchAllPages<MCPServer>((limit, offset) =>
+        mcpProxiesApis.getMCPServers(projectId, apimBaseUrl, limit, offset)
       );
       setMCPServersResponse(response as MCPServerListResponse);
     } catch (err) {

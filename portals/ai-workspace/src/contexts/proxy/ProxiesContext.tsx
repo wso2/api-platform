@@ -41,6 +41,7 @@ import {
 import { useAppShell } from '../AppShellContext';
 import { PLATFORM_API_BASE_URL } from '../../paths';
 import { logger } from '../../utils/logger';
+import { fetchAllPages } from '../../utils/pagination';
 import {
   trackLLMProxyCreate,
   trackLLMProxyUpdate,
@@ -115,10 +116,11 @@ export function ProxiesProvider({ children }: ProxiesProviderProps) {
     try {
       setIsLoading(true);
       setError(null);
-      const response = await proxyApis.getProxies(
-        organizationId,
-        projectId,
-        apimBaseUrl
+      // The collection endpoint defaults to limit=20 when unpaged, and this
+      // list has no pager of its own — walk every page so projects with more
+      // than 20 proxies aren't silently truncated.
+      const response = await fetchAllPages<Proxy>((limit, offset) =>
+        proxyApis.getProxies(organizationId, projectId, apimBaseUrl, limit, offset)
       );
       setProxiesResponse(response as ProxiesResponse);
     } catch (err) {
