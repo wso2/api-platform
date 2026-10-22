@@ -13,10 +13,18 @@ spec:
     spec:
       serviceAccountName: {{ .Values.serviceAccount.name }}
       restartPolicy: Never
+      {{- with .Values.cleanupJob.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: cleanup
           image: "{{ .Values.cleanupJob.image.repository }}:{{ .Values.cleanupJob.image.tag }}"
           imagePullPolicy: {{ .Values.cleanupJob.image.pullPolicy }}
+          {{- with .Values.cleanupJob.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           command:
             - /bin/sh
             - -c

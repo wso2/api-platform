@@ -28,6 +28,8 @@ import (
 	"github.com/wso2/api-platform/common/eventhub"
 
 	"github.com/wso2/api-platform/platform-api/internal/dto"
+	"github.com/wso2/api-platform/platform-api/internal/gatewaytranslator"
+	"github.com/wso2/api-platform/platform-api/internal/gatewaytranslator/gwversion"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 )
 
@@ -258,6 +260,51 @@ func (s *GatewayEventsService) BroadcastAPIKeyRevokedEvent(gatewayID, userId str
 // BroadcastAPIKeyUpdatedEvent sends an API key updated event to target gateway.
 func (s *GatewayEventsService) BroadcastAPIKeyUpdatedEvent(gatewayID, userId string, event *model.APIKeyUpdatedEvent) error {
 	return s.broadcastEventWithUserID(gatewayID, userId, EventTypeAPIKeyUpdated, event)
+}
+
+// BroadcastAPIKeyRevokedEventFor sends an API key revoked event to gateway gw,
+// stamped with the identity that gateway's release accepts (see KeyEventActor).
+// keyCreatedBy is the revoked key's creator; userId is the caller platform-api
+// has already authorized.
+func (s *GatewayEventsService) BroadcastAPIKeyRevokedEventFor(gw *model.APIGatewayWithDetails, keyCreatedBy, userId string, event *model.APIKeyRevokedEvent) error {
+	actor, err := s.KeyEventActor(gw.Version, keyCreatedBy, userId)
+	if err != nil {
+		return fmt.Errorf("%s event for gateway %s: %w", EventTypeAPIKeyRevoked, gw.ID, err)
+	}
+	return s.broadcastEventWithUserID(gw.ID, actor, EventTypeAPIKeyRevoked, event)
+}
+
+// BroadcastAPIKeyUpdatedEventFor is BroadcastAPIKeyRevokedEventFor for an
+// updated event.
+func (s *GatewayEventsService) BroadcastAPIKeyUpdatedEventFor(gw *model.APIGatewayWithDetails, keyCreatedBy, userId string, event *model.APIKeyUpdatedEvent) error {
+	actor, err := s.KeyEventActor(gw.Version, keyCreatedBy, userId)
+	if err != nil {
+		return fmt.Errorf("%s event for gateway %s: %w", EventTypeAPIKeyUpdated, gw.ID, err)
+	}
+	return s.broadcastEventWithUserID(gw.ID, actor, EventTypeAPIKeyUpdated, event)
+}
+
+// KeyEventActor returns the user id to stamp on an API key revoke/update event
+// for a gateway that reported gatewayVersion, leaving the decision to
+// gatewaytranslator.KeyEventActor, which knows what each gateway release
+// expects. Only gateways that re-check ownership need the key creator's IdP
+// subject; if it cannot be resolved for one of them the error is returned and
+// nothing is published, because the fallback (the creator's UUID) resolves to
+// the migration actor for a key Platform API v1 created without a creator, an
+// identity the gateway rejects while the caller is told the event was sent.
+func (s *GatewayEventsService) KeyEventActor(gatewayVersion, keyCreatedBy, userId string) (string, error) {
+	if !gwversion.RechecksKeyEventOwnership(gatewayVersion) {
+		return gatewaytranslator.KeyEventActor(gatewayVersion, keyCreatedBy, "", userId), nil
+	}
+	creatorSub := ""
+	if keyCreatedBy != "" && s.identity != nil {
+		sub, err := s.identity.SubForUUID(keyCreatedBy)
+		if err != nil {
+			return "", fmt.Errorf("resolve the API key creator for a gateway that re-checks key ownership: %w", err)
+		}
+		creatorSub = sub
+	}
+	return gatewaytranslator.KeyEventActor(gatewayVersion, keyCreatedBy, creatorSub, userId), nil
 }
 
 // BroadcastApplicationUpdatedEvent sends an application updated event to target gateway.

@@ -200,11 +200,13 @@ export async function createLLMProvider(
  */
 export async function getLLMProviders(
   organizationId: string,
-  baseUrl: string
+  baseUrl: string,
+  limit: number = 20,
+  offset: number = 0
 ): Promise<LLMProvidersResponse> {
   try {
     const response = await get<LLMProvidersResponse>(
-      `/llm-providers`,
+      `/llm-providers?limit=${limit}&offset=${offset}`,
       undefined,
       baseUrl
     );

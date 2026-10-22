@@ -44,6 +44,7 @@ import {
   TableCell,
   TableContainer,
   TableHead,
+  TablePagination,
   TableRow,
   TextField,
   Tooltip,
@@ -69,6 +70,14 @@ import { DISABLED_ACTION_SX, NO_PERMISSION_TOOLTIP, SCOPES } from '../../../../a
 function getErrorDescription(error: unknown, fallbackMessage: string): string {
   return getErrorMessage(error, fallbackMessage);
 }
+
+// -1 is MUI's convention for an "All" rows-per-page option.
+const ALL_ROWS = -1;
+const ROWS_PER_PAGE_OPTIONS = [
+  20,
+  50,
+  { label: 'All', value: ALL_ROWS },
+];
 
 function getInitials(name: string): string {
   const words = name.trim().split(/\s+/);
@@ -103,6 +112,8 @@ export default function AgentProxiesList(): React.JSX.Element {
   const isProjectLevel = Boolean(effectiveProject?.id);
   const [selectedProjectId, setSelectedProjectId] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(20);
   const {
     agentProxiesResponse,
     isLoading: isAgentProxiesLoading,
@@ -150,6 +161,31 @@ export default function AgentProxiesList(): React.JSX.Element {
         .includes(query)
     );
   }, [searchQuery, agentProxies]);
+
+  useEffect(() => {
+    setPage(0);
+  }, [searchQuery, rowsPerPage]);
+
+  // A search/rowsPerPage change is handled above, but the list can also
+  // shrink out from under the current page from other causes — a delete, a
+  // refresh, or switching projects — which must clamp `page` back into range
+  // too, or the table renders an empty slice while results still exist.
+  useEffect(() => {
+    if (rowsPerPage === ALL_ROWS) return;
+    const maxPage = Math.max(
+      0,
+      Math.ceil(filteredAgentProxies.length / rowsPerPage) - 1
+    );
+    if (page > maxPage) setPage(maxPage);
+  }, [filteredAgentProxies.length, rowsPerPage, page]);
+
+  const pagedAgentProxies = useMemo(() => {
+    if (rowsPerPage === ALL_ROWS) return filteredAgentProxies;
+    return filteredAgentProxies.slice(
+      page * rowsPerPage,
+      page * rowsPerPage + rowsPerPage
+    );
+  }, [filteredAgentProxies, page, rowsPerPage]);
 
   const handleDeleteConfirm = async () => {
     if (!deleteTarget || !organizationId) return;
@@ -471,7 +507,7 @@ export default function AgentProxiesList(): React.JSX.Element {
                         </TableCell>
                       </TableRow>
                     ) : (
-                      filteredAgentProxies.map((agentProxy) => (
+                      pagedAgentProxies.map((agentProxy) => (
                         <TableRow
                           key={agentProxy.id}
                           hover
@@ -555,6 +591,20 @@ export default function AgentProxiesList(): React.JSX.Element {
                   </TableBody>
                 </Table>
               </TableContainer>
+
+              {filteredAgentProxies.length >= 20 && (
+                <TablePagination
+                  component="div"
+                  count={filteredAgentProxies.length}
+                  page={page}
+                  onPageChange={(_event, nextPage) => setPage(nextPage)}
+                  rowsPerPage={rowsPerPage}
+                  onRowsPerPageChange={(event) =>
+                    setRowsPerPage(parseInt(event.target.value, 10))
+                  }
+                  rowsPerPageOptions={ROWS_PER_PAGE_OPTIONS}
+                />
+              )}
             </Card>
           </Grid>
         </>

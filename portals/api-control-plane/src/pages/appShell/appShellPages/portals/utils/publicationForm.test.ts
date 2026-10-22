@@ -58,6 +58,7 @@ describe('resolveDraftFormValues', () => {
       sandboxUrl: '',
       version: '2.0.0',
       agentVisibility: 'VISIBLE',
+      subscriptionPlanIds: [],
     });
   });
 

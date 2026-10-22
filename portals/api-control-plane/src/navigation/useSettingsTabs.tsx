@@ -38,7 +38,7 @@ const messages = defineMessages({
   },
   subscriptionPlansTab: {
     id: 'apiControlPlane.navigation.useSettingsTabs.subscriptionPlansTab',
-    defaultMessage: 'Subscription plans',
+    defaultMessage: 'Subscription Plans',
     description:
       'Label for the built-in organization-level Settings tab listing rate-limit tiers.',
   },

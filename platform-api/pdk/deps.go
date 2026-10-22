@@ -20,6 +20,7 @@ package pdk
 import (
 	"context"
 	"log/slog"
+	"net/http"
 
 	"github.com/wso2/api-platform/platform-api/api"
 	"github.com/wso2/api-platform/platform-api/config"
@@ -39,11 +40,13 @@ import (
 type Deps struct {
 	Gateways      Gateways
 	Projects      Projects
+	APIs          APIs
 	APIPortals    APIPortals
 	Deployments   Deployments
 	Organizations Organizations
+	Identity      Identity
 	// add more capability groups as external plugins need them
-	// (APIs, Subscriptions, Applications, LLM, MCP, …)
+	// (Subscriptions, Applications, LLM, MCP, …)
 
 	Config *config.Server
 	Logger *slog.Logger
@@ -84,6 +87,37 @@ type Projects interface {
 	DeleteProject(handle, orgID, actor string) error
 }
 
+// APIs exposes read-only lookups over the platform's REST APIs, scoped by
+// organization. Every method mirrors an existing APIService method verbatim and
+// takes the organization id explicitly — callers MUST pass the org resolved from
+// the request context, never one from request input (GO-AUTH-005). The parameter
+// order differs per method, inherited from those services; normalizing it would
+// cost the no-adapter assignment.
+type APIs interface {
+	// GetAPIVersions returns every REST API sharing displayName in an organization
+	// (Read). Org-wide, since (displayName, version) uniqueness is, so versions of
+	// one API may sit in different projects.
+	GetAPIVersions(orgUUID, displayName string) (*api.RESTAPIVersionListResponse, error)
+
+	// GetAPIByHandle returns a single REST API by its handle within an
+	// organization (Read).
+	GetAPIByHandle(handle, orgId string) (*api.RESTAPI, error)
+
+	// GetArtifactUUID resolves the internal artifact UUID for a REST API handle
+	// (Read). Every REST API route addresses an API by handle, so this is the only
+	// way a plugin reaches its UUID.
+	GetArtifactUUID(handle, orgUUID string) (string, error)
+}
+
+// Identity resolves the user behind a request in the form the platform keeps
+// in created_by / updated_by columns, so records a plugin writes name the same
+// user the platform's own handlers would.
+type Identity interface {
+	// InternalUserID returns the internal user id for the request's
+	// authenticated user.
+	InternalUserID(r *http.Request) (string, error)
+}
+
 // APIPortals exposes CRUD on API Portal records, scoped by organization.
 // orgID is always the request-context org (GO-AUTH-005), never caller input.
 //
@@ -102,7 +136,13 @@ type APIPortals interface {
 	ListAPIPortalStatuses(orgID string) (map[string]string, error)
 	ListAPIPortalsByStatus(status string) ([]api.APIPortalIdentity, error)
 	UpdateAPIPortal(handle string, req *api.UpdateApiPortalRequest, orgID, updatedBy string) (*api.ApiPortalResponse, error)
+	// UpdateAPIPortalStatus moves a pending portal to active or failed. An empty
+	// updatedBy keeps the row's updated_by, for transitions no user made.
 	UpdateAPIPortalStatus(handle, orgID, updatedBy, status string) error
+	// ReopenAPIPortal moves an active or failed portal back to pending for a
+	// change that runs in the background; api.ErrAPIPortalPending when one is
+	// already in progress.
+	ReopenAPIPortal(handle, orgID, updatedBy string) error
 	DeleteAPIPortal(handle, orgID, actor string) error
 	// AuthHeaderForPortal returns the "SharedKey <raw>" Authorization header for
 	// calling the portal's admin API. The shared key is stored encrypted and only

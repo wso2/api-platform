@@ -191,6 +191,9 @@ data:
             gatewayControllerHost: ""
             logLevel: info
             moesifKey: ""
+            moesifKeySecretRef:
+              name: ""
+              key: moesif-key
           livenessProbe:
             httpGet:
               path: /_gateway-health/healthy

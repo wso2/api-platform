@@ -452,6 +452,176 @@ and
 |deploymentState|deployed|
 |deploymentState|undeployed|
 
+## GraphQLAPIConfigData
+
+<a id="schemagraphqlapiconfigdata"></a>
+<a id="schema_GraphQLAPIConfigData"></a>
+<a id="tocSgraphqlapiconfigdata"></a>
+<a id="tocsgraphqlapiconfigdata"></a>
+
+```json
+{
+  "displayName": "Countries GraphQL API",
+  "version": "v1.0",
+  "context": "/countries/$version/graphql",
+  "upstream": {
+    "main": {
+      "url": "http://prod-backend:5000/api/v2",
+      "ref": "string",
+      "hostRewrite": "auto",
+      "tls": {}
+    },
+    "sandbox": {
+      "url": "http://prod-backend:5000/api/v2",
+      "ref": "string",
+      "hostRewrite": "auto",
+      "tls": {}
+    }
+  },
+  "subscriptionPlans": [
+    "Gold",
+    "Silver"
+  ],
+  "policies": [
+    {
+      "name": "cors",
+      "version": "v1",
+      "executionCondition": "request.metadata[authenticated] != true",
+      "params": {}
+    }
+  ],
+  "deploymentState": "deployed"
+}
+
+```
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|displayName|string|true|none|Human-readable API name (must be URL-friendly - only letters, numbers, spaces, hyphens, underscores, and dots allowed)|
+|version|string|true|none|Semantic version of the API. Both major-only (v1) and major.minor (v1.0) forms are accepted.|
+|context|string|true|none|Base path for the single GraphQL endpoint (must start with /, no trailing slash). Use $version to embed the version in the path (e.g., /countries/$version resolves to /countries/v1.0). A GraphQLApi always exposes exactly one POST route at this path — there is no per-operation path list. Suggested (not enforced) convention: end the path with /graphql, matching how most standalone GraphQL servers name their single endpoint (e.g. /countries/$version/graphql) — this is not validated or required.|
+|upstream|object|true|none|API-level upstream configuration. A GraphQLApi has exactly one logical endpoint (no per-operation paths), so upstream.main.url is the single GraphQL endpoint to proxy to. Only a direct inline url is supported — GraphQLAPIConfigData has no upstreamDefinitions list, so upstream.ref (used by RestApi to reference a predefined upstreamDefinition) cannot be resolved and is rejected.|
+|» main|[Upstream](#schemaupstream)|true|none|Upstream backend configuration (single target or reference)|
+|» sandbox|[Upstream](#schemaupstream)|false|none|Upstream backend configuration (single target or reference)|
+|subscriptionPlans|[string]|false|none|List of subscription plan names available for this API|
+|policies|[[Policy](#schemapolicy)]|false|none|List of policies applied to the GraphQL route(s). A GraphQLApi has<br>no operations[] list to add an explicit `OPTIONS` entry to the way<br>a RestApi does, so when a `cors` policy is attached, the gateway<br>synthesizes an OPTIONS route for the same path itself, sharing this<br>same policy chain — this is what lets `cors` (and every other<br>policy in this list, in declared order) answer a browser's<br>preflight request.|
+|deploymentState|string|false|none|Desired deployment state - 'deployed' (default) or 'undeployed'. When set to 'undeployed', the API is removed from router traffic but configuration, API keys, and policies are preserved for potential redeployment.|
+
+##### Enumerated Values
+
+|Property|Value|
+|---|---|
+|deploymentState|deployed|
+|deploymentState|undeployed|
+
+## GraphQLAPIRequest
+
+<a id="schemagraphqlapirequest"></a>
+<a id="schema_GraphQLAPIRequest"></a>
+<a id="tocSgraphqlapirequest"></a>
+<a id="tocsgraphqlapirequest"></a>
+
+```json
+{
+  "apiVersion": "gateway.api-platform.wso2.com/v1",
+  "kind": "GraphQLApi",
+  "metadata": {
+    "name": "countries-graphql-api-v1.0"
+  },
+  "spec": {
+    "displayName": "Countries-GraphQL-API",
+    "version": "v1.0",
+    "context": "/countries/$version/graphql",
+    "upstream": {
+      "main": {
+        "url": "https://countries.trevorblades.com/graphql"
+      }
+    },
+    "policies": [
+      {
+        "name": "jwt-auth",
+        "version": "v1"
+      }
+    ]
+  }
+}
+
+```
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|apiVersion|string|true|none|API specification version|
+|kind|string|true|none|API type|
+|metadata|[Metadata](#schemametadata)|true|none|none|
+|spec|[GraphQLAPIConfigData](#schemagraphqlapiconfigdata)|true|none|none|
+
+##### Enumerated Values
+
+|Property|Value|
+|---|---|
+|apiVersion|gateway.api-platform.wso2.com/v1|
+|kind|GraphQLApi|
+
+## GraphQLAPI
+
+<a id="schemagraphqlapi"></a>
+<a id="schema_GraphQLAPI"></a>
+<a id="tocSgraphqlapi"></a>
+<a id="tocsgraphqlapi"></a>
+
+```json
+{
+  "apiVersion": "gateway.api-platform.wso2.com/v1",
+  "kind": "GraphQLApi",
+  "metadata": {
+    "name": "countries-graphql-api-v1.0"
+  },
+  "spec": {
+    "displayName": "Countries-GraphQL-API",
+    "version": "v1.0",
+    "context": "/countries/$version/graphql",
+    "upstream": {
+      "main": {
+        "url": "https://countries.trevorblades.com/graphql"
+      }
+    },
+    "policies": [
+      {
+        "name": "jwt-auth",
+        "version": "v1"
+      }
+    ]
+  },
+  "status": {
+    "id": "countries-graphql-api-v1.0",
+    "state": "deployed",
+    "createdAt": "2026-08-11T10:00:00Z",
+    "updatedAt": "2026-08-11T10:00:00Z",
+    "deployedAt": "2026-08-11T10:00:00Z"
+  }
+}
+
+```
+
+#### Properties
+
+allOf
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|[GraphQLAPIRequest](#schemagraphqlapirequest)|false|none|none|
+
+and
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|object|false|none|none|
+|» status|[ResourceStatus](#schemaresourcestatus)|false|read-only|Server-managed lifecycle fields. Populated on responses.|
+
 ## UpstreamDefinition
 
 <a id="schemaupstreamdefinition"></a>
@@ -1103,16 +1273,18 @@ Details of an API key
 
 ```
 
+Partial update. Fields that are omitted are left unchanged.
+
 #### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|planName|string|false|none|none|
-|billingPlan|string|false|none|none|
+|planName|string|false|none|New plan name. Must not be empty or already used by another plan. APIs refer to plans<br>by name, so an API that lists the old name no longer accepts this plan after a rename.|
+|billingPlan|string¦null|false|none|Send an explicit null (or an empty string) to remove the billing plan.|
 |stopOnQuotaReach|boolean|false|none|none|
-|throttleLimitCount|integer|false|none|none|
-|throttleLimitUnit|string|false|none|none|
-|expiryTime|string(date-time)|false|none|none|
+|throttleLimitCount|integer¦null|false|none|Set together with throttleLimitUnit. Send an explicit null for both fields to remove the<br>limit, which makes the plan unlimited.|
+|throttleLimitUnit|string¦null|false|none|Set together with throttleLimitCount. Send an explicit null for both fields to remove the limit.|
+|expiryTime|string(date-time)¦null|false|none|Send an explicit null to remove the expiry time.|
 |status|string|false|none|none|
 
 ##### Enumerated Values
@@ -1218,6 +1390,7 @@ Details of an API key
 
 ```json
 {
+  "externalRefId": "apim-sub-7f1c2a9e",
   "apiId": "c9f2b6ae-1234-5678-9abc-def012345678",
   "subscriptionToken": "sub-token-abc123xyz",
   "applicationId": "string",
@@ -1233,6 +1406,7 @@ Details of an API key
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
+|externalRefId|string|false|none|Optional caller-supplied reference ID. When provided, it is used as the subscription ID<br>instead of a gateway-generated one. Must be unique within the gateway.|
 |apiId|string|true|none|API identifier (deployment ID or handle)|
 |subscriptionToken|string|true|none|Opaque subscription token for API invocation (required; stored as hash only)|
 |applicationId|string|false|none|Application identifier (from DevPortal/STS). Optional for token-based subscriptions.|
@@ -1258,16 +1432,22 @@ Details of an API key
 
 ```json
 {
-  "status": "ACTIVE"
+  "status": "ACTIVE",
+  "subscriptionPlanId": "string",
+  "subscriptionToken": "string"
 }
 
 ```
+
+Partial update. Fields that are omitted are left unchanged.
 
 #### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |status|string|false|none|none|
+|subscriptionPlanId|string¦null|false|none|Subscription plan UUID. The plan must exist, be ACTIVE and be enabled for the subscribed API.<br>Send an explicit null to remove the plan from the subscription.|
+|subscriptionToken|string|false|write-only|New opaque subscription token. Rotates the token in place.|
 
 ##### Enumerated Values
 
@@ -1287,6 +1467,7 @@ Details of an API key
 ```json
 {
   "id": "string",
+  "externalRefId": "string",
   "apiId": "string",
   "applicationId": "string",
   "subscriptionToken": "string",
@@ -1306,6 +1487,7 @@ Details of an API key
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |id|string|false|none|none|
+|externalRefId|string|false|none|Caller-facing reference ID of the subscription.|
 |apiId|string|false|none|none|
 |applicationId|string|false|none|none|
 |subscriptionToken|string|false|none|Opaque subscription token (returned only on create; use Platform-API to retrieve for existing subscriptions)|
@@ -1337,6 +1519,7 @@ Details of an API key
   "subscriptions": [
     {
       "id": "string",
+      "externalRefId": "string",
       "apiId": "string",
       "applicationId": "string",
       "subscriptionToken": "string",

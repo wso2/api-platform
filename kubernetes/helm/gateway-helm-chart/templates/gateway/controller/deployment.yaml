@@ -1,6 +1,12 @@
 {{- $controller := .Values.gateway.controller -}}
 {{- $deployment := $controller.deployment -}}
+{{- $serverTls := default (dict) .Values.gateway.config.controller.server.tls -}}
+{{- $restApiTls := $controller.restApiTls -}}
+{{- $mountRestApiCerts := and $serverTls.enabled (ne $restApiTls.certificateProvider "none") -}}
 {{- if $deployment.enabled }}
+{{- if and $serverTls.enabled (eq $restApiTls.certificateProvider "secret") (not $restApiTls.secret.name) }}
+{{- fail "gateway.controller.restApiTls.secret.name is required when gateway.config.controller.server.tls.enabled=true and restApiTls.certificateProvider=secret." }}
+{{- end }}
 {{- if not $controller.encryptionKeys.enabled }}
 {{- fail "gateway.controller.encryptionKeys must be enabled: at-rest encryption is mandatory. Provision the AES-256 key secret and set gateway.controller.encryptionKeys.enabled=true with a secretName." }}
 {{- end }}
@@ -127,9 +133,15 @@ spec:
             {{- toYaml . | nindent 12 }}
             {{- end }}
           ports:
+            {{- if $serverTls.enabled }}
+            - name: rest-tls
+              containerPort: {{ $serverTls.port }}
+              protocol: TCP
+            {{- else }}
             - name: rest
               containerPort: {{ $controller.service.ports.rest }}
               protocol: TCP
+            {{- end }}
             - name: xds
               containerPort: {{ $controller.service.ports.xds }}
               protocol: TCP
@@ -161,6 +173,11 @@ spec:
             {{- if $controller.tls.enabled }}
             - name: listener-certs
               mountPath: /app/listener-certs
+              readOnly: true
+            {{- end }}
+            {{- if $mountRestApiCerts }}
+            - name: rest-api-certs
+              mountPath: /app/rest-api-certs
               readOnly: true
             {{- end }}
             {{- if $controller.upstreamCerts.enabled }}
@@ -209,6 +226,20 @@ spec:
                 path: default-listener.crt
               - key: {{ if eq $controller.tls.certificateProvider "cert-manager" }}tls.key{{ else }}{{ $controller.tls.secret.keyKey }}{{ end }}
                 path: default-listener.key
+        {{- end }}
+        {{- if $mountRestApiCerts }}
+        - name: rest-api-certs
+          secret:
+            {{- if eq $restApiTls.certificateProvider "cert-manager" }}
+            secretName: {{ include "gateway-operator.fullname" . }}-controller-rest-api-tls
+            {{- else }}
+            secretName: {{ $restApiTls.secret.name }}
+            {{- end }}
+            items:
+              - key: {{ if eq $restApiTls.certificateProvider "cert-manager" }}tls.crt{{ else }}{{ $restApiTls.secret.certKey }}{{ end }}
+                path: tls.crt
+              - key: {{ if eq $restApiTls.certificateProvider "cert-manager" }}tls.key{{ else }}{{ $restApiTls.secret.keyKey }}{{ end }}
+                path: tls.key
         {{- end }}
         {{- if $controller.upstreamCerts.enabled }}
         {{- if $controller.upstreamCerts.secretName }}

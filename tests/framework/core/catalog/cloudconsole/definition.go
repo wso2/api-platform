@@ -22,8 +22,9 @@ const (
 	// Name is the catalog name of the external APIP cloud target.
 	Name = "cloud-console"
 
-	// EndpointAPIPBML is the APIP BML control-plane endpoint.
-	EndpointAPIPBML = "apip-bml"
+	// EndpointAPIPPlatformAPI is the apip-platform-api control-plane endpoint,
+	// reached through the external CP gateway.
+	EndpointAPIPPlatformAPI = "apip-platform-api"
 )
 
 // CloudConsole returns the externally hosted APIP cloud target.
@@ -33,7 +34,7 @@ func CloudConsole() *components.Definition {
 		Alias: Name,
 		External: &components.ExternalSpec{
 			Endpoints: []components.ExternalEndpoint{
-				{Name: EndpointAPIPBML},
+				{Name: EndpointAPIPPlatformAPI},
 			},
 			RequiredParameters: []string{EnvironmentParameter},
 			Resolve:            resolveEndpoints,

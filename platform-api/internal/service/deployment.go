@@ -79,6 +79,7 @@ func NewDeploymentService(
 	auditRepo repository.AuditRepository,
 	apiUtil *utils.APIUtil,
 	definitions ArtifactDefinitions,
+	identity *IdentityService,
 	cfg *config.Server,
 	slogger *slog.Logger,
 ) *DeploymentService {
@@ -92,7 +93,7 @@ func NewDeploymentService(
 		gatewayEventsService: gatewayEventsService,
 		auditRepo:            auditRepo,
 		apiUtil:              apiUtil,
-		builds:               NewBuildService(artifactRepo, deploymentRepo, definitions, cfg, slogger),
+		builds:               NewBuildService(artifactRepo, deploymentRepo, definitions, identity, cfg, slogger),
 		cfg:                  cfg,
 		slogger:              slogger,
 	}
@@ -1086,18 +1087,18 @@ func (s *DeploymentService) getUUIDByHandle(handle, orgUUID string) (string, err
 		return "", apperror.ValidationFailed.New("artifact handle is required")
 	}
 
-	artifact, err := s.artifactRepo.GetByHandle(handle, orgUUID)
+	// Handles are unique only WITHIN a kind, so the lookup is scoped to this
+	// endpoint's kind: an artifact of another kind sharing the handle neither
+	// resolves here nor hides this kind's artifact.
+	artifact, err := s.artifactRepo.GetAPIMetadataByHandleAndKind(handle, constants.RestApi, orgUUID)
 	if err != nil {
 		return "", err
 	}
-	// Handles are unique only WITHIN a kind, and this lookup spans every kind's
-	// table, so an artifact of another kind that happens to share the handle must
-	// not be reachable through this endpoint.
-	if artifact == nil || artifact.Type != constants.RestApi {
+	if artifact == nil {
 		return "", apperror.RESTAPINotFound.New()
 	}
 
-	return artifact.UUID, nil
+	return artifact.ID, nil
 }
 
 // GetDeploymentByHandle retrieves a single deployment using API handle

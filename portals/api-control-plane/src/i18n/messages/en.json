@@ -884,7 +884,7 @@
     "description": "Label for the built-in first tab of the Settings page. A noun naming the section, not a command."
   },
   "apiControlPlane.navigation.useSettingsTabs.subscriptionPlansTab": {
-    "defaultMessage": "Subscription plans",
+    "defaultMessage": "Subscription Plans",
     "description": "Label for the built-in organization-level Settings tab listing rate-limit tiers."
   },
   "apiControlPlane.pages.appShell.APIQuickSelector.apis": {
@@ -2627,6 +2627,10 @@
   "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.errorMessage": {
     "defaultMessage": "Unable to load the publish details."
   },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.inactivePlansBlock": {
+    "defaultMessage": "Clear inactive plans to save or publish: {names}.",
+    "description": "Warning when Save Draft or Publish is blocked because the selection still holds inactive plans. {names} is a comma-separated list of plan names."
+  },
   "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.loading": {
     "defaultMessage": "Loading publish details"
   },
@@ -2636,6 +2640,10 @@
   "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.publishedBannerMeta": {
     "defaultMessage": "Updated {time}",
     "description": "Banner byline. {time} is a relative time such as \"2 days ago\"."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.removedPlans": {
+    "defaultMessage": "A selected subscription plan no longer exists and was removed from the selection.",
+    "description": "Notice when a plan deleted elsewhere is dropped from the selected plans."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.subtitle": {
     "defaultMessage": "To <name>{portalName}</name>",
@@ -2709,8 +2717,19 @@
   "apiControlPlane.pages.appShell.appShellPages.portals.components.ApiDetailsTab.versionLabel": {
     "defaultMessage": "Version"
   },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PlanCard.inactive": {
+    "defaultMessage": "Inactive",
+    "description": "Status pill on a plan card."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PlanCard.inactiveSelected": {
+    "defaultMessage": "Clear inactive plan to save or publish."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PlanCard.unlimitedValue": {
+    "defaultMessage": "Unlimited",
+    "description": "Plan card value when the plan has no configured limit."
+  },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.PortalPublicationCard.goToPublish": {
-    "defaultMessage": "Go to publish",
+    "defaultMessage": "Go to Publish",
     "description": "Card action opening the publish flow for this API on this portal."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.PortalPublicationCard.statusLabel": {
@@ -2718,7 +2737,7 @@
     "description": "Row label for the API's publication status on this portal."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.PortalPublicationCard.viewInPortal": {
-    "defaultMessage": "View in portal",
+    "defaultMessage": "View in Portal",
     "description": "Link opening this API's own page on the portal, in a new tab."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.PublicationLoadError.forbiddenMessage": {
@@ -2778,6 +2797,39 @@
     "defaultMessage": "This is not valid {format}: {detail}",
     "description": "{format} is JSON, YAML or GraphQL; {detail} is the parser’s own message naming the line."
   },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.clearAll": {
+    "defaultMessage": "Clear all"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.emptyDescription": {
+    "defaultMessage": "Create subscription plans in Settings to choose from here."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.emptyTitle": {
+    "defaultMessage": "No subscription plans"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.error": {
+    "defaultMessage": "Unable to load subscription plans."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.inactiveSelectedSummary": {
+    "defaultMessage": "{count, plural, one {# inactive plan selected} other {# inactive plans selected}}",
+    "description": "Warning next to the selection summary: selected plans that are no longer active."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.loading": {
+    "defaultMessage": "Loading subscription plans"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.publishedEmptyTitle": {
+    "defaultMessage": "This listing has no subscription plans."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.publishedSummary": {
+    "defaultMessage": "{count, plural, one {<n>#</n> plan published} other {<n>#</n> plans published}}",
+    "description": "<n> wraps the number, which is styled."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.selectAll": {
+    "defaultMessage": "Select all"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.selectedSummary": {
+    "defaultMessage": "{count} of {total} plans selected",
+    "description": "{count} is a styled number rendered as a React element, not plain text; {total} is a plain number."
+  },
   "apiControlPlane.pages.appShell.appShellPages.portals.utils.publicationDisplay.deprecated": {
     "defaultMessage": "Deprecated",
     "description": "Status chip: this API is still listed on this portal but flagged as deprecated."
@@ -2798,6 +2850,21 @@
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.utils.publicationForm.versionRequired": {
     "defaultMessage": "Enter a version."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.utils.subscriptionPlanLimit.noRequestCap": {
+    "defaultMessage": "no request cap"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.utils.subscriptionPlanLimit.unitBandwidth": {
+    "defaultMessage": "{unit} / {amount, plural, one {{timeUnit, select, MINUTE {minute} HOUR {hour} DAY {day} other {month}}} other {# {timeUnit, select, MINUTE {minutes} HOUR {hours} DAY {days} other {months}}}}",
+    "description": "Bandwidth limit unit. {unit} is the server-supplied limitCountUnit (e.g. \"MB\"); {amount} and {timeUnit} describe the window."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.utils.subscriptionPlanLimit.unitRequests": {
+    "defaultMessage": "requests / {amount, plural, one {{timeUnit, select, MINUTE {minute} HOUR {hour} DAY {day} other {month}}} other {# {timeUnit, select, MINUTE {minutes} HOUR {hours} DAY {days} other {months}}}}",
+    "description": "Request-count limit unit. {amount} is how many time units the window spans; {timeUnit} is MINUTE, HOUR, DAY or MONTH."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.utils.subscriptionPlanLimit.unitTokens": {
+    "defaultMessage": "tokens / {amount, plural, one {{timeUnit, select, MINUTE {minute} HOUR {hour} DAY {day} other {month}}} other {# {timeUnit, select, MINUTE {minutes} HOUR {hours} DAY {days} other {months}}}}",
+    "description": "Token-count limit unit. {amount} and {timeUnit} describe the window."
   },
   "apiControlPlane.pages.appShell.appShellPages.projects.ProjectsList.deleteLabel": {
     "defaultMessage": "Delete {name}",
@@ -3016,7 +3083,7 @@
     "defaultMessage": "Define the rate and quota tiers applications can subscribe to."
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.title": {
-    "defaultMessage": "Subscription plans"
+    "defaultMessage": "Subscription Plans"
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.unlimitedChip": {
     "defaultMessage": "req · ∞",

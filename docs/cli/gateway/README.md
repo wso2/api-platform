@@ -570,6 +570,7 @@ kind: Subscription
 metadata:
   name: petstore-acme-bronze
 spec:
+  externalRefId: acme-petstore-sub-01   # optional
   apiId: petstore-api-v1.0
   subscriptionPlanId: bronze-1k-per-min
   status: ACTIVE
@@ -579,6 +580,7 @@ spec:
 Notes:
 
 - `spec.apiId` is required.
+- `spec.externalRefId` is optional. When set, the gateway uses it as the subscription ID instead of generating one, so you can `get`, `update` and `delete` the subscription by your own ID. It must be 1-64 characters of letters, digits, `.`, `_` or `-`, start with a letter or digit, and be unique on the gateway.
 - `spec.subscriptionToken` must be a plain string. Secret references (`valueFrom`) are an operator-only feature and are not resolved by the CLI.
 - Sample CR: [`gateway/examples/subscription.yaml`](../../../gateway/examples/subscription.yaml).
 
@@ -617,17 +619,31 @@ ap gateway subscription get --id sub-1
 
 ### `ap gateway subscription update`
 
-Updates a subscription's status.
+Updates a subscription in place. Only the fields you pass are changed.
 
 ```shell
-ap gateway subscription update --id <subscription-id> --status <ACTIVE|INACTIVE|REVOKED> [--platform <platform>] [--gateway <display-name>]
+ap gateway subscription update --id <subscription-id> \
+  [--status <ACTIVE|INACTIVE|REVOKED>] \
+  [--subscription-plan-id <plan-id> | --clear-subscription-plan] \
+  [--rotate-token | --subscription-token <token>] \
+  [--platform <platform>] [--gateway <display-name>]
 ```
 
-Example:
+Examples:
 
 ```shell
 ap gateway subscription update --id sub-1 --status REVOKED
+ap gateway subscription update --id sub-1 --subscription-plan-id gold-plan-id
+ap gateway subscription update --id sub-1 --clear-subscription-plan
+ap gateway subscription update --id sub-1 --rotate-token
 ```
+
+Notes:
+
+- Pass at least one of `--status`, `--subscription-plan-id`, `--clear-subscription-plan`, `--rotate-token` or `--subscription-token`.
+- The new plan must exist, be `ACTIVE` and be enabled for the subscribed API.
+- `--rotate-token` prompts for the new token with hidden input. `--subscription-token` takes it on the command line, where it can end up in shell history, so it isn't recommended. The previous token stops working as soon as the update succeeds, and the token is never returned.
+- The gateway rejects a token that another subscription on the same API already uses (`409`).
 
 ### `ap gateway subscription delete`
 

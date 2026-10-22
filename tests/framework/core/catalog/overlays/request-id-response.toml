@@ -1,0 +1,2 @@
+[router.http_listener]
+return_request_id_in_response = false

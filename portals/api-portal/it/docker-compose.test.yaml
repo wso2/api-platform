@@ -47,7 +47,8 @@ services:
       - ./.certs:/app/data/certs:ro
       - ./.certs:/etc/platform-api/keys:ro
     healthcheck:
-      test: ["CMD", "curl", "-fk", "https://localhost:9243/health"]
+      # The platform-api image does not ship curl; check that the HTTPS listener accepts connections.
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/9243"]
       interval: 5s
       timeout: 5s
       retries: 20

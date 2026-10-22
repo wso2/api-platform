@@ -767,8 +767,8 @@ components:
           example: v1.0
         projectId:
           type: string
-          description: UUID of the project this API belongs to
-          example: 550e8400-e29b-41d4-a716-446655440000
+          description: Handle of the project this API belongs to (the project UUID is also accepted)
+          example: my-project
         context:
           type: string
           description: Base path for the API (must start with /)
@@ -859,7 +859,7 @@ components:
           example: v1.0
         projectId:
           type: string
-          example: 550e8400-e29b-41d4-a716-446655440000
+          example: my-project
         context:
           type: string
           example: /my-websub-api
@@ -1075,8 +1075,8 @@ components:
           example: v1.0
         projectId:
           type: string
-          description: UUID of the project this API belongs to
-          example: 550e8400-e29b-41d4-a716-446655440000
+          description: Handle of the project this API belongs to (the project UUID is also accepted)
+          example: my-project
         context:
           type: string
           description: Base path for the API (must start with /)
@@ -1200,7 +1200,7 @@ components:
           example: v1.0
         projectId:
           type: string
-          example: 550e8400-e29b-41d4-a716-446655440000
+          example: my-project
         context:
           type: string
           example: /my-webbroker-api

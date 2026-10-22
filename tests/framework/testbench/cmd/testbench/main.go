@@ -44,6 +44,7 @@ import (
 	"github.com/wso2/api-platform/tests/framework/testbench/services/mcp"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/oauth2"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/oidc"
+	"github.com/wso2/api-platform/tests/framework/testbench/services/opa"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/openai"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/tlsbackend"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/webhook"
@@ -117,6 +118,7 @@ func services() ([]testbench.Service, error) {
 		oidcSvc,
 		guardian.New(),
 		graphqlbackend.New(),
+		opa.New(),
 	}, nil
 }
 

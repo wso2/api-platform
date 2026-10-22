@@ -35,6 +35,42 @@ serviceAccount:
   # Individual pods can override via gateway.<component>.deployment.automountServiceAccountToken.
   automountServiceAccountToken: true
 
+# OpenShift-specific resources, rendered only when openshift.enabled=true. The chart does
+# not create Routes for API traffic: the hostnames the gateway runtime serves come from the
+# virtual hosts configured at the gateway level (gateway.config.router.vhosts) and in each
+# API definition, so create Routes to the gateway-runtime Service for the hostnames you use.
+# Security contexts are configured per component under
+# gateway.<component>.deployment.{podSecurityContext,securityContext}.
+openshift:
+  enabled: false
+  routes:
+    # Gateway-controller management REST API. Uses edge termination while the API serves
+    # plain HTTP; when gateway.config.controller.server.tls.enabled=true, set termination
+    # to passthrough or reencrypt instead.
+    # Off by default: it is an administrative surface. Install fails while
+    # gateway.config.controller.auth still has the default password or no authentication.
+    managementApi:
+      enabled: false
+      # Empty lets OpenShift generate <route-name>-<namespace>.<apps-domain>.
+      hostname: ""
+      annotations: {}
+      labels: {}
+      tls:
+        # edge (plain HTTP API) | passthrough | reencrypt (HTTPS API)
+        termination: edge
+        # None | Allow | Redirect (passthrough supports None or Redirect)
+        insecureEdgeTerminationPolicy: Redirect
+        # PEM certificate, key and CA chain served by the router.
+        # Leave empty to use the router's default certificate.
+        certificate: ""
+        key: ""
+        caCertificate: ""
+        # reencrypt only: PEM CA that signed the controller's REST API certificate
+        # (gateway.controller.restApiTls), so the router can verify the backend. reencrypt with
+        # the chart's self-signed Issuer is rejected unless this is set; otherwise use a real
+        # issuer or a Secret signed by the OpenShift service CA (trusted by the router without it).
+        destinationCACertificate: ""
+
 ## moved to each component's deployment block below
 
 # Component-level configuration
@@ -77,6 +113,26 @@ gateway:
         # instead of blocking gateway startup entirely. Off by default: an invalid
         # deployment fails startup loudly so the issue can't go unnoticed.
         skip_invalid_deployments_on_startup: false
+
+        # HTTPS for the REST management API. When enabled, the controller serves
+        # the API over TLS on `port` ONLY — the plaintext api_port listener is not
+        # started. The Service publishes this port as "rest-tls" in place of "rest".
+        # The certificate is provisioned by gateway.controller.restApiTls and
+        # mounted at /app/rest-api-certs (matching the cert_path/key_path defaults).
+        tls:
+          enabled: false
+          port: 9093
+          cert_path: "./rest-api-certs/tls.crt"
+          key_path: "./rest-api-certs/tls.key"
+          # TLS1_0 | TLS1_1 | TLS1_2 | TLS1_3
+          minimum_protocol_version: TLS1_2
+          maximum_protocol_version: TLS1_3
+          # Comma-separated Go crypto/tls cipher suite names (TLS 1.2 and below).
+          # Empty = Go's secure defaults.
+          ciphers: ""
+          # TLS 1.3 key-exchange groups, most preferred first. Hybrid post-quantum
+          # first, with classical fallbacks for clients that don't offer it.
+          ecdh_curves: "X25519MLKEM768,X25519,P-256"
 
       # Dedicated admin/debug HTTP server (config dump, xDS sync status). Already
       # effectively active today even though this block was previously absent from
@@ -399,6 +455,8 @@ gateway:
         per_connection_buffer_limit_bytes: 1048576
         # Disable RFC 3986 dot-segment normalization and duplicate-slash merging
         disable_path_normalization: false
+        # Return the request ID in the x-request-id response header
+        return_request_id_in_response: true
         # Escaped slash handling: KEEP_UNCHANGED | REJECT_REQUEST |
         # UNESCAPE_AND_REDIRECT | UNESCAPE_AND_FORWARD
         path_with_escaped_slashes_action: KEEP_UNCHANGED
@@ -661,6 +719,8 @@ gateway:
       labels: {}
       ports:
         rest: 9090
+        # Published instead of `rest` when gateway.config.controller.server.tls.enabled
+        restTls: 9093
         xds: 18000
         policy: 18001
         admin: 9092
@@ -691,6 +751,7 @@ gateway:
       # LoadBalancer; empty = auto-allocate.
       nodePorts:
         rest: ""
+        restTls: ""
         xds: ""
         policy: ""
         admin: ""
@@ -744,6 +805,38 @@ gateway:
         # Name of existing secret containing tls.crt and tls.key
         name: gateway-tls
         # Key names in the secret
+        certKey: tls.crt
+        keyKey: tls.key
+    # Certificate for the HTTPS REST management API, used only when
+    # gateway.config.controller.server.tls.enabled=true. Mounted at /app/rest-api-certs
+    # as tls.crt / tls.key.
+    restApiTls:
+      # Certificate provisioning method: "cert-manager", "secret", or "none"
+      # - cert-manager: Issue a Certificate with cert-manager
+      # - secret: Use an existing Kubernetes secret
+      # - none: Mount the certificate yourself (deployment.extraVolumes/extraVolumeMounts)
+      #         and point gateway.config.controller.server.tls.cert_path/key_path at it
+      certificateProvider: cert-manager
+      certManager:
+        # Create a Certificate resource
+        create: true
+        # Issuer for the Certificate. An empty name uses the chart's self-signed Issuer
+        # (<release>-selfsigned-issuer, created if needed) — for development only.
+        issuerRef:
+          name: ""
+          kind: Issuer
+          # group: cert-manager.io
+        # Certificate common name. Empty = the controller Service name.
+        commonName: ""
+        # DNS names for the certificate. Empty = the controller Service's in-cluster names and
+        # localhost (for kubectl port-forward), plus openshift.routes.managementApi.hostname
+        # when that Route uses passthrough.
+        dnsNames: []
+        duration: 2160h
+        renewBefore: 720h
+      secret:
+        # Name of existing secret containing the certificate and key (required for provider=secret)
+        name: ""
         certKey: tls.crt
         keyKey: tls.key
     # Upstream certificate configuration for backend TLS verification
@@ -1019,7 +1112,15 @@ gateway:
       env:
         gatewayControllerHost: ""
         logLevel: info
+        # Moesif collector key (application ID), passed to the gateway runtime as the
+        # MOESIF_KEY env var. Set it either as a plaintext value (moesifKey) or as a
+        # reference to a key in an existing Kubernetes Secret in the release namespace
+        # (moesifKeySecretRef). When moesifKeySecretRef.name is set it takes precedence
+        # and moesifKey is ignored.
         moesifKey: ""
+        moesifKeySecretRef:
+          name: ""
+          key: moesif-key
         # Router (Envoy) admin interface (config_dump, stats, /runtime_modify, etc.).
         # Off by default — it isn't even present in the static Envoy bootstrap unless
         # this is true, and is bound to loopback-only when enabled, so it's never

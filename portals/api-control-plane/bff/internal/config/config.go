@@ -251,6 +251,9 @@ type ClaimMappingConfig struct {
 	OrgID     string `koanf:"organization"`
 	OrgName   string `koanf:"org_name"`
 	OrgHandle string `koanf:"org_handle"`
+	// Picture is the claim holding the user's avatar URL. Left unset it reads the
+	// standard OIDC "picture" claim.
+	Picture string `koanf:"picture"`
 }
 
 // CSRFHeaderName is the header the SPA must set on every state-mutating request,

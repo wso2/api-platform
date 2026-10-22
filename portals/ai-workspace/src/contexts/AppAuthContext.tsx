@@ -25,7 +25,11 @@ import { useResourceLimits } from '../hooks/useResourceLimits';
 export type LoginOptions = {
   /** Federated identity provider id, e.g. `google`. */
   fidp?: string;
-  /** Account to prefill at the provider, typically an email address. */
+  /**
+   * Account to prefill at the provider, typically an email address. Forwarded as
+   * `login_hint` (the OIDC name) and as `username` (the name WSO2 Identity Server /
+   * Asgardeo federated authenticators read it under) — see `oidcLoginUrl`.
+   */
   loginHint?: string;
 };
 
@@ -76,9 +80,9 @@ export interface AppAuthContextType {
    * Starts a login. In OIDC mode this is a full-page redirect through the BFF.
    *
    * `fidp` names a federated identity provider and `loginHint` an account; both are
-   * forwarded to the IDP (allowlisted by the BFF) so a login page can offer its own
-   * provider buttons and skip the IDP's chooser. Omit them for the default flow,
-   * where the IDP asks.
+   * forwarded to the IDP (allowlisted by the BFF; the hint under both `login_hint`
+   * and `username`) so a login page can offer its own provider buttons and skip the
+   * IDP's chooser. Omit them for the default flow, where the IDP asks.
    */
   login: (options?: LoginOptions) => Promise<void>;
   logout: () => Promise<void>;

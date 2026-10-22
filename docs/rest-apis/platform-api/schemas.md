@@ -1853,6 +1853,71 @@ List of gateway status information for polling
 |list|[[RESTAPI](#schemarestapi)]|true|none|none|
 |pagination|[Pagination](#schemapagination)|true|none|none|
 
+## RESTAPIVersionListResponse
+
+<a id="schemarestapiversionlistresponse"></a>
+<a id="schema_RESTAPIVersionListResponse"></a>
+<a id="tocSrestapiversionlistresponse"></a>
+<a id="tocsrestapiversionlistresponse"></a>
+
+```json
+{
+  "displayName": "reading-list-api",
+  "versionsAvailable": true,
+  "count": 2,
+  "list": [
+    {
+      "id": "69942b1952c01e01cb249a9b",
+      "version": "v1.0",
+      "projectId": "default-project",
+      "context": "/default-project/reading-list-api/v1.0",
+      "lifeCycleStatus": "PUBLISHED",
+      "createdAt": "2019-08-24T14:15:22Z"
+    }
+  ]
+}
+
+```
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|displayName|string|true|none|The display name the versions were looked up by|
+|versionsAvailable|boolean|true|none|True when at least one REST API already uses this display name, meaning a create for<br>this display name adds a version to an existing API rather than creating a new one.|
+|count|integer|true|none|Number of versions in this response|
+|list|[[RESTAPIVersion](#schemarestapiversion)]|true|none|none|
+
+## RESTAPIVersion
+
+<a id="schemarestapiversion"></a>
+<a id="schema_RESTAPIVersion"></a>
+<a id="tocSrestapiversion"></a>
+<a id="tocsrestapiversion"></a>
+
+```json
+{
+  "id": "69942b1952c01e01cb249a9b",
+  "version": "v1.0",
+  "projectId": "default-project",
+  "context": "/default-project/reading-list-api/v1.0",
+  "lifeCycleStatus": "PUBLISHED",
+  "createdAt": "2019-08-24T14:15:22Z"
+}
+
+```
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|id|string|true|none|Unique handle/identifier of the REST API resource holding this version. Use it to<br>address the version through the other /rest-apis endpoints.|
+|version|string|true|none|Version identifier|
+|projectId|string|true|none|Handle (URL-friendly slug) of the project this version belongs to|
+|context|string|false|none|Context path this version is served on|
+|lifeCycleStatus|string|false|none|Current lifecycle status of this version|
+|createdAt|string(date-time)|false|none|Timestamp when this version was created|
+
 ## TokenRotationResponse
 
 <a id="schematokenrotationresponse"></a>

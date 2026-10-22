@@ -138,7 +138,7 @@ const observabilityLogsPath = (orgHandle: string) =>
  *
  * `observability` claims the built-in Observability item, which is per-API, and
  * stands in for it at organization level as a disclosure with two pages of its
- * own: Logs, which reads `/logs` (served by apip-bml), and a Metrics
+ * own: Logs, which reads `/logs` (served by apip-platform-api), and a Metrics
  * placeholder. Its `aliases` keep the old `/logs` URL alive as a redirect.
  *
  * Inside a project and inside an API there are no logs to show — a gateway's
@@ -274,7 +274,7 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[
         // here — every provisioned gateway lives in one shared project, and a
         // gateway's log line carries no API identity to attribute it by. That is
         // why the project entry below is a notice and not a second console; when
-        // RBAC lands, project scoping has to be a server-side filter in apip-bml.
+        // RBAC lands, project scoping has to be a server-side filter in apip-platform-api.
         level: 'organization',
         children: [
           {

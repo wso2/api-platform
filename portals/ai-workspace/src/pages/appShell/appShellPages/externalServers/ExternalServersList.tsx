@@ -44,6 +44,7 @@ import {
   TableCell,
   TableContainer,
   TableHead,
+  TablePagination,
   TableRow,
   TextField,
   Tooltip,
@@ -60,6 +61,7 @@ import {
 } from '../../../../utils/projectRouting';
 import { PLATFORM_API_BASE_URL } from '../../../../paths';
 import { mcpProxiesApis } from '../../../../apis/MCP/mcpProxiesApis';
+import { fetchAllPages } from '../../../../utils/pagination';
 import type { MCPServer } from '../../../../utils/types';
 import NoMCPServers from '../../../../assets/images/NoMCPServers.svg';
 import { getErrorMessage } from '../../../../utils/apiError';
@@ -71,6 +73,14 @@ import { useResourceLimits } from '../../../../hooks/useResourceLimits';
 function getErrorDescription(error: unknown, fallbackMessage: string): string {
   return getErrorMessage(error, fallbackMessage);
 }
+
+// -1 is MUI's convention for an "All" rows-per-page option.
+const ALL_ROWS = -1;
+const ROWS_PER_PAGE_OPTIONS = [
+  20,
+  50,
+  { label: 'All', value: ALL_ROWS },
+];
 
 export default function ExternalServersList(): React.JSX.Element {
   const navigate = useNavigate();
@@ -105,6 +115,8 @@ export default function ExternalServersList(): React.JSX.Element {
   const isProjectLevel = Boolean(effectiveProject?.id);
   const [selectedProjectId, setSelectedProjectId] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(20);
   const [servers, setServers] = useState<MCPServer[]>([]);
   const [isServersLoading, setIsServersLoading] = useState(false);
   const [hasFetchedServers, setHasFetchedServers] = useState(false);
@@ -121,9 +133,11 @@ export default function ExternalServersList(): React.JSX.Element {
       try {
         setIsServersLoading(true);
         setHasFetchedServers(false);
-        const response = await mcpProxiesApis.getMCPServers(
-          projectId,
-          apimBaseUrl
+        // The collection endpoint defaults to limit=20 when unpaged, and this
+        // list has no pager of its own — walk every page so projects with
+        // more than 20 MCP proxies aren't silently truncated.
+        const response = await fetchAllPages<MCPServer>((limit, offset) =>
+          mcpProxiesApis.getMCPServers(projectId, apimBaseUrl, limit, offset)
         );
         if (!cancelled) {
           setServers(response.list ?? []);
@@ -175,6 +189,31 @@ export default function ExternalServersList(): React.JSX.Element {
         .includes(query)
     );
   }, [searchQuery, servers]);
+
+  useEffect(() => {
+    setPage(0);
+  }, [searchQuery, rowsPerPage]);
+
+  // A search/rowsPerPage change is handled above, but the list can also
+  // shrink out from under the current page from other causes — a delete, a
+  // refresh, or switching projects — which must clamp `page` back into range
+  // too, or the table renders an empty slice while servers still exist.
+  useEffect(() => {
+    if (rowsPerPage === ALL_ROWS) return;
+    const maxPage = Math.max(
+      0,
+      Math.ceil(filteredServers.length / rowsPerPage) - 1
+    );
+    if (page > maxPage) setPage(maxPage);
+  }, [filteredServers.length, rowsPerPage, page]);
+
+  const pagedServers = useMemo(() => {
+    if (rowsPerPage === ALL_ROWS) return filteredServers;
+    return filteredServers.slice(
+      page * rowsPerPage,
+      page * rowsPerPage + rowsPerPage
+    );
+  }, [filteredServers, page, rowsPerPage]);
 
   const handleDeleteConfirm = async () => {
     if (!deleteTarget || !organizationId) return;
@@ -497,7 +536,7 @@ export default function ExternalServersList(): React.JSX.Element {
                         </TableCell>
                       </TableRow>
                     ) : (
-                      filteredServers.map((server) => (
+                      pagedServers.map((server) => (
                         <TableRow
                           key={server.id}
                           hover
@@ -584,6 +623,20 @@ export default function ExternalServersList(): React.JSX.Element {
                   </TableBody>
                 </Table>
               </TableContainer>
+
+              {filteredServers.length >= 20 && (
+                <TablePagination
+                  component="div"
+                  count={filteredServers.length}
+                  page={page}
+                  onPageChange={(_event, nextPage) => setPage(nextPage)}
+                  rowsPerPage={rowsPerPage}
+                  onRowsPerPageChange={(event) =>
+                    setRowsPerPage(parseInt(event.target.value, 10))
+                  }
+                  rowsPerPageOptions={ROWS_PER_PAGE_OPTIONS}
+                />
+              )}
             </Card>
           </Grid>
         </>

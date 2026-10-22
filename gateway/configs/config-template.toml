@@ -478,6 +478,10 @@ per_connection_buffer_limit_bytes = 1048576
 # Disable dot-segment resolution and duplicate-slash merging on the request path. Defaults to
 # false (normalization enabled) so route matching cannot be fooled by ".." or "//" in the path.
 disable_path_normalization = false
+# Return the request ID in the x-request-id response header (same ID as in logs and analytics).
+# Defaults to true. Note: when on, it replaces any x-request-id response header set by a policy
+# or the backend. Set to false to keep the previous behaviour.
+return_request_id_in_response = true
 # How to handle escaped slashes ("%2F"/"%5C") in the request path. Options: "KEEP_UNCHANGED"
 # (default), "REJECT_REQUEST", "UNESCAPE_AND_REDIRECT", "UNESCAPE_AND_FORWARD".
 path_with_escaped_slashes_action = "KEEP_UNCHANGED"
@@ -1249,7 +1253,8 @@ insecure_skip_verify = false
 # A value prefixed "$ctx:" is evaluated as a CEL expression against context
 # built from the collected event; other values are literal strings.
 #
-# Available variables: request.path, request.method, request.id,
+# Available variables: request.path, request.pathTemplate,
+# request.method, request.id,
 # request.header['<name>'] (lower-case keys), response.status,
 # response.header['<name>'], api.id, api.name, api.version, api.context,
 # api.kind, project.id, target.statusCode, target.destination,

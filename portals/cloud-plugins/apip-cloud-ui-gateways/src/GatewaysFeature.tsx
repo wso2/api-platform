@@ -17,9 +17,10 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type FC } from 'react';
-import { Box, Button, CircularProgress, Typography } from '@wso2/oxygen-ui';
+import { Box, CircularProgress } from '@wso2/oxygen-ui';
 import GatewayForm from './GatewayForm';
 import GatewaysList from './GatewaysList';
+import UnexpectedErrorState from './components/UnexpectedErrorState';
 import { createGatewaysClient } from './gatewaysApi';
 import type { AIWorkspaceHostPort } from './hostPort';
 import type { Environment, Gateway, GatewayInput, GatewayType } from './types';
@@ -186,7 +187,7 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
 
   if (loading) {
     return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
+      <Box sx={{ alignItems: 'center', display: 'flex', justifyContent: 'center', py: 8, width: '100%' }}>
         <CircularProgress />
       </Box>
     );
@@ -194,23 +195,11 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
 
   if (error) {
     return (
-      <Box
-        sx={{
-          border: '1px dashed',
-          borderColor: 'divider',
-          borderRadius: 1.5,
-          py: 6,
-          px: 3,
-          textAlign: 'center',
-        }}
-      >
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          {error}
-        </Typography>
-        <Button variant="outlined" size="small" onClick={() => void load()}>
-          Retry
-        </Button>
-      </Box>
+      <UnexpectedErrorState
+        description="We couldn't load your gateways. This is usually temporary - try again in a moment."
+        detail={error}
+        onRetry={() => void load()}
+      />
     );
   }
 
