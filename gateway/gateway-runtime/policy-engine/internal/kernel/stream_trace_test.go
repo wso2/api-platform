@@ -141,3 +141,26 @@ func TestProcess_BufferedResponseSpansUnchanged(t *testing.T) {
 	_, ok := attrOf(phases[0], attribute.Key(constants.AttrStreamChunkCount))
 	assert.False(t, ok, "only a streamed body carries a chunk count")
 }
+
+// With await spans (#3854) on top of the stream collapse: the engine records one await
+// span per change of message type, so a streamed body adds none between its chunks and
+// the trace stays a handful of spans however long the stream is.
+func TestProcess_StreamedResponseAwaitSpansOnlyBetweenPhases(t *testing.T) {
+	server, k, sr := newSpanStatusServer(t)
+	server.tracingEnabled = true
+	registerTestRoute(k, "stream-route", buildChainWithPolicy(t, "streamer", &recordingStreamPolicy{}, nil))
+
+	msgs := []*extprocv3.ProcessingRequest{
+		requestHeadersReq("stream-route", "GET", "/chat"),
+		sseResponseHeadersReq(),
+	}
+	for i := 0; i < 20; i++ {
+		msgs = append(msgs, responseChunkReq("data: x\n\n", i == 19))
+	}
+	require.NoError(t, server.Process(newMockStream(msgs)))
+
+	ended := sr.Ended()
+	assert.Len(t, spansNamed(ended, constants.SpanAwaitNextMessage), 2,
+		"request headers -> response headers, response headers -> first chunk")
+	assert.Len(t, spansNamed(ended, constants.SpanProcessResponseBody), 1)
+}

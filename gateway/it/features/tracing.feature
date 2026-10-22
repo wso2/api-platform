@@ -162,6 +162,9 @@ Feature: Request tracing
     And the span "chat gpt-4o-mini" should have attribute "gen_ai.response.time_to_first_chunk"
     And the trace should have 1 span named "external_processing.process_response_body"
     And the span "external_processing.process_response_body" attribute "stream.chunk_count" should be greater than 1
+    # One await span per phase change (headers -> body -> response headers -> first chunk),
+    # none between the chunks of the stream.
+    And the trace should have 3 spans named "external_processing.await_next_message"
     # Content capture is on in this run.
     And the span "chat gpt-4o-mini" attribute "gen_ai.input.messages" should contain "Plan a trip"
     And the span "chat gpt-4o-mini" attribute "gen_ai.output.messages" should contain "Hello! How can I help?"
