@@ -146,6 +146,9 @@ type PlatformGatewayWiring struct {
 	// PostgreSQL database and alone feeds the runtime over xDS, so every change reaches the
 	// runtime through the event path between the controllers.
 	Controllers int `yaml:"controllers"`
+	// SigningKeys gives the runtime the fixed integration-test signing keys at
+	// /secrets/gateway-runtime/signing. The block's overlay configures them under [signing].
+	SigningKeys bool `yaml:"signingKeys"`
 }
 
 // gatewayGeneratedFiles returns the key material every gateway stack mounts. It is generated
