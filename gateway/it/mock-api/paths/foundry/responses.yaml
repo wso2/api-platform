@@ -1,0 +1,36 @@
+post:
+  summary: Azure AI Foundry Responses API call
+  operationId: createFoundryResponse
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required:
+            - model
+          properties:
+            model:
+              type: string
+  responses:
+    "200":
+      description: The Responses API reports the deployment name, not the model
+      content:
+        application/json:
+          # sol-prod is mapped to azure/gpt-5.6-sol: input=4e-6, output=2e-5
+          # cost = 1000*4e-6 + 200*2e-5 = 4e-3 + 4e-3 = 0.0080000000
+          example:
+            id: resp-FoundrySol
+            object: response
+            created_at: 1792368000
+            status: completed
+            model: sol-prod
+            output: []
+            usage:
+              input_tokens: 1000
+              input_tokens_details:
+                cached_tokens: 0
+              output_tokens: 200
+              output_tokens_details:
+                reasoning_tokens: 0
+              total_tokens: 1200

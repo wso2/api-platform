@@ -4332,7 +4332,7 @@ Limit definition with independent request/token/cost dimensions. If all dimensio
 |vhost|string|false|none|Virtual host name used for routing. Supports standard domain names, subdomains, or wildcard domains. Must follow RFC-compliant hostname rules. Wildcards are only allowed in the left-most label (e.g., *.example.com).|
 |template|string|true|none|Template name to use for this LLM Provider|
 |openapi|string|false|none|OpenAPI specification (JSON or YAML) for the provider endpoint|
-|modelProviders|[[LLMModelProvider](#schemallmmodelprovider)]|false|none|List of model providers and their models supported by this provider. For non-aggregator templates, only a single model provider is allowed (aggregator templates: awsbedrock, azureaifoundry).|
+|modelProviders|[[LLMModelProvider](#schemallmmodelprovider)]|false|none|List of model providers and their models supported by this provider. For non-aggregator templates, only a single model provider is allowed (aggregator templates: awsbedrock, azureai-foundry).|
 |upstream|[Upstream](#schemaupstream)|true|none|Upstream backend configuration with main and sandbox endpoints|
 |accessControl|[LLMAccessControl](#schemallmaccesscontrol)|true|none|none|
 |rateLimiting|[LLMRateLimitingConfig](#schemallmratelimitingconfig)|false|none|Rate limiting configuration for an LLM provider at provider and consumer levels.|

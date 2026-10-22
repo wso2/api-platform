@@ -56,3 +56,17 @@ spec:
         completionTokens:
           location: payload
           identifier: $.usage.output_tokens
+      - resource: /openai/v1/responses
+        promptTokens:
+          location: payload
+          identifier: $.usage.input_tokens
+        completionTokens:
+          location: payload
+          identifier: $.usage.output_tokens
+      - resource: /anthropic/v1/messages
+        promptTokens:
+          location: payload
+          identifier: $.usage.input_tokens
+        completionTokens:
+          location: payload
+          identifier: $.usage.output_tokens

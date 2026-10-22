@@ -56,6 +56,13 @@ paths:
   # Mock OpenAI web search (url_citation annotation)
   /openai/v1/chat-web-search:
     $ref: ./paths/openai/chat_web_search.yaml
+  # Mock Azure AI Foundry (azure-llm-cost)
+  /foundry/openai/v1/chat/completions:
+    $ref: ./paths/foundry/chat.yaml
+  /foundry/openai/v1/responses:
+    $ref: ./paths/foundry/responses.yaml
+  /foundry/openai/v1/chat-data-zone:
+    $ref: ./paths/foundry/chat_data_zone.yaml
   # Mock Mistral
   /mistral/v1/chat/completions:
     $ref: ./paths/mistral/chat.yaml

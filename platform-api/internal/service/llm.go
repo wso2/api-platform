@@ -3384,16 +3384,20 @@ func mapAssociatedGatewaysModelToAPI(in []model.AssociatedGatewayMapping) *[]api
 	return &out
 }
 
+// aggregatorTemplateHandles lists the templates that front several model
+// providers. Keyed by template handle (metadata.name), which is what a
+// provider's Template field carries.
+var aggregatorTemplateHandles = map[string]bool{
+	"awsbedrock":      true,
+	"azureai-foundry": true,
+}
+
 func validateModelProviders(template string, providers *[]api.LLMModelProvider) error {
 	if providers == nil || len(*providers) == 0 {
 		return nil
 	}
 
-	aggregatorTemplates := map[string]bool{
-		"awsbedrock":     true,
-		"azureaifoundry": true,
-	}
-	if !aggregatorTemplates[template] && len(*providers) > 1 {
+	if !aggregatorTemplateHandles[template] && len(*providers) > 1 {
 		return apperror.ValidationFailed.New("Only aggregator templates support more than one provider.")
 	}
 

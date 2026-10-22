@@ -3815,7 +3815,7 @@ type LLMProvider struct {
 	// Id Unique handle for the provider
 	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
 
-	// ModelProviders List of model providers and their models supported by this provider. For non-aggregator templates, only a single model provider is allowed (aggregator templates: awsbedrock, azureaifoundry).
+	// ModelProviders List of model providers and their models supported by this provider. For non-aggregator templates, only a single model provider is allowed (aggregator templates: awsbedrock, azureai-foundry).
 	ModelProviders *[]LLMModelProvider `json:"modelProviders,omitempty" yaml:"modelProviders,omitempty"`
 
 	// Openapi OpenAPI specification (JSON or YAML) for the provider endpoint

@@ -1,0 +1,306 @@
+[
+  {
+    "productName": "Azure OpenAI GPT5",
+    "skuName": "5.6 sol ShortCo Inp Std Gl",
+    "armRegionName": "eastus2",
+    "unitPrice": 4.0,
+    "unitOfMeasure": "1M",
+    "type": "Consumption"
+  },
+  {
+    "productName": "Azure OpenAI GPT5",
+    "skuName": "5.6 sol ShortCo Opt Std Gl",
+    "armRegionName": "eastus2",
+    "unitPrice": 20.0,
+    "unitOfMeasure": "1M",
+    "type": "Consumption"
+  },
+  {
+    "productName": "Azure OpenAI GPT5",
+    "skuName": "5.6 sol ShortCo Cd Inp Std Gl",
+    "armRegionName": "eastus2",
+    "unitPrice": 0.4,
+    "unitOfMeasure": "1M",
+    "type": "Consumption"
+  },
+  {
+    "productName": "Azure OpenAI GPT5",
+    "skuName": "5.6 sol ShortCo Cd Wr Std Gl",
+    "armRegionName": "eastus2",
+    "unitPrice": 5.0,
+    "unitOfMeasure": "1M",
+    "type": "Consumption"
+  },
+  {
+    "productName": "Azure OpenAI GPT5",
+    "skuName": "5.6 sol ShortCo Inp PP Gl",
+    "armRegionName": "eastus2",
+    "unitPrice": 8.0,
+    "unitOfMeasure": "1M",
+    "type": "Consumption"
+  },
+  {
+    "productName": "Azure OpenAI GPT5",
+    "skuName": "5.6 sol LongCo Inp Std Gl",
+    "armRegionName": "eastus2",
+    "unitPrice": 8.0,
+    "unitOfMeasure": "1M",
+    "type": "Consumption"
+  },
+  {
+    "productName": "Azure OpenAI GPT5",
+    "skuName": "56sol ShCo Inp Fl Gl",
+    "armRegionName": "eastus2",
+    "unitPrice": 2.0,
+    "unitOfMeasure": "1M",
+    "type": "Consumption"
+  },
+  {
+    "productName": "Azure OpenAI GPT5",
+    "skuName": "5.6 sol ShortCo Inp Std DZ",
+    "armRegionName": "eastus2",
+    "unitPrice": 4.4,
+    "unitOfMeasure": "1M",
+    "type": "Consumption"
+  },
+  {
+    "productName": "Azure OpenAI GPT5",
+    "skuName": "5.6 sol ShortCo Opt Std DZ",
+    "armRegionName": "eastus2",
+    "unitPrice": 22.0,
+    "unitOfMeasure": "1M",
+    "type": "Consumption"
+  },
+  {
+    "productName": "Azure Llama Models",
+    "skuName": "Llama 3.3 70B Inp glbl",
+    "armRegionName": "eastus2",
+    "unitPrice": 0.00071,
+    "unitOfMeasure": "1K",
+    "type": "Consumption"
+  },
+  {
+    "productName": "Azure Llama Models",
+    "skuName": "Llama 3.3 70B Outp glbl",
+    "armRegionName": "eastus2",
+    "unitPrice": 0.00071,
+    "unitOfMeasure": "1K",
+    "type": "Consumption"
+  },
+  {
+    "productName": "Azure Llama Models",
+    "skuName": "Llama 3.3 70B Inp Dzone",
+    "armRegionName": "eastus2",
+    "unitPrice": 0.000781,
+    "unitOfMeasure": "1K",
+    "type": "Consumption"
+  },
+  {
+    "productName": "Azure Llama Models",
+    "skuName": "Llama 3.3 70B Outp Dzone",
+    "armRegionName": "eastus2",
+    "unitPrice": 0.000781,
+    "unitOfMeasure": "1K",
+    "type": "Consumption"
+  },
+  {
+    "productName": "Azure Llama Models",
+    "skuName": "Llama 3.3 70B Inp regnl",
+    "armRegionName": "eastus2",
+    "unitPrice": 0.000781,
+    "unitOfMeasure": "1K",
+    "type": "Consumption"
+  },
+  {
+    "productName": "Azure Llama Models",
+    "skuName": "Llama 3.3 70B Outp regnl",
+    "armRegionName": "eastus2",
+    "unitPrice": 0.000781,
+    "unitOfMeasure": "1K",
+    "type": "Consumption"
+  },
+  {
+    "productName": "Azure Llama Models",
+    "skuName": "Llama3.3 70b-IN-FT",
+    "armRegionName": "eastus2",
+    "unitPrice": 0.00071,
+    "unitOfMeasure": "1K",
+    "type": "Consumption"
+  },
+  {
+    "productName": "Azure Grok Models",
+    "skuName": "4.7 Inp glbl",
+    "armRegionName": "eastus2",
+    "unitPrice": 2.0,
+    "unitOfMeasure": "1M",
+    "type": "Consumption"
+  },
+  {
+    "productName": "Azure Grok Models",
+    "skuName": "4.7 Outp glbl",
+    "armRegionName": "eastus2",
+    "unitPrice": 6.0,
+    "unitOfMeasure": "1M",
+    "type": "Consumption"
+  },
+  {
+    "productName": "Azure Grok Models",
+    "skuName": "4.7 Inp glbl L",
+    "armRegionName": "eastus2",
+    "unitPrice": 4.0,
+    "unitOfMeasure": "1M",
+    "type": "Consumption"
+  },
+  {
+    "productName": "Azure Grok Models",
+    "skuName": "4.7 Inp DZ",
+    "armRegionName": "eastus2",
+    "unitPrice": 2.2,
+    "unitOfMeasure": "1M",
+    "type": "Consumption"
+  },
+  {
+    "productName": "Azure Grok Models",
+    "skuName": "4.7 Outp DZ",
+    "armRegionName": "eastus2",
+    "unitPrice": 6.6,
+    "unitOfMeasure": "1M",
+    "type": "Consumption"
+  },
+  {
+    "productName": "Azure Kimi",
+    "skuName": "K2.5 Thinking Inp glbl",
+    "armRegionName": "eastus2",
+    "unitPrice": 0.0006,
+    "unitOfMeasure": "1K",
+    "type": "Consumption"
+  },
+  {
+    "productName": "Azure Kimi",
+    "skuName": "K2.5 Thinking Outp glbl",
+    "armRegionName": "eastus2",
+    "unitPrice": 0.003,
+    "unitOfMeasure": "1K",
+    "type": "Consumption"
+  },
+  {
+    "productName": "Azure Kimi",
+    "skuName": "K2.5 cached glbl",
+    "armRegionName": "eastus2",
+    "unitPrice": 0.0001,
+    "unitOfMeasure": "1K",
+    "type": "Consumption"
+  },
+  {
+    "productName": "Azure Phi Models",
+    "skuName": "Phi-4-Input",
+    "armRegionName": "eastus2",
+    "unitPrice": 0.000125,
+    "unitOfMeasure": "1K",
+    "type": "Consumption"
+  },
+  {
+    "productName": "Azure Phi Models",
+    "skuName": "Phi-4-Output",
+    "armRegionName": "eastus2",
+    "unitPrice": 0.0005,
+    "unitOfMeasure": "1K",
+    "type": "Consumption"
+  },
+  {
+    "productName": "Azure Phi Models",
+    "skuName": "Phi-4-Input-FT",
+    "armRegionName": "eastus2",
+    "unitPrice": 0.000125,
+    "unitOfMeasure": "1K",
+    "type": "Consumption"
+  },
+  {
+    "productName": "Azure Phi Models",
+    "skuName": "Phi-4-Mini-Input",
+    "armRegionName": "eastus2",
+    "unitPrice": 7.5e-05,
+    "unitOfMeasure": "1K",
+    "type": "Consumption"
+  },
+  {
+    "productName": "Azure Phi Models",
+    "skuName": "Phi-4-Mini-Output",
+    "armRegionName": "eastus2",
+    "unitPrice": 0.0003,
+    "unitOfMeasure": "1K",
+    "type": "Consumption"
+  },
+  {
+    "productName": "Azure OpenAI",
+    "skuName": "gpt 4o 0806 cached Inp glbl",
+    "armRegionName": "eastus2",
+    "unitPrice": 0.00125,
+    "unitOfMeasure": "1K",
+    "type": "Consumption"
+  },
+  {
+    "productName": "Azure OpenAI GPT5",
+    "skuName": "GPT 5 Batch outpt Glbl",
+    "armRegionName": "eastus2",
+    "unitPrice": 5.0,
+    "unitOfMeasure": "1M",
+    "type": "Consumption"
+  },
+  {
+    "productName": "Azure OpenAI GPT5",
+    "skuName": "5.6 sol ShortCo Inp Std DZ",
+    "armRegionName": "swedencentral",
+    "unitPrice": 4.4,
+    "unitOfMeasure": "1M",
+    "type": "Consumption"
+  },
+  {
+    "productName": "Azure OpenAI GPT5",
+    "skuName": "5.6 sol ShortCo Opt Std DZ",
+    "armRegionName": "swedencentral",
+    "unitPrice": 22.0,
+    "unitOfMeasure": "1M",
+    "type": "Consumption"
+  },
+  {
+    "productName": "Azure Grok Models",
+    "skuName": "4.7 Inp DZ",
+    "armRegionName": "swedencentral",
+    "unitPrice": 2.4,
+    "unitOfMeasure": "1M",
+    "type": "Consumption"
+  },
+  {
+    "productName": "Azure Grok Models",
+    "skuName": "4.7 Outp DZ",
+    "armRegionName": "swedencentral",
+    "unitPrice": 7.2,
+    "unitOfMeasure": "1M",
+    "type": "Consumption"
+  },
+  {
+    "productName": "Azure Llama Models",
+    "skuName": "Llama 3.3 70B Inp regnl",
+    "armRegionName": "swedencentral",
+    "unitPrice": 0.000859,
+    "unitOfMeasure": "1K",
+    "type": "Consumption"
+  },
+  {
+    "productName": "Azure Llama Models",
+    "skuName": "Llama 3.3 70B Outp regnl",
+    "armRegionName": "swedencentral",
+    "unitPrice": 0.000859,
+    "unitOfMeasure": "1K",
+    "type": "Consumption"
+  },
+  {
+    "productName": "Azure OpenAI",
+    "skuName": "gpt-4.1-ft hosting regional",
+    "armRegionName": "eastus2",
+    "unitPrice": 1.7,
+    "unitOfMeasure": "1 Hour",
+    "type": "Consumption"
+  }
+]

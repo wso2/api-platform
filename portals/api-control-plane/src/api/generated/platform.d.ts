@@ -6363,7 +6363,7 @@ export interface components {
              *     paths: {}
              */
             openapi?: string;
-            /** @description List of model providers and their models supported by this provider. For non-aggregator templates, only a single model provider is allowed (aggregator templates: awsbedrock, azureaifoundry). */
+            /** @description List of model providers and their models supported by this provider. For non-aggregator templates, only a single model provider is allowed (aggregator templates: awsbedrock, azureai-foundry). */
             modelProviders?: components["schemas"]["LLMModelProvider"][];
             upstream: components["schemas"]["Upstream"];
             accessControl: components["schemas"]["LLMAccessControl"];

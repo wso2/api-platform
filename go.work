@@ -28,4 +28,5 @@ use (
 	./sdk/core
 	./tests/framework
 	./tests/mock-servers/mock-platform-api
+	./tools/llm-pricing-sync
 )

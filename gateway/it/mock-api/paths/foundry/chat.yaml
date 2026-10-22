@@ -1,0 +1,36 @@
+post:
+  summary: Azure AI Foundry chat completion from a Foundry-native model
+  operationId: createFoundryChatCompletion
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required:
+            - model
+          properties:
+            model:
+              type: string
+  responses:
+    "200":
+      description: Chat completions report the model that ran, not the deployment
+      content:
+        application/json:
+          # azure_ai/deepseek-v3.2: input=5.8e-7, output=1.68e-6
+          # cost = 1000*5.8e-7 + 200*1.68e-6 = 5.8e-4 + 3.36e-4 = 0.0009160000
+          example:
+            id: chatcmpl-FoundryDeepSeek
+            object: chat.completion
+            created: 1792368000
+            model: DeepSeek-V3.2
+            choices:
+              - index: 0
+                message:
+                  role: assistant
+                  content: "Hello from DeepSeek on Foundry."
+                finish_reason: stop
+            usage:
+              prompt_tokens: 1000
+              completion_tokens: 200
+              total_tokens: 1200
