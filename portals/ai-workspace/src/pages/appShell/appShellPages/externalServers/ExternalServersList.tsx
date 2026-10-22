@@ -194,6 +194,19 @@ export default function ExternalServersList(): React.JSX.Element {
     setPage(0);
   }, [searchQuery, rowsPerPage]);
 
+  // A search/rowsPerPage change is handled above, but the list can also
+  // shrink out from under the current page from other causes — a delete, a
+  // refresh, or switching projects — which must clamp `page` back into range
+  // too, or the table renders an empty slice while servers still exist.
+  useEffect(() => {
+    if (rowsPerPage === ALL_ROWS) return;
+    const maxPage = Math.max(
+      0,
+      Math.ceil(filteredServers.length / rowsPerPage) - 1
+    );
+    if (page > maxPage) setPage(maxPage);
+  }, [filteredServers.length, rowsPerPage, page]);
+
   const pagedServers = useMemo(() => {
     if (rowsPerPage === ALL_ROWS) return filteredServers;
     return filteredServers.slice(

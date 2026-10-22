@@ -206,6 +206,19 @@ export default function LLMProxiesList() {
     setPage(0);
   }, [searchQuery, rowsPerPage]);
 
+  // A search/rowsPerPage change is handled above, but the list can also
+  // shrink out from under the current page from other causes — a delete, a
+  // refresh, or switching projects — which must clamp `page` back into range
+  // too, or the table renders an empty slice while results still exist.
+  useEffect(() => {
+    if (rowsPerPage === ALL_ROWS) return;
+    const maxPage = Math.max(
+      0,
+      Math.ceil(filteredProxies.length / rowsPerPage) - 1
+    );
+    if (page > maxPage) setPage(maxPage);
+  }, [filteredProxies.length, rowsPerPage, page]);
+
   const pagedProxies = useMemo(() => {
     if (rowsPerPage === ALL_ROWS) return filteredProxies;
     return filteredProxies.slice(

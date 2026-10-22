@@ -193,6 +193,19 @@ export default function ServiceProviders() {
     setPage(0);
   }, [searchQuery, rowsPerPage]);
 
+  // A search/rowsPerPage change is handled above, but the list can also
+  // shrink out from under the current page from other causes — a delete, a
+  // refresh, or switching organizations — which must clamp `page` back into
+  // range too, or the grid renders an empty slice while providers still exist.
+  useEffect(() => {
+    if (rowsPerPage === ALL_ROWS) return;
+    const maxPage = Math.max(
+      0,
+      Math.ceil(filteredProviders.length / rowsPerPage) - 1
+    );
+    if (page > maxPage) setPage(maxPage);
+  }, [filteredProviders.length, rowsPerPage, page]);
+
   const pagedProviders = useMemo(() => {
     if (rowsPerPage === ALL_ROWS) return filteredProviders;
     return filteredProviders.slice(

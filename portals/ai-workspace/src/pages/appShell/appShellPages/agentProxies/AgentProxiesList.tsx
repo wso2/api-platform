@@ -166,6 +166,19 @@ export default function AgentProxiesList(): React.JSX.Element {
     setPage(0);
   }, [searchQuery, rowsPerPage]);
 
+  // A search/rowsPerPage change is handled above, but the list can also
+  // shrink out from under the current page from other causes — a delete, a
+  // refresh, or switching projects — which must clamp `page` back into range
+  // too, or the table renders an empty slice while results still exist.
+  useEffect(() => {
+    if (rowsPerPage === ALL_ROWS) return;
+    const maxPage = Math.max(
+      0,
+      Math.ceil(filteredAgentProxies.length / rowsPerPage) - 1
+    );
+    if (page > maxPage) setPage(maxPage);
+  }, [filteredAgentProxies.length, rowsPerPage, page]);
+
   const pagedAgentProxies = useMemo(() => {
     if (rowsPerPage === ALL_ROWS) return filteredAgentProxies;
     return filteredAgentProxies.slice(

@@ -21,6 +21,7 @@ import React, {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   useCallback,
 } from 'react';
@@ -110,8 +111,13 @@ export function LLMProvidersProvider({ children }: LLMProvidersProviderProps) {
   // after a create or a delete — see hooks/useResourceLimits.
   const { refresh: refreshResourceLimits } = useResourceLimits();
 
+  // Switching organizations leaves the previous fetch in flight; only the
+  // most recent request is allowed to write its result.
+  const providersRequestRef = useRef(0);
+
   // Fetch all providers
   const fetchProviders = useCallback(async () => {
+    const requestId = (providersRequestRef.current += 1);
     if (!organizationId) {
       setProvidersResponse(EMPTY_PROVIDERS_RESPONSE);
       setIsLoading(false);
@@ -127,16 +133,20 @@ export function LLMProvidersProvider({ children }: LLMProvidersProviderProps) {
       const response = await fetchAllPages<LLMProvider>((limit, offset) =>
         llmProviderApis.getLLMProviders(organizationId, PLATFORM_API_BASE_URL, limit, offset)
       );
+      if (providersRequestRef.current !== requestId) return;
       // Store the full API response as-is
       setProvidersResponse(response as LLMProvidersResponse);
     } catch (err) {
+      if (providersRequestRef.current !== requestId) return;
       logger.error('Failed to fetch LLM providers:', err);
       setError(
         err instanceof Error ? err : new Error('Failed to fetch providers')
       );
       // Keep existing response on error
     } finally {
-      setIsLoading(false);
+      if (providersRequestRef.current === requestId) {
+        setIsLoading(false);
+      }
     }
   }, [organizationId, PLATFORM_API_BASE_URL]);
 

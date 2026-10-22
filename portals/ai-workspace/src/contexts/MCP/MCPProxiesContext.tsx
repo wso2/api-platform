@@ -21,6 +21,7 @@ import React, {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   useCallback,
 } from 'react';
@@ -100,8 +101,13 @@ export function MCPServersProvider({ children }: MCPServersProviderProps) {
   const organizationId = currentOrganization?.uuid ?? '';
   const projectId = currentProject?.id ?? '';
 
+  // Switching projects leaves the previous fetch in flight; only the most
+  // recent request is allowed to write its result.
+  const mcpServersRequestRef = useRef(0);
+
   // Fetch all MCP servers
   const fetchMCPServers = useCallback(async () => {
+    const requestId = (mcpServersRequestRef.current += 1);
     if (!organizationId || !projectId) {
       setMCPServersResponse(EMPTY_MCP_SERVERS_RESPONSE);
       setIsLoading(false);
@@ -117,14 +123,18 @@ export function MCPServersProvider({ children }: MCPServersProviderProps) {
       const response = await fetchAllPages<MCPServer>((limit, offset) =>
         mcpProxiesApis.getMCPServers(projectId, apimBaseUrl, limit, offset)
       );
+      if (mcpServersRequestRef.current !== requestId) return;
       setMCPServersResponse(response as MCPServerListResponse);
     } catch (err) {
+      if (mcpServersRequestRef.current !== requestId) return;
       logger.error('Failed to fetch MCP servers:', err);
       setError(
         err instanceof Error ? err : new Error('Failed to fetch MCP servers')
       );
     } finally {
-      setIsLoading(false);
+      if (mcpServersRequestRef.current === requestId) {
+        setIsLoading(false);
+      }
     }
   }, [organizationId, projectId, apimBaseUrl]);
 
