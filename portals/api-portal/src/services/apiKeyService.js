@@ -159,7 +159,7 @@ async function generate({ orgId, apiId, subscriptionId, appId, handle, displayNa
     // a duplicate. This is a friendly pre-check; the (org_uuid, api_uuid, handle) unique
     // index is the authoritative guard, enforced atomically by the duplicate-key catch
     // around apiKeyDao.create below (which also covers a create that races past this).
-    if (await apiKeyDao.getIdByHandle(orgId, api.id, normalizedHandle)) {
+    if (await apiKeyDao.getIdByHandle(orgId, api.id, normalizedHandle, actor)) {
         throw Object.assign(new Error(`An API key with id "${normalizedHandle}" already exists for this API.`), { status: 409 });
     }
 

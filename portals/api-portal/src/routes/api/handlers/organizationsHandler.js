@@ -38,6 +38,8 @@ const adminService = require('../../../services/adminService');
 const apiPortalService = require('../../../services/apiPortalService');
 const util = require('../../../utils/util');
 const logger = require('../../../config/logger');
+const { compose } = require('./compose');
+const { requireCsrfForMutatingApi } = require('../../../middlewares/csrfProtection');
 
 /**
  * Rejects an organization-lifecycle operation this deployment does not offer.
@@ -62,6 +64,6 @@ module.exports = {
     createOrganization: singleOrgNotSupported,
     getOrganizations: singleOrgNotSupported,
     deleteOrganization: singleOrgNotSupported,
-    updateOrganization: adminService.updateOrganization,
+    updateOrganization: compose(requireCsrfForMutatingApi, adminService.updateOrganization),
     getOrganization: apiPortalService.getOrganization,
 };
