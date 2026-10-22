@@ -22,7 +22,9 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/rsa"
 	"crypto/x509"
+	"encoding/json"
 	"encoding/pem"
 	"fmt"
 	"io/fs"
@@ -151,6 +153,16 @@ public_jwks_url = "http://gw.example.com/.well-known/jwks"`, "public_jwks_url"},
 		{"jwks url with credentials", `
 [signing]
 public_jwks_url = "https://user:pass@gw.example.com/.well-known/jwks"`, "public_jwks_url"},
+		{"cache age just over the maximum", `
+[signing]
+jwks_cache_max_age = "24h1s"`, "jwks_cache_max_age"},
+		{"jwks url without a host", `
+[signing]
+public_jwks_url = "https:///x"`, "public_jwks_url"},
+		{"single key not active", `
+[[signing.keys]]
+inline = "x"
+active = false`, "exactly one key must be marked active, found 0"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -242,4 +254,115 @@ jwks_endpoint_enabled = false
 `))
 	require.NoError(t, err)
 	assert.Empty(t, cfg.Signing.Keys)
+}
+
+func TestValidateSigningConfig_CacheMaxAgeBounds(t *testing.T) {
+	for _, tc := range []struct {
+		value string
+		want  time.Duration
+	}{
+		{"0s", DefaultJWKSCacheMaxAge},
+		{"24h", 24 * time.Hour},
+	} {
+		t.Run(tc.value, func(t *testing.T) {
+			cfg, err := Load(writePEInterpConfig(t, signingBaseConfig+fmt.Sprintf(`
+[signing]
+jwks_cache_max_age = %q
+`, tc.value)))
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, cfg.Signing.EffectiveJWKSCacheMaxAge())
+		})
+	}
+}
+
+func writeRSAKey(t *testing.T, dir, name string) string {
+	t.Helper()
+	k, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+	p := filepath.Join(dir, name)
+	require.NoError(t, os.WriteFile(p, pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(k)}), 0o400))
+	require.NoError(t, os.Chmod(p, 0o400))
+	return p
+}
+
+func TestLoad_SigningAlgorithmOverride(t *testing.T) {
+	key := writeRSAKey(t, t.TempDir(), "rsa.key")
+
+	cfg, err := Load(writePEInterpConfig(t, signingBaseConfig+fmt.Sprintf(`
+[[signing.keys]]
+path = %q
+algorithm = "PS256"
+active = true
+`, key)))
+	require.NoError(t, err)
+	assert.Equal(t, "PS256", cfg.Signing.Keys[0].Algorithm)
+
+	kr, err := BuildSigningKeyring(cfg.Signing)
+	require.NoError(t, err)
+	info, ok := kr.ActiveKey()
+	require.True(t, ok)
+	assert.Equal(t, signing.PS256, info.Algorithm)
+
+	body, _ := kr.JWKS()
+	var set struct {
+		Keys []struct {
+			Alg string `json:"alg"`
+			Kid string `json:"kid"`
+		} `json:"keys"`
+	}
+	require.NoError(t, json.Unmarshal(body, &set))
+	require.Len(t, set.Keys, 1)
+	assert.Equal(t, "PS256", set.Keys[0].Alg)
+	assert.Equal(t, info.Kid, set.Keys[0].Kid)
+}
+
+// The algorithm is only checked against the key when the keyring is built.
+func TestLoad_SigningInvalidAlgorithmFailsKeyringBuild(t *testing.T) {
+	key := writeRSAKey(t, t.TempDir(), "rsa.key")
+
+	cfg, err := Load(writePEInterpConfig(t, signingBaseConfig+fmt.Sprintf(`
+[[signing.keys]]
+path = %q
+algorithm = "HS256"
+active = true
+`, key)))
+	require.NoError(t, err)
+
+	_, err = BuildSigningKeyring(cfg.Signing)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid signing configuration")
+	assert.Contains(t, err.Error(), "cannot be used with this key")
+}
+
+func TestBuildSigningKeyring_AllowedKeyFileModes(t *testing.T) {
+	for _, perm := range []os.FileMode{0o400, 0o440, 0o600, 0o640} {
+		t.Run(fmt.Sprintf("%04o", perm), func(t *testing.T) {
+			key := writeECKey(t, t.TempDir(), "k.pem", perm)
+			kr, err := BuildSigningKeyring(SigningConfig{Keys: []SigningKeyConfig{{Path: key, Active: true}}})
+			require.NoError(t, err)
+			info, ok := kr.ActiveKey()
+			require.True(t, ok)
+			assert.Equal(t, signing.ES256, info.Algorithm)
+		})
+	}
+}
+
+// A file of exactly maxKeyFileBytes passes the size check and then fails as
+// key material; one byte more fails the size check.
+func TestBuildSigningKeyring_KeyFileSizeBoundary(t *testing.T) {
+	dir := t.TempDir()
+	atLimit := filepath.Join(dir, "at-limit.pem")
+	require.NoError(t, os.WriteFile(atLimit, make([]byte, maxKeyFileBytes), 0o400))
+	overLimit := filepath.Join(dir, "over-limit.pem")
+	require.NoError(t, os.WriteFile(overLimit, make([]byte, maxKeyFileBytes+1), 0o400))
+
+	_, err := BuildSigningKeyring(SigningConfig{Keys: []SigningKeyConfig{{Path: atLimit, Active: true}}})
+	require.Error(t, err)
+	assert.NotContains(t, err.Error(), "exceeds the maximum allowed size")
+	assert.Contains(t, err.Error(), "invalid signing configuration")
+	assert.Contains(t, err.Error(), "no PEM block found")
+
+	_, err = BuildSigningKeyring(SigningConfig{Keys: []SigningKeyConfig{{Path: overLimit, Active: true}}})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "exceeds the maximum allowed size")
 }

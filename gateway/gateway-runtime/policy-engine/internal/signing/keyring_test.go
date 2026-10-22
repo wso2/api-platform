@@ -27,6 +27,8 @@ import (
 	"crypto/sha512"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
@@ -527,4 +529,154 @@ func TestJWKSCacheMaxAge(t *testing.T) {
 	if _, err := NewKeyring(Config{JWKSCacheMaxAge: -time.Second}); err == nil {
 		t.Fatal("negative max-age accepted")
 	}
+}
+
+// --- JWKS document ------------------------------------------------------------
+
+func jwksKids(t *testing.T, body []byte) []string {
+	t.Helper()
+	var set struct{ Keys []PublicJWK }
+	if err := json.Unmarshal(body, &set); err != nil {
+		t.Fatalf("JWKS = %s (%v)", body, err)
+	}
+	kids := make([]string, 0, len(set.Keys))
+	for _, k := range set.Keys {
+		kids = append(kids, k.Kid)
+	}
+	return kids
+}
+
+func TestJWKSETag(t *testing.T) {
+	k1, _ := ecPEM(t, elliptic.P256())
+	k2, _ := rsaPEM(t, 2048)
+	newKeyring := func(keys ...KeyEntry) *Keyring {
+		t.Helper()
+		kr, err := NewKeyring(Config{Keys: keys})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return kr
+	}
+
+	a := newKeyring(KeyEntry{PEM: k1, Active: true})
+	b := newKeyring(KeyEntry{PEM: k1, Active: true})
+	bodyA, etagA := a.JWKS()
+	bodyB, etagB := b.JWKS()
+
+	// A quoted strong tag: the first 128 bits of SHA-256 of the body, in hex.
+	if len(etagA) != 34 || etagA[0] != '"' || etagA[33] != '"' {
+		t.Fatalf("ETag %s is not a quoted 32-character value", etagA)
+	}
+	if raw, err := hex.DecodeString(etagA[1:33]); err != nil || len(raw) != 16 || strings.ToLower(etagA) != etagA {
+		t.Fatalf("ETag %s is not 32 lowercase hex characters", etagA)
+	}
+	sum := sha256.Sum256(bodyA)
+	if etagA != `"`+hex.EncodeToString(sum[:16])+`"` {
+		t.Fatalf("ETag %s is not derived from the body", etagA)
+	}
+
+	if string(bodyA) != string(bodyB) || etagA != etagB {
+		t.Fatalf("same keys gave different JWKS: %s %s vs %s %s", bodyA, etagA, bodyB, etagB)
+	}
+
+	_, etagC := newKeyring(KeyEntry{PEM: k1, Active: true}, KeyEntry{PEM: k2}).JWKS()
+	if etagC == etagA {
+		t.Fatal("ETag unchanged after a key was added")
+	}
+}
+
+func TestJWKSKeysInConfigurationOrder(t *testing.T) {
+	ec, _ := ecPEM(t, elliptic.P256())
+	rsaKey, _ := rsaPEM(t, 2048)
+	p384, _ := ecPEM(t, elliptic.P384())
+
+	kr, err := NewKeyring(Config{Keys: []KeyEntry{
+		{PEM: ec, Kid: "c"},
+		{PEM: rsaKey, Kid: "a", Active: true},
+		{PEM: p384, Kid: "b"},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := kr.JWKS()
+	if got := strings.Join(jwksKids(t, body), ","); got != "c,a,b" {
+		t.Fatalf("JWKS kids = %s, want c,a,b", got)
+	}
+
+	reversed, err := NewKeyring(Config{Keys: []KeyEntry{
+		{PEM: p384, Kid: "b"},
+		{PEM: rsaKey, Kid: "a", Active: true},
+		{PEM: ec, Kid: "c"},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ = reversed.JWKS()
+	if got := strings.Join(jwksKids(t, body), ","); got != "b,a,c" {
+		t.Fatalf("JWKS kids = %s, want b,a,c", got)
+	}
+}
+
+// --- JWS headers and payload -------------------------------------------------
+
+func TestSignJWSHeaders(t *testing.T) {
+	keyPEM, priv := ecPEM(t, elliptic.P256())
+	const jwksURL = "https://gw.example.com/.well-known/jwks"
+	install(t, Config{Keys: []KeyEntry{{PEM: keyPEM, Active: true}}, PublicJWKSURL: jwksURL})
+
+	t.Run("custom type", func(t *testing.T) {
+		token, _, err := sdksigning.SignJWS([]byte("x"), sdksigning.WithType("example+jwt"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		header, _ := verifyCompact(t, token, &priv.PublicKey)
+		if header["typ"] != "example+jwt" {
+			t.Fatalf("typ = %v, want example+jwt", header["typ"])
+		}
+	})
+
+	t.Run("no type", func(t *testing.T) {
+		token, _, err := sdksigning.SignJWS([]byte("x"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		header, _ := verifyCompact(t, token, &priv.PublicKey)
+		if _, ok := header["typ"]; ok {
+			t.Fatalf("typ present without WithType: %v", header)
+		}
+		if _, ok := header["jku"]; ok {
+			t.Fatalf("jku present without WithJKU: %v", header)
+		}
+	})
+
+	t.Run("jku on compact JWS", func(t *testing.T) {
+		token, info, err := sdksigning.SignJWS([]byte("x"), sdksigning.WithJKU())
+		if err != nil {
+			t.Fatal(err)
+		}
+		header, _ := verifyCompact(t, token, &priv.PublicKey)
+		if header["jku"] != jwksURL || header["kid"] != info.Kid || header["alg"] != "ES256" {
+			t.Fatalf("header = %v", header)
+		}
+	})
+}
+
+func TestSignJWSPayloadSegment(t *testing.T) {
+	keyPEM, priv := rsaPEM(t, 2048)
+	install(t, Config{Keys: []KeyEntry{{PEM: keyPEM, Active: true}}})
+
+	// Bytes whose standard base64 would contain '+', '/' and '=' padding.
+	payload := []byte{0xfb, 0xff, 0xbf, 0x00, 'h', 'i'}
+	token, _, err := sdksigning.SignJWS(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 {
+		t.Fatalf("not a compact JWS: %s", token)
+	}
+	if want := base64.RawURLEncoding.EncodeToString(payload); parts[1] != want {
+		t.Fatalf("payload segment = %s, want %s", parts[1], want)
+	}
+	verifyCompact(t, token, &priv.PublicKey)
 }
