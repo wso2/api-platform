@@ -39,6 +39,18 @@ type PageView =
   | { kind: 'create' }
   | { kind: 'edit'; portalId: string };
 
+/**
+ * The managed-portals feature's top-level page. Owns the list/create/edit
+ * sub-view switch and injects the data transport (`PortalPort`) its children
+ * read through `usePortalFeature`.
+ *
+ * Picks the transport in this order: the host-supplied `apiFetch` (AI
+ * Workspace, which routes through the BFF proxy and resolves the org from the
+ * session token), otherwise the runtime-configured platform-api base URL
+ * (api-control-plane, which sends an `X-Org-Id` header). When neither is
+ * available (misconfigured runtime config) the page renders a configuration
+ * error instead of failing silently.
+ */
 export function ManagedPortalsPage({ port, apiFetch }: ManagedPortalsPageProps) {
   // Fail closed when the platform-api base is missing; tests / storybook build the mock port directly.
   const portalPort = useMemo(() => {
