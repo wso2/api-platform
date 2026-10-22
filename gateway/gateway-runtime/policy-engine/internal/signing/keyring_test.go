@@ -245,6 +245,34 @@ func TestReservedHeadersRejectedInRawOptions(t *testing.T) {
 	}
 }
 
+// A policy can modify the SDK's exported ReservedHeaders map; the engine's own
+// check must still reject every reserved header.
+func TestReservedHeadersRejectedWhenSDKSetIsModified(t *testing.T) {
+	saved := make(map[string]bool, len(sdksigning.ReservedHeaders))
+	for k, v := range sdksigning.ReservedHeaders {
+		saved[k] = v
+	}
+	t.Cleanup(func() {
+		clear(sdksigning.ReservedHeaders)
+		for k, v := range saved {
+			sdksigning.ReservedHeaders[k] = v
+		}
+	})
+	clear(sdksigning.ReservedHeaders)
+
+	keyPEM, _ := ecPEM(t, elliptic.P256())
+	kr, err := NewKeyring(Config{Keys: []KeyEntry{{PEM: keyPEM, Active: true}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"alg", "kid", "jku", "crit", "b64", "typ"} {
+		opts := sdksigning.Options{Headers: map[string]any{name: "none"}}
+		if _, _, err := kr.SignJWS([]byte("x"), opts); err == nil {
+			t.Fatalf("raw header %q was accepted after the SDK set was cleared", name)
+		}
+	}
+}
+
 // --- signing ----------------------------------------------------------------
 
 // verifyCompact checks a compact JWS against pub using only the standard
