@@ -27,6 +27,9 @@ import {
   Typography,
 } from '@wso2/oxygen-ui';
 import { ArrowLeft, ArrowRight } from '@wso2/oxygen-ui-icons-react';
+import ReadOnlyTooltip, {
+  useOrgReadOnly,
+} from '../../../../../Components/common/ReadOnlyTooltip';
 
 type WizardStepCardProps = {
   currentStep: number;
@@ -63,6 +66,11 @@ export default function WizardStepCard({
   backDisabled = false,
   footerStart,
 }: WizardStepCardProps) {
+  // Every step of this wizard ends in a create — a provider, a gateway, a
+  // proxy — so a read-only organization cannot advance it at all. Skip and Back
+  // stay live: leaving and looking around are still allowed.
+  const isOrgReadOnly = useOrgReadOnly();
+
   const progressWidth = `${((currentStep + 1) / totalSteps) * 100}%`;
 
   return (
@@ -146,14 +154,16 @@ export default function WizardStepCard({
                   Back
                 </Button>
               ) : null}
-              <Button
-                variant="contained"
-                onClick={onNext}
-                disabled={nextDisabled || nextLoading}
-                endIcon={nextIcon ?? <ArrowRight size={16} />}
-              >
-                {nextLabel}
-              </Button>
+              <ReadOnlyTooltip>
+                <Button
+                  variant="contained"
+                  onClick={onNext}
+                  disabled={nextDisabled || nextLoading || isOrgReadOnly}
+                  endIcon={nextIcon ?? <ArrowRight size={16} />}
+                >
+                  {nextLabel}
+                </Button>
+              </ReadOnlyTooltip>
             </Stack>
           </Box>
         </Stack>

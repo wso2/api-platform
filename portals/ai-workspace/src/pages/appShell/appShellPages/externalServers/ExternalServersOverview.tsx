@@ -124,6 +124,7 @@ import {
   NO_PERMISSION_TOOLTIP,
   SCOPES,
 } from '../../../../auth/permissions';
+import { useOrgReadOnly } from '../../../../Components/common/ReadOnlyTooltip';
 
 function getInitials(name: string): string {
   const words = name.trim().split(/\s+/);
@@ -273,7 +274,15 @@ export default function ExternalServersOverview(): JSX.Element {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [activeDeploymentCount, setActiveDeploymentCount] = useState<number | null>(null);
-  const isReadOnlyServer = Boolean(server?.readOnly);
+  // Whether the artifact itself was created from a gateway, which owns its
+  // runtime configuration. Kept separate from the flag below because only this
+  // one is true of the artifact: the gateway-managed banners and warnings speak
+  // about the gateway, and must not appear merely because the organization has
+  // gone read-only.
+  const isGatewayManagedServer = Boolean(server?.readOnly);
+  // Everything that only disables a control reads this one: an organization
+  // that may not write at all disables the same controls the gateway does.
+  const isReadOnlyServer = useOrgReadOnly() || isGatewayManagedServer;
 
   // API Portal publish state. isAPIPortalAvailable depends only on local
   // state (feature flag + at least one active gateway deployment), never on
@@ -465,7 +474,7 @@ export default function ExternalServersOverview(): JSX.Element {
   }, [organizationId, serverId, apimBaseUrl]);
 
   useEffect(() => {
-    if (!organizationId || !serverId || !isReadOnlyServer || !canDeleteMcpProxy) {
+    if (!organizationId || !serverId || !isGatewayManagedServer || !canDeleteMcpProxy) {
       setActiveDeploymentCount(null);
       return;
     }
@@ -492,17 +501,17 @@ export default function ExternalServersOverview(): JSX.Element {
     return () => {
       isCancelled = true;
     };
-  }, [organizationId, serverId, isReadOnlyServer, canDeleteMcpProxy, apimBaseUrl]);
+  }, [organizationId, serverId, isGatewayManagedServer, canDeleteMcpProxy, apimBaseUrl]);
 
   const deleteBlockedReason = useMemo(() => {
-    if (!isReadOnlyServer || activeDeploymentCount === null || activeDeploymentCount === 0) {
+    if (!isGatewayManagedServer || activeDeploymentCount === null || activeDeploymentCount === 0) {
       return null;
     }
     return activeDeploymentDeleteBlockedReason(
       'MCP Proxy',
       activeDeploymentCount
     );
-  }, [isReadOnlyServer, activeDeploymentCount]);
+  }, [isGatewayManagedServer, activeDeploymentCount]);
 
   const handleDeleteConfirm = async () => {
     if (!server || !serverId || isDeleting) return;
@@ -1666,7 +1675,7 @@ export default function ExternalServersOverview(): JSX.Element {
             </TabPanel>
 
             <TabPanel value={tabIndex} index={1}>
-              {isReadOnlyServer && (
+              {isGatewayManagedServer && (
                 <GatewayArtifactReadOnlyBanner message="Policies are managed by the gateway that created this MCP proxy and are read-only here." />
               )}
               <PolicyMapper
@@ -1681,7 +1690,7 @@ export default function ExternalServersOverview(): JSX.Element {
             </TabPanel>
 
             <TabPanel value={tabIndex} index={2}>
-              {isReadOnlyServer && (
+              {isGatewayManagedServer && (
                 <GatewayArtifactReadOnlyBanner message="Backend connection is managed by the gateway that created this MCP proxy and is read-only here." />
               )}
               <Stack spacing={2} sx={{ maxWidth: 640 }}>
@@ -1848,7 +1857,7 @@ export default function ExternalServersOverview(): JSX.Element {
       >
         <DialogTitle>Delete MCP Proxy</DialogTitle>
         <DialogContent>
-          {isReadOnlyServer ? (
+          {isGatewayManagedServer ? (
             <GatewayArtifactDeleteWarning
               artifactType="MCP Proxy"
               artifactName={server.displayName}

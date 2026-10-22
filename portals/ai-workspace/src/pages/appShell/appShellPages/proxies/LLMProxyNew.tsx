@@ -100,6 +100,7 @@ import { logger } from '../../../../utils/logger';
 import { getErrorMessage, getFieldErrors } from '../../../../utils/apiError';
 import { useAppAuth } from '../../../../contexts/AppAuthContext';
 import { NO_PERMISSION_TOOLTIP, SCOPES } from '../../../../auth/permissions';
+import { useResourceLimits } from '../../../../hooks/useResourceLimits';
 
 type FormState = {
   name: string;
@@ -1818,6 +1819,12 @@ function LLMProxyNewContent({
     </>
   );
 
+  // When the organization is read-only, that — not the user's role — is why
+  // creation is unavailable, and saying "contact your admin" would send them
+  // after the wrong fix. Empty while the organization may write, so the
+  // permission wording stands.
+  const { readOnlyMessage } = useResourceLimits();
+
   if (!canCreateProxy) {
     return (
       <PageContent fullWidth>
@@ -1829,12 +1836,14 @@ function LLMProxyNewContent({
             />
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            <FormattedMessage
-              id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyNew.creation.unavailable.description"
-              defaultMessage={
-                'You do not have permission to create App LLM Proxies. Please contact your admin.'
-              }
-            />
+            {readOnlyMessage || (
+              <FormattedMessage
+                id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyNew.creation.unavailable.description"
+                defaultMessage={
+                  'You do not have permission to create App LLM Proxies. Please contact your admin.'
+                }
+              />
+            )}
           </Typography>
         </Stack>
       </PageContent>

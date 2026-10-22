@@ -18,6 +18,7 @@
 
 import type { ReactNode } from 'react';
 import { Alert, Box, Card, Stack, Tooltip, Typography } from '@wso2/oxygen-ui';
+import { useResourceLimits } from '../hooks/useResourceLimits';
 import { Lock } from '@wso2/oxygen-ui-icons-react';
 
 export const GATEWAY_MANAGED_ARTIFACT_TOOLTIP =
@@ -83,12 +84,21 @@ type DisabledActionTooltipProps = {
 export function DisabledActionTooltip({
   children,
   disabled,
-  title = GATEWAY_MANAGED_ARTIFACT_TOOLTIP,
+  title,
   fullWidth = false,
 }: DisabledActionTooltipProps) {
+  // A read-only organization disables every one of these controls whatever the
+  // artifact's own origin, and it outranks the gateway as the reason: saying
+  // "created from a gateway" to someone whose whole organization has gone
+  // read-only names the wrong cause and points at the wrong fix. An explicit
+  // `title` still wins — a caller that knows a more specific reason.
+  const { readOnly, readOnlyMessage } = useResourceLimits();
+  const reason =
+    title ?? (readOnly ? readOnlyMessage : GATEWAY_MANAGED_ARTIFACT_TOOLTIP);
+
   return (
     <Tooltip
-      title={disabled ? title : ''}
+      title={disabled ? reason : ''}
       disableHoverListener={!disabled}
       disableFocusListener={!disabled}
       disableTouchListener={!disabled}

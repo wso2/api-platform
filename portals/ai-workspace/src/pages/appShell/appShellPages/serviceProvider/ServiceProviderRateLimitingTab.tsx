@@ -58,6 +58,7 @@ import { ResourceRow } from '../../../../Components/ResourceView';
 import { FormattedMessage } from 'react-intl';
 import type { AccessControl } from '../../../../utils/types';
 import { GATEWAY_MANAGED_ARTIFACT_TOOLTIP } from '../../../../utils/readOnlyArtifacts';
+import { useOrgReadOnly } from '../../../../Components/common/ReadOnlyTooltip';
 
 type ResourceItem = {
   method: string;
@@ -553,7 +554,10 @@ export default function ServiceProviderRateLimitingTab({
 }: ServiceProviderRateLimitingTabProps) {
   const { provider, isLoading, error, updateProvider, isDraftMode } =
     useLLMProvider();
-  const isReadOnlyProvider = Boolean(provider?.readOnly);
+  // Folded in with this artifact's own read-only flag: a read-only organization
+  // may not write at all, so every control these gate is disabled for that
+  // reason too, and no call site has to ask about both.
+  const isReadOnlyProvider = useOrgReadOnly() || Boolean(provider?.readOnly);
   const [backendRateMode, setBackendRateMode] = useState<'global' | 'resource'>(
     'global'
   );

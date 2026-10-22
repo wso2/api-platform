@@ -33,6 +33,7 @@ import {
 import { useLLMProvider } from '../../../../contexts/llmProvider';
 import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
 import { FormattedMessage } from 'react-intl';
+import { useOrgReadOnly } from '../../../../Components/common/ReadOnlyTooltip';
 
 export default function ServiceProviderSecurityTab() {
   const { provider, isLoading, error, updateProvider, isDraftMode } =
@@ -43,7 +44,10 @@ export default function ServiceProviderSecurityTab() {
   const [keyIn, setKeyIn] = useState<'header' | 'query'>('header');
   const [valuePrefix, setValuePrefix] = useState('');
   const showSnackbar = useAIWorkspaceSnackbar();
-  const isReadOnlyProvider = Boolean(provider?.readOnly);
+  // Folded in with this artifact's own read-only flag: a read-only organization
+  // may not write at all, so every control these gate is disabled for that
+  // reason too, and no call site has to ask about both.
+  const isReadOnlyProvider = useOrgReadOnly() || Boolean(provider?.readOnly);
   const isSecurityFormDisabled =
     !apiKeyEnabled || isLoading || Boolean(error) || isReadOnlyProvider;
   const isKeyValueInvalid =

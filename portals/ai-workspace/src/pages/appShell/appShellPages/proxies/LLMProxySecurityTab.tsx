@@ -36,6 +36,7 @@ import type {
   ProxyApiKeySecurity,
 } from '../../../../utils/types';
 import { FormattedMessage } from 'react-intl';
+import { useOrgReadOnly } from '../../../../Components/common/ReadOnlyTooltip';
 
 /**
  * Security tab – mirrors the LLM Provider security tab but uses
@@ -45,7 +46,10 @@ import { FormattedMessage } from 'react-intl';
  */
 export default function LLMProxySecurityTab() {
   const { proxy, isLoading, error, setLocalProxy } = useProxy();
-  const isReadOnlyProxy = Boolean(proxy?.readOnly);
+  // Folded in with this artifact's own read-only flag: a read-only organization
+  // may not write at all, so every control these gate is disabled for that
+  // reason too, and no call site has to ask about both.
+  const isReadOnlyProxy = useOrgReadOnly() || Boolean(proxy?.readOnly);
 
   const [authenticationType, setAuthenticationType] = useState('');
   const [apiKeyEnabled, setApiKeyEnabled] = useState(true);

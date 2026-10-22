@@ -39,6 +39,7 @@ import {
 import type { AgentProxy } from '../../../../utils/types';
 import ExternalServerStepBanner from '../quickStart/ExternalServerStepBanner';
 import type { ExternalServerStepBannerStepId } from '../quickStart/ExternalServerStepBanner';
+import { useOrgReadOnly } from '../../../../Components/common/ReadOnlyTooltip';
 
 type AgentProxiesDeployLayoutProps = {
   agentProxy: AgentProxy | null;
@@ -55,7 +56,15 @@ function AgentProxiesDeployLayout({ agentProxy }: AgentProxiesDeployLayoutProps)
         (operation) => (operation.policies?.length ?? 0) > 0
       )
   );
-  const isReadOnly = Boolean(agentProxy?.readOnly);
+  // Whether the artifact itself was created from a gateway, which owns its
+  // runtime configuration. Kept separate from the flag below because only this
+  // one is true of the artifact: the gateway-managed banners and warnings speak
+  // about the gateway, and must not appear merely because the organization has
+  // gone read-only.
+  const isGatewayManagedAgentProxy = Boolean(agentProxy?.readOnly);
+  // Everything that only disables a control reads this one: an organization
+  // that may not write at all disables the same controls the gateway does.
+  const isReadOnly = useOrgReadOnly() || isGatewayManagedAgentProxy;
 
   const handleStepClick = (stepId: ExternalServerStepBannerStepId) => {
     if (stepId === 'add-policies') {
@@ -94,7 +103,7 @@ function AgentProxiesDeployLayout({ agentProxy }: AgentProxiesDeployLayoutProps)
             defaultMessage="Deploy Agent Proxy to your Gateways"
           />
         </Typography>
-        {isReadOnly && (
+        {isGatewayManagedAgentProxy && (
           <Alert severity="info">
             This Agent proxy was created from a gateway. You can view its
             deployments, but deploy, redeploy, restore and undeploy actions are

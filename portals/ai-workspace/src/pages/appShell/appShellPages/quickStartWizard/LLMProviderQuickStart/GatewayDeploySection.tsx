@@ -37,6 +37,9 @@ import type { HybridGateway } from '../../../../../apis/gateway/gatewayApi';
 import AddGatewayStep from './AddGatewayStep';
 import SetupGatewayStep from './SetupGatewayStep';
 import type { GatewayFormState } from './types';
+import ReadOnlyTooltip, {
+  useOrgReadOnly,
+} from '../../../../../Components/common/ReadOnlyTooltip';
 
 const ADD_NEW_GATEWAY_OPTION = '__add_new_gateway__';
 
@@ -65,6 +68,9 @@ export default function GatewayDeploySection({
   onRegistrationTokenChange,
   onGatewayReadyChange,
 }: GatewayDeploySectionProps) {
+  // Creating a gateway is a create like any other, and the drawer's own Add
+  // goes straight to the control plane rather than through the wizard's Next.
+  const isOrgReadOnly = useOrgReadOnly();
   const { gateways } = useGatewayList();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerStage, setDrawerStage] = useState<'add' | 'setup'>('add');
@@ -198,13 +204,16 @@ export default function GatewayDeploySection({
           </Stack>
         </Box>
       ) : (
-        <Button
-          variant="contained"
-          startIcon={<Plus size={16} />}
-          onClick={openAddDrawer}
-        >
-          Add Gateway
-        </Button>
+        <ReadOnlyTooltip>
+          <Button
+            variant="contained"
+            startIcon={<Plus size={16} />}
+            onClick={openAddDrawer}
+            disabled={isOrgReadOnly}
+          >
+            Add Gateway
+          </Button>
+        </ReadOnlyTooltip>
       )}
 
       <Drawer anchor="right" open={drawerOpen} onClose={handleCloseDrawer}>
@@ -282,7 +291,9 @@ export default function GatewayDeploySection({
                 </Button>
                 <Button
                   variant="contained"
-                  disabled={!canCreateGatewayForm || isCreatingGateway}
+                  disabled={
+                    !canCreateGatewayForm || isCreatingGateway || isOrgReadOnly
+                  }
                   onClick={() => {
                     void createGatewayRef.current?.();
                   }}

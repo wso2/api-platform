@@ -37,6 +37,7 @@ import * as providerTemplateApis from '../../../../apis/providerTemplateApis';
 import type { ProviderTemplate } from '../../../../utils/types';
 import { logger } from '../../../../utils/logger';
 import { isValidHttpUrl, withUpstreamValuePrefix } from '../../../../utils/providerTemplateFields';
+import { useOrgReadOnly } from '../../../../Components/common/ReadOnlyTooltip';
 
 const MASKED_CREDENTIAL_VALUE = '******';
 
@@ -55,7 +56,10 @@ export default function ServiceProviderConnectionTab() {
   const [providerTemplate, setProviderTemplate] =
     useState<ProviderTemplate | null>(null);
   const showSnackbar = useAIWorkspaceSnackbar();
-  const isReadOnlyProvider = Boolean(provider?.readOnly);
+  // Folded in with this artifact's own read-only flag: a read-only organization
+  // may not write at all, so every control these gate is disabled for that
+  // reason too, and no call site has to ask about both.
+  const isReadOnlyProvider = useOrgReadOnly() || Boolean(provider?.readOnly);
   const isFormDisabled = isLoading || Boolean(error) || isReadOnlyProvider;
   const effectiveAuthType = authenticationType || 'none';
   const isOtherAuthType = effectiveAuthType === 'other';
