@@ -1034,7 +1034,7 @@ func (m *mockLLMProviderRepo) Exists(providerID, orgUUID string) (bool, error) {
 	return m.existsResult, nil
 }
 
-func (m *mockLLMProviderRepo) Count(orgUUID string) (int, error) {
+func (m *mockLLMProviderRepo) Count(orgUUID, search string) (int, error) {
 	return m.countResult, nil
 }
 

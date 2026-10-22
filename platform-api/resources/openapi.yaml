@@ -3931,6 +3931,9 @@ paths:
       parameters:
         - $ref: '#/components/parameters/limit-Q'
         - $ref: '#/components/parameters/offset-Q'
+        - $ref: '#/components/parameters/sortBy-Q'
+        - $ref: '#/components/parameters/sortOrder-Q'
+        - $ref: '#/components/parameters/query-Q'
       responses:
         '200':
           description: List of LLM providers

@@ -1027,17 +1027,22 @@ func (r *LLMProviderRepo) EnsureGatewayAssociation(providerUUID, gatewayUUID, or
 	return ensureArtifactGatewayAssociation(r.db, providerUUID, gatewayUUID, orgUUID, createdBy, deployMetadata, metadataProvided)
 }
 
-func (r *LLMProviderRepo) List(orgUUID string, limit, offset int) ([]*model.LLMProvider, error) {
-	pageClause, pageArgs := r.db.PaginationClause(limit, offset)
-	args := append([]any{orgUUID}, pageArgs...)
+func (r *LLMProviderRepo) List(orgUUID string, opts ListOptions) ([]*model.LLMProvider, error) {
 	query := `
 		SELECT
 			uuid, handle, display_name, version, organization_uuid, origin, data_version, created_at, updated_at,
 			description, created_by, updated_by, template_uuid, openapi_spec, model_list, configuration
 		FROM llm_providers
-		WHERE organization_uuid = ?
-		ORDER BY created_at DESC
-		` + pageClause
+		WHERE organization_uuid = ?`
+	args := []any{orgUUID}
+	if searchClause, searchArgs := handleSearchClause(opts.Search); searchClause != "" {
+		query += searchClause
+		args = append(args, searchArgs...)
+	}
+	col, dir := opts.resolveSort(listSortColumns, "created_at")
+	pageClause, pageArgs := r.db.PaginationClause(opts.Limit, opts.Offset)
+	query += " ORDER BY " + col + " " + dir + " " + pageClause
+	args = append(args, pageArgs...)
 	rows, err := r.db.Query(r.db.Rebind(query), args...)
 	if err != nil {
 		return nil, err
@@ -1079,8 +1084,18 @@ func (r *LLMProviderRepo) List(orgUUID string, limit, offset int) ([]*model.LLMP
 	return res, rows.Err()
 }
 
-func (r *LLMProviderRepo) Count(orgUUID string) (int, error) {
-	return r.artifactRepo.CountByKindAndOrg(constants.LLMProvider, orgUUID)
+func (r *LLMProviderRepo) Count(orgUUID, search string) (int, error) {
+	query := `SELECT COUNT(*) FROM llm_providers WHERE organization_uuid = ?`
+	args := []any{orgUUID}
+	if searchClause, searchArgs := handleSearchClause(search); searchClause != "" {
+		query += searchClause
+		args = append(args, searchArgs...)
+	}
+	var count int
+	if err := r.db.QueryRow(r.db.Rebind(query), args...).Scan(&count); err != nil {
+		return 0, err
+	}
+	return count, nil
 }
 
 func (r *LLMProviderRepo) Update(p *model.LLMProvider) error {

@@ -340,9 +340,9 @@ func (h *LLMHandler) ListLLMProviders(w http.ResponseWriter, r *http.Request) er
 			WithLogMessage("organization claim not found in token")
 	}
 
-	limit, offset := parsePagination(r)
+	opts := parseListOptions(r)
 
-	resp, err := h.providerService.List(orgID, limit, offset)
+	resp, err := h.providerService.List(orgID, opts)
 	if err != nil {
 		return serviceError(err, fmt.Sprintf("failed to list LLM providers in org %s", orgID))
 	}

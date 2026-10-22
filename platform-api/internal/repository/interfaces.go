@@ -339,8 +339,8 @@ type LLMProviderRepository interface {
 	Create(p *model.LLMProvider) error
 	CreateWithCustomPolicyUsages(p *model.LLMProvider, policyUUIDs []string) error
 	GetByID(providerID, orgUUID string) (*model.LLMProvider, error)
-	List(orgUUID string, limit, offset int) ([]*model.LLMProvider, error)
-	Count(orgUUID string) (int, error)
+	List(orgUUID string, opts ListOptions) ([]*model.LLMProvider, error)
+	Count(orgUUID, search string) (int, error)
 	Update(p *model.LLMProvider) error
 	UpdateWithCustomPolicyUsages(p *model.LLMProvider, policyUUIDs []string) error
 	Delete(providerID, orgUUID string) error

@@ -1062,20 +1062,20 @@ func (s *LLMProviderService) Create(orgUUID, createdBy string, req *api.LLMProvi
 	return s.toProviderAPI(created, tpl.ID)
 }
 
-func (s *LLMProviderService) List(orgUUID string, limit, offset int) (*api.LLMProviderListResponse, error) {
-	items, err := s.repo.List(orgUUID, limit, offset)
+func (s *LLMProviderService) List(orgUUID string, opts repository.ListOptions) (*api.LLMProviderListResponse, error) {
+	items, err := s.repo.List(orgUUID, opts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list providers: %w", err)
 	}
-	totalCount, err := s.repo.Count(orgUUID)
+	totalCount, err := s.repo.Count(orgUUID, opts.Search)
 	if err != nil {
 		return nil, fmt.Errorf("failed to count providers: %w", err)
 	}
 	resp := &api.LLMProviderListResponse{
 		Count: len(items),
 		Pagination: api.Pagination{
-			Limit:  limit,
-			Offset: offset,
+			Limit:  opts.Limit,
+			Offset: opts.Offset,
 			Total:  totalCount,
 		},
 	}
