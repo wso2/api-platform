@@ -19,8 +19,10 @@
 package shared
 
 import (
+	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/hex"
 	"encoding/pem"
 	"os"
 	"path/filepath"
@@ -144,6 +146,16 @@ func TestAPIPortalTLSIsItsOwnCertificateValidForThePortalHost(t *testing.T) {
 	}
 	_, err = certificate.Verify(x509.VerifyOptions{DNSName: "platform-api", Roots: roots})
 	require.Error(t, err)
+}
+
+func TestAPIPortalSharedKeyIsGeneratedOnceAndItsHashMatches(t *testing.T) {
+	key := APIPortalSharedKey()
+
+	require.Regexp(t, "^[0-9a-f]{64}$", key)
+	require.Equal(t, key, APIPortalSharedKey())
+	sum := sha256.Sum256([]byte(key))
+	require.Equal(t, hex.EncodeToString(sum[:]), APIPortalSharedKeyHash())
+	require.NotEqual(t, key, APIPortalSharedKeyHash())
 }
 
 func TestAPIPortalClientTLSTrustsOnlyThePortalCertificate(t *testing.T) {

@@ -21,6 +21,7 @@ package shared
 import (
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
@@ -42,6 +43,9 @@ var (
 
 	apiPortalTLSOnce sync.Once
 	apiPortalTLSData *KeyPairPEM
+
+	apiPortalSharedKeyOnce sync.Once
+	apiPortalSharedKeyData string
 
 	gatewayListenerOnce sync.Once
 	gatewayListenerData *KeyPairPEM
@@ -180,6 +184,26 @@ func APIPortalTLS() *KeyPairPEM {
 		apiPortalTLSData = pair
 	})
 	return apiPortalTLSData
+}
+
+// APIPortalSharedKey returns the 64-character hex key platform-api publishes to the API Portal
+// with. It is generated once per process; the portal is configured with its hash only.
+func APIPortalSharedKey() string {
+	apiPortalSharedKeyOnce.Do(func() {
+		key, err := HexKey(32)
+		if err != nil {
+			panic(err)
+		}
+		apiPortalSharedKeyData = key
+	})
+	return apiPortalSharedKeyData
+}
+
+// APIPortalSharedKeyHash returns the sha256 of APIPortalSharedKey as lowercase hex, the form the
+// portal's internal_auth.hash expects.
+func APIPortalSharedKeyHash() string {
+	sum := sha256.Sum256([]byte(APIPortalSharedKey()))
+	return hex.EncodeToString(sum[:])
 }
 
 // APIPortalClientTLS returns a client TLS configuration that trusts only the API Portal
