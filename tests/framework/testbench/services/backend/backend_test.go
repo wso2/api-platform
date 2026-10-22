@@ -78,3 +78,34 @@ func TestCorrelationIDIsNotReflectedOnOtherPaths(t *testing.T) {
 	require.Equal(t, http.StatusOK, recorder.Code)
 	require.Empty(t, recorder.Header().Values("X-Correlation-Response"))
 }
+
+func TestRequestHeadersAreRelayedWithPrefix(t *testing.T) {
+	for _, path := range []string{"/ordinary", "/analytics-headers", "/delay/0"} {
+		t.Run(path, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, path, nil)
+			req.Host = "backend.example"
+			req.Header.Set("X-JWT-Assertion", "header.payload.signature")
+			// Two separate header lines exercise relaying a multi-valued request header.
+			req.Header.Add("X-Multi-Request", "first")
+			req.Header.Add("X-Multi-Request", "second")
+			recorder := httptest.NewRecorder()
+
+			New().Handler().ServeHTTP(recorder, req)
+
+			require.Equal(t, http.StatusOK, recorder.Code)
+			require.Equal(t, []string{"header.payload.signature"}, recorder.Header().Values("X-REQ-X-JWT-Assertion"))
+			require.Equal(t, []string{"first", "second"}, recorder.Header().Values("X-REQ-X-Multi-Request"))
+			require.Equal(t, []string{"backend.example"}, recorder.Header().Values("X-REQ-Host"))
+		})
+	}
+}
+
+func TestUnsentRequestHeaderIsNotRelayed(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/ordinary", nil)
+	recorder := httptest.NewRecorder()
+
+	New().Handler().ServeHTTP(recorder, req)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.Empty(t, recorder.Header().Values("X-REQ-X-JWT-Assertion"))
+}

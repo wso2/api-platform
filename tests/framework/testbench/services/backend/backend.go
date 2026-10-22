@@ -35,6 +35,10 @@ import (
 // Port is the container port. Features address http://testbench:3000.
 const Port = 3000
 
+// requestHeaderPrefix names the response header that relays a received request header, so
+// request header X-JWT-Assertion is returned as X-REQ-X-JWT-Assertion.
+const requestHeaderPrefix = "X-REQ-"
+
 // Service implements the stateless backend test service.
 type Service struct{}
 
@@ -103,6 +107,14 @@ func (s *Service) reflect(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
+	// Relays every received request header as a response header, so tests can read what the
+	// gateway sent upstream (such as X-JWT-Assertion) off the response headers as well as the
+	// reflected body.
+	for name, values := range headers {
+		for _, value := range values {
+			w.Header().Add(requestHeaderPrefix+name, value)
+		}
+	}
 	if r.URL.Path == "/analytics-headers" || strings.HasPrefix(r.URL.Path, "/analytics-headers/") {
 		w.Header().Set("X-Allowed-Response", "allowed")
 		w.Header().Set("X-Denied-Response", "denied")
