@@ -88,5 +88,36 @@ func defaultConfig() *Config {
 				Mode: AuthzModeScope,
 			},
 		},
+		// TODO(gateway-versions): the "event" entry is still a placeholder —
+		// confirm its real released version/tag/channel before relying on it in
+		// production. "regular" mirrors AI Workspace's own released catalog
+		// (config.env.ts's PLATFORM_GATEWAY_VERSIONS), newest first so the first
+		// entry per type is what the SPA offers as "Latest". The "ai" type is AI
+		// Workspace's own catalog, not api-control-plane's.
+		GatewayVersions: []GatewayVersionEntry{
+			{
+				Type:    "regular",
+				Version: "2026.05.13",
+				Channel: "STS",
+			},
+			{
+				Type:          "regular",
+				Version:       "1.1",
+				LatestVersion: "v1.1.0",
+				Channel:       "LTS",
+			},
+			{
+				Type:          "regular",
+				Version:       "1.0",
+				LatestVersion: "v1.0.0",
+				Channel:       "LTS",
+			},
+			{
+				Type:          "event",
+				Version:       "1.0",
+				LatestVersion: "v1.0.0",
+				Channel:       "LTS",
+			},
+		},
 	}
 }
