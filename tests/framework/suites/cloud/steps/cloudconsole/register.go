@@ -132,6 +132,7 @@ func Register(sc *godog.ScenarioContext, topo *frameworkruntime.Topology, funnel
 	s.registerGatewayConfigSteps(sc)
 	s.registerPromotionSteps(sc)
 	s.registerResilienceSteps(sc)
+	s.registerSecretSteps(sc)
 
 	sc.Step(`^I create a synthetic APIP project$`, s.createProject)
 	sc.Step(`^the synthetic APIP project should be retrievable by handle$`, s.getProject)
@@ -288,6 +289,21 @@ func (s *Steps) registerResilienceSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^requests to "([^"]*)" should be served by at least (\d+) different gateway runtime pods$`, s.assertServedByManyPods)
 }
 
+// registerSecretSteps binds the steps that create, rotate, read and delete a secret and read back
+// what a gateway sends upstream with it.
+func (s *Steps) registerSecretSteps(sc *godog.ScenarioContext) {
+	sc.Step(`^I create a synthetic secret$`, s.createSecret)
+	sc.Step(`^I choose a synthetic secret handle without creating the secret$`, s.chooseSecretHandle)
+	sc.Step(`^I rotate the synthetic secret$`, s.rotateSecret)
+	sc.Step(`^I read the synthetic secret$`, s.readSecret)
+	sc.Step(`^I list the secrets$`, s.listSecrets)
+	sc.Step(`^I delete the synthetic secret$`, s.deleteSecret)
+	sc.Step(`^the response should not reveal the synthetic secret's value$`, s.assertSecretValueHidden)
+	sc.Step(`^the synthetic secret should be described by a hash$`, s.assertSecretHash)
+	sc.Step(`^the echoed request header "([^"]*)" should carry the synthetic secret's value$`, s.assertEchoedSecret)
+	sc.Step(`^a "([^"]*)" request to "([^"]*)" should echo the header "([^"]*)" with the rotated secret value$`, s.sendUntilEchoesRotated)
+}
+
 // RegisterDeleters installs cloud-target cleanup handlers for a block containing cloud-console.
 func RegisterDeleters(reg *cleanup.Registry, topo *frameworkruntime.Topology) error {
 	if reg == nil {
@@ -310,6 +326,9 @@ func RegisterDeleters(reg *cleanup.Registry, topo *frameworkruntime.Topology) er
 		return err
 	}
 	if err := reg.RegisterDeleter(kindPipeline, cloudDeleter(topo, client, "/pipelines", true)); err != nil {
+		return err
+	}
+	if err := reg.RegisterDeleter(kindSecret, cloudDeleter(topo, client, secretsCollection, false)); err != nil {
 		return err
 	}
 	return reg.RegisterDeleter(cleanup.KindGateway, cloudDeleter(topo, client, "/managed-gateways", false))
