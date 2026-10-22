@@ -84,7 +84,10 @@ import {
   extractSecretHandle,
 } from '../../../../apis/secretApis';
 import { getGuardrails } from '../../../../apis/policyHubApis';
-import { resolveApiPortalUrl } from '../../../../apis/apiPortalApis';
+import {
+  buildApiPortalMcpUrl,
+  resolveApiPortalUrl,
+} from '../../../../apis/apiPortalApis';
 import { getMCPServerDeployments } from '../../../../apis/MCP/mcpServerDeployApis';
 import { getGateways } from '../../../../apis/gatewayApis';
 import type { Gateway } from '../../../../apis/gatewayTypes';
@@ -282,11 +285,12 @@ export default function ExternalServersOverview(): JSX.Element {
   const [isPublished, setIsPublished] = useState(false)
   const [isPublishStatusUnknown, setIsPublishStatusUnknown] = useState(true);
   /**
-   * Where "View in API Portal" points: the PORTAL's own address, resolved
-   * once per organization (see `resolveApiPortalUrl`) rather than taken from
-   * the listing's `endpoints.productionUrl`, which is the API's invocation
-   * endpoint — for an MCP proxy, the gateway URL — and sent this link at the
-   * gateway instead of the portal.
+   * The PORTAL's own address, resolved once per organization (see
+   * `resolveApiPortalUrl`) rather than taken from the listing's
+   * `endpoints.productionUrl`, which is the API's invocation endpoint — for an
+   * MCP proxy, the gateway URL — and sent this link at the gateway instead of
+   * the portal. It is only the base: "View in API Portal" points at this
+   * proxy's own listing beneath it (see `apiPortalListingUrl`).
    */
   const [apiPortalUrl, setApiPortalUrl] = useState<string | undefined>();
   const [isPublishStatusLoading, setIsPublishStatusLoading] = useState(false);
@@ -1007,6 +1011,18 @@ export default function ExternalServersOverview(): JSX.Element {
     };
   }, [apimBaseUrl, isAPIPortalAvailable, organizationId]);
 
+  // Where "View in API Portal" actually goes: this proxy's listing, not the
+  // portal's home page, which is all the bare portal address reached.
+  const apiPortalListingUrl = useMemo(
+    () =>
+      buildApiPortalMcpUrl(
+        apiPortalUrl,
+        currentOrganization?.handle,
+        server?.id
+      ),
+    [apiPortalUrl, currentOrganization?.handle, server?.id]
+  );
+
   useEffect(() => {
     if (!isAPIPortalAvailable || isLoading || !server || !organizationId) return;
     setIsPublishStatusUnknown(true);
@@ -1468,10 +1484,10 @@ export default function ExternalServersOverview(): JSX.Element {
                       {isPublished ? 'Unpublish from API Portal' : 'Publish to API Portal'}
                     </Button>
                   </DisabledActionTooltip>
-                  {isPublished && apiPortalUrl ? (
+                  {isPublished && apiPortalListingUrl ? (
                     <Box
                       component="a"
-                      href={apiPortalUrl}
+                      href={apiPortalListingUrl}
                       target="_blank"
                       rel="noopener noreferrer"
                       sx={{

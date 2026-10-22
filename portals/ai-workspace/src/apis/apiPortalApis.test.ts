@@ -146,3 +146,39 @@ describe('resolveApiPortalUrl', () => {
     await expect(resolveApiPortalUrl(PORTAL_ID, BASE)).resolves.toBeUndefined();
   });
 });
+
+describe('buildApiPortalMcpUrl', () => {
+  const build = async () => (await loadModule('')).buildApiPortalMcpUrl;
+
+  it('points at the proxy listing under the organization and default view', async () => {
+    const buildApiPortalMcpUrl = await build();
+
+    expect(
+      buildApiPortalMcpUrl('https://portal.test', 'acme', 'orders-mcp')
+    ).toBe('https://portal.test/acme/views/default/mcp/orders-mcp');
+  });
+
+  // A configured portal address may carry a base path and/or a trailing slash;
+  // neither may double up a separator in the path that follows.
+  it('keeps a base path and drops a trailing slash', async () => {
+    const buildApiPortalMcpUrl = await build();
+
+    expect(
+      buildApiPortalMcpUrl('https://portal.test/devportal/', 'acme', 'orders-mcp')
+    ).toBe('https://portal.test/devportal/acme/views/default/mcp/orders-mcp');
+  });
+
+  it.each([
+    ['no portal URL', undefined, 'acme', 'orders-mcp'],
+    ['a blank portal URL', '   ', 'acme', 'orders-mcp'],
+    ['no organization handle', 'https://portal.test', undefined, 'orders-mcp'],
+    ['no proxy id', 'https://portal.test', 'acme', undefined],
+  ])(
+    'returns undefined with %s, so no link is shown rather than a wrong one',
+    async (_case, portal, org, id) => {
+      const buildApiPortalMcpUrl = await build();
+
+      expect(buildApiPortalMcpUrl(portal, org, id)).toBeUndefined();
+    }
+  );
+});
