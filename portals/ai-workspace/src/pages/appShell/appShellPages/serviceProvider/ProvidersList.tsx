@@ -245,12 +245,18 @@ export default function ServiceProviders() {
 
     setCheckingProviderId(providerId);
     try {
+      // Only the total is needed here, not the items — request the smallest
+      // page and read pagination.total, which reports the true count even
+      // when more than `limit` proxies use this provider (unlike `.count`,
+      // which reflects only the items in this one page).
       const linkedProxiesResponse = await llmProviderApis.getLLMProviderProxies(
         providerId,
         currentOrganization.uuid,
-        apimBaseUrl
+        apimBaseUrl,
+        1,
+        0
       );
-      const linkedProxyCount = linkedProxiesResponse.count ?? 0;
+      const linkedProxyCount = linkedProxiesResponse.pagination?.total ?? 0;
       if (linkedProxyCount > 0) {
         const proxyLabel = linkedProxyCount === 1 ? 'Proxy' : 'Proxies';
         const usageVerb = linkedProxyCount === 1 ? 'is' : 'are';

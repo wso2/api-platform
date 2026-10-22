@@ -57,6 +57,7 @@ import type { Gateway } from '../../../../apis/gatewayTypes';
 import { PLATFORM_API_BASE_URL } from '../../../../paths';
 import { logger } from '../../../../utils/logger';
 import { getErrorMessage } from '../../../../utils/apiError';
+import { fetchAllPages } from '../../../../utils/pagination';
 import type {
   DeploymentResponse,
   Proxy,
@@ -362,10 +363,17 @@ export default function ServiceProviderOverviewTab({
     void (async () => {
       try {
         const [proxiesResponse, gatewaysResponse] = await Promise.all([
-          getLLMProviderProxies(
-            providerId,
-            organizationId,
-            PLATFORM_API_BASE_URL
+          // The collection endpoint defaults to limit=20 when unpaged, and
+          // this card/modal has no pager of its own — walk every page so a
+          // provider backing more than 20 proxies isn't silently truncated.
+          fetchAllPages<Proxy>((limit, offset) =>
+            getLLMProviderProxies(
+              providerId,
+              organizationId,
+              PLATFORM_API_BASE_URL,
+              limit,
+              offset
+            )
           ),
           getGateways(organizationId),
         ]);
