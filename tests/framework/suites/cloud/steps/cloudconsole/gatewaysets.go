@@ -28,6 +28,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/wso2/api-platform/tests/framework/core/cleanup"
 	"github.com/wso2/api-platform/tests/framework/core/util/httpx"
 	"github.com/wso2/api-platform/tests/framework/core/util/retry"
 	"github.com/wso2/api-platform/tests/framework/core/util/tcontext"
@@ -46,12 +47,27 @@ var statusReasonCode = regexp.MustCompile(`^[A-Z][A-Z0-9_]*$`)
 // gateway, each registered for cleanup before it is requested, and records them as the
 // scenario's synthetic gateways in place of any recorded before.
 func (s *Steps) createGatewaysInActiveEnvironment(ctx context.Context, count int) error {
-	if count < 1 {
-		return fmt.Errorf("at least one synthetic gateway is required, got %d", count)
-	}
 	environment, err := requiredValue(ctx, keyGatewayEnv)
 	if err != nil {
 		return fmt.Errorf("the active gateway does not report its environment: %w", err)
+	}
+	return s.createSyntheticGateways(ctx, count, environment)
+}
+
+// createGatewaysInSyntheticEnvironment creates managed gateways in the scenario's synthetic
+// environment, on the same terms as createGatewaysInActiveEnvironment.
+func (s *Steps) createGatewaysInSyntheticEnvironment(ctx context.Context, count int) error {
+	environment, err := requiredValue(ctx, keyEnvironmentName)
+	if err != nil {
+		return fmt.Errorf("the scenario has created no synthetic environment: %w", err)
+	}
+	return s.createSyntheticGateways(ctx, count, environment)
+}
+
+// createSyntheticGateways creates the gateways in an environment and replaces the recorded list.
+func (s *Steps) createSyntheticGateways(ctx context.Context, count int, environment string) error {
+	if count < 1 {
+		return fmt.Errorf("at least one synthetic gateway is required, got %d", count)
 	}
 	// Scenario state lives as long as the runner, so the gateways a previous scenario created
 	// (and cleaned up) are not this scenario's.
@@ -136,13 +152,27 @@ func (s *Steps) gatewayProgressOf(ctx context.Context, id string) (gatewayProgre
 	case config.StatusCode != http.StatusOK:
 		progress.Config = fmt.Sprintf("unreadable (HTTP %d)", config.StatusCode)
 	default:
-		if phase, phaseErr := stringField(config, "status"); phaseErr == nil {
-			progress.Config = phase
-		} else {
-			progress.Config = "not reported"
-		}
+		progress.Config = releasePhase(config.Body)
 	}
 	return progress, nil
+}
+
+// releasePhase renders the reconcile phase of a gateway's configuration, with the platform's
+// message when it gives one, or says that none was reported.
+func releasePhase(body []byte) string {
+	var document struct {
+		Status struct {
+			Phase   string `json:"phase"`
+			Message string `json:"message"`
+		} `json:"status"`
+	}
+	if json.Unmarshal(body, &document) != nil || document.Status.Phase == "" {
+		return "not reported"
+	}
+	if document.Status.Message != "" {
+		return document.Status.Phase + " (" + document.Status.Message + ")"
+	}
+	return document.Status.Phase
 }
 
 // waitSyntheticGatewaysActive waits until every synthetic gateway reports itself active. It logs
@@ -240,6 +270,107 @@ func (s *Steps) assertDeploymentStatusReason(ctx context.Context) error {
 	reason, _ := record["statusReason"].(string)
 	if !statusReasonCode.MatchString(reason) {
 		return fmt.Errorf("the deployment reports status reason %q, want an error code", reason)
+	}
+	return nil
+}
+
+// syntheticGatewayAt resolves the nth (from one) gateway the scenario created.
+func syntheticGatewayAt(ctx context.Context, n int) (string, error) {
+	ids := syntheticGatewayIDs(ctx)
+	if n < 1 || n > len(ids) {
+		return "", fmt.Errorf("synthetic gateway %d does not exist: the scenario created %d", n, len(ids))
+	}
+	return ids[n-1], nil
+}
+
+// deployBuildToSyntheticGateway deploys a build of the synthetic REST API to one synthetic gateway
+// through the platform route, leaving every other gateway without it.
+func (s *Steps) deployBuildToSyntheticGateway(ctx context.Context, n int) error {
+	apiID, err := requiredValue(ctx, keyAPIID)
+	if err != nil {
+		return err
+	}
+	gatewayID, err := syntheticGatewayAt(ctx, n)
+	if err != nil {
+		return err
+	}
+	resp, err := s.doAuthenticated(ctx, http.MethodPost, "/rest-apis/"+url.PathEscape(apiID)+"/deployments",
+		map[string]string{"name": fmt.Sprintf("%s-g%d", apiID, n), "base": "current", "gatewayId": gatewayID})
+	if err != nil {
+		return err
+	}
+	if resp.StatusCode != http.StatusCreated {
+		return fmt.Errorf("deploying to synthetic gateway %d (%s): %w", n, gatewayID, responseError(resp))
+	}
+	return nil
+}
+
+// deploymentsOn lists the deployments the synthetic REST API has on one gateway.
+func (s *Steps) deploymentsOn(ctx context.Context, gatewayID string) ([]map[string]any, error) {
+	apiID, err := requiredValue(ctx, keyAPIID)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := s.doAuthenticatedRaw(ctx, http.MethodGet,
+		"/rest-apis/"+url.PathEscape(apiID)+"/deployments?gatewayId="+url.QueryEscape(gatewayID), nil)
+	if err != nil {
+		return nil, retry.Transient(err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, retry.Transient(responseError(resp))
+	}
+	items, err := listItems(resp)
+	if err != nil {
+		return nil, retry.Transient(fmt.Errorf("decoding APIP deployments: %w", err))
+	}
+	return items, nil
+}
+
+// assertDeployedOnSyntheticGateway waits until the synthetic REST API is, or is not, deployed on
+// one synthetic gateway.
+func (s *Steps) assertDeployedOnSyntheticGateway(ctx context.Context, n int, want bool) error {
+	gatewayID, err := syntheticGatewayAt(ctx, n)
+	if err != nil {
+		return err
+	}
+	return retry.Await(ctx, retry.Options{Timeout: propagationTimeout(s.topo), Interval: 3 * time.Second},
+		func(ctx context.Context) (int, error) {
+			items, err := s.deploymentsOn(ctx, gatewayID)
+			return len(items), err
+		},
+		func(count int) bool { return (count > 0) == want },
+		fmt.Sprintf("waiting for the synthetic REST API to be deployed=%t on synthetic gateway %d", want, n))
+}
+
+// deleteSyntheticGateway deletes one synthetic gateway, which must be accepted, and waits until it
+// is gone.
+func (s *Steps) deleteSyntheticGateway(ctx context.Context, n int) error {
+	gatewayID, err := syntheticGatewayAt(ctx, n)
+	if err != nil {
+		return err
+	}
+	resp, err := s.doAuthenticated(ctx, http.MethodDelete, "/managed-gateways/"+url.PathEscape(gatewayID), nil)
+	if err != nil {
+		return err
+	}
+	if resp.StatusCode != http.StatusNoContent {
+		return fmt.Errorf("deleting synthetic gateway %d (%s): %w", n, gatewayID, responseError(resp))
+	}
+	if err := s.awaitNotFound(ctx, "/managed-gateways/"+url.PathEscape(gatewayID), "managed gateway "+gatewayID); err != nil {
+		return err
+	}
+	deregister(ctx, cleanup.KindGateway, gatewayID)
+	return nil
+}
+
+// assertSyntheticGatewayRetrievable checks one synthetic gateway can still be read.
+func (s *Steps) assertSyntheticGatewayRetrievable(ctx context.Context, n int) error {
+	gatewayID, err := syntheticGatewayAt(ctx, n)
+	if err != nil {
+		return err
+	}
+	if _, err := s.fetchManagedGateway(ctx, gatewayID); err != nil {
+		return fmt.Errorf("synthetic gateway %d (%s): %w", n, gatewayID, err)
 	}
 	return nil
 }

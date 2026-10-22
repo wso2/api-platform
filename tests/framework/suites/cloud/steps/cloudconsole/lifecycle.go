@@ -463,27 +463,33 @@ func (s *Steps) createManagedGateway(ctx context.Context) error {
 }
 
 // createManagedGatewayIn creates a uniquely named managed gateway in an environment, registers it
-// for cleanup before the request, and keeps its id as the scenario's managed gateway.
+// for cleanup before the request, and keeps its id as the scenario's managed gateway. The platform
+// registers a gateway as "<environment>-<handle>" within 40 characters, so a name too long for the
+// environment is sent with a handle cut to fit.
 func (s *Steps) createManagedGatewayIn(ctx context.Context, environment string) (string, error) {
-	if err := generateResourceAndStore(ctx, "syn-gateway", keyManagedGatewayID); err != nil {
+	if err := generateResourceAndStore(ctx, "syn-gw", keyManagedGatewayID); err != nil {
 		return "", err
 	}
 	name, err := requiredValue(ctx, keyManagedGatewayID)
 	if err != nil {
 		return "", err
 	}
+	request := map[string]string{"displayName": name, "environment": environment}
+	handle := name
+	if budget := gatewayHandleBudget(environment); len(name) > budget {
+		handle = handleOfLength(name, budget)
+		request["handle"] = handle
+	}
 	// The managed-gateway API normally derives its registration id from the
-	// environment and display name. Keep that deterministic fallback registered so
+	// environment and handle. Keep that deterministic fallback registered so
 	// cleanup can still attempt deletion if a successful create has no decodable body.
-	cleanupID := environment + "-" + name
+	cleanupID := environment + "-" + handle
 	if err := cleanup.Register(ctx, cleanup.Resource{
 		Kind: cleanup.KindGateway, ID: cleanupID, Actor: resourceActor, Description: "managed gateway " + cleanupID,
 	}); err != nil {
 		return "", fmt.Errorf("registering managed gateway %q for cleanup: %w", cleanupID, err)
 	}
-	resp, err := s.doAuthenticated(ctx, http.MethodPost, "/managed-gateways", map[string]string{
-		"displayName": name, "environment": environment,
-	})
+	resp, err := s.doAuthenticated(ctx, http.MethodPost, "/managed-gateways", request)
 	if err != nil {
 		return "", err
 	}
@@ -501,6 +507,9 @@ func (s *Steps) createManagedGatewayIn(ctx context.Context, environment string) 
 		}); err != nil {
 			return "", fmt.Errorf("registering managed gateway %q for cleanup: %w", id, err)
 		}
+	}
+	if err := tcontext.Set(ctx, keyManagedGatewayEnv, environment); err != nil {
+		return "", err
 	}
 	return id, tcontext.Set(ctx, keyManagedGatewayID, id)
 }
@@ -542,7 +551,7 @@ func (s *Steps) deleteManagedGateway(ctx context.Context) error {
 	if resp.StatusCode == http.StatusNotFound {
 		deregister(ctx, cleanup.KindGateway, id)
 	}
-	return nil
+	return tcontext.Set(ctx, keyGatewayDeleteStatus, fmt.Sprint(resp.StatusCode))
 }
 
 func (s *Steps) verifyManagedGatewayDeleted(ctx context.Context) error {
@@ -551,6 +560,9 @@ func (s *Steps) verifyManagedGatewayDeleted(ctx context.Context) error {
 		return err
 	}
 	if err := s.awaitNotFound(ctx, "/managed-gateways/"+url.PathEscape(id), "managed gateway "+id); err != nil {
+		if status := optionalValue(ctx, keyGatewayDeleteStatus); status != "" {
+			return fmt.Errorf("%w (the delete was answered %s)", err, status)
+		}
 		return err
 	}
 	deregister(ctx, cleanup.KindGateway, id)

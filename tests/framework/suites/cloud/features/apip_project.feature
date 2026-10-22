@@ -20,6 +20,7 @@ Feature: APIP cloud project lifecycle
   I want to manage a project
   So that project creation and deletion are verified
 
+  @TC_APIP_PROJ_002 @TC_APIP_PROJ_003 @TC_APIP_PROJ_004 @TC_APIP_PROJ_005 @ID_APIP_PROJECT_001
   Scenario: A project can be retrieved by handle and deleted
     Given I obtain an APIP cloud console token
     When I create a synthetic APIP project
