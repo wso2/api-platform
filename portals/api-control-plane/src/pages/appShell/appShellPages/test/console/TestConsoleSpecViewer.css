@@ -1,0 +1,179 @@
+/*
+ * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+/*
+ * Console-specific overrides for the shared spec-viewer stylesheet.
+ *
+ * The viewer uses the shared `swagger-spec-viewer` class and stylesheet.
+ * Shared behavior must remain there; this file contains only console-specific
+ * differences. The shared modifier classes (`hide-info-section`,
+ * `hide-servers`, and `hide-authorize`) are applied by the component.
+ */
+
+/*
+ * Restore the Execute button label.
+ *
+ * The shared sheet replaces the label with "Generate Curl" for read-only
+ * views. This console executes requests against the selected gateway with the
+ * test key attached, so that label is incorrect.
+ *
+ * Restore `color` from the injected theme token so the label follows the page
+ * palette.
+ *
+ * Both selectors include `.swagger-spec-viewer`, giving them higher specificity
+ * than the shared rules. This ensures the override wins regardless of stylesheet
+ * order across bundles.
+ */
+.test-console-spec-viewer.swagger-spec-viewer .swagger-ui .btn.execute.opblock-control__btn {
+  color: var(--tc-primary-contrast) !important;
+}
+
+.test-console-spec-viewer.swagger-spec-viewer .swagger-ui .btn.execute.opblock-control__btn::after {
+  content: none;
+}
+
+/*
+ * Make swagger's form fields legible in both colour schemes.
+ *
+ * Swagger ships fixed light-mode form colours (a white fill with near-black
+ * text). Under the app's dark palette the surrounding text colour wins on the
+ * value while the fill stays light — or the reverse — and either way the user
+ * cannot read what they are typing into a try-out parameter.
+ *
+ * The four values come from the theme via `--tc-field-*`, injected by the
+ * component, so this sheet never names a colour and both schemes follow the
+ * palette. `!important` is needed because swagger's own rules are equally
+ * specific and load from its bundled stylesheet.
+ */
+.test-console-spec-viewer.swagger-spec-viewer .swagger-ui input[type='text'],
+.test-console-spec-viewer.swagger-spec-viewer .swagger-ui input[type='password'],
+.test-console-spec-viewer.swagger-spec-viewer .swagger-ui input[type='email'],
+.test-console-spec-viewer.swagger-spec-viewer .swagger-ui input[type='search'],
+.test-console-spec-viewer.swagger-spec-viewer .swagger-ui input[type='number'],
+.test-console-spec-viewer.swagger-spec-viewer .swagger-ui input[type='file'],
+.test-console-spec-viewer.swagger-spec-viewer .swagger-ui textarea,
+.test-console-spec-viewer.swagger-spec-viewer .swagger-ui select {
+  background-color: var(--tc-field-bg) !important;
+  color: var(--tc-field-text) !important;
+  border-color: var(--tc-field-border) !important;
+}
+
+/*
+ * The JSON body editor is a textarea swagger paints separately, and the
+ * "computed" variant it shows for a generated example keeps its own fill.
+ */
+.test-console-spec-viewer.swagger-spec-viewer .swagger-ui textarea.body-param__text,
+.test-console-spec-viewer.swagger-spec-viewer .swagger-ui .body-param__text,
+.test-console-spec-viewer.swagger-spec-viewer .swagger-ui textarea:focus {
+  background-color: var(--tc-field-bg) !important;
+  color: var(--tc-field-text) !important;
+}
+
+.test-console-spec-viewer.swagger-spec-viewer .swagger-ui input::placeholder,
+.test-console-spec-viewer.swagger-spec-viewer .swagger-ui textarea::placeholder {
+  color: var(--tc-field-placeholder) !important;
+  opacity: 1;
+}
+
+/*
+ * The proxy/direct switch, on its own line above swagger's action buttons.
+ *
+ * Swagger renders Execute and Clear into a single container whose class flips
+ * once a response exists: `execute-wrapper` while there is none, `btn-group`
+ * afterwards, with Clear appearing alongside Execute. Both states are made
+ * wrapping flex rows here so the switch can claim a full-width line of its
+ * own and the buttons keep their own line underneath — before and after
+ * executing alike, with no reflow when Clear appears.
+ *
+ * The buttons themselves are left entirely to swagger: inside `.btn-group` it
+ * styles them as a joined pair, and nothing here interferes with that.
+ */
+/*
+ * `.execute-wrapper` needs nothing: it is a block, so the switch's own div
+ * already takes a line and swagger's full-width Execute follows underneath.
+ * `.btn-group` is a flex row, so it only needs permission to wrap — the
+ * switch then claims the first line and Execute/Clear keep the second,
+ * still paired by swagger's own `flex: 1` and shared radii.
+ */
+.test-console-spec-viewer.swagger-spec-viewer .swagger-ui .btn-group {
+  flex-wrap: wrap;
+  row-gap: 12px;
+}
+
+.test-console-spec-viewer.swagger-spec-viewer .swagger-ui .test-console-mode-row {
+  flex: 0 0 100%;
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 12px;
+
+  /*
+   * Mirrors swagger's own `.btn.execute`, which this app relabels but never
+   * re-themes. Declared here so the selected segment and the Execute button
+   * cannot drift apart.
+   */
+  --tc-execute-bg: #4990e2;
+  --tc-execute-text: #fff;
+}
+
+.test-console-spec-viewer.swagger-spec-viewer
+  .swagger-ui
+  .test-console-mode-row
+  .MuiToggleButton-root {
+  background: transparent;
+  border: 2px solid var(--tc-field-border);
+  color: var(--tc-field-text);
+  font-family: sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.2;
+  padding: 5px 16px;
+  text-transform: none;
+  transition: all 0.3s;
+}
+
+/* Collapse the shared edge so the pair reads as one control. */
+.test-console-spec-viewer.swagger-spec-viewer
+  .swagger-ui
+  .test-console-mode-row
+  .MuiToggleButton-root:first-of-type {
+  border-radius: 4px 0 0 4px;
+}
+
+.test-console-spec-viewer.swagger-spec-viewer
+  .swagger-ui
+  .test-console-mode-row
+  .MuiToggleButton-root:last-of-type {
+  border-radius: 0 4px 4px 0;
+  border-left-width: 0;
+}
+
+.test-console-spec-viewer.swagger-spec-viewer
+  .swagger-ui
+  .test-console-mode-row
+  .MuiToggleButton-root.Mui-selected {
+  background: var(--tc-execute-bg);
+  border-color: var(--tc-execute-bg);
+  color: var(--tc-execute-text);
+}
+
+.test-console-spec-viewer.swagger-spec-viewer
+  .swagger-ui
+  .test-console-mode-row
+  .MuiToggleButton-root.Mui-selected:hover {
+  background: var(--tc-execute-bg);
+}
