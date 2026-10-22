@@ -16,7 +16,6 @@
  * under the License.
  */
 
-// Package contentsafety provides a deterministic Azure AI Content Safety-compatible service.
 package contentsafety
 
 import (
@@ -26,7 +25,11 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"regexp"
+	"slices"
+	"strconv"
 	"strings"
+	"unicode/utf8"
 )
 
 // Port is the container port used by the testbench.
@@ -38,6 +41,61 @@ const AnalyzePath = "/contentsafety/text:analyze"
 // SubscriptionKey is the API key accepted by the test service.
 const SubscriptionKey = "test-subscription-key"
 
+// APIVersion is the only api-version query value the service accepts.
+const APIVersion = "2024-09-01"
+
+// MaxTextLength is the most characters of text Azure analyses in one request.
+const MaxTextLength = 10000
+
+// Azure's output types; FourSeverityLevels is the default.
+const (
+	outputFourSeverityLevels  = "FourSeverityLevels"
+	outputEightSeverityLevels = "EightSeverityLevels"
+)
+
+// categories are Azure's text categories, in Azure's order.
+var categories = []string{"Hate", "SelfHarm", "Sexual", "Violence"}
+
+// severityMarker matches "<category>-severity-<n>" in lowercased text.
+var severityMarker = regexp.MustCompile(`\b(hate|sexual|selfharm|violence)-severity-([0-7])\b`)
+
+// simulatedFailure is a fixed answer for text that asks for one, so a test can make the service
+// fail in a way the policy must handle.
+type simulatedFailure struct {
+	trigger string
+	status  int
+	body    string
+}
+
+// simulatedFailures are checked in order against the lowercased text. None contains "error", so
+// they never overlap the simulated 500 below.
+var simulatedFailures = []simulatedFailure{
+	{"simulate malformed json", http.StatusOK, `{"categoriesAnalysis":[{"category":"Hate",`},
+	{"simulate missing analysis", http.StatusOK, `{"blocklistsMatch":[]}`},
+	{"simulate invalid analysis", http.StatusOK, `{"categoriesAnalysis":"Violence"}`},
+	{"simulate bad request", http.StatusBadRequest,
+		`{"error":{"code":"InvalidRequestBody","message":"Simulated invalid request."}}`},
+	{"simulate forbidden", http.StatusForbidden,
+		`{"error":{"code":"Forbidden","message":"Simulated access denied."}}`},
+}
+
+// simulatedFailureFor returns the simulated failure the text asks for, if any.
+func simulatedFailureFor(lowerText string) (simulatedFailure, bool) {
+	for _, failure := range simulatedFailures {
+		if strings.Contains(lowerText, failure.trigger) {
+			return failure, true
+		}
+	}
+	return simulatedFailure{}, false
+}
+
+// mixedAnalysisTrigger asks for a categoriesAnalysis whose real entries follow nonObjectEntries.
+const mixedAnalysisTrigger = "simulate mixed analysis"
+
+// nonObjectEntries are categoriesAnalysis entries that are not objects; each would block the
+// request if a client read it as a Violence analysis of severity 7.
+var nonObjectEntries = []any{"Violence", 7, nil, true, []any{"Violence", 7}}
+
 // keyHeader is Azure's subscription-key header.
 const keyHeader = "Ocp-Apim-Subscription-Key"
 
@@ -46,10 +104,9 @@ const maxRequestBodySize = 1 << 20
 type analyzeRequest struct {
 	Text       string   `json:"text"`
 	Categories []string `json:"categories"`
-	// HaltOnBlocklistHit is accepted for wire compatibility; scoring is deterministic.
-	HaltOnBlocklistHit bool `json:"haltOnBlocklistHit"`
-	// OutputType is accepted for wire compatibility; the standard analysis shape is returned.
-	OutputType string `json:"outputType"`
+	// HaltOnBlocklistHit is accepted for wire compatibility; no blocklists exist.
+	HaltOnBlocklistHit bool   `json:"haltOnBlocklistHit"`
+	OutputType         string `json:"outputType"`
 }
 
 type categoryAnalysis struct {
@@ -113,13 +170,40 @@ func (s *Service) analyze(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if version := r.URL.Query().Get("api-version"); version != APIVersion {
+		writeInvalidRequestBody(w, fmt.Sprintf("api-version %q is not supported", version))
+		return
+	}
+
 	var req analyzeRequest
 	if err := decodeJSON(w, r, &req); err != nil {
 		respondToDecodeError(w, err)
 		return
 	}
+	if n := utf8.RuneCountInString(req.Text); n > MaxTextLength {
+		writeInvalidRequestBody(w, fmt.Sprintf("text has %d characters, more than the %d allowed", n, MaxTextLength))
+		return
+	}
+	requested, err := requestedCategories(req.Categories)
+	if err != nil {
+		writeInvalidRequestBody(w, err.Error())
+		return
+	}
+	eightLevels, err := isEightSeverityLevels(req.OutputType)
+	if err != nil {
+		writeInvalidRequestBody(w, err.Error())
+		return
+	}
 
 	lowerText := strings.ToLower(req.Text)
+
+	if failure, ok := simulatedFailureFor(lowerText); ok {
+		w.WriteHeader(failure.status)
+		if _, err := w.Write([]byte(failure.body)); err != nil {
+			log.Printf("content-safety: failed to write simulated failure: %v", err)
+		}
+		return
+	}
 
 	// Preserve the simulated provider-error scenario used by integration tests.
 	if strings.Contains(lowerText, "error") && strings.Contains(lowerText, "simulate") {
@@ -127,20 +211,66 @@ func (s *Service) analyze(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Preserve the requested category order and emit [] rather than null when empty.
-	resp := analyzeResponse{CategoriesAnalysis: make([]categoryAnalysis, 0, len(req.Categories))}
-	for _, category := range req.Categories {
+	// Preserve the requested category order.
+	resp := analyzeResponse{CategoriesAnalysis: make([]categoryAnalysis, 0, len(requested))}
+	for _, category := range requested {
+		score := severity(lowerText, category)
+		if !eightLevels {
+			score -= score % 2
+		}
 		resp.CategoriesAnalysis = append(resp.CategoriesAnalysis, categoryAnalysis{
 			Category: category,
-			Severity: severity(lowerText, category),
+			Severity: score,
 		})
 	}
 
+	if strings.Contains(lowerText, mixedAnalysisTrigger) {
+		entries := append([]any(nil), nonObjectEntries...)
+		for _, analysis := range resp.CategoriesAnalysis {
+			entries = append(entries, analysis)
+		}
+		writeJSON(w, map[string]any{"categoriesAnalysis": entries})
+		return
+	}
 	writeJSON(w, resp)
 }
 
-// severity scores one category against already-lowercased text.
+// requestedCategories validates the requested categories; none requested means all of them.
+func requestedCategories(requested []string) ([]string, error) {
+	if len(requested) == 0 {
+		return categories, nil
+	}
+	for i, category := range requested {
+		if !slices.Contains(categories, category) {
+			return nil, fmt.Errorf("category %q is not supported", category)
+		}
+		if slices.Contains(requested[:i], category) {
+			return nil, fmt.Errorf("category %q is requested more than once", category)
+		}
+	}
+	return requested, nil
+}
+
+// isEightSeverityLevels validates outputType and reports whether it asks for eight levels.
+func isEightSeverityLevels(outputType string) (bool, error) {
+	switch outputType {
+	case "", outputFourSeverityLevels:
+		return false, nil
+	case outputEightSeverityLevels:
+		return true, nil
+	default:
+		return false, fmt.Errorf("outputType %q is not supported", outputType)
+	}
+}
+
+// severity scores one category against already-lowercased text on the eight-level scale.
 func severity(lowerText, category string) int {
+	for _, marker := range severityMarker.FindAllStringSubmatch(lowerText, -1) {
+		if marker[1] == strings.ToLower(category) {
+			score, _ := strconv.Atoi(marker[2])
+			return score
+		}
+	}
 	// Matching is intentionally substring-based to preserve the legacy mock's behavior.
 	for _, keyword := range keywordsForCategory(category) {
 		if strings.Contains(lowerText, keyword) {
@@ -186,6 +316,13 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, dst any) error {
 		return err
 	}
 	return closeErr
+}
+
+// writeInvalidRequestBody rejects a request that does not match the API, as Azure does.
+func writeInvalidRequestBody(w http.ResponseWriter, message string) {
+	writeJSONStatus(w, http.StatusBadRequest, map[string]any{
+		"error": map[string]string{"code": "InvalidRequestBody", "message": message},
+	})
 }
 
 // respondToDecodeError reports an oversized body as 413, distinct from other
