@@ -46,12 +46,17 @@ func TestMoesifAIProvider(t *testing.T) {
 
 func TestAIContextBlock_ModelType(t *testing.T) {
 	tests := map[string]string{
-		"/openai/v1/chat/completions":                                                 "chat",
-		"/anthropic/v1/messages":                                                      "chat",
-		"/v1beta/models/gemini-2.5-pro:generateContent":                               "chat",
-		"/v1beta/models/gemini-2.5-pro:streamGenerateContent":                         "chat",
-		"/v1beta/models/text-embedding-004:embedContent":                              "embeddings",
-		"/openai/v1/responses":                                                        "chat",
+		"/openai/v1/chat/completions":                         "chat",
+		"/anthropic/v1/messages":                              "chat",
+		"/v1beta/models/gemini-2.5-pro:generateContent":       "chat",
+		"/v1beta/models/gemini-2.5-pro:streamGenerateContent": "chat",
+		"/v1beta/models/text-embedding-004:embedContent":      "embeddings",
+		"/openai/v1/responses":                                "chat",
+		// Matched on the full endpoint suffix: lookalikes and reads of a stored result are not.
+		"/openai/v1/responses-v2":                                                     "",
+		"/openai/v1/responses/resp_123":                                               "",
+		"/bedrock/model/x/converse/health":                                            "",
+		"/v1beta/models/text-embedding-004:embedContent-v2":                           "",
 		"/openai/v1/completions":                                                      "completion",
 		"/openai/v1/embeddings":                                                       "embeddings",
 		"/bedrock/model/us.anthropic.claude-sonnet-4-5-20250929-v1:0/converse":        "chat",

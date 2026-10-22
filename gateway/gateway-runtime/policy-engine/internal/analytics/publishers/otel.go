@@ -1090,21 +1090,23 @@ func otelGenAIProviderName(templateName string) string {
 // route. "" when the route is not a recognised inference endpoint.
 //
 // Gemini's native API names the method after a colon on the model
-// (/models/{model}:generateContent), so its routes are matched on that suffix.
-// Bedrock's Converse API (/model/{id}/converse, /converse-stream) is chat; its
-// /invoke serves chat and embedding models alike, so it is left unclassified.
-// OpenAI's Responses API (/responses), the successor to Chat Completions, is chat.
+// (/models/{model}:generateContent). Bedrock's Converse API (/model/{id}/converse,
+// /converse-stream) is chat; its /invoke serves chat and embedding models alike, so
+// it is left unclassified. OpenAI's Responses API (/responses), the successor to
+// Chat Completions, is chat. These endpoints are matched on the full suffix, so a
+// lookalike route or a read of a stored result (/responses/{id}) is not classified.
 func otelGenAIOperationName(route string) string {
 	r := strings.ToLower(route)
 	switch {
 	case strings.Contains(r, "/chat/completions"), strings.Contains(r, "/messages"),
-		strings.Contains(r, "/converse"), strings.Contains(r, "/responses"):
+		strings.HasSuffix(r, "/converse"), strings.HasSuffix(r, "/converse-stream"),
+		strings.HasSuffix(r, "/responses"):
 		return "chat"
 	case strings.Contains(r, "/embeddings"),
-		strings.Contains(r, ":embedcontent"), strings.Contains(r, ":batchembedcontents"):
+		strings.HasSuffix(r, ":embedcontent"), strings.HasSuffix(r, ":batchembedcontents"):
 		return "embeddings"
 	case strings.Contains(r, "/generatecontent"),
-		strings.Contains(r, ":generatecontent"), strings.Contains(r, ":streamgeneratecontent"):
+		strings.HasSuffix(r, ":generatecontent"), strings.HasSuffix(r, ":streamgeneratecontent"):
 		return "generate_content"
 	case strings.Contains(r, "/completions"):
 		return "text_completion"
