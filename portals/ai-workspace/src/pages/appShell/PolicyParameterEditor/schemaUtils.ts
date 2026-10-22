@@ -33,7 +33,11 @@ export function hasConfiguredValue(value: unknown): boolean {
   if (value === undefined || value === null || value === '') return false;
   if (Array.isArray(value)) return value.length > 0;
   if (typeof value === 'object') {
-    return Object.keys(value as Record<string, unknown>).length > 0;
+    // Nested objects are pre-filled with empty children by
+    // initializeDefaultValues, so only a configured child counts
+    return Object.values(value as Record<string, unknown>).some(
+      hasConfiguredValue
+    );
   }
   return true;
 }

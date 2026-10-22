@@ -15,6 +15,7 @@ import { describe, expect, it } from 'vitest';
 import {
   formatOneOfGroups,
   hasCompleteOneOfGroup,
+  initializeDefaultValues,
   schemaToTreeNodes,
   validateOneOf,
 } from './schemaUtils';
@@ -123,6 +124,34 @@ describe('validateOneOf', () => {
       'signingKey.inline': 'Cannot be combined with path',
       'signingKey.path': 'Cannot be combined with inline',
     });
+  });
+
+  it('treats a default-initialized object member as not configured', () => {
+    const schema: ParameterSchema = {
+      type: 'object',
+      properties: {
+        apiKey: { type: 'string' },
+        mtls: {
+          type: 'object',
+          properties: {
+            cert: { type: 'string' },
+            key: { type: 'string' },
+          },
+        },
+      },
+      oneOf: [{ required: ['apiKey'] }, { required: ['mtls'] }],
+    };
+    // initializeDefaultValues pre-fills the nested object with empty strings
+    const values = initializeDefaultValues(schema);
+    expect(errorMap(schema, values)).toEqual({
+      apiKey: 'Configure apiKey or mtls',
+      mtls: 'Configure apiKey or mtls',
+    });
+    expect(hasCompleteOneOfGroup(schema, values)).toBe(false);
+    expect(errorMap(schema, { ...values, apiKey: 'k' })).toEqual({});
+    expect(
+      hasCompleteOneOfGroup(schema, { ...values, mtls: { cert: 'c', key: '' } })
+    ).toBe(true);
   });
 
   it('treats empty arrays as not configured', () => {
