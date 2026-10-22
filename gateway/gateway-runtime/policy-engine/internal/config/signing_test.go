@@ -25,6 +25,7 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -177,6 +178,21 @@ func TestBuildSigningKeyring_KeyPathMustBeARegularFile(t *testing.T) {
 	_, err = BuildSigningKeyring(SigningConfig{Keys: []SigningKeyConfig{{Path: filepath.Join(t.TempDir(), "missing.pem"), Active: true}}})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "is not found")
+}
+
+// A key file that exists but cannot be opened is reported as such, not as
+// missing, so an operator looks at its ownership and mode.
+func TestBuildSigningKeyring_UnreadableKeyFileIsNotReportedMissing(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root opens files regardless of mode")
+	}
+	key := writeECKey(t, t.TempDir(), "k.pem", 0o000)
+
+	_, err := BuildSigningKeyring(SigningConfig{Keys: []SigningKeyConfig{{Path: key, Active: true}}})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "could not be opened")
+	assert.ErrorIs(t, err, fs.ErrPermission)
+	assert.NotContains(t, err.Error(), "is not found")
 }
 
 // A key path is operator configuration, so it is not confined to the
