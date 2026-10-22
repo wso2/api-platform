@@ -48,7 +48,7 @@ func loadRuntimeKoanf(t *testing.T, body string) *koanf.Koanf {
 func TestBuildRuntimeConfig_FeatureFlagReachesTheSPA(t *testing.T) {
 	flags := map[string]string{
 		"agent_proxy_enabled":         "APIP_AIW_FEATURE_FLAGS_AGENT_PROXY_ENABLED",
-		"managed_api_portals_enabled": "APIP_AIW_FEATURE_FLAGS_MANAGED_API_PORTALS_ENABLED",
+		"api_portal_integration_enabled": "APIP_AIW_FEATURE_FLAGS_API_PORTAL_INTEGRATION_ENABLED",
 	}
 	for key, runtimeName := range flags {
 		for _, set := range []string{"false", "true"} {
@@ -73,7 +73,7 @@ func TestBuildRuntimeConfig_AbsentFeatureFlagIsOmitted(t *testing.T) {
 	if _, ok := out["APIP_AIW_FEATURE_FLAGS_AGENT_PROXY_ENABLED"]; ok {
 		t.Error("agent_proxy_enabled was emitted although the config never declares it")
 	}
-	if _, ok := out["APIP_AIW_FEATURE_FLAGS_MANAGED_API_PORTALS_ENABLED"]; ok {
-		t.Error("managed_api_portals_enabled was emitted although the config never declares it")
+	if _, ok := out["APIP_AIW_FEATURE_FLAGS_API_PORTAL_INTEGRATION_ENABLED"]; ok {
+		t.Error("api_portal_integration_enabled was emitted although the config never declares it")
 	}
 }

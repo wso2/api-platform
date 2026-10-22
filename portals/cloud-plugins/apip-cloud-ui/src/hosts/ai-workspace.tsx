@@ -67,24 +67,29 @@ export const cloudBrandLogo: BrandLogo = {
 const AI_GATEWAY_TYPES: GatewayType[] = ["ai"];
 
 /**
- * `[ai_workspace.feature_flags] managed_api_portals_enabled`, as the BFF serves it
- * on `window.__RUNTIME_CONFIG__`. Read here rather than through core's
- * `config.env`: only this file and `plugin.ts` are overlaid into the portal, and
- * importing core config would also clash with the api-control-plane host's
- * runtime-config typing when this package is typechecked.
+ * `[ai_workspace.feature_flags] api_portal_integration_enabled`, as the BFF
+ * serves it on `window.__RUNTIME_CONFIG__`. One flag for the whole API Portal
+ * integration surface — the managed-portals page here, plus the MCP proxy
+ * publish/unpublish path and subscription-plans UI shared with OSS. When it is
+ * on, the legacy `APIP_AIW_API_PORTAL_ENABLED` single-portal MCP Hub path is
+ * superseded and should be treated as off by callers that read both.
  *
- * Deviates from the house flag convention (absent = hidden) on purpose: the
- * managed-portals page is the publishing destination for MCP proxies, so an
- * existing cloud deployment picking up a newer image gets the page without an
- * extra config change. A deployment that wants it hidden sets the key to
- * `false` explicitly. The OSS build never overlays this host file, so the
- * default is inert there.
+ * Read here rather than through core's `config.env`: only this file and
+ * `plugin.ts` are overlaid into the portal, and importing core config would
+ * also clash with the api-control-plane host's runtime-config typing when
+ * this package is typechecked. OSS code reads the same key through
+ * `isFeatureEnabled('api-portal-integration')` and sees the same default.
+ *
+ * Deviates from the house flag convention (absent = hidden) on purpose: this
+ * is the GA path for API Portal integration, so a deployment picking up a
+ * newer image gets it without an extra config change. A deployment that is
+ * not ready sets the key to `false` explicitly.
  */
-const isManagedApiPortalsEnabled = (): boolean => {
+const isApiPortalIntegrationEnabled = (): boolean => {
   if (typeof window === "undefined") return true;
   const bag = (window as Window & { __RUNTIME_CONFIG__?: object })
     .__RUNTIME_CONFIG__ as Record<string, unknown> | undefined;
-  const value = bag?.APIP_AIW_FEATURE_FLAGS_MANAGED_API_PORTALS_ENABLED;
+  const value = bag?.APIP_AIW_FEATURE_FLAGS_API_PORTAL_INTEGRATION_ENABLED;
   if (value === undefined || value === null || value === "") return true;
   return value === true || value === "true" || value === "1";
 };
@@ -115,8 +120,10 @@ const isManagedApiPortalsEnabled = (): boolean => {
  * api-control-plane host registers (`hosts/api-control-plane.tsx`), added here as
  * a `sidebar.main` item. It talks to `/managed-api-portals` through the Port's
  * `apiFetch` (the BFF proxy) rather than a runtime-configured base URL, which this
- * host does not set. Still rolling out, so it is registered only when
- * `[ai_workspace.feature_flags] managed_api_portals_enabled` is on.
+ * host does not set. Registered only when
+ * `[ai_workspace.feature_flags] api_portal_integration_enabled` is on, the
+ * umbrella flag for the whole API Portal integration surface (shared with the
+ * MCP proxy publish/unpublish path and subscription-plans UI).
  */
 export const cloudPluginFeatures: CloudPluginFeature<AIWorkspaceCloudEntry>[] =
   [
@@ -315,9 +322,7 @@ export const cloudPluginFeatures: CloudPluginFeature<AIWorkspaceCloudEntry>[] =
 export const cloudExtensions = getCloudExtensions(
   cloudPluginFeatures.filter((feature) => {
     if (feature.id === "insights") return isInsightsMoesifConfigured();
-    if (feature.id === "managed-api-portals") {
-      return isManagedApiPortalsEnabled();
-    }
+    if (feature.id === "managed-api-portals") return isApiPortalIntegrationEnabled();
     return true;
   }),
 );
