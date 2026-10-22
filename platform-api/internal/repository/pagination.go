@@ -43,7 +43,7 @@ type ListOptions struct {
 	Search    string // case-insensitive handle substring; "" = no filter
 }
 
-// resolveSort maps the client SortBy token to a real column name via the
+// resolveSortColumn maps a client SortBy token to a real column name via the
 // per-table allowlist, falling back to defaultColumn when the token is empty or
 // unrecognized, and normalizes the direction to ASC/DESC (default DESC).
 //
@@ -51,16 +51,25 @@ type ListOptions struct {
 // allowlist's values and the two direction constants) — never from the raw
 // client string — so they are safe to embed directly into an ORDER BY clause,
 // which cannot be parameterized with a bind argument.
-func (o ListOptions) resolveSort(allowed map[string]string, defaultColumn string) (column, direction string) {
+//
+// Standalone (not a ListOptions method) so a resource with its own
+// options struct — one that can't embed ListOptions because it carries
+// resource-specific filter fields (e.g. AgentProxyListOptions) — still shares
+// this exact logic rather than duplicating it.
+func resolveSortColumn(sortBy, sortOrder string, allowed map[string]string, defaultColumn string) (column, direction string) {
 	column = defaultColumn
-	if c, ok := allowed[o.SortBy]; ok && c != "" {
+	if c, ok := allowed[sortBy]; ok && c != "" {
 		column = c
 	}
 	direction = "DESC"
-	if strings.EqualFold(o.SortOrder, "asc") {
+	if strings.EqualFold(sortOrder, "asc") {
 		direction = "ASC"
 	}
 	return column, direction
+}
+
+func (o ListOptions) resolveSort(allowed map[string]string, defaultColumn string) (column, direction string) {
+	return resolveSortColumn(o.SortBy, o.SortOrder, allowed, defaultColumn)
 }
 
 // handleSearchClause returns a SQL fragment (with a leading " AND ") and its

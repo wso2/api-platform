@@ -1114,13 +1114,13 @@ type mockLLMProxyRepo struct {
 	updated              *model.LLMProxy
 }
 
-func (m *mockLLMProxyRepo) List(orgUUID string, limit, offset int) ([]*model.LLMProxy, error) {
-	if offset >= len(m.listItems) {
+func (m *mockLLMProxyRepo) List(orgUUID string, opts repository.ListOptions) ([]*model.LLMProxy, error) {
+	if opts.Offset >= len(m.listItems) {
 		return nil, nil
 	}
-	items := m.listItems[offset:]
-	if limit > 0 && limit < len(items) {
-		items = items[:limit]
+	items := m.listItems[opts.Offset:]
+	if opts.Limit > 0 && opts.Limit < len(items) {
+		items = items[:opts.Limit]
 	}
 	return items, nil
 }
@@ -1129,7 +1129,7 @@ func (m *mockLLMProxyRepo) Exists(proxyID, orgUUID string) (bool, error) {
 	return m.existsResult, nil
 }
 
-func (m *mockLLMProxyRepo) Count(orgUUID string) (int, error) {
+func (m *mockLLMProxyRepo) Count(orgUUID, search string) (int, error) {
 	return m.countResult, nil
 }
 
@@ -1153,6 +1153,17 @@ func (m *mockLLMProxyRepo) Update(p *model.LLMProxy) error {
 func (m *mockLLMProxyRepo) ListByProvider(orgUUID, providerUUID string, limit, offset int) ([]*model.LLMProxy, error) {
 	m.lastListProviderUUID = providerUUID
 	return m.listByProviderItems, nil
+}
+
+// ListByProject/CountByProject reuse the same opts-driven slicing as
+// List/Count above — this mock's tests don't need the two paths to diverge,
+// only to both be exercisable.
+func (m *mockLLMProxyRepo) ListByProject(orgUUID, projectUUID string, opts repository.ListOptions) ([]*model.LLMProxy, error) {
+	return m.List(orgUUID, opts)
+}
+
+func (m *mockLLMProxyRepo) CountByProject(orgUUID, projectUUID, search string) (int, error) {
+	return m.Count(orgUUID, search)
 }
 
 func (m *mockLLMProxyRepo) CountByProvider(orgUUID, providerUUID string) (int, error) {
@@ -1575,6 +1586,76 @@ func TestLLMProxyServiceListByProviderReportsEitherRole(t *testing.T) {
 	// on handles and cannot resolve a project UUID back to one.
 	if resp.List[0].ProjectId == nil || *resp.List[0].ProjectId != "test-project" {
 		t.Fatalf("expected projectId to be the project handle, got: %v", resp.List[0].ProjectId)
+	}
+}
+
+// TestLLMProxyServiceList_ProjectScoped exercises List's project-handle
+// dispatch branch — the one the real GET /llm-proxies?projectId=... endpoint
+// always takes, since projectId is required there — confirming opts (limit,
+// offset, search) reach the project-scoped repo calls and the response
+// pagination reflects what was asked for.
+func TestLLMProxyServiceList_ProjectScoped(t *testing.T) {
+	now := time.Now()
+	proxyRepo := &mockLLMProxyRepo{
+		listItems: []*model.LLMProxy{
+			{UUID: "u1", ID: "proxy-1", Name: "Proxy One", Version: "v1.0", ProjectUUID: "project-1", CreatedAt: now, UpdatedAt: now},
+			{UUID: "u2", ID: "proxy-2", Name: "Proxy Two", Version: "v1.0", ProjectUUID: "project-1", CreatedAt: now, UpdatedAt: now},
+		},
+		countResult: 2,
+	}
+	projectRepo := &mockProjectRepo{project: &model.Project{ID: "project-1", Handle: "test-project", OrganizationID: "org-1"}}
+	service := NewLLMProxyService(proxyRepo, nil, projectRepo, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
+
+	projectHandle := "test-project"
+	resp, err := service.List("org-1", &projectHandle, repository.ListOptions{Limit: 1, Offset: 0, Search: "proxy"})
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	if resp.Count != 1 {
+		t.Fatalf("expected the response to respect the limit (count 1), got %d", resp.Count)
+	}
+	if resp.Pagination.Total != 2 {
+		t.Fatalf("expected pagination.total to reflect the full count, got %d", resp.Pagination.Total)
+	}
+	if resp.Pagination.Limit != 1 || resp.Pagination.Offset != 0 {
+		t.Fatalf("expected pagination to echo the requested limit/offset, got %+v", resp.Pagination)
+	}
+}
+
+// TestLLMProxyServiceList_OrgScoped covers the other branch of List's
+// dispatch — no project handle supplied — which calls the org-level
+// repo.List/repo.Count rather than the *ByProject pair.
+func TestLLMProxyServiceList_OrgScoped(t *testing.T) {
+	now := time.Now()
+	proxyRepo := &mockLLMProxyRepo{
+		listItems: []*model.LLMProxy{
+			{UUID: "u1", ID: "proxy-1", Name: "Proxy One", Version: "v1.0", CreatedAt: now, UpdatedAt: now},
+		},
+		countResult: 1,
+	}
+	service := NewLLMProxyService(proxyRepo, nil, nil, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
+
+	resp, err := service.List("org-1", nil, repository.ListOptions{Limit: 20, Offset: 0})
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	if resp.Count != 1 || resp.Pagination.Total != 1 {
+		t.Fatalf("expected the org-level list/count to be used, got: %+v", resp)
+	}
+}
+
+// TestLLMProxyServiceList_RejectsUnknownProject confirms the project-handle
+// branch fails closed (ProjectNotFound) rather than silently falling back to
+// an org-wide listing when the handle doesn't resolve.
+func TestLLMProxyServiceList_RejectsUnknownProject(t *testing.T) {
+	proxyRepo := &mockLLMProxyRepo{}
+	projectRepo := &mockProjectRepo{project: nil}
+	service := NewLLMProxyService(proxyRepo, nil, projectRepo, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
+
+	projectHandle := "does-not-exist"
+	_, err := service.List("org-1", &projectHandle, repository.ListOptions{Limit: 20, Offset: 0})
+	if !apperror.ProjectNotFound.Is(err) {
+		t.Fatalf("expected ProjectNotFound, got: %v", err)
 	}
 }
 
@@ -2869,7 +2950,7 @@ type scopeRecordingProxyRepo struct {
 	onList func(orgUUID string)
 }
 
-func (r *scopeRecordingProxyRepo) List(orgUUID string, limit, offset int) ([]*model.LLMProxy, error) {
+func (r *scopeRecordingProxyRepo) List(orgUUID string, opts repository.ListOptions) ([]*model.LLMProxy, error) {
 	r.onList(orgUUID)
 	return nil, nil
 }

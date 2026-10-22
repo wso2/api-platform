@@ -558,6 +558,56 @@ func TestAgentProxyListAndCountFilterByProtocolWithinOrg(t *testing.T) {
 	}
 }
 
+// TestAgentProxyListAndCountSearch covers the Search/SortBy/SortOrder fields
+// added to AgentProxyListOptions alongside Protocol/ProjectUUID — the search
+// clause must apply the same filter to both List and Count, and sort
+// resolution must go through the shared allowlist (exercised already in
+// pagination_test.go) rather than a second copy of the logic.
+func TestAgentProxyListAndCountSearch(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	seedAgentProxyOrgProject(t, db, "org-1", "proj-1")
+
+	repo := NewAgentProxyRepo(db)
+	for _, handle := range []string{"weather-agent", "billing-agent", "support-agent"} {
+		if err := repo.Create(minimalAgentProxy("org-1", "proj-1", handle)); err != nil {
+			t.Fatalf("create %s: %v", handle, err)
+		}
+	}
+
+	matched, err := repo.List("org-1", AgentProxyListOptions{Limit: 10, Search: "weather"})
+	if err != nil {
+		t.Fatalf("search list: %v", err)
+	}
+	if len(matched) != 1 || matched[0].Handle != "weather-agent" {
+		t.Fatalf("search list = %+v, want only weather-agent", matched)
+	}
+
+	count, err := repo.Count("org-1", AgentProxyListOptions{Search: "weather"})
+	if err != nil {
+		t.Fatalf("search count: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("search count = %d, want 1", count)
+	}
+
+	none, err := repo.List("org-1", AgentProxyListOptions{Limit: 10, Search: "no-such-term"})
+	if err != nil {
+		t.Fatalf("unmatched search list: %v", err)
+	}
+	if len(none) != 0 {
+		t.Fatalf("unmatched search list = %d rows, want 0", len(none))
+	}
+
+	ascByName, err := repo.List("org-1", AgentProxyListOptions{Limit: 10, SortBy: "name", SortOrder: "asc"})
+	if err != nil {
+		t.Fatalf("sorted list: %v", err)
+	}
+	if len(ascByName) != 3 {
+		t.Fatalf("sorted list = %d rows, want 3", len(ascByName))
+	}
+}
+
 func TestAgentProxyProjectScopedListAndCount(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()

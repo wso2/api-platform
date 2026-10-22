@@ -153,7 +153,7 @@ func TestLLMProxyRepo_CreateAndRead_SetsUpdatedBy(t *testing.T) {
 		t.Fatalf("expected updated_by == created_by on creation, got created_by=%q updated_by=%q", got.CreatedBy, got.UpdatedBy)
 	}
 
-	list, err := proxyRepo.List(orgUUID, 20, 0)
+	list, err := proxyRepo.List(orgUUID, ListOptions{Limit: 20, Offset: 0})
 	if err != nil {
 		t.Fatalf("List failed: %v", err)
 	}

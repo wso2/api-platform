@@ -45,6 +45,7 @@ import {
 } from '@wso2/oxygen-ui';
 import { Clock, Plus, Search, Trash2 } from '@wso2/oxygen-ui-icons-react';
 import ErrorAlert from '../../../../Components/common/ErrorAlert';
+import NoSearchResults from '../../../../Components/common/NoSearchResults';
 import { useApplications } from '../../../../contexts/ApplicationsContext';
 import { useAppAuth } from '../../../../contexts/AppAuthContext';
 import { SCOPES } from '../../../../auth/permissions';
@@ -169,6 +170,12 @@ export default function ServiceProviders() {
     limit: 20,
   });
   const [isLoading, setIsLoading] = useState(true);
+  // True once the first fetch (success or failure) has completed. The full-page
+  // skeleton only shows before this; afterward, a background refetch (e.g. from
+  // typing in search) keeps the search box and current results mounted instead
+  // of unmounting them — unmounting a controlled <TextField> mid-typing drops
+  // focus, which is what made search feel laggy / drop backspace keystrokes.
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [providersError, setProvidersError] = useState<Error | null>(null);
   // Whether the organization has any providers at all, independent of the
   // active search — only updated from an unfiltered fetch's total, so a
@@ -230,6 +237,7 @@ export default function ServiceProviders() {
     } finally {
       if (fetchProvidersRequestRef.current === requestId) {
         setIsLoading(false);
+        setHasLoadedOnce(true);
       }
     }
   }, [currentOrganization?.uuid, apimBaseUrl, page, rowsPerPage, debouncedSearchQuery]);
@@ -477,7 +485,7 @@ export default function ServiceProviders() {
       </Box>
 
       {/* Loading State */}
-      {isLoading && (
+      {isLoading && !hasLoadedOnce && (
         <Grid container spacing={2} sx={{ mt: 1 }}>
           {[0, 1, 2].map((key) => (
             <Grid key={key} size={{ xs: 12, md: 6, lg: 4 }}>
@@ -598,7 +606,7 @@ export default function ServiceProviders() {
         </Box>
       )}
 
-      {!isLoading && !hasError && hasAnyProviders && (
+      {hasLoadedOnce && !hasError && hasAnyProviders && (
         <>
           <Box sx={{ mb: 3 }}>
             <TextField
@@ -619,12 +627,15 @@ export default function ServiceProviders() {
             />
           </Box>
 
+          <Box
+            sx={{
+              opacity: isLoading ? 0.5 : 1,
+              transition: 'opacity 0.15s ease',
+              pointerEvents: isLoading ? 'none' : 'auto',
+            }}
+          >
           {providers.length === 0 ? (
-            <Box sx={{ py: 6, textAlign: 'center' }}>
-              <Typography variant="body2" color="text.secondary">
-                No providers match your search.
-              </Typography>
-            </Box>
+            <NoSearchResults message="No providers match your search." />
           ) : (
             <>
           <Grid container spacing={2} sx={{ mt: 1 }}>
@@ -902,6 +913,7 @@ export default function ServiceProviders() {
           )}
             </>
           )}
+          </Box>
         </>
       )}
 

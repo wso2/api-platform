@@ -286,7 +286,7 @@ func (emptyAPIRepo) GetAPIsByProjectUUID(projectUUID, orgID string) ([]*model.AP
 
 type mockAgentProjectMCPRepo struct{ repository.MCPProxyRepository }
 
-func (mockAgentProjectMCPRepo) CountByProject(orgUUID, projectUUID string) (int, error) {
+func (mockAgentProjectMCPRepo) CountByProject(orgUUID, projectUUID, search string) (int, error) {
 	return 0, nil
 }
 
@@ -294,6 +294,6 @@ type emptyApplicationRepo struct {
 	repository.ApplicationRepository
 }
 
-func (emptyApplicationRepo) CountApplicationsByProjectID(projectID, orgID, search string) (int, error) {
+func (emptyApplicationRepo) CountApplicationsByProjectID(projectID, orgID, appType, search string) (int, error) {
 	return 0, nil
 }

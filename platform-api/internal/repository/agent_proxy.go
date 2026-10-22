@@ -64,6 +64,9 @@ type AgentProxyListOptions struct {
 	Offset      int
 	Protocol    model.AgentProxyProtocol
 	ProjectUUID string
+	Search      string
+	SortBy      string
+	SortOrder   string
 }
 
 // AgentProxyRepo handles database operations for Agent proxies.
@@ -185,11 +188,12 @@ func (r *AgentProxyRepo) GetByUUID(uuid, orgUUID string) (*model.AgentProxy, err
 // one protocol and/or one project.
 func (r *AgentProxyRepo) List(orgUUID string, opts AgentProxyListOptions) ([]*model.AgentProxy, error) {
 	filter, filterArgs := agentProxyListPredicate(opts)
+	col, dir := resolveSortColumn(opts.SortBy, opts.SortOrder, listSortColumns, "created_at")
 	pageClause, pageArgs := r.db.PaginationClause(opts.Limit, opts.Offset)
 	query := `SELECT` + agentProxyColumns + `
 		FROM agent_proxies
 		WHERE organization_uuid = ?` + filter + `
-		ORDER BY created_at DESC
+		ORDER BY ` + col + ` ` + dir + `
 		` + pageClause
 
 	args := append([]any{orgUUID}, filterArgs...)
@@ -408,6 +412,10 @@ func agentProxyListPredicate(opts AgentProxyListOptions) (string, []any) {
 	if opts.ProjectUUID != "" {
 		filter += ` AND project_uuid = ?`
 		args = append(args, opts.ProjectUUID)
+	}
+	if searchClause, searchArgs := handleSearchClause(opts.Search); searchClause != "" {
+		filter += searchClause
+		args = append(args, searchArgs...)
 	}
 	return filter, args
 }

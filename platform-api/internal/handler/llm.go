@@ -455,9 +455,9 @@ func (h *LLMHandler) ListLLMProxies(w http.ResponseWriter, r *http.Request) erro
 		return apperror.ValidationFailed.New("projectId query parameter is required")
 	}
 
-	limit, offset := parsePagination(r)
+	opts := parseListOptions(r)
 
-	resp, err := h.proxyService.List(orgID, &projectID, limit, offset)
+	resp, err := h.proxyService.List(orgID, &projectID, opts)
 	if err != nil {
 		return serviceError(err, fmt.Sprintf("failed to list LLM proxies in org %s", orgID))
 	}

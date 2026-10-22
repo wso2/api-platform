@@ -24,9 +24,9 @@ import AgentProxiesList from './AgentProxiesList';
 
 const showSnackbar = vi.fn();
 const deleteAgentProxy = vi.fn();
+const getAgentProxies = vi.fn();
 let permitted = true;
-let proxies: unknown[] = [];
-let proxiesLoading = false;
+let proxies: Record<string, unknown>[] = [];
 
 const proxy = (over: Record<string, unknown> = {}) => ({
   id: 'trip-planner',
@@ -36,6 +36,20 @@ const proxy = (over: Record<string, unknown> = {}) => ({
   version: '1.0.0',
   ...over,
 });
+
+// Mimics the real backend's `handleSearchClause` (platform-api/internal/repository/pagination.go):
+// a case-insensitive substring match against display name and id/handle only —
+// NOT description, context, or version. The mocked "server" this component
+// now talks to instead of a pre-fetched in-memory list must match that exact
+// contract, or these tests would pass against behavior the real API doesn't have.
+const matches = (p: Record<string, unknown>, search: string) => {
+  if (!search) return true;
+  const haystack = [p.displayName, p.id]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+  return haystack.includes(search.toLowerCase());
+};
 
 let currentProject: { id: string; name: string } | null = { id: 'proj-1', name: 'Project One' };
 const setCurrentProject = vi.fn();
@@ -56,15 +70,10 @@ vi.mock('../../../../contexts/AppAuthContext', () => ({
 }));
 vi.mock('../../../../contexts/agentProxy', () => ({
   AgentProxiesProvider: ({ children }: { children: React.ReactNode }) => children,
-  useAgentProxies: () => ({
-    agentProxiesResponse: {
-      count: proxies.length,
-      list: proxies,
-      pagination: { total: proxies.length, offset: 0, limit: 20 },
-    },
-    isLoading: proxiesLoading,
-    deleteAgentProxy,
-  }),
+  useAgentProxies: () => ({ deleteAgentProxy }),
+}));
+vi.mock('../../../../apis/agent/agentProxiesApis', () => ({
+  getAgentProxies: (...args: unknown[]) => getAgentProxies(...args),
 }));
 vi.mock('../../../../hooks/aiWorkspaceSnackbar', () => ({
   default: () => showSnackbar,
@@ -75,26 +84,39 @@ const search = () => screen.getByPlaceholderText('Search Agent Proxies...');
 
 beforeEach(() => {
   permitted = true;
-  proxiesLoading = false;
   currentProject = { id: 'proj-1', name: 'Project One' };
   setCurrentProject.mockReset();
   proxies = [proxy(), proxy({ id: 'weather', displayName: 'Weather Bot', description: 'forecasts', context: '/weather', version: '2.0.0' })];
   showSnackbar.mockReset();
   deleteAgentProxy.mockReset();
+  getAgentProxies.mockReset();
+  getAgentProxies.mockImplementation(async (_projectId, _baseUrl, limit, offset, options) => {
+    const filtered = proxies.filter((p) => matches(p, options?.search ?? ''));
+    return {
+      count: filtered.length,
+      list: filtered,
+      pagination: { total: filtered.length, offset, limit },
+    };
+  });
 });
 
 describe('listing agent proxies', () => {
-  it('shows every proxy in the project', () => {
+  it('shows every proxy in the project', async () => {
     renderList();
 
-    expect(screen.getByText('Trip Planner')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText('Trip Planner')).toBeInTheDocument());
     expect(screen.getByText('Weather Bot')).toBeInTheDocument();
   });
 
-  it('says so plainly when the project has none', () => {
+  it('says so plainly when the project has none', async () => {
     proxies = [];
     renderList();
 
+    await waitFor(() =>
+      expect(
+        screen.getByText(/Create your first agent proxy/)
+      ).toBeInTheDocument()
+    );
     expect(screen.queryByText('Trip Planner')).not.toBeInTheDocument();
   });
 });
@@ -102,43 +124,73 @@ describe('listing agent proxies', () => {
 describe('searching', () => {
   it.each([
     ['the display name', 'Trip'],
-    ['the description', 'multi-city'],
-    ['the context', '/trips'],
-    ['the version', '1.0.0'],
+    ['the id/handle', 'trip-planner'],
   ])('matches on %s', async (_label, term) => {
     const { user } = renderList();
+    await waitFor(() => expect(screen.getByText('Trip Planner')).toBeInTheDocument());
 
     await user.type(search(), term);
 
+    await waitFor(() => expect(screen.queryByText('Weather Bot')).not.toBeInTheDocument());
     expect(screen.getByText('Trip Planner')).toBeInTheDocument();
-    expect(screen.queryByText('Weather Bot')).not.toBeInTheDocument();
+  });
+
+  // Regression guard: the backend's search deliberately covers only display
+  // name and id/handle (handleSearchClause), not description/context/version
+  // — a prior client-side filter covered all four, and a test mock that still
+  // simulated that wider match would mask this narrower real contract.
+  it.each([
+    ['the description', 'multi-city'],
+    ['the context', '/trips'],
+    ['the version', '1.0.0'],
+  ])('does not match on %s', async (_label, term) => {
+    const { user } = renderList();
+    await waitFor(() => expect(screen.getByText('Trip Planner')).toBeInTheDocument());
+
+    await user.type(search(), term);
+
+    await waitFor(() =>
+      expect(
+        screen.getByText(/No agent proxies match your search/)
+      ).toBeInTheDocument()
+    );
+    expect(screen.queryByText('Trip Planner')).not.toBeInTheDocument();
   });
 
   it('ignores case', async () => {
     const { user } = renderList();
+    await waitFor(() => expect(screen.getByText('Trip Planner')).toBeInTheDocument());
 
     await user.type(search(), 'TRIP PLANNER');
 
+    await waitFor(() => expect(screen.queryByText('Weather Bot')).not.toBeInTheDocument());
     expect(screen.getByText('Trip Planner')).toBeInTheDocument();
   });
 
   it('shows everything again once the search is cleared', async () => {
     const { user } = renderList();
-    // The placeholder is dropped once the field has text, so the element is
-    // held rather than looked up again.
+    await waitFor(() => expect(screen.getByText('Trip Planner')).toBeInTheDocument());
     const input = search();
 
     await user.type(input, 'Trip');
+    await waitFor(() => expect(screen.queryByText('Weather Bot')).not.toBeInTheDocument());
+
     await user.clear(input);
 
-    expect(screen.getByText('Weather Bot')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText('Weather Bot')).toBeInTheDocument());
   });
 
   it('matches nothing when no proxy carries the term', async () => {
     const { user } = renderList();
+    await waitFor(() => expect(screen.getByText('Trip Planner')).toBeInTheDocument());
 
     await user.type(search(), 'nothing-matches-this');
 
+    await waitFor(() =>
+      expect(
+        screen.getByText(/No agent proxies match your search/)
+      ).toBeInTheDocument()
+    );
     expect(screen.queryByText('Trip Planner')).not.toBeInTheDocument();
     expect(screen.queryByText('Weather Bot')).not.toBeInTheDocument();
   });
@@ -148,6 +200,7 @@ describe('deleting a proxy', () => {
   it('reports success once the proxy is gone', async () => {
     deleteAgentProxy.mockResolvedValue(undefined);
     const { user } = renderList();
+    await waitFor(() => expect(screen.getByText('Trip Planner')).toBeInTheDocument());
 
     await user.click(screen.getByRole('button', { name: 'Delete Trip Planner' }));
     await user.click(screen.getByRole('button', { name: 'Delete', exact: true }));
@@ -161,6 +214,7 @@ describe('deleting a proxy', () => {
   it('reports the reason when the delete is refused', async () => {
     deleteAgentProxy.mockRejectedValue(new Error('still deployed'));
     const { user } = renderList();
+    await waitFor(() => expect(screen.getByText('Trip Planner')).toBeInTheDocument());
 
     await user.click(screen.getByRole('button', { name: 'Delete Trip Planner' }));
     await user.click(screen.getByRole('button', { name: 'Delete', exact: true }));
@@ -172,10 +226,11 @@ describe('deleting a proxy', () => {
 });
 
 describe('without permission', () => {
-  it('offers no delete control', () => {
+  it('offers no delete control', async () => {
     permitted = false;
     renderList();
 
+    await waitFor(() => expect(screen.getByText('Trip Planner')).toBeInTheDocument());
     const deleteButton = screen.queryByRole('button', { name: 'Delete Trip Planner' });
     if (deleteButton) expect(deleteButton).toBeDisabled();
   });
@@ -226,13 +281,15 @@ describe('at organization level', () => {
     renderList();
 
     expect(screen.queryByText('Trip Planner')).not.toBeInTheDocument();
+    expect(getAgentProxies).not.toHaveBeenCalled();
   });
 });
 
 describe('while the catalogue is still loading', () => {
   it('shows a placeholder table instead of an empty listing', () => {
-    proxiesLoading = true;
-    proxies = [];
+    // A promise that never resolves during the test keeps the component in
+    // its initial "first fetch in flight" state.
+    getAgentProxies.mockImplementation(() => new Promise(() => {}));
     renderList();
 
     expect(screen.getByText('Name')).toBeInTheDocument();

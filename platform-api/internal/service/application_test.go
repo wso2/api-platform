@@ -86,20 +86,36 @@ func (m *mockApplicationRepository) GetApplicationsByOrganizationID(orgID string
 	return m.applications, nil
 }
 
-func (m *mockApplicationRepository) GetApplicationsByProjectIDPaginated(projectID, orgID string, opts repository.ListOptions) ([]*model.Application, error) {
+// filterByAppType mirrors the real repo's "AND type = ?" predicate: an empty
+// appType matches everything, otherwise only rows of that exact type.
+func (m *mockApplicationRepository) filterByAppType(appType string) []*model.Application {
+	if appType == "" {
+		return m.applications
+	}
+	filtered := make([]*model.Application, 0, len(m.applications))
+	for _, app := range m.applications {
+		if app.Type == appType {
+			filtered = append(filtered, app)
+		}
+	}
+	return filtered
+}
+
+func (m *mockApplicationRepository) GetApplicationsByProjectIDPaginated(projectID, orgID, appType string, opts repository.ListOptions) ([]*model.Application, error) {
 	if m.appErr != nil {
 		return nil, m.appErr
 	}
 
+	apps := m.filterByAppType(appType)
 	end := opts.Offset + opts.Limit
-	if opts.Offset > len(m.applications) {
+	if opts.Offset > len(apps) {
 		return []*model.Application{}, nil
 	}
-	if end > len(m.applications) {
-		end = len(m.applications)
+	if end > len(apps) {
+		end = len(apps)
 	}
 
-	return m.applications[opts.Offset:end], nil
+	return apps[opts.Offset:end], nil
 }
 
 func (m *mockApplicationRepository) GetApplicationsByOrganizationIDPaginated(orgID string, limit, offset int) ([]*model.Application, error) {
@@ -118,12 +134,12 @@ func (m *mockApplicationRepository) GetApplicationsByOrganizationIDPaginated(org
 	return m.applications[offset:end], nil
 }
 
-func (m *mockApplicationRepository) CountApplicationsByProjectID(projectID, orgID, search string) (int, error) {
+func (m *mockApplicationRepository) CountApplicationsByProjectID(projectID, orgID, appType, search string) (int, error) {
 	if m.appErr != nil {
 		return 0, m.appErr
 	}
 
-	return len(m.applications), nil
+	return len(m.filterByAppType(appType)), nil
 }
 
 func (m *mockApplicationRepository) CountApplicationsByOrganizationID(orgID string) (int, error) {
@@ -524,7 +540,7 @@ func TestGetApplicationsByOrganization_AppliesPagination(t *testing.T) {
 		identity:    newTestIdentityService(),
 	}
 
-	resp, err := svc.GetApplicationsByOrganization(orgID, projectID, repository.ListOptions{Limit: 1, Offset: 1})
+	resp, err := svc.GetApplicationsByOrganization(orgID, projectID, "", repository.ListOptions{Limit: 1, Offset: 1})
 	if err != nil {
 		t.Fatalf("GetApplicationsByOrganization returned error: %v", err)
 	}
@@ -546,6 +562,81 @@ func TestGetApplicationsByOrganization_AppliesPagination(t *testing.T) {
 	}
 	if resp.Pagination.Offset != 1 {
 		t.Fatalf("expected offset 1, got %d", resp.Pagination.Offset)
+	}
+}
+
+// TestGetApplicationsByOrganization_FiltersByAppType guards the `type` query
+// filter (GenAI Applications list) added alongside server-side pagination:
+// passing appType="genai" must narrow both the list and pagination.total to
+// only genai-typed rows, never leaking a differently-typed application from
+// the same project into the response.
+func TestGetApplicationsByOrganization_FiltersByAppType(t *testing.T) {
+	orgID := "org-1"
+	projectID := "11111111-1111-1111-1111-111111111111"
+
+	appRepo := &mockApplicationRepository{
+		applications: []*model.Application{
+			{UUID: "app-1", Handle: "app-1", OrganizationUUID: orgID, ProjectUUID: projectID, Name: "App 1", Type: "genai"},
+			{UUID: "app-2", Handle: "app-2", OrganizationUUID: orgID, ProjectUUID: projectID, Name: "App 2", Type: "other"},
+			{UUID: "app-3", Handle: "app-3", OrganizationUUID: orgID, ProjectUUID: projectID, Name: "App 3", Type: "genai"},
+		},
+	}
+	projectRepo := &mockProjectRepository{
+		projectByUUID: &model.Project{ID: projectID, Handle: projectID, OrganizationID: orgID},
+	}
+	orgRepo := &mockApplicationOrganizationRepository{
+		org: &model.Organization{ID: orgID},
+	}
+
+	svc := &ApplicationService{
+		appRepo:     appRepo,
+		projectRepo: projectRepo,
+		orgRepo:     orgRepo,
+		identity:    newTestIdentityService(),
+	}
+
+	resp, err := svc.GetApplicationsByOrganization(orgID, projectID, "genai", repository.ListOptions{Limit: 20, Offset: 0})
+	if err != nil {
+		t.Fatalf("GetApplicationsByOrganization returned error: %v", err)
+	}
+	if resp.Pagination.Total != 2 {
+		t.Fatalf("expected total 2 (genai only), got %d", resp.Pagination.Total)
+	}
+	if len(resp.List) != 2 {
+		t.Fatalf("expected 2 applications, got %d", len(resp.List))
+	}
+	for _, app := range resp.List {
+		if app.Id == "app-2" {
+			t.Fatalf("expected the non-genai application to be filtered out, but found %s in the response", app.Id)
+		}
+	}
+}
+
+// TestGetApplicationsByOrganization_RejectsUnsupportedAppType mirrors the
+// AgentProxy protocol filter's behavior: an unrecognized filter value is a 400
+// validation error, not a silently-empty "no results" page.
+func TestGetApplicationsByOrganization_RejectsUnsupportedAppType(t *testing.T) {
+	orgID := "org-1"
+	projectID := "11111111-1111-1111-1111-111111111111"
+
+	appRepo := &mockApplicationRepository{}
+	projectRepo := &mockProjectRepository{
+		projectByUUID: &model.Project{ID: projectID, Handle: projectID, OrganizationID: orgID},
+	}
+	orgRepo := &mockApplicationOrganizationRepository{
+		org: &model.Organization{ID: orgID},
+	}
+
+	svc := &ApplicationService{
+		appRepo:     appRepo,
+		projectRepo: projectRepo,
+		orgRepo:     orgRepo,
+		identity:    newTestIdentityService(),
+	}
+
+	_, err := svc.GetApplicationsByOrganization(orgID, projectID, "rest", repository.ListOptions{Limit: 20, Offset: 0})
+	if !apperror.ValidationFailed.Is(err) {
+		t.Fatalf("expected ValidationFailed for an unsupported type filter, got %v", err)
 	}
 }
 
