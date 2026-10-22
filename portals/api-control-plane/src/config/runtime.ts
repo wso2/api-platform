@@ -16,6 +16,24 @@
  * under the License.
  */
 
+/**
+ * One gateway release the Quick Start step can offer a download for, keyed by
+ * `type` since the regular and event gateways ship as separate artifacts.
+ * Mirrors the Go `GatewayVersionEntry` in the BFF's
+ * internal/config/config.go, and the shape consumed by
+ * portals/cloud-plugins/apip-cloud-ui-gateways (its own hand-mirrored copy,
+ * since that package lives in a separate repo) — keep all three in sync.
+ */
+export type GatewayVersionEntry = {
+  type: 'ai' | 'regular' | 'event';
+  version: string;
+  /** Release tag, e.g. "v1.2.0". Defaults to `v${version}` when omitted. */
+  latestVersion?: string;
+  /** Zip/folder version, when it differs from `version`. */
+  distVersion?: string;
+  channel: 'STS' | 'LTS';
+};
+
 export type RuntimeConfig = {
   appBasePath: string;
   apiBaseUrl: string;
@@ -105,6 +123,15 @@ export type RuntimeConfig = {
   termsOfUseLink: string;
   toSServiceName: string;
   usersManagementApiUrl: string;
+  /**
+   * Catalog of self-hosted-gateway releases for the Quick Start download
+   * step, one entry per gateway type ("regular" | "event" for this
+   * deployment). Sourced from the BFF's [[gateway_versions]] config and
+   * JSON-encoded into the runtime config as a string — the first
+   * non-string value in it — so it's JSON.parsed back out here rather than
+   * read as-is like every other field.
+   */
+  gatewayVersions: GatewayVersionEntry[];
 };
 
 type LegacyWindowConfig = Partial<{
@@ -152,6 +179,7 @@ type LegacyWindowConfig = Partial<{
   termsOfUseLink: string;
   toSServiceName: string;
   usersManagementApiUrl: string;
+  gatewayVersions: string;
 }>;
 
 declare global {
@@ -179,6 +207,20 @@ const readAuthMode = (value: string | undefined): RuntimeConfig['authMode'] =>
 const normalizeBasePath = (value?: string) => {
   if (!value || value === '/') return '';
   return `/${value.replace(/^\/|\/$/g, '')}`;
+};
+
+// gatewayVersions arrives JSON-encoded (see config.GatewayVersionEntry /
+// buildRuntimeConfig on the BFF); an absent or malformed value yields an
+// empty catalog rather than throwing, consistent with every other field here
+// falling back to a safe default instead of crashing the SPA on bad config.
+const readGatewayVersions = (value?: string): GatewayVersionEntry[] => {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? (parsed as GatewayVersionEntry[]) : [];
+  } catch {
+    return [];
+  }
 };
 
 // VITE_ override wins so a local platform-api can be targeted in dev even when the
@@ -316,4 +358,5 @@ export const runtimeConfig: RuntimeConfig = {
     fromWindow().usersManagementApiUrl ||
     import.meta.env.VITE_USERS_MANAGEMENT_API_URL ||
     '',
+  gatewayVersions: readGatewayVersions(fromWindow().gatewayVersions),
 };

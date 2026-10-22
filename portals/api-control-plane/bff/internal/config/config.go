@@ -50,8 +50,38 @@ type Config struct {
 	Session      SessionConfig      `koanf:"session"`
 	Auth         AuthConfig         `koanf:"auth"`
 	PolicyHub    PolicyHubConfig    `koanf:"policy_hub"`
+	// GatewayVersions is the catalog of self-hosted-gateway releases the SPA's
+	// Quick Start "download the gateway" step offers, one entry per gateway
+	// type. Top-level (a sibling of PolicyHub, not nested under ControlPlane)
+	// because it is a public, static catalog the browser reads verbatim —
+	// unrelated to the control_plane upstream's connection settings — exactly
+	// like PolicyHub sits beside ControlPlane rather than inside it. Mirrors
+	// AI Workspace's `GatewayVersionEntry` shape (its own
+	// PLATFORM_GATEWAY_VERSIONS, hardcoded in that SPA's config.env.ts) plus a
+	// `type` discriminator, since this BFF serves both "regular" and "event"
+	// gateway types rather than AI Workspace's single "ai" type.
+	GatewayVersions []GatewayVersionEntry `koanf:"gateway_versions"`
 
 	RuntimeConfig map[string]string `koanf:"-"`
+}
+
+// GatewayVersionEntry is one [[gateway_versions]] entry: the release of one
+// self-hosted gateway type that the SPA's Quick Start download step may offer.
+// Field names match the TS contract declared in
+// portals/cloud-plugins/apip-cloud-ui-gateways/src/hostPort.ts (koanf tags
+// read the TOML's snake_case keys; json tags are the camelCase names that
+// contract — and the SPA's JSON.parse of the runtime config — expect).
+type GatewayVersionEntry struct {
+	// Type is "regular" or "event" for this BFF (AI Workspace owns "ai").
+	Type    string `koanf:"type" json:"type"`
+	Version string `koanf:"version" json:"version"`
+	// LatestVersion is the release tag, e.g. "v1.2.0". Defaults to
+	// "v"+Version client-side when omitted.
+	LatestVersion string `koanf:"latest_version" json:"latestVersion,omitempty"`
+	// DistVersion is the zip/folder version, when it differs from Version.
+	DistVersion string `koanf:"dist_version" json:"distVersion,omitempty"`
+	// Channel is "STS" or "LTS".
+	Channel string `koanf:"channel" json:"channel"`
 }
 
 // PolicyHubConfig configures the public catalog called directly by the browser.
@@ -414,6 +444,17 @@ func (c *Config) validate() error {
 	if c.PolicyHub.BaseURL != "" {
 		if err := validateAbsoluteURL("[policy_hub] base_url", c.PolicyHub.BaseURL); err != nil {
 			return err
+		}
+	}
+	for i, gv := range c.GatewayVersions {
+		if gv.Type != "regular" && gv.Type != "event" && gv.Type != "ai" {
+			return fmt.Errorf("[[gateway_versions]] entry %d has invalid type %q: must be \"regular\", \"event\", or \"ai\"", i, gv.Type)
+		}
+		if gv.Version == "" {
+			return fmt.Errorf("[[gateway_versions]] entry %d is missing version", i)
+		}
+		if gv.Channel != "STS" && gv.Channel != "LTS" {
+			return fmt.Errorf("[[gateway_versions]] entry %d has invalid channel %q: must be \"STS\" or \"LTS\"", i, gv.Channel)
 		}
 	}
 	seen := map[string]bool{}

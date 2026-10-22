@@ -138,4 +138,34 @@ describe('runtimeConfig', () => {
     expect(runtimeConfig.cloudProxyEnabled).toBe(true);
     expect(runtimeConfig.moesifAppUrl).toBe('https://www.moesif.com');
   });
+
+  it('gatewayVersions defaults to an empty array when absent', async () => {
+    const runtimeConfig = await loadRuntimeConfig();
+
+    expect(runtimeConfig.gatewayVersions).toEqual([]);
+  });
+
+  it('parses the JSON-encoded gatewayVersions runtime config', async () => {
+    window.__RUNTIME_CONFIG__ = {
+      gatewayVersions: JSON.stringify([
+        { type: 'regular', version: '1.0', latestVersion: 'v1.0.0', channel: 'LTS' },
+        { type: 'event', version: '1.0', latestVersion: 'v1.0.0', channel: 'LTS' },
+      ]),
+    };
+
+    const runtimeConfig = await loadRuntimeConfig();
+
+    expect(runtimeConfig.gatewayVersions).toEqual([
+      { type: 'regular', version: '1.0', latestVersion: 'v1.0.0', channel: 'LTS' },
+      { type: 'event', version: '1.0', latestVersion: 'v1.0.0', channel: 'LTS' },
+    ]);
+  });
+
+  it('gatewayVersions falls back to an empty array on malformed JSON', async () => {
+    window.__RUNTIME_CONFIG__ = { gatewayVersions: 'not-json' };
+
+    const runtimeConfig = await loadRuntimeConfig();
+
+    expect(runtimeConfig.gatewayVersions).toEqual([]);
+  });
 });

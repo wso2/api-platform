@@ -19,11 +19,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FC } from 'react';
 import { Box, CircularProgress } from '@wso2/oxygen-ui';
 import GatewayForm from './GatewayForm';
+import GatewayOverview from './components/GatewayOverview';
 import GatewaysList from './GatewaysList';
 import UnexpectedErrorState from './components/UnexpectedErrorState';
 import { createGatewaysClient } from './gatewaysApi';
+import { createSelfHostedGatewaysClient } from './selfHostedGatewaysApi';
 import type { AIWorkspaceHostPort } from './hostPort';
-import type { Environment, Gateway, GatewayInput, GatewayType } from './types';
+import type { Environment, Gateway, GatewayInput, GatewayType, SelfHostedGatewayInput } from './types';
 
 export type GatewaysFeatureProps = {
   port: AIWorkspaceHostPort;
@@ -41,8 +43,10 @@ export type GatewaysFeatureProps = {
  * The extension's `render(port)` result: a self-contained list/create/edit flow
  * that switches view with local state rather than nested routes (so the plugin
  * never depends on the host's router instance — the same shape as the pipelines
- * feature). It owns the data: it loads `/managed-gateways` and `/environments`
- * through the host-injected `apiFetch` and feeds the presentational list/form.
+ * feature). It owns the data: it loads `/managed-gateways`, platform-api's
+ * native `/gateways` (self-hosted — see `selfHostedGatewaysApi`) and
+ * `/environments` through the host-injected `apiFetch` and feeds the
+ * presentational list/form.
  */
 /**
  * How often the list re-reads gateway status while a gateway is still coming up.
@@ -55,9 +59,11 @@ const STATUS_POLL_INTERVAL_MS = 5000;
 const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
   const { apiFetch, notify } = port;
   const client = useMemo(() => createGatewaysClient(apiFetch), [apiFetch]);
+  const selfHostedClient = useMemo(() => createSelfHostedGatewaysClient(apiFetch), [apiFetch]);
 
-  const [view, setView] = useState<'list' | 'create' | 'edit'>('list');
+  const [view, setView] = useState<'list' | 'create' | 'edit' | 'view'>('list');
   const [editingGatewayId, setEditingGatewayId] = useState<string | null>(null);
+  const [viewingGatewayId, setViewingGatewayId] = useState<string | null>(null);
   const [gateways, setGateways] = useState<Gateway[]>([]);
   const [environments, setEnvironments] = useState<Environment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -81,12 +87,13 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
         setError(null);
       }
       try {
-        const [gatewayList, environmentList] = await Promise.all([
+        const [managedList, selfHostedList, environmentList] = await Promise.all([
           client.listGateways(gatewayTypes),
+          selfHostedClient.listGateways(gatewayTypes),
           client.listEnvironments(),
         ]);
         if (seq !== loadSeqRef.current) return;
-        setGateways(gatewayList);
+        setGateways([...managedList, ...selfHostedList]);
         setEnvironments(environmentList);
         // Any load that reaches fresh data clears a previous failure.
         setError(null);
@@ -101,7 +108,7 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
         if (!silent && seq === loadSeqRef.current) setLoading(false);
       }
     },
-    [client, gatewayTypes]
+    [client, selfHostedClient, gatewayTypes]
   );
 
   useEffect(() => {
@@ -163,6 +170,42 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
     [client, load, notify]
   );
 
+  /**
+   * The self-hosted path, mirroring `submitGateway` but against
+   * `selfHostedClient` (platform-api's native `/gateways`, not
+   * `/managed-gateways`). A freshly created gateway's registration token is
+   * intentionally not surfaced here — the wizard returns straight to the list
+   * (see `GatewayForm`'s info banner), and a token can be generated on demand
+   * from the list's "Registration token" action, which discards whatever this
+   * create minted the moment it generates its own.
+   */
+  const submitSelfHostedGateway = useCallback(
+    async (input: SelfHostedGatewayInput, gatewayId?: string): Promise<boolean> => {
+      if (submittingRef.current) return false;
+      submittingRef.current = true;
+      try {
+        if (gatewayId) {
+          await selfHostedClient.updateGateway(gatewayId, input);
+          notify(`Gateway "${input.name}" updated.`, 'success');
+        } else {
+          await selfHostedClient.createGateway(input);
+          notify(`Self-hosted gateway "${input.name}" registered.`, 'success');
+        }
+        await load();
+        return true;
+      } catch (submitError) {
+        notify(
+          submitError instanceof Error ? submitError.message : 'Unable to save the gateway.',
+          'error'
+        );
+        return false;
+      } finally {
+        submittingRef.current = false;
+      }
+    },
+    [selfHostedClient, load, notify]
+  );
+
   const removeGateway = useCallback(
     async (id: string, name: string) => {
       // One delete at a time: the confirm dialog closes on confirm, so a second
@@ -170,7 +213,12 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
       if (deletingRef.current) return;
       deletingRef.current = true;
       try {
-        await client.deleteGateway(id);
+        const target = gateways.find((candidate) => candidate.id === id);
+        if (target?.hosting === 'self-hosted') {
+          await selfHostedClient.deleteGateway(id);
+        } else {
+          await client.deleteGateway(id);
+        }
         notify(`Gateway "${name}" deleted.`, 'success');
         await load();
       } catch (deleteError) {
@@ -182,7 +230,7 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
         deletingRef.current = false;
       }
     },
-    [client, load, notify]
+    [client, selfHostedClient, gateways, load, notify]
   );
 
   if (loading) {
@@ -213,6 +261,7 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
         types={gatewayTypes}
         gateways={visibleGateways}
         environments={environments}
+        gatewayVersions={port.gatewayVersions}
         onBack={() => {
           setView('list');
           setEditingGatewayId(null);
@@ -224,6 +273,45 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
             setEditingGatewayId(null);
           }
         }}
+        onSubmitSelfHosted={async (input) => {
+          const saved = await submitSelfHostedGateway(
+            input,
+            view === 'edit' ? editingGatewayId ?? undefined : undefined
+          );
+          if (saved) {
+            setView('list');
+            setEditingGatewayId(null);
+          }
+        }}
+      />
+    );
+  }
+
+  if (view === 'view') {
+    const viewedGateway = visibleGateways.find((gateway) => gateway.id === viewingGatewayId);
+    if (!viewedGateway) {
+      // The gateway behind this id is gone (deleted elsewhere, or a stale
+      // link) — fall back to the list rather than rendering an overview for
+      // nothing.
+      setView('list');
+      return null;
+    }
+    const environmentNames = new Map(environments.map((environment) => [environment.id, environment.name]));
+    return (
+      <GatewayOverview
+        gateway={viewedGateway}
+        environmentNames={environmentNames}
+        gatewayVersions={port.gatewayVersions}
+        onBack={() => {
+          setView('list');
+          setViewingGatewayId(null);
+        }}
+        onEditClick={(gatewayId) => {
+          setEditingGatewayId(gatewayId);
+          setView('edit');
+        }}
+        onGenerateRegistrationToken={selfHostedClient.generateToken}
+        notify={notify}
       />
     );
   }
@@ -237,6 +325,10 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
       onEditClick={(gatewayId) => {
         setEditingGatewayId(gatewayId);
         setView('edit');
+      }}
+      onViewClick={(gatewayId) => {
+        setViewingGatewayId(gatewayId);
+        setView('view');
       }}
       onDelete={removeGateway}
     />

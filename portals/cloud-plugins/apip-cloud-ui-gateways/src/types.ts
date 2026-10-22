@@ -42,12 +42,22 @@ export type Environment = {
   name: string;
 };
 
+/**
+ * Who runs the gateway's infrastructure. `managed` is provisioned and operated
+ * by WSO2 on `/managed-gateways`; `self-hosted` is a plain platform-api gateway
+ * record the organization runs and connects itself (see `selfHostedGatewaysApi`)
+ * — there is no cloud provisioning step for it, so it starts `inactive` and
+ * stays that way until its own controller dials in with a registration token.
+ */
+export type GatewayHosting = 'managed' | 'self-hosted';
+
 export type Gateway = {
   id: string;
   name: string;
   description?: string;
   type: GatewayType;
   environmentId: string;
+  hosting: GatewayHosting;
   /** The external host the gateway is exposed on — server-assigned, not a create input. */
   url: string;
   status: GatewayStatus;
@@ -58,6 +68,10 @@ export type Gateway = {
    * Whether this gateway is the one its environment resolves to for its type.
    * One gateway per environment and type carries it, so an AI gateway being the
    * default says nothing about the regular ones in the same environment.
+   *
+   * For a self-hosted gateway this is a best-effort client-side marker (stashed
+   * in the native record's `properties`, see `selfHostedGatewaysApi`), not a
+   * server-enforced invariant the way it is for a managed one.
    */
   isDefault: boolean;
   version?: string;
@@ -82,6 +96,44 @@ export type GatewayInput = {
    * type it has gateways of.
    */
   isDefault?: boolean;
+};
+
+/**
+ * Fields the create form collects for a self-hosted gateway. Shaped like
+ * `GatewayInput` — same name/description/type/environment/default — but kept
+ * as its own type since it flows to `selfHostedGatewaysApi`, a different
+ * client hitting platform-api's native `/gateways`, not `/managed-gateways`,
+ * and carries two fields a managed gateway has no use for: unlike a managed
+ * gateway (cloud-provisioned, so its host and version are discovered once
+ * live), a self-hosted one has nothing to provision — there is no automatic
+ * way to know either until its own controller dials in, so the admin
+ * declares them up front instead.
+ */
+export type SelfHostedGatewayInput = GatewayInput & {
+  /**
+   * The gateway's own endpoint. Optional — left blank, the gateway starts
+   * with a pending placeholder URL until a controller connects and reports
+   * its real one (see `PENDING_ENDPOINT` in `selfHostedGatewaysApi`).
+   */
+  url?: string;
+  /**
+   * Which release this gateway record represents, `major.minor` (e.g.
+   * `1.2`) — platform-api's own format for `POST /gateways`. Purely a
+   * declared hint (nothing provisions from it): it drives which Quick Start
+   * commands the overview page offers until the real controller connects
+   * and may report a different one.
+   */
+  version?: string;
+};
+
+/**
+ * Returned once, right after a self-hosted gateway is created or its token is
+ * regenerated. There is no second way to read it back — losing it means
+ * regenerating (which revokes the one before it).
+ */
+export type GatewayRegistrationToken = {
+  gatewayId: string;
+  token: string;
 };
 
 /* ── gateway configuration ─────────────────────────────────────────────────── */
