@@ -109,7 +109,7 @@ func TestExtractLLMAnalyticsBedrockPathParam(t *testing.T) {
 
 	const requestPath = "/bedrock/model/us.amazon.nova-lite-v1:0/converse"
 
-	info, err := extractLLMAnalyticsFromJSON(template, nil, nil, nil, responseJSON, requestPath)
+	info, err := extractLLMAnalyticsFromJSON(template, nil, nil, nil, responseJSON, requestPath, "/converse")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -183,7 +183,7 @@ func TestExtractLLMAnalyticsBedrockConverseStream(t *testing.T) {
 	headers := policy.NewHeaders(map[string][]string{"content-type": {"application/vnd.amazon.eventstream"}})
 
 	info, err := extractLLMProviderAnalyticsInfoFromBytes(bedrockStreamTemplate(), nil, headers, nil, body,
-		"/bedrock/model/us.anthropic.claude-sonnet-4-5-20250929-v1:0/converse-stream")
+		"/bedrock/model/us.anthropic.claude-sonnet-4-5-20250929-v1:0/converse-stream", "/model/x/converse-stream")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -202,7 +202,7 @@ func TestExtractLLMAnalyticsBedrockConverseStream(t *testing.T) {
 
 	// Without the event-stream content type the same bytes are not decoded.
 	plain, err := extractLLMProviderAnalyticsInfoFromBytes(bedrockStreamTemplate(), nil, nil, nil, body,
-		"/bedrock/model/x/converse-stream")
+		"/bedrock/model/x/converse-stream", "/model/x/converse-stream")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
