@@ -21,6 +21,7 @@ const orgDao = require('../dao/organizationDao');
 const labelDao = require('../dao/labelDao');
 const viewDao = require('../dao/viewDao');
 const subscriptionPlanDao = require('../dao/subscriptionPlanDao');
+const whDao = require('../dao/webhookSubscriberDao');
 const { config } = require('../config/configLoader');
 const orgContext = require('../utils/orgContext');
 const { planIdpOrgIdReconcile } = require('../utils/idpOrgIdPolicy');
@@ -28,6 +29,13 @@ const constants = require('../utils/constants');
 const logger = require('../config/logger');
 const db = require('../db/driver');
 const { NotFoundError } = require('../utils/errors/customErrors');
+
+// PLATFORM_API_SUBSCRIBER_HANDLE is the fixed handle for the platform-api
+// subscriber row that this portal self-seeds from config.webhooks.platformApi.
+// Must match the id the cloud plugin uses when it POSTs the subscriber row, so
+// a managed-cloud portal and a config-driven OSS portal converge on the same
+// row rather than ending up with two.
+const PLATFORM_API_SUBSCRIBER_HANDLE = 'platform-api';
 
 /**
  * Brings the organization's stored idp_ref_id in line with auth.idp_org_id in config.
@@ -253,4 +261,84 @@ async function seedDefaultOrg() {
     logger.info('Org: organization seeded ✓', { handle: orgName });
 }
 
-module.exports = { seedDefaultOrg, seedOrg };
+/**
+ * Reports whether the "platform-api" subscriber row is owned by config rather
+ * than by the admin REST API. Used by the admin API's PUT/DELETE handlers to
+ * refuse mutations to a config-driven row (any other row stays mutable).
+ *
+ * Semantics are "would a self-seed take effect if we ran now": both url and
+ * secret present in config. Keep this in a module-scope helper so the admin
+ * handlers do not need to re-interpret the config shape.
+ */
+function isPlatformApiSubscriberConfigOwned() {
+    const pa = config.webhooks?.platformApi;
+    return Boolean(pa && String(pa.url || '').trim() && String(pa.secret || '').trim());
+}
+
+/**
+ * Seeds the "platform-api" webhook subscriber row for the default organization
+ * from config.webhooks.platformApi. No-op when url or secret is empty, so an
+ * installation that has not configured this still boots exactly as it did
+ * before.
+ *
+ * The row is identified by the fixed handle "platform-api" — the same id the
+ * cloud plugin uses when it POSTs the subscriber row — so a prior row (whether
+ * from a hand-registered OSS POST or an earlier plugin seed) is converged in
+ * place rather than duplicated.
+ *
+ * Called after seedDefaultOrg so getOrgUuid() has a row to resolve to.
+ */
+async function seedPlatformApiWebhookSubscriber() {
+    const pa = config.webhooks?.platformApi;
+    if (!pa) return;
+
+    const targetUrl = String(pa.url || '').trim();
+    const secret = String(pa.secret || '').trim();
+    if (!targetUrl || !secret) {
+        // Not an error: an installation that uses the admin REST API, or that
+        // has not yet rotated to a per-portal secret, leaves this unset.
+        return;
+    }
+
+    const orgUuid = await orgContext.getOrgUuid();
+    if (!orgUuid) return;
+
+    const events = Array.isArray(pa.events) && pa.events.length > 0
+        ? pa.events.slice()
+        : ['subscription.*', 'apikey.*', 'application.*'];
+
+    const existing = await whDao.get(orgUuid, PLATFORM_API_SUBSCRIBER_HANDLE);
+    if (!existing) {
+        await whDao.create(orgUuid, {
+            handle: PLATFORM_API_SUBSCRIBER_HANDLE,
+            displayName: 'Platform API',
+            targetUrl,
+            secret,
+            events,
+            enabled: true,
+        }, 'config');
+        logger.info('Webhook: platform-api subscriber seeded from config ✓', { handle: PLATFORM_API_SUBSCRIBER_HANDLE });
+        return;
+    }
+
+    // Row exists — overwrite target_url, secret_enc, event_patterns to match
+    // config. A rotated secret in config.toml takes effect on the next boot
+    // this way, which is how the receiver on Platform API is told to switch to
+    // the new signing key.
+    await whDao.update(orgUuid, PLATFORM_API_SUBSCRIBER_HANDLE, {
+        displayName: 'Platform API',
+        targetUrl,
+        secret,
+        events,
+        enabled: true,
+    }, 'config');
+    logger.info('Webhook: platform-api subscriber updated from config ✓', { handle: PLATFORM_API_SUBSCRIBER_HANDLE });
+}
+
+module.exports = {
+    seedDefaultOrg,
+    seedOrg,
+    seedPlatformApiWebhookSubscriber,
+    isPlatformApiSubscriberConfigOwned,
+    PLATFORM_API_SUBSCRIBER_HANDLE,
+};

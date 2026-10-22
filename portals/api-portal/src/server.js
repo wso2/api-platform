@@ -26,7 +26,7 @@ const { buildOutboundAgents } = require('./config/httpClientOptions');
 const webhookDispatcher = require('./services/webhooks/dispatcher');
 const webhookDeliveryWorker = require('./services/webhooks/deliveryWorker');
 const db = require('./db/driver');
-const { seedDefaultOrg } = require('./services/seederService');
+const { seedDefaultOrg, seedPlatformApiWebhookSubscriber } = require('./services/seederService');
 const orgContext = require('./utils/orgContext');
 const orgDao = require('./dao/organizationDao');
 const constants = require('./utils/constants');
@@ -190,6 +190,7 @@ async function startServer() {
     // above and the designMode branch in app.js.
     if (!config.designMode?.enabled) {
         await seedDefaultOrg();
+        await seedPlatformApiWebhookSubscriber();
         await logMultiOrganizationMode();
     }
 
