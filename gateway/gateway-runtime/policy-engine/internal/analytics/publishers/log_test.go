@@ -1041,8 +1041,8 @@ func TestLog_Publish_JSONFieldsOmitFieldsUsingExcludedVariable(t *testing.T) {
 
 	assert.Equal(t, map[string]interface{}{"status": float64(200)}, decodeLine(t, read()))
 	assert.Contains(t, logs.String(), "traffic_logging.json_fields: expression uses a variable excluded by exclude_fields")
-	assert.Contains(t, logs.String(), "property=denied")
-	assert.Contains(t, logs.String(), "property=reason")
+	assert.Contains(t, logs.String(), "field=denied")
+	assert.Contains(t, logs.String(), "field=reason")
 }
 
 // "$ctx:" entries apply to json_fields only; properties are excluded by name
@@ -1140,9 +1140,9 @@ func TestNewLog_InvalidExpressionLogsItsSection(t *testing.T) {
 		want string
 	}{
 		{"properties", config.TrafficLoggingConfig{Properties: map[string]string{"d": invalid}},
-			"traffic_logging.properties: failed to compile expression"},
+			"traffic_logging.properties: failed to compile expression; property will be omitted"},
 		{"json_fields", config.TrafficLoggingConfig{JSONFields: map[string]string{"d": invalid}},
-			"traffic_logging.json_fields: failed to compile expression"},
+			"traffic_logging.json_fields: failed to compile expression; field will be omitted"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

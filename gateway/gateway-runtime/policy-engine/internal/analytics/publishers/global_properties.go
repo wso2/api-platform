@@ -40,11 +40,17 @@ import (
 // log-message policy's "$ctx:" convention.
 const globalPropertyCtxPrefix = "$ctx:"
 
-// propertiesSection and jsonFieldsSection name the config section an evaluator
-// serves, so its log messages point at the right place.
-const (
-	propertiesSection = "traffic_logging.properties"
-	jsonFieldsSection = "traffic_logging.json_fields"
+// evaluatorSection names the config section an evaluator serves and what its
+// entries are called, so its log messages point at the right place.
+type evaluatorSection struct {
+	name    string // e.g. "traffic_logging.properties"
+	entry   string // e.g. "property"
+	entries string // plural of entry
+}
+
+var (
+	propertiesSection = evaluatorSection{name: "traffic_logging.properties", entry: "property", entries: "properties"}
+	jsonFieldsSection = evaluatorSection{name: "traffic_logging.json_fields", entry: "field", entries: "fields"}
 )
 
 // globalPropertyEvaluator resolves traffic_logging.properties against a
@@ -84,8 +90,8 @@ type globalPropertyEvaluator struct {
 	// truncateBody, when set, declares request.body/response.body and cuts each
 	// body to max_payload_size. Set only for json_fields (see withBodies).
 	truncateBody func(string) string
-	// section is the config section named in log messages (see withSection).
-	section string
+	// section names the config section and its entries in log messages (see withSection).
+	section evaluatorSection
 	// excludedVariables/excludedMapKeys hold the "$ctx:" entries of exclude_fields. Set
 	// only for json_fields: expressions using an excluded variable are dropped at
 	// construction, and excluded keys are removed from map variables per request.
@@ -130,7 +136,7 @@ func newGlobalPropertyEvaluator(properties map[string]string, maskedHeaders map[
 	}
 	env, err := createGlobalPropertyEnv(extraVariables...)
 	if err != nil {
-		slog.Error(e.section+": failed to create CEL environment; all properties disabled", "error", err)
+		slog.Error(e.section.name+": failed to create CEL environment; all "+e.section.entries+" disabled", "error", err)
 		return e
 	}
 
@@ -142,20 +148,20 @@ func newGlobalPropertyEvaluator(properties map[string]string, maskedHeaders map[
 		}
 		ast, issues := env.Compile(rest)
 		if issues != nil && issues.Err() != nil {
-			slog.Error(e.section+": failed to compile expression; property will be omitted from every line",
-				"property", name, "expression", rest, "error", issues.Err())
+			slog.Error(e.section.name+": failed to compile expression; "+e.section.entry+" will be omitted from every line",
+				e.section.entry, name, "expression", rest, "error", issues.Err())
 			continue
 		}
 		refs := referencedGlobalPropertyVariables(ast)
 		if excluded := e.excludedVariablesIn(refs); len(excluded) > 0 {
-			slog.Warn(e.section+": expression uses a variable excluded by exclude_fields; property will be omitted from every line",
-				"property", name, "variables", excluded)
+			slog.Warn(e.section.name+": expression uses a variable excluded by exclude_fields; "+e.section.entry+" will be omitted from every line",
+				e.section.entry, name, "variables", excluded)
 			continue
 		}
 		program, err := env.Program(ast)
 		if err != nil {
-			slog.Error(e.section+": failed to build CEL program; property will be omitted from every line",
-				"property", name, "expression", rest, "error", err)
+			slog.Error(e.section.name+": failed to build CEL program; "+e.section.entry+" will be omitted from every line",
+				e.section.entry, name, "expression", rest, "error", err)
 			continue
 		}
 		e.compiled[name] = program
@@ -214,7 +220,7 @@ func withCtxExclusions(variables map[string]bool, mapKeys map[string]map[string]
 }
 
 // withSection names the config section in log messages, in place of propertiesSection.
-func withSection(section string) evaluatorOption {
+func withSection(section evaluatorSection) evaluatorOption {
 	return func(e *globalPropertyEvaluator) {
 		e.section = section
 	}
@@ -397,12 +403,12 @@ func (e *globalPropertyEvaluator) resolve(event *dto.Event) map[string]interface
 	for name, program := range e.compiled {
 		out, _, err := program.Eval(evalCtx)
 		if err != nil {
-			slog.Debug(e.section+": expression evaluation failed; omitting property", "property", name, "error", err)
+			slog.Debug(e.section.name+": expression evaluation failed; omitting "+e.section.entry, e.section.entry, name, "error", err)
 			continue
 		}
 		goVal, err := globalPropertyCELToGoValue(out)
 		if err != nil {
-			slog.Debug(e.section+": failed to convert CEL result; omitting property", "property", name, "error", err)
+			slog.Debug(e.section.name+": failed to convert CEL result; omitting "+e.section.entry, e.section.entry, name, "error", err)
 			continue
 		}
 		result[name] = goVal
@@ -598,7 +604,7 @@ func buildGlobalPropertyEvalCtx(event *dto.Event, referenced map[string]bool, ma
 			if err := json.Unmarshal([]byte(raw), &props); err == nil {
 				ctx["auth.property"] = props
 			} else {
-				slog.Debug("traffic_logging.properties: failed to parse auth properties metadata", "error", err)
+				slog.Debug("traffic_logging: failed to parse auth properties metadata", "error", err)
 			}
 		}
 	}
@@ -619,7 +625,7 @@ func buildGlobalPropertyEvalCtx(event *dto.Event, referenced map[string]bool, ma
 			if err := json.Unmarshal([]byte(raw), &meta); err == nil {
 				ctx["metadata"] = meta
 			} else {
-				slog.Debug("traffic_logging.properties: failed to parse generic metadata", "error", err)
+				slog.Debug("traffic_logging: failed to parse generic metadata", "error", err)
 			}
 		}
 	}
