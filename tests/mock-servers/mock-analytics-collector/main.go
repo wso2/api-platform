@@ -41,7 +41,6 @@ type AnalyticsEvent struct {
 	Weight       int             `json:"weight,omitempty"`
 	Tags         string          `json:"tags,omitempty"`
 	A2A          any             `json:"a2a,omitempty"`
-	AIContext    any             `json:"ai_context,omitempty"`
 }
 
 // RequestDetails represents request information
