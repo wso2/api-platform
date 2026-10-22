@@ -58,8 +58,6 @@ func RegisterPublication(sc *godog.ScenarioContext, s *Steps) {
 		s.savePublicationDraft)
 	sc.Step(`^I save a publishable draft of the "([^"]*)" "([^"]*)" on the API Portal "([^"]*)" with values:$`,
 		s.savePublishableDraft)
-	sc.Step(`^I save a minimal OpenAPI definition as the draft definition of the "([^"]*)" "([^"]*)" on the API Portal "([^"]*)"$`,
-		s.saveDraftDefinition)
 	sc.Step(`^I publish the "([^"]*)" "([^"]*)" to the API Portal "([^"]*)" through the control plane(?: as "([^"]*)")?$`,
 		s.publishToAPIPortal)
 	sc.Step(`^I deprecate the "([^"]*)" "([^"]*)" on the API Portal "([^"]*)" through the control plane(?: as "([^"]*)")?$`,
