@@ -168,6 +168,7 @@ func portalSecurityEnv() map[string]string {
 	return map[string]string{
 		"APIP_AP_SECURITY_ENCRYPTION_KEY": encryptionKey,
 		"APIP_AP_SECURITY_SESSION_SECRET": sessionSecret,
+		"APIP_AP_INTERNAL_AUTH_HASH":      shared.APIPortalSharedKeyHash(),
 	}
 }
 

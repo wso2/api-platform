@@ -54,6 +54,16 @@ func TestAPIPortalDefinition(t *testing.T) {
 	require.Equal(t, "https", definition.Health.Endpoint)
 }
 
+func TestAPIPortalReceivesTheHashOfTheSharedKeyPlatformAPIPublishesWith(t *testing.T) {
+	env := APIPortal().Compose.Env
+
+	require.Equal(t, shared.APIPortalSharedKeyHash(), env["APIP_AP_INTERNAL_AUTH_HASH"])
+	require.NotContains(t, env, "APIP_AP_INTERNAL_AUTH_KEY", "the portal is given the hash only, never the key")
+	for _, value := range env {
+		require.NotEqual(t, shared.APIPortalSharedKey(), value)
+	}
+}
+
 func TestAPIPortalOtherOrgUsesBaseComposeWithOrganizationOverride(t *testing.T) {
 	definition := APIPortalOtherOrg()
 	require.Equal(t, "api-portal-other-org", definition.Name)
