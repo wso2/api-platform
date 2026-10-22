@@ -341,3 +341,34 @@ func TestTrackPublishedPlanRemovesThePlanFromThePortalAtCleanup(t *testing.T) {
 
 	require.Error(t, s.trackPublishedPlan(context.Background(), "gold"), "without a cleanup registry nothing can be tracked")
 }
+
+func TestPortalProberTrustsOnlyThePortalCertificateAndFollowsRedirects(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, "/signin", http.StatusFound) })
+	mux.HandleFunc("/signin", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
+	serve := func(pair *shared.KeyPairPEM) *httptest.Server {
+		cert, err := tls.X509KeyPair(pair.CertPEM, pair.PrivateKeyPEM)
+		require.NoError(t, err)
+		server := httptest.NewUnstartedServer(mux)
+		server.TLS = &tls.Config{Certificates: []tls.Certificate{cert}}
+		server.StartTLS()
+		t.Cleanup(server.Close)
+		return server
+	}
+	prober := newPortalProber()
+
+	portal := serve(shared.APIPortalTLS())
+	status, err := prober.Probe(context.Background(), portal.URL+"/")
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, status, "the redirect to the sign-in page is followed")
+
+	stranger, err := shared.SelfSignedCert(shared.APIPortalHost, []string{shared.APIPortalHost})
+	require.NoError(t, err)
+	_, err = prober.Probe(context.Background(), serve(stranger).URL+"/")
+	require.Error(t, err, "a certificate that is not the portal's is refused even when it carries the portal's name")
+
+	portal.Close()
+	status, err = prober.Probe(context.Background(), portal.URL+"/")
+	require.Error(t, err)
+	require.Zero(t, status)
+}
