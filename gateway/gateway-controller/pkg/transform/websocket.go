@@ -439,7 +439,12 @@ func (t *WebSocketAPITransformer) addWebSocketUpstreamCluster(
 		return nil, err
 	}
 
-	clusterKey := fmt.Sprintf("upstream_%s_%s_%d", slotName, parsedURL.Hostname(), port)
+	// The cluster carries this API's connection-pool bounds, so it is keyed by the API
+	// rather than by the backend: the translator merges clusters by name, and two
+	// WebSocketApis pointing at one backend would otherwise share a cluster whose
+	// bounds came from whichever was translated last. Same scheme as RestApi
+	// upstreamDefinitions.
+	clusterKey := "upstream_" + rdc.Metadata.Kind + "_" + rdc.Metadata.UUID + "_" + slotName
 
 	rdc.UpstreamClusters[clusterKey] = &models.UpstreamCluster{
 		BasePath: basePath,

@@ -44,8 +44,9 @@ func init() {
 
 const webSocketApiKind = string(api.WebSocketAPIKindWebSocketApi)
 
-// webSocketSpecRules supplies the spec.version rule WebSocketApi shares with
-// RestApi and GraphQLApi, so every kind accepts the same version formats.
+// webSocketSpecRules supplies the spec.displayName and spec.version rules
+// WebSocketApi shares with RestApi and GraphQLApi, so every kind accepts the same
+// names and version formats.
 var webSocketSpecRules = config.NewAPIValidator()
 
 // webSocketValidation holds the gateway-level inputs validateWebSocketAPIConfig
@@ -133,9 +134,7 @@ func validateWebSocketAPIConfig(cfg any) (apiName, apiVersion string, validation
 	errors = append(errors, config.ValidateMetadata(&websocketConfig.Metadata)...)
 
 	spec := websocketConfig.Spec
-	if strings.TrimSpace(spec.DisplayName) == "" {
-		errors = append(errors, config.ValidationError{Field: "spec.displayName", Message: "displayName is required"})
-	}
+	errors = append(errors, webSocketSpecRules.ValidateDisplayName(strings.TrimSpace(spec.DisplayName))...)
 	errors = append(errors, webSocketSpecRules.ValidateVersion(strings.TrimSpace(spec.Version))...)
 	if strings.TrimSpace(spec.Context) == "" {
 		errors = append(errors, config.ValidationError{Field: "spec.context", Message: "context is required"})
@@ -294,6 +293,16 @@ func validateWebSocketUpstream(label string, up *api.Upstream) []config.Validati
 		errors = append(errors, config.ValidationError{
 			Field:   fieldBase + ".ref",
 			Message: "Upstream ref is not supported for WebSocketApi (no upstreamDefinitions list); use a direct url",
+		})
+	}
+
+	// A tls block would otherwise be accepted and silently ignored: a wss upstream
+	// is built with TLS enabled and nothing else, so a custom CA, client
+	// certificate or verification setting placed here would never take effect.
+	if up.Tls != nil {
+		errors = append(errors, config.ValidationError{
+			Field:   fieldBase + ".tls",
+			Message: "Upstream tls is not supported for WebSocketApi; use a wss:// url for an encrypted upstream",
 		})
 	}
 

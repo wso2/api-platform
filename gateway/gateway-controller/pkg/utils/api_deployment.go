@@ -350,6 +350,12 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 	if fn, ok := kindDesiredStateResolvers[kind]; ok {
 		desiredState = fn(parsedConfig)
 	}
+	// The database keeps created_at on update; carry the original into the returned
+	// config too, or the update response reports the update time as the creation time.
+	createdAt := now
+	if isUpdate && existingConfig != nil && !existingConfig.CreatedAt.IsZero() {
+		createdAt = existingConfig.CreatedAt
+	}
 	storedCfg := &models.StoredConfig{
 		UUID:                apiID,
 		Kind:                kind,
@@ -360,7 +366,7 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 		DeploymentID:        params.DeploymentID,
 		Origin:              params.Origin,
 		CPSyncStatus:        cpSyncStatusForOrigin(params.Origin),
-		CreatedAt:           now,
+		CreatedAt:           createdAt,
 		UpdatedAt:           now,
 		DeployedAt:          deployedAt,
 	}

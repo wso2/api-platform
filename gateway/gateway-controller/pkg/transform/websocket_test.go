@@ -229,6 +229,37 @@ func TestWebSocketTransform_UpstreamPoolBounds(t *testing.T) {
 	}
 }
 
+// Two WebSocketApis on one backend must not share a cluster: each cluster carries
+// its own API's pool bounds, and a shared one would silently take another API's.
+func TestWebSocketTransform_ClusterIsPerAPI(t *testing.T) {
+	withMax := func(uuid string, maxConns int) *models.StoredConfig {
+		stored := testWebSocketAPI(func(spec *api.WebSocketAPIConfigData) {
+			spec.Upstream.Main.Timeout = &api.UpstreamTimeout{MaxConnections: &maxConns}
+		})
+		stored.UUID = uuid
+		return stored
+	}
+
+	first, err := websocketTransformer().Transform(withMax("ws-uuid-a", 10))
+	require.NoError(t, err)
+	second, err := websocketTransformer().Transform(withMax("ws-uuid-b", 20))
+	require.NoError(t, err)
+
+	require.Len(t, first.UpstreamClusters, 1)
+	require.Len(t, second.UpstreamClusters, 1)
+	for keyA, a := range first.UpstreamClusters {
+		for keyB, b := range second.UpstreamClusters {
+			assert.NotEqual(t, keyA, keyB, "same backend, different APIs must yield different clusters")
+			assert.Equal(t, uint32(10), *a.MaxConnections)
+			assert.Equal(t, uint32(20), *b.MaxConnections)
+		}
+	}
+	for _, route := range first.Routes {
+		_, ok := first.UpstreamClusters[route.Upstream.ClusterKey]
+		assert.True(t, ok, "route must point at this API's own cluster")
+	}
+}
+
 // The two slots are bounded independently — saturating main must not constrain
 // sandbox, and neither inherits the other's settings.
 func TestWebSocketTransform_SandboxIsIndependent(t *testing.T) {
