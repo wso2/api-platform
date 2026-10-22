@@ -72,12 +72,20 @@ const AI_GATEWAY_TYPES: GatewayType[] = ["ai"];
  * `config.env`: only this file and `plugin.ts` are overlaid into the portal, and
  * importing core config would also clash with the api-control-plane host's
  * runtime-config typing when this package is typechecked.
+ *
+ * Deviates from the house flag convention (absent = hidden) on purpose: the
+ * managed-portals page is the publishing destination for MCP proxies, so an
+ * existing cloud deployment picking up a newer image gets the page without an
+ * extra config change. A deployment that wants it hidden sets the key to
+ * `false` explicitly. The OSS build never overlays this host file, so the
+ * default is inert there.
  */
 const isManagedApiPortalsEnabled = (): boolean => {
-  if (typeof window === "undefined") return false;
+  if (typeof window === "undefined") return true;
   const bag = (window as Window & { __RUNTIME_CONFIG__?: object })
     .__RUNTIME_CONFIG__ as Record<string, unknown> | undefined;
   const value = bag?.APIP_AIW_FEATURE_FLAGS_MANAGED_API_PORTALS_ENABLED;
+  if (value === undefined || value === null || value === "") return true;
   return value === true || value === "true" || value === "1";
 };
 

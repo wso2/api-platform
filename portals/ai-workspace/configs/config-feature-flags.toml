@@ -53,4 +53,7 @@ agent_proxy_enabled = true
 # organization's hosted API Portal), contributed by the cloud plugins. Inert in
 # an OSS build, which registers no such page. Read by the cloud host file
 # (cloud-plugins/apip-cloud-ui/src/hosts/ai-workspace.tsx), not src/config.env.ts.
+#
+# Defaults to shown — see the host file's `isManagedApiPortalsEnabled`. Set this
+# explicitly to false to hide the page in a deployment that is not ready for it.
 managed_api_portals_enabled = true
