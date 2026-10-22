@@ -185,6 +185,30 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'uq_api_portals_uuid_org'
 CREATE UNIQUE INDEX uq_api_portals_uuid_org ON dbo.api_portals(uuid, organization_uuid);
 
 -- =====================================================================
+-- api_portal_webhook_secrets: one per-portal webhook signing secret, used by the
+-- POST /api/internal/v0.9/webhook/portals/{portalUUID}/events receiver route to
+-- verify the HMAC and derive the field-encryption key. A side table rather than
+-- an api_portals column so the schema stays additive (CREATE TABLE IF NOT EXISTS
+-- across sqlite/postgres/sqlserver, no ALTER). previous_secret_enc and
+-- previous_valid_until carry the rotation grace window: the receiver accepts
+-- either secret until previous_valid_until, so single-attempt deliveries signed
+-- between the rotation and the portal subscriber-row update are not lost.
+-- Single FK edge from this table to api_portals; api_portals in turn cascades
+-- from organizations. That is one cascade path, not multiple, so ON DELETE
+-- CASCADE here does not trip SQL Server error 1785.
+-- =====================================================================
+IF OBJECT_ID(N'dbo.api_portal_webhook_secrets', N'U') IS NULL
+CREATE TABLE dbo.api_portal_webhook_secrets (
+    portal_uuid          VARCHAR(40)    PRIMARY KEY,
+    secret_enc           VARBINARY(MAX) NOT NULL,
+    previous_secret_enc  VARBINARY(MAX),
+    previous_valid_until DATETIME2(7),
+    created_at           DATETIME2(7)   NOT NULL DEFAULT SYSUTCDATETIME(),
+    rotated_at           DATETIME2(7),
+    FOREIGN KEY (portal_uuid) REFERENCES api_portals(uuid) ON DELETE CASCADE
+);
+
+-- =====================================================================
 -- api_publications: one API's publication state on one API Portal. Each
 -- (API, portal) pair has at most one live row (is_draft = 0) and one draft row
 -- (is_draft = 1). status is set only on live rows.

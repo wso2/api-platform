@@ -2493,6 +2493,12 @@ type ApiPortalResponse struct {
 
 	// Url Public URL of the API Portal. Operator-supplied.
 	Url string `json:"url" yaml:"url"`
+
+	// WebhookSecretConfigured True when a per-portal webhook signing secret has been generated for
+	// this portal (via POST /api-portals/{apiPortalId}/webhook-secret). The
+	// secret itself is never returned on reads; this flag only reports
+	// presence.
+	WebhookSecretConfigured *bool `json:"webhookSecretConfigured,omitempty" yaml:"webhookSecretConfigured,omitempty"`
 }
 
 // Application defines model for Application.
@@ -3447,6 +3453,24 @@ type GatewayTokenListResponse struct {
 	// List List of active tokens
 	List       []TokenInfoResponse `json:"list" yaml:"list"`
 	Pagination Pagination          `json:"pagination" yaml:"pagination"`
+}
+
+// GenerateApiPortalWebhookSecretResponse Returned once by POST /api-portals/{apiPortalId}/webhook-secret. The
+// secret is only ever present in this response — it is never readable
+// again; losing it means rotating a new one. receiverUrl is the full
+// receiver URL when platform_api.webhook.public_base_url is configured;
+// when the operator has not configured a public base URL, receiverUrl
+// contains only the receiver path and the operator must prepend their
+// own base.
+type GenerateApiPortalWebhookSecretResponse struct {
+	// ReceiverUrl Either the fully-qualified receiver URL (when
+	// platform_api.webhook.public_base_url is configured) or just the
+	// receiver path (which the operator must prepend with their own base
+	// URL).
+	ReceiverUrl string `json:"receiverUrl" yaml:"receiverUrl"`
+
+	// Secret The per-portal webhook signing secret. 64 hex characters (32 bytes of entropy).
+	Secret string `json:"secret" yaml:"secret"`
 }
 
 // GraphQLAPI defines model for GraphQLAPI.

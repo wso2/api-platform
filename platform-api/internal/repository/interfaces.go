@@ -420,6 +420,35 @@ type APIPortalRepository interface {
 	// Cross-org by design: the cloud plugin's provisioning poller resumes
 	// tracking on startup without an org list.
 	ListByStatus(status string) ([]*model.APIPortal, error)
+	// GetByUUIDAny returns the portal row by UUID without requiring the caller
+	// to already know the org. api_portals.uuid is globally unique (PRIMARY KEY),
+	// so this cannot collide across orgs; used by the per-portal webhook receiver
+	// to look up the owning org from the UUID carried in the request URL.
+	GetByUUIDAny(portalUUID string) (*model.APIPortal, error)
+}
+
+// APIPortalWebhookSecretRepository defines the interface for per-portal webhook
+// signing secret persistence. One row per portal, keyed on portal_uuid. The
+// stored secret bytes are the ciphertext from vault.Encrypt; the plaintext is
+// never persisted. previous_secret_enc + previous_valid_until give the receiver
+// a rotation grace window so single-attempt deliveries are not lost across a
+// rotation.
+type APIPortalWebhookSecretRepository interface {
+	// GetByPortalUUID returns the secret row for portalUUID, or (nil, nil) when
+	// the portal has no webhook secret configured yet.
+	GetByPortalUUID(portalUUID string) (*model.APIPortalWebhookSecret, error)
+	// Insert creates a first-time secret row. Fails if one already exists for the
+	// portal — callers that want "generate if absent" semantics must branch on a
+	// prior GetByPortalUUID.
+	Insert(portalUUID string, secretEnc []byte) error
+	// Rotate moves the current secret_enc into previous_secret_enc, sets
+	// previous_valid_until, writes the new secret_enc, and stamps rotated_at.
+	// Requires an existing row.
+	Rotate(portalUUID string, newSecretEnc []byte, previousValidUntil time.Time) error
+	// ClearExpiredPrevious nulls previous_secret_enc and previous_valid_until
+	// when previous_valid_until has passed. Lazy cleanup; a no-op when the
+	// previous slot is already empty or still inside the grace window.
+	ClearExpiredPrevious(portalUUID string, now time.Time) error
 }
 
 // MCPProxyRepository defines the interface for MCP proxy persistence

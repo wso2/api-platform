@@ -32,6 +32,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/wso2/api-platform/platform-api/config"
 	"github.com/wso2/api-platform/platform-api/internal/database"
 	"github.com/wso2/api-platform/platform-api/internal/middleware"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
@@ -91,8 +92,8 @@ func setupAPIPortalHandlerEnv(t *testing.T) (http.Handler, *database.DB, func())
 	portalRepo := repository.NewAPIPortalRepo(db)
 	orgRepo := repository.NewOrganizationRepo(db)
 	identityService := service.NewIdentityService(repository.NewUserIdentityMappingRepo(db))
-	svc := service.NewAPIPortalService(portalRepo, orgRepo, noopAudit{}, apiPortalTestVault(t), nil, identityService, slog.Default())
-	h := NewAPIPortalHandler(svc, identityService, slog.Default())
+	svc := service.NewAPIPortalService(portalRepo, orgRepo, noopAudit{}, apiPortalTestVault(t), nil, nil, identityService, slog.Default())
+	h := NewAPIPortalHandler(svc, identityService, config.Webhook{}, slog.Default())
 
 	mux := http.NewServeMux()
 	h.RegisterRoutes(mux)

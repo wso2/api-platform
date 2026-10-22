@@ -170,6 +170,26 @@ CREATE TABLE IF NOT EXISTS api_portals (
 CREATE UNIQUE INDEX IF NOT EXISTS uq_api_portals_org_uuid ON api_portals(organization_uuid, uuid);
 
 -- =====================================================================
+-- api_portal_webhook_secrets: one per-portal webhook signing secret, used by the
+-- POST /api/internal/v0.9/webhook/portals/{portalUUID}/events receiver route to
+-- verify the HMAC and derive the field-encryption key. A side table rather than
+-- an api_portals column so the schema stays additive (CREATE TABLE IF NOT EXISTS
+-- across sqlite/postgres/sqlserver, no ALTER). previous_secret_enc and
+-- previous_valid_until carry the rotation grace window: the receiver accepts
+-- either secret until previous_valid_until, so single-attempt deliveries signed
+-- between the rotation and the portal subscriber-row update are not lost.
+-- =====================================================================
+CREATE TABLE IF NOT EXISTS api_portal_webhook_secrets (
+    portal_uuid          VARCHAR(40) PRIMARY KEY,
+    secret_enc           BYTEA        NOT NULL,
+    previous_secret_enc  BYTEA,
+    previous_valid_until TIMESTAMPTZ,
+    created_at           TIMESTAMPTZ  NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    rotated_at           TIMESTAMPTZ,
+    FOREIGN KEY (portal_uuid) REFERENCES api_portals(uuid) ON DELETE CASCADE
+);
+
+-- =====================================================================
 -- api_publications: one API's publication state on one API Portal. Each
 -- (API, portal) pair has at most one live row (is_draft = 0) and one draft row
 -- (is_draft = 1). status is set only on live rows.

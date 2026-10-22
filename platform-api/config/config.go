@@ -445,10 +445,23 @@ type EventHub struct {
 type Webhook struct {
 	// Enabled controls whether the webhook endpoint is registered.
 	Enabled bool `koanf:"enabled"`
-	// Secret is the shared secret with the API Portal. It serves two purposes: verifying
-	// the HMAC-SHA256 request signature, and deriving (via HKDF-SHA3-256) the AES key that decrypts
-	// encrypted payload fields such as an API key secret.
+	// Secret is the global shared secret for the legacy /webhook/events route. Used only
+	// when LegacySharedSecret is true; a per-portal secret keyed off the portal UUID is
+	// used by /webhook/portals/{uuid}/events.
 	Secret string `koanf:"secret"`
+	// LegacySharedSecret keeps the pre-per-portal-secret route (/webhook/events) mounted
+	// and verified against Secret. Default true for one release so existing deployments
+	// keep working; flip to false once every portal subscriber row points at the per-portal
+	// receiver URL, then remove the key in a later release.
+	LegacySharedSecret bool `koanf:"legacy_shared_secret"`
+	// RotationGrace is how long the previous per-portal secret remains valid after rotation.
+	// Portal delivery is single-attempt, so without a grace window any event signed between
+	// the rotation and the portal subscriber row PUT is lost.
+	RotationGrace time.Duration `koanf:"rotation_grace"`
+	// PublicBaseURL, when set, is used by POST /api/v0.9/api-portals/{id}/webhook-secret
+	// to return the full receiver URL for the OSS operator; when empty, only the receiver
+	// path is returned and the operator supplies the base.
+	PublicBaseURL string `koanf:"public_base_url"`
 	// SignatureTolerance bounds how old a signed request may be (replay protection).
 	SignatureTolerance time.Duration `koanf:"signature_tolerance"`
 	// MaxBodySize caps the request body size in bytes.
@@ -1365,8 +1378,14 @@ func validateWebhookConfig(w *Webhook) error {
 	if !w.Enabled {
 		return nil
 	}
-	if w.Secret == "" {
-		return fmt.Errorf("webhook.enabled=true requires webhook.secret to be configured")
+	if w.LegacySharedSecret && w.Secret == "" {
+		return fmt.Errorf("webhook.legacy_shared_secret=true requires webhook.secret to be configured")
+	}
+	if w.RotationGrace < 0 {
+		return fmt.Errorf("webhook.rotation_grace must not be negative (got %s)", w.RotationGrace)
+	}
+	if w.RotationGrace == 0 {
+		w.RotationGrace = 10 * time.Minute
 	}
 	if w.SignatureTolerance <= 0 {
 		w.SignatureTolerance = 5 * time.Minute
