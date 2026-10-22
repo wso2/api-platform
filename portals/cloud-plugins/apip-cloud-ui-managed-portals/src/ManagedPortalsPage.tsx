@@ -10,16 +10,21 @@
 import { useEffect, useMemo, useState } from 'react';
 import { PageContent, Typography } from '@wso2/oxygen-ui';
 
-import type { CloudHostPort } from './hostPort';
+import type { ApiFetch, CloudHostPort } from './hostPort';
 import ManagedPortalCreate from './ManagedPortalCreate';
 import ManagedPortalEdit from './ManagedPortalEdit';
 import ManagedPortalsList from './ManagedPortalsList';
 import { PortalFeatureProvider } from './portContext';
-import { createRealPortalPort, resolveApiBase } from './realPort';
+import { createApiFetchPortalPort, createRealPortalPort, resolveApiBase } from './realPort';
 
 export type ManagedPortalsPageProps = {
   /** Host capabilities supplied by the mounting console; kept as a prop so the feature stays host-agnostic. */
   port: CloudHostPort;
+  /**
+   * The host's platform-api transport, for hosts that supply one (AI Workspace).
+   * When given, calls go through it instead of the runtime-configured base URL.
+   */
+  apiFetch?: ApiFetch;
 };
 
 /**
@@ -34,12 +39,25 @@ type PageView =
   | { kind: 'create' }
   | { kind: 'edit'; portalId: string };
 
-export function ManagedPortalsPage({ port }: ManagedPortalsPageProps) {
+/**
+ * The managed-portals feature's top-level page. Owns the list/create/edit
+ * sub-view switch and injects the data transport (`PortalPort`) its children
+ * read through `usePortalFeature`.
+ *
+ * Picks the transport in this order: the host-supplied `apiFetch` (AI
+ * Workspace, which routes through the BFF proxy and resolves the org from the
+ * session token), otherwise the runtime-configured platform-api base URL
+ * (api-control-plane, which sends an `X-Org-Id` header). When neither is
+ * available (misconfigured runtime config) the page renders a configuration
+ * error instead of failing silently.
+ */
+export function ManagedPortalsPage({ port, apiFetch }: ManagedPortalsPageProps) {
   // Fail closed when the platform-api base is missing; tests / storybook build the mock port directly.
   const portalPort = useMemo(() => {
+    if (apiFetch) return createApiFetchPortalPort(apiFetch);
     const base = resolveApiBase();
     return base ? createRealPortalPort(base, port.orgHandle) : null;
-  }, [port.orgHandle]);
+  }, [apiFetch, port.orgHandle]);
 
   const [view, setView] = useState<PageView>({ kind: 'list' });
 
