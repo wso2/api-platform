@@ -21,6 +21,7 @@ package shared
 import (
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/hex"
@@ -39,6 +40,9 @@ var (
 	identityProviderTLSOnce sync.Once
 	identityProviderTLSData *KeyPairPEM
 
+	apiPortalTLSOnce sync.Once
+	apiPortalTLSData *KeyPairPEM
+
 	gatewayListenerOnce sync.Once
 	gatewayListenerData *KeyPairPEM
 
@@ -49,6 +53,17 @@ var (
 // IdentityProviderHost is the host name the testbench identity provider is reached at from
 // other containers, and the name its certificate is issued for.
 const IdentityProviderHost = "testbench"
+
+// APIPortalHost is the host name the API Portal is reached at from other containers, and the
+// name its certificate is issued for.
+const APIPortalHost = "api-portal"
+
+// APIPortalMultiOrganizationHost and APIPortalOtherOrgHost are the names the other portal
+// instances are reached at. They serve the same certificate, so it is issued for them too.
+const (
+	APIPortalMultiOrganizationHost = "api-portal-multi-organization"
+	APIPortalOtherOrgHost          = "api-portal-other-org"
+)
 
 // KeyPairPEM contains PEM-encoded certificate and key material.
 type KeyPairPEM struct {
@@ -150,6 +165,32 @@ func IdentityProviderTLS() *KeyPairPEM {
 		identityProviderTLSData = pair
 	})
 	return identityProviderTLSData
+}
+
+// APIPortalTLS returns the certificate and key every API Portal instance serves HTTPS with, issued
+// for the name of each instance. It is generated once per process, so the portal that serves it
+// and the steps and components that trust it always hold the same certificate.
+func APIPortalTLS() *KeyPairPEM {
+	apiPortalTLSOnce.Do(func() {
+		pair, err := SelfSignedCert(APIPortalHost,
+			[]string{APIPortalHost, APIPortalMultiOrganizationHost, APIPortalOtherOrgHost, "localhost"})
+		if err != nil {
+			panic(err)
+		}
+		apiPortalTLSData = pair
+	})
+	return apiPortalTLSData
+}
+
+// APIPortalClientTLS returns a client TLS configuration that trusts only the API Portal
+// certificate. The name is pinned to APIPortalHost because the mapped address the test process
+// dials varies by Docker host.
+func APIPortalClientTLS() *tls.Config {
+	roots := x509.NewCertPool()
+	if !roots.AppendCertsFromPEM(APIPortalTLS().CertPEM) {
+		panic("catalog: loading the API Portal certificate")
+	}
+	return &tls.Config{RootCAs: roots, ServerName: APIPortalHost, MinVersion: tls.VersionTLS12}
 }
 
 // GatewayListenerTLS returns the certificate and key the gateway serves its default HTTPS
