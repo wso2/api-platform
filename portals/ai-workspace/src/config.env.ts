@@ -147,6 +147,10 @@ const FEATURE_FLAGS = {
     'APIP_AIW_FEATURE_FLAGS_AGENT_PROXY_ENABLED',
     false
   ),
+  'service-accounts': getEnvOrDefault(
+    'APIP_AIW_FEATURE_FLAGS_SERVICE_ACCOUNTS_ENABLED',
+    false
+  ),
 };
 
 export type FeatureId = keyof typeof FEATURE_FLAGS;

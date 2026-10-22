@@ -43,28 +43,39 @@ func loadRuntimeKoanf(t *testing.T, body string) *koanf.Koanf {
 	return k
 }
 
+// Every feature flag and the name the SPA reads it by, written out rather than
+// derived so a renamed key fails here.
+var featureFlags = []struct{ key, spaName string }{
+	{"agent_proxy_enabled", "APIP_AIW_FEATURE_FLAGS_AGENT_PROXY_ENABLED"},
+	{"service_accounts_enabled", "APIP_AIW_FEATURE_FLAGS_SERVICE_ACCOUNTS_ENABLED"},
+}
+
 // A feature flag is only honoured if it reaches the browser, so the key has to stay
 // on browserSafeKeys and keep the name the SPA reads.
 func TestBuildRuntimeConfig_FeatureFlagReachesTheSPA(t *testing.T) {
-	for _, set := range []string{"false", "true"} {
-		k := loadRuntimeKoanf(t, "[feature_flags]\nagent_proxy_enabled = "+set+"\n")
+	for _, flag := range featureFlags {
+		for _, set := range []string{"false", "true"} {
+			k := loadRuntimeKoanf(t, "[feature_flags]\n"+flag.key+" = "+set+"\n")
 
-		out := buildRuntimeConfig(&Config{}, k)
+			out := buildRuntimeConfig(&Config{}, k)
 
-		if got := out["APIP_AIW_FEATURE_FLAGS_AGENT_PROXY_ENABLED"]; got != set {
-			t.Errorf("agent_proxy_enabled = %s reached the SPA as %q, want %q", set, got, set)
+			if got := out[flag.spaName]; got != set {
+				t.Errorf("%s = %s reached the SPA as %q, want %q", flag.key, set, got, set)
+			}
 		}
 	}
 }
 
-// A deployment that never mentions a feature must leave it on, which it does by the
+// A deployment that never mentions a feature must leave it off, which it does by the
 // key being absent and the SPA falling back to its own default.
 func TestBuildRuntimeConfig_AbsentFeatureFlagIsOmitted(t *testing.T) {
 	k := loadRuntimeKoanf(t, "default_org_region = \"us\"\n")
 
 	out := buildRuntimeConfig(&Config{}, k)
 
-	if _, ok := out["APIP_AIW_FEATURE_FLAGS_AGENT_PROXY_ENABLED"]; ok {
-		t.Error("agent_proxy_enabled was emitted although the config never declares it")
+	for _, flag := range featureFlags {
+		if _, ok := out[flag.spaName]; ok {
+			t.Errorf("%s was emitted although the config never declares it", flag.key)
+		}
 	}
 }
