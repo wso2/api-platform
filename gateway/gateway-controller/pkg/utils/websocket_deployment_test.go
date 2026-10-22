@@ -349,3 +349,29 @@ func TestWebSocketAPIRouteContext(t *testing.T) {
 	assert.Equal(t, "/chat/v1.0", webSocketAPIRouteContext(cfg))
 	assert.Equal(t, "", webSocketAPIRouteContext("not a WebSocketApi"))
 }
+
+// A tls block on a WebSocketApi upstream would otherwise be silently ignored, so a
+// custom CA or client certificate placed there would never take effect.
+func TestValidateWebSocketAPIConfig_RejectsUpstreamTLS(t *testing.T) {
+	tlsBlock := map[string]interface{}{"verifyHostName": false}
+	cfg := validWebSocketAPI(func(s *api.WebSocketAPIConfigData) {
+		s.Upstream.Main.Tls = &tlsBlock
+		s.Upstream.Sandbox = &api.Upstream{Url: wsStrPtr("wss://sandbox:8443/ws"), Tls: &tlsBlock}
+	})
+	_, _, errs := validateWebSocketAPIConfig(cfg)
+	fields := fieldsWithErrors(errs)
+	assert.True(t, fields["spec.upstream.main.tls"], "main tls must be rejected: %v", errs)
+	assert.True(t, fields["spec.upstream.sandbox.tls"], "sandbox tls must be rejected: %v", errs)
+}
+
+// displayName follows the same URL-friendly rule as RestApi and GraphQLApi.
+func TestValidateWebSocketAPIConfig_DisplayNameRule(t *testing.T) {
+	for name, valid := range map[string]bool{
+		"Chat": true, "Chat API v1.0": true, "chat_api-1": true,
+		"": false, "Chat<script>": false, "chat/rooms": false, strings.Repeat("a", 101): false,
+	} {
+		cfg := validWebSocketAPI(func(s *api.WebSocketAPIConfigData) { s.DisplayName = name })
+		_, _, errs := validateWebSocketAPIConfig(cfg)
+		assert.Equal(t, !valid, fieldsWithErrors(errs)["spec.displayName"], "displayName %q", name)
+	}
+}

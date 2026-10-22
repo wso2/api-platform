@@ -1131,3 +1131,44 @@ spec:
 		"an undeployed API holds no route, so it does not conflict")
 	assert.NoError(t, deploy("other", "/other/$version", ""))
 }
+
+// Updating a configuration must report its original creation time, not the time
+// of the update.
+func TestDeployAPIConfiguration_UpdateKeepsCreatedAt(t *testing.T) {
+	service := newTestAPIDeploymentService(storage.NewConfigStore(), newTestMockDB(), nil, config.NewAPIValidator(), &config.RouterConfig{
+		VHosts: config.VHostsConfig{Main: config.VHostEntry{Default: "api.example.com"}},
+	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	deploy := func(id, displayName string) *APIDeploymentResult {
+		at := time.Now()
+		result, err := service.DeployAPIConfiguration(APIDeploymentParams{
+			Data: []byte(`
+apiVersion: gateway.api-platform.wso2.com/v1
+kind: WebSocketApi
+metadata:
+  name: chat-websocket-v1.0
+spec:
+  displayName: ` + displayName + `
+  version: v1.0
+  context: /chat/$version
+  upstream:
+    main:
+      url: ws://chat-backend:8080/ws
+  channels:
+    - path: /rooms/general
+`), ContentType: "application/yaml", Kind: "WebSocketApi", APIID: id,
+			Origin: models.OriginGatewayAPI, DeployedAt: &at, CorrelationID: "test-corr", Logger: logger,
+		})
+		require.NoError(t, err)
+		return result
+	}
+
+	created := deploy("", "Chat")
+	time.Sleep(5 * time.Millisecond) // updates are guarded by a strictly newer DeployedAt
+	updated := deploy(created.StoredConfig.UUID, "Chat v2")
+
+	require.True(t, updated.IsUpdate)
+	assert.True(t, updated.StoredConfig.CreatedAt.Equal(created.StoredConfig.CreatedAt),
+		"createdAt changed on update: %v -> %v", created.StoredConfig.CreatedAt, updated.StoredConfig.CreatedAt)
+	assert.True(t, updated.StoredConfig.UpdatedAt.After(created.StoredConfig.CreatedAt))
+}

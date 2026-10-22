@@ -130,6 +130,11 @@ func TestApplyUpstreamConnectionBounds_MaxConnectionsSetsCircuitBreaker(t *testi
 	th := c.CircuitBreakers.Thresholds[0]
 	assert.Equal(t, corev3.RoutingPriority_DEFAULT, th.GetPriority())
 	assert.Equal(t, uint32(500), th.GetMaxConnections().GetValue())
+	// Pending is bounded so a saturated backend rejects instead of queueing behind
+	// Envoy's default of 1024, but never to 0: every handshake is briefly pending
+	// while its new upstream connection opens.
+	require.NotNil(t, th.GetMaxPendingRequests())
+	assert.Equal(t, uint32(500), th.GetMaxPendingRequests().GetValue())
 }
 
 func TestApplyUpstreamConnectionBounds_PoolTimeouts(t *testing.T) {
