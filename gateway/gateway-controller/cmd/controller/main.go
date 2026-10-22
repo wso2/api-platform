@@ -635,7 +635,7 @@ func main() {
 	// (see graphql_deployment.go's KindConfigValidator registration model), so it is
 	// wired via a package-level setter instead of a constructor argument.
 	utils.SetGraphQLPolicyValidator(policyValidator)
-	utils.ConfigureWebSocketAPIValidation(cfg.Router.WebSocket, policyValidator)
+	utils.ConfigureWebSocketAPIValidation(cfg.Router.WebSocket, policyValidator, upstreamTLSValidator)
 
 	// Build the single shared outbound *http.Client used by every control-plane /
 	// platform-API / on-prem-APIM call this process makes. Built once, here, and injected

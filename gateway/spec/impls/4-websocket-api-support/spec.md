@@ -14,6 +14,10 @@
 - Q: Which runtime proxies WebSocket APIs — the standalone gateway (Envoy + policy engine) or the event gateway? → A: The standalone gateway. The event gateway (`WebBrokerApi`, WebSocket ↔ Kafka) is out of scope for this feature.
 - Q: Which existing feature is the template for scope and delivery? → A: GraphQL API support (#3310, #3520): a new artifact kind across gateway, platform-api, CLI, console, API Portal, analytics, and tests.
 
+### Session 2026-10-22
+
+- Q: Where do WebSocket connection bounds live? → A: WebSocketApi upstreams follow the RestApi model: `upstreamDefinitions` with a WebSocket-only `connection` block (maxConnectionDuration, maxConnections) and a WebSocket-only `timeout` (`WebSocketUpstreamTimeout`: connect, idleTimeout); inline `url` kept; API-level downstream `connection` removed — client-facing bounds are gateway-level config; shared `Upstream.timeout` and widened `UpstreamTimeout` reverted. FR-040 (per-API downstream limit) is removed and Q2 is moot. *(Revised 2026-10-22: `idleTimeout` moved from `connection` into `timeout`, see research.md decision 9.)*
+
 ## Background
 
 A WebSocket API is a long-lived, full-duplex connection set up by an HTTP/1.1 `GET` with `Upgrade: websocket` (RFC 6455). After the server answers `101 Switching Protocols`, the connection carries WebSocket frames, not HTTP requests. A gateway therefore sees exactly one HTTP exchange per connection (the handshake), and then a byte stream that can stay open for hours.
@@ -192,19 +196,20 @@ As an API publisher, I attach authentication and authorization policies (API key
 
 ### User Story 3 - Control connection lifetime and limits (Priority: P1)
 
-As an API publisher or gateway operator, I configure how long a connection may stay idle, how long it may live in total, and how many concurrent connections an API accepts, so that one API cannot exhaust the gateway.
+As a gateway operator, I configure how long a client connection may stay idle and how long it may live in total (gateway-wide), and as an API publisher I bound each backend connection pool (idle time, lifetime, concurrent connections) on an upstream definition, so that one API cannot exhaust the gateway or its backend.
 
 **Why this priority**: A connection that never closes ties up gateway and backend resources indefinitely, and stale authorization lives as long as the connection does (see US-2, FR-031). Bijira enforces exactly these limits.
 
-**Independent Test**: Set `idleTimeout: 10s` and `maxConnectionDuration: 30s`. An idle client is closed at 10s, a client sending pings survives past 10s, and every client is closed at 30s.
+**Independent Test**: Set the gateway's `router.websocket.downstream.idle_timeout_default: 10s` and `max_connection_duration_default: 30s`. An idle client is closed at 10s, a client sending pings survives past 10s, and every client is closed at 30s.
 
 **Acceptance Scenarios**:
 
-1. **Given** `idleTimeout` is 10s, **When** no frame (data or ping/pong) crosses the connection for 10s, **Then** the gateway closes it.
-2. **Given** a client sends ping frames more often than `idleTimeout`, **When** no data frames are sent, **Then** the connection stays open.
-3. **Given** `maxConnectionDuration` is 30s, **When** a connection reaches 30s, **Then** the gateway closes it whatever its traffic.
-4. **Given** neither value is set on the API, **When** it is deployed, **Then** the gateway-wide defaults apply (FR-013). An unlimited lifetime is never the implicit default.
-5. **Given** a per-API concurrent connection limit of N, **When** connection N+1 arrives, **Then** it is rejected immediately with a defined status, and is never left queued (see Open Questions Q2).
+1. **Given** the downstream idle timeout is 10s, **When** no frame (data or ping/pong) crosses the connection for 10s, **Then** the gateway closes it.
+2. **Given** a client sends ping frames more often than the idle timeout, **When** no data frames are sent, **Then** the connection stays open.
+3. **Given** the downstream maximum connection duration is 30s, **When** a connection reaches 30s, **Then** the gateway closes it whatever its traffic.
+4. **Given** any `WebSocketApi`, **When** it is deployed, **Then** the gateway-wide downstream values apply (FR-013); there is no per-API override. An unlimited lifetime is never the implicit default.
+5. *(Removed 2026-10-22 — the per-API downstream connection limit no longer exists; downstream connection bounds are gateway-level configuration.)*
+6. **Given** the upstream definition `main` references sets `connection.maxConnections` to N, **When** more than N handshakes need a backend connection, **Then** at most N further handshakes wait for a free backend connection and any beyond that get `503` (FR-016).
 
 ---
 
@@ -221,7 +226,7 @@ As an API publisher, I create a WebSocket API in platform-api from an AsyncAPI d
 1. **Given** an AsyncAPI 2.x or 3.x document with `ws`/`wss` servers and channels, **When** I create a WebSocket API from a file, a URL or inline content, **Then** platform-api validates it, derives channels, context and upstream, and stores the API.
 2. **Given** an AsyncAPI document using a non-WebSocket protocol only (e.g. `kafka`, `mqtt`), **When** I try to create a WebSocket API from it, **Then** creation fails with a validation error.
 3. **Given** a WebSocket API, **When** I deploy it to a gateway whose version does not support the `WebSocketApi` kind, **Then** the deployment is refused before translation (same version gating as `GraphQLApi`).
-4. **Given** a WebSocket API is deployed, **When** I undeploy it, **Then** new connections fail, and existing connections end no later than the API's `maxConnectionDuration` (see FR-031).
+4. **Given** a WebSocket API is deployed, **When** I undeploy it, **Then** new connections fail, and existing connections end no later than the gateway's downstream maximum connection duration (see FR-031).
 5. **Given** a gateway is configured from the control plane, **When** it connects or reconnects, **Then** WebSocket APIs and their API keys are included in bulk sync and live events like every other kind.
 6. **Given** the `ap` CLI, **When** I run `ap gateway websocket-api list|get|delete` and `ap gateway websocket-api api-key create|list|regenerate|revoke|update`, **Then** the commands behave like their `graphql-api` counterparts.
 
@@ -275,7 +280,7 @@ As an API publisher or operator, I see how many connections were opened, how lon
 - **Query string carries a token.** It must not reach access logs, analytics, tracing or the backend (spike 02 showed it in all three without redaction).
 - **Channel parameters.** `/rooms/{roomId}` must match one path segment only; unmatched paths return `404`.
 - **Same path, different methods.** Only `GET` handshakes are routed for a channel; other methods return `404`/`405`.
-- **Many connections from one client.** Bounded by the per-API connection limit and the gateway-wide downstream connection limit.
+- **Many connections from one client.** Bounded by the gateway-wide downstream connection limit and, toward the backend, by the upstream definition's `connection.maxConnections`.
 
 ## Requirements *(mandatory)*
 
@@ -285,19 +290,19 @@ As an API publisher or operator, I see how many connections were opened, how lon
 
 - **FR-001**: The gateway MUST support a new artifact kind `WebSocketApi` (`apiVersion: gateway.api-platform.wso2.com/v1`), stored and versioned like `GraphQLApi`, with the fields in [Key Entities](#key-entities).
 - **FR-002**: The gateway management API MUST expose `/websocket-apis` and `/websocket-apis/{id}` (create, list, get, update, delete) and `/websocket-apis/{id}/api-keys[...]` (create, list, regenerate, update, revoke), mirroring `/graphql-apis`.
-- **FR-003**: The gateway MUST validate a `WebSocketApi` on create and update: required fields, at least one channel, unique channel paths, valid `ws`/`wss` upstream URLs (checked by the shared upstream URL validator used by REST/MCP/LLM), resolvable policies (like `ValidateGraphQLAPIPolicies`), handshake-only policies (FR-020), and valid connection settings.
-- **FR-004**: `WebSocketApi` MUST support `main` and `sandbox` upstreams with the same vhost rules as `GraphQLApi`, and the upstream options REST supports where they apply to a handshake: upstream TLS/CA, upstream auth (OAuth2/mTLS to the backend), host rewrite and connect timeout. Each upstream slot MUST additionally support its own connection lifecycle settings — idle timeout, maximum connection duration and maximum concurrent connections to that backend (FR-015–FR-017).
+- **FR-003**: The gateway MUST validate a `WebSocketApi` on create and update: required fields, at least one channel, unique channel paths, valid `ws`/`wss` upstream URLs (checked by the shared upstream URL validator used by REST/MCP/LLM), resolvable policies (like `ValidateGraphQLAPIPolicies`), handshake-only policies (FR-020), `upstream.<slot>` setting exactly one of `url`/`ref` with every `ref` resolving to an `upstreamDefinitions` entry, and valid upstream-definition `timeout`/`connection` settings.
+- **FR-004**: `WebSocketApi` MUST support `main` and `sandbox` upstreams with the same vhost rules as `GraphQLApi`, following the `RestApi` upstream model: each slot takes either an inline `ws://`/`wss://` `url` (gateway-wide upstream connection defaults; `tls` on an inline url is rejected) or a `ref` to a `spec.upstreamDefinitions` entry — not both, not neither; main and sandbox may reference the same definition (one shared cluster). A `WebSocketUpstreamDefinition` has the `RestApi` definition's shape — `name` (`^[a-zA-Z0-9\-_]+$`, 1–100 chars, unique), `basePath` (starts with `/`, no trailing `/`), `upstreams[{url, weight}]` (host and port only, one scheme per definition, weight 0–100), `timeout` (WebSocket-only `WebSocketUpstreamTimeout`: `connect` and the backend `idleTimeout`), `tls` (`identity`, `trustedCAs`, `verifyHostName`; every target `wss://`; validated against the gateway certificate store) — plus a WebSocket-only `connection` block: maximum connection duration and maximum concurrent connections to that backend (FR-015–FR-017). Upstream auth (OAuth2/mTLS to the backend) and host rewrite apply as for REST.
 
 #### Router (Envoy) translation
 
 - **FR-010**: The translator MUST generate one Envoy route per channel and upstream slot, matching `:method == GET` and the channel's full path (context + version + channel path, with parameters), routed to an HTTP/1.1 cluster. WebSocket upstream clusters MUST NOT negotiate HTTP/2 (no `h2` ALPN upstream).
 - **FR-011**: Upgrades MUST be opt-in per route. The HCM gets `upgrade_configs: [{upgrade_type: websocket, enabled: false}]`, and only `WebSocketApi` routes set route-level `upgrade_configs: [{upgrade_type: websocket, enabled: true}]`, so no REST, GraphQL, MCP or LLM route can be upgraded (spike 02). Accepting WebSockets over HTTP/2 (RFC 8441, `http2_protocol_options.allow_connect`) MUST be controlled by a gateway config flag.
-- **FR-012**: For `WebSocketApi` routes, the translator MUST set `idle_timeout` from the API's `idleTimeout` and `max_stream_duration.max_stream_duration` from `maxConnectionDuration`, and MUST NOT attach a retry policy. The route `timeout` does not end an upgraded connection (spike 03) and may stay at the gateway default.
-- **FR-013**: The gateway config (`[router]`) MUST provide defaults and upper bounds for WebSocket idle timeout and maximum connection duration. An API value above the configured bound MUST be rejected at deploy time.
+- **FR-012**: For `WebSocketApi` routes, the translator MUST set `idle_timeout` and `max_stream_duration.max_stream_duration` from the gateway config `router.websocket.downstream.idle_timeout_default` / `max_connection_duration_default` (no per-API override), and MUST NOT attach a retry policy. The route `timeout` does not end an upgraded connection (spike 03) and may stay at the gateway default.
+- **FR-013**: The gateway config (`[router]`) MUST provide the client-facing WebSocket idle timeout and maximum connection duration applied to every `WebSocketApi`. Client-facing bounds are gateway-level configuration only; the artifact carries no downstream `connection` block.
 - **FR-014**: The existing Lua filter MUST keep working on upgrade requests: header-only path and host rewrite, with no body access.
-- **FR-015**: For each upstream slot (`main`, `sandbox`), the translator MUST set the upstream cluster's connection-pool `idle_timeout` and `max_connection_duration` from that slot's `timeout.idleTimeout`/`timeout.maxConnectionDuration`, via `typed_extension_protocol_options` (`HttpProtocolOptions.common_http_protocol_options`). This is independent of the downstream route settings in FR-012: it bounds how long the gateway keeps a connection open to the backend, not how long a client may stay connected to the gateway. `timeout` reuses the existing `UpstreamTimeout` schema (today only reachable via `RestApi`'s `UpstreamDefinition.timeout`) — extended with `idleTimeout`/`maxConnectionDuration`/`maxConnections` and exposed directly on `Upstream` (the `main`/`sandbox` object) for the first time, alongside its existing `connect` field, rather than inventing a parallel schema.
-- **FR-016**: The gateway MUST support a per-upstream-slot cap on concurrent connections to the backend (`timeout.maxConnections`), implemented via the cluster's native circuit breaker (`circuit_breakers.thresholds[].max_connections`). Unlike the downstream per-API limit (FR-040), Envoy's cluster circuit breaker is the correct native primitive here: the bounded resource — outbound connections from this gateway instance to the backend — is itself per-instance, so the per-pod scope and burst tolerance observed in spike 11/11b/11c (research.md) are acceptable behaviour, not a gap to work around. This is a best-effort cap, not an exact one: Envoy guarantees at least one connection per selected host, so a multi-host upstream slot can exceed the configured value by a small amount — not yet exercised by the single-host spike (Known Limitations, research.md Key Decision 7).
-- **FR-017**: The gateway config (`[router]`) MUST provide defaults and upper bounds for upstream idle timeout, maximum connection duration and maximum concurrent connections, mirroring FR-013 for the downstream side. An API value above the configured bound MUST be rejected at deploy time.
+- **FR-015**: For each upstream cluster (one per referenced definition or inline-`url` slot), the translator MUST set the cluster's connection-pool `idle_timeout` and `max_connection_duration` from the referenced definition's `timeout.idleTimeout`/`connection.maxConnectionDuration` (gateway-wide upstream defaults for an inline `url` or an omitted value), via `typed_extension_protocol_options` (`HttpProtocolOptions.common_http_protocol_options`). This is independent of the downstream route settings in FR-012: it bounds how long the gateway keeps a connection open to the backend, not how long a client may stay connected to the gateway. These fields live only in the WebSocket-only `WebSocketUpstreamTimeout` (`connect`, `idleTimeout`) and `WebSocketUpstreamConnection` (`maxConnectionDuration`, `maxConnections`) schemas; the shared `Upstream` schema has no `timeout` property and the shared `UpstreamTimeout` (also used by `RestApi.upstreamDefinitions[].timeout`) stays `connect`-only and unchanged. Each cluster is keyed per API (`upstream_WebSocketApi_<uuid>_<definition-name>`, or `..._<slot>` for an inline url), so two APIs on one backend never share pool bounds.
+- **FR-016**: The gateway MUST support a per-upstream-definition cap on concurrent connections to the backend (`connection.maxConnections`), implemented via the cluster's native circuit breaker (`circuit_breakers.thresholds[].max_connections`); at the limit, at most `maxConnections` further handshakes wait for a free backend connection, and beyond that a handshake gets `503`. Envoy's cluster circuit breaker is the correct native primitive here: the bounded resource — outbound connections from this gateway instance to the backend — is itself per-instance, so the per-pod scope and burst tolerance observed in spike 11/11b/11c (research.md) are acceptable behaviour, not a gap to work around. This is a best-effort cap, not an exact one: Envoy guarantees at least one connection per selected host, so a multi-target upstream definition can exceed the configured value by a small amount — not yet exercised by the single-host spike (Known Limitations, research.md Key Decision 7).
+- **FR-017**: The gateway config (`[router]`) MUST provide defaults (`router.websocket.upstream.*_default`) and upper bounds (`router.websocket.upstream.*_max`) for upstream idle timeout, maximum connection duration and maximum concurrent connections. Omitted `timeout.idleTimeout`/`connection` values and inline-`url` slots use the defaults; a definition value above the configured bound MUST be rejected at deploy time (`400`).
 
 #### Policy engine
 
@@ -316,7 +321,7 @@ As an API publisher or operator, I see how many connections were opened, how lon
 
 #### Connection limits and throttling
 
-- **FR-040**: The gateway MUST support a per-API concurrent connection limit that rejects excess handshakes immediately (no queueing) with a defined status (`429` or `503`, see Q2). Envoy cluster circuit breakers alone do not meet this: they are per pod, burst-sensitive, and queue or reject unpredictably (spike 11, 11b, 11c).
+- **FR-040**: *(Removed 2026-10-22.)* A per-API downstream concurrent connection limit no longer exists — downstream connection bounds are gateway-level configuration (FR-042); backend-side concurrency is bounded per upstream definition (FR-016).
 - **FR-041**: Request-count rate-limit policies on a `WebSocketApi` MUST count handshakes (connection-rate limiting). Message-rate limiting is out of scope (see Out of Scope).
 - **FR-042**: The gateway SHOULD set a gateway-wide downstream connection limit (Envoy `global_downstream_max_connections` resource monitor). Envoy currently warns at startup that none is configured.
 
@@ -350,7 +355,7 @@ As an API publisher or operator, I see how many connections were opened, how lon
 
 #### Testing
 
-- **FR-090**: Gateway integration tests (`gateway/it`) and v2 framework tests (`tests/framework/suites/it`) MUST cover: deploy, connect and echo; REST route not upgradable; auth at the handshake (header, query, subprotocol, rejected credentials, token stripped); handshake-only policy validation; idle and max-duration closes; downstream connection limit; upstream connection-pool idle timeout, max duration and max-connections enforcement (FR-015–FR-017); undeploy behaviour; sandbox; API keys; analytics events; `wss://` upstreams; over the HTTPS listener, both the HTTP/1.1 fallback (`allow_connect` off) and WebSocket over HTTP/2 (`allow_connect` on). A WebSocket echo backend MUST be added to the testbench (like `graphqlbackend`).
+- **FR-090**: Gateway integration tests (`gateway/it`) and v2 framework tests (`tests/framework/suites/it`) MUST cover: deploy, connect and echo; REST route not upgradable; auth at the handshake (header, query, subprotocol, rejected credentials, token stripped); handshake-only policy validation; idle and max-duration closes; `upstream.<slot>.ref` to `upstreamDefinitions`; upstream connection-pool idle timeout, max duration and max-connections enforcement (FR-015–FR-017); undeploy behaviour; sandbox; API keys; analytics events; `wss://` upstreams; over the HTTPS listener, both the HTTP/1.1 fallback (`allow_connect` off) and WebSocket over HTTP/2 (`allow_connect` on). A WebSocket echo backend MUST be added to the testbench (like `graphqlbackend`).
 
 ### Key Entities
 
@@ -367,21 +372,29 @@ As an API publisher or operator, I see how many connections were opened, how lon
     displayName: Chat
     version: v1
     context: /chat
+    upstreamDefinitions:              # RestApi upstreamDefinition shape + WebSocket-only `timeout`/`connection` (FR-004)
+      - name: chat-backend
+        basePath: /ws
+        upstreams:                    # ws:// or wss://, host and port only, one scheme per definition
+          - url: wss://chat-backend-1:8443
+            weight: 80
+          - url: wss://chat-backend-2:8443
+            weight: 20
+        timeout:
+          connect: 5s                 # WebSocketUpstreamTimeout — connect + idleTimeout
+          idleTimeout: 120s           # upstream connection-pool idle timeout (FR-015); default/max from gateway config
+        connection:                   # WebSocketUpstreamConnection — maxConnectionDuration + maxConnections
+          maxConnectionDuration: 30m  # upstream connection lifetime cap (FR-015); always finite
+          maxConnections: 500         # concurrent connections to this backend (FR-016), per gateway instance
+        tls:                          # requires every target to be wss://
+          identity: chat-identity
+          trustedCAs: [chat-ca]
     upstream:
       main:
-        url: wss://chat-backend:8443/ws
-        timeout:                      # reuses UpstreamTimeout (existing RestApi schema), extended for FR-015–FR-017
-          connect: 5s                 # pre-existing field — connect timeout (FR-004)
-          idleTimeout: 120s           # new — upstream connection-pool idle timeout (FR-015); defaults from gateway config
-          maxConnectionDuration: 30m  # new — upstream connection lifetime cap (FR-015); always finite, same rule as downstream
-          maxConnections: 500         # new — concurrent connections to this backend (FR-016), enforced per gateway instance
+        ref: chat-backend
       sandbox:
-        url: ws://chat-sandbox:8080/ws
-        # timeout omitted here — falls back to gateway-config defaults, same as main's unset fields would
-    connection:
-      idleTimeout: 300s            # default and maximum from gateway config
-      maxConnectionDuration: 1h    # always finite (FR-031)
-      maxConnections: 1000         # per API (FR-040); semantics in Open Question Q2
+        url: ws://chat-sandbox:8080/ws  # inline url: gateway-wide upstream defaults, no tls
+    # No API-level `connection`: client-facing idle timeout / max duration are gateway config (FR-013)
     channels:
       - path: /rooms/{roomId}
         policies:
@@ -400,8 +413,8 @@ As an API publisher or operator, I see how many connections were opened, how lon
   ```
 
 - **Channel**: an AsyncAPI channel exposed as one WebSocket endpoint. It has a path (with optional parameters), optional channel-level policies, and optional message schemas (documentation only; not enforced by the gateway).
-- **Connection settings**: idle timeout, maximum connection duration and maximum concurrent connections. Two independent sets apply: `spec.connection` governs the downstream (client-facing) connection, per API (FR-012, FR-013, FR-040); `upstream.<main|sandbox>.timeout` governs each upstream (backend-facing) connection pool, per slot (FR-015–FR-017), reusing and extending the existing `UpstreamTimeout` schema alongside its pre-existing `connect` field. Both are bounded by gateway-wide defaults and limits.
-- **WebSocket API (control plane)**: a platform-api artifact holding the AsyncAPI definition, derived channels, upstream, policies and connection settings, with deployments, builds and API keys like `GraphQLApi`.
+- **Connection settings**: two independent sets apply. Downstream (client-facing) idle timeout and maximum connection duration are gateway-level configuration only, with no per-API override (FR-012, FR-013). Upstream (backend-facing) idle timeout lives on each `upstreamDefinitions[].timeout` (`WebSocketUpstreamTimeout`, beside `connect`), and maximum connection duration and maximum concurrent connections on each `upstreamDefinitions[].connection` block (`WebSocketUpstreamConnection`) (FR-015–FR-017), all defaulted and bounded by gateway-wide config; the shared `UpstreamTimeout` stays `connect`-only.
+- **WebSocket API (control plane)**: a platform-api artifact holding the AsyncAPI definition, derived channels, upstream (definitions and slots) and policies, with deployments, builds and API keys like `GraphQLApi`.
 - **Connection event (analytics)**: one record per connection: API, channel, application, subscription, start time, duration, bytes in/out, close reason, and handshake status.
 
 ## Success Criteria *(mandatory)*
@@ -411,8 +424,8 @@ As an API publisher or operator, I see how many connections were opened, how lon
 - **SC-001**: A WebSocket API can be deployed gateway-first, from platform-api, or from the CLI, and a client can exchange messages through the gateway, in under 5 minutes from an AsyncAPI file.
 - **SC-002**: 100% of upgrade attempts on non-`WebSocketApi` routes are rejected.
 - **SC-003**: Handshakes with missing, invalid or revoked credentials are rejected 100% of the time, and credentials never appear in backend requests, access logs or analytics.
-- **SC-004**: Idle connections close within 1s of `idleTimeout`, and all connections close within 1s of `maxConnectionDuration`.
-- **SC-005**: With a per-API limit of N, connection N+1 is rejected within 100 ms and never queued.
+- **SC-004**: Idle connections close within 1s of the configured downstream idle timeout, and all connections close within 1s of the configured downstream maximum connection duration.
+- **SC-005**: *(Superseded 2026-10-22 — per-API downstream limit removed.)* With an upstream definition `connection.maxConnections` of N, once N backend connections and N waiting handshakes are in use, a further handshake is rejected with `503`.
 - **SC-006**: Handshake latency added by the gateway (policy chain with one auth policy) is under 10 ms at p95 on the reference perf setup. Frame relay adds under 1 ms at p95.
 - **SC-007**: One gateway instance sustains at least 10,000 concurrent idle WebSocket connections with the policy engine holding zero ext_proc streams for them (spike 06).
 - **SC-008**: Each closed connection yields exactly one analytics event with the correct close reason, and normal closes are never classified as errors.
@@ -423,7 +436,7 @@ As an API publisher or operator, I see how many connections were opened, how lon
 - WebSocket support targets the standalone gateway (gateway-controller + gateway-runtime: Envoy v1.39.0 and policy engine). The event gateway and its `WebBrokerApi` (WebSocket ↔ Kafka) are unchanged.
 - The gateway proxies WebSocket connections transparently. Message content, AsyncAPI message schemas and subprotocol semantics are not interpreted.
 - A WebSocket backend accepts HTTP/1.1 upgrades. HTTP/2-only WebSocket backends (RFC 8441 upstream) are not supported in this phase.
-- Clients handle reconnects (with backoff) after gateway restarts, rollouts and enforced closes. Clients that stay idle send pings more often than `idleTimeout`.
+- Clients handle reconnects (with backoff) after gateway restarts, rollouts and enforced closes. Clients that stay idle send pings more often than the idle timeout.
 - Policies run once per connection, at the handshake. The policies in the build manifest that work on headers only are reusable as-is, with FR-030 changes for credential location.
 - AsyncAPI parsing in platform-api uses a maintained, Apache-2.0-compatible Go library (to be selected per `dependency-management.md`), or a minimal in-repo parser for the subset needed (servers, channels, operations, parameters).
 - Gateway version gating starts at `NoLTSRelease`, like GraphQL. The first gateway release that ships the kind sets `MinWebSocketKindGatewayVersion`.
@@ -437,11 +450,11 @@ As an API publisher or operator, I see how many connections were opened, how lon
 
 ## Security Considerations
 
-- **Authentication at the handshake only.** Bounded by a mandatory finite `maxConnectionDuration` (FR-031). Document clearly that revocation is not immediate.
+- **Authentication at the handshake only.** Bounded by a mandatory finite gateway-level maximum connection duration (FR-031). Document clearly that revocation is not immediate.
 - **Credential exposure.** Browser credentials travel in the query string or `Sec-WebSocket-Protocol`. They must be stripped before the upstream and redacted from every log/analytics sink (FR-030, FR-032).
 - **Cross-site WebSocket hijacking.** Browsers send cookies with WebSocket handshakes and CORS does not apply, so an origin allowlist is required for cookie-authenticated APIs (FR-033).
 - **Upgrade smuggling.** Upgrades are disabled at HCM level and enabled only per `WebSocketApi` route, so no other route can be turned into a tunnel (FR-011). Path normalization (`NormalizePath`, `MergeSlashes`, `PathWithEscapedSlashesAction`) applies to handshakes as to every request.
-- **Resource exhaustion.** Covered by idle and duration bounds, per-API and gateway-wide connection limits, and Envoy's per-connection buffer limit (FR-012, FR-013, FR-040, FR-042), and by the same idle/duration/connection-count bounds applied to each upstream connection pool (FR-015–FR-017) — a stuck or long-lived backend connection is bounded independently of the downstream client connection.
+- **Resource exhaustion.** Covered by gateway-level downstream idle and duration bounds, the gateway-wide connection limit, and Envoy's per-connection buffer limit (FR-012, FR-013, FR-042), and by idle/duration/connection-count bounds applied to each upstream definition's connection pool (FR-015–FR-017) — a stuck or long-lived backend connection is bounded independently of the downstream client connection.
 - **SSRF.** AsyncAPI URL import and `ws`/`wss` upstream URLs go through the shared SSRF-safe validator and client (`ssrf-prevention.md`).
 - **Fail closed.** The policy engine stays `failure_mode_allow: false`. If it is unavailable, handshakes fail with `500` (observed in the spike) and existing connections are unaffected.
 
@@ -463,14 +476,14 @@ From the spike ([research.md](research.md)):
 3. One analytics event per connection, emitted at close; a gateway crash loses events for connections open at that time.
 4. Long-lived connections stay on the gateway replica they first reached; scaling out does not move them.
 5. Rate-limit policies count handshakes, not messages.
-6. FR-016's upstream `maxConnections` cap (native circuit breaker) can admit more than the configured number when an upstream slot's cluster resolves to multiple backend hosts — Envoy guarantees at least one connection per selected host, which is a real source of overshoot above the configured threshold. Verified against a single-host backend only (spike 11/11b/11c); not yet verified against a multi-host cluster (research.md, Key Decision 7 and "Not Covered by the Spike").
+6. FR-016's upstream `connection.maxConnections` cap (native circuit breaker) can admit more than the configured number when an upstream definition's cluster resolves to multiple backend hosts — Envoy guarantees at least one connection per selected host, which is a real source of overshoot above the configured threshold. Verified against a single-host backend only (spike 11/11b/11c); not yet verified against a multi-host cluster (research.md, Key Decision 7 and "Not Covered by the Spike").
 
 ## Open Questions
 
 - **Q1 [NEEDS CLARIFICATION]**: Where should channel-level policies attach in the artifact: a `channels[].policies` list (proposed above), or the REST-style `operations` shape (`method: GET`, `path`) for maximum reuse of existing transformer and validation code?
-- **Q2 [NEEDS CLARIFICATION]**: How is the per-API connection limit (FR-040) enforced, and with what scope?
+- **Q2 [MOOT — 2026-10-22]**: How is the per-API connection limit (FR-040) enforced, and with what scope? *(FR-040 was removed: client-facing bounds are gateway-level config; backend concurrency is per upstream definition, FR-016.)*
   - **Per gateway instance:** count open connections in the router (an Envoy-native filter) or in the policy engine. Closes are not visible to ext_proc when body modes are `NONE`, so the router is preferred.
   - **Across the gateway cluster:** needs shared state.
   - Also undecided: should a rejection return `429` or `503`?
-- **Q3 [NEEDS CLARIFICATION]**: Is bounding stale access with `maxConnectionDuration` acceptable for the first release, or must undeploy/revocation actively close live connections (for example a policy-engine or controller-driven connection drain per API)?
+- **Q3 [NEEDS CLARIFICATION]**: Is bounding stale access with the maximum connection duration acceptable for the first release, or must undeploy/revocation actively close live connections (for example a policy-engine or controller-driven connection drain per API)?
 - **Q4**: Should the console and API Portal label a channel **"Channel"** (AsyncAPI term, consistent with the artifact and APIs), **"Topic"** (familiar to WSO2 API Manager and Bijira users), or "Channel" with "topic" as helper text? Proposal: "Channel", with a tooltip noting that WSO2 API Manager calls these topics. The artifact and API field name stays `channels` either way. See [Channel vs Topic](#channel-vs-topic).
