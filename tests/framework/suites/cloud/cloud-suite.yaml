@@ -39,3 +39,6 @@ blocks:
       - name: apip-promotion
         features:
           - features/apip_promotion.feature
+      - name: apip-resilience
+        features:
+          - features/apip_resilience.feature

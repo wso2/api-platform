@@ -2193,3 +2193,717 @@ func TestValidateGatewayListingShowsTheItemWithoutAStatus(t *testing.T) {
 	require.ErrorContains(t, err, "the listing gives it as")
 	require.ErrorContains(t, err, "dev-orphan")
 }
+
+func expandNothing(value string) (string, error) { return value, nil }
+
+func TestPromotionPathsFromTable(t *testing.T) {
+	table := valuesTable(t,
+		[]string{"source", "targets"},
+		[]string{" dev ", "staging, prod"},
+		[]string{"staging", "prod"})
+	paths, err := promotionPathsFromTable(table, expandNothing)
+	require.NoError(t, err)
+	require.Equal(t, []map[string]any{
+		{"sourceEnvironment": "dev", "targetEnvironments": []string{"staging", "prod"}},
+		{"sourceEnvironment": "staging", "targetEnvironments": []string{"prod"}},
+	}, paths)
+
+	expanded, err := promotionPathsFromTable(valuesTable(t, []string{"source", "targets"}, []string{"${A}", "${B}"}),
+		func(value string) (string, error) {
+			return strings.NewReplacer("${A}", "one", "${B}", "two").Replace(value), nil
+		})
+	require.NoError(t, err)
+	require.Equal(t, "one", expanded[0]["sourceEnvironment"])
+	require.Equal(t, []string{"two"}, expanded[0]["targetEnvironments"])
+}
+
+func TestPromotionPathsFromTableRejectsMalformedTables(t *testing.T) {
+	for name, table := range map[string]*godog.Table{
+		"nil":             nil,
+		"header only":     valuesTable(t, []string{"source", "targets"}),
+		"wrong header":    valuesTable(t, []string{"from", "to"}, []string{"a", "b"}),
+		"three columns":   valuesTable(t, []string{"source", "targets"}, []string{"a", "b", "c"}),
+		"no source":       valuesTable(t, []string{"source", "targets"}, []string{" ", "b"}),
+		"no targets":      valuesTable(t, []string{"source", "targets"}, []string{"a", " , "}),
+		"unknown context": valuesTable(t, []string{"source", "targets"}, []string{"a", "${CTX:nothing}"}),
+	} {
+		_, err := promotionPathsFromTable(table, func(value string) (string, error) {
+			if strings.Contains(value, "${CTX:") {
+				return "", errors.New("unresolved")
+			}
+			return value, nil
+		})
+		require.Error(t, err, name)
+	}
+}
+
+func TestCreateSyntheticEnvironmentsNumbersThemAndClearsEarlierState(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	steps, ctx, local, registry := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/environments", r.URL.Path)
+		var body map[string]any
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+		writeJSON(w, http.StatusCreated, map[string]any{"id": body["name"], "name": body["name"]})
+	})
+	local.Set(numberedKey(keySyntheticEnvironmentPrefix, 3), "left-by-an-earlier-scenario")
+	local.Set(keyDeploymentID, "left-by-an-earlier-scenario")
+
+	require.NoError(t, steps.createSyntheticEnvironments(ctx, 2))
+
+	first, second := optionalValue(ctx, numberedKey(keySyntheticEnvironmentPrefix, 1)), optionalValue(ctx, numberedKey(keySyntheticEnvironmentPrefix, 2))
+	require.NotEmpty(t, first)
+	require.NotEmpty(t, second)
+	require.NotEqual(t, first, second)
+	require.Equal(t, first, optionalValue(ctx, keyEnvironmentName), "the first environment is the scenario's environment")
+	require.Equal(t, first+","+second, optionalValue(ctx, keySyntheticEnvironments))
+	require.Empty(t, optionalValue(ctx, numberedKey(keySyntheticEnvironmentPrefix, 3)))
+	require.Empty(t, optionalValue(ctx, keyDeploymentID))
+	require.Len(t, registry.Pending(), 2)
+
+	environment, err := syntheticEnvironmentAt(ctx, 2)
+	require.NoError(t, err)
+	require.Equal(t, second, environment)
+	_, err = syntheticEnvironmentAt(ctx, 3)
+	require.ErrorContains(t, err, "created 2")
+
+	for _, count := range []int{0, maxPromotionEnvironments + 1} {
+		require.Error(t, steps.createSyntheticEnvironments(ctx, count))
+	}
+}
+
+func TestCreateGatewayInEachSyntheticEnvironment(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	steps, ctx, local, registry := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/managed-gateways", r.URL.Path)
+		var body map[string]any
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+		writeJSON(w, http.StatusCreated, map[string]any{"id": body["environment"].(string) + "-" + body["displayName"].(string)})
+	})
+	require.ErrorContains(t, steps.createGatewayInEachSyntheticEnvironment(ctx), "no synthetic environment")
+
+	local.Set(keySyntheticEnvironments, "env-a,env-b")
+	require.NoError(t, steps.createGatewayInEachSyntheticEnvironment(ctx))
+	require.Len(t, syntheticGatewayIDs(ctx), 2)
+	for n, environment := range []string{"env-a", "env-b"} {
+		id, err := syntheticEnvironmentGatewayAt(ctx, n+1)
+		require.NoError(t, err)
+		require.True(t, strings.HasPrefix(id, environment+"-"), id)
+	}
+	_, err := syntheticEnvironmentGatewayAt(ctx, 3)
+	require.ErrorContains(t, err, "no gateway in synthetic APIP environment 3")
+	require.Len(t, registry.Pending(), 2)
+}
+
+func TestCreatePipelineRegistersItBeforeTheRequest(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	var pending func() []cleanup.Resource
+	registeredBeforeRequest := false
+	var sent map[string]any
+	steps, ctx, local, registry := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, http.MethodPost, r.Method)
+		require.Equal(t, "/pipelines", r.URL.Path)
+		registeredBeforeRequest = len(pending()) == 1
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&sent))
+		writeJSON(w, http.StatusCreated, map[string]any{"id": sent["name"], "name": sent["name"]})
+	})
+	pending = registry.Pending
+	local.Set("environmentOne", "development")
+	local.Set("environmentTwo", "syn-env-1")
+
+	require.NoError(t, steps.createPipeline(ctx, valuesTable(t,
+		[]string{"source", "targets"}, []string{"${CTX:environmentOne}", "${CTX:environmentTwo}"})))
+
+	require.True(t, registeredBeforeRequest, "the pipeline must be registered for cleanup before it is requested")
+	id, err := requiredValue(ctx, keyPipelineID)
+	require.NoError(t, err)
+	require.Equal(t, id, sent["name"])
+	require.Equal(t, []any{map[string]any{"sourceEnvironment": "development", "targetEnvironments": []any{"syn-env-1"}}}, sent["promotionPaths"])
+	require.Equal(t, "pipeline", registry.Pending()[0].Kind.Name)
+}
+
+func TestCreatePipelineDoesNotKeepAFailedRequestUnregistered(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	steps, ctx, _, registry := cloudSteps(t, func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"code": "invalid_request"})
+	})
+	err := steps.createPipeline(ctx, valuesTable(t, []string{"source", "targets"}, []string{"a", "b"}))
+	require.ErrorContains(t, err, "400")
+	require.Len(t, registry.Pending(), 1, "a request that may have created the pipeline stays registered")
+}
+
+func TestReplacePipelinePathsPublishesTheAnswer(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	var method, path string
+	var sent map[string]any
+	steps, ctx, local, _ := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+		method, path = r.Method, r.URL.EscapedPath()
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&sent))
+		writeJSON(w, http.StatusOK, sent)
+	})
+	require.ErrorContains(t, steps.replacePipelinePaths(ctx, valuesTable(t, []string{"source", "targets"}, []string{"a", "b"})),
+		"no deployment pipeline")
+
+	local.Set(keyPipelineID, "syn-pipeline-1")
+	require.NoError(t, steps.replacePipelinePaths(ctx, valuesTable(t, []string{"source", "targets"}, []string{"b", "a"})))
+	require.Equal(t, http.MethodPut, method)
+	require.Equal(t, "/pipelines/syn-pipeline-1", path)
+	require.Equal(t, "syn-pipeline-1", sent["name"])
+	published, err := httpx.Published(ctx)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, published.StatusCode)
+}
+
+func TestCreateProjectBoundToPipelineWaitsForTheProjectAndDeletesItBeforeThePipeline(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	binds := 0
+	steps, ctx, local, registry := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/projects":
+			writeJSON(w, http.StatusCreated, map[string]any{"id": body["id"]})
+		case r.Method == http.MethodPut && strings.HasSuffix(r.URL.Path, "/deployment-pipeline"):
+			binds++
+			if binds == 1 {
+				writeJSON(w, http.StatusNotFound, map[string]string{"code": "not_found"})
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]any{"pipeline": body["pipeline"]})
+		default:
+			t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
+		}
+	})
+	require.ErrorContains(t, steps.createProjectBoundToPipeline(ctx), "no deployment pipeline")
+
+	local.Set(keyPipelineID, "syn-pipeline-1")
+	require.NoError(t, steps.createProjectBoundToPipeline(ctx))
+	require.Equal(t, 2, binds, "a project that is not readable yet is bound again")
+	project, err := requiredValue(ctx, keyProjectID)
+	require.NoError(t, err)
+	require.NotEqual(t, "default", project)
+
+	require.NoError(t, cleanup.Register(ctx, cleanup.Resource{Kind: kindPipeline, ID: "syn-pipeline-1", Actor: resourceActor}))
+	require.NoError(t, cleanup.Register(ctx, cleanup.Resource{Kind: cleanup.KindGateway, ID: "gw", Actor: resourceActor}))
+	require.NoError(t, cleanup.Register(ctx, cleanup.Resource{Kind: cleanup.KindEnvironment, ID: "env", Actor: resourceActor}))
+	require.NoError(t, cleanup.Register(ctx, cleanup.Resource{Kind: cleanup.KindAPI, ID: "api", Actor: resourceActor}))
+	var order []string
+	for _, resource := range registry.Pending() {
+		order = append(order, resource.Kind.Name)
+	}
+	require.Equal(t, []string{"api", "project", "pipeline", "gateway", "environment"}, order)
+}
+
+func TestCreateProjectBoundToPipelineRefusesAMismatchedBinding(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	steps, ctx, local, _ := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+		if r.Method == http.MethodPost {
+			writeJSON(w, http.StatusCreated, map[string]any{"id": body["id"]})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"pipeline": "default"})
+	})
+	local.Set(keyPipelineID, "syn-pipeline-1")
+	require.ErrorContains(t, steps.createProjectBoundToPipeline(ctx), `bound to deployment pipeline "default"`)
+}
+
+func TestCreateProjectBoundToPipelineStopsOnARefusedBinding(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	steps, ctx, local, _ := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+		if r.Method == http.MethodPost {
+			writeJSON(w, http.StatusCreated, map[string]any{"id": body["id"]})
+			return
+		}
+		writeJSON(w, http.StatusBadRequest, map[string]string{"code": "invalid_request"})
+	})
+	local.Set(keyPipelineID, "syn-pipeline-1")
+	started := time.Now()
+	require.ErrorContains(t, steps.createProjectBoundToPipeline(ctx), "400")
+	require.Less(t, time.Since(started), 10*time.Second, "a refused binding is not retried")
+}
+
+func TestCreateAPIInSyntheticProjectRefusesTheDefaultProject(t *testing.T) {
+	steps, ctx, local, _ := cloudSteps(t, func(http.ResponseWriter, *http.Request) {
+		t.Error("no request may be sent")
+	})
+	require.ErrorContains(t, steps.createAPIInSyntheticProject(ctx, nil), "no synthetic project")
+	local.Set(keyProjectID, "default")
+	require.ErrorContains(t, steps.createAPIInSyntheticProject(ctx, nil), `"default"`)
+}
+
+func TestRequestProviderDeploymentUsesTheOrganisationRoute(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	var path string
+	var sent map[string]any
+	steps, ctx, local, registry := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+		path = r.URL.Path
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&sent))
+		writeJSON(w, http.StatusBadRequest, map[string]string{"message": "no deployment pipeline"})
+	})
+	local.Set(keyGatewayEnv, "development")
+	require.NoError(t, steps.requestProviderDeployment(ctx, valuesTable(t,
+		[]string{"environment", "${CTX:cloudGatewayEnvironment}"}, []string{"fromEnvironment", "upstream-env"})))
+
+	provider, err := requiredValue(ctx, keyProviderID)
+	require.NoError(t, err)
+	require.Equal(t, "/llm-providers/"+provider+"/environment-deployments", path)
+	require.Equal(t, map[string]any{"environment": "development", "fromEnvironment": "upstream-env"}, sent)
+	require.Empty(t, registry.Pending(), "the request creates nothing, so nothing is registered")
+	published, err := httpx.Published(ctx)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusBadRequest, published.StatusCode)
+}
+
+const promotionStages = `{"list":[
+	{"environment":"dev","gateways":[{"gatewayId":"gw-dev","status":"DEPLOYED","buildId":"2026-01-31-1"}]},
+	{"environment":"env-1","gateways":[{"gatewayId":"gw-1","status":"NOT_DEPLOYED"}]},
+	{"environment":"env-2","gateways":[]}]}`
+
+func stagesStub(t *testing.T, stages string) (*Steps, context.Context, *tcontext.Local) {
+	t.Helper()
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	steps, ctx, local, _ := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/projects/syn-project-1/apis/syn-api-1/deployments", r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(stages))
+	})
+	local.Set(keyProjectID, "syn-project-1")
+	local.Set(keyAPIID, "syn-api-1")
+	local.Set(keySyntheticEnvironments, "dev,env-1,env-2")
+	local.Set(numberedKey(keySyntheticGatewayPrefix, 1), "gw-dev")
+	local.Set(numberedKey(keySyntheticGatewayPrefix, 2), "gw-1")
+	return steps, ctx, local
+}
+
+func TestStageLookups(t *testing.T) {
+	var document struct {
+		List []map[string]any `json:"list"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(promotionStages), &document))
+
+	entry, err := stageGateway(document.List, "dev", "gw-dev")
+	require.NoError(t, err)
+	require.Equal(t, "DEPLOYED", entry["status"])
+	_, err = stageGateway(document.List, "dev", "gw-other")
+	require.ErrorContains(t, err, `does not list gateway "gw-other"`)
+	_, err = stageGateway(document.List, "missing", "gw-dev")
+	require.ErrorContains(t, err, `no stage for environment "missing"`)
+
+	gateways, err := stageOf(document.List, "env-2")
+	require.NoError(t, err)
+	require.Empty(t, gateways)
+	_, err = stageOf(document.List, "missing")
+	require.Error(t, err)
+}
+
+func TestAssertStageRunsRenderedBuild(t *testing.T) {
+	steps, ctx, local := stagesStub(t, promotionStages)
+	local.Set(keyBuildIDs, "2026-01-31-1")
+	require.NoError(t, steps.assertStageRunsRenderedBuild(ctx, 1))
+	require.ErrorContains(t, steps.assertStageRunsRenderedBuild(ctx, 4), "does not exist")
+	require.ErrorContains(t, steps.assertStageRunsRenderedBuild(ctx, 3), "created no gateway in synthetic APIP environment 3")
+}
+
+func TestAssertStageRunsRenderedBuildStopsWhenTheStageIsNotListed(t *testing.T) {
+	steps, ctx, local := stagesStub(t, `{"list":[{"environment":"other","gateways":[]}]}`)
+	local.Set(keyBuildIDs, "2026-01-31-1")
+	require.ErrorContains(t, steps.assertStageRunsRenderedBuild(ctx, 1), `no stage for environment "dev"`)
+}
+
+func TestAssertStageHoldsNothing(t *testing.T) {
+	steps, ctx, _ := stagesStub(t, promotionStages)
+	require.NoError(t, steps.assertStageHoldsNothing(ctx, 2), "a stage whose gateways are all untouched")
+	require.NoError(t, steps.assertStageHoldsNothing(ctx, 3), "a stage with no gateway")
+	require.ErrorContains(t, steps.assertStageHoldsNothing(ctx, 1), "want it untouched")
+
+	steps, ctx, _ = stagesStub(t, `{"list":[{"environment":"other","gateways":[]}]}`)
+	require.ErrorContains(t, steps.assertStageHoldsNothing(ctx, 2), `no stage for environment "env-1"`,
+		"an environment missing from the pipeline cannot pass")
+}
+
+func TestAssertStageNoLongerDeployed(t *testing.T) {
+	steps, ctx, _ := stagesStub(t, promotionStages)
+	require.NoError(t, steps.assertStageNoLongerDeployed(ctx, 2))
+	require.ErrorContains(t, steps.assertStageNoLongerDeployed(ctx, 3), "created no gateway")
+}
+
+func TestUndeployFromSyntheticEnvironmentUsesTheTargetDeployment(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	var method, path, environment, gateway string
+	status := http.StatusNoContent
+	steps, ctx, local, _ := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+		method, path = r.Method, r.URL.Path
+		environment, gateway = r.URL.Query().Get("environment"), r.URL.Query().Get("gatewayId")
+		w.WriteHeader(status)
+	})
+	local.Set(keyProjectID, "syn-project-1")
+	local.Set(keyAPIID, "syn-api-1")
+	local.Set(keySyntheticEnvironments, "dev,env-1")
+	local.Set(numberedKey(keySyntheticGatewayPrefix, 2), "gw-1")
+	require.ErrorContains(t, steps.undeployFromSyntheticEnvironment(ctx, 2), "no deployment has been requested")
+
+	local.Set(keyDeployedTargets, `{"gw-dev":"dep-source"}`)
+	require.ErrorContains(t, steps.undeployFromSyntheticEnvironment(ctx, 2), `no deployment on gateway "gw-1"`)
+
+	local.Set(keyDeployedTargets, `{"gw-1":"dep-target"}`)
+	require.NoError(t, steps.undeployFromSyntheticEnvironment(ctx, 2))
+	require.Equal(t, http.MethodPost, method)
+	require.Equal(t, "/projects/syn-project-1/apis/syn-api-1/deployments/dep-target/undeploy", path)
+	require.Equal(t, "env-1", environment)
+	require.Equal(t, "gw-1", gateway)
+
+	status = http.StatusNotFound
+	require.Error(t, steps.undeployFromSyntheticEnvironment(ctx, 2), "only 204 is the documented success")
+}
+
+func TestAssertDeploymentListsGatewayOf(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	steps, ctx, local, _ := cloudSteps(t, func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, http.StatusCreated, map[string]any{"list": []map[string]any{{"gatewayId": "gw-1", "deploymentId": "dep-1"}}})
+	})
+	local.Set(numberedKey(keySyntheticGatewayPrefix, 1), "gw-1")
+	local.Set(numberedKey(keySyntheticGatewayPrefix, 2), "gw-2")
+	_, err := steps.doAuthenticated(ctx, http.MethodPost, "/anything", nil)
+	require.NoError(t, err)
+	require.NoError(t, steps.assertDeploymentListsGatewayOf(ctx, 1))
+	require.ErrorContains(t, steps.assertDeploymentListsGatewayOf(ctx, 2), "does not list gateway")
+}
+
+func TestBodyBytesAndSizedJSONBody(t *testing.T) {
+	size, err := bodyBytes(2, "MiB")
+	require.NoError(t, err)
+	require.Equal(t, 2<<20, size)
+	size, err = bodyBytes(3, "KiB")
+	require.NoError(t, err)
+	require.Equal(t, 3<<10, size)
+	for _, bad := range []struct {
+		count int
+		unit  string
+	}{{0, "KiB"}, {-1, "MiB"}, {1, "GiB"}} {
+		_, err := bodyBytes(bad.count, bad.unit)
+		require.Error(t, err, "%d %s", bad.count, bad.unit)
+	}
+
+	for _, want := range []int{11, 1 << 10, 2 << 20} {
+		body, err := sizedJSONBody(want)
+		require.NoError(t, err)
+		require.Len(t, body, want)
+		require.True(t, json.Valid(body), "a body of %d bytes is still JSON", want)
+	}
+	_, err = sizedJSONBody(10)
+	require.ErrorContains(t, err, "at least")
+}
+
+func TestConnectionCut(t *testing.T) {
+	for _, cut := range []error{
+		io.EOF, io.ErrUnexpectedEOF, errors.New("write tcp: connection reset by peer"),
+		errors.New("write: broken pipe"), errors.New(`http2: stream error: stream ID 3; CANCEL`),
+	} {
+		require.True(t, connectionCut(cut), cut.Error())
+	}
+	for _, other := range []error{errors.New("no such host"), errors.New("x509: certificate signed by unknown authority"), context.DeadlineExceeded} {
+		require.False(t, connectionCut(other), other.Error())
+	}
+}
+
+func TestJudgeOversizedRequest(t *testing.T) {
+	respond := func(status int) *httpx.Response {
+		return &httpx.Response{StatusCode: status, Method: "POST", URL: "https://gw/x"}
+	}
+	require.NoError(t, judgeOversizedRequest(respond(http.StatusRequestEntityTooLarge), nil, 100))
+	require.NoError(t, judgeOversizedRequest(respond(http.StatusBadRequest), nil, 100))
+	require.NoError(t, judgeOversizedRequest(nil, io.ErrUnexpectedEOF, 100), "a connection ended before the body was accepted is a refusal")
+
+	for _, accepted := range []int{http.StatusOK, http.StatusCreated, http.StatusFound} {
+		require.ErrorContains(t, judgeOversizedRequest(respond(accepted), nil, 2<<20), "passed it on to the upstream")
+	}
+	for _, other := range []int{http.StatusNotFound, http.StatusUnauthorized, http.StatusServiceUnavailable} {
+		require.ErrorContains(t, judgeOversizedRequest(respond(other), nil, 100), "want a refusal")
+	}
+	require.ErrorContains(t, judgeOversizedRequest(nil, errors.New("no such host"), 100), "without the gateway refusing")
+	require.ErrorContains(t, judgeOversizedRequest(nil, nil, 100), "no response")
+}
+
+// dataPlaneSteps returns steps whose data-plane requests may go to the given local server.
+func dataPlaneSteps(t *testing.T, controlPlane http.HandlerFunc) (*Steps, context.Context, *tcontext.Local) {
+	t.Helper()
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	steps, ctx, local, _ := cloudSteps(t, controlPlane)
+	steps.dataPlaneURLResolver = func(_ context.Context, target string) (string, error) { return target, nil }
+	return steps, ctx, local
+}
+
+func TestAssertOversizedRefusedSendsTheBodyWholeOrChunked(t *testing.T) {
+	type seen struct {
+		contentLength int64
+		encoding      []string
+		bytes         int
+	}
+	received := make(chan seen, 4)
+	status := http.StatusRequestEntityTooLarge
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
+		received <- seen{contentLength: r.ContentLength, encoding: r.TransferEncoding, bytes: len(raw)}
+		w.WriteHeader(status)
+	}))
+	defer server.Close()
+	steps, ctx, _ := dataPlaneSteps(t, func(http.ResponseWriter, *http.Request) {})
+
+	require.NoError(t, steps.assertOversizedRefused(ctx, "", "POST", server.URL+"/posts", 64, "KiB"))
+	whole := <-received
+	require.Equal(t, int64(64<<10), whole.contentLength)
+	require.Empty(t, whole.encoding)
+	require.Equal(t, 64<<10, whole.bytes)
+
+	require.NoError(t, steps.assertOversizedRefused(ctx, "chunked ", "POST", server.URL+"/posts", 64, "KiB"))
+	chunked := <-received
+	require.Equal(t, int64(-1), chunked.contentLength)
+	require.Equal(t, []string{"chunked"}, chunked.encoding)
+	require.Equal(t, 64<<10, chunked.bytes)
+
+	status = http.StatusCreated
+	require.ErrorContains(t, steps.assertOversizedRefused(ctx, "", "POST", server.URL+"/posts", 64, "KiB"), "passed it on")
+	require.ErrorContains(t, steps.assertOversizedRefused(ctx, "", "POST", server.URL+"/posts", 64, "GiB"), "unsupported body size unit")
+}
+
+func TestSendSizedUntilStatusPollsWithABody(t *testing.T) {
+	var mu sync.Mutex
+	calls, lastBytes := 0, 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
+		mu.Lock()
+		calls++
+		attempt := calls
+		lastBytes = len(raw)
+		mu.Unlock()
+		require.Equal(t, "application/json", r.Header.Get("Content-Type"))
+		if attempt == 1 {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.WriteHeader(http.StatusCreated)
+	}))
+	defer server.Close()
+	steps, ctx, _ := dataPlaneSteps(t, func(http.ResponseWriter, *http.Request) {})
+
+	require.NoError(t, steps.sendSizedUntilStatus(ctx, "POST", server.URL, 1, "KiB", http.StatusCreated))
+	require.Equal(t, 2, calls)
+	require.Equal(t, 1<<10, lastBytes)
+	require.Error(t, steps.sendSizedUntilStatus(ctx, "POST", server.URL, 1, "KiB", 99))
+}
+
+func TestJudgeRouterFailure(t *testing.T) {
+	respond := func(status int, body string) *httpx.Response {
+		return &httpx.Response{StatusCode: status, Body: []byte(body), Method: "GET", URL: "https://gw/x"}
+	}
+	require.NoError(t, judgeRouterFailure(respond(http.StatusServiceUnavailable, "no healthy upstream"), "backend-unavailable.invalid"))
+	require.NoError(t, judgeRouterFailure(respond(http.StatusGatewayTimeout, "upstream request timeout"), ""))
+
+	for _, status := range []int{http.StatusBadRequest, http.StatusBadGateway, http.StatusInternalServerError, http.StatusOK} {
+		require.ErrorContains(t, judgeRouterFailure(respond(status, "x"), ""), "want the router's 503 or 504")
+	}
+	require.ErrorContains(t, judgeRouterFailure(respond(503, "goroutine 1 [running]"), ""), "exposes server detail")
+	require.ErrorContains(t, judgeRouterFailure(respond(503, "java.lang.NullPointerException at x"), ""), "exposes server detail")
+	require.ErrorContains(t, judgeRouterFailure(respond(503, "cannot reach Backend-Unavailable.invalid"), "backend-unavailable.invalid"), "names the backend host")
+}
+
+func TestAssertRouterFailureReadsTheScenarioBackend(t *testing.T) {
+	status := http.StatusServiceUnavailable
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(status)
+		_, _ = w.Write([]byte("no healthy upstream"))
+	}))
+	defer server.Close()
+	steps, ctx, _ := dataPlaneSteps(t, func(http.ResponseWriter, *http.Request) {})
+	require.NoError(t, steps.useUnreachableBackend(ctx))
+	require.Equal(t, unreachableBackend, optionalValue(ctx, keyUnreachableBackendURL))
+
+	require.NoError(t, steps.sendUntilRouted(ctx, "GET", server.URL))
+	require.NoError(t, steps.assertRouterFailure(ctx))
+
+	status = http.StatusBadRequest
+	require.NoError(t, steps.sendUntilRouted(ctx, "GET", server.URL))
+	require.ErrorContains(t, steps.assertRouterFailure(ctx), "want the router's 503 or 504")
+}
+
+func TestSendUntilRoutedWaitsPastNotFound(t *testing.T) {
+	var mu sync.Mutex
+	calls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		mu.Lock()
+		calls++
+		attempt := calls
+		mu.Unlock()
+		if attempt < 3 {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer server.Close()
+	steps, ctx, _ := dataPlaneSteps(t, func(http.ResponseWriter, *http.Request) {})
+	require.NoError(t, steps.sendUntilRouted(ctx, "GET", server.URL))
+	require.Equal(t, 3, calls)
+	published, err := httpx.Published(ctx)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusServiceUnavailable, published.StatusCode)
+}
+
+func TestPodsInAccessLog(t *testing.T) {
+	pods, err := podsInAccessLog([]byte(`{"list":[
+		{"kind":"access","podName":"runtime-b"},{"kind":"access","podName":"runtime-a"},{"kind":"access","podName":"runtime-a"},
+		{"kind":"operational","podName":"controller-0"},{"kind":"access"}]}`))
+	require.NoError(t, err)
+	require.Equal(t, []string{"runtime-a", "runtime-b"}, pods, "only the pods named by access lines, once each")
+	_, err = podsInAccessLog([]byte(`not json`))
+	require.Error(t, err)
+}
+
+func TestAssertServedByManyPods(t *testing.T) {
+	var mu sync.Mutex
+	connections := map[string]bool{}
+	body := `{"id":1}`
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		connections[r.RemoteAddr] = true
+		mu.Unlock()
+		require.Equal(t, "close", r.Header.Get("Connection"), "every probe asks for a connection of its own")
+		_, _ = w.Write([]byte(body))
+	}))
+	defer server.Close()
+	pods := `[{"kind":"access","podName":"runtime-a"},{"kind":"access","podName":"runtime-b"}]`
+	logStatus := http.StatusOK
+	var query string
+	steps, ctx, local := dataPlaneSteps(t, func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/logs", r.URL.Path)
+		query = r.URL.RawQuery
+		if logStatus != http.StatusOK {
+			writeJSON(w, logStatus, map[string]string{"code": "not_found"})
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"list":` + pods + `}`))
+	})
+	local.Set(keyAPIID, "syn-api-1")
+
+	require.NoError(t, steps.assertServedByManyPods(ctx, server.URL+"/syn-api-1/v1/posts/1", 2))
+	require.Contains(t, query, "searchPhrase=syn-api-1")
+	require.Contains(t, query, "kind=access")
+	require.Len(t, connections, requestBurst, "each request of a burst uses a connection of its own")
+
+	logStatus = http.StatusNotFound
+	require.ErrorContains(t, steps.assertServedByManyPods(ctx, server.URL+"/x", 2), "gateway logs cannot be read")
+}
+
+func TestProbeRoutingConsistencyFailsOnAChangedAnswer(t *testing.T) {
+	var mu sync.Mutex
+	calls := 0
+	status := http.StatusOK
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		mu.Lock()
+		calls++
+		attempt := calls
+		mu.Unlock()
+		w.WriteHeader(status)
+		_, _ = w.Write([]byte(map[bool]string{true: `{"id":1}`, false: `{"id":2}`}[attempt < 3]))
+	}))
+	defer server.Close()
+	steps, ctx, _ := dataPlaneSteps(t, func(http.ResponseWriter, *http.Request) {})
+	request := httpx.Request{Method: http.MethodGet, URL: server.URL}
+
+	require.ErrorContains(t, steps.probeRoutingConsistency(ctx, request, http.StatusOK), "different body")
+	status = http.StatusBadGateway
+	require.ErrorContains(t, steps.probeRoutingConsistency(ctx, request, http.StatusOK), "routing is inconsistent")
+}
+
+func TestAwaitConfigurationPhase(t *testing.T) {
+	var mu sync.Mutex
+	reads := 0
+	steps, ctx, local := dataPlaneSteps(t, func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/managed-gateways/dev-gw/configuration", r.URL.Path)
+		mu.Lock()
+		reads++
+		attempt := reads
+		mu.Unlock()
+		phase := "applying"
+		if attempt > 1 {
+			phase = "healthy"
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"status": map[string]string{"phase": phase}})
+	})
+	require.Error(t, steps.awaitConfigurationPhase(ctx, "healthy"), "no gateway has been created")
+	local.Set(keyManagedGatewayID, "dev-gw")
+	require.NoError(t, steps.awaitConfigurationPhase(ctx, "healthy"))
+	require.Equal(t, 2, reads)
+}
+
+func TestRecordManagedGatewayEndpoint(t *testing.T) {
+	steps, ctx, local := dataPlaneSteps(t, func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/managed-gateways/dev-gw", r.URL.Path)
+		writeJSON(w, http.StatusOK, map[string]any{"id": "dev-gw", "endpoints": []string{"https://gw.example.com/"}})
+	})
+	require.Error(t, steps.recordManagedGatewayEndpoint(ctx))
+	local.Set(keyManagedGatewayID, "dev-gw")
+	require.NoError(t, steps.recordManagedGatewayEndpoint(ctx))
+	require.Equal(t, "https://gw.example.com", optionalValue(ctx, keyManagedGatewayEndpoint))
+
+	local.Set(numberedKey(keySyntheticGatewayPrefix, 1), "dev-gw")
+	require.NoError(t, steps.recordSyntheticEnvironmentEndpoint(ctx, 1))
+	require.Equal(t, "https://gw.example.com", optionalValue(ctx, numberedKey(keySyntheticEndpointPrefix, 1)))
+}
+
+func TestRegisterDeletersRemovesPromotionResourcesInDependencyOrder(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	var mu sync.Mutex
+	var deleted []string
+	steps, ctx, _, registry := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			writeJSON(w, http.StatusOK, map[string]any{"list": []any{}})
+			return
+		}
+		mu.Lock()
+		deleted = append(deleted, strings.TrimPrefix(r.URL.Path, "/"))
+		mu.Unlock()
+		w.WriteHeader(http.StatusNotFound)
+	})
+	require.NoError(t, RegisterDeleters(registry, steps.topo))
+
+	for _, resource := range []cleanup.Resource{
+		{Kind: cleanup.KindEnvironment, ID: "env"}, {Kind: cleanup.KindGateway, ID: "gw"}, {Kind: kindPipeline, ID: "pipe"},
+		{Kind: kindPromotionProject, ID: "proj"}, {Kind: cleanup.KindAPI, ID: "api"},
+	} {
+		resource.Actor = resourceActor
+		require.NoError(t, cleanup.Register(ctx, resource))
+	}
+	require.NoError(t, registry.Sweep(ctx))
+	require.Equal(t, []string{"rest-apis/api", "projects/proj", "pipelines/pipe", "managed-gateways/gw", "environments/env"}, deleted)
+}
+
+func TestDefaultGatewayEnvironmentNeedsNoActiveGateway(t *testing.T) {
+	items := []map[string]any{
+		{"id": "syn-env-1-default", "environment": "syn-env-1", "isActive": true},
+		{"id": "development-default-ai", "environment": "development", "functionalityType": "ai"},
+		{"id": "development-default", "environment": "development", "isActive": false},
+		{"id": "development-syn-gw-1", "environment": "development", "isActive": true},
+	}
+	environment, err := defaultGatewayEnvironment(items)
+	require.NoError(t, err)
+	require.Equal(t, "development", environment)
+
+	_, err = defaultGatewayEnvironment(items[:2])
+	require.ErrorContains(t, err, "organisation default gateway")
+}
+
+func TestFindDefaultGatewayEnvironmentRecordsIt(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	steps, ctx, _, _ := cloudSteps(t, func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{"list": []map[string]any{
+			{"id": "development-default", "environment": "development", "isActive": false, "status": "DISCONNECTED"},
+		}})
+	})
+	require.NoError(t, steps.findDefaultGatewayEnvironment(ctx))
+	require.Equal(t, "development", optionalValue(ctx, keyGatewayEnv))
+}
