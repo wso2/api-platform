@@ -144,7 +144,7 @@ const (
 	// may register this path — but not as a prefix, because /.well-known/ is a
 	// shared namespace other gateway routes (Agent Cards, MCP protected
 	// resource metadata) legitimately use.
-	GatewayJWKSPath = "/.well-known/jwks.json"
+	GatewayJWKSPath = "/.well-known/jwks"
 
 	// GatewayJWKSRouteKey names the JWKS route in both xDS streams: the Envoy
 	// route name on every virtual host, and the key of its single policy chain

@@ -1326,7 +1326,7 @@ pricing_file = "/etc/policy-engine/llm-pricing/model_prices.json"
 # jwks_cache_max_age, move `active = true` to it and roll out; (3) after the
 # longest token lifetime plus jwks_cache_max_age, remove the old key.
 #
-# The JWKS endpoint (/.well-known/jwks.json, on every virtual host) is on by
+# The JWKS endpoint (/.well-known/jwks, on every virtual host) is on by
 # default and its path is reserved. Set jwks_endpoint_enabled = false to free
 # the path — e.g. when an API deployed before this endpoint existed already
 # serves it (the controller logs a warning naming any such route at startup).
@@ -1335,7 +1335,7 @@ pricing_file = "/etc/policy-engine/llm-pricing/model_prices.json"
 # [signing]
 # jwks_endpoint_enabled = true
 # jwks_cache_max_age = "5m"
-# public_jwks_url = "https://gateway.example.com/.well-known/jwks.json"   # optional, https only; sent as jku when a policy asks
+# public_jwks_url = "https://gateway.example.com/.well-known/jwks"   # optional, https only; sent as jku when a policy asks
 #
 # [[signing.keys]]
 # path = "/secrets/gateway-runtime/signing/current.key"

@@ -225,12 +225,12 @@ func TestSnapshotManager_IncludesGatewayRuntimeConfigs(t *testing.T) {
 	store := storage.NewRuntimeConfigStore()
 	sm.SetRuntimeStore(store)
 
-	const key = "GET|/.well-known/jwks.json|*"
+	const key = "GET|/.well-known/jwks|*"
 	sm.SetGatewayRuntimeConfigs(&models.RuntimeDeployConfig{
 		Metadata:            models.Metadata{UUID: "gateway-jwks", Kind: "GatewayJWKS", Handle: "gateway-jwks"},
 		PolicyChainResolver: models.RouteKeyResolverName,
 		Routes: map[string]*models.Route{
-			key: {Method: "GET", Path: "/.well-known/jwks.json", OperationPath: "/.well-known/jwks.json", Vhost: "*"},
+			key: {Method: "GET", Path: "/.well-known/jwks", OperationPath: "/.well-known/jwks", Vhost: "*"},
 		},
 		PolicyChains: map[string]*models.PolicyChain{
 			key: {Policies: []models.Policy{{Name: "wso2_apip_sys_jwks", Version: "v1"}}},

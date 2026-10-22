@@ -459,12 +459,13 @@ func TestAPIValidator_ValidateOperations_ReservedJWKSPath(t *testing.T) {
 		path    string
 		wantErr bool
 	}{
-		{"context+path is the JWKS endpoint", "/.well-known", "/jwks.json", true},
+		{"context+path is the JWKS endpoint", "/.well-known", "/jwks", true},
 		{"root context with the JWKS path", "/", constants.GatewayJWKSPath, true},
-		{"dot-segment path resolves to the JWKS endpoint", "/foo", "/../.well-known/jwks.json", true},
+		{"dot-segment path resolves to the JWKS endpoint", "/foo", "/../.well-known/jwks", true},
 		{"other /.well-known documents are unaffected", "/.well-known", "/openid-configuration", false},
 		{"a JWKS nested under an API context is unaffected", "/orders", constants.GatewayJWKSPath, false},
-		{"a sibling of the JWKS path is unaffected", "/.well-known", "/jwks.json.bak", false},
+		{"a sibling of the JWKS path is unaffected", "/.well-known", "/jwks.json", false},
+		{"a path under the JWKS path is unaffected", "/.well-known", "/jwks/keys", false},
 	}
 
 	for _, tt := range tests {

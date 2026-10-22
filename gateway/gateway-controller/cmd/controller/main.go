@@ -447,7 +447,7 @@ func main() {
 	// registry learns to transform cannot be silently left off this map — WebSubApi's exclusion
 	// (it keeps the async-specific legacy translation path) is declared alongside the registry's
 	// own kind list instead.
-	// The gateway JWKS route (/.well-known/jwks.json) is gateway-owned: present
+	// The gateway JWKS route (/.well-known/jwks) is gateway-owned: present
 	// on every virtual host whatever is deployed, its chain carried to the policy
 	// engine beside the deployed ones. Both halves are decided here, once, so
 	// Envoy never routes to a chain the policy engine was not given.

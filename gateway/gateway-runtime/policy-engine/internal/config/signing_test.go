@@ -80,7 +80,7 @@ func TestLoad_SigningKeysFromPathAndInline(t *testing.T) {
 	cfg, err := Load(writePEInterpConfig(t, signingBaseConfig+fmt.Sprintf(`
 [signing]
 jwks_cache_max_age = "10m"
-public_jwks_url = "https://gw.example.com/.well-known/jwks.json"
+public_jwks_url = "https://gw.example.com/.well-known/jwks"
 
 [[signing.keys]]
 path = %q
@@ -143,13 +143,13 @@ jwks_cache_max_age = "-1m"`, "jwks_cache_max_age"},
 jwks_cache_max_age = "48h"`, "jwks_cache_max_age"},
 		{"relative jwks url", `
 [signing]
-public_jwks_url = "/.well-known/jwks.json"`, "public_jwks_url"},
+public_jwks_url = "/.well-known/jwks"`, "public_jwks_url"},
 		{"plain http jwks url", `
 [signing]
-public_jwks_url = "http://gw.example.com/.well-known/jwks.json"`, "public_jwks_url"},
+public_jwks_url = "http://gw.example.com/.well-known/jwks"`, "public_jwks_url"},
 		{"jwks url with credentials", `
 [signing]
-public_jwks_url = "https://user:pass@gw.example.com/.well-known/jwks.json"`, "public_jwks_url"},
+public_jwks_url = "https://user:pass@gw.example.com/.well-known/jwks"`, "public_jwks_url"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

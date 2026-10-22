@@ -674,7 +674,7 @@ gateway:
       # Default (false) forwards to exactly the configured upstream path.
       append_resource_path_to_backend: false
 
-    # Gateway signing. The JWKS endpoint (/.well-known/jwks.json on every virtual
+    # Gateway signing. The JWKS endpoint (/.well-known/jwks on every virtual
     # host) is on by default; set jwks_endpoint_enabled: false to free that path,
     # e.g. when an existing API already serves it. Left unset, no [signing] table
     # is rendered and the gateway default (enabled) applies.
