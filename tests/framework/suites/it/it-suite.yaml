@@ -1241,6 +1241,32 @@ blocks:
         features:
           - features/apiportal/webhooks/devportal_webhook.feature
 
+  # Publishing a REST API from platform-api to an API Portal. Platform-api registers the portal
+  # over HTTPS and trusts its certificate, so the block overlays the portal's own certificate onto
+  # platform-api's outbound trust and gives the portal the hash of the key platform-api publishes
+  # with. The portal stages its product role file, which grants the platform-api-system role the
+  # publishing calls are authorized as; the shared IT role files do not.
+  - name: api-portal-publishing
+    parallel: 1
+    components:
+      - name: platform-api
+        overlay: tests/framework/core/catalog/overlays/platform-api-portal-publishing.toml
+        db: postgres
+      - name: api-portal
+        dependsOn: [platform-api]
+        db: postgres
+        overlay: tests/framework/core/catalog/overlays/api-portal-publishing.toml
+        stagedFiles:
+          role-to-scope-mapping.yaml: portals/api-portal/resources/role-to-scope-mapping.yaml
+      - name: platform-gateway
+        dependsOn: [platform-api]
+        db: postgres
+      - name: testbench
+    runners:
+      - name: publication-lifecycle
+        features:
+          - features/apiportal/publishing/publication_lifecycle.feature
+
   # Policy error compatibility: every migrated policy's main rejection, held to the error
   # response the policy returned before the change. The policies come from the adjacent
   # gateway-controllers checkout — in that repository's CI, the pull request under test — and
