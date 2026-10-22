@@ -1,3 +1,8 @@
 # Trust the API Portal certificate for the calls platform-api makes to publish to it.
 [platform_api.http_client.tls]
 root_ca_file = "/app/data/certs/api-portal-ca.pem"
+
+# A small ceiling on the content archive pushed with a publication, so a scenario can exceed it
+# with a few kilobytes of documents. The content of the other scenarios stays far below it.
+[platform_api]
+publication_archive_max_bytes = 4096

@@ -1269,6 +1269,11 @@ blocks:
       - name: publication-failures
         features:
           - features/apiportal/publishing/publication_failures.feature
+      - name: publication-content
+        # Excludes the scenarios for content that stays on the portal after it is unselected.
+        features:
+          - features/apiportal/publishing/publication_content.feature
+        tags: "~@known-issue"
 
   # Policy error compatibility: every migrated policy's main rejection, held to the error
   # response the policy returned before the change. The policies come from the adjacent
