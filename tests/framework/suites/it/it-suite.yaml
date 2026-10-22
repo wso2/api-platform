@@ -49,6 +49,9 @@ blocks:
       - name: rest-apis
         features:
           - features/apiportal/core/rest_apis.feature
+      - name: rest-api-versions
+        features:
+          - features/apiportal/core/rest_api_versions.feature
       - name: resources
         features:
           - features/apiportal/core/resources.feature

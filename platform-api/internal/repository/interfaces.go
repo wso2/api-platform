@@ -124,6 +124,7 @@ type APIRepository interface {
 	// API name validation methods
 	CheckAPIExistsByHandleInOrganization(handle, orgUUID string) (bool, error)
 	CheckAPIExistsByNameAndVersionInOrganization(name, version, orgUUID, excludeHandle string) (bool, error)
+	GetAPIVersionsByDisplayName(orgUUID, displayName string) ([]*model.API, error)
 }
 
 // DeploymentRepository defines the interface for deployment data operations

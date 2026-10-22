@@ -741,3 +741,31 @@ func TestNormalizeErrorResponsePinsRateLimitHeaders(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEqual(t, got, without, "a dropped Retry-After must change the expected error response")
 }
+
+// TestRESTAPIVersionsFeatureStepsAreDefined resolves the feature's steps without running them,
+// as TestMTLSFeatureStepsAreDefined does, so a typo is caught before a block is provisioned.
+func TestRESTAPIVersionsFeatureStepsAreDefined(t *testing.T) {
+	_, source, _, ok := runtime.Caller(0)
+	require.True(t, ok)
+	featureRoot := filepath.Join(filepath.Dir(source), "..")
+	path := filepath.Join(featureRoot, "features", "apiportal", "core", "rest_api_versions.feature")
+	_, err := os.Stat(path)
+	require.NoError(t, err)
+
+	suite, err := New(&frameworkruntime.Topology{}, featureRoot)
+	require.NoError(t, err)
+
+	var events bytes.Buffer
+	godog.TestSuite{
+		ScenarioInitializer: func(sc *godog.ScenarioContext) {
+			suite.Register(sc)
+			sc.Before(func(ctx context.Context, _ *godog.Scenario) (context.Context, error) {
+				return ctx, errors.New("steps are matched, not run")
+			})
+		},
+		Options: &godog.Options{Format: "events", Output: &events, NoColors: true, Strict: true, Paths: []string{path}},
+	}.Run()
+
+	require.NotZero(t, events.Len(), "godog wrote no events")
+	require.Empty(t, unresolvedSteps(t, events.Bytes()), "steps that match no pattern or more than one")
+}

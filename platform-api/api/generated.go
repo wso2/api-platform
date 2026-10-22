@@ -5084,6 +5084,42 @@ type RESTAPIListResponse struct {
 	Pagination Pagination `json:"pagination" yaml:"pagination"`
 }
 
+// RESTAPIVersion defines model for RESTAPIVersion.
+type RESTAPIVersion struct {
+	// Context Context path this version is served on
+	Context *string `json:"context,omitempty" yaml:"context,omitempty"`
+
+	// CreatedAt Timestamp when this version was created
+	CreatedAt *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+
+	// Id Unique handle/identifier of the REST API resource holding this version. Use it to
+	// address the version through the other /rest-apis endpoints.
+	Id string `json:"id" yaml:"id"`
+
+	// LifeCycleStatus Current lifecycle status of this version
+	LifeCycleStatus *string `json:"lifeCycleStatus,omitempty" yaml:"lifeCycleStatus,omitempty"`
+
+	// ProjectId Handle (URL-friendly slug) of the project this version belongs to
+	ProjectId string `json:"projectId" yaml:"projectId"`
+
+	// Version Version identifier
+	Version string `json:"version" yaml:"version"`
+}
+
+// RESTAPIVersionListResponse defines model for RESTAPIVersionListResponse.
+type RESTAPIVersionListResponse struct {
+	// Count Number of versions in this response
+	Count int `json:"count" yaml:"count"`
+
+	// DisplayName The display name the versions were looked up by
+	DisplayName string           `json:"displayName" yaml:"displayName"`
+	List        []RESTAPIVersion `json:"list" yaml:"list"`
+
+	// VersionsAvailable True when at least one REST API already uses this display name, meaning a create for
+	// this display name adds a version to an existing API rather than creating a new one.
+	VersionsAvailable bool `json:"versionsAvailable" yaml:"versionsAvailable"`
+}
+
 // RateLimitResetWindow defines model for RateLimitResetWindow.
 type RateLimitResetWindow struct {
 	// Duration Reset duration for the limit window.
@@ -5709,6 +5745,9 @@ type DeploymentId = openapi_types.UUID
 
 // DeploymentStatusQ defines model for deploymentStatus-Q.
 type DeploymentStatusQ string
+
+// DisplayNameQ defines model for displayName-Q.
+type DisplayNameQ = string
 
 // DocId defines model for docId.
 type DocId = string
@@ -6444,6 +6483,17 @@ type ListRESTAPIsParamsSortBy string
 
 // ListRESTAPIsParamsSortOrder defines parameters for ListRESTAPIs.
 type ListRESTAPIsParamsSortOrder string
+
+// ListRESTAPIVersionsParams defines parameters for ListRESTAPIVersions.
+type ListRESTAPIVersionsParams struct {
+	// DisplayName **Display name** shared by every version of a REST API. Matched exactly
+	// (case-sensitive) and scoped to the organization in the JWT token.
+	//
+	// Must hold at least one non-whitespace character; an empty or
+	// whitespace-only value is a 400. Surrounding whitespace is trimmed
+	// before the lookup, so it is accepted but not significant.
+	DisplayName DisplayNameQ `form:"displayName" json:"displayName" yaml:"displayName"`
+}
 
 // GetBuildsParams defines parameters for GetBuilds.
 type GetBuildsParams struct {
