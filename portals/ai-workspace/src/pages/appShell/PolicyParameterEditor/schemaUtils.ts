@@ -13,6 +13,7 @@
 
 import {
   ParameterSchema,
+  PresenceCondition,
   SchemaTreeNode,
   ParameterValues,
   ValidationError,
@@ -26,36 +27,46 @@ export function isTemplateExpression(value: unknown): value is string {
 }
 
 /**
- * Whether a value counts as configured. Empty values are omitted on submit
- * (see omitOptionalEmptyValues), so they never satisfy a schema "required".
+ * Whether a value counts as set. Empty values, including objects whose
+ * children are all empty, are dropped on submit (see omitOptionalEmptyValues).
  */
 export function hasConfiguredValue(value: unknown): boolean {
   if (value === undefined || value === null || value === '') return false;
   if (Array.isArray(value)) return value.length > 0;
-  if (typeof value === 'object') {
-    // Nested objects are pre-filled with empty children by
-    // initializeDefaultValues, so only a configured child counts
-    return Object.values(value as Record<string, unknown>).some(
-      hasConfiguredValue
-    );
-  }
+  if (typeof value === 'object') return Object.values(value).some(hasConfiguredValue);
   return true;
 }
 
-/**
- * Get the required-field groups of a schema's oneOf entries. Exactly one group
- * must be configured; entries without required fields are ignored.
- */
-export function getOneOfGroups(schema: ParameterSchema): string[][] {
-  return (schema.oneOf ?? [])
-    .map((entry) => entry.required ?? [])
-    .filter((group) => group.length > 0);
+// The only keywords a oneOf option may use for the editor to evaluate it
+const PRESENCE_KEYWORDS = new Set(['required', 'anyOf', 'not', 'title', 'description', '$comment']);
+
+function isPresenceOnly(condition: unknown): boolean {
+  if (typeof condition !== 'object' || condition === null) return false;
+  const { anyOf, not } = condition as PresenceCondition;
+  return (
+    Object.keys(condition).every((key) => PRESENCE_KEYWORDS.has(key)) &&
+    (anyOf === undefined || anyOf.every(isPresenceOnly)) &&
+    (not === undefined || isPresenceOnly(not))
+  );
 }
 
 /**
- * Format oneOf groups for display, e.g.
- * "tokenEndpoint, clientId and clientSecret" or "bearerToken".
+ * The schema's oneOf options, or none if any option has no required field or
+ * uses more than required / anyOf / not. Such a oneOf is left to the gateway.
  */
+export function getSupportedOneOfOptions(schema: ParameterSchema): PresenceCondition[] {
+  const options = schema.oneOf ?? [];
+  return options.every((option) => option.required?.length && isPresenceOnly(option))
+    ? options
+    : [];
+}
+
+/** Required-field groups of the schema's supported oneOf options. */
+export function getOneOfGroups(schema: ParameterSchema): string[][] {
+  return getSupportedOneOfOptions(schema).map((option) => option.required!);
+}
+
+/** Formats groups for messages, e.g. "a, b and c or d". */
 export function formatOneOfGroups(groups: string[][]): string {
   return groups
     .map((group) =>
@@ -64,6 +75,26 @@ export function formatOneOfGroups(groups: string[][]): string {
         : `${group.slice(0, -1).join(', ')} and ${group[group.length - 1]}`
     )
     .join(' or ');
+}
+
+/**
+ * Paths of all oneOf fields in the groups that `path`, or an object containing
+ * it, belongs to. Used to clear group-wide errors when one field changes.
+ */
+export function getOneOfSiblingPaths(schema: ParameterSchema, path: string): string[] {
+  const keys = path.split('.');
+  const paths = new Set<string>();
+  let parent: ParameterSchema | undefined = schema;
+  keys.forEach((key, depth) => {
+    if (!parent) return;
+    const fields = getOneOfGroups(parent).flat();
+    if (fields.includes(key)) {
+      const prefix = keys.slice(0, depth).join('.');
+      fields.forEach((field) => paths.add(prefix ? `${prefix}.${field}` : field));
+    }
+    parent = /^\d+$/.test(key) ? parent.items : parent.properties?.[key];
+  });
+  return [...paths];
 }
 
 /**
@@ -106,8 +137,7 @@ export function schemaToTreeNodes(
       });
     }
 
-    // oneOf fields are neither always required nor optional: only the
-    // group the user chooses becomes required
+    // oneOf fields are required only when their group is the chosen one
     const oneOfFields = new Set(getOneOfGroups(schema).flat());
 
     Object.entries(schema.properties).forEach(([key, propSchema]) => {
@@ -325,14 +355,31 @@ export function initializeDefaultValues(
   return result;
 }
 
+const presenceFields = (condition?: PresenceCondition): string[] =>
+  condition
+    ? [
+        ...(condition.required ?? []),
+        ...(condition.anyOf ?? []).flatMap(presenceFields),
+        ...presenceFields(condition.not),
+      ]
+    : [];
+
+function matchesPresence(
+  condition: PresenceCondition,
+  isFilled: (key: string) => boolean
+): boolean {
+  return (
+    (condition.required ?? []).every(isFilled) &&
+    (condition.anyOf?.some((entry) => matchesPresence(entry, isFilled)) ?? true) &&
+    !(condition.not && matchesPresence(condition.not, isFilled))
+  );
+}
+
 /**
- * Validate oneOf constraints anywhere in the schema: exactly one group of
- * fields must be configured, and that group must be complete.
- *
- * A group is chosen by filling any field unique to it, so a partially filled
- * group reports its missing fields rather than a generic "pick one" error.
- * An optional nested object whose oneOf fields are all empty is skipped, since
- * it is omitted on submit.
+ * Validate oneOf constraints anywhere in the schema. Valid when exactly one
+ * option is satisfied as the gateway evaluates it (required set, `not` unmet).
+ * Otherwise the option the user started (a field unique to it is set) drives
+ * the messages. An optional nested object is checked only once it holds a value.
  */
 export function validateOneOf(
   schema: ParameterSchema,
@@ -341,73 +388,71 @@ export function validateOneOf(
   isRequired: boolean = true
 ): ValidationError[] {
   const errors: ValidationError[] = [];
+  if (schema.type !== 'object' || !schema.properties) return errors;
 
-  if (schema.type !== 'object' || !schema.properties) {
-    return errors;
-  }
+  const pathOf = (key: string) => (parentPath ? `${parentPath}.${key}` : key);
+  const isFilled = (key: string) => hasConfiguredValue(getValueByPath(values, pathOf(key)));
+  const add = (keys: string[], message: string) =>
+    keys.forEach((key) => errors.push({ path: pathOf(key), message }));
+  const conflict = (groups: string[][]) =>
+    groups.forEach((group) =>
+      add(
+        group.filter(isFilled),
+        `Cannot be combined with ${formatOneOfGroups(groups.filter((g) => g !== group))}`
+      )
+    );
 
-  const groups = getOneOfGroups(schema);
-  if (groups.length > 0) {
-    const pathOf = (key: string) => (parentPath ? `${parentPath}.${key}` : key);
-    const isFilled = (key: string) =>
-      hasConfiguredValue(getValueByPath(values, pathOf(key)));
+  const options = getSupportedOneOfOptions(schema);
+  const groups = options.map((option) => option.required!);
+  const satisfied = groups.filter((_, i) => matchesPresence(options[i], isFilled));
 
-    const chosen = groups.filter((group) => {
-      const unique = group.filter(
-        (key) => !groups.some((other) => other !== group && other.includes(key))
-      );
-      return (unique.length > 0 ? unique : group).some(isFilled);
+  if (satisfied.length > 1) {
+    conflict(satisfied);
+  } else if (options.length > 0 && satisfied.length === 0) {
+    const started = options.filter(({ required: group }) => {
+      const unique = group!.filter((key) => !groups.some((g) => g !== group && g.includes(key)));
+      return (unique.length > 0 ? unique : group!).some(isFilled);
     });
-
-    if (chosen.length === 0) {
+    if (started.length === 0) {
       if (isRequired) {
-        const message = `Configure ${formatOneOfGroups(groups)}`;
-        groups.forEach((group) => errors.push({ path: pathOf(group[0]), message }));
+        add(groups.map((group) => group[0]), `Configure ${formatOneOfGroups(groups)}`);
       }
-    } else if (chosen.length > 1) {
-      chosen.forEach((group) => {
-        const others = formatOneOfGroups(chosen.filter((g) => g !== group));
-        group.filter(isFilled).forEach((key) =>
-          errors.push({
-            path: pathOf(key),
-            message: `Cannot be combined with ${others}`,
-          })
-        );
-      });
+    } else if (started.length > 1) {
+      conflict(started.map((option) => option.required!));
     } else {
-      chosen[0]
-        .filter((key) => !isFilled(key))
-        .forEach((key) =>
-          errors.push({ path: pathOf(key), message: 'This field is required' })
+      const group = started[0].required!;
+      const missing = group.filter((key) => !isFilled(key));
+      // A complete group failing its `not`: name the set fields it rules out
+      const excluded = [...new Set(presenceFields(started[0].not))].filter(
+        (key) => isFilled(key) && !group.includes(key)
+      );
+      if (missing.length > 0) {
+        add(missing, 'This field is required');
+      } else if (excluded.length === 0) {
+        add(group, 'This combination of fields is not allowed');
+      } else {
+        add(group, `Cannot be combined with ${formatOneOfGroups([excluded])}`);
+        add(
+          excluded.filter((key) => schema.properties![key]),
+          `Cannot be combined with ${formatOneOfGroups([group])}`
         );
+      }
     }
   }
 
   const required = schema.required ?? [];
   Object.entries(schema.properties).forEach(([key, propSchema]) => {
-    const path = parentPath ? `${parentPath}.${key}` : key;
-
+    const path = pathOf(key);
     if (propSchema.type === 'object' && propSchema.properties) {
-      errors.push(
-        ...validateOneOf(
-          propSchema,
-          values,
-          path,
-          isRequired && required.includes(key)
-        )
-      );
-    } else if (
-      propSchema.type === 'array' &&
-      propSchema.items?.type === 'object' &&
-      propSchema.items.properties
-    ) {
+      // A set optional object is submitted, so its oneOf applies
+      const nestedRequired = (isRequired && required.includes(key)) || isFilled(key);
+      errors.push(...validateOneOf(propSchema, values, path, nestedRequired));
+    } else if (propSchema.type === 'array' && propSchema.items?.properties) {
       const items = getValueByPath(values, path);
       if (Array.isArray(items)) {
-        items.forEach((_, index) => {
-          errors.push(
-            ...validateOneOf(propSchema.items!, values, `${path}.${index}`)
-          );
-        });
+        items.forEach((_, i) =>
+          errors.push(...validateOneOf(propSchema.items!, values, `${path}.${i}`))
+        );
       }
     }
   });
@@ -415,19 +460,12 @@ export function validateOneOf(
   return errors;
 }
 
-/**
- * Whether a schema's top-level oneOf (if any) has a fully configured group.
- */
-export function hasCompleteOneOfGroup(
-  schema: ParameterSchema,
-  values: ParameterValues
-): boolean {
+/** Whether the schema's top-level oneOf, if any, has a fully set group. */
+export function hasCompleteOneOfGroup(schema: ParameterSchema, values: ParameterValues): boolean {
   const groups = getOneOfGroups(schema);
   return (
     groups.length === 0 ||
-    groups.some((group) =>
-      group.every((key) => hasConfiguredValue(getValueByPath(values, key)))
-    )
+    groups.some((group) => group.every((key) => hasConfiguredValue(getValueByPath(values, key))))
   );
 }
 

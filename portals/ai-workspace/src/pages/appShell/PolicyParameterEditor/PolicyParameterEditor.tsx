@@ -32,6 +32,7 @@ import {
   formatOneOfGroups,
   validateOneOf,
   hasCompleteOneOfGroup,
+  getOneOfSiblingPaths,
 } from './schemaUtils';
 import SchemaTree from './SchemaTree';
 import { useStyles } from './styles';
@@ -518,8 +519,7 @@ function validateLevelOneRequiredFields(
     return false;
   }
 
-  // A top-level oneOf needs one of its groups fully configured. Conflicting
-  // groups are reported on submit so the user sees which fields clash.
+  // A top-level oneOf needs a complete group; conflicts are reported on submit
   if (!hasCompleteOneOfGroup(schema, values)) {
     return false;
   }
@@ -559,14 +559,18 @@ const PolicyParameterEditor: React.FC<PolicyParameterEditorProps> = ({
     return validateLevelOneRequiredFields(parameters, values);
   }, [parameters, values]);
 
-  // Compute anyOf/oneOf alert message
-  const anyOfMessage = useMemo(() => {
-    // Case 0: Parent-level oneOf (e.g. oneOf: [{ required: [a, b] }, { required: [c] }])
-    const oneOfGroups = getOneOfGroups(parameters);
-    if (oneOfGroups.length > 0) {
-      return `Configure exactly one of: ${formatOneOfGroups(oneOfGroups)}.`;
-    }
+  // Compute oneOf alert message; skipped when options share fields, where
+  // listing every combination would read as "pick one"
+  const oneOfMessage = useMemo(() => {
+    const groups = getOneOfGroups(parameters);
+    const fields = groups.flat();
+    return groups.length > 0 && new Set(fields).size === fields.length
+      ? `Configure exactly one of: ${formatOneOfGroups(groups)}.`
+      : null;
+  }, [parameters]);
 
+  // Compute anyOf alert message
+  const anyOfMessage = useMemo(() => {
     // Case 1: Parent-level anyOf (e.g. anyOf: [{ required: [request] }, { required: [response] }])
     if (parameters.anyOf && parameters.anyOf.length > 0) {
       const requiredItems = parameters.anyOf
@@ -611,16 +615,17 @@ const PolicyParameterEditor: React.FC<PolicyParameterEditorProps> = ({
   // Handle field value changes
   const handleChange = useCallback((path: string, value: unknown) => {
     setValues((prev) => setValueByPath(prev, path, value));
-    // Clear error for this field
+    // Clear errors for this field and its oneOf siblings (group-wide errors)
+    const cleared = [path, ...getOneOfSiblingPaths(parameters, path)];
     setErrors((prev) => {
-      if (prev[path]) {
+      if (cleared.some((p) => prev[p])) {
         const newErrors = { ...prev };
-        delete newErrors[path];
+        cleared.forEach((p) => delete newErrors[p]);
         return newErrors;
       }
       return prev;
     });
-  }, []);
+  }, [parameters]);
 
   // Handle adding array items
   const handleAddArrayItem = useCallback(
@@ -660,22 +665,15 @@ const PolicyParameterEditor: React.FC<PolicyParameterEditorProps> = ({
 
   // Handle form submission
   const handleSubmit = useCallback(() => {
-    // Validate required fields first, then oneOf groups, then format
-    // constraints (pattern, length, numeric bounds, array size). Earlier
-    // errors take precedence
+    // Earlier validators take precedence: required fields, oneOf groups, then
+    // format constraints (pattern, length, numeric bounds, array size)
     const errorMap: Record<string, string> = {};
-    validateRequiredFields(parameters, values).forEach((err) => {
-      errorMap[err.path] = err.message;
-    });
-    validateOneOf(parameters, values).forEach((err) => {
-      if (!errorMap[err.path]) {
-        errorMap[err.path] = err.message;
-      }
-    });
-    validateConstraints(parameters, values).forEach((err) => {
-      if (!errorMap[err.path]) {
-        errorMap[err.path] = err.message;
-      }
+    [
+      ...validateRequiredFields(parameters, values),
+      ...validateOneOf(parameters, values),
+      ...validateConstraints(parameters, values),
+    ].forEach((err) => {
+      errorMap[err.path] ??= err.message;
     });
 
     if (Object.keys(errorMap).length > 0) {
@@ -707,6 +705,13 @@ const PolicyParameterEditor: React.FC<PolicyParameterEditorProps> = ({
           />
         )}
       </Box>
+
+      {/* OneOf Info Alert */}
+      {oneOfMessage && (
+        <Alert severity="info" sx={{ mb: 1 }}>
+          {oneOfMessage}
+        </Alert>
+      )}
 
       {/* AnyOf Info Alert */}
       {anyOfMessage && (

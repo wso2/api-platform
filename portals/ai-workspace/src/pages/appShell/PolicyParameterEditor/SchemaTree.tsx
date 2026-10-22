@@ -383,8 +383,7 @@ const SchemaTreeNodeComponent: React.FC<SchemaTreeNodeProps> = ({
             </Box>
           )}
 
-          {/* Errors on nodes without a field renderer (e.g. a oneOf group
-              made of objects or object arrays) */}
+          {/* Errors on nodes with no input of their own, e.g. object oneOf options */}
           {!FieldRenderer && error && (
             <Box sx={classes.errorText}>{error}</Box>
           )}
