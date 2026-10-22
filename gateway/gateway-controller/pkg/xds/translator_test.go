@@ -2273,6 +2273,83 @@ func TestTranslator_TranslateConfigs_GatewayJWKSRoute(t *testing.T) {
 		}
 		assert.False(t, hasSink(resources))
 	})
+
+	t.Run("after the health routes and before root and /.well-known API routes", func(t *testing.T) {
+		resources := translate(t, true, []*models.StoredConfig{
+			makeRestAPI("uuid-api-root", "api-root", "/"),
+			makeRestAPI("uuid-api-wk", "api-wk", "/.well-known"),
+		})
+
+		checked := 0
+		for _, vh := range vhosts(t, resources) {
+			lastHealthIdx, jwksIdx := -1, -1
+			var apiIdx []int
+			for i, r := range vh.Routes {
+				switch p := r.GetMatch().GetPath(); {
+				case p == constants.GatewayReadyPath || p == constants.GatewayHealthyPath:
+					lastHealthIdx = i
+				case r.Name == constants.GatewayJWKSRouteKey:
+					jwksIdx = i
+				case strings.Count(r.Name, "|") >= 2:
+					apiIdx = append(apiIdx, i)
+				}
+			}
+			require.NotEqual(t, -1, lastHealthIdx, "virtual host %q is missing the health routes", vh.Name)
+			require.NotEqual(t, -1, jwksIdx, "virtual host %q is missing the JWKS route", vh.Name)
+			assert.Greater(t, jwksIdx, lastHealthIdx, "the JWKS route must follow the health routes on %q", vh.Name)
+			for _, i := range apiIdx {
+				assert.Less(t, jwksIdx, i, "the JWKS route must precede API route %q on %q", vh.Routes[i].Name, vh.Name)
+			}
+			if vh.Name == "localhost" {
+				assert.Len(t, apiIdx, 2, "expected both APIs' routes on the API vhost")
+				checked++
+			}
+		}
+		assert.Equal(t, 1, checked, "expected the API vhost to be present")
+	})
+
+	t.Run("the sink cluster is static, endpoint-less and named for the route", func(t *testing.T) {
+		var sink *cluster.Cluster
+		for _, res := range translate(t, true, nil)[resource.ClusterType] {
+			if c := res.(*cluster.Cluster); c.Name == constants.GatewayInternalSinkClusterName {
+				sink = c
+			}
+		}
+		require.NotNil(t, sink)
+		assert.Equal(t, "api-platform/gateway-internal-sink", sink.Name)
+		assert.Equal(t, cluster.Cluster_STATIC, sink.GetType())
+		assert.Equal(t, constants.GatewayInternalSinkClusterName, sink.GetLoadAssignment().GetClusterName())
+		assert.Empty(t, sink.GetLoadAssignment().GetEndpoints())
+	})
+
+	t.Run("disabling on the same translator removes the route", func(t *testing.T) {
+		translator, err := NewTranslator(createTestLogger(), testRouterConfig(), nil, testConfig())
+		require.NoError(t, err)
+		configs := []*models.StoredConfig{makeRestAPI("uuid-api-1", "api-one", "/api-one")}
+		count := func(resources map[resource.Type][]types.Resource) int {
+			n := 0
+			for _, vh := range vhosts(t, resources) {
+				for _, r := range vh.Routes {
+					if r.Name == constants.GatewayJWKSRouteKey {
+						n++
+					}
+				}
+			}
+			return n
+		}
+
+		translator.SetGatewayJWKSRoute(true)
+		resources, err := translator.TranslateConfigs(configs, "test-correlation-id")
+		require.NoError(t, err)
+		require.Positive(t, count(resources))
+		require.True(t, hasSink(resources))
+
+		translator.SetGatewayJWKSRoute(false)
+		resources, err = translator.TranslateConfigs(configs, "test-correlation-id")
+		require.NoError(t, err)
+		assert.Zero(t, count(resources))
+		assert.False(t, hasSink(resources), "the sink cluster must go with the route")
+	})
 }
 
 func TestTranslator_GetVHostDomains(t *testing.T) {

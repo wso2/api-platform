@@ -2574,6 +2574,9 @@ func TestLoadConfig_SigningJWKSEndpointEnabled(t *testing.T) {
 	t.Run("disabled explicitly", func(t *testing.T) {
 		assert.False(t, load(t, "[signing]\njwks_endpoint_enabled = false\n").Signing.JWKSEndpointEnabled)
 	})
+	t.Run("enabled explicitly", func(t *testing.T) {
+		assert.True(t, load(t, "[signing]\njwks_endpoint_enabled = true\n").Signing.JWKSEndpointEnabled)
+	})
 	// The policy engine owns the rest of [signing]; the controller must load a
 	// config.toml that carries it.
 	t.Run("keys for the policy engine are tolerated", func(t *testing.T) {

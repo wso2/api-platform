@@ -123,3 +123,116 @@ func TestGatewayJWKSConflicts(t *testing.T) {
 	assert.Equal(t, []string{"dotted (default)", "keys-api (api.example.com)"}, GatewayJWKSConflicts(deployed))
 	assert.Empty(t, GatewayJWKSConflicts(nil))
 }
+
+func TestGatewayJWKSRuntimeConfig_PicksLatestMajor(t *testing.T) {
+	def := func(version string) (string, models.PolicyDefinition) {
+		return constants.JWKS_SYSTEM_POLICY_NAME + "_" + version,
+			models.PolicyDefinition{Name: constants.JWKS_SYSTEM_POLICY_NAME, Version: version}
+	}
+	definitions := func(versions ...string) map[string]models.PolicyDefinition {
+		defs := map[string]models.PolicyDefinition{}
+		for _, v := range versions {
+			k, d := def(v)
+			defs[k] = d
+		}
+		return defs
+	}
+
+	tests := []struct {
+		name     string
+		versions []string
+		want     string
+	}{
+		{name: "several minors of one major", versions: []string{"v1.0.0", "v1.2.0"}, want: "v1"},
+		{name: "a newer major present", versions: []string{"v1.0.0", "v1.2.0", "v2.1.0"}, want: "v2"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rdc, ok := GatewayJWKSRuntimeConfig(&config.Config{}, definitions(tt.versions...))
+			require.True(t, ok)
+
+			policies := rdc.PolicyChains[constants.GatewayJWKSRouteKey].Policies
+			last := policies[len(policies)-1]
+			assert.Equal(t, constants.JWKS_SYSTEM_POLICY_NAME, last.Name)
+			assert.Equal(t, tt.want, last.Version)
+		})
+	}
+}
+
+func TestGatewayJWKSRuntimeConfig_RouteAndMetadata(t *testing.T) {
+	rdc, ok := GatewayJWKSRuntimeConfig(&config.Config{}, jwksDefinitions())
+	require.True(t, ok)
+
+	r := rdc.Routes[constants.GatewayJWKSRouteKey]
+	require.NotNil(t, r)
+	assert.Equal(t, "GET", r.Method)
+	assert.Equal(t, "*", r.Vhost)
+	assert.Equal(t, constants.GatewayJWKSPath, r.OperationPath)
+
+	assert.Equal(t, GatewayJWKSKind, rdc.Metadata.Kind)
+	assert.Equal(t, "gateway-jwks", rdc.Metadata.Handle)
+	assert.Equal(t, "gateway-jwks", rdc.Metadata.UUID)
+}
+
+func TestGatewayJWKSConflicts_PathAndRouteShapes(t *testing.T) {
+	route := func(method, path, vhost string) *models.Route {
+		return &models.Route{Method: method, Path: path, Vhost: vhost}
+	}
+
+	tests := []struct {
+		name     string
+		deployed []*models.RuntimeDeployConfig
+		want     []string
+	}{
+		{
+			name: "path without a leading slash",
+			deployed: []*models.RuntimeDeployConfig{
+				{Metadata: models.Metadata{Handle: "relative"}, Routes: map[string]*models.Route{
+					"a": route("GET", ".well-known/jwks", ""),
+				}},
+			},
+			want: []string{"relative (default)"},
+		},
+		{
+			name: "path with a trailing slash",
+			deployed: []*models.RuntimeDeployConfig{
+				{Metadata: models.Metadata{Handle: "trailing"}, Routes: map[string]*models.Route{
+					"a": route("GET", "/.well-known/jwks/", ""),
+				}},
+			},
+			want: []string{"trailing (default)"},
+		},
+		{
+			name: "two methods on the same handle and vhost are reported once",
+			deployed: []*models.RuntimeDeployConfig{
+				{Metadata: models.Metadata{Handle: "keys-api"}, Routes: map[string]*models.Route{
+					"get":  route("GET", "/.well-known/jwks", "api.example.com"),
+					"head": route("HEAD", "/.well-known/jwks", "api.example.com"),
+				}},
+			},
+			want: []string{"keys-api (api.example.com)"},
+		},
+		{
+			name: "the same handle on two vhosts is reported per vhost",
+			deployed: []*models.RuntimeDeployConfig{
+				{Metadata: models.Metadata{Handle: "keys-api"}, Routes: map[string]*models.Route{
+					"main":    route("GET", "/.well-known/jwks", "api.example.com"),
+					"sandbox": route("GET", "/.well-known/jwks", "sandbox.example.com"),
+				}},
+			},
+			want: []string{"keys-api (api.example.com)", "keys-api (sandbox.example.com)"},
+		},
+		{
+			name: "a config with nil routes contributes nothing",
+			deployed: []*models.RuntimeDeployConfig{
+				{Metadata: models.Metadata{Handle: "empty"}},
+			},
+			want: nil,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, GatewayJWKSConflicts(tt.deployed))
+		})
+	}
+}
