@@ -59,6 +59,7 @@ import { FormattedMessage } from 'react-intl';
 import type { AccessControl } from '../../../../utils/types';
 import { GATEWAY_MANAGED_ARTIFACT_TOOLTIP } from '../../../../utils/readOnlyArtifacts';
 import { useOrgReadOnly } from '../../../../Components/common/ReadOnlyTooltip';
+import { useResourceLimits } from '../../../../hooks/useResourceLimits';
 
 type ResourceItem = {
   method: string;
@@ -557,7 +558,17 @@ export default function ServiceProviderRateLimitingTab({
   // Folded in with this artifact's own read-only flag: a read-only organization
   // may not write at all, so every control these gate is disabled for that
   // reason too, and no call site has to ask about both.
-  const isReadOnlyProvider = useOrgReadOnly() || Boolean(provider?.readOnly);
+  const isOrgReadOnly = useOrgReadOnly();
+  const { readOnlyMessage } = useResourceLimits();
+  const isReadOnlyProvider = isOrgReadOnly || Boolean(provider?.readOnly);
+  // Why the toggles are locked. The two causes need telling apart here, unlike
+  // in `isReadOnlyProvider`: a read-only organization is not the gateway, and
+  // naming the gateway sends the user after the wrong fix. ModeToggle has no
+  // read-only reason of its own to fall back on (DisabledActionTooltip does),
+  // so the message is passed in rather than the prop left off.
+  const modeToggleDisabledReason = isOrgReadOnly
+    ? readOnlyMessage
+    : GATEWAY_MANAGED_ARTIFACT_TOOLTIP;
   const [backendRateMode, setBackendRateMode] = useState<'global' | 'resource'>(
     'global'
   );
@@ -963,7 +974,7 @@ export default function ServiceProviderRateLimitingTab({
                   value={backendRateMode}
                   onChange={handleBackendModeChange}
                   disabled={isReadOnlyProvider}
-                  disabledReason={GATEWAY_MANAGED_ARTIFACT_TOOLTIP}
+                  disabledReason={modeToggleDisabledReason}
                   disableGlobal={
                     backendRateMode !== 'global' && backendHasResourceConfig
                   }
@@ -1203,7 +1214,7 @@ export default function ServiceProviderRateLimitingTab({
                   value={consumerRateMode}
                   onChange={handleConsumerModeChange}
                   disabled={isReadOnlyProvider}
-                  disabledReason={GATEWAY_MANAGED_ARTIFACT_TOOLTIP}
+                  disabledReason={modeToggleDisabledReason}
                   disableGlobal={consumerRateMode !== 'global' && consumerHasResourceConfig}
                   disableResource={consumerRateMode !== 'resource' && consumerHasGlobalConfig}
                   disableGlobalReason='If you need Provider-wide, remove Per Resource values first.'

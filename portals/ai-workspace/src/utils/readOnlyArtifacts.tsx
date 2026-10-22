@@ -88,13 +88,16 @@ export function DisabledActionTooltip({
   fullWidth = false,
 }: DisabledActionTooltipProps) {
   // A read-only organization disables every one of these controls whatever the
-  // artifact's own origin, and it outranks the gateway as the reason: saying
-  // "created from a gateway" to someone whose whole organization has gone
-  // read-only names the wrong cause and points at the wrong fix. An explicit
-  // `title` still wins — a caller that knows a more specific reason.
+  // artifact's own origin, and it outranks every other reason: saying "created
+  // from a gateway" — or, worse, "you do not have permission" — to someone whose
+  // whole organization has gone read-only names the wrong cause and points at the
+  // wrong fix. It outranks the caller's `title` too, and has to: read-only
+  // withdraws the write scopes (see AppAuthContext), so the permission titles
+  // callers compute from `hasPermission` are themselves a consequence of it.
   const { readOnly, readOnlyMessage } = useResourceLimits();
-  const reason =
-    title ?? (readOnly ? readOnlyMessage : GATEWAY_MANAGED_ARTIFACT_TOOLTIP);
+  const reason = readOnly
+    ? readOnlyMessage
+    : (title ?? GATEWAY_MANAGED_ARTIFACT_TOOLTIP);
 
   return (
     <Tooltip
