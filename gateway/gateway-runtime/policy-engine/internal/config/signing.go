@@ -19,8 +19,10 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -170,8 +172,13 @@ const maxKeyFileBytes = 64 << 10
 // that is checked is the file that is read.
 func readKeyFile(path string) ([]byte, error) {
 	f, err := os.Open(filepath.Clean(path))
-	if err != nil {
+	if errors.Is(err, fs.ErrNotExist) {
 		return nil, fmt.Errorf("required file %q is not found", path)
+	}
+	if err != nil {
+		// Most often a permission problem, such as a Secret mounted without
+		// read access for the runtime user; say so rather than "not found".
+		return nil, fmt.Errorf("required file %q could not be opened: %w", path, err)
 	}
 	defer f.Close()
 
