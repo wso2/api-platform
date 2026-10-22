@@ -1266,6 +1266,9 @@ blocks:
       - name: publication-lifecycle
         features:
           - features/apiportal/publishing/publication_lifecycle.feature
+      - name: publication-failures
+        features:
+          - features/apiportal/publishing/publication_failures.feature
 
   # Policy error compatibility: every migrated policy's main rejection, held to the error
   # response the policy returned before the change. The policies come from the adjacent
