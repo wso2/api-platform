@@ -135,27 +135,39 @@ func (s *Steps) sendUntilStatus(ctx context.Context, method, target string, want
 
 // sendUntilStatusWith is sendUntilStatus with extra request headers.
 func (s *Steps) sendUntilStatusWith(ctx context.Context, method, target string, want int, headers map[string]string) error {
+	return s.sendRequestUntilStatus(ctx, httpx.Request{Method: method, URL: target, Headers: headers}, want)
+}
+
+// prepareDataPlaneRequest checks a data-plane request can be sent: a method, a funnel, and a
+// target that expands and passes the data-plane host check. It returns the request ready to send.
+func (s *Steps) prepareDataPlaneRequest(ctx context.Context, request httpx.Request) (httpx.Request, error) {
 	if s.funnel == nil {
-		return fmt.Errorf("sending %s request: HTTP funnel is required", strings.ToUpper(method))
+		return request, fmt.Errorf("sending %s request: HTTP funnel is required", strings.ToUpper(request.Method))
 	}
-	method = strings.ToUpper(strings.TrimSpace(method))
-	if method == "" {
-		return fmt.Errorf("sending request: HTTP method is required")
+	request.Method = strings.ToUpper(strings.TrimSpace(request.Method))
+	if request.Method == "" {
+		return request, fmt.Errorf("sending request: HTTP method is required")
 	}
-	if want < 100 || want > 599 {
-		return fmt.Errorf("sending %s request: invalid HTTP status %d", method, want)
-	}
-	target, err := expandCloudValue(ctx, target)
+	target, err := expandCloudValue(ctx, request.URL)
 	if err != nil {
-		return err
+		return request, err
 	}
-	target, err = s.resolveDataPlaneURL(ctx, target)
+	request.URL, err = s.resolveDataPlaneURL(ctx, target)
+	return request, err
+}
+
+// sendRequestUntilStatus sends a data-plane request until the gateway answers with the status.
+func (s *Steps) sendRequestUntilStatus(ctx context.Context, request httpx.Request, want int) error {
+	if want < 100 || want > 599 {
+		return fmt.Errorf("sending %s request: invalid HTTP status %d", strings.ToUpper(request.Method), want)
+	}
+	request, err := s.prepareDataPlaneRequest(ctx, request)
 	if err != nil {
 		return err
 	}
 	return retry.Await(ctx, retry.Options{Timeout: propagationTimeout(s.topo)},
 		func(ctx context.Context) (*httpx.Response, error) {
-			response, sendErr := s.funnel.Send(ctx, httpx.Request{Method: method, URL: target, Headers: headers})
+			response, sendErr := s.funnel.Send(ctx, request)
 			if sendErr != nil {
 				return nil, retry.Transient(sendErr)
 			}
@@ -164,7 +176,7 @@ func (s *Steps) sendUntilStatusWith(ctx context.Context, method, target string, 
 		func(response *httpx.Response) bool {
 			return response != nil && response.StatusCode == want
 		},
-		fmt.Sprintf("waiting for %s %s to return %d", method, target, want))
+		fmt.Sprintf("waiting for %s %s to return %d", request.Method, request.URL, want))
 }
 
 func (s *Steps) assertAPIResponse(ctx context.Context, post int) error {
@@ -260,6 +272,12 @@ func (s *Steps) verifyAPIDeleted(ctx context.Context) error {
 }
 
 func (s *Steps) createProject(ctx context.Context) error {
+	return s.createProjectOf(ctx, cleanup.KindProject)
+}
+
+// createProjectOf creates a uniquely named project, registered for cleanup under the given kind
+// before it is requested, and keeps it as the scenario's project.
+func (s *Steps) createProjectOf(ctx context.Context, kind cleanup.Kind) error {
 	if err := generateResourceAndStore(ctx, "syn-project", keyProjectID); err != nil {
 		return err
 	}
@@ -268,7 +286,7 @@ func (s *Steps) createProject(ctx context.Context) error {
 		return err
 	}
 	if err := cleanup.Register(ctx, cleanup.Resource{
-		Kind: cleanup.KindProject, ID: id, Actor: resourceActor, Description: "project " + id,
+		Kind: kind, ID: id, Actor: resourceActor, Description: "project " + id,
 	}); err != nil {
 		return fmt.Errorf("registering project %q for cleanup: %w", id, err)
 	}
@@ -287,9 +305,9 @@ func (s *Steps) createProject(ctx context.Context) error {
 		return fmt.Errorf("creating APIP project: %w", err)
 	}
 	if createdID != id {
-		deregister(ctx, cleanup.KindProject, id)
+		deregister(ctx, kind, id)
 		if err := cleanup.Register(ctx, cleanup.Resource{
-			Kind: cleanup.KindProject, ID: createdID, Actor: resourceActor, Description: "project " + createdID,
+			Kind: kind, ID: createdID, Actor: resourceActor, Description: "project " + createdID,
 		}); err != nil {
 			return fmt.Errorf("registering project %q for cleanup: %w", createdID, err)
 		}

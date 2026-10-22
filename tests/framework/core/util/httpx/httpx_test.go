@@ -23,6 +23,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -856,4 +857,33 @@ func TestFunnelStreamClearsThenPublishes(t *testing.T) {
 	require.Error(t, err)
 	_, err = Published(ctx)
 	require.Error(t, err, "a failed stream must not leave the previous response for an assertion")
+}
+
+func TestChunkedRequestCarriesNoContentLength(t *testing.T) {
+	type seen struct {
+		contentLength int64
+		encoding      []string
+		body          string
+	}
+	received := make(chan seen, 2)
+	server := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
+		received <- seen{contentLength: r.ContentLength, encoding: r.TransferEncoding, body: string(raw)}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+
+	client := NewClient(Options{})
+	_, err := client.Do(context.Background(), Request{Method: http.MethodPost, URL: server.URL, Body: []byte("sized")}, 0, 0)
+	require.NoError(t, err)
+	sized := <-received
+	require.Equal(t, int64(5), sized.contentLength)
+	require.Empty(t, sized.encoding)
+
+	_, err = client.Do(context.Background(), Request{Method: http.MethodPost, URL: server.URL, Body: []byte("streamed"), Chunked: true}, 0, 0)
+	require.NoError(t, err)
+	streamed := <-received
+	require.Equal(t, int64(-1), streamed.contentLength)
+	require.Equal(t, []string{"chunked"}, streamed.encoding)
+	require.Equal(t, "streamed", streamed.body)
 }

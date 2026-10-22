@@ -76,6 +76,8 @@ const (
 	keyConfigAttempts      = "cloudConfigAttempts"
 	keyGatewayDeleteStatus = "cloudGatewayDeleteStatus"
 
+	keyManagedGatewayEndpoint = "cloudManagedGatewayEndpoint"
+
 	cloudConsoleAccessTokenEnv = "CLOUD_CONSOLE_ACCESS_TOKEN"
 
 	resourceActor = "apip-console"
@@ -128,6 +130,8 @@ func Register(sc *godog.ScenarioContext, topo *frameworkruntime.Topology, funnel
 	s.registerDeploymentSteps(sc)
 	s.registerGatewaySteps(sc)
 	s.registerGatewayConfigSteps(sc)
+	s.registerPromotionSteps(sc)
+	s.registerResilienceSteps(sc)
 
 	sc.Step(`^I create a synthetic APIP project$`, s.createProject)
 	sc.Step(`^the synthetic APIP project should be retrievable by handle$`, s.getProject)
@@ -250,6 +254,40 @@ func (s *Steps) registerGatewayConfigSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^I write the gateway configuration from (\d+) writers at once until one is rejected$`, s.writeConcurrently)
 }
 
+// registerPromotionSteps binds the steps that build a pipeline over synthetic environments, bind a
+// project to it and check what a promotion along it does to each environment.
+func (s *Steps) registerPromotionSteps(sc *godog.ScenarioContext) {
+	sc.Step(`^I find the environment of the default APIP gateway$`, s.findDefaultGatewayEnvironment)
+	sc.Step(`^I create (\d+) synthetic non-production APIP environments?$`, s.createSyntheticEnvironments)
+	sc.Step(`^I create a synthetic managed APIP gateway in each synthetic APIP environment$`, s.createGatewayInEachSyntheticEnvironment)
+	sc.Step(`^I create a synthetic deployment pipeline with the promotion paths:$`, s.createPipeline)
+	sc.Step(`^I replace the promotion paths of the synthetic deployment pipeline with:$`, s.replacePipelinePaths)
+	sc.Step(`^I create a synthetic APIP project bound to the synthetic deployment pipeline$`, s.createProjectBoundToPipeline)
+	sc.Step(`^I create a synthetic REST API in the synthetic APIP project$`,
+		func(ctx context.Context) error { return s.createAPIInSyntheticProject(ctx, nil) })
+	sc.Step(`^I create a synthetic REST API in the synthetic APIP project with:$`, s.createAPIInSyntheticProject)
+	sc.Step(`^I request a deployment of an LLM provider that does not exist with:$`, s.requestProviderDeployment)
+	sc.Step(`^the deployment response should list the gateway of synthetic APIP environment (\d+)$`, s.assertDeploymentListsGatewayOf)
+	sc.Step(`^the deployment stage of synthetic APIP environment (\d+) should show its gateway running the rendered build$`, s.assertStageRunsRenderedBuild)
+	sc.Step(`^the deployment stage of synthetic APIP environment (\d+) should show no gateway as deployed$`, s.assertStageHoldsNothing)
+	sc.Step(`^the deployment stage of synthetic APIP environment (\d+) should show its gateway as no longer deployed$`, s.assertStageNoLongerDeployed)
+	sc.Step(`^I undeploy the promoted deployment from synthetic APIP environment (\d+)$`, s.undeployFromSyntheticEnvironment)
+	sc.Step(`^I read the endpoint of the gateway of synthetic APIP environment (\d+)$`, s.recordSyntheticEnvironmentEndpoint)
+}
+
+// registerResilienceSteps binds the steps that send oversized requests, reach a backend that is
+// not there, and read how many replicas of a scaled gateway serve traffic.
+func (s *Steps) registerResilienceSteps(sc *godog.ScenarioContext) {
+	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" with a body of (\d+) (KiB|MiB) until status (\d+)$`, s.sendSizedUntilStatus)
+	sc.Step(`^a (chunked )?"([^"]*)" request to "([^"]*)" with a body of (\d+) (KiB|MiB) should be refused as too large$`, s.assertOversizedRefused)
+	sc.Step(`^an unreachable backend is available for deployment overrides$`, s.useUnreachableBackend)
+	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" until the gateway routes it$`, s.sendUntilRouted)
+	sc.Step(`^the gateway response should be the router's documented failure for an unreachable backend$`, s.assertRouterFailure)
+	sc.Step(`^I read the endpoint of the synthetic managed APIP gateway$`, s.recordManagedGatewayEndpoint)
+	sc.Step(`^the synthetic managed APIP gateway's configuration phase should become "([^"]*)"$`, s.awaitConfigurationPhase)
+	sc.Step(`^requests to "([^"]*)" should be served by at least (\d+) different gateway runtime pods$`, s.assertServedByManyPods)
+}
+
 // RegisterDeleters installs cloud-target cleanup handlers for a block containing cloud-console.
 func RegisterDeleters(reg *cleanup.Registry, topo *frameworkruntime.Topology) error {
 	if reg == nil {
@@ -269,6 +307,9 @@ func RegisterDeleters(reg *cleanup.Registry, topo *frameworkruntime.Topology) er
 		return err
 	}
 	if err := reg.RegisterDeleter(cleanup.KindEnvironment, cloudDeleter(topo, client, "/environments", true)); err != nil {
+		return err
+	}
+	if err := reg.RegisterDeleter(kindPipeline, cloudDeleter(topo, client, "/pipelines", true)); err != nil {
 		return err
 	}
 	return reg.RegisterDeleter(cleanup.KindGateway, cloudDeleter(topo, client, "/managed-gateways", false))
