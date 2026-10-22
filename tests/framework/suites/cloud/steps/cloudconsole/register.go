@@ -68,6 +68,14 @@ const (
 	keySyntheticGateways = "cloudSyntheticGatewayIDs"
 	keyEchoBackendURL    = "cloudEchoBackendURL"
 
+	keyManagedGatewayName  = "cloudManagedGatewayName"
+	keyManagedGatewayEnv   = "cloudManagedGatewayEnvironment"
+	keyGatewayIdentity     = "cloudManagedGatewayIdentity"
+	keyDefaultGatewayID    = "cloudDefaultManagedGatewayID"
+	keyConfigGatewayID     = "cloudConfigGatewayID"
+	keyConfigAttempts      = "cloudConfigAttempts"
+	keyGatewayDeleteStatus = "cloudGatewayDeleteStatus"
+
 	cloudConsoleAccessTokenEnv = "CLOUD_CONSOLE_ACCESS_TOKEN"
 
 	resourceActor = "apip-console"
@@ -118,6 +126,8 @@ func Register(sc *godog.ScenarioContext, topo *frameworkruntime.Topology, funnel
 
 	s.registerIdentitySteps(sc)
 	s.registerDeploymentSteps(sc)
+	s.registerGatewaySteps(sc)
+	s.registerGatewayConfigSteps(sc)
 
 	sc.Step(`^I create a synthetic APIP project$`, s.createProject)
 	sc.Step(`^the synthetic APIP project should be retrievable by handle$`, s.getProject)
@@ -180,6 +190,64 @@ func (s *Steps) registerDeploymentSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^I create (\d+) synthetic managed APIP gateways? in the active gateway's environment$`, s.createGatewaysInActiveEnvironment)
 	sc.Step(`^the synthetic managed APIP gateways should become active$`, s.waitSyntheticGatewaysActive)
 	sc.Step(`^I deploy a build of the synthetic REST API to the active gateway and every synthetic gateway$`, s.deployBuildPerGateway)
+}
+
+// registerGatewaySteps binds the steps that list, create, update and read managed gateways.
+func (s *Steps) registerGatewaySteps(sc *godog.ScenarioContext) {
+	sc.Step(`^I create a synthetic managed APIP gateway in the active gateway's environment$`,
+		func(ctx context.Context) error { return s.createGatewaysInActiveEnvironment(ctx, 1) })
+	sc.Step(`^I create (\d+) synthetic managed APIP gateways? in the synthetic APIP environment$`, s.createGatewaysInSyntheticEnvironment)
+	sc.Step(`^I choose a synthetic managed APIP gateway name$`, s.chooseGatewayName)
+	sc.Step(`^I request a synthetic managed APIP gateway with:$`, s.requestManagedGateway)
+	sc.Step(`^I create a synthetic managed APIP gateway whose handle is (\d+) characters? short of the environment's limit$`,
+		s.createGatewayBelowHandleLimit)
+	sc.Step(`^I deploy a build of the synthetic REST API to synthetic gateway (\d+)$`, s.deployBuildToSyntheticGateway)
+	sc.Step(`^the synthetic REST API should be deployed on synthetic gateway (\d+)$`, func(ctx context.Context, n int) error {
+		return s.assertDeployedOnSyntheticGateway(ctx, n, true)
+	})
+	sc.Step(`^the synthetic REST API should not be deployed on synthetic gateway (\d+)$`, func(ctx context.Context, n int) error {
+		return s.assertDeployedOnSyntheticGateway(ctx, n, false)
+	})
+	sc.Step(`^I delete synthetic gateway (\d+)$`, s.deleteSyntheticGateway)
+	sc.Step(`^synthetic gateway (\d+) should still be retrievable$`, s.assertSyntheticGatewayRetrievable)
+	sc.Step(`^I list the managed APIP gateways$`, s.listManagedGateways)
+	sc.Step(`^I list the managed APIP gateways of type "([^"]*)"$`, s.listManagedGatewaysOfType)
+	sc.Step(`^the listed managed gateways should each report an identity, an environment and a status$`, s.assertListingIsValid)
+	sc.Step(`^the listed managed gateways should include the active gateway$`, s.assertListingIncludesActiveGateway)
+	sc.Step(`^every listed managed gateway should be of type "([^"]*)"$`, s.assertListingOnlyOfType)
+	sc.Step(`^the managed gateway types should partition the unfiltered listing$`, s.assertTypesPartitionTheListing)
+	sc.Step(`^the selected APIP environment should be listed by the platform$`, s.assertSelectedEnvironmentListed)
+	sc.Step(`^every managed gateway the scenario created should be retrievable$`, s.assertEveryCreatedGatewayExists)
+	sc.Step(`^the environment should hold exactly one managed gateway with the chosen name$`, s.assertGatewayListedOnce)
+	sc.Step(`^the managed APIP gateway should be registered under the id its name gives it$`, s.assertGatewayHasItsNameAsID)
+	sc.Step(`^I update the synthetic managed APIP gateway with:$`, s.updateManagedGateway)
+	sc.Step(`^the managed APIP gateway should report:$`, s.assertManagedGatewayReports)
+	sc.Step(`^the update should have left the managed APIP gateway's identity unchanged$`, s.assertIdentityUnchanged)
+	sc.Step(`^the managed APIP gateway should be bound to the environment it was created in$`, s.assertBoundToEnvironment)
+	sc.Step(`^I delete the default gateway of the synthetic APIP environment$`, s.deleteDefaultGatewayOfSyntheticEnvironment)
+	sc.Step(`^the refused default gateway should still be its environment's default$`, s.assertRefusedDefaultStillExists)
+	sc.Step(`^the managed APIP gateway should report a recorded provisioning state on its first read$`, s.assertFirstReadHasStatus)
+	sc.Step(`^the managed APIP gateway status should progress from provisioning to built without failing$`, s.assertStatusProgressesToBuilt)
+	sc.Step(`^the managed APIP gateway should not report its controller as connected yet$`, s.assertGatewayNotConnected)
+	sc.Step(`^the managed APIP gateway should report its controller as connected$`, s.assertGatewayConnected)
+	sc.Step(`^the managed APIP gateway should report (no|a) version$`, s.assertGatewayVersion)
+	sc.Step(`^the managed APIP gateway endpoint should answer requests$`, s.assertGatewayEndpointAnswers)
+}
+
+// registerGatewayConfigSteps binds the steps that read and write a managed gateway's configuration.
+func (s *Steps) registerGatewayConfigSteps(sc *godog.ScenarioContext) {
+	sc.Step(`^I read the configuration of the (active|synthetic managed) APIP gateway$`, s.readGatewayConfiguration)
+	sc.Step(`^the synthetic managed APIP gateway's configuration should become readable$`, s.awaitConfigurationReadable)
+	sc.Step(`^the gateway configuration should be a valid document$`, s.assertConfigurationDocument)
+	sc.Step(`^I write the gateway configuration with:$`, s.writeGatewayConfiguration)
+	sc.Step(`^I save the gateway configuration with:$`, s.saveGatewayConfiguration)
+	sc.Step(`^I write the gateway configuration path "([^"]*)" with a string of (\d+) characters$`, s.writeLongString)
+	sc.Step(`^I write each of these gateway configuration values separately:$`, s.writeEachValue)
+	sc.Step(`^every one of those writes should have been refused as invalid$`, s.assertEveryWriteRejected)
+	sc.Step(`^the gateway configuration phase should be "([^"]*)"$`, s.assertConfigurationPhase)
+	sc.Step(`^the gateway configuration should report:$`, s.assertConfigurationReports)
+	sc.Step(`^the gateway configuration should no longer report "([^"]*)"$`, s.assertConfigurationOmits)
+	sc.Step(`^I write the gateway configuration from (\d+) writers at once until one is rejected$`, s.writeConcurrently)
 }
 
 // RegisterDeleters installs cloud-target cleanup handlers for a block containing cloud-console.

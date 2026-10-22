@@ -20,35 +20,35 @@ Feature: APIP cloud access and identity
   I want only a valid console token for my organisation to reach the cloud API
   So that a missing, forged or malformed credential never reads or changes a tenant's data
 
-  @TC_APIP_AUTH_001
+  @TC_APIP_AUTH_001 @ID_APIP_AUTH_001
   Scenario: The console token is a live JWT that the cloud API accepts
     Given I obtain an APIP cloud console token
     Then the APIP cloud console token should be a JWT that has not expired
     When I send an authenticated "GET" request to the APIP cloud path "/projects/default"
     Then the cloud API response status code should be 200
 
-  @TC_APIP_AUTH_002
+  @TC_APIP_AUTH_002 @ID_APIP_AUTH_002
   Scenario: The cloud API resolves the caller's organisation from the token alone
     Given I obtain an APIP cloud console token
     Then a "GET" request to the APIP cloud path "/projects/default" should give the same result when the "X-Org-Id" header names another organisation
 
-  @TC_APIP_AUTH_003
+  @TC_APIP_AUTH_003 @ID_APIP_AUTH_003
   Scenario: The console token carries the organisation claim the control plane requires
     Given I obtain an APIP cloud console token
     Then the APIP cloud console token should carry an organisation claim
 
-  @TC_APIP_AUTH_004
+  @TC_APIP_AUTH_004 @ID_APIP_AUTH_004
   Scenario: A request without an Authorization header is refused
     When I send a "GET" request to the APIP cloud path "/projects" without an Authorization header
     Then the cloud API response status code should be 401
 
-  @TC_APIP_AUTH_005
+  @TC_APIP_AUTH_005 @ID_APIP_AUTH_005
   Scenario: A request bearing an expired token is refused
     Given I obtain an APIP cloud console token
     When I send a "GET" request to the APIP cloud path "/projects" bearing a token that expired an hour ago
     Then the cloud API response status code should be 401
 
-  @TC_APIP_AUTH_006
+  @TC_APIP_AUTH_006 @ID_APIP_AUTH_006
   Scenario Outline: A token signed by an unknown issuer or key is refused
     When I send a "GET" request to the APIP cloud path "/projects" bearing a token <forgery>
     Then the cloud API response status code should be 401
@@ -59,7 +59,7 @@ Feature: APIP cloud access and identity
       | with no signature                    |
       | signed with an unknown shared secret |
 
-  @TC_APIP_AUTH_007
+  @TC_APIP_AUTH_007 @ID_APIP_AUTH_007
   Scenario Outline: A malformed bearer value is refused without leaking internal detail
     When I send a "GET" request to the APIP cloud path "/projects" with the Authorization header "<header>"
     Then the cloud API response status code should be 401
@@ -73,7 +73,7 @@ Feature: APIP cloud access and identity
       | Bearer             |
       | Basic dXNlcjpwYXNz |
 
-  @TC_APIP_AUTH_008
+  @TC_APIP_AUTH_008 @ID_APIP_AUTH_008
   Scenario Outline: Every cloud control-plane route requires authentication
     When I send a "<method>" request to the APIP cloud path "<path>" without an Authorization header
     Then the cloud API response status code should be 401

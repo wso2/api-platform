@@ -24,6 +24,12 @@ blocks:
       - name: apip-gateway
         features:
           - features/apip_gateway.feature
+      - name: apip-gateway-provisioning
+        features:
+          - features/apip_gateway_provisioning.feature
+      - name: apip-gateway-config
+        features:
+          - features/apip_gateway_config.feature
       - name: apip-auth
         features:
           - features/apip_auth.feature
