@@ -1,0 +1,3 @@
+# Trust the API Portal certificate for the calls platform-api makes to publish to it.
+[platform_api.http_client.tls]
+root_ca_file = "/app/data/certs/api-portal-ca.pem"
