@@ -44,6 +44,10 @@ import (
 	"github.com/wso2/api-platform/tests/framework/core/util/tcontext"
 )
 
+func TestNewPortalClientIsBuiltOnce(t *testing.T) {
+	require.Same(t, newPortalClient(), newPortalClient())
+}
+
 func TestTopLevelJSONArrayLength(t *testing.T) {
 	tests := []struct {
 		name    string

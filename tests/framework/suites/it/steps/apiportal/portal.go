@@ -100,17 +100,22 @@ var (
 
 // Steps holds what every api-portal REST call needs.
 type Steps struct {
-	topo   *runtime.Topology
+	topo *runtime.Topology
+	// client calls api-portal, verifying its certificate.
 	client *httpx.Client
+	// controlPlane calls platform-api, verifying its certificate.
+	controlPlane *httpx.Client
 	// idp calls the testbench identity provider, verifying its certificate.
 	idp *httpx.Client
 }
 
 // Register binds the steps that drive api-portal's own REST API — subscription plans,
-// publishing an API, applications, subscriptions, and API keys. Requests go through the same
-// shared client every other suite request funnels through.
-func Register(sc *godog.ScenarioContext, topo *runtime.Topology, client *httpx.Client) {
-	s := &Steps{topo: topo, client: client}
+// publishing an API, applications, subscriptions, and API keys. Portal requests go through a
+// client that trusts the portal's certificate; the shared client every other suite request
+// funnels through trusts only the control plane's, and serves the calls made to platform-api.
+func Register(sc *godog.ScenarioContext, topo *runtime.Topology, controlPlane *httpx.Client) {
+	s := &Steps{topo: topo, controlPlane: controlPlane}
+	s.client = newPortalClient()
 	idp, idpErr := newIdentityProviderClient()
 	s.idp = idp
 	sc.Before(func(ctx context.Context, _ *godog.Scenario) (context.Context, error) {
@@ -2373,13 +2378,13 @@ func (s *Steps) portalRequestURL(base, path string) string {
 	return base + apiPrefix + path
 }
 
-// portalBase resolves api-portal's HTTP base URL for this block.
+// portalBase resolves api-portal's HTTPS base URL for this block.
 func (s *Steps) portalBase() (string, error) {
 	return s.portalBaseNamed(portalService)
 }
 
 func (s *Steps) portalBaseNamed(portal string) (string, error) {
-	return s.topo.URL(strings.TrimSpace(portal), "http")
+	return s.topo.URL(strings.TrimSpace(portal), "https")
 }
 
 // devportalAPIHandle is api-portal's OWN identifier for a published API, distinct from
@@ -2646,7 +2651,7 @@ func (s *Steps) syncSubscriptionPlan(ctx context.Context, handle string) error {
 	if err != nil {
 		return err
 	}
-	refID, err := platformapisteps.SubscriptionPlanUUID(ctx, s.topo, s.client, resolvedHandle)
+	refID, err := platformapisteps.SubscriptionPlanUUID(ctx, s.topo, s.controlPlane, resolvedHandle)
 	if err != nil {
 		return fmt.Errorf("resolving platform-api subscription plan %q: %w", resolvedHandle, err)
 	}

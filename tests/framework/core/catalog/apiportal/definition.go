@@ -30,9 +30,9 @@ import (
 const EnvImageAPIPortal = "AP_IMAGE"
 
 const svcAPIPortal = "api-portal"
-const svcAPIPortalOtherOrg = "api-portal-other-org"
+const svcAPIPortalOtherOrg = shared.APIPortalOtherOrgHost
 
-const svcAPIPortalMultiOrganization = "api-portal-multi-organization"
+const svcAPIPortalMultiOrganization = shared.APIPortalMultiOrganizationHost
 
 // MultiOrganizationPortalID is the portal_id the multi-organization portal serves.
 const MultiOrganizationPortalID = "portal_id"
@@ -61,7 +61,7 @@ func APIPortalMultiOrganization() *components.Definition {
 	d := apiPortalDefinition(svcAPIPortalMultiOrganization, "tests/framework/core/catalog/apiportal/docker-compose.yaml",
 		"default", "Default", MultiOrganizationPortalID, svcAPIPortal)
 	d.SourceProduct = svcAPIPortal
-	d.Compose.Env["APIP_AP_AUTH_IDP_CALLBACK_URL"] = "http://" + svcAPIPortalMultiOrganization + ":9543/api-portal/default/callback"
+	d.Compose.Env["APIP_AP_AUTH_IDP_CALLBACK_URL"] = "https://" + svcAPIPortalMultiOrganization + ":9543/api-portal/default/callback"
 	d.Compose.StagedFiles = map[string]string{"role-to-scope-mapping.yaml": portalRoleMapping}
 	d.Compose.GeneratedFiles["certs/cert.pem"] = multiOrganizationTrustBundle()
 	d.Config.ExtraOverlays = []string{multiOrganizationOverlay}
@@ -125,11 +125,11 @@ func apiPortalDefinition(name, composeFile, organization, displayName, portalID,
 		},
 
 		Endpoints: []components.Endpoint{
-			{Name: "http", Port: 9543, Scheme: "http", AwaitListening: true},
+			{Name: "https", Port: 9543, Scheme: "https", AwaitListening: true},
 		},
 
 		Health: &components.HealthCheck{
-			Endpoint: "http", Path: "/", ExpectStatus: 200,
+			Endpoint: "https", Path: "/", ExpectStatus: 200,
 			Timeout: 180 * time.Second, Interval: 2 * time.Second,
 		},
 
@@ -186,12 +186,16 @@ func runtimeCoverageEnvironment() map[string]string {
 	return env
 }
 
-// portalCryptoFiles returns the control-plane public key and certificate required by the portal.
+// portalCryptoFiles returns the control-plane public key and certificate the portal trusts,
+// and the certificate and key it serves HTTPS with.
 func portalCryptoFiles() map[string][]byte {
 	cp := shared.ControlPlaneCrypto()
+	serving := shared.APIPortalTLS()
 	return map[string][]byte{
 		"keys/jwt_public.pem": cp["keys/jwt_public.pem"],
 		"certs/cert.pem":      cp["certs/cert.pem"],
+		"tls/cert.pem":        serving.CertPEM,
+		"tls/key.pem":         serving.PrivateKeyPEM,
 	}
 }
 

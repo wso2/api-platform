@@ -46,8 +46,12 @@ func TestAPIPortalDefinition(t *testing.T) {
 		_, err := hex.DecodeString(value)
 		require.NoError(t, err, "%s must be hexadecimal", key)
 	}
-	_, ok := definition.Endpoint("http")
+	endpoint, ok := definition.Endpoint("https")
 	require.True(t, ok)
+	require.Equal(t, "https", endpoint.Scheme)
+	_, ok = definition.Endpoint("http")
+	require.False(t, ok, "the portal serves HTTPS only")
+	require.Equal(t, "https", definition.Health.Endpoint)
 }
 
 func TestAPIPortalOtherOrgUsesBaseComposeWithOrganizationOverride(t *testing.T) {
@@ -130,7 +134,7 @@ func TestTheMultiOrganizationPortalTrustsTheIdentityProvider(t *testing.T) {
 		require.Equal(t, "api-portal", definition.Product(), "%s is built from the api-portal source", definition.Name)
 		require.Equal(t, []string{multiOrganizationOverlay}, definition.Config.ExtraOverlays, definition.Name)
 		require.Equal(t, portalRoleMapping, definition.Compose.StagedFiles["role-to-scope-mapping.yaml"], definition.Name)
-		require.Equal(t, "http://"+definition.Name+":9543/api-portal/default/callback",
+		require.Equal(t, "https://"+definition.Name+":9543/api-portal/default/callback",
 			definition.Compose.Env["APIP_AP_AUTH_IDP_CALLBACK_URL"], definition.Name)
 		require.Equal(t, definition.Name, definition.Alias)
 		require.Equal(t, "/health", definition.Health.Path, "%s must not probe a page that redirects to sign-in", definition.Name)
