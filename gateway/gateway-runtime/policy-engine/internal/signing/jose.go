@@ -24,6 +24,12 @@ import (
 	sdksigning "github.com/wso2/api-platform/sdk/core/signing"
 )
 
+// reservedHeaders are the protected header parameters only the signing service
+// sets. The engine keeps its own copy rather than reading
+// sdksigning.ReservedHeaders, an exported map that any policy in the process
+// can modify.
+var reservedHeaders = map[string]bool{"alg": true, "kid": true, "jku": true, "crit": true, "b64": true, "typ": true}
+
 // Sign returns the raw signature over data made with the active key, in the
 // JWS encoding for its algorithm (RFC 7518 §3; r||s for ECDSA).
 func (kr *Keyring) Sign(data []byte) ([]byte, sdksigning.KeyInfo, error) {
@@ -69,7 +75,7 @@ func (kr *Keyring) signJWS(payload []byte, o sdksigning.Options) (protected, sig
 
 	header := make(map[string]any, len(o.Headers)+4)
 	for k, v := range o.Headers {
-		if sdksigning.ReservedHeaders[k] || k == "typ" {
+		if reservedHeaders[k] {
 			return "", "", sdksigning.KeyInfo{}, fmt.Errorf("header %q is set by the gateway signing service and cannot be overridden", k)
 		}
 		header[k] = v
