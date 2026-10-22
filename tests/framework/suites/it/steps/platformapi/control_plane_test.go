@@ -746,3 +746,19 @@ func TestUnpublishSettled(t *testing.T) {
 		require.Equal(t, tc.want, unpublishSettled(&httpx.Response{StatusCode: tc.status, Body: tc.body}), name)
 	}
 }
+
+func TestDocumentIDCarriesTheAPI(t *testing.T) {
+	id := documentID("rest-api", "api-1", "doc-1")
+	require.Equal(t, "rest-api/api-1/doc-1", id)
+
+	apiType, api, doc, err := splitDocumentID(id)
+	require.NoError(t, err)
+	require.Equal(t, []string{"rest-api", "api-1", "doc-1"}, []string{apiType, api, doc})
+	require.NotEqual(t, documentID("rest-api", "api-1", "doc-1"), documentID("rest-api", "api-2", "doc-1"),
+		"the same document handle on two APIs must be two cleanup resources")
+
+	for _, bad := range []string{"", "doc-1", "api-1/doc-1", "rest-api//doc-1", "rest-api/api-1/", "a/b/c/d"} {
+		_, _, _, err := splitDocumentID(bad)
+		require.ErrorContains(t, err, "malformed document id", bad)
+	}
+}

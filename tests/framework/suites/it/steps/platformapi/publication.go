@@ -70,6 +70,7 @@ func RegisterPublication(sc *godog.ScenarioContext, s *Steps) {
 		s.readPublication)
 	sc.Step(`^the publication of the "([^"]*)" "([^"]*)" on the API Portal "([^"]*)" should have status "([^"]*)"$`,
 		s.publicationStatusIs)
+	RegisterPublicationContent(sc, s)
 }
 
 // publicationType returns the apiType segment for a gateway artifact kind.
