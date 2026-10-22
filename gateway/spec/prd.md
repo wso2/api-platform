@@ -11,7 +11,6 @@ Production-ready Envoy-based gateway with Go xDS control plane, providing dynami
 - [FR3: SQLite Persistence](prds/sqlite-persistence.md) – Persist configurations to SQLite database with WAL mode, composite unique constraints, and migration path to PostgreSQL/MySQL.
 - [FR4: Zero-Downtime Updates](prds/zero-downtime-updates.md) – Apply configuration changes without dropping in-flight requests using graceful xDS updates.
 - [FR5: Policy Engine Integration](prds/policy-engine.md) – Policy-first architecture with authentication, authorization, rate limiting, and custom policy support.
-- [FR6: WebSocket API Support](prds/websocket-api-support.md) – Proxy AsyncAPI-defined WebSocket APIs through Envoy with handshake-level policies and bounded connection lifetime and concurrency.
 
 ## Non-Functional Requirements
 
