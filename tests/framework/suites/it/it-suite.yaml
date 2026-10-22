@@ -1275,6 +1275,30 @@ blocks:
           - features/apiportal/publishing/publication_content.feature
         tags: "~@known-issue"
 
+  # Publishing while the API Portal is down. The scenarios stop and restart the portal, so they
+  # run against a portal of their own: sharing one with the other publishing runners would take
+  # it away from scenarios that are still using it.
+  - name: api-portal-publishing-outage
+    parallel: 1
+    components:
+      - name: platform-api
+        overlay: tests/framework/core/catalog/overlays/platform-api-portal-publishing.toml
+        db: postgres
+      - name: api-portal
+        dependsOn: [platform-api]
+        db: postgres
+        overlay: tests/framework/core/catalog/overlays/api-portal-publishing.toml
+        stagedFiles:
+          role-to-scope-mapping.yaml: portals/api-portal/resources/role-to-scope-mapping.yaml
+      - name: platform-gateway
+        dependsOn: [platform-api]
+        db: postgres
+      - name: testbench
+    runners:
+      - name: publication-outage
+        features:
+          - features/apiportal/publishing/publication_outage.feature
+
   # Policy error compatibility: every migrated policy's main rejection, held to the error
   # response the policy returned before the change. The policies come from the adjacent
   # gateway-controllers checkout — in that repository's CI, the pull request under test — and
