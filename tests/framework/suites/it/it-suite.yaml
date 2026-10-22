@@ -435,10 +435,18 @@ blocks:
     parallel: 7
     components:
       - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/gateway-signing.toml
         db:
           matrix: [sqlite, postgres, sqlserver]
       - name: testbench
+    wiring:
+      platform-gateway:
+        signingKeys: true
     runners:
+      - name: gateway-jwks
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/security/jwks.feature
       - name: api-error-responses
         features:
           - features/gateway/core/api_error_responses.feature
@@ -789,6 +797,10 @@ blocks:
         tags: "gateway-version>1.2.0"
         features:
           - features/gateway/core/request_id_response_disabled.feature
+      - name: jwks-disabled
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/security/jwks_disabled.feature
 
   - name: vhost-routing-single
     parallel: 1
