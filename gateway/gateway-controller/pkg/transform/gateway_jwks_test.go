@@ -110,14 +110,14 @@ func TestGatewayJWKSConflicts(t *testing.T) {
 	route := func(path, vhost string) *models.Route { return &models.Route{Path: path, Vhost: vhost} }
 	deployed := []*models.RuntimeDeployConfig{
 		{Metadata: models.Metadata{Handle: "keys-api"}, Routes: map[string]*models.Route{
-			"a": route("/.well-known/jwks.json", "api.example.com"),
+			"a": route("/.well-known/jwks", "api.example.com"),
 			"b": route("/.well-known/openid-configuration", "api.example.com"),
 		}},
 		{Metadata: models.Metadata{Handle: "dotted"}, Routes: map[string]*models.Route{
-			"a": route("/x/../.well-known/jwks.json", ""),
+			"a": route("/x/../.well-known/jwks", ""),
 		}},
 		{Metadata: models.Metadata{Handle: "nested"}, Routes: map[string]*models.Route{
-			"a": route("/orders/.well-known/jwks.json", ""),
+			"a": route("/orders/.well-known/jwks", ""),
 		}},
 	}
 	assert.Equal(t, []string{"dotted (default)", "keys-api (api.example.com)"}, GatewayJWKSConflicts(deployed))

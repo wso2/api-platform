@@ -34,7 +34,7 @@ func request(method string, headers map[string][]string) *policy.RequestHeaderCo
 	return &policy.RequestHeaderContext{
 		SharedContext: &policy.SharedContext{},
 		Headers:       policy.NewHeaders(headers),
-		Path:          "/.well-known/jwks.json",
+		Path:          "/.well-known/jwks",
 		Method:        method,
 	}
 }

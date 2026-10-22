@@ -400,7 +400,7 @@ func TestSignDetachedJWS(t *testing.T) {
 	keyPEM, priv := ecPEM(t, elliptic.P256())
 	install(t, Config{
 		Keys:          []KeyEntry{{PEM: keyPEM, Active: true}},
-		PublicJWKSURL: "https://gw.example.com/.well-known/jwks.json",
+		PublicJWKSURL: "https://gw.example.com/.well-known/jwks",
 	})
 
 	card, err := sdksigning.CanonicalJSON([]byte(`{"name": "agent", "version": "1.0"}`))
@@ -419,7 +419,7 @@ func TestSignDetachedJWS(t *testing.T) {
 	h, _ := b64.DecodeString(sig.Protected)
 	var header map[string]any
 	_ = json.Unmarshal(h, &header)
-	if header["jku"] != "https://gw.example.com/.well-known/jwks.json" || header["kid"] != info.Kid {
+	if header["jku"] != "https://gw.example.com/.well-known/jwks" || header["kid"] != info.Kid {
 		t.Fatalf("protected header = %v", header)
 	}
 

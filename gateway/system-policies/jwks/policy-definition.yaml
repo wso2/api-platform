@@ -2,7 +2,7 @@ name: wso2_apip_sys_jwks
 version: v1.0.0
 description: |
   The gateway's internal JWKS system policy. It answers the gateway JWKS
-  endpoint (/.well-known/jwks.json): the public half of every gateway signing key
+  endpoint (/.well-known/jwks): the public half of every gateway signing key
   configured under [signing], so a receiver of anything the gateway signs —
   backend JWTs, A2A Agent Card signatures — can verify it by kid.
 
