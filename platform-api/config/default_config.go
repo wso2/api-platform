@@ -165,6 +165,8 @@ func defaultConfig() *Server {
 		},
 		Webhook: Webhook{
 			Enabled:            false,
+			LegacySharedSecret: true,
+			RotationGrace:      10 * time.Minute,
 			SignatureTolerance: 5 * time.Minute,
 			MaxBodySize:        1 << 20, // 1 MiB
 			SignatureHeader:    "X-Api-Portal-Signature",

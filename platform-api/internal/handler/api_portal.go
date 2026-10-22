@@ -25,25 +25,31 @@ import (
 	"strings"
 
 	"github.com/wso2/api-platform/platform-api/api"
+	"github.com/wso2/api-platform/platform-api/config"
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/middleware"
 	"github.com/wso2/api-platform/platform-api/internal/router"
 	"github.com/wso2/api-platform/platform-api/internal/service"
+	"github.com/wso2/api-platform/platform-api/internal/webhook"
 
 	"github.com/wso2/api-platform/httpkit/httputil"
 )
 
-// APIPortalHandler exposes /api-portals CRUD.
+// APIPortalHandler exposes /api-portals CRUD plus the webhook-secret rotation
+// endpoint. webhookCfg is captured by value at construction so the handler can
+// build the receiver URL for the response without reaching into shared config
+// state at request time.
 type APIPortalHandler struct {
-	svc      *service.APIPortalService
-	identity *service.IdentityService
-	slogger  *slog.Logger
+	svc        *service.APIPortalService
+	identity   *service.IdentityService
+	webhookCfg config.Webhook
+	slogger    *slog.Logger
 }
 
 // NewAPIPortalHandler constructs an APIPortalHandler.
-func NewAPIPortalHandler(svc *service.APIPortalService, identity *service.IdentityService, slogger *slog.Logger) *APIPortalHandler {
-	return &APIPortalHandler{svc: svc, identity: identity, slogger: slogger}
+func NewAPIPortalHandler(svc *service.APIPortalService, identity *service.IdentityService, webhookCfg config.Webhook, slogger *slog.Logger) *APIPortalHandler {
+	return &APIPortalHandler{svc: svc, identity: identity, webhookCfg: webhookCfg, slogger: slogger}
 }
 
 // CreateAPIPortal handles POST /api-portals.
@@ -164,6 +170,40 @@ func (h *APIPortalHandler) DeleteAPIPortal(w http.ResponseWriter, r *http.Reques
 	return nil
 }
 
+// GenerateWebhookSecret handles POST /api-portals/{apiPortalId}/webhook-secret.
+// Generates a new per-portal webhook signing secret if none exists, otherwise
+// rotates to a fresh one and keeps the previous valid for the configured
+// grace window. The plaintext is only ever surfaced in this response.
+func (h *APIPortalHandler) GenerateWebhookSecret(w http.ResponseWriter, r *http.Request) error {
+	orgID, ok := middleware.GetOrganizationFromRequest(r)
+	if !ok {
+		return apperror.Unauthorized.New().WithLogMessage("organization claim not found in token")
+	}
+
+	handle := strings.TrimSpace(r.PathValue("apiPortalId"))
+	if handle == "" {
+		return apperror.ValidationFailed.New("API Portal ID is required")
+	}
+
+	secret, portalUUID, err := h.svc.RotateWebhookSecret(r.Context(), handle, orgID)
+	if err != nil {
+		return serviceError(err, fmt.Sprintf("failed to generate or rotate webhook secret for api portal %q in org %s", handle, orgID))
+	}
+
+	receiverPath := strings.Replace(webhook.PerPortalRoutePath, "{portalUUID}", portalUUID, 1)
+	receiverURL := receiverPath
+	if base := strings.TrimSpace(h.webhookCfg.PublicBaseURL); base != "" {
+		receiverURL = strings.TrimRight(base, "/") + receiverPath
+	}
+
+	resp := api.GenerateApiPortalWebhookSecretResponse{
+		Secret:      secret,
+		ReceiverUrl: receiverURL,
+	}
+	httputil.WriteJSON(w, http.StatusOK, resp)
+	return nil
+}
+
 // RegisterRoutes wires all /api-portals routes onto the shared mux.
 func (h *APIPortalHandler) RegisterRoutes(mux router.Router) {
 	base := constants.APIBasePath + "/api-portals"
@@ -172,6 +212,7 @@ func (h *APIPortalHandler) RegisterRoutes(mux router.Router) {
 	mux.HandleFunc("GET "+base+"/{apiPortalId}", middleware.MapErrors(h.slogger, h.GetAPIPortal))
 	mux.HandleFunc("PUT "+base+"/{apiPortalId}", middleware.MapErrors(h.slogger, h.UpdateAPIPortal))
 	mux.HandleFunc("DELETE "+base+"/{apiPortalId}", middleware.MapErrors(h.slogger, h.DeleteAPIPortal))
+	mux.HandleFunc("POST "+base+"/{apiPortalId}/webhook-secret", middleware.MapErrors(h.slogger, h.GenerateWebhookSecret))
 }
 
 // derefStr returns the pointed-to string or "" when nil.

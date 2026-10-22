@@ -56,6 +56,7 @@ func newReadOnlyTestReceiver(t *testing.T) (*Receiver, config.Webhook) {
 	t.Helper()
 	cfg := config.Webhook{
 		Enabled:            true,
+		LegacySharedSecret: true,
 		Secret:             "read-only-test-secret",
 		SignatureTolerance: 5 * time.Minute,
 		MaxBodySize:        1 << 20,
@@ -65,7 +66,7 @@ func newReadOnlyTestReceiver(t *testing.T) (*Receiver, config.Webhook) {
 		"org-a": &model.Organization{ID: readOnlyTestOrgA, Handle: "org-a"},
 		"org-b": &model.Organization{ID: readOnlyTestOrgB, Handle: "org-b"},
 	}
-	r, err := NewReceiver(cfg, nil, nil, nil, orgs, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	r, err := NewReceiver(cfg, nil, nil, nil, nil, orgs, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if err != nil {
 		t.Fatalf("NewReceiver: %v", err)
 	}

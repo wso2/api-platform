@@ -101,7 +101,7 @@ func (r *Receiver) handleSubscriptionCreated(ctx context.Context, env *Envelope)
 	// validates at the gateway. When absent, the service generates its own.
 	var token string
 	if d.Token != nil {
-		decrypted, err := r.decryptor.Decrypt(d.Token)
+		decrypted, err := r.decryptorFor(ctx).Decrypt(d.Token)
 		if err != nil {
 			return err
 		}
@@ -186,7 +186,7 @@ func (r *Receiver) handleSubscriptionTokenRegenerated(ctx context.Context, env *
 		return fmt.Errorf("%w: data.token (encrypted) is required for %s", ErrInvalidEnvelope, env.EventType)
 	}
 
-	token, err := r.decryptor.Decrypt(d.Token)
+	token, err := r.decryptorFor(ctx).Decrypt(d.Token)
 	if err != nil {
 		return err
 	}
