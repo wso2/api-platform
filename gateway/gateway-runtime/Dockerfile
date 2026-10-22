@@ -195,7 +195,7 @@ FROM envoyproxy/envoy:${ENVOY_VERSION} AS debug
 USER root
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
-    apt-get update && apt-get install -y --no-install-recommends \
+    apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
     tini \
     gettext-base \
     ca-certificates \
@@ -237,7 +237,7 @@ ARG ENABLE_COVERAGE=false
 USER root
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
-    apt-get update && apt-get install -y --no-install-recommends \
+    apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
     tini \
     gettext-base \
     ca-certificates \
