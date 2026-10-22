@@ -87,6 +87,7 @@ func Register(sc *godog.ScenarioContext, topo *runtime.Topology, funnel *httpx.F
 	sc.Step(`^platform-api reports the subscription for API "([^"]*)" using plan "([^"]*)"$`, s.subscriptionPlanMatches)
 	RegisterDeploy(sc, s)
 	RegisterAgentProxy(sc, s)
+	RegisterAPIVersions(sc, s)
 }
 
 // baseURL resolves the control plane's HTTPS base URL for this block.
