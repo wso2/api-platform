@@ -36,6 +36,11 @@ export interface ParameterSchema {
     required?: string[];
     properties?: Record<string, { const?: unknown }>;
   }>;
+  // Mutually exclusive groups of properties: exactly one entry's required
+  // fields must be configured (e.g. token endpoint credentials OR a bearer token).
+  oneOf?: Array<{
+    required?: string[];
+  }>;
 }
 
 /**
@@ -48,6 +53,8 @@ export interface SchemaTreeNode {
   schema: ParameterSchema;
   depth: number;
   isRequired: boolean;
+  // Belongs to a oneOf group: required only when its group is the one chosen
+  isOneOfField?: boolean;
   isExpanded?: boolean;
   children?: SchemaTreeNode[];
   // Array-specific

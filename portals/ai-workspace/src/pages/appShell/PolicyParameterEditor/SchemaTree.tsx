@@ -309,7 +309,7 @@ const SchemaTreeNodeComponent: React.FC<SchemaTreeNodeProps> = ({
             {node.isRequired && (
               <Typography sx={classes.requiredBadge}>*</Typography>
             )}
-            {!node.isRequired && node.depth === 0 && (
+            {!node.isRequired && !node.isOneOfField && node.depth === 0 && (
               <Typography
                 variant="body2"
                 sx={{ fontSize: '0.75rem', marginLeft: 0.5 }}
@@ -381,6 +381,12 @@ const SchemaTreeNodeComponent: React.FC<SchemaTreeNodeProps> = ({
                 Add Item
               </Button>
             </Box>
+          )}
+
+          {/* Errors on nodes without a field renderer (e.g. a oneOf group
+              made of objects or object arrays) */}
+          {!FieldRenderer && error && (
+            <Box sx={classes.errorText}>{error}</Box>
           )}
         </Box>
       </Box>

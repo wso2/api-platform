@@ -28,6 +28,10 @@ import {
   coerceValuesToSchemaTypes,
   omitOptionalEmptyValues,
   isTemplateExpression,
+  getOneOfGroups,
+  formatOneOfGroups,
+  validateOneOf,
+  hasCompleteOneOfGroup,
 } from './schemaUtils';
 import SchemaTree from './SchemaTree';
 import { useStyles } from './styles';
@@ -514,6 +518,12 @@ function validateLevelOneRequiredFields(
     return false;
   }
 
+  // A top-level oneOf needs one of its groups fully configured. Conflicting
+  // groups are reported on submit so the user sees which fields clash.
+  if (!hasCompleteOneOfGroup(schema, values)) {
+    return false;
+  }
+
   return true; // All level-one required fields are filled
 }
 
@@ -549,8 +559,14 @@ const PolicyParameterEditor: React.FC<PolicyParameterEditorProps> = ({
     return validateLevelOneRequiredFields(parameters, values);
   }, [parameters, values]);
 
-  // Compute anyOf alert message
+  // Compute anyOf/oneOf alert message
   const anyOfMessage = useMemo(() => {
+    // Case 0: Parent-level oneOf (e.g. oneOf: [{ required: [a, b] }, { required: [c] }])
+    const oneOfGroups = getOneOfGroups(parameters);
+    if (oneOfGroups.length > 0) {
+      return `Configure exactly one of: ${formatOneOfGroups(oneOfGroups)}.`;
+    }
+
     // Case 1: Parent-level anyOf (e.g. anyOf: [{ required: [request] }, { required: [response] }])
     if (parameters.anyOf && parameters.anyOf.length > 0) {
       const requiredItems = parameters.anyOf
@@ -644,11 +660,17 @@ const PolicyParameterEditor: React.FC<PolicyParameterEditorProps> = ({
 
   // Handle form submission
   const handleSubmit = useCallback(() => {
-    // Validate required fields first, then format constraints (pattern,
-    // length, numeric bounds, array size). Required errors take precedence
+    // Validate required fields first, then oneOf groups, then format
+    // constraints (pattern, length, numeric bounds, array size). Earlier
+    // errors take precedence
     const errorMap: Record<string, string> = {};
     validateRequiredFields(parameters, values).forEach((err) => {
       errorMap[err.path] = err.message;
+    });
+    validateOneOf(parameters, values).forEach((err) => {
+      if (!errorMap[err.path]) {
+        errorMap[err.path] = err.message;
+      }
     });
     validateConstraints(parameters, values).forEach((err) => {
       if (!errorMap[err.path]) {

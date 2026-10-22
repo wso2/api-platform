@@ -11,13 +11,55 @@
  * associated services.
  */
 
-import { ParameterSchema, SchemaTreeNode, ParameterValues } from './types';
+import {
+  ParameterSchema,
+  SchemaTreeNode,
+  ParameterValues,
+  ValidationError,
+} from './types';
 
 /**
  * Whether a value contains a Go-template expression resolved by the gateway.
  */
 export function isTemplateExpression(value: unknown): value is string {
   return typeof value === 'string' && /\{\{[\s\S]+?\}\}/.test(value);
+}
+
+/**
+ * Whether a value counts as configured. Empty values are omitted on submit
+ * (see omitOptionalEmptyValues), so they never satisfy a schema "required".
+ */
+export function hasConfiguredValue(value: unknown): boolean {
+  if (value === undefined || value === null || value === '') return false;
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === 'object') {
+    return Object.keys(value as Record<string, unknown>).length > 0;
+  }
+  return true;
+}
+
+/**
+ * Get the required-field groups of a schema's oneOf entries. Exactly one group
+ * must be configured; entries without required fields are ignored.
+ */
+export function getOneOfGroups(schema: ParameterSchema): string[][] {
+  return (schema.oneOf ?? [])
+    .map((entry) => entry.required ?? [])
+    .filter((group) => group.length > 0);
+}
+
+/**
+ * Format oneOf groups for display, e.g.
+ * "tokenEndpoint, clientId and clientSecret" or "bearerToken".
+ */
+export function formatOneOfGroups(groups: string[][]): string {
+  return groups
+    .map((group) =>
+      group.length === 1
+        ? group[0]
+        : `${group.slice(0, -1).join(', ')} and ${group[group.length - 1]}`
+    )
+    .join(' or ');
 }
 
 /**
@@ -60,6 +102,10 @@ export function schemaToTreeNodes(
       });
     }
 
+    // oneOf fields are neither always required nor optional: only the
+    // group the user chooses becomes required
+    const oneOfFields = new Set(getOneOfGroups(schema).flat());
+
     Object.entries(schema.properties).forEach(([key, propSchema]) => {
       const path = parentPath ? `${parentPath}.${key}` : key;
       const isRequired = required.includes(key) || requiredFields.includes(key) || anyOfRequired.includes(key);
@@ -73,6 +119,7 @@ export function schemaToTreeNodes(
         schema: propSchema,
         depth,
         isRequired,
+        isOneOfField: !isRequired && oneOfFields.has(key),
         isExpanded: false, // All collapsed by default
         isAdvanced,
       };
@@ -272,6 +319,112 @@ export function initializeDefaultValues(
   }
 
   return result;
+}
+
+/**
+ * Validate oneOf constraints anywhere in the schema: exactly one group of
+ * fields must be configured, and that group must be complete.
+ *
+ * A group is chosen by filling any field unique to it, so a partially filled
+ * group reports its missing fields rather than a generic "pick one" error.
+ * An optional nested object whose oneOf fields are all empty is skipped, since
+ * it is omitted on submit.
+ */
+export function validateOneOf(
+  schema: ParameterSchema,
+  values: ParameterValues,
+  parentPath: string = '',
+  isRequired: boolean = true
+): ValidationError[] {
+  const errors: ValidationError[] = [];
+
+  if (schema.type !== 'object' || !schema.properties) {
+    return errors;
+  }
+
+  const groups = getOneOfGroups(schema);
+  if (groups.length > 0) {
+    const pathOf = (key: string) => (parentPath ? `${parentPath}.${key}` : key);
+    const isFilled = (key: string) =>
+      hasConfiguredValue(getValueByPath(values, pathOf(key)));
+
+    const chosen = groups.filter((group) => {
+      const unique = group.filter(
+        (key) => !groups.some((other) => other !== group && other.includes(key))
+      );
+      return (unique.length > 0 ? unique : group).some(isFilled);
+    });
+
+    if (chosen.length === 0) {
+      if (isRequired) {
+        const message = `Configure ${formatOneOfGroups(groups)}`;
+        groups.forEach((group) => errors.push({ path: pathOf(group[0]), message }));
+      }
+    } else if (chosen.length > 1) {
+      chosen.forEach((group) => {
+        const others = formatOneOfGroups(chosen.filter((g) => g !== group));
+        group.filter(isFilled).forEach((key) =>
+          errors.push({
+            path: pathOf(key),
+            message: `Cannot be combined with ${others}`,
+          })
+        );
+      });
+    } else {
+      chosen[0]
+        .filter((key) => !isFilled(key))
+        .forEach((key) =>
+          errors.push({ path: pathOf(key), message: 'This field is required' })
+        );
+    }
+  }
+
+  const required = schema.required ?? [];
+  Object.entries(schema.properties).forEach(([key, propSchema]) => {
+    const path = parentPath ? `${parentPath}.${key}` : key;
+
+    if (propSchema.type === 'object' && propSchema.properties) {
+      errors.push(
+        ...validateOneOf(
+          propSchema,
+          values,
+          path,
+          isRequired && required.includes(key)
+        )
+      );
+    } else if (
+      propSchema.type === 'array' &&
+      propSchema.items?.type === 'object' &&
+      propSchema.items.properties
+    ) {
+      const items = getValueByPath(values, path);
+      if (Array.isArray(items)) {
+        items.forEach((_, index) => {
+          errors.push(
+            ...validateOneOf(propSchema.items!, values, `${path}.${index}`)
+          );
+        });
+      }
+    }
+  });
+
+  return errors;
+}
+
+/**
+ * Whether a schema's top-level oneOf (if any) has a fully configured group.
+ */
+export function hasCompleteOneOfGroup(
+  schema: ParameterSchema,
+  values: ParameterValues
+): boolean {
+  const groups = getOneOfGroups(schema);
+  return (
+    groups.length === 0 ||
+    groups.some((group) =>
+      group.every((key) => hasConfiguredValue(getValueByPath(values, key)))
+    )
+  );
 }
 
 /**
