@@ -308,9 +308,19 @@ func TestAPIOffersPlan(t *testing.T) {
 	require.NoError(t, apiOffersPlan(body, "api-1", "silver"))
 	require.ErrorContains(t, apiOffersPlan(body, "api-1", "bronze"), "without plan")
 	require.ErrorContains(t, apiOffersPlan(body, "api-2", "gold"), "returned")
-	require.ErrorContains(t, apiOffersPlan([]byte(`{"id":"api-1","status":"DEPRECATED","subscriptionPlans":[{"id":"gold"}]}`),
-		"api-1", "gold"), "want PUBLISHED")
+	require.NoError(t, apiOffersPlan([]byte(`{"id":"api-1","status":"DEPRECATED","subscriptionPlans":[{"id":"gold"}]}`),
+		"api-1", "gold"))
 	require.ErrorContains(t, apiOffersPlan([]byte(`not json`), "api-1", "gold"), "decoding")
+}
+
+func TestAPIHasField(t *testing.T) {
+	body := []byte(`{"id":"api-1","status":"DEPRECATED","name":"Renamed"}`)
+
+	require.NoError(t, apiHasField(body, "api-1", "status", "DEPRECATED"))
+	require.NoError(t, apiHasField(body, "api-1", "name", "Renamed"))
+	require.ErrorContains(t, apiHasField(body, "api-1", "status", "PUBLISHED"), `with status "DEPRECATED"`)
+	require.ErrorContains(t, apiHasField(body, "api-1", "title", "x"), "want")
+	require.ErrorContains(t, apiHasField([]byte(`not json`), "api-1", "status", "x"), "decoding")
 }
 
 func TestTrackPublishedPlanRemovesThePlanFromThePortalAtCleanup(t *testing.T) {

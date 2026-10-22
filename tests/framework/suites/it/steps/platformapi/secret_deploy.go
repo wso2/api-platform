@@ -108,6 +108,8 @@ func RegisterDeploy(sc *godog.ScenarioContext, s *Steps) {
 		s.deployArtifactAndStoreAt)
 	sc.Step(`^I undeploy the "RestApi" "([^"]*)" deployment "([^"]*)" from the (first|second) gateway via the control plane$`,
 		s.undeployRestAPIAt)
+	sc.Step(`^I create an inactive subscription plan "([^"]*)" allowing (\d+) requests per (minute|hour|day|month) via the control plane$`,
+		s.createInactiveSubscriptionPlan)
 	sc.Step(`^I create a subscription plan "([^"]*)" allowing (\d+) requests per (minute|hour|day|month) via the control plane$`,
 		s.createSubscriptionPlan)
 	sc.Step(`^I create a secured REST API "([^"]*)" via the control plane in project "([^"]*)" with context "([^"]*)" offering plan "([^"]*)"$`,
@@ -903,6 +905,15 @@ func (s *Steps) undeployRestAPIFromGateway(ctx context.Context, handle, deployme
 // createSubscriptionPlan creates an ACTIVE, org-scoped subscription plan under the given
 // handle, with one REQUEST_COUNT limit.
 func (s *Steps) createSubscriptionPlan(ctx context.Context, handle string, count int, unit string) error {
+	return s.createPlanWithStatus(ctx, handle, count, unit, "ACTIVE")
+}
+
+// createInactiveSubscriptionPlan creates a plan that exists but cannot be offered.
+func (s *Steps) createInactiveSubscriptionPlan(ctx context.Context, handle string, count int, unit string) error {
+	return s.createPlanWithStatus(ctx, handle, count, unit, "INACTIVE")
+}
+
+func (s *Steps) createPlanWithStatus(ctx context.Context, handle string, count int, unit, status string) error {
 	resolvedHandle, err := stepscommon.Expand(ctx, handle)
 	if err != nil {
 		return err
@@ -914,7 +925,7 @@ func (s *Steps) createSubscriptionPlan(ctx context.Context, handle string, count
 	if err := s.postJSON(ctx, base, bearer, "/subscription-plans", map[string]any{
 		"id":          resolvedHandle,
 		"displayName": resolvedHandle,
-		"status":      "ACTIVE",
+		"status":      status,
 		"limits": []map[string]any{
 			{"limitType": "REQUEST_COUNT", "timeUnit": strings.ToUpper(unit), "limitCount": count},
 		},

@@ -51,11 +51,25 @@ const publicationIDSeparator = "/"
 // publish an API to it.
 func RegisterPublication(sc *godog.ScenarioContext, s *Steps) {
 	sc.Step(`^I register the API Portal "([^"]*)" with the control plane$`, s.registerAPIPortal)
+	sc.Step(`^I register the API Portal "([^"]*)" with the control plane using a wrong shared key$`,
+		s.registerAPIPortalWithWrongKey)
+	sc.Step(`^I rotate the shared key of the API Portal "([^"]*)" to the key the portal accepts$`, s.rotateAPIPortalKey)
 	sc.Step(`^I save a publication draft of the "([^"]*)" "([^"]*)" on the API Portal "([^"]*)" with values:$`,
 		s.savePublicationDraft)
+	sc.Step(`^I save a publishable draft of the "([^"]*)" "([^"]*)" on the API Portal "([^"]*)" with values:$`,
+		s.savePublishableDraft)
 	sc.Step(`^I save a minimal OpenAPI definition as the draft definition of the "([^"]*)" "([^"]*)" on the API Portal "([^"]*)"$`,
 		s.saveDraftDefinition)
-	sc.Step(`^I publish the "([^"]*)" "([^"]*)" to the API Portal "([^"]*)" through the control plane$`, s.publishToAPIPortal)
+	sc.Step(`^I publish the "([^"]*)" "([^"]*)" to the API Portal "([^"]*)" through the control plane(?: as "([^"]*)")?$`,
+		s.publishToAPIPortal)
+	sc.Step(`^I deprecate the "([^"]*)" "([^"]*)" on the API Portal "([^"]*)" through the control plane(?: as "([^"]*)")?$`,
+		s.deprecateOnAPIPortal)
+	sc.Step(`^I unpublish the "([^"]*)" "([^"]*)" from the API Portal "([^"]*)" through the control plane(?: as "([^"]*)")?$`,
+		s.unpublishFromAPIPortal)
+	sc.Step(`^I read the draft of the "([^"]*)" "([^"]*)" on the API Portal "([^"]*)" through the control plane$`,
+		s.readPublicationDraft)
+	sc.Step(`^I read the publication of the "([^"]*)" "([^"]*)" on the API Portal "([^"]*)" through the control plane$`,
+		s.readPublication)
 	sc.Step(`^the publication of the "([^"]*)" "([^"]*)" on the API Portal "([^"]*)" should have status "([^"]*)"$`,
 		s.publicationStatusIs)
 }
@@ -102,6 +116,22 @@ func publicationTarget(ctx context.Context, kind, apiHandle, portalHandle string
 // registerAPIPortal registers the block's API Portal under a handle, with the key platform-api
 // publishes to it with.
 func (s *Steps) registerAPIPortal(ctx context.Context, handle string) error {
+	return s.registerAPIPortalWithKey(ctx, handle, shared.APIPortalSharedKey())
+}
+
+// registerAPIPortalWithWrongKey registers the portal with a well-formed key the portal does not
+// accept, so every push to it is refused.
+func (s *Steps) registerAPIPortalWithWrongKey(ctx context.Context, handle string) error {
+	wrong, err := shared.HexKey(32)
+	if err != nil {
+		return err
+	}
+	return s.registerAPIPortalWithKey(ctx, handle, wrong)
+}
+
+// registerAPIPortalWithKey registers the block's API Portal under a handle and removes the
+// registration at cleanup.
+func (s *Steps) registerAPIPortalWithKey(ctx context.Context, handle, sharedKey string) error {
 	resolved, err := stepscommon.Expand(ctx, handle)
 	if err != nil {
 		return err
@@ -119,7 +149,7 @@ func (s *Steps) registerAPIPortal(ctx context.Context, handle string) error {
 		return err
 	}
 	if err := s.postJSON(ctx, base, bearer, "/api-portals", map[string]any{
-		"name": resolved, "handle": resolved, "url": portalURL, "sharedKey": shared.APIPortalSharedKey(),
+		"name": resolved, "handle": resolved, "url": portalURL, "sharedKey": sharedKey,
 	}, nil); err != nil {
 		return err
 	}
@@ -130,6 +160,28 @@ func (s *Steps) registerAPIPortal(ctx context.Context, handle string) error {
 		func(reg *cleanup.Registry) error {
 			return reg.RegisterDeleter(platformAPIPortalKind, s.pathDeleter(platformAPIPortalKind, "/api-portals"))
 		})
+}
+
+// rotateAPIPortalKey replaces the registered shared key with the one the portal accepts.
+func (s *Steps) rotateAPIPortalKey(ctx context.Context, handle string) error {
+	resolved, err := stepscommon.Expand(ctx, handle)
+	if err != nil {
+		return err
+	}
+	payload, err := json.Marshal(map[string]string{"sharedKey": shared.APIPortalSharedKey()})
+	if err != nil {
+		return err
+	}
+	resp, err := s.sendControlPlane(ctx, controlPlaneCall{
+		method: http.MethodPut, path: "/api-portals/" + url.PathEscape(resolved), body: payload,
+	})
+	if err != nil {
+		return err
+	}
+	if !resp.Succeeded() {
+		return fmt.Errorf("rotating the shared key of the API Portal %q failed: %s", resolved, resp.Describe())
+	}
+	return nil
 }
 
 // post issues one authenticated POST without a body and returns the response whatever its status.
@@ -254,6 +306,17 @@ func (s *Steps) trackSelectedPlans(ctx context.Context, draft []byte) error {
 	return nil
 }
 
+// savePublishableDraft saves the draft built from the values table together with a minimal
+// definition, which is everything publishing requires of a draft.
+func (s *Steps) savePublishableDraft(
+	ctx context.Context, kind, apiHandle, portalHandle string, table *godog.Table,
+) error {
+	if err := s.savePublicationDraft(ctx, kind, apiHandle, portalHandle, table); err != nil {
+		return err
+	}
+	return s.saveDraftDefinition(ctx, kind, apiHandle, portalHandle)
+}
+
 // minimalOpenAPIDefinition returns the smallest OpenAPI document the control plane accepts as a
 // REST API definition.
 func minimalOpenAPIDefinition(title string) ([]byte, error) {
@@ -289,11 +352,25 @@ func (s *Steps) saveDraftDefinition(ctx context.Context, kind, apiHandle, portal
 	return nil
 }
 
+// publicationCall sends one request to a publication endpoint of an API on a portal and returns
+// the response, which is also published for the scenario to assert.
+func (s *Steps) publicationCall(
+	ctx context.Context, method, suffix, kind, apiHandle, portalHandle, who string,
+) (resp *httpx.Response, portal, api, apiType string, err error) {
+	if portal, api, apiType, err = publicationTarget(ctx, kind, apiHandle, portalHandle); err != nil {
+		return nil, "", "", "", err
+	}
+	resp, err = s.sendControlPlane(ctx, controlPlaneCall{
+		method: method, path: publicationPath(portal, apiType, api) + suffix, who: who,
+	})
+	return resp, portal, api, apiType, err
+}
+
 // publishToAPIPortal publishes the saved draft. The response is published for the scenario to
 // assert. The unpublish that removes the listing is registered before the request is sent,
 // because the portal keeps its listing after the control plane's records are deleted and a
 // publish can fail after the portal accepted it; unpublishing what was never published is settled.
-func (s *Steps) publishToAPIPortal(ctx context.Context, kind, apiHandle, portalHandle string) error {
+func (s *Steps) publishToAPIPortal(ctx context.Context, kind, apiHandle, portalHandle, who string) error {
 	portal, api, apiType, err := publicationTarget(ctx, kind, apiHandle, portalHandle)
 	if err != nil {
 		return err
@@ -301,9 +378,33 @@ func (s *Steps) publishToAPIPortal(ctx context.Context, kind, apiHandle, portalH
 	if err := s.registerPublication(ctx, portal, apiType, api); err != nil {
 		return err
 	}
-	_, err = s.sendControlPlane(ctx, controlPlaneCall{
-		method: http.MethodPost, path: publicationPath(portal, apiType, api) + "/publish",
-	})
+	_, _, _, _, err = s.publicationCall(ctx, http.MethodPost, "/publish", kind, apiHandle, portalHandle, who)
+	return err
+}
+
+// deprecateOnAPIPortal deprecates the live publication; the response is left for the scenario to
+// assert.
+func (s *Steps) deprecateOnAPIPortal(ctx context.Context, kind, apiHandle, portalHandle, who string) error {
+	_, _, _, _, err := s.publicationCall(ctx, http.MethodPost, "/deprecate", kind, apiHandle, portalHandle, who)
+	return err
+}
+
+// unpublishFromAPIPortal removes the live publication; the response is left for the scenario to
+// assert.
+func (s *Steps) unpublishFromAPIPortal(ctx context.Context, kind, apiHandle, portalHandle, who string) error {
+	_, _, _, _, err := s.publicationCall(ctx, http.MethodPost, "/unpublish", kind, apiHandle, portalHandle, who)
+	return err
+}
+
+// readPublicationDraft reads the saved draft; the response is left for the scenario to assert.
+func (s *Steps) readPublicationDraft(ctx context.Context, kind, apiHandle, portalHandle string) error {
+	_, _, _, _, err := s.publicationCall(ctx, http.MethodGet, "/draft", kind, apiHandle, portalHandle, "")
+	return err
+}
+
+// readPublication reads the live publication; the response is left for the scenario to assert.
+func (s *Steps) readPublication(ctx context.Context, kind, apiHandle, portalHandle string) error {
+	_, _, _, _, err := s.publicationCall(ctx, http.MethodGet, "/publication", kind, apiHandle, portalHandle, "")
 	return err
 }
 

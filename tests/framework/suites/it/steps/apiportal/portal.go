@@ -2760,22 +2760,33 @@ func (s *Steps) subscribeToAPIAndStore(ctx context.Context, apiHandle, planHandl
 	if err != nil {
 		return err
 	}
-	base, token, err := s.authed(ctx)
+	subscriptionID, subscriptionToken, err := s.subscribeToArtifact(ctx, devportalAPIHandle(resolvedAPI), resolvedAPI+"-app", resolvedPlan)
 	if err != nil {
 		return err
 	}
+	if err := tcontext.Set(ctx, tokenStoreAs, subscriptionToken); err != nil {
+		return err
+	}
+	return tcontext.Set(ctx, subscriptionStoreAs, subscriptionID)
+}
 
-	appHandle := resolvedAPI + "-app"
+// subscribeToArtifact creates an application and subscribes it to the portal artifact with the
+// plan, registers both for cleanup, and returns the subscription's id and token.
+func (s *Steps) subscribeToArtifact(ctx context.Context, artifactID, appHandle, planHandle string) (subscriptionID, subscriptionToken string, err error) {
+	base, token, err := s.authed(ctx)
+	if err != nil {
+		return "", "", err
+	}
 	if err := s.postJSON(ctx, base, token, "/applications", map[string]any{
 		"id":          appHandle,
 		"displayName": appHandle,
 		"description": "IT fixture application",
 	}, nil); err != nil {
-		return err
+		return "", "", err
 	}
 	if err := s.registerPortalResource(ctx, portalApplicationKind, appHandle, cleanup.ScenarioScope,
 		portalCleanupRequest{method: http.MethodDelete, path: "/applications"}); err != nil {
-		return err
+		return "", "", err
 	}
 
 	var created struct {
@@ -2783,22 +2794,19 @@ func (s *Steps) subscribeToAPIAndStore(ctx context.Context, apiHandle, planHandl
 		SubscriptionToken string `json:"subscriptionToken"`
 	}
 	if err := s.postJSON(ctx, base, token, "/subscriptions", map[string]any{
-		"artifactId":         devportalAPIHandle(resolvedAPI),
-		"subscriptionPlanId": resolvedPlan,
+		"artifactId":         artifactID,
+		"subscriptionPlanId": planHandle,
 	}, &created); err != nil {
-		return err
+		return "", "", err
 	}
 	if created.SubscriptionToken == "" || created.SubscriptionID == "" {
-		return fmt.Errorf("api-portal returned an incomplete subscription for API %q: %+v", resolvedAPI, created)
+		return "", "", fmt.Errorf("api-portal returned an incomplete subscription for %q: %+v", artifactID, created)
 	}
 	if err := s.registerPortalResource(ctx, portalSubscriptionKind, created.SubscriptionID, cleanup.ScenarioScope,
 		portalCleanupRequest{method: http.MethodDelete, path: "/subscriptions"}); err != nil {
-		return err
+		return "", "", err
 	}
-	if err := tcontext.Set(ctx, tokenStoreAs, created.SubscriptionToken); err != nil {
-		return err
-	}
-	return tcontext.Set(ctx, subscriptionStoreAs, created.SubscriptionID)
+	return created.SubscriptionID, created.SubscriptionToken, nil
 }
 
 // generateAPIKeyAndStore generates an API key in the portal for an API and stores its plaintext
@@ -2813,44 +2821,55 @@ func (s *Steps) generateAPIKeyAndStore(ctx context.Context, apiHandle, valueStor
 	if err != nil {
 		return err
 	}
-	base, token, err := s.authed(ctx)
-	if err != nil {
-		return err
-	}
 	keyHandle, err := unique.Unique(ctx, "devportal-key")
 	if err != nil {
 		return err
+	}
+	value, storedHandle, err := s.generateKeyForArtifact(ctx, devportalAPIHandle(resolvedAPI), keyHandle)
+	if err != nil {
+		return err
+	}
+	if err := tcontext.Set(ctx, valueStoreAs, value); err != nil {
+		return err
+	}
+	return tcontext.Set(ctx, handleStoreAs, storedHandle)
+}
+
+// generateKeyForArtifact generates an API key with the given id for the portal artifact and
+// registers it to be revoked at the end of the scenario. It returns the key's value, shown only
+// once, and its handle.
+func (s *Steps) generateKeyForArtifact(ctx context.Context, artifactID, keyID string) (value, handle string, err error) {
+	base, token, err := s.authed(ctx)
+	if err != nil {
+		return "", "", err
 	}
 	var created struct {
 		Key string `json:"key"`
 		ID  string `json:"id"`
 	}
-	path := "/apis/" + devportalAPIHandle(resolvedAPI) + "/api-keys/generate"
-	if err := s.postJSON(ctx, base, token, path, map[string]any{
-		"id":          keyHandle,
+	keysPath := "/apis/" + url.PathEscape(artifactID) + "/api-keys"
+	if err := s.postJSON(ctx, base, token, keysPath+"/generate", map[string]any{
+		"id":          keyID,
 		"displayName": "IT fixture key",
 	}, &created); err != nil {
-		return err
+		return "", "", err
 	}
 	if created.Key == "" {
-		return fmt.Errorf("api-portal returned no API key for API %q", resolvedAPI)
+		return "", "", fmt.Errorf("api-portal returned no API key for %q", artifactID)
 	}
-	storedHandle := created.ID
-	if storedHandle == "" {
-		storedHandle = keyHandle
+	handle = created.ID
+	if handle == "" {
+		handle = keyID
 	}
-	if err := s.registerPortalResource(ctx, portalAPIKeyKind, storedHandle, cleanup.ScenarioScope,
+	if err := s.registerPortalResource(ctx, portalAPIKeyKind, handle, cleanup.ScenarioScope,
 		portalCleanupRequest{
 			method:  http.MethodPost,
-			path:    "/apis/" + devportalAPIHandle(resolvedAPI) + "/api-keys/revoke",
+			path:    keysPath + "/revoke",
 			payload: func(id string) any { return map[string]any{"keyId": id} },
 		}); err != nil {
-		return err
+		return "", "", err
 	}
-	if err := tcontext.Set(ctx, valueStoreAs, created.Key); err != nil {
-		return err
-	}
-	return tcontext.Set(ctx, handleStoreAs, storedHandle)
+	return created.Key, handle, nil
 }
 
 // generatePortalAPIKeyAndStore generates a key for an API created directly in the
@@ -2945,12 +2964,16 @@ func (s *Steps) revokeAPIKey(ctx context.Context, keyHandle, apiHandle string) e
 	if err != nil {
 		return err
 	}
+	return s.revokeKeyOfArtifact(ctx, devportalAPIHandle(resolvedAPI), resolvedKey)
+}
+
+// revokeKeyOfArtifact revokes one API key of the portal artifact.
+func (s *Steps) revokeKeyOfArtifact(ctx context.Context, artifactID, keyHandle string) error {
 	base, token, err := s.authed(ctx)
 	if err != nil {
 		return err
 	}
-	path := "/apis/" + devportalAPIHandle(resolvedAPI) + "/api-keys/revoke"
-	return s.postJSON(ctx, base, token, path, map[string]any{"keyId": resolvedKey}, nil)
+	return s.postJSON(ctx, base, token, "/apis/"+url.PathEscape(artifactID)+"/api-keys/revoke", map[string]any{"keyId": keyHandle}, nil)
 }
 
 // switchSubscriptionPlan switches a live subscription to a different plan the API already
