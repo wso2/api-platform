@@ -1,6 +1,6 @@
 module github.com/wso2/api-platform/gateway/system-policies/a2a
 
-go 1.26.9
+go 1.26.10
 
 // Pinned to the version the policy engine itself requires, never ahead of it.
 // The gateway builder compiles this module into the engine's plugin registry,
