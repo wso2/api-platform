@@ -108,6 +108,60 @@ func (s *APIDeploymentService) validateArtifactConflicts(kind, currentID, displa
 	return nil
 }
 
+// KindRouteContextResolver returns the routes a configuration of a kind not
+// known to core is served at, as one "<vhost>|<context>" key per vhost it is
+// served on, with any $version placeholder substituted. vhosts supplies the
+// gateway defaults for a configuration that sets no vhosts of its own.
+type KindRouteContextResolver func(cfg any, vhosts config.VHostsConfig) []string
+
+// kindRouteContextResolvers holds KindRouteContextResolver functions. A kind
+// registers one when a shared context on a shared vhost is always a routing
+// conflict for it, so the second deployment is rejected instead of being
+// silently shadowed by the first.
+var kindRouteContextResolvers = map[string]KindRouteContextResolver{}
+
+// RegisterKindRouteContextResolver registers a route-context resolver for a
+// resource kind not known to core.
+func RegisterKindRouteContextResolver(resourceKind string, fn KindRouteContextResolver) {
+	kindRouteContextResolvers[resourceKind] = fn
+}
+
+// validateRouteContextConflict rejects a deployed configuration that would serve
+// a context on a vhost another deployed configuration of the same kind already
+// serves it on. The same context on different vhosts is not a conflict.
+// Undeployed configurations hold no route, so they neither conflict nor block.
+func (s *APIDeploymentService) validateRouteContextConflict(cfg *models.StoredConfig) error {
+	resolve, ok := kindRouteContextResolvers[cfg.Kind]
+	if !ok || cfg.DesiredState == models.StateUndeployed {
+		return nil
+	}
+	var vhosts config.VHostsConfig
+	if s.routerConfig != nil {
+		vhosts = s.routerConfig.VHosts
+	}
+	keys := make(map[string]struct{})
+	for _, key := range resolve(cfg.Configuration, vhosts) {
+		keys[key] = struct{}{}
+	}
+	others, err := s.db.GetAllConfigsByKind(cfg.Kind)
+	if err != nil {
+		return fmt.Errorf("failed to check existing %s context conflict: %w", cfg.Kind, err)
+	}
+	for _, other := range others {
+		if other.UUID == cfg.UUID || other.DesiredState == models.StateUndeployed {
+			continue
+		}
+		for _, key := range resolve(other.Configuration, vhosts) {
+			if _, clash := keys[key]; clash {
+				vhost, routeContext, _ := strings.Cut(key, "|")
+				return fmt.Errorf("%w: context '%s' on vhost '%s' is already used by '%s'",
+					storage.ErrConflict, routeContext, vhost, other.Handle)
+			}
+		}
+	}
+	return nil
+}
+
 // NewAPIDeploymentService creates a new API deployment service. httpClient is the single
 // shared outbound *http.Client for this process (built once in cmd/controller/main.go and
 // injected by every caller), used for RegisterTopicWithHub/UnregisterTopicWithHub-style calls
@@ -195,6 +249,21 @@ var kindConfigValidators = map[string]KindConfigValidator{}
 // links in support for that kind (e.g. event-gateway-controller).
 func RegisterKindConfigValidator(resourceKind string, fn KindConfigValidator) {
 	kindConfigValidators[resourceKind] = fn
+}
+
+// KindDesiredStateResolver reports the deployment state a parsed configuration
+// of a kind not known to core asks for through its spec.deploymentState field.
+type KindDesiredStateResolver func(parsedConfig any) models.DesiredState
+
+// kindDesiredStateResolvers holds KindDesiredStateResolver functions for kinds
+// not known to core. A kind without one is always stored as deployed.
+var kindDesiredStateResolvers = map[string]KindDesiredStateResolver{}
+
+// RegisterKindDesiredStateResolver registers a desired-state resolver for a
+// resource kind not known to core, so a spec.deploymentState of "undeployed"
+// keeps the configuration stored but removes it from the router.
+func RegisterKindDesiredStateResolver(resourceKind string, fn KindDesiredStateResolver) {
+	kindDesiredStateResolvers[resourceKind] = fn
 }
 
 // DeployAPIConfiguration handles the complete API configuration deployment process
@@ -290,17 +359,27 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 		truncated := now.Truncate(time.Millisecond)
 		deployedAt = &truncated
 	}
+	desiredState := models.StateDeployed
+	if fn, ok := kindDesiredStateResolvers[kind]; ok {
+		desiredState = fn(parsedConfig)
+	}
+	// The database keeps created_at on update; carry the original into the returned
+	// config too, or the update response reports the update time as the creation time.
+	createdAt := now
+	if isUpdate && existingConfig != nil && !existingConfig.CreatedAt.IsZero() {
+		createdAt = existingConfig.CreatedAt
+	}
 	storedCfg := &models.StoredConfig{
 		UUID:                apiID,
 		Kind:                kind,
 		Handle:              handle,
 		Configuration:       parsedConfig,
 		SourceConfiguration: parsedConfig,
-		DesiredState:        models.StateDeployed,
+		DesiredState:        desiredState,
 		DeploymentID:        params.DeploymentID,
 		Origin:              params.Origin,
 		CPSyncStatus:        cpSyncStatusForOrigin(params.Origin),
-		CreatedAt:           now,
+		CreatedAt:           createdAt,
 		UpdatedAt:           now,
 		DeployedAt:          deployedAt,
 	}
@@ -353,6 +432,9 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 	storedCfg.Version = apiVersion
 
 	if err := s.validateArtifactConflicts(kind, apiID, apiName, apiVersion, handle); err != nil {
+		return nil, err
+	}
+	if err := s.validateRouteContextConflict(storedCfg); err != nil {
 		return nil, err
 	}
 

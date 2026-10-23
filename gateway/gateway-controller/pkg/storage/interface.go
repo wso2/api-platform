@@ -204,6 +204,12 @@ type Storage interface {
 	// Implementations should ensure this operation is atomic (all-or-nothing).
 	SaveAPIKey(apiKey *models.APIKey) error
 
+	// CreateAPIKey inserts a new API key for a create request. A revoked key with
+	// the same (gateway_id, artifact_uuid, name) is replaced; a live one is kept
+	// and ErrAPIKeyNameConflict is returned. The check and the write happen in one
+	// guarded statement, so concurrent creates of one name cannot both succeed.
+	CreateAPIKey(apiKey *models.APIKey) error
+
 	// UpsertAPIKey inserts or updates an API key identified by (gateway_id, artifact_uuid, name).
 	//
 	// If a key with the same name already exists for the artifact, it is updated only when the

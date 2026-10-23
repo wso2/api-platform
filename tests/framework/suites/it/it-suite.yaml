@@ -694,6 +694,10 @@ blocks:
         tags: "gateway-version>1.2.0"
         features:
           - features/graphql_api_keys.feature
+      - name: websocket-deploy
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/websocket_deploy.feature
       - name: oauth2-auth
         tags: "gateway-version>1.2.0"
         features:
@@ -950,6 +954,10 @@ blocks:
         tags: "gateway-version>1.2.0"
         features:
           - features/graphql_policies.feature
+      - name: websocket-policies
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/websocket_policies.feature
 
   - name: mcp-auth-gateway-host
     parallel: 1

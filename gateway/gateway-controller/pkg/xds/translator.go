@@ -294,6 +294,11 @@ func (t *Translator) appendMCPResourcePathToBackend() bool {
 // SetTransformers sets the kind-to-transformer map used by TranslateConfigs.
 // When a transformer is available for a config's kind, the translator will
 // produce a RuntimeDeployConfig first, then convert it to Envoy resources.
+// websocketUpgradeType is Envoy's name for the RFC 6455 upgrade. It appears in
+// two places that must agree: the HCM declares it disabled for all routes, and a
+// WebSocketApi route re-enables it for itself.
+const websocketUpgradeType = "websocket"
+
 func (t *Translator) SetTransformers(transformers map[string]models.ConfigTransformer) {
 	t.transformers = transformers
 }
@@ -335,12 +340,18 @@ func (t *Translator) translateRuntimeConfig(rdc *models.RuntimeDeployConfig) ([]
 			if err != nil {
 				return nil, nil, fmt.Errorf("upstream cluster %q: %w", clusterName, err)
 			}
+			if err := applyUpstreamConnectionBounds(c, uc); err != nil {
+				return nil, nil, fmt.Errorf("cluster %s: %w", clusterName, err)
+			}
 			clusters = append(clusters, c)
 			continue
 		}
 		c, err := t.createWeightedCluster(clusterName, uc.Endpoints, uc.TLS, connectTimeout, validationSecretName)
 		if err != nil {
 			return nil, nil, fmt.Errorf("upstream cluster %q: %w", clusterName, err)
+		}
+		if err := applyUpstreamConnectionBounds(c, uc); err != nil {
+			return nil, nil, fmt.Errorf("cluster %s: %w", clusterName, err)
 		}
 		clusters = append(clusters, c)
 	}
@@ -417,6 +428,32 @@ func (t *Translator) createRouteFromRDC(routeKey string, rdcRoute *models.Route,
 			Timeout:     t.routeTimeoutOrDefault(routeResilienceTimeout, t.routerConfig.Upstream.Timeouts.RouteTimeoutMs),
 			IdleTimeout: t.routeTimeoutOrDefault(routeResilienceIdle, t.routerConfig.Upstream.Timeouts.RouteIdleTimeoutMs),
 		},
+	}
+
+	// A WebSocketApi route opts into the protocol upgrade individually. The HCM
+	// disables websocket upgrades for every route (see createListener), so this is
+	// the only thing that lets one through — which is what stops a REST, GraphQL,
+	// MCP or LLM route from becoming a tunnel whenever its backend would accept an
+	// upgrade.
+	if rdcRoute.UpgradeWebSocket {
+		routeAction.Route.UpgradeConfigs = []*route.RouteAction_UpgradeConfig{{
+			UpgradeType: websocketUpgradeType,
+			Enabled:     &wrapperspb.BoolValue{Value: true},
+		}}
+
+		// Bound the upgraded connection's total lifetime. The ordinary route
+		// Timeout above does not end an upgraded stream at all, so without this a
+		// connection authorized once at its handshake could outlive the revocation
+		// of that authorization indefinitely.
+		if rdcRoute.Timeout != nil && rdcRoute.Timeout.MaxStreamDuration != nil {
+			routeAction.Route.MaxStreamDuration = &route.RouteAction_MaxStreamDuration{
+				MaxStreamDuration: durationpb.New(*rdcRoute.Timeout.MaxStreamDuration),
+			}
+		}
+
+		// A retry policy is meaningless once the stream is upgraded (there is no
+		// idempotent request to replay) and actively harmful during the handshake,
+		// so leave RetryPolicy unset for these routes.
 	}
 
 	// Set cluster specifier
@@ -750,6 +787,42 @@ func (t *Translator) createWeightedCluster(
 	return c, nil
 }
 
+// buildNoAPIFoundUpgradeRoute builds the catch-all for WebSocket handshakes to
+// paths no API serves. It matches only requests carrying "Upgrade: websocket"
+// and enables that upgrade, so the router answers 404 for the never-defined
+// constants.GatewayNoAPIFoundClusterName instead of Envoy rejecting the upgrade
+// with 403. Plain requests fall through to the direct-response catch-all.
+func buildNoAPIFoundUpgradeRoute(extProcDisabled *anypb.Any) *route.Route {
+	return &route.Route{
+		Name: constants.GatewayNoAPIFoundUpgradeRouteName,
+		Match: &route.RouteMatch{
+			PathSpecifier: &route.RouteMatch_Prefix{Prefix: "/"},
+			Headers: []*route.HeaderMatcher{{
+				Name: "upgrade",
+				HeaderMatchSpecifier: &route.HeaderMatcher_StringMatch{
+					StringMatch: &matcher.StringMatcher{
+						MatchPattern: &matcher.StringMatcher_Exact{Exact: websocketUpgradeType},
+						IgnoreCase:   true,
+					},
+				},
+			}},
+		},
+		Action: &route.Route_Route{
+			Route: &route.RouteAction{
+				ClusterSpecifier:            &route.RouteAction_Cluster{Cluster: constants.GatewayNoAPIFoundClusterName},
+				ClusterNotFoundResponseCode: route.RouteAction_NOT_FOUND,
+				UpgradeConfigs: []*route.RouteAction_UpgradeConfig{{
+					UpgradeType: websocketUpgradeType,
+					Enabled:     &wrapperspb.BoolValue{Value: true},
+				}},
+			},
+		},
+		TypedPerFilterConfig: map[string]*anypb.Any{
+			constants.ExtProcFilterName: extProcDisabled,
+		},
+	}
+}
+
 // buildGatewayJWKSRoute builds the gateway JWKS route
 // (constants.GatewayJWKSPath). Unlike the health routes it keeps ext_proc: the
 // JWKS system policy answers it, so the system observability policies see the
@@ -783,6 +856,44 @@ func buildGatewayInternalSinkCluster() *cluster.Cluster {
 			ClusterName: constants.GatewayInternalSinkClusterName,
 		},
 	}
+}
+
+// applyUpstreamConnectionBounds applies a cluster's connection-count bounds as a
+// circuit breaker: maximum concurrent connections and maximum requests waiting
+// for one.
+//
+// These are set only by kinds whose upstream connections are long-lived enough to
+// need them (today, WebSocketApi); for every other kind both are nil and this
+// leaves the cluster exactly as createCluster built it.
+//
+// The circuit breaker is a best-effort bound, not an exact one: Envoy guarantees
+// at least one connection per selected host, and a burst of connections opened at
+// once can briefly be admitted beyond the limit. That is acceptable because the
+// resource being bounded — this gateway instance's outbound sockets — is itself
+// per-instance.
+func applyUpstreamConnectionBounds(c *cluster.Cluster, uc *models.UpstreamCluster) error {
+	if uc.MaxConnections == nil && uc.MaxPendingRequests == nil {
+		return nil
+	}
+
+	// A request waiting for a connection is "pending" — including while a new
+	// connection is being opened, which every WebSocket handshake needs — so the
+	// pending limit cannot be zero. It defaults to the connection limit, letting a
+	// burst of up to MaxConnections handshakes connect, while beyond it, at
+	// capacity, a handshake is rejected with 503 instead of joining Envoy's default
+	// queue of 1024 behind connections that may stay open for hours.
+	thresholds := &cluster.CircuitBreakers_Thresholds{Priority: corev3.RoutingPriority_DEFAULT}
+	if uc.MaxConnections != nil {
+		thresholds.MaxConnections = &wrapperspb.UInt32Value{Value: *uc.MaxConnections}
+		thresholds.MaxPendingRequests = &wrapperspb.UInt32Value{Value: *uc.MaxConnections}
+	}
+	if uc.MaxPendingRequests != nil {
+		thresholds.MaxPendingRequests = &wrapperspb.UInt32Value{Value: *uc.MaxPendingRequests}
+	}
+	c.CircuitBreakers = &cluster.CircuitBreakers{
+		Thresholds: []*cluster.CircuitBreakers_Thresholds{thresholds},
+	}
+	return nil
 }
 
 // TranslateConfigs translates all API configurations to Envoy resources
@@ -1010,6 +1121,13 @@ func (t *Translator) TranslateConfigs(
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal ExtProcPerRoute for catch-all route: %w", err)
 		}
+		// A WebSocket handshake to a path no API serves would otherwise get 403,
+		// not 404: the HCM declares the upgrade disabled, the direct-response
+		// catch-all below cannot enable it, and Envoy rejects a disallowed upgrade
+		// before any route answers. This route matches only those handshakes and
+		// enables the upgrade so the request reaches the router, which answers 404
+		// because its cluster is never defined — nothing is ever forwarded.
+		routes = append(routes, buildNoAPIFoundUpgradeRoute(extProcDisabledAny))
 		routes = append(routes, &route.Route{
 			Name: "no-api-found",
 			Match: &route.RouteMatch{
@@ -1521,6 +1639,14 @@ func (t *Translator) createListenerWithCertRequest(virtualHosts []*route.Virtual
 	}
 	httpFilters = append(httpFilters, luaFilter)
 
+	if t.routerConfig.WebSocket.AllowHTTP2Connect {
+		keyFilter, err := createWebSocketKeyFilter()
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to create websocket key filter: %w", err)
+		}
+		httpFilters = append(httpFilters, keyFilter)
+	}
+
 	// Add router filter (must be last)
 	httpFilters = append(httpFilters, &hcm.HttpFilter{
 		Name: wellknown.Router,
@@ -1577,6 +1703,28 @@ func (t *Translator) createListenerWithCertRequest(virtualHosts []*route.Virtual
 			Uri:     true,
 			Dns:     true,
 		},
+		// Declare the websocket upgrade at the HCM but leave it disabled, so that
+		// only a route that re-enables it (a WebSocketApi channel route) can be
+		// upgraded. Envoy requires the upgrade type to be named here before a route
+		// may enable it, so omitting this block entirely would make every
+		// route-level enable a no-op; naming it with Enabled=false is what makes
+		// the per-route opt-in the single switch that matters.
+		UpgradeConfigs: []*hcm.HttpConnectionManager_UpgradeConfig{{
+			UpgradeType: websocketUpgradeType,
+			Enabled:     &wrapperspb.BoolValue{Value: false},
+		}},
+	}
+
+	// RFC 8441 extended CONNECT, letting an HTTP/2 client open a WebSocket as a
+	// stream on its existing connection. Off unless an operator turns it on:
+	// browsers fall back to a separate HTTP/1.1 connection on their own, so this
+	// saves a connection rather than enabling anything new, and the extended
+	// CONNECT path is much less exercised than the plain upgrade path.
+	if t.routerConfig.WebSocket.AllowHTTP2Connect {
+		if manager.Http2ProtocolOptions == nil {
+			manager.Http2ProtocolOptions = &core.Http2ProtocolOptions{}
+		}
+		manager.Http2ProtocolOptions.AllowConnect = true
 	}
 
 	// Add access logs if either consumer needs a sink: the operator-facing stdout
@@ -3756,6 +3904,63 @@ func (t *Translator) createLuaFilter() (*hcm.HttpFilter, error) {
 		ConfigType: &hcm.HttpFilter_TypedConfig{
 			TypedConfig: luaAny,
 		},
+	}, nil
+}
+
+// webSocketKeyFilterName names the HTTP filter that supplies Sec-WebSocket-Key
+// for WebSockets opened over HTTP/2.
+const webSocketKeyFilterName = "api_platform.websocket_h2_key"
+
+// webSocketKeyLua adds a Sec-WebSocket-Key to a WebSocket opened over HTTP/2.
+//
+// Envoy turns an RFC 8441 extended CONNECT into an HTTP/1.1 upgrade toward the
+// backend, but RFC 8441 clients send no Sec-WebSocket-Key (HTTP/2 has no use for
+// it) and Envoy does not add one, so an RFC 6455 backend rejects the handshake.
+// The key must be a fresh 16-byte nonce per connection: the 16 random bytes of
+// the request's UUID v4 x-request-id are used, with math.random as a fallback
+// when that header is not a UUID. HTTP/1.1 handshakes always carry their own key
+// and are left alone.
+const webSocketKeyLua = `
+local function key_bytes(request_id)
+  local hex = request_id and string.gsub(request_id, "-", "") or ""
+  if #hex == 32 and not string.find(hex, "[^%x]") then
+    return (string.gsub(hex, "%x%x", function(pair) return string.char(tonumber(pair, 16)) end))
+  end
+  local bytes = {}
+  for i = 1, 16 do bytes[i] = string.char(math.random(0, 255)) end
+  return table.concat(bytes)
+end
+
+function envoy_on_request(handle)
+  local headers = handle:headers()
+  if headers:get("sec-websocket-key") ~= nil then
+    return
+  end
+  local upgrade = headers:get("upgrade")
+  if upgrade == nil or string.lower(upgrade) ~= "websocket" then
+    return
+  end
+  if handle:streamInfo():protocol() ~= "HTTP/2" then
+    return
+  end
+  headers:add("sec-websocket-key", handle:base64Escape(key_bytes(headers:get("x-request-id"))))
+end
+`
+
+// createWebSocketKeyFilter builds the filter that runs webSocketKeyLua. It is
+// installed only when router.websocket.allow_http2_connect is on, since without
+// extended CONNECT no WebSocket can arrive over HTTP/2.
+func createWebSocketKeyFilter() (*hcm.HttpFilter, error) {
+	luaAny, err := anypb.New(&luav3.Lua{
+		InlineCode:      webSocketKeyLua,
+		ClearRouteCache: wrapperspb.Bool(false),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal websocket key lua config: %w", err)
+	}
+	return &hcm.HttpFilter{
+		Name:       webSocketKeyFilterName,
+		ConfigType: &hcm.HttpFilter_TypedConfig{TypedConfig: luaAny},
 	}, nil
 }
 

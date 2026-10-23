@@ -645,6 +645,52 @@ type RouterConfig struct {
 
 	// HTTPListener configuration
 	HTTPListener HTTPListenerConfig `koanf:"http_listener"`
+
+	// WebSocket holds WebSocketApi connection settings.
+	WebSocket WebSocketConfig `koanf:"websocket"`
+}
+
+// WebSocketConfig holds the gateway-wide settings for WebSocketApi connections.
+//
+// Client-facing (downstream) connections take the gateway's route idle timeout;
+// their total lifetime is bounded only when MaxConnectionDuration is set.
+type WebSocketConfig struct {
+	// MaxConnectionDuration caps the lifetime of every client-facing WebSocket
+	// connection, applied as each channel route's max stream duration. Zero (the
+	// default) sets no cap: a connection that keeps carrying traffic stays open
+	// indefinitely, including after the key or token it was authorized with is
+	// revoked, since a WebSocket is authorized only at its handshake. Set it
+	// where revocation must take effect on open connections.
+	MaxConnectionDuration time.Duration `koanf:"max_connection_duration"`
+
+	// Upstream bounds how many gateway-to-backend connections each upstream
+	// cluster may hold: the default fills in what an upstream definition omits,
+	// and the maximum caps what it may set.
+	Upstream WebSocketConnectionLimits `koanf:"upstream"`
+
+	// AllowHTTP2Connect enables RFC 8441 extended CONNECT, letting a browser
+	// open a WebSocket as a stream on its existing HTTP/2 connection instead of
+	// a separate HTTP/1.1 one.
+	//
+	// Off by default: browsers fall back to HTTP/1.1 on their own, so this buys
+	// one saved connection rather than any new capability, and the extended
+	// CONNECT path is far less exercised than the plain upgrade path.
+	AllowHTTP2Connect bool `koanf:"allow_http2_connect"`
+}
+
+// WebSocketConnectionLimits is the upstream connection-count policy: the value
+// used when an upstream definition does not set its own, and the ceiling on what
+// it may set. A value above its ceiling is rejected at deploy time rather than
+// silently clamped. Connection lifetime is not part of it: the gateway's route
+// idle timeout and WebSocketConfig.MaxConnectionDuration bound every WebSocket
+// connection on its routes.
+type WebSocketConnectionLimits struct {
+	// MaxConnectionsDefault is the per-upstream-cluster concurrent connection
+	// ceiling applied when an upstream definition does not set one, and
+	// MaxConnectionsMax bounds the value it may set. 0 means no default ceiling
+	// is imposed.
+	MaxConnectionsDefault uint32 `koanf:"max_connections_default"`
+	MaxConnectionsMax     uint32 `koanf:"max_connections_max"`
 }
 
 // RouterUpstream holds upstream-side configuration (TLS and timeouts for Envoy upstream).
@@ -1454,6 +1500,13 @@ func defaultConfig() *Config {
 				ReturnRequestIDInResponse:     true,                           // x-request-id returned by default
 				PathWithEscapedSlashesAction:  commonconstants.KEEP_UNCHANGED, // Leave escaped-slash paths unchanged by default
 			},
+			WebSocket: WebSocketConfig{
+				Upstream: WebSocketConnectionLimits{
+					MaxConnectionsDefault: 0, // leave Envoy's own cluster default alone
+					MaxConnectionsMax:     100000,
+				},
+				AllowHTTP2Connect: false, // RFC 8441 off by default; browsers fall back to HTTP/1.1
+			},
 		},
 		Analytics: AnalyticsConfig{
 			Enabled:           false,
@@ -1922,6 +1975,11 @@ func (c *Config) Validate() error {
 	}
 
 	// Validate timeout configuration
+	if c.Router.WebSocket.MaxConnectionDuration < 0 {
+		return fmt.Errorf("router.websocket.max_connection_duration must not be negative, got: %s",
+			c.Router.WebSocket.MaxConnectionDuration)
+	}
+
 	if err := c.validateTimeoutConfig(); err != nil {
 		return err
 	}

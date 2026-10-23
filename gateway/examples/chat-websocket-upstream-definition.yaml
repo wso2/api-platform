@@ -1,0 +1,62 @@
+# --------------------------------------------------------------------
+# Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+#
+# WSO2 LLC. licenses this file to you under the Apache License,
+# Version 2.0 (the "License"); you may not use this file except
+# in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+# --------------------------------------------------------------------
+
+
+# This example routes the chat API to a reusable upstream definition, the same
+# model a RestApi uses. The definition carries the backend targets, the base path,
+# the connect timeout, and how many gateway-to-backend connections this API may
+# hold; an omitted maxConnections falls back to the gateway-wide default.
+# resilience works as on a RestApi: timeout bounds the handshake and idleTimeout
+# closes a connection silent for that long, at API level or per channel, overriding
+# the gateway's route defaults. The optional router.websocket.max_connection_duration
+# caps every connection's lifetime on top.
+# Start the testbench echo service (tests/framework: go run ./testbench/cmd/testbench),
+# deploy this file, then connect with:
+#   websocat ws://localhost:8080/chat-pool/v1.0/rooms/general
+# host.docker.internal lets the gateway-runtime container reach the testbench on the host.
+
+apiVersion: gateway.api-platform.wso2.com/v1
+kind: WebSocketApi
+metadata:
+  name: chat-websocket-pool-v1.0
+spec:
+  displayName: Chat Pool
+  version: v1.0
+  context: /chat-pool/$version
+  # vhosts work as on a RestApi; when omitted, the gateway's default vhosts apply.
+  # vhosts:
+  #   main: ws.example.com            # one or more hostnames separated by ';'
+  #   sandbox: sandbox-ws.example.com
+  resilience:
+    timeout: 10s
+    idleTimeout: 10m
+  upstreamDefinitions:
+    - name: chat-backend
+      basePath: /ws
+      upstreams:
+        - url: ws://host.docker.internal:3019
+      timeout:
+        connect: 5s
+      connection:
+        maxConnections: 500
+        maxPendingHandshakes: 50
+  upstream:
+    main:
+      ref: chat-backend
+  channels:
+    - path: /rooms/general

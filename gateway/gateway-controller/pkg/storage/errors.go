@@ -18,7 +18,10 @@
 
 package storage
 
-import "errors"
+import (
+	"errors"
+	"fmt"
+)
 
 // Common storage errors - implementation agnostic
 var (
@@ -30,6 +33,11 @@ var (
 
 	// ErrConflict is returned when a configuration with the same name/version already exists
 	ErrConflict = errors.New("configuration already exists")
+
+	// ErrAPIKeyNameConflict is returned by CreateAPIKey when a live key with the
+	// same name already exists for the artifact. It wraps ErrConflict, so callers
+	// that only check ErrConflict still see a conflict.
+	ErrAPIKeyNameConflict = fmt.Errorf("%w: API key name already exists", ErrConflict)
 
 	// ErrDatabaseLocked is returned when the database is locked (SQLite specific)
 	ErrDatabaseLocked = errors.New("database is locked")

@@ -133,6 +133,18 @@ CREATE TABLE dbo.graphql_apis (
     FOREIGN KEY(gateway_id, uuid) REFERENCES dbo.artifacts(gateway_id, uuid) ON DELETE CASCADE
 );
 
+-- WebSocketApi artifacts. Same reasoning and same shape as graphql_apis above:
+-- a one-column-identical clone of rest_apis, defined here in core rather than
+-- in a supplemental-DDL module.
+IF OBJECT_ID(N'dbo.websocket_apis', N'U') IS NULL
+CREATE TABLE dbo.websocket_apis (
+    uuid NVARCHAR(64) NOT NULL,
+    gateway_id NVARCHAR(64) NOT NULL,
+    configuration NVARCHAR(MAX) NOT NULL,
+    PRIMARY KEY (gateway_id, uuid),
+    FOREIGN KEY(gateway_id, uuid) REFERENCES dbo.artifacts(gateway_id, uuid) ON DELETE CASCADE
+);
+
 -- Table for custom TLS certificates
 IF OBJECT_ID(N'dbo.certificates', N'U') IS NULL
 CREATE TABLE dbo.certificates (

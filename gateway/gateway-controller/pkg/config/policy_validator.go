@@ -194,6 +194,30 @@ func (pv *PolicyValidator) ValidateRestAPIPolicies(apiConfig *api.RestAPI) []Val
 	return errors
 }
 
+// ValidateWebSocketAPIPolicies validates the API-level policies and each
+// channel's own policies in a WebSocket API configuration — the same reference
+// and parameter checks a REST API's policies get.
+func (pv *PolicyValidator) ValidateWebSocketAPIPolicies(apiConfig *api.WebSocketAPI) []ValidationError {
+	var errors []ValidationError
+
+	if apiConfig.Spec.Policies != nil {
+		for i, policy := range *apiConfig.Spec.Policies {
+			errors = append(errors, pv.validatePolicy(policy, fmt.Sprintf("spec.policies[%d]", i))...)
+		}
+	}
+
+	for chIdx, channel := range apiConfig.Spec.Channels {
+		if channel.Policies == nil {
+			continue
+		}
+		for pIdx, policy := range *channel.Policies {
+			errors = append(errors, pv.validatePolicy(policy, fmt.Sprintf("spec.channels[%d].policies[%d]", chIdx, pIdx))...)
+		}
+	}
+
+	return errors
+}
+
 // ValidateAgentPolicies validates all policies in an Agent configuration.
 //
 // An Agent has three policy scopes, and they are not interchangeable: the
