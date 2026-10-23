@@ -566,18 +566,6 @@ blocks:
       - name: secrets
         features:
           - features/gateway/security/secrets.feature
-      - name: ratelimit-headers
-        features:
-          - features/gateway/ratelimit-policies/ratelimit_headers.feature
-      - name: ratelimit-cost-extraction
-        features:
-          - features/gateway/ratelimit-policies/ratelimit_cost_extraction.feature
-      - name: ratelimit-key-extraction
-        features:
-          - features/gateway/ratelimit-policies/ratelimit_key_extraction.feature
-      - name: ratelimit-multi-quota
-        features:
-          - features/gateway/ratelimit-policies/ratelimit_multi_quota.feature
       - name: token-based-ratelimit
         features:
           - features/ai-workspace-gateway/ratelimit-policies/token_based_ratelimit.feature
