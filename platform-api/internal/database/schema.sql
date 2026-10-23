@@ -683,3 +683,73 @@ CREATE TABLE IF NOT EXISTS api_documents (
 
 CREATE INDEX IF NOT EXISTS idx_api_documents_artifact ON api_documents(artifact_uuid, type);
 CREATE UNIQUE INDEX IF NOT EXISTS uq_api_documents_artifact_handle ON api_documents(artifact_uuid, handle);
+
+-- Meters (monetization): what a paid plan charges for. A meter made in the Management Portal is
+-- kept here and sent to an API Portal when a plan that charges for it is published there. A meter
+-- made in an API Portal is a copy, kept current by that portal's meter.* webhook events.
+--   - type REQUEST_COUNT counts API requests; type TOKENS adds up a number from the events of AI
+--     API requests, read at type_key (NULL for REQUEST_COUNT).
+--   - filter_fields lists the fields the meter's prices may filter on, each with the event field
+--     it reads (a JSON array of {field, event_key}; [] for none). A meter has no filters of its
+--     own: each price gives its own.
+--   - source_updated_at is when the meter last changed where it was made: the time of the request
+--     for a meter made here, the event's occurred_at for a copy. An older, late event is ignored.
+CREATE TABLE IF NOT EXISTS meters (
+    uuid VARCHAR(40) PRIMARY KEY,
+    organization_uuid VARCHAR(40) NOT NULL,
+    handle VARCHAR(40) NOT NULL,
+    display_name VARCHAR(255) NOT NULL,
+    description VARCHAR(1023),
+    type VARCHAR(20) NOT NULL,
+    type_key VARCHAR(255),
+    filter_fields BLOB NOT NULL,
+    source_updated_at DATETIME NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
+    UNIQUE(organization_uuid, handle)
+);
+
+-- Pricing of paid subscription plans (monetization); a plan without a row is free. A plan created
+-- through this REST API (the Management Portal) or in an API Portal (its subscription_plan.created
+-- webhook event) is stored with its pricing, in the same transaction, and the pricing never
+-- changes.
+--   - pricing_type FLAT_RATE: flat_amount is charged every billing period; prices is empty.
+--   - pricing_type USAGE_BASED: flat_amount is NULL, and prices holds 1 to 20 usage prices.
+-- prices is a JSON array, in order and in the event's form. Each price names its meter by handle
+-- (no foreign key, as in the event), its filters ([{field, operator, values}], none to count every
+-- request of the meter) and one pricing model. No query reads inside it. Amounts are decimal
+-- strings.
+CREATE TABLE IF NOT EXISTS subscription_plan_pricing (
+    subscription_plan_uuid VARCHAR(40) PRIMARY KEY,
+    organization_uuid VARCHAR(40) NOT NULL,
+    pricing_type VARCHAR(20) NOT NULL,
+    currency VARCHAR(3) NOT NULL,
+    billing_period VARCHAR(20) NOT NULL,
+    flat_amount VARCHAR(40),
+    prices BLOB NOT NULL,
+    source_updated_at DATETIME NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (subscription_plan_uuid) REFERENCES subscription_plans(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_subscription_plan_pricing_org ON subscription_plan_pricing(organization_uuid);
+
+-- Billing state of a paid subscription (monetization), from the API Portal, which sends it with
+-- subscription.created and every subscription.billing_updated event. A free subscription has no
+-- row. billing_updated_at is the occurred_at of the event last applied, so a late event is
+-- ignored.
+CREATE TABLE IF NOT EXISTS subscription_billing (
+    subscription_uuid VARCHAR(40) PRIMARY KEY,
+    organization_uuid VARCHAR(40) NOT NULL,
+    billing_status VARCHAR(20) NOT NULL,
+    billing_customer_id VARCHAR(255) NOT NULL,
+    billing_subscription_id VARCHAR(255) NOT NULL,
+    billing_updated_at DATETIME NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (subscription_uuid) REFERENCES subscriptions(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_subscription_billing_org ON subscription_billing(organization_uuid);

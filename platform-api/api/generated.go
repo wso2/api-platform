@@ -682,6 +682,96 @@ func (e ManagedPublicAgentCardMode) Valid() bool {
 	}
 }
 
+// Defines values for MeterType.
+const (
+	MeterTypeRequestCount MeterType = "REQUEST_COUNT"
+	MeterTypeTokens       MeterType = "TOKENS"
+)
+
+// Valid indicates whether the value is a known member of the MeterType enum.
+func (e MeterType) Valid() bool {
+	switch e {
+	case MeterTypeRequestCount:
+		return true
+	case MeterTypeTokens:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for MeterFilterFieldField.
+const (
+	MeterFilterFieldFieldApiType        MeterFilterFieldField = "API_TYPE"
+	MeterFilterFieldFieldHttpMethod     MeterFilterFieldField = "HTTP_METHOD"
+	MeterFilterFieldFieldHttpStatusCode MeterFilterFieldField = "HTTP_STATUS_CODE"
+	MeterFilterFieldFieldResource       MeterFilterFieldField = "RESOURCE"
+	MeterFilterFieldFieldToken          MeterFilterFieldField = "TOKEN"
+)
+
+// Valid indicates whether the value is a known member of the MeterFilterFieldField enum.
+func (e MeterFilterFieldField) Valid() bool {
+	switch e {
+	case MeterFilterFieldFieldApiType:
+		return true
+	case MeterFilterFieldFieldHttpMethod:
+		return true
+	case MeterFilterFieldFieldHttpStatusCode:
+		return true
+	case MeterFilterFieldFieldResource:
+		return true
+	case MeterFilterFieldFieldToken:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for MeterFilterFieldRequestField.
+const (
+	MeterFilterFieldRequestFieldApiType        MeterFilterFieldRequestField = "API_TYPE"
+	MeterFilterFieldRequestFieldHttpMethod     MeterFilterFieldRequestField = "HTTP_METHOD"
+	MeterFilterFieldRequestFieldHttpStatusCode MeterFilterFieldRequestField = "HTTP_STATUS_CODE"
+	MeterFilterFieldRequestFieldResource       MeterFilterFieldRequestField = "RESOURCE"
+	MeterFilterFieldRequestFieldToken          MeterFilterFieldRequestField = "TOKEN"
+)
+
+// Valid indicates whether the value is a known member of the MeterFilterFieldRequestField enum.
+func (e MeterFilterFieldRequestField) Valid() bool {
+	switch e {
+	case MeterFilterFieldRequestFieldApiType:
+		return true
+	case MeterFilterFieldRequestFieldHttpMethod:
+		return true
+	case MeterFilterFieldRequestFieldHttpStatusCode:
+		return true
+	case MeterFilterFieldRequestFieldResource:
+		return true
+	case MeterFilterFieldRequestFieldToken:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for MeterRequestType.
+const (
+	MeterRequestTypeRequestCount MeterRequestType = "REQUEST_COUNT"
+	MeterRequestTypeTokens       MeterRequestType = "TOKENS"
+)
+
+// Valid indicates whether the value is a known member of the MeterRequestType enum.
+func (e MeterRequestType) Valid() bool {
+	switch e {
+	case MeterRequestTypeRequestCount:
+		return true
+	case MeterRequestTypeTokens:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for OperationPolicyPathMethods.
 const (
 	OperationPolicyPathMethodsAsterisk OperationPolicyPathMethods = "*"
@@ -778,6 +868,72 @@ const (
 func (e PassthroughPublicAgentCardMode) Valid() bool {
 	switch e {
 	case PassthroughPublicAgentCardModePassthrough:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PriceFilterField.
+const (
+	PriceFilterFieldApiType        PriceFilterField = "API_TYPE"
+	PriceFilterFieldHttpMethod     PriceFilterField = "HTTP_METHOD"
+	PriceFilterFieldHttpStatusCode PriceFilterField = "HTTP_STATUS_CODE"
+	PriceFilterFieldResource       PriceFilterField = "RESOURCE"
+	PriceFilterFieldToken          PriceFilterField = "TOKEN"
+)
+
+// Valid indicates whether the value is a known member of the PriceFilterField enum.
+func (e PriceFilterField) Valid() bool {
+	switch e {
+	case PriceFilterFieldApiType:
+		return true
+	case PriceFilterFieldHttpMethod:
+		return true
+	case PriceFilterFieldHttpStatusCode:
+		return true
+	case PriceFilterFieldResource:
+		return true
+	case PriceFilterFieldToken:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PriceFilterOperator.
+const (
+	PriceFilterOperatorEquals             PriceFilterOperator = "EQUALS"
+	PriceFilterOperatorGreaterThan        PriceFilterOperator = "GREATER_THAN"
+	PriceFilterOperatorGreaterThanOrEqual PriceFilterOperator = "GREATER_THAN_OR_EQUAL"
+	PriceFilterOperatorIn                 PriceFilterOperator = "IN"
+	PriceFilterOperatorLessThan           PriceFilterOperator = "LESS_THAN"
+	PriceFilterOperatorLessThanOrEqual    PriceFilterOperator = "LESS_THAN_OR_EQUAL"
+	PriceFilterOperatorNotEquals          PriceFilterOperator = "NOT_EQUALS"
+	PriceFilterOperatorNotIn              PriceFilterOperator = "NOT_IN"
+	PriceFilterOperatorStartsWith         PriceFilterOperator = "STARTS_WITH"
+)
+
+// Valid indicates whether the value is a known member of the PriceFilterOperator enum.
+func (e PriceFilterOperator) Valid() bool {
+	switch e {
+	case PriceFilterOperatorEquals:
+		return true
+	case PriceFilterOperatorGreaterThan:
+		return true
+	case PriceFilterOperatorGreaterThanOrEqual:
+		return true
+	case PriceFilterOperatorIn:
+		return true
+	case PriceFilterOperatorLessThan:
+		return true
+	case PriceFilterOperatorLessThanOrEqual:
+		return true
+	case PriceFilterOperatorNotEquals:
+		return true
+	case PriceFilterOperatorNotIn:
+		return true
+	case PriceFilterOperatorStartsWith:
 		return true
 	default:
 		return false
@@ -1180,6 +1336,30 @@ func (e SubscriptionStatus) Valid() bool {
 	}
 }
 
+// Defines values for SubscriptionBillingStatus.
+const (
+	SubscriptionBillingStatusActive    SubscriptionBillingStatus = "ACTIVE"
+	SubscriptionBillingStatusCancelled SubscriptionBillingStatus = "CANCELLED"
+	SubscriptionBillingStatusPastDue   SubscriptionBillingStatus = "PAST_DUE"
+	SubscriptionBillingStatusUnpaid    SubscriptionBillingStatus = "UNPAID"
+)
+
+// Valid indicates whether the value is a known member of the SubscriptionBillingStatus enum.
+func (e SubscriptionBillingStatus) Valid() bool {
+	switch e {
+	case SubscriptionBillingStatusActive:
+		return true
+	case SubscriptionBillingStatusCancelled:
+		return true
+	case SubscriptionBillingStatusPastDue:
+		return true
+	case SubscriptionBillingStatusUnpaid:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for SubscriptionPlanStatus.
 const (
 	SubscriptionPlanStatusACTIVE   SubscriptionPlanStatus = "ACTIVE"
@@ -1237,6 +1417,99 @@ func (e SubscriptionPlanLimitTimeUnit) Valid() bool {
 	case MINUTE:
 		return true
 	case MONTH:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SubscriptionPlanPricePricingModel.
+const (
+	SubscriptionPlanPricePricingModelGraduated SubscriptionPlanPricePricingModel = "GRADUATED"
+	SubscriptionPlanPricePricingModelPerUnit   SubscriptionPlanPricePricingModel = "PER_UNIT"
+	SubscriptionPlanPricePricingModelVolume    SubscriptionPlanPricePricingModel = "VOLUME"
+)
+
+// Valid indicates whether the value is a known member of the SubscriptionPlanPricePricingModel enum.
+func (e SubscriptionPlanPricePricingModel) Valid() bool {
+	switch e {
+	case SubscriptionPlanPricePricingModelGraduated:
+		return true
+	case SubscriptionPlanPricePricingModelPerUnit:
+		return true
+	case SubscriptionPlanPricePricingModelVolume:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SubscriptionPlanPricingBillingPeriod.
+const (
+	SubscriptionPlanPricingBillingPeriodMonth SubscriptionPlanPricingBillingPeriod = "MONTH"
+	SubscriptionPlanPricingBillingPeriodYear  SubscriptionPlanPricingBillingPeriod = "YEAR"
+)
+
+// Valid indicates whether the value is a known member of the SubscriptionPlanPricingBillingPeriod enum.
+func (e SubscriptionPlanPricingBillingPeriod) Valid() bool {
+	switch e {
+	case SubscriptionPlanPricingBillingPeriodMonth:
+		return true
+	case SubscriptionPlanPricingBillingPeriodYear:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SubscriptionPlanPricingPricingType.
+const (
+	SubscriptionPlanPricingPricingTypeFlatRate   SubscriptionPlanPricingPricingType = "FLAT_RATE"
+	SubscriptionPlanPricingPricingTypeUsageBased SubscriptionPlanPricingPricingType = "USAGE_BASED"
+)
+
+// Valid indicates whether the value is a known member of the SubscriptionPlanPricingPricingType enum.
+func (e SubscriptionPlanPricingPricingType) Valid() bool {
+	switch e {
+	case SubscriptionPlanPricingPricingTypeFlatRate:
+		return true
+	case SubscriptionPlanPricingPricingTypeUsageBased:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SubscriptionPlanPricingRequestBillingPeriod.
+const (
+	SubscriptionPlanPricingRequestBillingPeriodMonth SubscriptionPlanPricingRequestBillingPeriod = "MONTH"
+	SubscriptionPlanPricingRequestBillingPeriodYear  SubscriptionPlanPricingRequestBillingPeriod = "YEAR"
+)
+
+// Valid indicates whether the value is a known member of the SubscriptionPlanPricingRequestBillingPeriod enum.
+func (e SubscriptionPlanPricingRequestBillingPeriod) Valid() bool {
+	switch e {
+	case SubscriptionPlanPricingRequestBillingPeriodMonth:
+		return true
+	case SubscriptionPlanPricingRequestBillingPeriodYear:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SubscriptionPlanPricingRequestPricingType.
+const (
+	SubscriptionPlanPricingRequestPricingTypeFlatRate   SubscriptionPlanPricingRequestPricingType = "FLAT_RATE"
+	SubscriptionPlanPricingRequestPricingTypeUsageBased SubscriptionPlanPricingRequestPricingType = "USAGE_BASED"
+)
+
+// Valid indicates whether the value is a known member of the SubscriptionPlanPricingRequestPricingType enum.
+func (e SubscriptionPlanPricingRequestPricingType) Valid() bool {
+	switch e {
+	case SubscriptionPlanPricingRequestPricingTypeFlatRate:
+		return true
+	case SubscriptionPlanPricingRequestPricingTypeUsageBased:
 		return true
 	default:
 		return false
@@ -2023,6 +2296,24 @@ func (e GetDeploymentsParamsStatus) Valid() bool {
 	case GetDeploymentsParamsStatusUNDEPLOYED:
 		return true
 	case GetDeploymentsParamsStatusUNDEPLOYING:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListSubscriptionPlansParamsStatus.
+const (
+	ListSubscriptionPlansParamsStatusACTIVE   ListSubscriptionPlansParamsStatus = "ACTIVE"
+	ListSubscriptionPlansParamsStatusINACTIVE ListSubscriptionPlansParamsStatus = "INACTIVE"
+)
+
+// Valid indicates whether the value is a known member of the ListSubscriptionPlansParamsStatus enum.
+func (e ListSubscriptionPlansParamsStatus) Valid() bool {
+	switch e {
+	case ListSubscriptionPlansParamsStatusACTIVE:
+		return true
+	case ListSubscriptionPlansParamsStatusINACTIVE:
 		return true
 	default:
 		return false
@@ -3080,12 +3371,15 @@ type CreateSubscriptionPlanRequest struct {
 	// ExpiryTime Optional plan expiry time (RFC3339)
 	ExpiryTime *time.Time `json:"expiryTime,omitempty" yaml:"expiryTime,omitempty"`
 
-	// Id Handle (URL-friendly slug) for the plan. Immutable after creation.
+	// Id Handle (URL-friendly slug) for the plan. Immutable after creation. At most 40 characters; a longer one is refused with 400 "id must be at most 40 characters".
 	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
 
 	// Limits Throttling limits for the plan (e.g. requests per hour, requests per month). The table backing this API already supports multiple limits per plan, but the platform-api currently only persists and enforces the first entry in this array; any additional entries are accepted but ignored.
-	Limits *[]SubscriptionPlanLimit             `json:"limits,omitempty" yaml:"limits,omitempty"`
-	Status *CreateSubscriptionPlanRequestStatus `json:"status,omitempty" yaml:"status,omitempty"`
+	Limits *[]SubscriptionPlanLimit `json:"limits,omitempty" yaml:"limits,omitempty"`
+
+	// Pricing Makes the plan paid. Optional; a plan created without it is free. Pricing is set only when a plan is created and cannot change afterwards, so a free plan cannot become paid later, nor a paid plan free.
+	Pricing *SubscriptionPlanPricingRequest      `json:"pricing,omitempty" yaml:"pricing,omitempty"`
+	Status  *CreateSubscriptionPlanRequestStatus `json:"status,omitempty" yaml:"status,omitempty"`
 }
 
 // CreateSubscriptionPlanRequestStatus defines model for CreateSubscriptionPlanRequest.Status.
@@ -4468,6 +4762,77 @@ type MappedAPIKeyListResponse struct {
 	Pagination Pagination     `json:"pagination" yaml:"pagination"`
 }
 
+// Meter defines model for Meter.
+type Meter struct {
+	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
+	DisplayName *string `json:"displayName,omitempty" yaml:"displayName,omitempty"`
+
+	// FilterFields The fields this meter's prices can filter on, each with the event field it reads, as stored on the meter.
+	FilterFields *[]MeterFilterField `json:"filterFields,omitempty" yaml:"filterFields,omitempty"`
+	Id           *string             `json:"id,omitempty" yaml:"id,omitempty"`
+
+	// PlanCount How many plans charge for this meter. While it is above 0, the meter cannot change or be deleted.
+	PlanCount *int       `json:"planCount,omitempty" yaml:"planCount,omitempty"`
+	Type      *MeterType `json:"type,omitempty" yaml:"type,omitempty"`
+
+	// TypeKey The event field whose number a TOKENS meter adds up, as stored on the meter, such as `metadata.aiTokenUsage.promptTokens`; null for REQUEST_COUNT.
+	TypeKey   *string    `json:"typeKey,omitempty" yaml:"typeKey,omitempty"`
+	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+}
+
+// MeterType defines model for Meter.Type.
+type MeterType string
+
+// MeterFilterField defines model for MeterFilterField.
+type MeterFilterField struct {
+	// EventKey The event field this filter field reads, such as `metadata.apiType`.
+	EventKey string                `json:"eventKey" yaml:"eventKey"`
+	Field    MeterFilterFieldField `json:"field" yaml:"field"`
+}
+
+// MeterFilterFieldField defines model for MeterFilterField.Field.
+type MeterFilterFieldField string
+
+// MeterFilterFieldRequest A field this meter's prices can filter on: the status code, HTTP method, resource, API type (API_TYPE, the kind of API a request went to, read by default from `metadata.apiType`), or a token count (TOKEN, read from its `eventKey`). API_TYPE and TOKEN are allowed on any meter. TOKEN can be listed several times, each time with a different key, and not with the key of the meter's own `typeKey`, which prices can already put Token conditions on.
+type MeterFilterFieldRequest struct {
+	// EventKey The event field this filter field reads, as a full path in the gateway's analytics event; 1 to 255 characters with no spaces. Optional for a fixed field: left out or empty, it is the field's default, which is `response.status` for HTTP_STATUS_CODE, `request.verb` for HTTP_METHOD, `metadata.apiResourceTemplate` for RESOURCE and `metadata.apiType` for API_TYPE. Required for TOKEN, which has no default; the suggested keys are `metadata.aiTokenUsage.promptTokens`, `metadata.aiTokenUsage.completionTokens` and `metadata.aiTokenUsage.totalTokens`.
+	EventKey *string                      `json:"eventKey,omitempty" yaml:"eventKey,omitempty"`
+	Field    MeterFilterFieldRequestField `json:"field" yaml:"field"`
+}
+
+// MeterFilterFieldRequestField defines model for MeterFilterFieldRequest.Field.
+type MeterFilterFieldRequestField string
+
+// MeterListResponse defines model for MeterListResponse.
+type MeterListResponse struct {
+	Count      int        `json:"count" yaml:"count"`
+	List       []Meter    `json:"list" yaml:"list"`
+	Pagination Pagination `json:"pagination" yaml:"pagination"`
+}
+
+// MeterRequest A meter to create or replace. A field not listed here is refused.
+type MeterRequest struct {
+	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
+
+	// DisplayName Says what the meter counts, for example "Input tokens".
+	DisplayName string `json:"displayName" yaml:"displayName"`
+
+	// FilterFields The fields this meter's prices can filter on, at most 10: each fixed field (HTTP_STATUS_CODE, HTTP_METHOD, RESOURCE, API_TYPE) at most once, and TOKEN once per key. Optional; without them the meter's prices take no filters.
+	FilterFields *[]MeterFilterFieldRequest `json:"filterFields,omitempty" yaml:"filterFields,omitempty"`
+
+	// Id The meter's id; derived from displayName when omitted on create.
+	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
+
+	// Type What is counted: API requests (REQUEST_COUNT), each counting one, or the tokens of AI API requests (TOKENS), adding up the number in the event field `typeKey` names. A meter has no conditions: each plan price gives its own filters.
+	Type MeterRequestType `json:"type" yaml:"type"`
+
+	// TypeKey TOKENS only, and required there: the event field whose number the meter adds up, as a full path in the gateway's analytics event, such as `metadata.aiTokenUsage.promptTokens` (our gateway also sends `metadata.aiTokenUsage.completionTokens` and `metadata.aiTokenUsage.totalTokens`). 1 to 255 characters with no spaces. Refused for a REQUEST_COUNT meter.
+	TypeKey *string `json:"typeKey,omitempty" yaml:"typeKey,omitempty"`
+}
+
+// MeterRequestType What is counted: API requests (REQUEST_COUNT), each counting one, or the tokens of AI API requests (TOKENS), adding up the number in the event field `typeKey` names. A meter has no conditions: each plan price gives its own filters.
+type MeterRequestType string
+
 // OpenAPIContent defines model for OpenAPIContent.
 type OpenAPIContent struct {
 	// Content Raw spec content
@@ -4641,6 +5006,32 @@ type Policy struct {
 
 	// Version Version of the policy. Only major-only version is allowed (e.g., v0, v1). Full semantic version (e.g., v1.0.0) is not accepted and will be rejected.
 	Version string `json:"version" yaml:"version"`
+}
+
+// PriceFilter Narrows the requests a plan price counts. HTTP_STATUS_CODE, HTTP_METHOD and API_TYPE take EQUALS, NOT_EQUALS, IN or NOT_IN; RESOURCE takes EQUALS, NOT_EQUALS or STARTS_WITH. EQUALS, NOT_EQUALS and STARTS_WITH take one value; IN and NOT_IN one or more. Status codes are exact codes from 100 to 599; HTTP methods are GET, POST, PUT, PATCH, DELETE, HEAD or OPTIONS; a resource is a path from the API definition, such as `/orders/{id}`. STARTS_WITH matches the resource and the resources under it, by whole path segments, as a router matches a path prefix: `/orders` matches `/orders` and `/orders/{id}`, not `/orders-archive`; `/` matches every resource; its value is stored without a trailing `/`. NOT_EQUALS and NOT_IN count the requests that have the field with another value: a request without the field is not counted. An API type is the kind of API a request went to, read by default from `metadata.apiType`: free text matched exactly as written (case-sensitive), such as `RestApi`, `WebSubApi`, `LlmProvider`, `LlmProxy`, `Mcp` or `Agent`, the kinds our gateway sends; any other text is accepted. API type values are 1 to 255 characters. A TOKEN filter is a condition on the token count at `eventKey`: it takes GREATER_THAN (more than), GREATER_THAN_OR_EQUAL (at least), LESS_THAN (less than), LESS_THAN_OR_EQUAL (at most) or EQUALS (equal to), with exactly one whole number from 0 to 1000000000000. Two conditions on one key give a range, for example more than 100 and at most 500; they must be able to hold together.
+type PriceFilter struct {
+	// EventKey TOKEN only, and required there: the Token key the condition reads, one of the meter's Token keys (its `typeKey` or the key of one of its TOKEN filter fields). Refused on any other field.
+	EventKey *string             `json:"eventKey,omitempty" yaml:"eventKey,omitempty"`
+	Field    PriceFilterField    `json:"field" yaml:"field"`
+	Operator PriceFilterOperator `json:"operator" yaml:"operator"`
+
+	// Values The values to match; for TOKEN, exactly one whole number written as a string, such as "333".
+	Values []string `json:"values" yaml:"values"`
+}
+
+// PriceFilterField defines model for PriceFilter.Field.
+type PriceFilterField string
+
+// PriceFilterOperator defines model for PriceFilter.Operator.
+type PriceFilterOperator string
+
+// PriceTier defines model for PriceTier.
+type PriceTier struct {
+	FlatAmount *string `json:"flatAmount,omitempty" yaml:"flatAmount,omitempty"`
+	UnitAmount *string `json:"unitAmount,omitempty" yaml:"unitAmount,omitempty"`
+
+	// UpTo The last unit of the tier; null on the last tier.
+	UpTo *int64 `json:"upTo,omitempty" yaml:"upTo,omitempty"`
 }
 
 // Project defines model for Project.
@@ -5266,8 +5657,11 @@ type Subscription struct {
 	ApplicationId *string `json:"applicationId,omitempty" yaml:"applicationId,omitempty"`
 
 	// ArtifactId Handle (ID) of the subscribed artifact
-	ArtifactId *string    `json:"artifactId,omitempty" yaml:"artifactId,omitempty"`
-	CreatedAt  *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+	ArtifactId *string `json:"artifactId,omitempty" yaml:"artifactId,omitempty"`
+
+	// Billing The billing of a paid subscription, as the API Portal reports it from the billing provider.
+	Billing   *SubscriptionBilling `json:"billing,omitempty" yaml:"billing,omitempty"`
+	CreatedAt *time.Time           `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
 
 	// CreatedBy User identifier of the user who created this resource
 	CreatedBy *string `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
@@ -5305,6 +5699,21 @@ type SubscriptionKind string
 // SubscriptionStatus defines model for Subscription.Status.
 type SubscriptionStatus string
 
+// SubscriptionBilling The billing of a paid subscription, as the API Portal reports it from the billing provider.
+type SubscriptionBilling struct {
+	// CustomerId The billing provider's customer.
+	CustomerId *string `json:"customerId,omitempty" yaml:"customerId,omitempty"`
+
+	// Status Gateways refuse calls (403) while UNPAID or CANCELLED.
+	Status *SubscriptionBillingStatus `json:"status,omitempty" yaml:"status,omitempty"`
+
+	// SubscriptionId The billing provider's subscription.
+	SubscriptionId *string `json:"subscriptionId,omitempty" yaml:"subscriptionId,omitempty"`
+}
+
+// SubscriptionBillingStatus Gateways refuse calls (403) while UNPAID or CANCELLED.
+type SubscriptionBillingStatus string
+
 // SubscriptionListResponse defines model for SubscriptionListResponse.
 type SubscriptionListResponse struct {
 	// Count Number of subscriptions in current response
@@ -5335,12 +5744,18 @@ type SubscriptionPlan struct {
 	Limits *[]SubscriptionPlanLimit `json:"limits,omitempty" yaml:"limits,omitempty"`
 
 	// OrganizationId Handle (URL-friendly slug) of the organization this plan belongs to
-	OrganizationId *string                 `json:"organizationId,omitempty" yaml:"organizationId,omitempty"`
-	Status         *SubscriptionPlanStatus `json:"status,omitempty" yaml:"status,omitempty"`
-	UpdatedAt      *time.Time              `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+	OrganizationId *string `json:"organizationId,omitempty" yaml:"organizationId,omitempty"`
+
+	// Pricing The plan's pricing, present only on a paid plan. It is set when the plan is created (POST /subscription-plans) and is the only part of a plan that never changes, so a free plan stays free and a paid one paid. An update changes the plan's other fields and leaves `pricing` out: a body that carries it gets `409` SUBSCRIPTION_PLAN_PRICING_LOCKED.
+	Pricing   *SubscriptionPlanPricing `json:"pricing,omitempty" yaml:"pricing,omitempty"`
+	Status    *SubscriptionPlanStatus  `json:"status,omitempty" yaml:"status,omitempty"`
+	UpdatedAt *time.Time               `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
 
 	// UpdatedBy User identifier of the user who last updated this resource. Only present in the detail response (GET /subscription-plans/{planId}), omitted from list responses.
 	UpdatedBy *string `json:"updatedBy,omitempty" yaml:"updatedBy,omitempty"`
+
+	// Usage What offers or uses the plan. Only present in the detail response (GET /subscription-plans/{planId}), omitted from list responses. A plan in use cannot be deleted, and its name and limit cannot change.
+	Usage *SubscriptionPlanUsage `json:"usage,omitempty" yaml:"usage,omitempty"`
 }
 
 // SubscriptionPlanStatus defines model for SubscriptionPlan.Status.
@@ -5384,6 +5799,82 @@ type SubscriptionPlanListResponse struct {
 	// List List of subscription plans in current response
 	List       []SubscriptionPlan `json:"list" yaml:"list"`
 	Pagination Pagination         `json:"pagination" yaml:"pagination"`
+}
+
+// SubscriptionPlanPrice A usage price of a paid plan: what the meter `meterId` counts, narrowed by the price's `filters`, charged in one pricing model. PER_UNIT charges `unitAmount` per `unitQuantity` units; VOLUME prices all the units at the tier their total falls in; GRADUATED prices the units in each tier at that tier's price. Fields of other models are not accepted. A plan may price one meter several times, but two prices on the same meter must not count the same request. A price has no name: it is shown as the meter's name followed by its filters.
+type SubscriptionPlanPrice struct {
+	// Filters Optional; at most one filter per fixed field and at most two Token conditions per Token key, and only on the fields the meter lists in its filterFields (for Token, on the meter's `typeKey` or its TOKEN keys). Without filters the price counts every request the meter counts.
+	Filters *[]PriceFilter `json:"filters,omitempty" yaml:"filters,omitempty"`
+
+	// MeterId The `id` of the meter that counts the units, one of the organization's meters (GET /meters).
+	MeterId      string                            `json:"meterId" yaml:"meterId"`
+	PricingModel SubscriptionPlanPricePricingModel `json:"pricingModel" yaml:"pricingModel"`
+
+	// Tiers VOLUME and GRADUATED only. In ascending order; the last tier has no `upTo`.
+	Tiers *[]PriceTier `json:"tiers,omitempty" yaml:"tiers,omitempty"`
+
+	// UnitAmount PER_UNIT only. The price per `unitQuantity` units, as a decimal string.
+	UnitAmount *string `json:"unitAmount,omitempty" yaml:"unitAmount,omitempty"`
+
+	// UnitQuantity PER_UNIT only. How many units `unitAmount` is for (default 1).
+	UnitQuantity *int64 `json:"unitQuantity,omitempty" yaml:"unitQuantity,omitempty"`
+}
+
+// SubscriptionPlanPricePricingModel defines model for SubscriptionPlanPrice.PricingModel.
+type SubscriptionPlanPricePricingModel string
+
+// SubscriptionPlanPricing defines model for SubscriptionPlanPricing.
+type SubscriptionPlanPricing struct {
+	BillingPeriod      *SubscriptionPlanPricingBillingPeriod `json:"billingPeriod,omitempty" yaml:"billingPeriod,omitempty"`
+	Currency           *string                               `json:"currency,omitempty" yaml:"currency,omitempty"`
+	FlatAmount         *string                               `json:"flatAmount,omitempty" yaml:"flatAmount,omitempty"`
+	Prices             *[]SubscriptionPlanPrice              `json:"prices,omitempty" yaml:"prices,omitempty"`
+	PricingType        *SubscriptionPlanPricingPricingType   `json:"pricingType,omitempty" yaml:"pricingType,omitempty"`
+	SubscriptionPlanId *string                               `json:"subscriptionPlanId,omitempty" yaml:"subscriptionPlanId,omitempty"`
+	UpdatedAt          *time.Time                            `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+}
+
+// SubscriptionPlanPricingBillingPeriod defines model for SubscriptionPlanPricing.BillingPeriod.
+type SubscriptionPlanPricingBillingPeriod string
+
+// SubscriptionPlanPricingPricingType defines model for SubscriptionPlanPricing.PricingType.
+type SubscriptionPlanPricingPricingType string
+
+// SubscriptionPlanPricingRequest What a paid subscription plan costs, given when the plan is created. A FLAT_RATE plan charges `flatAmount` every billing period and has no prices. A USAGE_BASED plan charges its `prices` (1 to 20) on one invoice per period and has no flat amount. A plan created without pricing is free. Pricing can't change once the plan exists, so a field the pricing, a price, a filter or a tier does not take is refused rather than ignored.
+type SubscriptionPlanPricingRequest struct {
+	BillingPeriod SubscriptionPlanPricingRequestBillingPeriod `json:"billingPeriod" yaml:"billingPeriod"`
+	Currency      string                                      `json:"currency" yaml:"currency"`
+
+	// FlatAmount FLAT_RATE only. The amount charged every billing period, as a decimal string in the currency.
+	FlatAmount *string `json:"flatAmount,omitempty" yaml:"flatAmount,omitempty"`
+
+	// Prices USAGE_BASED only.
+	Prices      *[]SubscriptionPlanPrice                  `json:"prices,omitempty" yaml:"prices,omitempty"`
+	PricingType SubscriptionPlanPricingRequestPricingType `json:"pricingType" yaml:"pricingType"`
+}
+
+// SubscriptionPlanPricingRequestBillingPeriod defines model for SubscriptionPlanPricingRequest.BillingPeriod.
+type SubscriptionPlanPricingRequestBillingPeriod string
+
+// SubscriptionPlanPricingRequestPricingType defines model for SubscriptionPlanPricingRequest.PricingType.
+type SubscriptionPlanPricingRequestPricingType string
+
+// SubscriptionPlanUsage Counts of what offers or uses a plan. Only counts are given: a plan may be offered by more APIs than a response or message can list.
+type SubscriptionPlanUsage struct {
+	// Drafts How many APIs offer the plan in a publication draft (each API once).
+	Drafts int `json:"drafts" yaml:"drafts"`
+
+	// InUse Whether anything counted below offers or uses the plan.
+	InUse bool `json:"inUse" yaml:"inUse"`
+
+	// Publications How many APIs offer the plan in a publication (each API once).
+	Publications int `json:"publications" yaml:"publications"`
+
+	// RestApis How many REST APIs list the plan in their configuration.
+	RestApis int `json:"restApis" yaml:"restApis"`
+
+	// Subscriptions How many subscriptions use the plan.
+	Subscriptions int `json:"subscriptions" yaml:"subscriptions"`
 }
 
 // TimeUnit Time unit for API key expiration duration
@@ -6385,6 +6876,18 @@ type ListUserAPIKeysParams struct {
 // ListUserAPIKeysParamsType defines parameters for ListUserAPIKeys.
 type ListUserAPIKeysParamsType string
 
+// ListMetersParams defines parameters for ListMeters.
+type ListMetersParams struct {
+	// Limit Maximum number of items to return per page.
+	Limit *LimitQ `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
+
+	// Offset Zero-based index of the first item to return.
+	Offset *OffsetQ `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
+
+	// Query Case-insensitive substring filter matched against the resource display name and id (handle).
+	Query *QueryQ `form:"query,omitempty" json:"query,omitempty" yaml:"query,omitempty"`
+}
+
 // ListOrganizationsParams defines parameters for ListOrganizations.
 type ListOrganizationsParams struct {
 	// Limit Maximum number of items to return per page.
@@ -6515,7 +7018,13 @@ type ListSubscriptionPlansParams struct {
 
 	// Query Case-insensitive substring filter matched against the resource display name and id (handle).
 	Query *QueryQ `form:"query,omitempty" json:"query,omitempty" yaml:"query,omitempty"`
+
+	// Status Only the plans with this status (ACTIVE, INACTIVE)
+	Status *ListSubscriptionPlansParamsStatus `form:"status,omitempty" json:"status,omitempty" yaml:"status,omitempty"`
 }
+
+// ListSubscriptionPlansParamsStatus defines parameters for ListSubscriptionPlans.
+type ListSubscriptionPlansParamsStatus string
 
 // ListSubscriptionsParams defines parameters for ListSubscriptions.
 type ListSubscriptionsParams struct {
@@ -6696,6 +7205,12 @@ type CreateMCPProxyBuildJSONRequestBody = BuildRequest
 
 // DeployMCPProxyJSONRequestBody defines body for DeployMCPProxy for application/json ContentType.
 type DeployMCPProxyJSONRequestBody = DeployRequest
+
+// CreateMeterJSONRequestBody defines body for CreateMeter for application/json ContentType.
+type CreateMeterJSONRequestBody = MeterRequest
+
+// UpdateMeterJSONRequestBody defines body for UpdateMeter for application/json ContentType.
+type UpdateMeterJSONRequestBody = MeterRequest
 
 // RegisterOrganizationJSONRequestBody defines body for RegisterOrganization for application/json ContentType.
 type RegisterOrganizationJSONRequestBody = Organization

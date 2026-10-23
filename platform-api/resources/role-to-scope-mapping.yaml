@@ -73,6 +73,7 @@ roles:
       - ap:application:manage
       - ap:subscription:manage
       - ap:subscription_plan:manage
+      - ap:meter:manage
       - ap:llm_template:manage
       - ap:llm_provider:manage
       - ap:llm_proxy:manage
@@ -137,6 +138,7 @@ roles:
       - ap:agent_proxy:read
       - ap:agent_proxy:deployment:manage
       - ap:subscription_plan:manage
+      - ap:meter:manage
       - ap:application:read
       - ap:application:api_key:read
       - ap:application:association:read
@@ -194,6 +196,7 @@ roles:
       - ap:gateway:manifest:read
       - ap:gateway_custom_policy:read
       - ap:subscription_plan:read
+      - ap:meter:read
       - ap:application:read
       - ap:subscription:read
       - ap:secret:manage
@@ -280,6 +283,7 @@ roles:
       - ap:application:association:api_key:read
       - ap:subscription:read
       - ap:subscription_plan:read
+      - ap:meter:read
       - ap:llm_template:read
       - ap:llm_provider:read
       - ap:llm_provider:deployment:read
