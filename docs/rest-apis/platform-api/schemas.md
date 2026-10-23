@@ -5449,7 +5449,7 @@ A service account. Never carries the plaintext secret.
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|id|string|true|none|Service account handle, unique within the organization|
+|id|string|true|none|Service account handle, generated from `displayName` and unique within the organization|
 |displayName|string|true|none|none|
 |description|string|true|none|What the account is for; may be empty|
 |clientId|string|true|read-only|none|
@@ -5518,12 +5518,12 @@ A service account. Never carries the plaintext secret.
 |list|[[ServiceAccount](#schemaserviceaccount)]|true|none|[A service account. Never carries the plaintext secret.]|
 |pagination|[Pagination](#schemapagination)|true|none|none|
 
-## ServiceAccountRole
+## Role
 
-<a id="schemaserviceaccountrole"></a>
-<a id="schema_ServiceAccountRole"></a>
-<a id="tocSserviceaccountrole"></a>
-<a id="tocsserviceaccountrole"></a>
+<a id="schemarole"></a>
+<a id="schema_Role"></a>
+<a id="tocSrole"></a>
+<a id="tocsrole"></a>
 
 ```json
 {
@@ -5543,12 +5543,12 @@ A service account. Never carries the plaintext secret.
 |name|string|true|none|none|
 |scopes|[string]|true|none|none|
 
-## ServiceAccountRoleListResponse
+## RoleListResponse
 
-<a id="schemaserviceaccountrolelistresponse"></a>
-<a id="schema_ServiceAccountRoleListResponse"></a>
-<a id="tocSserviceaccountrolelistresponse"></a>
-<a id="tocsserviceaccountrolelistresponse"></a>
+<a id="schemarolelistresponse"></a>
+<a id="schema_RoleListResponse"></a>
+<a id="tocSrolelistresponse"></a>
+<a id="tocsrolelistresponse"></a>
 
 ```json
 {
@@ -5576,7 +5576,7 @@ A service account. Never carries the plaintext secret.
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |count|integer|true|none|none|
-|list|[[ServiceAccountRole](#schemaserviceaccountrole)]|true|none|none|
+|list|[[Role](#schemarole)]|true|none|none|
 |pagination|[Pagination](#schemapagination)|true|none|none|
 
 ## ServiceAccountCreateRequest
@@ -5588,7 +5588,6 @@ A service account. Never carries the plaintext secret.
 
 ```json
 {
-  "id": "ci-deployer",
   "displayName": "CI deployer",
   "description": "Deploys REST APIs from the release pipeline",
   "roles": [
@@ -5598,11 +5597,12 @@ A service account. Never carries the plaintext secret.
 
 ```
 
+The `id` is generated from `displayName`.
+
 #### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|id|string|true|none|Service account handle. `token` is reserved.|
 |displayName|string|true|none|none|
 |description|string|false|none|none|
 |roles|[string]|true|none|Roles from the role-to-scope mapping file. Any role is accepted.|

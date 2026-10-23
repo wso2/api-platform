@@ -84,12 +84,6 @@ func NewServiceAccountService(repo repository.ServiceAccountRepository, orgRepo 
 
 // Create makes an account and returns its only copy of the secret.
 func (s *ServiceAccountService) Create(orgID, actor string, req *api.ServiceAccountCreateRequest) (*api.ServiceAccountCredentials, error) {
-	if err := utils.ValidateHandle(req.Id); err != nil {
-		return nil, err
-	}
-	if req.Id == constants.ServiceAccountReservedHandle {
-		return nil, apperror.ValidationFailed.New(fmt.Sprintf("The id %q is reserved.", req.Id))
-	}
 	displayName, description := strings.TrimSpace(req.DisplayName), trimmed(req.Description)
 	if err := requireText(map[string]string{"displayName": displayName, "description": description}); err != nil {
 		return nil, err
@@ -104,6 +98,18 @@ func (s *ServiceAccountService) Create(orgID, actor string, req *api.ServiceAcco
 	}
 	if org == nil {
 		return nil, fmt.Errorf("organization %s not found", orgID)
+	}
+
+	// The handle comes from the name. A taken or reserved one gets a random suffix.
+	handle, err := utils.GenerateHandle(displayName, func(h string) bool {
+		if h == constants.ServiceAccountReservedHandle {
+			return true
+		}
+		_, err := s.repo.GetByHandle(orgID, h)
+		return err == nil
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	accountUUID, err := utils.GenerateUUID()
@@ -121,10 +127,10 @@ func (s *ServiceAccountService) Create(orgID, actor string, req *api.ServiceAcco
 	sa := &model.ServiceAccount{
 		UUID:             accountUUID,
 		OrganizationID:   orgID,
-		Handle:           req.Id,
+		Handle:           handle,
 		DisplayName:      displayName,
 		Description:      description,
-		ClientID:         "sa_" + org.Handle + "_" + req.Id + "_" + suffix[:6],
+		ClientID:         "sa_" + org.Handle + "_" + handle + "_" + suffix[:6],
 		ClientSecretHash: hashServiceAccountSecret(secret),
 		MaskedSecret:     maskServiceAccountSecret(secret),
 		Roles:            strings.Join(roles, " "),
@@ -174,13 +180,13 @@ func (s *ServiceAccountService) List(orgID, search string, limit, offset int) (*
 }
 
 // Roles lists every role in the mapping, sorted by name, with its scopes. Read from the map loaded at startup, so it never touches the DB.
-func (s *ServiceAccountService) Roles() *api.ServiceAccountRoleListResponse {
-	list := make([]api.ServiceAccountRole, 0)
+func (s *ServiceAccountService) Roles() *api.RoleListResponse {
+	list := make([]api.Role, 0)
 	for name, scopes := range s.roleScopeMap {
-		list = append(list, api.ServiceAccountRole{Name: name, Scopes: slices.Clone(scopes)})
+		list = append(list, api.Role{Name: name, Scopes: slices.Clone(scopes)})
 	}
-	slices.SortFunc(list, func(a, b api.ServiceAccountRole) int { return strings.Compare(a.Name, b.Name) })
-	return &api.ServiceAccountRoleListResponse{
+	slices.SortFunc(list, func(a, b api.Role) int { return strings.Compare(a.Name, b.Name) })
+	return &api.RoleListResponse{
 		Count:      len(list),
 		List:       list,
 		Pagination: api.Pagination{Total: len(list), Offset: 0, Limit: len(list)},

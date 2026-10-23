@@ -188,8 +188,9 @@ func newSAFixtureMode(t *testing.T, mode string) *saFixture {
 	return f
 }
 
-func createReq(handle string) *api.ServiceAccountCreateRequest {
-	return &api.ServiceAccountCreateRequest{Id: handle, DisplayName: "CI", Description: ptr("deploys"), Roles: []string{"ap_sa_operator"}}
+// createReq names the account so that the generated handle is name.
+func createReq(name string) *api.ServiceAccountCreateRequest {
+	return &api.ServiceAccountCreateRequest{DisplayName: name, Description: ptr("deploys"), Roles: []string{"ap_sa_operator"}}
 }
 
 func TestServiceAccountCreate_SecretFormat(t *testing.T) {
@@ -219,11 +220,10 @@ func TestServiceAccountCreate_Validation(t *testing.T) {
 	badRole.Roles = []string{"ap_sa_nope"}
 	noRole := createReq("e-bot")
 	noRole.Roles = nil
-	reserved := createReq("token")
 	longDesc := createReq("g-bot")
 	longDesc.Description = ptr(strings.Repeat("d", 1024))
 	for name, req := range map[string]*api.ServiceAccountCreateRequest{
-		"description too long": longDesc, "unknown role": badRole, "no role": noRole, "reserved id": reserved,
+		"description too long": longDesc, "unknown role": badRole, "no role": noRole,
 	} {
 		if _, err := f.svc.Create("org-1", "admin", req); !apperror.ValidationFailed.Is(err) {
 			t.Errorf("%s: want validation error, got %v", name, err)
@@ -512,6 +512,39 @@ func TestServiceAccountAuditFailureIsLogged(t *testing.T) {
 	}
 }
 
+// The handle is generated from the name; a taken or reserved one gets a suffix.
+func TestServiceAccountCreate_GeneratesHandle(t *testing.T) {
+	f := newSAFixture(t)
+	handleOf := func(org, name string) string {
+		t.Helper()
+		creds, err := f.svc.Create(org, "admin", createReq(name))
+		if err != nil {
+			t.Fatalf("create %q: %v", name, err)
+		}
+		return creds.ServiceAccount.Id
+	}
+
+	if got := handleOf("org-1", "  CI Deployer (prod)  "); got != "ci-deployer-prod" {
+		t.Fatalf("handle = %q, want ci-deployer-prod", got)
+	}
+	suffixed := regexp.MustCompile(`^ci-deployer-prod-[0-9a-z]{4}$`)
+	if got := handleOf("org-1", "CI Deployer (prod)"); !suffixed.MatchString(got) {
+		t.Fatalf("second account with the same name got %q, want a suffixed handle", got)
+	}
+	if got := handleOf("org-2", "CI Deployer (prod)"); got != "ci-deployer-prod" {
+		t.Fatalf("handles are per organization, got %q in a second one", got)
+	}
+	if got := handleOf("org-1", "token"); !regexp.MustCompile(`^token-[0-9a-z]{4}$`).MatchString(got) {
+		t.Fatalf("reserved name got %q, want a suffixed handle", got)
+	}
+	if got := handleOf("org-1", strings.Repeat("a", 100)); len(got) != 40 {
+		t.Fatalf("long name gave a %d-character handle, want 40", len(got))
+	}
+	if got := handleOf("org-1", "日本語"); len(got) < 3 || !regexp.MustCompile(`^[a-z0-9]+$`).MatchString(got) {
+		t.Fatalf("name with no ASCII letters gave %q", got)
+	}
+}
+
 // A re-created handle is a new account with a new identity, never the old one.
 func TestServiceAccountRecreateGetsNewIdentity(t *testing.T) {
 	f := newSAFixture(t)
@@ -707,9 +740,6 @@ func TestServiceAccountExchange_InternalFailuresAreUniform(t *testing.T) {
 
 func TestServiceAccountCreateAndUpdate_MoreValidation(t *testing.T) {
 	f := newSAFixture(t)
-	if _, err := f.svc.Create("org-1", "admin", createReq("Not A Handle!")); !apperror.ValidationFailed.Is(err) {
-		t.Fatal("invalid handle accepted")
-	}
 	if _, err := f.svc.Create("org-1", "admin", createReq("ci-bot")); err != nil {
 		t.Fatal(err)
 	}

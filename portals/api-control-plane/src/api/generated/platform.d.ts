@@ -3641,7 +3641,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/service-account-roles": {
+    "/roles": {
         parameters: {
             query?: never;
             header?: never;
@@ -3649,11 +3649,10 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * List the roles a service account can hold
+         * List roles
          * @description Every role in the role-to-scope mapping, each with the scopes it grants.
-         *     A sibling of /service-accounts, not a child, so it never shadows an account id.
          */
-        get: operations["listServiceAccountRoles"];
+        get: operations["listRoles"];
         put?: never;
         post?: never;
         delete?: never;
@@ -7548,7 +7547,7 @@ export interface components {
         /** @description A service account. Never carries the plaintext secret. */
         ServiceAccount: {
             /**
-             * @description Service account handle, unique within the organization
+             * @description Service account handle, generated from `displayName` and unique within the organization
              * @example ci-deployer
              */
             id: string;
@@ -7599,7 +7598,7 @@ export interface components {
             list: components["schemas"]["ServiceAccount"][];
             pagination: components["schemas"]["Pagination"];
         };
-        ServiceAccountRole: {
+        Role: {
             /** @example ap_service_account */
             name: string;
             /**
@@ -7610,18 +7609,14 @@ export interface components {
              */
             scopes: string[];
         };
-        ServiceAccountRoleListResponse: {
+        RoleListResponse: {
             /** @example 1 */
             count: number;
-            list: components["schemas"]["ServiceAccountRole"][];
+            list: components["schemas"]["Role"][];
             pagination: components["schemas"]["Pagination"];
         };
+        /** @description The `id` is generated from `displayName`. */
         ServiceAccountCreateRequest: {
-            /**
-             * @description Service account handle. `token` is reserved.
-             * @example ci-deployer
-             */
-            id: string;
             /** @example CI deployer */
             displayName: string;
             /** @example Deploys REST APIs from the release pipeline */
@@ -15984,7 +15979,7 @@ export interface operations {
             500: components["responses"]["InternalServerError"];
         };
     };
-    listServiceAccountRoles: {
+    listRoles: {
         parameters: {
             query?: never;
             header?: never;
@@ -15993,13 +15988,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Roles a service account can hold */
+            /** @description The roles in the mapping */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ServiceAccountRoleListResponse"];
+                    "application/json": components["schemas"]["RoleListResponse"];
                 };
             };
             401: components["responses"]["Unauthorized"];

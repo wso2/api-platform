@@ -192,7 +192,7 @@ func TestServiceAccountRoutesResolveToTheirScopes(t *testing.T) {
 		{http.MethodPost, base + "/ci-bot/regenerate-secret", base + "/{serviceAccountId}/regenerate-secret", false},
 		{http.MethodPost, base + "/token", base + "/token", true},
 		{http.MethodGet, base + "/jwks.json", base + "/jwks.json", true},
-		{http.MethodGet, constants.APIBasePath + "/service-account-roles", constants.APIBasePath + "/service-account-roles", false},
+		{http.MethodGet, constants.APIBasePath + "/roles", constants.APIBasePath + "/roles", false},
 	} {
 		req, err := http.NewRequest(probe.method, probe.path, nil)
 		if err != nil {

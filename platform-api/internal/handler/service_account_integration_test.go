@@ -203,7 +203,7 @@ func decodeSAJSON[T any](t *testing.T, rec *httptest.ResponseRecorder) T {
 
 func createSATestAccount(t *testing.T, e *saTestEnv, handle string) api.ServiceAccountCredentials {
 	t.Helper()
-	rec := e.call(t, http.MethodPost, saTestBasePath, api.ServiceAccountCreateRequest{Id: handle, DisplayName: "CI",
+	rec := e.call(t, http.MethodPost, saTestBasePath, api.ServiceAccountCreateRequest{DisplayName: handle,
 		Description: saStr("deploys"), Roles: []string{"ap_sa_reader"}}, true)
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("create: %d %s", rec.Code, rec.Body)
@@ -218,7 +218,7 @@ func saTestForm(creds api.ServiceAccountCredentials, scope string) url.Values {
 
 func TestServiceAccountHandler_Lifecycle(t *testing.T) {
 	e := setupSATestEnv(t)
-	create := api.ServiceAccountCreateRequest{Id: "ci-bot", DisplayName: "CI", Description: saStr("deploys"),
+	create := api.ServiceAccountCreateRequest{DisplayName: "ci-bot", Description: saStr("deploys"),
 		Roles: []string{"ap_sa_reader"}}
 
 	rec := e.call(t, http.MethodPost, saTestBasePath, create, true)
@@ -229,11 +229,17 @@ func TestServiceAccountHandler_Lifecycle(t *testing.T) {
 	if !strings.HasSuffix(rec.Header().Get("Location"), "/service-accounts/ci-bot") || creds.ClientSecret == "" {
 		t.Fatalf("create response: location %q, %+v", rec.Header().Get("Location"), creds)
 	}
-	if rec := e.call(t, http.MethodPost, saTestBasePath, create, true); rec.Code != http.StatusConflict {
-		t.Fatalf("duplicate create: %d", rec.Code)
+	// The same name again is a new account with a suffixed handle.
+	rec = e.call(t, http.MethodPost, saTestBasePath, create, true)
+	if again := decodeSAJSON[api.ServiceAccountCredentials](t, rec); rec.Code != http.StatusCreated ||
+		again.ServiceAccount.Id == "ci-bot" || !strings.HasPrefix(again.ServiceAccount.Id, "ci-bot-") {
+		t.Fatalf("same name again: %d %+v", rec.Code, again.ServiceAccount)
+	}
+	if rec := e.call(t, http.MethodDelete, saTestBasePath+"/"+decodeSAJSON[api.ServiceAccountCredentials](t, rec).ServiceAccount.Id, nil, true); rec.Code != http.StatusNoContent {
+		t.Fatalf("delete the second account: %d", rec.Code)
 	}
 	bad := create
-	bad.Id, bad.Roles = "bad-bot", []string{"ap_unknown"}
+	bad.DisplayName, bad.Roles = "bad-bot", []string{"ap_unknown"}
 	if rec := e.call(t, http.MethodPost, saTestBasePath, bad, true); rec.Code != http.StatusBadRequest {
 		t.Fatalf("unknown role: %d", rec.Code)
 	}
