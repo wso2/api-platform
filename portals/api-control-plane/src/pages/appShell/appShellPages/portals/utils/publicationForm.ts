@@ -38,14 +38,22 @@ const messages = defineMessages({
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.utils.publicationForm.urlInvalid',
     defaultMessage: 'Enter a full URL, for example https://api.example.com.',
   },
+  thumbnailType: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.utils.publicationForm.thumbnailType',
+    defaultMessage: 'Only JPEG and PNG images are supported.',
+  },
+  thumbnailSize: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.utils.publicationForm.thumbnailSize',
+    defaultMessage: 'The image must be 2 MB or smaller.',
+  },
 });
 
 /**
  * Form state and the pre-fill chain for the alpha "Publish to Portal" editor —
- * the API Details and Subscription Plans fields this release covers
+ * the API Details, Subscription Plans and Documentation fields this release covers
  * (`displayName`, `version`, `description`, the two endpoint URLs,
- * `agentVisibility`, `subscriptionPlanIds`). Everything else
- * `PublicationDetailsCore` carries (tags, labels, owners, docIds) belongs to a
+ * `agentVisibility`, `subscriptionPlanIds`, `docIds`). Everything else
+ * `PublicationDetailsCore` carries (tags, labels, owners) belongs to a
  * tab this alpha doesn't show, so a save never sends it — a save sends every
  * field currently shown, not every field the schema could hold.
  */
@@ -62,6 +70,8 @@ export type DraftFormValues = {
   sandboxUrl: string;
   agentVisibility: AgentVisibility;
   subscriptionPlanIds: string[];
+  /** Handles of the API's documents published with it. */
+  docIds: string[];
 };
 
 /** A URL the Production URL can be picked from, and the gateway that serves it. */
@@ -88,6 +98,7 @@ export const emptyDraftFormValues: DraftFormValues = {
   sandboxUrl: '',
   agentVisibility: DEFAULT_AGENT_VISIBILITY,
   subscriptionPlanIds: [],
+  docIds: [],
 };
 
 /** The API fields a draft starts from — REST and GraphQL APIs both carry them. */
@@ -118,6 +129,7 @@ export const resolveDraftFormValues = (
       sandboxUrl: draft.endpoints?.sandboxUrl ?? '',
       agentVisibility: draft.agentVisibility ?? DEFAULT_AGENT_VISIBILITY,
       subscriptionPlanIds: draft.subscriptionPlanIds ?? [],
+      docIds: draft.docIds ?? [],
     };
   }
   if (publication) {
@@ -129,6 +141,7 @@ export const resolveDraftFormValues = (
       sandboxUrl: publication.endpoints?.sandboxUrl ?? '',
       agentVisibility: publication.agentVisibility ?? DEFAULT_AGENT_VISIBILITY,
       subscriptionPlanIds: publication.subscriptionPlanIds ?? [],
+      docIds: publication.docIds ?? [],
     };
   }
   if (api) {
@@ -140,6 +153,7 @@ export const resolveDraftFormValues = (
       sandboxUrl: '',
       agentVisibility: DEFAULT_AGENT_VISIBILITY,
       subscriptionPlanIds: [],
+      docIds: [],
     };
   }
   return emptyDraftFormValues;
@@ -169,12 +183,28 @@ export const draftFormValuesToInput = (values: DraftFormValues): PublicationDraf
     ...((productionUrl ?? sandboxUrl) !== undefined
       ? { endpoints: { productionUrl, sandboxUrl } }
       : {}),
-    // Always sent, including `[]` to explicitly clear every selection: the
-    // generated field is a *pointer* to a slice, so `omitempty` only
-    // suppresses a nil pointer — an empty array still round-trips as an
-    // explicit "no plans selected" rather than being dropped.
+    // Always sent, even as `[]`: the draft PUT replaces both selections, so leaving one out
+    // would clear it.
     subscriptionPlanIds: values.subscriptionPlanIds,
+    docIds: values.docIds,
   };
+};
+
+/** A selection is a set: the server ignores order, and an item toggled off and on moves to the end. */
+export const sameSelection = (a: string[], b: string[]) => {
+  const members = new Set(a);
+  return members.size === new Set(b).size && b.every((id) => members.has(id));
+};
+
+const THUMBNAIL_TYPES: readonly string[] = ['image/jpeg', 'image/png'];
+/** The server's default cap on a draft thumbnail (`publication_thumbnail_max_bytes`), checked before uploading. */
+const THUMBNAIL_MAX_BYTES = 2 * 1024 * 1024;
+
+/** Why a picked image can't be the thumbnail, or `undefined`. The server re-checks the type. */
+export const validateThumbnailFile = (file: Pick<File, 'size' | 'type'>): MessageDescriptor | undefined => {
+  if (!THUMBNAIL_TYPES.includes(file.type)) return messages.thumbnailType;
+  if (file.size > THUMBNAIL_MAX_BYTES) return messages.thumbnailSize;
+  return undefined;
 };
 
 export type DraftFormField = 'displayName' | 'version' | 'productionUrl' | 'sandboxUrl';

@@ -40,6 +40,7 @@ export type { ApiDocumentPagesQuery } from './apiDocuments.queries';
 // ─── Hooks ──────────────────────────────────────────────────────────────────
 
 export {
+  useAllApiDocuments,
   useApiDocument,
   useApiDocumentContent,
   useApiDocumentPages,

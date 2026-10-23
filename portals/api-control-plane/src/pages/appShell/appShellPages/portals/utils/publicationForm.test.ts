@@ -24,6 +24,8 @@ import {
   draftFormValuesToInput,
   emptyDraftFormValues,
   resolveDraftFormValues,
+  sameSelection,
+  validateThumbnailFile,
 } from './publicationForm';
 
 const api = aRestApi({
@@ -59,7 +61,17 @@ describe('resolveDraftFormValues', () => {
       version: '2.0.0',
       agentVisibility: 'VISIBLE',
       subscriptionPlanIds: [],
+      docIds: [],
     });
+  });
+
+  it('reads the selected documents from the draft, then the publication', () => {
+    const draft = aPublicationDraftDetails({ docIds: ['guide'] });
+    const publication = aPublication({ docIds: ['faq'] });
+
+    expect(resolveDraftFormValues(draft, publication, api).docIds).toEqual(['guide']);
+    expect(resolveDraftFormValues(undefined, publication, api).docIds).toEqual(['faq']);
+    expect(resolveDraftFormValues(aPublicationDraftDetails({ docIds: undefined }), undefined, api).docIds).toEqual([]);
   });
 
   it('defaults the Production URL to the given gateway URL', () => {
@@ -88,6 +100,37 @@ describe('draftFormValuesToInput', () => {
     expect(draftFormValuesToInput({ ...emptyDraftFormValues, agentVisibility: 'HIDDEN' })).toMatchObject({
       agentVisibility: 'HIDDEN',
     });
+  });
+});
+
+describe('draftFormValuesToInput documents', () => {
+  it('always sends the selected documents, an empty selection included', () => {
+    expect(draftFormValuesToInput({ ...emptyDraftFormValues, docIds: ['guide'] }).docIds).toEqual(['guide']);
+    expect(draftFormValuesToInput(emptyDraftFormValues).docIds).toEqual([]);
+  });
+});
+
+describe('validateThumbnailFile', () => {
+  const file = (type: string, size = 1024) => ({ size, type });
+
+  it('accepts PNG and JPEG up to 2 MB', () => {
+    expect(validateThumbnailFile(file('image/png'))).toBeUndefined();
+    expect(validateThumbnailFile(file('image/jpeg', 2 * 1024 * 1024))).toBeUndefined();
+  });
+
+  it('refuses other image types and anything larger', () => {
+    expect(validateThumbnailFile(file('image/gif'))?.id).toMatch(/\.thumbnailType$/);
+    expect(validateThumbnailFile(file('image/svg+xml'))).toBeDefined();
+    expect(validateThumbnailFile(file('image/png', 2 * 1024 * 1024 + 1))?.id).toMatch(/\.thumbnailSize$/);
+  });
+});
+
+describe('sameSelection', () => {
+  it('ignores order and compares membership', () => {
+    expect(sameSelection(['a', 'b'], ['b', 'a'])).toBe(true);
+    expect(sameSelection(['a'], ['a', 'b'])).toBe(false);
+    expect(sameSelection(['a', 'b'], ['a', 'c'])).toBe(false);
+    expect(sameSelection([], [])).toBe(true);
   });
 });
 
