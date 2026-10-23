@@ -19,6 +19,7 @@
 package utils
 
 import (
+	"math"
 	"strings"
 	"testing"
 	"time"
@@ -389,6 +390,25 @@ func TestValidateWebSocketAPIConfig_NoGatewayMaximumConfigured(t *testing.T) {
 	})
 	_, _, errs := validateWebSocketAPIConfig(cfg)
 	assert.Empty(t, errs, "a zero maximum means the gateway sets no ceiling")
+}
+
+func TestValidateWebSocketAPIConfig_RejectsMaxConnectionsAboveUint32(t *testing.T) {
+	withWebSocketValidation(t, config.WebSocketConfig{}, nil) // no gateway maximum
+	tooMany := int(math.MaxUint32) + 2
+	_, _, errs := validateWebSocketAPIConfig(validWebSocketAPI(func(s *api.WebSocketAPIConfigData) {
+		def := wsUpstreamDefinition("chat", "ws://chat:8080")
+		def.Connection = &api.WebSocketUpstreamConnection{MaxConnections: &tooMany}
+		withWSDefinitions(s, def)
+	}))
+	assert.True(t, fieldsWithErrors(errs)["spec.upstreamDefinitions[0].connection.maxConnections"], "got %+v", errs)
+
+	largest := int(math.MaxUint32)
+	_, _, errs = validateWebSocketAPIConfig(validWebSocketAPI(func(s *api.WebSocketAPIConfigData) {
+		def := wsUpstreamDefinition("chat", "ws://chat:8080")
+		def.Connection = &api.WebSocketUpstreamConnection{MaxConnections: &largest}
+		withWSDefinitions(s, def)
+	}))
+	assert.Empty(t, errs, "the uint32 maximum itself is allowed")
 }
 
 func TestValidateWebSocketAPIConfig_VersionFormat(t *testing.T) {

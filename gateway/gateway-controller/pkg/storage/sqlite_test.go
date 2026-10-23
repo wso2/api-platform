@@ -30,6 +30,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -1211,6 +1212,75 @@ func TestSQLiteStorage_SaveAPIKey_AllowsUndeployedArtifact(t *testing.T) {
 	assert.NilError(t, err)
 	assert.Equal(t, retrieved.UUID, apiKey.UUID)
 	assert.Equal(t, retrieved.ArtifactUUID, apiKey.ArtifactUUID)
+}
+
+func TestSQLiteStorage_CreateAPIKey_NameRules(t *testing.T) {
+	storage := setupTestStorage(t)
+	defer storage.db.Close()
+
+	first := createTestAPIKey()
+	assert.NilError(t, storage.CreateAPIKey(first))
+
+	// A live key keeps its name: the second create is a conflict and the stored
+	// row is untouched.
+	second := createTestAPIKey()
+	second.Name, second.ArtifactUUID = first.Name, first.ArtifactUUID
+	err := storage.CreateAPIKey(second)
+	assert.Assert(t, errors.Is(err, ErrAPIKeyNameConflict), "got %v", err)
+	assert.Assert(t, errors.Is(err, ErrConflict), "a name conflict is still a conflict")
+	stored, err := storage.GetAPIKeysByAPIAndName(first.ArtifactUUID, first.Name)
+	assert.NilError(t, err)
+	assert.Equal(t, stored.UUID, first.UUID)
+
+	// A revoked key's name may be reused.
+	first.Status = models.APIKeyStatusRevoked
+	first.UpdatedAt = time.Now()
+	assert.NilError(t, storage.UpdateAPIKey(first))
+	assert.NilError(t, storage.CreateAPIKey(second))
+	stored, err = storage.GetAPIKeysByAPIAndName(first.ArtifactUUID, first.Name)
+	assert.NilError(t, err)
+	assert.Equal(t, stored.UUID, second.UUID)
+	assert.Equal(t, stored.Status, models.APIKeyStatusActive)
+}
+
+// Concurrent creates of one name must produce exactly one key: the name check
+// and the write are one guarded statement, not a read followed by an upsert.
+func TestSQLiteStorage_CreateAPIKey_ConcurrentSameName(t *testing.T) {
+	storage := setupTestStorage(t)
+	defer storage.db.Close()
+
+	const creators = 8
+	keys := make([]*models.APIKey, creators)
+	for i := range keys {
+		keys[i] = createTestAPIKey()
+		keys[i].Name = "shared-name"
+	}
+
+	errs := make([]error, creators)
+	var wg sync.WaitGroup
+	for i := range keys {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			errs[i] = storage.CreateAPIKey(keys[i])
+		}(i)
+	}
+	wg.Wait()
+
+	winner := ""
+	for i, err := range errs {
+		if err == nil {
+			assert.Equal(t, winner, "", "more than one create of the same name succeeded")
+			winner = keys[i].UUID
+			continue
+		}
+		assert.Assert(t, errors.Is(err, ErrAPIKeyNameConflict), "creator %d: got %v", i, err)
+	}
+	assert.Assert(t, winner != "", "no create succeeded")
+
+	stored, err := storage.GetAPIKeysByAPIAndName(keys[0].ArtifactUUID, "shared-name")
+	assert.NilError(t, err)
+	assert.Equal(t, stored.UUID, winner)
 }
 
 func TestSQLiteStorage_GetAPIKeyByID_Success(t *testing.T) {

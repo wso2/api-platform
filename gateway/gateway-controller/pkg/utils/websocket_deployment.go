@@ -20,6 +20,7 @@ package utils
 
 import (
 	"fmt"
+	"math"
 	"net/url"
 	"regexp"
 	"strings"
@@ -228,6 +229,14 @@ func validateBoundedDuration(field, raw string, maxValue time.Duration) []config
 func validateBoundedConnections(field string, value int, maxValue uint32) []config.ValidationError {
 	if value < 1 {
 		return []config.ValidationError{{Field: field, Message: "maxConnections must be at least 1"}}
+	}
+	// Envoy's circuit-breaker threshold is a uint32; a larger value would wrap
+	// when narrowed, so it is rejected even when the gateway sets no maximum.
+	if uint64(value) > math.MaxUint32 {
+		return []config.ValidationError{{
+			Field:   field,
+			Message: fmt.Sprintf("%d exceeds the largest supported value of %d", value, uint32(math.MaxUint32)),
+		}}
 	}
 	if maxValue > 0 && uint64(value) > uint64(maxValue) {
 		return []config.ValidationError{{

@@ -1017,6 +1017,14 @@ func TestCombinedCache_HandleCombinedResponses_SlowReaderStillReceives(t *testin
 	mainResponseChan := make(chan cache.Response) // unbuffered: the send blocks until read
 	done := make(chan struct{})
 	exited := make(chan struct{})
+
+	// Register the watcher the handler serves: after each delivery the handler
+	// exits if its watcher is gone, and an unregistered one would leave it before
+	// the v2 send below, so the cancellation would never meet an active send.
+	cc.mu.Lock()
+	cc.watchers[1] = &combinedWatcher{id: 1, done: done}
+	cc.mu.Unlock()
+
 	go func() {
 		cc.handleCombinedResponses(1, policyResponseChan, make(chan cache.Response), make(chan cache.Response),
 			make(chan cache.Response), nil, nil, nil, mainResponseChan, done)
@@ -1037,6 +1045,11 @@ func TestCombinedCache_HandleCombinedResponses_SlowReaderStillReceives(t *testin
 	// A send still blocked when the watch is cancelled must not leak the goroutine.
 	policyResponseChan <- &mockResponse{version: "v2"}
 	time.Sleep(50 * time.Millisecond)
+	select {
+	case <-exited:
+		t.Fatal("handler exited before the watch was cancelled; the v2 send was never blocked")
+	default:
+	}
 	close(done)
 	select {
 	case <-exited:

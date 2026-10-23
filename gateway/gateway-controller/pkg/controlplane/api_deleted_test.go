@@ -203,6 +203,10 @@ func (m *mockStorageForDeletion) SaveAPIKey(key *models.APIKey) error {
 	return nil
 }
 
+func (m *mockStorageForDeletion) CreateAPIKey(key *models.APIKey) error {
+	return m.UpsertAPIKey(key)
+}
+
 func (m *mockStorageForDeletion) UpsertAPIKey(key *models.APIKey) error {
 	m.upsertedAPIKeys = append(m.upsertedAPIKeys, *key)
 	return nil

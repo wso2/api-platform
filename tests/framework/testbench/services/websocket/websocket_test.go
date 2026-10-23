@@ -163,6 +163,31 @@ func TestHandshake_EchoesTextFrame(t *testing.T) {
 	require.Equal(t, "hello", string(payload))
 }
 
+// Echoes and server pushes share one connection writer; every frame must still
+// arrive whole rather than interleaved with another writer's bytes.
+func TestHandshake_PushAndEchoFramesDoNotInterleave(t *testing.T) {
+	server := httptest.NewServer(New().Handler())
+	defer server.Close()
+
+	client := dialAndHandshake(t, server, "/rooms?pushInterval=1ms")
+	_ = client.conn.SetReadDeadline(time.Now().Add(10 * time.Second))
+
+	// One echo at a time while pushes arrive every millisecond, so the server's
+	// echo and push writers keep contending for the same connection.
+	for i := 0; i < 200; i++ {
+		client.writeClientFrame(t, opText, []byte("echo-payload"))
+		for {
+			opcode, payload := client.readServerFrame(t)
+			require.Equal(t, byte(opText), opcode)
+			text := string(payload)
+			if text == "echo-payload" {
+				break
+			}
+			require.True(t, strings.HasPrefix(text, "server-push "), "corrupted frame payload %q", text)
+		}
+	}
+}
+
 func TestHandshake_AnswersPingWithPong(t *testing.T) {
 	server := httptest.NewServer(New().Handler())
 	defer server.Close()

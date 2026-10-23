@@ -2426,6 +2426,62 @@ func (s *sqlStore) SaveAPIKey(apiKey *models.APIKey) error {
 // so a racing WebSocket event that already wrote a newer record is never overwritten.
 // source is preserved from the existing row when it is already set.
 // external_ref_id falls back to the existing value when the incoming one is NULL.
+// CreateAPIKey inserts a new API key, replacing a revoked key of the same name
+// but never a live one. The UPDATE is guarded on the stored row being revoked,
+// and an INSERT racing another create of the same name loses on the
+// (gateway_id, artifact_uuid, name) unique key, so exactly one create wins.
+func (s *sqlStore) CreateAPIKey(apiKey *models.APIKey) error {
+	didWrite, err := s.upsert(s, upsertSpec{
+		table: "api_keys",
+		columns: []string{
+			"uuid", "gateway_id", "name", "api_key", "masked_api_key", "artifact_uuid", "status",
+			"created_at", "created_by", "updated_at", "expires_at",
+			"source", "external_ref_id", "issuer",
+		},
+		insertValues: []interface{}{
+			apiKey.UUID, s.gatewayId, apiKey.Name, apiKey.APIKey, apiKey.MaskedAPIKey, apiKey.ArtifactUUID, apiKey.Status,
+			apiKey.CreatedAt, apiKey.CreatedBy, apiKey.UpdatedAt, apiKey.ExpiresAt,
+			apiKey.Source, apiKey.ExternalRefId, apiKey.Issuer,
+		},
+		keyColumns: []string{"gateway_id", "artifact_uuid", "name"},
+		keyValues:  []interface{}{s.gatewayId, apiKey.ArtifactUUID, apiKey.Name},
+		setClauses: []string{
+			"uuid = ?",
+			"api_key = ?",
+			"masked_api_key = ?",
+			"status = ?",
+			"created_at = ?",
+			"created_by = ?",
+			"updated_at = ?",
+			"expires_at = ?",
+			"source = ?",
+			"external_ref_id = ?",
+			"issuer = ?",
+		},
+		setValues: []interface{}{
+			apiKey.UUID, apiKey.APIKey, apiKey.MaskedAPIKey, apiKey.Status, apiKey.CreatedAt, apiKey.CreatedBy,
+			apiKey.UpdatedAt, apiKey.ExpiresAt, apiKey.Source, apiKey.ExternalRefId, apiKey.Issuer,
+		},
+		guard:       "status = ?",
+		guardValues: []interface{}{models.APIKeyStatusRevoked},
+	})
+	if err != nil {
+		if s.isUniqueViolation(err) {
+			return fmt.Errorf("%w: API key value already exists", ErrConflict)
+		}
+		return fmt.Errorf("failed to create API key: %w", err)
+	}
+	if !didWrite {
+		return fmt.Errorf("%w: %s", ErrAPIKeyNameConflict, apiKey.Name)
+	}
+
+	s.logger.Debug("API key created",
+		slog.String("name", apiKey.Name),
+		slog.String("artifact_uuid", apiKey.ArtifactUUID))
+
+	return nil
+}
+
 func (s *sqlStore) UpsertAPIKey(apiKey *models.APIKey) error {
 	// Portable upsert keyed on (gateway_id, artifact_uuid, name), guarded so a
 	// racing event that already wrote a newer record is never overwritten.
