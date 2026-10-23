@@ -206,7 +206,7 @@ func (r *MCPProxyRepo) List(orgUUID string, opts ListOptions) ([]*model.MCPProxy
 	}
 	col, dir := opts.resolveSort(listSortColumns, "created_at")
 	pageClause, pageArgs := r.db.PaginationClause(opts.Limit, opts.Offset)
-	query += " ORDER BY " + col + " " + dir + " " + pageClause
+	query += " ORDER BY " + col + " " + dir + ", uuid ASC " + pageClause
 	args = append(args, pageArgs...)
 	rows, err := r.db.Query(r.db.Rebind(query), args...)
 	if err != nil {
@@ -270,7 +270,7 @@ func (r *MCPProxyRepo) ListByProject(orgUUID, projectUUID string, opts ListOptio
 	}
 	col, dir := opts.resolveSort(listSortColumns, "created_at")
 	pageClause, pageArgs := r.db.PaginationClause(opts.Limit, opts.Offset)
-	query += " ORDER BY " + col + " " + dir + " " + pageClause
+	query += " ORDER BY " + col + " " + dir + ", uuid ASC " + pageClause
 	args = append(args, pageArgs...)
 	rows, err := r.db.Query(r.db.Rebind(query), args...)
 	if err != nil {

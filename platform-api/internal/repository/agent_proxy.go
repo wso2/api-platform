@@ -193,7 +193,8 @@ func (r *AgentProxyRepo) List(orgUUID string, opts AgentProxyListOptions) ([]*mo
 	query := `SELECT` + agentProxyColumns + `
 		FROM agent_proxies
 		WHERE organization_uuid = ?` + filter + `
-		ORDER BY ` + col + ` ` + dir + `
+		ORDER BY ` + col + ` ` + dir + `,
+		uuid ASC
 		` + pageClause
 
 	args := append([]any{orgUUID}, filterArgs...)
