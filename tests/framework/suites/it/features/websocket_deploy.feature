@@ -80,7 +80,7 @@ Feature: WebSocket API CRUD and connectivity
     Then the response status code should be 101
     When I close the WebSocket connection
     When I open a WebSocket connection to "${CTX:wsContext}/lobby"
-    Then the response status code should be 403
+    Then the response status code should be 404
 
     When I update WebSocket API "${CTX:wsName}" from "resources/templates/websocket-api.yaml" with values:
       | apiVersion             | ${CTX:gatewaySpecVersion}               |
@@ -251,10 +251,9 @@ Feature: WebSocket API CRUD and connectivity
   # same propagation gap the other scenarios retry through); once confirmed, the unconfigured
   # path is asserted without a retry, since its outcome no longer depends on timing.
   #
-  # The expected status is 403, not 404: Envoy's upgrade handling rejects any Upgrade request
-  # against a route that hasn't enabled that upgrade type before that route's own action (here,
-  # the catch-all's direct_response 404) ever runs. "No matching channel" and "no route at all"
-  # are therefore indistinguishable from the client's perspective — both surface as 403.
+  # The expected status is 404, the same as a plain request to an unknown path: the gateway's
+  # handshake-only catch-all route enables the upgrade so Envoy does not reject it with 403, and
+  # targets a cluster that is never defined, so nothing is forwarded.
   Scenario: A handshake to an unconfigured channel path is rejected
     Given I generate a unique resource name from "websocket-unknown" and store it as "wsName"
     And I generate a unique value from "websocket-unknown" and store it as "wsDisplayName"
@@ -275,7 +274,7 @@ Feature: WebSocket API CRUD and connectivity
     When I close the WebSocket connection
 
     When I open a WebSocket connection to "${CTX:wsContext}/not-a-channel"
-    Then the response status code should be 403
+    Then the response status code should be 404
 
     When I delete the WebSocket API "${CTX:wsName}"
     Then the response should be successful
