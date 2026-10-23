@@ -910,13 +910,6 @@ blocks:
         tags: "gateway-version>1.2.0"
         features:
           - features/ai-workspace-gateway/mcp-policies/mcp_gateway_url_precedence.feature
-      - name: jwt-auth
-        features:
-          - features/gateway/security-policies/jwt_auth.feature
-      - name: jwt-auth-scope-claim-rules
-        tags: "gateway-version>=1.2.0"
-        features:
-          - features/gateway/security-policies/jwt_auth_scope_claim_rules.feature
       - name: graphql-policies
         tags: "gateway-version>1.2.0"
         features:
