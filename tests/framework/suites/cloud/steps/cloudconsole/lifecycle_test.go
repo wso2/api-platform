@@ -3610,3 +3610,188 @@ func TestRegisterDeletersRemovesProxiesThenProvidersThenSecrets(t *testing.T) {
 	require.NoError(t, registry.Sweep(ctx))
 	require.Equal(t, []string{"rest-apis/api", "llm-proxies/prox", "llm-providers/prov", "secrets/sec"}, deleted)
 }
+
+func TestHandleDefectsBreakOneRuleEach(t *testing.T) {
+	const valid = "syn-project-abcde-3"
+	require.Equal(t, "SYN-PROJECT-ABCDE-3", handleDefects["uppercase"](valid))
+	require.Equal(t, "syn_project_abcde_3", handleDefects["containing an underscore"](valid))
+	require.Equal(t, "-"+valid, handleDefects["starting with a hyphen"](valid))
+	require.Equal(t, valid+"-", handleDefects["ending with a hyphen"](valid))
+	require.Equal(t, "syn--project-abcde-3", handleDefects["containing consecutive hyphens"](valid))
+	long := handleDefects["longer than 40 characters"](valid)
+	require.Equal(t, handleLengthBeyondStorage, len(long))
+	require.True(t, strings.HasPrefix(long, valid))
+	require.Equal(t, long, handleDefects["longer than 40 characters"](long), "a handle that is long enough is left alone")
+}
+
+func TestReadDefaultAndAbsentProjects(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	var seen []string
+	steps, ctx, _, registry := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+		seen = append(seen, r.Method+" "+r.URL.Path)
+		writeJSON(w, http.StatusNotFound, map[string]string{"code": "PROJECT_NOT_FOUND"})
+	})
+	require.NoError(t, steps.readDefaultProject(ctx))
+	require.NoError(t, steps.readAbsentProject(ctx))
+	absent, err := requiredValue(ctx, keyAbsentProjectID)
+	require.NoError(t, err)
+	require.NoError(t, steps.deleteAbsentProject(ctx))
+	absentAfterDelete := optionalValue(ctx, keyAbsentProjectID)
+	require.NotEqual(t, absent, absentAfterDelete, "each probe names a project of its own")
+	require.Equal(t, []string{"GET /projects/default", "GET /projects/" + absent, "DELETE /projects/" + absentAfterDelete}, seen)
+	require.Empty(t, registry.Pending(), "a project that is never created is never registered")
+	published, err := httpx.Published(ctx)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusNotFound, published.StatusCode)
+}
+
+func TestCreateDuplicateProjectRepeatsTheHandleWithAnotherDisplayName(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	var body map[string]string
+	steps, ctx, local, registry := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, http.MethodPost, r.Method)
+		require.Equal(t, "/projects", r.URL.Path)
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+		writeJSON(w, http.StatusConflict, map[string]string{"code": "PROJECT_EXISTS"})
+	})
+	require.ErrorContains(t, steps.createDuplicateProject(ctx), "no synthetic project")
+	local.Set(keyProjectID, "syn-project-1")
+	require.NoError(t, steps.createDuplicateProject(ctx))
+	require.Equal(t, "syn-project-1", body["id"])
+	require.NotEqual(t, "Synthetic syn-project-1", body["displayName"])
+	require.Empty(t, registry.Pending(), "the handle is already registered by the create that came first")
+}
+
+func TestRequestProjectWithDefectiveHandleRegistersTheHandleBeforeTheRequest(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	var registeredAtRequest []cleanup.Resource
+	var sent map[string]string
+	var steps *Steps
+	var ctx context.Context
+	var registry *cleanup.Registry
+	respond := func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			require.NoError(t, json.NewDecoder(r.Body).Decode(&sent))
+			registeredAtRequest = registry.Pending()
+			writeJSON(w, http.StatusBadRequest, map[string]string{"code": "invalid_request"})
+			return
+		}
+		writeJSON(w, http.StatusNotFound, map[string]string{"code": "PROJECT_NOT_FOUND"})
+	}
+	steps, ctx, _, registry = cloudSteps(t, respond)
+
+	require.ErrorContains(t, steps.requestProjectWithDefectiveHandle(ctx, "with a typo"), "unknown handle defect")
+	require.NoError(t, steps.requestProjectWithDefectiveHandle(ctx, "uppercase"))
+	require.Equal(t, strings.ToUpper(sent["id"]), sent["id"])
+	require.Equal(t, []cleanup.Resource{{Kind: cleanup.KindProject, ID: sent["id"], Actor: resourceActor, Description: "project " + sent["id"]}},
+		registeredAtRequest, "the handle is registered before the request that may create it")
+	published, err := httpx.Published(ctx)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusBadRequest, published.StatusCode)
+
+	require.NoError(t, steps.assertRejectedProjectAbsent(ctx))
+}
+
+func TestRequestProjectWithDefectiveHandleRegistersTheIDAnAcceptedProjectGot(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	steps, ctx, _, registry := cloudSteps(t, func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, http.StatusCreated, map[string]any{"id": "renamed-by-the-platform"})
+	})
+	require.NoError(t, steps.requestProjectWithDefectiveHandle(ctx, "ending with a hyphen"))
+	ids := []string{}
+	for _, resource := range registry.Pending() {
+		ids = append(ids, resource.ID)
+	}
+	require.Contains(t, ids, "renamed-by-the-platform")
+	require.Len(t, ids, 2)
+}
+
+func TestAssertRejectedProjectAbsent(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	status := http.StatusNotFound
+	steps, ctx, local, _ := cloudSteps(t, func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, status, map[string]string{"code": "x"})
+	})
+	require.ErrorContains(t, steps.assertRejectedProjectAbsent(ctx), "requested no project")
+	local.Set(keyRejectedProjectID, "Bad-Handle")
+	require.NoError(t, steps.assertRejectedProjectAbsent(ctx))
+	status = http.StatusOK
+	require.ErrorContains(t, steps.assertRejectedProjectAbsent(ctx), "should not exist")
+}
+
+func TestAwaitProjectActive(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	status := "active"
+	steps, ctx, local, _ := cloudSteps(t, func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{"id": "syn-project-1", "status": status})
+	})
+	require.Error(t, steps.awaitProjectActive(ctx))
+	local.Set(keyProjectID, "syn-project-1")
+	require.NoError(t, steps.awaitProjectActive(ctx))
+	status = "failed"
+	started := time.Now()
+	require.ErrorContains(t, steps.awaitProjectActive(ctx), "failed")
+	require.Less(t, time.Since(started), 10*time.Second, "a failed project is not waited for")
+}
+
+func TestProjectPipelineBindingSteps(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	bound := "default"
+	var put map[string]string
+	steps, ctx, local, _ := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/projects/syn-project-1/deployment-pipeline", r.URL.Path)
+		if r.Method == http.MethodPut {
+			require.NoError(t, json.NewDecoder(r.Body).Decode(&put))
+			writeJSON(w, http.StatusBadRequest, map[string]string{"code": "invalid_request"})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"pipeline": bound})
+	})
+	require.ErrorContains(t, steps.bindProjectToPipeline(ctx, "x"), "no synthetic project")
+	require.ErrorContains(t, steps.readProjectPipeline(ctx), "no synthetic project")
+	local.Set(keyProjectID, "syn-project-1")
+	local.Set(keyPipelineID, "syn-pipeline-1")
+
+	require.NoError(t, steps.bindProjectToPipeline(ctx, "${CTX:cloudPipelineID}"))
+	require.Equal(t, map[string]string{"pipeline": "syn-pipeline-1"}, put)
+	require.NoError(t, steps.bindProjectToPipeline(ctx, ""))
+	require.Equal(t, map[string]string{"pipeline": ""}, put, "a blank pipeline is sent as it is")
+
+	require.NoError(t, steps.readProjectPipeline(ctx))
+	require.NoError(t, steps.assertProjectBoundTo(ctx, "default"))
+	require.ErrorContains(t, steps.assertProjectBoundTo(ctx, "${CTX:cloudPipelineID}"), `bound to deployment pipeline "default"`)
+	bound = "syn-pipeline-1"
+	require.NoError(t, steps.assertProjectBoundTo(ctx, "${CTX:cloudPipelineID}"))
+}
+
+func TestCreateProjectsUntilRefusedStopsAtTheFirstRefusal(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	created := 0
+	steps, ctx, _, registry := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]string
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+		if created == 3 {
+			writeJSON(w, http.StatusPaymentRequired, map[string]string{"code": "quota_exceeded"})
+			return
+		}
+		created++
+		writeJSON(w, http.StatusCreated, map[string]any{"id": body["id"]})
+	})
+	require.NoError(t, steps.createProjectsUntilRefused(ctx))
+	require.Len(t, registry.Pending(), 4, "every project asked for is registered, the refused one included")
+	published, err := httpx.Published(ctx)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusPaymentRequired, published.StatusCode)
+	require.NotEmpty(t, optionalValue(ctx, keyRejectedProjectID))
+}
+
+func TestCreateProjectsUntilRefusedGivesUpWhereThereIsNoQuota(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	steps, ctx, _, registry := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]string
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+		writeJSON(w, http.StatusCreated, map[string]any{"id": body["id"]})
+	})
+	require.ErrorContains(t, steps.createProjectsUntilRefused(ctx), "refused none")
+	require.Len(t, registry.Pending(), maxQuotaProbeProjects)
+}

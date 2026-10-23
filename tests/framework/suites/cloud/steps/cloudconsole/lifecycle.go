@@ -290,28 +290,44 @@ func (s *Steps) createProject(ctx context.Context) error {
 // createProjectOf creates a uniquely named project, registered for cleanup under the given kind
 // before it is requested, and keeps it as the scenario's project.
 func (s *Steps) createProjectOf(ctx context.Context, kind cleanup.Kind) error {
-	if err := generateResourceAndStore(ctx, "syn-project", keyProjectID); err != nil {
-		return err
-	}
-	id, err := requiredValue(ctx, keyProjectID)
-	if err != nil {
-		return err
-	}
-	if err := cleanup.Register(ctx, cleanup.Resource{
-		Kind: kind, ID: id, Actor: resourceActor, Description: "project " + id,
-	}); err != nil {
-		return fmt.Errorf("registering project %q for cleanup: %w", id, err)
-	}
-	resp, err := s.doAuthenticated(ctx, http.MethodPost, "/projects", map[string]string{
-		"id": id, "displayName": "Synthetic " + id,
-		"description": "Created and deleted by the APIP cloud integration test. Safe to delete.",
-	})
+	id, resp, err := s.requestProjectOf(ctx, kind)
 	if err != nil {
 		return err
 	}
 	if resp.StatusCode != http.StatusCreated {
 		return responseError(resp)
 	}
+	return s.keepCreatedProject(ctx, kind, id, resp)
+}
+
+// requestProjectOf asks for a uniquely named project and returns the answer whatever it is. The
+// project is registered for cleanup under the given kind before it is requested.
+func (s *Steps) requestProjectOf(ctx context.Context, kind cleanup.Kind) (string, *httpx.Response, error) {
+	if err := generateResourceAndStore(ctx, "syn-project", keyProjectID); err != nil {
+		return "", nil, err
+	}
+	id, err := requiredValue(ctx, keyProjectID)
+	if err != nil {
+		return "", nil, err
+	}
+	if err := cleanup.Register(ctx, cleanup.Resource{
+		Kind: kind, ID: id, Actor: resourceActor, Description: "project " + id,
+	}); err != nil {
+		return "", nil, fmt.Errorf("registering project %q for cleanup: %w", id, err)
+	}
+	resp, err := s.doAuthenticated(ctx, http.MethodPost, "/projects", map[string]string{
+		"id": id, "displayName": "Synthetic " + id,
+		"description": "Created and deleted by the APIP cloud integration test. Safe to delete.",
+	})
+	if err != nil {
+		return "", nil, err
+	}
+	return id, resp, nil
+}
+
+// keepCreatedProject makes the project a create answered 201 for the scenario's project, and
+// registers the id the platform gave it when that differs from the one requested.
+func (s *Steps) keepCreatedProject(ctx context.Context, kind cleanup.Kind, id string, resp *httpx.Response) error {
 	createdID, err := stringField(resp, "id")
 	if err != nil {
 		return fmt.Errorf("creating APIP project: %w", err)
