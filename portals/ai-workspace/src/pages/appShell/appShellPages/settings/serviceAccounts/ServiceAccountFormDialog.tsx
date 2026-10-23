@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import {
   Alert,
   Box,
@@ -32,35 +32,26 @@ import {
   FormControlLabel,
   FormLabel,
   IconButton,
-  InputAdornment,
   OutlinedInput,
   Stack,
   Switch,
   Typography,
 } from '@wso2/oxygen-ui';
-import { Pencil, X } from '@wso2/oxygen-ui-icons-react';
+import { X } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, FormattedMessage, useIntl, type MessageDescriptor } from 'react-intl';
 import {
   createServiceAccount,
   getServiceAccount,
-  SERVICE_ACCOUNT_EXISTS,
   updateServiceAccount,
   type ServiceAccount,
   type ServiceAccountCredentials,
-  type ServiceAccountRole,
+  type Role,
   type UpdateServiceAccountRequest,
 } from '../../../../../apis/serviceAccountApis';
 import { useAIWorkspaceSnackbar } from '../../../../../hooks/aiWorkspaceSnackbar';
 import { getErrorCode, getErrorMessage } from '../../../../../utils/apiError';
 import RolePicker, { DEFAULT_ROLE } from './RolePicker';
 import { CredentialsPanel, SectionLabel, ServiceAccountHeader } from './ServiceAccountEditParts';
-import {
-  HANDLE_MAX_LENGTH,
-  HANDLE_MIN_LENGTH,
-  handleProblem,
-  toHandle,
-  type HandleProblem,
-} from './serviceAccountUtils';
 
 const P = 'aiWorkspace.pages.appShell.appShellPages.settings.serviceAccounts.ServiceAccountFormDialog';
 const messages = defineMessages({
@@ -76,20 +67,6 @@ const messages = defineMessages({
   save: { id: `${P}.save`, defaultMessage: 'Save changes' },
   saving: { id: `${P}.saving`, defaultMessage: 'Saving…' },
   displayName: { id: `${P}.displayName`, defaultMessage: 'Display name' },
-  handle: { id: `${P}.handle`, defaultMessage: 'ID' },
-  handleHelper: {
-    id: `${P}.handleHelper`,
-    defaultMessage: 'Made from the display name and used in the client ID. Cannot be changed later.',
-  },
-  handleEditedHelper: { id: `${P}.handleEditedHelper`, defaultMessage: 'Used in the client ID. Cannot be changed later.' },
-  editHandle: { id: `${P}.editHandle`, defaultMessage: 'Edit ID' },
-  handleLength: { id: `${P}.handleLength`, defaultMessage: 'Use {min} to {max} characters.' },
-  handleFormat: {
-    id: `${P}.handleFormat`,
-    defaultMessage: 'Use lowercase letters, digits and single hyphens, not at the start or end.',
-  },
-  handleReserved: { id: `${P}.handleReserved`, defaultMessage: 'This ID is reserved. Choose another.' },
-  handleTaken: { id: `${P}.handleTaken`, defaultMessage: 'An account with this ID already exists.' },
   description: { id: `${P}.description`, defaultMessage: 'Description' },
   descriptionPlaceholder: { id: `${P}.descriptionPlaceholder`, defaultMessage: 'What the account is for' },
   details: { id: `${P}.details`, defaultMessage: 'Details' },
@@ -121,12 +98,6 @@ const messages = defineMessages({
   },
 });
 
-const HANDLE_PROBLEM: Record<HandleProblem, MessageDescriptor> = {
-  format: messages.handleFormat,
-  length: messages.handleLength,
-  reserved: messages.handleReserved,
-};
-
 const MAX = { description: 1023, displayName: 255 } as const;
 
 type TextField = keyof typeof MAX;
@@ -141,7 +112,7 @@ const sameRoles = (a: readonly string[], b: readonly string[]) =>
   a.length === b.length && a.every((role) => b.includes(role));
 
 interface RolesState {
-  list: ServiceAccountRole[];
+  list: Role[];
   loading: boolean;
   failed: boolean;
 }
@@ -221,25 +192,18 @@ function ServiceAccountForm({
   const [reloading, setReloading] = useState(false);
 
   const [displayName, setDisplayName] = useState(account?.displayName ?? '');
-  const [handle, setHandle] = useState(account?.id ?? '');
-  const [handleEdited, setHandleEdited] = useState(isEdit);
-  const [handleTaken, setHandleTaken] = useState(false);
-  const handleInput = useRef<HTMLInputElement>(null);
   const [description, setDescription] = useState(account?.description ?? '');
   const [roles, setRoles] = useState<string[]>(account?.roles ?? []);
   const [defaulted, setDefaulted] = useState(isEdit);
   const [enabled, setEnabled] = useState(account ? account.status === 'active' : true);
   const [submitted, setSubmitted] = useState(false);
 
-  const effectiveHandle = handleEdited ? handle : toHandle(displayName);
   const problems = {
     description: textProblem(description, 'description'),
     displayName: textProblem(displayName, 'displayName'),
-    handle: isEdit ? null : handleProblem(effectiveHandle),
     roles: roles.length === 0,
   };
-  const valid =
-    !problems.description && !problems.displayName && !problems.handle && !problems.roles;
+  const valid = !problems.description && !problems.displayName && !problems.roles;
   const removedRole = base !== null && base.roles.some((role) => !roles.includes(role));
   const disabling = base !== null && base.status === 'active' && !enabled;
 
@@ -268,16 +232,6 @@ function ServiceAccountForm({
     setBase(account);
   }, [account, base, description, displayName, enabled, roles]);
 
-  // Focus once the field is enabled; a disabled input cannot take focus.
-  useEffect(() => {
-    if (handleEdited && !isEdit) handleInput.current?.focus();
-  }, [handleEdited, isEdit]);
-
-  const editHandle = () => {
-    setHandle(effectiveHandle);
-    setHandleEdited(true);
-  };
-
   const reload = async () => {
     if (!fetchFresh) return;
     setReloading(true);
@@ -292,10 +246,6 @@ function ServiceAccountForm({
   };
 
   const fail = (err: unknown, fallback: MessageDescriptor) => {
-    if (!isEdit && getErrorCode(err) === SERVICE_ACCOUNT_EXISTS) {
-      setHandleTaken(true);
-      return;
-    }
     if (isEdit && getErrorCode(err) === 'CONFLICT') {
       setConflict(true);
       return;
@@ -338,7 +288,6 @@ function ServiceAccountForm({
     try {
       const credentials = await createServiceAccount({
         displayName: name,
-        id: effectiveHandle,
         roles,
         ...(description.trim() ? { description: description.trim() } : {}),
       });
@@ -350,12 +299,6 @@ function ServiceAccountForm({
       setPending(false);
     }
   };
-
-  const handleError = handleTaken
-    ? intl.formatMessage(messages.handleTaken)
-    : (submitted || handleEdited || displayName.trim()) && problems.handle
-      ? intl.formatMessage(HANDLE_PROBLEM[problems.handle], { max: HANDLE_MAX_LENGTH, min: HANDLE_MIN_LENGTH })
-      : null;
 
   return (
     <Dialog fullWidth maxWidth="sm" onClose={pending ? undefined : onClose} open>
@@ -416,44 +359,6 @@ function ServiceAccountForm({
               />
               {textError('displayName') && <FormHelperText>{textError('displayName')}</FormHelperText>}
             </FormControl>
-
-            {!isEdit && (
-              <FormControl error={Boolean(handleError)} fullWidth required>
-                <FormLabel htmlFor="service-account-handle">
-                  <FormattedMessage {...messages.handle} />
-                </FormLabel>
-                <OutlinedInput
-                  disabled={!handleEdited}
-                  endAdornment={
-                    handleEdited ? undefined : (
-                      <InputAdornment position="end">
-                        <IconButton
-                          aria-label={intl.formatMessage(messages.editHandle)}
-                          edge="end"
-                          onClick={editHandle}
-                          size="small"
-                        >
-                          <Pencil size={16} />
-                        </IconButton>
-                      </InputAdornment>
-                    )
-                  }
-                  id="service-account-handle"
-                  inputProps={{ maxLength: HANDLE_MAX_LENGTH, spellCheck: false }}
-                  inputRef={handleInput}
-                  onChange={(event) => {
-                    setHandle(event.target.value);
-                    setHandleTaken(false);
-                  }}
-                  sx={{ fontFamily: 'monospace' }}
-                  value={effectiveHandle}
-                />
-                <FormHelperText>
-                  {handleError ??
-                    intl.formatMessage(handleEdited ? messages.handleEditedHelper : messages.handleHelper)}
-                </FormHelperText>
-              </FormControl>
-            )}
 
             <FormControl error={Boolean(textError('description'))} fullWidth>
               <FormLabel htmlFor="service-account-description">

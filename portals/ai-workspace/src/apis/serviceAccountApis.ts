@@ -50,7 +50,7 @@ export interface ServiceAccountCredentials {
   clientSecret: string;
 }
 
-export interface ServiceAccountRole {
+export interface Role {
   name: string;
   scopes: string[];
 }
@@ -67,14 +67,13 @@ export interface ListServiceAccountsResponse {
   pagination: Pagination;
 }
 
-export interface ListServiceAccountRolesResponse {
+export interface ListRolesResponse {
   count: number;
-  list: ServiceAccountRole[];
+  list: Role[];
   pagination: Pagination;
 }
 
 export interface CreateServiceAccountRequest {
-  id: string;
   displayName: string;
   roles: string[];
   description?: string;
@@ -94,7 +93,6 @@ export interface ServiceAccountTokenResponse {
   scope?: string;
 }
 
-export const SERVICE_ACCOUNT_EXISTS = 'SERVICE_ACCOUNT_EXISTS';
 export const SERVICE_ACCOUNT_INVALID_SCOPE = 'SERVICE_ACCOUNT_INVALID_SCOPE';
 
 // ============================================================================
@@ -116,8 +114,8 @@ export function getServiceAccount(id: string): Promise<ServiceAccount> {
   return get<ServiceAccount>(accountPath(id));
 }
 
-export function listServiceAccountRoles(): Promise<ListServiceAccountRolesResponse> {
-  return get<ListServiceAccountRolesResponse>('/service-account-roles');
+export function listRoles(): Promise<ListRolesResponse> {
+  return get<ListRolesResponse>('/roles');
 }
 
 export function createServiceAccount(
@@ -174,7 +172,7 @@ export async function issueServiceAccountToken(
 /** Every scope the named roles grant, without duplicates. */
 export function scopesOfRoles(
   roleNames: readonly string[],
-  roles: readonly ServiceAccountRole[],
+  roles: readonly Role[],
 ): string[] {
   const scopes = new Set<string>();
   for (const name of roleNames) {

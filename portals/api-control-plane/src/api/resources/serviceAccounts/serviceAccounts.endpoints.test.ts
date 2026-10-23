@@ -20,7 +20,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   aServiceAccount,
-  aServiceAccountRole,
+  aRole,
   accepts,
   collection,
   failure,
@@ -37,7 +37,7 @@ import {
   createServiceAccount,
   deleteServiceAccount,
   issueServiceAccountToken,
-  listServiceAccountRoles,
+  listRoles,
   listServiceAccounts,
   regenerateServiceAccountSecret,
   updateServiceAccount,
@@ -75,11 +75,11 @@ describe('service account reads', () => {
   });
 
   it('lists assignable roles from the sibling path, not under /service-accounts', async () => {
-    server.use(collection('/service-account-roles', [aServiceAccountRole()], { record: requests }));
+    server.use(collection('/roles', [aRole()], { record: requests }));
 
-    const response = await listServiceAccountRoles();
+    const response = await listRoles();
 
-    expect(requests.last()?.url.pathname).toBe('/api/v0.9/service-account-roles');
+    expect(requests.last()?.url.pathname).toBe('/api/v0.9/roles');
     expect(response.list[0]?.name).toBe('ap_service_account');
   });
 });
@@ -91,11 +91,10 @@ describe('service account writes', () => {
     const result = await createServiceAccount({
       description: 'deploys',
       displayName: 'CI deployer',
-      id: 'ci-deployer',
       roles: ['ap_service_account'],
     });
 
-    expect(JSON.parse(requests.last()!.body)).toMatchObject({ id: 'ci-deployer', roles: ['ap_service_account'] });
+    expect(JSON.parse(requests.last()!.body)).toMatchObject({ displayName: 'CI deployer', roles: ['ap_service_account'] });
     expect(result.clientSecret).toBe(credentials.clientSecret);
   });
 
