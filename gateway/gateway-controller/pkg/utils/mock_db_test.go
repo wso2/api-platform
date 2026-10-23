@@ -148,6 +148,7 @@ func (m *testMockDB) GetLLMProviderTemplateByHandle(handle string) (*models.Stor
 }
 
 func (m *testMockDB) SaveAPIKey(key *models.APIKey) error   { return nil }
+func (m *testMockDB) CreateAPIKey(key *models.APIKey) error { return nil }
 func (m *testMockDB) UpsertAPIKey(key *models.APIKey) error { return nil }
 func (m *testMockDB) GetAPIKeyByID(id string) (*models.APIKey, error) {
 	return nil, storage.ErrNotFound

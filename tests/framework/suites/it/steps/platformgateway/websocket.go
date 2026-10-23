@@ -217,6 +217,13 @@ func (g *Gateway) openWebSocket(ctx context.Context, path, subprotocol string) e
 	}
 
 	_ = conn.SetDeadline(time.Time{})
+	// A scenario holds one connection: a reopen, or a retried handshake, replaces
+	// the earlier socket, which would otherwise stay open until the scenario ends.
+	if v, ok := tcontext.Get(ctx, keyWSConnection); ok {
+		if previous, ok := v.(*wsConnection); ok && previous != nil {
+			_ = previous.conn.Close()
+		}
+	}
 	rw := &wsConnection{conn: conn, rw: bufio.NewReadWriter(bufReader, bufio.NewWriter(conn))}
 	return tcontext.Set(ctx, keyWSConnection, rw)
 }

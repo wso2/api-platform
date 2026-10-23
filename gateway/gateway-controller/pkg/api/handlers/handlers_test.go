@@ -339,6 +339,24 @@ func (m *MockStorage) SaveAPIKey(apiKey *models.APIKey) error {
 	return nil
 }
 
+// CreateAPIKey mirrors the SQL store: a live key of the same name is a conflict,
+// a revoked one is replaced.
+func (m *MockStorage) CreateAPIKey(apiKey *models.APIKey) error {
+	if m.saveErr != nil {
+		return m.saveErr
+	}
+	for id, key := range m.apiKeys {
+		if key.ArtifactUUID == apiKey.ArtifactUUID && key.Name == apiKey.Name {
+			if key.Status != models.APIKeyStatusRevoked {
+				return fmt.Errorf("%w: %s", storage.ErrAPIKeyNameConflict, apiKey.Name)
+			}
+			delete(m.apiKeys, id)
+		}
+	}
+	m.apiKeys[apiKey.UUID] = cloneAPIKey(apiKey)
+	return nil
+}
+
 func (m *MockStorage) UpsertAPIKey(apiKey *models.APIKey) error {
 	if m.saveErr != nil {
 		return m.saveErr

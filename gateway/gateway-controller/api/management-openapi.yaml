@@ -5146,9 +5146,6 @@ components:
           upstream:
             main:
               url: wss://chat-backend:8443/ws
-          connection:
-            idleTimeout: 300s
-            maxConnectionDuration: 1h
           channels:
             - path: /rooms/{roomId}
           policies:

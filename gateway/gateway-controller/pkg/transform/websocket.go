@@ -39,6 +39,7 @@ package transform
 
 import (
 	"fmt"
+	"math"
 	"net/url"
 	"strings"
 	"time"
@@ -314,6 +315,10 @@ func resolveBoundedConnections(raw *int, defaultValue, maxValue uint32, field st
 	if raw != nil {
 		if *raw < 1 {
 			return nil, fmt.Errorf("%s must be at least 1", field)
+		}
+		// Checked before narrowing: uint32() of a larger int wraps silently.
+		if uint64(*raw) > math.MaxUint32 {
+			return nil, fmt.Errorf("%s %d exceeds the largest supported value of %d", field, *raw, uint32(math.MaxUint32))
 		}
 		value = uint32(*raw)
 	}

@@ -341,28 +341,24 @@ func (s *APIKeyService) CreateAPIKey(params APIKeyCreationParams) (*APIKeyCreati
 		return nil, fmt.Errorf("failed to generate API key: %w", err)
 	}
 
+	// Persist to database.
 	// A create request from the REST API (UUID unset) must not reuse the name of a
-	// live key: the upsert below is keyed on the name, so it would overwrite that
-	// key's row while the runtime keeps honoring the original key — which a later
-	// revoke, acting on the overwritten row, could then never reach. A revoked
-	// key's name may be reused. Platform events (UUID set) replay keys on purpose
-	// and keep the upsert semantics.
+	// live key: an upsert keyed on the name would overwrite that key's row while
+	// the runtime keeps honoring the original key — which a later revoke, acting on
+	// the overwritten row, could then never reach. CreateAPIKey checks the name and
+	// writes in one guarded statement, so two concurrent creates cannot both pass
+	// the check; a revoked key's name may be reused.
+	// Platform events (UUID set) replay keys on purpose and keep the upsert, which
+	// updates an existing key only when the incoming updated_at is strictly newer,
+	// so late-arriving events never overwrite fresher data.
+	save := s.db.UpsertAPIKey
 	if params.UUID == nil {
-		existing, err := s.getAPIKeyByAPIAndName(config.UUID, apiKey.Name)
-		if err != nil && !storage.IsNotFoundError(err) {
-			return nil, fmt.Errorf("failed to check existing API key name: %w", err)
-		}
-		if existing != nil && existing.Status != models.APIKeyStatusRevoked {
+		save = s.db.CreateAPIKey
+	}
+	if err := save(apiKey); err != nil {
+		if errors.Is(err, storage.ErrAPIKeyNameConflict) {
 			return nil, fmt.Errorf("%w: API key with name '%s' already exists", storage.ErrConflict, apiKey.Name)
 		}
-	}
-
-	// Persist to database.
-	// UpsertAPIKey is used for all paths so that:
-	//   - A new key is inserted when it does not yet exist.
-	//   - An existing key is updated only when the incoming updated_at is strictly newer,
-	//     preventing out-of-order or late-arriving events from overwriting fresher data.
-	if err := s.db.UpsertAPIKey(apiKey); err != nil {
 		if errors.Is(err, storage.ErrConflict) && !isExternalKeyInjection {
 			// Hash-value collision on a locally generated key — retry once with a new key.
 			logger.Warn("API key collision detected, generating new key",
@@ -374,7 +370,7 @@ func (s *APIKeyService) CreateAPIKey(params APIKeyCreationParams) (*APIKeyCreati
 					slog.Any("error", err))
 				return nil, fmt.Errorf("failed to generate API key after collision: %w", err)
 			}
-			if err := s.db.UpsertAPIKey(apiKey); err != nil {
+			if err := save(apiKey); err != nil {
 				logger.Error("Failed to save API key after retry",
 					slog.String("operation", operationType+"_key"),
 					slog.Any("error", err))

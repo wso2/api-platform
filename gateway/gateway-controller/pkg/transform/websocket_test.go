@@ -19,6 +19,7 @@
 package transform
 
 import (
+	"math"
 	"testing"
 	"time"
 
@@ -260,6 +261,19 @@ func TestWebSocketTransform_NoCeilingConfiguredMeansNoCeiling(t *testing.T) {
 	for _, uc := range rdc.UpstreamClusters {
 		assert.Equal(t, 240*time.Hour, *uc.MaxConnectionDuration)
 	}
+}
+
+// A maxConnections beyond uint32 must be rejected rather than wrapped when it is
+// narrowed to Envoy's threshold type — even with no gateway maximum configured.
+func TestWebSocketTransform_RejectsMaxConnectionsAboveUint32(t *testing.T) {
+	tooMany := int(math.MaxUint32) + 2 // would wrap to 1
+	def := wsDefinition("chat-backend", "ws://chat-backend:8080")
+	def.Connection = &api.WebSocketUpstreamConnection{MaxConnections: &tooMany}
+	stored := testWebSocketAPI(func(spec *api.WebSocketAPIConfigData) { withDefinitions(spec, def) })
+
+	_, err := websocketTransformer().Transform(stored)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "exceeds the largest supported value")
 }
 
 // Two WebSocketApis on one backend must not share a cluster: each cluster carries

@@ -679,25 +679,37 @@ type WebSocketConfig struct {
 	// CONNECT path is far less exercised than the plain upgrade path.
 	AllowHTTP2Connect bool `koanf:"allow_http2_connect"`
 
-	// GlobalDownstreamMaxConnections is a gateway-wide ceiling on concurrent
-	// downstream connections across every API, applied as Envoy's overload
-	// manager resource monitor. 0 leaves it unset.
+	// GlobalDownstreamMaxConnections is reserved for a gateway-wide ceiling on
+	// concurrent downstream connections across every API. It is accepted but not
+	// enforced: nothing applies it to Envoy yet.
 	GlobalDownstreamMaxConnections uint32 `koanf:"global_downstream_max_connections"`
 }
 
 // WebSocketConnectionLimits is one side's connection-lifetime policy: the value
 // used when an artifact does not set its own, and the ceiling on what an
 // artifact may set.
+//
+// Which fields take effect depends on the side. Upstream uses all of them: the
+// defaults fill in what an upstream definition omits and the maximums bound what
+// it sets. Downstream uses only IdleTimeoutDefault and
+// MaxConnectionDurationDefault, applied to every channel route — a WebSocketApi
+// sets no client-facing bounds, so the downstream maximums and connection-count
+// limits are reserved and not enforced.
 type WebSocketConnectionLimits struct {
 	IdleTimeoutDefault time.Duration `koanf:"idle_timeout_default"`
-	IdleTimeoutMax     time.Duration `koanf:"idle_timeout_max"`
+	// IdleTimeoutMax bounds an upstream definition's timeout.idleTimeout.
+	// Reserved and not enforced downstream.
+	IdleTimeoutMax time.Duration `koanf:"idle_timeout_max"`
 
 	MaxConnectionDurationDefault time.Duration `koanf:"max_connection_duration_default"`
-	MaxConnectionDurationMax     time.Duration `koanf:"max_connection_duration_max"`
+	// MaxConnectionDurationMax bounds an upstream definition's
+	// connection.maxConnectionDuration. Reserved and not enforced downstream.
+	MaxConnectionDurationMax time.Duration `koanf:"max_connection_duration_max"`
 
-	// MaxConnectionsDefault is the per-API (downstream) or per-upstream-slot
-	// concurrent connection ceiling applied when the artifact does not set one.
-	// 0 means no default ceiling is imposed.
+	// MaxConnectionsDefault is the per-upstream-cluster concurrent connection
+	// ceiling applied when an upstream definition does not set one, and
+	// MaxConnectionsMax bounds the value it may set. 0 means no default ceiling
+	// is imposed. Both are reserved and not enforced downstream.
 	MaxConnectionsDefault uint32 `koanf:"max_connections_default"`
 	MaxConnectionsMax     uint32 `koanf:"max_connections_max"`
 }

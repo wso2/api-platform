@@ -22,6 +22,7 @@ import (
 	"io"
 	"log/slog"
 	"testing"
+	"time"
 
 	route "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/cache/types"
@@ -49,9 +50,6 @@ spec:
   upstream:
     main:
       url: ws://mock-websocket-backend:8080/ws
-  connection:
-    idleTimeout: 300s
-    maxConnectionDuration: 1h
   channels:
     - path: /rooms
     - path: /notifications
@@ -119,11 +117,11 @@ func TestWebSocketGatewayFirstChain(t *testing.T) {
 		assert.True(t, upgrades[0].GetEnabled().GetValue(),
 			"route %s must enable the upgrade the HCM leaves disabled", r.GetName())
 
-		// FR-031's bound: finite, and carried through to Envoy rather than lost
-		// somewhere between the artifact and the config.
+		// FR-031's bound: finite, and the gateway's downstream defaults carried
+		// through to Envoy rather than lost between the config and the route.
 		require.NotNil(t, action.GetMaxStreamDuration(), "route %s lost its max stream duration", r.GetName())
-		assert.Equal(t, int64(3600), action.GetMaxStreamDuration().GetMaxStreamDuration().GetSeconds())
-		assert.Equal(t, int64(300), action.GetIdleTimeout().GetSeconds())
+		assert.Equal(t, int64(7200), action.GetMaxStreamDuration().GetMaxStreamDuration().GetSeconds())
+		assert.Equal(t, int64(240), action.GetIdleTimeout().GetSeconds())
 
 		// A retry policy on an upgraded stream has nothing to retry.
 		assert.Nil(t, action.GetRetryPolicy(), "route %s must not carry a retry policy", r.GetName())
@@ -205,6 +203,14 @@ func websocketE2ERouterConfig() *config.RouterConfig {
 				RouteTimeoutMs:     60000,
 				RouteIdleTimeoutMs: 300000,
 				ConnectTimeoutMs:   5000,
+			},
+		},
+		// Distinct from the transformer's fallbacks, so the route assertions prove
+		// these values reach Envoy.
+		WebSocket: config.WebSocketConfig{
+			Downstream: config.WebSocketConnectionLimits{
+				IdleTimeoutDefault:           240 * time.Second,
+				MaxConnectionDurationDefault: 2 * time.Hour,
 			},
 		},
 	}

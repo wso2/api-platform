@@ -49,6 +49,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -139,13 +140,17 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	}
 	log.Printf("connection opened: path=%s", r.URL.Path)
 
+	// The echo loop and the push goroutine share one buffered writer; writeMu
+	// keeps their frames from interleaving on the wire.
+	var writeMu sync.Mutex
+
 	if interval := os.Getenv("SERVER_SEND_INTERVAL"); interval != "" {
 		if d, err := time.ParseDuration(interval); err == nil && d > 0 {
-			go pushPeriodically(rw, d)
+			go pushPeriodically(rw, &writeMu, d)
 		}
 	}
 
-	echoLoop(rw, r.URL.Path)
+	echoLoop(rw, &writeMu, r.URL.Path)
 }
 
 // writeHandshake sends the 101 response, including the accept key derived from
@@ -186,7 +191,7 @@ func offers(header, want string) bool {
 
 // echoLoop reads frames until the peer closes or the connection breaks, echoing
 // data frames and answering control frames.
-func echoLoop(rw *bufio.ReadWriter, path string) {
+func echoLoop(rw *bufio.ReadWriter, writeMu *sync.Mutex, path string) {
 	for {
 		opcode, payload, err := readFrame(rw)
 		if err != nil {
@@ -198,13 +203,13 @@ func echoLoop(rw *bufio.ReadWriter, path string) {
 
 		switch opcode {
 		case opText, opBinary, opContinuation:
-			if err := writeFrame(rw, opcode, payload); err != nil {
+			if err := writeFrameLocked(rw, writeMu, opcode, payload); err != nil {
 				log.Printf("echo write failed: %v", err)
 				return
 			}
 		case opPing:
 			// A pong carries the ping's payload back, per RFC 6455 §5.5.3.
-			if err := writeFrame(rw, opPong, payload); err != nil {
+			if err := writeFrameLocked(rw, writeMu, opPong, payload); err != nil {
 				return
 			}
 		case opPong:
@@ -212,7 +217,7 @@ func echoLoop(rw *bufio.ReadWriter, path string) {
 		case opClose:
 			// Echo the close frame back so the peer sees an orderly shutdown
 			// rather than an abnormal 1006.
-			_ = writeFrame(rw, opClose, payload)
+			_ = writeFrameLocked(rw, writeMu, opClose, payload)
 			return
 		}
 	}
@@ -220,12 +225,12 @@ func echoLoop(rw *bufio.ReadWriter, path string) {
 
 // pushPeriodically sends a server-originated frame on an interval, so a test can
 // prove a connection stays alive on server traffic alone.
-func pushPeriodically(rw *bufio.ReadWriter, every time.Duration) {
+func pushPeriodically(rw *bufio.ReadWriter, writeMu *sync.Mutex, every time.Duration) {
 	ticker := time.NewTicker(every)
 	defer ticker.Stop()
 	for range ticker.C {
 		msg := fmt.Sprintf("server-push %d", time.Now().Unix())
-		if err := writeFrame(rw, opText, []byte(msg)); err != nil {
+		if err := writeFrameLocked(rw, writeMu, opText, []byte(msg)); err != nil {
 			return
 		}
 	}
@@ -283,6 +288,14 @@ func readFrame(rw *bufio.ReadWriter) (opcode byte, payload []byte, err error) {
 	}
 
 	return opcode, payload, nil
+}
+
+// writeFrameLocked writes one frame while holding writeMu, so concurrent writers
+// on the same connection emit whole frames.
+func writeFrameLocked(rw *bufio.ReadWriter, writeMu *sync.Mutex, opcode byte, payload []byte) error {
+	writeMu.Lock()
+	defer writeMu.Unlock()
+	return writeFrame(rw, opcode, payload)
 }
 
 // writeFrame writes one unmasked frame. Server-to-client frames are never
