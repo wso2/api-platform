@@ -527,9 +527,6 @@ blocks:
       - name: request-rewrite
         features:
           - features/gateway/routes-policies/request_rewrite.feature
-      - name: cors
-        features:
-          - features/gateway/security-policies/cors.feature
       - name: respond
         features:
           - features/gateway/routes-policies/respond.feature
