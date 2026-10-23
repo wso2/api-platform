@@ -19,7 +19,9 @@ package repository
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -59,6 +61,14 @@ func NewSubscriptionPlanRepo(db *database.DB) SubscriptionPlanRepository {
 
 // Create inserts a new subscription plan together with its single throttling limit row.
 func (r *SubscriptionPlanRepo) Create(plan *model.SubscriptionPlan) error {
+	return r.CreateWithPricing(plan, nil)
+}
+
+// CreateWithPricing inserts a new subscription plan, its throttling limit row and, for a paid plan
+// (pricing not nil), its pricing, all in one transaction. The plan is dated with the CreatedAt the
+// caller sets, or now when none is set. A plan copied from an API Portal is given the time it was
+// made there.
+func (r *SubscriptionPlanRepo) CreateWithPricing(plan *model.SubscriptionPlan, pricing *model.SubscriptionPlanPricing) error {
 	if plan == nil {
 		return fmt.Errorf("subscription plan is required")
 	}
@@ -66,7 +76,9 @@ func (r *SubscriptionPlanRepo) Create(plan *model.SubscriptionPlan) error {
 		plan.UUID = uuid.New().String()
 	}
 	now := time.Now().UTC()
-	plan.CreatedAt = now
+	if plan.CreatedAt.IsZero() {
+		plan.CreatedAt = now
+	}
 	plan.UpdatedAt = now
 
 	tx, err := r.db.Begin()
@@ -88,6 +100,14 @@ func (r *SubscriptionPlanRepo) Create(plan *model.SubscriptionPlan) error {
 
 	if err := r.replaceSingleLimitTx(tx, plan); err != nil {
 		return err
+	}
+
+	if pricing != nil {
+		pricing.SubscriptionPlanUUID = plan.UUID
+		pricing.OrganizationUUID = plan.OrganizationUUID
+		if err := insertSubscriptionPlanPricing(tx, r.db, pricing, now); err != nil {
+			return err
+		}
 	}
 
 	return tx.Commit()
@@ -282,15 +302,27 @@ func (r *SubscriptionPlanRepo) GetHandlesByIDs(planUUIDs []string, orgUUID strin
 	return m, rows.Err()
 }
 
+// planListClause is the filter ListByOrganization and CountByOrganization share: the optional
+// case-insensitive match on the plan name or handle, and the optional status ("" for any).
+func planListClause(search, status string) (string, []any) {
+	clause, args := handleSearchClause(search)
+	if status != "" {
+		clause += " AND status = ?"
+		args = append(args, status)
+	}
+	return clause, args
+}
+
 // ListByOrganization returns subscription plans for an organization with pagination,
-// optionally filtered by a case-insensitive match on the plan name or handle.
-func (r *SubscriptionPlanRepo) ListByOrganization(orgUUID string, opts ListOptions) ([]*model.SubscriptionPlan, error) {
+// optionally filtered by a case-insensitive match on the plan name or handle and by status
+// ("" for any).
+func (r *SubscriptionPlanRepo) ListByOrganization(orgUUID string, opts ListOptions, status string) ([]*model.SubscriptionPlan, error) {
 	query := `SELECT ` + planSelectColumns + `
 		WHERE p.organization_uuid = ?`
 	args := []any{orgUUID}
-	if searchClause, searchArgs := handleSearchClause(opts.Search); searchClause != "" {
-		query += searchClause
-		args = append(args, searchArgs...)
+	if filterClause, filterArgs := planListClause(opts.Search, status); filterClause != "" {
+		query += filterClause
+		args = append(args, filterArgs...)
 	}
 	pageClause, pageArgs := r.db.PaginationClause(opts.Limit, opts.Offset)
 	query += " ORDER BY p.created_at DESC " + pageClause
@@ -313,14 +345,14 @@ func (r *SubscriptionPlanRepo) ListByOrganization(orgUUID string, opts ListOptio
 }
 
 // CountByOrganization returns the number of subscription plans in an organization
-// that match the same search as ListByOrganization, independent of pagination.
-func (r *SubscriptionPlanRepo) CountByOrganization(orgUUID, search string) (int, error) {
+// that match the same search and status as ListByOrganization, independent of pagination.
+func (r *SubscriptionPlanRepo) CountByOrganization(orgUUID, search, status string) (int, error) {
 	var total int
 	query := `SELECT COUNT(*) FROM subscription_plans WHERE organization_uuid = ?`
 	args := []any{orgUUID}
-	if searchClause, searchArgs := handleSearchClause(search); searchClause != "" {
-		query += searchClause
-		args = append(args, searchArgs...)
+	if filterClause, filterArgs := planListClause(search, status); filterClause != "" {
+		query += filterClause
+		args = append(args, filterArgs...)
 	}
 	if err := r.db.QueryRow(r.db.Rebind(query), args...).Scan(&total); err != nil {
 		return 0, fmt.Errorf("failed to count subscription plans: %w", err)
@@ -395,4 +427,186 @@ func (r *SubscriptionPlanRepo) ExistsByHandleAndOrg(handle, orgUUID string) (boo
 		return false, err
 	}
 	return exists == 1, nil
+}
+
+// restAPIPlanHandles returns the subscription plan handles a REST API's stored configuration lists.
+func restAPIPlanHandles(configuration []byte) ([]string, error) {
+	var config struct {
+		SubscriptionPlans []string `json:"subscriptionPlans"`
+	}
+	if err := json.Unmarshal(configuration, &config); err != nil {
+		return nil, err
+	}
+	return config.SubscriptionPlans, nil
+}
+
+// GetUsage counts what offers or uses the plan (see model.SubscriptionPlanUsage): the REST APIs
+// whose configuration lists its handle, the APIs whose publication drafts or live publications
+// offer it, and its subscriptions.
+func (r *SubscriptionPlanRepo) GetUsage(planUUID, handle, orgUUID string) (*model.SubscriptionPlanUsage, error) {
+	usage := &model.SubscriptionPlanUsage{}
+	drafts, publications := map[string]bool{}, map[string]bool{}
+
+	rows, err := r.db.Query(r.db.Rebind(`SELECT handle, configuration FROM rest_apis WHERE organization_uuid = ?`), orgUUID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list REST APIs: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var apiHandle string
+		var configuration []byte
+		if err := rows.Scan(&apiHandle, &configuration); err != nil {
+			return nil, fmt.Errorf("failed to scan REST API: %w", err)
+		}
+		plans, err := restAPIPlanHandles(configuration)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decode the configuration of REST API %s: %w", apiHandle, err)
+		}
+		if slices.Contains(plans, handle) {
+			usage.RESTAPIs++
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to list REST APIs: %w", err)
+	}
+
+	// Each API is counted once, by name, however many portals it is on: a REST API by its handle,
+	// any other API by its publication's display name.
+	pubRows, err := r.db.Query(r.db.Rebind(`
+		SELECT p.is_draft, COALESCE(ra.handle, p.display_name)
+		FROM api_publication_plan_mappings m
+		JOIN api_publications p ON p.uuid = m.publication_uuid AND p.organization_uuid = m.organization_uuid
+		LEFT JOIN rest_apis ra ON ra.uuid = p.artifact_uuid
+		WHERE m.organization_uuid = ? AND m.subscription_plan_uuid = ?
+	`), orgUUID, planUUID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list publications offering the plan: %w", err)
+	}
+	defer pubRows.Close()
+	for pubRows.Next() {
+		var isDraft int
+		var name string
+		if err := pubRows.Scan(&isDraft, &name); err != nil {
+			return nil, fmt.Errorf("failed to scan publication: %w", err)
+		}
+		if isDraft == 1 {
+			drafts[name] = true
+		} else {
+			publications[name] = true
+		}
+	}
+	if err := pubRows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to list publications offering the plan: %w", err)
+	}
+
+	if err := r.db.QueryRow(r.db.Rebind(`SELECT COUNT(*) FROM subscriptions WHERE organization_uuid = ? AND subscription_plan_uuid = ?`),
+		orgUUID, planUUID).Scan(&usage.Subscriptions); err != nil {
+		return nil, fmt.Errorf("failed to count subscriptions on the plan: %w", err)
+	}
+
+	usage.Drafts, usage.Publications = len(drafts), len(publications)
+	return usage, nil
+}
+
+// DeleteWithReferences deletes the plan and every reference to it, in one transaction:
+//   - the plan is removed from the publication rows (drafts and live) that offer it, from the REST
+//     APIs whose configuration lists its handle, and from artifact_subscription_plans;
+//   - its subscriptions are kept, without a plan;
+//   - the plan is deleted; its limits and pricing go with it (ON DELETE CASCADE).
+//
+// It returns false when the plan does not exist.
+func (r *SubscriptionPlanRepo) DeleteWithReferences(planUUID, handle, orgUUID string) (bool, error) {
+	tx, err := r.db.Begin()
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback()
+	now := time.Now().UTC()
+
+	if _, err := tx.Exec(r.db.Rebind(`DELETE FROM api_publication_plan_mappings WHERE organization_uuid = ? AND subscription_plan_uuid = ?`),
+		orgUUID, planUUID); err != nil {
+		return false, fmt.Errorf("failed to remove the plan from publications: %w", err)
+	}
+	if _, err := tx.Exec(r.db.Rebind(`DELETE FROM artifact_subscription_plans WHERE subscription_plan_uuid = ?`), planUUID); err != nil {
+		return false, fmt.Errorf("failed to remove the plan from artifacts: %w", err)
+	}
+	if err := r.removePlanFromRESTAPIsTx(tx, handle, orgUUID, now); err != nil {
+		return false, err
+	}
+	if _, err := tx.Exec(r.db.Rebind(`UPDATE subscriptions SET subscription_plan_uuid = NULL, updated_at = ?
+		WHERE organization_uuid = ? AND subscription_plan_uuid = ?`), now, orgUUID, planUUID); err != nil {
+		return false, fmt.Errorf("failed to clear the plan of its subscriptions: %w", err)
+	}
+	result, err := tx.Exec(r.db.Rebind(`DELETE FROM subscription_plans WHERE uuid = ? AND organization_uuid = ?`), planUUID, orgUUID)
+	if err != nil {
+		return false, fmt.Errorf("failed to delete subscription plan: %w", err)
+	}
+	if n, _ := result.RowsAffected(); n == 0 {
+		return false, nil
+	}
+	return true, tx.Commit()
+}
+
+// removePlanFromRESTAPIsTx removes the plan handle from the subscriptionPlans of every REST API of
+// the organization that lists it, leaving the rest of each configuration as it is.
+func (r *SubscriptionPlanRepo) removePlanFromRESTAPIsTx(tx *sql.Tx, handle, orgUUID string, now time.Time) error {
+	rows, err := tx.Query(r.db.Rebind(`SELECT uuid, configuration FROM rest_apis WHERE organization_uuid = ?`), orgUUID)
+	if err != nil {
+		return fmt.Errorf("failed to list REST APIs: %w", err)
+	}
+	updated := map[string][]byte{}
+	for rows.Next() {
+		var apiUUID string
+		var configuration []byte
+		if err := rows.Scan(&apiUUID, &configuration); err != nil {
+			rows.Close()
+			return fmt.Errorf("failed to scan REST API: %w", err)
+		}
+		changed, err := withoutPlanHandle(configuration, handle)
+		if err != nil {
+			rows.Close()
+			return fmt.Errorf("failed to remove the plan from REST API %s: %w", apiUUID, err)
+		}
+		if changed != nil {
+			updated[apiUUID] = changed
+		}
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("failed to list REST APIs: %w", err)
+	}
+	for apiUUID, configuration := range updated {
+		if _, err := tx.Exec(r.db.Rebind(`UPDATE rest_apis SET configuration = ?, updated_at = ? WHERE uuid = ? AND organization_uuid = ?`),
+			configuration, now, apiUUID, orgUUID); err != nil {
+			return fmt.Errorf("failed to remove the plan from REST API %s: %w", apiUUID, err)
+		}
+	}
+	return nil
+}
+
+// withoutPlanHandle returns the REST API configuration with handle removed from its
+// subscriptionPlans, or nil when it does not list it. The other fields are kept as stored.
+func withoutPlanHandle(configuration []byte, handle string) ([]byte, error) {
+	plans, err := restAPIPlanHandles(configuration)
+	if err != nil {
+		return nil, err
+	}
+	if !slices.Contains(plans, handle) {
+		return nil, nil
+	}
+	var config map[string]json.RawMessage
+	if err := json.Unmarshal(configuration, &config); err != nil {
+		return nil, err
+	}
+	kept := slices.DeleteFunc(plans, func(h string) bool { return h == handle })
+	if len(kept) == 0 {
+		delete(config, "subscriptionPlans")
+	} else {
+		encoded, err := json.Marshal(kept)
+		if err != nil {
+			return nil, err
+		}
+		config["subscriptionPlans"] = encoded
+	}
+	return json.Marshal(config)
 }
