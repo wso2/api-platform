@@ -28,6 +28,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -43,6 +44,8 @@ import (
 	"github.com/wso2/api-platform/tests/framework/core/util/httpx"
 	"github.com/wso2/api-platform/tests/framework/core/util/retry"
 	"github.com/wso2/api-platform/tests/framework/core/util/tcontext"
+	"github.com/wso2/api-platform/tests/framework/core/util/unique"
+	"github.com/wso2/api-platform/tests/framework/suites/cloud/finalizer"
 )
 
 func TestBearerTokenReadsAndCachesEnvironmentToken(t *testing.T) {
@@ -3794,4 +3797,153 @@ func TestCreateProjectsUntilRefusedGivesUpWhereThereIsNoQuota(t *testing.T) {
 	})
 	require.ErrorContains(t, steps.createProjectsUntilRefused(ctx), "refused none")
 	require.Len(t, registry.Pending(), maxQuotaProbeProjects)
+}
+
+// leftoverStub serves per-collection lists and records the deletions it was asked for.
+type leftoverStub struct {
+	mu      sync.Mutex
+	lists   map[string][]map[string]any
+	failing map[string]int
+	deleted []string
+}
+
+func (s *leftoverStub) handler(w http.ResponseWriter, r *http.Request) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if r.Header.Get("Authorization") != "Bearer console-token" {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+	if r.Method == http.MethodGet {
+		if status, bad := s.failing[r.URL.Path]; bad {
+			w.WriteHeader(status)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"list": s.lists[r.URL.Path]})
+		return
+	}
+	if status, bad := s.failing[r.URL.Path]; bad {
+		w.WriteHeader(status)
+		return
+	}
+	id := strings.TrimPrefix(r.URL.Path, "/")
+	if slices.Contains(s.deleted, id) {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+	s.deleted = append(s.deleted, id)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func newLeftoverStub() *leftoverStub {
+	return &leftoverStub{failing: map[string]int{}, lists: map[string][]map[string]any{
+		"/managed-gateways": {
+			{"id": "development-syn-gw-abcde234-1", "environment": "development"},
+			{"id": "development-default", "environment": "development"},
+			{"id": "development-syn-gw-zzzzz222-1", "environment": "development"},
+			{"id": "development-syn-gw-ab", "displayName": "syn-gw-abcde234-12", "environment": "development"},
+		},
+		"/projects":     {{"id": "default"}, {"id": "syn-project-abcde234-2"}},
+		"/secrets":      {{"handle": "syn-secret-abcde234-1"}, {"handle": "ops-secret"}},
+		"/pipelines":    {{"name": "default"}, {"name": "syn-pipeline-abcde234-1"}},
+		"/environments": {{"name": "development"}, {"name": "syn-env-abcde234-1"}},
+	}}
+}
+
+// sweepLeftovers runs the cloud sweeps for the suffix the stub's leftovers carry.
+func sweepLeftovers(ctx context.Context, base string, timeout time.Duration) ([]string, error) {
+	finals := finalizer.NewTracker(slog.Default())
+	finals.Track("abcde234")
+	client := httpx.NewClient(httpx.Options{Timeout: timeout})
+	return finals.Sweep(ctx, cloudSweeps(client, base, "console-token"))
+}
+
+func TestCloudSweepsDeleteOnlyTheRunsLeftoversInDependencyOrder(t *testing.T) {
+	stub := newLeftoverStub()
+	topo := cloudAPIStub(t, stub.handler)
+	base, err := topo.URL(corecatalog.Name, corecatalog.EndpointAPIPPlatformAPI)
+	require.NoError(t, err)
+
+	removed, err := sweepLeftovers(context.Background(), base, 5*time.Second)
+	require.NoError(t, err)
+	require.Equal(t, []string{
+		"managed-gateways/development-syn-gw-abcde234-1",
+		"managed-gateways/development-syn-gw-ab",
+		"projects/syn-project-abcde234-2",
+		"secrets/syn-secret-abcde234-1",
+		"pipelines/syn-pipeline-abcde234-1",
+		"environments/syn-env-abcde234-1",
+	}, stub.deleted[:6])
+	require.Len(t, removed, 6)
+	for _, id := range stub.deleted {
+		require.NotContains(t, id, "default")
+		require.NotContains(t, id, "zzzzz222")
+		require.NotContains(t, id, "ops-secret")
+	}
+}
+
+func TestCloudSweepsCarryOnPastAListingThatFails(t *testing.T) {
+	stub := newLeftoverStub()
+	stub.failing["/projects"] = http.StatusInternalServerError
+	topo := cloudAPIStub(t, stub.handler)
+	base, err := topo.URL(corecatalog.Name, corecatalog.EndpointAPIPPlatformAPI)
+	require.NoError(t, err)
+
+	removed, err := sweepLeftovers(context.Background(), base, 5*time.Second)
+	require.ErrorContains(t, err, "listing /projects")
+	require.Contains(t, removed, "/pipelines/syn-pipeline-abcde234-1")
+	require.Contains(t, removed, "/environments/syn-env-abcde234-1")
+}
+
+func TestCloudSweepsReportALeftoverThatCannotBeDeleted(t *testing.T) {
+	stub := newLeftoverStub()
+	stub.failing["/projects/syn-project-abcde234-2"] = http.StatusConflict
+	topo := cloudAPIStub(t, stub.handler)
+	base, err := topo.URL(corecatalog.Name, corecatalog.EndpointAPIPPlatformAPI)
+	require.NoError(t, err)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	removed, err := sweepLeftovers(ctx, base, 2*time.Second)
+	require.ErrorContains(t, err, "/projects/syn-project-abcde234-2")
+	require.Contains(t, removed, "/managed-gateways/development-syn-gw-abcde234-1")
+	require.NotContains(t, removed, "/projects/syn-project-abcde234-2")
+}
+
+func TestFinalizerSweepsTheRunnersItObserved(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	stub := newLeftoverStub()
+	topo := cloudAPIStub(t, stub.handler)
+	finalizer := NewFinalizer()
+
+	removed, err := finalizer.Finalize(context.Background())
+	require.NoError(t, err)
+	require.Empty(t, removed, "a run that observed no runner has nothing to look for")
+
+	generator, err := unique.NewGenerator()
+	require.NoError(t, err)
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("cloud-runner"))
+	require.NoError(t, unique.Install(ctx, generator))
+	require.NoError(t, finalizer.observe(ctx, topo))
+	stub.lists["/managed-gateways"] = []map[string]any{
+		{"id": "development-syn-gw-" + generator.Suffix() + "-1"}, {"id": "development-syn-gw-zzzzz222-1"},
+	}
+
+	removed, err = finalizer.Finalize(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, []string{"/managed-gateways/development-syn-gw-" + generator.Suffix() + "-1"}, removed)
+}
+
+func TestFinalizerNeedsTheConsoleTokenToLookForLeftovers(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "")
+	topo := cloudAPIStub(t, newLeftoverStub().handler)
+	generator, err := unique.NewGenerator()
+	require.NoError(t, err)
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("cloud-runner"))
+	require.NoError(t, unique.Install(ctx, generator))
+	finalizer := NewFinalizer()
+	require.NoError(t, finalizer.observe(ctx, topo))
+
+	_, err = finalizer.Finalize(context.Background())
+	require.ErrorContains(t, err, cloudConsoleAccessTokenEnv)
 }

@@ -389,44 +389,50 @@ func cloudDeleter(topo *frameworkruntime.Topology, client *httpx.Client, collect
 		if err != nil {
 			return err
 		}
-		if collection == environmentsCollection {
-			if err := emptyEnvironment(ctx, client, base, bearer, resource.ID); err != nil {
-				return err
-			}
+		return deleteCloudResource(ctx, client, base, bearer, collection, resource.ID, waitForNotFound)
+	}
+}
+
+// deleteCloudResource deletes one resource from a collection and treats an absent one as
+// deleted. With waitForNotFound it keeps deleting until the platform answers 404.
+func deleteCloudResource(ctx context.Context, client *httpx.Client, base, bearer, collection, id string, waitForNotFound bool) error {
+	if collection == environmentsCollection {
+		if err := emptyEnvironment(ctx, client, base, bearer, id); err != nil {
+			return err
 		}
-		deleteOne := func(ctx context.Context) (*httpx.Response, error) {
-			return client.Do(ctx, httpx.Request{
-				Method: http.MethodDelete,
-				URL:    cloudResourceURL(base, collection, resource.ID),
-				Headers: map[string]string{
-					"Authorization": "Bearer " + bearer,
-				},
-			}, 0, 0)
+	}
+	deleteOne := func(ctx context.Context) (*httpx.Response, error) {
+		return client.Do(ctx, httpx.Request{
+			Method: http.MethodDelete,
+			URL:    cloudResourceURL(base, collection, id),
+			Headers: map[string]string{
+				"Authorization": "Bearer " + bearer,
+			},
+		}, 0, 0)
+	}
+	if !waitForNotFound {
+		resp, err := deleteOne(ctx)
+		if err != nil {
+			return err
 		}
-		if !waitForNotFound {
+		if resp.StatusCode == http.StatusNotFound || resp.Succeeded() {
+			return nil
+		}
+		return responseError(resp)
+	}
+	return retry.Await(ctx, retry.Options{Timeout: 2 * time.Minute, Interval: 3 * time.Second},
+		func(ctx context.Context) (*httpx.Response, error) {
 			resp, err := deleteOne(ctx)
 			if err != nil {
-				return err
+				return nil, retry.Transient(err)
 			}
-			if resp.StatusCode == http.StatusNotFound || resp.Succeeded() {
-				return nil
+			if resp.StatusCode != http.StatusNotFound && resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusConflict {
+				return nil, responseError(resp)
 			}
-			return responseError(resp)
-		}
-		return retry.Await(ctx, retry.Options{Timeout: 2 * time.Minute, Interval: 3 * time.Second},
-			func(ctx context.Context) (*httpx.Response, error) {
-				resp, err := deleteOne(ctx)
-				if err != nil {
-					return nil, retry.Transient(err)
-				}
-				if resp.StatusCode != http.StatusNotFound && resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusConflict {
-					return nil, responseError(resp)
-				}
-				return resp, nil
-			},
-			func(resp *httpx.Response) bool { return resp != nil && resp.StatusCode == http.StatusNotFound },
-			"waiting for environment "+resource.ID+" to be deleted")
-	}
+			return resp, nil
+		},
+		func(resp *httpx.Response) bool { return resp != nil && resp.StatusCode == http.StatusNotFound },
+		"waiting for environment "+id+" to be deleted")
 }
 
 func bearerToken(ctx context.Context) (string, error) {
