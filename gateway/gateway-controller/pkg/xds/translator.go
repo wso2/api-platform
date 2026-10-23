@@ -1677,6 +1677,14 @@ func (t *Translator) createListenerWithCertRequest(virtualHosts []*route.Virtual
 	}
 	httpFilters = append(httpFilters, luaFilter)
 
+	if t.routerConfig.WebSocket.AllowHTTP2Connect {
+		keyFilter, err := createWebSocketKeyFilter()
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to create websocket key filter: %w", err)
+		}
+		httpFilters = append(httpFilters, keyFilter)
+	}
+
 	// Add router filter (must be last)
 	httpFilters = append(httpFilters, &hcm.HttpFilter{
 		Name: wellknown.Router,
@@ -3934,6 +3942,63 @@ func (t *Translator) createLuaFilter() (*hcm.HttpFilter, error) {
 		ConfigType: &hcm.HttpFilter_TypedConfig{
 			TypedConfig: luaAny,
 		},
+	}, nil
+}
+
+// webSocketKeyFilterName names the HTTP filter that supplies Sec-WebSocket-Key
+// for WebSockets opened over HTTP/2.
+const webSocketKeyFilterName = "api_platform.websocket_h2_key"
+
+// webSocketKeyLua adds a Sec-WebSocket-Key to a WebSocket opened over HTTP/2.
+//
+// Envoy turns an RFC 8441 extended CONNECT into an HTTP/1.1 upgrade toward the
+// backend, but RFC 8441 clients send no Sec-WebSocket-Key (HTTP/2 has no use for
+// it) and Envoy does not add one, so an RFC 6455 backend rejects the handshake.
+// The key must be a fresh 16-byte nonce per connection: the 16 random bytes of
+// the request's UUID v4 x-request-id are used, with math.random as a fallback
+// when that header is not a UUID. HTTP/1.1 handshakes always carry their own key
+// and are left alone.
+const webSocketKeyLua = `
+local function key_bytes(request_id)
+  local hex = request_id and string.gsub(request_id, "-", "") or ""
+  if #hex == 32 and not string.find(hex, "[^%x]") then
+    return (string.gsub(hex, "%x%x", function(pair) return string.char(tonumber(pair, 16)) end))
+  end
+  local bytes = {}
+  for i = 1, 16 do bytes[i] = string.char(math.random(0, 255)) end
+  return table.concat(bytes)
+end
+
+function envoy_on_request(handle)
+  local headers = handle:headers()
+  if headers:get("sec-websocket-key") ~= nil then
+    return
+  end
+  local upgrade = headers:get("upgrade")
+  if upgrade == nil or string.lower(upgrade) ~= "websocket" then
+    return
+  end
+  if handle:streamInfo():protocol() ~= "HTTP/2" then
+    return
+  end
+  headers:add("sec-websocket-key", handle:base64Escape(key_bytes(headers:get("x-request-id"))))
+end
+`
+
+// createWebSocketKeyFilter builds the filter that runs webSocketKeyLua. It is
+// installed only when router.websocket.allow_http2_connect is on, since without
+// extended CONNECT no WebSocket can arrive over HTTP/2.
+func createWebSocketKeyFilter() (*hcm.HttpFilter, error) {
+	luaAny, err := anypb.New(&luav3.Lua{
+		InlineCode:      webSocketKeyLua,
+		ClearRouteCache: wrapperspb.Bool(false),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal websocket key lua config: %w", err)
+	}
+	return &hcm.HttpFilter{
+		Name:       webSocketKeyFilterName,
+		ConfigType: &hcm.HttpFilter_TypedConfig{TypedConfig: luaAny},
 	}, nil
 }
 

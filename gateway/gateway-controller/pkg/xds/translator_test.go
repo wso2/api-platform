@@ -1505,6 +1505,43 @@ func TestTranslator_CreateListener_HCMTimeouts(t *testing.T) {
 	}
 }
 
+// With router.websocket.allow_http2_connect on, the listener accepts RFC 8441
+// extended CONNECT and runs the filter that supplies the Sec-WebSocket-Key such
+// clients never send, immediately before the router; with it off, neither is
+// present.
+func TestTranslator_CreateListener_HTTP2WebSocketKeyFilter(t *testing.T) {
+	for _, enabled := range []bool{false, true} {
+		t.Run(fmt.Sprintf("allow_http2_connect=%t", enabled), func(t *testing.T) {
+			routerCfg := testRouterConfig()
+			routerCfg.WebSocket.AllowHTTP2Connect = enabled
+			cfg := testConfig()
+			cfg.Router = *routerCfg
+			translator, err := NewTranslator(createTestLogger(), routerCfg, nil, cfg)
+			require.NoError(t, err)
+
+			lis, _, err := translator.createListener(nil, false, false)
+			require.NoError(t, err)
+			manager := extractHCM(t, lis)
+
+			filters := manager.GetHttpFilters()
+			keyIdx := -1
+			for i, f := range filters {
+				if f.GetName() == webSocketKeyFilterName {
+					keyIdx = i
+				}
+			}
+			assert.Equal(t, enabled, manager.GetHttp2ProtocolOptions().GetAllowConnect())
+			if !enabled {
+				assert.Equal(t, -1, keyIdx, "the key filter must not be installed without extended CONNECT")
+				return
+			}
+			require.NotEqual(t, -1, keyIdx, "the key filter must be installed")
+			assert.Equal(t, len(filters)-2, keyIdx, "the key filter must run immediately before the router")
+			assert.Equal(t, "envoy.filters.http.router", filters[len(filters)-1].GetName())
+		})
+	}
+}
+
 // The generated HttpConnectionManager must canonicalize the request path
 // (NormalizePath, MergeSlashes) before routing/policy/authz matching — an
 // un-normalized path could desynchronize the route Envoy selects from what
