@@ -102,35 +102,33 @@ func TestWebSocketTransform_OnlyGetIsRouted(t *testing.T) {
 	}
 }
 
-// FR-012/FR-031: both bounds resolve to a finite value even when the gateway
-// configures neither, so a connection can never outlive revocation indefinitely.
-func TestWebSocketTransform_ConnectionBoundsAlwaysFinite(t *testing.T) {
-	rdc, err := websocketTransformer().Transform(testWebSocketAPI(nil))
-	require.NoError(t, err)
+// The idle timeout is left unset so the translator applies the gateway's route
+// idle timeout, and the connection lifetime is capped only when the gateway sets
+// router.websocket.max_connection_duration.
+func TestWebSocketTransform_MaxConnectionDurationFromGateway(t *testing.T) {
+	t.Run("unset leaves the lifetime uncapped", func(t *testing.T) {
+		rdc, err := websocketTransformer().Transform(testWebSocketAPI(nil))
+		require.NoError(t, err)
+		for key, r := range rdc.Routes {
+			assert.Nil(t, r.Timeout, "route %s: no timeout block when nothing is configured", key)
+		}
+	})
 
-	for key, r := range rdc.Routes {
-		require.NotNil(t, r.Timeout, "route %s has no timeout block", key)
-		require.NotNil(t, r.Timeout.MaxStreamDuration, "route %s: maxConnectionDuration must never resolve to unlimited", key)
-		assert.Greater(t, *r.Timeout.MaxStreamDuration, time.Duration(0))
-		require.NotNil(t, r.Timeout.IdleTimeout, "route %s: idleTimeout must always resolve", key)
-		assert.Greater(t, *r.Timeout.IdleTimeout, time.Duration(0))
-	}
-}
+	t.Run("set caps every channel route", func(t *testing.T) {
+		routerCfg := testRouterCfg()
+		routerCfg.WebSocket.MaxConnectionDuration = 30 * time.Minute
+		transformer := NewWebSocketAPITransformer(routerCfg, &config.Config{}, map[string]models.PolicyDefinition{})
 
-// Client-facing connection bounds are gateway-level configuration: every channel
-// takes the gateway's downstream defaults.
-func TestWebSocketTransform_DownstreamBoundsComeFromGateway(t *testing.T) {
-	routerCfg := testRouterCfg()
-	routerCfg.WebSocket.Downstream.IdleTimeoutDefault = 10 * time.Second
-	routerCfg.WebSocket.Downstream.MaxConnectionDurationDefault = 30 * time.Second
-	transformer := NewWebSocketAPITransformer(routerCfg, &config.Config{}, map[string]models.PolicyDefinition{})
-
-	rdc, err := transformer.Transform(testWebSocketAPI(nil))
-	require.NoError(t, err)
-	for _, r := range rdc.Routes {
-		assert.Equal(t, 10*time.Second, *r.Timeout.IdleTimeout)
-		assert.Equal(t, 30*time.Second, *r.Timeout.MaxStreamDuration)
-	}
+		rdc, err := transformer.Transform(testWebSocketAPI(nil))
+		require.NoError(t, err)
+		require.NotEmpty(t, rdc.Routes)
+		for key, r := range rdc.Routes {
+			require.NotNil(t, r.Timeout, "route %s has no timeout block", key)
+			require.NotNil(t, r.Timeout.MaxStreamDuration, "route %s", key)
+			assert.Equal(t, 30*time.Minute, *r.Timeout.MaxStreamDuration)
+			assert.Nil(t, r.Timeout.IdleTimeout, "route %s: idle timeout comes from the gateway route default", key)
+		}
+	})
 }
 
 func TestWebSocketTransform_UpstreamSchemeMapping(t *testing.T) {

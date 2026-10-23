@@ -788,6 +788,42 @@ func (t *Translator) createWeightedCluster(
 	return c, nil
 }
 
+// buildNoAPIFoundUpgradeRoute builds the catch-all for WebSocket handshakes to
+// paths no API serves. It matches only requests carrying "Upgrade: websocket"
+// and enables that upgrade, so the router answers 404 for the never-defined
+// constants.GatewayNoAPIFoundClusterName instead of Envoy rejecting the upgrade
+// with 403. Plain requests fall through to the direct-response catch-all.
+func buildNoAPIFoundUpgradeRoute(extProcDisabled *anypb.Any) *route.Route {
+	return &route.Route{
+		Name: constants.GatewayNoAPIFoundUpgradeRouteName,
+		Match: &route.RouteMatch{
+			PathSpecifier: &route.RouteMatch_Prefix{Prefix: "/"},
+			Headers: []*route.HeaderMatcher{{
+				Name: "upgrade",
+				HeaderMatchSpecifier: &route.HeaderMatcher_StringMatch{
+					StringMatch: &matcher.StringMatcher{
+						MatchPattern: &matcher.StringMatcher_Exact{Exact: websocketUpgradeType},
+						IgnoreCase:   true,
+					},
+				},
+			}},
+		},
+		Action: &route.Route_Route{
+			Route: &route.RouteAction{
+				ClusterSpecifier:            &route.RouteAction_Cluster{Cluster: constants.GatewayNoAPIFoundClusterName},
+				ClusterNotFoundResponseCode: route.RouteAction_NOT_FOUND,
+				UpgradeConfigs: []*route.RouteAction_UpgradeConfig{{
+					UpgradeType: websocketUpgradeType,
+					Enabled:     &wrapperspb.BoolValue{Value: true},
+				}},
+			},
+		},
+		TypedPerFilterConfig: map[string]*anypb.Any{
+			constants.ExtProcFilterName: extProcDisabled,
+		},
+	}
+}
+
 // buildGatewayJWKSRoute builds the gateway JWKS route
 // (constants.GatewayJWKSPath). Unlike the health routes it keeps ext_proc: the
 // JWKS system policy answers it, so the system observability policies see the
@@ -1123,6 +1159,13 @@ func (t *Translator) TranslateConfigs(
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal ExtProcPerRoute for catch-all route: %w", err)
 		}
+		// A WebSocket handshake to a path no API serves would otherwise get 403,
+		// not 404: the HCM declares the upgrade disabled, the direct-response
+		// catch-all below cannot enable it, and Envoy rejects a disallowed upgrade
+		// before any route answers. This route matches only those handshakes and
+		// enables the upgrade so the request reaches the router, which answers 404
+		// because its cluster is never defined — nothing is ever forwarded.
+		routes = append(routes, buildNoAPIFoundUpgradeRoute(extProcDisabledAny))
 		routes = append(routes, &route.Route{
 			Name: "no-api-found",
 			Match: &route.RouteMatch{
