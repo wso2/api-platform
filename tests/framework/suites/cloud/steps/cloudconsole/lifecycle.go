@@ -552,7 +552,13 @@ func (s *Steps) createManagedGateway(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if err := generateResourceAndStore(ctx, "syn-gateway", keyManagedGatewayID); err != nil {
+	// "sgw", not "syn-gateway": a managed gateway's handle is bounded by the
+	// release label the control plane renders from it, which spends the
+	// environment name twice and leaves 15 characters in a "development"
+	// environment. Unique() adds 11 ("-<suffix8>-<n>"), so the base has to fit in
+	// the rest. A longer base is accepted at create time and then fails to apply,
+	// leaving a gateway that never becomes ready.
+	if err := generateResourceAndStore(ctx, "sgw", keyManagedGatewayID); err != nil {
 		return err
 	}
 	name, err := requiredValue(ctx, keyManagedGatewayID)
