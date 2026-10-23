@@ -520,9 +520,6 @@ blocks:
         tags: "gateway-version>=1.2.0"
         features:
           - features/gateway/routes/header_routing.feature
-      - name: host-rewrite
-        features:
-          - features/gateway/routes-policies/host_rewrite.feature
       - name: redirect
         tags: "gateway-version>=1.2.0"
         features:
