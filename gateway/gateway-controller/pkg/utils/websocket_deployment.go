@@ -29,6 +29,7 @@ import (
 	commonconstants "github.com/wso2/api-platform/common/constants"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 )
 
@@ -42,6 +43,7 @@ func init() {
 	RegisterKindConfigValidator(webSocketApiKind, validateWebSocketAPIConfig)
 	RegisterKindDesiredStateResolver(webSocketApiKind, webSocketAPIDesiredState)
 	RegisterKindRouteContextResolver(webSocketApiKind, webSocketAPIRouteContext)
+	RegisterKindVhostSentinelResolver(fmt.Sprintf("%T", api.WebSocketAPI{}), resolveWebSocketVhostSentinels)
 }
 
 const webSocketApiKind = string(api.WebSocketAPIKindWebSocketApi)
@@ -56,30 +58,76 @@ var webSocketSpecRules = config.NewAPIValidator()
 // binary) skip the bound and policy checks rather than failing every deploy.
 var webSocketValidation struct {
 	upstream             config.WebSocketConnectionLimits
+	vhosts               config.VHostsConfig
 	policyValidator      *config.PolicyValidator
 	upstreamTLSValidator *config.UpstreamTLSValidator
 }
 
 // ConfigureWebSocketAPIValidation supplies the gateway's upstream connection
-// bounds, policy definitions and upstream TLS validator to deploy-time
-// validation, so an out-of-bounds setting, an unknown policy or an unusable tls
-// block is rejected with a 400 instead of being accepted and then failing
-// silently when the route is built. Call once at startup.
-func ConfigureWebSocketAPIValidation(limits config.WebSocketConfig, policyValidator *config.PolicyValidator, upstreamTLSValidator *config.UpstreamTLSValidator) {
+// bounds, default vhosts, policy definitions and upstream TLS validator to
+// deploy-time validation, so an out-of-bounds setting, a malformed vhost, an
+// unknown policy or an unusable tls block is rejected with a 400 instead of
+// being accepted and then failing silently when the route is built. Call once
+// at startup.
+func ConfigureWebSocketAPIValidation(limits config.WebSocketConfig, vhosts config.VHostsConfig, policyValidator *config.PolicyValidator, upstreamTLSValidator *config.UpstreamTLSValidator) {
 	webSocketValidation.upstream = limits.Upstream
+	webSocketValidation.vhosts = vhosts
 	webSocketValidation.policyValidator = policyValidator
 	webSocketValidation.upstreamTLSValidator = upstreamTLSValidator
 }
 
-// webSocketAPIRouteContext is the KindRouteContextResolver for WebSocketApi.
-// WebSocket APIs carry no vhosts, so every one is served on the gateway's
-// default virtual hosts and its context alone identifies its routes.
-func webSocketAPIRouteContext(cfg any) string {
+// webSocketAPIRouteContext is the KindRouteContextResolver for WebSocketApi: one
+// "<vhost>|<context>" key for every main vhost, plus the sandbox vhost when a
+// sandbox upstream is configured.
+func webSocketAPIRouteContext(cfg any, vhosts config.VHostsConfig) []string {
 	websocketConfig, ok := cfg.(api.WebSocketAPI)
 	if !ok {
-		return ""
+		return nil
 	}
-	return strings.ReplaceAll(websocketConfig.Spec.Context, "$version", websocketConfig.Spec.Version)
+	routeContext := strings.ReplaceAll(websocketConfig.Spec.Context, "$version", websocketConfig.Spec.Version)
+	mainVhosts, sandboxVhost, hasSandbox := config.WebSocketAPIVhosts(websocketConfig.Spec, vhosts)
+	served := mainVhosts
+	if hasSandbox {
+		served = append(append([]string{}, mainVhosts...), sandboxVhost)
+	}
+	keys := make([]string, 0, len(served))
+	for _, vhost := range served {
+		keys = append(keys, vhost+"|"+routeContext)
+	}
+	return keys
+}
+
+// resolveWebSocketVhostSentinels is the KindVhostSentinelResolver for
+// WebSocketApi, with the RestApi rules: the gateway-default sentinel becomes the
+// gateway's actual default vhost, and omitted vhosts are filled with the current
+// defaults, so a stored API keeps routing where it was deployed even if the
+// gateway defaults change later.
+func resolveWebSocketVhostSentinels(cfg any, routerCfg *config.RouterConfig) (any, error) {
+	c, ok := cfg.(api.WebSocketAPI)
+	if !ok {
+		return cfg, nil
+	}
+	if c.Spec.Vhosts == nil {
+		c.Spec.Vhosts = &struct {
+			Main    string  `json:"main" yaml:"main"`
+			Sandbox *string `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+		}{Main: routerCfg.VHosts.Main.Default}
+		if sandboxDefault := routerCfg.VHosts.Sandbox.Default; sandboxDefault != "" {
+			c.Spec.Vhosts.Sandbox = &sandboxDefault
+		}
+		return c, nil
+	}
+	if c.Spec.Vhosts.Main == constants.VHostGatewayDefault {
+		c.Spec.Vhosts.Main = routerCfg.VHosts.Main.Default
+	}
+	if c.Spec.Vhosts.Sandbox != nil && *c.Spec.Vhosts.Sandbox == constants.VHostGatewayDefault {
+		if resolved := routerCfg.VHosts.Sandbox.Default; resolved != "" {
+			c.Spec.Vhosts.Sandbox = &resolved
+		} else {
+			c.Spec.Vhosts.Sandbox = nil
+		}
+	}
+	return c, nil
 }
 
 // webSocketAPIDesiredState is the KindDesiredStateResolver for WebSocketApi.
@@ -155,6 +203,7 @@ func validateWebSocketAPIConfig(cfg any) (apiName, apiVersion string, validation
 	}
 
 	errors = append(errors, validateWebSocketChannels(spec.Channels)...)
+	errors = append(errors, validateWebSocketVhosts(spec)...)
 
 	// Same rules as RestApi: timeout bounds the handshake (the route timeout does
 	// not apply once a connection is upgraded), idleTimeout closes a silent
@@ -172,6 +221,69 @@ func validateWebSocketAPIConfig(cfg any) (apiName, apiVersion string, validation
 	}
 
 	return spec.DisplayName, spec.Version, errors
+}
+
+// webSocketMainVhostPattern and webSocketSandboxVhostPattern are the spec.vhosts
+// formats from the OpenAPI schema (shared with RestApi): main entries may carry a
+// single leading "*." wildcard label, the sandbox hostname may not.
+var (
+	webSocketMainVhostPattern    = regexp.MustCompile(`^(\*\.)?[a-zA-Z0-9.\-]+$`)
+	webSocketSandboxVhostPattern = regexp.MustCompile(`^[a-zA-Z0-9.\-]+$`)
+)
+
+// validateWebSocketVhosts checks spec.vhosts: a non-empty, well-formed main list
+// with no repeated hostname, a well-formed sandbox hostname, and — when a
+// sandbox upstream is configured — a sandbox vhost distinct from every main
+// vhost, since the two would otherwise share route keys.
+//
+// The gateway-default sentinel and the gateway's own default vhosts are always
+// accepted: deployment resolves the sentinel, and fills omitted vhosts, with the
+// configured defaults before validation runs, and those defaults may use Envoy
+// wildcard forms ("*", "sandbox-*") that an API author may not write.
+func validateWebSocketVhosts(spec api.WebSocketAPIConfigData) []config.ValidationError {
+	var errors []config.ValidationError
+	if spec.Vhosts == nil {
+		return errors
+	}
+	defaults := webSocketValidation.vhosts
+	isDefault := func(vhost string) bool {
+		return vhost == constants.VHostGatewayDefault ||
+			(defaults.Main.Default != "" && strings.EqualFold(vhost, defaults.Main.Default)) ||
+			(defaults.Sandbox.Default != "" && strings.EqualFold(vhost, defaults.Sandbox.Default))
+	}
+	var mainVhosts []string
+	if spec.Vhosts.Main != constants.VHostGatewayDefault {
+		seen := map[string]bool{}
+		for _, raw := range strings.Split(spec.Vhosts.Main, ";") {
+			vhost := strings.TrimSpace(raw)
+			if !isDefault(vhost) && !webSocketMainVhostPattern.MatchString(vhost) {
+				errors = append(errors, config.ValidationError{Field: "spec.vhosts.main",
+					Message: fmt.Sprintf("Invalid vhost %q (expected a hostname such as ws.example.com or *.example.com, separated by ';')", vhost)})
+				continue
+			}
+			key := strings.ToLower(vhost)
+			if seen[key] {
+				errors = append(errors, config.ValidationError{Field: "spec.vhosts.main", Message: fmt.Sprintf("Duplicate vhost %q", vhost)})
+			}
+			seen[key] = true
+			mainVhosts = append(mainVhosts, vhost)
+		}
+	}
+	if sb := spec.Vhosts.Sandbox; sb != nil && strings.TrimSpace(*sb) != "" && *sb != constants.VHostGatewayDefault {
+		sandbox := strings.TrimSpace(*sb)
+		if !isDefault(sandbox) && !webSocketSandboxVhostPattern.MatchString(sandbox) {
+			errors = append(errors, config.ValidationError{Field: "spec.vhosts.sandbox",
+				Message: fmt.Sprintf("Invalid vhost %q (expected a hostname such as sandbox-ws.example.com)", sandbox)})
+		} else if config.WebSocketAPIHasSandbox(spec) {
+			for _, mainVhost := range mainVhosts {
+				if strings.EqualFold(mainVhost, sandbox) {
+					errors = append(errors, config.ValidationError{Field: "spec.vhosts.sandbox",
+						Message: fmt.Sprintf("Sandbox vhost %q must differ from every main vhost", sandbox)})
+				}
+			}
+		}
+	}
+	return errors
 }
 
 // validateWebSocketChannels enforces FR-003's channel rules: at least one

@@ -108,14 +108,16 @@ func (s *APIDeploymentService) validateArtifactConflicts(kind, currentID, displa
 	return nil
 }
 
-// KindRouteContextResolver returns the context a configuration of a kind not
-// known to core is served at, with any $version placeholder substituted.
-type KindRouteContextResolver func(cfg any) string
+// KindRouteContextResolver returns the routes a configuration of a kind not
+// known to core is served at, as one "<vhost>|<context>" key per vhost it is
+// served on, with any $version placeholder substituted. vhosts supplies the
+// gateway defaults for a configuration that sets no vhosts of its own.
+type KindRouteContextResolver func(cfg any, vhosts config.VHostsConfig) []string
 
-// kindRouteContextResolvers holds KindRouteContextResolver functions. Only kinds
-// whose routes all land on the same virtual hosts register one: for them a
-// shared context is always a routing conflict, so the second deployment is
-// rejected instead of being silently shadowed by the first.
+// kindRouteContextResolvers holds KindRouteContextResolver functions. A kind
+// registers one when a shared context on a shared vhost is always a routing
+// conflict for it, so the second deployment is rejected instead of being
+// silently shadowed by the first.
 var kindRouteContextResolvers = map[string]KindRouteContextResolver{}
 
 // RegisterKindRouteContextResolver registers a route-context resolver for a
@@ -124,15 +126,23 @@ func RegisterKindRouteContextResolver(resourceKind string, fn KindRouteContextRe
 	kindRouteContextResolvers[resourceKind] = fn
 }
 
-// validateRouteContextConflict rejects a deployed configuration whose resolved
-// context is already served by another deployed configuration of the same kind.
+// validateRouteContextConflict rejects a deployed configuration that would serve
+// a context on a vhost another deployed configuration of the same kind already
+// serves it on. The same context on different vhosts is not a conflict.
 // Undeployed configurations hold no route, so they neither conflict nor block.
 func (s *APIDeploymentService) validateRouteContextConflict(cfg *models.StoredConfig) error {
 	resolve, ok := kindRouteContextResolvers[cfg.Kind]
 	if !ok || cfg.DesiredState == models.StateUndeployed {
 		return nil
 	}
-	routeContext := resolve(cfg.Configuration)
+	var vhosts config.VHostsConfig
+	if s.routerConfig != nil {
+		vhosts = s.routerConfig.VHosts
+	}
+	keys := make(map[string]struct{})
+	for _, key := range resolve(cfg.Configuration, vhosts) {
+		keys[key] = struct{}{}
+	}
 	others, err := s.db.GetAllConfigsByKind(cfg.Kind)
 	if err != nil {
 		return fmt.Errorf("failed to check existing %s context conflict: %w", cfg.Kind, err)
@@ -141,9 +151,12 @@ func (s *APIDeploymentService) validateRouteContextConflict(cfg *models.StoredCo
 		if other.UUID == cfg.UUID || other.DesiredState == models.StateUndeployed {
 			continue
 		}
-		if resolve(other.Configuration) == routeContext {
-			return fmt.Errorf("%w: context '%s' is already used by '%s'",
-				storage.ErrConflict, routeContext, other.Handle)
+		for _, key := range resolve(other.Configuration, vhosts) {
+			if _, clash := keys[key]; clash {
+				vhost, routeContext, _ := strings.Cut(key, "|")
+				return fmt.Errorf("%w: context '%s' on vhost '%s' is already used by '%s'",
+					storage.ErrConflict, routeContext, vhost, other.Handle)
+			}
 		}
 	}
 	return nil

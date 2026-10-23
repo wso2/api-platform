@@ -5067,6 +5067,27 @@ components:
             Definition names are unique within the API.
           items:
             $ref: "#/components/schemas/WebSocketUpstreamDefinition"
+        vhosts:
+          type: object
+          required:
+            - main
+          description: >
+            Custom virtual hosts/domains for the API, as on a RestApi. When omitted, the gateway's
+            default main and sandbox virtual hosts apply.
+          properties:
+            main:
+              type: string
+              description: |
+                Custom virtual host(s)/domain(s) for production traffic. One or more hostnames
+                separated by ';' — each hostname serves the main upstream. The first entry is the
+                primary vhost. Each hostname may be a wildcard such as *.example.com.
+              pattern: '^(\*\.)?[a-zA-Z0-9.\-]+(\s*;\s*(\*\.)?[a-zA-Z0-9.\-]+)*$'
+              example: ws.example.com
+            sandbox:
+              type: string
+              description: Custom virtual host/domain for sandbox traffic
+              pattern: '^[a-zA-Z0-9\.\-]+$'
+              example: sandbox-ws.example.com
         channels:
           type: array
           description: >
