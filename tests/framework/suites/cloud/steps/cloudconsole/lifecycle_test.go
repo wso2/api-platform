@@ -30,6 +30,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -3196,4 +3197,416 @@ func TestRegisterDeletersRemovesSecretsAfterTheAPIsThatUseThem(t *testing.T) {
 	}
 	require.NoError(t, registry.Sweep(ctx))
 	require.Equal(t, []string{"rest-apis/api", "secrets/sec"}, deleted)
+}
+
+func TestPairGatewaysByEnvironmentPrefersTheDefaultOfEachKind(t *testing.T) {
+	items := []map[string]any{
+		{"id": "ai-extra", "environment": "dev", "functionalityType": "ai"},
+		{"id": "reg-only", "environment": "stage"},
+		{"id": "ai-default", "environment": "dev", "functionalityType": "ai", "isDefault": true},
+		{"id": "reg-default", "environment": "dev", "functionalityType": "regular", "isDefault": true},
+		{"id": "event", "environment": "dev", "functionalityType": "event"},
+		{"environment": "dev"},
+	}
+	environment, aiID, regularID, err := pairGatewaysByEnvironment(items)
+	require.NoError(t, err)
+	require.Equal(t, []string{"dev", "ai-default", "reg-default"}, []string{environment, aiID, regularID})
+}
+
+func TestPairGatewaysByEnvironmentNeedsBothKindsInOneEnvironment(t *testing.T) {
+	_, _, _, err := pairGatewaysByEnvironment([]map[string]any{
+		{"id": "ai", "environment": "a", "functionalityType": "ai"},
+		{"id": "reg", "environment": "b"},
+	})
+	require.ErrorContains(t, err, "no environment holds both")
+}
+
+func TestFindActiveAIGatewayAsksForAIGatewaysAndRecordsThem(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	steps, ctx, _, _ := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/managed-gateways", r.URL.Path)
+		require.Equal(t, "ai", r.URL.Query().Get("functionalityType"))
+		writeJSON(w, http.StatusOK, map[string]any{"list": []map[string]any{
+			{"id": "ai-off", "isActive": false},
+			{"id": "ai-on", "isActive": true, "environment": "development", "endpoints": []string{"https://ai.example.com/"}},
+		}})
+	})
+	steps.dataPlaneURLResolver = func(_ context.Context, target string) (string, error) { return target, nil }
+	require.NoError(t, steps.findActiveAIGateway(ctx))
+	require.Equal(t, "ai-on", optionalValue(ctx, keyAIGatewayID))
+	require.Equal(t, "development", optionalValue(ctx, keyAIGatewayEnv))
+	require.Equal(t, "https://ai.example.com", optionalValue(ctx, keyAIGatewayEndpoint))
+	require.Empty(t, optionalValue(ctx, keyGatewayID), "the regular gateway keys are left alone")
+}
+
+func TestFindActiveAIGatewayNamesWhyNoneWasUsable(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	steps, ctx, _, _ := cloudSteps(t, func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{"list": []map[string]any{{"id": "ai-off", "isActive": false}}})
+	})
+	require.ErrorContains(t, steps.findActiveAIGateway(ctx), "no usable APIP AI gateway among 1 listed: ai-off: not active")
+}
+
+func TestNewLLMProviderDefinitionPointsAtTheEchoBackend(t *testing.T) {
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("cloud-runner"))
+	_, err := newLLMProviderDefinition(ctx, "syn-lp-1", nil)
+	require.ErrorContains(t, err, "echo backend")
+
+	require.NoError(t, tcontext.Set(ctx, keyEchoBackendURL, "https://echo.example.com/anything"))
+	definition, err := newLLMProviderDefinition(ctx, "syn-lp-1", nil)
+	require.NoError(t, err)
+	require.Equal(t, "syn-lp-1", definition["id"])
+	require.Equal(t, "/syn-lp-1", definition["context"])
+	require.Equal(t, "openai", definition["template"])
+	require.Equal(t, "v1.0", definition["version"])
+	require.Equal(t, map[string]any{"mode": "allow_all"}, definition["accessControl"])
+	require.Equal(t, map[string]any{"main": map[string]any{"url": "https://echo.example.com/anything"}}, definition["upstream"])
+}
+
+func TestNewLLMProviderDefinitionAppliesOverridesAndRefusesUnknownKeys(t *testing.T) {
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("cloud-runner"))
+	require.NoError(t, tcontext.Set(ctx, keyEchoBackendURL, "https://echo.example.com/anything"))
+	require.NoError(t, tcontext.Set(ctx, keySecretReference, secretReference("syn-sec-1")))
+
+	definition, err := newLLMProviderDefinition(ctx, "syn-lp-1", map[string]string{
+		"template":     "mistral",
+		"upstreamUrl":  "https://other.example.com",
+		"upstreamAuth": `{"type":"api-key","header":"x-key","value":"${CTX:cloudSecretReference}"}`,
+	})
+	require.NoError(t, err)
+	require.Equal(t, "mistral", definition["template"])
+	main := definition["upstream"].(map[string]any)["main"].(map[string]any)
+	require.Equal(t, "https://other.example.com", main["url"])
+	require.Equal(t, map[string]any{"type": "api-key", "header": "x-key", "value": `{{ secret "syn-sec-1" }}`}, main["auth"])
+
+	_, err = newLLMProviderDefinition(ctx, "syn-lp-1", map[string]string{"context": "/x"})
+	require.ErrorContains(t, err, `unsupported LLM provider value "context"`)
+	_, err = newLLMProviderDefinition(ctx, "syn-lp-1", map[string]string{"upstreamAuth": "not json"})
+	require.ErrorContains(t, err, "not valid JSON")
+}
+
+func TestNewLLMProxyDefinitionPutsTheProviderCredentialUnderTheProvider(t *testing.T) {
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("cloud-runner"))
+	definition, err := newLLMProxyDefinition(ctx, "syn-lx-1", "default", "syn-lp-1", map[string]string{
+		"providerAuth":   `{"type":"api-key","header":"Authorization"}`,
+		"globalPolicies": `[{"name":"word-count-guardrail","version":"v1"}]`,
+	})
+	require.NoError(t, err)
+	require.Equal(t, "default", definition["projectId"])
+	require.Equal(t, "/syn-lx-1", definition["context"])
+	require.Equal(t, map[string]any{"id": "syn-lp-1", "auth": map[string]any{"type": "api-key", "header": "Authorization"}},
+		definition["provider"])
+	require.Len(t, definition["globalPolicies"], 1)
+	_, hasAuth := definition["providerAuth"]
+	require.False(t, hasAuth)
+
+	_, err = newLLMProxyDefinition(ctx, "syn-lx-1", "default", "syn-lp-1", map[string]string{"projectId": "x"})
+	require.ErrorContains(t, err, `unsupported LLM proxy value "projectId"`)
+}
+
+func TestCreateLLMProviderRegistersCleanupAndKeepsTheContext(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	var body map[string]any
+	steps, ctx, _, registry := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, http.MethodPost, r.Method)
+		require.Equal(t, "/llm-providers", r.URL.Path)
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+		writeJSON(w, http.StatusCreated, map[string]any{"id": body["id"]})
+	})
+	require.NoError(t, tcontext.Set(ctx, keyEchoBackendURL, "https://echo.example.com/anything"))
+	require.NoError(t, steps.createLLMProvider(ctx, nil))
+	id := optionalValue(ctx, keyLLMProviderID)
+	require.Equal(t, body["id"], id)
+	require.LessOrEqual(t, len("/"+id), 20, "a provider context is at most 20 characters")
+	require.Equal(t, "/"+id, optionalValue(ctx, keyLLMProviderContext))
+	require.Equal(t, []cleanup.Resource{{Kind: kindLLMProvider, ID: id, Actor: resourceActor, Description: "LLM provider " + id}},
+		registry.Pending())
+}
+
+func TestCreateLLMProviderDeregistersARefusedProviderAndFollowsAChangedID(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	refuse := true
+	steps, ctx, _, registry := cloudSteps(t, func(w http.ResponseWriter, _ *http.Request) {
+		if refuse {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"code": "VALIDATION_FAILED"})
+			return
+		}
+		writeJSON(w, http.StatusCreated, map[string]any{"id": "platform-chosen"})
+	})
+	require.NoError(t, tcontext.Set(ctx, keyEchoBackendURL, "https://echo.example.com/anything"))
+	require.ErrorContains(t, steps.createLLMProvider(ctx, nil), "400")
+	require.Empty(t, registry.Pending())
+
+	refuse = false
+	require.NoError(t, steps.createLLMProvider(ctx, nil))
+	require.Equal(t, "platform-chosen", optionalValue(ctx, keyLLMProviderID))
+	pending := registry.Pending()
+	require.Len(t, pending, 1)
+	require.Equal(t, "platform-chosen", pending[0].ID)
+}
+
+func TestCreateLLMProxyNeedsAProviderAndSendsItsProject(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	var body map[string]any
+	steps, ctx, _, registry := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/llm-proxies", r.URL.Path)
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+		writeJSON(w, http.StatusCreated, map[string]any{"id": body["id"]})
+	})
+	require.NoError(t, tcontext.Set(ctx, keyProjectID, "default"))
+	require.ErrorContains(t, steps.createLLMProxy(ctx, nil), "needs a synthetic LLM provider")
+
+	require.NoError(t, tcontext.Set(ctx, keyLLMProviderID, "syn-lp-1"))
+	require.NoError(t, steps.createLLMProxy(ctx, nil))
+	require.Equal(t, "default", body["projectId"])
+	require.Equal(t, map[string]any{"id": "syn-lp-1"}, body["provider"])
+	pending := registry.Pending()
+	require.Len(t, pending, 1)
+	require.Equal(t, kindLLMProxy, pending[0].Kind)
+}
+
+func TestLLMDeploymentRoutes(t *testing.T) {
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("cloud-runner"))
+	_, _, err := providerArtifact.deploymentRoute(ctx)
+	require.ErrorContains(t, err, "no synthetic LLM provider")
+
+	require.NoError(t, tcontext.Set(ctx, keyLLMProviderID, "syn-lp-1"))
+	require.NoError(t, tcontext.Set(ctx, keyLLMProxyID, "syn-lx-1"))
+	require.NoError(t, tcontext.Set(ctx, keyProjectID, "default"))
+	path, query, err := providerArtifact.deploymentRoute(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "/llm-providers/syn-lp-1/environment-deployments", withQuery(path, query))
+	path, query, err = proxyArtifact.deploymentRoute(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "/projects/default/apis/syn-lx-1/deployments?kind=LlmProxy", withQuery(path, query))
+}
+
+func TestRequestLLMDeploymentRecordsTheDeploymentOfEachGateway(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	status := http.StatusCreated
+	var body map[string]any
+	steps, ctx, _, _ := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/llm-providers/syn-lp-1/environment-deployments", r.URL.Path)
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+		if status != http.StatusCreated {
+			writeJSON(w, status, map[string]string{"code": "invalid_request"})
+			return
+		}
+		writeJSON(w, status, map[string]any{"list": []map[string]any{{"gatewayId": "gw-ai", "deploymentId": "dep-1"}}})
+	})
+	require.NoError(t, tcontext.Set(ctx, keyLLMProviderID, "syn-lp-1"))
+	table := valuesTable(t, []string{"environment", "development"}, []string{"gatewayId", "gw-ai"},
+		[]string{"parameters", `{"apiKey":"{{ secret \"s\" }}"}`})
+	require.NoError(t, steps.requestLLMDeployment(providerArtifact)(ctx, table))
+	targets, err := llmTargets(ctx, providerArtifact)
+	require.NoError(t, err)
+	require.Equal(t, map[string]string{"gw-ai": "dep-1"}, targets)
+	require.Equal(t, "development", body["environment"])
+
+	status = http.StatusBadRequest
+	require.NoError(t, steps.requestLLMDeployment(providerArtifact)(ctx, table), "a refusal is published, not an error")
+	response, err := httpx.Published(ctx)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusBadRequest, response.StatusCode)
+
+	_, err = llmTargets(ctx, proxyArtifact)
+	require.ErrorContains(t, err, "has not been deployed")
+}
+
+func TestSummariseStates(t *testing.T) {
+	targets := map[string]string{"a": "d1", "b": "d2", "c": "d3"}
+	require.Equal(t, "", summariseStates(map[string]string{"a": "d1"}, map[string]string{"a": "DEPLOYED"}, "DEPLOYED"))
+	require.Equal(t, "b: DEPLOYING, c: not listed",
+		summariseStates(targets, map[string]string{"a": "DEPLOYED", "b": "DEPLOYING"}, "DEPLOYED"))
+}
+
+func TestWaitLLMDeploymentReadsTheStageOfEachTargetGateway(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	state := "DEPLOYED"
+	steps, ctx, _, _ := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/projects/default/apis/syn-lx-1/deployments", r.URL.Path)
+		require.Equal(t, "LlmProxy", r.URL.Query().Get("kind"))
+		writeJSON(w, http.StatusOK, map[string]any{"list": []map[string]any{{
+			"environment": "development",
+			"gateways": []map[string]any{
+				{"gatewayId": "other", "status": "FAILED"},
+				{"gatewayId": "gw-ai", "status": state},
+			},
+		}}})
+	})
+	require.NoError(t, tcontext.Set(ctx, keyLLMProxyID, "syn-lx-1"))
+	require.NoError(t, tcontext.Set(ctx, keyProjectID, "default"))
+	require.NoError(t, tcontext.Set(ctx, keyLLMProxyTargets, `{"gw-ai":"dep-1"}`))
+	require.NoError(t, steps.waitLLMDeployment(proxyArtifact)(ctx, "DEPLOYED"))
+
+	state = "FAILED"
+	require.ErrorContains(t, steps.waitLLMDeployment(proxyArtifact)(ctx, "DEPLOYED"), "gw-ai: FAILED")
+}
+
+func TestUndeployLLMUsesTheRecordedDeploymentAndTheAIGatewayEnvironment(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	var requested string
+	status := http.StatusNoContent
+	steps, ctx, _, _ := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, http.MethodPost, r.Method)
+		requested = r.URL.Path + "?" + r.URL.Query().Encode()
+		w.WriteHeader(status)
+	})
+	require.NoError(t, tcontext.Set(ctx, keyLLMProviderID, "syn-lp-1"))
+	require.NoError(t, tcontext.Set(ctx, keyLLMProviderTargets, `{"gw-ai":"dep-1"}`))
+	require.ErrorContains(t, steps.undeployLLM(providerArtifact)(ctx), keyAIGatewayEnv)
+
+	require.NoError(t, tcontext.Set(ctx, keyAIGatewayEnv, "development"))
+	require.NoError(t, steps.undeployLLM(providerArtifact)(ctx))
+	require.Equal(t, "/llm-providers/syn-lp-1/environment-deployments/dep-1/undeploy?environment=development&gatewayId=gw-ai", requested)
+
+	status = http.StatusNotFound
+	require.Error(t, steps.undeployLLM(providerArtifact)(ctx))
+}
+
+func TestAssertListIncludesAndEveryListedArtifactReadable(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	unreadable := ""
+	steps, ctx, _, _ := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/llm-providers":
+			require.Equal(t, "100", r.URL.Query().Get("limit"))
+			writeJSON(w, http.StatusOK, map[string]any{"list": []map[string]any{{"id": "p1"}, {"id": "p2"}}})
+		case "/llm-proxies":
+			if r.URL.Query().Get("projectId") != "default" {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"message": "projectId query parameter is required"})
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]any{"list": []map[string]any{{"id": "x1"}}})
+		default:
+			if strings.HasSuffix(r.URL.Path, "/"+unreadable) {
+				w.WriteHeader(http.StatusNotFound)
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]any{"id": "ok"})
+		}
+	})
+	require.NoError(t, tcontext.Set(ctx, keyLLMProviderID, "p2"))
+	require.NoError(t, steps.listLLMArtifacts(providerArtifact)(ctx))
+	require.NoError(t, steps.assertListIncludes(providerArtifact)(ctx))
+	require.NoError(t, tcontext.Set(ctx, keyLLMProviderID, "missing"))
+	require.ErrorContains(t, steps.assertListIncludes(providerArtifact)(ctx), `does not include the synthetic LLM provider "missing"`)
+
+	require.ErrorContains(t, steps.assertEveryListedArtifactReadable(ctx), "the LLM proxy list is per project")
+	require.NoError(t, tcontext.Set(ctx, keyProjectID, "default"))
+	require.NoError(t, steps.assertEveryListedArtifactReadable(ctx))
+	unreadable = "x1"
+	require.ErrorContains(t, steps.assertEveryListedArtifactReadable(ctx), `the listed LLM proxy "x1" cannot be read`)
+}
+
+func TestAssertResponseReportsComparesDottedPaths(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	steps, ctx, _, _ := cloudSteps(t, func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{"id": "p1", "upstream": map[string]any{"main": map[string]any{"url": "https://e.example.com"}}})
+	})
+	require.NoError(t, tcontext.Set(ctx, keyLLMProviderID, "p1"))
+	require.NoError(t, steps.readLLMProvider(ctx))
+	require.NoError(t, steps.assertResponseReports(ctx, valuesTable(t,
+		[]string{"id", "${CTX:cloudLLMProviderID}"}, []string{"upstream.main.url", "https://e.example.com"})))
+	err := steps.assertResponseReports(ctx, valuesTable(t, []string{"upstream.main.url", "https://x"}, []string{"absent.field", "1"}))
+	require.ErrorContains(t, err, "absent.field is <nil>, want 1")
+	require.ErrorContains(t, err, "upstream.main.url is https://e.example.com, want https://x")
+}
+
+func TestChatCompletionRequestIsOneUserMessage(t *testing.T) {
+	request, err := chatCompletionRequest("https://gw/p/chat/completions", "hello")
+	require.NoError(t, err)
+	require.Equal(t, http.MethodPost, request.Method)
+	require.Equal(t, "application/json", request.ContentType)
+	var body struct {
+		Model    string
+		Messages []map[string]string
+	}
+	require.NoError(t, json.Unmarshal(request.Body, &body))
+	require.Equal(t, "gpt-4o-mini", body.Model)
+	require.Equal(t, []map[string]string{{"role": "user", "content": "hello"}}, body.Messages)
+}
+
+func TestSendChatUntilStatusPostsTheChatBody(t *testing.T) {
+	var received map[string]any
+	steps, ctx, _ := dataPlaneSteps(t, func(w http.ResponseWriter, _ *http.Request) {})
+	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, http.MethodPost, r.Method)
+		require.Equal(t, "application/json", r.Header.Get("Content-Type"))
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&received))
+		w.WriteHeader(http.StatusUnprocessableEntity)
+	}))
+	t.Cleanup(gateway.Close)
+	require.NoError(t, steps.sendChatUntilStatus(ctx, gateway.URL+"/ctx/chat/completions", "too long", http.StatusUnprocessableEntity))
+	require.Equal(t, "too long", received["messages"].([]any)[0].(map[string]any)["content"])
+}
+
+func TestSendChatUntilEchoesRotatedWaitsForTheReplacementKey(t *testing.T) {
+	var calls atomic.Int32
+	steps, ctx, _ := dataPlaneSteps(t, func(w http.ResponseWriter, _ *http.Request) {})
+	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		key := "old-key"
+		if calls.Add(1) > 1 {
+			key = "new-key"
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"headers": map[string]string{"X-Llm-Key": key}})
+	}))
+	t.Cleanup(gateway.Close)
+	require.NoError(t, tcontext.Set(ctx, keySecretValue, "new-key"))
+	require.ErrorContains(t, steps.sendChatUntilEchoesRotated(ctx, gateway.URL, "x", "x-llm-key"), "has not been replaced")
+	require.NoError(t, tcontext.Set(ctx, keySecretPreviousValue, "old-key"))
+	require.NoError(t, steps.sendChatUntilEchoesRotated(ctx, gateway.URL, "x", "x-llm-key"))
+	require.Equal(t, int32(2), calls.Load())
+}
+
+func TestCreateSecretWithPrefixPutsThePrefixInFrontOfTheKey(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	stub := &secretStub{}
+	steps, ctx, _, _ := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+		stub.record(t, r)
+		writeJSON(w, http.StatusCreated, map[string]any{"id": stub.fields["id"]})
+	})
+	require.NoError(t, steps.createSecretWithPrefix(ctx, "Bearer "))
+	value := optionalValue(ctx, keySecretValue)
+	require.True(t, strings.HasPrefix(value, "Bearer sample-secret"), value)
+	require.Equal(t, value, stub.fields["value"])
+}
+
+func TestCreateReplacementSecretKeepsTheFirstValueAsThePreviousOne(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	stub := &secretStub{}
+	steps, ctx, _, registry := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+		stub.record(t, r)
+		writeJSON(w, http.StatusCreated, map[string]any{"id": stub.fields["id"]})
+	})
+	require.ErrorContains(t, steps.createReplacementSecret(ctx), "no secret to replace")
+	require.NoError(t, steps.createSecret(ctx))
+	first := optionalValue(ctx, keySecretValue)
+	firstID := optionalValue(ctx, keySecretID)
+	require.NoError(t, steps.createReplacementSecret(ctx))
+	require.Equal(t, first, optionalValue(ctx, keySecretPreviousValue))
+	require.NotEqual(t, first, optionalValue(ctx, keySecretValue))
+	require.NotEqual(t, firstID, optionalValue(ctx, keySecretID))
+	require.Len(t, registry.Pending(), 2, "both secrets are cleaned up")
+}
+
+func TestRegisterDeletersRemovesProxiesThenProvidersThenSecrets(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	var mu sync.Mutex
+	var deleted []string
+	steps, ctx, _, registry := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		deleted = append(deleted, strings.TrimPrefix(r.URL.Path, "/"))
+		mu.Unlock()
+		w.WriteHeader(http.StatusNoContent)
+	})
+	require.NoError(t, RegisterDeleters(registry, steps.topo))
+	for _, resource := range []cleanup.Resource{
+		{Kind: kindSecret, ID: "sec"}, {Kind: kindLLMProvider, ID: "prov"}, {Kind: kindLLMProxy, ID: "prox"}, {Kind: cleanup.KindAPI, ID: "api"},
+	} {
+		resource.Actor = resourceActor
+		require.NoError(t, cleanup.Register(ctx, resource))
+	}
+	require.NoError(t, registry.Sweep(ctx))
+	require.Equal(t, []string{"rest-apis/api", "llm-proxies/prox", "llm-providers/prov", "secrets/sec"}, deleted)
 }

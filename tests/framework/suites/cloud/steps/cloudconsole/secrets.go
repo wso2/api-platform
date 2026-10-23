@@ -130,6 +130,25 @@ func (s *Steps) chooseSecretHandle(ctx context.Context) error {
 // createSecret creates a secret holding a generated sample value and keeps the value in scenario
 // state only.
 func (s *Steps) createSecret(ctx context.Context) error {
+	return s.createSecretWithPrefix(ctx, "")
+}
+
+// createReplacementSecret creates a second synthetic secret and keeps the first one's value as the
+// previous value, so a scenario can tell which of the two a gateway sends.
+func (s *Steps) createReplacementSecret(ctx context.Context) error {
+	previous, err := requiredValue(ctx, keySecretValue)
+	if err != nil {
+		return fmt.Errorf("there is no secret to replace: %w", err)
+	}
+	if err := s.createSecretWithPrefix(ctx, ""); err != nil {
+		return err
+	}
+	return tcontext.Set(ctx, keySecretPreviousValue, previous)
+}
+
+// createSecretWithPrefix creates a secret whose value is the prefix followed by a generated sample
+// key, the form an upstream credential takes when its scheme is part of the stored value.
+func (s *Steps) createSecretWithPrefix(ctx context.Context, prefix string) error {
 	if err := s.chooseSecretHandle(ctx); err != nil {
 		return err
 	}
@@ -141,6 +160,7 @@ func (s *Steps) createSecret(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	value = prefix + value
 	if err := cleanup.Register(ctx, cleanup.Resource{
 		Kind: kindSecret, ID: handle, Actor: resourceActor, Description: "secret " + handle,
 	}); err != nil {
@@ -397,6 +417,12 @@ func (s *Steps) sendUntilEchoesRotated(ctx context.Context, method, target, head
 	if err != nil {
 		return err
 	}
+	return s.untilEchoesRotated(ctx, request, header, current, previous)
+}
+
+// untilEchoesRotated sends a prepared data-plane request until the echoed header carries the current
+// secret value.
+func (s *Steps) untilEchoesRotated(ctx context.Context, request httpx.Request, header, current, previous string) error {
 	last, err := retry.Until(ctx, retry.Options{Timeout: propagationTimeout(s.topo), Interval: 3 * time.Second},
 		func(ctx context.Context) (string, error) {
 			response, sendErr := s.funnel.Send(ctx, request)

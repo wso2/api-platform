@@ -99,14 +99,9 @@ Feature: APIP cloud access and identity
       | POST   | /environments                                                         |
       | POST   | /pipelines                                                            |
       | POST   | /managed-gateways                                                     |
+      | POST   | /projects/default/apis/no-such-api/builds                             |
       | POST   | /projects/default/apis/no-such-api/deployments                        |
       | POST   | /projects/default/apis/no-such-api/deployments/no-such-dep/undeploy   |
       | DELETE | /environments/no-such-environment                                     |
       | DELETE | /managed-gateways/no-such-gateway                                     |
 
-    # The OpenAPI spec and the handler both define POST .../builds, but the dev CP gateway doesn’t route it
-    # Same reason as @TC_APIP_DEP_001
-    @known-issue
-    Examples:
-      | method | path                                      |
-      | POST   | /projects/default/apis/no-such-api/builds |
