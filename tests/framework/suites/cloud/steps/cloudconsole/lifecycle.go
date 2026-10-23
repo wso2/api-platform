@@ -45,24 +45,30 @@ func (s *Steps) obtainToken(ctx context.Context) error {
 	return nil
 }
 
+// defaultProjectID is the project every organization is given at onboarding, and
+// the one the REST API scenarios deploy into.
+const defaultProjectID = "default"
+
+// findDefaultProject asks for the project by id rather than scanning the list.
+//
+// /projects is paginated and answers with 20 of them by default, so on an
+// organization with more projects than that the default is simply on a later
+// page. Scanning the first page reported it missing and sent the reader looking
+// for a broken organization: one real organization held 213 projects, with the
+// default among them the whole time.
 func (s *Steps) findDefaultProject(ctx context.Context) error {
-	resp, err := s.doAuthenticated(ctx, http.MethodGet, "/projects", nil)
+	resp, err := s.doAuthenticated(ctx, http.MethodGet, "/projects/"+defaultProjectID, nil)
 	if err != nil {
 		return err
 	}
-	if resp.StatusCode != http.StatusOK {
+	switch resp.StatusCode {
+	case http.StatusOK:
+		return tcontext.Set(ctx, keyProjectID, defaultProjectID)
+	case http.StatusNotFound:
+		return fmt.Errorf("the organization has no %q project", defaultProjectID)
+	default:
 		return responseError(resp)
 	}
-	items, err := listItems(resp)
-	if err != nil {
-		return fmt.Errorf("decoding APIP projects: %w", err)
-	}
-	for _, item := range items {
-		if item["id"] == "default" {
-			return tcontext.Set(ctx, keyProjectID, "default")
-		}
-	}
-	return fmt.Errorf("APIP project list does not contain the default project")
 }
 
 // findActiveGateway reads through the managed-gateway endpoint rather than the
