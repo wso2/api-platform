@@ -1533,3 +1533,52 @@ func TestClient_handleSubscriptionUpdatedEvent_MapsControlPlaneAPIIDToLocal(t *t
 		t.Errorf("expected api id to stay the local gw-uuid-1, got %s", sub.APIID)
 	}
 }
+
+// A paid subscription's billing IDs missing on the gateway are restored by the next
+// subscription.updated, and an update that carries none leaves them in place.
+func TestClient_handleSubscriptionUpdatedEvent_RestoresAndKeepsBillingIDs(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+	db := newMockStorageForDeletion()
+	db.subscriptions["sub-paid"] = &models.Subscription{
+		ID:     "sub-paid",
+		APIID:  "api-1",
+		Status: models.SubscriptionStatusActive,
+	}
+	client := &Client{
+		logger:    logger,
+		db:        db,
+		eventHub:  &mockControlPlaneEventHub{},
+		gatewayID: "test-gateway",
+	}
+	update := func(payload map[string]interface{}) {
+		payload["subscriptionId"] = "sub-paid"
+		payload["apiId"] = "api-1"
+		payload["subscriptionToken"] = "token-paid"
+		payload["status"] = "ACTIVE"
+		client.handleSubscriptionUpdatedEvent(map[string]interface{}{
+			"type":          "subscription.updated",
+			"payload":       payload,
+			"timestamp":     time.Now().Format(time.RFC3339),
+			"correlationId": "corr-sub-paid-update",
+		})
+	}
+	assertBillingIDs := func(when string) {
+		t.Helper()
+		sub, err := db.GetSubscriptionByID("sub-paid", "")
+		if err != nil {
+			t.Fatalf("%s: expected subscription to be present, got %v", when, err)
+		}
+		if sub.BillingCustomerID == nil || *sub.BillingCustomerID != "cus_1" {
+			t.Errorf("%s: expected billing customer id cus_1, got %v", when, sub.BillingCustomerID)
+		}
+		if sub.BillingSubscriptionID == nil || *sub.BillingSubscriptionID != "sub_1" {
+			t.Errorf("%s: expected billing subscription id sub_1, got %v", when, sub.BillingSubscriptionID)
+		}
+	}
+
+	update(map[string]interface{}{"billingCustomerId": "cus_1", "billingSubscriptionId": "sub_1"})
+	assertBillingIDs("after an update with billing ids")
+
+	update(map[string]interface{}{})
+	assertBillingIDs("after an update without billing ids")
+}
