@@ -24,3 +24,27 @@ blocks:
       - name: apip-gateway
         features:
           - features/apip_gateway.feature
+      - name: apip-gateway-provisioning
+        features:
+          - features/apip_gateway_provisioning.feature
+      - name: apip-gateway-config
+        features:
+          - features/apip_gateway_config.feature
+      - name: apip-auth
+        features:
+          - features/apip_auth.feature
+      - name: apip-deploy
+        features:
+          - features/apip_deploy.feature
+      - name: apip-promotion
+        features:
+          - features/apip_promotion.feature
+      - name: apip-resilience
+        features:
+          - features/apip_resilience.feature
+      - name: apip-secrets
+        features:
+          - features/apip_secrets.feature
+      - name: apip-ai-workspace
+        features:
+          - features/apip_ai_workspace.feature

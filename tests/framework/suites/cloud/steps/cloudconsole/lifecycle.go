@@ -81,6 +81,31 @@ func (s *Steps) findActiveGateway(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("decoding APIP gateways: %w", err)
 	}
+	choice, err := s.chooseActiveGateway(ctx, items, "APIP gateway")
+	if err != nil {
+		return err
+	}
+	if err := tcontext.Set(ctx, keyGatewayID, choice.id); err != nil {
+		return err
+	}
+	if choice.environment != "" {
+		if err := tcontext.Set(ctx, keyGatewayEnv, choice.environment); err != nil {
+			return err
+		}
+	}
+	return tcontext.Set(ctx, keyGatewayEndpoint, choice.endpoint)
+}
+
+// gatewayChoice is a listed gateway a scenario can deploy to and send traffic through.
+type gatewayChoice struct {
+	id          string
+	environment string
+	endpoint    string
+}
+
+// chooseActiveGateway picks the first listed gateway that is active and has an approved data-plane
+// endpoint. label names the kind of gateway in the failure.
+func (s *Steps) chooseActiveGateway(ctx context.Context, items []map[string]any, label string) (gatewayChoice, error) {
 	// Record why each candidate was rejected. Skipping silently and reporting
 	// only "none found" hides the difference between an organization with no
 	// gateways and one whose gateways were all filtered out here.
@@ -106,144 +131,55 @@ func (s *Steps) findActiveGateway(ctx context.Context) error {
 			skipped = append(skipped, id+": no endpoint passed the data-plane host check")
 			continue
 		}
-		if err := tcontext.Set(ctx, keyGatewayID, id); err != nil {
-			return err
-		}
-		return tcontext.Set(ctx, keyGatewayEndpoint, endpoint)
+		environment, _ := item["environment"].(string)
+		return gatewayChoice{id: id, environment: strings.TrimSpace(environment), endpoint: endpoint}, nil
 	}
 	if len(items) == 0 {
-		return fmt.Errorf("the organization has no APIP gateways")
+		return gatewayChoice{}, fmt.Errorf("the organization has no %ss", label)
 	}
-	return fmt.Errorf("no usable APIP gateway among %d listed: %s", len(items), strings.Join(skipped, "; "))
-}
-
-func (s *Steps) createAPI(ctx context.Context) error {
-	projectID, err := requiredValue(ctx, keyProjectID)
-	if err != nil {
-		return err
-	}
-	if err := generateResourceAndStore(ctx, "syn-api", keyAPIID); err != nil {
-		return err
-	}
-	apiID, err := requiredValue(ctx, keyAPIID)
-	if err != nil {
-		return err
-	}
-	if err := cleanup.Register(ctx, cleanup.Resource{
-		Kind: cleanup.KindAPI, ID: apiID, Actor: resourceActor, Description: "REST API " + apiID,
-	}); err != nil {
-		return fmt.Errorf("registering API %q for cleanup: %w", apiID, err)
-	}
-	body := map[string]any{
-		"id": apiID, "displayName": "Synthetic " + apiID,
-		"description": "Created and deleted by the APIP cloud integration test. Safe to delete.",
-		"context":     "/" + apiID + "/v1", "version": "1.0.0", "projectId": projectID,
-		"upstream": map[string]any{"main": map[string]string{"url": "https://jsonplaceholder.typicode.com"}},
-		"security": map[string]bool{"enabled": false},
-		"operations": []any{map[string]any{
-			"name": "getPost", "request": map[string]string{"method": http.MethodGet, "path": "/posts/1"},
-		}},
-	}
-	resp, err := s.doAuthenticated(ctx, http.MethodPost, "/rest-apis", body)
-	if err != nil {
-		return err
-	}
-	if resp.StatusCode != http.StatusCreated {
-		return responseError(resp)
-	}
-	createdID, err := stringField(resp, "id")
-	if err != nil {
-		return fmt.Errorf("creating APIP REST API: %w", err)
-	}
-	if createdID != apiID {
-		deregister(ctx, cleanup.KindAPI, apiID)
-		if err := cleanup.Register(ctx, cleanup.Resource{
-			Kind: cleanup.KindAPI, ID: createdID, Actor: resourceActor, Description: "REST API " + createdID,
-		}); err != nil {
-			return fmt.Errorf("registering API %q for cleanup: %w", createdID, err)
-		}
-	}
-	return tcontext.Set(ctx, keyAPIID, createdID)
-}
-
-func (s *Steps) deployAPI(ctx context.Context) error {
-	apiID, err := requiredValue(ctx, keyAPIID)
-	if err != nil {
-		return err
-	}
-	gatewayID, err := requiredValue(ctx, keyGatewayID)
-	if err != nil {
-		return err
-	}
-	resp, err := s.doAuthenticated(ctx, http.MethodPost, "/rest-apis/"+url.PathEscape(apiID)+"/deployments", map[string]string{
-		"name": apiID + "-deploy", "base": "current", "gatewayId": gatewayID,
-	})
-	if err != nil {
-		return err
-	}
-	if resp.StatusCode != http.StatusCreated {
-		return responseError(resp)
-	}
-	deploymentID, err := stringField(resp, "deploymentId")
-	if err != nil {
-		return fmt.Errorf("deploying APIP REST API: %w", err)
-	}
-	return tcontext.Set(ctx, keyDeploymentID, deploymentID)
-}
-
-func (s *Steps) waitDeployment(ctx context.Context) error {
-	apiID, err := requiredValue(ctx, keyAPIID)
-	if err != nil {
-		return err
-	}
-	gatewayID, err := requiredValue(ctx, keyGatewayID)
-	if err != nil {
-		return err
-	}
-	var last *httpx.Response
-	last, err = retry.Until(ctx, retry.Options{Timeout: 3 * time.Minute, Interval: 5 * time.Second},
-		func(ctx context.Context) (*httpx.Response, error) {
-			return s.doAuthenticatedRaw(ctx, http.MethodGet,
-				"/rest-apis/"+url.PathEscape(apiID)+"/deployments?gatewayId="+url.QueryEscape(gatewayID), nil)
-		}, func(resp *httpx.Response) bool {
-			if resp == nil || resp.StatusCode != http.StatusOK {
-				return false
-			}
-			items, decodeErr := listItems(resp)
-			return decodeErr == nil && len(items) > 0 && items[0]["status"] == "DEPLOYED"
-		})
-	if err != nil {
-		return fmt.Errorf("waiting for APIP REST API deployment: %w", err)
-	}
-	if last == nil {
-		return fmt.Errorf("waiting for APIP REST API deployment: no response")
-	}
-	return nil
+	return gatewayChoice{}, fmt.Errorf("no usable %s among %d listed: %s", label, len(items), strings.Join(skipped, "; "))
 }
 
 // sendUntilStatus invokes an absolute cloud data-plane URL until it returns the exact status.
 func (s *Steps) sendUntilStatus(ctx context.Context, method, target string, want int) error {
+	return s.sendUntilStatusWith(ctx, method, target, want, nil)
+}
+
+// sendUntilStatusWith is sendUntilStatus with extra request headers.
+func (s *Steps) sendUntilStatusWith(ctx context.Context, method, target string, want int, headers map[string]string) error {
+	return s.sendRequestUntilStatus(ctx, httpx.Request{Method: method, URL: target, Headers: headers}, want)
+}
+
+// prepareDataPlaneRequest checks a data-plane request can be sent: a method, a funnel, and a
+// target that expands and passes the data-plane host check. It returns the request ready to send.
+func (s *Steps) prepareDataPlaneRequest(ctx context.Context, request httpx.Request) (httpx.Request, error) {
 	if s.funnel == nil {
-		return fmt.Errorf("sending %s request: HTTP funnel is required", strings.ToUpper(method))
+		return request, fmt.Errorf("sending %s request: HTTP funnel is required", strings.ToUpper(request.Method))
 	}
-	method = strings.ToUpper(strings.TrimSpace(method))
-	if method == "" {
-		return fmt.Errorf("sending request: HTTP method is required")
+	request.Method = strings.ToUpper(strings.TrimSpace(request.Method))
+	if request.Method == "" {
+		return request, fmt.Errorf("sending request: HTTP method is required")
 	}
-	if want < 100 || want > 599 {
-		return fmt.Errorf("sending %s request: invalid HTTP status %d", method, want)
-	}
-	target, err := expandCloudValue(ctx, target)
+	target, err := expandCloudValue(ctx, request.URL)
 	if err != nil {
-		return err
+		return request, err
 	}
-	target, err = s.resolveDataPlaneURL(ctx, target)
+	request.URL, err = s.resolveDataPlaneURL(ctx, target)
+	return request, err
+}
+
+// sendRequestUntilStatus sends a data-plane request until the gateway answers with the status.
+func (s *Steps) sendRequestUntilStatus(ctx context.Context, request httpx.Request, want int) error {
+	if want < 100 || want > 599 {
+		return fmt.Errorf("sending %s request: invalid HTTP status %d", strings.ToUpper(request.Method), want)
+	}
+	request, err := s.prepareDataPlaneRequest(ctx, request)
 	if err != nil {
 		return err
 	}
 	return retry.Await(ctx, retry.Options{Timeout: propagationTimeout(s.topo)},
 		func(ctx context.Context) (*httpx.Response, error) {
-			response, sendErr := s.funnel.Send(ctx, httpx.Request{Method: method, URL: target})
+			response, sendErr := s.funnel.Send(ctx, request)
 			if sendErr != nil {
 				return nil, retry.Transient(sendErr)
 			}
@@ -252,10 +188,10 @@ func (s *Steps) sendUntilStatus(ctx context.Context, method, target string, want
 		func(response *httpx.Response) bool {
 			return response != nil && response.StatusCode == want
 		},
-		fmt.Sprintf("waiting for %s %s to return %d", method, target, want))
+		fmt.Sprintf("waiting for %s %s to return %d", request.Method, request.URL, want))
 }
 
-func (s *Steps) assertAPIResponse(ctx context.Context) error {
+func (s *Steps) assertAPIResponse(ctx context.Context, post int) error {
 	response, err := httpx.Published(ctx)
 	if err != nil {
 		return err
@@ -264,8 +200,8 @@ func (s *Steps) assertAPIResponse(ctx context.Context) error {
 	if err := json.Unmarshal(response.Body, &body); err != nil {
 		return fmt.Errorf("decoding the synthetic REST API response: %w (%s)", err, response.Describe())
 	}
-	if body["id"] != float64(1) {
-		return fmt.Errorf("expected the synthetic REST API response to contain post 1, got %s", response.Describe())
+	if body["id"] != float64(post) {
+		return fmt.Errorf("expected the synthetic REST API response to contain post %d, got %s", post, response.Describe())
 	}
 	return nil
 }
@@ -348,36 +284,58 @@ func (s *Steps) verifyAPIDeleted(ctx context.Context) error {
 }
 
 func (s *Steps) createProject(ctx context.Context) error {
-	if err := generateResourceAndStore(ctx, "syn-project", keyProjectID); err != nil {
-		return err
-	}
-	id, err := requiredValue(ctx, keyProjectID)
-	if err != nil {
-		return err
-	}
-	if err := cleanup.Register(ctx, cleanup.Resource{
-		Kind: cleanup.KindProject, ID: id, Actor: resourceActor, Description: "project " + id,
-	}); err != nil {
-		return fmt.Errorf("registering project %q for cleanup: %w", id, err)
-	}
-	resp, err := s.doAuthenticated(ctx, http.MethodPost, "/projects", map[string]string{
-		"id": id, "displayName": "Synthetic " + id,
-		"description": "Created and deleted by the APIP cloud integration test. Safe to delete.",
-	})
+	return s.createProjectOf(ctx, cleanup.KindProject)
+}
+
+// createProjectOf creates a uniquely named project, registered for cleanup under the given kind
+// before it is requested, and keeps it as the scenario's project.
+func (s *Steps) createProjectOf(ctx context.Context, kind cleanup.Kind) error {
+	id, resp, err := s.requestProjectOf(ctx, kind)
 	if err != nil {
 		return err
 	}
 	if resp.StatusCode != http.StatusCreated {
 		return responseError(resp)
 	}
+	return s.keepCreatedProject(ctx, kind, id, resp)
+}
+
+// requestProjectOf asks for a uniquely named project and returns the answer whatever it is. The
+// project is registered for cleanup under the given kind before it is requested.
+func (s *Steps) requestProjectOf(ctx context.Context, kind cleanup.Kind) (string, *httpx.Response, error) {
+	if err := generateResourceAndStore(ctx, "syn-project", keyProjectID); err != nil {
+		return "", nil, err
+	}
+	id, err := requiredValue(ctx, keyProjectID)
+	if err != nil {
+		return "", nil, err
+	}
+	if err := cleanup.Register(ctx, cleanup.Resource{
+		Kind: kind, ID: id, Actor: resourceActor, Description: "project " + id,
+	}); err != nil {
+		return "", nil, fmt.Errorf("registering project %q for cleanup: %w", id, err)
+	}
+	resp, err := s.doAuthenticated(ctx, http.MethodPost, "/projects", map[string]string{
+		"id": id, "displayName": "Synthetic " + id,
+		"description": "Created and deleted by the APIP cloud integration test. Safe to delete.",
+	})
+	if err != nil {
+		return "", nil, err
+	}
+	return id, resp, nil
+}
+
+// keepCreatedProject makes the project a create answered 201 for the scenario's project, and
+// registers the id the platform gave it when that differs from the one requested.
+func (s *Steps) keepCreatedProject(ctx context.Context, kind cleanup.Kind, id string, resp *httpx.Response) error {
 	createdID, err := stringField(resp, "id")
 	if err != nil {
 		return fmt.Errorf("creating APIP project: %w", err)
 	}
 	if createdID != id {
-		deregister(ctx, cleanup.KindProject, id)
+		deregister(ctx, kind, id)
 		if err := cleanup.Register(ctx, cleanup.Resource{
-			Kind: cleanup.KindProject, ID: createdID, Actor: resourceActor, Description: "project " + createdID,
+			Kind: kind, ID: createdID, Actor: resourceActor, Description: "project " + createdID,
 		}); err != nil {
 			return fmt.Errorf("registering project %q for cleanup: %w", createdID, err)
 		}
@@ -552,44 +510,60 @@ func (s *Steps) createManagedGateway(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if err := generateResourceAndStore(ctx, "syn-gateway", keyManagedGatewayID); err != nil {
-		return err
+	_, err = s.createManagedGatewayIn(ctx, environment)
+	return err
+}
+
+// createManagedGatewayIn creates a uniquely named managed gateway in an environment, registers it
+// for cleanup before the request, and keeps its id as the scenario's managed gateway. The platform
+// registers a gateway as "<environment>-<handle>" within 40 characters, so a name too long for the
+// environment is sent with a handle cut to fit.
+func (s *Steps) createManagedGatewayIn(ctx context.Context, environment string) (string, error) {
+	if err := generateResourceAndStore(ctx, "syn-gw", keyManagedGatewayID); err != nil {
+		return "", err
 	}
 	name, err := requiredValue(ctx, keyManagedGatewayID)
 	if err != nil {
-		return err
+		return "", err
+	}
+	request := map[string]string{"displayName": name, "environment": environment}
+	handle := name
+	if budget := gatewayHandleBudget(environment); len(name) > budget {
+		handle = handleOfLength(name, budget)
+		request["handle"] = handle
 	}
 	// The managed-gateway API normally derives its registration id from the
-	// environment and display name. Keep that deterministic fallback registered so
+	// environment and handle. Keep that deterministic fallback registered so
 	// cleanup can still attempt deletion if a successful create has no decodable body.
-	cleanupID := environment + "-" + name
+	cleanupID := environment + "-" + handle
 	if err := cleanup.Register(ctx, cleanup.Resource{
 		Kind: cleanup.KindGateway, ID: cleanupID, Actor: resourceActor, Description: "managed gateway " + cleanupID,
 	}); err != nil {
-		return fmt.Errorf("registering managed gateway %q for cleanup: %w", cleanupID, err)
+		return "", fmt.Errorf("registering managed gateway %q for cleanup: %w", cleanupID, err)
 	}
-	resp, err := s.doAuthenticated(ctx, http.MethodPost, "/managed-gateways", map[string]string{
-		"displayName": name, "environment": environment,
-	})
+	resp, err := s.doAuthenticated(ctx, http.MethodPost, "/managed-gateways", request)
 	if err != nil {
-		return err
+		return "", err
 	}
 	if resp.StatusCode != http.StatusCreated {
-		return responseError(resp)
+		return "", responseError(resp)
 	}
 	id, err := stringField(resp, "id")
 	if err != nil {
-		return fmt.Errorf("creating APIP managed gateway: %w", err)
+		return "", fmt.Errorf("creating APIP managed gateway: %w", err)
 	}
 	if id != cleanupID {
 		deregister(ctx, cleanup.KindGateway, cleanupID)
 		if err := cleanup.Register(ctx, cleanup.Resource{
 			Kind: cleanup.KindGateway, ID: id, Actor: resourceActor, Description: "managed gateway " + id,
 		}); err != nil {
-			return fmt.Errorf("registering managed gateway %q for cleanup: %w", id, err)
+			return "", fmt.Errorf("registering managed gateway %q for cleanup: %w", id, err)
 		}
 	}
-	return tcontext.Set(ctx, keyManagedGatewayID, id)
+	if err := tcontext.Set(ctx, keyManagedGatewayEnv, environment); err != nil {
+		return "", err
+	}
+	return id, tcontext.Set(ctx, keyManagedGatewayID, id)
 }
 
 func (s *Steps) getManagedGateway(ctx context.Context) error {
@@ -629,7 +603,7 @@ func (s *Steps) deleteManagedGateway(ctx context.Context) error {
 	if resp.StatusCode == http.StatusNotFound {
 		deregister(ctx, cleanup.KindGateway, id)
 	}
-	return nil
+	return tcontext.Set(ctx, keyGatewayDeleteStatus, fmt.Sprint(resp.StatusCode))
 }
 
 func (s *Steps) verifyManagedGatewayDeleted(ctx context.Context) error {
@@ -638,6 +612,9 @@ func (s *Steps) verifyManagedGatewayDeleted(ctx context.Context) error {
 		return err
 	}
 	if err := s.awaitNotFound(ctx, "/managed-gateways/"+url.PathEscape(id), "managed gateway "+id); err != nil {
+		if status := optionalValue(ctx, keyGatewayDeleteStatus); status != "" {
+			return fmt.Errorf("%w (the delete was answered %s)", err, status)
+		}
 		return err
 	}
 	deregister(ctx, cleanup.KindGateway, id)

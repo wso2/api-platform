@@ -220,6 +220,10 @@ type Request struct {
 
 	// TLS, when set, runs the request on its own connection with this client TLS.
 	TLS *ClientTLS
+
+	// Chunked sends Body with no declared length (chunked transfer encoding on HTTP/1.1, a
+	// stream of DATA frames on HTTP/2), so a peer cannot judge the size from a header.
+	Chunked bool
 }
 
 // Do issues a request and retries only responses recognized as transient.
@@ -266,6 +270,10 @@ func (c *Client) build(ctx context.Context, req Request) (*http.Request, error) 
 	var body io.Reader
 	if len(req.Body) > 0 {
 		body = bytes.NewReader(req.Body)
+		if req.Chunked {
+			// net/http sends a body of a type it cannot measure with no Content-Length.
+			body = io.MultiReader(body)
+		}
 	}
 
 	httpReq, err := http.NewRequestWithContext(ctx, req.Method, req.URL, body)
