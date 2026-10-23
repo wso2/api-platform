@@ -2369,3 +2369,14 @@ handle_upstream_faults = true
 	assert.True(t, cfg.PolicyEngine.FaultPolicies.HandleUpstreamFaults,
 		"policy_engine.fault_policies.handle_upstream_faults must reach the engine")
 }
+
+func TestLoad_TrafficLoggingJSONFields_BindsFromTOML(t *testing.T) {
+	path := writeOTelTOML(t, `
+[traffic_logging]
+enabled = true
+json_fields = { my-api = "$ctx:api.name", env = "prod" }
+`)
+	cfg, err := Load(path)
+	require.NoError(t, err)
+	assert.Equal(t, map[string]string{"my-api": "$ctx:api.name", "env": "prod"}, cfg.TrafficLogging.JSONFields)
+}

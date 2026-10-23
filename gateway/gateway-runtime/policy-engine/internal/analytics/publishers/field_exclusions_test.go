@@ -98,6 +98,29 @@ func TestCompileFieldExclusions_SplitsStructAndResidual(t *testing.T) {
 	assert.Nil(t, compileFieldExclusions([]string{"api"}).residualFields(), "no residual when every entry is struct-level")
 }
 
+func TestCompileFieldExclusions_SortsCtxEntries(t *testing.T) {
+	fe := compileFieldExclusions([]string{"$ctx:error.policy", "$ctx:auth.property",
+		"$ctx:auth.property.email", "$ctx:metadata.wso2.fault.policy", "latencies"})
+
+	assert.Equal(t, map[string]bool{"error.policy": true, "auth.property": true}, fe.excludedVariables())
+	assert.Equal(t, map[string]map[string]bool{
+		"auth.property": {"email": true},
+		"metadata":      {"wso2.fault.policy": true},
+	}, fe.excludedMapKeys())
+	assert.Equal(t, map[string]bool{"latencies": true}, fe.topLevel, "other entries keep their meaning")
+	assert.Nil(t, fe.residualFields(), "$ctx: entries are not JSON paths")
+}
+
+func TestCompileFieldExclusions_WarnsOnUnknownCtxVariable(t *testing.T) {
+	logs := captureLogs(t)
+
+	compileFieldExclusions([]string{"$ctx:error.polcy", "$ctx:error.policy"})
+
+	assert.Contains(t, logs.String(), "unknown $ctx variable")
+	assert.Contains(t, logs.String(), "$ctx:error.polcy")
+	assert.NotContains(t, logs.String(), "entry=$ctx:error.policy")
+}
+
 func BenchmarkLog_Publish_CustomerExcludeFields(b *testing.B) {
 	cfg := &config.TrafficLoggingConfig{
 		Enabled: true, RequestHeaders: true, RequestBody: true, ResponseHeaders: true,

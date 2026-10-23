@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"log/slog"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -38,6 +39,19 @@ import (
 // CEL expression to evaluate, rather than a literal string, mirroring the
 // log-message policy's "$ctx:" convention.
 const globalPropertyCtxPrefix = "$ctx:"
+
+// evaluatorSection names the config section an evaluator serves and what its
+// entries are called, so its log messages point at the right place.
+type evaluatorSection struct {
+	name    string // e.g. "traffic_logging.properties"
+	entry   string // e.g. "property"
+	entries string // plural of entry
+}
+
+var (
+	propertiesSection = evaluatorSection{name: "traffic_logging.properties", entry: "property", entries: "properties"}
+	jsonFieldsSection = evaluatorSection{name: "traffic_logging.json_fields", entry: "field", entries: "fields"}
+)
 
 // globalPropertyEvaluator resolves traffic_logging.properties against a
 // dto.Event, mirroring the log-message policy's `properties` CEL surface.
@@ -68,6 +82,21 @@ type globalPropertyEvaluator struct {
 	// property expression cannot re-expose a header (e.g. authorization) that the
 	// emitted requestHeaders/responseHeaders map already redacts.
 	maskedHeaders map[string]bool
+	// excludedRequestHeaders/excludedResponseHeaders hold lower-cased header names
+	// removed from request.header/response.header. Set only for json_fields, from
+	// the "requestHeaders.<name>"/"responseHeaders.<name>" entries of exclude_fields.
+	excludedRequestHeaders  map[string]bool
+	excludedResponseHeaders map[string]bool
+	// truncateBody, when set, declares request.body/response.body and cuts each
+	// body to max_payload_size. Set only for json_fields (see withBodies).
+	truncateBody func(string) string
+	// section names the config section and its entries in log messages (see withSection).
+	section evaluatorSection
+	// excludedVariables/excludedMapKeys hold the "$ctx:" entries of exclude_fields. Set
+	// only for json_fields: expressions using an excluded variable are dropped at
+	// construction, and excluded keys are removed from map variables per request.
+	excludedVariables map[string]bool
+	excludedMapKeys   map[string]map[string]bool
 	// referencedVars is the union, across every compiled expression, of the declared
 	// variable names (see globalPropertyVariables) actually referenced. Computed once at
 	// construction (the expression set is static config) and consulted by
@@ -86,20 +115,28 @@ type globalPropertyEvaluator struct {
 // here is permanent (logged once) since it can never succeed on a later
 // request the way a per-request nil AuthContext might resolve differently
 // request to request.
-func newGlobalPropertyEvaluator(properties map[string]string, maskedHeaders map[string]bool) *globalPropertyEvaluator {
+func newGlobalPropertyEvaluator(properties map[string]string, maskedHeaders map[string]bool, opts ...evaluatorOption) *globalPropertyEvaluator {
 	e := &globalPropertyEvaluator{
 		literals:       make(map[string]string),
 		compiled:       make(map[string]cel.Program),
 		maskedHeaders:  maskedHeaders,
 		referencedVars: make(map[string]bool),
+		section:        propertiesSection,
+	}
+	for _, opt := range opts {
+		opt(e)
 	}
 	if len(properties) == 0 {
 		return e
 	}
 
-	env, err := createGlobalPropertyEnv()
+	var extraVariables []globalPropertyVariable
+	if e.truncateBody != nil {
+		extraVariables = bodyVariables
+	}
+	env, err := createGlobalPropertyEnv(extraVariables...)
 	if err != nil {
-		slog.Error("traffic_logging.properties: failed to create CEL environment; all properties disabled", "error", err)
+		slog.Error(e.section.name+": failed to create CEL environment; all "+e.section.entries+" disabled", "error", err)
 		return e
 	}
 
@@ -111,14 +148,20 @@ func newGlobalPropertyEvaluator(properties map[string]string, maskedHeaders map[
 		}
 		ast, issues := env.Compile(rest)
 		if issues != nil && issues.Err() != nil {
-			slog.Error("traffic_logging.properties: failed to compile expression; property will be omitted from every line",
-				"property", name, "expression", rest, "error", issues.Err())
+			slog.Error(e.section.name+": failed to compile expression; "+e.section.entry+" will be omitted from every line",
+				e.section.entry, name, "expression", rest, "error", issues.Err())
+			continue
+		}
+		refs := referencedGlobalPropertyVariables(ast)
+		if excluded := e.excludedVariablesIn(refs); len(excluded) > 0 {
+			slog.Warn(e.section.name+": expression uses a variable excluded by exclude_fields; "+e.section.entry+" will be omitted from every line",
+				e.section.entry, name, "variables", excluded)
 			continue
 		}
 		program, err := env.Program(ast)
 		if err != nil {
-			slog.Error("traffic_logging.properties: failed to build CEL program; property will be omitted from every line",
-				"property", name, "expression", rest, "error", err)
+			slog.Error(e.section.name+": failed to build CEL program; "+e.section.entry+" will be omitted from every line",
+				e.section.entry, name, "expression", rest, "error", err)
 			continue
 		}
 		e.compiled[name] = program
@@ -128,11 +171,59 @@ func newGlobalPropertyEvaluator(properties map[string]string, maskedHeaders map[
 		// reads cel-go's own checked reference map, so it can only under-report if cel-go's
 		// checker itself failed to resolve a reference — and an unresolved reference means
 		// Compile would already have failed above, so this expression wouldn't be here.
-		for varName := range referencedGlobalPropertyVariables(ast) {
+		for varName := range refs {
 			e.referencedVars[varName] = true
 		}
 	}
 	return e
+}
+
+// excludedVariablesIn returns, sorted, the variables in refs that exclude_fields excludes.
+func (e *globalPropertyEvaluator) excludedVariablesIn(refs map[string]bool) []string {
+	var out []string
+	for v := range refs {
+		if e.excludedVariables[v] {
+			out = append(out, v)
+		}
+	}
+	slices.Sort(out)
+	return out
+}
+
+// evaluatorOption configures a globalPropertyEvaluator beyond what properties needs.
+// Only json_fields uses them.
+type evaluatorOption func(*globalPropertyEvaluator)
+
+// withExcludedHeaders removes the given lower-cased header names from
+// request.header and response.header.
+func withExcludedHeaders(request, response map[string]bool) evaluatorOption {
+	return func(e *globalPropertyEvaluator) {
+		e.excludedRequestHeaders = request
+		e.excludedResponseHeaders = response
+	}
+}
+
+// withBodies declares request.body and response.body, each passed through truncate.
+func withBodies(truncate func(string) string) evaluatorOption {
+	return func(e *globalPropertyEvaluator) {
+		e.truncateBody = truncate
+	}
+}
+
+// withCtxExclusions applies the "$ctx:" entries of exclude_fields, so json_fields never
+// logs data excluded there, whatever an expression asks for.
+func withCtxExclusions(variables map[string]bool, mapKeys map[string]map[string]bool) evaluatorOption {
+	return func(e *globalPropertyEvaluator) {
+		e.excludedVariables = variables
+		e.excludedMapKeys = mapKeys
+	}
+}
+
+// withSection names the config section in log messages, in place of propertiesSection.
+func withSection(section evaluatorSection) evaluatorOption {
+	return func(e *globalPropertyEvaluator) {
+		e.section = section
+	}
 }
 
 // referencedGlobalPropertyVariables returns the set of declared variable names (see
@@ -176,14 +267,15 @@ type globalPropertyVariable struct {
 // Zero values that are slices/maps (auth.audience, auth.property, metadata, the two header
 // maps, ...) are never mutated in place anywhere in this file — every assignment in
 // buildGlobalPropertyEvalCtx replaces the ctx entry wholesale rather than appending/writing
-// into the existing value — so the same empty instance declared here is safely reused
-// (read-only) across every request and goroutine instead of allocating a fresh empty
-// collection per call.
+// into the existing value, and removeExcludedMapKeys skips empty maps — so the same empty
+// instance declared here is safely reused (read-only) across every request and goroutine
+// instead of allocating a fresh empty collection per call.
 var globalPropertyVariables = []globalPropertyVariable{
 	{"request.path", cel.StringType, ""},
 	{"request.pathTemplate", cel.StringType, ""},
 	{"request.method", cel.StringType, ""},
 	{"request.id", cel.StringType, ""},
+	{"request.timestamp", cel.StringType, ""},
 	{"request.header", cel.MapType(cel.StringType, cel.StringType), map[string]string{}},
 
 	{"response.status", cel.IntType, 0},
@@ -199,6 +291,31 @@ var globalPropertyVariables = []globalPropertyVariable{
 
 	{"target.statusCode", cel.IntType, 0},
 	{"target.destination", cel.StringType, ""},
+
+	// Named after the default traffic-log line's JSON fields.
+	{"client.ip", cel.StringType, ""},
+	{"client.userAgent", cel.StringType, ""},
+	{"latencies.durationUs", cel.IntType, 0},
+	{"latencies.requestMediationLatencyUs", cel.IntType, 0},
+	{"latencies.responseMediationLatencyUs", cel.IntType, 0},
+	{"latencies.backendLatencyUs", cel.IntType, 0},
+	// The same latencies in decimal milliseconds.
+	{"latencies.durationMs", cel.DoubleType, 0.0},
+	{"latencies.requestMediationLatencyMs", cel.DoubleType, 0.0},
+	{"latencies.responseMediationLatencyMs", cel.DoubleType, 0.0},
+	{"latencies.backendLatencyMs", cel.DoubleType, 0.0},
+	{"errorType", cel.StringType, ""},
+	{"error.errorCode", cel.IntType, 0},
+	{"error.errorMessage", cel.StringType, ""},
+	{"error.wso2ErrorCode", cel.IntType, 0},
+	{"error.type", cel.StringType, ""},
+	{"error.direction", cel.StringType, ""},
+	{"error.summary", cel.StringType, ""},
+	{"error.policy", cel.StringType, ""},
+	{"error.policyPhase", cel.StringType, ""},
+	{"error.source", cel.StringType, ""},
+	{"error.originalStatus", cel.IntType, 0},
+	{"error.jsonRpcCode", cel.IntType, 0},
 
 	{"application.id", cel.StringType, ""},
 	{"application.name", cel.StringType, ""},
@@ -230,12 +347,30 @@ var globalPropertyVariables = []globalPropertyVariable{
 	{"metadata", cel.MapType(cel.StringType, cel.DynType), map[string]interface{}{}},
 }
 
-// createGlobalPropertyEnv declares every variable in globalPropertyVariables in the CEL
-// environment used to compile "$ctx:" expressions.
-func createGlobalPropertyEnv() (*cel.Env, error) {
-	opts := make([]cel.EnvOption, 0, len(globalPropertyVariables)+1)
+// bodyVariables are declared only for an evaluator built withBodies (json_fields).
+// properties adds to the default line, whose bodies stay governed by the
+// traffic_logging.request_body/response_body toggles.
+var bodyVariables = []globalPropertyVariable{
+	{"request.body", cel.StringType, ""},
+	{"response.body", cel.StringType, ""},
+}
+
+// isDeclaredVariable reports whether name is a "$ctx:" variable, including the body
+// variables only json_fields can use.
+func isDeclaredVariable(name string) bool {
+	isNamed := func(v globalPropertyVariable) bool { return v.name == name }
+	return slices.ContainsFunc(globalPropertyVariables, isNamed) || slices.ContainsFunc(bodyVariables, isNamed)
+}
+
+// createGlobalPropertyEnv declares every variable in globalPropertyVariables, plus
+// extra, in the CEL environment used to compile "$ctx:" expressions.
+func createGlobalPropertyEnv(extra ...globalPropertyVariable) (*cel.Env, error) {
+	opts := make([]cel.EnvOption, 0, len(globalPropertyVariables)+len(extra)+1)
 	opts = append(opts, ext.Strings())
 	for _, v := range globalPropertyVariables {
+		opts = append(opts, cel.Variable(v.name, v.typ))
+	}
+	for _, v := range extra {
 		opts = append(opts, cel.Variable(v.name, v.typ))
 	}
 	return cel.NewEnv(opts...)
@@ -262,16 +397,18 @@ func (e *globalPropertyEvaluator) resolve(event *dto.Event) map[string]interface
 		return result
 	}
 
-	evalCtx := buildGlobalPropertyEvalCtx(event, e.referencedVars, e.maskedHeaders)
+	evalCtx := buildGlobalPropertyEvalCtx(event, e.referencedVars, e.maskedHeaders, e.excludedRequestHeaders, e.excludedResponseHeaders)
+	e.bindBodies(evalCtx, event)
+	e.removeExcludedMapKeys(evalCtx)
 	for name, program := range e.compiled {
 		out, _, err := program.Eval(evalCtx)
 		if err != nil {
-			slog.Debug("traffic_logging.properties: expression evaluation failed; omitting property", "property", name, "error", err)
+			slog.Debug(e.section.name+": expression evaluation failed; omitting "+e.section.entry, e.section.entry, name, "error", err)
 			continue
 		}
 		goVal, err := globalPropertyCELToGoValue(out)
 		if err != nil {
-			slog.Debug("traffic_logging.properties: failed to convert CEL result; omitting property", "property", name, "error", err)
+			slog.Debug(e.section.name+": failed to convert CEL result; omitting "+e.section.entry, e.section.entry, name, "error", err)
 			continue
 		}
 		result[name] = goVal
@@ -285,13 +422,14 @@ func (e *globalPropertyEvaluator) resolve(event *dto.Event) map[string]interface
 // full declared set. Every populated variable is always bound (to its zero value when the
 // corresponding event field is absent) so evaluation never fails merely because a nested
 // pointer was nil. request.header/response.header are masked with the same maskedHeaders
-// config applied to the emitted requestHeaders/responseHeaders maps (see maskHeaders in
-// log.go), so a property expression like "$ctx:request.header['authorization']" cannot
+// config applied to the emitted requestHeaders/responseHeaders maps (see filterAndMaskHeaders
+// in log.go), so a property expression like "$ctx:request.header['authorization']" cannot
 // bypass masking and leak a credential the operator explicitly asked to redact — that
 // parse+lowercase+mask work (and the json.Unmarshal calls for auth.property/metadata) is
 // itself skipped whenever the corresponding variable isn't referenced by any configured
 // expression, which is the whole point of this function taking referenced at all.
-func buildGlobalPropertyEvalCtx(event *dto.Event, referenced map[string]bool, maskedHeaders map[string]bool) map[string]interface{} {
+// Header names in excludedRequestHeaders/excludedResponseHeaders are dropped (json_fields only).
+func buildGlobalPropertyEvalCtx(event *dto.Event, referenced map[string]bool, maskedHeaders, excludedRequestHeaders, excludedResponseHeaders map[string]bool) map[string]interface{} {
 	ctx := make(map[string]interface{}, len(referenced))
 	for _, v := range globalPropertyVariables {
 		if referenced[v.name] {
@@ -319,9 +457,12 @@ func buildGlobalPropertyEvalCtx(event *dto.Event, referenced map[string]bool, ma
 	if referenced["request.id"] && event.MetaInfo != nil {
 		ctx["request.id"] = event.MetaInfo.CorrelationID
 	}
+	if referenced["request.timestamp"] && !event.RequestTimestamp.IsZero() {
+		ctx["request.timestamp"] = event.RequestTimestamp.UTC().Format(trafficLogTimestampFormat)
+	}
 	if referenced["request.header"] {
 		if headers := hdrs.Flatten(event.Properties[dto.PropKeyRequestHeaders]); headers != nil {
-			ctx["request.header"] = maskHeaders(lowerCaseHeaderKeys(headers), maskedHeaders)
+			ctx["request.header"] = filterAndMaskHeaders(lowerCaseHeaderKeys(headers), maskedHeaders, excludedRequestHeaders)
 		}
 	}
 
@@ -330,7 +471,7 @@ func buildGlobalPropertyEvalCtx(event *dto.Event, referenced map[string]bool, ma
 	}
 	if referenced["response.header"] {
 		if headers := hdrs.Flatten(event.Properties[dto.PropKeyResponseHeaders]); headers != nil {
-			ctx["response.header"] = maskHeaders(lowerCaseHeaderKeys(headers), maskedHeaders)
+			ctx["response.header"] = filterAndMaskHeaders(lowerCaseHeaderKeys(headers), maskedHeaders, excludedResponseHeaders)
 		}
 	}
 
@@ -362,6 +503,37 @@ func buildGlobalPropertyEvalCtx(event *dto.Event, referenced map[string]bool, ma
 		if referenced["target.destination"] {
 			ctx["target.destination"] = event.Target.Destination
 		}
+	}
+
+	if referenced["client.ip"] {
+		ctx["client.ip"] = event.UserIP
+	}
+	if referenced["client.userAgent"] {
+		ctx["client.userAgent"] = event.UserAgentHeader
+	}
+	if l := event.TrafficLogLatencies; l != nil {
+		setIfReferenced(ctx, referenced, "latencies.durationUs", l.DurationUs)
+		setIfReferenced(ctx, referenced, "latencies.requestMediationLatencyUs", l.RequestMediationLatencyUs)
+		setIfReferenced(ctx, referenced, "latencies.responseMediationLatencyUs", l.ResponseMediationLatencyUs)
+		setIfReferenced(ctx, referenced, "latencies.backendLatencyUs", l.BackendLatencyUs)
+		setIfReferenced(ctx, referenced, "latencies.durationMs", microsToMillis(l.DurationUs))
+		setIfReferenced(ctx, referenced, "latencies.requestMediationLatencyMs", microsToMillis(l.RequestMediationLatencyUs))
+		setIfReferenced(ctx, referenced, "latencies.responseMediationLatencyMs", microsToMillis(l.ResponseMediationLatencyUs))
+		setIfReferenced(ctx, referenced, "latencies.backendLatencyMs", microsToMillis(l.BackendLatencyUs))
+	}
+	setIfReferenced(ctx, referenced, "errorType", event.ErrorType)
+	if e := event.Error; e != nil {
+		setIfReferenced(ctx, referenced, "error.errorCode", e.ErrorCode)
+		setIfReferenced(ctx, referenced, "error.errorMessage", string(e.ErrorMessage))
+		setIfReferenced(ctx, referenced, "error.wso2ErrorCode", e.Wso2ErrorCode)
+		setIfReferenced(ctx, referenced, "error.type", e.Type)
+		setIfReferenced(ctx, referenced, "error.direction", e.Direction)
+		setIfReferenced(ctx, referenced, "error.summary", e.Summary)
+		setIfReferenced(ctx, referenced, "error.policy", e.Policy)
+		setIfReferenced(ctx, referenced, "error.policyPhase", e.PolicyPhase)
+		setIfReferenced(ctx, referenced, "error.source", e.Source)
+		setIfReferenced(ctx, referenced, "error.originalStatus", e.OriginalStatus)
+		setIfReferenced(ctx, referenced, "error.jsonRpcCode", e.JSONRPCCode)
 	}
 
 	if a := event.Application; a != nil {
@@ -432,7 +604,7 @@ func buildGlobalPropertyEvalCtx(event *dto.Event, referenced map[string]bool, ma
 			if err := json.Unmarshal([]byte(raw), &props); err == nil {
 				ctx["auth.property"] = props
 			} else {
-				slog.Debug("traffic_logging.properties: failed to parse auth properties metadata", "error", err)
+				slog.Debug("traffic_logging: failed to parse auth properties metadata", "error", err)
 			}
 		}
 	}
@@ -453,12 +625,74 @@ func buildGlobalPropertyEvalCtx(event *dto.Event, referenced map[string]bool, ma
 			if err := json.Unmarshal([]byte(raw), &meta); err == nil {
 				ctx["metadata"] = meta
 			} else {
-				slog.Debug("traffic_logging.properties: failed to parse generic metadata", "error", err)
+				slog.Debug("traffic_logging: failed to parse generic metadata", "error", err)
 			}
 		}
 	}
 
 	return ctx
+}
+
+// bindBodies sets request.body/response.body for the expressions that use them: the
+// body the collector captured, cut to max_payload_size, or "" when none was captured.
+// It does nothing unless the evaluator was built withBodies.
+func (e *globalPropertyEvaluator) bindBodies(ctx map[string]interface{}, event *dto.Event) {
+	if e.truncateBody == nil {
+		return
+	}
+	if e.referencedVars["request.body"] {
+		ctx["request.body"] = e.truncateBody(capturedBody(event, dto.PropKeyRequestPayload))
+	}
+	if e.referencedVars["response.body"] {
+		ctx["response.body"] = e.truncateBody(capturedBody(event, dto.PropKeyResponsePayload))
+	}
+}
+
+// removeExcludedMapKeys deletes the keys excluded by "$ctx:<map variable>.<key>"
+// entries from the auth.property and metadata maps in ctx. Those maps are parsed
+// afresh for every request, so deleting from them never changes the event.
+func (e *globalPropertyEvaluator) removeExcludedMapKeys(ctx map[string]interface{}) {
+	for mapVar, keys := range e.excludedMapKeys {
+		switch m := ctx[mapVar].(type) {
+		case map[string]string:
+			deleteKeys(m, keys)
+		case map[string]interface{}:
+			deleteKeys(m, keys)
+		}
+	}
+}
+
+// deleteKeys removes keys from m. An empty m is left untouched, since it may be the
+// shared zero value declared in globalPropertyVariables.
+func deleteKeys[V any](m map[string]V, keys map[string]bool) {
+	if len(m) == 0 {
+		return
+	}
+	for k := range keys {
+		delete(m, k)
+	}
+}
+
+// capturedBody returns the body stored under key in the event, or "" when there is none.
+func capturedBody(event *dto.Event, key string) string {
+	if event == nil {
+		return ""
+	}
+	body, _ := event.Properties[key].(string)
+	return body
+}
+
+// microsToMillis converts microseconds to decimal milliseconds, so sub-millisecond
+// latencies are not rounded down to 0.
+func microsToMillis(us int64) float64 {
+	return float64(us) / 1000
+}
+
+// setIfReferenced sets ctx[name] only when an expression uses that variable.
+func setIfReferenced(ctx map[string]interface{}, referenced map[string]bool, name string, value interface{}) {
+	if referenced[name] {
+		ctx[name] = value
+	}
 }
 
 // lowerCaseHeaderKeys returns a copy of headers with all keys lower-cased.

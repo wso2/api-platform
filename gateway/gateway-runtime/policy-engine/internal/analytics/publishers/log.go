@@ -61,6 +61,9 @@ type Log struct {
 	// exclusions is traffic_logging.exclude_fields compiled for the struct-level
 	// fast path (see fieldExclusions). Nil when nothing is excluded.
 	exclusions *fieldExclusions
+	// jsonFields resolves traffic_logging.json_fields. When non-nil, its result is
+	// the whole line. Nil when json_fields is not set.
+	jsonFields *globalPropertyEvaluator
 	// sinks are the destinations each serialized line is written to, built from
 	// traffic_logging.outputs. Each sink owns its own synchronization, so no lock
 	// is held here across the fan-out.
@@ -92,8 +95,15 @@ func NewLog(logCfg *config.TrafficLoggingConfig) (*Log, error) {
 		maskedHeaders:    masked,
 		maxPayloadSize:   logCfg.MaxPayloadSize,
 		globalDir:        buildGlobalDirective(*logCfg),
-		globalProperties: newGlobalPropertyEvaluator(logCfg.Properties, masked),
+		globalProperties: newGlobalPropertyEvaluator(effectiveProperties(logCfg), masked),
 		exclusions:       compileFieldExclusions(logCfg.ExcludeFields),
+	}
+	if len(logCfg.JSONFields) > 0 {
+		l.jsonFields = newGlobalPropertyEvaluator(logCfg.JSONFields, masked,
+			withSection(jsonFieldsSection),
+			withExcludedHeaders(l.exclusions.excludedRequestHeaders(), l.exclusions.excludedResponseHeaders()),
+			withCtxExclusions(l.exclusions.excludedVariables(), l.exclusions.excludedMapKeys()),
+			withBodies(l.truncatePayload))
 	}
 
 	// Only build sinks when traffic logging is on: Publish is a no-op otherwise,
@@ -107,6 +117,18 @@ func NewLog(logCfg *config.TrafficLoggingConfig) (*Log, error) {
 		l.sinks = sinks
 	}
 	return l, nil
+}
+
+// effectiveProperties returns traffic_logging.properties, or nil when json_fields is
+// set: json_fields replaces the default line, so properties would never be written.
+func effectiveProperties(cfg *config.TrafficLoggingConfig) map[string]string {
+	if len(cfg.JSONFields) == 0 {
+		return cfg.Properties
+	}
+	if len(cfg.Properties) > 0 {
+		slog.Warn("traffic_logging.properties is ignored because traffic_logging.json_fields is set")
+	}
+	return nil
 }
 
 // buildGlobalDirective converts the traffic-logging config into a
@@ -151,6 +173,20 @@ func (l *Log) resolveGlobalDirective(event *dto.Event) *dto.TrafficLogDirective 
 // [traffic_logging] config. If traffic logging is disabled, the event is skipped.
 func (l *Log) Publish(event *dto.Event) {
 	if event == nil || l.globalDir == nil {
+		return
+	}
+
+	if l.jsonFields != nil {
+		fields := l.jsonFields.resolve(event)
+		if fields == nil {
+			fields = map[string]interface{}{}
+		}
+		data, err := json.Marshal(fields)
+		if err != nil {
+			slog.Error("Failed to marshal traffic-log json_fields line", "error", err)
+			return
+		}
+		l.write(data)
 		return
 	}
 
@@ -315,19 +351,9 @@ func filterNestedKeys(m map[string]json.RawMessage, top string, keep func(string
 	m[top] = filtered
 }
 
-// maskHeaders redacts header values whose names appear in mask (case-insensitive).
-// Returns a new map; the input is not modified. A dotted fields.exclude path
-// (e.g. "requestHeaders.Authorization") can drop a header entirely instead of
-// redacting it; like mask, that comparison is also case-insensitive (see
-// isHeaderField, used by deleteNestedPath), so any casing Envoy delivers matches.
-func maskHeaders(headers map[string]string, mask map[string]bool) map[string]string {
-	return filterAndMaskHeaders(headers, mask, nil)
-}
-
-// filterAndMaskHeaders is maskHeaders that also drops the headers named in exclude
-// (lower-cased names, matched case-insensitively), so header-level exclude_fields
-// entries cost nothing beyond the copy masking already makes. Returns nil when
-// every header is excluded, so the field is omitted like the JSON projection does.
+// filterAndMaskHeaders returns a copy of headers without the names in exclude and with
+// the values of the names in mask redacted. Both hold lower-cased names and match any
+// casing. Returns nil when every header is excluded, so the field is omitted.
 func filterAndMaskHeaders(headers map[string]string, mask, exclude map[string]bool) map[string]string {
 	result := make(map[string]string, len(headers))
 	for name, value := range headers {
