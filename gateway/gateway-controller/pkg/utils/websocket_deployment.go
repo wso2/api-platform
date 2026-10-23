@@ -156,6 +156,14 @@ func validateWebSocketAPIConfig(cfg any) (apiName, apiVersion string, validation
 
 	errors = append(errors, validateWebSocketChannels(spec.Channels)...)
 
+	// Same rules as RestApi: timeout bounds the handshake (the route timeout does
+	// not apply once a connection is upgraded), idleTimeout closes a silent
+	// connection, and "0s" disables either.
+	errors = append(errors, config.ValidateResilience("spec.resilience", spec.Resilience)...)
+	for i, channel := range spec.Channels {
+		errors = append(errors, config.ValidateResilience(fmt.Sprintf("spec.channels[%d].resilience", i), channel.Resilience)...)
+	}
+
 	if webSocketValidation.policyValidator != nil {
 		errors = append(errors, webSocketValidation.policyValidator.ValidateWebSocketAPIPolicies(&websocketConfig)...)
 	}

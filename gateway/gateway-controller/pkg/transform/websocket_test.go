@@ -105,6 +105,85 @@ func TestWebSocketTransform_OnlyGetIsRouted(t *testing.T) {
 // The idle timeout is left unset so the translator applies the gateway's route
 // idle timeout, and the connection lifetime is capped only when the gateway sets
 // router.websocket.max_connection_duration.
+// resilience follows the RestApi precedence with a channel in an operation's
+// place: channel over API, per field, and nil (the gateway default) when neither
+// sets a value. The gateway's max_connection_duration stays on every route.
+func TestWebSocketTransform_Resilience(t *testing.T) {
+	routesByChannel := func(t *testing.T, routerCfg *config.RouterConfig, mutate func(*api.WebSocketAPIConfigData)) map[string]*models.Route {
+		t.Helper()
+		rdc, err := NewWebSocketAPITransformer(routerCfg, &config.Config{}, map[string]models.PolicyDefinition{}).Transform(testWebSocketAPI(mutate))
+		require.NoError(t, err)
+		out := map[string]*models.Route{}
+		for _, r := range rdc.Routes {
+			out[r.OperationPath] = r
+		}
+		return out
+	}
+	twoChannels := func(spec *api.WebSocketAPIConfigData) {
+		spec.Channels = []api.WebSocketChannel{{Path: "/rooms"}, {Path: "/notifications"}}
+	}
+
+	t.Run("API level applies to every channel", func(t *testing.T) {
+		routes := routesByChannel(t, testRouterCfg(), func(spec *api.WebSocketAPIConfigData) {
+			twoChannels(spec)
+			spec.Resilience = &api.Resilience{Timeout: strPtr("10s"), IdleTimeout: strPtr("2m")}
+		})
+		for path, r := range routes {
+			require.NotNil(t, r.Timeout, path)
+			assert.Equal(t, 10*time.Second, *r.Timeout.Timeout, path)
+			assert.Equal(t, 2*time.Minute, *r.Timeout.IdleTimeout, path)
+		}
+	})
+
+	t.Run("channel overrides the API per field", func(t *testing.T) {
+		routes := routesByChannel(t, testRouterCfg(), func(spec *api.WebSocketAPIConfigData) {
+			twoChannels(spec)
+			spec.Resilience = &api.Resilience{Timeout: strPtr("10s"), IdleTimeout: strPtr("2m")}
+			spec.Channels[1].Resilience = &api.Resilience{IdleTimeout: strPtr("30m")}
+		})
+		assert.Equal(t, 2*time.Minute, *routes["/rooms"].Timeout.IdleTimeout)
+		assert.Equal(t, 30*time.Minute, *routes["/notifications"].Timeout.IdleTimeout, "channel idleTimeout wins")
+		assert.Equal(t, 10*time.Second, *routes["/notifications"].Timeout.Timeout, "unset channel timeout inherits the API's")
+	})
+
+	t.Run("0s disables, as on a RestApi", func(t *testing.T) {
+		routes := routesByChannel(t, testRouterCfg(), func(spec *api.WebSocketAPIConfigData) {
+			spec.Resilience = &api.Resilience{IdleTimeout: strPtr("0s")}
+		})
+		for _, r := range routes {
+			assert.Equal(t, time.Duration(0), *r.Timeout.IdleTimeout)
+			assert.Nil(t, r.Timeout.Timeout, "an unset timeout keeps the gateway default")
+		}
+	})
+
+	t.Run("unset leaves the gateway defaults and keeps the gateway lifetime cap", func(t *testing.T) {
+		routerCfg := testRouterCfg()
+		routerCfg.WebSocket.MaxConnectionDuration = time.Hour
+		for _, r := range routesByChannel(t, routerCfg, nil) {
+			require.NotNil(t, r.Timeout)
+			assert.Nil(t, r.Timeout.Timeout)
+			assert.Nil(t, r.Timeout.IdleTimeout)
+			assert.Equal(t, time.Hour, *r.Timeout.MaxStreamDuration)
+		}
+		routes := routesByChannel(t, routerCfg, func(spec *api.WebSocketAPIConfigData) {
+			spec.Resilience = &api.Resilience{IdleTimeout: strPtr("5m")}
+		})
+		for _, r := range routes {
+			assert.Equal(t, 5*time.Minute, *r.Timeout.IdleTimeout)
+			assert.Equal(t, time.Hour, *r.Timeout.MaxStreamDuration, "resilience does not replace the gateway lifetime cap")
+		}
+	})
+
+	t.Run("malformed values fail the transform", func(t *testing.T) {
+		_, err := NewWebSocketAPITransformer(testRouterCfg(), &config.Config{}, map[string]models.PolicyDefinition{}).Transform(
+			testWebSocketAPI(func(spec *api.WebSocketAPIConfigData) {
+				spec.Channels[0].Resilience = &api.Resilience{Timeout: strPtr("soon")}
+			}))
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "resilience")
+	})
+}
+
 func TestWebSocketTransform_MaxConnectionDurationFromGateway(t *testing.T) {
 	t.Run("unset leaves the lifetime uncapped", func(t *testing.T) {
 		rdc, err := websocketTransformer().Transform(testWebSocketAPI(nil))

@@ -187,6 +187,57 @@ spec:
 	}
 }
 
+// resilience written in the artifact reaches the Envoy route: the channel's own
+// value where it sets one, otherwise the API's.
+func TestWebSocketResilienceReachesEnvoy(t *testing.T) {
+	const artifact = `
+apiVersion: gateway.api-platform.wso2.com/v1
+kind: WebSocketApi
+metadata:
+  name: chat-resilience-v1.0
+spec:
+  displayName: Chat
+  version: v1.0
+  context: /chat/$version
+  resilience:
+    timeout: 10s
+    idleTimeout: 120s
+  upstream:
+    main:
+      url: ws://mock-websocket-backend:8080/ws
+  channels:
+    - path: /rooms
+    - path: /notifications
+      resilience:
+        idleTimeout: 30m
+`
+	var parsed api.WebSocketAPI
+	require.NoError(t, config.NewParser().Parse([]byte(artifact), "application/yaml", &parsed))
+	stored := &models.StoredConfig{
+		UUID: "ws-resilience-uuid", Kind: models.KindWebSocketApi, Handle: parsed.Metadata.Name,
+		Version: parsed.Spec.Version, DisplayName: parsed.Spec.DisplayName, Configuration: parsed,
+	}
+
+	routerCfg := websocketE2ERouterConfig()
+	systemCfg := &config.Config{Router: *routerCfg}
+	registry := transform.NewRegistry(nil, nil, nil, nil,
+		transform.NewWebSocketAPITransformer(routerCfg, systemCfg, map[string]models.PolicyDefinition{}))
+	translator, err := xds.NewTranslator(slog.New(slog.NewTextHandler(io.Discard, nil)), routerCfg, nil, systemCfg)
+	require.NoError(t, err)
+	translator.SetTransformers(map[string]models.ConfigTransformer{models.KindWebSocketApi: registry})
+	resources, err := translator.TranslateConfigs([]*models.StoredConfig{stored}, "")
+	require.NoError(t, err)
+
+	idle := map[string]int64{}
+	for _, r := range websocketRoutesFor(t, resources) {
+		action := r.GetRoute()
+		assert.Equal(t, int64(10), action.GetTimeout().GetSeconds(), "route %s handshake timeout", r.GetName())
+		idle[r.GetMatch().GetPath()] = action.GetIdleTimeout().GetSeconds()
+	}
+	assert.Equal(t, int64(120), idle["/chat/v1.0/rooms"])
+	assert.Equal(t, int64(1800), idle["/chat/v1.0/notifications"])
+}
+
 func websocketE2ERouterConfig() *config.RouterConfig {
 	return &config.RouterConfig{
 		ListenerPort: 8080,

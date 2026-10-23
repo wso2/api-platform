@@ -4919,6 +4919,8 @@ components:
             is rejected at deploy time.
           items:
             $ref: "#/components/schemas/Policy"
+        resilience:
+          $ref: "#/components/schemas/Resilience"
 
     WebSocketUpstreamConnection:
       type: object
@@ -5087,6 +5089,8 @@ components:
             upgrade and is rejected at deploy time.
           items:
             $ref: "#/components/schemas/Policy"
+        resilience:
+          $ref: "#/components/schemas/Resilience"
         deploymentState:
           type: string
           description: Desired deployment state - 'deployed' (default) or 'undeployed'. When set to 'undeployed', the API is removed from router traffic but configuration, API keys, and policies are preserved for potential redeployment.
