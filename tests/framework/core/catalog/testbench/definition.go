@@ -37,6 +37,7 @@ import (
 	"github.com/wso2/api-platform/tests/framework/testbench/services/graphqlbackend"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/guardian"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/interceptor"
+	"github.com/wso2/api-platform/tests/framework/testbench/services/jev"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/jwks"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/mcp"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/oauth2"
@@ -144,11 +145,20 @@ func Testbench() *components.Definition {
 			{Name: "guardian", Port: guardian.Port, Scheme: "http", AwaitListening: true},
 			{Name: "graphql-backend", Port: graphqlbackend.Port, Scheme: "http", AwaitListening: true},
 			{Name: "opa", Port: opa.Port, Scheme: "http", AwaitListening: true},
+			// jev is STATEFUL and partitioned per scenario: it records the TypeSafe Jev calls a
+			// policy makes, addressed as http://testbench:3019/<partition>/<mode>. See
+			// testbench/services/jev.
+			{Name: "jev", Port: jev.Port, Scheme: "http", AwaitListening: true},
+			// The same jev service over HTTPS with shared.JevTLS, which the gateway runtime
+			// trusts, at https://testbench:3020/<partition>/<mode>.
+			{Name: "jev-tls", Port: jev.TLSPort, Scheme: "https", AwaitListening: true},
 		},
 		Env: map[string]string{
 			oidc.EnvTLSCert: string(shared.IdentityProviderTLS().CertPEM),
 			oidc.EnvTLSKey:  string(shared.IdentityProviderTLS().PrivateKeyPEM),
 			oidc.EnvIssuer:  OIDCIssuer,
+			jev.EnvTLSCert:  string(shared.JevTLS().CertPEM),
+			jev.EnvTLSKey:   string(shared.JevTLS().PrivateKeyPEM),
 		},
 		// Every service answers the same health path on its own port, so gating on one is
 		// gating on the process. AwaitListening above already proves each port is bound.
