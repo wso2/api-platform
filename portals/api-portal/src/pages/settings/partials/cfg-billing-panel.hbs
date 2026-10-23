@@ -1,0 +1,103 @@
+      <!-- ══ Billing ══ -->
+      <div class="cfg-panel" id="cfg-billing">
+        <div class="cfg-panel-header">
+          <div>
+            <h2 class="cfg-panel-title">Billing</h2>
+            <p class="cfg-panel-desc">Manage the billing provider for paid subscription plans.</p>
+          </div>
+        </div>
+
+        {{#if billingConfiguration}}
+        {{#with billingConfiguration}}
+        {{#if (eq provider "MOESIF")}}
+        <!-- One billing configuration: the billing engine, then the payment provider it bills through. -->
+        <div class="cfg-billing-configuration">
+          <div class="cfg-billing-provider">
+            <span class="cfg-billing-provider-icon" aria-hidden="true"><i class="bi bi-bar-chart-line"></i></span>
+            <div class="cfg-billing-provider-main">
+              <div class="cfg-billing-provider-name">Moesif</div>
+              <div class="cfg-billing-provider-role">Billing engine</div>
+            </div>
+            <button class="cfg-btn-secondary cfg-btn-secondary--danger cfg-btn-sm" id="cfg-billing-remove-btn" type="button" data-active-subscriptions="{{activePaidSubscriptions}}"><i class="bi bi-trash"></i> Remove</button>
+          </div>
+          {{#if (eq paymentProvider "STRIPE")}}
+          <div class="cfg-billing-provider">
+            <span class="cfg-billing-provider-icon" aria-hidden="true"><i class="bi bi-credit-card"></i></span>
+            <div class="cfg-billing-provider-main">
+              <div class="cfg-billing-provider-name">Stripe{{#if (eq mode "TEST")}} <span class="cfg-billing-mode-badge cfg-billing-mode-badge--test">Test mode</span>{{/if}}</div>
+              <div class="cfg-billing-provider-role">Payment provider</div>
+              <div class="cfg-billing-webhook">
+                <div class="cfg-billing-webhook-label">Webhook endpoint</div>
+                <div class="cfg-billing-webhook-url">
+                  <span class="cfg-name-chip" title="{{webhookEndpointUrl}}">{{webhookEndpointUrl}}</span>
+                  <button type="button" class="cfg-btn-secondary cfg-btn-sm" id="cfg-billing-webhook-edit-btn" data-base-url="{{webhookBaseUrl}}"><i class="bi bi-pencil" aria-hidden="true"></i> Edit host</button>
+                </div>
+                {{#unless webhookRegistered}}<p class="cfg-billing-webhook-warning"><i class="bi bi-exclamation-triangle"></i> Not registered in Stripe.</p>{{/unless}}
+                <p class="cfg-field-hint">Stripe sends payment and subscription events to your API Portal webhook endpoint.</p>
+                <div class="cfg-billing-webhook-last">Last event <span class="cfg-billing-time" data-time="{{lastEventAt}}">{{#if lastEventAt}}{{lastEventAt}}{{else}}None{{/if}}</span></div>
+              </div>
+            </div>
+          </div>
+          {{/if}}
+        </div>
+        {{/if}}
+        {{/with}}
+        {{else}}
+        <!-- Not set up: what to get from Moesif and Stripe before Set up billing, in that order,
+             with the scopes and permissions each key needs. -->
+        <div class="cfg-billing-setup">
+          <div class="cfg-billing-setup-title">Billing is not set up</div>
+          <p class="cfg-billing-setup-text">Connect Moesif and Stripe to sell paid subscription plans.</p>
+
+          <p class="cfg-form-section-title cfg-billing-prereq-title">Before you start</p>
+          <p class="cfg-billing-prereq-intro">Complete these steps in Moesif and Stripe, then set up billing with the keys you collect:</p>
+          <ol class="cfg-billing-prereq-steps">
+            <li><strong>Moesif application.</strong> Use the Moesif application that receives your gateways' API usage. Subscribers are charged for the usage recorded in it.</li>
+            <li><strong>Moesif keys.</strong> From the same Moesif application, copy the Collector Application Id and create a Management API key.
+              <details class="cfg-billing-scopes">
+                <summary>Required scopes</summary>
+                <div class="cfg-billing-scopes-body">
+                  <ul>
+                    <li>Billing plans: read, create, update</li>
+                    <li>Billing prices: create, delete</li>
+                    <li>Billing meters: read, create, delete</li>
+                    <li>Events: search</li>
+                    <li>App configs: read, create, update, delete</li>
+                    <li>Alert rules: create</li>
+                  </ul>
+                </div>
+              </details>
+            </li>
+            <li><strong>Stripe keys.</strong> From your Stripe account, copy the publishable key and the secret key. Use test keys to try billing without real charges, or live keys to charge subscribers.
+              <details class="cfg-billing-scopes">
+                <summary>Required permissions for a restricted key</summary>
+                <div class="cfg-billing-scopes-body">
+                  <p>Instead of the secret key, you can use a restricted key (rk_…) with write access to:</p>
+                  <ul class="cfg-billing-scopes-cols">
+                    <li>Customers</li>
+                    <li>Checkout Sessions</li>
+                    <li>Subscriptions</li>
+                    <li>Charges and refunds</li>
+                    <li>Customer portal</li>
+                    <li>Webhook endpoints</li>
+                    <li>Products</li>
+                    <li>Prices and plans</li>
+                    <li>Usage records</li>
+                    <li>Billing meters</li>
+                    <li>Meter events</li>
+                    <li>Meter event adjustments</li>
+                  </ul>
+                  <p>and read access to:</p>
+                  <ul class="cfg-billing-scopes-cols">
+                    <li>Invoices</li>
+                  </ul>
+                </div>
+              </details>
+            </li>
+            <li><strong>Stripe customer portal.</strong> In your Stripe account, save the customer portal settings. Subscribers manage their payments there.</li>
+          </ol>
+
+          <button class="cfg-btn-primary" id="cfg-billing-setup-btn" type="button"><i class="bi bi-plus"></i> Set up billing</button>
+        </div>
+        {{/if}}
+      </div><!-- /#cfg-billing -->

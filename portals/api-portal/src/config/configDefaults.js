@@ -356,6 +356,33 @@ const DEFAULTS = {
             tlsSkipVerify: false,
         },
     },
+    // Billing providers (Stripe, Moesif). The keys are entered in Settings › Billing, not here.
+    billing: {
+        stripe: {
+            baseUrl: 'https://api.stripe.com',
+            // Every request and every webhook endpoint the portal creates is pinned to this
+            // version, so the shape of Stripe's objects and events does not change under it.
+            apiVersion: '2024-06-20',
+            // How old, in seconds, the signature of a Stripe event sent to the portal may be. An
+            // older event is refused, so a processed one cannot be sent again later.
+            webhookSignatureToleranceSec: 300,
+        },
+        moesif: {
+            baseUrl: 'https://api.moesif.com',
+            // Moesif's own endpoint for Stripe events, registered in Stripe alongside the portal's.
+            stripeWebhookUrl: 'https://api.moesif.net/v1/partners/stripe',
+            // How many plan prices this portal instance creates in Moesif at the same time, when a
+            // paid plan is offered on an API. Lower it if Moesif refuses calls as too many (it
+            // allows 500 management calls a minute).
+            maxParallelPrices: 4,
+        },
+        // Limits for calls to Stripe and Moesif.
+        client: {
+            timeoutMs: 15000,
+            maxRequestBytes: 1048576,   // 1 MiB
+            maxResponseBytes: 5242880,  // 5 MiB
+        },
+    },
     // Upload and archive-extraction limits.
     uploads: {
         maxBytes: 10485760,     // 10 MiB — single upload / single archive entry

@@ -26,6 +26,13 @@ const orgContext = require('../utils/orgContext');
 const labelDao = require('../dao/labelDao');
 const subscriptionPlanDao = require('../dao/subscriptionPlanDao');
 const whDao = require('../dao/webhookSubscriberDao');
+const meterDao = require('../dao/meterDao');
+const billingConfigurationService = require('../services/billing/billingConfigurationService');
+const { FIELD_LABELS, filterFieldsLabel, meterTypeLabel } = require('../utils/meterLabels');
+const { DEFAULT_TOKEN_EVENT_KEY, FILTER_RULES, MAX_FILTER_FIELDS, TOKEN_EVENT_KEYS } = require('../services/billing/meterValidation');
+const { pricingSummary } = require('../utils/pricingLabels');
+const { CURRENCIES } = require('../utils/currencies');
+const PlanPricingDTO = require('../dto/planPricingDto');
 const { WebhookSubscriberDTO } = require('../dto/webhookSubscriberDto');
 const kmDao = require('../dao/keyManagerDao');
 const kmRegistry = require('../services/keyManagerRegistry');
@@ -159,7 +166,19 @@ const loadSettingsPage = async (req, res) => {
         let orgPlans = [];
         try {
             const plansRaw = await subscriptionPlanDao.list(orgId);
+            const metersByHandle = new Map((await meterDao.list(orgId)).map(m => [m.handle, m]));
+            // A plan an API offers, or that has subscriptions, can't be deleted: the delete dialog says why, by
+            // counts (a plan may be offered by more APIs than a dialog can list).
+            const apiCounts = new Map();
+            for (const api of allAPIs) {
+                for (const plan of api.subscription_plans || []) {
+                    apiCounts.set(plan.handle, (apiCounts.get(plan.handle) || 0) + 1);
+                }
+            }
+            const subscriptionCounts = await subscriptionPlanDao.countSubscriptionsByPlan(orgId);
             orgPlans = plansRaw.map(p => ({
+                apiCount: apiCounts.get(p.handle) || 0,
+                subscriptionCount: subscriptionCounts.get(p.uuid) || 0,
                 planId: p.handle,
                 planName: p.handle,
                 displayName: p.display_name,
@@ -171,11 +190,59 @@ const loadSettingsPage = async (req, res) => {
                     timeAmount: l.time_amount,
                     limitCount: Number(l.limit_count),
                 })),
-            }));
+                pricing: p.pricing ? new PlanPricingDTO(p.pricing) : null,
+            })).map(p => ({ ...p, pricingText: pricingSummary(p.pricing, metersByHandle) }));
         } catch (err) {
             logger.warn('Failed to load subscription plans for settings page', { error: err.message });
         }
         templateContent.orgPlans = orgPlans;
+
+        try {
+            templateContent.billingConfiguration = await billingConfigurationService.describeConfiguration(orgId);
+        } catch (err) {
+            logger.warn('Failed to load the billing configuration for settings page', { error: err.message });
+        }
+        templateContent.billingEngines = billingConfigurationService.BILLING_ENGINES;
+        templateContent.billingHasChoice = billingConfigurationService.BILLING_HAS_CHOICE;
+        templateContent.billingPaymentProviders = billingConfigurationService.PAYMENT_PROVIDERS;
+
+        let orgMeters = [];
+        try {
+            const meters = await meterDao.list(orgId);
+            const usage = await meterDao.listPlanHandlesByMeter(orgId, meters.map(m => m.uuid));
+            orgMeters = meters.map(m => {
+                const plans = usage.get(m.uuid) || [];
+                return {
+                    id: m.handle,
+                    displayName: m.display_name,
+                    description: m.description || '',
+                    type: m.type,
+                    typeKey: m.type_key || null,
+                    typeLabel: meterTypeLabel(m.type),
+                    filterFields: m.filter_fields.map(f => ({
+                        field: f.field, label: FIELD_LABELS[f.field], eventKey: f.eventKey,
+                    })),
+                    filterFieldsText: filterFieldsLabel(m.filter_fields),
+                    // A priced meter can't change or be deleted: the page says by how many plans, not which.
+                    planCount: plans.length,
+                };
+            });
+        } catch (err) {
+            logger.warn('Failed to load meters for settings page', { error: err.message });
+        }
+        templateContent.orgMeters = orgMeters;
+        // The event keys a new meter starts with: the token key a TOKENS meter adds up (with the token
+        // keys the page offers for it and for Token fields), and each filter field's default key (none
+        // for a Token field), all from our gateway's events. The administrator can change them.
+        templateContent.meterRegistry = {
+            tokenEventKey: DEFAULT_TOKEN_EVENT_KEY,
+            tokenEventKeys: TOKEN_EVENT_KEYS,
+            maxFilterFields: MAX_FILTER_FIELDS,
+            filterFields: Object.keys(FILTER_RULES).map(value => ({
+                value, label: FIELD_LABELS[value], eventKey: FILTER_RULES[value].eventKey,
+            })),
+        };
+        templateContent.currencies = CURRENCIES;
 
         let webhookSubscribers = [];
         try {
@@ -277,10 +344,10 @@ const loadSettingsPage = async (req, res) => {
         const dbLayout = orgId ? await loadLayoutFromAPI(orgId, viewName) : '';
         let html;
         if (dbLayout) {
-            html = await renderGivenTemplate(templateResponse, dbLayout, templateContent);
+            html = await renderGivenTemplate(templateResponse, dbLayout, templateContent, orgId);
         } else {
             const layoutResponse = fs.readFileSync(layoutPath, constants.CHARSET_UTF8);
-            html = await renderGivenTemplate(templateResponse, layoutResponse, templateContent);
+            html = await renderGivenTemplate(templateResponse, layoutResponse, templateContent, orgId);
         }
         res.send(html);
     } catch (error) {

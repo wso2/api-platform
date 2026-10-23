@@ -52,7 +52,13 @@
       <span class="cfg-modal-icon"><i class="bi bi-trash"></i></span>
       <h2 class="cfg-modal-title">Delete Plan</h2>
     </div>
-    <p class="cfg-modal-body">Are you sure you want to delete <strong id="cfg-del-plan-name-txt"></strong>? Applications subscribed under it will need a new plan. This action can't be undone.</p>
+    <p class="cfg-modal-body" id="cfg-del-plan-ask">Are you sure you want to delete <strong id="cfg-del-plan-name-txt"></strong>? This action can't be undone.</p>
+    {{!-- A plan an API offers, or that has subscriptions, can't be deleted: settings-plans.js shows this instead,
+          with Delete disabled. --}}
+    <div class="cfg-modal-body" id="cfg-del-plan-blocked" style="display:none;">
+      <p style="margin:0;" id="cfg-del-plan-offered"></p>
+      <p style="margin:0;" id="cfg-del-plan-subscribed"></p>
+    </div>
     <div class="cfg-modal-actions">
       <button type="button" class="cfg-btn-secondary" id="cfg-del-plan-cancel">Cancel</button>
       <button type="button" class="cfg-btn-danger" id="cfg-del-plan-confirm">Delete plan</button>
@@ -217,9 +223,249 @@
       <input type="text" id="pol-refid" class="cfg-form-input cfg-form-input--mono" placeholder="e.g. 7c9e6679-7425-40de-944b-e07fc1f90ae7" />
       <p class="cfg-field-hint">UUID linking this plan to an external billing or quota system.</p>
     </div>
+    {{!-- Pricing is given only when a plan is created. settings-plans.js disables this fieldset when a
+          saved plan is edited, so its pricing shows read-only. --}}
+    <fieldset class="cfg-form-group cfg-fieldset" id="pol-pricing-fields" data-billing-ready="{{#if billingConfiguration}}true{{/if}}" style="margin-bottom:24px;padding-top:16px;border-top:1px solid #e5e9ef;">
+      <label style="display:flex;align-items:center;gap:8px;margin:0;">
+        <input type="checkbox" id="pol-paid" />
+        <span>Paid plan</span>
+      </label>
+      <p class="cfg-paid-notice" id="pol-paid-notice" role="status" hidden>
+        <i class="bi bi-info-circle" aria-hidden="true"></i>
+        <span>To create a paid plan, set up billing first. <a href="#cfg-billing" id="pol-paid-setup">Set up billing</a></span>
+      </p>
+      <p class="cfg-field-hint">Pricing can't change once the plan is created.</p>
+      <div id="pol-pricing" style="display:none;margin-top:12px;"
+        data-meters="{{{jsonAttr orgMeters}}}" data-token-keys="{{{jsonAttr meterRegistry.tokenEventKeys}}}">
+        <div class="cfg-pricing-row">
+          <div class="cfg-form-group">
+            <label id="pol-currency-label" for="pol-currency-trigger">Currency</label>
+            <div class="cfg-currency-combo" id="pol-currency-combo">
+              <button type="button" id="pol-currency-trigger" class="cfg-form-input cfg-currency-trigger"
+                aria-haspopup="listbox" aria-expanded="false" aria-controls="pol-currency-list">
+                <span class="cfg-currency-current">USD — US Dollar</span>
+                <i class="bi bi-chevron-expand" aria-hidden="true"></i>
+              </button>
+              <div class="cfg-view-combo-menu cfg-currency-menu" hidden>
+                <div class="cfg-view-combo-search">
+                  <i class="bi bi-search" aria-hidden="true"></i>
+                  <input type="text" class="cfg-view-combo-input" placeholder="Search currencies" aria-label="Search currencies"
+                    role="combobox" aria-expanded="true" aria-controls="pol-currency-list" autocomplete="off">
+                </div>
+                <div class="cfg-view-combo-list" id="pol-currency-list" role="listbox" aria-labelledby="pol-currency-label">
+                  {{#each currencies}}
+                  <div role="option" tabindex="-1" class="cfg-view-combo-option" aria-selected="false"
+                    data-value="{{code}}" data-name="{{name}}">
+                    <i class="bi bi-check2" aria-hidden="true"></i><span>{{code}} — {{name}}</span>
+                  </div>
+                  {{/each}}
+                </div>
+                <div class="cfg-view-combo-empty" hidden>No currencies match</div>
+              </div>
+              <input type="hidden" id="pol-currency" value="USD">
+            </div>
+          </div>
+          <div class="cfg-form-group">
+            <label for="pol-period">Charge every</label>
+            <select id="pol-period" class="cfg-form-input">
+              <option value="MONTH">Month</option>
+              <option value="YEAR">Year</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="cfg-form-group" style="margin-bottom:16px;">
+          <span class="cfg-form-legend" id="pol-pricing-type-label">Pricing</span>
+          <div class="cfg-check-group" role="radiogroup" aria-labelledby="pol-pricing-type-label">
+            <label class="cfg-check"><input type="radio" name="pol-pricing-type" value="FLAT_RATE" checked /> Flat rate</label>
+            <label class="cfg-check"><input type="radio" name="pol-pricing-type" value="USAGE_BASED" /> Usage based</label>
+          </div>
+        </div>
+
+        <div class="cfg-form-group pol-type-fields" data-type="FLAT_RATE" style="margin-bottom:0;">
+          <label for="pol-flat-amount">Amount</label>
+          <span class="cfg-money"><input type="text" id="pol-flat-amount" class="cfg-form-input cfg-form-input--mono" inputmode="decimal" placeholder="0.00" /></span>
+        </div>
+
+        <div class="cfg-form-group pol-type-fields" data-type="USAGE_BASED" style="margin-bottom:0;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+            <label style="margin:0;">Prices</label>
+            <button type="button" class="cfg-btn-secondary cfg-btn-sm" id="pol-add-price-btn"><i class="bi bi-plus"></i> Add price</button>
+          </div>
+          <div id="pol-prices-list"></div>
+        </div>
+      </div>
+    </fieldset>
+
+    {{!-- One usage price of the plan, copied by settings-plans.js for each price. The ids of its
+          fields are set when it is copied, so each label names its own field. --}}
+    <template id="pol-price-template">
+      <div class="cfg-price-box">
+        <div class="cfg-price-box-head">
+          <span class="pol-price-title"></span>
+          <button type="button" class="cfg-icon-btn cfg-icon-btn--danger pol-price-remove" title="Remove price"><i class="bi bi-x-lg"></i></button>
+        </div>
+        <div class="cfg-price-grid">
+          <div class="cfg-form-group">
+            <label data-for="meter">Meter</label>
+            <select class="cfg-form-input pol-price-meter" data-field="meter"></select>
+          </div>
+          <div class="cfg-form-group">
+            <label data-for="event">Event</label>
+            <input type="text" class="cfg-form-input cfg-key-input pol-price-event" data-field="event" readonly />
+          </div>
+        </div>
+        <div class="cfg-form-group pol-filters-group">
+          <span class="cfg-form-legend" style="margin:0;">Filters</span>
+          <p class="cfg-field-hint pol-filters-hint" style="margin:2px 0 12px;">Leave a filter empty to count every value.</p>
+          <p class="cfg-field-hint pol-no-filters" style="margin:2px 0 0;">This meter has no filters.</p>
+          <div class="pol-filters-list"></div>
+        </div>
+        <div class="cfg-price-grid">
+          <div class="cfg-form-group">
+            <label data-for="model">Pricing model</label>
+            <select class="cfg-form-input pol-price-model" data-field="model">
+              <option value="PER_UNIT">Per unit</option>
+              <option value="VOLUME">Volume tiers</option>
+              <option value="GRADUATED">Graduated tiers</option>
+            </select>
+          </div>
+        </div>
+        <div class="cfg-form-group pol-model-fields" data-models="PER_UNIT">
+          <label data-for="unit-amount">Price</label>
+          <div class="cfg-price-line">
+            <span class="cfg-money"><input type="text" class="cfg-form-input cfg-form-input--mono pol-price-unit-amount" data-field="unit-amount" inputmode="decimal" placeholder="0.00" /></span>
+            <span>per</span>
+            <input type="number" class="cfg-form-input cfg-form-input--mono cfg-price-quantity pol-price-unit-quantity" min="1" step="1" value="1" aria-label="Units" />
+            <span>unit(s)</span>
+          </div>
+        </div>
+        <div class="cfg-form-group pol-model-fields" data-models="VOLUME GRADUATED">
+          <div class="cfg-tier-head">
+            <span class="cfg-tier-head-range pol-tier-range-label"></span>
+            <span class="cfg-tier-head-price">Per unit</span>
+            <span class="cfg-tier-head-price">Flat fee</span>
+          </div>
+          <div class="pol-tiers-list"></div>
+          <button type="button" class="cfg-btn-secondary cfg-btn-sm pol-add-tier-btn"><i class="bi bi-plus"></i> Add tier</button>
+        </div>
+      </div>
+    </template>
     <div class="cfg-modal-actions">
       <button type="button" class="cfg-btn-secondary" id="cfg-plan-modal-cancel">Cancel</button>
       <button type="button" class="cfg-btn-primary" id="cfg-plan-modal-save">Add plan</button>
+    </div>
+  </div>
+</div>
+
+{{> cfg-billing-form}}
+
+<!-- Remove Billing modal -->
+<div class="cfg-modal-overlay" id="cfg-billing-remove-modal" style="display:none;">
+  <div class="cfg-modal">
+    <div class="cfg-modal-header">
+      <span class="cfg-modal-icon"><i class="bi bi-trash"></i></span>
+      <h2 class="cfg-modal-title">Remove Billing Configuration</h2>
+    </div>
+    <div class="cfg-modal-body" id="cfg-billing-remove-ask">
+      <p class="cfg-modal-ask">Are you sure you want to remove the billing configuration?</p>
+      <p>Your billing keys will be deleted. Paid plans will no longer be offered.</p>
+    </div>
+    {{!-- Shown instead while paid subscriptions are active (settings-billing.js), with Remove disabled. --}}
+    <div class="cfg-modal-body" id="cfg-billing-remove-blocked" style="display:none;">
+      <p class="cfg-modal-ask">Billing can't be removed yet.</p>
+      <p><span id="cfg-billing-remove-count"></span> Billing can be removed once they have ended.</p>
+    </div>
+    <div class="cfg-modal-actions">
+      <button type="button" class="cfg-btn-secondary" id="cfg-billing-remove-cancel">Cancel</button>
+      <button type="button" class="cfg-btn-danger" id="cfg-billing-remove-confirm">Remove billing</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add / Edit Meter modal -->
+<div class="cfg-modal-overlay" id="cfg-meter-modal" style="display:none;"
+  data-registry="{{{jsonAttr meterRegistry}}}">
+  {{!-- As wide as the plan dialog, so our gateway's event keys show whole. --}}
+  <div class="cfg-form-modal cfg-form-modal--xwide">
+    <div class="cfg-modal-titlerow">
+      <h2 class="cfg-modal-form-title" id="cfg-meter-modal-title">Add Meter</h2>
+      <button type="button" class="cfg-modal-close" id="cfg-meter-modal-close"><i class="bi bi-x-lg"></i></button>
+    </div>
+    {{!-- A meter that a plan prices can't change: settings-meters.js disables this fieldset for it. --}}
+    <fieldset class="cfg-fieldset" id="mtr-fields">
+      <div class="cfg-form-group" style="margin-bottom:16px;">
+        <label for="mtr-display">Name <span class="required">*</span></label>
+        <input type="text" id="mtr-display" class="cfg-form-input" maxlength="255" placeholder="e.g. API requests" />
+      </div>
+      <div class="cfg-form-group" style="margin-bottom:16px;">
+        <label for="mtr-desc">Description</label>
+        <textarea id="mtr-desc" class="cfg-form-input" rows="2" maxlength="1023" placeholder="e.g. Counts API requests"></textarea>
+      </div>
+      <div class="cfg-form-group" style="margin-bottom:24px;">
+        <label for="mtr-type">Type <span class="required">*</span></label>
+        <select id="mtr-type" class="cfg-form-input">
+          <option value="REQUEST_COUNT">API requests</option>
+          <option value="TOKENS">Tokens</option>
+        </select>
+      </div>
+      {{!-- A Tokens meter adds up the number at this key (typeKey). settings-meters.js shows it for a
+            Tokens meter only. The key is typed, or picked from our gateway's token keys. --}}
+      <div class="cfg-form-group" id="mtr-token-row" style="display:none;margin-bottom:24px;">
+        <label for="mtr-type-key">Token key <span class="required">*</span></label>
+        <div class="cfg-key-combo" id="mtr-token-key-combo">
+          <input type="text" id="mtr-type-key" class="cfg-form-input cfg-form-input--mono cfg-key-input" maxlength="255"
+            placeholder="{{meterRegistry.tokenEventKey}}" role="combobox" aria-required="true"
+            aria-autocomplete="none" aria-expanded="false" aria-controls="mtr-token-key-list" autocomplete="off" spellcheck="false" />
+          <button type="button" class="cfg-key-combo-toggle" id="mtr-token-key-toggle" tabindex="-1" aria-label="Token keys"
+            aria-controls="mtr-token-key-list" aria-expanded="false"><i class="bi bi-chevron-expand" aria-hidden="true"></i></button>
+          <div class="cfg-view-combo-menu" hidden>
+            <div class="cfg-view-combo-list" id="mtr-token-key-list" role="listbox" aria-label="Token keys">
+              {{#each meterRegistry.tokenEventKeys}}
+              <div role="option" tabindex="-1" class="cfg-view-combo-option" aria-selected="false" data-value="{{key}}"
+                aria-label="{{label}}, {{key}}">
+                <i class="bi bi-check2" aria-hidden="true"></i>
+                <span class="cfg-key-option">
+                  <span>{{label}}</span>
+                  <span class="cfg-key-option-key">{{key}}</span>
+                </span>
+              </div>
+              {{/each}}
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="cfg-form-group" style="margin-bottom:24px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+          <span class="cfg-form-legend" style="margin:0;">Filters</span>
+          <button type="button" class="cfg-btn-secondary cfg-btn-sm" id="mtr-add-filter-btn"><i class="bi bi-plus" aria-hidden="true"></i> Add filter</button>
+        </div>
+        <div class="cfg-key-grid cfg-key-head" id="mtr-filters-head"><span>Property</span><span>Key</span></div>
+        <div id="mtr-filters-list"></div>
+      </div>
+    </fieldset>
+    <div class="cfg-modal-actions">
+      {{!-- Why Save is off for a meter that plans price (settings-meters.js). --}}
+      <span class="cfg-modal-actions-note" id="mtr-locked-note" hidden>There are subscription plans using this meter.</span>
+      <button type="button" class="cfg-btn-secondary" id="cfg-meter-modal-cancel">Cancel</button>
+      <button type="button" class="cfg-btn-primary" id="cfg-meter-modal-save" aria-describedby="mtr-locked-note">Add Meter</button>
+    </div>
+  </div>
+</div>
+
+<!-- Delete Meter modal -->
+<div class="cfg-modal-overlay" id="cfg-delete-meter-modal" style="display:none;">
+  <div class="cfg-modal">
+    <div class="cfg-modal-header">
+      <span class="cfg-modal-icon"><i class="bi bi-trash"></i></span>
+      <h2 class="cfg-modal-title">Delete Meter</h2>
+    </div>
+    <p class="cfg-modal-body" id="cfg-del-meter-ask">Are you sure you want to delete <strong id="cfg-del-meter-name-txt"></strong>? This action can't be undone.</p>
+    {{!-- A meter that plans price can't be deleted: settings-meters.js shows this instead, with Delete disabled. --}}
+    <p class="cfg-modal-body" id="cfg-del-meter-blocked" style="display:none;"></p>
+    <div class="cfg-modal-actions">
+      <button type="button" class="cfg-btn-secondary" id="cfg-del-meter-cancel">Cancel</button>
+      <button type="button" class="cfg-btn-danger" id="cfg-del-meter-confirm">Delete meter</button>
     </div>
   </div>
 </div>
