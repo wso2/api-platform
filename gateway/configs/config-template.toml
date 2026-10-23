@@ -1307,6 +1307,46 @@ pricing_file = "/etc/policy-engine/llm-pricing/model_prices.json"
 pricing_file = "/etc/policy-engine/llm-pricing/model_prices.json"
 
 # =============================================================================
+# GATEWAY SIGNING KEYS
+# =============================================================================
+# Keys the gateway signs outbound artefacts with (backend JWTs, A2A Agent Card
+# signatures), shared by every signing policy and published at the gateway JWKS.
+# With no keys, the JWKS is empty and policies keep their own key settings.
+#
+# Exactly one key is marked active and signs; every listed key is published so
+# signatures made by any of them still verify. The kid defaults to the RFC 7638
+# thumbprint of the public key, which is derived from the private key (no
+# certificate needed). Key files need mode 0400 or 0440; any other access fails
+# startup.
+# Use `path`: this file is also read by the gateway-controller, which expands
+# every {{ file }}/{{ env }} token in it, so an `inline` key supplied through a
+# token would be read by the controller as well.
+#
+# Rotation: (1) add the new key without `active` and roll out; (2) after at least
+# jwks_cache_max_age, move `active = true` to it and roll out; (3) after the
+# longest token lifetime plus jwks_cache_max_age, remove the old key.
+#
+# The JWKS endpoint (/.well-known/jwks, on every virtual host) is on by
+# default and its path is reserved. Set jwks_endpoint_enabled = false to free
+# the path — e.g. when an API deployed before this endpoint existed already
+# serves it (the controller logs a warning naming any such route at startup).
+# Signing is unaffected; receivers then need the public keys another way.
+#
+# [signing]
+# jwks_endpoint_enabled = true
+# jwks_cache_max_age = "5m"
+# public_jwks_url = "https://gateway.example.com/.well-known/jwks"   # optional, https only; sent as jku when a policy asks
+#
+# [[signing.keys]]
+# path = "/secrets/gateway-runtime/signing/current.key"
+# active = true
+#
+# [[signing.keys]]
+# path = "/secrets/gateway-runtime/signing/previous.key"
+# # kid = "..."          optional override of the thumbprint
+# # algorithm = "PS256"  optional override (RSA: RS256|PS256)
+
+# =============================================================================
 # IMMUTABLE GATEWAY CONFIGURATION
 # =============================================================================
 

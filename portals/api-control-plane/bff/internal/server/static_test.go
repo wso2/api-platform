@@ -110,9 +110,9 @@ func TestSPAHandlerPathTraversalContained(t *testing.T) {
 		"/../../secret.txt",
 		"/../../../../../../secret.txt",
 		"/assets/../../secret.txt",
-		"/%2e%2e%2fsecret.txt",             // encoded ../
-		"/..%2f..%2fsecret.txt",            // encoded ../../
-		"/%2e%2e%2f%2e%2e%2fsecret.txt",    // encoded ../../
+		"/%2e%2e%2fsecret.txt",          // encoded ../
+		"/..%2f..%2fsecret.txt",         // encoded ../../
+		"/%2e%2e%2f%2e%2e%2fsecret.txt", // encoded ../../
 		"/assets/%2e%2e%2f%2e%2e%2fsecret.txt",
 	}
 

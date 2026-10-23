@@ -807,3 +807,10 @@ data:
     [mcp]
     append_resource_path_to_backend = {{ .Values.gateway.config.mcp.append_resource_path_to_backend }}
     {{- end }}
+
+    {{- with .Values.gateway.config.signing }}
+    [signing]
+    {{- if hasKey . "jwks_endpoint_enabled" }}
+    jwks_endpoint_enabled = {{ .jwks_endpoint_enabled }}
+    {{- end }}
+    {{- end }}

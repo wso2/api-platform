@@ -577,7 +577,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		APIs: apiService,
 		// Kind-routed, so a plugin names the artifact kind alongside the handle and
 		// reaches the same services the platform's own per-kind paths do.
-		Deployments:   deploymentsByKind,
+		Deployments:   service.PluginDeployments{DeploymentsByKind: deploymentsByKind, Projects: artifactRepo},
 		Organizations: orgService,
 		Identity:      identityService,
 		Config:        cfg,

@@ -151,6 +151,9 @@ func LaunchCompose(
 	for k, v := range opts.Env {
 		env[k] = v
 	}
+	for k, v := range spec.ProjectEnv {
+		env[k] = v
+	}
 	// Join the block network so the stack can reach other components.
 	env[EnvComposeNetwork] = opts.Network.Name()
 	// A compose-backed component's Limits have no effect unless its own compose file opts

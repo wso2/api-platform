@@ -284,11 +284,13 @@ export async function getLLMProvider(
 export async function getLLMProviderProxies(
   providerId: string,
   organizationId: string,
-  baseUrl: string = PLATFORM_API_BASE_URL
+  baseUrl: string = PLATFORM_API_BASE_URL,
+  limit: number = 20,
+  offset: number = 0
 ): Promise<ProxiesResponse> {
   try {
     const response = await get<ProxiesResponse>(
-      `/llm-providers/${encodeURIComponent(providerId)}/llm-proxies`,
+      `/llm-providers/${encodeURIComponent(providerId)}/llm-proxies?limit=${limit}&offset=${offset}`,
       undefined,
       baseUrl
     );

@@ -1508,7 +1508,7 @@ func TestTranslator_CreateListener_HCMTimeouts(t *testing.T) {
 // The generated HttpConnectionManager must canonicalize the request path
 // (NormalizePath, MergeSlashes) before routing/policy/authz matching — an
 // un-normalized path could desynchronize the route Envoy selects from what
-// validateNotReservedHealthPath (pkg/config/validator.go) reasoned about at
+// validateNotReservedGatewayPath (pkg/config/validator.go) reasoned about at
 // config time. See go-control-plane-xds-security.md directive 6.
 func TestTranslator_CreateListener_HCMPathNormalization(t *testing.T) {
 	logger := createTestLogger()
@@ -2194,6 +2194,161 @@ func TestTranslator_TranslateConfigs_GatewayHealthRoutes(t *testing.T) {
 		}
 		require.True(t, vhostsSeen["localhost"], "expected the API's own vhost to carry the health routes too")
 		require.True(t, vhostsSeen["*"], "expected the wildcard vhost to still be present")
+	})
+}
+
+func TestTranslator_TranslateConfigs_GatewayJWKSRoute(t *testing.T) {
+	translate := func(t *testing.T, enabled bool, configs []*models.StoredConfig) map[resource.Type][]types.Resource {
+		t.Helper()
+		translator, err := NewTranslator(createTestLogger(), testRouterConfig(), nil, testConfig())
+		require.NoError(t, err)
+		translator.SetGatewayJWKSRoute(enabled)
+		resources, err := translator.TranslateConfigs(configs, "test-correlation-id")
+		require.NoError(t, err)
+		return resources
+	}
+	vhosts := func(t *testing.T, resources map[resource.Type][]types.Resource) []*route.VirtualHost {
+		t.Helper()
+		var out []*route.VirtualHost
+		for _, res := range resources[resource.RouteType] {
+			out = append(out, res.(*route.RouteConfiguration).VirtualHosts...)
+		}
+		require.NotEmpty(t, out)
+		return out
+	}
+	hasSink := func(resources map[resource.Type][]types.Resource) bool {
+		for _, res := range resources[resource.ClusterType] {
+			if c := res.(*cluster.Cluster); c.Name == constants.GatewayInternalSinkClusterName {
+				return len(c.GetLoadAssignment().GetEndpoints()) == 0
+			}
+		}
+		return false
+	}
+
+	t.Run("on every vhost ahead of API routes, through ext_proc, to the sink", func(t *testing.T) {
+		resources := translate(t, true, []*models.StoredConfig{makeRestAPI("uuid-api-1", "api-one", "/api-one")})
+		require.True(t, hasSink(resources), "the endpoint-less sink cluster must be emitted with the route")
+
+		seen := map[string]bool{}
+		for _, vh := range vhosts(t, resources) {
+			jwksIdx, firstAPIIdx := -1, -1
+			for i, r := range vh.Routes {
+				switch {
+				case r.Name == constants.GatewayJWKSRouteKey:
+					jwksIdx = i
+					assert.Equal(t, constants.GatewayJWKSPath, r.GetMatch().GetPath())
+					assert.Empty(t, r.GetMatch().GetHeaders(), "every method must reach the policy, which answers 405 itself")
+					assert.Equal(t, constants.GatewayInternalSinkClusterName, r.GetRoute().GetCluster())
+					assert.NotContains(t, r.GetTypedPerFilterConfig(), constants.ExtProcFilterName,
+						"ext_proc must stay enabled: the JWKS system policy answers this route")
+				case firstAPIIdx == -1 && strings.Count(r.Name, "|") >= 2:
+					firstAPIIdx = i
+				}
+			}
+			require.NotEqual(t, -1, jwksIdx, "virtual host %q is missing the JWKS route", vh.Name)
+			if firstAPIIdx != -1 {
+				assert.Less(t, jwksIdx, firstAPIIdx, "the JWKS route must precede API routes on %q", vh.Name)
+			}
+			seen[vh.Name] = true
+		}
+		assert.True(t, seen["*"] && seen["localhost"], "expected both the wildcard and the API vhost, got %v", seen)
+	})
+
+	t.Run("present with zero deployed artifacts", func(t *testing.T) {
+		found := false
+		for _, vh := range vhosts(t, translate(t, true, nil)) {
+			for _, r := range vh.Routes {
+				found = found || r.Name == constants.GatewayJWKSRouteKey
+			}
+		}
+		assert.True(t, found)
+	})
+
+	t.Run("absent when not enabled", func(t *testing.T) {
+		resources := translate(t, false, nil)
+		for _, vh := range vhosts(t, resources) {
+			for _, r := range vh.Routes {
+				assert.NotEqual(t, constants.GatewayJWKSRouteKey, r.Name)
+			}
+		}
+		assert.False(t, hasSink(resources))
+	})
+
+	t.Run("after the health routes and before root and /.well-known API routes", func(t *testing.T) {
+		resources := translate(t, true, []*models.StoredConfig{
+			makeRestAPI("uuid-api-root", "api-root", "/"),
+			makeRestAPI("uuid-api-wk", "api-wk", "/.well-known"),
+		})
+
+		checked := 0
+		for _, vh := range vhosts(t, resources) {
+			lastHealthIdx, jwksIdx := -1, -1
+			var apiIdx []int
+			for i, r := range vh.Routes {
+				switch p := r.GetMatch().GetPath(); {
+				case p == constants.GatewayReadyPath || p == constants.GatewayHealthyPath:
+					lastHealthIdx = i
+				case r.Name == constants.GatewayJWKSRouteKey:
+					jwksIdx = i
+				case strings.Count(r.Name, "|") >= 2:
+					apiIdx = append(apiIdx, i)
+				}
+			}
+			require.NotEqual(t, -1, lastHealthIdx, "virtual host %q is missing the health routes", vh.Name)
+			require.NotEqual(t, -1, jwksIdx, "virtual host %q is missing the JWKS route", vh.Name)
+			assert.Greater(t, jwksIdx, lastHealthIdx, "the JWKS route must follow the health routes on %q", vh.Name)
+			for _, i := range apiIdx {
+				assert.Less(t, jwksIdx, i, "the JWKS route must precede API route %q on %q", vh.Routes[i].Name, vh.Name)
+			}
+			if vh.Name == "localhost" {
+				assert.Len(t, apiIdx, 2, "expected both APIs' routes on the API vhost")
+				checked++
+			}
+		}
+		assert.Equal(t, 1, checked, "expected the API vhost to be present")
+	})
+
+	t.Run("the sink cluster is static, endpoint-less and named for the route", func(t *testing.T) {
+		var sink *cluster.Cluster
+		for _, res := range translate(t, true, nil)[resource.ClusterType] {
+			if c := res.(*cluster.Cluster); c.Name == constants.GatewayInternalSinkClusterName {
+				sink = c
+			}
+		}
+		require.NotNil(t, sink)
+		assert.Equal(t, "api-platform/gateway-internal-sink", sink.Name)
+		assert.Equal(t, cluster.Cluster_STATIC, sink.GetType())
+		assert.Equal(t, constants.GatewayInternalSinkClusterName, sink.GetLoadAssignment().GetClusterName())
+		assert.Empty(t, sink.GetLoadAssignment().GetEndpoints())
+	})
+
+	t.Run("disabling on the same translator removes the route", func(t *testing.T) {
+		translator, err := NewTranslator(createTestLogger(), testRouterConfig(), nil, testConfig())
+		require.NoError(t, err)
+		configs := []*models.StoredConfig{makeRestAPI("uuid-api-1", "api-one", "/api-one")}
+		count := func(resources map[resource.Type][]types.Resource) int {
+			n := 0
+			for _, vh := range vhosts(t, resources) {
+				for _, r := range vh.Routes {
+					if r.Name == constants.GatewayJWKSRouteKey {
+						n++
+					}
+				}
+			}
+			return n
+		}
+
+		translator.SetGatewayJWKSRoute(true)
+		resources, err := translator.TranslateConfigs(configs, "test-correlation-id")
+		require.NoError(t, err)
+		require.Positive(t, count(resources))
+		require.True(t, hasSink(resources))
+
+		translator.SetGatewayJWKSRoute(false)
+		resources, err = translator.TranslateConfigs(configs, "test-correlation-id")
+		require.NoError(t, err)
+		assert.Zero(t, count(resources))
+		assert.False(t, hasSink(resources), "the sink cluster must go with the route")
 	})
 }
 

@@ -239,4 +239,10 @@ type Deployments interface {
 	// its gateway, serving the artifact it already holds rather than rendering or
 	// building anything new (Update). The deployment must not already be DEPLOYED.
 	RestoreDeploymentByHandle(handle, kind, deploymentID, gatewayHandle, orgID, actor string) (*api.DeploymentResponse, error)
+
+	// GetArtifactProjectByHandle returns the handle of the project the artifact belongs
+	// to, or an empty handle when it belongs to none: an LLM provider never does, and an
+	// MCP proxy may not. A plugin that scopes deployments by project checks it before
+	// acting, so an artifact is never deployed through another project's pipeline.
+	GetArtifactProjectByHandle(handle, kind, orgID string) (string, error)
 }

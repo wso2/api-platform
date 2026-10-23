@@ -67,6 +67,19 @@ type Config struct {
 	Subscriptions    *SubscriptionsConfig   `koanf:"subscriptions"`
 	ImmutableGateway ImmutableGatewayConfig `koanf:"immutable_gateway"`
 	MCP              MCPConfig              `koanf:"mcp"`
+	Signing          SigningConfig          `koanf:"signing"`
+}
+
+// SigningConfig is the controller's view of the shared [signing] section. The
+// signing keys themselves are read by the policy engine; the controller only
+// decides whether the gateway JWKS endpoint (constants.GatewayJWKSPath) exists.
+type SigningConfig struct {
+	// JWKSEndpointEnabled adds the gateway JWKS route to every virtual host and
+	// reserves its path. Disable it when the path must stay free — typically
+	// because an API deployed before the endpoint existed already serves it.
+	// Signing itself is unaffected: policies still sign with the [signing]
+	// keys, and receivers then need the public keys some other way.
+	JWKSEndpointEnabled bool `koanf:"jwks_endpoint_enabled"`
 }
 
 // MCPConfig holds configuration for MCP (Model Context Protocol) proxies.
@@ -1491,6 +1504,9 @@ func defaultConfig() *Config {
 			// Default to the current behaviour: the "/mcp" resource path is NOT appended
 			// to the MCP backend upstream. Set to true to restore the legacy behaviour.
 			AppendResourcePathToBackend: false,
+		},
+		Signing: SigningConfig{
+			JWKSEndpointEnabled: true,
 		},
 	}
 }
