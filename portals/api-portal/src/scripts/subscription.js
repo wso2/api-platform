@@ -33,6 +33,51 @@ window.showSubscribeButtonLoading = function(button) {
     }
 };
 
+/*
+ * Sets the plan cards' buttons on an API or MCP server page from the user's subscription, so each
+ * offers only what the server will do. The server switches a subscription only between free plans:
+ * a switch to or from a paid plan is refused, and so is a checkout while the user has a subscription.
+ *   - No subscription: every card offers "Subscribe".
+ *   - Subscribed to a free plan: free plans offer "Switch plan"; paid plans are disabled.
+ *   - Subscribed to a paid plan: every other plan is disabled.
+ * A disabled button says to unsubscribe first. A card is paid when it has data-paid. The current
+ * plan's card, which shows "View subscription", is left as it is.
+ */
+const PAID_SWITCH_HINT = 'To switch to or from a paid plan, unsubscribe first.';
+
+function setButtonLabel(button, text) {
+    const label = Array.from(button.childNodes).find((n) => n.nodeType === 3 && n.textContent.trim());
+    if (label) label.textContent = text;
+    else button.appendChild(document.createTextNode(text));
+}
+
+window.applyPlanSwitchRules = function() {
+    const cards = Array.from(document.querySelectorAll('#subscriptionPlans .subscription-card'));
+    const subs = window.existingSubscriptions || [];
+    const current = new Set(subs.map((s) => (s.policyName || s.subscriptionPlanName || '').toLowerCase()).filter(Boolean));
+    const currentPaid = cards.some((card) => current.has((card.dataset.policyName || '').toLowerCase()) && 'paid' in card.dataset);
+    cards.forEach((card) => {
+        const button = card.querySelector('.subscribe-btn, .paid-subscribe-btn');
+        // The current plan's card: "View subscription", or "Current Plan" after an in-page subscribe.
+        if (!button || current.has((card.dataset.policyName || '').toLowerCase()) || button.classList.contains('current-plan-btn')) return;
+        const blocked = subs.length > 0 && (currentPaid || 'paid' in card.dataset);
+        let hint = card.querySelector('.aov-plan-hint');
+        button.disabled = blocked;
+        button.classList.toggle('disabled', blocked);
+        if (blocked) {
+            if (!hint) {
+                hint = document.createElement('p');
+                hint.className = 'aov-plan-hint';
+                button.insertAdjacentElement('afterend', hint);
+            }
+            hint.textContent = PAID_SWITCH_HINT;
+        } else if (hint) {
+            hint.remove();
+        }
+        setButtonLabel(button, subs.length > 0 && !('paid' in card.dataset) ? 'Switch plan' : 'Subscribe');
+    });
+};
+
 // Restore a subscription button to its original label/enabled state.
 window.resetSubscribeButtonState = function(button) {
     if (button && button.dataset.originalText) {
@@ -371,6 +416,7 @@ async function refreshLandingPageSubscriptions() {
                 btn.setAttribute('onclick', 'handlePlanSubscription(this)');
             }
         });
+        window.applyPlanSwitchRules();
     } catch (e) {
         window.location.reload();
     }

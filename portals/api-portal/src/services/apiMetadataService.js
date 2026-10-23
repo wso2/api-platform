@@ -2244,7 +2244,8 @@ async function endOpenCheckouts(orgId, which) {
         if (!(error instanceof checkoutService.CheckoutError) && !(error instanceof BillingProviderError)) throw error;
         logger.warn('Open checkouts could not be ended before the change', { orgId, ...which, error: error.message });
         const message = error instanceof checkoutService.CheckoutError ? error.message
-            : 'An open checkout could not be ended in Stripe, so nothing was changed. Try again in a moment.';
+            : 'Stripe could not be reached to end a subscriber\'s open checkout, so nothing was changed. '
+                + 'Try again in a few minutes.';
         throw new CustomError(409, message);
     }
 }

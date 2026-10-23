@@ -24,6 +24,17 @@ const util = require('../utils/util');
 const constants = require('../utils/constants');
 const logger = require('../config/logger');
 const { logUserAction } = require('../middlewares/auditLogger');
+const planPricingDao = require('../dao/planPricingDao');
+const billingSubscriptionDao = require('../dao/billingSubscriptionDao');
+const subscriptionBillingService = require('./billing/subscriptionBillingService');
+
+// A paid plan starts with a payment, so it is subscribed to through checkout, never directly.
+const PAID_PLAN_CODE = 'PAID_PLAN_REQUIRES_CHECKOUT';
+
+/** Whether the plan (a subscription_plans row) is paid. */
+async function isPaidPlan(orgId, plan) {
+    return Boolean(plan && await planPricingDao.getByPlan(orgId, plan.uuid));
+}
 
 // Logs context before rethrowing so the caller's transaction rolls back instead of
 // silently committing the subscription change without its webhook event.
@@ -65,6 +76,64 @@ async function buildWebhookPayload(sub, apiMetadata, plan) {
     };
 }
 
+/**
+ * Creates a subscription inside the caller's transaction and publishes subscription.created.
+ * `billing` ({ status, customer_id, subscription_id }) is set for a paid subscription, which is
+ * created only after checkout, and travels with the event so the Platform API and gateways never
+ * hold a paid subscription without its billing state.
+ */
+async function createSubscriptionRecord({ orgId, apiId, apiMetadata, plan, createdBy, billing }, t) {
+    const newSub = await subDao.create(orgId, apiId, plan.uuid, createdBy, t);
+    const payload = await buildWebhookPayload(newSub, apiMetadata, plan);
+    if (billing) payload.billing = billing;
+    await safePublish('subscription.created', payload, {
+        transaction: t,
+        orgId,
+        aggregateType: 'subscription',
+        aggregateId: newSub.uuid,
+        secretFields: { token: newSub.token },
+    });
+    return newSub;
+}
+
+/**
+ * Publishes subscription.billing_updated for a paid subscription (a subDao row with its
+ * api_metadata and subscription_plan) inside the caller's transaction.
+ */
+async function publishBillingUpdated(orgId, sub, billing, t) {
+    const payload = await buildWebhookPayload(sub, sub.api_metadata, sub.subscription_plan);
+    payload.billing = billing;
+    await safePublish('subscription.billing_updated', payload, {
+        transaction: t, orgId, aggregateType: 'subscription', aggregateId: sub.uuid,
+    });
+}
+
+/**
+ * Removes a subscription and tells the Platform API, which stops its key at the gateways. With
+ * `createdBy`, only that user's subscription is removed. Resolves to false when there is none.
+ */
+async function removeSubscription(orgId, sub, createdBy, t) {
+    const deleted = await subDao.delete(orgId, sub.uuid, createdBy, t);
+    if (!deleted) return false;
+    await safePublish('subscription.deleted', await buildWebhookPayload(sub, sub.api_metadata, sub.subscription_plan), {
+        transaction: t, orgId, aggregateType: 'subscription', aggregateId: sub.uuid,
+    });
+    return true;
+}
+
+/** "Nov 8, 2026": the day a subscription ends. */
+function endDateText(endsAt) {
+    return new Date(endsAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'UTC' });
+}
+
+/** The answer to unsubscribing from a plan that runs to the end of its paid period. */
+function endingResponse(endsAt) {
+    return {
+        message: `The subscription ends on ${endDateText(endsAt)}. It keeps working until then.`,
+        endsAt: new Date(endsAt).toISOString(),
+    };
+}
+
 function formatSubscriptionResponse(sub, audit) {
     const plan = sub.subscription_plan || {};
     const api = sub.api_metadata || {};
@@ -76,6 +145,17 @@ function formatSubscriptionResponse(sub, audit) {
         subscriptionPlanName: plan.display_name || null,
         ...audit,
     };
+}
+
+/**
+ * Why a user who already has `subscriptionUuid` cannot subscribe to the API again: a paid plan that
+ * runs to the end of its period still counts until then.
+ */
+async function existingSubscriptionMessage(subscriptionUuid) {
+    const billing = await billingSubscriptionDao.getBySubscription(subscriptionUuid).catch(() => null);
+    return billing && billing.ends_at
+        ? `Your subscription to this API ends on ${endDateText(billing.ends_at)}. You can subscribe again after that.`
+        : 'A subscription for this API already exists';
 }
 
 const createSubscription = async (req, res) => {
@@ -109,20 +189,28 @@ const createSubscription = async (req, res) => {
         if (!matchedPlan) {
             return util.sendError(res, 400, 'Bad Request', { errors: [{ message: 'Subscription plan not found for this API' }] });
         }
-        const planId = matchedPlan.uuid;
+        if (await isPaidPlan(orgId, matchedPlan)) {
+            return util.sendError(res, 409, 'This is a paid plan. Subscribe to it through checkout.', { code: PAID_PLAN_CODE });
+        }
+
+        // One subscription per user per API.
+        const existing = await subDao.findForUser(orgId, apiId, createdBy);
+        if (existing) {
+            return util.sendError(res, 409, 'Conflict', { errors: [{ message: await existingSubscriptionMessage(existing) }] });
+        }
+
+        // An open checkout for a paid plan of the API is ended first, so it can no longer be paid.
+        // Loaded here: checkoutService loads this module, so loading it at the top would be circular.
+        const checkoutService = require('./billing/checkoutService');
+        try {
+            await checkoutService.endOpenCheckout(createdBy, apiId);
+        } catch (error) {
+            return checkoutService.sendCheckoutError(res, error, 'Error while ending an open checkout');
+        }
 
         let newSub;
         await db.withTransaction(async (t) => {
-            newSub = await subDao.create(
-                orgId, apiId, planId, createdBy, t
-            );
-            await safePublish('subscription.created', await buildWebhookPayload(newSub, apiMetadata, matchedPlan), {
-                transaction: t,
-                orgId: orgId,
-                aggregateType: 'subscription',
-                aggregateId: newSub.uuid,
-                secretFields: { token: newSub.token },
-            });
+            newSub = await createSubscriptionRecord({ orgId, apiId, apiMetadata, plan: matchedPlan, createdBy }, t);
         });
 
         const created = await subDao.get(orgId, newSub.uuid, createdBy);
@@ -130,9 +218,6 @@ const createSubscription = async (req, res) => {
         const audit = await userIdpReferenceDao.buildSingleAuditFields(created);
         return res.status(201).json(formatSubscriptionResponse(created, audit));
     } catch (error) {
-        if (db.isDuplicateKeyError(error)) {
-            return util.sendError(res, 409, 'Conflict', { errors: [{ message: 'A subscription for this API already exists' }] });
-        }
         logger.error('Error creating subscription', {
             error: error.message, orgId, apiId,
         });
@@ -197,6 +282,12 @@ const updateSubscription = async (req, res) => {
         if (!existing) {
             return util.sendError(res, 404, 'Not Found', { errors: [{ message: 'Subscription not found' }] });
         }
+        // Stripe keeps charging a paid subscription regardless of its status here, and the gateway
+        // reads an inactive paid subscription as unpaid; a paid one is stopped by unsubscribing.
+        if (await billingSubscriptionDao.getBySubscription(subscriptionId)) {
+            return util.sendError(res, 409, 'A paid subscription cannot be suspended. Unsubscribe to stop it.',
+                { code: PAID_PLAN_CODE });
+        }
 
         let sub;
         await db.withTransaction(async (t) => {
@@ -258,6 +349,12 @@ const changePlan = async (req, res) => {
         const planId = newPlan.uuid;
 
         const previousPlan = existing.subscription_plan;
+        // Moving into or out of a paid plan changes what is billed, which checkout and the
+        // billing provider handle; a plan change here only moves between free plans.
+        if (await isPaidPlan(orgId, newPlan) || await isPaidPlan(orgId, previousPlan)) {
+            return util.sendError(res, 409, 'Paid plans cannot be changed here. Unsubscribe, then subscribe to the new '
+                + 'plan.', { code: PAID_PLAN_CODE });
+        }
 
         await db.withTransaction(async (t) => {
             const updated = await subDao.updatePlan(orgId, subscriptionId, planId, actorId, t);
@@ -346,15 +443,35 @@ const deleteSubscription = async (req, res) => {
         const apiMetadata = existing.api_metadata;
         const plan = existing.subscription_plan;
 
+        // A paid subscription ends with the payment provider first; if the provider cannot be
+        // reached it is kept, so it is never left billing unseen. A plan charged a flat fee runs to
+        // the end of the period already paid for and is removed when the provider ends it; a plan
+        // charged by usage is removed now.
+        const billing = await billingSubscriptionDao.getBySubscription(subscriptionId);
+        if (billing && billing.ends_at) {
+            return res.status(200).json(endingResponse(billing.ends_at));
+        }
+        if (billing) {
+            let ending;
+            try {
+                ending = await subscriptionBillingService.endInProvider(billing);
+            } catch (err) {
+                if (err instanceof subscriptionBillingService.SubscriptionBillingError) {
+                    return util.sendError(res, err.status, err.message, { code: err.code });
+                }
+                throw err;
+            }
+            if (!ending.removeNow) {
+                await billingSubscriptionDao.setEndsAt(subscriptionId, ending.endsAt);
+                logUserAction('SUBSCRIPTION_END_SCHEDULED', req, { orgId, subscriptionId, resourceUuid: subscriptionId, resourceType: 'subscription' });
+                return res.status(200).json(endingResponse(ending.endsAt));
+            }
+        }
+
         await db.withTransaction(async (t) => {
-            const deleted = await subDao.delete(orgId, subscriptionId, actorId, t);
-            if (!deleted) throw Object.assign(new Error('Not found'), { statusCode: 404 });
-            await safePublish('subscription.deleted', await buildWebhookPayload(existing, apiMetadata, plan), {
-                transaction: t,
-                orgId: orgId,
-                aggregateType: 'subscription',
-                aggregateId: subscriptionId,
-            });
+            const removed = await removeSubscription(orgId, { ...existing, api_metadata: apiMetadata, subscription_plan: plan },
+                actorId, t);
+            if (!removed) throw Object.assign(new Error('Not found'), { statusCode: 404 });
         });
 
         logUserAction('SUBSCRIPTION_DELETED', req, { orgId: orgId, subscriptionId, resourceUuid: subscriptionId, resourceType: 'subscription' });
@@ -371,6 +488,10 @@ const deleteSubscription = async (req, res) => {
 };
 
 module.exports = {
+    existingSubscriptionMessage,
+    createSubscriptionRecord,
+    publishBillingUpdated,
+    removeSubscription,
     createSubscription,
     listSubscriptions,
     getSubscription,
