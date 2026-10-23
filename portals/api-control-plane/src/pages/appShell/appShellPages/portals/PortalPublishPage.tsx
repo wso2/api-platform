@@ -47,6 +47,7 @@ import { PublicationVersionToggle } from './components/PublicationVersionToggle'
 import { PublishActionsBar } from './components/PublishActionsBar';
 import { PublishedSpecificationTab } from './components/PublishedSpecificationTab';
 import { SpecificationTab } from './components/SpecificationTab';
+import { SubscriptionPlansTab } from './components/SubscriptionPlansTab';
 import { restPublishTarget, type PublishTarget } from './publishTarget';
 import { usePublishPageData } from './usePublishPageData';
 import type { DefinitionFormat } from './utils/storedDefinition';
@@ -54,6 +55,7 @@ import {
   draftFormValuesToInput,
   emptyDraftFormValues,
   resolveDraftFormValues,
+  sameDraftFormValues,
   validateDraftFormValues,
   type DraftFormField,
   type DraftFormValues,
@@ -234,7 +236,7 @@ const rethrowUnreported = (error: unknown): void => {
 /** The fields that show a validation message. */
 const FORM_FIELDS: DraftFormField[] = ['displayName', 'version', 'productionUrl', 'sandboxUrl'];
 
-type PublishTab = 'details' | 'specification';
+type PublishTab = 'details' | 'specification' | 'subscriptionPlans';
 
 /** Which action is currently in flight, so the right button (and only that one) shows busy. */
 type PendingAction = 'idle' | 'saving' | 'publishing' | 'unpublishing' | 'deprecating';
@@ -242,13 +244,13 @@ type PendingAction = 'idle' | 'saving' | 'publishing' | 'unpublishing' | 'deprec
 /**
  * The publish/unpublish/deprecate flow for one API on one API Portal.
  *
- * Only "API Details" and "Specification" are editable; the other tabs render
- * disabled. Save Draft and Publish each enforce their own rule: Save Draft
- * always writes `.../draft`, and writes `.../draft/definition` too only when
- * the specification text parses, reporting honestly when it couldn't; Publish
- * requires both saves to succeed before it calls `.../publish`, since the
- * server's publish takes no body and only publishes what the draft already
- * holds.
+ * "API Details", "Specification" and "Subscription Plans" are editable; the
+ * other tabs render disabled. Save Draft and Publish each enforce their own
+ * rule: Save Draft always writes `.../draft`, and writes `.../draft/definition`
+ * too only when the specification text parses, reporting honestly when it
+ * couldn't; Publish requires both saves to succeed before it calls
+ * `.../publish`, since the server's publish takes no body and only publishes
+ * what the draft already holds.
  *
  * No `ScopeGate`: this page is only reachable from the Portals listing's card,
  * which is already fully API-scoped.
@@ -353,8 +355,7 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
   const view: PublicationVersionTone = pick ?? (isPublished ? 'published' : 'draft');
   const showingPublished = view === 'published';
   const hasUnsavedChanges =
-    definitionText !== saved.definitionText ||
-    (Object.keys(values) as (keyof DraftFormValues)[]).some((field) => values[field] !== saved.values[field]);
+    definitionText !== saved.definitionText || !sameDraftFormValues(values, saved.values);
   const errors = validateDraftFormValues(values);
   const errorFor = (field: DraftFormField) => (touched[field] ? errors[field] : undefined);
   const formInvalid = Object.keys(errors).length > 0;
@@ -542,6 +543,17 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
       : undefined;
 
   const renderContent = () => {
+    if (tab === 'subscriptionPlans') {
+      return showingPublished ? (
+        <SubscriptionPlansTab readOnly selected={publishedValues.subscriptionPlanIds} />
+      ) : (
+        <SubscriptionPlansTab
+          disabled={pendingAction !== 'idle'}
+          onChange={(subscriptionPlanIds) => handleChange({ ...values, subscriptionPlanIds })}
+          selected={values.subscriptionPlanIds}
+        />
+      );
+    }
     if (showingPublished) {
       return tab === 'details' ? (
         <ApiDetailsTab readOnly values={publishedValues} />
@@ -615,7 +627,7 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
             >
               <Tab label={intl.formatMessage(messages.tabDetails)} value="details" />
               <Tab label={intl.formatMessage(messages.tabSpecification)} value="specification" />
-              <Tab disabled label={intl.formatMessage(messages.tabSubscriptionPlans)} value="subscriptionPlans" />
+              <Tab label={intl.formatMessage(messages.tabSubscriptionPlans)} value="subscriptionPlans" />
               <Tab disabled label={intl.formatMessage(messages.tabDocumentations)} value="documentations" />
               <Tab disabled label={intl.formatMessage(messages.tabLandingPage)} value="landingPage" />
             </Tabs>

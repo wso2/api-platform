@@ -44,11 +44,11 @@ const messages = defineMessages({
  * Form state and the pre-fill chain for the alpha "Publish to Portal" editor —
  * the API Details fields this release covers
  * (`displayName`, `version`, `description`, the two endpoint URLs,
- * `agentVisibility`). Everything
- * else `PublicationDetailsCore` carries (tags, labels, owners,
- * subscriptionPlanIds, docIds) belongs to a tab this alpha doesn't show, so a
- * save never sends it — a save sends every field currently shown, not every
- * field the schema could hold.
+ * `agentVisibility`) and the Subscription Plans tab's `subscriptionPlanIds`.
+ * Everything else `PublicationDetailsCore` carries (tags, labels, owners,
+ * docIds) belongs to a tab this alpha doesn't show, so a save never sends it —
+ * a save sends every field currently shown, not every field the schema could
+ * hold.
  */
 export type AgentVisibility = NonNullable<PublicationDraftDetailsInput['agentVisibility']>;
 
@@ -62,6 +62,8 @@ export type DraftFormValues = {
   productionUrl: string;
   sandboxUrl: string;
   agentVisibility: AgentVisibility;
+  /** Handles of the subscription plans offered with the API; empty offers none. */
+  subscriptionPlanIds: string[];
 };
 
 /** A URL the Production URL can be picked from, and the gateway that serves it. */
@@ -87,6 +89,7 @@ export const emptyDraftFormValues: DraftFormValues = {
   productionUrl: '',
   sandboxUrl: '',
   agentVisibility: DEFAULT_AGENT_VISIBILITY,
+  subscriptionPlanIds: [],
 };
 
 /** The API fields a draft starts from — REST and GraphQL APIs both carry them. */
@@ -116,6 +119,7 @@ export const resolveDraftFormValues = (
       productionUrl: draft.endpoints?.productionUrl ?? '',
       sandboxUrl: draft.endpoints?.sandboxUrl ?? '',
       agentVisibility: draft.agentVisibility ?? DEFAULT_AGENT_VISIBILITY,
+      subscriptionPlanIds: draft.subscriptionPlanIds ?? [],
     };
   }
   if (publication) {
@@ -126,6 +130,7 @@ export const resolveDraftFormValues = (
       productionUrl: publication.endpoints?.productionUrl ?? '',
       sandboxUrl: publication.endpoints?.sandboxUrl ?? '',
       agentVisibility: publication.agentVisibility ?? DEFAULT_AGENT_VISIBILITY,
+      subscriptionPlanIds: publication.subscriptionPlanIds ?? [],
     };
   }
   if (api) {
@@ -136,6 +141,7 @@ export const resolveDraftFormValues = (
       productionUrl: defaultProductionUrl ?? '',
       sandboxUrl: '',
       agentVisibility: DEFAULT_AGENT_VISIBILITY,
+      subscriptionPlanIds: [],
     };
   }
   return emptyDraftFormValues;
@@ -145,7 +151,9 @@ export const resolveDraftFormValues = (
  * The PUT body for `.../draft` — every field the alpha form shows, saved
  * together rather than field by field. Empty strings are
  * sent as `undefined` rather than `''`, so a field the user never touched
- * reads back as unset instead of an empty value.
+ * reads back as unset instead of an empty value. `subscriptionPlanIds` is
+ * always sent, empty included: the server replaces the draft in full, so
+ * leaving it out would clear the plans.
  */
 export const draftFormValuesToInput = (values: DraftFormValues): PublicationDraftDetailsInput => {
   const trimmedOrUndefined = (value: string): string | undefined => {
@@ -161,12 +169,31 @@ export const draftFormValuesToInput = (values: DraftFormValues): PublicationDraf
     version: values.version.trim(),
     description: trimmedOrUndefined(values.description),
     agentVisibility: values.agentVisibility,
+    subscriptionPlanIds: [...values.subscriptionPlanIds],
     // Sent only when at least one URL is set; omitted when both are empty.
     ...((productionUrl ?? sandboxUrl) !== undefined
       ? { endpoints: { productionUrl, sandboxUrl } }
       : {}),
   };
 };
+
+/**
+ * Whether two plan selections hold the same plans; the order they were picked in does not
+ * matter.
+ */
+const samePlanIds = (a: readonly string[], b: readonly string[]): boolean => {
+  const left = new Set(a);
+  const right = new Set(b);
+  return left.size === right.size && [...left].every((id) => right.has(id));
+};
+
+/** Whether the form holds the same values as `other`, so nothing is left to save. */
+export const sameDraftFormValues = (values: DraftFormValues, other: DraftFormValues): boolean =>
+  (Object.keys(values) as (keyof DraftFormValues)[]).every((field) =>
+    field === 'subscriptionPlanIds'
+      ? samePlanIds(values.subscriptionPlanIds, other.subscriptionPlanIds)
+      : values[field] === other[field],
+  );
 
 export type DraftFormField = 'displayName' | 'version' | 'productionUrl' | 'sandboxUrl';
 export type FormFieldErrors = Partial<Record<DraftFormField, MessageDescriptor>>;
