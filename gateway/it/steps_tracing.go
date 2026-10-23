@@ -103,8 +103,26 @@ func RegisterTracingSteps(ctx *godog.ScenarioContext, state *TestState, httpStep
 	ctx.Step(`^I send a POST request to "([^"]*)" with a chat body of (\d+) bytes$`, t.sendLargeChat)
 }
 
+// collector calls the mock collector's test API and fails on a non-2xx reply, so a
+// failed reset cannot leave earlier spans in the next scenario's way.
+func (t *TracingSteps) collector(method, path string) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(context.Background(), method, mockOTLPCollectorURL+path, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := t.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode/100 != 2 {
+		resp.Body.Close()
+		return nil, fmt.Errorf("%s %s: HTTP %d", method, path, resp.StatusCode)
+	}
+	return resp, nil
+}
+
 func (t *TracingSteps) resetCollector() error {
-	resp, err := t.client.Post(mockOTLPCollectorURL+"/test/reset", "", nil)
+	resp, err := t.collector(http.MethodPost, "/test/reset")
 	if err != nil {
 		return fmt.Errorf("reset the trace collector: %w", err)
 	}
@@ -123,7 +141,7 @@ func (t *TracingSteps) startTrace() error {
 }
 
 func (t *TracingSteps) fetch(traceID string) ([]collectedSpan, error) {
-	resp, err := t.client.Get(mockOTLPCollectorURL + "/test/spans?traceId=" + traceID)
+	resp, err := t.collector(http.MethodGet, "/test/spans?traceId="+traceID)
 	if err != nil {
 		return nil, err
 	}
@@ -425,7 +443,7 @@ func (t *TracingSteps) noSpanHasAttribute(key string) error {
 func (t *TracingSteps) analyticsLogCarriesTrace() error {
 	deadline := time.Now().Add(spanWait)
 	for {
-		resp, err := t.client.Get(mockOTLPCollectorURL + "/test/logs?traceId=" + t.traceID)
+		resp, err := t.collector(http.MethodGet, "/test/logs?traceId="+t.traceID)
 		if err == nil {
 			var logs []json.RawMessage
 			err = json.NewDecoder(resp.Body).Decode(&logs)
