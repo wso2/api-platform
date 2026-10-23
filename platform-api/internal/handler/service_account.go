@@ -69,9 +69,9 @@ func (h *ServiceAccountHandler) RegisterRoutes(mux router.Router) {
 	mux.HandleFunc("POST "+base+"/{serviceAccountId}/regenerate-secret", middleware.MapErrors(h.slogger, h.humansOnly(h.RegenerateSecret)))
 	mux.HandleFunc("POST "+base+"/token", middleware.MapErrors(h.slogger, h.Token))
 	mux.HandleFunc("GET "+base+"/jwks.json", middleware.MapErrors(h.slogger, h.JWKS))
-	// A sibling path: under /service-accounts, "roles" would shadow an account
-	// with that handle.
-	mux.HandleFunc("GET "+constants.APIBasePath+"/service-account-roles", middleware.MapErrors(h.slogger, h.humansOnly(h.Roles)))
+	// Not specific to service accounts, so it lives at /roles. It is registered
+	// here, so it is off when service accounts are.
+	mux.HandleFunc("GET "+constants.APIBasePath+"/roles", middleware.MapErrors(h.slogger, h.humansOnly(h.Roles)))
 }
 
 // humansOnly refuses SA tokens at the management endpoints outright, so a

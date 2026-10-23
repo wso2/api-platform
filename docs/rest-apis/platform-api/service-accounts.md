@@ -154,7 +154,6 @@ shown only in this response and cannot be recovered later.
 
 ```json
 {
-  "id": "ci-deployer",
   "displayName": "CI deployer",
   "description": "Deploys REST APIs from the release pipeline",
   "roles": [
@@ -945,24 +944,23 @@ Required scopes (the token must carry at least one of): `ap:service_account:mana
 |409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict. The request conflicts with the current state of the resource.|[Error](schemas.md#schemaerror)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal Server Error.|[Error](schemas.md#schemaerror)|
 
-## List the roles a service account can hold
+## List roles
 
-<a id="opIdlistServiceAccountRoles"></a>
+<a id="opIdlistRoles"></a>
 
-`GET /service-account-roles`
+`GET /roles`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://localhost:9243/api/v0.9/service-account-roles \
+curl -X GET https://localhost:9243/api/v0.9/roles \
   -H 'Authorization: Bearer {access_token}' \
   -H 'Accept: application/json'
 
 ```
 
 Every role in the role-to-scope mapping, each with the scopes it grants.
-A sibling of /service-accounts, not a child, so it never shadows an account id.
 
 ### Authentication
 
@@ -1028,11 +1026,11 @@ Required scopes (the token must carry at least one of): `ap:service_account:read
 }
 ```
 
-<h3 id="list-the-roles-a-service-account-can-hold-responses">Responses</h3>
+<h3 id="list-roles-responses">Responses</h3>
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Roles a service account can hold|[ServiceAccountRoleListResponse](schemas.md#schemaserviceaccountrolelistresponse)|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|The roles in the mapping|[RoleListResponse](schemas.md#schemarolelistresponse)|
 |401|[Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)|Unauthorized. Authentication credentials are missing or invalid.|[Error](schemas.md#schemaerror)|
 |403|[Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)|Forbidden. The authenticated user does not have permission to access this resource.|[Error](schemas.md#schemaerror)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal Server Error.|[Error](schemas.md#schemaerror)|

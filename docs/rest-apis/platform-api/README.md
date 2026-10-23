@@ -212,7 +212,7 @@ License: <a href="https://www.apache.org/licenses/LICENSE-2.0.html">Apache 2.0</
 - [Exchange client credentials for an access token](service-accounts.md#exchange-client-credentials-for-an-access-token)
 - [Service-account signing keys](service-accounts.md#service-account-signing-keys)
 - [Regenerate a service account's secret](service-accounts.md#regenerate-a-service-accounts-secret)
-- [List the roles a service account can hold](service-accounts.md#list-the-roles-a-service-account-can-hold)
+- [List roles](service-accounts.md#list-roles)
 
 ### [Secrets](secrets.md)
 

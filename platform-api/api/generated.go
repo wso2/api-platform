@@ -5260,6 +5260,19 @@ type ResourceWiseRateLimitingConfig struct {
 	Resources []RateLimitingResourceLimit `json:"resources" yaml:"resources"`
 }
 
+// Role defines model for Role.
+type Role struct {
+	Name   string   `json:"name" yaml:"name"`
+	Scopes []string `json:"scopes" yaml:"scopes"`
+}
+
+// RoleListResponse defines model for RoleListResponse.
+type RoleListResponse struct {
+	Count      int        `json:"count" yaml:"count"`
+	List       []Role     `json:"list" yaml:"list"`
+	Pagination Pagination `json:"pagination" yaml:"pagination"`
+}
+
 // RouteException defines model for RouteException.
 type RouteException struct {
 	// Methods HTTP methods
@@ -5374,7 +5387,7 @@ type ServiceAccount struct {
 	Description string `json:"description" yaml:"description"`
 	DisplayName string `json:"displayName" yaml:"displayName"`
 
-	// Id Service account handle, unique within the organization
+	// Id Service account handle, generated from `displayName` and unique within the organization
 	Id           string     `json:"id" yaml:"id"`
 	LastUsedAt   *time.Time `json:"lastUsedAt,omitempty" yaml:"lastUsedAt,omitempty"`
 	LastUsedIp   *string    `json:"lastUsedIp,omitempty" yaml:"lastUsedIp,omitempty"`
@@ -5391,13 +5404,10 @@ type ServiceAccount struct {
 // ServiceAccountStatus defines model for ServiceAccount.Status.
 type ServiceAccountStatus string
 
-// ServiceAccountCreateRequest defines model for ServiceAccountCreateRequest.
+// ServiceAccountCreateRequest The `id` is generated from `displayName`.
 type ServiceAccountCreateRequest struct {
 	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
 	DisplayName string  `json:"displayName" yaml:"displayName"`
-
-	// Id Service account handle. `token` is reserved.
-	Id string `json:"id" yaml:"id"`
 
 	// Roles Roles from the role-to-scope mapping file. Any role is accepted.
 	Roles []string `json:"roles" yaml:"roles"`
@@ -5421,19 +5431,6 @@ type ServiceAccountListResponse struct {
 	Count      int              `json:"count" yaml:"count"`
 	List       []ServiceAccount `json:"list" yaml:"list"`
 	Pagination Pagination       `json:"pagination" yaml:"pagination"`
-}
-
-// ServiceAccountRole defines model for ServiceAccountRole.
-type ServiceAccountRole struct {
-	Name   string   `json:"name" yaml:"name"`
-	Scopes []string `json:"scopes" yaml:"scopes"`
-}
-
-// ServiceAccountRoleListResponse defines model for ServiceAccountRoleListResponse.
-type ServiceAccountRoleListResponse struct {
-	Count      int                  `json:"count" yaml:"count"`
-	List       []ServiceAccountRole `json:"list" yaml:"list"`
-	Pagination Pagination           `json:"pagination" yaml:"pagination"`
 }
 
 // ServiceAccountTokenRequest Send client_id and client_secret here, or with HTTP Basic instead.

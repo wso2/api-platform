@@ -9112,13 +9112,12 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /service-account-roles:
+  /roles:
     get:
-      summary: List the roles a service account can hold
+      summary: List roles
       description: |
         Every role in the role-to-scope mapping, each with the scopes it grants.
-        A sibling of /service-accounts, not a child, so it never shadows an account id.
-      operationId: listServiceAccountRoles
+      operationId: listRoles
       security:
         - OAuth2Security:
             - ap:service_account:read
@@ -9127,11 +9126,11 @@ paths:
         - Service Accounts
       responses:
         '200':
-          description: Roles a service account can hold
+          description: The roles in the mapping
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ServiceAccountRoleListResponse'
+                $ref: '#/components/schemas/RoleListResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -14295,7 +14294,7 @@ components:
       properties:
         id:
           type: string
-          description: Service account handle, unique within the organization
+          description: Service account handle, generated from `displayName` and unique within the organization
           minLength: 3
           maxLength: 40
           example: ci-deployer
@@ -14374,7 +14373,7 @@ components:
         pagination:
           $ref: '#/components/schemas/Pagination'
 
-    ServiceAccountRole:
+    Role:
       type: object
       required:
         - name
@@ -14389,7 +14388,7 @@ components:
             type: string
           example: [ap:rest_api:read, ap:gateway:read]
 
-    ServiceAccountRoleListResponse:
+    RoleListResponse:
       type: object
       required:
         - count
@@ -14402,23 +14401,17 @@ components:
         list:
           type: array
           items:
-            $ref: '#/components/schemas/ServiceAccountRole'
+            $ref: '#/components/schemas/Role'
         pagination:
           $ref: '#/components/schemas/Pagination'
 
     ServiceAccountCreateRequest:
       type: object
+      description: The `id` is generated from `displayName`.
       required:
-        - id
         - displayName
         - roles
       properties:
-        id:
-          type: string
-          description: Service account handle. `token` is reserved.
-          minLength: 3
-          maxLength: 40
-          example: ci-deployer
         displayName:
           type: string
           minLength: 1
