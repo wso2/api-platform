@@ -194,7 +194,7 @@ export type SubscriptionPlanFixture = Schema<'SubscriptionPlan'>;
 export type SecretFixture = Schema<'SecretSummary'>;
 export type CustomPolicyFixture = Schema<'CustomPolicyResponse'>;
 export type ServiceAccountFixture = Schema<'ServiceAccount'>;
-export type ServiceAccountRoleFixture = Schema<'ServiceAccountRole'>;
+export type RoleFixture = Schema<'Role'>;
 
 export const anApplication = (
   overrides: Partial<ApplicationFixture> = {}
@@ -280,9 +280,9 @@ export const aServiceAccount = (
   ...overrides,
 });
 
-export const aServiceAccountRole = (
-  overrides: Partial<ServiceAccountRoleFixture> = {}
-): ServiceAccountRoleFixture => ({
+export const aRole = (
+  overrides: Partial<RoleFixture> = {}
+): RoleFixture => ({
   name: 'ap_service_account',
   scopes: ['ap:rest_api:read', 'ap:gateway:read'],
   ...overrides,

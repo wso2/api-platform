@@ -55,7 +55,7 @@ import {
   scopesOfRoles,
   useDeleteServiceAccount,
   useRegenerateServiceAccountSecret,
-  useServiceAccountRoles,
+  useRoles,
   useServiceAccounts,
   useUpdateServiceAccount,
   type ServiceAccount,
@@ -314,7 +314,7 @@ function ServiceAccountList() {
   const [search, setSearch] = useState('');
   const term = useDebouncedValue(search.trim(), SEARCH_DEBOUNCE_MS);
   const accountsQuery = useServiceAccounts({ limit: PAGE_SIZE, offset, ...(term ? { query: term } : {}) });
-  const rolesQuery = useServiceAccountRoles();
+  const rolesQuery = useRoles();
   const updateMutation = useUpdateServiceAccount();
   const regenerateMutation = useRegenerateServiceAccountSecret();
   const deleteMutation = useDeleteServiceAccount();

@@ -27,7 +27,7 @@ import type {
 } from '../../core/spec';
 
 /**
- * Transport layer for `/service-accounts` and `/service-account-roles`.
+ * Transport layer for `/service-accounts` and `/roles`.
  *
  * Create and regenerate return the only copy of a client secret, and the token
  * exchange returns a live bearer token. Nothing here caches; see the hooks for
@@ -36,9 +36,9 @@ import type {
 
 export type ServiceAccount = Schema<'ServiceAccount'>;
 export type ServiceAccountCredentials = Schema<'ServiceAccountCredentials'>;
-export type ServiceAccountRole = Schema<'ServiceAccountRole'>;
+export type Role = Schema<'Role'>;
 export type ServiceAccountListResponse = ResponseOf<'listServiceAccounts'>;
-export type ServiceAccountRoleListResponse = ResponseOf<'listServiceAccountRoles'>;
+export type RoleListResponse = ResponseOf<'listRoles'>;
 export type ServiceAccountTokenResponse = ResponseOf<'issueServiceAccountToken'>;
 export type ListServiceAccountsQuery = QueryOf<'listServiceAccounts'>;
 export type CreateServiceAccountBody = BodyOf<'createServiceAccount'>;
@@ -67,12 +67,12 @@ export const getServiceAccount = async (
     operationName: 'getServiceAccount',
   });
 
-export const listServiceAccountRoles = async (
+export const listRoles = async (
   options?: RequestOptions
-): Promise<ServiceAccountRoleListResponse> =>
-  http.get<ServiceAccountRoleListResponse>('/service-account-roles', {
+): Promise<RoleListResponse> =>
+  http.get<RoleListResponse>('/roles', {
     ...options,
-    operationName: 'listServiceAccountRoles',
+    operationName: 'listRoles',
   });
 
 /** The response carries the only copy of the client secret. */

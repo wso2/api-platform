@@ -30,7 +30,7 @@ import {
   Stack,
 } from '@wso2/oxygen-ui';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
-import type { ServiceAccountRole } from '../../../../../apis/serviceAccountApis';
+import type { Role } from '../../../../../apis/serviceAccountApis';
 
 const P = 'aiWorkspace.pages.appShell.appShellPages.settings.serviceAccounts.RolePicker';
 const messages = defineMessages({
@@ -53,7 +53,7 @@ const FIELD_ID = 'service-account-roles';
 export const DEFAULT_ROLE = 'ap_service_account';
 
 interface RolePickerProps {
-  roles: readonly ServiceAccountRole[];
+  roles: readonly Role[];
   value: string[];
   onChange: (next: string[]) => void;
   loading?: boolean;

@@ -26,7 +26,7 @@ export type {
   CreateServiceAccountBody,
   ServiceAccount,
   ServiceAccountCredentials,
-  ServiceAccountRole,
+  Role,
   ServiceAccountTokenResponse,
   UpdateServiceAccountBody,
 } from './serviceAccounts.endpoints';
@@ -41,7 +41,7 @@ export {
   useIssueServiceAccountToken,
   useRegenerateServiceAccountSecret,
   useServiceAccount,
-  useServiceAccountRoles,
+  useRoles,
   useServiceAccounts,
   useUpdateServiceAccount,
 } from './serviceAccounts.hooks';

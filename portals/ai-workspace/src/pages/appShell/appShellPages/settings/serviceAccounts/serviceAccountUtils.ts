@@ -16,28 +16,6 @@
  * under the License.
  */
 
-// Mirrors the server's handle rules, so a bad ID is caught before submit.
-export const HANDLE_MIN_LENGTH = 3;
-export const HANDLE_MAX_LENGTH = 40;
-
-const RESERVED_HANDLES = new Set(['token']);
-
-export type HandleProblem = 'length' | 'format' | 'reserved';
-
-export const toHandle = (displayName: string): string =>
-  displayName
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .slice(0, HANDLE_MAX_LENGTH)
-    .replace(/^-+|-+$/g, '');
-
-export const handleProblem = (handle: string): HandleProblem | null => {
-  if (handle.length < HANDLE_MIN_LENGTH || handle.length > HANDLE_MAX_LENGTH) return 'length';
-  if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(handle)) return 'format';
-  if (RESERVED_HANDLES.has(handle)) return 'reserved';
-  return null;
-};
-
 // The browser only knows the BFF's proxy, which a workload cannot use, so the
 // examples name the real address as a shell variable.
 const API_BASE = '$PLATFORM_API_URL/api/v0.9';

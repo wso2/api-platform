@@ -24,7 +24,7 @@ import { ApiScopeProvider } from '@/api/core/ApiScopeProvider';
 import { resetHttpClient } from '@/api/core/http';
 import {
   aServiceAccount,
-  aServiceAccountRole,
+  aRole,
   accepts,
   apiUrl,
   collection,
@@ -57,8 +57,8 @@ const nightly = aServiceAccount({
   status: 'disabled',
 });
 const roles = [
-  aServiceAccountRole(),
-  aServiceAccountRole({ name: 'ap_deployer', scopes: ['ap:rest_api:deployment:manage'] }),
+  aRole(),
+  aRole({ name: 'ap_deployer', scopes: ['ap:rest_api:deployment:manage'] }),
 ];
 const credentialsFor = (account = ciDeployer) => ({
   clientId: account.clientId,
@@ -87,7 +87,7 @@ function renderPage(options: Parameters<typeof renderWithProviders>[1] = {}) {
 const useAccounts = (accounts = [ciDeployer, nightly]) =>
   server.use(
     collection('/service-accounts', accounts, { record: requests }),
-    collection('/service-account-roles', roles),
+    collection('/roles', roles),
   );
 
 beforeEach(() => {
@@ -160,7 +160,7 @@ describe('ServiceAccountsSettingsPage', () => {
   it('shows "not allowed" to a user without the manage scope, and fetches nothing', async () => {
     server.use(
       collection('/service-accounts', [ciDeployer], { record: requests }),
-      collection('/service-account-roles', roles, { record: requests }),
+      collection('/roles', roles, { record: requests }),
     );
     renderPage({
       authState: makeAuthState({
@@ -177,7 +177,7 @@ describe('ServiceAccountsSettingsPage', () => {
   it('says the feature is off when the server has no service-account routes', async () => {
     server.use(
       failure('get', '/service-accounts', 404, 'NOT_FOUND'),
-      failure('get', '/service-account-roles', 404, 'NOT_FOUND'),
+      failure('get', '/roles', 404, 'NOT_FOUND'),
     );
     renderPage();
 
@@ -192,8 +192,9 @@ describe('ServiceAccountsSettingsPage', () => {
     await user.click(await screen.findByRole('button', { name: 'New service account' }));
     const form = await screen.findByRole('dialog');
     await user.type(within(form).getByLabelText(/Display name/), 'CI deployer');
-    expect(within(form).getByLabelText(/^ID/)).toHaveValue('ci-deployer');
-    expect(within(form).getByLabelText(/^ID/)).toBeDisabled();
+    // The server makes the ID from the name, so there is nothing to type.
+    expect(within(form).queryByLabelText(/^ID/)).not.toBeInTheDocument();
+    expect(within(form).queryByRole('button', { name: 'Edit ID' })).not.toBeInTheDocument();
     await user.type(within(form).getByLabelText(/Description/), 'Deploys APIs');
     // The default role is already selected.
     expect(await within(form).findByText('ap_service_account')).toBeInTheDocument();
@@ -204,7 +205,6 @@ describe('ServiceAccountsSettingsPage', () => {
     expect(JSON.parse(post.body)).toEqual({
       description: 'Deploys APIs',
       displayName: 'CI deployer',
-      id: 'ci-deployer',
       roles: ['ap_service_account'],
     });
 
@@ -221,7 +221,7 @@ describe('ServiceAccountsSettingsPage', () => {
     await waitFor(() => expect(secretGone(queryClient)).toBe(true));
   }, FORM_TIMEOUT);
 
-  it('needs only a name and a role, and takes a custom ID after Edit ID', async () => {
+  it('needs only a name and a role', async () => {
     useAccounts([]);
     server.use(accepts('post', '/service-accounts', credentialsFor(), { record: requests }));
     const { user } = renderPage();
@@ -233,21 +233,7 @@ describe('ServiceAccountsSettingsPage', () => {
     await user.type(within(form).getByLabelText(/Display name/), `Release ${'x'.repeat(50)}`);
     // The default role is preselected, so a name is enough.
     await waitFor(() => expect(create).toBeEnabled());
-    // Cut to the server's 40-character limit.
-    expect(within(form).getByLabelText(/^ID/)).toHaveValue(`release-${'x'.repeat(32)}`);
-
-    await user.click(within(form).getByRole('button', { name: 'Edit ID' }));
-    const id = within(form).getByLabelText(/^ID/);
-    expect(id).toBeEnabled();
-    expect(id).toHaveFocus();
-    await user.clear(id);
-    await user.type(id, 'x');
-    expect(within(form).getByText('Use 3 to 40 characters.')).toBeInTheDocument();
-    await user.clear(id);
-    await user.type(id, 'release-bot');
-    // Once edited, the ID stops following the name.
     await user.type(within(form).getByLabelText(/Display name/), 'y');
-    expect(id).toHaveValue('release-bot');
 
     // The default role can be removed, which leaves no role.
     await user.click(within(form).getByRole('combobox', { name: /Roles/ }));
@@ -264,7 +250,6 @@ describe('ServiceAccountsSettingsPage', () => {
     // No description sent.
     expect(JSON.parse(requests.calls.find((call) => call.method === 'POST')!.body)).toEqual({
       displayName: `Release ${'x'.repeat(50)}y`,
-      id: 'release-bot',
       roles: ['ap_deployer'],
     });
   }, FORM_TIMEOUT);
@@ -290,9 +275,13 @@ describe('ServiceAccountsSettingsPage', () => {
     });
   }, FORM_TIMEOUT);
 
-  it('flags an ID that is already taken on the ID field', async () => {
+  it('keeps the dialog open and shows the error when the create is refused', async () => {
     useAccounts([]);
-    server.use(failure('post', '/service-accounts', 409, 'SERVICE_ACCOUNT_EXISTS'));
+    server.use(
+      failure('post', '/service-accounts', 409, 'SERVICE_ACCOUNT_EXISTS', {
+        message: 'Name clash, try again.',
+      }),
+    );
     const { user } = renderPage();
 
     await user.click(await screen.findByRole('button', { name: 'New service account' }));
@@ -302,7 +291,8 @@ describe('ServiceAccountsSettingsPage', () => {
     await waitFor(() => expect(within(form).getByRole('button', { name: 'Create' })).toBeEnabled());
     await user.click(within(form).getByRole('button', { name: 'Create' }));
 
-    expect(await within(form).findByText('An account with this ID already exists.')).toBeInTheDocument();
+    expect(await screen.findByText('Name clash, try again.')).toBeInTheDocument();
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
   }, FORM_TIMEOUT);
 
   it('regenerates the secret after a warning, then shows the new one', async () => {
@@ -565,7 +555,7 @@ describe('ServiceAccountsSettingsPage', () => {
         matches: (account, term) => account.displayName.toLowerCase().includes(term),
         record: requests,
       }),
-      collection('/service-account-roles', roles),
+      collection('/roles', roles),
     );
     const { user } = renderPage();
 
@@ -586,7 +576,7 @@ describe('ServiceAccountsSettingsPage', () => {
     );
     let current = many;
     server.use(
-      collection('/service-account-roles', roles),
+      collection('/roles', roles),
       http.get(apiUrl('/service-accounts'), ({ request }) => {
         const params = new URL(request.url).searchParams;
         const offset = Number(params.get('offset') ?? 0);

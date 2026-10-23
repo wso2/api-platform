@@ -79,7 +79,7 @@ export const useServiceAccount = (
 };
 
 /** The roles an account may hold, each with the scopes it grants. */
-export const useServiceAccountRoles = (overrides: { orgId?: string } = {}) => {
+export const useRoles = (overrides: { orgId?: string } = {}) => {
   const { org } = useApiScope(overrides);
 
   return useQuery({

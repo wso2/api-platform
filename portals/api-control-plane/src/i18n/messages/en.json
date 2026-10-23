@@ -3536,32 +3536,8 @@
   "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.ServiceAccountFormDialog.displayName": {
     "defaultMessage": "Display name"
   },
-  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.ServiceAccountFormDialog.editHandle": {
-    "defaultMessage": "Edit ID"
-  },
   "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.ServiceAccountFormDialog.enabled": {
     "defaultMessage": "Account enabled"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.ServiceAccountFormDialog.handle": {
-    "defaultMessage": "ID"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.ServiceAccountFormDialog.handleEditedHelper": {
-    "defaultMessage": "Used in the client ID. Cannot be changed later."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.ServiceAccountFormDialog.handleFormat": {
-    "defaultMessage": "Use lowercase letters, digits and single hyphens, not at the start or end."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.ServiceAccountFormDialog.handleHelper": {
-    "defaultMessage": "Made from the display name and used in the client ID. Cannot be changed later."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.ServiceAccountFormDialog.handleLength": {
-    "defaultMessage": "Use {min} to {max} characters."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.ServiceAccountFormDialog.handleReserved": {
-    "defaultMessage": "This ID is reserved. Choose another."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.ServiceAccountFormDialog.handleTaken": {
-    "defaultMessage": "An account with this ID already exists."
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.ServiceAccountFormDialog.loadFailed": {
     "defaultMessage": "Could not load the service account. Close this and try again."

@@ -31,7 +31,7 @@ import {
 import type { ReactNode } from 'react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
-import type { ServiceAccountRole } from '@/api/resources/serviceAccounts';
+import type { Role } from '@/api/resources/serviceAccounts';
 
 const messages = defineMessages({
   label: {
@@ -75,7 +75,7 @@ const FIELD_ID = 'service-account-roles';
 export const DEFAULT_ROLE = 'ap_service_account';
 
 export type RolePickerProps = {
-  roles: readonly ServiceAccountRole[];
+  roles: readonly Role[];
   value: string[];
   onChange: (next: string[]) => void;
   loading?: boolean;

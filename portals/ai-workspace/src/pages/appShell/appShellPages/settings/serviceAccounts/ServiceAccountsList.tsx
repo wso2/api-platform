@@ -67,7 +67,7 @@ import {
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import {
   deleteServiceAccount,
-  listServiceAccountRoles,
+  listRoles,
   listServiceAccounts,
   regenerateServiceAccountSecret,
   scopesOfRoles,
@@ -75,7 +75,7 @@ import {
   type ListServiceAccountsResponse,
   type ServiceAccount,
   type ServiceAccountCredentials,
-  type ServiceAccountRole,
+  type Role,
 } from '../../../../../apis/serviceAccountApis';
 import { SCOPES } from '../../../../../auth/permissions';
 import ErrorAlert from '../../../../../Components/common/ErrorAlert';
@@ -209,7 +209,7 @@ function ServiceAccountsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
-  const [roles, setRoles] = useState<ServiceAccountRole[]>([]);
+  const [roles, setRoles] = useState<Role[]>([]);
   const [rolesLoading, setRolesLoading] = useState(true);
   const [rolesFailed, setRolesFailed] = useState(false);
 
@@ -252,7 +252,7 @@ function ServiceAccountsPage() {
   }, [load]);
 
   useEffect(() => {
-    listServiceAccountRoles()
+    listRoles()
       .then((result) => setRoles(result.list))
       .catch(() => setRolesFailed(true))
       .finally(() => setRolesLoading(false));

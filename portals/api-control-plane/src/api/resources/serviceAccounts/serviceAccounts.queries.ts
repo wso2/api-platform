@@ -22,7 +22,7 @@ import { staleTimes } from '../../core/queryClient';
 import { createResourceKeys, type OrgScope } from '../../core/queryKeys';
 import {
   getServiceAccount,
-  listServiceAccountRoles,
+  listRoles,
   listServiceAccounts,
   type ListServiceAccountsQuery,
 } from './serviceAccounts.endpoints';
@@ -49,7 +49,7 @@ export const serviceAccountQueries = {
   roles: (org: OrgScope) =>
     queryOptions({
       queryKey: [...serviceAccountKeys.all(org), 'roles'] as const,
-      queryFn: ({ signal }) => listServiceAccountRoles({ orgId: org, signal }),
+      queryFn: ({ signal }) => listRoles({ orgId: org, signal }),
       staleTime: staleTimes.stable,
     }),
 };
