@@ -751,9 +751,7 @@ func filterValuesOverlap(field string, a, b PriceFilter) bool {
 	}
 }
 
-// Billing statuses of a paid subscription, as the API Portal reports them from Stripe. A gateway
-// refuses calls while the status is UNPAID or CANCELLED; PAST_DUE is still served while Stripe
-// retries the payment.
+// Billing statuses of a paid subscription, as the API Portal reports them.
 const (
 	BillingStatusActive    = "ACTIVE"
 	BillingStatusPastDue   = "PAST_DUE"
@@ -766,9 +764,8 @@ var ValidBillingStatuses = map[string]bool{
 	BillingStatusActive: true, BillingStatusPastDue: true, BillingStatusUnpaid: true, BillingStatusCancelled: true,
 }
 
-// SubscriptionBilling is the billing state of a paid subscription. CustomerID is the Stripe
-// customer (also the Moesif company); SubscriptionID the Stripe subscription. UpdatedAt is when the
-// API Portal recorded the state, so a late event is not applied over a newer one.
+// SubscriptionBilling is the billing state of a paid subscription. UpdatedAt is when the API Portal
+// recorded it, so a late event is not applied over a newer one.
 type SubscriptionBilling struct {
 	SubscriptionUUID string    `json:"-" db:"subscription_uuid"`
 	OrganizationUUID string    `json:"-" db:"organization_uuid"`
