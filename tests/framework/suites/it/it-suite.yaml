@@ -669,10 +669,6 @@ blocks:
         tags: "gateway-version>1.2.0"
         features:
           - features/graphql_api_keys.feature
-      - name: oauth2-auth
-        tags: "gateway-version>1.2.0"
-        features:
-          - features/gateway/security-policies/oauth2_auth.feature
       - name: policy-engine-admin
         features:
           - features/gateway/core/policy_engine_admin.feature
