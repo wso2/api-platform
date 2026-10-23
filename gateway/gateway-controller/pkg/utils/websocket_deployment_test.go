@@ -385,6 +385,24 @@ func TestValidateWebSocketAPIConfig_NoGatewayMaximumConfigured(t *testing.T) {
 	assert.Empty(t, errs, "a zero maximum means the gateway sets no ceiling")
 }
 
+// resilience is validated with the RestApi rules at both levels, and the error
+// names the field.
+func TestValidateWebSocketAPIConfig_Resilience(t *testing.T) {
+	_, _, errs := validateWebSocketAPIConfig(validWebSocketAPI(func(s *api.WebSocketAPIConfigData) {
+		s.Resilience = &api.Resilience{Timeout: wsStrPtr("1h30m")}
+		s.Channels[0].Resilience = &api.Resilience{IdleTimeout: wsStrPtr("soon")}
+	}))
+	fields := fieldsWithErrors(errs)
+	assert.True(t, fields["spec.resilience.timeout"], "got %+v", errs)
+	assert.True(t, fields["spec.channels[0].resilience.idleTimeout"], "got %+v", errs)
+
+	_, _, errs = validateWebSocketAPIConfig(validWebSocketAPI(func(s *api.WebSocketAPIConfigData) {
+		s.Resilience = &api.Resilience{Timeout: wsStrPtr("10s"), IdleTimeout: wsStrPtr("0s")}
+		s.Channels[0].Resilience = &api.Resilience{IdleTimeout: wsStrPtr("30m")}
+	}))
+	assert.Empty(t, errs, "valid values, including 0s, are accepted")
+}
+
 func TestValidateWebSocketAPIConfig_MaxPendingHandshakes(t *testing.T) {
 	withPending := func(n int) api.WebSocketAPI {
 		return validWebSocketAPI(func(s *api.WebSocketAPIConfigData) {

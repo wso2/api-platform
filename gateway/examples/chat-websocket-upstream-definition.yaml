@@ -21,9 +21,10 @@
 # model a RestApi uses. The definition carries the backend targets, the base path,
 # the connect timeout, and how many gateway-to-backend connections this API may
 # hold; an omitted maxConnections falls back to the gateway-wide default.
-# Connection lifetime is set at gateway level: the route idle timeout
-# (router.upstream.timeouts.route_idle_timeout_ms) and the optional
-# router.websocket.max_connection_duration.
+# resilience works as on a RestApi: timeout bounds the handshake and idleTimeout
+# closes a connection silent for that long, at API level or per channel, overriding
+# the gateway's route defaults. The optional router.websocket.max_connection_duration
+# caps every connection's lifetime on top.
 # Start the testbench echo service (tests/framework: go run ./testbench/cmd/testbench),
 # deploy this file, then connect with:
 #   websocat ws://localhost:8080/chat-pool/v1.0/rooms/general
@@ -37,6 +38,9 @@ spec:
   displayName: Chat Pool
   version: v1.0
   context: /chat-pool/$version
+  resilience:
+    timeout: 10s
+    idleTimeout: 10m
   upstreamDefinitions:
     - name: chat-backend
       basePath: /ws

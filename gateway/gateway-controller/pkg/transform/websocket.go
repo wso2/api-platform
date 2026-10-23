@@ -32,9 +32,11 @@
 //   - Routes opt into the upgrade individually (Route.UpgradeWebSocket). The HCM
 //     disables upgrades globally, so a REST or GraphQL route cannot be turned
 //     into a tunnel even if its backend would accept one.
-//   - The ordinary route timeout is left alone, because it does not end an
-//     upgraded connection. The gateway's route idle timeout bounds it, and the
-//     optional router.websocket.max_connection_duration caps its lifetime.
+//   - The route timeout bounds only the handshake, because Envoy stops applying
+//     it once a connection is upgraded. The route idle timeout closes a silent
+//     connection, and the optional router.websocket.max_connection_duration caps
+//     its lifetime. resilience (API or channel level) overrides the gateway's
+//     route timeout and idle timeout, as it does for a RestApi.
 package transform
 
 import (
@@ -108,14 +110,13 @@ func (t *WebSocketAPITransformer) Transform(cfg *models.StoredConfig) (*models.R
 		SensitiveValues:     cfg.SensitiveValues,
 	}
 
-	// Every channel of this API shares the same client-facing bounds: the
-	// gateway's route idle timeout, which the translator applies because the route
-	// leaves IdleTimeout unset, and router.websocket.max_connection_duration when
-	// the operator sets one. Unset, a connection's lifetime is not capped.
-	var routeTimeout *models.RouteTimeout
-	if maxDuration := t.routerConfig.WebSocket.MaxConnectionDuration; maxDuration > 0 {
-		routeTimeout = &models.RouteTimeout{MaxStreamDuration: &maxDuration}
+	// Resolve API-level resilience once; a channel's own resilience overrides it
+	// per field, as an operation's does on a RestApi.
+	apiTimeout, apiIdleTimeout, err := xds.ResolveResilience(apiData.Resilience)
+	if err != nil {
+		return nil, fmt.Errorf("invalid API-level resilience: %w", err)
 	}
+	apiResilience := resolvedResilience{timeout: apiTimeout, idle: apiIdleTimeout}
 
 	apiPolicies := t.collectAPIPolicies(apiData.Policies)
 
@@ -125,7 +126,7 @@ func (t *WebSocketAPITransformer) Transform(cfg *models.StoredConfig) (*models.R
 		return nil, fmt.Errorf("failed to resolve main upstream: %w", err)
 	}
 
-	if err := t.addChannelRoutes(rdc, apiData, mainUpstream, &apiData.Upstream.Main, mainVhost, apiPolicies, routeTimeout); err != nil {
+	if err := t.addChannelRoutes(rdc, apiData, mainUpstream, &apiData.Upstream.Main, mainVhost, apiPolicies, apiResilience); err != nil {
 		return nil, err
 	}
 
@@ -145,7 +146,7 @@ func (t *WebSocketAPITransformer) Transform(cfg *models.StoredConfig) (*models.R
 			return nil, fmt.Errorf("failed to resolve sandbox upstream: %w", err)
 		}
 
-		if err := t.addChannelRoutes(rdc, apiData, sbUpstream, apiData.Upstream.Sandbox, sandboxVhost, apiPolicies, routeTimeout); err != nil {
+		if err := t.addChannelRoutes(rdc, apiData, sbUpstream, apiData.Upstream.Sandbox, sandboxVhost, apiPolicies, apiResilience); err != nil {
 			return nil, err
 		}
 	}
@@ -162,7 +163,7 @@ func (t *WebSocketAPITransformer) addChannelRoutes(
 	slot *api.Upstream,
 	vhost string,
 	apiPolicies []policyenginev1.PolicyInstance,
-	routeTimeout *models.RouteTimeout,
+	apiResilience resolvedResilience,
 ) error {
 	upstreamInfo := upstream.UpstreamInfo()
 
@@ -190,12 +191,9 @@ func (t *WebSocketAPITransformer) addChannelRoutes(
 		chain := t.buildPolicyChain(apiPolicies, channel.Policies)
 		injected := utils.InjectSystemPolicies(chain, t.systemConfig, nil)
 
-		// A per-route copy: the translator may set slot-specific fields on it, and
-		// sharing one pointer across routes would make that leak between them.
-		var timeoutForRoute *models.RouteTimeout
-		if routeTimeout != nil {
-			copied := *routeTimeout
-			timeoutForRoute = &copied
+		timeoutForRoute, err := t.channelRouteTimeout(apiResilience, channel)
+		if err != nil {
+			return err
 		}
 
 		rdc.Routes[routeKey] = &models.Route{
@@ -218,6 +216,36 @@ func (t *WebSocketAPITransformer) addChannelRoutes(
 	}
 
 	return nil
+}
+
+// resolvedResilience holds an API's parsed resilience timeouts; nil fields leave
+// the gateway default in effect.
+type resolvedResilience struct {
+	timeout, idle *time.Duration
+}
+
+// channelRouteTimeout returns a channel route's timeouts: resilience.timeout and
+// resilience.idleTimeout from the channel, else the API, else nil so the
+// translator applies the gateway's route defaults — the RestApi precedence, with
+// a channel in an operation's place. For a WebSocket, timeout bounds only the
+// handshake (Envoy's route timeout stops applying once the connection is
+// upgraded) and idleTimeout closes a silent connection. The gateway's
+// router.websocket.max_connection_duration, when set, caps every route's
+// lifetime on top. A fresh value is returned per route, since the translator may
+// set slot-specific fields on it.
+func (t *WebSocketAPITransformer) channelRouteTimeout(apiResilience resolvedResilience, channel api.WebSocketChannel) (*models.RouteTimeout, error) {
+	channelTimeout, channelIdle, err := xds.ResolveResilience(channel.Resilience)
+	if err != nil {
+		return nil, fmt.Errorf("invalid resilience for channel %q: %w", channel.Path, err)
+	}
+	routeTimeout := buildRouteTimeout(channelTimeout, apiResilience.timeout, channelIdle, apiResilience.idle)
+	if maxDuration := t.routerConfig.WebSocket.MaxConnectionDuration; maxDuration > 0 {
+		if routeTimeout == nil {
+			routeTimeout = &models.RouteTimeout{}
+		}
+		routeTimeout.MaxStreamDuration = &maxDuration
+	}
+	return routeTimeout, nil
 }
 
 // pathMatchTypeForChannel picks the match type for a channel path. A path with a
