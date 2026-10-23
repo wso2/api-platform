@@ -46,3 +46,12 @@ func TestPlatformAPICoverageEnvironmentFollowsRunMode(t *testing.T) {
 	t.Setenv(shared.EnvCoverageMode, "true")
 	require.Equal(t, "/coverage", PlatformAPI().Compose.Env["GOCOVERDIR"])
 }
+
+func TestPlatformAPIMountsThePortalCertificateWithoutChangingTheSharedCryptoMaterial(t *testing.T) {
+	definition := PlatformAPI()
+
+	require.Equal(t, shared.APIPortalTLS().CertPEM, definition.Compose.GeneratedFiles["certs/api-portal-ca.pem"])
+	require.Equal(t, shared.ControlPlaneCrypto()["certs/cert.pem"], definition.Compose.GeneratedFiles["certs/cert.pem"])
+	require.NotContains(t, shared.ControlPlaneCrypto(), "certs/api-portal-ca.pem",
+		"the control plane's shared material must not gain the portal certificate")
+}

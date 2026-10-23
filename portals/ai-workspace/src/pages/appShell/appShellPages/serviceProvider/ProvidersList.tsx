@@ -47,7 +47,7 @@ import { Clock, Plus, Search, Trash2 } from '@wso2/oxygen-ui-icons-react';
 import ErrorAlert from '../../../../Components/common/ErrorAlert';
 import NoSearchResults from '../../../../Components/common/NoSearchResults';
 import { useApplications } from '../../../../contexts/ApplicationsContext';
-import { useAppAuth } from '../../../../contexts/AppAuthContext';
+import { useAppAuth, useAppAuthScopes } from '../../../../contexts/AppAuthContext';
 import { SCOPES } from '../../../../auth/permissions';
 import { useAppShell } from '../../../../contexts/AppShellContext';
 import {
@@ -122,7 +122,17 @@ function truncateText(text: string, maxLength: number): string {
 export default function ServiceProviders() {
   const navigate = useNavigate();
   const { hasPermission } = useAppAuth();
-  const { deleteProvider } = useLLMProviders();
+  // Empty-state wording follows what the user may see, so it asks the held
+  // scopes rather than the read-only-aware permission: an admin in a read-only
+  // organization still gets the admin empty state, with its action disabled.
+  const { hasPermission: hasScope } = useAppAuthScopes();
+  const {
+    providersResponse,
+    deleteProvider,
+    isLoading,
+    error: providersError,
+    refreshProviders,
+  } = useLLMProviders();
   const { applications } = useApplications();
   const { templatesResponse } = useProviderTemplates();
   const { currentProject, currentOrganization, setCurrentProject } =
@@ -339,7 +349,7 @@ export default function ServiceProviders() {
   const isDeleteConfirmationValid =
     deleteConfirmationInput.trim() === (deleteTarget?.name ?? '').trim();
 
-  const isDeveloper = !hasPermission(SCOPES.LLM_PROVIDER_CREATE);
+  const isDeveloper = !hasScope(SCOPES.LLM_PROVIDER_CREATE);
   const canCreateProvider =
     !isProjectLevel && hasPermission(SCOPES.LLM_PROVIDER_CREATE) && !isProviderQuotaReached;
   const shouldShowCreateProviderButton = !isProjectLevel;

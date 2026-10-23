@@ -45,24 +45,30 @@ func (s *Steps) obtainToken(ctx context.Context) error {
 	return nil
 }
 
+// defaultProjectID is the project every organization is given at onboarding, and
+// the one the REST API scenarios deploy into.
+const defaultProjectID = "default"
+
+// findDefaultProject asks for the project by id rather than scanning the list.
+//
+// /projects is paginated and answers with 20 of them by default, so on an
+// organization with more projects than that the default is simply on a later
+// page. Scanning the first page reported it missing and sent the reader looking
+// for a broken organization: one real organization held 213 projects, with the
+// default among them the whole time.
 func (s *Steps) findDefaultProject(ctx context.Context) error {
-	resp, err := s.doAuthenticated(ctx, http.MethodGet, "/projects", nil)
+	resp, err := s.doAuthenticated(ctx, http.MethodGet, "/projects/"+defaultProjectID, nil)
 	if err != nil {
 		return err
 	}
-	if resp.StatusCode != http.StatusOK {
+	switch resp.StatusCode {
+	case http.StatusOK:
+		return tcontext.Set(ctx, keyProjectID, defaultProjectID)
+	case http.StatusNotFound:
+		return fmt.Errorf("the organization has no %q project", defaultProjectID)
+	default:
 		return responseError(resp)
 	}
-	items, err := listItems(resp)
-	if err != nil {
-		return fmt.Errorf("decoding APIP projects: %w", err)
-	}
-	for _, item := range items {
-		if item["id"] == "default" {
-			return tcontext.Set(ctx, keyProjectID, "default")
-		}
-	}
-	return fmt.Errorf("APIP project list does not contain the default project")
 }
 
 // findActiveGateway reads through the managed-gateway endpoint rather than the
@@ -552,7 +558,13 @@ func (s *Steps) createManagedGateway(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if err := generateResourceAndStore(ctx, "syn-gateway", keyManagedGatewayID); err != nil {
+	// "sgw", not "syn-gateway": a managed gateway's handle is bounded by the
+	// release label the control plane renders from it, which spends the
+	// environment name twice and leaves 15 characters in a "development"
+	// environment. Unique() adds 11 ("-<suffix8>-<n>"), so the base has to fit in
+	// the rest. A longer base is accepted at create time and then fails to apply,
+	// leaving a gateway that never becomes ready.
+	if err := generateResourceAndStore(ctx, "sgw", keyManagedGatewayID); err != nil {
 		return err
 	}
 	name, err := requiredValue(ctx, keyManagedGatewayID)
