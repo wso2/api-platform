@@ -236,6 +236,11 @@ type UpstreamCluster struct {
 	// a small amount. That is acceptable here because the bounded resource —
 	// this instance's outbound sockets — is itself per-instance.
 	MaxConnections *uint32
+
+	// MaxPendingRequests caps requests waiting for a connection to the cluster
+	// -> CircuitBreakers.Thresholds[].MaxPendingRequests; a request beyond it is
+	// rejected with 503. Nil falls back to MaxConnections when that is set.
+	MaxPendingRequests *uint32
 }
 
 // Endpoint is a single upstream host:port target.

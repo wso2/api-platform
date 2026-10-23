@@ -392,6 +392,27 @@ func TestValidateWebSocketAPIConfig_NoGatewayMaximumConfigured(t *testing.T) {
 	assert.Empty(t, errs, "a zero maximum means the gateway sets no ceiling")
 }
 
+func TestValidateWebSocketAPIConfig_MaxPendingHandshakes(t *testing.T) {
+	withPending := func(n int) api.WebSocketAPI {
+		return validWebSocketAPI(func(s *api.WebSocketAPIConfigData) {
+			def := wsUpstreamDefinition("chat", "ws://chat:8080")
+			def.Connection = &api.WebSocketUpstreamConnection{MaxPendingHandshakes: &n}
+			withWSDefinitions(s, def)
+		})
+	}
+	for _, bad := range []int{0, -1, int(math.MaxUint32) + 1} {
+		_, _, errs := validateWebSocketAPIConfig(withPending(bad))
+		fields := fieldsWithErrors(errs)
+		assert.True(t, fields["spec.upstreamDefinitions[0].connection.maxPendingHandshakes"], "value %d: got %+v", bad, errs)
+	}
+	_, _, errs := validateWebSocketAPIConfig(withPending(0))
+	require.NotEmpty(t, errs)
+	assert.Equal(t, "maxPendingHandshakes must be at least 1", errs[0].Message, "the message names the field that failed")
+
+	_, _, errs = validateWebSocketAPIConfig(withPending(1))
+	assert.Empty(t, errs)
+}
+
 func TestValidateWebSocketAPIConfig_RejectsMaxConnectionsAboveUint32(t *testing.T) {
 	withWebSocketValidation(t, config.WebSocketConfig{}, nil) // no gateway maximum
 	tooMany := int(math.MaxUint32) + 2

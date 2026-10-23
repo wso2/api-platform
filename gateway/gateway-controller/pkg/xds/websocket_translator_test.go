@@ -137,6 +137,23 @@ func TestApplyUpstreamConnectionBounds_MaxConnectionsSetsCircuitBreaker(t *testi
 	assert.Equal(t, uint32(500), th.GetMaxPendingRequests().GetValue())
 }
 
+// maxPendingHandshakes overrides the pending limit, which otherwise follows
+// maxConnections; set alone, it still gets a circuit breaker.
+func TestApplyUpstreamConnectionBounds_MaxPendingOverridesDefault(t *testing.T) {
+	maxConns, maxPending := uint32(500), uint32(10)
+	c := &cluster.Cluster{Name: "c"}
+	require.NoError(t, applyUpstreamConnectionBounds(c, &models.UpstreamCluster{MaxConnections: &maxConns, MaxPendingRequests: &maxPending}))
+	th := c.GetCircuitBreakers().GetThresholds()[0]
+	assert.Equal(t, uint32(500), th.GetMaxConnections().GetValue())
+	assert.Equal(t, uint32(10), th.GetMaxPendingRequests().GetValue())
+
+	alone := &cluster.Cluster{Name: "alone"}
+	require.NoError(t, applyUpstreamConnectionBounds(alone, &models.UpstreamCluster{MaxPendingRequests: &maxPending}))
+	th = alone.GetCircuitBreakers().GetThresholds()[0]
+	assert.Nil(t, th.GetMaxConnections(), "no connection limit is invented when only the pending limit is set")
+	assert.Equal(t, uint32(10), th.GetMaxPendingRequests().GetValue())
+}
+
 func TestApplyUpstreamConnectionBounds_PoolTimeouts(t *testing.T) {
 	idle := 120 * time.Second
 	maxDuration := 30 * time.Minute

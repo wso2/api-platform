@@ -433,9 +433,9 @@ func (t *WebSocketAPITransformer) addWebSocketCluster(
 
 	limits := t.routerConfig.WebSocket.Upstream
 	var rawMaxDuration *string
-	var rawMaxConnections *int
+	var rawMaxConnections, rawMaxPending *int
 	if conn != nil {
-		rawMaxDuration, rawMaxConnections = conn.MaxConnectionDuration, conn.MaxConnections
+		rawMaxDuration, rawMaxConnections, rawMaxPending = conn.MaxConnectionDuration, conn.MaxConnections, conn.MaxPendingHandshakes
 	}
 	idleTimeout, err := resolveBoundedDuration(rawIdle,
 		orFallback(limits.IdleTimeoutDefault, fallbackWebSocketIdleTimeout), limits.IdleTimeoutMax,
@@ -454,6 +454,11 @@ func (t *WebSocketAPITransformer) addWebSocketCluster(
 	if err != nil {
 		return nil, err
 	}
+	// No gateway default or ceiling: unset leaves the pending limit at maxConnections.
+	maxPending, err := resolveBoundedConnections(rawMaxPending, 0, 0, field+".connection.maxPendingHandshakes")
+	if err != nil {
+		return nil, err
+	}
 
 	rdc.UpstreamClusters[clusterKey] = &models.UpstreamCluster{
 		Name:                  defName,
@@ -464,6 +469,7 @@ func (t *WebSocketAPITransformer) addWebSocketCluster(
 		IdleTimeout:           idleTimeout,
 		MaxConnectionDuration: maxConnectionDuration,
 		MaxConnections:        maxConnections,
+		MaxPendingRequests:    maxPending,
 	}
 
 	return &upstreamClusterResult{

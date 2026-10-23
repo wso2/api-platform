@@ -189,9 +189,11 @@ func TestWebSocketTransform_UpstreamDefinitionSettings(t *testing.T) {
 	def.Upstreams[0].Weight, def.Upstreams[1].Weight = &w1, &w2
 	def.BasePath = strPtr("/ws")
 	def.Timeout = &api.WebSocketUpstreamTimeout{Connect: strPtr("5s"), IdleTimeout: strPtr("120s")}
+	maxPending := 10
 	def.Connection = &api.WebSocketUpstreamConnection{
 		MaxConnectionDuration: strPtr("30m"),
 		MaxConnections:        &maxConns,
+		MaxPendingHandshakes:  &maxPending,
 	}
 	def.Tls = &map[string]interface{}{"identity": "chat-identity", "trustedCAs": []interface{}{"chat-ca"}}
 	stored := testWebSocketAPI(func(spec *api.WebSocketAPIConfigData) { withDefinitions(spec, def) })
@@ -210,6 +212,7 @@ func TestWebSocketTransform_UpstreamDefinitionSettings(t *testing.T) {
 	assert.Equal(t, 120*time.Second, *uc.IdleTimeout)
 	assert.Equal(t, 30*time.Minute, *uc.MaxConnectionDuration)
 	assert.Equal(t, uint32(500), *uc.MaxConnections)
+	assert.Equal(t, uint32(10), *uc.MaxPendingRequests)
 	require.NotNil(t, uc.TLS)
 	assert.True(t, uc.TLS.Enabled)
 	assert.Equal(t, "chat-identity", uc.TLS.IdentityName)
