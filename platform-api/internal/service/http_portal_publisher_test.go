@@ -245,6 +245,48 @@ func TestHTTPPortalPublisher_Unpublish_ConflictReasonFromKnownCode(t *testing.T)
 	}
 }
 
+// TestHTTPPortalPublisher_Publish_ConflictReasonForRefusedPaidPlan verifies that a publish the
+// API Portal refuses because the billing provider would not create one of the API's paid plans
+// (ERR_BILLING_CATALOG) resolves to its pre-approved reason, not the provider's raw text.
+func TestHTTPPortalPublisher_Publish_ConflictReasonForRefusedPaidPlan(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusConflict)
+		_, _ = w.Write([]byte(`{"status":"error","code":"CONFLICT","message":"ERR_BILLING_CATALOG",` +
+			`"errors":[{"message":"Moesif could not create the paid plan \"Gold\" for Weather API v1.0: Client error."}]}`))
+	}))
+	defer srv.Close()
+
+	p := newTestHTTPPortalPublisher(t, "test-shared-key")
+	portal := &model.APIPortal{URL: srv.URL}
+
+	err := p.Publish(context.Background(), portal, constants.PublicationAPITypeRestAPI, "my-api", &model.Publication{}, nil)
+	var conflict *PortalConflictError
+	if !errors.As(err, &conflict) {
+		t.Fatalf("want *PortalConflictError, got %v", err)
+	}
+	if conflict.Reason != "its paid plans can be created with the billing provider" {
+		t.Fatalf("want the curated ERR_BILLING_CATALOG reason, got %q", conflict.Reason)
+	}
+}
+
+// A publish that takes a plan off the API while it has subscriptions there (ERR_PLAN_SUB_EXIST)
+// says so, without the portal's own text.
+func TestHTTPPortalPublisher_Publish_ConflictReasonForSubscribedPlan(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusConflict)
+		_, _ = w.Write([]byte(`{"status":"error","code":"CONFLICT","message":"ERR_PLAN_SUB_EXIST",` +
+			`"errors":[{"message":"The plan Gold has 1 subscription to this API. It can be removed from the API once that subscription has ended."}]}`))
+	}))
+	defer srv.Close()
+
+	err := newTestHTTPPortalPublisher(t, "test-shared-key").Publish(context.Background(), &model.APIPortal{URL: srv.URL},
+		constants.PublicationAPITypeRestAPI, "my-api", &model.Publication{}, nil)
+	var conflict *PortalConflictError
+	if !errors.As(err, &conflict) || conflict.Reason != "the subscriptions to the plans being removed from the API have ended" {
+		t.Fatalf("want the ERR_PLAN_SUB_EXIST reason, got %v", err)
+	}
+}
+
 // TestHTTPPortalPublisher_ConflictReasonFallsBackForUnknownCode verifies a
 // portal response naming an error code outside the known allowlist — or one
 // that doesn't parse as the expected envelope at all — falls back to the
@@ -899,7 +941,7 @@ func TestHTTPPortalPublisher_AttemptLimitsByCall(t *testing.T) {
 			return p.Unpublish(context.Background(), portal, "my-api")
 		}},
 		{"plan listing", func(p *HTTPPortalPublisher, portal *model.APIPortal) error {
-			return p.CreateMissingPlans(context.Background(), portal, []*model.SubscriptionPlan{{Handle: "gold"}})
+			return syncPlansWithoutMeters(context.Background(), p, portal, []*model.SubscriptionPlan{{Handle: "gold"}}, nil)
 		}},
 	}
 	for _, tc := range lightCalls {

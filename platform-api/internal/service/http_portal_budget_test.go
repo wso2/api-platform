@@ -102,8 +102,8 @@ func TestHTTPPortalPublisher_WorstCasePublishFitsTheStatedBudget(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), limits.OverallTimeout)
 	defer cancel()
 	started := time.Now()
-	if err := p.CreateMissingPlans(ctx, portal, []*model.SubscriptionPlan{{Handle: "gold"}}); err != nil {
-		t.Fatalf("CreateMissingPlans: %v", err)
+	if err := syncPlansWithoutMeters(ctx, p, portal, []*model.SubscriptionPlan{{Handle: "gold"}}, nil); err != nil {
+		t.Fatalf("SyncPlans: %v", err)
 	}
 	if err := p.Publish(ctx, portal, constants.PublicationAPITypeRestAPI, "my-api", pub, nil); err != nil {
 		t.Fatalf("Publish: %v", err)
@@ -129,7 +129,7 @@ func TestHTTPPortalPublisher_PortalDownFailsAfterOneCall(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), limits.OverallTimeout)
 	defer cancel()
 	started := time.Now()
-	err := p.CreateMissingPlans(ctx, &model.APIPortal{URL: srv.URL}, []*model.SubscriptionPlan{{Handle: "gold"}})
+	err := syncPlansWithoutMeters(ctx, p, &model.APIPortal{URL: srv.URL}, []*model.SubscriptionPlan{{Handle: "gold"}}, nil)
 	took := time.Since(started)
 
 	if !apperror.APIPublicationPortalUnavailable.Is(portalPushError(err)) {

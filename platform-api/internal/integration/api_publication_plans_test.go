@@ -21,6 +21,7 @@ package integration
 import (
 	"context"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -31,7 +32,7 @@ import (
 )
 
 // planSyncRecorder records the order of the portal calls Publish makes, and the
-// plans and context handed to CreateMissingPlans.
+// plans and context handed to SyncPlans.
 type planSyncRecorder struct {
 	alwaysSucceedsPortalPublisher
 	events      []string
@@ -39,17 +40,29 @@ type planSyncRecorder struct {
 	deadline    time.Time
 	hasDeadline bool
 	plansErr    error
+	// created is what the sync reports it created; publishErr fails the listing push.
+	created    service.PlanSyncResult
+	publishErr error
+	undone     *service.PlanSyncResult
+	undoAlive  bool // the undo's context was still live
 }
 
-func (p *planSyncRecorder) CreateMissingPlans(ctx context.Context, _ *model.APIPortal, plans []*model.SubscriptionPlan) error {
+func (p *planSyncRecorder) SyncPlans(ctx context.Context, _ *model.APIPortal, sync service.PlanSync) (service.PlanSyncResult, error) {
 	p.events = append(p.events, "plans")
-	p.plans = plans
+	p.plans = sync.Plans
 	p.deadline, p.hasDeadline = ctx.Deadline()
-	return p.plansErr
+	return p.created, p.plansErr
 }
 
 func (p *planSyncRecorder) Publish(_ context.Context, _ *model.APIPortal, _ string, _ string, _ *model.Publication, _ *model.PublicationContent) error {
 	p.events = append(p.events, "publish")
+	return p.publishErr
+}
+
+func (p *planSyncRecorder) UndoPlanSync(ctx context.Context, _ *model.APIPortal, created service.PlanSyncResult) error {
+	p.events = append(p.events, "undo")
+	p.undone = &created
+	p.undoAlive = ctx.Err() == nil
 	return nil
 }
 
@@ -85,6 +98,46 @@ func TestPublicationPublish_CreatesMissingPlansBeforePush(t *testing.T) {
 	}
 	if !portal.hasDeadline || portal.deadline.After(before.Add(publicationTestOperationTimeout+time.Second)) {
 		t.Fatalf("[%s] want the plan step under the operation deadline, got deadline %v (set=%v)", it.driver, portal.deadline, portal.hasDeadline)
+	}
+}
+
+// A failed listing push takes back the plans and meters its publish created in the portal, with a
+// time limit of its own, since the push may have failed because the publish's time ran out.
+func TestPublicationPublish_FailedPushRemovesWhatThePublishCreated(t *testing.T) {
+	for name, pushErr := range map[string]error{"rejected": &service.PortalConflictError{Message: "rejected"}, "timed out": context.DeadlineExceeded} {
+		it := openITDB(t)
+		g := seedOrgGraph(t, it)
+		created := service.PlanSyncResult{Plans: []string{planHandleFor(g)}, Meters: []string{"calls"}}
+		portal := &planSyncRecorder{created: created, publishErr: pushErr}
+		svc := newPublicationTestServiceWith(it, portal)
+		saveDraftWithPlans(t, it, svc, g, []string{planHandleFor(g)})
+
+		ctx, cancel := context.WithCancel(context.Background())
+		if name == "timed out" {
+			cancel() // the publish's own time is up when the undo runs
+		}
+		if _, _, err := svc.Publish(ctx, "rest-api", apiHandleFor(g), portalHandleFor(g), g.org, "publisher"); err == nil {
+			t.Fatalf("[%s] %s: want the push's failure", it.driver, name)
+		}
+		cancel()
+		if !reflect.DeepEqual(portal.events, []string{"plans", "publish", "undo"}) || portal.undone == nil ||
+			!reflect.DeepEqual(*portal.undone, created) || !portal.undoAlive {
+			t.Fatalf("[%s] %s: events %v, undone %+v (live %v), want what the sync created removed", it.driver, name,
+				portal.events, portal.undone, portal.undoAlive)
+		}
+		it.db.Close()
+	}
+
+	// A push that succeeds keeps them; a sync that created nothing has nothing to undo.
+	it := openITDB(t)
+	defer it.db.Close()
+	g := seedOrgGraph(t, it)
+	portal := &planSyncRecorder{created: service.PlanSyncResult{Plans: []string{planHandleFor(g)}}}
+	svc := newPublicationTestServiceWith(it, portal)
+	saveDraftWithPlans(t, it, svc, g, []string{planHandleFor(g)})
+	if _, _, err := svc.Publish(context.Background(), "rest-api", apiHandleFor(g), portalHandleFor(g), g.org, "publisher"); err != nil ||
+		portal.undone != nil {
+		t.Fatalf("[%s] a successful push: %v, undone %+v", it.driver, err, portal.undone)
 	}
 }
 

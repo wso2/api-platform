@@ -23,8 +23,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math/big"
 	"net/http"
 	"slices"
+	"strconv"
+	"strings"
 
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/model"
@@ -42,12 +45,19 @@ const (
 
 // portalPlanList is the part of the portal's plan listing this package reads.
 type portalPlanList struct {
-	List []struct {
-		ID string `json:"id"`
-	} `json:"list"`
+	List       []portalListedPlan `json:"list"`
 	Pagination struct {
 		Total int `json:"total"`
 	} `json:"pagination"`
+}
+
+// portalListedPlan is one plan of the portal's listing: what a publish compares with the plan
+// it offers. Pricing is absent for a free plan.
+type portalListedPlan struct {
+	ID          string              `json:"id"`
+	DisplayName string              `json:"displayName"`
+	Limits      []portalPlanLimit   `json:"limits"`
+	Pricing     *planPricingRequest `json:"pricing"`
 }
 
 // portalPlan is one entry of the portal's bulk plan create.
@@ -56,6 +66,18 @@ type portalPlan struct {
 	RefID       string            `json:"refId"`
 	DisplayName string            `json:"displayName"`
 	Limits      []portalPlanLimit `json:"limits,omitempty"`
+	// Pricing is set for a paid plan: the portal saves the plan and its pricing together, or
+	// neither.
+	Pricing *planPricingRequest `json:"pricing,omitempty"`
+}
+
+// portalPlanUpdate is one entry of the portal's bulk plan update. It carries no pricing, which
+// the portal refuses for a plan that exists, and always carries limits, since the portal keeps a
+// plan's limits when the field is absent.
+type portalPlanUpdate struct {
+	ID          string            `json:"id"`
+	DisplayName string            `json:"displayName"`
+	Limits      []portalPlanLimit `json:"limits"`
 }
 
 type portalPlanLimit struct {
@@ -65,46 +87,87 @@ type portalPlanLimit struct {
 	TimeAmount int    `json:"timeAmount"`
 }
 
-// CreateMissingPlans implements PortalPublisher: it creates, in one bulk
-// request, the plans whose handle the portal does not list.
-func (p *HTTPPortalPublisher) CreateMissingPlans(ctx context.Context, portal *model.APIPortal, plans []*model.SubscriptionPlan) error {
-	if len(plans) == 0 {
-		return nil
+// SyncPlans implements PortalPublisher, in this order:
+//  1. lists the portal's plans, and refuses when a copy is priced differently;
+//  2. checks the portal's copies of the meters the missing plans charge for;
+//  3. creates the missing meters, one by one;
+//  4. creates the missing plans in one bulk request, each paid one with its pricing;
+//  5. updates the copies whose name or limit differs, in another bulk request.
+//
+// When a write fails, what was created before it is removed again (undoAfter).
+func (p *HTTPPortalPublisher) SyncPlans(ctx context.Context, portal *model.APIPortal, sync PlanSync) (PlanSyncResult, error) {
+	var created PlanSyncResult
+	if len(sync.Plans) == 0 {
+		return created, nil
 	}
-	missing, err := p.findMissingPlans(ctx, portal, plans)
+	listed, err := p.findPortalPlans(ctx, portal, sync.Plans)
 	if err != nil {
-		return err
+		return created, err
 	}
-	if len(missing) == 0 {
-		return nil
+	var missing, changed []*model.SubscriptionPlan
+	for _, plan := range sync.Plans {
+		portalCopy, ok := listed[plan.Handle]
+		switch {
+		case !ok:
+			missing = append(missing, plan)
+		case !samePricing(sync.Pricing[plan.UUID], portalCopy.Pricing):
+			return created, &PortalPlanPricingConflictError{Handle: plan.Handle}
+		case strings.TrimSpace(portalCopy.DisplayName) != strings.TrimSpace(plan.Name) ||
+			!sameLimits(portalLimits(plan), portalCopy.Limits):
+			changed = append(changed, plan)
+		}
 	}
-	return p.createPlans(ctx, portal, missing)
+	meters, err := p.missingMeters(ctx, portal, pricedMeters(missing, sync))
+	if err != nil {
+		return created, err
+	}
+	for _, meter := range meters {
+		if err := p.createMeter(ctx, portal, meter); err != nil {
+			return PlanSyncResult{}, p.undoAfter(ctx, portal, created, err)
+		}
+		created.Meters = append(created.Meters, meter.Handle)
+	}
+	if len(missing) > 0 {
+		if err := p.createPlans(ctx, portal, missing, sync.Pricing); err != nil {
+			return PlanSyncResult{}, p.undoAfter(ctx, portal, created, err)
+		}
+		for _, plan := range missing {
+			created.Plans = append(created.Plans, plan.Handle)
+		}
+	}
+	if len(changed) > 0 {
+		if err := p.updatePlans(ctx, portal, changed, sync.Pricing); err != nil {
+			return PlanSyncResult{}, p.undoAfter(ctx, portal, created, err)
+		}
+	}
+	return created, nil
 }
 
-// findMissingPlans pages through the portal's plans and returns those of plans
-// it does not list, in input order. It stops once every plan has been seen or
-// the listing ends.
-func (p *HTTPPortalPublisher) findMissingPlans(ctx context.Context, portal *model.APIPortal, plans []*model.SubscriptionPlan) ([]*model.SubscriptionPlan, error) {
+// findPortalPlans pages through the portal's plans and returns its copies of plans, by handle. It
+// stops once every plan has been seen or the listing ends.
+func (p *HTTPPortalPublisher) findPortalPlans(ctx context.Context, portal *model.APIPortal, plans []*model.SubscriptionPlan) (map[string]*portalListedPlan, error) {
 	ctx, cancel := context.WithTimeout(ctx, p.plansListingTimeout)
 	defer cancel()
 
-	missing := slices.Clone(plans)
+	wanted := make(map[string]struct{}, len(plans))
+	for _, plan := range plans {
+		wanted[plan.Handle] = struct{}{}
+	}
+	found := make(map[string]*portalListedPlan, len(plans))
 	for page := 0; page < portalPlansMaxPages; page++ {
 		offset := page * portalPlansPageSize
 		list, err := p.listPlansPage(ctx, portal, offset)
 		if err != nil {
 			return nil, err
 		}
-		listed := make(map[string]struct{}, len(list.List))
-		for _, item := range list.List {
-			listed[item.ID] = struct{}{}
+		for i := range list.List {
+			item := &list.List[i]
+			if _, ok := wanted[item.ID]; ok {
+				found[item.ID] = item
+			}
 		}
-		missing = slices.DeleteFunc(missing, func(plan *model.SubscriptionPlan) bool {
-			_, ok := listed[plan.Handle]
-			return ok
-		})
-		if len(missing) == 0 || len(list.List) == 0 || offset+len(list.List) >= list.Pagination.Total {
-			return missing, nil
+		if len(found) == len(wanted) || len(list.List) == 0 || offset+len(list.List) >= list.Pagination.Total {
+			return found, nil
 		}
 	}
 	return nil, fmt.Errorf("portal plan listing exceeds %d pages", portalPlansMaxPages)
@@ -146,10 +209,10 @@ func (p *HTTPPortalPublisher) listPlansPage(ctx context.Context, portal *model.A
 }
 
 // createPlans sends one bulk create. The portal applies it all or nothing.
-func (p *HTTPPortalPublisher) createPlans(ctx context.Context, portal *model.APIPortal, plans []*model.SubscriptionPlan) error {
+func (p *HTTPPortalPublisher) createPlans(ctx context.Context, portal *model.APIPortal, plans []*model.SubscriptionPlan, pricing map[string]*model.SubscriptionPlanPricing) error {
 	payload := make([]portalPlan, 0, len(plans))
 	for _, plan := range plans {
-		payload = append(payload, toPortalPlan(plan))
+		payload = append(payload, toPortalPlan(plan, pricing[plan.UUID]))
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {
@@ -186,17 +249,181 @@ func (p *HTTPPortalPublisher) createPlans(ctx context.Context, portal *model.API
 	}
 }
 
+// updatePlans sends one bulk update of the plans' names and limits, which the portal applies all
+// or nothing. If a copy was deleted in the portal since the listing, the portal's update creates it
+// again (201), without pricing. That is fine for a free plan, but a paid plan would become a free
+// copy, so it is reported as a pricing conflict.
+func (p *HTTPPortalPublisher) updatePlans(ctx context.Context, portal *model.APIPortal, plans []*model.SubscriptionPlan, pricing map[string]*model.SubscriptionPlanPricing) error {
+	payload := make([]portalPlanUpdate, 0, len(plans))
+	for _, plan := range plans {
+		payload = append(payload, portalPlanUpdate{ID: plan.Handle, DisplayName: plan.Name, Limits: portalLimits(plan)})
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("failed to encode portal subscription plan updates: %w", err)
+	}
+
+	authHeader, err := p.authHeader(ctx, portal)
+	if err != nil {
+		return err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, plansURL(portal), bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("failed to build portal plan update request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", authHeader)
+
+	resp, err := p.client.Do(req)
+	if err != nil {
+		return fmt.Errorf("portal plan update failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	switch {
+	case resp.StatusCode == http.StatusOK:
+		return nil
+	case resp.StatusCode == http.StatusCreated:
+		for _, plan := range plans {
+			if pricing[plan.UUID] != nil {
+				return &PortalPlanPricingConflictError{Handle: plan.Handle}
+			}
+		}
+		return nil
+	case isPortalAuthFailure(resp.StatusCode):
+		return portalAuthError(resp.StatusCode)
+	case isPortalRejection(resp.StatusCode):
+		return portalRejection(resp, "the API Portal rejected the subscription plan updates")
+	default:
+		return fmt.Errorf("portal plan update failed: unexpected status %d", resp.StatusCode)
+	}
+}
+
 // toPortalPlan maps a plan to the portal's shape. A plan without a throttle
-// limit is sent with no limits, which the portal treats as unlimited.
-func toPortalPlan(plan *model.SubscriptionPlan) portalPlan {
-	out := portalPlan{ID: plan.Handle, RefID: plan.UUID, DisplayName: plan.Name}
-	if plan.ThrottleLimitCount != nil {
-		out.Limits = []portalPlanLimit{{
-			LimitType:  constants.LimitTypeRequestCount,
-			LimitCount: *plan.ThrottleLimitCount,
-			TimeUnit:   plan.ThrottleLimitUnit,
-			TimeAmount: 1,
-		}}
+// limit is sent with no limits, which the portal treats as unlimited. The
+// reference is the handle: the portal names a plan by its reference in the
+// subscription and subscription_plan events it sends back, and those are
+// resolved here by handle. pricing is nil for a free plan.
+func toPortalPlan(plan *model.SubscriptionPlan, pricing *model.SubscriptionPlanPricing) portalPlan {
+	out := portalPlan{ID: plan.Handle, RefID: plan.Handle, DisplayName: plan.Name}
+	if pricing != nil {
+		out.Pricing = portalPricing(pricing)
+	}
+	if limits := portalLimits(plan); len(limits) > 0 {
+		out.Limits = limits
 	}
 	return out
+}
+
+// portalLimits is a plan's request limit in the portal's shape, empty when the plan has none.
+func portalLimits(plan *model.SubscriptionPlan) []portalPlanLimit {
+	if plan.ThrottleLimitCount == nil {
+		return []portalPlanLimit{}
+	}
+	return []portalPlanLimit{{
+		LimitType:  constants.LimitTypeRequestCount,
+		LimitCount: *plan.ThrottleLimitCount,
+		TimeUnit:   plan.ThrottleLimitUnit,
+		TimeAmount: 1,
+	}}
+}
+
+// sameLimits reports whether a portal copy's limits are want, ignoring order and the case of
+// the codes.
+func sameLimits(want, got []portalPlanLimit) bool {
+	if len(want) != len(got) {
+		return false
+	}
+	key := func(l portalPlanLimit) string {
+		return fmt.Sprintf("%s|%d|%s|%d", strings.ToUpper(l.LimitType), l.LimitCount, strings.ToUpper(l.TimeUnit), l.TimeAmount)
+	}
+	keys := make(map[string]int, len(want))
+	for _, l := range want {
+		keys[key(l)]++
+	}
+	for _, l := range got {
+		k := key(l)
+		if keys[k] == 0 {
+			return false
+		}
+		keys[k]--
+	}
+	return true
+}
+
+// samePricing reports whether a portal copy's pricing is the plan's own. Both are reduced to the
+// same form: codes upper-cased, amounts compared as numbers, filter values and prices in a fixed
+// order (the portal lists prices by name, not in the order they were sent), and an absent list
+// equal to an empty one.
+func samePricing(plan *model.SubscriptionPlanPricing, portalCopy *planPricingRequest) bool {
+	if plan == nil || portalCopy == nil {
+		return plan == nil && portalCopy == nil
+	}
+	return pricingKey(portalPricing(plan)) == pricingKey(portalCopy)
+}
+
+func pricingKey(p *planPricingRequest) string {
+	prices := make([]string, 0, len(p.Prices))
+	for _, price := range p.Prices {
+		filters := make([]string, 0, len(price.Filters))
+		for _, f := range price.Filters {
+			field := strings.ToUpper(strings.TrimSpace(f.Field))
+			values := make([]string, 0, len(f.Values))
+			for _, v := range f.Values {
+				values = append(values, filterValueKey(field, v))
+			}
+			slices.Sort(values)
+			filters = append(filters, fmt.Sprintf("%s|%s|%s|%q",
+				field, strings.TrimSpace(f.EventKey), strings.ToUpper(strings.TrimSpace(f.Operator)), slices.Compact(values)))
+		}
+		slices.Sort(filters)
+		tiers := make([]string, 0, len(price.Tiers))
+		for _, t := range price.Tiers {
+			tiers = append(tiers, fmt.Sprintf("%s|%s|%s", optionalInt(t.UpTo), amountKey(t.UnitAmount), amountKey(t.FlatAmount)))
+		}
+		pricingModel := strings.ToUpper(price.PricingModel)
+		quantity := price.UnitQuantity
+		if quantity == nil && pricingModel == model.PricingModelPerUnit {
+			// The portal stores a per-unit price without a quantity as per 1 unit.
+			one := int64(1)
+			quantity = &one
+		}
+		prices = append(prices, fmt.Sprintf("%s|%s|%s|%s|%q|%q", price.MeterID, pricingModel,
+			amountKey(price.UnitAmount), optionalInt(quantity), filters, tiers))
+	}
+	slices.Sort(prices)
+	return fmt.Sprintf("%s|%s|%s|%s|%q", strings.ToUpper(p.PricingType), strings.ToUpper(p.Currency),
+		strings.ToUpper(p.BillingPeriod), amountKey(p.FlatAmount), prices)
+}
+
+// filterValueKey is a filter value as the API Portal stores it: trimmed, an HTTP method upper-cased
+// and a Token number compared as a number. The portal also drops repeated values.
+func filterValueKey(field, value string) string {
+	value = strings.TrimSpace(value)
+	switch field {
+	case "HTTP_METHOD":
+		return strings.ToUpper(value)
+	case model.FilterFieldToken:
+		return amountKey(&value)
+	}
+	return value
+}
+
+// amountKey is an amount in a form that does not depend on how it was written ("20", "20.00").
+func amountKey(amount *string) string {
+	if amount == nil {
+		return ""
+	}
+	if r, ok := new(big.Rat).SetString(strings.TrimSpace(*amount)); ok {
+		return r.RatString()
+	}
+	return *amount
+}
+
+func optionalInt(v *int64) string {
+	if v == nil {
+		return ""
+	}
+	return strconv.FormatInt(*v, 10)
 }

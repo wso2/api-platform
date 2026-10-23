@@ -88,8 +88,10 @@ type portalErrorEnvelope struct {
 // phrase. Raw portal error text is never forwarded to the client
 // (error-handling.md); any other code falls back to defaultPortalConflictReason.
 var knownPortalConflictReasons = map[string]string{
-	"ERR_SUB_EXIST": "active subscriptions are removed",
-	"ERR_KEY_EXIST": "active API keys are removed",
+	"ERR_SUB_EXIST":       "active subscriptions are removed",
+	"ERR_KEY_EXIST":       "active API keys are removed",
+	"ERR_BILLING_CATALOG": "its paid plans can be created with the billing provider",
+	"ERR_PLAN_SUB_EXIST":  "the subscriptions to the plans being removed from the API have ended",
 }
 
 // defaultPortalConflictReason is the fallback for any portal response that
