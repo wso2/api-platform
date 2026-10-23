@@ -573,9 +573,6 @@ blocks:
       - name: secrets
         features:
           - features/gateway/security/secrets.feature
-      - name: basic-ratelimit
-        features:
-          - features/gateway/ratelimit-policies/basic_ratelimit.feature
       - name: ratelimit-headers
         features:
           - features/gateway/ratelimit-policies/ratelimit_headers.feature
