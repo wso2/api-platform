@@ -241,6 +241,23 @@ func assertPublishRejectedWithoutPromotion(t *testing.T, r http.Handler, db *dat
 	}
 }
 
+// assertDefinitionFieldError checks that a rejected publish names the definition as the
+// field at fault, which is how the console tells it from a problem elsewhere.
+func assertDefinitionFieldError(t *testing.T, body []byte) {
+	t.Helper()
+	var resp struct {
+		Errors []struct {
+			Field string `json:"field"`
+		} `json:"errors"`
+	}
+	if err := json.Unmarshal(body, &resp); err != nil {
+		t.Fatalf("response is not JSON: %v: %s", err, body)
+	}
+	if len(resp.Errors) != 1 || resp.Errors[0].Field != "definition" {
+		t.Fatalf("want one field error naming %q, got %s", "definition", body)
+	}
+}
+
 // TestPublicationHandler_Publish_RejectsInvalidDefinition verifies that
 // Publish is the actual enforcement point for definition validity:
 // SaveDraftDefinition accepts a malformed or empty REST definition (a draft
@@ -272,6 +289,7 @@ func TestPublicationHandler_Publish_RejectsInvalidDefinition(t *testing.T) {
 			if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "PUBLICATION_VALIDATION_FAILED") {
 				t.Fatalf("POST publish with a %s definition: want 400 PUBLICATION_VALIDATION_FAILED, got %d: %s", tt.name, w.Code, w.Body.String())
 			}
+			assertDefinitionFieldError(t, w.Body.Bytes())
 			assertPublishRejectedWithoutPromotion(t, r, db)
 		})
 	}
@@ -293,5 +311,6 @@ func TestPublicationHandler_Publish_RejectsMissingDefinition(t *testing.T) {
 	if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "PUBLICATION_VALIDATION_FAILED") {
 		t.Fatalf("POST publish with no definition: want 400 PUBLICATION_VALIDATION_FAILED, got %d: %s", w.Code, w.Body.String())
 	}
+	assertDefinitionFieldError(t, w.Body.Bytes())
 	assertPublishRejectedWithoutPromotion(t, r, db)
 }
