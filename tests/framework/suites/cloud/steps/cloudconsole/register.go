@@ -134,6 +134,7 @@ func Register(sc *godog.ScenarioContext, topo *frameworkruntime.Topology, funnel
 	s.registerResilienceSteps(sc)
 	s.registerSecretSteps(sc)
 	s.registerAIWorkspaceSteps(sc)
+	s.registerProjectSteps(sc)
 
 	sc.Step(`^I create a synthetic APIP project$`, s.createProject)
 	sc.Step(`^the synthetic APIP project should be retrievable by handle$`, s.getProject)
