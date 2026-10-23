@@ -211,6 +211,8 @@ document.addEventListener("DOMContentLoaded", function () {
         const mcpLink = document.getElementById('mcps');
         const keysSubmenu = document.getElementById('keys-submenu');
         const keysLink = document.getElementById('keys');
+        const billingSubmenu = document.getElementById('billing-submenu');
+        const billingLink = document.getElementById('billing');
 
         // Function to extract base path from links in the sidebar
         const extractBasePath = () => {
@@ -323,6 +325,13 @@ document.addEventListener("DOMContentLoaded", function () {
             mcpLink?.classList.remove('has-active-submenu');
         } else if (firstSegment === 'subscriptions') {
             document.getElementById('subscriptions')?.classList.add('active');
+        } else if (firstSegment === 'billing' || firstSegment === 'usage') {
+            // The Invoices page (/billing/invoices) and the Usage page (/usage) are both under the
+            // Billing menu: open the menu and highlight the current page in it.
+            billingSubmenu?.classList.add('show');
+            billingLink?.classList.add('active');
+            billingLink?.classList.add('has-active-submenu');
+            document.getElementById(firstSegment === 'usage' ? 'usage' : 'billing-invoices')?.classList.add('active');
         } else if (firstSegment === 'settings' || currentPath.includes('/settings')) {
             document.getElementById('admin-settings')?.classList.add('active');
         }

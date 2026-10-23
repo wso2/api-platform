@@ -863,3 +863,281 @@ CREATE TABLE dbo.webhook_subscribers (
 );
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'uq_webhook_subscriber_org_handle' AND object_id = OBJECT_ID(N'dbo.webhook_subscribers'))
 CREATE UNIQUE INDEX uq_webhook_subscriber_org_handle ON dbo.webhook_subscribers(org_uuid, handle, portal_id);
+
+-- Meters (monetization): what a paid plan charges for.
+--   - type REQUEST_COUNT counts requests; type TOKENS adds up a number from each request's event,
+--     read at type_key (such as metadata.aiTokenUsage.promptTokens; null for REQUEST_COUNT).
+--   - filter_fields lists the fields the prices on this meter may filter on, each with the event
+--     key it is read from (a JSON array of { "field", "eventKey" }; empty for none).
+-- A meter has no filters of its own: each price picks the requests it counts with its own filters
+-- (subscription_plan_pricing_usage.filters).
+IF OBJECT_ID(N'dbo.meters', N'U') IS NULL
+CREATE TABLE dbo.meters (
+    uuid VARCHAR(40) NOT NULL,
+    org_uuid VARCHAR(40) NOT NULL,
+    portal_id VARCHAR(255) NOT NULL DEFAULT 'portal_id',
+    handle VARCHAR(40) NOT NULL,
+    display_name NVARCHAR(255) NOT NULL,
+    description NVARCHAR(1023),
+    type VARCHAR(20) NOT NULL,
+    type_key NVARCHAR(255),
+    filter_fields VARBINARY(MAX) NOT NULL,
+    created_by VARCHAR(255) NOT NULL,
+    created_at DATETIME2(7) NOT NULL DEFAULT SYSUTCDATETIME(),
+    updated_by VARCHAR(255) NOT NULL,
+    updated_at DATETIME2(7) NOT NULL DEFAULT SYSUTCDATETIME(),
+    PRIMARY KEY (portal_id, uuid),
+    FOREIGN KEY (portal_id, org_uuid) REFERENCES organizations(portal_id, uuid) ON DELETE NO ACTION
+);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'uq_meter_org_handle' AND object_id = OBJECT_ID(N'dbo.meters'))
+CREATE UNIQUE INDEX uq_meter_org_handle ON dbo.meters(org_uuid, handle, portal_id);
+
+-- Plan pricing (monetization): one row per paid subscription plan; a plan with no row here is free.
+--   - pricing_type FLAT_RATE: flat_amount is charged every billing period.
+--   - pricing_type USAGE_BASED: the plan's prices are in subscription_plan_pricing_usage.
+-- Amounts are decimal strings, never floats, so a price is stored exactly as the administrator
+-- typed it.
+IF OBJECT_ID(N'dbo.subscription_plan_pricing', N'U') IS NULL
+CREATE TABLE dbo.subscription_plan_pricing (
+    subscription_plan_uuid VARCHAR(40) NOT NULL,
+    org_uuid VARCHAR(40) NOT NULL,
+    portal_id VARCHAR(255) NOT NULL DEFAULT 'portal_id',
+    pricing_type VARCHAR(20) NOT NULL,
+    currency VARCHAR(3) NOT NULL,
+    billing_period VARCHAR(20) NOT NULL DEFAULT 'MONTH',
+    flat_amount VARCHAR(40),
+    created_by VARCHAR(255) NOT NULL,
+    created_at DATETIME2(7) NOT NULL DEFAULT SYSUTCDATETIME(),
+    updated_by VARCHAR(255) NOT NULL,
+    updated_at DATETIME2(7) NOT NULL DEFAULT SYSUTCDATETIME(),
+    PRIMARY KEY (portal_id, subscription_plan_uuid),
+    FOREIGN KEY (portal_id, subscription_plan_uuid) REFERENCES subscription_plans(portal_id, uuid) ON DELETE CASCADE,
+    FOREIGN KEY (portal_id, org_uuid) REFERENCES organizations(portal_id, uuid) ON DELETE NO ACTION
+);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_subscription_plan_pricing_org' AND object_id = OBJECT_ID(N'dbo.subscription_plan_pricing'))
+CREATE INDEX idx_subscription_plan_pricing_org ON dbo.subscription_plan_pricing(org_uuid, portal_id);
+
+-- Plan prices (monetization): the prices of a usage based plan. Each price charges for what its
+-- meter counts (meter_uuid), narrowed by its filters (a JSON array of { field, operator, values };
+-- empty for none), in one pricing model:
+--   - PER_UNIT: unit_amount per unit_quantity units;
+--   - VOLUME or GRADUATED: tiers, a JSON array of price tiers.
+-- A meter may be priced more than once in a plan, and a meter that a price uses cannot be deleted.
+-- A price has no name of its own: it is shown as its meter's name and its filters, and prices are
+-- listed by that name (no order is stored). Prices are set when the plan is created and never
+-- change; deleting the plan deletes its prices.
+IF OBJECT_ID(N'dbo.subscription_plan_pricing_usage', N'U') IS NULL
+CREATE TABLE dbo.subscription_plan_pricing_usage (
+    uuid VARCHAR(40) NOT NULL,
+    subscription_plan_uuid VARCHAR(40) NOT NULL,
+    org_uuid VARCHAR(40) NOT NULL,
+    portal_id VARCHAR(255) NOT NULL DEFAULT 'portal_id',
+    meter_uuid VARCHAR(40) NOT NULL,
+    filters VARBINARY(MAX) NOT NULL,
+    pricing_model VARCHAR(20) NOT NULL,
+    unit_amount VARCHAR(40),
+    unit_quantity BIGINT,
+    tiers VARBINARY(MAX),
+    created_at DATETIME2(7) NOT NULL DEFAULT SYSUTCDATETIME(),
+    updated_at DATETIME2(7) NOT NULL DEFAULT SYSUTCDATETIME(),
+    PRIMARY KEY (portal_id, uuid),
+    FOREIGN KEY (portal_id, subscription_plan_uuid) REFERENCES subscription_plan_pricing(portal_id, subscription_plan_uuid) ON DELETE CASCADE,
+    FOREIGN KEY (portal_id, meter_uuid) REFERENCES meters(portal_id, uuid) ON DELETE NO ACTION,
+    FOREIGN KEY (portal_id, org_uuid) REFERENCES organizations(portal_id, uuid) ON DELETE NO ACTION
+);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_subscription_plan_pricing_usage_org' AND object_id = OBJECT_ID(N'dbo.subscription_plan_pricing_usage'))
+CREATE INDEX idx_subscription_plan_pricing_usage_org ON dbo.subscription_plan_pricing_usage(org_uuid, portal_id);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_subscription_plan_pricing_usage_plan' AND object_id = OBJECT_ID(N'dbo.subscription_plan_pricing_usage'))
+CREATE INDEX idx_subscription_plan_pricing_usage_plan ON dbo.subscription_plan_pricing_usage(subscription_plan_uuid, portal_id);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_subscription_plan_pricing_usage_meter' AND object_id = OBJECT_ID(N'dbo.subscription_plan_pricing_usage'))
+CREATE INDEX idx_subscription_plan_pricing_usage_meter ON dbo.subscription_plan_pricing_usage(meter_uuid, portal_id);
+
+
+-- Billing configuration (monetization): how one organization's portal sells paid plans. One per
+-- organization.
+--   - provider is the billing engine (MOESIF: Moesif meters usage and keeps the billing catalog).
+--   - payment_provider is the payment provider the engine bills through (STRIPE: customers,
+--     subscriptions, invoices and payments).
+--   - The other columns are the settings of those two, and last_event_at is when Stripe last sent
+--     the portal an event.
+-- The Moesif Collector Application Id, the keys and the webhook signing secret are encrypted with
+-- security.encryption_key (AES-256-GCM) and never stored in plain text. The Stripe publishable key
+-- is public (the browser starts Stripe's checkout with it), so it is stored as is; Stripe's test or
+-- live mode is read from it.
+-- Removing billing takes out only what setup created and leaves what was there before, so setup
+-- records it: moesif_stripe_connected_by_portal is set when setup connected Moesif to Stripe, and
+-- moesif_webhook_endpoint_id only when setup created Moesif's endpoint in Stripe.
+IF OBJECT_ID(N'dbo.billing_configurations', N'U') IS NULL
+CREATE TABLE dbo.billing_configurations (
+    uuid VARCHAR(40) NOT NULL,
+    org_uuid VARCHAR(40) NOT NULL,
+    portal_id VARCHAR(255) NOT NULL DEFAULT 'portal_id',
+    provider VARCHAR(20) NOT NULL DEFAULT 'MOESIF',
+    payment_provider VARCHAR(20) NOT NULL DEFAULT 'STRIPE',
+    moesif_collector_application_id_enc VARBINARY(MAX) NOT NULL,
+    moesif_management_key_enc VARBINARY(MAX) NOT NULL,
+    stripe_api_key_enc VARBINARY(MAX) NOT NULL,
+    stripe_publishable_key VARCHAR(255) NOT NULL,
+    stripe_webhook_endpoint_id VARCHAR(255),
+    stripe_webhook_secret_enc VARBINARY(MAX),
+    -- The public address the portal's Stripe webhook endpoint is under: server.base_url, or the
+    -- one the administrator chose.
+    stripe_webhook_base_url VARCHAR(1023),
+    moesif_webhook_endpoint_id VARCHAR(255),
+    moesif_stripe_connected_by_portal SMALLINT NOT NULL DEFAULT 0,
+    last_event_at DATETIME2(7),
+    created_by VARCHAR(255) NOT NULL,
+    created_at DATETIME2(7) NOT NULL DEFAULT SYSUTCDATETIME(),
+    updated_by VARCHAR(255) NOT NULL,
+    updated_at DATETIME2(7) NOT NULL DEFAULT SYSUTCDATETIME(),
+    PRIMARY KEY (portal_id, uuid),
+    FOREIGN KEY (portal_id, org_uuid) REFERENCES organizations(portal_id, uuid) ON DELETE NO ACTION
+);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'uq_billing_configuration_org' AND object_id = OBJECT_ID(N'dbo.billing_configurations'))
+CREATE UNIQUE INDEX uq_billing_configuration_org ON dbo.billing_configurations(org_uuid, portal_id);
+
+-- Billing API plans (monetization): one paid plan as sold on one API, under one billing
+-- configuration. What the portal created for it with the billing engine is in
+-- billing_api_plan_items (with Moesif, which syncs it to the payment provider).
+-- A row is written only once everything for it exists with the billing engine, by the request that
+-- offers the plan on the API (publishing or updating the API, or setting up billing). If any part
+-- fails, what the request created is removed again and the request fails, so no API plan is left
+-- half made. Deleting the API or the plan, or removing billing, deletes the matching API plans;
+-- what was created in Moesif stays there.
+IF OBJECT_ID(N'dbo.billing_api_plans', N'U') IS NULL
+CREATE TABLE dbo.billing_api_plans (
+    uuid VARCHAR(40) NOT NULL,
+    org_uuid VARCHAR(40) NOT NULL,
+    portal_id VARCHAR(255) NOT NULL DEFAULT 'portal_id',
+    configuration_uuid VARCHAR(40) NOT NULL,
+    api_uuid VARCHAR(40) NOT NULL,
+    plan_uuid VARCHAR(40) NOT NULL,
+    created_at DATETIME2(7) NOT NULL DEFAULT SYSUTCDATETIME(),
+    updated_at DATETIME2(7) NOT NULL DEFAULT SYSUTCDATETIME(),
+    PRIMARY KEY (portal_id, uuid),
+    FOREIGN KEY (portal_id, configuration_uuid) REFERENCES billing_configurations(portal_id, uuid) ON DELETE CASCADE,
+    FOREIGN KEY (portal_id, api_uuid) REFERENCES api_metadata(portal_id, uuid) ON DELETE CASCADE,
+    FOREIGN KEY (portal_id, plan_uuid) REFERENCES subscription_plans(portal_id, uuid) ON DELETE CASCADE,
+    FOREIGN KEY (portal_id, org_uuid) REFERENCES organizations(portal_id, uuid) ON DELETE NO ACTION
+);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_billing_api_plan_org' AND object_id = OBJECT_ID(N'dbo.billing_api_plans'))
+CREATE INDEX idx_billing_api_plan_org ON dbo.billing_api_plans(org_uuid, portal_id);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'uq_billing_api_plan' AND object_id = OBJECT_ID(N'dbo.billing_api_plans'))
+CREATE UNIQUE INDEX uq_billing_api_plan ON dbo.billing_api_plans(configuration_uuid, api_uuid, plan_uuid, portal_id);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_billing_api_plan_plan' AND object_id = OBJECT_ID(N'dbo.billing_api_plans'))
+CREATE INDEX idx_billing_api_plan_plan ON dbo.billing_api_plans(plan_uuid, portal_id);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_billing_api_plan_api' AND object_id = OBJECT_ID(N'dbo.billing_api_plans'))
+CREATE INDEX idx_billing_api_plan_api ON dbo.billing_api_plans(api_uuid, portal_id);
+
+-- Billing API plan items (monetization): what the billing engine holds for one billing API plan:
+-- one item for a flat rate plan's fee (price_uuid null), or one per usage price. price_ref is the
+-- payment provider's price, and each item becomes one item of the subscriber's subscription
+-- there. With Moesif, each item is a Moesif plan with one price, and a usage price's item also has
+-- a Moesif billing meter, which counts the price's requests and reports them to the payment
+-- provider. Written with its API plan, in the same transaction, and never changed afterwards.
+IF OBJECT_ID(N'dbo.billing_api_plan_items', N'U') IS NULL
+CREATE TABLE dbo.billing_api_plan_items (
+    uuid VARCHAR(40) NOT NULL,
+    api_plan_uuid VARCHAR(40) NOT NULL,
+    org_uuid VARCHAR(40) NOT NULL,
+    portal_id VARCHAR(255) NOT NULL DEFAULT 'portal_id',
+    price_uuid VARCHAR(40),
+    price_ref VARCHAR(255) NOT NULL,
+    created_at DATETIME2(7) NOT NULL DEFAULT SYSUTCDATETIME(),
+    PRIMARY KEY (portal_id, uuid),
+    FOREIGN KEY (portal_id, api_plan_uuid) REFERENCES billing_api_plans(portal_id, uuid) ON DELETE CASCADE,
+    FOREIGN KEY (portal_id, org_uuid) REFERENCES organizations(portal_id, uuid) ON DELETE NO ACTION
+);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_billing_api_plan_item_org' AND object_id = OBJECT_ID(N'dbo.billing_api_plan_items'))
+CREATE INDEX idx_billing_api_plan_item_org ON dbo.billing_api_plan_items(org_uuid, portal_id);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_billing_api_plan_item_api_plan' AND object_id = OBJECT_ID(N'dbo.billing_api_plan_items'))
+CREATE INDEX idx_billing_api_plan_item_api_plan ON dbo.billing_api_plan_items(api_plan_uuid, portal_id);
+
+-- Billing customers (monetization): the payment provider's customer for a portal user, one per
+-- user per billing configuration, created at the user's first paid checkout (customer_ref is the
+-- provider's id). With Moesif, customer_ref is also the user's Moesif company id: the gateway sends
+-- it with each request event (metadata.billingCustomerId), and Moesif's billing meters count usage
+-- by it.
+IF OBJECT_ID(N'dbo.billing_customers', N'U') IS NULL
+CREATE TABLE dbo.billing_customers (
+    uuid VARCHAR(40) NOT NULL,
+    org_uuid VARCHAR(40) NOT NULL,
+    portal_id VARCHAR(255) NOT NULL DEFAULT 'portal_id',
+    configuration_uuid VARCHAR(40) NOT NULL,
+    user_uuid VARCHAR(255) NOT NULL,
+    customer_ref VARCHAR(255) NOT NULL,
+    created_at DATETIME2(7) NOT NULL DEFAULT SYSUTCDATETIME(),
+    updated_at DATETIME2(7) NOT NULL DEFAULT SYSUTCDATETIME(),
+    PRIMARY KEY (portal_id, uuid),
+    FOREIGN KEY (portal_id, configuration_uuid) REFERENCES billing_configurations(portal_id, uuid) ON DELETE CASCADE,
+    FOREIGN KEY (portal_id, org_uuid) REFERENCES organizations(portal_id, uuid) ON DELETE NO ACTION
+);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_billing_customer_org' AND object_id = OBJECT_ID(N'dbo.billing_customers'))
+CREATE INDEX idx_billing_customer_org ON dbo.billing_customers(org_uuid, portal_id);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'uq_billing_customer_user' AND object_id = OBJECT_ID(N'dbo.billing_customers'))
+CREATE UNIQUE INDEX uq_billing_customer_user ON dbo.billing_customers(configuration_uuid, user_uuid, portal_id);
+
+-- Billing checkouts (monetization): one per checkout the portal started with the payment provider.
+-- status is OPEN until the provider confirms the payment (or that none was needed); then it is
+-- COMPLETED and the subscription is created. It is EXPIRED when the checkout ends unpaid. No
+-- subscription exists before it is COMPLETED.
+-- api_uuid, plan_uuid and subscription_uuid have no foreign key, so a checkout still names what it
+-- was for after that is deleted; invoices of ended subscriptions are named from it.
+IF OBJECT_ID(N'dbo.billing_checkouts', N'U') IS NULL
+CREATE TABLE dbo.billing_checkouts (
+    uuid VARCHAR(40) NOT NULL,
+    org_uuid VARCHAR(40) NOT NULL,
+    portal_id VARCHAR(255) NOT NULL DEFAULT 'portal_id',
+    user_uuid VARCHAR(255) NOT NULL,
+    api_uuid VARCHAR(40) NOT NULL,
+    plan_uuid VARCHAR(40) NOT NULL,
+    customer_uuid VARCHAR(40) NOT NULL,
+    checkout_ref VARCHAR(255),
+    status VARCHAR(20) NOT NULL DEFAULT 'OPEN',
+    subscription_uuid VARCHAR(40),
+    created_at DATETIME2(7) NOT NULL DEFAULT SYSUTCDATETIME(),
+    updated_at DATETIME2(7) NOT NULL DEFAULT SYSUTCDATETIME(),
+    PRIMARY KEY (portal_id, uuid),
+    FOREIGN KEY (portal_id, customer_uuid) REFERENCES billing_customers(portal_id, uuid) ON DELETE CASCADE,
+    FOREIGN KEY (portal_id, org_uuid) REFERENCES organizations(portal_id, uuid) ON DELETE NO ACTION
+);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_billing_checkout_org' AND object_id = OBJECT_ID(N'dbo.billing_checkouts'))
+CREATE INDEX idx_billing_checkout_org ON dbo.billing_checkouts(org_uuid, portal_id);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_billing_checkout_customer' AND object_id = OBJECT_ID(N'dbo.billing_checkouts'))
+CREATE INDEX idx_billing_checkout_customer ON dbo.billing_checkouts(customer_uuid, portal_id);
+-- A user has at most one open checkout per API (and one subscription per API): starting another
+-- checkout for the API reuses or ends the open one. startCheckout checks this in code, under a lock
+-- on the user's billing_customers row, rather than with a partial unique index
+-- (WHERE status = 'OPEN'), which not every database supports. This index makes that check fast.
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_billing_checkout_user_api' AND object_id = OBJECT_ID(N'dbo.billing_checkouts'))
+CREATE INDEX idx_billing_checkout_user_api ON dbo.billing_checkouts(user_uuid, api_uuid, portal_id);
+
+-- Subscription billing (monetization): the billing state of each paid subscription: the payment
+-- provider's subscription (billing_subscription_id), its status, its current period, and ends_at
+-- when it is set to end. Deleting the subscription deletes this row.
+-- configuration_uuid, customer_uuid and api_plan_uuid have no foreign key: removing billing deletes
+-- the configuration with its customers and API plans, but the row of a cancelled subscription is
+-- kept and still names them.
+IF OBJECT_ID(N'dbo.subscription_billing', N'U') IS NULL
+CREATE TABLE dbo.subscription_billing (
+    subscription_uuid VARCHAR(40) NOT NULL,
+    org_uuid VARCHAR(40) NOT NULL,
+    portal_id VARCHAR(255) NOT NULL DEFAULT 'portal_id',
+    configuration_uuid VARCHAR(40) NOT NULL,
+    customer_uuid VARCHAR(40) NOT NULL,
+    api_plan_uuid VARCHAR(40) NOT NULL,
+    billing_subscription_id VARCHAR(255) NOT NULL,
+    billing_status VARCHAR(20) NOT NULL,
+    current_period_start DATETIME2(7),
+    current_period_end DATETIME2(7),
+    ends_at DATETIME2(7),
+    created_at DATETIME2(7) NOT NULL DEFAULT SYSUTCDATETIME(),
+    updated_at DATETIME2(7) NOT NULL DEFAULT SYSUTCDATETIME(),
+    PRIMARY KEY (portal_id, subscription_uuid),
+    FOREIGN KEY (portal_id, subscription_uuid) REFERENCES subscriptions(portal_id, uuid) ON DELETE CASCADE,
+    FOREIGN KEY (portal_id, org_uuid) REFERENCES organizations(portal_id, uuid) ON DELETE NO ACTION
+);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_subscription_billing_org' AND object_id = OBJECT_ID(N'dbo.subscription_billing'))
+CREATE INDEX idx_subscription_billing_org ON dbo.subscription_billing(org_uuid, portal_id);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'uq_subscription_billing_ref' AND object_id = OBJECT_ID(N'dbo.subscription_billing'))
+CREATE UNIQUE INDEX uq_subscription_billing_ref ON dbo.subscription_billing(portal_id, billing_subscription_id);
