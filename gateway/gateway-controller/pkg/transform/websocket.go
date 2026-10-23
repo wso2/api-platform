@@ -33,8 +33,8 @@
 //     disables upgrades globally, so a REST or GraphQL route cannot be turned
 //     into a tunnel even if its backend would accept one.
 //   - The ordinary route timeout is left alone, because it does not end an
-//     upgraded connection. Idle timeout and max stream duration are what bound
-//     it, and both always resolve to a finite value.
+//     upgraded connection. The gateway's route idle timeout bounds it, and the
+//     optional router.websocket.max_connection_duration caps its lifetime.
 package transform
 
 import (
@@ -58,17 +58,9 @@ import (
 // path is an ordinary request that this API does not serve.
 const handshakeMethod = "GET"
 
-// Last-resort bounds, used when the gateway config carries no default for a
-// setting (a zero value).
-//
-// FR-031 requires every WebSocketApi to end up with a finite idle timeout and a
-// finite maximum connection duration, because a connection is authorized once at
-// its handshake and never re-checked — an unbounded connection is an unbounded
-// window for access that has since been revoked. Deriving that guarantee purely
-// from configuration would make it only as good as the config: a deployment that
-// omitted these keys would either refuse every WebSocketApi or, worse, hand Envoy
-// "no limit". Falling back to a value here makes the invariant structural, and
-// still honours any limit the operator does set.
+// Last-resort upstream bounds, used when the gateway config carries no upstream
+// default for a setting (a zero value), so an upstream cluster is never left
+// with "no limit" by an omitted config key.
 const (
 	fallbackWebSocketIdleTimeout           = 5 * time.Minute
 	fallbackWebSocketMaxConnectionDuration = 1 * time.Hour
@@ -124,11 +116,13 @@ func (t *WebSocketAPITransformer) Transform(cfg *models.StoredConfig) (*models.R
 		SensitiveValues:     cfg.SensitiveValues,
 	}
 
-	// Resolve the downstream connection bounds once: every channel of this API
-	// shares the gateway-wide values, and both always resolve to a finite value.
-	routeTimeout, err := t.resolveDownstreamTimeout()
-	if err != nil {
-		return nil, err
+	// Every channel of this API shares the same client-facing bounds: the
+	// gateway's route idle timeout, which the translator applies because the route
+	// leaves IdleTimeout unset, and router.websocket.max_connection_duration when
+	// the operator sets one. Unset, a connection's lifetime is not capped.
+	var routeTimeout *models.RouteTimeout
+	if maxDuration := t.routerConfig.WebSocket.MaxConnectionDuration; maxDuration > 0 {
+		routeTimeout = &models.RouteTimeout{MaxStreamDuration: &maxDuration}
 	}
 
 	apiPolicies := t.collectAPIPolicies(apiData.Policies)
@@ -206,7 +200,11 @@ func (t *WebSocketAPITransformer) addChannelRoutes(
 
 		// A per-route copy: the translator may set slot-specific fields on it, and
 		// sharing one pointer across routes would make that leak between them.
-		timeoutForRoute := *routeTimeout
+		var timeoutForRoute *models.RouteTimeout
+		if routeTimeout != nil {
+			copied := *routeTimeout
+			timeoutForRoute = &copied
+		}
 
 		rdc.Routes[routeKey] = &models.Route{
 			Method:          handshakeMethod,
@@ -216,7 +214,7 @@ func (t *WebSocketAPITransformer) addChannelRoutes(
 			Vhost:           vhost,
 			AutoHostRewrite: autoHostRewrite,
 			Order:           i,
-			Timeout:         &timeoutForRoute,
+			Timeout:         timeoutForRoute,
 			// This route, and only this route, accepts the upgrade.
 			UpgradeWebSocket: true,
 			Upstream: models.RouteUpstream{
@@ -238,34 +236,6 @@ func pathMatchTypeForChannel(channelPath string) string {
 		return "PathPrefix"
 	}
 	return "Exact"
-}
-
-// resolveDownstreamTimeout returns the route timeouts every channel of a
-// WebSocketApi uses: the gateway-wide downstream idle timeout and maximum
-// connection duration. Client-facing connection bounds are gateway-level
-// configuration, not part of the API.
-//
-// The ordinary route Timeout is deliberately left nil: it does not apply once the
-// stream is upgraded, so setting it would only constrain the handshake itself,
-// which the gateway's own defaults already cover.
-func (t *WebSocketAPITransformer) resolveDownstreamTimeout() (*models.RouteTimeout, error) {
-	limits := t.routerConfig.WebSocket.Downstream
-
-	idle := orFallback(limits.IdleTimeoutDefault, fallbackWebSocketIdleTimeout)
-	maxDuration := orFallback(limits.MaxConnectionDurationDefault, fallbackWebSocketMaxConnectionDuration)
-
-	// Guard the invariant the whole design leans on rather than trusting config:
-	// a zero here would hand Envoy "no limit", turning every connection into an
-	// unbounded window for access granted at the handshake. orFallback already
-	// substitutes a finite value, so this only trips on a negative configuration.
-	if maxDuration <= 0 {
-		return nil, fmt.Errorf("websocket downstream max connection duration resolved to no limit; a WebSocketApi must always have a finite maximum connection duration")
-	}
-
-	return &models.RouteTimeout{
-		IdleTimeout:       &idle,
-		MaxStreamDuration: &maxDuration,
-	}, nil
 }
 
 // resolveBoundedDuration resolves one duration setting: the artifact's value when

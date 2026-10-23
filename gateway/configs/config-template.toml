@@ -498,6 +498,13 @@ stream_idle_timeout = "5m"
 # Idle timeout for the downstream connection
 idle_timeout = "1h"
 
+# WebSocketApi client connections
+[router.websocket]
+# Maximum lifetime of a client WebSocket connection (e.g. "1h"). Unset or "0s" sets no cap.
+# A WebSocket is authorized only at its handshake, so without a cap a connection that keeps
+# carrying traffic stays open after its API key or token is revoked.
+# max_connection_duration = "1h"
+
 [router.policy_engine]
 host = "policy-engine"
 port = 9001

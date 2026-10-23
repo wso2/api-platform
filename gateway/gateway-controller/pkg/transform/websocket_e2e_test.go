@@ -22,7 +22,6 @@ import (
 	"io"
 	"log/slog"
 	"testing"
-	"time"
 
 	route "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/cache/types"
@@ -32,6 +31,7 @@ import (
 
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/transform"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
@@ -117,11 +117,11 @@ func TestWebSocketGatewayFirstChain(t *testing.T) {
 		assert.True(t, upgrades[0].GetEnabled().GetValue(),
 			"route %s must enable the upgrade the HCM leaves disabled", r.GetName())
 
-		// FR-031's bound: finite, and the gateway's downstream defaults carried
-		// through to Envoy rather than lost between the config and the route.
-		require.NotNil(t, action.GetMaxStreamDuration(), "route %s lost its max stream duration", r.GetName())
-		assert.Equal(t, int64(7200), action.GetMaxStreamDuration().GetMaxStreamDuration().GetSeconds())
+		// The gateway's route idle timeout reaches the channel route; with no
+		// router.websocket.max_connection_duration configured, the lifetime is
+		// left uncapped.
 		assert.Equal(t, int64(240), action.GetIdleTimeout().GetSeconds())
+		assert.Nil(t, action.GetMaxStreamDuration(), "route %s: no lifetime cap unless the gateway sets one", r.GetName())
 
 		// A retry policy on an upgraded stream has nothing to retry.
 		assert.Nil(t, action.GetRetryPolicy(), "route %s must not carry a retry policy", r.GetName())
@@ -200,17 +200,11 @@ func websocketE2ERouterConfig() *config.RouterConfig {
 		},
 		Upstream: config.RouterUpstream{
 			Timeouts: config.UpstreamTimeouts{
-				RouteTimeoutMs:     60000,
-				RouteIdleTimeoutMs: 300000,
+				RouteTimeoutMs: 60000,
+				// Not the 5m default, so the route assertion proves the gateway's
+				// route idle timeout is what reaches a channel route.
+				RouteIdleTimeoutMs: 240000,
 				ConnectTimeoutMs:   5000,
-			},
-		},
-		// Distinct from the transformer's fallbacks, so the route assertions prove
-		// these values reach Envoy.
-		WebSocket: config.WebSocketConfig{
-			Downstream: config.WebSocketConnectionLimits{
-				IdleTimeoutDefault:           240 * time.Second,
-				MaxConnectionDurationDefault: 2 * time.Hour,
 			},
 		},
 	}
@@ -228,8 +222,11 @@ func websocketRoutesFor(t *testing.T, resources map[resource.Type][]types.Resour
 		for _, vh := range routeConfig.VirtualHosts {
 			for _, r := range vh.Routes {
 				// Skip the gateway's own health/readiness routes, which are
-				// direct responses rather than proxied routes.
-				if r.GetRoute() == nil {
+				// direct responses rather than proxied routes, and its catch-all
+				// for unknown-path handshakes, which enables the upgrade but can
+				// only answer 404 (its cluster is never defined; the xds package
+				// tests assert that).
+				if r.GetRoute() == nil || r.GetName() == constants.GatewayNoAPIFoundUpgradeRouteName {
 					continue
 				}
 				out = append(out, r)
