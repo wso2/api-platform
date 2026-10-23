@@ -38,6 +38,10 @@ spec:
   displayName: Chat Pool
   version: v1.0
   context: /chat-pool/$version
+  # vhosts work as on a RestApi; when omitted, the gateway's default vhosts apply.
+  # vhosts:
+  #   main: ws.example.com            # one or more hostnames separated by ';'
+  #   sandbox: sandbox-ws.example.com
   resilience:
     timeout: 10s
     idleTimeout: 10m

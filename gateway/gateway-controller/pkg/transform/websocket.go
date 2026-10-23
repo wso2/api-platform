@@ -120,25 +120,29 @@ func (t *WebSocketAPITransformer) Transform(cfg *models.StoredConfig) (*models.R
 
 	apiPolicies := t.collectAPIPolicies(apiData.Policies)
 
-	mainVhost := t.routerConfig.VHosts.Main.Default
+	// vhosts work as on a RestApi: every vhosts.main hostname serves the main
+	// upstream (the gateway's main default when unset), and sandbox traffic is
+	// served on vhosts.sandbox or the sandbox default.
+	mainVhosts, sandboxVhost, hasSandbox := config.WebSocketAPIVhosts(apiData, t.routerConfig.VHosts)
+
 	mainUpstream, err := t.addWebSocketUpstreamCluster(rdc, "main", &apiData.Upstream.Main, apiData.UpstreamDefinitions)
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve main upstream: %w", err)
 	}
 
-	if err := t.addChannelRoutes(rdc, apiData, mainUpstream, &apiData.Upstream.Main, mainVhost, apiPolicies, apiResilience); err != nil {
-		return nil, err
+	for _, mainVhost := range mainVhosts {
+		if err := t.addChannelRoutes(rdc, apiData, mainUpstream, &apiData.Upstream.Main, mainVhost, apiPolicies, apiResilience); err != nil {
+			return nil, err
+		}
 	}
 
-	// Sandbox is active when a sandbox upstream is configured, by url or by ref.
-	sb := apiData.Upstream.Sandbox
-	hasSandbox := sb != nil &&
-		((sb.Url != nil && strings.TrimSpace(*sb.Url) != "") || (sb.Ref != nil && strings.TrimSpace(*sb.Ref) != ""))
-
 	if hasSandbox {
-		sandboxVhost := t.routerConfig.VHosts.Sandbox.Default
-		if sandboxVhost == mainVhost {
-			return nil, fmt.Errorf("sandbox upstream is configured but resolves to the same vhost %q as the main upstream; configure distinct vhosts to avoid route conflicts", sandboxVhost)
+		// Sandbox and main must not share a vhost: their routes would share route
+		// keys, and the sandbox slot would replace the main one.
+		for _, mainVhost := range mainVhosts {
+			if sandboxVhost == mainVhost {
+				return nil, fmt.Errorf("sandbox upstream is configured but resolves to the same vhost %q as the main upstream; configure distinct vhosts to avoid route conflicts", sandboxVhost)
+			}
 		}
 
 		sbUpstream, err := t.addWebSocketUpstreamCluster(rdc, "sandbox", apiData.Upstream.Sandbox, apiData.UpstreamDefinitions)

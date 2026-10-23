@@ -184,6 +184,45 @@ func TestWebSocketTransform_Resilience(t *testing.T) {
 	})
 }
 
+// vhosts work as on a RestApi: one route per channel per main vhost, the sandbox
+// slot on vhosts.sandbox, and the gateway defaults when vhosts is omitted.
+func TestWebSocketTransform_Vhosts(t *testing.T) {
+	type vhosts = struct {
+		Main    string  `json:"main" yaml:"main"`
+		Sandbox *string `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+	}
+	routeVhosts := func(t *testing.T, mutate func(*api.WebSocketAPIConfigData)) map[string]string {
+		t.Helper()
+		rdc, err := websocketTransformer().Transform(testWebSocketAPI(mutate))
+		require.NoError(t, err)
+		out := map[string]string{}
+		for _, r := range rdc.Routes {
+			out[r.Vhost] = r.Upstream.ClusterKey
+		}
+		return out
+	}
+
+	defaults := routeVhosts(t, nil)
+	assert.Len(t, defaults, 1, "no vhosts: only the gateway's main default")
+
+	sandbox := "sandbox-ws.example.com"
+	custom := routeVhosts(t, func(spec *api.WebSocketAPIConfigData) {
+		spec.Vhosts = &vhosts{Main: "ws.example.com;ws2.example.com", Sandbox: &sandbox}
+		spec.Upstream.Sandbox = &api.Upstream{Url: strPtr("ws://chat-sandbox:8080/ws")}
+	})
+	require.Len(t, custom, 3)
+	assert.Equal(t, custom["ws.example.com"], custom["ws2.example.com"], "every main vhost serves the main upstream")
+	assert.NotEqual(t, custom["ws.example.com"], custom["sandbox-ws.example.com"], "the sandbox vhost serves the sandbox upstream")
+
+	_, err := websocketTransformer().Transform(testWebSocketAPI(func(spec *api.WebSocketAPIConfigData) {
+		same := "ws.example.com"
+		spec.Vhosts = &vhosts{Main: "ws.example.com", Sandbox: &same}
+		spec.Upstream.Sandbox = &api.Upstream{Url: strPtr("ws://chat-sandbox:8080/ws")}
+	}))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "same vhost")
+}
+
 func TestWebSocketTransform_MaxConnectionDurationFromGateway(t *testing.T) {
 	t.Run("unset leaves the lifetime uncapped", func(t *testing.T) {
 		rdc, err := websocketTransformer().Transform(testWebSocketAPI(nil))

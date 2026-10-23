@@ -1130,6 +1130,18 @@ spec:
 	assert.NoError(t, deploy("chat-c", "/chat/$version", "  deploymentState: undeployed"),
 		"an undeployed API holds no route, so it does not conflict")
 	assert.NoError(t, deploy("other", "/other/$version", ""))
+
+	// vhosts make the conflict per vhost: the same context on another hostname is
+	// a different route, an overlapping hostname list is not.
+	assert.NoError(t, deploy("chat-ws", "/chat/$version", "  vhosts:\n    main: ws.example.com"),
+		"the same context on a different vhost does not conflict")
+	err = deploy("chat-overlap", "/chat/$version", "  vhosts:\n    main: other.example.com;ws.example.com")
+	require.Error(t, err)
+	assert.True(t, storage.IsConflictError(err), "an overlapping vhost is a conflict, got %v", err)
+	assert.Contains(t, err.Error(), "ws.example.com")
+	err = deploy("chat-sentinel", "/chat/$version", "  vhosts:\n    main: _gateway_default_")
+	require.Error(t, err, "the gateway-default sentinel resolves to the default vhost chat-a already uses")
+	assert.True(t, storage.IsConflictError(err))
 }
 
 // Updating a configuration must report its original creation time, not the time

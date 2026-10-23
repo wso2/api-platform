@@ -348,7 +348,7 @@ func TestWebSocketAPIDesiredState(t *testing.T) {
 func withWebSocketValidation(t *testing.T, limits config.WebSocketConfig, pv *config.PolicyValidator) {
 	t.Helper()
 	saved := webSocketValidation
-	ConfigureWebSocketAPIValidation(limits, pv, nil)
+	ConfigureWebSocketAPIValidation(limits, config.VHostsConfig{}, pv, nil)
 	t.Cleanup(func() { webSocketValidation = saved })
 }
 
@@ -476,9 +476,135 @@ func TestValidateWebSocketAPIConfig_RejectsUnknownPolicies(t *testing.T) {
 }
 
 func TestWebSocketAPIRouteContext(t *testing.T) {
+	defaults := config.VHostsConfig{Main: config.VHostEntry{Default: "api.example.com"}, Sandbox: config.VHostEntry{Default: "sandbox.example.com"}}
+
 	cfg := validWebSocketAPI(func(s *api.WebSocketAPIConfigData) { s.Context = "/chat/$version" })
-	assert.Equal(t, "/chat/v1.0", webSocketAPIRouteContext(cfg))
-	assert.Equal(t, "", webSocketAPIRouteContext("not a WebSocketApi"))
+	assert.Equal(t, []string{"api.example.com|/chat/v1.0"}, webSocketAPIRouteContext(cfg, defaults), "no vhosts: the gateway default")
+
+	sandbox := "sandbox-ws.example.com"
+	cfg = validWebSocketAPI(func(s *api.WebSocketAPIConfigData) {
+		s.Context = "/chat/$version"
+		s.Vhosts = &struct {
+			Main    string  `json:"main" yaml:"main"`
+			Sandbox *string `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+		}{Main: "ws.example.com; ws2.example.com", Sandbox: &sandbox}
+		s.Upstream.Sandbox = &api.Upstream{Url: wsStrPtr("ws://chat-sandbox:8080")}
+	})
+	assert.Equal(t, []string{"ws.example.com|/chat/v1.0", "ws2.example.com|/chat/v1.0", "sandbox-ws.example.com|/chat/v1.0"},
+		webSocketAPIRouteContext(cfg, defaults), "every main vhost, plus the sandbox vhost when a sandbox upstream is set")
+
+	assert.Nil(t, webSocketAPIRouteContext("not a WebSocketApi", defaults))
+}
+
+func TestValidateWebSocketAPIConfig_Vhosts(t *testing.T) {
+	withVhosts := func(main string, sandbox *string, withSandboxUpstream bool) api.WebSocketAPI {
+		return validWebSocketAPI(func(s *api.WebSocketAPIConfigData) {
+			s.Vhosts = &struct {
+				Main    string  `json:"main" yaml:"main"`
+				Sandbox *string `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+			}{Main: main, Sandbox: sandbox}
+			if withSandboxUpstream {
+				s.Upstream.Sandbox = &api.Upstream{Url: wsStrPtr("ws://chat-sandbox:8080")}
+			}
+		})
+	}
+	sb := func(v string) *string { return &v }
+
+	for name, tc := range map[string]struct {
+		cfg   api.WebSocketAPI
+		field string
+	}{
+		"malformed main":              {withVhosts("ws example.com", nil, false), "spec.vhosts.main"},
+		"empty main":                  {withVhosts("", nil, false), "spec.vhosts.main"},
+		"duplicate main":              {withVhosts("ws.example.com;WS.example.com", nil, false), "spec.vhosts.main"},
+		"wildcard sandbox":            {withVhosts("ws.example.com", sb("*.example.com"), true), "spec.vhosts.sandbox"},
+		"sandbox equal to main vhost": {withVhosts("ws.example.com", sb("ws.example.com"), true), "spec.vhosts.sandbox"},
+	} {
+		_, _, errs := validateWebSocketAPIConfig(tc.cfg)
+		assert.True(t, fieldsWithErrors(errs)[tc.field], "%s: got %+v", name, errs)
+	}
+
+	for name, cfg := range map[string]api.WebSocketAPI{
+		"single":                        withVhosts("ws.example.com", nil, false),
+		"several and a wildcard":        withVhosts("ws.example.com; *.chat.example.com", sb("sandbox-ws.example.com"), true),
+		"gateway-default sentinel":      withVhosts("_gateway_default_", sb("_gateway_default_"), true),
+		"sandbox vhost without sandbox": withVhosts("ws.example.com", sb("ws.example.com"), false),
+	} {
+		_, _, errs := validateWebSocketAPIConfig(cfg)
+		assert.Empty(t, errs, name)
+	}
+}
+
+// Deployment fills omitted vhosts with the gateway defaults before validating,
+// and a default such as "*" or "sandbox-*" is an Envoy wildcard an author could
+// not write; it must still be accepted, or no API without vhosts could deploy.
+func TestValidateWebSocketAPIConfig_AcceptsGatewayDefaultVhosts(t *testing.T) {
+	saved := webSocketValidation
+	t.Cleanup(func() { webSocketValidation = saved })
+	webSocketValidation.vhosts = config.VHostsConfig{
+		Main: config.VHostEntry{Default: "*"}, Sandbox: config.VHostEntry{Default: "sandbox-*"},
+	}
+
+	routerCfg := &config.RouterConfig{VHosts: webSocketValidation.vhosts}
+	frozen, err := resolveWebSocketVhostSentinels(validWebSocketAPI(func(s *api.WebSocketAPIConfigData) {
+		s.Upstream.Sandbox = &api.Upstream{Url: wsStrPtr("ws://chat-sandbox:8080")}
+	}), routerCfg)
+	require.NoError(t, err)
+	_, _, errs := validateWebSocketAPIConfig(frozen)
+	assert.Empty(t, errs, "frozen gateway defaults must validate")
+
+	_, _, errs = validateWebSocketAPIConfig(validWebSocketAPI(func(s *api.WebSocketAPIConfigData) {
+		s.Vhosts = &struct {
+			Main    string  `json:"main" yaml:"main"`
+			Sandbox *string `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+		}{Main: "*;ws.example.com"}
+	}))
+	assert.Empty(t, errs, "a default alongside a custom hostname is accepted")
+
+	_, _, errs = validateWebSocketAPIConfig(validWebSocketAPI(func(s *api.WebSocketAPIConfigData) {
+		s.Vhosts = &struct {
+			Main    string  `json:"main" yaml:"main"`
+			Sandbox *string `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+		}{Main: "ws-*"}
+	}))
+	assert.True(t, fieldsWithErrors(errs)["spec.vhosts.main"], "a wildcard form that is not the gateway default is still rejected")
+}
+
+func TestResolveWebSocketVhostSentinels(t *testing.T) {
+	routerCfg := &config.RouterConfig{VHosts: config.VHostsConfig{
+		Main: config.VHostEntry{Default: "api.example.com"}, Sandbox: config.VHostEntry{Default: "sandbox.example.com"},
+	}}
+
+	omitted, err := resolveWebSocketVhostSentinels(validWebSocketAPI(nil), routerCfg)
+	require.NoError(t, err)
+	vh := omitted.(api.WebSocketAPI).Spec.Vhosts
+	require.NotNil(t, vh, "omitted vhosts are frozen to the current defaults")
+	assert.Equal(t, "api.example.com", vh.Main)
+	assert.Equal(t, "sandbox.example.com", *vh.Sandbox)
+
+	sentinel := "_gateway_default_"
+	cfg := validWebSocketAPI(func(s *api.WebSocketAPIConfigData) {
+		s.Vhosts = &struct {
+			Main    string  `json:"main" yaml:"main"`
+			Sandbox *string `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+		}{Main: sentinel, Sandbox: &sentinel}
+	})
+	resolved, err := resolveWebSocketVhostSentinels(cfg, routerCfg)
+	require.NoError(t, err)
+	vh = resolved.(api.WebSocketAPI).Spec.Vhosts
+	assert.Equal(t, "api.example.com", vh.Main)
+	assert.Equal(t, "sandbox.example.com", *vh.Sandbox)
+
+	custom := validWebSocketAPI(func(s *api.WebSocketAPIConfigData) {
+		s.Vhosts = &struct {
+			Main    string  `json:"main" yaml:"main"`
+			Sandbox *string `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+		}{Main: "ws.example.com"}
+	})
+	unchanged, err := resolveWebSocketVhostSentinels(custom, routerCfg)
+	require.NoError(t, err)
+	assert.Equal(t, "ws.example.com", unchanged.(api.WebSocketAPI).Spec.Vhosts.Main)
+	assert.Nil(t, unchanged.(api.WebSocketAPI).Spec.Vhosts.Sandbox, "a custom main without a sandbox is left as written")
 }
 
 // A tls block on a WebSocketApi upstream would otherwise be silently ignored, so a
