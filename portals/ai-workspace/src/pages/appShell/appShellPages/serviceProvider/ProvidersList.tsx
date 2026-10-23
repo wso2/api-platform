@@ -126,13 +126,7 @@ export default function ServiceProviders() {
   // scopes rather than the read-only-aware permission: an admin in a read-only
   // organization still gets the admin empty state, with its action disabled.
   const { hasPermission: hasScope } = useAppAuthScopes();
-  const {
-    providersResponse,
-    deleteProvider,
-    isLoading,
-    error: providersError,
-    refreshProviders,
-  } = useLLMProviders();
+  const { deleteProvider } = useLLMProviders();
   const { applications } = useApplications();
   const { templatesResponse } = useProviderTemplates();
   const { currentProject, currentOrganization, setCurrentProject } =

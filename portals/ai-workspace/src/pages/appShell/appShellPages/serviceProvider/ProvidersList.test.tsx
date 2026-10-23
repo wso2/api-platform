@@ -58,6 +58,7 @@ vi.mock('../../../../contexts/AppShellContext', () => ({
 }));
 vi.mock('../../../../contexts/AppAuthContext', () => ({
   useAppAuth: () => ({ hasPermission: () => permitted }),
+  useAppAuthScopes: () => ({ hasPermission: () => permitted }),
 }));
 vi.mock('../../../../contexts/llmProvider', () => ({
   formatRelativeTime: () => 'just now',
