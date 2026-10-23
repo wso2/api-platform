@@ -237,8 +237,7 @@ const getSubscriptionBilling = async (req, res) => {
  *   - A plan charged by usage only ends now (removeNow), with a final invoice for the usage
  *     reported so far.
  *   - A flat rate plan runs to the end of the period already paid for, when the provider ends
- *     it (endsAt); the portal keeps the subscription until then. Its usage prices keep counting
- *     until then too.
+ *     it (endsAt); the portal keeps the subscription until then.
  *   - A subscription the provider has already ended, or no longer has, is removed now.
  *
  * Throws a SubscriptionBillingError when the provider cannot be reached, so the subscription is
