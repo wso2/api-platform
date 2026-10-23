@@ -1730,7 +1730,10 @@ func (ec *PolicyExecutionContext) processResponseBody(
 	if ec.genaiReadsResponseBody() {
 		bodyContent := body.Body
 		if ec.responseContentEncoding != "" {
-			if decoded, err := decompressBody(body.Body, ec.responseContentEncoding, ec.server.maxResponseDecompressedBytes); err == nil {
+			// Pin the deflate variant from the bytes, as the policy path does, without
+			// changing the stored encoding: nothing else reads this response's body.
+			encoding := resolveEncodingFromBody(ec.responseContentEncoding, body.Body)
+			if decoded, err := decompressBody(body.Body, encoding, ec.server.maxResponseDecompressedBytes); err == nil {
 				bodyContent = decoded
 			}
 		}

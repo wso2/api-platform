@@ -104,7 +104,9 @@ func (ec *PolicyExecutionContext) genaiStreamsResponse() bool {
 // body that does not decode is kept as it is; the span then simply finds no model in it.
 func (ec *PolicyExecutionContext) captureRequestBody(body []byte) {
 	if ec.requestContentEncoding != "" {
-		if decoded, err := decompressBody(body, ec.requestContentEncoding, ec.server.maxRequestDecompressedBytes); err == nil {
+		// Pin the deflate variant from the bytes, as the policy path does.
+		encoding := resolveEncodingFromBody(ec.requestContentEncoding, body)
+		if decoded, err := decompressBody(body, encoding, ec.server.maxRequestDecompressedBytes); err == nil {
 			body = decoded
 		}
 	}

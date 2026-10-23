@@ -19,6 +19,8 @@
 package kernel
 
 import (
+	"bytes"
+	"compress/flate"
 	"testing"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
@@ -248,4 +250,38 @@ func TestStreamingResponse_GenAIOnlyCompressedStreamDecodes(t *testing.T) {
 			assert.Equal(t, "data: {\"id\":\"a\"}\n\ndata: {\"id\":\"b\"}\n\ndata: [DONE]\n\n", string(ec.genai.response.Bytes()))
 		})
 	}
+}
+
+// rawDeflate compresses s as raw DEFLATE (RFC 1951), the variant some servers send
+// under "Content-Encoding: deflate" instead of the zlib-wrapped form.
+func rawDeflate(t *testing.T, s string) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	w, err := flate.NewWriter(&buf, flate.DefaultCompression)
+	require.NoError(t, err)
+	_, err = w.Write([]byte(s))
+	require.NoError(t, err)
+	require.NoError(t, w.Close())
+	return buf.Bytes()
+}
+
+// "deflate" bodies are decoded whichever variant the peer sent, as on the policy path;
+// otherwise a raw-DEFLATE body fails the zlib reader and the span loses its data.
+func TestGenAICapture_DecodesRawDeflate(t *testing.T) {
+	ec := genaiExecCtx(t, policy.APIKindLlmProvider, &registry.PolicyChain{})
+	ec.requestContentEncoding = "deflate"
+	_, err := ec.processRequestBody(t.Context(), &extprocv3.HttpBody{Body: rawDeflate(t, `{"model":"gpt-4o"}`), EndOfStream: true})
+	require.NoError(t, err)
+	assert.Equal(t, `{"model":"gpt-4o"}`, string(ec.genaiRequestBody()))
+
+	ec.buildResponseContexts(&extprocv3.HttpHeaders{Headers: &corev3.HeaderMap{Headers: []*corev3.HeaderValue{
+		{Key: ":status", RawValue: []byte("200")},
+		{Key: "content-type", RawValue: []byte("application/json")},
+	}}})
+	ec.responseContentEncoding = "deflate"
+	_, err = ec.processResponseBody(t.Context(), &extprocv3.HttpBody{Body: rawDeflate(t, `{"id":"r1","usage":{}}`), EndOfStream: true})
+	require.NoError(t, err)
+	require.NotNil(t, ec.genai.response)
+	assert.Equal(t, `{"id":"r1","usage":{}}`, string(ec.genai.response.Bytes()))
+	assert.Equal(t, "deflate", ec.responseContentEncoding, "the stored encoding is left as it was")
 }
