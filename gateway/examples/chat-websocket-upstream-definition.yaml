@@ -19,9 +19,11 @@
 
 # This example routes the chat API to a reusable upstream definition, the same
 # model a RestApi uses. The definition carries the backend targets, the base path,
-# connect and idle timeouts, and the connection-pool bounds for the
-# gateway-to-backend connections; an omitted idle timeout or pool value falls back
-# to the gateway-wide default.
+# the connect timeout, and how many gateway-to-backend connections this API may
+# hold; an omitted maxConnections falls back to the gateway-wide default.
+# Connection lifetime is set at gateway level: the route idle timeout
+# (router.upstream.timeouts.route_idle_timeout_ms) and the optional
+# router.websocket.max_connection_duration.
 # Start the testbench echo service (tests/framework: go run ./testbench/cmd/testbench),
 # deploy this file, then connect with:
 #   websocat ws://localhost:8080/chat-pool/v1.0/rooms/general
@@ -42,10 +44,9 @@ spec:
         - url: ws://host.docker.internal:3019
       timeout:
         connect: 5s
-        idleTimeout: 120s
       connection:
-        maxConnectionDuration: 30m
         maxConnections: 500
+        maxPendingHandshakes: 50
   upstream:
     main:
       ref: chat-backend

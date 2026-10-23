@@ -166,22 +166,17 @@ func (v *UpstreamTLSValidator) ValidateWebSocketAPI(apiConfig *api.WebSocketAPI)
 
 // WebSocketUpstreamDefinitionsAsREST returns a WebSocketApi's upstream
 // definitions in the RestApi shape — the same fields without the WebSocket-only
-// connection block and idleTimeout — so the shared upstream helpers serve both
-// kinds.
+// connection block — so the shared upstream helpers serve both kinds.
 func WebSocketUpstreamDefinitionsAsREST(defs *[]api.WebSocketUpstreamDefinition) *[]api.UpstreamDefinition {
 	if defs == nil {
 		return nil
 	}
 	out := make([]api.UpstreamDefinition, 0, len(*defs))
 	for _, def := range *defs {
-		var timeout *api.UpstreamTimeout
-		if def.Timeout != nil {
-			timeout = &api.UpstreamTimeout{Connect: def.Timeout.Connect}
-		}
 		out = append(out, api.UpstreamDefinition{
 			Name:      def.Name,
 			BasePath:  def.BasePath,
-			Timeout:   timeout,
+			Timeout:   def.Timeout,
 			Tls:       def.Tls,
 			Upstreams: def.Upstreams,
 		})

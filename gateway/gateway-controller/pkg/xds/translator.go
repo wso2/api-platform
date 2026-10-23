@@ -57,7 +57,6 @@ import (
 	hcm "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/http_connection_manager/v3"
 	otelresourcedetectorsv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/tracers/opentelemetry/resource_detectors/v3"
 	tlsv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/transport_sockets/tls/v3"
-	upstreamhttpv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/upstreams/http/v3"
 	matcher "github.com/envoyproxy/go-control-plane/envoy/type/matcher/v3"
 	metadatav3 "github.com/envoyproxy/go-control-plane/envoy/type/metadata/v3"
 	tracingv3 "github.com/envoyproxy/go-control-plane/envoy/type/tracing/v3"
@@ -859,82 +858,41 @@ func buildGatewayInternalSinkCluster() *cluster.Cluster {
 	}
 }
 
-// applyUpstreamConnectionBounds applies a cluster's connection-pool bounds —
-// idle timeout, maximum connection duration, and maximum concurrent connections.
+// applyUpstreamConnectionBounds applies a cluster's connection-count bounds as a
+// circuit breaker: maximum concurrent connections and maximum requests waiting
+// for one.
 //
 // These are set only by kinds whose upstream connections are long-lived enough to
-// need them (today, WebSocketApi); for every other kind all three are nil and this
+// need them (today, WebSocketApi); for every other kind both are nil and this
 // leaves the cluster exactly as createCluster built it.
 //
-// Note on max connections: the circuit breaker is a best-effort bound, not an
-// exact one. Envoy guarantees at least one connection per selected host, so a
-// cluster resolving to several hosts can exceed the configured value by a small
-// amount. That is acceptable because the resource being bounded — this gateway
-// instance's outbound sockets — is itself per-instance; it is the same property
-// that makes a circuit breaker the wrong tool for bounding *downstream* client
-// connections, where an exact per-API count is what's wanted.
+// The circuit breaker is a best-effort bound, not an exact one: Envoy guarantees
+// at least one connection per selected host, and a burst of connections opened at
+// once can briefly be admitted beyond the limit. That is acceptable because the
+// resource being bounded — this gateway instance's outbound sockets — is itself
+// per-instance.
 func applyUpstreamConnectionBounds(c *cluster.Cluster, uc *models.UpstreamCluster) error {
-	if uc.IdleTimeout == nil && uc.MaxConnectionDuration == nil && uc.MaxConnections == nil && uc.MaxPendingRequests == nil {
+	if uc.MaxConnections == nil && uc.MaxPendingRequests == nil {
 		return nil
 	}
 
-	if uc.MaxConnections != nil || uc.MaxPendingRequests != nil {
-		// A request waiting for a connection is "pending" — including while a new
-		// connection is being opened, which every WebSocket handshake needs — so the
-		// pending limit cannot be zero. It defaults to the connection limit, letting a
-		// burst of up to MaxConnections handshakes connect, while beyond it, at
-		// capacity, a handshake is rejected with 503 instead of joining Envoy's default
-		// queue of 1024 behind connections that may stay open for hours.
-		thresholds := &cluster.CircuitBreakers_Thresholds{Priority: corev3.RoutingPriority_DEFAULT}
-		if uc.MaxConnections != nil {
-			thresholds.MaxConnections = &wrapperspb.UInt32Value{Value: *uc.MaxConnections}
-			thresholds.MaxPendingRequests = &wrapperspb.UInt32Value{Value: *uc.MaxConnections}
-		}
-		if uc.MaxPendingRequests != nil {
-			thresholds.MaxPendingRequests = &wrapperspb.UInt32Value{Value: *uc.MaxPendingRequests}
-		}
-		c.CircuitBreakers = &cluster.CircuitBreakers{
-			Thresholds: []*cluster.CircuitBreakers_Thresholds{thresholds},
-		}
+	// A request waiting for a connection is "pending" — including while a new
+	// connection is being opened, which every WebSocket handshake needs — so the
+	// pending limit cannot be zero. It defaults to the connection limit, letting a
+	// burst of up to MaxConnections handshakes connect, while beyond it, at
+	// capacity, a handshake is rejected with 503 instead of joining Envoy's default
+	// queue of 1024 behind connections that may stay open for hours.
+	thresholds := &cluster.CircuitBreakers_Thresholds{Priority: corev3.RoutingPriority_DEFAULT}
+	if uc.MaxConnections != nil {
+		thresholds.MaxConnections = &wrapperspb.UInt32Value{Value: *uc.MaxConnections}
+		thresholds.MaxPendingRequests = &wrapperspb.UInt32Value{Value: *uc.MaxConnections}
 	}
-
-	if uc.IdleTimeout == nil && uc.MaxConnectionDuration == nil {
-		return nil
+	if uc.MaxPendingRequests != nil {
+		thresholds.MaxPendingRequests = &wrapperspb.UInt32Value{Value: *uc.MaxPendingRequests}
 	}
-
-	common := &corev3.HttpProtocolOptions{}
-	if uc.IdleTimeout != nil {
-		common.IdleTimeout = durationpb.New(*uc.IdleTimeout)
+	c.CircuitBreakers = &cluster.CircuitBreakers{
+		Thresholds: []*cluster.CircuitBreakers_Thresholds{thresholds},
 	}
-	if uc.MaxConnectionDuration != nil {
-		common.MaxConnectionDuration = durationpb.New(*uc.MaxConnectionDuration)
-	}
-
-	// Setting typed_extension_protocol_options stops Envoy inferring the upstream
-	// protocol from the cluster, so the HTTP version has to be stated explicitly.
-	// HTTP/1.1 is the right and only choice here: an upgrade is an HTTP/1.1
-	// mechanism, and HTTP/2 upstreams would need RFC 8441 extended CONNECT support
-	// on the backend, which this phase does not support.
-	protocolOptions := &upstreamhttpv3.HttpProtocolOptions{
-		CommonHttpProtocolOptions: common,
-		UpstreamProtocolOptions: &upstreamhttpv3.HttpProtocolOptions_ExplicitHttpConfig_{
-			ExplicitHttpConfig: &upstreamhttpv3.HttpProtocolOptions_ExplicitHttpConfig{
-				ProtocolConfig: &upstreamhttpv3.HttpProtocolOptions_ExplicitHttpConfig_HttpProtocolOptions{
-					HttpProtocolOptions: &corev3.Http1ProtocolOptions{},
-				},
-			},
-		},
-	}
-
-	any, err := anypb.New(protocolOptions)
-	if err != nil {
-		return fmt.Errorf("failed to marshal upstream HttpProtocolOptions: %w", err)
-	}
-	if c.TypedExtensionProtocolOptions == nil {
-		c.TypedExtensionProtocolOptions = map[string]*anypb.Any{}
-	}
-	c.TypedExtensionProtocolOptions["envoy.extensions.upstreams.http.v3.HttpProtocolOptions"] = any
-
 	return nil
 }
 

@@ -182,18 +182,17 @@ func withDefinitions(spec *api.WebSocketAPIConfigData, defs ...api.WebSocketUpst
 }
 
 // FR-015/FR-016: a referenced definition supplies the cluster's targets, base
-// path, connect and idle timeouts, connection-pool bounds and tls.
+// path, connect timeout, connection-count bounds and tls.
 func TestWebSocketTransform_UpstreamDefinitionSettings(t *testing.T) {
 	maxConns, w1, w2 := 500, 80, 20
 	def := wsDefinition("chat-backend", "wss://chat-1:8443", "wss://chat-2:8443")
 	def.Upstreams[0].Weight, def.Upstreams[1].Weight = &w1, &w2
 	def.BasePath = strPtr("/ws")
-	def.Timeout = &api.WebSocketUpstreamTimeout{Connect: strPtr("5s"), IdleTimeout: strPtr("120s")}
+	def.Timeout = &api.UpstreamTimeout{Connect: strPtr("5s")}
 	maxPending := 10
 	def.Connection = &api.WebSocketUpstreamConnection{
-		MaxConnectionDuration: strPtr("30m"),
-		MaxConnections:        &maxConns,
-		MaxPendingHandshakes:  &maxPending,
+		MaxConnections:       &maxConns,
+		MaxPendingHandshakes: &maxPending,
 	}
 	def.Tls = &map[string]interface{}{"identity": "chat-identity", "trustedCAs": []interface{}{"chat-ca"}}
 	stored := testWebSocketAPI(func(spec *api.WebSocketAPIConfigData) { withDefinitions(spec, def) })
@@ -209,8 +208,6 @@ func TestWebSocketTransform_UpstreamDefinitionSettings(t *testing.T) {
 	assert.Equal(t, 80, *uc.Endpoints[0].Weight)
 	assert.Equal(t, 20, *uc.Endpoints[1].Weight)
 	assert.Equal(t, 5*time.Second, *uc.ConnectTimeout)
-	assert.Equal(t, 120*time.Second, *uc.IdleTimeout)
-	assert.Equal(t, 30*time.Minute, *uc.MaxConnectionDuration)
 	assert.Equal(t, uint32(500), *uc.MaxConnections)
 	assert.Equal(t, uint32(10), *uc.MaxPendingRequests)
 	require.NotNil(t, uc.TLS)
@@ -223,16 +220,12 @@ func TestWebSocketTransform_UpstreamDefinitionSettings(t *testing.T) {
 // upstream defaults.
 func TestWebSocketTransform_InlineURLUsesGatewayDefaults(t *testing.T) {
 	routerCfg := testRouterCfg()
-	routerCfg.WebSocket.Upstream.IdleTimeoutDefault = 90 * time.Second
-	routerCfg.WebSocket.Upstream.MaxConnectionDurationDefault = 2 * time.Hour
 	routerCfg.WebSocket.Upstream.MaxConnectionsDefault = 50
 	transformer := NewWebSocketAPITransformer(routerCfg, &config.Config{}, map[string]models.PolicyDefinition{})
 
 	rdc, err := transformer.Transform(testWebSocketAPI(nil))
 	require.NoError(t, err)
 	for _, uc := range rdc.UpstreamClusters {
-		assert.Equal(t, 90*time.Second, *uc.IdleTimeout)
-		assert.Equal(t, 2*time.Hour, *uc.MaxConnectionDuration)
 		assert.Equal(t, uint32(50), *uc.MaxConnections)
 		assert.Nil(t, uc.ConnectTimeout)
 	}
@@ -242,25 +235,27 @@ func TestWebSocketTransform_InlineURLUsesGatewayDefaults(t *testing.T) {
 // lowering it would let an API author believe a bound applies that does not.
 func TestWebSocketTransform_RejectsValueAboveGatewayBound(t *testing.T) {
 	routerCfg := testRouterCfg()
-	routerCfg.WebSocket.Upstream.MaxConnectionDurationMax = 24 * time.Hour
+	routerCfg.WebSocket.Upstream.MaxConnectionsMax = 1000
 	transformer := NewWebSocketAPITransformer(routerCfg, &config.Config{}, map[string]models.PolicyDefinition{})
 
+	tooMany := 10000 // ten times the ceiling
 	def := wsDefinition("chat-backend", "ws://chat-backend:8080")
-	def.Connection = &api.WebSocketUpstreamConnection{MaxConnectionDuration: strPtr("240h")} // ten times the ceiling
+	def.Connection = &api.WebSocketUpstreamConnection{MaxConnections: &tooMany}
 	_, err := transformer.Transform(testWebSocketAPI(func(spec *api.WebSocketAPIConfigData) { withDefinitions(spec, def) }))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "exceeds the gateway's configured maximum")
 }
 
 // An unset ceiling (0) means the operator configured none, so nothing is
-// enforced — distinct from a ceiling of zero duration.
+// enforced — distinct from a ceiling of zero connections.
 func TestWebSocketTransform_NoCeilingConfiguredMeansNoCeiling(t *testing.T) {
+	many := 1000000
 	def := wsDefinition("chat-backend", "ws://chat-backend:8080")
-	def.Connection = &api.WebSocketUpstreamConnection{MaxConnectionDuration: strPtr("240h")}
+	def.Connection = &api.WebSocketUpstreamConnection{MaxConnections: &many}
 	rdc, err := websocketTransformer().Transform(testWebSocketAPI(func(spec *api.WebSocketAPIConfigData) { withDefinitions(spec, def) }))
 	require.NoError(t, err)
 	for _, uc := range rdc.UpstreamClusters {
-		assert.Equal(t, 240*time.Hour, *uc.MaxConnectionDuration)
+		assert.Equal(t, uint32(1000000), *uc.MaxConnections)
 	}
 }
 

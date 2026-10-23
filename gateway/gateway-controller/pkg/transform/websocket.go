@@ -58,14 +58,6 @@ import (
 // path is an ordinary request that this API does not serve.
 const handshakeMethod = "GET"
 
-// Last-resort upstream bounds, used when the gateway config carries no upstream
-// default for a setting (a zero value), so an upstream cluster is never left
-// with "no limit" by an omitted config key.
-const (
-	fallbackWebSocketIdleTimeout           = 5 * time.Minute
-	fallbackWebSocketMaxConnectionDuration = 1 * time.Hour
-)
-
 // WebSocketAPITransformer converts WebSocketApi artifacts into RuntimeDeployConfigs.
 type WebSocketAPITransformer struct {
 	routerConfig      *config.RouterConfig
@@ -238,47 +230,10 @@ func pathMatchTypeForChannel(channelPath string) string {
 	return "Exact"
 }
 
-// resolveBoundedDuration resolves one duration setting: the artifact's value when
-// it sets one, otherwise the gateway default — and rejects a value above the
-// gateway's ceiling instead of clamping it, so an operator's bound cannot be
-// exceeded without the deploy failing.
-func resolveBoundedDuration(raw *string, defaultValue, maxValue time.Duration, field string) (*time.Duration, error) {
-	value := defaultValue
-
-	if raw != nil && strings.TrimSpace(*raw) != "" {
-		parsed, err := time.ParseDuration(strings.TrimSpace(*raw))
-		if err != nil {
-			return nil, fmt.Errorf("invalid %s %q: %w", field, *raw, err)
-		}
-		if parsed <= 0 {
-			return nil, fmt.Errorf("%s must be greater than zero", field)
-		}
-		value = parsed
-	}
-
-	if value <= 0 {
-		return nil, nil
-	}
-	if maxValue > 0 && value > maxValue {
-		return nil, fmt.Errorf("%s %s exceeds the gateway's configured maximum of %s", field, value, maxValue)
-	}
-
-	return &value, nil
-}
-
-// orFallback returns configured when it is set, otherwise fallback. Used for the
-// connection bounds whose invariant must hold whether or not config supplies a
-// default.
-func orFallback(configured, fallback time.Duration) time.Duration {
-	if configured > 0 {
-		return configured
-	}
-	return fallback
-}
-
-// resolveBoundedConnections resolves a concurrent-connection ceiling the same way
-// resolveBoundedDuration resolves a duration. A nil result means "leave Envoy's
-// own default alone".
+// resolveBoundedConnections resolves a connection count: the artifact's value
+// when it sets one, otherwise the gateway default — and rejects a value above the
+// gateway's ceiling instead of clamping it. A nil result means "leave Envoy's own
+// default alone".
 func resolveBoundedConnections(raw *int, defaultValue, maxValue uint32, field string) (*uint32, error) {
 	value := defaultValue
 
@@ -306,7 +261,7 @@ func resolveBoundedConnections(raw *int, defaultValue, maxValue uint32, field st
 // addWebSocketUpstreamCluster registers the cluster for one upstream slot: a
 // direct ws/wss url, which uses the gateway-wide upstream connection defaults, or
 // a ref to one of the API's upstream definitions, which carries its own targets,
-// basePath, connect and idle timeouts, connection-pool bounds and tls.
+// basePath, connect timeout, connection-count bounds and tls.
 //
 // It exists instead of reusing addUpstreamCluster because that helper rejects any
 // scheme but http/https, and a WebSocketApi's upstream is ws/wss. The mapping is
@@ -360,8 +315,8 @@ func (t *WebSocketAPITransformer) addWebSocketUpstreamCluster(
 }
 
 // addWebSocketCluster builds one upstream cluster from its targets and optional
-// definition settings. Idle timeout and connection-pool values the definition omits resolve to the
-// gateway-wide upstream defaults; values above the gateway maximums are rejected.
+// definition settings. A maxConnections the definition omits resolves to the
+// gateway-wide upstream default; values above the gateway maximum are rejected.
 func (t *WebSocketAPITransformer) addWebSocketCluster(
 	rdc *models.RuntimeDeployConfig,
 	clusterKey, defName string,
@@ -370,7 +325,7 @@ func (t *WebSocketAPITransformer) addWebSocketCluster(
 		Url    string `json:"url" yaml:"url"`
 		Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
 	},
-	timeout *api.WebSocketUpstreamTimeout,
+	timeout *api.UpstreamTimeout,
 	conn *api.WebSocketUpstreamConnection,
 	tls *map[string]interface{},
 	field string,
@@ -422,32 +377,22 @@ func (t *WebSocketAPITransformer) addWebSocketCluster(
 		basePath = *basePathOverride
 	}
 
-	var rawConnect, rawIdle *string
+	var rawConnect *string
 	if timeout != nil {
-		rawConnect, rawIdle = timeout.Connect, timeout.IdleTimeout
+		rawConnect = timeout.Connect
 	}
 	connectTimeout, err := parseOptionalDuration(rawConnect, field+".timeout.connect")
 	if err != nil {
 		return nil, err
 	}
 
+	// Connection lifetime is not set on the cluster: Envoy's cluster idle and
+	// duration timers never end an upgraded connection. The channel routes carry
+	// the gateway's route idle timeout and router.websocket.max_connection_duration.
 	limits := t.routerConfig.WebSocket.Upstream
-	var rawMaxDuration *string
 	var rawMaxConnections, rawMaxPending *int
 	if conn != nil {
-		rawMaxDuration, rawMaxConnections, rawMaxPending = conn.MaxConnectionDuration, conn.MaxConnections, conn.MaxPendingHandshakes
-	}
-	idleTimeout, err := resolveBoundedDuration(rawIdle,
-		orFallback(limits.IdleTimeoutDefault, fallbackWebSocketIdleTimeout), limits.IdleTimeoutMax,
-		field+".timeout.idleTimeout")
-	if err != nil {
-		return nil, err
-	}
-	maxConnectionDuration, err := resolveBoundedDuration(rawMaxDuration,
-		orFallback(limits.MaxConnectionDurationDefault, fallbackWebSocketMaxConnectionDuration), limits.MaxConnectionDurationMax,
-		field+".connection.maxConnectionDuration")
-	if err != nil {
-		return nil, err
+		rawMaxConnections, rawMaxPending = conn.MaxConnections, conn.MaxPendingHandshakes
 	}
 	maxConnections, err := resolveBoundedConnections(rawMaxConnections, limits.MaxConnectionsDefault, limits.MaxConnectionsMax,
 		field+".connection.maxConnections")
@@ -461,15 +406,13 @@ func (t *WebSocketAPITransformer) addWebSocketCluster(
 	}
 
 	rdc.UpstreamClusters[clusterKey] = &models.UpstreamCluster{
-		Name:                  defName,
-		BasePath:              basePath,
-		Endpoints:             endpoints,
-		TLS:                   upstreamTLSFromParams(tls, secure),
-		ConnectTimeout:        connectTimeout,
-		IdleTimeout:           idleTimeout,
-		MaxConnectionDuration: maxConnectionDuration,
-		MaxConnections:        maxConnections,
-		MaxPendingRequests:    maxPending,
+		Name:               defName,
+		BasePath:           basePath,
+		Endpoints:          endpoints,
+		TLS:                upstreamTLSFromParams(tls, secure),
+		ConnectTimeout:     connectTimeout,
+		MaxConnections:     maxConnections,
+		MaxPendingRequests: maxPending,
 	}
 
 	return &upstreamClusterResult{
@@ -513,7 +456,7 @@ func resolveWebSocketPort(u *url.URL, secure bool) int {
 
 // parseOptionalDuration parses a duration that has no gateway-wide default behind
 // it — absent means "leave Envoy's own default alone" rather than "substitute
-// ours", which is why it does not go through resolveBoundedDuration.
+// ours".
 func parseOptionalDuration(raw *string, field string) (*time.Duration, error) {
 	if raw == nil || strings.TrimSpace(*raw) == "" {
 		return nil, nil
