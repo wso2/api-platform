@@ -4923,17 +4923,12 @@ components:
     WebSocketUpstreamConnection:
       type: object
       description: >
-        Connection-pool bounds for the gateway-to-backend connections of one WebSocket upstream
-        definition. Each value falls back to the gateway-wide default when omitted, and a value
-        above the gateway-configured upper bound is rejected at deploy time.
+        Connection-count bounds for the gateway-to-backend connections of one WebSocket upstream
+        definition, enforced per API. maxConnections falls back to the gateway-wide default when
+        omitted, and a value above the gateway-configured upper bound is rejected at deploy time.
+        Connection lifetime is not set here: the gateway's route idle timeout and
+        router.websocket.max_connection_duration bound every WebSocket connection.
       properties:
-        maxConnectionDuration:
-          type: string
-          description: >
-            Hard ceiling on the lifetime of a pooled upstream connection. Always resolves to a
-            finite value - "unlimited" is never the effective value.
-          pattern: '^\d+(\.\d+)?(ms|s|m|h)$'
-          example: 30m
         maxConnections:
           type: integer
           description: >
@@ -4957,27 +4952,6 @@ components:
           minimum: 1
           example: 10
 
-    WebSocketUpstreamTimeout:
-      type: object
-      description: >
-        Timeouts for the gateway-to-backend connections of one WebSocket upstream definition.
-        WebSocket-specific rather than the shared UpstreamTimeout, because idleTimeout only has
-        meaning for the long-lived connections a WebSocketApi holds.
-      properties:
-        connect:
-          type: string
-          description: Connection timeout duration (e.g., "5s", "500ms")
-          pattern: '^\d+(\.\d+)?(ms|s|m|h)$'
-          example: 5s
-        idleTimeout:
-          type: string
-          description: >
-            How long an upstream connection may sit idle before the gateway closes it. Falls back
-            to the gateway-wide default when omitted; a value above the gateway-configured upper
-            bound is rejected at deploy time.
-          pattern: '^\d+(\.\d+)?(ms|s|m|h)$'
-          example: 120s
-
     WebSocketUpstreamDefinition:
       type: object
       required:
@@ -4985,9 +4959,8 @@ components:
         - upstreams
       description: >
         Reusable WebSocket backend, referenced from upstream.main / upstream.sandbox by name. Same
-        shape as a RestApi upstreamDefinition, with ws:// / wss:// targets, an idleTimeout in
-        `timeout`, and a `connection` block for the long-lived backend connections a WebSocketApi
-        holds.
+        shape as a RestApi upstreamDefinition, with ws:// / wss:// targets and a `connection` block
+        bounding how many backend connections the API holds.
       properties:
         name:
           type: string
@@ -5002,7 +4975,7 @@ components:
           pattern: '^/[a-zA-Z0-9\-._~!$&''()*+,;=:@%/]*[^/]$'
           example: /ws
         timeout:
-          $ref: "#/components/schemas/WebSocketUpstreamTimeout"
+          $ref: "#/components/schemas/UpstreamTimeout"
         connection:
           $ref: "#/components/schemas/WebSocketUpstreamConnection"
         upstreams:

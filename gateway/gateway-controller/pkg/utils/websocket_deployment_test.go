@@ -22,7 +22,6 @@ import (
 	"math"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -204,7 +203,7 @@ func TestValidateWebSocketAPIConfig_UpstreamDefinitionRules(t *testing.T) {
 		}, "spec.upstreamDefinitions[0].basePath"},
 		{"bad connect timeout", func() api.WebSocketUpstreamDefinition {
 			d := wsUpstreamDefinition("chat", "ws://chat:8080")
-			d.Timeout = &api.WebSocketUpstreamTimeout{Connect: wsStrPtr("0s")}
+			d.Timeout = &api.UpstreamTimeout{Connect: wsStrPtr("0s")}
 			return d
 		}, "spec.upstreamDefinitions[0].timeout.connect"},
 	} {
@@ -229,9 +228,8 @@ func TestValidateWebSocketAPIConfig_ValidatesSandboxToo(t *testing.T) {
 	assert.True(t, fieldsWithErrors(errs)["spec.upstream.sandbox.url"], "got %+v", errs)
 }
 
-// A zero or negative duration is rejected rather than read as "unlimited": for a
-// WebSocketApi that is exactly the unbounded connection these settings exist to
-// prevent.
+// A zero, negative or unparseable connect timeout is rejected rather than read as
+// "no timeout".
 func TestValidateWebSocketAPIConfig_RejectsNonPositiveDurations(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
@@ -244,10 +242,10 @@ func TestValidateWebSocketAPIConfig_RejectsNonPositiveDurations(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			_, _, errs := validateWebSocketAPIConfig(validWebSocketAPI(func(spec *api.WebSocketAPIConfigData) {
 				def := wsUpstreamDefinition("chat", "ws://chat:8080")
-				def.Timeout = &api.WebSocketUpstreamTimeout{IdleTimeout: wsStrPtr(tc.value)}
+				def.Timeout = &api.UpstreamTimeout{Connect: wsStrPtr(tc.value)}
 				withWSDefinitions(spec, def)
 			}))
-			assert.True(t, fieldsWithErrors(errs)["spec.upstreamDefinitions[0].timeout.idleTimeout"], "got %+v", errs)
+			assert.True(t, fieldsWithErrors(errs)["spec.upstreamDefinitions[0].timeout.connect"], "got %+v", errs)
 		})
 	}
 }
@@ -256,12 +254,12 @@ func TestValidateWebSocketAPIConfig_ValidatesDefinitionConnectionBlock(t *testin
 	zero := 0
 	_, _, errs := validateWebSocketAPIConfig(validWebSocketAPI(func(spec *api.WebSocketAPIConfigData) {
 		def := wsUpstreamDefinition("chat", "wss://chat-backend:8443")
-		def.Connection = &api.WebSocketUpstreamConnection{MaxConnectionDuration: wsStrPtr("-1s"), MaxConnections: &zero}
+		def.Connection = &api.WebSocketUpstreamConnection{MaxConnections: &zero, MaxPendingHandshakes: &zero}
 		withWSDefinitions(spec, def)
 	}))
 	fields := fieldsWithErrors(errs)
-	assert.True(t, fields["spec.upstreamDefinitions[0].connection.maxConnectionDuration"], "got %+v", errs)
 	assert.True(t, fields["spec.upstreamDefinitions[0].connection.maxConnections"], "got %+v", errs)
+	assert.True(t, fields["spec.upstreamDefinitions[0].connection.maxPendingHandshakes"], "got %+v", errs)
 }
 
 func TestValidateWebSocketAPIConfig_ContextRules(t *testing.T) {
@@ -356,36 +354,31 @@ func withWebSocketValidation(t *testing.T, limits config.WebSocketConfig, pv *co
 
 func TestValidateWebSocketAPIConfig_RejectsConnectionSettingsAboveGatewayMaximum(t *testing.T) {
 	withWebSocketValidation(t, config.WebSocketConfig{Upstream: config.WebSocketConnectionLimits{
-		IdleTimeoutMax: time.Hour, MaxConnectionDurationMax: 24 * time.Hour, MaxConnectionsMax: 100000,
+		MaxConnectionsMax: 100000,
 	}}, nil)
 
-	withConnection := func(idle, duration string, maxConns int) api.WebSocketAPI {
+	withConnection := func(maxConns int) api.WebSocketAPI {
 		return validWebSocketAPI(func(s *api.WebSocketAPIConfigData) {
 			def := wsUpstreamDefinition("chat", "ws://chat:8080")
-			def.Timeout = &api.WebSocketUpstreamTimeout{IdleTimeout: wsStrPtr(idle)}
-			def.Connection = &api.WebSocketUpstreamConnection{
-				MaxConnectionDuration: wsStrPtr(duration), MaxConnections: &maxConns,
-			}
+			def.Connection = &api.WebSocketUpstreamConnection{MaxConnections: &maxConns}
 			withWSDefinitions(s, def)
 		})
 	}
 
-	_, _, errs := validateWebSocketAPIConfig(withConnection("2h", "25h", 100001))
-	fields := fieldsWithErrors(errs)
-	assert.True(t, fields["spec.upstreamDefinitions[0].timeout.idleTimeout"], "expected idleTimeout above the gateway maximum to be rejected")
-	for _, f := range []string{"maxConnectionDuration", "maxConnections"} {
-		assert.True(t, fields["spec.upstreamDefinitions[0].connection."+f], "expected %s above the gateway maximum to be rejected", f)
-	}
+	_, _, errs := validateWebSocketAPIConfig(withConnection(100001))
+	assert.True(t, fieldsWithErrors(errs)["spec.upstreamDefinitions[0].connection.maxConnections"],
+		"expected maxConnections above the gateway maximum to be rejected")
 
-	_, _, errs = validateWebSocketAPIConfig(withConnection("1h", "24h", 100000))
-	assert.Empty(t, errs, "values equal to the gateway maximum are allowed")
+	_, _, errs = validateWebSocketAPIConfig(withConnection(100000))
+	assert.Empty(t, errs, "a value equal to the gateway maximum is allowed")
 }
 
 func TestValidateWebSocketAPIConfig_NoGatewayMaximumConfigured(t *testing.T) {
 	withWebSocketValidation(t, config.WebSocketConfig{}, nil)
 	cfg := validWebSocketAPI(func(s *api.WebSocketAPIConfigData) {
 		def := wsUpstreamDefinition("chat", "ws://chat:8080")
-		def.Timeout = &api.WebSocketUpstreamTimeout{IdleTimeout: wsStrPtr("48h")}
+		many := 1000000
+		def.Connection = &api.WebSocketUpstreamConnection{MaxConnections: &many}
 		withWSDefinitions(s, def)
 	})
 	_, _, errs := validateWebSocketAPIConfig(cfg)

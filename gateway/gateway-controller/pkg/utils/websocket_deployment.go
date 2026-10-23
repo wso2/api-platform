@@ -208,22 +208,6 @@ func validateWebSocketChannels(channels []api.WebSocketChannel) []config.Validat
 	return errors
 }
 
-// validateBoundedDuration is validatePositiveDuration plus the gateway ceiling;
-// a zero ceiling means the gateway sets none.
-func validateBoundedDuration(field, raw string, maxValue time.Duration) []config.ValidationError {
-	if errs := validatePositiveDuration(field, raw); len(errs) > 0 {
-		return errs
-	}
-	parsed, _ := time.ParseDuration(strings.TrimSpace(raw))
-	if maxValue > 0 && parsed > maxValue {
-		return []config.ValidationError{{
-			Field:   field,
-			Message: fmt.Sprintf("%s exceeds the gateway's configured maximum of %s", raw, maxValue),
-		}}
-	}
-	return nil
-}
-
 // validateBoundedConnections requires a connection count (maxConnections or
 // maxPendingHandshakes) of at least 1 and no more than the gateway's maximum; a
 // zero maximum means the gateway sets none.
@@ -350,14 +334,8 @@ func validateWebSocketUpstreamDefinitions(defs *[]api.WebSocketUpstreamDefinitio
 			errors = append(errors, config.ValidationError{Field: fieldBase + ".tls", Message: "tls requires every target in the definition to use wss://"})
 		}
 
-		if def.Timeout != nil {
-			if def.Timeout.Connect != nil {
-				errors = append(errors, validatePositiveDuration(fieldBase+".timeout.connect", *def.Timeout.Connect)...)
-			}
-			if def.Timeout.IdleTimeout != nil {
-				errors = append(errors, validateBoundedDuration(fieldBase+".timeout.idleTimeout", *def.Timeout.IdleTimeout,
-					webSocketValidation.upstream.IdleTimeoutMax)...)
-			}
+		if def.Timeout != nil && def.Timeout.Connect != nil {
+			errors = append(errors, validatePositiveDuration(fieldBase+".timeout.connect", *def.Timeout.Connect)...)
 		}
 		errors = append(errors, validateWebSocketUpstreamConnection(fieldBase+".connection", def.Connection)...)
 	}
@@ -365,8 +343,8 @@ func validateWebSocketUpstreamDefinitions(defs *[]api.WebSocketUpstreamDefinitio
 	return names, errors
 }
 
-// validateWebSocketUpstreamConnection checks a definition's connection-pool
-// bounds parse, are positive, and stay within the gateway's configured upstream
+// validateWebSocketUpstreamConnection checks a definition's connection-count
+// bounds are positive and stay within the gateway's configured upstream
 // maximums — the same bounds the transformer enforces when it builds the
 // cluster, checked here so an out-of-bounds value fails the deploy instead of
 // leaving a stored API with no route.
@@ -377,9 +355,6 @@ func validateWebSocketUpstreamConnection(fieldBase string, conn *api.WebSocketUp
 	}
 	limits := webSocketValidation.upstream
 
-	if conn.MaxConnectionDuration != nil {
-		errors = append(errors, validateBoundedDuration(fieldBase+".maxConnectionDuration", *conn.MaxConnectionDuration, limits.MaxConnectionDurationMax)...)
-	}
 	if conn.MaxConnections != nil {
 		errors = append(errors, validateBoundedConnections(fieldBase+".maxConnections", *conn.MaxConnections, limits.MaxConnectionsMax)...)
 	}

@@ -646,7 +646,7 @@ type RouterConfig struct {
 	// HTTPListener configuration
 	HTTPListener HTTPListenerConfig `koanf:"http_listener"`
 
-	// WebSocket holds WebSocketApi upstream connection defaults and upper bounds.
+	// WebSocket holds WebSocketApi connection settings.
 	WebSocket WebSocketConfig `koanf:"websocket"`
 }
 
@@ -663,9 +663,9 @@ type WebSocketConfig struct {
 	// where revocation must take effect on open connections.
 	MaxConnectionDuration time.Duration `koanf:"max_connection_duration"`
 
-	// Upstream bounds each gateway-to-backend connection pool, per upstream
-	// cluster: the defaults fill in what an upstream definition omits, and the
-	// maximums cap what it may set.
+	// Upstream bounds how many gateway-to-backend connections each upstream
+	// cluster may hold: the default fills in what an upstream definition omits,
+	// and the maximum caps what it may set.
 	Upstream WebSocketConnectionLimits `koanf:"upstream"`
 
 	// AllowHTTP2Connect enables RFC 8441 extended CONNECT, letting a browser
@@ -678,21 +678,13 @@ type WebSocketConfig struct {
 	AllowHTTP2Connect bool `koanf:"allow_http2_connect"`
 }
 
-// WebSocketConnectionLimits is the upstream connection policy: the value used
-// when an upstream definition does not set its own, and the ceiling on what it
-// may set. A value above its ceiling is rejected at deploy time rather than
-// silently clamped.
+// WebSocketConnectionLimits is the upstream connection-count policy: the value
+// used when an upstream definition does not set its own, and the ceiling on what
+// it may set. A value above its ceiling is rejected at deploy time rather than
+// silently clamped. Connection lifetime is not part of it: the gateway's route
+// idle timeout and WebSocketConfig.MaxConnectionDuration bound every WebSocket
+// connection on its routes.
 type WebSocketConnectionLimits struct {
-	// IdleTimeoutDefault and IdleTimeoutMax apply to an upstream definition's
-	// timeout.idleTimeout.
-	IdleTimeoutDefault time.Duration `koanf:"idle_timeout_default"`
-	IdleTimeoutMax     time.Duration `koanf:"idle_timeout_max"`
-
-	// MaxConnectionDurationDefault and MaxConnectionDurationMax apply to an
-	// upstream definition's connection.maxConnectionDuration.
-	MaxConnectionDurationDefault time.Duration `koanf:"max_connection_duration_default"`
-	MaxConnectionDurationMax     time.Duration `koanf:"max_connection_duration_max"`
-
 	// MaxConnectionsDefault is the per-upstream-cluster concurrent connection
 	// ceiling applied when an upstream definition does not set one, and
 	// MaxConnectionsMax bounds the value it may set. 0 means no default ceiling
@@ -1510,12 +1502,8 @@ func defaultConfig() *Config {
 			},
 			WebSocket: WebSocketConfig{
 				Upstream: WebSocketConnectionLimits{
-					IdleTimeoutDefault:           5 * time.Minute,
-					IdleTimeoutMax:               1 * time.Hour,
-					MaxConnectionDurationDefault: 1 * time.Hour,
-					MaxConnectionDurationMax:     24 * time.Hour,
-					MaxConnectionsDefault:        0, // leave Envoy's own cluster default alone
-					MaxConnectionsMax:            100000,
+					MaxConnectionsDefault: 0, // leave Envoy's own cluster default alone
+					MaxConnectionsMax:     100000,
 				},
 				AllowHTTP2Connect: false, // RFC 8441 off by default; browsers fall back to HTTP/1.1
 			},

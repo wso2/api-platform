@@ -20,11 +20,9 @@ package xds
 
 import (
 	"testing"
-	"time"
 
 	cluster "github.com/envoyproxy/go-control-plane/envoy/config/cluster/v3"
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
-	upstreamhttpv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/upstreams/http/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -154,29 +152,12 @@ func TestApplyUpstreamConnectionBounds_MaxPendingOverridesDefault(t *testing.T) 
 	assert.Equal(t, uint32(10), th.GetMaxPendingRequests().GetValue())
 }
 
-func TestApplyUpstreamConnectionBounds_PoolTimeouts(t *testing.T) {
-	idle := 120 * time.Second
-	maxDuration := 30 * time.Minute
+// Connection lifetime is bounded on the routes, not the cluster: Envoy's cluster
+// idle and duration timers never end an upgraded connection, so the bounds only
+// add a circuit breaker and never touch the cluster's protocol options.
+func TestApplyUpstreamConnectionBounds_SetsNoLifetimeTimers(t *testing.T) {
+	maxConns := uint32(5)
 	c := &cluster.Cluster{Name: "c"}
-
-	require.NoError(t, applyUpstreamConnectionBounds(c, &models.UpstreamCluster{
-		IdleTimeout:           &idle,
-		MaxConnectionDuration: &maxDuration,
-	}))
-
-	raw, ok := c.TypedExtensionProtocolOptions["envoy.extensions.upstreams.http.v3.HttpProtocolOptions"]
-	require.True(t, ok, "pool timeouts travel as HttpProtocolOptions")
-
-	var opts upstreamhttpv3.HttpProtocolOptions
-	require.NoError(t, raw.UnmarshalTo(&opts))
-
-	assert.Equal(t, idle, opts.GetCommonHttpProtocolOptions().GetIdleTimeout().AsDuration())
-	assert.Equal(t, maxDuration, opts.GetCommonHttpProtocolOptions().GetMaxConnectionDuration().AsDuration())
-
-	// Setting the options struct at all disables Envoy's protocol inference, so
-	// the HTTP version has to be stated. It must be HTTP/1.1: an upgrade is an
-	// HTTP/1.1 mechanism, and an HTTP/2 upstream would need RFC 8441 support on
-	// the backend, which this phase does not support.
-	require.NotNil(t, opts.GetExplicitHttpConfig(), "protocol must be stated explicitly once these options are set")
-	assert.NotNil(t, opts.GetExplicitHttpConfig().GetHttpProtocolOptions(), "upstream must be pinned to HTTP/1.1")
+	require.NoError(t, applyUpstreamConnectionBounds(c, &models.UpstreamCluster{MaxConnections: &maxConns}))
+	assert.Empty(t, c.TypedExtensionProtocolOptions, "no HttpProtocolOptions: Envoy keeps its default HTTP/1.1 upstream")
 }

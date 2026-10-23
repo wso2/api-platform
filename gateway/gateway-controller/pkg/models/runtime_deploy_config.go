@@ -219,15 +219,6 @@ type UpstreamCluster struct {
 	// upstream connections are long-lived enough to need them; nil means "leave
 	// Envoy's default alone", which is what every other kind wants.
 
-	// IdleTimeout closes a pooled upstream connection after this long with no
-	// traffic -> HttpProtocolOptions.CommonHttpProtocolOptions.IdleTimeout.
-	IdleTimeout *time.Duration
-
-	// MaxConnectionDuration caps a single upstream connection's total lifetime
-	// regardless of activity ->
-	// HttpProtocolOptions.CommonHttpProtocolOptions.MaxConnectionDuration.
-	MaxConnectionDuration *time.Duration
-
 	// MaxConnections caps concurrent connections this gateway instance opens to
 	// the cluster -> CircuitBreakers.Thresholds[].MaxConnections.
 	//
