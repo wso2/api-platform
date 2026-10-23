@@ -772,7 +772,7 @@ data:
     [tracing.genai]
     enabled = {{ if hasKey . "enabled" }}{{ .enabled }}{{ else }}true{{ end }}
     capture_content = {{ .capture_content | default false }}
-    max_content_bytes = {{ .max_content_bytes | default 16384 }}
+    max_content_bytes = {{ .max_content_bytes | default 16384 | int64 }}
     {{- end }}
     {{- end }}
 
