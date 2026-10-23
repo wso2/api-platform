@@ -192,6 +192,8 @@ export type ApplicationFixture = Schema<'Application'>;
 export type SubscriptionFixture = Schema<'Subscription'>;
 export type SubscriptionPlanFixture = Schema<'SubscriptionPlan'>;
 export type SecretFixture = Schema<'SecretSummary'>;
+export type MeterFixture = Schema<'Meter'>;
+export type PlanPricingFixture = Schema<'SubscriptionPlanPricing'>;
 export type CustomPolicyFixture = Schema<'CustomPolicyResponse'>;
 
 export const anApplication = (
@@ -222,6 +224,38 @@ export const aSubscriptionPlan = (
   id: 'gold',
   displayName: 'Gold',
   status: 'ACTIVE',
+  ...overrides,
+});
+
+export const aMeter = (overrides: Partial<MeterFixture> = {}): MeterFixture => ({
+  id: 'successful-calls',
+  displayName: 'Successful calls',
+  type: 'REQUEST_COUNT',
+  typeKey: null,
+  filterFields: [
+    { field: 'HTTP_STATUS_CODE', eventKey: 'response.status' },
+    { field: 'HTTP_METHOD', eventKey: 'request.verb' },
+    { field: 'RESOURCE', eventKey: 'metadata.apiResourceTemplate' },
+  ],
+  ...overrides,
+});
+
+export const aPlanPricing = (overrides: Partial<PlanPricingFixture> = {}): PlanPricingFixture => ({
+  subscriptionPlanId: 'gold',
+  pricingType: 'USAGE_BASED',
+  currency: 'USD',
+  billingPeriod: 'MONTH',
+  flatAmount: null,
+  prices: [
+    {
+      meterId: 'successful-calls',
+      filters: [{ field: 'HTTP_STATUS_CODE', operator: 'IN', values: ['200'] }],
+      pricingModel: 'PER_UNIT',
+      unitAmount: '0.01',
+      unitQuantity: 1,
+      tiers: null,
+    },
+  ],
   ...overrides,
 });
 

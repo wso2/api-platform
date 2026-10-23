@@ -27,8 +27,13 @@
 export type {
   CreateSubscriptionPlanBody,
   ListSubscriptionPlansQuery,
+  PriceFilter,
+  PriceTier,
   SubscriptionPlan,
   SubscriptionPlanListResponse,
+  SubscriptionPlanPrice,
+  SubscriptionPlanPricing,
+  SubscriptionPlanPricingBody,
   UpdateSubscriptionPlanBody,
 } from './subscriptionPlans.endpoints';
 
@@ -42,5 +47,6 @@ export {
   useSubscriptionPlan,
   useSubscriptionPlanOptions,
   useSubscriptionPlans,
+  useSubscriptionPlansById,
   useUpdateSubscriptionPlan,
 } from './subscriptionPlans.hooks';

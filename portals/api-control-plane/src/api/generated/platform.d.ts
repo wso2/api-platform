@@ -3172,7 +3172,7 @@ export interface paths {
         put?: never;
         /**
          * Create subscription plan
-         * @description Creates an organization-scoped subscription plan.
+         * @description Creates an organization-scoped subscription plan. A paid plan is created with its `pricing`, checked against the API Portal's rules and the organization's meters and stored with the plan; a plan created without it is free. Pricing is set only here: it cannot change once the plan exists. Returns `400` for pricing that breaks the rules or names an unknown meter.
          */
         post: operations["CreateSubscriptionPlan"];
         delete?: never;
@@ -3190,11 +3190,95 @@ export interface paths {
         };
         /** Get subscription plan by ID */
         get: operations["GetSubscriptionPlan"];
-        /** Update subscription plan */
+        /**
+         * Update subscription plan
+         * @description Updates the plan's name, limits, status and expiry. The name and the request limit can change only while nothing uses the plan: otherwise `409` SUBSCRIPTION_PLAN_IN_USE, with a message that counts the REST APIs, publication drafts, publications and subscriptions that use it, such as "The plan gold is used by 1 REST API and 2 subscriptions. To change its name or limit, create a new plan." The plan's `usage` (GET /subscription-plans/{subscriptionPlanId}) gives the same counts. Status and expiry can always change. Leave `pricing` out: it is the only part of a plan that never changes once the plan is created, and a body that carries it gets `409` SUBSCRIPTION_PLAN_PRICING_LOCKED.
+         */
         put: operations["UpdateSubscriptionPlan"];
         post?: never;
-        /** Delete subscription plan */
+        /**
+         * Delete subscription plan
+         * @description Deletes the plan with its pricing, only while nothing uses it: otherwise `409` SUBSCRIPTION_PLAN_IN_USE, with a message that counts the REST APIs, publication drafts, publications and subscriptions that use it, such as "The plan gold is used by 2 REST APIs. Remove it from them first." The plan's `usage` (GET /subscription-plans/{subscriptionPlanId}) gives the same counts.
+         */
         delete: operations["DeleteSubscriptionPlan"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/subscription-plans/{subscriptionPlanId}/pricing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The plan's id (handle), as returned in `id` by GET /subscription-plans. */
+                subscriptionPlanId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Get the pricing of a subscription plan
+         * @description Returns the pricing of a paid plan; a free plan has none (404). A plan's pricing is set when the plan is created, here or in an API Portal (and copied here from its webhook event), and does not change.
+         */
+        get: operations["GetSubscriptionPlanPricing"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/meters": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List meters
+         * @description Lists the organization's meters, ordered by id. A meter defines what a paid plan charges for: the requests the gateway allows, or their tokens. Each plan price narrows it with its own filters. A meter made here is kept here and reaches an API Portal only when a plan that charges for it is published there; a meter made in an API Portal is a copy, kept current through that portal's webhook events. Each meter says how many plans charge for it (`planCount`).
+         */
+        get: operations["ListMeters"];
+        put?: never;
+        /**
+         * Create a meter
+         * @description Creates a meter here. It is checked with the API Portal's rules, and refused with the portal's messages. The id is the one given, or is derived from the display name. A filter field given without an event key gets its default. The meter is returned as GET /meters/{meterId} gives it. It reaches an API Portal when a plan that charges for it is first published there; until then, no API Portal is needed. A body that is not a JSON object is refused (400), and so is an id the organization already has (409 METER_EXISTS).
+         */
+        post: operations["CreateMeter"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/meters/{meterId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The meter's id (handle), as returned in `id` by GET /meters or POST /meters. */
+                meterId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Get a meter
+         * @description Returns one meter. `planCount` says how many plans price it; while any does, the meter cannot change or be deleted.
+         */
+        get: operations["GetMeter"];
+        /**
+         * Update a meter
+         * @description Replaces the meter's settings, checked as on create; the meter is returned as GET /meters/{meterId} gives it. A meter that a plan prices cannot change at all, its name, description and event keys included (409 METER_IN_USE). The change is not sent to API Portals; an API Portal that has the meter keeps its copy, and a later publish of a plan charging for it there is refused while the two differ (409 PUBLICATION_METER_CONFLICT).
+         */
+        put: operations["UpdateMeter"];
+        post?: never;
+        /**
+         * Delete a meter
+         * @description Deletes the meter here; refused while a plan charges for it (409 METER_IN_USE). The delete is not sent to API Portals, which keep their copies, as for subscription plans.
+         */
+        delete: operations["DeleteMeter"];
         options?: never;
         head?: never;
         patch?: never;
@@ -5189,7 +5273,7 @@ export interface components {
         };
         CreateSubscriptionPlanRequest: {
             /**
-             * @description Handle (URL-friendly slug) for the plan. Immutable after creation.
+             * @description Handle (URL-friendly slug) for the plan. Immutable after creation. At most 40 characters; a longer one is refused with 400 "id must be at most 40 characters".
              * @example gold
              */
             id?: string;
@@ -5210,6 +5294,8 @@ export interface components {
              * @enum {string}
              */
             status: "ACTIVE" | "INACTIVE";
+            /** @description Makes the plan paid. Optional; a plan created without it is free. Pricing is set only when a plan is created and cannot change afterwards, so a free plan cannot become paid later, nor a paid plan free. */
+            pricing?: components["schemas"]["SubscriptionPlanPricingRequest"];
         };
         SubscriptionPlan: {
             /** @description Handle (slug) for the subscription plan */
@@ -5244,6 +5330,156 @@ export interface components {
             createdAt?: string;
             /** Format: date-time */
             updatedAt?: string;
+            /** @description The plan's pricing, present only on a paid plan. It is set when the plan is created (POST /subscription-plans) and is the only part of a plan that never changes, so a free plan stays free and a paid one paid. An update changes the plan's other fields and leaves `pricing` out: a body that carries it gets `409` SUBSCRIPTION_PLAN_PRICING_LOCKED. */
+            readonly pricing?: components["schemas"]["SubscriptionPlanPricing"];
+            /** @description What offers or uses the plan. Only present in the detail response (GET /subscription-plans/{planId}), omitted from list responses. A plan in use cannot be deleted, and its name and limit cannot change. */
+            readonly usage?: components["schemas"]["SubscriptionPlanUsage"];
+        };
+        /** @description Counts of what offers or uses a plan. Only counts are given: a plan may be offered by more APIs than a response or message can list. */
+        SubscriptionPlanUsage: {
+            /** @description Whether anything counted below offers or uses the plan. */
+            inUse: boolean;
+            /** @description How many REST APIs list the plan in their configuration. */
+            restApis: number;
+            /** @description How many APIs offer the plan in a publication draft (each API once). */
+            drafts: number;
+            /** @description How many APIs offer the plan in a publication (each API once). */
+            publications: number;
+            /** @description How many subscriptions use the plan. */
+            subscriptions: number;
+        };
+        /** @description A meter to create or replace. A field not listed here is refused. */
+        MeterRequest: {
+            /** @description The meter's id; derived from displayName when omitted on create. */
+            id?: string;
+            /** @description Says what the meter counts, for example "Input tokens". */
+            displayName: string;
+            description?: string;
+            /**
+             * @description What is counted: API requests (REQUEST_COUNT), each counting one, or the tokens of AI API requests (TOKENS), adding up the number in the event field `typeKey` names. A meter has no conditions: each plan price gives its own filters.
+             * @enum {string}
+             */
+            type: "REQUEST_COUNT" | "TOKENS";
+            /**
+             * @description TOKENS only, and required there: the event field whose number the meter adds up, as a full path in the gateway's analytics event, such as `metadata.aiTokenUsage.promptTokens` (our gateway also sends `metadata.aiTokenUsage.completionTokens` and `metadata.aiTokenUsage.totalTokens`). 1 to 255 characters with no spaces. Refused for a REQUEST_COUNT meter.
+             * @example metadata.aiTokenUsage.promptTokens
+             */
+            typeKey?: string | null;
+            /** @description The fields this meter's prices can filter on, at most 10: each fixed field (HTTP_STATUS_CODE, HTTP_METHOD, RESOURCE, API_TYPE) at most once, and TOKEN once per key. Optional; without them the meter's prices take no filters. */
+            filterFields?: components["schemas"]["MeterFilterFieldRequest"][];
+        };
+        /** @description A field this meter's prices can filter on: the status code, HTTP method, resource, API type (API_TYPE, the kind of API a request went to, read by default from `metadata.apiType`), or a token count (TOKEN, read from its `eventKey`). API_TYPE and TOKEN are allowed on any meter. TOKEN can be listed several times, each time with a different key, and not with the key of the meter's own `typeKey`, which prices can already put Token conditions on. */
+        MeterFilterFieldRequest: {
+            /** @enum {string} */
+            field: "HTTP_STATUS_CODE" | "HTTP_METHOD" | "RESOURCE" | "API_TYPE" | "TOKEN";
+            /**
+             * @description The event field this filter field reads, as a full path in the gateway's analytics event; 1 to 255 characters with no spaces. Optional for a fixed field: left out or empty, it is the field's default, which is `response.status` for HTTP_STATUS_CODE, `request.verb` for HTTP_METHOD, `metadata.apiResourceTemplate` for RESOURCE and `metadata.apiType` for API_TYPE. Required for TOKEN, which has no default; the suggested keys are `metadata.aiTokenUsage.promptTokens`, `metadata.aiTokenUsage.completionTokens` and `metadata.aiTokenUsage.totalTokens`.
+             * @example metadata.apiType
+             */
+            eventKey?: string;
+        };
+        Meter: {
+            id?: string;
+            displayName?: string;
+            description?: string;
+            /** @enum {string} */
+            type?: "REQUEST_COUNT" | "TOKENS";
+            /** @description The event field whose number a TOKENS meter adds up, as stored on the meter, such as `metadata.aiTokenUsage.promptTokens`; null for REQUEST_COUNT. */
+            typeKey?: string | null;
+            /** @description The fields this meter's prices can filter on, each with the event field it reads, as stored on the meter. */
+            filterFields?: components["schemas"]["MeterFilterField"][];
+            /** Format: date-time */
+            updatedAt?: string;
+            /** @description How many plans charge for this meter. While it is above 0, the meter cannot change or be deleted. */
+            planCount?: number;
+        };
+        MeterFilterField: {
+            /** @enum {string} */
+            field: "HTTP_STATUS_CODE" | "HTTP_METHOD" | "RESOURCE" | "API_TYPE" | "TOKEN";
+            /** @description The event field this filter field reads, such as `metadata.apiType`. */
+            eventKey: string;
+        };
+        MeterListResponse: {
+            count: number;
+            list: components["schemas"]["Meter"][];
+            pagination: components["schemas"]["Pagination"];
+        };
+        PriceTier: {
+            /**
+             * Format: int64
+             * @description The last unit of the tier; null on the last tier.
+             */
+            upTo?: number | null;
+            unitAmount?: string | null;
+            flatAmount?: string | null;
+        };
+        /** @description Narrows the requests a plan price counts. HTTP_STATUS_CODE, HTTP_METHOD and API_TYPE take EQUALS, NOT_EQUALS, IN or NOT_IN; RESOURCE takes EQUALS, NOT_EQUALS or STARTS_WITH. EQUALS, NOT_EQUALS and STARTS_WITH take one value; IN and NOT_IN one or more. Status codes are exact codes from 100 to 599; HTTP methods are GET, POST, PUT, PATCH, DELETE, HEAD or OPTIONS; a resource is a path from the API definition, such as `/orders/{id}`. STARTS_WITH matches the resource and the resources under it, by whole path segments, as a router matches a path prefix: `/orders` matches `/orders` and `/orders/{id}`, not `/orders-archive`; `/` matches every resource; its value is stored without a trailing `/`. NOT_EQUALS and NOT_IN count the requests that have the field with another value: a request without the field is not counted. An API type is the kind of API a request went to, read by default from `metadata.apiType`: free text matched exactly as written (case-sensitive), such as `RestApi`, `WebSubApi`, `LlmProvider`, `LlmProxy`, `Mcp` or `Agent`, the kinds our gateway sends; any other text is accepted. API type values are 1 to 255 characters. A TOKEN filter is a condition on the token count at `eventKey`: it takes GREATER_THAN (more than), GREATER_THAN_OR_EQUAL (at least), LESS_THAN (less than), LESS_THAN_OR_EQUAL (at most) or EQUALS (equal to), with exactly one whole number from 0 to 1000000000000. Two conditions on one key give a range, for example more than 100 and at most 500; they must be able to hold together. */
+        PriceFilter: {
+            /** @enum {string} */
+            field: "HTTP_STATUS_CODE" | "HTTP_METHOD" | "RESOURCE" | "API_TYPE" | "TOKEN";
+            /**
+             * @description TOKEN only, and required there: the Token key the condition reads, one of the meter's Token keys (its `typeKey` or the key of one of its TOKEN filter fields). Refused on any other field.
+             * @example metadata.aiTokenUsage.promptTokens
+             */
+            eventKey?: string;
+            /** @enum {string} */
+            operator: "EQUALS" | "NOT_EQUALS" | "IN" | "NOT_IN" | "STARTS_WITH" | "GREATER_THAN" | "GREATER_THAN_OR_EQUAL" | "LESS_THAN" | "LESS_THAN_OR_EQUAL";
+            /** @description The values to match; for TOKEN, exactly one whole number written as a string, such as "333". */
+            values: string[];
+        };
+        /** @description A usage price of a paid plan: what the meter `meterId` counts, narrowed by the price's `filters`, charged in one pricing model. PER_UNIT charges `unitAmount` per `unitQuantity` units; VOLUME prices all the units at the tier their total falls in; GRADUATED prices the units in each tier at that tier's price. Fields of other models are not accepted. A plan may price one meter several times, but two prices on the same meter must not count the same request. A price has no name: it is shown as the meter's name followed by its filters. */
+        SubscriptionPlanPrice: {
+            /** @description The `id` of the meter that counts the units, one of the organization's meters (GET /meters). */
+            meterId: string;
+            /** @description Optional; at most one filter per fixed field and at most two Token conditions per Token key, and only on the fields the meter lists in its filterFields (for Token, on the meter's `typeKey` or its TOKEN keys). Without filters the price counts every request the meter counts. */
+            filters?: components["schemas"]["PriceFilter"][];
+            /** @enum {string} */
+            pricingModel: "PER_UNIT" | "VOLUME" | "GRADUATED";
+            /** @description PER_UNIT only. The price per `unitQuantity` units, as a decimal string. */
+            unitAmount?: string | null;
+            /**
+             * Format: int64
+             * @description PER_UNIT only. How many units `unitAmount` is for (default 1).
+             */
+            unitQuantity?: number | null;
+            /** @description VOLUME and GRADUATED only. In ascending order; the last tier has no `upTo`. */
+            tiers?: components["schemas"]["PriceTier"][] | null;
+        };
+        /** @description What a paid subscription plan costs, given when the plan is created. A FLAT_RATE plan charges `flatAmount` every billing period and has no prices. A USAGE_BASED plan charges its `prices` (1 to 20) on one invoice per period and has no flat amount. A plan created without pricing is free. Pricing can't change once the plan exists, so a field the pricing, a price, a filter or a tier does not take is refused rather than ignored. */
+        SubscriptionPlanPricingRequest: {
+            /** @enum {string} */
+            pricingType: "FLAT_RATE" | "USAGE_BASED";
+            currency: string;
+            /** @enum {string} */
+            billingPeriod: "MONTH" | "YEAR";
+            /** @description FLAT_RATE only. The amount charged every billing period, as a decimal string in the currency. */
+            flatAmount?: string | null;
+            /** @description USAGE_BASED only. */
+            prices?: components["schemas"]["SubscriptionPlanPrice"][];
+        };
+        SubscriptionPlanPricing: {
+            subscriptionPlanId?: string;
+            /** @enum {string} */
+            pricingType?: "FLAT_RATE" | "USAGE_BASED";
+            currency?: string;
+            /** @enum {string} */
+            billingPeriod?: "MONTH" | "YEAR";
+            flatAmount?: string | null;
+            prices?: components["schemas"]["SubscriptionPlanPrice"][];
+            /** Format: date-time */
+            updatedAt?: string;
+        };
+        /** @description The billing of a paid subscription, as the API Portal reports it from the billing provider. */
+        SubscriptionBilling: {
+            /**
+             * @description Gateways refuse calls (403) while UNPAID or CANCELLED.
+             * @enum {string}
+             */
+            status?: "ACTIVE" | "PAST_DUE" | "UNPAID" | "CANCELLED";
+            /** @description The billing provider's customer. */
+            customerId?: string;
+            /** @description The billing provider's subscription. */
+            subscriptionId?: string;
         };
         SubscriptionPlanListResponse: {
             /** @description List of subscription plans in current response */
@@ -5326,6 +5562,7 @@ export interface components {
             organizationId?: string;
             /** @enum {string} */
             status?: "ACTIVE" | "INACTIVE" | "REVOKED";
+            billing?: components["schemas"]["SubscriptionBilling"];
             /**
              * @description User identifier of the user who created this resource
              * @example john.doe
@@ -7917,7 +8154,7 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
-        /** @description Conflict. code identifies which: PUBLICATION_STATE_CONFLICT when the action is not valid for the publication's current status, PUBLICATION_DRAFT_CHANGED when the draft was saved while a publish of it was in flight (the API Portal may hold the earlier copy; review the draft and publish again), or PUBLICATION_PORTAL_CONFLICT when the API Portal refused the change: the handle or display name and version is taken, the listing still has subscriptions or active API keys, or a subscription plan could not be created because the portal already holds it. A portal conflict does not clear on retry (rename, remove the consumers, or deprecate instead), except a plan conflict from a concurrent publish, which usually does. No local state was changed by any of these. */
+        /** @description Conflict. code identifies which: PUBLICATION_STATE_CONFLICT when the action is not valid for the publication's current status, PUBLICATION_DRAFT_CHANGED when the draft was saved while a publish of it was in flight (the API Portal may hold the earlier copy; review the draft and publish again), PUBLICATION_PLAN_PRICING_CONFLICT when the API Portal already has a plan with the handle of an offered plan but different pricing (a portal cannot change a plan's pricing; offer a plan with another handle), PUBLICATION_METER_CONFLICT when it already has a meter with the same id as one an offered plan charges for, but with other settings (price a new plan with a meter of another id), or PUBLICATION_PORTAL_CONFLICT when the API Portal refused the change: the handle or display name and version is taken, the listing still has subscriptions or active API keys, a plan the publish removes from the API still has subscriptions to it there, or a subscription plan could not be created or updated. A portal conflict does not clear on retry (rename, remove the consumers, or deprecate instead), except a plan conflict from a concurrent publish, which usually does. No local state was changed by any of these. Before the API is pushed, the API Portal's copy of each offered plan is created, after the meters its prices charge for, or, when its name or limit differs, updated. When the push then fails, the plans and meters this publish created are removed again; the name and limit updates stay. */
         PublicationConflict: {
             headers: {
                 [name: string]: unknown;
@@ -14219,6 +14456,8 @@ export interface operations {
                 offset?: components["parameters"]["offset-Q"];
                 /** @description Case-insensitive substring filter matched against the resource display name and id (handle). */
                 query?: components["parameters"]["query-Q"];
+                /** @description Only the plans with this status (ACTIVE, INACTIVE) */
+                status?: "ACTIVE" | "INACTIVE";
             };
             header?: never;
             path?: never;
@@ -14266,6 +14505,7 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             409: components["responses"]["Conflict"];
+            413: components["responses"]["PayloadTooLarge"];
             500: components["responses"]["InternalServerError"];
         };
     };
@@ -14347,6 +14587,179 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    GetSubscriptionPlanPricing: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The plan's id (handle), as returned in `id` by GET /subscription-plans. */
+                subscriptionPlanId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The plan's pricing */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubscriptionPlanPricing"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    ListMeters: {
+        parameters: {
+            query?: {
+                /** @description Maximum number of items to return per page. */
+                limit?: components["parameters"]["limit-Q"];
+                /** @description Zero-based index of the first item to return. */
+                offset?: components["parameters"]["offset-Q"];
+                /** @description Case-insensitive substring filter matched against the resource display name and id (handle). */
+                query?: components["parameters"]["query-Q"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The meters */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeterListResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    CreateMeter: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MeterRequest"];
+            };
+        };
+        responses: {
+            /** @description The meter, as stored */
+            201: {
+                headers: {
+                    Location: components["headers"]["Location"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Meter"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            413: components["responses"]["PayloadTooLarge"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    GetMeter: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The meter's id (handle), as returned in `id` by GET /meters or POST /meters. */
+                meterId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The meter */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Meter"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    UpdateMeter: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The meter's id (handle), as returned in `id` by GET /meters or POST /meters. */
+                meterId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MeterRequest"];
+            };
+        };
+        responses: {
+            /** @description The meter, as stored */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Meter"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            413: components["responses"]["PayloadTooLarge"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    DeleteMeter: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The meter's id (handle), as returned in `id` by GET /meters or POST /meters. */
+                meterId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Meter deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
             500: components["responses"]["InternalServerError"];
         };
     };

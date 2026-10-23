@@ -16,9 +16,16 @@
  * under the License.
  */
 
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  keepPreviousData,
+  useMutation,
+  useQueries,
+  useQuery,
+  useQueryClient,
+  type UseQueryResult,
+} from '@tanstack/react-query';
 
-import type { ApiError } from '../../core/errors';
+import { isErrorCode, type ApiError } from '../../core/errors';
 import { useApiScope } from '../../core/scope';
 import {
   createSubscriptionPlan,
@@ -72,6 +79,31 @@ export const useSubscriptionPlan = (
   return useQuery({
     ...subscriptionPlanQueries.detail(org!, subscriptionPlanId!),
     enabled: Boolean(org && subscriptionPlanId),
+  });
+};
+
+const combinePlans = (ids: string[]) => (results: UseQueryResult<SubscriptionPlan>[]) => ({
+  isPending: results.some((result) => result.isPending),
+  /** The plans read, by id. */
+  plans: new Map(results.flatMap((result, i) => (result.data ? [[ids[i], result.data] as const] : []))),
+  /** The ids of plans the organization no longer has. */
+  removed: new Set(ids.filter((_, i) => isErrorCode(results[i].error, 'SUBSCRIPTION_PLAN_NOT_FOUND'))),
+});
+
+/**
+ * The plans with the given ids, each read on its own and kept, for a screen that shows a known set
+ * of plans rather than a page of the list. Repeated and empty ids are read once or not at all.
+ */
+export const useSubscriptionPlansById = (
+  subscriptionPlanIds: readonly string[],
+  overrides: { orgId?: string } = {}
+) => {
+  const { org } = useApiScope(overrides);
+  const ids = [...new Set(subscriptionPlanIds.filter(Boolean))];
+
+  return useQueries({
+    combine: combinePlans(ids),
+    queries: ids.map((id) => ({ ...subscriptionPlanQueries.detail(org!, id), enabled: Boolean(org) })),
   });
 };
 
@@ -160,9 +192,8 @@ export const useUpdateSubscriptionPlan = (overrides: { orgId?: string } = {}) =>
 /**
  * Deletes a plan.
  *
- * The backend refuses while subscriptions still reference it, answering with a
- * specific `code`. Callers should branch on `ApiError.code` to explain which
- * subscriptions are blocking rather than showing a generic failure.
+ * A refusal's `ApiError.message` is the server's own explanation, such as how
+ * many things still use the plan (`SUBSCRIPTION_PLAN_IN_USE`).
  */
 export const useDeleteSubscriptionPlan = (overrides: { orgId?: string } = {}) => {
   const { org, orgId } = useApiScope(overrides);
