@@ -501,10 +501,6 @@ blocks:
       - name: lazy-resources-xds
         features:
           - features/gateway/core/lazy_resources_xds.feature
-      - name: dynamic-endpoint
-        tags: "gateway-version>=1.2.0"
-        features:
-          - features/gateway/routes-policies/dynamic_endpoint.feature
       - name: route-path-matching
         features:
           - features/gateway/routes/route_path_matching.feature
