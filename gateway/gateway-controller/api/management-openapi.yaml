@@ -4938,12 +4938,24 @@ components:
           type: integer
           description: >
             Maximum concurrent connections this gateway instance opens to the backend. At the
-            limit, at most this many further handshakes wait for a free connection; beyond that a
-            handshake is rejected with 503. Best-effort rather than exact - Envoy guarantees at least
-            one connection per selected host, so a multi-target definition can exceed this by a
-            small amount.
+            limit, at most maxPendingHandshakes further handshakes wait for a free connection;
+            beyond that a handshake is rejected with 503. Best-effort rather than exact - Envoy
+            guarantees at least one connection per selected host, so a multi-target definition can
+            exceed this by a small amount, and a burst of simultaneous handshakes can briefly be
+            admitted beyond it before the limit takes hold.
           minimum: 1
           example: 500
+        maxPendingHandshakes:
+          type: integer
+          description: >
+            Maximum handshakes that may wait for a backend connection at once; any further
+            handshake is rejected immediately with 503. Defaults to maxConnections. A waiting
+            handshake is held until a connection frees up or the gateway's route timeout ends it.
+            Every handshake waits briefly while its own backend connection is being opened, so a
+            small value also rejects bursts of simultaneous handshakes below maxConnections; size
+            it to the expected handshake burst.
+          minimum: 1
+          example: 10
 
     WebSocketUpstreamTimeout:
       type: object

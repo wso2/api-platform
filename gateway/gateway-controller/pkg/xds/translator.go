@@ -874,23 +874,27 @@ func buildGatewayInternalSinkCluster() *cluster.Cluster {
 // that makes a circuit breaker the wrong tool for bounding *downstream* client
 // connections, where an exact per-API count is what's wanted.
 func applyUpstreamConnectionBounds(c *cluster.Cluster, uc *models.UpstreamCluster) error {
-	if uc.IdleTimeout == nil && uc.MaxConnectionDuration == nil && uc.MaxConnections == nil {
+	if uc.IdleTimeout == nil && uc.MaxConnectionDuration == nil && uc.MaxConnections == nil && uc.MaxPendingRequests == nil {
 		return nil
 	}
 
-	if uc.MaxConnections != nil {
+	if uc.MaxConnections != nil || uc.MaxPendingRequests != nil {
 		// A request waiting for a connection is "pending" — including while a new
 		// connection is being opened, which every WebSocket handshake needs — so the
-		// pending limit cannot be zero. Bounding it at the connection limit lets a burst
-		// of up to MaxConnections handshakes connect, while beyond that, at capacity, a
-		// handshake is rejected with 503 instead of joining Envoy's default queue of
-		// 1024 behind connections that may stay open for hours.
+		// pending limit cannot be zero. It defaults to the connection limit, letting a
+		// burst of up to MaxConnections handshakes connect, while beyond it, at
+		// capacity, a handshake is rejected with 503 instead of joining Envoy's default
+		// queue of 1024 behind connections that may stay open for hours.
+		thresholds := &cluster.CircuitBreakers_Thresholds{Priority: corev3.RoutingPriority_DEFAULT}
+		if uc.MaxConnections != nil {
+			thresholds.MaxConnections = &wrapperspb.UInt32Value{Value: *uc.MaxConnections}
+			thresholds.MaxPendingRequests = &wrapperspb.UInt32Value{Value: *uc.MaxConnections}
+		}
+		if uc.MaxPendingRequests != nil {
+			thresholds.MaxPendingRequests = &wrapperspb.UInt32Value{Value: *uc.MaxPendingRequests}
+		}
 		c.CircuitBreakers = &cluster.CircuitBreakers{
-			Thresholds: []*cluster.CircuitBreakers_Thresholds{{
-				Priority:           corev3.RoutingPriority_DEFAULT,
-				MaxConnections:     &wrapperspb.UInt32Value{Value: *uc.MaxConnections},
-				MaxPendingRequests: &wrapperspb.UInt32Value{Value: *uc.MaxConnections},
-			}},
+			Thresholds: []*cluster.CircuitBreakers_Thresholds{thresholds},
 		}
 	}
 

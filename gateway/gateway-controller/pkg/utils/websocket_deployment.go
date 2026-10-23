@@ -224,11 +224,12 @@ func validateBoundedDuration(field, raw string, maxValue time.Duration) []config
 	return nil
 }
 
-// validateBoundedConnections requires a connection ceiling of at least 1 and no
-// more than the gateway's maximum; a zero maximum means the gateway sets none.
+// validateBoundedConnections requires a connection count (maxConnections or
+// maxPendingHandshakes) of at least 1 and no more than the gateway's maximum; a
+// zero maximum means the gateway sets none.
 func validateBoundedConnections(field string, value int, maxValue uint32) []config.ValidationError {
 	if value < 1 {
-		return []config.ValidationError{{Field: field, Message: "maxConnections must be at least 1"}}
+		return []config.ValidationError{{Field: field, Message: field[strings.LastIndex(field, ".")+1:] + " must be at least 1"}}
 	}
 	// Envoy's circuit-breaker threshold is a uint32; a larger value would wrap
 	// when narrowed, so it is rejected even when the gateway sets no maximum.
@@ -381,6 +382,9 @@ func validateWebSocketUpstreamConnection(fieldBase string, conn *api.WebSocketUp
 	}
 	if conn.MaxConnections != nil {
 		errors = append(errors, validateBoundedConnections(fieldBase+".maxConnections", *conn.MaxConnections, limits.MaxConnectionsMax)...)
+	}
+	if conn.MaxPendingHandshakes != nil {
+		errors = append(errors, validateBoundedConnections(fieldBase+".maxPendingHandshakes", *conn.MaxPendingHandshakes, 0)...)
 	}
 
 	return errors
