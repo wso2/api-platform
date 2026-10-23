@@ -95,7 +95,7 @@ beforeEach(() => {
   deleteProvider.mockReset();
   getLLMProviders.mockReset();
   getLLMProviderProxies.mockReset();
-  getLLMProviderProxies.mockResolvedValue({ count: 0 });
+  getLLMProviderProxies.mockResolvedValue({ count: 0, list: [], pagination: { total: 0, offset: 0, limit: 1 } });
   getLLMProviders.mockImplementation(async (_orgUuid, _baseUrl, limit, offset, options) => {
     const filtered = providers.filter((p) => matches(p, options?.search ?? ''));
     return {
@@ -169,7 +169,9 @@ describe('deleting a provider', () => {
     await waitFor(() => expect(screen.getByText('Trip Planner')).toBeInTheDocument());
 
     await user.click(screen.getByRole('button', { name: 'Delete Trip Planner' }));
-    await waitFor(() => expect(getLLMProviderProxies).toHaveBeenCalledWith('trip-planner', 'org-1', expect.anything()));
+    await waitFor(() =>
+      expect(getLLMProviderProxies).toHaveBeenCalledWith('trip-planner', 'org-1', expect.anything(), 1, 0)
+    );
 
     const confirmButton = await screen.findByRole('button', { name: 'Delete' });
     expect(confirmButton).toBeDisabled();
@@ -186,7 +188,7 @@ describe('deleting a provider', () => {
   });
 
   it('blocks deletion when the provider is still in use by a proxy', async () => {
-    getLLMProviderProxies.mockResolvedValue({ count: 2 });
+    getLLMProviderProxies.mockResolvedValue({ count: 2, list: [], pagination: { total: 2, offset: 0, limit: 1 } });
     const { user } = renderList();
     await waitFor(() => expect(screen.getByText('Trip Planner')).toBeInTheDocument());
 
