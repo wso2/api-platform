@@ -3084,8 +3084,8 @@
     "defaultMessage": "Status"
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.delete.blockedMessage": {
-    "defaultMessage": "\"{name}\" is used by the following and can't be deleted:",
-    "description": "Shown in the delete dialog, with Delete disabled, for a plan in use; what uses it follows as a list."
+    "defaultMessage": "\"{name}\" is in use and can't be deleted.",
+    "description": "Shown in the delete dialog, with Delete disabled, for a plan in use."
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.delete.checking": {
     "defaultMessage": "Checking whether \"{name}\" is in use…",
@@ -3108,22 +3108,6 @@
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.delete.title": {
     "defaultMessage": "Delete plan"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.delete.usedByDraft": {
-    "defaultMessage": "{count, plural, one {# publication draft} other {# publication drafts}}",
-    "description": "A list item: how many APIs offer the plan in a publication draft."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.delete.usedByPublication": {
-    "defaultMessage": "{count, plural, one {# publication} other {# publications}}",
-    "description": "A list item: how many APIs offer the plan in a publication."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.delete.usedByRestApi": {
-    "defaultMessage": "{count, plural, one {# REST API} other {# REST APIs}}",
-    "description": "A list item: how many REST APIs list the plan."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.delete.usedBySubscriptions": {
-    "defaultMessage": "{count, plural, one {# subscription} other {# subscriptions}}",
-    "description": "A list item: how many subscriptions use the plan."
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.empty.action": {
     "defaultMessage": "Create plan"
@@ -3545,7 +3529,7 @@
     "defaultMessage": "Expiry date (optional)"
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.inUseNote": {
-    "defaultMessage": "This plan is in use, so its name and limit can't change. To change them, create a new plan.",
+    "defaultMessage": "This plan is in use. To change its name or limit, create a new plan.",
     "description": "Shown when editing a plan that APIs offer or subscriptions use; the name and limit fields are disabled."
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.limit.countLabel": {
