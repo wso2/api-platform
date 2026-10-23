@@ -501,10 +501,6 @@ blocks:
       - name: lazy-resources-xds
         features:
           - features/gateway/core/lazy_resources_xds.feature
-      - name: dynamic-endpoint
-        tags: "gateway-version>=1.2.0"
-        features:
-          - features/gateway/routes-policies/dynamic_endpoint.feature
       - name: route-path-matching
         features:
           - features/gateway/routes/route_path_matching.feature
@@ -520,9 +516,6 @@ blocks:
         tags: "gateway-version>=1.2.0"
         features:
           - features/gateway/routes/header_routing.feature
-      - name: host-rewrite
-        features:
-          - features/gateway/routes-policies/host_rewrite.feature
       - name: redirect
         tags: "gateway-version>=1.2.0"
         features:
@@ -530,9 +523,6 @@ blocks:
       - name: request-rewrite
         features:
           - features/gateway/routes-policies/request_rewrite.feature
-      - name: cors
-        features:
-          - features/gateway/security-policies/cors.feature
       - name: respond
         features:
           - features/gateway/routes-policies/respond.feature
@@ -576,21 +566,6 @@ blocks:
       - name: secrets
         features:
           - features/gateway/security/secrets.feature
-      - name: basic-ratelimit
-        features:
-          - features/gateway/ratelimit-policies/basic_ratelimit.feature
-      - name: ratelimit-headers
-        features:
-          - features/gateway/ratelimit-policies/ratelimit_headers.feature
-      - name: ratelimit-cost-extraction
-        features:
-          - features/gateway/ratelimit-policies/ratelimit_cost_extraction.feature
-      - name: ratelimit-key-extraction
-        features:
-          - features/gateway/ratelimit-policies/ratelimit_key_extraction.feature
-      - name: ratelimit-multi-quota
-        features:
-          - features/gateway/ratelimit-policies/ratelimit_multi_quota.feature
       - name: token-based-ratelimit
         features:
           - features/ai-workspace-gateway/ratelimit-policies/token_based_ratelimit.feature
@@ -694,10 +669,6 @@ blocks:
         tags: "gateway-version>1.2.0"
         features:
           - features/graphql_api_keys.feature
-      - name: oauth2-auth
-        tags: "gateway-version>1.2.0"
-        features:
-          - features/gateway/security-policies/oauth2_auth.feature
       - name: policy-engine-admin
         features:
           - features/gateway/core/policy_engine_admin.feature
@@ -939,13 +910,6 @@ blocks:
         tags: "gateway-version>1.2.0"
         features:
           - features/ai-workspace-gateway/mcp-policies/mcp_gateway_url_precedence.feature
-      - name: jwt-auth
-        features:
-          - features/gateway/security-policies/jwt_auth.feature
-      - name: jwt-auth-scope-claim-rules
-        tags: "gateway-version>=1.2.0"
-        features:
-          - features/gateway/security-policies/jwt_auth_scope_claim_rules.feature
       - name: graphql-policies
         tags: "gateway-version>1.2.0"
         features:
