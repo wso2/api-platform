@@ -246,6 +246,11 @@ const GeneralSettingsPage = lazy(() =>
     default: m.GeneralSettingsPage,
   })),
 );
+const MetersSettingsPage = lazy(() =>
+  import('../pages/appShell/appShellPages/settings/MetersSettingsPage').then((m) => ({
+    default: m.MetersSettingsPage,
+  })),
+);
 const SubscriptionPlansSettingsPage = lazy(() =>
   import('../pages/appShell/appShellPages/settings/SubscriptionPlansSettingsPage').then((m) => ({
     default: m.SubscriptionPlansSettingsPage,
@@ -575,6 +580,7 @@ export function AppRoutes({ extensions = [] }: AppRoutesProps) {
             {/* Organization-scoped only — platform-api has no project-level
                 subscription-plan endpoint, so this isn't registered below. */}
             <Route path="subscription-plans" element={<SubscriptionPlansSettingsPage />} />
+            <Route path="meters" element={<MetersSettingsPage />} />
             {settingsTabRoutes('organization')}
           </Route>
           <Route path={routes.projectSettings()} element={<SettingsLayout level="project" />}>
