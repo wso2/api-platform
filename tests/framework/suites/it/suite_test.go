@@ -140,7 +140,7 @@ func TestEveryBlockSweepsEveryEngine(t *testing.T) {
 // default identity blocks, whose subjects are the data plane's behaviour, not the store.
 var singleEngineBlocks = map[string]components.DBType{
 	"devportal-webhook":                               components.Postgres,
-	"platform-api-with-api-portal":                    components.Postgres,
+	"platform-api-gateway-api-portal":                 components.Postgres,
 	"multigateway":                                    components.SQLite,
 	"ai-workspace-cli":                                components.SQLite,
 	"gateway-mtls-ha":                                 components.Postgres,

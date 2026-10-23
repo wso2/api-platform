@@ -16,7 +16,7 @@
 # under the License.
 # --------------------------------------------------------------------
 
-@platform-api-with-api-portal
+@platform-api-gateway-api-portal
 Feature: Publishing a REST API to an API Portal through the control plane
   As an API publisher
   I want to publish a deployed REST API to an API Portal from the control plane

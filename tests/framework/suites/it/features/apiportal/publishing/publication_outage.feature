@@ -16,7 +16,7 @@
 # under the License.
 # --------------------------------------------------------------------
 
-@platform-api-with-api-portal
+@platform-api-gateway-api-portal
 Feature: Publishing while the API Portal is unavailable
   As an API publisher
   I want a publish or deprecate that cannot reach the API Portal to fail without changing anything

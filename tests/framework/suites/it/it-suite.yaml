@@ -1241,13 +1241,13 @@ blocks:
         features:
           - features/apiportal/webhooks/devportal_webhook.feature
 
-  # Platform-api working with an API Portal: publishing a REST API to it. Platform-api registers
-  # the portal over HTTPS and trusts its certificate, so the block overlays the portal's own
-  # certificate onto platform-api's outbound trust and gives the portal the hash of the key
-  # platform-api publishes with. The portal stages its product role file, which grants the
-  # platform-api-system role the publishing calls are authorized as; the shared IT role files do
-  # not. The outage runner stops the portal, so runners must not overlap: keep parallel at 1.
-  - name: platform-api-with-api-portal
+  # Platform-api working with an API Portal and a gateway: publishing a REST API to the portal.
+  # Platform-api registers the portal over HTTPS and trusts its certificate, so the block overlays
+  # the portal's own certificate onto platform-api's outbound trust and gives the portal the hash
+  # of the key platform-api publishes with. The portal stages its product role file, which grants
+  # the platform-api-system role the publishing calls are authorized as; the shared IT role files
+  # do not. The outage runner stops the portal, so runners must not overlap: keep parallel at 1.
+  - name: platform-api-gateway-api-portal
     parallel: 1
     components:
       - name: platform-api

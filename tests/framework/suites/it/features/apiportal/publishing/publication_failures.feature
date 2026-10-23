@@ -16,7 +16,7 @@
 # under the License.
 # --------------------------------------------------------------------
 
-@platform-api-with-api-portal
+@platform-api-gateway-api-portal
 Feature: Publishing is refused, and explained, when the control plane or the API Portal cannot accept it
   As an API publisher
   I want a rejected publish, deprecate or unpublish to say why and to leave everything as it was

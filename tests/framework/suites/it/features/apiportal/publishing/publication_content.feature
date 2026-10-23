@@ -16,7 +16,7 @@
 # under the License.
 # --------------------------------------------------------------------
 
-@platform-api-with-api-portal
+@platform-api-gateway-api-portal
 Feature: Documents, a landing page and a thumbnail published with an API reach the API Portal
   As an API publisher
   I want the content I select for a publication to be what the API Portal shows
