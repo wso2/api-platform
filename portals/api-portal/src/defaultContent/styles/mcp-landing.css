@@ -232,8 +232,49 @@
   padding: 1.5rem 2rem 1.875rem;
 }
 
+/* The payment dialog: Stripe's checkout form, which sets its own height. */
+.checkout-pay-modal {
+  width: 36rem;
+  max-height: calc(100vh - 2rem);
+  overflow-y: auto;
+}
+
+.checkout-pay-body {
+  padding: 1.5rem 1.5rem 1.75rem;
+  min-height: 12rem;
+}
+
+.checkout-pay-loading {
+  display: flex;
+  justify-content: center;
+  padding: 3rem 0;
+}
+
+.checkout-pay-loading[hidden] {
+  display: none;
+}
+
+.checkout-pay-spinner {
+  width: 2rem;
+  height: 2rem;
+  border: 3px solid var(--border);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: checkout-pay-spin 0.7s linear infinite;
+}
+
+@keyframes checkout-pay-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .checkout-pay-spinner { animation-duration: 2s; }
+}
+
+/* A dialog's close button sits in its top-right corner, over the header. */
 #mcpTokenModalClose,
-#apiTokenModalClose {
+#apiTokenModalClose,
+.mc-token-modal > .mc-modal-close {
   position: absolute;
   top: 1rem; right: 1rem;
   z-index: 2;

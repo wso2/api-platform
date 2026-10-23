@@ -346,13 +346,8 @@
           });
         };
 
-        /* Relabel subscribe buttons to "Switch plan" when a subscription already exists */
-        if ((window.existingSubscriptions || []).length > 0) {
-          document.querySelectorAll('#subscriptionPlans .subscribe-btn').forEach(function (btn) {
-            var span = btn.querySelector('span.aov-plan-spinner');
-            btn.childNodes.forEach(function (n) { if (n.nodeType === 3) n.textContent = 'Switch plan'; });
-          });
-        }
+        /* With a subscription, offer only the plan changes the server allows (subscription.js) */
+        if (window.applyPlanSwitchRules) window.applyPlanSwitchRules();
 
         /* Mark initially suspended cards */
         (window.existingSubscriptions || []).forEach(function (sub) {

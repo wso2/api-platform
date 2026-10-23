@@ -23,7 +23,7 @@
   {{#each subscriptionPlans}}
   <div class="aov-plan-card subscription-card{{#if (isCurrentPlan id @root.subscriptions)}} aov-plan-card--subscribed{{/if}}"
     id="subscriptionCard-{{id}}"
-    data-policy-name="{{id}}">
+    data-policy-name="{{id}}"{{#if paid}} data-paid{{/if}}>
     <div class="aov-plan-ribbon" aria-hidden="true">
       <div class="aov-plan-ribbon-label mcp-ribbon-label">SUBSCRIBED</div>
     </div>
@@ -57,7 +57,7 @@
           data-policy-name="{{id}}">
           <i class="bi bi-eye"></i> View subscription
         </button>
-        {{else}}
+        {{else if @root.access.subscribe}}
         <button id="subscribe-btn-{{id}}" type="button"
           class="dp-btn dp-btn--outline dp-btn--block subscribe-btn"
           data-org-id="{{@root.orgId}}"
