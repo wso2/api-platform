@@ -81,6 +81,31 @@ func (s *Steps) findActiveGateway(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("decoding APIP gateways: %w", err)
 	}
+	choice, err := s.chooseActiveGateway(ctx, items, "APIP gateway")
+	if err != nil {
+		return err
+	}
+	if err := tcontext.Set(ctx, keyGatewayID, choice.id); err != nil {
+		return err
+	}
+	if choice.environment != "" {
+		if err := tcontext.Set(ctx, keyGatewayEnv, choice.environment); err != nil {
+			return err
+		}
+	}
+	return tcontext.Set(ctx, keyGatewayEndpoint, choice.endpoint)
+}
+
+// gatewayChoice is a listed gateway a scenario can deploy to and send traffic through.
+type gatewayChoice struct {
+	id          string
+	environment string
+	endpoint    string
+}
+
+// chooseActiveGateway picks the first listed gateway that is active and has an approved data-plane
+// endpoint. label names the kind of gateway in the failure.
+func (s *Steps) chooseActiveGateway(ctx context.Context, items []map[string]any, label string) (gatewayChoice, error) {
 	// Record why each candidate was rejected. Skipping silently and reporting
 	// only "none found" hides the difference between an organization with no
 	// gateways and one whose gateways were all filtered out here.
@@ -106,20 +131,13 @@ func (s *Steps) findActiveGateway(ctx context.Context) error {
 			skipped = append(skipped, id+": no endpoint passed the data-plane host check")
 			continue
 		}
-		if err := tcontext.Set(ctx, keyGatewayID, id); err != nil {
-			return err
-		}
-		if environment, _ := item["environment"].(string); strings.TrimSpace(environment) != "" {
-			if err := tcontext.Set(ctx, keyGatewayEnv, strings.TrimSpace(environment)); err != nil {
-				return err
-			}
-		}
-		return tcontext.Set(ctx, keyGatewayEndpoint, endpoint)
+		environment, _ := item["environment"].(string)
+		return gatewayChoice{id: id, environment: strings.TrimSpace(environment), endpoint: endpoint}, nil
 	}
 	if len(items) == 0 {
-		return fmt.Errorf("the organization has no APIP gateways")
+		return gatewayChoice{}, fmt.Errorf("the organization has no %ss", label)
 	}
-	return fmt.Errorf("no usable APIP gateway among %d listed: %s", len(items), strings.Join(skipped, "; "))
+	return gatewayChoice{}, fmt.Errorf("no usable %s among %d listed: %s", label, len(items), strings.Join(skipped, "; "))
 }
 
 // sendUntilStatus invokes an absolute cloud data-plane URL until it returns the exact status.

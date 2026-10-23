@@ -45,3 +45,6 @@ blocks:
       - name: apip-secrets
         features:
           - features/apip_secrets.feature
+      - name: apip-ai-workspace
+        features:
+          - features/apip_ai_workspace.feature

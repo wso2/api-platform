@@ -133,6 +133,7 @@ func Register(sc *godog.ScenarioContext, topo *frameworkruntime.Topology, funnel
 	s.registerPromotionSteps(sc)
 	s.registerResilienceSteps(sc)
 	s.registerSecretSteps(sc)
+	s.registerAIWorkspaceSteps(sc)
 
 	sc.Step(`^I create a synthetic APIP project$`, s.createProject)
 	sc.Step(`^the synthetic APIP project should be retrievable by handle$`, s.getProject)
@@ -293,6 +294,8 @@ func (s *Steps) registerResilienceSteps(sc *godog.ScenarioContext) {
 // what a gateway sends upstream with it.
 func (s *Steps) registerSecretSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^I create a synthetic secret$`, s.createSecret)
+	sc.Step(`^I create a synthetic secret holding a sample key with the prefix "([^"]*)"$`, s.createSecretWithPrefix)
+	sc.Step(`^I create a replacement synthetic secret$`, s.createReplacementSecret)
 	sc.Step(`^I choose a synthetic secret handle without creating the secret$`, s.chooseSecretHandle)
 	sc.Step(`^I rotate the synthetic secret$`, s.rotateSecret)
 	sc.Step(`^I read the synthetic secret$`, s.readSecret)
@@ -329,6 +332,12 @@ func RegisterDeleters(reg *cleanup.Registry, topo *frameworkruntime.Topology) er
 		return err
 	}
 	if err := reg.RegisterDeleter(kindSecret, cloudDeleter(topo, client, secretsCollection, false)); err != nil {
+		return err
+	}
+	if err := reg.RegisterDeleter(kindLLMProxy, cloudDeleter(topo, client, llmProxiesCollection, false)); err != nil {
+		return err
+	}
+	if err := reg.RegisterDeleter(kindLLMProvider, cloudDeleter(topo, client, llmProvidersCollection, false)); err != nil {
 		return err
 	}
 	return reg.RegisterDeleter(cleanup.KindGateway, cloudDeleter(topo, client, "/managed-gateways", false))
