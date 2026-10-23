@@ -66,13 +66,16 @@ type TracingSteps struct {
 	http    *steps.HTTPSteps
 	traceID string
 	spans   []collectedSpan
+	// matched is the span the last attribute wait found, for a span whose name is not
+	// known in advance.
+	matched *collectedSpan
 }
 
 // RegisterTracingSteps registers the tracing step definitions.
 func RegisterTracingSteps(ctx *godog.ScenarioContext, state *TestState, httpSteps *steps.HTTPSteps) {
 	t := &TracingSteps{client: state.HTTPClient, http: httpSteps}
 	ctx.Before(func(c context.Context, _ *godog.Scenario) (context.Context, error) {
-		t.traceID, t.spans = "", nil
+		t.traceID, t.spans, t.matched = "", nil, nil
 		return c, nil
 	})
 
@@ -92,6 +95,8 @@ func RegisterTracingSteps(ctx *godog.ScenarioContext, state *TestState, httpStep
 	ctx.Step(`^some span "([^"]*)" should have attribute "([^"]*)" with value "([^"]*)"$`, t.someHasAttribute)
 	ctx.Step(`^some span "([^"]*)" should have attribute "([^"]*)"$`, t.someHasAttributeKey)
 	ctx.Step(`^I wait for (\d+) spans named "([^"]*)"$`, t.waitForSpans)
+	ctx.Step(`^I wait for a span with attribute "([^"]*)" with value "([^"]*)"$`, t.waitForSpanWithAttribute)
+	ctx.Step(`^that span should have attribute "([^"]*)" with value "([^"]*)"$`, t.matchedHasAttribute)
 	ctx.Step(`^the trace should have (\d+) spans? named "([^"]*)"$`, t.countNamed)
 	ctx.Step(`^no span in the trace should have attribute "([^"]*)"$`, t.noSpanHasAttribute)
 	ctx.Step(`^an analytics log record should carry the trace$`, t.analyticsLogCarriesTrace)
@@ -360,6 +365,37 @@ func (t *TracingSteps) waitForSpans(n int, name string) error {
 			t.spans = spans
 		}
 	}
+}
+
+// waitForSpanWithAttribute waits, in the scenario's trace, for a span carrying the
+// attribute value, and remembers it for "that span" steps.
+func (t *TracingSteps) waitForSpanWithAttribute(key, want string) error {
+	deadline := time.Now().Add(spanWait)
+	for {
+		if spans, err := t.fetch(t.traceID); err == nil {
+			t.spans = spans
+			for i := range spans {
+				if attrText(spans[i].Attributes[key]) == want {
+					t.matched = &spans[i]
+					return nil
+				}
+			}
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("no span with %s = %q arrived within %s (spans: %s)", key, want, spanWait, spanNames(t.spans))
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+}
+
+func (t *TracingSteps) matchedHasAttribute(key, want string) error {
+	if t.matched == nil {
+		return fmt.Errorf("no span was matched by an earlier step")
+	}
+	if got := attrText(t.matched.Attributes[key]); got != want {
+		return fmt.Errorf("span %q attribute %q is %q, want %q", t.matched.Name, key, got, want)
+	}
+	return nil
 }
 
 func (t *TracingSteps) countNamed(want int, name string) error {

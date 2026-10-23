@@ -199,9 +199,11 @@ Feature: Request tracing
     And I set header "Content-Type" to "application/json"
     And I send a POST request to "http://localhost:8080/tracing-large/chat/completions" with a chat body of 1572864 bytes
     Then the response status code should be 200
-    # The engine read only the first part of the body, so it cannot name the model.
-    And I wait for the span "chat"
-    And the span "chat" should have attribute "gen_ai.usage.input_tokens" with value "10"
+    # Envoy's buffer limit is a watermark: depending on how the body arrives, the engine
+    # gets all of it or only the first part (and then cannot name the model). Either way
+    # the request is forwarded and the call is traced.
+    And I wait for a span with attribute "gen_ai.operation.name" with value "chat"
+    And that span should have attribute "gen_ai.usage.input_tokens" with value "10"
 
     Given I authenticate using basic auth as "admin"
     When I delete the LLM provider "tracing-large"
