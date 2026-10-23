@@ -791,8 +791,8 @@ test('the Platform API\'s own meter, plan and pricing changes are not sent back 
     assert.deepEqual(results().quietEvents, []);
 });
 
-// Deleting it would take it off a live listing. A failed Platform API publish deletes the plans it
-// created, and this refusal keeps one that its listing offers after all.
+// Subscribers see a plan that an API offers on that API's page. This also covers a Platform API
+// publish that timed out after its listing was saved: the plans the API offers are kept.
 test('a plan an API offers is not deleted', () => {
     assert.equal(results().offeredDelete.status, 409);
     assert.equal(results().offeredDelete.body.code, 'PLAN_IN_USE');

@@ -39,6 +39,14 @@ const ViewDTO = require("../dto/viewsDto");
 const APIDocDTO = require("../dto/apiDocDto");
 const constants = require("../utils/constants");
 const subscriptionPlanDTO = require("../dto/subscriptionPlanDto");
+const subscriptionPlanEvents = require("./subscriptionPlanEvents");
+const planPricingService = require('./billing/planPricingService');
+const { PricingValidationError } = require('./billing/planPricingValidation');
+const billingCatalogService = require('./billing/billingCatalogService');
+const checkoutService = require('./billing/checkoutService');
+const sharedKeyAuth = require('../middlewares/sharedKeyAuth');
+const { BillingProviderError } = require('../billing/http');
+const billingConfigurationDao = require('../dao/billingConfigurationDao');
 const userIdpReferenceDao = require("../dao/userIdpReferenceDao");
 const { logUserAction } = require('../middlewares/auditLogger');
 const { CustomError, ValidationError, NotFoundError } = require("../utils/errors/customErrors");
@@ -125,6 +133,10 @@ const createAPIMetadata = async (req, res) => {
         if (apiStatus && !Object.values(constants.API_STATUS).includes(apiStatus)) {
             throw new ValidationError(`Invalid status '${apiStatus}'. Must be one of: ${Object.values(constants.API_STATUS).join(', ')}.`);
         }
+        // An API created without a status is published.
+        if (!apiStatus) {
+            apiMetadata.status = constants.API_STATUS.PUBLISHED;
+        }
         if (agentVisibility) {
             const normalizedAgentVisibility = agentVisibility.toUpperCase();
             if (!Object.values(constants.AGENT_VISIBILITY).includes(normalizedAgentVisibility)) {
@@ -135,6 +147,9 @@ const createAPIMetadata = async (req, res) => {
         apiMetadata.endPoints.productionURL = changeEndpoint(apiMetadata.endPoints.productionURL);
         apiMetadata.endPoints.sandboxURL = changeEndpoint(apiMetadata.endPoints.sandboxURL);
         normalizeGraphQLEndpoints(apiMetadata);
+        // Paid plans are created with the billing provider before anything is saved: when any part
+        // fails, what was created is removed and the request fails, and the API is not created.
+        const billing = await buildPaidPlans(orgId, billingApi(null, apiMetadata), apiMetadata.subscriptionPlans);
         let createdAPIRecord;
         await db.withTransaction(async (t) => {
             // Create apimetadata record
@@ -160,6 +175,7 @@ const createAPIMetadata = async (req, res) => {
                     };
                 }
                 await subscriptionPlanDao.createApiMapping(subscriptionPlans, apiId, userId, t);
+                await billingCatalogService.saveApiPlans(billing.apiPlans, t, apiId);
             }
             //store api labels
             if (apiMetadata.labels) {
@@ -243,6 +259,9 @@ const createAPIMetadata = async (req, res) => {
             }
             apiMetadata.id = apiMetadata.handle;
             delete apiMetadata.handle;
+        }).catch(async (err) => {
+            await billing.undo();
+            throw err;
         });
 
         logUserAction('API_METADATA_CREATED', req, { orgId, apiId: createdAPIRecord.uuid, resourceUuid: createdAPIRecord.uuid, resourceType: 'rest_api' });
@@ -263,7 +282,7 @@ const createAPIMetadata = async (req, res) => {
             stack: error.stack,
             orgId: req.orgId
         });
-        util.handleError(res, error);
+        util.handleError(res, billingCatalogFailure(error));
     }
 };
 
@@ -297,18 +316,6 @@ function normalizeGraphQLEndpoints(apiMetadata) {
     }
     apiMetadata.endPoints.productionURL = normalizeGraphQLEndpoint(apiMetadata.endPoints.productionURL);
     apiMetadata.endPoints.sandboxURL = normalizeGraphQLEndpoint(apiMetadata.endPoints.sandboxURL);
-}
-
-async function allowAPIStatusChange(apiStatus, orgId, apiId) {
-    
-    if (apiStatus === constants.API_STATUS.CREATED) {
-
-        const subApis = await subDao.listByApi(orgId, apiId);
-        if (subApis.length > 0) {
-            return false;
-        }
-    }
-    return true;
 }
 
 /**
@@ -547,6 +554,10 @@ const updateAPIMetadata = async (req, res) => {
         if (updateApiStatus && !Object.values(constants.API_STATUS).includes(updateApiStatus)) {
             throw new ValidationError(`Invalid status '${updateApiStatus}'. Must be one of: ${Object.values(constants.API_STATUS).join(', ')}.`);
         }
+        // An update without a status keeps the API's current one.
+        if (!updateApiStatus && existingRecord) {
+            apiMetadata.status = existingRecord.status;
+        }
         if (updateAgentVisibility) {
             const normalizedUpdateAgentVisibility = updateAgentVisibility.toUpperCase();
             if (!Object.values(constants.AGENT_VISIBILITY).includes(normalizedUpdateAgentVisibility)) {
@@ -574,10 +585,23 @@ const updateAPIMetadata = async (req, res) => {
         apiMetadata.endPoints.productionURL = changeEndpoint(apiMetadata.endPoints.productionURL);
         apiMetadata.endPoints.sandboxURL = changeEndpoint(apiMetadata.endPoints.sandboxURL);
         normalizeGraphQLEndpoints(apiMetadata);
-        let allowStatusChange = await allowAPIStatusChange(apiMetadata.status, orgId, apiId);
-        if (!allowStatusChange) {
-            throw new CustomError(409, constants.ERROR_MESSAGE.ERR_SUB_EXIST, "API has subscriptions.");
+        // Plans the update removes from the API must have no subscriptions to it. They are then no longer sold on it:
+        // their open checkouts are ended first.
+        let removedPlans = [];
+        if (Array.isArray(apiMetadata.subscriptionPlans)) {
+            const kept = new Set(apiMetadata.subscriptionPlans.map((plan) => plan && plan.id));
+            removedPlans = (await subscriptionPlanDao.listByApi(apiId)).filter((plan) => !kept.has(plan.handle));
+            await refuseSubscribedPlans(orgId, apiId, removedPlans);
+            if (removedPlans.length > 0) await endOpenCheckouts(orgId, { apiUuid: apiId, planUuids: removedPlans.map((plan) => plan.uuid) });
         }
+        // Paid plans the update newly enables are created with the billing provider before anything
+        // is saved: when any part fails, what was created is removed and the update fails.
+        const billing = await buildPaidPlans(orgId, billingApi(apiId, {
+            ...apiMetadata,
+            name: apiMetadata.name || (existingRecord && existingRecord.name),
+            version: apiMetadata.version || (existingRecord && existingRecord.version),
+        }), apiMetadata.subscriptionPlans);
+        let updated;
         await db.withTransaction(async (t) => {
             // Create apimetadata record
             logger.info('Updating API metadata in database', {
@@ -634,8 +658,11 @@ const updateAPIMetadata = async (req, res) => {
                         }
                     };
                 }
+                // Checked again with the plans locked: a subscription may have been made since the first check.
+                await refuseSubscribedPlans(orgId, apiId, removedPlans, t);
                 // Get subscription plan IDs and fail if any plan is not found
                 await subscriptionPlanDao.updateApiMapping(subscriptionPlans, apiId, userId, t);
+                await billingCatalogService.saveApiPlans(billing.apiPlans, t);
                 updatedAPI[0]["subscription_plans"] = await subscriptionPlanDao.listByApi(apiId, t);
             }
             // update api definition file (only when a new file was uploaded; never for MCP,
@@ -715,8 +742,13 @@ const updateAPIMetadata = async (req, res) => {
                 await apiFileDao.upsertMany(artifactApiContent, apiId, orgId, userId, t);
             }
             const audit = await userIdpReferenceDao.buildSingleAuditFields(updatedAPI[0]);
-            res.status(200).send(new APIDTO(updatedAPI[0], audit));
+            updated = new APIDTO(updatedAPI[0], audit);
+        }).catch(async (err) => {
+            await billing.undo();
+            throw err;
         });
+        // Answered once the update is committed, so a failed commit is reported as a failure, not as a saved update.
+        res.status(200).send(updated);
         // Fired only after the transaction above has committed and released its
         // connection — logUserAction's DB write is fire-and-forget on the shared
         // single-connection SQLite pool, and running it while that connection is
@@ -730,7 +762,7 @@ const updateAPIMetadata = async (req, res) => {
             orgId,
             apiId
         });
-        util.handleError(res, error);
+        util.handleError(res, billingCatalogFailure(error));
     }
 };
 
@@ -739,6 +771,15 @@ const deleteAPIMetadata = async (req, res) => {
     const { apiId: apiHandle } = req.params;
     let apiId;
     let deleted = false;
+    try {
+        // A deleted API can no longer be bought: its open checkouts are ended first. Not when it has
+        // subscriptions, which the delete refuses below.
+        const apiUuid = await resolveScopedApiId(req, orgId, apiHandle);
+        if (apiUuid && (await subDao.listByApi(orgId, apiUuid)).length === 0) await endOpenCheckouts(orgId, { apiUuid });
+    } catch (error) {
+        logger.error('API metadata deletion failed', { error: error.message, orgId, apiId: apiHandle });
+        return util.handleError(res, error);
+    }
     await db.withTransaction(async (t) => {
         try {
             apiId = await resolveScopedApiId(req, orgId, apiHandle);
@@ -1275,7 +1316,8 @@ const putSubscriptionPlans = async (req, res) => {
 }
 
 // The plan's own `id` in the request body is what the client wants to become the stored handle.
-// YAML-sourced plans already carry `.handle` (set from metadata.name), so this is a no-op for them.
+// A YAML plan's metadata.name arrives as that `id` (mapYamlToSubscriptionPlan), as for APIs,
+// applications and key managers.
 function normalizePlanHandle(plan) {
     if (!plan) {
         return plan;
@@ -1287,7 +1329,41 @@ function normalizePlanHandle(plan) {
     return plan;
 }
 
+// The Platform API keeps a plan by its handle and takes at most 40 characters, so a new plan's handle is held to that.
+// A plan that already has a longer handle keeps it.
+const MAX_PLAN_HANDLE_CHARS = 40;
+
+/** Refuses (400) a new plan whose handle the Platform API could not keep. */
+function checkNewPlanHandle(plan) {
+    if ([...String(plan.handle)].length > MAX_PLAN_HANDLE_CHARS) {
+        throw new CustomError(400, constants.ERROR_CODE[400], `id must be at most ${MAX_PLAN_HANDLE_CHARS} characters`);
+    }
+}
+
+/**
+ * A plan created with `pricing` gets it in the same transaction, so the plan and its pricing are
+ * saved together or not at all. Pricing is set only when a plan is created: pricing sent for a plan
+ * that already exists is refused (409 PLAN_PRICING_LOCKED), and a plan updated without pricing keeps
+ * the pricing it has. It runs before the plan's created event is published, which carries the
+ * pricing (`plan.pricing`).
+ */
+async function applyNewPlanPricing(orgId, body, plan, created, userId, t) {
+    if (body.pricing === undefined || body.pricing === null) return;
+    if (!created) {
+        throw Object.assign(new CustomError(409, planPricingService.pricingLockedMessage(plan.handle)),
+            { catalogCode: planPricingService.PRICING_LOCKED });
+    }
+    try {
+        plan.pricing = await planPricingService.setNewPlanPricing(orgId, plan, body.pricing, userId, t);
+    } catch (err) {
+        if (err instanceof PricingValidationError) throw new CustomError(400, constants.ERROR_CODE[400], err.message);
+        throw err;
+    }
+}
+
 const createSubscriptionPlan = async (req, res) => {
+    // A change the Platform API made is not sent back to it (sharedKeyAuth.madeByPlatformApi).
+    const echo = !sharedKeyAuth.madeByPlatformApi(req);
     const orgId = req.orgId;
     const subscriptionPlan = normalizePlanHandle(req.body);
     const userId = util.resolveActor(req);
@@ -1300,9 +1376,15 @@ const createSubscriptionPlan = async (req, res) => {
     }
 
     try {
+        checkNewPlanHandle(subscriptionPlan);
         await db.withTransaction(async (t) => {
             const subscriptionPlanResponse = await subscriptionPlanDao.create(orgId, subscriptionPlan, userId, t);
             if (subscriptionPlanResponse) {
+                await applyNewPlanPricing(orgId, subscriptionPlan, subscriptionPlanResponse, true, userId, t);
+                if (echo) {
+                    await subscriptionPlanEvents.publishPlanUpsert(
+                        subscriptionPlanEvents.EVENT.CREATED, orgId, subscriptionPlanResponse, t);
+                }
                 logger.info('Created subscription plan', {
                     orgId
                 });
@@ -1323,6 +1405,8 @@ const createSubscriptionPlan = async (req, res) => {
 };
 
 const createSubscriptionPlans = async (req, res) => {
+    // A change the Platform API made is not sent back to it (sharedKeyAuth.madeByPlatformApi).
+    const echo = !sharedKeyAuth.madeByPlatformApi(req);
     try {
         const orgId = req.orgId;
         const subscriptionPlans = req.body;
@@ -1337,6 +1421,7 @@ const createSubscriptionPlans = async (req, res) => {
         await db.withTransaction(async (t) => {
             for (const plan of subscriptionPlans) {
                 normalizePlanHandle(plan);
+                checkNewPlanHandle(plan);
                 const created = await subscriptionPlanDao.create(orgId, plan, userId, t);
                 if (!created) {
                     throw new CustomError(
@@ -1345,6 +1430,8 @@ const createSubscriptionPlans = async (req, res) => {
                         `Failed to create plan: ${plan.handle || "unknown"}`
                     );
                 }
+                await applyNewPlanPricing(orgId, plan, created, true, userId, t);
+                if (echo) await subscriptionPlanEvents.publishPlanUpsert(subscriptionPlanEvents.EVENT.CREATED, orgId, created, t);
                 createdRecords.push(created);
             }
         });
@@ -1365,6 +1452,8 @@ const createSubscriptionPlans = async (req, res) => {
 };
 
 const updateSubscriptionPlan = async (req, res) => {
+    // A change the Platform API made is not sent back to it (sharedKeyAuth.madeByPlatformApi).
+    const echo = !sharedKeyAuth.madeByPlatformApi(req);
     const orgId = req.orgId;
     logger.info('Updating subscription plan...', {
         orgId
@@ -1379,7 +1468,14 @@ const updateSubscriptionPlan = async (req, res) => {
     try {
         await db.withTransaction(async (t) => {
             const { subscriptionPlanResponse, statusCode } =  await subscriptionPlanDao.put(orgId, subscriptionPlan, userId, t);
+            if (statusCode === 201) checkNewPlanHandle(subscriptionPlan);
             if (subscriptionPlanResponse) {
+                await applyNewPlanPricing(orgId, subscriptionPlan, subscriptionPlanResponse, statusCode === 201, userId, t);
+                if (echo) {
+                    await subscriptionPlanEvents.publishPlanUpsert(
+                        statusCode === 201 ? subscriptionPlanEvents.EVENT.CREATED : subscriptionPlanEvents.EVENT.UPDATED,
+                        orgId, subscriptionPlanResponse, t);
+                }
                 const audit = await userIdpReferenceDao.buildSingleAuditFields(subscriptionPlanResponse);
                 res.status(statusCode).send(new subscriptionPlanDTO(subscriptionPlanResponse, audit));
             } else {
@@ -1397,6 +1493,8 @@ const updateSubscriptionPlan = async (req, res) => {
 };
 
 const updateSubscriptionPlans = async (req, res) => {
+    // A change the Platform API made is not sent back to it (sharedKeyAuth.madeByPlatformApi).
+    const echo = !sharedKeyAuth.madeByPlatformApi(req);
     try {
         const orgId = req.orgId;
         const subscriptionPlans = req.body;
@@ -1413,12 +1511,19 @@ const updateSubscriptionPlans = async (req, res) => {
             for (const plan of subscriptionPlans) {
                 normalizePlanHandle(plan);
                 const result = await subscriptionPlanDao.put(orgId, plan, userId, t);
+                if (result?.statusCode === 201) checkNewPlanHandle(plan);
                 if (!result?.subscriptionPlanResponse) {
                     throw new CustomError(
                         500,
                         constants.ERROR_CODE[500],
                         `Failed to upsert plan: ${plan.handle || "unknown"}`
                     );
+                }
+                await applyNewPlanPricing(orgId, plan, result.subscriptionPlanResponse, result.statusCode === 201, userId, t);
+                if (echo) {
+                    await subscriptionPlanEvents.publishPlanUpsert(
+                        result.statusCode === 201 ? subscriptionPlanEvents.EVENT.CREATED : subscriptionPlanEvents.EVENT.UPDATED,
+                        orgId, result.subscriptionPlanResponse, t);
                 }
                 updatedRecords.push(result.subscriptionPlanResponse);
                 if (result.statusCode === 201) anyCreated = true;
@@ -1438,6 +1543,24 @@ const updateSubscriptionPlans = async (req, res) => {
     }
 };
 
+const PLAN_IN_USE = 'PLAN_IN_USE';
+
+/** The refusal for deleting a plan that subscriptions still use. */
+function planInUseMessage(name, count) {
+    if (count === 1) return `The plan ${name} has 1 subscription. It can be deleted once it has ended.`;
+    return `The plan ${name} has ${count} subscriptions. It can be deleted once they have ended.`;
+}
+
+function planOfferedMessage(name, count) {
+    if (count === 1) return `The plan ${name} is offered by 1 API. Remove it from that API before deleting it.`;
+    return `The plan ${name} is offered by ${count} APIs. Remove it from those APIs before deleting it.`;
+}
+
+/**
+ * Deletes a plan that no API offers and no subscription uses. A plan an API offers, or with
+ * subscriptions, is kept and the request is refused (409 PLAN_IN_USE); the counts and the delete run
+ * in one transaction, so a subscription or an offer added meanwhile cannot be left without its plan.
+ */
 const deleteSubscriptionPlan = async (req, res) => {
     const orgId = req.orgId;
     const { planId } = req.params;
@@ -1446,13 +1569,36 @@ const deleteSubscriptionPlan = async (req, res) => {
         planId
     });
     try {
+        // A deleted plan can no longer be bought: its open checkouts are ended first. Not when an API
+        // offers it or it has subscriptions, which the delete refuses below.
+        const existing = await subscriptionPlanDao.getByName(orgId, planId);
+        if (existing && await subscriptionPlanDao.countApis(orgId, existing.uuid) === 0
+            && await subscriptionPlanDao.countSubscriptions(orgId, existing.uuid) === 0) {
+            await endOpenCheckouts(orgId, { planUuid: existing.uuid });
+        }
         await db.withTransaction(async (t) => {
-            const deleteCount = await subscriptionPlanDao.delete(orgId, planId, t);
-            if (deleteCount === 0) {
-                throw new CustomError(404, constants.ERROR_CODE[404], constants.ERROR_MESSAGE.SUBSCRIPTION_PLAN_NOT_FOUND);
-            } else {
-                res.status(204).send();
+            const plan = await subscriptionPlanDao.getByName(orgId, planId, t);
+            // A plan that an API offers is not deleted (409): subscribers see it on that API's page.
+            // This also covers a Platform API publish that timed out after its listing was saved: the
+            // Platform API then deletes the plans it created here, and the ones the API offers are kept.
+            const offeredBy = plan ? await subscriptionPlanDao.countApis(orgId, plan.uuid, t) : 0;
+            if (offeredBy > 0) {
+                throw Object.assign(new CustomError(409, planOfferedMessage(plan.display_name || plan.handle, offeredBy)),
+                    { catalogCode: PLAN_IN_USE });
             }
+            const { deleted, subscriptionCount } = plan
+                ? await subscriptionPlanDao.delete(orgId, planId, t)
+                : { deleted: 0, subscriptionCount: 0 };
+            if (subscriptionCount > 0) {
+                throw Object.assign(
+                    new CustomError(409, planInUseMessage(plan.display_name || plan.handle, subscriptionCount)),
+                    { catalogCode: PLAN_IN_USE });
+            }
+            if (deleted === 0) {
+                throw new CustomError(404, constants.ERROR_CODE[404], constants.ERROR_MESSAGE.SUBSCRIPTION_PLAN_NOT_FOUND);
+            }
+            if (!sharedKeyAuth.madeByPlatformApi(req)) await subscriptionPlanEvents.publishPlanDeleted(orgId, plan, t);
+            res.status(204).send();
         });
     } catch (error) {
         logger.error('subscription plan delete error failed', {
@@ -1998,8 +2144,9 @@ function mapArtifactYamlToApiMetadata(parsedYaml) {
     const metadata = parsedYaml.metadata || {};
     const spec = parsedYaml.spec || {};
     const apiType = util.resolveApiType(spec.type);
-    const apiStatus = spec.status || constants.API_STATUS.PUBLISHED;
-    if (!Object.values(constants.API_STATUS).includes(apiStatus)) {
+    // A missing status is left out: a create publishes the API, an update keeps its status.
+    const apiStatus = spec.status;
+    if (apiStatus !== undefined && !Object.values(constants.API_STATUS).includes(apiStatus)) {
         throw new ValidationError(`Invalid API status '${apiStatus}'. Must be one of: ${Object.values(constants.API_STATUS).join(', ')}.`);
     }
     const agentVisibility = (spec.agentVisibility || constants.AGENT_VISIBILITY.VISIBLE).toUpperCase();
@@ -2064,6 +2211,81 @@ function parseApiMetadataFromYamlFile(fileName, fileBuffer) {
     return mapArtifactYamlToApiMetadata(parsedYaml);
 }
 
+/** The API a request saves, as the billing catalog needs it. */
+function billingApi(apiUuid, apiMetadata) {
+    return { uuid: apiUuid, name: apiMetadata.name, version: apiMetadata.version, type: apiMetadata.type };
+}
+
+/**
+ * Creates with the billing provider the paid plans a request enables for the API (`plans` as the
+ * request lists them, { id }), before the request saves anything (see billingCatalogService.build).
+ * A plan that is not found is left to the request, which fails on it. Throws BillingCatalogError
+ * when a plan cannot be sold on the API or the provider fails; resolves to { apiPlans, undo }.
+ */
+async function buildPaidPlans(orgId, api, plans) {
+    const pairs = [];
+    for (const plan of Array.isArray(plans) ? plans : []) {
+        const found = plan && plan.id ? await subscriptionPlanDao.getByName(orgId, plan.id) : null;
+        if (found) pairs.push({ api, planUuid: found.uuid });
+    }
+    const conn = pairs.length > 0 ? await billingConfigurationDao.getWithSecrets(orgId) : null;
+    return billingCatalogService.build(orgId, conn, pairs);
+}
+
+/**
+ * Ends the open checkouts a change would leave payable, before the change is saved
+ * (checkoutService.endOpenCheckoutsFor; `which` is { apiUuid }, { apiUuid, planUuids } or { planUuid }).
+ * A checkout Stripe would not end, or Stripe failing, fails the change with 409 and nothing is saved.
+ */
+async function endOpenCheckouts(orgId, which) {
+    try {
+        await checkoutService.endOpenCheckoutsFor(orgId, which);
+    } catch (error) {
+        if (!(error instanceof checkoutService.CheckoutError) && !(error instanceof BillingProviderError)) throw error;
+        logger.warn('Open checkouts could not be ended before the change', { orgId, ...which, error: error.message });
+        const message = error instanceof checkoutService.CheckoutError ? error.message
+            : 'An open checkout could not be ended in Stripe, so nothing was changed. Try again in a moment.';
+        throw new CustomError(409, message);
+    }
+}
+
+/**
+ * Refuses (409 ERR_PLAN_SUB_EXIST) removing plans from an API while they have subscriptions to it: a plan stays on the
+ * API until its subscriptions have ended. The Platform API turns the code into its own publish message.
+ */
+async function refuseSubscribedPlans(orgId, apiId, plans, t) {
+    if (plans.length === 0) return;
+    const counts = await subscriptionPlanDao.countApiSubscriptions(orgId, apiId, plans.map((plan) => plan.uuid), t);
+    const subscribed = plans.filter((plan) => counts.has(plan.uuid))
+        .map((plan) => ({ name: plan.display_name || plan.handle, count: counts.get(plan.uuid) }));
+    if (subscribed.length > 0) {
+        throw new CustomError(409, constants.ERROR_MESSAGE.ERR_PLAN_SUB_EXIST, planSubscribedMessage(subscribed));
+    }
+}
+
+/** The refusal for removing plans from an API while they have subscriptions to it. */
+function planSubscribedMessage(plans) {
+    if (plans.length === 1) {
+        const [{ name, count }] = plans;
+        return count === 1
+            ? `The plan ${name} has 1 subscription to this API. It can be removed from the API once that subscription has ended.`
+            : `The plan ${name} has ${count} subscriptions to this API. It can be removed from the API once they have ended.`;
+    }
+    const names = plans.map((plan) => plan.name);
+    return `The plans ${names.slice(0, -1).join(', ')} and ${names[names.length - 1]} have subscriptions to this API. `
+        + 'They can be removed from the API once those subscriptions have ended.';
+}
+
+/**
+ * The error to answer with: a paid plan that cannot be sold on the API becomes ERR_BILLING_CATALOG
+ * (409), which the Platform API turns into its own message. The answer says which plan failed and why.
+ */
+function billingCatalogFailure(error) {
+    if (!(error instanceof billingCatalogService.BillingCatalogError)) return error;
+    logger.warn('A paid plan cannot be sold on the API', { reason: error.message });
+    return new CustomError(409, constants.ERROR_MESSAGE.ERR_BILLING_CATALOG, error.message);
+}
+
 function parseApiMetadataFromYamlRequest(req) {
     const metadataFile = req.files?.metadata?.[0];
     if (!metadataFile?.buffer) {
@@ -2087,7 +2309,7 @@ function legacyLimitsFromSpec(spec) {
 function mapYamlToSubscriptionPlan(item) {
     const { metadata = {}, spec = {} } = item;
     return {
-        handle: metadata.name,
+        id: metadata.name,
         displayName: spec.displayName,
         description: spec.description,
         refId: spec.refId,
