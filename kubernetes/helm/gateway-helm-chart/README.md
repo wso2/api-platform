@@ -147,8 +147,8 @@ kubectl logs -l app.kubernetes.io/component=gateway-runtime
 helm-chart/
 ├── templates/
 │   ├── gateway/
-│   │   ├── controller/       # Deployment, Service, ConfigMap, PVC
-│   │   └── gateway-runtime/  # Deployment and Service
+│   │   ├── controller/       # Deployment, Service, ConfigMap, PVC, Route
+│   │   └── gateway-runtime/  # Deployment, Service
 │   ├── serviceaccount.yaml
 │   └── _helpers.tpl
 ├── values.yaml
@@ -173,6 +173,8 @@ All configurable values are documented in `values.yaml`. Component blocks are fu
 - `gateway.controller.upstreamCerts.*` – Custom CA certificates for upstream backend TLS verification.
 - `gateway.config.policy_engine.*` – policy engine configuration including xDS client settings and admin API.
 - `gateway.config.api_key` / `gateway.config.subscriptions` – API-key policy tuning (length/algorithm/issuer) and opt-in application-subscription validation.
+- `gateway.<component>.deployment.podSecurityContext` / `securityContext` – pod and container security contexts, rendered as given (empty by default).
+- `openshift.*` – OpenShift support, rendered only when `openshift.enabled=true`: an optional Route to the management API (`openshift.routes.managementApi`, off by default, edge termination). That Route fails at install time while `gateway.config.controller.auth` still has the chart's default `admin` password, or no authentication (no basic auth users and IDP off). The chart does not create Routes for API traffic, because the hostnames the gateway runtime serves come from the virtual hosts configured in `gateway.config.router.vhosts` and in each API definition. Create a Route to the `<release>-gateway-runtime` Service for each hostname you use.
 
 Refer to the inline comments inside `values.yaml` for a complete matrix of options and the expected data types for each block.
 
@@ -343,6 +345,43 @@ helm install ap-gateway . \
   --set gateway.controller.tls.certificateProvider=secret \
   --set gateway.controller.tls.secret.name=gateway-tls
 ```
+
+### HTTPS for the Controller REST API
+
+The gateway controller's management REST API serves plain HTTP on 9090 by default. Set
+`gateway.config.controller.server.tls.enabled=true` to serve it over HTTPS on 9093 instead.
+When TLS is on, the controller does **not** start the plaintext listener, and the
+controller Service publishes `rest-tls` (`gateway.controller.service.ports.restTls`) in
+place of `rest`.
+
+The certificate comes from `gateway.controller.restApiTls` and is mounted at
+`/app/rest-api-certs` (the default `cert_path`/`key_path`):
+
+```bash
+# cert-manager, chart's self-signed Issuer; certificate covers the controller Service DNS names
+helm install ap-gateway . \
+  --set gateway.config.controller.server.tls.enabled=true
+
+# Existing secret
+kubectl create secret tls controller-rest-api-tls --cert=path/to/tls.crt --key=path/to/tls.key
+helm install ap-gateway . \
+  --set gateway.config.controller.server.tls.enabled=true \
+  --set gateway.controller.restApiTls.certificateProvider=secret \
+  --set gateway.controller.restApiTls.secret.name=controller-rest-api-tls
+```
+
+For production with cert-manager, set `gateway.controller.restApiTls.certManager.issuerRef`
+to your own Issuer/ClusterIssuer. Protocol versions, cipher suites and key-exchange groups
+are under `gateway.config.controller.server.tls`. With `openshift.routes.managementApi`
+enabled, set its `tls.termination` to `passthrough` or `reencrypt`; `edge` is rejected while
+the API serves HTTPS. With `passthrough`, the default certificate also covers the Route
+`hostname`. `reencrypt` needs a certificate the router can verify: a real issuer (plus
+`destinationCACertificate` if the router does not already trust it) or a Secret signed by the
+OpenShift service CA. The chart's self-signed Issuer is rejected unless
+`destinationCACertificate` is set.
+
+The controller loads the certificate at startup, so restart the controller after the
+certificate is renewed.
 
 ### Custom Upstream Certificates
 

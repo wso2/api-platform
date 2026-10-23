@@ -147,7 +147,11 @@ describe('AuthProvider', () => {
     expect(screen.getByTestId('status')).toHaveTextContent('unauthenticated');
   });
 
-  it('logout clears local state and navigates to the returned logoutUrl', async () => {
+  // The IDP path must navigate without first flipping status to 'unauthenticated'.
+  // That re-render sends a guard to /login, which preempts this navigation and
+  // tears down the in-flight end-session request — the IDP logs "context
+  // canceled" and the session it was asked to end survives.
+  it('logout navigates to the returned logoutUrl without clearing local state first', async () => {
     server.use(
       http.get('/api/session', () =>
         HttpResponse.json({ authenticated: true, user: { name: 'Alice', email: 'alice@example.com' } })
@@ -166,9 +170,11 @@ describe('AuthProvider', () => {
     fireEvent.click(screen.getByText('logout'));
 
     await waitFor(() =>
-      expect(screen.getByTestId('status')).toHaveTextContent('unauthenticated')
+      expect(assign).toHaveBeenCalledWith('https://idp.example.com/logout')
     );
-    expect(assign).toHaveBeenCalledWith('https://idp.example.com/logout');
+    // Still authenticated locally: the browser is leaving for the IDP, and
+    // clearing it here is exactly what cancelled the request.
+    expect(screen.getByTestId('status')).toHaveTextContent('authenticated');
   });
 
   it('logout falls back to a login path when the BFF returns no logoutUrl', async () => {

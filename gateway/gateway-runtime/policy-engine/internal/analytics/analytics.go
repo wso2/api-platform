@@ -574,7 +574,7 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 	for _, key := range []string{
 		dto.PropKeyAuthType, dto.PropKeyAuthIssuer, dto.PropKeyAuthCredentialID,
 		dto.PropKeyAuthTokenID, dto.PropKeyAuthAudience, dto.PropKeyAuthScopes, dto.PropKeyAuthProperties,
-		dto.PropKeyAuthAuthorized, dto.PropKeyMetadata,
+		dto.PropKeyAuthAuthorized, dto.PropKeyMetadata, dto.PropKeyOperationPath,
 	} {
 		if v, exists := keyValuePairsFromMetadata[key]; exists && v != "" {
 			event.Properties[key] = v

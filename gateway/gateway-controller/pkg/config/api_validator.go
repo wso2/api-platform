@@ -644,7 +644,7 @@ func (v *APIValidator) validateOperations(context string, operations []api.Opera
 
 		// The combined route path (context + operation path) must not fall under
 		// the reserved gateway health-check namespace.
-		errors = append(errors, validateNotReservedHealthPath(pathField, joinContextPath(context, path))...)
+		errors = append(errors, validateNotReservedGatewayPath(pathField, joinContextPath(context, path))...)
 
 		// Validate path parameters have balanced braces
 		if !v.validatePathParameters(path) {
@@ -665,7 +665,7 @@ func (v *APIValidator) validateOperations(context string, operations []api.Opera
 // the combined route path. It does not canonicalize the result — canonicalization
 // (needed to catch dot-segment paths that resolve into the reserved health
 // namespace once Envoy's NormalizePath runs at request time) is handled by
-// validateNotReservedHealthPath itself, so every caller gets it uniformly.
+// validateNotReservedGatewayPath itself, so every caller gets it uniformly.
 func joinContextPath(context, opPath string) string {
 	return strings.TrimSuffix(context, "/") + "/" + strings.TrimPrefix(opPath, "/")
 }

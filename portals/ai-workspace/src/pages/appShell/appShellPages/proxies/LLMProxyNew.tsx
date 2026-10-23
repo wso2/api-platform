@@ -1003,21 +1003,16 @@ function LLMProxyNewContent({
       setIsCreating(true);
       setFieldErrors({});
 
+      // The proxy calls its provider through the gateway, which adds the
+      // provider's own upstream credential, so the proxy needs a credential only
+      // to get past the provider's API key security. Without that it sends none,
+      // never the provider's upstream credential.
+      let providerAuthType = 'none';
+      let providerAuthHeader = '';
+      let providerAuthValue = '';
       // Encrypt the provider API key as a secret before storing it in the proxy
       // config — even though it is a platform-issued key, it is still a credential
       // that should not be persisted in plain text.
-      // Type, header and value move as one unit: an absent/'none' type carries no
-      // credential, so the header and value are cleared with it rather than being
-      // inherited from the provider and contradicting the type.
-      const inheritedAuthType = providerDetail?.upstream?.main?.auth?.type || 'none';
-      const inheritsCredential = inheritedAuthType !== 'none';
-      let providerAuthType = inheritedAuthType;
-      let providerAuthHeader = inheritsCredential
-        ? (providerDetail?.upstream?.main?.auth?.header ?? '')
-        : '';
-      let providerAuthValue = inheritsCredential
-        ? (providerDetail?.upstream?.main?.auth?.value ?? '')
-        : '';
       if (selectedProviderRequiresApiKey) {
         const rawKey = manualApiKeyValue.trim() || selectedProviderApiKeyValue || '';
         const isAlreadyPlaceholder = rawKey.includes('{{ secret ');

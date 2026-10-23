@@ -453,7 +453,7 @@ Feature: Response policy behavior
     When I create API from "resources/templates/rest-api.yaml" with values:
       | apiVersion | ${CTX:gatewaySpecVersion} |
       | name | ${CTX:apiName23} |
-      | spec | {"displayName":"Respond-Multiple-Headers-Test","version":"v1.0.0","context":"${CTX:apiContext23}/$version","upstream":{"main":{"url":"http://testbench:3000"}},"operations":[{"method":"GET","path":"/test","policies":[{"name":"respond","version":"v1","params":{"statusCode":200,"body":"{\"message\": \"success\"}","headers":[{"name":"Content-Type","value":"application/json"},{"name":"X-Custom-Header-1","value":"value1"},{"name":"X-Custom-Header-2","value":"value2"},{"name":"X-Custom-Header-3","value":"value3"},{"name":"Cache-Control","value":"max-age=3600"},{"name":"X-Request-ID","value":"req-abc-123"}]}}]}]} |
+      | spec | {"displayName":"Respond-Multiple-Headers-Test","version":"v1.0.0","context":"${CTX:apiContext23}/$version","upstream":{"main":{"url":"http://testbench:3000"}},"operations":[{"method":"GET","path":"/test","policies":[{"name":"respond","version":"v1","params":{"statusCode":200,"body":"{\"message\": \"success\"}","headers":[{"name":"Content-Type","value":"application/json"},{"name":"X-Custom-Header-1","value":"value1"},{"name":"X-Custom-Header-2","value":"value2"},{"name":"X-Custom-Header-3","value":"value3"},{"name":"Cache-Control","value":"max-age=3600"},{"name":"X-Custom-Header-4","value":"value4"}]}}]}]} |
     Then the response should be successful
     And I send a "GET" request to "${CTX:apiContext23}/v1.0.0/test" until status 200
     When I send a "GET" request to "${CTX:apiContext23}/v1.0.0/test"
@@ -462,7 +462,7 @@ Feature: Response policy behavior
     And the response header "X-Custom-Header-2" should be "value2"
     And the response header "X-Custom-Header-3" should be "value3"
     And the response header "Cache-Control" should be "max-age=3600"
-    And the response header "X-Request-ID" should be "req-abc-123"
+    And the response header "X-Custom-Header-4" should be "value4"
     When I delete the API "${CTX:apiName23}"
     Then the response should be successful
     And I send a "GET" request to "${CTX:apiContext23}/v1.0.0/test" until status 404

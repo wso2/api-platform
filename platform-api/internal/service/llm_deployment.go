@@ -94,11 +94,12 @@ func NewLLMProviderDeploymentService(
 	gatewayEventsService *GatewayEventsService,
 	artifactRepo repository.ArtifactRepository,
 	definitions ArtifactDefinitions,
+	identity *IdentityService,
 	cfg *config.Server,
 	slogger *slog.Logger,
 ) *LLMProviderDeploymentService {
 	return &LLMProviderDeploymentService{
-		builds:               NewBuildService(artifactRepo, deploymentRepo, definitions, cfg, slogger),
+		builds:               NewBuildService(artifactRepo, deploymentRepo, definitions, identity, cfg, slogger),
 		providerRepo:         providerRepo,
 		templateRepo:         templateRepo,
 		deploymentRepo:       deploymentRepo,
@@ -128,11 +129,12 @@ func NewLLMProxyDeploymentService(
 	gatewayEventsService *GatewayEventsService,
 	artifactRepo repository.ArtifactRepository,
 	definitions ArtifactDefinitions,
+	identity *IdentityService,
 	cfg *config.Server,
 	slogger *slog.Logger,
 ) *LLMProxyDeploymentService {
 	return &LLMProxyDeploymentService{
-		builds:               NewBuildService(artifactRepo, deploymentRepo, definitions, cfg, slogger),
+		builds:               NewBuildService(artifactRepo, deploymentRepo, definitions, identity, cfg, slogger),
 		proxyRepo:            proxyRepo,
 		deploymentRepo:       deploymentRepo,
 		gatewayRepo:          gatewayRepo,

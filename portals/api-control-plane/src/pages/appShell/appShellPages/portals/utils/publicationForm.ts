@@ -42,13 +42,12 @@ const messages = defineMessages({
 
 /**
  * Form state and the pre-fill chain for the alpha "Publish to Portal" editor —
- * the API Details fields this release covers
+ * the API Details and Subscription Plans fields this release covers
  * (`displayName`, `version`, `description`, the two endpoint URLs,
- * `agentVisibility`). Everything
- * else `PublicationDetailsCore` carries (tags, labels, owners,
- * subscriptionPlanIds, docIds) belongs to a tab this alpha doesn't show, so a
- * save never sends it — a save sends every field currently shown, not every
- * field the schema could hold.
+ * `agentVisibility`, `subscriptionPlanIds`). Everything else
+ * `PublicationDetailsCore` carries (tags, labels, owners, docIds) belongs to a
+ * tab this alpha doesn't show, so a save never sends it — a save sends every
+ * field currently shown, not every field the schema could hold.
  */
 export type AgentVisibility = NonNullable<PublicationDraftDetailsInput['agentVisibility']>;
 
@@ -62,6 +61,7 @@ export type DraftFormValues = {
   productionUrl: string;
   sandboxUrl: string;
   agentVisibility: AgentVisibility;
+  subscriptionPlanIds: string[];
 };
 
 /** A URL the Production URL can be picked from, and the gateway that serves it. */
@@ -87,6 +87,7 @@ export const emptyDraftFormValues: DraftFormValues = {
   productionUrl: '',
   sandboxUrl: '',
   agentVisibility: DEFAULT_AGENT_VISIBILITY,
+  subscriptionPlanIds: [],
 };
 
 /** The API fields a draft starts from — REST and GraphQL APIs both carry them. */
@@ -116,6 +117,7 @@ export const resolveDraftFormValues = (
       productionUrl: draft.endpoints?.productionUrl ?? '',
       sandboxUrl: draft.endpoints?.sandboxUrl ?? '',
       agentVisibility: draft.agentVisibility ?? DEFAULT_AGENT_VISIBILITY,
+      subscriptionPlanIds: draft.subscriptionPlanIds ?? [],
     };
   }
   if (publication) {
@@ -126,6 +128,7 @@ export const resolveDraftFormValues = (
       productionUrl: publication.endpoints?.productionUrl ?? '',
       sandboxUrl: publication.endpoints?.sandboxUrl ?? '',
       agentVisibility: publication.agentVisibility ?? DEFAULT_AGENT_VISIBILITY,
+      subscriptionPlanIds: publication.subscriptionPlanIds ?? [],
     };
   }
   if (api) {
@@ -136,6 +139,7 @@ export const resolveDraftFormValues = (
       productionUrl: defaultProductionUrl ?? '',
       sandboxUrl: '',
       agentVisibility: DEFAULT_AGENT_VISIBILITY,
+      subscriptionPlanIds: [],
     };
   }
   return emptyDraftFormValues;
@@ -165,6 +169,11 @@ export const draftFormValuesToInput = (values: DraftFormValues): PublicationDraf
     ...((productionUrl ?? sandboxUrl) !== undefined
       ? { endpoints: { productionUrl, sandboxUrl } }
       : {}),
+    // Always sent, including `[]` to explicitly clear every selection: the
+    // generated field is a *pointer* to a slice, so `omitempty` only
+    // suppresses a nil pointer — an empty array still round-trips as an
+    // explicit "no plans selected" rather than being dropped.
+    subscriptionPlanIds: values.subscriptionPlanIds,
   };
 };
 

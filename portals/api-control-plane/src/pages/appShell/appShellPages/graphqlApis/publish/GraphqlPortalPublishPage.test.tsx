@@ -28,6 +28,7 @@ import {
   aGraphQLApiDetail,
   aPublication,
   aPublicationDraftDetails,
+  aSubscriptionPlan,
   collection,
   failure,
   recorder,
@@ -105,6 +106,7 @@ function serveFreshApi() {
     resource('/graphql-apis/:graphqlApiId', api),
     resource('/graphql-apis/:graphqlApiId/sdl', { sdl: SDL }),
     collection(`/graphql-apis/${API}/gateways`, [deployedGateway]),
+    collection('/subscription-plans', []),
     failure('get', `${BASE}/draft`, 404, 'DRAFT_NOT_FOUND'),
     failure('get', `${BASE}/draft/definition`, 404, 'DRAFT_NOT_FOUND'),
     failure('get', `${BASE}/publication`, 404, 'PUBLICATION_NOT_FOUND'),
@@ -176,5 +178,28 @@ describe('GraphqlPortalPublishPage', () => {
 
     expect(await screen.findByText(/This is not valid GraphQL/)).toBeInTheDocument();
     expect(publishRequests.count()).toBe(0);
+  });
+
+  it('saves the selected subscription plans with the GraphQL draft', async () => {
+    serveFreshApi();
+    const bronze = aSubscriptionPlan({ displayName: 'Bronze', id: 'bronze' });
+    const gold = aSubscriptionPlan({ displayName: 'Gold', id: 'gold' });
+    const draftRequests = recorder();
+    server.use(
+      collection('/subscription-plans', [bronze, gold]),
+      accepts('put', `${BASE}/draft`, aPublicationDraftDetails(), { record: draftRequests }),
+      accepts('put', `${BASE}/draft/definition`, undefined),
+    );
+    const { user } = renderPage();
+
+    await screen.findByDisplayValue('Countries GraphQL API');
+    await user.click(screen.getByRole('tab', { name: 'Subscription Plans' }));
+    await user.click(await screen.findByRole('checkbox', { name: /Gold/ }));
+    await user.click(screen.getByRole('button', { name: 'Save Draft' }));
+
+    await waitFor(() => expect(draftRequests.count()).toBe(1));
+    expect(JSON.parse(draftRequests.last()?.body ?? '{}')).toMatchObject({
+      subscriptionPlanIds: ['gold'],
+    });
   });
 });

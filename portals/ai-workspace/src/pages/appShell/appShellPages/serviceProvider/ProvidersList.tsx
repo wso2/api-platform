@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import {
   Avatar,
@@ -37,6 +37,7 @@ import {
   PageContent,
   PageTitle,
   Stack,
+  TablePagination,
   TextField,
   Tooltip,
   Typography,
@@ -79,6 +80,14 @@ import NoFeatureAvilable from '../../../../assets/images/NoFeatureAvilable.svg';
 import NoProviders from '../../../../assets/images/NoProviders.svg';
 import { FormattedMessage } from 'react-intl';
 import { useResourceLimits } from '../../../../hooks/useResourceLimits';
+
+// -1 is MUI's convention for an "All" rows-per-page option.
+const ALL_ROWS = -1;
+const ROWS_PER_PAGE_OPTIONS = [
+  20,
+  50,
+  { label: 'All', value: ALL_ROWS },
+];
 
 const statusChipColor: Record<string, 'success' | 'warning' | 'default'> = {
   Active: 'success',
@@ -136,6 +145,8 @@ export default function ServiceProviders() {
       )
     : buildOrgPath(currentOrganization, '/service-provider/create');
   const [searchQuery, setSearchQuery] = useState('');
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(20);
   const [deleteTarget, setDeleteTarget] = useState<{
     id: string;
     name: string;
@@ -178,6 +189,31 @@ export default function ServiceProviders() {
     });
   }, [providers, searchQuery]);
 
+  useEffect(() => {
+    setPage(0);
+  }, [searchQuery, rowsPerPage]);
+
+  // A search/rowsPerPage change is handled above, but the list can also
+  // shrink out from under the current page from other causes — a delete, a
+  // refresh, or switching organizations — which must clamp `page` back into
+  // range too, or the grid renders an empty slice while providers still exist.
+  useEffect(() => {
+    if (rowsPerPage === ALL_ROWS) return;
+    const maxPage = Math.max(
+      0,
+      Math.ceil(filteredProviders.length / rowsPerPage) - 1
+    );
+    if (page > maxPage) setPage(maxPage);
+  }, [filteredProviders.length, rowsPerPage, page]);
+
+  const pagedProviders = useMemo(() => {
+    if (rowsPerPage === ALL_ROWS) return filteredProviders;
+    return filteredProviders.slice(
+      page * rowsPerPage,
+      page * rowsPerPage + rowsPerPage
+    );
+  }, [filteredProviders, page, rowsPerPage]);
+
   const handleDeleteConfirm = async () => {
     if (!deleteTarget) return;
 
@@ -209,12 +245,18 @@ export default function ServiceProviders() {
 
     setCheckingProviderId(providerId);
     try {
+      // Only the total is needed here, not the items — request the smallest
+      // page and read pagination.total, which reports the true count even
+      // when more than `limit` proxies use this provider (unlike `.count`,
+      // which reflects only the items in this one page).
       const linkedProxiesResponse = await llmProviderApis.getLLMProviderProxies(
         providerId,
         currentOrganization.uuid,
-        apimBaseUrl
+        apimBaseUrl,
+        1,
+        0
       );
-      const linkedProxyCount = linkedProxiesResponse.count ?? 0;
+      const linkedProxyCount = linkedProxiesResponse.pagination?.total ?? 0;
       if (linkedProxyCount > 0) {
         const proxyLabel = linkedProxyCount === 1 ? 'Proxy' : 'Proxies';
         const usageVerb = linkedProxyCount === 1 ? 'is' : 'are';
@@ -551,7 +593,7 @@ export default function ServiceProviders() {
           </Box>
 
           <Grid container spacing={2} sx={{ mt: 1 }}>
-            {filteredProviders.map((provider) => {
+            {pagedProviders.map((provider) => {
               const providerId = provider.id ?? provider.displayName;
               const providerStatus = provider.status ?? 'Unknown';
               const lastUpdated =
@@ -809,6 +851,20 @@ export default function ServiceProviders() {
               );
             })}
           </Grid>
+
+          {filteredProviders.length >= 20 && (
+            <TablePagination
+              component="div"
+              count={filteredProviders.length}
+              page={page}
+              onPageChange={(_event, nextPage) => setPage(nextPage)}
+              rowsPerPage={rowsPerPage}
+              onRowsPerPageChange={(event) =>
+                setRowsPerPage(parseInt(event.target.value, 10))
+              }
+              rowsPerPageOptions={ROWS_PER_PAGE_OPTIONS}
+            />
+          )}
         </>
       )}
 

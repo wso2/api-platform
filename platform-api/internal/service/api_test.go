@@ -19,6 +19,7 @@ package service
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/wso2/api-platform/platform-api/api"
@@ -852,5 +853,161 @@ func TestAPIServiceUpdate_MissingSecretRef_Rejected(t *testing.T) {
 	}
 	if apiRepo.updated != nil {
 		t.Error("expected API update to be aborted, but repo.UpdateAPI was called")
+	}
+}
+
+// versionsByDisplayName stubs GetAPIVersionsByDisplayName and records its arguments.
+type mockVersionAPIRepository struct {
+	repository.APIRepository
+	versions    []*model.API
+	versionsErr error
+
+	gotOrgUUID     string
+	gotDisplayName string
+}
+
+func (m *mockVersionAPIRepository) GetAPIVersionsByDisplayName(orgUUID, displayName string) ([]*model.API, error) {
+	m.gotOrgUUID = orgUUID
+	m.gotDisplayName = displayName
+	return m.versions, m.versionsErr
+}
+
+func TestAPIService_GetAPIVersions(t *testing.T) {
+	const orgUUID = "org-1"
+	const projectUUID = "11111111-1111-1111-1111-111111111111"
+	context := "/test-project/reading-list-api/v1.0"
+
+	newService := func(repo *mockVersionAPIRepository) *APIService {
+		return &APIService{
+			apiRepo: repo,
+			projectRepo: &mockProjectRepository{
+				projectByUUID: &model.Project{ID: projectUUID, Handle: "test-project"},
+			},
+			identity: newTestIdentityService(),
+		}
+	}
+
+	t.Run("existing display name reports versionsAvailable with the versions taken", func(t *testing.T) {
+		repo := &mockVersionAPIRepository{versions: []*model.API{
+			{Handle: "rl-v1", Name: "reading-list-api", Version: "v1.0", ProjectID: projectUUID,
+				LifeCycleStatus: "PUBLISHED", Configuration: model.RestAPIConfig{Context: &context}},
+			{Handle: "rl-v2", Name: "reading-list-api", Version: "v2.0", ProjectID: projectUUID,
+				LifeCycleStatus: "CREATED"},
+		}}
+
+		resp, err := newService(repo).GetAPIVersions(orgUUID, "reading-list-api")
+		if err != nil {
+			t.Fatalf("GetAPIVersions failed: %v", err)
+		}
+		if !resp.VersionsAvailable || resp.Count != 2 || len(resp.List) != 2 {
+			t.Fatalf("got versionsAvailable=%v count=%d len=%d, want true/2/2",
+				resp.VersionsAvailable, resp.Count, len(resp.List))
+		}
+		if resp.List[0].Id != "rl-v1" || resp.List[0].Version != "v1.0" {
+			t.Errorf("list[0] = %+v, want id rl-v1 / version v1.0", resp.List[0])
+		}
+		// The project handle, not the raw UUID, is what the other endpoints return.
+		if resp.List[0].ProjectId != "test-project" {
+			t.Errorf("projectId = %q, want %q", resp.List[0].ProjectId, "test-project")
+		}
+		if resp.List[0].Context == nil || *resp.List[0].Context != context {
+			t.Errorf("context = %v, want %q", resp.List[0].Context, context)
+		}
+		if resp.List[1].Context != nil {
+			t.Error("context must be omitted when the configuration carries none")
+		}
+	})
+
+	t.Run("unused display name reports versionsAvailable false, not an error", func(t *testing.T) {
+		resp, err := newService(&mockVersionAPIRepository{}).GetAPIVersions(orgUUID, "no-such-api")
+		if err != nil {
+			t.Fatalf("GetAPIVersions failed: %v", err)
+		}
+		if resp.VersionsAvailable || resp.Count != 0 {
+			t.Fatalf("got versionsAvailable=%v count=%d, want false/0", resp.VersionsAvailable, resp.Count)
+		}
+		if resp.List == nil {
+			t.Error("list must serialize as [], not null")
+		}
+	})
+
+	t.Run("the lookup is organization-scoped, with no project narrowing", func(t *testing.T) {
+		repo := &mockVersionAPIRepository{}
+		if _, err := newService(repo).GetAPIVersions(orgUUID, "reading-list-api"); err != nil {
+			t.Fatalf("GetAPIVersions failed: %v", err)
+		}
+		if repo.gotOrgUUID != orgUUID {
+			t.Errorf("orgUUID passed to repo = %q, want %q", repo.gotOrgUUID, orgUUID)
+		}
+		if repo.gotDisplayName != "reading-list-api" {
+			t.Errorf("displayName passed to repo = %q, want %q", repo.gotDisplayName, "reading-list-api")
+		}
+	})
+}
+
+// Guards route shadowing: an API with the handle "versions" would be unreachable on GET.
+func TestValidateCreateAPIRequest_RejectsReservedHandle(t *testing.T) {
+	service := &APIService{
+		apiRepo:     &mockAPIRepository{},
+		projectRepo: &mockProjectRepository{projectByUUID: &model.Project{ID: "p1", Handle: "test-project"}},
+		identity:    newTestIdentityService(),
+	}
+
+	for _, handle := range []string{"versions", "VERSIONS", "Versions"} {
+		req := &api.CreateRESTAPIRequest{
+			Id:          &handle,
+			DisplayName: "Reading List API",
+			Context:     "/reading-list",
+			Version:     "v1.0",
+			ProjectId:   "test-project",
+		}
+		if err := service.validateCreateAPIRequest(req, "org-1"); err == nil {
+			t.Errorf("handle %q was accepted; want rejection as a reserved handle", handle)
+		}
+	}
+
+	// A handle that merely contains the reserved word is fine.
+	allowed := "my-versions-api"
+	req := &api.CreateRESTAPIRequest{
+		Id:          &allowed,
+		DisplayName: "Reading List API",
+		Context:     "/reading-list",
+		Version:     "v1.0",
+		ProjectId:   "test-project",
+	}
+	if err := service.validateCreateAPIRequest(req, "org-1"); err != nil {
+		t.Errorf("handle %q was rejected: %v", allowed, err)
+	}
+}
+
+// The reservation has to survive handle generation too: a display name that
+// sanitizes to "versions" must not hand out the reserved handle just because no
+// API holds it yet.
+func TestHandleExistsCheck_TreatsReservedHandleAsTaken(t *testing.T) {
+	service := &APIService{apiRepo: &mockAPIRepository{}}
+	existsCheck := service.HandleExistsCheck("org-1")
+
+	for _, handle := range []string{"versions", "VERSIONS", "Versions"} {
+		if !existsCheck(handle) {
+			t.Errorf("existsCheck(%q) = false; a reserved handle must count as taken", handle)
+		}
+	}
+
+	// A free, non-reserved handle is still generated as-is.
+	if existsCheck("my-versions-api") {
+		t.Error(`existsCheck("my-versions-api") = true; want false for a non-reserved handle`)
+	}
+
+	// End to end through the generator: the reserved base is skipped in favour
+	// of a suffixed handle rather than failing the create.
+	generated, err := utils.GenerateHandle("Versions", existsCheck)
+	if err != nil {
+		t.Fatalf("GenerateHandle failed: %v", err)
+	}
+	if generated == "versions" {
+		t.Error("GenerateHandle returned the reserved handle \"versions\"")
+	}
+	if !strings.HasPrefix(generated, "versions-") {
+		t.Errorf("generated handle = %q; want a suffixed \"versions-\" form", generated)
 	}
 }

@@ -30,6 +30,7 @@ const (
 	APIKindWebSubApi   APIKind = "WebSubApi"
 	APIKindGraphQL     APIKind = "GraphQLApi"
 	APIKindAgent       APIKind = "Agent"
+	APIKindWebSocket   APIKind = "WebSocketApi"
 )
 
 // UpstreamSlot identifies one of an API's built-in upstream slots.

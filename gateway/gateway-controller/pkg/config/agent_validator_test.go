@@ -261,6 +261,11 @@ func TestAgentValidator_FieldErrors(t *testing.T) {
 			field: "spec.context",
 		},
 		{
+			name:  "context at the reserved gateway JWKS endpoint",
+			spoil: func(c *api.AgentConfiguration) { c.Spec.Context = stringPtr("/.well-known/jwks") },
+			field: "spec.context",
+		},
+		{
 			name:  "neither upstream url nor ref",
 			spoil: func(c *api.AgentConfiguration) { c.Spec.Upstream.Url = nil },
 			field: "spec.upstream",
@@ -593,6 +598,62 @@ func TestAgentValidator_TransportPrefixReachingTheReservedNamespace(t *testing.T
 		require.NotEmpty(t, errs)
 		assert.Contains(t, fieldsOf(errs), "spec.a2a.agentCard.public.path")
 	})
+}
+
+// TestAgentValidator_ReservedJWKSPath covers the gateway JWKS endpoint through
+// every Agent field that resolves to a route path. The transport prefix and the
+// card path need a root context to land on the vhost's own /.well-known/jwks.
+// With the endpoint disabled the same configurations are accepted. Not
+// parallel: the reservation is a package-level switch.
+func TestAgentValidator_ReservedJWKSPath(t *testing.T) {
+	cases := []struct {
+		name  string
+		spoil func(c *api.AgentConfiguration)
+		field string
+	}{
+		{
+			name:  "context",
+			spoil: func(c *api.AgentConfiguration) { c.Spec.Context = stringPtr("/.well-known/jwks") },
+			field: "spec.context",
+		},
+		{
+			name: "transport prefix at the root context",
+			spoil: func(c *api.AgentConfiguration) {
+				c.Spec.Context = stringPtr("/")
+				c.Spec.A2a.OperationConfigs.Transports = transports(api.JSONRPC, "/.well-known/jwks")
+			},
+			field: "spec.a2a.operationConfigs.transports[0].pathPrefix",
+		},
+		{
+			name: "card path at the root context",
+			spoil: func(c *api.AgentConfiguration) {
+				c.Spec.Context = stringPtr("/")
+				c.Spec.A2a.AgentCard.Public.Path = stringPtr("/.well-known/jwks")
+			},
+			field: "spec.a2a.agentCard.public.path",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name+" is rejected while the endpoint is enabled", func(t *testing.T) {
+			cfg := validAgent()
+			tc.spoil(&cfg)
+
+			errs := validateAgent(&cfg)
+			require.NotEmpty(t, errs)
+			assert.Contains(t, fieldsOf(errs), tc.field)
+		})
+
+		t.Run(tc.name+" is free while the endpoint is disabled", func(t *testing.T) {
+			SetGatewayJWKSPathReserved(false)
+			t.Cleanup(func() { SetGatewayJWKSPathReserved(true) })
+
+			cfg := validAgent()
+			tc.spoil(&cfg)
+
+			assert.Empty(t, validateAgent(&cfg))
+		})
+	}
 }
 
 // TestAgentValidator_PathValues drives the same rules through both fields that

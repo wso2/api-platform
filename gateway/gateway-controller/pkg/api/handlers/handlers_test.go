@@ -506,6 +506,10 @@ func (m *MockStorage) SaveSubscription(sub *models.Subscription) error {
 	if m.subscriptions == nil {
 		m.subscriptions = make(map[string]*models.Subscription)
 	}
+	// Mirror the subscriptions primary key: a duplicate ID is a conflict, not an overwrite.
+	if _, exists := m.subscriptions[sub.ID]; exists {
+		return fmt.Errorf("%w: subscription already exists: %s", storage.ErrConflict, sub.ID)
+	}
 	m.subscriptions[sub.ID] = sub
 	return nil
 }
@@ -606,8 +610,21 @@ func (m *MockStorage) SaveSubscriptionPlan(plan *models.SubscriptionPlan) error 
 	if plan == nil {
 		return nil
 	}
+	if m.subscriptionPlanNameTaken(plan.ID, plan.PlanName) {
+		return fmt.Errorf("%w: subscription plan already exists", storage.ErrConflict)
+	}
 	m.subscriptionPlans[plan.ID] = plan
 	return nil
+}
+
+// subscriptionPlanNameTaken mirrors the UNIQUE(gateway_id, plan_name) constraint.
+func (m *MockStorage) subscriptionPlanNameTaken(planID, planName string) bool {
+	for id, p := range m.subscriptionPlans {
+		if p != nil && id != planID && p.PlanName == planName {
+			return true
+		}
+	}
+	return false
 }
 
 func (m *MockStorage) GetSubscriptionPlanByID(id, gatewayID string) (*models.SubscriptionPlan, error) {
@@ -659,6 +676,9 @@ func (m *MockStorage) UpdateSubscriptionPlan(plan *models.SubscriptionPlan) erro
 	if _, ok := m.subscriptionPlans[plan.ID]; !ok {
 		return storage.ErrNotFound
 	}
+	if m.subscriptionPlanNameTaken(plan.ID, plan.PlanName) {
+		return fmt.Errorf("%w: subscription plan name already exists", storage.ErrConflict)
+	}
 	m.subscriptionPlans[plan.ID] = plan
 	return nil
 }
@@ -676,6 +696,12 @@ func (m *MockStorage) DeleteSubscriptionPlan(id, gatewayID string) error {
 	}
 	if gatewayID != "" && plan.GatewayID != gatewayID {
 		return storage.ErrNotFound
+	}
+	// Mirror the subscriptions foreign key: a plan still in use can't be deleted.
+	for _, sub := range m.subscriptions {
+		if sub != nil && sub.SubscriptionPlanID != nil && *sub.SubscriptionPlanID == id {
+			return fmt.Errorf("%w: subscription plan is in use: %s", storage.ErrConflict, id)
+		}
 	}
 	delete(m.subscriptionPlans, id)
 	return nil

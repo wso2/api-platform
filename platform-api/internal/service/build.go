@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"unicode/utf8"
 
 	"gopkg.in/yaml.v3"
 
@@ -32,6 +33,10 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/repository"
 	"github.com/wso2/api-platform/platform-api/internal/utils"
 )
+
+// buildDescriptionMaxLen mirrors the BuildRequest description maxLength, counted in
+// characters as JSON Schema counts them.
+const buildDescriptionMaxLen = 1023
 
 // BuildService stores and serves builds for EVERY artifact kind.
 //
@@ -47,6 +52,7 @@ type BuildService struct {
 	artifactRepo   repository.ArtifactRepository
 	deploymentRepo repository.DeploymentRepository
 	definitions    ArtifactDefinitions
+	identity       *IdentityService
 	cfg            *config.Server
 	slogger        *slog.Logger
 }
@@ -56,6 +62,7 @@ func NewBuildService(
 	artifactRepo repository.ArtifactRepository,
 	deploymentRepo repository.DeploymentRepository,
 	definitions ArtifactDefinitions,
+	identity *IdentityService,
 	cfg *config.Server,
 	slogger *slog.Logger,
 ) *BuildService {
@@ -63,6 +70,7 @@ func NewBuildService(
 		artifactRepo:   artifactRepo,
 		deploymentRepo: deploymentRepo,
 		definitions:    definitions,
+		identity:       identity,
 		cfg:            cfg,
 		slogger:        slogger,
 	}
@@ -143,16 +151,28 @@ func (s *BuildService) Render(artifactUUID, orgUUID, kind, createdBy string,
 func (s *BuildService) Create(artifactUUID, orgUUID, kind, createdBy, description string,
 	metadata map[string]interface{}) (*api.BuildResponse, error) {
 
+	if utf8.RuneCountInString(description) > buildDescriptionMaxLen {
+		return nil, apperror.ValidationFailed.New(
+			fmt.Sprintf("The description must be at most %d characters.", buildDescriptionMaxLen))
+	}
 	build, _, err := s.Render(artifactUUID, orgUUID, kind, createdBy, metadata)
 	if err != nil {
 		return nil, err
 	}
 	build.Description = description
+	// The creator is resolved before the build is stored: a failure after the write
+	// would report an error for a build that exists, and a retry would store another.
+	creator := utils.StringPtrIfNotEmpty(createdBy)
+	if err := s.identity.ResolveIdentityField(&creator); err != nil {
+		return nil, err
+	}
 	if err := s.deploymentRepo.CreateBuildWithLimitEnforcement(build, s.cfg.Deployments.MaxBuildsPerAPI); err != nil {
 		return nil, s.LimitError(err)
 	}
 	s.slogger.Debug("Build created", "buildID", build.BuildID, "artifactUUID", artifactUUID)
-	return toAPIBuildResponse(build), nil
+	resp := toAPIBuildResponse(build)
+	resp.CreatedBy = creator
+	return resp, nil
 }
 
 // Get returns one of an artifact's builds.
@@ -167,7 +187,11 @@ func (s *BuildService) Get(artifactUUID, buildID, orgUUID, kind string) (*api.Bu
 	if build == nil {
 		return nil, apperror.BuildNotFound.New()
 	}
-	return toAPIBuildResponse(build), nil
+	resp := toAPIBuildResponse(build)
+	if err := s.identity.ResolveIdentityField(&resp.CreatedBy); err != nil {
+		return nil, err
+	}
+	return resp, nil
 }
 
 // List returns an artifact's builds, newest first.
@@ -182,6 +206,13 @@ func (s *BuildService) List(artifactUUID, orgUUID, kind string, limit int) (*api
 	list := make([]api.BuildResponse, 0, len(builds))
 	for _, build := range builds {
 		list = append(list, *toAPIBuildResponse(build))
+	}
+	createdByFields := make([]**string, len(list))
+	for i := range list {
+		createdByFields[i] = &list[i].CreatedBy
+	}
+	if err := s.identity.ResolveIdentityFields(createdByFields); err != nil {
+		return nil, err
 	}
 	return &api.BuildListResponse{Count: len(list), List: list}, nil
 }

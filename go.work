@@ -17,6 +17,7 @@ use (
 	./gateway/sample-policies/transform-payload-case
 	./gateway/system-policies/a2a
 	./gateway/system-policies/analytics
+	./gateway/system-policies/jwks
 	./httpkit
 	./kubernetes/conformance/runner
 	./kubernetes/gateway-operator

@@ -49,6 +49,9 @@ blocks:
       - name: rest-apis
         features:
           - features/apiportal/core/rest_apis.feature
+      - name: rest-api-versions
+        features:
+          - features/apiportal/core/rest_api_versions.feature
       - name: resources
         features:
           - features/apiportal/core/resources.feature
@@ -432,13 +435,25 @@ blocks:
     parallel: 7
     components:
       - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/gateway-signing.toml
         db:
           matrix: [sqlite, postgres, sqlserver]
       - name: testbench
+    wiring:
+      platform-gateway:
+        signingKeys: true
     runners:
+      - name: gateway-jwks
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/security/jwks.feature
       - name: api-error-responses
         features:
           - features/gateway/core/api_error_responses.feature
+      - name: request-id-response
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/core/request_id_response.feature
       - name: health
         features:
           - features/gateway/core/health.feature
@@ -455,6 +470,28 @@ blocks:
       - name: api-keys
         features:
           - features/gateway/security/api_keys.feature
+      - name: subscription-management
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/core/subscription_management.feature
+      - name: subscription-plan-management
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/core/subscription_plan_management.feature
+      # The ap CLI built from this checkout, driving the gateway through its management and
+      # admin APIs. The CLI follows the current contracts, so it is not run against 1.1.0.
+      - name: ap-cli-gateway
+        tags: "gateway-version>1.1.0"
+        features:
+          - features/cli/gateway/management.feature
+          - features/cli/gateway/apply.feature
+          - features/cli/gateway/rest_api.feature
+          - features/cli/gateway/mcp.feature
+          - features/cli/gateway/image_build.feature
+      - name: ap-cli-subscription
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/cli/gateway/subscription.feature
       - name: api-with-policies
         features:
           - features/gateway/core/api_with_policies.feature
@@ -746,6 +783,24 @@ blocks:
       - name: log-message
         features:
           - features/gateway/observability-policies/log_message.feature
+
+  - name: gateway-request-id-disabled
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/request-id-response.toml
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: testbench
+    runners:
+      - name: request-id-disabled
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/core/request_id_response_disabled.feature
+      - name: jwks-disabled
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/security/jwks_disabled.feature
 
   - name: vhost-routing-single
     parallel: 1

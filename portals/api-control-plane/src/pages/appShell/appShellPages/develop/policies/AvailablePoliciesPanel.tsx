@@ -107,8 +107,11 @@ const PAGE_SIZE = 20;
  */
 export function AvailablePoliciesPanel({
   onSelect,
+  disabled = false,
 }: {
   onSelect: (policy: PolicySummary) => void;
+  /** Catalog stays browsable, but its policies can be neither dragged nor clicked to attach. */
+  disabled?: boolean;
 }) {
   const intl = useIntl();
   const [search, setSearch] = useState('');
@@ -231,11 +234,16 @@ export function AvailablePoliciesPanel({
           <Stack spacing={1}>
             {filtered.map((policy) => (
               <Box
-                draggable
+                aria-disabled={disabled || undefined}
+                draggable={!disabled}
                 key={`${policy.name}@${policy.version}`}
-                onClick={() => onSelect(policy)}
+                onClick={disabled ? undefined : () => onSelect(policy)}
                 onDragEnd={() => setDraggedPolicy(null)}
                 onDragStart={(event) => {
+                  if (disabled) {
+                    event.preventDefault();
+                    return;
+                  }
                   setDraggedPolicy({
                     name: policy.name,
                     version: policy.version,
@@ -249,12 +257,15 @@ export function AvailablePoliciesPanel({
                   border: '1px solid',
                   borderColor: 'divider',
                   borderRadius: 1,
-                  cursor: 'grab',
+                  cursor: disabled ? 'default' : 'grab',
                   display: 'flex',
                   gap: 1,
+                  opacity: disabled ? 0.6 : 1,
                   p: 1.25,
-                  '&:active': { cursor: 'grabbing' },
-                  '&:hover': { bgcolor: 'action.hover', borderColor: 'primary.light' },
+                  ...(!disabled && {
+                    '&:active': { cursor: 'grabbing' },
+                    '&:hover': { bgcolor: 'action.hover', borderColor: 'primary.light' },
+                  }),
                 }}
               >
                 <Box sx={{ color: 'text.disabled', display: 'flex' }}>

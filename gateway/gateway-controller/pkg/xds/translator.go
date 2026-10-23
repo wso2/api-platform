@@ -128,6 +128,19 @@ type Translator struct {
 	// loggedDefaultClientCertificate identifies the last logged choice of
 	// defaultClientCert, so a change is logged once.
 	loggedDefaultClientCertificate string
+
+	// gatewayJWKSRoute adds the gateway JWKS route to every virtual host. Set
+	// only when the policy-xDS side carries its chain (see
+	// transform.GatewayJWKSRuntimeConfig), so Envoy never routes to a chain the
+	// policy engine does not have.
+	gatewayJWKSRoute bool
+}
+
+// SetGatewayJWKSRoute enables the gateway JWKS route on every virtual host. Set
+// once at startup, before the first snapshot, and only together with the
+// policy-xDS runtime config that carries the route's chain.
+func (t *Translator) SetGatewayJWKSRoute(enabled bool) {
+	t.gatewayJWKSRoute = enabled
 }
 
 // GetUpstreamTLSSecretRefs returns the per-cluster mTLS wiring collected by
@@ -737,6 +750,41 @@ func (t *Translator) createWeightedCluster(
 	return c, nil
 }
 
+// buildGatewayJWKSRoute builds the gateway JWKS route
+// (constants.GatewayJWKSPath). Unlike the health routes it keeps ext_proc: the
+// JWKS system policy answers it, so the system observability policies see the
+// request and the response can honour a conditional GET. It matches every
+// method so the policy can answer 405 rather than the request falling through
+// to the catch-all 404. Its name is the policy-xDS route key, which is how the
+// policy engine finds its chain.
+func buildGatewayJWKSRoute() *route.Route {
+	return &route.Route{
+		Name: constants.GatewayJWKSRouteKey,
+		Match: &route.RouteMatch{
+			PathSpecifier: &route.RouteMatch_Path{Path: constants.GatewayJWKSPath},
+		},
+		Action: &route.Route_Route{
+			Route: &route.RouteAction{
+				ClusterSpecifier: &route.RouteAction_Cluster{Cluster: constants.GatewayInternalSinkClusterName},
+			},
+		},
+	}
+}
+
+// buildGatewayInternalSinkCluster is the target of gateway routes a policy
+// always answers itself. It has no endpoints, so a request the policy engine
+// fails to answer gets Envoy's 503 instead of being forwarded anywhere.
+func buildGatewayInternalSinkCluster() *cluster.Cluster {
+	return &cluster.Cluster{
+		Name:                 constants.GatewayInternalSinkClusterName,
+		ClusterDiscoveryType: &cluster.Cluster_Type{Type: cluster.Cluster_STATIC},
+		ConnectTimeout:       durationpb.New(time.Second),
+		LoadAssignment: &endpoint.ClusterLoadAssignment{
+			ClusterName: constants.GatewayInternalSinkClusterName,
+		},
+	}
+}
+
 // TranslateConfigs translates all API configurations to Envoy resources
 // The correlationID parameter is optional and used for request tracing in logs
 // buildGatewayHealthRoutes builds the gateway's own readiness/liveness
@@ -929,6 +977,14 @@ func (t *Translator) TranslateConfigs(
 	gatewayHealthRoutes, err := buildGatewayHealthRoutes()
 	if err != nil {
 		return nil, err
+	}
+	// The JWKS route joins the health routes ahead of every API route: it is an
+	// exact match on a path no resource may register, and like them it must
+	// precede any prefix route that would otherwise shadow it.
+	if t.gatewayJWKSRoute {
+		gatewayHealthRoutes = append(gatewayHealthRoutes, buildGatewayJWKSRoute())
+		sink := buildGatewayInternalSinkCluster()
+		clusterMap[sink.Name] = sink
 	}
 
 	// Create a virtual host for each vhost
@@ -1479,6 +1535,8 @@ func (t *Translator) createListenerWithCertRequest(virtualHosts []*route.Virtual
 		CodecType:         hcm.HttpConnectionManager_AUTO,
 		StatPrefix:        "http",
 		GenerateRequestId: wrapperspb.Bool(true),
+		// Return x-request-id in responses, including the gateway's own error replies.
+		AlwaysSetRequestIdInResponse: t.routerConfig.HTTPListener.ReturnRequestIDInResponse,
 		RouteSpecifier: &hcm.HttpConnectionManager_Rds{
 			Rds: &hcm.Rds{
 				ConfigSource: &core.ConfigSource{
@@ -1504,7 +1562,7 @@ func (t *Translator) createListenerWithCertRequest(virtualHosts []*route.Virtual
 		},
 		// Resolve dot-segments and merge duplicate slashes before route matching (enabled unless
 		// explicitly disabled), so a request path never desynchronizes from what validators (see
-		// validateNotReservedHealthPath in pkg/config/validator.go) reasoned about at config time.
+		// validateNotReservedGatewayPath in pkg/config/validator.go) reasoned about at config time.
 		// Escaped slashes are handled separately via PathWithEscapedSlashesAction.
 		NormalizePath:                wrapperspb.Bool(!t.routerConfig.HTTPListener.DisablePathNormalization),
 		MergeSlashes:                 !t.routerConfig.HTTPListener.DisablePathNormalization,

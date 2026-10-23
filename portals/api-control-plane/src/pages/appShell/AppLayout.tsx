@@ -88,7 +88,7 @@ export default function AppLayout() {
             >
               <Suspense
                 fallback={
-                  <AppPage hideBreadcrumbs>
+                  <AppPage>
                     <LoadingState label="Loading" />
                   </AppPage>
                 }

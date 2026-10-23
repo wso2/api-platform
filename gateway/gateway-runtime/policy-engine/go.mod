@@ -20,7 +20,7 @@ require (
 	github.com/wso2/api-platform/gateway/common v0.0.0
 	github.com/wso2/api-platform/httpkit v0.0.0-local
 	github.com/wso2/api-platform/sdk/ai v0.2.3
-	github.com/wso2/api-platform/sdk/core v0.4.3
+	github.com/wso2/api-platform/sdk/core v0.5.0
 	go.opentelemetry.io/otel v1.44.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.44.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.44.0

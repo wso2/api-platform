@@ -16,38 +16,32 @@
  * under the License.
  */
 
-import { Alert, AlertTitle } from '@wso2/oxygen-ui';
-import { Lock } from '@wso2/oxygen-ui-icons-react';
+import { Alert, Box } from '@wso2/oxygen-ui';
 import { defineMessages, FormattedMessage } from 'react-intl';
 
 const messages = defineMessages({
   body: {
     id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.ReadOnlyPoliciesNotice.body',
     defaultMessage:
-      'This API was discovered from a data-plane gateway, so its policies are read-only in this console. Change them on the gateway.',
+      'This API was created from a gateway. You can view its policies, but attach, edit, remove and reorder actions are managed by the gateway and are unavailable in the API Control Plane.',
     description:
-      'Explains why the policies of a gateway-managed API cannot be added, edited or removed.',
-  },
-  title: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.ReadOnlyPoliciesNotice.title',
-    defaultMessage: 'Policies cannot be changed here',
-    description: 'Title of the notice shown on the policies page of a gateway-managed API.',
+      'Info banner on the Policies page of a read-only API, i.e. one that a gateway pushed to the control plane.',
   },
 });
 
 /**
- * Shown in place of the policy editor's controls for an API synced from a
- * data-plane gateway (`readOnly`). The control plane rejects any change to
- * such an API, so the page lists its policies without offering edits — shared
- * by the REST and GraphQL policy panels so both say the same thing.
+ * Shown above the policy editor of an API synced from a data-plane gateway
+ * (`readOnly`). The control plane rejects any change to such an API, so the
+ * page lists its policies without offering edits — shared by the REST and
+ * GraphQL policy panels so both say the same thing, and styled like the
+ * Deploy page's gateway-managed banner.
  */
 export function ReadOnlyPoliciesNotice() {
   return (
-    <Alert icon={<Lock size={18} />} severity="info">
-      <AlertTitle>
-        <FormattedMessage {...messages.title} />
-      </AlertTitle>
-      <FormattedMessage {...messages.body} />
-    </Alert>
+    <Box sx={{ pt: 2 }}>
+      <Alert severity="info">
+        <FormattedMessage {...messages.body} />
+      </Alert>
+    </Box>
   );
 }
