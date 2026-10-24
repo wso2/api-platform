@@ -38,6 +38,8 @@ const FIELD_LABELS = {
     HTTP_METHOD: 'HTTP method',
     RESOURCE: 'Resource',
     API_TYPE: 'API type',
+    MCP_METHOD: 'MCP method',
+    MCP_TOOL: 'Tool',
     TOKEN: 'Token',
 };
 

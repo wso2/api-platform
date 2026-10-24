@@ -26,7 +26,9 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const { validateMeter, handleFromName, MeterValidationError, TOKEN_EVENT_KEYS, DEFAULT_TOKEN_EVENT_KEY } = require('./meterValidation');
-const { validatePricing, resolvePrices, priceAppliesToApiType, PricingValidationError } = require('./planPricingValidation');
+const {
+    validatePricing, resolvePrices, countedFilters, priceAppliesToApiType, PricingValidationError,
+} = require('./planPricingValidation');
 const { FILTER_RULES } = require('./meterValidation');
 
 const meter = (extra) => ({ displayName: 'Successful calls', type: 'REQUEST_COUNT', ...extra });
@@ -115,8 +117,9 @@ test('a meter lists the fields its prices can filter on, each once, with the def
         { field: 'RESOURCE', eventKey: 'metadata.apiResourceTemplate' },
         { field: 'API_TYPE', eventKey: 'metadata.apiType' },
     ]);
-    // The fields in the order lists show them: API type after Resource, then Token.
-    assert.deepStrictEqual(Object.keys(FILTER_RULES), ['HTTP_STATUS_CODE', 'HTTP_METHOD', 'RESOURCE', 'API_TYPE', 'TOKEN']);
+    // The fields in the order lists show them: API type after Resource, then the MCP method and tool, then Token.
+    assert.deepStrictEqual(Object.keys(FILTER_RULES),
+        ['HTTP_STATUS_CODE', 'HTTP_METHOD', 'RESOURCE', 'API_TYPE', 'MCP_METHOD', 'MCP_TOOL', 'TOKEN']);
     // Any meter may list the API type, its key editable like every key.
     assert.deepStrictEqual(validateMeter(meter({ type: 'TOKENS', typeKey: 'metadata.aiTokenUsage.promptTokens',
         filterFields: [{ field: 'API_TYPE', eventKey: 'metadata.kind' }] }), { create: true }).filterFields,
@@ -315,6 +318,9 @@ const meters = new Map([
         filter_fields: ['HTTP_STATUS_CODE', 'HTTP_METHOD', 'RESOURCE', 'API_TYPE'].map((field) => ({ field, eventKey: field })) }],
     ['llm-input', { uuid: 'm-in', handle: 'llm-input', display_name: 'LLM input tokens', type: 'TOKENS',
         type_key: 'metadata.aiTokenUsage.promptTokens', filter_fields: [{ field: 'API_TYPE', eventKey: 'metadata.apiType' }] }],
+    ['mcp', { uuid: 'm-mcp', handle: 'mcp', display_name: 'MCP calls', type: 'REQUEST_COUNT', type_key: null,
+        filter_fields: [{ field: 'MCP_METHOD', eventKey: 'metadata.mcpAnalytics.jsonRpcMethod' },
+            { field: 'MCP_TOOL', eventKey: 'metadata.mcpAnalytics.capabilityName' }] }],
 ]);
 const resolve = (prices) => resolvePrices(validatePricing(usage({ prices })).prices, meters);
 const on = (meterId, ...filters) => perUnit({ meterId, filters });
@@ -409,6 +415,88 @@ test('a price applies to an API unless its API type filter, read at the default 
     assert.strictEqual(applies(filter('API_TYPE', 'NOT_IN', 'RestApi', 'Mcp'), 'Mcp'), false);
     // A SOAP API has no gateway counterpart, so no price is ruled out for it.
     assert.strictEqual(applies(filter('API_TYPE', 'EQUALS', 'LlmProvider'), 'SOAP'), true);
+});
+
+// ---------------------------------------------------------------------------
+// MCP method and Tool filters
+// ---------------------------------------------------------------------------
+
+const TOOL_CALL = filter('MCP_METHOD', 'EQUALS', 'tools/call');
+
+test('a meter may list the MCP method and the tool, each read at our gateway\'s key by default', () => {
+    assert.deepStrictEqual(validateMeter(meter({ filterFields: [{ field: 'mcp_method' }, { field: 'MCP_TOOL' }] }), { create: true })
+        .filterFields, [
+        { field: 'MCP_METHOD', eventKey: 'metadata.mcpAnalytics.jsonRpcMethod' },
+        { field: 'MCP_TOOL', eventKey: 'metadata.mcpAnalytics.capabilityName' },
+    ]);
+});
+
+test('an MCP method or Tool filter takes the matching operators and free-text values, kept exactly as written', () => {
+    const filtersOf = (...filters) => validatePricing(usage({ prices: [perUnit({ meterId: 'mcp', filters })] })).prices[0].filters;
+    assert.deepStrictEqual(filtersOf(filter('mcp_method', 'in', 'tools/call', ' resources/read ', 'tools/call')),
+        [filter('MCP_METHOD', 'IN', 'tools/call', 'resources/read')]);
+    assert.deepStrictEqual(filtersOf(filter('MCP_TOOL', 'NOT_EQUALS', 'Search')), [filter('MCP_TOOL', 'NOT_EQUALS', 'Search')]);
+    assert.throws(() => filtersOf(filter('MCP_TOOL', 'STARTS_WITH', 'se')), /The MCP_TOOL operator of .* must be one of EQUALS, NOT_EQUALS, IN, NOT_IN/);
+    assert.throws(() => filtersOf(filter('MCP_METHOD', 'GREATER_THAN', '1')), /The MCP_METHOD operator of .* must be one of/);
+});
+
+test('a Tool filter counts only tool calls, so a price can\'t also filter on the MCP method', () => {
+    assert.throws(() => resolve([on('mcp', TOOL_CALL, filter('MCP_TOOL', 'EQUALS', 'search'))]),
+        /price 1: a Tool filter counts only tool calls, so it can't be used with an MCP method filter/);
+    assert.strictEqual(resolve([on('mcp', filter('MCP_TOOL', 'IN', 'search', 'fetch'))]).length, 1);
+});
+
+test('two prices on one meter are compared with the tool call a Tool filter implies', () => {
+    // [price A's filters, price B's filters, whether one request can be counted by both]
+    const cases = [
+        [[TOOL_CALL], [filter('MCP_METHOD', 'NOT_EQUALS', 'tools/call')], false],
+        [[TOOL_CALL], [filter('MCP_METHOD', 'IN', 'tools/call', 'prompts/get')], true],
+        [[filter('MCP_TOOL', 'EQUALS', 'search')], [filter('MCP_TOOL', 'NOT_IN', 'search')], false],
+        [[filter('MCP_TOOL', 'EQUALS', 'search')], [filter('MCP_TOOL', 'EQUALS', 'fetch')], false],
+        [[filter('MCP_TOOL', 'EQUALS', 'search')], [], true],
+        // A Tool price counts tool calls only: apart from a price on another method, not from one on tool calls.
+        [[filter('MCP_TOOL', 'EQUALS', 'search')], [filter('MCP_METHOD', 'EQUALS', 'prompts/get')], false],
+        [[filter('MCP_TOOL', 'EQUALS', 'search')], [filter('MCP_METHOD', 'NOT_EQUALS', 'tools/call')], false],
+        [[filter('MCP_TOOL', 'EQUALS', 'search')], [TOOL_CALL], true],
+        [[filter('MCP_TOOL', 'IN', 'search', 'fetch')], [filter('MCP_METHOD', 'IN', 'tools/call', 'resources/read')], true],
+    ];
+    for (const [a, b, meet] of cases) {
+        const attempt = () => resolve([on('mcp', ...a), on('mcp', ...b)]);
+        if (meet) assert.throws(attempt, /both count the same requests/, JSON.stringify([a, b]));
+        else assert.strictEqual(attempt().length, 2, JSON.stringify([a, b]));
+    }
+});
+
+test('a Tool filter is given to the billing provider with the tool call it implies', () => {
+    const mcp = meters.get('mcp');
+    const tool = [filter('MCP_TOOL', 'IN', 'search')];
+    // Read at the meter's MCP method key when it lists the field.
+    assert.deepStrictEqual(countedFilters(mcp, tool), { meter: mcp, filters: [...tool, TOOL_CALL] });
+    // Otherwise at our gateway's.
+    const toolOnly = { ...mcp, filter_fields: [{ field: 'MCP_TOOL', eventKey: 'metadata.tool' }] };
+    assert.deepStrictEqual(countedFilters(toolOnly, tool), {
+        meter: { ...toolOnly, filter_fields: [...toolOnly.filter_fields,
+            { field: 'MCP_METHOD', eventKey: 'metadata.mcpAnalytics.jsonRpcMethod' }] },
+        filters: [...tool, TOOL_CALL],
+    });
+    // Any other price is given as it is.
+    const resourceReads = [filter('MCP_METHOD', 'EQUALS', 'resources/read')];
+    assert.deepStrictEqual(countedFilters(mcp, resourceReads), { meter: mcp, filters: resourceReads });
+    assert.deepStrictEqual(countedFilters(mcp, []), { meter: mcp, filters: [] });
+});
+
+test('a price with an MCP method or Tool filter, read at the default key, is sold only on MCP servers', () => {
+    const mcp = meters.get('mcp');
+    const applies = (f, apiType, meterRow = mcp) => priceAppliesToApiType([f], meterRow, apiType);
+    for (const f of [TOOL_CALL, filter('MCP_METHOD', 'NOT_IN', 'ping'), filter('MCP_TOOL', 'IN', 'search')]) {
+        assert.strictEqual(applies(f, 'Mcp'), true, JSON.stringify(f));
+        assert.strictEqual(applies(f, 'RestApi'), false, JSON.stringify(f));
+        assert.strictEqual(applies(f, 'GRAPHQL'), false, JSON.stringify(f));
+    }
+    // Read at another key, or for an API type the gateway has no counterpart for, the value is unknown.
+    const custom = { filter_fields: [{ field: 'MCP_TOOL', eventKey: 'metadata.tool' }] };
+    assert.strictEqual(applies(filter('MCP_TOOL', 'IN', 'search'), 'RestApi', custom), true);
+    assert.strictEqual(applies(filter('MCP_TOOL', 'IN', 'search'), 'SOAP'), true);
 });
 
 // ---------------------------------------------------------------------------

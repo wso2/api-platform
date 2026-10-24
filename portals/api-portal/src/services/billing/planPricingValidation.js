@@ -34,7 +34,9 @@
  * meters they name, which the caller reads.
  */
 
-const { FILTER_RULES, HTTP_METHODS, MAX_TOKEN_VALUE, MeterValidationError, normalizeValues, underPath } = require('./meterValidation');
+const {
+    FILTER_RULES, HTTP_METHODS, MAX_TOKEN_VALUE, MCP_TOOL_CALL, MeterValidationError, normalizeValues, underPath,
+} = require('./meterValidation');
 const { isOfferedCurrency } = require('../../utils/currencies');
 const constants = require('../../utils/constants');
 
@@ -194,6 +196,9 @@ function validateFilters(raw, where) {
         const range = tokenRange(filters, key);
         if (range.low > range.high) throw new PricingValidationError(`${where}: the Token conditions on ${key} can't all be true`);
     }
+    if (seen.has('MCP_TOOL') && seen.has('MCP_METHOD')) {
+        throw new PricingValidationError(`${where}: a Tool filter counts only tool calls, so it can't be used with an MCP method filter`);
+    }
     return filters;
 }
 
@@ -295,13 +300,37 @@ function filtersMeet(field, a, b) {
 }
 
 /**
+ * A price's filters with the condition a Tool filter implies: a Tool filter counts only tool calls,
+ * so it comes with the MCP method tools/call (a price never filters on both).
+ */
+function withToolCall(filters) {
+    if (!(filters || []).some((f) => f.field === 'MCP_TOOL')) return filters || [];
+    return [...filters, { field: 'MCP_METHOD', operator: 'EQUALS', values: [MCP_TOOL_CALL] }];
+}
+
+/**
+ * What a price counts, as the billing provider is given it: its meter and filters (withToolCall). The
+ * MCP method a Tool filter implies is read at the meter's MCP method key or, when the meter does not
+ * list that field, at our gateway's.
+ */
+function countedFilters(meter, filters) {
+    const counted = withToolCall(filters);
+    const fields = (meter && meter.filter_fields) || [];
+    if (!(filters || []).some((f) => f.field === 'MCP_TOOL') || fields.some((f) => f.field === 'MCP_METHOD')) {
+        return { meter, filters: counted };
+    }
+    const method = { field: 'MCP_METHOD', eventKey: FILTER_RULES.MCP_METHOD.eventKey };
+    return { meter: { ...meter, filter_fields: [...fields, method] }, filters: counted };
+}
+
+/**
  * Whether one request can be counted by both prices (on one meter): for every fixed field either
  * price filters on, the two can match the same value, and for every Token key either compares, the
  * two allow a common count. A field or key only one of them filters on matches anything for the
- * other.
+ * other. A Tool filter's tool call counts as an MCP method filter (withToolCall).
  */
 function pricesMeet(a, b) {
-    const fixed = (filters) => filters.filter((f) => f.field !== 'TOKEN');
+    const fixed = (filters) => withToolCall(filters).filter((f) => f.field !== 'TOKEN');
     const filters = new Map(fixed(b.filters).map((f) => [f.field, f]));
     if (!fixed(a.filters).every((f) => !filters.has(f.field) || filtersMeet(f.field, f, filters.get(f.field)))) return false;
     return tokenKeysOf([...a.filters, ...b.filters]).every((key) => {
@@ -364,19 +393,23 @@ const gatewayApiType = (apiType) => (Object.prototype.hasOwnProperty.call(GATEWA
 
 /**
  * Whether a usage price can count calls to an API of `apiType` (api_metadata.type, such as RestApi,
- * Mcp or GRAPHQL). Only a price that filters on API_TYPE can rule an API out: EQUALS and IN count the
- * types they list, NOT_EQUALS and NOT_IN the others, compared with the type our gateway writes for
- * the API (gatewayApiType). The check holds only when the price's meter reads the API type at the
- * default event key, which our gateway fills; with any other key, or for a type the gateway has no
+ * Mcp or GRAPHQL). Two kinds of filter can rule an API out. An API_TYPE filter: EQUALS and IN count
+ * the types they list, NOT_EQUALS and NOT_IN the others, compared with the type our gateway writes for
+ * the API (gatewayApiType). An MCP method or Tool filter: only calls to MCP servers have those fields,
+ * and every operator needs the field. Each check holds only when the price's meter reads the field at
+ * the default event key, which our gateway fills; with any other key, or for a type the gateway has no
  * counterpart for, the API's value is unknown, so the price applies. `filters` are the price's filters
  * and `meter` its meter row (with filter_fields).
  */
 function priceAppliesToApiType(filters, meter, apiType) {
-    const filter = (filters || []).find((f) => f.field === 'API_TYPE');
     const gatewayType = gatewayApiType(apiType);
-    if (!filter || !gatewayType) return true;
-    const read = ((meter && meter.filter_fields) || []).find((f) => f.field === 'API_TYPE');
-    if (!read || read.eventKey !== FILTER_RULES.API_TYPE.eventKey) return true;
+    if (!gatewayType) return true;
+    const readsDefault = (field) => ((meter && meter.filter_fields) || [])
+        .some((f) => f.field === field && f.eventKey === FILTER_RULES[field].eventKey);
+    const mcpOnly = (filters || []).some((f) => (f.field === 'MCP_METHOD' || f.field === 'MCP_TOOL') && readsDefault(f.field));
+    if (mcpOnly && gatewayType !== 'Mcp') return false;
+    const filter = (filters || []).find((f) => f.field === 'API_TYPE');
+    if (!filter || !readsDefault('API_TYPE')) return true;
     const listed = filter.values.includes(gatewayType);
     return filter.operator === 'EQUALS' || filter.operator === 'IN' ? listed : !listed;
 }
@@ -391,6 +424,7 @@ module.exports = {
     PricingValidationError,
     validatePricing,
     resolvePrices,
+    countedFilters,
     gatewayApiType,
     priceAppliesToApiType,
 };

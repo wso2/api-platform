@@ -37,6 +37,7 @@ const billingSubscriptionDao = require('../../dao/billingSubscriptionDao');
 const billingApiPlanDao = require('../../dao/billingApiPlanDao');
 const subscriptionBilling = require('./subscriptionBillingService');
 const billingProvider = require('../../billing/billingProvider');
+const { countedFilters } = require('./planPricingValidation');
 const { meterUnit } = require('../../utils/meterLabels');
 const util = require('../../utils/util');
 const logger = require('../../config/logger');
@@ -239,8 +240,11 @@ const getUsage = async (req, res) => {
         const ids = { customerRef: customer.customer_ref, subscriptionRef: billing.billing_subscription_id };
         const [usage, estimate] = await Promise.allSettled([
             body.usage
-                ? Promise.all(counted.map((p) => priceUsage(connector.usage, p,
-                    connector.catalog.priceMeter(meters.get(p.meter_handle), p.filters), ids, range, interval)))
+                ? Promise.all(counted.map((p) => {
+                    const what = countedFilters(meters.get(p.meter_handle), p.filters);
+                    return priceUsage(connector.usage, p, connector.catalog.priceMeter(what.meter, what.filters), ids, range,
+                        interval);
+                }))
                 : Promise.resolve(null),
             period === 'CURRENT' && billing.billing_status !== 'CANCELLED'
                 ? connector.payments.estimate(billing.billing_subscription_id)

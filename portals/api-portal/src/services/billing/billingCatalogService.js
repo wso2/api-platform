@@ -45,7 +45,7 @@ const billingApiPlanDao = require('../../dao/billingApiPlanDao');
 const subscriptionPlanDao = require('../../dao/subscriptionPlanDao');
 const planPricingDao = require('../../dao/planPricingDao');
 const meterDao = require('../../dao/meterDao');
-const { gatewayApiType, priceAppliesToApiType } = require('./planPricingValidation');
+const { countedFilters, gatewayApiType, priceAppliesToApiType } = require('./planPricingValidation');
 const billingProvider = require('../../billing/billingProvider');
 const { BillingProviderError } = require('../../billing/http');
 const logger = require('../../config/logger');
@@ -104,7 +104,8 @@ function partsOf(plan, api, pricing, meters, connector) {
         const meter = meters.get(price.meter_handle);
         if (!meter) throw new Error(`The meter of the price "${price.name}" no longer exists.`);
         if (priceAppliesToApiType(price.filters, meter, api.type)) {
-            parts.push({ price, meter: connector.catalog.priceMeter(meter, price.filters) });
+            const counted = countedFilters(meter, price.filters);
+            parts.push({ price, meter: connector.catalog.priceMeter(counted.meter, counted.filters) });
         }
     }
     if (parts.length === 0) {

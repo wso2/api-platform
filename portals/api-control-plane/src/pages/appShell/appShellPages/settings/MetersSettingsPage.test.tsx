@@ -323,6 +323,8 @@ describe('MetersSettingsPage', () => {
       'HTTP method',
       'Resource',
       'API type',
+      'MCP method',
+      'Tool',
       'Token',
     ]);
     expect(screen.getByRole('option', { name: /^API type/ })).toHaveAttribute(
@@ -431,7 +433,7 @@ describe('MetersSettingsPage', () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
 
     await user.click(await screen.findByRole('button', { name: 'Create meter' }));
-    // The four fixed fields come first, then Token rows.
+    // The six fixed fields come first, then Token rows.
     for (let count = 0; count < 10; count++)
       await user.click(screen.getByRole('button', { name: 'Add filter' }));
     expect(
@@ -441,8 +443,8 @@ describe('MetersSettingsPage', () => {
       'HTTP method',
       'Resource',
       'API type',
-      'Token',
-      'Token',
+      'MCP method',
+      'Tool',
       'Token',
       'Token',
       'Token',

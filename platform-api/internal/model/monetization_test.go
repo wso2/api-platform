@@ -297,7 +297,7 @@ func TestValidatePlanPricing_RefusesBadFilters(t *testing.T) {
 		filter  PriceFilter
 		message string
 	}{
-		"unknown field":                {filter("TOKEN_TYPE", "EQUALS", "INPUT"), "field of filter 1 of price 2 must be one of HTTP_STATUS_CODE, HTTP_METHOD, RESOURCE, API_TYPE, TOKEN"},
+		"unknown field":                {filter("TOKEN_TYPE", "EQUALS", "INPUT"), "field of filter 1 of price 2 must be one of HTTP_STATUS_CODE, HTTP_METHOD, RESOURCE, API_TYPE, MCP_METHOD, MCP_TOOL, TOKEN"},
 		"resource is one of":           {filter("RESOURCE", "IN", "/a"), "The RESOURCE operator of price 2 must be one of EQUALS, NOT_EQUALS, STARTS_WITH"},
 		"two values for not equals":    {filter("HTTP_METHOD", "NOT_EQUALS", "GET", "POST"), "price 2: Operator NOT_EQUALS takes exactly one value"},
 		"two prefixes":                 {filter("RESOURCE", "STARTS_WITH", "/a", "/b"), "price 2: Operator STARTS_WITH takes exactly one value"},
@@ -310,6 +310,8 @@ func TestValidatePlanPricing_RefusesBadFilters(t *testing.T) {
 		"21 API types":                 {filter("API_TYPE", "NOT_IN", manyTypes...), "price 2: A filter on API_TYPE needs 1 to 20 values"},
 		"blank API type":               {filter("API_TYPE", "EQUALS", " "), "price 2: Filter values for API_TYPE must be 1 to 255 characters"},
 		"API type longer than allowed": {filter("API_TYPE", "EQUALS", strings.Repeat("a", 256)), "price 2: Filter values for API_TYPE must be 1 to 255 characters"},
+		"tool starts with":             {filter("MCP_TOOL", "STARTS_WITH", "se"), "The MCP_TOOL operator of price 2 must be one of EQUALS, NOT_EQUALS, IN, NOT_IN"},
+		"blank MCP method":             {filter("MCP_METHOD", "EQUALS", " "), "price 2: Filter values for MCP_METHOD must be 1 to 255 characters"},
 	}
 	for name, c := range cases {
 		pricing := usageBased(usagePrice("api-calls"), usagePrice("llm-input", c.filter))
@@ -320,6 +322,42 @@ func TestValidatePlanPricing_RefusesBadFilters(t *testing.T) {
 	twice := usageBased(usagePrice("llm-input", filter("API_TYPE", "IN", "a"), filter("API_TYPE", "NOT_IN", "b")))
 	if err := ValidatePlanPricing(twice); err == nil || err.Error() != "price 1 filters on API_TYPE more than once" {
 		t.Errorf("two filters on a field: got %v", err)
+	}
+}
+
+// The MCP method and the tool are free text, kept as written; a Tool filter counts only tool calls,
+// so a price does not filter on both.
+func TestValidatePlanPricing_MCPMethodAndTool(t *testing.T) {
+	pricing := usageBased(usagePrice("mcp-calls", filter("MCP_METHOD", "IN", " tools/call ", "resources/read", "tools/call")),
+		usagePrice("mcp-tools", filter("MCP_TOOL", "NOT_EQUALS", "Search")))
+	if err := ValidatePlanPricing(pricing); err != nil {
+		t.Fatalf("MCP filters: %v", err)
+	}
+	if got, want := pricing.Prices[0].Filters, []PriceFilter{filter("MCP_METHOD", "IN", "tools/call", "resources/read")}; !reflect.DeepEqual(got, want) {
+		t.Errorf("method values: got %v, want %v", got, want)
+	}
+	if got, want := pricing.Prices[1].Filters, []PriceFilter{filter("MCP_TOOL", "NOT_EQUALS", "Search")}; !reflect.DeepEqual(got, want) {
+		t.Errorf("tool values: got %v, want %v", got, want)
+	}
+	both := usageBased(usagePrice("mcp-calls", filter("MCP_METHOD", "EQUALS", "tools/call"), filter("MCP_TOOL", "EQUALS", "search")))
+	want := "price 1: a Tool filter counts only tool calls, so it can't be used with an MCP method filter"
+	if err := ValidatePlanPricing(both); err == nil || err.Error() != want {
+		t.Errorf("method and tool: got %v, want %q", err, want)
+	}
+}
+
+// A meter lists the MCP method and the tool like any fixed field, read by default where our gateway
+// writes them.
+func TestParseMeterRequest_MCPFieldsReadOurGatewaysKeys(t *testing.T) {
+	m, err := ParseMeterRequest([]byte(`{"displayName":"MCP calls","type":"REQUEST_COUNT",
+		"filterFields":[{"field":"MCP_METHOD"},{"field":"MCP_TOOL","eventKey":""}]}`), true)
+	if err != nil {
+		t.Fatalf("ParseMeterRequest: %v", err)
+	}
+	want := []MeterFilterField{{Field: "MCP_METHOD", EventKey: "metadata.mcpAnalytics.jsonRpcMethod"},
+		{Field: "MCP_TOOL", EventKey: "metadata.mcpAnalytics.capabilityName"}}
+	if !reflect.DeepEqual(m.FilterFields, want) {
+		t.Errorf("filter fields: got %v, want %v", m.FilterFields, want)
 	}
 }
 
@@ -369,6 +407,26 @@ func TestValidatePlanPricing_OverlapAcrossFields(t *testing.T) {
 			usagePrice("llm-input", filter("API_TYPE", "EQUALS", "LlmProvider")),
 			usagePrice("llm-input", filter("API_TYPE", "IN", "Mcp", "LlmProxy")),
 			usagePrice("api-calls")}, ""},
+		// A Tool filter counts only tool calls, as if it also filtered on the MCP method tools/call.
+		{"tool calls and every other MCP message", []SubscriptionPlanPrice{
+			usagePrice("mcp", filter("MCP_METHOD", "EQUALS", "tools/call")),
+			usagePrice("mcp", filter("MCP_METHOD", "NOT_EQUALS", "tools/call"))}, ""},
+		{"one tool and every other", []SubscriptionPlanPrice{
+			usagePrice("mcp", filter("MCP_TOOL", "EQUALS", "search")),
+			usagePrice("mcp", filter("MCP_TOOL", "NOT_IN", "search"))}, ""},
+		{"a tool and another method", []SubscriptionPlanPrice{
+			usagePrice("mcp", filter("MCP_TOOL", "EQUALS", "search")),
+			usagePrice("mcp", filter("MCP_METHOD", "EQUALS", "prompts/get"))}, ""},
+		{"a tool and every message but tool calls", []SubscriptionPlanPrice{
+			usagePrice("mcp", filter("MCP_TOOL", "EQUALS", "search")),
+			usagePrice("mcp", filter("MCP_METHOD", "NOT_EQUALS", "tools/call"))}, ""},
+		{"a tool and all tool calls", []SubscriptionPlanPrice{
+			usagePrice("mcp", filter("MCP_TOOL", "EQUALS", "search")),
+			usagePrice("mcp", filter("MCP_METHOD", "IN", "tools/call", "resources/read"))},
+			"Prices 1 and 2 both count the same requests of the meter mcp; give them different filters."},
+		{"a tool and every MCP message", []SubscriptionPlanPrice{
+			usagePrice("mcp", filter("MCP_TOOL", "EQUALS", "search")), usagePrice("mcp")},
+			"Prices 1 and 2 both count the same requests of the meter mcp; give them different filters."},
 	}
 	for _, c := range cases {
 		err := ValidatePlanPricing(usageBased(c.prices...))

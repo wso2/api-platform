@@ -203,7 +203,7 @@ func TestCreatePlan_PricingIsCheckedBeforeThePlanIsCreated(t *testing.T) {
 		{usage(`{"meterId":"api-calls","pricingModel":"PER_UNIT","unitAmount":"1","filters":[{"field":"HTTP_STATUS_CODE","operator":"IN","values":["2xx"]}]}`),
 			`price 1: "2xx" is not a status code such as 200 or 404`},
 		{usage(`{"meterId":"api-calls","pricingModel":"PER_UNIT","unitAmount":"1","filters":[{"field":"TOKEN_TYPE","operator":"EQUALS","values":["INPUT"]}]}`),
-			"field of filter 1 of price 1 must be one of HTTP_STATUS_CODE, HTTP_METHOD, RESOURCE, API_TYPE, TOKEN"},
+			"field of filter 1 of price 1 must be one of HTTP_STATUS_CODE, HTTP_METHOD, RESOURCE, API_TYPE, MCP_METHOD, MCP_TOOL, TOKEN"},
 		{usage(`{"meterId":"api-calls","pricingModel":"FLAT"}`), "pricingModel of price 1 must be one of PER_UNIT, VOLUME, GRADUATED"},
 		{usage(`{"meterId":"api-calls","pricingModel":"VOLUME","tiers":[{"upTo":10,"unitAmount":"1"},{"upTo":null,"unitAmount":"0.5"}],"unitAmount":"1"}`),
 			"A VOLUME price (price 1) does not take unitAmount"},

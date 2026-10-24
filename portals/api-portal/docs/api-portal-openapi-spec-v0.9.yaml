@@ -7439,7 +7439,7 @@ components:
         planCount:
           type: integer
           readOnly: true
-          description: How many plans have a price on this meter. While it is above 0, the meter cannot change or be deleted.
+          description: How many plans have a price on this meter. While it is above 0, the meter can't be updated or deleted.
         createdBy:
           type: string
           readOnly: true
@@ -7470,14 +7470,17 @@ components:
             - HTTP_METHOD
             - RESOURCE
             - API_TYPE
+            - MCP_METHOD
+            - MCP_TOOL
             - TOKEN
         eventKey:
           type: string
           nullable: true
           description: >-
             The event field this field reads. For a fixed field, left out or empty, the field's default in our
-            gateway's events: `response.status`, `request.verb`, `metadata.apiResourceTemplate` or `metadata.apiType`. A
-            `TOKEN` field has no default and needs a
+            gateway's events: `response.status`, `request.verb`, `metadata.apiResourceTemplate`, `metadata.apiType`,
+            `metadata.mcpAnalytics.jsonRpcMethod` (`MCP_METHOD`) or `metadata.mcpAnalytics.capabilityName`
+            (`MCP_TOOL`). A `TOKEN` field has no default and needs a
             key, such as `metadata.aiTokenUsage.promptTokens`, `metadata.aiTokenUsage.completionTokens` or
             `metadata.aiTokenUsage.totalTokens` ("A Token field needs an eventKey"). 1 to 255 characters with no
             spaces. Always present in a response.
@@ -7510,7 +7513,7 @@ components:
       type: object
       description: >-
         A filter of a price: the price counts only the requests whose `field` matches. `HTTP_STATUS_CODE`,
-        `HTTP_METHOD` and `API_TYPE` take `EQUALS`, `NOT_EQUALS`, `IN` or `NOT_IN`; `RESOURCE` takes
+        `HTTP_METHOD`, `API_TYPE`, `MCP_METHOD` and `MCP_TOOL` take `EQUALS`, `NOT_EQUALS`, `IN` or `NOT_IN`; `RESOURCE` takes
         `EQUALS`, `NOT_EQUALS` or `STARTS_WITH`. `EQUALS`, `NOT_EQUALS` and `STARTS_WITH` take one value; `IN` and
         `NOT_IN` take 1 to 20. Status codes are exact codes from 100 to 599, such as `"200"` (classes such as
         `"2xx"` are refused); HTTP methods are `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `HEAD` or `OPTIONS`
@@ -7527,7 +7530,13 @@ components:
         500).
         Our gateway's API types are `RestApi`, `WebSubApi`, `LlmProvider`, `LlmProxy`, `Mcp` and `Agent`. A
         price whose `API_TYPE` filter rules out an API's type is not sold on that API, when its meter reads the
-        API type at the default event key `metadata.apiType`. Repeated values are dropped, the order kept.
+        API type at the default event key `metadata.apiType`.
+        `MCP_METHOD` is the JSON-RPC method of a request to an MCP server, such as `tools/call`, `resources/read` or
+        `prompts/get`, and `MCP_TOOL` the name of the tool a tool call runs; both are matched exactly as written.
+        An `MCP_TOOL` filter counts only tool calls (`tools/call`), so a price that filters on `MCP_TOOL` does not
+        also filter on `MCP_METHOD`. A price with either filter is sold only on MCP servers, when its meter reads
+        the field at its default event key. A batched JSON-RPC request (an array of messages) has no method in its
+        event, so neither filter counts it. Repeated values are dropped, the order kept.
       additionalProperties: false
       required:
         - field
@@ -7541,6 +7550,8 @@ components:
             - HTTP_METHOD
             - RESOURCE
             - API_TYPE
+            - MCP_METHOD
+            - MCP_TOOL
             - TOKEN
         eventKey:
           type: string

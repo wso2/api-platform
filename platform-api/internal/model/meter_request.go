@@ -49,6 +49,8 @@ var (
 		FilterFieldHTTPMethod:     "request.verb",
 		FilterFieldResource:       "metadata.apiResourceTemplate",
 		FilterFieldAPIType:        "metadata.apiType",
+		FilterFieldMCPMethod:      "metadata.mcpAnalytics.jsonRpcMethod",
+		FilterFieldMCPTool:        "metadata.mcpAnalytics.capabilityName",
 	}
 )
 

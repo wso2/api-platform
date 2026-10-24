@@ -31,10 +31,11 @@
  * a meter reads are stored on the meter, as full paths in the Moesif event: the number a TOKENS
  * meter adds up (type_key, for our gateway `metadata.aiTokenUsage.promptTokens`,
  * `completionTokens` or `totalTokens`) and the field each filter matches (filter_fields[].eventKey,
- * for our gateway `response.status`, `request.verb`, `metadata.apiResourceTemplate` and
- * `metadata.apiType`). Status codes are numbers in the events and are matched on the
- * key itself; other values are matched exactly on the key's `.raw` keyword field. A Token condition
- * compares the number at the key it names with a `range` condition (EQUALS is gte and lte).
+ * for our gateway `response.status`, `request.verb`, `metadata.apiResourceTemplate`,
+ * `metadata.apiType`, `metadata.mcpAnalytics.jsonRpcMethod` and `metadata.mcpAnalytics.capabilityName`).
+ * Status codes are numbers in the events and are matched on the key itself; other values are matched
+ * exactly on the key's `.raw` keyword field. A Token condition compares the number at the key it names
+ * with a `range` condition (EQUALS is gte and lte).
  *
  * Every event must also carry billing metadata, `metadata.billingCustomerId` and
  * `metadata.billingSubscriptionId`, matched against Moesif's {{company_id}} and {{subscription_id}}

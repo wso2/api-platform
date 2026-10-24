@@ -54,6 +54,7 @@ import {
   FILTER_RULES,
   HTTP_METHODS,
   MAX_TOKEN_CONDITIONS,
+  MCP_METHODS,
   fieldMessages,
   meterUnit,
   operatorMessage,
@@ -172,6 +173,11 @@ const messages = defineMessages({
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.methodsPlaceholder',
     defaultMessage: 'Pick methods',
   },
+  mcpMethodPlaceholder: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.mcpMethodPlaceholder',
+    defaultMessage: '{many, select, true {tools/call, resources/read} other {tools/call}}',
+    description: 'Example MCP methods, as the MCP protocol names them. Do not translate the names.',
+  },
   modelGraduated: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.model.graduated',
     defaultMessage: 'Graduated tiers',
@@ -280,6 +286,11 @@ const messages = defineMessages({
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.problem.tooManyFilters',
     defaultMessage: 'Price {position} has more than 20 filters; empty some of them.',
   },
+  problemToolWithMethod: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.problem.toolWithMethod',
+    defaultMessage:
+      "Price {position}: a Tool filter counts only tool calls, so it can't be used with an MCP method filter.",
+  },
   problemTokenKey: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.problem.tokenKey',
     defaultMessage: 'Price {position}: the meter has no Token field with the key {key}.',
@@ -341,6 +352,11 @@ const messages = defineMessages({
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.statusPlaceholder',
     defaultMessage: '{many, select, true {200, 201} other {200}}',
     description: 'Example status codes. Do not translate.',
+  },
+  toolPlaceholder: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.toolPlaceholder',
+    defaultMessage: '{many, select, true {search, fetch} other {search}}',
+    description: 'Example names of MCP server tools. Do not translate.',
   },
   tierFlat: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.tierFlat',
@@ -412,6 +428,8 @@ export const problemMessage = (intl: IntlShape, problem: PricingProblem): string
       return intl.formatMessage(messages.problemTiers, { position: problem.price + 1 });
     case 'TOO_MANY_FILTERS':
       return intl.formatMessage(messages.problemTooManyFilters, { position: problem.price + 1 });
+    case 'TOOL_WITH_METHOD':
+      return intl.formatMessage(messages.problemToolWithMethod, { position: problem.price + 1 });
     case 'TOKEN_KEY_UNKNOWN':
       return intl.formatMessage(messages.problemTokenKey, {
         key: problem.eventKey,
@@ -578,13 +596,14 @@ function PriceFields({
         </Select>
       );
     }
-    if (filter.field === 'API_TYPE') {
-      // Our gateway's API types are suggested; any text is accepted.
+    if (filter.field === 'API_TYPE' || filter.field === 'MCP_METHOD') {
+      // Our gateway's API types, or common MCP methods, are suggested; any text is accepted.
       const listed = splitText(filter.text);
+      const placeholder = filter.field === 'API_TYPE' ? messages.apiTypePlaceholder : messages.mcpMethodPlaceholder;
       return (
         <Autocomplete<string, false, false, true>
           disabled={disabled}
-          // Every suggestion not listed yet, whatever is typed: there are only six.
+          // Every suggestion not listed yet, whatever is typed: there are only a few.
           filterOptions={(options) =>
             many ? options.filter((option) => !listed.includes(option)) : options
           }
@@ -598,12 +617,12 @@ function PriceFields({
           onInputChange={(_event, value, reason) => {
             if (reason === 'input' || reason === 'clear') setFilter(at, { text: value });
           }}
-          options={API_TYPES}
+          options={filter.field === 'API_TYPE' ? API_TYPES : MCP_METHODS}
           renderInput={({ InputLabelProps, InputProps, inputProps, ...params }) => (
             <TextField
               {...params}
               error={invalid}
-              placeholder={intl.formatMessage(messages.apiTypePlaceholder, { many: String(many) })}
+              placeholder={intl.formatMessage(placeholder, { many: String(many) })}
               slotProps={{
                 htmlInput: { ...inputProps, 'aria-label': label },
                 input: { ...InputProps, sx: { fontFamily: 'monospace' } },
@@ -642,7 +661,10 @@ function PriceFields({
             ? intl.formatMessage(messages.resourcePlaceholder, {
                 prefix: String(filter.operator === 'STARTS_WITH'),
               })
-            : intl.formatMessage(messages.statusPlaceholder, { many: String(many) })
+            : intl.formatMessage(
+                filter.field === 'MCP_TOOL' ? messages.toolPlaceholder : messages.statusPlaceholder,
+                { many: String(many) },
+              )
         }
         size="small"
         sx={{ fontFamily: 'monospace' }}

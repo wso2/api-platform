@@ -96,6 +96,10 @@
   var HTTP_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'];
   // Our gateway's API types, suggested for an API type filter; any other text is taken as written.
   var API_TYPES = ['RestApi', 'WebSubApi', 'LlmProvider', 'LlmProxy', 'Mcp', 'Agent'];
+  // MCP methods suggested for an MCP method filter; any other text is taken as written.
+  var MCP_TOOL_CALL = 'tools/call';
+  var MCP_METHODS = [MCP_TOOL_CALL, 'resources/read', 'prompts/get', 'tools/list', 'resources/list', 'prompts/list',
+    'initialize', 'ping'];
   // The fields a price may filter on, each at most once, with the operators each takes. A filter's
   // values are typed (separated by commas for "is one of" and "is not one of"), typed or chosen from
   // suggestions, or picked (several for those two operators); a filter with no values is left out.
@@ -107,6 +111,9 @@
     RESOURCE:         { label: 'Resource', operators: ['EQUALS', 'NOT_EQUALS', 'STARTS_WITH'], placeholder: 'e.g. /orders' },
     API_TYPE:         { label: 'API type', operators: MATCH, placeholder: 'e.g. RestApi', placeholderMany: 'e.g. RestApi, Mcp',
                         suggestions: API_TYPES },
+    MCP_METHOD:       { label: 'MCP method', operators: MATCH, placeholder: 'e.g. tools/call',
+                        placeholderMany: 'e.g. tools/call, resources/read', suggestions: MCP_METHODS },
+    MCP_TOOL:         { label: 'Tool', operators: MATCH, placeholder: 'e.g. search', placeholderMany: 'e.g. search, fetch' },
   };
   var OPERATORS = { EQUALS: 'equals', NOT_EQUALS: 'does not equal', IN: 'is one of', NOT_IN: 'is not one of', STARTS_WITH: 'starts with' };
   var MANY = ['IN', 'NOT_IN'];
@@ -814,6 +821,10 @@
       var range = tokenRange(price.filters, key);
       if (range.low > range.high) throw new Error('price ' + n + ': the Token conditions on ' + key + ' can\'t all be true');
     });
+    var fields = price.filters.map(function (f) { return f.field; });
+    if (fields.indexOf('MCP_TOOL') !== -1 && fields.indexOf('MCP_METHOD') !== -1) {
+      throw new Error('Price ' + n + ': a Tool filter counts only tool calls, so it can\'t be used with an MCP method filter.');
+    }
     if (price.pricingModel === 'PER_UNIT') {
       price.unitAmount = checkAmount(box.querySelector('.pol-price-unit-amount').value.trim(), 'Price ' + n);
       var quantity = parseInt(box.querySelector('.pol-price-unit-quantity').value.trim() || '1', 10);
@@ -867,18 +878,27 @@
     return HTTP_METHODS.some(function (m) { return a.values.indexOf(m) === -1 && b.values.indexOf(m) === -1; });
   }
 
+  /* A price's filters with the tool call a Tool filter implies, as an MCP method filter. */
+  function withToolCall(filters) {
+    var tool = filters.some(function (f) { return f.field === 'MCP_TOOL'; });
+    return tool ? filters.concat([{ field: 'MCP_METHOD', operator: 'EQUALS', values: [MCP_TOOL_CALL] }]) : filters;
+  }
+
   /* Two prices on one meter may not count the same request: on some field that either filters on,
      their filters must have no value in common, or on some Token key either compares, their ranges no
-     number in common. A field or key only one price filters on matches anything for the other. */
+     number in common. A field or key only one price filters on matches anything for the other. A Tool
+     filter also filters on the MCP method (withToolCall). */
   function checkOverlap(prices) {
     prices.forEach(function (a, i) {
       prices.forEach(function (b, j) {
         if (j <= i || a.meterId !== b.meterId) return;
-        var both = a.filters.concat(b.filters);
+        var filtersA = withToolCall(a.filters);
+        var filtersB = withToolCall(b.filters);
+        var both = filtersA.concat(filtersB);
         var fields = both.filter(function (f) { return f.field !== 'TOKEN'; }).map(function (f) { return f.field; });
         var same = fields.every(function (field) {
-          var fa = a.filters.filter(function (f) { return f.field === field; })[0];
-          var fb = b.filters.filter(function (f) { return f.field === field; })[0];
+          var fa = filtersA.filter(function (f) { return f.field === field; })[0];
+          var fb = filtersB.filter(function (f) { return f.field === field; })[0];
           return !fa || !fb || filtersMatchSameValue(field, fa, fb);
         }) && comparedKeys(both).every(function (key) {
           var ra = tokenRange(a.filters, key);

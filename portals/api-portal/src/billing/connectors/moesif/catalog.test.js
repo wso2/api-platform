@@ -203,6 +203,22 @@ test('an API type filter matches the key\'s keyword field exactly', () => {
     assert.deepStrictEqual(excluding.query.bool.must_not, [{ terms: { 'metadata.kind.raw': ['LlmProvider', 'LlmProxy'] } }]);
 });
 
+test('an MCP method or Tool filter matches the key\'s keyword field', () => {
+    const mcp = { handle: 'mcp', display_name: 'MCP calls', type: 'REQUEST_COUNT', type_key: null, filter_fields: [
+        { field: 'MCP_METHOD', eventKey: 'metadata.mcpAnalytics.jsonRpcMethod' },
+        { field: 'MCP_TOOL', eventKey: 'metadata.mcpAnalytics.capabilityName' },
+    ] };
+    const query = catalog.meterQuery(catalog.priceMeter(mcp, [
+        filter('MCP_TOOL', 'NOT_IN', 'add'),
+        filter('MCP_METHOD', 'EQUALS', 'tools/call'),
+    ]));
+    assert.deepStrictEqual(query.query.bool.must.slice(2), [
+        { exists: { field: 'metadata.mcpAnalytics.capabilityName.raw' } },
+        { terms: { 'metadata.mcpAnalytics.jsonRpcMethod.raw': ['tools/call'] } },
+    ]);
+    assert.deepStrictEqual(query.query.bool.must_not, [{ terms: { 'metadata.mcpAnalytics.capabilityName.raw': ['add'] } }]);
+});
+
 test('each Token condition is a range on the number at its key, in must', () => {
     const condition = (operator, value, key = 'metadata.aiTokenUsage.promptTokens') => ({ field: 'TOKEN', eventKey: key, operator, values: [value] });
     const must = (...filters) => catalog.meterQuery(catalog.priceMeter(tokens('metadata.aiTokenUsage.promptTokens'), filters)).query.bool.must.slice(2);

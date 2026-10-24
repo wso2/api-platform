@@ -39,15 +39,22 @@ const (
 
 // Fields a price filter matches. API_TYPE is the kind of API a request went to (such as RestApi or
 // LlmProvider), so that one plan can price each kind on its own; its values are free text, matched
-// as written. TOKEN reads a token count from the event, at its event key; unlike the fixed fields,
-// a meter may list it several times, once per key.
+// as written. MCP_METHOD is the JSON-RPC method of a request to an MCP server (such as tools/call)
+// and MCP_TOOL the name of the tool a tool call runs, both free text. TOKEN reads a token count from
+// the event, at its event key; unlike the fixed fields, a meter may list it several times, once per
+// key.
 const (
 	FilterFieldHTTPStatusCode = "HTTP_STATUS_CODE"
 	FilterFieldHTTPMethod     = "HTTP_METHOD"
 	FilterFieldResource       = "RESOURCE"
 	FilterFieldAPIType        = "API_TYPE"
+	FilterFieldMCPMethod      = "MCP_METHOD"
+	FilterFieldMCPTool        = "MCP_TOOL"
 	FilterFieldToken          = "TOKEN"
 )
+
+// mcpToolCall is the MCP method of a tool call.
+const mcpToolCall = "tools/call"
 
 // Operators of a price filter. The comparisons are for TOKEN only, which also takes EQUALS.
 const (
@@ -76,15 +83,18 @@ const (
 var (
 	meterTypes = []string{MeterTypeRequestCount, MeterTypeTokens}
 	// fixedFilterFields are the fields a meter lists, and a price filters on, at most once.
-	fixedFilterFields = []string{FilterFieldHTTPStatusCode, FilterFieldHTTPMethod, FilterFieldResource, FilterFieldAPIType}
-	filterFields      = append(slices.Clone(fixedFilterFields), FilterFieldToken)
-	matchOperators    = []string{FilterOperatorEquals, FilterOperatorNotEquals, FilterOperatorIn, FilterOperatorNotIn}
+	fixedFilterFields = []string{FilterFieldHTTPStatusCode, FilterFieldHTTPMethod, FilterFieldResource, FilterFieldAPIType,
+		FilterFieldMCPMethod, FilterFieldMCPTool}
+	filterFields   = append(slices.Clone(fixedFilterFields), FilterFieldToken)
+	matchOperators = []string{FilterOperatorEquals, FilterOperatorNotEquals, FilterOperatorIn, FilterOperatorNotIn}
 	// filterFieldLabels are the names the UIs show for the filter fields.
 	filterFieldLabels = map[string]string{
 		FilterFieldHTTPStatusCode: "Status code",
 		FilterFieldHTTPMethod:     "HTTP method",
 		FilterFieldResource:       "Resource",
 		FilterFieldAPIType:        "API type",
+		FilterFieldMCPMethod:      "MCP method",
+		FilterFieldMCPTool:        "Tool",
 		FilterFieldToken:          "Token",
 	}
 	// filterOperators are the operators each filter field takes.
@@ -93,6 +103,8 @@ var (
 		FilterFieldHTTPMethod:     matchOperators,
 		FilterFieldResource:       {FilterOperatorEquals, FilterOperatorNotEquals, FilterOperatorStartsWith},
 		FilterFieldAPIType:        matchOperators,
+		FilterFieldMCPMethod:      matchOperators,
+		FilterFieldMCPTool:        matchOperators,
 		FilterFieldToken: {FilterOperatorGreaterThan, FilterOperatorGreaterThanOrEqual, FilterOperatorLessThan,
 			FilterOperatorLessThanOrEqual, FilterOperatorEquals},
 	}
@@ -427,10 +439,11 @@ func fieldsOfOtherModels(p *SubscriptionPlanPrice) []string {
 }
 
 // validateFilters checks the filters of a price and normalizes their values in place: at most 20
-// filters; one filter per fixed field; HTTP_STATUS_CODE, HTTP_METHOD and API_TYPE take EQUALS,
-// NOT_EQUALS, IN or NOT_IN, and RESOURCE takes EQUALS, NOT_EQUALS or STARTS_WITH; exactly one value
-// for EQUALS, NOT_EQUALS and STARTS_WITH, 1 to 20 for IN and NOT_IN. Token conditions are checked by
-// validateTokenConditions. Messages start with where ("price 2: ...").
+// filters; one filter per fixed field; HTTP_STATUS_CODE, HTTP_METHOD, API_TYPE, MCP_METHOD and
+// MCP_TOOL take EQUALS, NOT_EQUALS, IN or NOT_IN, and RESOURCE takes EQUALS, NOT_EQUALS or
+// STARTS_WITH; exactly one value for EQUALS, NOT_EQUALS and STARTS_WITH, 1 to 20 for IN and NOT_IN; no
+// MCP_METHOD filter beside an MCP_TOOL one, which counts only tool calls. Token conditions are checked
+// by validateTokenConditions. Messages start with where ("price 2: ...").
 func validateFilters(filters []PriceFilter, where string) error {
 	if len(filters) > maxPriceFilters {
 		return fmt.Errorf("%s: a price has at most %d filters", where, maxPriceFilters)
@@ -480,6 +493,9 @@ func validateFilters(filters []PriceFilter, where string) error {
 			}
 		}
 		f.Values = values
+	}
+	if seen[FilterFieldMCPTool] && seen[FilterFieldMCPMethod] {
+		return fmt.Errorf("%s: a Tool filter counts only tool calls, so it can't be used with an MCP method filter", where)
 	}
 	return validateTokenConditions(filters, where)
 }
@@ -656,11 +672,23 @@ func isPositiveAmount(value string) bool {
 	return strings.Trim(strings.Replace(value, ".", "", 1), "0") != ""
 }
 
+// withToolCall returns a price's filters with the condition a Tool filter implies: a Tool filter
+// counts only tool calls, so it comes with the MCP method tools/call (a price never filters on both).
+func withToolCall(filters []PriceFilter) []PriceFilter {
+	if _, ok := filterOn(filters, FilterFieldMCPTool); !ok {
+		return filters
+	}
+	return append(slices.Clone(filters), PriceFilter{Field: FilterFieldMCPMethod, Operator: FilterOperatorEquals,
+		Values: []string{mcpToolCall}})
+}
+
 // filtersOverlap reports whether one request could be counted by two prices on the same meter: for
 // every fixed field either price filters on, the two filters can match the same value, and for every
 // Token key either price has conditions on, the two ranges of token counts share a number. A field
-// or key only one price filters on matches any value, or number, for the other.
+// or key only one price filters on matches any value, or number, for the other. A Tool filter's tool
+// call counts as an MCP method filter (withToolCall).
 func filtersOverlap(a, b []PriceFilter) bool {
+	a, b = withToolCall(a), withToolCall(b)
 	for _, field := range fixedFilterFields {
 		fa, inA := filterOn(a, field)
 		fb, inB := filterOn(b, field)

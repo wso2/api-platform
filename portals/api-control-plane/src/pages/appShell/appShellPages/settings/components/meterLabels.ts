@@ -61,9 +61,10 @@ const COMPARE: FilterOperator[] = [
 
 /**
  * The operators each filter field takes, and the key it reads in the gateway's
- * events unless the meter gives another. Token, a number such as a token count,
- * has no default key: each Token field names its own, and a meter may list it
- * once per key.
+ * events unless the meter gives another. The MCP method is the JSON-RPC method
+ * of a request to an MCP server, such as tools/call, and the tool the name of the
+ * tool a tool call runs. Token, a number such as a token count, has no default
+ * key: each Token field names its own, and a meter may list it once per key.
  */
 export const FILTER_RULES: Record<FilterField, { operators: FilterOperator[]; eventKey: string }> =
   {
@@ -74,6 +75,8 @@ export const FILTER_RULES: Record<FilterField, { operators: FilterOperator[]; ev
       operators: ['EQUALS', 'NOT_EQUALS', 'STARTS_WITH'],
     },
     API_TYPE: { eventKey: 'metadata.apiType', operators: MATCH },
+    MCP_METHOD: { eventKey: 'metadata.mcpAnalytics.jsonRpcMethod', operators: MATCH },
+    MCP_TOOL: { eventKey: 'metadata.mcpAnalytics.capabilityName', operators: MATCH },
     TOKEN: { eventKey: '', operators: COMPARE },
   };
 
@@ -89,6 +92,24 @@ export const MAX_TOKEN_VALUE = 1_000_000_000_000;
  * other value is accepted. Matched exactly as written.
  */
 export const API_TYPES = ['RestApi', 'WebSubApi', 'LlmProvider', 'LlmProxy', 'Mcp', 'Agent'];
+
+/** The MCP method of a tool call. */
+export const MCP_TOOL_CALL = 'tools/call';
+
+/**
+ * MCP methods suggested for an MCP method filter; any other value is accepted.
+ * Matched exactly as written.
+ */
+export const MCP_METHODS = [
+  MCP_TOOL_CALL,
+  'resources/read',
+  'prompts/get',
+  'tools/list',
+  'resources/list',
+  'prompts/list',
+  'initialize',
+  'ping',
+];
 
 /**
  * An event key as the API Portal accepts it, once trimmed: 1 to 255 characters, with no spaces or
@@ -249,6 +270,17 @@ export const fieldMessages: Record<FilterField, MessageDescriptor> = defineMessa
     defaultMessage: 'API type',
     description:
       'A filter field: the kind of API a request went to, such as a REST API or an LLM provider.',
+  },
+  MCP_METHOD: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.meterLabels.field.mcpMethod',
+    defaultMessage: 'MCP method',
+    description:
+      'A filter field: the JSON-RPC method of a request to an MCP server, such as tools/call. Keep "MCP".',
+  },
+  MCP_TOOL: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.meterLabels.field.mcpTool',
+    defaultMessage: 'Tool',
+    description: 'A filter field: the name of the MCP server tool a tool call runs.',
   },
   TOKEN: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.meterLabels.field.token',

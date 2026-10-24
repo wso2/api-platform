@@ -25,6 +25,7 @@ import type {
 import {
   FILTER_RULES,
   HTTP_METHODS,
+  MCP_TOOL_CALL,
   TOKEN_KEYS,
   parseFilterValues,
   priceFieldsOf,
@@ -118,7 +119,8 @@ export type PricingProblem =
         | 'AMOUNT_INVALID'
         | 'QUANTITY_INVALID'
         | 'TIERS_INVALID'
-        | 'TOO_MANY_FILTERS';
+        | 'TOO_MANY_FILTERS'
+        | 'TOOL_WITH_METHOD';
       price: number;
     }
   | { code: 'FILTER_INVALID'; price: number; field: FilterField }
@@ -437,6 +439,10 @@ const buildPrice = (
   }
   if (filters.length > MAX_PRICE_FILTERS)
     return { price: null, problem: { code: 'TOO_MANY_FILTERS', price: index } };
+  // A Tool filter counts only tool calls, so a price does not also filter on the MCP method.
+  const fields = filters.map((filter) => filter.field);
+  if (fields.includes('MCP_TOOL') && fields.includes('MCP_METHOD'))
+    return { price: null, problem: { code: 'TOOL_WITH_METHOD', price: index } };
   const impossible = tokenKeysIn(filters).find((eventKey) => {
     const { high, low } = tokenRange(filters, eventKey);
     return low > high;
@@ -518,17 +524,26 @@ const filtersOverlap = (field: FilterField, first: PriceFilter, second: PriceFil
 };
 
 /**
+ * A price's filters with the condition a Tool filter implies: a Tool filter
+ * counts only tool calls, so it comes with the MCP method tools/call.
+ */
+const withToolCall = (filters: PriceFilter[]): PriceFilter[] =>
+  filters.some((filter) => filter.field === 'MCP_TOOL')
+    ? [...filters, { field: 'MCP_METHOD', operator: 'EQUALS', values: [MCP_TOOL_CALL] }]
+    : filters;
+
+/**
  * Whether one request could be counted by both prices: they are on the same
  * meter; on every fixed field either filters on, the two filters can match the
  * same value (a field only one of them filters on matches anything for the
- * other); and on every Token key, their conditions let some number through for
- * both (a key only one of them sets conditions on lets every number through for
- * the other).
+ * other; a Tool filter also filters on the MCP method, withToolCall); and on
+ * every Token key, their conditions let some number through for both (a key
+ * only one of them sets conditions on lets every number through for the other).
  */
 const pricesOverlap = (first: Price, second: Price): boolean => {
   if (first.meterId !== second.meterId) return false;
-  const firstFilters = first.filters ?? [];
-  const secondFilters = second.filters ?? [];
+  const firstFilters = withToolCall(first.filters ?? []);
+  const secondFilters = withToolCall(second.filters ?? []);
   const fieldsMeet = firstFilters
     .filter((filter) => filter.field !== 'TOKEN')
     .every((filter) => {

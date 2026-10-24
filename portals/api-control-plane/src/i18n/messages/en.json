@@ -3361,6 +3361,10 @@
     "defaultMessage": "Pricing can't be updated once a plan is created.",
     "description": "Shown under the Paid plan switch of an existing plan, whose pricing is shown but cannot be edited."
   },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.mcpMethodPlaceholder": {
+    "defaultMessage": "{many, select, true {tools/call, resources/read} other {tools/call}}",
+    "description": "Example MCP methods, as the MCP protocol names them. Do not translate the names."
+  },
   "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.meter": {
     "defaultMessage": "Meter"
   },
@@ -3462,6 +3466,9 @@
   "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.problem.tooManyFilters": {
     "defaultMessage": "Price {position} has more than 20 filters; empty some of them."
   },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.problem.toolWithMethod": {
+    "defaultMessage": "Price {position}: a Tool filter counts only tool calls, so it can't be used with an MCP method filter."
+  },
   "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.problem.values": {
     "defaultMessage": "Check the filters of price {position}: one value for equals, does not equal and starts with, status codes such as 200, and a resource starting with /."
   },
@@ -3501,6 +3508,10 @@
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.tierUpTo": {
     "defaultMessage": "Up to"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.toolPlaceholder": {
+    "defaultMessage": "{many, select, true {search, fetch} other {search}}",
+    "description": "Example names of MCP server tools. Do not translate."
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.unitPrice": {
     "defaultMessage": "Unit price"
@@ -3644,6 +3655,14 @@
   "apiControlPlane.pages.appShell.appShellPages.settings.components.meterLabels.field.apiType": {
     "defaultMessage": "API type",
     "description": "A filter field: the kind of API a request went to, such as a REST API or an LLM provider."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.meterLabels.field.mcpMethod": {
+    "defaultMessage": "MCP method",
+    "description": "A filter field: the JSON-RPC method of a request to an MCP server, such as tools/call. Keep \"MCP\"."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.meterLabels.field.mcpTool": {
+    "defaultMessage": "Tool",
+    "description": "A filter field: the name of the MCP server tool a tool call runs."
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.components.meterLabels.field.method": {
     "defaultMessage": "HTTP method"

@@ -57,7 +57,8 @@ const COMPARE = ['GREATER_THAN', 'GREATER_THAN_OR_EQUAL', 'LESS_THAN', 'LESS_THA
 
 // The fields a meter may let its prices filter on, the operators each accepts, and the default event
 // key each reads: its full path in our gateway's events. The API type is the kind of API the gateway
-// served, such as RestApi, LlmProvider or Mcp, as written.
+// served, such as RestApi, LlmProvider or Mcp, as written. The MCP method is the JSON-RPC method of a
+// request to an MCP server, such as tools/call, and the tool is the name of the tool a tool call runs.
 // A Token field reads a number, such as a token count, at a key it must be given (it has no
 // default); a meter may list it once per key, and prices compare that number.
 const FILTER_RULES = {
@@ -65,8 +66,12 @@ const FILTER_RULES = {
     HTTP_METHOD: { operators: MATCH, eventKey: 'request.verb' },
     RESOURCE: { operators: ['EQUALS', 'NOT_EQUALS', 'STARTS_WITH'], eventKey: 'metadata.apiResourceTemplate' },
     API_TYPE: { operators: MATCH, eventKey: 'metadata.apiType' },
+    MCP_METHOD: { operators: MATCH, eventKey: 'metadata.mcpAnalytics.jsonRpcMethod' },
+    MCP_TOOL: { operators: MATCH, eventKey: 'metadata.mcpAnalytics.capabilityName' },
     TOKEN: { operators: COMPARE, eventKey: null },
 };
+// The MCP method of a tool call.
+const MCP_TOOL_CALL = 'tools/call';
 const FILTER_FIELDS = Object.keys(FILTER_RULES);
 const MAX_FILTER_FIELDS = 10;
 // The largest number a Token condition compares with.
@@ -270,6 +275,7 @@ module.exports = {
     MAX_FILTER_FIELDS,
     MAX_TOKEN_VALUE,
     HTTP_METHODS,
+    MCP_TOOL_CALL,
     OPERATORS,
     FILTER_RULES,
     FILTER_FIELDS,

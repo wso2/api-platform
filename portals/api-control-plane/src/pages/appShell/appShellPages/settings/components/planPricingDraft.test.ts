@@ -489,6 +489,53 @@ describe('API type filters', () => {
   });
 });
 
+describe('MCP method and Tool filters', () => {
+  it('take free text, kept as written, and a price with a Tool filter has no MCP method filter', () => {
+    const { body } = build(
+      usageBased([
+        perUnit('calls', [filter('MCP_METHOD', 'IN', 'tools/call, resources/read, tools/call')]),
+        perUnit('tools', [filter('MCP_TOOL', 'NOT_EQUALS', 'Search')]),
+      ]),
+    );
+    expect(body?.prices?.map((p) => p.filters)).toEqual([
+      [{ field: 'MCP_METHOD', operator: 'IN', values: ['tools/call', 'resources/read'] }],
+      [{ field: 'MCP_TOOL', operator: 'NOT_EQUALS', values: ['Search'] }],
+    ]);
+    expect(
+      build(
+        usageBased([
+          perUnit('calls', [
+            filter('MCP_METHOD', 'EQUALS', 'tools/call'),
+            filter('MCP_TOOL', 'EQUALS', 'search'),
+          ]),
+        ]),
+      ).problem,
+    ).toEqual({ code: 'TOOL_WITH_METHOD', price: 0 });
+  });
+
+  it('compare a Tool filter as one on the MCP method tools/call', () => {
+    const tool = (operator: FilterOperator, text: string) => [filter('MCP_TOOL', operator, text)];
+    const method = (operator: FilterOperator, text: string) => [
+      filter('MCP_METHOD', operator, text),
+    ];
+    expect(pair(method('EQUALS', 'tools/call'), method('NOT_EQUALS', 'tools/call'))).toBeNull();
+    expect(pair(tool('EQUALS', 'search'), tool('NOT_IN', 'search'))).toBeNull();
+    expect(pair(tool('EQUALS', 'search'), method('EQUALS', 'prompts/get'))).toBeNull();
+    expect(pair(tool('EQUALS', 'search'), method('NOT_EQUALS', 'tools/call'))).toBeNull();
+    expect(pair(tool('EQUALS', 'search'), method('EQUALS', 'tools/call'))).toEqual(OVERLAP);
+    expect(pair(tool('IN', 'search, fetch'), [])).toEqual(OVERLAP);
+  });
+
+  it('name a price by the methods or tools it counts', () => {
+    expect(priceName('MCP calls', [filter('MCP_METHOD', 'EQUALS', 'tools/call')])).toBe(
+      'MCP calls · tools/call',
+    );
+    expect(priceName('MCP calls', [filter('MCP_TOOL', 'NOT_IN', 'search, fetch')])).toBe(
+      'MCP calls · not search, fetch',
+    );
+  });
+});
+
 describe('Token conditions', () => {
   const prompt = 'metadata.aiTokenUsage.promptTokens';
   const total = 'metadata.aiTokenUsage.totalTokens';
