@@ -25,6 +25,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"reflect"
 	"strings"
 	"time"
 
@@ -38,6 +39,7 @@ import (
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
 	grpccodes "google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/prototext"
 	"google.golang.org/protobuf/types/known/structpb"
@@ -46,6 +48,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/config"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/constants"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/executor"
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/genai"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/faultformat"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/registry"
@@ -68,6 +71,9 @@ type ExternalProcessorServer struct {
 	// the tracer is a no-op anyway, so building the carrier and running the
 	// propagator would be wasted work on the request hot path — skip it.
 	tracingEnabled bool
+	// genai configures the GenAI client spans; its zero value, with tracing off,
+	// records none.
+	genai config.GenAITracingConfig
 
 	// Per-direction caps on decompressed bytes buffered per body (buffered mode)
 	// or per chunk (streaming), from policy_engine.request_body/.response_body config.
@@ -182,6 +188,9 @@ func NewExternalProcessorServer(kernel *Kernel, chainExecutor *executor.ChainExe
 		errorFormatterKinds:          faultformat.SupportedKinds(),
 		correlationStore:             corrStore,
 	}
+	if tracingConfig.Enabled {
+		srv.genai = tracingConfig.GenAI
+	}
 	for _, opt := range opts {
 		opt(srv)
 	}
@@ -229,15 +238,36 @@ func traceContextCarrier(req *extprocv3.ProcessingRequest) propagation.MapCarrie
 	return carrier
 }
 
-// startRootSpan starts the ext_proc root span for a stream. When tracing is
-// enabled and a request is available, the span is parented on the downstream
-// request's W3C trace context (traceparent/tracestate from its HTTP headers);
-// otherwise it starts a new root. When tracing is disabled the returned span is
-// a no-op and the per-request header extraction is skipped entirely. req is nil
-// on the pre-first-message error path, which likewise starts a plain new root.
+// streamMetadataCarrier builds a W3C trace-context carrier from the ext_proc
+// stream's incoming gRPC metadata. Envoy's native gRPC async client spawns a
+// client span for the stream ("async ...ExternalProcessor.Process egress") and
+// injects that span's context into the stream's initial metadata. One stream is
+// one HTTP request, so the value is per-request.
+func streamMetadataCarrier(ctx context.Context) propagation.MapCarrier {
+	carrier := propagation.MapCarrier{}
+	md, ok := metadata.FromIncomingContext(ctx)
+	if !ok {
+		return carrier
+	}
+	// Values repeat per key, and W3C permits tracestate to be split across
+	// several fields to be recombined comma-separated in field order.
+	for _, key := range []string{"traceparent", "tracestate"} {
+		if values := md.Get(key); len(values) > 0 {
+			carrier[key] = strings.Join(values, ",")
+		}
+	}
+	return carrier
+}
+
+// startRootSpan starts the ext_proc root span for a stream, parented on Envoy's
+// client span for this call so the engine's spans join the router's trace.
 func (s *ExternalProcessorServer) startRootSpan(ctx context.Context, req *extprocv3.ProcessingRequest) (context.Context, trace.Span) {
-	if s.tracingEnabled && req != nil {
-		ctx = tracing.ExtractTraceContext(ctx, traceContextCarrier(req))
+	if s.tracingEnabled {
+		carrier := streamMetadataCarrier(ctx)
+		if carrier["traceparent"] == "" && req != nil {
+			carrier = traceContextCarrier(req)
+		}
+		ctx = tracing.ExtractTraceContext(ctx, carrier)
 	}
 	return s.tracer.Start(ctx, constants.SpanExternalProcessingProcess,
 		trace.WithSpanKind(trace.SpanKindServer),
@@ -251,12 +281,11 @@ func (s *ExternalProcessorServer) Process(stream extprocv3.ExternalProcessor_Pro
 	metrics.ActiveStreams.Inc()
 	defer metrics.ActiveStreams.Dec()
 
-	// The root span and its context are created lazily on the first message.
-	// The downstream request's W3C trace context (traceparent/tracestate) is
-	// delivered by Envoy inside the RequestHeaders ProcessingRequest body — NOT
-	// as ext_proc gRPC stream metadata — so it cannot be extracted until the
-	// first message arrives. Until then, ctx is the raw stream context and span
-	// is nil. NoOp if tracing is disabled.
+	// The root span and its context are created lazily on the first message. Its
+	// parent comes from Envoy's context in the stream's gRPC metadata, falling back
+	// to a traceparent in the RequestHeaders body, and that fallback needs the
+	// first message (see startRootSpan). Until then, ctx is the raw stream context
+	// and span is nil. NoOp if tracing is disabled.
 	ctx := stream.Context()
 	var span trace.Span
 
@@ -289,6 +318,15 @@ func (s *ExternalProcessorServer) Process(stream extprocv3.ExternalProcessor_Pro
 			span.End()
 		}
 	}()
+	// Ends the GenAI client span and any streamed body still open when the stream
+	// closes first (a cancel, an error or an immediate response), before the root
+	// span ends.
+	defer func() {
+		if execCtx != nil {
+			execCtx.endGenAISpan()
+			execCtx.endStreamTraces()
+		}
+	}()
 	defer func() {
 		if execCtx != nil {
 			tracing.RecordHTTPOutcome(span, execCtx.terminal)
@@ -300,18 +338,25 @@ func (s *ExternalProcessorServer) Process(stream extprocv3.ExternalProcessor_Pro
 		}
 	}()
 
+	// When the last response went back to Envoy. Between that and the next Recv the
+	// engine is idle while Envoy works — forwarding upstream, collecting the body —
+	// and that interval is recorded after the fact as an await span. Zero until the
+	// first Send, and stays zero when tracing is disabled.
+	var lastSentAt time.Time
+	var lastKind reflect.Type
+
 	for {
 		// Receive request from Envoy
 		req, err := stream.Recv()
+		recvAt := time.Now()
 		if err == io.EOF {
 			return nil
 		}
 		if err != nil {
 			// Ensure the root span exists even when the stream fails before the
-			// first message ever arrives: there is no request trace context to
-			// parent on yet, so this is the same new root we would otherwise
-			// start below — created here only so a stream-level failure is still
-			// observable.
+			// first message ever arrives, so a stream-level failure is still
+			// observable. With no message there is no header fallback, but the
+			// stream metadata is still read, so it joins Envoy's trace when present.
 			if span == nil {
 				ctx, span = s.startRootSpan(ctx, nil)
 			}
@@ -331,12 +376,21 @@ func (s *ExternalProcessorServer) Process(stream extprocv3.ExternalProcessor_Pro
 			return status.Errorf(grpccodes.Unknown, "failed to receive request: %v", err)
 		}
 
-		// Start the root span on the first message, parented on the request's
-		// trace context extracted from its HTTP headers (RequestHeaders phase).
-		// Subsequent messages on this stream reuse the same span and context.
+		// Start the root span on the first message, parented on Envoy's client
+		// span for this stream (see startRootSpan). Subsequent messages on this
+		// stream reuse the same span and context.
 		if span == nil {
 			ctx, span = s.startRootSpan(ctx, req)
 		}
+
+		kind := reflect.TypeOf(req.GetRequest())
+		if !lastSentAt.IsZero() && kind != lastKind {
+			_, waitSpan := s.tracer.Start(ctx, constants.SpanAwaitNextMessage,
+				trace.WithSpanKind(trace.SpanKindInternal),
+				trace.WithTimestamp(lastSentAt))
+			waitSpan.End(trace.WithTimestamp(recvAt))
+		}
+		lastKind = kind
 
 		// Handle the request based on phase
 		resp, err := s.handleProcessingPhase(ctx, req, &execCtx, span)
@@ -344,8 +398,12 @@ func (s *ExternalProcessorServer) Process(stream extprocv3.ExternalProcessor_Pro
 			slog.ErrorContext(ctx, "Error processing request", "error", err)
 			return err
 		}
-		if execCtx != nil && endsResponse(req, resp) {
-			execCtx.responseFinished = true
+		if execCtx != nil {
+			execCtx.startGenAISpan(req, resp)
+			if endsResponse(req, resp) {
+				execCtx.responseFinished = true
+				execCtx.endGenAISpan()
+			}
 		}
 
 		// Send response back to Envoy
@@ -360,6 +418,9 @@ func (s *ExternalProcessorServer) Process(stream extprocv3.ExternalProcessor_Pro
 		}
 		if execCtx != nil && execCtx.correlationToken != "" {
 			execCtx.correlationTokenSent = true
+		}
+		if s.tracingEnabled {
+			lastSentAt = time.Now()
 		}
 	}
 }
@@ -421,12 +482,20 @@ func (s *ExternalProcessorServer) handleProcessingPhase(ctx context.Context, req
 		startTime := time.Now()
 
 		// Create span for request headers processing - NoOp if tracing disabled
-		_, span := s.tracer.Start(ctx, constants.SpanProcessRequestHeaders,
+		ctx, span := s.tracer.Start(ctx, constants.SpanProcessRequestHeaders,
 			trace.WithSpanKind(trace.SpanKindInternal))
 		defer span.End()
 
-		// Initialize execution context for this request
-		rm, outcome, denial := s.initializeExecutionContext(ctx, req, execCtx)
+		// Initialize execution context for this request. Spanned separately: route
+		// lookup, chain binding and context construction run before any policy does
+		// and were the unattributed majority of this phase.
+		bindCtx, bindSpan := s.tracer.Start(ctx, constants.SpanBindRoute,
+			trace.WithSpanKind(trace.SpanKindInternal))
+		rm, outcome, denial := s.initializeExecutionContext(bindCtx, req, execCtx)
+		bindSpan.End()
+		if *execCtx != nil {
+			(*execCtx).rootSpan = parentSpan
+		}
 		if parentSpan.IsRecording() {
 			parentSpan.SetAttributes(
 				attribute.String(constants.AttrRouteName, rm.RouteName),
@@ -435,6 +504,11 @@ func (s *ExternalProcessorServer) handleProcessingPhase(ctx context.Context, req
 				attribute.String(constants.AttrAPIContext, rm.Context),
 				attribute.String(constants.AttrOperationPath, rm.OperationPath),
 			)
+			// An LLM proxy route records no inference span (its provider route does), so
+			// its root names the proxy the call went through.
+			if policy.APIKind(rm.APIKind) == policy.APIKindLlmProxy {
+				parentSpan.SetAttributes(attribute.String(genai.AttrAIProxy, rm.APIName))
+			}
 			// A deferred route has no chain yet, so only the resolver is known here;
 			// the chain key is stamped from the request-body branch once binding
 			// actually happens (recordResolutionAttributes).
@@ -568,10 +642,14 @@ func (s *ExternalProcessorServer) handleProcessingPhase(ctx context.Context, req
 	case *extprocv3.ProcessingRequest_RequestBody:
 		startTime := time.Now()
 
-		// Create span for request body processing - NoOp if tracing disabled
-		_, span := s.tracer.Start(ctx, constants.SpanProcessRequestBody,
-			trace.WithSpanKind(trace.SpanKindInternal))
-		defer span.End()
+		// Create span for request body processing - NoOp if tracing disabled. Every
+		// message of a streamed body shares one span (#3736).
+		var stream *bodyStreamTrace
+		if *execCtx != nil && (*execCtx).requestStream.active((*execCtx).isStreamingRequest) {
+			stream = &(*execCtx).requestStream
+		}
+		ctx, span, endSpan := s.startBodyPhaseSpan(ctx, constants.SpanProcessRequestBody, stream)
+		defer endSpan()
 
 		if *execCtx == nil {
 			slog.WarnContext(ctx, "Request body received before request headers")
@@ -632,13 +710,16 @@ func (s *ExternalProcessorServer) handleProcessingPhase(ctx context.Context, req
 		if slog.Default().Enabled(ctx, slog.LevelDebug) {
 			slog.DebugContext(ctx, "ext_proc response", "phase", "request_body", "resp", prototext.Format(resp))
 		}
+		if stream != nil && (req.GetRequestBody().GetEndOfStream() || err != nil || resp.GetImmediateResponse() != nil) {
+			stream.end()
+		}
 		return resp, err
 
 	case *extprocv3.ProcessingRequest_ResponseHeaders:
 		startTime := time.Now()
 
 		// Create span for response headers processing - NoOp if tracing disabled
-		_, span := s.tracer.Start(ctx, constants.SpanProcessResponseHeaders,
+		ctx, span := s.tracer.Start(ctx, constants.SpanProcessResponseHeaders,
 			trace.WithSpanKind(trace.SpanKindInternal))
 		defer span.End()
 
@@ -695,10 +776,14 @@ func (s *ExternalProcessorServer) handleProcessingPhase(ctx context.Context, req
 	case *extprocv3.ProcessingRequest_ResponseBody:
 		startTime := time.Now()
 
-		// Create span for response body processing - NoOp if tracing disabled
-		_, span := s.tracer.Start(ctx, constants.SpanProcessResponseBody,
-			trace.WithSpanKind(trace.SpanKindInternal))
-		defer span.End()
+		// Create span for response body processing - NoOp if tracing disabled. Every
+		// message of a streamed body shares one span (#3736).
+		var stream *bodyStreamTrace
+		if *execCtx != nil && (*execCtx).responseStream.active((*execCtx).isStreamingResponse) {
+			stream = &(*execCtx).responseStream
+		}
+		ctx, span, endSpan := s.startBodyPhaseSpan(ctx, constants.SpanProcessResponseBody, stream)
+		defer endSpan()
 
 		if *execCtx == nil {
 			slog.WarnContext(ctx, "Response body received without execution context")
@@ -752,6 +837,9 @@ func (s *ExternalProcessorServer) handleProcessingPhase(ctx context.Context, req
 		}
 		if slog.Default().Enabled(ctx, slog.LevelDebug) {
 			slog.DebugContext(ctx, "ext_proc response", "phase", "response_body", "resp", prototext.Format(resp))
+		}
+		if stream != nil && (req.GetResponseBody().GetEndOfStream() || err != nil || resp.GetImmediateResponse() != nil) {
+			stream.end()
 		}
 		return resp, err
 
@@ -969,6 +1057,7 @@ func (s *ExternalProcessorServer) newBoundExecutionContext(
 	ec.apiContext = routeMetadata.Context
 	ec.upstreamDefinitionPaths = routeMetadata.UpstreamDefinitionPaths
 	ec.defaultUpstream = routeMetadata.DefaultUpstream
+	ec.genai.kind = s.genaiKindFor(policy.APIKind(routeMetadata.APIKind))
 	ec.buildRequestContexts(req.GetRequestHeaders(), routeMetadata)
 
 	// req.Attributes lives on the ProcessingRequest, not the HttpHeaders message

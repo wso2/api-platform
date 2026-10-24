@@ -674,6 +674,27 @@ gateway:
       # Default (false) forwards to exactly the configured upstream path.
       append_resource_path_to_backend: false
 
+    # OpenTelemetry tracing for the router and the policy engine. Absent by default,
+    # which leaves tracing off. Uncomment to enable:
+    # tracing:
+    #   enabled: true
+    #   # "grpc" (OTLP/gRPC, port 4317) or "http" (OTLP/HTTP, port 4318). Match the
+    #   # endpoint's port to the protocol.
+    #   protocol: grpc
+    #   endpoint: "otel-collector:4317"
+    #   insecure: true
+    #   service_version: "1.0.0"
+    #   batch_timeout: "1s"
+    #   max_export_batch_size: 512
+    #   sampling_rate: 1.0
+    #   # GenAI, MCP and A2A client spans. On by default when tracing is; to report
+    #   # token usage the policy engine reads the bodies of LLM provider and MCP routes.
+    #   genai:
+    #     enabled: true
+    #     # Prompts, completions and tool input and output. Can hold personal data.
+    #     capture_content: false
+    #     max_content_bytes: 16384
+
     # Gateway signing. The JWKS endpoint (/.well-known/jwks on every virtual
     # host) is on by default; set jwks_endpoint_enabled: false to free that path,
     # e.g. when an existing API already serves it. Left unset, no [signing] table

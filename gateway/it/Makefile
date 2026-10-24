@@ -16,7 +16,7 @@
 # under the License.
 # --------------------------------------------------------------------
 
-.PHONY: all test test-postgres test-sqlserver test-vhosts-single test-vhosts-multi test-dp-to-cp-nosync test-all test-verbose clean deps check-docker coverage-report build-coverage ensure-test-tags
+.PHONY: all test test-tracing test-tracing-http test-tracing-analytics test-postgres test-sqlserver test-vhosts-single test-vhosts-multi test-dp-to-cp-nosync test-all test-verbose clean deps check-docker coverage-report build-coverage ensure-test-tags
 
 VERSION ?= $(shell cat ../VERSION 2>/dev/null | tr -d '[:space:]' || echo "0.0.1-SNAPSHOT")
 DOCKER_REGISTRY ?= ghcr.io/wso2/api-platform
@@ -83,6 +83,25 @@ test-vhosts-multi:
 test-dp-to-cp-nosync:
 	COMPOSE_FILE=docker-compose.test.yaml:docker-compose.test.dp-nosync.override.yaml \
 	IT_FEATURE_PATHS=features/health.feature,features/dp-to-cp-sync-disabled.feature $(MAKE) test
+
+# Run the tracing tests: tracing on, exporting to a mock OTLP collector, analytics off so
+# the bodies the policy engine reads for GenAI spans are read for the spans alone. Not
+# part of the default suite, which runs with tracing off.
+TRACING_COMPOSE := docker-compose.test.yaml:docker-compose.test.tracing.override.yaml
+
+test-tracing:
+	COMPOSE_FILE=$(TRACING_COMPOSE) \
+	IT_FEATURE_PATHS=features/health.feature,features/tracing.feature $(MAKE) test
+
+# The same over OTLP/HTTP instead of OTLP/gRPC.
+test-tracing-http:
+	COMPOSE_FILE=$(TRACING_COMPOSE) IT_TRACING_PROTOCOL=http IT_TRACING_ENDPOINT=it-mock-otlp-collector:4318 \
+	IT_FEATURE_PATHS=features/health.feature,features/tracing.feature $(MAKE) test
+
+# Tracing with the otel analytics publisher, to check analytics records carry their trace.
+test-tracing-analytics:
+	COMPOSE_FILE=$(TRACING_COMPOSE) IT_ANALYTICS_ENABLED=true IT_ANALYTICS_PUBLISHER=otel \
+	IT_FEATURE_PATHS=features/health.feature,features/tracing-analytics.feature $(MAKE) test
 
 # Run tests with verbose output
 test-verbose: ensure-test-tags
