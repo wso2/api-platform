@@ -63,6 +63,7 @@ import (
 	"github.com/wso2/api-platform/tests/framework/core/actor"
 	controlplane "github.com/wso2/api-platform/tests/framework/core/catalog/platformapi"
 	"github.com/wso2/api-platform/tests/framework/core/catalog/shared"
+	"github.com/wso2/api-platform/tests/framework/core/catalog/testbench"
 	"github.com/wso2/api-platform/tests/framework/core/cleanup"
 	"github.com/wso2/api-platform/tests/framework/core/runtime"
 	"github.com/wso2/api-platform/tests/framework/core/util/httpx"
@@ -777,7 +778,7 @@ func (s *Steps) waitForWebhookEventMatch(ctx context.Context, eventType, marker 
 	if err != nil {
 		return err
 	}
-	base, err := s.topo.URL("testbench", "webhook")
+	base, err := testbench.HostURL(s.topo, "webhook")
 	if err != nil {
 		return err
 	}
@@ -790,7 +791,7 @@ func (s *Steps) waitForWebhookEventMatch(ctx context.Context, eventType, marker 
 		found    bool
 	}
 	result, err := retry.Until(ctx, retry.Options{Interval: time.Second}, func(ctx context.Context) (pollResult, error) {
-		response, err := s.client.Do(ctx, httpx.Request{Method: http.MethodGet, URL: endpoint}, 0, 0)
+		response, err := s.client.Do(ctx, httpx.Request{Method: http.MethodGet, URL: endpoint, Headers: testbench.AuthHeaders("webhook")}, 0, 0)
 		if err != nil {
 			return pollResult{}, retry.Transient(err)
 		}
@@ -894,13 +895,13 @@ func (s *Steps) assertWebhookSignature(ctx context.Context, eventType, marker, s
 	if err != nil {
 		return err
 	}
-	base, err := s.topo.URL("testbench", "webhook")
+	base, err := testbench.HostURL(s.topo, "webhook")
 	if err != nil {
 		return err
 	}
 	endpoint := base + "/" + block + "/test/deliveries?eventType=" + url.QueryEscape(eventType)
 	result, err := retry.Until(ctx, retry.Options{Interval: time.Second}, func(ctx context.Context) (bool, error) {
-		response, err := s.client.Do(ctx, httpx.Request{Method: http.MethodGet, URL: endpoint}, 0, 0)
+		response, err := s.client.Do(ctx, httpx.Request{Method: http.MethodGet, URL: endpoint, Headers: testbench.AuthHeaders("webhook")}, 0, 0)
 		if err != nil {
 			return false, retry.Transient(err)
 		}
@@ -1097,7 +1098,7 @@ func (s *Steps) verifyNoWebhookEventMatch(ctx context.Context, eventType, marker
 	if err != nil {
 		return err
 	}
-	base, err := s.topo.URL("testbench", "webhook")
+	base, err := testbench.HostURL(s.topo, "webhook")
 	if err != nil {
 		return err
 	}
@@ -1107,7 +1108,7 @@ func (s *Steps) verifyNoWebhookEventMatch(ctx context.Context, eventType, marker
 	}
 	_, err = retry.Never(ctx, retry.Options{Interval: time.Second}, 5*time.Second,
 		func(ctx context.Context) (*httpx.Response, error) {
-			response, err := s.client.Do(ctx, httpx.Request{Method: http.MethodGet, URL: endpoint}, 0, 0)
+			response, err := s.client.Do(ctx, httpx.Request{Method: http.MethodGet, URL: endpoint, Headers: testbench.AuthHeaders("webhook")}, 0, 0)
 			if err != nil {
 				return nil, retry.Transient(err)
 			}
@@ -1126,13 +1127,14 @@ func (s *Steps) resetWebhookEvents(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	base, err := s.topo.URL("testbench", "webhook")
+	base, err := testbench.HostURL(s.topo, "webhook")
 	if err != nil {
 		return err
 	}
 	response, err := s.client.Do(ctx, httpx.Request{
-		Method: http.MethodPost,
-		URL:    base + "/" + block + "/test/reset",
+		Method:  http.MethodPost,
+		URL:     base + "/" + block + "/test/reset",
+		Headers: testbench.AuthHeaders("webhook"),
 	}, 0, 0)
 	if err != nil {
 		return fmt.Errorf("resetting API Portal webhook events: %w", err)

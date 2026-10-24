@@ -39,6 +39,7 @@ import (
 	"github.com/cucumber/godog"
 	"gopkg.in/yaml.v3"
 
+	"github.com/wso2/api-platform/tests/framework/core/catalog/testbench"
 	"github.com/wso2/api-platform/tests/framework/core/cleanup"
 	frameworkruntime "github.com/wso2/api-platform/tests/framework/core/runtime"
 	"github.com/wso2/api-platform/tests/framework/core/util/httpx"
@@ -899,7 +900,7 @@ func (g *Gateway) jwtToken(ctx context.Context, issuer, scope, claims, key strin
 	if err != nil {
 		return err
 	}
-	base, err := g.topo.URL("testbench", "jwks")
+	base, err := testbench.HostURL(g.topo, "jwks")
 	if err != nil {
 		return err
 	}
@@ -931,6 +932,7 @@ func (g *Gateway) jwtToken(ctx context.Context, issuer, scope, claims, key strin
 		func(ctx context.Context) (*httpx.Response, error) {
 			r, requestErr := g.funnel.Client().Do(ctx, httpx.Request{
 				Method: http.MethodGet, URL: base + "/token?" + q.Encode(),
+				Headers: testbench.AuthHeaders("jwks"),
 			}, 0, 0)
 			if requestErr != nil {
 				return nil, retry.Transient(requestErr)
@@ -1667,7 +1669,13 @@ func (g *Gateway) serviceURL(ctx context.Context, service, path string) (string,
 	if !ok {
 		return "", fmt.Errorf("unknown service %q: this suite addresses %v", service, sortedServiceNames())
 	}
-	base, err := g.topo.URL(spec.component, spec.endpoint)
+	var base string
+	var err error
+	if spec.component == "testbench" {
+		base, err = testbench.HostURL(g.topo, spec.endpoint)
+	} else {
+		base, err = g.topo.URL(spec.component, spec.endpoint)
+	}
 	if err != nil {
 		return "", err
 	}
@@ -1695,11 +1703,17 @@ func (g *Gateway) serviceUpstreamURL(ctx context.Context, service, path string) 
 	if !ok {
 		return "", fmt.Errorf("unknown service %q: this suite addresses %v", service, sortedServiceNames())
 	}
-	inst, err := g.topo.Component(spec.component)
-	if err != nil {
-		return "", err
+	var base string
+	var err error
+	if spec.component == "testbench" {
+		base, err = testbench.UpstreamURL(g.topo, spec.endpoint)
+	} else {
+		inst, instErr := g.topo.Component(spec.component)
+		if instErr != nil {
+			return "", instErr
+		}
+		base, err = inst.InternalURL(spec.endpoint)
 	}
-	base, err := inst.InternalURL(spec.endpoint)
 	if err != nil {
 		return "", err
 	}
@@ -1717,6 +1731,17 @@ func (g *Gateway) serviceUpstreamURL(ctx context.Context, service, path string) 
 		resolved = "/" + g.topo.Block.PartitionKey() + resolved
 	}
 	return base + g.serviceBasePath(service, spec.basePath) + resolved, nil
+}
+
+// withTestbenchAuth adds the hosted-testbench credential to headers for a service the testbench
+// serves, unless the request already carries its own Authorization. Other services are returned
+// unchanged so the credential is never sent to a gateway component.
+func withTestbenchAuth(service string, headers map[string]string) map[string]string {
+	spec := serviceEndpoints[service]
+	if spec.component != "testbench" {
+		return headers
+	}
+	return testbench.WithAuth(spec.endpoint, headers)
 }
 
 func (g *Gateway) serviceBasePath(service, defaultPath string) string {
@@ -1839,7 +1864,7 @@ func (g *Gateway) serviceRequestWithBody(
 	}
 
 	var payload []byte
-	headers := g.scenarioHeaders(ctx)
+	headers := withTestbenchAuth(service, g.scenarioHeaders(ctx))
 	if body != nil {
 		content, expErr := stepscommon.Expand(ctx, body.Content)
 		if expErr != nil {
@@ -1927,7 +1952,7 @@ func (g *Gateway) awaitMappedTestbenchService(ctx context.Context, service strin
 	if !ok || spec.component != "testbench" {
 		return nil
 	}
-	base, err := g.topo.URL(spec.component, spec.endpoint)
+	base, err := testbench.HostURL(g.topo, spec.endpoint)
 	if err != nil {
 		return err
 	}
@@ -1935,8 +1960,9 @@ func (g *Gateway) awaitMappedTestbenchService(ctx context.Context, service strin
 	return retry.Await(ctx, retry.Options{Interval: 2 * time.Second},
 		func(ctx context.Context) (*httpx.Response, error) {
 			resp, requestErr := g.funnel.Client().Do(ctx, httpx.Request{
-				Method: http.MethodGet,
-				URL:    healthURL,
+				Method:  http.MethodGet,
+				URL:     healthURL,
+				Headers: testbench.AuthHeaders(spec.endpoint),
 			}, 0, 0)
 			if requestErr != nil {
 				return nil, retry.Transient(requestErr)
@@ -1961,7 +1987,7 @@ func (g *Gateway) serviceRequestUntilStatus(ctx context.Context, method, service
 	err = retry.Await(ctx, retry.Options{Interval: 2 * time.Second},
 		func(ctx context.Context) (*httpx.Response, error) {
 			resp, requestErr := g.funnel.Send(ctx, httpx.Request{
-				Method: method, URL: url, Headers: g.scenarioHeaders(ctx),
+				Method: method, URL: url, Headers: withTestbenchAuth(service, g.scenarioHeaders(ctx)),
 			})
 			if requestErr != nil {
 				return nil, retry.Transient(requestErr)
@@ -1995,7 +2021,7 @@ func (g *Gateway) serviceRequestUntilBodyNotContains(
 	err = retry.Await(ctx, retry.Options{Interval: 500 * time.Millisecond},
 		func(ctx context.Context) (*httpx.Response, error) {
 			resp, requestErr := g.funnel.Send(ctx, httpx.Request{
-				Method: method, URL: url, Headers: g.scenarioHeaders(ctx),
+				Method: method, URL: url, Headers: withTestbenchAuth(service, g.scenarioHeaders(ctx)),
 			})
 			if requestErr != nil {
 				return nil, retry.Transient(requestErr)
@@ -2278,7 +2304,7 @@ func (g *Gateway) resetAnalyticsCollector(ctx context.Context) error {
 	}
 	return retry.Await(ctx, retry.Options{}, func(ctx context.Context) (*httpx.Response, error) {
 		resp, err := g.funnel.Client().Do(ctx, httpx.Request{
-			Method: http.MethodPost, URL: url, Headers: g.scenarioHeaders(ctx),
+			Method: http.MethodPost, URL: url, Headers: withTestbenchAuth("analytics", g.scenarioHeaders(ctx)),
 		}, 0, 0)
 		if err != nil {
 			// Reset is idempotent. A connection reset can happen after the mock has
@@ -2301,7 +2327,7 @@ func (g *Gateway) analyticsEventCount(ctx context.Context) (int, error) {
 		return 0, err
 	}
 	resp, err := g.funnel.Client().Do(ctx, httpx.Request{
-		Method: http.MethodGet, URL: url, Headers: g.scenarioHeaders(ctx),
+		Method: http.MethodGet, URL: url, Headers: withTestbenchAuth("analytics", g.scenarioHeaders(ctx)),
 	}, 0, 0)
 	if err != nil {
 		return 0, retry.Transient(err)

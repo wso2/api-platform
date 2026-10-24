@@ -21,6 +21,7 @@ package topology
 import (
 	"errors"
 	"flag"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -761,6 +762,47 @@ blocks:
 		require.NoError(t, os.WriteFile(filepath.Join(other, "features", "notes.txt"), []byte("x"), 0o644))
 		require.ErrorContains(t, ValidateFeatureFiles(rb, other), "is not a .feature file")
 	})
+
+	t.Run("a line selector checks the file it names", func(t *testing.T) {
+		selected := func(entry string) *Resolved {
+			src := fmt.Sprintf(`
+suite: s
+defaults: {db: {gateway-controller: sqlite, api-portal: postgres}}
+blocks:
+  - name: b
+    components: [{name: mock-jwks}]
+    runners: [{name: r, features: ["%s"]}]
+`, entry)
+			resolved, err := load(t, src)
+			require.NoError(t, err)
+			return resolved
+		}
+
+		require.NoError(t, ValidateFeatureFiles(selected("features/api_deploy.feature:34"), root))
+		require.ErrorContains(t, ValidateFeatureFiles(selected("features/absent.feature:34"), root), "does not exist")
+		require.ErrorContains(t, ValidateFeatureFiles(selected("features/api_deploy.feature:0"), root), "does not exist")
+		require.ErrorContains(t, ValidateFeatureFiles(selected("features/api_deploy.feature:"), root), "does not exist")
+		require.ErrorContains(t, ValidateFeatureFiles(selected("features/api_deploy.feature:3x"), root), "does not exist")
+		require.ErrorContains(t, ValidateFeatureFiles(selected("features/notes.txt:4"), root), "does not exist")
+	})
+}
+
+func TestFeatureFile(t *testing.T) {
+	for entry, want := range map[string]string{
+		"features/a.feature":         "features/a.feature",
+		"features/a.feature:34":      "features/a.feature",
+		"../it/features/a.feature:7": "../it/features/a.feature",
+		"features/a.feature:0":       "features/a.feature:0",
+		"features/a.feature:":        "features/a.feature:",
+		"features/a.feature:-3":      "features/a.feature:-3",
+		"features/a.feature:12ab":    "features/a.feature:12ab",
+		"features/notes.txt:4":       "features/notes.txt:4",
+		"C:/work/a.feature":          "C:/work/a.feature",
+		"C:/work/a.feature:9":        "C:/work/a.feature",
+		"":                           "",
+	} {
+		require.Equal(t, want, FeatureFile(entry), entry)
+	}
 }
 
 func TestValidateHooks(t *testing.T) {

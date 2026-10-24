@@ -24,3 +24,14 @@ blocks:
       - name: apip-gateway
         features:
           - features/apip_gateway.feature
+
+  # Cloud integration runners list suites/it features by relative path; steps must be bound in
+  # steps/cloudconsole/itbridge.go. Requires TESTBENCH_URL reachable by the cloud gateway.
+  - name: apip-cloud-it
+    parallel: 1
+    components:
+      - name: cloud-console
+    runners:
+      - name: platform-api-deployment
+        features:
+          - ../it/features/management-portal/deployments/api_deployment.feature:34

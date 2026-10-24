@@ -41,6 +41,7 @@ import (
 
 	"github.com/wso2/api-platform/tests/framework/core/actor"
 	controlplane "github.com/wso2/api-platform/tests/framework/core/catalog/platformapi"
+	"github.com/wso2/api-platform/tests/framework/core/catalog/testbench"
 	"github.com/wso2/api-platform/tests/framework/core/cleanup"
 	"github.com/wso2/api-platform/tests/framework/core/util/httpx"
 	"github.com/wso2/api-platform/tests/framework/core/util/retry"
@@ -643,11 +644,7 @@ func (s *Steps) storeGatewayID(ctx context.Context, key string) error {
 
 // agentCardFixtureInternalURL is the fixture base the control plane dials on the block network.
 func (s *Steps) agentCardFixtureInternalURL() (string, error) {
-	inst, err := s.topo.Component("testbench")
-	if err != nil {
-		return "", err
-	}
-	base, err := inst.InternalURL(agentCardFixtureEndpoint)
+	base, err := testbench.UpstreamURL(s.topo, agentCardFixtureEndpoint)
 	if err != nil {
 		return "", err
 	}
@@ -681,7 +678,7 @@ func agentCardFixtureURL(base, scope, mode string) string {
 // transport failure is marked transient: the testbench is shared, and attaching it to or
 // detaching it from another block's network briefly refuses connections on its host port.
 func (s *Steps) agentCardFixtureCount(ctx context.Context, scope string) (int, error) {
-	base, err := s.topo.URL("testbench", agentCardFixtureEndpoint)
+	base, err := testbench.HostURL(s.topo, agentCardFixtureEndpoint)
 	if err != nil {
 		return 0, err
 	}
@@ -689,8 +686,9 @@ func (s *Steps) agentCardFixtureCount(ctx context.Context, scope string) (int, e
 		return 0, fmt.Errorf("the Agent Card fixture requires a block partition, but the topology has no block")
 	}
 	resp, err := s.client.Do(ctx, httpx.Request{
-		Method: http.MethodGet,
-		URL:    base + "/" + s.topo.Block.PartitionKey() + "/test/requests?scope=" + url.QueryEscape(scope),
+		Method:  http.MethodGet,
+		URL:     base + "/" + s.topo.Block.PartitionKey() + "/test/requests?scope=" + url.QueryEscape(scope),
+		Headers: testbench.AuthHeaders(agentCardFixtureEndpoint),
 	}, 0, 0)
 	if err != nil {
 		return 0, retry.Transient(fmt.Errorf("reading the Agent Card fixture counter: %w", err))

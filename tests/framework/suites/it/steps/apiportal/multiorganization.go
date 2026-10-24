@@ -39,6 +39,7 @@ import (
 
 	portalcatalog "github.com/wso2/api-platform/tests/framework/core/catalog/apiportal"
 	"github.com/wso2/api-platform/tests/framework/core/catalog/shared"
+	"github.com/wso2/api-platform/tests/framework/core/catalog/testbench"
 	"github.com/wso2/api-platform/tests/framework/core/cleanup"
 	"github.com/wso2/api-platform/tests/framework/core/components"
 	"github.com/wso2/api-platform/tests/framework/core/util/httpx"
@@ -203,12 +204,13 @@ func (s *Steps) mintIDPToken(ctx context.Context, storeAs string, table *godog.T
 	if err != nil {
 		return fmt.Errorf("encoding API Portal IDP claims: %w", err)
 	}
-	base, err := s.topo.URL("testbench", "oidc")
+	base, err := testbench.HostURL(s.topo, "oidc")
 	if err != nil {
 		return err
 	}
 	response, err := s.idp.Do(ctx, httpx.Request{
 		Method: http.MethodPost, URL: base + "/mint", Body: body, ContentType: "application/json",
+		Headers: testbench.AuthHeaders("oidc"),
 	}, 0, 0)
 	if err != nil {
 		return fmt.Errorf("minting an API Portal IDP token: %w", err)
@@ -544,9 +546,13 @@ func (s *Steps) createWebhookSubscriberWithToken(ctx context.Context, events, si
 			eventList = append(eventList, event)
 		}
 	}
+	webhookURL, err := testbench.UpstreamURL(s.topo, "webhook")
+	if err != nil {
+		return err
+	}
 	payload, _ := json.Marshal(map[string]any{
 		"id": id, "displayName": "Sink " + sink, "events": eventList, "enabled": true,
-		"targetUrl": "http://testbench:3012/" + partition + "/webhook",
+		"targetUrl": webhookURL + "/" + partition + "/webhook",
 	})
 	base, err := s.portalBaseNamed(portal)
 	if err != nil {
@@ -642,11 +648,13 @@ func (s *Steps) sinkDeliveries(ctx context.Context, sink string) ([]map[string]a
 	if err != nil {
 		return nil, err
 	}
-	base, err := s.topo.URL("testbench", "webhook")
+	base, err := testbench.HostURL(s.topo, "webhook")
 	if err != nil {
 		return nil, err
 	}
-	response, err := s.client.Do(ctx, httpx.Request{Method: http.MethodGet, URL: base + "/" + partition + "/test/deliveries"}, 0, 0)
+	response, err := s.client.Do(ctx, httpx.Request{
+		Method: http.MethodGet, URL: base + "/" + partition + "/test/deliveries", Headers: testbench.AuthHeaders("webhook"),
+	}, 0, 0)
 	if err != nil {
 		return nil, retry.Transient(err)
 	}
@@ -821,7 +829,7 @@ func (s *Steps) authorizeAtIDP(ctx context.Context, browser string, location *ur
 	if err := s.setBrowserValue(ctx, browserAuthorizeKey, browser, location.RawQuery); err != nil {
 		return nil, err
 	}
-	base, err := s.topo.URL("testbench", "oidc")
+	base, err := testbench.HostURL(s.topo, "oidc")
 	if err != nil {
 		return nil, err
 	}
@@ -830,7 +838,8 @@ func (s *Steps) authorizeAtIDP(ctx context.Context, browser string, location *ur
 		headers[oidc.LoginHeader] = session
 	}
 	response, err := s.idp.Do(ctx, httpx.Request{
-		Method: http.MethodGet, URL: base + location.Path + "?" + location.RawQuery, Headers: headers,
+		Method: http.MethodGet, URL: base + location.Path + "?" + location.RawQuery,
+		Headers: testbench.WithAuth("oidc", headers),
 	}, 0, 0)
 	if err != nil {
 		return nil, fmt.Errorf("API Portal browser authorization at the identity provider: %w", err)
@@ -1226,6 +1235,10 @@ func (s *Steps) seedUnownedPortalRows(ctx context.Context, idpRefID, portal, sto
 			return err
 		}
 	}
+	webhookURL, urlErr := testbench.UpstreamURL(s.topo, "webhook")
+	if urlErr != nil {
+		return urlErr
+	}
 	rows := seededRows{Portal: portal, PortalID: name, Event: ids[1], PendingDelivery: ids[2], StaleDelivery: ids[3]}
 	database, err := s.portalDB(ctx, portal)
 	if err != nil {
@@ -1269,9 +1282,9 @@ func (s *Steps) seedUnownedPortalRows(ctx context.Context, idpRefID, portal, sto
 		{"INSERT INTO events (uuid, type, org_uuid, portal_id, aggregate_type, aggregate_uuid, payload, occurred_at, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
 			[]any{ids[1], "apikey.generated", ids[0], name, "api_key", ids[4], "{}", time.Now().UTC(), "PENDING"}},
 		{"INSERT INTO event_deliveries (uuid, event_uuid, portal_id, subscriber_id, target_url, status) VALUES (?, ?, ?, ?, ?, ?)",
-			[]any{ids[2], ids[1], name, "unowned-pending", "http://testbench:3012/" + name + "/webhook", "PENDING"}},
+			[]any{ids[2], ids[1], name, "unowned-pending", webhookURL + "/" + name + "/webhook", "PENDING"}},
 		{"INSERT INTO event_deliveries (uuid, event_uuid, portal_id, subscriber_id, target_url, status, last_attempt_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-			[]any{ids[3], ids[1], name, "unowned-stale", "http://testbench:3012/" + name + "/webhook", "IN_FLIGHT", time.Now().UTC().Add(-10 * time.Minute)}},
+			[]any{ids[3], ids[1], name, "unowned-stale", webhookURL + "/" + name + "/webhook", "IN_FLIGHT", time.Now().UTC().Add(-10 * time.Minute)}},
 	}
 	for _, statement := range statements {
 		if _, err := database.db.ExecContext(ctx, database.bind(statement.query), statement.args...); err != nil {

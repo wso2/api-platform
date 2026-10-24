@@ -280,7 +280,16 @@ var approvedCloudDataPlaneHost = regexp.MustCompile(
 	`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.gateway(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*\.wso2\.com$`,
 )
 
+// resolveDataPlaneURL returns the approved absolute URL for a data-plane target. A target that
+// starts with a single "/" is a path on the active gateway, which findActiveGateway recorded.
 func (s *Steps) resolveDataPlaneURL(ctx context.Context, target string) (string, error) {
+	if strings.HasPrefix(target, "/") && !strings.HasPrefix(target, "//") {
+		endpoint, err := requiredValue(ctx, keyGatewayEndpoint)
+		if err != nil {
+			return "", fmt.Errorf("resolving data-plane path %q: %w", target, err)
+		}
+		target = endpoint + target
+	}
 	if s != nil && s.dataPlaneURLResolver != nil {
 		return s.dataPlaneURLResolver(ctx, target)
 	}

@@ -1,0 +1,185 @@
+/*
+ * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+package testbench
+
+import (
+	"fmt"
+	"net"
+	"net/url"
+	"os"
+	"strconv"
+	"strings"
+
+	"github.com/wso2/api-platform/tests/framework/core/components"
+)
+
+const (
+	// EnvURL points every testbench endpoint at one hosted testbench base URL.
+	EnvURL = "TESTBENCH_URL"
+	// EnvEndpointURLPrefix, followed by an upper-cased endpoint name with "-" replaced by "_"
+	// (TESTBENCH_URL_CONTENT_SAFETY), points one endpoint at its own URL and wins over EnvURL.
+	EnvEndpointURLPrefix = "TESTBENCH_URL_"
+	// EnvAccessToken is the bearer token sent to a hosted testbench.
+	EnvAccessToken = "TESTBENCH_ACCESS_TOKEN"
+
+	componentName = "testbench"
+)
+
+// Topology is the part of a booted block topology the resolver reads.
+type Topology interface {
+	// URL returns the address of a component endpoint reachable from the test process.
+	URL(component, endpoint string) (string, error)
+	// Component returns a declared component instance.
+	Component(name string) (*components.Instance, error)
+}
+
+// Configured reports whether a hosted testbench is configured for endpoint through the
+// environment. A malformed value is reported as an error rather than ignored.
+func Configured(endpoint string) (bool, error) {
+	_, ok, err := override(endpoint)
+	return ok, err
+}
+
+// HostURL returns the testbench endpoint address the test process calls. A configured hosted
+// testbench wins; otherwise the endpoint is the mapped address of the testbench container.
+func HostURL(topo Topology, endpoint string) (string, error) {
+	if hosted, ok, err := override(endpoint); err != nil || ok {
+		return hosted, err
+	}
+	if topo == nil {
+		return "", fmt.Errorf("testbench: no topology to resolve endpoint %q", endpoint)
+	}
+	return topo.URL(componentName, endpoint)
+}
+
+// UpstreamURL returns the testbench endpoint address that components under test call, for
+// example a gateway upstream. A configured hosted testbench wins; otherwise the endpoint is
+// the address the testbench has on the block network, whether or not the block declares it.
+func UpstreamURL(topo Topology, endpoint string) (string, error) {
+	if hosted, ok, err := override(endpoint); err != nil || ok {
+		return hosted, err
+	}
+	if topo == nil {
+		return "", fmt.Errorf("testbench: no topology to resolve endpoint %q", endpoint)
+	}
+	if inst, err := topo.Component(componentName); err == nil {
+		return inst.InternalURL(endpoint)
+	}
+	return networkURL(endpoint)
+}
+
+// networkURL returns the address the testbench has on a block network, from its definition. A
+// block that does not declare the testbench still gets this address, because an upstream only
+// has to name it: the gateway dials it when a request is served, not when the API is created.
+func networkURL(endpoint string) (string, error) {
+	def := Testbench()
+	e, ok := def.Endpoint(endpoint)
+	if !ok {
+		return "", fmt.Errorf("testbench: no endpoint %q", endpoint)
+	}
+	address := net.JoinHostPort(def.Alias, strconv.Itoa(e.Port)) + e.PathPrefix
+	if e.Scheme != "" {
+		address = e.Scheme + "://" + address
+	}
+	return address, nil
+}
+
+// AuthHeaders returns the headers a request to a hosted testbench endpoint carries, or nil when
+// no access token is configured or the endpoint is served by the testbench container, so the
+// token never reaches a container. The token is read from the environment on every call.
+func AuthHeaders(endpoint string) map[string]string {
+	token := strings.TrimSpace(os.Getenv(EnvAccessToken))
+	if token == "" {
+		return nil
+	}
+	if _, hosted, err := override(endpoint); err != nil || !hosted {
+		return nil
+	}
+	return map[string]string{"Authorization": "Bearer " + token}
+}
+
+// WithAuth returns headers together with the credential AuthHeaders names for endpoint. A request
+// that already carries an Authorization header, in any capitalisation, keeps its own.
+func WithAuth(endpoint string, headers map[string]string) map[string]string {
+	auth := AuthHeaders(endpoint)
+	if len(auth) == 0 {
+		return headers
+	}
+	merged := make(map[string]string, len(headers)+len(auth))
+	for name, value := range headers {
+		if strings.EqualFold(name, "Authorization") {
+			return headers
+		}
+		merged[name] = value
+	}
+	for name, value := range auth {
+		merged[name] = value
+	}
+	return merged
+}
+
+// override returns the hosted URL configured for endpoint, if any. The configured value is
+// never echoed in an error, since a hosted URL may itself be a secret.
+func override(endpoint string) (string, bool, error) {
+	if suffix := endpointEnvSuffix(endpoint); suffix != "" {
+		if name := EnvEndpointURLPrefix + suffix; strings.TrimSpace(os.Getenv(name)) != "" {
+			return normalize(name)
+		}
+	}
+	if strings.TrimSpace(os.Getenv(EnvURL)) != "" {
+		return normalize(EnvURL)
+	}
+	return "", false, nil
+}
+
+// isLoopbackHost reports whether host names this machine, where a plain-http testbench is not
+// exposed to the network.
+func isLoopbackHost(host string) bool {
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
+func endpointEnvSuffix(endpoint string) string {
+	return strings.ToUpper(strings.ReplaceAll(strings.TrimSpace(endpoint), "-", "_"))
+}
+
+// normalize validates the value of the named variable and returns it without a trailing slash.
+func normalize(name string) (string, bool, error) {
+	raw := strings.TrimSpace(os.Getenv(name))
+	u, err := url.Parse(raw)
+	switch {
+	case err != nil:
+		return "", false, fmt.Errorf("testbench: %s is not a valid URL", name)
+	case u.Scheme != "http" && u.Scheme != "https":
+		return "", false, fmt.Errorf("testbench: %s must use http or https", name)
+	case u.Host == "":
+		return "", false, fmt.Errorf("testbench: %s has no host", name)
+	case u.User != nil:
+		return "", false, fmt.Errorf("testbench: %s must not carry credentials; use %s", name, EnvAccessToken)
+	case u.RawQuery != "" || u.Fragment != "":
+		return "", false, fmt.Errorf("testbench: %s must not carry a query or fragment", name)
+	case u.Scheme == "http" && !isLoopbackHost(u.Hostname()) && strings.TrimSpace(os.Getenv(EnvAccessToken)) != "":
+		return "", false, fmt.Errorf("testbench: %s must use https when %s is set, so the token is not sent in clear text",
+			name, EnvAccessToken)
+	}
+	return strings.TrimRight(raw, "/"), true, nil
+}

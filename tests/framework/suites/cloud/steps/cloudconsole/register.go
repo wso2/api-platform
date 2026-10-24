@@ -104,6 +104,8 @@ func Register(sc *godog.ScenarioContext, topo *frameworkruntime.Topology, funnel
 	sc.Step(`^the managed APIP gateway should be retrievable through the managed-gateway endpoint$`, s.getManagedGateway)
 	sc.Step(`^I delete the synthetic managed APIP gateway$`, s.deleteManagedGateway)
 	sc.Step(`^the managed APIP gateway should eventually be absent$`, s.verifyManagedGatewayDeleted)
+
+	s.registerITBridge(sc)
 }
 
 // RegisterDeleters installs cloud-target cleanup handlers for a block containing cloud-console.
