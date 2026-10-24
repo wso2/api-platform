@@ -25,6 +25,7 @@ import (
 	"strings"
 	"time"
 
+	commonconstants "github.com/wso2/api-platform/common/constants"
 	"github.com/wso2/api-platform/platform-api/api"
 	"github.com/wso2/api-platform/platform-api/config"
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
@@ -2264,12 +2265,22 @@ func generateLLMProxyDeploymentYAML(
 
 	proxyPolicies = orderLLMPolicies(proxyPolicies)
 
+	proxyMetadata := dto.DeploymentMetadata{
+		Name: proxy.ID,
+	}
+	if proxy.ProjectUUID != "" {
+		proxyMetadata.Annotations = map[string]string{
+			commonconstants.AnnotationProjectID: proxy.ProjectUUID,
+		}
+		proxyMetadata.Labels = map[string]string{
+			commonconstants.DeprecatedLabelProjectID: proxy.ProjectUUID,
+		}
+	}
+
 	proxyDeployment := dto.LLMProxyDeploymentYAML{
 		ApiVersion: constants.GatewayApiVersion,
 		Kind:       constants.LLMProxy,
-		Metadata: dto.DeploymentMetadata{
-			Name: proxy.ID,
-		},
+		Metadata:   proxyMetadata,
 		Spec: dto.LLMProxyDeploymentSpec{
 			DisplayName:       proxy.Name,
 			Version:           proxy.Version,

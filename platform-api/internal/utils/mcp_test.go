@@ -24,6 +24,7 @@ import (
 	"strings"
 	"testing"
 
+	commonconstants "github.com/wso2/api-platform/common/constants"
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/model"
@@ -85,8 +86,11 @@ func TestBuildMCPDeploymentYAML(t *testing.T) {
 	if deploymentStruct.Metadata.Name != "test-mcp-proxy" {
 		t.Errorf("Metadata.Name = %q", deploymentStruct.Metadata.Name)
 	}
-	if deploymentStruct.Metadata.Labels["projectId"] != "proj-456" {
-		t.Errorf("Metadata.Labels[projectId] = %q", deploymentStruct.Metadata.Labels["projectId"])
+	if deploymentStruct.Metadata.Annotations[commonconstants.AnnotationProjectID] != "proj-456" {
+		t.Errorf("Metadata.Annotations[%s] = %q", commonconstants.AnnotationProjectID, deploymentStruct.Metadata.Annotations[commonconstants.AnnotationProjectID])
+	}
+	if deploymentStruct.Metadata.Labels[commonconstants.DeprecatedLabelProjectID] != "proj-456" {
+		t.Errorf("Metadata.Labels[%s] = %q", commonconstants.DeprecatedLabelProjectID, deploymentStruct.Metadata.Labels[commonconstants.DeprecatedLabelProjectID])
 	}
 	if deploymentStruct.Spec.Upstream.URL != "http://mcp-backend:8080/mcp" {
 		t.Errorf("Upstream.URL = %q", deploymentStruct.Spec.Upstream.URL)
