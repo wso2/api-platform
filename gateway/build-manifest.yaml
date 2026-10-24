@@ -1,7 +1,7 @@
 version: v1
 policies:
     - name: advanced-ratelimit
-      version: v1.2.0
+      version: v1.3.0
       gomodule: github.com/wso2/gateway-controllers/policies/advanced-ratelimit@v1
     - name: analytics-header-filter
       version: v1.0.1
@@ -93,6 +93,9 @@ policies:
     - name: model-weighted-round-robin
       version: v1.1.1
       gomodule: github.com/wso2/gateway-controllers/policies/model-weighted-round-robin@v1
+    - name: mtls-auth
+      version: v0.9.0
+      gomodule: github.com/wso2/gateway-controllers/policies/mtls-auth@v0
     - name: nvidia-nemoguard-content-safety
       version: v0.9.0
       pipPackage: git+https://github.com/wso2/gateway-controllers.git@policies/nvidia-nemoguard-content-safety/v0.9.0#subdirectory=policies/nvidia-nemoguard-content-safety
@@ -109,7 +112,7 @@ policies:
       version: v0.9.1
       gomodule: github.com/wso2/gateway-controllers/policies/openai-to-azure-openai-transformer@v0
     - name: openai-to-bedrock-transformer
-      version: v0.9.2
+      version: v0.9.3
       gomodule: github.com/wso2/gateway-controllers/policies/openai-to-bedrock-transformer@v0
     - name: openai-to-gemini-transformer
       version: v0.9.2

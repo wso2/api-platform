@@ -42,11 +42,11 @@ export type { SubscriptionPlanListFilters } from './subscriptionPlans.hooks';
 // ─── Hooks ──────────────────────────────────────────────────────────────────
 
 export {
+  useAllSubscriptionPlans,
   useCreateSubscriptionPlan,
   useDeleteSubscriptionPlan,
   useSubscriptionPlan,
   useSubscriptionPlanOptions,
   useSubscriptionPlans,
-  useSubscriptionPlansById,
   useUpdateSubscriptionPlan,
 } from './subscriptionPlans.hooks';

@@ -65,7 +65,61 @@ describe('loading the list', () => {
     expect(result.current.agentProxiesResponse.list).toHaveLength(2);
     expect(agentProxiesApis.getAgentProxies).toHaveBeenCalledWith(
       'proj-1',
-      expect.any(String)
+      expect.any(String),
+      expect.any(Number),
+      expect.any(Number)
+    );
+  });
+
+  it('does not truncate a project with more proxies than the server default page size', async () => {
+    // Reproduces the WSO2 Summit bug report: a project with 28 Agent proxies
+    // only ever showed 20, because the list fetch never passed an explicit
+    // limit and the server defaults an unpaged request to 20.
+    const allProxies = {
+      count: 28,
+      list: Array.from({ length: 28 }, (_, i) => ({ id: `p${i}`, displayName: `p${i}` })),
+      pagination: { total: 28, offset: 0, limit: 100 },
+    };
+    vi.mocked(agentProxiesApis.getAgentProxies).mockResolvedValue(allProxies as never);
+
+    const { result } = renderProxies();
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.agentProxiesResponse.list).toHaveLength(28);
+    expect(agentProxiesApis.getAgentProxies).toHaveBeenCalledWith(
+      'proj-1',
+      expect.any(String),
+      100,
+      0
+    );
+  });
+
+  it('walks a second page when a project holds more than one full page of proxies', async () => {
+    const firstPage = {
+      count: 100,
+      list: Array.from({ length: 100 }, (_, i) => ({ id: `p${i}`, displayName: `p${i}` })),
+      pagination: { total: 128, offset: 0, limit: 100 },
+    };
+    const secondPage = {
+      count: 28,
+      list: Array.from({ length: 28 }, (_, i) => ({ id: `p${100 + i}`, displayName: `p${100 + i}` })),
+      pagination: { total: 128, offset: 100, limit: 100 },
+    };
+    vi.mocked(agentProxiesApis.getAgentProxies)
+      .mockResolvedValueOnce(firstPage as never)
+      .mockResolvedValueOnce(secondPage as never);
+
+    const { result } = renderProxies();
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.agentProxiesResponse.list).toHaveLength(128);
+    expect(agentProxiesApis.getAgentProxies).toHaveBeenCalledTimes(2);
+    expect(agentProxiesApis.getAgentProxies).toHaveBeenNthCalledWith(
+      2,
+      'proj-1',
+      expect.any(String),
+      100,
+      100
     );
   });
 

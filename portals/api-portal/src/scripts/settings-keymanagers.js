@@ -159,7 +159,7 @@
     var sel = el('km-type');
     if (!host || !sel) return;
     var opt = sel.options[sel.selectedIndex];
-    var grants = [];
+    var grants;
     try { grants = JSON.parse((opt && opt.getAttribute('data-grants')) || '[]') || []; } catch (e) { grants = []; }
     var chosen = {};
     (keep || []).forEach(function (g) { chosen[g] = true; });

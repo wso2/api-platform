@@ -32,6 +32,7 @@ import (
 	"github.com/cucumber/godog"
 	playwright "github.com/mxschmitt/playwright-go"
 
+	"github.com/wso2/api-platform/tests/framework/core/catalog/shared"
 	"github.com/wso2/api-platform/tests/framework/core/cleanup"
 	frameworkruntime "github.com/wso2/api-platform/tests/framework/core/runtime"
 	"github.com/wso2/api-platform/tests/framework/core/util/httpx"
@@ -52,10 +53,11 @@ type Steps struct {
 // New constructs API Portal bindings using the suite's isolated browser page.
 func New(topo *frameworkruntime.Topology, expect playwright.PlaywrightAssertions,
 	pageGetter func(context.Context) (playwright.Page, error)) *Steps {
+	portalTLS := shared.APIPortalClientTLS()
 	return &Steps{
 		topo: topo, expect: expect, pageGetter: pageGetter,
-		client:     httpx.NewClient(httpx.Options{MaxRetries: 1, FollowRedirects: true}),
-		noRedirect: httpx.NewClient(httpx.Options{MaxRetries: 1}),
+		client:     httpx.NewClient(httpx.Options{MaxRetries: 1, FollowRedirects: true, TLSClientConfig: portalTLS}),
+		noRedirect: httpx.NewClient(httpx.Options{MaxRetries: 1, TLSClientConfig: portalTLS}),
 	}
 }
 
@@ -2244,7 +2246,7 @@ func (u *Steps) apiPortalURL() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return inst.InternalURL("http")
+	return inst.InternalURL("https")
 }
 
 func (u *Steps) requestAPIPortalPath(ctx context.Context, path string) error {
@@ -2260,7 +2262,7 @@ func (u *Steps) requestAPIPortal(ctx context.Context, path string) error {
 }
 
 func (u *Steps) requestAPIPortalWithClient(ctx context.Context, path string, client *httpx.Client) error {
-	base, err := u.topo.URL("api-portal", "http")
+	base, err := u.topo.URL("api-portal", "https")
 	if err != nil {
 		return err
 	}

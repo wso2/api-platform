@@ -16,16 +16,9 @@
  * under the License.
  */
 
-import {
-  keepPreviousData,
-  useMutation,
-  useQueries,
-  useQuery,
-  useQueryClient,
-  type UseQueryResult,
-} from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { isErrorCode, type ApiError } from '../../core/errors';
+import type { ApiError } from '../../core/errors';
 import { useApiScope } from '../../core/scope';
 import {
   createSubscriptionPlan,
@@ -69,6 +62,16 @@ export const useSubscriptionPlans = (
   });
 };
 
+/** Every plan in the active organization, across all pages. */
+export const useAllSubscriptionPlans = (overrides: { orgId?: string } = {}) => {
+  const { org } = useApiScope(overrides);
+
+  return useQuery({
+    ...subscriptionPlanQueries.listAll(org!),
+    enabled: Boolean(org),
+  });
+};
+
 /** A single plan. */
 export const useSubscriptionPlan = (
   subscriptionPlanId: string | undefined,
@@ -79,31 +82,6 @@ export const useSubscriptionPlan = (
   return useQuery({
     ...subscriptionPlanQueries.detail(org!, subscriptionPlanId!),
     enabled: Boolean(org && subscriptionPlanId),
-  });
-};
-
-const combinePlans = (ids: string[]) => (results: UseQueryResult<SubscriptionPlan>[]) => ({
-  isPending: results.some((result) => result.isPending),
-  /** The plans read, by id. */
-  plans: new Map(results.flatMap((result, i) => (result.data ? [[ids[i], result.data] as const] : []))),
-  /** The ids of plans the organization no longer has. */
-  removed: new Set(ids.filter((_, i) => isErrorCode(results[i].error, 'SUBSCRIPTION_PLAN_NOT_FOUND'))),
-});
-
-/**
- * The plans with the given ids, each read on its own and kept, for a screen that shows a known set
- * of plans rather than a page of the list. Repeated and empty ids are read once or not at all.
- */
-export const useSubscriptionPlansById = (
-  subscriptionPlanIds: readonly string[],
-  overrides: { orgId?: string } = {}
-) => {
-  const { org } = useApiScope(overrides);
-  const ids = [...new Set(subscriptionPlanIds.filter(Boolean))];
-
-  return useQueries({
-    combine: combinePlans(ids),
-    queries: ids.map((id) => ({ ...subscriptionPlanQueries.detail(org!, id), enabled: Boolean(org) })),
   });
 };
 

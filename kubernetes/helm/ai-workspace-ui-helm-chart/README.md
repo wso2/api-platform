@@ -189,6 +189,7 @@ ai-workspace-ui-helm-chart/
 │   ├── issuer.yaml        # optional self-signed Issuer
 │   ├── hpa.yaml
 │   ├── pdb.yaml
+│   ├── route.yaml         # OpenShift Route (openshift.enabled)
 │   └── _helpers.tpl       # shared apip.* helpers
 ├── values.yaml
 ├── values-local.yaml      # local development overrides
@@ -224,3 +225,7 @@ every key below with `ai-workspace-ui.`.
 - `deployment.*`, `podDisruptionBudget.*`, `configMap.*` — pod spec, PDB, and extra metadata.
 - `hpa.*` — autoscaling. The UI is stateless, so unlike the Platform API and API Portal it
   can scale with no database requirement. Set CPU requests first.
+- `openshift.*`: an OpenShift Route to the UI (`openshift.routes.aiWorkspace`), rendered only
+  when `openshift.enabled=true`. The Service serves HTTPS only, so the Route uses `passthrough`
+  (default) or `reencrypt`. Security contexts are set through `deployment.podSecurityContext` /
+  `deployment.securityContext`, rendered as given.

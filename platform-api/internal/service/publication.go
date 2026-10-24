@@ -72,6 +72,8 @@ type PublicationService struct {
 	meterRepo repository.MeterRepository
 
 	portalOperationTimeout time.Duration
+	// archiveMaxBytes bounds the content ZIP pushed to the portal.
+	archiveMaxBytes int64
 }
 
 // SetPricingRepository makes a publish send each plan the portal does not have with its pricing.
@@ -94,10 +96,14 @@ func NewPublicationService(
 	publicationRepo repository.PublicationRepository,
 	portalPublisher PortalPublisher,
 	portalOperationTimeout time.Duration,
+	archiveMaxBytes int64,
 	slogger *slog.Logger,
 ) *PublicationService {
 	if slogger == nil {
 		slogger = slog.Default()
+	}
+	if archiveMaxBytes <= 0 {
+		archiveMaxBytes = defaultPublicationArchiveMaxBytes
 	}
 	return &PublicationService{
 		artifactRepo:         artifactRepo,
@@ -109,6 +115,7 @@ func NewPublicationService(
 		slogger:              slogger,
 
 		portalOperationTimeout: portalOperationTimeout,
+		archiveMaxBytes:        archiveMaxBytes,
 	}
 }
 
@@ -291,7 +298,7 @@ func (s *PublicationService) SaveDraftDetails(apiType, apiId, apiPortalId, orgUU
 	if err != nil {
 		return nil, err
 	}
-	docUUIDs, err := s.resolveDocUUIDs(artifactUUID, docHandles, orgUUID)
+	docUUIDs, err := s.validateAndResolveDocUUIDs(artifactUUID, docHandles, orgUUID)
 	if err != nil {
 		return nil, err
 	}
@@ -408,39 +415,6 @@ func (s *PublicationService) listingPricing(plans []*model.SubscriptionPlan, org
 		}
 	}
 	return pricing, nil
-}
-
-// resolveDocUUIDs resolves each document handle to its doc_uuid, scoped to
-// artifactUUID (a handle can legitimately repeat across two APIs in the same
-// org), rejecting any handle absent for this artifact.
-func (s *PublicationService) resolveDocUUIDs(artifactUUID string, handles []string, orgUUID string) ([]string, error) {
-	if len(handles) == 0 {
-		return nil, nil
-	}
-	resolved, err := s.documentRepo.GetDocumentUUIDsByHandles(artifactUUID, handles, orgUUID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to resolve document handles: %w", err)
-	}
-	return docUUIDsForHandles(handles, resolved)
-}
-
-// docUUIDsForHandles returns the UUID of every document handle in order, or a
-// validation error listing the handles that have none.
-func docUUIDsForHandles(handles []string, resolved map[string]string) ([]string, error) {
-	uuids := make([]string, 0, len(handles))
-	var unresolved []string
-	for _, h := range handles {
-		if id, ok := resolved[h]; ok {
-			uuids = append(uuids, id)
-		} else {
-			unresolved = append(unresolved, h)
-		}
-	}
-	if len(unresolved) > 0 {
-		return nil, apperror.APIPublicationValidationFailed.New(
-			"docIds not found in the organization's documents: " + strings.Join(unresolved, ", "))
-	}
-	return uuids, nil
 }
 
 // GetDraftDefinition returns the draft's stored definition content.
@@ -630,38 +604,24 @@ func (s *PublicationService) getPublicationContent(apiType, apiId, apiPortalId, 
 	return content, nil
 }
 
-// Publish publishes the current draft to the API Portal. In the UI's own
-// flow, the client always saves the draft (draft PUT) immediately before
-// calling this bodyless action, so a draft is guaranteed to exist by the
-// time this runs — APIPublicationDraftNotFound here is a defensive,
-// fail-closed check for a client bug or a failed prior save proceeding
-// anyway, not a normal user-facing gate.
+// Publish publishes the current draft to the API Portal. The client saves the draft just
+// before calling, so APIPublicationDraftNotFound is a fail-closed check, not a normal gate.
+// This is the one place a definition must exist and be valid.
 //
-// This is the one place a definition is required to exist and be valid —
-// SaveDraftDefinition accepts anything (or nothing), so nothing upstream can
-// be assumed to have checked it.
+// The portal is pushed first (listing, then content), after the content is loaded and packed
+// outside the portal deadline; nothing local changes unless the push succeeds. Then
+// PublicationRepository.PromoteDraftToPublication flips the draft row in place on a first
+// publish, or merges it into the live row on a republish, so the live row's uuid never changes.
 //
-// The portal is pushed first: nothing local changes unless that succeeds. On
-// success, one transaction (PublicationRepository.PromoteDraftToPublication):
-// on a first publish, flip the draft row in place — same row, same uuid; on
-// a republish, merge the draft's content into the existing live row (the
-// anchor) instead, so the anchor's uuid — the durable identity for this
-// (API, portal) pairing — never changes across a republish. A repeat publish
-// with no intervening edit goes through the same path and is a normal
-// no-op refresh, not an error.
-//
-// A draft saved during the portal push is not promoted (APIPublicationDraftChanged).
+// A draft saved during the push is not promoted (APIPublicationDraftChanged).
 //
 // When something fails:
 //   - The listing push fails: the plans and meters this publish created in the portal are removed
 //     again (undoPlanSync). Name and limit updates of plans the portal already had stay, since they
 //     match the plans here.
-//   - The push succeeds but the local write then fails: nothing is undone, so the portal may differ
-//     from here until the caller publishes again.
+//   - The listing push succeeds but the content push or the local write then fails: nothing is
+//     undone, so the portal is ahead of local state until the next publish.
 func (s *PublicationService) Publish(ctx context.Context, apiType, apiId, apiPortalId, orgUUID, actor string) (*model.Publication, bool, error) {
-	ctx, cancel := s.portalOperationContext(ctx)
-	defer cancel()
-
 	artifactUUID, err := s.resolveArtifact(apiType, apiId, orgUUID)
 	if err != nil {
 		return nil, false, err
@@ -691,7 +651,33 @@ func (s *PublicationService) Publish(ctx context.Context, apiType, apiId, apiPor
 		return nil, false, err
 	}
 
-	created, err := s.syncPortalPlans(ctx, portal, orgUUID, draft.SubscriptionPlanIds)
+	plans, err := s.activePlansInOrder(draft.SubscriptionPlanIds, orgUUID)
+	if err != nil {
+		return nil, false, err
+	}
+	thumbnail, err := s.publicationRepo.GetContent(draft.UUID, model.PublicationContentTypeImage, orgUUID)
+	if err != nil {
+		return nil, false, fmt.Errorf("failed to get publication draft thumbnail: %w", err)
+	}
+	landingPage, err := s.publicationRepo.GetContent(draft.UUID, model.PublicationContentTypeMarketing, orgUUID)
+	if err != nil {
+		return nil, false, fmt.Errorf("failed to get publication draft landing page: %w", err)
+	}
+	content, err := s.loadPortalContent(portalContentSource{
+		ArtifactUUID: artifactUUID,
+		OrgUUID:      orgUUID,
+		DocHandles:   draft.DocIds,
+		Thumbnail:    thumbnail,
+		LandingPage:  landingPage,
+	})
+	if err != nil {
+		return nil, false, err
+	}
+
+	ctx, cancel := s.portalOperationContext(ctx)
+	defer cancel()
+
+	created, err := s.syncPortalPlans(ctx, portal, orgUUID, plans)
 	if err != nil {
 		return nil, false, err
 	}
@@ -699,6 +685,11 @@ func (s *PublicationService) Publish(ctx context.Context, apiType, apiId, apiPor
 	if err := s.portalPublisher.Publish(ctx, portal, apiType, apiId, draft, definition); err != nil {
 		s.undoPlanSync(ctx, portal, apiId, created)
 		return nil, false, portalPushError(err)
+	}
+	if content != nil {
+		if err := s.portalPublisher.PublishContent(ctx, portal, apiId, content); err != nil {
+			return nil, false, portalPushError(err)
+		}
 	}
 
 	published, wasReplace, err := s.publicationRepo.PromoteDraftToPublication(artifactUUID, portal.ID, orgUUID, actor, draft.UpdatedAt)
@@ -811,6 +802,23 @@ func (s *PublicationService) Deprecate(ctx context.Context, apiType, apiId, apiP
 	return s.getPublicationRow(apiType, apiId, apiPortalId, orgUUID)
 }
 
+// activePlansInOrder loads the plans for handles, in handle order, rejecting any that
+// is unknown or not active.
+func (s *PublicationService) activePlansInOrder(handles []string, orgUUID string) ([]*model.SubscriptionPlan, error) {
+	if len(handles) == 0 {
+		return nil, nil
+	}
+	byHandle, err := s.loadActivePlans(handles, orgUUID)
+	if err != nil {
+		return nil, err
+	}
+	plans := make([]*model.SubscriptionPlan, 0, len(handles))
+	for _, h := range handles {
+		plans = append(plans, byHandle[h])
+	}
+	return plans, nil
+}
+
 // syncPortalPlans makes sure the portal has every plan the draft selects, as it is here
 // (PortalPublisher.SyncPlans):
 //   - plans the portal lacks are created, each paid one with its pricing, after the meters its
@@ -820,19 +828,10 @@ func (s *PublicationService) Deprecate(ctx context.Context, apiType, apiId, apiP
 //
 // Errors come back already turned into the caller's API errors; the result names what was
 // created.
-func (s *PublicationService) syncPortalPlans(ctx context.Context, portal *model.APIPortal, orgUUID string, handles []string) (PlanSyncResult, error) {
-	if len(handles) == 0 {
+func (s *PublicationService) syncPortalPlans(ctx context.Context, portal *model.APIPortal, orgUUID string, plans []*model.SubscriptionPlan) (PlanSyncResult, error) {
+	if len(plans) == 0 {
 		return PlanSyncResult{}, nil
 	}
-	byHandle, err := s.loadActivePlans(handles, orgUUID)
-	if err != nil {
-		return PlanSyncResult{}, err
-	}
-	plans := make([]*model.SubscriptionPlan, 0, len(handles))
-	for _, h := range handles {
-		plans = append(plans, byHandle[h])
-	}
-
 	pricing, err := s.listingPricing(plans, orgUUID)
 	if err != nil {
 		return PlanSyncResult{}, err

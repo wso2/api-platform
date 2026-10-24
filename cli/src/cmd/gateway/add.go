@@ -170,8 +170,9 @@ func runAddCommand() error {
 
 	// Create new gateway
 	gateway := config.Gateway{
-		Name:   addName,
-		Server: addServer,
+		Name:        addName,
+		Server:      addServer,
+		AdminServer: addAdminServer,
 		Auth: config.AuthConfig{
 			Type: addAuth,
 		},

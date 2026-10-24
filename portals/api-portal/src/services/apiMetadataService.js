@@ -869,7 +869,8 @@ const createAPITemplate = async (req, res) => {
             });
             throw new Error(
                 `Required directories not found after extraction. Content path: ${contentPath}, Images path: ${imagesPath}
-                , Documents path: ${documentPath}`
+                , Documents path: ${documentPath}`,
+                { cause: err }
             );
         }
         let apiContent = [];
@@ -978,6 +979,7 @@ const createAPIContent = async (req, res) => {
             }
         });
         res.status(201).type("application/json").send({ message: "API content updated successfully" });
+        logUserAction('API_CONTENT_CREATED', req, { orgId, apiId, resourceUuid: apiId, resourceType: 'api_content' });
     } catch (error) {
         logger.error('API content creation failed', {
             error: error.message,
@@ -1041,7 +1043,8 @@ const updateAPITemplate = async (req, res) => {
             });
             throw new Error(
                 `Required directories not found after extraction. Content path: ${contentPath}, Images path: ${imagesPath},
-                Documents path: ${documentPath}`
+                Documents path: ${documentPath}`,
+                { cause: err }
             );
         }
         let apiContent = [];
@@ -1084,6 +1087,7 @@ const updateAPITemplate = async (req, res) => {
         });
         await fs.rm(extractPath, { recursive: true, force: true });
         res.status(201).send({ message: "API Files updated successfully" });
+        logUserAction('API_CONTENT_UPDATED', req, { orgId, apiId, resourceUuid: apiId, resourceType: 'api_content' });
     } catch (error) {
         logger.error('API content update failed', {
             error: error.message,
@@ -1140,6 +1144,7 @@ const updateAPIContent = async (req, res) => {
             }
         });
         res.status(201).send({ message: "API Files updated successfully" });
+        logUserAction('API_CONTENT_UPDATED', req, { orgId, apiId, resourceUuid: apiId, resourceType: 'api_content' });
     } catch (error) {
         logger.error('API content update failed', {
             error: error.message,
@@ -1173,9 +1178,9 @@ const getAPIFile = async (req, res) => {
     // visitors, so ?orgId does select the organization whose icons are read — any
     // organization under this portal_id (orgContext.resolvePublicContentOrg).
     const isImageType = type === constants.DOC_TYPES.IMAGES;
-    let apiFileResponse = "";
+    let apiFileResponse;
     let apiFile;
-    let contentType = "";
+    let contentType;
     let apiId;
     // Declared out here so the catch below can log it; resolved inside the try
     // because getOrgUuid() hits the database and can throw.
@@ -1269,6 +1274,7 @@ const deleteAPIFile = async (req, res) => {
         }
         if (apiFileResponse) {
             res.status(204).send();
+            logUserAction('API_CONTENT_DELETED', req, { orgId, apiId, fileName: apiFileName, fileType, resourceUuid: apiId, resourceType: 'api_content' });
         } else {
             util.sendError(res, 404, 'API Content not found');
         }
@@ -1377,9 +1383,11 @@ const createSubscriptionPlan = async (req, res) => {
 
     try {
         checkNewPlanHandle(subscriptionPlan);
+        let createdPlanUuid;
         await db.withTransaction(async (t) => {
             const subscriptionPlanResponse = await subscriptionPlanDao.create(orgId, subscriptionPlan, userId, t);
             if (subscriptionPlanResponse) {
+                createdPlanUuid = subscriptionPlanResponse.uuid;
                 await applyNewPlanPricing(orgId, subscriptionPlan, subscriptionPlanResponse, true, userId, t);
                 if (echo) {
                     await subscriptionPlanEvents.publishPlanUpsert(
@@ -1394,6 +1402,7 @@ const createSubscriptionPlan = async (req, res) => {
                 throw new CustomError(500, constants.ERROR_CODE[500], constants.ERROR_MESSAGE.SUBSCRIPTION_PLAN_CREATE_ERROR);
             }
         });
+        logUserAction('SUBSCRIPTION_PLAN_CREATED', req, { orgId, resourceUuid: createdPlanUuid, resourceType: 'subscription_plan' });
     } catch (error) {
         logger.error('subscription plan create error failed', {
             error: error.message,
@@ -1441,6 +1450,8 @@ const createSubscriptionPlans = async (req, res) => {
             orgId
         });
         res.status(201).send(createdPlans);
+        createdRecords.forEach((created) => logUserAction('SUBSCRIPTION_PLAN_CREATED', req,
+            { orgId, resourceUuid: created.uuid, resourceType: 'subscription_plan' }));
     } catch (error) {
         logger.error('subscription plan create error failed', {
             error: error.message,
@@ -1466,10 +1477,12 @@ const updateSubscriptionPlan = async (req, res) => {
     }
 
     try {
+        let updatedPlanUuid;
         await db.withTransaction(async (t) => {
             const { subscriptionPlanResponse, statusCode } =  await subscriptionPlanDao.put(orgId, subscriptionPlan, userId, t);
             if (statusCode === 201) checkNewPlanHandle(subscriptionPlan);
             if (subscriptionPlanResponse) {
+                updatedPlanUuid = subscriptionPlanResponse.uuid;
                 await applyNewPlanPricing(orgId, subscriptionPlan, subscriptionPlanResponse, statusCode === 201, userId, t);
                 if (echo) {
                     await subscriptionPlanEvents.publishPlanUpsert(
@@ -1482,6 +1495,7 @@ const updateSubscriptionPlan = async (req, res) => {
                 throw new CustomError(404, constants.ERROR_CODE[404], constants.ERROR_MESSAGE.SUBSCRIPTION_PLAN_NOT_FOUND);
             }
         });
+        logUserAction('SUBSCRIPTION_PLAN_UPDATED', req, { orgId, resourceUuid: updatedPlanUuid, resourceType: 'subscription_plan' });
     } catch (error) {
         logger.error('subscription plan not found failed', {
             error: error.message,
@@ -1533,6 +1547,8 @@ const updateSubscriptionPlans = async (req, res) => {
         const updatedPlans = updatedRecords.map((record, i) => new subscriptionPlanDTO(record, audits[i]));
 
         res.status(anyCreated ? 201 : 200).send(updatedPlans);
+        updatedRecords.forEach((record) => logUserAction('SUBSCRIPTION_PLAN_UPDATED', req,
+            { orgId, resourceUuid: record.uuid, resourceType: 'subscription_plan' }));
     } catch (error) {
         logger.error('subscription plan create error failed', {
             error: error.message,
@@ -1600,6 +1616,7 @@ const deleteSubscriptionPlan = async (req, res) => {
             if (!sharedKeyAuth.madeByPlatformApi(req)) await subscriptionPlanEvents.publishPlanDeleted(orgId, plan, t);
             res.status(204).send();
         });
+        logUserAction('SUBSCRIPTION_PLAN_DELETED', req, { orgId, planId, resourceUuid: planId, resourceType: 'subscription_plan' });
     } catch (error) {
         logger.error('subscription plan delete error failed', {
             error: error.message,
@@ -1674,6 +1691,7 @@ const createLabel = async (req, res) => {
     try {
         const record = await labelDao.create(orgId, label, userId);
         res.status(201).json(new LabelDTO(record));
+        logUserAction('LABEL_CREATED', req, { orgId, resourceUuid: record?.uuid, resourceType: 'label' });
     } catch (error) {
         logger.error('label create failed', { error: error.message, stack: error.stack, orgId });
         util.handleError(res, error);
@@ -1710,6 +1728,7 @@ const updateLabel = async (req, res) => {
         }
         const record = await labelDao.updateById(orgId, labelId, label, userId);
         res.status(200).json(new LabelDTO(record));
+        logUserAction('LABEL_UPDATED', req, { orgId, resourceUuid: labelId, resourceType: 'label' });
     } catch (error) {
         logger.error('label update failed', { error: error.message, stack: error.stack, orgId });
         util.handleError(res, error);
@@ -1727,6 +1746,7 @@ const deleteLabel = async (req, res) => {
         }
         await labelDao.deleteById(orgId, labelId);
         res.status(204).send();
+        logUserAction('LABEL_DELETED', req, { orgId, resourceUuid: labelId, resourceType: 'label' });
     } catch (error) {
         logger.error('label delete failed', { error: error.message, stack: error.stack, orgId });
         util.handleError(res, error);
@@ -1772,9 +1792,11 @@ const addView = async (req, res) => {
         req.body.handle = req.body.id;
     }
     try {
+        let createdViewUuid;
         await db.withTransaction(async (t) => {
             const viewResponse = await viewDao.create(orgId, req.body, userId, t);
             await viewDao.addLabels(orgId, viewResponse.uuid, labels, userId, t);
+            createdViewUuid = viewResponse.uuid;
         });
         // Responded to only after the transaction has COMMITTED. Sending from inside
         // the callback is wrong twice over: a client that reads the view back can beat
@@ -1785,6 +1807,7 @@ const addView = async (req, res) => {
         // swallowed the error, so withTransaction saw the callback resolve and
         // committed the partial write instead of rolling it back.
         res.status(201).send({ message: "View added successfully" });
+        logUserAction('VIEW_CREATED', req, { orgId, resourceUuid: createdViewUuid, resourceType: 'view' });
     } catch (error) {
         logger.error('view create error failed', {
             error: error.message,

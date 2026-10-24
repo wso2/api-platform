@@ -886,6 +886,7 @@ export const OPERATION_SCOPES = {
   ListOrganizations: ['ap:organization:manage', 'ap:organization:read'],
   ListProjects: ['ap:project:manage', 'ap:project:read'],
   ListRESTAPIs: ['ap:rest_api:manage', 'ap:rest_api:read'],
+  ListRESTAPIVersions: ['ap:rest_api:manage', 'ap:rest_api:read'],
   listSecrets: ['ap:secret:manage', 'ap:secret:read'],
   ListSubscriptionPlans: ['ap:subscription_plan:manage', 'ap:subscription_plan:read'],
   ListSubscriptions: ['ap:subscription:manage', 'ap:subscription:read'],

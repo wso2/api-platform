@@ -102,6 +102,17 @@ const (
 	ExtProcHeaderModeSkip            = "SKIP"
 	ExtProcRequestAttributeRouteName = "xds.route_name"
 
+	// Connection attributes sent to the policy engine so mtls-auth can
+	// authenticate the certificate presented on the connection.
+	ExtProcRequestAttributeConnectionMTLS                   = "connection.mtls"
+	ExtProcRequestAttributeConnectionPeerCertificate        = "connection.peer_certificate"
+	ExtProcRequestAttributeConnectionPeerCertificateDigest  = "connection.sha256_peer_certificate_digest"
+	ExtProcRequestAttributeConnectionSubjectPeerCertificate = "connection.subject_peer_certificate"
+	ExtProcRequestAttributeConnectionURISANPeerCertificate  = "connection.uri_san_peer_certificate"
+	ExtProcRequestAttributeConnectionDNSSANPeerCertificate  = "connection.dns_san_peer_certificate"
+	ExtProcRequestAttributeConnectionTLSVersion             = "connection.tls_version"
+	ExtProcRequestAttributeConnectionRequestedServerName    = "connection.requested_server_name"
+	ExtProcRequestAttributeConnectionPeerCertificateValid   = "connection.peer_certificate_valid"
 	// ExtProcResponseAttributeCodeDetails carries Envoy's own account of who produced
 	// the response: "via_upstream" when the backend answered, and a specific reason
 	// ("no_healthy_upstream", "response_timeout",
@@ -126,6 +137,25 @@ const (
 	GatewayHealthPathPrefix = "/_gateway-health"
 	GatewayReadyPath        = GatewayHealthPathPrefix + "/ready"
 	GatewayHealthyPath      = GatewayHealthPathPrefix + "/healthy"
+
+	// GatewayJWKSPath is the gateway JWKS endpoint: the public keys of the
+	// gateway signing keys ([signing] in the policy engine), present on every
+	// virtual host whatever is deployed. It is reserved exactly — no resource
+	// may register this path — but not as a prefix, because /.well-known/ is a
+	// shared namespace other gateway routes (Agent Cards, MCP protected
+	// resource metadata) legitimately use.
+	GatewayJWKSPath = "/.well-known/jwks"
+
+	// GatewayJWKSRouteKey names the JWKS route in both xDS streams: the Envoy
+	// route name on every virtual host, and the key of its single policy chain
+	// in policy-xDS. One key serves every vhost, because the chain is the same
+	// whichever host the request arrived on.
+	GatewayJWKSRouteKey = "GET|" + GatewayJWKSPath + "|*"
+
+	// GatewayInternalSinkClusterName is a cluster with no endpoints, the target
+	// of gateway routes a policy always answers itself. If the policy engine
+	// fails open, such a request gets Envoy's 503 rather than reaching anything.
+	GatewayInternalSinkClusterName = "api-platform/gateway-internal-sink"
 
 	// gRPC Access Log Service
 	GRPCAccessLogClusterName = "apip_als_cluster"
@@ -233,6 +263,13 @@ const (
 	// "internal, not user-attachable" — a name without it would be published to
 	// the control plane as an author-attachable policy.
 	A2A_SYSTEM_POLICY_NAME = "wso2_apip_sys_a2a"
+
+	// JWKS_SYSTEM_POLICY_NAME is the in-repo policy that answers the gateway
+	// JWKS route (gateway/system-policies/jwks). Like the A2A policy it is
+	// attached by the controller, to the one gateway-owned JWKS route, and the
+	// "wso2_apip_sys_" prefix keeps it out of the control-plane manifest. The
+	// policy module asserts the same literal on its side.
+	JWKS_SYSTEM_POLICY_NAME = "wso2_apip_sys_jwks"
 
 	// A2A_POLICY_PARAM_* are the parameter names the policy above reads. Each
 	// gateway-answered A2A concern takes a nested block of its own rather than

@@ -58,6 +58,21 @@ func TestGlobalPropertyEvaluator_ResolvesRequestAndAPIContext(t *testing.T) {
 	assert.Equal(t, "project-123", resolved["project"])
 }
 
+// request.pathTemplate is the matched operation template, not the concrete request path,
+// and falls back to empty when the collector did not stamp it.
+func TestGlobalPropertyEvaluator_ResolvesRequestPathTemplate(t *testing.T) {
+	e := newGlobalPropertyEvaluator(map[string]string{
+		"route": "$ctx:request.pathTemplate",
+	}, nil)
+
+	event := createBaseEvent()
+	event.Operation.APIResourceTemplate = "/basepath/auth/web"
+	event.Properties = map[string]interface{}{dto.PropKeyOperationPath: "/basepath/auth/{channel}"}
+	assert.Equal(t, "/basepath/auth/{channel}", e.resolve(event)["route"])
+
+	assert.Equal(t, "", e.resolve(createBaseEvent())["route"])
+}
+
 // response.status and target.statusCode are available to global properties
 // even though the log-message policy (which resolves in OnRequestHeaders,
 // before any response exists) can never see them.

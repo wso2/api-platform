@@ -108,7 +108,8 @@ func PlatformGateway() *components.Definition {
 			Versioned:     gatewayConfigProfiles(),
 		},
 
-		Wiring: components.TypedWiring[PlatformGatewayWiring](),
+		Wiring:      components.TypedWiring[PlatformGatewayWiring](),
+		ApplyWiring: applyPlatformGatewayWiring,
 
 		Limits: components.ResourceLimits{CPUs: 2, MemoryMB: 3000},
 	}
@@ -141,6 +142,13 @@ type PlatformGatewayWiring struct {
 	ControlPlaneToken string `yaml:"controlPlaneToken"`
 	// LogLevel sets the gateway log level.
 	LogLevel string `yaml:"logLevel"`
+	// Controllers is 1 by default. 2 adds a controller that shares the first one's
+	// PostgreSQL database and alone feeds the runtime over xDS, so every change reaches the
+	// runtime through the event path between the controllers.
+	Controllers int `yaml:"controllers"`
+	// SigningKeys gives the runtime the fixed integration-test signing keys at
+	// /secrets/gateway-runtime/signing. The block's overlay configures them under [signing].
+	SigningKeys bool `yaml:"signingKeys"`
 }
 
 // gatewayGeneratedFiles returns the key material every gateway stack mounts. It is generated

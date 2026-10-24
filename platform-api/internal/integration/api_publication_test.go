@@ -21,7 +21,10 @@
 package integration
 
 import (
+	"archive/zip"
+	"bytes"
 	"context"
+	"io"
 	"strings"
 	"testing"
 	"time"
@@ -58,6 +61,10 @@ func (alwaysSucceedsPortalPublisher) Deprecate(_ context.Context, _ *model.APIPo
 	return nil
 }
 
+func (alwaysSucceedsPortalPublisher) PublishContent(_ context.Context, _ *model.APIPortal, _ string, _ *service.PortalContent) error {
+	return nil
+}
+
 // newPublicationTestService wires a real PublicationService against it.db,
 // using the same repositories production code uses. Unlike the rest of this
 // package (which drives repositories directly), these tests go through the
@@ -83,6 +90,7 @@ func newPublicationTestServiceWithTimeout(it *itDB, portalPublisher service.Port
 		repository.NewPublicationRepo(it.db),
 		portalPublisher,
 		operationTimeout,
+		0,
 		nil,
 	)
 }
@@ -617,6 +625,10 @@ func (unpublishConflictPublisher) Deprecate(_ context.Context, _ *model.APIPorta
 	return nil
 }
 
+func (unpublishConflictPublisher) PublishContent(_ context.Context, _ *model.APIPortal, _ string, _ *service.PortalContent) error {
+	return nil
+}
+
 // TestPublicationUnpublish_PortalConflict verifies a portal rejection (active
 // consumers) maps to APIPublicationPortalConflict and leaves the live row
 // untouched — the local write only happens after the portal call succeeds.
@@ -632,6 +644,7 @@ func TestPublicationUnpublish_PortalConflict(t *testing.T) {
 		repository.NewPublicationRepo(it.db),
 		unpublishConflictPublisher{},
 		publicationTestOperationTimeout,
+		0,
 		nil,
 	)
 
@@ -693,6 +706,10 @@ func (unpublishSubscriptionConflictPublisher) Deprecate(_ context.Context, _ *mo
 	return nil
 }
 
+func (unpublishSubscriptionConflictPublisher) PublishContent(_ context.Context, _ *model.APIPortal, _ string, _ *service.PortalContent) error {
+	return nil
+}
+
 // TestPublicationUnpublish_PortalConflictReasonSurfaced verifies a curated
 // conflict reason (not just the generic fallback) reaches the client-facing
 // apperror message end to end through the service layer.
@@ -708,6 +725,7 @@ func TestPublicationUnpublish_PortalConflictReasonSurfaced(t *testing.T) {
 		repository.NewPublicationRepo(it.db),
 		unpublishSubscriptionConflictPublisher{},
 		publicationTestOperationTimeout,
+		0,
 		nil,
 	)
 
@@ -730,4 +748,47 @@ func TestPublicationUnpublish_PortalConflictReasonSurfaced(t *testing.T) {
 	if !strings.Contains(err.Error(), "active subscriptions are removed") {
 		t.Fatalf("[%s] want the curated ERR_SUB_EXIST reason in the message, got %v", it.driver, err)
 	}
+}
+
+// contentRecorder keeps the content archive Publish pushes.
+type contentRecorder struct {
+	alwaysSucceedsPortalPublisher
+	archive []byte
+}
+
+func (c *contentRecorder) PublishContent(_ context.Context, _ *model.APIPortal, _ string, content *service.PortalContent) error {
+	c.archive = content.Archive
+	return nil
+}
+
+// TestPublish_PushesTheDraftLandingPage checks the stored landing page reaches the portal as
+// web/apiContent.md in the content archive.
+func TestPublish_PushesTheDraftLandingPage(t *testing.T) {
+	it := openITDB(t)
+	defer it.db.Close()
+	g := seedOrgGraph(t, it)
+	recorder := &contentRecorder{}
+	svc := newPublicationTestServiceWith(it, recorder)
+
+	publishedListing(t, it, svc, g)
+
+	zr, err := zip.NewReader(bytes.NewReader(recorder.archive), int64(len(recorder.archive)))
+	if err != nil {
+		t.Fatalf("[%s] pushed content is not a ZIP: %v", it.driver, err)
+	}
+	for _, f := range zr.File {
+		if f.Name != "content/web/apiContent.md" {
+			continue
+		}
+		rc, err := f.Open()
+		if err != nil {
+			t.Fatalf("[%s] open %s: %v", it.driver, f.Name, err)
+		}
+		defer rc.Close()
+		if body, _ := io.ReadAll(rc); string(body) != "# live landing page" {
+			t.Fatalf("[%s] want the saved landing page, got %q", it.driver, body)
+		}
+		return
+	}
+	t.Fatalf("[%s] pushed content has no web/apiContent.md", it.driver)
 }

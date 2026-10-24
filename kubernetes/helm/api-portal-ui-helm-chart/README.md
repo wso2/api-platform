@@ -188,6 +188,7 @@ api-portal-ui-helm-chart/
 │   ├── issuer.yaml        # optional self-signed Issuer
 │   ├── hpa.yaml
 │   ├── pdb.yaml
+│   ├── route.yaml         # OpenShift Route (openshift.enabled)
 │   └── _helpers.tpl       # shared apip.* helpers
 ├── values.yaml
 ├── values-local.yaml      # local development overrides
@@ -214,8 +215,9 @@ every key below with `api-portal-ui.`.
 - `config.auth.authorization.*` — REST scope enforcement (`enabled`), `mode` (`role` default
   via `roleToScopeMapping`, or `scope`), and page role gating (`pageRoleValidation`,
   `portalRoles`).
-- `config.organization.*` — org `handle` (URL slug, required), `displayName`, and
-  auto-created subscription plans.
+- `config.organization.*` — org `handle` (URL slug, required), `displayName`,
+  auto-created subscription plans, and `portalId` (the identifier this portal instance is
+  pinned to; required, default `portal_id`).
 - `config.artifacts.enabledTypes` — allowlist of served types (`apis`, `mcp-servers`,
   `api-workflows`).
 - `config.webhooksDelivery.*`, `config.uploads.*`, `config.tryout.*` — webhook delivery
@@ -229,3 +231,7 @@ every key below with `api-portal-ui.`.
 - `persistence.*` — SQLite PVC (1Gi, kept on uninstall).
 - `deployment.*`, `hpa.*`, `podDisruptionBudget.*`, `configMap.*` — pod spec, autoscaling
   (requires `postgres`/`mssql`), PDB, and extra metadata.
+- `openshift.*`: an OpenShift Route to the portal (`openshift.routes.apiPortal`), rendered
+  only when `openshift.enabled=true`. The Service serves HTTPS only, so the Route uses
+  `passthrough` (default) or `reencrypt`. Security contexts are set through
+  `deployment.podSecurityContext` / `deployment.securityContext`, rendered as given.

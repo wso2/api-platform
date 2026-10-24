@@ -128,15 +128,20 @@ roles:
       - ap:docs:read
       - ap:thumbnail:read
       - ap:rest_api:deployment:manage
+      - ap:rest_api:build:manage
       - ap:llm_template:manage
       - ap:llm_provider:read
       - ap:llm_provider:deployment:manage
+      - ap:llm_provider:build:manage
       - ap:llm_proxy:read
       - ap:llm_proxy:deployment:manage
+      - ap:llm_proxy:build:manage
       - ap:mcp_proxy:read
       - ap:mcp_proxy:deployment:manage
+      - ap:mcp_proxy:build:manage
       - ap:agent_proxy:read
       - ap:agent_proxy:deployment:manage
+      - ap:agent_proxy:build:manage
       - ap:subscription_plan:manage
       - ap:meter:manage
       - ap:application:read
@@ -154,6 +159,7 @@ roles:
       # - ap:webbroker_api:deployment:read   # event-gateway build only
       - ap:graphql_api:read
       - ap:graphql_api:deployment:manage
+      - ap:graphql_api:build:manage
       # API Portal & MCP Hub
       - dp:key_manager:manage
       - dp:key_manager:read
@@ -277,6 +283,7 @@ roles:
       - ap:docs:read
       - ap:thumbnail:read
       - ap:rest_api:deployment:read
+      - ap:rest_api:build:read
       - ap:application:read
       - ap:application:api_key:read
       - ap:application:association:read
@@ -287,14 +294,18 @@ roles:
       - ap:llm_template:read
       - ap:llm_provider:read
       - ap:llm_provider:deployment:read
+      - ap:llm_provider:build:read
       - ap:llm_provider:api_key:read
       - ap:llm_proxy:read
       - ap:llm_proxy:deployment:read
+      - ap:llm_proxy:build:read
       - ap:llm_proxy:api_key:read
       - ap:mcp_proxy:read
       - ap:mcp_proxy:deployment:read
+      - ap:mcp_proxy:build:read
       - ap:agent_proxy:read
       - ap:agent_proxy:deployment:read
+      - ap:agent_proxy:build:read
       - ap:agent_proxy:api_key:read
       - ap:secret:read
       - ap:api_key:read
@@ -308,6 +319,7 @@ roles:
       # - ap:webbroker_api:deployment:read   # event-gateway build only
       - ap:graphql_api:read
       - ap:graphql_api:deployment:read
+      - ap:graphql_api:build:read
       # API Portal & MCP Hub
       - dp:organization:read
       - dp:organization_content:read

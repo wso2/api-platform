@@ -1,0 +1,7 @@
+# Accept the shared key platform-api publishes with, and leave subscription plans to the
+# explicit sync step instead of the portal's automatic plan mode.
+[api_portal.internal_auth]
+hash = '{{ env "APIP_AP_INTERNAL_AUTH_HASH" }}'
+
+[api_portal.organization]
+auto_create_subscription_plans = false

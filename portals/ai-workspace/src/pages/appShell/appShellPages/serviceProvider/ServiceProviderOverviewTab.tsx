@@ -57,6 +57,8 @@ import type { Gateway } from '../../../../apis/gatewayTypes';
 import { PLATFORM_API_BASE_URL } from '../../../../paths';
 import { logger } from '../../../../utils/logger';
 import { getErrorMessage } from '../../../../utils/apiError';
+import { fetchAllPages } from '../../../../utils/pagination';
+import { mapWithConcurrency } from '../../../../utils/concurrency';
 import type {
   DeploymentResponse,
   Proxy,
@@ -86,6 +88,11 @@ import {
 } from './ProviderMap/ProviderMapTab';
 import ResourceDrawerCards from './ResourceDrawerCards';
 import ApiTryOutCurlSnippet, { hasTryOutCurlSnippet } from '../../../../Components/common/ApiTryOutCurlSnippet';
+
+// Each proxy's deployment lookup itself fans out across every gateway, so
+// bounding the outer loop keeps total in-flight requests to roughly
+// DEPLOYMENT_LOOKUP_CONCURRENCY * gatewayCount instead of proxyCount * gatewayCount.
+const DEPLOYMENT_LOOKUP_CONCURRENCY = 5;
 
 type OpenApiSpec = Record<string, unknown>;
 
@@ -362,10 +369,17 @@ export default function ServiceProviderOverviewTab({
     void (async () => {
       try {
         const [proxiesResponse, gatewaysResponse] = await Promise.all([
-          getLLMProviderProxies(
-            providerId,
-            organizationId,
-            PLATFORM_API_BASE_URL
+          // The collection endpoint defaults to limit=20 when unpaged, and
+          // this card/modal has no pager of its own — walk every page so a
+          // provider backing more than 20 proxies isn't silently truncated.
+          fetchAllPages<Proxy>((limit, offset) =>
+            getLLMProviderProxies(
+              providerId,
+              organizationId,
+              PLATFORM_API_BASE_URL,
+              limit,
+              offset
+            )
           ),
           getGateways(organizationId),
         ]);
@@ -375,8 +389,10 @@ export default function ServiceProviderOverviewTab({
         const gatewayList = gatewaysResponse.list ?? [];
         setProxies(proxyList);
 
-        const proxyDeploymentEntries = await Promise.all(
-          proxyList.map(async (proxy) => {
+        const proxyDeploymentEntries = await mapWithConcurrency(
+          proxyList,
+          DEPLOYMENT_LOOKUP_CONCURRENCY,
+          async (proxy) => {
             const proxyId = getProxyIdentifier(proxy);
 
             if (!proxyId) {
@@ -410,7 +426,7 @@ export default function ServiceProviderOverviewTab({
                 deploymentResponses.flatMap((response) => response.list ?? [])
               ),
             ] as const;
-          })
+          }
         );
         if (!isMounted) return;
 

@@ -317,7 +317,8 @@ func registerUIDeleters(reg *cleanup.Registry, topo *frameworkruntime.Topology) 
 	reg.RegisterDeleter(cleanup.KindGateway, platformAPIDeleter(auth, "/api/v0.9/gateways"))
 	reg.RegisterDeleter(cleanup.KindApplication, platformAPIDeleter(auth, "/api/v0.9/applications"))
 	reg.RegisterDeleter(cleanup.KindAPIKey, deleteAPIKey(auth))
-	portalAuth := &apiPortalAuth{topo: topo, client: client, cookies: map[string]string{}}
+	portalClient := httpx.NewClient(httpx.Options{MaxRetries: 1, TLSClientConfig: shared.APIPortalClientTLS()})
+	portalAuth := &apiPortalAuth{topo: topo, client: portalClient, cookies: map[string]string{}}
 	reg.RegisterDeleter(apiportalsteps.KindAPIPortalAPI, portalAPIDeleter(portalAuth, "apis"))
 	reg.RegisterDeleter(apiportalsteps.KindAPIPortalMCP, portalAPIDeleter(portalAuth, "mcp-servers"))
 	reg.RegisterDeleter(apiportalsteps.KindAPIPortalApplication, portalAPIDeleter(portalAuth, "applications"))
@@ -425,7 +426,7 @@ type apiPortalAuth struct {
 }
 
 func (a *apiPortalAuth) baseURL() (string, error) {
-	return a.topo.URL("api-portal", "http")
+	return a.topo.URL("api-portal", "https")
 }
 
 func (a *apiPortalAuth) cookieHeader() string {

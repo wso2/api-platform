@@ -1281,6 +1281,7 @@ func TestComposeHelpers(t *testing.T) {
 				StagedFiles:      map[string]string{"a": "b"},
 				GeneratedFiles:   map[string][]byte{"existing": []byte("value")},
 				Env:              map[string]string{"A": "B"},
+				ProjectEnv:       map[string]string{"PEM": "line one\nline two"},
 				CoverageServices: []CoverageService{{Name: "gateway", Types: []string{"go"}}},
 				BootAttempts:     3,
 			},
@@ -1289,6 +1290,9 @@ func TestComposeHelpers(t *testing.T) {
 		require.Equal(t, map[string]string{"a": "b"}, updated.StagedFiles)
 		require.Equal(t, map[string][]byte{"existing": []byte("value"), "generated": []byte("content")}, updated.GeneratedFiles)
 		require.Equal(t, map[string]string{"A": "B"}, updated.Env)
+		require.Equal(t, map[string]string{"PEM": "line one\nline two"}, updated.ProjectEnv)
+		updated.ProjectEnv["PEM"] = "changed"
+		require.Equal(t, "line one\nline two", definition.Compose.ProjectEnv["PEM"])
 		require.Equal(t, []CoverageService{{Name: "gateway", Types: []string{"go"}}}, updated.CoverageServices)
 		require.Equal(t, 3, updated.BootAttempts)
 		require.NotSame(t, definition.Compose, updated)

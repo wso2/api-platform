@@ -147,8 +147,11 @@ type ControlPlaneConfig struct {
 	TLSSkipVerify       bool   `koanf:"tls_skip_verify"`
 	PlatformAPIBasePath string `koanf:"platform_api_base_path"`
 	PortalAPIBasePath   string `koanf:"portal_api_base_path"`
-	// MoesifURL is an optional second hop for Moesif analytics. When set,
-	// <base>/proxy/moesif/* is proxied there instead of the primary control plane.
+	// MoesifURL is an optional second hop for Moesif analytics. When set, every
+	// prefix in server.AnalyticsHopPrefixes (<base>/proxy/cloud/*,
+	// <base>/proxy/moesif/*) is proxied there instead of the primary control
+	// plane. Those routes are named for what each consumer already calls them;
+	// this key is named for the service they all point at.
 	// Include whatever path prefix the upstream publishes under (e.g.
 	// https://host:8443/cloud for wso2cloud's platform-api, or
 	// https://apis.<env>.choreo.dev/moesif-key/0.1.0 for Choreo's moesif-key API).
@@ -509,6 +512,14 @@ type OIDCConfig struct {
 	RedirectURL           string `koanf:"redirect_url"` // must equal the IDP-registered redirect, points at /api/auth/callback
 	PostLogoutRedirectURL string `koanf:"post_logout_redirect_url"`
 	Scopes                string `koanf:"scope"` // space-separated
+
+	// RequireHTTPS refuses to send the client secret (and, on revocation, the refresh
+	// token) to a plaintext identity provider endpoint: the token_endpoint and
+	// revocation_endpoint from discovery, and an explicit token_exchange token_endpoint.
+	// Loopback hosts are exempt either way. On by default; turn it off only for a local
+	// setup whose identity provider serves plain HTTP on a non-loopback host, because
+	// the client secret then crosses that network in cleartext.
+	RequireHTTPS bool `koanf:"require_https"`
 
 	// TokenExchange is [ai_workspace.auth.oidc.token_exchange]: trade the login token
 	// for one minted for the Platform API, so the credential sent upstream is
@@ -908,6 +919,11 @@ func (c *Config) validate() error {
 		if c.Auth.OIDC.Issuer == "" || c.Auth.OIDC.ClientID == "" || c.Auth.OIDC.ClientSecret == "" || c.Auth.OIDC.RedirectURL == "" {
 			return fmt.Errorf("OIDC mode requires [auth.oidc] authority, client_id, client_secret and redirect_url")
 		}
+		if !c.Auth.OIDC.RequireHTTPS {
+			slog.Warn("[auth.oidc] require_https = false — the client secret may be sent to a plaintext " +
+				"identity provider endpoint. Use this only for local development; leave it on for any " +
+				"deployment reachable over a network.")
+		}
 	}
 	// Empty is fine (the key is optional), but a relative value would be forwarded as an
 	// invalid post_logout_redirect_uri and only fail at logout time — catch it here.
@@ -1025,8 +1041,9 @@ func (c *Config) validateTokenExchange() error {
 				redactURL(te.TokenEndpoint))
 		}
 		// The POST body carries the client secret and subject token. Loopback is
-		// exempt: the request never reaches a network there.
-		if u.Scheme == "http" && !IsLoopbackHost(u.Host) {
+		// exempt: the request never reaches a network there. require_https = false
+		// lifts the check for a local setup.
+		if u.Scheme == "http" && !IsLoopbackHost(u.Host) && c.Auth.OIDC.RequireHTTPS {
 			return fmt.Errorf("[auth.oidc.token_exchange] token_endpoint must be https:// "+
 				"(the client secret and subject token are sent in the request body), got %q",
 				redactURL(te.TokenEndpoint))

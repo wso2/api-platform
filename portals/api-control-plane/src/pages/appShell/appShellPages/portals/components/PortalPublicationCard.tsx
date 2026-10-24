@@ -31,12 +31,12 @@ import { buildViewInPortalUrl, isListedOnPortal, publicationStatusMeta } from '.
 const messages = defineMessages({
   goToPublish: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.PortalPublicationCard.goToPublish',
-    defaultMessage: 'Go to publish',
+    defaultMessage: 'Go to Publish',
     description: 'Card action opening the publish flow for this API on this portal.',
   },
   viewInPortal: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.PortalPublicationCard.viewInPortal',
-    defaultMessage: 'View in portal',
+    defaultMessage: 'View in Portal',
     description: 'Link opening this API\'s own page on the portal, in a new tab.',
   },
   statusLabel: {
@@ -108,7 +108,7 @@ function DetailRow({ children, label }: { children: ReactNode; label: ReactNode 
 /**
  * One API Portal, annotated with this API's own publication state: its status,
  * when it last changed, and whether a draft is waiting. The card itself is not
- * clickable; "Go to publish" opens the flow.
+ * clickable; "Go to Publish" opens the flow.
  */
 export function PortalPublicationCard({
   apiHandle,

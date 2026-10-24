@@ -177,7 +177,7 @@ func (v *MCPValidator) validateContextAndVhost(context, vhost *string) []Validat
 			})
 		}
 
-		errors = append(errors, validateNotReservedHealthPath("spec.context", strings.TrimSpace(*context))...)
+		errors = append(errors, validateNotReservedGatewayPath("spec.context", strings.TrimSpace(*context))...)
 	} else {
 		if vhost == nil || *vhost == "" {
 			errors = append(errors, ValidationError{

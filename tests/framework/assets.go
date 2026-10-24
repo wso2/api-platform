@@ -30,5 +30,6 @@ import "embed"
 // repository paths against it.
 //
 //go:embed core/catalog/overlays core/catalog/platformgateway/docker-compose.yaml
+//go:embed core/catalog/platformgateway/docker-compose.signing-keys.yaml
 //go:embed core/catalog/platformgateway/resources suites/it/resources/templates all:snapshots
 var Assets embed.FS

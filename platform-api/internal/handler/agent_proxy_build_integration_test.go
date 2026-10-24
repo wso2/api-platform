@@ -79,6 +79,32 @@ func TestAgentProxyBuild_CreateListGetWithResolvableLocation(t *testing.T) {
 	}
 }
 
+// Audit columns hold the internal user UUID; every read of a build reports the
+// identity of whoever prepared it instead, as every other resource does.
+func TestAgentProxyBuild_ReportsWhoPreparedItByIdentity(t *testing.T) {
+	env := setupAgentBuildEnv(t)
+
+	created := decodeAgentProxyJSON(t, callAgentProxy(t, env.handler, http.MethodPost, env.buildsPath(), ""), http.StatusCreated)
+	if created["createdBy"] != agentProxyActor {
+		t.Fatalf("create createdBy = %v, want %s", created["createdBy"], agentProxyActor)
+	}
+	buildID := created["buildId"].(string)
+
+	got := decodeAgentProxyJSON(t, callAgentProxy(t, env.handler, http.MethodGet, env.buildsPath()+"/"+buildID, ""), http.StatusOK)
+	if got["createdBy"] != agentProxyActor {
+		t.Fatalf("get createdBy = %v, want %s", got["createdBy"], agentProxyActor)
+	}
+
+	list := decodeAgentProxyJSON(t, callAgentProxy(t, env.handler, http.MethodGet, env.buildsPath(), ""), http.StatusOK)
+	items, _ := list["list"].([]interface{})
+	if len(items) != 1 {
+		t.Fatalf("list = %v, want the one build", list)
+	}
+	if item := items[0].(map[string]interface{}); item["createdBy"] != agentProxyActor {
+		t.Fatalf("list createdBy = %v, want %s", item["createdBy"], agentProxyActor)
+	}
+}
+
 func TestAgentProxyBuild_DeployShipsTheBuildNotLaterEdits(t *testing.T) {
 	env := setupAgentBuildEnv(t)
 	buildID := decodeAgentProxyJSON(t,

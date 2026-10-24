@@ -327,7 +327,7 @@ All settings live under `[platform_api]` / `[platform_api.*]`. The main sections
 | `[platform_api.deployments]` | Deployment caps and stuck-deployment timeout handling |
 | `[platform_api.gateway]` | Gateway registration verification toggles |
 | `[platform_api.event_hub]` | Multi-replica event delivery polling/retention |
-| `[platform_api.api_portal_publication]` | Time and retry limits for calls to an API Portal when publishing: `request_timeout`, `listing_request_timeout`, `max_retries`, `retry_backoff`, `overall_timeout` (validated together at startup). With monetization, the listing push also creates the API's paid plans with the portal's billing provider: raise `listing_request_timeout` (e.g. `90s`) and `overall_timeout` (e.g. `110s`, below `server.timeouts.write`), and set `max_retries = 0` (see the config template) |
+| `[platform_api.api_portal_publication]` | Time and retry limits for calls to an API Portal when publishing: `request_timeout`, `listing_request_timeout`, `content_request_timeout`, `max_retries`, `retry_backoff`, `overall_timeout` (validated together at startup). With monetization, the listing push also creates the API's paid plans with the portal's billing provider: raise `listing_request_timeout` (e.g. `85s`) and `overall_timeout` (e.g. `110s`, below `server.timeouts.write`), and set `max_retries = 0` (see the config template) |
 | `[platform_api.webhook]` | API Portal webhook receiver: `enabled`, `secret` (required when enabled), signature/body limits |
 | `[platform_api.read_only]` | **Temporary** (`TEMP-READ-ONLY-MODE`): freeze every organization except an allowlist during the v1 → v2 migration — see [Read-only mode](#read-only-maintenance-mode--temporary) |
 

@@ -66,7 +66,7 @@ func (f *planSyncPublisher) UndoPlanSync(_ context.Context, _ *model.APIPortal, 
 }
 
 func newPublicationPlanService(repo *publicationPlanRepo, pub *planSyncPublisher) *PublicationService {
-	return NewPublicationService(nil, nil, nil, repo, nil, pub, time.Minute, nil)
+	return NewPublicationService(nil, nil, nil, repo, nil, pub, time.Minute, 0, nil)
 }
 
 func publicationTestPlans() *publicationPlanRepo {
@@ -133,10 +133,35 @@ func TestResolvePlanUUIDs(t *testing.T) {
 	}
 }
 
+func TestActivePlansInOrder(t *testing.T) {
+	svc := newPublicationPlanService(publicationTestPlans(), nil)
+
+	t.Run("no handles loads nothing", func(t *testing.T) {
+		plans, err := svc.activePlansInOrder(nil, "org")
+		if err != nil || plans != nil {
+			t.Fatalf("got %v, %v", plans, err)
+		}
+	})
+
+	t.Run("returns the selected plans in order", func(t *testing.T) {
+		plans, err := svc.activePlansInOrder([]string{"silver", "gold"}, "org")
+		if err != nil || len(plans) != 2 || plans[0].Handle != "silver" || plans[1].Handle != "gold" {
+			t.Fatalf("got %v, %v", plans, err)
+		}
+	})
+
+	t.Run("rejects an inactive plan", func(t *testing.T) {
+		if _, err := svc.activePlansInOrder([]string{"bronze"}, "org"); !apperror.APIPublicationValidationFailed.Is(err) {
+			t.Fatalf("want a validation error, got %v", err)
+		}
+	})
+}
+
 func TestSyncPortalPlans(t *testing.T) {
 	portal := &model.APIPortal{}
+	plans := []*model.SubscriptionPlan{{Handle: "silver"}, {Handle: "gold"}}
 
-	t.Run("no handles skips the portal", func(t *testing.T) {
+	t.Run("no plans skips the portal", func(t *testing.T) {
 		pub := &planSyncPublisher{}
 		if _, err := newPublicationPlanService(publicationTestPlans(), pub).syncPortalPlans(context.Background(), portal, "org", nil); err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -148,19 +173,11 @@ func TestSyncPortalPlans(t *testing.T) {
 
 	t.Run("sends the selected plans in order", func(t *testing.T) {
 		pub := &planSyncPublisher{}
-		if _, err := newPublicationPlanService(publicationTestPlans(), pub).syncPortalPlans(context.Background(), portal, "org", []string{"silver", "gold"}); err != nil {
+		if _, err := newPublicationPlanService(publicationTestPlans(), pub).syncPortalPlans(context.Background(), portal, "org", plans); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		if pub.calls != 1 || len(pub.got) != 2 || pub.got[0].Handle != "silver" || pub.got[1].Handle != "gold" {
 			t.Fatalf("got %d calls, plans %v", pub.calls, pub.got)
-		}
-	})
-
-	t.Run("inactive plan is rejected before any portal call", func(t *testing.T) {
-		pub := &planSyncPublisher{}
-		_, err := newPublicationPlanService(publicationTestPlans(), pub).syncPortalPlans(context.Background(), portal, "org", []string{"bronze"})
-		if !apperror.APIPublicationValidationFailed.Is(err) || pub.calls != 0 {
-			t.Fatalf("want a validation error and no portal call, got %v (%d calls)", err, pub.calls)
 		}
 	})
 
@@ -178,7 +195,7 @@ func TestSyncPortalPlans(t *testing.T) {
 		for _, tc := range tests {
 			t.Run(tc.name, func(t *testing.T) {
 				pub := &planSyncPublisher{err: tc.err}
-				_, err := newPublicationPlanService(publicationTestPlans(), pub).syncPortalPlans(context.Background(), portal, "org", []string{"gold"})
+				_, err := newPublicationPlanService(publicationTestPlans(), pub).syncPortalPlans(context.Background(), portal, "org", plans)
 				if !tc.is(err) {
 					t.Fatalf("got %v", err)
 				}
@@ -207,7 +224,10 @@ func (publishFlowPublicationRepo) GetDraft(_, _, _ string) (*model.Publication, 
 	return &model.Publication{UUID: "draft-uuid"}, []string{"uuid-gold"}, nil, nil
 }
 
-func (publishFlowPublicationRepo) GetContent(_ string, _ model.PublicationContentType, _ string) (*model.PublicationContent, error) {
+func (publishFlowPublicationRepo) GetContent(_ string, contentType model.PublicationContentType, _ string) (*model.PublicationContent, error) {
+	if contentType != model.PublicationContentTypeDefinition {
+		return nil, nil
+	}
 	return &model.PublicationContent{ContentType: "application/json", Content: []byte(validRESTDefinitionSpec)}, nil
 }
 
@@ -240,7 +260,7 @@ func TestPublish_StopsWhenThePlanStepFails(t *testing.T) {
 			pub := &planSyncPublisher{err: tc.err}
 			svc := NewPublicationService(
 				publishFlowArtifactRepo{}, publishFlowPortalRepo{}, publishFlowDocumentRepo{},
-				publishFlowPlanRepo{publicationTestPlans()}, publishFlowPublicationRepo{}, pub, time.Minute, nil)
+				publishFlowPlanRepo{publicationTestPlans()}, publishFlowPublicationRepo{}, pub, time.Minute, 0, nil)
 
 			published, _, err := svc.Publish(context.Background(), restAPITypeValue, "my-api", "my-portal", "org", "actor")
 			if !tc.is(err) || published != nil {

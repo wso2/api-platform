@@ -28,11 +28,14 @@ import (
 	"fmt"
 	"log/slog"
 	"net/url"
+	"reflect"
 	"strings"
 	"time"
 
 	"github.com/go-viper/mapstructure/v2"
 	"github.com/knadh/koanf/v2"
+
+	"api-control-plane-bff/internal/egress"
 )
 
 // Config is the fully-resolved BFF configuration. Its shape mirrors the
@@ -50,8 +53,70 @@ type Config struct {
 	Session      SessionConfig      `koanf:"session"`
 	Auth         AuthConfig         `koanf:"auth"`
 	PolicyHub    PolicyHubConfig    `koanf:"policy_hub"`
+	GatewayRelay GatewayRelayConfig `koanf:"gateway_relay"`
 
 	RuntimeConfig map[string]string `koanf:"-"`
+}
+
+// GatewayRelayConfig configures the bounded relay for the Test page's Swagger console.
+type GatewayRelayConfig struct {
+	// Enabled turns the relay on. When false the route 404s and no outbound
+	// client is built at all.
+	Enabled bool `koanf:"enabled"`
+
+	// RequestTimeout limits the relayed call from dialing through response-body
+	// processing. It should remain below the route's write deadline.
+	RequestTimeout time.Duration `koanf:"request_timeout"`
+	// MaxRequestBytes bounds the decoded relayed request body. The JSON envelope
+	// may be larger due to base64 encoding and JSON escaping.
+	MaxRequestBytes int64 `koanf:"max_request_bytes"`
+	// MaxResponseBytes limits the gateway response body. If exceeded, the body is
+	// truncated and flagged instead of failing the request.
+	MaxResponseBytes int64 `koanf:"max_response_bytes"`
+
+	// MaxConcurrent is how many relayed calls may be in flight at once.
+	MaxConcurrent int `koanf:"max_concurrent"`
+	// MaxPending limits queued calls; excess calls are rejected with 503.
+	MaxPending int `koanf:"max_pending"`
+
+	// ResolveCacheTTL controls how long resolved invoke URLs are reused before
+	// Platform API is consulted again; keep it short to limit revoked access.
+	ResolveCacheTTL time.Duration `koanf:"resolve_cache_ttl"`
+	// ResolveCacheSize bounds the number of cached entries.
+	ResolveCacheSize int `koanf:"resolve_cache_size"`
+
+	// CAFile is a PEM bundle to trust for gateway TLS certificates, appended to
+	// the system roots. Ignored when TLSSkipVerify is true.
+	CAFile string `koanf:"ca_file"`
+	// TLSSkipVerify disables gateway certificate verification. Use only for
+	// development or demonstrations. This is an operator setting, not a
+	// per-request option, to prevent clients from bypassing TLS verification.
+	TLSSkipVerify bool `koanf:"tls_skip_verify"`
+
+	// Egress bounds where the relay may connect. See internal/egress.
+	Egress EgressConfig `koanf:"egress"`
+}
+
+// Policy parses this block into the object that enforces it.
+func (e EgressConfig) Policy() (*egress.Policy, error) {
+	policy, err := egress.Parse(egress.Spec{AllowHosts: e.AllowHosts})
+	if err != nil {
+		return nil, fmt.Errorf("[gateway_relay.egress] %w", err)
+	}
+	return policy, nil
+}
+
+// EgressConfig is [gateway_relay.egress]: where the relay may connect.
+//
+// One rule: nothing is reachable unless an allow_hosts entry matches it. See
+// internal/egress.
+type EgressConfig struct {
+	// AllowHosts is the complete set of targets the relay may dial. Each entry
+	// has the form "[scheme://]host[:port]"; "*" may appear anywhere in host.
+	// Scheme and port constrain matching only when specified.
+	//
+	// An empty list permits no targets by design.
+	AllowHosts []string `koanf:"allow_hosts"`
 }
 
 // PolicyHubConfig configures the public catalog called directly by the browser.
@@ -251,6 +316,9 @@ type ClaimMappingConfig struct {
 	OrgID     string `koanf:"organization"`
 	OrgName   string `koanf:"org_name"`
 	OrgHandle string `koanf:"org_handle"`
+	// Picture is the claim holding the user's avatar URL. Left unset it reads the
+	// standard OIDC "picture" claim.
+	Picture string `koanf:"picture"`
 }
 
 // CSRFHeaderName is the header the SPA must set on every state-mutating request,
@@ -309,7 +377,10 @@ func Load(paths ...string) (*Config, error) {
 			TagName:          "koanf",
 			WeaklyTypedInput: true,
 			Result:           cfg,
-			DecodeHook:       mapstructure.StringToTimeDurationHookFunc(),
+			DecodeHook: mapstructure.ComposeDecodeHookFunc(
+				mapstructure.StringToTimeDurationHookFunc(),
+				commaSeparatedStringToSliceHook,
+			),
 		},
 	}); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
@@ -322,6 +393,21 @@ func Load(paths ...string) (*Config, error) {
 
 	cfg.RuntimeConfig = buildRuntimeConfig(cfg)
 	return cfg, nil
+}
+
+// commaSeparatedStringToSliceHook supports comma-separated strings for []string
+// values, trimming entries and dropping blanks.
+func commaSeparatedStringToSliceHook(from, to reflect.Type, data any) (any, error) {
+	if from.Kind() != reflect.String || to.Kind() != reflect.Slice || to.Elem().Kind() != reflect.String {
+		return data, nil
+	}
+	out := []string{}
+	for entry := range strings.SplitSeq(data.(string), ",") {
+		if entry = strings.TrimSpace(entry); entry != "" {
+			out = append(out, entry)
+		}
+	}
+	return out, nil
 }
 
 // normalize resolves the derived fields that are not a straight copy of a config
@@ -375,6 +461,9 @@ func (c *Config) validate() error {
 	// to start rather than serve a UI in which nothing is permitted.
 	if c.Auth.Authorization.Mode == AuthzModeRole && c.Auth.Authorization.RoleToScopeMapping == "" {
 		return fmt.Errorf("[auth.authorization] role_to_scope_mapping is required when mode = %q", AuthzModeRole)
+	}
+	if err := c.validateGatewayRelay(); err != nil {
+		return err
 	}
 	if !c.Server.HTTP.Enabled && !c.Server.HTTPS.Enabled {
 		return fmt.Errorf("no listeners enabled: set [server.http] enabled = true and/or [server.https] enabled = true")
@@ -488,5 +577,60 @@ func validateAbsoluteURL(label, rawURL string) error {
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 		return fmt.Errorf("%s must be an absolute http:// or https:// URL, got %q", label, rawURL)
 	}
+	return nil
+}
+
+// validateGatewayRelay checks the relay's bounds and builds its egress policy.
+//
+// The policy is parsed here, not at wiring time, so a bad range refuses the
+// process at startup with the key that caused it — and so exactly one parse of
+// those strings exists, by the package that also enforces them.
+func (c *Config) validateGatewayRelay() error {
+	t := &c.GatewayRelay
+	if !t.Enabled {
+		return nil
+	}
+	if t.RequestTimeout <= 0 {
+		return fmt.Errorf("[gateway_relay] request_timeout must be positive when enabled = true, got %s", t.RequestTimeout)
+	}
+	if t.MaxRequestBytes <= 0 {
+		return fmt.Errorf("[gateway_relay] max_request_bytes must be positive when enabled = true, got %d", t.MaxRequestBytes)
+	}
+	if t.MaxResponseBytes <= 0 {
+		return fmt.Errorf("[gateway_relay] max_response_bytes must be positive when enabled = true, got %d", t.MaxResponseBytes)
+	}
+	if t.MaxConcurrent <= 0 {
+		return fmt.Errorf("[gateway_relay] max_concurrent must be positive when enabled = true, got %d", t.MaxConcurrent)
+	}
+	if t.ResolveCacheTTL < 0 {
+		return fmt.Errorf("[gateway_relay] resolve_cache_ttl must not be negative, got %s", t.ResolveCacheTTL)
+	}
+	if t.ResolveCacheSize < 0 {
+		return fmt.Errorf("[gateway_relay] resolve_cache_size must not be negative, got %d", t.ResolveCacheSize)
+	}
+	if t.MaxPending < 0 {
+		return fmt.Errorf("[gateway_relay] max_pending must not be negative, got %d", t.MaxPending)
+	}
+	if t.TLSSkipVerify && t.CAFile != "" {
+		return fmt.Errorf("[gateway_relay] ca_file and tls_skip_verify are mutually exclusive — skipping verification ignores the bundle entirely")
+	}
+
+	// Parsed here only to fail at startup, with the offending key named,
+	// rather than at wiring time. The server parses it again for real; it is
+	// the same pure function, so the two cannot disagree.
+	policy, err := t.Egress.Policy()
+	if err != nil {
+		return err
+	}
+	if len(t.Egress.AllowHosts) == 0 {
+		slog.Warn("[gateway_relay.egress] allow_hosts is empty, so every gateway-relay request will be refused. " +
+			"List the gateway targets the relay may dial, or set [gateway_relay] enabled = false.")
+	}
+
+	if t.TLSSkipVerify {
+		slog.Warn("[gateway_relay] tls_skip_verify = true — gateway certificate verification is DISABLED for gateway-relay requests. " +
+			"Trust the gateway certificate with ca_file instead.")
+	}
+	slog.Info("gateway-relay egress policy", "policy", policy.Describe())
 	return nil
 }

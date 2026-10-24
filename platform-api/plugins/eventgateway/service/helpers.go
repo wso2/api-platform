@@ -211,3 +211,27 @@ func normalizeUpstreamAuthType(authType string) string {
 		return normalized
 	}
 }
+
+// resolveProjectRef resolves a project reference within an organization. The reference is
+// the project handle, as elsewhere in the Platform API; the project UUID is still accepted
+// for existing clients.
+func resolveProjectRef(projectRepo repository.ProjectRepository, ref, orgUUID string) (*model.Project, error) {
+	project, err := projectRepo.GetProjectByHandleAndOrgID(ref, orgUUID)
+	if err != nil || project != nil {
+		return project, err
+	}
+	return projectRepo.GetProjectByUUIDAndOrgID(ref, orgUUID)
+}
+
+// projectHandleFor returns the handle of the project with the given UUID, falling back to
+// the UUID when the project cannot be read.
+func projectHandleFor(projectRepo repository.ProjectRepository, projectUUID string) string {
+	if projectRepo == nil || projectUUID == "" {
+		return projectUUID
+	}
+	project, err := projectRepo.GetProjectByUUID(projectUUID)
+	if err != nil || project == nil {
+		return projectUUID
+	}
+	return project.Handle
+}

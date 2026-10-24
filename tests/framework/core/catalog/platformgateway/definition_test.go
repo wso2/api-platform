@@ -20,6 +20,11 @@ package platformgateway
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rsa"
+	"crypto/x509"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"os"
@@ -28,6 +33,7 @@ import (
 	"strings"
 	"testing"
 
+	koanftoml "github.com/knadh/koanf/parsers/toml/v2"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
 
@@ -72,11 +78,16 @@ func gatewayControllersPolicySource(t *testing.T) string {
 // composeFile is the gateway stack the suite actually runs.
 func composeFile(t *testing.T) map[string]any {
 	t.Helper()
+	return composeFileNamed(t, "docker-compose.yaml")
+}
+
+func composeFileNamed(t *testing.T, name string) map[string]any {
+	t.Helper()
 
 	_, thisFile, _, ok := runtime.Caller(0)
 	require.True(t, ok)
 
-	path := filepath.Join(filepath.Dir(thisFile), "docker-compose.yaml")
+	path := filepath.Join(filepath.Dir(thisFile), name)
 	raw, err := os.ReadFile(path)
 	require.NoError(t, err, "cannot read %s", path)
 
@@ -93,8 +104,12 @@ func composeFile(t *testing.T) map[string]any {
 // than trusting a zero result.
 func composeServiceEnv(t *testing.T, service string) map[string]string {
 	t.Helper()
+	return composeServiceEnvIn(t, composeFile(t), service)
+}
 
-	doc := composeFile(t)
+func composeServiceEnvIn(t *testing.T, doc map[string]any, service string) map[string]string {
+	t.Helper()
+
 	services, ok := doc["services"].(map[string]any)
 	require.True(t, ok, "compose file has no services map")
 
@@ -402,6 +417,133 @@ func TestVersionedPolicyBuildDoesNotReturnImagesAfterCommandFailure(t *testing.T
 	require.Empty(t, images.Runtime)
 }
 
+func TestPlatformGatewayWiringControllers(t *testing.T) {
+	spec := PlatformGateway().Wiring
+	for _, ok := range []string{"{}", "{controllers: 1}", "{controllers: 2}", "{controllers: 0}"} {
+		var node yaml.Node
+		require.NoError(t, yaml.Unmarshal([]byte(ok), &node))
+		_, err := spec.Decode(node.Content[0])
+		require.NoError(t, err, ok)
+	}
+	for _, bad := range []string{"{controllers: 3}", "{controllers: -1}", "{controllers: two}"} {
+		var node yaml.Node
+		require.NoError(t, yaml.Unmarshal([]byte(bad), &node))
+		_, err := spec.Decode(node.Content[0])
+		require.Error(t, err, bad)
+	}
+}
+
+func TestOneControllerWiringKeepsTheDefinition(t *testing.T) {
+	definition := PlatformGateway()
+	for _, wiring := range []*PlatformGatewayWiring{{}, {Controllers: 1}, {LogLevel: "debug"}} {
+		got, err := definition.ApplyWiring(definition, wiring)
+		require.NoError(t, err)
+		require.Same(t, definition, got)
+	}
+}
+
+func TestTwoControllerGatewayDefinition(t *testing.T) {
+	t.Setenv(shared.EnvCoverageMode, "false")
+	registered := PlatformGateway().WithImageVersion("current")
+	got, err := registered.ApplyWiring(registered, &PlatformGatewayWiring{Controllers: 2})
+	require.NoError(t, err)
+	require.NoError(t, got.Validate())
+
+	require.Equal(t, "platform-gateway", got.Name)
+	require.Equal(t, registered.Compose.ComposeFile, got.Compose.ComposeFile)
+	require.Equal(t, []string{xdsControllerComposeFile}, got.Compose.ComposeOverrideFiles)
+	require.Equal(t, svcRuntime, got.Compose.PrimaryService)
+	require.Equal(t, []string{svcController, svcRuntime, svcXDSController}, got.Compose.Services)
+	require.Equal(t, xdsControllerConfigFile, got.Compose.StagedFiles[xdsControllerConfigName])
+	require.Contains(t, got.Compose.CoverageServices, components.CoverageService{Name: svcXDSController, Types: []string{"go"}})
+	require.Equal(t, registered.Compose.Env, got.Compose.Env, "image versions must carry over")
+
+	admin, ok := got.Endpoint(EndpointXDSControllerAdmin)
+	require.True(t, ok)
+	require.Equal(t, components.Endpoint{Name: EndpointXDSControllerAdmin, Port: xdsControllerAdminPort, Scheme: "http", Service: svcXDSController}, admin)
+	for _, name := range []string{"rest", "admin", "metrics"} {
+		endpoint, ok := got.Endpoint(name)
+		require.True(t, ok, name)
+		require.Equal(t, svcController, endpoint.Service, "%s stays on the management controller", name)
+	}
+	require.Equal(t, svcController, got.Health.Service)
+
+	require.Equal(t, []components.DBType{components.Postgres}, got.DB.Supported)
+	ddl, ok := got.DB.SchemaFor(components.Postgres)
+	require.True(t, ok)
+	require.Equal(t, registered.DB.Schema[components.Postgres], ddl)
+	_, err = got.ResolveDBType(components.SQLite, "")
+	require.Error(t, err)
+
+	require.Empty(t, registered.Compose.ComposeOverrideFiles, "the registered definition must not change")
+	require.NotContains(t, registered.Compose.StagedFiles, xdsControllerConfigName)
+	_, ok = registered.Endpoint(EndpointXDSControllerAdmin)
+	require.False(t, ok)
+	require.Len(t, registered.DB.Supported, 3)
+}
+
+func TestTwoControllerGatewayRejectsWhatItCannotRun(t *testing.T) {
+	definition := PlatformGateway()
+	_, err := definition.ApplyWiring(definition, PlatformGatewayWiring{Controllers: 2})
+	require.ErrorContains(t, err, "wiring must be")
+	_, err = definition.ApplyWiring(definition, nil)
+	require.ErrorContains(t, err, "wiring must be")
+
+	twice, err := definition.ApplyWiring(definition, &PlatformGatewayWiring{Controllers: 2})
+	require.NoError(t, err)
+	_, err = twice.ApplyWiring(twice, &PlatformGatewayWiring{Controllers: 2})
+	require.ErrorContains(t, err, "already runs a dedicated xDS controller")
+
+	_, err = withXDSController(nil)
+	require.Error(t, err)
+	sqliteOnly := *definition
+	sqliteOnly.DB = &components.DBContract{Supported: []components.DBType{components.SQLite}}
+	_, err = withXDSController(&sqliteOnly)
+	require.ErrorContains(t, err, "does not support postgres")
+}
+
+// TestTwoControllerComposeOverride verifies that the override runs the second controller the
+// way the definition addresses it and points the runtime at it.
+func TestTwoControllerComposeOverride(t *testing.T) {
+	doc := composeFileNamed(t, filepath.Base(xdsControllerComposeFile))
+	services, ok := doc["services"].(map[string]any)
+	require.True(t, ok)
+	require.ElementsMatch(t, []string{svcController, svcXDSController, svcRuntime}, keysOf(services))
+
+	xds := services[svcXDSController].(map[string]any)
+	require.Contains(t, xds["command"], "/etc/gateway-controller/"+xdsControllerConfigName)
+	require.Contains(t, xds["volumes"], "./"+xdsControllerConfigName+":/etc/gateway-controller/"+xdsControllerConfigName+":ro")
+	require.Contains(t, xds["ports"], fmt.Sprint(xdsControllerAdminPort))
+	require.Contains(t, xds["env_file"], "api-platform.env", "both controllers must read the same database settings")
+	require.Contains(t, xds["image"], "${"+EnvImagePGController)
+	require.Contains(t, fmt.Sprint(xds["healthcheck"]), fmt.Sprintf("localhost:%d/api/admin/v1/health", xdsControllerAdminPort))
+
+	base := composeServiceEnv(t, svcController)
+	replica := composeServiceEnvIn(t, doc, svcXDSController)
+	for key, want := range base {
+		require.Equal(t, want, replica[key], "%s must match the management controller", key)
+	}
+
+	runtimeService := services[svcRuntime].(map[string]any)
+	require.Equal(t, svcXDSController, composeServiceEnvIn(t, doc, svcRuntime)["GATEWAY_CONTROLLER_HOST"])
+	require.Contains(t, runtimeService["depends_on"], svcXDSController)
+
+	raw, err := os.ReadFile(filepath.Join(unitRepoRoot(t), xdsControllerConfigFile))
+	require.NoError(t, err)
+	config, err := koanftoml.Parser().Unmarshal(raw)
+	require.NoError(t, err)
+	adminServer := config["controller"].(map[string]any)["admin_server"].(map[string]any)
+	require.EqualValues(t, xdsControllerAdminPort, adminServer["port"])
+}
+
+func keysOf(m map[string]any) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	return out
+}
+
 // stubReleasedPolicies stands in for the docker call that reads a release's build manifest.
 func stubReleasedPolicies(t *testing.T, names map[string]bool, err error) *string {
 	t.Helper()
@@ -609,4 +751,128 @@ func TestBuildVersionedWithPoliciesRepullsOnlyTheMovingLatestTag(t *testing.T) {
 	for _, command := range release {
 		require.NotContains(t, command.Args, "--pull")
 	}
+}
+
+func TestPlatformGatewayWiringSigningKeys(t *testing.T) {
+	spec := PlatformGateway().Wiring
+	for _, ok := range []string{"{signingKeys: true}", "{signingKeys: false}", "{signingKeys: true, controllers: 2}"} {
+		var node yaml.Node
+		require.NoError(t, yaml.Unmarshal([]byte(ok), &node))
+		_, err := spec.Decode(node.Content[0])
+		require.NoError(t, err, ok)
+	}
+	var node yaml.Node
+	require.NoError(t, yaml.Unmarshal([]byte("{signingKeys: maybe}"), &node))
+	_, err := spec.Decode(node.Content[0])
+	require.Error(t, err)
+}
+
+func TestSigningKeysGatewayDefinition(t *testing.T) {
+	t.Setenv(shared.EnvCoverageMode, "false")
+	registered := PlatformGateway().WithImageVersion("current")
+	got, err := registered.ApplyWiring(registered, &PlatformGatewayWiring{SigningKeys: true})
+	require.NoError(t, err)
+	require.NoError(t, got.Validate())
+
+	require.Equal(t, []string{signingKeysComposeFile}, got.Compose.ComposeOverrideFiles)
+	require.Equal(t, signingKeyActivePEM, got.Compose.ProjectEnv[envSigningKeyActive])
+	require.Equal(t, signingKeyPreviousPEM, got.Compose.ProjectEnv[envSigningKeyPrevious])
+	require.Equal(t, registered.Compose.Env, got.Compose.Env, "the keys must not reach the services' env file")
+	require.Equal(t, registered.Compose.Services, got.Compose.Services)
+	require.Equal(t, registered.DB, got.DB)
+
+	require.Empty(t, registered.Compose.ComposeOverrideFiles, "the registered definition must not change")
+	require.Empty(t, registered.Compose.ProjectEnv)
+
+	unchanged, err := registered.ApplyWiring(registered, &PlatformGatewayWiring{SigningKeys: false})
+	require.NoError(t, err)
+	require.Same(t, registered, unchanged)
+}
+
+func TestSigningKeysComposeWithTwoControllers(t *testing.T) {
+	registered := PlatformGateway()
+	got, err := registered.ApplyWiring(registered, &PlatformGatewayWiring{Controllers: 2, SigningKeys: true})
+	require.NoError(t, err)
+	require.Equal(t, []string{xdsControllerComposeFile, signingKeysComposeFile}, got.Compose.ComposeOverrideFiles)
+	require.Contains(t, got.Compose.Services, svcXDSController)
+	require.Equal(t, signingKeyActivePEM, got.Compose.ProjectEnv[envSigningKeyActive])
+	require.Equal(t, []components.DBType{components.Postgres}, got.DB.Supported)
+}
+
+func TestSigningKeysRejectWhatTheyCannotApply(t *testing.T) {
+	_, err := withSigningKeys(nil)
+	require.Error(t, err)
+	noCompose := *PlatformGateway()
+	noCompose.Compose = nil
+	_, err = withSigningKeys(&noCompose)
+	require.ErrorContains(t, err, "compose-backed")
+
+	once, err := withSigningKeys(PlatformGateway())
+	require.NoError(t, err)
+	_, err = withSigningKeys(once)
+	require.ErrorContains(t, err, "already holds the gateway signing keys")
+
+	got, err := withSigningKeys(PlatformGateway())
+	require.NoError(t, err)
+	require.Len(t, got.Compose.ProjectEnv, 2)
+}
+
+// TestSigningKeysComposeOverride verifies that the override copies each key to the path the
+// gateway-signing overlay configures, owned by the runtime user and unreadable by others.
+func TestSigningKeysComposeOverride(t *testing.T) {
+	doc := composeFileNamed(t, filepath.Base(signingKeysComposeFile))
+	services, ok := doc["services"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, []string{svcRuntime}, keysOf(services))
+
+	sources, ok := doc["configs"].(map[string]any)
+	require.True(t, ok)
+	envBySource := map[string]string{}
+	for name, raw := range sources {
+		source, ok := raw.(map[string]any)
+		require.True(t, ok, name)
+		require.NotContains(t, source, "file", "a file-backed config is bind-mounted without its owner and mode")
+		envBySource[name], _ = source["environment"].(string)
+	}
+
+	targets := map[string]string{}
+	for _, raw := range services[svcRuntime].(map[string]any)["configs"].([]any) {
+		mount := raw.(map[string]any)
+		require.Equal(t, "10001", mount["uid"])
+		require.Equal(t, "10001", mount["gid"])
+		require.EqualValues(t, 0o400, mount["mode"])
+		targets[envBySource[mount["source"].(string)]] = mount["target"].(string)
+	}
+	require.Equal(t, map[string]string{
+		envSigningKeyActive:   "/secrets/gateway-runtime/signing/active.pem",
+		envSigningKeyPrevious: "/secrets/gateway-runtime/signing/previous.pem",
+	}, targets)
+
+	raw, err := os.ReadFile(filepath.Join(unitRepoRoot(t), "tests/framework/core/catalog/overlays/gateway-signing.toml"))
+	require.NoError(t, err)
+	overlay, err := koanftoml.Parser().Unmarshal(raw)
+	require.NoError(t, err)
+	var paths []string
+	for _, key := range overlay["signing"].(map[string]any)["keys"].([]any) {
+		paths = append(paths, key.(map[string]any)["path"].(string))
+	}
+	require.ElementsMatch(t, []string{targets[envSigningKeyActive], targets[envSigningKeyPrevious]}, paths)
+}
+
+func TestSigningKeysAreTheExpectedKeyTypes(t *testing.T) {
+	parse := func(name, content string) any {
+		block, rest := pem.Decode([]byte(content))
+		require.NotNil(t, block, name)
+		require.Empty(t, strings.TrimSpace(string(rest)), "%s holds one PEM block", name)
+		key, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+		require.NoError(t, err, name)
+		return key
+	}
+	active, ok := parse("active", signingKeyActivePEM).(*ecdsa.PrivateKey)
+	require.True(t, ok, "the active key is EC")
+	require.Equal(t, elliptic.P256(), active.Curve)
+
+	previous, ok := parse("previous", signingKeyPreviousPEM).(*rsa.PrivateKey)
+	require.True(t, ok, "the previous key is RSA")
+	require.Equal(t, 2048, previous.N.BitLen())
 }

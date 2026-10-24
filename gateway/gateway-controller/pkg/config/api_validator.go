@@ -39,6 +39,9 @@ type APIValidator struct {
 	urlFriendlyNameRegex *regexp.Regexp
 	// policyValidator validates policy references and parameters
 	policyValidator *PolicyValidator
+	// upstreamTLSValidator validates the tls block on upstreamDefinitions
+	// entries. When nil, tls-block validation is skipped.
+	upstreamTLSValidator *UpstreamTLSValidator
 }
 
 // NewAPIValidator creates a new API configuration validator
@@ -53,6 +56,12 @@ func NewAPIValidator() *APIValidator {
 // SetPolicyValidator sets the policy validator for validating policy references
 func (v *APIValidator) SetPolicyValidator(policyValidator *PolicyValidator) {
 	v.policyValidator = policyValidator
+}
+
+// SetUpstreamTLSValidator sets the validator for the tls block on
+// upstreamDefinitions entries.
+func (v *APIValidator) SetUpstreamTLSValidator(u *UpstreamTLSValidator) {
+	v.upstreamTLSValidator = u
 }
 
 // Validate performs comprehensive validation on a configuration
@@ -96,6 +105,11 @@ func (v *APIValidator) validateRestAPIConfiguration(config *api.RestAPI) []Valid
 	if v.policyValidator != nil {
 		policyErrors := v.policyValidator.ValidateRestAPIPolicies(config)
 		errors = append(errors, policyErrors...)
+	}
+
+	// Validate the tls block on upstreamDefinitions entries, if a validator is set.
+	if v.upstreamTLSValidator != nil {
+		errors = append(errors, v.upstreamTLSValidator.ValidateRestAPI(config)...)
 	}
 
 	// Validate metadata (including labels)
@@ -630,7 +644,7 @@ func (v *APIValidator) validateOperations(context string, operations []api.Opera
 
 		// The combined route path (context + operation path) must not fall under
 		// the reserved gateway health-check namespace.
-		errors = append(errors, validateNotReservedHealthPath(pathField, joinContextPath(context, path))...)
+		errors = append(errors, validateNotReservedGatewayPath(pathField, joinContextPath(context, path))...)
 
 		// Validate path parameters have balanced braces
 		if !v.validatePathParameters(path) {
@@ -651,7 +665,7 @@ func (v *APIValidator) validateOperations(context string, operations []api.Opera
 // the combined route path. It does not canonicalize the result — canonicalization
 // (needed to catch dot-segment paths that resolve into the reserved health
 // namespace once Envoy's NormalizePath runs at request time) is handled by
-// validateNotReservedHealthPath itself, so every caller gets it uniformly.
+// validateNotReservedGatewayPath itself, so every caller gets it uniformly.
 func joinContextPath(context, opPath string) string {
 	return strings.TrimSuffix(context, "/") + "/" + strings.TrimPrefix(opPath, "/")
 }

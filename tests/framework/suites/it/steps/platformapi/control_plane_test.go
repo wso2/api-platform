@@ -24,12 +24,16 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/cucumber/godog"
 	"github.com/stretchr/testify/require"
 
 	"github.com/wso2/api-platform/tests/framework/core/actor"
@@ -555,4 +559,206 @@ func TestAgentProxyLocationPattern(t *testing.T) {
 		require.Nil(t, agentProxyLocationPattern.FindStringSubmatch(locationPath(raw)), raw)
 	}
 	require.True(t, strings.HasPrefix(locationPath("https://cp/api/v0.9/agent-proxies/a%2Fb"), "/api/v0.9/agent-proxies/a/b"))
+}
+
+func valuesTable(rows ...[]string) *godog.Table {
+	type cell struct {
+		Value string `json:"value"`
+	}
+	type tableRow struct {
+		Cells []cell `json:"cells"`
+	}
+	payload := struct {
+		Rows []tableRow `json:"rows"`
+	}{}
+	for _, row := range rows {
+		encoded := tableRow{}
+		for _, value := range row {
+			encoded.Cells = append(encoded.Cells, cell{Value: value})
+		}
+		payload.Rows = append(payload.Rows, encoded)
+	}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		panic(fmt.Sprintf("marshal table fixture: %v", err))
+	}
+	var table godog.Table
+	if err := json.Unmarshal(raw, &table); err != nil {
+		panic(fmt.Sprintf("unmarshal table fixture: %v", err))
+	}
+	return &table
+}
+
+func TestPublicationTypeAndPath(t *testing.T) {
+	apiType, err := publicationType("RestApi")
+	require.NoError(t, err)
+	require.Equal(t, "rest-api", apiType)
+	for _, kind := range []string{"Mcp", "LlmProvider", "", "restapi"} {
+		_, err := publicationType(kind)
+		require.ErrorContains(t, err, "not supported", kind)
+	}
+
+	require.Equal(t, "/api-portals/portal-1/apis/rest-api/api-1", publicationPath("portal-1", "rest-api", "api-1"))
+	require.Equal(t, "/api-portals/a%2Fb/apis/rest-api/c%20d", publicationPath("a/b", "rest-api", "c d"),
+		"handles are escaped so one cannot address another path")
+}
+
+func TestSplitPublicationID(t *testing.T) {
+	portal, apiType, api, err := splitPublicationID("portal-1/rest-api/api-1")
+	require.NoError(t, err)
+	require.Equal(t, "portal-1", portal)
+	require.Equal(t, "rest-api", apiType)
+	require.Equal(t, "api-1", api)
+
+	for _, id := range []string{"", "portal-1", "portal-1/api-1", "/rest-api/api-1", "portal-1//api-1", "portal-1/rest-api/", "a/b/c/d"} {
+		_, _, _, err := splitPublicationID(id)
+		require.ErrorContains(t, err, "malformed publication id", id)
+	}
+}
+
+func TestPublicationCleanupOrderUnpublishesBeforeTheAPIAndPortalAreDeleted(t *testing.T) {
+	require.Greater(t, platformPublicationKind.Order, platformDeploymentKind.Order)
+	require.Less(t, platformPublicationKind.Order, platformRESTAPIKind.Order,
+		"the listing is unpublished while the API still exists")
+	require.Greater(t, platformAPIPortalKind.Order, platformPublicationKind.Order,
+		"the portal registration outlives the unpublish that needs it")
+	require.Greater(t, platformAPIPortalKind.Order, platformRESTAPIKind.Order)
+	require.Less(t, platformAPIPortalKind.Order, platformGatewayKind.Order)
+}
+
+func TestRegisterPublicationRecordsThePortalAndAPIForCleanup(t *testing.T) {
+	ctx, reg := trackingContext(t)
+	s := &Steps{}
+
+	require.NoError(t, s.registerPublication(ctx, "portal-1", "rest-api", "api-1"))
+	require.NoError(t, s.registerPublication(ctx, "portal-1", "rest-api", "api-2"))
+	require.ElementsMatch(t, []string{"portal-1/rest-api/api-1", "portal-1/rest-api/api-2"}, pendingIDs(reg, platformPublicationKind))
+}
+
+func TestDraftFromTable(t *testing.T) {
+	ctx, _ := trackingContext(t)
+	local, _ := tcontext.LocalOf(ctx)
+	local.Set("planHandle", "plan-1")
+
+	body, err := draftFromTable(ctx, valuesTable(
+		[]string{"displayName", "Weather"},
+		[]string{"version", "v1.0.3"},
+		[]string{"subscriptionPlanIds", `["${CTX:planHandle}"]`},
+	))
+	require.NoError(t, err)
+	require.JSONEq(t, `{"displayName":"Weather","version":"v1.0.3","subscriptionPlanIds":["plan-1"]}`, string(body),
+		"a JSON value is decoded and a field the table does not name is absent")
+
+	for name, table := range map[string]*godog.Table{
+		"nil table":     nil,
+		"empty table":   valuesTable(),
+		"three cells":   valuesTable([]string{"a", "b", "c"}),
+		"empty key":     valuesTable([]string{" ", "b"}),
+		"duplicate key": valuesTable([]string{"a", "1"}, []string{"a", "2"}),
+	} {
+		_, err := draftFromTable(ctx, table)
+		require.Error(t, err, name)
+	}
+
+	body, err = draftFromTable(ctx, valuesTable(
+		[]string{"displayName", "[Beta] Orders API"},
+		[]string{"description", `{not json}`},
+	))
+	require.NoError(t, err)
+	require.JSONEq(t, `{"displayName":"[Beta] Orders API","description":"{not json}"}`, string(body),
+		"text that starts with a bracket but is not JSON stays a string")
+}
+
+func TestMinimalOpenAPIDefinitionIsAValidDocument(t *testing.T) {
+	body, err := minimalOpenAPIDefinition("weather")
+	require.NoError(t, err)
+
+	var document struct {
+		OpenAPI string `json:"openapi"`
+		Info    struct {
+			Title   string `json:"title"`
+			Version string `json:"version"`
+		} `json:"info"`
+		Paths map[string]any `json:"paths"`
+	}
+	require.NoError(t, json.Unmarshal(body, &document))
+	require.Equal(t, "3.0.3", document.OpenAPI)
+	require.Equal(t, "weather", document.Info.Title)
+	require.NotEmpty(t, document.Info.Version)
+	require.NotEmpty(t, document.Paths)
+}
+
+func TestSelectedPlans(t *testing.T) {
+	require.Equal(t, []string{"gold", "silver"}, selectedPlans([]byte(`{"displayName":"x","subscriptionPlanIds":["gold","silver"]}`)))
+	for name, draft := range map[string]string{
+		"no plans field":      `{"displayName":"x"}`,
+		"empty list":          `{"subscriptionPlanIds":[]}`,
+		"plans not a list":    `{"subscriptionPlanIds":"gold"}`,
+		"not a JSON document": `not json`,
+	} {
+		require.Empty(t, selectedPlans([]byte(draft)), name)
+	}
+}
+
+func TestTrackSelectedPlansRemovesEverySelectedPlanFromThePortal(t *testing.T) {
+	var tracked []string
+	s := &Steps{trackPortalPlan: func(_ context.Context, handle string) error {
+		tracked = append(tracked, handle)
+		return nil
+	}}
+
+	require.NoError(t, s.trackSelectedPlans(context.Background(), []byte(`{"subscriptionPlanIds":["gold","silver"]}`)))
+	require.Equal(t, []string{"gold", "silver"}, tracked)
+
+	tracked = nil
+	require.NoError(t, s.trackSelectedPlans(context.Background(), []byte(`{"displayName":"x"}`)))
+	require.Empty(t, tracked, "a draft that selects no plan tracks nothing")
+
+	failing := &Steps{trackPortalPlan: func(context.Context, string) error { return errors.New("registry unavailable") }}
+	require.ErrorContains(t, failing.trackSelectedPlans(context.Background(), []byte(`{"subscriptionPlanIds":["gold"]}`)),
+		`plan "gold"`)
+
+	untracked := &Steps{}
+	require.ErrorContains(t, untracked.trackSelectedPlans(context.Background(), []byte(`{"subscriptionPlanIds":["gold"]}`)),
+		"no API Portal steps")
+	require.NoError(t, untracked.trackSelectedPlans(context.Background(), []byte(`{}`)),
+		"without selected plans there is nothing to track")
+}
+
+func TestUnpublishSettled(t *testing.T) {
+	stateConflict := []byte(`{"status":"error","code":"PUBLICATION_STATE_CONFLICT"}`)
+	portalConflict := []byte(`{"status":"error","code":"PUBLICATION_PORTAL_CONFLICT"}`)
+
+	for name, tc := range map[string]struct {
+		status int
+		body   []byte
+		want   bool
+	}{
+		"unpublished":                      {http.StatusNoContent, nil, true},
+		"unknown API":                      {http.StatusNotFound, nil, true},
+		"nothing to unpublish":             {http.StatusConflict, stateConflict, true},
+		"portal still holds keys":          {http.StatusConflict, portalConflict, false},
+		"conflict without a readable body": {http.StatusConflict, []byte(`not json`), false},
+		"conflict with an empty body":      {http.StatusConflict, nil, false},
+		"portal unavailable":               {http.StatusServiceUnavailable, nil, false},
+		"forbidden":                        {http.StatusForbidden, nil, false},
+	} {
+		require.Equal(t, tc.want, unpublishSettled(&httpx.Response{StatusCode: tc.status, Body: tc.body}), name)
+	}
+}
+
+func TestDocumentIDCarriesTheAPI(t *testing.T) {
+	id := documentID("rest-api", "api-1", "doc-1")
+	require.Equal(t, "rest-api/api-1/doc-1", id)
+
+	apiType, api, doc, err := splitDocumentID(id)
+	require.NoError(t, err)
+	require.Equal(t, []string{"rest-api", "api-1", "doc-1"}, []string{apiType, api, doc})
+	require.NotEqual(t, documentID("rest-api", "api-1", "doc-1"), documentID("rest-api", "api-2", "doc-1"),
+		"the same document handle on two APIs must be two cleanup resources")
+
+	for _, bad := range []string{"", "doc-1", "api-1/doc-1", "rest-api//doc-1", "rest-api/api-1/", "a/b/c/d"} {
+		_, _, _, err := splitDocumentID(bad)
+		require.ErrorContains(t, err, "malformed document id", bad)
+	}
 }

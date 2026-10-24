@@ -198,3 +198,38 @@ func TestShippedSampleRolesValidateAgainstShippedSpec(t *testing.T) {
 		t.Fatalf("expected ap_admin to grant Developer Portal scopes: %v", m["ap_admin"])
 	}
 }
+
+// A deployment runs a build, so a shipped role that may deploy a kind must be able
+// to prepare and list that kind's builds, and one that may read its deployments must
+// be able to read the builds they name. Each build operation also accepts the
+// kind's own manage scope.
+func TestShippedRolesReachTheBuildsTheirDeploymentsRun(t *testing.T) {
+	m, err := middleware.LoadRoleScopeMap("../../resources/role-to-scope-mapping.yaml")
+	if err != nil {
+		t.Fatalf("loading the shipped role-to-scope-mapping.yaml: %v", err)
+	}
+	for role, scopes := range m {
+		granted := make(map[string]bool, len(scopes))
+		for _, s := range scopes {
+			granted[s] = true
+		}
+		for _, s := range scopes {
+			kind, action, ok := strings.Cut(strings.TrimPrefix(s, "ap:"), ":deployment:")
+			if !ok || !strings.HasPrefix(s, "ap:") {
+				continue
+			}
+			kindManage := "ap:" + kind + ":manage"
+			buildManage := "ap:" + kind + ":build:manage"
+			switch action {
+			case "manage":
+				if !granted[buildManage] && !granted[kindManage] {
+					t.Errorf("%s grants %s but not %s", role, s, buildManage)
+				}
+			case "read":
+				if !granted["ap:"+kind+":build:read"] && !granted[buildManage] && !granted[kindManage] {
+					t.Errorf("%s grants %s but not ap:%s:build:read", role, s, kind)
+				}
+			}
+		}
+	}
+}

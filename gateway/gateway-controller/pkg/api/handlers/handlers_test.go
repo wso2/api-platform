@@ -42,7 +42,10 @@ import (
 	adminapi "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/admin"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/clientca"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/gatewayidentity"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/lazyresourcexds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	policybuilder "github.com/wso2/api-platform/gateway/gateway-controller/pkg/policy"
@@ -503,6 +506,10 @@ func (m *MockStorage) SaveSubscription(sub *models.Subscription) error {
 	if m.subscriptions == nil {
 		m.subscriptions = make(map[string]*models.Subscription)
 	}
+	// Mirror the subscriptions primary key: a duplicate ID is a conflict, not an overwrite.
+	if _, exists := m.subscriptions[sub.ID]; exists {
+		return fmt.Errorf("%w: subscription already exists: %s", storage.ErrConflict, sub.ID)
+	}
 	m.subscriptions[sub.ID] = sub
 	return nil
 }
@@ -603,8 +610,21 @@ func (m *MockStorage) SaveSubscriptionPlan(plan *models.SubscriptionPlan) error 
 	if plan == nil {
 		return nil
 	}
+	if m.subscriptionPlanNameTaken(plan.ID, plan.PlanName) {
+		return fmt.Errorf("%w: subscription plan already exists", storage.ErrConflict)
+	}
 	m.subscriptionPlans[plan.ID] = plan
 	return nil
+}
+
+// subscriptionPlanNameTaken mirrors the UNIQUE(gateway_id, plan_name) constraint.
+func (m *MockStorage) subscriptionPlanNameTaken(planID, planName string) bool {
+	for id, p := range m.subscriptionPlans {
+		if p != nil && id != planID && p.PlanName == planName {
+			return true
+		}
+	}
+	return false
 }
 
 func (m *MockStorage) GetSubscriptionPlanByID(id, gatewayID string) (*models.SubscriptionPlan, error) {
@@ -656,6 +676,9 @@ func (m *MockStorage) UpdateSubscriptionPlan(plan *models.SubscriptionPlan) erro
 	if _, ok := m.subscriptionPlans[plan.ID]; !ok {
 		return storage.ErrNotFound
 	}
+	if m.subscriptionPlanNameTaken(plan.ID, plan.PlanName) {
+		return fmt.Errorf("%w: subscription plan name already exists", storage.ErrConflict)
+	}
 	m.subscriptionPlans[plan.ID] = plan
 	return nil
 }
@@ -673,6 +696,12 @@ func (m *MockStorage) DeleteSubscriptionPlan(id, gatewayID string) error {
 	}
 	if gatewayID != "" && plan.GatewayID != gatewayID {
 		return storage.ErrNotFound
+	}
+	// Mirror the subscriptions foreign key: a plan still in use can't be deleted.
+	for _, sub := range m.subscriptions {
+		if sub != nil && sub.SubscriptionPlanID != nil && *sub.SubscriptionPlanID == id {
+			return fmt.Errorf("%w: subscription plan is in use: %s", storage.ErrConflict, id)
+		}
 	}
 	delete(m.subscriptionPlans, id)
 	return nil
@@ -746,7 +775,7 @@ func (m *MockStorage) GetCertificate(id string) (*models.StoredCertificate, erro
 			return cert, nil
 		}
 	}
-	return nil, errors.New("certificate not found")
+	return nil, storage.ErrNotFound
 }
 
 func (m *MockStorage) GetCertificateByName(name string) (*models.StoredCertificate, error) {
@@ -759,6 +788,23 @@ func (m *MockStorage) GetCertificateByName(name string) (*models.StoredCertifica
 		}
 	}
 	return nil, errors.New("certificate not found")
+}
+
+func (m *MockStorage) ListCertificatesByUsage(usage string) ([]*models.StoredCertificate, error) {
+	if m.getErr != nil {
+		return nil, m.getErr
+	}
+	var filtered []*models.StoredCertificate
+	for _, cert := range m.certs {
+		certUsage := cert.Usage
+		if certUsage == "" {
+			certUsage = models.CertificateUsageUpstream
+		}
+		if certUsage == usage {
+			filtered = append(filtered, cert)
+		}
+	}
+	return filtered, nil
 }
 
 func (m *MockStorage) ListCertificates() ([]*models.StoredCertificate, error) {
@@ -775,6 +821,16 @@ func (m *MockStorage) DeleteCertificate(id string) error {
 	for i, cert := range m.certs {
 		if cert.UUID == id {
 			m.certs = append(m.certs[:i], m.certs[i+1:]...)
+			return nil
+		}
+	}
+	return errors.New("certificate not found")
+}
+
+func (m *MockStorage) UpdateCertificate(cert *models.StoredCertificate) error {
+	for i, c := range m.certs {
+		if c.UUID == cert.UUID {
+			m.certs[i] = cert
 			return nil
 		}
 	}
@@ -1085,6 +1141,19 @@ func (m *MockControlPlaneClient) Close() error {
 	return nil
 }
 
+// newTestLazyResourceManager returns an in-memory lazy-resource manager.
+func newTestLazyResourceManager() *lazyresourcexds.LazyResourceStateManager {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	store := storage.NewLazyResourceStore(logger)
+	return lazyresourcexds.NewLazyResourceStateManager(store, lazyresourcexds.NewLazyResourceSnapshotManager(store, logger), logger)
+}
+
+// testClientAuthorityPublisher returns a publisher over db that publishes to
+// an in-memory lazy-resource manager.
+func testClientAuthorityPublisher(db storage.Storage) *utils.ClientAuthorityPublisher {
+	return utils.NewClientAuthorityPublisher(db, newTestLazyResourceManager())
+}
+
 // createTestAPIServer creates a minimal test server with dependencies
 func createTestAPIServer() *APIServer {
 	return createTestAPIServerWithDB(NewMockStorage())
@@ -1112,7 +1181,8 @@ func createTestAPIServerWithDB(db storage.Storage) *APIServer {
 	systemCfg := &config.Config{
 		Controller: config.Controller{
 			Server: config.ServerConfig{
-				GatewayID: gatewayID,
+				GatewayID:                 gatewayID,
+				MaxCertificateUploadBytes: 1 << 20,
 			},
 		},
 		Router: config.RouterConfig{
@@ -1139,6 +1209,7 @@ func createTestAPIServerWithDB(db storage.Storage) *APIServer {
 		httpClient:        httpClient,
 		systemConfig:      systemCfg,
 		gatewayID:         gatewayID,
+		clientAuthorities: testClientAuthorityPublisher(db),
 	}
 
 	deploymentService := utils.NewAPIDeploymentService(store, db, nil, validator, routerCfg, hub, gatewayID, nil, httpClient)
@@ -1383,7 +1454,7 @@ func attachTestEventHub(server *APIServer, hub eventhub.EventHub, gatewayID stri
 	if server.systemConfig != nil {
 		server.systemConfig.Controller.Server.GatewayID = gatewayID
 	}
-	policyValidator := config.NewPolicyValidator(server.policyDefinitions)
+	policyValidator := config.NewPolicyValidator(server.policyDefinitions, nil)
 	policyVersionResolver := utils.NewLoadedPolicyVersionResolver(server.policyDefinitions)
 	server.deploymentService = utils.NewAPIDeploymentService(server.store, server.db, server.snapshotManager, server.validator, server.routerConfig, hub, gatewayID, nil, server.httpClient)
 	server.apiKeyService = utils.NewAPIKeyService(server.store, server.db, server.apiKeyXDSManager, &server.systemConfig.APIKey, hub, gatewayID)
@@ -4199,5 +4270,77 @@ func TestPolicyRemovalErrorHandling(t *testing.T) {
 			err := mock.RemovePolicy("0000-test-id-0000-000000000000")
 			assert.Equal(t, tt.want, storage.IsPolicyNotFoundError(err))
 		})
+	}
+}
+
+// codeEnum reads schemaName's "code" property enum from the embedded OpenAPI
+// spec and returns it as a set. It fails the test if there is no enum.
+func codeEnum(t *testing.T, schemaName string) map[string]bool {
+	t.Helper()
+
+	swagger, err := api.GetSwagger()
+	if err != nil {
+		t.Fatalf("failed to load embedded OpenAPI spec: %v", err)
+	}
+
+	schemaRef, ok := swagger.Components.Schemas[schemaName]
+	if !ok || schemaRef.Value == nil {
+		t.Fatalf("spec has no schema %q", schemaName)
+	}
+	codeProp, ok := schemaRef.Value.Properties["code"]
+	if !ok || codeProp.Value == nil {
+		t.Fatalf("schema %q has no 'code' property", schemaName)
+	}
+	if len(codeProp.Value.Enum) == 0 {
+		t.Fatalf("schema %q's code property has no enum — it is still only documented via `example`", schemaName)
+	}
+
+	enum := make(map[string]bool, len(codeProp.Value.Enum))
+	for _, v := range codeProp.Value.Enum {
+		s, ok := v.(string)
+		if !ok {
+			t.Fatalf("schema %q's code enum contains a non-string value: %v", schemaName, v)
+		}
+		enum[s] = true
+	}
+	return enum
+}
+
+// Every certificate warning code is declared in CertificateWarning.code.
+func TestOpenAPI_CertificateWarningCodeEnum_CoversEveryEmittedCode(t *testing.T) {
+	enum := codeEnum(t, "CertificateWarning")
+
+	emitted := []string{
+		clientca.CodeClientCAIsLeaf,
+		clientca.CodeClientCANotYetValid,
+		clientca.CodeCertExpiresSoon,
+		gatewayidentity.CodeNoClientAuthEKU,
+	}
+	for _, code := range emitted {
+		if !enum[code] {
+			t.Errorf("CertificateWarning.code enum is missing %q", code)
+		}
+	}
+}
+
+// Every deploy warning code is declared in Warning.code.
+func TestOpenAPI_WarningCodeEnum_CoversEveryEmittedCode(t *testing.T) {
+	enum := codeEnum(t, "Warning")
+
+	emitted := []string{
+		config.WarningCodeMTLSAcceptInheritsPool,
+		config.WarningCodeMTLSAcceptUnnarrowed,
+		config.WarningCodeMTLSAuthNotFirst,
+		config.WarningCodeMTLSAcceptNamesRelayAuthority,
+		config.WarningCodeMTLSThumbprintNormalised,
+		config.WarningCodeHeaderCertBypassActive,
+		config.WarningCodeMTLSHostnameNotScoped,
+		config.WarningCodeTLSVerifyHostNameDisabled,
+		config.WarningCodeTLSIdentityExpired,
+	}
+	for _, code := range emitted {
+		if !enum[code] {
+			t.Errorf("Warning.code enum is missing %q", code)
+		}
 	}
 }

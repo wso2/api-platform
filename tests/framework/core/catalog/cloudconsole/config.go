@@ -145,7 +145,7 @@ func resolveEndpoints(repoRoot string, parameters map[string]string) (map[string
 		return nil, err
 	}
 	endpoints := map[string]string{
-		EndpointAPIPBML: "https://" + environment + "-wso2cloud.gateway." + domain + "/apip-bml-apip-bml-endpoint/api/v0.9",
+		EndpointAPIPPlatformAPI: "https://" + environment + "-wso2cloud.gateway." + domain + "/apip-platform-api-apip-platform-api-endpoint/api/v0.9",
 	}
 	for name, endpoint := range endpoints {
 		parsed, parseErr := url.Parse(endpoint)

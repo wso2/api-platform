@@ -44,7 +44,9 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -73,6 +75,11 @@ const (
 // OrgClaim is the claim an authorization request's organization hint is matched against.
 const OrgClaim = "org_id"
 
+// orgIssuerPath matches the path of an organization's own issuer, as WSO2 IS and Asgardeo
+// sub-organizations issue: ".../o/<org>/oauth2/token". A token minted with such an issuer is
+// signed with that organization's key, served at ".../o/<org>/oauth2/jwks".
+var orgIssuerPath = regexp.MustCompile(`/o/([A-Za-z0-9][A-Za-z0-9_-]{0,127})/oauth2/token$`)
+
 const (
 	keyID          = "testbench-oidc"
 	codeTTL        = 2 * time.Minute
@@ -94,6 +101,8 @@ type grant struct {
 // Service implements testbench.Service and testbench.TLSService.
 type Service struct {
 	signingKey *rsa.PrivateKey
+	orgKeysMu  sync.Mutex
+	orgKeys    map[string]*rsa.PrivateKey
 	codeKey    []byte
 	tlsConfig  *tls.Config
 	issuer     string
@@ -127,6 +136,7 @@ func New(certPEM, keyPEM []byte, issuer string) (*Service, error) {
 	}
 	return &Service{
 		signingKey: signingKey,
+		orgKeys:    map[string]*rsa.PrivateKey{},
 		codeKey:    codeKey,
 		tlsConfig:  &tls.Config{Certificates: []tls.Certificate{certificate}, MinVersion: tls.VersionTLS12},
 		issuer:     strings.TrimSpace(issuer),
@@ -157,6 +167,7 @@ func (s *Service) Handler() http.Handler {
 	mux.HandleFunc("GET /oauth2/authorize", s.authorize)
 	mux.HandleFunc("POST /oauth2/token", s.token)
 	mux.HandleFunc("GET /oauth2/jwks", s.jwks)
+	mux.HandleFunc("GET /o/{org}/oauth2/jwks", s.orgJWKS)
 	mux.HandleFunc("POST /mint", s.mint)
 	return testbench.NormalizeMethod(mux)
 }
@@ -278,13 +289,48 @@ func (s *Service) token(w http.ResponseWriter, r *http.Request) {
 
 // jwks serves the public half of the signing key.
 func (s *Service) jwks(w http.ResponseWriter, _ *http.Request) {
-	public := s.signingKey.PublicKey
+	writeJWKS(w, &s.signingKey.PublicKey, keyID)
+}
+
+// orgJWKS serves the public half of an organization's own signing key.
+func (s *Service) orgJWKS(w http.ResponseWriter, r *http.Request) {
+	org := r.PathValue("org")
+	if !orgIssuerPath.MatchString("/o/" + org + "/oauth2/token") {
+		writeError(w, http.StatusNotFound, "not_found", "unknown organization")
+		return
+	}
+	key, err := s.orgKey(org)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "server_error", "generating the organization's key failed")
+		return
+	}
+	writeJWKS(w, &key.PublicKey, orgKeyID(org))
+}
+
+func writeJWKS(w http.ResponseWriter, public *rsa.PublicKey, kid string) {
 	writeJSON(w, http.StatusOK, map[string]any{"keys": []map[string]string{{
-		"kty": "RSA", "use": "sig", "alg": "RS256", "kid": keyID,
+		"kty": "RSA", "use": "sig", "alg": "RS256", "kid": kid,
 		"n": base64.RawURLEncoding.EncodeToString(public.N.Bytes()),
 		"e": base64.RawURLEncoding.EncodeToString(big.NewInt(int64(public.E)).Bytes()),
 	}}})
 }
+
+// orgKey returns the organization's signing key, generating it on first use.
+func (s *Service) orgKey(org string) (*rsa.PrivateKey, error) {
+	s.orgKeysMu.Lock()
+	defer s.orgKeysMu.Unlock()
+	if key, ok := s.orgKeys[org]; ok {
+		return key, nil
+	}
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		return nil, err
+	}
+	s.orgKeys[org] = key
+	return key, nil
+}
+
+func orgKeyID(org string) string { return keyID + "-org-" + org }
 
 // mint signs the JSON object in the request body as a token, adding the issuer, issue and
 // expiry times unless the body sets them. It stands in for a token the provider issued to a
@@ -315,10 +361,22 @@ func (s *Service) issuerFor(r *http.Request) string {
 	return "https://" + r.Host + "/oauth2/token"
 }
 
+// sign signs claims with the provider's key, or with an organization's own key when the
+// issuer is that organization's (orgIssuerPath).
 func (s *Service) sign(claims map[string]any) (string, error) {
+	key, kid := s.signingKey, keyID
+	if iss, _ := claims["iss"].(string); iss != "" {
+		if m := orgIssuerPath.FindStringSubmatch(iss); m != nil {
+			orgKey, err := s.orgKey(m[1])
+			if err != nil {
+				return "", err
+			}
+			key, kid = orgKey, orgKeyID(m[1])
+		}
+	}
 	token := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims(claims))
-	token.Header["kid"] = keyID
-	return token.SignedString(s.signingKey)
+	token.Header["kid"] = kid
+	return token.SignedString(key)
 }
 
 func (s *Service) sealGrant(g grant) (string, error) {

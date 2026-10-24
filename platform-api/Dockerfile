@@ -98,7 +98,6 @@ LABEL org.opencontainers.image.experimental="${EXPERIMENTAL}"
 RUN apt-get update && apt-get upgrade -y \
     && apt-get install -y --no-install-recommends \
         ca-certificates \
-        curl \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -119,13 +118,17 @@ COPY internal/database/schema.sqlite.sql     ./internal/database/schema.sqlite.s
 COPY resources/default-llm-provider-templates ./resources/default-llm-provider-templates
 COPY resources/openapi.yaml                  ./resources/openapi.yaml
 
-RUN if [ "$ENABLE_COVERAGE" = "true" ]; then mkdir -p /coverage && chown "$USER_UID:$USER_GID" /coverage; fi
+RUN if [ "$ENABLE_COVERAGE" = "true" ]; then mkdir -p /coverage && chown "$USER_UID:0" /coverage && chmod 775 /coverage; fi
 
 # Set GOCOVERDIR for coverage data collection (only effective when binary is built with -cover)
 ENV GOCOVERDIR=/coverage
 
+# The data directory is owned by the root group with group perms matching the owner,
+# so OpenShift's arbitrary UID (always in GID 0) can write to it.
 RUN mkdir -p /app/data /app/data/certs && \
-    chown -R wso2:appgroup /app
+    chown -R wso2:appgroup /app && \
+    chgrp -R 0 /app && \
+    chmod -R g=u /app
 
 EXPOSE ${PORT}
 

@@ -37,13 +37,13 @@ describe('Applications', () => {
 
     after(() => {
         // Delete via the management API using the logged-in admin session — apps
-        // are created_by-scoped, so this must run as admin (not the api-key path),
-        // and there is no CSRF on the applications endpoints. Robust cleanup that
-        // doesn't depend on the delete-modal UI.
+        // are created_by-scoped, so this must run as admin (not the api-key path).
+        // The applications endpoints require CSRF on mutating operations, so cleanup
+        // goes through cy.apiRequest which reads the XSRF-TOKEN cookie set by
+        // cy.login() and forwards it as X-CSRF-Token — matching what the browser
+        // does on the delete-modal UI, without depending on it.
         cy.login();
-        cy.request({
-            method: 'DELETE',
-            url: `${Cypress.env('BASE_PATH')}/api/v0.9/applications/${detailHandle}`,
+        cy.apiRequest('DELETE', `/api/v0.9/applications/${detailHandle}`, {
             failOnStatusCode: false,
         }).its('status').should('be.oneOf', [200, 404]); // 200 = deleted; 404 = already gone (idempotent). Any other status is a real failure.
     });

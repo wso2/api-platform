@@ -36,6 +36,9 @@ import { useAppShell } from '../../../../contexts/AppShellContext';
 import { buildOrgPath } from '../../../../utils/projectRouting';
 import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
 import { getErrorMessage, getFieldErrors } from '../../../../utils/apiError';
+import ReadOnlyTooltip, {
+  useOrgReadOnly,
+} from '../../../../Components/common/ReadOnlyTooltip';
 
 // Backend field names (from UpdateProjectRequest) mapped onto this form's state keys.
 const FIELD_NAME_MAP: Record<string, 'name' | 'description'> = {
@@ -49,6 +52,9 @@ function EditProjectForm() {
   const { currentOrganization, projectsForCurrentOrganization } = useAppShell();
   const { updateProject } = useProjects();
   const showSnackbar = useAIWorkspaceSnackbar();
+  // A read-only organization may not update anything; the control plane refuses
+  // the update, so the form must not offer to send it.
+  const isOrgReadOnly = useOrgReadOnly();
 
   const projectsListPath = buildOrgPath(currentOrganization, '/projects/list');
 
@@ -183,16 +189,18 @@ function EditProjectForm() {
           >
             Cancel
           </Button>
-          <Button
-            variant="contained"
-            onClick={handleSave}
-            disabled={!name.trim() || isSubmitting}
-          >
-            {isSubmitting ? (
-              <CircularProgress size={18} sx={{ color: 'inherit', mr: 1 }} />
-            ) : null}
-            Save Changes
-          </Button>
+          <ReadOnlyTooltip>
+            <Button
+              variant="contained"
+              onClick={handleSave}
+              disabled={!name.trim() || isSubmitting || isOrgReadOnly}
+            >
+              {isSubmitting ? (
+                <CircularProgress size={18} sx={{ color: 'inherit', mr: 1 }} />
+              ) : null}
+              Save Changes
+            </Button>
+          </ReadOnlyTooltip>
         </Box>
       </Box>
     </PageContent>

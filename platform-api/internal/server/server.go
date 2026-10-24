@@ -298,7 +298,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		service.NewAgentProxyDefinition(agentProxyRepo, &utils.AgentProxyUtils{}),
 		service.NewGraphQLAPIDefinition(graphqlAPIRepo, projectRepo),
 	)
-	deploymentService := service.NewDeploymentService(apiRepo, artifactRepo, deploymentRepo, gatewayRepo, orgRepo, apiKeyRepo, gatewayEventsService, auditRepo, apiUtil, artifactDefinitions, cfg, slogger)
+	deploymentService := service.NewDeploymentService(apiRepo, artifactRepo, deploymentRepo, gatewayRepo, orgRepo, apiKeyRepo, gatewayEventsService, auditRepo, apiUtil, artifactDefinitions, identityService, cfg, slogger)
 	llmTemplateService := service.NewLLMProviderTemplateService(llmTemplateRepo, auditRepo, identityService)
 	llmProviderService := service.NewLLMProviderService(llmProviderRepo, llmTemplateRepo, orgRepo, llmTemplateSeeder, deploymentRepo, gatewayRepo, gatewayEventsService, slogger, auditRepo, cfg, identityService)
 	llmProviderService.SetCustomPolicyRepository(customPolicyRepo)
@@ -320,6 +320,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		gatewayEventsService,
 		artifactRepo,
 		artifactDefinitions,
+		identityService,
 		cfg,
 		slogger,
 	)
@@ -336,6 +337,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		gatewayEventsService,
 		artifactRepo,
 		artifactDefinitions,
+		identityService,
 		cfg,
 		slogger,
 	)
@@ -348,6 +350,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		apiKeyRepo,
 		gatewayEventsService,
 		artifactDefinitions,
+		identityService,
 		cfg,
 		slogger,
 	)
@@ -359,6 +362,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		apiKeyRepo,
 		gatewayEventsService,
 		artifactDefinitions,
+		identityService,
 		cfg,
 		slogger,
 	)
@@ -371,6 +375,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		artifactRepo,
 		gatewayEventsService,
 		artifactDefinitions,
+		identityService,
 		cfg,
 		slogger,
 	)
@@ -420,7 +425,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	}
 	monetizationAdminService := service.NewMonetizationAdminService(meterRepo, subscriptionPlanPricingRepo,
 		subscriptionPlanRepo, slogger)
-	publicationService := service.NewPublicationService(artifactRepo, apiPortalRepo, documentRepo, subscriptionPlanRepo, publicationRepo, portalPublisher, cfg.APIPortalPublication.OverallTimeout, slogger)
+	publicationService := service.NewPublicationService(artifactRepo, apiPortalRepo, documentRepo, subscriptionPlanRepo, publicationRepo, portalPublisher, cfg.APIPortalPublication.OverallTimeout, cfg.PublicationArchiveMaxBytes, slogger)
 
 	// Initialize handlers
 	orgHandler := handler.NewOrganizationHandler(orgService, identityService, slogger)
@@ -581,10 +586,14 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		Gateways:   gatewayService,
 		Projects:   projectService,
 		APIPortals: apiPortalService,
+		// Read-only lookups, so a plugin can tell a brand-new API from another
+		// version of an existing one — which no route answers on its own.
+		APIs: apiService,
 		// Kind-routed, so a plugin names the artifact kind alongside the handle and
 		// reaches the same services the platform's own per-kind paths do.
-		Deployments:   deploymentsByKind,
+		Deployments:   service.PluginDeployments{DeploymentsByKind: deploymentsByKind, Projects: artifactRepo},
 		Organizations: orgService,
+		Identity:      identityService,
 		Config:        cfg,
 		Logger:        slogger,
 	}
@@ -1219,19 +1228,28 @@ func newPortalPublisher(authRegistry *service.APIPortalAuthRegistry, cfg *config
 	if err != nil {
 		return nil, fmt.Errorf("failed to build the API Portal HTTP client: %w", err)
 	}
-	pushClient, err := client.NewRetryableHTTPClient(client.RetryConfig{
+	listingClient, err := client.NewRetryableHTTPClient(client.RetryConfig{
 		MaxRetries:     cfg.MaxRetries,
 		AttemptTimeout: cfg.ListingRequestTimeout,
 		Backoff:        cfg.RetryBackoff,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to build the API Portal push HTTP client: %w", err)
+		return nil, fmt.Errorf("failed to build the API Portal listing HTTP client: %w", err)
+	}
+	contentClient, err := client.NewRetryableHTTPClient(client.RetryConfig{
+		MaxRetries:     cfg.MaxRetries,
+		AttemptTimeout: cfg.ContentRequestTimeout,
+		Backoff:        cfg.RetryBackoff,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to build the API Portal content HTTP client: %w", err)
 	}
 	slogger.Info("Initialized the real HTTP publisher for API Publication",
 		"requestTimeout", cfg.RequestTimeout,
 		"listingRequestTimeout", cfg.ListingRequestTimeout,
+		"contentRequestTimeout", cfg.ContentRequestTimeout,
 		"maxRetries", cfg.MaxRetries,
 		"retryBackoff", cfg.RetryBackoff,
 		"overallTimeout", cfg.OverallTimeout)
-	return service.NewHTTPPortalPublisher(authRegistry, lightClient, pushClient, cfg.PlanListingBudget()), nil
+	return service.NewHTTPPortalPublisher(authRegistry, lightClient, listingClient, contentClient, cfg.PlanListingBudget()), nil
 }

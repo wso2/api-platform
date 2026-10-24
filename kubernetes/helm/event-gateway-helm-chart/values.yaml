@@ -14,6 +14,59 @@ serviceAccount:
   annotations: {}
   name: ""
 
+# OpenShift-specific resources. Routes are rendered only when openshift.enabled=true
+# and the individual route is enabled. Security contexts are configured per component
+# under eventGateway.<component>.deployment.{podSecurityContext,securityContext}.
+openshift:
+  enabled: false
+  routes:
+    # Default TLS settings shared by every route; a route's own `tls` block overrides
+    # these key by key.
+    tls:
+      # passthrough | edge | reencrypt
+      termination: passthrough
+      # None | Allow | Redirect (passthrough accepts only None or Redirect)
+      insecureEdgeTerminationPolicy: None
+      # PEM certificate, key and CA chain served by the router (edge and reencrypt only).
+      # Leave empty to use the router's default certificate.
+      certificate: ""
+      key: ""
+      caCertificate: ""
+      # PEM CA that signed the backend certificate (reencrypt only). Required for reencrypt unless
+      # eventGateway.gatewayRuntime.tls.certificateProvider=secret holds a certificate signed by the
+      # OpenShift service CA.
+      destinationCACertificate: ""
+    # WebSub hub: subscribe, unsubscribe and publish (gateway-runtime Service).
+    websub:
+      enabled: true
+      # Empty lets OpenShift generate <route-name>-<namespace>.<apps-domain>.
+      hostname: ""
+      # Service port name: "websub-https" (TLS, for passthrough/reencrypt) or "websub-http" (plain, for edge).
+      targetPort: websub-https
+      annotations: {}
+      labels: {}
+      tls: {}
+    # WebSocket (WebBroker) connections (gateway-runtime Service).
+    websocket:
+      enabled: true
+      hostname: ""
+      # Service port name: "websocket-https" (TLS, for passthrough/reencrypt) or "websocket" (plain, for edge).
+      targetPort: websocket-https
+      annotations: {}
+      labels: {}
+      tls: {}
+    # Controller management REST API (plain HTTP, so edge termination only).
+    # Off by default: it is an administrative surface. Install fails while
+    # eventGateway.config.controller.auth still has the default password or no authentication.
+    managementApi:
+      enabled: false
+      hostname: ""
+      annotations: {}
+      labels: {}
+      tls:
+        termination: edge
+        insecureEdgeTerminationPolicy: Redirect
+
 # Component-level configuration
 
 eventGateway:
@@ -259,7 +312,7 @@ eventGateway:
       priorityClassName: ""
       livenessProbe:
         httpGet:
-          path: /api/admin/v0.9/health
+          path: /api/admin/v1/health
           port: admin
         initialDelaySeconds: 10
         periodSeconds: 10
@@ -267,7 +320,7 @@ eventGateway:
         failureThreshold: 3
       readinessProbe:
         httpGet:
-          path: /api/admin/v0.9/health
+          path: /api/admin/v1/health
           port: admin
         initialDelaySeconds: 5
         periodSeconds: 5

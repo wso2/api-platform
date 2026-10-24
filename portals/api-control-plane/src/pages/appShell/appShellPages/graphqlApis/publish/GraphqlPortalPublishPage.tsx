@@ -35,7 +35,7 @@ export function GraphqlPortalPublishPage() {
   );
 
   return (
-    <AppPage hideBreadcrumbs>
+    <AppPage sx={{ pb: 2 }}>
       <PortalPublishPageContent target={target} />
     </AppPage>
   );

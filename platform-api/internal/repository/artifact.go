@@ -162,6 +162,33 @@ func (r *ArtifactRepo) GetAPIMetadataByHandleAndKind(handle, kind, orgUUID strin
 	return metadata, nil
 }
 
+// GetProjectHandle returns the handle of the project an artifact of the given kind
+// belongs to. found is false when no such artifact exists in the organization; a
+// found artifact of a kind that has no project, or that belongs to none, has an
+// empty project handle.
+func (r *ArtifactRepo) GetProjectHandle(kind, handle, orgUUID string) (projectHandle string, found bool, err error) {
+	entry, ok := r.reg.TableByKindKey(kind)
+	if !ok {
+		return "", false, fmt.Errorf("%w: %q", ErrUnknownArtifactKind, kind)
+	}
+	if !entry.HasProject {
+		exists, err := r.Exists(kind, handle, orgUUID)
+		return "", exists, err
+	}
+	query := fmt.Sprintf(
+		"SELECT p.handle FROM %s t LEFT JOIN projects p ON p.uuid = t.project_uuid WHERE t.handle = ? AND t.organization_uuid = ?",
+		entry.Table,
+	)
+	var project sql.NullString
+	if err := r.db.QueryRow(r.db.Rebind(query), handle, orgUUID).Scan(&project); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", false, nil
+		}
+		return "", false, err
+	}
+	return project.String, true, nil
+}
+
 // GetMetadataByUUIDs returns a map of artifact UUID to minimal metadata (handle, kind, ...)
 // for the given UUIDs, resolved across all registered artifact tables. Missing UUIDs are
 // simply absent from the returned map. Used for bulk handle/kind resolution (avoids N+1 queries).

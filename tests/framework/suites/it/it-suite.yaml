@@ -49,6 +49,9 @@ blocks:
       - name: rest-apis
         features:
           - features/apiportal/core/rest_apis.feature
+      - name: rest-api-versions
+        features:
+          - features/apiportal/core/rest_api_versions.feature
       - name: resources
         features:
           - features/apiportal/core/resources.feature
@@ -216,17 +219,241 @@ blocks:
         features:
           - features/apiportal/organizations/foreign_org_login.feature
 
-  - name: gateway-core
-    parallel: 7
+  # Which hostnames the HTTPS listener asks for a client certificate. What it asks is state of
+  # the whole gateway, so runners take turns, and each block sets its own downstream_tls
+  # settings. The settings do not depend on the database, so only the default block repeats
+  # on every engine.
+  - name: gateway-mtls-hostnames
+    parallel: 1
     components:
       - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/mtls-event-hub.toml
         db:
           matrix: [sqlite, postgres, sqlserver]
       - name: testbench
     runners:
+      - name: mtls-hostnames
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mtls_hostnames.feature
+
+  - name: gateway-mtls-hostnames-required
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/mtls-dedicated-hostname.toml
+        db: sqlite
+      - name: testbench
+    runners:
+      - name: mtls-hostnames-required
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mtls_hostnames_required.feature
+
+  - name: gateway-mtls-hostnames-all-connections
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/mtls-all-connections.toml
+        db: sqlite
+      - name: testbench
+    runners:
+      - name: mtls-hostnames-all-connections
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mtls_hostnames_all_connections.feature
+
+  - name: gateway-mtls-hostnames-all-connections-required
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/mtls-all-connections-dedicated-hostname.toml
+        db: sqlite
+      - name: testbench
+    runners:
+      - name: mtls-hostnames-all-connections-required
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mtls_hostnames_all_connections_required.feature
+
+  # Mutual TLS scenarios change the client authority pool and whether the HTTPS listener
+  # asks for a certificate, which is state of the whole gateway, so runners take turns.
+  - name: gateway-mtls
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/mtls.toml
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: testbench
+    runners:
+      - name: mtls-auth
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mtls_auth.feature
+      - name: mtls-client-ca-pool
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mtls_client_ca_pool.feature
+      - name: mtls-pool-references
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mtls_pool_references.feature
+      - name: mtls-listener
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mtls_listener.feature
+      - name: mtls-header-relay
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mtls_header_relay.feature
+
+  # The relayed client certificate header is believed from any connection here, a gateway-wide
+  # setting the other mutual TLS blocks must not see.
+  - name: gateway-mtls-trust-any
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/mtls-header-trust-any.toml
+        db: sqlite
+      - name: testbench
+    runners:
+      - name: mtls-header-bypass
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mtls_header_bypass.feature
+
+  # Mutual TLS outcomes in the access log, analytics and metrics. The block reads gateway-wide
+  # certificate gauges and its own JSON access log lines, so runners take turns.
+  - name: gateway-mtls-observability
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/mtls-observability.toml
+        db: sqlite
+      - name: testbench
+      - name: tls-backend
+    runners:
+      - name: mtls-observability
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mtls_observability.feature
+
+  # Outbound mutual TLS adds gateway identities and trust certificates and never a client
+  # authority, so it has its own gateway and runs beside the inbound block.
+  - name: gateway-mtls-outbound
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/mtls-outbound.toml
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: testbench
+      - name: tls-backend
+    runners:
+      - name: mtls-outbound
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mtls_outbound.feature
+
+  # The mutual TLS scenarios on a gateway with two controllers sharing one PostgreSQL
+  # database. One serves the management API; the other alone feeds the runtime, so every
+  # certificate and API change reaches the runtime through the event path between them.
+  - name: gateway-mtls-ha
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/mtls-ha.toml
+        db: postgres
+      - name: testbench
+      - name: tls-backend
+    wiring:
+      platform-gateway:
+        controllers: 2
+    runners:
+      - name: mtls-auth
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mtls_auth.feature
+      - name: mtls-client-ca-pool
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mtls_client_ca_pool.feature
+      - name: mtls-pool-references
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mtls_pool_references.feature
+      - name: mtls-listener
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mtls_listener.feature
+      - name: mtls-header-relay
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mtls_header_relay.feature
+      - name: mtls-observability
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mtls_observability.feature
+      - name: mtls-outbound
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mtls_outbound.feature
+
+  # The default client certificate to backends. The switch is gateway configuration (on by
+  # default; the off block sets it false) and the default identity is gateway-wide state, so
+  # each block runs its scenarios one at a time.
+  - name: gateway-mtls-default-identity-off
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/mtls-default-identity-off.toml
+        db: sqlite
+      - name: testbench
+      - name: tls-backend
+    runners:
+      - name: mtls-default-identity-off
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mtls_default_identity_off.feature
+
+  - name: gateway-mtls-default-identity-on
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/mtls-default-identity.toml
+        db: sqlite
+      - name: testbench
+      - name: tls-backend
+    runners:
+      - name: mtls-default-identity-on
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mtls_default_identity.feature
+
+  - name: gateway-core
+    parallel: 7
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/gateway-signing.toml
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: testbench
+    wiring:
+      platform-gateway:
+        signingKeys: true
+    runners:
+      - name: gateway-jwks
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/security/jwks.feature
       - name: api-error-responses
         features:
           - features/gateway/core/api_error_responses.feature
+      - name: request-id-response
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/core/request_id_response.feature
       - name: health
         features:
           - features/gateway/core/health.feature
@@ -243,6 +470,28 @@ blocks:
       - name: api-keys
         features:
           - features/gateway/security/api_keys.feature
+      - name: subscription-management
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/core/subscription_management.feature
+      - name: subscription-plan-management
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/core/subscription_plan_management.feature
+      # The ap CLI built from this checkout, driving the gateway through its management and
+      # admin APIs. The CLI follows the current contracts, so it is not run against 1.1.0.
+      - name: ap-cli-gateway
+        tags: "gateway-version>1.1.0"
+        features:
+          - features/cli/gateway/management.feature
+          - features/cli/gateway/apply.feature
+          - features/cli/gateway/rest_api.feature
+          - features/cli/gateway/mcp.feature
+          - features/cli/gateway/image_build.feature
+      - name: ap-cli-subscription
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/cli/gateway/subscription.feature
       - name: api-with-policies
         features:
           - features/gateway/core/api_with_policies.feature
@@ -252,10 +501,6 @@ blocks:
       - name: lazy-resources-xds
         features:
           - features/gateway/core/lazy_resources_xds.feature
-      - name: dynamic-endpoint
-        tags: "gateway-version>=1.2.0"
-        features:
-          - features/gateway/routes-policies/dynamic_endpoint.feature
       - name: route-path-matching
         features:
           - features/gateway/routes/route_path_matching.feature
@@ -271,9 +516,6 @@ blocks:
         tags: "gateway-version>=1.2.0"
         features:
           - features/gateway/routes/header_routing.feature
-      - name: host-rewrite
-        features:
-          - features/gateway/routes-policies/host_rewrite.feature
       - name: redirect
         tags: "gateway-version>=1.2.0"
         features:
@@ -281,9 +523,6 @@ blocks:
       - name: request-rewrite
         features:
           - features/gateway/routes-policies/request_rewrite.feature
-      - name: cors
-        features:
-          - features/gateway/security-policies/cors.feature
       - name: respond
         features:
           - features/gateway/routes-policies/respond.feature
@@ -317,26 +556,16 @@ blocks:
         features:
           - features/gateway/core/cel_conditions.feature
       - name: certificates
+        tags: "gateway-version>1.2.0;~@certificate-refusal-1.2.0"
+        features:
+          - features/gateway/security/certificates.feature
+      - name: certificates-1.2.0
+        tags: "gateway-version<=1.2.0;~@certificate-refusal-current"
         features:
           - features/gateway/security/certificates.feature
       - name: secrets
         features:
           - features/gateway/security/secrets.feature
-      - name: basic-ratelimit
-        features:
-          - features/gateway/ratelimit-policies/basic_ratelimit.feature
-      - name: ratelimit-headers
-        features:
-          - features/gateway/ratelimit-policies/ratelimit_headers.feature
-      - name: ratelimit-cost-extraction
-        features:
-          - features/gateway/ratelimit-policies/ratelimit_cost_extraction.feature
-      - name: ratelimit-key-extraction
-        features:
-          - features/gateway/ratelimit-policies/ratelimit_key_extraction.feature
-      - name: ratelimit-multi-quota
-        features:
-          - features/gateway/ratelimit-policies/ratelimit_multi_quota.feature
       - name: token-based-ratelimit
         features:
           - features/ai-workspace-gateway/ratelimit-policies/token_based_ratelimit.feature
@@ -428,6 +657,10 @@ blocks:
         tags: "gateway-version>1.2.0"
         features:
           - features/ai-workspace-gateway/mcp/mcp_legacy_upstream_modern_client.feature
+      - name: mcp-upstream-auth
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/ai-workspace-gateway/mcp/mcp_upstream_auth.feature
       - name: graphql-deploy
         tags: "gateway-version>1.2.0"
         features:
@@ -436,10 +669,6 @@ blocks:
         tags: "gateway-version>1.2.0"
         features:
           - features/graphql_api_keys.feature
-      - name: oauth2-auth
-        tags: "gateway-version>1.2.0"
-        features:
-          - features/gateway/security-policies/oauth2_auth.feature
       - name: policy-engine-admin
         features:
           - features/gateway/core/policy_engine_admin.feature
@@ -525,6 +754,24 @@ blocks:
       - name: log-message
         features:
           - features/gateway/observability-policies/log_message.feature
+
+  - name: gateway-request-id-disabled
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/request-id-response.toml
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: testbench
+    runners:
+      - name: request-id-disabled
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/core/request_id_response_disabled.feature
+      - name: jwks-disabled
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/security/jwks_disabled.feature
 
   - name: vhost-routing-single
     parallel: 1
@@ -663,13 +910,6 @@ blocks:
         tags: "gateway-version>1.2.0"
         features:
           - features/ai-workspace-gateway/mcp-policies/mcp_gateway_url_precedence.feature
-      - name: jwt-auth
-        features:
-          - features/gateway/security-policies/jwt_auth.feature
-      - name: jwt-auth-scope-claim-rules
-        tags: "gateway-version>=1.2.0"
-        features:
-          - features/gateway/security-policies/jwt_auth_scope_claim_rules.feature
       - name: graphql-policies
         tags: "gateway-version>1.2.0"
         features:
@@ -976,6 +1216,44 @@ blocks:
       - name: devportal-webhook
         features:
           - features/apiportal/webhooks/devportal_webhook.feature
+
+  # Platform-api working with an API Portal and a gateway: publishing a REST API to the portal.
+  # Platform-api registers the portal over HTTPS and trusts its certificate, so the block overlays
+  # the portal's own certificate onto platform-api's outbound trust and gives the portal the hash
+  # of the key platform-api publishes with. The portal stages its product role file, which grants
+  # the platform-api-system role the publishing calls are authorized as; the shared IT role files
+  # do not. The outage runner stops the portal, so runners must not overlap: keep parallel at 1.
+  - name: platform-api-gateway-api-portal
+    parallel: 1
+    components:
+      - name: platform-api
+        overlay: tests/framework/core/catalog/overlays/platform-api-portal-publishing.toml
+        db: postgres
+      - name: api-portal
+        dependsOn: [platform-api]
+        db: postgres
+        overlay: tests/framework/core/catalog/overlays/api-portal-publishing.toml
+        stagedFiles:
+          role-to-scope-mapping.yaml: portals/api-portal/resources/role-to-scope-mapping.yaml
+      - name: platform-gateway
+        dependsOn: [platform-api]
+        db: postgres
+      - name: testbench
+    runners:
+      - name: publication-lifecycle
+        features:
+          - features/apiportal/publishing/publication_lifecycle.feature
+      - name: publication-failures
+        features:
+          - features/apiportal/publishing/publication_failures.feature
+      - name: publication-content
+        # Excludes the scenarios for content that stays on the portal after it is unselected.
+        features:
+          - features/apiportal/publishing/publication_content.feature
+        tags: "~@known-issue"
+      - name: publication-outage
+        features:
+          - features/apiportal/publishing/publication_outage.feature
 
   # Policy error compatibility: every migrated policy's main rejection, held to the error
   # response the policy returned before the change. The policies come from the adjacent

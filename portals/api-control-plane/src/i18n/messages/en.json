@@ -888,7 +888,7 @@
     "description": "Label for the built-in organization-level Settings tab listing the usage paid plans charge for."
   },
   "apiControlPlane.navigation.useSettingsTabs.subscriptionPlansTab": {
-    "defaultMessage": "Subscription plans",
+    "defaultMessage": "Subscription Plans",
     "description": "Label for the built-in organization-level Settings tab listing rate-limit tiers."
   },
   "apiControlPlane.pages.appShell.APIQuickSelector.apis": {
@@ -943,20 +943,16 @@
     "defaultMessage": "Edit API details",
     "description": "Accessible label and tooltip for the button beside the API name, which opens the edit page."
   },
-  "apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.gatewayManaged": {
-    "defaultMessage": "Gateway-managed",
-    "description": "Chip marking an API that was discovered from a gateway and cannot be edited here."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.gatewayManagedHint": {
-    "defaultMessage": "Discovered from a data-plane gateway, so it is read-only in this console.",
-    "description": "Tooltip explaining the gateway-managed chip."
-  },
   "apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.transports.label": {
     "defaultMessage": "Transports",
     "description": "Label for the protocols an API is exposed over (HTTP, HTTPS)."
   },
   "apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.unknownCreator": {
     "defaultMessage": "—"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.viewDeployments": {
+    "defaultMessage": "View Deployments",
+    "description": "Button on the API overview header that opens the API's deployment page."
   },
   "apiControlPlane.pages.appShell.appShellPages.apis.ApiThumbnailManager.changeThumbnail": {
     "defaultMessage": "Change thumbnail"
@@ -1336,8 +1332,16 @@
   "apiControlPlane.pages.appShell.appShellPages.apis.overview.EndpointsPanel.endpointRequired": {
     "defaultMessage": "Enter a valid endpoint URL."
   },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.EndpointsPanel.gatewayManaged": {
+    "defaultMessage": "This API was created from a gateway, so its endpoint is managed by the gateway and cannot be edited here.",
+    "description": "Tooltip on the disabled Edit endpoint button of a read-only (gateway-created) API."
+  },
   "apiControlPlane.pages.appShell.appShellPages.apis.overview.EndpointsPanel.notConfigured": {
     "defaultMessage": "No endpoint configured"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.EndpointsPanel.notEditable": {
+    "defaultMessage": "This endpoint cannot be edited here.",
+    "description": "Tooltip on the disabled Edit endpoint button when no more specific reason applies."
   },
   "apiControlPlane.pages.appShell.appShellPages.apis.overview.EndpointsPanel.save": {
     "defaultMessage": "Save"
@@ -1426,6 +1430,10 @@
   "apiControlPlane.pages.appShell.appShellPages.deploy.DeployPage.emptyTitle": {
     "defaultMessage": "No gateway added yet",
     "description": "Empty state when the organization has no gateways to deploy to."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.deploy.DeployPage.gatewayManaged": {
+    "defaultMessage": "This API was created from a gateway. You can view its deployments, but deploy, redeploy, restore and undeploy actions are managed by the gateway and are unavailable in the API Control Plane.",
+    "description": "Info banner on the Deploy page of a read-only API, i.e. one that a gateway pushed to the control plane."
   },
   "apiControlPlane.pages.appShell.appShellPages.deploy.DeployPage.loading": {
     "defaultMessage": "Loading deploy state",
@@ -1944,6 +1952,14 @@
     "defaultMessage": "Policies are attached to a single API.",
     "description": "Explains why an API must be picked before this page can render."
   },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.PoliciesPageTitle.subtitle": {
+    "defaultMessage": "Policies the gateway applies to this API’s traffic, such as authentication, rate limiting and header changes.",
+    "description": "Description under the Policies page heading."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.PoliciesPageTitle.title": {
+    "defaultMessage": "Policies",
+    "description": "Heading of the Policies page of an API. Noun."
+  },
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyConfigDrawer.attachPolicy": {
     "defaultMessage": "Attach policy",
     "description": "Attaches the configured policy to the selected scope. Verb phrase."
@@ -2035,12 +2051,8 @@
     "defaultMessage": "Search resources"
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.ReadOnlyPoliciesNotice.body": {
-    "defaultMessage": "This API was discovered from a data-plane gateway, so its policies are read-only in this console. Change them on the gateway.",
-    "description": "Explains why the policies of a gateway-managed API cannot be added, edited or removed."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.develop.policies.ReadOnlyPoliciesNotice.title": {
-    "defaultMessage": "Policies cannot be changed here",
-    "description": "Title of the notice shown on the policies page of a gateway-managed API."
+    "defaultMessage": "This API was created from a gateway. You can view its policies, but attach, edit, remove and reorder actions are managed by the gateway and are unavailable in the API Control Plane.",
+    "description": "Info banner on the Policies page of a read-only API, i.e. one that a gateway pushed to the control plane."
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.SchemaField.addEntry": {
     "defaultMessage": "Add entry",
@@ -2619,6 +2631,10 @@
   "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.errorMessage": {
     "defaultMessage": "Unable to load the publish details."
   },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.inactivePlansBlock": {
+    "defaultMessage": "Clear inactive plans to save or publish: {names}.",
+    "description": "Warning when Save Draft or Publish is blocked because the selection still holds inactive plans. {names} is a comma-separated list of plan names."
+  },
   "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.loading": {
     "defaultMessage": "Loading publish details"
   },
@@ -2628,6 +2644,10 @@
   "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.publishedBannerMeta": {
     "defaultMessage": "Updated {time}",
     "description": "Banner byline. {time} is a relative time such as \"2 days ago\"."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.removedPlans": {
+    "defaultMessage": "A selected subscription plan no longer exists and was removed from the selection.",
+    "description": "Notice when a plan deleted elsewhere is dropped from the selected plans."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.subtitle": {
     "defaultMessage": "To <name>{portalName}</name>",
@@ -2701,8 +2721,19 @@
   "apiControlPlane.pages.appShell.appShellPages.portals.components.ApiDetailsTab.versionLabel": {
     "defaultMessage": "Version"
   },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PlanCard.inactive": {
+    "defaultMessage": "Inactive",
+    "description": "Status pill on a plan card."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PlanCard.inactiveSelected": {
+    "defaultMessage": "Clear inactive plan to save or publish."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PlanCard.unlimitedValue": {
+    "defaultMessage": "Unlimited",
+    "description": "Plan card value when the plan has no configured limit."
+  },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.PortalPublicationCard.goToPublish": {
-    "defaultMessage": "Go to publish",
+    "defaultMessage": "Go to Publish",
     "description": "Card action opening the publish flow for this API on this portal."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.PortalPublicationCard.statusLabel": {
@@ -2710,7 +2741,7 @@
     "description": "Row label for the API's publication status on this portal."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.PortalPublicationCard.viewInPortal": {
-    "defaultMessage": "View in portal",
+    "defaultMessage": "View in Portal",
     "description": "Link opening this API's own page on the portal, in a new tab."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.PublicationLoadError.forbiddenMessage": {
@@ -2770,64 +2801,38 @@
     "defaultMessage": "This is not valid {format}: {detail}",
     "description": "{format} is JSON, YAML or GraphQL; {detail} is the parser’s own message naming the line."
   },
-  "apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.columnName": {
-    "defaultMessage": "Plan"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.columnPricing": {
-    "defaultMessage": "Pricing"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.columnRateLimit": {
-    "defaultMessage": "Rate limit"
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.clearAll": {
+    "defaultMessage": "Clear all"
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.emptyDescription": {
-    "defaultMessage": "Create or activate plans in Settings."
+    "defaultMessage": "Create subscription plans in Settings to choose from here."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.emptyTitle": {
-    "defaultMessage": "No active subscription plans"
+    "defaultMessage": "No subscription plans"
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.error": {
     "defaultMessage": "Unable to load subscription plans."
   },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.inactiveSelectedSummary": {
+    "defaultMessage": "{count, plural, one {# inactive plan selected} other {# inactive plans selected}}",
+    "description": "Warning next to the selection summary: selected plans that are no longer active."
+  },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.loading": {
     "defaultMessage": "Loading subscription plans"
   },
-  "apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.noMatches.description": {
-    "defaultMessage": "Try a different search term."
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.publishedEmptyTitle": {
+    "defaultMessage": "This listing has no subscription plans."
   },
-  "apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.noMatches.title": {
-    "defaultMessage": "No matching plans"
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.publishedSummary": {
+    "defaultMessage": "{count, plural, one {<n>#</n> plan published} other {<n>#</n> plans published}}",
+    "description": "<n> wraps the number, which is styled."
   },
-  "apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.noneOffered": {
-    "defaultMessage": "No subscription plans",
-    "description": "Shown on the published version when it offers no subscription plans."
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.selectAll": {
+    "defaultMessage": "Select all"
   },
-  "apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.pagination.next": {
-    "defaultMessage": "Next page"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.pagination.previous": {
-    "defaultMessage": "Previous page"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.pagination.range": {
-    "defaultMessage": "{from}–{to} of {count, number}",
-    "description": "Pager summary: the plan rows shown on this page out of the active plans."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.pagination.rowsPerPage": {
-    "defaultMessage": "Plans per page"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.rateLimit": {
-    "defaultMessage": "{count, number} requests per {amount, plural, one {{unit, select, MINUTE {minute} HOUR {hour} DAY {day} MONTH {month} other {}}} other {# {unit, select, MINUTE {minutes} HOUR {hours} DAY {days} MONTH {months} other {}}}}",
-    "description": "A plan's rate limit, e.g. \"1,000 requests per hour\" or \"500 requests per 2 days\"."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.searchPlaceholder": {
-    "defaultMessage": "Search plans"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.unavailable": {
-    "defaultMessage": "No longer available",
-    "description": "Under a selected plan that has since been deactivated or deleted, so it cannot be offered."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.unlimited": {
-    "defaultMessage": "Unlimited",
-    "description": "Rate limit of a plan that sets none."
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.selectedSummary": {
+    "defaultMessage": "{count} of {total} plans selected",
+    "description": "{count} is a styled number rendered as a React element, not plain text; {total} is a plain number."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.utils.publicationDisplay.deprecated": {
     "defaultMessage": "Deprecated",
@@ -2849,6 +2854,21 @@
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.utils.publicationForm.versionRequired": {
     "defaultMessage": "Enter a version."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.utils.subscriptionPlanLimit.noRequestCap": {
+    "defaultMessage": "no request cap"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.utils.subscriptionPlanLimit.unitBandwidth": {
+    "defaultMessage": "{unit} / {amount, plural, one {{timeUnit, select, MINUTE {minute} HOUR {hour} DAY {day} other {month}}} other {# {timeUnit, select, MINUTE {minutes} HOUR {hours} DAY {days} other {months}}}}",
+    "description": "Bandwidth limit unit. {unit} is the server-supplied limitCountUnit (e.g. \"MB\"); {amount} and {timeUnit} describe the window."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.utils.subscriptionPlanLimit.unitRequests": {
+    "defaultMessage": "requests / {amount, plural, one {{timeUnit, select, MINUTE {minute} HOUR {hour} DAY {day} other {month}}} other {# {timeUnit, select, MINUTE {minutes} HOUR {hours} DAY {days} other {months}}}}",
+    "description": "Request-count limit unit. {amount} is how many time units the window spans; {timeUnit} is MINUTE, HOUR, DAY or MONTH."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.utils.subscriptionPlanLimit.unitTokens": {
+    "defaultMessage": "tokens / {amount, plural, one {{timeUnit, select, MINUTE {minute} HOUR {hour} DAY {day} other {month}}} other {# {timeUnit, select, MINUTE {minutes} HOUR {hours} DAY {days} other {months}}}}",
+    "description": "Token-count limit unit. {amount} and {timeUnit} describe the window."
   },
   "apiControlPlane.pages.appShell.appShellPages.projects.ProjectsList.deleteLabel": {
     "defaultMessage": "Delete {name}",
@@ -3168,7 +3188,7 @@
     "defaultMessage": "Define the rate and quota tiers applications can subscribe to."
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.title": {
-    "defaultMessage": "Subscription plans"
+    "defaultMessage": "Subscription Plans"
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.unlimitedChip": {
     "defaultMessage": "req · ∞",
@@ -4092,6 +4112,26 @@
     "defaultMessage": "cURL command",
     "description": "Heading of the generated command block. A noun."
   },
+  "apiControlPlane.pages.test.console.ExecuteModeSwitch.callModeLabel": {
+    "defaultMessage": "Send requests through the proxy or directly",
+    "description": "Accessible label for the toggle between the two ways of sending a request."
+  },
+  "apiControlPlane.pages.test.console.ExecuteModeSwitch.directHint": {
+    "defaultMessage": "Requests go straight from your browser, so the gateway must be reachable from this machine and allow this origin with a CORS policy.",
+    "description": "Tooltip shown while Direct is selected. States what the user takes on by choosing it — the browser, not the portal, now has to reach the gateway."
+  },
+  "apiControlPlane.pages.test.console.ExecuteModeSwitch.directMode": {
+    "defaultMessage": "Direct",
+    "description": "Toggle option sending the request from the browser straight to the gateway. An adverb describing how the request travels, not a command."
+  },
+  "apiControlPlane.pages.test.console.ExecuteModeSwitch.proxyHint": {
+    "defaultMessage": "Requests go through the portal server, so the gateway does not need a CORS policy.",
+    "description": "Tooltip shown while Through proxy is selected. Explains the benefit of the default, so the user can tell what they would give up by switching."
+  },
+  "apiControlPlane.pages.test.console.ExecuteModeSwitch.proxyMode": {
+    "defaultMessage": "Through proxy",
+    "description": "Toggle option relaying the request via the portal server. Describes the route a request takes, not a command."
+  },
   "apiControlPlane.pages.test.console.GatewaySection.copyEndpoint": {
     "defaultMessage": "Copy endpoint URL",
     "description": "Accessible label for the button copying the gateway invoke URL."
@@ -4164,6 +4204,20 @@
     "defaultMessage": "Test key",
     "description": "Accessible label for the field showing the test key."
   },
+  "apiControlPlane.pages.test.console.TestConsoleSpecViewer.allMethods": {
+    "defaultMessage": "All methods",
+    "description": "Option that leaves the resource list unfiltered by HTTP method."
+  },
+  "apiControlPlane.pages.test.console.TestConsoleSpecViewer.methodLabel": {
+    "defaultMessage": "Filter by method",
+    "description": "Accessible label for the HTTP method filter above the resource list."
+  },
+  "apiControlPlane.pages.test.console.TestConsoleSpecViewer.noResources": {
+    "defaultMessage": "No resources match your search."
+  },
+  "apiControlPlane.pages.test.console.TestConsoleSpecViewer.searchPlaceholder": {
+    "defaultMessage": "Search resources by path or summary"
+  },
   "apiControlPlane.pages.test.console.TestKeySection.expired": {
     "defaultMessage": "The key has expired.",
     "description": "Replaces the countdown once the test key is no longer valid. A whole sentence, because it follows another one in the same line."
@@ -4195,6 +4249,51 @@
   "apiControlPlane.pages.test.console.TestKeySection.title": {
     "defaultMessage": "Test key",
     "description": "Heading of the section holding the credential the console sends. A noun."
+  },
+  "apiControlPlane.pages.test.console.proxyTransport.apiNotFound": {
+    "defaultMessage": "This API could not be found. Try reloading the page.",
+    "description": "Shown when the control plane does not return the API being tested."
+  },
+  "apiControlPlane.pages.test.console.proxyTransport.busy": {
+    "defaultMessage": "The portal is handling too many test requests right now. Try again in a moment.",
+    "description": "Shown when the portal-side relay is at capacity. Not a gateway failure."
+  },
+  "apiControlPlane.pages.test.console.proxyTransport.gatewayNoEndpoint": {
+    "defaultMessage": "The selected gateway has no endpoint configured."
+  },
+  "apiControlPlane.pages.test.console.proxyTransport.gatewayNotDeployed": {
+    "defaultMessage": "This API is not deployed to the selected gateway. Deploy it first, then try again.",
+    "description": "Actionable: the gateway exists but the API has not been deployed to it."
+  },
+  "apiControlPlane.pages.test.console.proxyTransport.gatewayUnsupportedScheme": {
+    "defaultMessage": "The selected gateway’s endpoint is not an HTTP address, so it cannot be called from here."
+  },
+  "apiControlPlane.pages.test.console.proxyTransport.invalidRequest": {
+    "defaultMessage": "This request cannot be sent as written. Check the path, headers and parameters.",
+    "description": "Shown when the portal refused to send the request the form describes."
+  },
+  "apiControlPlane.pages.test.console.proxyTransport.noTarget": {
+    "defaultMessage": "Select a deployed gateway before sending a request."
+  },
+  "apiControlPlane.pages.test.console.proxyTransport.sessionExpired": {
+    "defaultMessage": "Your session has expired. Sign in again to continue testing."
+  },
+  "apiControlPlane.pages.test.console.proxyTransport.targetNotAllowed": {
+    "defaultMessage": "The portal is not configured to reach this gateway. Ask an administrator to allow it.",
+    "description": "Shown only when the egress policy refuses the target — an operator setting, not something the user can fix. Deliberately vague about the policy itself."
+  },
+  "apiControlPlane.pages.test.console.proxyTransport.tooLarge": {
+    "defaultMessage": "This request is too large to send from the console. Use the cURL command instead."
+  },
+  "apiControlPlane.pages.test.console.proxyTransport.unexpected": {
+    "defaultMessage": "The request could not be sent. Try again."
+  },
+  "apiControlPlane.pages.test.console.proxyTransport.unreachable": {
+    "defaultMessage": "The portal could not reach this gateway.",
+    "description": "Shown when the relay itself failed. Deliberately distinct from a gateway that answered with an error status."
+  },
+  "apiControlPlane.pages.test.console.proxyTransport.upstreamTimeout": {
+    "defaultMessage": "The gateway did not respond in time."
   },
   "apiControlPlane.permissions.useCan.denied": {
     "defaultMessage": "You don't have permission to perform this action.",

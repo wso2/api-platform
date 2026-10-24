@@ -99,6 +99,8 @@ type GatewayDeploymentSelectorProps = {
   onClose: () => void;
   /** The caller's own restore mutation, adapted to this drawer's uniform shape. */
   useRestore: UseDeploymentMutationHook;
+  /** Gateway-created API: restoring is the gateway's to manage, so it is blocked. */
+  readOnly?: boolean;
 };
 
 /**
@@ -113,6 +115,7 @@ export function GatewayDeploymentSelector({
   open,
   onClose,
   useRestore,
+  readOnly = false,
 }: GatewayDeploymentSelectorProps) {
   const intl = useIntl();
   // `useFormatters`, not the module-scope `Intl.*` in `utils/relativeTime`:
@@ -126,6 +129,9 @@ export function GatewayDeploymentSelector({
     deployments.find((item) => item.status === 'DEPLOYED')?.deploymentId ?? null;
 
   const handleRestore = () => {
+    // Re-checked here, not only on the button: the API can turn read-only
+    // while this drawer is already open.
+    if (readOnly) return;
     const deployment = deployments.find((item) => item.deploymentId === selectedId);
     if (!deployment) return;
     restoreMutation.mutate(
@@ -147,7 +153,10 @@ export function GatewayDeploymentSelector({
   };
 
   const canRestore =
-    selectedId !== null && selectedId !== currentDeployedId && !restoreMutation.isPending;
+    !readOnly &&
+    selectedId !== null &&
+    selectedId !== currentDeployedId &&
+    !restoreMutation.isPending;
 
   return (
     <Drawer

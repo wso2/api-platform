@@ -132,7 +132,7 @@ const GatewaysList: FC<GatewaysListProps> = ({
 
         {gateways.length === 0 ? (
           <Grid size={{ xs: 12 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', py: 6 }}>
+            <Box sx={{ alignItems: 'center', display: 'flex', justifyContent: 'center', py: 6, width: '100%' }}>
               <Stack spacing={1.5} alignItems="center" justifyContent="center" sx={{ textAlign: 'center' }}>
                 <Box component="img" src={NoGatewaysImage} alt="No gateways" sx={{ width: 200, maxWidth: '80%' }} />
                 <Typography variant="body1" color="text.secondary">

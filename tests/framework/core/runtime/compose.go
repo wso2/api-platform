@@ -151,6 +151,9 @@ func LaunchCompose(
 	for k, v := range opts.Env {
 		env[k] = v
 	}
+	for k, v := range spec.ProjectEnv {
+		env[k] = v
+	}
 	// Join the block network so the stack can reach other components.
 	env[EnvComposeNetwork] = opts.Network.Name()
 	// A compose-backed component's Limits have no effect unless its own compose file opts
@@ -695,7 +698,7 @@ func (c *ComposeStack) Logs(ctx context.Context) string {
 			fmt.Fprintf(&b, "(could not read logs: %v)\n", err)
 			continue
 		}
-		text, readErr := readAllString(rc)
+		text, readErr := readLimitedString(rc, maxLogBytes)
 		_ = rc.Close()
 		if readErr != nil {
 			fmt.Fprintf(&b, "(log read failed: %v)\n", readErr)

@@ -195,10 +195,7 @@ export default function AppHeader(props: Props) {
                     loading={isOrganizationsLoading}
                     onChange={handleOrganizationSelection}
                     renderOptionContent={(org) => (
-                      <ComplexSelect.MenuItem.Text
-                        primary={org.name}
-                        secondary={org.handle}
-                      />
+                      <ComplexSelect.MenuItem.Text primary={org.name} />
                     )}
                     label="Organizations"
                     emptyMessage="No organizations available"

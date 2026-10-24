@@ -239,7 +239,12 @@ function build() {
             // for all endpoints including API content ZIP uploads.
             fileUploader: {
                 storage: require('multer').memoryStorage(),
-                limits: { fileSize: config.uploads?.maxBytes || 10485760 },
+                limits: {
+                    fileSize: config.uploads?.maxBytes || 10485760,
+                    // Cap numeric array indexes in multipart field names (multer's default is
+                    // Infinity). No multipart field in the API Portal spec is an array.
+                    fieldArrayIndexLimit: 100,
+                },
             },
             // express-openapi-validator v5 (ajv 8): validateFormats is a boolean now
             // (the ajv6 'fast'/'full' modes are gone). true enables ajv-formats.

@@ -30,7 +30,9 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/handlers"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/certmetrics"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/controlplane"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/immutable"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/logger"
@@ -156,6 +158,11 @@ func main() {
 
 	if !cfg.Controller.Auth.Basic.Enabled && !cfg.Controller.Auth.IDP.Enabled {
 		log.Warn("No authentication configured: both basic auth and IDP are disabled. Gateway Controller API will allow all requests without authentication")
+	}
+
+	if cfg.Router.DownstreamTLS.ClientCertificateHeader.TrustAny {
+		log.Warn("client certificate header is trusted from any connection (trust_any = true); " +
+			"every request may impersonate any client on a network that is not fully trusted")
 	}
 
 	// In immutable mode, delete any stale SQLite files before opening the DB to
@@ -358,30 +365,54 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Initialize xDS snapshot manager with router config
-	snapshotManager := xds.NewSnapshotManager(configStore, log, &cfg.Router, db, cfg)
-
-	// Initialize SDS secret manager if custom certificates are configured
-	var sdsSecretManager *xds.SDSSecretManager
-	translator := snapshotManager.GetTranslator()
-
-	if translator != nil && translator.GetCertStore() != nil {
-		// Use the same cache and node ID as the main xDS to ensure Envoy can fetch secrets
-		sdsSecretManager = xds.NewSDSSecretManager(
-			translator.GetCertStore(),
-			snapshotManager.GetCache(),
-			"router-node", // Same node ID as main xDS
-			log,
-		)
-		// Update SDS secrets with current certificates
-		if err := sdsSecretManager.UpdateSecrets(); err != nil {
-			log.Warn("Failed to initialize SDS secrets", slog.Any("error", err))
-		} else {
-			log.Info("SDS secret manager initialized successfully")
-			// Set the SDS secret manager in snapshot manager so secrets are included in snapshots
-			snapshotManager.SetSDSSecretManager(sdsSecretManager)
-		}
+	// A stored mtls-auth API that can never authenticate a caller is a
+	// startup failure.
+	if err := config.ValidateMTLSStartupInvariant(configStore.GetAll(), cfg.Router.HTTPSEnabled,
+		cfg.Router.DownstreamTLS.ClientCertificateHeader.TrustAny); err != nil {
+		log.Error("Refusing to start", slog.Any("error", err))
+		os.Exit(1)
 	}
+
+	// Initialize xDS snapshot manager with router config. A certificate store
+	// that fails to load is a startup failure.
+	snapshotManager, err := xds.NewSnapshotManager(configStore, log, &cfg.Router, db, cfg)
+	if err != nil {
+		log.Error("Refusing to start: certificate store failed to initialize", slog.Any("error", err))
+		os.Exit(1)
+	}
+
+	// Publish the client authority pool so the mtls-auth policy holds it
+	// before any API is served.
+	clientAuthorities := utils.NewClientAuthorityPublisher(db, lazyResourceXDSManager)
+	if err := clientAuthorities.Publish(""); err != nil {
+		log.Error("Refusing to start: client certificate authorities could not be published", slog.Any("error", err))
+		os.Exit(1)
+	}
+
+	// The SDS secret manager serves the listener certificate, gateway
+	// identities and the upstream trust bundle from the certificate store.
+	// Without an encryption provider, gateway identity secrets fail to build
+	// rather than serve an undecrypted key.
+	translator := snapshotManager.GetTranslator()
+	certStore := translator.GetCertStore()
+	certStore.SetEncryptionManager(encryptionProviderManager)
+	// Same cache and node ID as the main xDS, so Envoy fetches secrets on the
+	// same stream.
+	sdsSecretManager := xds.NewSDSSecretManager(
+		certStore,
+		snapshotManager.GetCache(),
+		"router-node",
+		log,
+		cfg.Router.DownstreamTLS.CertPath,
+		cfg.Router.DownstreamTLS.KeyPath,
+		cfg.Router.HTTPSEnabled,
+	)
+	if err := sdsSecretManager.UpdateSecrets(); err != nil {
+		log.Error("Refusing to start: SDS secrets could not be initialized", slog.Any("error", err))
+		os.Exit(1)
+	}
+	log.Info("SDS secret manager initialized successfully")
+	snapshotManager.SetSDSSecretManager(sdsSecretManager)
 
 	// Build transformer registry for StoredConfig → RuntimeDeployConfig conversion
 	// (policyVersionResolver is hoisted above for the startup rehydration path).
@@ -416,7 +447,27 @@ func main() {
 	// registry learns to transform cannot be silently left off this map — WebSubApi's exclusion
 	// (it keeps the async-specific legacy translation path) is declared alongside the registry's
 	// own kind list instead.
+	// The gateway JWKS route (/.well-known/jwks) is gateway-owned: present
+	// on every virtual host whatever is deployed, its chain carried to the policy
+	// engine beside the deployed ones. Both halves are decided here, once, so
+	// Envoy never routes to a chain the policy engine was not given.
+	//
+	// [signing] jwks_endpoint_enabled = false turns it off and frees the path, for
+	// a gateway where a deployed API already serves it.
+	var gatewayJWKSConfig *models.RuntimeDeployConfig
+	gatewayJWKSEnabled := false
+	if !cfg.Signing.JWKSEndpointEnabled {
+		log.Info("Gateway JWKS endpoint disabled by configuration ([signing] jwks_endpoint_enabled = false)")
+	} else if gatewayJWKSConfig, gatewayJWKSEnabled = transform.GatewayJWKSRuntimeConfig(cfg, policyDefinitions); gatewayJWKSEnabled {
+		log.Info("Gateway JWKS route enabled", slog.String("path", constants.GatewayJWKSPath))
+	} else {
+		log.Info("Gateway JWKS system policy not in this build; JWKS route disabled")
+	}
+	// The path is reserved only while the gateway actually serves it.
+	config.SetGatewayJWKSPathReserved(gatewayJWKSEnabled)
+
 	if translator != nil {
+		translator.SetGatewayJWKSRoute(gatewayJWKSEnabled)
 		envoyTransformers := make(map[string]models.ConfigTransformer)
 		for _, kind := range transform.EnvoyTranslatorKinds() {
 			envoyTransformers[kind] = transformerRegistry
@@ -475,6 +526,9 @@ func main() {
 	runtimeStore := storage.NewRuntimeConfigStore()
 	policySnapshotManager.SetRuntimeStore(runtimeStore)
 	policySnapshotManager.SetConfigStore(configStore)
+	if gatewayJWKSEnabled {
+		policySnapshotManager.SetGatewayRuntimeConfigs(gatewayJWKSConfig)
+	}
 
 	// Initialize subscription snapshot manager (driven by DB storage)
 	subscriptionSnapshotManager := subscriptionxds.NewSnapshotManager(db, log)
@@ -508,6 +562,15 @@ func main() {
 	log.Info("Loaded runtime configs from API configurations",
 		slog.Int("total_apis", len(loadedAPIs)),
 		slog.Int("configs_loaded", loadedCount))
+	warnMtlsAPIsWithoutDedicatedHostname(loadedAPIs, &cfg.Router, log)
+	if gatewayJWKSEnabled {
+		if conflicts := transform.GatewayJWKSConflicts(runtimeStore.GetAll()); len(conflicts) > 0 {
+			log.Warn("Deployed routes use the gateway JWKS path and are shadowed by the gateway JWKS endpoint; "+
+				"move them to another path, or set [signing] jwks_endpoint_enabled = false to keep serving them",
+				slog.String("path", constants.GatewayJWKSPath),
+				slog.Any("routes", conflicts))
+		}
+	}
 
 	// Generate initial policy snapshot
 	log.Info("Generating initial policy xDS snapshot")
@@ -558,8 +621,15 @@ func main() {
 
 	// Create validator with policy validation support
 	validator := config.NewAPIValidator()
-	policyValidator := config.NewPolicyValidator(policyDefinitions)
+	mtlsAuthValidator := config.NewMtlsAuthValidator(db, cfg.Router.HTTPSEnabled,
+		cfg.Router.DownstreamTLS.ClientCertificateHeader.TrustAny, config.MtlsAuthParameterSchema(policyDefinitions)).
+		WithVHosts(cfg.Router.VHosts).
+		WithDedicatedHostnameRequired(cfg.Router.DownstreamTLS.MtlsRequiresDedicatedHostname).
+		WithAllConnectionsAsked(cfg.Router.DownstreamTLS.AsksAllConnections())
+	policyValidator := config.NewPolicyValidator(policyDefinitions, mtlsAuthValidator)
 	validator.SetPolicyValidator(policyValidator)
+	upstreamTLSValidator := config.NewUpstreamTLSValidator(db, cfg.Router.Upstream.TLS.DisableSslVerification)
+	validator.SetUpstreamTLSValidator(upstreamTLSValidator)
 	// GraphQLApi has no dedicated deployment-service constructor to pass this through
 	// (see graphql_deployment.go's KindConfigValidator registration model), so it is
 	// wired via a package-level setter instead of a constructor argument.
@@ -628,7 +698,9 @@ func main() {
 	)
 	agentSvc := agent.NewAgentService(
 		configStore, db, config.NewParser(),
-		config.NewAgentValidator().WithPolicyValidator(config.NewPolicyValidator(policyDefinitions)),
+		config.NewAgentValidator().
+			WithPolicyValidator(config.NewPolicyValidator(policyDefinitions, nil)).
+			WithUpstreamTLSValidator(upstreamTLSValidator),
 		log, eventHubInstance, secretsService, cfg.Controller.Server.GatewayID,
 	)
 	agentSvc.SetControlPlanePusher(cpClient, cfg.Controller.ControlPlane.DeploymentSyncEnabled)
@@ -668,6 +740,7 @@ func main() {
 		subscriptionSnapshotManager,
 		apiKeyXDSManager,
 		lazyResourceXDSManager,
+		clientAuthorities,
 		policyManager,
 		&cfg.Router,
 		log,
@@ -689,6 +762,7 @@ func main() {
 		snapshotManager,
 		policyManager,
 		lazyResourceXDSManager,
+		clientAuthorities,
 		log,
 		cpClient,
 		policyDefinitions,
@@ -707,6 +781,13 @@ func main() {
 		log.Error("Failed to create API server", slog.Any("error", err))
 		os.Exit(1)
 	}
+	// Without an encryption provider, gateway identity uploads are refused.
+	apiServer.SetEncryptionManager(encryptionProviderManager)
+
+	// Recompute certificate metrics and expiry warnings at startup and then
+	// every 24h.
+	certSweepCtx, certSweepCancel := context.WithCancel(context.Background())
+	go certmetrics.Sweep(certSweepCtx, db, log)
 
 	// Load immutable gateway artifacts from the filesystem (no-op when immutable mode is disabled).
 	if err := igw.LoadArtifacts(log); err != nil {
@@ -891,6 +972,8 @@ func main() {
 
 	log.Info("Shutting down Gateway-Controller")
 
+	certSweepCancel()
+
 	// Graceful shutdown with timeout
 	ctx, cancel = context.WithTimeout(context.Background(), cfg.Controller.Server.ShutdownTimeout)
 	defer cancel()
@@ -970,6 +1053,7 @@ func generateAuthConfig(config *config.Config) (commonmodels.AuthConfig, error) 
 
 		"GET /certificates":         {"admin", "developer"},
 		"POST /certificates":        {"admin"},
+		"PUT /certificates/{id}":    {"admin"},
 		"DELETE /certificates/{id}": {"admin"},
 		"POST /certificates/reload": {"admin"},
 

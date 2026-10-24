@@ -203,7 +203,7 @@ const messages = defineMessages({
   },
   title: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.title',
-    defaultMessage: 'Subscription plans',
+    defaultMessage: 'Subscription Plans',
   },
   unlimitedChip: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.unlimitedChip',

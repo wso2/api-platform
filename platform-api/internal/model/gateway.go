@@ -92,9 +92,13 @@ type APIGatewayWithDetails struct {
 	Endpoints         []string               `json:"endpoints" db:"-"`
 	IsCritical        bool                   `json:"isCritical" db:"is_critical"`
 	FunctionalityType string                 `json:"functionalityType" db:"functionality_type"`
-	IsActive          bool                   `json:"isActive" db:"is_active"`
-	CreatedAt         time.Time              `json:"createdAt" db:"created_at"`
-	UpdatedAt         time.Time              `json:"updatedAt" db:"updated_at"`
+	// Version is the release the gateway reported in its manifest (empty until
+	// it has connected); it selects release-specific behaviour such as which
+	// identity an API key event must carry.
+	Version   string    `json:"version" db:"version"`
+	IsActive  bool      `json:"isActive" db:"is_active"`
+	CreatedAt time.Time `json:"createdAt" db:"created_at"`
+	UpdatedAt time.Time `json:"updatedAt" db:"updated_at"`
 
 	// Association information
 	AssociatedAt         time.Time `json:"associatedAt" db:"associated_at"`

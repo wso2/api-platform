@@ -50,6 +50,7 @@ import {
 } from '../../apis/utils/developEdit';
 import { getDraggedPolicy, type PolicyScope, scopeId } from './policyDnd';
 import { PolicyConfigDrawer, type PolicyRef } from './PolicyConfigDrawer';
+import { PoliciesPageTitle } from './PoliciesPageTitle';
 import { ReadOnlyPoliciesNotice } from './ReadOnlyPoliciesNotice';
 
 const messages = defineMessages({
@@ -143,6 +144,7 @@ function DropZone({
   children,
 }: {
   active: boolean;
+  /** Rejects drops (and never highlights) — used for a read-only API. */
   disabled?: boolean;
   onEnter: () => void;
   onLeave: () => void;
@@ -182,10 +184,9 @@ export function PolicyPanel({ api }: { api: RestApi }) {
   const update = useUpdateRestApi();
   const hubEnabled = useIsPolicyHubConfigured();
   const restApiId = api.id;
-  // Synced from a data-plane gateway: the control plane rejects any change to
-  // its runtime artifact, so the policies are listed without the controls
-  // that would change them.
-  const readOnly = Boolean(api.readOnly);
+  // A gateway-created API is owned by that gateway: its policies are shown,
+  // but every action that would change them is disabled.
+  const readOnly = api.readOnly === true;
 
   const [apiPolicies, setApiPolicies] = useState<Policy[]>(api.policies ?? []);
   // Flattened once, lazily: from here the panel owns the edits, so re-deriving
@@ -248,6 +249,7 @@ export function PolicyPanel({ api }: { api: RestApi }) {
   // Click in the catalog (non-DnD fallback) attaches to whichever scope the user
   // last targeted via its "Add Policy" button, defaulting to API level.
   const pickFromCatalog = (policy: PolicySummary) => {
+    if (readOnly) return;
     setEditing(null);
     setScope((current) => current ?? { kind: 'api' });
     setPicked(policy);
@@ -324,6 +326,7 @@ export function PolicyPanel({ api }: { api: RestApi }) {
 
   return (
     <Stack spacing={2}>
+      <PoliciesPageTitle />
       {readOnly && <ReadOnlyPoliciesNotice />}
       <Stack alignItems="flex-start" direction={{ xs: 'column', md: 'row' }} spacing={2}>
         {/* LEFT: Policies (drop targets) */}
@@ -358,7 +361,6 @@ export function PolicyPanel({ api }: { api: RestApi }) {
                 <DropZone
                   active={activeZone === scopeId({ kind: 'api' })}
                   disabled={readOnly}
-
                   onDrop={() => dropOnScope({ kind: 'api' })}
                   onEnter={() => setActiveZone(scopeId({ kind: 'api' }))}
                   onLeave={() => setActiveZone(null)}
@@ -383,6 +385,7 @@ export function PolicyPanel({ api }: { api: RestApi }) {
 
               <Card sx={{ borderRadius: 2, overflow: 'hidden' }}>
                 <Accordion
+                  defaultExpanded
                   disableGutters
                   elevation={0}
                   sx={{ bgcolor: 'transparent', '&:before': { display: 'none' } }}
@@ -502,12 +505,13 @@ export function PolicyPanel({ api }: { api: RestApi }) {
           </Card>
         </Box>
 
-        {/* RIGHT: Available Policies (drag source) */}
-        {hubEnabled && !readOnly && (
+        {/* RIGHT: Available Policies (drag source). Shown disabled, not hidden,
+            for a read-only API: still browsable, but nothing can be attached. */}
+        {hubEnabled && (
           <Box sx={{ flexShrink: 0, width: { xs: '100%', md: 400 } }}>
             <Card sx={{ height: '100%', overflow: 'hidden' }} variant="outlined">
               <CardContent sx={{ height: 620, p: 2 }}>
-                <AvailablePoliciesPanel onSelect={pickFromCatalog} />
+                <AvailablePoliciesPanel disabled={readOnly} onSelect={pickFromCatalog} />
               </CardContent>
             </Card>
           </Box>

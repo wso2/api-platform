@@ -69,6 +69,13 @@ openapi_spec_max_fetch_bytes = 5242880
 # (server info, tools/prompts/resources listing). <= 0 uses the built-in 10 MiB default.
 mcp_response_max_fetch_bytes = 10485760
 
+# Byte cap on the content ZIP (documents, thumbnail, landing page) pushed to an API Portal on
+# publish; a larger one is rejected before any portal call. <= 0 uses the built-in 10 MiB
+# default. Each concurrent publish holds the loaded documents (up to 50 MiB) plus two copies
+# of the archive in memory until the push ends, about 70 MiB at the default; size pod memory
+# for the publishes you expect at once.
+publication_archive_max_bytes = 10485760
+
 [platform_api.logging]
 # Level is matched case-insensitively; lowercase is canonical.
 level = "info"   # debug | info | warn | error
@@ -397,14 +404,16 @@ timeout_duration = 60   # seconds before a stuck deployment is timed out
 # also creates the API's new paid plans with the portal's billing provider before it answers, which
 # can take tens of seconds (about 20 s for a plan with 20 usage prices), and a retry must not start
 # a second one while the first is still running. For such portals, raise the listing timeout and
-# turn retries off, for example:
-#   listing_request_timeout = "90s"
+# turn retries off (listing_request_timeout, the listing push, defaults to request_timeout), for
+# example:
+#   listing_request_timeout = "85s"
 #   max_retries             = 0
-#   overall_timeout         = "110s"   # >= 3 x request_timeout + listing_request_timeout, and
-#                                      # below server.timeouts.write (120s by default)
+#   overall_timeout         = "110s"   # >= 3 x request_timeout + listing_request_timeout
+#                                      # + content_request_timeout, and below
+#                                      # server.timeouts.write (120s by default)
 [platform_api.api_portal_publication]
-request_timeout         = "5s"    # one attempt of any call except the listing push
-listing_request_timeout = "15s"   # one attempt of the listing push (>= request_timeout)
+request_timeout         = "5s"    # one attempt of any call except the content push
+content_request_timeout = "10s"   # one attempt of the content push (>= request_timeout)
 max_retries             = 1       # retries after the first attempt (0 = no retries)
 retry_backoff           = "1s"    # wait between attempts of the same call
 overall_timeout         = "65s"   # deadline for all portal calls of one publish, unpublish or deprecate

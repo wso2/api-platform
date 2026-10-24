@@ -42,13 +42,12 @@ const messages = defineMessages({
 
 /**
  * Form state and the pre-fill chain for the alpha "Publish to Portal" editor —
- * the API Details fields this release covers
+ * the API Details and Subscription Plans fields this release covers
  * (`displayName`, `version`, `description`, the two endpoint URLs,
- * `agentVisibility`) and the Subscription Plans tab's `subscriptionPlanIds`.
- * Everything else `PublicationDetailsCore` carries (tags, labels, owners,
- * docIds) belongs to a tab this alpha doesn't show, so a save never sends it —
- * a save sends every field currently shown, not every field the schema could
- * hold.
+ * `agentVisibility`, `subscriptionPlanIds`). Everything else
+ * `PublicationDetailsCore` carries (tags, labels, owners, docIds) belongs to a
+ * tab this alpha doesn't show, so a save never sends it — a save sends every
+ * field currently shown, not every field the schema could hold.
  */
 export type AgentVisibility = NonNullable<PublicationDraftDetailsInput['agentVisibility']>;
 
@@ -62,7 +61,6 @@ export type DraftFormValues = {
   productionUrl: string;
   sandboxUrl: string;
   agentVisibility: AgentVisibility;
-  /** Handles of the subscription plans offered with the API; empty offers none. */
   subscriptionPlanIds: string[];
 };
 
@@ -151,9 +149,7 @@ export const resolveDraftFormValues = (
  * The PUT body for `.../draft` — every field the alpha form shows, saved
  * together rather than field by field. Empty strings are
  * sent as `undefined` rather than `''`, so a field the user never touched
- * reads back as unset instead of an empty value. `subscriptionPlanIds` is
- * always sent, empty included: the server replaces the draft in full, so
- * leaving it out would clear the plans.
+ * reads back as unset instead of an empty value.
  */
 export const draftFormValuesToInput = (values: DraftFormValues): PublicationDraftDetailsInput => {
   const trimmedOrUndefined = (value: string): string | undefined => {
@@ -169,31 +165,17 @@ export const draftFormValuesToInput = (values: DraftFormValues): PublicationDraf
     version: values.version.trim(),
     description: trimmedOrUndefined(values.description),
     agentVisibility: values.agentVisibility,
-    subscriptionPlanIds: [...values.subscriptionPlanIds],
     // Sent only when at least one URL is set; omitted when both are empty.
     ...((productionUrl ?? sandboxUrl) !== undefined
       ? { endpoints: { productionUrl, sandboxUrl } }
       : {}),
+    // Always sent, including `[]` to explicitly clear every selection: the
+    // generated field is a *pointer* to a slice, so `omitempty` only
+    // suppresses a nil pointer — an empty array still round-trips as an
+    // explicit "no plans selected" rather than being dropped.
+    subscriptionPlanIds: values.subscriptionPlanIds,
   };
 };
-
-/**
- * Whether two plan selections hold the same plans; the order they were picked in does not
- * matter.
- */
-const samePlanIds = (a: readonly string[], b: readonly string[]): boolean => {
-  const left = new Set(a);
-  const right = new Set(b);
-  return left.size === right.size && [...left].every((id) => right.has(id));
-};
-
-/** Whether the form holds the same values as `other`, so nothing is left to save. */
-export const sameDraftFormValues = (values: DraftFormValues, other: DraftFormValues): boolean =>
-  (Object.keys(values) as (keyof DraftFormValues)[]).every((field) =>
-    field === 'subscriptionPlanIds'
-      ? samePlanIds(values.subscriptionPlanIds, other.subscriptionPlanIds)
-      : values[field] === other[field],
-  );
 
 export type DraftFormField = 'displayName' | 'version' | 'productionUrl' | 'sandboxUrl';
 export type FormFieldErrors = Partial<Record<DraftFormField, MessageDescriptor>>;

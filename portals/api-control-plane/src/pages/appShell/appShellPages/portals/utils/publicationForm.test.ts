@@ -24,7 +24,6 @@ import {
   draftFormValuesToInput,
   emptyDraftFormValues,
   resolveDraftFormValues,
-  sameDraftFormValues,
 } from './publicationForm';
 
 const api = aRestApi({
@@ -82,21 +81,6 @@ describe('resolveDraftFormValues', () => {
     expect(resolveDraftFormValues(aPublicationDraftDetails(), undefined, api).agentVisibility).toBe('VISIBLE');
     expect(resolveDraftFormValues(undefined, undefined, api).agentVisibility).toBe('VISIBLE');
   });
-
-  it('reads the subscription plans from the draft, then the publication, and starts with none', () => {
-    const draft = aPublicationDraftDetails({ subscriptionPlanIds: ['gold', 'silver'] });
-    const publication = aPublication({ subscriptionPlanIds: ['bronze'] });
-
-    expect(resolveDraftFormValues(draft, publication, api).subscriptionPlanIds).toEqual(['gold', 'silver']);
-    expect(resolveDraftFormValues(undefined, publication, api).subscriptionPlanIds).toEqual(['bronze']);
-    // A draft that offers no plans stays at none, rather than taking the publication's.
-    expect(
-      resolveDraftFormValues(aPublicationDraftDetails({ subscriptionPlanIds: [] }), publication, api)
-        .subscriptionPlanIds,
-    ).toEqual([]);
-    expect(resolveDraftFormValues(aPublicationDraftDetails(), undefined, api).subscriptionPlanIds).toEqual([]);
-    expect(resolveDraftFormValues(undefined, undefined, api).subscriptionPlanIds).toEqual([]);
-  });
 });
 
 describe('draftFormValuesToInput', () => {
@@ -104,43 +88,6 @@ describe('draftFormValuesToInput', () => {
     expect(draftFormValuesToInput({ ...emptyDraftFormValues, agentVisibility: 'HIDDEN' })).toMatchObject({
       agentVisibility: 'HIDDEN',
     });
-  });
-
-  it('sends the selected subscription plans as their handles', () => {
-    expect(
-      draftFormValuesToInput({ ...emptyDraftFormValues, subscriptionPlanIds: ['gold', 'silver'] }).subscriptionPlanIds,
-    ).toEqual(['gold', 'silver']);
-  });
-
-  it('sends an empty plan list rather than leaving it out, since an omitted list clears the plans', () => {
-    const input = draftFormValuesToInput(emptyDraftFormValues);
-
-    expect(input).toHaveProperty('subscriptionPlanIds');
-    expect(input.subscriptionPlanIds).toEqual([]);
-  });
-
-  it('sends back the plans loaded from the draft when a save changes something else', () => {
-    const draft = aPublicationDraftDetails({ subscriptionPlanIds: ['gold'] });
-    const values = { ...resolveDraftFormValues(draft, undefined, api), description: 'Edited.' };
-
-    expect(draftFormValuesToInput(values)).toMatchObject({ description: 'Edited.', subscriptionPlanIds: ['gold'] });
-  });
-});
-
-describe('sameDraftFormValues', () => {
-  const values = { ...emptyDraftFormValues, displayName: 'Loans', subscriptionPlanIds: ['gold', 'silver'] };
-
-  it('ignores the order plans were picked in', () => {
-    expect(sameDraftFormValues(values, { ...values, subscriptionPlanIds: ['silver', 'gold'] })).toBe(true);
-  });
-
-  it('tells a different plan selection apart', () => {
-    expect(sameDraftFormValues(values, { ...values, subscriptionPlanIds: ['gold'] })).toBe(false);
-    expect(sameDraftFormValues(values, { ...values, subscriptionPlanIds: [] })).toBe(false);
-  });
-
-  it('tells any other edited field apart', () => {
-    expect(sameDraftFormValues(values, { ...values, displayName: 'Loans API' })).toBe(false);
   });
 });
 
