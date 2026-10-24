@@ -54,3 +54,24 @@ func TestSetupTempGatewayWorkspaceCreatesSharedTempDirectories(t *testing.T) {
 		}
 	}
 }
+
+func TestCopyPolicyToWorkspaceReturnsSlashSeparatedBuildPath(t *testing.T) {
+	sourceDir := filepath.Join(t.TempDir(), "my-policy")
+	if err := os.MkdirAll(sourceDir, 0755); err != nil {
+		t.Fatalf("failed to create source policy dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(sourceDir, "policy-definition.yaml"), []byte("name: my-policy\n"), 0644); err != nil {
+		t.Fatalf("failed to write policy definition: %v", err)
+	}
+
+	got, err := CopyPolicyToWorkspace("my-policy", "v1.0.0", sourceDir, true, t.TempDir())
+	if err != nil {
+		t.Fatalf("CopyPolicyToWorkspace() failed: %v", err)
+	}
+
+	// The path is written into the build file read by the Linux gateway-builder container,
+	// so it must use forward slashes on every host OS, including Windows.
+	if want := "policies/my-policy"; got != want {
+		t.Fatalf("CopyPolicyToWorkspace() = %q, want %q", got, want)
+	}
+}
