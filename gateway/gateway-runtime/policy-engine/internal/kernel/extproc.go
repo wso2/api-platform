@@ -38,6 +38,7 @@ import (
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
 	grpccodes "google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/prototext"
 	"google.golang.org/protobuf/types/known/structpb"
@@ -229,15 +230,70 @@ func traceContextCarrier(req *extprocv3.ProcessingRequest) propagation.MapCarrie
 	return carrier
 }
 
+// grpcMetadataCarrier builds a W3C trace-context carrier from the incoming
+// gRPC stream metadata. Envoy injects its own trace context (the async
+// envoy.service.ext_proc.v3.ExternalProcessor.Process egress span) into the
+// ext_proc stream metadata when Envoy tracing is enabled.
+func grpcMetadataCarrier(ctx context.Context) propagation.MapCarrier {
+	carrier := propagation.MapCarrier{}
+	md, ok := metadata.FromIncomingContext(ctx)
+	if !ok {
+		return carrier
+	}
+	for key, values := range md {
+		lowerKey := strings.ToLower(key)
+		if lowerKey != "traceparent" && lowerKey != "tracestate" {
+			continue
+		}
+		if len(values) == 0 {
+			continue
+		}
+		if lowerKey == "tracestate" {
+			carrier[lowerKey] = strings.Join(values, ",")
+		} else {
+			carrier[lowerKey] = values[0]
+		}
+	}
+	return carrier
+}
+
 // startRootSpan starts the ext_proc root span for a stream. When tracing is
-// enabled and a request is available, the span is parented on the downstream
-// request's W3C trace context (traceparent/tracestate from its HTTP headers);
-// otherwise it starts a new root. When tracing is disabled the returned span is
-// a no-op and the per-request header extraction is skipped entirely. req is nil
-// on the pre-first-message error path, which likewise starts a plain new root.
+// enabled, the span is parented on the incoming ext_proc gRPC stream metadata
+// (Envoy's ext_proc egress span). If the gRPC metadata carries no valid trace
+// context (e.g. Envoy tracing is disabled), it falls back to the downstream
+// HTTP request headers (traceparent/tracestate from RequestHeaders); otherwise
+// it starts a new root. When tracing is disabled the returned span is a no-op
+// and trace extraction is skipped entirely. req is nil on the pre-first-message
+// error path, which still benefits from gRPC stream metadata if available.
 func (s *ExternalProcessorServer) startRootSpan(ctx context.Context, req *extprocv3.ProcessingRequest) (context.Context, trace.Span) {
-	if s.tracingEnabled && req != nil {
-		ctx = tracing.ExtractTraceContext(ctx, traceContextCarrier(req))
+	if s.tracingEnabled {
+		// 1. Try extracting trace context from incoming gRPC stream metadata (Envoy's ext_proc egress span)
+		if carrier := grpcMetadataCarrier(ctx); len(carrier) > 0 {
+			grpcCtx := tracing.ExtractTraceContext(ctx, carrier)
+			if sc := trace.SpanContextFromContext(grpcCtx); sc.IsValid() {
+				slog.DebugContext(ctx, "Parented ext_proc root span on gRPC stream metadata",
+					"trace_id", sc.TraceID().String(),
+					"span_id", sc.SpanID().String())
+				return s.tracer.Start(grpcCtx, constants.SpanExternalProcessingProcess,
+					trace.WithSpanKind(trace.SpanKindServer),
+				)
+			}
+		}
+
+		// 2. Fall back to downstream HTTP request headers (e.g. when Envoy tracing is disabled)
+		if req != nil {
+			if carrier := traceContextCarrier(req); len(carrier) > 0 {
+				httpCtx := tracing.ExtractTraceContext(ctx, carrier)
+				if sc := trace.SpanContextFromContext(httpCtx); sc.IsValid() {
+					slog.DebugContext(ctx, "Parented ext_proc root span on downstream HTTP request headers",
+						"trace_id", sc.TraceID().String(),
+						"span_id", sc.SpanID().String())
+					return s.tracer.Start(httpCtx, constants.SpanExternalProcessingProcess,
+						trace.WithSpanKind(trace.SpanKindServer),
+					)
+				}
+			}
+		}
 	}
 	return s.tracer.Start(ctx, constants.SpanExternalProcessingProcess,
 		trace.WithSpanKind(trace.SpanKindServer),
@@ -251,12 +307,11 @@ func (s *ExternalProcessorServer) Process(stream extprocv3.ExternalProcessor_Pro
 	metrics.ActiveStreams.Inc()
 	defer metrics.ActiveStreams.Dec()
 
-	// The root span and its context are created lazily on the first message.
-	// The downstream request's W3C trace context (traceparent/tracestate) is
-	// delivered by Envoy inside the RequestHeaders ProcessingRequest body — NOT
-	// as ext_proc gRPC stream metadata — so it cannot be extracted until the
-	// first message arrives. Until then, ctx is the raw stream context and span
-	// is nil. NoOp if tracing is disabled.
+	// The root span and its context are created on the first message (or on
+	// pre-first-message stream error), parented on the incoming ext_proc gRPC
+	// stream metadata (Envoy's ext_proc egress span) or falling back to the
+	// downstream HTTP request headers when Envoy tracing is disabled. Until then,
+	// ctx is the raw stream context and span is nil. NoOp if tracing is disabled.
 	ctx := stream.Context()
 	var span trace.Span
 
