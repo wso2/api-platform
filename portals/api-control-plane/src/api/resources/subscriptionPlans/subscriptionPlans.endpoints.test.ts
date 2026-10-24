@@ -225,7 +225,7 @@ describe('plan pricing', () => {
     server.use(
       failure('put', RESOURCE, 400, 'VALIDATION_FAILED', {
         message:
-          "Pricing can't change once a plan is created. Create a new plan with the new pricing.",
+          "Pricing can't be updated once a plan is created. Create a new plan with the new pricing.",
       }),
     );
 
@@ -236,7 +236,7 @@ describe('plan pricing', () => {
 
     expect(error.isValidation).toBe(true);
     expect(error.message).toBe(
-      "Pricing can't change once a plan is created. Create a new plan with the new pricing.",
+      "Pricing can't be updated once a plan is created. Create a new plan with the new pricing.",
     );
     expect(error.operation).toBe('UpdateSubscriptionPlan');
   });

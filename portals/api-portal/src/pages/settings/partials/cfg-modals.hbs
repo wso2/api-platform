@@ -55,10 +55,7 @@
     <p class="cfg-modal-body" id="cfg-del-plan-ask">Are you sure you want to delete <strong id="cfg-del-plan-name-txt"></strong>? This action can't be undone.</p>
     {{!-- A plan an API offers, or that has subscriptions, can't be deleted: settings-plans.js shows this instead,
           with Delete disabled. --}}
-    <div class="cfg-modal-body" id="cfg-del-plan-blocked" style="display:none;">
-      <p style="margin:0;" id="cfg-del-plan-offered"></p>
-      <p style="margin:0;" id="cfg-del-plan-subscribed"></p>
-    </div>
+    <p class="cfg-modal-body" id="cfg-del-plan-blocked" style="display:none;"></p>
     <div class="cfg-modal-actions">
       <button type="button" class="cfg-btn-secondary" id="cfg-del-plan-cancel">Cancel</button>
       <button type="button" class="cfg-btn-danger" id="cfg-del-plan-confirm">Delete plan</button>
@@ -234,7 +231,7 @@
         <i class="bi bi-info-circle" aria-hidden="true"></i>
         <span>To create a paid plan, set up billing first. <a href="#cfg-billing" id="pol-paid-setup">Set up billing</a></span>
       </p>
-      <p class="cfg-field-hint">Pricing can't change once the plan is created.</p>
+      <p class="cfg-field-hint">Pricing can't be updated once the plan is created.</p>
       <div id="pol-pricing" style="display:none;margin-top:12px;"
         data-meters="{{{jsonAttr orgMeters}}}" data-token-keys="{{{jsonAttr meterRegistry.tokenEventKeys}}}">
         <div class="cfg-pricing-row">
@@ -374,7 +371,7 @@
     {{!-- Shown instead while paid subscriptions are active (settings-billing.js), with Remove disabled. --}}
     <div class="cfg-modal-body" id="cfg-billing-remove-blocked" style="display:none;">
       <p class="cfg-modal-ask">Billing can't be removed yet.</p>
-      <p><span id="cfg-billing-remove-count"></span> Billing can be removed once they have ended.</p>
+      <p>Paid subscriptions are active. Billing can be removed once they have ended.</p>
     </div>
     <div class="cfg-modal-actions">
       <button type="button" class="cfg-btn-secondary" id="cfg-billing-remove-cancel">Cancel</button>

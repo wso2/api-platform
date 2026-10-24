@@ -1561,15 +1561,9 @@ const updateSubscriptionPlans = async (req, res) => {
 
 const PLAN_IN_USE = 'PLAN_IN_USE';
 
-/** The refusal for deleting a plan that subscriptions still use. */
-function planInUseMessage(name, count) {
-    if (count === 1) return `The plan ${name} has 1 subscription. It can be deleted once it has ended.`;
-    return `The plan ${name} has ${count} subscriptions. It can be deleted once they have ended.`;
-}
-
-function planOfferedMessage(name, count) {
-    if (count === 1) return `The plan ${name} is offered by 1 API. Remove it from that API before deleting it.`;
-    return `The plan ${name} is offered by ${count} APIs. Remove it from those APIs before deleting it.`;
+/** The refusal for deleting a plan that an API offers or subscriptions use. */
+function planInUseMessage(name) {
+    return `The plan ${name} is in use and can't be deleted.`;
 }
 
 /**
@@ -1599,7 +1593,7 @@ const deleteSubscriptionPlan = async (req, res) => {
             // Platform API then deletes the plans it created here, and the ones the API offers are kept.
             const offeredBy = plan ? await subscriptionPlanDao.countApis(orgId, plan.uuid, t) : 0;
             if (offeredBy > 0) {
-                throw Object.assign(new CustomError(409, planOfferedMessage(plan.display_name || plan.handle, offeredBy)),
+                throw Object.assign(new CustomError(409, planInUseMessage(plan.display_name || plan.handle)),
                     { catalogCode: PLAN_IN_USE });
             }
             const { deleted, subscriptionCount } = plan
@@ -1607,7 +1601,7 @@ const deleteSubscriptionPlan = async (req, res) => {
                 : { deleted: 0, subscriptionCount: 0 };
             if (subscriptionCount > 0) {
                 throw Object.assign(
-                    new CustomError(409, planInUseMessage(plan.display_name || plan.handle, subscriptionCount)),
+                    new CustomError(409, planInUseMessage(plan.display_name || plan.handle)),
                     { catalogCode: PLAN_IN_USE });
             }
             if (deleted === 0) {
@@ -2280,24 +2274,19 @@ async function endOpenCheckouts(orgId, which) {
 async function refuseSubscribedPlans(orgId, apiId, plans, t) {
     if (plans.length === 0) return;
     const counts = await subscriptionPlanDao.countApiSubscriptions(orgId, apiId, plans.map((plan) => plan.uuid), t);
-    const subscribed = plans.filter((plan) => counts.has(plan.uuid))
-        .map((plan) => ({ name: plan.display_name || plan.handle, count: counts.get(plan.uuid) }));
+    const subscribed = plans.filter((plan) => counts.has(plan.uuid)).map((plan) => plan.display_name || plan.handle);
     if (subscribed.length > 0) {
         throw new CustomError(409, constants.ERROR_MESSAGE.ERR_PLAN_SUB_EXIST, planSubscribedMessage(subscribed));
     }
 }
 
-/** The refusal for removing plans from an API while they have subscriptions to it. */
-function planSubscribedMessage(plans) {
-    if (plans.length === 1) {
-        const [{ name, count }] = plans;
-        return count === 1
-            ? `The plan ${name} has 1 subscription to this API. It can be removed from the API once that subscription has ended.`
-            : `The plan ${name} has ${count} subscriptions to this API. It can be removed from the API once they have ended.`;
+/** The refusal for removing plans (by name) from an API while they have subscriptions to it. */
+function planSubscribedMessage(names) {
+    if (names.length === 1) {
+        return `The plan ${names[0]} has subscriptions to this API, so it can't be removed from the API until they have ended.`;
     }
-    const names = plans.map((plan) => plan.name);
-    return `The plans ${names.slice(0, -1).join(', ')} and ${names[names.length - 1]} have subscriptions to this API. `
-        + 'They can be removed from the API once those subscriptions have ended.';
+    return `The plans ${names.slice(0, -1).join(', ')} and ${names[names.length - 1]} have subscriptions to this API, `
+        + 'so they can\'t be removed from the API until those subscriptions have ended.';
 }
 
 /**

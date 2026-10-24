@@ -167,8 +167,7 @@ const loadSettingsPage = async (req, res) => {
         try {
             const plansRaw = await subscriptionPlanDao.list(orgId);
             const metersByHandle = new Map((await meterDao.list(orgId)).map(m => [m.handle, m]));
-            // A plan an API offers, or that has subscriptions, can't be deleted: the delete dialog says why, by
-            // counts (a plan may be offered by more APIs than a dialog can list).
+            // A plan an API offers, or that has subscriptions, can't be deleted: the delete dialog says it is in use.
             const apiCounts = new Map();
             for (const api of allAPIs) {
                 for (const plan of api.subscription_plans || []) {

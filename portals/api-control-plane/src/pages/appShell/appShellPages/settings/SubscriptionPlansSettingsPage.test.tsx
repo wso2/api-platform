@@ -268,7 +268,7 @@ describe('SubscriptionPlansSettingsPage', () => {
       'what still uses the plan',
       409,
       'SUBSCRIPTION_PLAN_IN_USE',
-      'The plan bronze is used by 1 REST API and 2 subscriptions. Remove it from them first.',
+      "The plan Bronze is in use and can't be deleted.",
     ],
     [
       'a plan that is already gone',

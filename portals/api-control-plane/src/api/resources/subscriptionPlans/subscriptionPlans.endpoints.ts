@@ -67,7 +67,7 @@ export const getSubscriptionPlan = async (
   });
 };
 
-/** Creates a plan; a paid plan is created with its `pricing`, which can't change afterwards. */
+/** Creates a plan; a paid plan is created with its `pricing`, which can't be updated afterwards. */
 export const createSubscriptionPlan = async (
   body: CreateSubscriptionPlanBody,
   options?: RequestOptions

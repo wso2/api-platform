@@ -85,7 +85,7 @@ const SETUP = Object.freeze({
 
 const NOT_CONNECTED = 'Billing is not set up for this organization.';
 const ALREADY_SET_UP = 'Billing is already set up. Remove it to set it up again.';
-const subscriptionsActive = (n) => `Billing can't be removed while ${n === 1 ? '1 paid subscription is' : `${n} paid subscriptions are`} active.`;
+const SUBSCRIPTIONS_ACTIVE = "Billing can't be removed while paid subscriptions are active.";
 
 class BillingInputError extends Error {
     /** `field`: the request field the problem is about, shown under it; null for the request. */
@@ -539,11 +539,11 @@ const deleteBillingConfiguration = async (req, res) => {
         if (!existing) return util.sendError(res, 404, NOT_CONNECTED);
         const active = await countActiveSubscriptions(orgId, existing.uuid);
         if (active > 0) {
-            return util.sendError(res, 409, subscriptionsActive(active), { code: 'BILLING_SUBSCRIPTIONS_ACTIVE' });
+            return util.sendError(res, 409, SUBSCRIPTIONS_ACTIVE, { code: 'BILLING_SUBSCRIPTIONS_ACTIVE' });
         }
         const connector = billingProvider.forConfiguration(existing);
         if (await endOpenCheckouts(orgId, connector)) {
-            return util.sendError(res, 409, subscriptionsActive(1), { code: 'BILLING_SUBSCRIPTIONS_ACTIVE' });
+            return util.sendError(res, 409, SUBSCRIPTIONS_ACTIVE, { code: 'BILLING_SUBSCRIPTIONS_ACTIVE' });
         }
 
         if (Number(existing.moesif_stripe_connected_by_portal) === 1) {

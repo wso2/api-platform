@@ -669,10 +669,10 @@ test('a meter one plan prices cannot change at all, its name included', () => {
     const r = results().renamedWhilePriced;
     assert.equal(r.status, 409);
     assert.equal(r.body.code, 'METER_IN_USE');
-    assert.equal(r.body.message, 'The meter is priced by 1 plan, so it can\'t change.');
+    assert.equal(r.body.message, 'The meter is in use, so it can\'t be updated.');
     assert.equal(results().deleteWhilePricedByGold.status, 409);
     assert.equal(results().deleteWhilePricedByGold.body.code, 'METER_IN_USE');
-    assert.equal(results().deleteWhilePricedByGold.body.message, 'The meter is priced by 1 plan, so it can\'t be deleted.');
+    assert.equal(results().deleteWhilePricedByGold.body.message, 'The meter is in use, so it can\'t be deleted.');
 });
 
 test('a meter several plans price cannot change either: not its description, its filter fields nor their keys', () => {
@@ -681,7 +681,7 @@ test('a meter several plans price cannot change either: not its description, its
         const r = results()[key];
         assert.equal(r.status, 409, key);
         assert.equal(r.body.code, 'METER_IN_USE', key);
-        assert.equal(r.body.message, 'The meter is priced by 2 plans, so it can\'t change.', key);
+        assert.equal(r.body.message, 'The meter is in use, so it can\'t be updated.', key);
     }
     const meter = results().meterWhilePriced.body;
     assert.equal(meter.displayName, 'Successful calls');
@@ -695,7 +695,7 @@ test('a meter counts the plans that charge for it and cannot be deleted while th
     assert.equal(listed.usedBy, undefined, 'a count, not the plans');
     assert.equal(results().deleteInUse.status, 409);
     assert.equal(results().deleteInUse.body.code, 'METER_IN_USE');
-    assert.equal(results().deleteInUse.body.message, 'The meter is priced by 2 plans, so it can\'t be deleted.');
+    assert.equal(results().deleteInUse.body.message, 'The meter is in use, so it can\'t be deleted.');
 });
 
 // ---------------------------------------------------------------------------
@@ -706,14 +706,14 @@ test('pricing sent for a plan that already exists is refused with 409 PLAN_PRICI
     const r = results().pricingOnExistingPlan;
     assert.equal(r.status, 409);
     assert.equal(r.body.code, 'PLAN_PRICING_LOCKED');
-    assert.equal(r.body.message, 'The plan gold already exists; its pricing can\'t change once a plan is created.');
+    assert.equal(r.body.message, 'The plan gold already exists; its pricing can\'t be updated once a plan is created.');
 });
 
 test('a bulk PUT with pricing for an existing plan is refused as a whole: the new plan in it is not created', () => {
     const r = results().pricingOnExistingInBulk;
     assert.equal(r.status, 409);
     assert.equal(r.body.code, 'PLAN_PRICING_LOCKED');
-    assert.equal(r.body.message, 'The plan silver already exists; its pricing can\'t change once a plan is created.');
+    assert.equal(r.body.message, 'The plan silver already exists; its pricing can\'t be updated once a plan is created.');
     assert.equal(results().platinumRows, 0);
 });
 
@@ -740,10 +740,10 @@ test('deleting a plan deletes its pricing, and the meter is then priced by the p
     assert.equal(results().pricingAfterDelete.status, 404);
     const r = results().lockedBySilver;
     assert.equal(r.status, 409);
-    assert.equal(r.body.message, 'The meter is priced by 1 plan, so it can\'t change.');
+    assert.equal(r.body.message, 'The meter is in use, so it can\'t be updated.');
     assert.equal(results().deleteInUseByOne.status, 409);
     assert.equal(results().deleteInUseByOne.body.code, 'METER_IN_USE');
-    assert.equal(results().deleteInUseByOne.body.message, 'The meter is priced by 1 plan, so it can\'t be deleted.');
+    assert.equal(results().deleteInUseByOne.body.message, 'The meter is in use, so it can\'t be deleted.');
 });
 
 test('once no plan prices a meter it can change again, and be deleted', () => {
@@ -796,7 +796,7 @@ test('the Platform API\'s own meter, plan and pricing changes are not sent back 
 test('a plan an API offers is not deleted', () => {
     assert.equal(results().offeredDelete.status, 409);
     assert.equal(results().offeredDelete.body.code, 'PLAN_IN_USE');
-    assert.equal(results().offeredDelete.body.message, 'The plan Offered is offered by 1 API. Remove it from that API before deleting it.');
+    assert.equal(results().offeredDelete.body.message, 'The plan Offered is in use and can\'t be deleted.');
     assert.equal(results().offeredRows, 1);
 });
 
@@ -816,7 +816,7 @@ test('a plan is not removed from an API while it has subscriptions to it; once t
     assert.equal(r.subscribedTakenOff.status, 409, JSON.stringify(r.subscribedTakenOff));
     assert.equal(r.subscribedTakenOff.body.message, 'ERR_PLAN_SUB_EXIST', JSON.stringify(r.subscribedTakenOff.body));
     assert.equal(r.subscribedTakenOff.body.errors[0].message,
-        'The plan Subscribed has 1 subscription to this API. It can be removed from the API once that subscription has ended.');
+        'The plan Subscribed has subscriptions to this API, so it can\'t be removed from the API until they have ended.');
     assert.deepEqual(r.offeredAfterRefusal, ['kept', 'subscribed'], 'nothing changed');
     assert.equal(r.endedTakenOff.status, 200, JSON.stringify(r.endedTakenOff));
     assert.deepEqual(r.offeredAfterEnd, ['kept']);

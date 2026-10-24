@@ -137,7 +137,7 @@ curl -k -X DELETE "https://localhost:9543/api-portal/api/v0.9/subscription-plans
   -H "Authorization: Bearer $TOKEN"
 ```
 
-> **Note:** A plan that has subscriptions cannot be deleted. The request is refused with `409` and code `PLAN_IN_USE`, for example "The plan Gold has 3 subscriptions. It can be deleted once they have ended." Suspended subscriptions, and paid subscriptions that run until the end of their billing period, still count.
+> **Note:** A plan that has subscriptions cannot be deleted. The request is refused with `409` and code `PLAN_IN_USE`, for example "The plan Gold is in use and can't be deleted." Suspended subscriptions, and paid subscriptions that run until the end of their billing period, still count.
 
 ---
 

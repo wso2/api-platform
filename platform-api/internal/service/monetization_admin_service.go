@@ -133,7 +133,7 @@ func (s *MonetizationAdminService) UpdateMeter(orgUUID, handle string, body []by
 		return nil, err
 	}
 	if len(plans) > 0 {
-		return nil, apperror.MeterInUse.New(meterPricedBy(len(plans)) + ", so it can't change.")
+		return nil, apperror.MeterInUse.New("The meter is in use, so it can't be updated.")
 	}
 	meter, err := model.ParseMeterRequest(body, false)
 	if err != nil {
@@ -150,15 +150,6 @@ func (s *MonetizationAdminService) UpdateMeter(orgUUID, handle string, body []by
 	return meter, nil
 }
 
-// meterPricedBy says how many plans price a meter, for its refusals: counts, not names, as a meter may
-// be priced by many plans.
-func meterPricedBy(plans int) string {
-	if plans == 1 {
-		return "The meter is priced by 1 plan"
-	}
-	return fmt.Sprintf("The meter is priced by %d plans", plans)
-}
-
 // DeleteMeter deletes the meter. A meter that a plan's pricing here uses cannot be deleted.
 func (s *MonetizationAdminService) DeleteMeter(orgUUID, handle string) error {
 	if _, err := s.GetMeter(orgUUID, handle); err != nil {
@@ -169,7 +160,7 @@ func (s *MonetizationAdminService) DeleteMeter(orgUUID, handle string) error {
 		return err
 	}
 	if len(plans) > 0 {
-		return apperror.MeterInUse.New(meterPricedBy(len(plans)) + ", so it can't be deleted.")
+		return apperror.MeterInUse.New("The meter is in use, so it can't be deleted.")
 	}
 	if err := s.meterRepo.Delete(orgUUID, handle); err != nil {
 		return apperror.Internal.Wrap(err).WithLogMessage(fmt.Sprintf("failed to delete meter %s for org %s", handle, orgUUID))

@@ -3008,8 +3008,8 @@
     "defaultMessage": "Type"
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.MetersSettingsPage.delete.blockedMessage": {
-    "defaultMessage": "{count, plural, one {\"{name}\" is priced by # plan and can't be deleted until that plan is deleted.} other {\"{name}\" is priced by # plans and can't be deleted until those plans are deleted.}}",
-    "description": "Shown in the delete dialog, with Delete disabled, for a meter that plans price. Counts only: a meter may be priced by many plans."
+    "defaultMessage": "\"{name}\" is in use and can't be deleted.",
+    "description": "Shown in the delete dialog, with Delete disabled, for a meter that plans price."
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.MetersSettingsPage.delete.confirmAction": {
     "defaultMessage": "Delete"
@@ -3245,7 +3245,7 @@
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.lockedSave": {
     "defaultMessage": "There are plans using this meter.",
-    "description": "Shown next to the turned-off Save of a meter that plans price, which cannot change."
+    "description": "Shown next to the turned-off Save of a meter that plans price, which cannot be updated."
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.nameLabel": {
     "defaultMessage": "Name"
@@ -3334,7 +3334,7 @@
     "defaultMessage": "Charge every"
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.createHint": {
-    "defaultMessage": "Pricing can't change once the plan is created.",
+    "defaultMessage": "Pricing can't be updated once the plan is created.",
     "description": "Shown under the Paid plan switch of a new plan once it is turned on: the pricing given now is final."
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.currency": {
@@ -3358,7 +3358,7 @@
     "description": "Which of the meter's requests a usage price counts."
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.lockedHint": {
-    "defaultMessage": "Pricing can't change once a plan is created.",
+    "defaultMessage": "Pricing can't be updated once a plan is created.",
     "description": "Shown under the Paid plan switch of an existing plan, whose pricing is shown but cannot be edited."
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.meter": {

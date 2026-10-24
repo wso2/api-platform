@@ -62,7 +62,7 @@ const PRICING_LOCKED = 'PLAN_PRICING_LOCKED';
 
 /** The refusal for pricing sent for a plan that already exists. */
 function pricingLockedMessage(handle) {
-    return `The plan ${handle} already exists; its pricing can't change once a plan is created.`;
+    return `The plan ${handle} already exists; its pricing can't be updated once a plan is created.`;
 }
 
 function planNotFound(res) {

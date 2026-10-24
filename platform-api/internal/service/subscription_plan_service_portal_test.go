@@ -47,7 +47,7 @@ func TestDeletePlan_IsRefusedWhileInUse(t *testing.T) {
 	err := svc.DeletePlan("gold", "org-1", "actor")
 	var appErr *apperror.Error
 	if !apperror.SubscriptionPlanInUse.Is(err) || !errors.As(err, &appErr) || appErr.HTTPStatus != http.StatusConflict ||
-		appErr.Message != "The plan gold is used by 1 REST API and 2 subscriptions. Remove it from them first." {
+		appErr.Message != "The plan Gold is in use and can't be deleted." {
 		t.Fatalf("want 409 SUBSCRIPTION_PLAN_IN_USE, got %v", err)
 	}
 	if repo.deletes != 0 {
@@ -60,27 +60,6 @@ func TestDeletePlan_IsRefusedWhileInUse(t *testing.T) {
 	}
 	if err := svc.DeletePlan("gold", "org-1", "actor"); !apperror.SubscriptionPlanNotFound.Is(err) {
 		t.Fatalf("a deleted plan is not found, got %v", err)
-	}
-}
-
-func TestPlanInUseMessage_CountsWhatUsesThePlan(t *testing.T) {
-	cases := []struct {
-		usage model.SubscriptionPlanUsage
-		users string
-	}{
-		{model.SubscriptionPlanUsage{Subscriptions: 1}, "1 subscription"},
-		{model.SubscriptionPlanUsage{RESTAPIs: 2}, "2 REST APIs"},
-		{model.SubscriptionPlanUsage{Drafts: 1, Publications: 2}, "1 publication draft and 2 publications"},
-		{model.SubscriptionPlanUsage{RESTAPIs: 1, Drafts: 2, Publications: 1, Subscriptions: 3},
-			"1 REST API, 2 publication drafts, 1 publication and 3 subscriptions"},
-		{model.SubscriptionPlanUsage{RESTAPIs: 500}, "500 REST APIs"},
-	}
-	for _, c := range cases {
-		usage := c.usage
-		want := fmt.Sprintf("The plan gold is used by %s. Remove it from them first.", c.users)
-		if got := planInUseMessage("gold", &usage); got != want {
-			t.Errorf("got %q\nwant %q", got, want)
-		}
 	}
 }
 

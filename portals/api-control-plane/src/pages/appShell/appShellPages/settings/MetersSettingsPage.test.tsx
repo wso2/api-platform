@@ -570,7 +570,7 @@ describe('MetersSettingsPage', () => {
   });
 
   it("shows the Platform API's own reason for refusing to delete a meter a plan there still prices", async () => {
-    const message = "The meter is priced by 1 plan, so it can't be deleted.";
+    const message = "The meter is in use, so it can't be deleted.";
     server.use(
       collection('/meters', [aMeter()]),
       collection('/subscription-plans', []),
@@ -589,7 +589,7 @@ describe('MetersSettingsPage', () => {
     expect(requests.count()).toBe(1);
   });
 
-  it('says how many plans price a meter instead of deleting it, without reading those plans, and sends no delete', async () => {
+  it('says a priced meter is in use instead of deleting it, without reading its plans, and sends no delete', async () => {
     server.use(
       // The Platform API counts the plans that charge for the meter.
       collection('/meters', [aMeter({ planCount: 2 })]),
@@ -603,9 +603,7 @@ describe('MetersSettingsPage', () => {
     const dialog = screen.getByRole('dialog');
     expect(within(dialog).getByText('Delete meter')).toBeInTheDocument();
     expect(
-      within(dialog).getByText(
-        '"Successful calls" is priced by 2 plans and can\'t be deleted until those plans are deleted.',
-      ),
+      within(dialog).getByText('"Successful calls" is in use and can\'t be deleted.'),
     ).toBeInTheDocument();
     // The usual footer, with Delete disabled.
     expect(within(dialog).getByRole('button', { name: 'Delete' })).toBeDisabled();
@@ -631,9 +629,6 @@ describe('MetersSettingsPage', () => {
 
     const dialog = screen.getByRole('dialog');
     expect(within(dialog).getByText('Edit meter')).toBeInTheDocument();
-    expect(
-      within(dialog).queryByText("A meter can't change once a plan prices it."),
-    ).not.toBeInTheDocument();
     expect(within(dialog).getByLabelText(/Name/)).toBeDisabled();
     expect(within(dialog).getByLabelText(/Name/)).toHaveValue('Successful calls');
     expect(within(dialog).getByLabelText('Description')).toBeDisabled();
@@ -685,7 +680,7 @@ describe('MetersSettingsPage', () => {
   });
 
   it("shows the server's reason when a change to a meter a plan prices is refused anyway", async () => {
-    const message = "The plans gold, silver price this meter, so it can't change.";
+    const message = "The meter is in use, so it can't be updated.";
     // The plans loaded here don't price it yet; the server knows better.
     server.use(
       collection('/meters', [llmInput]),

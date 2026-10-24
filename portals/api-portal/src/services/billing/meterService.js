@@ -64,15 +64,9 @@ function buildMeterPayload(meter) {
     };
 }
 
-/** How many plans price a meter, for its refusals: counts, not names, as a meter may be priced by many plans. */
-function pricedBy(plans) {
-    return plans.length === 1 ? 'The meter is priced by 1 plan' : `The meter is priced by ${plans.length} plans`;
-}
-
-/** The refusal for a change to a meter that plans price. */
-function inUseMessage(plans) {
-    return `${pricedBy(plans)}, so it can't change.`;
-}
+/** The refusals for a change to, and a delete of, a meter that plans price. */
+const IN_USE_CHANGE = "The meter is in use, so it can't be updated.";
+const IN_USE_DELETE = "The meter is in use, so it can't be deleted.";
 
 async function publishMeter(eventType, orgId, meter, t) {
     const payload = eventType === EVENT.DELETED ? { handle: meter.handle } : buildMeterPayload(meter);
@@ -175,7 +169,7 @@ const updateMeter = async (req, res) => {
             return { status: 200, meter };
         });
         if (outcome.status === 404) return util.sendError(res, 404, ERROR.NOT_FOUND);
-        if (outcome.status === 409) return util.sendError(res, 409, inUseMessage(outcome.plans), { code: ERROR.IN_USE });
+        if (outcome.status === 409) return util.sendError(res, 409, IN_USE_CHANGE, { code: ERROR.IN_USE });
         const updated = outcome.meter;
         logUserAction('METER_UPDATED', req, { orgId, resourceUuid: updated.uuid, resourceType: 'meter' });
         return res.status(200).json(await toDto(orgId, updated));
@@ -201,7 +195,7 @@ const deleteMeter = async (req, res) => {
         });
         if (outcome.status === 404) return util.sendError(res, 404, ERROR.NOT_FOUND);
         if (outcome.status === 409) {
-            return util.sendError(res, 409, `${pricedBy(outcome.plans)}, so it can't be deleted.`, { code: ERROR.IN_USE });
+            return util.sendError(res, 409, IN_USE_DELETE, { code: ERROR.IN_USE });
         }
         logUserAction('METER_DELETED', req, { orgId, resourceUuid: outcome.meter.uuid, resourceType: 'meter' });
         return res.status(204).send();

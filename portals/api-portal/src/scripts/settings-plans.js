@@ -1042,9 +1042,8 @@
     }
     if (e.target.closest('.cfg-plan-delete-btn')) {
       btn = e.target.closest('.cfg-plan-delete-btn');
-      // A plan that an API offers, or that has subscriptions, can't be deleted: the dialog says how many
-      // APIs offer it and how many subscriptions it has, and Delete is disabled. It gives counts, not
-      // names, as there may be too many to list.
+      // A plan that an API offers, or that has subscriptions, can't be deleted: the dialog says it is in
+      // use, and Delete is disabled.
       var name = btn.dataset.display || btn.dataset.name;
       var apis = Number(btn.dataset.apis) || 0;
       var subscriptions = Number(btn.dataset.subscriptions) || 0;
@@ -1054,20 +1053,10 @@
       document.getElementById('cfg-del-plan-confirm').disabled = blocked;
       pendingDelPlanId = blocked ? null : btn.dataset.id;
       if (blocked) {
-        // One line for each reason, starting with the plan's name in bold.
-        var line = function (id, shown, text) {
-          var el = document.getElementById(id);
-          el.style.display = shown ? '' : 'none';
-          var strong = document.createElement('strong');
-          strong.textContent = name;
-          el.replaceChildren(strong, document.createTextNode(text));
-        };
-        line('cfg-del-plan-offered', apis > 0, apis === 1
-          ? ' is offered by 1 API and can\'t be deleted. Remove it from that API first.'
-          : ' is offered by ' + apis + ' APIs and can\'t be deleted. Remove it from those APIs first.');
-        line('cfg-del-plan-subscribed', subscriptions > 0, subscriptions === 1
-          ? ' has 1 subscription and can\'t be deleted until it has ended.'
-          : ' has ' + subscriptions + ' subscriptions and can\'t be deleted until they have ended.');
+        var strong = document.createElement('strong');
+        strong.textContent = name;
+        document.getElementById('cfg-del-plan-blocked')
+          .replaceChildren(strong, document.createTextNode(' is in use and can\'t be deleted.'));
       } else {
         document.getElementById('cfg-del-plan-name-txt').textContent = name;
       }

@@ -213,16 +213,16 @@ func TestMonetizationAdmin_MeterPricedHereCannotChange(t *testing.T) {
 	}{
 		{"one plan", map[string]*model.SubscriptionPlanPricing{"plan-1": pricedOnMeter("plan-1", "llm-input", "API_TYPE")},
 			`{"displayName":"LLM input tokens","type":"TOKENS","typeKey":"metadata.aiTokenUsage.promptTokens","filterFields":[{"field":"API_TYPE"}]}`,
-			"The meter is priced by 1 plan, so it can't change."},
+			"The meter is in use, so it can't be updated."},
 		{"only the event keys", map[string]*model.SubscriptionPlanPricing{"plan-1": pricedOnMeter("plan-1", "llm-input", "API_TYPE")},
 			`{"displayName":"LLM input tokens","type":"TOKENS","typeKey":"usage.input_tokens",
 			  "filterFields":[{"field":"API_TYPE","eventKey":"custom.api.kind"}]}`,
-			"The meter is priced by 1 plan, so it can't change."},
+			"The meter is in use, so it can't be updated."},
 		{"several plans", map[string]*model.SubscriptionPlanPricing{
 			"plan-2": pricedOnMeter("plan-2", "llm-input"), "plan-1": pricedOnMeter("plan-1", "llm-input", "API_TYPE")},
-			valid, "The meter is priced by 2 plans, so it can't change."},
+			valid, "The meter is in use, so it can't be updated."},
 		{"a price without filters", map[string]*model.SubscriptionPlanPricing{"plan-1": pricedOnMeter("plan-1", "llm-input")},
-			valid, "The meter is priced by 1 plan, so it can't change."},
+			valid, "The meter is in use, so it can't be updated."},
 		{"another meter's price", map[string]*model.SubscriptionPlanPricing{"plan-1": pricedOnMeter("plan-1", "api-calls")}, valid, ""},
 		{"no pricing", map[string]*model.SubscriptionPlanPricing{}, valid, ""},
 	}
@@ -254,14 +254,14 @@ func TestMonetizationAdmin_MeterPricedHereCannotBeDeleted(t *testing.T) {
 	err := svc.DeleteMeter("org", "llm-input")
 	var appErr *apperror.Error
 	if !apperror.MeterInUse.Is(err) || !errors.As(err, &appErr) || appErr.HTTPStatus != http.StatusConflict ||
-		appErr.Message != "The meter is priced by 2 plans, so it can't be deleted." {
-		t.Fatalf("want 409 METER_IN_USE naming both plans, got %v", err)
+		appErr.Message != "The meter is in use, so it can't be deleted." {
+		t.Fatalf("want 409 METER_IN_USE, got %v", err)
 	}
 	delete(pricing.pricing, "plan-2")
 	err = svc.DeleteMeter("org", "llm-input")
 	if !apperror.MeterInUse.Is(err) || !errors.As(err, &appErr) ||
-		appErr.Message != "The meter is priced by 1 plan, so it can't be deleted." {
-		t.Fatalf("want 409 METER_IN_USE naming the one plan, got %v", err)
+		appErr.Message != "The meter is in use, so it can't be deleted." {
+		t.Fatalf("want 409 METER_IN_USE with one plan, got %v", err)
 	}
 	if meters.deletes != 0 || meters.meters["llm-input"] == nil {
 		t.Fatal("a priced meter must stay")

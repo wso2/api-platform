@@ -344,10 +344,6 @@
     document.getElementById('cfg-billing-remove-ask').style.display = blocked ? 'none' : '';
     document.getElementById('cfg-billing-remove-blocked').style.display = blocked ? '' : 'none';
     document.getElementById('cfg-billing-remove-confirm').disabled = blocked;
-    if (blocked) {
-      document.getElementById('cfg-billing-remove-count').textContent = active === 1
-        ? '1 paid subscription is active.' : active + ' paid subscriptions are active.';
-    }
     removeModal.style.display = 'flex';
   });
   document.getElementById('cfg-billing-remove-cancel').addEventListener('click', function () { removeModal.style.display = 'none'; });

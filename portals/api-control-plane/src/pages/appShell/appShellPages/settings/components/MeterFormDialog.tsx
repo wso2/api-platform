@@ -171,7 +171,7 @@ const messages = defineMessages({
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.lockedSave',
     defaultMessage: 'There are plans using this meter.',
     description:
-      'Shown next to the turned-off Save of a meter that plans price, which cannot change.',
+      'Shown next to the turned-off Save of a meter that plans price, which cannot be updated.',
   },
   nameLabel: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.nameLabel',

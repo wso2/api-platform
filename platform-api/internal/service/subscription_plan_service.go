@@ -223,7 +223,7 @@ func (s *SubscriptionPlanService) UpdatePlan(handle, orgUUID, actor string, upda
 			return nil, err
 		}
 		if usage.InUse() {
-			return nil, apperror.SubscriptionPlanInUse.New(planEditInUseMessage(existing.Handle, usage))
+			return nil, apperror.SubscriptionPlanInUse.New(planEditInUseMessage(existing.Name))
 		}
 	}
 	return s.applyPlanUpdate(existing, orgUUID, actor, update)
@@ -321,7 +321,7 @@ func (s *SubscriptionPlanService) DeletePlan(handle, orgUUID, actor string) erro
 		return err
 	}
 	if usage.InUse() {
-		return apperror.SubscriptionPlanInUse.New(planInUseMessage(existing.Handle, usage))
+		return apperror.SubscriptionPlanInUse.New(planInUseMessage(existing.Name))
 	}
 	return s.deletePlanWithReferences(existing, orgUUID, actor)
 }
@@ -357,40 +357,16 @@ func (s *SubscriptionPlanService) deletePlanWithReferences(plan *model.Subscript
 	return nil
 }
 
-// planInUseMessage counts what offers or uses a plan, for example "The plan gold is used by 2 REST
-// APIs and 3 subscriptions. Remove it from them first."
-func planInUseMessage(handle string, usage *model.SubscriptionPlanUsage) string {
-	return fmt.Sprintf("The plan %s is used by %s. Remove it from them first.", handle, planUsers(usage))
+// planInUseMessage refuses deleting a plan in use, for example "The plan Gold is in use and can't
+// be deleted."
+func planInUseMessage(name string) string {
+	return fmt.Sprintf("The plan %s is in use and can't be deleted.", name)
 }
 
 // planEditInUseMessage refuses a change to the name or limit of a plan in use, for example "The
-// plan gold is used by 1 REST API. To change its name or limit, create a new plan."
-func planEditInUseMessage(handle string, usage *model.SubscriptionPlanUsage) string {
-	return fmt.Sprintf("The plan %s is used by %s. To change its name or limit, create a new plan.", handle, planUsers(usage))
-}
-
-// planUsers counts what offers or uses a plan, for example "2 REST APIs, 1 publication and 3
-// subscriptions". It never names them, since a plan may be on more APIs than a message can list.
-// Call it only for a plan in use (usage.InUse()).
-func planUsers(usage *model.SubscriptionPlanUsage) string {
-	var users []string
-	count := func(one, many string, n int) {
-		switch {
-		case n == 1:
-			users = append(users, "1 "+one)
-		case n > 1:
-			users = append(users, fmt.Sprintf("%d %s", n, many))
-		}
-	}
-	count("REST API", "REST APIs", usage.RESTAPIs)
-	count("publication draft", "publication drafts", usage.Drafts)
-	count("publication", "publications", usage.Publications)
-	count("subscription", "subscriptions", usage.Subscriptions)
-	list := users[len(users)-1]
-	if len(users) > 1 {
-		list = strings.Join(users[:len(users)-1], ", ") + " and " + list
-	}
-	return list
+// plan Gold is in use. To change its name or limit, create a new plan."
+func planEditInUseMessage(name string) string {
+	return fmt.Sprintf("The plan %s is in use. To change its name or limit, create a new plan.", name)
 }
 
 // UpsertPlanFromWebhook reconciles a plan created or changed in the API Portal. Both events carry

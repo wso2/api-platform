@@ -178,18 +178,18 @@ function results() {
     return _results;
 }
 
-test('deleting a plan with subscriptions is refused with 409 PLAN_IN_USE, naming the plan and the count', () => {
+test('deleting a plan with subscriptions is refused with 409 PLAN_IN_USE, naming the plan', () => {
     const r = results().goldRefused;
     assert.equal(r.status, 409);
     assert.equal(r.body.code, 'PLAN_IN_USE');
-    assert.equal(r.body.message, 'The plan Gold has 3 subscriptions. It can be deleted once they have ended.');
+    assert.equal(r.body.message, 'The plan Gold is in use and can\'t be deleted.');
 });
 
-test('the refusal for a plan with one subscription speaks of one subscription', () => {
+test('a plan with one subscription gets the same refusal', () => {
     const r = results().silverRefused;
     assert.equal(r.status, 409);
     assert.equal(r.body.code, 'PLAN_IN_USE');
-    assert.equal(r.body.message, 'The plan Silver has 1 subscription. It can be deleted once it has ended.');
+    assert.equal(r.body.message, 'The plan Silver is in use and can\'t be deleted.');
 });
 
 test('a refused delete keeps the plan and its subscriptions, and publishes no event', () => {

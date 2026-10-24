@@ -123,7 +123,7 @@ const messages = defineMessages({
   },
   createHint: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.createHint',
-    defaultMessage: "Pricing can't change once the plan is created.",
+    defaultMessage: "Pricing can't be updated once the plan is created.",
     description:
       'Shown under the Paid plan switch of a new plan once it is turned on: the pricing given now is final.',
   },
@@ -186,7 +186,7 @@ const messages = defineMessages({
   },
   lockedHint: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.lockedHint',
-    defaultMessage: "Pricing can't change once a plan is created.",
+    defaultMessage: "Pricing can't be updated once a plan is created.",
     description:
       'Shown under the Paid plan switch of an existing plan, whose pricing is shown but cannot be edited.',
   },

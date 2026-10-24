@@ -96,19 +96,19 @@ describe('meters', () => {
   it('surfaces the reason for refusing a delete', async () => {
     server.use(
       failure('delete', RESOURCE, 409, 'METER_IN_USE', {
-        message: "The meter is priced by 1 plan, so it can't be deleted.",
+        message: "The meter is in use, so it can't be deleted.",
       }),
     );
 
     const error = (await deleteMeter('successful-calls').catch((e: unknown) => e)) as ApiError;
 
     expect(error.code).toBe('METER_IN_USE');
-    expect(error.message).toBe("The meter is priced by 1 plan, so it can't be deleted.");
+    expect(error.message).toBe("The meter is in use, so it can't be deleted.");
     expect(error.operation).toBe('DeleteMeter');
   });
 
   it('surfaces the reason for refusing to change a meter a plan prices', async () => {
-    const message = "The meter is priced by 2 plans, so it can't change.";
+    const message = "The meter is in use, so it can't be updated.";
     server.use(failure('put', RESOURCE, 409, 'METER_IN_USE', { message }));
 
     const error = (await updateMeter('successful-calls', {
@@ -119,15 +119,5 @@ describe('meters', () => {
 
     expect(error.message).toBe(message);
     expect(error.operation).toBe('UpdateMeter');
-  });
-
-  it('surfaces the refusal for a plan that prices the meter', async () => {
-    const message = 'The meter is used by the plans gold. Remove it from their pricing first.';
-    server.use(failure('delete', RESOURCE, 409, 'METER_IN_USE', { message }));
-
-    const error = (await deleteMeter('successful-calls').catch((e: unknown) => e)) as ApiError;
-
-    expect(error.code).toBe('METER_IN_USE');
-    expect(error.message).toBe(message);
   });
 });

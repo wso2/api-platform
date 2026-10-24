@@ -3377,7 +3377,7 @@ type CreateSubscriptionPlanRequest struct {
 	// Limits Throttling limits for the plan (e.g. requests per hour, requests per month). The table backing this API already supports multiple limits per plan, but the platform-api currently only persists and enforces the first entry in this array; any additional entries are accepted but ignored.
 	Limits *[]SubscriptionPlanLimit `json:"limits,omitempty" yaml:"limits,omitempty"`
 
-	// Pricing Makes the plan paid. Optional; a plan created without it is free. Pricing is set only when a plan is created and cannot change afterwards, so a free plan cannot become paid later, nor a paid plan free.
+	// Pricing Makes the plan paid. Optional; a plan created without it is free. Pricing is set only when a plan is created and cannot be updated afterwards, so a free plan cannot become paid later, nor a paid plan free.
 	Pricing *SubscriptionPlanPricingRequest      `json:"pricing,omitempty" yaml:"pricing,omitempty"`
 	Status  *CreateSubscriptionPlanRequestStatus `json:"status,omitempty" yaml:"status,omitempty"`
 }
@@ -4771,7 +4771,7 @@ type Meter struct {
 	FilterFields *[]MeterFilterField `json:"filterFields,omitempty" yaml:"filterFields,omitempty"`
 	Id           *string             `json:"id,omitempty" yaml:"id,omitempty"`
 
-	// PlanCount How many plans charge for this meter. While it is above 0, the meter cannot change or be deleted.
+	// PlanCount How many plans charge for this meter. While it is above 0, the meter cannot be updated or deleted.
 	PlanCount *int       `json:"planCount,omitempty" yaml:"planCount,omitempty"`
 	Type      *MeterType `json:"type,omitempty" yaml:"type,omitempty"`
 
@@ -5790,7 +5790,7 @@ type SubscriptionPlan struct {
 	// UpdatedBy User identifier of the user who last updated this resource. Only present in the detail response (GET /subscription-plans/{planId}), omitted from list responses.
 	UpdatedBy *string `json:"updatedBy,omitempty" yaml:"updatedBy,omitempty"`
 
-	// Usage What offers or uses the plan. Only present in the detail response (GET /subscription-plans/{planId}), omitted from list responses. A plan in use cannot be deleted, and its name and limit cannot change.
+	// Usage What offers or uses the plan. Only present in the detail response (GET /subscription-plans/{planId}), omitted from list responses. A plan in use cannot be deleted, and its name and limit cannot be updated.
 	Usage *SubscriptionPlanUsage `json:"usage,omitempty" yaml:"usage,omitempty"`
 }
 
@@ -5876,7 +5876,7 @@ type SubscriptionPlanPricingBillingPeriod string
 // SubscriptionPlanPricingPricingType defines model for SubscriptionPlanPricing.PricingType.
 type SubscriptionPlanPricingPricingType string
 
-// SubscriptionPlanPricingRequest What a paid subscription plan costs, given when the plan is created. A FLAT_RATE plan charges `flatAmount` every billing period and has no prices. A USAGE_BASED plan charges its `prices` (1 to 20) on one invoice per period and has no flat amount. A plan created without pricing is free. Pricing can't change once the plan exists, so a field the pricing, a price, a filter or a tier does not take is refused rather than ignored.
+// SubscriptionPlanPricingRequest What a paid subscription plan costs, given when the plan is created. A FLAT_RATE plan charges `flatAmount` every billing period and has no prices. A USAGE_BASED plan charges its `prices` (1 to 20) on one invoice per period and has no flat amount. A plan created without pricing is free. Pricing can't be updated once the plan exists, so a field the pricing, a price, a filter or a tier does not take is refused rather than ignored.
 type SubscriptionPlanPricingRequest struct {
 	BillingPeriod SubscriptionPlanPricingRequestBillingPeriod `json:"billingPeriod" yaml:"billingPeriod"`
 	Currency      string                                      `json:"currency" yaml:"currency"`

@@ -605,7 +605,7 @@ test('a sold plan\'s pricing cannot change, nor anything about its meter, the na
     assert.equal(results().meterCountingLocked.body.code, 'METER_IN_USE');
     assert.equal(results().meterRenamed.status, 409);
     assert.equal(results().meterRenamed.body.code, 'METER_IN_USE');
-    assert.equal(results().meterRenamed.body.message, 'The meter is priced by 1 plan, so it can\'t change.');
+    assert.equal(results().meterRenamed.body.message, 'The meter is in use, so it can\'t be updated.');
 });
 
 test('a paid plan cannot be subscribed to directly', () => {

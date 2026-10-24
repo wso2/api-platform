@@ -87,10 +87,8 @@ const messages = defineMessages({
   },
   deleteBlockedMessage: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.MetersSettingsPage.delete.blockedMessage',
-    defaultMessage:
-      '{count, plural, one {"{name}" is priced by # plan and can\'t be deleted until that plan is deleted.} other {"{name}" is priced by # plans and can\'t be deleted until those plans are deleted.}}',
-    description:
-      'Shown in the delete dialog, with Delete disabled, for a meter that plans price. Counts only: a meter may be priced by many plans.',
+    defaultMessage: '"{name}" is in use and can\'t be deleted.',
+    description: 'Shown in the delete dialog, with Delete disabled, for a meter that plans price.',
   },
   deleteTitle: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.MetersSettingsPage.delete.title',
@@ -207,8 +205,8 @@ export function MetersSettingsPage() {
 
   // A meter that plans price can't change: it opens with Save off.
   const isPriced = (meter: Meter) => (meter.planCount ?? 0) > 0;
-  // Nor can it be deleted: the dialog says by how many plans (not which: there may be many).
-  const blockingCount = deleteTarget?.planCount ?? 0;
+  // Nor can it be deleted: the dialog says it is in use.
+  const deleteBlocked = deleteTarget !== null && isPriced(deleteTarget);
 
   const confirmDelete = () => {
     if (!deleteTarget?.id) return;
@@ -390,18 +388,15 @@ export function MetersSettingsPage() {
       />
 
       <ConfirmDialog
-        confirmDisabled={blockingCount > 0}
+        confirmDisabled={deleteBlocked}
         confirmLabel={intl.formatMessage(messages.deleteConfirmAction)}
         destructive
         loading={deleteMutation.isPending}
         message={
           deleteTarget
             ? intl.formatMessage(
-                blockingCount > 0 ? messages.deleteBlockedMessage : messages.deleteMessage,
-                {
-                  count: blockingCount,
-                  name: deleteTarget.displayName,
-                },
+                deleteBlocked ? messages.deleteBlockedMessage : messages.deleteMessage,
+                { name: deleteTarget.displayName },
               )
             : ''
         }

@@ -401,13 +401,15 @@ describe('SubscriptionPlanFormDialog', () => {
     const { user } = setup();
 
     expect(
-      screen.queryByText("Pricing can't change once the plan is created."),
+      screen.queryByText("Pricing can't be updated once the plan is created."),
     ).not.toBeInTheDocument();
     await user.click(screen.getByRole('switch', { name: 'Paid plan' }));
-    expect(screen.getByText("Pricing can't change once the plan is created.")).toBeInTheDocument();
+    expect(
+      screen.getByText("Pricing can't be updated once the plan is created."),
+    ).toBeInTheDocument();
     await user.click(screen.getByRole('switch', { name: 'Paid plan' }));
     expect(
-      screen.queryByText("Pricing can't change once the plan is created."),
+      screen.queryByText("Pricing can't be updated once the plan is created."),
     ).not.toBeInTheDocument();
   });
 
@@ -912,7 +914,9 @@ describe('SubscriptionPlanFormDialog', () => {
   it("shows an existing plan's pricing read-only, its name and limits still editable", async () => {
     setup({ plan: aSubscriptionPlan({ pricing: aPlanPricing() }) });
 
-    expect(screen.getByText("Pricing can't change once a plan is created.")).toBeInTheDocument();
+    expect(
+      screen.getByText("Pricing can't be updated once a plan is created."),
+    ).toBeInTheDocument();
     expect(screen.getByRole('switch', { name: 'Paid plan' })).toBeChecked();
     expect(screen.getByRole('switch', { name: 'Paid plan' })).toBeDisabled();
     for (const name of ['Currency', 'Charge every', 'Pricing']) {
@@ -978,7 +982,9 @@ describe('SubscriptionPlanFormDialog', () => {
 
     expect(screen.getByRole('switch', { name: 'Paid plan' })).not.toBeChecked();
     expect(screen.getByRole('switch', { name: 'Paid plan' })).toBeDisabled();
-    expect(screen.getByText("Pricing can't change once a plan is created.")).toBeInTheDocument();
+    expect(
+      screen.getByText("Pricing can't be updated once a plan is created."),
+    ).toBeInTheDocument();
   });
 
   it('saves an edited plan without its pricing, even when the stored pricing no longer checks out', async () => {

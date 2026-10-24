@@ -579,7 +579,7 @@ test('removing billing is refused while a paid subscription is active, touching 
     const r = results().blockedBySubscription;
     assert.equal(r.status, 409);
     assert.equal(r.body.code, 'BILLING_SUBSCRIPTIONS_ACTIVE');
-    assert.equal(r.body.message, 'Billing can\'t be removed while 1 paid subscription is active.');
+    assert.equal(r.body.message, 'Billing can\'t be removed while paid subscriptions are active.');
     assert.equal(results().endpointsAfterBlocked, 2);
     assert.equal(results().describedCancelled, 0, 'a cancelled subscription does not count');
 });

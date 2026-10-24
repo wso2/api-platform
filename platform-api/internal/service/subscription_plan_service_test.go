@@ -179,7 +179,7 @@ func TestUpdatePlan_InUseMessage(t *testing.T) {
 	svc := NewSubscriptionPlanService(repo, nil, nil, nil, nil, nil)
 
 	_, err := svc.UpdatePlan("gold", "org-1", "actor", &model.SubscriptionPlanUpdate{Name: &name})
-	want := "The plan gold is used by 1 REST API and 1 subscription. To change its name or limit, create a new plan."
+	want := "The plan Gold is in use. To change its name or limit, create a new plan."
 	if err == nil || !strings.Contains(err.Error(), want) {
 		t.Fatalf("UpdatePlan error = %v, want message %q", err, want)
 	}

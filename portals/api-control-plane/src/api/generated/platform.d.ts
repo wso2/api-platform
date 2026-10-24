@@ -3208,7 +3208,7 @@ export interface paths {
         put?: never;
         /**
          * Create subscription plan
-         * @description Creates an organization-scoped subscription plan. A paid plan is created with its `pricing`, checked against the API Portal's rules and the organization's meters and stored with the plan; a plan created without it is free. Pricing is set only here: it cannot change once the plan exists. Returns `400` for pricing that breaks the rules or names an unknown meter.
+         * @description Creates an organization-scoped subscription plan. A paid plan is created with its `pricing`, checked against the API Portal's rules and the organization's meters and stored with the plan; a plan created without it is free. Pricing is set only here: it cannot be updated once the plan exists. Returns `400` for pricing that breaks the rules or names an unknown meter.
          */
         post: operations["CreateSubscriptionPlan"];
         delete?: never;
@@ -3228,13 +3228,13 @@ export interface paths {
         get: operations["GetSubscriptionPlan"];
         /**
          * Update subscription plan
-         * @description Updates the plan's name, limits, status and expiry. The name and the request limit can change only while nothing uses the plan: otherwise `409` SUBSCRIPTION_PLAN_IN_USE, with a message that counts the REST APIs, publication drafts, publications and subscriptions that use it, such as "The plan gold is used by 1 REST API and 2 subscriptions. To change its name or limit, create a new plan." The plan's `usage` (GET /subscription-plans/{subscriptionPlanId}) gives the same counts. Status and expiry can always change. Leave `pricing` out: it is the only part of a plan that never changes once the plan is created, and a body that carries it gets `409` SUBSCRIPTION_PLAN_PRICING_LOCKED.
+         * @description Updates the plan's name, limits, status and expiry. The name and the request limit can change only while nothing uses the plan: otherwise `409` SUBSCRIPTION_PLAN_IN_USE, such as "The plan Gold is in use. To change its name or limit, create a new plan." The plan's `usage` (GET /subscription-plans/{subscriptionPlanId}) counts what uses it. Status and expiry can always change. Leave `pricing` out: it is the only part of a plan that never changes once the plan is created, and a body that carries it gets `409` SUBSCRIPTION_PLAN_PRICING_LOCKED.
          */
         put: operations["UpdateSubscriptionPlan"];
         post?: never;
         /**
          * Delete subscription plan
-         * @description Deletes the plan with its pricing, only while nothing uses it: otherwise `409` SUBSCRIPTION_PLAN_IN_USE, with a message that counts the REST APIs, publication drafts, publications and subscriptions that use it, such as "The plan gold is used by 2 REST APIs. Remove it from them first." The plan's `usage` (GET /subscription-plans/{subscriptionPlanId}) gives the same counts.
+         * @description Deletes the plan with its pricing, only while nothing uses it: otherwise `409` SUBSCRIPTION_PLAN_IN_USE, such as "The plan Gold is in use and can't be deleted." The plan's `usage` (GET /subscription-plans/{subscriptionPlanId}) counts what uses it.
          */
         delete: operations["DeleteSubscriptionPlan"];
         options?: never;
@@ -3301,12 +3301,12 @@ export interface paths {
         };
         /**
          * Get a meter
-         * @description Returns one meter. `planCount` says how many plans price it; while any does, the meter cannot change or be deleted.
+         * @description Returns one meter. `planCount` says how many plans price it; while any does, the meter cannot be updated or deleted.
          */
         get: operations["GetMeter"];
         /**
          * Update a meter
-         * @description Replaces the meter's settings, checked as on create; the meter is returned as GET /meters/{meterId} gives it. A meter that a plan prices cannot change at all, its name, description and event keys included (409 METER_IN_USE). The change is not sent to API Portals; an API Portal that has the meter keeps its copy, and a later publish of a plan charging for it there is refused while the two differ (409 PUBLICATION_METER_CONFLICT).
+         * @description Replaces the meter's settings, checked as on create; the meter is returned as GET /meters/{meterId} gives it. A meter that a plan prices cannot be updated at all, its name, description and event keys included (409 METER_IN_USE). The change is not sent to API Portals; an API Portal that has the meter keeps its copy, and a later publish of a plan charging for it there is refused while the two differ (409 PUBLICATION_METER_CONFLICT).
          */
         put: operations["UpdateMeter"];
         post?: never;
@@ -5382,7 +5382,7 @@ export interface components {
              * @enum {string}
              */
             status: "ACTIVE" | "INACTIVE";
-            /** @description Makes the plan paid. Optional; a plan created without it is free. Pricing is set only when a plan is created and cannot change afterwards, so a free plan cannot become paid later, nor a paid plan free. */
+            /** @description Makes the plan paid. Optional; a plan created without it is free. Pricing is set only when a plan is created and cannot be updated afterwards, so a free plan cannot become paid later, nor a paid plan free. */
             pricing?: components["schemas"]["SubscriptionPlanPricingRequest"];
         };
         SubscriptionPlan: {
@@ -5420,7 +5420,7 @@ export interface components {
             updatedAt?: string;
             /** @description The plan's pricing, present only on a paid plan. It is set when the plan is created (POST /subscription-plans) and is the only part of a plan that never changes, so a free plan stays free and a paid one paid. An update changes the plan's other fields and leaves `pricing` out: a body that carries it gets `409` SUBSCRIPTION_PLAN_PRICING_LOCKED. */
             readonly pricing?: components["schemas"]["SubscriptionPlanPricing"];
-            /** @description What offers or uses the plan. Only present in the detail response (GET /subscription-plans/{planId}), omitted from list responses. A plan in use cannot be deleted, and its name and limit cannot change. */
+            /** @description What offers or uses the plan. Only present in the detail response (GET /subscription-plans/{planId}), omitted from list responses. A plan in use cannot be deleted, and its name and limit cannot be updated. */
             readonly usage?: components["schemas"]["SubscriptionPlanUsage"];
         };
         /** @description Counts of what offers or uses a plan. Only counts are given: a plan may be offered by more APIs than a response or message can list. */
@@ -5478,7 +5478,7 @@ export interface components {
             filterFields?: components["schemas"]["MeterFilterField"][];
             /** Format: date-time */
             updatedAt?: string;
-            /** @description How many plans charge for this meter. While it is above 0, the meter cannot change or be deleted. */
+            /** @description How many plans charge for this meter. While it is above 0, the meter cannot be updated or deleted. */
             planCount?: number;
         };
         MeterFilterField: {
@@ -5533,7 +5533,7 @@ export interface components {
             /** @description VOLUME and GRADUATED only. In ascending order; the last tier has no `upTo`. */
             tiers?: components["schemas"]["PriceTier"][] | null;
         };
-        /** @description What a paid subscription plan costs, given when the plan is created. A FLAT_RATE plan charges `flatAmount` every billing period and has no prices. A USAGE_BASED plan charges its `prices` (1 to 20) on one invoice per period and has no flat amount. A plan created without pricing is free. Pricing can't change once the plan exists, so a field the pricing, a price, a filter or a tier does not take is refused rather than ignored. */
+        /** @description What a paid subscription plan costs, given when the plan is created. A FLAT_RATE plan charges `flatAmount` every billing period and has no prices. A USAGE_BASED plan charges its `prices` (1 to 20) on one invoice per period and has no flat amount. A plan created without pricing is free. Pricing can't be updated once the plan exists, so a field the pricing, a price, a filter or a tier does not take is refused rather than ignored. */
         SubscriptionPlanPricingRequest: {
             /** @enum {string} */
             pricingType: "FLAT_RATE" | "USAGE_BASED";

@@ -244,8 +244,7 @@
     }
     btn = e.target.closest('.cfg-meter-delete-btn');
     if (btn) {
-      // A meter that plans price can't be deleted: the dialog says how many plans price it, not which,
-      // since there may be many, and Delete is disabled.
+      // A meter that plans price can't be deleted: the dialog says it is in use, and Delete is disabled.
       var plans = Number(btn.dataset.plans) || 0;
       var blocked = plans > 0;
       var name = btn.dataset.display || btn.dataset.id;
@@ -256,9 +255,8 @@
         pendingDelMeterId = null;
         var strong = document.createElement('strong');
         strong.textContent = name;
-        document.getElementById('cfg-del-meter-blocked').replaceChildren(strong, document.createTextNode(plans === 1
-          ? ' is priced by 1 plan and can\'t be deleted until that plan is deleted.'
-          : ' is priced by ' + plans + ' plans and can\'t be deleted until those plans are deleted.'));
+        document.getElementById('cfg-del-meter-blocked')
+          .replaceChildren(strong, document.createTextNode(' is in use and can\'t be deleted.'));
       } else {
         pendingDelMeterId = btn.dataset.id;
         document.getElementById('cfg-del-meter-name-txt').textContent = name;

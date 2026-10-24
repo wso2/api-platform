@@ -384,8 +384,8 @@ paths:
         subscriptions exist. `type` is required (see the create operation) and is immutable — it must match the
         API's existing type; a different value is rejected with `409`. A plan the update removes from the API must have
         no subscriptions to it: otherwise the update is refused with `409`, message `ERR_PLAN_SUB_EXIST` and the
-        reason in `errors[0].message` (for example "The plan Gold has 1 subscription to this API. It can be removed
-        from the API once that subscription has ended."), and nothing changes. Open checkouts of the plans it removes are
+        reason in `errors[0].message` (for example "The plan Gold has subscriptions to this API, so it can't be removed
+        from the API until they have ended."), and nothing changes. Open checkouts of the plans it removes are
         ended first.
       operationId: updateApiMetadata
       requestBody:
@@ -462,7 +462,7 @@ paths:
       description: >-
         Creates one subscription plan when the request body is an object, or multiple subscription plans when the body
         is an array. A paid plan is created with its `pricing` in the same request; the plan and its pricing are saved
-        together, or neither is. Pricing is given only when a plan is created and can't change after that. Returns
+        together, or neither is. Pricing is given only when a plan is created and can't be updated after that. Returns
         `409` when a plan with the same `id` already exists.
       operationId: addSubscriptionPlans
       requestBody:
@@ -540,9 +540,8 @@ paths:
       operationId: deleteSubscriptionPlan
       description: >-
         Deletes a subscription plan by `planId`. A plan that an API offers, or that has subscriptions, is kept and
-        the request is refused with `409` and code `PLAN_IN_USE`, naming the plan and the number of APIs or
-        subscriptions, such as "The plan Gold is offered by 2 APIs. Remove it from those APIs before deleting it." or
-        "The plan Gold has 3 subscriptions. It can be deleted once they have ended."
+        the request is refused with `409` and code `PLAN_IN_USE`, naming the plan, such as "The plan Gold is in use
+        and can't be deleted."
       responses:
         "204":
           description: Subscription plan deleted successfully.
@@ -568,7 +567,7 @@ paths:
       description: >-
         Returns what a paid plan costs: the currency, the billing period, and either a flat rate or the usage
         prices. The pricing is given when the plan is created (`pricing` in the body of `POST` or
-        `PUT /subscription-plans`) and can't change after that. Returns `404` for a free plan, which has no pricing.
+        `PUT /subscription-plans`) and can't be updated after that. Returns `404` for a free plan, which has no pricing.
       operationId: getPlanPricing
       responses:
         "200":
@@ -1149,8 +1148,8 @@ paths:
       description: >-
         Replaces the name, description, type, event key and filter fields of a meter. The `id` cannot
         change. Once a plan prices the meter, sold or not, no field can change, the name and description included:
-        `409` with code `METER_IN_USE` and the number of plans that price it, such as "The meter is priced by 2
-        plans, so it can't change." Until then, every field can change.
+        `409` with code `METER_IN_USE`, such as "The meter is in use, so it can't be updated." Until then, every field
+        can change.
       operationId: updateMeter
       requestBody:
         required: true
@@ -4830,7 +4829,7 @@ components:
               value:
                 status: error
                 code: PLAN_PRICING_LOCKED
-                message: The plan gold already exists; its pricing can't change once a plan is created.
+                message: The plan gold already exists; its pricing can't be updated once a plan is created.
     UnsupportedMediaType:
       description: Unsupported request media type.
       content:
@@ -6098,7 +6097,7 @@ components:
           allOf:
             - $ref: "#/components/schemas/PlanPricing"
           description: >-
-            What the plan costs; absent for a free plan. Given when the plan is created and can't change after that.
+            What the plan costs; absent for a free plan. Given when the plan is created and can't be updated after that.
         createdBy:
           type: string
           description: >-
@@ -7635,7 +7634,7 @@ components:
         of them and a `STARTS_WITH` filter, except for `HTTP_METHOD`, where two exclusion lists that together cover
         all seven methods match no common value. Requests that no price counts are not charged. `prices` is returned
         sorted by price name. Amounts are decimal strings in the currency's main unit (`"0.01"` is one cent in
-        USD). The pricing is given when the plan is created and can't change after that, so a field the pricing, a
+        USD). The pricing is given when the plan is created and can't be updated after that, so a field the pricing, a
         price, a filter or a tier does not take is refused rather than ignored.
       additionalProperties: false
       required:

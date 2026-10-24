@@ -426,7 +426,7 @@ func TestMonetizationHandler_PricingCannotChangeAfterCreate(t *testing.T) {
 		rec := planRequest(t, h, http.MethodPut, planITPath+"/gold", `{"id":"gold","displayName":"Gold","pricing":`+pricing+`}`)
 		got := decodeJSON(t, rec.Body.String())
 		if rec.Code != http.StatusConflict || got["code"] != "SUBSCRIPTION_PLAN_PRICING_LOCKED" ||
-			got["message"] != "Pricing can't change once a plan is created. Create a new plan with the new pricing." {
+			got["message"] != "Pricing can't be updated once a plan is created. Create a new plan with the new pricing." {
 			t.Fatalf("update with pricing %s: status %d, body %s", pricing, rec.Code, rec.Body.String())
 		}
 	}
@@ -466,16 +466,16 @@ func TestMonetizationHandler_MeterPricedHereCannotChange(t *testing.T) {
 	meterPath := constants.APIBasePath + "/meters/llm-input"
 	refused(planRequest(t, h, http.MethodPut, meterPath, `{"displayName":"LLM input tokens","type":"TOKENS",
 		"typeKey":"metadata.aiTokenUsage.promptTokens"}`),
-		"METER_IN_USE", "The meter is priced by 1 plan, so it can't change.")
+		"METER_IN_USE", "The meter is in use, so it can't be updated.")
 	refused(planRequest(t, h, http.MethodPut, meterPath, `{"displayName":"Prompt tokens","description":"Renamed","type":"TOKENS",
 		"typeKey":"metadata.aiTokenUsage.promptTokens","filterFields":[{"field":"API_TYPE"}]}`),
-		"METER_IN_USE", "The meter is priced by 1 plan, so it can't change.")
+		"METER_IN_USE", "The meter is in use, so it can't be updated.")
 	// The keys are part of the meter: changing only them is refused too.
 	refused(planRequest(t, h, http.MethodPut, meterPath, `{"displayName":"LLM input tokens","type":"TOKENS",
 		"typeKey":"usage.prompt_tokens","filterFields":[{"field":"API_TYPE","eventKey":"custom.api.kind"}]}`),
-		"METER_IN_USE", "The meter is priced by 1 plan, so it can't change.")
+		"METER_IN_USE", "The meter is in use, so it can't be updated.")
 	refused(planRequest(t, h, http.MethodDelete, meterPath, ""),
-		"METER_IN_USE", "The meter is priced by 1 plan, so it can't be deleted.")
+		"METER_IN_USE", "The meter is in use, so it can't be deleted.")
 
 	// A meter no pricing here uses changes and goes here; no API Portal is involved.
 	if rec := planRequest(t, h, http.MethodPut, constants.APIBasePath+"/meters/api-calls", `{"displayName":"Calls","type":"REQUEST_COUNT"}`); rec.Code != http.StatusOK {
