@@ -204,3 +204,260 @@ describe('at organization level', () => {
     expect(getProxies).not.toHaveBeenCalled();
   });
 });
+
+describe('when the proxies fetch fails', () => {
+  const failOnce = (error: unknown) => {
+    const happy = getProxies.getMockImplementation()!;
+    getProxies.mockRejectedValueOnce(error);
+    getProxies.mockImplementation(happy);
+  };
+
+  it('shows the error alert instead of the table', async () => {
+    getProxies.mockRejectedValue(Object.assign(new Error('Forbidden here'), { status: 403 }));
+    renderList();
+
+    expect(await screen.findByText('Forbidden here')).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText('Search App LLM Proxies...')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Create your first App LLM Proxy/)).not.toBeInTheDocument();
+  });
+
+  it('refetches on Retry and recovers', async () => {
+    failOnce(Object.assign(new Error('boom'), { status: 500 }));
+    const { user } = renderList();
+
+    expect(await screen.findByText(/Something went wrong\./)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+
+    await waitFor(() => expect(screen.getByText('Trip Planner')).toBeInTheDocument());
+    expect(getProxies).toHaveBeenCalledTimes(2);
+  });
+
+  it('offers Retry for a statusless network error', async () => {
+    failOnce(new Error('Network Error'));
+    const { user } = renderList();
+
+    expect(await screen.findByText('Network Error')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+
+    await waitFor(() => expect(screen.getByText('Weather Bot')).toBeInTheDocument());
+  });
+
+  it('wraps a non-Error rejection in a generic message', async () => {
+    failOnce('plain string');
+    renderList();
+
+    expect(await screen.findByText('Failed to fetch proxies')).toBeInTheDocument();
+  });
+
+  it('shows the empty state for a message-encoded 404', async () => {
+    getProxies.mockRejectedValue(new Error('Request failed, status: 404'));
+    renderList();
+
+    expect(await screen.findByText(/Create your first App LLM Proxy/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument();
+  });
+
+  it('shows the empty state for a response-encoded 404', async () => {
+    getProxies.mockRejectedValue(Object.assign(new Error('gone'), { response: { status: 404 } }));
+    renderList();
+
+    expect(await screen.findByText(/Create your first App LLM Proxy/)).toBeInTheDocument();
+  });
+});
+
+describe('searching (request shape)', () => {
+  it('sends the project and the trimmed, debounced term', async () => {
+    const { user } = renderList();
+    await waitFor(() => expect(screen.getByText('Trip Planner')).toBeInTheDocument());
+
+    await user.type(search(), '  Weather ');
+
+    await waitFor(() =>
+      expect(getProxies).toHaveBeenLastCalledWith('org-1', 'proj-1', expect.anything(), 20, 0, {
+        search: 'Weather',
+      })
+    );
+    expect(getProxies.mock.calls.length).toBeLessThan(6);
+  });
+
+  it('keeps the search box visible when a search matches nothing', async () => {
+    const { user } = renderList();
+    await waitFor(() => expect(screen.getByText('Trip Planner')).toBeInTheDocument());
+
+    await user.type(search(), 'zzz');
+
+    await waitFor(() =>
+      expect(screen.getByText(/No App LLM Proxies match your search/)).toBeInTheDocument()
+    );
+    expect(search()).toBeInTheDocument();
+    expect(screen.queryByText(/Create your first App LLM Proxy/)).not.toBeInTheDocument();
+  });
+});
+
+describe('pagination', () => {
+  beforeEach(() => {
+    const many = Array.from({ length: 45 }, (_, i) =>
+      proxy({ id: `x-${i}`, displayName: `Proxy ${String(i).padStart(2, '0')}` })
+    );
+    getProxies.mockImplementation(async (_o, _p, _b, limit, offset) => ({
+      count: Math.min(limit, many.length - offset),
+      list: many.slice(offset, offset + limit),
+      pagination: { total: many.length, offset, limit },
+    }));
+  });
+
+  it('requests the next and previous pages', async () => {
+    const { user } = renderList();
+    await waitFor(() => expect(screen.getByText('Proxy 00')).toBeInTheDocument());
+
+    await user.click(screen.getByRole('button', { name: /next page/i }));
+    await waitFor(() => expect(screen.getByText('Proxy 20')).toBeInTheDocument());
+    expect(getProxies).toHaveBeenLastCalledWith('org-1', 'proj-1', expect.anything(), 20, 20, undefined);
+
+    await user.click(screen.getByRole('button', { name: /previous page/i }));
+    await waitFor(() => expect(screen.getByText('Proxy 00')).toBeInTheDocument());
+  });
+
+  it('refetches from the first page when the page size changes', async () => {
+    const { user } = renderList();
+    await waitFor(() => expect(screen.getByText('Proxy 00')).toBeInTheDocument());
+
+    await user.click(screen.getByRole('combobox'));
+    await user.click(await screen.findByRole('option', { name: '50' }));
+
+    await waitFor(() =>
+      expect(getProxies).toHaveBeenLastCalledWith('org-1', 'proj-1', expect.anything(), 50, 0, undefined)
+    );
+    await waitFor(() => expect(screen.getByText('Proxy 44')).toBeInTheDocument());
+  });
+
+  it('hides the pager when the total is under one page', async () => {
+    getProxies.mockImplementation(async (_o, _p, _b, limit, offset) => ({
+      count: 2,
+      list: proxies,
+      pagination: { total: 2, offset, limit },
+    }));
+    renderList();
+
+    await waitFor(() => expect(screen.getByText('Trip Planner')).toBeInTheDocument());
+    expect(screen.queryByRole('button', { name: /next page/i })).not.toBeInTheDocument();
+  });
+});
+
+describe('deleting a proxy (more paths)', () => {
+  it('refetches the list after a successful delete', async () => {
+    deleteProxy.mockResolvedValue(undefined);
+    const { user } = renderList();
+    await waitFor(() => expect(screen.getByText('Trip Planner')).toBeInTheDocument());
+    const before = getProxies.mock.calls.length;
+
+    await user.click(screen.getByRole('button', { name: 'Delete Trip Planner' }));
+    await user.click(screen.getByRole('button', { name: 'Delete' }));
+
+    await waitFor(() => expect(getProxies.mock.calls.length).toBeGreaterThan(before));
+  });
+
+  it('reports the failure and closes the dialog when delete fails', async () => {
+    deleteProxy.mockRejectedValue(new Error('proxy is deployed'));
+    const { user } = renderList();
+    await waitFor(() => expect(screen.getByText('Trip Planner')).toBeInTheDocument());
+
+    await user.click(screen.getByRole('button', { name: 'Delete Trip Planner' }));
+    await user.click(screen.getByRole('button', { name: 'Delete' }));
+
+    await waitFor(() => expect(showSnackbar).toHaveBeenCalledWith('proxy is deployed', 'error'));
+    await waitFor(() =>
+      expect(screen.queryByText(/Are you sure you want to delete/)).not.toBeInTheDocument()
+    );
+  });
+
+  it('closes the dialog on Cancel without deleting', async () => {
+    const { user } = renderList();
+    await waitFor(() => expect(screen.getByText('Trip Planner')).toBeInTheDocument());
+
+    await user.click(screen.getByRole('button', { name: 'Delete Trip Planner' }));
+    expect(screen.getByText(/Are you sure you want to delete Trip Planner/)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    await waitFor(() =>
+      expect(screen.queryByText(/Are you sure you want to delete/)).not.toBeInTheDocument()
+    );
+    expect(deleteProxy).not.toHaveBeenCalled();
+  });
+
+  it('shows the read-only warning for a gateway-managed proxy', async () => {
+    proxies = [proxy({ readOnly: true })];
+    const { user } = renderList();
+    await waitFor(() => expect(screen.getByText('Trip Planner')).toBeInTheDocument());
+
+    await user.click(screen.getByRole('button', { name: 'Delete Trip Planner' }));
+
+    expect(screen.getByText(/read-only|gateway/i)).toBeInTheDocument();
+  });
+
+  it('disables the delete control without permission', async () => {
+    permitted = false;
+    renderList();
+    await waitFor(() => expect(screen.getByText('Trip Planner')).toBeInTheDocument());
+
+    expect(screen.getByRole('button', { name: 'Delete Trip Planner' })).toBeDisabled();
+  });
+});
+
+describe('row rendering', () => {
+  it('falls back to placeholders for a proxy with no description, version or provider', async () => {
+    proxies = [proxy({ description: '', version: '', provider: undefined })];
+    renderList();
+
+    await waitFor(() => expect(screen.getByText('Trip Planner')).toBeInTheDocument());
+    expect(screen.getAllByText('—').length).toBeGreaterThanOrEqual(3);
+  });
+
+  it('truncates a long description', async () => {
+    proxies = [proxy({ description: 'a'.repeat(100) })];
+    renderList();
+
+    await waitFor(() => expect(screen.getByText('a'.repeat(60) + '…')).toBeInTheDocument());
+  });
+
+  it('shows the provider id when the provider is not in the loaded list (string and object refs)', async () => {
+    proxies = [
+      proxy({ id: 'a', displayName: 'Alpha', provider: 'prov-a' }),
+      proxy({ id: 'b', displayName: 'Beta', provider: { id: 'prov-b' } }),
+      proxy({ id: 'c', displayName: 'Gamma', provider: { id: 42 } }),
+    ];
+    renderList();
+
+    await waitFor(() => expect(screen.getByText('Alpha')).toBeInTheDocument());
+    expect(screen.getByText('prov-a')).toBeInTheDocument();
+    expect(screen.getByText('prov-b')).toBeInTheDocument();
+  });
+
+  it('shows the Create button only when the project has proxies', async () => {
+    renderList();
+
+    await waitFor(() => expect(screen.getByText('Trip Planner')).toBeInTheDocument());
+    expect(screen.getByRole('link', { name: 'Create App LLM Proxy' })).toBeInTheDocument();
+  });
+});
+
+describe('at organization level (project picker)', () => {
+  beforeEach(() => {
+    currentProject = null;
+  });
+
+  it('switches to project level after choosing a project', async () => {
+    const { user } = renderList();
+    const goButton = screen.getByRole('button', { name: 'Go to Project Level' });
+    expect(goButton).toBeDisabled();
+
+    await user.click(screen.getByRole('combobox'));
+    await user.click(await screen.findByRole('option', { name: 'Project Two' }));
+    expect(goButton).not.toBeDisabled();
+    await user.click(goButton);
+
+    expect(setCurrentProject).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'proj-2' })
+    );
+  });
+});

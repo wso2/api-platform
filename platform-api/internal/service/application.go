@@ -204,9 +204,13 @@ func (s *ApplicationService) GetApplicationsByOrganization(orgID, projectHandle,
 	if strings.TrimSpace(projectHandle) == "" {
 		return nil, apperror.ValidationFailed.New("The project handle is required.")
 	}
-	if appType != "" && appType != "genai" {
-		return nil, apperror.ValidationFailed.New(
-			fmt.Sprintf("The type filter %q is not supported. Supported types: genai.", appType))
+	if appType != "" {
+		normalized, err := normalizeApplicationType(appType)
+		if err != nil {
+			return nil, apperror.ValidationFailed.New(
+				fmt.Sprintf("The type filter %q is not supported. Supported types: genai, web.", appType))
+		}
+		appType = normalized
 	}
 
 	project, err := s.projectRepo.GetProjectByHandleAndOrgID(projectHandle, orgID)

@@ -200,10 +200,7 @@ func (s *AgentProxyService) List(orgUUID string, protocol, projectHandle *string
 	if err != nil {
 		return nil, err
 	}
-	opts := repository.AgentProxyListOptions{
-		Limit: listOpts.Limit, Offset: listOpts.Offset, Protocol: filter,
-		Search: listOpts.Search, SortBy: listOpts.SortBy, SortOrder: listOpts.SortOrder,
-	}
+	opts := repository.AgentProxyListOptions{ListOptions: listOpts, Protocol: filter}
 	if projectHandle != nil {
 		if strings.TrimSpace(*projectHandle) == "" {
 			return nil, apperror.ValidationFailed.New("The projectId filter must not be empty.")

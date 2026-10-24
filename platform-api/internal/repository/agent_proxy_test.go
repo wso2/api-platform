@@ -21,6 +21,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"slices"
 	"testing"
 
 	"github.com/wso2/api-platform/platform-api/internal/database"
@@ -442,7 +443,7 @@ func TestAgentProxyUpdateReplacesMetadataAndConfiguration(t *testing.T) {
 	}
 
 	// The list projection reads the same columns.
-	list, err := repo.List("org-1", AgentProxyListOptions{Limit: 10})
+	list, err := repo.List("org-1", AgentProxyListOptions{ListOptions: ListOptions{Limit: 10}})
 	if err != nil {
 		t.Fatalf("list: %v", err)
 	}
@@ -497,7 +498,7 @@ func TestAgentProxyListAndCountFilterByProtocolWithinOrg(t *testing.T) {
 		t.Fatalf("create in second org: %v", err)
 	}
 
-	all, err := repo.List("org-1", AgentProxyListOptions{Limit: 10})
+	all, err := repo.List("org-1", AgentProxyListOptions{ListOptions: ListOptions{Limit: 10}})
 	if err != nil {
 		t.Fatalf("list: %v", err)
 	}
@@ -505,7 +506,7 @@ func TestAgentProxyListAndCountFilterByProtocolWithinOrg(t *testing.T) {
 		t.Fatalf("unfiltered list = %d rows, want 3 (org isolation)", len(all))
 	}
 
-	filtered, err := repo.List("org-1", AgentProxyListOptions{Limit: 10, Protocol: model.AgentProxyProtocolA2A})
+	filtered, err := repo.List("org-1", AgentProxyListOptions{ListOptions: ListOptions{Limit: 10}, Protocol: model.AgentProxyProtocolA2A})
 	if err != nil {
 		t.Fatalf("filtered list: %v", err)
 	}
@@ -513,7 +514,7 @@ func TestAgentProxyListAndCountFilterByProtocolWithinOrg(t *testing.T) {
 		t.Fatalf("a2a-filtered list = %d rows, want 3", len(filtered))
 	}
 
-	none, err := repo.List("org-1", AgentProxyListOptions{Limit: 10, Protocol: "does-not-exist"})
+	none, err := repo.List("org-1", AgentProxyListOptions{ListOptions: ListOptions{Limit: 10}, Protocol: "does-not-exist"})
 	if err != nil {
 		t.Fatalf("list with unmatched protocol: %v", err)
 	}
@@ -542,14 +543,14 @@ func TestAgentProxyListAndCountFilterByProtocolWithinOrg(t *testing.T) {
 	}
 
 	// Pagination stays inside the filter.
-	page, err := repo.List("org-1", AgentProxyListOptions{Limit: 2, Offset: 0, Protocol: model.AgentProxyProtocolA2A})
+	page, err := repo.List("org-1", AgentProxyListOptions{ListOptions: ListOptions{Limit: 2, Offset: 0}, Protocol: model.AgentProxyProtocolA2A})
 	if err != nil {
 		t.Fatalf("first page: %v", err)
 	}
 	if len(page) != 2 {
 		t.Fatalf("first page = %d rows, want 2", len(page))
 	}
-	rest, err := repo.List("org-1", AgentProxyListOptions{Limit: 2, Offset: 2, Protocol: model.AgentProxyProtocolA2A})
+	rest, err := repo.List("org-1", AgentProxyListOptions{ListOptions: ListOptions{Limit: 2, Offset: 2}, Protocol: model.AgentProxyProtocolA2A})
 	if err != nil {
 		t.Fatalf("second page: %v", err)
 	}
@@ -570,12 +571,14 @@ func TestAgentProxyListAndCountSearch(t *testing.T) {
 
 	repo := NewAgentProxyRepo(db)
 	for _, handle := range []string{"weather-agent", "billing-agent", "support-agent"} {
-		if err := repo.Create(minimalAgentProxy("org-1", "proj-1", handle)); err != nil {
+		fixture := minimalAgentProxy("org-1", "proj-1", handle)
+		fixture.Name = handle
+		if err := repo.Create(fixture); err != nil {
 			t.Fatalf("create %s: %v", handle, err)
 		}
 	}
 
-	matched, err := repo.List("org-1", AgentProxyListOptions{Limit: 10, Search: "weather"})
+	matched, err := repo.List("org-1", AgentProxyListOptions{ListOptions: ListOptions{Limit: 10, Search: "weather"}})
 	if err != nil {
 		t.Fatalf("search list: %v", err)
 	}
@@ -583,7 +586,7 @@ func TestAgentProxyListAndCountSearch(t *testing.T) {
 		t.Fatalf("search list = %+v, want only weather-agent", matched)
 	}
 
-	count, err := repo.Count("org-1", AgentProxyListOptions{Search: "weather"})
+	count, err := repo.Count("org-1", AgentProxyListOptions{ListOptions: ListOptions{Search: "weather"}})
 	if err != nil {
 		t.Fatalf("search count: %v", err)
 	}
@@ -591,7 +594,7 @@ func TestAgentProxyListAndCountSearch(t *testing.T) {
 		t.Fatalf("search count = %d, want 1", count)
 	}
 
-	none, err := repo.List("org-1", AgentProxyListOptions{Limit: 10, Search: "no-such-term"})
+	none, err := repo.List("org-1", AgentProxyListOptions{ListOptions: ListOptions{Limit: 10, Search: "no-such-term"}})
 	if err != nil {
 		t.Fatalf("unmatched search list: %v", err)
 	}
@@ -599,12 +602,20 @@ func TestAgentProxyListAndCountSearch(t *testing.T) {
 		t.Fatalf("unmatched search list = %d rows, want 0", len(none))
 	}
 
-	ascByName, err := repo.List("org-1", AgentProxyListOptions{Limit: 10, SortBy: "name", SortOrder: "asc"})
+	ascByName, err := repo.List("org-1", AgentProxyListOptions{ListOptions: ListOptions{Limit: 10, SortBy: "name", SortOrder: "asc"}})
 	if err != nil {
 		t.Fatalf("sorted list: %v", err)
 	}
-	if len(ascByName) != 3 {
-		t.Fatalf("sorted list = %d rows, want 3", len(ascByName))
+	if got := agentProxyHandles(ascByName); !slices.Equal(got, []string{"billing-agent", "support-agent", "weather-agent"}) {
+		t.Fatalf("ascending by name = %v, want billing, support, weather", got)
+	}
+
+	descByName, err := repo.List("org-1", AgentProxyListOptions{ListOptions: ListOptions{Limit: 10, SortBy: "name", SortOrder: "desc"}})
+	if err != nil {
+		t.Fatalf("descending sorted list: %v", err)
+	}
+	if got := agentProxyHandles(descByName); !slices.Equal(got, []string{"weather-agent", "support-agent", "billing-agent"}) {
+		t.Fatalf("descending by name = %v, want weather, support, billing", got)
 	}
 }
 
@@ -645,8 +656,8 @@ func TestAgentProxyProjectScopedListAndCount(t *testing.T) {
 	// The paginated list path applies the same project filter, alone and
 	// combined with the protocol filter, to the page and the total alike.
 	for _, opts := range []AgentProxyListOptions{
-		{Limit: 10, ProjectUUID: "proj-1"},
-		{Limit: 10, ProjectUUID: "proj-1", Protocol: model.AgentProxyProtocolA2A},
+		{ListOptions: ListOptions{Limit: 10}, ProjectUUID: "proj-1"},
+		{ListOptions: ListOptions{Limit: 10}, ProjectUUID: "proj-1", Protocol: model.AgentProxyProtocolA2A},
 	} {
 		page, err := repo.List("org-1", opts)
 		if err != nil {
@@ -819,5 +830,49 @@ func TestAgentProxySecretReferencesAreRecordedAndResolvable(t *testing.T) {
 	}
 	if refs != 0 {
 		t.Fatalf("artifact_secret_refs rows = %d after dropping the placeholder, want 0", refs)
+	}
+}
+
+func agentProxyHandles(proxies []*model.AgentProxy) []string {
+	handles := make([]string, 0, len(proxies))
+	for _, p := range proxies {
+		handles = append(handles, p.Handle)
+	}
+	return handles
+}
+
+// TestAgentProxyListPagesAreStableWhenSortKeysTie guards the uuid tie-breaker on
+// the list ORDER BY: every fixture shares one name, so without a unique final
+// sort column the database may order the ties differently for each page query
+// and a row can repeat or be skipped across pages.
+func TestAgentProxyListPagesAreStableWhenSortKeysTie(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	seedAgentProxyOrgProject(t, db, "org-1", "proj-1")
+
+	repo := NewAgentProxyRepo(db)
+	handles := []string{"agent-a", "agent-b", "agent-c", "agent-d", "agent-e"}
+	for _, handle := range handles {
+		if err := repo.Create(minimalAgentProxy("org-1", "proj-1", handle)); err != nil {
+			t.Fatalf("create %s: %v", handle, err)
+		}
+	}
+
+	seen := map[string]bool{}
+	for offset := 0; offset < len(handles); offset++ {
+		page, err := repo.List("org-1", AgentProxyListOptions{ListOptions: ListOptions{Limit: 1, Offset: offset, SortBy: "name"}})
+		if err != nil {
+			t.Fatalf("page at offset %d: %v", offset, err)
+		}
+		if len(page) != 1 {
+			t.Fatalf("page at offset %d = %d rows, want 1", offset, len(page))
+		}
+		if seen[page[0].Handle] {
+			t.Fatalf("handle %s appeared on more than one page", page[0].Handle)
+		}
+		seen[page[0].Handle] = true
+	}
+	if len(seen) != len(handles) {
+		t.Fatalf("paged through %d distinct rows, want %d", len(seen), len(handles))
 	}
 }

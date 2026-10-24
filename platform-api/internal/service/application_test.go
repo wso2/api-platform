@@ -1134,3 +1134,51 @@ func TestCreateApplication_ValidatesProvidedProjectID(t *testing.T) {
 		t.Fatalf("expected ErrProjectNotFound, got %v", err)
 	}
 }
+
+// TestGetApplicationsByOrganization_NormalizesAppTypeFilter checks that the type
+// filter is compared case-insensitively and that both supported types ("genai",
+// "web") are accepted, with the repository always receiving the canonical
+// lowercase value rather than whatever casing the client sent.
+func TestGetApplicationsByOrganization_NormalizesAppTypeFilter(t *testing.T) {
+	orgID := "org-1"
+	projectID := "11111111-1111-1111-1111-111111111111"
+
+	cases := []struct {
+		name      string
+		filter    string
+		wantTotal int
+		wantID    string
+	}{
+		{"mixed-case genai", "GenAI", 1, "app-genai"},
+		{"upper-case web", "WEB", 1, "app-web"},
+		{"padded web", "  web ", 1, "app-web"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			svc := &ApplicationService{
+				appRepo: &mockApplicationRepository{
+					applications: []*model.Application{
+						{UUID: "app-genai", Handle: "app-genai", OrganizationUUID: orgID, ProjectUUID: projectID, Name: "GenAI", Type: "genai"},
+						{UUID: "app-web", Handle: "app-web", OrganizationUUID: orgID, ProjectUUID: projectID, Name: "Web", Type: "web"},
+					},
+				},
+				projectRepo: &mockProjectRepository{
+					projectByUUID: &model.Project{ID: projectID, Handle: projectID, OrganizationID: orgID},
+				},
+				orgRepo:  &mockApplicationOrganizationRepository{org: &model.Organization{ID: orgID}},
+				identity: newTestIdentityService(),
+			}
+
+			resp, err := svc.GetApplicationsByOrganization(orgID, projectID, tc.filter, repository.ListOptions{Limit: 20})
+			if err != nil {
+				t.Fatalf("filter %q returned error: %v", tc.filter, err)
+			}
+			if resp.Pagination.Total != tc.wantTotal || len(resp.List) != tc.wantTotal {
+				t.Fatalf("filter %q: total=%d list=%d, want %d", tc.filter, resp.Pagination.Total, len(resp.List), tc.wantTotal)
+			}
+			if resp.List[0].Id != tc.wantID {
+				t.Fatalf("filter %q returned %s, want %s", tc.filter, resp.List[0].Id, tc.wantID)
+			}
+		})
+	}
+}

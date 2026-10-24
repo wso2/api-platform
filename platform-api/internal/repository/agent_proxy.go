@@ -60,13 +60,9 @@ var ErrAgentProxyProjectOrgMismatch = errors.New("project does not belong to the
 // the list and the count query build their predicate from the same helper so a
 // filtered page can never disagree with the total it is paginated against.
 type AgentProxyListOptions struct {
-	Limit       int
-	Offset      int
+	ListOptions
 	Protocol    model.AgentProxyProtocol
 	ProjectUUID string
-	Search      string
-	SortBy      string
-	SortOrder   string
 }
 
 // AgentProxyRepo handles database operations for Agent proxies.

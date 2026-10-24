@@ -245,3 +245,216 @@ describe('while the catalogue is still loading', () => {
     expect(screen.queryByText(/Create your first LLM Provider/)).not.toBeInTheDocument();
   });
 });
+
+describe('when the providers fetch fails', () => {
+  const failOnce = (error: unknown) => {
+    const happy = getLLMProviders.getMockImplementation()!;
+    getLLMProviders.mockRejectedValueOnce(error);
+    getLLMProviders.mockImplementation(happy);
+  };
+
+  it('shows the error alert and hides the search box and provider cards', async () => {
+    getLLMProviders.mockRejectedValue(Object.assign(new Error('Not found'), { status: 404 }));
+    renderList();
+
+    expect(await screen.findByText('Not found')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText('Search Service Providers...')).not.toBeInTheDocument();
+    expect(screen.queryByText('Trip Planner')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Create your first LLM Provider/)).not.toBeInTheDocument();
+  });
+
+  it('refetches on Retry and recovers', async () => {
+    failOnce(Object.assign(new Error('boom'), { status: 500 }));
+    const { user } = renderList();
+
+    expect(await screen.findByText(/Something went wrong\./)).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+
+    await waitFor(() => expect(screen.getByText('Trip Planner')).toBeInTheDocument());
+    expect(getLLMProviders).toHaveBeenCalledTimes(2);
+    expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument();
+  });
+
+  it('offers Retry for a statusless network error', async () => {
+    failOnce(new Error('Network Error'));
+    const { user } = renderList();
+
+    expect(await screen.findByText('Network Error')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+
+    await waitFor(() => expect(screen.getByText('Weather Bot')).toBeInTheDocument());
+  });
+
+  it('wraps a non-Error rejection in a generic message', async () => {
+    failOnce('plain string');
+    renderList();
+
+    expect(await screen.findByText('Failed to fetch providers')).toBeInTheDocument();
+  });
+});
+
+describe('searching (request shape)', () => {
+  it('sends the trimmed, debounced term as the search option', async () => {
+    const { user } = renderList();
+    await waitFor(() => expect(screen.getByText('Trip Planner')).toBeInTheDocument());
+
+    await user.type(search(), '  Weather ');
+
+    await waitFor(() =>
+      expect(getLLMProviders).toHaveBeenLastCalledWith('org-1', expect.anything(), 20, 0, {
+        search: 'Weather',
+      })
+    );
+    // Debounced: far fewer fetches than keystrokes.
+    expect(getLLMProviders.mock.calls.length).toBeLessThan(6);
+  });
+
+  it('keeps the search box visible when a search matches nothing', async () => {
+    const { user } = renderList();
+    await waitFor(() => expect(screen.getByText('Trip Planner')).toBeInTheDocument());
+
+    await user.type(search(), 'zzz');
+
+    await waitFor(() =>
+      expect(screen.getByText('No providers match your search.')).toBeInTheDocument()
+    );
+    expect(search()).toBeInTheDocument();
+    expect(screen.queryByText(/Create your first LLM Provider/)).not.toBeInTheDocument();
+  });
+});
+
+describe('pagination', () => {
+  beforeEach(() => {
+    const many = Array.from({ length: 45 }, (_, i) =>
+      provider({ id: `p-${i}`, displayName: `Provider ${String(i).padStart(2, '0')}` })
+    );
+    getLLMProviders.mockImplementation(async (_org, _base, limit, offset) => ({
+      count: Math.min(limit, many.length - offset),
+      list: many.slice(offset, offset + limit),
+      pagination: { total: many.length, offset, limit },
+    }));
+  });
+
+  it('shows the first page and requests the next page on demand', async () => {
+    const { user } = renderList();
+    await waitFor(() => expect(screen.getByText('Provider 00')).toBeInTheDocument());
+    expect(screen.queryByText('Provider 20')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /next page/i }));
+
+    await waitFor(() => expect(screen.getByText('Provider 20')).toBeInTheDocument());
+    expect(getLLMProviders).toHaveBeenLastCalledWith('org-1', expect.anything(), 20, 20, undefined);
+
+    await user.click(screen.getByRole('button', { name: /previous page/i }));
+    await waitFor(() => expect(screen.getByText('Provider 00')).toBeInTheDocument());
+  });
+
+  it('refetches from the first page when the page size changes', async () => {
+    const { user } = renderList();
+    await waitFor(() => expect(screen.getByText('Provider 00')).toBeInTheDocument());
+
+    await user.click(screen.getByRole('combobox'));
+    await user.click(await screen.findByRole('option', { name: '50' }));
+
+    await waitFor(() =>
+      expect(getLLMProviders).toHaveBeenLastCalledWith('org-1', expect.anything(), 50, 0, undefined)
+    );
+    await waitFor(() => expect(screen.getByText('Provider 44')).toBeInTheDocument());
+  });
+
+  it('hides the pager when the total is under one page', async () => {
+    getLLMProviders.mockImplementation(async (_o, _b, limit, offset) => ({
+      count: 2,
+      list: providers,
+      pagination: { total: 2, offset, limit },
+    }));
+    renderList();
+
+    await waitFor(() => expect(screen.getByText('Trip Planner')).toBeInTheDocument());
+    expect(screen.queryByRole('button', { name: /next page/i })).not.toBeInTheDocument();
+  });
+});
+
+describe('deleting a provider (more paths)', () => {
+  const openConfirm = async (user: ReturnType<typeof renderList>['user']) => {
+    await waitFor(() => expect(screen.getByText('Trip Planner')).toBeInTheDocument());
+    await user.click(screen.getByRole('button', { name: 'Delete Trip Planner' }));
+    await screen.findByPlaceholderText('Trip Planner');
+  };
+
+  it('refetches the list after a successful delete', async () => {
+    deleteProvider.mockResolvedValue(undefined);
+    const { user } = renderList();
+    await openConfirm(user);
+    const callsBefore = getLLMProviders.mock.calls.length;
+
+    await user.type(screen.getByPlaceholderText('Trip Planner'), 'Trip Planner');
+    await user.click(screen.getByRole('button', { name: 'Delete' }));
+
+    await waitFor(() => expect(getLLMProviders.mock.calls.length).toBeGreaterThan(callsBefore));
+    await waitFor(() => expect(screen.queryByPlaceholderText('Trip Planner')).not.toBeInTheDocument());
+  });
+
+  it('reports the failure and keeps the dialog open when delete fails', async () => {
+    deleteProvider.mockRejectedValue(new Error('provider is locked'));
+    const { user } = renderList();
+    await openConfirm(user);
+
+    await user.type(screen.getByPlaceholderText('Trip Planner'), 'Trip Planner');
+    await user.click(screen.getByRole('button', { name: 'Delete' }));
+
+    await waitFor(() => expect(showSnackbar).toHaveBeenCalledWith('provider is locked', 'error'));
+    expect(screen.getByPlaceholderText('Trip Planner')).toBeInTheDocument();
+  });
+
+  it('closes the dialog on Cancel without deleting', async () => {
+    const { user } = renderList();
+    await openConfirm(user);
+
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    await waitFor(() => expect(screen.queryByPlaceholderText('Trip Planner')).not.toBeInTheDocument());
+    expect(deleteProvider).not.toHaveBeenCalled();
+  });
+
+  it('blocks deletion and says so when the usage check fails', async () => {
+    getLLMProviderProxies.mockRejectedValue(new Error('down'));
+    const { user } = renderList();
+    await waitFor(() => expect(screen.getByText('Trip Planner')).toBeInTheDocument());
+
+    await user.click(screen.getByRole('button', { name: 'Delete Trip Planner' }));
+
+    await waitFor(() =>
+      expect(showSnackbar).toHaveBeenCalledWith(
+        expect.stringContaining('Deletion has been blocked'),
+        'error'
+      )
+    );
+    expect(screen.queryByPlaceholderText('Trip Planner')).not.toBeInTheDocument();
+  });
+
+  it('uses the singular wording when exactly one proxy uses the provider', async () => {
+    getLLMProviderProxies.mockResolvedValue({ count: 1, list: [], pagination: { total: 1, offset: 0, limit: 1 } });
+    const { user } = renderList();
+    await waitFor(() => expect(screen.getByText('Trip Planner')).toBeInTheDocument());
+
+    await user.click(screen.getByRole('button', { name: 'Delete Trip Planner' }));
+
+    await waitFor(() =>
+      expect(showSnackbar).toHaveBeenCalledWith(
+        expect.stringContaining('1 App LLM Proxy is using this provider'),
+        'error'
+      )
+    );
+  });
+
+  it('shows the read-only warning for a gateway-managed provider', async () => {
+    providers = [provider({ readOnly: true })];
+    const { user } = renderList();
+    await openConfirm(user);
+
+    expect(screen.getByText(/read-only|gateway/i)).toBeInTheDocument();
+  });
+});

@@ -223,7 +223,7 @@ type WebBrokerAPI struct {
 
 	// ProjectId Handle of the project this API belongs to (the project UUID is also accepted)
 	//
-	// Example: 550e8400-e29b-41d4-a716-446655440000
+	// Example: my-project
 	ProjectId string `json:"projectId" yaml:"projectId"`
 
 	// ReadOnly True when the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane.
@@ -297,7 +297,7 @@ type WebBrokerAPIListItem struct {
 	// LifeCycleStatus Example: CREATED
 	LifeCycleStatus *WebBrokerAPIListItemLifeCycleStatus `json:"lifeCycleStatus,omitempty" yaml:"lifeCycleStatus,omitempty"`
 
-	// ProjectId Example: 550e8400-e29b-41d4-a716-446655440000
+	// ProjectId Example: my-project
 	ProjectId *string `json:"projectId,omitempty" yaml:"projectId,omitempty"`
 
 	// ReadOnly True when the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane.
@@ -407,7 +407,7 @@ type WebSubAPI struct {
 
 	// ProjectId Handle of the project this API belongs to (the project UUID is also accepted)
 	//
-	// Example: 550e8400-e29b-41d4-a716-446655440000
+	// Example: my-project
 	ProjectId string `json:"projectId" yaml:"projectId"`
 
 	// ReadOnly True when the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane.
@@ -541,7 +541,7 @@ type WebSubAPIListItem struct {
 	// LifeCycleStatus Example: CREATED
 	LifeCycleStatus *WebSubAPIListItemLifeCycleStatus `json:"lifeCycleStatus,omitempty" yaml:"lifeCycleStatus,omitempty"`
 
-	// ProjectId Example: 550e8400-e29b-41d4-a716-446655440000
+	// ProjectId Example: my-project
 	ProjectId *string `json:"projectId,omitempty" yaml:"projectId,omitempty"`
 
 	// ReadOnly True when the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane.

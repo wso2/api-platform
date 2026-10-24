@@ -22,6 +22,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderWithProviders, screen, waitFor } from '../../../../test/utils';
 import AgentProxiesList from './AgentProxiesList';
 
+const navigate = vi.fn();
+vi.mock('react-router-dom', async () => {
+  const actual = await vi.importActual<typeof import('react-router-dom')>('react-router-dom');
+  return { ...actual, useNavigate: () => navigate };
+});
+
 const showSnackbar = vi.fn();
 const deleteAgentProxy = vi.fn();
 const getAgentProxies = vi.fn();
@@ -88,6 +94,7 @@ beforeEach(() => {
   setCurrentProject.mockReset();
   proxies = [proxy(), proxy({ id: 'weather', displayName: 'Weather Bot', description: 'forecasts', context: '/weather', version: '2.0.0' })];
   showSnackbar.mockReset();
+  navigate.mockReset();
   deleteAgentProxy.mockReset();
   getAgentProxies.mockReset();
   getAgentProxies.mockImplementation(async (_projectId, _baseUrl, limit, offset, options) => {
@@ -295,5 +302,108 @@ describe('while the catalogue is still loading', () => {
     expect(screen.getByText('Name')).toBeInTheDocument();
     expect(screen.getByText('Last Updated')).toBeInTheDocument();
     expect(screen.queryByText('Trip Planner')).not.toBeInTheDocument();
+  });
+});
+
+describe('fetch failure', () => {
+  it('shows an error and refetches on retry', async () => {
+    getAgentProxies.mockRejectedValueOnce(new Error('boom'));
+    const { user } = renderList();
+
+    const retry = await screen.findAllByRole('button', { name: /Retry/ });
+    expect(screen.queryByText('Trip Planner')).not.toBeInTheDocument();
+
+    await user.click(retry[0]);
+
+    await waitFor(() => expect(screen.getByText('Trip Planner')).toBeInTheDocument());
+    expect(getAgentProxies).toHaveBeenCalledTimes(2);
+  });
+
+  it('wraps a non-Error rejection', async () => {
+    getAgentProxies.mockRejectedValueOnce('nope');
+    renderList();
+
+    expect((await screen.findAllByRole('button', { name: /Retry/ })).length).toBeGreaterThan(0);
+  });
+});
+
+describe('row interaction', () => {
+  it('opens the proxy when its row is clicked', async () => {
+    const { user } = renderList();
+    await waitFor(() => expect(screen.getByText('Trip Planner')).toBeInTheDocument());
+
+    await user.click(screen.getByText('Trip Planner'));
+
+    expect(navigate).toHaveBeenCalledWith(expect.stringContaining('/agent-proxy/trip-planner'));
+  });
+
+  it('does not open the proxy when delete is clicked', async () => {
+    const { user } = renderList();
+    await waitFor(() => expect(screen.getByText('Trip Planner')).toBeInTheDocument());
+
+    await user.click(screen.getByRole('button', { name: 'Delete Trip Planner' }));
+
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
+  it('keeps the proxy when the delete dialog is cancelled', async () => {
+    const { user } = renderList();
+    await waitFor(() => expect(screen.getByText('Trip Planner')).toBeInTheDocument());
+
+    await user.click(screen.getByRole('button', { name: 'Delete Trip Planner' }));
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    await waitFor(() => expect(screen.queryByText(/Are you sure you want to delete/)).not.toBeInTheDocument());
+    expect(deleteAgentProxy).not.toHaveBeenCalled();
+  });
+
+  it('switches project and navigates from the org-level chooser', async () => {
+    currentProject = null;
+    const { user } = renderList();
+
+    await user.click(screen.getByRole('combobox'));
+    await user.click(screen.getByRole('option', { name: 'Project Two' }));
+    await user.click(screen.getByRole('button', { name: /Go to Project Level/ }));
+
+    expect(navigate).toHaveBeenCalledWith(expect.stringContaining('/agent-proxy'));
+  });
+});
+
+describe('pagination', () => {
+  const many = (n: number) =>
+    Array.from({ length: n }, (_, i) => proxy({ id: `p-${i}`, displayName: `Proxy ${i}` }));
+
+  beforeEach(() => {
+    const all = many(45);
+    getAgentProxies.mockImplementation(async (_p, _b, limit, offset) => ({
+      count: all.length,
+      list: all.slice(offset, offset + limit),
+      pagination: { total: all.length, offset, limit },
+    }));
+  });
+
+  it('requests the next page and changes page size', async () => {
+    const { user } = renderList();
+    await waitFor(() => expect(screen.getByText('Proxy 0')).toBeInTheDocument());
+
+    await user.click(screen.getByRole('button', { name: /next page/i }));
+    await waitFor(() => expect(getAgentProxies).toHaveBeenLastCalledWith('proj-1', expect.anything(), 20, 20, undefined));
+    await waitFor(() => expect(screen.getByText('Proxy 20')).toBeInTheDocument());
+
+    await user.click(screen.getByRole('combobox', { name: /rows per page/i }));
+    await user.click(screen.getByRole('option', { name: '50' }));
+    await waitFor(() => expect(getAgentProxies).toHaveBeenLastCalledWith('proj-1', expect.anything(), 50, 0, undefined));
+  });
+});
+
+describe('read-only proxy deletion', () => {
+  it('warns when the proxy is gateway-managed', async () => {
+    proxies = [proxy({ readOnly: true })];
+    const { user } = renderList();
+    await waitFor(() => expect(screen.getByText('Trip Planner')).toBeInTheDocument());
+
+    await user.click(screen.getByRole('button', { name: 'Delete Trip Planner' }));
+
+    expect(screen.getByText(/Are you sure you want to delete Trip Planner/)).toBeInTheDocument();
   });
 });
