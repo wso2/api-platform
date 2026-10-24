@@ -519,6 +519,185 @@ func TestExecuteResponsePolicies_ReverseOrder(t *testing.T) {
 	assert.Equal(t, []string{"third", "second", "first"}, executionOrder)
 }
 
+func TestExecuteResponsePolicies_GuardrailSkippedOnErrorFlow(t *testing.T) {
+	tracer := noop.NewTracerProvider().Tracer("test")
+	executor := NewChainExecutor(nil, nil, tracer)
+	ctx := context.Background()
+
+	testCases := []struct {
+		name         string
+		policyName   string
+		status       int
+		expectedSkip bool
+	}{
+		{
+			name:         "aws-bedrock-guardrail on 403 error flow is skipped",
+			policyName:   "aws-bedrock-guardrail",
+			status:       403,
+			expectedSkip: true,
+		},
+		{
+			name:         "aws-bedrock-guardrail on 500 error flow is skipped",
+			policyName:   "aws-bedrock-guardrail",
+			status:       500,
+			expectedSkip: true,
+		},
+		{
+			name:         "aws-bedrock-guardrail on 200 success flow is executed",
+			policyName:   "aws-bedrock-guardrail",
+			status:       200,
+			expectedSkip: false,
+		},
+		{
+			name:         "azure content moderation on 403 is skipped",
+			policyName:   "azure-content-safety-content-moderation",
+			status:       403,
+			expectedSkip: true,
+		},
+		{
+			name:         "granite prompt injection on 503 is skipped",
+			policyName:   "granite-guardian-prompt-injection",
+			status:       503,
+			expectedSkip: true,
+		},
+		{
+			name:         "non-guardrail policy on 403 error flow is NOT skipped",
+			policyName:   "header-mod",
+			status:       403,
+			expectedSkip: false,
+		},
+		{
+			name:         "moderation-analytics on 403 error flow is NOT skipped",
+			policyName:   "moderation-analytics",
+			status:       403,
+			expectedSkip: false,
+		},
+		{
+			name:         "prompt-injection-logger on 500 error flow is NOT skipped",
+			policyName:   "prompt-injection-logger",
+			status:       500,
+			expectedSkip: false,
+		},
+		{
+			name:         "cors policy on 500 error flow is NOT skipped",
+			policyName:   "cors",
+			status:       500,
+			expectedSkip: false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			executed := false
+			pol := &guardrailTestPolicy{
+				onExecute: func() { executed = true },
+			}
+			respCtx := testutils.NewTestResponseContextWithStatus(tc.status)
+			policies := []policy.Policy{pol}
+			specs := []policy.PolicySpec{newPolicySpec(tc.policyName, "v1", true, nil)}
+
+			result, err := executor.ExecuteResponsePolicies(ctx, policies, respCtx, specs, "api", "route", false)
+			require.NoError(t, err)
+			require.Len(t, result.Results, 1)
+
+			assert.Equal(t, tc.expectedSkip, result.Results[0].Skipped)
+			assert.Equal(t, !tc.expectedSkip, executed)
+		})
+	}
+}
+
+func TestExecuteStreamingResponsePolicies_GuardrailSkippedOnErrorFlow(t *testing.T) {
+	tracer := noop.NewTracerProvider().Tracer("test")
+	executor := NewChainExecutor(nil, nil, tracer)
+	ctx := context.Background()
+
+	executed := false
+	pol := &streamingGuardrailTestPolicy{
+		onExecute: func() { executed = true },
+	}
+	respCtx := &policy.ResponseStreamContext{
+		ResponseStatus: 403,
+	}
+	chunk := &policy.StreamBody{Chunk: []byte("error payload"), EndOfStream: true}
+	policies := []policy.Policy{pol}
+	specs := []policy.PolicySpec{newPolicySpec("aws-bedrock-guardrail", "v1", true, nil)}
+
+	result, err := executor.ExecuteStreamingResponsePolicies(ctx, policies, respCtx, chunk, specs, "api", "route", false)
+	require.NoError(t, err)
+	require.Len(t, result.Results, 1)
+	assert.True(t, result.Results[0].Skipped)
+	assert.False(t, executed)
+}
+
+func TestIsGuardrailPolicy(t *testing.T) {
+	assert.True(t, isGuardrailPolicy("aws-bedrock-guardrail", nil))
+	assert.True(t, isGuardrailPolicy("content-length-guardrail", nil))
+	assert.True(t, isGuardrailPolicy("json-schema-guardrail", nil))
+	assert.True(t, isGuardrailPolicy("regex-guardrail", nil))
+	assert.True(t, isGuardrailPolicy("azure-content-safety-content-moderation", nil))
+	assert.True(t, isGuardrailPolicy("granite-guardian-prompt-injection", nil))
+	assert.True(t, isGuardrailPolicy("custom-guardrail", nil))
+	assert.True(t, isGuardrailPolicy("guardrail", nil))
+
+	// Collisions that contain keywords but are not guardrails
+	assert.False(t, isGuardrailPolicy("moderation-analytics", nil))
+	assert.False(t, isGuardrailPolicy("prompt-injection-logger", nil))
+	assert.False(t, isGuardrailPolicy("guardrail-dashboard", nil))
+	assert.False(t, isGuardrailPolicy("cors", nil))
+	assert.False(t, isGuardrailPolicy("header-mod", nil))
+
+	// Explicit marker interface
+	assert.True(t, isGuardrailPolicy("arbitrary-name", &guardrailMarkerPolicy{isGuardrail: true}))
+	assert.False(t, isGuardrailPolicy("some-guardrail", &guardrailMarkerPolicy{isGuardrail: false}))
+}
+
+type guardrailMarkerPolicy struct {
+	isGuardrail bool
+}
+
+func (p *guardrailMarkerPolicy) Mode() policy.ProcessingMode { return policy.ProcessingMode{} }
+func (p *guardrailMarkerPolicy) IsGuardrail() bool           { return p.isGuardrail }
+
+type guardrailTestPolicy struct {
+	onExecute func()
+}
+
+func (p *guardrailTestPolicy) Mode() policy.ProcessingMode {
+	return policy.ProcessingMode{}
+}
+
+func (p *guardrailTestPolicy) OnResponseBody(_ context.Context, _ *policy.ResponseContext, _ map[string]interface{}) policy.ResponseAction {
+	if p.onExecute != nil {
+		p.onExecute()
+	}
+	return nil
+}
+
+type streamingGuardrailTestPolicy struct {
+	onExecute func()
+}
+
+func (p *streamingGuardrailTestPolicy) Mode() policy.ProcessingMode {
+	return policy.ProcessingMode{
+		ResponseBodyMode: policy.BodyModeStream,
+	}
+}
+
+func (p *streamingGuardrailTestPolicy) OnResponseBody(_ context.Context, _ *policy.ResponseContext, _ map[string]interface{}) policy.ResponseAction {
+	return nil
+}
+
+func (p *streamingGuardrailTestPolicy) OnResponseBodyChunk(_ context.Context, _ *policy.ResponseStreamContext, _ *policy.StreamBody, _ map[string]interface{}) policy.StreamingResponseAction {
+	if p.onExecute != nil {
+		p.onExecute()
+	}
+	return nil
+}
+
+func (p *streamingGuardrailTestPolicy) NeedsMoreResponseData(_ []byte) bool {
+	return false
+}
+
 // trackingPolicyImpl tracks execution order
 type trackingPolicyImpl struct {
 	name           string

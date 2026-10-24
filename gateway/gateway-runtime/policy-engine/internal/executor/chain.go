@@ -432,6 +432,22 @@ func (c *ChainExecutor) ExecuteResponseHeaderPolicies(
 			continue
 		}
 
+		if respCtx.ResponseStatus >= 400 && isGuardrailPolicy(spec.Name, pol) {
+			if span.IsRecording() {
+				span.SetAttributes(attribute.Bool(constants.AttrPolicySkipped, true))
+				span.SetAttributes(attribute.String(constants.AttrSkipReason, constants.AttrSkipReasonErrorFlow))
+			}
+			metrics.PolicySkippedTotal.WithLabelValues(spec.Name, "", "", "error_flow").Inc()
+			span.End()
+			result.Results = append(result.Results, ResponseHeaderPolicyResult{
+				PolicyName:    spec.Name,
+				PolicyVersion: spec.Version,
+				Skipped:       true,
+				ExecutionTime: time.Since(policyStartTime),
+			})
+			continue
+		}
+
 		if hasExecutionConditions && spec.ExecutionCondition != nil && *spec.ExecutionCondition != "" {
 			if c.celEvaluator != nil {
 				conditionMet, err := c.celEvaluator.EvaluateResponseHeaderCondition(*spec.ExecutionCondition, respCtx)
@@ -577,6 +593,26 @@ func (c *ChainExecutor) ExecuteResponsePolicies(ctx context.Context, policyList 
 				span.SetAttributes(attribute.Bool(constants.AttrPolicySkipped, true))
 			}
 			metrics.PolicySkippedTotal.WithLabelValues(spec.Name, "", "", "disabled").Inc()
+			span.End()
+			result.Results = append(result.Results, ResponsePolicyResult{
+				PolicyName:    spec.Name,
+				PolicyVersion: spec.Version,
+				Skipped:       true,
+				ExecutionTime: time.Since(policyStartTime),
+			})
+			continue
+		}
+
+		// Skip guardrail-type response body policies on error flows (HTTP >= 400).
+		// Content guardrails validate LLM completion text, not HTTP error responses from upstream
+		// backends or providers. Running guardrails on error flows causes JSONPath extraction failures
+		// and masks the actual upstream error with a 422 Guardrail Intervened response (#3715).
+		if respCtx.ResponseStatus >= 400 && isGuardrailPolicy(spec.Name, pol) {
+			if span.IsRecording() {
+				span.SetAttributes(attribute.Bool(constants.AttrPolicySkipped, true))
+				span.SetAttributes(attribute.String(constants.AttrSkipReason, constants.AttrSkipReasonErrorFlow))
+			}
+			metrics.PolicySkippedTotal.WithLabelValues(spec.Name, "", "", "error_flow").Inc()
 			span.End()
 			result.Results = append(result.Results, ResponsePolicyResult{
 				PolicyName:    spec.Name,
@@ -888,6 +924,23 @@ func (c *ChainExecutor) ExecuteStreamingResponsePolicies(
 			continue
 		}
 
+		// Skip guardrail-type response body policies on error flows (HTTP >= 400).
+		if respCtx.ResponseStatus >= 400 && isGuardrailPolicy(spec.Name, pol) {
+			if span.IsRecording() {
+				span.SetAttributes(attribute.Bool(constants.AttrPolicySkipped, true))
+				span.SetAttributes(attribute.String(constants.AttrSkipReason, constants.AttrSkipReasonErrorFlow))
+			}
+			metrics.PolicySkippedTotal.WithLabelValues(spec.Name, "", "", "error_flow").Inc()
+			span.End()
+			result.Results = append(result.Results, StreamingResponsePolicyResult{
+				PolicyName:    spec.Name,
+				PolicyVersion: spec.Version,
+				Skipped:       true,
+				ExecutionTime: time.Since(policyStartTime),
+			})
+			continue
+		}
+
 		if hasExecutionConditions && spec.ExecutionCondition != nil && *spec.ExecutionCondition != "" {
 			if c.celEvaluator != nil {
 				conditionMet, err := c.celEvaluator.EvaluateStreamingResponseCondition(*spec.ExecutionCondition, respCtx)
@@ -1094,3 +1147,27 @@ func NewChainExecutor(reg *registry.PolicyRegistry, celEvaluator CELEvaluator, t
 func (c *ChainExecutor) GetCELEvaluator() CELEvaluator {
 	return c.celEvaluator
 }
+
+// knownBuiltinGuardrails lists built-in content-moderation guardrail policies that do not end with "-guardrail".
+var knownBuiltinGuardrails = map[string]struct{}{
+	"azure-content-safety-content-moderation": {},
+	"granite-guardian-prompt-injection":       {},
+}
+
+// isGuardrailPolicy reports whether a policy is a content moderation or guardrail policy.
+// Guardrails validate prompt and completion content; they must not run on HTTP error responses (>= 400).
+func isGuardrailPolicy(name string, pol policy.Policy) bool {
+	type guardrailMarker interface {
+		IsGuardrail() bool
+	}
+	if g, ok := pol.(guardrailMarker); ok {
+		return g.IsGuardrail()
+	}
+	normalized := strings.ToLower(strings.TrimSpace(name))
+	if strings.HasSuffix(normalized, "-guardrail") || normalized == "guardrail" {
+		return true
+	}
+	_, isKnown := knownBuiltinGuardrails[normalized]
+	return isKnown
+}
+
