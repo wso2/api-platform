@@ -652,6 +652,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 			Gateways:    gatewayService,
 			Identity:    identityService,
 			Logger:      slogger,
+			PluginTools: wiring.mcpTools,
 
 			LLMProviders:           llmProviderService,
 			LLMProviderDeployments: llmProviderDeploymentService,

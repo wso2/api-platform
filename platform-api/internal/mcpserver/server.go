@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"runtime/debug"
 	"slices"
 	"strings"
 
@@ -36,6 +37,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/middleware"
 	"github.com/wso2/api-platform/platform-api/internal/service"
+	"github.com/wso2/api-platform/platform-api/pdk"
 )
 
 const (
@@ -64,6 +66,9 @@ type Deps struct {
 	AgentProxies           *service.AgentProxyService
 	AgentProxyDeployments  *service.AgentDeploymentService
 	Logger                 *slog.Logger
+
+	// PluginTools are the tools plugins add, or use to replace built-in ones.
+	PluginTools []pdk.MCPTool
 }
 
 // Server holds the tools and the checks every tool call goes through.
@@ -111,6 +116,9 @@ func New(d Deps) (*Server, error) {
 
 	s.sdk = mcp.NewServer(&mcp.Implementation{Name: "api-platform", Version: constants.APIVersion}, nil)
 	s.addTools(s.sdk)
+	if err := s.addPluginTools(s.sdk, d.PluginTools); err != nil {
+		return nil, err
+	}
 	if err := s.checkRoutes(); err != nil {
 		return nil, err
 	}
@@ -147,7 +155,9 @@ func add[In, Out any](s *Server, srv *mcp.Server, t *mcp.Tool, routes []string,
 
 	s.routes[t.Name] = routes
 	_, s.takesAPIType[t.Name] = any(*new(In)).(typedInput)
-	t.InputSchema = s.inputSchema(inputSchemaFor[In](), s.takesAPIType[t.Name])
+	if t.InputSchema == nil { // a plugin tool comes with its own
+		t.InputSchema = s.inputSchema(inputSchemaFor[In](), s.takesAPIType[t.Name])
+	}
 
 	mcp.AddTool(srv, t, func(ctx context.Context, _ *mcp.CallToolRequest, in In) (*mcp.CallToolResult, Out, error) {
 		var none Out
@@ -165,7 +175,7 @@ func add[In, Out any](s *Server, srv *mcp.Server, t *mcp.Tool, routes []string,
 				return nil, none, fmt.Errorf("missing permission: this needs %s", need)
 			}
 		}
-		out, err := run(ctx, c, in)
+		out, err := recovered(s.logger, t.Name, func() (Out, error) { return run(ctx, c, in) })
 		if err != nil {
 			s.logCall(t.Name, c, "error")
 			return nil, none, s.toolError(t.Name, err)
@@ -173,6 +183,18 @@ func add[In, Out any](s *Server, srv *mcp.Server, t *mcp.Tool, routes []string,
 		s.logCall(t.Name, c, "ok")
 		return nil, out, nil
 	})
+}
+
+// recovered runs a tool, turning a panic into an error. go-sdk runs each call on
+// its own goroutine with no recover, so a panic would end the process.
+func recovered[Out any](logger *slog.Logger, tool string, run func() (Out, error)) (out Out, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			logger.Error("MCP tool panicked", "tool", tool, "panic", fmt.Sprint(r), "stack", string(debug.Stack()))
+			err = fmt.Errorf("tool %s panicked", tool)
+		}
+	}()
+	return run()
 }
 
 // logCall records every tool call, refused ones included.
@@ -340,6 +362,10 @@ func (s *Server) toolError(tool string, err error) error {
 			msg += fmt.Sprintf(" %s: %s.", fe.Field, fe.Message)
 		}
 		return errors.New(msg)
+	}
+	var ce *pdk.ClientError
+	if errors.As(err, &ce) && ce != nil && ce.Message != "" && ce.Status != http.StatusInternalServerError {
+		return errors.New(ce.Message)
 	}
 	s.logger.Error("MCP tool failed", "tool", tool, "error", err)
 	return errors.New("an unexpected error occurred; try again later")
