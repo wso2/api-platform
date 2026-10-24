@@ -26,33 +26,21 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"gopkg.in/yaml.v3"
 
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 )
 
-// escapeParam escapes special characters in a parameter value to prevent
-// format string injection and YAML injection attacks
-func escapeParam(param string) string {
-	// Escape % to prevent format string injection in fmt.Sprintf
-	escaped := strings.ReplaceAll(param, "%", "%%")
-	return escaped
-}
-
-// GetParamsOfPolicy renders a policy definition template with given parameters
-// and unmarshals it into a map[string]any
-func GetParamsOfPolicy(policyDef string, params ...string) (map[string]any, error) {
-	args := make([]any, len(params))
-	for i, v := range params {
-		args[i] = escapeParam(v)
+// SetHeadersParams returns set-headers policy params that set one request
+// header. The params are built as a map, never rendered from text, so the name
+// and value reach the policy exactly as given — whatever characters they hold.
+func SetHeadersParams(name, value string) map[string]any {
+	return map[string]any{
+		"request": map[string]any{
+			"headers": []any{
+				map[string]any{"name": name, "value": value},
+			},
+		},
 	}
-	rendered := fmt.Sprintf(policyDef, args...)
-
-	var m map[string]any
-	if err := yaml.Unmarshal([]byte(rendered), &m); err != nil {
-		return map[string]any{}, err
-	}
-	return m, nil
 }
 
 // resolveUpstreamAuthPolicyName returns policyName if non-empty, otherwise defaultName.
