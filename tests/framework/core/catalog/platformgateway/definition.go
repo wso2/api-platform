@@ -162,5 +162,8 @@ func gatewayGeneratedFiles() map[string][]byte {
 		"listener-certs/default-listener.key":  listener.PrivateKeyPEM,
 		"certificates/default-listener.crt":    listener.CertPEM,
 		"aesgcm-keys/default-aesgcm256-v1.bin": shared.GatewayEncryptionKey(),
+		// The testbench Jev service's certificate, which the runtime trusts through
+		// SSL_CERT_DIR so a Jev policy can call the mock over HTTPS.
+		"testbench-ca/jev.pem": shared.JevTLS().CertPEM,
 	}
 }
