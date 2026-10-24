@@ -2,44 +2,66 @@ openapi: 3.0.3
 info:
   title: AWS Bedrock API
   description: |-
-    This OpenAPI specification defines the RESTful API for Amazon Bedrock's `converse` and `converseStream` operations.
-    It provides a unified interface for interacting with various foundation models, supporting multi-turn conversations,
-    streaming responses, and tool usage.
+    OpenAPI description of the Amazon Bedrock Runtime `Converse` and `ConverseStream`
+    operations (service API version `2023-09-30`). Both operations share one message
+    format across every Bedrock model that supports messages, including multimodal
+    input, tool use, guardrails, prompt caching, and Prompt management resources.
 
-    **Key Features:**
-    - **Converse:** A request/response-based endpoint for conversational inference.
-    - **ConverseStream:** A streaming endpoint for receiving conversational responses as a series of events.
-    - **Unified Model Interface:** Consistent request and response format across different foundation models.
-    - **Multimodality:** Support for text, images, and documents as input.
-    - **Tool Use:** Enables models to use developer-defined tools to perform actions.
-  version: "2023-05-31"
+    Source of truth: the Amazon Bedrock API Reference
+    (https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_Converse.html and
+    https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_ConverseStream.html).
+
+    **Union types.** Bedrock models many shapes as unions, where exactly one member may be
+    set (for example a `ContentBlock` carries `text` *or* `image` *or* `document`, never two).
+    This document expresses a union as an object whose members are all optional, constrained
+    with `minProperties: 1` and `maxProperties: 1`.
+
+    **Model identifiers in the path.** `modelId` may be a base model ID, an inference
+    profile ID, or the ARN of a foundation model, inference profile, application
+    inference profile, provisioned or custom model deployment, imported model, Prompt
+    management prompt version, prompt router, or Marketplace endpoint. ARNs contain
+    `:` and often `/`; percent-encode the whole value as one path segment
+    (`/` as `%2F`, `:` as `%3A`), as the AWS SDKs do.
+
+    **Authentication.** Bedrock Runtime accepts either AWS Signature Version 4 or an
+    Amazon Bedrock API key sent as `Authorization: Bearer <key>`. See the
+    `securitySchemes` section.
+  version: "2023-09-30"
   x-marketplace-tags:
     - name: AI
       description: AI and LLM APIs
+externalDocs:
+  description: Amazon Bedrock Converse API user guide
+  url: https://docs.aws.amazon.com/bedrock/latest/userguide/conversation-inference.html
 servers:
   - url: https://bedrock-runtime.{region}.amazonaws.com
     variables:
       region:
         default: us-east-1
-        description: "The AWS region where Amazon Bedrock is available. e.g., `us-east-1`, `us-west-2`."
+        description: >-
+          AWS Region that hosts the Bedrock Runtime endpoint, for example `us-east-1` or
+          `eu-central-1`. Long-term Bedrock API keys and SigV4 signatures are both scoped to
+          a Region, so this must match the Region the credential was issued for.
+security:
+  - awsSigV4: []
+  - bedrockApiKey: []
 paths:
   /model/{modelId}/converse:
     post:
       operationId: Converse
       tags:
         - text-generation
-      summary: Send a conversation message
+      summary: Send messages to a model
       description: |-
-        Sends a multi-turn conversation message to the specified model.
-        This operation provides a consistent interface that works with all conversational models.
-        It allows you to write code once and use it with different models.
+        Sends messages to the specified model and returns the complete response.
+        Requires the `bedrock:InvokeModel` IAM action.
+
+        When `modelId` is a Prompt management prompt version, the request must not include
+        `additionalModelRequestFields`, `inferenceConfig`, `system`, or `toolConfig`; those
+        are defined by the prompt. Use `promptVariables` to fill its variables and `messages`
+        to append further turns.
       parameters:
-        - name: modelId
-          in: path
-          required: true
-          description: The unique identifier of the foundation model to use.
-          schema:
-            type: string
+        - $ref: '#/components/parameters/ModelId'
       requestBody:
         required: true
         content:
@@ -48,139 +70,961 @@ paths:
               $ref: '#/components/schemas/ConverseRequest'
       responses:
         '200':
-          description: Successful response from the model.
+          description: The model response.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ConverseResponse'
         '400':
-          description: ValidationException
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/ValidationException'
         '403':
-          description: AccessDeniedException
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/AccessDeniedException'
         '404':
-          description: ResourceNotFoundException
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/ResourceNotFoundException'
+        '408':
+          $ref: '#/components/responses/ModelTimeoutException'
+        '424':
+          $ref: '#/components/responses/ModelErrorException'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
         '500':
-          description: InternalServerException
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-      security:
-        - aws.sigv4: []
+          $ref: '#/components/responses/InternalServerException'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailableException'
   /model/{modelId}/converse-stream:
     post:
       operationId: ConverseStream
       tags:
         - text-generation
-      summary: Send a streaming conversation message
+      summary: Send messages to a model and stream the response
       description: |-
-        Sends a multi-turn conversation message to the specified model and receives the response as a stream of events.
-        This is useful for applications that want to display the response to the user as it is being generated.
+        Sends messages to the specified model and returns the response as a stream of events.
+        Requires the `bedrock:InvokeModelWithResponseStream` IAM action.
+
+        The response body uses the AWS event stream binary framing
+        (`application/vnd.amazon.eventstream`), not server-sent events. Each frame carries a
+        `:message-type` header (`event` or `exception`) and an `:event-type` (or
+        `:exception-type`) header naming one member of `ConverseStreamOutput`; the frame
+        payload is that member's JSON value. A normal stream is `messageStart`, one or more
+        `contentBlockStart`/`contentBlockDelta`/`contentBlockStop` groups, `messageStop`, and
+        a final `metadata` event that carries token usage and metrics.
+
+        Errors detected before streaming starts are returned as regular HTTP error responses.
+        Errors after the stream starts arrive as exception frames inside a `200` response.
       parameters:
-        - name: modelId
-          in: path
-          required: true
-          description: The unique identifier of the foundation model to use.
-          schema:
-            type: string
+        - $ref: '#/components/parameters/ModelId'
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/ConverseRequest'
+              $ref: '#/components/schemas/ConverseStreamRequest'
       responses:
         '200':
-          description: Successful streaming response from the model.
+          description: A stream of events, one `ConverseStreamOutput` member per frame.
           content:
             application/vnd.amazon.eventstream:
               schema:
                 $ref: '#/components/schemas/ConverseStreamOutput'
         '400':
-          description: ValidationException
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/ValidationException'
         '403':
-          description: AccessDeniedException
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/AccessDeniedException'
         '404':
-          description: ResourceNotFoundException
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/ResourceNotFoundException'
+        '408':
+          $ref: '#/components/responses/ModelTimeoutException'
+        '424':
+          $ref: '#/components/responses/ModelErrorException'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
         '500':
-          description: InternalServerException
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-      security:
-        - aws.sigv4: []
+          $ref: '#/components/responses/InternalServerException'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailableException'
 components:
+  securitySchemes:
+    awsSigV4:
+      type: apiKey
+      in: header
+      name: Authorization
+      description: |-
+        AWS Signature Version 4 (https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_sigv.html).
+        Sign with the service name `bedrock` and the Region of the endpoint. The signer sets
+        `Authorization: AWS4-HMAC-SHA256 Credential=..., SignedHeaders=..., Signature=...`
+        together with `X-Amz-Date`, and `X-Amz-Security-Token` when the credentials are
+        temporary. The signature covers the request body, so the body must not change after
+        signing. OpenAPI has no native SigV4 scheme; this entry documents the header only.
+    bedrockApiKey:
+      type: http
+      scheme: bearer
+      description: |-
+        Amazon Bedrock API key (https://docs.aws.amazon.com/bedrock/latest/userguide/api-keys.html),
+        sent as `Authorization: Bearer <key>`. A short-term key lasts up to 12 hours (or the
+        session that generated it, whichever is shorter) and inherits the generating IAM
+        principal's permissions. A long-term key lasts until its configured expiry, is tied to
+        an IAM user, and works only in the Region it was generated in. Use of a key requires
+        the `bedrock:CallWithBearerToken` IAM action. Keys are opaque bearer credentials; there
+        is no OAuth token endpoint involved in issuing or refreshing them.
+  parameters:
+    ModelId:
+      name: modelId
+      in: path
+      required: true
+      description: |-
+        The model, inference profile, or resource to run inference on: a base model ID
+        (`anthropic.claude-3-sonnet-20240229-v1:0`), a cross-Region inference profile ID
+        (`us.anthropic.claude-3-5-sonnet-20240620-v1:0`), or the ARN of a foundation model,
+        inference profile, application inference profile, Provisioned Throughput, custom
+        model deployment, imported model, Prompt management prompt version, prompt router,
+        or Amazon Bedrock Marketplace endpoint. Percent-encode ARNs as a single segment.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 2048
+      examples:
+        baseModel:
+          value: anthropic.claude-3-sonnet-20240229-v1:0
+        inferenceProfile:
+          value: us.anthropic.claude-3-5-sonnet-20240620-v1:0
+        inferenceProfileArn:
+          summary: Inference profile ARN (sent percent-encoded)
+          value: arn:aws:bedrock:us-east-1:123456789012:inference-profile/us.anthropic.claude-3-5-sonnet-20240620-v1:0
+  headers:
+    ErrorType:
+      description: The AWS error code, for example `ValidationException`.
+      schema:
+        type: string
+    RequestId:
+      description: Unique identifier of the request, for correlation with AWS support and CloudTrail.
+      schema:
+        type: string
+  responses:
+    ValidationException:
+      description: ValidationException. The input fails to satisfy the constraints specified by Amazon Bedrock.
+      headers:
+        x-amzn-ErrorType:
+          $ref: '#/components/headers/ErrorType'
+        x-amzn-RequestId:
+          $ref: '#/components/headers/RequestId'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    AccessDeniedException:
+      description: AccessDeniedException. The caller lacks permission for the requested action.
+      headers:
+        x-amzn-ErrorType:
+          $ref: '#/components/headers/ErrorType'
+        x-amzn-RequestId:
+          $ref: '#/components/headers/RequestId'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    ResourceNotFoundException:
+      description: ResourceNotFoundException. The specified resource ARN was not found.
+      headers:
+        x-amzn-ErrorType:
+          $ref: '#/components/headers/ErrorType'
+        x-amzn-RequestId:
+          $ref: '#/components/headers/RequestId'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    ModelTimeoutException:
+      description: ModelTimeoutException. Processing time exceeded the model timeout length.
+      headers:
+        x-amzn-ErrorType:
+          $ref: '#/components/headers/ErrorType'
+        x-amzn-RequestId:
+          $ref: '#/components/headers/RequestId'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    ModelErrorException:
+      description: ModelErrorException. The request failed while the model was processing it.
+      headers:
+        x-amzn-ErrorType:
+          $ref: '#/components/headers/ErrorType'
+        x-amzn-RequestId:
+          $ref: '#/components/headers/RequestId'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ModelErrorResponse'
+    TooManyRequests:
+      description: >-
+        ThrottlingException (the account quota for Amazon Bedrock was exceeded) or
+        ModelNotReadyException (the model is not ready to serve inference requests; AWS SDKs
+        retry this automatically). Distinguish them with the `x-amzn-ErrorType` header.
+      headers:
+        x-amzn-ErrorType:
+          $ref: '#/components/headers/ErrorType'
+        x-amzn-RequestId:
+          $ref: '#/components/headers/RequestId'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    InternalServerException:
+      description: InternalServerException. An internal server error occurred.
+      headers:
+        x-amzn-ErrorType:
+          $ref: '#/components/headers/ErrorType'
+        x-amzn-RequestId:
+          $ref: '#/components/headers/RequestId'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    ServiceUnavailableException:
+      description: ServiceUnavailableException. The service isn't currently available.
+      headers:
+        x-amzn-ErrorType:
+          $ref: '#/components/headers/ErrorType'
+        x-amzn-RequestId:
+          $ref: '#/components/headers/RequestId'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
   schemas:
-    ConverseRequest:
+    # ------------------------------------------------------------------
+    # Requests
+    # ------------------------------------------------------------------
+    ConverseRequestFields:
       type: object
+      description: Request members shared by Converse and ConverseStream.
       properties:
         messages:
           type: array
+          description: >-
+            The messages to send to the model. Optional when `modelId` is a Prompt management
+            prompt that already defines them.
           items:
             $ref: '#/components/schemas/Message'
-          description: An array of messages that form the conversation history.
         system:
           type: array
+          description: Instructions or context for the model, such as a persona.
           items:
             $ref: '#/components/schemas/SystemContentBlock'
-          description: System-level prompts to guide the model's behavior.
         inferenceConfig:
           $ref: '#/components/schemas/InferenceConfiguration'
         toolConfig:
           $ref: '#/components/schemas/ToolConfiguration'
         additionalModelRequestFields:
+          description: >-
+            Model-specific inference parameters beyond the base set in `inferenceConfig`
+            (for example `{"top_k": 200}`). Any JSON value.
+        additionalModelResponseFieldPaths:
+          type: array
+          description: >-
+            JSON Pointer (RFC 6901) paths of model-specific fields to return in
+            `additionalModelResponseFields`, for example `/stop_sequence`. An empty or malformed
+            pointer is rejected with `400`; a valid pointer the model does not return is ignored.
+          minItems: 0
+          maxItems: 10
+          items:
+            type: string
+            minLength: 1
+            maxLength: 256
+        promptVariables:
           type: object
-          description: Additional model-specific fields to be sent to the model.
+          description: >-
+            Values for the variables of a Prompt management prompt, keyed by variable name.
+            Ignored unless `modelId` is a prompt resource.
+          additionalProperties:
+            $ref: '#/components/schemas/PromptVariableValues'
+        requestMetadata:
+          type: object
+          description: Key-value pairs that can be used to filter model invocation logs.
+          maxProperties: 16
+          additionalProperties:
+            type: string
+            minLength: 0
+            maxLength: 256
+            pattern: '^[a-zA-Z0-9\s:_@$#=/+,-.]{0,256}$'
+        outputConfig:
+          $ref: '#/components/schemas/OutputConfig'
+        performanceConfig:
+          $ref: '#/components/schemas/PerformanceConfiguration'
+        serviceTier:
+          $ref: '#/components/schemas/ServiceTier'
+    ConverseRequest:
+      description: Request body for Converse.
+      allOf:
+        - $ref: '#/components/schemas/ConverseRequestFields'
+        - type: object
+          properties:
+            guardrailConfig:
+              $ref: '#/components/schemas/GuardrailConfiguration'
+    ConverseStreamRequest:
+      description: Request body for ConverseStream.
+      allOf:
+        - $ref: '#/components/schemas/ConverseRequestFields'
+        - type: object
+          properties:
+            guardrailConfig:
+              $ref: '#/components/schemas/GuardrailStreamConfiguration'
+    Message:
+      type: object
       required:
-        - messages
-    ConverseResponse:
+        - role
+        - content
+      properties:
+        role:
+          type: string
+          enum: [user, assistant]
+        content:
+          type: array
+          items:
+            $ref: '#/components/schemas/ContentBlock'
+    ContentBlock:
+      type: object
+      description: Union. Exactly one member is set.
+      minProperties: 1
+      maxProperties: 1
+      properties:
+        text:
+          type: string
+        image:
+          $ref: '#/components/schemas/ImageBlock'
+        document:
+          $ref: '#/components/schemas/DocumentBlock'
+        video:
+          $ref: '#/components/schemas/VideoBlock'
+        audio:
+          $ref: '#/components/schemas/AudioBlock'
+        toolUse:
+          $ref: '#/components/schemas/ToolUseBlock'
+        toolResult:
+          $ref: '#/components/schemas/ToolResultBlock'
+        guardContent:
+          $ref: '#/components/schemas/GuardrailConverseContentBlock'
+        cachePoint:
+          $ref: '#/components/schemas/CachePointBlock'
+        reasoningContent:
+          $ref: '#/components/schemas/ReasoningContentBlock'
+        citationsContent:
+          $ref: '#/components/schemas/CitationsContentBlock'
+        searchResult:
+          $ref: '#/components/schemas/SearchResultBlock'
+    SystemContentBlock:
+      type: object
+      description: Union. Exactly one member is set.
+      minProperties: 1
+      maxProperties: 1
+      properties:
+        text:
+          type: string
+          minLength: 1
+        guardContent:
+          $ref: '#/components/schemas/GuardrailConverseContentBlock'
+        cachePoint:
+          $ref: '#/components/schemas/CachePointBlock'
+    S3Location:
+      type: object
+      description: >-
+        An object in Amazon S3. Only some models accept S3 sources; see "Supported models and
+        features for Converse" in the Amazon Bedrock User Guide.
+      required:
+        - uri
+      properties:
+        uri:
+          type: string
+          minLength: 1
+          maxLength: 1024
+          pattern: '^s3://[a-z0-9][\.\-a-z0-9]{1,61}[a-z0-9](/.*)?$'
+        bucketOwner:
+          type: string
+          description: Account ID of the bucket owner, when the bucket belongs to another AWS account.
+          pattern: '^[0-9]{12}$'
+    ErrorBlock:
+      type: object
+      description: Error information returned when a content block could not be processed.
+      properties:
+        message:
+          type: string
+    ImageBlock:
+      type: object
+      required:
+        - format
+        - source
+      properties:
+        format:
+          type: string
+          enum: [png, jpeg, gif, webp]
+        source:
+          $ref: '#/components/schemas/ImageSource'
+        error:
+          $ref: '#/components/schemas/ErrorBlock'
+    ImageSource:
+      type: object
+      description: Union. Exactly one member is set.
+      minProperties: 1
+      maxProperties: 1
+      properties:
+        bytes:
+          type: string
+          format: byte
+          minLength: 1
+          description: Base64-encoded image bytes.
+        s3Location:
+          $ref: '#/components/schemas/S3Location'
+    DocumentBlock:
+      type: object
+      required:
+        - name
+        - source
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: >-
+            A neutral name for the document. Allowed characters are alphanumerics, whitespace
+            (no more than one in a row), hyphens, parentheses, and square brackets. The model
+            may read the name as instructions, so avoid meaningful text.
+        format:
+          type: string
+          description: The format of the document, or its extension.
+          enum: [pdf, csv, doc, docx, xls, xlsx, html, txt, md]
+        source:
+          $ref: '#/components/schemas/DocumentSource'
+        context:
+          type: string
+          description: Context about how the model should interpret the document when generating citations.
+        citations:
+          $ref: '#/components/schemas/CitationsConfig'
+    DocumentSource:
+      type: object
+      description: >-
+        Union. Exactly one member is set: raw `bytes`, an `s3Location`, plain `text`, or
+        structured `content` blocks.
+      minProperties: 1
+      maxProperties: 1
+      properties:
+        bytes:
+          type: string
+          format: byte
+          minLength: 1
+          description: Base64-encoded document bytes.
+        s3Location:
+          $ref: '#/components/schemas/S3Location'
+        text:
+          type: string
+          description: The text content of the document.
+        content:
+          type: array
+          description: Structured content of the document.
+          items:
+            $ref: '#/components/schemas/DocumentContentBlock'
+    DocumentContentBlock:
+      type: object
+      description: Union. Exactly one member is set.
+      minProperties: 1
+      maxProperties: 1
+      properties:
+        text:
+          type: string
+    CitationsConfig:
+      type: object
+      required:
+        - enabled
+      properties:
+        enabled:
+          type: boolean
+          description: Whether the model may cite this document in its response.
+    VideoBlock:
+      type: object
+      required:
+        - format
+        - source
+      properties:
+        format:
+          type: string
+          enum: [mkv, mov, mp4, webm, flv, mpeg, mpg, wmv, three_gp]
+        source:
+          $ref: '#/components/schemas/VideoSource'
+    VideoSource:
+      type: object
+      description: >-
+        Union. Exactly one member is set. Base64 `bytes` must encode to less than 25 MB;
+        `s3Location` supports videos up to 1 GB.
+      minProperties: 1
+      maxProperties: 1
+      properties:
+        bytes:
+          type: string
+          format: byte
+          minLength: 1
+        s3Location:
+          $ref: '#/components/schemas/S3Location'
+    AudioBlock:
+      type: object
+      required:
+        - format
+        - source
+      properties:
+        format:
+          type: string
+          enum: [mp3, opus, wav, aac, flac, mp4, ogg, mkv, mka, x-aac, m4a, mpeg, mpga, pcm, webm]
+        source:
+          type: object
+          description: >-
+            AudioSource union (raw bytes or an S3 location). See
+            https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_AudioSource.html.
+          minProperties: 1
+          maxProperties: 1
+        error:
+          $ref: '#/components/schemas/ErrorBlock'
+    ToolUseBlock:
+      type: object
+      required:
+        - toolUseId
+        - name
+        - input
+      properties:
+        toolUseId:
+          $ref: '#/components/schemas/ToolUseId'
+        name:
+          $ref: '#/components/schemas/ToolName'
+        input:
+          description: The tool input. Any JSON value.
+        type:
+          type: string
+          enum: [server_tool_use]
+    ToolResultBlock:
+      type: object
+      required:
+        - toolUseId
+        - content
+      properties:
+        toolUseId:
+          $ref: '#/components/schemas/ToolUseId'
+        content:
+          type: array
+          items:
+            $ref: '#/components/schemas/ToolResultContentBlock'
+        status:
+          type: string
+          description: Supported only by Amazon Nova and Anthropic Claude 3 and 4 models.
+          enum: [success, error]
+        type:
+          type: string
+    ToolResultContentBlock:
+      type: object
+      description: Union. Exactly one member is set.
+      minProperties: 1
+      maxProperties: 1
+      properties:
+        json:
+          description: A JSON tool result. Any JSON value.
+        text:
+          type: string
+        image:
+          $ref: '#/components/schemas/ImageBlock'
+        document:
+          $ref: '#/components/schemas/DocumentBlock'
+        video:
+          $ref: '#/components/schemas/VideoBlock'
+        searchResult:
+          $ref: '#/components/schemas/SearchResultBlock'
+    ToolUseId:
+      type: string
+      minLength: 1
+      maxLength: 64
+      pattern: '^[a-zA-Z0-9_.:-]+$'
+    ToolName:
+      type: string
+      minLength: 1
+      maxLength: 64
+      pattern: '^[a-zA-Z0-9_-]+$'
+    GuardrailConverseContentBlock:
+      type: object
+      description: Union. Exactly one member is set. Content to assess with the guardrail.
+      minProperties: 1
+      maxProperties: 1
+      properties:
+        text:
+          type: object
+          required:
+            - text
+          properties:
+            text:
+              type: string
+            qualifiers:
+              type: array
+              items:
+                type: string
+                enum: [grounding_source, query, guard_content]
+        image:
+          type: object
+          required:
+            - format
+            - source
+          properties:
+            format:
+              type: string
+              enum: [png, jpeg]
+            source:
+              type: object
+              description: GuardrailConverseImageSource union (image bytes).
+              minProperties: 1
+              maxProperties: 1
+    CachePointBlock:
+      type: object
+      required:
+        - type
+      properties:
+        type:
+          type: string
+          enum: [default]
+        ttl:
+          type: string
+          description: Optional extended cache TTL. When omitted, `type` determines caching behavior.
+          enum: [5m, 1h]
+    ReasoningContentBlock:
+      type: object
+      description: Union. Exactly one member is set. The model's chain of thought.
+      minProperties: 1
+      maxProperties: 1
+      properties:
+        reasoningText:
+          type: object
+          required:
+            - text
+          properties:
+            text:
+              type: string
+            signature:
+              type: string
+              description: Pass back unmodified, together with `text`, in later turns.
+        redactedContent:
+          type: string
+          format: byte
+          description: Reasoning encrypted by the model provider.
+    CitationsContentBlock:
+      type: object
+      description: >-
+        Generated text with citation information. See
+        https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_CitationsContentBlock.html.
+    SearchResultBlock:
+      type: object
+      description: >-
+        A search result to ground the response. See
+        https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_SearchResultBlock.html.
+    InferenceConfiguration:
       type: object
       properties:
-        output:
+        maxTokens:
+          type: integer
+          minimum: 1
+        temperature:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+        topP:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+        stopSequences:
+          type: array
+          minItems: 0
+          maxItems: 2500
+          items:
+            type: string
+            minLength: 1
+    ToolConfiguration:
+      type: object
+      required:
+        - tools
+      properties:
+        tools:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/Tool'
+        toolChoice:
+          $ref: '#/components/schemas/ToolChoice'
+    Tool:
+      type: object
+      description: Union. Exactly one member is set.
+      minProperties: 1
+      maxProperties: 1
+      properties:
+        toolSpec:
+          $ref: '#/components/schemas/ToolSpecification'
+        systemTool:
           type: object
+          description: A system-defined tool provided by the model provider.
+          required:
+            - name
           properties:
-            message:
-              $ref: '#/components/schemas/Message'
-        stopReason:
+            name:
+              $ref: '#/components/schemas/ToolName'
+        cachePoint:
+          $ref: '#/components/schemas/CachePointBlock'
+    ToolSpecification:
+      type: object
+      required:
+        - name
+        - inputSchema
+      properties:
+        name:
+          $ref: '#/components/schemas/ToolName'
+        description:
           type: string
-          enum: [end_turn, tool_use, max_tokens, stop_sequence, guardrail_intervened, content_filtered]
-          description: The reason why the model stopped generating text.
+          minLength: 1
+        inputSchema:
+          type: object
+          description: Union. Exactly one member is set.
+          minProperties: 1
+          maxProperties: 1
+          properties:
+            json:
+              description: A JSON Schema whose top-level type is `object`.
+        strict:
+          type: boolean
+          description: Enforce structured output on the tool-use response.
+    ToolChoice:
+      type: object
+      description: Union. Exactly one member is set.
+      minProperties: 1
+      maxProperties: 1
+      properties:
+        auto:
+          type: object
+          description: (Default) The model decides whether to call a tool.
+        any:
+          type: object
+          description: The model must request at least one tool.
+        tool:
+          type: object
+          description: The model must request the named tool. Anthropic Claude 3 and Amazon Nova only.
+          required:
+            - name
+          properties:
+            name:
+              $ref: '#/components/schemas/ToolName'
+    GuardrailConfiguration:
+      type: object
+      properties:
+        guardrailIdentifier:
+          $ref: '#/components/schemas/GuardrailIdentifier'
+        guardrailVersion:
+          $ref: '#/components/schemas/GuardrailVersion'
+        trace:
+          $ref: '#/components/schemas/GuardrailTrace'
+    GuardrailStreamConfiguration:
+      type: object
+      properties:
+        guardrailIdentifier:
+          $ref: '#/components/schemas/GuardrailIdentifier'
+        guardrailVersion:
+          $ref: '#/components/schemas/GuardrailVersion'
+        trace:
+          $ref: '#/components/schemas/GuardrailTrace'
+        streamProcessingMode:
+          type: string
+          enum: [sync, async]
+    GuardrailIdentifier:
+      type: string
+      minLength: 0
+      maxLength: 2048
+      pattern: '^(|([a-z0-9]+)|(arn:aws(-[^:]+)?:bedrock:[a-z0-9-]{1,20}:[0-9]{12}:guardrail/[a-z0-9]+))$'
+    GuardrailVersion:
+      type: string
+      pattern: '^(|([1-9][0-9]{0,7})|(DRAFT))$'
+    GuardrailTrace:
+      type: string
+      enum: [enabled, disabled, enabled_full]
+    PromptVariableValues:
+      type: object
+      description: Union. Exactly one member is set.
+      minProperties: 1
+      maxProperties: 1
+      properties:
+        text:
+          type: string
+    OutputConfig:
+      type: object
+      properties:
+        textFormat:
+          type: object
+          description: Structured-output constraints for the text response.
+          required:
+            - type
+            - structure
+          properties:
+            type:
+              type: string
+              enum: [json_schema]
+            structure:
+              type: object
+              description: Union. Exactly one member is set.
+              minProperties: 1
+              maxProperties: 1
+              properties:
+                jsonSchema:
+                  type: object
+                  required:
+                    - schema
+                  properties:
+                    schema:
+                      type: string
+                      description: The JSON Schema, serialized as a string.
+                    name:
+                      type: string
+                    description:
+                      type: string
+    PerformanceConfiguration:
+      type: object
+      properties:
+        latency:
+          type: string
+          enum: [standard, optimized]
+    ServiceTier:
+      type: object
+      required:
+        - type
+      properties:
+        type:
+          type: string
+          description: The processing tier that serves (or served) the request.
+          enum: [priority, default, flex, reserved]
+    # ------------------------------------------------------------------
+    # Responses
+    # ------------------------------------------------------------------
+    ConverseResponse:
+      type: object
+      required:
+        - output
+        - stopReason
+        - usage
+        - metrics
+      properties:
+        output:
+          $ref: '#/components/schemas/ConverseOutput'
+        stopReason:
+          $ref: '#/components/schemas/StopReason'
         usage:
           $ref: '#/components/schemas/TokenUsage'
         metrics:
+          $ref: '#/components/schemas/ConverseMetrics'
+        additionalModelResponseFields:
+          description: Model-specific fields requested through `additionalModelResponseFieldPaths`. Any JSON value.
+        performanceConfig:
+          $ref: '#/components/schemas/PerformanceConfiguration'
+        serviceTier:
+          $ref: '#/components/schemas/ServiceTier'
+        trace:
+          $ref: '#/components/schemas/ConverseTrace'
+    ConverseOutput:
+      type: object
+      description: Union. Exactly one member is set.
+      minProperties: 1
+      maxProperties: 1
+      properties:
+        message:
+          $ref: '#/components/schemas/Message'
+    StopReason:
+      type: string
+      enum:
+        - end_turn
+        - tool_use
+        - max_tokens
+        - stop_sequence
+        - guardrail_intervened
+        - content_filtered
+        - malformed_model_output
+        - malformed_tool_use
+        - model_context_window_exceeded
+    TokenUsage:
+      type: object
+      required:
+        - inputTokens
+        - outputTokens
+        - totalTokens
+      properties:
+        inputTokens:
+          type: integer
+          minimum: 0
+          description: >-
+            The number of tokens sent in the request to the model. When prompt caching is in
+            use this counts only the non-cached input tokens; the total input is
+            `inputTokens + cacheReadInputTokens + cacheWriteInputTokens`.
+        outputTokens:
+          type: integer
+          minimum: 0
+        totalTokens:
+          type: integer
+          minimum: 0
+        cacheReadInputTokens:
+          type: integer
+          minimum: 0
+          description: Input tokens read from the prompt cache.
+        cacheWriteInputTokens:
+          type: integer
+          minimum: 0
+          description: Input tokens written to the prompt cache.
+        cacheDetails:
+          type: array
+          description: >-
+            Cache writes broken down by TTL, sorted 1h before 5m. Empty when no cache entry
+            was created.
+          items:
+            $ref: '#/components/schemas/CacheDetail'
+    CacheDetail:
+      type: object
+      required:
+        - inputTokens
+        - ttl
+      properties:
+        inputTokens:
+          type: integer
+          minimum: 0
+          description: Tokens written to the cache with this TTL.
+        ttl:
+          type: string
+          enum: [5m, 1h]
+    ConverseMetrics:
+      type: object
+      required:
+        - latencyMs
+      properties:
+        latencyMs:
+          type: integer
+          format: int64
+    ConverseTrace:
+      type: object
+      description: >-
+        Guardrail and prompt-router trace. The `guardrail` assessment structure is documented
+        at https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_GuardrailTraceAssessment.html.
+      properties:
+        guardrail:
+          type: object
+        promptRouter:
           type: object
           properties:
-            latencyMs:
-              type: integer
-              format: int64
-              description: The latency of the inference request in milliseconds.
+            invokedModelId:
+              type: string
+              description: The model the prompt router selected for this request.
+    # ------------------------------------------------------------------
+    # Streaming
+    # ------------------------------------------------------------------
     ConverseStreamOutput:
       type: object
+      description: >-
+        Union. Each event-stream frame carries exactly one member, named by the frame's
+        `:event-type` (events) or `:exception-type` (exceptions) header.
+      minProperties: 1
+      maxProperties: 1
       properties:
         messageStart:
           $ref: '#/components/schemas/MessageStartEvent'
@@ -193,233 +1037,164 @@ components:
         messageStop:
           $ref: '#/components/schemas/MessageStopEvent'
         metadata:
-          $ref: '#/components/schemas/ConverseStreamMetadata'
-    Message:
+          $ref: '#/components/schemas/ConverseStreamMetadataEvent'
+        internalServerException:
+          $ref: '#/components/schemas/StreamException'
+        modelStreamErrorException:
+          $ref: '#/components/schemas/StreamException'
+        validationException:
+          $ref: '#/components/schemas/StreamException'
+        throttlingException:
+          $ref: '#/components/schemas/StreamException'
+        serviceUnavailableException:
+          $ref: '#/components/schemas/StreamException'
+    MessageStartEvent:
       type: object
+      required:
+        - role
       properties:
         role:
           type: string
           enum: [user, assistant]
-          description: The role of the entity that is creating the message.
-        content:
-          type: array
-          items:
-            $ref: '#/components/schemas/ContentBlock'
-          description: The content of the message.
-      required:
-        - role
-        - content
-    ContentBlock:
-      type: object
-      oneOf:
-        - $ref: '#/components/schemas/TextContentBlock'
-        - $ref: '#/components/schemas/ImageContentBlock'
-        - $ref: '#/components/schemas/DocumentContentBlock'
-        - $ref: '#/components/schemas/ToolUseBlock'
-        - $ref: '#/components/schemas/ToolResultBlock'
-    TextContentBlock:
-      type: object
-      properties:
-        text:
-          type: string
-      required:
-        - text
-    ImageContentBlock:
-      type: object
-      properties:
-        image:
-          $ref: '#/components/schemas/ImageSource'
-      required:
-        - image
-    DocumentContentBlock:
-      type: object
-      properties:
-        document:
-          $ref: '#/components/schemas/DocumentSource'
-      required:
-        - document
-    ImageSource:
-      type: object
-      properties:
-        format:
-          type: string
-          enum: [png, jpeg, gif, webp]
-        source:
-          type: object
-          properties:
-            bytes:
-              type: string
-              format: byte
-              description: Base64-encoded image bytes.
-      required:
-        - format
-        - source
-    DocumentSource:
-      type: object
-      properties:
-        format:
-          type: string
-          enum: [pdf, csv, doc, docx, xls, xlsx, html, txt]
-        name:
-          type: string
-        source:
-          type: object
-          properties:
-            bytes:
-              type: string
-              format: byte
-              description: Base64-encoded document bytes.
-      required:
-        - format
-        - name
-        - source
-    SystemContentBlock:
-      type: object
-      properties:
-        text:
-          type: string
-    InferenceConfiguration:
-      type: object
-      properties:
-        maxTokens:
-          type: integer
-        temperature:
-          type: number
-          format: float
-        topP:
-          type: number
-          format: float
-        stopSequences:
-          type: array
-          items:
-            type: string
-    ToolConfiguration:
-      type: object
-      properties:
-        tools:
-          type: array
-          items:
-            $ref: '#/components/schemas/Tool'
-    Tool:
-      type: object
-      properties:
-        toolSpec:
-          $ref: '#/components/schemas/ToolSpecification'
-    ToolSpecification:
-      type: object
-      properties:
-        name:
-          type: string
-        description:
-          type: string
-        inputSchema:
-          type: object
-          properties:
-            json:
-              type: object
-              description: A JSON schema object defining the input for the tool.
-      required:
-        - name
-        - inputSchema
-    ToolUseBlock:
-      type: object
-      properties:
-        toolUseId:
-          type: string
-        name:
-          type: string
-        input:
-          type: object
-      required:
-        - toolUseId
-        - name
-        - input
-    ToolResultBlock:
-      type: object
-      properties:
-        toolUseId:
-          type: string
-        content:
-          type: array
-          items:
-            type: object
-            properties:
-              json:
-                type: object
-      required:
-        - toolUseId
-        - content
-    TokenUsage:
-      type: object
-      properties:
-        inputTokens:
-          type: integer
-        outputTokens:
-          type: integer
-        totalTokens:
-          type: integer
-      required:
-        - inputTokens
-        - outputTokens
-        - totalTokens
-    MessageStartEvent:
-      type: object
-      properties:
-        role:
-          type: string
-          enum: [assistant]
     ContentBlockStartEvent:
       type: object
+      required:
+        - contentBlockIndex
+        - start
       properties:
         contentBlockIndex:
           type: integer
+          minimum: 0
         start:
           type: object
+          description: Union. Exactly one member is set.
+          minProperties: 1
+          maxProperties: 1
           properties:
             toolUse:
-              $ref: '#/components/schemas/ToolUseBlock'
+              type: object
+              required:
+                - toolUseId
+                - name
+              properties:
+                toolUseId:
+                  $ref: '#/components/schemas/ToolUseId'
+                name:
+                  $ref: '#/components/schemas/ToolName'
+                type:
+                  type: string
+                  enum: [server_tool_use]
+            toolResult:
+              type: object
+              description: Start of a streamed tool result.
+            image:
+              type: object
+              description: Start of a streamed image block.
     ContentBlockDeltaEvent:
       type: object
+      required:
+        - contentBlockIndex
+        - delta
       properties:
         contentBlockIndex:
           type: integer
+          minimum: 0
         delta:
           type: object
+          description: Union. Exactly one member is set.
+          minProperties: 1
+          maxProperties: 1
           properties:
             text:
               type: string
+            toolUse:
+              type: object
+              required:
+                - input
+              properties:
+                input:
+                  type: string
+                  description: A fragment of the tool input JSON; concatenate fragments in order.
+            reasoningContent:
+              type: object
+              description: Union. Exactly one member is set.
+              minProperties: 1
+              maxProperties: 1
+              properties:
+                text:
+                  type: string
+                signature:
+                  type: string
+                redactedContent:
+                  type: string
+                  format: byte
+            citation:
+              type: object
+              description: Incremental citation information.
+            toolResult:
+              type: array
+              description: Incremental tool result content.
+              items:
+                type: object
+            image:
+              type: object
+              description: Incremental image data.
     ContentBlockStopEvent:
       type: object
+      required:
+        - contentBlockIndex
       properties:
         contentBlockIndex:
           type: integer
+          minimum: 0
     MessageStopEvent:
       type: object
+      required:
+        - stopReason
       properties:
         stopReason:
-          type: string
-          enum: [end_turn, tool_use, max_tokens, stop_sequence, guardrail_intervened, content_filtered]
-    ConverseStreamMetadata:
+          $ref: '#/components/schemas/StopReason'
+        additionalModelResponseFields:
+          description: Model-specific fields requested through `additionalModelResponseFieldPaths`. Any JSON value.
+    ConverseStreamMetadataEvent:
       type: object
+      required:
+        - usage
+        - metrics
       properties:
         usage:
           $ref: '#/components/schemas/TokenUsage'
         metrics:
-          type: object
-          properties:
-            latencyMs:
-              type: integer
-              format: int64
+          $ref: '#/components/schemas/ConverseMetrics'
+        performanceConfig:
+          $ref: '#/components/schemas/PerformanceConfiguration'
+        serviceTier:
+          $ref: '#/components/schemas/ServiceTier'
+        trace:
+          $ref: '#/components/schemas/ConverseTrace'
+    StreamException:
+      type: object
+      description: An exception delivered as an event-stream frame after the stream started.
+      properties:
+        message:
+          type: string
+    # ------------------------------------------------------------------
+    # Errors
+    # ------------------------------------------------------------------
     ErrorResponse:
       type: object
       properties:
         message:
           type: string
-  securitySchemes:
-    aws.sigv4:
-      type: apiKey
-      name: Authorization
-      in: header
-      x-amazon-apigateway-authtype: aws:iam
-security:
-  - aws.sigv4: []
+          description: A human-readable description of the error.
+    ModelErrorResponse:
+      type: object
+      properties:
+        message:
+          type: string
+        originalStatusCode:
+          type: integer
+          description: The status code the model returned.
+        resourceName:
+          type: string
+          description: The name of the resource that failed.

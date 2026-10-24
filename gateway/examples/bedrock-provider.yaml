@@ -9,22 +9,32 @@
 # --------------------------------------------------------------------
 
 # --------------------------------------------------------------------
-# AWS Bedrock LLM Provider Configuration (native Converse API)
+# AWS Bedrock LLM Provider Configuration (native Converse API, API key auth)
 #
-# Uses the built-in `awsbedrock` template and points to the region-specific
-# Bedrock runtime endpoint. AWS Bedrock now supports Bearer-token auth
-# (Amazon Bedrock API keys) in addition to the legacy SigV4 flow -- this
-# provider uses the Bearer key. Replace the placeholder with a real key and
-# set the URL to the region your key and model access live in.
+# Uses the built-in `awsbedrock` template and points to the Region-specific
+# Bedrock runtime endpoint. Bedrock accepts two upstream auth methods:
+#   * an Amazon Bedrock API key, sent as `Authorization: Bearer <key>` (this file)
+#   * AWS SigV4 through the `aws-authentication` policy (bedrock-provider-sigv4.yaml)
+#
+# Key lifetime: a short-term key lasts at most 12 hours and a long-term key until
+# its configured expiry. The gateway sends the configured value verbatim and does
+# not generate or refresh Bedrock keys, so for a long-running deployment prefer
+# SigV4 with the default AWS credential chain. A long-term key works only in the
+# Region it was generated in; keep the upstream URL in that Region.
 #
 # The model id is carried in the URL path (/model/{modelId}/converse), so the
 # awsbedrock template extracts request/response model via location: pathParam
-# (a RE2 capture group), for both /converse and /converse-stream.
+# (a RE2 capture group), for both /converse and /converse-stream. Send ARN model
+# ids percent-encoded as a single path segment, as the AWS SDKs do.
 #
 # Auth: upstream.auth is the gateway -> Bedrock vendor auth. The header is
 # Authorization and the value is sent verbatim, so the "Bearer " prefix MUST
-# be included here (the portal auto-prepends it; raw YAML does not). Proxies in
-# front of this provider inherit this vendor auth automatically.
+# be included here (the portal auto-prepends it; raw YAML does not). Prefer a
+# managed secret reference over a literal key. Proxies in front of this provider
+# inherit this vendor auth automatically.
+#
+# See llm-provider-specs/awsbedrock/README.md for both auth methods and the
+# features the built-in integration does not cover.
 # --------------------------------------------------------------------
 
 apiVersion: gateway.api-platform.wso2.com/v1
@@ -71,5 +81,5 @@ spec:
         methods: [POST]
 
 # The proxy in front of this provider authenticates over the internal loopback
-# route with an API key issued for this LlmProvider (see bedrock-testing.md,
-# "Issue a consumer key"). Set the issued value as the proxy's provider.auth.value.
+# route with an API key issued for this LlmProvider. Set the issued value as the
+# proxy's provider.auth.value.
