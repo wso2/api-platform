@@ -1026,6 +1026,27 @@ blocks:
       - name: platform-api-deployment
         features:
           - features/management-portal/deployments/api_deployment.feature
+      - name: platform-api-build-deployment
+        features:
+          - features/management-portal/builds/build_deployment.feature
+      - name: platform-api-resource-search
+        features:
+          - features/management-portal/resources/resource_search.feature
+      - name: platform-api-artifact-management
+        features:
+          - features/management-portal/resources/artifact_management.feature
+      - name: platform-api-gateway-management
+        features:
+          - features/management-portal/resources/gateway_management.feature
+      - name: platform-api-subscription-management
+        features:
+          - features/management-portal/resources/subscription_management.feature
+      - name: platform-api-publication-drafts
+        features:
+          - features/management-portal/resources/publication_drafts.feature
+      - name: platform-api-builds
+        features:
+          - features/management-portal/builds/build_lifecycle.feature
       - name: platform-api-secured-invocation
         features:
           - features/management-portal/subscriptions/secured_api_invocation.feature
@@ -1074,6 +1095,27 @@ blocks:
       - name: platform-api-deployment
         features:
           - features/management-portal/deployments/api_deployment.feature
+      - name: platform-api-build-deployment
+        features:
+          - features/management-portal/builds/build_deployment.feature
+      - name: platform-api-resource-search
+        features:
+          - features/management-portal/resources/resource_search.feature
+      - name: platform-api-artifact-management
+        features:
+          - features/management-portal/resources/artifact_management.feature
+      - name: platform-api-gateway-management
+        features:
+          - features/management-portal/resources/gateway_management.feature
+      - name: platform-api-subscription-management
+        features:
+          - features/management-portal/resources/subscription_management.feature
+      - name: platform-api-publication-drafts
+        features:
+          - features/management-portal/resources/publication_drafts.feature
+      - name: platform-api-builds
+        features:
+          - features/management-portal/builds/build_lifecycle.feature
       - name: platform-api-secured-invocation
         features:
           - features/management-portal/subscriptions/secured_api_invocation.feature
@@ -1122,6 +1164,27 @@ blocks:
       - name: platform-api-deployment
         features:
           - features/management-portal/deployments/api_deployment.feature
+      - name: platform-api-build-deployment
+        features:
+          - features/management-portal/builds/build_deployment.feature
+      - name: platform-api-resource-search
+        features:
+          - features/management-portal/resources/resource_search.feature
+      - name: platform-api-artifact-management
+        features:
+          - features/management-portal/resources/artifact_management.feature
+      - name: platform-api-gateway-management
+        features:
+          - features/management-portal/resources/gateway_management.feature
+      - name: platform-api-subscription-management
+        features:
+          - features/management-portal/resources/subscription_management.feature
+      - name: platform-api-publication-drafts
+        features:
+          - features/management-portal/resources/publication_drafts.feature
+      - name: platform-api-builds
+        features:
+          - features/management-portal/builds/build_lifecycle.feature
       - name: platform-api-secured-invocation
         features:
           - features/management-portal/subscriptions/secured_api_invocation.feature
