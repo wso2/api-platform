@@ -1485,6 +1485,11 @@ function resolveApiType(apiType) {
     return constants.API_TYPE[keyword];
 }
 
+/** The path segment of an artifact's page in a view: "mcp" for an MCP server, "api" for any API. */
+function artifactPageSection(apiType) {
+    return apiType === constants.API_TYPE.MCP ? 'mcp' : 'api';
+}
+
 function filterAllowedAPIs(searchResults, allowedAPIs) {
     searchResults = searchResults.filter(api => {
         // MCP servers published via the registry have no referenceId
@@ -1608,6 +1613,7 @@ module.exports = {
     isImageFile,
     normalizeStringArray,
     resolveApiType,
+    artifactPageSection,
     toPaginatedList,
     resolveActor,
     filePrefix,

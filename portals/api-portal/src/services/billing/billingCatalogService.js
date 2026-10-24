@@ -45,7 +45,7 @@ const billingApiPlanDao = require('../../dao/billingApiPlanDao');
 const subscriptionPlanDao = require('../../dao/subscriptionPlanDao');
 const planPricingDao = require('../../dao/planPricingDao');
 const meterDao = require('../../dao/meterDao');
-const { priceAppliesToApiType } = require('./planPricingValidation');
+const { gatewayApiType, priceAppliesToApiType } = require('./planPricingValidation');
 const billingProvider = require('../../billing/billingProvider');
 const { BillingProviderError } = require('../../billing/http');
 const logger = require('../../config/logger');
@@ -108,7 +108,8 @@ function partsOf(plan, api, pricing, meters, connector) {
         }
     }
     if (parts.length === 0) {
-        throw new CatalogRefusal(`None of the prices of the plan ${plan.display_name} apply to this API's type (${api.type}).`);
+        throw new CatalogRefusal(`None of the prices of the plan ${plan.display_name} apply to this API's type `
+            + `(${gatewayApiType(api.type) || api.type}).`);
     }
     return parts;
 }

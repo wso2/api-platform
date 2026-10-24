@@ -17,13 +17,15 @@
  */
 --}}
 {{#if subscriptionPlans.length}}
-<section id="subscriptionPlans" class="aov-plans-wrap mcp-plans-wrap" data-org-id="{{@root.orgId}}">
+<section id="subscriptionPlans" class="aov-plans-wrap mcp-plans-wrap" data-org-id="{{@root.orgId}}"
+  data-api-id="{{@root.apiMetadata.id}}" data-api-name="{{or @root.apiMetadata.title @root.apiMetadata.name}}"
+  data-api-version="{{@root.apiMetadata.version}}">
   <h2 class="aov-plans-title" style="margin-bottom:0.875rem;">Subscription plans</h2>
 
   {{#each subscriptionPlans}}
   <div class="aov-plan-card subscription-card{{#if (isCurrentPlan id @root.subscriptions)}} aov-plan-card--subscribed{{/if}}"
     id="subscriptionCard-{{id}}"
-    data-policy-name="{{id}}"{{#if paid}} data-paid{{/if}}>
+    data-policy-name="{{id}}"{{#if paid}} data-paid{{/if}}{{#if pricing}} data-billing-period="{{pricing.billingPeriod}}"{{#if pricing.flatAmount}} data-flat-fee{{/if}}{{#if pricing.prices.length}} data-usage-prices="{{pricing.prices.length}}"{{/if}}{{/if}}>
     <div class="aov-plan-ribbon" aria-hidden="true">
       <div class="aov-plan-ribbon-label mcp-ribbon-label">SUBSCRIBED</div>
     </div>
@@ -33,11 +35,13 @@
           <i class="bi bi-lightning-charge-fill"></i>
         </span>
         <span class="aov-plan-name">{{#if displayName}}{{displayName}}{{else}}{{id}}{{/if}}</span>
+        {{#if paid}}<span class="aov-plan-badge aov-plan-badge--paid">Paid</span>{{/if}}
       </div>
       {{#unless (isCurrentPlan id @root.subscriptions)}}
       <span class="aov-recommended-badge mcp-recommended-badge" style="display:none;">RECOMMENDED</span>
       {{/unless}}
     </div>
+    {{> plan-price}}
     <div class="aov-plan-limit">
       {{#if limits.length}}{{#with (lookup limits 0)}}
       <span class="aov-plan-count">{{#if (eq limitCount -1)}}∞{{else}}{{limitCount}}{{/if}}</span>
@@ -57,6 +61,17 @@
           data-policy-name="{{id}}">
           <i class="bi bi-eye"></i> View subscription
         </button>
+        {{else if paid}}
+        {{!-- A paid plan is bought through Stripe's checkout, in a dialog (plan-checkout.js);
+              the button shows only to a user allowed to start one. --}}
+        {{#if @root.access.checkout}}
+        <button id="subscribe-btn-{{id}}" type="button"
+          class="dp-btn dp-btn--outline dp-btn--block paid-subscribe-btn"
+          data-api-id="{{../apiMetadata.id}}"
+          data-plan-id="{{id}}"
+          data-display-name="{{displayName}}"
+          ><span class="aov-plan-spinner"></span>Subscribe</button>
+        {{/if}}
         {{else if @root.access.subscribe}}
         <button id="subscribe-btn-{{id}}" type="button"
           class="dp-btn dp-btn--outline dp-btn--block subscribe-btn"
@@ -89,6 +104,10 @@
   <script id="mcp-existing-subs-data" type="application/json">{{{json subscriptions}}}</script>
   <script src='{{basePath}}/technical-scripts/mcp-subscription-plans.js' defer></script>
 </section>
+
+{{#if hasPaidPlans}}
+{{> plan-checkout}}
+{{/if}}
 
 <!-- Subscription created token modal -->
 <div id="mcpTokenModal" class="mc-overlay" style="display:none;" role="dialog" aria-modal="true">

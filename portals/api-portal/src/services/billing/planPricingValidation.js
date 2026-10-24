@@ -36,6 +36,7 @@
 
 const { FILTER_RULES, HTTP_METHODS, MAX_TOKEN_VALUE, MeterValidationError, normalizeValues, underPath } = require('./meterValidation');
 const { isOfferedCurrency } = require('../../utils/currencies');
+const constants = require('../../utils/constants');
 
 const BILLING_PERIODS = ['MONTH', 'YEAR'];
 const PRICING_MODELS = ['PER_UNIT', 'VOLUME', 'GRADUATED'];
@@ -349,19 +350,34 @@ function resolvePrices(prices, meters) {
 }
 
 /**
- * Whether a usage price can count calls to an API of `apiType` (api_metadata.type, such as RestApi
- * or Mcp). Only a price that filters on API_TYPE can rule an API out: EQUALS and IN count the types
- * they list, NOT_EQUALS and NOT_IN the others. The check holds only when the price's meter reads the
- * API type at the default event key, which our gateway fills with the API's type; with any other
- * key the API's value is unknown, so the price applies. `filters` are the price's filters and
- * `meter` its meter row (with filter_fields).
+ * The API type our gateway writes in usage events (metadata.apiType) for an api_metadata.type. The
+ * names are the same (RestApi, Mcp, WebSubApi) except for GraphQL and WebSocket APIs; a SOAP API has
+ * no counterpart, so it gives undefined.
+ */
+const GATEWAY_API_TYPES = {
+    [constants.API_TYPE.GRAPHQL]: 'GraphQLApi',
+    [constants.API_TYPE.WS]: 'WebSocketApi',
+    [constants.API_TYPE.SOAP]: undefined,
+};
+const gatewayApiType = (apiType) => (Object.prototype.hasOwnProperty.call(GATEWAY_API_TYPES, apiType)
+    ? GATEWAY_API_TYPES[apiType] : apiType);
+
+/**
+ * Whether a usage price can count calls to an API of `apiType` (api_metadata.type, such as RestApi,
+ * Mcp or GRAPHQL). Only a price that filters on API_TYPE can rule an API out: EQUALS and IN count the
+ * types they list, NOT_EQUALS and NOT_IN the others, compared with the type our gateway writes for
+ * the API (gatewayApiType). The check holds only when the price's meter reads the API type at the
+ * default event key, which our gateway fills; with any other key, or for a type the gateway has no
+ * counterpart for, the API's value is unknown, so the price applies. `filters` are the price's filters
+ * and `meter` its meter row (with filter_fields).
  */
 function priceAppliesToApiType(filters, meter, apiType) {
     const filter = (filters || []).find((f) => f.field === 'API_TYPE');
-    if (!filter || !apiType) return true;
+    const gatewayType = gatewayApiType(apiType);
+    if (!filter || !gatewayType) return true;
     const read = ((meter && meter.filter_fields) || []).find((f) => f.field === 'API_TYPE');
     if (!read || read.eventKey !== FILTER_RULES.API_TYPE.eventKey) return true;
-    const listed = filter.values.includes(apiType);
+    const listed = filter.values.includes(gatewayType);
     return filter.operator === 'EQUALS' || filter.operator === 'IN' ? listed : !listed;
 }
 
@@ -375,5 +391,6 @@ module.exports = {
     PricingValidationError,
     validatePricing,
     resolvePrices,
+    gatewayApiType,
     priceAppliesToApiType,
 };

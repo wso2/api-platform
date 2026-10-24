@@ -53,6 +53,10 @@ const { registerHelpers } = require('../helpers/handlebarsHelpers');
 const { pageAccess } = require('./pageAccess');
 
 registerHelpers();
+// The plan cards use the shared partials the portal registers for every page.
+for (const name of ['plan-price', 'plan-checkout']) {
+    Handlebars.registerPartial(name, fs.readFileSync(path.resolve(__dirname, `../defaultContent/partials/${name}.hbs`), 'utf8'));
+}
 const signedIn = () => ({ isAuthenticated: () => true });
 const accessFor = (scopes) => { resolved = scopes; return pageAccess(signedIn()); };
 const render = (relative, context) => Handlebars.compile(fs.readFileSync(path.resolve(__dirname, relative), 'utf8'))(context);
@@ -97,17 +101,24 @@ test('the sidebar shows the Billing links the user may read', async () => {
     assert.doesNotMatch(none, /id="usage"/);
 });
 
-test('plan cards offer Subscribe only to a user who may subscribe or buy', async () => {
-    const card = (scopes) => accessFor(scopes).then((access) => render(
-        '../defaultContent/pages/api-landing/partials/api-subscription-plans.hbs',
-        { access, isAuthenticated: true, apiMetadata: { id: 'weather' }, subscriptionPlans: [
-            { id: 'free', displayName: 'Free' }, { id: 'gold', displayName: 'Gold', paid: true }] }));
-    const subscriber = await card(['dp:subscription:manage']);
-    assert.match(subscriber, /id="subscribe-btn-free"/);
-    assert.match(subscriber, /id="subscribe-btn-gold"/);
-    const reader = await card(['dp:subscription:read']);
-    assert.doesNotMatch(reader, /subscribe-btn-/);
-});
+for (const page of ['api-landing/partials/api-subscription-plans', 'mcp-landing/partials/mcp-subscription-plans']) {
+    test(`plan cards offer Subscribe only to a user who may subscribe or buy (${page.split('/')[0]})`, async () => {
+        const card = (scopes) => accessFor(scopes).then((access) => render(
+            `../defaultContent/pages/${page}.hbs`,
+            { access, isAuthenticated: true, apiMetadata: { id: 'weather' }, hasPaidPlans: true, subscriptionPlans: [
+                { id: 'free', displayName: 'Free' },
+                { id: 'gold', displayName: 'Gold', paid: true, priceAmount: '$29.00', priceUnit: '/ month' }] }));
+        const subscriber = await card(['dp:subscription:manage']);
+        assert.match(subscriber, /id="subscribe-btn-free"/);
+        // A paid plan shows its price and is bought through the checkout dialog.
+        assert.match(subscriber, /id="subscribe-btn-gold" type="button"\s+class="[^"]*\bpaid-subscribe-btn\b/);
+        assert.doesNotMatch(subscriber, /id="subscribe-btn-free" type="button"\s+class="[^"]*\bpaid-subscribe-btn\b/);
+        assert.match(subscriber, /\$29\.00/);
+        assert.match(subscriber, /id="paidSubscribeModal"/);
+        const reader = await card(['dp:subscription:read']);
+        assert.doesNotMatch(reader, /subscribe-btn-/);
+    });
+}
 
 test('the Invoices page offers Manage payment methods only to a user who may change payment details', async () => {
     const page = (scopes) => accessFor(scopes).then((access) => render('../pages/billing-invoices/page.hbs', { access }));

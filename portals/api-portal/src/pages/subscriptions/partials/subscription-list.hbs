@@ -25,7 +25,7 @@
             data-status="{{this.status}}"
             data-paid="{{#if this.paid}}true{{else}}false{{/if}}">
           <td>
-            <a class="sub-api-link" href="{{../baseUrl}}/api/{{this.apiHandle}}">{{this.apiName}}</a>
+            <a class="sub-api-link" href="{{../baseUrl}}/{{this.pageSection}}/{{this.apiHandle}}">{{this.apiName}}</a>
           </td>
           <td>{{this.apiVersion}}</td>
           <td>

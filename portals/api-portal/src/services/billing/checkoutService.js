@@ -111,11 +111,11 @@ async function viewPageUrl(orgId, viewName, page) {
 }
 
 /**
- * The API page a payment method that leaves the page returns the subscriber to. Checkout itself runs
- * in a dialog on that page, so most payments never use it.
+ * The API or MCP server page a payment method that leaves the page returns the subscriber to. Checkout
+ * itself runs in a dialog on that page, so most payments never use it.
  */
-async function returnUrl(orgId, viewName, apiHandle, checkoutUuid) {
-    const page = await viewPageUrl(orgId, viewName, `/api/${encodeURIComponent(apiHandle)}`);
+async function returnUrl(orgId, viewName, api, checkoutUuid) {
+    const page = await viewPageUrl(orgId, viewName, `/${util.artifactPageSection(api.type)}/${encodeURIComponent(api.handle)}`);
     return `${page}?checkout=${encodeURIComponent(checkoutUuid)}&checkoutResult=success`;
 }
 
@@ -338,7 +338,7 @@ async function startCheckout(req) {
             customerRef: customer.customer_ref,
             prices,
             reference: checkout.uuid,
-            returnUrl: await returnUrl(orgId, viewName, apiHandle, checkout.uuid),
+            returnUrl: await returnUrl(orgId, viewName, api, checkout.uuid),
         });
     } catch (err) {
         // The checkout never reached the payment provider: remove it, so nothing half-started is

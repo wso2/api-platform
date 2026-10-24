@@ -16,7 +16,7 @@
  * under the License.
  */
  
-const { renderTemplateWithView, resolveActor, pageErrorStatus } = require('../utils/util');
+const { renderTemplateWithView, resolveActor, pageErrorStatus, artifactPageSection } = require('../utils/util');
 const logger = require('../config/logger');
 const constants = require('../utils/constants');
 const orgDao = require('../dao/organizationDao');
@@ -72,6 +72,7 @@ const loadSubscriptions = async (req, res, next) => {
                     apiName: sub.api_metadata?.name || '',
                     apiVersion: sub.api_metadata?.version || '',
                     apiHandle: sub.api_metadata?.handle || '#',
+                    pageSection: artifactPageSection(sub.api_metadata?.type),
                     planName: sub.subscription_plan?.display_name || '',
                     status: sub.status,
                     subscriptionToken: sub.token,

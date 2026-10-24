@@ -385,6 +385,12 @@ async function receive(type, objectId) {
     stripeState.invoices.sub_paid = [{ id: 'in_4', status: 'open', attempt_count: 0, next_payment_attempt: null }];
     await receive('customer.subscription.updated', 'sub_paid');
     out.notYetCharged = paidStatus();
+
+    // An MCP server sells the same plan: its checkout returns to the MCP server's page.
+    await billingApiPlanDao.insertApiPlan({ uuid: 'api-plan-mcp', orgId: ORG, configurationUuid: 'conn-1', apiUuid: 'mcp-1',
+        planUuid: 'plan-gold', items: [{ priceUuid: pricing.prices[0].uuid, planRef: 'prod_2', priceRef: 'price_mcp_calls', meterRef: 'bm_2' }] });
+    out.mcpStarted = await call(checkout.createCheckoutSession, as('mia', { body: { artifactId: 'files-mcp', subscriptionPlanId: 'gold' } }));
+    out.mcpSessionArgs = stripeCalls.filter((c) => c[0] === 'session').pop()[1];
     process.stdout.write('\\nPROBE_JSON:' + JSON.stringify(out) + '\\n');
     process.exit(0);
 })();
@@ -407,12 +413,16 @@ function results() {
         db.prepare("INSERT INTO views (uuid, org_uuid, portal_id, handle, display_name, created_by, updated_by) VALUES ('view-1', ?, ?, 'default', 'Default', 'test', 'test')").run(ORG, P);
         db.prepare('INSERT INTO api_metadata (uuid, org_uuid, portal_id, name, status, version, type, handle, ref_id, created_by, updated_by) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
             .run('api-1', ORG, P, 'Weather API', 'PUBLISHED', 'v1.0', 'REST', 'weather', 'weather', 'test', 'test');
+        db.prepare('INSERT INTO api_metadata (uuid, org_uuid, portal_id, name, status, version, type, handle, ref_id, created_by, updated_by) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
+            .run('mcp-1', ORG, P, 'Files MCP', 'PUBLISHED', 'v1.0', 'Mcp', 'files-mcp', 'files-mcp', 'test', 'test');
         for (const [uuid, handle] of [['plan-free', 'free'], ['plan-gold', 'gold'], ['plan-silver', 'silver']]) {
             db.prepare('INSERT INTO subscription_plans (uuid, org_uuid, portal_id, handle, display_name, ref_id, created_by, updated_by) VALUES (?,?,?,?,?,?,?,?)')
                 .run(uuid, ORG, P, handle, handle, handle, 'test', 'test');
             db.prepare('INSERT INTO api_subscription_plan_mappings (uuid, api_uuid, plan_uuid, portal_id, created_by) VALUES (?,?,?,?,?)')
                 .run('map-' + handle, 'api-1', uuid, P, 'test');
         }
+        db.prepare('INSERT INTO api_subscription_plan_mappings (uuid, api_uuid, plan_uuid, portal_id, created_by) VALUES (?,?,?,?,?)')
+            .run('map-mcp-gold', 'mcp-1', 'plan-gold', P, 'test');
     `);
     const seeded = spawnSync(process.execPath, [seed], { cwd: PROJECT_ROOT, encoding: 'utf8' });
     assert.equal(seeded.status, 0, `seeding failed: ${seeded.stderr}`);
@@ -447,6 +457,15 @@ test('checkout gives the browser what it mounts Stripe\'s form with, for the pla
     assert.equal(args.clientReferenceId, r.body.id);
     assert.equal(args.returnUrl,
         `https://developer.example.com/api-portal/default/views/default/api/weather?checkout=${r.body.id}&checkoutResult=success`);
+});
+
+test('a paid plan on an MCP server is bought the same way, and its checkout returns to the MCP server\'s page', () => {
+    const r = results().mcpStarted;
+    assert.equal(r.status, 201, JSON.stringify(r.body));
+    const args = results().mcpSessionArgs;
+    assert.deepEqual(args.lineItems, [{ price: 'price_mcp_calls' }]);
+    assert.equal(args.returnUrl,
+        `https://developer.example.com/api-portal/default/views/default/mcp/files-mcp?checkout=${r.body.id}&checkoutResult=success`);
 });
 
 test('a plan taken off an API, or deleted, has its open checkouts ended in Stripe first; other plans\' are left', () => {

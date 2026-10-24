@@ -65,6 +65,9 @@
 
         document.getElementById('mcpManagePlanName').textContent = policyName;
         updateManageStatus(sub.status);
+        // A paid subscription is stopped by unsubscribing, not suspended (as on the Subscriptions page).
+        var card = document.querySelector('#subscriptionPlans .aov-plan-card[data-policy-name="' + policyName + '"]');
+        document.getElementById('mcpManageSuspendBtn').hidden = !!(card && card.hasAttribute('data-paid'));
         document.getElementById('mcpManageTokenVal').textContent = '•'.repeat(28);
         var revealIcon = document.getElementById('mcpManageRevealIcon');
         if (revealIcon) revealIcon.className = 'bi bi-eye';

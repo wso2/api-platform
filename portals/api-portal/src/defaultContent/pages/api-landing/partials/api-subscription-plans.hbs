@@ -24,49 +24,7 @@
       <span class="aov-recommended-badge" style="display:none;">RECOMMENDED</span>
       {{/unless}}
     </div>
-    {{#if paid}}
-    <div class="aov-plan-price">
-      {{#if pricePrefix}}<span class="aov-plan-price-prefix">{{pricePrefix}}</span>{{/if}}
-      <span class="aov-plan-price-amount">{{priceAmount}}</span>
-      {{#if priceUnit}}<span class="aov-plan-price-unit">{{priceUnit}}</span>{{/if}}
-    </div>
-    {{#if billingNote}}<div class="aov-plan-billing">{{billingNote}}</div>{{/if}}
-    {{#if priceItems.length}}
-    {{!-- The prices behind the headline, collapsed; the subscribe dialog lists them from here (api-subscription-plans.js). --}}
-    <details class="aov-plan-pricing">
-      <summary class="aov-plan-pricing-toggle">Pricing details<i class="bi bi-chevron-down" aria-hidden="true"></i></summary>
-      <div class="aov-plan-pricing-body">
-        {{#each priceItems}}
-        <div class="aov-plan-price-item"{{#if name}} data-name="{{name}}"{{/if}} data-text="{{text}}">
-          <div class="aov-plan-price-head">
-            {{#if name}}
-            <span class="aov-plan-price-name">{{name}}</span>
-            <span class="aov-plan-price-text">{{text}}</span>
-            {{else}}
-            <span class="aov-plan-price-name">{{text}}</span>
-            {{/if}}
-          </div>
-          {{#if tiers}}
-          <table class="aov-plan-tier-table">
-            <thead><tr>{{#each tiers.headers}}<th scope="col">{{this}}</th>{{/each}}</tr></thead>
-            <tbody>
-              {{#each tiers.rows}}
-              <tr class="aov-plan-tier" data-label="{{label}}" data-amounts="{{amounts}}">{{#each cells}}<td>{{this}}</td>{{/each}}</tr>
-              {{/each}}
-            </tbody>
-          </table>
-          {{#if hint}}<p class="aov-plan-price-hint">{{hint}}</p>{{/if}}
-          {{/if}}
-        </div>
-        {{/each}}
-      </div>
-    </details>
-    {{/if}}
-    {{else if @root.hasPaidPlans}}
-    <div class="aov-plan-price">
-      <span class="aov-plan-price-amount">Free</span>
-    </div>
-    {{/if}}
+    {{> plan-price}}
     <div class="aov-plan-limit">
       {{#if limits.length}}{{#each limits}}
       <span class="aov-plan-count">{{#if (eq limitCount -1)}}∞{{else}}{{limitCount}}{{/if}}</span>
@@ -135,64 +93,7 @@
 </section>
 
 {{#if hasPaidPlans}}
-<!-- Subscribe to a paid plan -->
-<div id="paidSubscribeModal" class="mc-overlay" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="paidSubscribeTitle">
-  <div class="mc-token-modal">
-    <button class="mc-modal-close paid-modal-close" aria-label="Close">&times;</button>
-    <div class="mc-token-modal-header" style="text-align:left;">
-      <h2 class="mc-token-modal-title" id="paidSubscribeTitle"></h2>
-      <p class="mc-token-modal-sub" id="paidSubscribeApi"></p>
-    </div>
-    <div class="mc-token-modal-body">
-      <div class="mc-token-label"><span>Pricing</span></div>
-      <table class="aov-usage-pricing-table" style="margin-bottom:12px;">
-        <tbody id="paidSubscribePricing"></tbody>
-      </table>
-      <p class="aov-plans-note" id="paidSubscribeTerms"></p>
-      <p class="aov-plans-note">Your subscription becomes active once the payment is confirmed.</p>
-      <div class="mc-token-modal-footer" style="display:flex;gap:8px;justify-content:flex-end;">
-        <button class="dp-btn dp-btn--outline paid-modal-close">Cancel</button>
-        <button id="paidSubscribeContinue" class="dp-btn dp-btn--primary">Continue to payment</button>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- Payment: Stripe's checkout form, mounted in this dialog by api-subscription-plans.js -->
-<div id="checkoutPayModal" class="mc-overlay" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="checkoutPayTitle">
-  <div class="mc-token-modal checkout-pay-modal">
-    <button class="mc-modal-close checkout-pay-close" aria-label="Close">&times;</button>
-    <div class="mc-token-modal-header" style="text-align:left;">
-      <h2 class="mc-token-modal-title" id="checkoutPayTitle"></h2>
-      <p class="mc-token-modal-sub" id="checkoutPayApi"></p>
-    </div>
-    <div class="checkout-pay-body">
-      <div id="checkoutPayLoading" class="checkout-pay-loading" role="status">
-        <span class="checkout-pay-spinner" aria-hidden="true"></span>
-        <span class="visually-hidden">Loading the payment form</span>
-      </div>
-      <div id="checkoutPayMount"></div>
-    </div>
-  </div>
-</div>
-
-<!-- Checkout result: activating, failed, or not completed -->
-<div id="checkoutStatusModal" class="mc-overlay" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="checkoutStatusTitle">
-  <div class="mc-token-modal">
-    <button class="mc-modal-close checkout-status-close" aria-label="Close">&times;</button>
-    <div class="mc-token-modal-header">
-      <h2 class="mc-token-modal-title" id="checkoutStatusTitle"></h2>
-      <p class="mc-token-modal-sub" id="checkoutStatusText"></p>
-    </div>
-    <div class="mc-token-modal-body">
-      <p class="aov-plans-note" id="checkoutStatusHint"></p>
-      <div class="mc-token-modal-footer" style="display:flex;gap:8px;justify-content:flex-end;">
-        <button class="dp-btn dp-btn--outline checkout-status-close">Close</button>
-        <button id="checkoutStatusRetry" class="dp-btn dp-btn--primary" style="display:none;">Try again</button>
-      </div>
-    </div>
-  </div>
-</div>
+{{> plan-checkout}}
 {{/if}}
 
 <!-- Subscription created token modal -->

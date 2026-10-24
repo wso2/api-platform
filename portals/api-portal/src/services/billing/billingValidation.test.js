@@ -400,6 +400,15 @@ test('a price applies to an API unless its API type filter, read at the default 
     assert.strictEqual(applies(filter('API_TYPE', 'EQUALS', 'LlmProvider'), 'RestApi', custom), true);
     // An unknown API type rules nothing out.
     assert.strictEqual(applies(filter('API_TYPE', 'EQUALS', 'LlmProvider'), null), true);
+    // Prices name the gateway's API types, which differ from the portal's for GraphQL and WebSocket APIs.
+    assert.strictEqual(applies(filter('API_TYPE', 'EQUALS', 'GraphQLApi'), 'GRAPHQL'), true);
+    assert.strictEqual(applies(filter('API_TYPE', 'NOT_EQUALS', 'GraphQLApi'), 'GRAPHQL'), false);
+    assert.strictEqual(applies(filter('API_TYPE', 'EQUALS', 'GRAPHQL'), 'GRAPHQL'), false, 'the gateway never sends GRAPHQL');
+    assert.strictEqual(applies(filter('API_TYPE', 'IN', 'WebSocketApi', 'Mcp'), 'WS'), true);
+    assert.strictEqual(applies(filter('API_TYPE', 'EQUALS', 'Mcp'), 'Mcp'), true);
+    assert.strictEqual(applies(filter('API_TYPE', 'NOT_IN', 'RestApi', 'Mcp'), 'Mcp'), false);
+    // A SOAP API has no gateway counterpart, so no price is ruled out for it.
+    assert.strictEqual(applies(filter('API_TYPE', 'EQUALS', 'LlmProvider'), 'SOAP'), true);
 });
 
 // ---------------------------------------------------------------------------
