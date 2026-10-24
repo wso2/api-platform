@@ -16,25 +16,32 @@
  * under the License.
  */
 
-import { Box, Divider, Link, Typography, type TypographyProps } from '@wso2/oxygen-ui';
-import { Fragment, useMemo, type ReactNode } from 'react';
+import { Box, Divider, Link, Typography, useTheme, type TypographyProps } from '@wso2/oxygen-ui';
+import { useMemo, type ReactNode } from 'react';
+import ReactMarkdown, { type Components } from 'react-markdown';
+import type { PluggableList } from 'unified';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { oneDark, oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import rehypeRaw from 'rehype-raw';
+import rehypeSanitize from 'rehype-sanitize';
+import remarkGfm from 'remark-gfm';
 
-import { parseMarkdown, type MarkdownBlock, type MarkdownInline } from './markdown';
+import { runtimeConfig } from '@/config/runtime';
+import { buildSanitizeSchema } from './sanitizeSchema';
 
 /**
  * Renders a Markdown document as Oxygen typography.
  *
- * Every node becomes a React element, so document text is always an escaped
- * text node — there is no `dangerouslySetInnerHTML` anywhere on this path, and
- * raw HTML inside a document is displayed as literal text.
+ * Parsing is handled by react-markdown (GFM via remark-gfm). Output is passed
+ * through rehype-sanitize with the default GitHub-style allowlist, so raw HTML
+ * is restricted to a safe tag/attribute set before it reaches the React tree.
  */
 
-/** Visual size per Markdown heading level; the document's own title sits above these. */
-const HEADING_VARIANT: Record<number, TypographyProps['variant']> = {
-  1: 'h5',
-  2: 'h6',
-  3: 'subtitle1',
-  4: 'subtitle2',
+const HEADING_VARIANT: Record<1 | 2 | 3 | 4 | 5 | 6, TypographyProps['variant']> = {
+  1: 'h4',
+  2: 'subtitle1',
+  3: 'h5',
+  4: 'h6',
   5: 'subtitle2',
   6: 'subtitle2',
 };
@@ -43,9 +50,12 @@ const HEADING_VARIANT: Record<number, TypographyProps['variant']> = {
  * Semantic heading element. The page title is an h1 and the document title an
  * h2, so the document's own headings start at h3 to keep the outline intact.
  */
-const headingElement = (level: number) => `h${Math.min(level + 2, 6)}` as 'h3' | 'h4' | 'h5' | 'h6';
+const headingElement = (level: 1 | 2 | 3 | 4 | 5 | 6) =>
+  `h${Math.min(level + 2, 6)}` as 'h3' | 'h4' | 'h5' | 'h6';
 
-const codeSx = {
+const headingSx = { fontWeight: 'fontWeightBold', mb: 1, mt: 2.5 } as const;
+
+const inlineCodeSx = {
   bgcolor: 'action.hover',
   borderRadius: 0.5,
   fontFamily: 'monospace',
@@ -53,116 +63,232 @@ const codeSx = {
   px: 0.5,
 } as const;
 
-function renderInline(nodes: MarkdownInline[]): ReactNode {
-  return nodes.map((node, index) => {
-    switch (node.kind) {
-      case 'text':
-        return <Fragment key={index}>{node.text}</Fragment>;
-      case 'code':
-        return (
-          <Box component="code" key={index} sx={codeSx}>
-            {node.text}
-          </Box>
-        );
-      case 'strong':
-        return (
-          <Box component="strong" key={index} sx={{ fontWeight: 'fontWeightBold' }}>
-            {renderInline(node.children)}
-          </Box>
-        );
-      case 'em':
-        return <em key={index}>{renderInline(node.children)}</em>;
-      case 'link':
-        return (
-          <Link href={node.href} key={index} rel="noopener noreferrer" target="_blank">
-            {renderInline(node.children)}
-          </Link>
-        );
-      case 'break':
-        return <br key={index} />;
-      default:
-        return null;
-    }
-  });
-}
+const preBlockSx = {
+  bgcolor: 'action.hover',
+  borderRadius: 1,
+  fontFamily: 'monospace',
+  m: 0,
+  mb: 2,
+  overflowX: 'auto',
+  p: 2,
+  typography: 'body2',
+} as const;
 
-function renderBlock(block: MarkdownBlock, index: number): ReactNode {
-  switch (block.kind) {
-    case 'heading':
-      return (
-        <Typography
-          component={headingElement(block.level)}
-          key={index}
-          sx={{ fontWeight: 'fontWeightBold', mb: 1, mt: index === 0 ? 0 : 2.5 }}
-          variant={HEADING_VARIANT[block.level]}
-        >
-          {renderInline(block.children)}
-        </Typography>
-      );
-    case 'paragraph':
-      return (
-        <Typography key={index} sx={{ mb: 1.5 }} variant="body2">
-          {renderInline(block.children)}
-        </Typography>
-      );
-    case 'code':
-      return (
-        <Box
-          component="pre"
-          key={index}
-          sx={{
-            bgcolor: 'action.hover',
-            borderRadius: 1,
-            typography: 'body2',
-            fontFamily: 'monospace',
-            m: 0,
-            mb: 2,
-            overflowX: 'auto',
-            p: 2,
-          }}
-        >
-          <code>{block.text}</code>
-        </Box>
-      );
-    case 'list':
-      return (
-        <Box
-          component={block.ordered ? 'ol' : 'ul'}
-          key={index}
-          start={block.ordered && block.start !== 1 ? block.start : undefined}
-          sx={{ m: 0, mb: 1.5, pl: 3 }}
-        >
-          {block.items.map((item, itemIndex) => (
-            <Typography component="li" key={itemIndex} sx={{ mb: 0.5 }} variant="body2">
-              {renderInline(item)}
-            </Typography>
-          ))}
-        </Box>
-      );
-    case 'quote':
-      return (
-        <Box
-          component="blockquote"
-          key={index}
-          sx={{
-            bgcolor: 'action.hover',
-            borderRadius: 1,
-            color: 'text.secondary',
-            m: 0,
-            mb: 2,
-            px: 2,
-            py: 1.5,
-          }}
-        >
-          {block.children.map(renderBlock)}
-        </Box>
-      );
-    case 'rule':
-      return <Divider key={index} sx={{ my: 2 }} />;
-    default:
-      return null;
+const listSx = { m: 0, mb: 1.5, pl: 3 } as const;
+
+const quoteSx = {
+  bgcolor: 'action.hover',
+  borderRadius: 1,
+  color: 'text.secondary',
+  m: 0,
+  mb: 2,
+  px: 2,
+  py: 1.5,
+} as const;
+
+const imgBaseSx = {
+  display: 'inline-block',
+  height: 'auto',
+  maxWidth: '100%',
+  my: 1.5,
+} as const;
+
+// In dark mode, pad embedded images with a white backdrop so logos/badges
+// drawn with a transparent background and dark foreground stay readable. The
+// same treatment on photo-like images reads as a thin light frame — benign.
+const imgDarkSx = {
+  ...imgBaseSx,
+  backgroundColor: 'common.white',
+  borderRadius: 1,
+  p: 1,
+} as const;
+
+const tableSx = {
+  borderCollapse: 'collapse',
+  display: 'block',
+  mb: 2,
+  overflowX: 'auto',
+  width: '100%',
+} as const;
+
+const tableCellSx = {
+  border: 1,
+  borderColor: 'divider',
+  px: 1.5,
+  py: 1,
+  typography: 'body2',
+} as const;
+
+const tableHeadCellSx = { ...tableCellSx, bgcolor: 'action.hover', fontWeight: 'fontWeightBold' } as const;
+
+const alignToStyle = (align: string | undefined): { textAlign: 'left' | 'center' | 'right' | 'justify' } | undefined => {
+  if (align === 'left' || align === 'center' || align === 'right' || align === 'justify') {
+    return { textAlign: align };
   }
-}
+  return undefined;
+};
+
+const renderHeading = (level: 1 | 2 | 3 | 4 | 5 | 6) =>
+  function Heading({ children, align }: { children?: ReactNode; align?: string }) {
+    return (
+      <Typography
+        component={headingElement(level)}
+        style={alignToStyle(align)}
+        sx={headingSx}
+        variant={HEADING_VARIANT[level]}
+      >
+        {children}
+      </Typography>
+    );
+  };
+
+/** Prism's style objects are plain CSSProperties maps keyed by token selector. */
+const highlighterCustomStyle = { borderRadius: 8, fontSize: '0.8125rem', margin: 0, marginBottom: 16, padding: 16 };
+const highlighterCodeTagProps = { style: { fontFamily: 'inherit' } };
+
+const useMarkdownComponents = (): Components => {
+  const theme = useTheme();
+  const isDark = theme.palette.mode === 'dark';
+
+  return useMemo(
+    () => ({
+      h1: renderHeading(1),
+      h2: renderHeading(2),
+      h3: renderHeading(3),
+      h4: renderHeading(4),
+      h5: renderHeading(5),
+      h6: renderHeading(6),
+      p: ({ children, ...rest }) => (
+        <Typography
+          style={alignToStyle((rest as { align?: string }).align)}
+          sx={{ mb: 1.5 }}
+          variant="body2"
+        >
+          {children}
+        </Typography>
+      ),
+      a: ({ href, children }) => (
+        <Link href={href} rel="noopener noreferrer" target="_blank">
+          {children}
+        </Link>
+      ),
+      ul: ({ children }) => (
+        <Box component="ul" sx={listSx}>
+          {children}
+        </Box>
+      ),
+      ol: ({ children, start }) => (
+        <Box component="ol" start={start} sx={listSx}>
+          {children}
+        </Box>
+      ),
+      li: ({ children }) => (
+        <Typography component="li" sx={{ mb: 0.5 }} variant="body2">
+          {children}
+        </Typography>
+      ),
+      blockquote: ({ children }) => (
+        <Box component="blockquote" sx={quoteSx}>
+          {children}
+        </Box>
+      ),
+      hr: () => <Divider sx={{ my: 2 }} />,
+      // The default `<pre>` wrapper is unwrapped — the SyntaxHighlighter and
+      // the untagged-block fallback below each render their own block wrapper.
+      pre: ({ children }) => <>{children}</>,
+      // Block code with a `language-xxx` class → syntax-highlighted via Prism.
+      // Block code without a class (fenced ``` with no language) → plain `<pre>`.
+      // Inline `<code>` → inline background pill. react-markdown v10 no longer
+      // exposes an `inline` prop, so the two block shapes are detected by
+      // either the className or an embedded newline. `node` is pulled out and
+      // discarded so it doesn't reach the inline `<Box>` below as a `node`
+      // DOM attribute (Oxygen/MUI Box doesn't filter it out).
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      code: ({ className, children, node: _node, ...rest }) => {
+        const text = typeof children === 'string' ? children : String(children ?? '');
+        const languageMatch = /language-(\w+)/.exec(className ?? '');
+        if (languageMatch) {
+          return (
+            <SyntaxHighlighter
+              PreTag="div"
+              codeTagProps={highlighterCodeTagProps}
+              customStyle={highlighterCustomStyle}
+              language={languageMatch[1]}
+              style={isDark ? oneDark : oneLight}
+            >
+              {text.replace(/\n$/, '')}
+            </SyntaxHighlighter>
+          );
+        }
+        if (text.includes('\n')) {
+          return (
+            <Box component="pre" sx={preBlockSx}>
+              <Box component="code">{text.replace(/\n$/, '')}</Box>
+            </Box>
+          );
+        }
+        return (
+          <Box component="code" sx={inlineCodeSx} {...rest}>
+            {children}
+          </Box>
+        );
+      },
+      img: ({ src, alt, title, width, height }) => (
+        <Box
+          alt={alt ?? ''}
+          component="img"
+          height={height}
+          src={src}
+          sx={isDark ? imgDarkSx : imgBaseSx}
+          title={title}
+          width={width}
+        />
+      ),
+      table: ({ children }) => (
+        <Box component="table" sx={tableSx}>
+          {children}
+        </Box>
+      ),
+      thead: ({ children }) => <Box component="thead">{children}</Box>,
+      tbody: ({ children }) => <Box component="tbody">{children}</Box>,
+      tr: ({ children }) => <Box component="tr">{children}</Box>,
+      // GFM alignment syntax `|:---:|` is carried as a `style={{ textAlign }}`
+      // React prop on each `th`/`td` — forward it so aligned columns don't all
+      // fall back to left-align.
+      th: ({ children, style }) => (
+        <Box component="th" style={style} sx={tableHeadCellSx}>
+          {children}
+        </Box>
+      ),
+      td: ({ children, style }) => (
+        <Box component="td" style={style} sx={tableCellSx}>
+          {children}
+        </Box>
+      ),
+    }),
+    [isDark],
+  );
+};
+
+const remarkPlugins = [remarkGfm];
+// Order matters: rehype-raw parses the raw HTML strings in the markdown
+// source into real hast nodes first; rehype-sanitize then filters the whole
+// tree through the allowlist. Reversing the order leaves raw HTML untouched
+// by the sanitizer. The schema is built from `defaultSchema` plus any
+// operator additions declared under `[api_control_plane.sanitizeHtmlDocs]`,
+// so a deployment can widen (never narrow) the allowlist.
+const rehypePlugins: PluggableList = runtimeConfig.sanitizeHtmlDocsEnabled
+  ? [
+      rehypeRaw,
+      [
+        rehypeSanitize,
+        buildSanitizeSchema(
+          runtimeConfig.sanitizeHtmlDocsAdditionalAllowedTags,
+          runtimeConfig.sanitizeHtmlDocsAdditionalAllowedAttributes,
+        ),
+      ],
+    ]
+  : [rehypeRaw];
 
 export type MarkdownViewProps = {
   /** Markdown source. */
@@ -172,11 +298,20 @@ export type MarkdownViewProps = {
 };
 
 export function MarkdownView({ source, emptyFallback = null }: MarkdownViewProps) {
-  const blocks = useMemo(() => parseMarkdown(source), [source]);
-  if (blocks.length === 0) return <>{emptyFallback}</>;
+  const components = useMarkdownComponents();
+  if (!source.trim()) return <>{emptyFallback}</>;
   return (
-    <Box sx={{ '& > :last-child': { mb: 0 }, minWidth: 0, overflowWrap: 'anywhere' }}>
-      {blocks.map(renderBlock)}
+    <Box
+      sx={{
+        '& > :first-of-type': { mt: 0 },
+        '& > :last-child': { mb: 0 },
+        minWidth: 0,
+        overflowWrap: 'anywhere',
+      }}
+    >
+      <ReactMarkdown components={components} rehypePlugins={rehypePlugins} remarkPlugins={remarkPlugins}>
+        {source}
+      </ReactMarkdown>
     </Box>
   );
 }

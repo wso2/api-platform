@@ -105,6 +105,9 @@ export type RuntimeConfig = {
   termsOfUseLink: string;
   toSServiceName: string;
   usersManagementApiUrl: string;
+  sanitizeHtmlDocsEnabled: boolean;
+  sanitizeHtmlDocsAdditionalAllowedTags: string[];
+  sanitizeHtmlDocsAdditionalAllowedAttributes: Record<string, string[]>;
 };
 
 type LegacyWindowConfig = Partial<{
@@ -152,6 +155,9 @@ type LegacyWindowConfig = Partial<{
   termsOfUseLink: string;
   toSServiceName: string;
   usersManagementApiUrl: string;
+  sanitizeHtmlDocsEnabled: string;
+  sanitizeHtmlDocsAdditionalAllowedTags: string;
+  sanitizeHtmlDocsAdditionalAllowedAttributes: string;
 }>;
 
 declare global {
@@ -167,6 +173,35 @@ const fromWindow = (): LegacyWindowConfig => ({
 });
 
 const splitCommaConfigList = (value?: string) => value?.split(',').filter(Boolean) ?? [];
+
+const parseJsonStringArray = (value: string | undefined): string[] => {
+  if (!value) return [];
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return Array.isArray(parsed) && parsed.every((v) => typeof v === 'string')
+      ? (parsed as string[])
+      : [];
+  } catch {
+    return [];
+  }
+};
+
+const parseJsonRecordOfStringArrays = (value: string | undefined): Record<string, string[]> => {
+  if (!value) return {};
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    const out: Record<string, string[]> = {};
+    for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+      if (Array.isArray(v) && v.every((item) => typeof item === 'string')) {
+        out[k] = v as string[];
+      }
+    }
+    return out;
+  } catch {
+    return {};
+  }
+};
 
 const readBoolean = (value: boolean | string | undefined) => value === true || value === 'true';
 
@@ -316,4 +351,15 @@ export const runtimeConfig: RuntimeConfig = {
     fromWindow().usersManagementApiUrl ||
     import.meta.env.VITE_USERS_MANAGEMENT_API_URL ||
     '',
+  sanitizeHtmlDocsEnabled:
+    (fromWindow().sanitizeHtmlDocsEnabled ??
+      import.meta.env.VITE_SANITIZE_HTML_DOCS_ENABLED) !== 'false',
+  sanitizeHtmlDocsAdditionalAllowedTags: parseJsonStringArray(
+    fromWindow().sanitizeHtmlDocsAdditionalAllowedTags ??
+      import.meta.env.VITE_SANITIZE_HTML_DOCS_ADDITIONAL_ALLOWED_TAGS,
+  ),
+  sanitizeHtmlDocsAdditionalAllowedAttributes: parseJsonRecordOfStringArrays(
+    fromWindow().sanitizeHtmlDocsAdditionalAllowedAttributes ??
+      import.meta.env.VITE_SANITIZE_HTML_DOCS_ADDITIONAL_ALLOWED_ATTRIBUTES,
+  ),
 };
