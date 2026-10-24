@@ -35,6 +35,8 @@ import OrgProvisioningPage from './pages/register/OrgProvisioningPage';
 import { checkOrganizationExists, registerOrganization } from './apis/platformApis';
 import { forceLogoutAndRedirect } from './auth/logout';
 import { DEFAULT_ORG_REGION, isFeatureEnabled } from './config.env';
+import { deriveValidOrgHandle } from './utils/projectRouting';
+import { logger } from './utils/logger';
 
 // App Shell Pages
 import Overview from './pages/appShell/appShellPages/overview/Overview';
@@ -194,7 +196,7 @@ function SigninCallbackRoute() {
 
 type OrgInitState = 'checking' | 'provisioning' | 'done' | 'error';
 
-// After sign-in: checks whether the user's org (from token claims) is registered,
+// After sign-in: checks whether the user's org (from token claims or URL) is registered,
 // auto-registers it if not, then navigates to the org home page.
 function PostSignInInit({ children }: { children: React.ReactNode }) {
   const { user } = useAppAuth();
@@ -209,23 +211,39 @@ function PostSignInInit({ children }: { children: React.ReactNode }) {
     initiated.current = true;
 
     const org = user.org;
-    if (!org?.id || !org?.handle) {
+    if (!org) {
       // No org claims in token — render the app and let AppShellContext handle it.
       setOrgState('done');
       return;
     }
 
-    checkOrganizationExists(org.handle)
+    const targetHandle = deriveValidOrgHandle(org);
+    const displayName = org.name || org.handle || targetHandle;
+
+    if (!targetHandle) {
+      // No valid org handle could be derived — render the app and let AppShellContext handle it.
+      setOrgState('done');
+      return;
+    }
+
+    checkOrganizationExists(targetHandle)
       .then(async (exists) => {
         if (!exists) {
           setOrgState('provisioning');
-          await registerOrganization({
-            id: org.handle,
-            displayName: org.name || org.handle,
-            region: DEFAULT_ORG_REGION,
-          });
+          try {
+            await registerOrganization({
+              id: targetHandle,
+              displayName: displayName || targetHandle,
+              region: DEFAULT_ORG_REGION,
+            });
+          } catch (regErr: any) {
+            // 409 = already exists (e.g. race with provisioning flow or console bootstrap), safe to continue
+            if (!regErr?.message?.includes('already exists') && regErr?.code !== 'ORGANIZATION_ALREADY_EXISTS') {
+              throw regErr;
+            }
+          }
         }
-        const orgBasePath = `/organizations/${org.handle}`;
+        const orgBasePath = `/organizations/${targetHandle}`;
         const alreadyOnOrgPath =
           location.pathname === orgBasePath || location.pathname.startsWith(`${orgBasePath}/`);
         if (!alreadyOnOrgPath) {
@@ -233,7 +251,8 @@ function PostSignInInit({ children }: { children: React.ReactNode }) {
         }
         setOrgState('done');
       })
-      .catch(() => {
+      .catch((err) => {
+        logger.error('PostSignInInit error:', err);
         // Any failure here (a 401 from an expired/invalid session, or an
         // unexpected error) is unrecoverable without re-authenticating, so
         // surface the error screen whose only action is to log out.
