@@ -950,7 +950,7 @@ func TestImport_MCPProxy_ReadOnlyInGetAndList(t *testing.T) {
 	}
 
 	// List: each item carries the correct readOnly per origin.
-	list, err := svc.List(importTestOrgID, 100, 0)
+	list, err := svc.List(importTestOrgID, repository.ListOptions{Limit: 100, Offset: 0})
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}

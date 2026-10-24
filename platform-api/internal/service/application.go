@@ -183,7 +183,7 @@ func (s *ApplicationService) GetApplicationByID(appIDOrHandle, orgID string) (*a
 	return s.modelToApplicationResponse(app)
 }
 
-func (s *ApplicationService) GetApplicationsByOrganization(orgID, projectHandle string, opts repository.ListOptions) (*api.ApplicationListResponse, error) {
+func (s *ApplicationService) GetApplicationsByOrganization(orgID, projectHandle, appType string, opts repository.ListOptions) (*api.ApplicationListResponse, error) {
 	org, err := s.orgRepo.GetOrganizationByUUID(orgID)
 	if err != nil {
 		return nil, err
@@ -204,6 +204,14 @@ func (s *ApplicationService) GetApplicationsByOrganization(orgID, projectHandle 
 	if strings.TrimSpace(projectHandle) == "" {
 		return nil, apperror.ValidationFailed.New("The project handle is required.")
 	}
+	if appType != "" {
+		normalized, err := normalizeApplicationType(appType)
+		if err != nil {
+			return nil, apperror.ValidationFailed.New(
+				fmt.Sprintf("The type filter %q is not supported. Supported types: genai, web.", appType))
+		}
+		appType = normalized
+	}
 
 	project, err := s.projectRepo.GetProjectByHandleAndOrgID(projectHandle, orgID)
 	if err != nil {
@@ -213,12 +221,12 @@ func (s *ApplicationService) GetApplicationsByOrganization(orgID, projectHandle 
 		return nil, apperror.ProjectNotFound.New()
 	}
 
-	totalCount, err := s.appRepo.CountApplicationsByProjectID(project.ID, orgID, opts.Search)
+	totalCount, err := s.appRepo.CountApplicationsByProjectID(project.ID, orgID, appType, opts.Search)
 	if err != nil {
 		return nil, err
 	}
 
-	pagedApps, err := s.appRepo.GetApplicationsByProjectIDPaginated(project.ID, orgID, opts)
+	pagedApps, err := s.appRepo.GetApplicationsByProjectIDPaginated(project.ID, orgID, appType, opts)
 	if err != nil {
 		return nil, err
 	}

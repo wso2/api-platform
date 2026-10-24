@@ -109,8 +109,23 @@ export default function ErrorAlert({ error, onRetry }: ErrorAlertProps) {
     );
   }
 
+  // No HTTP status means the request never produced a response (network
+  // failure, timeout, aborted fetch). That is the case a retry helps most, and
+  // without it the user has to reload the page.
   return (
-    <Alert severity="error">
+    <Alert
+      severity="error"
+      action={
+        <Button
+          color="error"
+          size="small"
+          startIcon={<RefreshCcw size={14} />}
+          onClick={onRetry}
+        >
+          Retry
+        </Button>
+      }
+    >
       {getShortErrorMessage(error)}
     </Alert>
   );

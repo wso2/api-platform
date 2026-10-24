@@ -98,6 +98,34 @@ describe('agent proxy requests', () => {
     );
   });
 
+  it('adds search, sort field and sort order to the list query when given', async () => {
+    vi.mocked(get).mockResolvedValue({ list: [], count: 0 });
+
+    await getAgentProxies('proj-1', BASE, 10, 5, {
+      search: 'trip planner',
+      sortBy: 'createdAt',
+      sortOrder: 'desc',
+    });
+
+    expect(get).toHaveBeenCalledWith(
+      '/agent-proxies?projectId=proj-1&limit=10&offset=5&query=trip+planner&sortBy=createdAt&sortOrder=desc',
+      undefined,
+      BASE
+    );
+  });
+
+  it('omits empty list options from the query', async () => {
+    vi.mocked(get).mockResolvedValue({ list: [], count: 0 });
+
+    await getAgentProxies('proj-1', BASE, 20, 0, { search: '' });
+
+    expect(get).toHaveBeenCalledWith(
+      '/agent-proxies?projectId=proj-1&limit=20&offset=0',
+      undefined,
+      BASE
+    );
+  });
+
   it('escapes an id that would otherwise add a path segment', async () => {
     vi.mocked(get).mockResolvedValue({ id: 'x' });
 

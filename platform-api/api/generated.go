@@ -1810,6 +1810,42 @@ func (e GetGraphQLAPIDeploymentsParamsStatus) Valid() bool {
 	}
 }
 
+// Defines values for ListLLMProvidersParamsSortBy.
+const (
+	ListLLMProvidersParamsSortByCreatedAt ListLLMProvidersParamsSortBy = "createdAt"
+	ListLLMProvidersParamsSortByName      ListLLMProvidersParamsSortBy = "name"
+)
+
+// Valid indicates whether the value is a known member of the ListLLMProvidersParamsSortBy enum.
+func (e ListLLMProvidersParamsSortBy) Valid() bool {
+	switch e {
+	case ListLLMProvidersParamsSortByCreatedAt:
+		return true
+	case ListLLMProvidersParamsSortByName:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListLLMProvidersParamsSortOrder.
+const (
+	ListLLMProvidersParamsSortOrderAsc  ListLLMProvidersParamsSortOrder = "asc"
+	ListLLMProvidersParamsSortOrderDesc ListLLMProvidersParamsSortOrder = "desc"
+)
+
+// Valid indicates whether the value is a known member of the ListLLMProvidersParamsSortOrder enum.
+func (e ListLLMProvidersParamsSortOrder) Valid() bool {
+	switch e {
+	case ListLLMProvidersParamsSortOrderAsc:
+		return true
+	case ListLLMProvidersParamsSortOrderDesc:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for GetLLMProviderDeploymentsParamsStatus.
 const (
 	GetLLMProviderDeploymentsParamsStatusARCHIVED    GetLLMProviderDeploymentsParamsStatus = "ARCHIVED"
@@ -1840,6 +1876,42 @@ func (e GetLLMProviderDeploymentsParamsStatus) Valid() bool {
 	}
 }
 
+// Defines values for ListLLMProxiesParamsSortBy.
+const (
+	ListLLMProxiesParamsSortByCreatedAt ListLLMProxiesParamsSortBy = "createdAt"
+	ListLLMProxiesParamsSortByName      ListLLMProxiesParamsSortBy = "name"
+)
+
+// Valid indicates whether the value is a known member of the ListLLMProxiesParamsSortBy enum.
+func (e ListLLMProxiesParamsSortBy) Valid() bool {
+	switch e {
+	case ListLLMProxiesParamsSortByCreatedAt:
+		return true
+	case ListLLMProxiesParamsSortByName:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListLLMProxiesParamsSortOrder.
+const (
+	ListLLMProxiesParamsSortOrderAsc  ListLLMProxiesParamsSortOrder = "asc"
+	ListLLMProxiesParamsSortOrderDesc ListLLMProxiesParamsSortOrder = "desc"
+)
+
+// Valid indicates whether the value is a known member of the ListLLMProxiesParamsSortOrder enum.
+func (e ListLLMProxiesParamsSortOrder) Valid() bool {
+	switch e {
+	case ListLLMProxiesParamsSortOrderAsc:
+		return true
+	case ListLLMProxiesParamsSortOrderDesc:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for GetLLMProxyDeploymentsParamsStatus.
 const (
 	GetLLMProxyDeploymentsParamsStatusARCHIVED    GetLLMProxyDeploymentsParamsStatus = "ARCHIVED"
@@ -1864,6 +1936,42 @@ func (e GetLLMProxyDeploymentsParamsStatus) Valid() bool {
 	case GetLLMProxyDeploymentsParamsStatusUNDEPLOYED:
 		return true
 	case GetLLMProxyDeploymentsParamsStatusUNDEPLOYING:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListMCPProxiesParamsSortBy.
+const (
+	ListMCPProxiesParamsSortByCreatedAt ListMCPProxiesParamsSortBy = "createdAt"
+	ListMCPProxiesParamsSortByName      ListMCPProxiesParamsSortBy = "name"
+)
+
+// Valid indicates whether the value is a known member of the ListMCPProxiesParamsSortBy enum.
+func (e ListMCPProxiesParamsSortBy) Valid() bool {
+	switch e {
+	case ListMCPProxiesParamsSortByCreatedAt:
+		return true
+	case ListMCPProxiesParamsSortByName:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListMCPProxiesParamsSortOrder.
+const (
+	ListMCPProxiesParamsSortOrderAsc  ListMCPProxiesParamsSortOrder = "asc"
+	ListMCPProxiesParamsSortOrderDesc ListMCPProxiesParamsSortOrder = "desc"
+)
+
+// Valid indicates whether the value is a known member of the ListMCPProxiesParamsSortOrder enum.
+func (e ListMCPProxiesParamsSortOrder) Valid() bool {
+	switch e {
+	case ListMCPProxiesParamsSortOrderAsc:
+		return true
+	case ListMCPProxiesParamsSortOrderDesc:
 		return true
 	default:
 		return false
@@ -5731,6 +5839,9 @@ type ApiTypeQ = string
 // AppId defines model for appId.
 type AppId = string
 
+// ApplicationTypeQ Type of the application
+type ApplicationTypeQ = ApplicationType
+
 // AssociationId defines model for associationId.
 type AssociationId = string
 
@@ -6021,6 +6132,9 @@ type ListApplicationsParams struct {
 	// ProjectId **Project ID** consisting of the **handle** (unique slug identifier) of the Project whose resources should be returned.
 	ProjectId ProjectIdQ `form:"projectId" json:"projectId" yaml:"projectId"`
 
+	// Type Restrict the returned applications to this type. Omitted means every type.
+	Type *ApplicationTypeQ `form:"type,omitempty" json:"type,omitempty" yaml:"type,omitempty"`
+
 	// Limit Maximum number of items to return per page.
 	Limit *LimitQ `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
 
@@ -6247,7 +6361,22 @@ type ListLLMProvidersParams struct {
 
 	// Offset Zero-based index of the first item to return.
 	Offset *OffsetQ `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
+
+	// SortBy Field to sort the collection by. An unrecognized value falls back to the default sort (createdAt).
+	SortBy *ListLLMProvidersParamsSortBy `form:"sortBy,omitempty" json:"sortBy,omitempty" yaml:"sortBy,omitempty"`
+
+	// SortOrder Sort direction applied to `sortBy`.
+	SortOrder *ListLLMProvidersParamsSortOrder `form:"sortOrder,omitempty" json:"sortOrder,omitempty" yaml:"sortOrder,omitempty"`
+
+	// Query Case-insensitive substring filter matched against the resource display name and id (handle).
+	Query *QueryQ `form:"query,omitempty" json:"query,omitempty" yaml:"query,omitempty"`
 }
+
+// ListLLMProvidersParamsSortBy defines parameters for ListLLMProviders.
+type ListLLMProvidersParamsSortBy string
+
+// ListLLMProvidersParamsSortOrder defines parameters for ListLLMProviders.
+type ListLLMProvidersParamsSortOrder string
 
 // ListLLMProviderAPIKeysParams defines parameters for ListLLMProviderAPIKeys.
 type ListLLMProviderAPIKeysParams struct {
@@ -6313,7 +6442,22 @@ type ListLLMProxiesParams struct {
 
 	// Offset Zero-based index of the first item to return.
 	Offset *OffsetQ `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
+
+	// SortBy Field to sort the collection by. An unrecognized value falls back to the default sort (createdAt).
+	SortBy *ListLLMProxiesParamsSortBy `form:"sortBy,omitempty" json:"sortBy,omitempty" yaml:"sortBy,omitempty"`
+
+	// SortOrder Sort direction applied to `sortBy`.
+	SortOrder *ListLLMProxiesParamsSortOrder `form:"sortOrder,omitempty" json:"sortOrder,omitempty" yaml:"sortOrder,omitempty"`
+
+	// Query Case-insensitive substring filter matched against the resource display name and id (handle).
+	Query *QueryQ `form:"query,omitempty" json:"query,omitempty" yaml:"query,omitempty"`
 }
+
+// ListLLMProxiesParamsSortBy defines parameters for ListLLMProxies.
+type ListLLMProxiesParamsSortBy string
+
+// ListLLMProxiesParamsSortOrder defines parameters for ListLLMProxies.
+type ListLLMProxiesParamsSortOrder string
 
 // ListLLMProxyAPIKeysParams defines parameters for ListLLMProxyAPIKeys.
 type ListLLMProxyAPIKeysParams struct {
@@ -6370,7 +6514,22 @@ type ListMCPProxiesParams struct {
 
 	// Offset Zero-based index of the first item to return.
 	Offset *OffsetQ `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
+
+	// SortBy Field to sort the collection by. An unrecognized value falls back to the default sort (createdAt).
+	SortBy *ListMCPProxiesParamsSortBy `form:"sortBy,omitempty" json:"sortBy,omitempty" yaml:"sortBy,omitempty"`
+
+	// SortOrder Sort direction applied to `sortBy`.
+	SortOrder *ListMCPProxiesParamsSortOrder `form:"sortOrder,omitempty" json:"sortOrder,omitempty" yaml:"sortOrder,omitempty"`
+
+	// Query Case-insensitive substring filter matched against the resource display name and id (handle).
+	Query *QueryQ `form:"query,omitempty" json:"query,omitempty" yaml:"query,omitempty"`
 }
+
+// ListMCPProxiesParamsSortBy defines parameters for ListMCPProxies.
+type ListMCPProxiesParamsSortBy string
+
+// ListMCPProxiesParamsSortOrder defines parameters for ListMCPProxies.
+type ListMCPProxiesParamsSortOrder string
 
 // GetMCPProxyBuildsParams defines parameters for GetMCPProxyBuilds.
 type GetMCPProxyBuildsParams struct {

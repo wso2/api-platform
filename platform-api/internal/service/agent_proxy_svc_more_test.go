@@ -455,7 +455,7 @@ func TestAgentProxyList_ReturnsItemsWithProjectHandles(t *testing.T) {
 	projectRepo := &apsTProjectRepo{project: apsTProject()}
 	svc.projectRepo = projectRepo
 
-	resp, err := svc.List(agentTestOrg, nil, nil, 10, 0)
+	resp, err := svc.List(agentTestOrg, nil, nil, repository.ListOptions{Limit: 10, Offset: 0})
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}
@@ -480,7 +480,7 @@ func TestAgentProxyList_ProtocolFilter(t *testing.T) {
 	repo := newAPSTRepo(storedAgentProxy(constants.OriginCP))
 	svc := newAPSTService(repo)
 
-	resp, err := svc.List(agentTestOrg, apsTPtr(string(model.AgentProxyProtocolA2A)), nil, 5, 0)
+	resp, err := svc.List(agentTestOrg, apsTPtr(string(model.AgentProxyProtocolA2A)), nil, repository.ListOptions{Limit: 5, Offset: 0})
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}
@@ -489,7 +489,7 @@ func TestAgentProxyList_ProtocolFilter(t *testing.T) {
 	}
 
 	for _, bad := range []string{"", "grpc", "A2A "} {
-		if _, err := svc.List(agentTestOrg, apsTPtr(bad), nil, 5, 0); !apperror.ValidationFailed.Is(err) {
+		if _, err := svc.List(agentTestOrg, apsTPtr(bad), nil, repository.ListOptions{Limit: 5, Offset: 0}); !apperror.ValidationFailed.Is(err) {
 			t.Fatalf("filter %q: expected a validation failure, got %v", bad, err)
 		}
 	}
@@ -504,7 +504,7 @@ func TestAgentProxyList_ProjectFilter(t *testing.T) {
 	svc := newAPSTService(repo)
 	svc.projectRepo = &apsTProjectRepo{project: apsTProject()}
 
-	resp, err := svc.List(agentTestOrg, nil, apsTPtr("default-project"), 10, 0)
+	resp, err := svc.List(agentTestOrg, nil, apsTPtr("default-project"), repository.ListOptions{Limit: 10, Offset: 0})
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}
@@ -516,24 +516,24 @@ func TestAgentProxyList_ProjectFilter(t *testing.T) {
 	}
 
 	// Omitting the filter lists every project in the organization.
-	if resp, err := svc.List(agentTestOrg, nil, nil, 10, 0); err != nil || resp.Pagination.Total != 2 || repo.listOpts.ProjectUUID != "" {
+	if resp, err := svc.List(agentTestOrg, nil, nil, repository.ListOptions{Limit: 10, Offset: 0}); err != nil || resp.Pagination.Total != 2 || repo.listOpts.ProjectUUID != "" {
 		t.Fatalf("unfiltered list: resp=%+v opts=%+v err=%v", resp, repo.listOpts, err)
 	}
 
 	for _, blank := range []string{"", "  "} {
-		if _, err := svc.List(agentTestOrg, nil, apsTPtr(blank), 10, 0); !apperror.ValidationFailed.Is(err) {
+		if _, err := svc.List(agentTestOrg, nil, apsTPtr(blank), repository.ListOptions{Limit: 10, Offset: 0}); !apperror.ValidationFailed.Is(err) {
 			t.Fatalf("projectId %q: expected a validation failure, got %v", blank, err)
 		}
 	}
 
 	svc.projectRepo = &apsTProjectRepo{}
-	if _, err := svc.List(agentTestOrg, nil, apsTPtr("unknown-project"), 10, 0); !apperror.ProjectNotFound.Is(err) {
+	if _, err := svc.List(agentTestOrg, nil, apsTPtr("unknown-project"), repository.ListOptions{Limit: 10, Offset: 0}); !apperror.ProjectNotFound.Is(err) {
 		t.Fatalf("unknown project: expected ProjectNotFound, got %v", err)
 	}
 	foreign := apsTProject()
 	foreign.OrganizationID = "other-org"
 	svc.projectRepo = &apsTProjectRepo{project: foreign}
-	if _, err := svc.List(agentTestOrg, nil, apsTPtr("default-project"), 10, 0); !apperror.ProjectNotFound.Is(err) {
+	if _, err := svc.List(agentTestOrg, nil, apsTPtr("default-project"), repository.ListOptions{Limit: 10, Offset: 0}); !apperror.ProjectNotFound.Is(err) {
 		t.Fatalf("cross-org project: expected ProjectNotFound, got %v", err)
 	}
 }
@@ -559,7 +559,7 @@ func TestAgentProxyList_Failures(t *testing.T) {
 			repo := newAPSTRepo(storedAgentProxy(constants.OriginCP))
 			svc := newAPSTService(repo)
 			tc.mutate(svc, repo)
-			if _, err := svc.List(agentTestOrg, nil, nil, 10, 0); !tc.check(err) {
+			if _, err := svc.List(agentTestOrg, nil, nil, repository.ListOptions{Limit: 10, Offset: 0}); !tc.check(err) {
 				t.Fatalf("unexpected error: %v", err)
 			}
 		})
@@ -575,7 +575,7 @@ func TestAgentProxyList_EmptyProjectUUIDIsNotLookedUp(t *testing.T) {
 	projectRepo := &apsTProjectRepo{project: apsTProject()}
 	svc.projectRepo = projectRepo
 
-	resp, err := svc.List(agentTestOrg, nil, nil, 10, 0)
+	resp, err := svc.List(agentTestOrg, nil, nil, repository.ListOptions{Limit: 10, Offset: 0})
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}
