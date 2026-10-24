@@ -257,19 +257,6 @@ func (s *Server) allRoutes(tool string) []string {
 	return all
 }
 
-// ToolRoutes is every REST route each tool stands for, across the API types,
-// as "METHOD /api/v0.9/path".
-func (s *Server) ToolRoutes() map[string][]string {
-	out := make(map[string][]string, len(s.routes))
-	for tool := range s.routes {
-		for _, r := range s.allRoutes(tool) {
-			method, path, _ := strings.Cut(r, " ")
-			out[tool] = append(out[tool], method+" "+constants.APIBasePath+path)
-		}
-	}
-	return out
-}
-
 // checkRoutes refuses to start when a tool names a route that has no scopes.
 func (s *Server) checkRoutes() error {
 	for tool := range s.routes {

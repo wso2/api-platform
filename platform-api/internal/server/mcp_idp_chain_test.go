@@ -129,7 +129,7 @@ func newIDPChain(t *testing.T, key *idpTestKey, idpAudience []string, readOnly c
 	ok := func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) }
 	mux.HandleFunc("GET /api/v0.9/projects", ok)
 	mux.HandleFunc("GET /api/v0.9/mcp-proxies", ok)
-	skip, wrap, err := startMCPServer(logger, mux, nil, mcpserver.Deps{Config: cfg, Scopes: scopes,
+	skip, wrap, err := startMCPServer(logger, mux, mcpserver.Deps{Config: cfg, Scopes: scopes,
 		Identity: service.NewIdentityService(rows), Logger: logger})
 	require.NoError(t, err)
 	cfg.Auth.SkipPaths = append(cfg.Auth.SkipPaths, skip...)

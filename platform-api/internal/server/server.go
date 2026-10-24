@@ -643,7 +643,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	var mcpWrap func(http.Handler) http.Handler
 	if cfg.MCPServer.Enabled {
 		var mcpSkipPaths []string
-		mcpSkipPaths, mcpWrap, err = startMCPServer(slogger, mux, wiring.overrides, mcpserver.Deps{
+		mcpSkipPaths, mcpWrap, err = startMCPServer(slogger, mux, mcpserver.Deps{
 			Config:      cfg,
 			Scopes:      scopeRegistry,
 			Projects:    projectService,
