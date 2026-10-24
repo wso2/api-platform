@@ -949,6 +949,11 @@ blocks:
         tags: "gateway-version>=1.2.0"
         features:
           - features/gateway/observability/analytics_llm.feature
+      # Released gateways up to 1.2.0 do not publish the ai_context block.
+      - name: analytics-ai-context
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/observability/analytics_ai_context.feature
       - name: analytics-header-filter
         features:
           - features/gateway/observability-policies/analytics_header_filter.feature

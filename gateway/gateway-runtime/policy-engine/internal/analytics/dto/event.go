@@ -35,6 +35,9 @@ const (
 	PropKeyRequestPayload  = "request_payload"
 	PropKeyResponsePayload = "response_payload"
 
+	// PropKeyAIUsage holds a dto.AIUsage for LLM events.
+	PropKeyAIUsage = "aiUsage"
+
 	// Auth-context property keys. Populated generically (auth-type-agnostic) by the
 	// collector system policy (gateway/system-policies/analytics, a separate Go module —
 	// hence the matching string literals there rather than a shared Go constant) whenever

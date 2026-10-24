@@ -3609,6 +3609,32 @@ func TestAnalyticsA2AFieldValidatesTheValueClause(t *testing.T) {
 	require.ErrorContains(t, g.analyticsA2AField(ctx, "/p", "not have", "operation", "x"), "takes no value")
 }
 
+func TestAIContextAssertions(t *testing.T) {
+	block := map[string]any{
+		"provider":   "openai",
+		"model_type": "chat",
+		"usage":      map[string]any{"prompt_tokens": float64(19), "total_tokens": float64(29)},
+	}
+	require.NoError(t, aiContextAssert(block, "have", "provider", "openai"))
+	require.NoError(t, aiContextAssert(block, "have", "usage.prompt_tokens", "19"))
+	require.ErrorContains(t, aiContextAssert(block, "have", "provider", "anthropic"), `to be "anthropic"`)
+	require.ErrorContains(t, aiContextAssert(block, "have", "usage.completion_tokens", "10"), "not found")
+	require.ErrorContains(t, aiContextAssert(block, "have", "cost_metrics.total_cost", "1"), "not found")
+	require.NoError(t, aiContextAssert(block, "not have", "usage.completion_tokens", ""))
+	require.NoError(t, aiContextAssert(block, "not have", "cost_metrics", ""))
+	require.ErrorContains(t, aiContextAssert(block, "not have", "usage", ""), "present with value")
+	require.ErrorContains(t, aiContextAssert(block, "count", "provider", ""), "unsupported")
+	require.ErrorContains(t, aiContextAssert(nil, "have", "provider", "openai"), "no ai_context block")
+	require.ErrorContains(t, aiContextAssert(nil, "not have", "cost_metrics", ""), "no ai_context block")
+}
+
+func TestAnalyticsAIContextFieldValidatesTheValueClause(t *testing.T) {
+	g := &Gateway{}
+	ctx := agentTestContext()
+	require.ErrorContains(t, g.analyticsAIContextField(ctx, "/p", "have", "provider", ""), "requires a value")
+	require.ErrorContains(t, g.analyticsAIContextField(ctx, "/p", "not have", "provider", "x"), "takes no value")
+}
+
 func TestA2ACredentialsCarryOnlyCredentialHeaders(t *testing.T) {
 	got := a2aCredentials(map[string]string{
 		"authorization": "Bearer t", "API-KEY": "k", "Accept": "application/json",

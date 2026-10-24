@@ -364,6 +364,17 @@ func TestBuildRecordAIRouteKeepsGenAIOperation(t *testing.T) {
 		"/v1/chat/completions": "chat",
 		"/v1/messages":         "chat",
 		"/v1/embeddings":       "embeddings",
+		// Gemini's native API names the method after a colon on the model.
+		"/v1beta/models/gemini-2.5-pro:generateContent":        "generate_content",
+		"/v1beta/models/gemini-2.5-pro:streamGenerateContent":  "generate_content",
+		"/v1beta/models/text-embedding-004:embedContent":       "embeddings",
+		"/v1beta/models/text-embedding-004:batchEmbedContents": "embeddings",
+		// OpenAI's Responses API, including Azure OpenAI's path, is chat.
+		"/v1/responses":        "chat",
+		"/openai/v1/responses": "chat",
+		// Bedrock's Converse API is chat.
+		"/model/us.anthropic.claude-sonnet-4-5-20250929-v1:0/converse":        "chat",
+		"/model/us.anthropic.claude-sonnet-4-5-20250929-v1:0/converse-stream": "chat",
 	} {
 		t.Run(route, func(t *testing.T) {
 			event := restEvent()
