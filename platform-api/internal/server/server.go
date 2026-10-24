@@ -38,6 +38,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/client"
 	"github.com/wso2/api-platform/platform-api/internal/database"
 	"github.com/wso2/api-platform/platform-api/internal/handler"
+	"github.com/wso2/api-platform/platform-api/internal/mcpserver"
 	"github.com/wso2/api-platform/platform-api/internal/middleware"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/plugin"
@@ -638,6 +639,35 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	// below, so the skip-path list is complete when the chain is assembled.
 	cfg.Auth.SkipPaths = append(cfg.Auth.SkipPaths, wiring.authSkipPaths...)
 
+	// The MCP server checks scopes per tool.
+	var mcpWrap func(http.Handler) http.Handler
+	if cfg.MCPServer.Enabled {
+		var mcpSkipPaths []string
+		mcpSkipPaths, mcpWrap, err = startMCPServer(slogger, mux, wiring.overrides, mcpserver.Deps{
+			Config:      cfg,
+			Scopes:      scopeRegistry,
+			Projects:    projectService,
+			APIs:        apiService,
+			Deployments: deploymentService,
+			Gateways:    gatewayService,
+			Identity:    identityService,
+			Logger:      slogger,
+
+			LLMProviders:           llmProviderService,
+			LLMProviderDeployments: llmProviderDeploymentService,
+			LLMProxies:             llmProxyService,
+			LLMProxyDeployments:    llmProxyDeploymentService,
+			MCPProxies:             mcpProxyService,
+			MCPProxyDeployments:    mcpDeploymentService,
+			AgentProxies:           agentProxyService,
+			AgentProxyDeployments:  agentDeploymentService,
+		})
+		if err != nil {
+			return nil, err
+		}
+		cfg.Auth.SkipPaths = append(cfg.Auth.SkipPaths, mcpSkipPaths...)
+	}
+
 	// Plugin-contributed middleware, spliced into the chain when it is built:
 	// preChain outermost (before CORS/auth), postChain innermost (after scope
 	// enforcement, before the mux).
@@ -703,6 +733,9 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		AllowedHeaders:   []string{"Origin", "Content-Length", "Content-Type", "Authorization"},
 		AllowCredentials: true,
 	}))
+	if mcpWrap != nil {
+		chain = append(chain, mcpWrap) // before the sign-in, so its 403 and 401 header come first
+	}
 
 	if cfg.Auth.Mode == config.AuthModeFile {
 		slogger.Info("Auth mode: file (local users, RS256-signed JWT)")
@@ -755,11 +788,17 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		}
 	}
 
+	// /mcp has no single scope: its tools check theirs per call.
+	var scopeExtra []string
+	if cfg.MCPServer.Enabled {
+		scopeExtra = []string{"POST " + mcpserver.Path}
+	}
 	scopeEnforcer, err := middleware.ScopeEnforcer(scopeRegistry, middleware.ScopeEnforcerConfig{
 		ValidationMode: cfg.Auth.Authorization.Mode,
 		Enabled:        cfg.Auth.Authorization.Enabled,
 		Routes:         mux,
 		SkipPaths:      cfg.Auth.SkipPaths,
+		ExemptRoutes:   scopeExtra,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to build scope enforcer: %w", err)
