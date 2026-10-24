@@ -129,6 +129,31 @@ func TestChatEchoStreamsTheReply(t *testing.T) {
 	}
 }
 
+func TestChatEchoStreamKeepsTheReplyWhitespace(t *testing.T) {
+	const text = "  two  spaces\tand a tab\nand a newline "
+	payload, err := json.Marshal(map[string]any{"stream": true, "messages": []map[string]string{{"role": "user", "content": text}}})
+	require.NoError(t, err)
+	rec := post(t, ChatEchoPath, string(payload))
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var reply strings.Builder
+	for _, event := range strings.Split(strings.TrimSuffix(rec.Body.String(), "\n\n"), "\n\n") {
+		data, ok := strings.CutPrefix(event, "data: ")
+		require.True(t, ok, event)
+		if data == "[DONE]" {
+			continue
+		}
+		var chunk struct {
+			Choices []struct {
+				Delta map[string]string `json:"delta"`
+			} `json:"choices"`
+		}
+		require.NoError(t, json.Unmarshal([]byte(data), &chunk))
+		reply.WriteString(chunk.Choices[0].Delta["content"])
+	}
+	require.Equal(t, text, reply.String())
+}
+
 func TestChatEchoStreamsAnEmptyReply(t *testing.T) {
 	rec := post(t, ChatEchoPath, `{"stream":true,"messages":[]}`)
 	require.Equal(t, http.StatusOK, rec.Code)

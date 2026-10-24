@@ -361,11 +361,11 @@ func writeEchoStream(w http.ResponseWriter, model, reply string) {
 		}
 	}
 	chunk(map[string]any{"role": "assistant", "content": ""}, nil)
-	for i, word := range strings.Fields(reply) {
-		if i > 0 {
-			word = " " + word
+	// Split after each space, so the chunks join back to the exact reply, whitespace included.
+	for _, piece := range strings.SplitAfter(reply, " ") {
+		if piece != "" {
+			chunk(map[string]any{"content": piece}, nil)
 		}
-		chunk(map[string]any{"content": word}, nil)
 	}
 	chunk(map[string]any{}, "stop")
 	if _, err := w.Write([]byte("data: [DONE]\n\n")); err != nil {
