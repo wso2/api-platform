@@ -23,6 +23,7 @@ const session = require('express-session');
 const path = require('path');
 const logger = require('./config/logger');
 const { auditMiddleware } = require('./middlewares/auditLogger');
+const { SENSITIVE_FIELDS, redactUrl } = require('./utils/logRedaction');
 const authRoute = require('./routes/pages/authRoute');
 const orgContent = require('./routes/pages/orgContentRoute');
 const apiContent = require('./routes/pages/apiContentRoute');
@@ -165,8 +166,7 @@ const BP = constants.ROUTE.BASE_PATH;
 app.use(auditMiddleware({
     excludePaths: ['/health', '/metrics', '/favicon.ico', `${BP}/health`,
         `${BP}/styles`, `${BP}/scripts`, `${BP}/images`, `${BP}/technical-styles`, `${BP}/technical-scripts`],
-    sensitiveFields: ['password', 'token', 'secret', 'key', 'authorization', 'idToken', 'accessToken', 'refreshToken',
-        'collectorApplicationId']
+    sensitiveFields: SENSITIVE_FIELDS,
 }));
 
 // Session and everything that reads it stay scoped to BASE_PATH. passport.session()
@@ -312,7 +312,7 @@ app.use(async (err, req, res, next) => {
         logger.error('Application error', {
             error: err.message,
             stack: err.stack,
-            url: req.url,
+            url: redactUrl(req.url),
             method: req.method,
             operation: 'expressErrorHandler'
         });

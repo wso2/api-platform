@@ -2319,6 +2319,10 @@ function legacyLimitsFromSpec(spec) {
     return [];
 }
 
+/**
+ * A plan in a YAML file as the JSON body the plan handlers take. `spec.pricing` is the JSON `pricing`
+ * shape, so a paid plan from YAML is checked, saved and sent on exactly as one from JSON.
+ */
 function mapYamlToSubscriptionPlan(item) {
     const { metadata = {}, spec = {} } = item;
     return {
@@ -2327,6 +2331,7 @@ function mapYamlToSubscriptionPlan(item) {
         description: spec.description,
         refId: spec.refId,
         limits: Array.isArray(spec.limits) ? spec.limits : legacyLimitsFromSpec(spec),
+        pricing: spec.pricing,
     };
 }
 

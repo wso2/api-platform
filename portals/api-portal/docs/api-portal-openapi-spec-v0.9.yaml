@@ -4025,7 +4025,8 @@ components:
         create/upsert; each object carries its rate/quota rules in `limits`. Alternatively, upload a YAML file in
         the `subscriptionPlan` multipart field; use `kind: SubscriptionPlan` for a single plan or
         `kind: SubscriptionPlanList` with an `items` array for bulk operations. YAML uploads may use the legacy
-        `type: requestcount` or `type: eventcount` shorthand, which is converted into `limits` before storage.
+        `type: requestcount` or `type: eventcount` shorthand, which is converted into `limits` before storage. A
+        paid plan's `spec.pricing` takes the same fields as `pricing` in JSON and follows the same rules.
       content:
         application/json:
           schema:

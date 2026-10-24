@@ -87,7 +87,10 @@ window.resetSubscribeButtonState = function(button) {
     }
 };
 
-async function subscribe(orgId, apiId, planName, planId) {
+// `planName` is the plan's id, which matches a subscription to its plan card; the token dialog shows
+// `displayName`.
+async function subscribe(orgId, apiId, planName, planId, displayName) {
+    const planDisplayName = displayName || planName;
     try {
         const body = { artifactId: apiId, subscriptionPlanId: planId };
 
@@ -114,12 +117,12 @@ async function subscribe(orgId, apiId, planName, planId) {
                 const token = responseData.subscriptionToken;
                 if (modalEl && modalEl.style.display && modalEl.style.display !== 'none') {
                     try {
-                        showSubscriptionTokenInModal(apiId, token, planName);
+                        showSubscriptionTokenInModal(apiId, token, planDisplayName);
                     } catch (e) {
-                        await showSubscriptionTokenModal(token, planName);
+                        await showSubscriptionTokenModal(token, planDisplayName);
                     }
                 } else {
-                    await showSubscriptionTokenModal(token, planName);
+                    await showSubscriptionTokenModal(token, planDisplayName);
                 }
             } else {
                 await refreshLandingPageSubscriptions();
@@ -152,7 +155,7 @@ async function handlePlanSubscription(btnElement) {
 
     if (existingSubs.length === 0) {
         showSubscribeButtonLoading(btnElement);
-        await subscribe(orgId, apiId, planName, planId);
+        await subscribe(orgId, apiId, planName, planId, displayName);
         return;
     }
 

@@ -43,6 +43,7 @@ const express = require('express');
 const OpenApiValidator = require('express-openapi-validator');
 const { formatValidationErrors } = require('../../utils/validationErrors');
 const constants = require('../../utils/constants');
+const { redactUrl } = require('../../utils/logRedaction');
 
 const { config } = require('../../config/configLoader');
 const logger = require('../../config/logger');
@@ -117,7 +118,7 @@ function notImplementedHandler(operationId, tag) {
             operationId,
             tag,
             method: req.method,
-            url: req.originalUrl,
+            url: redactUrl(req.originalUrl),
         });
         res.status(501).json({
             code: 501,
@@ -191,7 +192,7 @@ function resolveValidateResponsesOpt() {
             onError: (err, json, req) => {
                 logger.warn('OpenAPI response drift (log-only)', {
                     error: err.message,
-                    url: req.originalUrl,
+                    url: redactUrl(req.originalUrl),
                     method: req.method,
                     errors: err.errors,
                 });

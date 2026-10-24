@@ -256,9 +256,10 @@ const updateOrganization = async (req, res) => {
             return util.handleError(res, error);
         }
     }
+    // The field names only: the values include the business owner's contact details.
     logger.info('Initiate update organization...', {
         orgId,
-        ...req.body
+        fields: Object.keys(req.body || {})
     });
     try {
         // Only this instance's own organization is updatable, whatever else the

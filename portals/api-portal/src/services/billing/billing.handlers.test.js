@@ -156,6 +156,19 @@ const calls = {
     } } }));
     out.silverGet = await call(pricing.getPlanPricing, as({ params: { planId: 'silver' } }));
 
+    // A plan in a YAML file takes its pricing from spec.pricing, the JSON shape, under the JSON rules.
+    const yamlFile = (text) => ({ subscriptionPlan: [{ buffer: Buffer.from(text) }] });
+    const yamlAnnual = [
+        'kind: SubscriptionPlan', 'metadata:', '  name: annual', 'spec:', '  displayName: Annual', '  pricing:',
+        '    pricingType: FLAT_RATE', '    currency: EUR', '    billingPeriod: YEAR', '    flatAmount: "990.00"',
+    ].join('\\n');
+    out.yamlCreated = await call(plans.addSubscriptionPlans, as({ files: yamlFile(yamlAnnual) }));
+    out.yamlPricingGet = await call(pricing.getPlanPricing, as({ params: { planId: 'annual' } }));
+    out.yamlPricingOnExisting = await call(plans.putSubscriptionPlans, as({ files: yamlFile(yamlAnnual) }));
+    out.yamlNumberCreated = await call(plans.addSubscriptionPlans, as({ files: yamlFile(
+        yamlAnnual.replace('name: annual', 'name: annual-2').replace('"990.00"', '990.00')) }));
+    out.yamlNumberPricingGet = await call(pricing.getPlanPricing, as({ params: { planId: 'annual-2' } }));
+
     // Pricing the portal refuses creates no plan.
     const pricedPlan = (id, prices) => call(plans.addSubscriptionPlans, as({ body: { id, displayName: id,
         pricing: { ...goldPricing, prices } } }));
@@ -624,6 +637,21 @@ test('a PUT of a new plan creates it with its pricing; a plan may price a meter 
     assert.deepEqual(price(results().silverGet.body), SILVER);
 });
 
+test('a plan in a YAML file is created with its spec.pricing, under the same rules as JSON', () => {
+    const created = results().yamlCreated;
+    assert.equal(created.status, 201, JSON.stringify(created.body));
+    assert.equal(created.body.paid, true);
+    assert.deepEqual(price(results().yamlPricingGet.body), {
+        pricingType: 'FLAT_RATE', currency: 'EUR', billingPeriod: 'YEAR', flatAmount: '990.00', prices: [],
+    });
+    // Pricing never changes once the plan exists, from YAML as from JSON.
+    assert.equal(results().yamlPricingOnExisting.status, 409);
+    assert.equal(results().yamlPricingOnExisting.body.code, 'PLAN_PRICING_LOCKED');
+    // A YAML number is kept as the decimal string it reads as, so the stored pricing and its event hold a string.
+    assert.equal(results().yamlNumberCreated.status, 201, JSON.stringify(results().yamlNumberCreated.body));
+    assert.equal(results().yamlNumberPricingGet.body.flatAmount, '990');
+});
+
 test('a flat rate plan has one amount per period and no prices', () => {
     assert.equal(results().flatPlan.status, 201, JSON.stringify(results().flatPlan.body));
     const body = results().flatPlanGet.body;
@@ -770,6 +798,9 @@ test('every successful change leaves exactly one event, in order; refused ones l
         // Plans created with pricing: one event each, which carries the pricing.
         'subscription_plan.created',
         'subscription_plan.created',
+        // Plans from YAML, with their pricing.
+        'subscription_plan.created',
+        'subscription_plan.created',
         'subscription_plan.updated',
         'subscription_plan.updated',
         'subscription_plan.updated',
@@ -833,7 +864,7 @@ test('meter events carry the full meter, and the delete only its handle', () => 
         filter_fields: [{ field: 'HTTP_METHOD', event_key: 'request.verb' }],
     });
     assert.equal(events[2].aggregateType, 'meter');
-    assert.deepEqual(events[12].payload, { handle: 'successful-calls' });
+    assert.deepEqual(events.find((e) => e.type === 'meter.deleted').payload, { handle: 'successful-calls' });
 });
 
 test('a plan\'s created event carries its pricing, naming each price\'s meter by handle; null for a free plan', () => {
@@ -855,6 +886,11 @@ test('a plan\'s created event carries its pricing, naming each price\'s meter by
             tiers: null,
         }],
     });
+    assert.equal(events[6].payload.handle, 'annual');
+    assert.deepEqual(events[6].payload.pricing, {
+        pricing_type: 'FLAT_RATE', currency: 'EUR', billing_period: 'YEAR', flat_amount: '990.00', prices: [],
+    });
+    assert.equal(events[7].payload.pricing.flat_amount, '990');
     assert.equal(events[5].payload.handle, 'silver');
     assert.equal(events[5].payload.pricing.flat_amount, null);
     assert.equal(events[5].payload.pricing.prices[1].pricing_model, 'GRADUATED');
@@ -870,7 +906,7 @@ test('a plan\'s created event carries its pricing, naming each price\'s meter by
         assert.deepEqual(e.payload.pricing, createdPricing.get(e.payload.handle), e.payload.handle);
     }
     assert.ok(updates.some((e) => e.payload.pricing), 'a paid plan was updated');
-    assert.deepEqual(events[9].payload, { handle: 'gold' });
+    assert.deepEqual(events.find((e) => e.type === 'subscription_plan.deleted').payload, { handle: 'gold' });
 });
 
 // ---------------------------------------------------------------------------
