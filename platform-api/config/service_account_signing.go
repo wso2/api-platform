@@ -18,17 +18,21 @@
 package config
 
 import (
+	"crypto"
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rsa"
+	"crypto/x509"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
-
-	"github.com/golang-jwt/jwt/v5"
 
 	"github.com/wso2/api-platform/platform-api/internal/utils"
 )
@@ -55,18 +59,23 @@ type ServiceAccountSigning struct {
 
 // ServiceAccountSigningKey is one [[auth.service_account.signing.keys]] entry.
 type ServiceAccountSigningKey struct {
-	// Path is a PEM RSA private key file. The public key is derived from it.
+	// Path is a PEM private key file: RSA, or EC on P-256 or P-384. The public
+	// key is derived from it.
 	Path string `koanf:"path"`
 	// Kid overrides the default key ID, the RFC 7638 thumbprint.
 	Kid string `koanf:"kid"`
 	// Active marks the one key that signs.
 	Active bool `koanf:"active"`
+	// Algorithm overrides the one the key type implies: RS256 for RSA, ES256 for
+	// P-256, ES384 for P-384. An RSA key may also use PS256.
+	Algorithm string `koanf:"algorithm"`
 }
 
-// SigningKey is a loaded service-account signing key.
+// SigningKey is a loaded service-account signing key. JWK carries its kid and
+// algorithm.
 type SigningKey struct {
-	Kid     string
-	Private *rsa.PrivateKey
+	JWK     utils.JWK
+	Private crypto.Signer
 	Active  bool
 }
 
@@ -79,8 +88,9 @@ func (s *ServiceAccountSigning) EffectiveJWKSCacheMaxAge() time.Duration {
 }
 
 // LoadKeys reads every key, in config order. It fails unless exactly one key is
-// active, on a key that is not an RSA private key, and on a repeated kid. Errors
-// name entries by index and path, never by key material.
+// active, on a key that is not a supported private key or does not fit its
+// algorithm, and on a repeated kid. Errors name entries by index and path,
+// never by key material.
 func (s *ServiceAccountSigning) LoadKeys() ([]SigningKey, error) {
 	active := 0
 	for i, k := range s.Keys {
@@ -102,22 +112,27 @@ func (s *ServiceAccountSigning) LoadKeys() ([]SigningKey, error) {
 		if err != nil {
 			return nil, fmt.Errorf("auth.service_account.signing.keys[%d]: %w", i, err)
 		}
-		kid := k.Kid
-		if kid == "" {
-			kid = utils.RSAThumbprint(&priv.PublicKey)
+		alg, err := resolveAlgorithm(priv.Public(), k.Algorithm)
+		if err != nil {
+			return nil, fmt.Errorf("auth.service_account.signing.keys[%d]: %w", i, err)
 		}
-		if prev, dup := seen[kid]; dup {
-			return nil, fmt.Errorf("auth.service_account.signing.keys[%d] and [%d] have the same kid %q", prev, i, kid)
+		jwk, err := utils.NewJWK(priv.Public(), alg, k.Kid)
+		if err != nil {
+			return nil, fmt.Errorf("auth.service_account.signing.keys[%d]: %w", i, err)
 		}
-		seen[kid] = i
-		keys = append(keys, SigningKey{Kid: kid, Private: priv, Active: k.Active})
+		if prev, dup := seen[jwk.Kid]; dup {
+			return nil, fmt.Errorf("auth.service_account.signing.keys[%d] and [%d] have the same kid %q", prev, i, jwk.Kid)
+		}
+		seen[jwk.Kid] = i
+		keys = append(keys, SigningKey{JWK: jwk, Private: priv, Active: k.Active})
 	}
 	return keys, nil
 }
 
-// readSigningKey reads a PEM RSA private key (PKCS #1 or PKCS #8). The checks
-// run on the opened file, so the file checked is the file read.
-func readSigningKey(path string) (*rsa.PrivateKey, error) {
+// readSigningKey reads a PEM private key: RSA (PKCS #1 or PKCS #8) or EC
+// (SEC 1 or PKCS #8). The checks run on the opened file, so the file checked is
+// the file read.
+func readSigningKey(path string) (crypto.Signer, error) {
 	f, err := os.Open(filepath.Clean(path))
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, fmt.Errorf("key file %q is not found", path)
@@ -138,11 +153,69 @@ func readSigningKey(path string) (*rsa.PrivateKey, error) {
 	if len(data) > maxSigningKeyFileBytes {
 		return nil, fmt.Errorf("key file %q is too large to be a private key", path)
 	}
-	priv, err := jwt.ParseRSAPrivateKeyFromPEM(data)
+	key, err := parsePrivateKey(data)
 	if err != nil {
-		return nil, fmt.Errorf("key file %q must be a PEM-encoded RSA private key: %w", path, err)
+		return nil, fmt.Errorf("key file %q must be a PEM-encoded RSA or EC private key: %w", path, err)
 	}
-	return priv, nil
+	return key, nil
+}
+
+func parsePrivateKey(data []byte) (crypto.Signer, error) {
+	block, rest := pem.Decode(data)
+	// `openssl ecparam -genkey` without -noout writes the curve parameters first.
+	for block != nil && block.Type == "EC PARAMETERS" {
+		block, rest = pem.Decode(rest)
+	}
+	if block == nil {
+		return nil, errors.New("no PEM block found")
+	}
+	switch block.Type {
+	case "RSA PRIVATE KEY":
+		return x509.ParsePKCS1PrivateKey(block.Bytes)
+	case "EC PRIVATE KEY":
+		return x509.ParseECPrivateKey(block.Bytes)
+	case "PRIVATE KEY":
+		key, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+		if err != nil {
+			return nil, err
+		}
+		switch k := key.(type) {
+		case *rsa.PrivateKey:
+			return k, nil
+		case *ecdsa.PrivateKey:
+			return k, nil
+		}
+		return nil, fmt.Errorf("unsupported key type %T", key)
+	}
+	return nil, fmt.Errorf("unsupported PEM block %q", block.Type)
+}
+
+// resolveAlgorithm returns override, or the algorithm pub implies when it is
+// empty. It fails when the key type does not allow the algorithm.
+func resolveAlgorithm(pub crypto.PublicKey, override string) (string, error) {
+	var allowed []string // the first is the default
+	switch k := pub.(type) {
+	case *rsa.PublicKey:
+		allowed = []string{"RS256", "PS256"}
+	case *ecdsa.PublicKey:
+		switch k.Curve {
+		case elliptic.P256():
+			allowed = []string{"ES256"}
+		case elliptic.P384():
+			allowed = []string{"ES384"}
+		default:
+			return "", fmt.Errorf("EC curve %s is not supported; use P-256 or P-384", k.Params().Name)
+		}
+	default:
+		return "", fmt.Errorf("unsupported key type %T", pub)
+	}
+	if override == "" {
+		return allowed[0], nil
+	}
+	if !slices.Contains(allowed, override) {
+		return "", fmt.Errorf("algorithm %q does not fit this key; use %s", override, strings.Join(allowed, " or "))
+	}
+	return override, nil
 }
 
 // validateServiceAccountSigning checks [auth.service_account.signing] against

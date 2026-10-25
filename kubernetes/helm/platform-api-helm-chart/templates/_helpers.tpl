@@ -244,7 +244,8 @@ instead of a crash-looping pod.
 {{/*
 Returns "true" when service accounts are enabled with their own signing keys,
 else "". Without keys they sign with the shared auth.jwt pair. The render fails on
-keys without an issuer, an issuer without keys, or anything but one active key.
+keys without an issuer, an issuer without keys, an unknown algorithm, or anything
+but one active key.
 */}}
 {{- define "apip.platformApi.saOwnKey" -}}
 {{- $sa := default (dict) .Values.config.auth.serviceAccount -}}
@@ -259,6 +260,9 @@ keys without an issuer, an issuer without keys, or anything but one active key.
 {{- range $keys -}}
 {{- if not .path -}}
 {{- fail "platform-api: every config.auth.serviceAccount.signing.keys entry needs a path." -}}
+{{- end -}}
+{{- if and .algorithm (not (has .algorithm (list "RS256" "PS256" "ES256" "ES384"))) -}}
+{{- fail (printf "platform-api: config.auth.serviceAccount.signing.keys algorithm must be RS256, PS256, ES256 or ES384, got %q." .algorithm) -}}
 {{- end -}}
 {{- if .active }}{{ $active = add1 $active }}{{ end -}}
 {{- end -}}

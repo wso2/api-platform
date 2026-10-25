@@ -799,7 +799,10 @@ Served at the server root, like the gateway's JWKS.
       "use": "sig",
       "alg": "RS256",
       "n": "string",
-      "e": "AQAB"
+      "e": "AQAB",
+      "crv": "string",
+      "x": "string",
+      "y": "string"
     }
   ]
 }

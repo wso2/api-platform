@@ -18,11 +18,14 @@
 package config
 
 import (
+	"crypto"
 	"crypto/ecdsa"
+	"crypto/ed25519"
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
+	"encoding/asn1"
 	"encoding/pem"
 	"strings"
 	"testing"
@@ -40,9 +43,11 @@ func TestValidateServiceAccountConfig(t *testing.T) {
 	_, oldPriv := genRSAKeyPEMs()
 	saPrivFile, oldPrivFile := writePEMFile(dir, "sa.pem", saPriv), writePEMFile(dir, "sa_old.pem", oldPriv)
 	pubOnlyFile := writePEMFile(dir, "sa_public.pem", saPub)
-	ecDER, err := x509.MarshalPKCS8PrivateKey(mustECKey(t))
+	ecFile := writePEMFile(dir, "ec.pem", pkcs8PEM(t, mustECKey(t)))
+	p521File := writePEMFile(dir, "p521.pem", pkcs8PEM(t, mustECKeyOn(t, elliptic.P521())))
+	_, edKey, err := ed25519.GenerateKey(rand.Reader)
 	require.NoError(t, err)
-	ecFile := writePEMFile(dir, "ec.pem", string(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: ecDER})))
+	edFile := writePEMFile(dir, "ed.pem", pkcs8PEM(t, edKey))
 	bigFile := writePEMFile(dir, "big.pem", strings.Repeat("x", maxSigningKeyFileBytes+1))
 
 	signing := func(keys ...ServiceAccountSigningKey) ServiceAccountSigning {
@@ -91,10 +96,19 @@ func TestValidateServiceAccountConfig(t *testing.T) {
 		}, "too large"},
 		{"public key instead of a private one", func(a *Auth) {
 			a.ServiceAccount.Signing = signing(ServiceAccountSigningKey{Path: pubOnlyFile, Active: true})
-		}, "must be a PEM-encoded RSA private key"},
-		{"EC key", func(a *Auth) {
+		}, "must be a PEM-encoded RSA or EC private key"},
+		{"an EC key", func(a *Auth) {
 			a.ServiceAccount.Signing = signing(ServiceAccountSigningKey{Path: ecFile, Active: true})
-		}, "must be a PEM-encoded RSA private key"},
+		}, ""},
+		{"P-521", func(a *Auth) {
+			a.ServiceAccount.Signing = signing(ServiceAccountSigningKey{Path: p521File, Active: true})
+		}, "P-521 is not supported"},
+		{"Ed25519", func(a *Auth) {
+			a.ServiceAccount.Signing = signing(ServiceAccountSigningKey{Path: edFile, Active: true})
+		}, "unsupported key type"},
+		{"an algorithm that does not fit the key", func(a *Auth) {
+			a.ServiceAccount.Signing = signing(ServiceAccountSigningKey{Path: ecFile, Active: true, Algorithm: "RS256"})
+		}, "does not fit this key"},
 		{"same key twice", func(a *Auth) {
 			a.ServiceAccount.Signing = signing(active, ServiceAccountSigningKey{Path: saPrivFile})
 		}, "keys[0] and [1] have the same kid"},
@@ -144,11 +158,11 @@ func TestServiceAccountSigningLoadKeys(t *testing.T) {
 	keys, err := s.LoadKeys()
 	require.NoError(t, err)
 	require.Len(t, keys, 2)
-	assert.Equal(t, "old-key", keys[0].Kid, "a kid override is used as is")
-	assert.True(t, keys[0].Private.Equal(a))
+	assert.Equal(t, "old-key", keys[0].JWK.Kid, "a kid override is used as is")
+	assert.True(t, a.Equal(keys[0].Private))
 	assert.False(t, keys[0].Active)
-	assert.Equal(t, utils.RSAThumbprint(&b.PublicKey), keys[1].Kid, "the default kid is the thumbprint")
-	assert.True(t, keys[1].Private.Equal(b), "PKCS #8 is accepted")
+	assert.Equal(t, utils.Thumbprint(&b.PublicKey), keys[1].JWK.Kid, "the default kid is the thumbprint")
+	assert.True(t, b.Equal(keys[1].Private), "PKCS #8 is accepted")
 	assert.True(t, keys[1].Active)
 }
 
@@ -193,11 +207,73 @@ func mustRSAKey(t *testing.T) *rsa.PrivateKey {
 	return k
 }
 
-func mustECKey(t *testing.T) *ecdsa.PrivateKey {
+func mustECKey(t *testing.T) *ecdsa.PrivateKey { return mustECKeyOn(t, elliptic.P256()) }
+
+func mustECKeyOn(t *testing.T, curve elliptic.Curve) *ecdsa.PrivateKey {
 	t.Helper()
-	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	k, err := ecdsa.GenerateKey(curve, rand.Reader)
 	require.NoError(t, err)
 	return k
+}
+
+func pkcs8PEM(t *testing.T, key crypto.PrivateKey) string {
+	t.Helper()
+	der, err := x509.MarshalPKCS8PrivateKey(key)
+	require.NoError(t, err)
+	return string(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der}))
+}
+
+// ecParamsPEM is what `openssl ecparam -genkey` writes without -noout: the curve
+// parameters, then the SEC 1 key.
+func ecParamsPEM(t *testing.T, key *ecdsa.PrivateKey) string {
+	t.Helper()
+	oid, err := asn1.Marshal(asn1.ObjectIdentifier{1, 3, 132, 0, 34}) // secp384r1
+	require.NoError(t, err)
+	sec1, err := x509.MarshalECPrivateKey(key)
+	require.NoError(t, err)
+	return string(pem.EncodeToMemory(&pem.Block{Type: "EC PARAMETERS", Bytes: oid})) +
+		string(pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: sec1}))
+}
+
+func TestServiceAccountSigningAlgorithms(t *testing.T) {
+	dir := t.TempDir()
+	p256, p384, rsaKey := mustECKey(t), mustECKeyOn(t, elliptic.P384()), mustRSAKey(t)
+	sec1, err := x509.MarshalECPrivateKey(p256)
+	require.NoError(t, err)
+	files := map[string]string{
+		"rsa":    writePEMFile(dir, "rsa.pem", pkcs8PEM(t, rsaKey)),
+		"p256":   writePEMFile(dir, "p256.pem", pkcs8PEM(t, p256)),
+		"p384":   writePEMFile(dir, "p384.pem", pkcs8PEM(t, p384)),
+		"params": writePEMFile(dir, "params.pem", ecParamsPEM(t, p384)),
+		"sec1":   writePEMFile(dir, "sec1.pem", string(pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: sec1}))),
+	}
+	tests := []struct {
+		file, override, want string
+	}{
+		{"rsa", "", "RS256"},
+		{"rsa", "RS256", "RS256"},
+		{"rsa", "PS256", "PS256"},
+		{"p256", "", "ES256"},
+		{"p256", "ES256", "ES256"},
+		{"p384", "", "ES384"},
+		{"sec1", "", "ES256"},
+		{"params", "", "ES384"},
+	}
+	for _, tt := range tests {
+		s := ServiceAccountSigning{Keys: []ServiceAccountSigningKey{{Path: files[tt.file], Active: true, Algorithm: tt.override}}}
+		keys, err := s.LoadKeys()
+		require.NoError(t, err, "%s %q", tt.file, tt.override)
+		assert.Equal(t, tt.want, keys[0].JWK.Alg, "%s %q", tt.file, tt.override)
+	}
+
+	for _, bad := range []struct{ file, override string }{
+		{"rsa", "ES256"}, {"rsa", "RS512"}, {"rsa", "HS256"}, {"p256", "ES384"}, {"p384", "ES256"}, {"p256", "PS256"},
+	} {
+		s := ServiceAccountSigning{Keys: []ServiceAccountSigningKey{{Path: files[bad.file], Active: true, Algorithm: bad.override}}}
+		_, err := s.LoadKeys()
+		require.Error(t, err, "%s %q", bad.file, bad.override)
+		assert.Contains(t, err.Error(), "signing.keys[0]")
+	}
 }
 
 func TestFileUsersCannotUseTheServiceAccountPrefix(t *testing.T) {

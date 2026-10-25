@@ -894,8 +894,8 @@ func buildIssuerKeyMap(cfg *config.Server, saKeys *service.ServiceAccountKeys) (
 				return nil, fmt.Errorf("auth.jwt.issuer must not be empty when it signs service-account tokens")
 			}
 			keys = append(keys, middleware.IssuerKeys{Issuer: saKeys.Issuer,
-				Kind:    middleware.IssuerKindServiceAccount,
-				Current: saKeys.Current()})
+				Kind: middleware.IssuerKindServiceAccount,
+				Keys: verifyKeys(saKeys)})
 		}
 	} else {
 		// The map keys on iss, so an empty issuer would accept only tokens with none.
@@ -906,7 +906,7 @@ func buildIssuerKeyMap(cfg *config.Server, saKeys *service.ServiceAccountKeys) (
 		if cfg.Auth.Mode == config.AuthModeInternalToken && cfg.Auth.InternalToken.SkipValidation {
 			// No auth.jwt key is required here; SA tokens on the shared key still verify.
 			if sharedKey {
-				local.Current = saKeys.Current()
+				local.Keys = verifyKeys(saKeys)
 			}
 		} else {
 			pub, err := cfg.Auth.JWT.LoadPublicKey()
@@ -920,13 +920,21 @@ func buildIssuerKeyMap(cfg *config.Server, saKeys *service.ServiceAccountKeys) (
 
 	if saKeys != nil && saKeys.OwnIssuer {
 		keys = append(keys, middleware.IssuerKeys{
-			Issuer:  saKeys.Issuer,
-			Kind:    middleware.IssuerKindServiceAccount,
-			Current: saKeys.Current(),
-			Keys:    saKeys.ByKID(),
+			Issuer: saKeys.Issuer,
+			Kind:   middleware.IssuerKindServiceAccount,
+			Keys:   verifyKeys(saKeys),
 		})
 	}
 	return middleware.NewIssuerKeyMap(cfg.Auth.ServiceAccount.Audience, keys...)
+}
+
+// verifyKeys maps each SA key's kid to its public key and algorithm.
+func verifyKeys(saKeys *service.ServiceAccountKeys) map[string]middleware.VerifyKey {
+	m := make(map[string]middleware.VerifyKey, len(saKeys.Keys))
+	for _, k := range saKeys.Keys {
+		m[k.JWK.Kid] = middleware.VerifyKey{Key: k.Public, Alg: k.JWK.Alg}
+	}
+	return m
 }
 
 // isServiceAccountSkipPath reports whether p is a public service-account route,

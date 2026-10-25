@@ -18,7 +18,7 @@
 package service
 
 import (
-	"crypto/rsa"
+	"crypto"
 	"errors"
 	"fmt"
 	"time"
@@ -35,10 +35,11 @@ import (
 // ErrNoServiceAccountSigningKey means no private key is available to sign SA tokens.
 var ErrNoServiceAccountSigningKey = errors.New("no service-account signing key configured")
 
-// ServiceAccountKey is one SA verification key and its kid.
+// ServiceAccountKey is one SA verification key. JWK is what the JWKS publishes:
+// the kid, the algorithm and the key members.
 type ServiceAccountKey struct {
-	Kid    string
-	Public *rsa.PublicKey
+	JWK    utils.JWK
+	Public crypto.PublicKey
 }
 
 // ServiceAccountKeys is the SA issuer and its keyring. The active key signs;
@@ -46,8 +47,8 @@ type ServiceAccountKey struct {
 type ServiceAccountKeys struct {
 	Issuer     string
 	OwnIssuer  bool // true when auth.service_account.signing.keys is set
-	ActiveKid  string
-	PrivateKey *rsa.PrivateKey
+	Active     ServiceAccountKey   // also in Keys
+	PrivateKey crypto.Signer       // the active key's private half
 	Keys       []ServiceAccountKey // config order
 }
 
@@ -63,9 +64,10 @@ func LoadServiceAccountKeys(cfg *config.Server) (*ServiceAccountKeys, error) {
 		}
 		keys := &ServiceAccountKeys{Issuer: sa.Signing.Issuer, OwnIssuer: true}
 		for _, k := range loaded {
-			keys.Keys = append(keys.Keys, ServiceAccountKey{Kid: k.Kid, Public: &k.Private.PublicKey})
+			key := ServiceAccountKey{JWK: k.JWK, Public: k.Private.Public()}
+			keys.Keys = append(keys.Keys, key)
 			if k.Active {
-				keys.ActiveKid, keys.PrivateKey = k.Kid, k.Private
+				keys.Active, keys.PrivateKey = key, k.Private
 			}
 		}
 		return keys, nil
@@ -79,29 +81,18 @@ func LoadServiceAccountKeys(cfg *config.Server) (*ServiceAccountKeys, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrNoServiceAccountSigningKey, err)
 	}
-	kid := utils.RSAThumbprint(&priv.PublicKey)
-	return &ServiceAccountKeys{Issuer: jwtCfg.Issuer, ActiveKid: kid, PrivateKey: priv,
-		Keys: []ServiceAccountKey{{Kid: kid, Public: &priv.PublicKey}}}, nil
-}
-
-// Current is the active key's public half.
-func (k *ServiceAccountKeys) Current() *rsa.PublicKey {
-	return &k.PrivateKey.PublicKey
-}
-
-// ByKID maps every key's kid to its public key.
-func (k *ServiceAccountKeys) ByKID() map[string]*rsa.PublicKey {
-	m := make(map[string]*rsa.PublicKey, len(k.Keys))
-	for _, key := range k.Keys {
-		m[key.Kid] = key.Public
+	// auth.jwt.algorithm accepts only RS256.
+	jwk, err := utils.NewJWK(&priv.PublicKey, "RS256", "")
+	if err != nil {
+		return nil, err
 	}
-	return m
+	key := ServiceAccountKey{JWK: jwk, Public: &priv.PublicKey}
+	return &ServiceAccountKeys{Issuer: jwtCfg.Issuer, Active: key, PrivateKey: priv, Keys: []ServiceAccountKey{key}}, nil
 }
 
 // SATokenSigner mints service-account access tokens.
 type SATokenSigner struct {
 	keys     *ServiceAccountKeys
-	kid      string
 	ttl      time.Duration
 	audience string
 	roleMode bool // carry roles instead of scope
@@ -112,7 +103,6 @@ type SATokenSigner struct {
 func NewSATokenSigner(keys *ServiceAccountKeys, cfg *config.Server) *SATokenSigner {
 	return &SATokenSigner{
 		keys:     keys,
-		kid:      keys.ActiveKid,
 		ttl:      cfg.Auth.ServiceAccount.TokenTTL,
 		audience: cfg.Auth.ServiceAccount.Audience,
 		roleMode: cfg.Auth.Authorization.Mode == config.AuthzModeRole,
@@ -164,8 +154,8 @@ func (s *SATokenSigner) Sign(sa *model.ServiceAccount, org *model.Organization, 
 		utils.SetClaim(claims, utils.ClaimKey(s.claims.Scope, "scope"), scope)
 	}
 
-	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
-	token.Header["kid"] = s.kid
+	token := jwt.NewWithClaims(jwt.GetSigningMethod(s.keys.Active.JWK.Alg), claims)
+	token.Header["kid"] = s.keys.Active.JWK.Kid
 	signed, err := token.SignedString(s.keys.PrivateKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to sign service-account token: %w", err)

@@ -18,41 +18,81 @@
 package utils
 
 import (
+	"crypto"
+	"crypto/ecdsa"
 	"crypto/rsa"
 	"crypto/sha256"
 	"encoding/base64"
+	"fmt"
 	"math/big"
 	"strings"
 )
 
-// RSAPublicJWK holds the RFC 7517 members of an RSA public key.
-type RSAPublicJWK struct {
-	Kty string `json:"kty"`
-	Kid string `json:"kid"`
-	Use string `json:"use"`
+// JWK holds the RFC 7517 members of an RSA or EC public signing key. The
+// fields are in alphabetical order, so the JSON of an RSA key stays the same
+// as the API spec's JWK has always produced.
+type JWK struct {
 	Alg string `json:"alg"`
-	N   string `json:"n"`
-	E   string `json:"e"`
+	Crv string `json:"crv,omitempty"`
+	E   string `json:"e,omitempty"`
+	Kid string `json:"kid"`
+	Kty string `json:"kty"`
+	N   string `json:"n,omitempty"`
+	Use string `json:"use"`
+	X   string `json:"x,omitempty"`
+	Y   string `json:"y,omitempty"`
 }
 
-// NewRSAPublicJWK encodes pub as a signing JWK whose kid is its thumbprint.
-func NewRSAPublicJWK(pub *rsa.PublicKey) RSAPublicJWK {
-	n, e := rsaMembers(pub)
-	return RSAPublicJWK{Kty: "RSA", Kid: RSAThumbprint(pub), Use: "sig", Alg: "RS256", N: n, E: e}
+// JWKS is a JSON Web Key Set (RFC 7517).
+type JWKS struct {
+	Keys []JWK `json:"keys"`
 }
 
-// RSAThumbprint is the RFC 7638 SHA-256 thumbprint of pub, base64url-encoded.
-func RSAThumbprint(pub *rsa.PublicKey) string {
-	n, e := rsaMembers(pub)
-	// Members in lexicographic order, no whitespace (RFC 7638 section 3).
-	sum := sha256.Sum256([]byte(`{"e":"` + e + `","kty":"RSA","n":"` + n + `"}`))
+// NewJWK encodes pub as a signing JWK for alg. An empty kid becomes the
+// RFC 7638 thumbprint. It fails for a key that is not RSA or EC.
+func NewJWK(pub crypto.PublicKey, alg, kid string) (JWK, error) {
+	jwk, err := jwkMembers(pub)
+	if err != nil {
+		return JWK{}, err
+	}
+	jwk.Alg, jwk.Use, jwk.Kid = alg, "sig", kid
+	if kid == "" {
+		jwk.Kid = Thumbprint(pub)
+	}
+	return jwk, nil
+}
+
+// Thumbprint is the RFC 7638 SHA-256 thumbprint of pub, base64url-encoded. It
+// is empty for a key that is not RSA or EC.
+func Thumbprint(pub crypto.PublicKey) string {
+	jwk, err := jwkMembers(pub)
+	if err != nil {
+		return ""
+	}
+	// Required members in lexicographic order, no whitespace (RFC 7638 section 3).
+	canonical := `{"e":"` + jwk.E + `","kty":"RSA","n":"` + jwk.N + `"}`
+	if jwk.Kty == "EC" {
+		canonical = `{"crv":"` + jwk.Crv + `","kty":"EC","x":"` + jwk.X + `","y":"` + jwk.Y + `"}`
+	}
+	sum := sha256.Sum256([]byte(canonical))
 	return base64.RawURLEncoding.EncodeToString(sum[:])
 }
 
-func rsaMembers(pub *rsa.PublicKey) (n, e string) {
-	n = base64.RawURLEncoding.EncodeToString(pub.N.Bytes())
-	e = base64.RawURLEncoding.EncodeToString(big.NewInt(int64(pub.E)).Bytes())
-	return n, e
+// jwkMembers fills the key members only.
+func jwkMembers(pub crypto.PublicKey) (JWK, error) {
+	switch k := pub.(type) {
+	case *rsa.PublicKey:
+		return JWK{Kty: "RSA",
+			N: base64.RawURLEncoding.EncodeToString(k.N.Bytes()),
+			E: base64.RawURLEncoding.EncodeToString(big.NewInt(int64(k.E)).Bytes())}, nil
+	case *ecdsa.PublicKey:
+		// RFC 7518 section 6.2.1.2: x and y are as long as the curve, zero-padded.
+		size := (k.Curve.Params().BitSize + 7) / 8
+		return JWK{Kty: "EC", Crv: k.Curve.Params().Name,
+			X: base64.RawURLEncoding.EncodeToString(k.X.FillBytes(make([]byte, size))),
+			Y: base64.RawURLEncoding.EncodeToString(k.Y.FillBytes(make([]byte, size)))}, nil
+	}
+	return JWK{}, fmt.Errorf("unsupported public key type %T", pub)
 }
 
 // SetClaim writes value at path, a flat claim name ("roles") or a dot-separated

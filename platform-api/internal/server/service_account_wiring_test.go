@@ -18,6 +18,9 @@
 package server
 
 import (
+	"crypto"
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
@@ -28,6 +31,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/golang-jwt/jwt/v5"
 
 	"github.com/wso2/api-platform/platform-api/config"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
@@ -61,11 +66,15 @@ func TestBuildIssuerKeyMap_RefusesEmptyIssuer(t *testing.T) {
 
 // keyring holds one key, signing under kid (its thumbprint when kid is "").
 func keyring(issuer string, own bool, key *rsa.PrivateKey, kid string) *service.ServiceAccountKeys {
-	if kid == "" {
-		kid = utils.RSAThumbprint(&key.PublicKey)
-	}
-	return &service.ServiceAccountKeys{Issuer: issuer, OwnIssuer: own, ActiveKid: kid, PrivateKey: key,
-		Keys: []service.ServiceAccountKey{{Kid: kid, Public: &key.PublicKey}}}
+	k := saKey(&key.PublicKey, kid)
+	return &service.ServiceAccountKeys{Issuer: issuer, OwnIssuer: own, Active: k, PrivateKey: key,
+		Keys: []service.ServiceAccountKey{k}}
+}
+
+// saKey is an RS256 key under kid, or its thumbprint when kid is "".
+func saKey(pub *rsa.PublicKey, kid string) service.ServiceAccountKey {
+	jwk, _ := utils.NewJWK(pub, "RS256", kid)
+	return service.ServiceAccountKey{JWK: jwk, Public: pub}
 }
 
 // signSATestToken mints a real SA token with keys, as /token would.
@@ -96,7 +105,7 @@ func TestBuildIssuerKeyMap_Modes(t *testing.T) {
 	shared := keyring("platform-api", false, login, "")
 	// Two keys: "previous" verifies only, sa signs.
 	own := keyring("platform-api-sa", true, sa, "")
-	own.Keys = append([]service.ServiceAccountKey{{Kid: "previous", Public: &previous.PublicKey}}, own.Keys...)
+	own.Keys = append([]service.ServiceAccountKey{saKey(&previous.PublicKey, "previous")}, own.Keys...)
 	// A token the previous key signed while it was active.
 	oldOwn := keyring("platform-api-sa", true, previous, "previous")
 	// Signed for the shared issuer by a key the map does not hold.
@@ -171,6 +180,67 @@ func TestIsServiceAccountSkipPath(t *testing.T) {
 	got := slices.DeleteFunc(slices.Clone(paths), isServiceAccountSkipPath)
 	if !slices.Equal(got, []string{"/health", "/api/internal/v1/apis"}) {
 		t.Fatalf("skip paths left = %v", got)
+	}
+}
+
+// Keys of every supported algorithm sit in one list. Whichever is active signs
+// with its own algorithm and kid, and the other three still verify.
+func TestServiceAccountSigningAlgorithms(t *testing.T) {
+	dir := t.TempDir()
+	p256, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	p384, _ := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
+	rsaKey := mustRSAKey(t)
+	entries := []struct {
+		kid, alg string
+		key      crypto.PrivateKey
+	}{
+		{"rs256", "RS256", rsaKey}, {"ps256", "PS256", rsaKey}, {"es256", "ES256", p256}, {"es384", "ES384", p384},
+	}
+	cfg := &config.Server{}
+	cfg.Auth.Mode = config.AuthModeIDP
+	cfg.Auth.ServiceAccount = config.ServiceAccount{Audience: "platform-api", TokenTTL: time.Minute}
+	cfg.Auth.ServiceAccount.Signing.Issuer = "platform-api-sa"
+	for _, e := range entries {
+		der, err := x509.MarshalPKCS8PrivateKey(e.key)
+		if err != nil {
+			t.Fatal(err)
+		}
+		path := filepath.Join(dir, e.kid+".pem")
+		if err := os.WriteFile(path, pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der}), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		cfg.Auth.ServiceAccount.Signing.Keys = append(cfg.Auth.ServiceAccount.Signing.Keys,
+			config.ServiceAccountSigningKey{Path: path, Kid: e.kid, Algorithm: e.alg})
+	}
+
+	var keyring *service.ServiceAccountKeys
+	tokens := map[string]string{}
+	for i, e := range entries {
+		for j := range cfg.Auth.ServiceAccount.Signing.Keys {
+			cfg.Auth.ServiceAccount.Signing.Keys[j].Active = j == i
+		}
+		keys, err := service.LoadServiceAccountKeys(cfg)
+		if err != nil {
+			t.Fatal(err)
+		}
+		keyring = keys
+		tokens[e.kid] = signSATestToken(t, keys)
+	}
+	m, err := buildIssuerKeyMap(cfg, keyring)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		parsed, _, err := jwt.NewParser().ParseUnverified(tokens[e.kid], jwt.MapClaims{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if parsed.Header["alg"] != e.alg || parsed.Header["kid"] != e.kid {
+			t.Errorf("%s: header = %v", e.kid, parsed.Header)
+		}
+		if _, err := m.VerifyServiceAccountToken(tokens[e.kid]); err != nil {
+			t.Errorf("%s: %v", e.kid, err)
+		}
 	}
 }
 

@@ -175,7 +175,7 @@ func newSAFixtureMode(t *testing.T, mode string) *saFixture {
 	cfg := &config.Server{}
 	cfg.Auth.ServiceAccount = config.ServiceAccount{TokenTTL: 15 * time.Minute, Audience: "platform-api"}
 	cfg.Auth.Authorization.Mode = mode
-	signer := NewSATokenSigner(&ServiceAccountKeys{Issuer: "platform-api", ActiveKid: "test-kid", PrivateKey: key}, cfg)
+	signer := NewSATokenSigner(&ServiceAccountKeys{Issuer: "platform-api", Active: ServiceAccountKey{JWK: utils.JWK{Kid: "test-kid", Alg: "RS256"}}, PrivateKey: key}, cfg)
 
 	f := &saFixture{repo: newFakeSARepo(), audit: &fakeAudit{}, logs: &bytes.Buffer{}, key: key}
 	logger := slog.New(slog.NewTextHandler(f.logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
@@ -664,11 +664,11 @@ func TestLoadServiceAccountKeys(t *testing.T) {
 		cfg := &config.Server{}
 		cfg.Auth.JWT = config.JWT{Issuer: "platform-api", PrivateKeyFile: sharedPriv}
 		keys, err := LoadServiceAccountKeys(cfg)
-		if err != nil || keys.OwnIssuer || keys.Issuer != "platform-api" || !keys.Current().Equal(&shared.PublicKey) {
+		if err != nil || keys.OwnIssuer || keys.Issuer != "platform-api" || !keys.Keys[0].Public.(*rsa.PublicKey).Equal(&shared.PublicKey) {
 			t.Fatalf("keys = %+v, %v", keys, err)
 		}
-		thumb := utils.RSAThumbprint(&shared.PublicKey)
-		if keys.ActiveKid != thumb || len(keys.Keys) != 1 || keys.Keys[0].Kid != thumb {
+		thumb := utils.Thumbprint(&shared.PublicKey)
+		if keys.Active.JWK.Kid != thumb || len(keys.Keys) != 1 || keys.Keys[0].JWK.Kid != thumb || keys.Active.JWK.Alg != "RS256" {
 			t.Fatalf("the shared key must be the one key, under its thumbprint: %+v", keys.Keys)
 		}
 	})
@@ -695,16 +695,13 @@ func TestLoadServiceAccountKeys(t *testing.T) {
 		if err != nil || !keys.OwnIssuer || keys.Issuer != "platform-api-sa" {
 			t.Fatalf("keys = %+v, %v", keys, err)
 		}
-		activeKid := utils.RSAThumbprint(&active.PublicKey)
-		if keys.ActiveKid != activeKid || !keys.PrivateKey.Equal(active) {
+		activeKid := utils.Thumbprint(&active.PublicKey)
+		if keys.Active.JWK.Kid != activeKid || keys.Active.JWK.Alg != "RS256" || !active.Equal(keys.PrivateKey) {
 			t.Fatal("the active key must sign")
 		}
-		if len(keys.Keys) != 2 || keys.Keys[0].Kid != "old" || !keys.Keys[0].Public.Equal(&old.PublicKey) ||
-			keys.Keys[1].Kid != activeKid || !keys.Keys[1].Public.Equal(&active.PublicKey) {
+		if len(keys.Keys) != 2 || keys.Keys[0].JWK.Kid != "old" || !old.PublicKey.Equal(keys.Keys[0].Public) ||
+			keys.Keys[1].JWK.Kid != activeKid || !active.PublicKey.Equal(keys.Keys[1].Public) {
 			t.Fatalf("keys must follow config order: %+v", keys.Keys)
-		}
-		if byKID := keys.ByKID(); len(byKID) != 2 || !byKID["old"].Equal(&old.PublicKey) {
-			t.Fatalf("ByKID = %v", byKID)
 		}
 	})
 	t.Run("unreadable own key is not the soft error", func(t *testing.T) {

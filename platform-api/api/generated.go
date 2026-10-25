@@ -3781,16 +3781,32 @@ type ImportOpenAPIRequest struct {
 	Version string  `json:"version" yaml:"version"`
 }
 
-// JWK An RSA public key (RFC 7517)
+// JWK An RSA or EC public signing key (RFC 7517)
 type JWK struct {
+	// Alg RS256 or PS256 for RSA, ES256 for P-256, ES384 for P-384
 	Alg *string `json:"alg,omitempty" yaml:"alg,omitempty"`
-	E   string  `json:"e" yaml:"e"`
 
-	// Kid RFC 7638 thumbprint of the key
-	Kid string  `json:"kid" yaml:"kid"`
-	Kty string  `json:"kty" yaml:"kty"`
-	N   string  `json:"n" yaml:"n"`
+	// Crv EC curve, P-256 or P-384
+	Crv *string `json:"crv,omitempty" yaml:"crv,omitempty"`
+
+	// E RSA public exponent
+	E *string `json:"e,omitempty" yaml:"e,omitempty"`
+
+	// Kid Key ID. The RFC 7638 thumbprint of the key unless the operator set one.
+	Kid string `json:"kid" yaml:"kid"`
+
+	// Kty Key type, RSA or EC
+	Kty string `json:"kty" yaml:"kty"`
+
+	// N RSA modulus
+	N   *string `json:"n,omitempty" yaml:"n,omitempty"`
 	Use *string `json:"use,omitempty" yaml:"use,omitempty"`
+
+	// X EC x coordinate, zero-padded to the curve size
+	X *string `json:"x,omitempty" yaml:"x,omitempty"`
+
+	// Y EC y coordinate, zero-padded to the curve size
+	Y *string `json:"y,omitempty" yaml:"y,omitempty"`
 }
 
 // JWKSResponse defines model for JWKSResponse.
