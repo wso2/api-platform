@@ -307,6 +307,18 @@ func (r *Receiver) ReceivePerPortalEvent(w http.ResponseWriter, req *http.Reques
 
 	if err := r.resolveOrgUUID(env); err != nil {
 		log.Warn("Webhook organization resolution failed", "error", err)
+		// On the per-portal route, an unresolved payload org handle is treated as a
+		// cross-org mismatch (FR-004): it collapses into the same 403 the explicit
+		// org-binding check below returns. Surfacing it as 404 would be an existence
+		// oracle for organisation handles — a caller probing the receiver could
+		// enumerate which handles exist by watching 404 vs 403, defeating the
+		// indistinguishability promise in FR-017 / SC-007. The legacy route in
+		// ReceiveEvent keeps the 404 passthrough; only the per-portal path collapses
+		// here.
+		if apperror.OrganizationNotFound.Is(err) {
+			return apperror.Forbidden.New().WithLogMessage(fmt.Sprintf(
+				"per-portal webhook: unresolved payload org handle, portal=%s orgHandle=%q", portalUUID, env.OrgID))
+		}
 		return mapWebhookError(err)
 	}
 	log = log.With("orgId", env.OrgID)

@@ -807,3 +807,52 @@ func TestJWT_EffectiveAlgorithm(t *testing.T) {
 	assert.Equal(t, JWTAlgorithmRS256, (&JWT{Algorithm: JWTAlgorithmRS256}).EffectiveAlgorithm())
 	assert.Equal(t, "ML-DSA-65", (&JWT{Algorithm: "ML-DSA-65"}).EffectiveAlgorithm())
 }
+
+// TestValidateWebhookConfig covers the legacy-flag / global-secret relationship
+// FR-015 commits to: `legacy_shared_secret=true` without a `webhook.secret` is a
+// fail-fast configuration error (a flag that says "accept legacy deliveries"
+// without a secret to verify against is unsafe). FR-008 rules out a negative
+// `rotation_grace`. Enabled=false skips every check so a developer can run
+// the receiver-disabled path without being forced to set a shared secret.
+func TestValidateWebhookConfig(t *testing.T) {
+	tests := []struct {
+		name    string
+		cfg     Webhook
+		wantErr string
+	}{
+		{
+			name: "disabled skips every check",
+			cfg:  Webhook{Enabled: false},
+		},
+		{
+			name: "enabled + legacy on + secret set is valid",
+			cfg:  Webhook{Enabled: true, LegacySharedSecret: true, Secret: "s3cret"},
+		},
+		{
+			name:    "enabled + legacy on + empty secret refuses to start",
+			cfg:     Webhook{Enabled: true, LegacySharedSecret: true, Secret: ""},
+			wantErr: "webhook.legacy_shared_secret=true requires webhook.secret to be configured",
+		},
+		{
+			name: "enabled + legacy off + empty secret is valid (per-portal only)",
+			cfg:  Webhook{Enabled: true, LegacySharedSecret: false, Secret: ""},
+		},
+		{
+			name:    "negative rotation_grace refuses to start",
+			cfg:     Webhook{Enabled: true, LegacySharedSecret: true, Secret: "s3cret", RotationGrace: -1},
+			wantErr: "webhook.rotation_grace must not be negative",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := tc.cfg
+			err := validateWebhookConfig(&cfg)
+			if tc.wantErr == "" {
+				assert.NoError(t, err)
+				return
+			}
+			assert.ErrorContains(t, err, tc.wantErr)
+		})
+	}
+}

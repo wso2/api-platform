@@ -35,6 +35,7 @@ const PATHS = {
     labelDao: r('../dao/labelDao.js'),
     viewDao: r('../dao/viewDao.js'),
     planDao: r('../dao/subscriptionPlanDao.js'),
+    whDao: r('../dao/webhookSubscriberDao.js'),
     configLoader: r('../config/configLoader.js'),
     orgContext: r('../utils/orgContext.js'),
     logger: r('../config/logger.js'),
@@ -47,7 +48,7 @@ function duplicateKeyError() {
 }
 
 /** `orgRows` is the mutable "table"; `onCreate` decides what create() does. */
-function loadSeeder({ orgRows, onCreate, orgContext = {} }) {
+function loadSeeder({ orgRows, onCreate, orgContext = {}, configLoader, whDao }) {
     const calls = { create: 0, label: 0, view: 0 };
     const stubs = {
         orgDao: {
@@ -64,10 +65,15 @@ function loadSeeder({ orgRows, onCreate, orgContext = {} }) {
         },
         viewDao: { update: async () => { calls.view++; return { uuid: 'view-1' }; } },
         planDao: { createMany: async () => {} },
-        configLoader: { config: { organization: { autoCreateSubscriptionPlans: false } } },
+        configLoader: configLoader || { config: { organization: { autoCreateSubscriptionPlans: false } } },
         orgContext,
         logger: { error: () => {}, warn: () => {}, info: () => {} },
         driver: { isDuplicateKeyError: (e) => !!e.duplicate },
+        whDao: whDao || {
+            get: async () => null,
+            create: async () => { throw new Error('whDao.create called unexpectedly'); },
+            update: async () => { throw new Error('whDao.update called unexpectedly'); },
+        },
     };
     for (const [k, exports] of Object.entries(stubs)) {
         require.cache[PATHS[k]] = { id: PATHS[k], filename: PATHS[k], loaded: true, exports };
@@ -164,4 +170,173 @@ test('an existing default org keeps its cp_ref_id across restarts', async () => 
     await seeder.seedDefaultOrg();
     assert.strictEqual(calls.create, 0);
     assert.strictEqual(row.cp_ref_id, '');
+});
+
+// --------------------------------------------------------------------------------
+// seedPlatformApiWebhookSubscriber: the OSS self-seed path. Covers FR-011 (upsert
+// when both config.webhooks.platformApi.url and .secret are set) and FR-013
+// (no-op when either is empty). The isPlatformApiSubscriberConfigOwned() helper
+// is tested at the same time because its live-config predicate is what the
+// admin API and the DTO flag read.
+// --------------------------------------------------------------------------------
+
+// orgContextForPlatformApi stubs the fields seedPlatformApiWebhookSubscriber reads:
+// getOrgUuid() is awaited, and the function also calls getHandle for logging context.
+function orgContextForPlatformApi(orgUuid = 'u-acme', handle = 'acme') {
+    return {
+        getHandle: () => handle,
+        getOrgUuid: async () => orgUuid,
+        resetCache: () => {},
+    };
+}
+
+// configWithPlatformApi returns the configLoader stub with the [api_portal.webhooks.platform_api]
+// block populated. Omit `secret` or `url` to exercise the no-op path.
+function configWithPlatformApi({ url, secret, events } = {}) {
+    return {
+        config: {
+            organization: { autoCreateSubscriptionPlans: false },
+            webhooks: {
+                platformApi: {
+                    url: url ?? '',
+                    secret: secret ?? '',
+                    events: events ?? [],
+                },
+            },
+        },
+    };
+}
+
+// recordingWhDao stubs whDao with mutable in-memory state so a test can assert
+// which operation ran (create/update/none) and inspect the payload. get() returns
+// null until create or update sets it.
+function recordingWhDao() {
+    const calls = { get: 0, create: 0, update: 0 };
+    let row = null;
+    return {
+        calls,
+        getRow: () => row,
+        get: async (_orgId, handle) => { calls.get++; return row && row.handle === handle ? row : null; },
+        create: async (orgId, payload) => {
+            calls.create++;
+            row = { ...payload, org_uuid: orgId };
+            return row;
+        },
+        update: async (orgId, _subscriberHandle, payload) => {
+            calls.update++;
+            row = { ...row, ...payload, org_uuid: orgId };
+            return [1, [row]];
+        },
+    };
+}
+
+test('platform-api subscriber is seeded when both url and secret are set', async () => {
+    const whDao = recordingWhDao();
+    const { seeder } = loadSeeder({
+        orgRows: [{ uuid: 'u-acme', handle: 'acme' }],
+        onCreate: () => assert.fail('must not touch orgDao'),
+        orgContext: orgContextForPlatformApi(),
+        configLoader: configWithPlatformApi({
+            url: 'https://pa.example.com/api/internal/v0.9/webhook/portals/uuid-x/events',
+            secret: '9f3cfbbd7a1e4bbd8f3c5c6d8e4e5a3f9f3cfbbd7a1e4bbd8f3c5c6d8e4e5a3f',
+            events: ['subscription.*', 'apikey.*'],
+        }),
+        whDao,
+    });
+    await seeder.seedPlatformApiWebhookSubscriber();
+    assert.strictEqual(whDao.calls.create, 1, 'expected one whDao.create');
+    assert.strictEqual(whDao.calls.update, 0, 'expected no whDao.update on first seed');
+    const stored = whDao.getRow();
+    assert.strictEqual(stored.handle, 'platform-api');
+    assert.strictEqual(stored.targetUrl, 'https://pa.example.com/api/internal/v0.9/webhook/portals/uuid-x/events');
+    assert.strictEqual(stored.enabled, true);
+    assert.deepStrictEqual(stored.events, ['subscription.*', 'apikey.*']);
+    assert.strictEqual(seeder.isPlatformApiSubscriberConfigOwned(), true);
+});
+
+test('platform-api subscriber upsert overwrites an existing row from config', async () => {
+    const whDao = recordingWhDao();
+    // Pre-seed a prior row — a prior boot's self-seed, or a hand-POSTed one.
+    whDao.create('u-acme', {
+        handle: 'platform-api',
+        targetUrl: 'https://old.example.com/old-path',
+        secret: 'old-secret',
+        events: ['subscription.*'],
+        enabled: true,
+    });
+    whDao.calls.create = 0; // reset so the next assertion isolates the test's own seed call
+
+    const { seeder } = loadSeeder({
+        orgRows: [{ uuid: 'u-acme', handle: 'acme' }],
+        onCreate: () => assert.fail('must not touch orgDao'),
+        orgContext: orgContextForPlatformApi(),
+        configLoader: configWithPlatformApi({
+            url: 'https://new.example.com/api/internal/v0.9/webhook/portals/uuid-y/events',
+            secret: 'new-secret',
+            events: ['subscription.*', 'apikey.*', 'application.*'],
+        }),
+        whDao,
+    });
+    await seeder.seedPlatformApiWebhookSubscriber();
+    assert.strictEqual(whDao.calls.update, 1, 'expected one whDao.update when a prior row existed');
+    assert.strictEqual(whDao.calls.create, 0);
+    const stored = whDao.getRow();
+    assert.strictEqual(stored.targetUrl, 'https://new.example.com/api/internal/v0.9/webhook/portals/uuid-y/events');
+    assert.deepStrictEqual(stored.events, ['subscription.*', 'apikey.*', 'application.*']);
+});
+
+test('platform-api subscriber self-seed is a no-op when secret is empty', async () => {
+    const whDao = recordingWhDao();
+    const { seeder } = loadSeeder({
+        orgRows: [{ uuid: 'u-acme', handle: 'acme' }],
+        onCreate: () => assert.fail('must not touch orgDao'),
+        orgContext: orgContextForPlatformApi(),
+        configLoader: configWithPlatformApi({ url: 'https://pa.example.com/x', secret: '' }),
+        whDao,
+    });
+    await seeder.seedPlatformApiWebhookSubscriber();
+    assert.strictEqual(whDao.calls.get, 0, 'empty secret must not reach whDao');
+    assert.strictEqual(whDao.calls.create, 0);
+    assert.strictEqual(whDao.calls.update, 0);
+    assert.strictEqual(seeder.isPlatformApiSubscriberConfigOwned(), false);
+});
+
+test('platform-api subscriber self-seed is a no-op when url is empty', async () => {
+    const whDao = recordingWhDao();
+    const { seeder } = loadSeeder({
+        orgRows: [{ uuid: 'u-acme', handle: 'acme' }],
+        onCreate: () => assert.fail('must not touch orgDao'),
+        orgContext: orgContextForPlatformApi(),
+        configLoader: configWithPlatformApi({ url: '', secret: 'something' }),
+        whDao,
+    });
+    await seeder.seedPlatformApiWebhookSubscriber();
+    assert.strictEqual(whDao.calls.get, 0, 'empty url must not reach whDao');
+    assert.strictEqual(whDao.calls.create, 0);
+    assert.strictEqual(whDao.calls.update, 0);
+    assert.strictEqual(seeder.isPlatformApiSubscriberConfigOwned(), false);
+});
+
+test('isPlatformApiSubscriberConfigOwned follows the live config predicate', async () => {
+    // Not full self-seed — just the predicate. The admin API and the DTO flag
+    // read this at request time, so changing config and restarting is enough
+    // to flip the admin-API's refusal behaviour.
+    {
+        const { seeder } = loadSeeder({
+            orgRows: [], onCreate: () => {},
+            orgContext: orgContextForPlatformApi(),
+            configLoader: configWithPlatformApi({ url: 'https://x', secret: 's' }),
+            whDao: recordingWhDao(),
+        });
+        assert.strictEqual(seeder.isPlatformApiSubscriberConfigOwned(), true);
+    }
+    {
+        const { seeder } = loadSeeder({
+            orgRows: [], onCreate: () => {},
+            orgContext: orgContextForPlatformApi(),
+            configLoader: configWithPlatformApi({ url: 'https://x', secret: '' }),
+            whDao: recordingWhDao(),
+        });
+        assert.strictEqual(seeder.isPlatformApiSubscriberConfigOwned(), false);
+    }
 });

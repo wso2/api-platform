@@ -160,6 +160,32 @@ func TestReceiver_PerPortalCrossOrgReturns403(t *testing.T) {
 	}
 }
 
+func TestReceiver_PerPortalUnresolvedOrgHandleReturns403(t *testing.T) {
+	// FR-004: a payload org.ref_id handle that does not resolve to any known
+	// organisation MUST be treated as a mismatch — the per-portal receiver
+	// returns the same 403 as an explicit cross-org binding failure, not a 404
+	// resource-not-found that would be an existence oracle for organisation
+	// handles. Legacy ReceiveEvent keeps the 404 passthrough; this behaviour
+	// is specific to the per-portal path.
+	cfg := perPortalReceiverCfg()
+	keys := buildPortalKeys(t, perPortalTestCurrent, "", time.Time{})
+	r := newPerPortalReceiver(t, cfg, fakeKeyProvider{keys: keys})
+
+	rec := httptest.NewRecorder()
+	// "ghost-org" is deliberately not in fakeOrgResolver (which only knows
+	// perPortalTestOrgHandle and perPortalTestOtherOrgHd), so resolveOrgUUID
+	// returns apperror.OrganizationNotFound and the receiver converts it to
+	// Forbidden.
+	err := r.ReceivePerPortalEvent(rec, signedPerPortalRequest(cfg, perPortalTestCurrent, "ghost-org"))
+	var appErr *apperror.Error
+	if !errors.As(err, &appErr) {
+		t.Fatalf("expected apperror, got %v", err)
+	}
+	if appErr.Code != apperror.CodeCommonForbidden {
+		t.Fatalf("expected forbidden code (same 403 as cross-org mismatch, not a 404 org-not-found), got %q", appErr.Code)
+	}
+}
+
 func TestReceiver_PerPortalUnknownPortalReturns401(t *testing.T) {
 	cfg := perPortalReceiverCfg()
 	// Provider returns an APIPortalNotFound error — the registry maps unknown
@@ -175,6 +201,47 @@ func TestReceiver_PerPortalUnknownPortalReturns401(t *testing.T) {
 	}
 	if appErr.Code != apperror.CodeCommonUnauthorized {
 		t.Fatalf("expected generic unauthorized (no portal-existence oracle), got %q", appErr.Code)
+	}
+}
+
+func TestReceiver_PerPortalInvalidEnvelopeReturns400(t *testing.T) {
+	// FR-021: a syntactically invalid body or a body missing the mandatory
+	// top-level org.ref_id MUST be rejected with ValidationFailed (HTTP 400)
+	// AFTER the HMAC verifies — the envelope schema is a public contract so
+	// surfacing shape errors here does not leak tenant state. The order matters:
+	// HMAC verification runs first (step 5 in receiver-route.md §Request flow),
+	// then envelope decode / Validate (step 6).
+	cfg := perPortalReceiverCfg()
+	keys := buildPortalKeys(t, perPortalTestCurrent, "", time.Time{})
+	r := newPerPortalReceiver(t, cfg, fakeKeyProvider{keys: keys})
+
+	buildReq := func(body []byte) *http.Request {
+		path := strings.Replace(PerPortalRoutePath, "{portalUUID}", perPortalTestPortalUUID, 1)
+		req := httptest.NewRequest(http.MethodPost, path, bytes.NewReader(body))
+		req.SetPathValue("portalUUID", perPortalTestPortalUUID)
+		req.Header.Set(cfg.SignatureHeader, sign(perPortalTestCurrent, time.Now().Unix(), body))
+		return req
+	}
+
+	cases := []struct {
+		name string
+		body []byte
+	}{
+		{"syntactically invalid JSON", []byte(`{not-json`)},
+		{"missing org.ref_id", []byte(`{"event_id":"evt-1","event_type":"per_portal.test.event","data":{}}`)},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			err := r.ReceivePerPortalEvent(rec, buildReq(tc.body))
+			var appErr *apperror.Error
+			if !errors.As(err, &appErr) {
+				t.Fatalf("expected apperror, got %v", err)
+			}
+			if appErr.Code != apperror.CodeCommonValidationFailed {
+				t.Fatalf("expected validation-failed (400 for envelope-shape failure, tenant-neutral), got %q", appErr.Code)
+			}
+		})
 	}
 }
 
@@ -239,6 +306,39 @@ func TestReceiver_PerPortalRouteNotMountedWhenRegistryNil(t *testing.T) {
 	mux.ServeHTTP(rec, req)
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("per-portal path should not be mounted without a keyRegistry; got status %d", rec.Code)
+	}
+}
+
+func TestReceiver_LegacyRouteAcceptsValidSignatureWhenFlagOn(t *testing.T) {
+	// FR-014: when LegacySharedSecret=true AND Secret!="", the legacy
+	// /webhook/events route stays mounted and verifies signatures with the
+	// configured global secret. This is the "no deployment breaks on upgrade"
+	// guarantee for existing portals still signing with the shared secret.
+	// Reaching the "unsupported event type" validation error (dispatcher does
+	// not know "legacy.coexistence.test") proves the request passed HMAC
+	// verification, envelope decode, and org resolution on the legacy route.
+	const legacySecret = "legacy-coexistence-test-secret"
+	cfg := perPortalReceiverCfg()
+	cfg.LegacySharedSecret = true
+	cfg.Secret = legacySecret
+	cfg.Enabled = true
+	orgs := fakeOrgResolver{
+		perPortalTestOrgHandle: &model.Organization{ID: perPortalTestPortalOrg, Handle: perPortalTestOrgHandle},
+	}
+	r, err := NewReceiver(cfg, nil, nil, nil, nil, orgs, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatalf("NewReceiver: %v", err)
+	}
+
+	body := []byte(`{"event_id":"evt-1","event_type":"legacy.coexistence.test","org":{"ref_id":"` + perPortalTestOrgHandle + `"},"data":{}}`)
+	req := httptest.NewRequest(http.MethodPost, RoutePath, bytes.NewReader(body))
+	req.Header.Set(cfg.SignatureHeader, sign(legacySecret, time.Now().Unix(), body))
+	rec := httptest.NewRecorder()
+
+	errExp := r.ReceiveEvent(rec, req)
+	var appErr *apperror.Error
+	if !errors.As(errExp, &appErr) || appErr.Code != apperror.CodeCommonValidationFailed {
+		t.Fatalf("expected to reach dispatch (unsupported event type) on legacy route, got %v", errExp)
 	}
 }
 
