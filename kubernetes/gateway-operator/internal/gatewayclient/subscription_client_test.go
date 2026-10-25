@@ -158,3 +158,54 @@ func TestUpdateSubscription_PayloadShape(t *testing.T) {
 	require.NotContains(t, bodies[1], "status")
 	require.NotContains(t, bodies[1], "subscriptionToken")
 }
+
+// A lookup must never return another application's subscription, even when it is the only one on the API.
+func TestFindSubscriptionIDByAPIAndApplication_MatchesNormalizedApplicationOnly(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var items []map[string]any
+		switch r.URL.Query().Get("apiId") {
+		case "single-other-app":
+			items = []map[string]any{{"id": "sub-x", "applicationId": "app-x"}}
+		case "padded-app":
+			items = []map[string]any{{"id": "sub-1", "applicationId": " app-1 "}}
+		case "empty-app":
+			items = []map[string]any{{"id": "sub-1", "applicationId": ""}}
+		case "two-same-app":
+			items = []map[string]any{{"id": "sub-1", "applicationId": "app-1"}, {"id": "sub-2", "applicationId": "app-1"}}
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"subscriptions": items})
+	}))
+	defer srv.Close()
+	auth := AuthHeaderFunc(func(_ context.Context, _ *http.Request) error { return nil })
+	app1, blank := "app-1", "   "
+
+	id, err := FindSubscriptionIDByAPIAndApplication(context.Background(), srv.URL, "single-other-app", nil, auth)
+	require.NoError(t, err)
+	require.Empty(t, id, "the only subscription belongs to another application")
+
+	id, err = FindSubscriptionIDByAPIAndApplication(context.Background(), srv.URL, "single-other-app", &app1, auth)
+	require.NoError(t, err)
+	require.Empty(t, id, "an application filter the gateway did not apply must not match")
+
+	id, err = FindSubscriptionIDByAPIAndApplication(context.Background(), srv.URL, "padded-app", &app1, auth)
+	require.NoError(t, err)
+	require.Equal(t, "sub-1", id)
+
+	id, err = FindSubscriptionIDByAPIAndApplication(context.Background(), srv.URL, "empty-app", &blank, auth)
+	require.NoError(t, err)
+	require.Equal(t, "sub-1", id, "an empty and a blank application both mean no application")
+
+	id, err = FindSubscriptionIDByAPIAndApplication(context.Background(), srv.URL, "two-same-app", &app1, auth)
+	require.NoError(t, err)
+	require.Empty(t, id, "two matches are ambiguous")
+}
+
+func TestSameApplication(t *testing.T) {
+	s := func(v string) *string { return &v }
+	require.True(t, SameApplication(nil, nil))
+	require.True(t, SameApplication(nil, s("")))
+	require.True(t, SameApplication(s("  "), nil))
+	require.True(t, SameApplication(s(" app-1"), s("app-1 ")))
+	require.False(t, SameApplication(s("app-1"), nil))
+	require.False(t, SameApplication(s("app-1"), s("app-2")))
+}

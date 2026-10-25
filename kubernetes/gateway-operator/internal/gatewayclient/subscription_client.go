@@ -24,6 +24,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 )
 
 // SubscriptionCreatePayload mirrors the management-API
@@ -174,43 +175,38 @@ func ListSubscriptions(ctx context.Context, gatewayEndpoint, apiID string, appli
 }
 
 // FindSubscriptionIDByAPIAndApplication lists subscriptions for the given apiID
-// (and optional applicationID) and returns a single matching subscription ID
-// when it can be unambiguously identified.
+// (and optional applicationID) and returns the id of the one subscription whose
+// application matches applicationID. It returns "" when no subscription or more
+// than one matches, so a caller never adopts another application's subscription.
 func FindSubscriptionIDByAPIAndApplication(ctx context.Context, gatewayEndpoint, apiID string, applicationID *string, auth AuthHeaderFunc) (string, error) {
 	items, err := ListSubscriptions(ctx, gatewayEndpoint, apiID, applicationID, auth)
 	if err != nil {
 		return "", err
 	}
 
-	if len(items) == 0 {
-		return "", nil
-	}
-	if len(items) == 1 {
-		return items[0].Id, nil
-	}
-
-	if applicationID != nil && *applicationID != "" {
-		matches := make([]SubscriptionResponse, 0, len(items))
-		for i := range items {
-			if items[i].ApplicationId != nil && *items[i].ApplicationId == *applicationID {
-				matches = append(matches, items[i])
-			}
-		}
-		if len(matches) == 1 {
-			return matches[0].Id, nil
-		}
-		return "", nil
-	}
-
-	nonAppMatches := make([]SubscriptionResponse, 0, len(items))
+	matchID := ""
+	matches := 0
 	for i := range items {
-		if items[i].ApplicationId == nil || *items[i].ApplicationId == "" {
-			nonAppMatches = append(nonAppMatches, items[i])
+		if SameApplication(items[i].ApplicationId, applicationID) {
+			matches++
+			matchID = items[i].Id
 		}
 	}
-	if len(nonAppMatches) == 1 {
-		return nonAppMatches[0].Id, nil
+	if matches != 1 {
+		return "", nil
 	}
+	return matchID, nil
+}
 
-	return "", nil
+// SameApplication reports whether two subscription application ids refer to the
+// same application. An unset, empty or whitespace-only id means no application.
+func SameApplication(a, b *string) bool {
+	return normalizedApplicationID(a) == normalizedApplicationID(b)
+}
+
+func normalizedApplicationID(id *string) string {
+	if id == nil {
+		return ""
+	}
+	return strings.TrimSpace(*id)
 }

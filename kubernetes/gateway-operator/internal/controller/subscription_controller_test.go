@@ -97,3 +97,37 @@ func TestRecoverSubscriptionIDAfterConflict_WithoutExternalRefIdUsesTheAPIAndApp
 	require.NoError(t, err)
 	require.Equal(t, "generated-uuid", id, "an empty externalRefId behaves as if it were not set")
 }
+
+// An externalRefId subscription on the same API but for another application belongs to another CR, so it
+// must not be adopted and overwritten.
+func TestRecoverSubscriptionIDAfterConflict_RequiresTheCRApplication(t *testing.T) {
+	srv := subscriptionListServer(t, map[string][]map[string]any{
+		"orders-api": {{"id": "acme-sub-01", "externalRefId": "acme-sub-01", "applicationId": "app-x"}},
+	})
+	ref, app := "acme-sub-01", "app-1"
+
+	cr := subscriptionCR("orders-api", &ref)
+	cr.Spec.ApplicationId = &app
+	id, err := recoverSubscriptionIDAfterConflict(context.Background(), srv.URL, cr, nil)
+	require.Empty(t, id)
+	var nonRetryable *gatewayclient.NonRetryableError
+	require.ErrorAs(t, err, &nonRetryable)
+	require.Equal(t, http.StatusConflict, nonRetryable.StatusCode)
+
+	app = "app-x"
+	id, err = recoverSubscriptionIDAfterConflict(context.Background(), srv.URL, cr, nil)
+	require.NoError(t, err)
+	require.Equal(t, "acme-sub-01", id)
+}
+
+// Without externalRefId, the only subscription on the API belonging to another application yields no id,
+// so Deploy takes its retryable conflict path instead of updating that subscription.
+func TestRecoverSubscriptionIDAfterConflict_DoesNotAdoptAnotherApplicationsSubscription(t *testing.T) {
+	srv := subscriptionListServer(t, map[string][]map[string]any{
+		"orders-api": {{"id": "sub-x", "applicationId": "app-x"}},
+	})
+
+	id, err := recoverSubscriptionIDAfterConflict(context.Background(), srv.URL, subscriptionCR("orders-api", nil), nil)
+	require.NoError(t, err)
+	require.Empty(t, id)
+}

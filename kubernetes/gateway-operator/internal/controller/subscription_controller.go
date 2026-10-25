@@ -242,10 +242,11 @@ func updateSubscriptionMutableFields(ctx context.Context, gatewayEndpoint, subsc
 
 // recoverSubscriptionIDAfterConflict finds the gateway subscription that a conflicting create collided
 // with. With spec.externalRefId the subscription id is known, so it is adopted only when that id is one of
-// this API's subscriptions; otherwise the id or the token belongs to a different subscription, and the
-// conflict is reported without saying which, so the error never confirms that a token is in use. Without
-// spec.externalRefId the id is looked up by apiId and applicationId, which only works when that pair is
-// unambiguous.
+// this API's subscriptions and belongs to the CR's application; otherwise the id or the token belongs to a
+// different subscription, and the conflict is reported without saying which, so the error never confirms
+// that a token is in use. Without
+// spec.externalRefId the id is looked up by apiId and applicationId, and is returned only when exactly one
+// subscription matches; otherwise no id is returned and the create conflict is retried.
 func recoverSubscriptionIDAfterConflict(ctx context.Context, gatewayEndpoint string, cr *apiv1.Subscription, authFn gatewayclient.AuthHeaderFunc) (string, error) {
 	if cr.Spec.ExternalRefId != nil && *cr.Spec.ExternalRefId != "" {
 		subscriptions, err := gatewayclient.ListSubscriptions(ctx, gatewayEndpoint, cr.Spec.ApiId, nil, authFn)
@@ -253,7 +254,8 @@ func recoverSubscriptionIDAfterConflict(ctx context.Context, gatewayEndpoint str
 			return "", err
 		}
 		for i := range subscriptions {
-			if subscriptions[i].Id == *cr.Spec.ExternalRefId {
+			if subscriptions[i].Id == *cr.Spec.ExternalRefId &&
+				gatewayclient.SameApplication(subscriptions[i].ApplicationId, cr.Spec.ApplicationId) {
 				return subscriptions[i].Id, nil
 			}
 		}
