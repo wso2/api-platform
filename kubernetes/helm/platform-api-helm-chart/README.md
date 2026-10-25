@@ -321,11 +321,24 @@ config:
             active: true
 ```
 
-Each key is a PEM RSA private key; its public half is derived from it. It is read from the
+Each key is a PEM private key; its public half is derived from it. It is read from the
 Secret key named like the file (`sa_signing.pem` above), and mounted into the same
 directory as the `auth.jwt` pair, so give every PEM in that directory its own name. The
 `kid` defaults to the key's RFC 7638 thumbprint; set `kid` on an entry to choose one.
 `signing.jwksCacheMaxAge` (default `5m`) is the JWKS `Cache-Control` max-age.
+
+The key type picks the signing algorithm. An entry may set `algorithm` to override it:
+
+| Key | Default | `algorithm` may be |
+|---|---|---|
+| RSA | `RS256` | `RS256`, `PS256` |
+| EC P-256 | `ES256` | `ES256` |
+| EC P-384 | `ES384` | `ES384` |
+
+Other curves and key types fail at startup, as does an `algorithm` that does not fit the
+key. A service-account token must use exactly its key's algorithm. Without own keys, tokens
+use the `auth.jwt` key and `RS256`. `generate-secrets.sh` creates RSA keys; make an EC key
+yourself, for example `openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256`.
 
 ### Databases
 
@@ -362,6 +375,9 @@ Say the current key is `sa_signing.pem`:
 3. Wait one `tokenTtl` plus `jwksCacheMaxAge`. Then remove the old entry and its Secret
    key, and `helm upgrade`.
 
+Moving from an RSA key to an EC key takes the same three steps. Before step 2, check that
+every verifier of the JWKS, such as a gateway's key manager, supports the new algorithm.
+
 ### Troubleshooting
 
 Look for these in `kubectl logs`:
@@ -375,6 +391,8 @@ Look for these in `kubectl logs`:
   `config.auth.idp.issuer`. Pick another, e.g. `platform-api-sa`.
 - **`have the same kid`** — the same key is listed twice, or two entries set the same
   `kid`.
+- **`does not fit this key`** or **`EC curve ... is not supported`** — `algorithm` does not
+  match the key type, or the key is on a curve other than P-256 or P-384.
 
 A pod that stays in `ContainerCreating`, with `references non-existent secret key` in
 `kubectl describe pod`, means the Secret has no key named like one of the signing keys'

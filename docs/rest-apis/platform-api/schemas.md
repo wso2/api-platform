@@ -5764,7 +5764,10 @@ Send client_id and client_secret here, or with HTTP Basic instead.
       "use": "sig",
       "alg": "RS256",
       "n": "string",
-      "e": "AQAB"
+      "e": "AQAB",
+      "crv": "string",
+      "x": "string",
+      "y": "string"
     }
   ]
 }
@@ -5775,7 +5778,7 @@ Send client_id and client_secret here, or with HTTP Basic instead.
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|keys|[[JWK](#schemajwk)]|true|none|[An RSA public key (RFC 7517)]|
+|keys|[[JWK](#schemajwk)]|true|none|[An RSA or EC public signing key (RFC 7517)]|
 
 ## JWK
 
@@ -5791,23 +5794,29 @@ Send client_id and client_secret here, or with HTTP Basic instead.
   "use": "sig",
   "alg": "RS256",
   "n": "string",
-  "e": "AQAB"
+  "e": "AQAB",
+  "crv": "string",
+  "x": "string",
+  "y": "string"
 }
 
 ```
 
-An RSA public key (RFC 7517)
+An RSA or EC public signing key (RFC 7517)
 
 #### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|kty|string|true|none|none|
-|kid|string|true|none|RFC 7638 thumbprint of the key|
+|kty|string|true|none|Key type, RSA or EC|
+|kid|string|true|none|Key ID. The RFC 7638 thumbprint of the key unless the operator set one.|
 |use|string|false|none|none|
-|alg|string|false|none|none|
-|n|string|true|none|none|
-|e|string|true|none|none|
+|alg|string|false|none|RS256 or PS256 for RSA, ES256 for P-256, ES384 for P-384|
+|n|string|false|none|RSA modulus|
+|e|string|false|none|RSA public exponent|
+|crv|string|false|none|EC curve, P-256 or P-384|
+|x|string|false|none|EC x coordinate, zero-padded to the curve size|
+|y|string|false|none|EC y coordinate, zero-padded to the curve size|
 
 ## GatewayTokenListResponse
 

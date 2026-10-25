@@ -7690,19 +7690,35 @@ export interface components {
         JWKSResponse: {
             keys: components["schemas"]["JWK"][];
         };
-        /** @description An RSA public key (RFC 7517) */
+        /** @description An RSA or EC public signing key (RFC 7517) */
         JWK: {
-            /** @example RSA */
+            /**
+             * @description Key type, RSA or EC
+             * @example RSA
+             */
             kty: string;
-            /** @description RFC 7638 thumbprint of the key */
+            /** @description Key ID. The RFC 7638 thumbprint of the key unless the operator set one. */
             kid: string;
             /** @example sig */
             use?: string;
-            /** @example RS256 */
+            /**
+             * @description RS256 or PS256 for RSA, ES256 for P-256, ES384 for P-384
+             * @example RS256
+             */
             alg?: string;
-            n: string;
-            /** @example AQAB */
-            e: string;
+            /** @description RSA modulus */
+            n?: string;
+            /**
+             * @description RSA public exponent
+             * @example AQAB
+             */
+            e?: string;
+            /** @description EC curve, P-256 or P-384 */
+            crv?: string;
+            /** @description EC x coordinate, zero-padded to the curve size */
+            x?: string;
+            /** @description EC y coordinate, zero-padded to the curve size */
+            y?: string;
         };
         GatewayTokenListResponse: {
             /** @description Number of tokens in current response */

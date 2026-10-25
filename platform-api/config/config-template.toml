@@ -322,13 +322,22 @@ poll_interval = "5s"
 # recommended for production: only they can be changed without breaking every
 # live token at once.
 #
-# Each key is a PEM RSA private key file (PKCS #1 or PKCS #8); the public key is
-# derived from it. Exactly one key is marked active and signs. Every listed key
-# verifies and is published. The kid defaults to the RFC 7638 thumbprint.
+# Each key is a PEM private key file; the public key is derived from it. Exactly
+# one key is marked active and signs. Every listed key verifies and is published.
+# The kid defaults to the RFC 7638 thumbprint.
+#
+# The key type picks the signing algorithm, and `algorithm` may override it:
+#   RSA (PKCS #1 or PKCS #8)     RS256 (default), PS256
+#   EC P-256 (SEC 1 or PKCS #8)   ES256
+#   EC P-384 (SEC 1 or PKCS #8)   ES384
+# Other curves and key types are refused. An SA token must use exactly its key's
+# algorithm. With no keys, tokens use auth.jwt's key and RS256.
 #
 # Rotation, each step a config change and a rolling restart: (1) add the new key
 # without `active`; (2) after at least jwks_cache_max_age, move `active = true`
-# to it; (3) after token_ttl plus jwks_cache_max_age, remove the old key.
+# to it; (3) after token_ttl plus jwks_cache_max_age, remove the old key. Moving
+# to a key of another algorithm takes the same steps, but every verifier that
+# reads the JWKS must support the new algorithm before step 2.
 [platform_api.auth.service_account.signing]
 # Cache-Control max-age of the JWKS, 0 to 24h. Also the shortest wait between
 # rotation steps.
@@ -342,7 +351,8 @@ jwks_cache_max_age = "5m"
 #
 # [[platform_api.auth.service_account.signing.keys]]
 # path = "/etc/platform-api/keys/sa_signing_old.pem"
-# # kid = "..."   optional override of the thumbprint
+# # kid = "..."        optional override of the thumbprint
+# # algorithm = "..."  optional override of the algorithm the key type implies
 
 # ---------------------------------------------------------------------------
 # Server listeners (HTTP + HTTPS)

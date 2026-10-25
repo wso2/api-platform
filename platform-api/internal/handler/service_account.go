@@ -56,10 +56,9 @@ type ServiceAccountHandler struct {
 // publishes, in config order; maxAge is its Cache-Control max-age.
 func NewServiceAccountHandler(svc *service.ServiceAccountService, identity *service.IdentityService,
 	keys []service.ServiceAccountKey, maxAge time.Duration, slogger *slog.Logger) *ServiceAccountHandler {
-	set := api.JWKSResponse{Keys: make([]api.JWK, 0, len(keys))}
+	set := utils.JWKS{Keys: make([]utils.JWK, 0, len(keys))}
 	for _, key := range keys {
-		k := utils.NewRSAPublicJWK(key.Public)
-		set.Keys = append(set.Keys, api.JWK{Kty: k.Kty, Kid: key.Kid, Use: &k.Use, Alg: &k.Alg, N: k.N, E: k.E})
+		set.Keys = append(set.Keys, key.JWK)
 	}
 	body, _ := json.Marshal(set) // cannot fail: strings only
 	sum := sha256.Sum256(body)

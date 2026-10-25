@@ -18,6 +18,8 @@
 package handler
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
 	"encoding/base64"
@@ -50,12 +52,22 @@ func newSAHandlerForTest(t *testing.T) (*ServiceAccountHandler, *rsa.PrivateKey,
 	svc := service.NewServiceAccountService(nil, nil, nil, nil,
 		map[string][]string{"ap_sa_reader": {"ap:rest_api:read", "ap:gateway:read"}}, nil, time.Minute, config.AuthzModeScope, logger)
 	h := NewServiceAccountHandler(svc, nil, []service.ServiceAccountKey{
-		{Kid: "previous", Public: &previous.PublicKey},
-		{Kid: utils.RSAThumbprint(&key.PublicKey), Public: &key.PublicKey},
+		mustSAKey(t, &previous.PublicKey, "previous"),
+		mustSAKey(t, &key.PublicKey, ""),
 	}, 2*time.Minute, logger)
 	mux := http.NewServeMux()
 	h.RegisterRoutes(mux)
 	return h, key, mux
+}
+
+// mustSAKey is an RS256 key published under kid, or its thumbprint when kid is "".
+func mustSAKey(t *testing.T, pub *rsa.PublicKey, kid string) service.ServiceAccountKey {
+	t.Helper()
+	jwk, err := utils.NewJWK(pub, "RS256", kid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return service.ServiceAccountKey{JWK: jwk, Public: pub}
 }
 
 func mustHandlerKey(t *testing.T) *rsa.PrivateKey {
@@ -87,6 +99,42 @@ func TestServiceAccountManagementRefusesServiceAccounts(t *testing.T) {
 	}
 }
 
+func TestJWKSPublishesECKeys(t *testing.T) {
+	ec, err := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	jwk, err := utils.NewJWK(&ec.PublicKey, "ES384", "ec-key")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rsaKey := mustSAKey(t, &mustHandlerKey(t).PublicKey, "rsa-key")
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	h := NewServiceAccountHandler(service.NewServiceAccountService(nil, nil, nil, nil, nil, nil, time.Minute, config.AuthzModeScope, logger),
+		nil, []service.ServiceAccountKey{rsaKey, {JWK: jwk, Public: &ec.PublicKey}}, time.Minute, logger)
+	mux := http.NewServeMux()
+	h.RegisterRoutes(mux)
+
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, constants.JWKSPath, nil))
+	var jwks struct {
+		Keys []map[string]string `json:"keys"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &jwks); err != nil {
+		t.Fatal(err)
+	}
+	if len(jwks.Keys) != 2 {
+		t.Fatalf("jwks = %s", rec.Body)
+	}
+	if k := jwks.Keys[0]; k["kty"] != "RSA" || k["crv"] != "" || k["x"] != "" {
+		t.Errorf("RSA key = %v", k)
+	}
+	k := jwks.Keys[1]
+	if k["kty"] != "EC" || k["crv"] != "P-384" || k["alg"] != "ES384" || k["kid"] != "ec-key" || k["x"] == "" || k["y"] == "" || k["n"] != "" || k["e"] != "" {
+		t.Errorf("EC key = %v", k)
+	}
+}
+
 func TestJWKSPublishesEveryKeyInConfigOrder(t *testing.T) {
 	_, key, mux := newSAHandlerForTest(t)
 	rec := httptest.NewRecorder()
@@ -109,7 +157,7 @@ func TestJWKSPublishesEveryKeyInConfigOrder(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &jwks); err != nil {
 		t.Fatal(err)
 	}
-	if len(jwks.Keys) != 2 || jwks.Keys[0]["kid"] != "previous" || jwks.Keys[1]["kid"] != utils.RSAThumbprint(&key.PublicKey) {
+	if len(jwks.Keys) != 2 || jwks.Keys[0]["kid"] != "previous" || jwks.Keys[1]["kid"] != utils.Thumbprint(&key.PublicKey) {
 		t.Fatalf("jwks = %v", jwks)
 	}
 	for _, k := range jwks.Keys {

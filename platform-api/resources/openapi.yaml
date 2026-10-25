@@ -15143,30 +15143,41 @@ components:
 
     JWK:
       type: object
-      description: An RSA public key (RFC 7517)
+      description: An RSA or EC public signing key (RFC 7517)
       required:
         - kty
         - kid
-        - n
-        - e
       properties:
         kty:
           type: string
+          description: Key type, RSA or EC
           example: RSA
         kid:
           type: string
-          description: RFC 7638 thumbprint of the key
+          description: Key ID. The RFC 7638 thumbprint of the key unless the operator set one.
         use:
           type: string
           example: sig
         alg:
           type: string
+          description: RS256 or PS256 for RSA, ES256 for P-256, ES384 for P-384
           example: RS256
         n:
           type: string
+          description: RSA modulus
         e:
           type: string
+          description: RSA public exponent
           example: AQAB
+        crv:
+          type: string
+          description: EC curve, P-256 or P-384
+        x:
+          type: string
+          description: EC x coordinate, zero-padded to the curve size
+        y:
+          type: string
+          description: EC y coordinate, zero-padded to the curve size
 
     GatewayTokenListResponse:
       type: object

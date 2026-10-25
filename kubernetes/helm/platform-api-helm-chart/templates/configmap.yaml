@@ -146,6 +146,9 @@ data:
     {{- with .kid }}
     kid = {{ . | quote }}
     {{- end }}
+    {{- with .algorithm }}
+    algorithm = {{ . | quote }}
+    {{- end }}
     {{- if .active }}
     active = true
     {{- end }}

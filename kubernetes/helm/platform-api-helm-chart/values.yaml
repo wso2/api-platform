@@ -244,14 +244,17 @@ config:
       signing:
         issuer: ""               # required with keys; must differ from auth.jwt.issuer and auth.idp.issuer
         jwksCacheMaxAge: 5m      # Cache-Control max-age of the JWKS; also the wait between rotation steps
-        # Each key is a PEM RSA private key, read from the Secret key named like the
-        # file, in the same directory as auth.jwt's. Exactly one is active and signs;
-        # every key verifies and is published. kid defaults to the RFC 7638 thumbprint.
+        # Each key is a PEM private key (RSA, or EC on P-256 or P-384), read from the
+        # Secret key named like the file, in the same directory as auth.jwt's. Exactly
+        # one is active and signs; every key verifies and is published. kid defaults
+        # to the RFC 7638 thumbprint. algorithm defaults to what the key type implies
+        # (RS256, ES256, ES384); an RSA key may use PS256.
         keys: []
         # - path: /etc/platform-api/keys/sa_signing.pem
         #   active: true
         # - path: /etc/platform-api/keys/sa_signing_old.pem
         #   kid: ""
+        #   algorithm: ""
     # file mode — local username/password login (rendered only when mode=file).
     file:
       organization:

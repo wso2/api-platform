@@ -18,8 +18,12 @@
 package middleware
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/x509"
+	"encoding/pem"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -52,7 +56,7 @@ func signToken(t *testing.T, key *rsa.PrivateKey, kid string, claims jwt.MapClai
 	switch kid {
 	case "":
 	case "auto":
-		tok.Header["kid"] = utils.RSAThumbprint(&key.PublicKey)
+		tok.Header["kid"] = utils.Thumbprint(&key.PublicKey)
 	default:
 		tok.Header["kid"] = kid
 	}
@@ -81,8 +85,10 @@ func TestIssuerKeyMap_Verify(t *testing.T) {
 	local, sa, previous, stranger := mustKey(t), mustKey(t), mustKey(t), mustKey(t)
 	m, err := NewIssuerKeyMap("platform-api",
 		IssuerKeys{Issuer: "platform-api", Kind: IssuerKindLocal, Current: &local.PublicKey},
-		IssuerKeys{Issuer: "platform-api-sa", Kind: IssuerKindServiceAccount, Current: &sa.PublicKey,
-			Keys: map[string]*rsa.PublicKey{utils.RSAThumbprint(&sa.PublicKey): &sa.PublicKey, "previous": &previous.PublicKey}},
+		IssuerKeys{Issuer: "platform-api-sa", Kind: IssuerKindServiceAccount,
+			Keys: map[string]VerifyKey{
+				utils.Thumbprint(&sa.PublicKey): {Key: &sa.PublicKey, Alg: "RS256"},
+				"previous":                      {Key: &previous.PublicKey, Alg: "RS256"}}},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -117,6 +123,62 @@ func TestIssuerKeyMap_Verify(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := m.verify(tt.token)
 			if (err == nil) != tt.ok {
+				t.Fatalf("verify: ok=%v err=%v", tt.ok, err)
+			}
+		})
+	}
+}
+
+// An SA token must use the algorithm its kid's key was registered with, and a
+// token that is not an SA token can use RSA methods only.
+func TestIssuerKeyMap_Algorithms(t *testing.T) {
+	local, rsaKey := mustKey(t), mustKey(t)
+	p256, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	p384, _ := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
+	m, err := NewIssuerKeyMap("platform-api",
+		IssuerKeys{Issuer: "platform-api", Kind: IssuerKindLocal, Current: &local.PublicKey},
+		IssuerKeys{Issuer: "platform-api-sa", Kind: IssuerKindServiceAccount, Keys: map[string]VerifyKey{
+			"rs256": {Key: &rsaKey.PublicKey, Alg: "RS256"}, "ps256": {Key: &rsaKey.PublicKey, Alg: "PS256"},
+			"es256": {Key: &p256.PublicKey, Alg: "ES256"}, "es384": {Key: &p384.PublicKey, Alg: "ES384"},
+		}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pubDER, _ := x509.MarshalPKIXPublicKey(&rsaKey.PublicKey)
+	pubPEM := pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: pubDER})
+
+	sign := func(method jwt.SigningMethod, key any, kid string, claims jwt.MapClaims) string {
+		tok := jwt.NewWithClaims(method, claims)
+		tok.Header["kid"] = kid
+		s, err := tok.SignedString(key)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return s
+	}
+	sa := saClaims("platform-api-sa")
+	tests := []struct {
+		name  string
+		token string
+		ok    bool
+	}{
+		{"RS256", sign(jwt.SigningMethodRS256, rsaKey, "rs256", sa), true},
+		{"PS256", sign(jwt.SigningMethodPS256, rsaKey, "ps256", sa), true},
+		{"ES256", sign(jwt.SigningMethodES256, p256, "es256", sa), true},
+		{"ES384", sign(jwt.SigningMethodES384, p384, "es384", sa), true},
+		{"PS256 naming the RS256 key", sign(jwt.SigningMethodPS256, rsaKey, "rs256", sa), false},
+		{"RS256 naming the PS256 key", sign(jwt.SigningMethodRS256, rsaKey, "ps256", sa), false},
+		{"RS384 naming the RS256 key", sign(jwt.SigningMethodRS384, rsaKey, "rs256", sa), false},
+		{"ES384 naming the ES256 key", sign(jwt.SigningMethodES384, p384, "es256", sa), false},
+		{"HS256 signed with the public key bytes", sign(jwt.SigningMethodHS256, pubPEM, "rs256", sa), false},
+		{"none", sign(jwt.SigningMethodNone, jwt.UnsafeAllowNoneSignatureType, "rs256", sa), false},
+		{"ES256 token for the local issuer", sign(jwt.SigningMethodES256, p256, "", humanClaims("platform-api")), false},
+		{"PS256 token for the local issuer", sign(jwt.SigningMethodPS256, local, "", humanClaims("platform-api")), false},
+		{"RS256 token for the local issuer", sign(jwt.SigningMethodRS256, local, "", humanClaims("platform-api")), true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if _, err := m.verify(tt.token); (err == nil) != tt.ok {
 				t.Fatalf("verify: ok=%v err=%v", tt.ok, err)
 			}
 		})

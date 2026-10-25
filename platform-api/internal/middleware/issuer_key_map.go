@@ -18,6 +18,7 @@
 package middleware
 
 import (
+	"crypto"
 	"crypto/rsa"
 	"fmt"
 	"maps"
@@ -42,20 +43,27 @@ const (
 	IssuerKindServiceAccount
 )
 
-// IssuerKeys registers one issuer. Current may be nil for a verify-nothing
-// entry (skip_validation with no key). Keys are the keys a kid can name; nil
-// means Current under its thumbprint.
+// VerifyKey is a public key and the one algorithm a token must use with it.
+type VerifyKey struct {
+	Key crypto.PublicKey
+	Alg string
+}
+
+// IssuerKeys registers one issuer. Current is the key for tokens that are not
+// SA tokens; it may be nil for a verify-nothing entry (skip_validation with no
+// key). Keys are the keys an SA token's kid can name; nil means Current under
+// its thumbprint, with RS256.
 type IssuerKeys struct {
 	Issuer  string
 	Kind    IssuerKind
 	Current *rsa.PublicKey
-	Keys    map[string]*rsa.PublicKey
+	Keys    map[string]VerifyKey
 }
 
 type issuerEntry struct {
 	kind    IssuerKind
 	current *rsa.PublicKey
-	byKID   map[string]*rsa.PublicKey
+	byKID   map[string]VerifyKey
 }
 
 // IssuerKeyMap routes a token to the one key registered for its iss. A token
@@ -76,7 +84,7 @@ func NewIssuerKeyMap(saAudience string, keys ...IssuerKeys) (*IssuerKeyMap, erro
 		}
 		byKID := maps.Clone(k.Keys)
 		if byKID == nil && k.Current != nil {
-			byKID = map[string]*rsa.PublicKey{utils.RSAThumbprint(k.Current): k.Current}
+			byKID = map[string]VerifyKey{utils.Thumbprint(k.Current): {Key: k.Current, Alg: "RS256"}}
 		}
 		m.entries[k.Issuer] = &issuerEntry{kind: k.Kind, current: k.Current, byKID: byKID}
 	}
@@ -112,13 +120,11 @@ func isServiceAccountToken(e *issuerEntry, sub string) bool {
 	return false
 }
 
-// keyFor is the jwt.Keyfunc. SA tokens must name a known kid. Login tokens
-// carry none today, and a token minted elsewhere may carry a kid we never
-// issued, so for those an unknown kid falls back to the current key.
+// keyFor is the jwt.Keyfunc. An SA token must name a known kid and use exactly
+// that key's algorithm. Any other token is verified with the current key, and
+// only with an RSA method: login tokens carry no kid, and a token minted
+// elsewhere may carry a kid we never issued.
 func (m *IssuerKeyMap) keyFor(t *jwt.Token) (interface{}, error) {
-	if _, ok := t.Method.(*jwt.SigningMethodRSA); !ok {
-		return nil, fmt.Errorf("unexpected or forbidden signing method: %v", t.Header["alg"])
-	}
 	claims, _ := t.Claims.(jwt.MapClaims)
 	iss, _ := claims["iss"].(string)
 	sub, _ := claims["sub"].(string)
@@ -126,12 +132,19 @@ func (m *IssuerKeyMap) keyFor(t *jwt.Token) (interface{}, error) {
 	if !ok || e.kind == IssuerKindIDP {
 		return nil, fmt.Errorf("invalid token issuer")
 	}
-	kid, _ := t.Header["kid"].(string)
-	if pub := e.byKID[kid]; kid != "" && pub != nil {
-		return pub, nil
-	}
 	if isServiceAccountToken(e, sub) {
-		return nil, fmt.Errorf("service-account token has a missing or unknown kid")
+		kid, _ := t.Header["kid"].(string)
+		key, ok := e.byKID[kid]
+		if !ok {
+			return nil, fmt.Errorf("service-account token has a missing or unknown kid")
+		}
+		if t.Method.Alg() != key.Alg {
+			return nil, fmt.Errorf("unexpected signing method for the key: %v", t.Header["alg"])
+		}
+		return key.Key, nil
+	}
+	if _, ok := t.Method.(*jwt.SigningMethodRSA); !ok {
+		return nil, fmt.Errorf("unexpected or forbidden signing method: %v", t.Header["alg"])
 	}
 	if e.current == nil {
 		return nil, fmt.Errorf("no verification key for issuer")
@@ -143,7 +156,7 @@ func (m *IssuerKeyMap) keyFor(t *jwt.Token) (interface{}, error) {
 func (m *IssuerKeyMap) verify(tokenString string) (jwt.MapClaims, error) {
 	claims := jwt.MapClaims{}
 	token, err := jwt.ParseWithClaims(tokenString, claims, m.keyFor,
-		jwt.WithValidMethods([]string{"RS256", "RS384", "RS512"}))
+		jwt.WithValidMethods([]string{"RS256", "RS384", "RS512", "PS256", "ES256", "ES384"}))
 	if err != nil {
 		return nil, fmt.Errorf("invalid token: %w", err)
 	}

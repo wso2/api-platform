@@ -42,7 +42,6 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
 	"github.com/wso2/api-platform/platform-api/internal/service"
-	"github.com/wso2/api-platform/platform-api/internal/utils"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -89,9 +88,9 @@ func setupSATestEnv(t *testing.T) *saTestEnv {
 	cfg := &config.Server{}
 	cfg.Auth.ServiceAccount = config.ServiceAccount{TokenTTL: 15 * time.Minute, Audience: "platform-api"}
 	cfg.Auth.Authorization.Mode = config.AuthzModeScope
-	kid := utils.RSAThumbprint(&key.PublicKey)
-	keys := &service.ServiceAccountKeys{Issuer: "platform-api", ActiveKid: kid, PrivateKey: key,
-		Keys: []service.ServiceAccountKey{{Kid: kid, Public: &key.PublicKey}}}
+	saKey := mustSAKey(t, &key.PublicKey, "")
+	keys := &service.ServiceAccountKeys{Issuer: "platform-api", Active: saKey, PrivateKey: key,
+		Keys: []service.ServiceAccountKey{saKey}}
 	keyMap, err := middleware.NewIssuerKeyMap("platform-api",
 		middleware.IssuerKeys{Issuer: "platform-api", Kind: middleware.IssuerKindLocal, Current: &key.PublicKey})
 	if err != nil {
