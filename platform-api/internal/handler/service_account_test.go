@@ -41,19 +41,30 @@ import (
 
 const handlerTestSAUUID = "0198a1b2-0000-7000-8000-000000000001"
 
+// newSAHandlerForTest publishes two keys: a verify-only one named "previous",
+// then the returned key under its thumbprint.
 func newSAHandlerForTest(t *testing.T) (*ServiceAccountHandler, *rsa.PrivateKey, *http.ServeMux) {
+	t.Helper()
+	key, previous := mustHandlerKey(t), mustHandlerKey(t)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	svc := service.NewServiceAccountService(nil, nil, nil, nil,
+		map[string][]string{"ap_sa_reader": {"ap:rest_api:read", "ap:gateway:read"}}, nil, time.Minute, config.AuthzModeScope, logger)
+	h := NewServiceAccountHandler(svc, nil, []service.ServiceAccountKey{
+		{Kid: "previous", Public: &previous.PublicKey},
+		{Kid: utils.RSAThumbprint(&key.PublicKey), Public: &key.PublicKey},
+	}, 2*time.Minute, logger)
+	mux := http.NewServeMux()
+	h.RegisterRoutes(mux)
+	return h, key, mux
+}
+
+func mustHandlerKey(t *testing.T) *rsa.PrivateKey {
 	t.Helper()
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
 		t.Fatal(err)
 	}
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	svc := service.NewServiceAccountService(nil, nil, nil, nil,
-		map[string][]string{"ap_sa_reader": {"ap:rest_api:read", "ap:gateway:read"}}, nil, time.Minute, config.AuthzModeScope, logger)
-	h := NewServiceAccountHandler(svc, nil, []*rsa.PublicKey{&key.PublicKey}, logger)
-	mux := http.NewServeMux()
-	h.RegisterRoutes(mux)
-	return h, key, mux
+	return key
 }
 
 func TestServiceAccountManagementRefusesServiceAccounts(t *testing.T) {
@@ -76,24 +87,104 @@ func TestServiceAccountManagementRefusesServiceAccounts(t *testing.T) {
 	}
 }
 
-func TestJWKSPublishesTheSigningKey(t *testing.T) {
+func TestJWKSPublishesEveryKeyInConfigOrder(t *testing.T) {
 	_, key, mux := newSAHandlerForTest(t)
 	rec := httptest.NewRecorder()
-	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, constants.APIBasePath+"/service-accounts/jwks.json", nil))
+	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, constants.JWKSPath, nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d", rec.Code)
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "application/jwk-set+json" {
+		t.Errorf("Content-Type = %q", ct)
+	}
+	if cc := rec.Header().Get("Cache-Control"); cc != "public, max-age=120" {
+		t.Errorf("Cache-Control = %q", cc)
+	}
+	if etag := rec.Header().Get("ETag"); len(etag) != 34 || etag[0] != '"' || etag[33] != '"' {
+		t.Errorf("ETag = %q, want 32 quoted hex digits", etag)
+	}
 	var jwks struct {
 		Keys []map[string]string `json:"keys"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &jwks); err != nil {
 		t.Fatal(err)
 	}
-	if len(jwks.Keys) != 1 || jwks.Keys[0]["kid"] != utils.RSAThumbprint(&key.PublicKey) || jwks.Keys[0]["kty"] != "RSA" {
+	if len(jwks.Keys) != 2 || jwks.Keys[0]["kid"] != "previous" || jwks.Keys[1]["kid"] != utils.RSAThumbprint(&key.PublicKey) {
 		t.Fatalf("jwks = %v", jwks)
 	}
-	n, errN := base64.RawURLEncoding.DecodeString(jwks.Keys[0]["n"])
-	e, errE := base64.RawURLEncoding.DecodeString(jwks.Keys[0]["e"])
+	for _, k := range jwks.Keys {
+		if k["kty"] != "RSA" || k["use"] != "sig" || k["alg"] != "RS256" {
+			t.Errorf("key %s = %v", k["kid"], k)
+		}
+	}
+	n, errN := base64.RawURLEncoding.DecodeString(jwks.Keys[1]["n"])
+	e, errE := base64.RawURLEncoding.DecodeString(jwks.Keys[1]["e"])
 	if errN != nil || errE != nil || new(big.Int).SetBytes(n).Cmp(key.PublicKey.N) != 0 ||
 		new(big.Int).SetBytes(e).Int64() != int64(key.PublicKey.E) {
 		t.Fatalf("published n/e do not match the signing key")
+	}
+}
+
+func TestJWKSConditionalRequest(t *testing.T) {
+	_, _, mux := newSAHandlerForTest(t)
+	first := httptest.NewRecorder()
+	mux.ServeHTTP(first, httptest.NewRequest(http.MethodGet, constants.JWKSPath, nil))
+	etag := first.Header().Get("ETag")
+
+	for _, tt := range []struct {
+		name    string
+		headers []string
+		want    int
+	}{
+		{"exact", []string{etag}, http.StatusNotModified},
+		{"weak", []string{"W/" + etag}, http.StatusNotModified},
+		{"any", []string{"*"}, http.StatusNotModified},
+		{"in a list", []string{`"other", ` + etag}, http.StatusNotModified},
+		{"in a second header", []string{`"other"`, etag}, http.StatusNotModified},
+		{"stale", []string{`"0123"`}, http.StatusOK},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, constants.JWKSPath, nil)
+			for _, h := range tt.headers {
+				req.Header.Add("If-None-Match", h)
+			}
+			rec := httptest.NewRecorder()
+			mux.ServeHTTP(rec, req)
+			if rec.Code != tt.want {
+				t.Fatalf("status = %d, want %d", rec.Code, tt.want)
+			}
+			if rec.Header().Get("ETag") != etag || rec.Header().Get("Cache-Control") == "" {
+				t.Errorf("ETag and Cache-Control must be on every answer: %v", rec.Header())
+			}
+			if tt.want == http.StatusNotModified && rec.Body.Len() != 0 {
+				t.Errorf("a 304 must carry no body")
+			}
+		})
+	}
+}
+
+func TestJWKSMethods(t *testing.T) {
+	_, _, mux := newSAHandlerForTest(t)
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	head, err := http.Head(srv.URL + constants.JWKSPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(head.Body)
+	head.Body.Close()
+	if head.StatusCode != http.StatusOK || len(body) != 0 || head.Header.Get("ETag") == "" {
+		t.Errorf("HEAD: %d, %d body bytes, ETag %q", head.StatusCode, len(body), head.Header.Get("ETag"))
+	}
+
+	post, err := http.Post(srv.URL+constants.JWKSPath, "application/json", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	post.Body.Close()
+	if post.StatusCode != http.StatusMethodNotAllowed || post.Header.Get("Allow") != "GET, HEAD" {
+		t.Errorf("POST: %d, Allow %q", post.StatusCode, post.Header.Get("Allow"))
 	}
 }
 

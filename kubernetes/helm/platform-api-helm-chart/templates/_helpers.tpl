@@ -242,25 +242,38 @@ instead of a crash-looping pod.
 {{- end -}}
 
 {{/*
-Returns "true" when service accounts are enabled with their own key pair, else "".
-Without one they sign with the shared auth.jwt pair. A half-set pair fails the
-render: it would pair one key's public half with the other's private half.
+Returns "true" when service accounts are enabled with their own signing keys,
+else "". Without keys they sign with the shared auth.jwt pair. The render fails on
+keys without an issuer, an issuer without keys, or anything but one active key.
 */}}
 {{- define "apip.platformApi.saOwnKey" -}}
 {{- $sa := default (dict) .Values.config.auth.serviceAccount -}}
 {{- if $sa.enabled -}}
-{{- $jwt := default (dict) $sa.jwt -}}
-{{- if or $jwt.issuer $jwt.publicKeyFile $jwt.privateKeyFile -}}
-{{- if not (and $jwt.issuer $jwt.publicKeyFile $jwt.privateKeyFile) -}}
-{{- fail "platform-api: config.auth.serviceAccount.jwt needs issuer, publicKeyFile and privateKeyFile together, or none of them." -}}
+{{- $signing := default (dict) $sa.signing -}}
+{{- $keys := default (list) $signing.keys -}}
+{{- if $keys -}}
+{{- if not $signing.issuer -}}
+{{- fail "platform-api: config.auth.serviceAccount.signing.issuer is required with signing.keys." -}}
+{{- end -}}
+{{- $active := 0 -}}
+{{- range $keys -}}
+{{- if not .path -}}
+{{- fail "platform-api: every config.auth.serviceAccount.signing.keys entry needs a path." -}}
+{{- end -}}
+{{- if .active }}{{ $active = add1 $active }}{{ end -}}
+{{- end -}}
+{{- if ne $active 1 -}}
+{{- fail (printf "platform-api: config.auth.serviceAccount.signing.keys needs exactly one key with active: true (found %d)." $active) -}}
 {{- end -}}
 true
+{{- else if $signing.issuer -}}
+{{- fail "platform-api: config.auth.serviceAccount.signing.issuer needs signing.keys; without keys, service accounts sign with auth.jwt and carry its issuer." -}}
 {{- end -}}
 {{- end -}}
 {{- end -}}
 
 {{/*
-Returns "true" when service accounts are enabled without their own key pair, so
+Returns "true" when service accounts are enabled without their own keys, so
 they sign with auth.jwt — which must then be rendered and mounted in every mode.
 */}}
 {{- define "apip.platformApi.saSharedKey" -}}

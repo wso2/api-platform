@@ -244,6 +244,10 @@ const ServiceAccountTokenVersionClaim = "sa_tv"
 // management call on it would arrive unauthenticated and fail.
 const ServiceAccountReservedHandle = "token"
 
+// JWKSPath publishes the service-account signing keys. At the server root, not
+// under APIBasePath, so the URL a key manager stores survives an API version bump.
+const JWKSPath = "/.well-known/jwks"
+
 // Custom Policy ManagedBy constants
 const (
 	PolicyManagedByOrganization   = "organization"

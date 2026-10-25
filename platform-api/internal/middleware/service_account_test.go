@@ -78,10 +78,11 @@ func humanClaims(iss string) jwt.MapClaims {
 }
 
 func TestIssuerKeyMap_Verify(t *testing.T) {
-	local, sa, retired, stranger := mustKey(t), mustKey(t), mustKey(t), mustKey(t)
+	local, sa, previous, stranger := mustKey(t), mustKey(t), mustKey(t), mustKey(t)
 	m, err := NewIssuerKeyMap("platform-api",
 		IssuerKeys{Issuer: "platform-api", Kind: IssuerKindLocal, Current: &local.PublicKey},
-		IssuerKeys{Issuer: "platform-api-sa", Kind: IssuerKindServiceAccount, Current: &sa.PublicKey, Retired: []*rsa.PublicKey{&retired.PublicKey}},
+		IssuerKeys{Issuer: "platform-api-sa", Kind: IssuerKindServiceAccount, Current: &sa.PublicKey,
+			Keys: map[string]*rsa.PublicKey{utils.RSAThumbprint(&sa.PublicKey): &sa.PublicKey, "previous": &previous.PublicKey}},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -101,7 +102,9 @@ func TestIssuerKeyMap_Verify(t *testing.T) {
 		{"login token with a foreign kid falls back to the current key", signToken(t, local, "someone-elses-kid", humanClaims("platform-api")), true},
 		{"SA token on the shared local issuer", signToken(t, local, "auto", saClaims("platform-api")), true},
 		{"SA token on its own issuer", signToken(t, sa, "auto", saClaims("platform-api-sa")), true},
-		{"SA token signed by a retired key", signToken(t, retired, "auto", saClaims("platform-api-sa")), true},
+		{"SA token signed by a verify-only key, named by its kid", signToken(t, previous, "previous", saClaims("platform-api-sa")), true},
+		{"a key listed under a kid override is not found by its thumbprint", signToken(t, previous, "auto", saClaims("platform-api-sa")), false},
+		{"a kid naming another listed key fails the signature", signToken(t, sa, "previous", saClaims("platform-api-sa")), false},
 		{"SA token with no kid", signToken(t, sa, "", saClaims("platform-api-sa")), false},
 		{"SA token with an unknown kid", signToken(t, sa, "nope", saClaims("platform-api-sa")), false},
 		{"SA token with the wrong aud", signToken(t, sa, "auto", wrongAud), false},

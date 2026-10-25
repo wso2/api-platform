@@ -24,13 +24,16 @@ import (
 	"encoding/pem"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/wso2/api-platform/platform-api/config"
+	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/service"
+	"github.com/wso2/api-platform/platform-api/internal/utils"
 )
 
 // An empty issuer would make the map accept only tokens with no iss, so it is refused.
@@ -46,7 +49,7 @@ func TestBuildIssuerKeyMap_RefusesEmptyIssuer(t *testing.T) {
 	idp := &config.Server{}
 	idp.Auth.Mode = config.AuthModeIDP
 	idp.Auth.IDP.Issuer = []string{"https://idp.example"}
-	shared := &service.ServiceAccountKeys{PrivateKey: key, Current: &key.PublicKey}
+	shared := keyring("", false, key, "")
 	if _, err := buildIssuerKeyMap(idp, shared); err == nil || !strings.Contains(err.Error(), "auth.jwt.issuer") {
 		t.Fatalf("idp with an empty shared SA issuer: got %v", err)
 	}
@@ -54,6 +57,15 @@ func TestBuildIssuerKeyMap_RefusesEmptyIssuer(t *testing.T) {
 	if _, err := buildIssuerKeyMap(idp, nil); err != nil {
 		t.Fatalf("idp without SA keys needs no auth.jwt.issuer: %v", err)
 	}
+}
+
+// keyring holds one key, signing under kid (its thumbprint when kid is "").
+func keyring(issuer string, own bool, key *rsa.PrivateKey, kid string) *service.ServiceAccountKeys {
+	if kid == "" {
+		kid = utils.RSAThumbprint(&key.PublicKey)
+	}
+	return &service.ServiceAccountKeys{Issuer: issuer, OwnIssuer: own, ActiveKid: kid, PrivateKey: key,
+		Keys: []service.ServiceAccountKey{{Kid: kid, Public: &key.PublicKey}}}
 }
 
 // signSATestToken mints a real SA token with keys, as /token would.
@@ -72,7 +84,7 @@ func signSATestToken(t *testing.T, keys *service.ServiceAccountKeys) string {
 // Each mode registers the right issuers with the right keys: a real SA token
 // verifies where it should, and an IdP issuer is never verified locally.
 func TestBuildIssuerKeyMap_Modes(t *testing.T) {
-	login, sa, retired := mustRSAKey(t), mustRSAKey(t), mustRSAKey(t)
+	login, sa, previous := mustRSAKey(t), mustRSAKey(t), mustRSAKey(t)
 	pubFile := filepath.Join(t.TempDir(), "login.pub")
 	der, err := x509.MarshalPKIXPublicKey(&login.PublicKey)
 	if err != nil {
@@ -81,13 +93,14 @@ func TestBuildIssuerKeyMap_Modes(t *testing.T) {
 	if err := os.WriteFile(pubFile, pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: der}), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	shared := &service.ServiceAccountKeys{Issuer: "platform-api", PrivateKey: login, Current: &login.PublicKey}
-	own := &service.ServiceAccountKeys{Issuer: "platform-api-sa", OwnIssuer: true, PrivateKey: sa, Current: &sa.PublicKey,
-		Retired: []*rsa.PublicKey{&retired.PublicKey}}
-	// A token signed before the key change, by the now-retired key.
-	oldOwn := &service.ServiceAccountKeys{Issuer: "platform-api-sa", PrivateKey: retired, Current: &retired.PublicKey}
+	shared := keyring("platform-api", false, login, "")
+	// Two keys: "previous" verifies only, sa signs.
+	own := keyring("platform-api-sa", true, sa, "")
+	own.Keys = append([]service.ServiceAccountKey{{Kid: "previous", Public: &previous.PublicKey}}, own.Keys...)
+	// A token the previous key signed while it was active.
+	oldOwn := keyring("platform-api-sa", true, previous, "previous")
 	// Signed for the shared issuer by a key the map does not hold.
-	forged := &service.ServiceAccountKeys{Issuer: "platform-api", PrivateKey: sa, Current: &sa.PublicKey}
+	forged := keyring("platform-api", false, sa, "")
 
 	t.Run("file mode, own SA issuer", func(t *testing.T) {
 		cfg := &config.Server{}
@@ -98,7 +111,7 @@ func TestBuildIssuerKeyMap_Modes(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		for name, keys := range map[string]*service.ServiceAccountKeys{"own key": own, "retired key": oldOwn, "auth.jwt key": shared} {
+		for name, keys := range map[string]*service.ServiceAccountKeys{"active key": own, "verify-only key": oldOwn, "auth.jwt key": shared} {
 			if _, err := m.VerifyServiceAccountToken(signSATestToken(t, keys)); err != nil {
 				t.Errorf("%s: %v", name, err)
 			}
@@ -149,6 +162,16 @@ func TestBuildIssuerKeyMap_Modes(t *testing.T) {
 			t.Fatalf("shared-key SA token: %v", err)
 		}
 	})
+}
+
+// With service accounts off, both public SA routes leave the skip list, including
+// the JWKS, which is outside the /service-accounts prefix.
+func TestIsServiceAccountSkipPath(t *testing.T) {
+	paths := []string{"/health", constants.APIBasePath + "/service-accounts/token", constants.JWKSPath, "/api/internal/v1/apis"}
+	got := slices.DeleteFunc(slices.Clone(paths), isServiceAccountSkipPath)
+	if !slices.Equal(got, []string{"/health", "/api/internal/v1/apis"}) {
+		t.Fatalf("skip paths left = %v", got)
+	}
 }
 
 func mustRSAKey(t *testing.T) *rsa.PrivateKey {

@@ -19,7 +19,6 @@ package server
 
 import (
 	"context"
-	"crypto/rsa"
 	"crypto/tls"
 	"errors"
 	"fmt"
@@ -677,21 +676,19 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 				"auth.service_account.enabled = false): %w", err)
 		}
 		var saSigner *service.SATokenSigner
-		var saPublicKeys []*rsa.PublicKey
+		var saPublicKeys []service.ServiceAccountKey
 		if saKeys != nil {
 			saSigner = service.NewSATokenSigner(saKeys, cfg)
-			saPublicKeys = saKeys.PublicKeys()
+			saPublicKeys = saKeys.Keys
 		}
 		serviceAccountService := service.NewServiceAccountService(serviceAccountRepo, orgRepo, auditRepo, identityService,
 			roleScopeMap, saSigner, saCfg.TokenTTL, cfg.Auth.Authorization.Mode, slogger)
 		serviceAccountService.SetRevocationCache(revocations)
-		handler.NewServiceAccountHandler(serviceAccountService, identityService, saPublicKeys, slogger).
-			RegisterRoutes(core)
+		handler.NewServiceAccountHandler(serviceAccountService, identityService, saPublicKeys,
+			saCfg.Signing.EffectiveJWKSCacheMaxAge(), slogger).RegisterRoutes(core)
 	} else {
 		keyMap.DisableServiceAccounts()
-		cfg.Auth.SkipPaths = slices.DeleteFunc(cfg.Auth.SkipPaths, func(p string) bool {
-			return strings.HasPrefix(p, constants.APIBasePath+"/service-accounts/")
-		})
+		cfg.Auth.SkipPaths = slices.DeleteFunc(cfg.Auth.SkipPaths, isServiceAccountSkipPath)
 	}
 
 	// The recorder defers registration errors (a duplicate or empty pattern, a
@@ -954,7 +951,7 @@ func buildIssuerKeyMap(cfg *config.Server, saKeys *service.ServiceAccountKeys) (
 			}
 			keys = append(keys, middleware.IssuerKeys{Issuer: saKeys.Issuer,
 				Kind:    middleware.IssuerKindServiceAccount,
-				Current: saKeys.Current})
+				Current: saKeys.Current()})
 		}
 	} else {
 		// The map keys on iss, so an empty issuer would accept only tokens with none.
@@ -965,7 +962,7 @@ func buildIssuerKeyMap(cfg *config.Server, saKeys *service.ServiceAccountKeys) (
 		if cfg.Auth.Mode == config.AuthModeInternalToken && cfg.Auth.InternalToken.SkipValidation {
 			// No auth.jwt key is required here; SA tokens on the shared key still verify.
 			if sharedKey {
-				local.Current = saKeys.Current
+				local.Current = saKeys.Current()
 			}
 		} else {
 			pub, err := cfg.Auth.JWT.LoadPublicKey()
@@ -981,11 +978,17 @@ func buildIssuerKeyMap(cfg *config.Server, saKeys *service.ServiceAccountKeys) (
 		keys = append(keys, middleware.IssuerKeys{
 			Issuer:  saKeys.Issuer,
 			Kind:    middleware.IssuerKindServiceAccount,
-			Current: saKeys.Current,
-			Retired: saKeys.Retired,
+			Current: saKeys.Current(),
+			Keys:    saKeys.ByKID(),
 		})
 	}
 	return middleware.NewIssuerKeyMap(cfg.Auth.ServiceAccount.Audience, keys...)
+}
+
+// isServiceAccountSkipPath reports whether p is a public service-account route,
+// dropped from the skip list when service accounts are off.
+func isServiceAccountSkipPath(p string) bool {
+	return p == constants.JWKSPath || strings.HasPrefix(p, constants.APIBasePath+"/service-accounts/")
 }
 
 // buildClaimMappings adapts the config-level claim name mapping (shared by all
@@ -1072,7 +1075,7 @@ func buildAuthenticator(cfg *config.Server, slogger *slog.Logger, roleScopeMap m
 	)
 	// Locally signed (service-account) tokens bypass the IdP verifier by iss.
 	// With none registered, the chain is exactly the IdP one.
-	if keyMap.IsLocal(cfg.Auth.JWT.Issuer) || keyMap.IsLocal(cfg.Auth.ServiceAccount.JWT.Issuer) {
+	if keyMap.IsLocal(cfg.Auth.JWT.Issuer) || keyMap.IsLocal(cfg.Auth.ServiceAccount.Signing.Issuer) {
 		return middleware.NewJWTAuthenticator(
 			middleware.IssuerRoutingMiddleware(keyMap, middleware.AuthConfig{
 				SkipPaths:     cfg.Auth.SkipPaths,
