@@ -1,0 +1,4 @@
+name: ${VALUE:name}
+handle: ${VALUE:handle}
+url: ${VALUE:url}
+sharedKey: ${VALUE:sharedKey}

@@ -1047,6 +1047,9 @@ blocks:
       - name: platform-api-builds
         features:
           - features/management-portal/builds/build_lifecycle.feature
+      - name: platform-api-api-portal-register
+        features:
+          - features/management-portal/api-portals/add_api_portal.feature
       - name: platform-api-secured-invocation
         features:
           - features/management-portal/subscriptions/secured_api_invocation.feature
@@ -1116,6 +1119,9 @@ blocks:
       - name: platform-api-builds
         features:
           - features/management-portal/builds/build_lifecycle.feature
+      - name: platform-api-api-portal-register
+        features:
+          - features/management-portal/api-portals/add_api_portal.feature
       - name: platform-api-secured-invocation
         features:
           - features/management-portal/subscriptions/secured_api_invocation.feature
@@ -1185,6 +1191,9 @@ blocks:
       - name: platform-api-builds
         features:
           - features/management-portal/builds/build_lifecycle.feature
+      - name: platform-api-api-portal-register
+        features:
+          - features/management-portal/api-portals/add_api_portal.feature
       - name: platform-api-secured-invocation
         features:
           - features/management-portal/subscriptions/secured_api_invocation.feature
