@@ -219,7 +219,7 @@ config:
     #   file           — both (also signs its login tokens)
     #   idp            — neither; validation goes to the IDP's JWKS instead, so
     #                    these paths are not rendered into config either
-    # Exception: with serviceAccount.enabled and no serviceAccount.jwt pair, both
+    # Exception: with serviceAccount.enabled and no serviceAccount.signing.keys, both
     # are mounted and rendered in every mode, because SA tokens are signed with them.
     # The paths below are container mount points, not host paths.
     jwt:
@@ -236,20 +236,22 @@ config:
       tokenTtl: 15m
       audience: platform-api
       pollInterval: 5s           # how often each replica reloads revocations
-      # Own key pair: set all three or none. Left empty, SA tokens are signed with
-      # the auth.jwt pair, which is then mounted in every mode. An own pair is
-      # recommended in production, and in internal_token mode, where auth.jwt's
-      # private key would otherwise have to be shared with the token minter.
-      # The PEMs come from the Secret (secrets.keys.saJwtPublicKey / saJwtPrivateKey)
-      # and must sit in the same directory as auth.jwt's, e.g.
-      #   /etc/platform-api/keys/sa_jwt_public.pem, /etc/platform-api/keys/sa_jwt_private.pem
-      jwt:
-        issuer: ""               # must differ from auth.jwt.issuer and auth.idp.issuer
-        publicKeyFile: ""
-        privateKeyFile: ""
-      # Only with jwt above: still verify, never sign. Each file is read from the
-      # Secret key named like the file, in the same directory.
-      retiredPublicKeyFiles: []
+      # Signing keys, set up like the gateway's [signing]; published at
+      # GET /.well-known/jwks. With no keys, SA tokens are signed with the auth.jwt
+      # pair, which is then mounted in every mode. Own keys are recommended in
+      # production, and in internal_token mode, where auth.jwt's private key would
+      # otherwise have to be shared with the token minter.
+      signing:
+        issuer: ""               # required with keys; must differ from auth.jwt.issuer and auth.idp.issuer
+        jwksCacheMaxAge: 5m      # Cache-Control max-age of the JWKS; also the wait between rotation steps
+        # Each key is a PEM RSA private key, read from the Secret key named like the
+        # file, in the same directory as auth.jwt's. Exactly one is active and signs;
+        # every key verifies and is published. kid defaults to the RFC 7638 thumbprint.
+        keys: []
+        # - path: /etc/platform-api/keys/sa_signing.pem
+        #   active: true
+        # - path: /etc/platform-api/keys/sa_signing_old.pem
+        #   kid: ""
     # file mode — local username/password login (rendered only when mode=file).
     file:
       organization:
@@ -357,11 +359,11 @@ configToml: ""
 #   jwt_public.pem             — auth.mode internal_token or file, and not when
 #                                auth.internalToken.skipValidation is true
 #   jwt_private.pem            — auth.mode file
-#   (both, in any mode, when serviceAccount.enabled with no serviceAccount.jwt)
-#   sa_jwt_public.pem / sa_jwt_private.pem
-#                              — config.auth.serviceAccount.jwt set (any mode)
-# The PEMs are mounted as files into config.auth.jwt.*File (and
-# config.auth.serviceAccount.jwt.*File). In auth.mode=idp the jwt_*.pem pair is
+#   (both, in any mode, when serviceAccount.enabled with no signing keys)
+#   one key per config.auth.serviceAccount.signing.keys entry, named like its file
+#                              — service-account signing keys set (any mode)
+# The PEMs are mounted as files into config.auth.jwt.*File (and each
+# config.auth.serviceAccount.signing.keys path). In auth.mode=idp the jwt_*.pem pair is
 # neither mounted nor referenced unless service accounts sign with it; the same
 # is true of internal_token mode with skipValidation: true.
 # `keys` maps each logical name to the key inside that Secret.
@@ -381,8 +383,8 @@ secrets:
     jwtPrivateKey: jwt_private.pem                   # mounted file → config.auth.jwt.privateKeyFile (file mode; any mode for SA without its own pair)
     adminUsername: APIP_CP_ADMIN_USERNAME            # auth.mode=file only
     adminPasswordHash: APIP_CP_ADMIN_PASSWORD_HASH   # auth.mode=file only
-    saJwtPublicKey: sa_jwt_public.pem                # mounted file → config.auth.serviceAccount.jwt.publicKeyFile
-    saJwtPrivateKey: sa_jwt_private.pem              # mounted file → config.auth.serviceAccount.jwt.privateKeyFile
+    # Service-account signing keys need no entry: each is read from the Secret key
+    # named like its file (config.auth.serviceAccount.signing.keys[].path).
 
 # ----------------------------------------------------------------------------
 # service — how the API is exposed inside the cluster

@@ -20,6 +20,7 @@ package middleware
 import (
 	"crypto/rsa"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 
@@ -42,12 +43,13 @@ const (
 )
 
 // IssuerKeys registers one issuer. Current may be nil for a verify-nothing
-// entry (skip_validation with no key); Retired keys verify but never sign.
+// entry (skip_validation with no key). Keys are the keys a kid can name; nil
+// means Current under its thumbprint.
 type IssuerKeys struct {
 	Issuer  string
 	Kind    IssuerKind
 	Current *rsa.PublicKey
-	Retired []*rsa.PublicKey
+	Keys    map[string]*rsa.PublicKey
 }
 
 type issuerEntry struct {
@@ -72,13 +74,11 @@ func NewIssuerKeyMap(saAudience string, keys ...IssuerKeys) (*IssuerKeyMap, erro
 		if _, dup := m.entries[k.Issuer]; dup {
 			return nil, fmt.Errorf("issuer key map: issuer %q is registered twice", k.Issuer)
 		}
-		e := &issuerEntry{kind: k.Kind, current: k.Current, byKID: map[string]*rsa.PublicKey{}}
-		for _, pub := range append([]*rsa.PublicKey{k.Current}, k.Retired...) {
-			if pub != nil {
-				e.byKID[utils.RSAThumbprint(pub)] = pub
-			}
+		byKID := maps.Clone(k.Keys)
+		if byKID == nil && k.Current != nil {
+			byKID = map[string]*rsa.PublicKey{utils.RSAThumbprint(k.Current): k.Current}
 		}
-		m.entries[k.Issuer] = e
+		m.entries[k.Issuer] = &issuerEntry{kind: k.Kind, current: k.Current, byKID: byKID}
 	}
 	return m, nil
 }

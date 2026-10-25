@@ -129,18 +129,27 @@ data:
     enabled = true
     token_ttl = {{ $sa.tokenTtl | quote }}
     audience = {{ $sa.audience | quote }}
-    {{- with $sa.retiredPublicKeyFiles }}
-    retired_public_key_files = {{ toJson . }}
-    {{- end }}
 
     [platform_api.auth.service_account.revocation]
     poll_interval = {{ $sa.pollInterval | quote }}
-    {{- if $saOwnKey }}
 
-    [platform_api.auth.service_account.jwt]
-    issuer = {{ $sa.jwt.issuer | quote }}
-    public_key_file = {{ $sa.jwt.publicKeyFile | quote }}
-    private_key_file = {{ $sa.jwt.privateKeyFile | quote }}
+    {{- $signing := default (dict) $sa.signing }}
+
+    [platform_api.auth.service_account.signing]
+    jwks_cache_max_age = {{ $signing.jwksCacheMaxAge | default "5m" | quote }}
+    {{- if $saOwnKey }}
+    issuer = {{ $signing.issuer | quote }}
+    {{- range $signing.keys }}
+
+    [[platform_api.auth.service_account.signing.keys]]
+    path = {{ .path | quote }}
+    {{- with .kid }}
+    kid = {{ . | quote }}
+    {{- end }}
+    {{- if .active }}
+    active = true
+    {{- end }}
+    {{- end }}
     {{- end }}
     {{- else }}
     enabled = false

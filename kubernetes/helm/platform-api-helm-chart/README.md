@@ -69,12 +69,12 @@ The chart never creates or embeds secret values. The render **fails** unless
 | Key | Required when |
 | --- | --- |
 | `APIP_CP_ENCRYPTION_KEY` | Always (64-char hex AES-256 key) |
-| `jwt_public.pem` | `auth.mode` `internal_token` or `file` (not with `internalToken.skipValidation=true`); any mode when [service accounts](#service-accounts) are on without their own pair |
-| `jwt_private.pem` | `auth.mode=file`; any mode when service accounts are on without their own pair |
+| `jwt_public.pem` | `auth.mode` `internal_token` or `file` (not with `internalToken.skipValidation=true`); any mode when [service accounts](#service-accounts) are on without their own signing keys |
+| `jwt_private.pem` | `auth.mode=file`; any mode when service accounts are on without their own signing keys |
 | `APIP_CP_ADMIN_USERNAME` / `APIP_CP_ADMIN_PASSWORD_HASH` | `auth.mode=file` (bcrypt hash; there is no `admin/admin` default) |
 | `APIP_CP_DATABASE_PASSWORD` | `config.database.driver` is `postgres` / `sqlserver` |
 | `APIP_CP_WEBHOOK_SECRET` | `config.webhook.enabled=true` |
-| `sa_jwt_public.pem` / `sa_jwt_private.pem` | `config.auth.serviceAccount.jwt` is set (see [Service accounts](#service-accounts)) |
+| One key per `config.auth.serviceAccount.signing.keys` entry, named like its file (e.g. `sa_signing.pem`) | service accounts have their own signing keys (see [Service accounts](#service-accounts)) |
 
 Each value is written to its own file in a private temporary directory. The directory is
 passed with `--from-file`, which turns each file name into a Secret key. Secret values never
@@ -102,12 +102,11 @@ running `kubectl create secret`.
 
 The key names can be changed through `secrets.keys.*`.
 
-For [service accounts](#service-accounts) with their own key pair, add one more pair to
-`$SECRET_DIR` before `kubectl create secret`:
+For [service accounts](#service-accounts) with their own signing key, add one private key
+to `$SECRET_DIR` before `kubectl create secret`:
 
 ```bash
-openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out "$SECRET_DIR/sa_jwt_private.pem"
-openssl rsa -in "$SECRET_DIR/sa_jwt_private.pem" -pubout -out "$SECRET_DIR/sa_jwt_public.pem"
+openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out "$SECRET_DIR/sa_signing.pem"
 ```
 
 ### Standalone, Step 2: Install the chart
@@ -299,28 +298,34 @@ default it reuses the `auth.jwt` pair (`jwt_public.pem` / `jwt_private.pem`). Wh
 service accounts are on, the chart mounts that pair in **every** mode, including `idp`, so
 the Secret must hold both PEMs. `generate-secrets.sh` always creates them.
 
-An own pair is better in production:
+Own signing keys are better in production:
 
-- The shared `auth.jwt` key can't be changed without breaking every live token at once; an
-  own pair can, using retired keys.
+- The shared `auth.jwt` key can't be changed without breaking every live token at once; own
+  keys can (see [Changing the key](#changing-the-key)).
 - In `internal_token` mode, `auth.jwt`'s private key belongs to whatever mints your tokens.
-  Without an own pair, the Platform API must hold that key too.
+  Without own keys, the Platform API must hold that key too.
+
+They are set up like the gateway's signing keys: a list of private keys, exactly one marked
+`active`. The active key signs. Every key in the list verifies and is published at
+`GET /.well-known/jwks`, at the server root.
 
 ```yaml
 config:
   auth:
     serviceAccount:
       enabled: true
-      jwt:
+      signing:
         issuer: platform-api-sa          # must differ from auth.jwt.issuer and auth.idp.issuer
-        publicKeyFile: /etc/platform-api/keys/sa_jwt_public.pem
-        privateKeyFile: /etc/platform-api/keys/sa_jwt_private.pem
+        keys:
+          - path: /etc/platform-api/keys/sa_signing.pem
+            active: true
 ```
 
-The two PEMs come from the Secret, under `secrets.keys.saJwtPublicKey` /
-`saJwtPrivateKey` (`sa_jwt_public.pem` / `sa_jwt_private.pem`). They are mounted into the
-same directory as the `auth.jwt` pair, so keep both pairs in one directory with distinct
-file names.
+Each key is a PEM RSA private key; its public half is derived from it. It is read from the
+Secret key named like the file (`sa_signing.pem` above), and mounted into the same
+directory as the `auth.jwt` pair, so give every PEM in that directory its own name. The
+`kid` defaults to the key's RFC 7638 thumbprint; set `kid` on an entry to choose one.
+`signing.jwksCacheMaxAge` (default `5m`) is the JWKS `Cache-Control` max-age.
 
 ### Databases
 
@@ -337,30 +342,25 @@ again to recover.
 
 ### Changing the key
 
-Only an own pair can be changed without an outage. The mount paths stay the same; only
-the Secret keys behind them change.
+Only own keys can be changed without an outage. Do it in three upgrades, so that every
+replica, and every verifier that caches the JWKS, knows a key before anything signs with it.
+Say the current key is `sa_signing.pem`:
 
-1. Add three keys to the Secret: the new pair (say `sa_jwt_public_v2.pem`,
-   `sa_jwt_private_v2.pem`), and a copy of the current public key (`sa_jwt_public_v1.pem`).
-2. Point the chart at them. Each retired file is read from the Secret key named like the
-   file:
+1. Add the new key to the Secret (say `sa_signing_v2.pem`) and to the list, **without**
+   `active`. `helm upgrade`. The new key is now published, but nothing signs with it yet.
 
    ```yaml
-   secrets:
-     keys:
-       saJwtPublicKey: sa_jwt_public_v2.pem
-       saJwtPrivateKey: sa_jwt_private_v2.pem
-   config:
-     auth:
-       serviceAccount:
-         retiredPublicKeyFiles:
-           - /etc/platform-api/keys/sa_jwt_public_v1.pem
+   keys:
+     - path: /etc/platform-api/keys/sa_signing.pem
+       active: true
+     - path: /etc/platform-api/keys/sa_signing_v2.pem
    ```
 
-3. `helm upgrade`. New tokens are signed with the new key. The retired key still verifies
-   tokens and stays in the JWKS, but never signs.
-4. After one `tokenTtl`, plus the refresh interval of anything that caches the JWKS, drop
-   the retired entry and its Secret key.
+2. Wait at least `jwksCacheMaxAge`, plus the JWKS refresh interval of any gateway that
+   verifies these tokens. Then move `active: true` to the new key and `helm upgrade`. New
+   tokens are signed with it, and tokens from the old key still verify.
+3. Wait one `tokenTtl` plus `jwksCacheMaxAge`. Then remove the old entry and its Secret
+   key, and `helm upgrade`.
 
 ### Troubleshooting
 
@@ -370,8 +370,12 @@ Look for these in `kubectl logs`:
   [Databases](#databases).
 - **`existing identities use the reserved "sa:" subject prefix`** — a user whose name
   starts with `sa:` already exists. Rename it before turning service accounts on.
-- **`auth.service_account.jwt.issuer must differ from ...`** — the own pair's `issuer`
+- **`auth.service_account.signing.issuer must differ from ...`** — `signing.issuer`
   equals `config.auth.jwt.issuer` (default `platform-api`) or one of
   `config.auth.idp.issuer`. Pick another, e.g. `platform-api-sa`.
-- **`retired_public_key_files requires [auth.service_account.jwt]`** — retired keys work
-  only with an own pair.
+- **`have the same kid`** — the same key is listed twice, or two entries set the same
+  `kid`.
+
+A pod that stays in `ContainerCreating`, with `references non-existent secret key` in
+`kubectl describe pod`, means the Secret has no key named like one of the signing keys'
+files.

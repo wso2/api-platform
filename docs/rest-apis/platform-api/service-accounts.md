@@ -763,19 +763,28 @@ scope: ap:rest_api:read ap:gateway:read
 
 <a id="opIdgetServiceAccountJWKS"></a>
 
-`GET /service-accounts/jwks.json`
+`GET /.well-known/jwks`
 
 > Code samples
 
 ```shell
 
-curl -X GET https://localhost:9243/api/v0.9/service-accounts/jwks.json \
+curl -X GET https://localhost:9243/.well-known/jwks \
   -u {username}:{password} \
-  -H 'Accept: application/json'
+  -H 'Accept: application/jwk-set+json' \
+  -H 'If-None-Match: string'
 
 ```
 
 Public keys that verify service-account tokens, as a JSON Web Key Set (RFC 7517).
+Every configured signing key is listed, in config order; only the active one signs.
+Served at the server root, like the gateway's JWKS.
+
+<h3 id="service-account-signing-keys-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|If-None-Match|header|string|false|The `ETag` of an earlier response. When it still matches, the answer is 304.|
 
 > Example responses
 >
@@ -812,7 +821,17 @@ Public keys that verify service-account tokens, as a JSON Web Key Set (RFC 7517)
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
 |200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|JSON Web Key Set|[JWKSResponse](schemas.md#schemajwksresponse)|
+|304|[Not Modified](https://tools.ietf.org/html/rfc7232#section-4.1)|Not modified. The `ETag` in `If-None-Match` is current.|None|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal Server Error.|[Error](schemas.md#schemaerror)|
+
+### Response Headers
+
+|Status|Header|Type|Format|Description|
+|---|---|---|---|---|
+|200|ETag|string||Changes whenever the published keys change.|
+|200|Cache-Control|string||How long a verifier may cache the key set, from `auth.service_account.signing.jwks_cache_max_age`.|
+|304|ETag|string||Changes whenever the published keys change.|
+|304|Cache-Control|string||How long a verifier may cache the key set, from `auth.service_account.signing.jwks_cache_max_age`.|
 
 ## Regenerate a service account's secret
 

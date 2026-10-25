@@ -308,26 +308,41 @@ enabled = false
 token_ttl = "15m"
 # Written to every service-account token's aud and required back on it.
 audience = "platform-api"
-# Retired public keys: still verify and still appear in the JWKS, but never
-# sign. Only valid with [platform_api.auth.service_account.jwt]. To change the
-# key: move the current public key here, point jwt.*_key_file at the new pair,
-# restart, and drop the old entry after one token_ttl plus the gateway's JWKS
-# refresh interval.
-# retired_public_key_files = ["/etc/platform-api/keys/sa_jwt_public_old.pem"]
 
 [platform_api.auth.service_account.revocation]
 # How often each replica reloads revocations (plus up to half again as jitter).
 poll_interval = "5s"
 
-# OPTIONAL — a separate key pair for service-account tokens. Set all three
-# fields or none. Left unset, service-account tokens are signed with auth.jwt,
-# which needs auth.jwt.private_key_file; without one, token issue is disabled.
-# Recommended for production: only a separate key can be changed without
-# breaking every live token at once.
-# [platform_api.auth.service_account.jwt]
-# issuer           = "platform-api-sa"
-# public_key_file  = "/etc/platform-api/keys/sa_jwt_public.pem"
-# private_key_file = "/etc/platform-api/keys/sa_jwt_private.pem"
+# Signing keys, set up like the gateway's [signing]. The public keys are published
+# at GET /.well-known/jwks (the server root, not /api/v0.9), so a gateway or any
+# other verifier checks a token by its kid.
+#
+# With no keys, service-account tokens are signed with auth.jwt, which needs
+# auth.jwt.private_key_file; without one, token issue is disabled. Own keys are
+# recommended for production: only they can be changed without breaking every
+# live token at once.
+#
+# Each key is a PEM RSA private key file (PKCS #1 or PKCS #8); the public key is
+# derived from it. Exactly one key is marked active and signs. Every listed key
+# verifies and is published. The kid defaults to the RFC 7638 thumbprint.
+#
+# Rotation, each step a config change and a rolling restart: (1) add the new key
+# without `active`; (2) after at least jwks_cache_max_age, move `active = true`
+# to it; (3) after token_ttl plus jwks_cache_max_age, remove the old key.
+[platform_api.auth.service_account.signing]
+# Cache-Control max-age of the JWKS, 0 to 24h. Also the shortest wait between
+# rotation steps.
+jwks_cache_max_age = "5m"
+# Required with keys. Must differ from auth.jwt.issuer and every auth.idp.issuer.
+# issuer = "platform-api-sa"
+
+# [[platform_api.auth.service_account.signing.keys]]
+# path = "/etc/platform-api/keys/sa_signing.pem"
+# active = true
+#
+# [[platform_api.auth.service_account.signing.keys]]
+# path = "/etc/platform-api/keys/sa_signing_old.pem"
+# # kid = "..."   optional override of the thumbprint
 
 # ---------------------------------------------------------------------------
 # Server listeners (HTTP + HTTPS)

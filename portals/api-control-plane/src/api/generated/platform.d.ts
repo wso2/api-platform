@@ -3515,7 +3515,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/service-accounts/jwks.json": {
+    "/.well-known/jwks": {
         parameters: {
             query?: never;
             header?: never;
@@ -3525,6 +3525,8 @@ export interface paths {
         /**
          * Service-account signing keys
          * @description Public keys that verify service-account tokens, as a JSON Web Key Set (RFC 7517).
+         *     Every configured signing key is listed, in config order; only the active one signs.
+         *     Served at the server root, like the gateway's JWKS.
          */
         get: operations["getServiceAccountJWKS"];
         put?: never;
@@ -8531,6 +8533,10 @@ export interface components {
          *     upstream has been unreachable.
          */
         Age: number;
+        /** @description Changes whenever the published keys change. */
+        JWKSETag: string;
+        /** @description How long a verifier may cache the key set, from `auth.service_account.signing.jwks_cache_max_age`. */
+        JWKSCacheControl: string;
     };
     pathItems: never;
 }
@@ -15498,7 +15504,10 @@ export interface operations {
     getServiceAccountJWKS: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description The `ETag` of an earlier response. When it still matches, the answer is 304. */
+                "If-None-Match"?: string;
+            };
             path?: never;
             cookie?: never;
         };
@@ -15507,11 +15516,22 @@ export interface operations {
             /** @description JSON Web Key Set */
             200: {
                 headers: {
+                    ETag: components["headers"]["JWKSETag"];
+                    "Cache-Control": components["headers"]["JWKSCacheControl"];
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["JWKSResponse"];
+                    "application/jwk-set+json": components["schemas"]["JWKSResponse"];
                 };
+            };
+            /** @description Not modified. The `ETag` in `If-None-Match` is current. */
+            304: {
+                headers: {
+                    ETag: components["headers"]["JWKSETag"];
+                    "Cache-Control": components["headers"]["JWKSCacheControl"];
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             500: components["responses"]["InternalServerError"];
         };

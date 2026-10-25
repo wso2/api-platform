@@ -9061,21 +9061,49 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /service-accounts/jwks.json:
+  /.well-known/jwks:
     get:
+      # At the server root, not under /api/v0.9, so the URL survives a version bump.
+      servers:
+        - url: https://localhost:9243
+          description: Development server (HTTPS)
+        - url: https://api.platform.com
+          description: Production server
       summary: Service-account signing keys
-      description: Public keys that verify service-account tokens, as a JSON Web Key Set (RFC 7517).
+      description: |
+        Public keys that verify service-account tokens, as a JSON Web Key Set (RFC 7517).
+        Every configured signing key is listed, in config order; only the active one signs.
+        Served at the server root, like the gateway's JWKS.
       operationId: getServiceAccountJWKS
       security: []
       tags:
         - Service Accounts
+      parameters:
+        - name: If-None-Match
+          in: header
+          required: false
+          description: The `ETag` of an earlier response. When it still matches, the answer is 304.
+          schema:
+            type: string
       responses:
         '200':
           description: JSON Web Key Set
+          headers:
+            ETag:
+              $ref: '#/components/headers/JWKSETag'
+            Cache-Control:
+              $ref: '#/components/headers/JWKSCacheControl'
           content:
-            application/json:
+            application/jwk-set+json:
               schema:
                 $ref: '#/components/schemas/JWKSResponse'
+        '304':
+          description: Not modified. The `ETag` in `If-None-Match` is current.
+          headers:
+            ETag:
+              $ref: '#/components/headers/JWKSETag'
+            Cache-Control:
+              $ref: '#/components/headers/JWKSCacheControl'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -9163,6 +9191,16 @@ components:
         type: integer
         minimum: 0
         example: 12
+    JWKSETag:
+      description: Changes whenever the published keys change.
+      schema:
+        type: string
+        example: '"3f2a9c1e0b7d4a6f8e5c2b1a0d9f8e7c"'
+    JWKSCacheControl:
+      description: How long a verifier may cache the key set, from `auth.service_account.signing.jwks_cache_max_age`.
+      schema:
+        type: string
+        example: public, max-age=300
   securitySchemes:
     OAuth2Security:
       type: oauth2

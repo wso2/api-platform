@@ -63,7 +63,7 @@ func defaultConfig() *Server {
 				// Skip matching covers every child path, so nothing authenticated may
 				// live under these.
 				constants.APIBasePath + "/service-accounts/token",
-				constants.APIBasePath + "/service-accounts/jwks.json",
+				constants.JWKSPath,
 				"/api/internal/v1/ws/gateways/connect",
 				"/api/internal/v1/apis",
 				"/api/internal/v1/llm-providers",

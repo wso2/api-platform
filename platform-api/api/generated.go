@@ -6020,6 +6020,12 @@ type Unauthorized = Error
 // UnsupportedMediaType The single error shape returned by every failed request across the API.
 type UnsupportedMediaType = Error
 
+// GetServiceAccountJWKSParams defines parameters for GetServiceAccountJWKS.
+type GetServiceAccountJWKSParams struct {
+	// IfNoneMatch The `ETag` of an earlier response. When it still matches, the answer is 304.
+	IfNoneMatch *string `json:"If-None-Match,omitempty" yaml:"If-None-Match,omitempty"`
+}
+
 // ListAgentProxiesParams defines parameters for ListAgentProxies.
 type ListAgentProxiesParams struct {
 	// Protocol Filter Agent proxies by communication protocol. Omit to list every protocol variant.

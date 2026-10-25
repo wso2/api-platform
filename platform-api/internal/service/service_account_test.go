@@ -41,6 +41,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
+	"github.com/wso2/api-platform/platform-api/internal/utils"
 )
 
 // fakeSARepo is an in-memory ServiceAccountRepository.
@@ -174,7 +175,7 @@ func newSAFixtureMode(t *testing.T, mode string) *saFixture {
 	cfg := &config.Server{}
 	cfg.Auth.ServiceAccount = config.ServiceAccount{TokenTTL: 15 * time.Minute, Audience: "platform-api"}
 	cfg.Auth.Authorization.Mode = mode
-	signer := NewSATokenSigner(&ServiceAccountKeys{Issuer: "platform-api", PrivateKey: key, Current: &key.PublicKey}, cfg)
+	signer := NewSATokenSigner(&ServiceAccountKeys{Issuer: "platform-api", ActiveKid: "test-kid", PrivateKey: key}, cfg)
 
 	f := &saFixture{repo: newFakeSARepo(), audit: &fakeAudit{}, logs: &bytes.Buffer{}, key: key}
 	logger := slog.New(slog.NewTextHandler(f.logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
@@ -289,8 +290,8 @@ func TestServiceAccountExchange(t *testing.T) {
 	if jti, _ := claims["jti"].(string); len(jti) != 36 {
 		t.Errorf("jti = %q", jti)
 	}
-	if tok.Header["kid"] == nil {
-		t.Error("kid header missing")
+	if tok.Header["kid"] != "test-kid" {
+		t.Errorf("kid header = %v, want the active key's kid", tok.Header["kid"])
 	}
 	if !strings.Contains(f.logs.String(), "service account token issued") || !strings.Contains(f.logs.String(), "10.0.0.1") {
 		t.Error("a successful exchange must be logged with the client IP")
@@ -655,19 +656,20 @@ func writeKeyPair(t *testing.T, dir, name string) (privFile, pubFile string, key
 func TestLoadServiceAccountKeys(t *testing.T) {
 	dir := t.TempDir()
 	sharedPriv, _, shared := writeKeyPair(t, dir, "shared")
-	ownPriv, ownPub, own := writeKeyPair(t, dir, "own")
-	_, retiredPub, retired := writeKeyPair(t, dir, "retired")
+	activePriv, _, active := writeKeyPair(t, dir, "active")
+	oldPriv, _, old := writeKeyPair(t, dir, "old")
 	missing := filepath.Join(dir, "missing.key")
 
 	t.Run("shared auth.jwt key", func(t *testing.T) {
 		cfg := &config.Server{}
 		cfg.Auth.JWT = config.JWT{Issuer: "platform-api", PrivateKeyFile: sharedPriv}
 		keys, err := LoadServiceAccountKeys(cfg)
-		if err != nil || keys.OwnIssuer || keys.Issuer != "platform-api" || !keys.Current.Equal(&shared.PublicKey) {
+		if err != nil || keys.OwnIssuer || keys.Issuer != "platform-api" || !keys.Current().Equal(&shared.PublicKey) {
 			t.Fatalf("keys = %+v, %v", keys, err)
 		}
-		if pubs := keys.PublicKeys(); len(pubs) != 1 {
-			t.Fatalf("public keys = %d, want 1", len(pubs))
+		thumb := utils.RSAThumbprint(&shared.PublicKey)
+		if keys.ActiveKid != thumb || len(keys.Keys) != 1 || keys.Keys[0].Kid != thumb {
+			t.Fatalf("the shared key must be the one key, under its thumbprint: %+v", keys.Keys)
 		}
 	})
 	t.Run("no private key", func(t *testing.T) {
@@ -682,33 +684,35 @@ func TestLoadServiceAccountKeys(t *testing.T) {
 			t.Fatalf("got %v", err)
 		}
 	})
-	t.Run("own key with a retired key", func(t *testing.T) {
+	t.Run("own keys: the active one signs, all verify, in config order", func(t *testing.T) {
 		cfg := &config.Server{}
 		cfg.Auth.JWT = config.JWT{Issuer: "platform-api", PrivateKeyFile: sharedPriv}
-		cfg.Auth.ServiceAccount.JWT = config.JWT{Issuer: "platform-api-sa", PrivateKeyFile: ownPriv, PublicKeyFile: ownPub}
-		cfg.Auth.ServiceAccount.RetiredPublicKeyFiles = []string{retiredPub}
+		cfg.Auth.ServiceAccount.Signing = config.ServiceAccountSigning{Issuer: "platform-api-sa", Keys: []config.ServiceAccountSigningKey{
+			{Path: oldPriv, Kid: "old"},
+			{Path: activePriv, Active: true},
+		}}
 		keys, err := LoadServiceAccountKeys(cfg)
 		if err != nil || !keys.OwnIssuer || keys.Issuer != "platform-api-sa" {
 			t.Fatalf("keys = %+v, %v", keys, err)
 		}
-		pubs := keys.PublicKeys()
-		if len(pubs) != 2 || !pubs[0].Equal(&own.PublicKey) || !pubs[1].Equal(&retired.PublicKey) {
-			t.Fatal("PublicKeys must list the current key first, then the retired ones")
+		activeKid := utils.RSAThumbprint(&active.PublicKey)
+		if keys.ActiveKid != activeKid || !keys.PrivateKey.Equal(active) {
+			t.Fatal("the active key must sign")
+		}
+		if len(keys.Keys) != 2 || keys.Keys[0].Kid != "old" || !keys.Keys[0].Public.Equal(&old.PublicKey) ||
+			keys.Keys[1].Kid != activeKid || !keys.Keys[1].Public.Equal(&active.PublicKey) {
+			t.Fatalf("keys must follow config order: %+v", keys.Keys)
+		}
+		if byKID := keys.ByKID(); len(byKID) != 2 || !byKID["old"].Equal(&old.PublicKey) {
+			t.Fatalf("ByKID = %v", byKID)
 		}
 	})
 	t.Run("unreadable own key is not the soft error", func(t *testing.T) {
 		cfg := &config.Server{}
-		cfg.Auth.ServiceAccount.JWT = config.JWT{Issuer: "platform-api-sa", PrivateKeyFile: missing}
+		cfg.Auth.ServiceAccount.Signing = config.ServiceAccountSigning{Issuer: "platform-api-sa",
+			Keys: []config.ServiceAccountSigningKey{{Path: missing, Active: true}}}
 		if _, err := LoadServiceAccountKeys(cfg); err == nil || errors.Is(err, ErrNoServiceAccountSigningKey) {
 			t.Fatalf("got %v", err)
-		}
-	})
-	t.Run("unreadable retired key", func(t *testing.T) {
-		cfg := &config.Server{}
-		cfg.Auth.ServiceAccount.JWT = config.JWT{Issuer: "platform-api-sa", PrivateKeyFile: ownPriv}
-		cfg.Auth.ServiceAccount.RetiredPublicKeyFiles = []string{missing}
-		if _, err := LoadServiceAccountKeys(cfg); err == nil {
-			t.Fatal("a missing retired key must fail startup")
 		}
 	})
 }

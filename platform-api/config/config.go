@@ -397,11 +397,8 @@ type ServiceAccount struct {
 	// Audience is written to every SA token's aud and required back on it.
 	Audience   string                   `koanf:"audience"`
 	Revocation ServiceAccountRevocation `koanf:"revocation"`
-	// JWT is optional. Left zero, SA tokens are signed with auth.jwt.
-	JWT JWT `koanf:"jwt"`
-	// RetiredPublicKeyFiles still verify and are published in the JWKS, but
-	// never sign. Only valid alongside JWT.
-	RetiredPublicKeyFiles []string `koanf:"retired_public_key_files"`
+	// Signing is optional. With no keys, SA tokens are signed with auth.jwt.
+	Signing ServiceAccountSigning `koanf:"signing"`
 }
 
 // ServiceAccountRevocation tunes the revocation-watermark cache.
@@ -409,22 +406,9 @@ type ServiceAccountRevocation struct {
 	PollInterval time.Duration `koanf:"poll_interval"`
 }
 
-// HasOwnKey reports whether a separate SA signing key pair is configured.
+// HasOwnKey reports whether SA tokens have their own signing keys.
 func (s *ServiceAccount) HasOwnKey() bool {
-	return s.JWT.Issuer != "" || s.JWT.PublicKeyFile != "" || s.JWT.PrivateKeyFile != ""
-}
-
-// LoadRetiredPublicKeys reads every retired SA public key.
-func (s *ServiceAccount) LoadRetiredPublicKeys() ([]*rsa.PublicKey, error) {
-	keys := make([]*rsa.PublicKey, 0, len(s.RetiredPublicKeyFiles))
-	for _, f := range s.RetiredPublicKeyFiles {
-		k, err := (&JWT{PublicKeyFile: f}).LoadPublicKey()
-		if err != nil {
-			return nil, err
-		}
-		keys = append(keys, k)
-	}
-	return keys, nil
+	return len(s.Signing.Keys) > 0
 }
 
 // Authorization modes selectable via auth.authorization.mode.
@@ -1144,45 +1128,7 @@ func validateServiceAccountConfig(auth *Auth) error {
 		return fmt.Errorf("auth.service_account.revocation.poll_interval must be a positive duration of at least 2ns")
 	}
 
-	if !sa.HasOwnKey() {
-		if len(sa.RetiredPublicKeyFiles) > 0 {
-			return fmt.Errorf("auth.service_account.retired_public_key_files requires [auth.service_account.jwt]; " +
-				"the shared auth.jwt key cannot be changed without an outage")
-		}
-		return nil
-	}
-
-	if sa.JWT.Issuer == "" || sa.JWT.PublicKeyFile == "" || sa.JWT.PrivateKeyFile == "" {
-		return fmt.Errorf("[auth.service_account.jwt] needs issuer, public_key_file and private_key_file together")
-	}
-	if err := validateJWTConfig(&sa.JWT, true); err != nil {
-		return fmt.Errorf("[auth.service_account.jwt]: %w", err)
-	}
-	if sa.JWT.Issuer == auth.JWT.Issuer {
-		return fmt.Errorf("auth.service_account.jwt.issuer must differ from auth.jwt.issuer (%q)", auth.JWT.Issuer)
-	}
-	if auth.Mode == AuthModeIDP {
-		for _, iss := range auth.IDP.Issuer {
-			if iss == sa.JWT.Issuer {
-				return fmt.Errorf("auth.service_account.jwt.issuer must differ from every auth.idp.issuer (%q)", iss)
-			}
-		}
-	}
-
-	current, err := sa.JWT.LoadPublicKey()
-	if err != nil {
-		return err
-	}
-	retired, err := sa.LoadRetiredPublicKeys()
-	if err != nil {
-		return fmt.Errorf("invalid auth.service_account.retired_public_key_files: %w", err)
-	}
-	for i, k := range retired {
-		if k.Equal(current) {
-			return fmt.Errorf("auth.service_account.retired_public_key_files[%d] is the current signing key", i)
-		}
-	}
-	return nil
+	return validateServiceAccountSigning(auth)
 }
 
 // ValidateAuthSkipPath rejects a skip-path entry that would widen the auth

@@ -18,12 +18,16 @@
 package handler
 
 import (
-	"crypto/rsa"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
+	"strconv"
+	"strings"
+	"time"
 
 	"github.com/wso2/api-platform/httpkit/httputil"
 
@@ -41,26 +45,35 @@ import (
 type ServiceAccountHandler struct {
 	svc      *service.ServiceAccountService
 	identity *service.IdentityService
-	jwks     api.JWKSResponse
-	slogger  *slog.Logger
+	// The JWKS is built once: the keys are read once, at startup.
+	jwks             []byte
+	jwksETag         string
+	jwksCacheControl string
+	slogger          *slog.Logger
 }
 
-// NewServiceAccountHandler creates the handler. publicKeys are the SA keys the
-// JWKS publishes: the current one first, then any retired ones.
+// NewServiceAccountHandler creates the handler. keys are the SA keys the JWKS
+// publishes, in config order; maxAge is its Cache-Control max-age.
 func NewServiceAccountHandler(svc *service.ServiceAccountService, identity *service.IdentityService,
-	publicKeys []*rsa.PublicKey, slogger *slog.Logger) *ServiceAccountHandler {
-	jwks := api.JWKSResponse{Keys: make([]api.JWK, 0, len(publicKeys))}
-	for _, pub := range publicKeys {
-		k := utils.NewRSAPublicJWK(pub)
-		jwks.Keys = append(jwks.Keys, api.JWK{Kty: k.Kty, Kid: k.Kid, Use: &k.Use, Alg: &k.Alg, N: k.N, E: k.E})
+	keys []service.ServiceAccountKey, maxAge time.Duration, slogger *slog.Logger) *ServiceAccountHandler {
+	set := api.JWKSResponse{Keys: make([]api.JWK, 0, len(keys))}
+	for _, key := range keys {
+		k := utils.NewRSAPublicJWK(key.Public)
+		set.Keys = append(set.Keys, api.JWK{Kty: k.Kty, Kid: key.Kid, Use: &k.Use, Alg: &k.Alg, N: k.N, E: k.E})
 	}
-	return &ServiceAccountHandler{svc: svc, identity: identity, jwks: jwks, slogger: slogger}
+	body, _ := json.Marshal(set) // cannot fail: strings only
+	sum := sha256.Sum256(body)
+	return &ServiceAccountHandler{svc: svc, identity: identity, slogger: slogger,
+		jwks:             body,
+		jwksETag:         `"` + hex.EncodeToString(sum[:16]) + `"`,
+		jwksCacheControl: "public, max-age=" + strconv.Itoa(int(maxAge.Seconds())),
+	}
 }
 
 func (h *ServiceAccountHandler) RegisterRoutes(mux router.Router) {
 	base := constants.APIBasePath + "/service-accounts"
-	// A literal segment beats a wildcard in ServeMux, so /token and /jwks.json
-	// win over /{serviceAccountId} regardless of registration order.
+	// A literal segment beats a wildcard in ServeMux, so /token wins over
+	// /{serviceAccountId} regardless of registration order.
 	mux.HandleFunc("GET "+base, middleware.MapErrors(h.slogger, h.humansOnly(h.List)))
 	mux.HandleFunc("POST "+base, middleware.MapErrors(h.slogger, h.humansOnly(h.Create)))
 	mux.HandleFunc("GET "+base+"/{serviceAccountId}", middleware.MapErrors(h.slogger, h.humansOnly(h.Get)))
@@ -68,7 +81,7 @@ func (h *ServiceAccountHandler) RegisterRoutes(mux router.Router) {
 	mux.HandleFunc("DELETE "+base+"/{serviceAccountId}", middleware.MapErrors(h.slogger, h.humansOnly(h.Delete)))
 	mux.HandleFunc("POST "+base+"/{serviceAccountId}/regenerate-secret", middleware.MapErrors(h.slogger, h.humansOnly(h.RegenerateSecret)))
 	mux.HandleFunc("POST "+base+"/token", middleware.MapErrors(h.slogger, h.Token))
-	mux.HandleFunc("GET "+base+"/jwks.json", middleware.MapErrors(h.slogger, h.JWKS))
+	mux.HandleFunc("GET "+constants.JWKSPath, middleware.MapErrors(h.slogger, h.JWKS))
 	// Not specific to service accounts, so it lives at /roles. It is registered
 	// here, so it is off when service accounts are.
 	mux.HandleFunc("GET "+constants.APIBasePath+"/roles", middleware.MapErrors(h.slogger, h.humansOnly(h.Roles)))
@@ -222,9 +235,33 @@ func (h *ServiceAccountHandler) Token(w http.ResponseWriter, r *http.Request) er
 }
 
 // JWKS publishes the SA verification keys. Public: a public key is public.
+// Answers like the gateway's JWKS: ETag, a 304 on If-None-Match, Cache-Control.
+// HEAD reaches here too, and net/http drops the body.
 func (h *ServiceAccountHandler) JWKS(w http.ResponseWriter, r *http.Request) error {
-	httputil.WriteJSON(w, http.StatusOK, h.jwks)
+	w.Header().Set("ETag", h.jwksETag)
+	w.Header().Set("Cache-Control", h.jwksCacheControl)
+	if ifNoneMatch(r.Header.Values("If-None-Match"), h.jwksETag) {
+		w.WriteHeader(http.StatusNotModified)
+		return nil
+	}
+	w.Header().Set("Content-Type", "application/jwk-set+json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(h.jwks)
 	return nil
+}
+
+// ifNoneMatch reports whether If-None-Match selects etag. The comparison is weak
+// (RFC 9110 section 13.1.2): a "W/" prefix is ignored and "*" matches.
+func ifNoneMatch(values []string, etag string) bool {
+	for _, v := range values {
+		for _, c := range strings.Split(v, ",") {
+			c = strings.TrimSpace(c)
+			if c == "*" || (c != "" && strings.TrimPrefix(c, "W/") == etag) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // clientCredentials reads the client ID and secret from HTTP Basic or from the

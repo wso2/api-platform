@@ -67,7 +67,7 @@ func registerAllRoutes(mux *http.ServeMux) {
 	handler.NewGraphQLAPIDeploymentHandler(nil, nil, logger).RegisterRoutes(mux)
 	handler.NewGraphQLAPIKeyHandler(nil, nil, "scope", logger).RegisterRoutes(mux)
 	handler.NewSecretHandler(nil, nil, logger).RegisterRoutes(mux)
-	handler.NewServiceAccountHandler(nil, nil, nil, logger).RegisterRoutes(mux)
+	handler.NewServiceAccountHandler(nil, nil, nil, 0, logger).RegisterRoutes(mux)
 
 	// Plugin routes are registered on the same mux and their specs merged into
 	// the same registry, so they are held to the same check.
@@ -191,7 +191,7 @@ func TestServiceAccountRoutesResolveToTheirScopes(t *testing.T) {
 		{http.MethodDelete, base + "/ci-bot", base + "/{serviceAccountId}", false},
 		{http.MethodPost, base + "/ci-bot/regenerate-secret", base + "/{serviceAccountId}/regenerate-secret", false},
 		{http.MethodPost, base + "/token", base + "/token", true},
-		{http.MethodGet, base + "/jwks.json", base + "/jwks.json", true},
+		{http.MethodGet, constants.JWKSPath, constants.JWKSPath, true},
 		{http.MethodGet, constants.APIBasePath + "/roles", constants.APIBasePath + "/roles", false},
 	} {
 		req, err := http.NewRequest(probe.method, probe.path, nil)
