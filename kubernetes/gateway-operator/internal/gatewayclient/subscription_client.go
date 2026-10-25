@@ -29,6 +29,7 @@ import (
 // SubscriptionCreatePayload mirrors the management-API
 // SubscriptionCreateRequest body.
 type SubscriptionCreatePayload struct {
+	ExternalRefId         *string `json:"externalRefId,omitempty"`
 	ApiId                 string  `json:"apiId"`
 	SubscriptionToken     string  `json:"subscriptionToken"`
 	ApplicationId         *string `json:"applicationId,omitempty"`
@@ -38,15 +39,22 @@ type SubscriptionCreatePayload struct {
 	Status                *string `json:"status,omitempty"`
 }
 
-// SubscriptionUpdatePayload mirrors SubscriptionUpdateRequest.
+// SubscriptionUpdatePayload mirrors SubscriptionUpdateRequest, a partial update
+// where omitted fields are left unchanged on the gateway.
 type SubscriptionUpdatePayload struct {
 	Status *string `json:"status,omitempty"`
+	// SubscriptionPlanId is always sent so the CR stays the source of truth:
+	// nil marshals as an explicit null, which removes the plan on the gateway.
+	SubscriptionPlanId *string `json:"subscriptionPlanId"`
+	// SubscriptionToken rotates the token in place when set.
+	SubscriptionToken *string `json:"subscriptionToken,omitempty"`
 }
 
 // SubscriptionResponse captures the gateway-issued fields returned from
 // POST/PUT /subscriptions.
 type SubscriptionResponse struct {
 	Id            string  `json:"id"`
+	ExternalRefId *string `json:"externalRefId,omitempty"`
 	ApiId         string  `json:"apiId"`
 	ApplicationId *string `json:"applicationId,omitempty"`
 	GatewayId     string  `json:"gatewayId"`
@@ -103,12 +111,11 @@ func DeleteSubscription(ctx context.Context, gatewayEndpoint, subscriptionID str
 	return DeleteResource(ctx, gatewayEndpoint, subscriptionsPath, subscriptionID, auth)
 }
 
-// FindSubscriptionIDByAPIAndApplication lists subscriptions for the given apiID
-// (and optional applicationID) and returns a single matching subscription ID
-// when it can be unambiguously identified.
-func FindSubscriptionIDByAPIAndApplication(ctx context.Context, gatewayEndpoint, apiID string, applicationID *string, auth AuthHeaderFunc) (string, error) {
+// ListSubscriptions GETs /subscriptions?apiId=... (and applicationId when set). The gateway resolves
+// apiId from either the API handle or its internal id and returns only that API's subscriptions.
+func ListSubscriptions(ctx context.Context, gatewayEndpoint, apiID string, applicationID *string, auth AuthHeaderFunc) ([]SubscriptionResponse, error) {
 	if apiID == "" {
-		return "", fmt.Errorf("api id is required")
+		return nil, fmt.Errorf("api id is required")
 	}
 
 	q := url.Values{}
@@ -120,18 +127,18 @@ func FindSubscriptionIDByAPIAndApplication(ctx context.Context, gatewayEndpoint,
 	endpoint := gatewayEndpoint + subscriptionsPath + "?" + q.Encode()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
-		return "", &RetryableError{Err: fmt.Errorf("create HTTP request: %w", err)}
+		return nil, &RetryableError{Err: fmt.Errorf("create HTTP request: %w", err)}
 	}
 	if auth != nil {
 		if err := auth(ctx, req); err != nil {
-			return "", err
+			return nil, err
 		}
 	}
 
 	client := &http.Client{Timeout: defaultProbeTimeout}
 	resp, err := client.Do(req)
 	if err != nil {
-		return "", &RetryableError{Err: fmt.Errorf("list subscriptions: %w", err)}
+		return nil, &RetryableError{Err: fmt.Errorf("list subscriptions: %w", err)}
 	}
 	defer resp.Body.Close()
 
@@ -140,12 +147,12 @@ func FindSubscriptionIDByAPIAndApplication(ctx context.Context, gatewayEndpoint,
 	case resp.StatusCode == http.StatusOK:
 		// continue
 	case IsRetryableStatusCode(resp.StatusCode):
-		return "", &RetryableError{
+		return nil, &RetryableError{
 			Err:        fmt.Errorf("list subscriptions returned status %d: %s", resp.StatusCode, string(body)),
 			StatusCode: resp.StatusCode,
 		}
 	default:
-		return "", &NonRetryableError{
+		return nil, &NonRetryableError{
 			Err:        fmt.Errorf("list subscriptions returned status %d: %s", resp.StatusCode, string(body)),
 			StatusCode: resp.StatusCode,
 		}
@@ -158,9 +165,21 @@ func FindSubscriptionIDByAPIAndApplication(ctx context.Context, gatewayEndpoint,
 	} else {
 		var plain []SubscriptionResponse
 		if err := json.Unmarshal(body, &plain); err != nil {
-			return "", fmt.Errorf("decode subscription list response: %w", err)
+			return nil, fmt.Errorf("decode subscription list response: %w", err)
 		}
 		items = plain
+	}
+
+	return items, nil
+}
+
+// FindSubscriptionIDByAPIAndApplication lists subscriptions for the given apiID
+// (and optional applicationID) and returns a single matching subscription ID
+// when it can be unambiguously identified.
+func FindSubscriptionIDByAPIAndApplication(ctx context.Context, gatewayEndpoint, apiID string, applicationID *string, auth AuthHeaderFunc) (string, error) {
+	items, err := ListSubscriptions(ctx, gatewayEndpoint, apiID, applicationID, auth)
+	if err != nil {
+		return "", err
 	}
 
 	if len(items) == 0 {

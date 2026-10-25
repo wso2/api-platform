@@ -11,13 +11,16 @@
 # A Subscription binds an application to an API and (optionally) a plan.
 # The token is sourced from a Kubernetes Secret so the plaintext is never
 # stored in the CR; the operator forwards it to the gateway which only
-# persists its hash. The gateway-issued UUID is recorded in .status.id and
-# used for subsequent update/delete calls.
+# persists its hash. The gateway-issued UUID (or spec.externalRefId, when set)
+# is recorded in .status.id and used for subsequent update/delete calls.
+# subscriptionPlanId, status and the token (including a change to the Secret
+# data) are updated in place; the other spec fields are immutable.
 apiVersion: gateway.api-platform.wso2.com/v1
 kind: Subscription
 metadata:
   name: petstore-acme-bronze
 spec:
+  # externalRefId: acme-petstore-sub-01   # optional; used as the subscription ID
   apiId: petstore-api-v1.0
   subscriptionPlanId: bronze-1k-per-min
   status: ACTIVE
