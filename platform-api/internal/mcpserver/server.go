@@ -79,11 +79,13 @@ type Server struct {
 	// routes, {c} stands for the API type's collection.
 	routes       map[string][]string
 	takesAPIType map[string]bool
+	schemas      map[string]apiSchemaOut // by API type, for get_api_schema
 	sdk          *mcp.Server
 }
 
 // New builds the MCP server. It fails when a tool names a route that has no
-// scopes in the Platform API's scope table, so no tool can run unchecked.
+// scopes in the Platform API's scope table, or when the OpenAPI spec lacks an
+// API type's schema. A tool with no routes, like get_api_schema, needs no scope.
 func New(d Deps) (*Server, error) {
 	s := &Server{
 		cfg:          d.Config.MCPServer,
@@ -103,6 +105,9 @@ func New(d Deps) (*Server, error) {
 		return nil, err
 	}
 	s.backend = direct
+	if s.schemas, err = loadAPISchemas(d.Config.OpenAPISpecPath); err != nil {
+		return nil, err
+	}
 
 	s.sdk = mcp.NewServer(&mcp.Implementation{Name: "api-platform", Version: constants.APIVersion}, nil)
 	s.addTools(s.sdk)
@@ -135,7 +140,8 @@ func (s *Server) mcpHandler() http.Handler {
 }
 
 // add registers one tool. Every tool goes through here, so the checks live in
-// one place. routes are the REST routes the tool stands for.
+// one place. routes are the REST routes the tool stands for; a tool with none
+// needs no scope.
 func add[In, Out any](s *Server, srv *mcp.Server, t *mcp.Tool, routes []string,
 	run func(ctx context.Context, c caller, in In) (Out, error)) {
 

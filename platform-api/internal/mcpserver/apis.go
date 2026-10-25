@@ -132,7 +132,7 @@ func (s *Server) getAPI(ctx context.Context, c caller, in apiIDIn) (apiOut, erro
 
 type createAPIIn struct {
 	apiTypeIn
-	Payload object `json:"payload" jsonschema:"The API as JSON, as the Platform API's REST API takes it."`
+	Payload object `json:"payload" jsonschema:"The API as JSON. get_api_schema says what goes in it."`
 }
 
 func (s *Server) createAPI(ctx context.Context, c caller, in createAPIIn) (apiOut, error) {

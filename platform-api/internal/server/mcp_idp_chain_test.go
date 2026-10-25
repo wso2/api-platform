@@ -108,7 +108,7 @@ func newIDPChain(t *testing.T, key *idpTestKey, idpAudience []string, readOnly c
 	scopes, err := middleware.LoadScopeRegistry(specPath)
 	require.NoError(t, err)
 
-	cfg := &config.Server{}
+	cfg := &config.Server{OpenAPISpecPath: specPath}
 	cfg.Auth.Mode = config.AuthModeIDP
 	cfg.Auth.IDP.Issuer = []string{idpTestIssuer}
 	cfg.Auth.IDP.JWKSUrl = key.jwks.URL

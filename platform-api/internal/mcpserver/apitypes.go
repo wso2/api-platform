@@ -33,6 +33,7 @@ const (
 type apiType struct {
 	name       string // the apiType value, e.g. "rest-api"
 	collection string // e.g. "/rest-apis"
+	schema     string // the OpenAPI schema create_api's payload is decoded as
 	project    projectRule
 	// hiddenInOutput lists fields left out of tool results because they are very large.
 	hiddenInOutput []string
@@ -44,11 +45,13 @@ var apiTypes = []apiType{
 	{
 		name:       "rest-api",
 		collection: "/rest-apis",
+		schema:     "CreateRESTAPIRequest",
 		project:    projectRequired,
 	},
 	{
 		name:       "llm-provider",
 		collection: "/llm-providers",
+		schema:     "LLMProvider",
 		project:    projectNone,
 		// The template's OpenAPI document is stored on every provider and can be hundreds of KB.
 		hiddenInOutput: []string{"openapi"},
@@ -56,17 +59,20 @@ var apiTypes = []apiType{
 	{
 		name:           "llm-proxy",
 		collection:     "/llm-proxies",
+		schema:         "LLMProxy",
 		project:        projectRequired,
 		hiddenInOutput: []string{"openapi"},
 	},
 	{
 		name:       "mcp-proxy",
 		collection: "/mcp-proxies",
+		schema:     "MCPProxy",
 		project:    projectRequired,
 	},
 	{
 		name:       "agent-proxy",
 		collection: "/agent-proxies",
+		schema:     "A2AAgentProxy",
 		project:    projectOptional,
 	},
 }

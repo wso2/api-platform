@@ -109,7 +109,7 @@ func newTestServer(t *testing.T) (*Server, *fake) {
 	t.Helper()
 	scopes, err := middleware.LoadScopeRegistry(specPath)
 	require.NoError(t, err)
-	cfg := &config.Server{}
+	cfg := &config.Server{OpenAPISpecPath: specPath}
 	cfg.Auth.Authorization.Enabled = true // the Platform API's default
 	cfg.MCPServer = config.MCPServer{Enabled: true}
 	s, err := New(Deps{Config: cfg, Scopes: scopes})
@@ -165,10 +165,10 @@ func toolNames(t *testing.T, cs *mcp.ClientSession) []string {
 func TestToolsList_ShowsOnlyWhatTheCallerMayUse(t *testing.T) {
 	s, _ := newTestServer(t)
 	names := toolNames(t, connect(t, s, who(testOrg, "ap:project:read")))
-	assert.ElementsMatch(t, []string{"list_projects"}, names)
+	assert.ElementsMatch(t, []string{"list_projects", "get_api_schema"}, names)
 
 	names = toolNames(t, connect(t, s, who(testOrg, "ap:rest_api:manage", "ap:project:manage", "ap:gateway:manage")))
-	assert.Len(t, names, 13)
+	assert.Len(t, names, 14)
 }
 
 // TestToolsList_ListsEveryAPIType checks that an API tool shows all API types
@@ -210,7 +210,7 @@ func TestScopeChecksOff_EveryToolIsOpen(t *testing.T) {
 	s, _ := newTestServer(t)
 	s.auth.Authorization.Enabled = false
 	cs := connect(t, s, who(testOrg))
-	assert.Len(t, toolNames(t, cs), 13)
+	assert.Len(t, toolNames(t, cs), 14)
 	res, text := call(t, cs, "list_projects", nil)
 	assert.False(t, res.IsError, text)
 	assert.Contains(t, text, `"id":"default"`)
@@ -221,7 +221,7 @@ func TestToolRiskLevels(t *testing.T) {
 	s, _ := newTestServer(t)
 	scopes := []string{"ap:rest_api:manage", "ap:project:manage", "ap:gateway:manage"}
 	expected := map[string]*mcp.ToolAnnotations{
-		"list_apis": read, "get_api": read, "list_api_deployments": read,
+		"list_apis": read, "get_api": read, "get_api_schema": read, "list_api_deployments": read,
 		"list_projects": read, "list_gateways": read, "get_gateway": read,
 		"create_api": write, "create_project": write,
 		"update_api": writeRepeat, "deploy_api": writeRepeat,
