@@ -180,3 +180,18 @@ func TestStringField(t *testing.T) {
 	_, err = stringField(&httpx.Response{Body: []byte("invalid")}, "id")
 	require.Error(t, err)
 }
+
+func TestGatewayDeploymentID(t *testing.T) {
+	items := []map[string]any{
+		{"gatewayId": "other", "deploymentId": "dep-other"},
+		{"gatewayId": "gw-1", "deploymentId": "dep-1"},
+	}
+	got, err := gatewayDeploymentID(items, "gw-1")
+	require.NoError(t, err)
+	require.Equal(t, "dep-1", got)
+
+	_, err = gatewayDeploymentID(items, "missing")
+	require.ErrorContains(t, err, "no deployment was made")
+	_, err = gatewayDeploymentID([]map[string]any{{"gatewayId": "gw-1"}}, "gw-1")
+	require.ErrorContains(t, err, "has no deploymentId")
+}

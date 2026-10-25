@@ -116,6 +116,11 @@ type Identity interface {
 	// InternalUserID returns the internal user id for the request's
 	// authenticated user.
 	InternalUserID(r *http.Request) (string, error)
+	// DisplayIdentity returns what the platform's own responses show for an
+	// internal user id read back from a created_by / updated_by column, so a
+	// plugin returning platform records reports the same user. An empty id is
+	// returned as is.
+	DisplayIdentity(internalUserID string) (string, error)
 }
 
 // APIPortals exposes CRUD on API Portal records, scoped by organization.
