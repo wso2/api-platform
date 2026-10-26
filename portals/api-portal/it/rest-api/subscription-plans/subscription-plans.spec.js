@@ -23,6 +23,8 @@
 const client = require('../support/client');
 const { uniqueHandle } = require('../support/fixtures');
 
+const planId = (prefix) => uniqueHandle(prefix).slice(0, 36);
+
 const plan = (id, displayName, limitCount = 100) => ({
     id,
     displayName,
@@ -45,8 +47,8 @@ describe('subscription plans', () => {
     });
 
     it('creates several plans in one bulk POST', async () => {
-        const a = uniqueHandle('bulk-a');
-        const b = uniqueHandle('bulk-b');
+        const a = planId('bulk-a');
+        const b = planId('bulk-b');
         track(a, b);
 
         const res = await client.as('admin').post('/subscription-plans', [plan(a, 'Bulk A'), plan(b, 'Bulk B', 500)]);
@@ -60,8 +62,8 @@ describe('subscription plans', () => {
     });
 
     it('rejects a bulk POST containing an existing handle and creates none of it', async () => {
-        const existing = uniqueHandle('dup-existing');
-        const fresh = uniqueHandle('dup-fresh');
+        const existing = planId('dup-existing');
+        const fresh = planId('dup-fresh');
         track(existing);
         await client.as('admin').post('/subscription-plans', [plan(existing, 'Existing')]);
 
@@ -71,8 +73,8 @@ describe('subscription plans', () => {
     });
 
     it('returns 200 for a bulk PUT that only updates existing plans', async () => {
-        const a = uniqueHandle('upd-a');
-        const b = uniqueHandle('upd-b');
+        const a = planId('upd-a');
+        const b = planId('upd-b');
         track(a, b);
         await client.as('admin').post('/subscription-plans', [plan(a, 'Old A'), plan(b, 'Old B')]);
 
@@ -86,8 +88,8 @@ describe('subscription plans', () => {
     });
 
     it('returns 201 for a bulk PUT that creates at least one plan', async () => {
-        const existing = uniqueHandle('mix-existing');
-        const fresh = uniqueHandle('mix-fresh');
+        const existing = planId('mix-existing');
+        const fresh = planId('mix-fresh');
         track(existing, fresh);
         await client.as('admin').post('/subscription-plans', [plan(existing, 'Existing')]);
 
@@ -106,7 +108,7 @@ describe('subscription plans', () => {
         // Same unique prefix, one differing letter: every collation orders these
         // a < b < c, and nothing else can sort between them. Created out of order
         // so a list without ORDER BY handle would return them as c, a, b.
-        const prefix = uniqueHandle('page');
+        const prefix = planId('page');
         const [a, b, c] = ['a', 'b', 'c'].map((s) => `${prefix}-${s}`);
         track(a, b, c);
         await client.as('admin').post('/subscription-plans', [plan(c, 'C'), plan(a, 'A'), plan(b, 'B')]);
