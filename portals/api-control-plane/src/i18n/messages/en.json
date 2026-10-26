@@ -2649,6 +2649,10 @@
     "defaultMessage": "Updated {time}",
     "description": "Banner byline. {time} is a relative time such as \"2 days ago\"."
   },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.removedDocuments": {
+    "defaultMessage": "A selected document no longer exists and was removed from the selection.",
+    "description": "Notice when a document deleted elsewhere is dropped from the selected documents."
+  },
   "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.removedPlans": {
     "defaultMessage": "A selected subscription plan no longer exists and was removed from the selection.",
     "description": "Notice when a plan deleted elsewhere is dropped from the selected plans."
@@ -2724,6 +2728,60 @@
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.ApiDetailsTab.versionLabel": {
     "defaultMessage": "Version"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.DocumentsTab.addToListing": {
+    "defaultMessage": "Add to listing"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.DocumentsTab.clearAll": {
+    "defaultMessage": "Clear all"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.DocumentsTab.closePreview": {
+    "defaultMessage": "Close"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.DocumentsTab.columnActions": {
+    "defaultMessage": "Actions"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.DocumentsTab.columnName": {
+    "defaultMessage": "Name"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.DocumentsTab.columnType": {
+    "defaultMessage": "Type"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.DocumentsTab.emptyDescription": {
+    "defaultMessage": "Add documents to this API in Develop to choose from here."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.DocumentsTab.emptyTitle": {
+    "defaultMessage": "No documents"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.DocumentsTab.error": {
+    "defaultMessage": "Unable to load documents."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.DocumentsTab.loading": {
+    "defaultMessage": "Loading documents"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.DocumentsTab.preview": {
+    "defaultMessage": "Preview"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.DocumentsTab.previewDocument": {
+    "defaultMessage": "Preview {name}",
+    "description": "Accessible name of the button that opens a document's content; {name} is the document's name."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.DocumentsTab.publishedEmptyTitle": {
+    "defaultMessage": "This listing has no documents."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.DocumentsTab.publishedSummary": {
+    "defaultMessage": "{count, plural, one {<n>#</n> document published} other {<n>#</n> documents published}}",
+    "description": "<n> wraps the number, which is styled."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.DocumentsTab.removeFromListing": {
+    "defaultMessage": "Remove from listing"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.DocumentsTab.selectAll": {
+    "defaultMessage": "Select all"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.DocumentsTab.selectedSummary": {
+    "defaultMessage": "{count} of {total} documents selected",
+    "description": "{count} is a styled number rendered as a React element, not plain text; {total} is a plain number."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.PlanCard.deleted": {
     "defaultMessage": "Deleted",

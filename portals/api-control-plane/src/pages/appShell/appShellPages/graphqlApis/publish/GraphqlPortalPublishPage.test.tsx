@@ -16,6 +16,7 @@
  * under the License.
  */
 
+import { http as mswHttp, HttpResponse } from 'msw';
 import { Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -24,6 +25,7 @@ import { resetHttpClient } from '@/api/core/http';
 import { routes } from '@/routes/paths';
 import {
   accepts,
+  apiUrl,
   aGateway,
   aGraphQLApiDetail,
   aPublication,
@@ -201,5 +203,29 @@ describe('GraphqlPortalPublishPage', () => {
     expect(JSON.parse(draftRequests.last()?.body ?? '{}')).toMatchObject({
       subscriptionPlanIds: ['gold'],
     });
+  });
+
+  it('saves the selected documents with the GraphQL draft', async () => {
+    serveFreshApi();
+    const docsPath = `/apis/graphql-api/${API}/docs`;
+    const draftRequests = recorder();
+    server.use(
+      collection(docsPath, [{ contentType: 'text/markdown', displayName: 'Schema guide', id: 'schema-guide', type: 'HowTo' }]),
+      mswHttp.get(
+        apiUrl(`${docsPath}/:docId/content`),
+        () => new HttpResponse('Body', { headers: { 'Content-Type': 'text/markdown' } }),
+      ),
+      accepts('put', `${BASE}/draft`, aPublicationDraftDetails(), { record: draftRequests }),
+      accepts('put', `${BASE}/draft/definition`, undefined),
+    );
+    const { user } = renderPage();
+
+    await screen.findByDisplayValue('Countries GraphQL API');
+    await user.click(screen.getByRole('tab', { name: 'Documentation' }));
+    await user.click(await screen.findByRole('checkbox', { name: 'Schema guide' }));
+    await user.click(screen.getByRole('button', { name: 'Save Draft' }));
+
+    await waitFor(() => expect(draftRequests.count()).toBe(1));
+    expect(JSON.parse(draftRequests.last()?.body ?? '{}')).toMatchObject({ docIds: ['schema-guide'] });
   });
 });
