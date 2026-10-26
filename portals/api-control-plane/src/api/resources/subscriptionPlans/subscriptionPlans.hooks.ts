@@ -170,9 +170,8 @@ export const useUpdateSubscriptionPlan = (overrides: { orgId?: string } = {}) =>
 /**
  * Deletes a plan.
  *
- * The backend refuses while subscriptions still reference it, answering with a
- * specific `code`. Callers should branch on `ApiError.code` to explain which
- * subscriptions are blocking rather than showing a generic failure.
+ * A refusal's `ApiError.message` is the server's own explanation, such as how
+ * many things still use the plan (`SUBSCRIPTION_PLAN_IN_USE`).
  */
 export const useDeleteSubscriptionPlan = (overrides: { orgId?: string } = {}) => {
   const { org, orgId } = useApiScope(overrides);
