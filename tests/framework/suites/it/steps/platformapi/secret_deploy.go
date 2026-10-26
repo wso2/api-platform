@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"mime/multipart"
 	"net/http"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -66,7 +67,30 @@ var (
 	platformSubscriptionPlanKind = cleanup.Kind{Name: "platform-api-subscription-plan", Order: 90}
 	platformGatewayKind          = cleanup.Kind{Name: "platform-api-gateway", Order: 88}
 	platformProjectKind          = cleanup.Kind{Name: "platform-api-project", Order: 100}
+	platformGraphQLAPIKind       = cleanup.Kind{Name: "platform-api-graphql-api", Order: 55}
 )
+
+// platformCollectionKinds maps a top-level control-plane collection to the cleanup kind of a
+// resource the request funnel sees created in it. Resources nested under one of these, such
+// as API keys, subscriptions and builds, are removed with their parent.
+var platformCollectionKinds = map[string]cleanup.Kind{
+	"projects":           platformProjectKind,
+	"rest-apis":          platformRESTAPIKind,
+	"graphql-apis":       platformGraphQLAPIKind,
+	"mcp-proxies":        platformMCPKind,
+	"llm-providers":      platformProviderKind,
+	"llm-proxies":        platformProxyKind,
+	"gateways":           platformGatewayKind,
+	"subscription-plans": platformSubscriptionPlanKind,
+	"applications":       platformApplicationKind,
+	"secrets":            platformSecretKind,
+	"api-portals":        platformAPIPortalKind,
+}
+
+// platformResourcePattern parses a control-plane resource path: a top-level resource, or one
+// of its deployments.
+var platformResourcePattern = regexp.MustCompile(
+	`^` + regexp.QuoteMeta(apiBase) + `/([^/]+)/([^/]+)(?:/deployments/([^/]+))?$`)
 
 // RegisterDeploy binds the steps that create and deploy an artifact THROUGH platform-api's
 // own REST API, as opposed to control_plane.go's steps, which only ever assert against
@@ -97,6 +121,8 @@ func RegisterDeploy(sc *godog.ScenarioContext, s *Steps) {
 		s.createRestAPIPlain)
 	sc.Step(`^I create a REST API "([^"]*)" via the control plane in project "([^"]*)" with context "([^"]*)" and API key authentication$`,
 		s.createRestAPIKeyAuth)
+	sc.Step(`^I create a GraphQL API "([^"]*)" via the control plane in project "([^"]*)" with context "([^"]*)"$`,
+		s.createGraphQLAPI)
 	sc.Step(`^I deploy the "([^"]*)" "([^"]*)" to the gateway via the control plane$`, s.deployArtifact)
 	sc.Step(`^I deploy the "([^"]*)" "([^"]*)" to the gateway via the control plane and store the deployment id as "([^"]*)"$`,
 		s.deployArtifactAndStore)
@@ -127,37 +153,111 @@ func (s *Steps) registerPlatformResource(ctx context.Context, kind cleanup.Kind,
 	if err != nil {
 		return err
 	}
-	if err := reg.RegisterDeleter(kind, s.pathDeleter(kind, path)); err != nil {
+	if err := s.installPlatformDeleter(reg, kind, path); err != nil {
 		return err
 	}
 	return reg.Register(cleanup.Resource{Kind: kind, ID: id, Actor: "admin", Description: "created via platform-api"})
+}
+
+// installPlatformDeleter binds the deleter that removes a kind's resources from collection
+// path as the administrator.
+func (s *Steps) installPlatformDeleter(reg *cleanup.Registry, kind cleanup.Kind, path string) error {
+	return reg.RegisterDeleter(kind, s.pathDeleter(kind, path))
 }
 
 // pathDeleter deletes a resource of the kind at path/<id> as the administrator; a resource that
 // is already gone is not an error.
 func (s *Steps) pathDeleter(kind cleanup.Kind, path string) cleanup.Deleter {
 	return func(ctx context.Context, res cleanup.Resource) error {
-		base, bearer, err := s.authed(ctx)
-		if err != nil {
-			return err
+		return s.deletePlatformResource(ctx, kind, path, res.ID)
+	}
+}
+
+func (s *Steps) deletePlatformResource(ctx context.Context, kind cleanup.Kind, path, id string) error {
+	base, bearer, err := s.authed(ctx)
+	if err != nil {
+		return err
+	}
+	resp, err := s.client.Do(ctx, httpx.Request{Method: http.MethodDelete, URL: base + apiBase + path + "/" + id,
+		Headers: map[string]string{"Authorization": "Bearer " + bearer}}, 0, 0)
+	if err != nil {
+		return err
+	}
+	if resp.StatusCode != http.StatusNotFound && !resp.Succeeded() {
+		// The platform API deliberately retains the last project in an
+		// organization. A generated project may therefore be the baseline
+		// project at teardown; treat only that documented validation response
+		// as an intentional retention, while preserving all other failures.
+		if kind == platformProjectKind && isLastProjectValidation(resp) {
+			return nil
 		}
-		resp, err := s.client.Do(ctx, httpx.Request{Method: http.MethodDelete, URL: base + apiBase + path + "/" + res.ID,
-			Headers: map[string]string{"Authorization": "Bearer " + bearer}}, 0, 0)
-		if err != nil {
-			return err
-		}
-		if resp.StatusCode != http.StatusNotFound && !resp.Succeeded() {
-			// The platform API deliberately retains the last project in an
-			// organization. A generated project may therefore be the baseline
-			// project at teardown; treat only that documented validation response
-			// as an intentional retention, while preserving all other failures.
-			if kind == platformProjectKind && isLastProjectValidation(resp) {
-				return nil
-			}
-			return fmt.Errorf("deleting %s: %s", res.ID, resp.Describe())
-		}
+		return fmt.Errorf("deleting %s: %s", id, resp.Describe())
+	}
+	return nil
+}
+
+// trackCreatedPlatformResource registers a top-level resource or a deployment that the request
+// funnel saw created at location. A location outside the tracked collections is not test-owned
+// state this package removes, and is left alone.
+func (s *Steps) trackCreatedPlatformResource(ctx context.Context, location string, body []byte) error {
+	match := platformResourcePattern.FindStringSubmatch(location)
+	if match == nil {
 		return nil
 	}
+	collection, id, deploymentID := match[1], match[2], match[3]
+	kind, ok := platformCollectionKinds[collection]
+	if !ok {
+		return nil
+	}
+	if deploymentID == "" {
+		return s.registerTracked(ctx, kind, id, func(ctx context.Context) error {
+			return s.deletePlatformResource(ctx, kind, "/"+collection, id)
+		}, func(reg *cleanup.Registry) error {
+			return s.installPlatformDeleter(reg, kind, "/"+collection)
+		})
+	}
+	gatewayID, err := requestGatewayID(body)
+	if err != nil {
+		return fmt.Errorf("recording the created deployment %q for cleanup: %w", deploymentID, err)
+	}
+	if err := s.registerPlatformDeployment(ctx, collection, id, deploymentID, gatewayID); err != nil {
+		record := strings.Join([]string{collection, id, deploymentID, gatewayID}, platformDeploymentSeparator)
+		if compensateErr := s.undeployPlatformDeployment(ctx, record); compensateErr != nil {
+			return fmt.Errorf("registering deployment %q for cleanup: %w; compensating undeploy failed: %v",
+				deploymentID, err, compensateErr)
+		}
+		return fmt.Errorf("registering deployment %q for cleanup: %w", deploymentID, err)
+	}
+	return nil
+}
+
+// deregisterDeletedPlatformResource drops the cleanup record of a top-level resource or a
+// deployment the scenario deleted itself.
+func deregisterDeletedPlatformResource(ctx context.Context, rawURL string) error {
+	match := platformResourcePattern.FindStringSubmatch(locationPath(rawURL))
+	if match == nil {
+		return nil
+	}
+	collection, id, deploymentID := match[1], match[2], match[3]
+	kind, ok := platformCollectionKinds[collection]
+	if !ok {
+		return nil
+	}
+	reg, err := cleanup.Of(ctx)
+	if err != nil {
+		return err
+	}
+	if deploymentID == "" {
+		reg.Deregister(kind, id)
+		return nil
+	}
+	prefix := strings.Join([]string{collection, id, deploymentID, ""}, platformDeploymentSeparator)
+	for _, pending := range reg.Pending() {
+		if pending.Kind.Name == platformDeploymentKind.Name && strings.HasPrefix(pending.ID, prefix) {
+			reg.Deregister(platformDeploymentKind, pending.ID)
+		}
+	}
+	return nil
 }
 
 func isLastProjectValidation(resp *httpx.Response) bool {
@@ -180,29 +280,46 @@ func (s *Steps) registerPlatformDeployment(ctx context.Context, collection, hand
 		return err
 	}
 	if err := reg.RegisterDeleter(platformDeploymentKind, func(ctx context.Context, res cleanup.Resource) error {
-		parts := strings.Split(res.ID, platformDeploymentSeparator)
-		if len(parts) != 4 {
-			return fmt.Errorf("invalid platform deployment cleanup record")
-		}
-		base, bearer, err := s.authed(ctx)
-		if err != nil {
-			return err
-		}
-		path := "/" + parts[0] + "/" + parts[1] + "/deployments/" + parts[2] + "/undeploy?gatewayId=" + parts[3]
-		resp, err := s.client.Do(ctx, httpx.Request{Method: http.MethodPost, URL: base + apiBase + path,
-			Headers: map[string]string{"Authorization": "Bearer " + bearer}}, 0, 0)
-		if err != nil {
-			return err
-		}
-		if resp.StatusCode != http.StatusNotFound && !resp.Succeeded() {
-			return fmt.Errorf("undeploying platform resource: %s", resp.Describe())
-		}
-		return nil
+		return s.undeployPlatformDeployment(ctx, res.ID)
 	}); err != nil {
 		return err
 	}
 	id := strings.Join([]string{collection, handle, deploymentID, gatewayID}, platformDeploymentSeparator)
 	return reg.Register(cleanup.Resource{Kind: platformDeploymentKind, ID: id, Actor: "admin", Description: "deployed via platform-api"})
+}
+
+// undeployPlatformDeployment undeploys the deployment a cleanup record names. A deployment that
+// is already not active, such as one that failed on a gateway no runtime serves or one the
+// scenario undeployed itself, has nothing left to undeploy.
+func (s *Steps) undeployPlatformDeployment(ctx context.Context, record string) error {
+	parts := strings.Split(record, platformDeploymentSeparator)
+	if len(parts) != 4 {
+		return fmt.Errorf("invalid platform deployment cleanup record")
+	}
+	base, bearer, err := s.authed(ctx)
+	if err != nil {
+		return err
+	}
+	path := "/" + parts[0] + "/" + parts[1] + "/deployments/" + parts[2] + "/undeploy?gatewayId=" + parts[3]
+	resp, err := s.client.Do(ctx, httpx.Request{Method: http.MethodPost, URL: base + apiBase + path,
+		Headers: map[string]string{"Authorization": "Bearer " + bearer}}, 0, 0)
+	if err != nil {
+		return err
+	}
+	if resp.StatusCode != http.StatusNotFound && !resp.Succeeded() && !isDeploymentNotActive(resp) {
+		return fmt.Errorf("undeploying platform resource: %s", resp.Describe())
+	}
+	return nil
+}
+
+func isDeploymentNotActive(resp *httpx.Response) bool {
+	if resp == nil || resp.StatusCode != http.StatusConflict {
+		return false
+	}
+	var body struct {
+		Code string `json:"code"`
+	}
+	return json.Unmarshal(resp.Body, &body) == nil && body.Code == "DEPLOYMENT_NOT_ACTIVE"
 }
 
 // authed resolves the control plane's base URL and a fresh admin bearer token together,
@@ -302,6 +419,61 @@ func (s *Steps) createSecretValued(ctx context.Context, handle, value string) er
 		return fmt.Errorf("creating control-plane secret %q: %s", resolvedHandle, resp.Describe())
 	}
 	return s.registerPlatformResource(ctx, platformSecretKind, resolvedHandle, "/secrets")
+}
+
+// createGraphQLAPI creates a GraphQL API with an inline schema. The control plane accepts a
+// GraphQL API only as a multipart form whose metadata part carries the definition.
+func (s *Steps) createGraphQLAPI(ctx context.Context, id, projectHandle, apiContext string) error {
+	resolved := make([]string, 3)
+	for i, value := range []string{id, projectHandle, apiContext} {
+		expanded, err := stepscommon.Expand(ctx, value)
+		if err != nil {
+			return err
+		}
+		resolved[i] = expanded
+	}
+	resolvedID, resolvedProject, resolvedContext := resolved[0], resolved[1], resolved[2]
+	metadata, err := json.Marshal(map[string]any{
+		"id":           resolvedID,
+		"displayName":  resolvedID,
+		"context":      resolvedContext,
+		"version":      "v1",
+		"projectId":    resolvedProject,
+		"upstream":     map[string]any{"main": map[string]any{"url": "http://testbench:3017/graphql"}},
+		"schemaSource": "inline",
+		"sdl":          "type Query { hello: String }",
+	})
+	if err != nil {
+		return err
+	}
+	base, bearer, err := s.authed(ctx)
+	if err != nil {
+		return err
+	}
+	buf := &bytes.Buffer{}
+	mw := multipart.NewWriter(buf)
+	if err := mw.WriteField("metadata", string(metadata)); err != nil {
+		return err
+	}
+	if err := mw.Close(); err != nil {
+		return err
+	}
+	resp, err := s.client.Do(ctx, httpx.Request{
+		Method: http.MethodPost,
+		URL:    base + apiBase + "/graphql-apis",
+		Headers: map[string]string{
+			"Authorization": "Bearer " + bearer,
+			"Content-Type":  mw.FormDataContentType(),
+		},
+		Body: buf.Bytes(),
+	}, 0, 0)
+	if err != nil {
+		return fmt.Errorf("creating control-plane GraphQL API %q: %w", resolvedID, err)
+	}
+	if !resp.Succeeded() {
+		return fmt.Errorf("creating control-plane GraphQL API %q: %s", resolvedID, resp.Describe())
+	}
+	return s.registerPlatformResource(ctx, platformGraphQLAPIKind, resolvedID, "/graphql-apis")
 }
 
 // secretPlaceholder is the template literal the gateway controller resolves on demand at
@@ -669,38 +841,37 @@ func (s *Steps) createRestAPI(
 	return s.registerPlatformResource(ctx, platformRESTAPIKind, resolvedID, "/rest-apis")
 }
 
-// gatewayUUID discovers the block's single registered gateway's control-plane identifier -
-// "id" in the list response (which, for this fixed-handle registration, is literally
-// "it-gateway"; see core/catalog/platformapi's provisionGatewayRegistration), falling back to
-// "uuid" in case a future control-plane version reports a distinct server-assigned one there
-// instead.
+// blockGatewayHandle is the handle the block's own gateway registers under (see
+// core/catalog/platformapi's provisionGatewayRegistration).
+const blockGatewayHandle = "it-gateway"
+
+// gatewayUUID returns the control-plane identifier of the block's own gateway - its "id"
+// (literally blockGatewayHandle), falling back to "uuid" in case a future control-plane
+// version reports a distinct server-assigned one there instead. It is fetched by handle
+// rather than taken from the gateway list, because scenarios in the same block register
+// gateways of their own.
 func (s *Steps) gatewayUUID(ctx context.Context, base, bearer string) (string, error) {
-	resp, err := s.get(ctx, base, bearer, "/gateways")
+	resp, err := s.get(ctx, base, bearer, "/gateways/"+blockGatewayHandle)
 	if err != nil {
-		return "", fmt.Errorf("listing control-plane gateways: %w", err)
+		return "", fmt.Errorf("fetching the block's control-plane gateway: %w", err)
 	}
 	if !resp.Succeeded() {
-		return "", fmt.Errorf("listing control-plane gateways: %s", resp.Describe())
+		return "", fmt.Errorf("fetching the block's control-plane gateway: %s", resp.Describe())
 	}
-	var doc struct {
-		List []struct {
-			ID   string `json:"id"`
-			UUID string `json:"uuid"`
-		} `json:"list"`
+	var gateway struct {
+		ID   string `json:"id"`
+		UUID string `json:"uuid"`
 	}
-	if err := json.Unmarshal(resp.Body, &doc); err != nil {
-		return "", fmt.Errorf("decoding control-plane gateway list: %w", err)
+	if err := json.Unmarshal(resp.Body, &gateway); err != nil {
+		return "", fmt.Errorf("decoding the block's control-plane gateway: %w", err)
 	}
-	if len(doc.List) == 0 {
-		return "", fmt.Errorf("control plane reports no registered gateway: %s", resp.Text())
+	if gateway.ID != "" {
+		return gateway.ID, nil
 	}
-	if doc.List[0].ID != "" {
-		return doc.List[0].ID, nil
+	if gateway.UUID != "" {
+		return gateway.UUID, nil
 	}
-	if doc.List[0].UUID != "" {
-		return doc.List[0].UUID, nil
-	}
-	return "", fmt.Errorf("control plane's registered gateway has no id or uuid: %s", resp.Text())
+	return "", fmt.Errorf("the block's control-plane gateway has no id or uuid: %s", resp.Text())
 }
 
 func gatewayHandleAt(word string) (string, error) {

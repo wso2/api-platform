@@ -208,21 +208,22 @@ func (s *Steps) sendControlPlane(ctx context.Context, call controlPlaneCall) (*h
 	if err != nil {
 		return nil, fmt.Errorf("%s %s: %w", method, path, err)
 	}
-	if err := s.trackAgentProxyResource(ctx, method, call.body, resp); err != nil {
+	if err := s.trackControlPlaneResource(ctx, method, call.body, resp); err != nil {
 		return resp, err
 	}
 	return resp, nil
 }
 
-// trackAgentProxyResource registers what a successful create produced and deregisters what a
+// trackControlPlaneResource registers what a successful create produced and deregisters what a
 // successful delete removed, so cleanup follows the product's own answer rather than the
 // scenario's expectation of it.
-func (s *Steps) trackAgentProxyResource(ctx context.Context, method string, body []byte, resp *httpx.Response) error {
+func (s *Steps) trackControlPlaneResource(ctx context.Context, method string, body []byte, resp *httpx.Response) error {
 	switch {
 	case method == http.MethodPost && resp.StatusCode == http.StatusCreated:
-		match := agentProxyLocationPattern.FindStringSubmatch(locationPath(resp.Headers.Get("Location")))
+		location := locationPath(resp.Headers.Get("Location"))
+		match := agentProxyLocationPattern.FindStringSubmatch(location)
 		if match == nil {
-			return nil
+			return s.trackCreatedPlatformResource(ctx, location, body)
 		}
 		handle, sub, id := match[1], match[2], match[3]
 		switch sub {
@@ -246,7 +247,10 @@ func (s *Steps) trackAgentProxyResource(ctx context.Context, method string, body
 			}, s.registerAgentAPIKeyDeleter)
 		}
 	case method == http.MethodDelete && resp.StatusCode == http.StatusNoContent:
-		return deregisterDeleted(ctx, resp.URL)
+		if err := deregisterDeleted(ctx, resp.URL); err != nil {
+			return err
+		}
+		return deregisterDeletedPlatformResource(ctx, resp.URL)
 	}
 	return nil
 }

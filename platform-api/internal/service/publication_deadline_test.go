@@ -1,5 +1,3 @@
-//go:build integration
-
 /*
  *  Copyright (c) 2026, WSO2 LLC. (http://www.wso2.org) All Rights Reserved.
  *
@@ -14,9 +12,10 @@
  *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
+ *
  */
 
-package integration
+package service_test
 
 import (
 	"context"
@@ -106,85 +105,82 @@ func (stalledPortal) PublishContent(ctx context.Context, _ *model.APIPortal, _ s
 const stalledOperationTimeout = 100 * time.Millisecond
 
 func TestPublicationOperations_PortalCallsShareOneDeadline(t *testing.T) {
-	it := openITDB(t)
-	defer it.db.Close()
-	g := seedOrgGraph(t, it)
+	tdb := openSchemaDB(t)
+	g := seedOrgGraph(t, tdb)
 	portal := &deadlineRecorder{}
-	svc := newPublicationTestServiceWith(it, portal)
+	svc := newPublicationTestServiceWith(tdb, portal)
 	apiType, apiHandle, portalHandle := "rest-api", apiHandleFor(g), portalHandleFor(g)
 
 	started := time.Now()
-	publishedListing(t, it, svc, g)
+	publishedListing(t, tdb, svc, g)
 	if len(portal.deadlines) != 3 || !portal.deadlines["plans"].Equal(portal.deadlines["publish"]) || !portal.deadlines["content"].Equal(portal.deadlines["publish"]) {
-		t.Fatalf("[%s] want the plan step, the listing push and the content push under the same deadline, got %v", it.driver, portal.deadlines)
+		t.Fatalf("want the plan step, the listing push and the content push under the same deadline, got %v", portal.deadlines)
 	}
-	assertDeadlineWithin(t, it, "publish", portal.deadlines["publish"], started, publicationTestOperationTimeout)
+	assertDeadlineWithin(t, tdb, "publish", portal.deadlines["publish"], started, publicationTestOperationTimeout)
 
 	started = time.Now()
 	if _, err := svc.Deprecate(context.Background(), apiType, apiHandle, portalHandle, g.org, "actor"); err != nil {
-		t.Fatalf("[%s] Deprecate failed: %v", it.driver, err)
+		t.Fatalf("Deprecate failed: %v", err)
 	}
-	assertDeadlineWithin(t, it, "deprecate", portal.deadlines["deprecate"], started, publicationTestOperationTimeout)
+	assertDeadlineWithin(t, tdb, "deprecate", portal.deadlines["deprecate"], started, publicationTestOperationTimeout)
 
 	started = time.Now()
 	if err := svc.Unpublish(context.Background(), apiType, apiHandle, portalHandle, g.org, "actor"); err != nil {
-		t.Fatalf("[%s] Unpublish failed: %v", it.driver, err)
+		t.Fatalf("Unpublish failed: %v", err)
 	}
-	assertDeadlineWithin(t, it, "unpublish", portal.deadlines["unpublish"], started, publicationTestOperationTimeout)
+	assertDeadlineWithin(t, tdb, "unpublish", portal.deadlines["unpublish"], started, publicationTestOperationTimeout)
 }
 
-func assertDeadlineWithin(t *testing.T, it *itDB, call string, deadline, started time.Time, limit time.Duration) {
+func assertDeadlineWithin(t *testing.T, tdb *schemaDB, call string, deadline, started time.Time, limit time.Duration) {
 	t.Helper()
 	if deadline.IsZero() {
-		t.Fatalf("[%s] %s ran without a deadline", it.driver, call)
+		t.Fatalf("%s ran without a deadline", call)
 	}
 	if deadline.Before(started.Add(limit-time.Second)) || deadline.After(started.Add(limit+time.Second)) {
-		t.Fatalf("[%s] want the %s deadline about %s after the request started, got %s", it.driver, call, limit, deadline.Sub(started))
+		t.Fatalf("want the %s deadline about %s after the request started, got %s", call, limit, deadline.Sub(started))
 	}
 }
 
 func TestPublicationPublish_DeadlineExpiresDuringPortalCalls(t *testing.T) {
-	it := openITDB(t)
-	defer it.db.Close()
-	g := seedOrgGraph(t, it)
-	svc := newPublicationTestServiceWithTimeout(it, stalledPortal{}, stalledOperationTimeout)
-	saveDraftWithPlans(t, it, svc, g, []string{planHandleFor(g)})
+	tdb := openSchemaDB(t)
+	g := seedOrgGraph(t, tdb)
+	svc := newPublicationTestServiceWithTimeout(tdb, stalledPortal{}, stalledOperationTimeout)
+	saveDraftWithPlans(t, tdb, svc, g, []string{planHandleFor(g)})
 
 	started := time.Now()
 	_, _, err := svc.Publish(context.Background(), "rest-api", apiHandleFor(g), portalHandleFor(g), g.org, "publisher")
 	if !apperror.APIPublicationPortalUnavailable.Is(err) {
-		t.Fatalf("[%s] want APIPublicationPortalUnavailable, got %v", it.driver, err)
+		t.Fatalf("want APIPublicationPortalUnavailable, got %v", err)
 	}
 	if took := time.Since(started); took > 10*stalledOperationTimeout {
-		t.Fatalf("[%s] the request outlived its deadline by far: %s", it.driver, took)
+		t.Fatalf("the request outlived its deadline by far: %s", took)
 	}
 	if _, err := svc.GetPublication("rest-api", apiHandleFor(g), portalHandleFor(g), g.org); !apperror.APIPublicationNotFound.Is(err) {
-		t.Fatalf("[%s] want no live listing, got %v", it.driver, err)
+		t.Fatalf("want no live listing, got %v", err)
 	}
 	if _, err := svc.GetDraft("rest-api", apiHandleFor(g), portalHandleFor(g), g.org); err != nil {
-		t.Fatalf("[%s] want the draft kept, got %v", it.driver, err)
+		t.Fatalf("want the draft kept, got %v", err)
 	}
 }
 
 func TestPublicationUnpublishAndDeprecate_DeadlineExpires(t *testing.T) {
-	it := openITDB(t)
-	defer it.db.Close()
-	g := seedOrgGraph(t, it)
-	apiType, apiHandle, portalHandle := publishedListing(t, it, newPublicationTestService(it), g)
-	stalled := newPublicationTestServiceWithTimeout(it, stalledPortal{}, stalledOperationTimeout)
+	tdb := openSchemaDB(t)
+	g := seedOrgGraph(t, tdb)
+	apiType, apiHandle, portalHandle := publishedListing(t, tdb, newPublicationTestService(tdb), g)
+	stalled := newPublicationTestServiceWithTimeout(tdb, stalledPortal{}, stalledOperationTimeout)
 
 	if _, err := stalled.Deprecate(context.Background(), apiType, apiHandle, portalHandle, g.org, "actor"); !apperror.APIPublicationPortalUnavailable.Is(err) {
-		t.Fatalf("[%s] want APIPublicationPortalUnavailable from Deprecate, got %v", it.driver, err)
+		t.Fatalf("want APIPublicationPortalUnavailable from Deprecate, got %v", err)
 	}
-	if got := liveStatus(t, it, stalled, apiType, apiHandle, portalHandle, g.org); got != model.PublicationStatusPublished {
-		t.Fatalf("[%s] want the listing still PUBLISHED after a failed deprecate, got %s", it.driver, got)
+	if got := liveStatus(t, tdb, stalled, apiType, apiHandle, portalHandle, g.org); got != model.PublicationStatusPublished {
+		t.Fatalf("want the listing still PUBLISHED after a failed deprecate, got %s", got)
 	}
 
 	if err := stalled.Unpublish(context.Background(), apiType, apiHandle, portalHandle, g.org, "actor"); !apperror.APIPublicationPortalUnavailable.Is(err) {
-		t.Fatalf("[%s] want APIPublicationPortalUnavailable from Unpublish, got %v", it.driver, err)
+		t.Fatalf("want APIPublicationPortalUnavailable from Unpublish, got %v", err)
 	}
-	if got := liveStatus(t, it, stalled, apiType, apiHandle, portalHandle, g.org); got != model.PublicationStatusPublished {
-		t.Fatalf("[%s] want the listing still PUBLISHED after a failed unpublish, got %s", it.driver, got)
+	if got := liveStatus(t, tdb, stalled, apiType, apiHandle, portalHandle, g.org); got != model.PublicationStatusPublished {
+		t.Fatalf("want the listing still PUBLISHED after a failed unpublish, got %s", got)
 	}
 }
 

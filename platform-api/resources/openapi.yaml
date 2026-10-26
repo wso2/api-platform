@@ -1869,7 +1869,6 @@ paths:
       operationId: publishRestApiToApiPortal
       security:
         - OAuth2Security:
-            - ap:api_portal:rest_api:publish
             - ap:api_portal:rest_api:manage
       tags:
         - API Publications
@@ -1918,7 +1917,6 @@ paths:
       operationId: unpublishRestApiFromApiPortal
       security:
         - OAuth2Security:
-            - ap:api_portal:rest_api:unpublish
             - ap:api_portal:rest_api:manage
       tags:
         - API Publications
@@ -1948,7 +1946,6 @@ paths:
       operationId: deprecateRestApiOnApiPortal
       security:
         - OAuth2Security:
-            - ap:api_portal:rest_api:deprecate
             - ap:api_portal:rest_api:manage
       tags:
         - API Publications
@@ -1990,7 +1987,6 @@ paths:
       operationId: publishGraphQLApiToApiPortal
       security:
         - OAuth2Security:
-            - ap:api_portal:graphql_api:publish
             - ap:api_portal:graphql_api:manage
       tags:
         - API Publications
@@ -2039,7 +2035,6 @@ paths:
       operationId: unpublishGraphQLApiFromApiPortal
       security:
         - OAuth2Security:
-            - ap:api_portal:graphql_api:unpublish
             - ap:api_portal:graphql_api:manage
       tags:
         - API Publications
@@ -2069,7 +2064,6 @@ paths:
       operationId: deprecateGraphQLApiOnApiPortal
       security:
         - OAuth2Security:
-            - ap:api_portal:graphql_api:deprecate
             - ap:api_portal:graphql_api:manage
       tags:
         - API Publications
@@ -9158,14 +9152,8 @@ components:
             ap:api_portal:manage: Full access to API Portals
             ap:api_portal:publication:read: Read an API's live listing on one portal
             ap:api_portal:read: Read API Portals
-            ap:api_portal:graphql_api:deprecate: Close a GraphQL API's live listing to new subscriptions
             ap:api_portal:graphql_api:manage: Publish, unpublish and deprecate a GraphQL API on a portal
-            ap:api_portal:graphql_api:publish: Publish, or re-publish, a GraphQL API's current draft to a portal
-            ap:api_portal:graphql_api:unpublish: Remove a GraphQL API's live listing from a portal
-            ap:api_portal:rest_api:deprecate: Close a REST API's live listing to new subscriptions
             ap:api_portal:rest_api:manage: Publish, unpublish and deprecate a REST API on a portal
-            ap:api_portal:rest_api:publish: Publish, or re-publish, a REST API's current draft to a portal
-            ap:api_portal:rest_api:unpublish: Remove a REST API's live listing from a portal
             ap:api_portal:update: Update an API Portal
             ap:api_publication:read: Read an API's publication status across every portal
             ap:application:api_key:create: Create an application API key
