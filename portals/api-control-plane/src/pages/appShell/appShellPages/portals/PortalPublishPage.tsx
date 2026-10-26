@@ -53,7 +53,9 @@ import { restPublishTarget, type PublishTarget } from './publishTarget';
 import { usePublishPageData } from './usePublishPageData';
 import type { DefinitionFormat } from './utils/storedDefinition';
 import {
+  deletedPlansOf,
   draftFormValuesToInput,
+  editedPlanIdsOf,
   emptyDraftFormValues,
   resolveDraftFormValues,
   validateDraftFormValues,
@@ -159,6 +161,11 @@ const messages = defineMessages({
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.inactivePlansBlock',
     defaultMessage: 'Clear inactive plans to save or publish: {names}.',
     description: 'Warning when Save Draft or Publish is blocked because the selection still holds inactive plans. {names} is a comma-separated list of plan names.',
+  },
+  deletedPlansBlock: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.deletedPlansBlock',
+    defaultMessage: 'Clear deleted plans from this listing to save or publish: {names}.',
+    description: 'Warning when Save Draft or Publish is blocked because the selection still holds deleted plans. {names} is a comma-separated list of the plan names stored with the selection.',
   },
   removedPlans: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.removedPlans',
@@ -334,6 +341,8 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
   const [definitionParseError, setDefinitionParseError] = useState<string>();
   // What the server holds for the fields shown, so edits made since can be told apart.
   const [saved, setSaved] = useState({ definitionText: '', values: emptyDraftFormValues });
+  // Deleted plans the user cleared; the draft still holds them until it is saved.
+  const [clearedDeletedIds, setClearedDeletedIds] = useState<string[]>([]);
   const [pendingAction, setPendingAction] = useState<PendingAction>('idle');
   // An action saves in steps, each refetching these; they are shown once, when it ends.
   const draft = useFrozenWhile(data.draft, pendingAction !== 'idle');
@@ -391,6 +400,7 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
   const showingPublished = view === 'published';
   const hasUnsavedChanges =
     definitionText !== saved.definitionText ||
+    clearedDeletedIds.length > 0 ||
     (Object.keys(values) as (keyof DraftFormValues)[]).some((field) =>
       field === 'subscriptionPlanIds'
         ? !samePlans(values.subscriptionPlanIds, saved.values.subscriptionPlanIds)
@@ -477,6 +487,7 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
       body: draftFormValuesToInput(values),
     });
     setSaved((current) => ({ ...current, values }));
+    setClearedDeletedIds([]);
     return true;
   };
 
@@ -512,23 +523,29 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
     }
   };
 
-  // The server refuses a selection that holds an inactive plan; stop here and show the plans
-  // instead of failing the request. Skipped while the plan list is unavailable (the server still checks).
-  const blockedByInactivePlans = (): boolean => {
+  // The server refuses a selection that holds an inactive or a deleted plan; stop here and show the plans
+  // instead of failing the request. The inactive check is skipped while the plan list is unavailable (the server still checks).
+  const blockedByUnusablePlans = (): boolean => {
     const selected = new Set(values.subscriptionPlanIds);
     const inactive = (plansQuery.data?.list ?? []).filter(
       (plan) => plan.id && selected.has(plan.id) && plan.status !== 'ACTIVE',
     );
-    if (inactive.length === 0) return false;
+    const deleted = savedDeletedPlans;
+    if (inactive.length === 0 && deleted.length === 0) return false;
     setTab('subscriptionPlans');
-    const names = inactive.map((plan) => `"${plan.displayName}"`).join(', ');
-    notify(intl.formatMessage(messages.inactivePlansBlock, { names }), 'warning');
+    const quoted = (names: string[]) => names.map((name) => `"${name}"`).join(', ');
+    if (inactive.length > 0) {
+      notify(intl.formatMessage(messages.inactivePlansBlock, { names: quoted(inactive.map((plan) => plan.displayName)) }), 'warning');
+    }
+    if (deleted.length > 0) {
+      notify(intl.formatMessage(messages.deletedPlansBlock, { names: quoted(deleted.map((plan) => plan.displayName)) }), 'warning');
+    }
     return true;
   };
 
   const handleSaveDraft = () =>
     runAction('saving', async () => {
-      if (blockedByInactivePlans()) return;
+      if (blockedByUnusablePlans()) return;
       if (!(await saveDetails())) return;
       const definitionSaved = await saveDefinition();
       notify(
@@ -544,7 +561,7 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
 
   const handlePublish = () =>
     runAction('publishing', async () => {
-      if (blockedByInactivePlans()) return;
+      if (blockedByUnusablePlans()) return;
       if (!(await saveDetails())) return;
       // Publish requires a saved, parseable definition — never proceed on a
       // partial save, which would publish whatever definition was already
@@ -589,6 +606,10 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
       : intl.formatMessage(messages.unsavedBannerMeta, { unsaved });
   })();
   const savedPlanIds = resolveDraftFormValues(draft, publication, undefined).subscriptionPlanIds;
+  const publishedDeletedPlans = deletedPlansOf(publication);
+  const savedDeletedPlans = deletedPlansOf(draft ?? publication).filter((plan) => !clearedDeletedIds.includes(plan.id));
+  const publishedEditedPlanIds = editedPlanIdsOf(publication);
+  const savedEditedPlanIds = editedPlanIdsOf(draft ?? publication);
   const banner = showingPublished
     ? {
         meta: intl.formatMessage(canDeprecate ? messages.publishedBannerMeta : messages.deprecatedBannerMeta, {
@@ -602,7 +623,12 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
   const renderContent = () => {
     if (showingPublished) {
       if (tab === 'details') return <ApiDetailsTab readOnly values={publishedValues} />;
-      if (tab === 'subscriptionPlans') return <SubscriptionPlansTab readOnly values={publishedValues} />;
+      if (tab === 'subscriptionPlans') return <SubscriptionPlansTab
+          deletedPlans={publishedDeletedPlans}
+          editedPlanIds={publishedEditedPlanIds}
+          readOnly
+          values={publishedValues}
+        />;
       return (
         <PublishedSpecificationTab
           definition={data.publishedDefinition.definition}
@@ -631,8 +657,11 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
     if (tab === 'subscriptionPlans') {
       return (
         <SubscriptionPlansTab
+          deletedPlans={savedDeletedPlans}
           disabled={pendingAction !== 'idle'}
+          editedPlanIds={savedEditedPlanIds}
           onChange={handleChange}
+          onClearDeleted={(planId) => setClearedDeletedIds((current) => [...current, planId])}
           savedPlanIds={savedPlanIds}
           values={values}
         />

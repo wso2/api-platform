@@ -21,7 +21,9 @@ import { describe, expect, it } from 'vitest';
 import { aGateway, aPublication, aPublicationDraftDetails, aRestApi } from '@/test/msw';
 import {
   buildProductionUrlOptions,
+  deletedPlansOf,
   draftFormValuesToInput,
+  editedPlanIdsOf,
   emptyDraftFormValues,
   resolveDraftFormValues,
 } from './publicationForm';
@@ -80,6 +82,49 @@ describe('resolveDraftFormValues', () => {
     expect(resolveDraftFormValues(undefined, publication, api).agentVisibility).toBe('HIDDEN');
     expect(resolveDraftFormValues(aPublicationDraftDetails(), undefined, api).agentVisibility).toBe('VISIBLE');
     expect(resolveDraftFormValues(undefined, undefined, api).agentVisibility).toBe('VISIBLE');
+  });
+});
+
+describe('deleted plans', () => {
+  const selections = [
+    { deleted: false, displayName: 'Gold', edited: false, id: 'gold' },
+    { deleted: true, displayName: 'Platinum', edited: false, id: 'platinum' },
+  ];
+
+  it('leaves a deleted plan out of the form, whichever tier it is read from', () => {
+    const draft = aPublicationDraftDetails({ subscriptionPlanIds: ['gold', 'platinum'], subscriptionPlans: selections });
+    const publication = aPublication({ subscriptionPlanIds: ['gold', 'platinum'], subscriptionPlans: selections });
+
+    expect(resolveDraftFormValues(draft, undefined, undefined).subscriptionPlanIds).toEqual(['gold']);
+    expect(resolveDraftFormValues(undefined, publication, undefined).subscriptionPlanIds).toEqual(['gold']);
+  });
+
+  it('reads the plan ids as they are when the server sends no plan details', () => {
+    const draft = aPublicationDraftDetails({ subscriptionPlanIds: ['gold', 'platinum'], subscriptionPlans: undefined });
+
+    expect(resolveDraftFormValues(draft, undefined, undefined).subscriptionPlanIds).toEqual(['gold', 'platinum']);
+  });
+
+  it('lists the deleted plans with their stored names', () => {
+    const draft = aPublicationDraftDetails({ subscriptionPlanIds: ['gold', 'platinum'], subscriptionPlans: selections });
+
+    expect(deletedPlansOf(draft)).toEqual([{ displayName: 'Platinum', id: 'platinum' }]);
+    expect(deletedPlansOf(undefined)).toEqual([]);
+  });
+});
+
+describe('edited plans', () => {
+  it('lists the plans edited since they were saved, leaving out deleted ones', () => {
+    const draft = aPublicationDraftDetails({
+      subscriptionPlans: [
+        { deleted: false, displayName: 'Gold', edited: true, id: 'gold' },
+        { deleted: false, displayName: 'Silver', edited: false, id: 'silver' },
+        { deleted: true, displayName: 'Platinum', edited: true, id: 'platinum' },
+      ],
+    });
+
+    expect(editedPlanIdsOf(draft)).toEqual(['gold']);
+    expect(editedPlanIdsOf(undefined)).toEqual([]);
   });
 });
 
