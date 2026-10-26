@@ -372,3 +372,13 @@ func TestPortalProberTrustsOnlyThePortalCertificateAndFollowsRedirects(t *testin
 	require.Error(t, err)
 	require.Zero(t, status)
 }
+
+func TestPortalResourceKindGivesEachCollectionItsOwnDeleter(t *testing.T) {
+	require.Equal(t, portalSubscriptionPlanKind, portalResourceKind("/subscription-plans"))
+	require.Equal(t, portalMeterKind, portalResourceKind("/meters"))
+	require.Equal(t, portalWebhookKind, portalResourceKind("/webhook-subscribers"))
+	require.Equal(t, "api-portal-resource", portalResourceKind("/apis").Name)
+	// An API goes before the plans it offers, and a plan before the meters it prices.
+	require.Less(t, portalResourceKind("/apis").Order, portalSubscriptionPlanKind.Order)
+	require.Less(t, portalSubscriptionPlanKind.Order, portalMeterKind.Order)
+}

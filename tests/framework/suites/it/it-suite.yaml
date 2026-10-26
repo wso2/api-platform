@@ -58,6 +58,15 @@ blocks:
       - name: mcp-servers
         features:
           - features/apiportal/ai/mcp_servers.feature
+      - name: monetization-meters
+        features:
+          - features/apiportal/monetization/meters.feature
+      - name: monetization-priced-plans
+        features:
+          - features/apiportal/monetization/priced_plans.feature
+      - name: monetization-paid-plans-without-billing
+        features:
+          - features/apiportal/monetization/paid_plans_without_billing.feature
       - name: api-types
         features:
           - features/apiportal/core/api_types.feature
@@ -122,6 +131,9 @@ blocks:
       - name: webhook-delivery
         features:
           - features/apiportal/webhooks/webhook_delivery.feature
+      - name: monetization-events
+        features:
+          - features/apiportal/monetization/events.feature
 
   - name: api-portal-auth-scope
     parallel: 1
@@ -1041,6 +1053,10 @@ blocks:
       - name: platform-api-subscription-management
         features:
           - features/management-portal/resources/subscription_management.feature
+      - name: platform-api-paid-subscription-access
+        features:
+          - features/management-portal/monetization/paid_subscription_access.feature
+        tags: "~@known-issue"
       - name: platform-api-publication-drafts
         features:
           - features/management-portal/resources/publication_drafts.feature
@@ -1110,6 +1126,10 @@ blocks:
       - name: platform-api-subscription-management
         features:
           - features/management-portal/resources/subscription_management.feature
+      - name: platform-api-paid-subscription-access
+        features:
+          - features/management-portal/monetization/paid_subscription_access.feature
+        tags: "~@known-issue"
       - name: platform-api-publication-drafts
         features:
           - features/management-portal/resources/publication_drafts.feature
@@ -1179,6 +1199,10 @@ blocks:
       - name: platform-api-subscription-management
         features:
           - features/management-portal/resources/subscription_management.feature
+      - name: platform-api-paid-subscription-access
+        features:
+          - features/management-portal/monetization/paid_subscription_access.feature
+        tags: "~@known-issue"
       - name: platform-api-publication-drafts
         features:
           - features/management-portal/resources/publication_drafts.feature
@@ -1246,6 +1270,28 @@ blocks:
         features:
           - features/gateway/control-plane/dp_to_cp_sync_disabled.feature
 
+  # Platform API's own monetization rules - meters, priced plans and the API Portal events that
+  # create them - on every Platform API store. There is no gateway: these features never reach
+  # one, and the platform-api-<engine> blocks would repeat each runner on three gateway engines.
+  - name: platform-api-monetization
+    parallel: 3
+    components:
+      - name: platform-api
+        overlay: tests/framework/core/catalog/overlays/platform-api-webhook.toml
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: testbench
+    runners:
+      - name: monetization-meters
+        features:
+          - features/management-portal/monetization/meters.feature
+      - name: monetization-priced-plans
+        features:
+          - features/management-portal/monetization/priced_plans.feature
+      - name: monetization-portal-events
+        features:
+          - features/management-portal/monetization/portal_events.feature
+
   - name: multigateway
     parallel: 1
     components:
@@ -1279,6 +1325,9 @@ blocks:
       - name: devportal-webhook
         features:
           - features/apiportal/webhooks/devportal_webhook.feature
+      - name: devportal-monetization-webhook
+        features:
+          - features/apiportal/webhooks/monetization_webhook.feature
 
   # Platform-api working with an API Portal and a gateway: publishing a REST API to the portal.
   # Platform-api registers the portal over HTTPS and trusts its certificate, so the block overlays
@@ -1306,6 +1355,9 @@ blocks:
       - name: publication-lifecycle
         features:
           - features/apiportal/publishing/publication_lifecycle.feature
+      - name: publication-monetization
+        features:
+          - features/apiportal/publishing/publication_monetization.feature
       - name: publication-failures
         features:
           - features/apiportal/publishing/publication_failures.feature

@@ -82,6 +82,13 @@ roles:
       - dp:subscription_plan:update
       - dp:subscription_plan:manage
       - dp:subscription_plan:delete
+      - dp:meter:create
+      - dp:meter:read
+      - dp:meter:update
+      - dp:meter:manage
+      - dp:meter:delete
+      - dp:billing_configuration:read
+      - dp:billing_configuration:manage
       - dp:key_manager:create
       - dp:key_manager:read
       - dp:key_manager:update

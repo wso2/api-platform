@@ -95,6 +95,7 @@ var (
 	portalApplicationKind           = cleanup.Kind{Name: "api-portal-application", Order: 30}
 	portalAPIKind                   = cleanup.Kind{Name: "api-portal-api", Order: 40}
 	portalSubscriptionPlanKind      = cleanup.Kind{Name: "api-portal-subscription-plan", Order: 50}
+	portalMeterKind                 = cleanup.Kind{Name: "api-portal-meter", Order: 55}
 	portalWebhookKind               = cleanup.Kind{Name: "api-portal-webhook-subscriber", Order: 60}
 )
 
@@ -247,7 +248,7 @@ func Register(sc *godog.ScenarioContext, topo *runtime.Topology, controlPlane *h
 		s.generateAPIKeyAndStore)
 	sc.Step(`^a Portal API key for API "([^"]*)" is generated, the value is stored as "([^"]*)" and the handle is stored as "([^"]*)"$`,
 		s.generatePortalAPIKeyAndStore)
-	sc.Step(`^a webhook subscriber targeting the control plane is registered in the API Portal$`,
+	sc.Step(`^a webhook subscriber targeting the control plane is registered in the API Portal(?: for events "([^"]*)")?$`,
 		s.registerWebhookSubscriber)
 
 	// Credential-lifecycle steps: key expiry/revoke/regenerate and subscription
@@ -2273,6 +2274,12 @@ func portalResourceKind(path string) cleanup.Kind {
 		return portalApplicationKind
 	case strings.HasPrefix(path, "/key-managers"):
 		return cleanup.Kind{Name: "api-portal-key-manager", Order: 35}
+	case strings.HasPrefix(path, "/subscription-plans"):
+		return portalSubscriptionPlanKind
+	case strings.HasPrefix(path, "/meters"):
+		return portalMeterKind
+	case strings.HasPrefix(path, "/webhook-subscribers"):
+		return portalWebhookKind
 	default:
 		return cleanup.Kind{Name: "api-portal-resource", Order: 40}
 	}
@@ -3122,7 +3129,20 @@ func (s *Steps) linkOrganizationToControlPlane(ctx context.Context) error {
 // runner shares the SAME fixed subscriber id, so a repeat registration must be idempotent: a
 // 409 Conflict from an earlier scenario's registration is resynced via PUT rather than treated
 // as fatal, matching the same subscriber events allowlist and secret on every call.
-func (s *Steps) registerWebhookSubscriber(ctx context.Context) error {
+//
+// events is a comma-separated list of event patterns; when empty, the subscriber receives the
+// API key and subscription events. A pattern ending in ".*" matches by prefix, so
+// "subscription.*" does not match the subscription_plan events.
+func (s *Steps) registerWebhookSubscriber(ctx context.Context, events string) error {
+	patterns := []string{"apikey.*", "subscription.*"}
+	if strings.TrimSpace(events) != "" {
+		patterns = nil
+		for _, pattern := range strings.Split(events, ",") {
+			if pattern = strings.TrimSpace(pattern); pattern != "" {
+				patterns = append(patterns, pattern)
+			}
+		}
+	}
 	if err := s.linkOrganizationToControlPlane(ctx); err != nil {
 		return err
 	}
@@ -3143,7 +3163,7 @@ func (s *Steps) registerWebhookSubscriber(ctx context.Context) error {
 		"displayName": "Platform API",
 		"targetUrl":   controlPlaneBase + "/api/internal/v0.9/webhook/events",
 		"secret":      webhookSecret(),
-		"events":      []string{"apikey.*", "subscription.*"},
+		"events":      patterns,
 		"enabled":     true,
 	}
 	resp, err := s.doJSON(ctx, base, token, http.MethodPost, "/webhook-subscribers", payload)
