@@ -54,17 +54,11 @@ export type ApScope =
   | 'ap:api_portal:draft:manage'
   | 'ap:api_portal:draft:read'
   | 'ap:api_portal:draft:update'
-  | 'ap:api_portal:graphql_api:deprecate'
   | 'ap:api_portal:graphql_api:manage'
-  | 'ap:api_portal:graphql_api:publish'
-  | 'ap:api_portal:graphql_api:unpublish'
   | 'ap:api_portal:manage'
   | 'ap:api_portal:publication:read'
   | 'ap:api_portal:read'
-  | 'ap:api_portal:rest_api:deprecate'
   | 'ap:api_portal:rest_api:manage'
-  | 'ap:api_portal:rest_api:publish'
-  | 'ap:api_portal:rest_api:unpublish'
   | 'ap:api_portal:update'
   | 'ap:api_publication:read'
   | 'ap:application:api_key:create'
@@ -257,17 +251,11 @@ export const AP_SCOPES: readonly ApScope[] = [
   'ap:api_portal:draft:manage',
   'ap:api_portal:draft:read',
   'ap:api_portal:draft:update',
-  'ap:api_portal:graphql_api:deprecate',
   'ap:api_portal:graphql_api:manage',
-  'ap:api_portal:graphql_api:publish',
-  'ap:api_portal:graphql_api:unpublish',
   'ap:api_portal:manage',
   'ap:api_portal:publication:read',
   'ap:api_portal:read',
-  'ap:api_portal:rest_api:deprecate',
   'ap:api_portal:rest_api:manage',
-  'ap:api_portal:rest_api:publish',
-  'ap:api_portal:rest_api:unpublish',
   'ap:api_portal:update',
   'ap:api_publication:read',
   'ap:application:api_key:create',
@@ -649,14 +637,8 @@ export const OPERATION_SCOPES = {
     'ap:mcp_proxy:deployment:manage',
     'ap:mcp_proxy:manage',
   ],
-  deprecateGraphQLApiOnApiPortal: [
-    'ap:api_portal:graphql_api:deprecate',
-    'ap:api_portal:graphql_api:manage',
-  ],
-  deprecateRestApiOnApiPortal: [
-    'ap:api_portal:rest_api:deprecate',
-    'ap:api_portal:rest_api:manage',
-  ],
+  deprecateGraphQLApiOnApiPortal: ['ap:api_portal:graphql_api:manage'],
+  deprecateRestApiOnApiPortal: ['ap:api_portal:rest_api:manage'],
   fetchAgentCard: ['ap:agent_proxy:manage', 'ap:agent_proxy:read'],
   fetchMCPProxyServerInfo: ['ap:mcp_proxy:manage', 'ap:mcp_proxy:read'],
   getAgentProxy: ['ap:agent_proxy:manage', 'ap:agent_proxy:read'],
@@ -870,11 +852,8 @@ export const OPERATION_SCOPES = {
   ListSubscriptionPlans: ['ap:subscription_plan:manage', 'ap:subscription_plan:read'],
   ListSubscriptions: ['ap:subscription:manage', 'ap:subscription:read'],
   listUserAPIKeys: ['ap:api_key:all:manage', 'ap:api_key:read'],
-  publishGraphQLApiToApiPortal: [
-    'ap:api_portal:graphql_api:manage',
-    'ap:api_portal:graphql_api:publish',
-  ],
-  publishRestApiToApiPortal: ['ap:api_portal:rest_api:manage', 'ap:api_portal:rest_api:publish'],
+  publishGraphQLApiToApiPortal: ['ap:api_portal:graphql_api:manage'],
+  publishRestApiToApiPortal: ['ap:api_portal:rest_api:manage'],
   RegisterOrganization: ['ap:organization:create', 'ap:organization:manage'],
   RemoveApplicationAPIKey: [
     'ap:api_key:all:manage',
@@ -974,14 +953,8 @@ export const OPERATION_SCOPES = {
     'ap:mcp_proxy:deployment:undeploy',
     'ap:mcp_proxy:manage',
   ],
-  unpublishGraphQLApiFromApiPortal: [
-    'ap:api_portal:graphql_api:manage',
-    'ap:api_portal:graphql_api:unpublish',
-  ],
-  unpublishRestApiFromApiPortal: [
-    'ap:api_portal:rest_api:manage',
-    'ap:api_portal:rest_api:unpublish',
-  ],
+  unpublishGraphQLApiFromApiPortal: ['ap:api_portal:graphql_api:manage'],
+  unpublishRestApiFromApiPortal: ['ap:api_portal:rest_api:manage'],
   updateAgentProxy: ['ap:agent_proxy:manage', 'ap:agent_proxy:update'],
   updateAgentProxyAPIKey: [
     'ap:agent_proxy:api_key:manage',
