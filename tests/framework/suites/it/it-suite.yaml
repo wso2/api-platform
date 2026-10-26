@@ -863,10 +863,6 @@ blocks:
         tags: "gateway-version>=1.2.0"
         features:
           - features/ai-workspace-gateway/mcp-policies/mcp_policies.feature
-      - name: mcp-ratelimit-policy
-        tags: "gateway-version>1.2.0"
-        features:
-          - features/ai-workspace-gateway/mcp-policies/mcp_ratelimit.feature
       - name: mcp-rewrite-policy
         tags: "gateway-version>1.2.0"
         features:
