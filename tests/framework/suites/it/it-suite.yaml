@@ -628,9 +628,6 @@ blocks:
       - name: prompt-decorator
         features:
           - features/ai-workspace-gateway/llm-policies/prompt_decorator.feature
-      - name: prompt-compressor
-        features:
-          - features/ai-workspace-gateway/llm-policies/prompt_compressor.feature
       - name: aws-bedrock-guardrail
         tags: "gateway-version>1.2.0"
         features:
