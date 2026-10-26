@@ -193,6 +193,8 @@ export type SubscriptionFixture = Schema<'Subscription'>;
 export type SubscriptionPlanFixture = Schema<'SubscriptionPlan'>;
 export type SecretFixture = Schema<'SecretSummary'>;
 export type CustomPolicyFixture = Schema<'CustomPolicyResponse'>;
+export type ServiceAccountFixture = Schema<'ServiceAccount'>;
+export type RoleFixture = Schema<'Role'>;
 
 export const anApplication = (
   overrides: Partial<ApplicationFixture> = {}
@@ -262,6 +264,27 @@ export const aCustomPolicy = (
   name: 'rate-limit',
   version: 'v1',
   policyDefinition: {},
+  ...overrides,
+});
+
+export const aServiceAccount = (
+  overrides: Partial<ServiceAccountFixture> = {}
+): ServiceAccountFixture => ({
+  id: 'ci-deployer',
+  displayName: 'CI deployer',
+  description: 'Deploys REST APIs from the release pipeline',
+  clientId: 'sa_acme_ci-deployer_3f9a1c',
+  maskedSecret: '***9f2c1',
+  roles: ['ap_service_account'],
+  status: 'active',
+  ...overrides,
+});
+
+export const aRole = (
+  overrides: Partial<RoleFixture> = {}
+): RoleFixture => ({
+  name: 'ap_service_account',
+  scopes: ['ap:rest_api:read', 'ap:gateway:read'],
   ...overrides,
 });
 
