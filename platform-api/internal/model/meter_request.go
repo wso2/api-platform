@@ -42,16 +42,6 @@ var (
 	meterReadOnlyFields  = []string{"planCount", "createdBy", "updatedBy", "createdAt", "updatedAt"}
 	meterHandlePattern   = regexp.MustCompile(`^[a-z0-9-]{3,40}$`)
 	meterHandleSeparator = regexp.MustCompile(`[^a-z0-9]+`)
-	// defaultFilterEventKeys are the event fields our gateway fills for each fixed field; a TOKEN
-	// field has no default.
-	defaultFilterEventKeys = map[string]string{
-		FilterFieldHTTPStatusCode: "response.status",
-		FilterFieldHTTPMethod:     "request.verb",
-		FilterFieldResource:       "metadata.apiResourceTemplate",
-		FilterFieldAPIType:        "metadata.apiType",
-		FilterFieldMCPMethod:      "metadata.mcpAnalytics.jsonRpcMethod",
-		FilterFieldMCPTool:        "metadata.mcpAnalytics.capabilityName",
-	}
 )
 
 const (
@@ -60,7 +50,7 @@ const (
 )
 
 // ParseMeterRequest reads a meter create (create true) or update request and returns the meter it
-// describes, trimmed and with each fixed filter field's default event key filled in. On create the
+// describes, trimmed: its filter fields keep the names and event keys as written. On create the
 // handle is `id`, or is derived from the display name. On update it is the request's `id` as given,
 // empty when there is none, for the caller to compare with the meter's. The returned error's text is
 // safe to show.
@@ -82,8 +72,8 @@ func ParseMeterRequest(body []byte, create bool) (*Meter, error) {
 		Type         string  `json:"type"`
 		TypeKey      *string `json:"typeKey"`
 		FilterFields []struct {
-			Field    string  `json:"field"`
-			EventKey *string `json:"eventKey"`
+			Field    string `json:"field"`
+			EventKey string `json:"eventKey"`
 		} `json:"filterFields"`
 	}
 	if err := json.Unmarshal(body, &req); err != nil {
@@ -110,35 +100,14 @@ func ParseMeterRequest(body []byte, create bool) (*Meter, error) {
 	} else if meter.Type == MeterTypeTokens {
 		return nil, errors.New("A TOKENS meter needs a typeKey")
 	}
-	tokenKeys := make(map[string]bool)
 	for _, entry := range req.FilterFields {
-		given := ""
-		if entry.EventKey != nil {
-			given = strings.TrimSpace(*entry.EventKey)
-		}
-		if entry.Field == FilterFieldToken {
-			f := MeterFilterField{Field: FilterFieldToken, EventKey: given}
-			if given == "" {
-				return nil, errors.New("A Token field needs an eventKey")
-			}
-			if err := validateTokenField(meter, f, tokenKeys); err != nil {
-				return nil, err
-			}
-			meter.FilterFields = append(meter.FilterFields, f)
-			continue
-		}
-		if slices.ContainsFunc(meter.FilterFields, func(f MeterFilterField) bool { return f.Field == entry.Field }) {
-			return nil, fmt.Errorf("filterFields: %s is listed twice", entry.Field)
-		}
-		key := defaultFilterEventKeys[entry.Field]
-		if given != "" {
-			var ok bool
-			if key, ok = eventKey(given); !ok {
-				return nil, fmt.Errorf("The event key of %s must be 1 to %d characters with no spaces",
-					filterFieldLabels[entry.Field], maxEventKeyChars)
-			}
-		}
-		meter.FilterFields = append(meter.FilterFields, MeterFilterField{Field: entry.Field, EventKey: key})
+		meter.FilterFields = append(meter.FilterFields, MeterFilterField{
+			Field:    strings.TrimSpace(entry.Field),
+			EventKey: strings.TrimSpace(entry.EventKey),
+		})
+	}
+	if err := validateFilterFields(meter.FilterFields); err != nil {
+		return nil, err
 	}
 	if !create {
 		if req.ID != nil {
@@ -158,7 +127,8 @@ func ParseMeterRequest(body []byte, create bool) (*Meter, error) {
 
 // checkMeterShape refuses what the API Portal's REST API schema refuses, in the words it answers with:
 // a missing required field, a field it does not take or only gives back, a value of the wrong type, a
-// name or description too long, an unknown type, and filter fields that are too many or malformed.
+// name or description too long, an unknown type, and filter fields that are too many or malformed:
+// each is an object with a field and an eventKey, both strings.
 func checkMeterShape(keys []string, values map[string]json.RawMessage) error {
 	for _, required := range []string{"displayName", "type"} {
 		if _, ok := values[required]; !ok {
@@ -216,24 +186,20 @@ func checkMeterShape(keys []string, values map[string]json.RawMessage) error {
 		if !ok {
 			return fmt.Errorf("%s must be an object", where)
 		}
-		if _, ok := values["field"]; !ok {
-			return fmt.Errorf("field of %s is required", where)
+		for _, required := range []string{"field", "eventKey"} {
+			if _, ok := values[required]; !ok {
+				return fmt.Errorf("%s of %s is required", required, where)
+			}
 		}
 		for _, key := range keys {
 			if key != "field" && key != "eventKey" {
 				return fmt.Errorf("%s of %s is not a known field", key, where)
 			}
 		}
-		var field string
-		if !isJSONString(values["field"]) {
-			return fmt.Errorf("field of %s must be a string", where)
-		}
-		_ = json.Unmarshal(values["field"], &field)
-		if !slices.Contains(filterFields, field) {
-			return fmt.Errorf("field of %s must be one of %s", where, strings.Join(filterFields, ", "))
-		}
-		if key, ok := values["eventKey"]; ok && !isJSONString(key) && !isJSONNull(key) {
-			return fmt.Errorf("eventKey of %s must be a string", where)
+		for _, key := range []string{"field", "eventKey"} {
+			if !isJSONString(values[key]) {
+				return fmt.Errorf("%s of %s must be a string", key, where)
+			}
 		}
 	}
 	return nil

@@ -37,7 +37,7 @@ import { EmptyState, ErrorState, LoadingState } from '@/components/StateViews';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { Can } from '@/permissions';
 import { MeterFormDialog } from './components/MeterFormDialog';
-import { filterFieldsLabel, typeLabel } from './components/meterLabels';
+import { propertiesLabel, typeLabel } from './components/meterLabels';
 
 const PAGE_SIZE_OPTIONS = [5, 10, 15, 20];
 const SEARCH_DEBOUNCE_MS = 300;
@@ -50,7 +50,7 @@ const messages = defineMessages({
   columnFilters: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.MetersSettingsPage.column.filters',
     defaultMessage: 'Filters',
-    description: 'Column of the fields the prices of each meter may filter on.',
+    description: 'Column of the names of the properties the prices of each meter may filter on.',
   },
   columnName: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.MetersSettingsPage.column.name',
@@ -127,7 +127,7 @@ const messages = defineMessages({
   noFilters: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.MetersSettingsPage.noFilters',
     defaultMessage: 'None',
-    description: 'Filters cell of a meter whose prices cannot filter on any field.',
+    description: 'Filters cell of a meter whose prices cannot filter on any property.',
   },
   noMatchesDescription: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.MetersSettingsPage.noMatches.description',
@@ -249,7 +249,7 @@ export function MetersSettingsPage() {
           </ListingTable.Head>
           <ListingTable.Body>
             {meters.map((meter) => {
-              const filters = filterFieldsLabel(intl, meter);
+              const filters = propertiesLabel(meter);
               const name = meter.displayName ?? meter.id ?? '';
               return (
                 <ListingTable.Row key={meter.id ?? name}>

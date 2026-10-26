@@ -30,12 +30,9 @@
  * The billing meter's es_query is what Moesif searches its API call events with. The event fields
  * a meter reads are stored on the meter, as full paths in the Moesif event: the number a TOKENS
  * meter adds up (type_key, for our gateway `metadata.aiTokenUsage.promptTokens`,
- * `completionTokens` or `totalTokens`) and the field each filter matches (filter_fields[].eventKey,
- * for our gateway `response.status`, `request.verb`, `metadata.apiResourceTemplate`,
- * `metadata.apiType`, `metadata.mcpAnalytics.jsonRpcMethod` and `metadata.mcpAnalytics.capabilityName`).
- * Status codes are numbers in the events and are matched on the key itself; other values are matched
- * exactly on the key's `.raw` keyword field. A Token condition compares the number at the key it names
- * with a `range` condition (EQUALS is gte and lte).
+ * `completionTokens` or `totalTokens`) and the field each filter property reads
+ * (filter_fields[].eventKey). Values are matched as text, exactly or by prefix, on the key's `.raw`
+ * keyword field; a comparison is a `range` condition on the key itself.
  *
  * Every event must also carry billing metadata, `metadata.billingCustomerId` and
  * `metadata.billingSubscriptionId`, matched against Moesif's {{company_id}} and {{subscription_id}}
@@ -61,79 +58,53 @@ const PRICING_MODELS = { PER_UNIT: 'per_unit', VOLUME: 'volume', GRADUATED: 'tie
 /** A sync step the portal refuses before calling Moesif; the message is shown to administrators. */
 class CatalogInputError extends Error {}
 
-/**
- * The event field a filter matches and how its values are written: a status code as a number on the
- * meter's key, any other value as text on the key's keyword field.
- */
-function filterTarget(meter, field) {
-    const entry = (meter.filter_fields || []).find((f) => f.field === field);
+/** The event key of the meter's filter property `name`. */
+function propertyKey(meter, name) {
+    const entry = (meter.filter_fields || []).find((f) => f.field === name);
     if (!entry || !entry.eventKey) {
-        throw new CatalogInputError(`The meter ${meter.handle} has no event key for the ${field} filter.`);
+        throw new CatalogInputError(`The meter ${meter.handle} has no event key for the ${name} filter.`);
     }
-    return field === 'HTTP_STATUS_CODE'
-        ? { field: entry.eventKey, value: Number }
-        : { field: `${entry.eventKey}.raw`, value: String };
+    return entry.eventKey;
 }
 
-// The range bounds of a Token condition's operator.
+// The range bound of a comparison.
 const RANGE_BOUNDS = Object.freeze({
-    GREATER_THAN: ['gt'],
-    GREATER_THAN_OR_EQUAL: ['gte'],
-    LESS_THAN: ['lt'],
-    LESS_THAN_OR_EQUAL: ['lte'],
-    EQUALS: ['gte', 'lte'],
+    GREATER_THAN: 'gt',
+    GREATER_THAN_OR_EQUAL: 'gte',
+    LESS_THAN: 'lt',
+    LESS_THAN_OR_EQUAL: 'lte',
 });
-
-/** A Token condition as a range condition on the number at its key: { range: { key: { gt: 333 } } }. */
-function tokenClause(f) {
-    const bounds = RANGE_BOUNDS[f.operator];
-    if (!bounds) throw new CatalogInputError(`The ${f.operator} operator is not supported for a Token condition.`);
-    const n = Number(f.values[0]);
-    return { range: { [f.eventKey]: Object.fromEntries(bounds.map((b) => [b, n])) } };
-}
-
-/**
- * A STARTS_WITH condition: the path itself or a resource under it, by whole path segments, so
- * "/orders" matches "/orders" and "/orders/{id}" but not "/orders-archive" (meterValidation.underPath).
- * The path is stored without a trailing "/"; "/" matches every resource.
- */
-function underPathClause(field, path) {
-    if (path === '/') return { prefix: { [field]: '/' } };
-    return { bool: { should: [{ terms: { [field]: [path] } }, { prefix: { [field]: `${path}/` } }], minimum_should_match: 1 } };
-}
 
 /**
  * The clauses a price's filters add on its meter (from priceMeter): { must: [...], mustNot: [...] }.
- * EQUALS and IN match the values; NOT_EQUALS and NOT_IN match calls that have the field with another
- * value (a call without the field, such as one from a gateway that does not send it, is not
- * counted); STARTS_WITH matches a path and what is under it; and each Token condition is a range on
- * its key.
+ * EQUALS and IN match the values; NOT_EQUALS and NOT_IN match calls that have the property with
+ * another value; STARTS_WITH matches values that begin with the text; and a comparison is a range on
+ * the number.
  */
 function filterClauses(meter) {
     const must = [];
     const mustNot = [];
     for (const f of meter.filters || []) {
-        if (f.field === 'TOKEN') {
-            must.push(tokenClause(f));
-            continue;
-        }
-        const target = filterTarget(meter, f.field);
-        const values = f.values.map(target.value);
+        const key = propertyKey(meter, f.field);
+        const text = `${key}.raw`;
         switch (f.operator) {
             case 'EQUALS':
             case 'IN':
-                must.push({ terms: { [target.field]: values } });
+                must.push({ terms: { [text]: f.values.map(String) } });
                 break;
             case 'NOT_EQUALS':
             case 'NOT_IN':
-                must.push({ exists: { field: target.field } });
-                mustNot.push({ terms: { [target.field]: values } });
+                must.push({ exists: { field: text } });
+                mustNot.push({ terms: { [text]: f.values.map(String) } });
                 break;
             case 'STARTS_WITH':
-                must.push(underPathClause(target.field, values[0]));
+                must.push({ prefix: { [text]: String(f.values[0]) } });
                 break;
-            default:
-                throw new CatalogInputError(`The ${f.operator} operator is not supported.`);
+            default: {
+                const bound = RANGE_BOUNDS[f.operator];
+                if (!bound) throw new CatalogInputError(`The ${f.operator} operator is not supported.`);
+                must.push({ range: { [key]: { [bound]: Number(f.values[0]) } } });
+            }
         }
     }
     return { must, mustNot };

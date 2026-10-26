@@ -240,13 +240,14 @@ const getSubscriptionBilling = async (req, res) => {
  *   - A plan charged by usage only ends now (removeNow), with a final invoice for the usage
  *     reported so far.
  *   - A flat rate plan runs to the end of the period already paid for, when the provider ends
- *     it (endsAt); the portal keeps the subscription until then.
+ *     it (endsAt); the portal keeps the subscription until then. Asked to end it immediately, the
+ *     provider ends it at once, with no final invoice and no refund for the rest of that period.
  *   - A subscription the provider has already ended, or no longer has, is removed now.
  *
  * Throws a SubscriptionBillingError when the provider cannot be reached, so the subscription is
  * kept rather than left billing with no way to stop it.
  */
-async function endInProvider(billing) {
+async function endInProvider(billing, { immediate = false } = {}) {
     const conn = await configurationFor(billing);
     if (!conn) {
         // Billing was removed, which is allowed only once every paid subscription has ended in the
@@ -260,8 +261,8 @@ async function endInProvider(billing) {
     const byUsage = Boolean(pricing && pricing.pricing_type === 'USAGE_BASED');
     const { payments } = billingProvider.forConfiguration(conn);
     try {
-        if (byUsage) {
-            await payments.cancelSubscription(billing.subscription_ref);
+        if (byUsage || immediate) {
+            await payments.cancelSubscription(billing.subscription_ref, { finalInvoice: byUsage });
             return { removeNow: true, endsAt: null };
         }
         const endsAt = await payments.endAtPeriodEnd(billing.subscription_ref);

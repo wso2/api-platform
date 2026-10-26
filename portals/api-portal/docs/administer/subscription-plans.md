@@ -91,7 +91,7 @@ items:
             pricingModel: PER_UNIT
             unitAmount: "0.002"
             filters:
-              - field: HTTP_METHOD
+              - field: HTTP method
                 operator: IN
                 values: [GET, POST]
 ```

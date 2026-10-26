@@ -23,7 +23,6 @@
  */
 
 const meterDao = require('../../dao/meterDao');
-const { priceAppliesToApiType } = require('./planPricingValidation');
 const { formatAmount, nameOf, periodLabel, priceLabel, unitOf } = require('../../utils/pricingLabels');
 
 const PERIOD_ADVERBS = { MONTH: 'monthly', YEAR: 'yearly' };
@@ -115,9 +114,7 @@ function priceItem(price, currency, unit, name) {
 }
 
 /**
- * Adds to each paid plan (as appendSubscriptionPlanDetails returns them) of an API of `apiType` the
- * text its card shows, from the usage prices that apply to that type (priceAppliesToApiType; the
- * others are not sold on the API):
+ * Adds to each paid plan (as appendSubscriptionPlanDetails returns them) the text its card shows:
  *   priceAmount / priceUnit  the headline: a flat rate plan's amount ("$20.00" "/ month"), else the
  *                            one per-unit price ("$0.01" "/ request"), else the least per unit with
  *   pricePrefix              "From" ("From $0.01 / request"), else "Pay per use" (prices that count
@@ -131,15 +128,14 @@ function priceItem(price, currency, unit, name) {
  * A price is named after its meter and values ("Requests · GET") and says what is counted
  * ("request").
  */
-async function decoratePlans(orgId, plans, apiType) {
+async function decoratePlans(orgId, plans) {
     const paid = (plans || []).filter((p) => p.paid && p.pricing);
     if (paid.length === 0) return;
     const meters = new Map((await meterDao.list(orgId)).map((m) => [m.handle, m]));
 
     for (const plan of paid) {
         const pricing = plan.pricing;
-        const prices = (pricing.prices || [])
-            .filter((price) => priceAppliesToApiType(price.filters, meters.get(price.meterId), apiType));
+        const prices = pricing.prices || [];
         let listed = prices;
         plan.pricePrefix = null;
         if (pricing.pricingType === 'FLAT_RATE') {

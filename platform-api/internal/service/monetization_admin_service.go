@@ -240,13 +240,42 @@ type planPriceRequest struct {
 	Tiers        []priceTierRequest   `json:"tiers,omitempty"`
 }
 
-// priceFilterRequest is one filter of a planPriceRequest. eventKey names the Token key of a TOKEN
-// condition; other filters have none.
+// priceFilterRequest is one filter of a planPriceRequest: the name of a property of the price's meter,
+// an operator and its values.
 type priceFilterRequest struct {
-	Field    string   `json:"field"`
-	EventKey string   `json:"eventKey,omitempty"`
-	Operator string   `json:"operator"`
-	Values   []string `json:"values"`
+	Field    string       `json:"field"`
+	Operator string       `json:"operator"`
+	Values   filterValues `json:"values"`
+}
+
+// filterValues are the values of a priceFilterRequest. A value may be a JSON string or a JSON number;
+// a number is kept as written.
+type filterValues []string
+
+func (v *filterValues) UnmarshalJSON(data []byte) error {
+	var items []json.RawMessage
+	if err := json.Unmarshal(data, &items); err != nil {
+		return err
+	}
+	if items == nil {
+		*v = nil
+		return nil
+	}
+	values := make([]string, 0, len(items))
+	for _, item := range items {
+		var text string
+		if err := json.Unmarshal(item, &text); err == nil {
+			values = append(values, text)
+			continue
+		}
+		var number json.Number
+		if err := json.Unmarshal(item, &number); err != nil {
+			return err
+		}
+		values = append(values, number.String())
+	}
+	*v = values
+	return nil
 }
 
 // priceTierRequest is one tier of a VOLUME or GRADUATED planPriceRequest; upTo is null on the last.
@@ -387,7 +416,8 @@ func jsonFieldNames(v any) []string {
 	return names
 }
 
-// parsePlanPrice returns a requested price with the codes upper-cased and the meter handle trimmed.
+// parsePlanPrice returns a requested price with the codes upper-cased and the meter handle and the
+// filters' property names trimmed.
 func parsePlanPrice(p planPriceRequest) model.SubscriptionPlanPrice {
 	price := model.SubscriptionPlanPrice{
 		MeterHandle:  strings.TrimSpace(p.MeterID),
@@ -398,8 +428,7 @@ func parsePlanPrice(p planPriceRequest) model.SubscriptionPlanPrice {
 	}
 	for _, f := range p.Filters {
 		price.Filters = append(price.Filters, model.PriceFilter{
-			Field:    strings.ToUpper(strings.TrimSpace(f.Field)),
-			EventKey: strings.TrimSpace(f.EventKey),
+			Field:    strings.TrimSpace(f.Field),
 			Operator: strings.ToUpper(strings.TrimSpace(f.Operator)),
 			Values:   f.Values,
 		})
@@ -426,7 +455,7 @@ func portalPricing(p *model.SubscriptionPlanPricing) *planPricingRequest {
 	for _, price := range p.Prices {
 		filters := make([]priceFilterRequest, 0, len(price.Filters))
 		for _, f := range price.Filters {
-			filters = append(filters, priceFilterRequest{Field: f.Field, EventKey: f.EventKey, Operator: f.Operator, Values: f.Values})
+			filters = append(filters, priceFilterRequest{Field: f.Field, Operator: f.Operator, Values: f.Values})
 		}
 		body := planPriceRequest{
 			MeterID:      price.MeterHandle,
@@ -443,9 +472,9 @@ func portalPricing(p *model.SubscriptionPlanPricing) *planPricingRequest {
 	return req
 }
 
-// checkPricedMeters checks that each price of pricing counts with a meter the organization has,
-// filters only on the fields that meter allows, and puts Token conditions only on the meter's Token
-// keys: its typeKey and the keys of its TOKEN filter fields.
+// checkPricedMeters checks that each price of pricing counts with a meter the organization has and
+// that each of its filters names a property of that meter, ignoring case. Each filter is given the
+// property's name as the meter spells it.
 func checkPricedMeters(meterRepo repository.MeterRepository, orgUUID string, pricing *model.SubscriptionPlanPricing) error {
 	meters := make(map[string]*model.Meter, len(pricing.Prices))
 	for i, price := range pricing.Prices {
@@ -461,18 +490,13 @@ func checkPricedMeters(meterRepo repository.MeterRepository, orgUUID string, pri
 			}
 			meters[price.MeterHandle] = meter
 		}
-		for _, f := range price.Filters {
-			if f.Field == model.FilterFieldToken {
-				if !meter.HasTokenKey(f.EventKey) {
-					return apperror.ValidationFailed.New(
-						fmt.Sprintf("price %d: the meter has no Token field with the key %s", i+1, f.EventKey))
-				}
-				continue
-			}
-			if !meter.AllowsFilterOn(f.Field) {
+		for k, f := range price.Filters {
+			property, ok := meter.Property(f.Field)
+			if !ok {
 				return apperror.ValidationFailed.New(
-					fmt.Sprintf("price %d: the meter %s does not allow filtering on %s", i+1, price.MeterHandle, f.Field))
+					fmt.Sprintf("price %d: the meter %s has no property %s", i+1, price.MeterHandle, f.Field))
 			}
+			price.Filters[k].Field = property.Field
 		}
 	}
 	return nil

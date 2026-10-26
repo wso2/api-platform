@@ -18,8 +18,8 @@
 'use strict';
 
 /*
- * Settings › Usage & Revenue: what the portal's paid plans have invoiced, month by month and per
- * plan, with the billable usage on those invoices.
+ * Settings › Usage & Revenue: what the portal's paid plans have invoiced, month by month, with the
+ * requests billed on those invoices.
  *
  * The report comes from two calls:
  *   - GET /billing-reports/revenue: what the portal's own records hold: the paid subscriptions, the

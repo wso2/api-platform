@@ -96,7 +96,7 @@ const as = (extra) => Object.assign(
 const calls = {
     displayName: 'Successful calls',
     type: 'REQUEST_COUNT',
-    filterFields: [{ field: 'HTTP_METHOD' }],
+    filterFields: [{ field: 'HTTP method', eventKey: 'request.verb' }],
 };
 
 (async () => {
@@ -110,14 +110,16 @@ const calls = {
         typeKey: 'metadata.aiTokenUsage.totalTokens' } }));
     out.duplicateId = await call(meters.createMeter, as({ body: { ...calls, id: 'successful-calls' } }));
     out.invalid = await call(meters.createMeter, as({ body: { ...calls, type: 'BYTES' } }));
-    out.unknownFilterField = await call(meters.createMeter, as({ body: { ...calls, id: 'bad-fields',
-        filterFields: [{ field: 'COLOR' }] } }));
+    out.filterFieldWithoutKey = await call(meters.createMeter, as({ body: { ...calls, id: 'bad-fields',
+        filterFields: [{ field: 'Color' }] } }));
     out.filterFieldTwice = await call(meters.createMeter, as({ body: { ...calls, id: 'bad-fields',
-        filterFields: [{ field: 'API_TYPE' }, { field: 'api_type' }] } }));
+        filterFields: [{ field: 'API type', eventKey: 'a' }, { field: 'api TYPE', eventKey: 'b' }] } }));
+    out.filterKeyTwice = await call(meters.createMeter, as({ body: { ...calls, id: 'bad-fields',
+        filterFields: [{ field: 'Code', eventKey: 'response.status' }, { field: 'Status', eventKey: 'response.status' }] } }));
     out.filterFieldWithOperator = await call(meters.createMeter, as({ body: { ...calls, id: 'bad-fields',
-        filterFields: [{ field: 'API_TYPE', operator: 'EQUALS' }] } }));
+        filterFields: [{ field: 'API type', eventKey: 'metadata.apiType', operator: 'EQUALS' }] } }));
     out.withConditions = await call(meters.createMeter, as({ body: { ...calls, id: 'with-conditions',
-        conditions: [{ field: 'HTTP_STATUS_CODE', operator: 'IN' }] } }));
+        conditions: [{ field: 'Status code', operator: 'IN' }] } }));
     out.get = await call(meters.getMeter, as({ params: { meterId: 'successful-calls' } }));
     out.getMissing = await call(meters.getMeter, as({ params: { meterId: 'no-such-meter' } }));
     // No plan prices the meter yet, so it can change.
@@ -134,7 +136,7 @@ const calls = {
     const goldPricing = {
         pricingType: 'USAGE_BASED', currency: 'USD', billingPeriod: 'MONTH',
         prices: [{ pricingModel: 'PER_UNIT', unitAmount: '0.01', meterId: 'successful-calls',
-            filters: [{ field: 'http_method', operator: 'equals', values: ['get'] }] }],
+            filters: [{ field: 'http METHOD', operator: 'equals', values: ['GET'] }] }],
     };
     out.freePlan = await call(plans.addSubscriptionPlans, as({ body: { id: 'free', displayName: 'Free' } }));
     out.pricingFree = await call(pricing.getPlanPricing, as({ params: { planId: 'free' } }));
@@ -150,7 +152,7 @@ const calls = {
     out.silverCreated = await call(plans.putSubscriptionPlans, as({ body: { id: 'silver', displayName: 'Silver', pricing: {
         pricingType: 'USAGE_BASED', currency: 'USD', billingPeriod: 'MONTH',
         prices: [{ pricingModel: 'GRADUATED', meterId: 'successful-calls',
-            filters: [{ field: 'HTTP_METHOD', operator: 'EQUALS', values: ['POST'] }],
+            filters: [{ field: 'HTTP method', operator: 'EQUALS', values: ['POST'] }],
             tiers: [{ upTo: 1000, unitAmount: '0' }, { upTo: null, unitAmount: '0.002' }] },
         { ...goldPricing.prices[0] }],
     } } }));
@@ -175,7 +177,7 @@ const calls = {
     out.pricingOverlap = await pricedPlan('overlap', [goldPricing.prices[0], { ...goldPricing.prices[0], filters: [] }]);
     out.pricingUnknownMeter = await pricedPlan('unknown-meter', [{ ...goldPricing.prices[0], meterId: 'missing-meter' }]);
     out.pricingFieldNotAllowed = await pricedPlan('type-filter', [{ ...goldPricing.prices[0],
-        filters: [{ field: 'API_TYPE', operator: 'EQUALS', values: ['RestApi'] }] }]);
+        filters: [{ field: 'API type', operator: 'EQUALS', values: ['RestApi'] }] }]);
     out.pricingZeroFlat = await call(plans.addSubscriptionPlans, as({ body: { id: 'zero', displayName: 'Zero',
         pricing: { pricingType: 'FLAT_RATE', currency: 'USD', billingPeriod: 'MONTH', flatAmount: '0.00' } } }));
     out.refusedPlanRows = count("SELECT COUNT(*) AS n FROM subscription_plans WHERE handle IN ('overlap', 'unknown-meter', 'named', 'type-filter', 'zero')");
@@ -186,14 +188,14 @@ const calls = {
     }));
     out.filterFieldAddedWhilePriced = await call(meters.updateMeter, as({
         params: { meterId: 'successful-calls' },
-        body: { ...calls, description: 'Calls that succeeded', filterFields: [{ field: 'HTTP_METHOD' }, { field: 'API_TYPE' }] },
+        body: { ...calls, description: 'Calls that succeeded', filterFields: [{ field: 'HTTP method', eventKey: 'request.verb' }, { field: 'API type', eventKey: 'metadata.apiType' }] },
     }));
     out.filterFieldRemovedWhilePriced = await call(meters.updateMeter, as({
         params: { meterId: 'successful-calls' }, body: { ...calls, description: 'Calls that succeeded', filterFields: [] },
     }));
     out.eventKeyChangedWhilePriced = await call(meters.updateMeter, as({
         params: { meterId: 'successful-calls' },
-        body: { ...calls, description: 'Calls that succeeded', filterFields: [{ field: 'HTTP_METHOD', eventKey: 'verb' }] },
+        body: { ...calls, description: 'Calls that succeeded', filterFields: [{ field: 'HTTP method', eventKey: 'verb' }] },
     }));
     out.meterWhilePriced = await call(meters.getMeter, as({ params: { meterId: 'successful-calls' } }));
     out.listWithUsage = await call(meters.listMeters, as());
@@ -228,7 +230,7 @@ const calls = {
     out.silverDeleted = await call(plans.deleteSubscriptionPlan, as({ params: { planId: 'silver' } }));
     out.changedAfterPlansDeleted = await call(meters.updateMeter, as({
         params: { meterId: 'successful-calls' },
-        body: { ...calls, displayName: 'Billed calls', filterFields: [{ field: 'HTTP_METHOD' }, { field: 'API_TYPE' }] },
+        body: { ...calls, displayName: 'Billed calls', filterFields: [{ field: 'HTTP method', eventKey: 'request.verb' }, { field: 'API type', eventKey: 'metadata.apiType' }] },
     }));
     out.deleted = await call(meters.deleteMeter, as({ params: { meterId: 'successful-calls' } }));
     out.deletedAgain = await call(meters.deleteMeter, as({ params: { meterId: 'successful-calls' } }));
@@ -239,7 +241,7 @@ const calls = {
     // --- event keys the administrator writes ----------------------------------
     const lastEvent = () => JSON.parse(db.prepare('SELECT payload FROM events ORDER BY rowid DESC LIMIT 1').get().payload);
     const inputTokens = { id: 'input-tokens', displayName: 'Input tokens', type: 'TOKENS', typeKey: ' usage.in ',
-        filterFields: [{ field: 'API_TYPE', eventKey: 'api.kind' }, { field: 'HTTP_STATUS_CODE' }] };
+        filterFields: [{ field: 'API type', eventKey: 'api.kind' }, { field: 'Status code', eventKey: 'response.status' }] };
     out.customKeys = await call(meters.createMeter, as({ body: inputTokens }));
     out.customKeysEvent = lastEvent();
     out.customKeysRow = db.prepare('SELECT type_key, CAST(filter_fields AS TEXT) AS filter_fields FROM meters WHERE handle = ?')
@@ -250,48 +252,53 @@ const calls = {
     out.oldEventProperty = await call(meters.createMeter, as({ body: { ...inputTokens, id: 'old-property',
         eventProperty: 'INPUT_TOKENS' } }));
     out.spacedFilterKey = await call(meters.createMeter, as({ body: { ...inputTokens, id: 'spaced-key',
-        filterFields: [{ field: 'API_TYPE', eventKey: 'api kind' }] } }));
+        filterFields: [{ field: 'API type', eventKey: 'api kind' }] } }));
+    out.emptiedKey = await call(meters.updateMeter, as({ params: { meterId: 'input-tokens' }, body: { ...inputTokens,
+        filterFields: [{ field: 'API type', eventKey: '' }] } }));
     out.keysUpdated = await call(meters.updateMeter, as({ params: { meterId: 'input-tokens' }, body: { ...inputTokens,
-        typeKey: 'usage.out', filterFields: [{ field: 'API_TYPE', eventKey: '' }, { field: 'RESOURCE', eventKey: 'path' }] } }));
+        typeKey: 'usage.out', filterFields: [{ field: 'API type', eventKey: 'metadata.apiType' }, { field: 'Resource', eventKey: 'path' }] } }));
     out.keysUpdatedEvent = lastEvent();
 
-    // --- all four fields: a meter that lists them and a price that filters on each ---
+    // --- our gateway's four properties and one of the administrator's: a price that filters on each ---
     out.allFieldsMeter = await call(meters.createMeter, as({ body: { id: 'all-fields', displayName: 'All fields',
-        type: 'REQUEST_COUNT', filterFields: ['HTTP_STATUS_CODE', 'HTTP_METHOD', 'RESOURCE', 'API_TYPE']
-            .map((field) => ({ field })) } }));
+        type: 'REQUEST_COUNT', filterFields: [
+            { field: 'Status code', eventKey: 'response.status' },
+            { field: 'HTTP method', eventKey: 'request.verb' },
+            { field: 'Resource', eventKey: 'metadata.apiResourceTemplate' },
+            { field: 'API type', eventKey: 'metadata.apiType' },
+            { field: 'Region', eventKey: 'metadata.region' },
+        ] } }));
     out.allFieldsPlan = await call(plans.addSubscriptionPlans, as({ body: { id: 'all-fields', displayName: 'All fields',
         pricing: { pricingType: 'USAGE_BASED', currency: 'USD', billingPeriod: 'MONTH', prices: [{
             pricingModel: 'PER_UNIT', unitAmount: '0.01', meterId: 'all-fields', filters: [
-                { field: 'HTTP_STATUS_CODE', operator: 'IN', values: ['200', '201'] },
-                { field: 'HTTP_METHOD', operator: 'NOT_EQUALS', values: ['DELETE'] },
-                { field: 'RESOURCE', operator: 'STARTS_WITH', values: ['/orders'] },
-                { field: 'API_TYPE', operator: 'IN', values: ['RestApi', 'LlmProvider'] },
+                { field: 'Status code', operator: 'GREATER_THAN_OR_EQUAL', values: ['400'] },
+                { field: 'HTTP method', operator: 'NOT_EQUALS', values: ['DELETE'] },
+                { field: 'Resource', operator: 'STARTS_WITH', values: ['/orders/'] },
+                { field: 'API type', operator: 'IN', values: ['RestApi', 'LlmProvider'] },
+                { field: 'Region', operator: 'EQUALS', values: ['eu-west'] },
             ] }] } } }));
 
-    // --- Token fields and conditions -----------------------------------------
+    // --- comparisons -------------------------------------------------------------
     const PROMPT = 'metadata.aiTokenUsage.promptTokens';
     const TOTAL = 'metadata.aiTokenUsage.totalTokens';
+    // A Tokens meter whose prices compare the number it adds up (a property on its own key) and another.
     out.tokenMeter = await call(meters.createMeter, as({ body: { id: 'prompt-tokens', displayName: 'Prompt tokens',
-        type: 'TOKENS', typeKey: PROMPT,
-        filterFields: [{ field: 'TOKEN', eventKey: TOTAL }, { field: 'API_TYPE' }] } }));
+        type: 'TOKENS', typeKey: PROMPT, filterFields: [{ field: 'Prompt tokens', eventKey: PROMPT },
+            { field: 'Total tokens', eventKey: TOTAL }, { field: 'API type', eventKey: 'metadata.apiType' }] } }));
     out.tokenMeterEvent = lastEvent();
-    out.tokenFieldOnRowKey = await call(meters.createMeter, as({ body: { id: 'row-key-twice', displayName: 'Row key twice',
-        type: 'TOKENS', typeKey: PROMPT, filterFields: [{ field: 'TOKEN', eventKey: PROMPT }] } }));
-    out.tokenFieldWithoutKey = await call(meters.createMeter, as({ body: { id: 'no-token-key', displayName: 'No token key',
-        type: 'REQUEST_COUNT', filterFields: [{ field: 'TOKEN' }] } }));
-    const condition = (operator, value, eventKey = PROMPT) => ({ field: 'TOKEN', eventKey, operator, values: [value] });
+    const condition = (operator, value, field = 'Prompt tokens') => ({ field, operator, values: [value] });
     const tokenPlan = (id, prices) => call(plans.addSubscriptionPlans, as({ body: { id, displayName: id, pricing: {
         pricingType: 'USAGE_BASED', currency: 'USD', billingPeriod: 'MONTH', prices } } }));
     const tokenPrice = (unitAmount, filters) => ({ pricingModel: 'PER_UNIT', unitAmount, unitQuantity: 1000000, meterId: 'prompt-tokens', filters });
     // Up to 333 prompt tokens at one price, above at another; both only when the call used any tokens at all.
     out.tokenTiers = await tokenPlan('token-tiers', [
-        tokenPrice('1.00', [condition('LESS_THAN_OR_EQUAL', '0333'), condition('GREATER_THAN', '0', TOTAL)]),
-        tokenPrice('2.00', [condition('GREATER_THAN', '333'), condition('GREATER_THAN', '0', TOTAL)]),
+        tokenPrice('1.00', [condition('LESS_THAN_OR_EQUAL', '0333'), condition('GREATER_THAN', '0', 'Total tokens')]),
+        tokenPrice('2.00', [condition('GREATER_THAN', '333'), condition('GREATER_THAN', '0', 'Total tokens')]),
     ]);
     out.tokenOverlap = await tokenPlan('token-overlap', [
         tokenPrice('1.00', [condition('GREATER_THAN', '100')]), tokenPrice('2.00', [condition('GREATER_THAN', '333')])]);
     out.tokenUnknownKey = await tokenPlan('token-unknown', [
-        tokenPrice('1.00', [condition('GREATER_THAN', '1', 'metadata.aiTokenUsage.completionTokens')])]);
+        tokenPrice('1.00', [condition('GREATER_THAN', '1', 'Completion tokens')])]);
     out.tokenImpossible = await tokenPlan('token-impossible', [
         tokenPrice('1.00', [condition('GREATER_THAN', '500'), condition('LESS_THAN', '100')])]);
     // Read once the plan's transaction has committed (the later calls waited for it).
@@ -448,34 +455,38 @@ test('createMeter gives a derived id that is taken a suffix, but refuses a given
 
 test('createMeter refuses an invalid meter with 400', () => {
     assert.equal(results().invalid.status, 400);
-    assert.equal(results().unknownFilterField.status, 400);
-    assert.match(results().unknownFilterField.body.message, /filterFields: unknown field COLOR/);
-    assert.equal(results().filterFieldTwice.status, 400);
-    assert.match(results().filterFieldTwice.body.message, /filterFields: API_TYPE is listed twice/);
+    const refused = {
+        filterFieldWithoutKey: 'The event key of Color must be 1 to 255 characters with no spaces',
+        filterFieldTwice: 'The meter has the property api TYPE more than once',
+        filterKeyTwice: 'Status and Code read the same event key response.status',
+    };
+    for (const [key, message] of Object.entries(refused)) {
+        assert.equal(results()[key].status, 400, key);
+        assert.equal(results()[key].body.message, message, key);
+    }
     assert.equal(results().filterFieldWithOperator.status, 400);
     assert.equal(results().filterFieldWithOperator.body.message, 'Each entry of filterFields has only a field and an eventKey');
 });
 
-test('getMeter returns a meter by id, with the event keys of what it counts and filters on, and 404 for an unknown one', () => {
+test('getMeter returns a meter by id, with its properties, and 404 for an unknown one', () => {
     assert.equal(results().get.status, 200);
     assert.equal(results().get.body.type, 'REQUEST_COUNT');
     assert.equal(results().get.body.typeKey, null);
-    // A filter field sent without a key reads its default.
-    assert.deepEqual(results().get.body.filterFields, [{ field: 'HTTP_METHOD', eventKey: 'request.verb' }]);
+    assert.deepEqual(results().get.body.filterFields, [{ field: 'HTTP method', eventKey: 'request.verb' }]);
     assert.equal(results().getMissing.status, 404);
 });
 
-test('a meter stores the event keys it is given, defaults for the rest, and sends them to the Platform API', () => {
+test('a meter stores its properties\' names and event keys as given, and sends them to the Platform API', () => {
     const r = results().customKeys;
     assert.equal(r.status, 201);
     assert.equal(r.body.typeKey, 'usage.in');
     assert.deepEqual(r.body.filterFields, [
-        { field: 'API_TYPE', eventKey: 'api.kind' },
-        { field: 'HTTP_STATUS_CODE', eventKey: 'response.status' },
+        { field: 'API type', eventKey: 'api.kind' },
+        { field: 'Status code', eventKey: 'response.status' },
     ]);
     assert.deepEqual(results().customKeysRow, {
         type_key: 'usage.in',
-        filter_fields: '[{"field":"API_TYPE","eventKey":"api.kind"},{"field":"HTTP_STATUS_CODE","eventKey":"response.status"}]',
+        filter_fields: '[{"field":"API type","eventKey":"api.kind"},{"field":"Status code","eventKey":"response.status"}]',
     });
     assert.deepEqual(results().customKeysEvent, {
         handle: 'input-tokens',
@@ -483,77 +494,72 @@ test('a meter stores the event keys it is given, defaults for the rest, and send
         description: null,
         type: 'TOKENS',
         type_key: 'usage.in',
-        filter_fields: [{ field: 'API_TYPE', event_key: 'api.kind' }, { field: 'HTTP_STATUS_CODE', event_key: 'response.status' }],
+        filter_fields: [{ field: 'API type', event_key: 'api.kind' }, { field: 'Status code', event_key: 'response.status' }],
     });
 });
 
-test('the event keys of a meter no plan prices can change; an emptied filter key goes back to its default', () => {
+test('the properties of a meter no plan prices can change; a property with an emptied key is refused', () => {
+    assert.equal(results().emptiedKey.status, 400);
+    assert.equal(results().emptiedKey.body.message, 'The event key of API type must be 1 to 255 characters with no spaces');
     const r = results().keysUpdated;
     assert.equal(r.status, 200);
     assert.equal(r.body.typeKey, 'usage.out');
     assert.deepEqual(r.body.filterFields, [
-        { field: 'API_TYPE', eventKey: 'metadata.apiType' },
-        { field: 'RESOURCE', eventKey: 'path' },
+        { field: 'API type', eventKey: 'metadata.apiType' },
+        { field: 'Resource', eventKey: 'path' },
     ]);
     assert.equal(results().keysUpdatedEvent.type_key, 'usage.out');
     assert.deepEqual(results().keysUpdatedEvent.filter_fields, [
-        { field: 'API_TYPE', event_key: 'metadata.apiType' },
-        { field: 'RESOURCE', event_key: 'path' },
+        { field: 'API type', event_key: 'metadata.apiType' },
+        { field: 'Resource', event_key: 'path' },
     ]);
 });
 
-test('a meter may list all four fields, and a price may filter on each of them', () => {
+test('a meter may name any properties, and a price may filter on each with any operator', () => {
     const m = results().allFieldsMeter;
     assert.equal(m.status, 201, JSON.stringify(m.body));
-    assert.deepEqual(m.body.filterFields, [
-        { field: 'HTTP_STATUS_CODE', eventKey: 'response.status' },
-        { field: 'HTTP_METHOD', eventKey: 'request.verb' },
-        { field: 'RESOURCE', eventKey: 'metadata.apiResourceTemplate' },
-        { field: 'API_TYPE', eventKey: 'metadata.apiType' },
-    ]);
+    assert.deepEqual(m.body.filterFields.map((f) => f.field), ['Status code', 'HTTP method', 'Resource', 'API type', 'Region']);
     const p = results().allFieldsPlan;
     assert.equal(p.status, 201, JSON.stringify(p.body));
-    assert.deepEqual(p.body.pricing.prices[0].filters.map((f) => f.field),
-        ['HTTP_STATUS_CODE', 'HTTP_METHOD', 'RESOURCE', 'API_TYPE']);
+    assert.deepEqual(p.body.pricing.prices[0].filters, [
+        { field: 'Status code', operator: 'GREATER_THAN_OR_EQUAL', values: ['400'] },
+        { field: 'HTTP method', operator: 'NOT_EQUALS', values: ['DELETE'] },
+        { field: 'Resource', operator: 'STARTS_WITH', values: ['/orders/'] },
+        { field: 'API type', operator: 'IN', values: ['RestApi', 'LlmProvider'] },
+        { field: 'Region', operator: 'EQUALS', values: ['eu-west'] },
+    ]);
 });
 
-test('a meter may list Token fields by key, sent to the Platform API with their keys', () => {
+test('a Tokens meter may have a property on its own key, and is sent to the Platform API with its properties', () => {
     const m = results().tokenMeter;
     assert.equal(m.status, 201, JSON.stringify(m.body));
-    assert.deepEqual(m.body.filterFields, [
-        { field: 'TOKEN', eventKey: 'metadata.aiTokenUsage.totalTokens' },
-        { field: 'API_TYPE', eventKey: 'metadata.apiType' },
-    ]);
     assert.deepEqual(results().tokenMeterEvent.filter_fields, [
-        { field: 'TOKEN', event_key: 'metadata.aiTokenUsage.totalTokens' },
-        { field: 'API_TYPE', event_key: 'metadata.apiType' },
+        { field: 'Prompt tokens', event_key: 'metadata.aiTokenUsage.promptTokens' },
+        { field: 'Total tokens', event_key: 'metadata.aiTokenUsage.totalTokens' },
+        { field: 'API type', event_key: 'metadata.apiType' },
     ]);
-    assert.equal(results().tokenFieldOnRowKey.status, 400);
-    assert.equal(results().tokenFieldOnRowKey.body.message, 'The key metadata.aiTokenUsage.promptTokens is already the meter\'s Token key');
-    assert.equal(results().tokenFieldWithoutKey.status, 400);
-    assert.equal(results().tokenFieldWithoutKey.body.message, 'A Token field needs an eventKey');
 });
 
-test('prices compare Token keys: stored as plain numbers, named, and sent with each condition\'s key', () => {
+test('prices compare whole numbers: stored without leading zeros, and sent naming each property', () => {
     const r = results().tokenTiers;
     assert.equal(r.status, 201, JSON.stringify(r.body));
-    // The prices are listed by name; each is found by its first condition here.
+    // The prices are listed by name; each is found by its first filter here.
     const upTo333 = r.body.pricing.prices.find((p) => p.filters[0].operator === 'LESS_THAN_OR_EQUAL');
     assert.deepEqual(upTo333.filters, [
-        { field: 'TOKEN', eventKey: 'metadata.aiTokenUsage.promptTokens', operator: 'LESS_THAN_OR_EQUAL', values: ['333'] },
-        { field: 'TOKEN', eventKey: 'metadata.aiTokenUsage.totalTokens', operator: 'GREATER_THAN', values: ['0'] },
+        { field: 'Prompt tokens', operator: 'LESS_THAN_OR_EQUAL', values: ['333'] },
+        { field: 'Total tokens', operator: 'GREATER_THAN', values: ['0'] },
     ]);
     const byFirstOperator = (filters) => [...filters].sort((a, b) => a[0].operator.localeCompare(b[0].operator));
     assert.deepEqual(byFirstOperator(results().tokenTiersEvent.prices.map((p) => p.filters)), [
-        [{ field: 'TOKEN', event_key: 'metadata.aiTokenUsage.promptTokens', operator: 'GREATER_THAN', values: ['333'] },
-            { field: 'TOKEN', event_key: 'metadata.aiTokenUsage.totalTokens', operator: 'GREATER_THAN', values: ['0'] }],
-        [{ field: 'TOKEN', event_key: 'metadata.aiTokenUsage.promptTokens', operator: 'LESS_THAN_OR_EQUAL', values: ['333'] },
-            { field: 'TOKEN', event_key: 'metadata.aiTokenUsage.totalTokens', operator: 'GREATER_THAN', values: ['0'] }],
+        [{ field: 'Prompt tokens', operator: 'GREATER_THAN', values: ['333'] },
+            { field: 'Total tokens', operator: 'GREATER_THAN', values: ['0'] }],
+        [{ field: 'Prompt tokens', operator: 'LESS_THAN_OR_EQUAL', values: ['333'] },
+            { field: 'Total tokens', operator: 'GREATER_THAN', values: ['0'] }],
     ]);
     const refused = {
         tokenOverlap: 'Prices 1 and 2 both count the same requests of the meter prompt-tokens; give them different filters.',
-        tokenUnknownKey: 'price 1: the meter has no Token field with the key metadata.aiTokenUsage.completionTokens',
-        tokenImpossible: 'price 1: the Token conditions on metadata.aiTokenUsage.promptTokens can\'t all be true',
+        tokenUnknownKey: 'price 1: the meter prompt-tokens has no property Completion tokens',
+        tokenImpossible: 'price 1: the comparisons on Prompt tokens can\'t all be true',
     };
     for (const [key, message] of Object.entries(refused)) {
         assert.equal(results()[key].status, 400, key);
@@ -601,14 +607,14 @@ const price = (body) => ({
 });
 const GOLD = {
     pricingType: 'USAGE_BASED', currency: 'USD', billingPeriod: 'MONTH', flatAmount: null, prices: [{
-        meterId: 'successful-calls', filters: [{ field: 'HTTP_METHOD', operator: 'EQUALS', values: ['GET'] }], pricingModel: 'PER_UNIT',
+        meterId: 'successful-calls', filters: [{ field: 'HTTP method', operator: 'EQUALS', values: ['GET'] }], pricingModel: 'PER_UNIT',
         unitAmount: '0.01', unitQuantity: 1, tiers: null,
     }],
 };
 // Its prices in the order a plan lists them, by name: GET before POST.
 const SILVER = {
     pricingType: 'USAGE_BASED', currency: 'USD', billingPeriod: 'MONTH', flatAmount: null, prices: [GOLD.prices[0], {
-        meterId: 'successful-calls', filters: [{ field: 'HTTP_METHOD', operator: 'EQUALS', values: ['POST'] }],
+        meterId: 'successful-calls', filters: [{ field: 'HTTP method', operator: 'EQUALS', values: ['POST'] }],
         pricingModel: 'GRADUATED', unitAmount: null, unitQuantity: null, tiers: [
             { upTo: 1000, unitAmount: '0', flatAmount: null },
             { upTo: null, unitAmount: '0.002', flatAmount: null },
@@ -666,10 +672,9 @@ test('a plan may not price a meter so that one request is counted by two prices'
         /Prices 1 and 2 both count the same requests of the meter successful-calls; give them different filters\./);
 });
 
-test('a price filters only on the fields its meter allows', () => {
+test('a price filters only on its meter\'s properties', () => {
     assert.equal(results().pricingFieldNotAllowed.status, 400);
-    assert.match(refusal(results().pricingFieldNotAllowed),
-        /^price 1: the meter successful-calls does not allow filtering on API_TYPE$/);
+    assert.equal(refusal(results().pricingFieldNotAllowed), 'price 1: the meter successful-calls has no property API type');
 });
 
 test('pricing naming an unknown meter is refused with 400', () => {
@@ -711,7 +716,7 @@ test('a meter several plans price cannot change either: not its description, its
     const meter = results().meterWhilePriced.body;
     assert.equal(meter.displayName, 'Successful calls');
     assert.equal(meter.description, 'Calls that succeeded');
-    assert.deepEqual(meter.filterFields, [{ field: 'HTTP_METHOD', eventKey: 'request.verb' }]);
+    assert.deepEqual(meter.filterFields, [{ field: 'HTTP method', eventKey: 'request.verb' }]);
 });
 
 test('a meter counts the plans that charge for it and cannot be deleted while they do', () => {
@@ -776,7 +781,7 @@ test('once no plan prices a meter it can change again, and be deleted', () => {
     const r = results().changedAfterPlansDeleted;
     assert.equal(r.status, 200, JSON.stringify(r.body));
     assert.equal(r.body.displayName, 'Billed calls');
-    assert.deepEqual(r.body.filterFields.map((f) => f.field), ['HTTP_METHOD', 'API_TYPE']);
+    assert.deepEqual(r.body.filterFields.map((f) => f.field), ['HTTP method', 'API type']);
     assert.equal(r.body.planCount, 0);
     assert.equal(results().deleted.status, 204);
     assert.equal(results().deletedAgain.status, 404);
@@ -858,7 +863,7 @@ test('meter events carry the full meter, and the delete only its handle', () => 
         description: 'Calls that succeeded',
         type: 'REQUEST_COUNT',
         type_key: null,
-        filter_fields: [{ field: 'HTTP_METHOD', event_key: 'request.verb' }],
+        filter_fields: [{ field: 'HTTP method', event_key: 'request.verb' }],
     });
     assert.equal(events[2].aggregateType, 'meter');
     assert.deepEqual(events.find((e) => e.type === 'meter.deleted').payload, { handle: 'successful-calls' });
@@ -876,7 +881,7 @@ test('a plan\'s created event carries its pricing, naming each price\'s meter by
         flat_amount: null,
         prices: [{
             meter_handle: 'successful-calls',
-            filters: [{ field: 'HTTP_METHOD', operator: 'EQUALS', values: ['GET'] }],
+            filters: [{ field: 'HTTP method', operator: 'EQUALS', values: ['GET'] }],
             pricing_model: 'PER_UNIT',
             unit_amount: '0.01',
             unit_quantity: 1,

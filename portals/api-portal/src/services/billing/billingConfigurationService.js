@@ -381,7 +381,7 @@ const createBillingConfiguration = async (req, res) => {
         done.push({ name: 'portal endpoint', undo: () => connector.payments.removeEventEndpoint(endpoint.ref) });
 
         const pairs = (await billingApiPlanDao.listPaidPairs(orgId)).map((p) => ({
-            api: { uuid: p.api_uuid, name: p.api_name, version: p.api_version, type: p.api_type },
+            api: { uuid: p.api_uuid, name: p.api_name, version: p.api_version },
             planUuid: p.plan_uuid,
         }));
         const catalog = await billingCatalogService.build(orgId, input, pairs, connector);

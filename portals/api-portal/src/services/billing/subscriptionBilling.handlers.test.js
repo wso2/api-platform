@@ -198,15 +198,11 @@ function receive(type, objectId) {
     // A paid plan that is ready to sell, bought by alice through checkout. Its meter reads the status
     // code from a key of its own, which the usage search must use.
     const meter = await meterDao.create(ORG, { handle: 'calls', displayName: 'Successful calls', type: 'REQUEST_COUNT',
-        typeKey: null, filterFields: [{ field: 'HTTP_STATUS_CODE', eventKey: 'response.statusCode' }] }, 'admin');
+        typeKey: null, filterFields: [{ field: 'Status code', eventKey: 'response.statusCode' }] }, 'admin');
     const { pricing } = await planPricingDao.create(ORG, 'plan-gold', { pricingType: 'USAGE_BASED', currency: 'USD',
         billingPeriod: 'MONTH',
-        prices: [{ meter, filters: [{ field: 'HTTP_STATUS_CODE', operator: 'IN', values: ['200'] }], pricingModel: 'PER_UNIT',
-            unitAmount: '0.01', unitQuantity: 1, tiers: null },
-        // A price with no item in the API's API plan, as for one that does not apply to the
-        // API's type: the subscription was not sold with it, so its usage is not shown.
-        { meter, filters: [{ field: 'HTTP_STATUS_CODE', operator: 'IN', values: ['500'] }], pricingModel: 'PER_UNIT',
-            unitAmount: '0.05', unitQuantity: 1, tiers: null }] });
+        prices: [{ meter, filters: [{ field: 'Status code', operator: 'IN', values: ['200'] }], pricingModel: 'PER_UNIT',
+            unitAmount: '0.01', unitQuantity: 1, tiers: null }] });
     await billingConfigurationDao.create(ORG, { billing_provider: 'MOESIF', payment_provider: 'STRIPE',
         settings: { stripe: { publishableKey: 'pk_test_demo1234' } },
         secrets: { moesif: { collectorApplicationId: 'app', managementKey: 'mk' },
@@ -403,6 +399,15 @@ function receive(type, objectId) {
     out.daveKept = sql('SELECT COUNT(*) AS n FROM subscriptions WHERE uuid = ?', daveSub)[0].n;
     out.daveBilling = await call(billing.getSubscriptionBilling, as('dave', { params: { subId: daveSub } }));
 
+    // grace sets her flat rate plan to end, then ends it immediately.
+    const graceSub = await buyFlat('grace', 'sub_grace');
+    await call(subscriptions.deleteSubscription, as('grace', { params: { subId: graceSub } }));
+    const callsBefore = calls.length;
+    out.graceImmediate = await call(subscriptions.deleteSubscription, as('grace', { params: { subId: graceSub },
+        query: { immediate: 'true' } }));
+    out.graceCancel = calls.slice(callsBefore).filter((c) => c[0] === 'cancel');
+    out.graceKept = sql('SELECT COUNT(*) AS n FROM subscriptions WHERE uuid = ?', graceSub)[0].n;
+
     // Billing is removed (here: both subscriptions were bought before the current configuration).
     // Stripe already ended dave's, so unsubscribing removes it without Stripe; erin's is still
     // running, so it can't be cancelled.
@@ -503,7 +508,7 @@ test('usage is counted with the billing meter\'s filter, for this subscriber\'s 
     assert.equal(r.body.from, new Date(1760000000 * 1000).toISOString());
     assert.equal(r.body.to, new Date(1762600000 * 1000).toISOString(), 'the series runs to the end of the period');
     assert.deepEqual([r.body.usage.interval, r.body.usage.prices.length], ['DAY', 1],
-        'one series per usage price the subscription was sold with');
+        'one series per usage price of the plan');
     assert.deepEqual(r.body.usage.intervals, ['HOUR', 'DAY', 'WEEK'], 'a month can be shown per hour, day or week');
     const [u] = r.body.usage.prices;
     assert.deepEqual([u.name, u.unit, u.total], ['Successful calls · 200', 'request', 12]);
@@ -518,7 +523,7 @@ test('usage is counted with the billing meter\'s filter, for this subscriber\'s 
     const must = body.query.bool.must;
     assert.match(must[0].terms['metadata.billingCustomerId.raw'][0], /^cus_/);
     assert.deepEqual(must[1], { terms: { 'metadata.billingSubscriptionId.raw': ['sub_paid'] } });
-    assert.deepEqual(must[2], { terms: { 'response.statusCode': [200] } }, 'the meter\'s own key, as a number');
+    assert.deepEqual(must[2], { terms: { 'response.statusCode.raw': ['200'] } }, 'the meter\'s own key, matched as text');
     assert.equal(body.aggs.series.date_histogram.field, 'request.time');
     assert.equal(body.aggs.series.date_histogram.calendar_interval, '1d');
     assert.equal(body.size, 0);
@@ -602,7 +607,7 @@ test('unsubscribing from a flat rate plan runs to the end of the paid period', (
     const r = results().flatUnsub;
     assert.equal(r.status, 200, JSON.stringify(r.body));
     assert.equal(r.body.endsAt, new Date(1762600000 * 1000).toISOString());
-    assert.equal(r.body.message, 'The subscription ends on Nov 8, 2025. It keeps working until then.');
+    assert.equal(r.body.message, 'Your subscription has been cancelled. You will retain access until Nov 8, 2025.');
     assert.deepEqual(results().flatEnd, [['end', 'sub_flat', { cancel_at_period_end: true }]]);
     assert.equal(results().flatKept, 1, 'the subscription is kept until it ends');
     assert.equal(results().flatBilling.body.endsAt, r.body.endsAt);
@@ -616,6 +621,14 @@ test('unsubscribing from a flat rate plan runs to the end of the paid period', (
     assert.equal(results().flatSubscribeFree.status, 409);
     assert.equal(results().flatSubscribeFree.body.errors[0].message,
         'Your subscription to this API ends on Nov 8, 2025. You can subscribe again after that.');
+});
+
+test('a flat rate plan set to end can be ended immediately: Stripe ends it at once, with no final invoice', () => {
+    const r = results().graceImmediate;
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.equal(r.body.endsAt, undefined);
+    assert.deepEqual(results().graceCancel, [['cancel', 'sub_grace', { invoiceNow: false }]]);
+    assert.equal(results().graceKept, 0);
 });
 
 test('when Stripe ends a plan the subscriber left, the portal removes it; one ended unpaid is kept', () => {

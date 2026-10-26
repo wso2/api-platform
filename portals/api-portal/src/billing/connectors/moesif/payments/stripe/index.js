@@ -433,14 +433,14 @@ function create(settings) {
         },
 
         /**
-         * Ends the subscription now, with a final invoice for the usage so far. Nothing to do
-         * when Stripe already ended it or has no such subscription.
+         * Ends the subscription now, with a final invoice for the usage so far; without one when
+         * `finalInvoice` is false. Nothing is refunded.
          */
-        async cancelSubscription(ref) {
+        async cancelSubscription(ref, { finalInvoice = true } = {}) {
             const current = await this.getSubscription(ref);
             if (!current || current.ended) return;
             try {
-                await stripe.cancelSubscription(ref, { invoiceNow: true });
+                await stripe.cancelSubscription(ref, { invoiceNow: finalInvoice });
             } catch (err) {
                 if (err instanceof BillingProviderError && err.status === 404) return;
                 throw err;

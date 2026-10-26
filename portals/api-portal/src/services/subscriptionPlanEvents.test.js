@@ -86,7 +86,7 @@ test('a paid plan\'s created and updated events both carry its pricing', async (
         pricing_type: 'USAGE_BASED', currency: 'USD', billing_period: 'MONTH', flat_amount: null,
         prices: [{
             meter_handle: 'llm-input', pricing_model: 'PER_UNIT', unit_amount: '2.50', unit_quantity: 1000000, tiers: null,
-            filters: [{ field: 'TOKEN', eventKey: 'metadata.aiTokenUsage.promptTokens', operator: 'GREATER_THAN', values: ['100'] }],
+            filters: [{ field: 'Prompt tokens', operator: 'GREATER_THAN', values: ['100'] }],
         }, {
             meter_handle: 'calls', pricing_model: 'GRADUATED', unit_amount: null, unit_quantity: null, filters: [],
             tiers: [{ upTo: 1000, unitAmount: '0', flatAmount: null }, { upTo: null, unitAmount: '0.001', flatAmount: null }],
@@ -104,7 +104,7 @@ test('a paid plan\'s created and updated events both carry its pricing', async (
         pricing_type: 'USAGE_BASED', currency: 'USD', billing_period: 'MONTH', flat_amount: null,
         prices: [{
             meter_handle: 'llm-input',
-            filters: [{ field: 'TOKEN', event_key: 'metadata.aiTokenUsage.promptTokens', operator: 'GREATER_THAN', values: ['100'] }],
+            filters: [{ field: 'Prompt tokens', operator: 'GREATER_THAN', values: ['100'] }],
             pricing_model: 'PER_UNIT', unit_amount: '2.50', unit_quantity: 1000000, tiers: null,
         }, {
             meter_handle: 'calls', filters: [], pricing_model: 'GRADUATED', unit_amount: null, unit_quantity: null,

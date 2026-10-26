@@ -107,40 +107,38 @@ test('a meter request with a malformed id reaches the service', async () => {
     assert.equal(await send('POST', '/meters', { ...meter, id: 'Bad_Id' }), 200);
 });
 
-test('a meter request with known filter fields, with or without event keys, is accepted', async () => {
+test('a meter request with named filter properties and their event keys is accepted', async () => {
     assert.equal(await send('POST', '/meters', { ...meter, filterFields: [] }), 200);
-    assert.equal(await send('POST', '/meters', { ...meter, filterFields: [{ field: 'HTTP_METHOD' }, { field: 'RESOURCE' }] }), 200);
-    assert.equal(await send('POST', '/meters', { ...meter, filterFields: [{ field: 'HTTP_STATUS_CODE', eventKey: 'res.code' },
-        { field: 'RESOURCE', eventKey: '' }, { field: 'HTTP_METHOD', eventKey: null }] }), 200);
-    assert.equal(await send('PUT', '/meters/api-calls', {
-        ...meter,
-        filterFields: [{ field: 'HTTP_STATUS_CODE' }, { field: 'HTTP_METHOD' }, { field: 'RESOURCE' }, { field: 'API_TYPE' }],
-    }), 200);
-    assert.equal(await send('POST', '/meters', { ...meter, filterFields: [{ field: 'API_TYPE', eventKey: 'metadata.kind' }] }), 200);
-    // Token fields, once per key, ten fields in all.
-    const tokenFields = Array.from({ length: 6 }, (_, i) => ({ field: 'TOKEN', eventKey: `usage.k${i}` }));
-    assert.equal(await send('POST', '/meters', { ...meter, filterFields: [{ field: 'HTTP_STATUS_CODE' }, { field: 'HTTP_METHOD' },
-        { field: 'RESOURCE' }, { field: 'API_TYPE' }, ...tokenFields] }), 200);
-});
-
-test('a meter request with eleven Token fields is refused', async () => {
+    assert.equal(await send('POST', '/meters', { ...meter, filterFields: [{ field: 'HTTP method', eventKey: 'request.verb' },
+        { field: 'Region', eventKey: 'metadata.region' }] }), 200);
+    assert.equal(await send('PUT', '/meters/api-calls', { ...meter,
+        filterFields: [{ field: 'n'.repeat(40), eventKey: 'metadata.' + 'k'.repeat(246) }] }), 200);
     assert.equal(await send('POST', '/meters', { ...meter,
-        filterFields: Array.from({ length: 11 }, (_, i) => ({ field: 'TOKEN', eventKey: `usage.k${i}` })) }), 400);
+        filterFields: Array.from({ length: 10 }, (_, i) => ({ field: `Property ${i}`, eventKey: `usage.k${i}` })) }), 200);
 });
 
-test('a meter request with an unknown filter field, a field with anything else, or more than ten is refused', async () => {
-    assert.equal(await send('POST', '/meters', { ...meter, filterFields: [{ field: 'COLOR' }] }), 400);
-    assert.equal(await send('POST', '/meters', { ...meter, filterFields: [{ field: 'MODEL' }] }), 400);
-    assert.equal(await send('POST', '/meters', { ...meter, filterFields: ['API_TYPE'] }), 400);
+test('a meter request with eleven filter properties is refused', async () => {
+    assert.equal(await send('POST', '/meters', { ...meter,
+        filterFields: Array.from({ length: 11 }, (_, i) => ({ field: `Property ${i}`, eventKey: `usage.k${i}` })) }), 400);
+});
+
+test('a meter request with a filter property lacking a name or an event key, or with anything else, is refused', async () => {
+    assert.equal(await send('POST', '/meters', { ...meter, filterFields: [{ field: 'Color' }] }), 400);
+    assert.equal(await send('POST', '/meters', { ...meter, filterFields: [{ eventKey: 'metadata.color' }] }), 400);
+    assert.equal(await send('POST', '/meters', { ...meter, filterFields: [{ field: '', eventKey: 'metadata.color' }] }), 400);
+    assert.equal(await send('POST', '/meters', { ...meter, filterFields: [{ field: 'n'.repeat(41), eventKey: 'metadata.color' }] }), 400);
+    assert.equal(await send('POST', '/meters', { ...meter, filterFields: [{ field: 'Color', eventKey: '' }] }), 400);
+    assert.equal(await send('POST', '/meters', { ...meter, filterFields: [{ field: 'Color', eventKey: null }] }), 400);
+    assert.equal(await send('POST', '/meters', { ...meter, filterFields: [{ field: 'Color', eventKey: 42 }] }), 400);
+    assert.equal(await send('POST', '/meters', { ...meter, filterFields: ['API type'] }), 400);
     assert.equal(await send('POST', '/meters', { ...meter, filterFields: [{}] }), 400);
-    assert.equal(await send('POST', '/meters', { ...meter, filterFields: [{ field: 'API_TYPE', operator: 'EQUALS' }] }), 400);
-    assert.equal(await send('POST', '/meters', { ...meter, filterFields: [{ field: 'API_TYPE', eventKey: 42 }] }), 400);
-    assert.equal(await send('PUT', '/meters/api-calls', { ...meter, filterFields: Array(11).fill({ field: 'API_TYPE' }) }), 400);
+    assert.equal(await send('POST', '/meters', { ...meter,
+        filterFields: [{ field: 'API type', eventKey: 'metadata.apiType', operator: 'EQUALS' }] }), 400);
 });
 
 const perUnit = {
     meterId: 'llm-input',
-    filters: [{ field: 'API_TYPE', operator: 'EQUALS', values: ['LlmProvider'] }],
+    filters: [{ field: 'API type', operator: 'EQUALS', values: ['LlmProvider'] }],
     pricingModel: 'PER_UNIT',
     unitAmount: '2.50',
     unitQuantity: 1000000,
@@ -163,28 +161,28 @@ test('a plan create or upsert with a flat rate or usage based pricing is accepte
     assert.equal(await createPlan({ ...usageBased, flatAmount: null, prices: [graduated] }), 200);
     assert.equal(await createPlan({
         ...usageBased,
-        prices: [perUnit, { ...perUnit, filters: [{ field: 'API_TYPE', operator: 'IN', values: ['LlmProxy', 'Mcp'] }] },
+        prices: [perUnit, { ...perUnit, filters: [{ field: 'API type', operator: 'IN', values: ['LlmProxy', 'Mcp'] }] },
             { ...graduated, filters: [
-                { field: 'HTTP_METHOD', operator: 'NOT_IN', values: ['DELETE', 'OPTIONS'] },
-                { field: 'RESOURCE', operator: 'STARTS_WITH', values: ['/orders'] },
-                { field: 'HTTP_STATUS_CODE', operator: 'NOT_EQUALS', values: ['500'] },
-                { field: 'API_TYPE', operator: 'NOT_IN', values: ['LlmProvider', 'LlmProxy'] },
+                { field: 'HTTP method', operator: 'NOT_IN', values: ['DELETE', 'OPTIONS'] },
+                { field: 'Resource', operator: 'STARTS_WITH', values: ['/orders'] },
+                { field: 'Status code', operator: 'NOT_EQUALS', values: ['500'] },
+                { field: 'API type', operator: 'NOT_IN', values: ['LlmProvider', 'LlmProxy'] },
             ] }],
     }), 200);
-    // Token conditions: the key, the number operators, one value; 20 filters in all.
-    const condition = (operator, value, eventKey = 'metadata.aiTokenUsage.promptTokens') => ({ field: 'TOKEN', eventKey, operator, values: [value] });
+    // Comparisons: the number operators, one value; 20 filters in all.
+    const condition = (operator, value, field = 'Prompt tokens') => ({ field, operator, values: [value] });
     assert.equal(await createPlan({ ...usageBased, prices: [{ ...perUnit, filters: [
-        condition('GREATER_THAN', '100'), condition('LESS_THAN_OR_EQUAL', '500'), condition('GREATER_THAN_OR_EQUAL', '1', 'usage.total'),
-        condition('LESS_THAN', '9', 'usage.total'), condition('EQUALS', '0', 'usage.cached'),
+        condition('GREATER_THAN', '100'), condition('LESS_THAN_OR_EQUAL', '500'), condition('GREATER_THAN_OR_EQUAL', '1', 'Total tokens'),
+        condition('LESS_THAN', '9', 'Total tokens'), condition('EQUALS', '0', 'Cached tokens'),
     ] }] }), 200);
     assert.equal(await createPlan({ ...usageBased, prices: [{ ...perUnit,
-        filters: Array.from({ length: 20 }, (_, i) => condition('GREATER_THAN', '1', `usage.k${i}`)) }] }), 200);
+        filters: Array.from({ length: 20 }, (_, i) => condition('GREATER_THAN', '1', `Property ${i}`)) }] }), 200);
     assert.equal(await send('POST', '/subscription-plans', [{ displayName: 'Gold', pricing: flatRate }, { displayName: 'Free' }]), 200);
     assert.equal(await send('PUT', '/subscription-plans', { id: 'gold', displayName: 'Gold', pricing: usageBased }), 200);
     assert.equal(await send('PUT', '/subscription-plans', [{ id: 'gold', displayName: 'Gold', pricing: flatRate }]), 200);
 });
 
-test('a plan pricing with no or an unknown type, a non-string amount, or an unknown model or filter is refused', async () => {
+test('a plan pricing with no or an unknown type, a non-string amount, an unknown model, or a filter without a property name or with an unknown operator is refused', async () => {
     assert.equal(await createPlan({ currency: 'USD', flatAmount: '20.00' }), 400);
     assert.equal(await createPlan({ ...flatRate, pricingType: 'HYBRID' }), 400);
     assert.equal(await createPlan({ ...flatRate, flatAmount: 99 }), 400);
@@ -193,12 +191,13 @@ test('a plan pricing with no or an unknown type, a non-string amount, or an unkn
     assert.equal(await createPlan({ ...usageBased, prices: [{ ...perUnit, meterId: undefined }] }), 400);
     assert.equal(await createPlan({ ...usageBased, prices: [{ ...perUnit, unitAmount: 2.5 }] }), 400);
     const withFilter = (filter) => ({ ...usageBased, prices: [{ ...perUnit, filters: [filter] }] });
-    assert.equal(await createPlan(withFilter({ field: 'API_TYPE', operator: 'IN' })), 400);
-    assert.equal(await createPlan(withFilter({ field: 'API_TYPE', values: ['LlmProvider'] })), 400);
-    assert.equal(await createPlan(withFilter({ field: 'TOKEN_TYPE', operator: 'EQUALS', values: ['INPUT'] })), 400);
-    assert.equal(await createPlan(withFilter({ field: 'MODEL', operator: 'EQUALS', values: ['gpt-4o'] })), 400);
-    assert.equal(await createPlan(withFilter({ field: 'API_TYPE', operator: 'LIKE', values: ['Llm'] })), 400);
-    assert.equal(await createPlan(withFilter({ field: 'TOKEN', eventKey: 'usage.total', operator: 'BETWEEN', values: ['1'] })), 400);
+    assert.equal(await createPlan(withFilter({ field: 'API type', operator: 'IN' })), 400);
+    assert.equal(await createPlan(withFilter({ field: 'API type', values: ['LlmProvider'] })), 400);
+    assert.equal(await createPlan(withFilter({ operator: 'EQUALS', values: ['gpt-4o'] })), 400);
+    assert.equal(await createPlan(withFilter({ field: '', operator: 'EQUALS', values: ['gpt-4o'] })), 400);
+    assert.equal(await createPlan(withFilter({ field: 'n'.repeat(41), operator: 'EQUALS', values: ['gpt-4o'] })), 400);
+    assert.equal(await createPlan(withFilter({ field: 'API type', operator: 'LIKE', values: ['Llm'] })), 400);
+    assert.equal(await createPlan(withFilter({ field: 'Prompt tokens', operator: 'BETWEEN', values: ['1'] })), 400);
     assert.equal(await createPlan({
         ...usageBased, prices: [{ ...graduated, tiers: [{ upTo: 'many', unitAmount: '1' }] }],
     }), 400);
@@ -217,11 +216,13 @@ test('a plan pricing with a field the pricing, a price, a filter or a tier does 
         [400, 'unitQuantitiy of price 1 is not a known field']);
     assert.deepEqual(await refusal({ ...usageBased, prices: [{ ...perUnit, filters: [{ ...perUnit.filters[0], value: 'o1' }] }] }),
         [400, 'value of filter 1 of price 1 is not a known field']);
+    assert.deepEqual(await refusal({ ...usageBased, prices: [{ ...perUnit, filters: [{ ...perUnit.filters[0], eventKey: 'metadata.apiType' }] }] }),
+        [400, 'eventKey of filter 1 of price 1 is not a known field']);
     assert.deepEqual(await refusal({ ...usageBased, prices: [{ ...graduated, tiers: [graduated.tiers[0], { upto: null, unitAmount: '1' }] }] }),
         [400, 'upto of tier 2 of price 1 is not a known field']);
 });
 
-test('a plan pricing with a malformed amount, too many prices, filters or filter values, or none, reaches the service', async () => {
+test('a plan pricing with a malformed amount, too many prices, filters or filter values, or none, or any property name, reaches the service', async () => {
     assert.equal(await createPlan({ ...flatRate, flatAmount: '-1' }), 200);
     assert.equal(await createPlan({ ...flatRate, flatAmount: '1234567890123' }), 200);
     assert.equal(await createPlan({ ...usageBased, prices: [{ ...perUnit, unitAmount: '2.5.0' }] }), 200);
@@ -230,10 +231,11 @@ test('a plan pricing with a malformed amount, too many prices, filters or filter
     }), 200);
     assert.equal(await createPlan({ ...usageBased, prices: Array(21).fill(graduated) }), 200);
     const values = Array.from({ length: 21 }, (_, i) => `type-${i}`);
-    assert.equal(await createPlan({ ...usageBased, prices: [{ ...perUnit, filters: [{ field: 'API_TYPE', operator: 'IN', values }] }] }), 200);
-    assert.equal(await createPlan({ ...usageBased, prices: [{ ...perUnit, filters: [{ field: 'API_TYPE', operator: 'IN', values: [] }] }] }), 200);
+    assert.equal(await createPlan({ ...usageBased, prices: [{ ...perUnit, filters: [{ field: 'API type', operator: 'IN', values }] }] }), 200);
+    assert.equal(await createPlan({ ...usageBased, prices: [{ ...perUnit, filters: [{ field: 'API type', operator: 'IN', values: [] }] }] }), 200);
     assert.equal(await createPlan({ ...usageBased, prices: [{ ...perUnit, filters: Array.from({ length: 21 },
-        (_, i) => ({ field: 'TOKEN', eventKey: `usage.k${i}`, operator: 'GREATER_THAN', values: ['1'] })) }] }), 200);
+        (_, i) => ({ field: `Property ${i}`, operator: 'GREATER_THAN', values: ['1'] })) }] }), 200);
+    assert.equal(await createPlan({ ...usageBased, prices: [{ ...perUnit, filters: [{ field: 'Model', operator: 'EQUALS', values: ['gpt-4o'] }] }] }), 200);
 });
 
 test('the pricing of a plan can be read but not set or deleted', async () => {

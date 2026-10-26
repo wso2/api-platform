@@ -67,9 +67,7 @@ function buildPricingPayload(pricing) {
         flat_amount: pricing.flat_amount ?? null,
         prices: (pricing.prices || []).map((price) => ({
             meter_handle: price.meter_handle,
-            filters: (price.filters || []).map((f) => (f.field === 'TOKEN'
-                ? { field: f.field, event_key: f.eventKey, operator: f.operator, values: f.values }
-                : { field: f.field, operator: f.operator, values: f.values })),
+            filters: (price.filters || []).map((f) => ({ field: f.field, operator: f.operator, values: f.values })),
             pricing_model: price.pricing_model,
             unit_amount: price.unit_amount ?? null,
             unit_quantity: price.unit_quantity ?? null,

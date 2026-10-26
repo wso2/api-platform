@@ -400,7 +400,7 @@ func TestSyncPlans_SendsPricingWithPaidPlans(t *testing.T) {
 	pricing := map[string]*model.SubscriptionPlanPricing{
 		"uuid-starter": {PricingType: model.PricingTypeUsageBased, Currency: "USD", BillingPeriod: "MONTH", Prices: []model.SubscriptionPlanPrice{
 			{MeterHandle: "llm-input", PricingModel: model.PricingModelPerUnit, UnitAmount: &unit, UnitQuantity: &quantity,
-				Filters: []model.PriceFilter{{Field: "API_TYPE", Operator: "EQUALS", Values: []string{"LlmProvider"}}}},
+				Filters: []model.PriceFilter{{Field: "API type", Operator: "EQUALS", Values: []string{"LlmProvider"}}}},
 			{MeterHandle: "api-calls", PricingModel: model.PricingModelGraduated,
 				Tiers: []model.PriceTier{{UpTo: &upTo, UnitAmount: &unit}, {UnitAmount: &unit}}},
 		}},
@@ -425,7 +425,7 @@ func TestSyncPlans_SendsPricingWithPaidPlans(t *testing.T) {
 	// The API Portal's REST shape: camelCase, a field the pricing does not use left out, the last
 	// tier's open upTo sent as null.
 	want := `{"pricingType":"USAGE_BASED","currency":"USD","billingPeriod":"MONTH","prices":[` +
-		`{"meterId":"llm-input","filters":[{"field":"API_TYPE","operator":"EQUALS","values":["LlmProvider"]}],` +
+		`{"meterId":"llm-input","filters":[{"field":"API type","operator":"EQUALS","values":["LlmProvider"]}],` +
 		`"pricingModel":"PER_UNIT","unitAmount":"0.01","unitQuantity":1000},` +
 		`{"meterId":"api-calls","filters":[],"pricingModel":"GRADUATED","tiers":[` +
 		`{"upTo":100,"unitAmount":"0.01","flatAmount":null},{"upTo":null,"unitAmount":"0.01","flatAmount":null}]}]}`
@@ -713,6 +713,16 @@ func TestSyncPlans_RefusesACopyPricedDifferently(t *testing.T) {
 	listedFlat := func(amount string) map[string]any {
 		return map[string]any{"pricingType": "FLAT_RATE", "currency": "USD", "billingPeriod": "MONTH", "flatAmount": amount, "prices": []any{}}
 	}
+	// A usage price filtering on the HTTP method, and the portal's copy of it with the value given.
+	unit := "0.01"
+	byMethod := &model.SubscriptionPlanPricing{PricingType: model.PricingTypeUsageBased, Currency: "USD", BillingPeriod: "MONTH",
+		Prices: []model.SubscriptionPlanPrice{{MeterHandle: "api-calls", PricingModel: model.PricingModelPerUnit, UnitAmount: &unit,
+			Filters: []model.PriceFilter{{Field: "HTTP method", Operator: "EQUALS", Values: []string{"GET"}}}}}}
+	listedByMethod := func(method string) map[string]any {
+		return map[string]any{"pricingType": "USAGE_BASED", "currency": "USD", "billingPeriod": "MONTH", "prices": []any{
+			map[string]any{"meterId": "api-calls", "pricingModel": "PER_UNIT", "unitAmount": "0.01", "filters": []any{
+				map[string]any{"field": "HTTP method", "operator": "EQUALS", "values": []any{method}}}}}}
+	}
 	tests := []struct {
 		name    string
 		listed  map[string]any // the copy's pricing; nil for a free copy
@@ -722,6 +732,7 @@ func TestSyncPlans_RefusesACopyPricedDifferently(t *testing.T) {
 		{"paid copy of a free plan", listedFlat("10.00"), nil},
 		{"another amount", listedFlat("10.00"), flat(&twenty)},
 		{"another billing period", map[string]any{"pricingType": "FLAT_RATE", "currency": "USD", "billingPeriod": "YEAR", "flatAmount": "10.00"}, flat(&ten)},
+		{"a filter value in another case", listedByMethod("get"), byMethod},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -746,14 +757,16 @@ func TestSyncPlans_RefusesACopyPricedDifferently(t *testing.T) {
 	}
 }
 
-// Usage pricing listed in another order and with amounts written another way is the same pricing.
+// Usage pricing listed in another order, with amounts and numbers written another way and property
+// names in another case, is the same pricing.
 func TestSyncPlans_SameUsagePricingWrittenDifferently(t *testing.T) {
 	unit, quantity, upTo := "0.010", int64(1000), int64(100)
 	pricing := map[string]*model.SubscriptionPlanPricing{"uuid-gold": {
 		PricingType: model.PricingTypeUsageBased, Currency: "USD", BillingPeriod: "MONTH", Prices: []model.SubscriptionPlanPrice{
 			{MeterHandle: "llm-input", PricingModel: model.PricingModelPerUnit, UnitAmount: &unit, UnitQuantity: &quantity,
-				Filters: []model.PriceFilter{{Field: "API_TYPE", Operator: "IN", Values: []string{"LlmProvider", " WebSubApi", "LlmProvider"}},
-					{Field: "HTTP_METHOD", Operator: "IN", Values: []string{"get", "POST"}}}},
+				Filters: []model.PriceFilter{{Field: "API type", Operator: "IN", Values: []string{"LlmProvider", " WebSubApi", "LlmProvider"}},
+					{Field: "HTTP method", Operator: "IN", Values: []string{"GET", "POST"}},
+					{Field: "Prompt tokens", Operator: "GREATER_THAN", Values: []string{"100"}}}},
 			{MeterHandle: "api-calls", PricingModel: model.PricingModelGraduated,
 				Tiers: []model.PriceTier{{UpTo: &upTo, UnitAmount: &unit}, {UnitAmount: &unit}}},
 		},
@@ -762,8 +775,9 @@ func TestSyncPlans_SameUsagePricingWrittenDifferently(t *testing.T) {
 		map[string]any{"meterId": "api-calls", "filters": []any{}, "pricingModel": "GRADUATED", "unitAmount": nil, "unitQuantity": nil,
 			"tiers": []any{map[string]any{"upTo": 100, "unitAmount": "0.01", "flatAmount": nil}, map[string]any{"upTo": nil, "unitAmount": "0.01", "flatAmount": nil}}},
 		map[string]any{"meterId": "llm-input", "filters": []any{
-			map[string]any{"field": "HTTP_METHOD", "operator": "IN", "values": []any{"POST", "GET"}},
-			map[string]any{"field": "API_TYPE", "operator": "IN", "values": []any{"WebSubApi", "LlmProvider"}}},
+			map[string]any{"field": "Prompt tokens", "operator": "GREATER_THAN", "values": []any{100}},
+			map[string]any{"field": "http method", "operator": "IN", "values": []any{"POST", "GET"}},
+			map[string]any{"field": "API type", "operator": "IN", "values": []any{"WebSubApi", "LlmProvider"}}},
 			"pricingModel": "PER_UNIT", "unitAmount": "0.01", "unitQuantity": 1000, "tiers": nil},
 	}}
 	pp := &planPortal{handles: []string{"gold"}, listed: map[string]map[string]any{

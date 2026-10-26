@@ -148,6 +148,7 @@
         <span class="mc-manage-status-label">Status</span>
         <span id="apiManageStatusBadge" class="mc-manage-status-badge mc-manage-status-badge--active">Active</span>
       </div>
+      <p id="apiManageEnds" class="mc-manage-ends" hidden></p>
       <div class="mc-token-label" style="margin-top:1.25rem;">
         <i class="bi bi-key" style="color:#637282;"></i>
         <span>Subscription token</span>
@@ -176,6 +177,9 @@
         </button>
         <button id="apiManageUnsubBtn" class="dp-btn mc-manage-action-btn mc-manage-action-btn--unsub">
           <i class="bi bi-trash"></i> Unsubscribe
+        </button>
+        <button id="apiManageEndNowBtn" class="dp-btn mc-manage-action-btn mc-manage-action-btn--unsub" hidden>
+          <i class="bi bi-x-circle"></i> End now
         </button>
       </div>
     </div>

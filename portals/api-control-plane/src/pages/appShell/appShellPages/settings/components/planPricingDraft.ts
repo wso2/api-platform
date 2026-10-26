@@ -23,15 +23,13 @@ import type {
   SubscriptionPlanPricingBody,
 } from '@/api/resources/subscriptionPlans';
 import {
-  FILTER_RULES,
-  HTTP_METHODS,
-  MCP_TOOL_CALL,
-  TOKEN_KEYS,
+  MAX_COMPARISONS,
+  isComparison,
   parseFilterValues,
-  priceFieldsOf,
-  type FilterField,
+  propertiesOf,
+  sameName,
+  takesOneValue,
   type FilterOperator,
-  type PriceField,
 } from './meterLabels';
 
 /**
@@ -42,12 +40,10 @@ import {
  *     narrowed by the price's own filters on the fields the meter allows, in one
  *     pricing model (Per unit, Volume or Graduated).
  *
- * A price has a filter row for each of its meter's fields, and a condition row
- * for each of its Token keys (up to two per key, such as more than 100 and at
- * most 500); a row left empty is no filter. A meter may be priced more than
- * once, as long as no request could be counted by two of its prices. The checks
- * mirror the API Portal's rules, which the Platform API applies too, so most
- * mistakes are caught before a request is sent.
+ * A price has a filter row for each of its meter's properties, or two when the
+ * property has two comparisons, such as more than 100 and at most 500; a row
+ * left empty is no filter. A meter may be priced more than once, as long as no
+ * request could be counted by two of its prices.
  */
 
 export type PricingType = SubscriptionPlanPricingBody['pricingType'];
@@ -58,7 +54,7 @@ export const PRICING_MODELS: PricingModel[] = ['PER_UNIT', 'VOLUME', 'GRADUATED'
 export const MAX_TIERS = 10;
 /** A subscription holds at most 20 items, one per price. */
 export const MAX_PRICES = 20;
-/** At most this many filters in one price, Token conditions included. */
+/** At most this many filters in one price, comparisons included. */
 export const MAX_PRICE_FILTERS = 20;
 const MAX_UNIT_QUANTITY = 1_000_000_000;
 const AMOUNT_PATTERN = /^\d{1,12}(\.\d{1,12})?$/;
@@ -66,16 +62,14 @@ const AMOUNT_PATTERN = /^\d{1,12}(\.\d{1,12})?$/;
 export type TierDraft = { key: number; upTo: string; unitAmount: string; flatAmount: string };
 
 /**
- * One filter row of a price being edited; its values as typed or picked,
- * comma-separated when there are several. A row without values is no filter.
- * A Token condition names the key it reads in `eventKey` and holds one whole
- * number.
+ * One filter row of a price being edited: the name of the meter's property it
+ * filters on, and its values as typed, comma-separated when there are several.
+ * A row without values is no filter.
  */
 export type FilterDraft = {
-  field: FilterField;
+  field: string;
   operator: FilterOperator;
   text: string;
-  eventKey?: string;
 };
 
 /** One usage price being edited. */
@@ -84,7 +78,7 @@ export type PriceDraft = {
   /** The meter that counts the units. */
   meterId: string;
   /**
-   * Which of the meter's requests the price counts, one row per field; rows without values count
+   * Which of the meter's requests the price counts, by its properties; rows without values count
    * them all.
    */
   filters: FilterDraft[];
@@ -119,17 +113,15 @@ export type PricingProblem =
         | 'AMOUNT_INVALID'
         | 'QUANTITY_INVALID'
         | 'TIERS_INVALID'
-        | 'TOO_MANY_FILTERS'
-        | 'TOOL_WITH_METHOD';
+        | 'TOO_MANY_FILTERS';
       price: number;
     }
-  | { code: 'FILTER_INVALID'; price: number; field: FilterField }
-  | { code: 'FILTER_NOT_ALLOWED'; price: number; field: FilterField; meterId: string }
   | {
-      code: 'TOKEN_KEY_UNKNOWN' | 'TOKEN_VALUE_INVALID' | 'TOKEN_RANGE_EMPTY';
+      code: 'FILTER_INVALID' | 'NUMBER_INVALID' | 'FILTERS_CONFLICT' | 'RANGE_EMPTY';
       price: number;
-      eventKey: string;
+      field: string;
     }
+  | { code: 'FILTER_NOT_ALLOWED'; price: number; field: string; meterId: string }
   | { code: 'OVERLAP'; price: number; other: number; meterId: string };
 
 type Price = NonNullable<SubscriptionPlanPricingBody['prices']>[number];
@@ -155,39 +147,26 @@ export const newPrice = (): PriceDraft => ({
   unitQuantity: '1',
 });
 
-/** Whether a filter is on one of `allowed`: its field, and for Token its key too. */
-export const isAllowed = (filter: FilterDraft, allowed: PriceField[]): boolean =>
-  allowed.some(
-    (entry) =>
-      entry.field === filter.field &&
-      (filter.field !== 'TOKEN' || entry.eventKey === filter.eventKey),
-  );
+/** Whether a filter is on one of a meter's `properties`, by name ignoring case. */
+export const isAllowed = (filter: FilterDraft, properties: string[]): boolean =>
+  properties.some((name) => sameName(name, filter.field));
 
-/** An empty row on a field, with the field's first operator. */
-export const emptyFilterRow = ({ eventKey, field }: PriceField): FilterDraft => ({
-  field,
-  operator: FILTER_RULES[field].operators[0],
-  text: '',
-  ...(eventKey === undefined ? {} : { eventKey }),
-});
+/** An empty row on a property, with equals as its operator. */
+const emptyFilterRow = (field: string): FilterDraft => ({ field, operator: 'EQUALS', text: '' });
 
 /**
- * The filter rows of a price, for its meter's fields (`allowed`) in order: one
- * for each fixed field, with the price's filter on it or empty; the price's
- * conditions on each Token key, or one empty; then any filter on a field or
- * Token key the meter does not allow, so it can be seen and emptied.
+ * The filter rows of a price, for its meter's `properties` in order: the
+ * price's filters on each property, named as the meter spells it, or one empty
+ * row; then any filter on a property the meter does not have.
  */
-export const filterRows = (filters: FilterDraft[], allowed: PriceField[]): FilterDraft[] => [
-  ...allowed.flatMap((entry) => {
-    if (entry.field !== 'TOKEN') {
-      return [filters.find((filter) => filter.field === entry.field) ?? emptyFilterRow(entry)];
-    }
-    const conditions = filters.filter(
-      (filter) => filter.field === 'TOKEN' && filter.eventKey === entry.eventKey,
-    );
-    return conditions.length > 0 ? conditions : [emptyFilterRow(entry)];
+export const filterRows = (filters: FilterDraft[], properties: string[]): FilterDraft[] => [
+  ...properties.flatMap((name) => {
+    const given = filters
+      .filter((filter) => sameName(filter.field, name))
+      .map((filter) => ({ ...filter, field: name }));
+    return given.length > 0 ? given : [emptyFilterRow(name)];
   }),
-  ...filters.filter((filter) => !isAllowed(filter, allowed)),
+  ...filters.filter((filter) => !isAllowed(filter, properties)),
 ];
 
 /** Whether the model prices units in tiers. */
@@ -215,7 +194,6 @@ const draftFromPrice = (price: SubscriptionPlanPrice): PriceDraft => {
       field: filter.field,
       operator: filter.operator,
       text: filter.values.join(', '),
-      ...(filter.eventKey ? { eventKey: filter.eventKey } : {}),
     })),
     key: draftKey(),
     meterId: price.meterId,
@@ -239,21 +217,24 @@ export const draftFromPricing = (pricing: SubscriptionPlanPricing | undefined): 
   };
 };
 
-const splitValues = (text: string): string[] => [
-  ...new Set(
-    text
-      .split(',')
-      .map((value) => value.trim())
-      .filter(Boolean),
-  ),
-];
+/** A row's values as typed: the one value, or several comma-separated, each once. */
+const valuesOf = ({ operator, text }: FilterDraft): string[] =>
+  takesOneValue(operator)
+    ? [text.trim()].filter(Boolean)
+    : [
+        ...new Set(
+          text
+            .split(',')
+            .map((value) => value.trim())
+            .filter(Boolean),
+        ),
+      ];
 
-/** Whether a filter row was left empty, so the price counts every value of its field. */
-const isEmpty = (filter: FilterDraft): boolean => splitValues(filter.text).length === 0;
+/** Whether a filter row was left empty, so the price counts every value of its property. */
+const isEmpty = (filter: FilterDraft): boolean => valuesOf(filter).length === 0;
 
-/** How a Token condition's operator reads in a price name: "prompt tokens > 333". */
-const COMPARISONS: Partial<Record<FilterOperator, string>> = {
-  EQUALS: '=',
+/** How a comparison reads in a price name: "Prompt tokens > 333". */
+const SIGNS: Partial<Record<FilterOperator, string>> = {
   GREATER_THAN: '>',
   GREATER_THAN_OR_EQUAL: '≥',
   LESS_THAN: '<',
@@ -262,21 +243,19 @@ const COMPARISONS: Partial<Record<FilterOperator, string>> = {
 
 /**
  * The name a price is shown by, as the API Portal derives it: the meter's name,
- * then each filter in order, "LLM input tokens · LlmProvider", "API calls · not
- * DELETE, OPTIONS", "API calls · /orders…", "Input tokens · prompt tokens > 333"
- * (a Token key by its lower-case label, or the key itself). It is the same in
- * every language, so the words are not translated here.
+ * then each filter in short, "LLM input tokens · LlmProvider", "API calls · not
+ * DELETE, OPTIONS", "API calls · /orders…", "Requests · Prompt tokens > 333"
+ * (a comparison by its property's name, its sign and its number). It is the
+ * same in every language, so the words are not translated here.
  */
 export const priceName = (meterName: string, filters: FilterDraft[]): string =>
   [
     meterName,
-    ...filters.map(({ eventKey, field, operator, text }) => {
-      const values = splitValues(text).join(', ');
+    ...filters.map((filter) => {
+      const values = valuesOf(filter).join(', ');
       if (!values) return '';
-      if (field === 'TOKEN') {
-        const key = TOKEN_KEYS.find((candidate) => candidate.key === eventKey)?.name ?? eventKey;
-        return `${key} ${COMPARISONS[operator] ?? operator} ${values}`;
-      }
+      const { field, operator } = filter;
+      if (isComparison(operator)) return `${field} ${SIGNS[operator]} ${values}`;
       if (operator === 'NOT_EQUALS' || operator === 'NOT_IN') return `not ${values}`;
       return operator === 'STARTS_WITH' ? `${values}…` : values;
     }),
@@ -287,10 +266,10 @@ export const priceName = (meterName: string, filters: FilterDraft[]): string =>
 /**
  * The name a price is shown by in the plan dialog: its meter's name (its id
  * while the meter is not known), then its filters in the order of the meter's
- * fields.
+ * properties.
  */
 export const priceLabel = (price: PriceDraft, meter: Meter | undefined): string =>
-  priceName(meter?.displayName ?? price.meterId, filterRows(price.filters, priceFieldsOf(meter)));
+  priceName(meter?.displayName ?? price.meterId, filterRows(price.filters, propertiesOf(meter)));
 
 /**
  * A saved plan's prices in the order they are shown, the API Portal's order
@@ -311,15 +290,13 @@ export const pricesByName = (prices: PriceDraft[], meters: Meter[]): PriceDraft[
     .map(({ price }) => price);
 };
 
-/**
- * The whole numbers a price's Token conditions on `key` let through, `low` to `high`; none when
- * low > high.
- */
-const tokenRange = (filters: PriceFilter[], key: string): { low: number; high: number } => {
+type Range = { low: number; high: number };
+
+/** The whole numbers a property's comparisons let through, `low` to `high`; none when low > high. */
+const rangeOf = (comparisons: PriceFilter[]): Range => {
   let low = 0;
   let high = Number.POSITIVE_INFINITY;
-  for (const filter of filters) {
-    if (filter.field !== 'TOKEN' || filter.eventKey !== key) continue;
+  for (const filter of comparisons) {
     const value = Number(filter.values[0]);
     switch (filter.operator) {
       case 'GREATER_THAN':
@@ -331,23 +308,22 @@ const tokenRange = (filters: PriceFilter[], key: string): { low: number; high: n
       case 'LESS_THAN':
         high = Math.min(high, value - 1);
         break;
-      case 'LESS_THAN_OR_EQUAL':
-        high = Math.min(high, value);
-        break;
       default:
-        low = Math.max(low, value);
         high = Math.min(high, value);
     }
   }
   return { high, low };
 };
 
-/** The Token keys a price sets conditions on, each once. */
-const tokenKeysIn = (filters: PriceFilter[]): string[] => [
-  ...new Set(
-    filters.flatMap((filter) => (filter.field === 'TOKEN' ? [filter.eventKey ?? ''] : [])),
-  ),
-];
+/** A price's filters by the property they are on, its name in lower case, in the order given. */
+const byProperty = (filters: PriceFilter[]): Map<string, PriceFilter[]> => {
+  const groups = new Map<string, PriceFilter[]>();
+  for (const filter of filters) {
+    const name = filter.field.trim().toLowerCase();
+    groups.set(name, [...(groups.get(name) ?? []), filter]);
+  }
+  return groups;
+};
 
 const isAmount = (value: string): boolean => AMOUNT_PATTERN.test(value.trim());
 const isPositive = (value: string): boolean => /[1-9]/.test(value);
@@ -382,9 +358,8 @@ const buildTiers = (drafts: TierDraft[]): Tier[] | null => {
 /**
  * One price of the request, or the first problem with it. Only the chosen model's fields are given.
  * Filter rows left empty are not sent; the others go in the order the rows are shown. A price
- * filters only on the fields its meter allows, and sets Token conditions only on its meter's Token
- * keys, which together must let some number through; a meter not in `meters` is left to the server
- * to check.
+ * filters only on its meter's properties, and on each property has one filter that matches text,
+ * or one or two comparisons that together let some number through.
  */
 const buildPrice = (
   draft: PriceDraft,
@@ -394,64 +369,41 @@ const buildPrice = (
   if (!draft.meterId) return { price: null, problem: { code: 'METER_MISSING', price: index } };
 
   const meter = meters.find((candidate) => candidate.id === draft.meterId);
-  const allowed = meter ? priceFieldsOf(meter) : null;
-  const rows = allowed ? filterRows(draft.filters, allowed) : draft.filters;
+  const properties = meter ? propertiesOf(meter) : null;
+  const rows = properties ? filterRows(draft.filters, properties) : draft.filters;
   const given = rows.filter((filter) => !isEmpty(filter));
-  const refused = allowed && given.find((filter) => !isAllowed(filter, allowed));
+  const refused = properties && given.find((filter) => !isAllowed(filter, properties));
   if (refused) {
     return {
       price: null,
-      problem:
-        refused.field === 'TOKEN'
-          ? { code: 'TOKEN_KEY_UNKNOWN', eventKey: refused.eventKey ?? '', price: index }
-          : {
-              code: 'FILTER_NOT_ALLOWED',
-              field: refused.field,
-              meterId: draft.meterId,
-              price: index,
-            },
+      problem: {
+        code: 'FILTER_NOT_ALLOWED',
+        field: refused.field,
+        meterId: draft.meterId,
+        price: index,
+      },
     };
   }
 
   const filters: PriceFilter[] = [];
   for (const filter of given) {
-    const values = parseFilterValues(filter.field, filter.operator, filter.text);
-    if (filter.field === 'TOKEN') {
-      const eventKey = filter.eventKey ?? '';
-      if (!values)
-        return { price: null, problem: { code: 'TOKEN_VALUE_INVALID', eventKey, price: index } };
-      // One whole number, written without leading zeros.
-      filters.push({
-        eventKey,
-        field: 'TOKEN',
-        operator: filter.operator,
-        values: [String(Number(values[0]))],
-      });
-      continue;
+    const values = parseFilterValues(filter.operator, filter.text);
+    if (!values) {
+      const code = isComparison(filter.operator) ? 'NUMBER_INVALID' : 'FILTER_INVALID';
+      return { price: null, problem: { code, field: filter.field, price: index } };
     }
-    if (!values)
-      return {
-        price: null,
-        problem: { code: 'FILTER_INVALID', field: filter.field, price: index },
-      };
-    // Repeated values count once, in the order given, as the API Portal keeps them.
-    filters.push({ field: filter.field, operator: filter.operator, values: [...new Set(values)] });
+    filters.push({ field: filter.field, operator: filter.operator, values });
   }
   if (filters.length > MAX_PRICE_FILTERS)
     return { price: null, problem: { code: 'TOO_MANY_FILTERS', price: index } };
-  // A Tool filter counts only tool calls, so a price does not also filter on the MCP method.
-  const fields = filters.map((filter) => filter.field);
-  if (fields.includes('MCP_TOOL') && fields.includes('MCP_METHOD'))
-    return { price: null, problem: { code: 'TOOL_WITH_METHOD', price: index } };
-  const impossible = tokenKeysIn(filters).find((eventKey) => {
-    const { high, low } = tokenRange(filters, eventKey);
-    return low > high;
-  });
-  if (impossible !== undefined) {
-    return {
-      price: null,
-      problem: { code: 'TOKEN_RANGE_EMPTY', eventKey: impossible, price: index },
-    };
+  for (const on of byProperty(filters).values()) {
+    const field = on[0].field;
+    const comparisons = on.filter((filter) => isComparison(filter.operator));
+    if (on.length > 1 && (comparisons.length < on.length || on.length > MAX_COMPARISONS))
+      return { price: null, problem: { code: 'FILTERS_CONFLICT', field, price: index } };
+    const range = rangeOf(comparisons);
+    if (comparisons.length > 0 && range.low > range.high)
+      return { price: null, problem: { code: 'RANGE_EMPTY', field, price: index } };
   }
   const base = { filters, meterId: draft.meterId, pricingModel: draft.pricingModel };
 
@@ -476,88 +428,72 @@ const buildPrice = (
 type Kind = 'match' | 'exclude' | 'prefix';
 
 /**
- * Whether a resource is the path or under it, by whole path segments, as the servers count it:
- * "/orders" covers "/orders" and "/orders/{id}", not "/orders-archive"; "/" covers every resource.
- * A trailing "/" is ignored.
- */
-const underPath = (resource: string, path: string): boolean => {
-  const base = path.replace(/\/+$/, '') || '/';
-  return base === '/' || resource === base || resource.startsWith(`${base}/`);
-};
-
-/**
  * Equals and is one of match their values; does not equal and is not one of exclude them; starts
- * with matches a path and what is under it.
+ * with matches the values that begin with its text.
  */
 const kindOf = (operator: FilterOperator): Kind => {
   if (operator === 'NOT_EQUALS' || operator === 'NOT_IN') return 'exclude';
   return operator === 'STARTS_WITH' ? 'prefix' : 'match';
 };
 
-/** Whether two filters on one field can match the same value. */
-const filtersOverlap = (field: FilterField, first: PriceFilter, second: PriceFilter): boolean => {
+/** Whether two filters that match text, on one property, can match the same value. */
+const textFiltersOverlap = (first: PriceFilter, second: PriceFilter): boolean => {
   // Ordered match, then exclude, then prefix, so each pair is handled once.
   const order: Kind[] = ['match', 'exclude', 'prefix'];
   const [a, b] =
     order.indexOf(kindOf(first.operator)) <= order.indexOf(kindOf(second.operator))
       ? [first, second]
       : [second, first];
-  const pair = `${kindOf(a.operator)}/${kindOf(b.operator)}`;
-  switch (pair) {
+  switch (`${kindOf(a.operator)}/${kindOf(b.operator)}`) {
     case 'match/match':
       return a.values.some((value) => b.values.includes(value));
     case 'match/exclude':
       return a.values.some((value) => !b.values.includes(value));
     case 'match/prefix':
-      return a.values.some((value) => underPath(value, b.values[0]));
+      return a.values.some((value) => value.startsWith(b.values[0]));
     case 'prefix/prefix':
-      return underPath(a.values[0], b.values[0]) || underPath(b.values[0], a.values[0]);
+      return a.values[0].startsWith(b.values[0]) || b.values[0].startsWith(a.values[0]);
     default:
-      // Two exclusions, or an exclusion and a prefix, leave values both match; HTTP methods are
-      // the seven known ones, so two exclusions of methods leave none when together they cover all
-      // seven.
-      return (
-        field !== 'HTTP_METHOD' ||
-        !HTTP_METHODS.every((method) => [...a.values, ...b.values].includes(method))
-      );
+      // Two exclusions, or an exclusion and a prefix, leave values both match.
+      return true;
   }
 };
 
 /**
- * A price's filters with the condition a Tool filter implies: a Tool filter
- * counts only tool calls, so it comes with the MCP method tools/call.
+ * Whether two prices' filters on one property can match the same value: two
+ * ranges share a whole number; a range and equals or is one of overlap when one of
+ * those values is a whole number in the range; a range and any other filter
+ * always overlap.
  */
-const withToolCall = (filters: PriceFilter[]): PriceFilter[] =>
-  filters.some((filter) => filter.field === 'MCP_TOOL')
-    ? [...filters, { field: 'MCP_METHOD', operator: 'EQUALS', values: [MCP_TOOL_CALL] }]
-    : filters;
+const propertyFiltersOverlap = (first: PriceFilter[], second: PriceFilter[]): boolean => {
+  const firstRange = isComparison(first[0].operator);
+  const secondRange = isComparison(second[0].operator);
+  if (firstRange && secondRange) {
+    const a = rangeOf(first);
+    const b = rangeOf(second);
+    return Math.max(a.low, b.low) <= Math.min(a.high, b.high);
+  }
+  if (!firstRange && !secondRange) return textFiltersOverlap(first[0], second[0]);
+  const range = rangeOf(firstRange ? first : second);
+  const match = firstRange ? second[0] : first[0];
+  if (kindOf(match.operator) !== 'match') return true;
+  return match.values.some(
+    (value) => /^\d+$/.test(value) && Number(value) >= range.low && Number(value) <= range.high,
+  );
+};
 
 /**
  * Whether one request could be counted by both prices: they are on the same
- * meter; on every fixed field either filters on, the two filters can match the
- * same value (a field only one of them filters on matches anything for the
- * other; a Tool filter also filters on the MCP method, withToolCall); and on
- * every Token key, their conditions let some number through for both (a key
- * only one of them sets conditions on lets every number through for the other).
+ * meter, and on every property both filter on, their filters can match the same
+ * value. A property only one of them filters on matches anything for the other.
  */
 const pricesOverlap = (first: Price, second: Price): boolean => {
   if (first.meterId !== second.meterId) return false;
-  const firstFilters = withToolCall(first.filters ?? []);
-  const secondFilters = withToolCall(second.filters ?? []);
-  const fieldsMeet = firstFilters
-    .filter((filter) => filter.field !== 'TOKEN')
-    .every((filter) => {
-      const other = secondFilters.find((candidate) => candidate.field === filter.field);
-      return !other || filtersOverlap(filter.field, filter, other);
-    });
-  return (
-    fieldsMeet &&
-    tokenKeysIn([...firstFilters, ...secondFilters]).every((key) => {
-      const a = tokenRange(firstFilters, key);
-      const b = tokenRange(secondFilters, key);
-      return Math.max(a.low, b.low) <= Math.min(a.high, b.high);
-    })
-  );
+  const others = byProperty(second.filters ?? []);
+  return [...byProperty(first.filters ?? [])].every(([name, filters]) => {
+    const other = others.get(name);
+    return !other || propertyFiltersOverlap(filters, other);
+  });
 };
 
 /**

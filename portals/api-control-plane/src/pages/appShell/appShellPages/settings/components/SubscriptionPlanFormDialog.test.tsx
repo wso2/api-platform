@@ -47,8 +47,8 @@ const PLANS = '/subscription-plans';
 const llmInput = aMeter({
   displayName: 'LLM input tokens',
   filterFields: [
-    { eventKey: 'metadata.apiType', field: 'API_TYPE' },
-    { eventKey: 'request.verb', field: 'HTTP_METHOD' },
+    { eventKey: 'metadata.apiType', field: 'API type' },
+    { eventKey: 'request.verb', field: 'HTTP method' },
   ],
   id: 'llm-input',
   type: 'TOKENS',
@@ -111,40 +111,31 @@ async function chooseUsageBased(user: User) {
 }
 
 /**
- * Fills the filter row of a price on one field: picks its operator, then types
- * its values, or picks them for an HTTP method.
+ * Fills the filter row of a price on one property: picks its operator, then
+ * types its values. `row` counts the property's rows from 0.
  */
 async function setFilter(
   user: User,
   price: HTMLElement,
   field: string,
   operator: string,
-  values: string | string[],
+  values: string,
+  row = 0,
 ) {
-  const row = within(price).getByRole('group', { name: field });
-  await user.click(within(row).getByRole('combobox', { name: 'Filter operator' }));
+  const filter = within(price).getAllByRole('group', { name: field })[row];
+  await user.click(within(filter).getByRole('combobox', { name: 'Filter operator' }));
   await user.click(await screen.findByRole('option', { name: operator }));
-  if (typeof values === 'string') {
-    await user.type(within(row).getByRole('textbox', { name: 'Filter values' }), values);
-    return;
-  }
-  await user.click(within(row).getByRole('combobox', { name: 'Filter values' }));
-  for (const method of values)
-    await user.click(await screen.findByRole('option', { name: method }));
-  // Several methods keep the list open.
-  if (operator.endsWith('one of')) await user.keyboard('{Escape}');
+  const input = within(filter).getByRole('textbox', { name: 'Filter values' });
+  await user.clear(input);
+  if (values) await user.type(input, values);
 }
 
-/** Sets a price's API type filter, picking each type from the suggestions. */
-async function setApiTypes(user: User, price: HTMLElement, operator: string, types: string[]) {
-  const row = within(price).getByRole('group', { name: 'API type' });
+/** The operators a filter row offers, in order. */
+async function operatorsOf(user: User, row: HTMLElement) {
   await user.click(within(row).getByRole('combobox', { name: 'Filter operator' }));
-  await user.click(await screen.findByRole('option', { name: operator }));
-  const values = within(row).getByRole('combobox', { name: 'Filter values' });
-  for (const type of types) {
-    await user.click(values);
-    await user.click(await screen.findByRole('option', { name: type }));
-  }
+  const operators = (await screen.findAllByRole('option')).map((option) => option.textContent);
+  await user.keyboard('{Escape}');
+  return operators;
 }
 
 /** The price shown at `position`, counting from 1. */
@@ -468,7 +459,7 @@ describe('SubscriptionPlanFormDialog', () => {
       currency: 'USD',
       prices: [
         {
-          filters: [{ field: 'HTTP_STATUS_CODE', operator: 'IN', values: ['200', '201'] }],
+          filters: [{ field: 'Status code', operator: 'IN', values: ['200', '201'] }],
           meterId: 'successful-calls',
           pricingModel: 'PER_UNIT',
           tiers: null,
@@ -493,7 +484,7 @@ describe('SubscriptionPlanFormDialog', () => {
     const large = screen.getByRole('group', { name: 'Price 1' });
     await user.click(within(large).getByRole('combobox', { name: 'Meter' }));
     await user.click(await screen.findByRole('option', { name: 'LLM input tokens' }));
-    await setApiTypes(user, large, 'equals', ['LlmProvider']);
+    await setFilter(user, large, 'API type', 'equals', 'LlmProvider');
     expect(within(large).getByText('LLM input tokens · LlmProvider')).toBeInTheDocument();
     await user.type(within(large).getByLabelText('Unit price'), '2.50');
     await user.clear(within(large).getByLabelText('Units per price'));
@@ -508,7 +499,7 @@ describe('SubscriptionPlanFormDialog', () => {
       'LLM input tokens',
     ]);
     await user.click(screen.getByRole('option', { name: 'LLM input tokens' }));
-    await setApiTypes(user, small, 'is one of', ['LlmProxy', 'Mcp']);
+    await setFilter(user, small, 'API type', 'is one of', 'LlmProxy, Mcp');
     expect(within(small).getByText('LLM input tokens · LlmProxy, Mcp')).toBeInTheDocument();
     await user.click(within(small).getByRole('combobox', { name: 'Pricing model' }));
     await user.click(await screen.findByRole('option', { name: 'Graduated tiers' }));
@@ -524,7 +515,7 @@ describe('SubscriptionPlanFormDialog', () => {
       currency: 'USD',
       prices: [
         {
-          filters: [{ field: 'API_TYPE', operator: 'EQUALS', values: ['LlmProvider'] }],
+          filters: [{ field: 'API type', operator: 'EQUALS', values: ['LlmProvider'] }],
           meterId: 'llm-input',
           pricingModel: 'PER_UNIT',
           tiers: null,
@@ -532,7 +523,7 @@ describe('SubscriptionPlanFormDialog', () => {
           unitQuantity: 1000000,
         },
         {
-          filters: [{ field: 'API_TYPE', operator: 'IN', values: ['LlmProxy', 'Mcp'] }],
+          filters: [{ field: 'API type', operator: 'IN', values: ['LlmProxy', 'Mcp'] }],
           meterId: 'llm-input',
           pricingModel: 'GRADUATED',
           tiers: [
@@ -560,7 +551,7 @@ describe('SubscriptionPlanFormDialog', () => {
     await user.click(within(price).getByRole('combobox', { name: 'Meter' }));
     await user.click(await screen.findByRole('option', { name: 'Successful calls' }));
     await setFilter(user, price, 'Resource', 'starts with', '/orders');
-    await setFilter(user, price, 'HTTP method', 'is not one of', ['DELETE', 'PATCH']);
+    await setFilter(user, price, 'HTTP method', 'is not one of', 'DELETE, PATCH');
     expect(
       within(price).getByText('Successful calls · not DELETE, PATCH · /orders…'),
     ).toBeInTheDocument();
@@ -569,8 +560,8 @@ describe('SubscriptionPlanFormDialog', () => {
 
     await waitFor(() => expect(requests.count()).toBe(1));
     expect(JSON.parse(requests.last()!.body).pricing.prices[0].filters).toEqual([
-      { field: 'HTTP_METHOD', operator: 'NOT_IN', values: ['DELETE', 'PATCH'] },
-      { field: 'RESOURCE', operator: 'STARTS_WITH', values: ['/orders'] },
+      { field: 'HTTP method', operator: 'NOT_IN', values: ['DELETE', 'PATCH'] },
+      { field: 'Resource', operator: 'STARTS_WITH', values: ['/orders'] },
     ]);
   });
 
@@ -617,19 +608,16 @@ describe('SubscriptionPlanFormDialog', () => {
     expect(
       within(price).getByText('Leave a filter empty to count every value.'),
     ).toBeInTheDocument();
-    // A one-method filter reads "Any" while empty, and can be emptied again after a pick.
-    const methods = within(price).getByRole('combobox', { name: 'Filter values' });
-    expect(methods).toHaveTextContent('Any');
-    await setFilter(user, price, 'HTTP method', 'equals', ['GET']);
-    expect(methods).toHaveTextContent('GET');
-    await user.click(methods);
-    await user.click(await screen.findByRole('option', { name: 'Any' }));
-    expect(methods).toHaveTextContent('Any');
-    // Several methods keep their placeholder.
-    await setFilter(user, price, 'HTTP method', 'is one of', []);
-    expect(within(price).getByRole('combobox', { name: 'Filter values' })).toHaveTextContent(
-      'Pick methods',
-    );
+    await setFilter(user, price, 'HTTP method', 'equals', 'GET');
+    expect(within(price).getByText('Successful calls · GET')).toBeInTheDocument();
+    await setFilter(user, price, 'HTTP method', 'is one of', '');
+    // Several values are typed with commas between them.
+    expect(
+      within(within(price).getByRole('group', { name: 'HTTP method' })).getByRole('textbox', {
+        name: 'Filter values',
+      }),
+    ).toHaveAttribute('placeholder', 'Separate values with commas');
+    expect(within(price).getByText('Successful calls')).toBeInTheDocument();
     await user.type(within(price).getByLabelText('Unit price'), '0.01');
     await user.click(screen.getByRole('button', { name: 'Add plan' }));
 
@@ -658,7 +646,7 @@ describe('SubscriptionPlanFormDialog', () => {
     // The meter decides the filters: none are added or removed here.
     expect(within(price).queryByRole('button', { name: /filter/i })).not.toBeInTheDocument();
     await setFilter(user, price, 'Status code', 'equals', '200');
-    await setFilter(user, price, 'HTTP method', 'equals', ['GET']);
+    await setFilter(user, price, 'HTTP method', 'equals', 'GET');
 
     await user.click(within(price).getByRole('combobox', { name: 'Meter' }));
     await user.click(await screen.findByRole('option', { name: 'LLM input tokens' }));
@@ -666,102 +654,69 @@ describe('SubscriptionPlanFormDialog', () => {
     expect(within(price).getByRole('textbox', { name: 'Event' })).toHaveValue('Tokens');
     expect(within(price).getByText('token')).toBeInTheDocument();
     // LLM input tokens filters on the API type and the HTTP method, so the status code and the
-    // resource go; its Token row's key takes conditions too.
-    expect(filterNames(price)).toEqual(['API type', 'HTTP method', 'Token · Prompt tokens']);
+    // resource go.
+    expect(filterNames(price)).toEqual(['API type', 'HTTP method']);
     expect(within(price).getByText('LLM input tokens · GET')).toBeInTheDocument();
     const apiType = within(price).getByRole('group', { name: 'API type' });
     expect(within(apiType).getByRole('combobox', { name: 'Filter operator' })).toHaveTextContent(
       'equals',
     );
-    expect(within(apiType).getByRole('combobox', { name: 'Filter values' })).toHaveValue('');
+    expect(within(apiType).getByRole('textbox', { name: 'Filter values' })).toHaveValue('');
     await user.type(within(price).getByLabelText('Unit price'), '0.01');
     await user.click(screen.getByRole('button', { name: 'Add plan' }));
 
     await waitFor(() => expect(requests.count()).toBe(1));
     expect(JSON.parse(requests.last()!.body).pricing.prices[0]).toMatchObject({
-      filters: [{ field: 'HTTP_METHOD', operator: 'EQUALS', values: ['GET'] }],
+      filters: [{ field: 'HTTP method', operator: 'EQUALS', values: ['GET'] }],
       meterId: 'llm-input',
     });
   });
 
-  it("suggests our gateway's API types for an API type filter, takes any other, and offers the matching operators", async () => {
-    const typed = aMeter({
-      displayName: 'API requests',
-      filterFields: [{ eventKey: 'metadata.apiType', field: 'API_TYPE' }],
-      id: 'api-requests',
-    });
+  it('offers every operator on any property, with typed values', async () => {
     server.use(
       accepts('post', PLANS, aSubscriptionPlan({ id: 'gold-plan' }), { record: requests }),
     );
-    const { user } = setup({ meters: [typed] });
+    const { user } = setup();
 
     await user.type(screen.getByLabelText(/Name/), 'Gold Plan');
     await chooseUsageBased(user);
-
-    // Several API types, picked from the suggestions.
-    const several = screen.getByRole('group', { name: 'Price 1' });
-    await user.click(within(several).getByRole('combobox', { name: 'Meter' }));
-    await user.click(await screen.findByRole('option', { name: 'API requests' }));
-    const row = within(several).getByRole('group', { name: 'API type' });
-    await user.click(within(row).getByRole('combobox', { name: 'Filter operator' }));
-    expect((await screen.findAllByRole('option')).map((option) => option.textContent)).toEqual([
-      'equals',
-      'does not equal',
-      'is one of',
-      'is not one of',
-    ]);
-    await user.click(screen.getByRole('option', { name: 'is one of' }));
-    const values = within(row).getByRole('combobox', { name: 'Filter values' });
-    await user.click(values);
-    expect((await screen.findAllByRole('option')).map((option) => option.textContent)).toEqual([
-      'RestApi',
-      'WebSubApi',
-      'LlmProvider',
-      'LlmProxy',
-      'Mcp',
-      'Agent',
-    ]);
-    await user.click(screen.getByRole('option', { name: 'RestApi' }));
-    // A type already listed is not suggested again; a pick adds to the list.
-    await user.click(values);
-    expect(screen.queryByRole('option', { name: 'RestApi' })).not.toBeInTheDocument();
-    await user.click(screen.getByRole('option', { name: 'Mcp' }));
-    expect(values).toHaveValue('RestApi, Mcp');
-    expect(within(several).getByText('API requests · RestApi, Mcp')).toBeInTheDocument();
-    await user.type(within(several).getByLabelText('Unit price'), '0.01');
-
-    // One API type our gateway does not name, typed in.
-    await user.click(screen.getByRole('button', { name: 'Add price' }));
-    const one = screen.getByRole('group', { name: 'Price 2' });
-    await user.click(within(one).getByRole('combobox', { name: 'Meter' }));
-    await user.click(await screen.findByRole('option', { name: 'API requests' }));
-    const custom = within(within(one).getByRole('group', { name: 'API type' })).getByRole(
-      'combobox',
-      {
-        name: 'Filter values',
-      },
+    const price = screen.getByRole('group', { name: 'Price 1' });
+    await user.click(within(price).getByRole('combobox', { name: 'Meter' }));
+    await user.click(await screen.findByRole('option', { name: 'Successful calls' }));
+    expect(await operatorsOf(user, within(price).getByRole('group', { name: 'Resource' }))).toEqual(
+      [
+        'equals',
+        'does not equal',
+        'is one of',
+        'is not one of',
+        'starts with',
+        'more than',
+        'at least',
+        'less than',
+        'at most',
+      ],
     );
-    await user.type(custom, 'CustomApi');
-    await user.keyboard('{Escape}');
-    expect(within(one).getByText('API requests · CustomApi')).toBeInTheDocument();
-    await user.type(within(one).getByLabelText('Unit price'), '0.02');
+    await setFilter(user, price, 'Status code', 'at least', '500');
+    await setFilter(user, price, 'HTTP method', 'starts with', 'P');
+    await setFilter(user, price, 'Resource', 'is not one of', '/health, /ping');
+    expect(
+      within(price).getByText('Successful calls · Status code ≥ 500 · P… · not /health, /ping'),
+    ).toBeInTheDocument();
+    await user.type(within(price).getByLabelText('Unit price'), '0.01');
     await user.click(screen.getByRole('button', { name: 'Add plan' }));
 
     await waitFor(() => expect(requests.count()).toBe(1));
-    expect(
-      JSON.parse(requests.last()!.body).pricing.prices.map(
-        (price: { filters: unknown }) => price.filters,
-      ),
-    ).toEqual([
-      [{ field: 'API_TYPE', operator: 'IN', values: ['RestApi', 'Mcp'] }],
-      [{ field: 'API_TYPE', operator: 'EQUALS', values: ['CustomApi'] }],
+    expect(JSON.parse(requests.last()!.body).pricing.prices[0].filters).toEqual([
+      { field: 'Status code', operator: 'GREATER_THAN_OR_EQUAL', values: ['500'] },
+      { field: 'HTTP method', operator: 'STARTS_WITH', values: ['P'] },
+      { field: 'Resource', operator: 'NOT_IN', values: ['/health', '/ping'] },
     ]);
   });
 
-  it("sets up to two conditions on each of a meter's Token keys, compared with a whole number, and sends them with the key", async () => {
+  it('sets up to two comparisons on a property, each a whole number, and sends both', async () => {
     const tokenMeter = aMeter({
       displayName: 'LLM input tokens',
-      filterFields: [{ eventKey: 'metadata.aiTokenUsage.totalTokens', field: 'TOKEN' }],
+      filterFields: [{ eventKey: 'metadata.aiTokenUsage.promptTokens', field: 'Prompt tokens' }],
       id: 'llm-input',
       type: 'TOKENS',
       typeKey: 'metadata.aiTokenUsage.promptTokens',
@@ -776,78 +731,59 @@ describe('SubscriptionPlanFormDialog', () => {
     const price = screen.getByRole('group', { name: 'Price 1' });
     await user.click(within(price).getByRole('combobox', { name: 'Meter' }));
     await user.click(await screen.findByRole('option', { name: 'LLM input tokens' }));
-    // The Token row's key and each Token field's, by their labels.
-    expect(filterNames(price)).toEqual(['Token · Prompt tokens', 'Token · Total tokens']);
+    expect(filterNames(price)).toEqual(['Prompt tokens']);
+    const addCondition = () =>
+      within(price).queryByRole('button', { name: 'Add a condition on Prompt tokens' });
+    // Only a comparison takes a second one.
+    expect(addCondition()).not.toBeInTheDocument();
 
-    const promptRows = () => within(price).getAllByRole('group', { name: 'Token · Prompt tokens' });
-    const [first] = promptRows();
-    await user.click(within(first).getByRole('combobox', { name: 'Filter operator' }));
-    expect((await screen.findAllByRole('option')).map((option) => option.textContent)).toEqual([
-      'more than',
-      'at least',
-      'less than',
-      'at most',
-      'equal to',
-    ]);
-    await user.click(screen.getByRole('option', { name: 'more than' }));
-    await user.type(within(first).getByRole('textbox', { name: 'Filter values' }), '1.5');
+    await setFilter(user, price, 'Prompt tokens', 'more than', '1.5');
     await user.type(within(price).getByLabelText('Unit price'), '0.01');
     await user.click(screen.getByRole('button', { name: 'Add plan' }));
     expect(
       await screen.findByText(
-        'Price 1: the value of Token · Prompt tokens must be a whole number from 0 to 1,000,000,000,000.',
+        'Price 1: the value of Prompt tokens must be a whole number from 0 to 1,000,000,000,000.',
       ),
     ).toBeInTheDocument();
 
-    // A second condition on the key; no third.
-    await user.clear(within(first).getByRole('textbox', { name: 'Filter values' }));
-    await user.type(within(first).getByRole('textbox', { name: 'Filter values' }), '500');
-    await user.click(
-      within(first).getByRole('button', { name: 'Add a condition on Token · Prompt tokens' }),
+    // A second comparison bounds the other side; no third.
+    await setFilter(user, price, 'Prompt tokens', 'more than', '500');
+    await user.click(addCondition()!);
+    expect(addCondition()).not.toBeInTheDocument();
+    const [first, second] = within(price).getAllByRole('group', { name: 'Prompt tokens' });
+    expect(within(second).getByRole('combobox', { name: 'Filter operator' })).toHaveTextContent(
+      'at most',
     );
-    const [, second] = promptRows();
-    expect(
-      within(price).queryByRole('button', { name: 'Add a condition on Token · Prompt tokens' }),
-    ).not.toBeInTheDocument();
-    await user.click(within(second).getByRole('combobox', { name: 'Filter operator' }));
-    await user.click(await screen.findByRole('option', { name: 'at most' }));
+    // Two comparisons make a range, so each offers the comparisons only.
+    expect(await operatorsOf(user, first)).toEqual([
+      'more than',
+      'at least',
+      'less than',
+      'at most',
+    ]);
     await user.type(within(second).getByRole('textbox', { name: 'Filter values' }), '100');
-    await user.click(screen.getByRole('button', { name: 'Add plan' }));
     expect(
-      await screen.findByText(
-        "Price 1: the conditions on Token · Prompt tokens can't all be true.",
-      ),
+      await screen.findByText("Price 1: the conditions on Prompt tokens can't all be true."),
     ).toBeInTheDocument();
     expect(requests.count()).toBe(0);
 
-    await user.clear(within(first).getByRole('textbox', { name: 'Filter values' }));
-    await user.type(within(first).getByRole('textbox', { name: 'Filter values' }), '10');
+    await setFilter(user, price, 'Prompt tokens', 'more than', '10');
     expect(
-      within(price).getByText('LLM input tokens · prompt tokens > 10 · prompt tokens ≤ 100'),
+      within(price).getByText('LLM input tokens · Prompt tokens > 10 · Prompt tokens ≤ 100'),
     ).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Add plan' }));
 
     await waitFor(() => expect(requests.count()).toBe(1));
     expect(JSON.parse(requests.last()!.body).pricing.prices[0].filters).toEqual([
-      {
-        eventKey: 'metadata.aiTokenUsage.promptTokens',
-        field: 'TOKEN',
-        operator: 'GREATER_THAN',
-        values: ['10'],
-      },
-      {
-        eventKey: 'metadata.aiTokenUsage.promptTokens',
-        field: 'TOKEN',
-        operator: 'LESS_THAN_OR_EQUAL',
-        values: ['100'],
-      },
+      { field: 'Prompt tokens', operator: 'GREATER_THAN', values: ['10'] },
+      { field: 'Prompt tokens', operator: 'LESS_THAN_OR_EQUAL', values: ['100'] },
     ]);
   });
 
-  it('removes the second condition on a Token key, offering it again', async () => {
+  it('removes the second comparison on a property, offering it again', async () => {
     const tokenMeter = aMeter({
       displayName: 'LLM input tokens',
-      filterFields: [],
+      filterFields: [{ eventKey: 'metadata.aiTokenUsage.totalTokens', field: 'Total tokens' }],
       id: 'llm-input',
       type: 'TOKENS',
       typeKey: 'metadata.aiTokenUsage.promptTokens',
@@ -858,18 +794,27 @@ describe('SubscriptionPlanFormDialog', () => {
     const price = screen.getByRole('group', { name: 'Price 1' });
     await user.click(within(price).getByRole('combobox', { name: 'Meter' }));
     await user.click(await screen.findByRole('option', { name: 'LLM input tokens' }));
+    await setFilter(user, price, 'Total tokens', 'at most', '');
     await user.click(
-      within(price).getByRole('button', { name: 'Add a condition on Token · Prompt tokens' }),
+      within(price).getByRole('button', { name: 'Add a condition on Total tokens' }),
     );
-    expect(within(price).getAllByRole('group', { name: 'Token · Prompt tokens' })).toHaveLength(2);
+    const rows = within(price).getAllByRole('group', { name: 'Total tokens' });
+    expect(rows).toHaveLength(2);
+    expect(within(rows[1]).getByRole('combobox', { name: 'Filter operator' })).toHaveTextContent(
+      'more than',
+    );
 
     await user.click(
-      within(price).getByRole('button', { name: 'Remove this condition on Token · Prompt tokens' }),
+      within(price).getByRole('button', { name: 'Remove this condition on Total tokens' }),
     );
-    expect(within(price).getAllByRole('group', { name: 'Token · Prompt tokens' })).toHaveLength(1);
+    expect(within(price).getAllByRole('group', { name: 'Total tokens' })).toHaveLength(1);
     expect(
-      within(price).getByRole('button', { name: 'Add a condition on Token · Prompt tokens' }),
+      within(price).getByRole('button', { name: 'Add a condition on Total tokens' }),
     ).toBeInTheDocument();
+    // The one left offers every operator again.
+    expect(
+      await operatorsOf(user, within(price).getByRole('group', { name: 'Total tokens' })),
+    ).toHaveLength(9);
   });
 
   it('offers no filters on a meter that has none', async () => {
@@ -905,9 +850,7 @@ describe('SubscriptionPlanFormDialog', () => {
     expect(within(method).getByRole('combobox', { name: 'Filter operator' })).toHaveTextContent(
       'equals',
     );
-    expect(within(method).getByRole('combobox', { name: 'Filter values' })).toHaveTextContent(
-      'Any',
-    );
+    expect(within(method).getByRole('textbox', { name: 'Filter values' })).toHaveValue('');
     await user.click(screen.getByRole('button', { name: 'Cancel' }));
   });
 
@@ -943,7 +886,7 @@ describe('SubscriptionPlanFormDialog', () => {
 
   it("lists an existing plan's prices by name, as the API Portal does, whatever order they come in", async () => {
     const onMethod = (verb: string) => ({
-      filters: [{ field: 'HTTP_METHOD' as const, operator: 'EQUALS' as const, values: [verb] }],
+      filters: [{ field: 'HTTP method', operator: 'EQUALS' as const, values: [verb] }],
       meterId: 'successful-calls',
       pricingModel: 'PER_UNIT' as const,
       tiers: null,
@@ -966,12 +909,12 @@ describe('SubscriptionPlanFormDialog', () => {
     const first = screen.getByRole('group', { name: 'Price 1' });
     await user.click(within(first).getByRole('combobox', { name: 'Meter' }));
     await user.click(await screen.findByRole('option', { name: 'Successful calls' }));
-    await setFilter(user, first, 'HTTP method', 'equals', ['POST']);
+    await setFilter(user, first, 'HTTP method', 'equals', 'POST');
     await user.click(screen.getByRole('button', { name: 'Add price' }));
     const second = screen.getByRole('group', { name: 'Price 2' });
     await user.click(within(second).getByRole('combobox', { name: 'Meter' }));
     await user.click(await screen.findByRole('option', { name: 'Successful calls' }));
-    await setFilter(user, second, 'HTTP method', 'equals', ['GET']);
+    await setFilter(user, second, 'HTTP method', 'equals', 'GET');
 
     expect(within(priceAt(1)).getByText('Successful calls · POST')).toBeInTheDocument();
     expect(within(priceAt(2)).getByText('Successful calls · GET')).toBeInTheDocument();
@@ -991,7 +934,7 @@ describe('SubscriptionPlanFormDialog', () => {
     server.use(accepts('put', `${PLANS}/gold`, aSubscriptionPlan(), { record: requests }));
     // The stored price filters on the status code, which the meter no longer lists.
     const { user, onClose } = setup({
-      meters: [aMeter({ filterFields: [{ eventKey: 'request.verb', field: 'HTTP_METHOD' }] })],
+      meters: [aMeter({ filterFields: [{ eventKey: 'request.verb', field: 'HTTP method' }] })],
       plan: aSubscriptionPlan({ displayName: 'Gold', id: 'gold', pricing: aPlanPricing() }),
     });
 

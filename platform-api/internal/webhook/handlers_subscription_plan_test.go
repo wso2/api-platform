@@ -163,9 +163,9 @@ func TestSubscriptionPlanCreated_CopiesUsagePrices(t *testing.T) {
 
 	_, err := postPlanEvent(t, r, cfg, EventSubscriptionPlanCreated, paidPlan(
 		`{"pricing_type":"usage_based","currency":"usd","billing_period":"MONTH","flat_amount":null,"prices":[
-		  {"meter_handle":"llm-input","filters":[{"field":"api_type","operator":"equals","values":["LlmProvider"]}],
+		  {"meter_handle":"llm-input","filters":[{"field":" API type ","operator":"equals","values":["LlmProvider"]}],
 		   "pricing_model":"per_unit","unit_amount":"2.50","unit_quantity":1000000,"tiers":null},
-		  {"meter_handle":"llm-input","filters":[{"field":"API_TYPE","operator":"IN","values":["Mcp","LlmProxy"]}],
+		  {"meter_handle":"llm-input","filters":[{"field":"API type","operator":"IN","values":["Mcp","LlmProxy"]}],
 		   "pricing_model":"PER_UNIT","unit_amount":"0.15","unit_quantity":1000000,"tiers":null},
 		  {"meter_handle":"api-calls","filters":[],"pricing_model":"GRADUATED",
 		   "unit_amount":null,"unit_quantity":null,
@@ -187,7 +187,7 @@ func TestSubscriptionPlanCreated_CopiesUsagePrices(t *testing.T) {
 	}
 	tokens, calls := p.Prices[0], p.Prices[2]
 	if tokens.MeterHandle != "llm-input" || tokens.PricingModel != "PER_UNIT" || *tokens.UnitQuantity != 1000000 || tokens.Tiers != nil ||
-		!reflect.DeepEqual(tokens.Filters, []model.PriceFilter{{Field: "API_TYPE", Operator: "EQUALS", Values: []string{"LlmProvider"}}}) {
+		!reflect.DeepEqual(tokens.Filters, []model.PriceFilter{{Field: "API type", Operator: "EQUALS", Values: []string{"LlmProvider"}}}) {
 		t.Errorf("first price = %+v", tokens)
 	}
 	if mini := p.Prices[1]; mini.MeterHandle != "llm-input" || len(mini.Filters) != 1 || len(mini.Filters[0].Values) != 2 {
@@ -199,40 +199,41 @@ func TestSubscriptionPlanCreated_CopiesUsagePrices(t *testing.T) {
 	}
 }
 
-// A price may filter on the API type; its values are kept as written.
-func TestSubscriptionPlanCreated_CopiesAnAPITypeFilter(t *testing.T) {
+// A filter's property name and values are kept as written; names are matched ignoring case, so the
+// two prices filter on one property and count different requests.
+func TestSubscriptionPlanCreated_CopiesFiltersAsWritten(t *testing.T) {
 	r, plans, cfg := newPlanTestReceiver(t)
 
 	if _, err := postPlanEvent(t, r, cfg, EventSubscriptionPlanCreated, paidPlan(
 		`{"pricing_type":"USAGE_BASED","currency":"USD","billing_period":"MONTH","prices":[
-		  {"meter_handle":"api-calls","filters":[{"field":"api_type","operator":"equals","values":["RestApi"]}],
+		  {"meter_handle":"api-calls","filters":[{"field":"api type","operator":"equals","values":["RestApi"]}],
 		   "pricing_model":"PER_UNIT","unit_amount":"0.01","unit_quantity":1},
-		  {"meter_handle":"api-calls","filters":[{"field":"API_TYPE","operator":"NOT_EQUALS","values":["RestApi"]}],
+		  {"meter_handle":"api-calls","filters":[{"field":"API type","operator":"NOT_EQUALS","values":["RestApi"]}],
 		   "pricing_model":"PER_UNIT","unit_amount":"0.02","unit_quantity":1}]}`)); err != nil {
 		t.Fatalf("err = %v", err)
 	}
 	p := plans.upserts[0].pricing
-	if !reflect.DeepEqual(p.Prices[0].Filters, []model.PriceFilter{{Field: "API_TYPE", Operator: "EQUALS", Values: []string{"RestApi"}}}) ||
-		!reflect.DeepEqual(p.Prices[1].Filters, []model.PriceFilter{{Field: "API_TYPE", Operator: "NOT_EQUALS", Values: []string{"RestApi"}}}) {
+	if !reflect.DeepEqual(p.Prices[0].Filters, []model.PriceFilter{{Field: "api type", Operator: "EQUALS", Values: []string{"RestApi"}}}) ||
+		!reflect.DeepEqual(p.Prices[1].Filters, []model.PriceFilter{{Field: "API type", Operator: "NOT_EQUALS", Values: []string{"RestApi"}}}) {
 		t.Errorf("prices = %+v", p.Prices)
 	}
 }
 
-// Token conditions are copied with their keys, the values as plain whole numbers.
-func TestSubscriptionPlanCreated_CopiesTokenConditions(t *testing.T) {
+// Comparisons are copied with their numbers as plain whole numbers.
+func TestSubscriptionPlanCreated_CopiesComparisons(t *testing.T) {
 	r, plans, cfg := newPlanTestReceiver(t)
 
 	if _, err := postPlanEvent(t, r, cfg, EventSubscriptionPlanCreated, paidPlan(
 		`{"pricing_type":"USAGE_BASED","currency":"USD","billing_period":"MONTH","prices":[
 		  {"meter_handle":"llm-input","filters":[
-		    {"field":"token","event_key":"metadata.aiTokenUsage.promptTokens","operator":"greater_than","values":["100"]},
-		    {"field":"TOKEN","event_key":"metadata.aiTokenUsage.promptTokens","operator":"LESS_THAN_OR_EQUAL","values":["0500"]}],
+		    {"field":"Prompt tokens","operator":"greater_than","values":["100"]},
+		    {"field":"Prompt tokens","operator":"LESS_THAN_OR_EQUAL","values":["0500"]}],
 		   "pricing_model":"PER_UNIT","unit_amount":"2.50","unit_quantity":1000000}]}`)); err != nil {
 		t.Fatalf("err = %v", err)
 	}
 	want := []model.PriceFilter{
-		{Field: "TOKEN", EventKey: "metadata.aiTokenUsage.promptTokens", Operator: "GREATER_THAN", Values: []string{"100"}},
-		{Field: "TOKEN", EventKey: "metadata.aiTokenUsage.promptTokens", Operator: "LESS_THAN_OR_EQUAL", Values: []string{"500"}},
+		{Field: "Prompt tokens", Operator: "GREATER_THAN", Values: []string{"100"}},
+		{Field: "Prompt tokens", Operator: "LESS_THAN_OR_EQUAL", Values: []string{"500"}},
 	}
 	if got := plans.upserts[0].pricing.Prices[0].Filters; !reflect.DeepEqual(got, want) {
 		t.Errorf("filters = %+v, want %+v", got, want)
@@ -274,10 +275,10 @@ func TestSubscriptionPlanCreated_RejectsMalformedPricing(t *testing.T) {
 		return paidPlan(`{"pricing_type":"USAGE_BASED","currency":"USD","billing_period":"MONTH","prices":[` + prices + `]}`)
 	}
 	for _, tc := range []struct{ data, reason string }{
-		{usage(`{"meter_handle":"calls","pricing_model":"PER_UNIT","unit_amount":"0.01","filters":[{"field":"TOKEN","event_key":"t.total","operator":"GREATER_THAN","values":["1.5"]}]}`),
-			"price 1: the Token value must be a whole number from 0 to 1000000000000"},
-		{usage(`{"meter_handle":"calls","pricing_model":"PER_UNIT","unit_amount":"0.01","filters":[{"field":"TOKEN","event_key":"t.total","operator":"GREATER_THAN","values":["9"]},{"field":"TOKEN","event_key":"t.total","operator":"LESS_THAN","values":["5"]}]}`),
-			"price 1: the Token conditions on t.total can't all be true"},
+		{usage(`{"meter_handle":"calls","pricing_model":"PER_UNIT","unit_amount":"0.01","filters":[{"field":"Total","operator":"GREATER_THAN","values":["1.5"]}]}`),
+			"price 1: A comparison on Total takes a whole number from 0 to 1000000000000"},
+		{usage(`{"meter_handle":"calls","pricing_model":"PER_UNIT","unit_amount":"0.01","filters":[{"field":"Total","operator":"GREATER_THAN","values":["9"]},{"field":"total","operator":"LESS_THAN","values":["5"]}]}`),
+			"price 1: the comparisons on Total can't all be true"},
 		{paidPlan(`{"currency":"USD","billing_period":"MONTH","flat_amount":"1"}`),
 			"pricingType must be one of FLAT_RATE, USAGE_BASED"},
 		{paidPlan(`{"pricing_type":"FLAT_RATE","currency":"US","billing_period":"MONTH","flat_amount":"1"}`),
@@ -289,12 +290,12 @@ func TestSubscriptionPlanCreated_RejectsMalformedPricing(t *testing.T) {
 		{paidPlan(`{"pricing_type":"USAGE_BASED","currency":"USD","billing_period":"MONTH","flat_amount":"9","prices":[{"meter_handle":"calls","pricing_model":"PER_UNIT","unit_amount":"0.01"}]}`),
 			"A usage based plan has no flat amount"},
 		{usage(``), "A usage based plan needs 1 to 20 prices"},
-		{usage(`{"meter_handle":"calls","pricing_model":"PER_UNIT","unit_amount":"0.01"},{"meter_handle":"calls","pricing_model":"PER_UNIT","unit_amount":"0.02","filters":[{"field":"API_TYPE","operator":"EQUALS","values":["LlmProvider"]}]}`),
+		{usage(`{"meter_handle":"calls","pricing_model":"PER_UNIT","unit_amount":"0.01"},{"meter_handle":"calls","pricing_model":"PER_UNIT","unit_amount":"0.02","filters":[{"field":"API type","operator":"EQUALS","values":["LlmProvider"]}]}`),
 			"Prices 1 and 2 both count the same requests of the meter calls; give them different filters."},
-		{usage(`{"meter_handle":"calls","pricing_model":"PER_UNIT","unit_amount":"0.01","filters":[{"field":"RESOURCE","operator":"IN","values":["/a"]}]}`),
-			"The RESOURCE operator of price 1 must be one of EQUALS, NOT_EQUALS, STARTS_WITH"},
-		{usage(`{"meter_handle":"calls","pricing_model":"PER_UNIT","unit_amount":"0.01","filters":[{"field":"API_TYPE","operator":"STARTS_WITH","values":["Llm"]}]}`),
-			"The API_TYPE operator of price 1 must be one of EQUALS, NOT_EQUALS, IN, NOT_IN"},
+		{usage(`{"meter_handle":"calls","pricing_model":"PER_UNIT","unit_amount":"0.01","filters":[{"field":"Resource","operator":"MATCHES","values":["/a"]}]}`),
+			"The operator of filter 1 of price 1 must be one of EQUALS, NOT_EQUALS, IN, NOT_IN, STARTS_WITH, GREATER_THAN, GREATER_THAN_OR_EQUAL, LESS_THAN, LESS_THAN_OR_EQUAL"},
+		{usage(`{"meter_handle":"calls","pricing_model":"PER_UNIT","unit_amount":"0.01","filters":[{"field":"Status code","operator":"IN","values":["200"]},{"field":"status code","operator":"LESS_THAN","values":["300"]}]}`),
+			"price 1 filters on Status code more than once"},
 		{usage(`{"meter_handle":"calls","pricing_model":"FLAT"}`), "pricingModel of price 1 must be one of PER_UNIT, VOLUME, GRADUATED"},
 		{usage(`{"pricing_model":"PER_UNIT","unit_amount":"0.01"}`), "meterId of price 1 is required"},
 		{usage(`{"meter_handle":"calls","pricing_model":"PER_UNIT","unit_amount":"0.01","tiers":[]}`),

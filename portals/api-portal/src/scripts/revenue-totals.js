@@ -18,9 +18,8 @@
 
 /*
  * Adds up the invoices that GET /billing-reports/invoices returns, for Settings › Usage & Revenue:
- * the total invoiced each month, and per API and plan. It is kept separate from the page script so
- * it can be tested on its own. Amounts are added as whole minor units ("28.12" is 2812 cents), so no
- * rounding error builds up. Months are calendar months in UTC (YYYY-MM).
+ * the total invoiced each month and the requests billed. Amounts are added as whole minor units
+ * ("28.12" is 2812 cents). Months are calendar months in UTC (YYYY-MM).
  */
 (function (root, factory) {
   var api = factory();
@@ -90,13 +89,10 @@
    *   - over the months in `range` (a set of YYYY-MM):
    *       - invoiced: the invoices' total;
    *       - billableRequests: the requests billed by request-count prices;
-   *       - plans: a row per API and plan with its subscriptions, usage per price and revenue (the
-   *         plan's lines, without tax or discounts), the largest revenue first;
    *   - digits: the currency's number of decimals.
    */
   function summarize(invoices, currency, range) {
-    var result = { months: {}, invoiced: 0, billableRequests: 0, plans: [], digits: 2 };
-    var rows = {};
+    var result = { months: {}, invoiced: 0, billableRequests: 0, digits: 2 };
     invoices.forEach(function (invoice) {
       if (invoice.currency !== currency) return;
       var total = minorOf(invoice.total);
@@ -108,30 +104,7 @@
       (invoice.items || []).forEach(function (item) {
         if (item.countsRequests && item.quantity) result.billableRequests += item.quantity;
       });
-      if (!invoice.api || !invoice.plan) return;
-      var key = invoice.api + '\u0000' + invoice.plan;
-      var row = rows[key] || (rows[key] = { api: invoice.api, plan: invoice.plan, subscriptions: {}, usage: {}, usageOrder: [], revenue: 0 });
-      row.subscriptions[invoice.subscriptionId || invoice.number || invoice.created] = true;
-      (invoice.items || []).forEach(function (item) {
-        row.revenue += minorOf(item.amount).minor;
-        if (item.quantity === null || item.quantity === undefined) return;
-        if (!row.usage[item.name]) {
-          row.usage[item.name] = { name: item.name, quantity: 0, unit: item.unit };
-          row.usageOrder.push(item.name);
-        }
-        row.usage[item.name].quantity += item.quantity;
-      });
     });
-    result.plans = Object.keys(rows).map(function (key) {
-      var row = rows[key];
-      return {
-        api: row.api,
-        plan: row.plan,
-        subscriptions: Object.keys(row.subscriptions).length,
-        usage: row.usageOrder.map(function (name) { return row.usage[name]; }),
-        revenue: row.revenue,
-      };
-    }).sort(function (a, b) { return b.revenue - a.revenue || a.api.localeCompare(b.api) || a.plan.localeCompare(b.plan); });
     return result;
   }
 
@@ -145,11 +118,6 @@
     }
   }
 
-  /** A price's usage as people read it: "Successful calls · 200: 2,812 requests". */
-  function usageText(usage) {
-    return usage.name + ': ' + usage.quantity.toLocaleString('en-US') + ' ' + usage.unit + (usage.quantity === 1 ? '' : 's');
-  }
-
   return {
     minorOf: minorOf,
     monthOf: monthOf,
@@ -158,6 +126,5 @@
     matches: matches,
     summarize: summarize,
     formatMoney: formatMoney,
-    usageText: usageText,
   };
 }));

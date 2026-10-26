@@ -64,7 +64,7 @@ const listPaidPairs = async (orgId, { planUuid } = {}, t) => {
         params.push(planUuid);
     }
     return exec.query(
-        `SELECT m.api_uuid, m.plan_uuid, a.name AS api_name, a.version AS api_version, a.type AS api_type
+        `SELECT m.api_uuid, m.plan_uuid, a.name AS api_name, a.version AS api_version
          FROM api_subscription_plan_mappings m
          JOIN subscription_plan_pricing pp ON pp.subscription_plan_uuid = m.plan_uuid AND pp.portal_id = m.portal_id
          JOIN api_metadata a ON a.uuid = m.api_uuid AND a.portal_id = m.portal_id

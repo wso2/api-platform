@@ -33,7 +33,7 @@ import {
   type PriceDraft,
   type PricingDraft,
 } from './planPricingDraft';
-import type { FilterField, FilterOperator } from './meterLabels';
+import type { FilterOperator } from './meterLabels';
 
 const flatRate = (flatAmount: string, patch: Partial<PricingDraft> = {}): PricingDraft => ({
   ...freeDraft(),
@@ -47,15 +47,8 @@ const usageBased = (prices: PriceDraft[]): PricingDraft => ({
   prices,
   pricingType: 'USAGE_BASED',
 });
-const filter = (field: FilterField, operator: FilterOperator, text: string): FilterDraft => ({
+const filter = (field: string, operator: FilterOperator, text: string): FilterDraft => ({
   field,
-  operator,
-  text,
-});
-/** A Token condition on `eventKey`. */
-const token = (eventKey: string, operator: FilterOperator, text: string): FilterDraft => ({
-  eventKey,
-  field: 'TOKEN',
   operator,
   text,
 });
@@ -69,7 +62,8 @@ const tier = (upTo: string, unitAmount: string, flatAmount = '') => ({
   upTo,
 });
 /**
- * Without meters, no price's meter is known, so the fields it filters on are left to the server.
+ * Without meters, no price's meter is known, so the properties it filters on are left to the
+ * server.
  */
 const build = (draft: PricingDraft, meters: Meter[] = []) => buildPricingBody(draft, meters);
 /** The problem with two prices on the meter "calls", given each price's filters. */
@@ -105,11 +99,11 @@ describe('buildPricingBody', () => {
 
   it('builds a usage based plan whose prices carry their filters, the same meter more than once', () => {
     const draft = usageBased([
-      perUnit('llm-input', [filter('API_TYPE', 'EQUALS', 'LlmProvider')], {
+      perUnit('llm-input', [filter('API type', 'EQUALS', 'LlmProvider')], {
         unitAmount: '2.50',
         unitQuantity: '1000000',
       }),
-      perUnit('llm-input', [filter('API_TYPE', 'IN', 'Mcp, LlmProxy, Mcp')], {
+      perUnit('llm-input', [filter('API type', 'IN', 'Mcp, LlmProxy, Mcp')], {
         unitAmount: '0.15',
       }),
       price({
@@ -124,7 +118,7 @@ describe('buildPricingBody', () => {
         currency: 'USD',
         prices: [
           {
-            filters: [{ field: 'API_TYPE', operator: 'EQUALS', values: ['LlmProvider'] }],
+            filters: [{ field: 'API type', operator: 'EQUALS', values: ['LlmProvider'] }],
             meterId: 'llm-input',
             pricingModel: 'PER_UNIT',
             tiers: null,
@@ -132,7 +126,7 @@ describe('buildPricingBody', () => {
             unitQuantity: 1000000,
           },
           {
-            filters: [{ field: 'API_TYPE', operator: 'IN', values: ['Mcp', 'LlmProxy'] }],
+            filters: [{ field: 'API type', operator: 'IN', values: ['Mcp', 'LlmProxy'] }],
             meterId: 'llm-input',
             pricingModel: 'PER_UNIT',
             tiers: null,
@@ -164,23 +158,16 @@ describe('buildPricingBody', () => {
   it('needs a meter, valid filter values, then a valid amount and batch size', () => {
     const problem = (entry: PriceDraft) => build(usageBased([entry])).problem;
     expect(problem(price({ unitAmount: '0.01' }))).toEqual({ code: 'METER_MISSING', price: 0 });
-    const invalid = (field: FilterField, operator: FilterOperator, text: string) =>
-      problem(perUnit('calls', [filter(field, operator, text)]));
-    expect(invalid('API_TYPE', 'EQUALS', 'LlmProvider, Agent')).toEqual({
-      code: 'FILTER_INVALID',
-      field: 'API_TYPE',
-      price: 0,
-    });
-    // Equals, does not equal and starts with take one value; status codes are exact; a resource
-    // starts with /.
-    expect(invalid('HTTP_METHOD', 'NOT_EQUALS', 'GET, POST')).toMatchObject({
+    const regionProblem = (operator: FilterOperator, text: string) =>
+      problem(perUnit('calls', [filter('Region', operator, text)]));
+    // Is one of and is not one of take up to 20 values; every text value is up to 255 characters.
+    expect(
+      regionProblem('IN', Array.from({ length: 21 }, (_, index) => `eu-${index}`).join(', ')),
+    ).toEqual({ code: 'FILTER_INVALID', field: 'Region', price: 0 });
+    expect(regionProblem('NOT_IN', `eu-west, ${'x'.repeat(256)}`)).toMatchObject({
       code: 'FILTER_INVALID',
     });
-    expect(invalid('HTTP_STATUS_CODE', 'IN', '200, 2xx')).toMatchObject({ code: 'FILTER_INVALID' });
-    expect(invalid('RESOURCE', 'STARTS_WITH', 'orders')).toMatchObject({ code: 'FILTER_INVALID' });
-    expect(invalid('API_TYPE', 'EQUALS', 'x'.repeat(256))).toMatchObject({
-      code: 'FILTER_INVALID',
-    });
+    expect(regionProblem('STARTS_WITH', 'x'.repeat(256))).toMatchObject({ code: 'FILTER_INVALID' });
     expect(problem(perUnit('calls', [], { unitAmount: 'x' }))).toEqual({
       code: 'AMOUNT_INVALID',
       price: 0,
@@ -191,24 +178,41 @@ describe('buildPricingBody', () => {
     });
   });
 
-  it("sends no filter for a row left empty, and the others in the order of the meter's rows", () => {
-    // The meter's rows are status code, HTTP method and resource.
+  it('takes any text as the one value of equals, does not equal and starts with, as written', () => {
+    const { body } = build(
+      usageBased([
+        perUnit('calls', [
+          filter('Resource', 'STARTS_WITH', ' /orders/ '),
+          filter('Region', 'EQUALS', 'eu-west, eu-north'),
+          filter('Status code', 'NOT_EQUALS', '2xx'),
+        ]),
+      ]),
+    );
+    expect(body?.prices?.[0].filters).toEqual([
+      // A trailing "/" is kept.
+      { field: 'Resource', operator: 'STARTS_WITH', values: ['/orders/'] },
+      { field: 'Region', operator: 'EQUALS', values: ['eu-west, eu-north'] },
+      { field: 'Status code', operator: 'NOT_EQUALS', values: ['2xx'] },
+    ]);
+  });
+
+  it("sends no filter for a row left empty, and the others in the order of the meter's properties, as the meter spells them", () => {
+    // The meter's properties are Status code, HTTP method and Resource.
     const draft = usageBased([
       perUnit('successful-calls', [
-        filter('RESOURCE', 'STARTS_WITH', ' '),
-        filter('HTTP_METHOD', 'NOT_EQUALS', 'GET'),
-        filter('API_TYPE', 'IN', ' , '),
-        filter('HTTP_STATUS_CODE', 'IN', '200'),
+        filter('Resource', 'STARTS_WITH', ' '),
+        filter('http METHOD', 'NOT_EQUALS', 'GET'),
+        filter('status code', 'IN', '200'),
       ]),
     ]);
     expect(build(draft, [aMeter()]).body?.prices?.[0].filters).toEqual([
-      { field: 'HTTP_STATUS_CODE', operator: 'IN', values: ['200'] },
-      { field: 'HTTP_METHOD', operator: 'NOT_EQUALS', values: ['GET'] },
+      { field: 'Status code', operator: 'IN', values: ['200'] },
+      { field: 'HTTP method', operator: 'NOT_EQUALS', values: ['GET'] },
     ]);
-    // Without the meter, the rows go in the order given.
+    // Without the meter, the rows go in the order given, as given.
     expect(build(draft).body?.prices?.[0].filters).toEqual([
-      { field: 'HTTP_METHOD', operator: 'NOT_EQUALS', values: ['GET'] },
-      { field: 'HTTP_STATUS_CODE', operator: 'IN', values: ['200'] },
+      { field: 'http METHOD', operator: 'NOT_EQUALS', values: ['GET'] },
+      { field: 'status code', operator: 'IN', values: ['200'] },
     ]);
   });
 
@@ -225,578 +229,358 @@ describe('buildPricingBody', () => {
   });
 });
 
-describe('buildPricingBody filter field check', () => {
+describe('buildPricingBody property check', () => {
   const llmInput = aMeter({
-    filterFields: [{ eventKey: 'metadata.apiType', field: 'API_TYPE' }],
+    filterFields: [{ eventKey: 'metadata.apiType', field: 'API type' }],
     id: 'llm-input',
     type: 'TOKENS',
     typeKey: 'metadata.aiTokenUsage.promptTokens',
   });
   const plain = aMeter({ filterFields: [], id: 'plain-calls' });
 
-  it('names the first price that filters on a field its meter does not allow, before its values; an empty row is no filter', () => {
+  it("names the first price that filters on a property its meter doesn't have, before its values; an empty row is no filter", () => {
     const draft = usageBased([
-      perUnit('llm-input', [filter('API_TYPE', 'EQUALS', 'LlmProvider')]),
+      perUnit('llm-input', [filter('API type', 'EQUALS', 'LlmProvider')]),
       perUnit('llm-input', [
-        filter('API_TYPE', 'EQUALS', 'Agent'),
-        filter('HTTP_METHOD', 'EQUALS', ''),
+        filter('API type', 'EQUALS', 'Agent'),
+        filter('HTTP method', 'EQUALS', ''),
       ]),
       perUnit('llm-input', [
-        filter('API_TYPE', 'EQUALS', 'WebSubApi'),
-        filter('HTTP_METHOD', 'EQUALS', 'GET'),
+        filter('API type', 'EQUALS', 'WebSubApi'),
+        filter('HTTP method', 'EQUALS', 'GET'),
       ]),
     ]);
     expect(build(draft, [llmInput]).problem).toEqual({
       code: 'FILTER_NOT_ALLOWED',
-      field: 'HTTP_METHOD',
+      field: 'HTTP method',
       meterId: 'llm-input',
       price: 2,
     });
     expect(
-      build(usageBased([perUnit('plain-calls', [filter('HTTP_STATUS_CODE', 'EQUALS', '200')])]), [
-        plain,
-      ]).problem,
+      build(usageBased([perUnit('plain-calls', [filter('Status code', 'EQUALS', '200')])]), [plain])
+        .problem,
     ).toEqual({
       code: 'FILTER_NOT_ALLOWED',
-      field: 'HTTP_STATUS_CODE',
+      field: 'Status code',
       meterId: 'plain-calls',
       price: 0,
     });
   });
 
-  it('accepts filters on the fields the meter allows, and leaves a meter it does not know to the server', () => {
+  it("accepts filters on the meter's properties, ignoring case, and leaves a meter it does not know to the server", () => {
     expect(
-      build(usageBased([perUnit('llm-input', [filter('API_TYPE', 'EQUALS', 'LlmProvider')])]), [
+      build(usageBased([perUnit('llm-input', [filter('api TYPE', 'EQUALS', 'LlmProvider')])]), [
         llmInput,
       ]).problem,
     ).toBeNull();
     expect(
-      build(usageBased([perUnit('other', [filter('HTTP_METHOD', 'EQUALS', 'GET')])]), [llmInput])
+      build(usageBased([perUnit('other', [filter('HTTP method', 'EQUALS', 'GET')])]), [llmInput])
         .problem,
     ).toBeNull();
+  });
+});
+
+describe('comparisons', () => {
+  const promptFilter = (operator: FilterOperator, text: string) =>
+    filter('Prompt tokens', operator, text);
+  const buildOnePrice = (filters: FilterDraft[]) => build(usageBased([perUnit('llm', filters)]));
+
+  it('take one whole number from 0 to 1000000000000 on any property, sent without leading zeros', () => {
+    expect(
+      buildOnePrice([promptFilter('GREATER_THAN', ' 0333 '), filter('Status code', 'GREATER_THAN_OR_EQUAL', '500')])
+        .body?.prices?.[0].filters,
+    ).toEqual([
+      { field: 'Prompt tokens', operator: 'GREATER_THAN', values: ['333'] },
+      { field: 'Status code', operator: 'GREATER_THAN_OR_EQUAL', values: ['500'] },
+    ]);
+    for (const value of ['1.5', '-1', 'ten', '1000000000001', '1, 2']) {
+      expect(buildOnePrice([promptFilter('LESS_THAN', value)]).problem).toEqual({
+        code: 'NUMBER_INVALID',
+        field: 'Prompt tokens',
+        price: 0,
+      });
+    }
+    expect(buildOnePrice([promptFilter('LESS_THAN_OR_EQUAL', '1000000000000')]).problem).toBeNull();
+    expect(buildOnePrice([promptFilter('GREATER_THAN_OR_EQUAL', '0')]).problem).toBeNull();
+  });
+
+  it('take a second comparison on one property, and refuse two that leave no whole number', () => {
+    expect(
+      buildOnePrice([promptFilter('GREATER_THAN', '100'), promptFilter('LESS_THAN_OR_EQUAL', '500')]).problem,
+    ).toBeNull();
+    expect(
+      buildOnePrice([promptFilter('GREATER_THAN', '7'), promptFilter('GREATER_THAN_OR_EQUAL', '100')]).problem,
+    ).toBeNull();
+    expect(
+      buildOnePrice([promptFilter('GREATER_THAN', '500'), promptFilter('LESS_THAN_OR_EQUAL', '100')]).problem,
+    ).toEqual({
+      code: 'RANGE_EMPTY',
+      field: 'Prompt tokens',
+      price: 0,
+    });
+    expect(buildOnePrice([promptFilter('GREATER_THAN', '100'), promptFilter('LESS_THAN', '101')]).problem).toMatchObject({
+      code: 'RANGE_EMPTY',
+    });
+  });
+
+  it('refuse a match with a comparison on one property, two matches, or three comparisons', () => {
+    const conflict = { code: 'FILTERS_CONFLICT', field: 'Prompt tokens', price: 0 };
+    expect(buildOnePrice([promptFilter('EQUALS', '7'), promptFilter('GREATER_THAN', '1')]).problem).toEqual(conflict);
+    expect(buildOnePrice([promptFilter('EQUALS', '7'), promptFilter('NOT_EQUALS', '8')]).problem).toEqual(conflict);
+    expect(
+      buildOnePrice([promptFilter('GREATER_THAN', '1'), promptFilter('LESS_THAN', '100'), promptFilter('LESS_THAN', '50')])
+        .problem,
+    ).toEqual(conflict);
+    // The same property whatever its case.
+    expect(buildOnePrice([promptFilter('EQUALS', '7'), filter('prompt TOKENS', 'IN', '8')]).problem).toEqual(
+      conflict,
+    );
+  });
+
+  it('refuse a price with more than 20 filters', () => {
+    const filters = (count: number) =>
+      Array.from({ length: count }, (_, index) => filter(`Count ${index}`, 'GREATER_THAN', '1'));
+    expect(buildOnePrice(filters(20)).problem).toBeNull();
+    expect(buildOnePrice(filters(21)).problem).toEqual({ code: 'TOO_MANY_FILTERS', price: 0 });
   });
 });
 
 describe('buildPricingBody overlap check', () => {
   it('names the first two prices on one meter that count the same requests, by position', () => {
     const draft = usageBased([
-      perUnit('calls', [filter('API_TYPE', 'IN', 'LlmProvider, Agent')]),
-      perUnit('other', [filter('API_TYPE', 'EQUALS', 'LlmProvider')]),
-      perUnit('calls', [filter('API_TYPE', 'EQUALS', 'LlmProxy')]),
-      perUnit('calls', [filter('API_TYPE', 'EQUALS', 'Agent')]),
+      perUnit('calls', [filter('API type', 'IN', 'LlmProvider, Agent')]),
+      perUnit('other', [filter('API type', 'EQUALS', 'LlmProvider')]),
+      perUnit('calls', [filter('API type', 'EQUALS', 'LlmProxy')]),
+      perUnit('calls', [filter('API type', 'EQUALS', 'Agent')]),
     ]);
     // Prices on different meters are never compared.
     expect(build(draft).problem).toEqual({ code: 'OVERLAP', meterId: 'calls', other: 3, price: 0 });
   });
 
-  it('prices without filters, or filtering on fields the other leaves open, count the same requests', () => {
+  it('prices without filters, or filtering on properties the other leaves open, count the same requests', () => {
     expect(pair([], [])).toEqual(OVERLAP);
-    expect(pair([filter('API_TYPE', 'EQUALS', 'LlmProvider')], [])).toEqual(OVERLAP);
+    expect(pair([filter('API type', 'EQUALS', 'LlmProvider')], [])).toEqual(OVERLAP);
     expect(
       pair(
-        [filter('API_TYPE', 'EQUALS', 'LlmProvider')],
-        [filter('HTTP_METHOD', 'EQUALS', 'POST')],
+        [filter('API type', 'EQUALS', 'LlmProvider')],
+        [filter('HTTP method', 'EQUALS', 'POST')],
       ),
     ).toEqual(OVERLAP);
   });
 
-  it('overlaps only when every field both filter on overlaps', () => {
+  it('overlaps only when every property both filter on overlaps, the same property whatever its case', () => {
     expect(
       pair(
-        [filter('API_TYPE', 'EQUALS', 'LlmProvider'), filter('HTTP_STATUS_CODE', 'EQUALS', '200')],
-        [filter('API_TYPE', 'EQUALS', 'LlmProvider'), filter('HTTP_STATUS_CODE', 'EQUALS', '201')],
+        [filter('API type', 'EQUALS', 'LlmProvider'), filter('Status code', 'EQUALS', '200')],
+        [filter('api type', 'EQUALS', 'LlmProvider'), filter('status code', 'EQUALS', '201')],
       ),
     ).toBeNull();
   });
 
-  it('equals or is one of against equals or is one of: when they share a value', () => {
+  it('equals or is one of against equals or is one of: when they share a value, matched as written', () => {
     expect(
       pair(
-        [filter('API_TYPE', 'IN', 'LlmProvider, Agent')],
-        [filter('API_TYPE', 'EQUALS', 'Agent')],
+        [filter('API type', 'IN', 'LlmProvider, Agent')],
+        [filter('API type', 'EQUALS', 'Agent')],
       ),
     ).toEqual(OVERLAP);
     expect(
       pair(
-        [filter('API_TYPE', 'IN', 'LlmProvider, Agent')],
-        [filter('API_TYPE', 'IN', 'LlmProxy, WebSubApi')],
+        [filter('API type', 'IN', 'LlmProvider, Agent')],
+        [filter('API type', 'IN', 'LlmProxy, WebSubApi')],
       ),
+    ).toBeNull();
+    expect(
+      pair([filter('API type', 'EQUALS', 'RestApi')], [filter('API type', 'EQUALS', 'restapi')]),
     ).toBeNull();
   });
 
   it('equals or is one of against does not equal or is not one of: when a value is not excluded', () => {
     expect(
       pair(
-        [filter('API_TYPE', 'IN', 'LlmProvider, Agent')],
-        [filter('API_TYPE', 'NOT_EQUALS', 'Agent')],
+        [filter('API type', 'IN', 'LlmProvider, Agent')],
+        [filter('API type', 'NOT_EQUALS', 'Agent')],
       ),
     ).toEqual(OVERLAP);
     expect(
       pair(
-        [filter('API_TYPE', 'NOT_IN', 'LlmProvider, Agent')],
-        [filter('API_TYPE', 'IN', 'Agent, LlmProvider')],
+        [filter('API type', 'NOT_IN', 'LlmProvider, Agent')],
+        [filter('API type', 'IN', 'Agent, LlmProvider')],
       ),
     ).toBeNull();
   });
 
-  it('equals or is one of against starts with: when a value is the path or under it, by whole segments', () => {
+  it('equals or is one of against starts with: when a value starts with the text', () => {
     expect(
       pair(
-        [filter('RESOURCE', 'EQUALS', '/orders/{id}')],
-        [filter('RESOURCE', 'STARTS_WITH', '/orders')],
+        [filter('Resource', 'EQUALS', '/orders/{id}')],
+        [filter('Resource', 'STARTS_WITH', '/orders')],
       ),
     ).toEqual(OVERLAP);
     expect(
       pair(
-        [filter('RESOURCE', 'EQUALS', '/orders')],
-        [filter('RESOURCE', 'STARTS_WITH', '/orders/')],
+        [filter('Resource', 'EQUALS', '/orders-archive')],
+        [filter('Resource', 'STARTS_WITH', '/orders')],
       ),
     ).toEqual(OVERLAP);
     expect(
       pair(
-        [filter('RESOURCE', 'STARTS_WITH', '/orders')],
-        [filter('RESOURCE', 'EQUALS', '/payments')],
+        [filter('Resource', 'EQUALS', '/orders')],
+        [filter('Resource', 'STARTS_WITH', '/orders/')],
       ),
     ).toBeNull();
     expect(
       pair(
-        [filter('RESOURCE', 'EQUALS', '/orders-archive')],
-        [filter('RESOURCE', 'STARTS_WITH', '/orders')],
-      ),
-    ).toBeNull();
-    expect(
-      pair([filter('RESOURCE', 'EQUALS', '/payments')], [filter('RESOURCE', 'STARTS_WITH', '/')]),
-    ).toEqual(OVERLAP);
-  });
-
-  it('starts with against starts with: when one path is the other or under it', () => {
-    expect(
-      pair(
-        [filter('RESOURCE', 'STARTS_WITH', '/orders/')],
-        [filter('RESOURCE', 'STARTS_WITH', '/orders')],
-      ),
-    ).toEqual(OVERLAP);
-    expect(
-      pair(
-        [filter('RESOURCE', 'STARTS_WITH', '/orders')],
-        [filter('RESOURCE', 'STARTS_WITH', '/orders/items')],
-      ),
-    ).toEqual(OVERLAP);
-    expect(
-      pair(
-        [filter('RESOURCE', 'STARTS_WITH', '/orders')],
-        [filter('RESOURCE', 'STARTS_WITH', '/payments')],
-      ),
-    ).toBeNull();
-    expect(
-      pair(
-        [filter('RESOURCE', 'STARTS_WITH', '/order')],
-        [filter('RESOURCE', 'STARTS_WITH', '/orders')],
+        [filter('Resource', 'STARTS_WITH', '/orders')],
+        [filter('Resource', 'IN', '/payments, /refunds')],
       ),
     ).toBeNull();
   });
 
-  it('two exclusions, or an exclusion and a prefix: always', () => {
+  it('starts with against starts with: when one text starts with the other', () => {
     expect(
       pair(
-        [filter('API_TYPE', 'NOT_IN', 'LlmProvider, Agent')],
-        [filter('API_TYPE', 'NOT_EQUALS', 'WebSubApi')],
+        [filter('Resource', 'STARTS_WITH', '/order')],
+        [filter('Resource', 'STARTS_WITH', '/orders')],
       ),
     ).toEqual(OVERLAP);
     expect(
       pair(
-        [filter('RESOURCE', 'NOT_EQUALS', '/orders')],
-        [filter('RESOURCE', 'STARTS_WITH', '/orders')],
-      ),
-    ).toEqual(OVERLAP);
-  });
-
-  it('two exclusions of HTTP methods: unless together they exclude all seven', () => {
-    expect(
-      pair(
-        [filter('HTTP_METHOD', 'NOT_IN', 'GET, POST')],
-        [filter('HTTP_METHOD', 'NOT_EQUALS', 'PUT')],
+        [filter('Resource', 'STARTS_WITH', '/orders/items')],
+        [filter('Resource', 'STARTS_WITH', '/orders')],
       ),
     ).toEqual(OVERLAP);
     expect(
       pair(
-        [filter('HTTP_METHOD', 'NOT_IN', 'GET, POST, PUT')],
-        [filter('HTTP_METHOD', 'NOT_IN', 'PATCH, DELETE, HEAD, OPTIONS')],
+        [filter('Resource', 'STARTS_WITH', '/orders')],
+        [filter('Resource', 'STARTS_WITH', '/payments')],
       ),
     ).toBeNull();
   });
-});
 
-describe('API type filters', () => {
-  it('takes one value for equals and does not equal, up to 20 for is one of, each up to 255 characters, as written', () => {
-    const problem = (operator: FilterOperator, text: string) =>
-      build(usageBased([perUnit('calls', [filter('API_TYPE', operator, text)])])).problem;
-    expect(problem('EQUALS', 'RestApi, Mcp')).toEqual({
-      code: 'FILTER_INVALID',
-      field: 'API_TYPE',
-      price: 0,
-    });
-    expect(problem('NOT_EQUALS', 'x'.repeat(256))).toEqual({
-      code: 'FILTER_INVALID',
-      field: 'API_TYPE',
-      price: 0,
-    });
+  it('two exclusions, or an exclusion and starts with: always', () => {
     expect(
-      problem('IN', Array.from({ length: 21 }, (_, index) => `Api${index}`).join(', ')),
-    ).toMatchObject({
-      code: 'FILTER_INVALID',
-    });
-    // Any text is accepted, not only our gateway's API types.
-    const { body } = build(
-      usageBased([perUnit('calls', [filter('API_TYPE', 'IN', 'RestApi, CustomApi, RestApi')])]),
+      pair(
+        [filter('HTTP method', 'NOT_IN', 'GET, POST, PUT')],
+        [filter('HTTP method', 'NOT_IN', 'PATCH, DELETE, HEAD, OPTIONS')],
+      ),
+    ).toEqual(OVERLAP);
+    expect(
+      pair(
+        [filter('Resource', 'NOT_EQUALS', '/orders')],
+        [filter('Resource', 'STARTS_WITH', '/orders')],
+      ),
+    ).toEqual(OVERLAP);
+  });
+
+  it('comparisons against comparisons: when their whole-number ranges share a number', () => {
+    const promptFilter = (operator: FilterOperator, text: string) =>
+      filter('Prompt tokens', operator, text);
+    expect(pair([promptFilter('LESS_THAN_OR_EQUAL', '333')], [promptFilter('GREATER_THAN', '333')])).toBeNull();
+    expect(
+      pair(
+        [promptFilter('GREATER_THAN', '100'), promptFilter('LESS_THAN', '200')],
+        [promptFilter('GREATER_THAN_OR_EQUAL', '200')],
+      ),
+    ).toBeNull();
+    expect(pair([promptFilter('GREATER_THAN', '100')], [promptFilter('GREATER_THAN', '333')])).toEqual(OVERLAP);
+    expect(
+      pair(
+        [promptFilter('GREATER_THAN', '100'), promptFilter('LESS_THAN_OR_EQUAL', '200')],
+        [promptFilter('GREATER_THAN_OR_EQUAL', '200')],
+      ),
+    ).toEqual(OVERLAP);
+  });
+
+  it('comparisons against equals or is one of: when one of the values is a whole number in the range', () => {
+    const statusFilter = (operator: FilterOperator, text: string) =>
+      filter('Status code', operator, text);
+    expect(pair([statusFilter('GREATER_THAN_OR_EQUAL', '500')], [statusFilter('IN', '200, 404')])).toBeNull();
+    expect(pair([statusFilter('IN', '200, 503')], [statusFilter('GREATER_THAN_OR_EQUAL', '500')])).toEqual(
+      OVERLAP,
     );
-    expect(body?.prices?.[0].filters).toEqual([
-      { field: 'API_TYPE', operator: 'IN', values: ['RestApi', 'CustomApi'] },
-    ]);
+    expect(pair([statusFilter('GREATER_THAN_OR_EQUAL', '500')], [statusFilter('EQUALS', '5xx')])).toBeNull();
   });
 
-  it('lets two prices on one meter count different API types, matched exactly as written', () => {
-    expect(
-      pair(
-        [filter('API_TYPE', 'EQUALS', 'RestApi')],
-        [filter('API_TYPE', 'EQUALS', 'LlmProvider')],
-      ),
-    ).toBeNull();
-    expect(
-      pair([filter('API_TYPE', 'EQUALS', 'RestApi')], [filter('API_TYPE', 'EQUALS', 'restapi')]),
-    ).toBeNull();
-    expect(
-      pair(
-        [filter('API_TYPE', 'IN', 'RestApi, Mcp')],
-        [filter('API_TYPE', 'NOT_EQUALS', 'RestApi')],
-      ),
-    ).toEqual(OVERLAP);
-    expect(
-      pair(
-        [filter('API_TYPE', 'EQUALS', 'RestApi')],
-        [filter('API_TYPE', 'NOT_IN', 'RestApi, Mcp')],
-      ),
-    ).toBeNull();
-  });
-
-  it('names a price by its API types', () => {
-    expect(priceName('API requests', [filter('API_TYPE', 'EQUALS', 'RestApi')])).toBe(
-      'API requests · RestApi',
+  it('comparisons against does not equal, is not one of or starts with: always', () => {
+    const statusFilter = (operator: FilterOperator, text: string) =>
+      filter('Status code', operator, text);
+    expect(pair([statusFilter('GREATER_THAN_OR_EQUAL', '500')], [statusFilter('NOT_IN', '500, 503')])).toEqual(
+      OVERLAP,
     );
-    expect(priceName('API requests', [filter('API_TYPE', 'NOT_EQUALS', 'LlmProvider')])).toBe(
-      'API requests · not LlmProvider',
-    );
-  });
-});
-
-describe('MCP method and Tool filters', () => {
-  it('take free text, kept as written, and a price with a Tool filter has no MCP method filter', () => {
-    const { body } = build(
-      usageBased([
-        perUnit('calls', [filter('MCP_METHOD', 'IN', 'tools/call, resources/read, tools/call')]),
-        perUnit('tools', [filter('MCP_TOOL', 'NOT_EQUALS', 'Search')]),
-      ]),
-    );
-    expect(body?.prices?.map((p) => p.filters)).toEqual([
-      [{ field: 'MCP_METHOD', operator: 'IN', values: ['tools/call', 'resources/read'] }],
-      [{ field: 'MCP_TOOL', operator: 'NOT_EQUALS', values: ['Search'] }],
-    ]);
-    expect(
-      build(
-        usageBased([
-          perUnit('calls', [
-            filter('MCP_METHOD', 'EQUALS', 'tools/call'),
-            filter('MCP_TOOL', 'EQUALS', 'search'),
-          ]),
-        ]),
-      ).problem,
-    ).toEqual({ code: 'TOOL_WITH_METHOD', price: 0 });
-  });
-
-  it('compare a Tool filter as one on the MCP method tools/call', () => {
-    const tool = (operator: FilterOperator, text: string) => [filter('MCP_TOOL', operator, text)];
-    const method = (operator: FilterOperator, text: string) => [
-      filter('MCP_METHOD', operator, text),
-    ];
-    expect(pair(method('EQUALS', 'tools/call'), method('NOT_EQUALS', 'tools/call'))).toBeNull();
-    expect(pair(tool('EQUALS', 'search'), tool('NOT_IN', 'search'))).toBeNull();
-    expect(pair(tool('EQUALS', 'search'), method('EQUALS', 'prompts/get'))).toBeNull();
-    expect(pair(tool('EQUALS', 'search'), method('NOT_EQUALS', 'tools/call'))).toBeNull();
-    expect(pair(tool('EQUALS', 'search'), method('EQUALS', 'tools/call'))).toEqual(OVERLAP);
-    expect(pair(tool('IN', 'search, fetch'), [])).toEqual(OVERLAP);
-  });
-
-  it('name a price by the methods or tools it counts', () => {
-    expect(priceName('MCP calls', [filter('MCP_METHOD', 'EQUALS', 'tools/call')])).toBe(
-      'MCP calls · tools/call',
-    );
-    expect(priceName('MCP calls', [filter('MCP_TOOL', 'NOT_IN', 'search, fetch')])).toBe(
-      'MCP calls · not search, fetch',
-    );
-  });
-});
-
-describe('Token conditions', () => {
-  const prompt = 'metadata.aiTokenUsage.promptTokens';
-  const total = 'metadata.aiTokenUsage.totalTokens';
-  /**
-   * A Tokens meter adding up prompt tokens, with a Token field on total tokens and the API type.
-   */
-  const llm = aMeter({
-    filterFields: [
-      { eventKey: 'metadata.apiType', field: 'API_TYPE' },
-      { eventKey: total, field: 'TOKEN' },
-    ],
-    id: 'llm',
-    type: 'TOKENS',
-    typeKey: prompt,
-  });
-  const onLlm = (filters: FilterDraft[]) => build(usageBased([perUnit('llm', filters)]), [llm]);
-
-  it("sends a condition on one of the meter's Token keys, its Token row included, with its key and one whole number", () => {
-    const { body } = onLlm([
-      token(prompt, 'GREATER_THAN', ' 0333 '),
-      token(total, 'LESS_THAN_OR_EQUAL', '5000'),
-    ]);
-    expect(body?.prices?.[0].filters).toEqual([
-      { eventKey: prompt, field: 'TOKEN', operator: 'GREATER_THAN', values: ['333'] },
-      { eventKey: total, field: 'TOKEN', operator: 'LESS_THAN_OR_EQUAL', values: ['5000'] },
-    ]);
-  });
-
-  it("refuses a key the meter doesn't have, and a value that isn't a whole number from 0 to 1000000000000", () => {
-    expect(onLlm([token('metadata.aiTokenUsage.completionTokens', 'EQUALS', '1')]).problem).toEqual(
-      {
-        code: 'TOKEN_KEY_UNKNOWN',
-        eventKey: 'metadata.aiTokenUsage.completionTokens',
-        price: 0,
-      },
-    );
-    for (const value of ['1.5', '-1', 'ten', '1000000000001', '1, 2']) {
-      expect(onLlm([token(prompt, 'GREATER_THAN', value)]).problem).toEqual({
-        code: 'TOKEN_VALUE_INVALID',
-        eventKey: prompt,
-        price: 0,
-      });
-    }
-    expect(onLlm([token(prompt, 'LESS_THAN', '1000000000000')]).problem).toBeNull();
-    expect(onLlm([token(prompt, 'EQUALS', '0')]).problem).toBeNull();
-  });
-
-  it("refuses two conditions on one key that can't both be true", () => {
-    expect(
-      onLlm([token(prompt, 'GREATER_THAN', '500'), token(prompt, 'LESS_THAN_OR_EQUAL', '100')])
-        .problem,
-    ).toEqual({
-      code: 'TOKEN_RANGE_EMPTY',
-      eventKey: prompt,
-      price: 0,
-    });
-    expect(
-      onLlm([token(prompt, 'GREATER_THAN', '100'), token(prompt, 'LESS_THAN', '101')]).problem,
-    ).toMatchObject({
-      code: 'TOKEN_RANGE_EMPTY',
-    });
-    expect(
-      onLlm([token(prompt, 'GREATER_THAN', '100'), token(prompt, 'LESS_THAN_OR_EQUAL', '500')])
-        .problem,
-    ).toBeNull();
-    expect(
-      onLlm([token(prompt, 'EQUALS', '7'), token(prompt, 'GREATER_THAN_OR_EQUAL', '7')]).problem,
-    ).toBeNull();
-  });
-
-  it('keeps two prices apart when their conditions on a key share no number, mixed with other fields as before', () => {
-    const tokenPair = (first: FilterDraft[], second: FilterDraft[]) =>
-      build(usageBased([perUnit('calls', first), perUnit('calls', second)])).problem;
-    expect(
-      tokenPair(
-        [token(prompt, 'LESS_THAN_OR_EQUAL', '333')],
-        [token(prompt, 'GREATER_THAN', '333')],
-      ),
-    ).toBeNull();
-    expect(
-      tokenPair([token(prompt, 'GREATER_THAN', '100')], [token(prompt, 'GREATER_THAN', '333')]),
-    ).toEqual(OVERLAP);
-    // A price without a condition on the key counts every number of it.
-    expect(tokenPair([token(prompt, 'GREATER_THAN', '100')], [])).toEqual(OVERLAP);
-    // Conditions on different keys leave both ranges open for the other key.
-    expect(
-      tokenPair([token(prompt, 'GREATER_THAN', '100')], [token(total, 'LESS_THAN', '10')]),
-    ).toEqual(OVERLAP);
-    expect(
-      tokenPair(
-        [filter('API_TYPE', 'EQUALS', 'LlmProvider'), token(prompt, 'GREATER_THAN', '333')],
-        [filter('API_TYPE', 'EQUALS', 'Agent'), token(prompt, 'GREATER_THAN', '333')],
-      ),
-    ).toBeNull();
-    expect(
-      tokenPair(
-        [filter('API_TYPE', 'EQUALS', 'LlmProvider'), token(prompt, 'GREATER_THAN', '100')],
-        [
-          filter('API_TYPE', 'EQUALS', 'LlmProvider'),
-          token(prompt, 'GREATER_THAN_OR_EQUAL', '333'),
-        ],
-      ),
-    ).toEqual(OVERLAP);
-  });
-
-  it("names a condition by its key's lower-case label, or the key, and a sign", () => {
-    expect(
-      priceName('Input tokens', [
-        filter('API_TYPE', 'EQUALS', 'LlmProvider'),
-        token(prompt, 'GREATER_THAN', '333'),
-      ]),
-    ).toBe('Input tokens · LlmProvider · prompt tokens > 333');
-    expect(
-      priceName('Calls', [
-        token(total, 'GREATER_THAN_OR_EQUAL', '1'),
-        token('metadata.aiTokenUsage.completionTokens', 'LESS_THAN', '10'),
-        token(prompt, 'LESS_THAN_OR_EQUAL', '500'),
-        token('usage.cached', 'EQUALS', '0'),
-        token(prompt, 'GREATER_THAN', ''),
-      ]),
-    ).toBe(
-      'Calls · total tokens ≥ 1 · completion tokens < 10 · prompt tokens ≤ 500 · usage.cached = 0',
-    );
-  });
-
-  it('refuses a price with more than 20 filters, Token conditions included', () => {
-    const keys = Array.from({ length: 10 }, (_, index) => `usage.count${index}`);
-    const wide = aMeter({
-      filterFields: keys.map((eventKey) => ({ eventKey, field: 'TOKEN' as const })),
-      id: 'wide',
-    });
-    const conditions = (count: number) =>
-      keys
-        .flatMap((key) => [token(key, 'GREATER_THAN', '1'), token(key, 'LESS_THAN', '100')])
-        .slice(0, count);
-    expect(build(usageBased([perUnit('wide', conditions(20))]), [wide]).problem).toBeNull();
-    expect(
-      build(
-        usageBased([perUnit('wide', [...conditions(20), filter('HTTP_METHOD', 'EQUALS', 'GET')])]),
-        [
-          aMeter({
-            ...wide,
-            filterFields: [
-              ...(wide.filterFields ?? []),
-              { eventKey: 'request.verb', field: 'HTTP_METHOD' },
-            ],
-          }),
-        ],
-      ).problem,
-    ).toEqual({ code: 'TOO_MANY_FILTERS', price: 0 });
-  });
-
-  it('round-trips stored Token conditions with their keys', () => {
-    const stored = {
-      billingPeriod: 'MONTH' as const,
-      currency: 'USD',
-      flatAmount: null,
-      prices: [
-        {
-          filters: [
-            {
-              eventKey: prompt,
-              field: 'TOKEN' as const,
-              operator: 'GREATER_THAN' as const,
-              values: ['333'],
-            },
-          ],
-          meterId: 'llm',
-          pricingModel: 'PER_UNIT' as const,
-          tiers: null,
-          unitAmount: '0.01',
-          unitQuantity: 1,
-        },
-      ],
-      pricingType: 'USAGE_BASED' as const,
-      subscriptionPlanId: 'gold',
-    };
-    const draft = draftFromPricing(stored);
-    expect(draft.prices[0].filters).toEqual([token(prompt, 'GREATER_THAN', '333')]);
-    expect(build(draft, [llm]).body?.prices).toEqual(stored.prices);
+    expect(pair([statusFilter('LESS_THAN', '300')], [statusFilter('STARTS_WITH', '5')])).toEqual(OVERLAP);
   });
 });
 
 describe('filterRows', () => {
-  it("gives a row for each of the meter's fields, in its order, then the filters on fields it does not allow", () => {
+  it("gives a row for each of the meter's properties, in its order and spelling, then the filters on properties it doesn't have", () => {
     const given = [
-      filter('API_TYPE', 'IN', 'LlmProvider, Agent'),
-      filter('RESOURCE', 'STARTS_WITH', '/orders'),
+      filter('api type', 'IN', 'LlmProvider, Agent'),
+      filter('Resource', 'STARTS_WITH', '/orders'),
     ];
-    expect(filterRows(given, [{ field: 'HTTP_METHOD' }, { field: 'API_TYPE' }])).toEqual([
-      // A field without a filter gets an empty row with its first operator.
-      { field: 'HTTP_METHOD', operator: 'EQUALS', text: '' },
-      { field: 'API_TYPE', operator: 'IN', text: 'LlmProvider, Agent' },
-      { field: 'RESOURCE', operator: 'STARTS_WITH', text: '/orders' },
+    expect(filterRows(given, ['HTTP method', 'API type'])).toEqual([
+      // A property without a filter gets an empty row that equals.
+      { field: 'HTTP method', operator: 'EQUALS', text: '' },
+      { field: 'API type', operator: 'IN', text: 'LlmProvider, Agent' },
+      { field: 'Resource', operator: 'STARTS_WITH', text: '/orders' },
     ]);
     expect(filterRows([], [])).toEqual([]);
   });
 
-  it("gives each Token key its conditions, or one empty row, then conditions on keys the meter doesn't have", () => {
-    const prompt = 'metadata.aiTokenUsage.promptTokens';
+  it('gives a property both of its comparisons', () => {
     const given = [
-      token(prompt, 'GREATER_THAN', '100'),
-      token(prompt, 'LESS_THAN_OR_EQUAL', '500'),
-      token('usage.gone', 'EQUALS', '1'),
+      filter('Prompt tokens', 'GREATER_THAN', '100'),
+      filter('Prompt tokens', 'LESS_THAN_OR_EQUAL', '500'),
     ];
-    expect(
-      filterRows(given, [
-        { field: 'API_TYPE' },
-        { eventKey: prompt, field: 'TOKEN' },
-        { eventKey: 'metadata.aiTokenUsage.totalTokens', field: 'TOKEN' },
-      ]),
-    ).toEqual([
-      { field: 'API_TYPE', operator: 'EQUALS', text: '' },
-      token(prompt, 'GREATER_THAN', '100'),
-      token(prompt, 'LESS_THAN_OR_EQUAL', '500'),
-      // A Token key without a condition gets an empty one, "more than".
-      {
-        eventKey: 'metadata.aiTokenUsage.totalTokens',
-        field: 'TOKEN',
-        operator: 'GREATER_THAN',
-        text: '',
-      },
-      token('usage.gone', 'EQUALS', '1'),
+    expect(filterRows(given, ['API type', 'Prompt tokens'])).toEqual([
+      { field: 'API type', operator: 'EQUALS', text: '' },
+      ...given,
     ]);
   });
 });
 
 describe('priceName', () => {
-  it('names a price after its meter and filters', () => {
-    expect(priceName('LLM input tokens', [filter('API_TYPE', 'EQUALS', 'LlmProvider')])).toBe(
-      'LLM input tokens · LlmProvider',
+  it('names a price after its meter and each filter in short', () => {
+    expect(priceName('LLM input tokens', [filter('API type', 'IN', 'LlmProvider, LlmProxy')])).toBe(
+      'LLM input tokens · LlmProvider, LlmProxy',
     );
-    expect(priceName('API calls', [filter('HTTP_METHOD', 'NOT_IN', 'DELETE, OPTIONS')])).toBe(
+    expect(priceName('API calls', [filter('HTTP method', 'NOT_IN', 'DELETE, OPTIONS')])).toBe(
       'API calls · not DELETE, OPTIONS',
     );
-    expect(priceName('API calls', [filter('RESOURCE', 'STARTS_WITH', '/orders')])).toBe(
+    expect(priceName('API calls', [filter('Resource', 'STARTS_WITH', '/orders')])).toBe(
       'API calls · /orders…',
     );
     expect(
-      priceName('API calls', [
-        filter('HTTP_STATUS_CODE', 'IN', '200, 201'),
-        filter('HTTP_METHOD', 'NOT_EQUALS', 'GET'),
+      priceName('Requests', [
+        filter('HTTP method', 'EQUALS', 'GET'),
+        filter('Prompt tokens', 'GREATER_THAN', '333'),
       ]),
-    ).toBe('API calls · 200, 201 · not GET');
+    ).toBe('Requests · GET · Prompt tokens > 333');
+    expect(
+      priceName('Calls', [
+        filter('Total tokens', 'GREATER_THAN_OR_EQUAL', '1'),
+        filter('Total tokens', 'LESS_THAN', '10'),
+        filter('Status code', 'LESS_THAN_OR_EQUAL', '499'),
+        filter('Prompt tokens', 'GREATER_THAN', ''),
+      ]),
+    ).toBe('Calls · Total tokens ≥ 1 · Total tokens < 10 · Status code ≤ 499');
     expect(priceName('API calls', [])).toBe('API calls');
   });
 });
 
 describe('priceLabel', () => {
-  it("names a price after its meter and its filters in the meter's field order, or after the meter's id while it is not known", () => {
+  it("names a price after its meter and its filters in the meter's property order, or after the meter's id while it is not known", () => {
     const calls = aMeter({
       displayName: 'API calls',
       filterFields: [
-        { eventKey: 'request.verb', field: 'HTTP_METHOD' },
-        { eventKey: 'response.status', field: 'HTTP_STATUS_CODE' },
+        { eventKey: 'request.verb', field: 'HTTP method' },
+        { eventKey: 'response.status', field: 'Status code' },
       ],
       id: 'calls',
     });
     const given = perUnit('calls', [
-      filter('HTTP_STATUS_CODE', 'EQUALS', '200'),
-      filter('HTTP_METHOD', 'EQUALS', 'GET'),
+      filter('Status code', 'EQUALS', '200'),
+      filter('HTTP method', 'EQUALS', 'GET'),
     ]);
     expect(priceLabel(given, calls)).toBe('API calls · GET · 200');
     expect(priceLabel(given, undefined)).toBe('calls · 200 · GET');
@@ -806,7 +590,7 @@ describe('priceLabel', () => {
 describe('pricesByName', () => {
   const calls = aMeter({
     displayName: 'API calls',
-    filterFields: [{ eventKey: 'request.verb', field: 'HTTP_METHOD' }],
+    filterFields: [{ eventKey: 'request.verb', field: 'HTTP method' }],
     id: 'calls',
   });
   const meters = [
@@ -814,11 +598,11 @@ describe('pricesByName', () => {
     aMeter({ displayName: 'batch jobs', filterFields: [], id: 'batch' }),
     aMeter({ displayName: 'Webhooks', filterFields: [], id: 'webhooks' }),
   ];
-  const method = (verb: string) => perUnit('calls', [filter('HTTP_METHOD', 'EQUALS', verb)]);
+  const methodPrice = (verb: string) => perUnit('calls', [filter('HTTP method', 'EQUALS', verb)]);
 
   it('lists saved prices by name, so API calls · POST given before API calls · GET is shown after it', () => {
-    const post = method('POST');
-    const get = method('GET');
+    const post = methodPrice('POST');
+    const get = methodPrice('GET');
     expect(pricesByName([post, get], [calls])).toEqual([get, post]);
   });
 
@@ -826,7 +610,7 @@ describe('pricesByName', () => {
     const webhooks = perUnit('webhooks');
     const moreWebhooks = perUnit('webhooks', [], { unitAmount: '0.02' });
     const batch = perUnit('batch');
-    const post = method('POST');
+    const post = methodPrice('POST');
     const given = [webhooks, batch, moreWebhooks, post];
     // "batch jobs" comes between "API calls" and "Webhooks", not after both as it would by
     // character codes.
@@ -870,15 +654,17 @@ describe('draftFromPricing', () => {
     });
   });
 
-  it('round-trips stored usage based pricing', () => {
+  it('round-trips stored usage based pricing, comparisons included', () => {
     const stored = {
       billingPeriod: 'YEAR' as const,
       currency: 'EUR',
       prices: [
         {
           filters: [
-            { field: 'API_TYPE' as const, operator: 'IN' as const, values: ['LlmProvider', 'Mcp'] },
-            { field: 'HTTP_METHOD' as const, operator: 'NOT_EQUALS' as const, values: ['GET'] },
+            { field: 'API type', operator: 'IN' as const, values: ['LlmProvider', 'Mcp'] },
+            { field: 'HTTP method', operator: 'NOT_EQUALS' as const, values: ['GET'] },
+            { field: 'Prompt tokens', operator: 'GREATER_THAN' as const, values: ['333'] },
+            { field: 'Prompt tokens', operator: 'LESS_THAN_OR_EQUAL' as const, values: ['5000'] },
           ],
           meterId: 'llm-input',
           pricingModel: 'VOLUME' as const,

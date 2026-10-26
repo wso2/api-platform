@@ -88,43 +88,23 @@
 
   /* ── paid plan: a flat rate, or up to 20 usage prices, each on a meter and its own filters ── */
   var AMOUNT = /^\d{1,12}(\.\d{1,12})?$/;
-  var STATUS_CODE = /^[1-5]\d\d$/;
   var MAX_PRICES = 20;
   var MAX_VALUES = 20;
   var MAX_VALUE_LENGTH = 255;
   var RANGE_LABELS = { VOLUME: 'If total units are', GRADUATED: 'For units numbered' };
-  var HTTP_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'];
-  // Our gateway's API types, suggested for an API type filter; any other text is taken as written.
-  var API_TYPES = ['RestApi', 'WebSubApi', 'LlmProvider', 'LlmProxy', 'Mcp', 'Agent'];
-  // MCP methods suggested for an MCP method filter; any other text is taken as written.
-  var MCP_TOOL_CALL = 'tools/call';
-  var MCP_METHODS = [MCP_TOOL_CALL, 'resources/read', 'prompts/get', 'tools/list', 'resources/list', 'prompts/list',
-    'initialize', 'ping'];
-  // The fields a price may filter on, each at most once, with the operators each takes. A filter's
-  // values are typed (separated by commas for "is one of" and "is not one of"), typed or chosen from
-  // suggestions, or picked (several for those two operators); a filter with no values is left out.
-  var MATCH = ['EQUALS', 'NOT_EQUALS', 'IN', 'NOT_IN'];
-  var FIELDS = {
-    HTTP_STATUS_CODE: { label: 'Status code', operators: MATCH, placeholder: 'e.g. 200', placeholderMany: 'e.g. 200, 201' },
-    HTTP_METHOD:      { label: 'HTTP method', operators: MATCH, choices: HTTP_METHODS.map(function (m) { return [m, m]; }),
-                        pickPlaceholder: 'Pick methods' },
-    RESOURCE:         { label: 'Resource', operators: ['EQUALS', 'NOT_EQUALS', 'STARTS_WITH'], placeholder: 'e.g. /orders' },
-    API_TYPE:         { label: 'API type', operators: MATCH, placeholder: 'e.g. RestApi', placeholderMany: 'e.g. RestApi, Mcp',
-                        suggestions: API_TYPES },
-    MCP_METHOD:       { label: 'MCP method', operators: MATCH, placeholder: 'e.g. tools/call',
-                        placeholderMany: 'e.g. tools/call, resources/read', suggestions: MCP_METHODS },
-    MCP_TOOL:         { label: 'Tool', operators: MATCH, placeholder: 'e.g. search', placeholderMany: 'e.g. search, fetch' },
-  };
-  var OPERATORS = { EQUALS: 'equals', NOT_EQUALS: 'does not equal', IN: 'is one of', NOT_IN: 'is not one of', STARTS_WITH: 'starts with' };
+  // Any operator works on any of the meter's properties. A filter's values are typed, separated by
+  // commas for "is one of" and "is not one of"; a comparison takes one whole number. A filter with no
+  // values is left out.
+  var OPERATORS = [['EQUALS', 'equals'], ['NOT_EQUALS', 'does not equal'], ['IN', 'is one of'],
+    ['NOT_IN', 'is not one of'], ['STARTS_WITH', 'starts with'], ['GREATER_THAN', 'more than'],
+    ['GREATER_THAN_OR_EQUAL', 'at least'], ['LESS_THAN', 'less than'], ['LESS_THAN_OR_EQUAL', 'at most']];
+  var OPERATOR_LABELS = {};
+  OPERATORS.forEach(function (op) { OPERATOR_LABELS[op[0]] = op[1]; });
   var MANY = ['IN', 'NOT_IN'];
   var MATCHING = ['EQUALS', 'IN'];
   var EXCLUDING = ['NOT_EQUALS', 'NOT_IN'];
-  // A Token condition compares the number at one of the meter's Token keys with one whole number; a
-  // price puts at most two on a key, which together give a range.
-  var TOKEN_OPERATORS = [['GREATER_THAN', 'more than'], ['GREATER_THAN_OR_EQUAL', 'at least'], ['LESS_THAN', 'less than'],
-    ['LESS_THAN_OR_EQUAL', 'at most'], ['EQUALS', 'equal to']];
-  var MAX_TOKEN_VALUE = 1000000000000;
-  var MAX_TOKEN_CONDITIONS = 2;
+  var COMPARE = ['GREATER_THAN', 'GREATER_THAN_OR_EQUAL', 'LESS_THAN', 'LESS_THAN_OR_EQUAL'];
+  var MAX_COMPARE_VALUE = 1000000000000;
 
   function meters() {
     try { return JSON.parse(document.getElementById('pol-pricing').dataset.meters || '[]') || []; } catch (e) { return []; }
@@ -134,46 +114,25 @@
     return meters().filter(function (m) { return m.id === id; })[0] || null;
   }
 
-  // Our gateway's token keys with their labels, for naming a Token condition.
-  function tokenKeyChoices() {
-    try { return JSON.parse(document.getElementById('pol-pricing').dataset.tokenKeys || '[]') || []; } catch (e) { return []; }
-  }
-
-  /* What a Token key reads as: "Prompt tokens", or the key itself. */
-  function tokenKeyLabel(key) {
-    return (tokenKeyChoices().filter(function (k) { return k.key === key; })[0] || { label: key }).label;
-  }
-
-  /* The Token keys a price on the meter can compare: a Tokens meter's own key, then its Token fields'. */
-  function tokenKeys(meter) {
-    if (!meter) return [];
-    var keys = meter.type === 'TOKENS' && meter.typeKey ? [meter.typeKey] : [];
-    (meter.filterFields || []).forEach(function (f) {
-      if (f.field === 'TOKEN' && f.eventKey && keys.indexOf(f.eventKey) === -1) keys.push(f.eventKey);
-    });
-    return keys;
-  }
-
   /* What a meter counts: "Requests" or "Tokens". */
   function eventLabel(meter) {
     return meter ? meter.typeLabel || '' : '';
   }
 
-  /* The fields a price may filter on: those its chosen meter allows. */
-  function allowedFields(box) {
+  /* The properties a price may filter on: those of its chosen meter. */
+  function properties(box) {
     var meter = meterById(box.querySelector('.pol-price-meter').value);
-    return (meter && meter.filterFields ? meter.filterFields : [])
-      .map(function (f) { return f.field; })
-      .filter(function (field) { return !!FIELDS[field]; });
+    return (meter && meter.filterFields ? meter.filterFields : []).map(function (f) { return f.field; });
   }
 
-  function fieldLabel(field) {
-    return (FIELDS[field] || { label: field }).label;
+  /* Whether two property names are the same, ignoring case. */
+  function sameName(a, b) {
+    return a.toLowerCase() === b.toLowerCase();
   }
 
-  /* A filter as it reads: "API type is one of", "HTTP method equals". */
+  /* A filter as it reads: "API type is one of", "Prompt tokens more than". */
   function filterLabel(filter) {
-    return fieldLabel(filter.field) + ' ' + (OPERATORS[filter.operator] || filter.operator);
+    return filter.field + ' ' + (OPERATOR_LABELS[filter.operator] || filter.operator);
   }
 
   function el(tag, cls) {
@@ -245,273 +204,125 @@
     if (selected && !meterById(selected)) select.appendChild(opt(selected, selected, true));
   }
 
-  /* Values as the API Portal keeps them: methods upper case, each value once. */
-  function normalizeValues(field, values) {
+  /* The values a filter row holds: for "is one of" and "is not one of" the typed ones, separated by
+     commas, each once; for any other operator the one typed value. */
+  function rowValues(row) {
+    var operator = row.querySelector('.pol-filter-operator').value;
+    var text = row.querySelector('.pol-filter-values').value;
+    if (MANY.indexOf(operator) === -1) return text.trim() ? [text.trim()] : [];
     var seen = [];
-    values.forEach(function (value) {
-      var v = field === 'HTTP_METHOD' ? value.toUpperCase() : value;
-      if (seen.indexOf(v) === -1) seen.push(v);
+    text.split(',').forEach(function (s) {
+      var value = s.trim();
+      if (value && seen.indexOf(value) === -1) seen.push(value);
     });
     return seen;
-  }
-
-  /* The values a filter input holds: the picked ones, or the typed ones separated by commas. */
-  function inputValues(input) {
-    if (input.tagName === 'SELECT') {
-      return Array.prototype.filter.call(input.options, function (o) { return o.selected && o.value !== ''; })
-        .map(function (o) { return o.value; });
-    }
-    return input.value.split(',').map(function (s) { return s.trim(); }).filter(function (s) { return s !== ''; });
   }
 
   function filterRows(box) {
     return Array.prototype.slice.call(box.querySelectorAll('.pol-filters-list .cfg-filter-row'));
   }
 
-  /* What each of a price's rows holds, empty or not: [{field, operator, values}], and for a Token
-     condition also its eventKey and one value at most. */
+  /* What each of a price's rows holds, empty or not: [{field, operator, values}]. */
   function rowFilters(box) {
     return filterRows(box).map(function (row) {
-      var field = row.dataset.field;
-      var operator = row.querySelector('.pol-filter-operator').value;
-      if (field === 'TOKEN') {
-        var value = row.querySelector('.pol-filter-values').value.trim();
-        return { field: field, eventKey: row.dataset.eventKey, operator: operator, values: value ? [value] : [] };
-      }
-      return { field: field, operator: operator, values: normalizeValues(field, inputValues(row.querySelector('.pol-filter-values'))) };
+      return { field: row.dataset.field, operator: row.querySelector('.pol-filter-operator').value, values: rowValues(row) };
     });
   }
 
-  /* The filters of a price: its rows with values. A row left empty counts every value of its field. */
+  /* The filters of a price: its rows with values. A row left empty counts every value of its property. */
   function givenFilters(box) {
     return rowFilters(box).filter(function (filter) { return filter.values.length > 0; });
   }
 
-  /* A filter row: the field's name, an operator and the value or values the operator takes. */
-  /*
-   * Several values of a field with choices (HTTP methods) are picked from a list that opens under
-   * the field, as the currency is, and as the Management Portal's plan form picks them; the list
-   * stays open while values are ticked. The picks are kept in a hidden multiple select, which the
-   * filter reads like any other values input.
-   */
-  var openPicker = null;
-  document.addEventListener('click', function (e) {
-    if (openPicker && !openPicker.combo.contains(e.target)) openPicker.close(false);
-  });
-
-  function choicePicker(spec, given) {
-    var combo = el('div', 'cfg-currency-combo cfg-pick-combo');
-    var store = el('select');
-    store.multiple = true;
-    store.hidden = true;
-    var trigger = el('button', 'cfg-form-input cfg-currency-trigger');
-    trigger.type = 'button';
-    trigger.setAttribute('aria-haspopup', 'listbox');
-    trigger.setAttribute('aria-expanded', 'false');
-    trigger.setAttribute('aria-label', spec.label + ' values');
-    var current = el('span', 'cfg-currency-current');
-    var chevron = el('i', 'bi bi-chevron-expand');
-    chevron.setAttribute('aria-hidden', 'true');
-    trigger.appendChild(current);
-    trigger.appendChild(chevron);
-    var menu = el('div', 'cfg-view-combo-menu cfg-currency-menu');
-    menu.hidden = true;
-    var list = el('div', 'cfg-view-combo-list');
-    list.setAttribute('role', 'listbox');
-    list.setAttribute('aria-multiselectable', 'true');
-    list.setAttribute('aria-label', spec.label + ' values');
-    spec.choices.forEach(function (choice) {
-      store.appendChild(opt(choice[0], choice[1], given.indexOf(choice[0]) !== -1));
-      var option = el('div', 'cfg-view-combo-option');
-      option.setAttribute('role', 'option');
-      option.tabIndex = -1;
-      var check = el('i', 'bi bi-check2');
-      check.setAttribute('aria-hidden', 'true');
-      var label = el('span');
-      label.textContent = choice[1];
-      option.appendChild(check);
-      option.appendChild(label);
-      list.appendChild(option);
-    });
-    menu.appendChild(list);
-    combo.appendChild(trigger);
-    combo.appendChild(menu);
-    combo.appendChild(store);
-
-    function options() { return Array.prototype.slice.call(list.querySelectorAll('[role="option"]')); }
-    function sync() {
-      var picked = [];
-      options().forEach(function (option, i) {
-        var on = store.options[i].selected;
-        option.classList.toggle('selected', on);
-        option.setAttribute('aria-selected', on ? 'true' : 'false');
-        if (on) picked.push(store.options[i].textContent);
-      });
-      current.textContent = picked.length ? picked.join(', ') : spec.pickPlaceholder;
-      current.classList.toggle('cfg-pick-placeholder', picked.length === 0);
-    }
-    function close(focusTrigger) {
-      menu.hidden = true;
-      trigger.setAttribute('aria-expanded', 'false');
-      if (openPicker && openPicker.combo === combo) openPicker = null;
-      if (focusTrigger) trigger.focus();
-    }
-    function open() {
-      if (openPicker) openPicker.close(false);
-      menu.hidden = false;
-      trigger.setAttribute('aria-expanded', 'true');
-      openPicker = { combo: combo, close: close };
-      (list.querySelector('.selected') || options()[0]).focus();
-    }
-    function toggle(option) {
-      var o = store.options[options().indexOf(option)];
-      o.selected = !o.selected;
-      sync();
-      store.dispatchEvent(new Event('change', { bubbles: true }));
-    }
-
-    trigger.addEventListener('click', function () { if (menu.hidden) open(); else close(false); });
-    trigger.addEventListener('keydown', function (e) {
-      if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && menu.hidden) { e.preventDefault(); open(); }
-    });
-    list.addEventListener('click', function (e) {
-      var option = e.target.closest('[role="option"]');
-      if (option) toggle(option);
-    });
-    list.addEventListener('keydown', function (e) {
-      var option = e.target.closest('[role="option"]');
-      if (!option) return;
-      var all = options();
-      var i = all.indexOf(option);
-      if (e.key === 'ArrowDown') { e.preventDefault(); (all[i + 1] || all[0]).focus(); }
-      else if (e.key === 'ArrowUp') { e.preventDefault(); (all[i - 1] || all[all.length - 1]).focus(); }
-      else if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(option); }
-      else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(true); }
-      else if (e.key === 'Tab') close(false);
-    });
-    sync();
-    return { combo: combo, values: store };
-  }
-
-  function makeFilterRow(field, filter) {
-    var spec = FIELDS[field];
+  /* A filter row: the property's name, an operator and the value or values it takes. A row whose
+     operator compares a number can add a second comparison on the property, for a range; the second
+     can be removed. */
+  function makeFilterRow(field, filter, second) {
     var row = el('div', 'cfg-filter-row');
     row.dataset.field = field;
+    if (second) row.dataset.second = 'true';
     var name = el('span', 'cfg-filter-name');
-    name.textContent = spec.label;
+    name.textContent = field;
     var operator = el('select', 'cfg-form-input pol-filter-operator');
-    operator.setAttribute('aria-label', spec.label + ' operator');
-    spec.operators.forEach(function (op) { operator.appendChild(opt(op, OPERATORS[op], filter && op === filter.operator)); });
-    // The values input, and what holds it in the row: the input, or its suggestion combo.
-    var values = null;
-    var holder = null;
-
-    function syncValues(given) {
-      var many = MANY.indexOf(operator.value) !== -1;
-      var next;
-      var shown = null;
-      if (spec.choices && many) {
-        var picker = choicePicker(spec, given);
-        next = picker.values;
-        shown = picker.combo;
-      } else if (spec.choices) {
-        // One value is picked from a list that starts at Any (no filter). When the operator changes
-        // from one that takes several values, the first is kept.
-        next = el('select', 'cfg-form-input');
-        next.appendChild(opt('', 'Any', given.length === 0));
-        spec.choices.forEach(function (choice) { next.appendChild(opt(choice[0], choice[1], choice[0] === given[0])); });
-      } else {
-        next = el('input', 'cfg-form-input cfg-form-input--mono');
-        next.type = 'text';
-        next.placeholder = many && spec.placeholderMany ? spec.placeholderMany : spec.placeholder;
-        next.value = given.join(', ');
-      }
-      next.classList.add('pol-filter-values');
-      next.setAttribute('aria-label', spec.label + (many ? ' values' : ' value'));
-      shown = shown || next;
-      if (spec.suggestions) {
-        shown = window.cfgSuggestCombo.build(next, spec.suggestions.map(function (v) { return { value: v }; }),
-          spec.label + ' suggestions');
-        window.cfgSuggestCombo.attach(shown, { multiple: function () { return MANY.indexOf(operator.value) !== -1; } });
-      }
-      if (holder) holder.replaceWith(shown); else row.appendChild(shown);
-      holder = shown;
-      values = next;
-    }
-
-    row.appendChild(name);
-    row.appendChild(operator);
-    syncValues(filter ? filter.values || [] : []);
-    operator.addEventListener('change', function () { syncValues(normalizeValues(field, inputValues(values))); });
-    return row;
-  }
-
-  /* A Token condition row: "Token · Prompt tokens", a comparison and one whole number. The first row
-     of a key can add a second condition on it; the second can be removed. */
-  function makeTokenRow(key, condition, second) {
-    var label = 'Token \u00b7 ' + tokenKeyLabel(key);
-    var row = el('div', 'cfg-filter-row pol-token-row');
-    row.dataset.field = 'TOKEN';
-    row.dataset.eventKey = key;
-    var name = el('span', 'cfg-filter-name');
-    name.textContent = label;
-    var operator = el('select', 'cfg-form-input pol-filter-operator');
-    operator.setAttribute('aria-label', label + ' comparison');
-    TOKEN_OPERATORS.forEach(function (op) { operator.appendChild(opt(op[0], op[1], condition && condition.operator === op[0])); });
-    var value = el('input', 'cfg-form-input cfg-form-input--mono pol-filter-values');
-    value.type = 'text'; value.inputMode = 'numeric'; value.placeholder = 'e.g. 333';
-    value.setAttribute('aria-label', label + ' number');
-    value.value = condition && condition.values ? condition.values[0] || '' : '';
+    operator.setAttribute('aria-label', field + ' operator');
+    OPERATORS.forEach(function (op) {
+      if (second && COMPARE.indexOf(op[0]) === -1) return;
+      operator.appendChild(opt(op[0], op[1], filter && op[0] === filter.operator));
+    });
+    var values = el('input', 'cfg-form-input cfg-form-input--mono pol-filter-values');
+    values.type = 'text';
+    values.value = filter && filter.values ? filter.values.join(', ') : '';
     var button = el('button', 'cfg-icon-btn' + (second ? ' cfg-icon-btn--danger' : ''));
     button.type = 'button';
-    var buttonName = (second ? 'Remove the second condition on ' : 'Add a condition on ') + tokenKeyLabel(key);
+    var buttonName = (second ? 'Remove the second comparison on ' : 'Add a second comparison on ') + field;
     button.title = buttonName;
     button.setAttribute('aria-label', buttonName);
     button.innerHTML = second ? '<i class="bi bi-x-lg" aria-hidden="true"></i>' : '<i class="bi bi-plus-lg" aria-hidden="true"></i>';
+
+    function syncValues() {
+      var compare = COMPARE.indexOf(operator.value) !== -1;
+      var many = MANY.indexOf(operator.value) !== -1;
+      values.placeholder = compare ? 'e.g. 333' : many ? 'e.g. GET, POST' : 'Value';
+      values.inputMode = compare ? 'numeric' : 'text';
+      values.setAttribute('aria-label', field + (many ? ' values' : ' value'));
+    }
+    syncValues();
+    operator.addEventListener('change', function () {
+      syncValues();
+      if (second) return;
+      // A second comparison goes when the first row stops comparing a number.
+      var next = row.nextSibling;
+      if (COMPARE.indexOf(operator.value) === -1 && next && next.dataset.second && next.dataset.field === field) next.remove();
+      updateSecondComparisonButtons(row.parentNode);
+    });
     button.addEventListener('click', function () {
       var list = row.parentNode;
       if (second) {
         row.remove();
       } else {
-        var next = makeTokenRow(key, null, true);
+        var next = makeFilterRow(field, null, true);
         list.insertBefore(next, row.nextSibling);
         next.querySelector('.pol-filter-operator').focus();
       }
-      syncTokenButtons(list);
+      updateSecondComparisonButtons(list);
     });
-    row.appendChild(name); row.appendChild(operator); row.appendChild(value); row.appendChild(button);
+    row.appendChild(name); row.appendChild(operator); row.appendChild(values); row.appendChild(button);
     return row;
   }
 
-  /* A key's first row offers a second condition until the key has both. */
-  function syncTokenButtons(list) {
-    var rows = Array.prototype.slice.call(list.querySelectorAll('.pol-token-row'));
+  /* A property's first row offers a second comparison while it compares a number and has none yet. */
+  function updateSecondComparisonButtons(list) {
+    var rows = Array.prototype.slice.call(list.querySelectorAll('.cfg-filter-row'));
     rows.forEach(function (row) {
-      var onKey = rows.filter(function (r) { return r.dataset.eventKey === row.dataset.eventKey; });
-      if (onKey[0] === row) row.querySelector('.cfg-icon-btn').style.display = onKey.length >= MAX_TOKEN_CONDITIONS ? 'none' : '';
+      if (row.dataset.second) return;
+      var hasSecond = rows.some(function (r) { return r.dataset.second && r.dataset.field === row.dataset.field; });
+      var compares = COMPARE.indexOf(row.querySelector('.pol-filter-operator').value) !== -1;
+      row.querySelector('.cfg-icon-btn').style.visibility = compares && !hasSecond ? '' : 'hidden';
     });
   }
 
-  /* Shows what the chosen meter counts and one filter row per field it lets prices filter on, in its
-     order, then a condition row per Token key it can compare, filled from `kept` ([{field, operator,
-     values}]). A kept filter on a fixed field the meter does not list (a saved one) still shows, so
-     saving can say what is wrong. */
+  /* Shows what the chosen meter counts and one filter row per property it lets prices filter on, in
+     its order, with a second row where a kept range has two comparisons, filled from `kept`
+     ([{field, operator, values}]). A kept filter on a property the meter does not have (a saved one)
+     still shows, so saving can say what is wrong. */
   function fillFilters(box, kept) {
     var meter = meterById(box.querySelector('.pol-price-meter').value);
-    var allowed = allowedFields(box);
+    var names = properties(box);
     var list = box.querySelector('.pol-filters-list');
-    function keptFilter(field) { return kept.filter(function (f) { return f.field === field; })[0] || null; }
     list.innerHTML = '';
-    allowed.forEach(function (field) { list.appendChild(makeFilterRow(field, keptFilter(field))); });
+    function addRows(field) {
+      var on = kept.filter(function (f) { return sameName(f.field, field); });
+      list.appendChild(makeFilterRow(field, on[0] || null, false));
+      if (on[1]) list.appendChild(makeFilterRow(field, on[1], true));
+    }
+    names.forEach(addRows);
+    var others = [];
     kept.forEach(function (f) {
-      if (FIELDS[f.field] && allowed.indexOf(f.field) === -1) list.appendChild(makeFilterRow(f.field, f));
+      var known = names.concat(others).some(function (n) { return sameName(n, f.field); });
+      if (!known) others.push(f.field);
     });
-    tokenKeys(meter).forEach(function (key) {
-      var onKey = kept.filter(function (f) { return f.field === 'TOKEN' && f.eventKey === key; });
-      list.appendChild(makeTokenRow(key, onKey[0] || null, false));
-      if (onKey[1]) list.appendChild(makeTokenRow(key, onKey[1], true));
-    });
-    syncTokenButtons(list);
+    others.forEach(addRows);
+    updateSecondComparisonButtons(list);
     var none = list.children.length === 0;
     box.querySelector('.pol-price-event').value = eventLabel(meter);
     box.querySelector('.pol-filters-group').style.display = box.querySelector('.pol-price-meter').value ? '' : 'none';
@@ -569,12 +380,11 @@
     renumberTiers(tiers);
     syncPriceModel(box);
 
-    // A new meter gets its own filter rows; a filter it shares with the old meter keeps what was entered.
+    // A new meter gets its own filter rows; a property it shares with the old meter keeps what was entered.
     meter.addEventListener('change', function () {
-      var allowed = allowedFields(box);
-      var keys = tokenKeys(meterById(meter.value));
+      var names = properties(box);
       fillFilters(box, rowFilters(box).filter(function (f) {
-        return f.field === 'TOKEN' ? keys.indexOf(f.eventKey) !== -1 : allowed.indexOf(f.field) !== -1;
+        return names.some(function (n) { return sameName(n, f.field); });
       }));
     });
     model.addEventListener('change', function () { syncPriceModel(box); });
@@ -696,8 +506,7 @@
     return { set: set, close: close };
   }());
 
-  document.getElementById('pol-add-price-btn').addEventListener('click', async function () {
-    if (meters().length === 0) { await showAlert('Add a meter in Settings › Meters first.', 'error'); return; }
+  document.getElementById('pol-add-price-btn').addEventListener('click', function () {
     var box = makePriceBox(null);
     document.getElementById('pol-prices-list').appendChild(box);
     renumberPrices();
@@ -720,16 +529,25 @@
     closePlanModal();
     if (window.cfgActivatePanel) window.cfgActivatePanel('cfg-billing');
   });
+  document.getElementById('pol-meter-setup').addEventListener('click', function (e) {
+    e.preventDefault();
+    closePlanModal();
+    if (window.cfgActivatePanel) window.cfgActivatePanel('cfg-meters');
+  });
 
   function pricingType() {
     return document.querySelector('input[name="pol-pricing-type"]:checked').value;
   }
 
-  /* A flat rate plan shows its amount; a usage based plan its prices, starting with one. */
+  /* A flat rate plan shows its amount; a usage based plan its prices, starting with one. Prices need a
+     meter: without one, the usage based part says so instead of offering Add price. */
   function syncPricingType() {
     document.querySelectorAll('#pol-pricing .pol-type-fields').forEach(function (fields) {
       fields.style.display = fields.dataset.type === pricingType() ? '' : 'none';
     });
+    var noMeters = meters().length === 0;
+    document.getElementById('pol-meter-notice').hidden = !noMeters;
+    document.getElementById('pol-add-price-btn').style.display = noMeters ? 'none' : '';
     if (pricingType() === 'USAGE_BASED' && priceBoxes().length === 0 && meters().length > 0) {
       document.getElementById('pol-prices-list').appendChild(makePriceBox(null));
       renumberPrices();
@@ -744,87 +562,77 @@
     return value;
   }
 
-  /* The values of one filter of a price, checked as the API Portal checks them. */
+  /* The values of one filter of a price, checked; a comparison's number is written without leading
+     zeros ("0100" is 100). */
   function checkValues(filter, n) {
     var values = filter.values;
     var which = ' for "' + filterLabel(filter) + '".';
     if (values.length === 0) throw new Error('Price ' + n + ' needs a value' + which);
     if (MANY.indexOf(filter.operator) === -1 && values.length > 1) throw new Error('Price ' + n + ' takes one value' + which);
     if (values.length > MAX_VALUES) throw new Error('Price ' + n + ' takes at most ' + MAX_VALUES + ' values' + which);
+    if (COMPARE.indexOf(filter.operator) !== -1) {
+      if (!/^\d+$/.test(values[0]) || Number(values[0]) > MAX_COMPARE_VALUE) {
+        throw new Error('Price ' + n + ' compares with a whole number from 0 to ' + MAX_COMPARE_VALUE + which);
+      }
+      filter.values = [String(Number(values[0]))];
+      return;
+    }
     values.forEach(function (value) {
       if (value.length > MAX_VALUE_LENGTH) {
         throw new Error('Price ' + n + ' takes values of at most ' + MAX_VALUE_LENGTH + ' characters' + which);
       }
-      if (filter.field === 'HTTP_STATUS_CODE' && !STATUS_CODE.test(value)) {
-        throw new Error('"' + value + '" in price ' + n + ' is not a status code such as 200 or 404.');
-      }
-      if (filter.field === 'RESOURCE' && value.charAt(0) !== '/') {
-        throw new Error('"' + value + '" in price ' + n + ' is not a resource: a resource starts with /.');
-      }
     });
-    return values;
   }
 
-  /* A Token condition's number, checked and written plainly ("0100" is 100), as the API Portal keeps it. */
-  function checkTokenValue(filter, n) {
-    var value = filter.values[0];
-    if (!/^\d+$/.test(value) || Number(value) > MAX_TOKEN_VALUE) {
-      throw new Error('price ' + n + ': the Token value must be a whole number from 0 to ' + MAX_TOKEN_VALUE);
-    }
-    filter.values = [String(Number(value))];
-  }
-
-  /* The whole numbers a price's conditions on one Token key allow: { low, high }, empty when low > high. */
-  function tokenRange(filters, key) {
+  /* The whole numbers a price's comparisons on one property allow: { low, high }, empty when low > high. */
+  function compareRange(filters, field) {
     var low = 0;
     var high = Infinity;
     filters.forEach(function (f) {
-      if (f.field !== 'TOKEN' || f.eventKey !== key) return;
+      if (COMPARE.indexOf(f.operator) === -1 || !sameName(f.field, field)) return;
       var v = Number(f.values[0]);
       if (f.operator === 'GREATER_THAN') low = Math.max(low, v + 1);
       else if (f.operator === 'GREATER_THAN_OR_EQUAL') low = Math.max(low, v);
       else if (f.operator === 'LESS_THAN') high = Math.min(high, v - 1);
       else if (f.operator === 'LESS_THAN_OR_EQUAL') high = Math.min(high, v);
-      else if (f.operator === 'EQUALS') { low = Math.max(low, v); high = Math.min(high, v); }
     });
     return { low: low, high: high };
   }
 
-  /* The Token keys some of `filters` compare, each once. */
-  function comparedKeys(filters) {
-    var keys = [];
-    filters.forEach(function (f) { if (f.field === 'TOKEN' && keys.indexOf(f.eventKey) === -1) keys.push(f.eventKey); });
-    return keys;
+  /* The properties some of `filters` name, each once. */
+  function namesOf(filters) {
+    var names = [];
+    filters.forEach(function (f) {
+      if (!names.some(function (n) { return sameName(n, f.field); })) names.push(f.field);
+    });
+    return names;
   }
 
   /* A usage price as the API takes it. `n` is its number, which messages name it by. */
   function readPrice(box, n) {
     var meterId = box.querySelector('.pol-price-meter').value;
     if (!meterId) throw new Error('Select a meter for price ' + n + '.');
-    var allowed = allowedFields(box);
+    var names = properties(box);
     var price = {
       meterId: meterId,
       filters: givenFilters(box).map(function (filter) {
-        if (filter.field === 'TOKEN') {
-          checkTokenValue(filter, n);
-          return filter;
-        }
-        if (allowed.indexOf(filter.field) === -1) {
-          throw new Error('Price ' + n + ' filters on ' + fieldLabel(filter.field) + ', which the meter ' + meterId + ' does not allow.');
+        if (!names.some(function (name) { return sameName(name, filter.field); })) {
+          throw new Error('Price ' + n + ' filters on ' + filter.field + ', which the meter ' + meterId + ' does not have.');
         }
         checkValues(filter, n);
         return filter;
       }),
       pricingModel: box.querySelector('.pol-price-model').value,
     };
-    comparedKeys(price.filters).forEach(function (key) {
-      var range = tokenRange(price.filters, key);
-      if (range.low > range.high) throw new Error('price ' + n + ': the Token conditions on ' + key + ' can\'t all be true');
+    namesOf(price.filters).forEach(function (field) {
+      var on = price.filters.filter(function (f) { return sameName(f.field, field); });
+      if (on.some(function (f) { return COMPARE.indexOf(f.operator) === -1; })) {
+        if (on.length > 1) throw new Error('Price ' + n + ' filters on ' + field + ' more than once.');
+        return;
+      }
+      var range = compareRange(price.filters, field);
+      if (range.low > range.high) throw new Error('Price ' + n + ': the comparisons on ' + field + ' can\'t all be true.');
     });
-    var fields = price.filters.map(function (f) { return f.field; });
-    if (fields.indexOf('MCP_TOOL') !== -1 && fields.indexOf('MCP_METHOD') !== -1) {
-      throw new Error('Price ' + n + ': a Tool filter counts only tool calls, so it can\'t be used with an MCP method filter.');
-    }
     if (price.pricingModel === 'PER_UNIT') {
       price.unitAmount = checkAmount(box.querySelector('.pol-price-unit-amount').value.trim(), 'Price ' + n);
       var quantity = parseInt(box.querySelector('.pol-price-unit-quantity').value.trim() || '1', 10);
@@ -855,60 +663,52 @@
     return price;
   }
 
-  /* Whether a resource is the path or under it, by whole path segments: "/orders" covers "/orders" and
-     "/orders/{id}", not "/orders-archive"; "/" covers every resource. A trailing "/" is ignored. */
-  function underPath(resource, path) {
-    var base = path.replace(/\/+$/, '') || '/';
-    return base === '/' || resource === base || resource.indexOf(base + '/') === 0;
-  }
-
-  /* Whether two filters on one field can match the same value. A "does not equal" or "is not one of"
-     filter leaves values the other can match, except for HTTP methods, of which there are only seven. */
-  function filtersMatchSameValue(field, a, b) {
-    if (MATCHING.indexOf(b.operator) !== -1 && MATCHING.indexOf(a.operator) === -1) return filtersMatchSameValue(field, b, a);
+  /* Whether the text filters two prices put on one property can match the same value. A "does not
+     equal" or "is not one of" filter leaves values the other can match. */
+  function textFiltersOverlap(a, b) {
+    if (MATCHING.indexOf(b.operator) !== -1 && MATCHING.indexOf(a.operator) === -1) return textFiltersOverlap(b, a);
     if (MATCHING.indexOf(a.operator) !== -1) {
       if (MATCHING.indexOf(b.operator) !== -1) return a.values.some(function (value) { return b.values.indexOf(value) !== -1; });
       if (EXCLUDING.indexOf(b.operator) !== -1) return a.values.some(function (value) { return b.values.indexOf(value) === -1; });
-      return a.values.some(function (value) { return underPath(value, b.values[0]); });
+      return a.values.some(function (value) { return value.indexOf(b.values[0]) === 0; });
     }
     if (a.operator === 'STARTS_WITH' && b.operator === 'STARTS_WITH') {
-      return underPath(a.values[0], b.values[0]) || underPath(b.values[0], a.values[0]);
+      return a.values[0].indexOf(b.values[0]) === 0 || b.values[0].indexOf(a.values[0]) === 0;
     }
-    if (field !== 'HTTP_METHOD') return true;
-    return HTTP_METHODS.some(function (m) { return a.values.indexOf(m) === -1 && b.values.indexOf(m) === -1; });
+    return true;
   }
 
-  /* A price's filters with the tool call a Tool filter implies, as an MCP method filter. */
-  function withToolCall(filters) {
-    var tool = filters.some(function (f) { return f.field === 'MCP_TOOL'; });
-    return tool ? filters.concat([{ field: 'MCP_METHOD', operator: 'EQUALS', values: [MCP_TOOL_CALL] }]) : filters;
+  /* Whether one request can be counted by both prices: on every property both filter on, their filters
+     can match one value. A property only one of them filters on matches anything for the other. */
+  function pricesOverlap(a, b) {
+    return namesOf(a.filters).every(function (field) {
+      var onA = a.filters.filter(function (f) { return sameName(f.field, field); });
+      var onB = b.filters.filter(function (f) { return sameName(f.field, field); });
+      if (onB.length === 0) return true;
+      var comparesA = onA.every(function (f) { return COMPARE.indexOf(f.operator) !== -1; });
+      var comparesB = onB.every(function (f) { return COMPARE.indexOf(f.operator) !== -1; });
+      if (!comparesA && !comparesB) return textFiltersOverlap(onA[0], onB[0]);
+      if (comparesA && comparesB) {
+        var ra = compareRange(a.filters, field);
+        var rb = compareRange(b.filters, field);
+        return Math.max(ra.low, rb.low) <= Math.min(ra.high, rb.high);
+      }
+      var range = compareRange((comparesA ? a : b).filters, field);
+      var text = (comparesA ? onB : onA)[0];
+      if (MATCHING.indexOf(text.operator) === -1) return true;
+      return text.values.some(function (value) {
+        return /^\d+$/.test(value) && Number(value) >= range.low && Number(value) <= range.high;
+      });
+    });
   }
 
-  /* Two prices on one meter may not count the same request: on some field that either filters on,
-     their filters must have no value in common, or on some Token key either compares, their ranges no
-     number in common. A field or key only one price filters on matches anything for the other. A Tool
-     filter also filters on the MCP method (withToolCall). */
+  /* Two prices on one meter may not count the same request. */
   function checkOverlap(prices) {
     prices.forEach(function (a, i) {
       prices.forEach(function (b, j) {
-        if (j <= i || a.meterId !== b.meterId) return;
-        var filtersA = withToolCall(a.filters);
-        var filtersB = withToolCall(b.filters);
-        var both = filtersA.concat(filtersB);
-        var fields = both.filter(function (f) { return f.field !== 'TOKEN'; }).map(function (f) { return f.field; });
-        var same = fields.every(function (field) {
-          var fa = filtersA.filter(function (f) { return f.field === field; })[0];
-          var fb = filtersB.filter(function (f) { return f.field === field; })[0];
-          return !fa || !fb || filtersMatchSameValue(field, fa, fb);
-        }) && comparedKeys(both).every(function (key) {
-          var ra = tokenRange(a.filters, key);
-          var rb = tokenRange(b.filters, key);
-          return Math.max(ra.low, rb.low) <= Math.min(ra.high, rb.high);
-        });
-        if (same) {
-          throw new Error('Prices ' + (i + 1) + ' and ' + (j + 1) + ' both count the same requests of the meter '
-            + a.meterId + '; give them different filters.');
-        }
+        if (j <= i || a.meterId !== b.meterId || !pricesOverlap(a, b)) return;
+        throw new Error('Prices ' + (i + 1) + ' and ' + (j + 1) + ' both count the same requests of the meter '
+          + a.meterId + '; give them different filters.');
       });
     });
   }

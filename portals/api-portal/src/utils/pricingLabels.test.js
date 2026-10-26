@@ -42,7 +42,7 @@ const GRADUATED = { pricingModel: 'GRADUATED', meterId: 'calls', filters: [], ti
     { upTo: null, unitAmount: '0.002', flatAmount: null },
 ] };
 const INPUT = { pricingModel: 'PER_UNIT', unitAmount: '2.50', unitQuantity: 1000000, meterId: 'llm-input',
-    filters: [{ field: 'API_TYPE', operator: 'EQUALS', values: ['LlmProvider'] }] };
+    filters: [{ field: 'API type', operator: 'EQUALS', values: ['LlmProvider'] }] };
 const flat = (extra) => ({ pricingType: 'FLAT_RATE', currency: 'USD', billingPeriod: 'MONTH', flatAmount: '99.00', prices: [],
     ...extra });
 const usage = (prices, extra) => ({ pricingType: 'USAGE_BASED', currency: 'USD', billingPeriod: 'MONTH', flatAmount: null, prices,
@@ -64,43 +64,35 @@ test('a plan is summarised as free, its flat rate, its one usage price, or how m
     assert.strictEqual(pricingSummary(usage([GRADUATED, INPUT])), '2 usage prices, billed monthly');
 });
 
-test('meters read as what they count, their filter fields by name, and filters in full', () => {
+test('meters read as what they count, their filter properties by name, and filters in full', () => {
     assert.strictEqual(meterTypeLabel('REQUEST_COUNT'), 'Requests');
     assert.strictEqual(meterTypeLabel('TOKENS'), 'Tokens');
-    assert.strictEqual(filterFieldsLabel([{ field: 'API_TYPE', eventKey: 'metadata.kind' }, { field: 'HTTP_METHOD', eventKey: 'request.verb' }]),
-        'API type, HTTP method');
+    assert.strictEqual(filterFieldsLabel([{ field: 'API type', eventKey: 'metadata.kind' }, { field: 'Region', eventKey: 'metadata.region' }]),
+        'API type, Region');
     assert.strictEqual(filterFieldsLabel([]), '');
-    assert.strictEqual(filterFieldsLabel([{ field: 'RESOURCE' }, { field: 'API_TYPE' }]), 'Resource, API type');
-    assert.strictEqual(filterLabel({ field: 'API_TYPE', operator: 'IN', values: ['RestApi', 'Mcp'] }), 'API type is one of RestApi, Mcp');
-    assert.strictEqual(filterLabel({ field: 'HTTP_STATUS_CODE', operator: 'IN', values: ['200', '201'] }), 'Status code is one of 200, 201');
-    assert.strictEqual(filterLabel({ field: 'HTTP_METHOD', operator: 'NOT_EQUALS', values: ['GET'] }), 'HTTP method does not equal GET');
-    assert.strictEqual(filterLabel({ field: 'RESOURCE', operator: 'STARTS_WITH', values: ['/orders'] }), 'Resource starts with /orders');
+    assert.strictEqual(filterLabel({ field: 'API type', operator: 'IN', values: ['RestApi', 'Mcp'] }), 'API type is one of RestApi, Mcp');
+    assert.strictEqual(filterLabel({ field: 'Status code', operator: 'IN', values: ['200', '201'] }), 'Status code is one of 200, 201');
+    assert.strictEqual(filterLabel({ field: 'HTTP method', operator: 'NOT_EQUALS', values: ['GET'] }), 'HTTP method does not equal GET');
+    assert.strictEqual(filterLabel({ field: 'Resource', operator: 'STARTS_WITH', values: ['/orders'] }), 'Resource starts with /orders');
+    assert.strictEqual(filterLabel({ field: 'Prompt tokens', operator: 'GREATER_THAN', values: ['333'] }), 'Prompt tokens more than 333');
+    assert.strictEqual(filterLabel({ field: 'Region', operator: 'LESS_THAN_OR_EQUAL', values: ['5'] }), 'Region at most 5');
 });
 
 test('a price is named after its meter and its filters in short form, and counts in its meter\'s unit', () => {
     assert.strictEqual(priceName('LLM input tokens', INPUT.filters), 'LLM input tokens · LlmProvider');
-    assert.strictEqual(priceName('API calls', [{ field: 'HTTP_METHOD', operator: 'IN', values: ['GET', 'POST'] }]), 'API calls · GET, POST');
-    assert.strictEqual(priceName('API calls', [{ field: 'HTTP_METHOD', operator: 'NOT_IN', values: ['DELETE', 'OPTIONS'] },
-        { field: 'RESOURCE', operator: 'STARTS_WITH', values: ['/orders'] }]), 'API calls · not DELETE, OPTIONS · /orders…');
+    assert.strictEqual(priceName('API calls', [{ field: 'HTTP method', operator: 'IN', values: ['GET', 'POST'] }]), 'API calls · GET, POST');
+    assert.strictEqual(priceName('API calls', [{ field: 'HTTP method', operator: 'NOT_IN', values: ['DELETE', 'OPTIONS'] },
+        { field: 'Resource', operator: 'STARTS_WITH', values: ['/orders'] }]), 'API calls · not DELETE, OPTIONS · /orders…');
     assert.strictEqual(priceName('API calls', []), 'API calls');
-    // An API type reads as its value.
-    assert.strictEqual(priceName('API requests', [{ field: 'API_TYPE', operator: 'EQUALS', values: ['RestApi'] }]), 'API requests · RestApi');
-    assert.strictEqual(priceName('API requests', [{ field: 'API_TYPE', operator: 'NOT_EQUALS', values: ['LlmProvider'] }]),
-        'API requests · not LlmProvider');
-    // A Token condition reads as its key's label in lower case, or the key, and the comparison.
-    const condition = (operator, value, key = 'metadata.aiTokenUsage.promptTokens') => ({ field: 'TOKEN', eventKey: key, operator, values: [value] });
-    assert.strictEqual(priceName('Input tokens', [{ field: 'API_TYPE', operator: 'EQUALS', values: ['LlmProvider'] }, condition('GREATER_THAN', '333')]),
-        'Input tokens · LlmProvider · prompt tokens > 333');
-    assert.strictEqual(priceName('Calls', [condition('GREATER_THAN_OR_EQUAL', '1', 'metadata.aiTokenUsage.totalTokens'),
-        condition('LESS_THAN', '10', 'metadata.aiTokenUsage.completionTokens'), condition('LESS_THAN_OR_EQUAL', '5', 'usage.cached'),
-        condition('EQUALS', '0', 'usage.cached')]),
-    'Calls · total tokens \u2265 1 · completion tokens < 10 · usage.cached \u2264 5 · usage.cached = 0');
-    assert.strictEqual(filterLabel(condition('GREATER_THAN', '333')), 'Prompt tokens more than 333');
-    assert.strictEqual(filterLabel(condition('EQUALS', '0', 'usage.cached')), 'usage.cached equal to 0');
-    assert.strictEqual(filterFieldsLabel([{ field: 'API_TYPE' }, { field: 'TOKEN', eventKey: 'metadata.aiTokenUsage.totalTokens' },
-        { field: 'TOKEN', eventKey: 'usage.cached' }]), 'API type, Token \u00b7 Total tokens, Token \u00b7 usage.cached');
-    assert.strictEqual(priceName('LLM input tokens', [{ field: 'HTTP_METHOD', operator: 'EQUALS', values: ['POST'] },
-        { field: 'API_TYPE', operator: 'IN', values: ['LlmProvider', 'LlmProxy'] }]), 'LLM input tokens · POST · LlmProvider, LlmProxy');
+    assert.strictEqual(priceName('Requests', [{ field: 'API type', operator: 'NOT_EQUALS', values: ['LlmProvider'] }]),
+        'Requests · not LlmProvider');
+    // A comparison reads as its property's name, the sign and the number.
+    const compare = (field, operator, value) => ({ field, operator, values: [value] });
+    assert.strictEqual(priceName('Input tokens', [{ field: 'API type', operator: 'EQUALS', values: ['LlmProvider'] },
+        compare('Prompt tokens', 'GREATER_THAN', '333')]), 'Input tokens · LlmProvider · Prompt tokens > 333');
+    assert.strictEqual(priceName('Calls', [compare('Total tokens', 'GREATER_THAN_OR_EQUAL', '1'),
+        compare('Completion tokens', 'LESS_THAN', '10'), compare('Cached', 'LESS_THAN_OR_EQUAL', '5')]),
+    'Calls · Total tokens \u2265 1 · Completion tokens < 10 · Cached \u2264 5');
     // A Tokens meter counts tokens, regardless of the event key it adds up.
     assert.strictEqual(meterUnit({ type: 'TOKENS', type_key: 'metadata.aiTokenUsage.promptTokens' }), 'token');
     assert.strictEqual(meterUnit({ type: 'TOKENS', type_key: 'usage.out' }), 'token');

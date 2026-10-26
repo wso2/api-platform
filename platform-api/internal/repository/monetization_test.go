@@ -50,8 +50,8 @@ func TestMeterRepo_UpsertReplacesByHandleAndRoundTripsTheEventKeys(t *testing.T)
 	// A custom token key and filter key, as for a gateway that names its analytics fields differently.
 	typeKey := "usage.completion_tokens"
 	filterFields := []model.MeterFilterField{
-		{Field: model.FilterFieldAPIType, EventKey: "custom.api.kind"},
-		{Field: model.FilterFieldHTTPMethod, EventKey: "request.verb"},
+		{Field: "API type", EventKey: "custom.api.kind"},
+		{Field: "HTTP method", EventKey: "request.verb"},
 	}
 	meter := &model.Meter{
 		OrganizationUUID: "org-1", Handle: "calls", DisplayName: "Calls", Type: model.MeterTypeTokens,
@@ -69,7 +69,7 @@ func TestMeterRepo_UpsertReplacesByHandleAndRoundTripsTheEventKeys(t *testing.T)
 	if err := db.QueryRow(`SELECT filter_fields FROM meters WHERE handle = 'calls'`).Scan(&stored); err != nil {
 		t.Fatalf("read filter fields: %v", err)
 	}
-	if want := `[{"field":"API_TYPE","event_key":"custom.api.kind"},{"field":"HTTP_METHOD","event_key":"request.verb"}]`; string(stored) != want {
+	if want := `[{"field":"API type","event_key":"custom.api.kind"},{"field":"HTTP method","event_key":"request.verb"}]`; string(stored) != want {
 		t.Errorf("stored filter fields %s, want %s", stored, want)
 	}
 
@@ -164,7 +164,8 @@ func TestSubscriptionPlanPricingRepo_UsagePricesRoundTrip(t *testing.T) {
 	unit, upTo, quantity := "2.50", int64(1000), int64(1_000_000)
 	prices := []model.SubscriptionPlanPrice{
 		{MeterHandle: "llm-tokens", PricingModel: model.PricingModelPerUnit, UnitAmount: &unit, UnitQuantity: &quantity,
-			Filters: []model.PriceFilter{{Field: "API_TYPE", Operator: "EQUALS", Values: []string{"LlmProvider"}}}},
+			Filters: []model.PriceFilter{{Field: "API type", Operator: "EQUALS", Values: []string{"LlmProvider"}},
+				{Field: "Prompt tokens", Operator: "GREATER_THAN", Values: []string{"333"}}}},
 		{MeterHandle: "calls", PricingModel: model.PricingModelGraduated, Filters: []model.PriceFilter{},
 			Tiers: []model.PriceTier{{UpTo: &upTo, UnitAmount: &unit}, {UnitAmount: &unit}}},
 	}
@@ -204,12 +205,12 @@ func TestSubscriptionPlanPricingRepo_UsagePricesRoundTrip(t *testing.T) {
 	}
 	// The prices are kept in the form the API Portal's events carry them.
 	stored := storedPrices(t, db, usage.UUID)
-	for _, key := range []string{`"meter_handle":"llm-tokens"`, `"filters":[{"field":"API_TYPE","operator":"EQUALS","values":["LlmProvider"]}]`, `"up_to":1000`} {
+	for _, key := range []string{`"meter_handle":"llm-tokens"`, `"filters":[{"field":"API type","operator":"EQUALS","values":["LlmProvider"]},{"field":"Prompt tokens","operator":"GREATER_THAN","values":["333"]}]`, `"up_to":1000`} {
 		if !strings.Contains(stored, key) {
 			t.Errorf("stored prices %s lack %s", stored, key)
 		}
 	}
-	for _, key := range []string{"display_name", `"FLAT"`, `"amount"`} {
+	for _, key := range []string{"display_name", `"FLAT"`, `"amount"`, "event_key"} {
 		if strings.Contains(stored, key) {
 			t.Errorf("stored usage prices %s hold %s", stored, key)
 		}

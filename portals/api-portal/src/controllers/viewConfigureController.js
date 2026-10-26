@@ -28,8 +28,8 @@ const subscriptionPlanDao = require('../dao/subscriptionPlanDao');
 const whDao = require('../dao/webhookSubscriberDao');
 const meterDao = require('../dao/meterDao');
 const billingConfigurationService = require('../services/billing/billingConfigurationService');
-const { FIELD_LABELS, filterFieldsLabel, meterTypeLabel } = require('../utils/meterLabels');
-const { DEFAULT_TOKEN_EVENT_KEY, FILTER_RULES, MAX_FILTER_FIELDS, TOKEN_EVENT_KEYS } = require('../services/billing/meterValidation');
+const { FILTER_PRESETS, filterFieldsLabel, meterTypeLabel } = require('../utils/meterLabels');
+const { DEFAULT_TOKEN_EVENT_KEY, MAX_FILTER_FIELDS, MAX_NAME_LENGTH, TOKEN_EVENT_KEYS } = require('../services/billing/meterValidation');
 const { pricingSummary } = require('../utils/pricingLabels');
 const { CURRENCIES } = require('../utils/currencies');
 const PlanPricingDTO = require('../dto/planPricingDto');
@@ -218,9 +218,7 @@ const loadSettingsPage = async (req, res) => {
                     type: m.type,
                     typeKey: m.type_key || null,
                     typeLabel: meterTypeLabel(m.type),
-                    filterFields: m.filter_fields.map(f => ({
-                        field: f.field, label: FIELD_LABELS[f.field], eventKey: f.eventKey,
-                    })),
+                    filterFields: m.filter_fields.map(f => ({ field: f.field, eventKey: f.eventKey })),
                     filterFieldsText: filterFieldsLabel(m.filter_fields),
                     // A priced meter can't change or be deleted: the page says by how many plans, not which.
                     planCount: plans.length,
@@ -230,16 +228,15 @@ const loadSettingsPage = async (req, res) => {
             logger.warn('Failed to load meters for settings page', { error: err.message });
         }
         templateContent.orgMeters = orgMeters;
-        // The event keys a new meter starts with: the token key a TOKENS meter adds up (with the token
-        // keys the page offers for it and for Token fields), and each filter field's default key (none
-        // for a Token field), all from our gateway's events. The administrator can change them.
+        // What the meter form offers, from our gateway's events: the token key a TOKENS meter adds up
+        // (with the token keys it suggests) and the filter properties, with their names and keys. The
+        // administrator can change them.
         templateContent.meterRegistry = {
             tokenEventKey: DEFAULT_TOKEN_EVENT_KEY,
             tokenEventKeys: TOKEN_EVENT_KEYS,
             maxFilterFields: MAX_FILTER_FIELDS,
-            filterFields: Object.keys(FILTER_RULES).map(value => ({
-                value, label: FIELD_LABELS[value], eventKey: FILTER_RULES[value].eventKey,
-            })),
+            maxNameLength: MAX_NAME_LENGTH,
+            presets: FILTER_PRESETS,
         };
         templateContent.currencies = CURRENCIES;
 

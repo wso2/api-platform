@@ -2650,13 +2650,35 @@
 }
 
 .cfg-revenue-body {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 22px;
+  transition: opacity 0.15s ease;
 }
 
 .cfg-revenue-body[hidden] {
   display: none;
+}
+
+/* Reading another period over the report shown: the report dims under a spinner until it is replaced. */
+.cfg-revenue-body.is-loading {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.cfg-revenue-body.is-loading::after {
+  content: "";
+  position: absolute;
+  top: 3rem;
+  left: 50%;
+  width: 2rem;
+  height: 2rem;
+  margin-left: -1rem;
+  border: 3px solid var(--border);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: cfg-spin 0.7s linear infinite;
 }
 
 /* Loading spinner */
@@ -2679,33 +2701,9 @@
   animation: cfg-spin 0.7s linear infinite;
 }
 
-/* Invoice reading progress */
-.cfg-revenue-progress {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 0;
-  font-size: 0.8125rem;
-  color: var(--text-muted);
-}
-
-.cfg-revenue-progress[hidden] {
-  display: none;
-}
-
-.cfg-revenue-progress-spinner {
-  flex: none;
-  width: 14px;
-  height: 14px;
-  border: 2px solid var(--border);
-  border-top-color: var(--primary);
-  border-radius: 50%;
-  animation: cfg-spin 0.7s linear infinite;
-}
-
 @media (prefers-reduced-motion: reduce) {
   .cfg-spinner,
-  .cfg-revenue-progress-spinner {
+  .cfg-revenue-body.is-loading::after {
     animation-duration: 2s;
   }
 }
@@ -2819,10 +2817,5 @@
   min-width: 0;
   overflow: hidden;
   text-align: center;
-  white-space: nowrap;
-}
-
-.cfg-revenue-amount {
-  text-align: right;
   white-space: nowrap;
 }

@@ -129,7 +129,7 @@ function endDateText(endsAt) {
 /** The answer to unsubscribing from a plan that runs to the end of its paid period. */
 function endingResponse(endsAt) {
     return {
-        message: `The subscription ends on ${endDateText(endsAt)}. It keeps working until then.`,
+        message: `Your subscription has been cancelled. You will retain access until ${endDateText(endsAt)}.`,
         endsAt: new Date(endsAt).toISOString(),
     };
 }
@@ -445,16 +445,18 @@ const deleteSubscription = async (req, res) => {
 
         // A paid subscription ends with the payment provider first; if the provider cannot be
         // reached it is kept, so it is never left billing unseen. A plan charged a flat fee runs to
-        // the end of the period already paid for and is removed when the provider ends it; a plan
+        // the end of the period already paid for and is removed when the provider ends it, unless
+        // the subscriber ends it immediately, with no refund for the rest of that period; a plan
         // charged by usage is removed now.
+        const immediate = req.query.immediate === 'true';
         const billing = await billingSubscriptionDao.getBySubscription(subscriptionId);
-        if (billing && billing.ends_at) {
+        if (billing && billing.ends_at && !immediate) {
             return res.status(200).json(endingResponse(billing.ends_at));
         }
         if (billing) {
             let ending;
             try {
-                ending = await subscriptionBillingService.endInProvider(billing);
+                ending = await subscriptionBillingService.endInProvider(billing, { immediate });
             } catch (err) {
                 if (err instanceof subscriptionBillingService.SubscriptionBillingError) {
                     return util.sendError(res, err.status, err.message, { code: err.code });

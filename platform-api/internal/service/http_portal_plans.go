@@ -353,9 +353,8 @@ func sameLimits(want, got []portalPlanLimit) bool {
 }
 
 // samePricing reports whether a portal copy's pricing is the plan's own. Both are reduced to the
-// same form: codes upper-cased, amounts compared as numbers, filter values and prices in a fixed
-// order (the portal lists prices by name, not in the order they were sent), and an absent list
-// equal to an empty one.
+// same form: codes and property names upper-cased, amounts and a comparison's number compared as
+// numbers, filter values and prices in a fixed order, and an absent list equal to an empty one.
 func samePricing(plan *model.SubscriptionPlanPricing, portalCopy *planPricingRequest) bool {
 	if plan == nil || portalCopy == nil {
 		return plan == nil && portalCopy == nil
@@ -368,14 +367,14 @@ func pricingKey(p *planPricingRequest) string {
 	for _, price := range p.Prices {
 		filters := make([]string, 0, len(price.Filters))
 		for _, f := range price.Filters {
-			field := strings.ToUpper(strings.TrimSpace(f.Field))
+			operator := strings.ToUpper(strings.TrimSpace(f.Operator))
 			values := make([]string, 0, len(f.Values))
 			for _, v := range f.Values {
-				values = append(values, filterValueKey(field, v))
+				values = append(values, filterValueKey(operator, v))
 			}
 			slices.Sort(values)
-			filters = append(filters, fmt.Sprintf("%s|%s|%s|%q",
-				field, strings.TrimSpace(f.EventKey), strings.ToUpper(strings.TrimSpace(f.Operator)), slices.Compact(values)))
+			filters = append(filters, fmt.Sprintf("%s|%s|%q",
+				strings.ToUpper(strings.TrimSpace(f.Field)), operator, slices.Compact(values)))
 		}
 		slices.Sort(filters)
 		tiers := make([]string, 0, len(price.Tiers))
@@ -397,14 +396,13 @@ func pricingKey(p *planPricingRequest) string {
 		strings.ToUpper(p.BillingPeriod), amountKey(p.FlatAmount), prices)
 }
 
-// filterValueKey is a filter value as the API Portal stores it: trimmed, an HTTP method upper-cased
-// and a Token number compared as a number. The portal also drops repeated values.
-func filterValueKey(field, value string) string {
+// filterValueKey is a filter value as the API Portal stores it: trimmed, and a comparison's number
+// compared as a number. The portal also drops repeated values.
+func filterValueKey(operator, value string) string {
 	value = strings.TrimSpace(value)
-	switch field {
-	case "HTTP_METHOD":
-		return strings.ToUpper(value)
-	case model.FilterFieldToken:
+	switch operator {
+	case model.FilterOperatorGreaterThan, model.FilterOperatorGreaterThanOrEqual, model.FilterOperatorLessThan,
+		model.FilterOperatorLessThanOrEqual:
 		return amountKey(&value)
 	}
 	return value

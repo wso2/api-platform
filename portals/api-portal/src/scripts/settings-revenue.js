@@ -21,8 +21,9 @@
  *   - When the panel is first opened, GET /billing-reports/revenue gives the paid subscriptions and
  *     their payment issues.
  *   - The period's invoices are then read from GET /billing-reports/invoices a page at a time,
- *     newest first. Each page is added to the cards, the chart and the plans table as it arrives
- *     (revenue-totals.js adds them up).
+ *     newest first, and the cards and the chart are drawn once all are read (revenue-totals.js
+ *     adds them up). The first read shows a spinner in place of the report; a later one dims the
+ *     report under a spinner until it is replaced.
  *   - Choosing a longer period reads only the months not read yet; a shorter one reads nothing.
  *   - The current month is shown on its own first. Selecting a month on the chart shows that month;
  *     selecting it again shows the whole period.
@@ -44,7 +45,6 @@
   var periodSelect = document.getElementById('cfgRevenueMonths');
   if (!periodSelect) return;
   var searchInput = document.getElementById('cfgRevenueSearch');
-  var plansBody = document.getElementById('cfgRevenuePlans');
   var totals = window.revenueTotals;
 
   var started = false;
@@ -60,7 +60,6 @@
   var generation = 0;
   // The month shown on its own (YYYY-MM), or null for the whole period.
   var selected = new Date().toISOString().slice(0, 7);
-  var paginator = null;
   var searchTimer = null;
 
   function el(tag, className, text) {
@@ -100,7 +99,7 @@
     return start > first ? start : first;
   }
 
-  /** What the cards and the plans table are about: the selected month, or the whole period. */
+  /** What the cards are about: the selected month, or the whole period. */
   function selectionText() {
     if (selected) return 'in ' + monthName(selected) + (selected === currentMonth() ? ' so far' : '');
     if (periodSelect.value === 'ALL') return 'since ' + monthName(periodStart().toISOString().slice(0, 7));
@@ -138,22 +137,10 @@
     holder.replaceChildren.apply(holder, nodes);
   }
 
-  function renderProgress() {
-    var node = document.getElementById('cfgRevenueProgress');
-    if (!reading || reading.done) {
-      node.hidden = true;
-      return;
-    }
-    var spinner = el('span', 'cfg-revenue-progress-spinner');
-    spinner.setAttribute('aria-hidden', 'true');
-    node.replaceChildren(spinner, el('span', null, 'Reading invoices from Stripe… ' + number(invoices.length) + ' found so far'));
-    node.hidden = false;
-  }
-
   function renderChart(sums, currency, months) {
     var holder = document.getElementById('cfgRevenueChart');
     if (!currency) {
-      holder.replaceChildren(el('p', 'cfg-revenue-muted', reading && reading.done ? 'No invoices in this period.' : 'No invoices found yet.'));
+      holder.replaceChildren(el('p', 'cfg-revenue-muted', 'No invoices in this period.'));
       return;
     }
     var values = months.map(function (m) { return Math.max(0, sums.months[m] || 0); });
@@ -176,7 +163,7 @@
       slot.append(bar);
       slot.addEventListener('click', function () {
         selected = selected === m ? null : m;
-        render(true);
+        render();
       });
       chart.append(slot);
       var date = new Date(m + '-01T00:00:00Z');
@@ -186,37 +173,8 @@
     holder.replaceChildren(chart, axis);
   }
 
-  function renderPlans(sums, currency, restart) {
-    document.getElementById('cfgRevenuePlansTitle').textContent = 'Plans ' + selectionText();
-    var rows = [];
-    (sums ? sums.plans : []).forEach(function (plan) {
-      var row = el('tr');
-      row.setAttribute('data-plan-row', '');
-      row.append(el('td', null, plan.api), el('td', null, plan.plan), el('td', null, number(plan.subscriptions)),
-        el('td', null, plan.usage.length ? plan.usage.map(totals.usageText).join(', ') : '—'),
-        el('td', 'cfg-revenue-amount', totals.formatMoney(plan.revenue, sums.digits, currency)));
-      rows.push(row);
-    });
-    if (rows.length === 0) {
-      var empty = el('tr');
-      var cell = el('td', 'cfg-revenue-muted', 'No paid plan was invoiced ' + selectionText() + '.');
-      cell.colSpan = 5;
-      empty.append(cell);
-      rows.push(empty);
-    }
-    plansBody.replaceChildren.apply(plansBody, rows);
-    if (!paginator && window.portalTablePaginator) {
-      paginator = window.portalTablePaginator(function () { return plansBody.querySelectorAll('tr[data-plan-row]'); },
-        document.getElementById('cfgRevenuePlansWrap'));
-    }
-    if (paginator) {
-      if (restart) paginator.reset();
-      else paginator.apply();
-    }
-  }
-
-  /** Draws the report from the invoices read so far; `restart` shows the plans table's first page again. */
-  function render(restart) {
+  /** Draws the report from the invoices read. */
+  function render() {
     var months = totals.monthsBetween(periodStart(), new Date());
     if (selected && months.indexOf(selected) === -1) selected = null;
     var search = searchInput ? searchInput.value : '';
@@ -234,22 +192,29 @@
     else notice(null);
 
     renderCards(sums, currency, months);
-    renderProgress();
     renderChart(sums, currency, months);
-    renderPlans(sums, currency, restart);
+  }
+
+  /**
+   * The first read shows a spinner in place of the report; a later one dims the report under a
+   * spinner until it is replaced.
+   */
+  function busy(on) {
     var body = document.getElementById('cfgRevenueBody');
-    body.setAttribute('aria-busy', String(Boolean(reading && !reading.done)));
+    show('cfgRevenueLoading', on && body.hidden);
+    body.classList.toggle('is-loading', on && !body.hidden);
+    body.setAttribute('aria-busy', String(on));
   }
 
   function invoiceKey(inv) {
     return inv.number || [inv.created, inv.total, inv.subscriptionId].join('|');
   }
 
-  /** Reads the invoices created from `from` up to `to`, a page at a time, drawing the report after each page. */
+  /** Reads the invoices created from `from` up to `to`, a page at a time, then draws the report. */
   async function read(from, to) {
     var mine = ++generation;
     reading = { done: false, failed: false };
-    render(false);
+    busy(true);
     var after = null;
     try {
       do {
@@ -270,16 +235,16 @@
           invoices.push(inv);
         });
         after = page.nextCursor;
-        render(false);
       } while (after);
       readFrom = from;
-      reading.done = true;
     } catch (_) {
       if (mine !== generation) return;
       reading.failed = true;
-      reading.done = true;
     }
-    render(false);
+    reading.done = true;
+    busy(false);
+    show('cfgRevenueBody', true);
+    render();
   }
 
   /** Shows the selected period: read from scratch, only its months not read yet, or nothing. */
@@ -287,7 +252,7 @@
     var from = periodStart();
     var complete = reading && reading.done && !reading.failed && readFrom;
     if (complete && from >= readFrom) {
-      render(true);
+      render();
       return;
     }
     if (complete) {
@@ -314,12 +279,11 @@
       started = false;
       return;
     }
-    show('cfgRevenueLoading', false);
     if (!summary.configured) {
+      show('cfgRevenueLoading', false);
       notice('Billing is not set up.');
       return;
     }
-    show('cfgRevenueBody', true);
     loadPeriod();
   }
 
@@ -334,7 +298,7 @@
     searchInput.addEventListener('input', function () {
       clearTimeout(searchTimer);
       searchTimer = setTimeout(function () {
-        if (summary && summary.configured) render(true);
+        if (reading && reading.done) render();
       }, 200);
     });
   }

@@ -65,9 +65,12 @@
 
         document.getElementById('mcpManagePlanName').textContent = policyName;
         updateManageStatus(sub.status);
-        // A paid subscription is stopped by unsubscribing, not suspended (as on the Subscriptions page).
+        // A paid subscription is stopped by unsubscribing, not suspended.
         var card = document.querySelector('#subscriptionPlans .aov-plan-card[data-policy-name="' + policyName + '"]');
-        document.getElementById('mcpManageSuspendBtn').hidden = !!(card && card.hasAttribute('data-paid'));
+        sub.paid = !!(card && card.hasAttribute('data-paid'));
+        document.getElementById('mcpManageSuspendBtn').hidden = sub.paid;
+        showEndDate(null);
+        if (sub.paid) loadBilling(sub);
         document.getElementById('mcpManageTokenVal').textContent = '•'.repeat(28);
         var revealIcon = document.getElementById('mcpManageRevealIcon');
         if (revealIcon) revealIcon.className = 'bi bi-eye';
@@ -79,6 +82,38 @@
         document.getElementById('mcpManageModal').style.display = 'none';
         _sub = null;
         _revealed = false;
+      }
+
+      /* ── Paid subscription billing ── */
+      function formatBillingDate(iso) {
+        return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      }
+
+      // A subscription already set to end shows when; it cannot be unsubscribed again, but it can be
+      // ended immediately.
+      function showEndDate(endsAt) {
+        var ends = document.getElementById('mcpManageEnds');
+        ends.textContent = endsAt ? 'Your subscription has been cancelled. You will retain access until ' + formatBillingDate(endsAt) + '.' : '';
+        ends.hidden = !endsAt;
+        document.getElementById('mcpManageUnsubBtn').hidden = Boolean(endsAt);
+        document.getElementById('mcpManageEndNowBtn').hidden = !endsAt;
+      }
+
+      // What unsubscribing does depends on how the plan is charged.
+      async function loadBilling(sub) {
+        try {
+          var resp = await fetch(apiPortalApi.root('/subscriptions/' + encodeURIComponent(sub.subscriptionId) + '/billing'), {
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.apiPortalApi.csrfToken() },
+          });
+          if (!resp.ok) return;
+          var billing = await resp.json();
+          sub.byUsage = billing.byUsage;
+          sub.periodEnd = billing.currentPeriod && billing.currentPeriod.end;
+          sub.endsAt = billing.endsAt;
+          if (_sub === sub) showEndDate(billing.endsAt);
+        } catch (_) {
+          // The unsubscribe dialog shows its general text.
+        }
       }
 
       function updateManageStatus(status) {
@@ -223,7 +258,7 @@
       }
 
       /* ── Unsubscribe / plan-switch dialog ── */
-      var _unsubAction = 'unsub'; // 'unsub' | 'switch'
+      var _unsubAction = 'unsub'; // 'unsub' | 'switch' | 'immediate'
       var _switchArgs = null;
 
       var UNSUB_DEFAULTS = {
@@ -243,10 +278,30 @@
         if (!_sub) return;
         _unsubAction = 'unsub';
         _switchArgs = null;
+        var desc = UNSUB_DEFAULTS.desc;
+        if (_sub.paid && _sub.byUsage === false) {
+          desc = 'Your subscription will remain active until '
+            + (_sub.periodEnd ? formatBillingDate(_sub.periodEnd) : 'the end of the period') + '.';
+        } else if (_sub.paid) {
+          desc = 'Your applications will lose access to this MCP server, and any tokens using this subscription will stop '
+            + 'working. Usage up to now is billed on a final invoice. You can re-subscribe at any time.';
+        }
         showUnsubDialog(
           UNSUB_DEFAULTS.title(_sub.subscriptionPlanName),
-          UNSUB_DEFAULTS.desc,
+          desc,
           UNSUB_DEFAULTS.confirm
+        );
+      }
+
+      function askEndNow() {
+        if (!_sub || !_sub.endsAt) return;
+        _unsubAction = 'immediate';
+        _switchArgs = null;
+        showUnsubDialog(
+          'End your subscription now?',
+          'Your subscription ends immediately instead of on ' + formatBillingDate(_sub.endsAt)
+            + ', and your applications lose access to this MCP server. The rest of the paid period is not refunded.',
+          'End now'
         );
       }
 
@@ -288,15 +343,23 @@
           return;
         }
         if (!_sub) return;
+        var immediate = _unsubAction === 'immediate';
         var orgId = window.__subscriptionOrgId;
         try {
-          resp = await fetch(apiPortalApi.root('/subscriptions/' + encodeURIComponent(_sub.subscriptionId)), {
+          resp = await fetch(apiPortalApi.root('/subscriptions/' + encodeURIComponent(_sub.subscriptionId)
+            + (immediate ? '?immediate=true' : '')), {
             method: 'DELETE',
             headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.apiPortalApi.csrfToken() },
           });
           if (resp.ok) {
+            // A flat rate plan runs to the end of its paid period: it stays subscribed until then.
+            var ending = await resp.json().catch(function () { return {}; });
             closeUnsub();
             closeManage();
+            if (ending.endsAt) {
+              await showAlert(ending.message, 'success');
+              return;
+            }
             window.location.reload();
           } else {
             var data = await resp.json().catch(function () { return {}; });
@@ -374,6 +437,7 @@
           if (mcpRegenBtn) mcpRegenBtn.addEventListener('click', askRegenerate);
           document.getElementById('mcpManageSuspendBtn').addEventListener('click', toggleSuspend);
           document.getElementById('mcpManageUnsubBtn').addEventListener('click', askUnsub);
+          document.getElementById('mcpManageEndNowBtn').addEventListener('click', askEndNow);
           manageModal.addEventListener('click', function (e) { if (e.target === manageModal) closeManage(); });
         }
 

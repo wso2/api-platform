@@ -87,39 +87,38 @@ test('graduated prices are Moesif "tiered" prices with an open last tier', () =>
         .pricing_model, 'volume');
 });
 const filter = (field, operator, ...values) => ({ field, operator, values });
-// Meters as the database holds them, reading our gateway's default event keys.
+// Meters as the database holds them, with our gateway's properties under their default names.
 const defaultKeys = [
-    { field: 'HTTP_STATUS_CODE', eventKey: 'response.status' },
-    { field: 'HTTP_METHOD', eventKey: 'request.verb' },
-    { field: 'RESOURCE', eventKey: 'metadata.apiResourceTemplate' },
-    { field: 'API_TYPE', eventKey: 'metadata.apiType' },
+    { field: 'Status code', eventKey: 'response.status' },
+    { field: 'HTTP method', eventKey: 'request.verb' },
+    { field: 'Resource', eventKey: 'metadata.apiResourceTemplate' },
+    { field: 'API type', eventKey: 'metadata.apiType' },
+    { field: 'Prompt tokens', eventKey: 'metadata.aiTokenUsage.promptTokens' },
+    { field: 'Total tokens', eventKey: 'metadata.aiTokenUsage.totalTokens' },
 ];
 const calls = { handle: 'calls', display_name: 'Calls', type: 'REQUEST_COUNT', type_key: null, filter_fields: defaultKeys };
 const tokens = (typeKey, filterFields = defaultKeys) => ({ handle: 'llm', display_name: 'LLM tokens', type: 'TOKENS',
     type_key: typeKey, filter_fields: filterFields });
+const must = (meter, ...filters) => catalog.meterQuery(catalog.priceMeter(meter, filters)).query.bool.must.slice(2);
 
-// Like a router's path prefix: "/orders" is the resource itself or one under it, never "/orders-archive".
-test('a starts-with filter counts its path and the resources under it, by whole segments; "/" counts every resource', () => {
-    const under = (path) => catalog.meterQuery(catalog.priceMeter(calls, [filter('RESOURCE', 'STARTS_WITH', path)])).query.bool.must[2];
-    assert.deepStrictEqual(under('/orders/items'), { bool: { should: [
-        { terms: { 'metadata.apiResourceTemplate.raw': ['/orders/items'] } },
-        { prefix: { 'metadata.apiResourceTemplate.raw': '/orders/items/' } }], minimum_should_match: 1 } });
-    assert.deepStrictEqual(under('/'), { prefix: { 'metadata.apiResourceTemplate.raw': '/' } });
+test('starts with matches values that begin with the text, on the keyword field', () => {
+    assert.deepStrictEqual(must(calls, filter('Resource', 'STARTS_WITH', '/orders')),
+        [{ prefix: { 'metadata.apiResourceTemplate.raw': '/orders' } }]);
+    assert.deepStrictEqual(must(calls, filter('Resource', 'STARTS_WITH', '/')), [{ prefix: { 'metadata.apiResourceTemplate.raw': '/' } }]);
 });
 
 test('a price counts its meter\'s calls of one subscription that match all of its filters', () => {
     const query = catalog.meterQuery(catalog.priceMeter(calls, [
-        filter('HTTP_STATUS_CODE', 'IN', '200', '304'),
-        filter('HTTP_METHOD', 'NOT_EQUALS', 'OPTIONS'),
-        filter('RESOURCE', 'STARTS_WITH', '/orders'),
+        filter('Status code', 'IN', '200', '304'),
+        filter('HTTP method', 'NOT_EQUALS', 'OPTIONS'),
+        filter('Resource', 'STARTS_WITH', '/orders'),
     ]));
     assert.deepStrictEqual(query.query.bool.must, [
         { terms: { 'metadata.billingCustomerId.raw': ['{{company_id}}'] } },
         { terms: { 'metadata.billingSubscriptionId.raw': ['{{subscription_id}}'] } },
-        { terms: { 'response.status': [200, 304] } },
+        { terms: { 'response.status.raw': ['200', '304'] } },
         { exists: { field: 'request.verb.raw' } },
-        { bool: { should: [{ terms: { 'metadata.apiResourceTemplate.raw': ['/orders'] } }, { prefix: { 'metadata.apiResourceTemplate.raw': '/orders/' } }],
-            minimum_should_match: 1 } },
+        { prefix: { 'metadata.apiResourceTemplate.raw': '/orders' } },
     ]);
     assert.deepStrictEqual(query.query.bool.must_not, [{ terms: { 'request.verb.raw': ['OPTIONS'] } }]);
     assert.deepStrictEqual(query.aggs.seg.aggs.usage_value, { sum: { field: 'weight', missing: 1 } });
@@ -127,20 +126,20 @@ test('a price counts its meter\'s calls of one subscription that match all of it
 });
 
 // "Status code does not equal 500" means calls with another status code: a call that has no status code is not one of them.
-test('equals and is one of match their values; does not equal and is not one of count the calls that have the field with another value', () => {
+test('equals and is one of match their values as text; does not equal and is not one of count the calls that have the property with another value', () => {
     const query = catalog.meterQuery(catalog.priceMeter(calls, [
-        filter('HTTP_STATUS_CODE', 'NOT_EQUALS', '500'),
-        filter('HTTP_METHOD', 'EQUALS', 'POST'),
-        filter('RESOURCE', 'NOT_EQUALS', '/health'),
+        filter('Status code', 'NOT_EQUALS', '500'),
+        filter('HTTP method', 'EQUALS', 'POST'),
+        filter('API type', 'NOT_IN', 'LlmProvider', 'LlmProxy'),
     ]));
     assert.deepStrictEqual(query.query.bool.must.slice(2), [
-        { exists: { field: 'response.status' } },
+        { exists: { field: 'response.status.raw' } },
         { terms: { 'request.verb.raw': ['POST'] } },
-        { exists: { field: 'metadata.apiResourceTemplate.raw' } },
+        { exists: { field: 'metadata.apiType.raw' } },
     ]);
     assert.deepStrictEqual(query.query.bool.must_not, [
-        { terms: { 'response.status': [500] } },
-        { terms: { 'metadata.apiResourceTemplate.raw': ['/health'] } },
+        { terms: { 'response.status.raw': ['500'] } },
+        { terms: { 'metadata.apiType.raw': ['LlmProvider', 'LlmProxy'] } },
     ]);
 });
 
@@ -157,99 +156,56 @@ test('a Tokens meter adds up the number at its event key, regardless of the key'
     assert.throws(() => sum(null), /The meter llm does not say which event key it adds up/);
 });
 
-test('each filter matches the meter\'s own event key: a status code as a number, other values on the keyword field', () => {
+test('each filter reads the event key of the property it names, whatever its name', () => {
     const custom = tokens('usage.in', [
-        { field: 'HTTP_STATUS_CODE', eventKey: 'res.code' },
-        { field: 'HTTP_METHOD', eventKey: 'req.method' },
-        { field: 'RESOURCE', eventKey: 'route' },
-        { field: 'API_TYPE', eventKey: 'api.kind' },
+        { field: 'Code', eventKey: 'res.code' },
+        { field: 'Route', eventKey: 'route' },
+        { field: 'Region', eventKey: 'meta.region' },
     ]);
     const query = catalog.meterQuery(catalog.priceMeter(custom, [
-        filter('HTTP_STATUS_CODE', 'IN', '200', '201'),
-        filter('HTTP_METHOD', 'NOT_IN', 'DELETE'),
-        filter('RESOURCE', 'STARTS_WITH', '/chat'),
-        filter('API_TYPE', 'EQUALS', 'LlmProvider'),
+        filter('Code', 'IN', '200', '201'),
+        filter('Route', 'STARTS_WITH', '/chat'),
+        filter('Region', 'EQUALS', 'eu-west'),
     ]));
-    assert.deepStrictEqual(query.query.bool.must, [
-        { terms: { 'metadata.billingCustomerId.raw': ['{{company_id}}'] } },
-        { terms: { 'metadata.billingSubscriptionId.raw': ['{{subscription_id}}'] } },
-        { terms: { 'res.code': [200, 201] } },
-        { exists: { field: 'req.method.raw' } },
-        { bool: { should: [{ terms: { 'route.raw': ['/chat'] } }, { prefix: { 'route.raw': '/chat/' } }], minimum_should_match: 1 } },
-        { terms: { 'api.kind.raw': ['LlmProvider'] } },
+    assert.deepStrictEqual(query.query.bool.must.slice(2), [
+        { terms: { 'res.code.raw': ['200', '201'] } },
+        { prefix: { 'route.raw': '/chat' } },
+        { terms: { 'meta.region.raw': ['eu-west'] } },
     ]);
-    assert.deepStrictEqual(query.query.bool.must_not, [{ terms: { 'req.method.raw': ['DELETE'] } }]);
     assert.deepStrictEqual(query.aggs.seg.aggs.usage_value, { sum: { field: 'usage.in', missing: 0 } });
     // The usage a subscriber sees is counted the same way.
-    const search = catalog.usageSearch(catalog.priceMeter(custom, [filter('API_TYPE', 'EQUALS', 'LlmProvider')]),
+    const search = catalog.usageSearch(catalog.priceMeter(custom, [filter('Region', 'EQUALS', 'eu-west')]),
         { customerId: 'cus_1', subscriptionId: 'sub_1' });
-    assert.deepStrictEqual(search.query.bool.must.slice(2), [{ terms: { 'api.kind.raw': ['LlmProvider'] } }]);
+    assert.deepStrictEqual(search.query.bool.must.slice(2), [{ terms: { 'meta.region.raw': ['eu-west'] } }]);
     assert.deepStrictEqual(search.aggs.series.aggs.usage, { sum: { field: 'usage.in', missing: 0 } });
 });
 
-test('an API type filter matches the key\'s keyword field exactly', () => {
-    const query = catalog.meterQuery(catalog.priceMeter(calls, [
-        filter('API_TYPE', 'IN', 'RestApi', 'WebSubApi'),
-        filter('HTTP_METHOD', 'NOT_EQUALS', 'OPTIONS'),
-    ]));
-    assert.deepStrictEqual(query.query.bool.must.slice(2), [
-        { terms: { 'metadata.apiType.raw': ['RestApi', 'WebSubApi'] } },
-        { exists: { field: 'request.verb.raw' } },
-    ]);
-    assert.deepStrictEqual(query.query.bool.must_not, [{ terms: { 'request.verb.raw': ['OPTIONS'] } }]);
-    const excluding = catalog.meterQuery(catalog.priceMeter(tokens('usage.in', [{ field: 'API_TYPE', eventKey: 'metadata.kind' }]),
-        [filter('API_TYPE', 'NOT_IN', 'LlmProvider', 'LlmProxy')]));
-    assert.deepStrictEqual(excluding.query.bool.must.slice(2), [{ exists: { field: 'metadata.kind.raw' } }]);
-    assert.deepStrictEqual(excluding.query.bool.must_not, [{ terms: { 'metadata.kind.raw': ['LlmProvider', 'LlmProxy'] } }]);
-});
-
-test('an MCP method or Tool filter matches the key\'s keyword field', () => {
-    const mcp = { handle: 'mcp', display_name: 'MCP calls', type: 'REQUEST_COUNT', type_key: null, filter_fields: [
-        { field: 'MCP_METHOD', eventKey: 'metadata.mcpAnalytics.jsonRpcMethod' },
-        { field: 'MCP_TOOL', eventKey: 'metadata.mcpAnalytics.capabilityName' },
-    ] };
-    const query = catalog.meterQuery(catalog.priceMeter(mcp, [
-        filter('MCP_TOOL', 'NOT_IN', 'add'),
-        filter('MCP_METHOD', 'EQUALS', 'tools/call'),
-    ]));
-    assert.deepStrictEqual(query.query.bool.must.slice(2), [
-        { exists: { field: 'metadata.mcpAnalytics.capabilityName.raw' } },
-        { terms: { 'metadata.mcpAnalytics.jsonRpcMethod.raw': ['tools/call'] } },
-    ]);
-    assert.deepStrictEqual(query.query.bool.must_not, [{ terms: { 'metadata.mcpAnalytics.capabilityName.raw': ['add'] } }]);
-});
-
-test('each Token condition is a range on the number at its key, in must', () => {
-    const condition = (operator, value, key = 'metadata.aiTokenUsage.promptTokens') => ({ field: 'TOKEN', eventKey: key, operator, values: [value] });
-    const must = (...filters) => catalog.meterQuery(catalog.priceMeter(tokens('metadata.aiTokenUsage.promptTokens'), filters)).query.bool.must.slice(2);
-    assert.deepStrictEqual(must(condition('GREATER_THAN', '333')), [{ range: { 'metadata.aiTokenUsage.promptTokens': { gt: 333 } } }]);
-    assert.deepStrictEqual(must(condition('GREATER_THAN_OR_EQUAL', '333')), [{ range: { 'metadata.aiTokenUsage.promptTokens': { gte: 333 } } }]);
-    assert.deepStrictEqual(must(condition('LESS_THAN', '333')), [{ range: { 'metadata.aiTokenUsage.promptTokens': { lt: 333 } } }]);
-    assert.deepStrictEqual(must(condition('LESS_THAN_OR_EQUAL', '333')), [{ range: { 'metadata.aiTokenUsage.promptTokens': { lte: 333 } } }]);
-    assert.deepStrictEqual(must(condition('EQUALS', '0')), [{ range: { 'metadata.aiTokenUsage.promptTokens': { gte: 0, lte: 0 } } }]);
-    // A range on one key with conditions on another key and an API type.
-    const query = catalog.meterQuery(catalog.priceMeter(tokens('metadata.aiTokenUsage.promptTokens'), [
-        filter('API_TYPE', 'EQUALS', 'LlmProvider'),
-        condition('GREATER_THAN', '100'),
-        condition('LESS_THAN_OR_EQUAL', '500'),
-        condition('GREATER_THAN', '0', 'metadata.aiTokenUsage.totalTokens'),
+test('each comparison is a range on the number at the property\'s key itself, in must', () => {
+    const compare = (operator, value, field = 'Prompt tokens') => ({ field, operator, values: [value] });
+    const meter = tokens('metadata.aiTokenUsage.promptTokens');
+    assert.deepStrictEqual(must(meter, compare('GREATER_THAN', '333')), [{ range: { 'metadata.aiTokenUsage.promptTokens': { gt: 333 } } }]);
+    assert.deepStrictEqual(must(meter, compare('GREATER_THAN_OR_EQUAL', '333')), [{ range: { 'metadata.aiTokenUsage.promptTokens': { gte: 333 } } }]);
+    assert.deepStrictEqual(must(meter, compare('LESS_THAN', '333')), [{ range: { 'metadata.aiTokenUsage.promptTokens': { lt: 333 } } }]);
+    assert.deepStrictEqual(must(meter, compare('LESS_THAN_OR_EQUAL', '333')), [{ range: { 'metadata.aiTokenUsage.promptTokens': { lte: 333 } } }]);
+    // A status code compared as a number, beside a range on one key and a match on another.
+    const query = catalog.meterQuery(catalog.priceMeter(meter, [
+        filter('API type', 'EQUALS', 'LlmProvider'),
+        compare('GREATER_THAN', '100'),
+        compare('LESS_THAN_OR_EQUAL', '500'),
+        compare('GREATER_THAN_OR_EQUAL', '400', 'Status code'),
     ]));
     assert.deepStrictEqual(query.query.bool.must.slice(2), [
         { terms: { 'metadata.apiType.raw': ['LlmProvider'] } },
         { range: { 'metadata.aiTokenUsage.promptTokens': { gt: 100 } } },
         { range: { 'metadata.aiTokenUsage.promptTokens': { lte: 500 } } },
-        { range: { 'metadata.aiTokenUsage.totalTokens': { gt: 0 } } },
+        { range: { 'response.status': { gte: 400 } } },
     ]);
     assert.strictEqual(query.query.bool.must_not, undefined);
-    // The usage a subscriber sees is counted with the same conditions.
-    const search = catalog.usageSearch(catalog.priceMeter(calls, [condition('GREATER_THAN', '0', 'metadata.aiTokenUsage.totalTokens')]),
-        { customerId: 'cus_1', subscriptionId: 'sub_1' });
-    assert.deepStrictEqual(search.query.bool.must.slice(2), [{ range: { 'metadata.aiTokenUsage.totalTokens': { gt: 0 } } }]);
 });
 
-test('a filter on a field its meter has no event key for is refused before Moesif is called', () => {
-    assert.throws(() => catalog.meterQuery(catalog.priceMeter(tokens('usage.in', []), [filter('API_TYPE', 'EQUALS', 'LlmProvider')])),
-        /The meter llm has no event key for the API_TYPE filter/);
+test('a filter on a property its meter does not have is refused before Moesif is called', () => {
+    assert.throws(() => catalog.meterQuery(catalog.priceMeter(tokens('usage.in', []), [filter('API type', 'EQUALS', 'LlmProvider')])),
+        /The meter llm has no event key for the API type filter/);
 });
 
 test('the billing meter reports to the plan\'s Stripe product and price', () => {

@@ -76,9 +76,9 @@ func newPricingTestService() (*SubscriptionPlanService, *webhookPlanRepo) {
 //   - input tokens of two other API types (a second price on the same meter);
 //   - graduated prices for API calls, without filters.
 const threeUsagePrices = `{"pricingType":"USAGE_BASED","currency":"USD","billingPeriod":"MONTH","prices":[
-	{"meterId":"llm-input","filters":[{"field":"api_type","operator":"equals","values":[" LlmProvider "]}],
+	{"meterId":"llm-input","filters":[{"field":" api type ","operator":"equals","values":[" LlmProvider "]}],
 	 "pricingModel":"per_unit","unitAmount":"2.50","unitQuantity":1000000,"tiers":null},
-	{"meterId":"llm-input","filters":[{"field":"API_TYPE","operator":"IN","values":["Mcp","LlmProxy","Mcp"]}],
+	{"meterId":"llm-input","filters":[{"field":"API TYPE","operator":"IN","values":["Mcp","LlmProxy","Mcp"]}],
 	 "pricingModel":"PER_UNIT","unitAmount":"0.15","unitQuantity":1000000,"tiers":null},
 	{"meterId":"api-calls","filters":[],"pricingModel":"GRADUATED","unitAmount":null,
 	 "tiers":[{"upTo":10000,"unitAmount":"0","flatAmount":null},{"upTo":null,"unitAmount":"0.001","flatAmount":null}]}]}`
@@ -103,13 +103,14 @@ func TestCreatePlan_StoresThePricingWithThePlan(t *testing.T) {
 	if usage.PricingType != "USAGE_BASED" || usage.FlatAmount != nil || len(usage.Prices) != 3 {
 		t.Fatalf("usage pricing %+v", usage)
 	}
-	// One meter priced twice, for different API types; codes upper-cased and filter values normalized.
+	// One meter priced twice, for different API types; codes upper-cased, each filter naming its
+	// property as the meter spells it, and filter values normalized.
 	if provider := usage.Prices[0]; provider.MeterHandle != "llm-input" || provider.PricingModel != "PER_UNIT" || *provider.UnitQuantity != 1000000 ||
-		!reflect.DeepEqual(provider.Filters, []model.PriceFilter{{Field: "API_TYPE", Operator: "EQUALS", Values: []string{"LlmProvider"}}}) {
+		!reflect.DeepEqual(provider.Filters, []model.PriceFilter{{Field: "API type", Operator: "EQUALS", Values: []string{"LlmProvider"}}}) {
 		t.Errorf("first price = %+v", provider)
 	}
 	if mini := usage.Prices[1]; mini.MeterHandle != "llm-input" ||
-		!reflect.DeepEqual(mini.Filters, []model.PriceFilter{{Field: "API_TYPE", Operator: "IN", Values: []string{"Mcp", "LlmProxy"}}}) {
+		!reflect.DeepEqual(mini.Filters, []model.PriceFilter{{Field: "API type", Operator: "IN", Values: []string{"Mcp", "LlmProxy"}}}) {
 		t.Errorf("second price = %+v", mini)
 	}
 	if calls := usage.Prices[2]; calls.MeterHandle != "api-calls" || calls.PricingModel != "GRADUATED" ||
@@ -123,26 +124,30 @@ func TestCreatePlan_StoresThePricingWithThePlan(t *testing.T) {
 	}
 }
 
-// A Token condition names one of the meter's Token keys, its typeKey included, and is stored with
-// it.
-func TestCreatePlan_StoresTokenConditions(t *testing.T) {
+// A comparison names one of the meter's properties in any case, and its number may be a JSON number.
+// It is stored with the meter's spelling of the name and the number in digits.
+func TestCreatePlan_StoresComparisons(t *testing.T) {
 	svc, repo := newPricingTestService()
 	body := `{"pricingType":"USAGE_BASED","currency":"USD","billingPeriod":"MONTH","prices":[
 		{"meterId":"llm-input","pricingModel":"PER_UNIT","unitAmount":"1","filters":[
-			{"field":"token","eventKey":" metadata.aiTokenUsage.promptTokens ","operator":"greater_than","values":["333"]}]},
+			{"field":" prompt tokens ","operator":"greater_than","values":[333]}]},
 		{"meterId":"llm-input","pricingModel":"PER_UNIT","unitAmount":"2","filters":[
-			{"field":"TOKEN","eventKey":"metadata.aiTokenUsage.promptTokens","operator":"LESS_THAN_OR_EQUAL","values":["333"]}]}]}`
+			{"field":"Prompt tokens","operator":"LESS_THAN_OR_EQUAL","values":["0333"]}]}]}`
 	if _, err := svc.CreatePlan("org", "actor", &model.SubscriptionPlan{Handle: "gold", Name: "Gold"}, []byte(body)); err != nil {
 		t.Fatalf("CreatePlan: %v", err)
 	}
-	want := []model.PriceFilter{{Field: "TOKEN", EventKey: "metadata.aiTokenUsage.promptTokens", Operator: "GREATER_THAN", Values: []string{"333"}}}
-	if got := repo.pricing.Prices[0].Filters; !reflect.DeepEqual(got, want) {
-		t.Fatalf("filters = %+v, want %+v", got, want)
+	for i, want := range [][]model.PriceFilter{
+		{{Field: "Prompt tokens", Operator: "GREATER_THAN", Values: []string{"333"}}},
+		{{Field: "Prompt tokens", Operator: "LESS_THAN_OR_EQUAL", Values: []string{"333"}}},
+	} {
+		if got := repo.pricing.Prices[i].Filters; !reflect.DeepEqual(got, want) {
+			t.Fatalf("filters of price %d = %+v, want %+v", i+1, got, want)
+		}
 	}
 
-	// The API Portal gets the condition with its key.
+	// The API Portal gets the filter by the property's name, with no event key.
 	sent, err := json.Marshal(portalPricing(repo.pricing).Prices[0].Filters)
-	if err != nil || string(sent) != `[{"field":"TOKEN","eventKey":"metadata.aiTokenUsage.promptTokens","operator":"GREATER_THAN","values":["333"]}]` {
+	if err != nil || string(sent) != `[{"field":"Prompt tokens","operator":"GREATER_THAN","values":["333"]}]` {
 		t.Fatalf("sent to the portal %s, %v", sent, err)
 	}
 }
@@ -153,7 +158,7 @@ func TestCreatePlan_PricingIsCheckedBeforeThePlanIsCreated(t *testing.T) {
 		return `{"pricingType":"USAGE_BASED","currency":"USD","billingPeriod":"MONTH","prices":[` + strings.Join(prices, ",") + `]}`
 	}
 	byAPIType := func(operator, values string) string {
-		return `{"meterId":"llm-input","pricingModel":"PER_UNIT","unitAmount":"1","filters":[{"field":"API_TYPE","operator":"` + operator +
+		return `{"meterId":"llm-input","pricingModel":"PER_UNIT","unitAmount":"1","filters":[{"field":"API type","operator":"` + operator +
 			`","values":` + values + `}]}`
 	}
 	twentyOne := make([]string, 21)
@@ -167,13 +172,13 @@ func TestCreatePlan_PricingIsCheckedBeforeThePlanIsCreated(t *testing.T) {
 			"pricingModel is not a known field"},
 		{usage(`{"meterId":"api-calls","pricingModel":"PER_UNIT","unitAmount":"1","recurringFee":"9"}`),
 			"recurringFee of price 1 is not a known field"},
-		{usage(calls, `{"meterId":"llm-input","pricingModel":"PER_UNIT","unitAmount":"1","conditionValues":[{"field":"API_TYPE","values":["LlmProvider"]}]}`),
+		{usage(calls, `{"meterId":"llm-input","pricingModel":"PER_UNIT","unitAmount":"1","conditionValues":[{"field":"API type","values":["LlmProvider"]}]}`),
 			"conditionValues of price 2 is not a known field"},
 		{usage(`{"displayName":"API calls","meterId":"api-calls","pricingModel":"PER_UNIT","unitAmount":"1"}`),
 			"displayName of price 1 is not a known field"},
 		{usage(`{"meterId":"api-calls","pricingModel":"PER_UNIT","unitQuantitiy":1000,"unitAmount":"1"}`),
 			"unitQuantitiy of price 1 is not a known field"},
-		{usage(`{"meterId":"api-calls","pricingModel":"PER_UNIT","unitAmount":"1","filters":[{"field":"HTTP_STATUS_CODE","operator":"EQUALS","values":["200"]},{"field":"HTTP_STATUS_CODE","operator":"EQUALS","value":"404"}]}`),
+		{usage(`{"meterId":"api-calls","pricingModel":"PER_UNIT","unitAmount":"1","filters":[{"field":"Status code","operator":"EQUALS","values":["200"]},{"field":"Status code","operator":"EQUALS","value":"404"}]}`),
 			"value of filter 2 of price 1 is not a known field"},
 		{usage(`{"meterId":"api-calls","pricingModel":"VOLUME","tiers":[{"upTo":10,"unitAmount":"1"},{"upto":null,"unitAmount":"0.5"}]}`),
 			"upto of tier 2 of price 1 is not a known field"},
@@ -198,34 +203,33 @@ func TestCreatePlan_PricingIsCheckedBeforeThePlanIsCreated(t *testing.T) {
 			"Prices 1 and 2 both count the same requests of the meter api-calls; give them different filters."},
 		{usage(`{"meterId":"api-calls","pricingModel":"VOLUME","tiers":[{"upTo":100,"unitAmount":"1"},{"upTo":100,"unitAmount":"1"},{"upTo":null,"unitAmount":"1"}]}`),
 			"Each tier of price 1 needs an upTo greater than the tier before it"},
-		{usage(calls, byAPIType("STARTS_WITH", `["Llm"]`)), "The API_TYPE operator of price 2 must be one of EQUALS, NOT_EQUALS, IN, NOT_IN"},
+		{usage(calls, byAPIType("MATCHES", `["Llm"]`)),
+			"The operator of filter 1 of price 2 must be one of EQUALS, NOT_EQUALS, IN, NOT_IN, STARTS_WITH, GREATER_THAN, GREATER_THAN_OR_EQUAL, LESS_THAN, LESS_THAN_OR_EQUAL"},
 		{usage(byAPIType("EQUALS", `["LlmProvider","Agent"]`)), "price 1: Operator EQUALS takes exactly one value"},
-		{usage(`{"meterId":"api-calls","pricingModel":"PER_UNIT","unitAmount":"1","filters":[{"field":"HTTP_STATUS_CODE","operator":"IN","values":["2xx"]}]}`),
-			`price 1: "2xx" is not a status code such as 200 or 404`},
-		{usage(`{"meterId":"api-calls","pricingModel":"PER_UNIT","unitAmount":"1","filters":[{"field":"TOKEN_TYPE","operator":"EQUALS","values":["INPUT"]}]}`),
-			"field of filter 1 of price 1 must be one of HTTP_STATUS_CODE, HTTP_METHOD, RESOURCE, API_TYPE, MCP_METHOD, MCP_TOOL, TOKEN"},
+		{usage(`{"meterId":"api-calls","pricingModel":"PER_UNIT","unitAmount":"1","filters":[{"field":"Status code","operator":"GREATER_THAN","values":["4xx"]}]}`),
+			"price 1: A comparison on Status code takes a whole number from 0 to 1000000000000"},
+		{usage(`{"meterId":"api-calls","pricingModel":"PER_UNIT","unitAmount":"1","filters":[{"field":"Status code","operator":"GREATER_THAN","values":["499"]},{"field":"status code","operator":"NOT_EQUALS","values":["503"]}]}`),
+			"price 1 filters on Status code more than once"},
+		{usage(`{"meterId":"api-calls","pricingModel":"PER_UNIT","unitAmount":"1","filters":[{"field":"` + strings.Repeat("n", 41) + `","operator":"EQUALS","values":["a"]}]}`),
+			"field of filter 1 of price 1 must be 1 to 40 characters"},
+		{usage(`{"meterId":"api-calls","pricingModel":"PER_UNIT","unitAmount":"1","filters":[{"field":"Status code","operator":"EQUALS","values":[true]}]}`),
+			"The request body is not a valid plan pricing"},
 		{usage(`{"meterId":"api-calls","pricingModel":"FLAT"}`), "pricingModel of price 1 must be one of PER_UNIT, VOLUME, GRADUATED"},
 		{usage(`{"meterId":"api-calls","pricingModel":"VOLUME","tiers":[{"upTo":10,"unitAmount":"1"},{"upTo":null,"unitAmount":"0.5"}],"unitAmount":"1"}`),
 			"A VOLUME price (price 1) does not take unitAmount"},
 		{`{"pricingType":"FLAT_RATE","currency":"USD","billingPeriod":"WEEK","flatAmount":"1"}`, "billingPeriod must be one of MONTH, YEAR"},
 		{usage(calls, `{"meterId":"no-such-meter","pricingModel":"PER_UNIT","unitAmount":"1"}`), "Unknown meter: no-such-meter"},
-		// Each meter lists the fields its prices may filter on: api-calls the status code, llm-input
-		// the API type.
-		{usage(calls, `{"meterId":"llm-input","pricingModel":"PER_UNIT","unitAmount":"1","filters":[{"field":"HTTP_METHOD","operator":"EQUALS","values":["POST"]}]}`),
-			"price 2: the meter llm-input does not allow filtering on HTTP_METHOD"},
-		{usage(`{"meterId":"api-calls","pricingModel":"PER_UNIT","unitAmount":"1","filters":[{"field":"HTTP_STATUS_CODE","operator":"EQUALS","values":["200"]},{"field":"api_type","operator":"EQUALS","values":["LlmProvider"]}]}`),
-			"price 1: the meter api-calls does not allow filtering on API_TYPE"},
-		{usage(`{"meterId":"api-calls","pricingModel":"PER_UNIT","unitAmount":"1","filters":[{"field":"API_TYPE","operator":"EQUALS","values":["RestApi"]}]}`),
-			"price 1: the meter api-calls does not allow filtering on API_TYPE"},
-		// Token conditions only on the meter's Token keys: llm-input has its typeKey only, api-calls none.
-		{usage(`{"meterId":"llm-input","pricingModel":"PER_UNIT","unitAmount":"1","filters":[{"field":"TOKEN","eventKey":"metadata.aiTokenUsage.totalTokens","operator":"GREATER_THAN","values":["0"]}]}`),
-			"price 1: the meter has no Token field with the key metadata.aiTokenUsage.totalTokens"},
-		{usage(`{"meterId":"api-calls","pricingModel":"PER_UNIT","unitAmount":"1","filters":[{"field":"HTTP_STATUS_CODE","operator":"EQUALS","values":["200"]},{"field":"TOKEN","eventKey":"metadata.aiTokenUsage.promptTokens","operator":"GREATER_THAN","values":["0"]}]}`),
-			"price 1: the meter has no Token field with the key metadata.aiTokenUsage.promptTokens"},
-		{usage(`{"meterId":"llm-input","pricingModel":"PER_UNIT","unitAmount":"1","filters":[{"field":"TOKEN","operator":"GREATER_THAN","values":["0"]}]}`),
-			"price 1: a Token filter needs an eventKey"},
-		{usage(`{"meterId":"llm-input","pricingModel":"PER_UNIT","unitAmount":"1","filters":[{"field":"API_TYPE","eventKey":"metadata.apiType","operator":"EQUALS","values":["LlmProvider"]}]}`),
-			"price 1: only a Token filter takes an eventKey"},
+		// Each filter names one of its meter's properties: api-calls has Status code, llm-input API type
+		// and Prompt tokens.
+		{usage(calls, `{"meterId":"llm-input","pricingModel":"PER_UNIT","unitAmount":"1","filters":[{"field":"HTTP method","operator":"EQUALS","values":["POST"]}]}`),
+			"price 2: the meter llm-input has no property HTTP method"},
+		{usage(`{"meterId":"api-calls","pricingModel":"PER_UNIT","unitAmount":"1","filters":[{"field":"Status code","operator":"EQUALS","values":["200"]},{"field":"api type","operator":"EQUALS","values":["LlmProvider"]}]}`),
+			"price 1: the meter api-calls has no property api type"},
+		{usage(`{"meterId":"api-calls","pricingModel":"PER_UNIT","unitAmount":"1","filters":[{"field":"Prompt tokens","operator":"GREATER_THAN","values":["0"]}]}`),
+			"price 1: the meter api-calls has no property Prompt tokens"},
+		// A filter reads the key of the property it names, so it has no event key of its own.
+		{usage(`{"meterId":"llm-input","pricingModel":"PER_UNIT","unitAmount":"1","filters":[{"field":"API type","eventKey":"metadata.apiType","operator":"EQUALS","values":["LlmProvider"]}]}`),
+			"eventKey of filter 1 of price 1 is not a known field"},
 		{`[1]`, "The request body is not a valid plan pricing"},
 	}
 	for _, c := range cases {

@@ -569,7 +569,7 @@ The `pricing` of a paid plan, as the plan events carry it:
       {
         "meter_handle": "llm-input",
         "filters": [
-          { "field": "API_TYPE", "operator": "EQUALS", "values": ["LlmProvider"] }
+          { "field": "API type", "operator": "EQUALS", "values": ["LlmProvider"] }
         ],
         "pricing_model": "PER_UNIT",
         "unit_amount": "2.50",
@@ -579,7 +579,7 @@ The `pricing` of a paid plan, as the plan events carry it:
       {
         "meter_handle": "llm-input",
         "filters": [
-          { "field": "API_TYPE", "operator": "EQUALS", "values": ["LlmProxy"] }
+          { "field": "API type", "operator": "EQUALS", "values": ["LlmProxy"] }
         ],
         "pricing_model": "PER_UNIT",
         "unit_amount": "0.15",
@@ -589,8 +589,8 @@ The `pricing` of a paid plan, as the plan events carry it:
       {
         "meter_handle": "api-calls",
         "filters": [
-          { "field": "HTTP_STATUS_CODE", "operator": "IN", "values": ["200", "201"] },
-          { "field": "RESOURCE", "operator": "STARTS_WITH", "values": ["/orders"] }
+          { "field": "Status code", "operator": "IN", "values": ["200", "201"] },
+          { "field": "Resource", "operator": "STARTS_WITH", "values": ["/orders"] }
         ],
         "pricing_model": "GRADUATED",
         "unit_amount": null,
@@ -610,11 +610,14 @@ A paid plan is either a flat rate or usage based. Amounts are decimal strings in
 - `pricing_type` is `FLAT_RATE` or `USAGE_BASED`. `billing_period` is `MONTH` or `YEAR`.
 - A flat rate plan has `flat_amount`, the amount charged every billing period, and an empty `prices`.
 - A usage based plan has `flat_amount` null and 1 to 20 `prices`, in order. Each price is on the meter `meter_handle` and counts the requests of that meter that match all its `filters` (everything the meter counts when `filters` is empty). A request that no price counts is not charged.
-- A meter may have several prices in a plan, but two prices on one meter never count the same request: they differ on a field that either filters on.
-- A price has no name of its own: subscribers see the meter's name followed by its filters, such as "LLM input tokens · LlmProvider", "API calls · not DELETE, OPTIONS" or "API calls · /orders…".
-- `filters` has at most one filter per fixed field, at most 20 in all, each on a field the meter's `filter_fields` lists. `HTTP_STATUS_CODE`, `HTTP_METHOD`, `API_TYPE`, `MCP_METHOD` and `MCP_TOOL` take `EQUALS`, `NOT_EQUALS`, `IN` or `NOT_IN`; `RESOURCE` takes `EQUALS`, `NOT_EQUALS` or `STARTS_WITH`. `EQUALS`, `NOT_EQUALS` and `STARTS_WITH` filters have one value; `IN` and `NOT_IN` filters have 1 to 20. Status codes are exact codes from 100 to 599, such as `"200"`, not classes such as `"2xx"`; HTTP methods are upper case; a resource starts with `/`; an API type is matched exactly as written (our gateway's API types are `RestApi`, `WebSubApi`, `LlmProvider`, `LlmProxy`, `Mcp` and `Agent`).
-- `MCP_METHOD` is the JSON-RPC method of a request to an MCP server, such as `tools/call`, and `MCP_TOOL` the name of the tool a tool call runs, both matched exactly as written. An `MCP_TOOL` filter counts only tool calls (`tools/call`), so a price that filters on `MCP_TOOL` has no `MCP_METHOD` filter. For example, `{ "field": "MCP_METHOD", "operator": "EQUALS", "values": ["tools/call"] }` counts every tool call and none of the other MCP messages (`initialize`, `tools/list`, `ping`), and `{ "field": "MCP_TOOL", "operator": "IN", "values": ["search"] }` counts calls to the `search` tool.
-- A Token condition compares the number at one of the meter's Token keys (its `type_key` or a `TOKEN` filter field), named by its `event_key`: `{ "field": "TOKEN", "event_key": "metadata.aiTokenUsage.promptTokens", "operator": "GREATER_THAN", "values": ["333"] }`. The operators are `GREATER_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN`, `LESS_THAN_OR_EQUAL` and `EQUALS`, with one whole number from 0 to 1000000000000, written without leading zeros. A price puts at most two conditions on a key, which can all be true together, such as more than 100 and at most 500. Other filters carry no `event_key`.
+- A meter may have several prices in a plan, but two prices on one meter never count the same request: they differ on a property that either filters on.
+- A price has no name of its own: subscribers see the meter's name followed by its filters, such as "LLM input tokens · LlmProvider", "API calls · not DELETE, OPTIONS", "API calls · /orders…" or "LLM input tokens · Prompt tokens > 333".
+- A price is sold on every API its plan is offered on, whatever its filters.
+- Each filter names one of the meter's properties (see `filter_fields` under [`meter.created`](#metercreated--meterupdated)) in its `field`, with the meter's spelling, and reads that property's event key. A filter has no `event_key` of its own. `filters` has at most 20 filters.
+- Any operator works on any property. `EQUALS`, `NOT_EQUALS` and `STARTS_WITH` filters have one text value; `IN` and `NOT_IN` filters have 1 to 20. Text values are matched exactly as written, case included, and `STARTS_WITH` is a plain text prefix (`/orders` also matches `/orders-archive`). `NOT_EQUALS` and `NOT_IN` count only the requests that have the property.
+- `GREATER_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN` and `LESS_THAN_OR_EQUAL` compare the property as a number with one whole number from 0 to 1000000000000, written without leading zeros: `{ "field": "Prompt tokens", "operator": "GREATER_THAN", "values": ["333"] }`.
+- On one property, a price has either one filter with `EQUALS`, `NOT_EQUALS`, `IN`, `NOT_IN` or `STARTS_WITH`, or one or two comparisons that can all be true together, such as more than 100 and at most 500.
+- Values are not checked against what the property holds. A filter that can't match the event field, such as text on a number field, counts nothing. Our gateway's API types are `RestApi`, `WebSubApi`, `LlmProvider`, `LlmProxy`, `Mcp` and `Agent`, and an MCP method is a JSON-RPC method such as `tools/call`.
 - `pricing_model` is `PER_UNIT`, `VOLUME` or `GRADUATED`. `PER_UNIT` charges `unit_amount` per `unit_quantity` units. The tiered models carry `tiers` as `[{ "up_to", "unit_amount", "flat_amount" }]`, with `up_to` null on the last tier; `VOLUME` prices all the units at the tier their total falls in, and `GRADUATED` prices the units in each tier at that tier's price.
 
 ### `subscription_plan.deleted`
@@ -636,29 +639,32 @@ Fired when a meter is created or changed. A meter defines what a paid plan charg
     "type": "TOKENS",
     "type_key": "metadata.aiTokenUsage.promptTokens",
     "filter_fields": [
-      { "field": "API_TYPE", "event_key": "metadata.apiType" }
+      { "field": "API type", "event_key": "metadata.apiType" },
+      { "field": "Prompt tokens", "event_key": "metadata.aiTokenUsage.promptTokens" }
     ]
   }
 }
 ```
 
-`type` is `REQUEST_COUNT` (requests: each request counts 1) or `TOKENS` (the tokens of AI API requests). A `TOKENS` meter adds up the number in each event at `type_key`; it is null for `REQUEST_COUNT`. The meter's name says what it counts, such as "Input tokens". A meter has no conditions: each plan price on it picks the requests it counts with its own `filters` (see [Pricing](#pricing)), on the fields that `filter_fields` lists, each with the `event_key` it reads.
+`type` is `REQUEST_COUNT` (requests: each request counts 1) or `TOKENS` (the tokens of AI API requests). A `TOKENS` meter adds up the number in each event at `type_key`; it is null for `REQUEST_COUNT`. The meter's name says what it counts, such as "Input tokens". A meter has no conditions: each plan price on it picks the requests it counts with its own `filters` (see [Pricing](#pricing)), on the properties that `filter_fields` lists.
 
-Event keys are stored on the meter and set by the administrator, as full paths in the Moesif event, so a meter also works with a gateway that names its analytics fields differently. Our gateway's fields are the defaults:
+Each of `filter_fields` is a property: a name the administrator chooses (`field`, 1 to 40 characters, unique within the meter ignoring case) and the event field it reads (`event_key`, unique within the meter). A meter has at most 10. A property may read the meter's own `type_key`, so prices can compare the number the meter adds up. `filter_fields` is empty when the meter's prices cannot filter.
 
-| Key | Default |
+Event keys are set by the administrator as full paths in the Moesif event, 1 to 255 characters with no spaces, so a meter also works with a gateway that names its analytics fields differently. The meter forms offer our gateway's properties, with names and keys that can be changed:
+
+| Property | Event key |
 |---|---|
-| `type_key` | `metadata.aiTokenUsage.promptTokens`, offered for a new `TOKENS` meter. Our gateway also sends `metadata.aiTokenUsage.completionTokens` and `metadata.aiTokenUsage.totalTokens`. |
-| `event_key` of `HTTP_STATUS_CODE` | `response.status` |
-| `event_key` of `HTTP_METHOD` | `request.verb` |
-| `event_key` of `RESOURCE` | `metadata.apiResourceTemplate` |
-| `event_key` of `API_TYPE` | `metadata.apiType` |
-| `event_key` of `MCP_METHOD` | `metadata.mcpAnalytics.jsonRpcMethod` |
-| `event_key` of `MCP_TOOL` | `metadata.mcpAnalytics.capabilityName` |
+| Status code | `response.status` |
+| HTTP method | `request.verb` |
+| Resource | `metadata.apiResourceTemplate` |
+| API type | `metadata.apiType` |
+| MCP method | `metadata.mcpAnalytics.jsonRpcMethod` |
+| Tool | `metadata.mcpAnalytics.capabilityName` |
+| Prompt tokens | `metadata.aiTokenUsage.promptTokens` |
+| Completion tokens | `metadata.aiTokenUsage.completionTokens` |
+| Total tokens | `metadata.aiTokenUsage.totalTokens` |
 
-A `TOKEN` filter field reads a number, such as a token count, at its `event_key`, and prices compare it. It has no default key, may appear once per key (not the meter's `type_key`, which prices can compare too), and is offered with our gateway's token keys: `metadata.aiTokenUsage.promptTokens`, `metadata.aiTokenUsage.completionTokens` and `metadata.aiTokenUsage.totalTokens`. A meter has at most 10 filter fields.
-
-`filter_fields` is empty when the meter's prices cannot filter.
+A new `TOKENS` meter is offered `metadata.aiTokenUsage.promptTokens` as its `type_key`.
 
 ### `meter.deleted`
 

@@ -27,35 +27,16 @@
         {{#if billingConfiguration}}
         <div id="cfgRevenueLoading" class="cfg-loader" role="status">
           <span class="cfg-spinner" aria-hidden="true"></span>
-          <span class="visually-hidden">Loading the report</span>
+          <span class="visually-hidden">Loading invoices</span>
         </div>
         <div id="cfgRevenueNotice" class="cfg-billing-alert" role="status" hidden></div>
         <div id="cfgRevenueBody" class="cfg-revenue-body" hidden>
           <div class="cfg-revenue-cards" id="cfgRevenueCards"></div>
-          <p id="cfgRevenueProgress" class="cfg-revenue-progress" role="status" hidden></p>
 
           <section class="cfg-revenue-section">
             <h3 class="cfg-revenue-title">Invoiced revenue by month</h3>
             <div id="cfgRevenueChart"></div>
             <p class="cfg-revenue-muted">Select a month to see only that month.</p>
-          </section>
-
-          <section class="cfg-revenue-section">
-            <h3 class="cfg-revenue-title" id="cfgRevenuePlansTitle">Plans</h3>
-            <div class="cfg-table-wrap" id="cfgRevenuePlansWrap">
-              <table class="cfg-table">
-                <thead>
-                  <tr>
-                    <th scope="col">API</th>
-                    <th scope="col">Plan</th>
-                    <th scope="col">Subscriptions</th>
-                    <th scope="col">Usage</th>
-                    <th scope="col" class="cfg-revenue-amount">Revenue</th>
-                  </tr>
-                </thead>
-                <tbody id="cfgRevenuePlans"></tbody>
-              </table>
-            </div>
           </section>
         </div>
         {{else}}

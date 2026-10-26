@@ -50,17 +50,15 @@ import { CURRENCIES, type Currency } from './currencies';
 import { MeterPicker } from './MeterPicker';
 import { ReadOnlyField } from './ReadOnlyField';
 import {
-  API_TYPES,
-  FILTER_RULES,
-  HTTP_METHODS,
-  MAX_TOKEN_CONDITIONS,
-  MCP_METHODS,
-  fieldMessages,
+  COMPARISONS,
+  MAX_COMPARISONS,
+  OPERATORS,
+  isComparison,
   meterUnit,
-  operatorMessage,
-  priceFieldsOf,
+  operatorMessages,
+  propertiesOf,
+  sameName,
   takesOneValue,
-  tokenFieldLabel,
   typeLabel,
   type FilterOperator,
 } from './meterLabels';
@@ -69,7 +67,6 @@ import {
   MAX_TIERS,
   PRICING_MODELS,
   PRICING_TYPES,
-  emptyFilterRow,
   filterRows,
   isAllowed,
   isTiered,
@@ -93,8 +90,8 @@ const AMOUNT_FIELD = 'plan-pricing-amount';
 const MONEY_WIDTH = 130;
 const TIER_COLUMNS = `minmax(0,1.3fr) auto ${MONEY_WIDTH}px auto ${MONEY_WIDTH}px 32px`;
 /**
- * Filter rows: the filter's name, its operator, its values, then adding or removing a Token
- * condition.
+ * Filter rows: the property's name, the operator, the values, then adding or removing a second
+ * comparison.
  */
 const FILTER_COLUMNS = '150px minmax(0,1fr) minmax(0,1.4fr) 32px';
 
@@ -112,7 +109,7 @@ const messages = defineMessages({
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.addCondition',
     defaultMessage: 'Add a condition on {field}',
     description:
-      'Accessible name of the button adding a second condition on a Token field, e.g. "Token · Prompt tokens".',
+      'Accessible name of the button adding a second comparison on a property, e.g. "Prompt tokens", so the two make a range.',
   },
   addTier: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.addTier',
@@ -131,17 +128,6 @@ const messages = defineMessages({
   currencyLabel: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.currency',
     defaultMessage: 'Currency',
-  },
-  apiTypePlaceholder: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.apiTypePlaceholder',
-    defaultMessage: '{many, select, true {RestApi, Mcp} other {RestApi}}',
-    description: 'Example API types, as the gateway names them. Do not translate the names.',
-  },
-  any: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.any',
-    defaultMessage: 'Any',
-    description:
-      'The empty choice of a filter whose one value is picked from a list, such as an HTTP method: the price counts every value.',
   },
   eventLabel: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.eventLabel',
@@ -168,15 +154,6 @@ const messages = defineMessages({
   meterLabel: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.meter',
     defaultMessage: 'Meter',
-  },
-  methodsPlaceholder: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.methodsPlaceholder',
-    defaultMessage: 'Pick methods',
-  },
-  mcpMethodPlaceholder: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.mcpMethodPlaceholder',
-    defaultMessage: '{many, select, true {tools/call, resources/read} other {tools/call}}',
-    description: 'Example MCP methods, as the MCP protocol names them. Do not translate the names.',
   },
   modelGraduated: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.model.graduated',
@@ -208,7 +185,8 @@ const messages = defineMessages({
   noFilters: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.noFilters',
     defaultMessage: 'This meter has no filters.',
-    description: 'Shown under Filters of a usage price whose meter lists no fields to filter on.',
+    description:
+      'Shown under Filters of a usage price whose meter lists no properties to filter on.',
   },
   noMeters: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.noMeters',
@@ -278,34 +256,32 @@ const messages = defineMessages({
   },
   problemFilterNotAllowed: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.problem.filterNotAllowed',
-    defaultMessage: 'Price {position} filters on {field}, which the meter {meter} does not allow.',
+    defaultMessage: "Price {position} filters on {field}, which the meter {meter} doesn't have.",
     description:
-      '{meter} is the meter\'s id; {field} is the name of a filter field, such as "HTTP method".',
+      '{meter} is the meter\'s id; {field} is the name of a property, such as "HTTP method".',
+  },
+  problemConflict: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.problem.conflict',
+    defaultMessage: 'Price {position}: {field} takes one filter, or one or two comparisons.',
+    description:
+      '{field} is the name of a property, such as "Prompt tokens"; two comparisons make a range, such as more than 100 and at most 500.',
   },
   problemTooManyFilters: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.problem.tooManyFilters',
     defaultMessage: 'Price {position} has more than 20 filters; empty some of them.',
   },
-  problemToolWithMethod: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.problem.toolWithMethod',
-    defaultMessage:
-      "Price {position}: a Tool filter counts only tool calls, so it can't be used with an MCP method filter.",
-  },
-  problemTokenKey: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.problem.tokenKey',
-    defaultMessage: 'Price {position}: the meter has no Token field with the key {key}.',
-  },
-  problemTokenRange: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.problem.tokenRange',
+  problemRange: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.problem.range',
     defaultMessage: "Price {position}: the conditions on {field} can't all be true.",
     description:
-      '{field} names a Token field, e.g. "Token · Prompt tokens"; its two conditions leave no number, e.g. more than 500 and at most 100.',
+      '{field} is the name of a property, such as "Prompt tokens"; its two comparisons leave no number, e.g. more than 500 and at most 100.',
   },
-  problemTokenValue: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.problem.tokenValue',
+  problemNumber: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.problem.number',
     defaultMessage:
       'Price {position}: the value of {field} must be a whole number from 0 to 1,000,000,000,000.',
-    description: '{field} names a Token field, e.g. "Token · Prompt tokens".',
+    description:
+      '{field} is the name of a property, such as "Prompt tokens", compared with a number by more than, at least, less than or at most.',
   },
   problemNoPrices: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.problem.noPrices',
@@ -323,7 +299,8 @@ const messages = defineMessages({
   problemValues: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.problem.values',
     defaultMessage:
-      'Check the filters of price {position}: one value for equals, does not equal and starts with, status codes such as 200, and a resource starting with /.',
+      'Price {position}: {field} takes one value for equals, does not equal and starts with, and 1 to 20 for is one of and is not one of, each at most 255 characters.',
+    description: '{field} is the name of a property, such as "HTTP method".',
   },
   quantityLabel: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.quantity',
@@ -336,27 +313,12 @@ const messages = defineMessages({
   removeCondition: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.removeCondition',
     defaultMessage: 'Remove this condition on {field}',
-    description: 'Accessible name of the button removing the second condition on a Token field.',
+    description:
+      'Accessible name of the button removing the second comparison on a property, e.g. "Prompt tokens".',
   },
   removeTier: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.removeTier',
     defaultMessage: 'Remove tier',
-  },
-  resourcePlaceholder: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.resourcePlaceholder',
-    defaultMessage: "{prefix, select, true {/orders} other {/orders/'{id}'}}",
-    description:
-      'Example resource path from an API definition, or the start of one. Do not translate.',
-  },
-  statusPlaceholder: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.statusPlaceholder',
-    defaultMessage: '{many, select, true {200, 201} other {200}}',
-    description: 'Example status codes. Do not translate.',
-  },
-  toolPlaceholder: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.toolPlaceholder',
-    defaultMessage: '{many, select, true {search, fetch} other {search}}',
-    description: 'Example names of MCP server tools. Do not translate.',
   },
   tierFlat: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.tierFlat',
@@ -378,6 +340,11 @@ const messages = defineMessages({
   tierUpTo: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.tierUpTo',
     defaultMessage: 'Up to',
+  },
+  valuesPlaceholder: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.valuesPlaceholder',
+    defaultMessage: 'Separate values with commas',
+    description: 'Placeholder of the values of an "is one of" or "is not one of" filter.',
   },
   unitPrice: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.unitPrice',
@@ -413,10 +380,28 @@ export const problemMessage = (intl: IntlShape, problem: PricingProblem): string
     case 'METER_MISSING':
       return intl.formatMessage(messages.problemMeterMissing, { position: problem.price + 1 });
     case 'FILTER_INVALID':
-      return intl.formatMessage(messages.problemValues, { position: problem.price + 1 });
+      return intl.formatMessage(messages.problemValues, {
+        field: problem.field,
+        position: problem.price + 1,
+      });
+    case 'NUMBER_INVALID':
+      return intl.formatMessage(messages.problemNumber, {
+        field: problem.field,
+        position: problem.price + 1,
+      });
+    case 'FILTERS_CONFLICT':
+      return intl.formatMessage(messages.problemConflict, {
+        field: problem.field,
+        position: problem.price + 1,
+      });
+    case 'RANGE_EMPTY':
+      return intl.formatMessage(messages.problemRange, {
+        field: problem.field,
+        position: problem.price + 1,
+      });
     case 'FILTER_NOT_ALLOWED':
       return intl.formatMessage(messages.problemFilterNotAllowed, {
-        field: intl.formatMessage(fieldMessages[problem.field]),
+        field: problem.field,
         meter: problem.meterId,
         position: problem.price + 1,
       });
@@ -428,23 +413,6 @@ export const problemMessage = (intl: IntlShape, problem: PricingProblem): string
       return intl.formatMessage(messages.problemTiers, { position: problem.price + 1 });
     case 'TOO_MANY_FILTERS':
       return intl.formatMessage(messages.problemTooManyFilters, { position: problem.price + 1 });
-    case 'TOOL_WITH_METHOD':
-      return intl.formatMessage(messages.problemToolWithMethod, { position: problem.price + 1 });
-    case 'TOKEN_KEY_UNKNOWN':
-      return intl.formatMessage(messages.problemTokenKey, {
-        key: problem.eventKey,
-        position: problem.price + 1,
-      });
-    case 'TOKEN_VALUE_INVALID':
-      return intl.formatMessage(messages.problemTokenValue, {
-        field: tokenFieldLabel(intl, problem.eventKey),
-        position: problem.price + 1,
-      });
-    case 'TOKEN_RANGE_EMPTY':
-      return intl.formatMessage(messages.problemTokenRange, {
-        field: tokenFieldLabel(intl, problem.eventKey),
-        position: problem.price + 1,
-      });
     case 'OVERLAP':
       return intl.formatMessage(messages.problemOverlap, {
         meter: problem.meterId,
@@ -461,12 +429,6 @@ const tierStarts = (tiers: TierDraft[]): string[] =>
     const previous = Number(tiers[index - 1].upTo.trim());
     return Number.isSafeInteger(previous) && previous > 0 ? String(previous + 1) : '…';
   });
-
-const splitText = (text: string): string[] =>
-  text
-    .split(',')
-    .map((value) => value.trim())
-    .filter(Boolean);
 
 type MoneyProps = {
   label: MessageDescriptor;
@@ -507,8 +469,8 @@ type PriceFieldsProps = {
 };
 
 /**
- * One usage price: the meter and what it counts, a filter row for each field
- * the meter allows to narrow which of its requests the price counts, and the
+ * One usage price: the meter and what it counts, a filter row for each of the
+ * meter's properties to narrow which of its requests the price counts, and the
  * pricing model with its amounts.
  */
 function PriceFields({
@@ -531,18 +493,25 @@ function PriceFields({
     onChange({
       tiers: price.tiers.map((tier) => (tier.key === key ? { ...tier, ...patch } : tier)),
     });
-  const allowed = priceFieldsOf(meter);
-  const rows = filterRows(price.filters, allowed);
-  // Rows are changed by position: a Token key can have two condition rows.
+  const properties = propertiesOf(meter);
+  const rows = filterRows(price.filters, properties);
+  // Rows are changed by position: a property can have two comparison rows.
   const setFilter = (at: number, patch: Partial<FilterDraft>) =>
     onChange({
       filters: rows.map((row, position) => (position === at ? { ...row, ...patch } : row)),
     });
+  // A second comparison bounds the other side: at most after more than or at least, else more than.
   const addCondition = (at: number) =>
     onChange({
       filters: [
         ...rows.slice(0, at + 1),
-        emptyFilterRow({ eventKey: rows[at].eventKey, field: 'TOKEN' }),
+        {
+          field: rows[at].field,
+          operator: rows[at].operator.startsWith('GREATER_THAN')
+            ? 'LESS_THAN_OR_EQUAL'
+            : 'GREATER_THAN',
+          text: '',
+        },
         ...rows.slice(at + 1),
       ],
     });
@@ -550,127 +519,13 @@ function PriceFields({
     onChange({ filters: rows.filter((_, position) => position !== at) });
   const starts = tierStarts(price.tiers);
 
-  // The new meter's rows keep the operator and values of a filter on a field (or Token key) it
-  // also allows.
+  // The new meter's rows keep the operator and values of a filter on a property it also has.
   const changeMeter = (picked: Meter) => {
-    const next = priceFieldsOf(picked);
+    const next = propertiesOf(picked);
     onChange({
       filters: filterRows(price.filters, next).filter((row) => isAllowed(row, next)),
       meterId: picked.id ?? '',
     });
-  };
-
-  const valuesInput = (filter: FilterDraft, at: number, invalid: boolean) => {
-    const many = !takesOneValue(filter.operator);
-    const label = intl.formatMessage(messages.filterValues);
-    if (filter.field === 'HTTP_METHOD') {
-      return (
-        <Select
-          disabled={disabled}
-          displayEmpty
-          error={invalid}
-          inputProps={{ 'aria-label': label }}
-          multiple={many}
-          onChange={(event) => {
-            const value = event.target.value as string | string[];
-            setFilter(at, { text: Array.isArray(value) ? value.join(', ') : value });
-          }}
-          renderValue={(selected) => {
-            const picked = Array.isArray(selected) ? selected : selected ? [selected] : [];
-            if (picked.length > 0) return picked.join(', ');
-            return intl.formatMessage(many ? messages.methodsPlaceholder : messages.any);
-          }}
-          size="small"
-          value={many ? splitText(filter.text) : filter.text}
-        >
-          {!many && (
-            <MenuItem value="">
-              <FormattedMessage {...messages.any} />
-            </MenuItem>
-          )}
-          {HTTP_METHODS.map((method) => (
-            <MenuItem key={method} value={method}>
-              {method}
-            </MenuItem>
-          ))}
-        </Select>
-      );
-    }
-    if (filter.field === 'API_TYPE' || filter.field === 'MCP_METHOD') {
-      // Our gateway's API types, or common MCP methods, are suggested; any text is accepted.
-      const listed = splitText(filter.text);
-      const placeholder = filter.field === 'API_TYPE' ? messages.apiTypePlaceholder : messages.mcpMethodPlaceholder;
-      return (
-        <Autocomplete<string, false, false, true>
-          disabled={disabled}
-          // Every suggestion not listed yet, whatever is typed: there are only a few.
-          filterOptions={(options) =>
-            many ? options.filter((option) => !listed.includes(option)) : options
-          }
-          freeSolo
-          inputValue={filter.text}
-          // A pick replaces the one value, or adds to several.
-          onChange={(_event, value, reason) => {
-            if (reason !== 'selectOption' || !value) return;
-            setFilter(at, { text: many ? [...listed, value].join(', ') : value });
-          }}
-          onInputChange={(_event, value, reason) => {
-            if (reason === 'input' || reason === 'clear') setFilter(at, { text: value });
-          }}
-          options={filter.field === 'API_TYPE' ? API_TYPES : MCP_METHODS}
-          renderInput={({ InputLabelProps, InputProps, inputProps, ...params }) => (
-            <TextField
-              {...params}
-              error={invalid}
-              placeholder={intl.formatMessage(placeholder, { many: String(many) })}
-              slotProps={{
-                htmlInput: { ...inputProps, 'aria-label': label },
-                input: { ...InputProps, sx: { fontFamily: 'monospace' } },
-                inputLabel: InputLabelProps,
-              }}
-            />
-          )}
-          size="small"
-          value={null}
-        />
-      );
-    }
-    if (filter.field === 'TOKEN') {
-      // One whole number, such as a token count.
-      return (
-        <OutlinedInput
-          disabled={disabled}
-          error={invalid}
-          inputProps={{ 'aria-label': label, inputMode: 'numeric' }}
-          onChange={(event) => setFilter(at, { text: event.target.value })}
-          placeholder="0"
-          size="small"
-          sx={{ fontFamily: 'monospace' }}
-          value={filter.text}
-        />
-      );
-    }
-    return (
-      <OutlinedInput
-        disabled={disabled}
-        error={invalid}
-        inputProps={{ 'aria-label': label }}
-        onChange={(event) => setFilter(at, { text: event.target.value })}
-        placeholder={
-          filter.field === 'RESOURCE'
-            ? intl.formatMessage(messages.resourcePlaceholder, {
-                prefix: String(filter.operator === 'STARTS_WITH'),
-              })
-            : intl.formatMessage(
-                filter.field === 'MCP_TOOL' ? messages.toolPlaceholder : messages.statusPlaceholder,
-                { many: String(many) },
-              )
-        }
-        size="small"
-        sx={{ fontFamily: 'monospace' }}
-        value={filter.text}
-      />
-    );
   };
 
   return (
@@ -737,36 +592,28 @@ function PriceFields({
                 </Typography>
               )}
             </Box>
-            {meter && allowed.length === 0 && (
+            {meter && properties.length === 0 && (
               <Typography color="text.secondary" variant="caption">
                 <FormattedMessage {...messages.noFilters} />
               </Typography>
             )}
             {rows.map((filter, at) => {
-              const token = filter.field === 'TOKEN';
-              const onKey = (row: FilterDraft) =>
-                row.field === 'TOKEN' && row.eventKey === filter.eventKey;
-              const tokenFault =
-                token && fault && 'eventKey' in fault && fault.eventKey === filter.eventKey
-                  ? fault
-                  : null;
-              const invalid =
-                (fault?.code === 'FILTER_INVALID' && fault.field === filter.field) ||
-                tokenFault?.code === 'TOKEN_VALUE_INVALID' ||
-                tokenFault?.code === 'TOKEN_RANGE_EMPTY';
-              const refused =
-                (fault?.code === 'FILTER_NOT_ALLOWED' && fault.field === filter.field) ||
-                tokenFault?.code === 'TOKEN_KEY_UNKNOWN';
-              const name = token
-                ? tokenFieldLabel(intl, filter.eventKey ?? '')
-                : intl.formatMessage(fieldMessages[filter.field]);
-              // A Token key's first row can add a second condition; the second can be removed.
-              const firstOnKey = token && rows.findIndex(onKey) === at;
+              const onProperty = (row: FilterDraft) => sameName(row.field, filter.field);
+              const count = rows.filter(onProperty).length;
+              const first = rows.findIndex(onProperty) === at;
+              const propertyFault =
+                fault && 'field' in fault && sameName(fault.field, filter.field) ? fault : null;
+              const refused = propertyFault?.code === 'FILTER_NOT_ALLOWED';
+              const invalid = propertyFault !== null && !refused;
+              const comparison = isComparison(filter.operator);
+              const many = !takesOneValue(filter.operator);
+              // Two comparisons on one property make a range, so each offers comparisons only.
+              const operators = count > 1 ? COMPARISONS : OPERATORS;
               const nameId = `${id}-filter-${at}`;
               return (
                 <Box
                   aria-labelledby={nameId}
-                  key={token ? `TOKEN:${filter.eventKey}:${at}` : filter.field}
+                  key={`${filter.field}:${at}`}
                   role="group"
                   sx={{
                     alignItems: 'center',
@@ -779,50 +626,61 @@ function PriceFields({
                     color={refused ? 'error' : 'text.primary'}
                     id={nameId}
                     noWrap
-                    title={name}
+                    title={filter.field}
                     variant="body2"
                   >
-                    {name}
+                    {filter.field}
                   </Typography>
                   <Select
                     disabled={disabled}
                     inputProps={{ 'aria-label': intl.formatMessage(messages.filterOperator) }}
-                    onChange={(event) => {
-                      const operator = event.target.value as FilterOperator;
-                      // A one-value operator keeps only the first method picked.
-                      setFilter(at, {
-                        operator,
-                        text:
-                          filter.field === 'HTTP_METHOD' && takesOneValue(operator)
-                            ? (splitText(filter.text)[0] ?? '')
-                            : filter.text,
-                      });
-                    }}
+                    onChange={(event) =>
+                      setFilter(at, { operator: event.target.value as FilterOperator })
+                    }
                     size="small"
                     value={filter.operator}
                   >
-                    {FILTER_RULES[filter.field].operators.map((operator) => (
+                    {operators.map((operator) => (
                       <MenuItem key={operator} value={operator}>
-                        <FormattedMessage {...operatorMessage(filter.field, operator)} />
+                        <FormattedMessage {...operatorMessages[operator]} />
                       </MenuItem>
                     ))}
                   </Select>
-                  {valuesInput(filter, at, invalid || refused)}
-                  {token &&
-                  !readOnly &&
-                  firstOnKey &&
-                  rows.filter(onKey).length < MAX_TOKEN_CONDITIONS ? (
+                  <OutlinedInput
+                    disabled={disabled}
+                    error={invalid || refused}
+                    inputProps={{
+                      'aria-label': intl.formatMessage(messages.filterValues),
+                      inputMode: comparison ? 'numeric' : 'text',
+                    }}
+                    onChange={(event) => setFilter(at, { text: event.target.value })}
+                    placeholder={
+                      many
+                        ? intl.formatMessage(messages.valuesPlaceholder)
+                        : comparison
+                          ? '0'
+                          : undefined
+                    }
+                    size="small"
+                    sx={{ fontFamily: 'monospace' }}
+                    value={filter.text}
+                  />
+                  {!readOnly && first && comparison && count < MAX_COMPARISONS ? (
                     <IconButton
-                      aria-label={intl.formatMessage(messages.addCondition, { field: name })}
+                      aria-label={intl.formatMessage(messages.addCondition, {
+                        field: filter.field,
+                      })}
                       disabled={disabled}
                       onClick={() => addCondition(at)}
                       size="small"
                     >
                       <Plus size={16} />
                     </IconButton>
-                  ) : token && !readOnly && !firstOnKey ? (
+                  ) : !readOnly && !first ? (
                     <IconButton
-                      aria-label={intl.formatMessage(messages.removeCondition, { field: name })}
+                      aria-label={intl.formatMessage(messages.removeCondition, {
+                        field: filter.field,
+                      })}
                       disabled={disabled}
                       onClick={() => removeCondition(at)}
                       size="small"

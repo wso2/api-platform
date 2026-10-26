@@ -27,7 +27,6 @@ const billingSubscriptionDao = require('../dao/billingSubscriptionDao');
 const PlanPricing = require('../dto/planPricingDto');
 const { accessStatus } = require('../services/billing/subscriptionBillingService');
 const { pricingSummary } = require('../utils/pricingLabels');
-const { priceAppliesToApiType } = require('../services/billing/planPricingValidation');
 
 // How each access status of a paid subscription reads in its status pill.
 const ACCESS_LABELS = { ACTIVE: 'ACTIVE', PAST_DUE: 'PAST DUE', PAYMENT_PENDING: 'PAYMENT PENDING' };
@@ -54,14 +53,6 @@ const loadSubscriptions = async (req, res, next) => {
             const pricingByPlan = await planPricingDao.listByPlans(orgId, planIds);
             const metersByHandle = pricingByPlan.size > 0
                 ? new Map((await meterDao.list(orgId)).map((m) => [m.handle, m])) : new Map();
-            // The plan's pricing for the Billing column, as it applies to this subscription's API. One
-            // plan can be offered on APIs of different types, so a usage price limited to some API
-            // types (for example, LLM providers only) is left out when this API is not one of them.
-            const pricingOn = (pricing, apiType) => {
-                const dto = new PlanPricing(pricing);
-                dto.prices = dto.prices.filter((p) => priceAppliesToApiType(p.filters, metersByHandle.get(p.meterId), apiType));
-                return dto;
-            };
             allSubscriptions = localSubs.map(sub => {
                 const billing = billingRows.get(sub.uuid);
                 const pricing = pricingByPlan.get(sub.plan_uuid);
@@ -78,7 +69,7 @@ const loadSubscriptions = async (req, res, next) => {
                     subscriptionToken: sub.token,
                     createdAt: sub.created_at || null,
                     paid: Boolean(billing),
-                    billingText: pricing ? pricingSummary(pricingOn(pricing, sub.api_metadata?.type), metersByHandle) : 'Free',
+                    billingText: pricing ? pricingSummary(new PlanPricing(pricing), metersByHandle) : 'Free',
                     accessStatus: access,
                     statusLabel: access ? ACCESS_LABELS[access] : sub.status,
                     statusTone: access ? access.toLowerCase().replace('_', '-') : (sub.status === 'ACTIVE' ? 'active' : 'inactive'),

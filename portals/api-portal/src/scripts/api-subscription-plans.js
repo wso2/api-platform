@@ -82,9 +82,12 @@
 
         document.getElementById('apiManagePlanName').textContent = policyName;
         updateManageStatus(sub.status);
-        // A paid subscription is stopped by unsubscribing, not suspended (as on the Subscriptions page).
+        // A paid subscription is stopped by unsubscribing, not suspended.
         var card = document.querySelector('#subscriptionPlans .aov-plan-card[data-policy-name="' + policyName + '"]');
-        document.getElementById('apiManageSuspendBtn').hidden = !!(card && card.hasAttribute('data-paid'));
+        sub.paid = !!(card && card.hasAttribute('data-paid'));
+        document.getElementById('apiManageSuspendBtn').hidden = sub.paid;
+        showEndDate(null);
+        if (sub.paid) loadBilling(sub);
         var meta = (window.__tokenMeta || {})[sub.subscriptionId];
         document.getElementById('apiManageTokenVal').textContent = meta && meta.maskedToken ? meta.maskedToken : '•'.repeat(28);
         var revealIcon = document.getElementById('apiManageRevealIcon');
@@ -97,6 +100,38 @@
         document.getElementById('apiManageModal').style.display = 'none';
         _sub = null;
         _revealed = false;
+      }
+
+      /* ── Paid subscription billing ── */
+      function formatBillingDate(iso) {
+        return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      }
+
+      // A subscription already set to end shows when; it cannot be unsubscribed again, but it can be
+      // ended immediately.
+      function showEndDate(endsAt) {
+        var ends = document.getElementById('apiManageEnds');
+        ends.textContent = endsAt ? 'Your subscription has been cancelled. You will retain access until ' + formatBillingDate(endsAt) + '.' : '';
+        ends.hidden = !endsAt;
+        document.getElementById('apiManageUnsubBtn').hidden = Boolean(endsAt);
+        document.getElementById('apiManageEndNowBtn').hidden = !endsAt;
+      }
+
+      // What unsubscribing does depends on how the plan is charged.
+      async function loadBilling(sub) {
+        try {
+          var resp = await fetch(apiPortalApi.root('/subscriptions/' + encodeURIComponent(sub.subscriptionId) + '/billing'), {
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.apiPortalApi.csrfToken() },
+          });
+          if (!resp.ok) return;
+          var billing = await resp.json();
+          sub.byUsage = billing.byUsage;
+          sub.periodEnd = billing.currentPeriod && billing.currentPeriod.end;
+          sub.endsAt = billing.endsAt;
+          if (_sub === sub) showEndDate(billing.endsAt);
+        } catch (_) {
+          // The unsubscribe dialog shows its general text.
+        }
       }
 
       function updateManageStatus(status) {
@@ -252,10 +287,31 @@
         if (!_sub) return;
         _unsubAction = 'unsub';
         _switchArgs = null;
+        var desc;
+        if (_sub.paid && _sub.byUsage === false) {
+          desc = 'Your subscription will remain active until '
+            + (_sub.periodEnd ? formatBillingDate(_sub.periodEnd) : 'the end of the period') + '.';
+        } else {
+          desc = 'Your applications will lose access to this API and any tokens will stop working. '
+            + (_sub.paid ? 'Usage up to now is billed on a final invoice. ' : '')
+            + 'You can re-subscribe at any time.';
+        }
         showUnsubDialog(
           'Unsubscribe from <span id="apiUnsubPlanName">' + _sub.subscriptionPlanName + '</span> plan?',
-          'Your applications will lose access to this API and any tokens will stop working. You can re-subscribe at any time.',
+          desc,
           'Unsubscribe'
+        );
+      }
+
+      function askEndNow() {
+        if (!_sub || !_sub.endsAt) return;
+        _unsubAction = 'immediate';
+        _switchArgs = null;
+        showUnsubDialog(
+          'End your subscription now?',
+          'Your subscription ends immediately instead of on ' + formatBillingDate(_sub.endsAt)
+            + ', and your applications lose access to this API. The rest of the paid period is not refunded.',
+          'End now'
         );
       }
 
@@ -297,15 +353,23 @@
           return;
         }
         if (!_sub) return;
+        var immediate = _unsubAction === 'immediate';
         var orgId = window.__subscriptionOrgId;
         try {
-          resp = await fetch(apiPortalApi.root('/subscriptions/' + encodeURIComponent(_sub.subscriptionId)), {
+          resp = await fetch(apiPortalApi.root('/subscriptions/' + encodeURIComponent(_sub.subscriptionId)
+            + (immediate ? '?immediate=true' : '')), {
             method: 'DELETE',
             headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.apiPortalApi.csrfToken() },
           });
           if (resp.ok) {
+            // A flat rate plan runs to the end of its paid period: it stays subscribed until then.
+            var ending = await resp.json().catch(function () { return {}; });
             closeUnsub();
             closeManage();
+            if (ending.endsAt) {
+              await showAlert(ending.message, 'success');
+              return;
+            }
             window.location.reload();
           } else {
             var data = await resp.json().catch(function () { return {}; });
@@ -405,6 +469,7 @@
           if (regenBtn) regenBtn.addEventListener('click', askRegenerate);
           document.getElementById('apiManageSuspendBtn').addEventListener('click', toggleSuspend);
           document.getElementById('apiManageUnsubBtn').addEventListener('click', askUnsub);
+          document.getElementById('apiManageEndNowBtn').addEventListener('click', askEndNow);
           manageModal.addEventListener('click', function (e) { if (e.target === manageModal) closeManage(); });
         }
 

@@ -40,7 +40,6 @@ const INVOICES = [
         subscriber: { name: 'Bob Builder', email: 'bob@example.com' }, items: [fee('49.00'), tokens(1000000, '10.00')] }),
     invoice({ number: 'INV-2', created: '2026-09-20T10:00:00.000Z', total: '15.00', subscriptionId: 'sub-a',
         subscriber: { name: 'Alice Example', email: 'alice@example.com' }, items: [calls(1500, '15.00')] }),
-    // An invoice with no line of a plan price counts in the month's total only.
     invoice({ number: 'INV-1', created: '2026-09-01T10:00:00.000Z', total: '5.00', api: null, plan: null }),
 ];
 
@@ -68,26 +67,17 @@ test('the report is in the currency the most subscriptions pay in, not the one w
     assert.equal(totals.summarize(mixed, 'USD', { '2026-09': true }).months['2026-09'], 1800);
 });
 
-test('a month adds up its invoices, its billable requests and a row per API and plan', () => {
+test('a month adds up its invoices and the requests billed by request-count prices', () => {
     const october = totals.summarize(INVOICES, 'USD', { '2026-10': true });
     assert.deepEqual(october.months, { '2026-10': 8712, '2026-09': 2000 });
     assert.equal(october.invoiced, 8712);
     assert.equal(october.billableRequests, 2812);
-    assert.deepEqual(october.plans, [
-        { api: 'Weather API v1.0', plan: 'Silver', subscriptions: 1, revenue: 5900,
-            usage: [{ name: 'LLM input tokens · gpt-4o', quantity: 1000000, unit: 'token' }] },
-        { api: 'Weather API v1.0', plan: 'Gold', subscriptions: 1, revenue: 2812,
-            usage: [{ name: 'Successful calls · 200', quantity: 2812, unit: 'request' }] },
-    ]);
-    assert.equal(totals.usageText(october.plans[1].usage[0]), 'Successful calls · 200: 2,812 requests');
 });
 
-test('a range of months counts each subscription once per plan', () => {
+test('a range of months adds up every month in it', () => {
     const both = totals.summarize(INVOICES, 'USD', { '2026-09': true, '2026-10': true });
     assert.equal(both.invoiced, 10712);
     assert.equal(both.billableRequests, 4312);
-    const gold = both.plans.find((p) => p.plan === 'Gold');
-    assert.deepEqual([gold.subscriptions, gold.revenue, gold.usage[0].quantity], [1, 4312, 4312]);
 });
 
 test('search matches the subscriber\'s name or email, the API or the plan, ignoring case', () => {

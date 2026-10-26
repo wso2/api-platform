@@ -2258,7 +2258,7 @@ function parseApiMetadataFromYamlFile(fileName, fileBuffer) {
 
 /** The API a request saves, as the billing catalog needs it. */
 function billingApi(apiUuid, apiMetadata) {
-    return { uuid: apiUuid, name: apiMetadata.name, version: apiMetadata.version, type: apiMetadata.type };
+    return { uuid: apiUuid, name: apiMetadata.name, version: apiMetadata.version };
 }
 
 /**

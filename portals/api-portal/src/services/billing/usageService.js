@@ -33,10 +33,8 @@ const subDao = require('../../dao/subscriptionDao');
 const planPricingDao = require('../../dao/planPricingDao');
 const meterDao = require('../../dao/meterDao');
 const billingSubscriptionDao = require('../../dao/billingSubscriptionDao');
-const billingApiPlanDao = require('../../dao/billingApiPlanDao');
 const subscriptionBilling = require('./subscriptionBillingService');
 const billingProvider = require('../../billing/billingProvider');
-const { countedFilters } = require('./planPricingValidation');
 const { meterUnit } = require('../../utils/meterLabels');
 const util = require('../../utils/util');
 const logger = require('../../config/logger');
@@ -214,10 +212,8 @@ const getUsage = async (req, res) => {
         });
 
         const pricing = pricingOf.get(sub.uuid);
-        // Each usage price the subscription was sold with counts with its meter: the prices with an
-        // item in its API plan, so a price that does not apply to this API's type is not shown.
-        const sold = new Set((await billingApiPlanDao.listItems(orgId, billing.api_uuid, billing.plan_uuid)).map((i) => i.price_uuid));
-        const prices = pricing ? pricing.prices.filter((p) => sold.has(p.uuid)) : [];
+        // Each usage price of the plan counts with its meter.
+        const prices = pricing ? pricing.prices : [];
         const handles = [...new Set(prices.map((p) => p.meter_handle))];
         const meters = new Map((await meterDao.listByHandles(orgId, handles)).map((m) => [m.handle, m]));
         const counted = prices.filter((p) => meters.has(p.meter_handle));
@@ -238,11 +234,8 @@ const getUsage = async (req, res) => {
         const ids = { customerRef: billing.customer_ref, subscriptionRef: billing.subscription_ref };
         const [usage, estimate] = await Promise.allSettled([
             body.usage
-                ? Promise.all(counted.map((p) => {
-                    const what = countedFilters(meters.get(p.meter_handle), p.filters);
-                    return priceUsage(connector.usage, p, connector.catalog.priceMeter(what.meter, what.filters), ids, range,
-                        interval);
-                }))
+                ? Promise.all(counted.map((p) => priceUsage(connector.usage, p,
+                    connector.catalog.priceMeter(meters.get(p.meter_handle), p.filters), ids, range, interval)))
                 : Promise.resolve(null),
             period === 'CURRENT' && billing.status !== 'CANCELLED'
                 ? connector.payments.estimate(billing.subscription_ref)

@@ -76,13 +76,13 @@ describe('meters', () => {
     ]);
   });
 
-  it('POSTs a new meter with its type, event key and filter fields with their keys, and no conditions', async () => {
+  it('POSTs a new meter with its type, event key and filter properties with their keys, and no conditions', async () => {
     server.use(accepts('post', '/meters', aMeter(), { record: requests }));
     const body = {
       displayName: 'LLM input tokens',
       filterFields: [
-        { eventKey: 'metadata.apiType', field: 'API_TYPE' as const },
-        { field: 'HTTP_METHOD' as const },
+        { eventKey: 'metadata.apiType', field: 'API type' },
+        { eventKey: 'metadata.region', field: 'Region' },
       ],
       type: 'TOKENS' as const,
       typeKey: 'metadata.aiTokenUsage.promptTokens',

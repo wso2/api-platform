@@ -93,7 +93,8 @@ func setupMonetizationHandlerTestEnv(t *testing.T) http.Handler {
 	inputKey := "metadata.aiTokenUsage.promptTokens"
 	for _, meter := range []*model.Meter{
 		{Handle: "llm-input", DisplayName: "LLM input tokens", Type: model.MeterTypeTokens,
-			TypeKey: &inputKey, FilterFields: []model.MeterFilterField{{Field: model.FilterFieldAPIType, EventKey: "metadata.apiType"}}},
+			TypeKey: &inputKey, FilterFields: []model.MeterFilterField{{Field: "API type", EventKey: "metadata.apiType"},
+				{Field: "Prompt tokens", EventKey: inputKey}}},
 		{Handle: "api-calls", DisplayName: "API calls", Type: model.MeterTypeRequestCount},
 	} {
 		meter.OrganizationUUID = planITOrgID
@@ -173,11 +174,11 @@ func TestMonetizationHandler_MeterShape(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("get meter: status %d, body %s", rec.Code, rec.Body.String())
 	}
-	// No conditions and no event property choice; the meter's own event key and each filter field's
-	// key, as the API Portal sent them.
+	// The meter's own event key and each filter property's name and key, as the API Portal sent them.
 	want := decodeJSON(t, `{"id":"llm-input","displayName":"LLM input tokens","description":"","type":"TOKENS",
 		"typeKey":"metadata.aiTokenUsage.promptTokens",
-		"filterFields":[{"field":"API_TYPE","eventKey":"metadata.apiType"}],"planCount":0}`)
+		"filterFields":[{"field":"API type","eventKey":"metadata.apiType"},
+		  {"field":"Prompt tokens","eventKey":"metadata.aiTokenUsage.promptTokens"}],"planCount":0}`)
 	if got := withoutUpdatedAt(t, decodeJSON(t, rec.Body.String())); !reflect.DeepEqual(got, want) {
 		t.Fatalf("meter = %v\nwant %v", got, want)
 	}
@@ -197,7 +198,7 @@ func TestMonetizationHandler_MeterEventIsStoredAndListed(t *testing.T) {
 	// Custom keys, as for a gateway that names its analytics fields differently.
 	rec := postPortalEvent(t, h, webhook.EventMeterUpdated, `{"handle":"llm-input","display_name":"LLM input tokens",
 		"description":"Prompt tokens","type":"TOKENS","type_key":"usage.prompt_tokens",
-		"filter_fields":[{"field":"API_TYPE","event_key":"custom.api.kind"},{"field":"HTTP_METHOD","event_key":"request.verb"}]}`)
+		"filter_fields":[{"field":"API type","event_key":"custom.api.kind"},{"field":"HTTP method","event_key":"request.verb"}]}`)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("meter.updated: status %d, body %s", rec.Code, rec.Body.String())
 	}
@@ -216,7 +217,7 @@ func TestMonetizationHandler_MeterEventIsStoredAndListed(t *testing.T) {
 	// Listed by handle: api-calls, then llm-input with the keys of the event, in order.
 	want := decodeJSON(t, `{"id":"llm-input","displayName":"LLM input tokens","description":"Prompt tokens","type":"TOKENS",
 		"typeKey":"usage.prompt_tokens",
-		"filterFields":[{"field":"API_TYPE","eventKey":"custom.api.kind"},{"field":"HTTP_METHOD","eventKey":"request.verb"}],
+		"filterFields":[{"field":"API type","eventKey":"custom.api.kind"},{"field":"HTTP method","eventKey":"request.verb"}],
 		"planCount":0}`)
 	if got := withoutUpdatedAt(t, page.List[1]); !reflect.DeepEqual(got, want) {
 		t.Fatalf("listed meter = %v\nwant %v", got, want)
@@ -308,9 +309,9 @@ func createPricedPlan(t *testing.T, h http.Handler, pricing string) *httptest.Re
 func TestMonetizationHandler_UsagePricesRoundTrip(t *testing.T) {
 	h := setupMonetizationHandlerTestEnv(t)
 	rec := createPricedPlan(t, h, `{"pricingType":"usage_based","currency":"usd","billingPeriod":"MONTH","prices":[
-		{"meterId":"llm-input","filters":[{"field":"api_type","operator":"equals","values":[" LlmProvider "]}],
+		{"meterId":"llm-input","filters":[{"field":" api type ","operator":"equals","values":[" LlmProvider "]}],
 		 "pricingModel":"PER_UNIT","unitAmount":"2.50","unitQuantity":1000000},
-		{"meterId":"llm-input","filters":[{"field":"API_TYPE","operator":"IN","values":["Mcp","LlmProxy","Mcp"]}],
+		{"meterId":"llm-input","filters":[{"field":"API TYPE","operator":"IN","values":["Mcp","LlmProxy","Mcp"]}],
 		 "pricingModel":"PER_UNIT","unitAmount":"0.15","unitQuantity":1000000},
 		{"meterId":"api-calls","pricingModel":"GRADUATED",
 		 "tiers":[{"upTo":10000,"unitAmount":"0"},{"upTo":null,"unitAmount":"0.001"}]}]}`)
@@ -318,13 +319,14 @@ func TestMonetizationHandler_UsagePricesRoundTrip(t *testing.T) {
 		t.Fatalf("create plan: status %d, body %s", rec.Code, rec.Body.String())
 	}
 
-	// One meter priced twice for different API types; codes upper-cased, filter values normalized, every
-	// field of a price present (null when its pricing model does not use it), and no flat amount.
+	// One meter priced twice for different API types; codes upper-cased, each filter naming its property
+	// as the meter spells it, filter values normalized, every field of a price present (null when its
+	// pricing model does not use it), and no flat amount.
 	want := decodeJSON(t, `{"subscriptionPlanId":"gold","pricingType":"USAGE_BASED","currency":"USD","billingPeriod":"MONTH",
 		"flatAmount":null,"prices":[
-		{"meterId":"llm-input","filters":[{"field":"API_TYPE","operator":"EQUALS","values":["LlmProvider"]}],
+		{"meterId":"llm-input","filters":[{"field":"API type","operator":"EQUALS","values":["LlmProvider"]}],
 		 "pricingModel":"PER_UNIT","unitAmount":"2.50","unitQuantity":1000000,"tiers":null},
-		{"meterId":"llm-input","filters":[{"field":"API_TYPE","operator":"IN","values":["Mcp","LlmProxy"]}],
+		{"meterId":"llm-input","filters":[{"field":"API type","operator":"IN","values":["Mcp","LlmProxy"]}],
 		 "pricingModel":"PER_UNIT","unitAmount":"0.15","unitQuantity":1000000,"tiers":null},
 		{"meterId":"api-calls","filters":[],"pricingModel":"GRADUATED","unitAmount":null,
 		 "unitQuantity":null,"tiers":[{"upTo":10000,"unitAmount":"0","flatAmount":null},{"upTo":null,"unitAmount":"0.001","flatAmount":null}]}]}`)
@@ -414,8 +416,8 @@ func TestMonetizationHandler_OverlappingPricesAreRefused(t *testing.T) {
 	h := setupMonetizationHandlerTestEnv(t)
 
 	// Requests to an Mcp API match both prices.
-	price := `{"meterId":"llm-input","pricingModel":"PER_UNIT","unitAmount":"1","filters":[{"field":"API_TYPE","operator":"IN","values":["LlmProvider","Mcp"]}]}`
-	other := `{"meterId":"llm-input","pricingModel":"PER_UNIT","unitAmount":"2","filters":[{"field":"API_TYPE","operator":"NOT_EQUALS","values":["LlmProvider"]}]}`
+	price := `{"meterId":"llm-input","pricingModel":"PER_UNIT","unitAmount":"1","filters":[{"field":"API type","operator":"IN","values":["LlmProvider","Mcp"]}]}`
+	other := `{"meterId":"llm-input","pricingModel":"PER_UNIT","unitAmount":"2","filters":[{"field":"API type","operator":"NOT_EQUALS","values":["LlmProvider"]}]}`
 	rec := createPricedPlan(t, h, `{"pricingType":"USAGE_BASED","currency":"USD","billingPeriod":"MONTH","prices":[`+price+`,`+other+`]}`)
 	if rec.Code != http.StatusBadRequest ||
 		!strings.Contains(rec.Body.String(), "Prices 1 and 2 both count the same requests of the meter llm-input; give them different filters.") {
@@ -426,16 +428,16 @@ func TestMonetizationHandler_OverlappingPricesAreRefused(t *testing.T) {
 	}
 }
 
-func TestMonetizationHandler_PricesFilterOnlyOnTheirMetersFields(t *testing.T) {
+func TestMonetizationHandler_PricesFilterOnlyOnTheirMetersProperties(t *testing.T) {
 	h := setupMonetizationHandlerTestEnv(t)
 
-	// llm-input lets its prices filter on the API type only.
+	// llm-input has the properties API type and Prompt tokens only.
 	calls := `{"meterId":"api-calls","pricingModel":"PER_UNIT","unitAmount":"0.01"}`
-	byMethod := `{"meterId":"llm-input","pricingModel":"PER_UNIT","unitAmount":"2","filters":[{"field":"HTTP_METHOD","operator":"EQUALS","values":["POST"]}]}`
+	byMethod := `{"meterId":"llm-input","pricingModel":"PER_UNIT","unitAmount":"2","filters":[{"field":"HTTP method","operator":"EQUALS","values":["POST"]}]}`
 	rec := createPricedPlan(t, h, `{"pricingType":"USAGE_BASED","currency":"USD","billingPeriod":"MONTH","prices":[`+calls+`,`+byMethod+`]}`)
 	if rec.Code != http.StatusBadRequest ||
-		!strings.Contains(rec.Body.String(), "price 2: the meter llm-input does not allow filtering on HTTP_METHOD") {
-		t.Fatalf("filter on a field the meter does not allow: status %d, body %s", rec.Code, rec.Body.String())
+		!strings.Contains(rec.Body.String(), "price 2: the meter llm-input has no property HTTP method") {
+		t.Fatalf("filter on a property the meter does not have: status %d, body %s", rec.Code, rec.Body.String())
 	}
 	if rec := planRequest(t, h, http.MethodGet, planITPath+"/gold", ""); rec.Code != http.StatusNotFound {
 		t.Fatalf("a plan with refused pricing must not be created: status %d, body %s", rec.Code, rec.Body.String())
@@ -480,7 +482,7 @@ func TestMonetizationHandler_PricingCannotChangeAfterCreate(t *testing.T) {
 func TestMonetizationHandler_MeterPricedHereCannotChange(t *testing.T) {
 	h := setupMonetizationHandlerTestEnv(t)
 	if rec := createPricedPlan(t, h, `{"pricingType":"USAGE_BASED","currency":"USD","billingPeriod":"MONTH",
-		"prices":[{"meterId":"llm-input","pricingModel":"PER_UNIT","unitAmount":"1","filters":[{"field":"API_TYPE","operator":"EQUALS","values":["LlmProvider"]}]}]}`); rec.Code != http.StatusCreated {
+		"prices":[{"meterId":"llm-input","pricingModel":"PER_UNIT","unitAmount":"1","filters":[{"field":"API type","operator":"EQUALS","values":["LlmProvider"]}]}]}`); rec.Code != http.StatusCreated {
 		t.Fatalf("create plan: status %d, body %s", rec.Code, rec.Body.String())
 	}
 
@@ -496,11 +498,11 @@ func TestMonetizationHandler_MeterPricedHereCannotChange(t *testing.T) {
 		"typeKey":"metadata.aiTokenUsage.promptTokens"}`),
 		"METER_IN_USE", "The meter is in use, so it can't be updated.")
 	refused(planRequest(t, h, http.MethodPut, meterPath, `{"displayName":"Prompt tokens","description":"Renamed","type":"TOKENS",
-		"typeKey":"metadata.aiTokenUsage.promptTokens","filterFields":[{"field":"API_TYPE"}]}`),
+		"typeKey":"metadata.aiTokenUsage.promptTokens","filterFields":[{"field":"API type","eventKey":"metadata.apiType"}]}`),
 		"METER_IN_USE", "The meter is in use, so it can't be updated.")
 	// The keys are part of the meter: changing only them is refused too.
 	refused(planRequest(t, h, http.MethodPut, meterPath, `{"displayName":"LLM input tokens","type":"TOKENS",
-		"typeKey":"usage.prompt_tokens","filterFields":[{"field":"API_TYPE","eventKey":"custom.api.kind"}]}`),
+		"typeKey":"usage.prompt_tokens","filterFields":[{"field":"API type","eventKey":"custom.api.kind"}]}`),
 		"METER_IN_USE", "The meter is in use, so it can't be updated.")
 	refused(planRequest(t, h, http.MethodDelete, meterPath, ""),
 		"METER_IN_USE", "The meter is in use, so it can't be deleted.")
@@ -588,15 +590,15 @@ func TestMonetizationHandler_PortalPlanCreatedThenDeletedIsGone(t *testing.T) {
 }
 
 // A meter is kept here, like a plan, with no API Portal involved, and answered in the shape GET
-// /meters/{meterId} gives: the event keys as stored (a fixed field given without one gets its default).
+// /meters/{meterId} gives: the filter properties' names and event keys as stored, trimmed.
 func TestMonetizationHandler_MetersAreKeptHere(t *testing.T) {
 	h := setupMonetizationHandlerTestEnv(t)
 	body := `{"displayName":"Output tokens","type":"TOKENS","typeKey":"usage.output_tokens",
-		"filterFields":[{"field":"API_TYPE","eventKey":"custom.api.kind"},{"field":"HTTP_METHOD"}]}`
+		"filterFields":[{"field":"API type","eventKey":"custom.api.kind"},{"field":" HTTP method ","eventKey":"request.verb"}]}`
 	rec := planRequest(t, h, http.MethodPost, constants.APIBasePath+"/meters", body)
 	want := decodeJSON(t, `{"id":"output-tokens","displayName":"Output tokens","description":"","type":"TOKENS",
 		"typeKey":"usage.output_tokens","planCount":0,
-		"filterFields":[{"field":"API_TYPE","eventKey":"custom.api.kind"},{"field":"HTTP_METHOD","eventKey":"request.verb"}]}`)
+		"filterFields":[{"field":"API type","eventKey":"custom.api.kind"},{"field":"HTTP method","eventKey":"request.verb"}]}`)
 	if rec.Code != http.StatusCreated || !reflect.DeepEqual(withoutUpdatedAt(t, decodeJSON(t, rec.Body.String())), want) {
 		t.Fatalf("create meter: status %d, body %s; want %v", rec.Code, rec.Body.String(), want)
 	}
@@ -613,11 +615,11 @@ func TestMonetizationHandler_MetersAreKeptHere(t *testing.T) {
 	}
 
 	// A meter no pricing here uses can change its keys.
-	update := `{"displayName":"API calls","type":"REQUEST_COUNT","filterFields":[{"field":"HTTP_STATUS_CODE","eventKey":"status_code"}]}`
+	update := `{"displayName":"API calls","type":"REQUEST_COUNT","filterFields":[{"field":"Status code","eventKey":"status_code"}]}`
 	rec = planRequest(t, h, http.MethodPut, constants.APIBasePath+"/meters/api-calls", update)
 	got := decodeJSON(t, rec.Body.String())
 	if rec.Code != http.StatusOK || got["description"] != "" || got["planCount"] != float64(0) ||
-		!reflect.DeepEqual(got["filterFields"], []any{map[string]any{"field": "HTTP_STATUS_CODE", "eventKey": "status_code"}}) {
+		!reflect.DeepEqual(got["filterFields"], []any{map[string]any{"field": "Status code", "eventKey": "status_code"}}) {
 		t.Fatalf("update meter: status %d, body %s", rec.Code, rec.Body.String())
 	}
 	if rec := planRequest(t, h, http.MethodDelete, constants.APIBasePath+"/meters/output-tokens", ""); rec.Code != http.StatusNoContent {
@@ -640,23 +642,23 @@ func TestMonetizationHandler_MetersAreKeptHere(t *testing.T) {
 	}
 }
 
-// A meter may offer API type as a filter field, so that one plan prices the calls of each kind of
+// A meter may offer API type as a filter property, so that one plan prices the calls of each kind of
 // API on its own; prices on the same API types still overlap.
 func TestMonetizationHandler_PricesByAPIType(t *testing.T) {
 	h := setupMonetizationHandlerTestEnv(t)
 	if rec := postPortalEvent(t, h, webhook.EventMeterUpdated, `{"handle":"api-calls","display_name":"API requests",
-		"type":"REQUEST_COUNT","filter_fields":[{"field":"API_TYPE","event_key":"metadata.apiType"}]}`); rec.Code != http.StatusOK {
+		"type":"REQUEST_COUNT","filter_fields":[{"field":"API type","event_key":"metadata.apiType"}]}`); rec.Code != http.StatusOK {
 		t.Fatalf("meter.updated: status %d, body %s", rec.Code, rec.Body.String())
 	}
 	rec := planRequest(t, h, http.MethodGet, constants.APIBasePath+"/meters/api-calls", "")
 	if got := decodeJSON(t, rec.Body.String())["filterFields"]; !reflect.DeepEqual(got,
-		[]any{map[string]any{"field": "API_TYPE", "eventKey": "metadata.apiType"}}) {
+		[]any{map[string]any{"field": "API type", "eventKey": "metadata.apiType"}}) {
 		t.Fatalf("filter fields = %v", got)
 	}
 
 	byType := func(operator, value string) string {
 		return `{"meterId":"api-calls","pricingModel":"PER_UNIT","unitAmount":"0.01",
-			"filters":[{"field":"API_TYPE","operator":"` + operator + `","values":["` + value + `"]}]}`
+			"filters":[{"field":"API type","operator":"` + operator + `","values":["` + value + `"]}]}`
 	}
 	rec = createPricedPlan(t, h, `{"pricingType":"USAGE_BASED","currency":"USD","billingPeriod":"MONTH","prices":[`+
 		byType("EQUALS", "RestApi")+`,`+byType("NOT_EQUALS", "RestApi")+`]}`)
@@ -671,13 +673,13 @@ func TestMonetizationHandler_PricesByAPIType(t *testing.T) {
 	}
 }
 
-// A price may count only the calls whose token counts fall in a range, on the meter's typeKey or
-// on its Token fields; two prices on one key are apart when their ranges share no number.
-func TestMonetizationHandler_PricesByTokenConditions(t *testing.T) {
+// A price may count only the calls whose token counts fall in a range, by comparisons on one of the
+// meter's properties; two prices are apart on it when their ranges share no number.
+func TestMonetizationHandler_PricesByComparisons(t *testing.T) {
 	h := setupMonetizationHandlerTestEnv(t)
 	byPrompt := func(operator, value string) string {
 		return `{"meterId":"llm-input","pricingModel":"PER_UNIT","unitAmount":"1","filters":[
-			{"field":"TOKEN","eventKey":"metadata.aiTokenUsage.promptTokens","operator":"` + operator + `","values":["` + value + `"]}]}`
+			{"field":"Prompt tokens","operator":"` + operator + `","values":["` + value + `"]}]}`
 	}
 	rec := createPricedPlan(t, h, `{"pricingType":"USAGE_BASED","currency":"USD","billingPeriod":"MONTH","prices":[`+
 		byPrompt("LESS_THAN_OR_EQUAL", "333")+`,`+byPrompt("GREATER_THAN", "333")+`]}`)
@@ -687,7 +689,7 @@ func TestMonetizationHandler_PricesByTokenConditions(t *testing.T) {
 	pricing, _ := decodeJSON(t, rec.Body.String())["pricing"].(map[string]any)
 	prices, _ := pricing["prices"].([]any)
 	if len(prices) != 2 || !reflect.DeepEqual(prices[1].(map[string]any)["filters"], []any{map[string]any{
-		"field": "TOKEN", "eventKey": "metadata.aiTokenUsage.promptTokens", "operator": "GREATER_THAN", "values": []any{"333"}}}) {
+		"field": "Prompt tokens", "operator": "GREATER_THAN", "values": []any{"333"}}}) {
 		t.Fatalf("prices = %v", pricing["prices"])
 	}
 
@@ -699,9 +701,9 @@ func TestMonetizationHandler_PricesByTokenConditions(t *testing.T) {
 	}
 	rec = planRequest(t, h, http.MethodPost, planITPath, `{"id":"bronze","displayName":"Bronze","pricing":{"pricingType":"USAGE_BASED",
 		"currency":"USD","billingPeriod":"MONTH","prices":[{"meterId":"llm-input","pricingModel":"PER_UNIT","unitAmount":"1","filters":[
-			{"field":"TOKEN","eventKey":"metadata.aiTokenUsage.totalTokens","operator":"GREATER_THAN","values":["0"]}]}]}}`)
+			{"field":"Total tokens","operator":"GREATER_THAN","values":["0"]}]}]}}`)
 	if rec.Code != http.StatusBadRequest ||
-		!strings.Contains(rec.Body.String(), "price 1: the meter has no Token field with the key metadata.aiTokenUsage.totalTokens") {
-		t.Fatalf("a key the meter does not have: status %d, body %s", rec.Code, rec.Body.String())
+		!strings.Contains(rec.Body.String(), "price 1: the meter llm-input has no property Total tokens") {
+		t.Fatalf("a property the meter does not have: status %d, body %s", rec.Code, rec.Body.String())
 	}
 }

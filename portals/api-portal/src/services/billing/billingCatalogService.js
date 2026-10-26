@@ -31,10 +31,6 @@
  * fails, so the provider is never left with part of a plan and the plan is never half on sale. A
  * request whose own save then fails removes what it created as well (the undo that build returns).
  *
- * A usage price whose API type filter rules out the API's type gets no item: nothing is created for
- * it, so the subscription, its invoices and its usage never show it (priceAppliesToApiType). A usage
- * plan none of whose prices apply to the API is refused.
- *
  * An API plan is never changed afterwards: the plan's pricing and its meters' definitions are locked
  * once it exists (planPricingService, meterService). When its plan stops being sold on its API, it
  * is taken off sale with the provider (retire).
@@ -44,7 +40,6 @@ const billingApiPlanDao = require('../../dao/billingApiPlanDao');
 const subscriptionPlanDao = require('../../dao/subscriptionPlanDao');
 const planPricingDao = require('../../dao/planPricingDao');
 const meterDao = require('../../dao/meterDao');
-const { countedFilters, gatewayApiType, priceAppliesToApiType } = require('./planPricingValidation');
 const billingProvider = require('../../billing/billingProvider');
 const { BillingProviderError } = require('../../billing/http');
 const logger = require('../../config/logger');
@@ -59,9 +54,6 @@ const undoWaits = {
     rateLimited: () => 60000 - (Date.now() % 60000) + 1000,
     unavailable: (attempt) => 2000 * (attempt + 1),
 };
-
-/** The portal's own refusal to sell a paid plan on an API, before the provider is called; its message is shown as it is. */
-class CatalogRefusal extends Error {}
 
 /** A part not started because another part of the same request had already failed. */
 class BuildStopped extends Error {}
@@ -80,8 +72,7 @@ class BillingCatalogError extends Error {
         const by = fromProvider ? cause.provider : 'The billing provider';
         const where = `${item.api.name} ${item.api.version}`;
         let message;
-        if (cause instanceof CatalogRefusal) message = cause.message;
-        else if (retryable) message = `The paid plan "${item.plan.display_name}" could not be set up for sale on ${where} right now. Try again.`;
+        if (retryable) message = `The paid plan "${item.plan.display_name}" could not be set up for sale on ${where} right now. Try again.`;
         else message = `${by} could not create the paid plan "${item.plan.display_name}" for ${where}.`;
         super(message);
         this.name = 'BillingCatalogError';
@@ -92,34 +83,23 @@ class BillingCatalogError extends Error {
 }
 
 /**
- * The parts of a plan's pricing the provider sells on an API, in order: a flat rate plan's one
- * price, or each usage price that applies to the API's type, with the meter it counts with
- * (narrowed by the price's filters). Throws CatalogRefusal when no usage price applies.
+ * The parts of a plan's pricing the provider sells, in order: a flat rate plan's one price, or each
+ * usage price, with the meter it counts with (narrowed by the price's filters).
  */
-function partsOf(plan, api, pricing, meters, connector) {
+function partsOf(pricing, meters, connector) {
     if (pricing.pricing_type === 'FLAT_RATE') return [{ price: null, meter: null }];
-    const parts = [];
-    for (const price of pricing.prices) {
+    return pricing.prices.map((price) => {
         const meter = meters.get(price.meter_handle);
         if (!meter) throw new Error(`The meter of the price "${price.name}" no longer exists.`);
-        if (priceAppliesToApiType(price.filters, meter, api.type)) {
-            const counted = countedFilters(meter, price.filters);
-            parts.push({ price, meter: connector.catalog.priceMeter(counted.meter, counted.filters) });
-        }
-    }
-    if (parts.length === 0) {
-        throw new CatalogRefusal(`None of the prices of the plan ${plan.display_name} apply to this API's type `
-            + `(${gatewayApiType(api.type) || api.type}).`);
-    }
-    return parts;
+        return { price, meter: connector.catalog.priceMeter(meter, price.filters) };
+    });
 }
 
 /**
  * What the catalog needs for some (API, plan) pairs: one item per pair whose plan is paid and that
- * has no API plan yet. `pairs` are { api: { uuid, name, version, type }, planUuid };
- * the API's uuid is null for an API not saved yet. Meters that cannot be counted, and a usage plan
- * none of whose prices apply to the API's type, fail here, before anything is created. Reads go
- * through `t` when the caller holds a transaction.
+ * has no API plan yet. `pairs` are { api: { uuid, name, version }, planUuid }; the API's uuid is
+ * null for an API not saved yet. Meters that cannot be counted fail here, before anything is
+ * created. Reads go through `t` when the caller holds a transaction.
  */
 async function itemsFor(orgId, connector, pairs, t) {
     const items = [];
@@ -133,7 +113,7 @@ async function itemsFor(orgId, connector, pairs, t) {
         const meters = new Map((await meterDao.listByHandles(orgId, handles, t)).map((m) => [m.handle, m]));
         const item = { api, plan, pricing };
         try {
-            item.parts = partsOf(plan, api, pricing, meters, connector);
+            item.parts = partsOf(pricing, meters, connector);
             for (const part of item.parts) {
                 if (part.meter) connector.catalog.checkMeter(part.meter);
             }
@@ -263,7 +243,7 @@ function partLimiter() {
 
 /**
  * Creates with the billing provider the paid plans some (API, plan) pairs enable, before the request
- * saves anything. `pairs` are { api: { uuid, name, version, type }, planUuid }, the API's uuid null
+ * saves anything. `pairs` are { api: { uuid, name, version }, planUuid }, the API's uuid null
  * when the request creates it; `conn` is the organization's billing configuration and `connector`
  * its billing provider. Pairs whose plan is free, or that have an API plan already, need
  * nothing. When any part fails, everything created is removed and BillingCatalogError is thrown,

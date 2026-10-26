@@ -53,13 +53,8 @@ function jsonParam(value) {
     return db.binaryParam(Buffer.from(JSON.stringify(value), 'utf8'));
 }
 
-// A filter as stored: a Token condition's key under event_key.
-const storedFilter = (f) => (f.field === 'TOKEN'
-    ? { field: f.field, event_key: f.eventKey, operator: f.operator, values: f.values }
-    : { field: f.field, operator: f.operator, values: f.values });
-const readFilter = (f) => (f.field === 'TOKEN'
-    ? { field: f.field, eventKey: f.event_key, operator: f.operator, values: f.values || [] }
-    : { field: f.field, operator: f.operator, values: f.values || [] });
+const storedFilter = (f) => ({ field: f.field, operator: f.operator, values: f.values });
+const readFilter = (f) => ({ field: f.field, operator: f.operator, values: f.values || [] });
 
 const storedTier = (tier) => ({ up_to: tier.upTo ?? null, unit_amount: tier.unitAmount ?? null, flat_amount: tier.flatAmount ?? null });
 const readTier = (tier) => ({ upTo: tier.up_to ?? null, unitAmount: tier.unit_amount ?? null, flatAmount: tier.flat_amount ?? null });

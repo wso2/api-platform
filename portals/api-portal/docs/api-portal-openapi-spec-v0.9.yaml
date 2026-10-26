@@ -1092,8 +1092,8 @@ paths:
         - Billing
       summary: Create a meter
       description: >-
-        Creates a meter. When `id` is omitted, it is derived from `displayName`. Token meters apply to AI APIs
-        only. A request with `conditions`, or with any field the meter does not have, is refused.
+        Creates a meter. When `id` is omitted, it is derived from `displayName`. A request with `conditions`, or
+        with any field the meter does not have, is refused.
       operationId: createMeter
       requestBody:
         required: true
@@ -1699,9 +1699,21 @@ paths:
         Unsubscribes. A free subscription is deleted. A paid subscription is first ended with the billing provider;
         when the provider cannot be reached, the subscription is kept (`409` or `502`). A plan charged by usage ends
         now and is deleted, and the provider issues a final invoice for the usage reported so far. A flat rate plan
-        runs to the end of the period already paid for: the answer carries `endsAt`, and the subscription keeps
-        working until then and is removed when the provider ends it. Unsubscribing again before then gives the same
-        answer.
+        runs to the end of the period already paid for: the answer carries `endsAt`, and the subscription stays
+        active until then and is removed when the provider ends it. Unsubscribing again before then gives the same
+        answer, unless `immediate` is true.
+      parameters:
+        - name: immediate
+          in: query
+          required: false
+          description: >-
+            Optional, false by default. Applies only to a paid subscription on a flat rate plan: true ends it
+            immediately instead of at the end of its paid period, the provider ends it at once and the subscription
+            is deleted. The rest of the paid period is not refunded. A free subscription, and a paid one charged by
+            usage, are deleted immediately either way, so the parameter changes nothing for them.
+          schema:
+            type: boolean
+            default: false
       responses:
         "200":
           description: Unsubscribed; `endsAt` is set when a flat rate plan runs to the end of its paid period.
@@ -7377,9 +7389,9 @@ components:
       type: object
       description: >-
         What a paid plan charges for. A meter has no conditions: each plan price on it picks the requests it counts
-        with its own filters, on the fields `filterFields` lists. The event fields a meter reads are stored on it
-        as full paths in the Moesif event, so a gateway that names its analytics fields differently can be metered
-        too; our gateway's fields are the defaults. An event key is 1 to 255 characters with no spaces. Every event
+        with its own filters, on the properties `filterFields` lists. The event fields a meter reads are stored on
+        it as full paths in the Moesif event, so a gateway that names its analytics fields differently can be
+        metered too. An event key is 1 to 255 characters with no spaces. Every event
         must also carry the billing customer and subscription ids, as `metadata.billingCustomerId` and
         `metadata.billingSubscriptionId`: a gateway that does not send them can be metered, but not billed. A meter
         that a plan prices can neither change nor be deleted, its event keys included.
@@ -7424,10 +7436,9 @@ components:
           type: array
           maxItems: 10
           description: >-
-            The fields this meter's prices can filter on: each fixed field at most once, and `TOKEN` once per key
-            (not the meter's `typeKey`, which prices can compare too); at most 10 in all. Empty or absent
-            for none. Cannot change once a plan prices the meter (`409` with code `METER_IN_USE`). Always present
-            in a response.
+            The properties this meter's prices can filter on, each a name and the event key it reads: at most 10,
+            with names unique ignoring case and keys unique. Empty or absent for none. Cannot change once a plan
+            prices the meter (`409` with code `METER_IN_USE`). Always present in a response.
           items:
             $ref: "#/components/schemas/MeterFilterField"
         planCount:
@@ -7451,33 +7462,31 @@ components:
     MeterFilterField:
       type: object
       description: >-
-        A field the prices of a meter can filter on. `TOKEN` reads a number, such as a token count, at its
-        `eventKey`; prices compare it (see PriceFilter).
+        A property the prices of a meter can filter on: a name the administrator chooses and the event field it
+        reads. A property may read the meter's own `typeKey`, so prices can compare the number the meter adds up.
       additionalProperties: false
       required:
         - field
+        - eventKey
       properties:
         field:
           type: string
-          enum:
-            - HTTP_STATUS_CODE
-            - HTTP_METHOD
-            - RESOURCE
-            - API_TYPE
-            - MCP_METHOD
-            - MCP_TOOL
-            - TOKEN
+          minLength: 1
+          maxLength: 40
+          description: >-
+            The property's name, 1 to 40 characters, unique within the meter ignoring case ("Region" and "region"
+            are the same name). Stored as written.
+          example: API type
         eventKey:
           type: string
-          nullable: true
+          minLength: 1
+          maxLength: 255
           description: >-
-            The event field this field reads. For a fixed field, left out or empty, the field's default in our
-            gateway's events: `response.status`, `request.verb`, `metadata.apiResourceTemplate`, `metadata.apiType`,
-            `metadata.mcpAnalytics.jsonRpcMethod` (`MCP_METHOD`) or `metadata.mcpAnalytics.capabilityName`
-            (`MCP_TOOL`). A `TOKEN` field has no default and needs a
-            key, such as `metadata.aiTokenUsage.promptTokens`, `metadata.aiTokenUsage.completionTokens` or
-            `metadata.aiTokenUsage.totalTokens` ("A Token field needs an eventKey"). 1 to 255 characters with no
-            spaces. Always present in a response.
+            The event field the property reads: 1 to 255 characters with no spaces, unique within the meter. Our
+            gateway's events have `response.status`, `request.verb`, `metadata.apiResourceTemplate`,
+            `metadata.apiType`, `metadata.mcpAnalytics.jsonRpcMethod`, `metadata.mcpAnalytics.capabilityName`, and
+            the token counts `metadata.aiTokenUsage.promptTokens`, `metadata.aiTokenUsage.completionTokens` and
+            `metadata.aiTokenUsage.totalTokens`.
           example: metadata.apiType
     PriceTier:
       type: object
@@ -7506,31 +7515,19 @@ components:
     PriceFilter:
       type: object
       description: >-
-        A filter of a price: the price counts only the requests whose `field` matches. `HTTP_STATUS_CODE`,
-        `HTTP_METHOD`, `API_TYPE`, `MCP_METHOD` and `MCP_TOOL` take `EQUALS`, `NOT_EQUALS`, `IN` or `NOT_IN`; `RESOURCE` takes
-        `EQUALS`, `NOT_EQUALS` or `STARTS_WITH`. `EQUALS`, `NOT_EQUALS` and `STARTS_WITH` take one value; `IN` and
-        `NOT_IN` take 1 to 20. Status codes are exact codes from 100 to 599, such as `"200"` (classes such as
-        `"2xx"` are refused); HTTP methods are `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `HEAD` or `OPTIONS`
-        (stored upper case); a resource starts with `/`; an API type is matched exactly as written.
-        `STARTS_WITH` on `RESOURCE` matches the resource and the resources under it, by whole path segments, as a
-        router matches a path prefix: `/orders` matches `/orders` and `/orders/{id}`, not `/orders-archive`; `/`
-        matches every resource. Its value is stored without a trailing `/`. The resource is the operation's path
-        as the API defines it, such as `/orders/{id}`. `NOT_EQUALS` and `NOT_IN` count the requests that have the
-        field with another value: a request without the field is not counted.
-        A `TOKEN` filter is a condition on the number at one of the meter's Token keys (its `typeKey`
-        or a `TOKEN` filter field), named by `eventKey`: `GREATER_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN`,
-        `LESS_THAN_OR_EQUAL` or `EQUALS`, with one whole number from 0 to 1000000000000. A price puts at most two
-        conditions on a key, which must be able to all be true together (for example more than 100 and at most
-        500).
-        Our gateway's API types are `RestApi`, `WebSubApi`, `LlmProvider`, `LlmProxy`, `Mcp` and `Agent`. A
-        price whose `API_TYPE` filter rules out an API's type is not sold on that API, when its meter reads the
-        API type at the default event key `metadata.apiType`.
-        `MCP_METHOD` is the JSON-RPC method of a request to an MCP server, such as `tools/call`, `resources/read` or
-        `prompts/get`, and `MCP_TOOL` the name of the tool a tool call runs; both are matched exactly as written.
-        An `MCP_TOOL` filter counts only tool calls (`tools/call`), so a price that filters on `MCP_TOOL` does not
-        also filter on `MCP_METHOD`. A price with either filter is sold only on MCP servers, when its meter reads
-        the field at its default event key. A batched JSON-RPC request (an array of messages) has no method in its
-        event, so neither filter counts it. Repeated values are dropped, the order kept.
+        A filter of a price: the price counts only the requests whose property `field` matches. Any operator works
+        on any property. `EQUALS`, `NOT_EQUALS` and `STARTS_WITH` take one text value; `IN` and `NOT_IN` take 1 to
+        20, repeats dropped and the order kept. Text values are matched exactly as written, case included.
+        `STARTS_WITH` is a plain text prefix: `/orders` also matches `/orders-archive`. `NOT_EQUALS` and `NOT_IN`
+        count the requests that have the property with another value: a request without it is not counted.
+        `GREATER_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN` and `LESS_THAN_OR_EQUAL` compare the property as a
+        number with one whole number from 0 to 1000000000000, stored without leading zeros. On one property, a
+        price has either one filter with `EQUALS`, `NOT_EQUALS`, `IN`, `NOT_IN` or `STARTS_WITH`, or one or two
+        comparisons that can all be true together, such as more than 100 and at most 500. Values are not checked
+        against what the property holds: a filter that can't match the event field, such as text on a number,
+        counts nothing. Our gateway's API types are `RestApi`, `WebSubApi`, `LlmProvider`, `LlmProxy`, `Mcp` and
+        `Agent`. A batched JSON-RPC request (an array of messages) has no MCP method in its event. A price is sold
+        on every API its plan is offered on, whatever its filters.
       additionalProperties: false
       required:
         - field
@@ -7539,20 +7536,12 @@ components:
       properties:
         field:
           type: string
-          enum:
-            - HTTP_STATUS_CODE
-            - HTTP_METHOD
-            - RESOURCE
-            - API_TYPE
-            - MCP_METHOD
-            - MCP_TOOL
-            - TOKEN
-        eventKey:
-          type: string
+          minLength: 1
+          maxLength: 40
           description: >-
-            `TOKEN` only, and required for it: the meter's Token key the condition compares. Refused on any other
-            filter.
-          example: metadata.aiTokenUsage.promptTokens
+            The name of one of the meter's `filterFields`, matched ignoring case and stored with the meter's
+            spelling.
+          example: API type
         operator:
           type: string
           enum:
@@ -7569,7 +7558,7 @@ components:
           type: array
           description: >-
             One value for `EQUALS`, `NOT_EQUALS`, `STARTS_WITH` and the comparisons; 1 to 20 for `IN` and `NOT_IN`.
-            Each value is 1 to 255 characters; a `TOKEN` value is a whole number from 0 to 1000000000000.
+            Each value is 1 to 255 characters; a comparison's value is a whole number from 0 to 1000000000000.
           items:
             type: string
           example:
@@ -7581,9 +7570,10 @@ components:
         `unitQuantity` units; VOLUME prices all the units at the tier their total falls in; GRADUATED prices the
         units in each tier at that tier's price. Fields of another model are refused. A price has no name of its
         own: subscribers see the meter's name followed by each filter, separated by " · ": the values of an
-        `EQUALS` or `IN` filter joined with ", ", "not" and the values of a `NOT_EQUALS` or `NOT_IN` filter, and
-        the path of a `STARTS_WITH` filter followed by "…". Examples: "LLM input tokens · LlmProvider", "API calls ·
-        not DELETE, OPTIONS", "API calls · /orders…", "Requests · RestApi", "API calls".
+        `EQUALS` or `IN` filter joined with ", ", "not" and the values of a `NOT_EQUALS` or `NOT_IN` filter, the
+        value of a `STARTS_WITH` filter followed by "…", and the property's name, sign and value of a comparison.
+        Examples: "LLM input tokens · LlmProvider", "API calls · not DELETE, OPTIONS", "API calls · /orders…",
+        "LLM input tokens · Prompt tokens > 333", "API calls".
       additionalProperties: false
       required:
         - meterId
@@ -7596,10 +7586,9 @@ components:
         filters:
           type: array
           description: >-
-            The requests of the meter this price counts: those that match every filter, at most one filter per
-            fixed field, each on a field the meter's `filterFields` lists, and at most two Token conditions per
-            Token key; at most 20 in all. Empty or absent to count everything the meter counts. Always present in
-            a response.
+            The requests of the meter this price counts: those that match every filter, each on a property the
+            meter's `filterFields` lists; at most 20 in all. Empty or absent to count everything the meter counts.
+            Always present in a response.
           items:
             $ref: "#/components/schemas/PriceFilter"
         pricingModel:
@@ -7632,13 +7621,14 @@ components:
         What a paid subscription plan costs, in one currency and billing period. A plan is either a flat rate
         (`FLAT_RATE`: `flatAmount` every billing period, no prices) or usage based (`USAGE_BASED`: 1 to 20
         prices, no `flatAmount`). A meter may have several prices in a plan, but two prices on one meter may not
-        count the same request: they must differ on a field that either filters on, where a field only one of them
-        filters on matches any value for the other. On one field, two filters can match the same value when: two
-        `EQUALS` or `IN` filters share a value; some value of an `EQUALS` or `IN` filter is not excluded by a
-        `NOT_EQUALS` or `NOT_IN` filter, or is the path of a `STARTS_WITH` filter or under it; the path of one
-        `STARTS_WITH` filter is the other's or under it; and always for two `NOT_EQUALS` or `NOT_IN` filters, or one
-        of them and a `STARTS_WITH` filter, except for `HTTP_METHOD`, where two exclusion lists that together cover
-        all seven methods match no common value. Requests that no price counts are not charged. `prices` is returned
+        count the same request: they must differ on a property that either filters on, where a property only one of
+        them filters on matches any value for the other. On one property, two prices' filters can match the same
+        value when: two `EQUALS` or `IN` filters share a value; some value of an `EQUALS` or `IN` filter is not
+        excluded by a `NOT_EQUALS` or `NOT_IN` filter, or starts with the value of a `STARTS_WITH` filter; the value
+        of one `STARTS_WITH` filter starts with the other's; their comparisons' whole-number ranges overlap; some
+        value of an `EQUALS` or `IN` filter is a whole number in the range of comparisons; and always for a
+        `NOT_EQUALS` or `NOT_IN` filter with another such filter, a `STARTS_WITH` filter or comparisons, and for a
+        `STARTS_WITH` filter with comparisons. Requests that no price counts are not charged. `prices` is returned
         sorted by price name. Amounts are decimal strings in the currency's main unit (`"0.01"` is one cent in
         USD). The pricing is given when the plan is created and can't be updated after that, so a field the pricing, a
         price, a filter or a tier does not take is refused rather than ignored.

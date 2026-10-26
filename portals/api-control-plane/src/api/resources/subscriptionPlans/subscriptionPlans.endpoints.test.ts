@@ -181,7 +181,7 @@ describe('plan pricing', () => {
       prices: [
         {
           filters: [
-            { field: 'API_TYPE' as const, operator: 'EQUALS' as const, values: ['LlmProvider'] },
+            { field: 'API type', operator: 'EQUALS' as const, values: ['LlmProvider'] },
           ],
           meterId: 'llm-tokens',
           pricingModel: 'PER_UNIT' as const,

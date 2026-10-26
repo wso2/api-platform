@@ -96,55 +96,26 @@ func TestMeterCreated_CopiesTheMeterWithTheTimeOfTheChange(t *testing.T) {
 	}
 }
 
-// The meter's event keys are its own, editable in the API Portal: they are copied as they are,
-// defaults and custom keys alike.
-func TestMeterUpdated_CopiesTheEventKeys(t *testing.T) {
+// The meter's properties are its own, named in the API Portal: their names and event keys are copied
+// as they are, trimmed and in order.
+func TestMeterUpdated_CopiesTheProperties(t *testing.T) {
 	r, m, cfg := newMonetizationTestReceiver(t)
 
 	if _, err := postMonetizationEvent(t, r, cfg, EventMeterUpdated, "2026-10-07T12:30:00Z",
 		`{"handle":"llm-output","display_name":"Output tokens","type":"TOKENS",
 		  "type_key":" usage.output_tokens ",
-		  "filter_fields":[{"field":"api_type","event_key":"metadata.apiType"},{"field":"HTTP_METHOD","event_key":"custom.verb"}]}`); err != nil {
+		  "filter_fields":[{"field":" API type ","event_key":"metadata.apiType"},{"field":"region","event_key":" custom.Region "},
+		    {"field":"Output tokens","event_key":"usage.output_tokens"}]}`); err != nil {
 		t.Fatalf("err = %v", err)
 	}
 	got := m.meters[0]
 	if got.Type != "TOKENS" || got.TypeKey == nil || *got.TypeKey != "usage.output_tokens" {
 		t.Errorf("meter = %+v, want a TOKENS meter adding up usage.output_tokens", got)
 	}
-	// Field codes upper-cased; event keys kept as received (trimmed), in order.
-	want := []model.MeterFilterField{{Field: "API_TYPE", EventKey: "metadata.apiType"}, {Field: "HTTP_METHOD", EventKey: "custom.verb"}}
+	want := []model.MeterFilterField{{Field: "API type", EventKey: "metadata.apiType"}, {Field: "region", EventKey: "custom.Region"},
+		{Field: "Output tokens", EventKey: "usage.output_tokens"}}
 	if !reflect.DeepEqual(got.FilterFields, want) {
 		t.Errorf("filter fields = %+v, want %+v", got.FilterFields, want)
-	}
-}
-
-// API type is a filter field like any other, on any meter, with its own key.
-func TestMeterUpdated_CopiesTheAPITypeField(t *testing.T) {
-	r, m, cfg := newMonetizationTestReceiver(t)
-
-	if _, err := postMonetizationEvent(t, r, cfg, EventMeterUpdated, "2026-10-07T12:30:00Z",
-		`{"handle":"api-calls","display_name":"API requests","type":"REQUEST_COUNT",
-		  "filter_fields":[{"field":"api_type","event_key":"metadata.apiType"},{"field":"HTTP_METHOD","event_key":"request.verb"}]}`); err != nil {
-		t.Fatalf("err = %v", err)
-	}
-	want := []model.MeterFilterField{{Field: "API_TYPE", EventKey: "metadata.apiType"}, {Field: "HTTP_METHOD", EventKey: "request.verb"}}
-	if got := m.meters[0].FilterFields; !reflect.DeepEqual(got, want) {
-		t.Errorf("filter fields = %+v, want %+v", got, want)
-	}
-}
-
-// A meter may list the Token field several times, once per key.
-func TestMeterUpdated_CopiesTokenFields(t *testing.T) {
-	r, m, cfg := newMonetizationTestReceiver(t)
-
-	if _, err := postMonetizationEvent(t, r, cfg, EventMeterUpdated, "2026-10-07T12:30:00Z",
-		`{"handle":"llm-input","display_name":"Input tokens","type":"TOKENS","type_key":"metadata.aiTokenUsage.promptTokens",
-		  "filter_fields":[{"field":"token","event_key":"metadata.aiTokenUsage.totalTokens"},{"field":"TOKEN","event_key":"custom.cached"}]}`); err != nil {
-		t.Fatalf("err = %v", err)
-	}
-	want := []model.MeterFilterField{{Field: "TOKEN", EventKey: "metadata.aiTokenUsage.totalTokens"}, {Field: "TOKEN", EventKey: "custom.cached"}}
-	if got := m.meters[0].FilterFields; !reflect.DeepEqual(got, want) {
-		t.Errorf("filter fields = %+v, want %+v", got, want)
 	}
 }
 
@@ -195,19 +166,15 @@ func TestMonetizationEvents_RejectMalformedData(t *testing.T) {
 			"typeKey must be 1 to 255 characters with no spaces"},
 		{EventMeterUpdated, `{"handle":"calls","display_name":"Calls","type":"REQUEST_COUNT","type_key":"metadata.aiTokenUsage.totalTokens"}`,
 			"typeKey applies only to a TOKENS meter"},
-		{EventMeterUpdated, `{"handle":"calls","display_name":"Calls","type":"REQUEST_COUNT","filter_fields":[{"field":"TOKEN_TYPE","event_key":"tokenType"}]}`,
-			"filterFields: unknown field TOKEN_TYPE"},
-		{EventMeterUpdated, `{"handle":"calls","display_name":"Calls","type":"REQUEST_COUNT","filter_fields":[{"field":"API_TYPE","event_key":"metadata.kind"},{"field":"api_type","event_key":"metadata.kind"}]}`,
-			"filterFields: API_TYPE is listed twice"},
-		{EventMeterUpdated, `{"handle":"calls","display_name":"Calls","type":"REQUEST_COUNT","filter_fields":[{"field":"TOKEN"}]}`,
-			"A Token field needs an eventKey"},
-		{EventMeterUpdated, `{"handle":"calls","display_name":"Calls","type":"REQUEST_COUNT","filter_fields":[{"field":"TOKEN","event_key":"t.total"},{"field":"TOKEN","event_key":"t.total"}]}`,
-			"The meter lists the Token key t.total more than once"},
-		{EventMeterUpdated, `{"handle":"tokens","display_name":"Tokens","type":"TOKENS","type_key":"t.prompt","filter_fields":[{"field":"TOKEN","event_key":"t.prompt"}]}`,
-			"The key t.prompt is already the meter's Token key"},
-		{EventMeterUpdated, `{"handle":"calls","display_name":"Calls","type":"REQUEST_COUNT","filter_fields":[{"field":"HTTP_METHOD"}]}`,
+		{EventMeterUpdated, `{"handle":"calls","display_name":"Calls","type":"REQUEST_COUNT","filter_fields":[{"field":" ","event_key":"k"}]}`,
+			"A filter property's name must be 1 to 40 characters"},
+		{EventMeterUpdated, `{"handle":"calls","display_name":"Calls","type":"REQUEST_COUNT","filter_fields":[{"field":"API type","event_key":"a"},{"field":"api TYPE","event_key":"b"}]}`,
+			"The meter has the property api TYPE more than once"},
+		{EventMeterUpdated, `{"handle":"calls","display_name":"Calls","type":"REQUEST_COUNT","filter_fields":[{"field":"Total","event_key":"t.total"},{"field":"All","event_key":"t.total"}]}`,
+			"All and Total read the same event key t.total"},
+		{EventMeterUpdated, `{"handle":"calls","display_name":"Calls","type":"REQUEST_COUNT","filter_fields":[{"field":"HTTP method"}]}`,
 			"The event key of HTTP method must be 1 to 255 characters with no spaces"},
-		{EventMeterUpdated, `{"handle":"calls","display_name":"Calls","type":"REQUEST_COUNT","filter_fields":[{"field":"HTTP_STATUS_CODE","event_key":"response status"}]}`,
+		{EventMeterUpdated, `{"handle":"calls","display_name":"Calls","type":"REQUEST_COUNT","filter_fields":[{"field":"Status code","event_key":"response status"}]}`,
 			"The event key of Status code must be 1 to 255 characters with no spaces"},
 	} {
 		_, err := postMonetizationEvent(t, r, cfg, tc.eventType, "2026-10-07T12:30:00Z", tc.data)

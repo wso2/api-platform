@@ -30,6 +30,7 @@ import {
   FormHelperText,
   FormLabel,
   IconButton,
+  Menu,
   MenuItem,
   OutlinedInput,
   Select,
@@ -44,22 +45,20 @@ import { useCreateMeter, useUpdateMeter, type Meter, type MeterBody } from '@/ap
 import { useNotifications } from '@/components/Notifications';
 import {
   DEFAULT_TOKEN_KEY,
-  FILTER_FIELDS,
-  FILTER_RULES,
-  FIXED_FIELDS,
   MAX_METER_FIELDS,
   METER_TYPES,
+  PROPERTY_PRESETS,
   TOKEN_KEYS,
-  fieldMessages,
   isEventKey,
+  isPropertyName,
   meterTypeMessages,
-  tokenFieldLabel,
-  type FilterField,
+  sameName,
   type MeterType,
+  type PropertyPreset,
 } from './meterLabels';
 
-/** One field the meter's prices may filter on, as a row of the form, with the event key it reads. */
-type FilterFieldRow = { key: number; field: FilterField; eventKey: string };
+/** One property the meter's prices may filter on, as a row of the form: its name and the event key it reads. */
+type FilterFieldRow = { key: number; field: string; eventKey: string };
 
 type FormState = {
   displayName: string;
@@ -67,7 +66,7 @@ type FormState = {
   type: MeterType;
   /** Tokens only: the event key whose number each request adds up. */
   typeKey: string;
-  /** The fields the meter's prices may filter on: each fixed field once, Token once per key. */
+  /** The properties the meter's prices may filter on, in order. */
   filterFields: FilterFieldRow[];
 };
 
@@ -80,16 +79,18 @@ const LOCKED_NOTE = 'meter-locked-note';
 /** Filter rows and their headings: property, key, remove. */
 const FIELD_COLUMNS = 'minmax(0,1fr) minmax(0,1fr) 32px';
 
-type TokenKeyOption = (typeof TOKEN_KEYS)[number];
-
-/** What is wrong with a key, for one message under the fields; `key` names the key for the Token rules. */
-type KeyError = { message: MessageDescriptor; key?: string };
+/**
+ * What is wrong with a property's name or key, for one message under the filters; `value` is the
+ * repeated name or key the message names.
+ */
+type RowError = { message: MessageDescriptor; value?: string };
 
 const messages = defineMessages({
   addFilter: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.addFilter',
     defaultMessage: 'Add filter',
-    description: "Adds a row to a meter's filters: a property its prices may filter on.",
+    description:
+      "Opens the list of properties to add to a meter's filters: our gateway's, then Custom.",
   },
   cancel: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.cancel',
@@ -107,6 +108,12 @@ const messages = defineMessages({
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.createFailed',
     defaultMessage: 'Failed to add the meter.',
   },
+  custom: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.custom',
+    defaultMessage: 'Custom',
+    description:
+      'The last choice when adding a filter property: a property with an empty name and key to fill in.',
+  },
   descriptionLabel: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.descriptionLabel',
     defaultMessage: 'Description',
@@ -119,30 +126,18 @@ const messages = defineMessages({
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.eventKey',
     defaultMessage: 'Key',
     description:
-      'The field in the gateway\'s events that a Tokens meter adds up or a filter reads, such as "metadata.aiTokenUsage.promptTokens" or "request.verb".',
+      'The field in the gateway\'s events that a filter property reads, such as "request.verb".',
   },
   eventKeyInvalid: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.eventKeyInvalid',
     defaultMessage: 'Use 1 to 255 characters with no spaces.',
     description: 'Shown under an event key that is too long or has spaces.',
   },
-  tokenFieldKeyRequired: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.tokenFieldKeyRequired',
-    defaultMessage: 'A Token property needs an event key.',
+  eventKeyRepeated: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.eventKeyRepeated',
+    defaultMessage: 'More than one property reads the event key {value}.',
     description:
-      'Shown under a Token field row whose event key is empty; a Token field has no default key.',
-  },
-  tokenKeyIsTokenRow: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.tokenKeyIsTokenRow',
-    defaultMessage: "The key {key} is already the meter's Token key.",
-    description:
-      "Shown when a Token filter repeats a Tokens meter's Token key; {key} is the event key.",
-  },
-  tokenKeyRepeated: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.tokenKeyRepeated',
-    defaultMessage: 'The meter lists the Token key {key} more than once.',
-    description:
-      'Shown when two Token fields of a meter have the same event key; {key} is the event key.',
+      'Shown under the filters of a meter; {value} is the event key, such as "request.verb".',
   },
   eventKeyRequired: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.eventKeyRequired',
@@ -153,19 +148,18 @@ const messages = defineMessages({
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.filterField',
     defaultMessage: 'Property',
     description:
-      'Accessible name of the select of a filter row, whose value is the property, such as "HTTP method".',
+      'Accessible name of the name of a filter row: the name of a property, such as "HTTP method".',
   },
   filterHeading: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.filterHeading',
     defaultMessage: 'Property',
     description:
-      "Column heading over the property of each row of a meter's filters (Token, or a property its prices may filter on).",
+      'Column heading over the name of each property in a meter\'s filters, such as "HTTP method".',
   },
   filtersLabel: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.filtersLabel',
     defaultMessage: 'Filters',
-    description:
-      'Heading of the list of event properties a meter reads: for a Tokens meter the token count it adds up, then the properties its prices may filter on.',
+    description: "Heading of the list of properties a meter's prices may filter on.",
   },
   lockedSave: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.lockedSave',
@@ -185,11 +179,32 @@ const messages = defineMessages({
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.nameRequired',
     defaultMessage: 'Enter a name.',
   },
+  propertyKeyRequired: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.propertyKeyRequired',
+    defaultMessage: 'Enter the event key of each property.',
+    description: "Shown under a meter's filters when a property's event key is empty.",
+  },
+  propertyNameInvalid: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.propertyNameInvalid',
+    defaultMessage: 'Give each property a name of 1 to 40 characters.',
+    description: "Shown under a meter's filters when a property's name is empty or too long.",
+  },
+  propertyNameRepeated: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.propertyNameRepeated',
+    defaultMessage: 'The meter has the property {value} more than once.',
+    description:
+      'Shown under the filters of a meter; {value} is the name, such as "Region", which counts once whatever its case.',
+  },
   removeFilter: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.removeFilter',
     defaultMessage: 'Remove {field}',
     description:
-      'Accessible name of the remove button of a filter row; {field} is the field, such as "HTTP method".',
+      'Accessible name of the remove button of a filter row; {field} is the property, such as "HTTP method".',
+  },
+  removeUnnamed: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.removeUnnamed',
+    defaultMessage: 'Remove this property',
+    description: 'Accessible name of the remove button of a filter row whose name is empty.',
   },
   saveChanges: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.saveChanges',
@@ -242,31 +257,42 @@ type TokenKeyInputProps = {
   onChange: (key: string) => void;
   disabled: boolean;
   error: boolean;
-  placeholder?: string;
-  /** The input's id, for a label of its own; a filter row's input is named Key instead. */
-  id?: string;
+  /** The input's id, for its label. */
+  id: string;
 };
 
-/**
- * A Tokens meter's Token key, or a Token filter's key: our gateway's token keys to
- * pick from, each with its label, or any other key typed in. Every suggestion
- * is offered whatever the field holds; there are only three.
- */
-function TokenKeyInput({ value, onChange, disabled, error, placeholder, id }: TokenKeyInputProps) {
-  const intl = useIntl();
+/** A property preset as offered: its name, and the event key it reads under it. */
+function PresetLabel({ preset }: { preset: PropertyPreset }) {
   return (
-    <Autocomplete<TokenKeyOption, false, true, true>
+    <Stack>
+      <Typography variant="body2">
+        <FormattedMessage {...preset.name} />
+      </Typography>
+      <Typography color="text.secondary" sx={{ fontFamily: 'monospace' }} variant="caption">
+        {preset.eventKey}
+      </Typography>
+    </Stack>
+  );
+}
+
+/**
+ * A Tokens meter's Token key: our gateway's token keys to pick from, each with
+ * its label, or any other key typed in.
+ */
+function TokenKeyInput({ value, onChange, disabled, error, id }: TokenKeyInputProps) {
+  return (
+    <Autocomplete<PropertyPreset, false, true, true>
       disableClearable
       disabled={disabled}
       filterOptions={(options) => options}
       freeSolo
-      getOptionLabel={(option) => (typeof option === 'string' ? option : option.key)}
+      getOptionLabel={(option) => (typeof option === 'string' ? option : option.eventKey)}
       inputValue={value}
       isOptionEqualToValue={(option, selected) =>
-        option.key === (typeof selected === 'string' ? selected : selected.key)
+        option.eventKey === (typeof selected === 'string' ? selected : selected.eventKey)
       }
       onChange={(_event, selected) =>
-        onChange(typeof selected === 'string' ? selected : selected.key)
+        onChange(typeof selected === 'string' ? selected : selected.eventKey)
       }
       onInputChange={(_event, typed) => onChange(typed)}
       options={TOKEN_KEYS}
@@ -274,16 +300,10 @@ function TokenKeyInput({ value, onChange, disabled, error, placeholder, id }: To
         <TextField
           {...params}
           error={error}
-          placeholder={placeholder}
+          placeholder={DEFAULT_TOKEN_KEY}
           required
           slotProps={{
-            htmlInput: id
-              ? { ...inputProps, id, spellCheck: false }
-              : {
-                  ...inputProps,
-                  'aria-label': intl.formatMessage(messages.eventKey),
-                  spellCheck: false,
-                },
+            htmlInput: { ...inputProps, id, spellCheck: false },
             input: { ...InputProps, sx: { fontFamily: 'monospace' } },
             inputLabel: InputLabelProps,
           }}
@@ -291,14 +311,7 @@ function TokenKeyInput({ value, onChange, disabled, error, placeholder, id }: To
       )}
       renderOption={({ key, ...optionProps }, option) => (
         <li key={key} {...optionProps}>
-          <Stack>
-            <Typography variant="body2">
-              <FormattedMessage {...option.label} />
-            </Typography>
-            <Typography color="text.secondary" sx={{ fontFamily: 'monospace' }} variant="caption">
-              {option.key}
-            </Typography>
-          </Stack>
+          <PresetLabel preset={option} />
         </li>
       )}
       size="small"
@@ -317,17 +330,15 @@ export type MeterFormDialogProps = {
 };
 
 /**
- * Add/edit dialog for a meter: what it counts, and its fields, each with the
- * event key it reads.
+ * Add/edit dialog for a meter: what it counts, and the properties its plan
+ * prices may filter on, each with the event key it reads.
  *   - A Tokens meter has a Token key under its type: the event key whose number
- *     it adds up, sent as `typeKey`, never as a filter field.
- *   - The filter rows are the fields its plan prices may filter on: each fixed
- *     field once, and Token (a number such as a token count, which prices set
- *     conditions on) once per key.
- *   - Keys start as our gateway's defaults and can be edited. A row whose field
- *     changes gets that field's default, and a fixed field's key left empty gets
- *     its default from the Platform API. A Token field has no default: it needs a
- *     key of its own.
+ *     it adds up, sent as `typeKey`, not as a filter property.
+ *   - Each filter row is a property: a name, unique ignoring case, and an event
+ *     key, unique too. A property added from our gateway's list starts with its
+ *     name and key, and both can be edited; a custom one starts empty. A
+ *     property our gateway reports is not offered again once the meter has its
+ *     name or its key.
  *
  * Once a plan prices a meter, nothing about it can change, keys included, so it
  * opens read-only. The Platform API checks meters with the API Portal's rules,
@@ -341,11 +352,13 @@ export function MeterFormDialog({ open, meter, readOnly = false, onClose }: Mete
   const isEdit = meter !== null;
   const mutation = isEdit ? updateMutation : createMutation;
 
-  // Stable keys for filter rows across add/remove; a field can change within a row.
+  // Stable keys for filter rows across add/remove.
   const nextRowKey = useRef(0);
 
   const [form, setForm] = useState<FormState>(emptyForm);
   const [submitted, setSubmitted] = useState(false);
+  // The Add filter button while its list of properties is open.
+  const [addAnchor, setAddAnchor] = useState<HTMLElement | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -355,7 +368,7 @@ export function MeterFormDialog({ open, meter, readOnly = false, onClose }: Mete
             description: meter.description ?? '',
             displayName: meter.displayName ?? '',
             filterFields: (meter.filterFields ?? []).map(({ eventKey, field }) => ({
-              eventKey: eventKey ?? FILTER_RULES[field].eventKey,
+              eventKey,
               field,
               key: nextRowKey.current++,
             })),
@@ -365,6 +378,7 @@ export function MeterFormDialog({ open, meter, readOnly = false, onClose }: Mete
         : emptyForm(),
     );
     setSubmitted(false);
+    setAddAnchor(null);
   }, [open, meter]);
 
   // Switching to Tokens fills in the default Token key; switching away removes it.
@@ -375,33 +389,27 @@ export function MeterFormDialog({ open, meter, readOnly = false, onClose }: Mete
       typeKey: type === 'TOKENS' && current.type !== 'TOKENS' ? DEFAULT_TOKEN_KEY : current.typeKey,
     }));
 
-  // Each fixed field once; Token as often as wanted, each with its own key.
-  const usedFields = new Set<FilterField>(
-    form.filterFields.map((row) => row.field).filter((field) => field !== 'TOKEN'),
+  // Our gateway's properties the meter does not have yet, by name or by key.
+  const presets = PROPERTY_PRESETS.filter(
+    (preset) =>
+      !form.filterFields.some(
+        (row) =>
+          sameName(row.field, intl.formatMessage(preset.name)) ||
+          row.eventKey.trim() === preset.eventKey,
+      ),
   );
-  const addFilterField = () => {
-    const field = FIXED_FIELDS.find((candidate) => !usedFields.has(candidate)) ?? 'TOKEN';
+  const addFilterField = (field: string, eventKey: string) => {
+    setAddAnchor(null);
     setForm((current) => ({
       ...current,
-      filterFields: [
-        ...current.filterFields,
-        { eventKey: FILTER_RULES[field].eventKey, field, key: nextRowKey.current++ },
-      ],
+      filterFields: [...current.filterFields, { eventKey, field, key: nextRowKey.current++ }],
     }));
   };
-  // A row given another field reads that field's default key; Token has none.
-  const setFilterField = (key: number, field: FilterField) =>
+  const setFilterRow = (key: number, patch: Partial<FilterFieldRow>) =>
     setForm((current) => ({
       ...current,
       filterFields: current.filterFields.map((row) =>
-        row.key === key ? { ...row, eventKey: FILTER_RULES[field].eventKey, field } : row,
-      ),
-    }));
-  const setFilterKey = (key: number, eventKey: string) =>
-    setForm((current) => ({
-      ...current,
-      filterFields: current.filterFields.map((row) =>
-        row.key === key ? { ...row, eventKey } : row,
+        row.key === key ? { ...row, ...patch } : row,
       ),
     }));
   const removeFilterField = (key: number) =>
@@ -421,34 +429,42 @@ export function MeterFormDialog({ open, meter, readOnly = false, onClose }: Mete
       : !isEventKey(tokenKey)
         ? messages.eventKeyInvalid
         : null;
-  // A fixed field's key left empty is not sent, and gets its default. A Token
-  // field needs a key of its own: not the Token key, nor another Token field's.
-  const tokenFieldKeys = form.filterFields
-    .filter((row) => row.field === 'TOKEN')
-    .map((row) => row.eventKey.trim());
-  const keyErrorOf = (row: FilterFieldRow): KeyError | null => {
-    const key = row.eventKey.trim();
-    if (row.field !== 'TOKEN')
-      return key && !isEventKey(key) ? { message: messages.eventKeyInvalid } : null;
-    if (!key) return { message: messages.tokenFieldKeyRequired };
-    if (!isEventKey(key)) return { message: messages.eventKeyInvalid };
-    if (isTokens && key === tokenKey) return { key, message: messages.tokenKeyIsTokenRow };
-    return tokenFieldKeys.filter((other) => other === key).length > 1
-      ? { key, message: messages.tokenKeyRepeated }
+  // Each property needs a name and an event key, neither shared with another property; a name is
+  // the same whatever its case.
+  const nameErrorOf = (row: FilterFieldRow): RowError | null => {
+    if (!isPropertyName(row.field)) return { message: messages.propertyNameInvalid };
+    const same = form.filterFields.filter((other) => sameName(other.field, row.field));
+    return same.length > 1
+      ? { message: messages.propertyNameRepeated, value: same[0].field.trim() }
       : null;
   };
+  const keyErrorOf = (row: FilterFieldRow): RowError | null => {
+    const key = row.eventKey.trim();
+    if (!key) return { message: messages.propertyKeyRequired };
+    if (!isEventKey(key)) return { message: messages.eventKeyInvalid };
+    return form.filterFields.filter((other) => other.eventKey.trim() === key).length > 1
+      ? { message: messages.eventKeyRepeated, value: key }
+      : null;
+  };
+  const nameErrors = new Map(
+    form.filterFields.flatMap((row) => {
+      const error = nameErrorOf(row);
+      return error ? [[row.key, error] as const] : [];
+    }),
+  );
   const fieldKeyErrors = new Map(
     form.filterFields.flatMap((row) => {
       const error = keyErrorOf(row);
       return error ? [[row.key, error] as const] : [];
     }),
   );
-  // Each filter problem once under the filters.
-  const keyErrors = [
+  // Each filter problem once under the filters, in the rows' order.
+  const rowErrors = [
     ...new Map(
-      [...fieldKeyErrors.values()].map(
-        (error: KeyError) => [`${error.message.id}:${error.key ?? ''}`, error] as const,
-      ),
+      form.filterFields
+        .flatMap((row) => [nameErrors.get(row.key), fieldKeyErrors.get(row.key)])
+        .filter((error): error is RowError => error !== undefined)
+        .map((error) => [`${error.message.id}:${error.value ?? ''}`, error] as const),
     ).values(),
   ];
   const canSubmit = !mutation.isPending;
@@ -460,7 +476,7 @@ export function MeterFormDialog({ open, meter, readOnly = false, onClose }: Mete
       readOnly ||
       hasNameError ||
       tokenKeyError !== null ||
-      keyErrors.length > 0 ||
+      rowErrors.length > 0 ||
       mutation.isPending
     )
       return;
@@ -471,9 +487,10 @@ export function MeterFormDialog({ open, meter, readOnly = false, onClose }: Mete
       type: form.type,
       // The Token key is the meter's event key, not a filter field.
       ...(isTokens ? { typeKey: tokenKey } : {}),
-      filterFields: form.filterFields.map(({ eventKey, field }) =>
-        eventKey.trim() ? { eventKey: eventKey.trim(), field } : { field },
-      ),
+      filterFields: form.filterFields.map(({ eventKey, field }) => ({
+        eventKey: eventKey.trim(),
+        field: field.trim(),
+      })),
     };
     const onError = (error: { message?: string }) =>
       notify(
@@ -587,7 +604,6 @@ export function MeterFormDialog({ open, meter, readOnly = false, onClose }: Mete
                   error={submitted && tokenKeyError !== null}
                   id={TOKEN_KEY_FIELD}
                   onChange={(typeKey) => setForm((current) => ({ ...current, typeKey }))}
-                  placeholder={DEFAULT_TOKEN_KEY}
                   value={form.typeKey}
                 />
                 <FormHelperText>
@@ -606,7 +622,9 @@ export function MeterFormDialog({ open, meter, readOnly = false, onClose }: Mete
                 </Form.Header>
                 {!readOnly && form.filterFields.length < MAX_METER_FIELDS && (
                   <Button
-                    onClick={addFilterField}
+                    aria-expanded={addAnchor !== null}
+                    aria-haspopup="menu"
+                    onClick={(event) => setAddAnchor(event.currentTarget)}
                     size="small"
                     startIcon={<Plus size={16} />}
                     sx={{ flexShrink: 0 }}
@@ -616,6 +634,24 @@ export function MeterFormDialog({ open, meter, readOnly = false, onClose }: Mete
                   </Button>
                 )}
               </Stack>
+              <Menu
+                anchorEl={addAnchor}
+                onClose={() => setAddAnchor(null)}
+                open={addAnchor !== null}
+              >
+                {presets.map((preset) => (
+                  <MenuItem
+                    key={preset.eventKey}
+                    onClick={() => addFilterField(intl.formatMessage(preset.name), preset.eventKey)}
+                  >
+                    <PresetLabel preset={preset} />
+                  </MenuItem>
+                ))}
+                {presets.length > 0 && <Divider />}
+                <MenuItem onClick={() => addFilterField('', '')}>
+                  <FormattedMessage {...messages.custom} />
+                </MenuItem>
+              </Menu>
               {form.filterFields.length > 0 && (
                 <Box
                   aria-hidden
@@ -640,56 +676,35 @@ export function MeterFormDialog({ open, meter, readOnly = false, onClose }: Mete
                     gridTemplateColumns: FIELD_COLUMNS,
                   }}
                 >
-                  <Select
+                  <OutlinedInput
                     disabled={readOnly}
+                    error={submitted && nameErrors.has(row.key)}
                     inputProps={{ 'aria-label': intl.formatMessage(messages.filterField) }}
-                    onChange={(event) => setFilterField(row.key, event.target.value as FilterField)}
-                    renderValue={(field) => intl.formatMessage(fieldMessages[field])}
+                    onChange={(event) => setFilterRow(row.key, { field: event.target.value })}
                     size="small"
                     value={row.field}
-                  >
-                    {FILTER_FIELDS.map((field) => (
-                      <MenuItem
-                        disabled={field !== row.field && usedFields.has(field)}
-                        key={field}
-                        value={field}
-                      >
-                        <FormattedMessage {...fieldMessages[field]} />
-                      </MenuItem>
-                    ))}
-                  </Select>
-                  {row.field === 'TOKEN' ? (
-                    <TokenKeyInput
-                      disabled={readOnly}
-                      error={submitted && fieldKeyErrors.has(row.key)}
-                      onChange={(eventKey) => setFilterKey(row.key, eventKey)}
-                      value={row.eventKey}
-                    />
-                  ) : (
-                    <OutlinedInput
-                      disabled={readOnly}
-                      error={submitted && fieldKeyErrors.has(row.key)}
-                      inputProps={{
-                        'aria-label': intl.formatMessage(messages.eventKey),
-                        spellCheck: false,
-                      }}
-                      onChange={(event) => setFilterKey(row.key, event.target.value)}
-                      placeholder={FILTER_RULES[row.field].eventKey}
-                      size="small"
-                      sx={{ fontFamily: 'monospace' }}
-                      value={row.eventKey}
-                    />
-                  )}
+                  />
+                  <OutlinedInput
+                    disabled={readOnly}
+                    error={submitted && fieldKeyErrors.has(row.key)}
+                    inputProps={{
+                      'aria-label': intl.formatMessage(messages.eventKey),
+                      spellCheck: false,
+                    }}
+                    onChange={(event) => setFilterRow(row.key, { eventKey: event.target.value })}
+                    size="small"
+                    sx={{ fontFamily: 'monospace' }}
+                    value={row.eventKey}
+                  />
                   {readOnly ? (
                     <span />
                   ) : (
                     <IconButton
-                      aria-label={intl.formatMessage(messages.removeFilter, {
-                        field:
-                          row.field === 'TOKEN' && row.eventKey.trim()
-                            ? tokenFieldLabel(intl, row.eventKey.trim())
-                            : intl.formatMessage(fieldMessages[row.field]),
-                      })}
+                      aria-label={
+                        row.field.trim()
+                          ? intl.formatMessage(messages.removeFilter, { field: row.field.trim() })
+                          : intl.formatMessage(messages.removeUnnamed)
+                      }
                       onClick={() => removeFilterField(row.key)}
                       size="small"
                     >
@@ -699,13 +714,13 @@ export function MeterFormDialog({ open, meter, readOnly = false, onClose }: Mete
                 </Box>
               ))}
               {submitted &&
-                keyErrors.map((error) => (
+                rowErrors.map((error) => (
                   <Typography
                     color="error"
-                    key={`${error.message.id}:${error.key ?? ''}`}
+                    key={`${error.message.id}:${error.value ?? ''}`}
                     variant="caption"
                   >
-                    <FormattedMessage {...error.message} values={{ key: error.key }} />
+                    <FormattedMessage {...error.message} values={{ value: error.value }} />
                   </Typography>
                 ))}
             </Stack>

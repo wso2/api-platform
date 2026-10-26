@@ -98,6 +98,7 @@ function resetSubBilling() {
     setHidden('subPaymentPendingNote', true);
     setHidden('subBillingEnds', true);
     setHidden('subManageUnsubBtn', false);
+    setHidden('subManageEndNowBtn', true);
 }
 
 /*
@@ -115,13 +116,15 @@ function renderSubBilling(billing) {
     setHidden('subPaymentPendingNote', billing.status !== 'PAYMENT_PENDING');
 
     // What unsubscribing does depends on how the plan is charged; a subscription already set to
-    // end shows when, and cannot be unsubscribed again.
+    // end shows when, and cannot be unsubscribed again, but it can be ended immediately.
     _manageSub.byUsage = billing.byUsage;
     _manageSub.periodEnd = billing.currentPeriod && billing.currentPeriod.end;
+    _manageSub.endsAt = billing.endsAt;
     const ends = document.getElementById('subBillingEnds');
-    if (ends && billing.endsAt) ends.textContent = 'Ends on ' + formatBillingDate(billing.endsAt) + '. It keeps working until then.';
+    if (ends && billing.endsAt) ends.textContent = 'Your subscription has been cancelled. You will retain access until ' + formatBillingDate(billing.endsAt) + '.';
     setHidden('subBillingEnds', !billing.endsAt);
     setHidden('subManageUnsubBtn', Boolean(billing.endsAt));
+    setHidden('subManageEndNowBtn', !billing.endsAt);
 }
 
 async function loadSubBilling(subId) {
@@ -284,6 +287,9 @@ async function toggleSubSuspend() {
 /* ── Unsubscribe ────────────────────────────────────────────────── */
 function askSubUnsub() {
     if (!_manageSub) return;
+    _manageSub.immediate = false;
+    const confirm = document.getElementById('subUnsubConfirmBtn');
+    if (confirm) confirm.textContent = 'Unsubscribe';
     const title = document.getElementById('subUnsubTitle');
     if (title) title.textContent = 'Unsubscribe from ' + (_manageSub.planName || 'this plan') + '?';
     const desc = document.getElementById('subUnsubDesc');
@@ -301,6 +307,22 @@ function askSubUnsub() {
     if (dialog) dialog.style.display = 'flex';
 }
 
+function askSubEndNow() {
+    if (!_manageSub || !_manageSub.endsAt) return;
+    _manageSub.immediate = true;
+    const title = document.getElementById('subUnsubTitle');
+    if (title) title.textContent = 'End your subscription now?';
+    const desc = document.getElementById('subUnsubDesc');
+    if (desc) {
+        desc.textContent = 'Your subscription ends immediately instead of on ' + formatBillingDate(_manageSub.endsAt)
+            + ', and your applications lose access to this API. The rest of the paid period is not refunded.';
+    }
+    const confirm = document.getElementById('subUnsubConfirmBtn');
+    if (confirm) confirm.textContent = 'End now';
+    const dialog = document.getElementById('subUnsubDialog');
+    if (dialog) dialog.style.display = 'flex';
+}
+
 function closeSubUnsub() {
     const dialog = document.getElementById('subUnsubDialog');
     if (dialog) dialog.style.display = 'none';
@@ -309,14 +331,14 @@ function closeSubUnsub() {
 async function confirmSubUnsub() {
     if (!_manageSub) return;
     closeSubUnsub();
-    await executeSubRowDelete(_manageSub.id);
+    await executeSubRowDelete(_manageSub.id, _manageSub.immediate);
 }
 
 /* ── Delete / unsubscribe (API call) ────────────────────────────── */
-async function executeSubRowDelete(subscriptionId) {
+async function executeSubRowDelete(subscriptionId, immediate) {
     try {
         const response = await fetch(
-            apiPortalApi.root(`/subscriptions/${encodeURIComponent(subscriptionId)}`),
+            apiPortalApi.root(`/subscriptions/${encodeURIComponent(subscriptionId)}${immediate ? '?immediate=true' : ''}`),
             { method: 'DELETE', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.apiPortalApi.csrfToken() } }
         );
 
@@ -362,6 +384,7 @@ async function executeSubRowDelete(subscriptionId) {
         document.getElementById('subManageRegenerateBtn')?.addEventListener('click', askRegenerateToken);
         document.getElementById('subManageSuspendBtn')?.addEventListener('click', toggleSubSuspend);
         document.getElementById('subManageUnsubBtn')?.addEventListener('click', askSubUnsub);
+        document.getElementById('subManageEndNowBtn')?.addEventListener('click', askSubEndNow);
         manageModal.addEventListener('click', function (e) { if (e.target === manageModal) closeSubManage(); });
     }
 

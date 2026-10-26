@@ -428,7 +428,7 @@ const loadAPIContent = async (req, res, next) => {
             templateContent.showApiKeysNav = await resolveShowApiKeysNav(orgId, apiId, metaData.type, metaData, apiDefinitionForNav);
             templateContent.showSubscriptionsNav = (metaData?.subscriptionPlans || []).length > 0;
             templateContent.hasSubscriptionToken = !!findSubscriptionTokenHeader(apiDefinitionForNav);
-            await planPresentation.decoratePlans(orgId, subscriptionPlans, metaData.type);
+            await planPresentation.decoratePlans(orgId, subscriptionPlans);
             templateContent.hasPaidPlans = subscriptionPlans.some((plan) => plan.paid);
             if (metaData.type == constants.API_TYPE.MCP) {
                 html = await renderTemplateFromAPI(templateContent, orgId, orgName, "pages/mcp-landing", viewName);

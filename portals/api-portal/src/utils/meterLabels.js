@@ -33,50 +33,45 @@ const METER_TYPE_UNITS = {
     TOKENS: 'token',
 };
 
-const FIELD_LABELS = {
-    HTTP_STATUS_CODE: 'Status code',
-    HTTP_METHOD: 'HTTP method',
-    RESOURCE: 'Resource',
-    API_TYPE: 'API type',
-    MCP_METHOD: 'MCP method',
-    MCP_TOOL: 'Tool',
-    TOKEN: 'Token',
-};
-
 const OPERATOR_LABELS = {
     EQUALS: 'equals',
     NOT_EQUALS: 'does not equal',
     IN: 'is one of',
     NOT_IN: 'is not one of',
-    // The resource itself or one under it, by whole path segments (meterValidation.underPath).
     STARTS_WITH: 'starts with',
-};
-
-// A Token condition's operators, as they read in full ("more than 333") and in a price's name ("> 333").
-const TOKEN_OPERATOR_LABELS = {
     GREATER_THAN: 'more than',
     GREATER_THAN_OR_EQUAL: 'at least',
     LESS_THAN: 'less than',
     LESS_THAN_OR_EQUAL: 'at most',
-    EQUALS: 'equal to',
 };
-const TOKEN_OPERATOR_SIGNS = {
+// A comparison as it reads in a price's name: "Prompt tokens > 333".
+const COMPARE_SIGNS = {
     GREATER_THAN: '>',
     GREATER_THAN_OR_EQUAL: '\u2265',
     LESS_THAN: '<',
     LESS_THAN_OR_EQUAL: '\u2264',
-    EQUALS: '=',
 };
 
-// Our gateway's token counts: the keys the settings page suggests for a Token row or field, with
-// their labels. The first is a new Tokens meter's key.
+// Our gateway's token counts: the keys the settings page suggests for a TOKENS meter, with their
+// labels. The first is a new TOKENS meter's key.
 const TOKEN_EVENT_KEYS = Object.freeze([
     Object.freeze({ label: 'Prompt tokens', key: 'metadata.aiTokenUsage.promptTokens' }),
     Object.freeze({ label: 'Completion tokens', key: 'metadata.aiTokenUsage.completionTokens' }),
     Object.freeze({ label: 'Total tokens', key: 'metadata.aiTokenUsage.totalTokens' }),
 ]);
 
-/** What a Token key reads as: its suggestion's label ("Prompt tokens"), or the key itself. */
+// Our gateway's event fields, which the meter form offers as filter properties with these names.
+const FILTER_PRESETS = Object.freeze([
+    Object.freeze({ field: 'Status code', eventKey: 'response.status' }),
+    Object.freeze({ field: 'HTTP method', eventKey: 'request.verb' }),
+    Object.freeze({ field: 'Resource', eventKey: 'metadata.apiResourceTemplate' }),
+    Object.freeze({ field: 'API type', eventKey: 'metadata.apiType' }),
+    Object.freeze({ field: 'MCP method', eventKey: 'metadata.mcpAnalytics.jsonRpcMethod' }),
+    Object.freeze({ field: 'Tool', eventKey: 'metadata.mcpAnalytics.capabilityName' }),
+    ...TOKEN_EVENT_KEYS.map((k) => Object.freeze({ field: k.label, eventKey: k.key })),
+]);
+
+/** What a token key reads as: its suggestion's label ("Prompt tokens"), or the key itself. */
 function tokenKeyLabel(key) {
     const known = TOKEN_EVENT_KEYS.find((k) => k.key === key);
     return known ? known.label : key;
@@ -95,38 +90,23 @@ function meterUnit(meter) {
     return meter ? meterTypeUnit(meter.type) : 'request';
 }
 
-/**
- * The fields a meter's prices can filter on ([{ field, eventKey }]), as the meters list shows them:
- * "API type, HTTP method, Token · Total tokens".
- */
+/** The properties a meter's prices can filter on ([{ field, eventKey }]), as the meters list shows them: "API type, HTTP method". */
 function filterFieldsLabel(fields) {
-    return (fields || []).map((f) => (f.field === 'TOKEN' ? `${FIELD_LABELS.TOKEN} \u00b7 ${tokenKeyLabel(f.eventKey)}`
-        : FIELD_LABELS[f.field] || f.field)).join(', ');
+    return (fields || []).map((f) => f.field).join(', ');
 }
 
-/**
- * A price filter as it reads in full: "API type is one of LlmProvider, LlmProxy", or for a Token condition
- * "Prompt tokens more than 333".
- */
+/** A price filter as it reads in full: "API type is one of LlmProvider, LlmProxy", "Prompt tokens more than 333". */
 function filterLabel(filter) {
-    if (filter.field === 'TOKEN') {
-        return `${tokenKeyLabel(filter.eventKey)} ${TOKEN_OPERATOR_LABELS[filter.operator] || filter.operator} ${(filter.values || [])[0]}`;
-    }
-    const field = FIELD_LABELS[filter.field] || filter.field;
-    return `${field} ${OPERATOR_LABELS[filter.operator] || filter.operator} ${(filter.values || []).join(', ')}`;
+    return `${filter.field} ${OPERATOR_LABELS[filter.operator] || filter.operator} ${(filter.values || []).join(', ')}`;
 }
 
 /**
  * A filter in short form, for a price's name: "LlmProvider", "not DELETE, OPTIONS", "/orders…", or for a
- * Token condition its key's label in lower case (or the key) and the comparison: "prompt tokens > 333".
+ * comparison the property's name and the sign: "Prompt tokens > 333".
  */
 function filterShort(filter) {
-    if (filter.field === 'TOKEN') {
-        const known = TOKEN_EVENT_KEYS.find((k) => k.key === filter.eventKey);
-        const label = known ? known.label.toLowerCase() : filter.eventKey;
-        return `${label} ${TOKEN_OPERATOR_SIGNS[filter.operator] || filter.operator} ${(filter.values || [])[0]}`;
-    }
     const values = (filter.values || []).join(', ');
+    if (COMPARE_SIGNS[filter.operator]) return `${filter.field} ${COMPARE_SIGNS[filter.operator]} ${values}`;
     if (filter.operator === 'NOT_EQUALS' || filter.operator === 'NOT_IN') return `not ${values}`;
     if (filter.operator === 'STARTS_WITH') return `${values}\u2026`;
     return values;
@@ -137,10 +117,10 @@ function filterShort(filter) {
  * short form: "LLM input tokens · LlmProvider", "API calls · not DELETE, OPTIONS", "API calls".
  */
 function priceName(meterName, filters) {
-    return [meterName, ...(filters || []).map(filterShort)].join(' · ');
+    return [meterName, ...(filters || []).map(filterShort)].join(' \u00b7 ');
 }
 
 module.exports = {
-    METER_TYPE_LABELS, FIELD_LABELS, OPERATOR_LABELS, TOKEN_OPERATOR_LABELS, TOKEN_EVENT_KEYS, meterTypeLabel,
-    meterTypeUnit, meterUnit, filterFieldsLabel, filterLabel, tokenKeyLabel, priceName,
+    METER_TYPE_LABELS, OPERATOR_LABELS, TOKEN_EVENT_KEYS, FILTER_PRESETS, meterTypeLabel, meterTypeUnit, meterUnit,
+    filterFieldsLabel, filterLabel, tokenKeyLabel, priceName,
 };

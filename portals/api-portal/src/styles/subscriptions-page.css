@@ -190,12 +190,15 @@
   line-height: 1.55;
 }
 
-/* A flat rate plan the subscriber unsubscribed from: when it ends. */
+/* A flat rate plan the subscriber unsubscribed from: a banner saying when it ends. */
 .sub-billing-ends {
-  margin: 0.5rem 0 0;
-  font-size: 0.8125rem;
-  font-weight: 600;
-  color: var(--text-strong);
+  margin: 0.75rem 0 0;
+  padding: 0.75rem 0.875rem;
+  border-radius: 0.6875rem;
+  background: var(--danger-surface);
+  color: var(--danger);
+  font-size: 0.84375rem;
+  line-height: 1.55;
 }
 
 .sub-billing-ends[hidden] {

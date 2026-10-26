@@ -39,8 +39,9 @@ const (
 
 // meterData is the data payload of meter.* events; handle is the only field on meter.deleted.
 // type_key is the event field a TOKENS meter adds up, null for a REQUEST_COUNT meter.
-// filter_fields are the fields the meter's prices may filter on, each with the event field it reads.
-// The keys are the meter's own, as stored in the API Portal, and are copied as they are.
+// filter_fields are the properties the meter's prices may filter on, each a name and the event field
+// it reads. The names and keys are the meter's own, as stored in the API Portal, and are copied as
+// they are.
 type meterData struct {
 	Handle       string                   `json:"handle"`
 	DisplayName  string                   `json:"display_name"`
@@ -51,8 +52,7 @@ type meterData struct {
 }
 
 // planPricingData is the pricing on subscription_plan.* events: a FLAT_RATE plan's amount or a
-// USAGE_BASED plan's prices, in the form they are stored in (model.SubscriptionPlanPrice); a Token
-// condition carries its key as event_key.
+// USAGE_BASED plan's prices, in the form they are stored in (model.SubscriptionPlanPrice).
 type planPricingData struct {
 	PricingType   string                        `json:"pricing_type"`
 	Currency      string                        `json:"currency"`
@@ -112,7 +112,7 @@ func (r *Receiver) handleMeterUpserted(ctx context.Context, env *Envelope) error
 	filterFields := make([]model.MeterFilterField, 0, len(d.FilterFields))
 	for _, f := range d.FilterFields {
 		filterFields = append(filterFields, model.MeterFilterField{
-			Field:    strings.ToUpper(strings.TrimSpace(f.Field)),
+			Field:    strings.TrimSpace(f.Field),
 			EventKey: strings.TrimSpace(f.EventKey),
 		})
 	}
@@ -159,7 +159,7 @@ func (d *planPricingData) toPricing(orgID string, occurredAt time.Time) (*model.
 			prices[i].Filters = []model.PriceFilter{}
 		}
 		for j := range prices[i].Filters {
-			prices[i].Filters[j].Field = strings.ToUpper(strings.TrimSpace(prices[i].Filters[j].Field))
+			prices[i].Filters[j].Field = strings.TrimSpace(prices[i].Filters[j].Field)
 			prices[i].Filters[j].Operator = strings.ToUpper(strings.TrimSpace(prices[i].Filters[j].Operator))
 		}
 	}

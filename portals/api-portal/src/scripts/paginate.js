@@ -130,9 +130,7 @@
       mount.appendChild(nav);
     }
 
-    // apply() stays on the current page; reset() goes back to the first page, for when the whole
-    // list is replaced (a new search or period) rather than changed.
-    return { apply: apply, reset: function () { current = 1; apply(); } };
+    return { apply: apply };
   }
 
   // Public card grids (/apis and /mcps) — items are the .col-* card wrappers.
@@ -167,16 +165,6 @@
     new MutationObserver(function () { paginator.apply(); })
       .observe(tbody, { childList: true });
   }
-
-  // Pagination for a table whose rows a page script adds itself, such as the plans table in
-  // Settings › Usage & Revenue. getRows() gives the table's current rows, and the page buttons are
-  // placed just below `wrap`, the element around the table. Call apply() on the returned paginator
-  // after the rows change, or reset() to go back to the first page.
-  window.portalTablePaginator = function (getRows, wrap) {
-    var mount = el('div', 'dp-pagination');
-    wrap.parentNode.insertBefore(mount, wrap.nextSibling);
-    return createPaginator(function () { return Array.prototype.slice.call(getRows()); }, TABLE_PAGE_SIZE, mount, wrap);
-  };
 
   document.addEventListener('DOMContentLoaded', function () {
     paginateGrid();

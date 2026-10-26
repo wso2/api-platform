@@ -86,46 +86,93 @@ func TestValidateMeter_TypeAndTypeKey(t *testing.T) {
 	}
 }
 
+const (
+	promptKey = "metadata.aiTokenUsage.promptTokens"
+	totalKey  = "metadata.aiTokenUsage.totalTokens"
+)
+
 func TestValidateMeter_FilterFields(t *testing.T) {
-	all := &Meter{Type: MeterTypeRequestCount, FilterFields: []MeterFilterField{
-		{Field: FilterFieldHTTPStatusCode, EventKey: "response.status"},
-		{Field: FilterFieldHTTPMethod, EventKey: "request.verb"},
-		{Field: FilterFieldResource, EventKey: "metadata.apiResourceTemplate"},
-		{Field: FilterFieldAPIType, EventKey: "custom.api.kind"},
-	}}
-	if err := ValidateMeter(all); err != nil {
-		t.Fatalf("every filter field once: %v", err)
+	str := func(s string) *string { return &s }
+	ten := make([]MeterFilterField, 0, 11)
+	for i := 0; i < 11; i++ {
+		ten = append(ten, MeterFilterField{Field: fmt.Sprintf("Property %d", i), EventKey: fmt.Sprintf("custom.k%d", i)})
 	}
-	// API type is allowed on a TOKENS meter as well.
-	key := "metadata.aiTokenUsage.promptTokens"
-	if err := ValidateMeter(&Meter{Type: MeterTypeTokens, TypeKey: &key,
-		FilterFields: []MeterFilterField{{Field: FilterFieldAPIType, EventKey: "custom.kind"}}}); err != nil {
-		t.Fatalf("API type on a TOKENS meter: %v", err)
+	valid := []*Meter{
+		{Type: MeterTypeRequestCount, FilterFields: []MeterFilterField{
+			{Field: "Status code", EventKey: "response.status"},
+			{Field: "HTTP method", EventKey: "request.verb"},
+			{Field: "Region", EventKey: "metadata.region"},
+		}},
+		// A property may read the number the meter adds up, so prices can compare it.
+		{Type: MeterTypeTokens, TypeKey: str(promptKey), FilterFields: []MeterFilterField{
+			{Field: "Prompt tokens", EventKey: promptKey}, {Field: "Total tokens", EventKey: totalKey}}},
+		{Type: MeterTypeRequestCount, FilterFields: ten[:10]},
+		{Type: MeterTypeRequestCount, FilterFields: []MeterFilterField{{Field: strings.Repeat("é", 40), EventKey: "k"}}},
 	}
-	if !all.AllowsFilterOn(FilterFieldAPIType) || (&Meter{}).AllowsFilterOn(FilterFieldAPIType) {
-		t.Errorf("AllowsFilterOn must follow the meter's filter fields")
+	for _, m := range valid {
+		if err := ValidateMeter(m); err != nil {
+			t.Errorf("%+v: %v", m.FilterFields, err)
+		}
+	}
+	if p, ok := valid[0].Property("region"); !ok || p.Field != "Region" || p.EventKey != "metadata.region" {
+		t.Errorf("Property must find a property by name, ignoring case: got %+v, %v", p, ok)
+	}
+	if _, ok := valid[0].Property("Country"); ok {
+		t.Errorf("Property must not find a name the meter does not have")
 	}
 
 	cases := map[string]struct {
 		fields  []MeterFilterField
 		message string
 	}{
-		"unknown field": {[]MeterFilterField{{Field: "TOKEN_TYPE", EventKey: "tokenType"}}, "filterFields: unknown field TOKEN_TYPE"},
-		"repeated field": {[]MeterFilterField{{Field: FilterFieldAPIType, EventKey: "metadata.apiType"},
-			{Field: FilterFieldAPIType, EventKey: "metadata.apiType"}}, "filterFields: API_TYPE is listed twice"},
-		"no event key": {[]MeterFilterField{{Field: FilterFieldHTTPMethod}},
-			"The event key of HTTP method must be 1 to 255 characters with no spaces"},
-		"long event key": {[]MeterFilterField{{Field: FilterFieldResource, EventKey: strings.Repeat("k", 256)}},
-			"The event key of Resource must be 1 to 255 characters with no spaces"},
-		"event key with a space": {[]MeterFilterField{{Field: FilterFieldHTTPStatusCode, EventKey: "response status"}},
-			"The event key of Status code must be 1 to 255 characters with no spaces"},
-		"API type without an event key": {[]MeterFilterField{{Field: FilterFieldAPIType}},
-			"The event key of API type must be 1 to 255 characters with no spaces"},
-		"repeated API type": {[]MeterFilterField{{Field: FilterFieldAPIType, EventKey: "metadata.apiType"},
-			{Field: FilterFieldAPIType, EventKey: "metadata.apiType"}}, "filterFields: API_TYPE is listed twice"},
+		"more than 10":        {ten, "A meter has at most 10 filter properties"},
+		"no name":             {[]MeterFilterField{{EventKey: "k"}}, "A filter property's name must be 1 to 40 characters"},
+		"a long name":         {[]MeterFilterField{{Field: strings.Repeat("n", 41), EventKey: "k"}}, "A filter property's name must be 1 to 40 characters"},
+		"a control character": {[]MeterFilterField{{Field: "Region\n", EventKey: "k"}}, "A filter property's name must be 1 to 40 characters"},
+		"a name twice, in another case": {[]MeterFilterField{{Field: "Region", EventKey: "a"}, {Field: "region", EventKey: "b"}},
+			"The meter has the property region more than once"},
+		"no event key":           {[]MeterFilterField{{Field: "Region"}}, "The event key of Region must be 1 to 255 characters with no spaces"},
+		"a long event key":       {[]MeterFilterField{{Field: "Region", EventKey: strings.Repeat("k", 256)}}, "The event key of Region must be 1 to 255 characters with no spaces"},
+		"event key with a space": {[]MeterFilterField{{Field: "Region", EventKey: "metadata region"}}, "The event key of Region must be 1 to 255 characters with no spaces"},
+		"an event key twice": {[]MeterFilterField{{Field: "Region", EventKey: "metadata.region"}, {Field: "Country", EventKey: "metadata.region"}},
+			"Country and Region read the same event key metadata.region"},
 	}
 	for name, c := range cases {
 		if err := ValidateMeter(&Meter{Type: MeterTypeRequestCount, FilterFields: c.fields}); err == nil || err.Error() != c.message {
+			t.Errorf("%s: got %v, want %q", name, err, c.message)
+		}
+	}
+}
+
+// A meter's properties are what the request names them, trimmed, in order; there are no default keys.
+func TestParseMeterRequest_FilterFields(t *testing.T) {
+	m, err := ParseMeterRequest([]byte(`{"displayName":"API calls","type":"REQUEST_COUNT","filterFields":[
+		{"field":" Status code ","eventKey":" response.status "},{"field":"region","eventKey":"metadata.Region"}]}`), true)
+	if err != nil {
+		t.Fatalf("ParseMeterRequest: %v", err)
+	}
+	want := []MeterFilterField{{Field: "Status code", EventKey: "response.status"}, {Field: "region", EventKey: "metadata.Region"}}
+	if !reflect.DeepEqual(m.FilterFields, want) {
+		t.Errorf("filter fields: got %v, want %v", m.FilterFields, want)
+	}
+
+	cases := map[string]struct {
+		fields  string
+		message string
+	}{
+		"no event key":        {`[{"field":"Region"}]`, "eventKey of filterField 1 is required"},
+		"a null event key":    {`[{"field":"Region","eventKey":null}]`, "eventKey of filterField 1 must be a string"},
+		"an empty event key":  {`[{"field":"Region","eventKey":" "}]`, "The event key of Region must be 1 to 255 characters with no spaces"},
+		"no name":             {`[{"eventKey":"k"}]`, "field of filterField 1 is required"},
+		"a name not a string": {`[{"field":7,"eventKey":"k"}]`, "field of filterField 1 must be a string"},
+		"a blank name":        {`[{"field":"  ","eventKey":"k"}]`, "A filter property's name must be 1 to 40 characters"},
+		"an unknown field":    {`[{"field":"Region","eventKey":"k","colour":"red"}]`, "colour of filterField 1 is not a known field"},
+		"a name twice": {`[{"field":"Region","eventKey":"a"},{"field":"REGION","eventKey":"b"}]`,
+			"The meter has the property REGION more than once"},
+	}
+	for name, c := range cases {
+		body := `{"displayName":"API calls","type":"REQUEST_COUNT","filterFields":` + c.fields + `}`
+		if _, err := ParseMeterRequest([]byte(body), true); err == nil || err.Error() != c.message {
 			t.Errorf("%s: got %v, want %q", name, err, c.message)
 		}
 	}
@@ -174,8 +221,8 @@ func TestValidatePlanPricing_FlatRateOrUsageBased(t *testing.T) {
 			p.UnitQuantity = num(1_000_000)
 		})),
 		"one meter priced twice, for different API types": usageBased(
-			usagePrice("llm-input", filter("API_TYPE", "EQUALS", "LlmProvider")),
-			usagePrice("llm-input", filter("API_TYPE", "IN", "Mcp", "LlmProxy")),
+			usagePrice("llm-input", filter("API type", "EQUALS", "LlmProvider")),
+			usagePrice("llm-input", filter("API type", "IN", "Mcp", "LlmProxy")),
 			tiered(PricingModelGraduated, PriceTier{UpTo: num(1000), UnitAmount: str("0")}, PriceTier{UnitAmount: str("0.001")})),
 		"volume tiers":                       usageBased(tiered(PricingModelVolume, PriceTier{UpTo: num(1000), FlatAmount: str("10")}, PriceTier{UnitAmount: str("0.005")})),
 		"20 prices":                          usageBased(onEachMeter(20)...),
@@ -237,133 +284,111 @@ func TestValidatePlanPricing_FlatRateOrUsageBased(t *testing.T) {
 	}
 }
 
-func TestValidatePlanPricing_NormalizesFilterValues(t *testing.T) {
+func TestValidatePlanPricing_NormalizesFilters(t *testing.T) {
 	pricing := usageBased(usagePrice("llm-input",
-		filter("API_TYPE", "IN", " LlmProvider ", "LlmProxy", "LlmProvider"),
-		filter("HTTP_METHOD", "NOT_IN", "get", "Post"),
-		filter("HTTP_STATUS_CODE", "EQUALS", " 200 "),
-		filter("RESOURCE", "STARTS_WITH", "/orders/")))
+		filter(" API type ", "IN", " LlmProvider ", "LlmProxy", "LlmProvider", "llmprovider"),
+		filter("HTTP method", "NOT_IN", "get", "Post"),
+		filter("Resource", "STARTS_WITH", "/orders/"),
+		filter("Prompt tokens", "GREATER_THAN", " 0100 "),
+		filter("Prompt tokens", "LESS_THAN_OR_EQUAL", "500")))
 	if err := ValidatePlanPricing(pricing); err != nil {
 		t.Fatalf("ValidatePlanPricing: %v", err)
 	}
-	// Filters in the order given; values trimmed, methods upper-cased, repeated values dropped, a
-	// starts-with path without its trailing "/".
+	// Filters in the order given; names and values trimmed, text kept as written with repeated values
+	// dropped, a starts-with value unchanged, a number without leading zeros.
 	want := []PriceFilter{
-		filter("API_TYPE", "IN", "LlmProvider", "LlmProxy"),
-		filter("HTTP_METHOD", "NOT_IN", "GET", "POST"),
-		filter("HTTP_STATUS_CODE", "EQUALS", "200"),
-		filter("RESOURCE", "STARTS_WITH", "/orders"),
+		filter("API type", "IN", "LlmProvider", "LlmProxy", "llmprovider"),
+		filter("HTTP method", "NOT_IN", "get", "Post"),
+		filter("Resource", "STARTS_WITH", "/orders/"),
+		filter("Prompt tokens", "GREATER_THAN", "100"),
+		filter("Prompt tokens", "LESS_THAN_OR_EQUAL", "500"),
 	}
 	if got := pricing.Prices[0].Filters; !reflect.DeepEqual(got, want) {
 		t.Errorf("filters = %+v, want %+v", got, want)
 	}
 }
 
-// API type values are free text, matched as written: trimmed and listed once, but never
-// upper-cased.
-func TestValidatePlanPricing_APITypeValuesAreKeptAsWritten(t *testing.T) {
-	pricing := usageBased(usagePrice("api-calls", filter("API_TYPE", "IN", " RestApi ", "restapi", "Mcp", "RestApi")))
-	if err := ValidatePlanPricing(pricing); err != nil {
-		t.Fatalf("ValidatePlanPricing: %v", err)
+// Any operator works on any property, and no value is checked against what the property holds.
+func TestValidatePlanPricing_AnyOperatorOnAnyProperty(t *testing.T) {
+	values := map[string][]string{
+		"EQUALS": {"5xx"}, "NOT_EQUALS": {"FETCH"}, "IN": {"200", "orders"}, "NOT_IN": {"tools/call"},
+		"STARTS_WITH": {"Llm"}, "GREATER_THAN": {"499"}, "GREATER_THAN_OR_EQUAL": {"0"}, "LESS_THAN": {"600"},
+		"LESS_THAN_OR_EQUAL": {"1000000000000"},
 	}
-	if got, want := pricing.Prices[0].Filters, []PriceFilter{filter("API_TYPE", "IN", "RestApi", "restapi", "Mcp")}; !reflect.DeepEqual(got, want) {
-		t.Errorf("filters = %+v, want %+v", got, want)
-	}
-	for _, operator := range []string{"EQUALS", "NOT_EQUALS", "NOT_IN"} {
-		if err := ValidatePlanPricing(usageBased(usagePrice("api-calls", filter("API_TYPE", operator, "SomeOtherKind")))); err != nil {
-			t.Errorf("API type %s any text: %v", operator, err)
+	for _, property := range []string{"Status code", "HTTP method", "Resource", "Tool", "Prompt tokens"} {
+		for operator, v := range values {
+			if err := ValidatePlanPricing(usageBased(usagePrice("api-calls", filter(property, operator, v...)))); err != nil {
+				t.Errorf("%s %s %v: %v", property, operator, v, err)
+			}
 		}
 	}
-}
-
-// A price may filter on all four fields, one filter each.
-func TestValidatePlanPricing_AFilterOnEveryField(t *testing.T) {
-	pricing := usageBased(usagePrice("api-calls",
-		filter("HTTP_STATUS_CODE", "EQUALS", "200"),
-		filter("HTTP_METHOD", "EQUALS", "POST"),
-		filter("RESOURCE", "STARTS_WITH", "/chat"),
-		filter("API_TYPE", "EQUALS", "LlmProvider")))
-	if err := ValidatePlanPricing(pricing); err != nil {
-		t.Fatalf("four filters: %v", err)
+	// A price may filter on a tool and on the MCP method together.
+	if err := ValidatePlanPricing(usageBased(usagePrice("mcp",
+		filter("MCP method", "EQUALS", "resources/read"), filter("Tool", "EQUALS", "search")))); err != nil {
+		t.Errorf("tool and MCP method: %v", err)
 	}
 }
 
 func TestValidatePlanPricing_RefusesBadFilters(t *testing.T) {
-	manyTypes := make([]string, 21)
-	for i := range manyTypes {
-		manyTypes[i] = fmt.Sprintf("type-%d", i)
+	many := make([]string, 21)
+	for i := range many {
+		many[i] = fmt.Sprintf("value-%d", i)
 	}
+	twentyOne := make([]PriceFilter, 0, 21)
+	for i := 0; i < 21; i++ {
+		twentyOne = append(twentyOne, filter(fmt.Sprintf("Property %d", i), "EQUALS", "a"))
+	}
+	const badNumber = "price 2: A comparison on Prompt tokens takes a whole number from 0 to 1000000000000"
 	cases := map[string]struct {
-		filter  PriceFilter
+		filters []PriceFilter
 		message string
 	}{
-		"unknown field":                {filter("TOKEN_TYPE", "EQUALS", "INPUT"), "field of filter 1 of price 2 must be one of HTTP_STATUS_CODE, HTTP_METHOD, RESOURCE, API_TYPE, MCP_METHOD, MCP_TOOL, TOKEN"},
-		"resource is one of":           {filter("RESOURCE", "IN", "/a"), "The RESOURCE operator of price 2 must be one of EQUALS, NOT_EQUALS, STARTS_WITH"},
-		"two values for not equals":    {filter("HTTP_METHOD", "NOT_EQUALS", "GET", "POST"), "price 2: Operator NOT_EQUALS takes exactly one value"},
-		"two prefixes":                 {filter("RESOURCE", "STARTS_WITH", "/a", "/b"), "price 2: Operator STARTS_WITH takes exactly one value"},
-		"status code class":            {filter("HTTP_STATUS_CODE", "IN", "200", "5xx"), `price 2: "5xx" is not a status code such as 200 or 404`},
-		"unknown method":               {filter("HTTP_METHOD", "EQUALS", "FETCH"), "price 2: HTTP method must be one of GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS"},
-		"relative resource":            {filter("RESOURCE", "EQUALS", "orders"), "price 2: A resource must start with /"},
-		"API type starts with":         {filter("API_TYPE", "STARTS_WITH", "Llm"), "The API_TYPE operator of price 2 must be one of EQUALS, NOT_EQUALS, IN, NOT_IN"},
-		"two API types for equals":     {filter("API_TYPE", "EQUALS", "RestApi", "Mcp"), "price 2: Operator EQUALS takes exactly one value"},
-		"no API types for is one of":   {filter("API_TYPE", "IN"), "price 2: A filter on API_TYPE needs 1 to 20 values"},
-		"21 API types":                 {filter("API_TYPE", "NOT_IN", manyTypes...), "price 2: A filter on API_TYPE needs 1 to 20 values"},
-		"blank API type":               {filter("API_TYPE", "EQUALS", " "), "price 2: Filter values for API_TYPE must be 1 to 255 characters"},
-		"API type longer than allowed": {filter("API_TYPE", "EQUALS", strings.Repeat("a", 256)), "price 2: Filter values for API_TYPE must be 1 to 255 characters"},
-		"tool starts with":             {filter("MCP_TOOL", "STARTS_WITH", "se"), "The MCP_TOOL operator of price 2 must be one of EQUALS, NOT_EQUALS, IN, NOT_IN"},
-		"blank MCP method":             {filter("MCP_METHOD", "EQUALS", " "), "price 2: Filter values for MCP_METHOD must be 1 to 255 characters"},
+		"no name":     {[]PriceFilter{filter(" ", "EQUALS", "a")}, "field of filter 1 of price 2 must be 1 to 40 characters"},
+		"a long name": {[]PriceFilter{filter(strings.Repeat("n", 41), "EQUALS", "a")}, "field of filter 1 of price 2 must be 1 to 40 characters"},
+		"an unknown operator": {[]PriceFilter{filter("Region", "EQUALS", "a"), filter("Country", "MATCHES", "a")},
+			"The operator of filter 2 of price 2 must be one of EQUALS, NOT_EQUALS, IN, NOT_IN, STARTS_WITH, GREATER_THAN, GREATER_THAN_OR_EQUAL, LESS_THAN, LESS_THAN_OR_EQUAL"},
+		"two values for not equals":   {[]PriceFilter{filter("Region", "NOT_EQUALS", "a", "b")}, "price 2: Operator NOT_EQUALS takes exactly one value"},
+		"two prefixes":                {[]PriceFilter{filter("Resource", "STARTS_WITH", "/a", "/b")}, "price 2: Operator STARTS_WITH takes exactly one value"},
+		"two numbers for more than":   {[]PriceFilter{filter("Prompt tokens", "GREATER_THAN", "1", "2")}, "price 2: Operator GREATER_THAN takes exactly one value"},
+		"no number for at most":       {[]PriceFilter{filter("Prompt tokens", "LESS_THAN_OR_EQUAL")}, "price 2: Operator LESS_THAN_OR_EQUAL takes exactly one value"},
+		"no values for is one of":     {[]PriceFilter{filter("Region", "IN")}, "price 2: A filter on Region needs 1 to 20 values"},
+		"21 values for is not one of": {[]PriceFilter{filter("Region", "NOT_IN", many...)}, "price 2: A filter on Region needs 1 to 20 values"},
+		"a blank value":               {[]PriceFilter{filter("Region", "EQUALS", " ")}, "price 2: Filter values for Region must be 1 to 255 characters"},
+		"a long value":                {[]PriceFilter{filter("Region", "IN", "a", strings.Repeat("v", 256))}, "price 2: Filter values for Region must be 1 to 255 characters"},
+		"a negative number":           {[]PriceFilter{filter("Prompt tokens", "GREATER_THAN", "-1")}, badNumber},
+		"a fraction":                  {[]PriceFilter{filter("Prompt tokens", "GREATER_THAN", "1.5")}, badNumber},
+		"text":                        {[]PriceFilter{filter("Prompt tokens", "LESS_THAN", "many")}, badNumber},
+		"a number too large":          {[]PriceFilter{filter("Prompt tokens", "GREATER_THAN_OR_EQUAL", "1000000000001")}, badNumber},
+		"a blank number":              {[]PriceFilter{filter("Prompt tokens", "GREATER_THAN", " ")}, badNumber},
+		"21 filters":                  {twentyOne, "price 2: a price has at most 20 filters"},
+		"two matches on a property, in another case": {[]PriceFilter{filter("Region", "IN", "a"), filter("region", "NOT_IN", "b")},
+			"price 2 filters on Region more than once"},
+		"a match and a comparison": {[]PriceFilter{filter("Status code", "GREATER_THAN", "499"), filter("Status code", "NOT_EQUALS", "503")},
+			"price 2 filters on Status code more than once"},
+		"three comparisons": {[]PriceFilter{filter("Prompt tokens", "GREATER_THAN", "1"), filter("Prompt tokens", "LESS_THAN", "9"),
+			filter("prompt tokens", "LESS_THAN", "8")}, "price 2: a price puts at most 2 comparisons on Prompt tokens"},
+		"an empty range": {[]PriceFilter{filter("Prompt tokens", "GREATER_THAN", "500"), filter("Prompt tokens", "LESS_THAN", "100")},
+			"price 2: the comparisons on Prompt tokens can't all be true"},
+		"more than and at most the same": {[]PriceFilter{filter("Prompt tokens", "GREATER_THAN", "100"), filter("PROMPT TOKENS", "LESS_THAN_OR_EQUAL", "100")},
+			"price 2: the comparisons on Prompt tokens can't all be true"},
+		"less than nothing": {[]PriceFilter{filter("Prompt tokens", "LESS_THAN", "0")}, "price 2: the comparisons on Prompt tokens can't all be true"},
 	}
 	for name, c := range cases {
-		pricing := usageBased(usagePrice("api-calls"), usagePrice("llm-input", c.filter))
+		pricing := usageBased(usagePrice("api-calls"), usagePrice("llm-input", c.filters...))
 		if err := ValidatePlanPricing(pricing); err == nil || err.Error() != c.message {
 			t.Errorf("%s: got %v, want %q", name, err, c.message)
 		}
 	}
-	twice := usageBased(usagePrice("llm-input", filter("API_TYPE", "IN", "a"), filter("API_TYPE", "NOT_IN", "b")))
-	if err := ValidatePlanPricing(twice); err == nil || err.Error() != "price 1 filters on API_TYPE more than once" {
-		t.Errorf("two filters on a field: got %v", err)
+	// At least and at most the same number is that number.
+	if err := ValidatePlanPricing(usageBased(usagePrice("llm-input",
+		filter("Prompt tokens", "GREATER_THAN_OR_EQUAL", "100"), filter("Prompt tokens", "LESS_THAN_OR_EQUAL", "100")))); err != nil {
+		t.Errorf("a one-number range: %v", err)
 	}
 }
 
-// The MCP method and the tool are free text, kept as written; a Tool filter counts only tool calls,
-// so a price does not filter on both.
-func TestValidatePlanPricing_MCPMethodAndTool(t *testing.T) {
-	pricing := usageBased(usagePrice("mcp-calls", filter("MCP_METHOD", "IN", " tools/call ", "resources/read", "tools/call")),
-		usagePrice("mcp-tools", filter("MCP_TOOL", "NOT_EQUALS", "Search")))
-	if err := ValidatePlanPricing(pricing); err != nil {
-		t.Fatalf("MCP filters: %v", err)
-	}
-	if got, want := pricing.Prices[0].Filters, []PriceFilter{filter("MCP_METHOD", "IN", "tools/call", "resources/read")}; !reflect.DeepEqual(got, want) {
-		t.Errorf("method values: got %v, want %v", got, want)
-	}
-	if got, want := pricing.Prices[1].Filters, []PriceFilter{filter("MCP_TOOL", "NOT_EQUALS", "Search")}; !reflect.DeepEqual(got, want) {
-		t.Errorf("tool values: got %v, want %v", got, want)
-	}
-	both := usageBased(usagePrice("mcp-calls", filter("MCP_METHOD", "EQUALS", "tools/call"), filter("MCP_TOOL", "EQUALS", "search")))
-	want := "price 1: a Tool filter counts only tool calls, so it can't be used with an MCP method filter"
-	if err := ValidatePlanPricing(both); err == nil || err.Error() != want {
-		t.Errorf("method and tool: got %v, want %q", err, want)
-	}
-}
-
-// A meter lists the MCP method and the tool like any fixed field, read by default where our gateway
-// writes them.
-func TestParseMeterRequest_MCPFieldsReadOurGatewaysKeys(t *testing.T) {
-	m, err := ParseMeterRequest([]byte(`{"displayName":"MCP calls","type":"REQUEST_COUNT",
-		"filterFields":[{"field":"MCP_METHOD"},{"field":"MCP_TOOL","eventKey":""}]}`), true)
-	if err != nil {
-		t.Fatalf("ParseMeterRequest: %v", err)
-	}
-	want := []MeterFilterField{{Field: "MCP_METHOD", EventKey: "metadata.mcpAnalytics.jsonRpcMethod"},
-		{Field: "MCP_TOOL", EventKey: "metadata.mcpAnalytics.capabilityName"}}
-	if !reflect.DeepEqual(m.FilterFields, want) {
-		t.Errorf("filter fields: got %v, want %v", m.FilterFields, want)
-	}
-}
-
-// Two prices on one meter overlap when a request could match both: on every field either filters
-// on. A field only one price filters on matches any value for the other.
-func TestValidatePlanPricing_OverlapAcrossFields(t *testing.T) {
+// Two prices on one meter overlap when a request could match both: on every property both filter on.
+// A property only one price filters on matches any value for the other.
+func TestValidatePlanPricing_OverlapAcrossProperties(t *testing.T) {
 	cases := []struct {
 		name    string
 		prices  []SubscriptionPlanPrice
@@ -372,60 +397,41 @@ func TestValidatePlanPricing_OverlapAcrossFields(t *testing.T) {
 		{"no filters on either", []SubscriptionPlanPrice{usagePrice("api-calls"), usagePrice("api-calls")},
 			"Prices 1 and 2 both count the same requests of the meter api-calls; give them different filters."},
 		{"a price without filters counts what the other counts", []SubscriptionPlanPrice{
-			usagePrice("llm-input", filter("API_TYPE", "EQUALS", "LlmProvider")), usagePrice("llm-input")},
+			usagePrice("llm-input", filter("API type", "EQUALS", "LlmProvider")), usagePrice("llm-input")},
 			"Prices 1 and 2 both count the same requests of the meter llm-input; give them different filters."},
-		{"filters on different fields", []SubscriptionPlanPrice{
-			usagePrice("llm-input", filter("API_TYPE", "EQUALS", "LlmProvider")),
+		{"filters on different properties", []SubscriptionPlanPrice{
+			usagePrice("llm-input", filter("API type", "EQUALS", "LlmProvider")),
 			usagePrice("api-calls"),
-			usagePrice("llm-input", filter("HTTP_METHOD", "EQUALS", "POST"))},
+			usagePrice("llm-input", filter("HTTP method", "EQUALS", "POST"))},
 			"Prices 1 and 3 both count the same requests of the meter llm-input; give them different filters."},
-		{"apart on one of two fields", []SubscriptionPlanPrice{
-			usagePrice("api-calls", filter("API_TYPE", "EQUALS", "a"), filter("HTTP_METHOD", "EQUALS", "GET")),
-			usagePrice("api-calls", filter("HTTP_METHOD", "EQUALS", "POST"), filter("API_TYPE", "EQUALS", "a"))}, ""},
+		{"apart on one of two properties", []SubscriptionPlanPrice{
+			usagePrice("api-calls", filter("API type", "EQUALS", "a"), filter("HTTP method", "EQUALS", "GET")),
+			usagePrice("api-calls", filter("HTTP method", "EQUALS", "POST"), filter("API type", "EQUALS", "a"))}, ""},
 		{"different meters are never compared", []SubscriptionPlanPrice{usagePrice("api-calls"), usagePrice("llm-input")}, ""},
-		// The contract's example: calls of REST APIs and of LLM providers priced apart on one meter.
-		{"apart on API type", []SubscriptionPlanPrice{
-			usagePrice("api-calls", filter("API_TYPE", "EQUALS", "RestApi")),
-			usagePrice("api-calls", filter("API_TYPE", "EQUALS", "LlmProvider"))}, ""},
-		{"API types are matched as written", []SubscriptionPlanPrice{
-			usagePrice("api-calls", filter("API_TYPE", "EQUALS", "RestApi")),
-			usagePrice("api-calls", filter("API_TYPE", "EQUALS", "restapi"))}, ""},
-		{"one API type and every other", []SubscriptionPlanPrice{
-			usagePrice("api-calls", filter("API_TYPE", "EQUALS", "LlmProvider")),
-			usagePrice("api-calls", filter("API_TYPE", "NOT_EQUALS", "LlmProvider"))}, ""},
-		{"API types shared", []SubscriptionPlanPrice{
-			usagePrice("api-calls", filter("API_TYPE", "IN", "RestApi", "Mcp")),
-			usagePrice("api-calls", filter("API_TYPE", "EQUALS", "Mcp"))},
+		{"names are matched ignoring case", []SubscriptionPlanPrice{
+			usagePrice("api-calls", filter("region", "EQUALS", "eu")),
+			usagePrice("api-calls", filter("Region", "EQUALS", "eu"))},
 			"Prices 1 and 2 both count the same requests of the meter api-calls; give them different filters."},
-		{"API type on one price only", []SubscriptionPlanPrice{
-			usagePrice("api-calls", filter("API_TYPE", "EQUALS", "RestApi")), usagePrice("api-calls")},
+		{"apart on a property named in two cases", []SubscriptionPlanPrice{
+			usagePrice("api-calls", filter("region", "EQUALS", "eu")),
+			usagePrice("api-calls", filter("Region", "EQUALS", "us"))}, ""},
+		{"values are matched as written", []SubscriptionPlanPrice{
+			usagePrice("api-calls", filter("API type", "EQUALS", "RestApi")),
+			usagePrice("api-calls", filter("API type", "EQUALS", "restapi"))}, ""},
+		{"one value and every other", []SubscriptionPlanPrice{
+			usagePrice("api-calls", filter("API type", "EQUALS", "LlmProvider")),
+			usagePrice("api-calls", filter("API type", "NOT_EQUALS", "LlmProvider"))}, ""},
+		{"values shared", []SubscriptionPlanPrice{
+			usagePrice("api-calls", filter("API type", "IN", "RestApi", "Mcp")),
+			usagePrice("api-calls", filter("API type", "EQUALS", "Mcp"))},
 			"Prices 1 and 2 both count the same requests of the meter api-calls; give them different filters."},
-		{"apart on method, same API type", []SubscriptionPlanPrice{
-			usagePrice("llm-input", filter("API_TYPE", "EQUALS", "LlmProvider"), filter("HTTP_METHOD", "EQUALS", "POST")),
-			usagePrice("llm-input", filter("HTTP_METHOD", "EQUALS", "GET"), filter("API_TYPE", "EQUALS", "LlmProvider"))}, ""},
 		{"the contract's example", []SubscriptionPlanPrice{
-			usagePrice("llm-input", filter("API_TYPE", "EQUALS", "LlmProvider")),
-			usagePrice("llm-input", filter("API_TYPE", "IN", "Mcp", "LlmProxy")),
+			usagePrice("llm-input", filter("API type", "EQUALS", "LlmProvider")),
+			usagePrice("llm-input", filter("API type", "IN", "Mcp", "LlmProxy")),
 			usagePrice("api-calls")}, ""},
-		// A Tool filter counts only tool calls, as if it also filtered on the MCP method tools/call.
-		{"tool calls and every other MCP message", []SubscriptionPlanPrice{
-			usagePrice("mcp", filter("MCP_METHOD", "EQUALS", "tools/call")),
-			usagePrice("mcp", filter("MCP_METHOD", "NOT_EQUALS", "tools/call"))}, ""},
-		{"one tool and every other", []SubscriptionPlanPrice{
-			usagePrice("mcp", filter("MCP_TOOL", "EQUALS", "search")),
-			usagePrice("mcp", filter("MCP_TOOL", "NOT_IN", "search"))}, ""},
 		{"a tool and another method", []SubscriptionPlanPrice{
-			usagePrice("mcp", filter("MCP_TOOL", "EQUALS", "search")),
-			usagePrice("mcp", filter("MCP_METHOD", "EQUALS", "prompts/get"))}, ""},
-		{"a tool and every message but tool calls", []SubscriptionPlanPrice{
-			usagePrice("mcp", filter("MCP_TOOL", "EQUALS", "search")),
-			usagePrice("mcp", filter("MCP_METHOD", "NOT_EQUALS", "tools/call"))}, ""},
-		{"a tool and all tool calls", []SubscriptionPlanPrice{
-			usagePrice("mcp", filter("MCP_TOOL", "EQUALS", "search")),
-			usagePrice("mcp", filter("MCP_METHOD", "IN", "tools/call", "resources/read"))},
-			"Prices 1 and 2 both count the same requests of the meter mcp; give them different filters."},
-		{"a tool and every MCP message", []SubscriptionPlanPrice{
-			usagePrice("mcp", filter("MCP_TOOL", "EQUALS", "search")), usagePrice("mcp")},
+			usagePrice("mcp", filter("Tool", "EQUALS", "search")),
+			usagePrice("mcp", filter("MCP method", "EQUALS", "prompts/get"))},
 			"Prices 1 and 2 both count the same requests of the meter mcp; give them different filters."},
 	}
 	for _, c := range cases {
@@ -439,76 +445,118 @@ func TestValidatePlanPricing_OverlapAcrossFields(t *testing.T) {
 	}
 }
 
-// Whether two filters on one field can match the same value, for every pair of operators.
+// Whether two text filters on one property can match the same value, for every pair of operators.
 func TestFilterValuesOverlap_EveryOperatorPair(t *testing.T) {
 	f := func(operator string, values ...string) PriceFilter {
 		return PriceFilter{Operator: operator, Values: values}
 	}
 	cases := []struct {
 		name    string
-		field   string
 		a, b    PriceFilter
 		overlap bool
 	}{
 		// EQUALS/IN with EQUALS/IN: the lists share a value.
-		{"equals, equals: same", "API_TYPE", f("EQUALS", "a"), f("EQUALS", "a"), true},
-		{"equals, equals: different", "API_TYPE", f("EQUALS", "a"), f("EQUALS", "b"), false},
-		{"equals, is one of: in the list", "API_TYPE", f("EQUALS", "a"), f("IN", "b", "a"), true},
-		{"equals, is one of: not in the list", "API_TYPE", f("EQUALS", "a"), f("IN", "b", "c"), false},
-		{"is one of, is one of: shared", "API_TYPE", f("IN", "a", "b"), f("IN", "b", "c"), true},
-		{"is one of, is one of: disjoint", "API_TYPE", f("IN", "a", "b"), f("IN", "c"), false},
-		// EQUALS/IN with NOT_EQUALS/NOT_IN: a value of the first is not in the second.
-		{"equals, not equals: other value", "API_TYPE", f("EQUALS", "a"), f("NOT_EQUALS", "b"), true},
-		{"equals, not equals: same value", "API_TYPE", f("EQUALS", "a"), f("NOT_EQUALS", "a"), false},
-		{"equals, is not one of: not excluded", "API_TYPE", f("EQUALS", "a"), f("NOT_IN", "b", "c"), true},
-		{"equals, is not one of: excluded", "API_TYPE", f("EQUALS", "a"), f("NOT_IN", "b", "a"), false},
-		{"is one of, not equals: one left", "API_TYPE", f("IN", "a", "b"), f("NOT_EQUALS", "a"), true},
-		{"is one of, not equals: none left", "API_TYPE", f("IN", "a"), f("NOT_EQUALS", "a"), false},
-		{"is one of, is not one of: one left", "HTTP_METHOD", f("IN", "GET", "POST"), f("NOT_IN", "GET"), true},
-		{"is one of, is not one of: all excluded", "HTTP_METHOD", f("IN", "GET", "POST"), f("NOT_IN", "POST", "GET", "PUT"), false},
-		// EQUALS/IN with STARTS_WITH: a value of the list is the path or under it, by whole segments.
-		{"equals, starts with: under the prefix", "RESOURCE", f("EQUALS", "/orders/{id}"), f("STARTS_WITH", "/orders"), true},
-		{"equals, starts with: elsewhere", "RESOURCE", f("EQUALS", "/customers"), f("STARTS_WITH", "/orders"), false},
-		{"is one of, starts with: one under the prefix", "RESOURCE", f("IN", "/customers", "/orders/1"), f("STARTS_WITH", "/orders"), true},
-		{"is one of, starts with: none under the prefix", "RESOURCE", f("IN", "/customers", "/items"), f("STARTS_WITH", "/orders"), false},
-		{"equals, starts with: same text, another segment", "RESOURCE", f("EQUALS", "/orders-archive"), f("STARTS_WITH", "/orders"), false},
-		{"equals, starts with: the path itself", "RESOURCE", f("EQUALS", "/orders"), f("STARTS_WITH", "/orders/"), true},
-		{"equals, starts with: the root", "RESOURCE", f("EQUALS", "/customers"), f("STARTS_WITH", "/"), true},
-		// STARTS_WITH with STARTS_WITH: one path is the other or under it.
-		{"starts with, starts with: nested", "RESOURCE", f("STARTS_WITH", "/orders"), f("STARTS_WITH", "/orders/items"), true},
-		{"starts with, starts with: shorter word", "RESOURCE", f("STARTS_WITH", "/order"), f("STARTS_WITH", "/orders"), false},
-		{"starts with, starts with: separate", "RESOURCE", f("STARTS_WITH", "/orders"), f("STARTS_WITH", "/customers"), false},
-		// NOT_EQUALS/NOT_IN with NOT_EQUALS/NOT_IN or STARTS_WITH: always, but for HTTP methods.
-		{"not equals, not equals", "API_TYPE", f("NOT_EQUALS", "a"), f("NOT_EQUALS", "b"), true},
-		{"not equals, is not one of", "HTTP_STATUS_CODE", f("NOT_EQUALS", "500"), f("NOT_IN", "404", "503"), true},
-		{"is not one of, is not one of", "API_TYPE", f("NOT_IN", "a", "b"), f("NOT_IN", "c"), true},
-		{"not equals, starts with", "RESOURCE", f("NOT_EQUALS", "/orders"), f("STARTS_WITH", "/orders"), true},
-		{"is not one of, starts with", "RESOURCE", f("NOT_IN", "/orders", "/orders/1"), f("STARTS_WITH", "/orders"), true},
-		{"methods not equal: five remain", "HTTP_METHOD", f("NOT_EQUALS", "GET"), f("NOT_EQUALS", "POST"), true},
-		{"methods not one of: OPTIONS remains", "HTTP_METHOD", f("NOT_IN", "GET", "POST", "PUT"), f("NOT_IN", "PATCH", "DELETE", "HEAD"), true},
-		{"methods not one of: all seven excluded", "HTTP_METHOD", f("NOT_IN", "GET", "POST", "PUT"), f("NOT_IN", "PATCH", "DELETE", "HEAD", "OPTIONS"), false},
-		{"method not equal, methods not one of: all seven excluded", "HTTP_METHOD", f("NOT_EQUALS", "GET"),
-			f("NOT_IN", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"), false},
+		{"equals, equals: same", f("EQUALS", "a"), f("EQUALS", "a"), true},
+		{"equals, equals: different", f("EQUALS", "a"), f("EQUALS", "b"), false},
+		{"equals, equals: another case", f("EQUALS", "a"), f("EQUALS", "A"), false},
+		{"equals, is one of: in the list", f("EQUALS", "a"), f("IN", "b", "a"), true},
+		{"equals, is one of: not in the list", f("EQUALS", "a"), f("IN", "b", "c"), false},
+		{"is one of, is one of: shared", f("IN", "a", "b"), f("IN", "b", "c"), true},
+		{"is one of, is one of: disjoint", f("IN", "a", "b"), f("IN", "c"), false},
+		// EQUALS/IN with NOT_EQUALS/NOT_IN: a value of the first is not excluded by the second.
+		{"equals, not equals: other value", f("EQUALS", "a"), f("NOT_EQUALS", "b"), true},
+		{"equals, not equals: same value", f("EQUALS", "a"), f("NOT_EQUALS", "a"), false},
+		{"equals, is not one of: not excluded", f("EQUALS", "a"), f("NOT_IN", "b", "c"), true},
+		{"equals, is not one of: excluded", f("EQUALS", "a"), f("NOT_IN", "b", "a"), false},
+		{"is one of, not equals: one left", f("IN", "a", "b"), f("NOT_EQUALS", "a"), true},
+		{"is one of, not equals: none left", f("IN", "a"), f("NOT_EQUALS", "a"), false},
+		{"is one of, is not one of: all excluded", f("IN", "GET", "POST"), f("NOT_IN", "POST", "GET", "PUT"), false},
+		// EQUALS/IN with STARTS_WITH: a value of the list starts with the prefix.
+		{"equals, starts with: under the prefix", f("EQUALS", "/orders/{id}"), f("STARTS_WITH", "/orders"), true},
+		{"equals, starts with: elsewhere", f("EQUALS", "/customers"), f("STARTS_WITH", "/orders"), false},
+		{"equals, starts with: same text, another word", f("EQUALS", "/orders-archive"), f("STARTS_WITH", "/orders"), true},
+		{"equals, starts with: shorter than the prefix", f("EQUALS", "/orders"), f("STARTS_WITH", "/orders/"), false},
+		{"is one of, starts with: one under the prefix", f("IN", "/customers", "/orders/1"), f("STARTS_WITH", "/orders"), true},
+		{"is one of, starts with: none under the prefix", f("IN", "/customers", "/items"), f("STARTS_WITH", "/orders"), false},
+		// STARTS_WITH with STARTS_WITH: one prefix starts with the other.
+		{"starts with, starts with: nested", f("STARTS_WITH", "/orders"), f("STARTS_WITH", "/orders/items"), true},
+		{"starts with, starts with: shorter word", f("STARTS_WITH", "/order"), f("STARTS_WITH", "/orders"), true},
+		{"starts with, starts with: separate", f("STARTS_WITH", "/orders"), f("STARTS_WITH", "/customers"), false},
+		// NOT_EQUALS/NOT_IN with NOT_EQUALS/NOT_IN or STARTS_WITH: always.
+		{"not equals, not equals", f("NOT_EQUALS", "a"), f("NOT_EQUALS", "b"), true},
+		{"not equals, is not one of", f("NOT_EQUALS", "500"), f("NOT_IN", "404", "503"), true},
+		{"is not one of, is not one of", f("NOT_IN", "GET", "POST", "PUT"), f("NOT_IN", "PATCH", "DELETE", "HEAD", "OPTIONS"), true},
+		{"not equals, starts with", f("NOT_EQUALS", "/orders"), f("STARTS_WITH", "/orders"), true},
+		{"is not one of, starts with", f("NOT_IN", "/orders", "/orders/1"), f("STARTS_WITH", "/orders"), true},
 	}
 	for _, c := range cases {
-		if got := filterValuesOverlap(c.field, c.a, c.b); got != c.overlap {
+		if got := filterValuesOverlap(c.a, c.b); got != c.overlap {
 			t.Errorf("%s: overlap = %v, want %v", c.name, got, c.overlap)
 		}
-		if got := filterValuesOverlap(c.field, c.b, c.a); got != c.overlap {
+		if got := filterValuesOverlap(c.b, c.a); got != c.overlap {
 			t.Errorf("%s (reversed): overlap = %v, want %v", c.name, got, c.overlap)
 		}
 	}
 }
 
-func TestNormalizeFilterValue_StatusCodes(t *testing.T) {
-	for _, value := range []string{"200", "404", "599", " 100 "} {
-		if _, err := normalizeFilterValue(FilterFieldHTTPStatusCode, value); err != nil {
-			t.Errorf("%q: %v", value, err)
-		}
+// On one property, a price's comparisons form a range of whole numbers, every number without a
+// comparison. Two prices are apart on the property when their ranges share no number, or when one
+// matches only values that are not whole numbers in the other's range.
+func TestValidatePlanPricing_ComparisonsOverlap(t *testing.T) {
+	const overlap = "Prices 1 and 2 both count the same requests of the meter llm-input; give them different filters."
+	tokens := func(operator, value string) PriceFilter { return filter("Prompt tokens", operator, value) }
+	cases := []struct {
+		name    string
+		a, b    []PriceFilter
+		message string
+	}{
+		{"at most 333 and more than 333", []PriceFilter{tokens("LESS_THAN_OR_EQUAL", "333")},
+			[]PriceFilter{tokens("GREATER_THAN", "333")}, ""},
+		{"more than 100 and more than 333", []PriceFilter{tokens("GREATER_THAN", "100")},
+			[]PriceFilter{tokens("GREATER_THAN", "333")}, overlap},
+		{"less than 333 and at least 333", []PriceFilter{tokens("LESS_THAN", "333")},
+			[]PriceFilter{tokens("GREATER_THAN_OR_EQUAL", "333")}, ""},
+		{"names in another case", []PriceFilter{filter("prompt tokens", "LESS_THAN", "333")},
+			[]PriceFilter{tokens("GREATER_THAN_OR_EQUAL", "333")}, ""},
+		{"101 to 500 and equal to 501", []PriceFilter{tokens("GREATER_THAN", "100"), tokens("LESS_THAN_OR_EQUAL", "500")},
+			[]PriceFilter{tokens("EQUALS", "501")}, ""},
+		{"101 to 500 and equal to 500", []PriceFilter{tokens("GREATER_THAN", "100"), tokens("LESS_THAN_OR_EQUAL", "500")},
+			[]PriceFilter{tokens("EQUALS", "500")}, overlap},
+		{"101 to 500 and one of 50 or text", []PriceFilter{tokens("GREATER_THAN", "100"), tokens("LESS_THAN_OR_EQUAL", "500")},
+			[]PriceFilter{filter("Prompt tokens", "IN", "50", "many", "200.5")}, ""},
+		{"more than 100 and one of 0150", []PriceFilter{tokens("GREATER_THAN", "100")},
+			[]PriceFilter{filter("Prompt tokens", "IN", "50", "0150")}, overlap},
+		{"more than 100 and a number too large to read", []PriceFilter{tokens("GREATER_THAN", "100")},
+			[]PriceFilter{tokens("EQUALS", "99999999999999999999999")}, overlap},
+		{"at most 500 and a number too large to read", []PriceFilter{tokens("LESS_THAN_OR_EQUAL", "500")},
+			[]PriceFilter{tokens("EQUALS", "99999999999999999999999")}, ""},
+		{"a range and not equal", []PriceFilter{tokens("GREATER_THAN", "100")},
+			[]PriceFilter{tokens("NOT_EQUALS", "200")}, overlap},
+		{"a range and starts with", []PriceFilter{tokens("LESS_THAN", "100")},
+			[]PriceFilter{tokens("STARTS_WITH", "9")}, overlap},
+		{"a price without a comparison covers every number", []PriceFilter{tokens("GREATER_THAN", "333")}, nil, overlap},
+		{"comparisons on different properties", []PriceFilter{tokens("GREATER_THAN", "333")},
+			[]PriceFilter{filter("Completion tokens", "LESS_THAN_OR_EQUAL", "10")}, overlap},
+		{"apart on one of two properties", []PriceFilter{tokens("GREATER_THAN", "333"), filter("Total tokens", "GREATER_THAN", "0")},
+			[]PriceFilter{filter("Total tokens", "GREATER_THAN", "0"), tokens("LESS_THAN_OR_EQUAL", "333")}, ""},
+		{"same API type, apart on tokens", []PriceFilter{filter("API type", "EQUALS", "LlmProvider"), tokens("GREATER_THAN", "333")},
+			[]PriceFilter{filter("API type", "EQUALS", "LlmProvider"), tokens("LESS_THAN_OR_EQUAL", "333")}, ""},
+		{"apart on API type, same tokens", []PriceFilter{filter("API type", "EQUALS", "LlmProvider"), tokens("GREATER_THAN", "333")},
+			[]PriceFilter{filter("API type", "EQUALS", "LlmProxy"), tokens("GREATER_THAN", "100")}, ""},
+		{"same API type, tokens overlapping", []PriceFilter{filter("API type", "EQUALS", "LlmProvider"), tokens("GREATER_THAN", "333")},
+			[]PriceFilter{filter("API type", "IN", "LlmProvider", "LlmProxy"), tokens("GREATER_THAN", "100")}, overlap},
 	}
-	for _, value := range []string{"2xx", "600", "99", "20"} {
-		if _, err := normalizeFilterValue(FilterFieldHTTPStatusCode, value); err == nil {
-			t.Errorf("%q: expected an error", value)
+	for _, c := range cases {
+		err := ValidatePlanPricing(usageBased(usagePrice("llm-input", c.a...), usagePrice("llm-input", c.b...)))
+		if c.message == "" && err != nil {
+			t.Errorf("%s: the prices count different requests, got %v", c.name, err)
+		}
+		if c.message != "" && (err == nil || err.Error() != c.message) {
+			t.Errorf("%s: got %v, want %q", c.name, err, c.message)
+		}
+		err = ValidatePlanPricing(usageBased(usagePrice("llm-input", c.b...), usagePrice("llm-input", c.a...)))
+		if (err == nil) != (c.message == "") {
+			t.Errorf("%s (reversed): got %v", c.name, err)
 		}
 	}
 }

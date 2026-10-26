@@ -239,13 +239,13 @@ const offered = async () => (await subscriptionPlanDao.listByApi('api-1')).map((
 // The calls so far, by kind, sorted: prices are created side by side, so their calls interleave.
 const calls = () => moesifCalls.splice(0).map((c) => c[0]).sort();
 (async () => {
-    const statusField = [{ field: 'HTTP_STATUS_CODE' }];
+    const statusField = [{ field: 'Status code', eventKey: 'response.status' }];
     await call(meters.createMeter, as({ body: {
         displayName: 'Successful calls', type: 'REQUEST_COUNT', filterFields: statusField,
     } }));
     const goldPricing = { pricingType: 'USAGE_BASED', currency: 'USD', billingPeriod: 'MONTH', prices: [{ pricingModel: 'PER_UNIT',
         unitAmount: '0.01', meterId: 'successful-calls',
-        filters: [{ field: 'HTTP_STATUS_CODE', operator: 'IN', values: ['200'] }] }] };
+        filters: [{ field: 'Status code', operator: 'IN', values: ['200'] }] }] };
     // Paid plans created before billing is set up: nothing is created in Moesif.
     out.goldWithoutBilling = await createPlan('gold', 'Gold', goldPricing);
     out.silverWithoutBilling = await createPlan('silver', 'Silver',
@@ -312,14 +312,14 @@ const calls = () => moesifCalls.splice(0).map((c) => c[0]).sort();
     out.offerFreeCalls = calls();
 
     // An AI plan: an input token price and an output token price for one HTTP method, on a meter each.
-    // Its build fails at the second billing meter, then works. The output meter reads the method
-    // from a key of its own, as for a gateway that names its fields differently.
+    // Its build fails at the second billing meter, then works. The two meters read the method from
+    // different event keys, as for gateways that name their fields differently.
     await call(meters.createMeter, as({ body: { displayName: 'LLM input tokens', type: 'TOKENS',
-        typeKey: 'metadata.aiTokenUsage.promptTokens', filterFields: [{ field: 'HTTP_METHOD' }] } }));
+        typeKey: 'metadata.aiTokenUsage.promptTokens', filterFields: [{ field: 'HTTP method', eventKey: 'request.verb' }] } }));
     await call(meters.createMeter, as({ body: { displayName: 'LLM output tokens', type: 'TOKENS',
-        typeKey: 'metadata.usage.outputTokens', filterFields: [{ field: 'HTTP_METHOD', eventKey: 'metadata.llm.method' }] } }));
+        typeKey: 'metadata.usage.outputTokens', filterFields: [{ field: 'HTTP method', eventKey: 'metadata.llm.method' }] } }));
     const llm = (meterId, unitAmount, method = 'POST') => ({ meterId, pricingModel: 'PER_UNIT', unitAmount, unitQuantity: 1000000,
-        filters: [{ field: 'HTTP_METHOD', operator: 'EQUALS', values: [method] }] });
+        filters: [{ field: 'HTTP method', operator: 'EQUALS', values: [method] }] });
     const aiPrices = [llm('llm-input-tokens', '2.50'), llm('llm-output-tokens', '10.00')];
     out.aiWithFee = await createPlan('ai', 'AI', { pricingType: 'USAGE_BASED',
         currency: 'USD', billingPeriod: 'MONTH', flatAmount: '10.00', prices: aiPrices });
@@ -344,7 +344,7 @@ const calls = () => moesifCalls.splice(0).map((c) => c[0]).sort();
     out.aiOutputQuery = meterQuery('Weather API v1.0 - AI - LLM output tokens · POST');
     out.aiMeterLocked = await call(meters.updateMeter, as({ params: { meterId: 'llm-output-tokens' }, body: {
         displayName: 'LLM output tokens', type: 'TOKENS', typeKey: 'metadata.aiTokenUsage.totalTokens',
-        filterFields: [{ field: 'HTTP_METHOD', eventKey: 'metadata.llm.method' }],
+        filterFields: [{ field: 'HTTP method', eventKey: 'metadata.llm.method' }],
     } }));
 
     // A sold plan's pricing and its meter stay as they are.
@@ -374,27 +374,23 @@ const calls = () => moesifCalls.splice(0).map((c) => c[0]).sort();
     const bronze = await subscriptionPlanDao.getByName(ORG, 'bronze');
     out.bronzeEntry = Boolean(await billingApiPlanDao.getApiPlan(ORG, 'api-1', bronze.uuid));
 
-    // --- prices that do not apply to an API's type ---------------------------
-    // A meter that reads the API type at the default key, and one that reads it at a key of its own.
+    // --- every price of a plan is sold on each API that offers it ---------------
+    // Prices that filter on the API type, on two meters that read it from different event keys.
     await call(meters.createMeter, as({ body: { displayName: 'Typed calls', type: 'REQUEST_COUNT',
-        filterFields: [{ field: 'API_TYPE' }] } }));
+        filterFields: [{ field: 'API type', eventKey: 'metadata.apiType' }] } }));
     await call(meters.createMeter, as({ body: { displayName: 'Kind calls', type: 'REQUEST_COUNT',
-        filterFields: [{ field: 'API_TYPE', eventKey: 'metadata.kind' }] } }));
+        filterFields: [{ field: 'API type', eventKey: 'metadata.kind' }] } }));
     const typed = (meterId, operator, values, unitAmount) => ({ pricingModel: 'PER_UNIT', unitAmount, meterId,
-        filters: [{ field: 'API_TYPE', operator, values }] });
+        filters: [{ field: 'API type', operator, values }] });
     const usagePlan = (prices) => ({ pricingType: 'USAGE_BASED', currency: 'USD', billingPeriod: 'MONTH', prices });
-    // A REST price and an LLM price: only the REST one applies to a REST API.
     out.mixedPlan = await createPlan('mixed', 'Mixed', usagePlan([
         typed('typed-calls', 'EQUALS', ['RestApi'], '0.01'),
         typed('typed-calls', 'IN', ['LlmProvider', 'LlmProxy'], '0.02'),
     ]));
-    // A price for anything but REST and MCP APIs, and one whose meter reads the type at its own key.
     out.notInPlan = await createPlan('not-rest', 'Not REST', usagePlan([
         typed('typed-calls', 'NOT_IN', ['RestApi', 'Mcp'], '0.03'),
         typed('kind-calls', 'IN', ['LlmProvider'], '0.04'),
     ]));
-    // Only LLM prices: none applies to a REST API.
-    out.llmOnlyPlan = await createPlan('llm-only', 'LLM only', usagePlan([typed('typed-calls', 'EQUALS', ['LlmProvider'], '0.05')]));
     moesifCalls.splice(0);
     const publishApi = (id, type, ...plans) => call(apis.createAPIMetadata, as({ body: { metadata: JSON.stringify({
         id, name: id + ' API', version: 'v1', type, status: 'PUBLISHED', labels: [],
@@ -412,23 +408,15 @@ const calls = () => moesifCalls.splice(0).map((c) => c[0]).sort();
     for (const entry of shopEntries) {
         out.typedItems[planIds.get(entry.plan_uuid)] = entry.items.map((i) => i.price_ref);
     }
-    // A checkout charges the prices that apply only.
+    // A checkout charges every price of the plan.
     out.typedCheckout = await call(checkout.createCheckoutSession, as({ auth: { userId: 'buyer-1' },
         body: { artifactId: 'shop', subscriptionPlanId: 'mixed' } }));
     out.typedCheckoutPrices = checkoutSessions.splice(0);
-    // A plan none of whose prices applies: the API is not published and nothing is left with Moesif.
-    out.noPriceApplies = await publishApi('wiki', 'RestApi', 'free', 'llm-only');
-    out.noPriceAppliesCalls = moesifCalls.splice(0);
-    out.wikiAfterRefusal = await apiDao.getId(ORG, 'wiki');
-    // Plan cards on an API's page show the prices that apply to it.
-    const cards = async (apiType) => {
-        const plans = await util.appendSubscriptionPlanDetails(ORG, [{ id: 'mixed' }, { id: 'not-rest' }], shopUuid);
-        await planPresentation.decoratePlans(ORG, plans, apiType);
-        return plans.map((p) => ({ id: p.id, pricePrefix: p.pricePrefix, priceAmount: p.priceAmount, priceUnit: p.priceUnit,
-            items: (p.priceItems || []).map((i) => i.name + ': ' + i.text) }));
-    };
-    out.restCards = await cards('RestApi');
-    out.llmCards = await cards('LlmProvider');
+    // Plan cards on an API's page show every price of each plan.
+    const plansShown = await util.appendSubscriptionPlanDetails(ORG, [{ id: 'mixed' }, { id: 'not-rest' }], shopUuid);
+    await planPresentation.decoratePlans(ORG, plansShown);
+    out.cards = plansShown.map((p) => ({ id: p.id, pricePrefix: p.pricePrefix, priceAmount: p.priceAmount, priceUnit: p.priceUnit,
+        items: (p.priceItems || []).map((i) => i.name + ': ' + i.text) }));
 
     // An API's status is optional in a request: a create without one publishes the API, and an
     // update without one keeps its current status, whether or not the API has subscriptions.
@@ -486,7 +474,7 @@ const calls = () => moesifCalls.splice(0).map((c) => c[0]).sort();
     moesifCalls.splice(0);
     out.quadPlan = await createPlan('quad', 'Quad', usagePlan(['200', '201', '202', '204'].map((code) => ({
         pricingModel: 'PER_UNIT', unitAmount: '0.01', meterId: 'successful-calls',
-        filters: [{ field: 'HTTP_STATUS_CODE', operator: 'EQUALS', values: [code] }] }))));
+        filters: [{ field: 'Status code', operator: 'EQUALS', values: [code] }] }))));
     parallel.measure = true;
     out.quadPublished = await publishApi('quad-api', 'RestApi', 'quad');
     parallel.measure = false;
@@ -638,8 +626,8 @@ test('a usage based plan with token prices is created price by price, side by si
     assert.equal(r.aiEnabledCalls.length, 6);
     assert.equal(r.aiEnabled.status, 200, JSON.stringify(r.aiEnabled.body));
     assert.deepEqual(r.aiItems, ['price', 'price']);
-    // Each price's billing meter sums its meter's event key over the method, read from the meter's
-    // key: the default for the input meter, the meter's own for the output meter.
+    // Each price's billing meter sums its meter's event key over the method, read from the key of the
+    // meter's property.
     assert.deepEqual(r.aiInputQuery.query.bool.must.slice(2), [
         { terms: { 'request.verb.raw': ['POST'] } },
     ]);
@@ -679,33 +667,31 @@ test('a paid plan cannot be subscribed to directly', () => {
 });
 
 // ---------------------------------------------------------------------------
-// prices that do not apply to an API's type
+// every price of a plan is sold on each API that offers it
 // ---------------------------------------------------------------------------
 
-test('a price whose API type rules out the API gets nothing in Moesif, and checkout charges the others', () => {
+test('every price of a plan is created in Moesif for an API, whatever its filters, and checkout charges them all', () => {
     const r = results();
-    for (const key of ['mixedPlan', 'notInPlan', 'llmOnlyPlan']) assert.equal(r[key].status, 201, JSON.stringify(r[key].body));
+    for (const key of ['mixedPlan', 'notInPlan']) assert.equal(r[key].status, 201, JSON.stringify(r[key].body));
     assert.equal(r.typedPublished.status, 201, JSON.stringify(r.typedPublished.body));
-    // Mixed: the REST price only. Not REST: its NOT_IN price rules REST APIs out; the price whose
-    // meter reads the type at a key of its own is kept, since the API's value there is unknown.
-    assert.deepEqual(r.typedCalls, [
-        ['plan', 'shop API v1 - Mixed - Typed calls · RestApi'],
-        ['usage-price', 'shop API v1 - Mixed - Typed calls · RestApi'],
-        ['meter', 'shop API v1 - Mixed - Typed calls · RestApi'],
-        ['plan', 'shop API v1 - Not REST - Kind calls · LlmProvider'],
-        ['usage-price', 'shop API v1 - Not REST - Kind calls · LlmProvider'],
-        ['meter', 'shop API v1 - Not REST - Kind calls · LlmProvider'],
-    ]);
-    assert.equal(r.typedItems.mixed.length, 1, 'one catalog item: the REST price');
-    assert.equal(r.typedItems['not-rest'].length, 1, 'one catalog item: the custom-key price');
+    const names = [
+        'shop API v1 - Mixed - Typed calls · LlmProvider, LlmProxy',
+        'shop API v1 - Mixed - Typed calls · RestApi',
+        'shop API v1 - Not REST - Kind calls · LlmProvider',
+        'shop API v1 - Not REST - Typed calls · not RestApi, Mcp',
+    ];
+    assert.deepEqual(r.typedCalls, names.flatMap((name) => ['plan', 'usage-price', 'meter'].map((kind) => [kind, name])));
+    assert.equal(r.typedItems.mixed.length, 2);
+    assert.equal(r.typedItems['not-rest'].length, 2);
     assert.equal(r.typedCheckout.status, 201, JSON.stringify(r.typedCheckout.body));
-    assert.deepEqual(r.typedCheckoutPrices, [r.typedItems.mixed], 'the checkout charges the REST price only');
+    assert.deepEqual(r.typedCheckoutPrices.map((prices) => [...prices].sort()), [[...r.typedItems.mixed].sort()]);
 });
 
 test('a plan taken off an API is taken off sale with Moesif once the update is saved; a refusal does not undo the update', () => {
     const r = results();
     assert.equal(r.retired.status, 200, JSON.stringify(r.retired.body));
-    assert.deepEqual(r.retiredCalls, ['archive-plan', 'archive-price', 'delete-meter']);
+    assert.deepEqual(r.retiredCalls, ['archive-plan', 'archive-plan', 'archive-price', 'archive-price',
+        'delete-meter', 'delete-meter']);
     assert.deepEqual(r.retiredPlans, ['mixed']);
     assert.equal(r.retiredEntry, false);
     assert.equal(r.silverAdded.status, 200, JSON.stringify(r.silverAdded.body));
@@ -730,24 +716,12 @@ test('a checkout paid as the plan is taken off an API refuses the update, and no
     assert.deepEqual(results().paidWhileEndingPlans, ['mixed']);
 });
 
-test('a usage plan none of whose prices applies to the API\'s type is refused, leaving nothing behind', () => {
-    const r = results().noPriceApplies;
-    assert.equal(r.status, 409, JSON.stringify(r.body));
-    assert.equal(r.body.message, 'ERR_BILLING_CATALOG');
-    assert.equal(r.body.errors[0].message, 'None of the prices of the plan LLM only apply to this API\'s type (RestApi).');
-    assert.deepEqual(results().noPriceAppliesCalls, [], 'nothing was created in Moesif');
-    assert.ok(!results().wikiAfterRefusal, 'the API was not published');
-});
-
-test('plan cards on an API\'s page show only the prices that apply to its type', () => {
-    // A REST API: Mixed is its REST price alone; Not REST its custom-key price alone.
-    assert.deepEqual(results().restCards, [
-        { id: 'mixed', pricePrefix: null, priceAmount: '$0.01', priceUnit: '/ request', items: [] },
-        { id: 'not-rest', pricePrefix: null, priceAmount: '$0.04', priceUnit: '/ request', items: [] },
-    ]);
-    // An LLM provider: Mixed is its LLM price; Not REST both prices.
-    assert.deepEqual(results().llmCards, [
-        { id: 'mixed', pricePrefix: null, priceAmount: '$0.02', priceUnit: '/ request', items: [] },
+test('plan cards on an API\'s page show every price of each plan', () => {
+    assert.deepEqual(results().cards, [
+        { id: 'mixed', pricePrefix: 'From', priceAmount: '$0.01', priceUnit: '/ request', items: [
+            'Typed calls · LlmProvider, LlmProxy: $0.02 per request',
+            'Typed calls · RestApi: $0.01 per request',
+        ] },
         { id: 'not-rest', pricePrefix: 'From', priceAmount: '$0.03', priceUnit: '/ request', items: [
             'Kind calls · LlmProvider: $0.04 per request',
             'Typed calls · not RestApi, Mcp: $0.03 per request',

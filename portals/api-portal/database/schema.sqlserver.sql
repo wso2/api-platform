@@ -867,8 +867,8 @@ CREATE UNIQUE INDEX uq_webhook_subscriber_org_handle ON dbo.webhook_subscribers(
 -- Meters (monetization): what a paid plan charges for.
 --   - type REQUEST_COUNT counts requests; type TOKENS adds up a number from each request's event,
 --     read at type_key (such as metadata.aiTokenUsage.promptTokens; null for REQUEST_COUNT).
---   - filter_fields lists the fields the prices on this meter may filter on, each with the event
---     key it is read from (a JSON array of { "field", "eventKey" }; empty for none).
+--   - filter_fields lists the properties the prices on this meter may filter on, each a name and
+--     the event key it is read from (a JSON array of { "field", "eventKey" }; empty for none).
 -- A meter has no filters of its own: each price picks the requests it counts with its own filters
 -- (in subscription_plan_pricing.prices).
 IF OBJECT_ID(N'dbo.meters', N'U') IS NULL
@@ -898,8 +898,8 @@ CREATE UNIQUE INDEX uq_meter_org_handle ON dbo.meters(org_uuid, handle, portal_i
 --     period;
 --   - a usage based plan has 1 to 20 prices, each { uuid, meter_handle, filters, pricing_model,
 --     unit_amount, unit_quantity, tiers }: it charges for what the meter named by meter_handle
---     counts, narrowed by its filters ([{ field, operator, values }], with event_key for a TOKEN
---     filter; empty for none), in one pricing model (PER_UNIT: unit_amount per unit_quantity units;
+--     counts, narrowed by its filters ([{ field, operator, values }], each on one of the meter's
+--     filter_fields; empty for none), in one pricing model (PER_UNIT: unit_amount per unit_quantity units;
 --     VOLUME or GRADUATED: tiers).
 -- Amounts are decimal strings. Pricing is set when the plan is created and never changes; deleting
 -- the plan deletes it. A meter that a price names cannot be deleted.

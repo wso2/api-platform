@@ -46,7 +46,7 @@ func meteredSync(plans ...string) PlanSync {
 		Pricing: map[string]*model.SubscriptionPlanPricing{"uuid-gold": usage("calls", "tokens", "calls"), "uuid-silver": usage("calls")},
 		Meters: map[string]*model.Meter{
 			"calls": {Handle: "calls", DisplayName: "Calls", Type: model.MeterTypeRequestCount,
-				FilterFields: []model.MeterFilterField{{Field: "HTTP_METHOD", EventKey: "request.verb"}}},
+				FilterFields: []model.MeterFilterField{{Field: "HTTP method", EventKey: "request.verb"}}},
 			"tokens": {Handle: "tokens", DisplayName: "Tokens", Description: "Prompt tokens", Type: model.MeterTypeTokens, TypeKey: &tokenKey,
 				FilterFields: []model.MeterFilterField{}},
 		},
@@ -56,7 +56,7 @@ func meteredSync(plans ...string) PlanSync {
 // The portal's copy of the calls meter, as its REST API gives it.
 func portalCalls() map[string]any {
 	return map[string]any{"id": "calls", "displayName": "Calls", "description": nil, "type": "REQUEST_COUNT", "typeKey": nil,
-		"filterFields": []any{map[string]any{"field": "HTTP_METHOD", "eventKey": "request.verb"}}, "planCount": 0}
+		"filterFields": []any{map[string]any{"field": "HTTP method", "eventKey": "request.verb"}}, "planCount": 0}
 }
 
 func runSync(t *testing.T, pp *planPortal, s PlanSync) (PlanSyncResult, error) {
@@ -105,7 +105,7 @@ func TestSyncPlans_RefusesAMeterCopyWithOtherSettings(t *testing.T) {
 		"name": func(m map[string]any) { m["displayName"] = "API calls" },
 		"type": func(m map[string]any) { m["type"] = "TOKENS"; m["typeKey"] = "x" },
 		"filter field": func(m map[string]any) {
-			m["filterFields"] = []any{map[string]any{"field": "HTTP_METHOD", "eventKey": "verb"}}
+			m["filterFields"] = []any{map[string]any{"field": "HTTP method", "eventKey": "verb"}}
 		},
 		"description": func(m map[string]any) { m["description"] = "Every call" },
 	} {

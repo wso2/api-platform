@@ -2999,7 +2999,7 @@
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.MetersSettingsPage.column.filters": {
     "defaultMessage": "Filters",
-    "description": "Column of the fields the prices of each meter may filter on."
+    "description": "Column of the names of the properties the prices of each meter may filter on."
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.MetersSettingsPage.column.name": {
     "defaultMessage": "Name"
@@ -3043,7 +3043,7 @@
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.MetersSettingsPage.noFilters": {
     "defaultMessage": "None",
-    "description": "Filters cell of a meter whose prices cannot filter on any field."
+    "description": "Filters cell of a meter whose prices cannot filter on any property."
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.MetersSettingsPage.noMatches.description": {
     "defaultMessage": "Try a different search term."
@@ -3199,7 +3199,7 @@
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.addFilter": {
     "defaultMessage": "Add filter",
-    "description": "Adds a row to a meter's filters: a property its prices may filter on."
+    "description": "Opens the list of properties to add to a meter's filters: our gateway's, then Custom."
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.cancel": {
     "defaultMessage": "Cancel"
@@ -3213,6 +3213,10 @@
   "apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.created": {
     "defaultMessage": "Added meter \"{name}\"."
   },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.custom": {
+    "defaultMessage": "Custom",
+    "description": "The last choice when adding a filter property: a property with an empty name and key to fill in."
+  },
   "apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.descriptionLabel": {
     "defaultMessage": "Description"
   },
@@ -3221,11 +3225,15 @@
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.eventKey": {
     "defaultMessage": "Key",
-    "description": "The field in the gateway's events that a Tokens meter adds up or a filter reads, such as \"metadata.aiTokenUsage.promptTokens\" or \"request.verb\"."
+    "description": "The field in the gateway's events that a filter property reads, such as \"request.verb\"."
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.eventKeyInvalid": {
     "defaultMessage": "Use 1 to 255 characters with no spaces.",
     "description": "Shown under an event key that is too long or has spaces."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.eventKeyRepeated": {
+    "defaultMessage": "More than one property reads the event key {value}.",
+    "description": "Shown under the filters of a meter; {value} is the event key, such as \"request.verb\"."
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.eventKeyRequired": {
     "defaultMessage": "Enter the event key to add up.",
@@ -3233,15 +3241,15 @@
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.filterField": {
     "defaultMessage": "Property",
-    "description": "Accessible name of the select of a filter row, whose value is the property, such as \"HTTP method\"."
+    "description": "Accessible name of the name of a filter row: the name of a property, such as \"HTTP method\"."
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.filterHeading": {
     "defaultMessage": "Property",
-    "description": "Column heading over the property of each row of a meter's filters (Token, or a property its prices may filter on)."
+    "description": "Column heading over the name of each property in a meter's filters, such as \"HTTP method\"."
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.filtersLabel": {
     "defaultMessage": "Filters",
-    "description": "Heading of the list of event properties a meter reads: for a Tokens meter the token count it adds up, then the properties its prices may filter on."
+    "description": "Heading of the list of properties a meter's prices may filter on."
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.lockedSave": {
     "defaultMessage": "There are plans using this meter.",
@@ -3256,9 +3264,25 @@
   "apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.nameRequired": {
     "defaultMessage": "Enter a name."
   },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.propertyKeyRequired": {
+    "defaultMessage": "Enter the event key of each property.",
+    "description": "Shown under a meter's filters when a property's event key is empty."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.propertyNameInvalid": {
+    "defaultMessage": "Give each property a name of 1 to 40 characters.",
+    "description": "Shown under a meter's filters when a property's name is empty or too long."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.propertyNameRepeated": {
+    "defaultMessage": "The meter has the property {value} more than once.",
+    "description": "Shown under the filters of a meter; {value} is the name, such as \"Region\", which counts once whatever its case."
+  },
   "apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.removeFilter": {
     "defaultMessage": "Remove {field}",
-    "description": "Accessible name of the remove button of a filter row; {field} is the field, such as \"HTTP method\"."
+    "description": "Accessible name of the remove button of a filter row; {field} is the property, such as \"HTTP method\"."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.removeUnnamed": {
+    "defaultMessage": "Remove this property",
+    "description": "Accessible name of the remove button of a filter row whose name is empty."
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.saveChanges": {
     "defaultMessage": "Save changes"
@@ -3272,21 +3296,9 @@
   "apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.titleCreate": {
     "defaultMessage": "Add Meter"
   },
-  "apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.tokenFieldKeyRequired": {
-    "defaultMessage": "A Token property needs an event key.",
-    "description": "Shown under a Token field row whose event key is empty; a Token field has no default key."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.tokenKeyIsTokenRow": {
-    "defaultMessage": "The key {key} is already the meter's Token key.",
-    "description": "Shown when a Token filter repeats a Tokens meter's Token key; {key} is the event key."
-  },
   "apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.tokenKeyLabel": {
     "defaultMessage": "Token key",
     "description": "Label of a Tokens meter's key: the event key whose number of tokens the meter adds up."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.tokenKeyRepeated": {
-    "defaultMessage": "The meter lists the Token key {key} more than once.",
-    "description": "Shown when two Token fields of a meter have the same event key; {key} is the event key."
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.typeLabel": {
     "defaultMessage": "Type",
@@ -3310,7 +3322,7 @@
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.addCondition": {
     "defaultMessage": "Add a condition on {field}",
-    "description": "Accessible name of the button adding a second condition on a Token field, e.g. \"Token · Prompt tokens\"."
+    "description": "Accessible name of the button adding a second comparison on a property, e.g. \"Prompt tokens\", so the two make a range."
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.addPrice": {
     "defaultMessage": "Add price"
@@ -3321,14 +3333,6 @@
   "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.amountLabel": {
     "defaultMessage": "Amount",
     "description": "What a flat rate plan charges every billing period."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.any": {
-    "defaultMessage": "Any",
-    "description": "The empty choice of a filter whose one value is picked from a list, such as an HTTP method: the price counts every value."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.apiTypePlaceholder": {
-    "defaultMessage": "{many, select, true {RestApi, Mcp} other {RestApi}}",
-    "description": "Example API types, as the gateway names them. Do not translate the names."
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.chargeEvery": {
     "defaultMessage": "Charge every"
@@ -3361,15 +3365,8 @@
     "defaultMessage": "Pricing can't be updated once a plan is created.",
     "description": "Shown under the Paid plan switch of an existing plan, whose pricing is shown but cannot be edited."
   },
-  "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.mcpMethodPlaceholder": {
-    "defaultMessage": "{many, select, true {tools/call, resources/read} other {tools/call}}",
-    "description": "Example MCP methods, as the MCP protocol names them. Do not translate the names."
-  },
   "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.meter": {
     "defaultMessage": "Meter"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.methodsPlaceholder": {
-    "defaultMessage": "Pick methods"
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.model": {
     "defaultMessage": "Pricing model"
@@ -3389,7 +3386,7 @@
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.noFilters": {
     "defaultMessage": "This meter has no filters.",
-    "description": "Shown under Filters of a usage price whose meter lists no fields to filter on."
+    "description": "Shown under Filters of a usage price whose meter lists no properties to filter on."
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.noMeters": {
     "defaultMessage": "Create a meter in Settings › Meters to charge for usage."
@@ -3430,9 +3427,13 @@
   "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.problem.amount": {
     "defaultMessage": "Enter the unit price of price {position} as an amount such as 0.01."
   },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.problem.conflict": {
+    "defaultMessage": "Price {position}: {field} takes one filter, or one or two comparisons.",
+    "description": "{field} is the name of a property, such as \"Prompt tokens\"; two comparisons make a range, such as more than 100 and at most 500."
+  },
   "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.problem.filterNotAllowed": {
-    "defaultMessage": "Price {position} filters on {field}, which the meter {meter} does not allow.",
-    "description": "{meter} is the meter's id; {field} is the name of a filter field, such as \"HTTP method\"."
+    "defaultMessage": "Price {position} filters on {field}, which the meter {meter} doesn't have.",
+    "description": "{meter} is the meter's id; {field} is the name of a property, such as \"HTTP method\"."
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.problem.flatAmount": {
     "defaultMessage": "Enter the flat rate as an amount above zero, such as 20.00."
@@ -3443,55 +3444,42 @@
   "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.problem.noPrices": {
     "defaultMessage": "Add at least one price."
   },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.problem.number": {
+    "defaultMessage": "Price {position}: the value of {field} must be a whole number from 0 to 1,000,000,000,000.",
+    "description": "{field} is the name of a property, such as \"Prompt tokens\", compared with a number by more than, at least, less than or at most."
+  },
   "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.problem.overlap": {
     "defaultMessage": "Prices {position} and {other} both count the same requests of the meter {meter}; give them different filters."
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.problem.quantity": {
     "defaultMessage": "The units of price {position} must be a whole number from 1 to 1,000,000,000."
   },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.problem.range": {
+    "defaultMessage": "Price {position}: the conditions on {field} can't all be true.",
+    "description": "{field} is the name of a property, such as \"Prompt tokens\"; its two comparisons leave no number, e.g. more than 500 and at most 100."
+  },
   "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.problem.tiers": {
     "defaultMessage": "Each tier of price {position} needs a unit price, a flat fee or both; upper bounds must increase, and the last tier has none."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.problem.tokenKey": {
-    "defaultMessage": "Price {position}: the meter has no Token field with the key {key}."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.problem.tokenRange": {
-    "defaultMessage": "Price {position}: the conditions on {field} can't all be true.",
-    "description": "{field} names a Token field, e.g. \"Token · Prompt tokens\"; its two conditions leave no number, e.g. more than 500 and at most 100."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.problem.tokenValue": {
-    "defaultMessage": "Price {position}: the value of {field} must be a whole number from 0 to 1,000,000,000,000.",
-    "description": "{field} names a Token field, e.g. \"Token · Prompt tokens\"."
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.problem.tooManyFilters": {
     "defaultMessage": "Price {position} has more than 20 filters; empty some of them."
   },
-  "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.problem.toolWithMethod": {
-    "defaultMessage": "Price {position}: a Tool filter counts only tool calls, so it can't be used with an MCP method filter."
-  },
   "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.problem.values": {
-    "defaultMessage": "Check the filters of price {position}: one value for equals, does not equal and starts with, status codes such as 200, and a resource starting with /."
+    "defaultMessage": "Price {position}: {field} takes one value for equals, does not equal and starts with, and 1 to 20 for is one of and is not one of, each at most 255 characters.",
+    "description": "{field} is the name of a property, such as \"HTTP method\"."
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.quantity": {
     "defaultMessage": "Units per price"
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.removeCondition": {
     "defaultMessage": "Remove this condition on {field}",
-    "description": "Accessible name of the button removing the second condition on a Token field."
+    "description": "Accessible name of the button removing the second comparison on a property, e.g. \"Prompt tokens\"."
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.removePrice": {
     "defaultMessage": "Remove price {position}"
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.removeTier": {
     "defaultMessage": "Remove tier"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.resourcePlaceholder": {
-    "defaultMessage": "{prefix, select, true {/orders} other {/orders/'{id}'}}",
-    "description": "Example resource path from an API definition, or the start of one. Do not translate."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.statusPlaceholder": {
-    "defaultMessage": "{many, select, true {200, 201} other {200}}",
-    "description": "Example status codes. Do not translate."
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.tierFlat": {
     "defaultMessage": "Flat fee"
@@ -3509,16 +3497,16 @@
   "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.tierUpTo": {
     "defaultMessage": "Up to"
   },
-  "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.toolPlaceholder": {
-    "defaultMessage": "{many, select, true {search, fetch} other {search}}",
-    "description": "Example names of MCP server tools. Do not translate."
-  },
   "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.unitPrice": {
     "defaultMessage": "Unit price"
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.units": {
     "defaultMessage": "{unit, select, request {{quantity, plural, one {request} other {requests}}} token {{quantity, plural, one {token} other {tokens}}} other {{quantity, plural, one {unit} other {units}}}}",
     "description": "Follows the batch size of a unit price, in what the chosen meter counts, e.g. \"per 1 request\" or \"per 1000000 tokens\"; \"unit\" until a meter is chosen."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.valuesPlaceholder": {
+    "defaultMessage": "Separate values with commas",
+    "description": "Placeholder of the values of an \"is one of\" or \"is not one of\" filter."
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.action.addPlan": {
     "defaultMessage": "Add plan"
@@ -3652,35 +3640,6 @@
   "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.unit.month": {
     "defaultMessage": "Month"
   },
-  "apiControlPlane.pages.appShell.appShellPages.settings.components.meterLabels.field.apiType": {
-    "defaultMessage": "API type",
-    "description": "A filter field: the kind of API a request went to, such as a REST API or an LLM provider."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.settings.components.meterLabels.field.mcpMethod": {
-    "defaultMessage": "MCP method",
-    "description": "A filter field: the JSON-RPC method of a request to an MCP server, such as tools/call. Keep \"MCP\"."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.settings.components.meterLabels.field.mcpTool": {
-    "defaultMessage": "Tool",
-    "description": "A filter field: the name of the MCP server tool a tool call runs."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.settings.components.meterLabels.field.method": {
-    "defaultMessage": "HTTP method"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.settings.components.meterLabels.field.resource": {
-    "defaultMessage": "Resource"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.settings.components.meterLabels.field.statusCode": {
-    "defaultMessage": "Status code"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.settings.components.meterLabels.field.token": {
-    "defaultMessage": "Token",
-    "description": "A filter field: a token count of each AI API request, which a price can compare with a number."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.settings.components.meterLabels.operator.equalTo": {
-    "defaultMessage": "equal to",
-    "description": "The operator of a Token condition that matches one number, e.g. \"Token · Prompt tokens equal to 100\"."
-  },
   "apiControlPlane.pages.appShell.appShellPages.settings.components.meterLabels.operator.equals": {
     "defaultMessage": "equals"
   },
@@ -3707,21 +3666,41 @@
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.components.meterLabels.operator.startsWith": {
     "defaultMessage": "starts with",
-    "description": "A resource filter: the resource itself or one under it, by whole path segments (/orders and /orders/{id})."
+    "description": "A filter that matches the values beginning with the given text: /orders matches /orders/{id} and /orders-archive."
   },
-  "apiControlPlane.pages.appShell.appShellPages.settings.components.meterLabels.tokenField": {
-    "defaultMessage": "Token · {key}",
-    "description": "A Token field named by its key, e.g. \"Token · Prompt tokens\"; {key} is the key's label or the key itself."
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.meterLabels.preset.apiType": {
+    "defaultMessage": "API type",
+    "description": "A property our gateway reports for each request, offered as a filter property: the kind of API it went to, such as a REST API or an LLM provider."
   },
-  "apiControlPlane.pages.appShell.appShellPages.settings.components.meterLabels.tokenKey.completion": {
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.meterLabels.preset.completionTokens": {
     "defaultMessage": "Completion tokens",
     "description": "A token count our gateway reports for each AI API request: the tokens of the answer the model returns."
   },
-  "apiControlPlane.pages.appShell.appShellPages.settings.components.meterLabels.tokenKey.prompt": {
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.meterLabels.preset.mcpMethod": {
+    "defaultMessage": "MCP method",
+    "description": "A property our gateway reports for each request, offered as a filter property: the JSON-RPC method of a request to an MCP server, such as tools/call. Keep \"MCP\"."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.meterLabels.preset.method": {
+    "defaultMessage": "HTTP method",
+    "description": "A property our gateway reports for each request, offered as a filter property: its HTTP method, such as GET."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.meterLabels.preset.promptTokens": {
     "defaultMessage": "Prompt tokens",
     "description": "A token count our gateway reports for each AI API request: the tokens of the prompt sent to the model."
   },
-  "apiControlPlane.pages.appShell.appShellPages.settings.components.meterLabels.tokenKey.total": {
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.meterLabels.preset.resource": {
+    "defaultMessage": "Resource",
+    "description": "A property our gateway reports for each request, offered as a filter property: the resource of the API definition it matched, such as /orders/{id}."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.meterLabels.preset.statusCode": {
+    "defaultMessage": "Status code",
+    "description": "A property our gateway reports for each request, offered as a filter property: the HTTP status code of the response."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.meterLabels.preset.tool": {
+    "defaultMessage": "Tool",
+    "description": "A property our gateway reports for each request, offered as a filter property: the name of the MCP server tool a tool call runs."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.meterLabels.preset.totalTokens": {
     "defaultMessage": "Total tokens",
     "description": "A token count our gateway reports for each AI API request: the prompt and completion tokens together."
   },

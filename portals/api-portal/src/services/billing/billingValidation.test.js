@@ -26,10 +26,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const { validateMeter, handleFromName, MeterValidationError, TOKEN_EVENT_KEYS, DEFAULT_TOKEN_EVENT_KEY } = require('./meterValidation');
-const {
-    validatePricing, resolvePrices, countedFilters, priceAppliesToApiType, PricingValidationError,
-} = require('./planPricingValidation');
-const { FILTER_RULES } = require('./meterValidation');
+const { validatePricing, resolvePrices, PricingValidationError } = require('./planPricingValidation');
 
 const meter = (extra) => ({ displayName: 'Successful calls', type: 'REQUEST_COUNT', ...extra });
 
@@ -101,62 +98,40 @@ test('a meter request with a field a meter does not have is refused, the old eve
 });
 
 test('a meter has no conditions: each plan price gives its own filters', () => {
-    for (const conditions of [[], [{ field: 'API_TYPE', operator: 'IN' }], null]) {
+    for (const conditions of [[], [{ field: 'API type', operator: 'IN' }], null]) {
         assert.throws(() => validateMeter(meter({ conditions }), { create: true }),
             /A meter has no conditions; each plan price gives its own filters/);
     }
 });
 
-test('a meter lists the fields its prices can filter on, each once, with the default event key of each', () => {
-    assert.deepStrictEqual(validateMeter(meter(), { create: true }).filterFields, []);
-    assert.deepStrictEqual(validateMeter(meter({
-        filterFields: [{ field: 'HTTP_STATUS_CODE' }, { field: 'http_method' }, { field: 'RESOURCE' }, { field: 'api_type' }],
-    }), { create: true }).filterFields, [
-        { field: 'HTTP_STATUS_CODE', eventKey: 'response.status' },
-        { field: 'HTTP_METHOD', eventKey: 'request.verb' },
-        { field: 'RESOURCE', eventKey: 'metadata.apiResourceTemplate' },
-        { field: 'API_TYPE', eventKey: 'metadata.apiType' },
-    ]);
-    // The fields in the order lists show them: API type after Resource, then the MCP method and tool, then Token.
-    assert.deepStrictEqual(Object.keys(FILTER_RULES),
-        ['HTTP_STATUS_CODE', 'HTTP_METHOD', 'RESOURCE', 'API_TYPE', 'MCP_METHOD', 'MCP_TOOL', 'TOKEN']);
-    // Any meter may list the API type, its key editable like every key.
-    assert.deepStrictEqual(validateMeter(meter({ type: 'TOKENS', typeKey: 'metadata.aiTokenUsage.promptTokens',
-        filterFields: [{ field: 'API_TYPE', eventKey: 'metadata.kind' }] }), { create: true }).filterFields,
-    [{ field: 'API_TYPE', eventKey: 'metadata.kind' }]);
-    const bad = [
-        ['API_TYPE', /filterFields must be an array/],
-        [[{ field: 'COLOR' }], /filterFields: unknown field COLOR/],
-        [[{ field: 'MODEL' }], /filterFields: unknown field MODEL/],
-        [[{ field: 'API_TYPE' }, { field: 'api_type' }], /filterFields: API_TYPE is listed twice/],
-        [[{ field: 'API_TYPE', operator: 'EQUALS' }], /Each entry of filterFields has only a field and an eventKey/],
-        [['API_TYPE'], /Each entry of filterFields has only a field and an eventKey/],
-    ];
-    for (const [filterFields, message] of bad) {
-        assert.throws(() => validateMeter(meter({ filterFields }), { create: true }), message, JSON.stringify(filterFields));
-    }
-});
-
-test('a filter field reads the event key given, or its default when the key is left out or empty', () => {
+test('a meter lists the properties its prices can filter on, each a name and the event key it reads', () => {
     const fields = (filterFields) => validateMeter(meter({ filterFields }), { create: true }).filterFields;
-    assert.deepStrictEqual(fields([{ field: 'API_TYPE', eventKey: '  metadata.kind ' }, { field: 'HTTP_STATUS_CODE', eventKey: 'status' }]), [
-        { field: 'API_TYPE', eventKey: 'metadata.kind' },
-        { field: 'HTTP_STATUS_CODE', eventKey: 'status' },
-    ]);
-    for (const eventKey of [undefined, null, '', '  ']) {
-        assert.deepStrictEqual(fields([{ field: 'RESOURCE', eventKey }]), [{ field: 'RESOURCE', eventKey: 'metadata.apiResourceTemplate' }],
-            JSON.stringify(eventKey));
+    assert.deepStrictEqual(fields([{ field: ' Status code ', eventKey: ' response.status ' }, { field: 'Region', eventKey: 'meta.region' }]),
+        [{ field: 'Status code', eventKey: 'response.status' }, { field: 'Region', eventKey: 'meta.region' }]);
+    assert.deepStrictEqual(fields(undefined), []);
+    assert.deepStrictEqual(fields([]), []);
+    // Any name of 1 to 40 characters.
+    assert.deepStrictEqual(fields([{ field: 'x'.repeat(40), eventKey: 'k' }]), [{ field: 'x'.repeat(40), eventKey: 'k' }]);
+    for (const field of ['', '   ', 'x'.repeat(41), 7, null, 'a\u0007b']) {
+        assert.throws(() => fields([{ field, eventKey: 'k' }]), /A filter property's name must be 1 to 40 characters/, String(field));
     }
-    const refused = [
-        ['HTTP_STATUS_CODE', 'response status', 'Status code'],
-        ['HTTP_METHOD', 'k'.repeat(256), 'HTTP method'],
-        ['RESOURCE', 'api\nResource', 'Resource'],
-        ['API_TYPE', 7, 'API type'],
-    ];
-    for (const [field, eventKey, label] of refused) {
-        assert.throws(() => fields([{ field, eventKey }]),
-            { message: `The event key of ${label} must be 1 to 255 characters with no spaces` }, field);
+    // Names are unique ignoring case; keys are unique.
+    assert.throws(() => fields([{ field: 'Region', eventKey: 'a' }, { field: 'region', eventKey: 'b' }]),
+        /The meter has the property region more than once/);
+    assert.throws(() => fields([{ field: 'Code', eventKey: 'response.status' }, { field: 'Status', eventKey: 'response.status' }]),
+        /Status and Code read the same event key response.status/);
+    // A key is required, with no default.
+    for (const eventKey of [undefined, null, '', '  ', 'has space', 'x'.repeat(256)]) {
+        assert.throws(() => fields([{ field: 'Status code', eventKey }]), /The event key of Status code must be 1 to 255 characters with no spaces/,
+            String(eventKey));
     }
+    assert.throws(() => fields([{ field: 'Region', eventKey: 'k', extra: 1 }]), /Each entry of filterFields has only a field and an eventKey/);
+    assert.throws(() => fields('Region'), /filterFields must be an array/);
+    assert.throws(() => fields(Array.from({ length: 11 }, (_, k) => ({ field: `P${k}`, eventKey: `k${k}` }))),
+        /A meter has at most 10 filter properties/);
+    // A property may read a Tokens meter's own key, so prices can compare the number it adds up.
+    assert.deepStrictEqual(validateMeter(meter({ type: 'TOKENS', typeKey: 'usage.in', filterFields: [{ field: 'Input', eventKey: 'usage.in' }] }),
+        { create: true }).filterFields, [{ field: 'Input', eventKey: 'usage.in' }]);
 });
 
 const perUnit = (extra) => ({ pricingModel: 'PER_UNIT', meterId: 'calls', unitAmount: '0.008', ...extra });
@@ -260,371 +235,114 @@ test('tiers need rising upper bounds, an open last tier and a price each', () =>
         { upTo: null, flatAmount: '1e3' }])] })), /^Error: flatAmount of tier 2 of price 1 must be a decimal amount such as 9\.99$/);
 });
 
-test('a price filters on each field at most once, with the operators and values the field takes', () => {
-    const one = (...filters) => validatePricing(usage({ prices: [perUnit({ filters })] })).prices[0].filters;
-    assert.deepStrictEqual(one(filter('http_status_code', 'in', '200', '304', '200'), filter('HTTP_METHOD', 'not_in', 'options', 'head'),
-        filter('RESOURCE', 'STARTS_WITH', '/orders'), filter('API_TYPE', 'EQUALS', 'RestApi')), [
-        filter('HTTP_STATUS_CODE', 'IN', '200', '304'), filter('HTTP_METHOD', 'NOT_IN', 'OPTIONS', 'HEAD'),
-        filter('RESOURCE', 'STARTS_WITH', '/orders'), filter('API_TYPE', 'EQUALS', 'RestApi'),
-    ]);
-    // A starts-with path is kept without a trailing "/": "/orders/" covers what "/orders" covers.
-    assert.deepStrictEqual(one(filter('RESOURCE', 'STARTS_WITH', '/orders/')), [filter('RESOURCE', 'STARTS_WITH', '/orders')]);
-    assert.deepStrictEqual(one(filter('RESOURCE', 'STARTS_WITH', '/')), [filter('RESOURCE', 'STARTS_WITH', '/')]);
-    assert.deepStrictEqual(one(filter('RESOURCE', 'EQUALS', '/orders/')), [filter('RESOURCE', 'EQUALS', '/orders/')]);
-    const bad = [
-        [[filter('HTTP_STATUS_CODE', 'STARTS_WITH', '2')], /^Error: The HTTP_STATUS_CODE operator of price 1 must be one of EQUALS, NOT_EQUALS, IN, NOT_IN$/],
-        [[filter('RESOURCE', 'IN', '/a')], /^Error: The RESOURCE operator of price 1 must be one of EQUALS, NOT_EQUALS, STARTS_WITH$/],
-        [[filter('TOKEN_TYPE', 'EQUALS', 'INPUT')], /field of filter 1 of price 1 must be one of/],
-        [[filter('MODEL', 'EQUALS', 'gpt-4o')], /field of filter 1 of price 1 must be one of/],
-        [[filter('API_TYPE', 'IN', 'a'), filter('API_TYPE', 'NOT_IN', 'b')], /price 1 filters on API_TYPE more than once/],
-        [[filter('API_TYPE', 'EQUALS', 'a', 'b')], /price 1: Operator EQUALS takes exactly one value/],
-        [[filter('API_TYPE', 'IN')], /price 1: A filter on API_TYPE needs 1 to 20 values/],
-        [[filter('API_TYPE', 'EQUALS')], /price 1: Operator EQUALS takes exactly one value/],
-        [[filter('HTTP_STATUS_CODE', 'IN', '2xx')], /is not a status code/],
-        [[filter('RESOURCE', 'EQUALS', 'orders')], /A resource must start with \//],
-        [[filter('HTTP_METHOD', 'EQUALS', 'FETCH')], /HTTP method must be one of/],
-        [['API_TYPE'], /Each filter of price 1 needs a field, an operator and values/],
-    ];
-    for (const [filters, message] of bad) {
-        assert.throws(() => validatePricing(usage({ prices: [perUnit({ filters })] })), message, JSON.stringify(filters));
-    }
-    assert.throws(() => validatePricing(usage({ prices: [perUnit({ filters: 'API_TYPE' })] })), /filters of price 1 must be an array/);
-});
-
-test('an API type filter takes the matching operators and free-text values, kept exactly as written', () => {
-    const one = (...filters) => validatePricing(usage({ prices: [perUnit({ filters })] })).prices[0].filters;
-    assert.deepStrictEqual(one(filter('api_type', 'in', 'RestApi', 'restapi', ' Mcp ', 'RestApi')),
-        [filter('API_TYPE', 'IN', 'RestApi', 'restapi', 'Mcp')]);
-    for (const operator of ['EQUALS', 'NOT_EQUALS', 'NOT_IN']) {
-        assert.deepStrictEqual(one(filter('API_TYPE', operator, 'LlmProvider')), [filter('API_TYPE', operator, 'LlmProvider')]);
-    }
-    assert.deepStrictEqual(one(filter('API_TYPE', 'IN', ...Array.from({ length: 20 }, (_, i) => 'Kind' + i)))[0].values.length, 20);
-    const bad = [
-        [filter('API_TYPE', 'STARTS_WITH', 'Llm'), /^Error: The API_TYPE operator of price 1 must be one of EQUALS, NOT_EQUALS, IN, NOT_IN$/],
-        [filter('API_TYPE', 'EQUALS', 'RestApi', 'Mcp'), /^Error: price 1: Operator EQUALS takes exactly one value$/],
-        [filter('API_TYPE', 'IN'), /^Error: price 1: A filter on API_TYPE needs 1 to 20 values$/],
-        [filter('API_TYPE', 'IN', ...Array.from({ length: 21 }, (_, i) => 'Kind' + i)), /^Error: price 1: A filter on API_TYPE needs 1 to 20 values$/],
-        [filter('API_TYPE', 'EQUALS', 'k'.repeat(256)), /^Error: price 1: Filter values for API_TYPE must be 1 to 255 characters$/],
-        [filter('API_TYPE', 'EQUALS', ' '), /^Error: price 1: Filter values for API_TYPE must be 1 to 255 characters$/],
-    ];
-    for (const [f, message] of bad) {
-        assert.throws(() => validatePricing(usage({ prices: [perUnit({ filters: [f] })] })), message, JSON.stringify(f));
+test('a price filter names a property and takes any operator, with the values the operator takes', () => {
+    const filters = (...given) => validatePricing(usage({ prices: [perUnit({ filters: given })] })).prices[0].filters;
+    // Text values are kept as written, trimmed; "is one of" drops repeats.
+    assert.deepStrictEqual(filters(filter(' HTTP method ', 'in', ' get ', 'POST', ' get ')),
+        [filter('HTTP method', 'IN', 'get', 'POST')]);
+    assert.deepStrictEqual(filters(filter('Resource', 'STARTS_WITH', '/orders/')), [filter('Resource', 'STARTS_WITH', '/orders/')]);
+    assert.deepStrictEqual(filters(filter('API type', 'NOT_EQUALS', 'RestApi')), [filter('API type', 'NOT_EQUALS', 'RestApi')]);
+    // Any operator on any property: a status code may start with a text, a method may be compared.
+    assert.deepStrictEqual(filters(filter('Status code', 'STARTS_WITH', '2')), [filter('Status code', 'STARTS_WITH', '2')]);
+    assert.deepStrictEqual(filters(filter('Status code', 'GREATER_THAN_OR_EQUAL', '0400')),
+        [filter('Status code', 'GREATER_THAN_OR_EQUAL', '400')]);
+    assert.deepStrictEqual(filters(filter('Prompt tokens', 'LESS_THAN', 333)), [filter('Prompt tokens', 'LESS_THAN', '333')]);
+    // The values each operator takes.
+    for (const [given, message] of [
+        [filter('Region', 'EQUALS', 'a', 'b'), /Operator EQUALS takes exactly one value/],
+        [filter('Region', 'STARTS_WITH'), /Operator STARTS_WITH takes exactly one value/],
+        [filter('Region', 'IN'), /A filter on Region needs 1 to 20 values/],
+        [filter('Region', 'NOT_IN', ...Array.from({ length: 21 }, (_, k) => `v${k}`)), /A filter on Region needs 1 to 20 values/],
+        [filter('Region', 'EQUALS', ' '), /Filter values for Region must be 1 to 255 characters/],
+        [filter('Region', 'EQUALS', 'x'.repeat(256)), /Filter values for Region must be 1 to 255 characters/],
+        [filter('Tokens', 'GREATER_THAN', '1.5'), /A comparison on Tokens takes a whole number from 0 to 1000000000000/],
+        [filter('Tokens', 'GREATER_THAN', '-1'), /A comparison on Tokens takes a whole number/],
+        [filter('Tokens', 'LESS_THAN', '1000000000001'), /A comparison on Tokens takes a whole number/],
+        [filter('Tokens', 'LESS_THAN', '1', '2'), /Operator LESS_THAN takes exactly one value/],
+        [filter('Region', 'MATCHES', 'a'), /The operator of filter 1 of price 1 must be one of EQUALS, NOT_EQUALS, IN, NOT_IN, STARTS_WITH/],
+        [filter('', 'EQUALS', 'a'), /field of filter 1 of price 1 must be 1 to 40 characters/],
+        [{ ...filter('Region', 'EQUALS', 'a'), eventKey: 'meta.region' }, /Each filter of price 1 has only a field, an operator and values/],
+    ]) {
+        assert.throws(() => filters(given), message, JSON.stringify(given));
     }
 });
 
-// Meters as the database holds them.
+test('on one property a price has one text filter, or one or two comparisons that can hold together', () => {
+    const filters = (...given) => validatePricing(usage({ prices: [perUnit({ filters: given })] })).prices[0].filters;
+    assert.deepStrictEqual(filters(filter('Tokens', 'GREATER_THAN', '100'), filter('tokens', 'LESS_THAN_OR_EQUAL', '500')),
+        [filter('Tokens', 'GREATER_THAN', '100'), filter('tokens', 'LESS_THAN_OR_EQUAL', '500')]);
+    assert.throws(() => filters(filter('Region', 'EQUALS', 'a'), filter('region', 'NOT_EQUALS', 'b')), /price 1 filters on Region more than once/);
+    assert.throws(() => filters(filter('Code', 'EQUALS', '200'), filter('Code', 'GREATER_THAN', '100')), /price 1 filters on Code more than once/);
+    assert.throws(() => filters(filter('T', 'GREATER_THAN', '1'), filter('T', 'GREATER_THAN', '2'), filter('T', 'LESS_THAN', '9')),
+        /a price puts at most 2 comparisons on T/);
+    assert.throws(() => filters(filter('T', 'GREATER_THAN', '500'), filter('T', 'LESS_THAN', '100')), /the comparisons on T can't all be true/);
+    assert.throws(() => filters(filter('T', 'GREATER_THAN', '5'), filter('T', 'LESS_THAN', '6')), /the comparisons on T can't all be true/);
+    assert.strictEqual(filters(filter('T', 'GREATER_THAN_OR_EQUAL', '5'), filter('T', 'LESS_THAN_OR_EQUAL', '5')).length, 2);
+});
+
 const meters = new Map([
-    ['calls', { uuid: 'm-calls', handle: 'calls', display_name: 'Calls', type: 'REQUEST_COUNT', type_key: null,
-        filter_fields: ['HTTP_STATUS_CODE', 'HTTP_METHOD', 'RESOURCE', 'API_TYPE'].map((field) => ({ field, eventKey: field })) }],
-    ['llm-input', { uuid: 'm-in', handle: 'llm-input', display_name: 'LLM input tokens', type: 'TOKENS',
-        type_key: 'metadata.aiTokenUsage.promptTokens', filter_fields: [{ field: 'API_TYPE', eventKey: 'metadata.apiType' }] }],
-    ['mcp', { uuid: 'm-mcp', handle: 'mcp', display_name: 'MCP calls', type: 'REQUEST_COUNT', type_key: null,
-        filter_fields: [{ field: 'MCP_METHOD', eventKey: 'metadata.mcpAnalytics.jsonRpcMethod' },
-            { field: 'MCP_TOOL', eventKey: 'metadata.mcpAnalytics.capabilityName' }] }],
+    ['calls', { handle: 'calls', type: 'REQUEST_COUNT', type_key: null, filter_fields: [
+        { field: 'Status code', eventKey: 'response.status' },
+        { field: 'HTTP method', eventKey: 'request.verb' },
+        { field: 'Resource', eventKey: 'metadata.apiResourceTemplate' },
+        { field: 'API type', eventKey: 'metadata.apiType' },
+        { field: 'Prompt tokens', eventKey: 'metadata.aiTokenUsage.promptTokens' },
+    ] }],
+    ['bare', { handle: 'bare', type: 'REQUEST_COUNT', type_key: null, filter_fields: [] }],
 ]);
 const resolve = (prices) => resolvePrices(validatePricing(usage({ prices })).prices, meters);
 const on = (meterId, ...filters) => perUnit({ meterId, filters });
 
 test('a plan may price a meter several times, as long as no request is counted twice', () => {
-    const [a, b] = resolve([on('llm-input', filter('API_TYPE', 'EQUALS', 'LlmProvider')), on('llm-input', filter('API_TYPE', 'IN', 'LlmProxy', 'Mcp'))]);
-    assert.strictEqual(a.meter.uuid, 'm-in');
-    assert.strictEqual(b.meter.uuid, 'm-in');
-    assert.throws(() => resolve([perUnit({ meterId: 'no-such-meter' })]), /Unknown meter: no-such-meter/);
-    assert.throws(() => resolve([on('llm-input', filter('API_TYPE', 'IN', 'LlmProvider', 'LlmProxy')), on('calls'), on('llm-input', filter('API_TYPE', 'EQUALS', 'LlmProxy'))]),
-        /^Error: Prices 1 and 3 both count the same requests of the meter llm-input; give them different filters\.$/);
-    // Different meters are never compared.
-    assert.strictEqual(resolve([on('calls'), on('llm-input')]).length, 2);
+    const resolved = resolve([on('calls', filter('HTTP method', 'EQUALS', 'GET')), on('calls', filter('HTTP method', 'EQUALS', 'POST'))]);
+    assert.strictEqual(resolved.length, 2);
+    assert.strictEqual(resolved[0].meter.handle, 'calls');
+    assert.throws(() => resolve([on('nope')]), /Unknown meter: nope/);
 });
 
-test('a price filters only on the fields its meter lets its prices filter on', () => {
-    assert.throws(() => resolve([on('llm-input', filter('API_TYPE', 'EQUALS', 'LlmProvider')), on('llm-input', filter('HTTP_METHOD', 'EQUALS', 'GET'))]),
-        /^Error: price 2: the meter llm-input does not allow filtering on HTTP_METHOD$/);
+test('a price filters only on its meter\'s properties, named as the meter spells them', () => {
+    assert.deepStrictEqual(resolve([on('calls', filter('http METHOD', 'EQUALS', 'GET'))])[0].filters, [filter('HTTP method', 'EQUALS', 'GET')]);
+    assert.throws(() => resolve([on('bare', filter('HTTP method', 'EQUALS', 'GET'))]), /price 1: the meter bare has no property HTTP method/);
+    assert.throws(() => resolve([on('calls', filter('Region', 'EQUALS', 'eu'))]), /price 1: the meter calls has no property Region/);
 });
 
-test('two prices on one meter count the same request when every field either filters on can match', () => {
-    // [price A's filters, price B's filters, whether one request can be counted by both]
+test('two prices on one meter count the same request when, on every property both filter on, their filters can match one value', () => {
+    const f = filter;
+    // [price A, price B, whether one request can be counted by both]
     const cases = [
-        [[], [], true],
-        [[], [filter('API_TYPE', 'EQUALS', 'a')], true],
-        [[filter('API_TYPE', 'IN', 'a', 'b')], [filter('API_TYPE', 'IN', 'b', 'c')], true],
-        [[filter('API_TYPE', 'EQUALS', 'a')], [filter('API_TYPE', 'EQUALS', 'b')], false],
-        [[filter('API_TYPE', 'IN', 'a')], [filter('API_TYPE', 'NOT_IN', 'a')], false],
-        [[filter('API_TYPE', 'IN', 'a', 'b')], [filter('API_TYPE', 'NOT_EQUALS', 'a')], true],
-        [[filter('RESOURCE', 'EQUALS', '/orders/1')], [filter('RESOURCE', 'STARTS_WITH', '/orders')], true],
-        [[filter('RESOURCE', 'EQUALS', '/users')], [filter('RESOURCE', 'STARTS_WITH', '/orders')], false],
-        [[filter('RESOURCE', 'STARTS_WITH', '/orders')], [filter('RESOURCE', 'STARTS_WITH', '/orders/items')], true],
-        [[filter('RESOURCE', 'STARTS_WITH', '/orders')], [filter('RESOURCE', 'STARTS_WITH', '/users')], false],
-        // Whole path segments: "/orders" is not under "/order", and "/orders-archive" not under "/orders".
-        [[filter('RESOURCE', 'STARTS_WITH', '/order')], [filter('RESOURCE', 'STARTS_WITH', '/orders')], false],
-        [[filter('RESOURCE', 'EQUALS', '/orders-archive')], [filter('RESOURCE', 'STARTS_WITH', '/orders')], false],
-        [[filter('RESOURCE', 'EQUALS', '/orders')], [filter('RESOURCE', 'STARTS_WITH', '/orders/')], true],
-        [[filter('RESOURCE', 'EQUALS', '/users')], [filter('RESOURCE', 'STARTS_WITH', '/')], true],
-        [[filter('RESOURCE', 'NOT_EQUALS', '/a')], [filter('RESOURCE', 'STARTS_WITH', '/b')], true],
-        [[filter('API_TYPE', 'NOT_IN', 'a')], [filter('API_TYPE', 'NOT_EQUALS', 'b')], true],
-        [[filter('HTTP_STATUS_CODE', 'NOT_IN', '500')], [filter('HTTP_STATUS_CODE', 'NOT_IN', '200')], true],
-        [[filter('HTTP_METHOD', 'NOT_IN', 'GET', 'POST')], [filter('HTTP_METHOD', 'NOT_IN', 'PUT')], true],
-        [[filter('HTTP_METHOD', 'NOT_IN', 'GET', 'POST', 'PUT')], [filter('HTTP_METHOD', 'NOT_IN', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS')], false],
-        // Apart on one field is enough.
-        [[filter('API_TYPE', 'EQUALS', 'a'), filter('HTTP_METHOD', 'EQUALS', 'GET')],
-            [filter('API_TYPE', 'EQUALS', 'a'), filter('HTTP_METHOD', 'EQUALS', 'POST')], false],
-        [[filter('API_TYPE', 'EQUALS', 'a'), filter('HTTP_METHOD', 'EQUALS', 'GET')], [filter('API_TYPE', 'IN', 'a', 'b')], true],
-        // The API type is matched case-sensitively.
-        [[filter('API_TYPE', 'EQUALS', 'RestApi')], [filter('API_TYPE', 'EQUALS', 'LlmProvider')], false],
-        [[filter('API_TYPE', 'EQUALS', 'RestApi')], [filter('API_TYPE', 'EQUALS', 'restapi')], false],
-        [[filter('API_TYPE', 'IN', 'RestApi', 'Mcp')], [filter('API_TYPE', 'IN', 'Mcp')], true],
-        [[filter('API_TYPE', 'EQUALS', 'RestApi')], [filter('API_TYPE', 'NOT_EQUALS', 'RestApi')], false],
-        [[filter('API_TYPE', 'IN', 'LlmProvider')], [filter('API_TYPE', 'NOT_IN', 'RestApi', 'Mcp')], true],
-        [[filter('API_TYPE', 'NOT_IN', 'RestApi')], [filter('API_TYPE', 'NOT_IN', 'LlmProvider')], true],
-        [[filter('API_TYPE', 'EQUALS', 'RestApi')], [filter('HTTP_STATUS_CODE', 'EQUALS', '200')], true],
-        [[filter('API_TYPE', 'EQUALS', 'RestApi'), filter('HTTP_STATUS_CODE', 'EQUALS', '200')],
-            [filter('API_TYPE', 'EQUALS', 'LlmProvider'), filter('HTTP_STATUS_CODE', 'EQUALS', '200')], false],
+        [[f('HTTP method', 'EQUALS', 'GET')], [f('HTTP method', 'EQUALS', 'POST')], false],
+        [[f('HTTP method', 'IN', 'GET', 'POST')], [f('HTTP method', 'IN', 'POST', 'PUT')], true],
+        [[f('HTTP method', 'EQUALS', 'GET')], [f('HTTP method', 'NOT_EQUALS', 'GET')], false],
+        [[f('HTTP method', 'IN', 'GET', 'POST')], [f('HTTP method', 'NOT_IN', 'GET')], true],
+        // Two exclusions can always overlap: the values are not known.
+        [[f('HTTP method', 'NOT_IN', 'GET', 'HEAD', 'OPTIONS')], [f('HTTP method', 'NOT_IN', 'POST', 'PUT', 'PATCH', 'DELETE')], true],
+        // A plain text prefix: "/orders" also starts "/orders-archive".
+        [[f('Resource', 'STARTS_WITH', '/orders')], [f('Resource', 'EQUALS', '/orders-archive')], true],
+        [[f('Resource', 'STARTS_WITH', '/orders/')], [f('Resource', 'EQUALS', '/orders-archive')], false],
+        [[f('Resource', 'STARTS_WITH', '/orders')], [f('Resource', 'STARTS_WITH', '/orders/items')], true],
+        [[f('Resource', 'STARTS_WITH', '/orders')], [f('Resource', 'STARTS_WITH', '/users')], false],
+        [[f('Resource', 'STARTS_WITH', '/orders')], [f('Resource', 'NOT_EQUALS', '/orders')], true],
+        // Comparisons: ranges that share no number are apart.
+        [[f('Prompt tokens', 'LESS_THAN_OR_EQUAL', '333')], [f('Prompt tokens', 'GREATER_THAN', '333')], false],
+        [[f('Prompt tokens', 'GREATER_THAN', '100')], [f('Prompt tokens', 'GREATER_THAN', '333')], true],
+        [[f('Prompt tokens', 'GREATER_THAN', '100'), f('Prompt tokens', 'LESS_THAN_OR_EQUAL', '500')], [f('Prompt tokens', 'GREATER_THAN', '500')], false],
+        [[f('Prompt tokens', 'GREATER_THAN', '100'), f('Prompt tokens', 'LESS_THAN_OR_EQUAL', '500')],
+            [f('Prompt tokens', 'GREATER_THAN', '400'), f('Prompt tokens', 'LESS_THAN_OR_EQUAL', '900')], true],
+        // A comparison and a text filter: apart when none of the text values is a number in the range.
+        [[f('Status code', 'GREATER_THAN_OR_EQUAL', '400')], [f('Status code', 'IN', '200', '304')], false],
+        [[f('Status code', 'GREATER_THAN_OR_EQUAL', '400')], [f('Status code', 'IN', '200', '404')], true],
+        [[f('Status code', 'GREATER_THAN_OR_EQUAL', '400')], [f('Status code', 'NOT_EQUALS', '500')], true],
+        // A property only one price filters on matches anything for the other.
+        [[f('HTTP method', 'EQUALS', 'GET')], [], true],
+        [[f('HTTP method', 'EQUALS', 'GET')], [f('API type', 'EQUALS', 'RestApi')], true],
+        // Apart on any one property is enough.
+        [[f('HTTP method', 'EQUALS', 'GET'), f('API type', 'EQUALS', 'RestApi')], [f('HTTP method', 'EQUALS', 'GET'), f('API type', 'EQUALS', 'Mcp')], false],
     ];
     for (const [a, b, overlap] of cases) {
         const attempt = () => resolve([on('calls', ...a), on('calls', ...b)]);
-        if (overlap) assert.throws(attempt, /both count the same requests/, JSON.stringify([a, b]));
+        if (overlap) assert.throws(attempt, /Prices 1 and 2 both count the same requests of the meter calls/, JSON.stringify([a, b]));
         else assert.strictEqual(attempt().length, 2, JSON.stringify([a, b]));
     }
-});
-
-test('a price applies to an API unless its API type filter, read at the default key, rules the API\'s type out', () => {
-    const typed = { filter_fields: [{ field: 'API_TYPE', eventKey: 'metadata.apiType' }] };
-    const custom = { filter_fields: [{ field: 'API_TYPE', eventKey: 'metadata.kind' }] };
-    const applies = (f, apiType, meterRow = typed) => priceAppliesToApiType(f ? [f] : [], meterRow, apiType);
-    assert.strictEqual(applies(null, 'RestApi'), true, 'no API type filter');
-    assert.strictEqual(applies(filter('HTTP_METHOD', 'EQUALS', 'GET'), 'RestApi'), true, 'another field only');
-    assert.strictEqual(applies(filter('API_TYPE', 'EQUALS', 'RestApi'), 'RestApi'), true);
-    assert.strictEqual(applies(filter('API_TYPE', 'EQUALS', 'LlmProvider'), 'RestApi'), false);
-    assert.strictEqual(applies(filter('API_TYPE', 'IN', 'LlmProvider', 'RestApi'), 'RestApi'), true);
-    assert.strictEqual(applies(filter('API_TYPE', 'IN', 'LlmProvider', 'LlmProxy'), 'RestApi'), false);
-    assert.strictEqual(applies(filter('API_TYPE', 'NOT_EQUALS', 'RestApi'), 'RestApi'), false);
-    assert.strictEqual(applies(filter('API_TYPE', 'NOT_EQUALS', 'Mcp'), 'RestApi'), true);
-    assert.strictEqual(applies(filter('API_TYPE', 'NOT_IN', 'RestApi', 'Mcp'), 'RestApi'), false);
-    assert.strictEqual(applies(filter('API_TYPE', 'NOT_IN', 'RestApi', 'Mcp'), 'LlmProvider'), true);
-    // Matched exactly as written.
-    assert.strictEqual(applies(filter('API_TYPE', 'EQUALS', 'restapi'), 'RestApi'), false);
-    // A meter that reads the type at its own key: the API's value is unknown, so the price applies.
-    assert.strictEqual(applies(filter('API_TYPE', 'EQUALS', 'LlmProvider'), 'RestApi', custom), true);
-    // An unknown API type rules nothing out.
-    assert.strictEqual(applies(filter('API_TYPE', 'EQUALS', 'LlmProvider'), null), true);
-    // Prices name the gateway's API types, which differ from the portal's for GraphQL and WebSocket APIs.
-    assert.strictEqual(applies(filter('API_TYPE', 'EQUALS', 'GraphQLApi'), 'GRAPHQL'), true);
-    assert.strictEqual(applies(filter('API_TYPE', 'NOT_EQUALS', 'GraphQLApi'), 'GRAPHQL'), false);
-    assert.strictEqual(applies(filter('API_TYPE', 'EQUALS', 'GRAPHQL'), 'GRAPHQL'), false, 'the gateway never sends GRAPHQL');
-    assert.strictEqual(applies(filter('API_TYPE', 'IN', 'WebSocketApi', 'Mcp'), 'WS'), true);
-    assert.strictEqual(applies(filter('API_TYPE', 'EQUALS', 'Mcp'), 'Mcp'), true);
-    assert.strictEqual(applies(filter('API_TYPE', 'NOT_IN', 'RestApi', 'Mcp'), 'Mcp'), false);
-    // A SOAP API has no gateway counterpart, so no price is ruled out for it.
-    assert.strictEqual(applies(filter('API_TYPE', 'EQUALS', 'LlmProvider'), 'SOAP'), true);
-});
-
-// ---------------------------------------------------------------------------
-// MCP method and Tool filters
-// ---------------------------------------------------------------------------
-
-const TOOL_CALL = filter('MCP_METHOD', 'EQUALS', 'tools/call');
-
-test('a meter may list the MCP method and the tool, each read at our gateway\'s key by default', () => {
-    assert.deepStrictEqual(validateMeter(meter({ filterFields: [{ field: 'mcp_method' }, { field: 'MCP_TOOL' }] }), { create: true })
-        .filterFields, [
-        { field: 'MCP_METHOD', eventKey: 'metadata.mcpAnalytics.jsonRpcMethod' },
-        { field: 'MCP_TOOL', eventKey: 'metadata.mcpAnalytics.capabilityName' },
-    ]);
-});
-
-test('an MCP method or Tool filter takes the matching operators and free-text values, kept exactly as written', () => {
-    const filtersOf = (...filters) => validatePricing(usage({ prices: [perUnit({ meterId: 'mcp', filters })] })).prices[0].filters;
-    assert.deepStrictEqual(filtersOf(filter('mcp_method', 'in', 'tools/call', ' resources/read ', 'tools/call')),
-        [filter('MCP_METHOD', 'IN', 'tools/call', 'resources/read')]);
-    assert.deepStrictEqual(filtersOf(filter('MCP_TOOL', 'NOT_EQUALS', 'Search')), [filter('MCP_TOOL', 'NOT_EQUALS', 'Search')]);
-    assert.throws(() => filtersOf(filter('MCP_TOOL', 'STARTS_WITH', 'se')), /The MCP_TOOL operator of .* must be one of EQUALS, NOT_EQUALS, IN, NOT_IN/);
-    assert.throws(() => filtersOf(filter('MCP_METHOD', 'GREATER_THAN', '1')), /The MCP_METHOD operator of .* must be one of/);
-});
-
-test('a Tool filter counts only tool calls, so a price can\'t also filter on the MCP method', () => {
-    assert.throws(() => resolve([on('mcp', TOOL_CALL, filter('MCP_TOOL', 'EQUALS', 'search'))]),
-        /price 1: a Tool filter counts only tool calls, so it can't be used with an MCP method filter/);
-    assert.strictEqual(resolve([on('mcp', filter('MCP_TOOL', 'IN', 'search', 'fetch'))]).length, 1);
-});
-
-test('two prices on one meter are compared with the tool call a Tool filter implies', () => {
-    // [price A's filters, price B's filters, whether one request can be counted by both]
-    const cases = [
-        [[TOOL_CALL], [filter('MCP_METHOD', 'NOT_EQUALS', 'tools/call')], false],
-        [[TOOL_CALL], [filter('MCP_METHOD', 'IN', 'tools/call', 'prompts/get')], true],
-        [[filter('MCP_TOOL', 'EQUALS', 'search')], [filter('MCP_TOOL', 'NOT_IN', 'search')], false],
-        [[filter('MCP_TOOL', 'EQUALS', 'search')], [filter('MCP_TOOL', 'EQUALS', 'fetch')], false],
-        [[filter('MCP_TOOL', 'EQUALS', 'search')], [], true],
-        // A Tool price counts tool calls only: apart from a price on another method, not from one on tool calls.
-        [[filter('MCP_TOOL', 'EQUALS', 'search')], [filter('MCP_METHOD', 'EQUALS', 'prompts/get')], false],
-        [[filter('MCP_TOOL', 'EQUALS', 'search')], [filter('MCP_METHOD', 'NOT_EQUALS', 'tools/call')], false],
-        [[filter('MCP_TOOL', 'EQUALS', 'search')], [TOOL_CALL], true],
-        [[filter('MCP_TOOL', 'IN', 'search', 'fetch')], [filter('MCP_METHOD', 'IN', 'tools/call', 'resources/read')], true],
-    ];
-    for (const [a, b, overlap] of cases) {
-        const attempt = () => resolve([on('mcp', ...a), on('mcp', ...b)]);
-        if (overlap) assert.throws(attempt, /both count the same requests/, JSON.stringify([a, b]));
-        else assert.strictEqual(attempt().length, 2, JSON.stringify([a, b]));
-    }
-});
-
-test('a Tool filter is given to the billing provider with the tool call it implies', () => {
-    const mcp = meters.get('mcp');
-    const tool = [filter('MCP_TOOL', 'IN', 'search')];
-    // Read at the meter's MCP method key when it lists the field.
-    assert.deepStrictEqual(countedFilters(mcp, tool), { meter: mcp, filters: [...tool, TOOL_CALL] });
-    // Otherwise at our gateway's.
-    const toolOnly = { ...mcp, filter_fields: [{ field: 'MCP_TOOL', eventKey: 'metadata.tool' }] };
-    assert.deepStrictEqual(countedFilters(toolOnly, tool), {
-        meter: { ...toolOnly, filter_fields: [...toolOnly.filter_fields,
-            { field: 'MCP_METHOD', eventKey: 'metadata.mcpAnalytics.jsonRpcMethod' }] },
-        filters: [...tool, TOOL_CALL],
-    });
-    // Any other price is given as it is.
-    const resourceReads = [filter('MCP_METHOD', 'EQUALS', 'resources/read')];
-    assert.deepStrictEqual(countedFilters(mcp, resourceReads), { meter: mcp, filters: resourceReads });
-    assert.deepStrictEqual(countedFilters(mcp, []), { meter: mcp, filters: [] });
-});
-
-test('a price with an MCP method or Tool filter, read at the default key, is sold only on MCP servers', () => {
-    const mcp = meters.get('mcp');
-    const applies = (f, apiType, meterRow = mcp) => priceAppliesToApiType([f], meterRow, apiType);
-    for (const f of [TOOL_CALL, filter('MCP_METHOD', 'NOT_IN', 'ping'), filter('MCP_TOOL', 'IN', 'search')]) {
-        assert.strictEqual(applies(f, 'Mcp'), true, JSON.stringify(f));
-        assert.strictEqual(applies(f, 'RestApi'), false, JSON.stringify(f));
-        assert.strictEqual(applies(f, 'GRAPHQL'), false, JSON.stringify(f));
-    }
-    // Read at another key, or for an API type the gateway has no counterpart for, the value is unknown.
-    const custom = { filter_fields: [{ field: 'MCP_TOOL', eventKey: 'metadata.tool' }] };
-    assert.strictEqual(applies(filter('MCP_TOOL', 'IN', 'search'), 'RestApi', custom), true);
-    assert.strictEqual(applies(filter('MCP_TOOL', 'IN', 'search'), 'SOAP'), true);
-});
-
-// ---------------------------------------------------------------------------
-// Token fields and conditions
-// ---------------------------------------------------------------------------
-
-const PROMPT = 'metadata.aiTokenUsage.promptTokens';
-const TOTAL = 'metadata.aiTokenUsage.totalTokens';
-const COMPLETION = 'metadata.aiTokenUsage.completionTokens';
-
-test('a meter may list a Token field once per key, with a key, on any meter', () => {
-    const fields = (filterFields, extra) => validateMeter(meter({ filterFields, ...extra }), { create: true }).filterFields;
-    assert.deepStrictEqual(fields([{ field: 'token', eventKey: ` ${TOTAL} ` }, { field: 'TOKEN', eventKey: 'usage.cached' },
-        { field: 'API_TYPE' }]), [
-        { field: 'TOKEN', eventKey: TOTAL },
-        { field: 'TOKEN', eventKey: 'usage.cached' },
-        { field: 'API_TYPE', eventKey: 'metadata.apiType' },
-    ]);
-    const tokens = { type: 'TOKENS', typeKey: PROMPT };
-    assert.deepStrictEqual(fields([{ field: 'TOKEN', eventKey: TOTAL }], tokens), [{ field: 'TOKEN', eventKey: TOTAL }]);
-    const refused = [
-        [[{ field: 'TOKEN' }], {}, 'A Token field needs an eventKey'],
-        [[{ field: 'TOKEN', eventKey: '  ' }], {}, 'A Token field needs an eventKey'],
-        [[{ field: 'TOKEN', eventKey: 'usage tokens' }], {}, 'The event key of Token must be 1 to 255 characters with no spaces'],
-        [[{ field: 'TOKEN', eventKey: TOTAL }, { field: 'TOKEN', eventKey: ` ${TOTAL}` }], {},
-            `The meter lists the Token key ${TOTAL} more than once`],
-        [[{ field: 'TOKEN', eventKey: PROMPT }], tokens, `The key ${PROMPT} is already the meter's Token key`],
-        [[{ field: 'API_TYPE' }, { field: 'API_TYPE' }], {}, 'filterFields: API_TYPE is listed twice'],
-        [Array.from({ length: 11 }, (_, i) => ({ field: 'TOKEN', eventKey: `usage.k${i}` })), {}, 'A meter has at most 10 filter fields'],
-    ];
-    for (const [filterFields, extra, message] of refused) {
-        assert.throws(() => fields(filterFields, extra), { message }, JSON.stringify(filterFields));
-    }
-    // Ten fields: the four fixed ones and six Token keys.
-    const ten = ['HTTP_STATUS_CODE', 'HTTP_METHOD', 'RESOURCE', 'API_TYPE'].map((field) => ({ field }))
-        .concat(Array.from({ length: 6 }, (_, i) => ({ field: 'TOKEN', eventKey: `usage.k${i}` })));
-    assert.strictEqual(fields(ten).length, 10);
-});
-
-const tokenFilter = (operator, value, key = PROMPT) => ({ field: 'TOKEN', eventKey: key, operator, values: [value] });
-
-test('a Token condition names its key, compares with a number operator and takes one whole number', () => {
-    const one = (...filters) => validatePricing(usage({ prices: [perUnit({ filters })] })).prices[0].filters;
-    assert.deepStrictEqual(one({ field: 'token', eventKey: ` ${PROMPT} `, operator: 'greater_than', values: ['0100'] },
-        filter('API_TYPE', 'EQUALS', 'LlmProvider')), [
-        { field: 'TOKEN', eventKey: PROMPT, operator: 'GREATER_THAN', values: ['100'] },
-        filter('API_TYPE', 'EQUALS', 'LlmProvider'),
-    ]);
-    for (const operator of ['GREATER_THAN', 'GREATER_THAN_OR_EQUAL', 'LESS_THAN', 'LESS_THAN_OR_EQUAL', 'EQUALS']) {
-        assert.deepStrictEqual(one(tokenFilter(operator, '333')), [tokenFilter(operator, '333')], operator);
-    }
-    assert.deepStrictEqual(one(tokenFilter('LESS_THAN_OR_EQUAL', '1000000000000')), [tokenFilter('LESS_THAN_OR_EQUAL', '1000000000000')]);
-    assert.deepStrictEqual(one(tokenFilter('EQUALS', '0')), [tokenFilter('EQUALS', '0')]);
-    const value = 'price 1: the Token value must be a whole number from 0 to 1000000000000';
-    const bad = [
-        [[{ field: 'TOKEN', operator: 'GREATER_THAN', values: ['1'] }], 'price 1: a Token filter needs an eventKey'],
-        [[{ ...tokenFilter('GREATER_THAN', '1'), eventKey: ' ' }], 'price 1: a Token filter needs an eventKey'],
-        [[{ ...filter('API_TYPE', 'EQUALS', 'LlmProvider'), eventKey: PROMPT }], 'price 1: only a Token filter takes an eventKey'],
-        [[tokenFilter('IN', '1')], 'The TOKEN operator of price 1 must be one of GREATER_THAN, GREATER_THAN_OR_EQUAL, LESS_THAN, LESS_THAN_OR_EQUAL, EQUALS'],
-        [[tokenFilter('NOT_EQUALS', '1')], 'The TOKEN operator of price 1 must be one of GREATER_THAN, GREATER_THAN_OR_EQUAL, LESS_THAN, LESS_THAN_OR_EQUAL, EQUALS'],
-        [[filter('API_TYPE', 'GREATER_THAN', '1')], 'The API_TYPE operator of price 1 must be one of EQUALS, NOT_EQUALS, IN, NOT_IN'],
-        [[filter('HTTP_STATUS_CODE', 'LESS_THAN', '500')], 'The HTTP_STATUS_CODE operator of price 1 must be one of EQUALS, NOT_EQUALS, IN, NOT_IN'],
-        [[tokenFilter('GREATER_THAN', '-1')], value],
-        [[tokenFilter('GREATER_THAN', '1.5')], value],
-        [[tokenFilter('GREATER_THAN', '1000000000001')], value],
-        [[tokenFilter('GREATER_THAN', 'many')], value],
-        [[{ ...tokenFilter('GREATER_THAN', '1'), values: ['1', '2'] }], value],
-        [[{ ...tokenFilter('GREATER_THAN', '1'), values: [] }], value],
-        [[tokenFilter('GREATER_THAN', '100'), tokenFilter('LESS_THAN', '500'), tokenFilter('LESS_THAN', '400')],
-            `price 1: a price puts at most 2 Token conditions on ${PROMPT}`],
-        [[tokenFilter('GREATER_THAN', '500'), tokenFilter('LESS_THAN_OR_EQUAL', '500')], `price 1: the Token conditions on ${PROMPT} can't all be true`],
-        [[tokenFilter('EQUALS', '5'), tokenFilter('EQUALS', '6')], `price 1: the Token conditions on ${PROMPT} can't all be true`],
-        [[tokenFilter('LESS_THAN', '0')], `price 1: the Token conditions on ${PROMPT} can't all be true`],
-        [Array.from({ length: 21 }, (_, i) => tokenFilter('GREATER_THAN', '1', `usage.k${i}`)), 'price 1: a price has at most 20 filters'],
-    ];
-    for (const [filters, message] of bad) {
-        assert.throws(() => validatePricing(usage({ prices: [perUnit({ filters })] })), { message }, JSON.stringify(filters));
-    }
-    // Two conditions on one key make a range; conditions on other keys are counted apart.
-    assert.strictEqual(one(tokenFilter('GREATER_THAN', '100'), tokenFilter('LESS_THAN_OR_EQUAL', '500'),
-        tokenFilter('GREATER_THAN', '0', TOTAL), tokenFilter('LESS_THAN', '9', TOTAL)).length, 4);
-});
-
-test('a Token condition compares one of the meter\'s Token keys: its Token row or a Token field', () => {
-    const tokenMeters = new Map([
-        ['llm', { uuid: 'm-llm', handle: 'llm', type: 'TOKENS', type_key: PROMPT,
-            filter_fields: [{ field: 'TOKEN', eventKey: TOTAL }, { field: 'API_TYPE', eventKey: 'metadata.apiType' }] }],
-        ['calls', { uuid: 'm-calls', handle: 'calls', type: 'REQUEST_COUNT', type_key: null,
-            filter_fields: [{ field: 'TOKEN', eventKey: TOTAL }] }],
-    ]);
-    const priced = (meterId, ...filters) => resolvePrices(validatePricing(usage({ prices: [perUnit({ meterId, filters })] })).prices, tokenMeters);
-    assert.strictEqual(priced('llm', tokenFilter('GREATER_THAN', '333')).length, 1, 'the Token row');
-    assert.strictEqual(priced('llm', tokenFilter('GREATER_THAN', '0', TOTAL)).length, 1, 'a Token field');
-    assert.strictEqual(priced('calls', tokenFilter('GREATER_THAN', '0', TOTAL)).length, 1, 'a Token field on a request meter');
-    assert.throws(() => priced('llm', tokenFilter('GREATER_THAN', '0', COMPLETION)),
-        { message: `price 1: the meter has no Token field with the key ${COMPLETION}` });
-    assert.throws(() => priced('calls', tokenFilter('GREATER_THAN', '0', PROMPT)),
-        { message: `price 1: the meter has no Token field with the key ${PROMPT}` });
-});
-
-test('two prices on one meter are apart on a Token key when their ranges share no count', () => {
-    const tokenMeters = new Map([['llm', { uuid: 'm-llm', handle: 'llm', type: 'TOKENS', type_key: PROMPT,
-        filter_fields: [{ field: 'TOKEN', eventKey: TOTAL }, { field: 'API_TYPE', eventKey: 'metadata.apiType' }] }]]);
-    const both = (a, b) => resolvePrices(validatePricing(usage({ prices: [perUnit({ meterId: 'llm', filters: a }),
-        perUnit({ meterId: 'llm', filters: b })] })).prices, tokenMeters);
-    const lte = (v, key) => tokenFilter('LESS_THAN_OR_EQUAL', v, key);
-    const gt = (v, key) => tokenFilter('GREATER_THAN', v, key);
-    // [price A, price B, whether one request can be counted by both]
-    const cases = [
-        [[lte('333')], [gt('333')], false],
-        [[gt('100')], [gt('333')], true],
-        [[tokenFilter('LESS_THAN', '333')], [tokenFilter('GREATER_THAN_OR_EQUAL', '333')], false],
-        [[tokenFilter('EQUALS', '333')], [gt('333')], false],
-        [[tokenFilter('EQUALS', '333')], [tokenFilter('GREATER_THAN_OR_EQUAL', '333')], true],
-        [[gt('100'), lte('500')], [gt('500')], false],
-        [[gt('100'), lte('500')], [gt('400'), lte('900')], true],
-        // A price with no condition on a key covers every count.
-        [[gt('333')], [], true],
-        // Different keys do not separate them.
-        [[lte('333')], [gt('333', TOTAL)], true],
-        // Mixed with the API type: apart on any one field or key is enough.
-        [[lte('333'), filter('API_TYPE', 'EQUALS', 'LlmProvider')], [gt('333'), filter('API_TYPE', 'EQUALS', 'LlmProvider')], false],
-        [[gt('100'), filter('API_TYPE', 'EQUALS', 'LlmProvider')], [gt('333'), filter('API_TYPE', 'EQUALS', 'LlmProxy')], false],
-        [[gt('100'), filter('API_TYPE', 'EQUALS', 'LlmProvider')], [gt('333'), filter('API_TYPE', 'IN', 'LlmProvider', 'LlmProxy')], true],
-    ];
-    for (const [a, b, overlap] of cases) {
-        const attempt = () => both(a, b);
-        if (overlap) assert.throws(attempt, /both count the same requests of the meter llm/, JSON.stringify([a, b]));
-        else assert.strictEqual(attempt().length, 2, JSON.stringify([a, b]));
-    }
+    // Prices on different meters never overlap.
+    assert.strictEqual(resolve([on('calls'), on('bare')]).length, 2);
 });

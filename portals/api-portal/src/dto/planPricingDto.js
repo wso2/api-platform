@@ -29,10 +29,7 @@ class PlanPricing {
         this.flatAmount = pricing.flat_amount ?? null;
         this.prices = (pricing.prices || []).map((price) => ({
             meterId: price.meter_handle || null,
-            // A Token condition names the key it compares; no other filter has one.
-            filters: (price.filters || []).map((f) => (f.field === 'TOKEN'
-                ? { field: f.field, eventKey: f.eventKey, operator: f.operator, values: f.values || [] }
-                : { field: f.field, operator: f.operator, values: f.values || [] })),
+            filters: (price.filters || []).map((f) => ({ field: f.field, operator: f.operator, values: f.values || [] })),
             pricingModel: price.pricing_model,
             unitAmount: price.unit_amount ?? null,
             unitQuantity: price.unit_quantity ?? null,

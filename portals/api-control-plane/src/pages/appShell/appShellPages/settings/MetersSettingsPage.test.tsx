@@ -40,8 +40,8 @@ const ORG = 'api-platform-demo';
 const llmInput = aMeter({
   displayName: 'LLM input tokens',
   filterFields: [
-    { eventKey: 'metadata.apiType', field: 'API_TYPE' },
-    { eventKey: 'request.verb', field: 'HTTP_METHOD' },
+    { eventKey: 'metadata.apiType', field: 'API type' },
+    { eventKey: 'request.verb', field: 'HTTP method' },
   ],
   id: 'llm-input',
   type: 'TOKENS',
@@ -52,36 +52,42 @@ let requests: Recorder;
 
 type User = ReturnType<typeof userEvent.setup>;
 
-const last = <T,>(items: T[]): T => items[items.length - 1];
+const valueOf = (input: HTMLElement) => (input as HTMLInputElement).value;
 
-/** The keys of the meter dialog, in order: a Tokens meter's Token key first, then each filter row's. */
+/** The keys of the meter dialog, in order: a Tokens meter's Token key first, then each property's. */
 const eventKeys = () =>
   [
     ...screen.queryAllByRole('combobox', { name: /^Token key/ }),
-    ...screen.queryAllByRole('combobox', { name: 'Key' }),
     ...screen.queryAllByRole('textbox', { name: 'Key' }),
-  ].map((input) => (input as HTMLInputElement).value);
+  ].map(valueOf);
+
+/** The names of the meter's properties, in order. */
+const propertyNames = () => screen.queryAllByRole('textbox', { name: 'Property' }).map(valueOf);
 
 /** A Tokens meter's Token key, under its type: a combo box of our gateway's token keys that takes any other key too. */
 const tokenKey = () => screen.getByRole('combobox', { name: /^Token key/ });
 
-/** The key input of the filter row on `field`, in the rows' order. */
-const filterKey = (field: string) => {
-  const rows = screen.getAllByRole('combobox', { name: 'Property' });
-  const keys = screen.getAllByRole('textbox', { name: 'Key' });
-  return keys[
-    keys.length - rows.length + rows.findIndex((row) => row.textContent?.includes(field))
-  ];
-};
+/** The name and key inputs of the property at `index`, counting from 0. */
+const propertyAt = (index: number) => ({
+  key: screen.getAllByRole('textbox', { name: 'Key' })[index],
+  name: screen.getAllByRole('textbox', { name: 'Property' })[index],
+});
 
 /** The Token key field, which only a Tokens meter has. */
 const tokenKeyField = () => screen.queryByRole('combobox', { name: /^Token key/ });
 
-/** Adds a filter row to the meter dialog and picks its field. */
-async function addFilterField(user: User, field: string | RegExp) {
+/** What Add filter offers, each our gateway's property by its name and key, then Custom. */
+async function offered(user: User) {
   await user.click(screen.getByRole('button', { name: 'Add filter' }));
-  await user.click(last(screen.getAllByRole('combobox', { name: 'Property' })));
-  await user.click(await screen.findByRole('option', { name: field }));
+  const items = (await screen.findAllByRole('menuitem')).map((item) => item.textContent);
+  await user.keyboard('{Escape}');
+  return items;
+}
+
+/** Adds a property to the meter dialog: one of our gateway's, by its name, or Custom. */
+async function addProperty(user: User, name: string | RegExp) {
+  await user.click(screen.getByRole('button', { name: 'Add filter' }));
+  await user.click(await screen.findByRole('menuitem', { name }));
 }
 
 function renderPage() {
@@ -102,7 +108,7 @@ beforeEach(() => {
 });
 
 describe('MetersSettingsPage', () => {
-  it('lists meters with their type and the fields their prices can filter on', async () => {
+  it('lists meters with their type and the names of the properties their prices can filter on', async () => {
     server.use(
       collection('/meters', [
         aMeter(),
@@ -286,7 +292,7 @@ describe('MetersSettingsPage', () => {
     });
   });
 
-  it('lists the fields its prices can filter on, each with its default event key, each field once', async () => {
+  it("offers our gateway's properties with their names and keys, then Custom, and not again once the meter has one's name or key", async () => {
     server.use(
       collection('/meters', [aMeter()]),
       collection('/subscription-plans', []),
@@ -297,231 +303,168 @@ describe('MetersSettingsPage', () => {
 
     await user.click(await screen.findByRole('button', { name: 'Create meter' }));
     await user.type(screen.getByLabelText(/Name/), 'LLM input tokens');
-    // The section is titled Fields, with no hint under it.
     expect(screen.getByRole('group', { name: 'Filters' })).toBeInTheDocument();
-    expect(screen.queryByText("Filters this meter's prices can use.")).not.toBeInTheDocument();
-    // Column headings come with the first filter row; a Tokens meter's Token key is not one.
+    // Column headings come with the first property; a Tokens meter's Token key is not one.
     expect(screen.queryByText('Key')).not.toBeInTheDocument();
     await user.click(screen.getByRole('combobox', { name: 'Type' }));
     await user.click(await screen.findByRole('option', { name: /Tokens/ }));
     expect(screen.queryByText('Key')).not.toBeInTheDocument();
 
-    await addFilterField(user, /^API type/);
-    expect(screen.getByText('Property')).toBeInTheDocument();
-    expect(screen.getByText('Key')).toBeInTheDocument();
-    expect(eventKeys()).toEqual(['metadata.aiTokenUsage.promptTokens', 'metadata.apiType']);
-    await addFilterField(user, 'HTTP method');
-    expect(eventKeys()).toEqual([
-      'metadata.aiTokenUsage.promptTokens',
-      'metadata.apiType',
-      'request.verb',
-    ]);
-    // Every field is offered, then Token; a fixed field already listed is not offered again.
-    await user.click(last(screen.getAllByRole('combobox', { name: 'Property' })));
-    expect((await screen.findAllByRole('option')).map((option) => option.textContent)).toEqual([
-      'Status code',
-      'HTTP method',
-      'Resource',
-      'API type',
-      'MCP method',
-      'Tool',
-      'Token',
-    ]);
-    expect(screen.getByRole('option', { name: /^API type/ })).toHaveAttribute(
-      'aria-disabled',
-      'true',
-    );
-    await user.keyboard('{Escape}');
-
-    await addFilterField(user, 'Status code');
-    await addFilterField(user, 'Resource');
-    expect(eventKeys().slice(3)).toEqual(['response.status', 'metadata.apiResourceTemplate']);
-    // With every fixed field listed, Token is still offered.
-    await user.click(last(screen.getAllByRole('combobox', { name: 'Property' })));
-    expect(screen.getByRole('option', { name: /^Token/ })).not.toHaveAttribute(
-      'aria-disabled',
-      'true',
-    );
-    await user.keyboard('{Escape}');
-    await user.click(screen.getByRole('button', { name: 'Remove Status code' }));
-    await user.click(screen.getByRole('button', { name: 'Remove Resource' }));
-    await user.click(screen.getByRole('button', { name: 'Add Meter' }));
-
-    await waitFor(() => expect(requests.count()).toBe(1));
-    expect(JSON.parse(requests.last()!.body)).toEqual({
-      displayName: 'LLM input tokens',
-      filterFields: [
-        { eventKey: 'metadata.apiType', field: 'API_TYPE' },
-        { eventKey: 'request.verb', field: 'HTTP_METHOD' },
-      ],
-      type: 'TOKENS',
-      typeKey: 'metadata.aiTokenUsage.promptTokens',
-    });
-  });
-
-  it('adds Token fields, each needing its own key from the suggestions or typed, and saves them with their keys', async () => {
-    server.use(
-      collection('/meters', [aMeter()]),
-      collection('/subscription-plans', []),
-      accepts('post', '/meters', llmInput, { record: requests }),
-    );
-    renderPage();
-    const user = userEvent.setup({ pointerEventsCheck: 0 });
-
-    await user.click(await screen.findByRole('button', { name: 'Create meter' }));
-    await user.type(screen.getByLabelText(/Name/), 'LLM input tokens');
-    await user.click(screen.getByRole('combobox', { name: 'Type' }));
-    await user.click(await screen.findByRole('option', { name: /Tokens/ }));
-
-    // A Token field has no default key; its key box is the Token key's combo box.
-    await addFilterField(user, /^Token/);
-    const [first] = screen.getAllByRole('combobox', { name: 'Key' });
-    expect(first).toHaveValue('');
-    await user.click(screen.getByRole('button', { name: 'Add Meter' }));
-    expect(await screen.findByText('A Token property needs an event key.')).toBeInTheDocument();
-
-    // Not the Token key.
-    await user.click(first);
-    expect((await screen.findAllByRole('option')).map((option) => option.textContent)).toEqual([
+    expect(await offered(user)).toEqual([
+      'Status coderesponse.status',
+      'HTTP methodrequest.verb',
+      'Resourcemetadata.apiResourceTemplate',
+      'API typemetadata.apiType',
+      'MCP methodmetadata.mcpAnalytics.jsonRpcMethod',
+      'Toolmetadata.mcpAnalytics.capabilityName',
       'Prompt tokensmetadata.aiTokenUsage.promptTokens',
       'Completion tokensmetadata.aiTokenUsage.completionTokens',
       'Total tokensmetadata.aiTokenUsage.totalTokens',
+      'Custom',
     ]);
-    await user.click(screen.getByRole('option', { name: /^Prompt tokens/ }));
-    expect(
-      await screen.findByText(
-        "The key metadata.aiTokenUsage.promptTokens is already the meter's Token key.",
-      ),
-    ).toBeInTheDocument();
-    await user.click(first);
-    await user.click(await screen.findByRole('option', { name: /^Total tokens/ }));
+    await addProperty(user, /^API type/);
+    expect(screen.getByText('Property')).toBeInTheDocument();
+    expect(screen.getByText('Key')).toBeInTheDocument();
+    expect(propertyNames()).toEqual(['API type']);
+    expect(eventKeys()).toEqual(['metadata.aiTokenUsage.promptTokens', 'metadata.apiType']);
+    // A property may read the meter's own Token key, so prices can compare the number it adds up.
+    await addProperty(user, /^Prompt tokens/);
+    expect(propertyNames()).toEqual(['API type', 'Prompt tokens']);
+    expect(eventKeys().slice(1)).toEqual([
+      'metadata.apiType',
+      'metadata.aiTokenUsage.promptTokens',
+    ]);
 
-    // Token can be added again, but not with the same key.
-    await addFilterField(user, /^Token/);
-    const [, second] = screen.getAllByRole('combobox', { name: 'Key' });
-    await user.type(second, 'metadata.aiTokenUsage.totalTokens');
-    await user.keyboard('{Escape}');
-    expect(
-      await screen.findByText(
-        'The meter lists the Token key metadata.aiTokenUsage.totalTokens more than once.',
-      ),
-    ).toBeInTheDocument();
-    expect(requests.count()).toBe(0);
-    await user.clear(second);
-    await user.type(second, 'usage.cachedTokens');
-    await user.keyboard('{Escape}');
-    expect(
-      screen.getByRole('button', { name: 'Remove Token · usage.cachedTokens' }),
-    ).toBeInTheDocument();
+    // Not offered while the meter has its key, though under another name.
+    const apiType = propertyAt(0);
+    await user.clear(apiType.name);
+    await user.type(apiType.name, 'Kind');
+    expect(await offered(user)).not.toContain('API typemetadata.apiType');
+    // Nor while it has its name, whatever the case, though with another key.
+    await user.clear(apiType.name);
+    await user.type(apiType.name, 'api TYPE');
+    await user.clear(apiType.key);
+    await user.type(apiType.key, 'api.kind');
+    expect(await offered(user)).not.toContain('API typemetadata.apiType');
+    // Offered again once the meter has neither.
+    await user.clear(apiType.name);
+    await user.type(apiType.name, 'Kind');
+    expect(await offered(user)).toContain('API typemetadata.apiType');
     await user.click(screen.getByRole('button', { name: 'Add Meter' }));
 
     await waitFor(() => expect(requests.count()).toBe(1));
     expect(JSON.parse(requests.last()!.body)).toEqual({
       displayName: 'LLM input tokens',
       filterFields: [
-        { eventKey: 'metadata.aiTokenUsage.totalTokens', field: 'TOKEN' },
-        { eventKey: 'usage.cachedTokens', field: 'TOKEN' },
+        { eventKey: 'api.kind', field: 'Kind' },
+        { eventKey: 'metadata.aiTokenUsage.promptTokens', field: 'Prompt tokens' },
       ],
       type: 'TOKENS',
       typeKey: 'metadata.aiTokenUsage.promptTokens',
     });
   });
 
-  it('offers Token on a meter of requests too, and stops adding fields at ten', async () => {
-    server.use(collection('/meters', [aMeter()]), collection('/subscription-plans', []));
-    renderPage();
-    const user = userEvent.setup({ pointerEventsCheck: 0 });
-
-    await user.click(await screen.findByRole('button', { name: 'Create meter' }));
-    // The six fixed fields come first, then Token rows.
-    for (let count = 0; count < 10; count++)
-      await user.click(screen.getByRole('button', { name: 'Add filter' }));
-    expect(
-      screen.getAllByRole('combobox', { name: 'Property' }).map((select) => select.textContent),
-    ).toEqual([
-      'Status code',
-      'HTTP method',
-      'Resource',
-      'API type',
-      'MCP method',
-      'Tool',
-      'Token',
-      'Token',
-      'Token',
-      'Token',
-    ]);
-    expect(screen.queryByRole('button', { name: 'Add filter' })).not.toBeInTheDocument();
-    await user.click(screen.getAllByRole('button', { name: 'Remove Token' })[0]);
-    expect(screen.getByRole('button', { name: 'Add filter' })).toBeInTheDocument();
-  });
-
-  it("names a meter's Token fields by their keys in the list", async () => {
-    server.use(
-      collection('/meters', [
-        aMeter({
-          filterFields: [
-            { eventKey: 'request.verb', field: 'HTTP_METHOD' },
-            { eventKey: 'metadata.aiTokenUsage.totalTokens', field: 'TOKEN' },
-            { eventKey: 'usage.cachedTokens', field: 'TOKEN' },
-          ],
-        }),
-      ]),
-      collection('/subscription-plans', []),
-    );
-    renderPage();
-
-    expect(
-      await screen.findByText('HTTP method, Token · Total tokens, Token · usage.cachedTokens'),
-    ).toBeInTheDocument();
-  });
-
-  it("edits a filter row's event key, refills it with the new field's default when the field changes, and leaves an emptied key to its default", async () => {
+  it('adds a custom property with an empty name and key, each needed, and refuses a name or key the meter repeats', async () => {
     server.use(
       collection('/meters', [aMeter()]),
       collection('/subscription-plans', []),
-      accepts('post', '/meters', aMeter({ id: 'other-gateway-calls' }), { record: requests }),
+      accepts('post', '/meters', aMeter({ id: 'regional-calls' }), { record: requests }),
     );
     renderPage();
     const user = userEvent.setup({ pointerEventsCheck: 0 });
 
     await user.click(await screen.findByRole('button', { name: 'Create meter' }));
-    await user.type(screen.getByLabelText(/Name/), 'Other gateway calls');
-    await addFilterField(user, 'Status code');
-    await user.clear(filterKey('Status code'));
-    await user.type(filterKey('Status code'), 'metadata.statusCode');
-    expect(filterKey('Status code')).toHaveValue('metadata.statusCode');
-
-    // Another field reads its own default, whatever the row's key was.
-    await user.click(screen.getByRole('combobox', { name: 'Property' }));
-    await user.click(await screen.findByRole('option', { name: 'HTTP method' }));
-    expect(filterKey('HTTP method')).toHaveValue('request.verb');
-    await user.clear(filterKey('HTTP method'));
-    await user.type(filterKey('HTTP method'), 'metadata.method');
-
-    // A key with a space is refused here; an emptied one is left to the server's default.
-    await addFilterField(user, 'Resource');
-    await user.clear(filterKey('Resource'));
-    await user.type(filterKey('Resource'), 'metadata.api resource');
+    await user.type(screen.getByLabelText(/Name/), 'Regional calls');
+    await addProperty(user, 'Custom');
+    expect(propertyNames()).toEqual(['']);
+    expect(eventKeys()).toEqual(['']);
+    expect(screen.getByRole('button', { name: 'Remove this property' })).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Add Meter' }));
-    expect(await screen.findByText('Use 1 to 255 characters with no spaces.')).toBeInTheDocument();
+    expect(
+      await screen.findByText('Give each property a name of 1 to 40 characters.'),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Enter the event key of each property.')).toBeInTheDocument();
+
+    const region = propertyAt(0);
+    await user.click(region.name);
+    await user.paste('x'.repeat(41));
+    await user.type(region.key, 'metadata region');
+    expect(
+      screen.getByText('Give each property a name of 1 to 40 characters.'),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Use 1 to 255 characters with no spaces.')).toBeInTheDocument();
+    await user.clear(region.name);
+    await user.type(region.name, ' Region ');
+    await user.clear(region.key);
+    await user.type(region.key, 'metadata.region');
+    expect(screen.getByRole('button', { name: 'Remove Region' })).toBeInTheDocument();
+
+    // A name is the same whatever its case; a key is the same as written.
+    await addProperty(user, 'Custom');
+    const zone = propertyAt(1);
+    await user.type(zone.name, 'region');
+    await user.type(zone.key, 'metadata.region');
+    expect(
+      screen.getByText('The meter has the property Region more than once.'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('More than one property reads the event key metadata.region.'),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Add Meter' }));
     expect(requests.count()).toBe(0);
-    await user.clear(filterKey('Resource'));
-    expect(filterKey('Resource')).toHaveAttribute('placeholder', 'metadata.apiResourceTemplate');
+
+    await user.clear(zone.name);
+    await user.type(zone.name, 'Zone');
+    await user.clear(zone.key);
+    await user.type(zone.key, 'metadata.Region');
     await user.click(screen.getByRole('button', { name: 'Add Meter' }));
 
     await waitFor(() => expect(requests.count()).toBe(1));
     expect(JSON.parse(requests.last()!.body)).toEqual({
-      displayName: 'Other gateway calls',
-      filterFields: [{ eventKey: 'metadata.method', field: 'HTTP_METHOD' }, { field: 'RESOURCE' }],
+      displayName: 'Regional calls',
+      filterFields: [
+        { eventKey: 'metadata.region', field: 'Region' },
+        { eventKey: 'metadata.Region', field: 'Zone' },
+      ],
       type: 'REQUEST_COUNT',
     });
   });
 
-  it('opens a meter with its stored event keys, and saves them back as edited', async () => {
+  it('stops adding properties at ten, offering only Custom once every one of gatewayProperties is in', async () => {
+    const gatewayProperties = [
+      ['Status code', 'response.status'],
+      ['HTTP method', 'request.verb'],
+      ['Resource', 'metadata.apiResourceTemplate'],
+      ['API type', 'metadata.apiType'],
+      ['MCP method', 'metadata.mcpAnalytics.jsonRpcMethod'],
+      ['Tool', 'metadata.mcpAnalytics.capabilityName'],
+      ['Prompt tokens', 'metadata.aiTokenUsage.promptTokens'],
+      ['Completion tokens', 'metadata.aiTokenUsage.completionTokens'],
+      ['Total tokens', 'metadata.aiTokenUsage.totalTokens'],
+    ];
+    server.use(
+      collection('/meters', [
+        aMeter({ filterFields: gatewayProperties.map(([field, eventKey]) => ({ eventKey, field })) }),
+      ]),
+      collection('/subscription-plans', []),
+    );
+    renderPage();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+
+    await user.click(await screen.findByRole('button', { name: 'Edit Successful calls' }));
+    expect(propertyNames()).toEqual(gatewayProperties.map(([field]) => field));
+    expect(await offered(user)).toEqual(['Custom']);
+    await addProperty(user, 'Custom');
+    expect(screen.queryByRole('button', { name: 'Add filter' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Remove Tool' }));
+    expect(screen.getByRole('button', { name: 'Add filter' })).toBeInTheDocument();
+  });
+
+  it('opens a meter with its stored properties, and saves them back as edited', async () => {
     // The keys come from the meter as the Platform API stores it; this one reads another gateway's
     // fields.
     const meter = aMeter({
-      filterFields: [{ eventKey: 'api.kind', field: 'API_TYPE' }],
+      filterFields: [{ eventKey: 'api.kind', field: 'Kind' }],
       type: 'TOKENS',
       typeKey: 'usage.inputTokens',
     });
@@ -535,17 +478,18 @@ describe('MetersSettingsPage', () => {
 
     await user.click(await screen.findByRole('button', { name: 'Edit Successful calls' }));
     expect(screen.getByRole('combobox', { name: 'Type' })).toHaveTextContent('Tokens');
-    expect(screen.getByRole('combobox', { name: 'Property' })).toHaveTextContent('API type');
+    expect(propertyNames()).toEqual(['Kind']);
     expect(eventKeys()).toEqual(['usage.inputTokens', 'api.kind']);
     await user.clear(tokenKey());
     await user.type(tokenKey(), 'usage.outputTokens');
     await user.keyboard('{Escape}');
+    await user.type(propertyAt(0).name, ' of API');
     await user.click(screen.getByRole('button', { name: 'Save changes' }));
 
     await waitFor(() => expect(requests.count()).toBe(1));
     expect(JSON.parse(requests.last()!.body)).toEqual({
       displayName: 'Successful calls',
-      filterFields: [{ eventKey: 'api.kind', field: 'API_TYPE' }],
+      filterFields: [{ eventKey: 'api.kind', field: 'Kind of API' }],
       type: 'TOKENS',
       typeKey: 'usage.outputTokens',
     });
@@ -563,7 +507,7 @@ describe('MetersSettingsPage', () => {
 
     await user.click(await screen.findByRole('button', { name: 'Create meter' }));
     await user.type(screen.getByLabelText(/Name/), 'Typed calls');
-    await addFilterField(user, /^API type/);
+    await addProperty(user, /^API type/);
     await user.click(screen.getByRole('button', { name: 'Add Meter' }));
 
     expect(await screen.findByText(message)).toBeInTheDocument();
@@ -638,12 +582,12 @@ describe('MetersSettingsPage', () => {
       'aria-disabled',
       'true',
     );
-    for (const filter of within(dialog).getAllByRole('combobox', { name: 'Property' })) {
-      expect(filter).toHaveAttribute('aria-disabled', 'true');
-    }
+    const names = within(dialog).getAllByRole('textbox', { name: 'Property' });
+    expect(names.map(valueOf)).toEqual(['Status code', 'HTTP method', 'Resource']);
+    for (const name of names) expect(name).toBeDisabled();
     // Its keys too.
     const keys = within(dialog).getAllByRole('textbox', { name: 'Key' });
-    expect(keys.map((input) => (input as HTMLInputElement).value)).toEqual([
+    expect(keys.map(valueOf)).toEqual([
       'response.status',
       'request.verb',
       'metadata.apiResourceTemplate',
@@ -675,8 +619,8 @@ describe('MetersSettingsPage', () => {
       'metadata.apiType',
       'request.verb',
     ]);
-    for (const key of within(dialog).getAllByRole('textbox', { name: 'Key' }))
-      expect(key).toBeDisabled();
+    for (const input of within(dialog).getAllByRole('textbox', { name: /^(Key|Property)$/ }))
+      expect(input).toBeDisabled();
     expect(within(dialog).queryByRole('button', { name: /^Remove/ })).not.toBeInTheDocument();
     expect(within(dialog).getByRole('button', { name: 'Save changes' })).toBeDisabled();
   });
@@ -698,7 +642,7 @@ describe('MetersSettingsPage', () => {
 
     expect(await screen.findByText(message)).toBeInTheDocument();
     expect(JSON.parse(requests.last()!.body).filterFields).toEqual([
-      { eventKey: 'request.verb', field: 'HTTP_METHOD' },
+      { eventKey: 'request.verb', field: 'HTTP method' },
     ]);
     // The dialog stays open with the change.
     expect(screen.getByRole('button', { name: 'Save changes' })).toBeInTheDocument();

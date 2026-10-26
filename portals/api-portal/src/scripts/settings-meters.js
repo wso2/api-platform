@@ -29,20 +29,15 @@
 
   function v(id) { var e = document.getElementById(id); return e ? e.value.trim() : ''; }
 
-  // The event keys a new meter starts with, from our gateway's events: the number a Tokens meter adds
-  // up, and the field each filter reads. The administrator can change them.
+  // What the form offers, from our gateway's events: the number a Tokens meter adds up, and the
+  // filter properties, with their names and keys. The administrator can change them.
   var registry = (function () {
     try { return JSON.parse(document.getElementById('cfg-meter-modal').dataset.registry || '{}') || {}; } catch (e) { return {}; }
   }());
   var TOKEN_EVENT_KEY = registry.tokenEventKey || '';
-  var FILTER_FIELDS = registry.filterFields || [];
-  var MAX_FILTER_FIELDS = registry.maxFilterFields || FILTER_FIELDS.length;
-  // Our gateway's token keys, suggested for a Token field's key, read as "Prompt tokens, metadata…".
-  var TOKEN_KEY_CHOICES = (registry.tokenEventKeys || []).map(function (k) { return { value: k.key, label: k.label }; });
-
-  function defaultKey(field) {
-    return (FILTER_FIELDS.filter(function (f) { return f.value === field; })[0] || {}).eventKey || '';
-  }
+  var PRESETS = registry.presets || [];
+  var MAX_FILTER_FIELDS = registry.maxFilterFields || 10;
+  var MAX_NAME_LENGTH = registry.maxNameLength || 40;
 
   /* The Token key: a text box whose list offers our gateway's token keys (the shared
      suggestion combo). Choosing one fills in its key; any typed key is kept. */
@@ -62,83 +57,70 @@
     tokenKeyPicker.showStart();
   });
 
-  /* ── filters: the fields the meter's prices may filter on, with the event key each reads: each
-     fixed field once, and Token once per key ── */
+  /* ── filters: the properties the meter's prices may filter on, each a name and the event key it
+     reads ── */
   function filterRows() {
     return Array.prototype.slice.call(document.querySelectorAll('#mtr-filters-list .cfg-filter-row'));
   }
+  function rowName(row) { return row.querySelector('.mtr-filter-name').value.trim(); }
+  function rowKey(row) { return row.querySelector('.mtr-filter-key').value.trim(); }
 
-  /* Each row offers the fixed fields the other rows leave, and Token always; Add filter is hidden
-     once the meter has as many fields as it may. */
+  /* Add filter is hidden once the meter has as many properties as it may. */
   function syncFilterFields() {
     var rows = filterRows();
-    rows.forEach(function (row) {
-      var used = rows.filter(function (other) { return other !== row; })
-        .map(function (other) { return other.querySelector('.mtr-filter-field').value; });
-      Array.prototype.forEach.call(row.querySelector('.mtr-filter-field').options, function (o) {
-        o.hidden = o.disabled = o.value !== 'TOKEN' && used.indexOf(o.value) !== -1;
-      });
-    });
     document.getElementById('mtr-add-filter-btn').style.display = rows.length >= MAX_FILTER_FIELDS ? 'none' : '';
     document.getElementById('mtr-filters-head').style.display = rows.length ? '' : 'none';
   }
 
-  /* A filter row: the field and the event key it reads. A fixed field's key starts as its default (or
-     the saved key) and goes back to the new field's default when the field changes. A Token field has
-     no default: its key is typed or picked from our gateway's token keys, like the Token key. */
+  /* Our gateway's properties that no row uses yet, by name (ignoring case) or by key. */
+  function unusedPresets() {
+    var rows = filterRows();
+    return PRESETS.filter(function (p) {
+      return !rows.some(function (r) {
+        return rowName(r).toLowerCase() === p.field.toLowerCase() || rowKey(r) === p.eventKey;
+      });
+    });
+  }
+
+  /* A filter row: the property's name and the event key it reads. The name box suggests our
+     gateway's properties not used yet; choosing one fills in its key. Any name and key can be typed. */
   function makeFilterRow(field, eventKey) {
     var row = document.createElement('div');
     row.className = 'cfg-filter-row cfg-key-grid';
-    var select = document.createElement('select');
-    select.className = 'cfg-form-input mtr-filter-field';
-    select.setAttribute('aria-label', 'Property');
-    var used = filterRows().map(function (r) { return r.querySelector('.mtr-filter-field').value; });
-    var chosen = field || (FILTER_FIELDS.filter(function (f) { return f.value !== 'TOKEN' && used.indexOf(f.value) === -1; })[0]
-      || { value: 'TOKEN' }).value;
-    FILTER_FIELDS.forEach(function (f) {
-      var o = document.createElement('option');
-      o.value = f.value; o.textContent = f.label; o.selected = f.value === chosen;
-      select.appendChild(o);
-    });
+    var name = document.createElement('input');
+    name.type = 'text'; name.maxLength = MAX_NAME_LENGTH; name.autocomplete = 'off';
+    name.className = 'cfg-form-input mtr-filter-name';
+    name.placeholder = 'Name';
+    name.setAttribute('aria-label', 'Property name');
+    name.value = field || '';
+    var key = document.createElement('input');
+    key.type = 'text'; key.maxLength = 255; key.autocomplete = 'off'; key.spellcheck = false;
+    key.className = 'cfg-form-input cfg-form-input--mono cfg-key-input mtr-filter-key';
+    key.placeholder = 'Event key';
+    key.setAttribute('aria-label', 'Event key');
+    key.value = eventKey || '';
     var remove = document.createElement('button');
     remove.type = 'button'; remove.className = 'cfg-icon-btn cfg-icon-btn--danger';
     remove.innerHTML = '<i class="bi bi-x-lg" aria-hidden="true"></i>';
-    // The key box, and what holds it in the row: the box, or for a Token field its suggestion combo.
-    var holder = null;
-
-    function makeKey(value) {
-      var key = document.createElement('input');
-      key.type = 'text'; key.maxLength = 255; key.autocomplete = 'off'; key.spellcheck = false;
-      key.className = 'cfg-form-input cfg-form-input--mono cfg-key-input mtr-filter-key';
-      key.setAttribute('aria-label', 'Key');
-      if (select.value === 'TOKEN') {
-        key.placeholder = 'Choose or type a key';
-        key.setAttribute('aria-required', 'true');
-        key.value = value || '';
-      } else {
-        key.placeholder = defaultKey(select.value);
-        key.value = value || defaultKey(select.value);
-      }
-      var shown = key;
-      if (select.value === 'TOKEN') {
-        shown = window.cfgSuggestCombo.build(key, TOKEN_KEY_CHOICES, 'Token keys');
-        window.cfgSuggestCombo.attach(shown);
-      }
-      if (holder) holder.replaceWith(shown); else row.insertBefore(shown, remove);
-      holder = shown;
-      // A key filled in shows its start: "metadata.aiMetadata…", not its end.
-      key.scrollLeft = 0;
-    }
-    // The remove button is named after the row's field: "Remove API type".
+    row.appendChild(name); row.appendChild(key); row.appendChild(remove);
+    var choices = unusedPresets().map(function (p) { return { value: p.field }; });
+    if (choices.length) window.cfgSuggestCombo.attach(window.cfgSuggestCombo.build(name, choices, 'Suggested properties'));
+    // The remove button is named after the row's property: "Remove API type".
     function nameRemove() {
-      var name = 'Remove ' + (select.selectedOptions[0] ? select.selectedOptions[0].textContent : '');
-      remove.title = name;
-      remove.setAttribute('aria-label', name);
+      var label = 'Remove ' + (name.value.trim() || 'property');
+      remove.title = label;
+      remove.setAttribute('aria-label', label);
     }
-    row.appendChild(select); row.appendChild(remove);
-    makeKey(eventKey);
     nameRemove();
-    select.addEventListener('change', function () { makeKey(null); nameRemove(); syncFilterFields(); });
+    name.addEventListener('input', function () {
+      var preset = PRESETS.filter(function (p) { return p.field === name.value.trim(); })[0];
+      var keyed = key.value.trim();
+      if (preset && (!keyed || PRESETS.some(function (p) { return p.eventKey === keyed; }))) {
+        key.value = preset.eventKey;
+        key.scrollLeft = 0;
+      }
+      nameRemove();
+    });
     remove.addEventListener('click', function () { row.remove(); syncFilterFields(); });
     return row;
   }
@@ -147,7 +129,7 @@
     var row = makeFilterRow(null);
     document.getElementById('mtr-filters-list').appendChild(row);
     syncFilterFields();
-    row.querySelector('.mtr-filter-field').focus();
+    row.querySelector('.mtr-filter-name').focus();
   });
 
   /* ── open / close modal ── */
@@ -193,16 +175,17 @@
     if (!displayName) { await showAlert('Name is required.', 'error'); return; }
     var typeKey = meterType() === 'TOKENS' ? v('mtr-type-key') : undefined;
     if (typeKey === '') { await showAlert('Enter an event key.', 'error'); return; }
+    if (filterRows().some(function (row) { return !rowName(row) || !rowKey(row); })) {
+      await showAlert('Each filter needs a name and an event key.', 'error');
+      return;
+    }
 
     var body = {
       displayName: displayName,
       description: v('mtr-desc') || undefined,
       type: meterType(),
       typeKey: typeKey,
-      // A filter whose event key is left empty reads the field's default.
-      filterFields: filterRows().map(function (row) {
-        return { field: row.querySelector('.mtr-filter-field').value, eventKey: row.querySelector('.mtr-filter-key').value.trim() || undefined };
-      }),
+      filterFields: filterRows().map(function (row) { return { field: rowName(row), eventKey: rowKey(row) }; }),
     };
     // No `id` on create: the server derives it from the name. On edit the id stays.
     var url = editMeterId

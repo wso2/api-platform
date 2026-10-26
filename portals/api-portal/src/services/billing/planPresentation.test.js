@@ -41,7 +41,7 @@ test('a tiered price is a table under Pricing details, headed by its least price
         { upTo: 200, unitAmount: '0.01' },
         { upTo: null, unitAmount: '0.005', flatAmount: '1' },
     ] }]);
-    await decoratePlans('org', [plan], 'RestApi');
+    await decoratePlans('org', [plan]);
     assert.deepStrictEqual([plan.pricePrefix, plan.priceAmount, plan.priceUnit], ['From', '$0.005', '/ request']);
     assert.strictEqual(plan.billingNote, 'Billed monthly');
     const [item] = plan.priceItems;
@@ -68,7 +68,7 @@ test('graduated tiers without flat fees have no Flat fee column', async () => {
         { upTo: 1000, unitAmount: '0.01' },
         { upTo: null, unitAmount: '0.008' },
     ] }], 'YEAR');
-    await decoratePlans('org', [plan], 'RestApi');
+    await decoratePlans('org', [plan]);
     assert.strictEqual(plan.billingNote, 'Billed yearly');
     assert.deepStrictEqual([plan.pricePrefix, plan.priceAmount, plan.priceUnit], ['From', '$0.008', '/ request']);
     const [item] = plan.priceItems;
@@ -80,7 +80,7 @@ test('graduated tiers without flat fees have no Flat fee column', async () => {
 test('a flat rate plan names its period in the price and has no billing note', async () => {
     const plan = { id: 'f', paid: true, pricing: { pricingType: 'FLAT_RATE', currency: 'USD', billingPeriod: 'MONTH',
         flatAmount: '12', prices: [] } };
-    await decoratePlans('org', [plan], 'RestApi');
+    await decoratePlans('org', [plan]);
     assert.strictEqual(plan.priceAmount, '$12.00');
     assert.strictEqual(plan.priceUnit, '/ month');
     assert.strictEqual(plan.billingNote, null);
@@ -89,7 +89,7 @@ test('a flat rate plan names its period in the price and has no billing note', a
 
 test('one per-unit price is the headline, with nothing under Pricing details', async () => {
     const plan = usagePlan([{ meterId: 'calls', pricingModel: 'PER_UNIT', unitAmount: '0.01' }]);
-    await decoratePlans('org', [plan], 'RestApi');
+    await decoratePlans('org', [plan]);
     assert.strictEqual(plan.priceAmount, '$0.01');
     assert.strictEqual(plan.priceUnit, '/ request');
     assert.strictEqual(plan.billingNote, 'Billed monthly');
@@ -99,15 +99,15 @@ test('one per-unit price is the headline, with nothing under Pricing details', a
 test('several prices are named; the headline is the least per unit, or Pay per use across units', async () => {
     const sameUnit = usagePlan([
         { meterId: 'calls', pricingModel: 'PER_UNIT', unitAmount: '0.03',
-            filters: [{ field: 'HTTP_METHOD', operator: 'EQUALS', values: ['GET'] }] },
+            filters: [{ field: 'HTTP method', operator: 'EQUALS', values: ['GET'] }] },
         { meterId: 'calls', pricingModel: 'GRADUATED', tiers: [{ upTo: 100, unitAmount: '0' }, { upTo: null, unitAmount: '0.02' }],
-            filters: [{ field: 'HTTP_METHOD', operator: 'EQUALS', values: ['POST'] }] },
+            filters: [{ field: 'HTTP method', operator: 'EQUALS', values: ['POST'] }] },
     ]);
     const mixedUnits = usagePlan([
         { meterId: 'calls', pricingModel: 'PER_UNIT', unitAmount: '0.01' },
         { meterId: 'tokens', pricingModel: 'PER_UNIT', unitAmount: '0.00002' },
     ]);
-    await decoratePlans('org', [sameUnit, mixedUnits], 'RestApi');
+    await decoratePlans('org', [sameUnit, mixedUnits]);
     // A free first tier is not the least price: the least that is charged is.
     assert.deepStrictEqual([sameUnit.pricePrefix, sameUnit.priceAmount, sameUnit.priceUnit], ['From', '$0.02', '/ request']);
     assert.deepStrictEqual(sameUnit.priceItems.map((i) => i.name), ['API Requests · GET', 'API Requests · POST']);

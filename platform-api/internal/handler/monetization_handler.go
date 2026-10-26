@@ -246,11 +246,7 @@ func pricingResponse(planHandle string, pricing *model.SubscriptionPlanPricing) 
 func priceResponse(p model.SubscriptionPlanPrice) map[string]any {
 	filters := make([]map[string]any, 0, len(p.Filters))
 	for _, f := range p.Filters {
-		filter := map[string]any{"field": f.Field, "operator": f.Operator, "values": f.Values}
-		if f.EventKey != "" {
-			filter["eventKey"] = f.EventKey
-		}
-		filters = append(filters, filter)
+		filters = append(filters, map[string]any{"field": f.Field, "operator": f.Operator, "values": f.Values})
 	}
 	var tiers any
 	if p.Tiers != nil {

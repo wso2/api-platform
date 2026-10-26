@@ -28,15 +28,16 @@ import (
 )
 
 // newTestMeters has two meters: api-calls, counting API requests, whose prices may filter on the
-// status code, and llm-input, adding up the input tokens of AI API requests, whose prices may
-// filter on the API type.
+// property Status code, and llm-input, adding up the input tokens of AI API requests, whose prices
+// may filter on the properties API type and Prompt tokens, the number the meter adds up.
 func newTestMeters() *fakeMeterRepo {
 	inputKey := "metadata.aiTokenUsage.promptTokens"
 	return &fakeMeterRepo{meters: map[string]*model.Meter{
 		"api-calls": {Handle: "api-calls", DisplayName: "API calls", Type: model.MeterTypeRequestCount,
-			FilterFields: []model.MeterFilterField{{Field: model.FilterFieldHTTPStatusCode, EventKey: "response.status"}}},
+			FilterFields: []model.MeterFilterField{{Field: "Status code", EventKey: "response.status"}}},
 		"llm-input": {Handle: "llm-input", DisplayName: "LLM input tokens", Type: model.MeterTypeTokens,
-			TypeKey: &inputKey, FilterFields: []model.MeterFilterField{{Field: model.FilterFieldAPIType, EventKey: "metadata.apiType"}}},
+			TypeKey: &inputKey, FilterFields: []model.MeterFilterField{{Field: "API type", EventKey: "metadata.apiType"},
+				{Field: "Prompt tokens", EventKey: inputKey}}},
 	}}
 }
 
@@ -75,15 +76,15 @@ func TestMonetizationAdmin_ReadsComeFromTheStore(t *testing.T) {
 // A meter is kept here, like a plan: it reaches an API Portal only with a plan published there.
 func TestMonetizationAdmin_MetersAreKeptHere(t *testing.T) {
 	svc, meters, _ := newAdminTestService()
-	// A custom token key, a custom filter key, and a filter field without one, which gets the default.
+	// A custom token key, and filter properties named by the request, one of them reading the token key.
 	body := `{"displayName":" Output tokens ","type":"TOKENS","typeKey":"usage.output_tokens",
-		"filterFields":[{"field":"API_TYPE","eventKey":"custom.api.kind"},{"field":"HTTP_METHOD"}]}`
+		"filterFields":[{"field":"API type","eventKey":"custom.api.kind"},{"field":" Output ","eventKey":" usage.output_tokens "}]}`
 	created, err := svc.CreateMeter("org", []byte(body))
 	if err != nil {
 		t.Fatalf("CreateMeter: %v", err)
 	}
 	stored := meters.meters["output-tokens"]
-	want := []model.MeterFilterField{{Field: "API_TYPE", EventKey: "custom.api.kind"}, {Field: "HTTP_METHOD", EventKey: "request.verb"}}
+	want := []model.MeterFilterField{{Field: "API type", EventKey: "custom.api.kind"}, {Field: "Output", EventKey: "usage.output_tokens"}}
 	if stored == nil || created.Handle != "output-tokens" || stored.DisplayName != "Output tokens" || stored.OrganizationUUID != "org" ||
 		*stored.TypeKey != "usage.output_tokens" || !reflect.DeepEqual(stored.FilterFields, want) || stored.SourceUpdatedAt.IsZero() {
 		t.Fatalf("stored %+v, want the meter as the API Portal stores it, its handle derived from the name", stored)
@@ -96,7 +97,7 @@ func TestMonetizationAdmin_MetersAreKeptHere(t *testing.T) {
 		t.Fatalf("an id in use: want 409 METER_EXISTS, got %v", err)
 	}
 
-	update := `{"displayName":"Calls","type":"REQUEST_COUNT","filterFields":[{"field":"HTTP_STATUS_CODE","eventKey":"status_code"}]}`
+	update := `{"displayName":"Calls","type":"REQUEST_COUNT","filterFields":[{"field":"Status code","eventKey":"status_code"}]}`
 	updated, err := svc.UpdateMeter("org", "api-calls", []byte(update))
 	if err != nil || updated.Handle != "api-calls" || meters.meters["api-calls"].DisplayName != "Calls" ||
 		meters.meters["api-calls"].FilterFields[0].EventKey != "status_code" {
@@ -120,7 +121,7 @@ func TestMonetizationAdmin_MetersAreKeptHere(t *testing.T) {
 
 // A request the API Portal would refuse is refused here, in its words (model.ParseMeterRequest).
 func TestMonetizationAdmin_MeterRequestsAreCheckedLikeThePortal(t *testing.T) {
-	for _, conditions := range []string{`[{"field":"API_TYPE","operator":"IN"}]`, `[]`, `null`} {
+	for _, conditions := range []string{`[{"field":"API type","operator":"IN"}]`, `[]`, `null`} {
 		svc, meters, _ := newAdminTestService()
 		body := []byte(`{"displayName":"LLM input tokens","type":"TOKENS","typeKey":"metadata.aiTokenUsage.promptTokens","conditions":` + conditions + `}`)
 		_, createErr := svc.CreateMeter("org", body)
@@ -183,7 +184,7 @@ func TestMonetizationAdmin_ListMetersSearchesNameAndHandle(t *testing.T) {
 
 func TestMonetizationAdmin_MeterUsageNamesThePlansThatPriceEachMeter(t *testing.T) {
 	svc, _, pricing := newAdminTestService()
-	gold := pricedOnMeter("plan-1", "llm-input", "API_TYPE")
+	gold := pricedOnMeter("plan-1", "llm-input", "API type")
 	// gold prices llm-input twice and api-calls once: each plan is named once per meter.
 	gold.Prices = append(gold.Prices, pricedOnMeter("plan-1", "llm-input").Prices[0], pricedOnMeter("plan-1", "api-calls").Prices[0])
 	pricing.pricing = map[string]*model.SubscriptionPlanPricing{"plan-2": pricedOnMeter("plan-2", "llm-input"), "plan-1": gold}
@@ -211,15 +212,15 @@ func TestMonetizationAdmin_MeterPricedHereCannotChange(t *testing.T) {
 		body    string
 		msg     string // empty when the update is made
 	}{
-		{"one plan", map[string]*model.SubscriptionPlanPricing{"plan-1": pricedOnMeter("plan-1", "llm-input", "API_TYPE")},
-			`{"displayName":"LLM input tokens","type":"TOKENS","typeKey":"metadata.aiTokenUsage.promptTokens","filterFields":[{"field":"API_TYPE"}]}`,
+		{"one plan", map[string]*model.SubscriptionPlanPricing{"plan-1": pricedOnMeter("plan-1", "llm-input", "API type")},
+			`{"displayName":"LLM input tokens","type":"TOKENS","typeKey":"metadata.aiTokenUsage.promptTokens","filterFields":[{"field":"API type","eventKey":"metadata.apiType"}]}`,
 			"The meter is in use, so it can't be updated."},
-		{"only the event keys", map[string]*model.SubscriptionPlanPricing{"plan-1": pricedOnMeter("plan-1", "llm-input", "API_TYPE")},
+		{"only the event keys", map[string]*model.SubscriptionPlanPricing{"plan-1": pricedOnMeter("plan-1", "llm-input", "API type")},
 			`{"displayName":"LLM input tokens","type":"TOKENS","typeKey":"usage.input_tokens",
-			  "filterFields":[{"field":"API_TYPE","eventKey":"custom.api.kind"}]}`,
+			  "filterFields":[{"field":"API type","eventKey":"custom.api.kind"}]}`,
 			"The meter is in use, so it can't be updated."},
 		{"several plans", map[string]*model.SubscriptionPlanPricing{
-			"plan-2": pricedOnMeter("plan-2", "llm-input"), "plan-1": pricedOnMeter("plan-1", "llm-input", "API_TYPE")},
+			"plan-2": pricedOnMeter("plan-2", "llm-input"), "plan-1": pricedOnMeter("plan-1", "llm-input", "API type")},
 			valid, "The meter is in use, so it can't be updated."},
 		{"a price without filters", map[string]*model.SubscriptionPlanPricing{"plan-1": pricedOnMeter("plan-1", "llm-input")},
 			valid, "The meter is in use, so it can't be updated."},
@@ -249,7 +250,7 @@ func TestMonetizationAdmin_MeterPricedHereCannotChange(t *testing.T) {
 func TestMonetizationAdmin_MeterPricedHereCannotBeDeleted(t *testing.T) {
 	svc, meters, pricing := newAdminTestService()
 	pricing.pricing["plan-2"] = pricedOnMeter("plan-2", "llm-input")
-	pricing.pricing["plan-1"] = pricedOnMeter("plan-1", "llm-input", "API_TYPE")
+	pricing.pricing["plan-1"] = pricedOnMeter("plan-1", "llm-input", "API type")
 
 	err := svc.DeleteMeter("org", "llm-input")
 	var appErr *apperror.Error

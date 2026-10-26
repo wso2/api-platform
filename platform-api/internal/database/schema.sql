@@ -689,9 +689,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_api_documents_artifact_handle ON api_docume
 -- made in an API Portal is a copy, kept current by that portal's meter.* webhook events.
 --   - type REQUEST_COUNT counts API requests; type TOKENS adds up a number from the events of AI
 --     API requests, read at type_key (NULL for REQUEST_COUNT).
---   - filter_fields lists the fields the meter's prices may filter on, each with the event field
---     it reads (a JSON array of {field, event_key}; [] for none). A meter has no filters of its
---     own: each price gives its own.
+--   - filter_fields lists the properties the meter's prices may filter on, each a name and the
+--     event field it reads (a JSON array of {field, event_key}; [] for none). A meter has no
+--     filters of its own: each price gives its own.
 --   - source_updated_at is when the meter last changed where it was made: the time of the request
 --     for a meter made here, the event's occurred_at for a copy. An older, late event is ignored.
 CREATE TABLE IF NOT EXISTS meters (

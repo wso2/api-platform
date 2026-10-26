@@ -700,72 +700,6 @@ func (e MeterType) Valid() bool {
 	}
 }
 
-// Defines values for MeterFilterFieldField.
-const (
-	MeterFilterFieldFieldApiType        MeterFilterFieldField = "API_TYPE"
-	MeterFilterFieldFieldHttpMethod     MeterFilterFieldField = "HTTP_METHOD"
-	MeterFilterFieldFieldHttpStatusCode MeterFilterFieldField = "HTTP_STATUS_CODE"
-	MeterFilterFieldFieldMcpMethod      MeterFilterFieldField = "MCP_METHOD"
-	MeterFilterFieldFieldMcpTool        MeterFilterFieldField = "MCP_TOOL"
-	MeterFilterFieldFieldResource       MeterFilterFieldField = "RESOURCE"
-	MeterFilterFieldFieldToken          MeterFilterFieldField = "TOKEN"
-)
-
-// Valid indicates whether the value is a known member of the MeterFilterFieldField enum.
-func (e MeterFilterFieldField) Valid() bool {
-	switch e {
-	case MeterFilterFieldFieldApiType:
-		return true
-	case MeterFilterFieldFieldHttpMethod:
-		return true
-	case MeterFilterFieldFieldHttpStatusCode:
-		return true
-	case MeterFilterFieldFieldMcpMethod:
-		return true
-	case MeterFilterFieldFieldMcpTool:
-		return true
-	case MeterFilterFieldFieldResource:
-		return true
-	case MeterFilterFieldFieldToken:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for MeterFilterFieldRequestField.
-const (
-	MeterFilterFieldRequestFieldApiType        MeterFilterFieldRequestField = "API_TYPE"
-	MeterFilterFieldRequestFieldHttpMethod     MeterFilterFieldRequestField = "HTTP_METHOD"
-	MeterFilterFieldRequestFieldHttpStatusCode MeterFilterFieldRequestField = "HTTP_STATUS_CODE"
-	MeterFilterFieldRequestFieldMcpMethod      MeterFilterFieldRequestField = "MCP_METHOD"
-	MeterFilterFieldRequestFieldMcpTool        MeterFilterFieldRequestField = "MCP_TOOL"
-	MeterFilterFieldRequestFieldResource       MeterFilterFieldRequestField = "RESOURCE"
-	MeterFilterFieldRequestFieldToken          MeterFilterFieldRequestField = "TOKEN"
-)
-
-// Valid indicates whether the value is a known member of the MeterFilterFieldRequestField enum.
-func (e MeterFilterFieldRequestField) Valid() bool {
-	switch e {
-	case MeterFilterFieldRequestFieldApiType:
-		return true
-	case MeterFilterFieldRequestFieldHttpMethod:
-		return true
-	case MeterFilterFieldRequestFieldHttpStatusCode:
-		return true
-	case MeterFilterFieldRequestFieldMcpMethod:
-		return true
-	case MeterFilterFieldRequestFieldMcpTool:
-		return true
-	case MeterFilterFieldRequestFieldResource:
-		return true
-	case MeterFilterFieldRequestFieldToken:
-		return true
-	default:
-		return false
-	}
-}
-
 // Defines values for MeterRequestType.
 const (
 	MeterRequestTypeRequestCount MeterRequestType = "REQUEST_COUNT"
@@ -880,39 +814,6 @@ const (
 func (e PassthroughPublicAgentCardMode) Valid() bool {
 	switch e {
 	case PassthroughPublicAgentCardModePassthrough:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for PriceFilterField.
-const (
-	PriceFilterFieldApiType        PriceFilterField = "API_TYPE"
-	PriceFilterFieldHttpMethod     PriceFilterField = "HTTP_METHOD"
-	PriceFilterFieldHttpStatusCode PriceFilterField = "HTTP_STATUS_CODE"
-	PriceFilterFieldMcpMethod      PriceFilterField = "MCP_METHOD"
-	PriceFilterFieldMcpTool        PriceFilterField = "MCP_TOOL"
-	PriceFilterFieldResource       PriceFilterField = "RESOURCE"
-	PriceFilterFieldToken          PriceFilterField = "TOKEN"
-)
-
-// Valid indicates whether the value is a known member of the PriceFilterField enum.
-func (e PriceFilterField) Valid() bool {
-	switch e {
-	case PriceFilterFieldApiType:
-		return true
-	case PriceFilterFieldHttpMethod:
-		return true
-	case PriceFilterFieldHttpStatusCode:
-		return true
-	case PriceFilterFieldMcpMethod:
-		return true
-	case PriceFilterFieldMcpTool:
-		return true
-	case PriceFilterFieldResource:
-		return true
-	case PriceFilterFieldToken:
 		return true
 	default:
 		return false
@@ -4803,23 +4704,21 @@ type MeterType string
 
 // MeterFilterField defines model for MeterFilterField.
 type MeterFilterField struct {
-	// EventKey The event field this filter field reads, such as `metadata.apiType`.
-	EventKey string                `json:"eventKey" yaml:"eventKey"`
-	Field    MeterFilterFieldField `json:"field" yaml:"field"`
+	// EventKey The event field the property reads, such as `response.status`.
+	EventKey string `json:"eventKey" yaml:"eventKey"`
+
+	// Field The property's name, such as `Status code`.
+	Field string `json:"field" yaml:"field"`
 }
 
-// MeterFilterFieldField defines model for MeterFilterField.Field.
-type MeterFilterFieldField string
-
-// MeterFilterFieldRequest A field this meter's prices can filter on: the status code, HTTP method, resource, API type (API_TYPE, the kind of API a request went to, read by default from `metadata.apiType`), MCP method (MCP_METHOD, the JSON-RPC method of a request to an MCP server), tool (MCP_TOOL, the tool a tool call runs), or a token count (TOKEN, read from its `eventKey`). API_TYPE and TOKEN are allowed on any meter. TOKEN can be listed several times, each time with a different key, and not with the key of the meter's own `typeKey`, which prices can already put Token conditions on.
+// MeterFilterFieldRequest A property this meter's prices can filter on: a name the administrator gives it and the event field it reads. Any operator works on any property; the values a price gives must fit what the event field holds.
 type MeterFilterFieldRequest struct {
-	// EventKey The event field this filter field reads, as a full path in the gateway's analytics event; 1 to 255 characters with no spaces. Optional for a fixed field: left out or empty, it is the field's default, which is `response.status` for HTTP_STATUS_CODE, `request.verb` for HTTP_METHOD, `metadata.apiResourceTemplate` for RESOURCE, `metadata.apiType` for API_TYPE, `metadata.mcpAnalytics.jsonRpcMethod` for MCP_METHOD and `metadata.mcpAnalytics.capabilityName` for MCP_TOOL. Required for TOKEN, which has no default; the suggested keys are `metadata.aiTokenUsage.promptTokens`, `metadata.aiTokenUsage.completionTokens` and `metadata.aiTokenUsage.totalTokens`.
-	EventKey *string                      `json:"eventKey,omitempty" yaml:"eventKey,omitempty"`
-	Field    MeterFilterFieldRequestField `json:"field" yaml:"field"`
-}
+	// EventKey The event field the property reads, as a full path in the gateway's analytics event; 1 to 255 characters with no spaces, unique within the meter. Our gateway sends, among others, `response.status`, `request.verb`, `metadata.apiResourceTemplate`, `metadata.apiType`, `metadata.mcpAnalytics.jsonRpcMethod`, `metadata.mcpAnalytics.capabilityName` and `metadata.aiTokenUsage.promptTokens`.
+	EventKey string `json:"eventKey" yaml:"eventKey"`
 
-// MeterFilterFieldRequestField defines model for MeterFilterFieldRequest.Field.
-type MeterFilterFieldRequestField string
+	// Field The property's name, 1 to 40 characters, unique within the meter ignoring case, such as `Status code` or `Region`.
+	Field string `json:"field" yaml:"field"`
+}
 
 // MeterListResponse defines model for MeterListResponse.
 type MeterListResponse struct {
@@ -4835,20 +4734,20 @@ type MeterRequest struct {
 	// DisplayName Says what the meter counts, for example "Input tokens".
 	DisplayName string `json:"displayName" yaml:"displayName"`
 
-	// FilterFields The fields this meter's prices can filter on, at most 10: each fixed field (HTTP_STATUS_CODE, HTTP_METHOD, RESOURCE, API_TYPE, MCP_METHOD, MCP_TOOL) at most once, and TOKEN once per key. Optional; without them the meter's prices take no filters.
+	// FilterFields The properties this meter's prices can filter on, at most 10, each named by the administrator and read from its own event field. Names and event keys are each unique within the meter. Optional; without them the meter's prices take no filters.
 	FilterFields *[]MeterFilterFieldRequest `json:"filterFields,omitempty" yaml:"filterFields,omitempty"`
 
 	// Id The meter's id; derived from displayName when omitted on create.
 	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
 
-	// Type What is counted: API requests (REQUEST_COUNT), each counting one, or the tokens of AI API requests (TOKENS), adding up the number in the event field `typeKey` names. A meter has no conditions: each plan price gives its own filters.
+	// Type What is counted: requests (REQUEST_COUNT), each counting one, or the tokens of AI API requests (TOKENS), adding up the number in the event field `typeKey` names. A meter has no conditions: each plan price gives its own filters.
 	Type MeterRequestType `json:"type" yaml:"type"`
 
 	// TypeKey TOKENS only, and required there: the event field whose number the meter adds up, as a full path in the gateway's analytics event, such as `metadata.aiTokenUsage.promptTokens` (our gateway also sends `metadata.aiTokenUsage.completionTokens` and `metadata.aiTokenUsage.totalTokens`). 1 to 255 characters with no spaces. Refused for a REQUEST_COUNT meter.
 	TypeKey *string `json:"typeKey,omitempty" yaml:"typeKey,omitempty"`
 }
 
-// MeterRequestType What is counted: API requests (REQUEST_COUNT), each counting one, or the tokens of AI API requests (TOKENS), adding up the number in the event field `typeKey` names. A meter has no conditions: each plan price gives its own filters.
+// MeterRequestType What is counted: requests (REQUEST_COUNT), each counting one, or the tokens of AI API requests (TOKENS), adding up the number in the event field `typeKey` names. A meter has no conditions: each plan price gives its own filters.
 type MeterRequestType string
 
 // OpenAPIContent defines model for OpenAPIContent.
@@ -5026,19 +4925,15 @@ type Policy struct {
 	Version string `json:"version" yaml:"version"`
 }
 
-// PriceFilter Narrows the requests a plan price counts. HTTP_STATUS_CODE, HTTP_METHOD, API_TYPE, MCP_METHOD and MCP_TOOL take EQUALS, NOT_EQUALS, IN or NOT_IN; RESOURCE takes EQUALS, NOT_EQUALS or STARTS_WITH. EQUALS, NOT_EQUALS and STARTS_WITH take one value; IN and NOT_IN one or more. Status codes are exact codes from 100 to 599; HTTP methods are GET, POST, PUT, PATCH, DELETE, HEAD or OPTIONS; a resource is a path from the API definition, such as `/orders/{id}`. STARTS_WITH matches the resource and the resources under it, by whole path segments, as a router matches a path prefix: `/orders` matches `/orders` and `/orders/{id}`, not `/orders-archive`; `/` matches every resource; its value is stored without a trailing `/`. NOT_EQUALS and NOT_IN count the requests that have the field with another value: a request without the field is not counted. An API type is the kind of API a request went to, read by default from `metadata.apiType`: free text matched exactly as written (case-sensitive), such as `RestApi`, `WebSubApi`, `LlmProvider`, `LlmProxy`, `Mcp` or `Agent`, the kinds our gateway sends; any other text is accepted. API type values are 1 to 255 characters. MCP_METHOD is the JSON-RPC method of a request to an MCP server, such as `tools/call`, `resources/read` or `prompts/get`, read by default from `metadata.mcpAnalytics.jsonRpcMethod`; MCP_TOOL is the name of the tool a tool call runs, read by default from `metadata.mcpAnalytics.capabilityName`. Both are free text matched exactly as written, 1 to 255 characters. An MCP_TOOL filter counts only tool calls (`tools/call`), so a price that filters on MCP_TOOL has no MCP_METHOD filter. A batched JSON-RPC request has no method in its event, so neither filter counts it. A TOKEN filter is a condition on the token count at `eventKey`: it takes GREATER_THAN (more than), GREATER_THAN_OR_EQUAL (at least), LESS_THAN (less than), LESS_THAN_OR_EQUAL (at most) or EQUALS (equal to), with exactly one whole number from 0 to 1000000000000. Two conditions on one key give a range, for example more than 100 and at most 500; they must be able to hold together.
+// PriceFilter Narrows the requests a plan price counts, on one of its meter's properties. Any operator works on any property. EQUALS, NOT_EQUALS and STARTS_WITH take one text value; IN and NOT_IN one to 20; text values are matched exactly as written (case-sensitive). STARTS_WITH matches values that begin with the text, so `/orders` also matches `/orders-archive`. NOT_EQUALS and NOT_IN count the requests that have the property with another value: a request without it is not counted. GREATER_THAN (more than), GREATER_THAN_OR_EQUAL (at least), LESS_THAN (less than) and LESS_THAN_OR_EQUAL (at most) compare a number: exactly one whole number from 0 to 1000000000000. On one property a price has either one EQUALS, NOT_EQUALS, IN, NOT_IN or STARTS_WITH filter, or one or two comparisons, which make a range (more than 100 and at most 500) and must be able to hold together. Values are not checked against what the property holds: they must fit its event field, numbers for a number field and the exact text for a text field.
 type PriceFilter struct {
-	// EventKey TOKEN only, and required there: the Token key the condition reads, one of the meter's Token keys (its `typeKey` or the key of one of its TOKEN filter fields). Refused on any other field.
-	EventKey *string             `json:"eventKey,omitempty" yaml:"eventKey,omitempty"`
-	Field    PriceFilterField    `json:"field" yaml:"field"`
+	// Field The name of one of the meter's properties, matched ignoring case.
+	Field    string              `json:"field" yaml:"field"`
 	Operator PriceFilterOperator `json:"operator" yaml:"operator"`
 
-	// Values The values to match; for TOKEN, exactly one whole number written as a string, such as "333".
+	// Values The values to match; for a comparison, exactly one whole number written as a string, such as "333".
 	Values []string `json:"values" yaml:"values"`
 }
-
-// PriceFilterField defines model for PriceFilter.Field.
-type PriceFilterField string
 
 // PriceFilterOperator defines model for PriceFilter.Operator.
 type PriceFilterOperator string
@@ -5857,7 +5752,7 @@ type SubscriptionPlanListResponse struct {
 
 // SubscriptionPlanPrice A usage price of a paid plan: what the meter `meterId` counts, narrowed by the price's `filters`, charged in one pricing model. PER_UNIT charges `unitAmount` per `unitQuantity` units; VOLUME prices all the units at the tier their total falls in; GRADUATED prices the units in each tier at that tier's price. Fields of other models are not accepted. A plan may price one meter several times, but two prices on the same meter must not count the same request. A price has no name: it is shown as the meter's name followed by its filters.
 type SubscriptionPlanPrice struct {
-	// Filters Optional; at most one filter per fixed field and at most two Token conditions per Token key, and only on the fields the meter lists in its filterFields (for Token, on the meter's `typeKey` or its TOKEN keys). Without filters the price counts every request the meter counts.
+	// Filters Optional; each names one of the properties the meter lists in its filterFields. On one property a price has either one EQUALS, NOT_EQUALS, IN, NOT_IN or STARTS_WITH filter, or one or two comparisons. Without filters the price counts every request the meter counts.
 	Filters *[]PriceFilter `json:"filters,omitempty" yaml:"filters,omitempty"`
 
 	// MeterId The `id` of the meter that counts the units, one of the organization's meters (GET /meters).

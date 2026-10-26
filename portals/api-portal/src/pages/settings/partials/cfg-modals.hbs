@@ -233,7 +233,7 @@
       </p>
       <p class="cfg-field-hint">Pricing can't be updated once the plan is created.</p>
       <div id="pol-pricing" style="display:none;margin-top:12px;"
-        data-meters="{{{jsonAttr orgMeters}}}" data-token-keys="{{{jsonAttr meterRegistry.tokenEventKeys}}}">
+        data-meters="{{{jsonAttr orgMeters}}}">
         <div class="cfg-pricing-row">
           <div class="cfg-form-group">
             <label id="pol-currency-label" for="pol-currency-trigger">Currency</label>
@@ -289,6 +289,10 @@
             <label style="margin:0;">Prices</label>
             <button type="button" class="cfg-btn-secondary cfg-btn-sm" id="pol-add-price-btn"><i class="bi bi-plus"></i> Add price</button>
           </div>
+          <p class="cfg-paid-notice" id="pol-meter-notice" role="status" hidden>
+            <i class="bi bi-info-circle" aria-hidden="true"></i>
+            <span>To charge for usage, add a meter first. <a href="#cfg-meters" id="pol-meter-setup">Add a meter</a></span>
+          </p>
           <div id="pol-prices-list"></div>
         </div>
       </div>

@@ -37,26 +37,8 @@ const (
 	MeterTypeTokens       = "TOKENS"
 )
 
-// Fields a price filter matches. API_TYPE is the kind of API a request went to (such as RestApi or
-// LlmProvider), so that one plan can price each kind on its own; its values are free text, matched
-// as written. MCP_METHOD is the JSON-RPC method of a request to an MCP server (such as tools/call)
-// and MCP_TOOL the name of the tool a tool call runs, both free text. TOKEN reads a token count from
-// the event, at its event key; unlike the fixed fields, a meter may list it several times, once per
-// key.
-const (
-	FilterFieldHTTPStatusCode = "HTTP_STATUS_CODE"
-	FilterFieldHTTPMethod     = "HTTP_METHOD"
-	FilterFieldResource       = "RESOURCE"
-	FilterFieldAPIType        = "API_TYPE"
-	FilterFieldMCPMethod      = "MCP_METHOD"
-	FilterFieldMCPTool        = "MCP_TOOL"
-	FilterFieldToken          = "TOKEN"
-)
-
-// mcpToolCall is the MCP method of a tool call.
-const mcpToolCall = "tools/call"
-
-// Operators of a price filter. The comparisons are for TOKEN only, which also takes EQUALS.
+// Operators of a price filter. Any of them works on any of a meter's properties: EQUALS, NOT_EQUALS,
+// IN, NOT_IN and STARTS_WITH match text, the four comparisons a whole number.
 const (
 	FilterOperatorEquals             = "EQUALS"
 	FilterOperatorNotEquals          = "NOT_EQUALS"
@@ -70,44 +52,28 @@ const (
 )
 
 const (
-	// maxMeterFilterFields is how many filter fields a meter lists at most.
+	// maxMeterFilterFields is how many properties a meter lists at most.
 	maxMeterFilterFields = 10
+	// maxPropertyNameChars bounds the name of a meter's property.
+	maxPropertyNameChars = 40
 	// maxPriceFilters is how many filters a price has at most.
 	maxPriceFilters = 20
-	// maxTokenConditions is how many conditions a price puts on one Token key at most.
-	maxTokenConditions = 2
-	// maxTokenValue is the largest number a Token condition compares with.
-	maxTokenValue = 1_000_000_000_000
+	// maxComparisons is how many comparisons a price puts on one property at most: enough for a range
+	// such as more than 100 and at most 500.
+	maxComparisons = 2
+	// maxCompareValue is the largest number a comparison takes.
+	maxCompareValue = 1_000_000_000_000
 )
 
 var (
 	meterTypes = []string{MeterTypeRequestCount, MeterTypeTokens}
-	// fixedFilterFields are the fields a meter lists, and a price filters on, at most once.
-	fixedFilterFields = []string{FilterFieldHTTPStatusCode, FilterFieldHTTPMethod, FilterFieldResource, FilterFieldAPIType,
-		FilterFieldMCPMethod, FilterFieldMCPTool}
-	filterFields   = append(slices.Clone(fixedFilterFields), FilterFieldToken)
-	matchOperators = []string{FilterOperatorEquals, FilterOperatorNotEquals, FilterOperatorIn, FilterOperatorNotIn}
-	// filterFieldLabels are the names the UIs show for the filter fields.
-	filterFieldLabels = map[string]string{
-		FilterFieldHTTPStatusCode: "Status code",
-		FilterFieldHTTPMethod:     "HTTP method",
-		FilterFieldResource:       "Resource",
-		FilterFieldAPIType:        "API type",
-		FilterFieldMCPMethod:      "MCP method",
-		FilterFieldMCPTool:        "Tool",
-		FilterFieldToken:          "Token",
-	}
-	// filterOperators are the operators each filter field takes.
-	filterOperators = map[string][]string{
-		FilterFieldHTTPStatusCode: matchOperators,
-		FilterFieldHTTPMethod:     matchOperators,
-		FilterFieldResource:       {FilterOperatorEquals, FilterOperatorNotEquals, FilterOperatorStartsWith},
-		FilterFieldAPIType:        matchOperators,
-		FilterFieldMCPMethod:      matchOperators,
-		FilterFieldMCPTool:        matchOperators,
-		FilterFieldToken: {FilterOperatorGreaterThan, FilterOperatorGreaterThanOrEqual, FilterOperatorLessThan,
-			FilterOperatorLessThanOrEqual, FilterOperatorEquals},
-	}
+	// filterOperators are the operators of a price filter, in the order messages list them.
+	filterOperators = []string{FilterOperatorEquals, FilterOperatorNotEquals, FilterOperatorIn, FilterOperatorNotIn,
+		FilterOperatorStartsWith, FilterOperatorGreaterThan, FilterOperatorGreaterThanOrEqual, FilterOperatorLessThan,
+		FilterOperatorLessThanOrEqual}
+	// compareOperators are the operators that compare a whole number; the others match text.
+	compareOperators = []string{FilterOperatorGreaterThan, FilterOperatorGreaterThanOrEqual, FilterOperatorLessThan,
+		FilterOperatorLessThanOrEqual}
 )
 
 // Meter is what a paid plan charges for. A meter only says what is counted; each plan price narrows
@@ -124,8 +90,8 @@ type Meter struct {
 	// TypeKey is the event field whose number a TOKENS meter adds up, such as
 	// metadata.aiTokenUsage.promptTokens; nil for REQUEST_COUNT.
 	TypeKey *string `json:"typeKey" db:"type_key"`
-	// FilterFields are the fields the meter's prices may filter on, each with the event field it
-	// reads; empty when they take no filters.
+	// FilterFields are the properties the meter's prices may filter on, each a name and the event
+	// field it reads; empty when they take no filters.
 	FilterFields []MeterFilterField `json:"filterFields" db:"filter_fields"`
 	// SourceUpdatedAt is when the meter last changed where it was made: the time of the request for
 	// a meter made here, the event's occurred_at for a copy of an API Portal meter. An API Portal
@@ -134,26 +100,21 @@ type Meter struct {
 	CreatedAt       time.Time `json:"createdAt" db:"created_at"`
 }
 
-// MeterFilterField is a field a meter's prices may filter on, with the event field it reads (by
-// default metadata.apiType for API_TYPE; a TOKEN field has no default). The JSON form is
-// the one the API Portal's meter events carry, and the one stored.
+// MeterFilterField is a property a meter's prices may filter on: the name the administrator gives it
+// (Field) and the event field it reads (EventKey).
 type MeterFilterField struct {
 	Field    string `json:"field"`
 	EventKey string `json:"event_key"`
 }
 
-// AllowsFilterOn reports whether the meter's prices may filter on the fixed field.
-func (m *Meter) AllowsFilterOn(field string) bool {
-	return slices.ContainsFunc(m.FilterFields, func(f MeterFilterField) bool { return f.Field == field })
-}
-
-// HasTokenKey reports whether the meter's prices may put Token conditions on the key: the meter's
-// TypeKey, or the key of one of its TOKEN filter fields.
-func (m *Meter) HasTokenKey(key string) bool {
-	if m.TypeKey != nil && *m.TypeKey == key {
-		return true
+// Property returns the meter's property with the name, matched ignoring case.
+func (m *Meter) Property(name string) (MeterFilterField, bool) {
+	for _, f := range m.FilterFields {
+		if sameName(f.Field, name) {
+			return f, true
+		}
 	}
-	return slices.ContainsFunc(m.FilterFields, func(f MeterFilterField) bool { return f.Field == FilterFieldToken && f.EventKey == key })
+	return MeterFilterField{}, false
 }
 
 // maxEventKeyChars bounds an event key, as its column does.
@@ -162,10 +123,8 @@ const maxEventKeyChars = 255
 // ValidateMeter checks a meter against the rules the API Portal applies:
 //   - the type is REQUEST_COUNT or TOKENS;
 //   - a TOKENS meter has a TypeKey (the event field it adds up), and a REQUEST_COUNT meter none;
-//   - each filter field is one a price can filter on, with its event key: a fixed field listed once,
-//     a TOKEN field once per key and never with the TypeKey's key;
-//   - at most 10 filter fields;
-//   - every event key is 1 to 255 characters with no spaces.
+//   - the TypeKey is 1 to 255 characters with no spaces;
+//   - the filter fields follow validateFilterFields.
 //
 // The returned error's text is safe to show.
 func ValidateMeter(m *Meter) error {
@@ -180,47 +139,45 @@ func ValidateMeter(m *Meter) error {
 	case m.TypeKey != nil && !validEventKey(*m.TypeKey):
 		return fmt.Errorf("typeKey must be 1 to %d characters with no spaces", maxEventKeyChars)
 	}
-	if len(m.FilterFields) > maxMeterFilterFields {
-		return fmt.Errorf("A meter has at most %d filter fields", maxMeterFilterFields)
+	return validateFilterFields(m.FilterFields)
+}
+
+// validateFilterFields checks a meter's properties: at most 10, each with a name of 1 to 40 characters
+// with no control characters and an event key of 1 to 255 characters with no spaces. Names are unique
+// ignoring case, and event keys are unique. An event key may be the meter's TypeKey.
+func validateFilterFields(fields []MeterFilterField) error {
+	if len(fields) > maxMeterFilterFields {
+		return fmt.Errorf("A meter has at most %d filter properties", maxMeterFilterFields)
 	}
-	seen := make(map[string]bool, len(m.FilterFields))
-	tokenKeys := make(map[string]bool)
-	for _, f := range m.FilterFields {
-		if _, ok := filterOperators[f.Field]; !ok {
-			return fmt.Errorf("filterFields: unknown field %s", f.Field)
+	for i, f := range fields {
+		if !validPropertyName(f.Field) {
+			return fmt.Errorf("A filter property's name must be 1 to %d characters", maxPropertyNameChars)
 		}
-		if f.Field == FilterFieldToken {
-			if err := validateTokenField(m, f, tokenKeys); err != nil {
-				return err
-			}
-			continue
+		if slices.ContainsFunc(fields[:i], func(o MeterFilterField) bool { return sameName(o.Field, f.Field) }) {
+			return fmt.Errorf("The meter has the property %s more than once", f.Field)
 		}
-		if seen[f.Field] {
-			return fmt.Errorf("filterFields: %s is listed twice", f.Field)
-		}
-		seen[f.Field] = true
 		if !validEventKey(f.EventKey) {
-			return fmt.Errorf("The event key of %s must be 1 to %d characters with no spaces", filterFieldLabels[f.Field], maxEventKeyChars)
+			return fmt.Errorf("The event key of %s must be 1 to %d characters with no spaces", f.Field, maxEventKeyChars)
+		}
+		if duplicate := slices.IndexFunc(fields[:i], func(o MeterFilterField) bool { return o.EventKey == f.EventKey }); duplicate >= 0 {
+			return fmt.Errorf("%s and %s read the same event key %s", f.Field, fields[duplicate].Field, f.EventKey)
 		}
 	}
 	return nil
 }
 
-// validateTokenField checks a TOKEN filter field: it has a key, not one listed before (seen) and
-// not the meter's TypeKey.
-func validateTokenField(m *Meter, f MeterFilterField, seen map[string]bool) error {
-	switch {
-	case f.EventKey == "":
-		return errors.New("A Token field needs an eventKey")
-	case !validEventKey(f.EventKey):
-		return fmt.Errorf("The event key of %s must be 1 to %d characters with no spaces", filterFieldLabels[f.Field], maxEventKeyChars)
-	case m.TypeKey != nil && *m.TypeKey == f.EventKey:
-		return fmt.Errorf("The key %s is already the meter's Token key", f.EventKey)
-	case seen[f.EventKey]:
-		return fmt.Errorf("The meter lists the Token key %s more than once", f.EventKey)
+// validPropertyName reports whether a property's name, trimmed by the caller, is 1 to
+// maxPropertyNameChars characters with no control characters.
+func validPropertyName(name string) bool {
+	if name == "" || utf8.RuneCountInString(name) > maxPropertyNameChars {
+		return false
 	}
-	seen[f.EventKey] = true
-	return nil
+	return !strings.ContainsFunc(name, unicode.IsControl)
+}
+
+// sameName reports whether two property names are the same, ignoring case.
+func sameName(a, b string) bool {
+	return strings.EqualFold(a, b)
 }
 
 // validEventKey reports whether key is 1 to maxEventKeyChars characters with no whitespace or
@@ -271,13 +228,8 @@ const (
 
 var (
 	decimalAmountPattern = regexp.MustCompile(`^\d{1,12}(\.\d{1,12})?$`)
-	// One status code, from 100 to 599. Classes of codes ("2xx") are not accepted.
-	statusCodePattern = regexp.MustCompile(`^[1-5]\d\d$`)
-	httpMethods       = []string{"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"}
-	// singleValueOperators take exactly one value; IN and NOT_IN take 1 to maxFilterValues.
-	singleValueOperators = map[string]bool{
-		FilterOperatorEquals: true, FilterOperatorNotEquals: true, FilterOperatorStartsWith: true,
-	}
+	// listOperators take 1 to maxFilterValues values; the other operators take exactly one.
+	listOperators = []string{FilterOperatorIn, FilterOperatorNotIn}
 )
 
 // PriceTier is one tier of a VOLUME or GRADUATED price. UpTo is nil on the last tier. Amounts are
@@ -289,12 +241,10 @@ type PriceTier struct {
 }
 
 // PriceFilter narrows the requests a price counts: a request is counted only when it matches every
-// filter of the price. A TOKEN filter is a condition on the token count at EventKey, one of the
-// meter's Token keys, compared with one whole number; other filters have no EventKey. The JSON form
-// is the one the API Portal's subscription plan events carry for pricing, and the one stored.
+// filter of the price. Field names one of the meter's properties, as the meter spells it, and the
+// filter reads that property's event key.
 type PriceFilter struct {
 	Field    string   `json:"field"`
-	EventKey string   `json:"event_key,omitempty"`
 	Operator string   `json:"operator"`
 	Values   []string `json:"values"`
 }
@@ -303,8 +253,7 @@ type PriceFilter struct {
 // counts, narrowed by its Filters (none counts every request the meter counts), in one pricing
 // model; the fields of other models are nil. A plan may price one meter several times, as long as
 // no request is counted by two of those prices. A price has no name of its own: it is shown as the
-// meter's name followed by its filters. The JSON form is the one the API Portal's subscription plan
-// events carry for pricing, and the one stored.
+// meter's name followed by its filters.
 type SubscriptionPlanPrice struct {
 	MeterHandle  string        `json:"meter_handle"`
 	Filters      []PriceFilter `json:"filters"`
@@ -337,9 +286,9 @@ type SubscriptionPlanPricing struct {
 
 // ValidatePlanPricing checks a plan's pricing against the rules the API Portal applies; the API
 // Portal decides, this check only refuses what it would refuse anyway. That the meters exist is left
-// to the caller. The filter values are normalized in place: trimmed, an HTTP method upper-cased,
-// repeated values dropped with the order kept. The returned error's text names the field and is safe
-// to show.
+// to the caller, and so is that each filter names a property of its meter. The filters are normalized
+// in place: names and values trimmed, repeated values dropped with the order kept, and a comparison's
+// number written without leading zeros. The returned error's text names the field and is safe to show.
 func ValidatePlanPricing(p *SubscriptionPlanPricing) error {
 	// Only the currencies the portals offer (offeredCurrencies): the API Portal refuses any other, so a
 	// plan priced in one would fail when it is published. A code that is not a currency at all gets the
@@ -440,149 +389,148 @@ func fieldsOfOtherModels(p *SubscriptionPlanPrice) []string {
 	return extra
 }
 
-// validateFilters checks the filters of a price and normalizes their values in place: at most 20
-// filters; one filter per fixed field; HTTP_STATUS_CODE, HTTP_METHOD, API_TYPE, MCP_METHOD and
-// MCP_TOOL take EQUALS, NOT_EQUALS, IN or NOT_IN, and RESOURCE takes EQUALS, NOT_EQUALS or
-// STARTS_WITH; exactly one value for EQUALS, NOT_EQUALS and STARTS_WITH, 1 to 20 for IN and NOT_IN; no
-// MCP_METHOD filter beside an MCP_TOOL one, which counts only tool calls. Token conditions are checked
-// by validateTokenConditions. Messages start with where ("price 2: ...").
+// validateFilters checks the filters of a price and normalizes them in place: at most 20 filters, each
+// naming a property (1 to 40 characters) with any operator and the values that operator takes. On one
+// property, ignoring the case of its name, a price has either one filter that matches text (EQUALS,
+// NOT_EQUALS, IN, NOT_IN, STARTS_WITH) or one or two comparisons, which must be able to all be true
+// together. Messages start with where ("price 2: ...").
 func validateFilters(filters []PriceFilter, where string) error {
 	if len(filters) > maxPriceFilters {
 		return fmt.Errorf("%s: a price has at most %d filters", where, maxPriceFilters)
 	}
-	seen := make(map[string]bool, len(filters))
 	for i := range filters {
 		f := &filters[i]
-		operators, ok := filterOperators[f.Field]
-		if !ok {
-			return fmt.Errorf("field of filter %d of %s must be one of %s", i+1, where, strings.Join(filterFields, ", "))
+		f.Field = strings.TrimSpace(f.Field)
+		if !validPropertyName(f.Field) {
+			return fmt.Errorf("field of filter %d of %s must be 1 to %d characters", i+1, where, maxPropertyNameChars)
 		}
-		f.EventKey = strings.TrimSpace(f.EventKey)
-		if f.Field == FilterFieldToken {
-			if err := validateTokenCondition(f, operators, where); err != nil {
-				return err
-			}
-			continue
+		if !slices.Contains(filterOperators, f.Operator) {
+			return fmt.Errorf("The operator of filter %d of %s must be one of %s", i+1, where, strings.Join(filterOperators, ", "))
 		}
-		if f.EventKey != "" {
-			return fmt.Errorf("%s: only a Token filter takes an eventKey", where)
-		}
-		if seen[f.Field] {
-			return fmt.Errorf("%s filters on %s more than once", where, f.Field)
-		}
-		seen[f.Field] = true
-		if !slices.Contains(operators, f.Operator) {
-			return fmt.Errorf("The %s operator of %s must be one of %s", f.Field, where, strings.Join(operators, ", "))
-		}
-		if singleValueOperators[f.Operator] {
-			if len(f.Values) != 1 {
-				return fmt.Errorf("%s: Operator %s takes exactly one value", where, f.Operator)
-			}
-		} else if len(f.Values) == 0 || len(f.Values) > maxFilterValues {
-			return fmt.Errorf("%s: A filter on %s needs 1 to %d values", where, f.Field, maxFilterValues)
-		}
-		values := make([]string, 0, len(f.Values))
-		for _, raw := range f.Values {
-			value, err := normalizeFilterValue(f.Field, raw)
-			if err != nil {
-				return fmt.Errorf("%s: %w", where, err)
-			}
-			if f.Operator == FilterOperatorStartsWith {
-				value = normalizePath(value)
-			}
-			if !slices.Contains(values, value) {
-				values = append(values, value)
-			}
+		values, err := normalizeFilterValues(f.Field, f.Operator, f.Values)
+		if err != nil {
+			return fmt.Errorf("%s: %w", where, err)
 		}
 		f.Values = values
 	}
-	if seen[FilterFieldMCPTool] && seen[FilterFieldMCPMethod] {
-		return fmt.Errorf("%s: a Tool filter counts only tool calls, so it can't be used with an MCP method filter", where)
+	for _, name := range propertiesOf(filters) {
+		on := filtersOn(filters, name)
+		if slices.ContainsFunc(on, func(f PriceFilter) bool { return !isComparison(f) }) {
+			if len(on) > 1 {
+				return fmt.Errorf("%s filters on %s more than once", where, name)
+			}
+			continue
+		}
+		if len(on) > maxComparisons {
+			return fmt.Errorf("%s: a price puts at most %d comparisons on %s", where, maxComparisons, name)
+		}
+		if compareRange(filters, name).empty() {
+			return fmt.Errorf("%s: the comparisons on %s can't all be true", where, name)
+		}
 	}
-	return validateTokenConditions(filters, where)
-}
-
-// validateTokenCondition checks one Token condition and normalizes its value: it names a key, takes
-// a comparison operator (or EQUALS) and exactly one whole number from 0 to 1000000000000. Whether the
-// meter has the key is left to the caller, who knows the meter.
-func validateTokenCondition(f *PriceFilter, operators []string, where string) error {
-	if f.EventKey == "" {
-		return fmt.Errorf("%s: a Token filter needs an eventKey", where)
-	}
-	if !slices.Contains(operators, f.Operator) {
-		return fmt.Errorf("The %s operator of %s must be one of %s", f.Field, where, strings.Join(operators, ", "))
-	}
-	if len(f.Values) != 1 {
-		return fmt.Errorf("%s: the Token value must be a whole number from 0 to %d", where, int64(maxTokenValue))
-	}
-	n, ok := parseTokenValue(f.Values[0])
-	if !ok {
-		return fmt.Errorf("%s: the Token value must be a whole number from 0 to %d", where, int64(maxTokenValue))
-	}
-	f.Values = []string{strconv.FormatInt(n, 10)}
 	return nil
 }
 
-// parseTokenValue reads a whole number from 0 to maxTokenValue, written with digits only.
-func parseTokenValue(value string) (int64, bool) {
-	value = strings.TrimSpace(value)
-	if value == "" || strings.ContainsFunc(value, func(r rune) bool { return r < '0' || r > '9' }) {
-		return 0, false
+// normalizeFilterValues checks the values of a filter on the property name with the operator and
+// returns them as stored: exactly one value for every operator but IN and NOT_IN, which take 1 to 20.
+// A text value is trimmed and 1 to 255 characters, and repeated values are dropped with the order
+// kept. A comparison's value is one whole number from 0 to 1000000000000, written in digits; it is
+// stored without leading zeros.
+func normalizeFilterValues(name, operator string, raw []string) ([]string, error) {
+	if !slices.Contains(listOperators, operator) {
+		if len(raw) != 1 {
+			return nil, fmt.Errorf("Operator %s takes exactly one value", operator)
+		}
+	} else if len(raw) == 0 || len(raw) > maxFilterValues {
+		return nil, fmt.Errorf("A filter on %s needs 1 to %d values", name, maxFilterValues)
 	}
-	n, err := strconv.ParseInt(value, 10, 64)
-	if err != nil || n > maxTokenValue {
+	if slices.Contains(compareOperators, operator) {
+		n, ok := parseCompareValue(raw[0])
+		if !ok {
+			return nil, fmt.Errorf("A comparison on %s takes a whole number from 0 to %d", name, int64(maxCompareValue))
+		}
+		return []string{strconv.FormatInt(n, 10)}, nil
+	}
+	values := make([]string, 0, len(raw))
+	for _, value := range raw {
+		value = strings.TrimSpace(value)
+		if value == "" || utf8.RuneCountInString(value) > maxFilterValueChars {
+			return nil, fmt.Errorf("Filter values for %s must be 1 to %d characters", name, maxFilterValueChars)
+		}
+		if !slices.Contains(values, value) {
+			values = append(values, value)
+		}
+	}
+	return values, nil
+}
+
+// parseCompareValue reads a comparison's number: a whole number from 0 to maxCompareValue, written
+// in digits only.
+func parseCompareValue(value string) (int64, bool) {
+	n, ok := wholeNumber(strings.TrimSpace(value))
+	if !ok || n > maxCompareValue {
 		return 0, false
 	}
 	return n, true
 }
 
-// validateTokenConditions checks that a price puts at most two conditions on each Token key, and
-// that the conditions on a key can all be true together.
-func validateTokenConditions(filters []PriceFilter, where string) error {
-	for _, key := range tokenKeysOf(filters) {
-		conditions := 0
-		for _, f := range filters {
-			if f.Field == FilterFieldToken && f.EventKey == key {
-				conditions++
-			}
-		}
-		if conditions > maxTokenConditions {
-			return fmt.Errorf("%s: a price puts at most %d Token conditions on %s", where, maxTokenConditions, key)
-		}
-		if tokenRangeOf(filters, key).empty() {
-			return fmt.Errorf("%s: the Token conditions on %s can't all be true", where, key)
-		}
+// wholeNumber reads a value written in digits only.
+func wholeNumber(value string) (int64, bool) {
+	if value == "" || strings.ContainsFunc(value, func(r rune) bool { return r < '0' || r > '9' }) {
+		return 0, false
 	}
-	return nil
+	n, err := strconv.ParseInt(value, 10, 64)
+	if err != nil {
+		return math.MaxInt64, true
+	}
+	return n, true
 }
 
-// tokenKeysOf returns the Token keys the filters put conditions on, in order, each once.
-func tokenKeysOf(filters []PriceFilter) []string {
-	var keys []string
+// isComparison reports whether a filter compares a whole number rather than matching text.
+func isComparison(f PriceFilter) bool {
+	return slices.Contains(compareOperators, f.Operator)
+}
+
+// propertiesOf returns the properties the filters name, in order, each once (ignoring case).
+func propertiesOf(filters []PriceFilter) []string {
+	var names []string
 	for _, f := range filters {
-		if f.Field == FilterFieldToken && !slices.Contains(keys, f.EventKey) {
-			keys = append(keys, f.EventKey)
+		if !slices.ContainsFunc(names, func(name string) bool { return sameName(name, f.Field) }) {
+			names = append(names, f.Field)
 		}
 	}
-	return keys
+	return names
 }
 
-// tokenRange is the whole numbers from low to high, both included; empty when low > high.
-type tokenRange struct {
+// filtersOn returns the filters on the property name, matched ignoring case.
+func filtersOn(filters []PriceFilter, name string) []PriceFilter {
+	var on []PriceFilter
+	for _, f := range filters {
+		if sameName(f.Field, name) {
+			on = append(on, f)
+		}
+	}
+	return on
+}
+
+// numberRange is the whole numbers from low to high, both included; empty when low > high.
+type numberRange struct {
 	low, high int64
 }
 
-func (r tokenRange) empty() bool { return r.low > r.high }
+func (r numberRange) empty() bool { return r.low > r.high }
 
-// tokenRangeOf returns the token counts at key that the filters' Token conditions all accept: every
-// count when there are none. The values have been checked by validateTokenCondition.
-func tokenRangeOf(filters []PriceFilter, key string) tokenRange {
-	r := tokenRange{low: 0, high: math.MaxInt64}
-	for _, f := range filters {
-		if f.Field != FilterFieldToken || f.EventKey != key || len(f.Values) != 1 {
+func (r numberRange) contains(n int64) bool { return r.low <= n && n <= r.high }
+
+// compareRange returns the numbers that the filters' comparisons on the property name all accept:
+// every number when there are none. The values have been checked by normalizeFilterValues.
+func compareRange(filters []PriceFilter, name string) numberRange {
+	r := numberRange{low: 0, high: math.MaxInt64}
+	for _, f := range filtersOn(filters, name) {
+		if !isComparison(f) || len(f.Values) != 1 {
 			continue
 		}
-		n, ok := parseTokenValue(f.Values[0])
+		n, ok := parseCompareValue(f.Values[0])
 		if !ok {
 			continue
 		}
@@ -595,36 +543,9 @@ func tokenRangeOf(filters []PriceFilter, key string) tokenRange {
 			r.high = min(r.high, n-1)
 		case FilterOperatorLessThanOrEqual:
 			r.high = min(r.high, n)
-		case FilterOperatorEquals:
-			r.low, r.high = max(r.low, n), min(r.high, n)
 		}
 	}
 	return r
-}
-
-// normalizeFilterValue checks one value of a filter on the field and returns it trimmed, an HTTP
-// method in upper case.
-func normalizeFilterValue(field, value string) (string, error) {
-	value = strings.TrimSpace(value)
-	if value == "" || utf8.RuneCountInString(value) > maxFilterValueChars {
-		return "", fmt.Errorf("Filter values for %s must be 1 to %d characters", field, maxFilterValueChars)
-	}
-	switch field {
-	case FilterFieldHTTPStatusCode:
-		if !statusCodePattern.MatchString(value) {
-			return "", fmt.Errorf("\"%s\" is not a status code such as 200 or 404", value)
-		}
-	case FilterFieldHTTPMethod:
-		value = strings.ToUpper(value)
-		if !slices.Contains(httpMethods, value) {
-			return "", fmt.Errorf("HTTP method must be one of %s", strings.Join(httpMethods, ", "))
-		}
-	case FilterFieldResource:
-		if !strings.HasPrefix(value, "/") {
-			return "", errors.New("A resource must start with /")
-		}
-	}
-	return value, nil
 }
 
 // validateTiers checks VOLUME and GRADUATED tiers: 1 to 10 tiers, each ending above the one
@@ -674,66 +595,48 @@ func isPositiveAmount(value string) bool {
 	return strings.Trim(strings.Replace(value, ".", "", 1), "0") != ""
 }
 
-// withToolCall returns a price's filters with the condition a Tool filter implies: a Tool filter
-// counts only tool calls, so it comes with the MCP method tools/call (a price never filters on both).
-func withToolCall(filters []PriceFilter) []PriceFilter {
-	if _, ok := filterOn(filters, FilterFieldMCPTool); !ok {
-		return filters
-	}
-	return append(slices.Clone(filters), PriceFilter{Field: FilterFieldMCPMethod, Operator: FilterOperatorEquals,
-		Values: []string{mcpToolCall}})
-}
-
 // filtersOverlap reports whether one request could be counted by two prices on the same meter: for
-// every fixed field either price filters on, the two filters can match the same value, and for every
-// Token key either price has conditions on, the two ranges of token counts share a number. A field
-// or key only one price filters on matches any value, or number, for the other. A Tool filter's tool
-// call counts as an MCP method filter (withToolCall).
+// every property both prices filter on, their filters on it can match one value. A property only one
+// price filters on matches any value for the other. The filters have been checked by validateFilters.
 func filtersOverlap(a, b []PriceFilter) bool {
-	a, b = withToolCall(a), withToolCall(b)
-	for _, field := range fixedFilterFields {
-		fa, inA := filterOn(a, field)
-		fb, inB := filterOn(b, field)
-		if inA && inB && !filterValuesOverlap(field, fa, fb) {
-			return false
+	for _, name := range propertiesOf(a) {
+		onA, onB := filtersOn(a, name), filtersOn(b, name)
+		if len(onB) == 0 {
+			continue
 		}
-	}
-	for _, key := range tokenKeysOf(append(slices.Clone(a), b...)) {
-		ra, rb := tokenRangeOf(a, key), tokenRangeOf(b, key)
-		if (tokenRange{low: max(ra.low, rb.low), high: min(ra.high, rb.high)}).empty() {
+		comparesA, comparesB := isComparison(onA[0]), isComparison(onB[0])
+		var overlap bool
+		switch {
+		case !comparesA && !comparesB:
+			overlap = filterValuesOverlap(onA[0], onB[0])
+		case comparesA && comparesB:
+			ra, rb := compareRange(a, name), compareRange(b, name)
+			overlap = !(numberRange{low: max(ra.low, rb.low), high: min(ra.high, rb.high)}).empty()
+		case comparesA:
+			overlap = rangeOverlapsText(compareRange(a, name), onB[0])
+		default:
+			overlap = rangeOverlapsText(compareRange(b, name), onA[0])
+		}
+		if !overlap {
 			return false
 		}
 	}
 	return true
 }
 
-func filterOn(filters []PriceFilter, field string) (PriceFilter, bool) {
-	for _, f := range filters {
-		if f.Field == field {
-			return f, true
-		}
+// rangeOverlapsText reports whether a text filter matches some number of the range: for EQUALS and IN,
+// one of its values is a whole number in the range; NOT_EQUALS, NOT_IN and STARTS_WITH always do.
+func rangeOverlapsText(r numberRange, f PriceFilter) bool {
+	if operatorKind(f.Operator) != matchesValues {
+		return true
 	}
-	return PriceFilter{}, false
+	return slices.ContainsFunc(f.Values, func(v string) bool {
+		n, ok := wholeNumber(v)
+		return ok && r.contains(n)
+	})
 }
 
-// normalizePath returns a STARTS_WITH path as stored: without a trailing "/", so "/orders/" is
-// "/orders"; "/" stays "/".
-func normalizePath(path string) string {
-	if trimmed := strings.TrimRight(path, "/"); trimmed != "" {
-		return trimmed
-	}
-	return "/"
-}
-
-// underPath reports whether a resource is the path or under it, by whole path segments, as a router
-// matches a path prefix: "/orders" covers "/orders" and "/orders/{id}", not "/orders-archive"; "/"
-// covers every resource. This is what a STARTS_WITH filter counts (the API Portal's underPath).
-func underPath(resource, path string) bool {
-	base := normalizePath(path)
-	return base == "/" || resource == base || strings.HasPrefix(resource, base+"/")
-}
-
-// Kinds of filter operator, in the order filterValuesOverlap compares them.
+// Kinds of text filter operator, in the order filterValuesOverlap compares them.
 const (
 	matchesValues  = iota // EQUALS, IN
 	matchesPrefix         // STARTS_WITH
@@ -751,15 +654,14 @@ func operatorKind(operator string) int {
 	}
 }
 
-// filterValuesOverlap reports whether some value of the field matches both filters:
+// filterValuesOverlap reports whether some value matches both text filters on one property:
 //   - EQUALS/IN with EQUALS/IN: the lists share a value;
-//   - EQUALS/IN with STARTS_WITH: a value of the list is the path or under it (underPath);
+//   - EQUALS/IN with STARTS_WITH: a value of the list starts with the prefix;
 //   - EQUALS/IN with NOT_EQUALS/NOT_IN: a value of the first list is not in the second;
-//   - STARTS_WITH with STARTS_WITH: one path is the other or under it;
+//   - STARTS_WITH with STARTS_WITH: one prefix starts with the other;
 //   - NOT_EQUALS/NOT_IN with NOT_EQUALS/NOT_IN or STARTS_WITH: always, since values outside the lists
-//     remain, except for an HTTP method, which has only seven values: there the two lists must
-//     together leave one out.
-func filterValuesOverlap(field string, a, b PriceFilter) bool {
+//     remain.
+func filterValuesOverlap(a, b PriceFilter) bool {
 	if operatorKind(b.Operator) < operatorKind(a.Operator) {
 		a, b = b, a
 	}
@@ -767,17 +669,13 @@ func filterValuesOverlap(field string, a, b PriceFilter) bool {
 	case operatorKind(a.Operator) == matchesValues && operatorKind(b.Operator) == matchesValues:
 		return slices.ContainsFunc(a.Values, func(v string) bool { return slices.Contains(b.Values, v) })
 	case operatorKind(a.Operator) == matchesValues && operatorKind(b.Operator) == matchesPrefix:
-		return slices.ContainsFunc(a.Values, func(v string) bool { return underPath(v, b.Values[0]) })
+		return slices.ContainsFunc(a.Values, func(v string) bool { return strings.HasPrefix(v, b.Values[0]) })
 	case operatorKind(a.Operator) == matchesValues:
 		return slices.ContainsFunc(a.Values, func(v string) bool { return !slices.Contains(b.Values, v) })
 	case operatorKind(a.Operator) == matchesPrefix && operatorKind(b.Operator) == matchesPrefix:
-		return underPath(a.Values[0], b.Values[0]) || underPath(b.Values[0], a.Values[0])
-	case field != FilterFieldHTTPMethod:
-		return true
+		return strings.HasPrefix(a.Values[0], b.Values[0]) || strings.HasPrefix(b.Values[0], a.Values[0])
 	default:
-		return slices.ContainsFunc(httpMethods, func(m string) bool {
-			return !slices.Contains(a.Values, m) && !slices.Contains(b.Values, m)
-		})
+		return true
 	}
 }
 
