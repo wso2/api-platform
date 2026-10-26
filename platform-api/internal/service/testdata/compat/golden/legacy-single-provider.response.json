@@ -25,6 +25,16 @@
     },
     "id": "openai-provider"
   },
+  "providers": [
+    {
+      "auth": {
+        "header": "Authorization",
+        "type": "api-key"
+      },
+      "id": "openai-provider",
+      "isPrimary": true
+    }
+  ],
   "readOnly": false,
   "updatedAt": "0001-01-01T00:00:00Z",
   "updatedBy": "compat-user",

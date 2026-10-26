@@ -33,6 +33,33 @@
     },
     "id": "openai-provider"
   },
+  "providers": [
+    {
+      "auth": {
+        "type": "none"
+      },
+      "id": "openai-provider",
+      "isPrimary": true
+    },
+    {
+      "alias": "claude",
+      "id": "anthropic-provider",
+      "isPrimary": false,
+      "transformer": {
+        "type": "openai-to-anthropic",
+        "version": "v0"
+      }
+    },
+    {
+      "alias": "mistral-eu",
+      "id": "mistral-provider",
+      "isPrimary": false,
+      "transformer": {
+        "type": "openai-to-mistral",
+        "version": "v0"
+      }
+    }
+  ],
   "readOnly": false,
   "updatedAt": "0001-01-01T00:00:00Z",
   "updatedBy": "compat-user",
