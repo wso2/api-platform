@@ -43,6 +43,7 @@ import (
 	"github.com/wso2/api-platform/tests/framework/testbench/services/jev"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/jwks"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/mcp"
+	"github.com/wso2/api-platform/tests/framework/testbench/services/mcpscripted"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/oauth2"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/oidc"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/opa"
@@ -122,6 +123,7 @@ func services() ([]testbench.Service, error) {
 		graphqlbackend.New(),
 		opa.New(),
 		jevSvc,
+		mcpscripted.New(),
 	}
 	if cert, key := os.Getenv(jev.EnvTLSCert), os.Getenv(jev.EnvTLSKey); cert != "" || key != "" {
 		jevTLS, err := jevSvc.OverTLS([]byte(cert), []byte(key))
