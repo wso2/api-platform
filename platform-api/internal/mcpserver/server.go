@@ -21,6 +21,7 @@ package mcpserver
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -149,17 +150,24 @@ func (s *Server) mcpHandler() http.Handler {
 
 // add registers one tool. Every tool goes through here, so the checks live in
 // one place. routes are the REST routes the tool stands for; a tool with none
-// needs no scope.
+// needs no scope. A destructive tool also takes confirm, and runs only when it
+// is true.
 func add[In, Out any](s *Server, srv *mcp.Server, t *mcp.Tool, routes []string,
 	run func(ctx context.Context, c caller, in In) (Out, error)) {
 
 	s.routes[t.Name] = routes
 	_, s.takesAPIType[t.Name] = any(*new(In)).(typedInput)
-	if t.InputSchema == nil { // a plugin tool comes with its own
-		t.InputSchema = s.inputSchema(inputSchemaFor[In](), s.takesAPIType[t.Name])
+	schema, _ := t.InputSchema.(*jsonschema.Schema)
+	if schema == nil { // a plugin tool comes with its own
+		schema = s.inputSchema(inputSchemaFor[In](), s.takesAPIType[t.Name])
 	}
+	destructive := t.Annotations != nil && t.Annotations.DestructiveHint != nil && *t.Annotations.DestructiveHint
+	if destructive {
+		addConfirm(schema)
+	}
+	t.InputSchema = schema
 
-	mcp.AddTool(srv, t, func(ctx context.Context, _ *mcp.CallToolRequest, in In) (*mcp.CallToolResult, Out, error) {
+	mcp.AddTool(srv, t, func(ctx context.Context, req *mcp.CallToolRequest, in In) (*mcp.CallToolResult, Out, error) {
 		var none Out
 		c, ok := callerFrom(ctx)
 		if !ok {
@@ -175,6 +183,10 @@ func add[In, Out any](s *Server, srv *mcp.Server, t *mcp.Tool, routes []string,
 				return nil, none, fmt.Errorf("missing permission: this needs %s", need)
 			}
 		}
+		if destructive && !confirmed(req) {
+			s.logCall(t.Name, c, "refused: not confirmed")
+			return nil, none, fmt.Errorf("refusing to run %s without confirm=true. Set it only for the exact target the user asked for, then call again", t.Name)
+		}
 		out, err := recovered(s.logger, t.Name, func() (Out, error) { return run(ctx, c, in) })
 		if err != nil {
 			s.logCall(t.Name, c, "error")
@@ -183,6 +195,30 @@ func add[In, Out any](s *Server, srv *mcp.Server, t *mcp.Tool, routes []string,
 		s.logCall(t.Name, c, "ok")
 		return nil, out, nil
 	})
+}
+
+// addConfirm adds the required confirm input. It is for clients that run calls
+// without asking the user.
+func addConfirm(schema *jsonschema.Schema) {
+	if schema.Properties == nil { // an input struct with no fields
+		schema.Properties = map[string]*jsonschema.Schema{}
+	}
+	schema.Properties["confirm"] = &jsonschema.Schema{
+		Type:        "boolean",
+		Title:       "Confirm",
+		Description: "Must be true. Set it only for the exact target the user asked for. If your client does not ask the user to approve each call, ask them first.",
+	}
+	schema.PropertyOrder = append(schema.PropertyOrder, "confirm")
+	schema.Required = append(schema.Required, "confirm")
+}
+
+// confirmed reports whether the call sent confirm=true. The schema has already
+// checked that confirm is there and is a boolean.
+func confirmed(req *mcp.CallToolRequest) bool {
+	var args struct {
+		Confirm bool `json:"confirm"`
+	}
+	return json.Unmarshal(req.Params.Arguments, &args) == nil && args.Confirm
 }
 
 // recovered runs a tool, turning a panic into an error. go-sdk runs each call on

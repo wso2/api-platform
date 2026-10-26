@@ -38,6 +38,11 @@ type echoInput struct {
 	Color string `json:"color,omitempty" jsonschema:"A color."`
 }
 
+type confirmInput struct {
+	Name    string `json:"name" jsonschema:"A name."`
+	Confirm bool   `json:"confirm" jsonschema:"Whether to go ahead."`
+}
+
 func echoTool(name string, run func(context.Context, pdk.MCPCall) (any, error)) pdk.MCPTool {
 	return pdk.MCPTool{
 		Name: name, Title: "Echo", Description: "Echoes its input for the test.",
@@ -148,6 +153,9 @@ func TestNew_RefusesAMalformedPluginTool(t *testing.T) {
 		"no routes":            {with(func(tool *pdk.MCPTool) { tool.Routes = nil }), "needs a name"},
 		"no risk":              {with(func(tool *pdk.MCPTool) { tool.Risk = 0 }), "needs a name"},
 		"route with no scopes": {with(func(tool *pdk.MCPTool) { tool.Routes = []string{"GET /no-such-route"} }), "no scopes"},
+		"destructive with its own confirm": {with(func(tool *pdk.MCPTool) {
+			tool.Risk, tool.Input = pdk.MCPDestructive, confirmInput{}
+		}), "gets confirm from the server"},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -240,6 +248,39 @@ func TestPluginTool_Schema(t *testing.T) {
 		return
 	}
 	t.Fatal("echo_thing is not listed")
+}
+
+// A destructive plugin tool takes confirm too, and runs only when it is true.
+func TestPluginTool_DestructiveNeedsConfirm(t *testing.T) {
+	ran := false
+	tool := echoTool("delete_thing", func(context.Context, pdk.MCPCall) (any, error) {
+		ran = true
+		return map[string]string{}, nil
+	})
+	tool.Risk = pdk.MCPDestructive
+	s, err := newPluginServer(t, tool)
+	require.NoError(t, err)
+	cs := connect(t, s, who(testOrg, "ap:project:read"))
+
+	res, text := call(t, cs, "delete_thing", map[string]any{"name": "a", "confirm": false})
+	assert.True(t, res.IsError)
+	assert.Contains(t, text, "refusing to run delete_thing without confirm=true")
+	assert.False(t, ran)
+
+	res, text = call(t, cs, "delete_thing", map[string]any{"name": "a", "confirm": true})
+	assert.False(t, res.IsError, text)
+	assert.True(t, ran)
+}
+
+// An input with no fields has no properties map for confirm to go in.
+func TestPluginTool_DestructiveWithNoInput(t *testing.T) {
+	tool := echoTool("delete_all", func(context.Context, pdk.MCPCall) (any, error) { return map[string]string{}, nil })
+	tool.Risk, tool.Input = pdk.MCPDestructive, struct{}{}
+	s, err := newPluginServer(t, tool)
+	require.NoError(t, err)
+
+	res, text := call(t, connect(t, s, who(testOrg, "ap:project:read")), "delete_all", map[string]any{"confirm": true})
+	assert.False(t, res.IsError, text)
 }
 
 func TestPluginTool_ArgumentsAreCheckedFirst(t *testing.T) {

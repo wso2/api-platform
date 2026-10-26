@@ -77,7 +77,7 @@ func (s *Server) createProject(ctx context.Context, c caller, in createProjectIn
 // delete_project
 
 type projectIDIn struct {
-	ProjectID string `json:"projectId" jsonschema:"The project, from list_projects."`
+	ProjectID string `json:"projectId" jsonschema:"The project's exact id, from list_projects. If the user gave a name and no project matches it exactly, ask; never substitute the closest match."`
 }
 
 type deletedOut struct {
@@ -116,7 +116,7 @@ func (s *Server) listGateways(ctx context.Context, c caller, in listGatewaysIn) 
 }
 
 type gatewayIDIn struct {
-	GatewayID string `json:"gatewayId" jsonschema:"The gateway, from list_gateways."`
+	GatewayID string `json:"gatewayId" jsonschema:"The gateway's exact id, from list_gateways. If the user gave a name and no gateway matches it exactly, ask; never substitute the closest match."`
 }
 
 func (s *Server) getGateway(ctx context.Context, c caller, in gatewayIDIn) (api.GatewayResponse, error) {

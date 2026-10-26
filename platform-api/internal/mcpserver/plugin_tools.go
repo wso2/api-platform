@@ -52,6 +52,9 @@ func (s *Server) addPluginTools(srv *mcp.Server, tools []pdk.MCPTool) error {
 		if err != nil {
 			return fmt.Errorf("mcp server: plugin tool %q: %w", tool.Name, err)
 		}
+		if tool.Risk == pdk.MCPDestructive && schema.Properties["confirm"] != nil {
+			return fmt.Errorf("mcp server: plugin tool %q: a destructive tool gets confirm from the server; leave it out of the input", tool.Name)
+		}
 		s.inputSchema(schema, false)
 		for name, title := range tool.Titles {
 			if p := schema.Properties[name]; p != nil {

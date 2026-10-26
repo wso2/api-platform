@@ -36,7 +36,7 @@ const (
 	MCPRead        MCPRisk = iota + 1 // runs without asking
 	MCPWrite                          // asks first
 	MCPWriteRepeat                    // asks first; calling twice gives the same result
-	MCPDestructive                    // always asks; calling twice gives the same result
+	MCPDestructive                    // always asks; calling twice gives the same result. Takes confirm=true
 )
 
 // MCPTool is one tool a plugin adds.
@@ -49,6 +49,7 @@ type MCPTool struct {
 	// /api/v0.9. Their scopes are checked as for a built-in tool.
 	Routes []string
 	// Input is a zero value of the tool's input struct. Its type gives the schema.
+	// A destructive tool must not have a confirm input: the server adds it.
 	Input  any
 	Titles map[string]string // titles for inputs the Platform API does not title
 	// Run returns the tool's result, a struct or a map. A *ClientError's message
@@ -58,7 +59,7 @@ type MCPTool struct {
 
 // MCPCall is one tool call, after sign-in and the input checks.
 type MCPCall struct {
-	Arguments json.RawMessage // already checked against the input schema
+	Arguments json.RawMessage // already checked against the input schema; has confirm for a destructive tool
 	Org       string          // the Platform API's organization UUID
 	User      string          // the caller's internal user ID
 }

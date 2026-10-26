@@ -31,7 +31,7 @@ import (
 
 type apiIDIn struct {
 	apiTypeIn
-	APIID string `json:"apiId" jsonschema:"The API's id, as list_apis returns it."`
+	APIID string `json:"apiId" jsonschema:"The API's exact id, as list_apis returns it. If the user gave a name, use the API whose id or display name matches it exactly. If none or several match, ask the user which one they mean. Never substitute the closest match."`
 }
 
 type apiOut struct {
@@ -148,7 +148,7 @@ func (s *Server) createAPI(ctx context.Context, c caller, in createAPIIn) (apiOu
 
 type updateAPIIn struct {
 	apiTypeIn
-	APIID   string `json:"apiId" jsonschema:"The API's id, as list_apis returns it."`
+	APIID   string `json:"apiId" jsonschema:"The API's exact id, as list_apis returns it. If the user gave a name, use the API whose id or display name matches it exactly. If none or several match, ask the user which one they mean. Never substitute the closest match."`
 	Payload object `json:"payload" jsonschema:"Only the fields to change. Fields left out stay as they are. An array replaces the old one. null removes a field (to clear a rest-api description, send an empty string); to empty a list, send []."`
 }
 
@@ -276,7 +276,7 @@ func newDeployment(d api.DeploymentResponse) deployment {
 
 type deployIn struct {
 	apiIDIn
-	GatewayID string `json:"gatewayId" jsonschema:"The gateway, from list_gateways."`
+	GatewayID string `json:"gatewayId" jsonschema:"The gateway's exact id, from list_gateways. If the user gave a name and no gateway matches it exactly, ask; never substitute the closest match."`
 }
 
 type deployOut struct {

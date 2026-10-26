@@ -300,7 +300,7 @@ func TestUndeployAPI_StopsAtFirstFailureAndSaysWhatFinished(t *testing.T) {
 	f.running[1].Status = api.DeploymentResponseStatusDEPLOYING // still starting: undeployed too
 	f.failOn = b
 	res, text := call(t, connect(t, s, who(testOrg, "ap:rest_api:manage")), "undeploy_api",
-		map[string]any{"apiType": "rest-api", "apiId": "orders-v1", "gatewayId": "gw1"})
+		map[string]any{"apiType": "rest-api", "apiId": "orders-v1", "gatewayId": "gw1", "confirm": true})
 	assert.True(t, res.IsError)
 	assert.Contains(t, text, "undeployed ["+a+", "+c+"], then deployment "+b+" failed: gateway is not connected")
 	assert.Equal(t, []string{a, c}, f.undone)
@@ -310,7 +310,7 @@ func TestUndeployAPI_NothingRunningSaysSo(t *testing.T) {
 	s, f := newTestServer(t)
 	f.running = []api.DeploymentResponse{{DeploymentId: uuidOf("aaaaaaaa-0000-0000-0000-000000000009"), GatewayId: "gw1", Status: api.DeploymentResponseStatusUNDEPLOYED}}
 	res, text := call(t, connect(t, s, who(testOrg, "ap:rest_api:manage")), "undeploy_api",
-		map[string]any{"apiType": "rest-api", "apiId": "orders-v1", "gatewayId": "gw-typo"})
+		map[string]any{"apiType": "rest-api", "apiId": "orders-v1", "gatewayId": "gw-typo", "confirm": true})
 	assert.False(t, res.IsError, "a repeat must stay safe")
 	assert.Contains(t, text, "Nothing to undeploy: orders-v1 has no running deployment on gateway gw-typo")
 	assert.Empty(t, f.undone)
@@ -321,10 +321,52 @@ func TestUndeployAPI_EmptyGatewayIsRefused(t *testing.T) {
 	f.running = []api.DeploymentResponse{{DeploymentId: uuidOf("aaaaaaaa-0000-0000-0000-000000000001"), GatewayId: "gw1", Status: api.DeploymentResponseStatusDEPLOYED}}
 	cs := connect(t, s, who(testOrg, "ap:rest_api:manage"))
 	for _, gateway := range []string{"", "  "} {
-		res, text := call(t, cs, "undeploy_api", map[string]any{"apiType": "rest-api", "apiId": "orders-v1", "gatewayId": gateway})
+		res, text := call(t, cs, "undeploy_api", map[string]any{"apiType": "rest-api", "apiId": "orders-v1", "gatewayId": gateway, "confirm": true})
 		assert.True(t, res.IsError)
 		assert.Contains(t, text, "gatewayId is required; get one from list_gateways")
 	}
+	assert.Empty(t, f.undone)
+}
+
+// Only the destructive tools take confirm, and it is required.
+func TestDestructiveTools_TakeConfirm(t *testing.T) {
+	s, _ := newTestServer(t)
+	res, err := connect(t, s, who(testOrg, "ap:rest_api:manage", "ap:project:manage", "ap:gateway:manage")).
+		ListTools(context.Background(), nil)
+	require.NoError(t, err)
+	var withConfirm []string
+	for _, tool := range res.Tools {
+		var schema struct {
+			Required   []string                   `json:"required"`
+			Properties map[string]json.RawMessage `json:"properties"`
+		}
+		b, _ := json.Marshal(tool.InputSchema)
+		require.NoError(t, json.Unmarshal(b, &schema))
+		if _, ok := schema.Properties["confirm"]; ok {
+			assert.Contains(t, schema.Required, "confirm", tool.Name)
+			withConfirm = append(withConfirm, tool.Name)
+		}
+	}
+	assert.ElementsMatch(t, []string{"undeploy_api", "delete_api", "delete_project"}, withConfirm)
+}
+
+func TestUndeployAPI_RefusedWithoutConfirm(t *testing.T) {
+	s, f := newTestServer(t)
+	f.running = []api.DeploymentResponse{{DeploymentId: uuidOf("aaaaaaaa-0000-0000-0000-000000000001"), GatewayId: "gw1", Status: api.DeploymentResponseStatusDEPLOYED}}
+	var logs bytes.Buffer
+	s.logger = slog.New(slog.NewTextHandler(&logs, nil))
+	cs := connect(t, s, who(testOrg, "ap:rest_api:manage"))
+	args := map[string]any{"apiType": "rest-api", "apiId": "orders-v1", "gatewayId": "gw1"}
+
+	res, text := call(t, cs, "undeploy_api", args)
+	assert.True(t, res.IsError)
+	assert.Contains(t, text, "missing properties", "the schema requires confirm")
+
+	args["confirm"] = false
+	res, text = call(t, cs, "undeploy_api", args)
+	assert.True(t, res.IsError)
+	assert.Contains(t, text, "refusing to run undeploy_api without confirm=true. Set it only for the exact target the user asked for, then call again")
+	assert.Contains(t, logs.String(), `tool=undeploy_api outcome="refused: not confirmed"`)
 	assert.Empty(t, f.undone)
 }
 
