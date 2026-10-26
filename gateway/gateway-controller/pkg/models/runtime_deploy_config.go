@@ -161,16 +161,6 @@ type RouteTimeout struct {
 	Connect     *time.Duration
 	Timeout     *time.Duration // route timeout -> RouteAction.Timeout
 	IdleTimeout *time.Duration // route idle timeout -> RouteAction.IdleTimeout
-
-	// MaxStreamDuration caps a single stream's total lifetime regardless of
-	// activity -> RouteAction.MaxStreamDuration.MaxStreamDuration.
-	//
-	// It exists for WebSocketApi routes, where the ordinary route Timeout does
-	// not end an upgraded connection at all: once Envoy answers 101, the stream
-	// is a byte pipe and only IdleTimeout and this bound can close it. Every
-	// WebSocketApi resolves this to a finite value, so access granted at the
-	// handshake cannot outlive its revocation indefinitely.
-	MaxStreamDuration *time.Duration
 }
 
 // RouteUpstream links a route to its upstream cluster.
@@ -232,6 +222,22 @@ type UpstreamCluster struct {
 	// -> CircuitBreakers.Thresholds[].MaxPendingRequests; a request beyond it is
 	// rejected with 503. Nil falls back to MaxConnections when that is set.
 	MaxPendingRequests *uint32
+
+	// MaxStreamDuration caps the total lifetime of each stream through the
+	// cluster regardless of activity -> the cluster's HttpProtocolOptions
+	// common_http_protocol_options.max_stream_duration. When it fires, Envoy
+	// resets the upstream stream, which closes the client side too.
+	//
+	// It exists for WebSocketApi clusters, where the route Timeout ends only the
+	// handshake: once Envoy answers 101 the stream is a byte pipe that only the
+	// route idle timeout and this bound can close, so access granted at the
+	// handshake cannot outlive its revocation indefinitely. It is set on the
+	// cluster rather than as RouteAction.MaxStreamDuration because a route that
+	// carries max_stream_duration switches Envoy to its stream-duration timeout
+	// model and stops enforcing the route Timeout, which would leave a backend
+	// that never answers the upgrade holding the handshake until the idle
+	// timeout. Nil leaves the lifetime uncapped.
+	MaxStreamDuration *time.Duration
 }
 
 // Endpoint is a single upstream host:port target.

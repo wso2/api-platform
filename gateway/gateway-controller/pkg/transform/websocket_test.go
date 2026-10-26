@@ -107,7 +107,7 @@ func TestWebSocketTransform_OnlyGetIsRouted(t *testing.T) {
 // router.websocket.max_connection_duration.
 // resilience follows the RestApi precedence with a channel in an operation's
 // place: channel over API, per field, and nil (the gateway default) when neither
-// sets a value. The gateway's max_connection_duration stays on every route.
+// sets a value. The gateway's max_connection_duration is never a route value.
 func TestWebSocketTransform_Resilience(t *testing.T) {
 	routesByChannel := func(t *testing.T, routerCfg *config.RouterConfig, mutate func(*api.WebSocketAPIConfigData)) map[string]*models.Route {
 		t.Helper()
@@ -156,21 +156,18 @@ func TestWebSocketTransform_Resilience(t *testing.T) {
 		}
 	})
 
-	t.Run("unset leaves the gateway defaults and keeps the gateway lifetime cap", func(t *testing.T) {
+	t.Run("unset leaves the gateway defaults with the gateway lifetime cap set", func(t *testing.T) {
 		routerCfg := testRouterCfg()
 		routerCfg.WebSocket.MaxConnectionDuration = time.Hour
 		for _, r := range routesByChannel(t, routerCfg, nil) {
-			require.NotNil(t, r.Timeout)
-			assert.Nil(t, r.Timeout.Timeout)
-			assert.Nil(t, r.Timeout.IdleTimeout)
-			assert.Equal(t, time.Hour, *r.Timeout.MaxStreamDuration)
+			assert.Nil(t, r.Timeout, "the lifetime cap must not give the route a timeout block of its own")
 		}
 		routes := routesByChannel(t, routerCfg, func(spec *api.WebSocketAPIConfigData) {
-			spec.Resilience = &api.Resilience{IdleTimeout: strPtr("5m")}
+			spec.Resilience = &api.Resilience{Timeout: strPtr("3s"), IdleTimeout: strPtr("5m")}
 		})
 		for _, r := range routes {
+			assert.Equal(t, 3*time.Second, *r.Timeout.Timeout, "the handshake timeout survives the lifetime cap")
 			assert.Equal(t, 5*time.Minute, *r.Timeout.IdleTimeout)
-			assert.Equal(t, time.Hour, *r.Timeout.MaxStreamDuration, "resilience does not replace the gateway lifetime cap")
 		}
 	})
 
@@ -230,21 +227,30 @@ func TestWebSocketTransform_MaxConnectionDurationFromGateway(t *testing.T) {
 		for key, r := range rdc.Routes {
 			assert.Nil(t, r.Timeout, "route %s: no timeout block when nothing is configured", key)
 		}
+		for key, uc := range rdc.UpstreamClusters {
+			assert.Nil(t, uc.MaxStreamDuration, "cluster %s: no lifetime cap unless the gateway sets one", key)
+		}
 	})
 
-	t.Run("set caps every channel route", func(t *testing.T) {
+	// The cap goes on the API's clusters, not its routes: a route carrying
+	// max_stream_duration stops Envoy enforcing the route (handshake) timeout.
+	t.Run("set caps every upstream cluster and leaves the routes alone", func(t *testing.T) {
 		routerCfg := testRouterCfg()
 		routerCfg.WebSocket.MaxConnectionDuration = 30 * time.Minute
 		transformer := NewWebSocketAPITransformer(routerCfg, &config.Config{}, map[string]models.PolicyDefinition{})
 
-		rdc, err := transformer.Transform(testWebSocketAPI(nil))
+		rdc, err := transformer.Transform(testWebSocketAPI(func(spec *api.WebSocketAPIConfigData) {
+			spec.Upstream.Sandbox = &api.Upstream{Url: strPtr("ws://chat-sandbox:8080/ws")}
+		}))
 		require.NoError(t, err)
 		require.NotEmpty(t, rdc.Routes)
 		for key, r := range rdc.Routes {
-			require.NotNil(t, r.Timeout, "route %s has no timeout block", key)
-			require.NotNil(t, r.Timeout.MaxStreamDuration, "route %s", key)
-			assert.Equal(t, 30*time.Minute, *r.Timeout.MaxStreamDuration)
-			assert.Nil(t, r.Timeout.IdleTimeout, "route %s: idle timeout comes from the gateway route default", key)
+			assert.Nil(t, r.Timeout, "route %s: the lifetime cap is not a route value", key)
+		}
+		require.Len(t, rdc.UpstreamClusters, 2, "main and sandbox clusters")
+		for key, uc := range rdc.UpstreamClusters {
+			require.NotNil(t, uc.MaxStreamDuration, "cluster %s", key)
+			assert.Equal(t, 30*time.Minute, *uc.MaxStreamDuration)
 		}
 	})
 }

@@ -57,6 +57,7 @@ import (
 	hcm "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/http_connection_manager/v3"
 	otelresourcedetectorsv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/tracers/opentelemetry/resource_detectors/v3"
 	tlsv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/transport_sockets/tls/v3"
+	upstreamhttpv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/upstreams/http/v3"
 	matcher "github.com/envoyproxy/go-control-plane/envoy/type/matcher/v3"
 	metadatav3 "github.com/envoyproxy/go-control-plane/envoy/type/metadata/v3"
 	tracingv3 "github.com/envoyproxy/go-control-plane/envoy/type/tracing/v3"
@@ -343,6 +344,9 @@ func (t *Translator) translateRuntimeConfig(rdc *models.RuntimeDeployConfig) ([]
 			if err := applyUpstreamConnectionBounds(c, uc); err != nil {
 				return nil, nil, fmt.Errorf("cluster %s: %w", clusterName, err)
 			}
+			if err := applyUpstreamStreamDuration(c, uc); err != nil {
+				return nil, nil, fmt.Errorf("cluster %s: %w", clusterName, err)
+			}
 			clusters = append(clusters, c)
 			continue
 		}
@@ -351,6 +355,9 @@ func (t *Translator) translateRuntimeConfig(rdc *models.RuntimeDeployConfig) ([]
 			return nil, nil, fmt.Errorf("upstream cluster %q: %w", clusterName, err)
 		}
 		if err := applyUpstreamConnectionBounds(c, uc); err != nil {
+			return nil, nil, fmt.Errorf("cluster %s: %w", clusterName, err)
+		}
+		if err := applyUpstreamStreamDuration(c, uc); err != nil {
 			return nil, nil, fmt.Errorf("cluster %s: %w", clusterName, err)
 		}
 		clusters = append(clusters, c)
@@ -441,15 +448,10 @@ func (t *Translator) createRouteFromRDC(routeKey string, rdcRoute *models.Route,
 			Enabled:     &wrapperspb.BoolValue{Value: true},
 		}}
 
-		// Bound the upgraded connection's total lifetime. The ordinary route
-		// Timeout above does not end an upgraded stream at all, so without this a
-		// connection authorized once at its handshake could outlive the revocation
-		// of that authorization indefinitely.
-		if rdcRoute.Timeout != nil && rdcRoute.Timeout.MaxStreamDuration != nil {
-			routeAction.Route.MaxStreamDuration = &route.RouteAction_MaxStreamDuration{
-				MaxStreamDuration: durationpb.New(*rdcRoute.Timeout.MaxStreamDuration),
-			}
-		}
+		// The upgraded connection's total lifetime is bounded on the API's
+		// upstream clusters (applyUpstreamStreamDuration), never here: a route
+		// with max_stream_duration stops Envoy enforcing the route Timeout above,
+		// which is what ends a handshake the backend never answers.
 
 		// A retry policy is meaningless once the stream is upgraded (there is no
 		// idempotent request to replay) and actively harmful during the handshake,
@@ -895,6 +897,46 @@ func applyUpstreamConnectionBounds(c *cluster.Cluster, uc *models.UpstreamCluste
 	}
 	return nil
 }
+
+// applyUpstreamStreamDuration caps the lifetime of every stream through the
+// cluster with HttpProtocolOptions common_http_protocol_options.max_stream_duration.
+// Envoy enforces it on the router's upstream request, which stays open for an
+// upgraded WebSocket, so it closes the tunnel (both sides) however busy it is.
+//
+// It is set only for kinds that need a lifetime cap (today, WebSocketApi, from
+// router.websocket.max_connection_duration); for every other kind it is nil and
+// the cluster is left exactly as createCluster built it. The upstream protocol
+// stays HTTP/1.1, the default for a cluster with no protocol options, which is
+// what a WebSocket upgrade to the backend uses.
+func applyUpstreamStreamDuration(c *cluster.Cluster, uc *models.UpstreamCluster) error {
+	if uc.MaxStreamDuration == nil {
+		return nil
+	}
+	opts := &upstreamhttpv3.HttpProtocolOptions{
+		CommonHttpProtocolOptions: &core.HttpProtocolOptions{
+			MaxStreamDuration: durationpb.New(*uc.MaxStreamDuration),
+		},
+		UpstreamProtocolOptions: &upstreamhttpv3.HttpProtocolOptions_ExplicitHttpConfig_{
+			ExplicitHttpConfig: &upstreamhttpv3.HttpProtocolOptions_ExplicitHttpConfig{
+				ProtocolConfig: &upstreamhttpv3.HttpProtocolOptions_ExplicitHttpConfig_HttpProtocolOptions{
+					HttpProtocolOptions: &core.Http1ProtocolOptions{},
+				},
+			},
+		},
+	}
+	anyOpts, err := anypb.New(opts)
+	if err != nil {
+		return fmt.Errorf("failed to marshal upstream HTTP protocol options: %w", err)
+	}
+	c.TypedExtensionProtocolOptions = map[string]*anypb.Any{
+		upstreamHTTPProtocolOptionsKey: anyOpts,
+	}
+	return nil
+}
+
+// upstreamHTTPProtocolOptionsKey is the extension name Envoy reads a cluster's
+// HttpProtocolOptions under.
+const upstreamHTTPProtocolOptionsKey = "envoy.extensions.upstreams.http.v3.HttpProtocolOptions"
 
 // TranslateConfigs translates all API configurations to Envoy resources
 // The correlationID parameter is optional and used for request tracing in logs

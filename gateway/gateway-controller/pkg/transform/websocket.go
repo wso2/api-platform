@@ -234,22 +234,27 @@ type resolvedResilience struct {
 // a channel in an operation's place. For a WebSocket, timeout bounds only the
 // handshake (Envoy's route timeout stops applying once the connection is
 // upgraded) and idleTimeout closes a silent connection. The gateway's
-// router.websocket.max_connection_duration, when set, caps every route's
-// lifetime on top. A fresh value is returned per route, since the translator may
-// set slot-specific fields on it.
+// router.websocket.max_connection_duration is not a route value: it caps the
+// lifetime on the API's upstream clusters (see websocketMaxStreamDuration), so
+// that it never disables the route timeout. A fresh value is returned per route,
+// since the translator may set slot-specific fields on it.
 func (t *WebSocketAPITransformer) channelRouteTimeout(apiResilience resolvedResilience, channel api.WebSocketChannel) (*models.RouteTimeout, error) {
 	channelTimeout, channelIdle, err := xds.ResolveResilience(channel.Resilience)
 	if err != nil {
 		return nil, fmt.Errorf("invalid resilience for channel %q: %w", channel.Path, err)
 	}
-	routeTimeout := buildRouteTimeout(channelTimeout, apiResilience.timeout, channelIdle, apiResilience.idle)
-	if maxDuration := t.routerConfig.WebSocket.MaxConnectionDuration; maxDuration > 0 {
-		if routeTimeout == nil {
-			routeTimeout = &models.RouteTimeout{}
-		}
-		routeTimeout.MaxStreamDuration = &maxDuration
+	return buildRouteTimeout(channelTimeout, apiResilience.timeout, channelIdle, apiResilience.idle), nil
+}
+
+// websocketMaxStreamDuration returns router.websocket.max_connection_duration
+// as the cap for every upstream cluster of a WebSocketApi, or nil when it is
+// unset or 0s and the lifetime is uncapped.
+func (t *WebSocketAPITransformer) websocketMaxStreamDuration() *time.Duration {
+	maxDuration := t.routerConfig.WebSocket.MaxConnectionDuration
+	if maxDuration <= 0 {
+		return nil
 	}
-	return routeTimeout, nil
+	return &maxDuration
 }
 
 // pathMatchTypeForChannel picks the match type for a channel path. A path with a
@@ -418,9 +423,10 @@ func (t *WebSocketAPITransformer) addWebSocketCluster(
 		return nil, err
 	}
 
-	// Connection lifetime is not set on the cluster: Envoy's cluster idle and
-	// duration timers never end an upgraded connection. The channel routes carry
-	// the gateway's route idle timeout and router.websocket.max_connection_duration.
+	// The cluster's connection-level idle and duration timers never end an
+	// upgraded connection, so neither is set. The idle timeout lives on the
+	// channel routes; the lifetime cap is the per-stream max_stream_duration set
+	// below, which Envoy does enforce on an upgraded stream.
 	limits := t.routerConfig.WebSocket.Upstream
 	var rawMaxConnections, rawMaxPending *int
 	if conn != nil {
@@ -445,6 +451,7 @@ func (t *WebSocketAPITransformer) addWebSocketCluster(
 		ConnectTimeout:     connectTimeout,
 		MaxConnections:     maxConnections,
 		MaxPendingRequests: maxPending,
+		MaxStreamDuration:  t.websocketMaxStreamDuration(),
 	}
 
 	return &upstreamClusterResult{

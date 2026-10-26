@@ -22,8 +22,11 @@ import (
 	"io"
 	"log/slog"
 	"testing"
+	"time"
 
+	cluster "github.com/envoyproxy/go-control-plane/envoy/config/cluster/v3"
 	route "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
+	upstreamhttpv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/upstreams/http/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/cache/types"
 	"github.com/envoyproxy/go-control-plane/pkg/resource/v3"
 	"github.com/stretchr/testify/assert"
@@ -236,6 +239,75 @@ spec:
 	}
 	assert.Equal(t, int64(120), idle["/chat/v1.0/rooms"])
 	assert.Equal(t, int64(1800), idle["/chat/v1.0/notifications"])
+}
+
+// router.websocket.max_connection_duration reaches Envoy as the API cluster's
+// per-stream max_stream_duration and never as a route max_stream_duration: a
+// route carrying one stops Envoy enforcing the route timeout, so a backend that
+// never answered the upgrade held the handshake until the idle timeout (408)
+// instead of failing it at resilience.timeout (504).
+func TestWebSocketMaxConnectionDurationKeepsHandshakeTimeout(t *testing.T) {
+	const artifact = `
+apiVersion: gateway.api-platform.wso2.com/v1
+kind: WebSocketApi
+metadata:
+  name: chat-lifetime-v1.0
+spec:
+  displayName: Chat
+  version: v1.0
+  context: /chat/$version
+  resilience:
+    timeout: 3s
+  upstreamDefinitions:
+    - name: chat-backend
+      basePath: /ws
+      upstreams:
+        - url: ws://mock-websocket-backend:8080
+  upstream:
+    main:
+      ref: chat-backend
+  channels:
+    - path: /rooms
+`
+	var parsed api.WebSocketAPI
+	require.NoError(t, config.NewParser().Parse([]byte(artifact), "application/yaml", &parsed))
+	stored := &models.StoredConfig{
+		UUID: "ws-lifetime-uuid", Kind: models.KindWebSocketApi, Handle: parsed.Metadata.Name,
+		Version: parsed.Spec.Version, DisplayName: parsed.Spec.DisplayName, Configuration: parsed,
+	}
+
+	routerCfg := websocketE2ERouterConfig()
+	routerCfg.WebSocket.MaxConnectionDuration = 25 * time.Second
+	systemCfg := &config.Config{Router: *routerCfg}
+	registry := transform.NewRegistry(nil, nil, nil, nil,
+		transform.NewWebSocketAPITransformer(routerCfg, systemCfg, map[string]models.PolicyDefinition{}))
+	translator, err := xds.NewTranslator(slog.New(slog.NewTextHandler(io.Discard, nil)), routerCfg, nil, systemCfg)
+	require.NoError(t, err)
+	translator.SetTransformers(map[string]models.ConfigTransformer{models.KindWebSocketApi: registry})
+	resources, err := translator.TranslateConfigs([]*models.StoredConfig{stored}, "")
+	require.NoError(t, err)
+
+	routes := websocketRoutesFor(t, resources)
+	require.Len(t, routes, 1)
+	action := routes[0].GetRoute()
+	assert.Equal(t, int64(3), action.GetTimeout().GetSeconds(), "the handshake timeout reaches the route")
+	assert.Nil(t, action.GetMaxStreamDuration(), "the lifetime cap must not be a route max_stream_duration")
+
+	var wsClusters []*cluster.Cluster
+	for _, res := range resources[resource.ClusterType] {
+		if c, ok := res.(*cluster.Cluster); ok && c.GetName() == action.GetCluster() {
+			wsClusters = append(wsClusters, c)
+		}
+	}
+	require.Len(t, wsClusters, 1, "the channel route's cluster %q is translated", action.GetCluster())
+
+	raw, ok := wsClusters[0].GetTypedExtensionProtocolOptions()["envoy.extensions.upstreams.http.v3.HttpProtocolOptions"]
+	require.True(t, ok, "the WebSocketApi cluster carries HttpProtocolOptions")
+	var opts upstreamhttpv3.HttpProtocolOptions
+	require.NoError(t, raw.UnmarshalTo(&opts))
+	assert.Equal(t, int64(25), opts.GetCommonHttpProtocolOptions().GetMaxStreamDuration().GetSeconds())
+	assert.NotNil(t, opts.GetExplicitHttpConfig().GetHttpProtocolOptions(),
+		"the backend is still reached over HTTP/1.1, which a WebSocket upgrade needs")
 }
 
 func websocketE2ERouterConfig() *config.RouterConfig {
