@@ -30,6 +30,8 @@ const apiContent = require('./routes/pages/apiContentRoute');
 const applicationContent = require('./routes/pages/applicationsContentRoute');
 const customContent = require('./routes/pages/customPageRoute');
 const subscriptionsContent = require('./routes/pages/subscriptionsContentRoute');
+const usageContent = require('./routes/pages/usageContentRoute');
+const billingContent = require('./routes/pages/billingContentRoute');
 const apiKeysOverviewContent = require('./routes/pages/apiKeysOverviewRoute');
 const oauth2KeysContent = require('./routes/pages/oauth2KeysRoute');
 const mcpRegistryRoute = require('./routes/pages/mcpRegistryRoute');
@@ -271,6 +273,8 @@ if (config.designMode?.enabled) {
     portal.use(constants.ROUTE.DEFAULT, settingsRoute);
     portal.use(constants.ROUTE.DEFAULT, apiWorkflowsRoute);
     portal.use(constants.ROUTE.DEFAULT, subscriptionsContent);
+    portal.use(constants.ROUTE.DEFAULT, usageContent);
+    portal.use(constants.ROUTE.DEFAULT, billingContent);
     portal.use(constants.ROUTE.DEFAULT, apiKeysOverviewContent);
     portal.use(constants.ROUTE.DEFAULT, oauth2KeysContent);
     // customContent is the catch-all page router and must stay last.

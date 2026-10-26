@@ -44,10 +44,12 @@ import (
 	"github.com/wso2/api-platform/tests/framework/testbench/services/jwks"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/mcp"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/mcpscripted"
+	"github.com/wso2/api-platform/tests/framework/testbench/services/moesif"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/oauth2"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/oidc"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/opa"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/openai"
+	"github.com/wso2/api-platform/tests/framework/testbench/services/stripe"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/tlsbackend"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/webhook"
 )
@@ -102,6 +104,11 @@ func services() ([]testbench.Service, error) {
 		return nil, fmt.Errorf("building oauth2 service: %w", err)
 	}
 	jevSvc := jev.New()
+	stripeSvc := stripe.New()
+	moesifSvc, err := moesif.New(stripeSvc)
+	if err != nil {
+		return nil, fmt.Errorf("building moesif service: %w", err)
+	}
 	services := []testbench.Service{
 		jwksSvc,
 		echo.New(),
@@ -124,6 +131,8 @@ func services() ([]testbench.Service, error) {
 		opa.New(),
 		jevSvc,
 		mcpscripted.New(),
+		stripeSvc,
+		moesifSvc,
 	}
 	if cert, key := os.Getenv(jev.EnvTLSCert), os.Getenv(jev.EnvTLSKey); cert != "" || key != "" {
 		jevTLS, err := jevSvc.OverTLS([]byte(cert), []byte(key))

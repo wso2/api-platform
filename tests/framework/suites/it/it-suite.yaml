@@ -58,6 +58,15 @@ blocks:
       - name: mcp-servers
         features:
           - features/apiportal/ai/mcp_servers.feature
+      - name: monetization-meters
+        features:
+          - features/apiportal/monetization/meters.feature
+      - name: monetization-priced-plans
+        features:
+          - features/apiportal/monetization/priced_plans.feature
+      - name: monetization-paid-plans-without-billing
+        features:
+          - features/apiportal/monetization/paid_plans_without_billing.feature
       - name: api-types
         features:
           - features/apiportal/core/api_types.feature
@@ -122,6 +131,9 @@ blocks:
       - name: webhook-delivery
         features:
           - features/apiportal/webhooks/webhook_delivery.feature
+      - name: monetization-events
+        features:
+          - features/apiportal/monetization/events.feature
 
   - name: api-portal-auth-scope
     parallel: 1
@@ -1318,6 +1330,9 @@ blocks:
       - name: devportal-webhook
         features:
           - features/apiportal/webhooks/devportal_webhook.feature
+      - name: devportal-monetization-webhook
+        features:
+          - features/apiportal/webhooks/monetization_webhook.feature
 
   # Platform-api working with an API Portal and a gateway: publishing a REST API to the portal.
   # Platform-api registers the portal over HTTPS and trusts its certificate, so the block overlays
@@ -1345,6 +1360,9 @@ blocks:
       - name: publication-lifecycle
         features:
           - features/apiportal/publishing/publication_lifecycle.feature
+      - name: publication-monetization
+        features:
+          - features/apiportal/publishing/publication_monetization.feature
       - name: publication-failures
         features:
           - features/apiportal/publishing/publication_failures.feature
@@ -1356,6 +1374,12 @@ blocks:
       - name: publication-outage
         features:
           - features/apiportal/publishing/publication_outage.feature
+      # Bills through the testbench's Stripe and Moesif services, which hold one account per block.
+      - name: api-portal-billing
+        features:
+          - features/apiportal/monetization/billing_setup.feature
+          - features/apiportal/monetization/paid_checkout.feature
+          - features/apiportal/monetization/usage_billing.feature
 
   # Policy error compatibility: every migrated policy's main rejection, held to the error
   # response the policy returned before the change. The policies come from the adjacent

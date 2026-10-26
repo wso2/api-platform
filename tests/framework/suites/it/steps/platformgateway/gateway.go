@@ -1656,6 +1656,10 @@ var serviceEndpoints = map[string]struct {
 	"jev-tls": {component: "testbench", endpoint: "jev-tls"},
 	// The scripted MCP server, addressed like jev: a scenario names its own partition.
 	"mcp-scripted": {component: "testbench", endpoint: "mcp-scripted"},
+	// The Stripe and Moesif services the API Portal bills through; their /test endpoints act
+	// as the customer and as the provider.
+	"stripe": {component: "testbench", endpoint: "stripe", partitioned: true},
+	"moesif": {component: "testbench", endpoint: "moesif", partitioned: true},
 	// The streamable-HTTP MCP server, addressed directly by clients that discover its tools.
 	"mcp": {component: "testbench", endpoint: "mcp"},
 	// Metrics live on a DIFFERENT compose service from the one tests normally address —

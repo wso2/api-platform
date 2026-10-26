@@ -1,7 +1,18 @@
-# Accept the shared key platform-api publishes with, and leave subscription plans to the
-# explicit sync step instead of the portal's automatic plan mode.
+# Accept the shared key platform-api publishes with, leave subscription plans to the
+# explicit sync step instead of the portal's automatic plan mode, and bill through the
+# testbench's Stripe and Moesif services.
 [api_portal.internal_auth]
 hash = '{{ env "APIP_AP_INTERNAL_AUTH_HASH" }}'
 
 [api_portal.organization]
 auto_create_subscription_plans = false
+
+[api_portal.billing.stripe]
+base_url = "http://testbench:3022/${BLOCK}"
+
+[api_portal.billing.moesif]
+base_url = "http://testbench:3023/${BLOCK}"
+stripe_webhook_url = "http://testbench:3023/${BLOCK}/partners/stripe"
+
+[api_portal.billing.client]
+allow_private_endpoints = true
