@@ -656,7 +656,9 @@ type RouterConfig struct {
 // their total lifetime is bounded only when MaxConnectionDuration is set.
 type WebSocketConfig struct {
 	// MaxConnectionDuration caps the lifetime of every client-facing WebSocket
-	// connection, applied as each channel route's max stream duration. Zero (the
+	// connection, applied as the max stream duration of each WebSocketApi
+	// upstream cluster (never the route's, which would stop Envoy enforcing the
+	// handshake timeout). Zero (the
 	// default) sets no cap: a connection that keeps carrying traffic stays open
 	// indefinitely, including after the key or token it was authorized with is
 	// revoked, since a WebSocket is authorized only at its handshake. Set it
@@ -681,9 +683,9 @@ type WebSocketConfig struct {
 // WebSocketConnectionLimits is the upstream connection-count policy: the value
 // used when an upstream definition does not set its own, and the ceiling on what
 // it may set. A value above its ceiling is rejected at deploy time rather than
-// silently clamped. Connection lifetime is not part of it: the gateway's route
-// idle timeout and WebSocketConfig.MaxConnectionDuration bound every WebSocket
-// connection on its routes.
+// silently clamped. Connection lifetime is not part of it: the route idle
+// timeout and WebSocketConfig.MaxConnectionDuration (on the upstream clusters)
+// bound every WebSocket connection.
 type WebSocketConnectionLimits struct {
 	// MaxConnectionsDefault is the per-upstream-cluster concurrent connection
 	// ceiling applied when an upstream definition does not set one, and

@@ -419,6 +419,12 @@ func validateWebSocketUpstreamDefinitions(defs *[]api.WebSocketUpstreamDefinitio
 		}
 		secure, plain := false, false
 		for t, target := range def.Upstreams {
+			if target.Weight != nil && (*target.Weight < 0 || *target.Weight > 100) {
+				errors = append(errors, config.ValidationError{
+					Field:   fmt.Sprintf("%s.upstreams[%d].weight", fieldBase, t),
+					Message: "Weight must be between 0 and 100",
+				})
+			}
 			field := fmt.Sprintf("%s.upstreams[%d].url", fieldBase, t)
 			parsedURL, err := url.Parse(strings.TrimSpace(target.Url))
 			switch {

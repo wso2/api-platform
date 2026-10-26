@@ -206,6 +206,18 @@ func TestValidateWebSocketAPIConfig_UpstreamDefinitionRules(t *testing.T) {
 			d.Timeout = &api.UpstreamTimeout{Connect: wsStrPtr("0s")}
 			return d
 		}, "spec.upstreamDefinitions[0].timeout.connect"},
+		{"weight above 100", func() api.WebSocketUpstreamDefinition {
+			d := wsUpstreamDefinition("chat", "ws://chat-1:8080", "ws://chat-2:8080")
+			over := 101
+			d.Upstreams[1].Weight = &over
+			return d
+		}, "spec.upstreamDefinitions[0].upstreams[1].weight"},
+		{"negative weight", func() api.WebSocketUpstreamDefinition {
+			d := wsUpstreamDefinition("chat", "ws://chat:8080")
+			negative := -1
+			d.Upstreams[0].Weight = &negative
+			return d
+		}, "spec.upstreamDefinitions[0].upstreams[0].weight"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			_, _, errs := validateWebSocketAPIConfig(validWebSocketAPI(func(spec *api.WebSocketAPIConfigData) {
@@ -219,6 +231,15 @@ func TestValidateWebSocketAPIConfig_UpstreamDefinitionRules(t *testing.T) {
 		withWSDefinitions(spec, wsUpstreamDefinition("chat", "ws://a:8080"), wsUpstreamDefinition("chat", "ws://b:8080"))
 	}))
 	assert.True(t, fieldsWithErrors(errs)["spec.upstreamDefinitions[1].name"], "duplicate name: got %+v", errs)
+
+	// 0 and 100 are the inclusive bounds, as on a RestApi.
+	_, _, errs = validateWebSocketAPIConfig(validWebSocketAPI(func(spec *api.WebSocketAPIConfigData) {
+		d := wsUpstreamDefinition("chat", "ws://chat-1:8080", "ws://chat-2:8080")
+		low, high := 0, 100
+		d.Upstreams[0].Weight, d.Upstreams[1].Weight = &low, &high
+		withWSDefinitions(spec, d)
+	}))
+	assert.Empty(t, errs, "weights 0 and 100 are valid")
 }
 
 func TestValidateWebSocketAPIConfig_ValidatesSandboxToo(t *testing.T) {

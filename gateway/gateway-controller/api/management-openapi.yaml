@@ -1045,7 +1045,19 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "409":
-          description: Conflict - API with same name and version already exists
+          description: Conflict - an API with the same name and version already exists, or the context is already used on one of the API's vhosts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized - authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden - the caller's role is not allowed to perform this operation
           content:
             application/json:
               schema:
@@ -1112,6 +1124,18 @@ paths:
                     type: array
                     items:
                       $ref: "#/components/schemas/WebSocketAPI"
+        "401":
+          description: Unauthorized - authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden - the caller's role is not allowed to perform this operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "500":
           description: Internal server error
           content:
@@ -1148,6 +1172,18 @@ paths:
                 $ref: "#/components/schemas/WebSocketAPI"
         "404":
           description: WebSocketApi not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized - authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden - the caller's role is not allowed to perform this operation
           content:
             application/json:
               schema:
@@ -1203,6 +1239,24 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Conflict - the updated context is already used on one of the API's vhosts by another API
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized - authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden - the caller's role is not allowed to perform this operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "500":
           description: Internal server error
           content:
@@ -1245,6 +1299,18 @@ paths:
                     example: chat-websocket-v1.0
         "404":
           description: WebSocketApi not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized - authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden - the caller's role is not allowed to perform this operation
           content:
             application/json:
               schema:
@@ -1301,6 +1367,18 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized - authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden - the caller's role is not allowed to perform this operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "500":
           description: Internal server error
           content:
@@ -1333,6 +1411,18 @@ paths:
                 $ref: "#/components/schemas/APIKeyListResponse"
         "404":
           description: WebSocketApi not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized - authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden - the caller's role is not allowed to perform this operation
           content:
             application/json:
               schema:
@@ -1397,6 +1487,18 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized - authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden - the caller's role is not allowed to perform this operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "500":
           description: Internal server error
           content:
@@ -1457,6 +1559,18 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized - authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden - the caller's role is not allowed to perform this operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "500":
           description: Internal server error
           content:
@@ -1502,6 +1616,18 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
           description: WebSocketApi not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized - authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden - the caller's role is not allowed to perform this operation
           content:
             application/json:
               schema:
@@ -4952,6 +5078,7 @@ components:
             small value also rejects bursts of simultaneous handshakes below maxConnections; size
             it to the expected handshake burst.
           minimum: 1
+          maximum: 4294967295
           example: 10
 
     WebSocketUpstreamDefinition:

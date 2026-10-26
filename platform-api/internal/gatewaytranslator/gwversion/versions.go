@@ -72,6 +72,10 @@ const (
 	// kind.
 	MinGraphQLKindGatewayVersion = NoLTSRelease
 
+	// MinWebSocketKindGatewayVersion: no LTS release has the WebSocketApi
+	// artifact kind.
+	MinWebSocketKindGatewayVersion = NoLTSRelease
+
 	// MinTrustedKeyEventsGatewayVersion is the first release whose controller
 	// applies an apikey.revoked / apikey.updated event on the control plane's
 	// authority alone (TrustedOrigin). Older releases re-check ownership on the
