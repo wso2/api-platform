@@ -41,6 +41,7 @@ import { AppPage } from '@/components/AppPage';
 import { useCreateGateway, type CreateGatewayBody } from '@/api/resources/gateways';
 import { useNotifications } from '@/components/Notifications';
 import { routes } from '@/routes/paths';
+import type { GatewaySetupLocationState } from './components/GatewayGetStartedPanel';
 import { GatewayTypeSelector } from './components/GatewayTypeSelector';
 import type { GatewayFunctionality } from './utils/gatewayDisplay';
 import { MOCK_ENVIRONMENTS } from './utils/gatewayEnvironments';
@@ -74,6 +75,12 @@ const messages = defineMessages({
   endpointErrorRequired: {
     id: 'gateways.create.endpoint.error.required',
     defaultMessage: 'Enter a URL.',
+  },
+  endpointHelper: {
+    id: 'gateways.create.endpoint.helper',
+    defaultMessage:
+      'Where this gateway will serve API traffic. For a gateway on your own machine, use https://localhost:8443.',
+    description: 'Helper text under the gateway URL field.',
   },
   endpointLabel: {
     id: 'gateways.create.endpoint.label',
@@ -316,7 +323,10 @@ function GatewayCreatePageContent() {
           }),
           'success',
         );
-        navigate(routes.gateway(orgHandle, gateway.id ?? ''));
+        // The gateway page issues the first token on arrival; this only says
+        // the gateway is new. The token itself never goes into history.
+        const state: GatewaySetupLocationState = { issueFirstToken: true };
+        navigate(routes.gateway(orgHandle, gateway.id ?? ''), { state });
       },
       onError: (error) => {
         // The global mutation handler already surfaces the failure; this only
@@ -487,9 +497,12 @@ function GatewayCreatePageContent() {
                   placeholder={intl.formatMessage(messages.endpointPlaceholder)}
                   value={formState.endpoint}
                 />
-                {errorFor('endpoint') ? (
-                  <FormHelperText>{errorFor('endpoint')}</FormHelperText>
-                ) : null}
+                {/* One line that always exists: the explanation until there's
+                    an error, then the error. Reserving it also stops the
+                    layout jumping under the button when validation runs. */}
+                <FormHelperText>
+                  {errorFor('endpoint') ?? intl.formatMessage(messages.endpointHelper)}
+                </FormHelperText>
               </FormControl>
             </Grid>
 

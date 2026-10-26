@@ -19,7 +19,7 @@
 import { useState } from 'react';
 import { Box, PageTitle, Stack, Tab, Tabs } from '@wso2/oxygen-ui';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 
 import { AppPage } from '@/components/AppPage';
 import { useGateway } from '@/api/resources/gateways';
@@ -27,7 +27,10 @@ import { ErrorState, LoadingState } from '@/components/StateViews';
 import { runtimeConfig } from '@/config/runtime';
 import { routes } from '@/routes/paths';
 import { GatewayDetailHeader } from './components/GatewayDetailHeader';
-import { GatewayGetStartedPanel } from './components/GatewayGetStartedPanel';
+import {
+  GatewayGetStartedPanel,
+  type GatewaySetupLocationState,
+} from './components/GatewayGetStartedPanel';
 import { GatewayPoliciesPanel } from './components/GatewayPoliciesPanel';
 import { GatewaySetupBanner } from './components/GatewaySetupBanner';
 import { isSetupBannerDismissed, dismissSetupBanner } from './gatewaySetupBannerStorage';
@@ -92,6 +95,18 @@ function GatewayDetailPageContent() {
   const [bannerDismissed, setBannerDismissed] = useState(() => isSetupBannerDismissed(gatewayId));
   const [tab, setTab] = useState<GatewayTab>('configurations');
 
+  // Arriving from the create page: read the flag once, then take it out of
+  // history so a reload or a Back/Forward never issues another token.
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [issueFirstToken, setIssueFirstToken] = useState(
+    () => (location.state as GatewaySetupLocationState | null)?.issueFirstToken === true,
+  );
+  const firstTokenRequested = () => {
+    setIssueFirstToken(false);
+    navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
+  };
+
   const dismissBanner = () => {
     dismissSetupBanner(gatewayId);
     setBannerDismissed(true);
@@ -142,15 +157,19 @@ function GatewayDetailPageContent() {
           </Box>
 
           <Box sx={{ pt: 3 }}>
-            {tab === 'configurations' ? (
+            {/* The setup panel stays mounted, only hidden, while Policies is
+                open: a token it is showing exists nowhere else and cannot be
+                retrieved again, so a tab switch must not throw it away. */}
+            <Box sx={{ display: tab === 'configurations' ? 'block' : 'none' }}>
               <GatewayGetStartedPanel
                 controlPlaneHost={runtimeConfig.gatewayControlPlaneHost}
                 gateway={gateway}
                 gatewayId={gatewayId}
+                issueFirstToken={issueFirstToken}
+                onFirstTokenRequested={firstTokenRequested}
               />
-            ) : (
-              <GatewayPoliciesPanel gatewayId={gatewayId} />
-            )}
+            </Box>
+            {tab === 'policies' && <GatewayPoliciesPanel gatewayId={gatewayId} />}
           </Box>
         </Box>
       </Stack>
