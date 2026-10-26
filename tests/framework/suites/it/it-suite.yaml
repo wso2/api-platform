@@ -875,10 +875,6 @@ blocks:
         tags: "gateway-version>1.2.0"
         features:
           - features/ai-workspace-gateway/mcp-policies/mcp_ratelimit.feature
-      - name: mcp-acl-list-policy
-        tags: "gateway-version>1.2.0"
-        features:
-          - features/ai-workspace-gateway/mcp-policies/mcp_acl_list.feature
       - name: mcp-rewrite-policy
         tags: "gateway-version>1.2.0"
         features:
