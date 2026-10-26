@@ -1652,6 +1652,8 @@ var serviceEndpoints = map[string]struct {
 	// as the first path segment, so request counts are scoped to the scenario.
 	"jev":     {component: "testbench", endpoint: "jev"},
 	"jev-tls": {component: "testbench", endpoint: "jev-tls"},
+	// The scripted MCP server, addressed like jev: a scenario names its own partition.
+	"mcp-scripted": {component: "testbench", endpoint: "mcp-scripted"},
 	// The streamable-HTTP MCP server, addressed directly by clients that discover its tools.
 	"mcp": {component: "testbench", endpoint: "mcp"},
 	// Metrics live on a DIFFERENT compose service from the one tests normally address —
