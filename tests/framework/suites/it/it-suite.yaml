@@ -566,13 +566,6 @@ blocks:
       - name: secrets
         features:
           - features/gateway/security/secrets.feature
-      - name: token-based-ratelimit
-        features:
-          - features/ai-workspace-gateway/ratelimit-policies/token_based_ratelimit.feature
-      - name: token-based-ratelimit-provider-templates
-        tags: "gateway-version>=1.2.0"
-        features:
-          - features/ai-workspace-gateway/ratelimit-policies/token_based_ratelimit_provider_templates.feature
       - name: llm-cost-based-ratelimit
         # Excludes scenarios whose exact post-charge assertion is blocked by the
         # gateway rejecting the non-billable readiness probe after exhaustion.
