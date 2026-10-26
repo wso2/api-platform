@@ -92,7 +92,7 @@ func TestCreatePlan_StoresThePricingWithThePlan(t *testing.T) {
 	}
 	// Stored as checked: codes upper-cased, and dated now.
 	if p := repo.pricing; p == nil || p.PricingType != "FLAT_RATE" || p.Currency != "USD" || *p.FlatAmount != "99.00" ||
-		len(p.Prices) != 0 || p.SourceUpdatedAt.IsZero() {
+		len(p.Prices) != 0 || p.CreatedAt.IsZero() {
 		t.Fatalf("stored %+v", p)
 	}
 

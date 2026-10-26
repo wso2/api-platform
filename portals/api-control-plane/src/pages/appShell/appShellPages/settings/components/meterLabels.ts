@@ -23,7 +23,7 @@ import type { PriceFilter } from '@/api/resources/subscriptionPlans';
 /**
  * What meters count and the filters plan prices narrow them with, with their
  * labels and the keys they read by default in the gateway's events:
- *   - A meter counts API requests, or adds up the number at one event key of AI
+ *   - A meter counts requests, or adds up the number at one event key of AI
  *     API requests, and lists the fields its prices may filter on, each with its
  *     event key.
  *   - The keys are stored on the meter and can be edited, so a gateway that names
@@ -39,7 +39,7 @@ export type MeterType = Meter['type'] & string;
 export type FilterField = PriceFilter['field'];
 export type FilterOperator = PriceFilter['operator'];
 
-/** What a meter counts: API requests, each counting one, or the tokens of AI API requests. */
+/** What a meter counts: requests, each counting one, or the tokens of AI API requests. */
 export const METER_TYPES: MeterType[] = ['REQUEST_COUNT', 'TOKENS'];
 
 // Keep these default keys in step with the API Portal's
@@ -201,7 +201,7 @@ export const parseFilterValues = (
 export const meterTypeMessages: Record<MeterType, MessageDescriptor> = defineMessages({
   REQUEST_COUNT: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.meterLabels.type.requestCount',
-    defaultMessage: 'API requests',
+    defaultMessage: 'Requests',
   },
   TOKENS: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.meterLabels.type.tokens',
@@ -354,7 +354,7 @@ export const operatorMessages: Record<FilterOperator, MessageDescriptor> = defin
 export const operatorMessage = (field: FilterField, operator: FilterOperator): MessageDescriptor =>
   field === 'TOKEN' && operator === 'EQUALS' ? labelMessages.equalTo : operatorMessages[operator];
 
-/** What a meter counts, in the meters list and beside it in a plan price: "API requests" or "Tokens". */
+/** What a meter counts, in the meters list and beside it in a plan price: "Requests" or "Tokens". */
 export const typeLabel = (intl: IntlShape, meter: Meter): string =>
   intl.formatMessage(meterTypeMessages[meter.type === 'TOKENS' ? 'TOKENS' : 'REQUEST_COUNT']);
 

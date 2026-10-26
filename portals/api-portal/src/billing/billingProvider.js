@@ -22,13 +22,14 @@
  * billing catalog, checkout and payment events, usage and revenue reports) calls for every billing
  * provider. The billing module calls only these; it never calls a provider's API itself.
  *
- * A billing configuration names its connector (`provider`) and, for a connector that bills through
- * another provider, its payment provider (`payment_provider`). forConfiguration(conn) returns:
+ * A billing configuration names its connector (`billing_provider`) and, for a connector that bills
+ * through another provider, its payment provider (`payment_provider`). forConfiguration(conn) returns:
  *
  *   provider             the connector's name
  *   checkKeys()          checks the configuration's keys
  *   catalog              createPlan, createFlatPrice, createUsagePrice, createUsageMeter, checkMeter,
- *                        priceMeter, and the remove functions that undo them
+ *                        priceMeter, the remove functions that undo them, and archivePart, which
+ *                        takes a part of an API plan off sale
  *   usage                series(meter, { customerRef, subscriptionRef }, { from, to, interval })
  *   payments             the payment functions:
  *                          createCustomer, startCheckout, getCheckout, getSubscription,
@@ -49,7 +50,7 @@
 
 const moesif = require('./connectors/moesif');
 
-// The connectors, by the name a billing configuration gives as its provider.
+// The connectors, by the name a billing configuration gives as its billing provider.
 const CONNECTORS = Object.freeze({
     [moesif.PROVIDER]: moesif,
 });
@@ -64,20 +65,20 @@ function connectorModule(provider) {
 
 /** The connector for a billing configuration with its decrypted settings. */
 function forConfiguration(conn) {
-    return connectorModule(conn.provider).create(conn);
+    return connectorModule(conn.billing_provider).create(conn);
 }
 
 /**
  * The payment provider (such as Stripe) of a billing configuration, without its stored keys. Used to
  * tell whether a key is a test or live key, and to read a received payment event.
  */
-function paymentsOf({ provider, payment_provider: paymentProvider }) {
-    return connectorModule(provider).paymentsFor(paymentProvider);
+function paymentsOf({ billing_provider: billingProvider, payment_provider: paymentProvider }) {
+    return connectorModule(billingProvider).paymentsFor(paymentProvider);
 }
 
 /** A connector's own checks of a setup request's settings: { field, message } for a problem, or null. */
 function checkSettings(setup, input) {
-    const module = connectorModule(setup.provider);
+    const module = connectorModule(setup.billing_provider);
     return module.checkSettings ? module.checkSettings(input) : null;
 }
 

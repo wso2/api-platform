@@ -65,7 +65,7 @@ test('a plan is summarised as free, its flat rate, its one usage price, or how m
 });
 
 test('meters read as what they count, their filter fields by name, and filters in full', () => {
-    assert.strictEqual(meterTypeLabel('REQUEST_COUNT'), 'API requests');
+    assert.strictEqual(meterTypeLabel('REQUEST_COUNT'), 'Requests');
     assert.strictEqual(meterTypeLabel('TOKENS'), 'Tokens');
     assert.strictEqual(filterFieldsLabel([{ field: 'API_TYPE', eventKey: 'metadata.kind' }, { field: 'HTTP_METHOD', eventKey: 'request.verb' }]),
         'API type, HTTP method');

@@ -34,7 +34,6 @@
                 </div>
                 {{#unless webhookRegistered}}<p class="cfg-billing-webhook-warning"><i class="bi bi-exclamation-triangle"></i> Not registered in Stripe.</p>{{/unless}}
                 <p class="cfg-field-hint">Stripe sends payment and subscription events to your API Portal webhook endpoint.</p>
-                <div class="cfg-billing-webhook-last">Last event <span class="cfg-billing-time" data-time="{{lastEventAt}}">{{#if lastEventAt}}{{lastEventAt}}{{else}}None{{/if}}</span></div>
               </div>
             </div>
           </div>

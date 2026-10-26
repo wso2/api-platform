@@ -128,7 +128,7 @@ function priceItem(price, currency, unit, name) {
  *                            shown under Pricing details; named only when there are several, since
  *                            the meter's name means nothing to a subscriber beside its unit.
  * The amounts carry the currency's symbol, such as $, A$ or €, or its code.
- * A price is named after its meter and values ("API requests · GET") and says what is counted
+ * A price is named after its meter and values ("Requests · GET") and says what is counted
  * ("request").
  */
 async function decoratePlans(orgId, plans, apiType) {

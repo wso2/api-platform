@@ -154,7 +154,7 @@
     return keys;
   }
 
-  /* What a meter counts: "API requests" or "Tokens". */
+  /* What a meter counts: "Requests" or "Tokens". */
   function eventLabel(meter) {
     return meter ? meter.typeLabel || '' : '';
   }

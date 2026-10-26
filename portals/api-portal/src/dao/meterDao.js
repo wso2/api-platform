@@ -19,12 +19,11 @@
 
 const crypto = require('crypto');
 const db = require('../db/driver');
-const { groupBy } = require('../db/rows');
 const { bufferToUtf8 } = require('../utils/cryptoUtil');
 const { getPortalId } = require('../utils/orgContext');
 
 const TABLE = 'meters';
-const PRICES_TABLE = 'subscription_plan_pricing_usage';
+const PRICING_TABLE = 'subscription_plan_pricing';
 const PLANS_TABLE = 'subscription_plans';
 
 const COLUMNS = 'uuid, org_uuid, handle, display_name, description, type, type_key, filter_fields, ' +
@@ -130,19 +129,37 @@ const listPlanHandlesByMeter = async (orgId, meterIds, t) => {
     if (!meterIds || meterIds.length === 0) return new Map();
     const exec = t || db;
     const placeholders = meterIds.map(() => '?').join(', ');
-    const rows = await exec.query(
-        `SELECT DISTINCT c.meter_uuid, p.handle FROM ${PRICES_TABLE} c
-         JOIN ${PLANS_TABLE} p ON p.uuid = c.subscription_plan_uuid AND p.portal_id = c.portal_id
-         WHERE c.meter_uuid IN (${placeholders}) AND c.org_uuid = ? AND c.portal_id = ?
-         ORDER BY p.handle`,
+    const meters = await exec.query(
+        `SELECT uuid, handle FROM ${TABLE} WHERE uuid IN (${placeholders}) AND org_uuid = ? AND portal_id = ?`,
         [...meterIds, orgId, getPortalId()]
     );
-    const grouped = groupBy(rows, 'meter_uuid');
+    const uuidByHandle = new Map(meters.map((m) => [m.handle, m.uuid]));
+    const plans = await exec.query(
+        `SELECT p.handle, pp.prices FROM ${PRICING_TABLE} pp
+         JOIN ${PLANS_TABLE} p ON p.uuid = pp.subscription_plan_uuid AND p.portal_id = pp.portal_id
+         WHERE pp.org_uuid = ? AND pp.portal_id = ?
+         ORDER BY p.handle`,
+        [orgId, getPortalId()]
+    );
     const result = new Map();
-    for (const [meterId, planRows] of grouped) {
-        result.set(meterId, planRows.map((r) => r.handle));
+    for (const plan of plans) {
+        const used = new Set(parseArray(plan.prices).map((price) => uuidByHandle.get(price.meter_handle)).filter(Boolean));
+        for (const meterId of used) {
+            if (!result.has(meterId)) result.set(meterId, []);
+            result.get(meterId).push(plan.handle);
+        }
     }
     return result;
+};
+
+/** Locks the organization's meters with the given handles until the caller's transaction (`t`) ends. */
+const lock = async (orgId, handles, t) => {
+    if (!handles || handles.length === 0) return;
+    const placeholders = handles.map(() => '?').join(', ');
+    await t.execute(
+        `UPDATE ${TABLE} SET handle = handle WHERE handle IN (${placeholders}) AND org_uuid = ? AND portal_id = ?`,
+        [...handles, orgId, getPortalId()]
+    );
 };
 
 module.exports = {
@@ -153,4 +170,5 @@ module.exports = {
     update,
     delete: deleteMeter,
     listPlanHandlesByMeter,
+    lock,
 };

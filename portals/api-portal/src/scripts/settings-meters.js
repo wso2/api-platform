@@ -48,8 +48,8 @@
      suggestion combo). Choosing one fills in its key; any typed key is kept. */
   var tokenKeyPicker = window.cfgSuggestCombo.attach(document.getElementById('mtr-token-key-combo'));
 
-  /* A Tokens meter adds up the number at its Token key, shown under its type; API requests count
-     1 each and have no such key. */
+  /* A Tokens meter adds up the number at its Token key, shown under its type; a Requests meter
+     counts 1 each and has no such key. */
   function syncMeterType() {
     tokenKeyPicker.close(false);
     document.getElementById('mtr-token-row').style.display = meterType() === 'TOKENS' ? '' : 'none';

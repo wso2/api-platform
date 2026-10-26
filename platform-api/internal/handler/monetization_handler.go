@@ -226,7 +226,7 @@ func (h *MonetizationHandler) GetSubscriptionPlanPricing(w http.ResponseWriter, 
 
 // pricingResponse is a plan's pricing as the REST API returns it: a FLAT_RATE plan's amount (null for
 // USAGE_BASED) and a USAGE_BASED plan's prices (none for FLAT_RATE), each with the fields its pricing
-// model does not use as null.
+// model does not use as null. updatedAt is when the pricing was set (CreatedAt).
 func pricingResponse(planHandle string, pricing *model.SubscriptionPlanPricing) map[string]any {
 	prices := make([]map[string]any, 0, len(pricing.Prices))
 	for _, p := range pricing.Prices {
@@ -239,7 +239,7 @@ func pricingResponse(planHandle string, pricing *model.SubscriptionPlanPricing) 
 		"billingPeriod":      pricing.BillingPeriod,
 		"flatAmount":         pricing.FlatAmount,
 		"prices":             prices,
-		"updatedAt":          pricing.SourceUpdatedAt.UTC().Format(time.RFC3339),
+		"updatedAt":          pricing.CreatedAt.UTC().Format(time.RFC3339),
 	}
 }
 

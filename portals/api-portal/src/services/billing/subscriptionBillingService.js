@@ -24,9 +24,7 @@
  * error for a failed provider call.
  *
  * The provider is called through the billing provider interface, with the organization's billing
- * configuration, and only while that is the configuration the subscription was bought under. A
- * subscription bought under an earlier configuration was made with keys deleted when billing was
- * removed, so the portal can no longer reach it.
+ * configuration, and only for a subscription that belongs to it (belongsToConfiguration).
  */
 
 const subDao = require('../../dao/subscriptionDao');
@@ -76,13 +74,18 @@ function accessStatus(billingStatus) {
     return ACCESS_STATUS.ACTIVE;
 }
 
+/**
+ * Whether the billing row (a billingSubscriptionDao row) belongs to the configuration `conn`: it was
+ * made after `conn` was set up.
+ */
+function belongsToConfiguration(billing, conn) {
+    return Boolean(conn) && new Date(billing.created_at).getTime() >= new Date(conn.created_at).getTime();
+}
+
 /** The billing configuration the subscription was bought under, with its keys, or null when it is gone. */
 async function configurationFor(billing) {
     const conn = await billingConfigurationDao.getWithSecrets(billing.org_uuid);
-    if (!conn || conn.uuid !== billing.configuration_uuid) {
-        return null;
-    }
-    return conn;
+    return belongsToConfiguration(billing, conn) ? conn : null;
 }
 
 /** Amounts in the currency's minor unit: 9900 in USD -> "99.00"; 500 in JPY -> "500". */
@@ -119,10 +122,10 @@ function safeUrl(value) {
 async function priceNames(orgId, billing, pricing) {
     const names = new Map();
     if (!pricing) return names;
-    const items = await billingApiPlanDao.listItems(billing.api_plan_uuid);
+    const items = await billingApiPlanDao.listItems(orgId, billing.api_uuid, billing.plan_uuid);
     const prices = new Map((pricing.prices || []).map((p) => [p.uuid, p]));
     for (const item of items) {
-        if (item.price_uuid === null) {
+        if (item.price_uuid === pricing.flat_price_uuid) {
             names.set(item.price_ref, { name: FEE_NAMES[pricing.billing_period] || 'Plan fee' });
             continue;
         }
@@ -212,8 +215,8 @@ const getSubscriptionBilling = async (req, res) => {
             ? await planPricingDao.getByPlan(req.orgId, sub.subscription_plan.uuid) : null;
         const body = {
             subscriptionId: sub.uuid,
-            status: accessStatus(billing.billing_status),
-            billingStatus: billing.billing_status,
+            status: accessStatus(billing.status),
+            billingStatus: billing.status,
             currentPeriod: {
                 start: billing.current_period_start ? new Date(billing.current_period_start).toISOString() : null,
                 end: billing.current_period_end ? new Date(billing.current_period_end).toISOString() : null,
@@ -249,20 +252,19 @@ async function endInProvider(billing) {
         // Billing was removed, which is allowed only once every paid subscription has ended in the
         // provider: nothing is left to cancel, so the subscription is removed now. One still running
         // could only be cancelled with the deleted keys, so it is refused.
-        if (billing.billing_status === BILLING_STATUS.CANCELLED) return { removeNow: true, endsAt: null };
+        if (billing.status === BILLING_STATUS.CANCELLED) return { removeNow: true, endsAt: null };
         throw new SubscriptionBillingError(409, 'This paid subscription cannot be cancelled while billing is '
             + 'not set up. Contact the portal administrator.', NOT_CONFIGURED_CODE);
     }
-    // Charged by usage when no item is a flat rate plan's price.
-    const items = await billingApiPlanDao.listItems(billing.api_plan_uuid);
-    const byUsage = items.length > 0 && items.every((item) => item.price_uuid !== null);
+    const pricing = await planPricingDao.getByPlan(billing.org_uuid, billing.plan_uuid);
+    const byUsage = Boolean(pricing && pricing.pricing_type === 'USAGE_BASED');
     const { payments } = billingProvider.forConfiguration(conn);
     try {
         if (byUsage) {
-            await payments.cancelSubscription(billing.billing_subscription_id);
+            await payments.cancelSubscription(billing.subscription_ref);
             return { removeNow: true, endsAt: null };
         }
-        const endsAt = await payments.endAtPeriodEnd(billing.billing_subscription_id);
+        const endsAt = await payments.endAtPeriodEnd(billing.subscription_ref);
         return { removeNow: !endsAt, endsAt };
     } catch (err) {
         if (!(err instanceof BillingProviderError)) throw err;
@@ -279,6 +281,7 @@ module.exports = {
     NOT_CONFIGURED_CODE,
     SubscriptionBillingError,
     accessStatus,
+    belongsToConfiguration,
     configurationFor,
     invoiceDto,
     safeUrl,

@@ -170,7 +170,7 @@ func (d *planPricingData) toPricing(orgID string, occurredAt time.Time) (*model.
 		BillingPeriod:    strings.ToUpper(strings.TrimSpace(d.BillingPeriod)),
 		FlatAmount:       d.FlatAmount,
 		Prices:           prices,
-		SourceUpdatedAt:  occurredAt,
+		CreatedAt:        occurredAt,
 	}
 	if err := model.ValidatePlanPricing(pricing); err != nil {
 		return nil, fmt.Errorf("%w: data.pricing: %s", ErrInvalidEnvelope, err.Error())

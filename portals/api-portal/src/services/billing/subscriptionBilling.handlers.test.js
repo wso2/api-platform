@@ -191,7 +191,7 @@ const sql = (q, ...p) => new Database(${JSON.stringify('DB_FILE')}).prepare(q).a
 const run = (q, ...p) => new Database(${JSON.stringify('DB_FILE')}).prepare(q).run(...p);
 // Delivers a payment event as the webhook receiver acts on it; resolves to its outcome.
 function receive(type, objectId) {
-    return events.handle({ orgId: ORG, configurationUuid: 'conn-1', type, objectRef: objectId });
+    return events.handle({ orgId: ORG, type, objectRef: objectId });
 }
 
 (async () => {
@@ -200,22 +200,23 @@ function receive(type, objectId) {
     const meter = await meterDao.create(ORG, { handle: 'calls', displayName: 'Successful calls', type: 'REQUEST_COUNT',
         typeKey: null, filterFields: [{ field: 'HTTP_STATUS_CODE', eventKey: 'response.statusCode' }] }, 'admin');
     const { pricing } = await planPricingDao.create(ORG, 'plan-gold', { pricingType: 'USAGE_BASED', currency: 'USD',
-        billingPeriod: 'MONTH', flatAmount: null,
+        billingPeriod: 'MONTH',
         prices: [{ meter, filters: [{ field: 'HTTP_STATUS_CODE', operator: 'IN', values: ['200'] }], pricingModel: 'PER_UNIT',
             unitAmount: '0.01', unitQuantity: 1, tiers: null },
         // A price with no item in the API's API plan, as for one that does not apply to the
         // API's type: the subscription was not sold with it, so its usage is not shown.
         { meter, filters: [{ field: 'HTTP_STATUS_CODE', operator: 'IN', values: ['500'] }], pricingModel: 'PER_UNIT',
-            unitAmount: '0.05', unitQuantity: 1, tiers: null }] }, 'admin');
-    await billingConfigurationDao.create(ORG, { uuid: 'conn-1', provider: 'MOESIF', paymentProvider: 'STRIPE', moesifCollectorApplicationId: 'app', moesifManagementKey: 'mk',
-        stripeApiKey: 'rk_test_abcd1234', stripePublishableKey: 'pk_test_demo1234', stripeWebhookSecret: 'whsec_x' }, 'admin');
-    await billingApiPlanDao.insertApiPlan({ uuid: 'api-plan-1', orgId: ORG, configurationUuid: 'conn-1', apiUuid: 'api-1',
-        planUuid: 'plan-gold', items: [{ priceUuid: pricing.prices[0].uuid, planRef: 'prod_1', priceRef: 'price_calls', meterRef: 'bm_1' }] });
+            unitAmount: '0.05', unitQuantity: 1, tiers: null }] });
+    await billingConfigurationDao.create(ORG, { billing_provider: 'MOESIF', payment_provider: 'STRIPE',
+        settings: { stripe: { publishableKey: 'pk_test_demo1234' } },
+        secrets: { moesif: { collectorApplicationId: 'app', managementKey: 'mk' },
+            stripe: { apiKey: 'rk_test_abcd1234', webhookSecret: 'whsec_x' } } }, 'admin');
+    await billingApiPlanDao.insertApiPlan({ orgId: ORG, apiUuid: 'api-1', planUuid: 'plan-gold', items: [{ priceUuid: pricing.prices[0].uuid, planRef: 'prod_1', priceRef: 'price_calls', meterRef: 'bm_1' }] });
     // A flat rate plan too: unsubscribing from it runs to the end of the paid period.
-    await planPricingDao.create(ORG, 'plan-silver', { pricingType: 'FLAT_RATE', currency: 'USD', billingPeriod: 'MONTH',
-        flatAmount: '19.00', prices: [] }, 'admin');
-    await billingApiPlanDao.insertApiPlan({ uuid: 'api-plan-2', orgId: ORG, configurationUuid: 'conn-1', apiUuid: 'api-1',
-        planUuid: 'plan-silver', items: [{ priceUuid: null, planRef: 'prod_2', priceRef: 'price_flat', meterRef: null }] });
+    const silver = (await planPricingDao.create(ORG, 'plan-silver', { pricingType: 'FLAT_RATE', currency: 'USD',
+        billingPeriod: 'MONTH', flatAmount: '19.00' })).pricing;
+    await billingApiPlanDao.insertApiPlan({ orgId: ORG, apiUuid: 'api-1', planUuid: 'plan-silver',
+        items: [{ priceUuid: silver.flat_price_uuid, planRef: 'prod_2', priceRef: 'price_flat', meterRef: null }] });
 
     const started = await call(checkout.createCheckoutSession, as('alice', { body: { artifactId: 'weather', subscriptionPlanId: 'gold' } }));
     const session = Object.values(state.sessions)[0];
@@ -275,7 +276,7 @@ function receive(type, objectId) {
     // provider keeps an unpaid invoice for it.
     const paid = await billingCheckoutDao.getCheckout(started.body.id);
     const abandoned = await billingCheckoutDao.createCheckout({ orgId: paid.org_uuid, userUuid: paid.user_uuid,
-        apiUuid: paid.api_uuid, planUuid: paid.plan_uuid, apiPlanUuid: paid.api_plan_uuid, customerUuid: paid.customer_uuid });
+        apiUuid: paid.api_uuid, planUuid: paid.plan_uuid });
     state.invoices = [
         { id: 'in_b', customer: cus, subscription: 'sub_paid', status: 'paid', currency: 'usd', total: 2812, created: thisMonth,
             customer_name: 'Alice Example', customer_email: 'alice@example.com', lines: lines(2812), number: 'INV-0002',
@@ -334,6 +335,14 @@ function receive(type, objectId) {
     out.invoicesFreeOnly = await call(account.listBillingInvoices, as('bob', { query: {} }));
     out.accountBadPeriod = await call(account.listBillingInvoices, as('alice', { query: { period: 'FOREVER' } }));
     out.accountBadLimit = await call(account.listBillingInvoices, as('alice', { query: { limit: '500' } }));
+    // The unpaid invoice of a deleted checkout is left out of both lists.
+    state.invoices.push({ id: 'in_gone', customer: cus, subscription: 'sub_gone', status: 'open', currency: 'usd', total: 1900,
+        created: lastMonth, lines: lines(1900), subscription_details: { metadata: { wso2_checkout: '7c1e2d3f-0000-4000-8000-000000000000' } } });
+    out.invoicesWithGone = (await call(account.listBillingInvoices, as('alice', { query: { period: 'ALL', limit: '10' } })))
+        .body.invoices.map((i) => i.id);
+    out.revenueWithGone = (await call(revenue.listRevenueInvoices, as('admin', { query: { from: monthStart(2) } })))
+        .body.invoices.map((i) => i.total);
+    state.invoices.pop();
     out.accountPage = await call(account.createAccountBillingPortalSession, as('alice', { body: { viewName: 'default' } }));
     out.portalConfigBody = (calls.find((c) => c[0] === 'portalConfig') || [])[1];
     out.accountPageArgs = (calls.find((c) => c[0] === 'portal') || [])[1];
@@ -394,11 +403,12 @@ function receive(type, objectId) {
     out.daveKept = sql('SELECT COUNT(*) AS n FROM subscriptions WHERE uuid = ?', daveSub)[0].n;
     out.daveBilling = await call(billing.getSubscriptionBilling, as('dave', { params: { subId: daveSub } }));
 
-    // Billing is removed (here: both subscriptions point to a configuration that no longer exists).
+    // Billing is removed (here: both subscriptions were bought before the current configuration).
     // Stripe already ended dave's, so unsubscribing removes it without Stripe; erin's is still
     // running, so it can't be cancelled.
     const erinSub = await buyFlat('erin', 'sub_erin');
-    run("UPDATE subscription_billing SET configuration_uuid = 'conn-removed' WHERE subscription_uuid IN (?, ?)", daveSub, erinSub);
+    run("UPDATE subscription_billing SET created_at = '2000-01-01T00:00:00.000Z' WHERE subscription_uuid IN (?, ?)", daveSub, erinSub);
+    out.revenueAfterEarlier = (await call(revenue.getRevenueReport, as('admin'))).body;
     const deletedBeforeGone = sql("SELECT COUNT(*) AS n FROM events WHERE type = 'subscription.deleted'")[0].n;
     calls.length = 0;
     out.daveUnsubGone = await call(subscriptions.deleteSubscription, as('dave', { params: { subId: daveSub } }));
@@ -699,6 +709,17 @@ test('Invoices lists only the subscriber\'s invoices, a page at a time, named by
     assert.equal(results().invoicesFreeOnly.body.canManageBilling, false, 'no billing page without a paid subscription');
     assert.equal(results().accountBadPeriod.status, 400);
     assert.equal(results().accountBadLimit.status, 400);
+});
+
+test('the unpaid invoice of a checkout the portal no longer has is left out of Invoices and the revenue report', () => {
+    assert.deepEqual(results().invoicesWithGone, ['in_b', 'in_a', 'in_draft']);
+    assert.deepEqual(results().revenueWithGone, ['28.12', '15.00']);
+});
+
+test('the revenue report counts only subscriptions bought under the current billing configuration', () => {
+    const r = results().revenueAfterEarlier;
+    assert.equal(r.paidSubscriptions, 0, 'dave\'s and erin\'s were bought under a removed configuration');
+    assert.deepEqual(r.paymentIssues, { pastDue: 0, paymentPending: 0 });
 });
 
 test('an after cursor Stripe does not know is refused with 400', () => {

@@ -158,6 +158,7 @@ const updateMeter = async (req, res) => {
     try {
         const userId = util.resolveActor(req);
         const outcome = await db.withTransaction(async (t) => {
+            await meterDao.lock(orgId, [meterId], t);
             const current = await meterDao.getByHandle(orgId, meterId, t);
             if (!current) return { status: 404 };
             // Once a plan prices the meter nothing about it changes: its prices count what it counts
@@ -184,6 +185,7 @@ const deleteMeter = async (req, res) => {
     const { meterId } = req.params;
     try {
         const outcome = await db.withTransaction(async (t) => {
+            await meterDao.lock(orgId, [meterId], t);
             const meter = await meterDao.getByHandle(orgId, meterId, t);
             if (!meter) return { status: 404 };
             const usage = await meterDao.listPlanHandlesByMeter(orgId, [meter.uuid], t);

@@ -642,7 +642,7 @@ Fired when a meter is created or changed. A meter defines what a paid plan charg
 }
 ```
 
-`type` is `REQUEST_COUNT` (API requests: each request counts 1) or `TOKENS` (the tokens of AI API requests). A `TOKENS` meter adds up the number in each event at `type_key`; it is null for `REQUEST_COUNT`. The meter's name says what it counts, such as "Input tokens". A meter has no conditions: each plan price on it picks the requests it counts with its own `filters` (see [Pricing](#pricing)), on the fields that `filter_fields` lists, each with the `event_key` it reads.
+`type` is `REQUEST_COUNT` (requests: each request counts 1) or `TOKENS` (the tokens of AI API requests). A `TOKENS` meter adds up the number in each event at `type_key`; it is null for `REQUEST_COUNT`. The meter's name says what it counts, such as "Input tokens". A meter has no conditions: each plan price on it picks the requests it counts with its own `filters` (see [Pricing](#pricing)), on the fields that `filter_fields` lists, each with the `event_key` it reads.
 
 Event keys are stored on the meter and set by the administrator, as full paths in the Moesif event, so a meter also works with a gateway that names its analytics fields differently. Our gateway's fields are the defaults:
 

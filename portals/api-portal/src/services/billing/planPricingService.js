@@ -44,18 +44,20 @@ const { resolvePrices, validatePricing } = require('./planPricingValidation');
 
 /**
  * Checks validated pricing's prices against the organization's meters and returns the pricing
- * ready to save (planPricingDao.create). Throws PricingValidationError for an unknown meter or values
- * the meters refuse.
+ * ready to save (planPricingDao.create), with the meters locked until the caller's transaction ends.
+ * Throws PricingValidationError for an unknown meter or values the meters refuse.
  */
 async function resolvePricing(orgId, input, t) {
     const handles = [...new Set(input.prices.map((p) => p.meterId))];
+    await meterDao.lock(orgId, handles, t);
     const meters = new Map((await meterDao.listByHandles(orgId, handles, t)).map((m) => [m.handle, m]));
     return { ...input, prices: resolvePrices(input.prices, meters) };
 }
 
-async function toDto(pricing) {
-    const audit = await userIdpReferenceDao.buildSingleAuditFields(pricing);
-    return new PlanPricingDTO(pricing, audit);
+/** The pricing as the REST API returns it. */
+async function toDto(pricing, plan) {
+    const { createdBy } = await userIdpReferenceDao.buildSingleAuditFields({ created_by: plan.created_by });
+    return new PlanPricingDTO(pricing, { createdBy, createdAt: pricing.created_at });
 }
 
 const PRICING_LOCKED = 'PLAN_PRICING_LOCKED';
@@ -76,9 +78,9 @@ function planNotFound(res) {
  * Resolves to the saved pricing; throws PricingValidationError for pricing or a meter the portal
  * refuses.
  */
-async function setNewPlanPricing(orgId, plan, body, userId, t) {
+async function setNewPlanPricing(orgId, plan, body, t) {
     const input = await resolvePricing(orgId, validatePricing(body), t);
-    const { pricing } = await planPricingDao.create(orgId, plan.uuid, input, userId, t);
+    const { pricing } = await planPricingDao.create(orgId, plan.uuid, input, t);
     return pricing;
 }
 
@@ -88,7 +90,7 @@ const getPlanPricing = async (req, res) => {
         if (!plan) return planNotFound(res);
         const pricing = await planPricingDao.getByPlan(req.orgId, plan.uuid);
         if (!pricing) return util.sendError(res, 404, 'The plan is free: it has no pricing');
-        return res.status(200).json(await toDto(pricing));
+        return res.status(200).json(await toDto(pricing, plan));
     } catch (error) {
         logger.error('Error while retrieving plan pricing', { error });
         return util.sendError(res, 500, 'Error while retrieving plan pricing');

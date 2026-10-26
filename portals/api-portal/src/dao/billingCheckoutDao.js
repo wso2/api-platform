@@ -18,9 +18,10 @@
 'use strict';
 
 /*
- * Data access for `billing_customers` (the payment provider's customer of a portal user, per billing
- * configuration) and `billing_checkouts` (each checkout started with the payment provider for a
- * paid plan).
+ * Data access for `billing_customers` (the payment provider's customer of a portal user, one per user
+ * per organization) and `billing_checkouts` (each checkout started with the payment provider for a
+ * paid plan). A checkout is open until it names the subscription it created; one that ends unpaid
+ * is deleted. Checkout rows read here carry `status`, OPEN or COMPLETED, worked out from that.
  */
 
 const crypto = require('crypto');
@@ -30,66 +31,57 @@ const { getPortalId } = require('../utils/orgContext');
 const CUSTOMERS = 'billing_customers';
 const CHECKOUTS = 'billing_checkouts';
 
-const STATUS = Object.freeze({ OPEN: 'OPEN', COMPLETED: 'COMPLETED', EXPIRED: 'EXPIRED' });
+const STATUS = Object.freeze({ OPEN: 'OPEN', COMPLETED: 'COMPLETED' });
 
-const CHECKOUT_COLUMNS = 'uuid, org_uuid, user_uuid, api_uuid, plan_uuid, customer_uuid, '
-    + 'checkout_ref, status, subscription_uuid, created_at, updated_at';
+const CUSTOMER_COLUMNS = 'org_uuid, user_uuid, customer_ref, created_at';
+const CHECKOUT_COLUMNS = 'uuid, org_uuid, user_uuid, api_uuid, plan_uuid, checkout_ref, subscription_uuid, created_at';
 
-/** The user's customer under the billing configuration, or null. */
-const findCustomer = async (configurationUuid, userUuid) => {
-    return (await db.queryOne(
-        `SELECT uuid, org_uuid, configuration_uuid, user_uuid, customer_ref FROM ${CUSTOMERS}
-         WHERE configuration_uuid = ? AND user_uuid = ? AND portal_id = ?`,
-        [configurationUuid, userUuid, getPortalId()]
+function toCheckout(row) {
+    if (!row) return null;
+    return { ...row, status: row.subscription_uuid ? STATUS.COMPLETED : STATUS.OPEN };
+}
+
+/** The user's customer in the organization, or null. */
+const findCustomer = async (orgId, userUuid, t) => {
+    const exec = t || db;
+    return (await exec.queryOne(
+        `SELECT ${CUSTOMER_COLUMNS} FROM ${CUSTOMERS} WHERE org_uuid = ? AND user_uuid = ? AND portal_id = ?`,
+        [orgId, userUuid, getPortalId()]
     )) || null;
 };
 
-/** The customers of a billing configuration, as a Map of customer reference to row. */
-const listCustomers = async (configurationUuid) => {
+/** The organization's customers, as a Map of customer reference to row. */
+const listCustomers = async (orgId) => {
     const rows = await db.query(
-        `SELECT uuid, org_uuid, configuration_uuid, user_uuid, customer_ref FROM ${CUSTOMERS}
-         WHERE configuration_uuid = ? AND portal_id = ?`,
-        [configurationUuid, getPortalId()]
+        `SELECT ${CUSTOMER_COLUMNS} FROM ${CUSTOMERS} WHERE org_uuid = ? AND portal_id = ?`,
+        [orgId, getPortalId()]
     );
     return new Map(rows.map((r) => [r.customer_ref, r]));
-};
-
-const getCustomer = async (customerUuid) => {
-    return (await db.queryOne(
-        `SELECT uuid, org_uuid, configuration_uuid, user_uuid, customer_ref FROM ${CUSTOMERS}
-         WHERE uuid = ? AND portal_id = ?`,
-        [customerUuid, getPortalId()]
-    )) || null;
 };
 
 /**
  * Records the user's customer. Two checkouts racing for the same user both create a customer with
  * the provider; the first record wins and is returned to both, so the user has one.
  */
-const createCustomer = async ({ orgId, configurationUuid, userUuid, customerRef }) => {
-    const now = new Date();
+const createCustomer = async ({ orgId, userUuid, customerRef }) => {
     try {
         await db.execute(
-            `INSERT INTO ${CUSTOMERS} (uuid, org_uuid, portal_id, configuration_uuid, user_uuid,
-                customer_ref, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-            [crypto.randomUUID(), orgId, getPortalId(), configurationUuid, userUuid, customerRef, now, now]
+            `INSERT INTO ${CUSTOMERS} (org_uuid, portal_id, user_uuid, customer_ref, created_at) VALUES (?, ?, ?, ?, ?)`,
+            [orgId, getPortalId(), userUuid, customerRef, new Date()]
         );
     } catch (err) {
         if (!db.isDuplicateKeyError(err)) throw err;
     }
-    return findCustomer(configurationUuid, userUuid);
+    return findCustomer(orgId, userUuid);
 };
 
-const createCheckout = async ({ orgId, userUuid, apiUuid, planUuid, customerUuid }, t) => {
+const createCheckout = async ({ orgId, userUuid, apiUuid, planUuid }, t) => {
     const exec = t || db;
     const uuid = crypto.randomUUID();
-    const now = new Date();
     await exec.execute(
-        `INSERT INTO ${CHECKOUTS} (uuid, org_uuid, portal_id, user_uuid, api_uuid, plan_uuid,
-            customer_uuid, status, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [uuid, orgId, getPortalId(), userUuid, apiUuid, planUuid, customerUuid, STATUS.OPEN, now, now]
+        `INSERT INTO ${CHECKOUTS} (uuid, org_uuid, portal_id, user_uuid, api_uuid, plan_uuid, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [uuid, orgId, getPortalId(), userUuid, apiUuid, planUuid, new Date()]
     );
     return getCheckout(uuid, t);
 };
@@ -99,93 +91,86 @@ const createCheckout = async ({ orgId, userUuid, apiUuid, planUuid, customerUuid
  * checkout starts of one subscriber take turns (startCheckout). Every database keeps an updated
  * row locked until commit, so this works the same on each.
  */
-const lockCustomer = async (customerUuid, t) => {
-    await t.execute(`UPDATE ${CUSTOMERS} SET updated_at = ? WHERE uuid = ? AND portal_id = ?`,
-        [new Date(), customerUuid, getPortalId()]);
+const lockCustomer = async (orgId, userUuid, t) => {
+    await t.execute(
+        `UPDATE ${CUSTOMERS} SET customer_ref = customer_ref WHERE org_uuid = ? AND user_uuid = ? AND portal_id = ?`,
+        [orgId, userUuid, getPortalId()]
+    );
 };
 
-/** Deletes a checkout that never reached the payment provider. */
-const deleteCheckout = async (checkoutUuid) => {
-    await db.execute(`DELETE FROM ${CHECKOUTS} WHERE uuid = ? AND portal_id = ? AND checkout_ref IS NULL`,
+/** Deletes a checkout that is still open. */
+const deleteOpenCheckout = async (checkoutUuid) => {
+    await db.execute(`DELETE FROM ${CHECKOUTS} WHERE uuid = ? AND portal_id = ? AND subscription_uuid IS NULL`,
         [checkoutUuid, getPortalId()]);
 };
 
 const getCheckout = async (checkoutUuid, t) => {
     const exec = t || db;
-    return (await exec.queryOne(
+    return toCheckout(await exec.queryOne(
         `SELECT ${CHECKOUT_COLUMNS} FROM ${CHECKOUTS} WHERE uuid = ? AND portal_id = ?`,
         [checkoutUuid, getPortalId()]
-    )) || null;
+    ));
 };
 
 const setCheckoutRef = async (checkoutUuid, checkoutRef) => {
     await db.execute(
-        `UPDATE ${CHECKOUTS} SET checkout_ref = ?, updated_at = ? WHERE uuid = ? AND portal_id = ?`,
-        [checkoutRef, new Date(), checkoutUuid, getPortalId()]
+        `UPDATE ${CHECKOUTS} SET checkout_ref = ? WHERE uuid = ? AND portal_id = ?`,
+        [checkoutRef, checkoutUuid, getPortalId()]
     );
 };
 
-/**
- * Moves an OPEN checkout to COMPLETED with its subscription. Resolves to false when another caller
- * completed (or expired) it first, so a checkout activates exactly once.
- */
+/** Completes an open checkout with its subscription. Resolves to false when it is no longer open. */
 const markCompleted = async (checkoutUuid, subscriptionUuid, t) => {
     const exec = t || db;
     const { rowCount } = await exec.execute(
-        `UPDATE ${CHECKOUTS} SET status = ?, subscription_uuid = ?, updated_at = ?
-         WHERE uuid = ? AND portal_id = ? AND status = ?`,
-        [STATUS.COMPLETED, subscriptionUuid, new Date(), checkoutUuid, getPortalId(), STATUS.OPEN]
+        `UPDATE ${CHECKOUTS} SET subscription_uuid = ? WHERE uuid = ? AND portal_id = ? AND subscription_uuid IS NULL`,
+        [subscriptionUuid, checkoutUuid, getPortalId()]
     );
     return rowCount === 1;
 };
 
-const markExpired = async (checkoutUuid) => {
-    await db.execute(
-        `UPDATE ${CHECKOUTS} SET status = ?, updated_at = ? WHERE uuid = ? AND portal_id = ? AND status = ?`,
-        [STATUS.EXPIRED, new Date(), checkoutUuid, getPortalId(), STATUS.OPEN]
-    );
-};
-
 /** The organization's open checkouts: started, not yet paid or ended. */
 const listOpenByOrg = async (orgId) => {
-    return db.query(
-        `SELECT ${CHECKOUT_COLUMNS} FROM ${CHECKOUTS} WHERE org_uuid = ? AND status = ? AND portal_id = ?`,
-        [orgId, STATUS.OPEN, getPortalId()]
+    const rows = await db.query(
+        `SELECT ${CHECKOUT_COLUMNS} FROM ${CHECKOUTS} WHERE org_uuid = ? AND subscription_uuid IS NULL AND portal_id = ?`,
+        [orgId, getPortalId()]
     );
+    return rows.map(toCheckout);
 };
 
 /** The organization's open checkouts for an API (`apiUuid`) or for a plan (`planUuid`). */
 const listOpenFor = async (orgId, { apiUuid, planUuid }) => {
     const column = apiUuid ? 'api_uuid' : 'plan_uuid';
-    return db.query(
-        `SELECT ${CHECKOUT_COLUMNS} FROM ${CHECKOUTS} WHERE org_uuid = ? AND ${column} = ? AND status = ? AND portal_id = ?`,
-        [orgId, apiUuid || planUuid, STATUS.OPEN, getPortalId()]
+    const rows = await db.query(
+        `SELECT ${CHECKOUT_COLUMNS} FROM ${CHECKOUTS}
+         WHERE org_uuid = ? AND ${column} = ? AND subscription_uuid IS NULL AND portal_id = ?`,
+        [orgId, apiUuid || planUuid, getPortalId()]
     );
+    return rows.map(toCheckout);
 };
 
 /** The user's open checkout for the API, if one was started and has not ended. */
-const findOpenCheckout = async (userUuid, apiUuid, t) => {
+const findOpenCheckout = async (orgId, userUuid, apiUuid, t) => {
     const exec = t || db;
-    return (await exec.queryOne(
+    return toCheckout(await exec.queryOne(
         `SELECT ${CHECKOUT_COLUMNS} FROM ${CHECKOUTS}
-         WHERE user_uuid = ? AND api_uuid = ? AND status = ? AND portal_id = ? ORDER BY created_at DESC`,
-        [userUuid, apiUuid, STATUS.OPEN, getPortalId()]
-    )) || null;
+         WHERE org_uuid = ? AND user_uuid = ? AND api_uuid = ? AND subscription_uuid IS NULL AND portal_id = ?
+         ORDER BY created_at DESC`,
+        [orgId, userUuid, apiUuid, getPortalId()]
+    ));
 };
 
 module.exports = {
-    deleteCheckout,
-    listCustomers,
     STATUS,
     findCustomer,
-    getCustomer,
+    listCustomers,
     createCustomer,
     createCheckout,
     lockCustomer,
+    deleteOpenCheckout,
     getCheckout,
     setCheckoutRef,
     markCompleted,
-    markExpired,
     findOpenCheckout,
     listOpenByOrg,
     listOpenFor,

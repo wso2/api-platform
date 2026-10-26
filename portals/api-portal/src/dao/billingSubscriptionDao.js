@@ -18,38 +18,39 @@
 'use strict';
 
 /*
- * Data access for `subscription_billing`: the payment provider's subscription and the billing status
- * of each paid portal subscription.
+ * Data access for `subscription_billing`: the payment provider's subscription (subscription_ref) and
+ * the billing status of each paid portal subscription. A row read here also carries what the
+ * subscription itself names: the subscriber (user_uuid, the subscription's created_by), its API and
+ * plan, and the subscriber's customer reference (customer_ref).
  */
 
 const db = require('../db/driver');
 const { getPortalId } = require('../utils/orgContext');
 
 const TABLE = 'subscription_billing';
-const COLUMNS = 'subscription_uuid, org_uuid, configuration_uuid, customer_uuid, api_plan_uuid, '
-    + 'billing_subscription_id, billing_status, current_period_start, current_period_end, ends_at, '
-    + 'created_at, updated_at';
+const SELECT = `SELECT b.subscription_uuid, b.org_uuid, b.subscription_ref, b.status, b.current_period_start,
+        b.current_period_end, b.ends_at, b.created_at, b.updated_at,
+        s.created_by AS user_uuid, s.api_uuid, s.plan_uuid, c.customer_ref
+    FROM ${TABLE} b
+    JOIN subscriptions s ON s.uuid = b.subscription_uuid AND s.portal_id = b.portal_id
+    LEFT JOIN billing_customers c ON c.org_uuid = b.org_uuid AND c.user_uuid = s.created_by AND c.portal_id = b.portal_id`;
 
 const create = async (b, t) => {
     const exec = t || db;
     const now = new Date();
     await exec.execute(
-        `INSERT INTO ${TABLE} (subscription_uuid, org_uuid, portal_id, configuration_uuid, customer_uuid,
-            api_plan_uuid, billing_subscription_id, billing_status, current_period_start, current_period_end,
-            created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [b.subscriptionUuid, b.orgId, getPortalId(), b.configurationUuid, b.customerUuid, b.apiPlanUuid,
-            b.subscriptionRef, b.billingStatus, b.currentPeriodStart || null, b.currentPeriodEnd || null,
-            now, now]
+        `INSERT INTO ${TABLE} (subscription_uuid, org_uuid, portal_id, subscription_ref, status, current_period_start,
+            current_period_end, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [b.subscriptionUuid, b.orgId, getPortalId(), b.subscriptionRef, b.status, b.currentPeriodStart || null,
+            b.currentPeriodEnd || null, now, now]
     );
 };
 
 const getBySubscription = async (subscriptionUuid, t) => {
     const exec = t || db;
-    return (await exec.queryOne(
-        `SELECT ${COLUMNS} FROM ${TABLE} WHERE subscription_uuid = ? AND portal_id = ?`,
-        [subscriptionUuid, getPortalId()]
-    )) || null;
+    return (await exec.queryOne(`${SELECT} WHERE b.subscription_uuid = ? AND b.portal_id = ?`,
+        [subscriptionUuid, getPortalId()])) || null;
 };
 
 /** The billing rows of the given subscriptions, as a Map of subscription uuid to row. */
@@ -57,24 +58,20 @@ const listBySubscriptions = async (subscriptionUuids, t) => {
     if (!subscriptionUuids || subscriptionUuids.length === 0) return new Map();
     const exec = t || db;
     const placeholders = subscriptionUuids.map(() => '?').join(', ');
-    const rows = await exec.query(
-        `SELECT ${COLUMNS} FROM ${TABLE} WHERE subscription_uuid IN (${placeholders}) AND portal_id = ?`,
-        [...subscriptionUuids, getPortalId()]
-    );
+    const rows = await exec.query(`${SELECT} WHERE b.subscription_uuid IN (${placeholders}) AND b.portal_id = ?`,
+        [...subscriptionUuids, getPortalId()]);
     return new Map(rows.map((r) => [r.subscription_uuid, r]));
 };
 
 /** The billing rows of an organization's paid subscriptions. */
 const listByOrg = async (orgId, t) => {
     const exec = t || db;
-    return exec.query(`SELECT ${COLUMNS} FROM ${TABLE} WHERE org_uuid = ? AND portal_id = ?`, [orgId, getPortalId()]);
+    return exec.query(`${SELECT} WHERE b.org_uuid = ? AND b.portal_id = ?`, [orgId, getPortalId()]);
 };
 
 const getBySubscriptionRef = async (subscriptionRef) => {
-    return (await db.queryOne(
-        `SELECT ${COLUMNS} FROM ${TABLE} WHERE billing_subscription_id = ? AND portal_id = ?`,
-        [subscriptionRef, getPortalId()]
-    )) || null;
+    return (await db.queryOne(`${SELECT} WHERE b.subscription_ref = ? AND b.portal_id = ?`,
+        [subscriptionRef, getPortalId()])) || null;
 };
 
 /**
@@ -82,14 +79,13 @@ const getBySubscriptionRef = async (subscriptionRef) => {
  * when it is not).
  */
 const updateState = async (subscriptionUuid, {
-    billingStatus, currentPeriodStart, currentPeriodEnd, endsAt,
+    status, currentPeriodStart, currentPeriodEnd, endsAt,
 }, t) => {
     const exec = t || db;
     await exec.execute(
-        `UPDATE ${TABLE} SET billing_status = ?, current_period_start = ?, current_period_end = ?, ends_at = ?,
-            updated_at = ?
+        `UPDATE ${TABLE} SET status = ?, current_period_start = ?, current_period_end = ?, ends_at = ?, updated_at = ?
          WHERE subscription_uuid = ? AND portal_id = ?`,
-        [billingStatus, currentPeriodStart || null, currentPeriodEnd || null, endsAt || null,
+        [status, currentPeriodStart || null, currentPeriodEnd || null, endsAt || null,
             new Date(), subscriptionUuid, getPortalId()]
     );
 };

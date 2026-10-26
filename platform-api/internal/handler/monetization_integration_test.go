@@ -365,6 +365,34 @@ func TestMonetizationHandler_FlatRateRoundTrip(t *testing.T) {
 	}
 }
 
+// The pricing of a plan the API Portal creates is dated when the portal made it, the event's
+// occurred_at, not when the event was processed; it is stored and read back as the portal sent it.
+func TestMonetizationHandler_PortalPlanPricingIsDatedWhenThePortalMadeIt(t *testing.T) {
+	h := setupMonetizationHandlerTestEnv(t)
+	for handle, pricing := range map[string]string{
+		"gold":   `{"pricing_type":"FLAT_RATE","currency":"USD","billing_period":"MONTH","flat_amount":"29.00","prices":[]}`,
+		"silver": `{"pricing_type":"USAGE_BASED","currency":"USD","billing_period":"MONTH","prices":[{"meter_handle":"api-calls","pricing_model":"PER_UNIT","unit_amount":"0.01"}]}`,
+	} {
+		madeAt := time.Now().UTC().Add(-time.Hour).Truncate(time.Second)
+		rec := postPortalEventAt(t, h, webhook.EventSubscriptionPlanCreated, madeAt,
+			`{"handle":"`+handle+`","display_name":"`+handle+`","limits":[],"pricing":`+pricing+`}`)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("subscription_plan.created %s: status %d, body %s", handle, rec.Code, rec.Body.String())
+		}
+		rec = planRequest(t, h, http.MethodGet, planITPath+"/"+handle+"/pricing", "")
+		got := decodeJSON(t, rec.Body.String())
+		if rec.Code != http.StatusOK || got["updatedAt"] != madeAt.Format(time.RFC3339) {
+			t.Fatalf("pricing of %s: status %d, body %s; want updatedAt %s", handle, rec.Code, rec.Body.String(), madeAt.Format(time.RFC3339))
+		}
+		if handle == "gold" && (got["pricingType"] != "FLAT_RATE" || got["flatAmount"] != "29.00" || !reflect.DeepEqual(got["prices"], []any{})) {
+			t.Errorf("pricing of gold = %v, want the flat rate 29.00 with no prices", got)
+		}
+		if handle == "silver" && (got["pricingType"] != "USAGE_BASED" || got["flatAmount"] != nil || len(got["prices"].([]any)) != 1) {
+			t.Errorf("pricing of silver = %v, want one usage price and no flat amount", got)
+		}
+	}
+}
+
 // A plan created without pricing, or with a null one, is free.
 func TestMonetizationHandler_PlanWithoutPricingIsFree(t *testing.T) {
 	h := setupMonetizationHandlerTestEnv(t)

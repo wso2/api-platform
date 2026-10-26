@@ -3251,7 +3251,7 @@
     "defaultMessage": "Name"
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.namePlaceholder": {
-    "defaultMessage": "e.g. API requests"
+    "defaultMessage": "e.g. Requests"
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.nameRequired": {
     "defaultMessage": "Enter a name."
@@ -3290,7 +3290,7 @@
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.typeLabel": {
     "defaultMessage": "Type",
-    "description": "What a meter counts: API requests or tokens."
+    "description": "What a meter counts: requests or tokens."
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.updateFailed": {
     "defaultMessage": "Failed to save the meter."
@@ -3342,7 +3342,7 @@
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.eventLabel": {
     "defaultMessage": "Event",
-    "description": "What the chosen meter counts, shown beside it: \"API requests\" or \"Tokens\"."
+    "description": "What the chosen meter counts, shown beside it: \"Requests\" or \"Tokens\"."
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.filterOperator": {
     "defaultMessage": "Filter operator"
@@ -3726,7 +3726,7 @@
     "description": "A token count our gateway reports for each AI API request: the prompt and completion tokens together."
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.components.meterLabels.type.requestCount": {
-    "defaultMessage": "API requests"
+    "defaultMessage": "Requests"
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.components.meterLabels.type.tokens": {
     "defaultMessage": "Tokens"

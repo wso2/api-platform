@@ -18,12 +18,12 @@
 'use strict';
 
 /*
- * Display text for meters and prices, shared by the settings page and the API pages: "API
- * requests", "Tokens", "API type is one of LlmProvider", "LLM input tokens · LlmProvider".
+ * Display text for meters and prices, shared by the settings page and the API pages: "Requests",
+ * "Tokens", "API type is one of LlmProvider", "LLM input tokens · LlmProvider".
  */
 
 const METER_TYPE_LABELS = {
-    REQUEST_COUNT: 'API requests',
+    REQUEST_COUNT: 'Requests',
     TOKENS: 'Tokens',
 };
 

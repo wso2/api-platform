@@ -606,9 +606,9 @@ paths:
         - Billing
       summary: Set up the billing configuration
       description: >-
-        Verifies the keys with Moesif and Stripe, connects the Moesif application to Stripe, registers Moesif's
-        endpoint and the portal's webhook endpoint in Stripe, creates in Moesif each paid plan already offered on an
-        API, and saves. When any step fails, the steps already done are undone and nothing is saved. A key Moesif or
+        Verifies the keys with Moesif and Stripe, connects the Moesif application to Stripe with the Stripe key
+        (replacing a connection already there), registers Moesif's endpoint and the portal's webhook endpoint in
+        Stripe, creates in Moesif each paid plan already offered on an API, and saves. When any step fails, the steps already done are undone and nothing is saved. A key Moesif or
         Stripe refuses returns `400` with code `BILLING_KEY_INVALID`, listing each refused key under `errors` by its
         request field; another step Moesif or Stripe refuses returns `400` with code `BILLING_SETUP_FAILED` or
         `BILLING_CATALOG_FAILED`; a provider that cannot be reached returns `502`. A billing configuration cannot be
@@ -651,11 +651,14 @@ paths:
         - Billing
       summary: Remove the billing configuration
       description: >-
-        Removes everything set up with the keys the administrator entered: Moesif's connection to Stripe and Moesif's
-        endpoint in Stripe (when setup made them; what was there before is left), the portal's endpoint in Stripe, and
-        the stored keys. Open checkouts are ended first. Refused with `409` (`BILLING_SUBSCRIPTIONS_ACTIVE`) while a
-        paid subscription is active. When a provider refuses a step, the steps already done are undone and nothing is
-        removed (`400` or `502`, `BILLING_REMOVE_FAILED`).
+        Removes everything set up with the keys the administrator entered: Moesif's connection to Stripe, Moesif's
+        endpoint in Stripe, the portal's endpoint in Stripe, and the stored keys, with the billing customers, their
+        checkouts and the paid plans' billing records. Open checkouts are ended first, and every paid plan sold on an
+        API is taken off sale in Moesif (its billing meters stop and its prices and plans are archived). Refused with
+        `409` (`BILLING_SUBSCRIPTIONS_ACTIVE`) while a paid subscription is active. When a provider refuses a step,
+        nothing is removed (`400` or `502`, `BILLING_REMOVE_FAILED`): the connection and endpoints already removed are
+        put back, while ended checkouts and plans taken off sale stay so, and removing billing again finishes the
+        job.
       operationId: deleteBillingConfiguration
       responses:
         "204":
@@ -798,7 +801,9 @@ paths:
       summary: Get a checkout
       description: >-
         Returns the caller's checkout. While it is open, the portal asks Stripe for its state first, so the
-        subscription is created as soon as the subscriber returns from a confirmed payment.
+        subscription is created as soon as the subscriber returns from a confirmed payment. A checkout that ended
+        unpaid is answered once with status `EXPIRED` and is then deleted, so it returns `404` after that, as it
+        does when Stripe's event ended it first.
       operationId: getCheckoutSession
       responses:
         "200":
@@ -6976,8 +6981,6 @@ components:
     BillingConfiguration:
       type: object
       properties:
-        id:
-          type: string
         provider:
           type: string
           enum:
@@ -6999,7 +7002,8 @@ components:
         webhookEndpointUrl:
           type: string
           format: uri
-          description: Where Stripe sends this portal's events.
+          description: Where Stripe sends this portal's events; the address ends with the organization's id.
+          example: https://developer.example.com/api-portal/billing/stripe/webhooks/0b5c9a4e-1f2d-4c3b-9a8e-7d6f5e4c3b2a
         webhookBaseUrl:
           type: string
           format: uri
@@ -7009,26 +7013,13 @@ components:
           description: >-
             Whether the portal holds the signing secret of its endpoint, which Stripe returns when the portal
             registers the endpoint.
-        moesifWebhookRegistered:
-          type: boolean
-          description: >-
-            Whether setup registered Moesif's endpoint in Stripe. Removing billing removes it only then; an endpoint
-            that was there before setup is left.
-        lastEventAt:
-          type: string
-          format: date-time
-          nullable: true
-          description: When the payment provider last sent an event.
         createdBy:
           type: string
-        updatedBy:
-          type: string
+          description: Who set billing up.
         createdAt:
           type: string
           format: date-time
-        updatedAt:
-          type: string
-          format: date-time
+          description: When billing was set up. A billing configuration is not updated; it is removed and set up again.
     CheckoutSession:
       type: object
       properties:
@@ -7040,7 +7031,10 @@ components:
             - OPEN
             - COMPLETED
             - EXPIRED
-          description: OPEN until Stripe confirms the payment (COMPLETED) or the checkout ends unpaid (EXPIRED).
+          description: >-
+            OPEN until Stripe confirms the payment (COMPLETED) or the checkout ends unpaid (EXPIRED). A checkout that
+            ends unpaid is deleted: EXPIRED is returned once, by the request that finds it ended, and the checkout is
+            not found after that.
         artifactId:
           type: string
           nullable: true
@@ -7411,7 +7405,7 @@ components:
         type:
           type: string
           description: >-
-            What is counted: API requests (`REQUEST_COUNT`, each request counts 1), or the tokens of AI API requests
+            What is counted: requests (`REQUEST_COUNT`, each request counts 1), or the tokens of AI API requests
             (`TOKENS`, which add up the number at `typeKey`). The meter's name says what it counts, such as
             "Input tokens". Cannot change once a plan prices the meter.
           enum:
@@ -7589,7 +7583,7 @@ components:
         own: subscribers see the meter's name followed by each filter, separated by " · ": the values of an
         `EQUALS` or `IN` filter joined with ", ", "not" and the values of a `NOT_EQUALS` or `NOT_IN` filter, and
         the path of a `STARTS_WITH` filter followed by "…". Examples: "LLM input tokens · LlmProvider", "API calls ·
-        not DELETE, OPTIONS", "API calls · /orders…", "API requests · RestApi", "API calls".
+        not DELETE, OPTIONS", "API calls · /orders…", "Requests · RestApi", "API calls".
       additionalProperties: false
       required:
         - meterId
@@ -7687,14 +7681,8 @@ components:
         createdBy:
           type: string
           readOnly: true
-        updatedBy:
-          type: string
-          readOnly: true
+          description: Who created the plan, and with it the pricing.
         createdAt:
-          type: string
-          format: date-time
-          readOnly: true
-        updatedAt:
           type: string
           format: date-time
           readOnly: true

@@ -182,8 +182,8 @@ func TestSubscriptionPlanCreated_CopiesUsagePrices(t *testing.T) {
 		len(p.Prices) != 3 {
 		t.Fatalf("pricing = %+v", p)
 	}
-	if want := time.Date(2026, 10, 11, 9, 30, 0, 0, time.UTC); !p.SourceUpdatedAt.Equal(want) {
-		t.Errorf("sourceUpdatedAt = %v, want %v", p.SourceUpdatedAt, want)
+	if want := time.Date(2026, 10, 11, 9, 30, 0, 0, time.UTC); !p.CreatedAt.Equal(want) {
+		t.Errorf("createdAt = %v, want %v", p.CreatedAt, want)
 	}
 	tokens, calls := p.Prices[0], p.Prices[2]
 	if tokens.MeterHandle != "llm-input" || tokens.PricingModel != "PER_UNIT" || *tokens.UnitQuantity != 1000000 || tokens.Tiers != nil ||

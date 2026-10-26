@@ -148,7 +148,7 @@ const outbox = () => sql("SELECT type, payload FROM events WHERE type LIKE 'subs
 // the provider deliver it again.
 async function receive(type, objectId) {
     try {
-        return await events.handle({ orgId: ORG, configurationUuid: 'conn-1', type, objectRef: objectId });
+        return await events.handle({ orgId: ORG, type, objectRef: objectId });
     } catch (err) {
         return { error: err.message };
     }
@@ -158,12 +158,13 @@ async function receive(type, objectId) {
     // A paid plan that is ready to sell: pricing, a billing configuration and its API plan.
     const meter = await meterDao.create(ORG, { handle: 'calls', displayName: 'Calls', type: 'REQUEST_COUNT' }, 'admin');
     const { pricing } = await planPricingDao.create(ORG, 'plan-gold', { pricingType: 'USAGE_BASED', currency: 'USD',
-        billingPeriod: 'MONTH', flatAmount: null,
-        prices: [{ meter, filters: [], pricingModel: 'PER_UNIT', unitAmount: '0.01', unitQuantity: 1, tiers: null }] },
-        'admin');
-    await billingConfigurationDao.create(ORG, { uuid: 'conn-1', provider: 'MOESIF', paymentProvider: 'STRIPE', moesifCollectorApplicationId: 'app', moesifManagementKey: 'mk',
-        stripeApiKey: 'rk_test_abcd1234', stripePublishableKey: 'pk_test_demo1234', stripeWebhookSecret: 'whsec_x' }, 'admin');
-    await billingApiPlanDao.insertApiPlan({ uuid: 'api-plan-1', orgId: ORG, configurationUuid: 'conn-1', apiUuid: 'api-1',
+        billingPeriod: 'MONTH',
+        prices: [{ meter, filters: [], pricingModel: 'PER_UNIT', unitAmount: '0.01', unitQuantity: 1, tiers: null }] });
+    await billingConfigurationDao.create(ORG, { billing_provider: 'MOESIF', payment_provider: 'STRIPE',
+        settings: { stripe: { publishableKey: 'pk_test_demo1234' } },
+        secrets: { moesif: { collectorApplicationId: 'app', managementKey: 'mk' },
+            stripe: { apiKey: 'rk_test_abcd1234', webhookSecret: 'whsec_x' } } }, 'admin');
+    await billingApiPlanDao.insertApiPlan({ orgId: ORG, apiUuid: 'api-1',
         planUuid: 'plan-gold', items: [{ priceUuid: pricing.prices[0].uuid, planRef: 'prod_1', priceRef: 'price_calls', meterRef: 'bm_1' }] });
 
     out.freePlan = await call(checkout.createCheckoutSession, as('alice', { body: { artifactId: 'weather', subscriptionPlanId: 'free' } }));
@@ -180,7 +181,7 @@ async function receive(type, objectId) {
     out.returned = await call(checkout.getCheckoutSession, as('alice', { params: { checkoutId: id } }));
     out.completedEvent = await receive('checkout.session.completed', session.id);
     out.subscriptionRows = sql('SELECT uuid, created_by FROM subscriptions');
-    out.billingRow = sql('SELECT billing_status, billing_subscription_id FROM subscription_billing')[0];
+    out.billingRow = sql('SELECT status, subscription_ref FROM subscription_billing')[0];
     out.subscribeAgain = await call(checkout.createCheckoutSession, as('alice', { body: { artifactId: 'weather', subscriptionPlanId: 'gold' } }));
 
     // Stripe's retries for a payment: past due (still served), then unpaid; a repeat changes nothing.
@@ -189,33 +190,43 @@ async function receive(type, objectId) {
     stripeState.subscriptionStatus = 'unpaid';
     await receive('customer.subscription.updated', 'sub_paid');
     await receive('customer.subscription.updated', 'sub_paid');
-    out.statusAfterRetries = sql('SELECT billing_status FROM subscription_billing')[0].billing_status;
+    out.statusAfterRetries = sql('SELECT status FROM subscription_billing')[0].status;
 
     // A transient Stripe failure fails the delivery, so Stripe delivers the event again.
     stripeState.failNextRetrieve = true;
     out.failedEvent = await receive('invoice.paid', 'in_2');
     out.redeliveredEvent = await receive('invoice.paid', 'in_2');
 
-    // Another subscriber abandons checkout; Stripe expires the session.
+    // Another subscriber abandons checkout; Stripe expires the session, and the checkout is deleted.
     const second = await call(checkout.createCheckoutSession, as('carol', { body: { artifactId: 'weather', subscriptionPlanId: 'gold' } }));
     const secondSession = Object.values(stripeState.sessions).find((s) => s.client_reference_id === second.body.id);
     secondSession.status = 'expired';
-    await receive('checkout.session.expired', secondSession.id);
+    out.expiredEvent = await receive('checkout.session.expired', secondSession.id);
     out.expired = await call(checkout.getCheckoutSession, as('carol', { params: { checkoutId: second.body.id } }));
+    out.carolRows = sql("SELECT COUNT(*) AS n FROM billing_checkouts WHERE user_uuid = 'carol'")[0].n;
+    // The page asks after a checkout Stripe expired before its event arrived: EXPIRED once, then not found.
+    const third = await call(checkout.createCheckoutSession, as('cleo', { body: { artifactId: 'weather', subscriptionPlanId: 'gold' } }));
+    Object.values(stripeState.sessions).find((s) => s.client_reference_id === third.body.id).status = 'expired';
+    out.expiredOnRead = await call(checkout.getCheckoutSession, as('cleo', { params: { checkoutId: third.body.id } }));
+    out.expiredReadAgain = await call(checkout.getCheckoutSession, as('cleo', { params: { checkoutId: third.body.id } }));
 
     out.outbox = outbox();
 
     // ── one subscription per user per API ──
     // A flat-fee plan of the same API, ready to sell too.
-    await planPricingDao.create(ORG, 'plan-silver', { pricingType: 'FLAT_RATE', currency: 'USD', billingPeriod: 'MONTH',
-        flatAmount: '19.00', prices: [] }, 'admin');
-    await billingApiPlanDao.insertApiPlan({ uuid: 'api-plan-2', orgId: ORG, configurationUuid: 'conn-1', apiUuid: 'api-1',
-        planUuid: 'plan-silver', items: [{ priceUuid: null, planRef: 'prod_2', priceRef: 'price_flat', meterRef: null }] });
+    const silver = (await planPricingDao.create(ORG, 'plan-silver', { pricingType: 'FLAT_RATE', currency: 'USD',
+        billingPeriod: 'MONTH', flatAmount: '19.00' })).pricing;
+    await billingApiPlanDao.insertApiPlan({ orgId: ORG, apiUuid: 'api-1', planUuid: 'plan-silver',
+        items: [{ priceUuid: silver.flat_price_uuid, planRef: 'prod_2', priceRef: 'price_flat', meterRef: null }] });
     stripeState.subscriptionStatus = 'active';
     const start = (user, plan) => call(checkout.createCheckoutSession, as(user, { body: { artifactId: 'weather', subscriptionPlanId: plan } }));
     const sessionOf = (checkoutId) => Object.values(stripeState.sessions).find((s) => s.client_reference_id === checkoutId);
     const sessionCount = () => Object.keys(stripeState.sessions).length;
-    const checkoutRow = (id) => sql('SELECT status, subscription_uuid FROM billing_checkouts WHERE uuid = ?', id)[0];
+    // A checkout as stored, or null once deleted.
+    const checkoutRow = (id) => {
+        const row = sql('SELECT subscription_uuid FROM billing_checkouts WHERE uuid = ?', id)[0];
+        return row ? { status: row.subscription_uuid ? 'COMPLETED' : 'OPEN', subscription_uuid: row.subscription_uuid } : null;
+    };
     const subscriptionsOf = (user) => sql(\`SELECT s.uuid, p.handle FROM subscriptions s JOIN subscription_plans p ON p.uuid = s.plan_uuid
         WHERE s.created_by = ?\`, user);
 
@@ -230,7 +241,7 @@ async function receive(type, objectId) {
     out.switchExpired = stripeCalls.filter((c) => c[0] === 'expire').map((c) => c[1]);
     out.reuseFirstSession = sessionOf(out.reuseFirst.body.id).id;
     out.firstAfterSwitch = checkoutRow(out.reuseFirst.body.id);
-    out.danOpen = sql("SELECT COUNT(*) AS n FROM billing_checkouts WHERE user_uuid = 'dan' AND status = 'OPEN'")[0].n;
+    out.danOpen = sql("SELECT COUNT(*) AS n FROM billing_checkouts WHERE user_uuid = 'dan' AND subscription_uuid IS NULL")[0].n;
 
     // The open checkout was paid meanwhile: it is activated, and no new one starts.
     Object.assign(sessionOf(out.switched.body.id), { status: 'complete', payment_status: 'paid', subscription: 'sub_dan' });
@@ -257,7 +268,7 @@ async function receive(type, objectId) {
     out.ivySwitch = await start('ivy', 'silver');
     out.ivyNewSessions = sessionCount() - before;
     out.ivyExpireCalls = stripeCalls.filter((c) => c[0] === 'expire' && c[1] === sessionOf(out.ivyFirst.body.id).id).length;
-    out.ivyCheckouts = sql("SELECT uuid, plan_uuid, status FROM billing_checkouts WHERE user_uuid = 'ivy'");
+    out.ivyCheckouts = sql("SELECT uuid, plan_uuid, subscription_uuid FROM billing_checkouts WHERE user_uuid = 'ivy'");
 
     // Two starts at the same moment: the second does not see the first's checkout at first, finds it
     // under the lock on the user's customer row, and uses that one.
@@ -279,10 +290,8 @@ async function receive(type, objectId) {
     // A checkout whose start has not reached Stripe: another start waits for it, then asks to try
     // again; one left like that for over two minutes is removed and a new one started.
     const pending = async (user) => {
-        const customer = await billingCheckoutDao.createCustomer({ orgId: ORG, configurationUuid: 'conn-1',
-            userUuid: user, customerRef: 'cus_' + user });
-        return billingCheckoutDao.createCheckout({ orgId: ORG, userUuid: user, apiUuid: 'api-1', planUuid: 'plan-gold',
-            customerUuid: customer.uuid });
+        await billingCheckoutDao.createCustomer({ orgId: ORG, userUuid: user, customerRef: 'cus_' + user });
+        return billingCheckoutDao.createCheckout({ orgId: ORG, userUuid: user, apiUuid: 'api-1', planUuid: 'plan-gold' });
     };
     const gilPending = await pending('gil');
     const halPending = await pending('hal');
@@ -332,7 +341,7 @@ async function receive(type, objectId) {
     out.gusReturned = await call(checkout.getCheckoutSession, as('gus', { params: { checkoutId: out.gusCheckout.body.id } }));
     out.gusCompletedEvent = await receive('checkout.session.completed', gusSession.id);
     out.gusSubscriptions = subscriptionsOf('gus');
-    out.gusBillingRows = sql("SELECT COUNT(*) AS n FROM subscription_billing WHERE billing_subscription_id = 'sub_gus'")[0].n;
+    out.gusBillingRows = sql("SELECT COUNT(*) AS n FROM subscription_billing WHERE subscription_ref = 'sub_gus'")[0].n;
     out.gusStripeCalls = stripeCalls.filter((c) => (c[0] === 'cancel' && c[1] === 'sub_gus') || c[0] === 'refund');
     out.gusCreatedEvents = outbox().filter((e) => e.type === 'subscription.created').length - createdBefore;
 
@@ -347,28 +356,29 @@ async function receive(type, objectId) {
     out.ivyReturned = await call(checkout.getCheckoutSession, as('ivy', { params: { checkoutId: out.ivyCheckout.body.id } }));
     out.ivySubscriptions = subscriptionsOf('ivy');
     out.ivyStripeCalls = stripeCalls.filter((c) => c[0] === 'cancel' || c[0] === 'refund');
+    out.ivyReadAgain = await call(checkout.getCheckoutSession, as('ivy', { params: { checkoutId: out.ivyCheckout.body.id } }));
 
     // A plan taken off an API, or deleted: its open checkouts are ended in Stripe before the change.
-    run("UPDATE billing_checkouts SET status = 'EXPIRED' WHERE status = 'OPEN'");
-    const customerOf = (user) => sql('SELECT uuid FROM billing_customers WHERE user_uuid = ?', user)[0].uuid;
+    // The open checkouts so far are cleared first.
+    const clearOpen = () => run('DELETE FROM billing_checkouts WHERE subscription_uuid IS NULL');
+    clearOpen();
     // One still being started (no Stripe checkout yet) can't be ended: the change is refused.
-    await billingCheckoutDao.createCheckout({ orgId: ORG, userUuid: 'kim', apiUuid: 'api-1', planUuid: 'plan-silver',
-        customerUuid: customerOf('kim') });
+    await billingCheckoutDao.createCheckout({ orgId: ORG, userUuid: 'kim', apiUuid: 'api-1', planUuid: 'plan-silver' });
     out.endBeingStarted = await checkout.endOpenCheckoutsFor(ORG, { planUuid: 'plan-silver' }).then(() => 'ended', (e) => [e.status, e.message]);
-    run("UPDATE billing_checkouts SET status = 'EXPIRED' WHERE status = 'OPEN'");
+    clearOpen();
     out.niaStarted = await call(checkout.createCheckoutSession, as('nia', { body: { artifactId: 'weather', subscriptionPlanId: 'gold' } }));
     const niaSession = () => sessionOf(out.niaStarted.body.id);
     stripeCalls.length = 0;
     await checkout.endOpenCheckoutsFor(ORG, { apiUuid: 'api-1', planUuids: ['plan-silver'] });
-    out.niaAfterOtherPlan = { status: (await billingCheckoutDao.getCheckout(out.niaStarted.body.id)).status,
+    out.niaAfterOtherPlan = { kept: Boolean(await billingCheckoutDao.getCheckout(out.niaStarted.body.id)),
         expired: stripeCalls.filter((c) => c[0] === 'expire' && c[1] === niaSession().id).length };
     await checkout.endOpenCheckoutsFor(ORG, { planUuid: 'plan-gold' });
-    out.niaAfterPlan = { status: (await billingCheckoutDao.getCheckout(out.niaStarted.body.id)).status,
+    out.niaAfterPlan = { kept: Boolean(await billingCheckoutDao.getCheckout(out.niaStarted.body.id)),
         session: niaSession().status, expired: stripeCalls.filter((c) => c[0] === 'expire' && c[1] === niaSession().id).length };
 
     // An account set to leave a subscription past due after the last retry: served while Stripe retries,
     // unpaid once Stripe has given up on the invoice (no next attempt), and served again once it is paid.
-    const paidStatus = () => sql("SELECT billing_status FROM subscription_billing WHERE billing_subscription_id = 'sub_paid'")[0].billing_status;
+    const paidStatus = () => sql("SELECT status FROM subscription_billing WHERE subscription_ref = 'sub_paid'")[0].status;
     stripeState.subscriptionStatus = 'past_due';
     stripeState.invoices.sub_paid = [{ id: 'in_3', status: 'open', attempt_count: 1, next_payment_attempt: 1762000000 }];
     await receive('invoice.payment_failed', 'in_3');
@@ -387,8 +397,7 @@ async function receive(type, objectId) {
     out.notYetCharged = paidStatus();
 
     // An MCP server sells the same plan: its checkout returns to the MCP server's page.
-    await billingApiPlanDao.insertApiPlan({ uuid: 'api-plan-mcp', orgId: ORG, configurationUuid: 'conn-1', apiUuid: 'mcp-1',
-        planUuid: 'plan-gold', items: [{ priceUuid: pricing.prices[0].uuid, planRef: 'prod_2', priceRef: 'price_mcp_calls', meterRef: 'bm_2' }] });
+    await billingApiPlanDao.insertApiPlan({ orgId: ORG, apiUuid: 'mcp-1', planUuid: 'plan-gold', items: [{ priceUuid: pricing.prices[0].uuid, planRef: 'prod_2', priceRef: 'price_mcp_calls', meterRef: 'bm_2' }] });
     out.mcpStarted = await call(checkout.createCheckoutSession, as('mia', { body: { artifactId: 'files-mcp', subscriptionPlanId: 'gold' } }));
     out.mcpSessionArgs = stripeCalls.filter((c) => c[0] === 'session').pop()[1];
     process.stdout.write('\\nPROBE_JSON:' + JSON.stringify(out) + '\\n');
@@ -470,8 +479,8 @@ test('a paid plan on an MCP server is bought the same way, and its checkout retu
 
 test('a plan taken off an API, or deleted, has its open checkouts ended in Stripe first; other plans\' are left', () => {
     assert.equal(results().niaStarted.status, 201, JSON.stringify(results().niaStarted.body));
-    assert.deepEqual(results().niaAfterOtherPlan, { status: 'OPEN', expired: 0 });
-    assert.deepEqual(results().niaAfterPlan, { status: 'EXPIRED', session: 'expired', expired: 1 });
+    assert.deepEqual(results().niaAfterOtherPlan, { kept: true, expired: 0 });
+    assert.deepEqual(results().niaAfterPlan, { kept: false, session: 'expired', expired: 1 }, 'ended in Stripe, then deleted');
     assert.deepEqual(results().endBeingStarted, [409, 'A checkout for this API is being started. Try again in a moment.']);
 });
 
@@ -488,7 +497,7 @@ test('a confirmed payment creates the subscription once, with its billing state'
     assert.equal(results().completedEvent, 'PROCESSED');
     assert.equal(results().subscriptionRows.length, 1, 'Stripe\'s event after the return creates nothing more');
     assert.equal(results().subscriptionRows[0].created_by, 'alice');
-    assert.deepEqual(results().billingRow, { billing_status: 'ACTIVE', billing_subscription_id: 'sub_paid' });
+    assert.deepEqual(results().billingRow, { status: 'ACTIVE', subscription_ref: 'sub_paid' });
     assert.equal(results().subscribeAgain.status, 409);
 
     const created = results().outbox.filter((e) => e.type === 'subscription.created');
@@ -515,9 +524,18 @@ test('a transient Stripe failure fails the delivery, and Stripe\'s next delivery
     assert.equal(results().redeliveredEvent, 'PROCESSED');
 });
 
-test('an abandoned checkout expires without a subscription', () => {
-    assert.equal(results().expired.body.status, 'EXPIRED');
-    assert.equal(results().expired.body.subscriptionId, null);
+test('an abandoned checkout is deleted once Stripe expires it, without a subscription', () => {
+    assert.equal(results().expiredEvent, 'PROCESSED');
+    assert.equal(results().expired.status, 404, JSON.stringify(results().expired.body));
+    assert.equal(results().carolRows, 0);
+});
+
+test('a checkout the page finds expired is answered EXPIRED once, as it is deleted, and is not found after', () => {
+    const r = results().expiredOnRead;
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.equal(r.body.status, 'EXPIRED');
+    assert.equal(r.body.subscriptionId, null);
+    assert.equal(results().expiredReadAgain.status, 404);
 });
 
 test('starting a checkout again for the same plan gives back the same open checkout', () => {
@@ -535,7 +553,7 @@ test('starting a checkout for another plan of the API ends the open one in Strip
     assert.notEqual(r.body.id, results().reuseFirst.body.id);
     assert.notEqual(r.body.clientSecret, results().reuseFirst.body.clientSecret);
     assert.deepEqual(results().switchExpired, [results().reuseFirstSession]);
-    assert.equal(results().firstAfterSwitch.status, 'EXPIRED');
+    assert.equal(results().firstAfterSwitch, null, 'the ended checkout is deleted');
     assert.equal(results().danOpen, 1, 'one open checkout per user and API');
 });
 
@@ -567,7 +585,7 @@ test('an open checkout for another plan that Stripe will not end is not sent bac
     assert.ok(!JSON.stringify(r.body).includes(results().ivyFirst.body.clientSecret), 'the gold checkout is not sent back');
     assert.equal(results().ivyExpireCalls, 1);
     assert.equal(results().ivyNewSessions, 0);
-    assert.deepEqual(results().ivyCheckouts, [{ uuid: results().ivyFirst.body.id, plan_uuid: 'plan-gold', status: 'OPEN' }]);
+    assert.deepEqual(results().ivyCheckouts, [{ uuid: results().ivyFirst.body.id, plan_uuid: 'plan-gold', subscription_uuid: null }]);
 });
 
 test('a start that misses another start\'s open checkout finds it under the lock and uses that checkout', () => {
@@ -598,7 +616,7 @@ test('subscribing to a free plan ends the open checkout in Stripe first, so it c
     assert.equal(r.status, 201, JSON.stringify(r.body));
     assert.equal(results().kimExpireCalls, 1);
     assert.equal(results().kimSession, 'expired');
-    assert.equal(results().kimCheckoutAfter.status, 'EXPIRED');
+    assert.equal(results().kimCheckoutAfter, null, 'the ended checkout is deleted');
     assert.deepEqual(results().kimSubscriptions.map((s) => s.handle), ['free']);
 });
 
@@ -640,4 +658,5 @@ test('a checkout paid after its plan was deleted ends without a subscription, an
     assert.equal(r.body.status, 'EXPIRED');
     assert.deepEqual(results().ivySubscriptions, []);
     assert.deepEqual(results().ivyStripeCalls, [['cancel', 'sub_ivy', null], ['refund', 'pi_i1']]);
+    assert.equal(results().ivyReadAgain.status, 404, 'the checkout is deleted');
 });

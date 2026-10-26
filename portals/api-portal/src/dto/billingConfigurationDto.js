@@ -24,17 +24,13 @@ class BillingConfiguration {
      * @param {object} [audit]
      */
     constructor(conn, extra, audit) {
-        this.id = conn.uuid;
-        this.provider = conn.provider;
+        this.provider = conn.billing_provider;
         this.paymentProvider = conn.payment_provider;
         // Read from the payment provider's publishable key: a test key means test mode.
         this.mode = extra.mode;
         this.webhookEndpointUrl = extra.webhookEndpointUrl;
         this.webhookBaseUrl = extra.webhookBaseUrl;
-        this.webhookRegistered = Number(conn.has_webhook_secret) === 1;
-        // Whether setup created Moesif's endpoint in Stripe (one that was there before is not the portal's).
-        this.moesifWebhookRegistered = Boolean(conn.moesif_webhook_endpoint_id);
-        this.lastEventAt = conn.last_event_at || null;
+        this.webhookRegistered = Boolean(conn.stripeWebhookEndpointId);
         applyAudit(this, audit);
     }
 }

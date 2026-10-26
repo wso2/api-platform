@@ -18,15 +18,16 @@
 'use strict';
 
 /*
- * Data access for `billing_configurations`: the billing connector (and payment provider) one
- * organization sells paid plans through, with their settings: the Moesif keys and the Stripe key.
+ * Data access for `billing_configurations`: the billing provider (and payment provider) one
+ * organization sells paid plans through, with their settings, one configuration per organization.
  *
- * The keys (the Moesif Collector Application Id among them) and the webhook signing secret are
- * encrypted at rest with the portal's own key (AES-256-GCM, security.encryption_key), as key
- * manager credentials are. Reads that only render the connection go through `get`, which never
- * selects an encrypted column. Two reads decrypt: `getWithSecrets`, from which the billing provider
- * interface builds the connector, and `getWebhookSecret`, which verifies a payment event and
- * returns only the signing secret.
+ * Settings are kept per provider: public values in provider_settings as plain JSON, and keys in
+ * provider_secrets_enc, each encrypted on its own (AES-256-GCM, security.encryption_key) and bound to
+ * its path, the organization and the portal. `get` never reads the keys; `getWithSecrets` decrypts
+ * them for the connector, and `getWebhookSecret` decrypts only the signing secret.
+ *
+ * Rows read here carry each setting as the connector names it: { stripe: { publishableKey } } is
+ * `stripePublishableKey`.
  */
 
 const db = require('../db/driver');
@@ -36,19 +37,12 @@ const { createCryptoUtil, bufferToUtf8 } = require('../utils/cryptoUtil');
 const { getPortalId } = require('../utils/orgContext');
 
 const TABLE = 'billing_configurations';
+const PUBLIC_COLUMNS = 'org_uuid, billing_provider, payment_provider, provider_settings, created_by, created_at';
+
+// Where the webhook signing secret is kept.
+const WEBHOOK_SECRET_PATH = ['stripe', 'webhookSecret'];
 
 const billingCrypto = createCryptoUtil(config.security && config.security.encryptionKey);
-
-const PUBLIC_COLUMNS = [
-    'uuid', 'org_uuid', 'provider', 'payment_provider',
-    'stripe_publishable_key', 'stripe_webhook_endpoint_id', 'stripe_webhook_base_url', 'moesif_webhook_endpoint_id',
-    'moesif_stripe_connected_by_portal',
-    'last_event_at', 'created_by', 'created_at', 'updated_by', 'updated_at',
-    'CASE WHEN stripe_webhook_secret_enc IS NULL THEN 0 ELSE 1 END AS has_webhook_secret',
-].join(', ');
-
-const SECRET_COLUMNS = `${PUBLIC_COLUMNS}, moesif_collector_application_id_enc, moesif_management_key_enc, stripe_api_key_enc, `
-    + 'stripe_webhook_secret_enc';
 
 function requireCrypto() {
     if (!billingCrypto.enabled) {
@@ -59,140 +53,168 @@ function requireCrypto() {
     }
 }
 
-function encrypted(value) {
-    return db.binaryParam(value ? Buffer.from(billingCrypto.encrypt(value), 'utf8') : null);
+/** A JSON object stored as binary. */
+function parseObject(value) {
+    try {
+        const parsed = JSON.parse(bufferToUtf8(value) || '{}');
+        return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+    } catch (_err) {
+        return {};
+    }
 }
 
-/**
- * Decrypts one stored key. Any failure (a changed encryption key, a damaged column) means the same
- * thing to an administrator: the key must be entered again. The cause is logged, not returned.
- */
-function decryptField(value, field, configurationUuid) {
-    const payload = bufferToUtf8(value);
-    if (!payload) return '';
-    try {
-        return billingCrypto.decrypt(payload);
-    } catch (error) {
-        logger.error('Failed to decrypt a stored billing key', { field, configurationUuid, error: error.message });
-        throw new Error('A stored billing key could not be decrypted. Enter the keys again in Settings › Billing; '
-            + 'the portal\'s encryption key may have changed.');
+function jsonParam(value) {
+    return db.binaryParam(Buffer.from(JSON.stringify(value), 'utf8'));
+}
+
+/** The settings of every provider as the connector names them: { stripe: { apiKey } } -> { stripeApiKey }. */
+function flatten(byProvider) {
+    const flat = {};
+    for (const [provider, values] of Object.entries(byProvider || {})) {
+        for (const [key, value] of Object.entries(values || {})) {
+            flat[`${provider}${key.charAt(0).toUpperCase()}${key.slice(1)}`] = value;
+        }
     }
+    return flat;
+}
+
+/** The context a secret is encrypted with: its path, the organization and the portal. */
+function secretContext(orgId, provider, key) {
+    return `${getPortalId()}/${orgId}/${provider}.${key}`;
+}
+
+/** The secrets ({ provider: { key: value } }) with each value encrypted; empty values are left out. */
+function encryptSecrets(orgId, secrets) {
+    const encrypted = {};
+    for (const [provider, values] of Object.entries(secrets || {})) {
+        for (const [key, value] of Object.entries(values || {})) {
+            if (value === undefined || value === null || value === '') continue;
+            encrypted[provider] = encrypted[provider] || {};
+            encrypted[provider][key] = billingCrypto.encrypt(String(value), secretContext(orgId, provider, key));
+        }
+    }
+    return encrypted;
+}
+
+/** Decrypts one stored secret. */
+function decryptSecret(orgId, provider, key, payload) {
+    if (!payload) return null;
+    try {
+        return billingCrypto.decrypt(payload, secretContext(orgId, provider, key));
+    } catch (error) {
+        logger.error('Failed to decrypt a stored billing key', { orgId, key: `${provider}.${key}`, error: error.message });
+        throw new Error('A stored billing key could not be decrypted. Remove billing and set it up again in '
+            + 'Settings › Billing; the portal\'s encryption key may have changed.');
+    }
+}
+
+function toConfiguration(row) {
+    if (!row) return null;
+    const settings = parseObject(row.provider_settings);
+    return {
+        org_uuid: row.org_uuid,
+        billing_provider: row.billing_provider,
+        payment_provider: row.payment_provider,
+        created_by: row.created_by,
+        created_at: row.created_at,
+        settings,
+        ...flatten(settings),
+    };
 }
 
 /** The organization's billing configuration without any key, or null. */
 const get = async (orgId, t) => {
     const exec = t || db;
-    return (await exec.queryOne(
+    return toConfiguration(await exec.queryOne(
         `SELECT ${PUBLIC_COLUMNS} FROM ${TABLE} WHERE org_uuid = ? AND portal_id = ?`,
         [orgId, getPortalId()]
-    )) || null;
+    ));
 };
 
 /** The organization's billing configuration with its keys decrypted, or null. */
 const getWithSecrets = async (orgId, t) => {
     const exec = t || db;
     const row = await exec.queryOne(
-        `SELECT ${SECRET_COLUMNS} FROM ${TABLE} WHERE org_uuid = ? AND portal_id = ?`,
+        `SELECT ${PUBLIC_COLUMNS}, provider_secrets_enc FROM ${TABLE} WHERE org_uuid = ? AND portal_id = ?`,
         [orgId, getPortalId()]
     );
     if (!row) return null;
     requireCrypto();
-    const { moesif_collector_application_id_enc: appEnc, moesif_management_key_enc: moesifEnc, stripe_api_key_enc: stripeEnc,
-        stripe_webhook_secret_enc: secretEnc, ...publicRow } = row;
-    return {
-        ...publicRow,
-        // The connector's names for the settings (as the service passes them when setting up).
-        moesifCollectorApplicationId: decryptField(appEnc, 'moesif_collector_application_id', row.uuid),
-        stripePublishableKey: row.stripe_publishable_key,
-        moesifManagementKey: decryptField(moesifEnc, 'moesif_management_key', row.uuid),
-        stripeApiKey: decryptField(stripeEnc, 'stripe_api_key', row.uuid),
-        stripeWebhookSecret: decryptField(secretEnc, 'stripe_webhook_secret', row.uuid) || null,
-    };
+    const stored = parseObject(row.provider_secrets_enc);
+    const secrets = {};
+    for (const [provider, values] of Object.entries(stored)) {
+        secrets[provider] = {};
+        for (const [key, payload] of Object.entries(values || {})) {
+            secrets[provider][key] = decryptSecret(orgId, provider, key, payload);
+        }
+    }
+    return { ...toConfiguration(row), ...flatten(secrets) };
 };
 
 /**
- * What verifying a payment event needs, by configuration uuid, or null: the org, the connector and
- * payment provider, and the event endpoint's signing secret.
+ * What verifying a payment event needs, or null: the providers and the webhook signing secret.
  */
-const getWebhookSecret = async (configurationUuid) => {
+const getWebhookSecret = async (orgId) => {
     const row = await db.queryOne(
-        `SELECT uuid, org_uuid, provider, payment_provider, stripe_webhook_secret_enc FROM ${TABLE}
-         WHERE uuid = ? AND portal_id = ?`,
-        [configurationUuid, getPortalId()]
+        `SELECT org_uuid, billing_provider, payment_provider, provider_secrets_enc FROM ${TABLE}
+         WHERE org_uuid = ? AND portal_id = ?`,
+        [orgId, getPortalId()]
     );
     if (!row) return null;
     requireCrypto();
+    const [provider, key] = WEBHOOK_SECRET_PATH;
+    const payload = (parseObject(row.provider_secrets_enc)[provider] || {})[key];
     return {
-        uuid: row.uuid,
         orgId: row.org_uuid,
-        provider: row.provider,
+        billing_provider: row.billing_provider,
         payment_provider: row.payment_provider,
-        secret: decryptField(row.stripe_webhook_secret_enc, 'stripe_webhook_secret', row.uuid) || null,
+        secret: decryptSecret(orgId, provider, key, payload),
     };
 };
 
 /**
- * Inserts the configuration. `conn` carries the plain keys; they are encrypted here.
- * @param {object} conn { uuid, provider, paymentProvider, moesifCollectorApplicationId, moesifManagementKey,
- *   stripeApiKey, stripePublishableKey, stripeWebhookEndpointId, stripeWebhookSecret, stripeWebhookBaseUrl,
- *   moesifWebhookEndpointId (only when setup created Moesif's endpoint), moesifStripeConnectedByPortal }
+ * Inserts the configuration: `conn` is { billing_provider, payment_provider, settings, secrets }, the
+ * secrets in plain text (they are encrypted here).
  */
 const create = async (orgId, conn, userId, t) => {
     requireCrypto();
     const exec = t || db;
-    const now = new Date();
     await exec.execute(
-        `INSERT INTO ${TABLE} (uuid, org_uuid, portal_id, provider, payment_provider, moesif_collector_application_id_enc,
-            moesif_management_key_enc, stripe_api_key_enc, stripe_publishable_key,
-            stripe_webhook_endpoint_id, stripe_webhook_secret_enc, stripe_webhook_base_url, moesif_webhook_endpoint_id,
-            moesif_stripe_connected_by_portal,
-            created_by, created_at, updated_by, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [conn.uuid, orgId, getPortalId(), conn.provider, conn.paymentProvider, encrypted(conn.moesifCollectorApplicationId), encrypted(conn.moesifManagementKey),
-            encrypted(conn.stripeApiKey), conn.stripePublishableKey,
-            conn.stripeWebhookEndpointId || null, encrypted(conn.stripeWebhookSecret), conn.stripeWebhookBaseUrl || null,
-            conn.moesifWebhookEndpointId || null, conn.moesifStripeConnectedByPortal ? 1 : 0,
-            userId, now, userId, now]
+        `INSERT INTO ${TABLE} (org_uuid, portal_id, billing_provider, payment_provider, provider_settings,
+            provider_secrets_enc, created_by, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [orgId, getPortalId(), conn.billing_provider, conn.payment_provider, jsonParam(conn.settings || {}),
+            jsonParam(encryptSecrets(orgId, conn.secrets)), userId, new Date()]
     );
     return get(orgId, t);
 };
 
 /**
- * Records an endpoint registered again in Stripe (a removal that failed puts back what it had
- * removed). `ends` carries { stripeWebhookEndpointId, stripeWebhookSecret } for the portal's
- * endpoint, or { moesifWebhookEndpointId } for Moesif's.
- */
-const setEndpoint = async (orgId, ends) => {
-    if (ends.stripeWebhookEndpointId) {
-        requireCrypto();
-        await db.execute(
-            `UPDATE ${TABLE} SET stripe_webhook_endpoint_id = ?, stripe_webhook_secret_enc = ?, updated_at = ?
-             WHERE org_uuid = ? AND portal_id = ?`,
-            [ends.stripeWebhookEndpointId, encrypted(ends.stripeWebhookSecret), new Date(), orgId, getPortalId()]
-        );
-    }
-    if (ends.moesifWebhookEndpointId) {
-        await db.execute(
-            `UPDATE ${TABLE} SET moesif_webhook_endpoint_id = ?, updated_at = ? WHERE org_uuid = ? AND portal_id = ?`,
-            [ends.moesifWebhookEndpointId, new Date(), orgId, getPortalId()]
-        );
-    }
-};
-
-/**
- * Records the portal's endpoint moved to another public address: { baseUrl, endpointId, secret }.
+ * Records the payment provider's event endpoint: `endpoint` is { baseUrl, endpointId, secret }.
  * Resolves to the configuration, or null when there is none.
  */
-const setWebhookEndpoint = async (orgId, { baseUrl, endpointId, secret }, userId) => {
+const setEventEndpoint = async (orgId, { baseUrl, endpointId, secret }, t) => {
     requireCrypto();
-    await db.execute(
-        `UPDATE ${TABLE} SET stripe_webhook_base_url = ?, stripe_webhook_endpoint_id = ?, stripe_webhook_secret_enc = ?,
-            updated_by = ?, updated_at = ? WHERE org_uuid = ? AND portal_id = ?`,
-        [baseUrl, endpointId, encrypted(secret), userId, new Date(), orgId, getPortalId()]
+    const exec = t || db;
+    const row = await exec.queryOne(
+        `SELECT provider_settings, provider_secrets_enc FROM ${TABLE} WHERE org_uuid = ? AND portal_id = ?`,
+        [orgId, getPortalId()]
     );
-    return get(orgId);
+    if (!row) return null;
+    const settings = parseObject(row.provider_settings);
+    settings.stripe = { ...(settings.stripe || {}), webhookEndpointId: endpointId };
+    if (baseUrl) settings.stripe.webhookBaseUrl = baseUrl;
+    const secrets = parseObject(row.provider_secrets_enc);
+    const [provider, key] = WEBHOOK_SECRET_PATH;
+    secrets[provider] = { ...(secrets[provider] || {}), ...encryptSecrets(orgId, { [provider]: { [key]: secret } })[provider] };
+    await exec.execute(
+        `UPDATE ${TABLE} SET provider_settings = ?, provider_secrets_enc = ? WHERE org_uuid = ? AND portal_id = ?`,
+        [jsonParam(settings), jsonParam(secrets), orgId, getPortalId()]
+    );
+    return get(orgId, t);
 };
 
+/** Deletes the configuration, and with it its customers, their checkouts, and its API plans. */
 const deleteConfiguration = async (orgId, t) => {
     const exec = t || db;
     const { rowCount } = await exec.execute(
@@ -202,21 +224,11 @@ const deleteConfiguration = async (orgId, t) => {
     return rowCount;
 };
 
-/** Records when the payment provider last sent an event, shown as the webhook endpoint's "Last event". */
-const touchEvent = async (configurationUuid, at) => {
-    await db.execute(
-        `UPDATE ${TABLE} SET last_event_at = ? WHERE uuid = ? AND portal_id = ?`,
-        [at, configurationUuid, getPortalId()]
-    );
-};
-
 module.exports = {
     get,
     getWithSecrets,
     getWebhookSecret,
     create,
-    setEndpoint,
-    setWebhookEndpoint,
+    setEventEndpoint,
     delete: deleteConfiguration,
-    touchEvent,
 };

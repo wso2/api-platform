@@ -132,7 +132,6 @@ type Meter struct {
 	// event older than it is stale and ignored.
 	SourceUpdatedAt time.Time `json:"sourceUpdatedAt" db:"source_updated_at"`
 	CreatedAt       time.Time `json:"createdAt" db:"created_at"`
-	UpdatedAt       time.Time `json:"updatedAt" db:"updated_at"`
 }
 
 // MeterFilterField is a field a meter's prices may filter on, with the event field it reads (by
@@ -242,6 +241,10 @@ const (
 	PricingModelGraduated = "GRADUATED"
 )
 
+// PricingModelFlat is the pricing model of the one stored price of a FLAT_RATE plan, which holds the
+// amount charged every billing period.
+const PricingModelFlat = "FLAT"
+
 // Pricing types of a paid plan: a FLAT_RATE plan charges one amount every billing period; a
 // USAGE_BASED plan charges its usage prices.
 const (
@@ -315,22 +318,21 @@ type SubscriptionPlanPrice struct {
 // free. A paid plan is either FLAT_RATE, charging FlatAmount every billing period, or USAGE_BASED,
 // charging 1 to 20 usage prices. Pricing is set when the plan is created, through this REST API
 // (the Management Portal) or in an API Portal (its subscription_plan.created webhook event), and
-// never changes.
+// never changes. The repository stores a FLAT_RATE plan's amount as the one entry of its prices, a
+// PricingModelFlat price.
 type SubscriptionPlanPricing struct {
 	SubscriptionPlanUUID string `json:"subscriptionPlanId" db:"subscription_plan_uuid"`
 	OrganizationUUID     string `json:"organizationId" db:"organization_uuid"`
-	PricingType          string `json:"pricingType" db:"pricing_type"`
+	PricingType          string `json:"pricingType"`
 	Currency             string `json:"currency" db:"currency"`
 	BillingPeriod        string `json:"billingPeriod" db:"billing_period"`
 	// FlatAmount is the amount a FLAT_RATE plan charges every billing period; nil for USAGE_BASED.
-	FlatAmount *string `json:"flatAmount" db:"flat_amount"`
+	FlatAmount *string `json:"flatAmount"`
 	// Prices are the usage prices of a USAGE_BASED plan, in order; empty for FLAT_RATE.
 	Prices []SubscriptionPlanPrice `json:"prices" db:"prices"`
-	// SourceUpdatedAt is when the pricing was set: the time of the request for a plan created here,
-	// the event's occurred_at for a plan created in an API Portal.
-	SourceUpdatedAt time.Time `json:"sourceUpdatedAt" db:"source_updated_at"`
-	CreatedAt       time.Time `json:"createdAt" db:"created_at"`
-	UpdatedAt       time.Time `json:"updatedAt" db:"updated_at"`
+	// CreatedAt is when the pricing was set: the time of the request for a plan created here, the
+	// event's occurred_at for a plan created in an API Portal.
+	CreatedAt time.Time `json:"createdAt" db:"created_at"`
 }
 
 // ValidatePlanPricing checks a plan's pricing against the rules the API Portal applies; the API

@@ -46,17 +46,15 @@ const CURSOR_PATTERN = /^[A-Za-z0-9_]{1,255}$/;
 async function currentCustomer(req) {
     const conn = await billingConfigurationDao.getWithSecrets(req.orgId);
     if (!conn) return { conn: null, customer: null };
-    const customer = await billingCheckoutDao.findCustomer(conn.uuid, util.resolveActor(req));
+    const customer = await billingCheckoutDao.findCustomer(req.orgId, util.resolveActor(req));
     return { conn, customer };
 }
 
 /**
  * The checkout behind each invoice, found through the invoice's subscription, by invoice id:
  * { subject, completed }.
- *   - subject: "API v1 · Plan". Checkouts are kept after a subscription ends, so invoices of ended
- *     subscriptions are named too.
- *   - completed: false for a checkout never paid, such as one whose card was declined and then
- *     left. The payment provider still keeps an unpaid invoice for it.
+ *   - subject: "API v1 · Plan".
+ *   - completed: false for a checkout never paid (open, or gone from the portal).
  */
 async function invoiceCheckouts(req, invoices) {
     const checkouts = new Map();
@@ -66,7 +64,9 @@ async function invoiceCheckouts(req, invoices) {
         if (!byCheckout.has(invoice.checkoutRef)) {
             byCheckout.set(invoice.checkoutRef, (async () => {
                 const checkout = await billingCheckoutDao.getCheckout(invoice.checkoutRef);
-                if (!checkout || checkout.org_uuid !== req.orgId || checkout.user_uuid !== util.resolveActor(req)) return null;
+                if (!checkout || checkout.org_uuid !== req.orgId || checkout.user_uuid !== util.resolveActor(req)) {
+                    return { subject: null, completed: false };
+                }
                 const [[api], plan] = await Promise.all([
                     apiDao.get(req.orgId, checkout.api_uuid).catch(() => []),
                     subscriptionPlanDao.getByUuid(req.orgId, checkout.plan_uuid).catch(() => null),

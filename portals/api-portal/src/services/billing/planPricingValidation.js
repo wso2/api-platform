@@ -282,18 +282,18 @@ function validatePricing(body) {
  * list holds one value for EQUALS, NOT_EQUALS and STARTS_WITH. A STARTS_WITH filter matches its path
  * and the resources under it (underPath).
  */
-function filtersMeet(field, a, b) {
-    const positive = (f) => f.operator === 'EQUALS' || f.operator === 'IN';
-    const negative = (f) => f.operator === 'NOT_EQUALS' || f.operator === 'NOT_IN';
-    const prefix = (f) => f.operator === 'STARTS_WITH';
-    if (positive(a) && positive(b)) return a.values.some((v) => b.values.includes(v));
-    if (positive(b) && !positive(a)) return filtersMeet(field, b, a);
-    if (positive(a) && negative(b)) return a.values.some((v) => !b.values.includes(v));
-    if (positive(a) && prefix(b)) return a.values.some((v) => underPath(v, b.values[0]));
-    if (prefix(a) && prefix(b)) return underPath(a.values[0], b.values[0]) || underPath(b.values[0], a.values[0]);
+function filtersOverlap(field, a, b) {
+    const isMatch = (f) => f.operator === 'EQUALS' || f.operator === 'IN';
+    const isExclusion = (f) => f.operator === 'NOT_EQUALS' || f.operator === 'NOT_IN';
+    const isPrefix = (f) => f.operator === 'STARTS_WITH';
+    if (isMatch(a) && isMatch(b)) return a.values.some((v) => b.values.includes(v));
+    if (isMatch(b) && !isMatch(a)) return filtersOverlap(field, b, a);
+    if (isMatch(a) && isExclusion(b)) return a.values.some((v) => !b.values.includes(v));
+    if (isMatch(a) && isPrefix(b)) return a.values.some((v) => underPath(v, b.values[0]));
+    if (isPrefix(a) && isPrefix(b)) return underPath(a.values[0], b.values[0]) || underPath(b.values[0], a.values[0]);
     // Negative against negative or a prefix: some other value matches both, unless the field's
     // values are known and the two exclusions cover them all (HTTP methods).
-    if (field === 'HTTP_METHOD' && negative(a) && negative(b)) {
+    if (field === 'HTTP_METHOD' && isExclusion(a) && isExclusion(b)) {
         return HTTP_METHODS.some((m) => !a.values.includes(m) && !b.values.includes(m));
     }
     return true;
@@ -329,10 +329,10 @@ function countedFilters(meter, filters) {
  * two allow a common count. A field or key only one of them filters on matches anything for the
  * other. A Tool filter's tool call counts as an MCP method filter (withToolCall).
  */
-function pricesMeet(a, b) {
+function pricesOverlap(a, b) {
     const fixed = (filters) => withToolCall(filters).filter((f) => f.field !== 'TOKEN');
     const filters = new Map(fixed(b.filters).map((f) => [f.field, f]));
-    if (!fixed(a.filters).every((f) => !filters.has(f.field) || filtersMeet(f.field, f, filters.get(f.field)))) return false;
+    if (!fixed(a.filters).every((f) => !filters.has(f.field) || filtersOverlap(f.field, f, filters.get(f.field)))) return false;
     return tokenKeysOf([...a.filters, ...b.filters]).every((key) => {
         const ra = tokenRange(a.filters, key);
         const rb = tokenRange(b.filters, key);
@@ -369,7 +369,7 @@ function resolvePrices(prices, meters) {
     });
     resolved.forEach((a, i) => {
         resolved.slice(i + 1).forEach((b, j) => {
-            if (a.meter.handle === b.meter.handle && pricesMeet(a, b)) {
+            if (a.meter.handle === b.meter.handle && pricesOverlap(a, b)) {
                 throw new PricingValidationError(`Prices ${i + 1} and ${i + j + 2} both count the same requests of the meter `
                     + `${a.meter.handle}; give them different filters.`);
             }

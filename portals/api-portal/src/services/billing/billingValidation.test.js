@@ -56,7 +56,7 @@ test('a meter needs a known type and a display name', () => {
     assert.throws(() => validateMeter(meter({ type: 'TOTAL_TOKENS' }), { create: true }), MeterValidationError);
 });
 
-test('a Tokens meter needs the event key it adds up; an API requests meter takes none', () => {
+test('a Tokens meter needs the event key it adds up; a Requests meter takes none', () => {
     const tokens = (extra) => meter({ type: 'TOKENS', ...extra });
     assert.strictEqual(validateMeter(tokens({ typeKey: 'metadata.aiTokenUsage.promptTokens' }), { create: true })
         .typeKey, 'metadata.aiTokenUsage.promptTokens');
@@ -379,9 +379,9 @@ test('two prices on one meter count the same request when every field either fil
         [[filter('API_TYPE', 'EQUALS', 'RestApi'), filter('HTTP_STATUS_CODE', 'EQUALS', '200')],
             [filter('API_TYPE', 'EQUALS', 'LlmProvider'), filter('HTTP_STATUS_CODE', 'EQUALS', '200')], false],
     ];
-    for (const [a, b, meet] of cases) {
+    for (const [a, b, overlap] of cases) {
         const attempt = () => resolve([on('calls', ...a), on('calls', ...b)]);
-        if (meet) assert.throws(attempt, /both count the same requests/, JSON.stringify([a, b]));
+        if (overlap) assert.throws(attempt, /both count the same requests/, JSON.stringify([a, b]));
         else assert.strictEqual(attempt().length, 2, JSON.stringify([a, b]));
     }
 });
@@ -460,9 +460,9 @@ test('two prices on one meter are compared with the tool call a Tool filter impl
         [[filter('MCP_TOOL', 'EQUALS', 'search')], [TOOL_CALL], true],
         [[filter('MCP_TOOL', 'IN', 'search', 'fetch')], [filter('MCP_METHOD', 'IN', 'tools/call', 'resources/read')], true],
     ];
-    for (const [a, b, meet] of cases) {
+    for (const [a, b, overlap] of cases) {
         const attempt = () => resolve([on('mcp', ...a), on('mcp', ...b)]);
-        if (meet) assert.throws(attempt, /both count the same requests/, JSON.stringify([a, b]));
+        if (overlap) assert.throws(attempt, /both count the same requests/, JSON.stringify([a, b]));
         else assert.strictEqual(attempt().length, 2, JSON.stringify([a, b]));
     }
 });
@@ -622,9 +622,9 @@ test('two prices on one meter are apart on a Token key when their ranges share n
         [[gt('100'), filter('API_TYPE', 'EQUALS', 'LlmProvider')], [gt('333'), filter('API_TYPE', 'EQUALS', 'LlmProxy')], false],
         [[gt('100'), filter('API_TYPE', 'EQUALS', 'LlmProvider')], [gt('333'), filter('API_TYPE', 'IN', 'LlmProvider', 'LlmProxy')], true],
     ];
-    for (const [a, b, meet] of cases) {
+    for (const [a, b, overlap] of cases) {
         const attempt = () => both(a, b);
-        if (meet) assert.throws(attempt, /both count the same requests of the meter llm/, JSON.stringify([a, b]));
+        if (overlap) assert.throws(attempt, /both count the same requests of the meter llm/, JSON.stringify([a, b]));
         else assert.strictEqual(attempt().length, 2, JSON.stringify([a, b]));
     }
 });

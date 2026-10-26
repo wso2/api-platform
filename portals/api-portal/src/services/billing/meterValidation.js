@@ -32,7 +32,7 @@
 const crypto = require('crypto');
 const { FIELD_LABELS, TOKEN_EVENT_KEYS } = require('../../utils/meterLabels');
 
-// What a meter counts: API requests (REQUEST_COUNT), each counting one, or the tokens of AI API
+// What a meter counts: requests (REQUEST_COUNT), each counting one, or the tokens of AI API
 // requests (TOKENS), adding up the number at the meter's typeKey.
 const METER_TYPES = ['REQUEST_COUNT', 'TOKENS'];
 

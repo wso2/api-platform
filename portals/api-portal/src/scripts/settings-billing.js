@@ -67,21 +67,6 @@
     return { message: failed + ' Check your connection and try again.', fieldErrors: [] };
   }
 
-  /* "Last webhook event" as a relative time: "2 minutes ago". */
-  document.querySelectorAll('.cfg-billing-time[data-time]').forEach(function (el) {
-    var at = Date.parse(el.dataset.time);
-    if (isNaN(at)) return;
-    var seconds = Math.max(0, Math.round((Date.now() - at) / 1000));
-    var steps = [[60, 'second'], [60, 'minute'], [24, 'hour'], [30, 'day'], [12, 'month']];
-    var value = seconds; var unit = 'second';
-    for (var i = 0; i < steps.length && value >= steps[i][0]; i++) {
-      value = Math.floor(value / steps[i][0]);
-      unit = (steps[i + 1] || ['', 'year'])[1];
-    }
-    el.textContent = value < 1 && unit === 'second' ? 'Just now' : value + ' ' + unit + (value === 1 ? '' : 's') + ' ago';
-    el.title = new Date(at).toLocaleString();
-  });
-
   /* ── set up ── */
   /* Two steps: the billing engine's keys (Next), then the payment provider's (Set up billing).
      Both are sent, and checked by the server, together. */

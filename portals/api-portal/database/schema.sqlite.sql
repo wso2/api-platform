@@ -770,7 +770,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_webhook_subscriber_org_handle ON webhook_su
 --   - filter_fields lists the fields the prices on this meter may filter on, each with the event
 --     key it is read from (a JSON array of { "field", "eventKey" }; empty for none).
 -- A meter has no filters of its own: each price picks the requests it counts with its own filters
--- (subscription_plan_pricing_usage.filters).
+-- (in subscription_plan_pricing.prices).
 CREATE TABLE IF NOT EXISTS meters (
     uuid VARCHAR(40) NOT NULL,
     org_uuid VARCHAR(40) NOT NULL,
@@ -791,177 +791,100 @@ CREATE TABLE IF NOT EXISTS meters (
 CREATE UNIQUE INDEX IF NOT EXISTS uq_meter_org_handle ON meters(org_uuid, handle, portal_id);
 
 -- Plan pricing (monetization): one row per paid subscription plan; a plan with no row here is free.
---   - pricing_type FLAT_RATE: flat_amount is charged every billing period.
---   - pricing_type USAGE_BASED: the plan's prices are in subscription_plan_pricing_usage.
--- Amounts are decimal strings, never floats, so a price is stored exactly as the administrator
--- typed it.
+-- prices is a JSON array, each price with its own uuid:
+--   - a flat rate plan has one entry, { uuid, pricing_model: FLAT, amount }, charged every billing
+--     period;
+--   - a usage based plan has 1 to 20 prices, each { uuid, meter_handle, filters, pricing_model,
+--     unit_amount, unit_quantity, tiers }: it charges for what the meter named by meter_handle
+--     counts, narrowed by its filters ([{ field, operator, values }], with event_key for a TOKEN
+--     filter; empty for none), in one pricing model (PER_UNIT: unit_amount per unit_quantity units;
+--     VOLUME or GRADUATED: tiers).
+-- Amounts are decimal strings. Pricing is set when the plan is created and never changes; deleting
+-- the plan deletes it. A meter that a price names cannot be deleted.
 CREATE TABLE IF NOT EXISTS subscription_plan_pricing (
     subscription_plan_uuid VARCHAR(40) NOT NULL,
     org_uuid VARCHAR(40) NOT NULL,
     portal_id VARCHAR(255) NOT NULL DEFAULT 'portal_id',
-    pricing_type VARCHAR(20) NOT NULL,
     currency VARCHAR(3) NOT NULL,
     billing_period VARCHAR(20) NOT NULL DEFAULT 'MONTH',
-    flat_amount VARCHAR(40),
-    created_by VARCHAR(255) NOT NULL,
+    prices BLOB NOT NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_by VARCHAR(255) NOT NULL,
-    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (portal_id, subscription_plan_uuid),
     FOREIGN KEY (portal_id, subscription_plan_uuid) REFERENCES subscription_plans(portal_id, uuid) ON DELETE CASCADE,
     FOREIGN KEY (portal_id, org_uuid) REFERENCES organizations(portal_id, uuid) ON DELETE NO ACTION
 );
 CREATE INDEX IF NOT EXISTS idx_subscription_plan_pricing_org ON subscription_plan_pricing(org_uuid, portal_id);
 
--- Plan prices (monetization): the prices of a usage based plan. Each price charges for what its
--- meter counts (meter_uuid), narrowed by its filters (a JSON array of { field, operator, values };
--- empty for none), in one pricing model:
---   - PER_UNIT: unit_amount per unit_quantity units;
---   - VOLUME or GRADUATED: tiers, a JSON array of price tiers.
--- A meter may be priced more than once in a plan, and a meter that a price uses cannot be deleted.
--- A price has no name of its own: it is shown as its meter's name and its filters, and prices are
--- listed by that name (no order is stored). Prices are set when the plan is created and never
--- change; deleting the plan deletes its prices.
-CREATE TABLE IF NOT EXISTS subscription_plan_pricing_usage (
-    uuid VARCHAR(40) NOT NULL,
-    subscription_plan_uuid VARCHAR(40) NOT NULL,
-    org_uuid VARCHAR(40) NOT NULL,
-    portal_id VARCHAR(255) NOT NULL DEFAULT 'portal_id',
-    meter_uuid VARCHAR(40) NOT NULL,
-    filters BLOB NOT NULL,
-    pricing_model VARCHAR(20) NOT NULL,
-    unit_amount VARCHAR(40),
-    unit_quantity BIGINT,
-    tiers BLOB,
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (portal_id, uuid),
-    FOREIGN KEY (portal_id, subscription_plan_uuid) REFERENCES subscription_plan_pricing(portal_id, subscription_plan_uuid) ON DELETE CASCADE,
-    FOREIGN KEY (portal_id, meter_uuid) REFERENCES meters(portal_id, uuid) ON DELETE NO ACTION,
-    FOREIGN KEY (portal_id, org_uuid) REFERENCES organizations(portal_id, uuid) ON DELETE NO ACTION
-);
-CREATE INDEX IF NOT EXISTS idx_subscription_plan_pricing_usage_org ON subscription_plan_pricing_usage(org_uuid, portal_id);
-CREATE INDEX IF NOT EXISTS idx_subscription_plan_pricing_usage_plan ON subscription_plan_pricing_usage(subscription_plan_uuid, portal_id);
-CREATE INDEX IF NOT EXISTS idx_subscription_plan_pricing_usage_meter ON subscription_plan_pricing_usage(meter_uuid, portal_id);
-
-
--- Billing configuration (monetization): how one organization's portal sells paid plans. One per
--- organization.
---   - provider is the billing engine (MOESIF: Moesif meters usage and keeps the billing catalog).
---   - payment_provider is the payment provider the engine bills through (STRIPE: customers,
+-- Billing configuration (monetization): how one organization's portal sells paid plans; at most one
+-- per organization.
+--   - billing_provider is the billing engine (MOESIF: Moesif meters usage and keeps the billing
+--     catalog), and payment_provider the payment provider it bills through (STRIPE: customers,
 --     subscriptions, invoices and payments).
---   - The other columns are the settings of those two, and last_event_at is when Stripe last sent
---     the portal an event.
--- The Moesif Collector Application Id, the keys and the webhook signing secret are encrypted with
--- security.encryption_key (AES-256-GCM) and never stored in plain text. The Stripe publishable key
--- is public (the browser starts Stripe's checkout with it), so it is stored as is; Stripe's test or
--- live mode is read from it.
--- Removing billing takes out only what setup created and leaves what was there before, so setup
--- records it: moesif_stripe_connected_by_portal is set when setup connected Moesif to Stripe, and
--- moesif_webhook_endpoint_id only when setup created Moesif's endpoint in Stripe.
+--   - provider_settings holds their public settings as JSON, one object per provider, such as
+--     { "stripe": { "publishableKey", "webhookEndpointId", "webhookBaseUrl" } }.
+--   - provider_secrets_enc holds their keys the same way, such as { "moesif": { "collectorApplicationId",
+--     "managementKey" }, "stripe": { "apiKey", "webhookSecret" } }, each value encrypted on its own
+--     with security.encryption_key (AES-256-GCM) and bound to its path, the organization and the
+--     portal.
+-- Deleting the configuration deletes its customers, their checkouts, and its API plans.
 CREATE TABLE IF NOT EXISTS billing_configurations (
-    uuid VARCHAR(40) NOT NULL,
     org_uuid VARCHAR(40) NOT NULL,
     portal_id VARCHAR(255) NOT NULL DEFAULT 'portal_id',
-    provider VARCHAR(20) NOT NULL DEFAULT 'MOESIF',
+    billing_provider VARCHAR(20) NOT NULL DEFAULT 'MOESIF',
     payment_provider VARCHAR(20) NOT NULL DEFAULT 'STRIPE',
-    moesif_collector_application_id_enc BLOB NOT NULL,
-    moesif_management_key_enc BLOB NOT NULL,
-    stripe_api_key_enc BLOB NOT NULL,
-    stripe_publishable_key VARCHAR(255) NOT NULL,
-    stripe_webhook_endpoint_id VARCHAR(255),
-    stripe_webhook_secret_enc BLOB,
-    -- The public address the portal's Stripe webhook endpoint is under: server.base_url, or the
-    -- one the administrator chose.
-    stripe_webhook_base_url VARCHAR(1023),
-    moesif_webhook_endpoint_id VARCHAR(255),
-    moesif_stripe_connected_by_portal INTEGER NOT NULL DEFAULT 0,
-    last_event_at DATETIME,
+    provider_settings BLOB NOT NULL,
+    provider_secrets_enc BLOB NOT NULL,
     created_by VARCHAR(255) NOT NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_by VARCHAR(255) NOT NULL,
-    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (portal_id, uuid),
+    PRIMARY KEY (portal_id, org_uuid),
     FOREIGN KEY (portal_id, org_uuid) REFERENCES organizations(portal_id, uuid) ON DELETE NO ACTION
 );
-CREATE UNIQUE INDEX IF NOT EXISTS uq_billing_configuration_org ON billing_configurations(org_uuid, portal_id);
 
--- Billing API plans (monetization): one paid plan as sold on one API, under one billing
--- configuration. What the portal created for it with the billing engine is in
--- billing_api_plan_items (with Moesif, which syncs it to the payment provider).
--- A row is written only once everything for it exists with the billing engine, by the request that
--- offers the plan on the API (publishing or updating the API, or setting up billing). If any part
--- fails, what the request created is removed again and the request fails, so no API plan is left
--- half made. Deleting the API or the plan, or removing billing, deletes the matching API plans;
--- what was created in Moesif stays there.
+-- Billing API plans (monetization): one paid plan as sold on one API, and what the billing engine
+-- holds for it (items, a JSON array). With Moesif, each part of the plan (a flat rate plan's fee, or
+-- each usage price) is a Moesif plan with one price, and a usage price also has a Moesif billing
+-- meter, which counts the price's requests and reports them to the payment provider. An item is
+-- { priceUuid, planRef, priceRef, meterRef }: the plan's price, and the billing engine's plan, price
+-- and billing meter (null for the fee). priceRef is the payment provider's price, and each item
+-- becomes one item of the subscriber's subscription there.
+-- A row is written once, by the request that offers the plan on the API, and never changes. When it
+-- is deleted, its objects are archived with the billing engine.
 CREATE TABLE IF NOT EXISTS billing_api_plans (
-    uuid VARCHAR(40) NOT NULL,
     org_uuid VARCHAR(40) NOT NULL,
     portal_id VARCHAR(255) NOT NULL DEFAULT 'portal_id',
-    configuration_uuid VARCHAR(40) NOT NULL,
     api_uuid VARCHAR(40) NOT NULL,
     plan_uuid VARCHAR(40) NOT NULL,
+    items BLOB NOT NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (portal_id, uuid),
-    FOREIGN KEY (portal_id, configuration_uuid) REFERENCES billing_configurations(portal_id, uuid) ON DELETE CASCADE,
+    PRIMARY KEY (portal_id, org_uuid, api_uuid, plan_uuid),
+    FOREIGN KEY (portal_id, org_uuid) REFERENCES billing_configurations(portal_id, org_uuid) ON DELETE CASCADE,
     FOREIGN KEY (portal_id, api_uuid) REFERENCES api_metadata(portal_id, uuid) ON DELETE CASCADE,
     FOREIGN KEY (portal_id, plan_uuid) REFERENCES subscription_plans(portal_id, uuid) ON DELETE CASCADE,
     FOREIGN KEY (portal_id, org_uuid) REFERENCES organizations(portal_id, uuid) ON DELETE NO ACTION
 );
-CREATE INDEX IF NOT EXISTS idx_billing_api_plan_org ON billing_api_plans(org_uuid, portal_id);
-CREATE UNIQUE INDEX IF NOT EXISTS uq_billing_api_plan ON billing_api_plans(configuration_uuid, api_uuid, plan_uuid, portal_id);
-CREATE INDEX IF NOT EXISTS idx_billing_api_plan_plan ON billing_api_plans(plan_uuid, portal_id);
 CREATE INDEX IF NOT EXISTS idx_billing_api_plan_api ON billing_api_plans(api_uuid, portal_id);
+CREATE INDEX IF NOT EXISTS idx_billing_api_plan_plan ON billing_api_plans(plan_uuid, portal_id);
 
--- Billing API plan items (monetization): what the billing engine holds for one billing API plan:
--- one item for a flat rate plan's fee (price_uuid null), or one per usage price. price_ref is the
--- payment provider's price, and each item becomes one item of the subscriber's subscription
--- there. With Moesif, each item is a Moesif plan with one price, and a usage price's item also has
--- a Moesif billing meter, which counts the price's requests and reports them to the payment
--- provider. Written with its API plan, in the same transaction, and never changed afterwards.
-CREATE TABLE IF NOT EXISTS billing_api_plan_items (
-    uuid VARCHAR(40) NOT NULL,
-    api_plan_uuid VARCHAR(40) NOT NULL,
-    org_uuid VARCHAR(40) NOT NULL,
-    portal_id VARCHAR(255) NOT NULL DEFAULT 'portal_id',
-    price_uuid VARCHAR(40),
-    price_ref VARCHAR(255) NOT NULL,
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (portal_id, uuid),
-    FOREIGN KEY (portal_id, api_plan_uuid) REFERENCES billing_api_plans(portal_id, uuid) ON DELETE CASCADE,
-    FOREIGN KEY (portal_id, org_uuid) REFERENCES organizations(portal_id, uuid) ON DELETE NO ACTION
-);
-CREATE INDEX IF NOT EXISTS idx_billing_api_plan_item_org ON billing_api_plan_items(org_uuid, portal_id);
-CREATE INDEX IF NOT EXISTS idx_billing_api_plan_item_api_plan ON billing_api_plan_items(api_plan_uuid, portal_id);
-
--- Billing customers (monetization): the payment provider's customer for a portal user, one per
--- user per billing configuration, created at the user's first paid checkout (customer_ref is the
--- provider's id). With Moesif, customer_ref is also the user's Moesif company id: the gateway sends
--- it with each request event (metadata.billingCustomerId), and Moesif's billing meters count usage
--- by it.
+-- Billing customers (monetization): the payment provider's customer of a portal user, one per user
+-- per organization, created at the user's first paid checkout (customer_ref is the provider's id).
+-- With Moesif, customer_ref is also the user's Moesif company id: the gateway sends it with each
+-- request event (metadata.billingCustomerId), and Moesif's billing meters count usage by it.
 CREATE TABLE IF NOT EXISTS billing_customers (
-    uuid VARCHAR(40) NOT NULL,
     org_uuid VARCHAR(40) NOT NULL,
     portal_id VARCHAR(255) NOT NULL DEFAULT 'portal_id',
-    configuration_uuid VARCHAR(40) NOT NULL,
     user_uuid VARCHAR(255) NOT NULL,
     customer_ref VARCHAR(255) NOT NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (portal_id, uuid),
-    FOREIGN KEY (portal_id, configuration_uuid) REFERENCES billing_configurations(portal_id, uuid) ON DELETE CASCADE,
+    PRIMARY KEY (portal_id, org_uuid, user_uuid),
+    FOREIGN KEY (portal_id, org_uuid) REFERENCES billing_configurations(portal_id, org_uuid) ON DELETE CASCADE,
     FOREIGN KEY (portal_id, org_uuid) REFERENCES organizations(portal_id, uuid) ON DELETE NO ACTION
 );
-CREATE INDEX IF NOT EXISTS idx_billing_customer_org ON billing_customers(org_uuid, portal_id);
-CREATE UNIQUE INDEX IF NOT EXISTS uq_billing_customer_user ON billing_customers(configuration_uuid, user_uuid, portal_id);
 
 -- Billing checkouts (monetization): one per checkout the portal started with the payment provider.
--- status is OPEN until the provider confirms the payment (or that none was needed); then it is
--- COMPLETED and the subscription is created. It is EXPIRED when the checkout ends unpaid. No
--- subscription exists before it is COMPLETED.
--- api_uuid, plan_uuid and subscription_uuid have no foreign key, so a checkout still names what it
--- was for after that is deleted; invoices of ended subscriptions are named from it.
+-- A checkout is open until the provider confirms the payment; then the
+-- subscription is created and subscription_uuid names it. A checkout that ends unpaid is deleted.
+-- checkout_ref is the provider's checkout, null until it is started there.
+-- A completed checkout keeps naming its API, plan and subscription after they are deleted.
 CREATE TABLE IF NOT EXISTS billing_checkouts (
     uuid VARCHAR(40) NOT NULL,
     org_uuid VARCHAR(40) NOT NULL,
@@ -969,39 +892,29 @@ CREATE TABLE IF NOT EXISTS billing_checkouts (
     user_uuid VARCHAR(255) NOT NULL,
     api_uuid VARCHAR(40) NOT NULL,
     plan_uuid VARCHAR(40) NOT NULL,
-    customer_uuid VARCHAR(40) NOT NULL,
     checkout_ref VARCHAR(255),
-    status VARCHAR(20) NOT NULL DEFAULT 'OPEN',
     subscription_uuid VARCHAR(40),
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (portal_id, uuid),
-    FOREIGN KEY (portal_id, customer_uuid) REFERENCES billing_customers(portal_id, uuid) ON DELETE CASCADE,
+    FOREIGN KEY (portal_id, org_uuid, user_uuid) REFERENCES billing_customers(portal_id, org_uuid, user_uuid) ON DELETE CASCADE,
     FOREIGN KEY (portal_id, org_uuid) REFERENCES organizations(portal_id, uuid) ON DELETE NO ACTION
 );
-CREATE INDEX IF NOT EXISTS idx_billing_checkout_org ON billing_checkouts(org_uuid, portal_id);
-CREATE INDEX IF NOT EXISTS idx_billing_checkout_customer ON billing_checkouts(customer_uuid, portal_id);
 -- A user has at most one open checkout per API (and one subscription per API): starting another
--- checkout for the API reuses or ends the open one. startCheckout checks this in code, under a lock
--- on the user's billing_customers row, rather than with a partial unique index
--- (WHERE status = 'OPEN'), which not every database supports. This index makes that check fast.
-CREATE INDEX IF NOT EXISTS idx_billing_checkout_user_api ON billing_checkouts(user_uuid, api_uuid, portal_id);
+-- checkout for the API reuses or ends the open one. startCheckout checks this under a lock on the
+-- user's billing_customers row, and this index serves that check and the link to the customer.
+CREATE INDEX IF NOT EXISTS idx_billing_checkout_user_api ON billing_checkouts(portal_id, org_uuid, user_uuid, api_uuid);
 
 -- Subscription billing (monetization): the billing state of each paid subscription: the payment
--- provider's subscription (billing_subscription_id), its status, its current period, and ends_at
--- when it is set to end. Deleting the subscription deletes this row.
--- configuration_uuid, customer_uuid and api_plan_uuid have no foreign key: removing billing deletes
--- the configuration with its customers and API plans, but the row of a cancelled subscription is
--- kept and still names them.
+-- provider's subscription (subscription_ref), its status, its current period, and ends_at when it is
+-- set to end. Deleting the subscription deletes this row. Its customer is the billing_customers row
+-- of the subscription's organization and subscriber (created_by), and what it was sold as is the
+-- billing_api_plans row of the subscription's API and plan.
 CREATE TABLE IF NOT EXISTS subscription_billing (
     subscription_uuid VARCHAR(40) NOT NULL,
     org_uuid VARCHAR(40) NOT NULL,
     portal_id VARCHAR(255) NOT NULL DEFAULT 'portal_id',
-    configuration_uuid VARCHAR(40) NOT NULL,
-    customer_uuid VARCHAR(40) NOT NULL,
-    api_plan_uuid VARCHAR(40) NOT NULL,
-    billing_subscription_id VARCHAR(255) NOT NULL,
-    billing_status VARCHAR(20) NOT NULL,
+    subscription_ref VARCHAR(255) NOT NULL,
+    status VARCHAR(20) NOT NULL,
     current_period_start DATETIME,
     current_period_end DATETIME,
     ends_at DATETIME,
@@ -1012,4 +925,4 @@ CREATE TABLE IF NOT EXISTS subscription_billing (
     FOREIGN KEY (portal_id, org_uuid) REFERENCES organizations(portal_id, uuid) ON DELETE NO ACTION
 );
 CREATE INDEX IF NOT EXISTS idx_subscription_billing_org ON subscription_billing(org_uuid, portal_id);
-CREATE UNIQUE INDEX IF NOT EXISTS uq_subscription_billing_ref ON subscription_billing(portal_id, billing_subscription_id);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_subscription_billing_ref ON subscription_billing(portal_id, subscription_ref);

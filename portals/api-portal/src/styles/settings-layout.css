@@ -2469,8 +2469,6 @@
 .cfg-billing-webhook-url .cfg-name-chip { min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cfg-billing-webhook-url .cfg-btn-sm { flex: none; }
 .cfg-billing-webhook-warning { margin: 6px 0 0; font-size: 0.75rem; color: var(--warning); }
-.cfg-billing-webhook-last { margin-top: 12px; font-size: 0.8125rem; color: var(--text-muted); }
-.cfg-billing-webhook-last .cfg-billing-time { margin-left: 6px; color: var(--text); }
 
 /* Billing key card */
 .cfg-billing-key-card {

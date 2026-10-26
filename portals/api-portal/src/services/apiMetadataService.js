@@ -46,7 +46,9 @@ const billingCatalogService = require('./billing/billingCatalogService');
 const checkoutService = require('./billing/checkoutService');
 const sharedKeyAuth = require('../middlewares/sharedKeyAuth');
 const { BillingProviderError } = require('../billing/http');
+const billingProvider = require('../billing/billingProvider');
 const billingConfigurationDao = require('../dao/billingConfigurationDao');
+const billingApiPlanDao = require('../dao/billingApiPlanDao');
 const userIdpReferenceDao = require("../dao/userIdpReferenceDao");
 const { logUserAction } = require('../middlewares/auditLogger');
 const { CustomError, ValidationError, NotFoundError } = require("../utils/errors/customErrors");
@@ -585,14 +587,18 @@ const updateAPIMetadata = async (req, res) => {
         apiMetadata.endPoints.productionURL = changeEndpoint(apiMetadata.endPoints.productionURL);
         apiMetadata.endPoints.sandboxURL = changeEndpoint(apiMetadata.endPoints.sandboxURL);
         normalizeGraphQLEndpoints(apiMetadata);
-        // Plans the update removes from the API must have no subscriptions to it. They are then no longer sold on it:
-        // their open checkouts are ended first.
+        // The plans the update lists must exist, and the ones it removes from the API must have no
+        // subscriptions to it.
         let removedPlans = [];
         if (Array.isArray(apiMetadata.subscriptionPlans)) {
+            for (const plan of apiMetadata.subscriptionPlans) {
+                if (!plan || !(await subscriptionPlanDao.getByName(orgId, plan.id))) {
+                    throw new NotFoundError("Subscription plan not found");
+                }
+            }
             const kept = new Set(apiMetadata.subscriptionPlans.map((plan) => plan && plan.id));
             removedPlans = (await subscriptionPlanDao.listByApi(apiId)).filter((plan) => !kept.has(plan.handle));
             await refuseSubscribedPlans(orgId, apiId, removedPlans);
-            if (removedPlans.length > 0) await endOpenCheckouts(orgId, { apiUuid: apiId, planUuids: removedPlans.map((plan) => plan.uuid) });
         }
         // Paid plans the update newly enables are created with the billing provider before anything
         // is saved: when any part fails, what was created is removed and the update fails.
@@ -601,6 +607,20 @@ const updateAPIMetadata = async (req, res) => {
             name: apiMetadata.name || (existingRecord && existingRecord.name),
             version: apiMetadata.version || (existingRecord && existingRecord.version),
         }), apiMetadata.subscriptionPlans);
+        // The removed plans' open checkouts are ended before the update is saved, and their paid plans
+        // taken off sale once it is.
+        let removedApiPlans = [];
+        if (removedPlans.length > 0) {
+            const planUuids = removedPlans.map((plan) => plan.uuid);
+            try {
+                await endOpenCheckouts(orgId, { apiUuid: apiId, planUuids });
+                removedApiPlans = (await billingApiPlanDao.listByOrg(orgId, { apiUuid: apiId }))
+                    .filter((apiPlan) => planUuids.includes(apiPlan.plan_uuid));
+            } catch (err) {
+                await billing.undo();
+                throw err;
+            }
+        }
         let updated;
         await db.withTransaction(async (t) => {
             // Create apimetadata record
@@ -662,6 +682,8 @@ const updateAPIMetadata = async (req, res) => {
                 await refuseSubscribedPlans(orgId, apiId, removedPlans, t);
                 // Get subscription plan IDs and fail if any plan is not found
                 await subscriptionPlanDao.updateApiMapping(subscriptionPlans, apiId, userId, t);
+                await billingApiPlanDao.deleteApiPlans(orgId,
+                    removedApiPlans.map((apiPlan) => ({ apiUuid: apiPlan.api_uuid, planUuid: apiPlan.plan_uuid })), t);
                 await billingCatalogService.saveApiPlans(billing.apiPlans, t);
                 updatedAPI[0]["subscription_plans"] = await subscriptionPlanDao.listByApi(apiId, t);
             }
@@ -747,6 +769,7 @@ const updateAPIMetadata = async (req, res) => {
             await billing.undo();
             throw err;
         });
+        await takeOffSale(orgId, removedApiPlans);
         // Answered once the update is committed, so a failed commit is reported as a failure, not as a saved update.
         res.status(200).send(updated);
         // Fired only after the transaction above has committed and released its
@@ -771,14 +794,18 @@ const deleteAPIMetadata = async (req, res) => {
     const { apiId: apiHandle } = req.params;
     let apiId;
     let deleted = false;
+    let apiPlans = [];
     try {
-        // A deleted API can no longer be bought: its open checkouts are ended first. Not when it has
-        // subscriptions, which the delete refuses below.
+        // The API's open checkouts are ended before it is deleted, and its paid plans taken off sale once it is.
         const apiUuid = await resolveScopedApiId(req, orgId, apiHandle);
-        if (apiUuid && (await subDao.listByApi(orgId, apiUuid)).length === 0) await endOpenCheckouts(orgId, { apiUuid });
+        if (apiUuid && (await subDao.listByApi(orgId, apiUuid)).length === 0
+            && (await apiKeyDao.list(orgId, { apiId: apiUuid, status: 'ACTIVE' })).length === 0) {
+            await endOpenCheckouts(orgId, { apiUuid });
+            apiPlans = await billingApiPlanDao.listByOrg(orgId, { apiUuid });
+        }
     } catch (error) {
         logger.error('API metadata deletion failed', { error: error.message, orgId, apiId: apiHandle });
-        return util.handleError(res, error);
+        return util.handleError(res, billingCatalogFailure(error));
     }
     await db.withTransaction(async (t) => {
         try {
@@ -801,7 +828,6 @@ const deleteAPIMetadata = async (req, res) => {
                 throw new NotFoundError("Resource not found to delete");
             } else {
                 deleted = true;
-                res.status(200).send("Resouce Deleted Successfully");
             }
         } catch (error) {
             logger.error('API metadata deletion failed', {
@@ -817,6 +843,8 @@ const deleteAPIMetadata = async (req, res) => {
     // connection — see the comment in updateAPIMetadata for why firing this
     // while the connection is still checked out deadlocks against itself.
     if (deleted) {
+        await takeOffSale(orgId, apiPlans);
+        res.status(200).send("Resouce Deleted Successfully");
         logUserAction('API_METADATA_DELETED', req, { orgId, apiId, resourceUuid: apiId, resourceType: 'rest_api' });
     }
 };
@@ -1360,7 +1388,7 @@ async function applyNewPlanPricing(orgId, body, plan, created, userId, t) {
             { catalogCode: planPricingService.PRICING_LOCKED });
     }
     try {
-        plan.pricing = await planPricingService.setNewPlanPricing(orgId, plan, body.pricing, userId, t);
+        plan.pricing = await planPricingService.setNewPlanPricing(orgId, plan, body.pricing, t);
     } catch (err) {
         if (err instanceof PricingValidationError) throw new CustomError(400, constants.ERROR_CODE[400], err.message);
         throw err;
@@ -2247,6 +2275,30 @@ async function buildPaidPlans(orgId, api, plans) {
     }
     const conn = pairs.length > 0 ? await billingConfigurationDao.getWithSecrets(orgId) : null;
     return billingCatalogService.build(orgId, conn, pairs);
+}
+
+/**
+ * Takes API plans (billingApiPlanDao rows) off sale with the billing provider, once the change that
+ * removed them is saved.
+ */
+async function takeOffSale(orgId, apiPlans) {
+    if (apiPlans.length === 0) return;
+    let connector;
+    try {
+        const conn = await billingConfigurationDao.getWithSecrets(orgId);
+        if (!conn) return;
+        connector = billingProvider.forConfiguration(conn);
+    } catch (error) {
+        logger.error('Paid plans could not be taken off sale', { orgId, error: error.message });
+        return;
+    }
+    for (const apiPlan of apiPlans) {
+        try {
+            await billingCatalogService.retire(orgId, connector, [apiPlan]);
+        } catch (_error) {
+            // Logged by retire.
+        }
+    }
 }
 
 /**

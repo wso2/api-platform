@@ -32,7 +32,6 @@
 const subDao = require('../../dao/subscriptionDao');
 const planPricingDao = require('../../dao/planPricingDao');
 const meterDao = require('../../dao/meterDao');
-const billingCheckoutDao = require('../../dao/billingCheckoutDao');
 const billingSubscriptionDao = require('../../dao/billingSubscriptionDao');
 const billingApiPlanDao = require('../../dao/billingApiPlanDao');
 const subscriptionBilling = require('./subscriptionBillingService');
@@ -211,13 +210,13 @@ const getUsage = async (req, res) => {
             subscriptionId: sub.uuid,
             from: range.from.toISOString(),
             to: range.end.toISOString(),
-            status: subscriptionBilling.accessStatus(billing.billing_status),
+            status: subscriptionBilling.accessStatus(billing.status),
         });
 
         const pricing = pricingOf.get(sub.uuid);
         // Each usage price the subscription was sold with counts with its meter: the prices with an
         // item in its API plan, so a price that does not apply to this API's type is not shown.
-        const sold = new Set((await billingApiPlanDao.listItems(billing.api_plan_uuid)).map((i) => i.price_uuid).filter(Boolean));
+        const sold = new Set((await billingApiPlanDao.listItems(orgId, billing.api_uuid, billing.plan_uuid)).map((i) => i.price_uuid));
         const prices = pricing ? pricing.prices.filter((p) => sold.has(p.uuid)) : [];
         const handles = [...new Set(prices.map((p) => p.meter_handle))];
         const meters = new Map((await meterDao.listByHandles(orgId, handles)).map((m) => [m.handle, m]));
@@ -230,14 +229,13 @@ const getUsage = async (req, res) => {
         } : null;
 
         const conn = await subscriptionBilling.configurationFor(billing);
-        const customer = conn ? await billingCheckoutDao.getCustomer(billing.customer_uuid) : null;
-        if (!conn || !customer) {
+        if (!conn || !billing.customer_ref) {
             body.usageAvailable = false;
             return res.status(200).json(body);
         }
 
         const connector = billingProvider.forConfiguration(conn);
-        const ids = { customerRef: customer.customer_ref, subscriptionRef: billing.billing_subscription_id };
+        const ids = { customerRef: billing.customer_ref, subscriptionRef: billing.subscription_ref };
         const [usage, estimate] = await Promise.allSettled([
             body.usage
                 ? Promise.all(counted.map((p) => {
@@ -246,8 +244,8 @@ const getUsage = async (req, res) => {
                         interval);
                 }))
                 : Promise.resolve(null),
-            period === 'CURRENT' && billing.billing_status !== 'CANCELLED'
-                ? connector.payments.estimate(billing.billing_subscription_id)
+            period === 'CURRENT' && billing.status !== 'CANCELLED'
+                ? connector.payments.estimate(billing.subscription_ref)
                 : Promise.resolve(null),
         ]);
         if (usage.status === 'fulfilled') {

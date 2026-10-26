@@ -179,7 +179,7 @@ const messages = defineMessages({
   },
   namePlaceholder: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.namePlaceholder',
-    defaultMessage: 'e.g. API requests',
+    defaultMessage: 'e.g. Requests',
   },
   nameRequired: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.nameRequired',
@@ -217,7 +217,7 @@ const messages = defineMessages({
   typeLabel: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.typeLabel',
     defaultMessage: 'Type',
-    description: 'What a meter counts: API requests or tokens.',
+    description: 'What a meter counts: requests or tokens.',
   },
   updated: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.updated',

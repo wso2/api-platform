@@ -207,10 +207,12 @@
         window.history.replaceState(null, '', url.pathname + url.search + url.hash);
       }
 
+      /* The checkout as the portal has it, or { notFound: true } when the portal no longer has it. */
       async function readCheckout(id) {
         var resp = await fetch(apiPortalApi.root('/checkout-sessions/' + encodeURIComponent(id)), {
           headers: { 'X-CSRF-Token': window.apiPortalApi.csrfToken() },
         });
+        if (resp.status === 404) return { notFound: true };
         if (!resp.ok) throw new Error(resp.statusText);
         return resp.json();
       }
@@ -244,6 +246,11 @@
         for (var attempt = 0; attempt < POLL_LIMIT; attempt++) {
           var checkout;
           try { checkout = await readCheckout(id); } catch (e) { checkout = null; }
+          if (checkout && checkout.notFound) {
+            showStatus('Checkout ended', 'This checkout is no longer open, and no subscription was created from it.',
+              'Choose a plan on this page to subscribe.');
+            return;
+          }
           if (checkout) {
             var btn = document.querySelector('.paid-subscribe-btn[data-plan-id="' + CSS.escape(checkout.subscriptionPlanId || '') + '"]');
             planName = btn ? (btn.dataset.displayName || checkout.subscriptionPlanId) : (checkout.subscriptionPlanId || '');

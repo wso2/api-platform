@@ -36,11 +36,10 @@
  * plan none of whose prices apply to the API is refused.
  *
  * An API plan is never changed afterwards: the plan's pricing and its meters' definitions are locked
- * once it exists (planPricingService, meterService). Removing a plan from an API leaves its API plan,
- * so enabling the plan again reuses it.
+ * once it exists (planPricingService, meterService). When its plan stops being sold on its API, it
+ * is taken off sale with the provider (retire).
  */
 
-const crypto = require('crypto');
 const billingApiPlanDao = require('../../dao/billingApiPlanDao');
 const subscriptionPlanDao = require('../../dao/subscriptionPlanDao');
 const planPricingDao = require('../../dao/planPricingDao');
@@ -117,22 +116,22 @@ function partsOf(plan, api, pricing, meters, connector) {
 
 /**
  * What the catalog needs for some (API, plan) pairs: one item per pair whose plan is paid and that
- * has no API plan for the billing configuration yet. `pairs` are { api: { uuid, name, version, type }, planUuid };
+ * has no API plan yet. `pairs` are { api: { uuid, name, version, type }, planUuid };
  * the API's uuid is null for an API not saved yet. Meters that cannot be counted, and a usage plan
  * none of whose prices apply to the API's type, fail here, before anything is created. Reads go
  * through `t` when the caller holds a transaction.
  */
-async function itemsFor(orgId, conn, connector, pairs, t) {
+async function itemsFor(orgId, connector, pairs, t) {
     const items = [];
     for (const { api, planUuid } of pairs) {
         const pricing = await planPricingDao.getByPlan(orgId, planUuid, t);
         if (!pricing) continue;
-        if (api.uuid && await billingApiPlanDao.findApiPlan(conn.uuid, api.uuid, planUuid, t)) continue;
+        if (api.uuid && await billingApiPlanDao.getApiPlan(orgId, api.uuid, planUuid, t)) continue;
         const plan = await subscriptionPlanDao.getByUuid(orgId, planUuid, t);
         if (!plan) continue;
         const handles = [...new Set(pricing.prices.map((p) => p.meter_handle))];
         const meters = new Map((await meterDao.listByHandles(orgId, handles, t)).map((m) => [m.handle, m]));
-        const item = { apiPlanUuid: crypto.randomUUID(), api, plan, pricing };
+        const item = { api, plan, pricing };
         try {
             item.parts = partsOf(plan, api, pricing, meters, connector);
             for (const part of item.parts) {
@@ -198,7 +197,7 @@ async function buildItem(connector, item, { limit, onCreated, call = (fn) => fn(
         const meterRef = price
             ? await create('meter', () => catalog.createUsageMeter({ name, meter, planRef, priceRef }))
             : null;
-        return { priceUuid: price ? price.uuid : null, planRef, priceRef, meterRef };
+        return { priceUuid: price ? price.uuid : pricing.flat_price_uuid, planRef, priceRef, meterRef };
     };
     const results = await Promise.allSettled(item.parts.map((part) => limit(async () => {
         if (stopped) return null;
@@ -214,7 +213,7 @@ async function buildItem(connector, item, { limit, onCreated, call = (fn) => fn(
     return results.map((r) => r.value);
 }
 
-/** Saves a built API plan ({ uuid, orgId, configurationUuid, apiUuid, planUuid, items }) in the caller's transaction. */
+/** Saves a built API plan ({ orgId, apiUuid, planUuid, items }) in the caller's transaction. */
 async function saveApiPlan(apiPlan, t) {
     await billingApiPlanDao.insertApiPlan(apiPlan, t);
 }
@@ -265,8 +264,8 @@ function partLimiter() {
 /**
  * Creates with the billing provider the paid plans some (API, plan) pairs enable, before the request
  * saves anything. `pairs` are { api: { uuid, name, version, type }, planUuid }, the API's uuid null
- * when the request creates it; `conn` is the billing configuration ({ uuid } at least) and
- * `connector` its billing provider. Pairs whose plan is free, or that have an API plan already, need
+ * when the request creates it; `conn` is the organization's billing configuration and `connector`
+ * its billing provider. Pairs whose plan is free, or that have an API plan already, need
  * nothing. When any part fails, everything created is removed and BillingCatalogError is thrown,
  * naming the plan; the provider's reason is logged. Resolves to { apiPlans, undo }: the API plans for
  * the request to save (saveApiPlans), and undo, which removes what was created when that save fails.
@@ -274,7 +273,7 @@ function partLimiter() {
 async function build(orgId, conn, pairs, connector = conn && billingProvider.forConfiguration(conn)) {
     const nothing = { apiPlans: [], undo: async () => {} };
     if (!conn || pairs.length === 0) return nothing;
-    const items = await itemsFor(orgId, conn, connector, pairs);
+    const items = await itemsFor(orgId, connector, pairs);
     if (items.length === 0) return nothing;
     const created = [];
     let failed = false;
@@ -302,8 +301,8 @@ async function build(orgId, conn, pairs, connector = conn && billingProvider.for
         await undo(connector, created, persisting);
         throw new BillingCatalogError(item, cause);
     }
-    const apiPlans = items.map((item, i) => ({ uuid: item.apiPlanUuid, orgId, configurationUuid: conn.uuid,
-        apiUuid: item.api.uuid, planUuid: item.plan.uuid, items: results[i].value }));
+    const apiPlans = items.map((item, i) => ({ orgId, apiUuid: item.api.uuid, planUuid: item.plan.uuid,
+        items: results[i].value }));
     return { apiPlans, undo: () => undo(connector, created, persisting) };
 }
 
@@ -314,4 +313,40 @@ async function saveApiPlans(apiPlans, t, apiUuid) {
     }
 }
 
-module.exports = { BillingCatalogError, itemsFor, buildItem, undo, saveApiPlan, build, saveApiPlans, undoWaits };
+/** The provider could not take an API plan off sale. */
+class BillingRetireError extends Error {
+    constructor(cause) {
+        const fromProvider = cause instanceof BillingProviderError;
+        const retryable = fromProvider && (cause.status === 0 || cause.status === 429 || cause.status >= 500);
+        const by = fromProvider ? cause.provider : 'The billing provider';
+        super(`${by} could not take the paid plans off sale.`);
+        this.name = 'BillingRetireError';
+        this.cause = cause;
+        this.retryable = retryable;
+    }
+}
+
+/**
+ * Takes API plans off sale with the provider (`apiPlans`: billingApiPlanDao rows): each item's billing
+ * meter is removed and its price and plan are archived. Throws BillingRetireError when a part fails.
+ */
+async function retire(orgId, connector, apiPlans) {
+    for (const apiPlan of apiPlans) {
+        for (const item of apiPlan.items) {
+            try {
+                await persisting(() => connector.catalog.archivePart(
+                    { planRef: item.plan_ref, priceRef: item.price_ref, meterRef: item.meter_ref }));
+            } catch (err) {
+                logger.warn('A paid plan could not be taken off sale with the billing provider', {
+                    orgId, api: apiPlan.api_uuid, plan: apiPlan.plan_uuid, provider: err.provider,
+                    status: err.status, request: err.request, cause: err.message,
+                });
+                throw new BillingRetireError(err);
+            }
+        }
+    }
+}
+
+module.exports = {
+    BillingCatalogError, BillingRetireError, itemsFor, buildItem, undo, saveApiPlan, build, saveApiPlans, retire, undoWaits,
+};

@@ -61,6 +61,8 @@ const logger = require('../../config/logger');
 const { logUserAction } = require('../../middlewares/auditLogger');
 
 const { STATUS } = billingCheckoutDao;
+// The status of a checkout that ended unpaid.
+const EXPIRED = 'EXPIRED';
 
 // How long a checkout start waits for another request starting the same user's checkout for the
 // API, and when such a start counts as abandoned (the request died before reaching the provider).
@@ -119,9 +121,9 @@ async function returnUrl(orgId, viewName, api, checkoutUuid) {
     return `${page}?checkout=${encodeURIComponent(checkoutUuid)}&checkoutResult=success`;
 }
 
-/** The user's customer with the payment provider under the current billing configuration, created on first use. */
-async function ensureCustomer(req, orgId, conn, payments, userUuid) {
-    const existing = await billingCheckoutDao.findCustomer(conn.uuid, userUuid);
+/** The user's customer with the payment provider, created on first use. */
+async function ensureCustomer(req, orgId, payments, userUuid) {
+    const existing = await billingCheckoutDao.findCustomer(orgId, userUuid);
     if (existing) return existing;
     const email = req.user && typeof req.user.email === 'string' && /^[^@\s]+@[^@\s]+$/.test(req.user.email)
         ? req.user.email : undefined;
@@ -131,9 +133,7 @@ async function ensureCustomer(req, orgId, conn, payments, userUuid) {
         email,
         metadata: { wso2_portal_user: userUuid, wso2_organization: orgId },
     });
-    return billingCheckoutDao.createCustomer({
-        orgId, configurationUuid: conn.uuid, userUuid, customerRef,
-    });
+    return billingCheckoutDao.createCustomer({ orgId, userUuid, customerRef });
 }
 
 /**
@@ -141,22 +141,26 @@ async function ensureCustomer(req, orgId, conn, payments, userUuid) {
  * (charged once per period), each usage price metered.
  */
 async function checkoutPrices(apiPlan) {
-    const items = apiPlan ? await billingApiPlanDao.listItems(apiPlan.uuid) : [];
+    const items = apiPlan ? apiPlan.items : [];
     if (items.length === 0) throw new CheckoutError(409, 'This plan is not ready to be sold yet.', 'PLAN_NOT_AVAILABLE');
     // In the plan's price order (planPricingDao), as the plan page lists them; a flat rate plan has one.
     const pricing = await planPricingDao.getByPlan(apiPlan.org_uuid, apiPlan.plan_uuid);
     const position = new Map(((pricing && pricing.prices) || []).map((price, i) => [price.uuid, i]));
     const at = (item) => (position.has(item.price_uuid) ? position.get(item.price_uuid) : -1);
+    const flatPrice = pricing ? pricing.flat_price_uuid : null;
     return [...items].sort((x, y) => at(x) - at(y))
-        .map((item) => ({ ref: item.price_ref, fixed: item.price_uuid === null }));
+        .map((item) => ({ ref: item.price_ref, fixed: item.price_uuid === flatPrice }));
 }
 
-/** The checkout once its start has reached the payment provider (it has a provider reference), or null after waiting. */
+/**
+ * Waits for a checkout's start to reach the payment provider, or for the checkout to end. Resolves to
+ * { checkout } (null when it was deleted), or to null when it is still being started.
+ */
 async function waitForStart(checkoutUuid) {
     const end = Date.now() + START_WAIT_MS;
     while (Date.now() < end) {
         const checkout = await billingCheckoutDao.getCheckout(checkoutUuid);
-        if (!checkout || checkout.checkout_ref || checkout.status !== STATUS.OPEN) return checkout;
+        if (!checkout || checkout.checkout_ref || checkout.status !== STATUS.OPEN) return { checkout };
         await new Promise((resolve) => { setTimeout(resolve, 500); });
     }
     return null;
@@ -167,19 +171,19 @@ async function waitForStart(checkoutUuid) {
  * there is none (a start that never reached the provider within two minutes is removed). Throws a
  * 409 while another request is still starting it.
  */
-async function startedOpenCheckout(userUuid, apiUuid) {
-    const open = await billingCheckoutDao.findOpenCheckout(userUuid, apiUuid);
+async function startedOpenCheckout(orgId, userUuid, apiUuid) {
+    const open = await billingCheckoutDao.findOpenCheckout(orgId, userUuid, apiUuid);
     if (!open || open.checkout_ref) return open;
-    const started = await waitForStart(open.uuid);
-    if (!started) {
+    const startResult = await waitForStart(open.uuid);
+    if (!startResult) {
         if (Date.now() - new Date(open.created_at).getTime() < START_ABANDONED_MS) {
             throw new CheckoutError(409, BEING_STARTED, 'CONFLICT');
         }
-        await billingCheckoutDao.deleteCheckout(open.uuid);
+        await billingCheckoutDao.deleteOpenCheckout(open.uuid);
         return null;
     }
-    if (started.status !== STATUS.OPEN) return startedOpenCheckout(userUuid, apiUuid);
-    return started;
+    if (!startResult.checkout || startResult.checkout.status !== STATUS.OPEN) return startedOpenCheckout(orgId, userUuid, apiUuid);
+    return startResult.checkout;
 }
 
 /**
@@ -188,15 +192,15 @@ async function startedOpenCheckout(userUuid, apiUuid) {
  */
 async function startedCheckout(open) {
     if (open.checkout_ref) return open;
-    const started = await waitForStart(open.uuid);
-    if (!started) {
+    const startResult = await waitForStart(open.uuid);
+    if (!startResult) {
         if (Date.now() - new Date(open.created_at).getTime() < START_ABANDONED_MS) {
             throw new CheckoutError(409, BEING_STARTED, 'CONFLICT');
         }
-        await billingCheckoutDao.deleteCheckout(open.uuid);
+        await billingCheckoutDao.deleteOpenCheckout(open.uuid);
         return null;
     }
-    return started.status === STATUS.OPEN ? started : null;
+    return startResult.checkout && startResult.checkout.status === STATUS.OPEN ? startResult.checkout : null;
 }
 
 /**
@@ -216,7 +220,7 @@ async function endOpenCheckoutsFor(orgId, { apiUuid, planUuid, planUuids } = {})
         if (!checkout) continue;
         if (!conn) {
             // Billing is gone: nothing can activate the checkout any more.
-            await billingCheckoutDao.markExpired(checkout.uuid);
+            await billingCheckoutDao.deleteOpenCheckout(checkout.uuid);
             continue;
         }
         const { payments } = billingProvider.forConfiguration(conn);
@@ -233,8 +237,8 @@ async function endOpenCheckoutsFor(orgId, { apiUuid, planUuid, planUuids } = {})
  * checkout can start (there was none, it had ended, or it was for another plan and has been ended).
  * Throws a 409 when the open checkout turns out to be paid.
  */
-async function reusableCheckout(userUuid, apiUuid, planUuid, payments) {
-    const open = await startedOpenCheckout(userUuid, apiUuid);
+async function reusableCheckout(orgId, userUuid, apiUuid, planUuid, payments) {
+    const open = await startedOpenCheckout(orgId, userUuid, apiUuid);
     if (!open) return null;
     let provider = await payments.getCheckout(open.checkout_ref);
     const otherPlan = open.plan_uuid !== planUuid;
@@ -254,13 +258,13 @@ async function reusableCheckout(userUuid, apiUuid, planUuid, payments) {
  * checkout can no longer be paid. Throws a 409 when it was paid meanwhile (the paid subscription is
  * activated instead) or the payment provider would not end it.
  */
-async function endOpenCheckout(userUuid, apiUuid) {
-    const open = await startedOpenCheckout(userUuid, apiUuid);
+async function endOpenCheckout(orgId, userUuid, apiUuid) {
+    const open = await startedOpenCheckout(orgId, userUuid, apiUuid);
     if (!open) return;
-    const conn = await billingConfigurationDao.getWithSecrets(open.org_uuid);
+    const conn = await billingConfigurationDao.getWithSecrets(orgId);
     if (!conn) {
         // Billing is gone: nothing can activate the checkout any more.
-        await billingCheckoutDao.markExpired(open.uuid);
+        await billingCheckoutDao.deleteOpenCheckout(open.uuid);
         return;
     }
     const { payments } = billingProvider.forConfiguration(conn);
@@ -305,14 +309,14 @@ async function startCheckout(req) {
     }
 
     const conn = await billingConfigurationDao.getWithSecrets(orgId);
-    const apiPlan = await billingApiPlanDao.findApiPlan(conn.uuid, apiUuid, plan.uuid);
+    const apiPlan = await billingApiPlanDao.getApiPlan(orgId, apiUuid, plan.uuid);
     const prices = await checkoutPrices(apiPlan);
     const { payments } = billingProvider.forConfiguration(conn);
-    const customer = await ensureCustomer(req, orgId, conn, payments, userUuid);
+    const customer = await ensureCustomer(req, orgId, payments, userUuid);
 
     // The browser mounts the checkout with the payment provider's public key and the checkout's client secret.
     const { publishableKey } = payments;
-    const open = await reusableCheckout(userUuid, apiUuid, plan.uuid, payments);
+    const open = await reusableCheckout(orgId, userUuid, apiUuid, plan.uuid, payments);
     if (open) {
         logUserAction('CHECKOUT_RESUMED', req, { orgId, resourceUuid: open.id, resourceType: 'billing_checkout' });
         return { ...open, publishableKey };
@@ -320,15 +324,13 @@ async function startCheckout(req) {
     // One open checkout per user and API: the check and the insert run under a lock on the user's
     // customer row, so two starts at the same moment take turns and the second finds the first's.
     const checkout = await db.withTransaction(async (t) => {
-        await billingCheckoutDao.lockCustomer(customer.uuid, t);
-        if (await billingCheckoutDao.findOpenCheckout(userUuid, apiUuid, t)) return null;
-        return billingCheckoutDao.createCheckout({
-            orgId, userUuid, apiUuid, planUuid: plan.uuid, customerUuid: customer.uuid,
-        }, t);
+        await billingCheckoutDao.lockCustomer(orgId, userUuid, t);
+        if (await billingCheckoutDao.findOpenCheckout(orgId, userUuid, apiUuid, t)) return null;
+        return billingCheckoutDao.createCheckout({ orgId, userUuid, apiUuid, planUuid: plan.uuid }, t);
     });
     if (!checkout) {
         // Another request started the user's checkout for this API at the same moment: use that one.
-        const again = await reusableCheckout(userUuid, apiUuid, plan.uuid, payments);
+        const again = await reusableCheckout(orgId, userUuid, apiUuid, plan.uuid, payments);
         if (again) return { ...again, publishableKey };
         throw new CheckoutError(409, BEING_STARTED, 'CONFLICT');
     }
@@ -343,7 +345,7 @@ async function startCheckout(req) {
     } catch (err) {
         // The checkout never reached the payment provider: remove it, so nothing half-started is
         // left. The customer stays: it is the user's, and the next attempt reuses it.
-        await billingCheckoutDao.deleteCheckout(checkout.uuid);
+        await billingCheckoutDao.deleteOpenCheckout(checkout.uuid);
         throw err;
     }
     await billingCheckoutDao.setCheckoutRef(checkout.uuid, started.ref);
@@ -363,9 +365,9 @@ async function activate(checkout, providerCheckout) {
         throw new Error('The provider\'s checkout does not belong to this checkout.');
     }
     const conn = await billingConfigurationDao.getWithSecrets(checkout.org_uuid);
-    const customer = await billingCheckoutDao.getCustomer(checkout.customer_uuid);
-    if (!conn || !customer || conn.uuid !== customer.configuration_uuid) {
-        throw new Error('The billing configuration changed since the checkout started.');
+    const customer = await billingCheckoutDao.findCustomer(checkout.org_uuid, checkout.user_uuid);
+    if (!conn || !customer) {
+        throw new Error('Billing was removed since the checkout started.');
     }
     const providerSub = await billingProvider.forConfiguration(conn).payments.getSubscription(providerCheckout.subscriptionRef);
     if (!providerSub) throw new Error('The payment provider has no subscription for the completed checkout.');
@@ -378,15 +380,13 @@ async function activate(checkout, providerCheckout) {
         // the provider's subscription is ended and its payment refunded, as for a second paid checkout,
         // and the checkout ends without one. A provider refusal is thrown, so the event is retried.
         const refunded = await billingProvider.forConfiguration(conn).payments.cancelAndRefund(providerSub.ref);
-        await billingCheckoutDao.markExpired(checkout.uuid);
+        await billingCheckoutDao.deleteOpenCheckout(checkout.uuid);
         logger.warn('Paid checkout for an API or plan that no longer exists: its subscription was cancelled and refunded', {
             checkoutId: checkout.uuid, apiGone: !api, planGone: !plan, refunded,
         });
-        return billingCheckoutDao.getCheckout(checkout.uuid);
+        return { ...checkout, status: EXPIRED };
     }
-    // The API plan the checkout was sold from: it goes only with its API, plan or billing
-    // configuration, which are checked above.
-    const apiPlan = await billingApiPlanDao.findApiPlan(conn.uuid, checkout.api_uuid, checkout.plan_uuid);
+    const apiPlan = await billingApiPlanDao.getApiPlan(checkout.org_uuid, checkout.api_uuid, checkout.plan_uuid);
     if (!apiPlan) throw new Error('The paid plan of the checkout has no billing API plan.');
 
     let duplicateOf = null;
@@ -416,11 +416,8 @@ async function activate(checkout, providerCheckout) {
             await billingSubscriptionDao.create({
                 subscriptionUuid: sub.uuid,
                 orgId: checkout.org_uuid,
-                configurationUuid: conn.uuid,
-                customerUuid: customer.uuid,
-                apiPlanUuid: apiPlan.uuid,
                 subscriptionRef: providerSub.ref,
-                billingStatus,
+                status: billingStatus,
                 currentPeriodStart: providerSub.periodStart,
                 currentPeriodEnd: providerSub.periodEnd,
             }, t);
@@ -447,12 +444,15 @@ async function activate(checkout, providerCheckout) {
     return billingCheckoutDao.getCheckout(checkout.uuid);
 }
 
-/** Acts on a checkout as the payment provider reports it now: activates, expires, or leaves it open. */
+/**
+ * Acts on a checkout as the payment provider reports it now: activates it, deletes it when it ended
+ * unpaid (resolving to it with status EXPIRED), or leaves it open.
+ */
 async function settle(checkout, providerCheckout) {
     if (providerCheckout.state === 'PAID') return activate(checkout, providerCheckout);
     if (providerCheckout.state === 'EXPIRED') {
-        await billingCheckoutDao.markExpired(checkout.uuid);
-        return billingCheckoutDao.getCheckout(checkout.uuid);
+        await billingCheckoutDao.deleteOpenCheckout(checkout.uuid);
+        return { ...checkout, status: EXPIRED };
     }
     return checkout;
 }

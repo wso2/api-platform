@@ -18,12 +18,12 @@
 'use strict';
 
 /*
- * Data access for plan pricing: `subscription_plan_pricing`, one row per paid plan with its pricing type,
- * currency, billing period and, for a flat rate plan, its flat amount, and `subscription_plan_pricing_usage`, a usage
- * based plan's prices in order (see planPricingValidation). A plan without a `subscription_plan_pricing` row is
- * free. Each price names the meter that counts its units (meter_uuid) and the filters that narrow
- * it (filters). A price read here also has `name`, the name subscribers see, made from its meter's
- * name and its filters.
+ * Data access for plan pricing: `subscription_plan_pricing`, one row per paid plan with its currency,
+ * billing period and prices. A plan without a row is free.
+ *
+ * Prices are stored as a JSON array, each with its own uuid; the flat fee is one FLAT price. A
+ * pricing read here is { pricing_type, currency, billing_period, flat_amount, flat_price_uuid,
+ * prices, created_at }; each usage price has `name`, the name subscribers see.
  */
 
 const crypto = require('crypto');
@@ -34,43 +34,50 @@ const { getPortalId } = require('../utils/orgContext');
 const { priceName } = require('../utils/meterLabels');
 
 const TABLE = 'subscription_plan_pricing';
-const PRICES_TABLE = 'subscription_plan_pricing_usage';
 const METERS_TABLE = 'meters';
+const FLAT = 'FLAT';
 
-const PRICING_COLUMNS = 'p.subscription_plan_uuid, p.org_uuid, p.pricing_type, p.currency, p.billing_period, p.flat_amount, '
-    + 'p.created_by, p.created_at, p.updated_by, p.updated_at';
-const PRICE_COLUMNS = 'c.uuid, c.subscription_plan_uuid, c.meter_uuid, m.handle AS meter_handle, '
-    + 'm.display_name AS meter_name, c.filters, c.pricing_model, c.unit_amount, c.unit_quantity, c.tiers';
+const COLUMNS = 'subscription_plan_uuid, org_uuid, currency, billing_period, prices, created_at';
 
-/** A JSON array stored as binary; unreadable JSON reads as `fallback`. */
-function parseArray(value, fallback) {
-    const text = bufferToUtf8(value);
-    if (!text) return fallback;
+/** A JSON array stored as binary. */
+function parseArray(value) {
     try {
-        const parsed = JSON.parse(text);
-        return Array.isArray(parsed) ? parsed : fallback;
+        const parsed = JSON.parse(bufferToUtf8(value) || '[]');
+        return Array.isArray(parsed) ? parsed : [];
     } catch (_err) {
-        return fallback;
+        return [];
     }
 }
 
 function jsonParam(value) {
-    return db.binaryParam(value ? Buffer.from(JSON.stringify(value), 'utf8') : null);
+    return db.binaryParam(Buffer.from(JSON.stringify(value), 'utf8'));
 }
 
-function toPrice(row) {
-    const filters = parseArray(row.filters, []);
-    return {
-        uuid: row.uuid,
-        name: priceName(row.meter_name || row.meter_handle, filters),
-        meter_uuid: row.meter_uuid,
-        meter_handle: row.meter_handle || null,
-        filters,
-        pricing_model: row.pricing_model,
-        unit_amount: row.unit_amount ?? null,
-        unit_quantity: row.unit_quantity === null || row.unit_quantity === undefined ? null : Number(row.unit_quantity),
-        tiers: parseArray(row.tiers, null),
-    };
+// A filter as stored: a Token condition's key under event_key.
+const storedFilter = (f) => (f.field === 'TOKEN'
+    ? { field: f.field, event_key: f.eventKey, operator: f.operator, values: f.values }
+    : { field: f.field, operator: f.operator, values: f.values });
+const readFilter = (f) => (f.field === 'TOKEN'
+    ? { field: f.field, eventKey: f.event_key, operator: f.operator, values: f.values || [] }
+    : { field: f.field, operator: f.operator, values: f.values || [] });
+
+const storedTier = (tier) => ({ up_to: tier.upTo ?? null, unit_amount: tier.unitAmount ?? null, flat_amount: tier.flatAmount ?? null });
+const readTier = (tier) => ({ upTo: tier.up_to ?? null, unitAmount: tier.unit_amount ?? null, flatAmount: tier.flat_amount ?? null });
+
+/** The prices to store for validated pricing: the flat fee as one FLAT price, or each usage price. */
+function storedPrices(pricing) {
+    if (pricing.pricingType === 'FLAT_RATE') {
+        return [{ uuid: crypto.randomUUID(), pricing_model: FLAT, amount: pricing.flatAmount }];
+    }
+    return pricing.prices.map((price) => ({
+        uuid: crypto.randomUUID(),
+        meter_handle: price.meter.handle,
+        filters: (price.filters || []).map(storedFilter),
+        pricing_model: price.pricingModel,
+        unit_amount: price.unitAmount ?? null,
+        unit_quantity: price.unitQuantity ?? null,
+        tiers: price.tiers ? price.tiers.map(storedTier) : null,
+    }));
 }
 
 /**
@@ -85,30 +92,71 @@ function byName(a, b) {
         || (a.uuid < b.uuid ? -1 : Number(a.uuid > b.uuid));
 }
 
+/** A stored pricing row as read (`meterNames`: meter handle to name). */
+function toPricing(row, meterNames) {
+    const stored = parseArray(row.prices);
+    const flat = stored.length === 1 && stored[0].pricing_model === FLAT ? stored[0] : null;
+    const prices = flat ? [] : stored.map((price) => {
+        const filters = (price.filters || []).map(readFilter);
+        return {
+            uuid: price.uuid,
+            name: priceName(meterNames.get(price.meter_handle) || price.meter_handle, filters),
+            meter_handle: price.meter_handle,
+            filters,
+            pricing_model: price.pricing_model,
+            unit_amount: price.unit_amount ?? null,
+            unit_quantity: price.unit_quantity === null || price.unit_quantity === undefined ? null : Number(price.unit_quantity),
+            tiers: price.tiers ? price.tiers.map(readTier) : null,
+        };
+    }).sort(byName);
+    return {
+        subscription_plan_uuid: row.subscription_plan_uuid,
+        org_uuid: row.org_uuid,
+        pricing_type: flat ? 'FLAT_RATE' : 'USAGE_BASED',
+        currency: row.currency,
+        billing_period: row.billing_period,
+        flat_amount: flat ? flat.amount : null,
+        flat_price_uuid: flat ? flat.uuid : null,
+        prices,
+        created_at: row.created_at,
+    };
+}
+
+/** The display names of the organization's meters with the given handles, as a Map of handle to name. */
+async function meterNames(exec, orgId, handles) {
+    if (handles.length === 0) return new Map();
+    const placeholders = handles.map(() => '?').join(', ');
+    const rows = await exec.query(
+        `SELECT handle, display_name FROM ${METERS_TABLE} WHERE handle IN (${placeholders}) AND org_uuid = ? AND portal_id = ?`,
+        [...handles, orgId, getPortalId()]
+    );
+    return new Map(rows.map((r) => [r.handle, r.display_name]));
+}
+
 /** The pricing of each given plan with its prices, as a Map of plan uuid to pricing. A free plan is absent. */
 const listByPlans = async (orgId, planIds, t) => {
     if (!planIds || planIds.length === 0) return new Map();
     const exec = t || db;
     const placeholders = planIds.map(() => '?').join(', ');
     const rows = await exec.query(
-        `SELECT ${PRICING_COLUMNS} FROM ${TABLE} p
-         WHERE p.subscription_plan_uuid IN (${placeholders}) AND p.org_uuid = ? AND p.portal_id = ?`,
+        `SELECT ${COLUMNS} FROM ${TABLE}
+         WHERE subscription_plan_uuid IN (${placeholders}) AND org_uuid = ? AND portal_id = ?`,
         [...planIds, orgId, getPortalId()]
     );
     if (rows.length === 0) return new Map();
-    const priceRows = await exec.query(
-        `SELECT ${PRICE_COLUMNS} FROM ${PRICES_TABLE} c
-         LEFT JOIN ${METERS_TABLE} m ON m.uuid = c.meter_uuid AND m.portal_id = c.portal_id
-         WHERE c.subscription_plan_uuid IN (${placeholders}) AND c.org_uuid = ? AND c.portal_id = ?
-         ORDER BY c.subscription_plan_uuid, c.uuid`,
-        [...planIds, orgId, getPortalId()]
-    );
-    const prices = groupBy(priceRows, 'subscription_plan_uuid');
-    return new Map(rows.map((r) => [r.subscription_plan_uuid, {
-        ...r,
-        flat_amount: r.flat_amount ?? null,
-        prices: (prices.get(r.subscription_plan_uuid) || []).map(toPrice).sort(byName),
-    }]));
+    const handles = [...new Set(rows.flatMap((r) => parseArray(r.prices).map((p) => p.meter_handle).filter(Boolean)))];
+    const names = await meterNames(exec, orgId, handles);
+    return new Map(rows.map((r) => [r.subscription_plan_uuid, toPricing(r, names)]));
+};
+
+/** The pricing of each of the organization's paid plans, as a Map of plan uuid to pricing. */
+const listByOrg = async (orgId, t) => {
+    const exec = t || db;
+    const rows = await exec.query(`SELECT ${COLUMNS} FROM ${TABLE} WHERE org_uuid = ? AND portal_id = ?`,
+        [orgId, getPortalId()]);
+    const handles = [...new Set(rows.flatMap((r) => parseArray(r.prices).map((p) => p.meter_handle).filter(Boolean)))];
+    const names = await meterNames(exec, orgId, handles);
+    return new Map(rows.map((r) => [r.subscription_plan_uuid, toPricing(r, names)]));
 };
 
 /**
@@ -133,38 +181,22 @@ const getByPlan = async (orgId, planId, t) => {
 };
 
 /**
- * Creates the pricing of a new plan, prices included: pricing is set only when a plan is created
- * and never changes. `pricing` is validated pricing whose prices are resolved against their meters
+ * Creates the pricing of a new plan. `pricing` is validated pricing whose prices are resolved against their meters
  * (planPricingValidation.resolvePrices): each has `meter` (the meter row) and `filters`.
  */
-const create = async (orgId, planId, pricing, userId, t) => {
+const create = async (orgId, planId, pricing, t) => {
     const exec = t || db;
-    const portalId = getPortalId();
-    const now = new Date();
     await exec.execute(
-        `INSERT INTO ${TABLE}
-           (subscription_plan_uuid, org_uuid, portal_id, pricing_type, currency, billing_period, flat_amount, created_by,
-            created_at, updated_by, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [planId, orgId, portalId, pricing.pricingType, pricing.currency, pricing.billingPeriod,
-            pricing.flatAmount ?? null, userId, now, userId, now]
+        `INSERT INTO ${TABLE} (subscription_plan_uuid, org_uuid, portal_id, currency, billing_period, prices, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [planId, orgId, getPortalId(), pricing.currency, pricing.billingPeriod, jsonParam(storedPrices(pricing)), new Date()]
     );
-    for (const price of pricing.prices) {
-        await exec.execute(
-            `INSERT INTO ${PRICES_TABLE}
-               (uuid, subscription_plan_uuid, org_uuid, portal_id, meter_uuid, filters, pricing_model,
-                unit_amount, unit_quantity, tiers, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [crypto.randomUUID(), planId, orgId, portalId, price.meter.uuid,
-                jsonParam(price.filters), price.pricingModel, price.unitAmount ?? null,
-                price.unitQuantity ?? null, jsonParam(price.tiers), now, now]
-        );
-    }
     return { pricing: await getByPlan(orgId, planId, t) };
 };
 
 module.exports = {
     listByPlans,
+    listByOrg,
     attachPricing,
     getByPlan,
     create,

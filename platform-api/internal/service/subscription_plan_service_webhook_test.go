@@ -257,8 +257,8 @@ func TestUpsertPlanFromWebhook_StoresANewPlanWithItsPricing(t *testing.T) {
 	if repo.creates != 1 || repo.pricing != pricing || !plan.CreatedAt.Equal(planEventT0) {
 		t.Fatalf("creates = %d, stored pricing = %+v, plan = %+v; want one create with the pricing", repo.creates, repo.pricing, plan)
 	}
-	if !pricing.SourceUpdatedAt.Equal(planEventT0) {
-		t.Errorf("pricing dated %v, want %v", pricing.SourceUpdatedAt, planEventT0)
+	if !pricing.CreatedAt.Equal(planEventT0) {
+		t.Errorf("pricing dated %v, want %v", pricing.CreatedAt, planEventT0)
 	}
 }
 

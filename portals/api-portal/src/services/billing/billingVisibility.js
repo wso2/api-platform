@@ -32,7 +32,7 @@ async function sellablePlanUuids(orgId, apiUuid) {
     if (!apiUuid) return new Set();
     const conn = await billingConfigurationDao.get(orgId);
     if (!conn) return new Set();
-    return billingApiPlanDao.listPlanIds(conn.uuid, apiUuid);
+    return billingApiPlanDao.listPlanIds(orgId, apiUuid);
 }
 
 /** Whether the API may offer the paid plan now. */

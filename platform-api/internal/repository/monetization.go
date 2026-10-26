@@ -22,6 +22,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -42,7 +43,7 @@ func NewMeterRepo(db *database.DB) MeterRepository {
 }
 
 const meterColumns = `uuid, organization_uuid, handle, display_name, description, type,
-	type_key, filter_fields, source_updated_at, created_at, updated_at`
+	type_key, filter_fields, source_updated_at, created_at`
 
 func scanMeter(scanner rowScanner) (*model.Meter, error) {
 	m := &model.Meter{}
@@ -51,7 +52,7 @@ func scanMeter(scanner rowScanner) (*model.Meter, error) {
 		filterFields         []byte
 	)
 	if err := scanner.Scan(&m.UUID, &m.OrganizationUUID, &m.Handle, &m.DisplayName, &description, &m.Type,
-		&typeKey, &filterFields, &m.SourceUpdatedAt, &m.CreatedAt, &m.UpdatedAt); err != nil {
+		&typeKey, &filterFields, &m.SourceUpdatedAt, &m.CreatedAt); err != nil {
 		return nil, err
 	}
 	m.Description = description.String
@@ -115,17 +116,17 @@ func (r *MeterRepo) Create(m *model.Meter) error {
 	}
 	now := time.Now().UTC()
 	_, err = r.db.Exec(r.db.Rebind(`INSERT INTO meters (uuid, organization_uuid, handle, display_name, description,
-			type, type_key, filter_fields, source_updated_at, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
+			type, type_key, filter_fields, source_updated_at, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
 		m.UUID, m.OrganizationUUID, m.Handle, m.DisplayName, optionalString(m.Description), m.Type,
-		m.TypeKey, filterFieldsJSON, m.SourceUpdatedAt.UTC(), now, now)
+		m.TypeKey, filterFieldsJSON, m.SourceUpdatedAt.UTC(), now)
 	if err != nil && IsUniqueViolation(err) {
 		return ErrMeterExists
 	}
 	if err != nil {
 		return fmt.Errorf("failed to insert meter: %w", err)
 	}
-	m.CreatedAt, m.UpdatedAt = now, now
+	m.CreatedAt = now
 	return nil
 }
 
@@ -139,14 +140,13 @@ func (r *MeterRepo) Upsert(m *model.Meter) error {
 	if err != nil {
 		return fmt.Errorf("failed to encode filter fields: %w", err)
 	}
-	now := time.Now().UTC()
 	update := func() (int64, error) {
 		result, err := r.db.Exec(r.db.Rebind(`UPDATE meters
 			SET display_name = ?, description = ?, type = ?, type_key = ?, filter_fields = ?,
-				source_updated_at = ?, updated_at = ?
+				source_updated_at = ?
 			WHERE organization_uuid = ? AND handle = ?`),
 			m.DisplayName, optionalString(m.Description), m.Type, m.TypeKey, filterFieldsJSON,
-			m.SourceUpdatedAt.UTC(), now, m.OrganizationUUID, m.Handle)
+			m.SourceUpdatedAt.UTC(), m.OrganizationUUID, m.Handle)
 		if err != nil {
 			return 0, err
 		}
@@ -163,10 +163,10 @@ func (r *MeterRepo) Upsert(m *model.Meter) error {
 		m.UUID = uuid.New().String()
 	}
 	_, err = r.db.Exec(r.db.Rebind(`INSERT INTO meters (uuid, organization_uuid, handle, display_name, description,
-			type, type_key, filter_fields, source_updated_at, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
+			type, type_key, filter_fields, source_updated_at, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
 		m.UUID, m.OrganizationUUID, m.Handle, m.DisplayName, optionalString(m.Description), m.Type,
-		m.TypeKey, filterFieldsJSON, m.SourceUpdatedAt.UTC(), now, now)
+		m.TypeKey, filterFieldsJSON, m.SourceUpdatedAt.UTC(), time.Now().UTC())
 	if err != nil && IsUniqueViolation(err) {
 		// A concurrent delivery inserted the same meter between the update and the insert.
 		_, err = update()
@@ -196,25 +196,18 @@ func NewSubscriptionPlanPricingRepo(db *database.DB) SubscriptionPlanPricingRepo
 	return &SubscriptionPlanPricingRepo{db: db}
 }
 
-const subscriptionPlanPricingColumns = `subscription_plan_uuid, organization_uuid, pricing_type, currency,
-	billing_period, flat_amount, prices, source_updated_at, created_at, updated_at`
+const subscriptionPlanPricingColumns = `subscription_plan_uuid, organization_uuid, currency, billing_period,
+	prices, created_at`
 
 func scanSubscriptionPlanPricing(scanner rowScanner) (*model.SubscriptionPlanPricing, error) {
 	p := &model.SubscriptionPlanPricing{}
-	var (
-		flatAmount sql.NullString
-		prices     []byte
-	)
-	if err := scanner.Scan(&p.SubscriptionPlanUUID, &p.OrganizationUUID, &p.PricingType, &p.Currency, &p.BillingPeriod,
-		&flatAmount, &prices, &p.SourceUpdatedAt, &p.CreatedAt, &p.UpdatedAt); err != nil {
+	var prices []byte
+	if err := scanner.Scan(&p.SubscriptionPlanUUID, &p.OrganizationUUID, &p.Currency, &p.BillingPeriod,
+		&prices, &p.CreatedAt); err != nil {
 		return nil, err
 	}
-	p.FlatAmount = nullableString(flatAmount)
-	if err := json.Unmarshal(prices, &p.Prices); err != nil {
+	if err := decodePrices(p, prices); err != nil {
 		return nil, fmt.Errorf("failed to decode prices of plan %s: %w", p.SubscriptionPlanUUID, err)
-	}
-	if p.Prices == nil {
-		p.Prices = []model.SubscriptionPlanPrice{}
 	}
 	return p, nil
 }
@@ -251,30 +244,91 @@ func (r *SubscriptionPlanPricingRepo) ListByOrganization(orgUUID string) ([]*mod
 	return pricings, rows.Err()
 }
 
-// encodePrices returns the prices as stored: a JSON array, empty for a flat rate.
-func encodePrices(prices []model.SubscriptionPlanPrice) ([]byte, error) {
-	if prices == nil {
-		prices = []model.SubscriptionPlanPrice{}
+// storedFlatPrice is the one stored price of a FLAT_RATE plan: the amount charged every billing
+// period, with the pricing model model.PricingModelFlat.
+type storedFlatPrice struct {
+	PricingModel string  `json:"pricing_model"`
+	Amount       *string `json:"amount"`
+}
+
+// encodePrices returns a plan's prices as stored, a JSON array: for a FLAT_RATE plan one
+// model.PricingModelFlat price with its amount, for a USAGE_BASED plan its usage prices in order.
+func encodePrices(p *model.SubscriptionPlanPricing) ([]byte, error) {
+	var stored any
+	switch p.PricingType {
+	case model.PricingTypeFlatRate:
+		if p.FlatAmount == nil || len(p.Prices) > 0 {
+			return nil, errors.New("a flat rate plan has an amount and no usage prices")
+		}
+		stored = []storedFlatPrice{{PricingModel: model.PricingModelFlat, Amount: p.FlatAmount}}
+	case model.PricingTypeUsageBased:
+		if p.FlatAmount != nil {
+			return nil, errors.New("a usage based plan has no flat amount")
+		}
+		prices := p.Prices
+		if prices == nil {
+			prices = []model.SubscriptionPlanPrice{}
+		}
+		for _, price := range prices {
+			if price.PricingModel == model.PricingModelFlat {
+				return nil, fmt.Errorf("a usage price can't have the pricing model %s", model.PricingModelFlat)
+			}
+		}
+		stored = prices
+	default:
+		return nil, fmt.Errorf("unknown pricing type %q", p.PricingType)
 	}
-	pricesJSON, err := json.Marshal(prices)
+	pricesJSON, err := json.Marshal(stored)
 	if err != nil {
 		return nil, fmt.Errorf("failed to encode prices: %w", err)
 	}
 	return pricesJSON, nil
 }
 
+// decodePrices reads a plan's stored prices into p: a single model.PricingModelFlat price is a
+// FLAT_RATE plan, anything else a USAGE_BASED plan.
+func decodePrices(p *model.SubscriptionPlanPricing, stored []byte) error {
+	var entries []storedFlatPrice
+	if err := json.Unmarshal(stored, &entries); err != nil {
+		return err
+	}
+	flat := slices.IndexFunc(entries, func(e storedFlatPrice) bool { return e.PricingModel == model.PricingModelFlat })
+	switch {
+	case flat < 0:
+		var prices []model.SubscriptionPlanPrice
+		if err := json.Unmarshal(stored, &prices); err != nil {
+			return err
+		}
+		if prices == nil {
+			prices = []model.SubscriptionPlanPrice{}
+		}
+		p.PricingType, p.FlatAmount, p.Prices = model.PricingTypeUsageBased, nil, prices
+		return nil
+	case len(entries) > 1:
+		return fmt.Errorf("a %s price is stored beside other prices", model.PricingModelFlat)
+	case entries[flat].Amount == nil:
+		return fmt.Errorf("the %s price has no amount", model.PricingModelFlat)
+	default:
+		p.PricingType, p.FlatAmount = model.PricingTypeFlatRate, entries[flat].Amount
+		p.Prices = []model.SubscriptionPlanPrice{}
+		return nil
+	}
+}
+
 // insertSubscriptionPlanPricing inserts a plan's pricing through exec, the transaction that creates
-// the plan.
+// the plan. The pricing is dated with the CreatedAt the caller sets, or now when none is set.
 func insertSubscriptionPlanPricing(exec sqlExecutor, db *database.DB, p *model.SubscriptionPlanPricing, now time.Time) error {
-	pricesJSON, err := encodePrices(p.Prices)
+	pricesJSON, err := encodePrices(p)
 	if err != nil {
 		return err
 	}
+	if p.CreatedAt.IsZero() {
+		p.CreatedAt = now
+	}
 	if _, err := exec.Exec(db.Rebind(`INSERT INTO subscription_plan_pricing (subscription_plan_uuid, organization_uuid,
-			pricing_type, currency, billing_period, flat_amount, prices, source_updated_at, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
-		p.SubscriptionPlanUUID, p.OrganizationUUID, p.PricingType, p.Currency, p.BillingPeriod, p.FlatAmount,
-		pricesJSON, p.SourceUpdatedAt.UTC(), now, now); err != nil {
+			currency, billing_period, prices, created_at)
+		VALUES (?, ?, ?, ?, ?, ?)`),
+		p.SubscriptionPlanUUID, p.OrganizationUUID, p.Currency, p.BillingPeriod, pricesJSON, p.CreatedAt.UTC()); err != nil {
 		return fmt.Errorf("failed to insert subscription plan pricing: %w", err)
 	}
 	return nil
@@ -356,12 +410,11 @@ func (r *SubscriptionBillingRepo) GetMany(subscriptionUUIDs []string, orgUUID st
 
 // Upsert stores the billing state of a subscription.
 func (r *SubscriptionBillingRepo) Upsert(b *model.SubscriptionBilling) error {
-	now := time.Now().UTC()
 	update := func() (int64, error) {
 		result, err := r.db.Exec(r.db.Rebind(`UPDATE subscription_billing
-			SET billing_status = ?, billing_customer_id = ?, billing_subscription_id = ?, billing_updated_at = ?, updated_at = ?
+			SET billing_status = ?, billing_customer_id = ?, billing_subscription_id = ?, billing_updated_at = ?
 			WHERE subscription_uuid = ? AND organization_uuid = ?`),
-			b.Status, b.CustomerID, b.SubscriptionID, b.UpdatedAt.UTC(), now, b.SubscriptionUUID, b.OrganizationUUID)
+			b.Status, b.CustomerID, b.SubscriptionID, b.UpdatedAt.UTC(), b.SubscriptionUUID, b.OrganizationUUID)
 		if err != nil {
 			return 0, err
 		}
@@ -375,9 +428,9 @@ func (r *SubscriptionBillingRepo) Upsert(b *model.SubscriptionBilling) error {
 		return nil
 	}
 	_, err = r.db.Exec(r.db.Rebind(`INSERT INTO subscription_billing (subscription_uuid, organization_uuid,
-			billing_status, billing_customer_id, billing_subscription_id, billing_updated_at, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`),
-		b.SubscriptionUUID, b.OrganizationUUID, b.Status, b.CustomerID, b.SubscriptionID, b.UpdatedAt.UTC(), now, now)
+			billing_status, billing_customer_id, billing_subscription_id, billing_updated_at, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?)`),
+		b.SubscriptionUUID, b.OrganizationUUID, b.Status, b.CustomerID, b.SubscriptionID, b.UpdatedAt.UTC(), time.Now().UTC())
 	if err != nil && IsUniqueViolation(err) {
 		_, err = update()
 	}

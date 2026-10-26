@@ -23,19 +23,18 @@
  * Moesif connector's Stripe sub-connector. Every call to a provider goes through the billing
  * provider interface (billing/billingProvider.js).
  *
- * Setting up billing verifies both keys, then makes sure the payment provider sends events to two
- * places: Moesif's endpoint (so Moesif can match usage to customers and subscriptions) and the
- * portal's own (checkout, subscription and invoice changes). Stripe returns an endpoint's signing
- * secret only when the endpoint is created, so the portal creates its endpoint whenever it does not
- * hold the secret.
+ * Setting up billing verifies both keys, connects the Moesif application to Stripe with the Stripe
+ * key, then makes sure the payment provider sends events to two places: Moesif's endpoint (so Moesif
+ * can match usage to customers and subscriptions) and the portal's own (checkout, subscription and
+ * invoice changes). The Moesif application's connection to Stripe and Moesif's endpoint are billing's
+ * own: setup replaces a connection already there, and removing billing removes both.
  *
- * A billing configuration is never changed. To use other keys or another provider, an administrator
- * removes billing and sets it up again, which makes a new one; nothing created for the earlier one
- * is reused. There is no test or live switch either: the payment provider's key decides, and a test
- * key puts the portal in test mode (shown on the billing settings page).
+ * An organization has at most one billing configuration, and its keys are never changed. To use
+ * other keys or another provider, an administrator removes billing and sets it up again; nothing
+ * created for the earlier configuration is reused. The payment provider's key decides the mode: a
+ * test key puts the portal in test mode, shown on the billing settings page.
  */
 
-const crypto = require('crypto');
 const db = require('../../db/driver');
 const billingConfigurationDao = require('../../dao/billingConfigurationDao');
 const BillingConfigurationDTO = require('../../dto/billingConfigurationDto');
@@ -47,7 +46,7 @@ const util = require('../../utils/util');
 const logger = require('../../config/logger');
 const { logUserAction } = require('../../middlewares/auditLogger');
 const billingCatalogService = require('./billingCatalogService');
-const { BillingCatalogError } = billingCatalogService;
+const { BillingCatalogError, BillingRetireError } = billingCatalogService;
 const billingApiPlanDao = require('../../dao/billingApiPlanDao');
 const billingCheckoutDao = require('../../dao/billingCheckoutDao');
 const billingSubscriptionDao = require('../../dao/billingSubscriptionDao');
@@ -79,7 +78,7 @@ const BILLING_HAS_CHOICE = BILLING_ENGINES.length > 1 || BILLING_ENGINES.some((e
 
 // The setup used when a request names none: the first engine and its first payment provider.
 const SETUP = Object.freeze({
-    provider: BILLING_ENGINES[0].id,
+    billing_provider: BILLING_ENGINES[0].id,
     payment_provider: BILLING_ENGINES[0].paymentProviders[0].id,
 });
 
@@ -114,9 +113,9 @@ function defaultWebhookBaseUrl() {
     return String((config.server && config.server.baseUrl) || '').replace(/\/+$/, '');
 }
 
-/** The URL Stripe sends this configuration's events to, under its public address `baseUrl`. */
-function webhookUrl(configurationUuid, baseUrl) {
-    return `${baseUrl}${constants.ROUTE.BASE_PATH}/billing/stripe/webhooks/${configurationUuid}`;
+/** The URL Stripe sends the organization's billing events to, under its public address `baseUrl`. */
+function webhookUrl(orgId, baseUrl) {
+    return `${baseUrl}${constants.ROUTE.BASE_PATH}/billing/stripe/webhooks/${orgId}`;
 }
 
 const WEBHOOK_BASE_URL_INVALID = 'Enter an https address, such as https://portal.example.com.';
@@ -152,7 +151,7 @@ function optionalString(body, name, max) {
  * pair BILLING_ENGINES offers.
  */
 function resolveSetup(body) {
-    const provider = optionalString(body, 'provider', 20) ?? SETUP.provider;
+    const provider = optionalString(body, 'provider', 20) ?? SETUP.billing_provider;
     const paymentProvider = optionalString(body, 'paymentProvider', 20) ?? SETUP.payment_provider;
     const engine = BILLING_ENGINES.find((e) => e.id === provider);
     if (!engine) {
@@ -162,7 +161,7 @@ function resolveSetup(body) {
         throw new BillingInputError(`paymentProvider must be one of: ${
             engine.paymentProviders.map((p) => p.id).join(', ')} for ${provider}`);
     }
-    return { provider, payment_provider: paymentProvider };
+    return { billing_provider: provider, payment_provider: paymentProvider };
 }
 
 /** Validates a set up request. */
@@ -261,13 +260,14 @@ function sendProviderError(res, error) {
     return util.sendError(res, 400, message + hint, { code: 'BILLING_KEY_INVALID', errors });
 }
 
+/** The configuration as the REST API returns it. */
 async function toDto(conn) {
-    const audit = await userIdpReferenceDao.buildSingleAuditFields(conn);
+    const { createdBy } = await userIdpReferenceDao.buildSingleAuditFields({ created_by: conn.created_by });
     return new BillingConfigurationDTO(conn, {
-        webhookEndpointUrl: webhookUrl(conn.uuid, conn.stripe_webhook_base_url),
-        webhookBaseUrl: conn.stripe_webhook_base_url,
-        mode: billingProvider.paymentsOf(conn).publishableMode(conn.stripe_publishable_key),
-    }, audit);
+        webhookEndpointUrl: webhookUrl(conn.org_uuid, conn.stripeWebhookBaseUrl),
+        webhookBaseUrl: conn.stripeWebhookBaseUrl,
+        mode: billingProvider.paymentsOf(conn).publishableMode(conn.stripePublishableKey),
+    }, { createdBy, createdAt: conn.created_at });
 }
 
 /**
@@ -279,14 +279,14 @@ async function describeConfiguration(orgId) {
     if (!conn) return null;
     const dto = await toDto(conn);
     // Removing billing is refused while any is active; the page says so before trying.
-    dto.activePaidSubscriptions = await countActiveSubscriptions(orgId, conn.uuid);
+    dto.activePaidSubscriptions = await countActiveSubscriptions(orgId);
     return dto;
 }
 
-/** The configuration's paid subscriptions that have not ended. */
-async function countActiveSubscriptions(orgId, configurationUuid) {
+/** The number of the organization's paid subscriptions that have not ended. */
+async function countActiveSubscriptions(orgId) {
     const rows = await billingSubscriptionDao.listByOrg(orgId);
-    return rows.filter((r) => r.configuration_uuid === configurationUuid && r.billing_status !== 'CANCELLED').length;
+    return rows.filter((r) => r.status !== 'CANCELLED').length;
 }
 
 const getBillingConfiguration = async (req, res) => {
@@ -346,12 +346,11 @@ async function undoSteps(steps, orgId) {
  * Sets up billing. Every step must succeed, or the steps already done are undone and nothing is
  * saved:
  *   1. both keys are checked;
- *   2. the Moesif application is connected to Stripe with the Stripe key, so Moesif can create
- *      products and prices there and report usage (left as it was on undo if it was already on);
+ *   2. the Moesif application is connected to Stripe with the Stripe key, replacing any connection;
  *   3. Moesif's endpoint is registered in Stripe (unless it is there already);
- *   4. the portal's endpoint is registered in Stripe;
+ *   4. the portal's endpoint is registered in Stripe, replacing any already at its address;
  *   5. each paid plan already enabled for an API is created in Moesif (billingCatalogService); a
- *      paid plan that cannot be sold on its API, or that Moesif does not create, fails setup;
+ *      paid plan Moesif does not create fails setup;
  *   6. the configuration is saved, with those plans, which are then on sale.
  */
 const createBillingConfiguration = async (req, res) => {
@@ -362,56 +361,53 @@ const createBillingConfiguration = async (req, res) => {
             return util.sendError(res, 409, ALREADY_SET_UP);
         }
         const input = resolveInput(req.body);
-        const uuid = crypto.randomUUID();
-        const url = webhookUrl(uuid, input.webhookBaseUrl);
+        const url = webhookUrl(orgId, input.webhookBaseUrl);
         const { connector, endpoints } = await verifyKeys(input);
-        const conn = {
-            uuid,
-            provider: input.provider,
-            paymentProvider: input.payment_provider,
-            moesifCollectorApplicationId: input.moesifCollectorApplicationId,
-            moesifManagementKey: input.moesifManagementKey,
-            stripeApiKey: input.stripeApiKey,
-            stripePublishableKey: input.stripePublishableKey,
-            stripeWebhookBaseUrl: input.webhookBaseUrl,
-        };
 
         const moesifStripe = await setupStep('Moesif could not connect to Stripe',
             () => connector.connectPayments(),
             { field: 'moesifManagementKey', message: 'This Moesif key cannot connect the Moesif application to Stripe. It needs the App configs scopes listed in Settings › Billing.' });
-        if (moesifStripe.undo) done.push({ name: 'moesif stripe connection', undo: moesifStripe.undo });
-        // Removing billing takes out what setup put in Moesif with the administrator's Stripe key.
-        conn.moesifStripeConnectedByPortal = Boolean(moesifStripe.undo);
+        done.push({ name: 'moesif stripe connection', undo: moesifStripe.undo });
 
         const moesifEndpoint = await setupStep('Stripe did not accept Moesif\'s webhook endpoint',
             () => connector.ensureMoesifEvents(endpoints));
         if (moesifEndpoint.undo) {
             done.push({ name: 'moesif endpoint', undo: moesifEndpoint.undo });
         }
-        // Its address carries the Collector Application Id. Kept only when setup made it, so removing
-        // billing deletes it; one that was there before is left.
-        conn.moesifWebhookEndpointId = moesifEndpoint.created ? moesifEndpoint.ref : null;
 
         const endpoint = await setupStep(`Stripe did not accept the portal's webhook endpoint ${url}`,
-            () => connector.payments.ensureEventEndpoint({ url, endpoints, current: null }),
+            () => connector.payments.createEventEndpoint({ url, endpoints }),
             null, 'Use a public https address that Stripe can reach.');
         done.push({ name: 'portal endpoint', undo: () => connector.payments.removeEventEndpoint(endpoint.ref) });
-        conn.stripeWebhookEndpointId = endpoint.ref;
-        conn.stripeWebhookSecret = endpoint.secret;
 
         const pairs = (await billingApiPlanDao.listPaidPairs(orgId)).map((p) => ({
             api: { uuid: p.api_uuid, name: p.api_name, version: p.api_version, type: p.api_type },
             planUuid: p.plan_uuid,
         }));
-        const catalog = await billingCatalogService.build(orgId, conn, pairs, connector);
+        const catalog = await billingCatalogService.build(orgId, input, pairs, connector);
         done.push({ name: 'paid plans', undo: catalog.undo });
+        const conn = {
+            billing_provider: input.billing_provider,
+            payment_provider: input.payment_provider,
+            settings: {
+                stripe: {
+                    publishableKey: input.stripePublishableKey,
+                    webhookEndpointId: endpoint.ref,
+                    webhookBaseUrl: input.webhookBaseUrl,
+                },
+            },
+            secrets: {
+                moesif: { collectorApplicationId: input.moesifCollectorApplicationId, managementKey: input.moesifManagementKey },
+                stripe: { apiKey: input.stripeApiKey, webhookSecret: endpoint.secret },
+            },
+        };
         const saved = await db.withTransaction(async (t) => {
             const row = await billingConfigurationDao.create(orgId, conn, util.resolveActor(req), t);
             await billingCatalogService.saveApiPlans(catalog.apiPlans, t);
             return row;
         });
         logUserAction('BILLING_CONFIGURATION_CREATED', req,
-            { orgId, resourceUuid: saved.uuid, resourceType: 'billing_configuration' });
+            { orgId, resourceUuid: orgId, resourceType: 'billing_configuration' });
         // One configuration per organization, read at the address it was created at.
         res.setHeader('Location', `${req.baseUrl}${req.path.replace(/\/$/, '')}`);
         return res.status(201).json(await toDto(saved));
@@ -463,7 +459,7 @@ class RemovalStepError extends Error {
     constructor(message, cause) {
         super(message);
         this.cause = cause;
-        this.retryable = cause.status === 0 || cause.status >= 500;
+        this.retryable = Boolean(cause) && (cause.status === 0 || cause.status === 429 || cause.status >= 500);
     }
 }
 
@@ -497,7 +493,7 @@ async function endOpenCheckouts(orgId, connector) {
     for (const checkout of await billingCheckoutDao.listOpenByOrg(orgId)) {
         if (!checkout.checkout_ref) {
             // Never reached the payment provider: nothing there to end.
-            await billingCheckoutDao.deleteCheckout(checkout.uuid);
+            await billingCheckoutDao.deleteOpenCheckout(checkout.uuid);
             continue;
         }
         let ended;
@@ -513,81 +509,102 @@ async function endOpenCheckouts(orgId, connector) {
                 sentences('Stripe did not end an open checkout. Billing was not removed.', refusalAdvice(err)), err);
         }
         if (ended.state !== 'EXPIRED') return true;
-        await billingCheckoutDao.markExpired(checkout.uuid);
+        await billingCheckoutDao.deleteOpenCheckout(checkout.uuid);
     }
     return false;
 }
 
+/** Takes the organization's API plans off sale with the billing provider. */
+async function retireApiPlans(orgId, connector) {
+    try {
+        await billingCatalogService.retire(orgId, connector, await billingApiPlanDao.listByOrg(orgId));
+    } catch (err) {
+        if (!(err instanceof BillingRetireError)) throw err;
+        if (err.cause && err.cause.status === 401) {
+            logger.warn('Billing removal: the billing provider no longer accepts the stored key; paid plans left on sale there',
+                { orgId, provider: err.cause.provider });
+            return;
+        }
+        throw new RemovalStepError(sentences('The paid plans could not be taken off sale. Billing was not removed.',
+            refusalAdvice(err.cause) || (err.retryable ? 'Try again.' : '')), err.cause);
+    }
+}
+
+/** Billing can't be removed while a paid subscription is active. */
+class SubscriptionsActiveError extends Error {
+    constructor() {
+        super(SUBSCRIPTIONS_ACTIVE);
+        this.code = 'BILLING_SUBSCRIPTIONS_ACTIVE';
+    }
+}
+
 /**
- * Removes billing and everything that holds a key the administrator entered:
- *   1. refused while a paid subscription is active (or an open checkout was just paid);
+ * Removes the organization's billing and everything that holds a key the administrator entered:
+ *   1. refused while a paid subscription is active;
  *   2. open checkouts are ended;
- *   3. Moesif's connection to Stripe, with the Stripe key it holds, is removed when setup made it;
- *   4. Moesif's endpoint in Stripe, whose address carries the Collector Application Id, is removed
- *      when setup made it;
- *   5. the portal's endpoint is removed from Stripe;
- *   6. the configuration and its keys are deleted.
- * What was in Moesif and Stripe before setup is left as it is. When a step fails, the steps already
- * done are undone and billing is not removed; open checkouts ended in step 2 stay ended. A provider
- * that no longer accepts the stored key (401) does not stop the removal (see removalStep).
+ *   3. every paid plan sold on an API is taken off sale with Moesif;
+ *   4. Moesif's connection to Stripe, with the Stripe key it holds, is removed;
+ *   5. Moesif's endpoint in Stripe, whose address carries the Collector Application Id, is removed;
+ *   6. the portal's endpoint is removed from Stripe;
+ *   7. the configuration and its keys are deleted, with its customers, their checkouts, and its API
+ *      plans.
+ * When a step fails, steps 4 to 6 already done are undone and billing is not removed. Resolves to
+ * false when the organization has no billing; throws SubscriptionsActiveError or RemovalStepError.
  */
-const deleteBillingConfiguration = async (req, res) => {
-    const orgId = req.orgId;
+async function removeBilling(orgId) {
     const done = [];
     try {
         const existing = await billingConfigurationDao.getWithSecrets(orgId);
-        if (!existing) return util.sendError(res, 404, NOT_CONNECTED);
-        const active = await countActiveSubscriptions(orgId, existing.uuid);
-        if (active > 0) {
-            return util.sendError(res, 409, SUBSCRIPTIONS_ACTIVE, { code: 'BILLING_SUBSCRIPTIONS_ACTIVE' });
-        }
+        if (!existing) return false;
+        if (await countActiveSubscriptions(orgId) > 0) throw new SubscriptionsActiveError();
         const connector = billingProvider.forConfiguration(existing);
-        if (await endOpenCheckouts(orgId, connector)) {
-            return util.sendError(res, 409, SUBSCRIPTIONS_ACTIVE, { code: 'BILLING_SUBSCRIPTIONS_ACTIVE' });
-        }
+        if (await endOpenCheckouts(orgId, connector)) throw new SubscriptionsActiveError();
+        await retireApiPlans(orgId, connector);
 
-        if (Number(existing.moesif_stripe_connected_by_portal) === 1) {
-            // The key may lack the create:alert_rules scope this needs. Once the administrator disconnects
-            // Stripe in Moesif, this step finds no connection and continues.
-            await removalStep('moesif stripe connection', 'Moesif did not remove its connection to Stripe',
-                async () => (await connector.disconnectPayments()).undo, done, orgId,
-                'The Moesif key does not have the Alert rules: create scope. Disconnect Stripe from the Moesif '
-                + 'application, then remove billing again.');
-        }
-        const moesifEndpointRef = existing.moesif_webhook_endpoint_id;
-        if (moesifEndpointRef) {
-            await removalStep('moesif endpoint', 'Stripe did not remove Moesif\'s webhook endpoint', async () => {
-                await connector.payments.removeEventEndpoint(moesifEndpointRef);
-                return async () => {
-                    const again = await connector.ensureMoesifEvents([]);
-                    await billingConfigurationDao.setEndpoint(orgId, { moesifWebhookEndpointId: again.ref });
-                };
-            }, done, orgId);
-        }
-        const portalEndpointRef = existing.stripe_webhook_endpoint_id;
+        await removalStep('moesif stripe connection', 'Moesif did not remove its connection to Stripe',
+            async () => (await connector.disconnectPayments()).undo, done, orgId,
+            'The Moesif key does not have the Alert rules: create scope. Disconnect Stripe from the Moesif '
+            + 'application, then remove billing again.');
+        await removalStep('moesif endpoint', 'Stripe did not remove Moesif\'s webhook endpoint',
+            async () => (await connector.removeMoesifEvents()).undo, done, orgId);
+        const portalEndpointRef = existing.stripeWebhookEndpointId;
         if (portalEndpointRef) {
             await removalStep('portal endpoint', 'Stripe did not remove the portal\'s webhook endpoint', async () => {
                 await connector.payments.removeEventEndpoint(portalEndpointRef);
                 return async () => {
-                    const again = await connector.payments.ensureEventEndpoint(
-                        { url: webhookUrl(existing.uuid, existing.stripe_webhook_base_url), endpoints: [], current: null });
-                    await billingConfigurationDao.setEndpoint(orgId,
-                        { stripeWebhookEndpointId: again.ref, stripeWebhookSecret: again.secret });
+                    const again = await connector.payments.createEventEndpoint(
+                        { url: webhookUrl(orgId, existing.stripeWebhookBaseUrl), endpoints: [] });
+                    await billingConfigurationDao.setEventEndpoint(orgId, { endpointId: again.ref, secret: again.secret });
                 };
             }, done, orgId);
         }
-
         await billingConfigurationDao.delete(orgId);
-        logUserAction('BILLING_CONFIGURATION_DELETED', req,
-            { orgId, resourceUuid: existing.uuid, resourceType: 'billing_configuration' });
-        return res.status(204).send();
+        return true;
     } catch (error) {
         await undoSteps(done, orgId);
         if (error instanceof RemovalStepError) {
             logger.warn('Billing not removed: a provider refused a step', {
-                orgId, reason: error.message, status: error.cause.status, request: error.cause.request,
-                cause: error.cause.message,
+                orgId, reason: error.message, status: error.cause && error.cause.status,
+                request: error.cause && error.cause.request, cause: error.cause && error.cause.message,
             });
+        }
+        throw error;
+    }
+}
+
+/** DELETE /billing-configuration: removes the organization's billing (removeBilling). */
+const deleteBillingConfiguration = async (req, res) => {
+    const orgId = req.orgId;
+    try {
+        if (!(await removeBilling(orgId))) return util.sendError(res, 404, NOT_CONNECTED);
+        logUserAction('BILLING_CONFIGURATION_DELETED', req,
+            { orgId, resourceUuid: orgId, resourceType: 'billing_configuration' });
+        return res.status(204).send();
+    } catch (error) {
+        if (error instanceof SubscriptionsActiveError) {
+            return util.sendError(res, 409, error.message, { code: error.code });
+        }
+        if (error instanceof RemovalStepError) {
             return util.sendError(res, error.retryable ? 502 : 400, error.message, { code: 'BILLING_REMOVE_FAILED' });
         }
         logger.error('Error while removing the billing configuration', { error: error.message });
@@ -607,17 +624,17 @@ const updateBillingWebhookEndpoint = async (req, res) => {
         const conn = await billingConfigurationDao.getWithSecrets(orgId);
         if (!conn) return util.sendError(res, 404, NOT_CONNECTED);
         const baseUrl = webhookBaseUrlOf((req.body || {}).webhookBaseUrl);
-        const url = webhookUrl(conn.uuid, baseUrl);
+        const url = webhookUrl(orgId, baseUrl);
         const connector = billingProvider.forConfiguration(conn);
         const endpoint = await setupStep(`Stripe did not accept the webhook endpoint ${url}`,
             () => connector.payments.moveEventEndpoint({
-                url, current: { ref: conn.stripe_webhook_endpoint_id, secret: conn.stripeWebhookSecret },
+                url, current: { ref: conn.stripeWebhookEndpointId, secret: conn.stripeWebhookSecret },
             }),
             null, 'Use a public https address that Stripe can reach.');
-        const saved = await billingConfigurationDao.setWebhookEndpoint(orgId,
-            { baseUrl, endpointId: endpoint.ref, secret: endpoint.secret }, util.resolveActor(req));
+        const saved = await billingConfigurationDao.setEventEndpoint(orgId,
+            { baseUrl, endpointId: endpoint.ref, secret: endpoint.secret });
         logUserAction('BILLING_WEBHOOK_ENDPOINT_UPDATED', req,
-            { orgId, resourceUuid: conn.uuid, resourceType: 'billing_configuration' });
+            { orgId, resourceUuid: orgId, resourceType: 'billing_configuration' });
         return res.status(200).json(await toDto(saved));
     } catch (error) {
         if (error instanceof BillingInputError) {
@@ -646,6 +663,9 @@ module.exports = {
     BILLING_HAS_CHOICE,
     PAYMENT_PROVIDERS,
     SETUP,
+    RemovalStepError,
+    SubscriptionsActiveError,
+    removeBilling,
     webhookUrl,
     describeConfiguration,
     getBillingConfiguration,

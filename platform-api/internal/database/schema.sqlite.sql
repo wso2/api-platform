@@ -873,7 +873,6 @@ CREATE TABLE IF NOT EXISTS meters (
     filter_fields BLOB NOT NULL,
     source_updated_at DATETIME NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
     UNIQUE(organization_uuid, handle)
 );
@@ -882,23 +881,22 @@ CREATE TABLE IF NOT EXISTS meters (
 -- through this REST API (the Management Portal) or in an API Portal (its subscription_plan.created
 -- webhook event) is stored with its pricing, in the same transaction, and the pricing never
 -- changes.
---   - pricing_type FLAT_RATE: flat_amount is charged every billing period; prices is empty.
---   - pricing_type USAGE_BASED: flat_amount is NULL, and prices holds 1 to 20 usage prices.
--- prices is a JSON array, in order and in the event's form. Each price names its meter by handle
--- (no foreign key, as in the event), its filters ([{field, operator, values}], none to count every
--- request of the meter) and one pricing model. No query reads inside it. Amounts are decimal
--- strings.
+-- prices is a JSON array, in order, that holds what the plan charges:
+--   - a flat rate plan: one entry, {pricing_model: FLAT, amount}, the amount charged every billing
+--     period;
+--   - a usage based plan: 1 to 20 usage prices. Each names its meter by handle, its filters
+--     ([{field, operator, values}], none to count every request of the meter) and one pricing
+--     model: PER_UNIT, VOLUME or GRADUATED.
+-- Amounts are decimal strings.
+-- created_at is when the pricing was set: the time of the request for a plan created through this
+-- REST API, the event's occurred_at for a plan created in an API Portal.
 CREATE TABLE IF NOT EXISTS subscription_plan_pricing (
     subscription_plan_uuid VARCHAR(40) PRIMARY KEY,
     organization_uuid VARCHAR(40) NOT NULL,
-    pricing_type VARCHAR(20) NOT NULL,
     currency VARCHAR(3) NOT NULL,
     billing_period VARCHAR(20) NOT NULL,
-    flat_amount VARCHAR(40),
     prices BLOB NOT NULL,
-    source_updated_at DATETIME NOT NULL,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME NOT NULL,
     FOREIGN KEY (subscription_plan_uuid) REFERENCES subscription_plans(uuid) ON DELETE CASCADE,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE
 );
@@ -916,7 +914,6 @@ CREATE TABLE IF NOT EXISTS subscription_billing (
     billing_subscription_id VARCHAR(255) NOT NULL,
     billing_updated_at DATETIME NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (subscription_uuid) REFERENCES subscriptions(uuid) ON DELETE CASCADE,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE
 );

@@ -295,17 +295,11 @@ function create(settings) {
         },
 
         /**
-         * Makes sure Stripe sends the portal's events to `url` and that the portal holds the
-         * endpoint's signing secret. Stripe returns a secret only when an endpoint is created, so
-         * an endpoint the portal has no secret for is replaced. Resolves to { ref, secret }.
+         * Registers a new endpoint for the portal's events at `url`, replacing any already there
+         * (among `endpoints`). Resolves to { ref, secret }.
          */
-        async ensureEventEndpoint({ url, endpoints, current }) {
-            const found = endpoints.find((e) => e.url === url);
-            if (found && current && current.ref === found.id && current.secret) {
-                await stripe.updateWebhookEndpoint(found.id, { events: PORTAL_EVENTS, disabled: false });
-                return { ref: found.id, secret: current.secret };
-            }
-            if (found) await stripe.deleteWebhookEndpoint(found.id);
+        async createEventEndpoint({ url, endpoints }) {
+            for (const endpoint of endpoints.filter((e) => e.url === url)) await stripe.deleteWebhookEndpoint(endpoint.id);
             const created = await stripe.createWebhookEndpoint({
                 url,
                 events: PORTAL_EVENTS,
@@ -316,10 +310,8 @@ function create(settings) {
         },
 
         /**
-         * Moves the portal's endpoint (`current`: { ref, secret }) to `url`. The endpoint keeps its
-         * id and signing secret, so events continue to be verified. When Stripe no longer has it, or
-         * the portal holds no secret for it, a new one is made as ensureEventEndpoint does.
-         * Resolves to { ref, secret }.
+         * Moves the portal's endpoint (`current`: { ref, secret }) to `url`, keeping its id and
+         * signing secret. Resolves to { ref, secret }.
          */
         async moveEventEndpoint({ url, current }) {
             const endpoints = await stripe.listWebhookEndpoints();
@@ -328,7 +320,7 @@ function create(settings) {
                 await stripe.updateWebhookEndpoint(found.id, { url, events: PORTAL_EVENTS, disabled: false });
                 return { ref: found.id, secret: current.secret };
             }
-            return this.ensureEventEndpoint({ url, endpoints, current: null });
+            return this.createEventEndpoint({ url, endpoints });
         },
 
         /**
@@ -357,6 +349,11 @@ function create(settings) {
                 created: false,
                 undo: () => stripe.updateWebhookEndpoint(found.id, { events, disabled }),
             };
+        },
+
+        /** The account's event endpoints: [{ id, url, enabled_events, status }]. */
+        listEventEndpoints() {
+            return stripe.listWebhookEndpoints();
         },
 
         removeEventEndpoint(ref) {

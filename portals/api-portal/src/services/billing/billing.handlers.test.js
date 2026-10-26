@@ -220,10 +220,7 @@ const calls = {
     out.goldDeleted = await call(plans.deleteSubscriptionPlan, as({ params: { planId: 'gold' } }));
     // The delete answers before its transaction commits; this next call waits for it.
     out.pricingAfterDelete = await call(pricing.getPlanPricing, as({ params: { planId: 'gold' } }));
-    out.goldPricingRows = {
-        pricing: count('SELECT COUNT(*) AS n FROM subscription_plan_pricing WHERE subscription_plan_uuid = ?', goldUuid),
-        prices: count('SELECT COUNT(*) AS n FROM subscription_plan_pricing_usage WHERE subscription_plan_uuid = ?', goldUuid),
-    };
+    out.goldPricingRows = count('SELECT COUNT(*) AS n FROM subscription_plan_pricing WHERE subscription_plan_uuid = ?', goldUuid);
     out.lockedBySilver = await call(meters.updateMeter, as({
         params: { meterId: 'successful-calls' }, body: { ...calls, displayName: 'Billed calls' },
     }));
@@ -764,7 +761,7 @@ test('an existing plan updated without pricing keeps its pricing', () => {
 
 test('deleting a plan deletes its pricing, and the meter is then priced by the plans left', () => {
     assert.equal(results().goldDeleted.status, 204);
-    assert.deepEqual(results().goldPricingRows, { pricing: 0, prices: 0 });
+    assert.equal(results().goldPricingRows, 0);
     assert.equal(results().pricingAfterDelete.status, 404);
     const r = results().lockedBySilver;
     assert.equal(r.status, 409);

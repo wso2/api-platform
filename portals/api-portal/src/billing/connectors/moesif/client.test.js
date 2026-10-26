@@ -82,3 +82,23 @@ test('Moesif is called on the token\'s organization with the management key', as
     assert.strictEqual(req.headers.Authorization, 'Bearer mk');
     assert.strictEqual(moesif.stripeWebhookUrl('app 1'), 'https://moesif.test/v1/partners/stripe?moesif_application_id=app%201');
 });
+
+test('a price and a plan are archived with a PUT; one the billing provider no longer has counts as archived', async () => {
+    const missing = { status: 400, data: { message: "Client error: Stripe error: resource_missing: No such price: 'price_gone'" } };
+    const http = recordingHttp([{ status: 204 }, { status: 204 }, missing, { ...missing }]);
+    const client = moesif.createMoesifClient({ managementKey: 'mk', http });
+    await client.archiveCatalogPrice('stripe', 'price_1');
+    await client.archiveCatalogPlan('stripe', 'prod_1');
+    await client.archiveCatalogPrice('stripe', 'price_gone');
+    await client.archiveCatalogPlan('stripe', 'prod_gone');
+    assert.deepStrictEqual(http.requests.slice(0, 2).map((r) => [r.method, r.url, r.data]), [
+        ['PUT', 'https://moesif.test/v1/~/billing/catalog/prices/price_1', { provider: 'stripe', status: 'archived' }],
+        ['PUT', 'https://moesif.test/v1/~/billing/catalog/plans/prod_1', { provider: 'stripe', status: 'archived' }],
+    ]);
+});
+
+test('archiving fails on any other refusal', async () => {
+    const http = recordingHttp([{ status: 400, data: { message: 'Client error: An error occurred' } }]);
+    const client = moesif.createMoesifClient({ managementKey: 'mk', http });
+    await assert.rejects(client.archiveCatalogPrice('stripe', 'price_1'), (err) => err.status === 400);
+});

@@ -40,7 +40,6 @@
  * payment provider account are left out.
  */
 
-const subDao = require('../../dao/subscriptionDao');
 const meterDao = require('../../dao/meterDao');
 const billingConfigurationDao = require('../../dao/billingConfigurationDao');
 const billingApiPlanDao = require('../../dao/billingApiPlanDao');
@@ -65,38 +64,35 @@ const CURSOR_PATTERN = /^[A-Za-z0-9_]{1,255}$/;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2}(\.\d{1,9})?)?(Z|[+-]\d{2}:\d{2}))?$/;
 
 /**
- * price reference -> { apiPlan, price, meter, fee } for the configuration's API plans: each item's
+ * price reference -> { apiPlan, price, meter, fee } for the organization's API plans: each item's
  * price, with the plan price and the meter that counts it for a usage price (both null for the flat
  * fee, which has the fee's name instead).
  */
-async function priceIndex(orgId, conn) {
+async function priceIndex(orgId) {
     const index = new Map();
-    const apiPlans = await billingApiPlanDao.listForConfiguration(orgId, conn.uuid);
-    const items = await billingApiPlanDao.listItemsByApiPlans(apiPlans.map((e) => e.uuid));
-    const meters = new Map((await meterDao.list(orgId)).map((m) => [m.uuid, m]));
+    const apiPlans = await billingApiPlanDao.listByOrg(orgId);
+    const meters = new Map((await meterDao.list(orgId)).map((m) => [m.handle, m]));
     const pricing = await planPricingDao.listByPlans(orgId, [...new Set(apiPlans.map((e) => e.plan_uuid))]);
     for (const apiPlan of apiPlans) {
         const planPricing = pricing.get(apiPlan.plan_uuid) || {};
         const prices = new Map((planPricing.prices || []).map((p) => [p.uuid, p]));
-        for (const item of items.get(apiPlan.uuid) || []) {
-            const price = item.price_uuid ? prices.get(item.price_uuid) || null : null;
+        for (const item of apiPlan.items) {
+            const fee = item.price_uuid === planPricing.flat_price_uuid;
+            const price = fee ? null : prices.get(item.price_uuid) || null;
             index.set(item.price_ref, {
-                apiPlan, price, meter: price ? meters.get(price.meter_uuid) || null : null,
-                fee: item.price_uuid ? null : subscriptionBilling.FEE_NAMES[planPricing.billing_period] || 'Plan fee',
+                apiPlan, price, meter: price ? meters.get(price.meter_handle) || null : null,
+                fee: fee ? subscriptionBilling.FEE_NAMES[planPricing.billing_period] || 'Plan fee' : null,
             });
         }
     }
     return index;
 }
 
-/**
- * The checkouts of the invoices that were never completed: a checkout whose card was declined and
- * then left still has an unpaid invoice with the payment provider, which is not revenue.
- */
+/** The checkouts of the invoices that were never completed (open, or gone from the portal). */
 async function uncompletedCheckouts(invoices) {
     const refs = [...new Set(invoices.map((inv) => inv.checkoutRef).filter(Boolean))];
     const checkouts = await Promise.all(refs.map((ref) => billingCheckoutDao.getCheckout(ref)));
-    return new Set(refs.filter((ref, i) => checkouts[i] && checkouts[i].status !== billingCheckoutDao.STATUS.COMPLETED));
+    return new Set(refs.filter((ref, i) => !checkouts[i] || checkouts[i].status !== billingCheckoutDao.STATUS.COMPLETED));
 }
 
 /** GET /billing-reports/revenue: the paid subscriptions and their payment state, from the portal's own records. */
@@ -107,14 +103,13 @@ const getRevenueReport = async (req, res) => {
         if (!conn) return res.status(200).json({ configured: false });
 
         const billingRows = (await billingSubscriptionDao.listByOrg(orgId))
-            .filter((b) => b.configuration_uuid === conn.uuid);
-        const subs = new Map((await subDao.list(orgId)).map((s) => [s.uuid, s]));
-        const statuses = billingRows.map((b) => subscriptionBilling.accessStatus(b.billing_status));
+            .filter((b) => subscriptionBilling.belongsToConfiguration(b, conn));
+        const statuses = billingRows.map((b) => subscriptionBilling.accessStatus(b.status));
         return res.status(200).json({
             configured: true,
             billingSince: new Date(conn.created_at).toISOString(),
             paidSubscriptions: billingRows.length,
-            paidApis: new Set(billingRows.map((b) => (subs.get(b.subscription_uuid) || {}).api_uuid).filter(Boolean)).size,
+            paidApis: new Set(billingRows.map((b) => b.api_uuid)).size,
             paymentIssues: {
                 pastDue: statuses.filter((s) => s === 'PAST_DUE').length,
                 paymentPending: statuses.filter((s) => s === 'PAYMENT_PENDING').length,
@@ -176,7 +171,7 @@ const listRevenueInvoices = async (req, res) => {
         const body = { invoices: [], nextCursor: null, invoicesAvailable: true };
         const conn = await billingConfigurationDao.getWithSecrets(orgId);
         if (!conn) return res.status(200).json(body);
-        const customers = await billingCheckoutDao.listCustomers(conn.uuid);
+        const customers = await billingCheckoutDao.listCustomers(orgId);
 
         let page;
         try {
@@ -199,10 +194,10 @@ const listRevenueInvoices = async (req, res) => {
         const invoices = finalized.filter((inv) => !uncompleted.has(inv.checkoutRef));
         if (invoices.length === 0) return res.status(200).json(body);
 
-        const prices = await priceIndex(orgId, conn);
+        const prices = await priceIndex(orgId);
         const subscriptionIds = new Map((await billingSubscriptionDao.listByOrg(orgId))
-            .filter((b) => b.configuration_uuid === conn.uuid)
-            .map((b) => [b.billing_subscription_id, b.subscription_uuid]));
+            .filter((b) => subscriptionBilling.belongsToConfiguration(b, conn))
+            .map((b) => [b.subscription_ref, b.subscription_uuid]));
         // The subscriber's name in the portal, for an invoice the provider has no customer name on.
         const names = new Map();
         const portalName = async (customerRef) => {

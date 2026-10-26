@@ -79,6 +79,7 @@ const apiDao = require(src + '/dao/apiDao.js');
 const subscriptionPlanDao = require(src + '/dao/subscriptionPlanDao.js');
 const billingConfigurationDao = require(src + '/dao/billingConfigurationDao.js');
 const billingApiPlanDao = require(src + '/dao/billingApiPlanDao.js');
+const planPricingDao = require(src + '/dao/planPricingDao.js');
 const util = require(src + '/utils/util.js');
 const { BillingProviderError } = require(src + '/billing/http.js');
 const moesifConnector = require(src + '/billing/connectors/moesif/index.js');
@@ -91,8 +92,8 @@ const out = {};
 const ORG = ${JSON.stringify(ORG)};
 const PORTAL = ${JSON.stringify(PORTAL)};
 
-// Moesif, with switches to refuse a call: 'plan', 'meter' (unavailable), 'plan-400' (refused) or
-// 'flat-price-429' (rate limit), after letting \`skip\` such calls through.
+// Moesif, with switches to refuse a call: 'plan', 'meter' (unavailable), 'plan-400' or 'archive-price-400'
+// (refused) or 'flat-price-429' (rate limit), after letting \`skip\` such calls through.
 const moesifCalls = [];
 const meterBodies = [];
 const fail = { next: null, skip: 0, cleanup: 0 };
@@ -163,18 +164,38 @@ moesifConnector.clients.moesif = () => ({
         }
         moesifCalls.push(['archive-plan', id]);
     },
+    async archiveCatalogPrice(provider, id) {
+        maybeFail('archive-price');
+        moesifCalls.push(['archive-price', id]);
+    },
     async deleteCatalogPrice(provider, id) { moesifCalls.push(['delete-price', id]); },
     async deleteBillingMeter(id) { moesifCalls.push(['delete-meter', id]); },
 });
 
 // Stripe, for a checkout: the prices it is asked to charge.
 const checkoutSessions = [];
+const sessions = {};
 stripeConnector.clients.stripe = () => ({
     async createCustomer() { return { id: 'cus_' + (++seq) }; },
     async createCheckoutSession(args) {
         checkoutSessions.push(args.lineItems.map((item) => item.price));
-        return { id: 'cs_' + (++seq), client_secret: 'cs_' + seq + '_secret' };
+        const id = 'cs_' + (++seq);
+        sessions[id] = { id, client_secret: id + '_secret', status: 'open', payment_status: 'unpaid', subscription: null,
+            client_reference_id: args.clientReferenceId };
+        return { id, client_secret: id + '_secret' };
     },
+    async retrieveCheckoutSession(id) { return { ...sessions[id] }; },
+    // A session marked paysOnExpire is paid just before it can be ended.
+    async expireCheckoutSession(id) {
+        const session = sessions[id];
+        if (session.paysOnExpire) Object.assign(session, { status: 'complete', payment_status: 'paid', subscription: session.paysOnExpire });
+        if (session.status !== 'open') {
+            throw new BillingProviderError('Stripe', 400, 'Stripe: Only Checkout Sessions with a status in ["open"] can be expired.');
+        }
+        session.status = 'expired';
+        return { ...session };
+    },
+    async retrieveSubscription(id) { return { id, status: 'active', current_period_start: 1760000000, current_period_end: 1762600000 }; },
 });
 
 function call(fn, req) {
@@ -232,11 +253,11 @@ const calls = () => moesifCalls.splice(0).map((c) => c[0]).sort();
     out.callsWithoutBilling = calls();
 
     await billingConfigurationDao.create(ORG, {
-        uuid: '11111111-2222-3333-4444-555555555555', provider: 'MOESIF', paymentProvider: 'STRIPE',
-        moesifCollectorApplicationId: 'app', moesifManagementKey: 'mk',
-        stripeApiKey: 'rk_test_abcd1234', stripePublishableKey: 'pk_test_demo1234', stripeWebhookSecret: 'whsec_x',
+        billing_provider: 'MOESIF', payment_provider: 'STRIPE',
+        settings: { stripe: { publishableKey: 'pk_test_demo1234' } },
+        secrets: { moesif: { collectorApplicationId: 'app', managementKey: 'mk' },
+            stripe: { apiKey: 'rk_test_abcd1234', webhookSecret: 'whsec_x' } },
     }, 'admin-1');
-    const conn = '11111111-2222-3333-4444-555555555555';
 
     // Enabling gold creates it in Moesif in the request. Moesif fails half-way: what was created is
     // removed, the update fails, and the API's plans stay as they were.
@@ -245,7 +266,7 @@ const calls = () => moesifCalls.splice(0).map((c) => c[0]).sort();
     out.enableFailedCalls = calls();
     out.offeredAfterFailure = await offered();
     out.visibleAfterFailure = await visiblePlans();
-    out.entriesAfterFailure = (await billingApiPlanDao.listForConfiguration(ORG, conn)).length;
+    out.entriesAfterFailure = (await billingApiPlanDao.listByOrg(ORG)).length;
 
     // Doing it again creates the plan, saves it and offers it by the time the update answers.
     out.enabled = await offer('free', 'gold');
@@ -266,7 +287,7 @@ const calls = () => moesifCalls.splice(0).map((c) => c[0]).sort();
     out.published = await publishNew('free', 'gold');
     out.publishedCalls = calls();
     const mapsUuid = await apiDao.getId(ORG, 'maps');
-    out.mapsEntries = (await billingApiPlanDao.listForConfiguration(ORG, conn)).filter((e) => e.api_uuid === mapsUuid).length;
+    out.mapsEntries = (await billingApiPlanDao.listByOrg(ORG, { apiUuid: mapsUuid })).length;
 
     // A plan Moesif refuses: the update fails, naming the plan, and changes nothing.
     fail.next = 'plan-400';
@@ -315,8 +336,9 @@ const calls = () => moesifCalls.splice(0).map((c) => c[0]).sort();
     out.aiEnabled = await offer('free', 'gold', 'platinum', 'ai');
     out.aiEnabledCalls = moesifCalls.splice(0);
     const aiPlan = await subscriptionPlanDao.getByName(ORG, 'ai');
-    const aiEntry = (await billingApiPlanDao.listForConfiguration(ORG, conn)).find((e) => e.plan_uuid === aiPlan.uuid);
-    out.aiItems = (await billingApiPlanDao.listItems(aiEntry.uuid)).map((i) => (i.price_uuid === null ? 'flat' : 'price'));
+    const aiFlatPrice = (await planPricingDao.getByPlan(ORG, aiPlan.uuid)).flat_price_uuid;
+    out.aiItems = (await billingApiPlanDao.listItems(ORG, 'api-1', aiPlan.uuid))
+        .map((i) => (i.price_uuid === aiFlatPrice ? 'flat' : 'price'));
     const meterQuery = (name) => meterBodies.filter((b) => b.name === name).pop().es_query;
     out.aiInputQuery = meterQuery('Weather API v1.0 - AI - LLM input tokens · POST');
     out.aiOutputQuery = meterQuery('Weather API v1.0 - AI - LLM output tokens · POST');
@@ -339,13 +361,18 @@ const calls = () => moesifCalls.splice(0).map((c) => c[0]).sort();
 
     out.subscribePaid = await call(subscriptions.createSubscription, as({ body: { artifactId: 'weather', subscriptionPlanId: 'gold' } }));
 
-    // A request whose own save fails after its paid plans were created removes them: here a plan the
-    // update lists does not exist.
+    // An update that lists a plan that does not exist is refused before anything is created.
     await createPlan('bronze', 'Bronze', { pricingType: 'FLAT_RATE', currency: 'USD', billingPeriod: 'MONTH', flatAmount: '5.00' });
-    out.saveFailed = await offer('free', 'gold', 'platinum', 'ai', 'bronze', 'no-such-plan');
+    out.unknownPlan = await offer('free', 'gold', 'platinum', 'ai', 'bronze', 'no-such-plan');
+    out.unknownPlanCalls = moesifCalls.splice(0).map((c) => c[0]);
+    // A request whose own save fails after its paid plans were created removes them.
+    const updateApiMapping = subscriptionPlanDao.updateApiMapping;
+    subscriptionPlanDao.updateApiMapping = async () => { throw new Error('save failed'); };
+    out.saveFailed = await offer('free', 'gold', 'platinum', 'ai', 'bronze');
+    subscriptionPlanDao.updateApiMapping = updateApiMapping;
     out.saveFailedCalls = moesifCalls.splice(0).map((c) => c[0]);
     const bronze = await subscriptionPlanDao.getByName(ORG, 'bronze');
-    out.bronzeEntry = Boolean(await billingApiPlanDao.findApiPlan(conn, 'api-1', bronze.uuid));
+    out.bronzeEntry = Boolean(await billingApiPlanDao.getApiPlan(ORG, 'api-1', bronze.uuid));
 
     // --- prices that do not apply to an API's type ---------------------------
     // A meter that reads the API type at the default key, and one that reads it at a key of its own.
@@ -378,12 +405,12 @@ const calls = () => moesifCalls.splice(0).map((c) => c[0]).sort();
     out.typedPublished = await publishApi('shop', 'RestApi', 'mixed', 'not-rest');
     out.typedCalls = moesifCalls.splice(0).sort((a, b) => a[1].localeCompare(b[1]) || 0);
     const shopUuid = await apiDao.getId(ORG, 'shop');
-    const shopEntries = (await billingApiPlanDao.listForConfiguration(ORG, conn)).filter((e) => e.api_uuid === shopUuid);
+    const shopEntries = await billingApiPlanDao.listByOrg(ORG, { apiUuid: shopUuid });
     const planIds = new Map();
     for (const handle of ['mixed', 'not-rest']) planIds.set((await subscriptionPlanDao.getByName(ORG, handle)).uuid, handle);
     out.typedItems = {};
     for (const entry of shopEntries) {
-        out.typedItems[planIds.get(entry.plan_uuid)] = (await billingApiPlanDao.listItems(entry.uuid)).map((i) => i.price_ref);
+        out.typedItems[planIds.get(entry.plan_uuid)] = entry.items.map((i) => i.price_ref);
     }
     // A checkout charges the prices that apply only.
     out.typedCheckout = await call(checkout.createCheckoutSession, as({ auth: { userId: 'buyer-1' },
@@ -424,6 +451,36 @@ const calls = () => moesifCalls.splice(0).map((c) => c[0]).sort();
     out.updatedDeprecatedWithoutStatus = await updateStatusApi(null);
     out.statusAfterDeprecatedUpdate = await apiStatus('status-api');
 
+    // A plan taken off an API is taken off sale with Moesif once the update is saved: its meter is
+    // deleted, its price and plan archived, and its API plan deleted. When Moesif refuses, the update
+    // stands and the refusal is logged.
+    const updateShop = (...plans) => call(apis.updateAPIMetadata, as({ params: { apiId: 'shop' }, body: { metadata: JSON.stringify({
+        name: 'shop API', version: 'v1', type: 'RestApi', status: 'PUBLISHED', labels: [],
+        endPoints: { productionURL: 'https://shop.example.com' },
+        subscriptionPlans: plans.map((id) => ({ id })),
+    }) } }));
+    const shopPlans = async () => (await subscriptionPlanDao.listByApi(shopUuid)).map((p) => p.handle).sort();
+    const notRest = await subscriptionPlanDao.getByName(ORG, 'not-rest');
+    moesifCalls.splice(0);
+    out.retired = await updateShop('mixed');
+    out.retiredCalls = calls();
+    out.retiredPlans = await shopPlans();
+    out.retiredEntry = Boolean(await billingApiPlanDao.getApiPlan(ORG, shopUuid, notRest.uuid));
+    const silver = await subscriptionPlanDao.getByName(ORG, 'silver');
+    out.silverAdded = await updateShop('mixed', 'silver');
+    moesifCalls.splice(0);
+    fail.next = 'archive-price-400';
+    out.retireRefused = await updateShop('mixed');
+    out.retireRefusedCalls = calls();
+    out.retireRefusedPlans = await shopPlans();
+    out.retireRefusedEntry = Boolean(await billingApiPlanDao.getApiPlan(ORG, shopUuid, silver.uuid));
+    // A checkout paid as it is ended makes a subscription: the update is refused before anything is
+    // taken off sale.
+    Object.values(sessions).find((session) => session.client_reference_id === out.typedCheckout.body.id).paysOnExpire = 'sub_mixed';
+    out.paidWhileEnding = await updateShop();
+    out.paidWhileEndingCalls = calls();
+    out.paidWhileEndingPlans = await shopPlans();
+
     // At most [api_portal.billing.moesif] max_parallel_prices prices (2 here) are created at a time:
     // a plan of four prices is built two by two.
     moesifCalls.splice(0);
@@ -435,6 +492,9 @@ const calls = () => moesifCalls.splice(0).map((c) => c[0]).sort();
     parallel.measure = false;
     out.quadMostAtOnce = parallel.most;
     out.quadPlansCreated = moesifCalls.splice(0).filter((c) => c[0] === 'plan').length;
+    // A deleted API's paid plans are taken off sale once it is deleted.
+    out.quadDeleted = await call(apis.deleteAPIMetadata, as({ params: { apiId: 'quad-api' } }));
+    out.quadDeleteCalls = calls();
 
     process.stdout.write('\\nPROBE_JSON:' + JSON.stringify(out) + '\\n');
     process.exit(0);
@@ -591,8 +651,13 @@ test('a usage based plan with token prices is created price by price, side by si
     assert.equal(r.aiMeterLocked.status, 409, 'what a sold price counts can no longer change');
 });
 
+test('an update that lists an unknown plan is refused before anything is created', () => {
+    assert.equal(results().unknownPlan.status, 404, JSON.stringify(results().unknownPlan.body));
+    assert.deepEqual(results().unknownPlanCalls, []);
+});
+
 test('a request whose own save fails after its paid plans were created removes them', () => {
-    assert.equal(results().saveFailed.status, 404, JSON.stringify(results().saveFailed.body));
+    assert.equal(results().saveFailed.status, 500, JSON.stringify(results().saveFailed.body));
     assert.deepEqual(results().saveFailedCalls, ['plan', 'flat-price', 'delete-price', 'archive-plan']);
     assert.equal(results().bronzeEntry, false);
 });
@@ -635,6 +700,34 @@ test('a price whose API type rules out the API gets nothing in Moesif, and check
     assert.equal(r.typedItems['not-rest'].length, 1, 'one catalog item: the custom-key price');
     assert.equal(r.typedCheckout.status, 201, JSON.stringify(r.typedCheckout.body));
     assert.deepEqual(r.typedCheckoutPrices, [r.typedItems.mixed], 'the checkout charges the REST price only');
+});
+
+test('a plan taken off an API is taken off sale with Moesif once the update is saved; a refusal does not undo the update', () => {
+    const r = results();
+    assert.equal(r.retired.status, 200, JSON.stringify(r.retired.body));
+    assert.deepEqual(r.retiredCalls, ['archive-plan', 'archive-price', 'delete-meter']);
+    assert.deepEqual(r.retiredPlans, ['mixed']);
+    assert.equal(r.retiredEntry, false);
+    assert.equal(r.silverAdded.status, 200, JSON.stringify(r.silverAdded.body));
+    assert.equal(r.retireRefused.status, 200, JSON.stringify(r.retireRefused.body));
+    assert.deepEqual(r.retireRefusedCalls, ['archive-price-refused']);
+    assert.deepEqual(r.retireRefusedPlans, ['mixed']);
+    assert.equal(r.retireRefusedEntry, false);
+});
+
+test('a deleted API\'s paid plans are taken off sale with Moesif', () => {
+    assert.equal(results().quadDeleted.status, 200, JSON.stringify(results().quadDeleted.body));
+    assert.deepEqual(results().quadDeleteCalls, [...Array(4).fill('archive-plan'), ...Array(4).fill('archive-price'),
+        ...Array(4).fill('delete-meter')]);
+});
+
+test('a checkout paid as the plan is taken off an API refuses the update, and nothing is taken off sale', () => {
+    const r = results().paidWhileEnding;
+    assert.equal(r.status, 409, JSON.stringify(r.body));
+    assert.equal(r.body.errors[0].message,
+        'The plan Mixed has subscriptions to this API, so it can\'t be removed from the API until they have ended.');
+    assert.deepEqual(results().paidWhileEndingCalls, []);
+    assert.deepEqual(results().paidWhileEndingPlans, ['mixed']);
 });
 
 test('a usage plan none of whose prices applies to the API\'s type is refused, leaving nothing behind', () => {

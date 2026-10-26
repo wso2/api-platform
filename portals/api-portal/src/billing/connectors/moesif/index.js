@@ -88,22 +88,29 @@ function create(conn) {
 
         /**
          * Makes sure the payment provider sends Moesif what it needs to match usage to customers
-         * and subscriptions. Resolves to { ref, created }: `created` is false when the endpoint
-         * was already there (another portal or integration may use it, so undo leaves it).
+         * and subscriptions, at Moesif's endpoint for this application. Resolves to { ref, created,
+         * undo }: undo removes an endpoint created here, or puts back one that was changed.
          */
         ensureMoesifEvents(endpoints) {
             return payments.ensureMoesifEndpoint({ url: client.stripeWebhookUrl(conn.moesifCollectorApplicationId), endpoints });
         },
 
         /**
-         * Connects the Moesif application to the payment provider, so Moesif can create the
-         * billing catalog there and report usage, unless it is connected already (it is then left
-         * as it is). Resolves to { undo }: undo removes a connection made here again, key
-         * included, or is null when the application was connected already.
+         * Removes Moesif's endpoint for this application from the payment provider, found by its
+         * address. Resolves to { undo }: undo registers it again, or is null when there was none.
+         */
+        async removeMoesifEvents() {
+            const url = client.stripeWebhookUrl(conn.moesifCollectorApplicationId);
+            const found = (await payments.listEventEndpoints()).filter((e) => e.url === url);
+            for (const endpoint of found) await payments.removeEventEndpoint(endpoint.id);
+            return { undo: found.length > 0 ? () => payments.ensureMoesifEndpoint({ url, endpoints: [] }) : null };
+        },
+
+        /**
+         * Connects the Moesif application to the payment provider with this configuration's key,
+         * replacing any connection. Resolves to { undo }: undo removes the connection.
          */
         async connectPayments() {
-            const before = await moesif.getPartnerAccount(slug);
-            if (payments.moesifPartnerAccountEnabled(before)) return { undo: null };
             await moesif.savePartnerAccount(slug, payments.moesifPartnerAccount(true));
             return { undo: () => moesif.deletePartnerAccount(slug) };
         },
@@ -178,6 +185,16 @@ function create(conn) {
             /** Undo: archives a catalog plan this connector created (Stripe keeps a product with prices). */
             removePlan(ref) {
                 return moesif.archiveCatalogPlan(slug, ref);
+            },
+
+            /**
+             * Takes one part of an API plan off sale ({ planRef, priceRef, meterRef }): its billing
+             * meter is deleted, then its price and its plan are archived.
+             */
+            async archivePart({ planRef, priceRef, meterRef }) {
+                if (meterRef) await moesif.deleteBillingMeter(meterRef);
+                if (priceRef) await moesif.archiveCatalogPrice(slug, priceRef);
+                if (planRef) await moesif.archiveCatalogPlan(slug, planRef);
             },
 
             /** What a price counts with: its meter, narrowed by the price's filters. */

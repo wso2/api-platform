@@ -123,7 +123,7 @@ describe('MetersSettingsPage', () => {
       'Filters',
       'Actions',
     ]);
-    expect(within(row).getByText('API requests')).toBeInTheDocument();
+    expect(within(row).getByText('Requests')).toBeInTheDocument();
     expect(within(row).getByText('Status code, HTTP method, Resource')).toBeInTheDocument();
     const tokens = screen.getByText('LLM input tokens').closest('tr')!;
     // The meter's name says which tokens it adds up.
@@ -134,7 +134,7 @@ describe('MetersSettingsPage', () => {
     expect(within(all).getByText('None')).toBeInTheDocument();
   });
 
-  it('creates a meter of API requests, with no conditions', async () => {
+  it('creates a meter of requests, with no conditions', async () => {
     server.use(
       collection('/meters', [aMeter()]),
       collection('/subscription-plans', []),
@@ -249,7 +249,7 @@ describe('MetersSettingsPage', () => {
     });
   });
 
-  it('adds the Token key with the default key when the type becomes Tokens, removes it for API requests, and sends no key then', async () => {
+  it('adds the Token key with the default key when the type becomes Tokens, removes it for Requests, and sends no key then', async () => {
     server.use(
       collection('/meters', [aMeter()]),
       collection('/subscription-plans', []),
@@ -268,14 +268,14 @@ describe('MetersSettingsPage', () => {
     await user.clear(tokenKey());
     await user.type(tokenKey(), 'usage.tokens');
     await user.keyboard('{Escape}');
-    await switchTo(/^API requests/);
+    await switchTo(/^Requests/);
     expect(tokenKeyField()).not.toBeInTheDocument();
     expect(eventKeys()).toEqual([]);
     // Back to Tokens: the Token key returns with the default key.
     await switchTo(/Tokens/);
     expect(tokenKeyField()).toBeInTheDocument();
     expect(eventKeys()).toEqual(['metadata.aiTokenUsage.promptTokens']);
-    await switchTo(/^API requests/);
+    await switchTo(/^Requests/);
     await user.click(screen.getByRole('button', { name: 'Add Meter' }));
 
     await waitFor(() => expect(requests.count()).toBe(1));
@@ -427,7 +427,7 @@ describe('MetersSettingsPage', () => {
     });
   });
 
-  it('offers Token on a meter of API requests too, and stops adding fields at ten', async () => {
+  it('offers Token on a meter of requests too, and stops adding fields at ten', async () => {
     server.use(collection('/meters', [aMeter()]), collection('/subscription-plans', []));
     renderPage();
     const user = userEvent.setup({ pointerEventsCheck: 0 });

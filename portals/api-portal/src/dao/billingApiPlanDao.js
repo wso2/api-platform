@@ -18,23 +18,38 @@
 'use strict';
 
 /*
- * Data access for the billing API plans: `billing_api_plans`, one paid plan as sold on one API for
- * one billing configuration, and its `billing_api_plan_items`, one for a flat rate plan's price or one
- * per usage price, each with the provider's price. An API plan is written once, complete with its
- * items, by billingCatalogService in the request that enabled the plan; it is never partly written
- * or changed afterwards.
+ * Data access for `billing_api_plans`: one paid plan as sold on one API, with its items, one per
+ * price, each naming what the billing provider created for it. A row is written once by
+ * billingCatalogService and never changes; billingCatalogService.retire takes it off sale.
+ *
+ * Items are stored as JSON ({ priceUuid, planRef, priceRef, meterRef }) and read as
+ * { price_uuid, plan_ref, price_ref, meter_ref }.
  */
 
-const crypto = require('crypto');
 const db = require('../db/driver');
+const { bufferToUtf8 } = require('../utils/cryptoUtil');
 const { getPortalId } = require('../utils/orgContext');
 
 const API_PLANS = 'billing_api_plans';
-const ITEMS = 'billing_api_plan_items';
+const COLUMNS = 'ap.org_uuid, ap.api_uuid, ap.plan_uuid, ap.items, ap.created_at';
 
-const API_PLAN_COLUMNS = 'ap.uuid, ap.org_uuid, ap.configuration_uuid, ap.api_uuid, ap.plan_uuid, '
-    + 'ap.created_at, ap.updated_at';
-const ITEM_COLUMNS = 'i.uuid, i.api_plan_uuid, i.price_uuid, i.price_ref';
+function readItems(value) {
+    try {
+        const parsed = JSON.parse(bufferToUtf8(value) || '[]');
+        return (Array.isArray(parsed) ? parsed : []).map((item) => ({
+            price_uuid: item.priceUuid,
+            plan_ref: item.planRef || null,
+            price_ref: item.priceRef,
+            meter_ref: item.meterRef || null,
+        }));
+    } catch (_err) {
+        return [];
+    }
+}
+
+function toApiPlan(row) {
+    return row ? { ...row, items: readItems(row.items) } : null;
+}
 
 /**
  * The (API, paid plan) pairs of the organization: the API offers the plan and the plan has
@@ -58,108 +73,87 @@ const listPaidPairs = async (orgId, { planUuid } = {}, t) => {
     );
 };
 
-/**
- * Writes a complete API plan with its items: `apiPlan` is { uuid, orgId, configurationUuid, apiUuid, planUuid,
- * items }, each item { priceUuid (null for a flat rate price), priceRef }. The provider's
- * plan and billing meter of an item are not stored: nothing reads them back.
- */
+/** Writes an API plan: `apiPlan` is { orgId, apiUuid, planUuid, items }. */
 const insertApiPlan = async (apiPlan, t) => {
     const exec = t || db;
-    const portalId = getPortalId();
-    const now = new Date();
+    const items = apiPlan.items.map(({ priceUuid, planRef, priceRef, meterRef }) => ({
+        priceUuid, planRef, priceRef, meterRef: meterRef || null,
+    }));
     await exec.execute(
-        `INSERT INTO ${API_PLANS} (uuid, org_uuid, portal_id, configuration_uuid, api_uuid, plan_uuid,
-            created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        [apiPlan.uuid, apiPlan.orgId, portalId, apiPlan.configurationUuid, apiPlan.apiUuid, apiPlan.planUuid, now, now]
+        `INSERT INTO ${API_PLANS} (org_uuid, portal_id, api_uuid, plan_uuid, items, created_at)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [apiPlan.orgId, getPortalId(), apiPlan.apiUuid, apiPlan.planUuid,
+            db.binaryParam(Buffer.from(JSON.stringify(items), 'utf8')), new Date()]
     );
-    for (const item of apiPlan.items) {
-        await exec.execute(
-            `INSERT INTO ${ITEMS} (uuid, api_plan_uuid, org_uuid, portal_id, price_uuid, price_ref, created_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?)`,
-            [crypto.randomUUID(), apiPlan.uuid, apiPlan.orgId, portalId, item.priceUuid || null, item.priceRef, now]
-        );
-    }
 };
 
-function toItem(row) {
-    return { ...row, price_uuid: row.price_uuid || null };
-}
+/** The API plan of (API, plan), or null. */
+const getApiPlan = async (orgId, apiUuid, planUuid, t) => {
+    const exec = t || db;
+    return toApiPlan(await exec.queryOne(
+        `SELECT ${COLUMNS} FROM ${API_PLANS} ap
+         WHERE ap.org_uuid = ? AND ap.api_uuid = ? AND ap.plan_uuid = ? AND ap.portal_id = ?`,
+        [orgId, apiUuid, planUuid, getPortalId()]
+    ));
+};
+
+/** The items of the API plan of (API, plan); none when there is no API plan. */
+const listItems = async (orgId, apiUuid, planUuid, t) => {
+    const apiPlan = await getApiPlan(orgId, apiUuid, planUuid, t);
+    return apiPlan ? apiPlan.items : [];
+};
 
 /**
- * The items of an API plan: a flat rate plan's one (price_uuid null), or each usage price's. They
- * keep no order; the checkout lists them in the plan's price order (checkoutService).
+ * The organization's API plans, narrowed to one API with `apiUuid`, with their items and the API's and
+ * plan's names (api_name, api_version, plan_name), ordered by them.
  */
-const listItems = async (apiPlanUuid, t) => {
+const listByOrg = async (orgId, { apiUuid } = {}, t) => {
     const exec = t || db;
-    const rows = await exec.query(
-        `SELECT ${ITEM_COLUMNS} FROM ${ITEMS} i WHERE i.api_plan_uuid = ? AND i.portal_id = ? ORDER BY i.uuid`,
-        [apiPlanUuid, getPortalId()]
-    );
-    return rows.map(toItem);
-};
-
-/** The items of the given API plans, as a Map of API plan uuid to its items. */
-const listItemsByApiPlans = async (apiPlanUuids, t) => {
-    if (!apiPlanUuids || apiPlanUuids.length === 0) return new Map();
-    const exec = t || db;
-    const placeholders = apiPlanUuids.map(() => '?').join(', ');
-    const rows = await exec.query(
-        `SELECT ${ITEM_COLUMNS} FROM ${ITEMS} i
-         WHERE i.api_plan_uuid IN (${placeholders}) AND i.portal_id = ?
-         ORDER BY i.api_plan_uuid, i.uuid`,
-        [...apiPlanUuids, getPortalId()]
-    );
-    const result = new Map();
-    for (const row of rows) {
-        if (!result.has(row.api_plan_uuid)) result.set(row.api_plan_uuid, []);
-        result.get(row.api_plan_uuid).push(toItem(row));
+    const params = [orgId, getPortalId()];
+    let filter = '';
+    if (apiUuid) {
+        filter = ' AND ap.api_uuid = ?';
+        params.push(apiUuid);
     }
-    return result;
-};
-
-/** The organization's API plans for one billing configuration, with the API and plan names. */
-const listForConfiguration = async (orgId, configurationUuid, t) => {
-    const exec = t || db;
-    return exec.query(
-        `SELECT ${API_PLAN_COLUMNS}, a.name AS api_name, a.version AS api_version, a.handle AS api_handle,
-                p.handle AS plan_handle, p.display_name AS plan_name
+    const rows = await exec.query(
+        `SELECT ${COLUMNS}, a.name AS api_name, a.version AS api_version, p.display_name AS plan_name
          FROM ${API_PLANS} ap
          JOIN api_metadata a ON a.uuid = ap.api_uuid AND a.portal_id = ap.portal_id
          JOIN subscription_plans p ON p.uuid = ap.plan_uuid AND p.portal_id = ap.portal_id
-         WHERE ap.org_uuid = ? AND ap.configuration_uuid = ? AND ap.portal_id = ?
+         WHERE ap.org_uuid = ? AND ap.portal_id = ?${filter}
          ORDER BY a.name, a.version, p.display_name`,
-        [orgId, configurationUuid, getPortalId()]
+        params
     );
+    return rows.map(toApiPlan);
 };
 
-/** The API plan of (billing configuration, API, plan), or null. */
-const findApiPlan = async (configurationUuid, apiUuid, planUuid, t) => {
-    const exec = t || db;
-    return (await exec.queryOne(
-        `SELECT ${API_PLAN_COLUMNS} FROM ${API_PLANS} ap
-         WHERE ap.configuration_uuid = ? AND ap.api_uuid = ? AND ap.plan_uuid = ? AND ap.portal_id = ?`,
-        [configurationUuid, apiUuid, planUuid, getPortalId()]
-    )) || null;
-};
-
-/** The plan uuids of the API that have an API plan for the billing configuration. */
-const listPlanIds = async (configurationUuid, apiUuid, t) => {
+/** The plan uuids of the API that have an API plan. */
+const listPlanIds = async (orgId, apiUuid, t) => {
     const exec = t || db;
     const rows = await exec.query(
-        `SELECT plan_uuid FROM ${API_PLANS}
-         WHERE configuration_uuid = ? AND api_uuid = ? AND portal_id = ?`,
-        [configurationUuid, apiUuid, getPortalId()]
+        `SELECT plan_uuid FROM ${API_PLANS} WHERE org_uuid = ? AND api_uuid = ? AND portal_id = ?`,
+        [orgId, apiUuid, getPortalId()]
     );
     return new Set(rows.map((r) => r.plan_uuid));
+};
+
+/** Deletes the API plans of the given (API, plan) pairs ([{ apiUuid, planUuid }]). */
+const deleteApiPlans = async (orgId, pairs, t) => {
+    const exec = t || db;
+    for (const { apiUuid, planUuid } of pairs) {
+        await exec.execute(
+            `DELETE FROM ${API_PLANS} WHERE org_uuid = ? AND api_uuid = ? AND plan_uuid = ? AND portal_id = ?`,
+            [orgId, apiUuid, planUuid, getPortalId()]
+        );
+    }
 };
 
 module.exports = {
     listPaidPairs,
     insertApiPlan,
+    getApiPlan,
     listItems,
-    listItemsByApiPlans,
-    listForConfiguration,
-    findApiPlan,
+    listByOrg,
     listPlanIds,
+    deleteApiPlans,
 };

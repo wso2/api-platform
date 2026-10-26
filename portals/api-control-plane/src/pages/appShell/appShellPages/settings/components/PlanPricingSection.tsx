@@ -146,7 +146,7 @@ const messages = defineMessages({
   eventLabel: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.eventLabel',
     defaultMessage: 'Event',
-    description: 'What the chosen meter counts, shown beside it: "API requests" or "Tokens".',
+    description: 'What the chosen meter counts, shown beside it: "Requests" or "Tokens".',
   },
   filterOperator: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.filterOperator',

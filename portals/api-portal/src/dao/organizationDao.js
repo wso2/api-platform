@@ -257,15 +257,11 @@ const deleteOrgDependents = async (orgUuid, t) => {
     await exec.execute('DELETE FROM events WHERE org_uuid = ?', [orgUuid]);
 
     /*
-     * Billing data. Each billing table's organization key is ON DELETE NO ACTION, and APIs and plans
-     * are kept (their organization is cleared below), so nothing deletes these rows for us. They are
-     * deleted here, in an order their foreign keys allow:
+     * Billing data, deleted here in an order their foreign keys allow:
      *   - subscription_billing, the billing state of paid subscriptions, before the subscriptions;
      *   - billing_configurations, whose customers, checkouts and API plans go with it (cascade);
-     *   - subscription_plan_pricing, whose prices go with it;
-     *   - meters last, as prices refer to them.
-     * What billing setup created in Moesif and Stripe stays there: this only deletes database rows,
-     * as with the clients created at a key manager (below).
+     *   - subscription_plan_pricing;
+     *   - meters.
      */
     await exec.execute('DELETE FROM subscription_billing WHERE org_uuid = ?', [orgUuid]);
     await exec.execute('DELETE FROM billing_configurations WHERE org_uuid = ?', [orgUuid]);

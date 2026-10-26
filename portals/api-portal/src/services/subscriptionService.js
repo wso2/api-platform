@@ -203,7 +203,7 @@ const createSubscription = async (req, res) => {
         // Loaded here: checkoutService loads this module, so loading it at the top would be circular.
         const checkoutService = require('./billing/checkoutService');
         try {
-            await checkoutService.endOpenCheckout(createdBy, apiId);
+            await checkoutService.endOpenCheckout(orgId, createdBy, apiId);
         } catch (error) {
             return checkoutService.sendCheckoutError(res, error, 'Error while ending an open checkout');
         }

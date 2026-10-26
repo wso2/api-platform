@@ -111,26 +111,55 @@ func TestMeterRepo_UpsertReplacesByHandleAndRoundTripsTheEventKeys(t *testing.T)
 	}
 }
 
-// Pricing is stored with its plan, in the same transaction, and read back by plan and by
-// organization.
-func TestSubscriptionPlanPricingRepo_ReadsThePricingStoredWithItsPlan(t *testing.T) {
+// storedPrices returns the prices column of a plan's pricing as stored.
+func storedPrices(t *testing.T, db *database.DB, planUUID string) string {
+	t.Helper()
+	var stored []byte
+	if err := db.QueryRow(`SELECT prices FROM subscription_plan_pricing WHERE subscription_plan_uuid = ?`, planUUID).Scan(&stored); err != nil {
+		t.Fatalf("read prices: %v", err)
+	}
+	return string(stored)
+}
+
+// A flat rate plan's amount is stored as its one price, a FLAT price, and read back as a flat rate
+// with that amount and no usage prices.
+func TestSubscriptionPlanPricingRepo_StoresAFlatRateAsOneFlatPrice(t *testing.T) {
 	db, _, pricing, plan, cleanup := setupMonetizationTestDB(t)
 	defer cleanup()
-	plans := NewSubscriptionPlanRepo(db)
 
 	if got, err := pricing.GetByPlan(plan.UUID, "org-1"); err != nil || got != nil {
 		t.Fatalf("a free plan has no pricing: %v, %v", got, err)
 	}
-	fee := "99.00"
+	fee := "29.00"
 	flat := &model.SubscriptionPlan{Handle: "flat", Name: "Flat", OrganizationUUID: "org-1", Status: model.SubscriptionPlanStatusActive}
-	if err := plans.CreateWithPricing(flat, &model.SubscriptionPlanPricing{PricingType: model.PricingTypeFlatRate,
-		Currency: "USD", BillingPeriod: "MONTH", FlatAmount: &fee, SourceUpdatedAt: time.Now().UTC()}); err != nil {
+	if err := NewSubscriptionPlanRepo(db).CreateWithPricing(flat, &model.SubscriptionPlanPricing{PricingType: model.PricingTypeFlatRate,
+		Currency: "USD", BillingPeriod: "MONTH", FlatAmount: &fee, Prices: []model.SubscriptionPlanPrice{}}); err != nil {
 		t.Fatalf("CreateWithPricing (flat rate): %v", err)
 	}
-	if got, err := pricing.GetByPlan(flat.UUID, "org-1"); err != nil || got == nil || got.PricingType != model.PricingTypeFlatRate ||
-		got.FlatAmount == nil || *got.FlatAmount != "99.00" || got.Prices == nil || len(got.Prices) != 0 {
-		t.Fatalf("flat rate = %+v, %v", got, err)
+	if got, want := storedPrices(t, db, flat.UUID), `[{"pricing_model":"FLAT","amount":"29.00"}]`; got != want {
+		t.Errorf("stored prices %s, want %s", got, want)
 	}
+
+	got, err := pricing.GetByPlan(flat.UUID, "org-1")
+	if err != nil || got == nil {
+		t.Fatalf("GetByPlan: %v, %v", got, err)
+	}
+	if got.PricingType != model.PricingTypeFlatRate || got.Currency != "USD" || got.BillingPeriod != "MONTH" ||
+		got.FlatAmount == nil || *got.FlatAmount != "29.00" || got.Prices == nil || len(got.Prices) != 0 {
+		t.Errorf("flat rate = %+v, want FLAT_RATE 29.00 with no prices", got)
+	}
+	list, err := pricing.ListByOrganization("org-1")
+	if err != nil || len(list) != 1 || list[0].PricingType != model.PricingTypeFlatRate || *list[0].FlatAmount != "29.00" {
+		t.Errorf("ListByOrganization = %+v, %v; want the flat rate", list, err)
+	}
+}
+
+// Usage prices are stored in order, in the form the API Portal's events carry them, and read back by
+// plan and by organization as a usage based plan.
+func TestSubscriptionPlanPricingRepo_UsagePricesRoundTrip(t *testing.T) {
+	db, _, pricing, _, cleanup := setupMonetizationTestDB(t)
+	defer cleanup()
+	plans := NewSubscriptionPlanRepo(db)
 
 	unit, upTo, quantity := "2.50", int64(1000), int64(1_000_000)
 	prices := []model.SubscriptionPlanPrice{
@@ -141,8 +170,13 @@ func TestSubscriptionPlanPricingRepo_ReadsThePricingStoredWithItsPlan(t *testing
 	}
 	usage := &model.SubscriptionPlan{Handle: "usage", Name: "Usage", OrganizationUUID: "org-1", Status: model.SubscriptionPlanStatusActive}
 	if err := plans.CreateWithPricing(usage, &model.SubscriptionPlanPricing{PricingType: model.PricingTypeUsageBased,
-		Currency: "EUR", BillingPeriod: "YEAR", Prices: prices, SourceUpdatedAt: time.Now().UTC()}); err != nil {
+		Currency: "EUR", BillingPeriod: "YEAR", Prices: prices}); err != nil {
 		t.Fatalf("CreateWithPricing (usage based): %v", err)
+	}
+	other := &model.SubscriptionPlan{Handle: "other", Name: "Other", OrganizationUUID: "org-1", Status: model.SubscriptionPlanStatusActive}
+	if err := plans.CreateWithPricing(other, &model.SubscriptionPlanPricing{PricingType: model.PricingTypeUsageBased,
+		Currency: "USD", BillingPeriod: "MONTH", Prices: prices[1:]}); err != nil {
+		t.Fatalf("CreateWithPricing (second usage based): %v", err)
 	}
 
 	got, err := pricing.GetByPlan(usage.UUID, "org-1")
@@ -160,25 +194,113 @@ func TestSubscriptionPlanPricingRepo_ReadsThePricingStoredWithItsPlan(t *testing
 		t.Fatalf("ListByOrganization = %+v, %v; want the two paid plans", list, err)
 	}
 	for _, p := range list {
-		if p.SubscriptionPlanUUID == usage.UUID && !reflect.DeepEqual(p.Prices, prices) {
-			t.Errorf("listed prices = %+v, want %+v", p.Prices, prices)
+		want := map[string][]model.SubscriptionPlanPrice{usage.UUID: prices, other.UUID: prices[1:]}[p.SubscriptionPlanUUID]
+		if p.PricingType != model.PricingTypeUsageBased || p.FlatAmount != nil || !reflect.DeepEqual(p.Prices, want) {
+			t.Errorf("listed pricing = %+v, want usage based with the prices %+v", p, want)
 		}
 	}
 	if list, err := pricing.ListByOrganization("org-2"); err != nil || len(list) != 0 {
 		t.Errorf("another organization's pricing = %+v, %v; want none", list, err)
 	}
 	// The prices are kept in the form the API Portal's events carry them.
-	var stored []byte
-	if err := db.QueryRow(`SELECT prices FROM subscription_plan_pricing WHERE subscription_plan_uuid = ?`, usage.UUID).Scan(&stored); err != nil {
-		t.Fatalf("read prices: %v", err)
-	}
+	stored := storedPrices(t, db, usage.UUID)
 	for _, key := range []string{`"meter_handle":"llm-tokens"`, `"filters":[{"field":"API_TYPE","operator":"EQUALS","values":["LlmProvider"]}]`, `"up_to":1000`} {
-		if !strings.Contains(string(stored), key) {
+		if !strings.Contains(stored, key) {
 			t.Errorf("stored prices %s lack %s", stored, key)
 		}
 	}
-	if strings.Contains(string(stored), "display_name") {
-		t.Errorf("a price has no name, stored %s", stored)
+	for _, key := range []string{"display_name", `"FLAT"`, `"amount"`} {
+		if strings.Contains(stored, key) {
+			t.Errorf("stored usage prices %s hold %s", stored, key)
+		}
+	}
+}
+
+// created_at is the time the caller dates the pricing with: the event's occurred_at for a plan made
+// in an API Portal. Pricing given no date is dated when it is stored.
+func TestSubscriptionPlanPricingRepo_CreatedAtIsTheGivenTime(t *testing.T) {
+	db, _, pricing, _, cleanup := setupMonetizationTestDB(t)
+	defer cleanup()
+	plans := NewSubscriptionPlanRepo(db)
+
+	fee := "9.00"
+	madeAt := time.Date(2026, 10, 11, 9, 30, 0, 0, time.UTC)
+	portalPlan := &model.SubscriptionPlan{Handle: "portal", Name: "Portal", OrganizationUUID: "org-1",
+		Status: model.SubscriptionPlanStatusActive, CreatedAt: madeAt}
+	if err := plans.CreateWithPricing(portalPlan, &model.SubscriptionPlanPricing{PricingType: model.PricingTypeFlatRate,
+		Currency: "USD", BillingPeriod: "MONTH", FlatAmount: &fee, CreatedAt: madeAt}); err != nil {
+		t.Fatalf("CreateWithPricing: %v", err)
+	}
+	if got, err := pricing.GetByPlan(portalPlan.UUID, "org-1"); err != nil || got == nil || !got.CreatedAt.Equal(madeAt) {
+		t.Fatalf("pricing = %+v, %v; want it dated %v", got, err, madeAt)
+	}
+
+	before := time.Now().UTC().Add(-time.Second)
+	undated := &model.SubscriptionPlanPricing{PricingType: model.PricingTypeFlatRate, Currency: "USD", BillingPeriod: "MONTH", FlatAmount: &fee}
+	plan := &model.SubscriptionPlan{Handle: "undated", Name: "Undated", OrganizationUUID: "org-1", Status: model.SubscriptionPlanStatusActive}
+	if err := plans.CreateWithPricing(plan, undated); err != nil {
+		t.Fatalf("CreateWithPricing: %v", err)
+	}
+	if got, err := pricing.GetByPlan(plan.UUID, "org-1"); err != nil || got == nil || got.CreatedAt.Before(before) ||
+		!got.CreatedAt.Equal(undated.CreatedAt) {
+		t.Fatalf("pricing = %+v, %v; want it dated when stored", got, err)
+	}
+}
+
+// Stored prices with a FLAT price beside other prices, or without an amount, fail to read.
+func TestSubscriptionPlanPricingRepo_RefusesStoredPricesThatMixAFlatPrice(t *testing.T) {
+	db, _, pricing, plan, cleanup := setupMonetizationTestDB(t)
+	defer cleanup()
+
+	usage := `{"meter_handle":"calls","filters":[],"pricing_model":"PER_UNIT","unit_amount":"0.01","unit_quantity":null,"tiers":null}`
+	for name, stored := range map[string]string{
+		"flat then usage":    `[{"pricing_model":"FLAT","amount":"9.00"},` + usage + `]`,
+		"usage then flat":    `[` + usage + `,{"pricing_model":"FLAT","amount":"9.00"}]`,
+		"two flat prices":    `[{"pricing_model":"FLAT","amount":"9.00"},{"pricing_model":"FLAT","amount":"19.00"}]`,
+		"flat and no amount": `[{"pricing_model":"FLAT"}]`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := db.Exec(`DELETE FROM subscription_plan_pricing`); err != nil {
+				t.Fatalf("clear pricing: %v", err)
+			}
+			if _, err := db.Exec(`INSERT INTO subscription_plan_pricing (subscription_plan_uuid, organization_uuid, currency,
+				billing_period, prices, created_at) VALUES (?, 'org-1', 'USD', 'MONTH', ?, ?)`, plan.UUID, []byte(stored), time.Now().UTC()); err != nil {
+				t.Fatalf("insert pricing: %v", err)
+			}
+			if got, err := pricing.GetByPlan(plan.UUID, "org-1"); err == nil {
+				t.Errorf("GetByPlan = %+v; want an error", got)
+			}
+			if got, err := pricing.ListByOrganization("org-1"); err == nil {
+				t.Errorf("ListByOrganization = %+v; want an error", got)
+			}
+		})
+	}
+}
+
+// Pricing that could not be read back as it was given is refused, and the plan is not created.
+func TestSubscriptionPlanPricingRepo_RefusesPricingItCannotStore(t *testing.T) {
+	db, _, _, _, cleanup := setupMonetizationTestDB(t)
+	defer cleanup()
+	plans := NewSubscriptionPlanRepo(db)
+
+	fee, unit := "9.00", "0.01"
+	perUnit := model.SubscriptionPlanPrice{MeterHandle: "calls", PricingModel: model.PricingModelPerUnit, UnitAmount: &unit}
+	for name, p := range map[string]*model.SubscriptionPlanPricing{
+		"flat rate without an amount": {PricingType: model.PricingTypeFlatRate},
+		"flat rate with usage prices": {PricingType: model.PricingTypeFlatRate, FlatAmount: &fee, Prices: []model.SubscriptionPlanPrice{perUnit}},
+		"usage based with an amount":  {PricingType: model.PricingTypeUsageBased, FlatAmount: &fee, Prices: []model.SubscriptionPlanPrice{perUnit}},
+		"usage price with the FLAT model": {PricingType: model.PricingTypeUsageBased,
+			Prices: []model.SubscriptionPlanPrice{{MeterHandle: "calls", PricingModel: model.PricingModelFlat}}},
+		"no pricing type": {FlatAmount: &fee},
+	} {
+		p.Currency, p.BillingPeriod = "USD", "MONTH"
+		plan := &model.SubscriptionPlan{Handle: "refused", Name: "Refused", OrganizationUUID: "org-1", Status: model.SubscriptionPlanStatusActive}
+		if err := plans.CreateWithPricing(plan, p); err == nil {
+			t.Errorf("%s: CreateWithPricing succeeded; want a refusal", name)
+		}
+		if exists, err := plans.ExistsByHandleAndOrg("refused", "org-1"); err != nil || exists {
+			t.Errorf("%s: plan stored = %v, %v; want nothing stored", name, exists, err)
+		}
 	}
 }
 

@@ -65,7 +65,7 @@ const loadSubscriptions = async (req, res, next) => {
             allSubscriptions = localSubs.map(sub => {
                 const billing = billingRows.get(sub.uuid);
                 const pricing = pricingByPlan.get(sub.plan_uuid);
-                const access = billing ? accessStatus(billing.billing_status) : null;
+                const access = billing ? accessStatus(billing.status) : null;
                 return {
                     id: sub.uuid,
                     type: 'TOKEN_BASED',

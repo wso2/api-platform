@@ -244,7 +244,7 @@ func TestSubscriptionPlanRepo_UsageAndDeleteWithReferences(t *testing.T) {
 	gold := &model.SubscriptionPlan{Handle: "gold", Name: "Gold", OrganizationUUID: "org-1", Status: model.SubscriptionPlanStatusActive,
 		ThrottleLimitCount: &limit, ThrottleLimitUnit: "MINUTE"}
 	pricing := &model.SubscriptionPlanPricing{PricingType: model.PricingTypeFlatRate, Currency: "USD", BillingPeriod: "MONTH",
-		FlatAmount: &fee, SourceUpdatedAt: time.Now().UTC()}
+		FlatAmount: &fee, CreatedAt: time.Now().UTC()}
 	if err := repo.CreateWithPricing(gold, pricing); err != nil {
 		t.Fatalf("CreateWithPricing: %v", err)
 	}

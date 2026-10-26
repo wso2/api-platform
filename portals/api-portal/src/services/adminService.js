@@ -385,6 +385,22 @@ const deleteOrganization = async (req, res) => {
         // insert below will be dropped (caught, logged, non-fatal), same limitation
         // platform-api's own audit table has for its own org-delete cascade.
         const orgUuid = await orgDao.getId(orgId);
+        // Billing is removed first.
+        if (orgUuid) {
+            const billingConfiguration = require('./billing/billingConfigurationService');
+            try {
+                await billingConfiguration.removeBilling(orgUuid);
+            } catch (error) {
+                if (error instanceof billingConfiguration.SubscriptionsActiveError) {
+                    throw new CustomError(409, 'Conflict', 'The organization has active paid subscriptions, so it '
+                        + 'can\'t be deleted until they have ended.');
+                }
+                if (error instanceof billingConfiguration.RemovalStepError) {
+                    throw new CustomError(error.retryable ? 502 : 400, 'Billing removal failed', error.message);
+                }
+                throw error;
+            }
+        }
         const deletedRowsCount = await db.withTransaction((t) => orgDao.delete(orgId, t));
         if (deletedRowsCount > 0) {
             logger.info('Organization deletion successful', {

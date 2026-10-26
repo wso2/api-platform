@@ -18,7 +18,7 @@
 'use strict';
 
 /*
- * The payment event endpoint: POST <base path>/billing/stripe/webhooks/<configuration id>. Billing
+ * The payment event endpoint: POST <base path>/billing/stripe/webhooks/<organization id>. Billing
  * setup registers this URL with Stripe (through the Moesif connector's Stripe sub-connector), and
  * Stripe sends its payment events here.
  *
@@ -34,7 +34,7 @@ const { receivePaymentEvent } = require('../services/billing/paymentWebhookServi
 // Payment events are small; a body far larger than any of them is refused before it is read.
 const MAX_EVENT_BYTES = 1048576;
 
-const PATH = `${constants.ROUTE.BASE_PATH}/billing/stripe/webhooks/:configurationId`;
+const PATH = `${constants.ROUTE.BASE_PATH}/billing/stripe/webhooks/:orgId`;
 
 function mount(app) {
     app.post(PATH, express.raw({ type: () => true, limit: MAX_EVENT_BYTES }), receivePaymentEvent);

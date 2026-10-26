@@ -115,7 +115,7 @@ func (s *SubscriptionPlanService) CreatePlan(orgUUID, actor string, plan *model.
 		if err := checkPricedMeters(s.meterRepo, orgUUID, pricing); err != nil {
 			return nil, err
 		}
-		pricing.SourceUpdatedAt = time.Now().UTC()
+		pricing.CreatedAt = time.Now().UTC()
 	}
 	return s.createPlan(orgUUID, actor, plan, pricing)
 }
@@ -390,7 +390,7 @@ func (s *SubscriptionPlanService) UpsertPlanFromWebhook(orgUUID, handle, name st
 		if err := checkPricedMeters(s.meterRepo, orgUUID, pricing); err != nil {
 			return nil, err
 		}
-		pricing.SourceUpdatedAt = occurredAt.UTC()
+		pricing.CreatedAt = occurredAt.UTC()
 	}
 	existing, err := s.planRepo.GetByHandleAndOrg(handle, orgUUID)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {

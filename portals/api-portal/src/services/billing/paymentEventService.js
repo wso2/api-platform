@@ -63,9 +63,9 @@ async function refreshSubscription(payments, subscriptionRef) {
     const providerSub = await payments.getSubscription(subscriptionRef);
     if (!providerSub) return false;
     const billingStatus = providerSub.status;
-    const changed = billingStatus !== billing.billing_status;
+    const changed = billingStatus !== billing.status;
     const state = {
-        billingStatus,
+        status: billingStatus,
         currentPeriodStart: providerSub.periodStart,
         currentPeriodEnd: providerSub.periodEnd,
         endsAt: providerSub.endsAt,
@@ -77,33 +77,31 @@ async function refreshSubscription(payments, subscriptionRef) {
         logger.info('Paid subscription ended and removed', { subscriptionId: billing.subscription_uuid });
         return true;
     }
-    const customer = await billingCheckoutDao.getCustomer(billing.customer_uuid);
     await db.withTransaction(async (t) => {
         await billingSubscriptionDao.updateState(billing.subscription_uuid, state, t);
         if (changed) {
             await subscriptionService.publishBillingUpdated(billing.org_uuid, sub, {
                 status: billingStatus,
-                customer_id: customer ? customer.customer_ref : null,
+                customer_id: billing.customer_ref,
                 subscription_id: subscriptionRef,
             }, t);
         }
     });
     if (changed) {
         logger.info('Paid subscription billing status changed', {
-            subscriptionId: billing.subscription_uuid, from: billing.billing_status, to: billingStatus,
+            subscriptionId: billing.subscription_uuid, from: billing.status, to: billingStatus,
         });
     }
     return true;
 }
 
 /**
- * Acts on one event of the organization's billing configuration `configurationUuid`: { orgId,
- * configurationUuid, type, objectRef }. Resolves to an OUTCOME; throws when acting on it failed, so
- * the provider delivers it again.
+ * Acts on one event of the organization's payment provider: { orgId, type, objectRef }. Resolves to an
+ * OUTCOME; throws when acting on it failed.
  */
 async function handle(event) {
     const conn = await billingConfigurationDao.getWithSecrets(event.orgId);
-    if (!conn || conn.uuid !== event.configurationUuid) return OUTCOME.IGNORED;
+    if (!conn) return OUTCOME.IGNORED;
     const { payments } = billingProvider.forConfiguration(conn);
 
     switch (billingProvider.paymentsOf(conn).eventSubject(event.type)) {

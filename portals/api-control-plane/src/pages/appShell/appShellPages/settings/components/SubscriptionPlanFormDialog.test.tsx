@@ -650,7 +650,7 @@ describe('SubscriptionPlanFormDialog', () => {
     expect(within(price).getByText('unit')).toBeInTheDocument();
     await user.click(within(price).getByRole('combobox', { name: 'Meter' }));
     await user.click(await screen.findByRole('option', { name: 'Successful calls' }));
-    expect(within(price).getByRole('textbox', { name: 'Event' })).toHaveValue('API requests');
+    expect(within(price).getByRole('textbox', { name: 'Event' })).toHaveValue('Requests');
     expect(within(price).getByRole('textbox', { name: 'Event' })).toHaveAttribute('readonly');
     // The price per unit reads in what the meter counts.
     expect(within(price).getByText('request')).toBeInTheDocument();

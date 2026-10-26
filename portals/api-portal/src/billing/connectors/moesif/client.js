@@ -49,6 +49,15 @@ function createMoesifClient({ managementKey, http }) {
     const baseUrl = String(cfg.baseUrl || 'https://api.moesif.com').replace(/\/+$/, '');
     const client = http || createHttpClient();
 
+    async function ignoreMissing(request) {
+        try {
+            return await request;
+        } catch (err) {
+            if (err instanceof BillingProviderError && err.status === 400 && /resource_missing/.test(err.message)) return null;
+            throw err;
+        }
+    }
+
     async function call(method, path, { params, body } = {}) {
         let res;
         try {
@@ -121,13 +130,16 @@ function createMoesifClient({ managementKey, http }) {
             }
         },
 
-        /**
-         * Archives a catalog plan (undoing a failed setup or enable). It cannot be deleted: Stripe
-         * does not delete a product that has prices, even archived ones.
-         */
+        /** Archives a catalog plan. */
         archiveCatalogPlan(provider, id) {
-            return call('PUT', `/v1/~/billing/catalog/plans/${encodeURIComponent(id)}`,
-                { params: { provider }, body: { provider, status: 'archived' } });
+            return ignoreMissing(call('PUT', `/v1/~/billing/catalog/plans/${encodeURIComponent(id)}`,
+                { params: { provider }, body: { provider, status: 'archived' } }));
+        },
+
+        /** Archives a catalog price. */
+        archiveCatalogPrice(provider, id) {
+            return ignoreMissing(call('PUT', `/v1/~/billing/catalog/prices/${encodeURIComponent(id)}`,
+                { params: { provider }, body: { provider, status: 'archived' } }));
         },
 
         /** Deletes a catalog price (undoing a failed setup or enable). */
@@ -135,7 +147,7 @@ function createMoesifClient({ managementKey, http }) {
             return call('DELETE', `/v1/~/billing/catalog/prices/${encodeURIComponent(id)}`, { params: { provider } });
         },
 
-        /** Deletes a billing meter (undoing a failed setup or enable). */
+        /** Deletes a billing meter, so it stops reporting usage. */
         deleteBillingMeter(id) {
             return call('DELETE', `/v1/~/billing/meters/${encodeURIComponent(id)}`);
         },

@@ -39,7 +39,7 @@ const WEBHOOK_SERVICE = path.join(__dirname, 'paymentWebhookService.js');
 const SCHEMA = path.join(PROJECT_ROOT, 'database', 'schema.sqlite.sql');
 const SQLITE = path.join(PROJECT_ROOT, 'node_modules', 'better-sqlite3');
 
-const ORG = 'org-uuid-1';
+const ORG = '0b5c9a4e-1f2d-4c3b-9a8e-7d6f5e4c3b2a';
 const PORTAL = 'test-portal';
 
 let tmpDir;
@@ -93,7 +93,6 @@ let stripeRefusesUrl = false;
 let catalogRefuses = false;
 // Moesif's connection to Stripe: null (never set up), or { state, hasKey } as last saved.
 let partner = null;
-let partnerReadRefused = false;
 let partnerSaveRefused = false;
 let partnerDeleteRefused = false;
 const partnerSaves = [];
@@ -154,10 +153,10 @@ moesifConnector.clients.moesif = () => ({
     async createCatalogPrice(provider, body) { catalogCalls.push(['price', body.name]); return { id: 'price_' + catalogCalls.length }; },
     async createBillingMeter(body) { catalogCalls.push(['meter', body.slug]); return { id: 'bm_' + catalogCalls.length }; },
     async archiveCatalogPlan(provider, id) { catalogCalls.push(['archive-plan', id]); },
+    async archiveCatalogPrice(provider, id) { catalogCalls.push(['archive-price', id]); },
     async deleteCatalogPrice(provider, id) { catalogCalls.push(['delete-price', id]); },
     async deleteBillingMeter(id) { catalogCalls.push(['delete-meter', id]); },
     async getPartnerAccount() {
-        if (partnerReadRefused) throw new BillingProviderError('Moesif', 401, 'Moesif: Not authorized for requested organization.');
         return partner ? { partner_account: { credentials: { state: partner.state } } } : {};
     },
     async savePartnerAccount(provider, body) {
@@ -209,7 +208,7 @@ function signed(secret, body, ageSec = 0) {
 (async () => {
     // A paid plan already enabled for an API: setting up billing creates it in Moesif.
     await require(${JSON.stringify(path.join(PROJECT_ROOT, 'src/dao/planPricingDao.js'))}).create(${JSON.stringify(ORG)}, 'plan-gold',
-        { pricingType: 'FLAT_RATE', currency: 'USD', billingPeriod: 'MONTH', flatAmount: '99.00', prices: [] }, 'admin');
+        { pricingType: 'FLAT_RATE', currency: 'USD', billingPeriod: 'MONTH', flatAmount: '99.00' });
     out.notConnected = await call(svc.getBillingConfiguration, as());
     out.missing = await call(svc.createBillingConfiguration, as({ body: { stripeApiKey: keys.stripeApiKey } }));
     out.publishable = await call(svc.createBillingConfiguration, as({ body: { ...keys, stripeApiKey: 'pk_test_abc' } }));
@@ -236,35 +235,22 @@ function signed(secret, body, ageSec = 0) {
     out.secondSetupCalls = calls.length;
     out.engines = svc.BILLING_ENGINES;
 
-    // Two setups at the same moment: this one's check misses the other's configuration, which is
-    // saved first, so its own save is refused. It answers 409, not 500, and undoes its steps.
     const configurationDao = require(${JSON.stringify(path.join(PROJECT_ROOT, 'src/dao/billingConfigurationDao.js'))});
-    const getConfiguration = configurationDao.get;
-    let raced = false;
-    configurationDao.get = async (...args) => {
-        if (raced) return getConfiguration(...args);
-        raced = true;
-        return null;
-    };
-    const endpointsBeforeRace = accounts.test.endpoints.map((e) => e.url);
-    out.racedSetup = await call(svc.createBillingConfiguration, as({ body: keys }));
-    configurationDao.get = getConfiguration;
-    out.racedEndpointsAdded = accounts.test.endpoints.map((e) => e.url).filter((u) => !endpointsBeforeRace.includes(u));
-    out.racedConfigurationId = (await call(svc.getBillingConfiguration, as())).body.id;
 
     // The receiver, with the secret Stripe gave the portal's endpoint.
     const portalEndpoint = accounts.test.endpoints.find((e) => e.url === out.created.body.webhookEndpointUrl);
-    const configurationId = out.created.body.id;
+    const orgId = ${JSON.stringify(ORG)};
     const event = JSON.stringify({ id: 'evt_1', type: 'invoice.paid', data: { object: { id: 'in_1' } } });
-    out.eventAccepted = await call(webhook.receivePaymentEvent, { ...signed(portalEndpoint.secret, event), params: { configurationId } });
-    out.eventRepeated = await call(webhook.receivePaymentEvent, { ...signed(portalEndpoint.secret, event), params: { configurationId } });
-    out.eventForged = await call(webhook.receivePaymentEvent, { ...signed('whsec_forged', event), params: { configurationId } });
+    out.eventAccepted = await call(webhook.receivePaymentEvent, { ...signed(portalEndpoint.secret, event), params: { orgId } });
+    out.eventRepeated = await call(webhook.receivePaymentEvent, { ...signed(portalEndpoint.secret, event), params: { orgId } });
+    out.eventForged = await call(webhook.receivePaymentEvent, { ...signed('whsec_forged', event), params: { orgId } });
     // The signature may be up to [api_portal.billing.stripe] webhook_signature_tolerance_sec old (600 here).
-    out.eventSignedEarlier = await call(webhook.receivePaymentEvent, { ...signed(portalEndpoint.secret, event, 500), params: { configurationId } });
-    out.eventSignedTooEarly = await call(webhook.receivePaymentEvent, { ...signed(portalEndpoint.secret, event, 700), params: { configurationId } });
-    out.eventUnknownConfiguration = await call(webhook.receivePaymentEvent,
-        { ...signed(portalEndpoint.secret, event), params: { configurationId: crypto.randomUUID() } });
-    out.afterEvent = await call(svc.getBillingConfiguration, as());
+    out.eventSignedEarlier = await call(webhook.receivePaymentEvent, { ...signed(portalEndpoint.secret, event, 500), params: { orgId } });
+    out.eventSignedTooEarly = await call(webhook.receivePaymentEvent, { ...signed(portalEndpoint.secret, event, 700), params: { orgId } });
+    out.eventUnknownOrganization = await call(webhook.receivePaymentEvent,
+        { ...signed(portalEndpoint.secret, event), params: { orgId: crypto.randomUUID() } });
+    out.eventNotAnOrganization = await call(webhook.receivePaymentEvent,
+        { ...signed(portalEndpoint.secret, event), params: { orgId: 'not-an-id' } });
 
     // The webhook host: an address that is not https is refused; the endpoint moves to another
     // host keeping its id and signing secret; an address Stripe refuses changes nothing.
@@ -273,7 +259,7 @@ function signed(secret, body, ageSec = 0) {
     out.hostMoved = await call(svc.updateBillingWebhookEndpoint, as({ body: { webhookBaseUrl: 'https://proxy.example.com/portal/' } }));
     out.hostMovedCalls = calls.map((c) => c[0]);
     out.hostMovedEndpoint = { ...accounts.test.endpoints.find((e) => e.id === portalEndpoint.id) };
-    out.eventAfterMove = await call(webhook.receivePaymentEvent, { ...signed(portalEndpoint.secret, event), params: { configurationId } });
+    out.eventAfterMove = await call(webhook.receivePaymentEvent, { ...signed(portalEndpoint.secret, event), params: { orgId } });
     stripeRefusesUrl = true;
     out.hostRefused = await call(svc.updateBillingWebhookEndpoint, as({ body: { webhookBaseUrl: 'https://intranet.example.com' } }));
     stripeRefusesUrl = false;
@@ -284,24 +270,37 @@ function signed(secret, body, ageSec = 0) {
     const raw = db.prepare('SELECT * FROM billing_configurations').get();
     out.storedText = Object.values(raw).map((v) => (Buffer.isBuffer(v) ? v.toString('utf8') : String(v))).join('|');
 
-    // An active paid subscription: removing billing is refused, and nothing is touched.
-    // The fixture rows below stand alone (no subscription or customer rows behind them).
-    db.pragma('foreign_keys = OFF');
-    db.prepare(\`INSERT INTO subscription_billing (subscription_uuid, org_uuid, portal_id, configuration_uuid,
-        customer_uuid, api_plan_uuid, billing_subscription_id, billing_status) VALUES (?,?,?,?,?,?,?,?)\`)
-        .run('sub-1', ${JSON.stringify(ORG)}, ${JSON.stringify(PORTAL)}, configurationId, 'cust-1', 'api-plan-1', 'sub_1', 'ACTIVE');
-    out.describedActive = (await svc.describeConfiguration(${JSON.stringify(ORG)})).activePaidSubscriptions;
+    // Each stored key is bound to its place: two keys swapped in the row no longer decrypt.
+    const storedSecrets = JSON.parse(raw.provider_secrets_enc.toString('utf8'));
+    [storedSecrets.stripe.apiKey, storedSecrets.moesif.managementKey] = [storedSecrets.moesif.managementKey, storedSecrets.stripe.apiKey];
+    db.prepare('UPDATE billing_configurations SET provider_secrets_enc = ?').run(Buffer.from(JSON.stringify(storedSecrets)));
+    out.swappedSecrets = await configurationDao.getWithSecrets(orgId).then(() => 'read', (e) => e.message);
+    db.prepare('UPDATE billing_configurations SET provider_secrets_enc = ?').run(raw.provider_secrets_enc);
+    out.restoredSecrets = await configurationDao.getWithSecrets(orgId).then((c) => c.stripeApiKey === keys.stripeApiKey);
+
+    // An active paid subscription of user-1: removing billing is refused, and nothing is touched.
+    db.prepare('INSERT INTO billing_customers (org_uuid, portal_id, user_uuid, customer_ref) VALUES (?,?,?,?)')
+        .run(orgId, ${JSON.stringify(PORTAL)}, 'user-1', 'cus_1');
+    db.prepare('INSERT INTO billing_customers (org_uuid, portal_id, user_uuid, customer_ref) VALUES (?,?,?,?)')
+        .run(orgId, ${JSON.stringify(PORTAL)}, 'user-2', 'cus_2');
+    db.prepare(\`INSERT INTO subscriptions (uuid, created_by, api_uuid, plan_uuid, org_uuid, portal_id, updated_by)
+        VALUES (?,?,?,?,?,?,?)\`).run('sub-1', 'user-1', 'api-1', 'plan-gold', orgId, ${JSON.stringify(PORTAL)}, 'user-1');
+    db.prepare(\`INSERT INTO subscription_billing (subscription_uuid, org_uuid, portal_id, subscription_ref, status)
+        VALUES (?,?,?,?,?)\`).run('sub-1', orgId, ${JSON.stringify(PORTAL)}, 'sub_1', 'ACTIVE');
+    out.describedActive = (await svc.describeConfiguration(orgId)).activePaidSubscriptions;
+    catalogCalls.length = 0;
     out.blockedBySubscription = await call(svc.deleteBillingConfiguration, as());
     out.endpointsAfterBlocked = accounts.test.endpoints.length;
-    db.prepare("UPDATE subscription_billing SET billing_status = 'CANCELLED'").run();
-    out.describedCancelled = (await svc.describeConfiguration(${JSON.stringify(ORG)})).activePaidSubscriptions;
+    out.catalogCallsWhenBlocked = catalogCalls.splice(0).length;
+    db.prepare("UPDATE subscription_billing SET status = 'CANCELLED'").run();
+    out.describedCancelled = (await svc.describeConfiguration(orgId)).activePaidSubscriptions;
 
     // An open checkout that was paid just before it could be ended: refused like an active subscription.
     const checkout = db.prepare(\`INSERT INTO billing_checkouts (uuid, org_uuid, portal_id, user_uuid, api_uuid, plan_uuid,
-        customer_uuid, checkout_ref, status) VALUES (?,?,?,?,?,?,?,?,?)\`);
-    checkout.run('co-paid', ${JSON.stringify(ORG)}, ${JSON.stringify(PORTAL)}, 'user-1', 'api-1', 'plan-gold', 'cust-1', 'cs_paid', 'OPEN');
+        checkout_ref) VALUES (?,?,?,?,?,?,?)\`);
+    checkout.run('co-paid', orgId, ${JSON.stringify(PORTAL)}, 'user-1', 'api-1', 'plan-gold', 'cs_paid');
     out.blockedByPaidCheckout = await call(svc.deleteBillingConfiguration, as());
-    db.prepare("UPDATE billing_checkouts SET status = 'COMPLETED' WHERE uuid = 'co-paid'").run();
+    db.prepare("UPDATE billing_checkouts SET subscription_uuid = 'sub-1' WHERE uuid = 'co-paid'").run();
 
     // Moesif refuses to remove its connection to Stripe (the key lacks the scope): nothing is removed.
     partnerDeleteRefused = true;
@@ -310,8 +309,8 @@ function signed(secret, body, ageSec = 0) {
     out.afterPartnerDeleteRefused = (await call(svc.getBillingConfiguration, as())).status;
 
     // Stripe fails to remove the portal's endpoint: the removal is undone (Moesif connected again,
-    // Moesif's endpoint registered again and recorded), and nothing is removed.
-    checkout.run('co-open', ${JSON.stringify(ORG)}, ${JSON.stringify(PORTAL)}, 'user-2', 'api-1', 'plan-gold', 'cust-2', 'cs_open', 'OPEN');
+    // Moesif's endpoint registered again), and nothing is removed.
+    checkout.run('co-open', orgId, ${JSON.stringify(PORTAL)}, 'user-2', 'api-1', 'plan-gold', 'cs_open');
     partnerDeletes.length = 0;
     partnerSaves.length = 0;
     stripeRefusesPortalDelete = true;
@@ -321,11 +320,14 @@ function signed(secret, body, ageSec = 0) {
         get: (await call(svc.getBillingConfiguration, as())).status,
         partner: { ...partner, deletes: partnerDeletes.splice(0), saves: partnerSaves.splice(0) },
         endpoints: accounts.test.endpoints.map((e) => ({ id: e.id, moesif: e.url.includes('moesif') })),
-        storedMoesifEndpoint: db.prepare('SELECT moesif_webhook_endpoint_id AS id FROM billing_configurations').get().id,
-        openCheckout: db.prepare("SELECT status FROM billing_checkouts WHERE uuid = 'co-open'").get().status,
+        openCheckout: db.prepare("SELECT COUNT(*) AS n FROM billing_checkouts WHERE uuid = 'co-open'").get().n,
     };
 
+    catalogCalls.length = 0;
     out.deleted = await call(svc.deleteBillingConfiguration, as());
+    out.catalogCallsOnDelete = catalogCalls.splice(0).map((c) => c[0]);
+    out.rowsAfterDelete = ['billing_api_plans', 'billing_customers', 'billing_checkouts']
+        .map((table) => db.prepare('SELECT COUNT(*) AS n FROM ' + table).get().n);
     out.testEndpointsAfterDelete = accounts.test.endpoints.map((e) => e.url);
     out.partnerAfterDelete = { state: partner && partner.state, deletes: partnerDeletes.splice(0) };
     out.afterDelete = await call(svc.getBillingConfiguration, as());
@@ -352,14 +354,6 @@ function signed(secret, body, ageSec = 0) {
     out.afterRefusedAddress = await call(svc.getBillingConfiguration, as());
     out.partnerAfterRefusedAddress = { ...partner, saves: partnerSaves.splice(0), deletes: partnerDeletes.splice(0) };
 
-    // A Moesif key that may not read Moesif's connection to Stripe: the error is under the key.
-    partnerReadRefused = true;
-    out.partnerReadRefused = await call(svc.createBillingConfiguration, as({ body: fresh }));
-    partnerReadRefused = false;
-    out.freshAfterPartnerReadRefused = accounts.fresh.endpoints.map((e) => e.url);
-
-
-
     // Moesif refuses a paid plan already enabled for an API: setup fails and both endpoints go.
     catalogRefuses = true;
     out.refusedCatalog = await call(svc.createBillingConfiguration, as({ body: fresh }));
@@ -367,8 +361,8 @@ function signed(secret, body, ageSec = 0) {
     out.freshAfterRefusedCatalog = accounts.fresh.endpoints.map((e) => e.url);
     out.afterRefusedCatalog = await call(svc.getBillingConfiguration, as());
 
-    // Stripe not connected, and Moesif refuses to save the connection to the key: setup fails,
-    // with the error under the Moesif key, and nothing is left in Stripe.
+    // Moesif refuses to save the connection to the key: setup fails, with the error under the
+    // Moesif key, and nothing is left in Stripe.
     partner = null;
     partnerSaves.length = 0;
     partnerSaveRefused = true;
@@ -377,15 +371,18 @@ function signed(secret, body, ageSec = 0) {
     out.freshAfterPartnerSaveRefused = accounts.fresh.endpoints.map((e) => e.url);
     out.afterPartnerSaveRefused = await call(svc.getBillingConfiguration, as());
 
-    // Stripe connected in the Moesif dashboard: setup continues without saving the connection.
-    partner = { state: 'enabled' };
+    // Stripe connected in the Moesif dashboard, with another key: setup connects it with the entered
+    // key, and removing billing removes the connection.
+    partnerSaveRefused = false;
+    partner = { state: 'enabled', hasKey: false };
     partnerSaves.length = 0;
     partnerDeletes.length = 0;
+    accounts.fresh.endpoints.push({ id: 'we_earlier', url: out.created.body.webhookEndpointUrl, enabled_events: [], status: 'enabled' });
     out.alreadyConnected = await call(svc.createBillingConfiguration, as({ body: fresh }));
-    out.alreadyConnectedSaves = partnerSaves.splice(0);
-    partnerSaveRefused = false;
+    out.alreadyConnectedPartner = { ...partner, saves: partnerSaves.splice(0) };
+    out.freshAfterAlreadyConnected = accounts.fresh.endpoints.map((e) => ({ id: e.id, portal: !e.url.includes('moesif') }));
     await call(svc.deleteBillingConfiguration, as());
-    out.partnerAfterAlreadyConnectedDelete = { ...partner, deletes: partnerDeletes.splice(0) };
+    out.partnerAfterAlreadyConnectedDelete = { state: partner && partner.state, deletes: partnerDeletes.splice(0) };
 
     // The application ID must be a Collector Application ID, for the management key's application.
     calls.length = 0;
@@ -403,7 +400,7 @@ function signed(secret, body, ageSec = 0) {
         http: answering(400, { message: 'Client error: Bad request' }) }).getPartnerAccount('stripe').then(() => 'read', (e) => e.status);
 
     // Moesif's endpoint already in Stripe with fewer events and turned off: setup adds the events
-    // and turns it on; a failed setup puts it back as it was.
+    // and turns it on; a failed setup puts it back as it was. Removing billing removes it.
     const kept = { ...keys, stripeApiKey: 'rk_test_kept51Habcdefghij' };
     const moesifUrl = 'https://api.moesif.net/v1/partners/stripe?moesif_application_id=' + encodeURIComponent(keys.moesifCollectorApplicationId);
     accounts.kept = { endpoints: [{ id: 'we_kept', url: moesifUrl, enabled_events: ['invoice.paid'], status: 'disabled' }] };
@@ -417,6 +414,21 @@ function signed(secret, body, ageSec = 0) {
         .map((e) => ({ events: e.enabled_events, status: e.status }));
     await call(svc.deleteBillingConfiguration, as());
     out.keptAfterDelete = accounts.kept.endpoints.map((e) => e.id);
+
+    // Two setups at the same moment: the one saved second answers 409 and undoes its steps.
+    out.firstSetup = await call(svc.createBillingConfiguration, as({ body: keys }));
+    const getConfiguration = configurationDao.get;
+    let secondSetupStarted = false;
+    configurationDao.get = async (...args) => {
+        if (secondSetupStarted) return getConfiguration(...args);
+        secondSetupStarted = true;
+        return null;
+    };
+    const endpointsBeforeSecondSetup = accounts.test.endpoints.map((e) => e.id);
+    out.secondSetup = await call(svc.createBillingConfiguration, as({ body: keys }));
+    configurationDao.get = getConfiguration;
+    out.secondSetupEndpointsAdded = accounts.test.endpoints.map((e) => e.id).filter((id) => !endpointsBeforeSecondSetup.includes(id));
+    out.createdAtAfterBoth = (await call(svc.getBillingConfiguration, as())).body.createdAt;
 
     process.stdout.write('\\nPROBE_JSON:' + JSON.stringify(out) + '\\n');
     process.exit(0);
@@ -490,11 +502,12 @@ test('billing is set up once: a second setup is refused, calling no provider', (
 });
 
 test('a setup that loses a race with another answers 409, keeps the first configuration and removes its own endpoint', () => {
-    const r = results().racedSetup;
+    const r = results().secondSetup;
     assert.equal(r.status, 409, JSON.stringify(r.body));
     assert.equal(r.body.message, 'Billing is already set up. Remove it to set it up again.');
-    assert.equal(results().racedConfigurationId, results().created.body.id);
-    assert.deepEqual(results().racedEndpointsAdded, [], 'the losing setup\'s portal endpoint is removed again');
+    assert.equal(results().firstSetup.status, 201, JSON.stringify(results().firstSetup.body));
+    assert.equal(results().createdAtAfterBoth, results().firstSetup.body.createdAt, 'the first configuration is kept');
+    assert.deepEqual(results().secondSetupEndpointsAdded, [], 'the losing setup\'s portal endpoint is removed again');
 });
 
 test('a key a provider refuses is a 400 naming the provider, and nothing is saved', () => {
@@ -516,9 +529,13 @@ test('saving registers the portal\'s endpoint and Moesif\'s in Stripe and return
     assert.equal(r.body.stripeKeyHint, undefined, 'no part of a key is returned');
     assert.equal(r.body.moesifManagementKeyHint, undefined, 'no part of a key is returned');
     assert.equal(r.body.moesifCollectorApplicationId, undefined, 'the Collector Application Id is a key too and is not returned');
-    assert.match(r.body.webhookEndpointUrl, /^https:\/\/developer\.example\.com\/api-portal\/billing\/stripe\/webhooks\/[0-9a-f-]{36}$/);
+    assert.equal(r.body.webhookEndpointUrl, `https://developer.example.com/api-portal/billing/stripe/webhooks/${ORG}`);
     assert.equal(r.body.webhookRegistered, true);
-    assert.equal(r.body.moesifWebhookRegistered, true);
+    assert.ok(r.body.createdBy);
+    assert.ok(r.body.createdAt);
+    for (const field of ['id', 'moesifWebhookRegistered', 'lastEventAt', 'updatedBy', 'updatedAt']) {
+        assert.equal(r.body[field], undefined, `${field} is not returned`);
+    }
     assert.deepEqual(results().endpointsAfterCreate.sort(), [
         'https://api.moesif.net/v1/partners/stripe?moesif_application_id=eyJhcHAiOiI2NDQ3OjEyMyIsInZlciI6IjIuMCJ9',
         r.body.webhookEndpointUrl,
@@ -526,22 +543,21 @@ test('saving registers the portal\'s endpoint and Moesif\'s in Stripe and return
     assert.equal(results().get.status, 200);
 });
 
-test('a signed Stripe event is recorded once; a forged, misdirected or too old one is refused', () => {
+test('a signed Stripe event is accepted, again when repeated; a forged, misdirected or too old one is refused', () => {
     assert.equal(results().eventAccepted.status, 200);
     assert.equal(results().eventRepeated.status, 200);
     assert.equal(results().eventForged.status, 400);
     assert.equal(results().eventSignedEarlier.status, 200, 'signed 500 s ago, within the configured 600 s');
     assert.equal(results().eventSignedTooEarly.status, 400, 'signed 700 s ago, past the configured 600 s');
-    assert.equal(results().eventUnknownConfiguration.status, 404);
-    assert.ok(results().afterEvent.body.lastEventAt, 'the last event time is shown');
+    assert.equal(results().eventUnknownOrganization.status, 404, 'an organization without billing');
+    assert.equal(results().eventNotAnOrganization.status, 404);
 });
 
 test('going live means removing billing and setting it up again with a live key', () => {
     const r = results().live;
     assert.equal(r.status, 201);
     assert.equal(r.body.mode, 'LIVE');
-    assert.notEqual(r.body.id, results().created.body.id, 'a new connection, so nothing from the test one is reused');
-    assert.equal(results().liveEndpoints.length, 2);
+    assert.equal(results().liveEndpoints.length, 2, 'both endpoints are registered in the live account');
 });
 
 test('no key or signing secret is stored in plain text', () => {
@@ -551,6 +567,12 @@ test('no key or signing secret is stored in plain text', () => {
         assert.ok(!stored.includes(secret), `${secret} found in the stored row`);
     }
     assert.ok(stored.includes('pk_test_51Habcdefghij0000'), 'the publishable key is public and stored as is');
+});
+
+test('each stored key is bound to its place: keys swapped in the row do not decrypt', () => {
+    assert.equal(results().swappedSecrets, 'A stored billing key could not be decrypted. Remove billing and set it up '
+        + 'again in Settings › Billing; the portal\'s encryption key may have changed.');
+    assert.equal(results().restoredSecrets, true, 'put back, they decrypt again');
 });
 
 test('the Stripe publishable key is required, must be one, and must be in the secret key\'s mode; no provider is called', () => {
@@ -574,6 +596,11 @@ test('removing billing leaves nothing made with the entered keys: Moesif\'s Stri
     assert.equal(results().afterDelete.status, 404);
 });
 
+test('removing billing takes the paid plans off sale in Moesif, and deletes their API plans, customers and checkouts', () => {
+    assert.deepEqual(results().catalogCallsOnDelete, ['archive-price', 'archive-plan'], 'Gold\'s price and plan are archived');
+    assert.deepEqual(results().rowsAfterDelete, [0, 0, 0]);
+});
+
 test('removing billing is refused while a paid subscription is active, touching nothing', () => {
     assert.equal(results().describedActive, 1, 'the settings page knows before trying');
     const r = results().blockedBySubscription;
@@ -581,6 +608,7 @@ test('removing billing is refused while a paid subscription is active, touching 
     assert.equal(r.body.code, 'BILLING_SUBSCRIPTIONS_ACTIVE');
     assert.equal(r.body.message, 'Billing can\'t be removed while paid subscriptions are active.');
     assert.equal(results().endpointsAfterBlocked, 2);
+    assert.equal(results().catalogCallsWhenBlocked, 0, 'no paid plan is taken off sale');
     assert.equal(results().describedCancelled, 0, 'a cancelled subscription does not count');
 });
 
@@ -593,7 +621,7 @@ test('a checkout paid just before it could be ended refuses the removal like an 
 test('setup puts the webhook endpoint under the portal\'s own address by default', () => {
     const r = results().created;
     assert.equal(r.body.webhookBaseUrl, 'https://developer.example.com');
-    assert.equal(r.body.webhookEndpointUrl, `https://developer.example.com/api-portal/billing/stripe/webhooks/${r.body.id}`);
+    assert.equal(r.body.webhookEndpointUrl, `https://developer.example.com/api-portal/billing/stripe/webhooks/${ORG}`);
 });
 
 test('the webhook host must be an https address', () => {
@@ -607,7 +635,7 @@ test('changing the webhook host moves the endpoint in Stripe, keeping its id and
     const r = results().hostMoved;
     assert.equal(r.status, 200, JSON.stringify(r.body));
     assert.equal(r.body.webhookBaseUrl, 'https://proxy.example.com/portal', 'the trailing slash is dropped');
-    assert.equal(r.body.webhookEndpointUrl, `https://proxy.example.com/portal/api-portal/billing/stripe/webhooks/${r.body.id}`);
+    assert.equal(r.body.webhookEndpointUrl, `https://proxy.example.com/portal/api-portal/billing/stripe/webhooks/${ORG}`);
     assert.deepEqual(results().hostMovedCalls, ['list', 'update'], 'moved, not deleted and created again');
     assert.equal(results().hostMovedEndpoint.url, r.body.webhookEndpointUrl);
     assert.equal(results().eventAfterMove.status, 200, 'events signed with the same secret are still accepted');
@@ -645,16 +673,14 @@ test('when Stripe fails to remove the portal\'s endpoint, the removal is undone 
     assert.deepEqual(after.partner.deletes, ['stripe']);
     assert.deepEqual(after.partner.saves, ['stripe:enabled:id'], 'Moesif is connected to Stripe again');
     assert.equal(after.partner.hasKey, true);
-    const moesifEndpoint = after.endpoints.find((e) => e.moesif);
-    assert.ok(moesifEndpoint, 'Moesif\'s endpoint is registered again');
-    assert.equal(after.storedMoesifEndpoint, moesifEndpoint.id, 'and recorded');
+    assert.ok(after.endpoints.find((e) => e.moesif), 'Moesif\'s endpoint is registered again');
     assert.equal(after.endpoints.length, 2);
-    assert.equal(after.openCheckout, 'EXPIRED', 'open checkouts are ended first');
+    assert.equal(after.openCheckout, 0, 'open checkouts are ended first, and an ended checkout is deleted');
 });
 
-test('removing billing leaves what was there before setup: a Moesif connection made in the dashboard and an existing Moesif endpoint', () => {
-    assert.deepEqual(results().partnerAfterAlreadyConnectedDelete, { state: 'enabled', deletes: [] });
-    assert.deepEqual(results().keptAfterDelete, ['we_kept']);
+test('removing billing removes a Moesif connection and a Moesif endpoint that were there before setup', () => {
+    assert.deepEqual(results().partnerAfterAlreadyConnectedDelete, { state: null, deletes: ['stripe'] });
+    assert.deepEqual(results().keptAfterDelete, []);
 });
 
 test('setting up billing creates the paid plans already enabled for APIs in Moesif', () => {
@@ -683,15 +709,6 @@ test('a failed setup removes Moesif\'s Stripe connection again, key included, wh
     assert.equal(results().partnerAfterRefusedAddress.state, undefined);
 });
 
-test('a Moesif key that may not read Moesif\'s connection to Stripe fails setup, with the error under that key', () => {
-    const r = results().partnerReadRefused;
-    assert.equal(r.status, 400);
-    assert.equal(r.body.code, 'BILLING_KEY_INVALID');
-    assert.deepEqual(r.body.errors, [{ field: 'moesifManagementKey',
-        message: 'This Moesif key cannot connect the Moesif application to Stripe. It needs the App configs scopes listed in Settings › Billing.' }]);
-    assert.deepEqual(results().freshAfterPartnerReadRefused, [], 'nothing was registered in Stripe');
-});
-
 test('a Moesif key that may not save Moesif\'s connection to Stripe fails setup, with the error under that key', () => {
     const r = results().partnerSaveRefused;
     assert.equal(r.status, 400);
@@ -703,9 +720,15 @@ test('a Moesif key that may not save Moesif\'s connection to Stripe fails setup,
     assert.equal(results().afterPartnerSaveRefused.status, 404, 'billing is not set up');
 });
 
-test('with Stripe already connected in the Moesif dashboard, setup goes on without saving the connection', () => {
+test('with Stripe already connected in the Moesif dashboard, setup connects it again with the entered key', () => {
     assert.equal(results().alreadyConnected.status, 201, JSON.stringify(results().alreadyConnected.body));
-    assert.deepEqual(results().alreadyConnectedSaves, []);
+    assert.deepEqual(results().alreadyConnectedPartner, { state: 'enabled', hasKey: true, saves: ['stripe:enabled:id'] });
+});
+
+test('an endpoint an earlier setup left at the portal\'s address is replaced by the new one', () => {
+    const endpoints = results().freshAfterAlreadyConnected;
+    assert.ok(!endpoints.some((e) => e.id === 'we_earlier'), 'the earlier endpoint is removed');
+    assert.equal(endpoints.filter((e) => e.portal).length, 1, 'one portal endpoint: the new one');
 });
 
 test('setup fails when Moesif refuses a paid plan, naming it, and both endpoints are removed again', () => {
