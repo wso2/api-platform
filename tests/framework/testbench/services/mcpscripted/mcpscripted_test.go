@@ -156,6 +156,18 @@ func TestTextDefaultsAndRepeats(t *testing.T) {
 	require.JSONEq(t, `{"content":[{"type":"text","text":""}]}`, string(r.Result), "an empty text is kept, not replaced by the default")
 }
 
+func TestRepeatedTextFillsTheBudgetExactly(t *testing.T) {
+	r := decode(t, callTool(t, New(), "p", "t", fmt.Sprintf(`{"text":"ab","repeat":%d}`, MaxResultBytes/2)))
+	require.Nil(t, r.Error)
+	var result struct {
+		Content []struct {
+			Text string `json:"text"`
+		} `json:"content"`
+	}
+	require.NoError(t, json.Unmarshal(r.Result, &result))
+	require.Len(t, result.Content[0].Text, MaxResultBytes)
+}
+
 func TestRPCErrorShape(t *testing.T) {
 	r := decode(t, callTool(t, New(), "p", "t", `{"text":"tool failed","shape":"rpc-error"}`))
 	require.Nil(t, r.Result)
@@ -176,24 +188,40 @@ func TestPlainTextShapes(t *testing.T) {
 	require.Equal(t, "not a message", rec.Body.String())
 }
 
-func TestEventsShape(t *testing.T) {
-	rec := callTool(t, New(), "p", "t", `{"text":"done","shape":"events"}`)
+// eventData returns the data of each server-sent event in the body, checking each event's form.
+func eventData(t *testing.T, rec *httptest.ResponseRecorder) []string {
+	t.Helper()
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Equal(t, "text/event-stream", rec.Header().Get("Content-Type"))
-	events := strings.Split(strings.TrimSuffix(rec.Body.String(), "\n\n"), "\n\n")
-	require.Len(t, events, 3)
-	for i, event := range events {
+	var data []string
+	for _, event := range strings.Split(strings.TrimSuffix(rec.Body.String(), "\n\n"), "\n\n") {
 		lines := strings.Split(event, "\n")
 		require.Len(t, lines, 2, event)
 		require.Equal(t, "event: message", lines[0])
-		data, ok := strings.CutPrefix(lines[1], "data: ")
+		d, ok := strings.CutPrefix(lines[1], "data: ")
 		require.True(t, ok, event)
-		if i < 2 {
-			require.JSONEq(t, fmt.Sprintf(`{"jsonrpc":"2.0","method":"notifications/progress","params":{"progressToken":"scripted","progress":%d,"total":2}}`, i+1), data)
-			continue
-		}
-		require.JSONEq(t, `{"jsonrpc":"2.0","id":7,"result":{"content":[{"type":"text","text":"done"}]}}`, data)
+		data = append(data, d)
 	}
+	return data
+}
+
+func TestEventsShapeSendsProgressForTheRequestsToken(t *testing.T) {
+	for name, token := range map[string]string{"a string token": `"tok-1"`, "a number token": `9`} {
+		rec := serve(t, New(), http.MethodPost, "/p"+Path,
+			`{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"t","arguments":{"text":"done","shape":"events"},"_meta":{"progressToken":`+token+`}}}`)
+		data := eventData(t, rec)
+		require.Len(t, data, 3, name)
+		for i := range 2 {
+			require.JSONEq(t, fmt.Sprintf(`{"jsonrpc":"2.0","method":"notifications/progress","params":{"progressToken":%s,"progress":%d,"total":2}}`, token, i+1), data[i], name)
+		}
+		require.JSONEq(t, `{"jsonrpc":"2.0","id":7,"result":{"content":[{"type":"text","text":"done"}]}}`, data[2], name)
+	}
+}
+
+func TestEventsShapeWithoutAProgressTokenSendsOnlyTheResult(t *testing.T) {
+	data := eventData(t, callTool(t, New(), "p", "t", `{"text":"done","shape":"events"}`))
+	require.Len(t, data, 1)
+	require.JSONEq(t, `{"jsonrpc":"2.0","id":7,"result":{"content":[{"type":"text","text":"done"}]}}`, data[0])
 }
 
 func TestInvalidRequests(t *testing.T) {
@@ -209,7 +237,9 @@ func TestInvalidRequests(t *testing.T) {
 		"arguments not an object": `"text"`,
 		"unknown shape":           `{"shape":"video"}`,
 		"negative repeat":         `{"repeat":-1}`,
-		"repeat over the bound":   fmt.Sprintf(`{"repeat":%d}`, maxRepeat+1),
+		"repeat over the budget":  fmt.Sprintf(`{"text":"ab","repeat":%d}`, MaxResultBytes/2+1),
+		"a repeat that overflows": `{"text":"ab","repeat":9223372036854775807}`,
+		"text over the budget":    fmt.Sprintf(`{"text":"%s"}`, strings.Repeat("a", MaxResultBytes+1)),
 		"text not a string":       `{"text":5}`,
 	} {
 		r := decode(t, callTool(t, svc, "p", "t", args))

@@ -30,7 +30,8 @@
 //
 //   - text: the text of the result (default "ok"). It can carry jev:<key>=<value> markers, so the
 //     Jev answers follow the result a policy screens.
-//   - repeat: how many times text is repeated, for a large result (default 1).
+//   - repeat: how many times text is repeated, for a large result (default 1). The repeated text
+//     may be at most MaxResultBytes.
 //   - shape: what the server sends (default "text"):
 //     text         a result with one text block
 //     structured   a result with the text in structuredContent and no content blocks
@@ -39,7 +40,8 @@
 //     rpc-error    HTTP 200 with a JSON-RPC error whose message is the text
 //     http-error   HTTP 500 with the text as a plain-text body
 //     not-jsonrpc  HTTP 200 with the text as a plain-text body
-//     events       server-sent events: two progress notifications, then a text result
+//     events       server-sent events: a text result, after two progress notifications when the
+//     request carries params._meta.progressToken
 package mcpscripted
 
 import (
@@ -79,8 +81,9 @@ var shapes = map[string]bool{
 	ShapeRPCError: true, ShapeHTTPError: true, ShapeNotJSONRPC: true, ShapeEvents: true,
 }
 
-// maxRepeat bounds the repeat argument, so a result stays a few megabytes at most.
-const maxRepeat = 100000
+// MaxResultBytes bounds the text a call's arguments can ask for, after repeat, so one request
+// cannot exhaust the shared testbench process.
+const MaxResultBytes = 1 << 20
 
 // maxPartitions bounds how many partitions the service keeps, like the jev service.
 const maxPartitions = 4096
@@ -152,6 +155,9 @@ type message struct {
 		ProtocolVersion string          `json:"protocolVersion"`
 		Name            string          `json:"name"`
 		Arguments       json.RawMessage `json:"arguments"`
+		Meta            struct {
+			ProgressToken json.RawMessage `json:"progressToken"`
+		} `json:"_meta"`
 	} `json:"params"`
 }
 
@@ -225,13 +231,14 @@ func (s *Service) toolCall(w http.ResponseWriter, msg message) {
 		writeJSON(w, http.StatusOK, rpcError(msg.ID, -32602, "unknown shape: "+sc.Shape))
 		return
 	}
-	if sc.Repeat < 0 || sc.Repeat > maxRepeat {
-		writeJSON(w, http.StatusOK, rpcError(msg.ID, -32602, fmt.Sprintf("repeat must be from 0 to %d", maxRepeat)))
-		return
-	}
 	text := "ok"
 	if sc.Text != nil {
 		text = *sc.Text
+	}
+	// Checked before repeating, by division, so the product can neither be allocated nor overflow.
+	if sc.Repeat < 0 || len(text) > MaxResultBytes || (sc.Repeat > 1 && sc.Repeat > MaxResultBytes/max(len(text), 1)) {
+		writeJSON(w, http.StatusOK, rpcError(msg.ID, -32602, fmt.Sprintf("repeat must not be negative, and text repeated must be at most %d bytes", MaxResultBytes)))
+		return
 	}
 	if sc.Repeat > 1 {
 		text = strings.Repeat(text, sc.Repeat)
@@ -260,20 +267,24 @@ func (s *Service) toolCall(w http.ResponseWriter, msg message) {
 	case ShapeNotJSONRPC:
 		writeText(w, http.StatusOK, text)
 	case ShapeEvents:
-		writeEvents(w, msg.ID, textResult)
+		writeEvents(w, msg.ID, msg.Params.Meta.ProgressToken, textResult)
 	}
 }
 
-// writeEvents sends two progress notifications and then the result, as server-sent events.
-func writeEvents(w http.ResponseWriter, id json.RawMessage, result map[string]any) {
+// writeEvents sends the result as server-sent events. MCP allows progress notifications only for
+// a token the request supplied, so the two that come first are sent only when it has one.
+func writeEvents(w http.ResponseWriter, id, progressToken json.RawMessage, result map[string]any) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.WriteHeader(http.StatusOK)
-	events := []any{
-		map[string]any{"jsonrpc": "2.0", "method": "notifications/progress", "params": map[string]any{"progressToken": "scripted", "progress": 1, "total": 2}},
-		map[string]any{"jsonrpc": "2.0", "method": "notifications/progress", "params": map[string]any{"progressToken": "scripted", "progress": 2, "total": 2}},
-		rpcResult(id, result),
+	var events []any
+	if len(progressToken) > 0 && string(progressToken) != "null" {
+		for progress := 1; progress <= 2; progress++ {
+			events = append(events, map[string]any{"jsonrpc": "2.0", "method": "notifications/progress",
+				"params": map[string]any{"progressToken": progressToken, "progress": progress, "total": 2}})
+		}
 	}
+	events = append(events, rpcResult(id, result))
 	for _, event := range events {
 		data, err := json.Marshal(event)
 		if err != nil {
