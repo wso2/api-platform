@@ -584,8 +584,17 @@ describe('PortalPublishPage', () => {
     await user.click(screen.getByRole('tab', { name: 'Subscription Plans' }));
     expect(screen.getByRole('button', { name: 'Save Draft' })).toBeDisabled();
 
-    await user.click(await screen.findByRole('checkbox', { name: /Platinum/ }));
-    expect(screen.queryByRole('checkbox', { name: /Platinum/ })).not.toBeInTheDocument();
+    const card = await screen.findByRole('checkbox', { name: /Platinum/ });
+    await user.click(card);
+    expect(card).toHaveAttribute('aria-checked', 'false');
+    expect(card).toHaveTextContent('Will be removed when you save.');
+    expect(screen.getByRole('button', { name: 'Save Draft' })).toBeEnabled();
+
+    await user.click(card);
+    expect(card).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByRole('button', { name: 'Save Draft' })).toBeDisabled();
+
+    await user.click(card);
     await user.click(screen.getByRole('button', { name: 'Save Draft' }));
     await waitFor(() => expect(draftRequests.count()).toBe(1));
     expect(JSON.parse(draftRequests.last()?.body ?? '{}')).toMatchObject({ subscriptionPlanIds: ['gold'] });

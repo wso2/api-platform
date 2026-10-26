@@ -64,6 +64,7 @@ import {
   draftFormValuesToInput,
   editedPlanIdsOf,
   emptyDraftFormValues,
+  planNamesOf,
   resolveDraftFormValues,
   sameSelection,
   validateDraftFormValues,
@@ -405,6 +406,15 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
     setInitialized(true);
   }, [initialized, data.seed]);
 
+  // A cleared plan stays on screen until the refreshed draft no longer lists it; then it has nothing left to clear.
+  useEffect(() => {
+    const listed = deletedPlansOf(draft ?? publication);
+    setClearedDeletedIds((cleared) => {
+      const kept = cleared.filter((id) => listed.some((plan) => plan.id === id));
+      return kept.length === cleared.length ? cleared : kept;
+    });
+  }, [draft, publication]);
+
   // A plan deleted elsewhere has no card to clear but would still be submitted, so drop it and say so.
   useEffect(() => {
     if (!initialized || !plansQuery.isSuccess) return;
@@ -462,9 +472,10 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
   const pick = chosenView === 'published' && !isPublished ? undefined : chosenView;
   const view: PublicationVersionTone = pick ?? (isPublished ? 'published' : 'draft');
   const showingPublished = view === 'published';
+  const savedDeletedPlans = deletedPlansOf(draft ?? publication);
   const hasUnsavedChanges =
     definitionText !== saved.definitionText ||
-    clearedDeletedIds.length > 0 ||
+    clearedDeletedIds.some((id) => savedDeletedPlans.some((plan) => plan.id === id)) ||
     thumbnail !== saved.thumbnail ||
     landingPage !== saved.landingPage ||
     (Object.keys(values) as (keyof DraftFormValues)[]).some((field) => {
@@ -555,7 +566,6 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
       body: draftFormValuesToInput(values),
     });
     setSaved((current) => ({ ...current, values }));
-    setClearedDeletedIds([]);
     return true;
   };
 
@@ -661,7 +671,7 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
     const inactive = (plansQuery.data?.list ?? []).filter(
       (plan) => plan.id && selected.has(plan.id) && plan.status !== 'ACTIVE',
     );
-    const deleted = savedDeletedPlans;
+    const deleted = savedDeletedPlans.filter((plan) => !clearedDeletedIds.includes(plan.id));
     if (inactive.length === 0 && deleted.length === 0) return false;
     setTab('subscriptionPlans');
     const quoted = (names: string[]) => names.map((name) => `"${name}"`).join(', ');
@@ -740,9 +750,9 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
   })();
   const savedPlanIds = resolveDraftFormValues(draft, publication, undefined).subscriptionPlanIds;
   const publishedDeletedPlans = deletedPlansOf(publication);
-  const savedDeletedPlans = deletedPlansOf(draft ?? publication).filter((plan) => !clearedDeletedIds.includes(plan.id));
   const publishedEditedPlanIds = editedPlanIdsOf(publication);
-  const savedEditedPlanIds = editedPlanIdsOf(draft ?? publication);
+  const toggleCleared = (id: string) => (current: string[]) =>
+    current.includes(id) ? current.filter((cleared) => cleared !== id) : [...current, id];
   const banner = showingPublished
     ? {
         meta: intl.formatMessage(canDeprecate ? messages.publishedBannerMeta : messages.deprecatedBannerMeta, {
@@ -762,6 +772,7 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
           deletedPlans={publishedDeletedPlans}
           editedPlanIds={publishedEditedPlanIds}
           readOnly
+          storedNames={planNamesOf(publication)}
           values={publishedValues}
         />;
       if (tab === 'documentations') {
@@ -807,11 +818,11 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
     if (tab === 'subscriptionPlans') {
       return (
         <SubscriptionPlansTab
+          clearedDeletedIds={clearedDeletedIds}
           deletedPlans={savedDeletedPlans}
           disabled={pendingAction !== 'idle'}
-          editedPlanIds={savedEditedPlanIds}
           onChange={handleChange}
-          onClearDeleted={(planId) => setClearedDeletedIds((current) => [...current, planId])}
+          onToggleDeleted={(planId) => setClearedDeletedIds(toggleCleared(planId))}
           savedPlanIds={savedPlanIds}
           values={values}
         />

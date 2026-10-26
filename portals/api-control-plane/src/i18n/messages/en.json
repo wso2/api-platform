@@ -2833,12 +2833,12 @@
   "apiControlPlane.pages.appShell.appShellPages.portals.components.LandingPageTab.publishedTitle": {
     "defaultMessage": "Published page"
   },
-  "apiControlPlane.pages.appShell.appShellPages.portals.components.PlanCard.deleted": {
-    "defaultMessage": "Deleted",
-    "description": "Status pill on a plan card whose subscription plan no longer exists."
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PlanCard.cleared": {
+    "defaultMessage": "Will be removed when you save.",
+    "description": "Shown on a draft plan card the user cleared that is no longer offered once saved: a deleted or inactive plan."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.PlanCard.deletedDraft": {
-    "defaultMessage": "Deleted after saving.",
+    "defaultMessage": "Deleted after last save.",
     "description": "Shown on a draft plan card whose subscription plan no longer exists."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.PlanCard.deletedDraftHint": {
@@ -2846,28 +2846,20 @@
     "description": "Tooltip on the Deleted chip of a draft plan card."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.PlanCard.deletedPublished": {
-    "defaultMessage": "Deleted after publishing.",
+    "defaultMessage": "Deleted after last publish.",
     "description": "Shown on a published plan card whose subscription plan no longer exists."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.PlanCard.deletedPublishedHint": {
     "defaultMessage": "This plan was deleted. Clear it in draft, then republish.",
     "description": "Tooltip on the Deleted chip of a published plan card."
   },
-  "apiControlPlane.pages.appShell.appShellPages.portals.components.PlanCard.edited": {
-    "defaultMessage": "Edited",
-    "description": "Status pill on a plan card whose subscription plan was changed after it was last saved or published."
-  },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.PlanCard.editedPublished": {
-    "defaultMessage": "Edited after publishing.",
+    "defaultMessage": "Edited after last publish.",
     "description": "Shown in place of the limit on a published plan card whose plan was edited. Any edit counts (name, limit or status), so it does not say which."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.PlanCard.editedPublishedHint": {
     "defaultMessage": "Plan was edited after publishing. Republish to apply changes.",
     "description": "Tooltip on the Edited chip of a published plan card."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.portals.components.PlanCard.inactive": {
-    "defaultMessage": "Inactive",
-    "description": "Status pill on a plan card."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.PlanCard.inactivePublishedHint": {
     "defaultMessage": "Plan is inactive. Clear it in draft, then republish.",
@@ -2948,6 +2940,18 @@
   "apiControlPlane.pages.appShell.appShellPages.portals.components.SpecificationTab.malformed": {
     "defaultMessage": "This is not valid {format}: {detail}",
     "description": "{format} is JSON, YAML or GraphQL; {detail} is the parser’s own message naming the line."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.StatusChip.deleted": {
+    "defaultMessage": "Deleted",
+    "description": "Status pill on a selected plan or document whose source no longer exists."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.StatusChip.edited": {
+    "defaultMessage": "Edited",
+    "description": "Status pill on a published plan or document that was changed after it was last published."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.StatusChip.inactive": {
+    "defaultMessage": "Inactive",
+    "description": "Status pill on a selected plan whose subscription plan is inactive."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.clearAll": {
     "defaultMessage": "Clear all"

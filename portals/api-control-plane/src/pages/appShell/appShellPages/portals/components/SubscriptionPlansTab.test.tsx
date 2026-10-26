@@ -322,24 +322,76 @@ describe('SubscriptionPlansTab', () => {
 
   it('shows a deleted plan as a Deleted card with its stored name and no limit, which can be cleared', async () => {
     server.use(collection(PLANS_PATH, [bronze, gold]));
-    const onClearDeleted = vi.fn();
+    const onToggleDeleted = vi.fn();
 
     const { user } = renderTab({
       deletedPlans: [{ id: 'old', displayName: 'Platinum' }],
-      onClearDeleted,
+      onToggleDeleted,
       values: values({ subscriptionPlanIds: ['bronze'] }),
     });
 
     const card = await screen.findByRole('checkbox', { name: /Platinum/ });
     expect(card).toHaveAttribute('aria-checked', 'true');
     expect(card).toHaveTextContent('Deleted');
-    expect(card).toHaveTextContent('Deleted after saving.');
+    expect(card).toHaveTextContent('Deleted after last save.');
     await user.click(card);
-    expect(onClearDeleted).toHaveBeenCalledWith('old');
+    expect(onToggleDeleted).toHaveBeenCalledWith('old');
     expect(card).not.toHaveTextContent('Unlimited');
     expect(cardOrder(['Platinum', 'Bronze', 'Gold'])[0]).toBe('Platinum');
     expect(summaryText('1 of 2 plans selected')).toBeInTheDocument();
     expect(screen.getByText('1 deleted plan selected')).toBeInTheDocument();
+  });
+
+  it('keeps a cleared deleted plan on screen, unticked, until the draft is saved, and lets it be put back', async () => {
+    server.use(collection(PLANS_PATH, [bronze, gold]));
+    const onToggleDeleted = vi.fn();
+
+    const { user } = renderTab({
+      clearedDeletedIds: ['old'],
+      deletedPlans: [{ id: 'old', displayName: 'Platinum' }],
+      onToggleDeleted,
+      values: values({ subscriptionPlanIds: ['bronze'] }),
+    });
+
+    const card = await screen.findByRole('checkbox', { name: /Platinum/ });
+    expect(card).toHaveAttribute('aria-checked', 'false');
+    expect(card).toHaveTextContent('Deleted');
+    expect(card).toHaveTextContent('Will be removed when you save.');
+    expect(screen.queryByText(/deleted plan.* selected/)).not.toBeInTheDocument();
+    await user.click(card);
+    expect(onToggleDeleted).toHaveBeenCalledWith('old');
+  });
+
+  it('keeps a saved inactive plan on screen when it is cleared, unticked with a notice, and lets it be selected again', async () => {
+    server.use(collection(PLANS_PATH, plans));
+    const onChange = vi.fn();
+
+    const { user } = renderTab({
+      onChange,
+      savedPlanIds: ['bronze', 'legacy'],
+      values: values({ subscriptionPlanIds: ['bronze'] }),
+    });
+
+    const card = await screen.findByRole('checkbox', { name: /Legacy/ });
+    expect(card).toHaveAttribute('aria-checked', 'false');
+    expect(card).toHaveTextContent('Inactive');
+    expect(card).toHaveTextContent('Will be removed when you save.');
+    expect(screen.queryByText(/inactive plan.* selected/)).not.toBeInTheDocument();
+
+    await user.click(card);
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ subscriptionPlanIds: ['bronze', 'legacy'] }));
+  });
+
+  it('read-only: shows the names stored at the last publish, not the current ones', async () => {
+    server.use(collection(PLANS_PATH, [bronze]));
+
+    renderTab({
+      readOnly: true,
+      storedNames: { bronze: 'Bronze (old name)' },
+      values: values({ subscriptionPlanIds: ['bronze'] }),
+    });
+
+    expect(await screen.findByRole('checkbox', { name: /Bronze \(old name\)/ })).toBeInTheDocument();
   });
 
   it('read-only: counts a deleted plan among the published plans', async () => {
@@ -352,7 +404,7 @@ describe('SubscriptionPlansTab', () => {
     });
 
     const card = await screen.findByRole('checkbox', { name: /Platinum/ });
-    expect(card).toHaveTextContent('Deleted after publishing.');
+    expect(card).toHaveTextContent('Deleted after last publish.');
     expect(summaryText('2 plans published')).toBeInTheDocument();
   });
 
@@ -381,7 +433,7 @@ describe('SubscriptionPlansTab', () => {
     );
     const published = await screen.findByRole('checkbox', { name: /Bronze/ });
     expect(published).toHaveTextContent('Edited');
-    expect(published).toHaveTextContent('Edited after publishing.');
+    expect(published).toHaveTextContent('Edited after last publish.');
     expect(published).not.toHaveTextContent('1,000');
     expect(screen.getByRole('checkbox', { name: /Gold/ })).not.toHaveTextContent('Edited');
     expect(screen.getByRole('checkbox', { name: /Gold/ })).toHaveTextContent('Unlimited');
@@ -403,7 +455,7 @@ describe('SubscriptionPlansTab', () => {
     expect(screen.getByRole('checkbox', { name: /Platinum/ })).toHaveTextContent('Deleted');
   });
 
-  it('explains Deleted and Inactive in a tooltip on hover in the draft, and Deleted, Inactive and Edited in the published view', async () => {
+  it('explains Deleted and Inactive in a tooltip on hover in the draft, and Deleted and Edited in the published view', async () => {
     server.use(collection(PLANS_PATH, [bronze, legacy]));
 
     const { user, rerender } = renderTab({
@@ -456,7 +508,7 @@ describe('SubscriptionPlansTab', () => {
     expect(inactiveEdited).toHaveTextContent('Inactive');
     expect(inactiveEdited.querySelectorAll('.MuiChip-root')).toHaveLength(1);
     // The notice follows the chip: Inactive has none, so the card shows the limit rather than the edited notice.
-    expect(inactiveEdited).not.toHaveTextContent('Edited after publishing');
+    expect(inactiveEdited).not.toHaveTextContent('Edited after last publish');
     expect(inactiveEdited).toHaveTextContent('Unlimited');
     expect(screen.getByRole('checkbox', { name: /Bronze/ }).querySelectorAll('.MuiChip-root')).toHaveLength(1);
     expect(screen.getByRole('checkbox', { name: /Bronze/ })).toHaveTextContent('Edited');

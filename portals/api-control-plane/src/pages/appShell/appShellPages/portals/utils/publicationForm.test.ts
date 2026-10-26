@@ -21,10 +21,14 @@ import { describe, expect, it } from 'vitest';
 import { aGateway, aPublication, aPublicationDraftDetails, aRestApi } from '@/test/msw';
 import {
   buildProductionUrlOptions,
+  deletedDocumentsOf,
   deletedPlansOf,
+  documentNamesOf,
   draftFormValuesToInput,
+  editedDocIdsOf,
   editedPlanIdsOf,
   emptyDraftFormValues,
+  planNamesOf,
   resolveDraftFormValues,
   sameSelection,
   validateThumbnailFile,
@@ -137,6 +141,45 @@ describe('edited plans', () => {
 
     expect(editedPlanIdsOf(draft)).toEqual(['gold']);
     expect(editedPlanIdsOf(undefined)).toEqual([]);
+  });
+});
+
+describe('deleted and edited documents', () => {
+  const selections = [
+    { deleted: false, displayName: 'Guide', edited: true, id: 'guide' },
+    { deleted: true, displayName: 'Old guide', edited: true, id: 'gone' },
+    { deleted: false, displayName: 'FAQ', edited: false, id: 'faq' },
+  ];
+
+  it('leaves a deleted document out of the form, whichever tier it is read from', () => {
+    const draft = aPublicationDraftDetails({ docIds: ['guide', 'gone', 'faq'], documents: selections });
+    const publication = aPublication({ docIds: ['guide', 'gone', 'faq'], documents: selections });
+
+    expect(resolveDraftFormValues(draft, undefined, undefined).docIds).toEqual(['guide', 'faq']);
+    expect(resolveDraftFormValues(undefined, publication, undefined).docIds).toEqual(['guide', 'faq']);
+  });
+
+  it('reads the document ids as they are when the server sends no document details', () => {
+    const draft = aPublicationDraftDetails({ docIds: ['guide', 'gone'], documents: undefined });
+
+    expect(resolveDraftFormValues(draft, undefined, undefined).docIds).toEqual(['guide', 'gone']);
+  });
+
+  it('lists deleted documents with their stored names and the edited ones, leaving out deleted', () => {
+    const draft = aPublicationDraftDetails({ documents: selections });
+
+    expect(deletedDocumentsOf(draft)).toEqual([{ displayName: 'Old guide', id: 'gone' }]);
+    expect(editedDocIdsOf(draft)).toEqual(['guide']);
+    expect(deletedDocumentsOf(undefined)).toEqual([]);
+    expect(editedDocIdsOf(undefined)).toEqual([]);
+  });
+
+  it('maps ids to the names stored with the selection', () => {
+    const publication = aPublication({ documents: selections, subscriptionPlans: [selections[0]] });
+
+    expect(documentNamesOf(publication)).toEqual({ faq: 'FAQ', gone: 'Old guide', guide: 'Guide' });
+    expect(planNamesOf(publication)).toEqual({ guide: 'Guide' });
+    expect(documentNamesOf(undefined)).toEqual({});
   });
 });
 

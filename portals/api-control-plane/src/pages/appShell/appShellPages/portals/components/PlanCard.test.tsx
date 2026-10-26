@@ -51,4 +51,13 @@ describe('PlanCard status chip', () => {
       });
     }
   }
+
+  it('draft: a cleared card is unticked, says it will be removed, and keeps its chip', () => {
+    renderWithProviders(<PlanCard cleared inactive displayName="Plan" selected={false} />);
+
+    const card = screen.getByRole('checkbox', { name: /Plan/ });
+    expect(card).toHaveAttribute('aria-checked', 'false');
+    expect(card).toHaveTextContent('Will be removed when you save.');
+    expect(card).toHaveTextContent('Inactive');
+  });
 });

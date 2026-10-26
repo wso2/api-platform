@@ -90,24 +90,51 @@ export const buildProductionUrlOptions = (
     .map((gateway) => ({ gatewayName: gateway.displayName, url: buildInvokeUrl(gatewayEndpoint(gateway), context) }))
     .filter((option) => option.url !== '');
 
-/** A plan the listing still selects whose subscription plan has since been deleted; only its stored name is left. */
-export type DeletedPlan = { id: string; displayName: string };
+/** A plan or document the listing still selects whose source has since been deleted; only its stored name is left. */
+export type DeletedSelection = { id: string; displayName: string };
 
-type PlanSelectionSource = Pick<Publication | PublicationDraftDetails, 'subscriptionPlanIds' | 'subscriptionPlans'>;
+type SelectionList = Publication['subscriptionPlans'];
+type SelectionSource = Pick<
+  Publication | PublicationDraftDetails,
+  'docIds' | 'documents' | 'subscriptionPlanIds' | 'subscriptionPlans'
+>;
 
-/** The selected plans that still exist; a deleted one cannot be saved or published, so it never enters the form. */
-const existingPlanIds = (source: PlanSelectionSource): string[] => {
-  if (!source.subscriptionPlans) return source.subscriptionPlanIds ?? [];
-  return source.subscriptionPlans.filter((plan) => !plan.deleted).map((plan) => plan.id);
+/** The selected items that still exist; a deleted one cannot be saved or published, so it never enters the form. */
+const existingIds = (selections: SelectionList, ids: string[] | undefined): string[] => {
+  if (!selections) return ids ?? [];
+  return selections.filter((item) => !item.deleted).map((item) => item.id);
 };
 
+const deletedOf = (selections: SelectionList): DeletedSelection[] =>
+  (selections ?? []).filter((item) => item.deleted).map(({ id, displayName }) => ({ id, displayName }));
+
+const editedIdsOf = (selections: SelectionList): string[] =>
+  (selections ?? []).filter((item) => item.edited && !item.deleted).map((item) => item.id);
+
+/** The names stored with the selection, by id, as of the last save or publish. */
+const storedNamesOf = (selections: SelectionList): Record<string, string> =>
+  Object.fromEntries((selections ?? []).map((item) => [item.id, item.displayName]));
+
 /** The selected plans whose subscription plan was deleted, for the "Deleted" cards. */
-export const deletedPlansOf = (source: PlanSelectionSource | undefined): DeletedPlan[] =>
-  (source?.subscriptionPlans ?? []).filter((plan) => plan.deleted).map(({ id, displayName }) => ({ id, displayName }));
+export const deletedPlansOf = (source: SelectionSource | undefined): DeletedSelection[] =>
+  deletedOf(source?.subscriptionPlans);
 
 /** The ids of selected plans changed in Settings after the selection was last saved or published. */
-export const editedPlanIdsOf = (source: PlanSelectionSource | undefined): string[] =>
-  (source?.subscriptionPlans ?? []).filter((plan) => plan.edited && !plan.deleted).map((plan) => plan.id);
+export const editedPlanIdsOf = (source: SelectionSource | undefined): string[] =>
+  editedIdsOf(source?.subscriptionPlans);
+
+export const planNamesOf = (source: SelectionSource | undefined): Record<string, string> =>
+  storedNamesOf(source?.subscriptionPlans);
+
+/** The selected documents that were deleted, for the "Deleted" rows. */
+export const deletedDocumentsOf = (source: SelectionSource | undefined): DeletedSelection[] =>
+  deletedOf(source?.documents);
+
+/** The ids of selected documents changed after the selection was last saved or published. */
+export const editedDocIdsOf = (source: SelectionSource | undefined): string[] => editedIdsOf(source?.documents);
+
+export const documentNamesOf = (source: SelectionSource | undefined): Record<string, string> =>
+  storedNamesOf(source?.documents);
 
 export const emptyDraftFormValues: DraftFormValues = {
   displayName: '',
@@ -147,8 +174,8 @@ export const resolveDraftFormValues = (
       productionUrl: draft.endpoints?.productionUrl ?? '',
       sandboxUrl: draft.endpoints?.sandboxUrl ?? '',
       agentVisibility: draft.agentVisibility ?? DEFAULT_AGENT_VISIBILITY,
-      subscriptionPlanIds: existingPlanIds(draft),
-      docIds: draft.docIds ?? [],
+      subscriptionPlanIds: existingIds(draft.subscriptionPlans, draft.subscriptionPlanIds),
+      docIds: existingIds(draft.documents, draft.docIds),
     };
   }
   if (publication) {
@@ -159,8 +186,8 @@ export const resolveDraftFormValues = (
       productionUrl: publication.endpoints?.productionUrl ?? '',
       sandboxUrl: publication.endpoints?.sandboxUrl ?? '',
       agentVisibility: publication.agentVisibility ?? DEFAULT_AGENT_VISIBILITY,
-      subscriptionPlanIds: existingPlanIds(publication),
-      docIds: publication.docIds ?? [],
+      subscriptionPlanIds: existingIds(publication.subscriptionPlans, publication.subscriptionPlanIds),
+      docIds: existingIds(publication.documents, publication.docIds),
     };
   }
   if (api) {

@@ -24,7 +24,7 @@ import { useAllSubscriptionPlans, type SubscriptionPlan } from '@/api/resources/
 import { EmptyState, ErrorState, LoadingState } from '@/components/StateViews';
 import { pricingSummary, summaryMeterIds } from '../../settings/components/pricingFormat';
 import { getPlanLimitDisplay } from '../utils/subscriptionPlanLimit';
-import type { DeletedPlan, DraftFormValues } from '../utils/publicationForm';
+import type { DeletedSelection, DraftFormValues } from '../utils/publicationForm';
 import { PlanCard } from './PlanCard';
 
 const messages = defineMessages({
@@ -79,13 +79,17 @@ const messages = defineMessages({
 });
 
 export type SubscriptionPlansTabProps = {
+  /** Ids in `deletedPlans` the user cleared. Their cards stay, unticked, until the draft is saved. */
+  clearedDeletedIds?: readonly string[];
   /** Selected plans whose subscription plan was deleted. They show as "Deleted" cards and count as published. */
-  deletedPlans?: readonly DeletedPlan[];
+  deletedPlans?: readonly DeletedSelection[];
   disabled?: boolean;
-  /** Clears a deleted plan from the selection; it is dropped from the draft when the draft is saved. */
-  onClearDeleted?: (planId: string) => void;
-  /** Ids of selected plans changed in Settings since the selection was last saved or published; their cards carry an "Edited" tag. */
+  /** Ids of selected plans changed in Settings since the listing was published; the published view tags them "Edited". */
   editedPlanIds?: readonly string[];
+  /** Clears a deleted plan from the draft, or puts it back if already cleared. */
+  onToggleDeleted?: (planId: string) => void;
+  /** The names stored at the last publish, by id. The published view shows these rather than the plan's current name. */
+  storedNames?: Readonly<Record<string, string>>;
   /** Shows the live selection without letting it be changed; `onChange` is then never called. */
   readOnly?: boolean;
   onChange?: (values: DraftFormValues) => void;
@@ -102,9 +106,10 @@ type DisplayablePlan = SubscriptionPlan & { id: string };
  * portal. A plan's active/inactive status is set in Settings, not here.
  *
  * Status limits what can be *chosen*, never what is shown of the selection: the
- * draft offers the active plans, and an inactive one only while it is already
- * selected, so it can be cleared (after which it drops out). The published view
- * lists exactly the plans the live listing holds.
+ * draft offers the active plans, and an inactive one only while the saved selection
+ * holds it, so it can be cleared. A cleared inactive or deleted plan stays on screen,
+ * unticked, until the draft is saved, and can be put back. The published view lists
+ * exactly the plans the live listing holds, under the names stored at the last publish.
  *
  * Cards are ordered deleted plans first (they are gone from Settings and only
  * linger until the next save or publish), then inactive plans (they need
@@ -112,13 +117,15 @@ type DisplayablePlan = SubscriptionPlan & { id: string };
  * server's order.
  */
 export function SubscriptionPlansTab({
+  clearedDeletedIds = [],
   deletedPlans = [],
   disabled,
   editedPlanIds = [],
   onChange,
-  onClearDeleted,
+  onToggleDeleted,
   readOnly,
   savedPlanIds,
+  storedNames,
   values,
 }: SubscriptionPlansTabProps) {
   const intl = useIntl();
@@ -126,16 +133,22 @@ export function SubscriptionPlansTab({
   const selectedIds = values.subscriptionPlanIds;
   const selectedSet = new Set(selectedIds);
   const editedSet = new Set(editedPlanIds);
+  const clearedSet = new Set(clearedDeletedIds);
   const savedSet = new Set(savedPlanIds ?? selectedIds);
   const allPlans = (plansQuery.data?.list ?? []).filter((plan): plan is DisplayablePlan => Boolean(plan.id));
   const activePlans = allPlans.filter((plan) => plan.status === 'ACTIVE');
-  const inactiveSelectedPlans = allPlans.filter((plan) => plan.status !== 'ACTIVE' && selectedSet.has(plan.id));
-  // An inactive plan is offered only while it is selected, so it can still be cleared.
+  // An inactive plan is offered only while the saved selection holds it, so it can still be cleared.
+  const inactiveShownPlans = allPlans.filter(
+    (plan) => plan.status !== 'ACTIVE' && (selectedSet.has(plan.id) || savedSet.has(plan.id)),
+  );
+  // A deleted plan the user cleared is no longer selected, though its card stays until the draft is saved.
+  const deletedSelectedCount = deletedPlans.filter((plan) => !clearedSet.has(plan.id)).length;
+  const inactiveSelectedCount = inactiveShownPlans.filter((plan) => selectedSet.has(plan.id)).length;
   const rank = (plan: DisplayablePlan) => {
     if (plan.status !== 'ACTIVE') return 0;
     return savedSet.has(plan.id) ? 1 : 2;
   };
-  const offeredPlans = [...activePlans, ...inactiveSelectedPlans].sort((a, b) => rank(a) - rank(b));
+  const offeredPlans = [...activePlans, ...inactiveShownPlans].sort((a, b) => rank(a) - rank(b));
   const shownPlans = readOnly ? offeredPlans.filter((plan) => selectedSet.has(plan.id)) : offeredPlans;
   // The unit a per-unit price counts (call or token) comes from its meter.
   const { meters } = useMetersById(shownPlans.flatMap((plan) => summaryMeterIds(plan.pricing)));
@@ -173,7 +186,11 @@ export function SubscriptionPlansTab({
 
   // Select all keeps an already-selected inactive plan; Clear all clears everything.
   const toggleAll = () =>
-    commitSelection(allActiveSelected ? [] : [...activePlans, ...inactiveSelectedPlans].map((plan) => plan.id));
+    commitSelection(
+      allActiveSelected
+        ? []
+        : [...activePlans, ...inactiveShownPlans.filter((plan) => selectedSet.has(plan.id))].map((plan) => plan.id),
+    );
 
   const countStyle = {
     color: readOnly ? 'success.main' : 'primary.main',
@@ -212,16 +229,16 @@ export function SubscriptionPlansTab({
               />
             )}
           </Typography>
-          {!readOnly && deletedPlans.length > 0 && (
+          {!readOnly && deletedSelectedCount > 0 && (
             <Typography color="error.main" variant="body2">
-              <FormattedMessage {...messages.deletedSelectedSummary} values={{ count: deletedPlans.length }} />
+              <FormattedMessage {...messages.deletedSelectedSummary} values={{ count: deletedSelectedCount }} />
             </Typography>
           )}
-          {!readOnly && inactiveSelectedPlans.length > 0 && (
+          {!readOnly && inactiveSelectedCount > 0 && (
             <Typography color="warning.main" variant="body2">
               <FormattedMessage
                 {...messages.inactiveSelectedSummary}
-                values={{ count: inactiveSelectedPlans.length }}
+                values={{ count: inactiveSelectedCount }}
               />
             </Typography>
           )}
@@ -247,19 +264,21 @@ export function SubscriptionPlansTab({
       >
         {deletedPlans.map((plan) => (
           <PlanCard
+            cleared={clearedSet.has(plan.id)}
             deleted
             disabled={disabled}
             displayName={plan.displayName}
             key={plan.id}
-            onToggle={() => onClearDeleted?.(plan.id)}
+            onToggle={() => onToggleDeleted?.(plan.id)}
             readOnly={readOnly}
-            selected
+            selected={!clearedSet.has(plan.id)}
           />
         ))}
         {shownPlans.map((plan) => (
           <PlanCard
+            cleared={!readOnly && plan.status !== 'ACTIVE' && !selectedSet.has(plan.id)}
             disabled={disabled}
-            displayName={plan.displayName}
+            displayName={(readOnly && storedNames?.[plan.id]) || plan.displayName}
             edited={editedSet.has(plan.id)}
             inactive={plan.status !== 'ACTIVE'}
             key={plan.id}

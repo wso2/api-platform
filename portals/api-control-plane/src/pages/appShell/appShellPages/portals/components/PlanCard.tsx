@@ -16,36 +16,27 @@
  * under the License.
  */
 
-import { alpha, Box, Chip, Form, Tooltip, Typography, type Theme } from '@wso2/oxygen-ui';
-import { Check, Pencil, Trash2, TriangleAlert } from '@wso2/oxygen-ui-icons-react';
+import { alpha, Box, Form, Tooltip, Typography, type Theme } from '@wso2/oxygen-ui';
+import { Check } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, FormattedMessage, FormattedNumber, useIntl, type MessageDescriptor } from 'react-intl';
 
 import { focusRingSx } from '@/theme/receipes';
 import type { PlanLimitDisplay } from '../utils/subscriptionPlanLimit';
+import { StatusChip, type Status } from './StatusChip';
 
 const messages = defineMessages({
-  inactive: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.PlanCard.inactive',
-    defaultMessage: 'Inactive',
-    description: 'Status pill on a plan card.',
+  cleared: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.PlanCard.cleared',
+    defaultMessage: 'Will be removed when you save.',
+    description: 'Shown on a draft plan card the user cleared that is no longer offered once saved: a deleted or inactive plan.',
   },
   inactiveSelected: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.PlanCard.inactiveSelected',
     defaultMessage: 'Plan is inactive. Clear it to save or publish.',
   },
-  deleted: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.PlanCard.deleted',
-    defaultMessage: 'Deleted',
-    description: 'Status pill on a plan card whose subscription plan no longer exists.',
-  },
-  edited: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.PlanCard.edited',
-    defaultMessage: 'Edited',
-    description: 'Status pill on a plan card whose subscription plan was changed after it was last saved or published.',
-  },
   editedPublished: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.PlanCard.editedPublished',
-    defaultMessage: 'Edited after publishing.',
+    defaultMessage: 'Edited after last publish.',
     description:
       'Shown in place of the limit on a published plan card whose plan was edited. Any edit counts (name, limit or status), so it does not say which.',
   },
@@ -56,7 +47,7 @@ const messages = defineMessages({
   },
   deletedDraft: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.PlanCard.deletedDraft',
-    defaultMessage: 'Deleted after saving.',
+    defaultMessage: 'Deleted after last save.',
     description: 'Shown on a draft plan card whose subscription plan no longer exists.',
   },
   deletedDraftHint: {
@@ -66,7 +57,7 @@ const messages = defineMessages({
   },
   deletedPublished: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.PlanCard.deletedPublished',
-    defaultMessage: 'Deleted after publishing.',
+    defaultMessage: 'Deleted after last publish.',
     description: 'Shown on a published plan card whose subscription plan no longer exists.',
   },
   inactivePublishedHint: {
@@ -87,6 +78,8 @@ const messages = defineMessages({
 });
 
 type PlanCardProps = {
+  /** The user cleared a deleted or inactive plan; it stays on screen, unticked, until the draft is saved. */
+  cleared?: boolean;
   deleted?: boolean;
   disabled?: boolean;
   displayName: string;
@@ -104,20 +97,8 @@ type PlanCardProps = {
 /** The card's own colour: primary in the draft, success in the published view. State is carried by the chips, never the accent. */
 type Accent = 'primary' | 'success';
 
-/** Palette colour of a status chip: warning for something to act on or check, error for something gone. */
-type StatusTone = 'error' | 'warning';
-
-/** The states a card can show as a chip. */
-type Status = 'deleted' | 'inactive' | 'edited';
-
 /** Most blocking first. A card shows only the first state that applies: Deleted cannot be fixed, Inactive blocks save and publish, Edited is informational. */
 const STATUS_PRIORITY: readonly Status[] = ['deleted', 'inactive', 'edited'];
-
-const STATUS_CHIPS: Record<Status, { icon: typeof Check; label: MessageDescriptor; tone: StatusTone }> = {
-  deleted: { icon: Trash2, label: messages.deleted, tone: 'error' },
-  inactive: { icon: TriangleAlert, label: messages.inactive, tone: 'warning' },
-  edited: { icon: Pencil, label: messages.edited, tone: 'warning' },
-};
 
 /** Side of the leading checkbox square. */
 const CHECK_SIZE = 20;
@@ -147,29 +128,6 @@ function SelectionSquare({ accent, selected }: { accent: Accent; selected: boole
     >
       {selected && <Check color="#fff" size={14} strokeWidth={3} />}
     </Box>
-  );
-}
-
-/** One state on a card: a tinted pill with its icon, in the tone that says how much it matters. */
-function StatusChip({ status }: { status: Status }) {
-  const { icon: Icon, label, tone } = STATUS_CHIPS[status];
-  return (
-    <Chip
-      color={tone}
-      icon={<Icon aria-hidden size={14} />}
-      label={<FormattedMessage {...label} />}
-      size="small"
-      sx={(theme) => ({
-        bgcolor: alpha(theme.palette[tone].main, 0.16),
-        color: `${tone}.main`,
-        flexShrink: 0,
-        fontSize: 12,
-        fontWeight: 600,
-        letterSpacing: '0.01em',
-        '& .MuiChip-icon': { color: 'inherit' },
-      })}
-      variant="filled"
-    />
   );
 }
 
@@ -211,7 +169,8 @@ const planCardSx = (
  * follow that same state. The body is the plan's limit, or a notice in its place when the limit
  * cannot be trusted: the plan was deleted, or edited since the listing was published.
  *
- * An inactive plan only appears while it is selected, because the user has to clear it.
+ * An inactive plan only appears while the saved selection holds it, because the user has to clear it;
+ * a cleared one stays, unticked with a notice, until the draft is saved.
  *
  * `readOnly` (the published view) never sets `disabled`, which would grey the card out; it just has no
  * click handler, so hovering still shows the tooltip. A deleted plan in the draft stays clickable so
@@ -220,6 +179,7 @@ const planCardSx = (
  * `pricing` is the price of a paid plan in words; a free plan shows none.
  */
 export function PlanCard({
+  cleared = false,
   deleted = false,
   disabled,
   displayName,
@@ -239,14 +199,17 @@ export function PlanCard({
   const status = STATUS_PRIORITY.find((state) => flags[state]);
 
   let notice: MessageDescriptor | undefined;
-  if (status === 'deleted') notice = published ? messages.deletedPublished : messages.deletedDraft;
+  if (cleared && !published) notice = messages.cleared;
+  else if (status === 'deleted') notice = published ? messages.deletedPublished : messages.deletedDraft;
   else if (status === 'edited') notice = messages.editedPublished;
 
   // The notice is the short form; the tooltip says it in full.
   let hint: MessageDescriptor | undefined;
-  if (status === 'inactive') hint = published ? messages.inactivePublishedHint : messages.inactiveSelected;
+  if (status === 'inactive' && published) hint = messages.inactivePublishedHint;
+  else if (status === 'inactive' && !cleared) hint = messages.inactiveSelected;
   else if (status === 'edited') hint = messages.editedPublishedHint;
-  else if (status === 'deleted') hint = published ? messages.deletedPublishedHint : messages.deletedDraftHint;
+  else if (status === 'deleted' && published) hint = messages.deletedPublishedHint;
+  else if (status === 'deleted' && !cleared) hint = messages.deletedDraftHint;
   const tooltip = hint ? intl.formatMessage(hint) : '';
 
   return (
