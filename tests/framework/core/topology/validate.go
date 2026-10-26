@@ -205,8 +205,8 @@ func platformAPIDatabase(b *ResolvedBlock) components.DBType {
 
 // allowDatabaseVariantFeatureOwners permits a feature to be intentionally repeated by
 // same-named runners whose blocks exercise distinct platform-api database variants. Matrix
-// expansion already collapses variants within one source block; this exception covers separate
-// blocks used when two components must vary together, since a block supports only one matrix.
+// expansion already collapses same-block variants; this exception covers separate blocks
+// kept apart for other reasons that still vary the same component's engine.
 func allowDatabaseVariantFeatureOwners(owners map[string]featureOwner) bool {
 	if len(owners) < 2 {
 		return false

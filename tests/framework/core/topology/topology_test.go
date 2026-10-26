@@ -440,6 +440,90 @@ blocks:
 		"a sharer must follow its owner's engine through the matrix")
 }
 
+func TestMultiAxisMatrixExpansion(t *testing.T) {
+	r := testRegistry(t)
+	require.NoError(t, r.Register(&components.Definition{
+		Name: "platform-gateway", Image: components.ImageRef{Ref: "pg:test"}, Alias: "platform-gateway",
+		Endpoints: []components.Endpoint{{Name: "http", Port: 8080, Scheme: "http"}},
+		DB: &components.DBContract{
+			Supported: []components.DBType{components.SQLite, components.Postgres, components.SQLServer},
+			Schema: map[components.DBType][]string{
+				components.Postgres:  {"pg.postgres.sql"},
+				components.SQLServer: {"pg.sqlserver.sql"},
+			},
+			SelfMigrates: []components.DBType{components.SQLite},
+			Env:          func(components.DSN) map[string]string { return nil },
+		},
+	}))
+	require.NoError(t, r.Validate())
+
+	src := `
+suite: s
+defaults:
+  db:
+    api-portal: postgres
+blocks:
+  - name: platform-api-core
+    components:
+      - name: gateway-controller
+        db:
+          matrix: [sqlite, postgres]
+      - name: platform-gateway
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: mock-platform-api
+      - name: api-portal
+    runners: [{name: r, features: [f.feature]}]
+`
+	resolved, err := Load([]byte(src), r)
+	require.NoError(t, err)
+
+	require.Len(t, resolved.Blocks, 6, "2 platform-api engines x 3 platform-gateway engines must multiply")
+
+	seen := map[string]bool{}
+	for _, b := range resolved.Blocks {
+		require.Equal(t, "platform-api-core", b.Source)
+		require.False(t, seen[b.Name], "block name %q must be unique", b.Name)
+		seen[b.Name] = true
+
+		require.Contains(t, b.Name, "gateway-controller-")
+		require.Contains(t, b.Name, "platform-gateway-")
+
+		require.Empty(t, b.DB,
+			"ResolvedBlock.DB is only meaningful for a single varying component; it stays empty when two or more vary")
+
+		byName := map[string]ResolvedComponent{}
+		for _, c := range b.Components {
+			byName[c.Def.Name] = c
+		}
+
+		require.Equal(t, components.Postgres, byName["api-portal"].DB,
+			"an independent sibling must keep its own engine across every combination")
+		require.Equal(t, byName["gateway-controller"].DB, byName["mock-platform-api"].DB,
+			"a sharer must follow its owner's engine through every combination")
+	}
+
+	want := map[[2]components.DBType]bool{}
+	for _, papi := range []components.DBType{components.SQLite, components.Postgres} {
+		for _, gw := range []components.DBType{components.SQLite, components.Postgres, components.SQLServer} {
+			want[[2]components.DBType{papi, gw}] = false
+		}
+	}
+	for _, b := range resolved.Blocks {
+		byName := map[string]ResolvedComponent{}
+		for _, c := range b.Components {
+			byName[c.Def.Name] = c
+		}
+		combo := [2]components.DBType{byName["gateway-controller"].DB, byName["platform-gateway"].DB}
+		_, expected := want[combo]
+		require.True(t, expected, "unexpected combination %v", combo)
+		want[combo] = true
+	}
+	for combo, hit := range want {
+		require.True(t, hit, "combination %v was never produced", combo)
+	}
+}
+
 func TestStrictParsing(t *testing.T) {
 	t.Run("an unknown key is rejected", func(t *testing.T) {
 		src := `
@@ -983,7 +1067,7 @@ func TestExpandMatrixFindsTheVaryingComponent(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, got, 1)
 		require.Empty(t, got[0].name, "a non-expanding block keeps its unsuffixed name")
-		require.Empty(t, got[0].component)
+		require.Empty(t, got[0].sweeps)
 	})
 
 	t.Run("one matrix yields one variant per engine, naming the component", func(t *testing.T) {
@@ -999,26 +1083,51 @@ func TestExpandMatrixFindsTheVaryingComponent(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, got, 2)
 		for i, want := range []components.DBType{components.SQLite, components.Postgres} {
-			require.Equal(t, string(want), got[i].name)
-			require.Equal(t, want, got[i].db)
-			require.Equal(t, "platform-gateway", got[i].component,
-				"the variant must record which component it varies")
+			require.Equal(t, string(want), got[i].name,
+				"a single-axis matrix keeps the bare engine name as the block suffix")
+			require.Len(t, got[i].sweeps, 1)
+			require.Equal(t, want, got[i].sweeps[0].db)
+			require.Equal(t, "platform-gateway", got[i].sweeps[0].component,
+				"the sweep must record which component it varies")
 		}
 	})
 
-	t.Run("two matrices in one block are refused, naming both", func(t *testing.T) {
-		_, err := expandMatrix(&Block{
-			Name: "gateway-crossplane",
+	t.Run("two matrices in one block expand to their cartesian product", func(t *testing.T) {
+		got, err := expandMatrix(&Block{
+			Name: "platform-api-core",
 			Components: []Component{
-				{Name: "platform-gateway", DB: DBSpec{Matrix: []components.DBType{components.SQLite}}},
-				{Name: "platform-api", DB: DBSpec{Matrix: []components.DBType{components.Postgres}}},
+				{Name: "platform-api", DB: DBSpec{
+					Matrix: []components.DBType{components.SQLite, components.Postgres},
+				}},
+				{Name: "platform-gateway", DB: DBSpec{
+					Matrix: []components.DBType{components.SQLite, components.Postgres, components.SQLServer},
+				}},
 			},
 		})
-		require.Error(t, err)
-		require.ErrorContains(t, err, "gateway-crossplane")
-		require.ErrorContains(t, err, "platform-gateway")
-		require.ErrorContains(t, err, "platform-api")
-		require.ErrorContains(t, err, "at most one component")
+		require.NoError(t, err)
+		require.Len(t, got, 6, "two axes of 2 and 3 engines must multiply, not add")
+
+		seenNames := map[string]bool{}
+		seenCombos := map[[2]components.DBType]bool{}
+		for _, v := range got {
+			require.False(t, seenNames[v.name], "variant name %q must be unique", v.name)
+			seenNames[v.name] = true
+
+			require.Len(t, v.sweeps, 2, "both matrix components must vary independently")
+			papi, ok := v.sweepFor("platform-api")
+			require.True(t, ok)
+			gw, ok := v.sweepFor("platform-gateway")
+			require.True(t, ok)
+
+			require.Contains(t, v.name, "platform-api-"+string(papi.db),
+				"a multi-axis name must identify which engine belongs to which component")
+			require.Contains(t, v.name, "platform-gateway-"+string(gw.db))
+
+			combo := [2]components.DBType{papi.db, gw.db}
+			require.False(t, seenCombos[combo], "combination %v must appear only once", combo)
+			seenCombos[combo] = true
+		}
+		require.Len(t, seenCombos, 6, "every (platform-api, platform-gateway) pair must be covered")
 	})
 
 	t.Run("duplicate engines in a matrix are refused", func(t *testing.T) {
@@ -1037,28 +1146,40 @@ func TestComponentEngineResolution(t *testing.T) {
 		"platform-gateway": {DB: DBSpec{One: components.SQLite}},
 		"platform-api":     {DB: DBSpec{One: components.Postgres}},
 	}
-	sweep := variant{name: "sqlserver", component: "platform-gateway", db: components.SQLServer}
+	v := variant{name: "sqlserver", sweeps: []sweep{{component: "platform-gateway", db: components.SQLServer, name: "sqlserver"}}}
 
 	t.Run("the matrix component takes this variant's engine", func(t *testing.T) {
-		got := componentEngine(&Component{Name: "platform-gateway"}, sweep, defaults)
+		got := componentEngine(&Component{Name: "platform-gateway"}, v, defaults)
 		require.Equal(t, components.SQLServer, got)
 	})
 
 	t.Run("a non-matrix component is untouched by the sweep", func(t *testing.T) {
-		got := componentEngine(&Component{Name: "platform-api"}, sweep, defaults)
+		got := componentEngine(&Component{Name: "platform-api"}, v, defaults)
 		require.Equal(t, components.Postgres, got,
 			"defaults.components must hold platform-api steady across every gateway variant")
 	})
 
 	t.Run("an explicit component db beats defaults", func(t *testing.T) {
 		got := componentEngine(
-			&Component{Name: "platform-api", DB: DBSpec{One: components.SQLite}}, sweep, defaults)
+			&Component{Name: "platform-api", DB: DBSpec{One: components.SQLite}}, v, defaults)
 		require.Equal(t, components.SQLite, got)
 	})
 
 	t.Run("nothing anywhere resolves empty, for the caller to reject", func(t *testing.T) {
-		got := componentEngine(&Component{Name: "unlisted"}, sweep, defaults)
+		got := componentEngine(&Component{Name: "unlisted"}, v, defaults)
 		require.Empty(t, got)
+	})
+
+	t.Run("each of two sweeps takes its own component's engine", func(t *testing.T) {
+		multi := variant{
+			name: "postgres_platform-gateway-sqlserver",
+			sweeps: []sweep{
+				{component: "platform-api", db: components.Postgres, name: "postgres"},
+				{component: "platform-gateway", db: components.SQLServer, name: "sqlserver"},
+			},
+		}
+		require.Equal(t, components.Postgres, componentEngine(&Component{Name: "platform-api"}, multi, defaults))
+		require.Equal(t, components.SQLServer, componentEngine(&Component{Name: "platform-gateway"}, multi, defaults))
 	})
 }
 

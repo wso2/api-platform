@@ -79,7 +79,8 @@ type ResolvedBlock struct {
 	// Source is the block name as written, before matrix expansion.
 	Source string
 
-	// DB is the matrix engine for this variant, or empty when no matrix is declared.
+	// DB is the engine when exactly one component's db varies in this block; empty when none
+	// or several vary (each component's own DB then holds its engine).
 	DB components.DBType
 
 	Parallel   int
@@ -288,12 +289,8 @@ func resolve(suite *Suite, registry *components.Registry) (*Resolved, error) {
 	return out, nil
 }
 
-// variant describes one matrix expansion.
-type variant struct {
-	// name is the matrix suffix appended to the block name.
-	name string
-
-	// component is the component whose engine varies.
+// sweep is one component's resolved engine for one matrix combination.
+type sweep struct {
 	component string
 
 	// db is the selected database engine.
@@ -301,26 +298,44 @@ type variant struct {
 
 	// image is the selected database variant.
 	image DBVariant
+
+	// name is this sweep's suffix piece, e.g. "postgres" or "sqlserver-2022-latest".
+	name string
 }
 
-// expandMatrix returns the concrete variants for a block.
+// variant is one concrete combination of every varying component's engine.
+type variant struct {
+	// name is the matrix suffix appended to the block name.
+	name string
+
+	// sweeps holds one entry per component whose engine varies in this combination.
+	sweeps []sweep
+}
+
+func (v variant) sweepFor(component string) (sweep, bool) {
+	for _, s := range v.sweeps {
+		if s.component == component {
+			return s, true
+		}
+	}
+	return sweep{}, false
+}
+
+// matrixAxis is one component's resolved list of database variant keys to sweep.
+type matrixAxis struct {
+	component string
+	variants  []string
+}
+
+// expandMatrix returns a block's variants: the cartesian product of its components' db.matrix.
 func expandMatrix(block *Block) ([]variant, error) {
-	var (
-		matrixComponent string
-		variants        []string
-	)
+	var axes []matrixAxis
 	for i := range block.Components {
 		c := &block.Components[i]
 		if !c.DB.IsMatrix() {
 			continue
 		}
-		if matrixComponent != "" {
-			return nil, fmt.Errorf(
-				"block %q: components %q and %q both declare db.matrix; at most one component "+
-					"per block may be a matrix", block.Name, matrixComponent, c.Name)
-		}
-		matrixComponent = c.Name
-		variants = c.DB.Variants
+		variants := c.DB.Variants
 		if len(variants) == 0 {
 			for _, engine := range c.DB.Matrix {
 				key, _, ok := defaultVariant(engine)
@@ -330,30 +345,60 @@ func expandMatrix(block *Block) ([]variant, error) {
 				variants = append(variants, key)
 			}
 		}
+		seen := make(map[string]bool, len(variants))
+		for _, key := range variants {
+			if seen[key] {
+				return nil, fmt.Errorf("block %q: db.matrix contains duplicate engine %q or variant", block.Name, dbEngineName(key))
+			}
+			seen[key] = true
+			if _, ok := SupportedDBVariants[key]; !ok {
+				return nil, fmt.Errorf("block %q: unsupported database variant %q", block.Name, key)
+			}
+		}
+		axes = append(axes, matrixAxis{component: c.Name, variants: variants})
 	}
 
-	if matrixComponent == "" {
+	if len(axes) == 0 {
 		return []variant{{}}, nil
 	}
 
-	out := make([]variant, 0, len(variants))
-	seen := make(map[string]bool, len(variants))
-	for _, key := range variants {
-		if seen[key] {
-			return nil, fmt.Errorf("block %q: db.matrix contains duplicate engine %q or variant", block.Name, dbEngineName(key))
+	combos := [][]string{{}}
+	for _, axis := range axes {
+		next := make([][]string, 0, len(combos)*len(axis.variants))
+		for _, combo := range combos {
+			for _, key := range axis.variants {
+				next = append(next, append(append([]string(nil), combo...), key))
+			}
 		}
-		seen[key] = true
-		db, ok := SupportedDBVariants[key]
-		if !ok {
-			return nil, fmt.Errorf("block %q: unsupported database variant %q", block.Name, key)
+		combos = next
+	}
+
+	multiAxis := len(axes) > 1
+	out := make([]variant, 0, len(combos))
+	for _, combo := range combos {
+		sweeps := make([]sweep, len(axes))
+		parts := make([]string, len(axes))
+		for i, axis := range axes {
+			key := combo[i]
+			db := SupportedDBVariants[key]
+			suffix := variantSuffix(key, db)
+			sweeps[i] = sweep{component: axis.component, db: db.Engine, image: db, name: suffix}
+			parts[i] = suffix
+			if multiAxis {
+				parts[i] = axis.component + "-" + suffix
+			}
 		}
-		suffix := strings.ReplaceAll(key, ":", "-")
-		if defaultKey, ok := DefaultDBVariants[db.Engine]; ok && key == defaultKey {
-			suffix = string(db.Engine)
-		}
-		out = append(out, variant{name: suffix, component: matrixComponent, db: db.Engine, image: db})
+		out = append(out, variant{name: strings.Join(parts, "_"), sweeps: sweeps})
 	}
 	return out, nil
+}
+
+// variantSuffix suffixes an engine: its bare name for the default variant, else the variant key.
+func variantSuffix(key string, db DBVariant) string {
+	if defaultKey, ok := DefaultDBVariants[db.Engine]; ok && key == defaultKey {
+		return string(db.Engine)
+	}
+	return strings.ReplaceAll(key, ":", "-")
 }
 
 func dbEngineName(key string) string {
@@ -365,8 +410,8 @@ func dbEngineName(key string) string {
 
 // componentEngine selects the component-specific or default engine.
 func componentEngine(c *Component, v variant, defaults map[string]ComponentDefaults) components.DBType {
-	if v.component != "" && c.Name == v.component {
-		return v.db
+	if s, ok := v.sweepFor(c.Name); ok {
+		return s.db
 	}
 	if c.DB.One != "" {
 		return c.DB.One
@@ -378,12 +423,12 @@ func componentEngine(c *Component, v variant, defaults map[string]ComponentDefau
 }
 
 func componentVariant(c *Component, v variant, defaults map[string]ComponentDefaults) (string, DBVariant, bool) {
-	if v.component != "" && c.Name == v.component {
-		if v.image.Engine == "" {
-			key, image, ok := defaultVariant(v.db)
+	if s, ok := v.sweepFor(c.Name); ok {
+		if s.image.Engine == "" {
+			key, image, ok := defaultVariant(s.db)
 			return key, image, ok
 		}
-		return v.name, v.image, true
+		return s.name, s.image, true
 	}
 	if c.DB.Variant != "" {
 		variant, ok := SupportedDBVariants[c.DB.Variant]
@@ -497,10 +542,15 @@ func resolveBlock(
 		name = block.Name + "/" + v.name
 	}
 
+	var singleAxisDB components.DBType
+	if len(v.sweeps) == 1 {
+		singleAxisDB = v.sweeps[0].db
+	}
+
 	rb := &ResolvedBlock{
 		Name:     name,
 		Source:   block.Name,
-		DB:       v.db,
+		DB:       singleAxisDB,
 		Parallel: block.EffectiveParallel(),
 		Runners:  block.Runners,
 

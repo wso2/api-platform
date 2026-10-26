@@ -139,7 +139,8 @@ type Block struct {
 	Parallel int `yaml:"parallel"`
 
 	// Components are the systems this block runs. A component may declare a database
-	// matrix, which expands the block into one variant per engine.
+	// matrix, which expands the block into one variant per engine. Two or more components
+	// may each declare one, expanding the block into their product instead.
 	Components []Component `yaml:"components"`
 
 	// Wiring configures components by name through their typed wiring specifications.
@@ -236,8 +237,7 @@ type DBSpec struct {
 	// Variant is the selected supported variant key for scalar values.
 	Variant string
 
-	// Matrix is the engine list, set by the mapping form. At most one component per block
-	// may set it — see expandMatrix.
+	// Matrix is the engine list, set by the mapping form. Two or more components may each set one.
 	Matrix []components.DBType
 
 	// Variants contains versioned variant keys from YAML matrix values.
