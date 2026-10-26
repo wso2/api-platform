@@ -398,8 +398,8 @@ func (r *DocumentRepo) DocumentDisplayNameExistsForArtifact(artifactUUID, displa
 	return true, nil
 }
 
-// GetDocumentsByHandles looks up each handle's document (uuid, handle, type, file name; no
-// content) within one artifact, since the unique index is (artifact_uuid, handle), not per
+// GetDocumentsByHandles looks up each handle's document (uuid, handle, type, display name, file
+// name; no content) within one artifact, since the unique index is (artifact_uuid, handle), not per
 // org. Reserved types (DEFINITION, THUMBNAIL) are never returned. Empty input gives an empty map.
 func (r *DocumentRepo) GetDocumentsByHandles(artifactUUID string, handles []string, orgUUID string) (map[string]*model.Document, error) {
 	if len(handles) == 0 {
@@ -418,7 +418,7 @@ func (r *DocumentRepo) GetDocumentsByHandles(artifactUUID string, handles []stri
 		args = append(args, t)
 	}
 	query := fmt.Sprintf(`
-		SELECT uuid, handle, type, COALESCE(file_name, '')
+		SELECT uuid, handle, type, display_name, COALESCE(file_name, '')
 		FROM api_documents
 		WHERE handle IN (%s) AND artifact_uuid = ? AND organization_uuid = ?
 		  AND type NOT IN (%s)
@@ -431,7 +431,7 @@ func (r *DocumentRepo) GetDocumentsByHandles(artifactUUID string, handles []stri
 	m := make(map[string]*model.Document)
 	for rows.Next() {
 		doc := &model.Document{}
-		if err := rows.Scan(&doc.ID, &doc.Handle, &doc.Type, &doc.FileName); err != nil {
+		if err := rows.Scan(&doc.ID, &doc.Handle, &doc.Type, &doc.DisplayName, &doc.FileName); err != nil {
 			return nil, err
 		}
 		m[doc.Handle] = doc

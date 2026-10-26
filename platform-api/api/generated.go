@@ -4749,6 +4749,9 @@ type Publication struct {
 	DisplayName   *string    `json:"displayName,omitempty" yaml:"displayName,omitempty"`
 	DocIds        *DocIdList `json:"docIds,omitempty" yaml:"docIds,omitempty"`
 
+	// Documents The selected documents, including deleted ones. Same documents as docIds.
+	Documents *[]PublicationSelection `json:"documents,omitempty" yaml:"documents,omitempty"`
+
 	// Endpoints Author-entered; not derived from the API.
 	Endpoints *struct {
 		ProductionUrl *string `json:"productionUrl,omitempty" yaml:"productionUrl,omitempty"`
@@ -4773,7 +4776,10 @@ type Publication struct {
 	} `json:"owners,omitempty" yaml:"owners,omitempty"`
 	Status              *PublicationStatus      `json:"status,omitempty" yaml:"status,omitempty"`
 	SubscriptionPlanIds *SubscriptionPlanIdList `json:"subscriptionPlanIds,omitempty" yaml:"subscriptionPlanIds,omitempty"`
-	Tags                *[]string               `json:"tags,omitempty" yaml:"tags,omitempty"`
+
+	// SubscriptionPlans The selected subscription plans, including deleted ones. Same plans as subscriptionPlanIds.
+	SubscriptionPlans *[]PublicationSelection `json:"subscriptionPlans,omitempty" yaml:"subscriptionPlans,omitempty"`
+	Tags              *[]string               `json:"tags,omitempty" yaml:"tags,omitempty"`
 
 	// UpdatedAt When this record last changed in any way — the latest across its details, definition, landing page and thumbnail, which are saved through separate calls. The same value the portal rollup reports for this tier — draftUpdatedAt on a draft, publicationUpdatedAt on a publication.
 	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
@@ -4839,6 +4845,9 @@ type PublicationDraftDetails struct {
 	DisplayName     string                                  `json:"displayName" yaml:"displayName"`
 	DocIds          *DocIdList                              `json:"docIds,omitempty" yaml:"docIds,omitempty"`
 
+	// Documents The selected documents, including deleted ones. Same documents as docIds.
+	Documents *[]PublicationSelection `json:"documents,omitempty" yaml:"documents,omitempty"`
+
 	// Endpoints Author-entered; not derived from the API.
 	Endpoints *struct {
 		ProductionUrl *string `json:"productionUrl,omitempty" yaml:"productionUrl,omitempty"`
@@ -4862,7 +4871,10 @@ type PublicationDraftDetails struct {
 		TechnicalOwnerEmail *openapi_types.Email `json:"technicalOwnerEmail,omitempty" yaml:"technicalOwnerEmail,omitempty"`
 	} `json:"owners,omitempty" yaml:"owners,omitempty"`
 	SubscriptionPlanIds *SubscriptionPlanIdList `json:"subscriptionPlanIds,omitempty" yaml:"subscriptionPlanIds,omitempty"`
-	Tags                *[]string               `json:"tags,omitempty" yaml:"tags,omitempty"`
+
+	// SubscriptionPlans The selected subscription plans, including deleted ones. Same plans as subscriptionPlanIds.
+	SubscriptionPlans *[]PublicationSelection `json:"subscriptionPlans,omitempty" yaml:"subscriptionPlans,omitempty"`
+	Tags              *[]string               `json:"tags,omitempty" yaml:"tags,omitempty"`
 
 	// UpdatedAt When this record last changed in any way — the latest across its details, definition, landing page and thumbnail, which are saved through separate calls. The same value the portal rollup reports for this tier — draftUpdatedAt on a draft, publicationUpdatedAt on a publication.
 	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
@@ -4905,6 +4917,21 @@ type PublicationDraftDetailsInput struct {
 
 // PublicationDraftDetailsInputAgentVisibility defines model for PublicationDraftDetailsInput.AgentVisibility.
 type PublicationDraftDetailsInputAgentVisibility string
+
+// PublicationSelection A subscription plan or document selected by a publication, as it was when last saved or published.
+type PublicationSelection struct {
+	// Deleted True when the plan or document no longer exists. The publication keeps the selection until the next publish.
+	Deleted bool `json:"deleted" yaml:"deleted"`
+
+	// DisplayName The name stored with the selection, so it can still be shown after the source is deleted.
+	DisplayName string `json:"displayName" yaml:"displayName"`
+
+	// Edited True when the plan or document was changed after this selection was last saved (a draft) or published (a live listing). Saving the draft or publishing again clears it.
+	Edited bool `json:"edited" yaml:"edited"`
+
+	// Id The plan or document handle.
+	Id string `json:"id" yaml:"id"`
+}
 
 // PublicationSummaryItem defines model for PublicationSummaryItem.
 type PublicationSummaryItem struct {

@@ -262,9 +262,6 @@ CREATE TABLE dbo.api_publication_contents (
 );
 
 -- Documents table for storing API-related documents (e.g. OpenAPI spec definitions).
--- Positioned here, ahead of its original location further down this file, so
--- api_publication_doc_mappings below (which references it) doesn't create
--- before its FK target exists — SQL Server validates that at CREATE TABLE time.
 IF OBJECT_ID(N'dbo.api_documents', N'U') IS NULL
 CREATE TABLE dbo.api_documents (
     uuid              VARCHAR(40)    NOT NULL,
@@ -294,6 +291,10 @@ CREATE UNIQUE INDEX uq_api_documents_artifact_handle ON dbo.api_documents(artifa
 
 -- =====================================================================
 -- api_publication_doc_mappings: the documents selected for a publication row.
+-- doc_uuid is a pointer, not a foreign key, so deleting a document leaves the
+-- selection intact. doc_handle and display_name are copies taken at
+-- the last save or publish. A selection whose pointer matches no api_documents
+-- row is reported as deleted.
 --
 -- organization_uuid uses NO ACTION (multiple cascade paths); deleting an
 -- organization still removes these rows via api_publications.
@@ -303,24 +304,22 @@ CREATE TABLE dbo.api_publication_doc_mappings (
     organization_uuid VARCHAR(40)  NOT NULL,
     publication_uuid  VARCHAR(40)  NOT NULL,        -- the api_publications row this belongs to, draft or live
     doc_uuid          VARCHAR(40)  NOT NULL,
+    doc_handle        VARCHAR(40)  NOT NULL,
+    display_name      VARCHAR(255) NOT NULL,
     created_by        VARCHAR(200) NOT NULL,
     created_at        DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     PRIMARY KEY (organization_uuid, publication_uuid, doc_uuid),
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE NO ACTION,
     FOREIGN KEY (publication_uuid, organization_uuid)
-        REFERENCES api_publications(uuid, organization_uuid) ON DELETE CASCADE,
-    -- api_documents has no UNIQUE(organization_uuid, uuid) — single-column FK,
-    -- org match checked in the service layer, same exception as subscription_plans.
-    -- CASCADE: documents are authored outside this feature. Deleting one there
-    -- withdraws it from the selection here rather than blocking the deletion.
-    FOREIGN KEY (doc_uuid) REFERENCES api_documents(uuid) ON DELETE CASCADE
+        REFERENCES api_publications(uuid, organization_uuid) ON DELETE CASCADE
 );
 
 -- =====================================================================
 -- api_publication_plan_mappings: the subscription plans selected for a
--- publication row. subscription_plans has no UNIQUE(organization_uuid, uuid),
--- so the plan reference is single-column and the organization match is checked
--- in the service layer.
+-- publication row. subscription_plan_uuid is a pointer, not a foreign key, so
+-- deleting a plan leaves the selection intact. plan_handle and display_name are
+-- copies taken at the last save or publish. A selection whose pointer matches
+-- no subscription_plans row is reported as deleted.
 --
 -- organization_uuid uses NO ACTION (multiple cascade paths); deleting an
 -- organization still removes these rows via api_publications.
@@ -330,14 +329,14 @@ CREATE TABLE dbo.api_publication_plan_mappings (
     organization_uuid      VARCHAR(40)  NOT NULL,
     publication_uuid       VARCHAR(40)  NOT NULL,   -- the api_publications row this belongs to, draft or live
     subscription_plan_uuid VARCHAR(40)  NOT NULL,
+    plan_handle            VARCHAR(40)  NOT NULL,
+    display_name           VARCHAR(255) NOT NULL,
     created_by             VARCHAR(200) NOT NULL,
     created_at             DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     PRIMARY KEY (organization_uuid, publication_uuid, subscription_plan_uuid),
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE NO ACTION,
     FOREIGN KEY (publication_uuid, organization_uuid)
-        REFERENCES api_publications(uuid, organization_uuid) ON DELETE CASCADE,
-    FOREIGN KEY (subscription_plan_uuid)
-        REFERENCES subscription_plans(uuid) ON DELETE NO ACTION
+        REFERENCES api_publications(uuid, organization_uuid) ON DELETE CASCADE
 );
 
 -- API Publication indexes

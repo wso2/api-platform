@@ -89,9 +89,8 @@ type graph struct {
 
 // seedOrgGraph inserts the rows a publication hangs off for one organization:
 // a REST API, an active subscription plan, one active API Portal and one API
-// document. api_publication_doc_mappings.doc_uuid has a hard FK to
-// api_documents(uuid), so docIds resolution needs a real row to resolve
-// against. api_publications itself stays unseeded; the tests write it through
+// document. docIds resolution needs a real row to resolve against.
+// api_publications itself stays unseeded; the tests write it through
 // PublicationService.
 func seedOrgGraph(t *testing.T, tdb *schemaDB) graph {
 	t.Helper()
