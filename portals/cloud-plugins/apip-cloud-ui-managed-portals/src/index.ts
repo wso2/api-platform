@@ -8,9 +8,9 @@
  */
 
 export { ManagedPortalsPage, type ManagedPortalsPageProps } from './ManagedPortalsPage';
-export type { CloudHostPort, NotifySeverity } from './hostPort';
+export type { ApiFetch, CloudHostPort, NotifySeverity } from './hostPort';
 export { createMockPortalPort } from './mockPort';
-export { createRealPortalPort, resolveApiBase } from './realPort';
+export { createApiFetchPortalPort, createRealPortalPort, resolveApiBase } from './realPort';
 export { useManagedPortalList } from './hooks';
 export type {
   CreateManagedPortalInput,

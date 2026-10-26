@@ -7,7 +7,12 @@
  * You may not alter or remove any copyright or other notice from copies of this content.
  */
 
-import { Boxes, Network, Workflow } from "@wso2/oxygen-ui-icons-react";
+import {
+  Boxes,
+  Network,
+  PanelsTopLeft,
+  Workflow,
+} from "@wso2/oxygen-ui-icons-react";
 
 import { EnvironmentsFeature } from "@wso2-enterprise/apip-cloud-ui-environments-new";
 import { GatewaysFeature } from "@wso2-enterprise/apip-cloud-ui-gateways";
@@ -25,6 +30,7 @@ import {
   DeployFeature,
   ProviderDeployFeature,
 } from "@wso2-enterprise/apip-cloud-ui-deploy";
+import { ManagedPortalsPage } from "@wso2-enterprise/apip-cloud-ui-managed-portals";
 import { TrialStatusFeature } from "@wso2-enterprise/apip-cloud-ui-trial-status";
 import {
   AI_WORKSPACE_HEADER_ACTIONS_SLOT,
@@ -61,6 +67,34 @@ export const cloudBrandLogo: BrandLogo = {
 const AI_GATEWAY_TYPES: GatewayType[] = ["ai"];
 
 /**
+ * `[ai_workspace.feature_flags] api_portal_integration_enabled`, as the BFF
+ * serves it on `window.__RUNTIME_CONFIG__`. One flag for the whole API Portal
+ * integration surface — the managed-portals page here, plus the MCP proxy
+ * publish/unpublish path and subscription-plans UI shared with OSS. When it is
+ * on, the legacy `APIP_AIW_API_PORTAL_ENABLED` single-portal MCP Hub path is
+ * superseded and should be treated as off by callers that read both.
+ *
+ * Read here rather than through core's `config.env`: only this file and
+ * `plugin.ts` are overlaid into the portal, and importing core config would
+ * also clash with the api-control-plane host's runtime-config typing when
+ * this package is typechecked. OSS code reads the same key through
+ * `isFeatureEnabled('api-portal-integration')` and sees the same default.
+ *
+ * Deviates from the house flag convention (absent = hidden) on purpose: this
+ * is the GA path for API Portal integration, so a deployment picking up a
+ * newer image gets it without an extra config change. A deployment that is
+ * not ready sets the key to `false` explicitly.
+ */
+const isApiPortalIntegrationEnabled = (): boolean => {
+  if (typeof window === "undefined") return true;
+  const bag = (window as Window & { __RUNTIME_CONFIG__?: object })
+    .__RUNTIME_CONFIG__ as Record<string, unknown> | undefined;
+  const value = bag?.APIP_AIW_FEATURE_FLAGS_API_PORTAL_INTEGRATION_ENABLED;
+  if (value === undefined || value === null || value === "") return true;
+  return value === true || value === "true" || value === "1";
+};
+
+/**
  * Cloud features registered for the AI Workspace host. The host owns routing,
  * organization/project scope, navigation and notifications; each plugin only
  * renders against the small host port passed to it.
@@ -81,6 +115,15 @@ const AI_GATEWAY_TYPES: GatewayType[] = ["ai"];
  * Registration is gated by `isInsightsMoesifConfigured` (single reader in the
  * insights package) so App.tsx needs no Moesif config knowledge: no override
  * means InsightsRoute keeps the built-in page.
+ *
+ * `managed-api-portals` is the same organization-level API Portals page the
+ * api-control-plane host registers (`hosts/api-control-plane.tsx`), added here as
+ * a `sidebar.main` item. It talks to `/managed-api-portals` through the Port's
+ * `apiFetch` (the BFF proxy) rather than a runtime-configured base URL, which this
+ * host does not set. Registered only when
+ * `[ai_workspace.feature_flags] api_portal_integration_enabled` is on, the
+ * umbrella flag for the whole API Portal integration surface (shared with the
+ * MCP proxy publish/unpublish path and subscription-plans UI).
  */
 export const cloudPluginFeatures: CloudPluginFeature<AIWorkspaceCloudEntry>[] =
   [
@@ -154,6 +197,25 @@ export const cloudPluginFeatures: CloudPluginFeature<AIWorkspaceCloudEntry>[] =
           hides: [AI_WORKSPACE_GATEWAYS_NAV_REGION],
           render: (port: AIWorkspaceHostPort) => (
             <GatewaysFeature gatewayTypes={AI_GATEWAY_TYPES} port={port} />
+          ),
+        },
+      ],
+    }),
+    defineCloudPlugin({
+      id: "managed-api-portals",
+      version: "0.1.0",
+      extensions: [
+        {
+          id: "managed-api-portals",
+          slot: "sidebar.main",
+          // After Pipelines (60). Portals are organization resources, so the page
+          // ignores any project in scope, as the api-control-plane entry does.
+          order: 65,
+          path: "managed-api-portals",
+          label: "Portals",
+          icon: <PanelsTopLeft size={20} />,
+          render: (port: AIWorkspaceHostPort) => (
+            <ManagedPortalsPage port={port} apiFetch={port.apiFetch} />
           ),
         },
       ],
@@ -253,10 +315,15 @@ export const cloudPluginFeatures: CloudPluginFeature<AIWorkspaceCloudEntry>[] =
     }),
   ];
 
-/** Omit Insights when Moesif is not configured so InsightsRoute keeps the built-in page. */
+/**
+ * Omit Insights when Moesif is not configured so InsightsRoute keeps the built-in
+ * page, and API Portals unless its feature flag is on.
+ */
 export const cloudExtensions = getCloudExtensions(
-  cloudPluginFeatures.filter(
-    (feature) => feature.id !== "insights" || isInsightsMoesifConfigured(),
-  ),
+  cloudPluginFeatures.filter((feature) => {
+    if (feature.id === "insights") return isInsightsMoesifConfigured();
+    if (feature.id === "managed-api-portals") return isApiPortalIntegrationEnabled();
+    return true;
+  }),
 );
 export type { AIWorkspaceExtension };

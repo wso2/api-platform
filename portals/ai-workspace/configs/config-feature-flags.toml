@@ -49,3 +49,16 @@
 
 [ai_workspace.feature_flags]
 agent_proxy_enabled = true
+# Umbrella flag for the API Portal integration surface — the cloud-only managed
+# API Portals page (create / edit / delete an organization's hosted API Portal),
+# the MCP proxy publish/unpublish path, and the subscription-plans UI. Read by
+# the cloud host file (cloud-plugins/apip-cloud-ui/src/hosts/ai-workspace.tsx)
+# AND by OSS core via `isFeatureEnabled('api-portal-integration')` in
+# src/config.env.ts, so one flag turns the whole feature on or off.
+#
+# When this is on, the legacy `APIP_AIW_API_PORTAL_ENABLED` single-portal MCP
+# Hub path is superseded; set that to false in deployments that enable this.
+#
+# Defaults to shown — this is the GA path. Set this explicitly to false to hide
+# the whole surface in a deployment that is not ready for it.
+api_portal_integration_enabled = true

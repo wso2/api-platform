@@ -9,6 +9,7 @@
 
 // PortalPort backed by apip-platform-api via the console BFF's same-origin proxy.
 
+import type { ApiFetch } from './hostPort';
 import type {
   CreateManagedPortalInput,
   ManagedPortal,
@@ -147,20 +148,23 @@ function fromWire(w: WirePortal): ManagedPortal {
   };
 }
 
-/** PortalPort backed by the BFF proxy at `base`, scoped to `orgHandle` via the X-Org-Id header. */
-export function createRealPortalPort(base: string, orgHandle: string): PortalPort {
+/** One platform-api call, resolving the parsed JSON body (or undefined for an empty one). */
+type Send = <T>(method: string, path: string, body?: unknown) => Promise<T>;
+
+/** PortalPort over any transport; both factories below share this wire mapping. */
+function createPortalPort(send: Send): PortalPort {
   const url = (id: string) => `/managed-api-portals/${encodeURIComponent(id)}`;
   return {
     async list() {
-      const body = await request<WirePortalList>(base, orgHandle, 'GET', '/managed-api-portals');
-      return (body.list ?? []).map(fromWire);
+      const body = await send<WirePortalList | undefined>('GET', '/managed-api-portals');
+      return (body?.list ?? []).map(fromWire);
     },
     async get(id: string) {
-      const body = await request<WirePortal>(base, orgHandle, 'GET', url(id));
+      const body = await send<WirePortal>('GET', url(id));
       return fromWire(body);
     },
     async create(input: CreateManagedPortalInput) {
-      const body = await request<WirePortal>(base, orgHandle, 'POST', '/managed-api-portals', {
+      const body = await send<WirePortal>('POST', '/managed-api-portals', {
         handle: input.handle,
         name: input.name,
         description: input.description,
@@ -169,7 +173,7 @@ export function createRealPortalPort(base: string, orgHandle: string): PortalPor
       return fromWire(body);
     },
     async update(id: string, input: UpdateManagedPortalInput) {
-      const body = await request<WirePortal>(base, orgHandle, 'PUT', url(id), {
+      const body = await send<WirePortal>('PUT', url(id), {
         name: input.name,
         description: input.description,
         loginEnvironment: input.loginEnvironment,
@@ -177,14 +181,30 @@ export function createRealPortalPort(base: string, orgHandle: string): PortalPor
       return fromWire(body);
     },
     async remove(id: string) {
-      await request<void>(base, orgHandle, 'DELETE', url(id));
+      await send<void>('DELETE', url(id));
     },
     async listEnvironments(): Promise<OrgEnvironment[]> {
-      // Sibling endpoint reached via the same BFF proxy and org-id header as the portal calls.
-      const body = await request<WireEnvironmentList>(base, orgHandle, 'GET', '/environments');
-      return (body.list ?? [])
+      // Sibling endpoint reached through the same transport as the portal calls.
+      const body = await send<WireEnvironmentList | undefined>('GET', '/environments');
+      return (body?.list ?? [])
         .filter((e): e is WireEnvironment & { name: string } => typeof e.name === 'string' && e.name.length > 0)
         .map((e) => ({ name: e.name, displayName: e.displayName, isProduction: e.isProduction }));
     },
   };
+}
+
+/** PortalPort backed by the BFF proxy at `base`, scoped to `orgHandle` via the X-Org-Id header. */
+export function createRealPortalPort(base: string, orgHandle: string): PortalPort {
+  return createPortalPort((method, path, body) => request(base, orgHandle, method, path, body));
+}
+
+/**
+ * PortalPort backed by the host's `apiFetch`, for hosts whose port carries one
+ * (AI Workspace). The host owns the transport — BFF proxy base, CSRF header, and
+ * org resolution from the session token — so no runtime base URL is needed.
+ */
+export function createApiFetchPortalPort(apiFetch: ApiFetch): PortalPort {
+  return createPortalPort(async <T>(method: string, path: string, body?: unknown) =>
+    (await apiFetch<T>(method, path, body)) as T
+  );
 }

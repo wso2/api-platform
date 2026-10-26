@@ -46,13 +46,19 @@ func loadRuntimeKoanf(t *testing.T, body string) *koanf.Koanf {
 // A feature flag is only honoured if it reaches the browser, so the key has to stay
 // on browserSafeKeys and keep the name the SPA reads.
 func TestBuildRuntimeConfig_FeatureFlagReachesTheSPA(t *testing.T) {
-	for _, set := range []string{"false", "true"} {
-		k := loadRuntimeKoanf(t, "[feature_flags]\nagent_proxy_enabled = "+set+"\n")
+	flags := map[string]string{
+		"agent_proxy_enabled":         "APIP_AIW_FEATURE_FLAGS_AGENT_PROXY_ENABLED",
+		"api_portal_integration_enabled": "APIP_AIW_FEATURE_FLAGS_API_PORTAL_INTEGRATION_ENABLED",
+	}
+	for key, runtimeName := range flags {
+		for _, set := range []string{"false", "true"} {
+			k := loadRuntimeKoanf(t, "[feature_flags]\n"+key+" = "+set+"\n")
 
-		out := buildRuntimeConfig(&Config{}, k)
+			out := buildRuntimeConfig(&Config{}, k)
 
-		if got := out["APIP_AIW_FEATURE_FLAGS_AGENT_PROXY_ENABLED"]; got != set {
-			t.Errorf("agent_proxy_enabled = %s reached the SPA as %q, want %q", set, got, set)
+			if got := out[runtimeName]; got != set {
+				t.Errorf("%s = %s reached the SPA as %q, want %q", key, set, got, set)
+			}
 		}
 	}
 }
@@ -66,5 +72,8 @@ func TestBuildRuntimeConfig_AbsentFeatureFlagIsOmitted(t *testing.T) {
 
 	if _, ok := out["APIP_AIW_FEATURE_FLAGS_AGENT_PROXY_ENABLED"]; ok {
 		t.Error("agent_proxy_enabled was emitted although the config never declares it")
+	}
+	if _, ok := out["APIP_AIW_FEATURE_FLAGS_API_PORTAL_INTEGRATION_ENABLED"]; ok {
+		t.Error("api_portal_integration_enabled was emitted although the config never declares it")
 	}
 }

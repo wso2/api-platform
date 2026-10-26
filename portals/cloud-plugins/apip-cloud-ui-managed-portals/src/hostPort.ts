@@ -11,6 +11,13 @@
 
 export type NotifySeverity = 'success' | 'info' | 'warning' | 'error';
 
+/** The host's same-origin platform-api call; `path` is relative to the API base (e.g. `/environments`). */
+export type ApiFetch = <T = unknown>(
+  method: string,
+  path: string,
+  body?: unknown
+) => Promise<T | undefined>;
+
 export type CloudHostPort = {
   orgHandle: string;
   projectHandle?: string;

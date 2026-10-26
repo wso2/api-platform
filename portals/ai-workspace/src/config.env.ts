@@ -147,6 +147,18 @@ const FEATURE_FLAGS = {
     'APIP_AIW_FEATURE_FLAGS_AGENT_PROXY_ENABLED',
     false
   ),
+  // Umbrella flag for the API Portal integration surface — the cloud-only
+  // managed API Portals page, the MCP proxy publish/unpublish path, and the
+  // subscription-plans UI. Defaults to on (deviation from the house convention)
+  // because this is the GA path, so a deployment picking up a newer image gets
+  // it without an extra config change; a deployment that is not ready sets the
+  // key to false. When this is on, the legacy `API_PORTAL_ENABLED` single-portal
+  // MCP Hub path is superseded and callers that read both should treat it as off.
+  // The cloud host file reads the same runtime key directly — keep both in sync.
+  'api-portal-integration': getEnvOrDefault(
+    'APIP_AIW_FEATURE_FLAGS_API_PORTAL_INTEGRATION_ENABLED',
+    true
+  ),
 };
 
 export type FeatureId = keyof typeof FEATURE_FLAGS;
