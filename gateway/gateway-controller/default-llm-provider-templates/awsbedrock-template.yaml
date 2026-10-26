@@ -25,6 +25,11 @@ spec:
   groupId: wso2-awsbedrock
   managedBy: wso2
   version: v1.0
+  # Extraction reads the JSON body of a Converse response. ConverseStream
+  # responses use the AWS event stream binary framing, which the usage
+  # extractors do not decode, so token, cache, and service-tier values are not
+  # metered for /converse-stream; the model id still is (it comes from the path).
+  # See llm-provider-specs/awsbedrock/README.md.
   promptTokens:
     location: payload
     identifier: $.usage.inputTokens
@@ -42,12 +47,18 @@ spec:
   totalTokens:
     location: payload
     identifier: $.usage.totalTokens
+  # Bedrock carries the model id only in the request path
+  # (/model/{modelId}/converse and /model/{modelId}/converse-stream). The class
+  # covers base model ids, cross-Region inference profile ids, and ARNs sent
+  # percent-encoded as one segment (":" as %3A, "/" as %2F); the extractor
+  # decodes the capture. "_" is allowed because AWS's modelId pattern permits it.
+  # An ARN sent with a raw "/" is not supported: it splits the path segment.
   requestModel:
     location: pathParam
-    identifier: model/([A-Za-z0-9.:%-]+)/
+    identifier: model/([A-Za-z0-9._:%-]+)/
   responseModel:
     location: pathParam
-    identifier: model/([A-Za-z0-9.:%-]+)/
+    identifier: model/([A-Za-z0-9._:%-]+)/
   cachedTokens:
     location: payload
     identifier: $.usage.cacheReadInputTokens
@@ -60,6 +71,8 @@ spec:
     fallbackIdentifiers:
       - $.usage.cache_creation_input_tokens
       - $.usage.prompt_tokens_details.cache_write_tokens
+  # Bedrock reports priority | default | flex | reserved. Only priority and flex
+  # select different rates; default and reserved fall through to standard.
   serviceTier:
     location: payload
     identifier: $.serviceTier.type
