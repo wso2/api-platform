@@ -44,7 +44,7 @@ Feature: WebSocket API policy enforcement at the handshake
       | spec.displayName       | ${CTX:wsDisplayName}                                                |
       | spec.version           | ${CTX:wsVersion}                                                    |
       | spec.context           | ${CTX:wsContext}                                                    |
-      | spec.upstream.main.url | ws://testbench:3019/ws                                              |
+      | spec.upstream.main.url | ws://testbench:3024/ws                                              |
       | spec.channels          | [{"path":"/rooms"}]                                                 |
       | spec.policies          | [{"name":"jwt-auth","version":"v1","params":{"issuers":["mock-jwks"]}}] |
     Then the response should be successful
@@ -83,7 +83,7 @@ Feature: WebSocket API policy enforcement at the handshake
       | spec.displayName       | ${CTX:wsDisplayName}                                                                       |
       | spec.version           | ${CTX:wsVersion}                                                                           |
       | spec.context           | ${CTX:wsContext}                                                                           |
-      | spec.upstream.main.url | ws://testbench:3019/ws                                                                     |
+      | spec.upstream.main.url | ws://testbench:3024/ws                                                                     |
       | spec.channels          | [{"path":"/rooms"}]                                                                        |
       | spec.policies          | [{"name":"basic-ratelimit","version":"v1","params":{"limits":[{"requests":3,"duration":"1h"}]}}] |
     Then the response should be successful

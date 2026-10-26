@@ -37,7 +37,7 @@ Feature: WebSocket API CRUD and connectivity
       | spec.displayName       | ${CTX:wsDisplayName}           |
       | spec.version           | ${CTX:wsVersion}               |
       | spec.context           | ${CTX:wsContext}               |
-      | spec.upstream.main.url | ws://testbench:3019/ws         |
+      | spec.upstream.main.url | ws://testbench:3024/ws         |
       | spec.channels          | [{"path":"/rooms"}]            |
     Then the response should be successful
     And the response should be valid JSON
@@ -72,7 +72,7 @@ Feature: WebSocket API CRUD and connectivity
       | spec.displayName       | ${CTX:wsDisplayName}           |
       | spec.version           | ${CTX:wsVersion}               |
       | spec.context           | ${CTX:wsContext}               |
-      | spec.upstream.main.url | ws://testbench:3019/ws         |
+      | spec.upstream.main.url | ws://testbench:3024/ws         |
       | spec.channels          | [{"path":"/rooms"}]            |
     Then the response should be successful
 
@@ -88,7 +88,7 @@ Feature: WebSocket API CRUD and connectivity
       | spec.displayName       | ${CTX:wsDisplayName} v2                 |
       | spec.version           | ${CTX:wsVersion}                        |
       | spec.context           | ${CTX:wsContext}                        |
-      | spec.upstream.main.url | ws://testbench:3019/ws                  |
+      | spec.upstream.main.url | ws://testbench:3024/ws                  |
       | spec.channels          | [{"path":"/rooms"},{"path":"/lobby"}]   |
     Then the response should be successful
     And the response should be valid JSON
@@ -120,7 +120,7 @@ Feature: WebSocket API CRUD and connectivity
       | spec.displayName       | ${CTX:wsDisplayName}           |
       | spec.version           | ${CTX:wsVersion}               |
       | spec.context           | ${CTX:wsContext}               |
-      | spec.upstream.main.url | ws://testbench:3019/ws         |
+      | spec.upstream.main.url | ws://testbench:3024/ws         |
       | spec.channels          | [{"path":"/rooms"}]            |
     Then the response should be successful
 
@@ -148,7 +148,7 @@ Feature: WebSocket API CRUD and connectivity
       | spec.displayName       | ${CTX:wsDisplayName}           |
       | spec.version           | ${CTX:wsVersion}               |
       | spec.context           | ${CTX:wsContext}               |
-      | spec.upstream.main.url | ws://testbench:3019/ws         |
+      | spec.upstream.main.url | ws://testbench:3024/ws         |
       | spec.channels          | [{"path":"/rooms"}]            |
     Then the response should be successful
 
@@ -177,7 +177,7 @@ Feature: WebSocket API CRUD and connectivity
       | spec.displayName       | ${CTX:wsDisplayName}                                                               |
       | spec.version           | ${CTX:wsVersion}                                                                   |
       | spec.context           | ${CTX:wsContext}                                                                   |
-      | spec.upstream.main.url | ws://testbench:3019/ws                                                             |
+      | spec.upstream.main.url | ws://testbench:3024/ws                                                             |
       | spec.channels          | [{"path":"/rooms"}]                                                                |
       | spec.policies          | [{"name":"api-key-auth","version":"v1","params":{"key":"X-API-Key","in":"header"}}] |
     Then the response should be successful
@@ -229,7 +229,7 @@ Feature: WebSocket API CRUD and connectivity
       | spec.displayName       | ${CTX:wsDisplayName}                                                                                                          |
       | spec.version           | ${CTX:wsVersion}                                                                                                              |
       | spec.context           | ${CTX:wsContext}                                                                                                              |
-      | spec.upstream.main.url | ws://testbench:3019/ws                                                                                                        |
+      | spec.upstream.main.url | ws://testbench:3024/ws                                                                                                        |
       | spec.channels          | [{"path":"/public"},{"path":"/private","policies":[{"name":"api-key-auth","version":"v1","params":{"key":"X-API-Key","in":"header"}}]}] |
     Then the response should be successful
 
@@ -265,7 +265,7 @@ Feature: WebSocket API CRUD and connectivity
       | spec.displayName       | ${CTX:wsDisplayName}           |
       | spec.version           | ${CTX:wsVersion}               |
       | spec.context           | ${CTX:wsContext}               |
-      | spec.upstream.main.url | ws://testbench:3019/ws         |
+      | spec.upstream.main.url | ws://testbench:3024/ws         |
       | spec.channels          | [{"path":"/rooms"}]            |
     Then the response should be successful
 

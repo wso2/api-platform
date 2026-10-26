@@ -49,7 +49,7 @@ spec:
     - name: chat-backend
       basePath: /ws
       upstreams:
-        - url: ws://host.docker.internal:3019
+        - url: ws://host.docker.internal:3024
       timeout:
         connect: 5s
       connection:

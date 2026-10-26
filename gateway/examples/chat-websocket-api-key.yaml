@@ -38,7 +38,7 @@ spec:
   context: /chat-secure/$version
   upstream:
     main:
-      url: ws://host.docker.internal:3019/ws
+      url: ws://host.docker.internal:3024/ws
   channels:
     - path: /rooms/general
   policies:

@@ -56,7 +56,7 @@ import (
 )
 
 // Port is the container port used by the testbench.
-const Port = 3019
+const Port = 3024
 
 // websocketGUID is the fixed value RFC 6455 §4.2.2 mixes into the accept-key
 // hash. It is part of the protocol, not a secret.
