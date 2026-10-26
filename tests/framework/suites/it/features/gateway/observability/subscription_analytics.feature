@@ -76,3 +76,183 @@ Feature: Subscription analytics monetized billing metadata
     And I send a "GET" request to "${CTX:apiContext}/v1.0/health" until status 404
     When I send a "DELETE" request to the "gateway-controller" service at "/subscription-plans/${CTX:planId}"
     Then the response should be successful
+
+  Scenario: A paid subscription's calls are attributed to its billing customer under the operation's path template
+    Given I generate a unique value from "subscription-analytics-template-plan" and store it as "planName"
+    When I send a "POST" request to the "gateway-controller" service at "/subscription-plans" with body:
+      """
+      {"planName":"${CTX:planName}","throttleLimitCount":100,"throttleLimitUnit":"Min"}
+      """
+    Then the response status should be 201
+    And I store the JSON response field "id" as "planId"
+    And I register the "subscription-plan" "${CTX:planId}" for cleanup
+
+    Given I generate a unique value from "subscription-analytics-template" and store it as "apiName"
+    And I generate a unique API context from "/subscription-analytics-template" and store it as "apiContext"
+    When I create API from "resources/templates/rest-api.yaml" with values:
+      | apiVersion             | ${CTX:gatewaySpecVersion}  |
+      | name                   | ${CTX:apiName}             |
+      | spec.displayName       | ${CTX:apiName}             |
+      | spec.version           | v1.0                       |
+      | spec.context           | ${CTX:apiContext}/$version |
+      | spec.subscriptionPlans | ["${CTX:planName}"]        |
+      | spec.upstream.main.url | http://testbench:3002      |
+      | spec.operations        | [{"method":"GET","path":"/items/{id}","policies":[{"name":"subscription-validation","version":"v1","params":{"subscriptionKeyHeader":"Subscription-Key"}}]}] |
+    Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/v1.0/items/42" until status 403
+
+    Given I generate a unique value from "subscription-analytics-template-customer" and store it as "customerId"
+    And I generate a unique value from "subscription-analytics-template-billing" and store it as "billingSubId"
+    And I generate a unique value from "subscription-analytics-template-token" and store it as "subToken"
+    When I send a "POST" request to the "gateway-controller" service at "/subscriptions" with body:
+      """
+      {"apiId":"${CTX:apiName}","subscriptionToken":"${CTX:subToken}","subscriptionPlanId":"${CTX:planId}","billingCustomerId":"${CTX:customerId}","billingSubscriptionId":"${CTX:billingSubId}"}
+      """
+    Then the response status should be 201
+    And I store the JSON response field "id" as "subId"
+    And I register the "subscription" "${CTX:subId}" for cleanup
+
+    When I set header "Subscription-Key" to "${CTX:subToken}"
+    And I send a "GET" request to "${CTX:apiContext}/v1.0/items/42" until status 200
+    And I wait for the analytics collector to settle
+    And I reset the analytics collector
+    And I send a "GET" request to "${CTX:apiContext}/v1.0/items/42"
+    Then the response status code should be 200
+    And the analytics collector should have received 1 event
+    # Billing meters filter on the template, never the concrete path.
+    And the latest analytics event for path "${CTX:apiContext}/v1.0/items/42" should have metadata field "apiResourceTemplate" with value "/items/{id}"
+    And the latest analytics event for path "${CTX:apiContext}/v1.0/items/42" should have company id "${CTX:customerId}"
+    And the latest analytics event for path "${CTX:apiContext}/v1.0/items/42" should have metadata field "billingCustomerId" with value "${CTX:customerId}"
+    And the latest analytics event for path "${CTX:apiContext}/v1.0/items/42" should have metadata field "billingSubscriptionId" with value "${CTX:billingSubId}"
+
+  Scenario: Refused, throttled and free calls are not attributed to a billing customer
+    Given I generate a unique value from "subscription-analytics-limited-plan" and store it as "limitedPlanName"
+    When I send a "POST" request to the "gateway-controller" service at "/subscription-plans" with body:
+      """
+      {"planName":"${CTX:limitedPlanName}","throttleLimitCount":1,"throttleLimitUnit":"Min"}
+      """
+    Then the response status should be 201
+    And I store the JSON response field "id" as "limitedPlanId"
+    And I register the "subscription-plan" "${CTX:limitedPlanId}" for cleanup
+    Given I generate a unique value from "subscription-analytics-open-plan" and store it as "openPlanName"
+    When I send a "POST" request to the "gateway-controller" service at "/subscription-plans" with body:
+      """
+      {"planName":"${CTX:openPlanName}","throttleLimitCount":100,"throttleLimitUnit":"Min"}
+      """
+    Then the response status should be 201
+    And I store the JSON response field "id" as "openPlanId"
+    And I register the "subscription-plan" "${CTX:openPlanId}" for cleanup
+
+    Given I generate a unique value from "subscription-analytics-unbilled" and store it as "apiName"
+    And I generate a unique API context from "/subscription-analytics-unbilled" and store it as "apiContext"
+    When I create API from "resources/templates/rest-api.yaml" with values:
+      | apiVersion             | ${CTX:gatewaySpecVersion}                          |
+      | name                   | ${CTX:apiName}                                     |
+      | spec.displayName       | ${CTX:apiName}                                     |
+      | spec.version           | v1.0                                               |
+      | spec.context           | ${CTX:apiContext}/$version                         |
+      | spec.subscriptionPlans | ["${CTX:limitedPlanName}","${CTX:openPlanName}"]   |
+      | spec.upstream.main.url | http://testbench:3002                              |
+      | spec.operations        | [{"method":"GET","path":"/health","policies":[{"name":"subscription-validation","version":"v1","params":{"subscriptionKeyHeader":"Subscription-Key"}}]}] |
+    Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/v1.0/health" until status 403
+
+    # A paid subscription on the limited plan, and a free one (no billing identifiers) on the open plan.
+    Given I generate a unique value from "subscription-analytics-unbilled-customer" and store it as "customerId"
+    And I generate a unique value from "subscription-analytics-unbilled-paid-token" and store it as "paidToken"
+    When I send a "POST" request to the "gateway-controller" service at "/subscriptions" with body:
+      """
+      {"apiId":"${CTX:apiName}","subscriptionToken":"${CTX:paidToken}","subscriptionPlanId":"${CTX:limitedPlanId}","billingCustomerId":"${CTX:customerId}","billingSubscriptionId":"billing-${CTX:customerId}"}
+      """
+    Then the response status should be 201
+    And I store the JSON response field "id" as "paidSubId"
+    And I register the "subscription" "${CTX:paidSubId}" for cleanup
+    Given I generate a unique value from "subscription-analytics-unbilled-free-token" and store it as "freeToken"
+    When I send a "POST" request to the "gateway-controller" service at "/subscriptions" with body:
+      """
+      {"apiId":"${CTX:apiName}","subscriptionToken":"${CTX:freeToken}","subscriptionPlanId":"${CTX:openPlanId}"}
+      """
+    Then the response status should be 201
+    And I store the JSON response field "id" as "freeSubId"
+    And I register the "subscription" "${CTX:freeSubId}" for cleanup
+
+    # Refused by the subscription policy: no billing customer.
+    When I wait for the analytics collector to settle
+    And I reset the analytics collector
+    And I set header "Subscription-Key" to "not-a-subscription-token"
+    And I send a "GET" request to "${CTX:apiContext}/v1.0/health"
+    Then the response status code should be 403
+    And the analytics collector should have received 1 event
+    # A call the policy refuses never reaches the operation, so it is recorded under the API context.
+    And the latest analytics event for path "${CTX:apiContext}/v1.0" should have response status 403
+    And the latest analytics event for path "${CTX:apiContext}/v1.0" should not have company id
+    And the latest analytics event for path "${CTX:apiContext}/v1.0" should not have metadata field "billingCustomerId"
+
+    # A free subscription's call: served, but not attributed to a customer.
+    When I set header "Subscription-Key" to "${CTX:freeToken}"
+    And I send a "GET" request to "${CTX:apiContext}/v1.0/health" until status 200
+    And I wait for the analytics collector to settle
+    And I reset the analytics collector
+    And I send a "GET" request to "${CTX:apiContext}/v1.0/health"
+    Then the response status code should be 200
+    And the analytics collector should have received 1 event
+    And the latest analytics event for path "${CTX:apiContext}/v1.0/health" should not have company id
+    And the latest analytics event for path "${CTX:apiContext}/v1.0/health" should not have metadata field "billingCustomerId"
+    And the latest analytics event for path "${CTX:apiContext}/v1.0/health" should not have metadata field "billingSubscriptionId"
+
+    # Throttled by the plan (1 per minute): no billing customer.
+    When I set header "Subscription-Key" to "${CTX:paidToken}"
+    And I send a "GET" request to "${CTX:apiContext}/v1.0/health" until status 200
+    And I wait for the analytics collector to settle
+    And I reset the analytics collector
+    And I send a "GET" request to "${CTX:apiContext}/v1.0/health"
+    Then the response status code should be 429
+    And the analytics collector should have received 1 event
+    And the latest analytics event for path "${CTX:apiContext}/v1.0" should have response status 429
+    And the latest analytics event for path "${CTX:apiContext}/v1.0" should not have company id
+    And the latest analytics event for path "${CTX:apiContext}/v1.0" should not have metadata field "billingCustomerId"
+
+  Scenario: Calls over the quota of a plan that does not stop at it are still attributed to the billing customer
+    Given I generate a unique value from "subscription-analytics-overage-plan" and store it as "planName"
+    When I send a "POST" request to the "gateway-controller" service at "/subscription-plans" with body:
+      """
+      {"planName":"${CTX:planName}","throttleLimitCount":1,"throttleLimitUnit":"Min","stopOnQuotaReach":false}
+      """
+    Then the response status should be 201
+    And I store the JSON response field "id" as "planId"
+    And I register the "subscription-plan" "${CTX:planId}" for cleanup
+
+    Given I generate a unique value from "subscription-analytics-overage" and store it as "apiName"
+    And I generate a unique API context from "/subscription-analytics-overage" and store it as "apiContext"
+    When I create API from "resources/templates/rest-api.yaml" with values:
+      | apiVersion             | ${CTX:gatewaySpecVersion}  |
+      | name                   | ${CTX:apiName}             |
+      | spec.displayName       | ${CTX:apiName}             |
+      | spec.version           | v1.0                       |
+      | spec.context           | ${CTX:apiContext}/$version |
+      | spec.subscriptionPlans | ["${CTX:planName}"]        |
+      | spec.upstream.main.url | http://testbench:3002      |
+      | spec.operations        | [{"method":"GET","path":"/health","policies":[{"name":"subscription-validation","version":"v1","params":{"subscriptionKeyHeader":"Subscription-Key"}}]}] |
+    Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/v1.0/health" until status 403
+
+    Given I generate a unique value from "subscription-analytics-overage-customer" and store it as "customerId"
+    And I generate a unique value from "subscription-analytics-overage-token" and store it as "subToken"
+    When I send a "POST" request to the "gateway-controller" service at "/subscriptions" with body:
+      """
+      {"apiId":"${CTX:apiName}","subscriptionToken":"${CTX:subToken}","subscriptionPlanId":"${CTX:planId}","billingCustomerId":"${CTX:customerId}","billingSubscriptionId":"billing-${CTX:customerId}"}
+      """
+    Then the response status should be 201
+    And I store the JSON response field "id" as "subId"
+    And I register the "subscription" "${CTX:subId}" for cleanup
+
+    # The first call uses the quota of 1; the next is over it, served and billed.
+    When I set header "Subscription-Key" to "${CTX:subToken}"
+    And I send a "GET" request to "${CTX:apiContext}/v1.0/health" until status 200
+    And I wait for the analytics collector to settle
+    And I reset the analytics collector
+    And I send a "GET" request to "${CTX:apiContext}/v1.0/health"
+    Then the response status code should be 200
+    And the analytics collector should have received 1 event
+    And the latest analytics event for path "${CTX:apiContext}/v1.0/health" should have company id "${CTX:customerId}"
+    And the latest analytics event for path "${CTX:apiContext}/v1.0/health" should have metadata field "billingCustomerId" with value "${CTX:customerId}"

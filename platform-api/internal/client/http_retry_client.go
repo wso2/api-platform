@@ -83,8 +83,19 @@ func NewRetryableHTTPClient(cfg RetryConfig) (*RetryableHTTPClient, error) {
 	}
 
 	// Copy the shared client so the HTTPS-only redirect rule stays local to this client. The
-	// copy keeps the same Transport, so the SSRF dial guard still applies.
+	// copy, and the Transport cloned below, keep the shared dialer, so the SSRF dial guard still
+	// applies.
 	httpClient := *sharedClient
+	// Each attempt is limited by AttemptTimeout alone, both overall and while waiting for the
+	// response headers. The shared client's own limits suit quick probes, and would cut short a
+	// call the far side answers only when its work is done (an API Portal publish that creates
+	// the billing catalog).
+	httpClient.Timeout = cfg.AttemptTimeout
+	if transport, ok := sharedClient.Transport.(*http.Transport); ok {
+		own := transport.Clone()
+		own.ResponseHeaderTimeout = cfg.AttemptTimeout
+		httpClient.Transport = own
+	}
 	sharedCheckRedirect := sharedClient.CheckRedirect
 	httpClient.CheckRedirect = func(req *http.Request, via []*http.Request) error {
 		// Requests carry a credential; never follow a redirect to cleartext, regardless of the

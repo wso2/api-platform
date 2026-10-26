@@ -22,6 +22,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -181,6 +182,35 @@ func TestRetryableClientDoesNotRetryUnrewindableBody(t *testing.T) {
 			t.Fatalf("want 200 on the second attempt, got %d after %d attempts", resp.StatusCode, len(portal.bodies))
 		}
 	})
+}
+
+// A slow answer within the attempt timeout is not cut short by the shared client's
+// response-header or overall limits.
+func TestRetryableClientWaitsTheWholeAttemptForAnAnswer(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(300 * time.Millisecond)
+		w.WriteHeader(http.StatusCreated)
+	}))
+	defer server.Close()
+	utils.InitSharedHTTPClient(&http.Client{
+		Timeout:   100 * time.Millisecond,
+		Transport: &http.Transport{ResponseHeaderTimeout: 100 * time.Millisecond},
+	}, 0)
+	t.Cleanup(func() { utils.InitSharedHTTPClient(nil, 0) })
+
+	c, err := NewRetryableHTTPClient(RetryConfig{AttemptTimeout: 2 * time.Second})
+	if err != nil {
+		t.Fatalf("NewRetryableHTTPClient: %v", err)
+	}
+	req, _ := http.NewRequest(http.MethodPost, server.URL, strings.NewReader("x"))
+	resp, err := c.Do(req)
+	if err != nil {
+		t.Fatalf("want the slow answer, got %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("want 201, got %d", resp.StatusCode)
+	}
 }
 
 func TestRetryableClientRefusesRedirectToHTTP(t *testing.T) {

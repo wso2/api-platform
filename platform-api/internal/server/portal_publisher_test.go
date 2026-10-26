@@ -30,13 +30,15 @@ import (
 func TestNewPortalPublisher(t *testing.T) {
 	valid := config.APIPortalPublication{
 		RequestTimeout:        5 * time.Second,
+		ListingRequestTimeout: 5 * time.Second,
 		ContentRequestTimeout: 10 * time.Second,
 		MaxRetries:            1,
 		RetryBackoff:          time.Second,
 		OverallTimeout:        time.Minute,
 	}
-	noRequestTimeout, noContentTimeout := valid, valid
+	noRequestTimeout, noListingTimeout, noContentTimeout := valid, valid, valid
 	noRequestTimeout.RequestTimeout = 0
+	noListingTimeout.ListingRequestTimeout = 0
 	noContentTimeout.ContentRequestTimeout = 0
 
 	tests := []struct {
@@ -46,6 +48,7 @@ func TestNewPortalPublisher(t *testing.T) {
 	}{
 		{"valid limits", valid, false},
 		{"invalid request timeout", noRequestTimeout, true},
+		{"invalid listing request timeout", noListingTimeout, true},
 		{"invalid content request timeout", noContentTimeout, true},
 	}
 	for _, tc := range tests {

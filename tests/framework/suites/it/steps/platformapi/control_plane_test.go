@@ -24,6 +24,9 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -869,4 +872,47 @@ func TestGatewayUUIDResolvesTheBlockGatewayAmongOthers(t *testing.T) {
 	id, err := s.gatewayUUID(context.Background(), server.URL, "token")
 	require.NoError(t, err)
 	require.Equal(t, "it-gateway", id)
+}
+
+func TestSignPortalEventMatchesTheReceiverFormat(t *testing.T) {
+	body := []byte(`{"event_type":"meter.created"}`)
+	at := time.Unix(1700000000, 0)
+	mac := hmac.New(sha256.New, []byte("secret"))
+	mac.Write([]byte("1700000000." + string(body)))
+	require.Equal(t, "t=1700000000,v1="+hex.EncodeToString(mac.Sum(nil)), signPortalEvent("secret", body, at))
+	require.NotEqual(t, signPortalEvent("secret", body, at), signPortalEvent("other", body, at))
+	require.NotEqual(t, signPortalEvent("secret", body, at), signPortalEvent("secret", []byte(`{}`), at))
+}
+
+func TestTrackPortalEventResourceRecordsWhatTheEventMade(t *testing.T) {
+	ctx, reg := trackingContext(t)
+	s := &Steps{}
+
+	require.NoError(t, s.trackPortalEventResource(ctx, "meter.created", []byte(`{"handle":"calls"}`)))
+	require.NoError(t, s.trackPortalEventResource(ctx, "subscription_plan.updated", []byte(`{"handle":" pro "}`)))
+	require.Equal(t, []string{"calls"}, pendingIDs(reg, platformMeterKind))
+	require.Equal(t, []string{"pro"}, pendingIDs(reg, platformSubscriptionPlanKind))
+
+	require.NoError(t, s.trackPortalEventResource(ctx, "subscription.billing_updated", []byte(`{}`)))
+	require.NoError(t, s.trackPortalEventResource(ctx, "meter", []byte(`{"handle":"x"}`)))
+	require.ErrorContains(t, s.trackPortalEventResource(ctx, "meter.created", []byte(`{"handle":" "}`)), "names no handle")
+	require.ErrorContains(t, s.trackPortalEventResource(ctx, "meter.created", []byte(`not json`)), "names no handle")
+
+	require.NoError(t, s.trackPortalEventResource(ctx, "meter.deleted", []byte(`{"handle":"calls"}`)))
+	require.Empty(t, pendingIDs(reg, platformMeterKind))
+	require.Equal(t, []string{"pro"}, pendingIDs(reg, platformSubscriptionPlanKind))
+}
+
+func TestRegisterPortalMadeResourceRecordsTheControlPlaneCopy(t *testing.T) {
+	ctx, reg := trackingContext(t)
+	s := &Steps{}
+	require.NoError(t, s.registerPortalMadeResource(ctx, "meter", "portal-calls"))
+	require.NoError(t, s.registerPortalMadeResource(ctx, "subscription_plan", "portal-plan"))
+	require.Equal(t, []string{"portal-calls"}, pendingIDs(reg, platformMeterKind))
+	require.Equal(t, []string{"portal-plan"}, pendingIDs(reg, platformSubscriptionPlanKind))
+}
+
+func TestMetersAreRemovedAfterThePlansThatPriceThem(t *testing.T) {
+	require.Greater(t, platformMeterKind.Order, platformSubscriptionPlanKind.Order)
+	require.Equal(t, platformMeterKind, platformCollectionKinds["meters"])
 }

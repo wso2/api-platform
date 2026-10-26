@@ -149,6 +149,8 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	deploymentRepo := repository.NewDeploymentRepo(db, artifactTableRegistry)
 	subscriptionRepo := repository.NewSubscriptionRepo(db)
 	subscriptionPlanRepo := repository.NewSubscriptionPlanRepo(db)
+	meterRepo := repository.NewMeterRepo(db)
+	subscriptionPlanPricingRepo := repository.NewSubscriptionPlanPricingRepo(db)
 	llmTemplateRepo := repository.NewLLMProviderTemplateRepo(db)
 	llmProviderRepo := repository.NewLLMProviderRepo(db)
 	llmProxyRepo := repository.NewLLMProxyRepo(db)
@@ -277,8 +279,13 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	apiDocumentService := service.NewAPIDocumentService(documentRepo, artifactRepo, auditRepo, slogger)
 	gatewayService := service.NewGatewayService(gatewayRepo, orgRepo, apiRepo, customPolicyRepo, gatewayEventsService, slogger, cfg.Gateway.EnableVersionVerification, cfg.Gateway.EnableFunctionalityTypeVerification, auditRepo, identityService)
 	subscriptionService := service.NewSubscriptionService(apiRepo, artifactRepo, subscriptionRepo, subscriptionPlanRepo, orgRepo, gatewayEventsService, auditRepo, slogger)
+	subscriptionBillingRepo := repository.NewSubscriptionBillingRepo(db)
+	subscriptionService.SetBillingRepository(subscriptionBillingRepo)
 	subscriptionPlanService := service.NewSubscriptionPlanService(subscriptionPlanRepo, gatewayRepo, orgRepo, gatewayEventsService, auditRepo, slogger)
+	subscriptionPlanService.SetPricingRepositories(meterRepo, subscriptionPlanPricingRepo)
+	monetizationService := service.NewMonetizationService(meterRepo, subscriptionPlanPricingRepo, slogger)
 	internalGatewayService := service.NewGatewayInternalAPIService(apiRepo, subscriptionRepo, subscriptionPlanRepo, llmProviderRepo, llmProxyRepo, mcpProxyRepo, agentProxyRepo, graphqlAPIRepo, deploymentRepo, gatewayRepo, orgRepo, projectRepo, apiKeyRepo, artifactRepo, secretRepo, cfg, slogger)
+	internalGatewayService.SetBillingRepository(subscriptionBillingRepo)
 	apiKeyService := service.NewAPIKeyService(apiRepo, artifactRepo, apiKeyRepo, gatewayEventsService, auditRepo, cfg.Security.APIKey.HashingAlgorithms, slogger)
 	// One definition per artifact kind, indexed by the kind the artifact row
 	// carries. Builds and deployments are shared across kinds; rendering is the
@@ -416,6 +423,8 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize API Portal publisher: %w", err)
 	}
+	monetizationAdminService := service.NewMonetizationAdminService(meterRepo, subscriptionPlanPricingRepo,
+		subscriptionPlanRepo, slogger)
 	publicationService := service.NewPublicationService(artifactRepo, apiPortalRepo, documentRepo, subscriptionPlanRepo, publicationRepo, portalPublisher, cfg.APIPortalPublication.OverallTimeout, cfg.PublicationArchiveMaxBytes, slogger)
 
 	// Initialize handlers
@@ -427,6 +436,10 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	gatewayHandler := handler.NewGatewayHandler(gatewayService, identityService, slogger)
 	subscriptionHandler := handler.NewSubscriptionHandler(subscriptionService, subscriptionPlanService, identityService, slogger)
 	subscriptionPlanHandler := handler.NewSubscriptionPlanHandler(subscriptionPlanService, identityService, slogger)
+	subscriptionPlanHandler.SetPricingRepository(subscriptionPlanPricingRepo)
+	publicationService.SetPricingRepository(subscriptionPlanPricingRepo)
+	publicationService.SetMeterRepository(meterRepo)
+	monetizationHandler := handler.NewMonetizationHandler(monetizationAdminService, slogger)
 	publicationHandler := handler.NewPublicationHandler(publicationService, identityService, cfg.PublicationContentMaxBytes, cfg.PublicationThumbnailMaxBytes, slogger)
 	appHandler := handler.NewApplicationHandler(appService, identityService, cfg.Auth.Authorization.Mode, slogger)
 	apiPortalHandler := handler.NewAPIPortalHandler(apiPortalService, identityService, slogger)
@@ -519,6 +532,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	gatewayHandler.RegisterRoutes(core)
 	subscriptionHandler.RegisterRoutes(core)
 	subscriptionPlanHandler.RegisterRoutes(core)
+	monetizationHandler.RegisterRoutes(core)
 	publicationHandler.RegisterRoutes(core)
 	wsHandler.RegisterRoutes(core)
 	internalGatewayHandler.RegisterRoutes(core)
@@ -663,6 +677,8 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 			apiKeyService,
 			subscriptionService,
 			appService,
+			subscriptionPlanService,
+			monetizationService,
 			orgRepo,
 			slogger,
 		)
@@ -1212,6 +1228,14 @@ func newPortalPublisher(authRegistry *service.APIPortalAuthRegistry, cfg *config
 	if err != nil {
 		return nil, fmt.Errorf("failed to build the API Portal HTTP client: %w", err)
 	}
+	listingClient, err := client.NewRetryableHTTPClient(client.RetryConfig{
+		MaxRetries:     cfg.MaxRetries,
+		AttemptTimeout: cfg.ListingRequestTimeout,
+		Backoff:        cfg.RetryBackoff,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to build the API Portal listing HTTP client: %w", err)
+	}
 	contentClient, err := client.NewRetryableHTTPClient(client.RetryConfig{
 		MaxRetries:     cfg.MaxRetries,
 		AttemptTimeout: cfg.ContentRequestTimeout,
@@ -1222,9 +1246,10 @@ func newPortalPublisher(authRegistry *service.APIPortalAuthRegistry, cfg *config
 	}
 	slogger.Info("Initialized the real HTTP publisher for API Publication",
 		"requestTimeout", cfg.RequestTimeout,
+		"listingRequestTimeout", cfg.ListingRequestTimeout,
 		"contentRequestTimeout", cfg.ContentRequestTimeout,
 		"maxRetries", cfg.MaxRetries,
 		"retryBackoff", cfg.RetryBackoff,
 		"overallTimeout", cfg.OverallTimeout)
-	return service.NewHTTPPortalPublisher(authRegistry, lightClient, contentClient, cfg.PlanListingBudget()), nil
+	return service.NewHTTPPortalPublisher(authRegistry, lightClient, listingClient, contentClient, cfg.PlanListingBudget()), nil
 }
