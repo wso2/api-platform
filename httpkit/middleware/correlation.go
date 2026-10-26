@@ -11,12 +11,16 @@ import (
 // CorrelationIDHeader is the canonical header name for the correlation / trace ID.
 const CorrelationIDHeader = "X-Correlation-ID"
 
+// maxCorrelationIDLength fits a UUID, a 32-hex trace ID or a W3C traceparent (55),
+// and matches the 64-character columns that store correlation IDs.
+const maxCorrelationIDLength = 64
+
 // unexported key types prevent collisions with keys defined in other packages.
 type correlationIDKeyType struct{}
 type loggerKeyType struct{}
 
 // CorrelationIDMiddleware reads the X-Correlation-ID request header (or
-// generates a new UUID v4 if absent), stores it and a correlation-aware
+// generates a new UUID v4 if it is absent or invalid), stores it and a correlation-aware
 // *slog.Logger in the request context, and echoes the ID in the response
 // header.
 //
@@ -26,7 +30,7 @@ func CorrelationIDMiddleware(log *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			id := r.Header.Get(CorrelationIDHeader)
-			if id == "" {
+			if !validCorrelationID(id) {
 				id = uuid.New().String()
 			}
 			ctx := context.WithValue(r.Context(), correlationIDKeyType{}, id)
@@ -59,4 +63,19 @@ func GetLogger(r *http.Request, fallback *slog.Logger) *slog.Logger {
 		return log
 	}
 	return fallback
+}
+
+// validCorrelationID accepts a caller-supplied ID only when it is non-empty, at most
+// maxCorrelationIDLength bytes and printable ASCII without spaces.
+// Allowed characters: A-Z, a-z, 0-9, and !"#$%&'()*+,-./:;<=>?@[\]^_`{|}~
+func validCorrelationID(id string) bool {
+	if id == "" || len(id) > maxCorrelationIDLength {
+		return false
+	}
+	for i := 0; i < len(id); i++ {
+		if id[i] <= ' ' || id[i] > '~' {
+			return false
+		}
+	}
+	return true
 }

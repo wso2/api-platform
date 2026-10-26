@@ -360,11 +360,15 @@ func (s *GatewayEventsService) broadcastEvent(ctx context.Context, gatewayID, ev
 // if the UUID has no mapping) before the event leaves the process — the internal UUID must
 // never reach the data plane. An empty userId is left empty (no actor to resolve), not
 // turned into constants.DeletedUser.
+//
+// Every event gets its own ID, sent as both the EventHub event ID and the payload's
+// correlationId: the event store and gateways treat it as unique per event, and one
+// request can send several events to the same gateway (a deploy and its API key
+// backfill). The request's correlation ID is logged next to it, which links an audit
+// log row to the gateway logs for the event.
 func (s *GatewayEventsService) broadcastEventWithUserID(ctx context.Context, gatewayID, userId, eventType string, payload interface{}) error {
-	correlationID := httpmiddleware.GetCorrelationIDFromContext(ctx)
-	if correlationID == "" {
-		correlationID = uuid.New().String()
-	}
+	eventID := uuid.New().String()
+	requestCorrelationID := httpmiddleware.GetCorrelationIDFromContext(ctx)
 
 	if payload == nil {
 		return fmt.Errorf("%s payload is nil", eventType)
@@ -390,7 +394,7 @@ func (s *GatewayEventsService) broadcastEventWithUserID(ctx context.Context, gat
 		Type:          eventType,
 		Payload:       payload,
 		Timestamp:     time.Now().Format(time.RFC3339),
-		CorrelationID: correlationID,
+		CorrelationID: eventID,
 		UserId:        resolvedUserId,
 	}
 
@@ -408,7 +412,7 @@ func (s *GatewayEventsService) broadcastEventWithUserID(ctx context.Context, gat
 		EventType:           eventTypePlatformGateway,
 		Action:              actionForEventType(eventType),
 		EntityID:            gatewayID,
-		EventID:             correlationID,
+		EventID:             eventID,
 		EventData:           string(eventJSON),
 	}
 
@@ -416,13 +420,15 @@ func (s *GatewayEventsService) broadcastEventWithUserID(ctx context.Context, gat
 		s.slogger.Error("Failed to publish gateway event",
 			"gatewayID", gatewayID,
 			"eventType", eventType,
-			"correlationID", correlationID,
+			"eventID", eventID,
+			"requestCorrelationID", requestCorrelationID,
 			"error", err,
 		)
 		return fmt.Errorf("failed to publish %s event: %w", eventType, err)
 	}
 
-	s.slogger.Debug("Published gateway event", "gatewayID", gatewayID, "type", eventType, "correlationID", correlationID)
+	s.slogger.Debug("Published gateway event", "gatewayID", gatewayID, "type", eventType,
+		"eventID", eventID, "requestCorrelationID", requestCorrelationID)
 	return nil
 }
 

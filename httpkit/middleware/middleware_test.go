@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/wso2/api-platform/httpkit/middleware"
@@ -67,6 +68,23 @@ func TestCorrelationIDMiddleware_PreservesExistingID(t *testing.T) {
 
 	if got != existingID {
 		t.Fatalf("got %q, want %q", got, existingID)
+	}
+}
+
+func TestCorrelationIDMiddleware_ReplacesInvalidID(t *testing.T) {
+	mw := middleware.CorrelationIDMiddleware(slog.Default())
+	for _, invalid := range []string{strings.Repeat("a", 65), "bad\nid", "has space"} {
+		var got string
+		h := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			got = middleware.GetCorrelationID(r)
+		}))
+		req := httptest.NewRequest("GET", "/", nil)
+		req.Header.Set(middleware.CorrelationIDHeader, invalid)
+		h.ServeHTTP(httptest.NewRecorder(), req)
+
+		if got == invalid || len(got) != 36 {
+			t.Fatalf("header %q: got %q, want a generated UUID", invalid, got)
+		}
 	}
 }
 
