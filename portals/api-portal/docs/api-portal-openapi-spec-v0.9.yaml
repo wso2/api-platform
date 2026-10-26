@@ -57,6 +57,7 @@ tags:
   - name: OAuth2 Keys
   - name: Webhook Events
   - name: Webhook Subscribers
+  - name: Billing
 paths:
   /organizations:
     post:
@@ -381,7 +382,11 @@ paths:
         `metadata` JSON format as the create operation. The update flow can also adjust label mappings, subscription
         plan mappings, schema definitions, and image metadata. Status changes to unpublished are rejected when active
         subscriptions exist. `type` is required (see the create operation) and is immutable — it must match the
-        API's existing type; a different value is rejected with `409`.
+        API's existing type; a different value is rejected with `409`. A plan the update removes from the API must have
+        no subscriptions to it: otherwise the update is refused with `409`, message `ERR_PLAN_SUB_EXIST` and the
+        reason in `errors[0].message` (for example "The plan Gold has subscriptions to this API, so it can't be removed
+        from the API until they have ended."), and nothing changes. Open checkouts of the plans it removes are
+        ended first.
       operationId: updateApiMetadata
       requestBody:
         $ref: "#/components/requestBodies/ApiMetadataMultipartBody"
@@ -456,7 +461,9 @@ paths:
       summary: Create subscription plans
       description: >-
         Creates one subscription plan when the request body is an object, or multiple subscription plans when the body
-        is an array.
+        is an array. A paid plan is created with its `pricing` in the same request; the plan and its pricing are saved
+        together, or neither is. Pricing is given only when a plan is created and can't be updated after that. Returns
+        `409` when a plan with the same `id` already exists.
       operationId: addSubscriptionPlans
       requestBody:
         $ref: "#/components/requestBodies/SubscriptionPlanBody"
@@ -480,7 +487,10 @@ paths:
       description: >-
         Upserts one subscription plan when the request body is an object, or multiple plans when the body is an array. A
         single plan update returns `200` when an existing plan is updated and `201` when a new plan is created. A bulk
-        update returns `200` when every plan already existed and `201` when at least one plan was created.
+        update returns `200` when every plan already existed and `201` when at least one plan was created. A plan
+        created here may carry its `pricing`, saved with it in the same transaction. Pricing is given only when a plan
+        is created: a plan that already exists keeps its pricing when it is updated without `pricing`, and the request
+        is refused with `409` and code `PLAN_PRICING_LOCKED` when `pricing` is sent for a plan that already exists.
       operationId: putSubscriptionPlans
       requestBody:
         $ref: "#/components/requestBodies/SubscriptionPlanBody"
@@ -494,7 +504,7 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
         "409":
-          $ref: "#/components/responses/Conflict"
+          $ref: "#/components/responses/SubscriptionPlanPutConflict"
         "500":
           $ref: "#/components/responses/InternalServerError"
       security:
@@ -528,10 +538,345 @@ paths:
         - Subscription Plans
       summary: Delete a subscription plan
       operationId: deleteSubscriptionPlan
-      description: Deletes a subscription plan by `planId`.
+      description: >-
+        Deletes a subscription plan by `planId`. A plan that an API offers, or that has subscriptions, is kept and
+        the request is refused with `409` and code `PLAN_IN_USE`, naming the plan, such as "The plan Gold is in use
+        and can't be deleted."
       responses:
         "204":
           description: Subscription plan deleted successfully.
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      security:
+        - OAuth2Security:
+            - dp:subscription_plan:delete
+            - dp:subscription_plan:manage
+  /subscription-plans/{planId}/pricing:
+    parameters:
+      - $ref: "#/components/parameters/planId"
+    get:
+      tags:
+        - Billing
+      summary: Get the pricing of a subscription plan
+      description: >-
+        Returns what a paid plan costs: the currency, the billing period, and either a flat rate or the usage
+        prices. The pricing is given when the plan is created (`pricing` in the body of `POST` or
+        `PUT /subscription-plans`) and can't be updated after that. Returns `404` for a free plan, which has no pricing.
+      operationId: getPlanPricing
+      responses:
+        "200":
+          $ref: "#/components/responses/PlanPricingResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      security:
+        - OAuth2Security:
+            - dp:subscription_plan:pricing:read
+            - dp:subscription_plan:read
+            - dp:subscription_plan:manage
+  /billing-configuration:
+    get:
+      tags:
+        - Billing
+      summary: Get the billing configuration
+      description: >-
+        Returns the Moesif and Stripe connection paid plans are sold through. No key is returned, in whole or in
+        part. `mode` is `TEST` while the Stripe key is a test key. Returns `404` when billing is not set up.
+      operationId: getBillingConfiguration
+      responses:
+        "200":
+          $ref: "#/components/responses/BillingConfigurationResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      security:
+        - OAuth2Security:
+            - dp:billing_configuration:read
+            - dp:billing_configuration:manage
+    post:
+      tags:
+        - Billing
+      summary: Set up the billing configuration
+      description: >-
+        Verifies the keys with Moesif and Stripe, connects the Moesif application to Stripe with the Stripe key
+        (replacing a connection already there), registers Moesif's endpoint and the portal's webhook endpoint in
+        Stripe, creates in Moesif each paid plan already offered on an API, and saves. When any step fails, the steps already done are undone and nothing is saved. A key Moesif or
+        Stripe refuses returns `400` with code `BILLING_KEY_INVALID`, listing each refused key under `errors` by its
+        request field; another step Moesif or Stripe refuses returns `400` with code `BILLING_SETUP_FAILED` or
+        `BILLING_CATALOG_FAILED`; a provider that cannot be reached returns `502`. A billing configuration cannot be
+        changed: when billing is already set up this returns `409`, and changing it means removing it and setting it
+        up again.
+      operationId: createBillingConfiguration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BillingConfigurationRequest"
+      responses:
+        "201":
+          description: Billing set up.
+          headers:
+            Location:
+              description: URL of the billing configuration.
+              schema:
+                type: string
+                format: uri
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingConfiguration"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+        "502":
+          $ref: "#/components/responses/BadGateway"
+      security:
+        - OAuth2Security:
+            - dp:billing_configuration:create
+            - dp:billing_configuration:manage
+    delete:
+      tags:
+        - Billing
+      summary: Remove the billing configuration
+      description: >-
+        Removes everything set up with the keys the administrator entered: Moesif's connection to Stripe, Moesif's
+        endpoint in Stripe, the portal's endpoint in Stripe, and the stored keys, with the billing customers, their
+        checkouts and the paid plans' billing records. Open checkouts are ended first, and every paid plan sold on an
+        API is taken off sale in Moesif (its billing meters stop and its prices and plans are archived). Refused with
+        `409` (`BILLING_SUBSCRIPTIONS_ACTIVE`) while a paid subscription is active. When a provider refuses a step,
+        nothing is removed (`400` or `502`, `BILLING_REMOVE_FAILED`): the connection and endpoints already removed are
+        put back, while ended checkouts and plans taken off sale stay so, and removing billing again finishes the
+        job.
+      operationId: deleteBillingConfiguration
+      responses:
+        "204":
+          description: Billing configuration removed.
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "502":
+          $ref: "#/components/responses/BadGateway"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      security:
+        - OAuth2Security:
+            - dp:billing_configuration:delete
+            - dp:billing_configuration:manage
+  /billing-configuration/webhook-endpoint:
+    put:
+      tags:
+        - Billing
+      summary: Change the webhook endpoint's address
+      description: >-
+        Moves the portal's webhook endpoint in Stripe to another public address, for a portal Stripe reaches through
+        another host or a proxy. Stripe keeps the endpoint and its signing secret, so events go on arriving and being
+        verified; when Stripe no longer has the endpoint, a new one is registered. The keys and everything else stay as
+        they are. An address that is not https, or that Stripe refuses, returns `400` with code `BILLING_INPUT_INVALID`
+        and the error under `webhookBaseUrl`; Stripe not reachable returns `502`.
+      operationId: updateBillingWebhookEndpoint
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BillingWebhookEndpointRequest"
+      responses:
+        "200":
+          $ref: "#/components/responses/BillingConfigurationResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+        "502":
+          $ref: "#/components/responses/BadGateway"
+      security:
+        - OAuth2Security:
+            - dp:billing_configuration:update
+            - dp:billing_configuration:manage
+  /checkout-sessions:
+    post:
+      tags:
+        - Billing
+      summary: Start a checkout for a paid plan
+      description: >-
+        Starts paying for a paid subscription plan of an API, in Stripe's checkout shown inside the portal's own page
+        (Stripe Embedded Checkout). Returns what the browser needs to show it: the checkout's `clientSecret` and the
+        account's `publishableKey`. The subscription is created once Stripe confirms the payment. A payment method
+        that has to leave the page brings the browser back to the API's page with `checkout` and `checkoutResult`
+        query parameters. A free plan is subscribed to with `POST /subscriptions` instead.
+
+        A user has at most one open checkout per API. An open checkout for the same plan is returned again (`201`
+        with the same `id`). An open checkout for another plan of the API is ended, and a new one is started. When
+        the earlier checkout turns out to be completed, its subscription is created and the request is refused with
+        `409` ("You already have a subscription to this API."). Also returns `409` when the user already has a
+        subscription to the API.
+      operationId: createCheckoutSession
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - artifactId
+                - subscriptionPlanId
+              properties:
+                artifactId:
+                  type: string
+                  description: The API's id.
+                subscriptionPlanId:
+                  type: string
+                  description: The paid plan's id.
+                viewName:
+                  type: string
+                  description: The view whose API page a redirecting payment method returns to. The default view when omitted or unknown.
+      responses:
+        "201":
+          description: The checkout is started, or the user's open checkout for the same plan is returned again.
+          headers:
+            Location:
+              description: URL of the checkout.
+              schema:
+                type: string
+                format: uri
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  status:
+                    type: string
+                  clientSecret:
+                    type: string
+                    description: What the browser mounts the checkout with. Only the checkout's subscriber receives it.
+                  publishableKey:
+                    type: string
+                    description: The payment provider's public key the browser starts its checkout with.
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+        "502":
+          $ref: "#/components/responses/BadGateway"
+      security:
+        - OAuth2Security:
+            - dp:subscription:create
+            - dp:subscription:manage
+  /checkout-sessions/{checkoutId}:
+    parameters:
+      - name: checkoutId
+        in: path
+        required: true
+        description: The checkout's `id`, as returned by `POST /checkout-sessions`.
+        schema:
+          type: string
+    get:
+      tags:
+        - Billing
+      summary: Get a checkout
+      description: >-
+        Returns the caller's checkout. While it is open, the portal asks Stripe for its state first, so the
+        subscription is created as soon as the subscriber returns from a confirmed payment. A checkout that ended
+        unpaid is answered once with status `EXPIRED` and is then deleted, so it returns `404` after that, as it
+        does when Stripe's event ended it first.
+      operationId: getCheckoutSession
+      responses:
+        "200":
+          description: The checkout.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckoutSession"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+        "502":
+          $ref: "#/components/responses/BadGateway"
+      security:
+        - OAuth2Security:
+            - dp:subscription:read
+            - dp:subscription:manage
+  /usage:
+    get:
+      tags:
+        - Billing
+      summary: Get the usage of a paid subscription
+      description: >-
+        Returns the caller's usage based subscriptions (a flat rate plan has no billable usage) and, for one of them
+        (the first when `subscriptionId` is omitted), its billable usage over the period: one entry per usage price,
+        counted as that price counts it, per hour, day or week (UTC; weeks start on Monday). `interval` picks one of
+        the groupings the period offers (`usage.intervals`: those that give more than one bucket and at most 800); by
+        default a range of two days or less is per hour, up to 120 days per day, and longer per week. The current
+        billing period is returned in full (`from` - `to` is the whole period), and its buckets still to come have a
+        null value. For the current billing period, the charges so far are also returned, from the billing provider.
+        Usage lags the gateway by a few minutes.
+      operationId: getUsage
+      parameters:
+        - name: subscriptionId
+          in: query
+          required: false
+          description: The subscription to show, an `id` from the response's `subscriptions`. The first one when omitted.
+          schema:
+            type: string
+        - name: period
+          in: query
+          required: false
+          description: >-
+            The range to show (UTC). CURRENT is the subscription's current billing period and PREVIOUS the one before
+            it. LAST_30_DAYS is the 30 days up to now, LAST_7_DAYS today and the 6 days before, and LAST_24_HOURS this
+            hour and the 23 before.
+          schema:
+            type: string
+            enum:
+              - CURRENT
+              - PREVIOUS
+              - LAST_30_DAYS
+              - LAST_7_DAYS
+              - LAST_24_HOURS
+            default: CURRENT
+        - name: interval
+          in: query
+          required: false
+          description: How to group the usage (per hour, day or week); one of the period's `usage.intervals`.
+          schema:
+            type: string
+            enum:
+              - HOUR
+              - DAY
+              - WEEK
+      responses:
+        "200":
+          description: The usage.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Usage"
         "400":
           $ref: "#/components/responses/BadRequest"
         "404":
@@ -540,8 +885,317 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:subscription_plan:delete
-            - dp:subscription_plan:manage
+            - dp:subscription:read
+            - dp:subscription:manage
+  /billing/invoices:
+    get:
+      tags:
+        - Billing
+      summary: List the caller's invoices
+      description: >-
+        Returns one page of the caller's invoices from the billing provider across all their paid subscriptions, newest
+        first, each named by the API and plan it is for. Pass a page's `nextCursor` as `after` for the next page.
+        Returns `400` when `after` is not such a cursor, also when it is well formed but the billing provider does not
+        know it ("after must be the nextCursor of a previous page").
+      operationId: listBillingInvoices
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          description: How many invoices a page holds.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: after
+          in: query
+          required: false
+          description: The `nextCursor` of a previous page.
+          schema:
+            type: string
+            pattern: '^[A-Za-z0-9_]{1,255}$'
+        - name: period
+          in: query
+          required: false
+          description: How far back the list reaches. ALL lists every invoice the billing provider keeps.
+          schema:
+            type: string
+            enum:
+              - LAST_3_MONTHS
+              - LAST_6_MONTHS
+              - LAST_12_MONTHS
+              - ALL
+            default: LAST_12_MONTHS
+      responses:
+        "200":
+          description: The caller's invoices.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingInvoiceList"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      security:
+        - OAuth2Security:
+            - dp:subscription:read
+            - dp:subscription:manage
+  /billing/billing-portal-sessions:
+    post:
+      tags:
+        - Billing
+      summary: Open the billing provider's billing page for the caller
+      description: >-
+        Starts a session on the billing provider's billing page, where the caller manages their payment methods and
+        downloads invoices, and which returns to the portal's Invoices page. Returns `409` when the caller has not
+        bought a paid plan yet, so the billing provider has no customer for them.
+      operationId: createAccountBillingPortalSession
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                viewName:
+                  type: string
+                  maxLength: 255
+      responses:
+        "201":
+          description: The billing page's address.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  url:
+                    type: string
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "502":
+          $ref: "#/components/responses/BadGateway"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      security:
+        - OAuth2Security:
+            - dp:subscription:update
+            - dp:subscription:manage
+  /billing-reports/revenue:
+    get:
+      tags:
+        - Billing
+      summary: Get the paid subscriptions and their payment state
+      description: >-
+        Returns what the portal's own records hold about its paid subscriptions: how many there are, on how many APIs,
+        how many have a payment issue, and when billing was set up. Revenue and usage come from the invoices, which
+        `GET /billing-reports/invoices` lists a page at a time. `configured` is false when billing is not set up.
+      operationId: getRevenueReport
+      responses:
+        "200":
+          description: The report.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RevenueReport"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      security:
+        - OAuth2Security:
+            - dp:billing_report:read
+            - dp:billing_report:manage
+  /billing-reports/invoices:
+    get:
+      tags:
+        - Billing
+      summary: List the portal's invoices for the usage and revenue report
+      description: >-
+        Returns one page of the invoices of the portal's paid subscriptions created from `from` up to (not including)
+        `to`, newest first, each with the API and plan it bills, its amounts and its billable usage. Add them up for
+        totals: the billing provider has no totals, so the report reads its invoices in pages. A page reads `limit` of
+        the billing provider's invoices and keeps only the portal's finalized ones (open, paid or uncollectible, of a
+        completed checkout), so it may hold fewer than `limit`, or none; keep reading while `nextCursor` is set, passing
+        it as `after`. Returns `400` when `after` is not such a cursor. `invoicesAvailable` is false, with no
+        invoices, when the billing provider could not be reached.
+      operationId: listRevenueInvoices
+      parameters:
+        - name: from
+          in: query
+          required: false
+          description: >-
+            The earliest creation time, a date (2026-10-01, midnight UTC) or a date and time. The default is the start
+            of the current month (UTC).
+          schema:
+            type: string
+        - name: to
+          in: query
+          required: false
+          description: The time the invoices were created before, a date or a date and time. The default is now.
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          description: How many of the billing provider's invoices the page reads.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 100
+        - name: after
+          in: query
+          required: false
+          description: The `nextCursor` of a previous page.
+          schema:
+            type: string
+            pattern: '^[A-Za-z0-9_]{1,255}$'
+      responses:
+        "200":
+          description: The page of invoices.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RevenueInvoiceList"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      security:
+        - OAuth2Security:
+            - dp:billing_report:read
+            - dp:billing_report:manage
+  /meters:
+    get:
+      tags:
+        - Billing
+      summary: List meters
+      description: >-
+        Lists the meters of the organization, ordered by id. A meter defines what a paid plan charges for: the
+        requests the gateway allows, or their tokens. Each plan price on the meter picks the requests it counts
+        with its own filters.
+      operationId: listMeters
+      parameters:
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/offset"
+      responses:
+        "200":
+          $ref: "#/components/responses/MeterListResponse"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      security:
+        - OAuth2Security:
+            - dp:meter:read
+            - dp:meter:manage
+    post:
+      tags:
+        - Billing
+      summary: Create a meter
+      description: >-
+        Creates a meter. When `id` is omitted, it is derived from `displayName`. A request with `conditions`, or
+        with any field the meter does not have, is refused.
+      operationId: createMeter
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Meter"
+      responses:
+        "201":
+          description: Meter created.
+          headers:
+            Location:
+              description: URL of the created meter.
+              schema:
+                type: string
+                format: uri
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Meter"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      security:
+        - OAuth2Security:
+            - dp:meter:create
+            - dp:meter:manage
+  /meters/{meterId}:
+    parameters:
+      - $ref: "#/components/parameters/meterId"
+    get:
+      tags:
+        - Billing
+      summary: Get a meter
+      description: >-
+        Returns one meter. `planCount` says how many plans price it; while any does, the meter cannot change or be
+        deleted.
+      operationId: getMeter
+      responses:
+        "200":
+          $ref: "#/components/responses/MeterResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      security:
+        - OAuth2Security:
+            - dp:meter:read
+            - dp:meter:manage
+    put:
+      tags:
+        - Billing
+      summary: Update a meter
+      description: >-
+        Replaces the name, description, type, event key and filter fields of a meter. The `id` cannot
+        change. Once a plan prices the meter, sold or not, no field can change, the name and description included:
+        `409` with code `METER_IN_USE`, such as "The meter is in use, so it can't be updated." Until then, every field
+        can change.
+      operationId: updateMeter
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Meter"
+      responses:
+        "200":
+          $ref: "#/components/responses/MeterResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      security:
+        - OAuth2Security:
+            - dp:meter:update
+            - dp:meter:manage
+    delete:
+      tags:
+        - Billing
+      summary: Delete a meter
+      description: Deletes a meter. Returns `409` with code `METER_IN_USE` while a plan's pricing charges for it.
+      operationId: deleteMeter
+      responses:
+        "204":
+          description: Meter deleted.
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      security:
+        - OAuth2Security:
+            - dp:meter:delete
+            - dp:meter:manage
   /apis/{apiId}/assets:
     parameters:
       - $ref: "#/components/parameters/apiId"
@@ -917,7 +1571,12 @@ paths:
       summary: Create a subscription
       description: >-
         Creates a subscription for an API. The API must exist in the API Portal and have subscription plans
-        enabled. The subscription is owned by the authenticated user.
+        enabled. The subscription is owned by the authenticated user. A user has at most one subscription per API:
+        returns `409` ("A subscription for this API already exists") when the user already has one, or, for a paid
+        subscription that is ending, "Your subscription to this API ends on <date>. You can subscribe again after
+        that." A paid plan is subscribed to through `POST /checkout-sessions`; here it gets `409` ("This is a paid
+        plan. Subscribe to it through checkout."). An open checkout the user has for the API is ended first, which
+        returns `502` when the payment provider cannot be reached.
       requestBody:
         $ref: "#/components/requestBodies/SubscriptionCreateBody"
       responses:
@@ -949,6 +1608,8 @@ paths:
           $ref: "#/components/responses/Conflict"
         "500":
           $ref: "#/components/responses/InternalServerError"
+        "502":
+          $ref: "#/components/responses/BadGateway"
       security:
         - OAuth2Security:
             - dp:subscription:create
@@ -1009,7 +1670,9 @@ paths:
         - Subscriptions
       operationId: updateSubscription
       summary: Update a subscription
-      description: Updates the subscription status. Accepts only `ACTIVE` or `INACTIVE`.
+      description: >-
+        Updates the subscription status. Accepts only `ACTIVE` or `INACTIVE`. The status of a paid subscription cannot
+        be changed (409); it is stopped by deleting it.
       requestBody:
         $ref: "#/components/requestBodies/SubscriptionUpdateBody"
       responses:
@@ -1019,6 +1682,8 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
         "500":
           $ref: "#/components/responses/InternalServerError"
       security:
@@ -1030,14 +1695,46 @@ paths:
         - Subscriptions
       operationId: deleteSubscription
       summary: Delete a subscription
-      description: Deletes the subscription and returns a success message.
+      description: >-
+        Unsubscribes. A free subscription is deleted. A paid subscription is first ended with the billing provider;
+        when the provider cannot be reached, the subscription is kept (`409` or `502`). A plan charged by usage ends
+        now and is deleted, and the provider issues a final invoice for the usage reported so far. A flat rate plan
+        runs to the end of the period already paid for: the answer carries `endsAt`, and the subscription stays
+        active until then and is removed when the provider ends it. Unsubscribing again before then gives the same
+        answer, unless `immediate` is true.
+      parameters:
+        - name: immediate
+          in: query
+          required: false
+          description: >-
+            Optional, false by default. Applies only to a paid subscription on a flat rate plan: true ends it
+            immediately instead of at the end of its paid period, the provider ends it at once and the subscription
+            is deleted. The rest of the paid period is not refunded. A free subscription, and a paid one charged by
+            usage, are deleted immediately either way, so the parameter changes nothing for them.
+          schema:
+            type: boolean
+            default: false
       responses:
         "200":
-          $ref: "#/components/responses/MessageResponse"
+          description: Unsubscribed; `endsAt` is set when a flat rate plan runs to the end of its paid period.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  endsAt:
+                    type: string
+                    format: date-time
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
         "500":
           $ref: "#/components/responses/InternalServerError"
+        "502":
+          $ref: "#/components/responses/BadGateway"
       security:
         - OAuth2Security:
             - dp:subscription:delete
@@ -1053,7 +1750,9 @@ paths:
       description: >-
         Changes the subscription plan in-place. The subscription UUID and token remain unchanged;
         only the plan is updated. A `subscription.plan_changed` webhook event is published to
-        the organization's configured webhook subscribers.
+        the organization's configured webhook subscribers. A subscription cannot move to or from a
+        paid plan here: `409` ("Paid plans cannot be changed here. Unsubscribe, then subscribe to
+        the new plan.").
       requestBody:
         $ref: "#/components/requestBodies/SubscriptionChangePlanBody"
       responses:
@@ -1063,6 +1762,8 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
         "500":
           $ref: "#/components/responses/InternalServerError"
       security:
@@ -1091,6 +1792,33 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
+            - dp:subscription:manage
+  /subscriptions/{subId}/billing:
+    parameters:
+      - $ref: "#/components/parameters/subId"
+    get:
+      tags:
+        - Billing
+      operationId: getSubscriptionBilling
+      summary: Get the billing of a paid subscription
+      description: >-
+        Returns a paid subscription's access status, its billing status, its current billing period, when it ends
+        (after unsubscribing from a flat rate plan) and whether it is charged by usage. Its charges are on
+        `GET /usage` and its invoices on `GET /billing/invoices`.
+      responses:
+        "200":
+          description: The subscription's billing.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubscriptionBilling"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      security:
+        - OAuth2Security:
+            - dp:subscription:read
             - dp:subscription:manage
   /api-keys:
     get:
@@ -2969,6 +3697,19 @@ components:
             dp:webhook_subscriber:update: Update webhook subscriber configurations.
             dp:webhook_subscriber:delete: Delete webhook subscriber configurations.
             dp:webhook_subscriber:manage: Manage webhook subscriber configurations (including creating, updating, and deleting).
+            dp:billing_configuration:read: Read the billing configuration.
+            dp:billing_configuration:create: Set up the billing configuration.
+            dp:billing_configuration:delete: Remove the billing configuration.
+            dp:billing_configuration:update: Change the billing configuration's webhook endpoint address.
+            dp:billing_configuration:manage: Manage the billing configuration (including setting it up and removing it).
+            dp:billing_report:read: Read the usage and revenue report.
+            dp:billing_report:manage: Manage the usage and revenue report (including reading it).
+            dp:meter:read: Read meters.
+            dp:meter:create: Create meters.
+            dp:meter:update: Update meters.
+            dp:meter:delete: Delete meters.
+            dp:meter:manage: Manage meters (including creating, updating, and deleting).
+            dp:subscription_plan:pricing:read: Read the pricing of subscription plans.
   parameters:
     orgId:
       name: orgId
@@ -3008,6 +3749,14 @@ components:
         type: string
         example: Gold
       description: The subscription plan's handle (unique per org).
+    meterId:
+      name: meterId
+      in: path
+      required: true
+      schema:
+        type: string
+        example: successful-calls
+      description: The meter's handle (its `id` in request/response payloads), not the internal database uuid.
     subId:
       name: subId
       in: path
@@ -3293,7 +4042,8 @@ components:
         create/upsert; each object carries its rate/quota rules in `limits`. Alternatively, upload a YAML file in
         the `subscriptionPlan` multipart field; use `kind: SubscriptionPlan` for a single plan or
         `kind: SubscriptionPlanList` with an `items` array for bulk operations. YAML uploads may use the legacy
-        `type: requestcount` or `type: eventcount` shorthand, which is converted into `limits` before storage.
+        `type: requestcount` or `type: eventcount` shorthand, which is converted into `limits` before storage. A
+        paid plan's `spec.pricing` takes the same fields as `pricing` in JSON and follows the same rules.
       content:
         application/json:
           schema:
@@ -4083,6 +4833,21 @@ components:
             status: error
             code: CONFLICT
             message: Conflict
+    SubscriptionPlanPutConflict:
+      description: >-
+        The request conflicts with an existing plan. Code `PLAN_PRICING_LOCKED` when `pricing` is sent for a plan
+        that already exists.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          examples:
+            pricingLocked:
+              summary: Pricing sent for a plan that already exists
+              value:
+                status: error
+                code: PLAN_PRICING_LOCKED
+                message: The plan gold already exists; its pricing can't be updated once a plan is created.
     UnsupportedMediaType:
       description: Unsupported request media type.
       content:
@@ -4109,6 +4874,16 @@ components:
               This API Portal serves a single organization, which is configured and
               provisioned at startup. Organizations cannot be created, listed, or deleted
               through the API.
+    BadGateway:
+      description: A billing provider (such as Stripe or Moesif) could not be reached or failed the request.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            status: error
+            code: BILLING_PROVIDER_UNAVAILABLE
+            message: The billing page could not be opened. Try again later.
     InternalServerError:
       description: Internal server error.
       content:
@@ -4595,6 +5370,41 @@ components:
               total: 42
               limit: 20
               offset: 0
+    BillingConfigurationResponse:
+      description: The billing configuration.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/BillingConfiguration"
+    MeterResponse:
+      description: A meter.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Meter"
+    MeterListResponse:
+      description: List of meters.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              list:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Meter"
+              count:
+                type: integer
+                description: Number of items returned in this page.
+                example: 1
+              pagination:
+                $ref: "#/components/schemas/Pagination"
+    PlanPricingResponse:
+      description: The pricing of a paid subscription plan.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/PlanPricing"
     WebhookSubscriberResponse:
       description: Webhook subscriber configuration response.
       content:
@@ -5298,6 +6108,14 @@ components:
           description: Platform API subscription plan UUID associated with this plan.
         orgId:
           type: string
+        paid:
+          type: boolean
+          description: Whether subscribers pay for this plan. A paid plan has `pricing`.
+        pricing:
+          allOf:
+            - $ref: "#/components/schemas/PlanPricing"
+          description: >-
+            What the plan costs; absent for a free plan. Given when the plan is created and can't be updated after that.
         createdBy:
           type: string
           description: >-
@@ -5517,11 +6335,21 @@ components:
           description: >-
             Optional desired handle for the plan (unique per org), stored as-is. When omitted, the server
             generates a UUID handle. When the plan is created from a SubscriptionPlan YAML artifact instead,
-            the handle is always taken from `metadata.name`.
+            the handle is always taken from `metadata.name`. A new plan's handle is at most 40 characters, the most
+            the Platform API keeps; a longer one is refused with `400` "id must be at most 40 characters". A plan that
+            already has a longer handle keeps it.
           example: Gold
         refId:
           type: string
           description: Platform API subscription plan UUID to associate with this plan.
+        pricing:
+          allOf:
+            - $ref: "#/components/schemas/PlanPricing"
+          description: >-
+            Optional, and only when the request creates the plan: the plan and this pricing are saved together, or
+            neither is. Refused with `400` for an unknown meter or values the meter does not take. Pricing can't
+            change once a plan is created: sent for a plan that already exists, it is refused with `409` and code
+            `PLAN_PRICING_LOCKED`. Leave it out to keep the plan's pricing.
         displayName:
           type: string
         description:
@@ -6094,6 +6922,760 @@ components:
           default: 5000
           example: 5000
       additionalProperties: false
+    BillingConfigurationRequest:
+      type: object
+      description: >-
+        The billing engine, the payment provider it bills through, and their keys. All four are required: the Moesif
+        Collector Application Id, the Moesif management key, the Stripe key and the Stripe publishable key. The
+        billing engine and payment provider default to MOESIF and STRIPE.
+      required:
+        - moesifCollectorApplicationId
+        - moesifManagementKey
+        - stripeApiKey
+        - stripePublishableKey
+      properties:
+        provider:
+          type: string
+          enum:
+            - MOESIF
+          description: The billing engine, which meters usage and keeps plans and prices.
+        paymentProvider:
+          type: string
+          enum:
+            - STRIPE
+          description: The payment provider the billing engine bills through.
+        moesifCollectorApplicationId:
+          type: string
+          maxLength: 255
+          writeOnly: true
+          description: The Moesif Collector Application ID.
+        moesifManagementKey:
+          type: string
+          maxLength: 4096
+          writeOnly: true
+          description: A Moesif management API key with read and write access to plans, prices and billing meters.
+        stripeApiKey:
+          type: string
+          maxLength: 255
+          pattern: '^(sk|rk)_(test|live)_[A-Za-z0-9]+$'
+          writeOnly: true
+          description: >-
+            A Stripe restricted (or secret) key. A test key puts the portal in test mode. Restricted keys need write
+            access to Customers, Checkout Sessions, Subscriptions, Customer portal and Webhook Endpoints, and read
+            access to Invoices, Products and Prices.
+        stripePublishableKey:
+          type: string
+          maxLength: 255
+          pattern: '^pk_(test|live)_[A-Za-z0-9]+$'
+          writeOnly: true
+          description: >-
+            The Stripe publishable key of the same account and mode as the API key. The subscriber's browser starts
+            Stripe's checkout with it; it is public by design.
+        webhookBaseUrl:
+          type: string
+          maxLength: 1023
+          description: >-
+            The public https address Stripe reaches the portal at, such as `https://portal.example.com`; a path is
+            kept, for a portal behind a proxy. The portal's webhook endpoint is registered under it. Defaults to the
+            portal's own address (`server.base_url`).
+    BillingWebhookEndpointRequest:
+      type: object
+      description: The public address to move the portal's Stripe webhook endpoint to.
+      required:
+        - webhookBaseUrl
+      properties:
+        webhookBaseUrl:
+          type: string
+          maxLength: 1023
+          description: >-
+            The public https address Stripe reaches the portal at, such as `https://portal.example.com`; a path is
+            kept, for a portal behind a proxy.
+    BillingConfiguration:
+      type: object
+      properties:
+        provider:
+          type: string
+          enum:
+            - MOESIF
+          description: >-
+            The billing engine: MOESIF meters usage and keeps the billing catalog, which Moesif syncs to the payment
+            provider.
+        paymentProvider:
+          type: string
+          enum:
+            - STRIPE
+          description: The payment provider the billing engine bills through, which holds customers, subscriptions and payments.
+        mode:
+          type: string
+          enum:
+            - TEST
+            - LIVE
+          description: From the Stripe key.
+        webhookEndpointUrl:
+          type: string
+          format: uri
+          description: Where Stripe sends this portal's events; the address ends with the organization's id.
+          example: https://developer.example.com/api-portal/billing/stripe/webhooks/0b5c9a4e-1f2d-4c3b-9a8e-7d6f5e4c3b2a
+        webhookBaseUrl:
+          type: string
+          format: uri
+          description: The public address the webhook endpoint is under; change it with `PUT /billing-configuration/webhook-endpoint`.
+        webhookRegistered:
+          type: boolean
+          description: >-
+            Whether the portal holds the signing secret of its endpoint, which Stripe returns when the portal
+            registers the endpoint.
+        createdBy:
+          type: string
+          description: Who set billing up.
+        createdAt:
+          type: string
+          format: date-time
+          description: When billing was set up. A billing configuration is not updated; it is removed and set up again.
+    CheckoutSession:
+      type: object
+      properties:
+        id:
+          type: string
+        status:
+          type: string
+          enum:
+            - OPEN
+            - COMPLETED
+            - EXPIRED
+          description: >-
+            OPEN until Stripe confirms the payment (COMPLETED) or the checkout ends unpaid (EXPIRED). A checkout that
+            ends unpaid is deleted: EXPIRED is returned once, by the request that finds it ended, and the checkout is
+            not found after that.
+        artifactId:
+          type: string
+          nullable: true
+        subscriptionPlanId:
+          type: string
+          nullable: true
+        subscriptionId:
+          type: string
+          nullable: true
+          description: The subscription created when the checkout completed.
+        clientSecret:
+          type: string
+          description: >-
+            Returned when a checkout is started or resumed: what the browser mounts the open checkout with (Stripe
+            Embedded Checkout). Only the checkout's subscriber receives it.
+        publishableKey:
+          type: string
+          description: Returned with clientSecret. The payment provider's public key the browser starts its checkout with.
+    BillingAmountLine:
+      type: object
+      properties:
+        description:
+          type: string
+          description: The plan's fee ("Monthly fee"), or what a usage charge counts ("Billable calls").
+        usage:
+          type: boolean
+          description: True for a usage charge.
+        quantity:
+          type: number
+          nullable: true
+        amount:
+          type: string
+          description: Decimal amount in the currency.
+        amountText:
+          type: string
+    BillingEstimate:
+      type: object
+      description: The charges of the current billing period so far, from the billing provider's preview of the next invoice.
+      properties:
+        currency:
+          type: string
+        periodStart:
+          type: string
+          format: date-time
+          nullable: true
+        periodEnd:
+          type: string
+          format: date-time
+          nullable: true
+        lines:
+          type: array
+          items:
+            $ref: "#/components/schemas/BillingAmountLine"
+        total:
+          type: string
+        totalText:
+          type: string
+    SubscriptionBilling:
+      type: object
+      properties:
+        subscriptionId:
+          type: string
+        endsAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the subscription ends, after the subscriber unsubscribed from a flat rate plan.
+        byUsage:
+          type: boolean
+          description: >-
+            True when the plan is charged by usage: unsubscribing ends it now. A flat rate plan runs to the end of the
+            period already paid for.
+        status:
+          type: string
+          enum:
+            - ACTIVE
+            - PAST_DUE
+            - PAYMENT_PENDING
+          description: >-
+            PAST_DUE while the billing provider retries a failed payment (calls still work). PAYMENT_PENDING once the
+            retries have ended unpaid: the gateway refuses calls (403) until the invoice is paid. This is the same
+            whatever the Stripe account is set to do after the last failed retry, including leaving the subscription
+            past due.
+        billingStatus:
+          type: string
+          enum:
+            - ACTIVE
+            - PAST_DUE
+            - UNPAID
+            - CANCELLED
+        currentPeriod:
+          type: object
+          properties:
+            start:
+              type: string
+              format: date-time
+              nullable: true
+            end:
+              type: string
+              format: date-time
+              nullable: true
+    Usage:
+      type: object
+      properties:
+        subscriptions:
+          type: array
+          description: The caller's usage-based subscriptions.
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              apiName:
+                type: string
+              apiVersion:
+                type: string
+              planName:
+                type: string
+        subscriptionId:
+          type: string
+          nullable: true
+        period:
+          type: string
+        from:
+          type: string
+          format: date-time
+          nullable: true
+        to:
+          type: string
+          format: date-time
+          nullable: true
+        status:
+          type: string
+          nullable: true
+        usage:
+          type: object
+          nullable: true
+          description: >-
+            The subscription's billable usage, per usage price; null when the caller has no usage based
+            subscription, or none of its prices can be counted.
+          properties:
+            interval:
+              type: string
+              description: How the usage is grouped.
+              enum:
+                - HOUR
+                - DAY
+                - WEEK
+            intervals:
+              type: array
+              description: The groupings this period can be shown in.
+              items:
+                type: string
+                enum:
+                  - HOUR
+                  - DAY
+                  - WEEK
+            prices:
+              type: array
+              description: The usage of each usage price the subscription was sold with.
+              items:
+                type: object
+                properties:
+                  name:
+                    type: string
+                    description: The price's name ("Successful calls · 200").
+                  unit:
+                    type: string
+                    description: What is counted, singular ("request", "token").
+                  total:
+                    type: number
+                    nullable: true
+                    description: The usage over the range; null when it could not be read.
+                  buckets:
+                    type: array
+                    nullable: true
+                    description: Every hour, day or week of the range, oldest first; null when the usage could not be read.
+                    items:
+                      type: object
+                      properties:
+                        start:
+                          type: string
+                          format: date-time
+                        value:
+                          type: number
+                          nullable: true
+                          description: The usage in the bucket; null for one still to come.
+        estimate:
+          type: object
+          allOf:
+            - $ref: "#/components/schemas/BillingEstimate"
+          nullable: true
+        usageAvailable:
+          type: boolean
+          description: False when usage could not be read from the billing provider.
+    BillingInvoiceList:
+      type: object
+      properties:
+        period:
+          type: string
+        canManageBilling:
+          type: boolean
+          description: >-
+            Whether the caller can open the billing provider's billing page, where they manage payment methods (they
+            have a customer there).
+        invoicesAvailable:
+          type: boolean
+          description: False when the invoices could not be read from the billing provider.
+        nextCursor:
+          type: string
+          nullable: true
+          description: Pass as `after` for the next page; null on the last page.
+        invoices:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              number:
+                type: string
+                nullable: true
+              date:
+                type: string
+                format: date-time
+                nullable: true
+              subscription:
+                type: string
+                nullable: true
+                description: The API and plan the invoice is for ("Weather API v1 · Gold").
+              amount:
+                type: string
+              amountText:
+                type: string
+              status:
+                type: string
+              statusText:
+                type: string
+              url:
+                type: string
+                nullable: true
+              pdfUrl:
+                type: string
+                nullable: true
+    RevenueReport:
+      type: object
+      properties:
+        configured:
+          type: boolean
+          description: False when billing is not set up; no other field is then given.
+        billingSince:
+          type: string
+          format: date-time
+          description: When billing was set up, the start of "all time" for the report.
+        paidSubscriptions:
+          type: integer
+        paidApis:
+          type: integer
+        paymentIssues:
+          type: object
+          properties:
+            pastDue:
+              type: integer
+            paymentPending:
+              type: integer
+    RevenueInvoiceList:
+      type: object
+      properties:
+        invoicesAvailable:
+          type: boolean
+          description: False when the invoices could not be read from the billing provider.
+        nextCursor:
+          type: string
+          nullable: true
+          description: Pass as `after` for the next page; null on the last page.
+        invoices:
+          type: array
+          items:
+            type: object
+            properties:
+              number:
+                type: string
+                nullable: true
+              created:
+                type: string
+                format: date-time
+                nullable: true
+              currency:
+                type: string
+                description: The three-letter currency code (USD).
+              total:
+                type: string
+                description: What the invoice charges in all, in the currency's main unit ("49.00").
+              paid:
+                type: boolean
+                description: False for an invoice still unpaid (open or uncollectible).
+              subscriber:
+                type: object
+                properties:
+                  name:
+                    type: string
+                    nullable: true
+                  email:
+                    type: string
+                    nullable: true
+              subscriptionId:
+                type: string
+                nullable: true
+                description: The portal subscription the invoice bills, when the portal still has it.
+              api:
+                type: string
+                nullable: true
+                description: The API and its version ("Weather API v1.0"); null when no line is one of the plan's prices.
+              plan:
+                type: string
+                nullable: true
+              items:
+                type: array
+                description: The invoice's lines for the plan's prices.
+                items:
+                  type: object
+                  properties:
+                    name:
+                      type: string
+                      description: The price's name ("Successful calls · 200"), or the fee's ("Monthly fee").
+                    amount:
+                      type: string
+                    quantity:
+                      type: integer
+                      nullable: true
+                      description: The units a usage price charged for; null for the fee.
+                    unit:
+                      type: string
+                      nullable: true
+                      description: What a unit is (request, token); null for the fee.
+                    countsRequests:
+                      type: boolean
+                      description: True for a usage price whose meter counts requests.
+    Meter:
+      type: object
+      description: >-
+        What a paid plan charges for. A meter has no conditions: each plan price on it picks the requests it counts
+        with its own filters, on the properties `filterFields` lists. The event fields a meter reads are stored on
+        it as full paths in the Moesif event, so a gateway that names its analytics fields differently can be
+        metered too. An event key is 1 to 255 characters with no spaces. Every event
+        must also carry the billing customer and subscription ids, as `metadata.billingCustomerId` and
+        `metadata.billingSubscriptionId`: a gateway that does not send them can be metered, but not billed. A meter
+        that a plan prices can neither change nor be deleted, its event keys included.
+      additionalProperties: false
+      required:
+        - displayName
+        - type
+      properties:
+        id:
+          type: string
+          description: >-
+            The meter's handle: 3 to 40 lowercase letters, digits or hyphens. Derived from `displayName` when
+            omitted on create.
+          example: successful-calls
+        displayName:
+          type: string
+          maxLength: 255
+          example: Successful calls
+        description:
+          type: string
+          maxLength: 1023
+          nullable: true
+        type:
+          type: string
+          description: >-
+            What is counted: requests (`REQUEST_COUNT`, each request counts 1), or the tokens of AI API requests
+            (`TOKENS`, which add up the number at `typeKey`). The meter's name says what it counts, such as
+            "Input tokens". Cannot change once a plan prices the meter.
+          enum:
+            - REQUEST_COUNT
+            - TOKENS
+        typeKey:
+          type: string
+          nullable: true
+          description: >-
+            The event field whose number a `TOKENS` meter adds up, such as `metadata.aiTokenUsage.promptTokens`.
+            Our gateway also sends `metadata.aiTokenUsage.completionTokens` and `metadata.aiTokenUsage.totalTokens`.
+            1 to 255 characters with no spaces. Required for a `TOKENS` meter and refused for any other. Always
+            present in a response; null for `REQUEST_COUNT`. Cannot change once a plan prices the meter.
+          example: metadata.aiTokenUsage.promptTokens
+        filterFields:
+          type: array
+          maxItems: 10
+          description: >-
+            The properties this meter's prices can filter on, each a name and the event key it reads: at most 10,
+            with names unique ignoring case and keys unique. Empty or absent for none. Cannot change once a plan
+            prices the meter (`409` with code `METER_IN_USE`). Always present in a response.
+          items:
+            $ref: "#/components/schemas/MeterFilterField"
+        planCount:
+          type: integer
+          readOnly: true
+          description: How many plans have a price on this meter. While it is above 0, the meter can't be updated or deleted.
+        createdBy:
+          type: string
+          readOnly: true
+        updatedBy:
+          type: string
+          readOnly: true
+        createdAt:
+          type: string
+          format: date-time
+          readOnly: true
+        updatedAt:
+          type: string
+          format: date-time
+          readOnly: true
+    MeterFilterField:
+      type: object
+      description: >-
+        A property the prices of a meter can filter on: a name the administrator chooses and the event field it
+        reads. A property may read the meter's own `typeKey`, so prices can compare the number the meter adds up.
+      additionalProperties: false
+      required:
+        - field
+        - eventKey
+      properties:
+        field:
+          type: string
+          minLength: 1
+          maxLength: 40
+          description: >-
+            The property's name, 1 to 40 characters, unique within the meter ignoring case ("Region" and "region"
+            are the same name). Stored as written.
+          example: API type
+        eventKey:
+          type: string
+          minLength: 1
+          maxLength: 255
+          description: >-
+            The event field the property reads: 1 to 255 characters with no spaces, unique within the meter. Our
+            gateway's events have `response.status`, `request.verb`, `metadata.apiResourceTemplate`,
+            `metadata.apiType`, `metadata.mcpAnalytics.jsonRpcMethod`, `metadata.mcpAnalytics.capabilityName`, and
+            the token counts `metadata.aiTokenUsage.promptTokens`, `metadata.aiTokenUsage.completionTokens` and
+            `metadata.aiTokenUsage.totalTokens`.
+          example: metadata.apiType
+    PriceTier:
+      type: object
+      description: >-
+        One tier of a `VOLUME` or `GRADUATED` price. Every tier but the last has an `upTo` greater than the tier
+        before it; the last has none. Each tier has a `unitAmount`, a `flatAmount` or both.
+      additionalProperties: false
+      properties:
+        upTo:
+          type: integer
+          nullable: true
+          description: The last unit of the tier, greater than the tier before it; null on the last tier.
+          example: 10000
+        unitAmount:
+          type: string
+          nullable: true
+          description: >-
+            The price of each unit in the tier: a decimal amount with up to 12 digits before the point and up to 12
+            after it.
+          example: "0.002"
+        flatAmount:
+          type: string
+          nullable: true
+          description: >-
+            The flat fee of the tier: a decimal amount with up to 12 digits before the point and up to 12 after it.
+    PriceFilter:
+      type: object
+      description: >-
+        A filter of a price: the price counts only the requests whose property `field` matches. Any operator works
+        on any property. `EQUALS`, `NOT_EQUALS` and `STARTS_WITH` take one text value; `IN` and `NOT_IN` take 1 to
+        20, repeats dropped and the order kept. Text values are matched exactly as written, case included.
+        `STARTS_WITH` is a plain text prefix: `/orders` also matches `/orders-archive`. `NOT_EQUALS` and `NOT_IN`
+        count the requests that have the property with another value: a request without it is not counted.
+        `GREATER_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN` and `LESS_THAN_OR_EQUAL` compare the property as a
+        number with one whole number from 0 to 1000000000000, stored without leading zeros. On one property, a
+        price has either one filter with `EQUALS`, `NOT_EQUALS`, `IN`, `NOT_IN` or `STARTS_WITH`, or one or two
+        comparisons that can all be true together, such as more than 100 and at most 500. Values are not checked
+        against what the property holds: a filter that can't match the event field, such as text on a number,
+        counts nothing. Our gateway's API types are `RestApi`, `WebSubApi`, `LlmProvider`, `LlmProxy`, `Mcp` and
+        `Agent`. A batched JSON-RPC request (an array of messages) has no MCP method in its event. A price is sold
+        on every API its plan is offered on, whatever its filters.
+      additionalProperties: false
+      required:
+        - field
+        - operator
+        - values
+      properties:
+        field:
+          type: string
+          minLength: 1
+          maxLength: 40
+          description: >-
+            The name of one of the meter's `filterFields`, matched ignoring case and stored with the meter's
+            spelling.
+          example: API type
+        operator:
+          type: string
+          enum:
+            - EQUALS
+            - NOT_EQUALS
+            - IN
+            - NOT_IN
+            - STARTS_WITH
+            - GREATER_THAN
+            - GREATER_THAN_OR_EQUAL
+            - LESS_THAN
+            - LESS_THAN_OR_EQUAL
+        values:
+          type: array
+          description: >-
+            One value for `EQUALS`, `NOT_EQUALS`, `STARTS_WITH` and the comparisons; 1 to 20 for `IN` and `NOT_IN`.
+            Each value is 1 to 255 characters; a comparison's value is a whole number from 0 to 1000000000000.
+          items:
+            type: string
+          example:
+            - RestApi
+    PlanPrice:
+      type: object
+      description: >-
+        One usage price of a plan: what the units its meter counts cost. PER_UNIT charges `unitAmount` per
+        `unitQuantity` units; VOLUME prices all the units at the tier their total falls in; GRADUATED prices the
+        units in each tier at that tier's price. Fields of another model are refused. A price has no name of its
+        own: subscribers see the meter's name followed by each filter, separated by " · ": the values of an
+        `EQUALS` or `IN` filter joined with ", ", "not" and the values of a `NOT_EQUALS` or `NOT_IN` filter, the
+        value of a `STARTS_WITH` filter followed by "…", and the property's name, sign and value of a comparison.
+        Examples: "LLM input tokens · LlmProvider", "API calls · not DELETE, OPTIONS", "API calls · /orders…",
+        "LLM input tokens · Prompt tokens > 333", "API calls".
+      additionalProperties: false
+      required:
+        - meterId
+        - pricingModel
+      properties:
+        meterId:
+          type: string
+          description: The `id` of the meter that counts the units, one of the organization's meters (`GET /meters`).
+          example: llm-input
+        filters:
+          type: array
+          description: >-
+            The requests of the meter this price counts: those that match every filter, each on a property the
+            meter's `filterFields` lists; at most 20 in all. Empty or absent to count everything the meter counts.
+            Always present in a response.
+          items:
+            $ref: "#/components/schemas/PriceFilter"
+        pricingModel:
+          type: string
+          enum:
+            - PER_UNIT
+            - VOLUME
+            - GRADUATED
+        unitAmount:
+          type: string
+          nullable: true
+          description: >-
+            PER_UNIT only. The price per `unitQuantity` units: a decimal amount with up to 12 digits before the point
+            and up to 12 after it.
+          example: "2.50"
+        unitQuantity:
+          type: integer
+          nullable: true
+          description: PER_UNIT only (default 1). A whole number from 1 to 1000000000.
+          example: 1000000
+        tiers:
+          type: array
+          nullable: true
+          description: VOLUME and GRADUATED only, and 1 to 10 for them. In ascending order; the last tier has no `upTo`.
+          items:
+            $ref: "#/components/schemas/PriceTier"
+    PlanPricing:
+      type: object
+      description: >-
+        What a paid subscription plan costs, in one currency and billing period. A plan is either a flat rate
+        (`FLAT_RATE`: `flatAmount` every billing period, no prices) or usage based (`USAGE_BASED`: 1 to 20
+        prices, no `flatAmount`). A meter may have several prices in a plan, but two prices on one meter may not
+        count the same request: they must differ on a property that either filters on, where a property only one of
+        them filters on matches any value for the other. On one property, two prices' filters can match the same
+        value when: two `EQUALS` or `IN` filters share a value; some value of an `EQUALS` or `IN` filter is not
+        excluded by a `NOT_EQUALS` or `NOT_IN` filter, or starts with the value of a `STARTS_WITH` filter; the value
+        of one `STARTS_WITH` filter starts with the other's; their comparisons' whole-number ranges overlap; some
+        value of an `EQUALS` or `IN` filter is a whole number in the range of comparisons; and always for a
+        `NOT_EQUALS` or `NOT_IN` filter with another such filter, a `STARTS_WITH` filter or comparisons, and for a
+        `STARTS_WITH` filter with comparisons. Requests that no price counts are not charged. `prices` is returned
+        sorted by price name. Amounts are decimal strings in the currency's main unit (`"0.01"` is one cent in
+        USD). The pricing is given when the plan is created and can't be updated after that, so a field the pricing, a
+        price, a filter or a tier does not take is refused rather than ignored.
+      additionalProperties: false
+      required:
+        - pricingType
+        - currency
+      properties:
+        pricingType:
+          type: string
+          enum:
+            - FLAT_RATE
+            - USAGE_BASED
+        currency:
+          type: string
+          description: >-
+            ISO 4217 currency code (three letters) of a currency with two decimal places. Currencies with no or
+            three decimal places (such as JPY or KWD) are refused.
+          example: USD
+        billingPeriod:
+          type: string
+          enum:
+            - MONTH
+            - YEAR
+          default: MONTH
+        flatAmount:
+          type: string
+          nullable: true
+          description: >-
+            FLAT_RATE only, and required for it: the amount charged every billing period, more than 0, with up to 12
+            digits before the point and up to 12 after it. Null in a response for a usage based plan.
+          example: "20.00"
+        prices:
+          type: array
+          description: >-
+            USAGE_BASED only, and 1 to 20 for it: the usage prices. Always present in a response; empty for a flat
+            rate plan.
+          items:
+            $ref: "#/components/schemas/PlanPrice"
+        createdBy:
+          type: string
+          readOnly: true
+          description: Who created the plan, and with it the pricing.
+        createdAt:
+          type: string
+          format: date-time
+          readOnly: true
     WebhookSubscriberResponseSchema:
       type: object
       description: Webhook subscriber configuration. The secret is never included.

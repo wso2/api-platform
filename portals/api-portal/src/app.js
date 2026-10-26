@@ -23,6 +23,7 @@ const session = require('express-session');
 const path = require('path');
 const logger = require('./config/logger');
 const { auditMiddleware } = require('./middlewares/auditLogger');
+const { SENSITIVE_FIELDS, redactUrl } = require('./utils/logRedaction');
 const authRoute = require('./routes/pages/authRoute');
 const orgContent = require('./routes/pages/orgContentRoute');
 const apiContent = require('./routes/pages/apiContentRoute');
@@ -149,6 +150,10 @@ const tryoutProxy = require('./routes/pages/tryoutProxyRoute');
 const skipForTryoutProxy = (parser) => (req, res, next) =>
     (tryoutProxy.BODY_PARSER_SKIP_PATTERN.test(req.path) ? next() : parser(req, res, next));
 
+// Stripe webhook events: raw body, no session, verified by Stripe's signature. Registered
+// ahead of the parsers below so they never consume the body it verifies.
+require('./routes/billingWebhookRoute').mount(app);
+
 app.use(skipForTryoutProxy(express.json({ limit: bodyLimit })));
 app.use(skipForTryoutProxy(express.urlencoded({ extended: true, limit: bodyLimit })));
 
@@ -159,7 +164,7 @@ const BP = constants.ROUTE.BASE_PATH;
 app.use(auditMiddleware({
     excludePaths: ['/health', '/metrics', '/favicon.ico', `${BP}/health`,
         `${BP}/styles`, `${BP}/scripts`, `${BP}/images`, `${BP}/technical-styles`, `${BP}/technical-scripts`],
-    sensitiveFields: ['password', 'token', 'secret', 'key', 'authorization', 'idToken', 'accessToken', 'refreshToken']
+    sensitiveFields: SENSITIVE_FIELDS,
 }));
 
 // Session and everything that reads it stay scoped to BASE_PATH. passport.session()
@@ -232,6 +237,10 @@ portal.use((req, res, next) => {
 const apiPortalRouter = require('./routes/api/apiPortalRouter');
 portal.use(constants.ROUTE.DEFAULT, apiPortalRouter);
 
+// The page renderers are not given the request. This keeps it available to them while a page
+// request runs, so they offer only the account actions the signed-in user may take (utils/pageAccess).
+portal.use(require('./utils/requestContext').middleware);
+
 // MCP Server Registry (OpenAPI v0.1)
 portal.use('/registry/:orgHandle', mcpRegistryRoute);
 portal.use('/:orgHandle/registry', mcpRegistryRoute);
@@ -299,7 +308,7 @@ app.use(async (err, req, res, next) => {
         logger.error('Application error', {
             error: err.message,
             stack: err.stack,
-            url: req.url,
+            url: redactUrl(req.url),
             method: req.method,
             operation: 'expressErrorHandler'
         });
