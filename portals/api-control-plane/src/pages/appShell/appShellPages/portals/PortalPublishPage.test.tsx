@@ -1606,7 +1606,9 @@ describe('PortalPublishPage', () => {
     server.use(
       accepts('put', DRAFT_PATH, aPublicationDraftDetails()),
       accepts('put', DRAFT_DEFINITION_PATH, undefined, { record: definitionRequests }),
-      failure('post', PUBLISH_PATH, 400, 'PUBLICATION_VALIDATION_FAILED'),
+      failure('post', PUBLISH_PATH, 400, 'PUBLICATION_VALIDATION_FAILED', {
+        errors: [{ field: 'definition', message: 'A definition is required to publish this API' }],
+      }),
     );
 
     const { user } = renderPage();
@@ -1664,24 +1666,27 @@ describe('PortalPublishPage', () => {
     expect(screen.getByRole('tab', { name: 'Landing Page' })).toHaveAttribute('aria-selected', 'true');
   });
 
-  it('stays on the Documentation tab when Publish fails validation', async () => {
-    servePublicationState();
-    server.use(
-      collection(DOCS_PATH, []),
-      accepts('put', DRAFT_PATH, aPublicationDraftDetails()),
-      accepts('put', DRAFT_DEFINITION_PATH, undefined),
-      failure('post', PUBLISH_PATH, 400, 'PUBLICATION_VALIDATION_FAILED'),
-    );
+  it.each(['API Details', 'Subscription Plans', 'Documentation'])(
+    'stays on the %s tab when Publish fails validation without naming a field',
+    async (tabName) => {
+      servePublicationState();
+      server.use(
+        collection(DOCS_PATH, []),
+        accepts('put', DRAFT_PATH, aPublicationDraftDetails()),
+        accepts('put', DRAFT_DEFINITION_PATH, undefined),
+        failure('post', PUBLISH_PATH, 400, 'PUBLICATION_VALIDATION_FAILED'),
+      );
 
-    const { user } = renderPage();
+      const { user } = renderPage();
 
-    await screen.findByDisplayValue('Loan Management Service');
-    await user.click(screen.getByRole('tab', { name: 'Documentation' }));
-    await user.click(screen.getByRole('button', { name: 'Publish' }));
+      await screen.findByDisplayValue('Loan Management Service');
+      await user.click(screen.getByRole('tab', { name: tabName }));
+      await user.click(screen.getByRole('button', { name: 'Publish' }));
 
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Publish' })).toBeEnabled());
-    expect(screen.getByRole('tab', { name: 'Documentation' })).toHaveAttribute('aria-selected', 'true');
-  });
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Publish' })).toBeEnabled());
+      expect(screen.getByRole('tab', { name: tabName })).toHaveAttribute('aria-selected', 'true');
+    },
+  );
 
   it('does not switch tabs when Publish fails for a reason unrelated to the definition', async () => {
     servePublicationState();

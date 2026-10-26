@@ -256,14 +256,11 @@ const bold = (name: ReactNode) => (
 );
 
 /**
- * Whether a failed publish is about the definition. The server names the field at fault; an
- * error that names none (an older server) is taken to be the definition unless the user is
- * already on the Documentation tab.
+ * Whether a failed publish is about the definition: only when the server names it. Every other
+ * validation failure (thumbnail, documents, size) names no field, and must not move the user.
  */
-const definitionAtFault = (error: unknown, tab: PublishTab): boolean => {
-  if (!isApiError(error) || error.fieldErrors.length === 0) return tab !== 'documentations';
-  return error.fieldErrors.some((fieldError) => fieldError.field === 'definition');
-};
+const definitionAtFault = (error: unknown): boolean =>
+  isApiError(error) && error.fieldErrors.some((fieldError) => fieldError.field === 'definition');
 
 /**
  * A failed API call is already reported by the global mutation snackbar, so the
@@ -708,7 +705,7 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
       } catch (error) {
         // The message is already reported by the global snackbar; this only sends the user to
         // the definition when it is the one at fault.
-        if (isErrorCode(error, 'PUBLICATION_VALIDATION_FAILED') && definitionAtFault(error, tab)) setTab('specification');
+        if (isErrorCode(error, 'PUBLICATION_VALIDATION_FAILED') && definitionAtFault(error)) setTab('specification');
         throw error;
       }
       notify(intl.formatMessage(messages.published, { portalName }), 'success');
