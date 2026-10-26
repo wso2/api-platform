@@ -439,43 +439,6 @@ func (r *DocumentRepo) GetDocumentsByHandles(artifactUUID string, handles []stri
 	return m, rows.Err()
 }
 
-// GetDocumentHandlesByUUIDs is the inverse of GetDocumentsByHandles, for
-// reconstructing a docIds response from stored api_publication_doc_mappings
-// rows. Scoped to the organization only — a mapping row's doc_uuid already
-// came from that same artifact's own resolved set. Returns an empty map for
-// empty input.
-func (r *DocumentRepo) GetDocumentHandlesByUUIDs(docUUIDs []string, orgUUID string) (map[string]string, error) {
-	if len(docUUIDs) == 0 {
-		return map[string]string{}, nil
-	}
-	placeholders := make([]string, len(docUUIDs))
-	args := make([]interface{}, 0, len(docUUIDs)+1)
-	for i, id := range docUUIDs {
-		placeholders[i] = "?"
-		args = append(args, id)
-	}
-	args = append(args, orgUUID)
-	query := fmt.Sprintf(`
-		SELECT uuid, handle
-		FROM api_documents
-		WHERE uuid IN (%s) AND organization_uuid = ?
-	`, strings.Join(placeholders, ","))
-	rows, err := r.db.Query(r.db.Rebind(query), args...)
-	if err != nil {
-		return nil, fmt.Errorf("failed to resolve document uuids: %w", err)
-	}
-	defer rows.Close()
-	m := make(map[string]string)
-	for rows.Next() {
-		var id, handle string
-		if err := rows.Scan(&id, &handle); err != nil {
-			return nil, err
-		}
-		m[id] = handle
-	}
-	return m, rows.Err()
-}
-
 func sortedMapKeys(m map[string]bool) []string {
 	out := make([]string, 0, len(m))
 	for k := range m {

@@ -225,9 +225,6 @@ type SubscriptionPlanRepository interface {
 	// subscriptionPlanIds (existence and status) and to create missing plans on
 	// the API Portal.
 	GetByHandles(handles []string, orgUUID string) (map[string]*model.SubscriptionPlan, error)
-	// GetHandlesByIDs maps subscription_plan_uuid to handle, for reconstructing
-	// a subscriptionPlanIds response from stored mapping rows.
-	GetHandlesByIDs(planUUIDs []string, orgUUID string) (map[string]string, error)
 }
 
 // PublicationRepository defines the interface for api_publications and its
@@ -575,11 +572,6 @@ type DocumentRepository interface {
 	// file name; no content) within one artifact. Reserved types (DEFINITION, THUMBNAIL) are never
 	// returned; a handle missing from the map is not selectable for this artifact.
 	GetDocumentsByHandles(artifactUUID string, handles []string, orgUUID string) (map[string]*model.Document, error)
-	// GetDocumentHandlesByUUIDs is the inverse, for reconstructing a docIds
-	// response from stored api_publication_doc_mappings rows. Scoped to the
-	// organization only (not a single artifact) since a mapping row's
-	// doc_uuid already came from that same artifact's own resolved set.
-	GetDocumentHandlesByUUIDs(docUUIDs []string, orgUUID string) (map[string]string, error)
 }
 
 // AuditRepository defines the interface for audit record writes.

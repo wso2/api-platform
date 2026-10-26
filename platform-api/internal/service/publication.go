@@ -240,19 +240,6 @@ func conflictReasonOrDefault(conflict *PortalConflictError) string {
 	return conflict.Reason
 }
 
-// mapValuesInOrder looks up each id in m, preserving ids's order and skipping
-// any id absent from m. Always returns a non-nil slice so it serializes as
-// "[]" rather than "null" when empty.
-func mapValuesInOrder(ids []string, m map[string]string) []string {
-	out := make([]string, 0, len(ids))
-	for _, id := range ids {
-		if v, ok := m[id]; ok {
-			out = append(out, v)
-		}
-	}
-	return out
-}
-
 // dedupe removes duplicate handles, preserving first-occurrence order. A
 // handle repeated in the request body would otherwise violate the mapping
 // table's composite primary key.

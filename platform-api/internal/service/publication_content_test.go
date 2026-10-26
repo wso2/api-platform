@@ -69,14 +69,6 @@ func (r contentDocumentRepo) GetDocument(_, handle, _, _ string) (*model.Documen
 	return r.docs[handle], nil
 }
 
-func (r contentDocumentRepo) GetDocumentHandlesByUUIDs(ids []string, _ string) (map[string]string, error) {
-	handles := map[string]string{}
-	for _, d := range r.docs {
-		handles[d.ID] = d.Handle
-	}
-	return handles, nil
-}
-
 func newContentService(docs map[string]*model.Document) *PublicationService {
 	return NewPublicationService(nil, nil, contentDocumentRepo{docs: docs}, nil, nil, nil, time.Minute, 0, nil)
 }
@@ -243,7 +235,7 @@ func newPublishDocsService(pub PortalPublisher, docUUIDs []string, thumbnail *mo
 	}
 	return NewPublicationService(
 		publishFlowArtifactRepo{}, publishFlowPortalRepo{}, contentDocumentRepo{docs: docs},
-		publishFlowPlanRepo{publicationTestPlans()}, publishFlowDocsPublicationRepo{docUUIDs: docUUIDs, thumbnail: thumbnail, promoted: promoted},
+		publicationTestPlans(), publishFlowDocsPublicationRepo{docUUIDs: docUUIDs, thumbnail: thumbnail, promoted: promoted},
 		pub, time.Minute, 0, nil)
 }
 
@@ -368,7 +360,7 @@ func TestPublish_StopsBeforeAnyPortalCallWhenTheContentCannotBeLoaded(t *testing
 			pub := &callLog{}
 			svc := NewPublicationService(
 				publishFlowArtifactRepo{}, publishFlowPortalRepo{}, tc.docs,
-				publishFlowPlanRepo{tc.plans}, tc.repo, pub, time.Minute, 0, nil)
+				tc.plans, tc.repo, pub, time.Minute, 0, nil)
 
 			published, _, err := svc.Publish(context.Background(), restAPITypeValue, "my-api", "my-portal", "org", "actor")
 			if !tc.is(err) || published != nil {

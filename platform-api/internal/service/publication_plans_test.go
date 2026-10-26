@@ -229,18 +229,6 @@ func (publishFlowPublicationRepo) GetContent(_ string, contentType model.Publica
 	return &model.PublicationContent{ContentType: "application/json", Content: []byte(validRESTDefinitionSpec)}, nil
 }
 
-type publishFlowPlanRepo struct{ *publicationPlanRepo }
-
-func (publishFlowPlanRepo) GetHandlesByIDs(_ []string, _ string) (map[string]string, error) {
-	return map[string]string{"uuid-gold": "gold"}, nil
-}
-
-type publishFlowDocumentRepo struct{ repository.DocumentRepository }
-
-func (publishFlowDocumentRepo) GetDocumentHandlesByUUIDs(_ []string, _ string) (map[string]string, error) {
-	return map[string]string{}, nil
-}
-
 // A failed plan step ends Publish before the listing is pushed or the draft promoted: the
 // publisher's Publish and the repository's promote are left unimplemented, so reaching
 // either panics.
@@ -257,8 +245,8 @@ func TestPublish_StopsWhenThePlanStepFails(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			pub := &planSyncPublisher{err: tc.err}
 			svc := NewPublicationService(
-				publishFlowArtifactRepo{}, publishFlowPortalRepo{}, publishFlowDocumentRepo{},
-				publishFlowPlanRepo{publicationTestPlans()}, publishFlowPublicationRepo{}, pub, time.Minute, 0, nil)
+				publishFlowArtifactRepo{}, publishFlowPortalRepo{}, nil,
+				publicationTestPlans(), publishFlowPublicationRepo{}, pub, time.Minute, 0, nil)
 
 			published, _, err := svc.Publish(context.Background(), restAPITypeValue, "my-api", "my-portal", "org", "actor")
 			if !tc.is(err) || published != nil {
