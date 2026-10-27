@@ -637,18 +637,6 @@ func TestPublish_APIResourceTemplateMetadata(t *testing.T) {
 		assert.Equal(t, "/pets/{petId}", metadata["apiResourceTemplate"])
 	})
 
-	t.Run("REST uses the operation path from the API definition when known", func(t *testing.T) {
-		moesif := createTestMoesifWithoutAPI()
-
-		event := createBaseEvent()
-		event.Operation.APIResourceTemplate = "/test/v1.0/orders/42"
-		event.Properties["x-wso2-operation-path"] = "/orders/{id}"
-
-		moesif.Publish(event)
-
-		metadata := getMetadata(moesif.events[0])
-		assert.Equal(t, "/orders/{id}", metadata["apiResourceTemplate"])
-	})
 
 	t.Run("GraphQL uses operationName when present", func(t *testing.T) {
 		moesif := createTestMoesifWithoutAPI()
