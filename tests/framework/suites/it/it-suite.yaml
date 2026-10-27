@@ -793,9 +793,6 @@ blocks:
         tags: "gateway-version>=1.2.0"
         features:
           - features/ai-workspace-gateway/llm-policies/semantic_cache_isolation.feature
-      - name: semantic-prompt-guard
-        features:
-          - features/gateway/guardrails-policies/semantic_prompt_guard.feature
 
   # Also hosts the gateway-native Agent (A2A) runners: they need the mock-jwks keymanager this
   # block's overlay configures and an A2A agent upstream, and the Agent kind exists only after
