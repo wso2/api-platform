@@ -1179,6 +1179,7 @@ func (g *Gateway) register(sc *godog.ScenarioContext) {
 		g.analyticsHeader)
 	sc.Step(`^I reset the analytics collector$`, g.resetAnalyticsCollector)
 	sc.Step(`^I wait for the analytics collector to settle$`, g.waitForAnalyticsToSettle)
+	sc.Step(`^I wait for an analytics event for path "([^"]*)" with response status (\d+)$`, g.waitForAnalyticsEvent)
 	sc.Step(`^the analytics collector should have received at least (\d+) events?$`, g.analyticsEventCountAtLeast)
 	sc.Step(`^the analytics collector should have received (\d+) events?$`, g.analyticsEventCountExactly)
 	sc.Step(`^the latest analytics event for path "([^"]*)" should have request method "([^"]*)"$`,
@@ -2387,6 +2388,20 @@ func (g *Gateway) analyticsEventCountExactly(ctx context.Context, want int) erro
 // contaminate a subsequent exact-count assertion.
 func (g *Gateway) waitForAnalyticsToSettle(ctx context.Context) error {
 	_, err := g.settleAnalyticsEventCount(ctx)
+	return err
+}
+
+// waitForAnalyticsEvent waits until the collector holds an event for path with the response
+// status, such as a readiness call's, so a settle and reset that follow can't run before it lands.
+func (g *Gateway) waitForAnalyticsEvent(ctx context.Context, path string, status int) error {
+	resolved, err := stepscommon.Expand(ctx, path)
+	if err != nil {
+		return err
+	}
+	_, err = g.latestMatchingAnalyticsEvent(ctx, fmt.Sprintf("path %q with response status %d", resolved, status),
+		func(event *analyticsEvent) bool {
+			return analyticsEventMatchesPath(event.Request.URI, resolved) && event.Response.Status == status
+		})
 	return err
 }
 
