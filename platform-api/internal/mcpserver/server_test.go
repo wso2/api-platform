@@ -21,6 +21,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -45,14 +46,16 @@ const testOrg = "11111111-1111-1111-1111-111111111111"
 
 // fake is a backend that records what the tools ask of it.
 type fake struct {
-	backend // unimplemented methods panic
-	api     object
-	listed  []object
-	updated object
-	created object
-	failOn  string // undeploy fails for this deployment ID
-	running []api.DeploymentResponse
-	undone  []string
+	backend    // unimplemented methods panic
+	api        object
+	listed     []object
+	updated    object
+	created    object
+	failOn     string // undeploy fails for this deployment ID
+	running    []api.DeploymentResponse
+	undone     []string
+	deleted    []string // IDs passed to deleteAPI and deleteProject
+	failDelete bool     // deleteAPI and deleteProject fail
 }
 
 func (f *fake) getAPI(context.Context, caller, *apiType, string) (object, error) {
@@ -74,6 +77,22 @@ func (f *fake) createAPI(_ context.Context, _ caller, _ *apiType, p object) (obj
 func (f *fake) updateAPI(_ context.Context, _ caller, _ *apiType, _ string, whole object) (object, error) {
 	f.updated = whole
 	return whole, nil
+}
+
+func (f *fake) deleteAPI(_ context.Context, _ caller, _ *apiType, id string) error {
+	if f.failDelete {
+		return apperror.RESTAPINotFound.New()
+	}
+	f.deleted = append(f.deleted, id)
+	return nil
+}
+
+func (f *fake) deleteProject(_ context.Context, _ caller, id string) error {
+	if f.failDelete {
+		return apperror.ValidationFailed.New("project still has APIs")
+	}
+	f.deleted = append(f.deleted, id)
+	return nil
 }
 
 func (f *fake) listProjects(context.Context, caller, page) ([]api.Project, int, error) {
@@ -459,4 +478,107 @@ func TestMCPHandler_RefusesALoopbackCallWithAnotherHost(t *testing.T) {
 	}
 	assert.Equal(t, http.StatusForbidden, post("api.example.com"))
 	assert.Equal(t, http.StatusOK, post("localhost"))
+}
+
+func TestDeleteAPI_ReportsWhatWasDeleted(t *testing.T) {
+	s, f := newTestServer(t)
+	cs := connect(t, s, who(testOrg, "ap:llm_proxy:manage"))
+	args := map[string]any{"apiType": "llm-proxy", "apiId": "chat-proxy", "confirm": true}
+
+	res, text := call(t, cs, "delete_api", args)
+	require.False(t, res.IsError, text)
+	assert.JSONEq(t, `{"apiType":"llm-proxy","deleted":"chat-proxy"}`, text)
+	assert.Equal(t, []string{"chat-proxy"}, f.deleted)
+
+	f.failDelete = true
+	res, text = call(t, cs, "delete_api", args)
+	assert.True(t, res.IsError, "a backend error is a tool error")
+	assert.NotEmpty(t, text)
+	assert.Equal(t, []string{"chat-proxy"}, f.deleted)
+}
+
+func TestDeleteProject_ReportsWhatWasDeleted(t *testing.T) {
+	s, f := newTestServer(t)
+	cs := connect(t, s, who(testOrg, "ap:project:manage"))
+	args := map[string]any{"projectId": "p1", "confirm": true}
+
+	res, text := call(t, cs, "delete_project", args)
+	require.False(t, res.IsError, text)
+	assert.JSONEq(t, `{"deleted":"p1"}`, text)
+	assert.Equal(t, []string{"p1"}, f.deleted)
+
+	f.failDelete = true
+	res, text = call(t, cs, "delete_project", args)
+	assert.True(t, res.IsError)
+	assert.Contains(t, text, "project still has APIs")
+}
+
+// shortPage answers a deployments list with one item out of three, as a
+// backend does when the page is smaller than the total.
+type shortPage struct{ *fake }
+
+func (shortPage) listDeployments(_ context.Context, _ caller, _ *apiType, _, _, _ string, p page) ([]api.DeploymentResponse, int, error) {
+	id := fmt.Sprintf("aaaaaaaa-0000-0000-0000-00000000000%d", p.offset+1)
+	return []api.DeploymentResponse{{DeploymentId: uuidOf(id), GatewayId: "gw1", Status: api.DeploymentResponseStatusDEPLOYED}}, 3, nil
+}
+
+func TestListAPIDeployments_ShapesItems(t *testing.T) {
+	s, f := newTestServer(t)
+	reason := "DEPLOYMENT_TIMEOUT"
+	failed := api.DeploymentResponse{DeploymentId: uuidOf("aaaaaaaa-0000-0000-0000-000000000002"), Name: "d", GatewayId: "gw1",
+		Status: api.DeploymentResponseStatusFAILED, StatusReason: &reason}
+	f.running = []api.DeploymentResponse{
+		{DeploymentId: uuidOf("aaaaaaaa-0000-0000-0000-000000000001"), Name: "d", GatewayId: "gw1", Status: api.DeploymentResponseStatusDEPLOYED},
+		failed,
+	}
+	cs := connect(t, s, who(testOrg, "ap:rest_api:manage"))
+
+	res, text := call(t, cs, "list_api_deployments", map[string]any{"apiType": "rest-api", "apiId": "orders-v1"})
+	require.False(t, res.IsError, text)
+	var out listDeploymentsOut
+	require.NoError(t, json.Unmarshal([]byte(text), &out))
+	assert.Equal(t, 2, out.Total)
+	require.Len(t, out.Items, 2)
+	assert.Empty(t, out.NextCursor, "everything fits on one page")
+	assert.Equal(t, reason, out.Items[1].StatusReason)
+	assert.Equal(t, "DEPLOYED", out.Items[0].Status)
+}
+
+func TestListAPIDeployments_PagesWithACursor(t *testing.T) {
+	s, f := newTestServer(t)
+	s.backend = shortPage{f}
+	cs := connect(t, s, who(testOrg, "ap:rest_api:manage"))
+	args := map[string]any{"apiType": "rest-api", "apiId": "orders-v1", "limit": 1}
+
+	_, text := call(t, cs, "list_api_deployments", args)
+	var first listDeploymentsOut
+	require.NoError(t, json.Unmarshal([]byte(text), &first))
+	assert.Equal(t, 3, first.Total)
+	require.NotEmpty(t, first.NextCursor)
+
+	args["cursor"] = first.NextCursor
+	_, text = call(t, cs, "list_api_deployments", args)
+	var second listDeploymentsOut
+	require.NoError(t, json.Unmarshal([]byte(text), &second))
+	assert.NotEqual(t, first.Items[0].ID, second.Items[0].ID, "the cursor moved the offset")
+
+	args["cursor"] = "!"
+	res, text := call(t, cs, "list_api_deployments", args)
+	assert.True(t, res.IsError)
+	assert.Contains(t, text, "the cursor is not valid")
+}
+
+// failingDeployments fails every deployments list.
+type failingDeployments struct{ *fake }
+
+func (failingDeployments) listDeployments(context.Context, caller, *apiType, string, string, string, page) ([]api.DeploymentResponse, int, error) {
+	return nil, 0, apperror.RESTAPINotFound.New()
+}
+
+func TestListAPIDeployments_BackendErrorIsAToolError(t *testing.T) {
+	s, _ := newTestServer(t)
+	s.backend = failingDeployments{&fake{}}
+	res, _ := call(t, connect(t, s, who(testOrg, "ap:rest_api:manage")), "list_api_deployments",
+		map[string]any{"apiType": "rest-api", "apiId": "orders-v1"})
+	assert.True(t, res.IsError)
 }

@@ -18,11 +18,14 @@
 package mcpserver
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/wso2/api-platform/platform-api/api"
+	"github.com/wso2/api-platform/platform-api/internal/repository"
 )
 
 // TestNewDirect_FailsWhenATypeHasNoAdapter catches a row added to apiTypes
@@ -65,4 +68,52 @@ func TestCheckUpstream(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestDecode(t *testing.T) {
+	got, err := decode[api.LLMProvider]([]byte(`{"displayName":"OpenAI"}`), "llm-provider")
+	require.NoError(t, err)
+	assert.Equal(t, "OpenAI", got.DisplayName)
+
+	for _, payload := range []string{`[]`, `{"displayName":`, `{"displayName":1}`} {
+		got, err = decode[api.LLMProvider]([]byte(payload), "llm-provider")
+		assert.Nil(t, got, payload)
+		assert.ErrorContains(t, err, "is not a valid llm-provider", payload)
+	}
+}
+
+func TestOptional(t *testing.T) {
+	assert.Nil(t, optional(""))
+	got := optional("x")
+	require.NotNil(t, got)
+	assert.Equal(t, "x", *got)
+}
+
+func TestAnyList(t *testing.T) {
+	assert.Empty(t, anyList([]string(nil)))
+	assert.Equal(t, []any{"a", "b"}, anyList([]string{"a", "b"}))
+	assert.Equal(t, []any{1}, anyList([]int{1}))
+}
+
+func TestListOptions(t *testing.T) {
+	assert.Equal(t, repository.ListOptions{Limit: 20, Offset: 40, SortOrder: "desc"}, listOptions(page{limit: 20, offset: 40}))
+}
+
+func TestToObject(t *testing.T) {
+	boom := errors.New("boom")
+	_, err := toObject(map[string]string{"a": "b"}, boom)
+	assert.Same(t, boom, err)
+
+	got, err := toObject(struct {
+		Name string `json:"name"`
+		Size int    `json:"size"`
+	}{"x", 2}, nil)
+	require.NoError(t, err)
+	assert.Equal(t, object{"name": "x", "size": float64(2)}, got)
+
+	_, err = toObject(make(chan int), nil)
+	assert.Error(t, err, "a value JSON cannot hold is an error")
+
+	_, err = toObject([]string{"a"}, nil)
+	assert.Error(t, err, "an array is not an object")
 }
