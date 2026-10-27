@@ -35,11 +35,9 @@ func InitSharedHTTPClient(cfg *config.Server) error {
 	if err != nil {
 		return fmt.Errorf("invalid platform_api.http_client configuration: %w", err)
 	}
-	client, err := httpclient.New(clientCfg)
-	if err != nil {
+	if err := utils.InitSharedHTTPClientFromConfig(clientCfg, cfg.MCPResponseMaxBytes); err != nil {
 		return fmt.Errorf("failed to build shared outbound HTTP client: %w", err)
 	}
-	utils.InitSharedHTTPClient(client, cfg.MCPResponseMaxBytes)
 	return nil
 }
 
