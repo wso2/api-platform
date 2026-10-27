@@ -528,9 +528,6 @@ blocks:
         tags: "gateway-version>=1.2.0"
         features:
           - features/gateway/routes/header_routing.feature
-      - name: respond
-        features:
-          - features/gateway/routes-policies/respond.feature
       - name: sandbox-routing
         features:
           - features/gateway/routes/sandbox_routing.feature
