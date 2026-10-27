@@ -552,9 +552,6 @@ blocks:
       - name: word-count-guardrail
         features:
           - features/gateway/guardrails-policies/word_count_guardrail.feature
-      - name: sentence-count-guardrail
-        features:
-          - features/gateway/guardrails-policies/sentence_count_guardrail.feature
       - name: url-guardrail
         features:
           - features/gateway/guardrails-policies/url_guardrail.feature
