@@ -1044,7 +1044,11 @@ blocks:
       - name: platform-api-paid-subscription-access
         features:
           - features/management-portal/monetization/paid_subscription_access.feature
-        tags: "~@known-issue"
+        tags: "gateway-version>1.2.0;~@known-issue"
+      - name: platform-api-paid-subscription-access-1.2.0
+        features:
+          - features/management-portal/monetization/paid_subscription_access.feature
+        tags: "gateway-version<=1.2.0;~@known-issue&&~@gateway-billing-identifiers"
       - name: platform-api-monetization-meters
         features:
           - features/management-portal/monetization/meters.feature
@@ -1126,7 +1130,11 @@ blocks:
       - name: platform-api-paid-subscription-access
         features:
           - features/management-portal/monetization/paid_subscription_access.feature
-        tags: "~@known-issue"
+        tags: "gateway-version>1.2.0;~@known-issue"
+      - name: platform-api-paid-subscription-access-1.2.0
+        features:
+          - features/management-portal/monetization/paid_subscription_access.feature
+        tags: "gateway-version<=1.2.0;~@known-issue&&~@gateway-billing-identifiers"
       - name: platform-api-monetization-meters
         features:
           - features/management-portal/monetization/meters.feature
@@ -1208,7 +1216,11 @@ blocks:
       - name: platform-api-paid-subscription-access
         features:
           - features/management-portal/monetization/paid_subscription_access.feature
-        tags: "~@known-issue"
+        tags: "gateway-version>1.2.0;~@known-issue"
+      - name: platform-api-paid-subscription-access-1.2.0
+        features:
+          - features/management-portal/monetization/paid_subscription_access.feature
+        tags: "gateway-version<=1.2.0;~@known-issue&&~@gateway-billing-identifiers"
       - name: platform-api-monetization-meters
         features:
           - features/management-portal/monetization/meters.feature
