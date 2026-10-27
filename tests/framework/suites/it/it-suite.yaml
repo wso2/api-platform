@@ -549,9 +549,6 @@ blocks:
         tags: "gateway-version>=1.2.0"
         features:
           - features/gateway/routes/sandbox_upstream_url_validation.feature
-      - name: content-length-guardrail
-        features:
-          - features/gateway/guardrails-policies/content_length_guardrail.feature
       - name: word-count-guardrail
         features:
           - features/gateway/guardrails-policies/word_count_guardrail.feature
