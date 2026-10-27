@@ -394,6 +394,11 @@ async function activate(checkout, providerCheckout) {
     // refunded before the checkout is completed; a provider refusal is thrown, so the event is retried.
     const kept = await subDao.findForUser(checkout.org_uuid, checkout.api_uuid, checkout.user_uuid);
     if (kept) {
+        // Read after it: a subscription this checkout created (another call activated it meanwhile) is
+        // committed with the checkout's completion, so it is never taken for a second one.
+        const current = await billingCheckoutDao.getCheckout(checkout.uuid);
+        if (!current) return { ...checkout, status: EXPIRED };
+        if (current.status !== STATUS.OPEN) return current;
         const refunded = await billingProvider.forConfiguration(conn).payments.cancelAndRefund(providerSub.ref);
         logger.warn('Second paid checkout for an API: its subscription was cancelled and refunded', {
             checkoutId: checkout.uuid, keptSubscriptionId: kept, refunded,

@@ -422,6 +422,21 @@ async function receive(type, objectId) {
     out.tiaRefunded = stripeState.refunded.has('pi_t1');
     out.tiaReadAgain = await call(checkout.getCheckoutSession, as('tia', { params: { checkoutId: out.tiaCheckout.body.id } }));
 
+    // One paid checkout activated by two calls at the same moment (the page and the event), both
+    // holding it as still open, and by a third after the first has finished: the subscription the
+    // first creates is the checkout's own, so nothing is cancelled or refunded.
+    out.umaCheckout = await start('uma', 'gold');
+    stripeState.invoices.sub_uma = [{ id: 'in_u1', amount_paid: 1900, payment_intent: 'pi_u1' }];
+    Object.assign(sessionOf(out.umaCheckout.body.id), { status: 'complete', payment_status: 'paid', subscription: 'sub_uma' });
+    const umaOpen = await billingCheckoutDao.getCheckout(out.umaCheckout.body.id);
+    const umaPaid = { ref: umaOpen.checkout_ref, state: 'PAID', subscriptionRef: 'sub_uma' };
+    stripeCalls.length = 0;
+    const umaTogether = await Promise.all([checkout.activate(umaOpen, umaPaid), checkout.activate(umaOpen, umaPaid)]);
+    const umaLater = await checkout.activate(umaOpen, umaPaid);
+    out.umaStatuses = [...umaTogether, umaLater].map((c) => c.status);
+    out.umaSubscriptions = subscriptionsOf('uma');
+    out.umaStripeCalls = stripeCalls.filter((c) => c[0] === 'cancel' || c[0] === 'refund');
+
     // A plan taken off an API, or deleted: its open checkouts are ended in Stripe before the change.
     // The open checkouts so far are cleared first.
     const clearOpen = () => run('DELETE FROM billing_checkouts WHERE subscription_uuid IS NULL');
@@ -753,4 +768,10 @@ test('a paid checkout whose payment was refunded for a subscription that has sin
     assert.deepEqual(results().tiaSubscriptions, []);
     assert.equal(results().tiaRefunded, true);
     assert.equal(results().tiaReadAgain.status, 404, 'the checkout is deleted');
+});
+
+test('a paid checkout activated by more than one call at once creates one subscription and refunds nothing', () => {
+    assert.deepEqual(results().umaStatuses, ['COMPLETED', 'COMPLETED', 'COMPLETED']);
+    assert.deepEqual(results().umaSubscriptions.map((s) => s.handle), ['gold']);
+    assert.deepEqual(results().umaStripeCalls, []);
 });
