@@ -12,3 +12,7 @@ secret = '{{ env "APIP_CP_WEBHOOK_SECRET" }}'
 [platform_api.agent_card_cache]
 positive_ttl = "20s"
 negative_ttl = "8s"
+
+# Turns on the Platform API's MCP server at /api/v0.9/mcp.
+[platform_api.mcp_server]
+enabled = true

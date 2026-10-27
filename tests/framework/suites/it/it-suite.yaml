@@ -1072,6 +1072,9 @@ blocks:
         features:
           - features/management-portal/subscriptions/secured_api_invocation.feature
         tags: "~@known-issue"
+      - name: platform-api-mcp-server
+        features:
+          - features/management-portal/resources/mcp_server.feature
       - name: agent-proxy-management
         features:
           - features/ai-workspace-gateway/agent/agent_proxy_management.feature
@@ -1158,6 +1161,9 @@ blocks:
         features:
           - features/management-portal/subscriptions/secured_api_invocation.feature
         tags: "~@known-issue"
+      - name: platform-api-mcp-server
+        features:
+          - features/management-portal/resources/mcp_server.feature
       - name: agent-proxy-management
         features:
           - features/ai-workspace-gateway/agent/agent_proxy_management.feature
@@ -1244,6 +1250,9 @@ blocks:
         features:
           - features/management-portal/subscriptions/secured_api_invocation.feature
         tags: "~@known-issue"
+      - name: platform-api-mcp-server
+        features:
+          - features/management-portal/resources/mcp_server.feature
       - name: agent-proxy-management
         features:
           - features/ai-workspace-gateway/agent/agent_proxy_management.feature
