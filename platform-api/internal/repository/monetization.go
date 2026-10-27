@@ -379,15 +379,27 @@ func (r *SubscriptionBillingRepo) Get(subscriptionUUID, orgUUID string) (*model.
 	return b, nil
 }
 
+// subscriptionBillingBatchSize is how many subscriptions GetMany asks for in one query, well
+// below the parameter limit of each database (SQL Server allows 2100).
+const subscriptionBillingBatchSize = 500
+
 // GetMany returns the billing state of each given subscription that has one, by subscription UUID.
+// The subscriptions are read in batches of subscriptionBillingBatchSize.
 func (r *SubscriptionBillingRepo) GetMany(subscriptionUUIDs []string, orgUUID string) (map[string]*model.SubscriptionBilling, error) {
 	result := map[string]*model.SubscriptionBilling{}
-	if len(subscriptionUUIDs) == 0 {
-		return result, nil
+	for batch := range slices.Chunk(subscriptionUUIDs, subscriptionBillingBatchSize) {
+		if err := r.getBatch(batch, orgUUID, result); err != nil {
+			return nil, err
+		}
 	}
-	placeholders := make([]string, len(subscriptionUUIDs))
-	args := make([]any, 0, len(subscriptionUUIDs)+1)
-	for i, id := range subscriptionUUIDs {
+	return result, nil
+}
+
+// getBatch adds the billing state of each subscription in batch that has one to result.
+func (r *SubscriptionBillingRepo) getBatch(batch []string, orgUUID string, result map[string]*model.SubscriptionBilling) error {
+	placeholders := make([]string, len(batch))
+	args := make([]any, 0, len(batch)+1)
+	for i, id := range batch {
 		placeholders[i] = "?"
 		args = append(args, id)
 	}
@@ -395,17 +407,20 @@ func (r *SubscriptionBillingRepo) GetMany(subscriptionUUIDs []string, orgUUID st
 	rows, err := r.db.Query(r.db.Rebind(`SELECT `+subscriptionBillingColumns+` FROM subscription_billing
 		WHERE subscription_uuid IN (`+strings.Join(placeholders, ", ")+`) AND organization_uuid = ?`), args...)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list subscription billing: %w", err)
+		return fmt.Errorf("failed to list subscription billing: %w", err)
 	}
 	defer rows.Close()
 	for rows.Next() {
 		b, err := scanSubscriptionBilling(rows)
 		if err != nil {
-			return nil, fmt.Errorf("failed to scan subscription billing: %w", err)
+			return fmt.Errorf("failed to scan subscription billing: %w", err)
 		}
 		result[b.SubscriptionUUID] = b
 	}
-	return result, rows.Err()
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("failed to list subscription billing: %w", err)
+	}
+	return nil
 }
 
 // Upsert stores the billing state of a subscription.

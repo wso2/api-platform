@@ -319,6 +319,22 @@ func TestSubscriptionPlanRepo_UsageAndDeleteWithReferences(t *testing.T) {
 	}
 }
 
+// A REST API with an empty configuration lists no plans, so it neither counts toward a plan's usage
+// nor stops the plan from being removed from the other REST APIs.
+func TestRestAPIPlanHandles_EmptyConfigurationListsNone(t *testing.T) {
+	for _, configuration := range [][]byte{nil, []byte(""), []byte(" \n\t")} {
+		if plans, err := restAPIPlanHandles(configuration); err != nil || plans != nil {
+			t.Errorf("restAPIPlanHandles(%q) = %v, %v; want none", configuration, plans, err)
+		}
+		if got, err := withoutPlanHandle(configuration, "gold"); err != nil || got != nil {
+			t.Errorf("withoutPlanHandle(%q) = %s, %v; want no rewrite", configuration, got, err)
+		}
+	}
+	if _, err := restAPIPlanHandles([]byte("{")); err == nil {
+		t.Error("want a configuration that is not JSON to be refused as before")
+	}
+}
+
 func TestWithoutPlanHandle_KeepsTheOtherFields(t *testing.T) {
 	got, err := withoutPlanHandle([]byte(`{"name":"Shop","subscriptionPlans":["gold"],"upstream":{"main":{"url":"https://a"}}}`), "gold")
 	if err != nil || string(got) != `{"name":"Shop","upstream":{"main":{"url":"https://a"}}}` {
