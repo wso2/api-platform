@@ -656,13 +656,15 @@ Event keys are set by the administrator as full paths in the Moesif event, 1 to 
 |---|---|
 | Status code | `response.status` |
 | HTTP method | `request.verb` |
-| Resource | `metadata.apiResourceTemplate` |
+| Resource | `request.route` |
 | API type | `metadata.apiType` |
 | MCP method | `metadata.mcpAnalytics.jsonRpcMethod` |
 | Tool | `metadata.mcpAnalytics.capabilityName` |
 | Prompt tokens | `metadata.aiTokenUsage.promptTokens` |
 | Completion tokens | `metadata.aiTokenUsage.completionTokens` |
 | Total tokens | `metadata.aiTokenUsage.totalTokens` |
+
+Resource is the route Moesif records for each call: the request path, with the API's context, and its IDs as `:id`, such as `/shop/v1.0/items/:id`.
 
 A new `TOKENS` meter is offered `metadata.aiTokenUsage.promptTokens` as its `type_key`.
 

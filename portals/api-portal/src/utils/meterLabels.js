@@ -64,7 +64,7 @@ const TOKEN_EVENT_KEYS = Object.freeze([
 const FILTER_PRESETS = Object.freeze([
     Object.freeze({ field: 'Status code', eventKey: 'response.status' }),
     Object.freeze({ field: 'HTTP method', eventKey: 'request.verb' }),
-    Object.freeze({ field: 'Resource', eventKey: 'metadata.apiResourceTemplate' }),
+    Object.freeze({ field: 'Resource', eventKey: 'request.route' }),
     Object.freeze({ field: 'API type', eventKey: 'metadata.apiType' }),
     Object.freeze({ field: 'MCP method', eventKey: 'metadata.mcpAnalytics.jsonRpcMethod' }),
     Object.freeze({ field: 'Tool', eventKey: 'metadata.mcpAnalytics.capabilityName' }),

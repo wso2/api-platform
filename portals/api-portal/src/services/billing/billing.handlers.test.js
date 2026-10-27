@@ -264,7 +264,7 @@ const calls = {
         type: 'REQUEST_COUNT', filterFields: [
             { field: 'Status code', eventKey: 'response.status' },
             { field: 'HTTP method', eventKey: 'request.verb' },
-            { field: 'Resource', eventKey: 'metadata.apiResourceTemplate' },
+            { field: 'Resource', eventKey: 'request.route' },
             { field: 'API type', eventKey: 'metadata.apiType' },
             { field: 'Region', eventKey: 'metadata.region' },
         ] } }));

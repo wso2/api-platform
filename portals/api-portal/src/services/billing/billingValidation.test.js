@@ -284,7 +284,7 @@ const meters = new Map([
     ['calls', { handle: 'calls', type: 'REQUEST_COUNT', type_key: null, filter_fields: [
         { field: 'Status code', eventKey: 'response.status' },
         { field: 'HTTP method', eventKey: 'request.verb' },
-        { field: 'Resource', eventKey: 'metadata.apiResourceTemplate' },
+        { field: 'Resource', eventKey: 'request.route' },
         { field: 'API type', eventKey: 'metadata.apiType' },
         { field: 'Prompt tokens', eventKey: 'metadata.aiTokenUsage.promptTokens' },
     ] }],
