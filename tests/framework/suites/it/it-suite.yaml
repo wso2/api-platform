@@ -716,6 +716,7 @@ blocks:
         db:
           matrix: [sqlite, postgres, sqlserver]
       - name: testbench
+      - name: a2a-trip-planner
     runners:
       - name: startup-db-bootstrap
         features:
