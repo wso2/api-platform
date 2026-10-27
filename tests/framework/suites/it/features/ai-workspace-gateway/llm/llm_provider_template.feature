@@ -105,8 +105,14 @@ Feature: LLM provider template management
     Then the response status code should be 200
     And the response should be valid JSON
     And the JSON response field "status" should be "success"
-    And the JSON response field "count" should be greater than 1
-    And the response body should contain "openai"
+    And the JSON response field "count" should be greater than 6
+    And the JSON response array "templates" should contain an item with "metadata.name" equal to "openai"
+    And the JSON response array "templates" should contain an item with "metadata.name" equal to "anthropic"
+    And the JSON response array "templates" should contain an item with "metadata.name" equal to "gemini"
+    And the JSON response array "templates" should contain an item with "metadata.name" equal to "azure-openai"
+    And the JSON response array "templates" should contain an item with "metadata.name" equal to "azureai-foundry"
+    And the JSON response array "templates" should contain an item with "metadata.name" equal to "mistralai"
+    And the JSON response array "templates" should contain an item with "metadata.name" equal to "awsbedrock"
 
   Scenario: Get non-existent LLM provider template returns 404
     When I send a "GET" request to the "gateway-controller" service at "/llm-provider-templates/non-existent-template-id"

@@ -293,6 +293,22 @@ Feature: LLM provider management
     And the response should be valid JSON
     And the JSON response field "status" should be "error"
 
+  # The complete spec override leaves the document with a displayName alone: no version,
+  # template, upstream or accessControl.
+  Scenario: Create LLM provider with only a display name is rejected
+    Given I generate a unique resource name from "lpm-bare" and store it as "providerName"
+    When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
+      | apiVersion         | ${CTX:gatewaySpecVersion}         |
+      | name               | ${CTX:providerName}               |
+      | displayName        | Invalid Provider                  |
+      | version            | v1.0                              |
+      | template           | openai                            |
+      | accessControl.mode | allow_all                         |
+      | spec               | {"displayName":"Invalid Provider"} |
+    Then the response status code should be 400
+    And the response should be valid JSON
+    And the JSON response field "status" should be "error"
+
   # An empty policy version is a valid input: it resolves to the latest loaded version.
   @gateway-v1.2
   Scenario: Create LLM provider with an empty policy version resolves to the latest
