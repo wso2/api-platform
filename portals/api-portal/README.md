@@ -335,6 +335,57 @@ APIP_AP_DATABASE_HOST=my-postgres-host
 APIP_AP_DATABASE_PASSWORD=my-secret-password
 ```
 
+### Webhook signing secret for Platform API deliveries
+
+The portal signs every outbound webhook delivery to Platform API with an HMAC
+secret that Platform API verifies on the receiving side. Each portal has its
+own signing secret (not a value shared across every portal in the
+environment), keyed on the portal's internal UUID. The OSS integration path
+intentionally does not send the plaintext secret over HTTP between Platform
+API and this portal — the operator plants it in `config.toml` directly, and
+the portal self-seeds its own `webhook_subscribers` row on boot.
+
+**The one-direction rotation ordering MUST be followed:**
+
+1. Call Platform API's management endpoint to generate (or rotate) the per-portal secret:
+
+   ```
+   POST /api/v0.9/api-portals/{apiPortalId}/webhook-secret
+   Authorization: Bearer <token with ap:api_portal:manage>
+   ```
+
+   Platform API returns `{ secret, receiverUrl }` **exactly once**. The
+   plaintext is not retrievable from Platform API after this response.
+
+2. Paste both values into this portal's `config.toml`:
+
+   ```toml
+   [api_portal.webhooks.platform_api]
+   url    = "<receiverUrl from step 1>"
+   secret = "<secret from step 1>"
+   events = ["subscription.*", "apikey.*", "application.*"]
+   ```
+
+3. Restart the portal. On boot the portal upserts the `platform-api` subscriber
+   row for the configured default organisation from this config block. The
+   admin API then treats that row as config-owned: `PUT` and `DELETE` on
+   `/webhook-subscribers/platform-api` return `403` until the config block is
+   cleared and the portal restarted. Admin API reads expose a `configOwned:
+   true` flag on the row so admin UIs can grey out the edit affordance.
+
+**Reversing the ordering is unsafe.** If the operator writes a new secret into
+`config.toml` and restarts the portal *before* calling the management
+endpoint on Platform API, Platform API's stored verification secret stays
+unchanged. The portal starts signing with the new value and every delivery
+returns `401` — indistinguishable from a bad-signature failure. Delivery is
+restored only when the operator realigns the two sides by going through the
+management endpoint again. There is no automated reconciliation.
+
+Leaving the config block empty (either `url` or `secret` unset) is a no-op:
+the portal does not self-seed, and the operator continues to administer the
+`platform-api` subscriber row through the admin API as before. This mirrors
+every pre-feature deployment.
+
 ---
 
 ## Publish your first API

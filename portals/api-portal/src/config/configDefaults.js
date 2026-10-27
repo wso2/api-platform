@@ -367,6 +367,23 @@ const DEFAULTS = {
             // self-signed subscriber. Development only.
             tlsSkipVerify: false,
         },
+        // Self-seed the "platform-api" subscriber row at boot from this config,
+        // so the webhook signing secret never travels over the admin REST API.
+        // When both url and secret are set, the row for the default org is
+        // upserted on startup (handle = "platform-api") and the admin API treats
+        // it as read-only (PUT / DELETE return 403); every other subscriber row
+        // keeps using the admin REST API as before.
+        //
+        // url is the per-portal receiver URL from the Platform API endpoint
+        // POST /api-portals/{id}/webhook-secret — e.g.
+        // https://platform-api/api/internal/v0.9/webhook/portals/<uuid>/events.
+        // secret is the plaintext signing secret returned in the same response.
+        // events defaults to the three event families the receiver dispatches.
+        platformApi: {
+            url: '',
+            secret: '',
+            events: ['subscription.*', 'apikey.*', 'application.*'],
+        },
     },
     // Upload and archive-extraction limits.
     uploads: {

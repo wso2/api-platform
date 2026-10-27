@@ -144,6 +144,26 @@ func (r *APIPortalRepo) GetByUUID(portalID, orgUUID string) (*model.APIPortal, e
 	return portal, nil
 }
 
+// GetByUUIDAny retrieves an API Portal by UUID alone. api_portals.uuid is a
+// globally-unique PK so no cross-org collision is possible; this feeds the
+// per-portal webhook receiver, which only has the portal UUID (from the request
+// URL) when it needs to resolve the owning org.
+func (r *APIPortalRepo) GetByUUIDAny(portalUUID string) (*model.APIPortal, error) {
+	query := fmt.Sprintf(`
+		SELECT %s FROM api_portals
+		WHERE uuid = ?
+	`, apiPortalSelectColumns)
+	row := r.db.QueryRow(r.db.Rebind(query), portalUUID)
+	portal, err := scanAPIPortalRow(row)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return portal, nil
+}
+
 // GetByHandleAndOrgID retrieves an API Portal by its handle within an organization.
 func (r *APIPortalRepo) GetByHandleAndOrgID(handle, orgUUID string) (*model.APIPortal, error) {
 	query := fmt.Sprintf(`

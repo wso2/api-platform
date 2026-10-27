@@ -149,6 +149,22 @@ type APIPortals interface {
 	// core can decrypt it, so plugins that call the portal after Create (once its
 	// pod is up) get the header here instead of keeping the plaintext key.
 	AuthHeaderForPortal(ctx context.Context, handle, orgID string) (string, error)
+
+	// EnsureWebhookSecret returns the portal's current webhook signing secret,
+	// generating one on first call. Idempotent — a subsequent call returns the
+	// same value until RotateWebhookSecret runs. The portal uuid is returned so
+	// callers that have only the (handle, orgID) pair can build the per-portal
+	// receiver URL in one step. The plaintext leaves core only for the trusted
+	// in-process plugin, which seeds it into the portal's platform-api
+	// subscriber row over HTTPS.
+	EnsureWebhookSecret(ctx context.Context, handle, orgID string) (secret, portalUUID string, err error)
+
+	// RotateWebhookSecret generates a fresh webhook signing secret. The
+	// previous one stays valid for config.Webhook.RotationGrace so single-
+	// attempt deliveries signed between this call and the portal subscriber-
+	// row PUT are not lost. Returns the plaintext of the new secret and the
+	// portal uuid.
+	RotateWebhookSecret(ctx context.Context, handle, orgID string) (secret, portalUUID string, err error)
 }
 
 // Organizations exposes read-only lookups over the platform's organizations.

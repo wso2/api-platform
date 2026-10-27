@@ -159,6 +159,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	auditRepo := repository.NewAuditRepo(db)
 	secretRepo := repository.NewSecretRepo(db, artifactTableRegistry)
 	apiPortalRepo := repository.NewAPIPortalRepo(db)
+	apiPortalWebhookSecretRepo := repository.NewAPIPortalWebhookSecretRepo(db)
 	documentRepo := repository.NewDocumentRepo(db)
 	userIdentityMappingRepo := repository.NewUserIdentityMappingRepo(db)
 	userOrgMappingRepo := repository.NewUserOrganizationMappingRepo(db)
@@ -411,7 +412,9 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	}
 	secretService := service.NewSecretService(secretRepo, secretVault, identityService)
 	apiPortalAuthRegistry := service.NewAPIPortalAuthRegistry(apiPortalRepo, secretVault)
-	apiPortalService := service.NewAPIPortalService(apiPortalRepo, orgRepo, auditRepo, secretVault, apiPortalAuthRegistry, identityService, slogger)
+	apiPortalWebhookKeyRegistry := service.NewPortalWebhookKeyRegistry(apiPortalRepo, apiPortalWebhookSecretRepo, secretVault, cfg.Webhook.SignatureTolerance)
+	apiPortalWebhookSecretService := service.NewAPIPortalWebhookSecretService(apiPortalRepo, apiPortalWebhookSecretRepo, secretVault, cfg.Webhook.RotationGrace, apiPortalWebhookKeyRegistry, slogger)
+	apiPortalService := service.NewAPIPortalService(apiPortalRepo, orgRepo, auditRepo, secretVault, apiPortalAuthRegistry, apiPortalWebhookSecretService, identityService, slogger)
 	portalPublisher, err := newPortalPublisher(apiPortalAuthRegistry, &cfg.APIPortalPublication, slogger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize API Portal publisher: %w", err)
@@ -429,7 +432,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	subscriptionPlanHandler := handler.NewSubscriptionPlanHandler(subscriptionPlanService, identityService, slogger)
 	publicationHandler := handler.NewPublicationHandler(publicationService, identityService, cfg.PublicationContentMaxBytes, cfg.PublicationThumbnailMaxBytes, slogger)
 	appHandler := handler.NewApplicationHandler(appService, identityService, cfg.Auth.Authorization.Mode, slogger)
-	apiPortalHandler := handler.NewAPIPortalHandler(apiPortalService, identityService, slogger)
+	apiPortalHandler := handler.NewAPIPortalHandler(apiPortalService, identityService, cfg.Webhook, slogger)
 	wsHandler := handler.NewWebSocketHandler(wsManager, gatewayService, deploymentService, cfg.Listeners.WebSocket.RateLimitPerMin, slogger)
 	internalGatewayHandler := handler.NewGatewayInternalAPIHandler(gatewayService, internalGatewayService, artifactImportService, secretService, slogger)
 	apiKeyHandler := handler.NewAPIKeyHandler(apiKeyService, identityService, cfg.Auth.Authorization.Mode, slogger)
@@ -660,6 +663,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	if cfg.Webhook.Enabled {
 		webhookReceiver, err := webhook.NewReceiver(
 			cfg.Webhook,
+			apiPortalWebhookKeyRegistry,
 			apiKeyService,
 			subscriptionService,
 			appService,

@@ -26,6 +26,23 @@ const util = require('../utils/util');
 const crypto = require('crypto');
 const logger = require('../config/logger');
 const { logUserAction } = require('../middlewares/auditLogger');
+const {
+    isPlatformApiSubscriberConfigOwned,
+    PLATFORM_API_SUBSCRIBER_HANDLE,
+} = require('./seederService');
+
+// _isConfigOwnedRow reports whether this subscriber id is the config-driven
+// "platform-api" row (seeded from config.webhooks.platformApi) that admin
+// mutations must refuse. Any other row — including hand-registered subscribers
+// still named "platform-api" when the config block is unset — is unaffected.
+function _isConfigOwnedRow(subscriberHandle) {
+    return subscriberHandle === PLATFORM_API_SUBSCRIBER_HANDLE && isPlatformApiSubscriberConfigOwned();
+}
+
+const _CONFIG_OWNED_MESSAGE =
+    `The "${PLATFORM_API_SUBSCRIBER_HANDLE}" webhook subscriber is managed by server configuration ` +
+    `(config.webhooks.platformApi) and cannot be modified or removed via the admin API. ` +
+    `Update the config.toml value and restart the portal to change it.`;
 
 function _validateRequiredFields(payload) {
     // `handle` is intentionally absent: it is either supplied by the caller as `id`
@@ -91,6 +108,9 @@ const updateWebhookSubscriber = async (req, res) => {
     try {
         const orgId = req.orgId;
         const { subscriberId } = req.params;
+        if (_isConfigOwnedRow(subscriberId)) {
+            return util.sendError(res, 403, _CONFIG_OWNED_MESSAGE);
+        }
         const payload = req.body;
         if (payload && payload.id) {
             payload.handle = payload.id;
@@ -178,6 +198,9 @@ const deleteWebhookSubscriber = async (req, res) => {
     try {
         const orgId = req.orgId;
         const { subscriberId } = req.params;
+        if (_isConfigOwnedRow(subscriberId)) {
+            return util.sendError(res, 403, _CONFIG_OWNED_MESSAGE);
+        }
         const sub = await whDao.get(orgId, subscriberId);
         await whDao.delete(orgId, subscriberId);
         logUserAction('WEBHOOK_SUBSCRIBER_DELETED', req, { orgId, subscriberId, resourceUuid: sub.uuid, resourceType: 'webhook_subscriber' });

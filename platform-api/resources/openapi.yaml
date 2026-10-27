@@ -8588,6 +8588,43 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /api-portals/{apiPortalId}/webhook-secret:
+    post:
+      summary: Generate or rotate the per-portal webhook signing secret
+      description: |
+        Generates a new 32-byte webhook signing secret for this portal if none
+        exists; otherwise rotates to a new one, keeping the previous valid for
+        platform_api.webhook.rotation_grace so single-attempt deliveries signed
+        across the rotation are not lost. The plaintext is returned **once** in
+        this response and never again — losing it means rotating a new one. The
+        operator installs the returned secret (and receiverUrl) on the API Portal
+        subscriber row that targets Platform API.
+      operationId: GenerateApiPortalWebhookSecret
+      security:
+        - OAuth2Security:
+            - ap:api_portal:manage
+      tags:
+        - API Portals
+      parameters:
+        - $ref: '#/components/parameters/apiPortalId'
+      responses:
+        '200':
+          description: Webhook secret generated or rotated successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenerateApiPortalWebhookSecretResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /me/api-keys:
     get:
       summary: List API keys for the current user, or for all users with `ap:api_key:all:manage`
@@ -14250,6 +14287,15 @@ components:
           example: "https://acme-portal.example.com"
         metadata:
           $ref: '#/components/schemas/ApiPortalMetadata'
+        webhookSecretConfigured:
+          type: boolean
+          description: |
+            True when a per-portal webhook signing secret has been generated for
+            this portal (via POST /api-portals/{apiPortalId}/webhook-secret). The
+            secret itself is never returned on reads; this flag only reports
+            presence.
+          readOnly: true
+          example: true
         createdAt:
           type: string
           format: date-time
@@ -14260,6 +14306,35 @@ components:
           format: date-time
           readOnly: true
           example: "2026-08-13T10:30:00Z"
+
+    GenerateApiPortalWebhookSecretResponse:
+      title: Generate / rotate webhook secret response
+      description: |
+        Returned once by POST /api-portals/{apiPortalId}/webhook-secret. The
+        secret is only ever present in this response — it is never readable
+        again; losing it means rotating a new one. receiverUrl is the full
+        receiver URL when platform_api.webhook.public_base_url is configured;
+        when the operator has not configured a public base URL, receiverUrl
+        contains only the receiver path and the operator must prepend their
+        own base.
+      type: object
+      required:
+        - secret
+        - receiverUrl
+      properties:
+        secret:
+          type: string
+          description: The per-portal webhook signing secret. 64 hex characters (32 bytes of entropy).
+          pattern: '^[0-9a-f]{64}$'
+          example: "a1b2c3d4e5f67890a1b2c3d4e5f67890a1b2c3d4e5f67890a1b2c3d4e5f67890"
+        receiverUrl:
+          type: string
+          description: |
+            Either the fully-qualified receiver URL (when
+            platform_api.webhook.public_base_url is configured) or just the
+            receiver path (which the operator must prepend with their own base
+            URL).
+          example: "https://platform-api.example.com/api/internal/v0.9/webhook/portals/5c43e3f0-1d44-4b2f-9d6c-00f00b0f0a0a/events"
 
     ApiPortalListItem:
       title: API Portal list projection

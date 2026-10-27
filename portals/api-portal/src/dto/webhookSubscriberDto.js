@@ -16,10 +16,19 @@
  * under the License.
  */
 const { applyAudit } = require('./dtoUtils');
+const {
+    isPlatformApiSubscriberConfigOwned,
+    PLATFORM_API_SUBSCRIBER_HANDLE,
+} = require('../services/seederService');
 
 /**
  * DTO for webhook subscriber responses.
  * Never exposes the subscriber's secret in API responses.
+ *
+ * configOwned is true when this row is the config-driven "platform-api"
+ * subscriber (config.webhooks.platformApi has both url and secret set); the
+ * admin API refuses PUT and DELETE on that row, so the UI should grey out the
+ * edit and delete affordances. False (or absent) for every other row.
  */
 class WebhookSubscriberDTO {
     constructor(sub, audit) {
@@ -31,6 +40,9 @@ class WebhookSubscriberDTO {
         this.events = sub.event_patterns || [];
         this.timeoutMs = sub.timeout_ms;
         this.hasSecret = !!sub.secret_enc;
+        if (sub.handle === PLATFORM_API_SUBSCRIBER_HANDLE && isPlatformApiSubscriberConfigOwned()) {
+            this.configOwned = true;
+        }
         applyAudit(this, audit);
     }
 }

@@ -36,10 +36,18 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/model"
 )
 
-// RoutePath is the webhook endpoint under the resource API version prefix (constants.APIVersion,
-// currently "v0.9"). It lives under the internal/control-plane prefix and is excluded from JWT/IDP
-// auth via config.Auth.SkipPaths (authenticity comes from the HMAC signature).
+// RoutePath is the legacy webhook endpoint. Mounted only when
+// config.Webhook.LegacySharedSecret is true; verified with the global
+// webhook.secret. Replaced per-portal by PerPortalRoutePath; kept for the
+// migration window and removed once every portal subscriber row points at the
+// per-portal URL.
 const RoutePath = "/api/internal/" + constants.APIVersion + "/webhook/events"
+
+// PerPortalRoutePath carries the portal uuid in the path. The id is not a
+// credential — the HMAC is still the authentication; the path selects which
+// per-portal secret to verify with. After HMAC passes, the receiver rejects the
+// delivery when payload.org.ref_id does not resolve to the portal's own org.
+const PerPortalRoutePath = "/api/internal/" + constants.APIVersion + "/webhook/portals/{portalUUID}/events"
 
 // apiKeyService is the subset of *service.APIKeyService the receiver depends on. The existing
 // CreateAPIKey/UpdateAPIKey/RevokeAPIKey already hash an externally provisioned key, persist it,
@@ -77,46 +85,65 @@ type applicationService interface {
 }
 
 // Receiver is the gin handler implementing the webhook processing flow.
+// verifier + decryptor serve the legacy /webhook/events route and are nil when
+// LegacySharedSecret is off or Secret is empty. keyRegistry serves the
+// per-portal route (/webhook/portals/{portalUUID}/events) and is nil only in
+// test setups that do not exercise that path.
 type Receiver struct {
-	cfg       config.Webhook
-	verifier  *Verifier
-	decryptor *Decryptor
-	apiKeys   apiKeyService
-	subs      subscriptionService
-	apps      applicationService
-	orgs      organizationResolver
-	readOnly  readOnlyMode // TEMP-READ-ONLY-MODE: remove with receiver_readonly.go
-	slogger   *slog.Logger
+	cfg         config.Webhook
+	verifier    *Verifier
+	decryptor   *Decryptor
+	keyRegistry PortalKeyProvider
+	apiKeys     apiKeyService
+	subs        subscriptionService
+	apps        applicationService
+	orgs        organizationResolver
+	readOnly    readOnlyMode // TEMP-READ-ONLY-MODE: remove with receiver_readonly.go
+	slogger     *slog.Logger
 
 	handlers map[string]func(ctx context.Context, env *Envelope) error
 }
 
 // NewReceiver wires the receiver and its event-type dispatch table.
 //
-// The verifier and the decryptor are both built from cfg.Secret here rather than passed in
-// separately: the producer signs with that secret and derives its field-encryption key from the
-// same secret, so keying the two off one config value is what keeps them from drifting apart.
+// Each per-portal signing secret is bound to the portal uuid; the verifier +
+// decryptor pair for a request are resolved from keyRegistry at request time,
+// keyed on the uuid in PerPortalRoutePath. The legacy cfg.Secret is used only
+// by the shared-secret /webhook/events route and is built here only when
+// cfg.LegacySharedSecret is true and cfg.Secret is non-empty — the two must
+// stay in lockstep since the field-encryption key is derived from the signing
+// secret.
 func NewReceiver(
 	cfg config.Webhook,
+	keyRegistry PortalKeyProvider,
 	apiKeys apiKeyService,
 	subs subscriptionService,
 	apps applicationService,
 	orgs organizationResolver,
 	slogger *slog.Logger,
 ) (*Receiver, error) {
-	decryptor, err := NewDecryptor(cfg.Secret)
-	if err != nil {
-		return nil, err
+	var (
+		legacyVerifier  *Verifier
+		legacyDecryptor *Decryptor
+	)
+	if cfg.LegacySharedSecret && cfg.Secret != "" {
+		dec, err := NewDecryptor(cfg.Secret)
+		if err != nil {
+			return nil, err
+		}
+		legacyDecryptor = dec
+		legacyVerifier = NewVerifier(cfg.Secret, cfg.SignatureTolerance)
 	}
 	r := &Receiver{
-		cfg:       cfg,
-		verifier:  NewVerifier(cfg.Secret, cfg.SignatureTolerance),
-		decryptor: decryptor,
-		apiKeys:   apiKeys,
-		subs:      subs,
-		apps:      apps,
-		orgs:      orgs,
-		slogger:   slogger,
+		cfg:         cfg,
+		verifier:    legacyVerifier,
+		decryptor:   legacyDecryptor,
+		keyRegistry: keyRegistry,
+		apiKeys:     apiKeys,
+		subs:        subs,
+		apps:        apps,
+		orgs:        orgs,
+		slogger:     slogger,
 	}
 	r.handlers = map[string]func(ctx context.Context, env *Envelope) error{
 		EventAPIKeyGenerated:              r.handleAPIKeyGenerated,
@@ -135,9 +162,17 @@ func NewReceiver(
 	return r, nil
 }
 
-// RegisterRoutes registers the webhook endpoint on the mux. Only called when the webhook is enabled.
+// RegisterRoutes registers the webhook endpoints on the mux. The per-portal
+// route is mounted whenever keyRegistry is non-nil; the legacy route is mounted
+// only while LegacySharedSecret is true and Secret is set. Called only when the
+// receiver itself is enabled.
 func (r *Receiver) RegisterRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("POST "+RoutePath, middleware.MapErrors(r.slogger, r.ReceiveEvent))
+	if r.keyRegistry != nil {
+		mux.HandleFunc("POST "+PerPortalRoutePath, middleware.MapErrors(r.slogger, r.ReceivePerPortalEvent))
+	}
+	if r.verifier != nil {
+		mux.HandleFunc("POST "+RoutePath, middleware.MapErrors(r.slogger, r.ReceiveEvent))
+	}
 }
 
 // ReceiveEvent runs the full webhook flow: size-limited read -> signature verify -> envelope
@@ -195,6 +230,122 @@ func (r *Receiver) ReceiveEvent(w http.ResponseWriter, req *http.Request) error 
 	}
 
 	if err := handle(req.Context(), env); err != nil {
+		log.Error("Webhook event handling failed", "error", err)
+		return mapWebhookError(err)
+	}
+
+	log.Info("Webhook event processed")
+	httputil.WriteJSON(w, http.StatusOK, map[string]string{"status": "processed"})
+	return nil
+}
+
+// ReceivePerPortalEvent runs the per-portal webhook flow: resolve portal uuid
+// from the URL path, pick that portal's current (and in-grace previous) secret,
+// verify the HMAC, decode and validate the envelope, enforce the org binding,
+// and dispatch to the shared handler table with the per-portal field-decryption
+// key threaded through the request context.
+//
+// An unknown portal uuid, a secret-row-missing portal, and a bad signature all
+// surface as the same generic 401 — the response must not reveal whether the
+// uuid identifies a real portal. A valid signature whose payload org.ref_id
+// resolves to a different org than this portal owns is a 403 (cross-org
+// forgery attempt) with the portal id and both org ids in the log only.
+func (r *Receiver) ReceivePerPortalEvent(w http.ResponseWriter, req *http.Request) error {
+	if !r.cfg.Enabled {
+		return apperror.NotFound.New().WithLogMessage("webhook endpoint is disabled")
+	}
+	if r.keyRegistry == nil {
+		return apperror.NotFound.New().WithLogMessage("per-portal webhook endpoint is disabled")
+	}
+
+	portalUUID := req.PathValue("portalUUID")
+	if portalUUID == "" {
+		return apperror.Unauthorized.New().
+			WithLogMessage("per-portal webhook: missing portalUUID path value")
+	}
+
+	limited := http.MaxBytesReader(w, req.Body, r.cfg.MaxBodySize)
+	body, err := io.ReadAll(limited)
+	if err != nil {
+		return apperror.ValidationFailed.Wrap(err, "Request body too large or unreadable").
+			WithLogMessage(fmt.Sprintf("webhook body read failed (possibly too large), limit=%d", r.cfg.MaxBodySize))
+	}
+
+	keys, err := r.keyRegistry.Get(req.Context(), portalUUID)
+	if err != nil {
+		// Keep the response generic so an attacker cannot enumerate portal uuids
+		// — both "unknown portal" and "bad signature" look identical on the wire.
+		return apperror.Unauthorized.Wrap(err).
+			WithLogMessage(fmt.Sprintf("per-portal webhook: key load failed, portal=%s clientIP=%s", portalUUID, req.RemoteAddr))
+	}
+
+	sigHeader := req.Header.Get(r.cfg.SignatureHeader)
+	now := time.Now()
+	var requestDecryptor *Decryptor
+	if verr := keys.Current.Verify(sigHeader, body, now); verr == nil {
+		requestDecryptor = keys.CurrentDecryptor
+	} else if keys.HasPreviousInGrace(now) {
+		if perr := keys.Previous.Verify(sigHeader, body, now); perr != nil {
+			return apperror.Unauthorized.Wrap(perr).
+				WithLogMessage(fmt.Sprintf("per-portal webhook signature verification failed under both current and previous (grace) secrets, portal=%s clientIP=%s", portalUUID, req.RemoteAddr))
+		}
+		requestDecryptor = keys.PreviousDecryptor
+	} else {
+		return apperror.Unauthorized.Wrap(verr).
+			WithLogMessage(fmt.Sprintf("per-portal webhook signature verification failed, portal=%s clientIP=%s", portalUUID, req.RemoteAddr))
+	}
+
+	env, err := DecodeEnvelope(body)
+	if err == nil {
+		err = env.Validate()
+	}
+	if err != nil {
+		return apperror.ValidationFailed.Wrap(err, "Invalid event envelope")
+	}
+
+	log := r.slogger.With("eventId", env.EventID, "eventType", env.EventType, "orgHandle", env.OrgID, "portalId", portalUUID)
+
+	if err := r.resolveOrgUUID(env); err != nil {
+		log.Warn("Webhook organization resolution failed", "error", err)
+		// On the per-portal route, an unresolved payload org handle is treated as a
+		// cross-org mismatch (FR-004): it collapses into the same 403 the explicit
+		// org-binding check below returns. Surfacing it as 404 would be an existence
+		// oracle for organisation handles — a caller probing the receiver could
+		// enumerate which handles exist by watching 404 vs 403, defeating the
+		// indistinguishability promise in FR-017 / SC-007. The legacy route in
+		// ReceiveEvent keeps the 404 passthrough; only the per-portal path collapses
+		// here.
+		if apperror.OrganizationNotFound.Is(err) {
+			return apperror.Forbidden.New().WithLogMessage(fmt.Sprintf(
+				"per-portal webhook: unresolved payload org handle, portal=%s orgHandle=%q", portalUUID, env.OrgID))
+		}
+		return mapWebhookError(err)
+	}
+	log = log.With("orgId", env.OrgID)
+
+	// Org binding: the HMAC proves "signed with this portal's secret"; it does
+	// not prove the delivery is for this portal's org. Reject any event whose
+	// resolved org uuid is not the one that owns this portal.
+	if env.OrgID != keys.OrganizationUUID {
+		log.Warn("Webhook org binding mismatch",
+			"portalOrgId", keys.OrganizationUUID,
+			"eventOrgId", env.OrgID)
+		return apperror.Forbidden.New().
+			WithLogMessage(fmt.Sprintf("per-portal webhook org mismatch: portal=%s portalOrg=%s eventOrg=%s", portalUUID, keys.OrganizationUUID, env.OrgID))
+	}
+
+	if r.rejectIfReadOnly(w, env, log) { // TEMP-READ-ONLY-MODE: remove with receiver_readonly.go
+		return nil
+	}
+
+	handle, ok := r.handlers[env.EventType]
+	if !ok {
+		log.Warn("Unsupported webhook event type")
+		return apperror.ValidationFailed.New("Unsupported event type")
+	}
+
+	ctx := contextWithDecryptor(req.Context(), requestDecryptor)
+	if err := handle(ctx, env); err != nil {
 		log.Error("Webhook event handling failed", "error", err)
 		return mapWebhookError(err)
 	}
