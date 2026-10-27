@@ -1742,6 +1742,12 @@ components:
             - INACTIVE
             - REVOKED
           example: "ACTIVE"
+        billingCustomerId:
+          type: string
+          description: Billing customer of a paid subscription (the Stripe customer, also the Moesif company). Absent for a free subscription. A paid subscription whose payment has failed for good is sent with status INACTIVE.
+        billingSubscriptionId:
+          type: string
+          description: Billing provider subscription of a paid subscription. Absent for a free subscription.
         createdAt:
           type: string
           format: date-time
