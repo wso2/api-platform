@@ -45,8 +45,15 @@ class RequestError extends Error {
   }
 }
 
+/** Whether a create failed only because the request ran out of time. */
 function isTimeout(err: unknown): boolean {
   return err instanceof RequestError && (err.timedOut || err.status === 504);
+}
+
+/** Whether a poll error will not clear by waiting, so the poll should stop and report it. */
+function isPermanentPollError(err: unknown): boolean {
+  if (!(err instanceof RequestError) || err.status === undefined) return false;
+  return err.status >= 400 && err.status < 500 && ![404, 408, 429].includes(err.status);
 }
 
 type WindowRuntimeConfig = Partial<{
@@ -187,7 +194,8 @@ async function awaitCreatedPortal(base: string, orgHandle: string, handle: strin
         `/managed-api-portals/${encodeURIComponent(handle)}`
       );
       return fromWire(body);
-    } catch {
+    } catch (err) {
+      if (isPermanentPollError(err)) throw err;
       // Not there yet, or a transient error; keep waiting until the deadline.
     }
   }
