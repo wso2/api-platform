@@ -1,6 +1,3 @@
--- Schema version 5 as shipped in gateway 2026.09.24 (wso2/api-platform@ae2a5add,
--- gateway/gateway-controller/pkg/storage/gateway-controller-db.sql). Test fixture for
--- the version 5 to 6 migration: keep it identical to the released schema.
 -- SQLite Schema for Gateway-Controller API Configurations
 -- Version: 5
 

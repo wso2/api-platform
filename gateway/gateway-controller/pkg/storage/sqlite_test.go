@@ -19,12 +19,14 @@
 package storage
 
 import (
+	"crypto/sha256"
 	"database/sql"
 	"errors"
 	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"sort"
 	"strings"
@@ -889,7 +891,7 @@ func TestSQLite_UpgradeAddsCertificateUsageColumns(t *testing.T) {
 // TestSQLite_UpgradeFromReleasedV5SchemaMatchesFreshSchema migrates the
 // version 5 schema that gateway 2026.09.24 shipped, loads every stored
 // configuration as the controller does at startup, and checks the migrated
-// database has the same tables, columns, foreign keys and indexes as a fresh
+// database defines the same tables, indexes, views and triggers as a fresh
 // one. A table added to gateway-controller-db.sql but not to the migration
 // fails here, as graphql_apis did.
 func TestSQLite_UpgradeFromReleasedV5SchemaMatchesFreshSchema(t *testing.T) {
@@ -898,6 +900,57 @@ func TestSQLite_UpgradeFromReleasedV5SchemaMatchesFreshSchema(t *testing.T) {
 	createReleasedV5Database(t, upgradedPath)
 
 	assertStartsLikeFreshDatabase(t, upgradedPath, filepath.Join(tmpDir, "fresh.db"))
+}
+
+// TestSQLite_UpgradeFromReleasedV5SchemaKeepsStoredData stores an API, an API
+// key, a certificate, a subscription plan, a subscription and an LLM provider
+// template in a fresh database, copies the rows into a database with the
+// released version 5 schema, and checks that after the migration every table
+// holds the same rows and the controller loads the same configurations.
+func TestSQLite_UpgradeFromReleasedV5SchemaKeepsStoredData(t *testing.T) {
+	tmpDir := t.TempDir()
+	gatewayID := "platform-gateway-id"
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+
+	sourcePath := filepath.Join(tmpDir, "source.db")
+	source, err := NewStorage(BackendConfig{Type: "sqlite", SQLitePath: sourcePath, GatewayID: gatewayID}, logger)
+	assert.NilError(t, err)
+	defer source.(*sqlStore).db.Close()
+
+	config := createTestStoredConfig()
+	assert.NilError(t, source.SaveConfig(config))
+	apiKey := createTestAPIKey()
+	apiKey.ArtifactUUID = config.UUID
+	assert.NilError(t, source.SaveAPIKey(apiKey))
+	assert.NilError(t, source.SaveCertificate(createTestStoredCertificate()))
+	plan := &models.SubscriptionPlan{ID: "plan-gold", PlanName: "Gold", Status: models.SubscriptionPlanStatusActive}
+	assert.NilError(t, source.SaveSubscriptionPlan(plan))
+	subscription := createTestSubscription()
+	subscription.APIID = config.UUID
+	subscription.SubscriptionPlanID = &plan.ID
+	assert.NilError(t, source.SaveSubscription(subscription))
+	assert.NilError(t, source.SaveLLMProviderTemplate(createTestLLMProviderTemplate()))
+
+	upgradedPath := filepath.Join(tmpDir, "upgraded.db")
+	createReleasedV5Database(t, upgradedPath)
+	copyRowsIntoDatabase(t, source.(*sqlStore).db, upgradedPath)
+
+	upgraded, err := NewStorage(BackendConfig{Type: "sqlite", SQLitePath: upgradedPath, GatewayID: gatewayID}, logger)
+	assert.NilError(t, err)
+	defer upgraded.(*sqlStore).db.Close()
+
+	for _, table := range sqliteTableNames(t, source.(*sqlStore).db) {
+		sourceRows := tableRows(t, source.(*sqlStore).db, table)
+		assert.DeepEqual(t, tableRows(t, upgraded.(*sqlStore).db, table), sourceRows)
+	}
+	for _, table := range []string{"artifacts", "rest_apis", "api_keys", "certificates", "subscription_plans", "subscriptions", "llm_provider_templates"} {
+		assert.Assert(t, len(tableRows(t, upgraded.(*sqlStore).db, table)) > 0, "no %s rows to compare", table)
+	}
+
+	configs, err := upgraded.GetAllConfigs()
+	assert.NilError(t, err)
+	assert.Equal(t, len(configs), 1)
+	assert.Equal(t, configs[0].UUID, config.UUID)
 }
 
 // TestSQLite_RepairsVersion6DatabaseWithoutGraphQLAPIs opens a database that an
@@ -930,6 +983,13 @@ func TestSQLite_RepairsVersion6DatabaseWithoutGraphQLAPIs(t *testing.T) {
 	assertStartsLikeFreshDatabase(t, stuckPath, filepath.Join(tmpDir, "fresh.db"))
 }
 
+// releasedV5SchemaSHA256 is the SHA-256 of gateway-controller-db.sql as gateway
+// 2026.09.24 shipped it, at wso2/api-platform@ae2a5add. The upgrade tests start
+// from testdata/gateway-controller-db.v5.sql, an exact copy made with
+//
+//	git show ae2a5add:gateway/gateway-controller/pkg/storage/gateway-controller-db.sql
+const releasedV5SchemaSHA256 = "297a28a9ae358f933978b4ea117fa6aef7ee3b85fd7b052f4ceb62f4b7088153"
+
 // createReleasedV5Database creates a database at path from the version 5 schema
 // that gateway 2026.09.24 shipped.
 func createReleasedV5Database(t *testing.T, path string) {
@@ -937,6 +997,8 @@ func createReleasedV5Database(t *testing.T, path string) {
 
 	releasedSchema, err := os.ReadFile(filepath.Join("testdata", "gateway-controller-db.v5.sql"))
 	assert.NilError(t, err)
+	assert.Equal(t, fmt.Sprintf("%x", sha256.Sum256(releasedSchema)), releasedV5SchemaSHA256,
+		"testdata/gateway-controller-db.v5.sql must stay identical to the schema gateway 2026.09.24 shipped")
 	rawDB, err := sql.Open("sqlite3", path)
 	assert.NilError(t, err)
 	_, err = rawDB.Exec(string(releasedSchema))
@@ -945,6 +1007,108 @@ func createReleasedV5Database(t *testing.T, path string) {
 	assert.NilError(t, rawDB.QueryRow("PRAGMA user_version").Scan(&version))
 	assert.Equal(t, version, previousSchemaVersion)
 	assert.NilError(t, rawDB.Close())
+}
+
+// copyRowsIntoDatabase copies every row of source's tables into the same
+// tables of the database at path, filling the columns both have.
+func copyRowsIntoDatabase(t *testing.T, source *sql.DB, path string) {
+	t.Helper()
+
+	target, err := sql.Open("sqlite3", path)
+	assert.NilError(t, err)
+	defer target.Close()
+	for _, table := range sqliteTableNames(t, target) {
+		sourceColumns := tableColumns(t, source, table)
+		var shared []string
+		for _, column := range tableColumns(t, target, table) {
+			if slices.Contains(sourceColumns, column) {
+				shared = append(shared, column)
+			}
+		}
+		rows, err := source.Query(fmt.Sprintf("SELECT %s FROM %q", strings.Join(shared, ", "), table))
+		assert.NilError(t, err)
+		insert := fmt.Sprintf("INSERT INTO %q (%s) VALUES (%s)", table, strings.Join(shared, ", "),
+			strings.TrimSuffix(strings.Repeat("?, ", len(shared)), ", "))
+		for rows.Next() {
+			values := make([]any, len(shared))
+			dest := make([]any, len(shared))
+			for i := range values {
+				dest[i] = &values[i]
+			}
+			assert.NilError(t, rows.Scan(dest...))
+			_, err = target.Exec(insert, values...)
+			assert.NilError(t, err)
+		}
+		assert.NilError(t, rows.Err())
+		assert.NilError(t, rows.Close())
+	}
+}
+
+// sqliteTableNames returns the names of the database's tables.
+func sqliteTableNames(t *testing.T, db *sql.DB) []string {
+	t.Helper()
+
+	rows, err := db.Query(`SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name`)
+	assert.NilError(t, err)
+	defer rows.Close()
+	var names []string
+	for rows.Next() {
+		var name string
+		assert.NilError(t, rows.Scan(&name))
+		names = append(names, name)
+	}
+	assert.NilError(t, rows.Err())
+	return names
+}
+
+// tableColumns returns the names of table's columns.
+func tableColumns(t *testing.T, db *sql.DB, table string) []string {
+	t.Helper()
+
+	rows, err := db.Query(fmt.Sprintf("SELECT name FROM pragma_table_info(%s)", quoteSQLiteString(table)))
+	assert.NilError(t, err)
+	defer rows.Close()
+	var columns []string
+	for rows.Next() {
+		var column string
+		assert.NilError(t, rows.Scan(&column))
+		columns = append(columns, column)
+	}
+	assert.NilError(t, rows.Err())
+	return columns
+}
+
+// tableRows returns table's rows in primary key order, each as column=value
+// pairs, so tables whose columns are in a different order compare equal.
+func tableRows(t *testing.T, db *sql.DB, table string) []string {
+	t.Helper()
+
+	columns := tableColumns(t, db, table)
+	sort.Strings(columns)
+	rows, err := db.Query(fmt.Sprintf("SELECT %s FROM %q ORDER BY 1", strings.Join(columns, ", "), table))
+	assert.NilError(t, err)
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		values := make([]sql.NullString, len(columns))
+		dest := make([]any, len(columns))
+		for i := range values {
+			dest[i] = &values[i]
+		}
+		assert.NilError(t, rows.Scan(dest...))
+		fields := make([]string, len(columns))
+		for i, column := range columns {
+			fields[i] = fmt.Sprintf("%s=%q valid=%t", column, values[i].String, values[i].Valid)
+		}
+		out = append(out, strings.Join(fields, ","))
+	}
+	assert.NilError(t, rows.Err())
+	sort.Strings(out)
+	return out
+}
+
+func quoteSQLiteString(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "''") + "'"
 }
 
 // assertStartsLikeFreshDatabase opens the database at path as the controller
@@ -967,131 +1131,60 @@ func assertStartsLikeFreshDatabase(t *testing.T, path, freshPath string) {
 	assert.NilError(t, err)
 	defer fresh.(*sqlStore).db.Close()
 
-	assert.DeepEqual(t, sqliteSchemaShape(t, opened.(*sqlStore).db), sqliteSchemaShape(t, fresh.(*sqlStore).db))
+	assert.DeepEqual(t, sqliteSchemaDefinitions(t, opened.(*sqlStore).db), sqliteSchemaDefinitions(t, fresh.(*sqlStore).db))
 }
 
-// sqliteSchemaShape describes a database's schema: for each table, its
-// columns, foreign keys and indexes, and the names of any views and triggers.
-// Indexes include the ones SQLite creates for PRIMARY KEY and UNIQUE
-// constraints. Column positions are left out, because a migration appends the
-// columns it adds while a fresh CREATE TABLE places them where the schema file
-// does.
-func sqliteSchemaShape(t *testing.T, db *sql.DB) map[string]string {
+// sqliteSchemaDefinitions returns the CREATE statement SQLite stores for each
+// table, index, view and trigger, with comments removed and whitespace
+// collapsed, so it covers every column, constraint (CHECK, DEFAULT, UNIQUE,
+// PRIMARY KEY, FOREIGN KEY) and index. A table's column and constraint
+// definitions are sorted: ALTER TABLE ADD COLUMN appends a column, while a
+// fresh CREATE TABLE places it where the schema file does. The order doesn't
+// matter to the controller, which names the columns in every query.
+func sqliteSchemaDefinitions(t *testing.T, db *sql.DB) map[string]string {
 	t.Helper()
 
-	var tables, others []string
-	rows, err := db.Query(`SELECT type, name FROM sqlite_master WHERE type IN ('table', 'view', 'trigger') AND name NOT LIKE 'sqlite_%'`)
-	assert.NilError(t, err)
-	for rows.Next() {
-		var kind, name string
-		assert.NilError(t, rows.Scan(&kind, &name))
-		if kind == "table" {
-			tables = append(tables, name)
-		} else {
-			others = append(others, kind+" "+name)
-		}
-	}
-	assert.NilError(t, rows.Err())
-	assert.NilError(t, rows.Close())
-
-	shape := make(map[string]string, len(tables)+1)
-	for _, table := range tables {
-		var parts []string
-		parts = append(parts, pragmaRows(t, db, fmt.Sprintf("PRAGMA table_info(%q)", table), "cid")...)
-		parts = append(parts, pragmaRows(t, db, fmt.Sprintf("PRAGMA foreign_key_list(%q)", table), "id")...)
-		parts = append(parts, indexShapes(t, db, table)...)
-		sort.Strings(parts)
-		shape["table "+table] = strings.Join(parts, "; ")
-	}
-	sort.Strings(others)
-	shape["views and triggers"] = strings.Join(others, "; ")
-	return shape
-}
-
-// indexShapes describes each index on table: how it was created (c for CREATE
-// INDEX, u for a UNIQUE constraint, pk for a PRIMARY KEY), whether it is unique
-// or partial, and its columns in index order. Indexes from CREATE INDEX keep
-// their names; the names SQLite generates for constraint indexes are left out.
-func indexShapes(t *testing.T, db *sql.DB, table string) []string {
-	t.Helper()
-
-	type index struct{ name, unique, origin, partial string }
-	var indexes []index
-	rows, err := db.Query(fmt.Sprintf("PRAGMA index_list(%q)", table))
-	assert.NilError(t, err)
-	for rows.Next() {
-		var seq int
-		var ix index
-		assert.NilError(t, rows.Scan(&seq, &ix.name, &ix.unique, &ix.origin, &ix.partial))
-		indexes = append(indexes, ix)
-	}
-	assert.NilError(t, rows.Err())
-	assert.NilError(t, rows.Close())
-
-	shapes := make([]string, 0, len(indexes))
-	for _, ix := range indexes {
-		type column struct {
-			seqno int
-			name  string
-		}
-		var columns []column
-		columnRows, err := db.Query(fmt.Sprintf("PRAGMA index_info(%q)", ix.name))
-		assert.NilError(t, err)
-		for columnRows.Next() {
-			var c column
-			var cid int
-			var name sql.NullString
-			assert.NilError(t, columnRows.Scan(&c.seqno, &cid, &name))
-			c.name = name.String
-			columns = append(columns, c)
-		}
-		assert.NilError(t, columnRows.Err())
-		assert.NilError(t, columnRows.Close())
-		sort.Slice(columns, func(i, j int) bool { return columns[i].seqno < columns[j].seqno })
-
-		names := make([]string, len(columns))
-		for i, c := range columns {
-			names[i] = c.name
-		}
-		shape := fmt.Sprintf("index origin=%s unique=%s partial=%s columns=%s", ix.origin, ix.unique, ix.partial, strings.Join(names, ","))
-		if ix.origin == "c" {
-			shape += " name=" + ix.name
-		}
-		shapes = append(shapes, shape)
-	}
-	return shapes
-}
-
-// pragmaRows runs a PRAGMA query and returns each row as column=value pairs,
-// leaving out the named columns.
-func pragmaRows(t *testing.T, db *sql.DB, query string, skip ...string) []string {
-	t.Helper()
-
-	rows, err := db.Query(query)
+	rows, err := db.Query(`SELECT type, name, sql FROM sqlite_master WHERE sql IS NOT NULL`)
 	assert.NilError(t, err)
 	defer rows.Close()
-	columns, err := rows.Columns()
-	assert.NilError(t, err)
-
-	var out []string
+	definitions := make(map[string]string)
 	for rows.Next() {
-		values := make([]sql.NullString, len(columns))
-		dest := make([]any, len(columns))
-		for i := range values {
-			dest[i] = &values[i]
+		var kind, name, definition string
+		assert.NilError(t, rows.Scan(&kind, &name, &definition))
+		definition = strings.Join(strings.Fields(sqlCommentPattern.ReplaceAllString(definition, "")), " ")
+		if kind == "table" {
+			definition = sortTableDefinitions(definition)
 		}
-		assert.NilError(t, rows.Scan(dest...))
-		var fields []string
-		for i, column := range columns {
-			if slices.Contains(skip, column) {
-				continue
-			}
-			fields = append(fields, column+"="+values[i].String)
-		}
-		out = append(out, strings.Join(fields, ","))
+		definitions[kind+" "+name] = definition
 	}
 	assert.NilError(t, rows.Err())
-	return out
+	return definitions
+}
+
+var sqlCommentPattern = regexp.MustCompile(`--[^\n]*`)
+
+// sortTableDefinitions sorts the column and constraint definitions between a
+// CREATE TABLE statement's outer parentheses.
+func sortTableDefinitions(createTable string) string {
+	open, closing := strings.Index(createTable, "("), strings.LastIndex(createTable, ")")
+	var definitions []string
+	depth, start := 0, open+1
+	for i := open + 1; i < closing; i++ {
+		switch createTable[i] {
+		case '(':
+			depth++
+		case ')':
+			depth--
+		case ',':
+			if depth == 0 {
+				definitions = append(definitions, strings.TrimSpace(createTable[start:i]))
+				start = i + 1
+			}
+		}
+	}
+	definitions = append(definitions, strings.TrimSpace(createTable[start:closing]))
+	sort.Strings(definitions)
+	return createTable[:open+1] + strings.Join(definitions, ", ") + createTable[closing:]
 }
 
 func TestSQLiteStorage_GetAPIKeyByID_NotFound(t *testing.T) {

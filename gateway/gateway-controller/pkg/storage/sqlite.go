@@ -24,6 +24,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -79,17 +80,11 @@ const currentSchemaVersion = 6
 // in place. Any other stored version is refused rather than skipped.
 const previousSchemaVersion = 5
 
-// graphQLAPIsTableSQL creates graphql_apis as gateway-controller-db.sql does.
-// The version 5 to 6 migration and the version 6 repair both run it.
-const graphQLAPIsTableSQL = `CREATE TABLE IF NOT EXISTS graphql_apis (
-	uuid TEXT NOT NULL,
-	gateway_id TEXT NOT NULL,
-	configuration TEXT NOT NULL,
-	PRIMARY KEY (gateway_id, uuid),
-	FOREIGN KEY(gateway_id, uuid) REFERENCES artifacts(gateway_id, uuid) ON DELETE CASCADE
-)`
-
-// initSchema creates the database schema if it doesn't exist
+// initSchema creates the database schema if it doesn't exist, migrates a
+// previous-version schema in place, and creates anything a current-version
+// schema lacks. Every statement in gateway-controller-db.sql is CREATE ... IF
+// NOT EXISTS, so running it against an existing database only adds what is
+// missing.
 func (s *SQLiteStorage) initSchema() error {
 	var version int
 	err := s.db.QueryRow("PRAGMA user_version").Scan(&version)
@@ -97,25 +92,25 @@ func (s *SQLiteStorage) initSchema() error {
 		return fmt.Errorf("failed to query schema version: %w", err)
 	}
 
-	switch {
-	case version == 0:
+	switch version {
+	case 0:
 		s.logger.Info("Initializing database schema", slog.Int("version", currentSchemaVersion))
 		if _, err := s.db.Exec(schemaSQL); err != nil {
 			return fmt.Errorf("failed to create schema: %w", err)
 		}
 		s.logger.Info("Database schema initialized successfully")
-	case version == previousSchemaVersion:
+	case previousSchemaVersion:
 		s.logger.Info("Migrating database schema",
 			slog.Int("from_version", version), slog.Int("to_version", currentSchemaVersion))
 		if err := s.migrateSchemaV5ToV6(); err != nil {
 			return fmt.Errorf("failed to migrate schema from version %d to %d: %w", version, currentSchemaVersion, err)
 		}
 		s.logger.Info("Database schema migrated successfully")
-	case version == currentSchemaVersion:
-		if err := s.repairMissingGraphQLAPIsTable(); err != nil {
+	case currentSchemaVersion:
+		if err := s.createMissingSchemaObjects(); err != nil {
 			return err
 		}
-	case version != currentSchemaVersion:
+	default:
 		return fmt.Errorf("unsupported schema version %d, expected %d; delete the database to recreate", version, currentSchemaVersion)
 	}
 
@@ -125,10 +120,11 @@ func (s *SQLiteStorage) initSchema() error {
 
 // migrateSchemaV5ToV6 adds the certificates usage, role, match_json,
 // private_key_ciphertext and key_algorithm columns to a version 5 database,
-// creates the graphql_apis table, and sets user_version to 6. usage and role
-// are defaulted; the rest are nullable. No existing column changes.
-// graphql_apis must exist before the controller starts: GetAllConfigs reads
-// every builtin resource table, so loading configurations fails without it.
+// then runs the schema to create the tables and indexes version 6 added, such
+// as graphql_apis, and sets user_version to 6. usage and role are defaulted;
+// the rest are nullable. No existing column changes. graphql_apis must exist
+// before the controller starts: GetAllConfigs reads every builtin resource
+// table, so loading configurations fails without it.
 func (s *SQLiteStorage) migrateSchemaV5ToV6() error {
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -153,8 +149,8 @@ func (s *SQLiteStorage) migrateSchemaV5ToV6() error {
 	if _, err := tx.Exec(`ALTER TABLE certificates ADD COLUMN key_algorithm TEXT`); err != nil {
 		return fmt.Errorf("failed to add certificates.key_algorithm column: %w", err)
 	}
-	if _, err := tx.Exec(graphQLAPIsTableSQL); err != nil {
-		return fmt.Errorf("failed to create graphql_apis table: %w", err)
+	if _, err := tx.Exec(schemaSQL); err != nil {
+		return fmt.Errorf("failed to create the tables and indexes added in version %d: %w", currentSchemaVersion, err)
 	}
 	if _, err := tx.Exec(fmt.Sprintf("PRAGMA user_version = %d", currentSchemaVersion)); err != nil {
 		return fmt.Errorf("failed to set schema version: %w", err)
@@ -166,24 +162,48 @@ func (s *SQLiteStorage) migrateSchemaV5ToV6() error {
 	return nil
 }
 
-// repairMissingGraphQLAPIsTable creates graphql_apis in a version 6 database
-// that lacks it. Earlier controllers migrated version 5 databases to version 6
-// without the table, which left them unable to load configurations at startup.
-// It does nothing when the table exists.
-func (s *SQLiteStorage) repairMissingGraphQLAPIsTable() error {
-	var tables int
-	if err := s.db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'graphql_apis'`).Scan(&tables); err != nil {
-		return fmt.Errorf("failed to check for the graphql_apis table: %w", err)
+// createMissingSchemaObjects runs the schema against a current-version
+// database, creating any table or index it lacks, and logs what it created.
+// Earlier controllers migrated version 5 databases to version 6 without
+// graphql_apis, which left them unable to load configurations at startup.
+func (s *SQLiteStorage) createMissingSchemaObjects() error {
+	before, err := s.schemaObjectNames()
+	if err != nil {
+		return err
 	}
-	if tables > 0 {
-		return nil
+	if _, err := s.db.Exec(schemaSQL); err != nil {
+		return fmt.Errorf("failed to create missing schema objects: %w", err)
 	}
-	if _, err := s.db.Exec(graphQLAPIsTableSQL); err != nil {
-		return fmt.Errorf("failed to create the missing graphql_apis table: %w", err)
+	after, err := s.schemaObjectNames()
+	if err != nil {
+		return err
 	}
-	s.logger.Warn("Created the graphql_apis table missing from a version 6 database",
-		slog.String("reason", "an earlier version 5 to 6 migration did not create it"))
+	if created := slices.DeleteFunc(after, func(name string) bool { return slices.Contains(before, name) }); len(created) > 0 {
+		s.logger.Warn("Created tables and indexes missing from the database",
+			slog.Any("created", created), slog.Int("version", currentSchemaVersion))
+	}
 	return nil
+}
+
+// schemaObjectNames returns the names of the database's tables and indexes.
+func (s *SQLiteStorage) schemaObjectNames() ([]string, error) {
+	rows, err := s.db.Query(`SELECT name FROM sqlite_master WHERE type IN ('table', 'index') AND name NOT LIKE 'sqlite_%'`)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list schema objects: %w", err)
+	}
+	defer rows.Close()
+	var names []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, fmt.Errorf("failed to list schema objects: %w", err)
+		}
+		names = append(names, name)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to list schema objects: %w", err)
+	}
+	return names, nil
 }
 
 func isSQLiteUniqueConstraintError(err error) bool {
