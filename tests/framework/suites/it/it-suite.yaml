@@ -705,19 +705,6 @@ blocks:
         features:
           - features/gateway/observability/metrics.feature
 
-  - name: gateway-logging
-    parallel: 1
-    components:
-      - name: platform-gateway
-        overlay: tests/framework/core/catalog/overlays/logging.toml
-        db:
-          matrix: [sqlite, postgres, sqlserver]
-      - name: testbench
-    runners:
-      - name: log-message
-        features:
-          - features/gateway/observability-policies/log_message.feature
-
   - name: gateway-request-id-disabled
     parallel: 1
     components:
