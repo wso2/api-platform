@@ -556,11 +556,6 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 		slog.Debug("Analytics: User ID set from metadata", "userID", userID)
 	}
 
-	// Set operation path from metadata if available (for Moesif's apiResourceTemplate)
-	if operationPath, exists := keyValuePairsFromMetadata[OperationPathKey]; exists && operationPath != "" {
-		event.Properties[OperationPathKey] = operationPath
-	}
-
 	// Flag the internal loopback provider hop of an LLM proxy call — the duplicate of the
 	// proxy's own event — so a single client call is counted once.
 	if c.isInternalLoopbackHop(extendedAPI.APIType, keyValuePairsFromMetadata[InternalLoopbackMetadataKey],

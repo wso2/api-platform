@@ -7483,10 +7483,11 @@ components:
           maxLength: 255
           description: >-
             The event field the property reads: 1 to 255 characters with no spaces, unique within the meter. Our
-            gateway's events have `response.status`, `request.verb`, `metadata.apiResourceTemplate`,
-            `metadata.apiType`, `metadata.mcpAnalytics.jsonRpcMethod`, `metadata.mcpAnalytics.capabilityName`, and
-            the token counts `metadata.aiTokenUsage.promptTokens`, `metadata.aiTokenUsage.completionTokens` and
-            `metadata.aiTokenUsage.totalTokens`.
+            gateway's events have `response.status`, `request.verb`, `metadata.apiType`,
+            `metadata.mcpAnalytics.jsonRpcMethod`, `metadata.mcpAnalytics.capabilityName`, and the token counts
+            `metadata.aiTokenUsage.promptTokens`, `metadata.aiTokenUsage.completionTokens` and
+            `metadata.aiTokenUsage.totalTokens`, and Moesif adds `request.route`, the request path with its IDs as
+            `:id`.
           example: metadata.apiType
     PriceTier:
       type: object

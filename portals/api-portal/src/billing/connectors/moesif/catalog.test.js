@@ -91,7 +91,7 @@ const filter = (field, operator, ...values) => ({ field, operator, values });
 const defaultKeys = [
     { field: 'Status code', eventKey: 'response.status' },
     { field: 'HTTP method', eventKey: 'request.verb' },
-    { field: 'Resource', eventKey: 'metadata.apiResourceTemplate' },
+    { field: 'Resource', eventKey: 'request.route' },
     { field: 'API type', eventKey: 'metadata.apiType' },
     { field: 'Prompt tokens', eventKey: 'metadata.aiTokenUsage.promptTokens' },
     { field: 'Total tokens', eventKey: 'metadata.aiTokenUsage.totalTokens' },
@@ -103,8 +103,8 @@ const must = (meter, ...filters) => catalog.meterQuery(catalog.priceMeter(meter,
 
 test('starts with matches values that begin with the text, on the keyword field', () => {
     assert.deepStrictEqual(must(calls, filter('Resource', 'STARTS_WITH', '/orders')),
-        [{ prefix: { 'metadata.apiResourceTemplate.raw': '/orders' } }]);
-    assert.deepStrictEqual(must(calls, filter('Resource', 'STARTS_WITH', '/')), [{ prefix: { 'metadata.apiResourceTemplate.raw': '/' } }]);
+        [{ prefix: { 'request.route.raw': '/orders' } }]);
+    assert.deepStrictEqual(must(calls, filter('Resource', 'STARTS_WITH', '/')), [{ prefix: { 'request.route.raw': '/' } }]);
 });
 
 test('a price counts its meter\'s calls of one subscription that match all of its filters', () => {
@@ -118,7 +118,7 @@ test('a price counts its meter\'s calls of one subscription that match all of it
         { terms: { 'metadata.billingSubscriptionId.raw': ['{{subscription_id}}'] } },
         { terms: { 'response.status.raw': ['200', '304'] } },
         { exists: { field: 'request.verb.raw' } },
-        { prefix: { 'metadata.apiResourceTemplate.raw': '/orders' } },
+        { prefix: { 'request.route.raw': '/orders' } },
     ]);
     assert.deepStrictEqual(query.query.bool.must_not, [{ terms: { 'request.verb.raw': ['OPTIONS'] } }]);
     assert.deepStrictEqual(query.aggs.seg.aggs.usage_value, { sum: { field: 'weight', missing: 1 } });

@@ -146,8 +146,6 @@ const (
 
 	// APIResourceTemplateKey is the key for the API resource template.
 	APIResourceTemplateKey = Wso2MetadataPrefix + "api-resource-template"
-	// OperationPathKey is the key for the operation path.
-	OperationPathKey = Wso2MetadataPrefix + "operation-path"
 
 	// DestinationKey is the key for the destination.
 	DestinationKey = Wso2MetadataPrefix + "destination"
