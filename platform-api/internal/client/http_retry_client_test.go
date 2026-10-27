@@ -27,6 +27,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/wso2/api-platform/httpkit/httpclient"
 	"github.com/wso2/api-platform/httpkit/netguard"
 	"github.com/wso2/api-platform/platform-api/internal/utils"
 )
@@ -210,6 +211,63 @@ func TestRetryableClientWaitsTheWholeAttemptForAnAnswer(t *testing.T) {
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("want 201, got %d", resp.StatusCode)
+	}
+}
+
+// A slow answer within the attempt timeout is not cut short either when httpkit wraps the shared
+// client's transport (here in its response size bound).
+func TestRetryableClientWaitsTheWholeAttemptThroughAWrappedTransport(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(300 * time.Millisecond)
+		w.WriteHeader(http.StatusCreated)
+	}))
+	defer server.Close()
+	cfg := httpclient.DefaultConfig()
+	cfg.Timeouts.Overall = 100 * time.Millisecond
+	cfg.Timeouts.ResponseHeader = 100 * time.Millisecond
+	cfg.Timeouts.MaxResponseBytes = 0
+	if err := utils.InitSharedHTTPClientFromConfig(cfg, 0); err != nil {
+		t.Fatalf("InitSharedHTTPClientFromConfig: %v", err)
+	}
+	t.Cleanup(func() { utils.InitSharedHTTPClient(nil, 0) })
+	shared, _ := utils.NewUpstreamFetchClient(0)
+	if _, ok := shared.Transport.(*http.Transport); ok {
+		t.Fatal("want the shared transport wrapped, so the test covers that case")
+	}
+	if resp, err := shared.Post(server.URL, "text/plain", strings.NewReader("x")); err == nil {
+		resp.Body.Close()
+		t.Fatal("want the shared client to cut the slow answer short")
+	}
+
+	c, err := NewRetryableHTTPClient(RetryConfig{AttemptTimeout: 2 * time.Second})
+	if err != nil {
+		t.Fatalf("NewRetryableHTTPClient: %v", err)
+	}
+	req, _ := http.NewRequest(http.MethodPost, server.URL, strings.NewReader("x"))
+	resp, err := c.Do(req)
+	if err != nil {
+		t.Fatalf("want the slow answer, got %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("want 201, got %d", resp.StatusCode)
+	}
+}
+
+// otherTransport is a transport the retry client can't set a response-header timeout on.
+type otherTransport struct{}
+
+func (otherTransport) RoundTrip(*http.Request) (*http.Response, error) {
+	return nil, errors.New("unused")
+}
+
+// A shared client given without its config, with a transport that can't take the attempt
+// timeout, is refused rather than used with the shared limits.
+func TestNewRetryableHTTPClientRefusesATransportItCannotSetUp(t *testing.T) {
+	utils.InitSharedHTTPClient(&http.Client{Transport: otherTransport{}}, 0)
+	t.Cleanup(func() { utils.InitSharedHTTPClient(nil, 0) })
+	if _, err := NewRetryableHTTPClient(RetryConfig{AttemptTimeout: time.Second}); err == nil {
+		t.Fatal("want an error for a transport the attempt timeout can't be set on")
 	}
 }
 
