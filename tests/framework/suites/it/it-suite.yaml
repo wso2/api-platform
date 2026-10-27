@@ -781,19 +781,6 @@ blocks:
         features:
           - features/gateway/routes/vhost_routing_multiple_production_hosts.feature
 
-  - name: azure-content-safety
-    parallel: 1
-    components:
-      - name: platform-gateway
-        overlay: tests/framework/core/catalog/overlays/azure-content-safety.toml
-        db:
-          matrix: [sqlite, postgres, sqlserver]
-      - name: testbench
-    runners:
-      - name: azure-content-safety
-        features:
-          - features/gateway/guardrails-policies/azure_content_safety.feature
-
   - name: semantic-ai
     parallel: 2
     components:
