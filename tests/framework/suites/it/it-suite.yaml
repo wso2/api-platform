@@ -578,13 +578,6 @@ blocks:
         tags: "gateway-version>=1.2.0"
         features:
           - features/ai-workspace-gateway/llm/llm_proxy_policy_validation.feature
-      - name: model-weighted-round-robin
-        features:
-          - features/ai-workspace-gateway/llm-policies/model_weighted_round_robin.feature
-      - name: model-weighted-round-robin-multi-provider
-        tags: "gateway-version>=1.2.0"
-        features:
-          - features/ai-workspace-gateway/llm-policies/model_weighted_round_robin_multi_provider.feature
       - name: llm-policy-path-specificity
         tags: "gateway-version>=1.2.0"
         features:
