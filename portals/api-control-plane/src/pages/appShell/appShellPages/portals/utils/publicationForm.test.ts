@@ -27,6 +27,7 @@ import {
   emptyDraftFormValues,
   resolveDraftFormValues,
   sameSelection,
+  validateThumbnailFile,
 } from './publicationForm';
 
 const api = aRestApi({
@@ -151,6 +152,21 @@ describe('draftFormValuesToInput documents', () => {
   it('always sends the selected documents, an empty selection included', () => {
     expect(draftFormValuesToInput({ ...emptyDraftFormValues, docIds: ['guide'] }).docIds).toEqual(['guide']);
     expect(draftFormValuesToInput(emptyDraftFormValues).docIds).toEqual([]);
+  });
+});
+
+describe('validateThumbnailFile', () => {
+  const file = (type: string, size = 1024) => ({ size, type });
+
+  it('accepts PNG and JPEG up to 2 MB', () => {
+    expect(validateThumbnailFile(file('image/png'))).toBeUndefined();
+    expect(validateThumbnailFile(file('image/jpeg', 2 * 1024 * 1024))).toBeUndefined();
+  });
+
+  it('refuses other image types and anything larger', () => {
+    expect(validateThumbnailFile(file('image/gif'))?.id).toMatch(/\.thumbnailType$/);
+    expect(validateThumbnailFile(file('image/svg+xml'))).toBeDefined();
+    expect(validateThumbnailFile(file('image/png', 2 * 1024 * 1024 + 1))?.id).toMatch(/\.thumbnailSize$/);
   });
 });
 

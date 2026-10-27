@@ -38,6 +38,14 @@ const messages = defineMessages({
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.utils.publicationForm.urlInvalid',
     defaultMessage: 'Enter a full URL, for example https://api.example.com.',
   },
+  thumbnailType: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.utils.publicationForm.thumbnailType',
+    defaultMessage: 'Only JPEG and PNG images are supported.',
+  },
+  thumbnailSize: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.utils.publicationForm.thumbnailSize',
+    defaultMessage: 'The image must be 2 MB or smaller.',
+  },
 });
 
 /**
@@ -205,6 +213,17 @@ export const draftFormValuesToInput = (values: DraftFormValues): PublicationDraf
 export const sameSelection = (a: string[], b: string[]) => {
   const members = new Set(a);
   return members.size === new Set(b).size && b.every((id) => members.has(id));
+};
+
+const THUMBNAIL_TYPES: readonly string[] = ['image/jpeg', 'image/png'];
+/** The server's default cap on a draft thumbnail (`publication_thumbnail_max_bytes`), checked before uploading. */
+const THUMBNAIL_MAX_BYTES = 2 * 1024 * 1024;
+
+/** Why a picked image can't be the thumbnail, or `undefined`. The server re-checks the type. */
+export const validateThumbnailFile = (file: Pick<File, 'size' | 'type'>): MessageDescriptor | undefined => {
+  if (!THUMBNAIL_TYPES.includes(file.type)) return messages.thumbnailType;
+  if (file.size > THUMBNAIL_MAX_BYTES) return messages.thumbnailSize;
+  return undefined;
 };
 
 export type DraftFormField = 'displayName' | 'version' | 'productionUrl' | 'sandboxUrl';

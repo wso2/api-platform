@@ -23,9 +23,12 @@ import {
   useApiPublicationDefinition,
   useApiPublicationDraft,
   useApiPublicationDraftDefinition,
+  useApiPublicationDraftThumbnail,
+  useApiPublicationThumbnail,
 } from '@/api/resources/apiPublications';
 import { isApiError } from '@/api/core/errors';
 import { useGraphQLApi, useGraphQLApiSdl } from '@/api/resources/graphqlApis';
+import { useApiThumbnail } from '@/api/resources/apiThumbnail';
 import { useRestApi, useRestApiOpenApi } from '@/api/resources/restApis';
 import { useGraphQLApiGateways } from '@/api/resources/graphqlApis/apiGateways';
 import { useRestApiGateways } from '@/api/resources/restApis/apiGateways/apiGateways.hooks';
@@ -37,8 +40,11 @@ import {
 } from './utils/publicationForm';
 import { readStoredDefinition, readStoredSdl, type StoredDefinition } from './utils/storedDefinition';
 
-/** What the editor opens with: the details and the definition, from the freshest tier that has them. */
-export type PublishSeed = { definition?: StoredDefinition; values: DraftFormValues };
+/** `inDraft`: the draft already stores it, so saving need not send it. */
+export type ThumbnailSeed = { blob: Blob; inDraft: boolean };
+
+/** What the editor opens with: the details, the definition and the thumbnail, from the freshest tier that has them. */
+export type PublishSeed = { definition?: StoredDefinition; thumbnail?: ThumbnailSeed; values: DraftFormValues };
 
 const isNotFound = (error: unknown): boolean => isApiError(error) && error.isNotFound;
 
@@ -64,6 +70,12 @@ const liveData = <T,>(query: { data: T | undefined; error: unknown }): T | undef
  * The API's gateways are read too, for the Production URL's choices and its
  * default (the first); they gate the seed so the default is there when it is
  * made, but a failed read only leaves the choices empty.
+ *
+ * The thumbnail follows the same chain (draft, publication, the API's own), but a tier is
+ * chosen by the flag the tier above it carries (`hasThumbnail`), never by whether reading
+ * it worked: a failed read shows no image rather than falling through to another tier's,
+ * which saving would then store over the draft's own. The published thumbnail is read
+ * whenever the listing has one, for its read-only view.
  *
  * The published definition is also fetched, on demand, when `wantPublishedDefinition`
  * is set and the API is live — the same query as the fallback tier, so a definition already read
@@ -94,6 +106,24 @@ export function usePublishPageData(apiPortalId: string, target: PublishTarget, w
   // the error, so the 404 itself marks the listing as gone. Any other failure
   // says nothing about the listing, so the last known state is kept.
   const publication = liveData(publicationQuery);
+  const draft = liveData(draftQuery);
+
+  const draftHasThumbnail = Boolean(draft?.hasThumbnail);
+  const publicationHasThumbnail = Boolean(publication?.hasThumbnail);
+  const draftThumbnailQuery = useApiPublicationDraftThumbnail(
+    apiPortalId,
+    apiType,
+    draftHasThumbnail ? apiHandler : undefined,
+  );
+  const publicationThumbnailQuery = useApiPublicationThumbnail(
+    apiPortalId,
+    apiType,
+    publicationHasThumbnail ? apiHandler : undefined,
+  );
+  // Last tier, asked for only once the two above are known to have nothing.
+  const apiOwnThumbnailNeeded =
+    !draftQuery.isPending && !publicationQuery.isPending && !draftHasThumbnail && !publicationHasThumbnail;
+  const apiThumbnailQuery = useApiThumbnail(apiType, apiOwnThumbnailNeeded ? apiHandler : undefined);
 
   const publicationDefinitionQuery = useApiPublicationDefinition(
     apiPortalId,
@@ -126,7 +156,10 @@ export function usePublishPageData(apiPortalId: string, target: PublishTarget, w
     publicationQuery.isPending ||
     draftDefinitionQuery.isPending ||
     (draftDefinitionAbsent && publicationDefinitionQuery.isPending) ||
-    (publicationDefinitionAbsent && apiOpenApiQuery.isPending);
+    (publicationDefinitionAbsent && apiOpenApiQuery.isPending) ||
+    (draftHasThumbnail && draftThumbnailQuery.isPending) ||
+    (!draftHasThumbnail && publicationHasThumbnail && publicationThumbnailQuery.isPending) ||
+    (apiOwnThumbnailNeeded && apiThumbnailQuery.isPending);
   const isRevalidating = [
     apiQuery,
     gatewaysQuery,
@@ -135,6 +168,8 @@ export function usePublishPageData(apiPortalId: string, target: PublishTarget, w
     draftDefinitionQuery,
     publicationDefinitionQuery,
     apiOpenApiQuery,
+    draftThumbnailQuery,
+    publicationThumbnailQuery,
   ].some((query) => query.isFetching);
 
   // Latched: the page is loading until everything it opens on is current, and
@@ -156,8 +191,6 @@ export function usePublishPageData(apiPortalId: string, target: PublishTarget, w
       apiOpenApiQuery,
     ].find((query) => isApiError(query.error) && !query.error.isNotFound)?.error;
 
-  const draft = liveData(draftQuery);
-
   const draftDefinitionData = liveData(draftDefinitionQuery);
   const publicationDefinitionData = liveData(publicationDefinitionQuery);
   const restDefinitionData = liveData(restDefinitionQuery);
@@ -177,19 +210,38 @@ export function usePublishPageData(apiPortalId: string, target: PublishTarget, w
     return restDefinitionData ? readStoredDefinition(restDefinitionData.content) : undefined;
   }, [isGraphQL, restDefinitionData, sdlData]);
 
-  // The freshest tier that has a definition wins: draft, publication, the API's own.
+  const draftThumbnail = liveData(draftThumbnailQuery)?.blob;
+  const publishedThumbnail = liveData(publicationThumbnailQuery)?.blob;
+
+  // The freshest tier that has a definition wins: draft, publication, the API's own. The
+  // thumbnail's tier is the one its flags name, which may have no image to show if its read failed.
   const seed = useMemo<PublishSeed | undefined>(() => {
     if (isLoading) return undefined;
     const definition =
       (draftDefinitionData && readStoredDefinition(draftDefinitionData.text, draftDefinitionData.contentType)) ??
       publishedDefinition ??
       apiDefinition;
-    return { definition, values: resolveDraftFormValues(draft, publication, apiQuery.data, productionUrlOptions[0]?.url) };
+    const apiOwnThumbnail = apiThumbnailQuery.blob;
+    const thumbnailBlob = draftHasThumbnail
+      ? draftThumbnail
+      : publicationHasThumbnail
+        ? publishedThumbnail
+        : apiOwnThumbnail;
+    return {
+      definition,
+      thumbnail: thumbnailBlob && { blob: thumbnailBlob, inDraft: draftHasThumbnail },
+      values: resolveDraftFormValues(draft, publication, apiQuery.data, productionUrlOptions[0]?.url),
+    };
   }, [
     isLoading,
     apiQuery.data,
+    apiThumbnailQuery.blob,
     draft,
+    draftHasThumbnail,
+    draftThumbnail,
     publication,
+    publicationHasThumbnail,
+    publishedThumbnail,
     draftDefinitionData,
     publishedDefinition,
     apiDefinition,
@@ -208,6 +260,7 @@ export function usePublishPageData(apiPortalId: string, target: PublishTarget, w
       failed: isApiError(publicationDefinitionQuery.error) && !publicationDefinitionQuery.error.isNotFound,
       isLoading: publicationDefinitionQuery.isLoading,
     },
+    publishedThumbnail,
     seed,
   };
 }
