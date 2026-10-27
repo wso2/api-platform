@@ -93,6 +93,7 @@ func Register(sc *godog.ScenarioContext, topo *runtime.Topology, funnel *httpx.F
 	RegisterAgentProxy(sc, s)
 	RegisterAPIVersions(sc, s)
 	RegisterPublication(sc, s)
+	RegisterAPIPortal(sc, s)
 }
 
 // baseURL resolves the control plane's HTTPS base URL for this block.
