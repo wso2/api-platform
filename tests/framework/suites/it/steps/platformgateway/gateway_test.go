@@ -4104,3 +4104,18 @@ func TestResolveServiceURLAndStoreChoosesTheNetworkOfTheClient(t *testing.T) {
 	require.Error(t, gateway.resolveServiceURLAndStore(ctx, "mcp", " host", "/mcp", " "))
 	require.Error(t, gateway.resolveServiceURLAndStore(ctx, "unknown", " host", "/mcp", "x"))
 }
+
+func TestAnalyticsCompanyIDAssertions(t *testing.T) {
+	var paid analyticsEvent
+	require.NoError(t, json.Unmarshal([]byte(`{"company_id":"cus-1","metadata":{}}`), &paid))
+	free := &analyticsEvent{}
+
+	require.NoError(t, companyIDAssert(&paid, "/p", "have", "cus-1"))
+	require.ErrorContains(t, companyIDAssert(&paid, "/p", "have", "cus-2"), `company id "cus-1", want "cus-2"`)
+	require.ErrorContains(t, companyIDAssert(free, "/p", "have", "cus-1"), `company id "", want "cus-1"`)
+	require.ErrorContains(t, companyIDAssert(&paid, "/p", "have", ""), "needs the expected value")
+	require.NoError(t, companyIDAssert(free, "/p", "not have", ""))
+	require.ErrorContains(t, companyIDAssert(&paid, "/p", "not have", ""), "want none")
+	require.ErrorContains(t, companyIDAssert(free, "/p", "not have", "x"), "takes no value")
+	require.ErrorContains(t, companyIDAssert(free, "/p", "count", ""), "unsupported")
+}

@@ -1572,3 +1572,17 @@ func TestPrepareAnalyticEvent_DestinationDropsQueryString(t *testing.T) {
 		})
 	}
 }
+
+// The operation path is copied from the metadata into the event properties.
+func TestPrepareEvent_OperationPathFromMetadata(t *testing.T) {
+	entry := createLogEntryWithMetadata(map[string]string{OperationPathKey: "/orders/{id}"})
+	event := NewAnalytics(&config.Config{}).prepareAnalyticEvent(entry)
+	require.NotNil(t, event)
+	assert.Equal(t, "/orders/{id}", event.Properties[OperationPathKey])
+}
+
+func TestPrepareEvent_OperationPathAbsent(t *testing.T) {
+	event := NewAnalytics(&config.Config{}).prepareAnalyticEvent(createLogEntryWithMetadata(map[string]string{}))
+	require.NotNil(t, event)
+	assert.NotContains(t, event.Properties, OperationPathKey)
+}

@@ -959,6 +959,10 @@ blocks:
       - name: subscription-analytics
         features:
           - features/gateway/observability/subscription_analytics.feature
+      - name: subscription-analytics-billing-customer
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/observability/subscription_analytics_billing_customer.feature
       - name: mcp-analytics
         tags: "gateway-version>1.2.0"
         features:
@@ -1045,6 +1049,10 @@ blocks:
         features:
           - features/management-portal/monetization/paid_subscription_access.feature
         tags: "~@known-issue"
+      - name: platform-api-paid-subscription-suspension
+        features:
+          - features/management-portal/monetization/paid_subscription_suspension.feature
+        tags: "gateway-version>1.2.0;~@known-issue"
       - name: platform-api-monetization-meters
         features:
           - features/management-portal/monetization/meters.feature
@@ -1127,6 +1135,10 @@ blocks:
         features:
           - features/management-portal/monetization/paid_subscription_access.feature
         tags: "~@known-issue"
+      - name: platform-api-paid-subscription-suspension
+        features:
+          - features/management-portal/monetization/paid_subscription_suspension.feature
+        tags: "gateway-version>1.2.0;~@known-issue"
       - name: platform-api-monetization-meters
         features:
           - features/management-portal/monetization/meters.feature
@@ -1209,6 +1221,10 @@ blocks:
         features:
           - features/management-portal/monetization/paid_subscription_access.feature
         tags: "~@known-issue"
+      - name: platform-api-paid-subscription-suspension
+        features:
+          - features/management-portal/monetization/paid_subscription_suspension.feature
+        tags: "gateway-version>1.2.0;~@known-issue"
       - name: platform-api-monetization-meters
         features:
           - features/management-portal/monetization/meters.feature
