@@ -528,10 +528,6 @@ blocks:
         tags: "gateway-version>=1.2.0"
         features:
           - features/gateway/routes/header_routing.feature
-      - name: redirect
-        tags: "gateway-version>=1.2.0"
-        features:
-          - features/gateway/routes-policies/redirect.feature
       - name: respond
         features:
           - features/gateway/routes-policies/respond.feature
