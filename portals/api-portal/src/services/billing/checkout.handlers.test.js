@@ -74,6 +74,7 @@ const subscriptions = require(src + '/services/subscriptionService.js');
 const billingConfigurationDao = require(src + '/dao/billingConfigurationDao.js');
 const billingApiPlanDao = require(src + '/dao/billingApiPlanDao.js');
 const billingCheckoutDao = require(src + '/dao/billingCheckoutDao.js');
+const subDao = require(src + '/dao/subscriptionDao.js');
 const planPricingDao = require(src + '/dao/planPricingDao.js');
 const meterDao = require(src + '/dao/meterDao.js');
 const { BillingProviderError } = require(src + '/billing/http.js');
@@ -84,7 +85,8 @@ const ORG = ${JSON.stringify(ORG)};
 const out = {};
 
 // ── Stripe test client ──
-const stripeState = { sessions: {}, subscriptionStatus: 'active', failNextRetrieve: false, invoices: {} };
+const stripeState = { sessions: {}, subscriptionStatus: 'active', failNextRetrieve: false, invoices: {},
+    failNextRefund: null, refunded: new Set() };
 const stripeCalls = [];
 let seq = 0;
 stripeConnector.clients.stripe = () => ({
@@ -112,7 +114,19 @@ stripeConnector.clients.stripe = () => ({
     },
     async cancelSubscription(id, opts) { stripeCalls.push(['cancel', id, opts || null]); return { id, status: 'canceled' }; },
     async listInvoices(subscription) { return stripeState.invoices[subscription] || []; },
-    async createRefund(args) { stripeCalls.push(['refund', args.paymentIntent]); return { id: 're_' + (++seq) }; },
+    // A payment intent marked failNextRefund is refused once; one refunded already is refused as Stripe does.
+    async createRefund(args) {
+        stripeCalls.push(['refund', args.paymentIntent]);
+        if (stripeState.failNextRefund === args.paymentIntent) {
+            stripeState.failNextRefund = null;
+            throw new BillingProviderError('Stripe', 503, 'Stripe: Service Unavailable');
+        }
+        if (stripeState.refunded.has(args.paymentIntent)) {
+            throw new BillingProviderError('Stripe', 400, 'Stripe: Charge has already been refunded.', 'charge_already_refunded');
+        }
+        stripeState.refunded.add(args.paymentIntent);
+        return { id: 're_' + (++seq) };
+    },
     async retrieveSubscription(id) {
         if (stripeState.failNextRetrieve) {
             stripeState.failNextRetrieve = false;
@@ -357,6 +371,56 @@ async function receive(type, objectId) {
     out.ivySubscriptions = subscriptionsOf('ivy');
     out.ivyStripeCalls = stripeCalls.filter((c) => c[0] === 'cancel' || c[0] === 'refund');
     out.ivyReadAgain = await call(checkout.getCheckoutSession, as('ivy', { params: { checkoutId: out.ivyCheckout.body.id } }));
+
+    // As for gus, but Stripe refuses one refund: the checkout is not completed, so the next attempt
+    // refunds the rest and completes it, without refunding a payment twice.
+    out.rexCheckout = await start('rex', 'gold');
+    billingCheckoutDao.findOpenCheckout = async () => null;
+    out.rexFree = await subscribeFree('rex');
+    billingCheckoutDao.findOpenCheckout = findOpen;
+    stripeState.invoices.sub_rex = [{ id: 'in_r2', amount_paid: 1900, payment_intent: 'pi_r2' },
+        { id: 'in_r1', amount_paid: 500, payment_intent: 'pi_r1' }];
+    const rexSession = sessionOf(out.rexCheckout.body.id);
+    Object.assign(rexSession, { status: 'complete', payment_status: 'paid', subscription: 'sub_rex' });
+    stripeState.failNextRefund = 'pi_r1';
+    stripeCalls.length = 0;
+    out.rexFailedEvent = await receive('checkout.session.completed', rexSession.id);
+    out.rexCheckoutAfterFailure = checkoutRow(out.rexCheckout.body.id);
+    out.rexReturned = await call(checkout.getCheckoutSession, as('rex', { params: { checkoutId: out.rexCheckout.body.id } }));
+    out.rexSubscriptions = subscriptionsOf('rex');
+    out.rexRefundCalls = stripeCalls.filter((c) => c[0] === 'refund').map((c) => c[1]);
+    out.rexRefunded = ['pi_r2', 'pi_r1'].filter((p) => stripeState.refunded.has(p));
+
+    // The user subscribes between the check before the activation and the activation itself: the
+    // activation starts again, so the payment is refunded before the checkout is completed.
+    out.samCheckout = await start('sam', 'gold');
+    billingCheckoutDao.findOpenCheckout = async () => null;
+    out.samFree = await subscribeFree('sam');
+    billingCheckoutDao.findOpenCheckout = findOpen;
+    stripeState.invoices.sub_sam = [{ id: 'in_s1', amount_paid: 1900, payment_intent: 'pi_s1' }];
+    Object.assign(sessionOf(out.samCheckout.body.id), { status: 'complete', payment_status: 'paid', subscription: 'sub_sam' });
+    const findForUser = subDao.findForUser;
+    let samChecked = false;
+    subDao.findForUser = async (...args) => {
+        if (args.length < 4 && !samChecked) { samChecked = true; return null; }
+        return findForUser(...args);
+    };
+    out.samReturned = await call(checkout.getCheckoutSession, as('sam', { params: { checkoutId: out.samCheckout.body.id } }));
+    subDao.findForUser = findForUser;
+    out.samSubscriptions = subscriptionsOf('sam');
+    out.samRefunded = stripeState.refunded.has('pi_s1');
+
+    // The other way round: the user's subscription ends between that check and the activation. The
+    // payment is refunded already, so the checkout ends without a subscription.
+    out.tiaCheckout = await start('tia', 'gold');
+    stripeState.invoices.sub_tia = [{ id: 'in_t1', amount_paid: 1900, payment_intent: 'pi_t1' }];
+    Object.assign(sessionOf(out.tiaCheckout.body.id), { status: 'complete', payment_status: 'paid', subscription: 'sub_tia' });
+    subDao.findForUser = async (...args) => (args.length < 4 ? 'sub-ended' : findForUser(...args));
+    out.tiaReturned = await call(checkout.getCheckoutSession, as('tia', { params: { checkoutId: out.tiaCheckout.body.id } }));
+    subDao.findForUser = findForUser;
+    out.tiaSubscriptions = subscriptionsOf('tia');
+    out.tiaRefunded = stripeState.refunded.has('pi_t1');
+    out.tiaReadAgain = await call(checkout.getCheckoutSession, as('tia', { params: { checkoutId: out.tiaCheckout.body.id } }));
 
     // A plan taken off an API, or deleted: its open checkouts are ended in Stripe before the change.
     // The open checkouts so far are cleared first.
@@ -659,4 +723,34 @@ test('a checkout paid after its plan was deleted ends without a subscription, an
     assert.deepEqual(results().ivySubscriptions, []);
     assert.deepEqual(results().ivyStripeCalls, [['cancel', 'sub_ivy', null], ['refund', 'pi_i1']]);
     assert.equal(results().ivyReadAgain.status, 404, 'the checkout is deleted');
+});
+
+test('a second paid checkout is completed only once its payment is refunded; a refused refund is tried again, and no payment is refunded twice', () => {
+    assert.deepEqual(results().rexFailedEvent, { error: 'Stripe: Service Unavailable' }, 'the event fails, so Stripe delivers it again');
+    assert.equal(results().rexCheckoutAfterFailure.status, 'OPEN');
+    const r = results().rexReturned;
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.equal(r.body.status, 'COMPLETED');
+    assert.equal(r.body.subscriptionId, results().rexFree.body.subscriptionId);
+    assert.deepEqual(results().rexSubscriptions.map((s) => s.handle), ['free']);
+    assert.deepEqual(results().rexRefundCalls, ['pi_r2', 'pi_r1', 'pi_r2', 'pi_r1']);
+    assert.deepEqual(results().rexRefunded, ['pi_r2', 'pi_r1']);
+});
+
+test('a subscription made while a paid checkout is activated is kept, and the checkout\'s payment refunded', () => {
+    const r = results().samReturned;
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.equal(r.body.status, 'COMPLETED');
+    assert.equal(r.body.subscriptionId, results().samFree.body.subscriptionId);
+    assert.deepEqual(results().samSubscriptions.map((s) => s.handle), ['free']);
+    assert.equal(results().samRefunded, true);
+});
+
+test('a paid checkout whose payment was refunded for a subscription that has since ended ends without a subscription', () => {
+    const r = results().tiaReturned;
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.equal(r.body.status, 'EXPIRED');
+    assert.deepEqual(results().tiaSubscriptions, []);
+    assert.equal(results().tiaRefunded, true);
+    assert.equal(results().tiaReadAgain.status, 404, 'the checkout is deleted');
 });

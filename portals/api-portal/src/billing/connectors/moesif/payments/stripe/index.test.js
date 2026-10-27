@@ -126,6 +126,23 @@ test('a subscription that has already ended is not cancelled again; its paid inv
     assert.deepStrictEqual(http.requests.map((r) => r.method), ['GET', 'GET', 'POST']);
 });
 
+test('a payment refunded by an earlier attempt is passed over; any other refusal of a refund fails the call', async () => {
+    const alreadyRefunded = { status: 400, data: { error: { code: 'charge_already_refunded', message: 'Charge ch_5 has already been refunded.' } } };
+    const invoices = { status: 200, data: { data: [
+        { id: 'in_6', amount_paid: 900, payment_intent: 'pi_6' },
+        { id: 'in_5', amount_paid: 900, payment_intent: 'pi_5' },
+    ] } };
+    const ended = { status: 200, data: { id: 'sub_4', status: 'canceled' } };
+
+    let http = recordingHttp([ended, invoices, { status: 200, data: { id: 're_6' } }, alreadyRefunded]);
+    assert.strictEqual(await stripePayments(http).cancelAndRefund('sub_4'), 1);
+    assert.deepStrictEqual(http.requests.slice(2).map((r) => r.data), ['payment_intent=pi_6', 'payment_intent=pi_5']);
+
+    http = recordingHttp([ended, invoices, { status: 402, data: { error: { code: 'card_declined', message: 'Declined.' } } }]);
+    await assert.rejects(stripePayments(http).cancelAndRefund('sub_4'),
+        (err) => err instanceof BillingProviderError && err.status === 402 && err.code === 'card_declined');
+});
+
 test('an invoice page after an invoice Stripe does not know is a cursor error; other refusals are not', async () => {
     const since = new Date(0);
     const missing = (param, message) => ({ status: 400, data: { error: { type: 'invalid_request_error', code: 'resource_missing',

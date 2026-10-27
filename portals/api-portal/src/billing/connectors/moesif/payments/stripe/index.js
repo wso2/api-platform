@@ -450,6 +450,7 @@ function create(settings) {
         /**
          * Ends a subscription that should not exist (a second one to the same API) immediately, without
          * a final invoice, and refunds what it was charged. Resolves to the number of payments refunded.
+         * Safe to call again after a failure: a payment an earlier call refunded is passed over.
          */
         async cancelAndRefund(ref) {
             const current = await this.getSubscription(ref);
@@ -458,8 +459,12 @@ function create(settings) {
             for (const invoice of await stripe.listInvoices(ref, 10)) {
                 const paymentIntent = idOf(invoice.payment_intent);
                 if (Number(invoice.amount_paid) > 0 && paymentIntent) {
-                    await stripe.createRefund({ paymentIntent });
-                    refunded += 1;
+                    try {
+                        await stripe.createRefund({ paymentIntent });
+                        refunded += 1;
+                    } catch (err) {
+                        if (!(err instanceof BillingProviderError && err.code === 'charge_already_refunded')) throw err;
+                    }
                 }
             }
             return refunded;
