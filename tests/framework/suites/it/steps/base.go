@@ -289,6 +289,7 @@ func (b *Base) registerBaseSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^I send a "([^"]*)" request( over HTTPS)? to "([^"]*)"$`, b.sendRequestOnListener)
 	sc.Step(`^I send (\d+) "([^"]*)" requests to "([^"]*)"$`, b.sendRepeated)
 	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" with body:$`, b.sendRequestWithBody)
+	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" with a JSON body of (\d+) bytes$`, b.sendSizedJSONBody)
 	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" until status (\d+)$`, b.sendUntilStatus)
 	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" until status (\d+) or (\d+)$`, b.sendUntilStatusOneOf)
 	sc.Step(`^I send a "([^"]*)" request to the (first|second) gateway "([^"]*)" until status (\d+)$`,
@@ -439,6 +440,38 @@ func (b *Base) sendRequestWithBody(
 	ctx context.Context, method, path string, body *godog.DocString,
 ) error {
 	return b.sendRequestWithHeaders(ctx, method, path, body, nil)
+}
+
+// sendSizedJSONBody invokes a data-plane path once with a JSON body of exactly size bytes, for
+// scenarios whose subject is the body's size - a multi-MiB payload no feature file can hold inline.
+func (b *Base) sendSizedJSONBody(ctx context.Context, method, path string, size int) error {
+	payload, err := sizedJSONBody(size)
+	if err != nil {
+		return err
+	}
+	resolved, err := stepscommon.Expand(ctx, path)
+	if err != nil {
+		return err
+	}
+	url, err := b.gatewayURL(resolved)
+	if err != nil {
+		return err
+	}
+	headers := b.scenarioHeaders(ctx)
+	if headers["Content-Type"] == "" {
+		headers["Content-Type"] = "application/json"
+	}
+	return b.invokeWith(ctx, strings.ToUpper(method), url, headers, payload)
+}
+
+// sizedJSONBody returns {"data":"aaa…"} padded to exactly size bytes.
+func sizedJSONBody(size int) ([]byte, error) {
+	const prefix, suffix = `{"data":"`, `"}`
+	padding := size - len(prefix) - len(suffix)
+	if padding < 0 {
+		return nil, fmt.Errorf("a JSON body needs at least %d bytes, got %d", len(prefix)+len(suffix), size)
+	}
+	return []byte(prefix + strings.Repeat("a", padding) + suffix), nil
 }
 
 // sendRequestWithHeaders invokes a data-plane path with scenario and request-specific headers.
