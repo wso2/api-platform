@@ -18,6 +18,7 @@
 package repository
 
 import (
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -337,5 +338,55 @@ func TestSubscriptionBillingRepo_UpsertGetMany(t *testing.T) {
 	}
 	if b := got["sub-1"]; b.Status != model.BillingStatusUnpaid || b.CustomerID != "cus_1" || !b.UpdatedAt.Equal(at) {
 		t.Errorf("billing = %+v", b)
+	}
+}
+
+// GetMany reads more subscriptions than one query takes, in batches, and finds the billing of each.
+func TestSubscriptionBillingRepo_GetManyReadsInBatches(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	if err := NewOrganizationRepo(db).CreateOrganization(&model.Organization{ID: "org-1", Handle: "acme", Name: "Acme", Region: "us"}); err != nil {
+		t.Fatalf("CreateOrganization: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO artifacts (uuid, type, organization_uuid) VALUES ('art-1', 'RestApi', 'org-1')`); err != nil {
+		t.Fatalf("insert artifact: %v", err)
+	}
+	repo := NewSubscriptionBillingRepo(db)
+	count := 2*subscriptionBillingBatchSize + 1
+	ids := make([]string, count)
+	paid := map[string]bool{}
+	for i := range ids {
+		ids[i] = fmt.Sprintf("sub-%04d", i)
+		if _, err := db.Exec(`INSERT INTO subscriptions (uuid, artifact_uuid, subscriber_id, subscription_token, subscription_token_hash, organization_uuid)
+			VALUES (?, 'art-1', 'user-1', ?, ?, 'org-1')`, ids[i], "tok-"+ids[i], "hash-"+ids[i]); err != nil {
+			t.Fatalf("insert subscription: %v", err)
+		}
+		// The first and last of each batch are paid.
+		if i%subscriptionBillingBatchSize == 0 || i%subscriptionBillingBatchSize == subscriptionBillingBatchSize-1 {
+			paid[ids[i]] = true
+			if err := repo.Upsert(&model.SubscriptionBilling{SubscriptionUUID: ids[i], OrganizationUUID: "org-1",
+				Status: model.BillingStatusActive, CustomerID: "cus_" + ids[i], UpdatedAt: time.Now().UTC()}); err != nil {
+				t.Fatalf("Upsert: %v", err)
+			}
+		}
+	}
+
+	got, err := repo.GetMany(ids, "org-1")
+	if err != nil {
+		t.Fatalf("GetMany: %v", err)
+	}
+	if len(got) != len(paid) {
+		t.Fatalf("GetMany found %d, want %d", len(got), len(paid))
+	}
+	for id := range paid {
+		if b := got[id]; b == nil || b.CustomerID != "cus_"+id {
+			t.Errorf("billing of %s = %+v", id, b)
+		}
+	}
+	if got, err := repo.GetMany(nil, "org-1"); err != nil || len(got) != 0 {
+		t.Fatalf("GetMany of none = %v, %v; want an empty map", got, err)
+	}
+	if got, err := repo.GetMany(ids, "org-other"); err != nil || len(got) != 0 {
+		t.Fatalf("GetMany in another organization = %v, %v; want an empty map", got, err)
 	}
 }
