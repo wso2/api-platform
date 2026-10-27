@@ -54,17 +54,11 @@ export type ApScope =
   | 'ap:api_portal:draft:manage'
   | 'ap:api_portal:draft:read'
   | 'ap:api_portal:draft:update'
-  | 'ap:api_portal:graphql_api:deprecate'
   | 'ap:api_portal:graphql_api:manage'
-  | 'ap:api_portal:graphql_api:publish'
-  | 'ap:api_portal:graphql_api:unpublish'
   | 'ap:api_portal:manage'
   | 'ap:api_portal:publication:read'
   | 'ap:api_portal:read'
-  | 'ap:api_portal:rest_api:deprecate'
   | 'ap:api_portal:rest_api:manage'
-  | 'ap:api_portal:rest_api:publish'
-  | 'ap:api_portal:rest_api:unpublish'
   | 'ap:api_portal:update'
   | 'ap:api_publication:read'
   | 'ap:application:api_key:create'
@@ -177,6 +171,11 @@ export type ApScope =
   | 'ap:mcp_proxy:manage'
   | 'ap:mcp_proxy:read'
   | 'ap:mcp_proxy:update'
+  | 'ap:meter:create'
+  | 'ap:meter:delete'
+  | 'ap:meter:manage'
+  | 'ap:meter:read'
+  | 'ap:meter:update'
   | 'ap:organization:create'
   | 'ap:organization:manage'
   | 'ap:organization:read'
@@ -220,6 +219,7 @@ export type ApScope =
   | 'ap:subscription_plan:create'
   | 'ap:subscription_plan:delete'
   | 'ap:subscription_plan:manage'
+  | 'ap:subscription_plan:pricing:read'
   | 'ap:subscription_plan:read'
   | 'ap:subscription_plan:update'
   | 'ap:thumbnail:manage'
@@ -257,17 +257,11 @@ export const AP_SCOPES: readonly ApScope[] = [
   'ap:api_portal:draft:manage',
   'ap:api_portal:draft:read',
   'ap:api_portal:draft:update',
-  'ap:api_portal:graphql_api:deprecate',
   'ap:api_portal:graphql_api:manage',
-  'ap:api_portal:graphql_api:publish',
-  'ap:api_portal:graphql_api:unpublish',
   'ap:api_portal:manage',
   'ap:api_portal:publication:read',
   'ap:api_portal:read',
-  'ap:api_portal:rest_api:deprecate',
   'ap:api_portal:rest_api:manage',
-  'ap:api_portal:rest_api:publish',
-  'ap:api_portal:rest_api:unpublish',
   'ap:api_portal:update',
   'ap:api_publication:read',
   'ap:application:api_key:create',
@@ -380,6 +374,11 @@ export const AP_SCOPES: readonly ApScope[] = [
   'ap:mcp_proxy:manage',
   'ap:mcp_proxy:read',
   'ap:mcp_proxy:update',
+  'ap:meter:create',
+  'ap:meter:delete',
+  'ap:meter:manage',
+  'ap:meter:read',
+  'ap:meter:update',
   'ap:organization:create',
   'ap:organization:manage',
   'ap:organization:read',
@@ -423,6 +422,7 @@ export const AP_SCOPES: readonly ApScope[] = [
   'ap:subscription_plan:create',
   'ap:subscription_plan:delete',
   'ap:subscription_plan:manage',
+  'ap:subscription_plan:pricing:read',
   'ap:subscription_plan:read',
   'ap:subscription_plan:update',
   'ap:thumbnail:manage',
@@ -534,6 +534,7 @@ export const OPERATION_SCOPES = {
     'ap:mcp_proxy:build:manage',
     'ap:mcp_proxy:manage',
   ],
+  CreateMeter: ['ap:meter:create', 'ap:meter:manage'],
   CreateProject: ['ap:project:create', 'ap:project:manage'],
   CreateRESTAPI: ['ap:rest_api:create', 'ap:rest_api:manage'],
   createSecret: ['ap:secret:create', 'ap:secret:manage'],
@@ -619,6 +620,7 @@ export const OPERATION_SCOPES = {
     'ap:mcp_proxy:deployment:manage',
     'ap:mcp_proxy:manage',
   ],
+  DeleteMeter: ['ap:meter:delete', 'ap:meter:manage'],
   DeleteProject: ['ap:project:delete', 'ap:project:manage'],
   DeleteRESTAPI: ['ap:rest_api:delete', 'ap:rest_api:manage'],
   deleteSecret: ['ap:secret:delete', 'ap:secret:manage'],
@@ -649,14 +651,8 @@ export const OPERATION_SCOPES = {
     'ap:mcp_proxy:deployment:manage',
     'ap:mcp_proxy:manage',
   ],
-  deprecateGraphQLApiOnApiPortal: [
-    'ap:api_portal:graphql_api:deprecate',
-    'ap:api_portal:graphql_api:manage',
-  ],
-  deprecateRestApiOnApiPortal: [
-    'ap:api_portal:rest_api:deprecate',
-    'ap:api_portal:rest_api:manage',
-  ],
+  deprecateGraphQLApiOnApiPortal: ['ap:api_portal:graphql_api:manage'],
+  deprecateRestApiOnApiPortal: ['ap:api_portal:rest_api:manage'],
   fetchAgentCard: ['ap:agent_proxy:manage', 'ap:agent_proxy:read'],
   fetchMCPProxyServerInfo: ['ap:mcp_proxy:manage', 'ap:mcp_proxy:read'],
   getAgentProxy: ['ap:agent_proxy:manage', 'ap:agent_proxy:read'],
@@ -783,6 +779,7 @@ export const OPERATION_SCOPES = {
     'ap:mcp_proxy:deployment:read',
     'ap:mcp_proxy:manage',
   ],
+  GetMeter: ['ap:meter:manage', 'ap:meter:read'],
   GetOrganization: ['ap:organization:manage', 'ap:organization:read'],
   GetProject: ['ap:project:manage', 'ap:project:read'],
   GetRESTAPI: ['ap:rest_api:manage', 'ap:rest_api:read'],
@@ -797,6 +794,11 @@ export const OPERATION_SCOPES = {
   getSecret: ['ap:secret:manage', 'ap:secret:read'],
   GetSubscription: ['ap:subscription:manage', 'ap:subscription:read'],
   GetSubscriptionPlan: ['ap:subscription_plan:manage', 'ap:subscription_plan:read'],
+  GetSubscriptionPlanPricing: [
+    'ap:subscription_plan:manage',
+    'ap:subscription_plan:pricing:read',
+    'ap:subscription_plan:read',
+  ],
   HeadOrganization: ['ap:organization:manage', 'ap:organization:read'],
   ImportOpenAPI: ['ap:rest_api:create', 'ap:rest_api:manage'],
   listAgentProxies: ['ap:agent_proxy:manage', 'ap:agent_proxy:read'],
@@ -862,6 +864,7 @@ export const OPERATION_SCOPES = {
     'ap:llm_proxy:manage',
   ],
   listMCPProxies: ['ap:mcp_proxy:manage', 'ap:mcp_proxy:read'],
+  ListMeters: ['ap:meter:manage', 'ap:meter:read'],
   ListOrganizations: ['ap:organization:manage', 'ap:organization:read'],
   ListProjects: ['ap:project:manage', 'ap:project:read'],
   ListRESTAPIs: ['ap:rest_api:manage', 'ap:rest_api:read'],
@@ -870,11 +873,8 @@ export const OPERATION_SCOPES = {
   ListSubscriptionPlans: ['ap:subscription_plan:manage', 'ap:subscription_plan:read'],
   ListSubscriptions: ['ap:subscription:manage', 'ap:subscription:read'],
   listUserAPIKeys: ['ap:api_key:all:manage', 'ap:api_key:read'],
-  publishGraphQLApiToApiPortal: [
-    'ap:api_portal:graphql_api:manage',
-    'ap:api_portal:graphql_api:publish',
-  ],
-  publishRestApiToApiPortal: ['ap:api_portal:rest_api:manage', 'ap:api_portal:rest_api:publish'],
+  publishGraphQLApiToApiPortal: ['ap:api_portal:graphql_api:manage'],
+  publishRestApiToApiPortal: ['ap:api_portal:rest_api:manage'],
   RegisterOrganization: ['ap:organization:create', 'ap:organization:manage'],
   RemoveApplicationAPIKey: [
     'ap:api_key:all:manage',
@@ -974,14 +974,8 @@ export const OPERATION_SCOPES = {
     'ap:mcp_proxy:deployment:undeploy',
     'ap:mcp_proxy:manage',
   ],
-  unpublishGraphQLApiFromApiPortal: [
-    'ap:api_portal:graphql_api:manage',
-    'ap:api_portal:graphql_api:unpublish',
-  ],
-  unpublishRestApiFromApiPortal: [
-    'ap:api_portal:rest_api:manage',
-    'ap:api_portal:rest_api:unpublish',
-  ],
+  unpublishGraphQLApiFromApiPortal: ['ap:api_portal:graphql_api:manage'],
+  unpublishRestApiFromApiPortal: ['ap:api_portal:rest_api:manage'],
   updateAgentProxy: ['ap:agent_proxy:manage', 'ap:agent_proxy:update'],
   updateAgentProxyAPIKey: [
     'ap:agent_proxy:api_key:manage',
@@ -1010,6 +1004,7 @@ export const OPERATION_SCOPES = {
   updateLLMProviderTemplate: ['ap:llm_template:manage', 'ap:llm_template:update'],
   updateLLMProxy: ['ap:llm_proxy:manage', 'ap:llm_proxy:update'],
   updateMCPProxy: ['ap:mcp_proxy:manage', 'ap:mcp_proxy:update'],
+  UpdateMeter: ['ap:meter:manage', 'ap:meter:update'],
   UpdateProject: ['ap:project:manage', 'ap:project:update'],
   UpdateRESTAPI: ['ap:rest_api:manage', 'ap:rest_api:update'],
   UpdateRESTAPISpec: ['ap:rest_api:manage', 'ap:rest_api:update'],

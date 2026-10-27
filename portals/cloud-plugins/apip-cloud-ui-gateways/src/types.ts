@@ -33,9 +33,10 @@ export type GatewayType = 'regular' | 'ai' | 'event';
  * separate questions, and a gateway still being built has nothing to connect yet
  * — which is why `provisioning` is its own status rather than another way of
  * reading `inactive`. `inactive` is routine (a restart, a brief drop); `failed`
- * is not, and comes with a reason.
+ * is not, and comes with a reason. `deleting` is a gateway being torn down: it
+ * stays listed until it is gone, and nothing more can be done with it.
  */
-export type GatewayStatus = 'provisioning' | 'failed' | 'active' | 'inactive';
+export type GatewayStatus = 'provisioning' | 'failed' | 'active' | 'inactive' | 'deleting';
 
 export type Environment = {
   id: string;

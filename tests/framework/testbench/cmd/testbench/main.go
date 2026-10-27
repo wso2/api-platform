@@ -40,8 +40,10 @@ import (
 	"github.com/wso2/api-platform/tests/framework/testbench/services/graphqlbackend"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/guardian"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/interceptor"
+	"github.com/wso2/api-platform/tests/framework/testbench/services/jev"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/jwks"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/mcp"
+	"github.com/wso2/api-platform/tests/framework/testbench/services/mcpscripted"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/oauth2"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/oidc"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/opa"
@@ -99,7 +101,8 @@ func services() ([]testbench.Service, error) {
 	if err != nil {
 		return nil, fmt.Errorf("building oauth2 service: %w", err)
 	}
-	return []testbench.Service{
+	jevSvc := jev.New()
+	services := []testbench.Service{
 		jwksSvc,
 		echo.New(),
 		backend.New(),
@@ -119,7 +122,17 @@ func services() ([]testbench.Service, error) {
 		guardian.New(),
 		graphqlbackend.New(),
 		opa.New(),
-	}, nil
+		jevSvc,
+		mcpscripted.New(),
+	}
+	if cert, key := os.Getenv(jev.EnvTLSCert), os.Getenv(jev.EnvTLSKey); cert != "" || key != "" {
+		jevTLS, err := jevSvc.OverTLS([]byte(cert), []byte(key))
+		if err != nil {
+			return nil, fmt.Errorf("building jev TLS service: %w", err)
+		}
+		services = append(services, jevTLS)
+	}
+	return services, nil
 }
 
 func newLogger() (*slog.Logger, error) {

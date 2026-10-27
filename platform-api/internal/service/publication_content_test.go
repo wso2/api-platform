@@ -180,9 +180,9 @@ type callLog struct {
 	archive    []byte
 }
 
-func (l *callLog) CreateMissingPlans(context.Context, *model.APIPortal, []*model.SubscriptionPlan) error {
+func (l *callLog) SyncPlans(context.Context, *model.APIPortal, PlanSync) (PlanSyncResult, error) {
 	l.calls = append(l.calls, "plans")
-	return nil
+	return PlanSyncResult{}, nil
 }
 
 func (l *callLog) Publish(context.Context, *model.APIPortal, string, string, *model.Publication, *model.PublicationContent) error {

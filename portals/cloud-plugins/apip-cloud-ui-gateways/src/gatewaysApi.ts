@@ -67,6 +67,8 @@ const normalizeStatus = (dto: ManagedGatewayDTO): GatewayStatus => {
       return 'active';
     case 'DISCONNECTED':
       return 'inactive';
+    case 'DELETING':
+      return 'deleting';
     default:
       return dto.isActive ? 'active' : 'inactive';
   }
@@ -139,8 +141,18 @@ export function createGatewaysClient(apiFetch: ApiFetch) {
         ...(input.isDefault ? { isDefault: true } : {}),
       });
     },
-    async deleteGateway(id: string): Promise<void> {
-      await apiFetch('DELETE', `/managed-gateways/${encodeURIComponent(id)}`);
+    /**
+     * Deletes a gateway, and says whether it is gone yet. A server that tears the
+     * gateway down in the background accepts the delete with the gateway's status
+     * as `DELETING`, and the gateway stays listed until it is gone; one that
+     * deletes it on the spot answers with no body.
+     */
+    async deleteGateway(id: string): Promise<{ pending: boolean }> {
+      const response = await apiFetch<{ status?: string }>(
+        'DELETE',
+        `/managed-gateways/${encodeURIComponent(id)}`
+      );
+      return { pending: response?.status === 'DELETING' };
     },
   };
 }

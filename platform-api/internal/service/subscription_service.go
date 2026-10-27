@@ -37,7 +37,47 @@ type SubscriptionService struct {
 	orgRepo          repository.OrganizationRepository
 	gatewayEvents    *GatewayEventsService
 	auditRepo        repository.AuditRepository
+	billingRepo      repository.SubscriptionBillingRepository
 	slogger          *slog.Logger
+}
+
+// SetBillingRepository sets where the billing state of paid subscriptions is kept.
+func (s *SubscriptionService) SetBillingRepository(repo repository.SubscriptionBillingRepository) {
+	s.billingRepo = repo
+}
+
+// billingOf returns the billing state of a subscription, or nil for a free one. A read failure is
+// returned as an error: treated as a free subscription, an unpaid one would be sent to the gateways
+// as active. Callers read it before making a change, so a failed read changes nothing.
+func (s *SubscriptionService) billingOf(subscriptionUUID, orgUUID string) (*model.SubscriptionBilling, error) {
+	if s.billingRepo == nil {
+		return nil, nil
+	}
+	billing, err := s.billingRepo.Get(subscriptionUUID, orgUUID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read the billing state of subscription %s: %w", subscriptionUUID, err)
+	}
+	return billing, nil
+}
+
+// GetBillingMany returns the billing state of the given subscriptions that are paid, by
+// subscription UUID, for the read-only `billing` in subscription responses.
+func (s *SubscriptionService) GetBillingMany(subscriptionUUIDs []string, orgUUID string) (map[string]*model.SubscriptionBilling, error) {
+	if s.billingRepo == nil || len(subscriptionUUIDs) == 0 {
+		return map[string]*model.SubscriptionBilling{}, nil
+	}
+	return s.billingRepo.GetMany(subscriptionUUIDs, orgUUID)
+}
+
+// withBilling adds a paid subscription's billing ids and gateway status to a subscription.updated
+// event.
+func withBilling(event *model.SubscriptionUpdatedEvent, billing *model.SubscriptionBilling) *model.SubscriptionUpdatedEvent {
+	if billing != nil {
+		event.BillingCustomerId = billing.CustomerID
+		event.BillingSubscriptionId = billing.SubscriptionID
+		event.Status = model.GatewayStatus(model.SubscriptionStatus(event.Status), billing)
+	}
+	return event
 }
 
 // NewSubscriptionService creates a new subscription service
@@ -157,6 +197,15 @@ func (s *SubscriptionService) GetArtifactMetadataMap(uuids []string, orgUUID str
 // API Portal (empty means generate one); actor is the authenticated caller's
 // internal UUID, used for created_by/updated_by/audit.
 func (s *SubscriptionService) CreateSubscription(apiId, kind, orgUUID string, subscriberID string, applicationId *string, subscriptionPlanId *string, subscriptionToken string, status string, actor string) (*model.Subscription, error) {
+	return s.CreateSubscriptionWithBilling(apiId, kind, orgUUID, subscriberID, applicationId, subscriptionPlanId, subscriptionToken, status, actor, nil)
+}
+
+// CreateSubscriptionWithBilling is CreateSubscription with the billing state of a paid
+// subscription (nil for a free one).
+func (s *SubscriptionService) CreateSubscriptionWithBilling(apiId, kind, orgUUID string, subscriberID string, applicationId *string, subscriptionPlanId *string, subscriptionToken string, status string, actor string, billing *model.SubscriptionBilling) (*model.Subscription, error) {
+	if billing != nil && (s.billingRepo == nil || !model.ValidBillingStatuses[billing.Status]) {
+		return nil, apperror.ValidationFailed.New("invalid billing state")
+	}
 	apiUUID, err := s.resolveArtifactUUIDByKind(apiId, kind, orgUUID)
 	if err != nil {
 		return nil, err
@@ -216,6 +265,18 @@ func (s *SubscriptionService) CreateSubscription(apiId, kind, orgUUID string, su
 		return nil, err
 	}
 	_ = s.auditRepo.Record("CREATE", sub.UUID, "subscription", sub.OrganizationUUID, actor)
+	if billing != nil {
+		billing.SubscriptionUUID = sub.UUID
+		billing.OrganizationUUID = orgUUID
+		if err := s.billingRepo.Upsert(billing); err != nil {
+			// The API Portal sends each event only once, so failing here would lose a subscription
+			// that has been paid for. It is kept, and served without its billing state until a
+			// later billing event stores one.
+			s.slogger.Error("Failed to store the billing state of a paid subscription; it is served without it",
+				"subscriptionId", sub.UUID, "error", err)
+			billing = nil
+		}
+	}
 
 	if s.gatewayEvents != nil {
 		gateways, err := s.apiRepo.GetAPIGatewaysWithDetails(apiUUID, orgUUID)
@@ -236,6 +297,11 @@ func (s *SubscriptionService) CreateSubscription(apiId, kind, orgUUID string, su
 				SubscriptionToken:  sub.SubscriptionToken,
 				SubscriptionPlanId: planID,
 				Status:             string(sub.Status),
+			}
+			if billing != nil {
+				event.BillingCustomerId = billing.CustomerID
+				event.BillingSubscriptionId = billing.SubscriptionID
+				event.Status = model.GatewayStatus(sub.Status, billing)
 			}
 			for _, gw := range gateways {
 				if gw == nil || gw.ID == "" {
@@ -335,6 +401,10 @@ func (s *SubscriptionService) UpdateSubscription(subscriptionId, orgUUID, subscr
 			return nil, fmt.Errorf("invalid status: %s", status)
 		}
 	}
+	billing, err := s.billingOf(sub.UUID, orgUUID)
+	if err != nil {
+		return nil, err
+	}
 	sub.UpdatedBy = actor
 	if err := s.subscriptionRepo.Update(sub); err != nil {
 		return nil, err
@@ -353,14 +423,14 @@ func (s *SubscriptionService) UpdateSubscription(subscriptionId, orgUUID, subscr
 			if sub.ApplicationID != nil {
 				appID = *sub.ApplicationID
 			}
-			event := &model.SubscriptionUpdatedEvent{
+			event := withBilling(&model.SubscriptionUpdatedEvent{
 				ApiId:              sub.ArtifactUUID,
 				SubscriptionId:     sub.UUID,
 				ApplicationId:      appID,
 				SubscriptionToken:  sub.SubscriptionToken,
 				SubscriptionPlanId: planID,
 				Status:             string(sub.Status),
-			}
+			}, billing)
 			for _, gw := range gateways {
 				if gw == nil || gw.ID == "" {
 					continue
@@ -374,6 +444,71 @@ func (s *SubscriptionService) UpdateSubscription(subscriptionId, orgUUID, subscr
 	}
 
 	return sub, nil
+}
+
+// ApplyBillingFromWebhook stores the billing state the API Portal reports for a paid subscription
+// (subscription.billing_updated) and sends it to the gateways. A state older than the stored one is
+// ignored.
+func (s *SubscriptionService) ApplyBillingFromWebhook(orgUUID, apiHandle, kind, subscriberID string, billing *model.SubscriptionBilling) error {
+	if s.billingRepo == nil {
+		return apperror.ValidationFailed.New("billing is not supported")
+	}
+	if billing == nil || !model.ValidBillingStatuses[billing.Status] {
+		return apperror.ValidationFailed.New("invalid billing state")
+	}
+	sub, err := s.FindByArtifactKindAndSubscriber(orgUUID, apiHandle, kind, subscriberID)
+	if err != nil {
+		return err
+	}
+	if sub == nil {
+		return apperror.SubscriptionNotFound.New()
+	}
+	current, err := s.billingOf(sub.UUID, orgUUID)
+	if err != nil {
+		return err
+	}
+	if current != nil && billing.UpdatedAt.Before(current.UpdatedAt) {
+		s.slogger.Info("Ignoring a stale subscription billing event", "subscriptionId", sub.UUID)
+		return nil
+	}
+	billing.SubscriptionUUID = sub.UUID
+	billing.OrganizationUUID = orgUUID
+	if err := s.billingRepo.Upsert(billing); err != nil {
+		return err
+	}
+
+	if s.gatewayEvents != nil {
+		gateways, err := s.apiRepo.GetAPIGatewaysWithDetails(sub.ArtifactUUID, orgUUID)
+		if err != nil {
+			s.slogger.Warn("Failed to load gateways for subscription.updated broadcast", "apiUUID", sub.ArtifactUUID, "error", err)
+			return nil
+		}
+		var planID, appID string
+		if sub.SubscriptionPlanID != nil {
+			planID = *sub.SubscriptionPlanID
+		}
+		if sub.ApplicationID != nil {
+			appID = *sub.ApplicationID
+		}
+		event := withBilling(&model.SubscriptionUpdatedEvent{
+			ApiId:              sub.ArtifactUUID,
+			SubscriptionId:     sub.UUID,
+			ApplicationId:      appID,
+			SubscriptionToken:  sub.SubscriptionToken,
+			SubscriptionPlanId: planID,
+			Status:             string(sub.Status),
+		}, billing)
+		for _, gw := range gateways {
+			if gw == nil || gw.ID == "" {
+				continue
+			}
+			if err := s.gatewayEvents.BroadcastSubscriptionUpdatedEvent(gw.ID, event); err != nil {
+				s.slogger.Warn("Failed to broadcast subscription.updated event",
+					"gatewayId", gw.ID, "subscriptionId", sub.UUID, "error", err)
+			}
+		}
+	}
+	return nil
 }
 
 // ChangePlan switches the subscription plan of an existing subscription and broadcasts the change
@@ -405,6 +540,10 @@ func (s *SubscriptionService) ChangePlan(subscriptionId, orgUUID, subscriberID, 
 	if planRecord == nil {
 		return nil, apperror.SubscriptionPlanNotFound.New()
 	}
+	billing, err := s.billingOf(sub.UUID, orgUUID)
+	if err != nil {
+		return nil, err
+	}
 	plan := planRecord.UUID
 	sub.SubscriptionPlanID = &plan
 	if err := s.subscriptionRepo.Update(sub); err != nil {
@@ -417,14 +556,14 @@ func (s *SubscriptionService) ChangePlan(subscriptionId, orgUUID, subscriberID, 
 			s.slogger.Warn("Failed to load gateways for subscription plan change broadcast",
 				"apiId", sub.ArtifactUUID, "subscriptionId", sub.UUID, "error", err)
 		} else {
-			event := &model.SubscriptionUpdatedEvent{
+			event := withBilling(&model.SubscriptionUpdatedEvent{
 				ApiId:              sub.ArtifactUUID,
 				SubscriptionId:     sub.UUID,
 				ApplicationId:      derefString(sub.ApplicationID),
 				SubscriptionToken:  sub.SubscriptionToken,
 				SubscriptionPlanId: derefString(sub.SubscriptionPlanID),
 				Status:             string(sub.Status),
-			}
+			}, billing)
 			for _, gw := range gateways {
 				if gw == nil || gw.ID == "" {
 					continue
@@ -462,6 +601,10 @@ func (s *SubscriptionService) RegenerateToken(subscriptionId, orgUUID, subscribe
 		return nil, apperror.SubscriptionForbidden.New()
 	}
 
+	billing, err := s.billingOf(sub.UUID, orgUUID)
+	if err != nil {
+		return nil, err
+	}
 	if err := s.subscriptionRepo.UpdateToken(subscriptionId, orgUUID, newToken); err != nil {
 		return nil, err
 	}
@@ -474,14 +617,14 @@ func (s *SubscriptionService) RegenerateToken(subscriptionId, orgUUID, subscribe
 			s.slogger.Warn("Failed to load gateways for subscription token regeneration broadcast",
 				"apiUUID", sub.ArtifactUUID, "subscriptionId", sub.UUID, "error", err)
 		} else {
-			event := &model.SubscriptionUpdatedEvent{
+			event := withBilling(&model.SubscriptionUpdatedEvent{
 				ApiId:              sub.ArtifactUUID,
 				SubscriptionId:     sub.UUID,
 				ApplicationId:      derefString(sub.ApplicationID),
 				SubscriptionToken:  sub.SubscriptionToken,
 				SubscriptionPlanId: derefString(sub.SubscriptionPlanID),
 				Status:             string(sub.Status),
-			}
+			}, billing)
 			for _, gw := range gateways {
 				if gw == nil || gw.ID == "" {
 					continue

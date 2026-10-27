@@ -1869,7 +1869,6 @@ paths:
       operationId: publishRestApiToApiPortal
       security:
         - OAuth2Security:
-            - ap:api_portal:rest_api:publish
             - ap:api_portal:rest_api:manage
       tags:
         - API Publications
@@ -1918,7 +1917,6 @@ paths:
       operationId: unpublishRestApiFromApiPortal
       security:
         - OAuth2Security:
-            - ap:api_portal:rest_api:unpublish
             - ap:api_portal:rest_api:manage
       tags:
         - API Publications
@@ -1948,7 +1946,6 @@ paths:
       operationId: deprecateRestApiOnApiPortal
       security:
         - OAuth2Security:
-            - ap:api_portal:rest_api:deprecate
             - ap:api_portal:rest_api:manage
       tags:
         - API Publications
@@ -1990,7 +1987,6 @@ paths:
       operationId: publishGraphQLApiToApiPortal
       security:
         - OAuth2Security:
-            - ap:api_portal:graphql_api:publish
             - ap:api_portal:graphql_api:manage
       tags:
         - API Publications
@@ -2039,7 +2035,6 @@ paths:
       operationId: unpublishGraphQLApiFromApiPortal
       security:
         - OAuth2Security:
-            - ap:api_portal:graphql_api:unpublish
             - ap:api_portal:graphql_api:manage
       tags:
         - API Publications
@@ -2069,7 +2064,6 @@ paths:
       operationId: deprecateGraphQLApiOnApiPortal
       security:
         - OAuth2Security:
-            - ap:api_portal:graphql_api:deprecate
             - ap:api_portal:graphql_api:manage
       tags:
         - API Publications
@@ -8042,7 +8036,11 @@ paths:
   /subscription-plans:
     post:
       summary: Create subscription plan
-      description: Creates an organization-scoped subscription plan.
+      description: >-
+        Creates an organization-scoped subscription plan. A paid plan is created with its `pricing`, checked against
+        the API Portal's rules and the organization's meters and stored with the plan; a plan created without it is
+        free. Pricing is set only here: it cannot be updated once the plan exists. Returns `400` for pricing that breaks
+        the rules or names an unknown meter.
       operationId: CreateSubscriptionPlan
       security:
         - OAuth2Security:
@@ -8074,6 +8072,8 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '409':
           $ref: '#/components/responses/Conflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
         '500':
           $ref: '#/components/responses/InternalServerError'
     get:
@@ -8090,6 +8090,13 @@ paths:
         - $ref: '#/components/parameters/limit-Q'
         - $ref: '#/components/parameters/offset-Q'
         - $ref: '#/components/parameters/query-Q'
+        - name: status
+          in: query
+          required: false
+          description: Only the plans with this status (ACTIVE, INACTIVE)
+          schema:
+            type: string
+            enum: [ACTIVE, INACTIVE]
       responses:
         '200':
           description: List of subscription plans
@@ -8134,6 +8141,13 @@ paths:
           $ref: '#/components/responses/InternalServerError'
     put:
       summary: Update subscription plan
+      description: >-
+        Updates the plan's name, limits, status and expiry. The name and the request limit can change only while
+        nothing uses the plan: otherwise `409` SUBSCRIPTION_PLAN_IN_USE, such as "The plan Gold is in use. To
+        change its name or limit, create a new plan." The plan's `usage` (GET
+        /subscription-plans/{subscriptionPlanId}) counts what uses it. Status and expiry can always change.
+        Leave `pricing` out: it is the only part of a plan that never changes once the plan is created, and a body
+        that carries it gets `409` SUBSCRIPTION_PLAN_PRICING_LOCKED.
       operationId: UpdateSubscriptionPlan
       security:
         - OAuth2Security:
@@ -8175,6 +8189,10 @@ paths:
           $ref: '#/components/responses/InternalServerError'
     delete:
       summary: Delete subscription plan
+      description: >-
+        Deletes the plan with its pricing, only while nothing uses it: otherwise `409` SUBSCRIPTION_PLAN_IN_USE, such
+        as "The plan Gold is in use and can't be deleted." The plan's `usage` (GET
+        /subscription-plans/{subscriptionPlanId}) counts what uses it.
       operationId: DeleteSubscriptionPlan
       security:
         - OAuth2Security:
@@ -8198,6 +8216,221 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /subscription-plans/{subscriptionPlanId}/pricing:
+    parameters:
+      - name: subscriptionPlanId
+        in: path
+        required: true
+        description: The plan's id (handle), as returned in `id` by GET /subscription-plans.
+        schema:
+          type: string
+          maxLength: 50
+    get:
+      summary: Get the pricing of a subscription plan
+      description: >-
+        Returns the pricing of a paid plan; a free plan has none (404). A plan's pricing is set when the plan is
+        created, here or in an API Portal (and copied here from its webhook event), and does not change.
+      operationId: GetSubscriptionPlanPricing
+      security:
+        - OAuth2Security:
+            - ap:subscription_plan:pricing:read
+            - ap:subscription_plan:read
+            - ap:subscription_plan:manage
+      tags:
+        - SubscriptionPlans
+      responses:
+        '200':
+          description: The plan's pricing
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubscriptionPlanPricing'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /meters:
+    get:
+      summary: List meters
+      description: >-
+        Lists the organization's meters, ordered by id. A meter defines what a paid plan charges for: the requests the
+        gateway allows, or their tokens. Each plan price narrows it with its own filters. A meter made here is kept
+        here and reaches an API Portal only when a plan that charges for it is published there; a meter made in an API
+        Portal is a copy, kept current through that portal's webhook events. Each meter says how many plans charge for
+        it (`planCount`).
+      operationId: ListMeters
+      security:
+        - OAuth2Security:
+            - ap:meter:read
+            - ap:meter:manage
+      tags:
+        - Meters
+      parameters:
+        - $ref: '#/components/parameters/limit-Q'
+        - $ref: '#/components/parameters/offset-Q'
+        - $ref: '#/components/parameters/query-Q'
+      responses:
+        '200':
+          description: The meters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MeterListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    post:
+      summary: Create a meter
+      description: >-
+        Creates a meter here. It is checked with the API Portal's rules, and refused with the portal's messages. The
+        id is the one given, or is derived from the display name. The meter is returned as GET /meters/{meterId}
+        gives it. It reaches an API Portal when a plan that
+        charges for it is first published there; until then, no API Portal is needed. A body that is not a JSON object
+        is refused (400), and so is an id the organization already has (409 METER_EXISTS).
+      operationId: CreateMeter
+      security:
+        - OAuth2Security:
+            - ap:meter:create
+            - ap:meter:manage
+      tags:
+        - Meters
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MeterRequest'
+      responses:
+        '201':
+          description: The meter, as stored
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Meter'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /meters/{meterId}:
+    parameters:
+      - name: meterId
+        in: path
+        required: true
+        description: The meter's id (handle), as returned in `id` by GET /meters or POST /meters.
+        schema:
+          type: string
+          maxLength: 40
+    get:
+      summary: Get a meter
+      description: >-
+        Returns one meter. `planCount` says how many plans price it; while any does, the meter cannot be updated or
+        deleted.
+      operationId: GetMeter
+      security:
+        - OAuth2Security:
+            - ap:meter:read
+            - ap:meter:manage
+      tags:
+        - Meters
+      responses:
+        '200':
+          description: The meter
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Meter'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    put:
+      summary: Update a meter
+      description: >-
+        Replaces the meter's settings, checked as on create; the meter is returned as GET /meters/{meterId} gives
+        it. A meter that a plan prices cannot be updated at all, its name, description and event keys included (409
+        METER_IN_USE). The change is not sent to API Portals; an API Portal that has the meter keeps its copy, and a
+        later publish of a plan charging for it there is refused while the two differ (409
+        PUBLICATION_METER_CONFLICT).
+      operationId: UpdateMeter
+      security:
+        - OAuth2Security:
+            - ap:meter:update
+            - ap:meter:manage
+      tags:
+        - Meters
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MeterRequest'
+      responses:
+        '200':
+          description: The meter, as stored
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Meter'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    delete:
+      summary: Delete a meter
+      description: >-
+        Deletes the meter here; refused while a plan charges for it (409 METER_IN_USE). The delete is not sent to API
+        Portals, which keep their copies, as for subscription plans.
+      operationId: DeleteMeter
+      security:
+        - OAuth2Security:
+            - ap:meter:delete
+            - ap:meter:manage
+      tags:
+        - Meters
+      responses:
+        '204':
+          description: Meter deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -8919,14 +9152,8 @@ components:
             ap:api_portal:manage: Full access to API Portals
             ap:api_portal:publication:read: Read an API's live listing on one portal
             ap:api_portal:read: Read API Portals
-            ap:api_portal:graphql_api:deprecate: Close a GraphQL API's live listing to new subscriptions
             ap:api_portal:graphql_api:manage: Publish, unpublish and deprecate a GraphQL API on a portal
-            ap:api_portal:graphql_api:publish: Publish, or re-publish, a GraphQL API's current draft to a portal
-            ap:api_portal:graphql_api:unpublish: Remove a GraphQL API's live listing from a portal
-            ap:api_portal:rest_api:deprecate: Close a REST API's live listing to new subscriptions
             ap:api_portal:rest_api:manage: Publish, unpublish and deprecate a REST API on a portal
-            ap:api_portal:rest_api:publish: Publish, or re-publish, a REST API's current draft to a portal
-            ap:api_portal:rest_api:unpublish: Remove a REST API's live listing from a portal
             ap:api_portal:update: Update an API Portal
             ap:api_publication:read: Read an API's publication status across every portal
             ap:application:api_key:create: Create an application API key
@@ -9077,11 +9304,17 @@ components:
             ap:subscription:manage: Full access to subscriptions
             ap:subscription:read: Read subscriptions
             ap:subscription:update: Update a subscription
+            ap:meter:create: Create a meter
+            ap:meter:delete: Delete a meter
+            ap:meter:manage: Full access to meters
+            ap:meter:read: Read meters
+            ap:meter:update: Update a meter
             ap:subscription_plan:create: Create a subscription plan
             ap:subscription_plan:delete: Delete a subscription plan
             ap:subscription_plan:manage: Full access to subscription plans
             ap:subscription_plan:read: Read subscription plans
             ap:subscription_plan:update: Update a subscription plan
+            ap:subscription_plan:pricing:read: Read the pricing of a subscription plan
             ap:thumbnail:manage: Create, update, and delete an API's thumbnail
             ap:thumbnail:read: Read an API's thumbnail
   schemas:
@@ -11493,7 +11726,9 @@ components:
       properties:
         id:
           type: string
-          description: Handle (URL-friendly slug) for the plan. Immutable after creation.
+          description: >-
+            Handle (URL-friendly slug) for the plan. Immutable after creation. At most 40 characters;
+            a longer one is refused with 400 "id must be at most 40 characters".
           minLength: 3
           maxLength: 40
           example: "gold"
@@ -11520,6 +11755,12 @@ components:
           type: string
           enum: [ACTIVE, INACTIVE]
           default: ACTIVE
+        pricing:
+          description: >-
+            Makes the plan paid. Optional; a plan created without it is free. Pricing is set only when a plan is
+            created and cannot be updated afterwards, so a free plan cannot become paid later, nor a paid plan free.
+          allOf:
+            - $ref: '#/components/schemas/SubscriptionPlanPricingRequest'
 
     SubscriptionPlan:
       type: object
@@ -11576,7 +11817,339 @@ components:
         updatedAt:
           type: string
           format: date-time
+        pricing:
+          readOnly: true
+          description: >-
+            The plan's pricing, present only on a paid plan. It is set when the plan is created (POST
+            /subscription-plans) and is the only part of a plan that never changes, so a free plan stays free and a
+            paid one paid. An update changes the plan's other fields and leaves `pricing` out: a body that carries
+            it gets `409` SUBSCRIPTION_PLAN_PRICING_LOCKED.
+          allOf:
+            - $ref: '#/components/schemas/SubscriptionPlanPricing'
+        usage:
+          readOnly: true
+          description: >-
+            What offers or uses the plan. Only present in the detail response (GET
+            /subscription-plans/{planId}), omitted from list responses. A plan in use cannot be deleted, and
+            its name and limit cannot be updated.
+          allOf:
+            - $ref: '#/components/schemas/SubscriptionPlanUsage'
 
+    SubscriptionPlanUsage:
+      type: object
+      description: >-
+        Counts of what offers or uses a plan. Only counts are given: a plan may be offered by more APIs than a
+        response or message can list.
+      required: [inUse, restApis, drafts, publications, subscriptions]
+      properties:
+        inUse:
+          type: boolean
+          description: Whether anything counted below offers or uses the plan.
+        restApis:
+          type: integer
+          description: How many REST APIs list the plan in their configuration.
+        drafts:
+          type: integer
+          description: How many APIs offer the plan in a publication draft (each API once).
+        publications:
+          type: integer
+          description: How many APIs offer the plan in a publication (each API once).
+        subscriptions:
+          type: integer
+          description: How many subscriptions use the plan.
+
+    MeterRequest:
+      type: object
+      required: [displayName, type]
+      additionalProperties: false
+      description: >-
+        A meter to create or replace. A field not listed here is refused.
+      properties:
+        id:
+          type: string
+          maxLength: 40
+          description: The meter's id; derived from displayName when omitted on create.
+        displayName:
+          type: string
+          maxLength: 255
+          description: Says what the meter counts, for example "Input tokens".
+        description:
+          type: string
+          maxLength: 1023
+        type:
+          type: string
+          enum: [REQUEST_COUNT, TOKENS]
+          x-enum-varnames: [MeterRequestTypeRequestCount, MeterRequestTypeTokens]
+          description: >-
+            What is counted: requests (REQUEST_COUNT), each counting one, or the tokens of AI API requests
+            (TOKENS), adding up the number in the event field `typeKey` names. A meter has no conditions:
+            each plan price gives its own filters.
+        typeKey:
+          type: string
+          nullable: true
+          maxLength: 255
+          description: >-
+            TOKENS only, and required there: the event field whose number the meter adds up, as a full path in the
+            gateway's analytics event, such as `metadata.aiTokenUsage.promptTokens` (our gateway also sends
+            `metadata.aiTokenUsage.completionTokens` and `metadata.aiTokenUsage.totalTokens`). 1 to 255 characters
+            with no spaces. Refused for a REQUEST_COUNT meter.
+          example: metadata.aiTokenUsage.promptTokens
+        filterFields:
+          type: array
+          maxItems: 10
+          description: >-
+            The properties this meter's prices can filter on, at most 10, each named by the administrator and read
+            from its own event field. Names and event keys are each unique within the meter. Optional; without them
+            the meter's prices take no filters.
+          items:
+            $ref: '#/components/schemas/MeterFilterFieldRequest'
+    MeterFilterFieldRequest:
+      type: object
+      required: [field, eventKey]
+      additionalProperties: false
+      description: >-
+        A property this meter's prices can filter on: a name the administrator gives it and the event field it
+        reads. Any operator works on any property; the values a price gives must fit what the event field holds.
+      properties:
+        field:
+          type: string
+          minLength: 1
+          maxLength: 40
+          description: >-
+            The property's name, 1 to 40 characters, unique within the meter ignoring case, such as `Status code`
+            or `Region`.
+          example: Status code
+        eventKey:
+          type: string
+          minLength: 1
+          maxLength: 255
+          description: >-
+            The event field the property reads, as a full path in the Moesif event; 1 to 255 characters with no
+            spaces, unique within the meter. Our gateway sends, among others, `response.status`, `request.verb`,
+            `metadata.apiType`, `metadata.mcpAnalytics.jsonRpcMethod`, `metadata.mcpAnalytics.capabilityName` and
+            `metadata.aiTokenUsage.promptTokens`, and Moesif adds `request.route`, the request path with its IDs as
+            `:id`.
+          example: response.status
+    Meter:
+      type: object
+      properties:
+        id:
+          type: string
+        displayName:
+          type: string
+        description:
+          type: string
+        type:
+          type: string
+          enum: [REQUEST_COUNT, TOKENS]
+          x-enum-varnames: [MeterTypeRequestCount, MeterTypeTokens]
+        typeKey:
+          type: string
+          nullable: true
+          description: >-
+            The event field whose number a TOKENS meter adds up, as stored on the meter, such as
+            `metadata.aiTokenUsage.promptTokens`; null for REQUEST_COUNT.
+        filterFields:
+          type: array
+          description: The fields this meter's prices can filter on, each with the event field it reads, as stored on the meter.
+          items:
+            $ref: '#/components/schemas/MeterFilterField'
+        updatedAt:
+          type: string
+          format: date-time
+        planCount:
+          type: integer
+          description: >-
+            How many plans charge for this meter. While it is above 0, the meter cannot be updated or deleted.
+    MeterFilterField:
+      type: object
+      required: [field, eventKey]
+      properties:
+        field:
+          type: string
+          description: The property's name, such as `Status code`.
+        eventKey:
+          type: string
+          description: The event field the property reads, such as `response.status`.
+    MeterListResponse:
+      type: object
+      required: [count, list, pagination]
+      properties:
+        count:
+          type: integer
+        list:
+          type: array
+          items:
+            $ref: '#/components/schemas/Meter'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+    PriceTier:
+      type: object
+      additionalProperties: false
+      properties:
+        upTo:
+          type: integer
+          format: int64
+          nullable: true
+          description: The last unit of the tier; null on the last tier.
+        unitAmount:
+          type: string
+          nullable: true
+        flatAmount:
+          type: string
+          nullable: true
+    PriceFilter:
+      type: object
+      additionalProperties: false
+      required: [field, operator, values]
+      description: >-
+        Narrows the requests a plan price counts, on one of its meter's properties. Any operator works on any
+        property. EQUALS, NOT_EQUALS and STARTS_WITH take one text value; IN and NOT_IN one to 20; text values are
+        matched exactly as written (case-sensitive). STARTS_WITH matches values that begin with the text, so
+        `/orders` also matches `/orders-archive`. NOT_EQUALS and NOT_IN count the requests that have the property
+        with another value: a request without it is not counted. GREATER_THAN (more than), GREATER_THAN_OR_EQUAL
+        (at least), LESS_THAN (less than) and LESS_THAN_OR_EQUAL (at most) compare a number: exactly one whole
+        number from 0 to 1000000000000. On one property a price has either one EQUALS, NOT_EQUALS, IN, NOT_IN or
+        STARTS_WITH filter, or one or two comparisons, which make a range (more than 100 and at most 500) and must be
+        able to hold together. Values are not checked against what the property holds: they must fit its event
+        field, numbers for a number field and the exact text for a text field.
+      properties:
+        field:
+          type: string
+          minLength: 1
+          maxLength: 40
+          description: The name of one of the meter's properties, matched ignoring case.
+          example: Status code
+        operator:
+          type: string
+          enum: [EQUALS, NOT_EQUALS, IN, NOT_IN, STARTS_WITH, GREATER_THAN, GREATER_THAN_OR_EQUAL, LESS_THAN, LESS_THAN_OR_EQUAL]
+          x-enum-varnames: [PriceFilterOperatorEquals, PriceFilterOperatorNotEquals, PriceFilterOperatorIn, PriceFilterOperatorNotIn, PriceFilterOperatorStartsWith, PriceFilterOperatorGreaterThan, PriceFilterOperatorGreaterThanOrEqual, PriceFilterOperatorLessThan, PriceFilterOperatorLessThanOrEqual]
+        values:
+          type: array
+          minItems: 1
+          maxItems: 20
+          description: The values to match; for a comparison, exactly one whole number written as a string, such as "333".
+          items:
+            type: string
+            maxLength: 255
+    SubscriptionPlanPrice:
+      type: object
+      additionalProperties: false
+      required: [meterId, pricingModel]
+      description: >-
+        A usage price of a paid plan: what the meter `meterId` counts, narrowed by the price's `filters`, charged in
+        one pricing model. PER_UNIT charges `unitAmount` per `unitQuantity` units; VOLUME prices all the units at
+        the tier their total falls in; GRADUATED prices the units in each tier at that tier's price. Fields of other
+        models are not accepted. A plan may price one meter several times, but two prices on the same meter must
+        not count the same request. A price has no name: it is shown as the meter's name followed by its filters.
+      properties:
+        meterId:
+          type: string
+          maxLength: 40
+          description: The `id` of the meter that counts the units, one of the organization's meters (GET /meters).
+        filters:
+          type: array
+          maxItems: 20
+          description: >-
+            Optional; each names one of the properties the meter lists in its filterFields. On one property a price
+            has either one EQUALS, NOT_EQUALS, IN, NOT_IN or STARTS_WITH filter, or one or two comparisons.
+            Without filters the price counts every request the meter counts.
+          items:
+            $ref: '#/components/schemas/PriceFilter'
+        pricingModel:
+          type: string
+          enum: [PER_UNIT, VOLUME, GRADUATED]
+          x-enum-varnames: [SubscriptionPlanPricePricingModelPerUnit, SubscriptionPlanPricePricingModelVolume, SubscriptionPlanPricePricingModelGraduated]
+        unitAmount:
+          type: string
+          nullable: true
+          description: PER_UNIT only. The price per `unitQuantity` units, as a decimal string.
+        unitQuantity:
+          type: integer
+          format: int64
+          minimum: 1
+          nullable: true
+          description: PER_UNIT only. How many units `unitAmount` is for (default 1).
+        tiers:
+          type: array
+          nullable: true
+          maxItems: 10
+          description: VOLUME and GRADUATED only. In ascending order; the last tier has no `upTo`.
+          items:
+            $ref: '#/components/schemas/PriceTier'
+    SubscriptionPlanPricingRequest:
+      type: object
+      description: >-
+        What a paid subscription plan costs, given when the plan is created. A FLAT_RATE plan charges `flatAmount`
+        every billing period and has no prices. A USAGE_BASED plan charges its `prices` (1 to 20) on one invoice per
+        period and has no flat amount. A plan created without pricing is free. Pricing can't be updated once the plan
+        exists, so a field the pricing, a price, a filter or a tier does not take is refused rather than ignored.
+      additionalProperties: false
+      required: [pricingType, currency, billingPeriod]
+      properties:
+        pricingType:
+          type: string
+          enum: [FLAT_RATE, USAGE_BASED]
+          x-enum-varnames: [SubscriptionPlanPricingRequestPricingTypeFlatRate, SubscriptionPlanPricingRequestPricingTypeUsageBased]
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+        billingPeriod:
+          type: string
+          enum: [MONTH, YEAR]
+          x-enum-varnames: [SubscriptionPlanPricingRequestBillingPeriodMonth, SubscriptionPlanPricingRequestBillingPeriodYear]
+        flatAmount:
+          type: string
+          nullable: true
+          description: FLAT_RATE only. The amount charged every billing period, as a decimal string in the currency.
+        prices:
+          type: array
+          maxItems: 20
+          description: USAGE_BASED only.
+          items:
+            $ref: '#/components/schemas/SubscriptionPlanPrice'
+    SubscriptionPlanPricing:
+      type: object
+      properties:
+        subscriptionPlanId:
+          type: string
+        pricingType:
+          type: string
+          enum: [FLAT_RATE, USAGE_BASED]
+          x-enum-varnames: [SubscriptionPlanPricingPricingTypeFlatRate, SubscriptionPlanPricingPricingTypeUsageBased]
+        currency:
+          type: string
+        billingPeriod:
+          type: string
+          enum: [MONTH, YEAR]
+          x-enum-varnames: [SubscriptionPlanPricingBillingPeriodMonth, SubscriptionPlanPricingBillingPeriodYear]
+        flatAmount:
+          type: string
+          nullable: true
+        prices:
+          type: array
+          items:
+            $ref: '#/components/schemas/SubscriptionPlanPrice'
+        updatedAt:
+          type: string
+          format: date-time
+    SubscriptionBilling:
+      type: object
+      readOnly: true
+      description: The billing of a paid subscription, as the API Portal reports it from the billing provider.
+      properties:
+        status:
+          type: string
+          enum: [ACTIVE, PAST_DUE, UNPAID, CANCELLED]
+          x-enum-varnames: [SubscriptionBillingStatusActive, SubscriptionBillingStatusPastDue, SubscriptionBillingStatusUnpaid, SubscriptionBillingStatusCancelled]
+          description: Gateways refuse calls (403) while UNPAID or CANCELLED.
+        customerId:
+          type: string
+          description: The billing provider's customer.
+        subscriptionId:
+          type: string
+          description: The billing provider's subscription.
     SubscriptionPlanListResponse:
       type: object
       required:
@@ -11674,6 +12247,8 @@ components:
         status:
           type: string
           enum: [ACTIVE, INACTIVE, REVOKED]
+        billing:
+          $ref: '#/components/schemas/SubscriptionBilling'
         createdBy:
           type: string
           readOnly: true
@@ -15185,12 +15760,20 @@ components:
         Conflict. code identifies which: PUBLICATION_STATE_CONFLICT when the action is not valid
         for the publication's current status, PUBLICATION_DRAFT_CHANGED when the draft was saved
         while a publish of it was in flight (the API Portal may hold the earlier copy; review the
-        draft and publish again), or PUBLICATION_PORTAL_CONFLICT when the API Portal refused the
-        change: the handle or display name and version is taken, the listing still has
-        subscriptions or active API keys, or a subscription plan could not be created because the
-        portal already holds it. A portal conflict does not clear on retry (rename, remove the
+        draft and publish again), PUBLICATION_PLAN_PRICING_CONFLICT when the API Portal already
+        has a plan with the handle of an offered plan but different pricing (a portal cannot change
+        a plan's pricing; offer a plan with another handle), PUBLICATION_METER_CONFLICT when it
+        already has a meter with the same id as one an offered plan charges for, but with other
+        settings (price a new plan with a meter of another id), or PUBLICATION_PORTAL_CONFLICT when
+        the API Portal refused the change: the handle or display name and version is taken, the
+        listing still has subscriptions or active API keys, a plan the publish removes from the API
+        still has subscriptions to it there, or a subscription plan could not be created or
+        updated. A portal conflict does not clear on retry (rename, remove the
         consumers, or deprecate instead), except a plan conflict from a concurrent publish, which
-        usually does. No local state was changed by any of these.
+        usually does. No local state was changed by any of these. Before the API is pushed, the
+        API Portal's copy of each offered plan is created, after the meters its prices charge for,
+        or, when its name or limit differs, updated. When the push then fails, the plans and
+        meters this publish created are removed again; the name and limit updates stay.
       content:
         application/json:
           schema:
@@ -15764,6 +16347,8 @@ tags:
     description: Deployment operations for various artifact types
   - name: SubscriptionPlans
     description: Subscription plan management operations — rate-limit tiers that subscriptions are created against
+  - name: Meters
+    description: What paid subscription plans charge for. Kept here and sent to an API Portal with the plans published there, as subscription plans are.
   - name: Subscriptions
     description: Subscription management operations linking applications to APIs under a subscription plan
   - name: Secrets

@@ -130,6 +130,27 @@ data:
     org_callback = {{ $auth.idp.orgCallback }}
     silent_sso = {{ $auth.idp.silentSso }}
     token_refresh_timeout_ms = {{ $auth.idp.tokenRefreshTimeoutMs | int }}
+    {{- /* Per-organization issuers. Mirror the portal's own startup checks so a bad
+           template fails `helm install` instead of crash-looping the pod. */}}
+    {{- $issuerTpl := $auth.idp.issuerTemplate | default "" }}
+    {{- $jwksTpl := $auth.idp.jwksUrlTemplate | default "" }}
+    {{- range $k, $v := dict "issuerTemplate" $issuerTpl "jwksUrlTemplate" $jwksTpl }}
+    {{- if and $v (ne (len (regexFindAll "\\{org\\}" $v -1)) 1) }}
+    {{- fail (printf "config.auth.idp.%s must contain exactly one {org} placeholder, got %q" $k $v) }}
+    {{- end }}
+    {{- end }}
+    {{- if and $jwksTpl (not (hasPrefix "https://" $jwksTpl)) }}
+    {{- fail (printf "config.auth.idp.jwksUrlTemplate must use https:// (got %q) — a plain http JWKS URL lets a network attacker substitute the key set and sign accepted tokens" $jwksTpl) }}
+    {{- end }}
+    {{- if and $jwksTpl (not $issuerTpl) }}
+    {{- fail "config.auth.idp.jwksUrlTemplate is set without config.auth.idp.issuerTemplate — it would never be used" }}
+    {{- end }}
+    {{- if or $issuerTpl $jwksTpl $auth.idp.templateOrgClaim }}
+    # Per-organization issuers (multi-organization mode only).
+    issuer_template = {{ $issuerTpl | quote }}
+    jwks_url_template = {{ $jwksTpl | quote }}
+    template_org_claim = {{ $auth.idp.templateOrgClaim | default "" | quote }}
+    {{- end }}
     {{- end }}
 
     {{- $org := $cfg.organization }}

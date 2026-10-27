@@ -253,12 +253,21 @@ const GatewaysList: FC<GatewaysListProps> = ({
                               </Typography>
                             </TableCell>
                             <TableCell align="right">
-                              <IconButton size="small" onClick={() => onEditClick(gateway.id)} aria-label={`Edit ${gateway.name}`}>
+                              {/* A gateway being deleted is on its way out:
+                                  there is nothing left to edit, configure or
+                                  delete again. */}
+                              <IconButton
+                                size="small"
+                                onClick={() => onEditClick(gateway.id)}
+                                disabled={gateway.status === 'deleting'}
+                                aria-label={`Edit ${gateway.name}`}
+                              >
                                 <Edit size={16} />
                               </IconButton>
                               <IconButton
                                 size="small"
                                 onClick={() => setSettingsGateway(gateway)}
+                                disabled={gateway.status === 'deleting'}
                                 aria-label={`Configure ${gateway.name}`}
                               >
                                 <Settings size={16} />
@@ -267,6 +276,7 @@ const GatewaysList: FC<GatewaysListProps> = ({
                                 size="small"
                                 color="error"
                                 onClick={() => setDeleteTarget({ id: gateway.id, name: gateway.name })}
+                                disabled={gateway.status === 'deleting'}
                                 aria-label={`Delete ${gateway.name}`}
                               >
                                 <Trash2 size={16} />

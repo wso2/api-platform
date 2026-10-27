@@ -119,10 +119,10 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
   );
 
   // Poll only while there is something to wait for: a gateway that is not yet
-  // active. Once they are all active the interval is torn down, so a settled
-  // list costs nothing. Creating another gateway makes this true again and the
-  // poll restarts. Deliberately keyed on the boolean, not on `gateways`, so a
-  // poll's own result does not reset the interval.
+  // active, or one still being deleted. Once they are all active the interval is
+  // torn down, so a settled list costs nothing. Creating another gateway makes
+  // this true again and the poll restarts. Deliberately keyed on the boolean, not
+  // on `gateways`, so a poll's own result does not reset the interval.
   const awaitingStatus = visibleGateways.some((gateway) => gateway.status !== 'active');
 
   useEffect(() => {
@@ -170,8 +170,14 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
       if (deletingRef.current) return;
       deletingRef.current = true;
       try {
-        await client.deleteGateway(id);
-        notify(`Gateway "${name}" deleted.`, 'success');
+        // A gateway torn down in the background stays listed as deleting, and the
+        // status poll drops it once it is gone.
+        const { pending } = await client.deleteGateway(id);
+        if (pending) {
+          notify(`Gateway "${name}" is being deleted.`, 'info');
+        } else {
+          notify(`Gateway "${name}" deleted.`, 'success');
+        }
         await load();
       } catch (deleteError) {
         notify(

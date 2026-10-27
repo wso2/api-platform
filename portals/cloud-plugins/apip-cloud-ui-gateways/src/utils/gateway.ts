@@ -44,6 +44,8 @@ export function gatewayStatusLabel(status: GatewayStatus): string {
       return 'Failed';
     case 'active':
       return 'Active';
+    case 'deleting':
+      return 'Deleting';
     default:
       return 'Inactive';
   }
@@ -52,6 +54,7 @@ export function gatewayStatusLabel(status: GatewayStatus): string {
 export function gatewayStatusColor(status: GatewayStatus): 'success' | 'error' | 'info' | 'warning' {
   switch (status) {
     case 'provisioning':
+    case 'deleting':
       return 'info';
     case 'failed':
       return 'error';
