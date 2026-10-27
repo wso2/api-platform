@@ -627,10 +627,6 @@ blocks:
       - name: prompt-decorator
         features:
           - features/ai-workspace-gateway/llm-policies/prompt_decorator.feature
-      - name: aws-bedrock-guardrail
-        tags: "gateway-version>1.2.0"
-        features:
-          - features/gateway/guardrails-policies/aws_bedrock_guardrail.feature
       - name: mcp-deploy
         features:
           - features/ai-workspace-gateway/mcp/mcp_deploy.feature
@@ -676,20 +672,6 @@ blocks:
         tags: "gateway-version>=1.2.0"
         features:
           - features/gateway/core/template_functions_typed.feature
-
-  - name: legacy-aws-bedrock-guardrail
-    parallel: 1
-    components:
-      - name: platform-gateway
-        overlay: tests/framework/core/catalog/overlays/aws-bedrock-guardrail-legacy.toml
-        db:
-          matrix: [sqlite, postgres, sqlserver]
-      - name: testbench
-    runners:
-      - name: aws-bedrock-guardrail
-        tags: "gateway-version<=1.2.0"
-        features:
-          - features/gateway/guardrails-policies/aws_bedrock_guardrail.feature
 
   - name: config-dump
     parallel: 1
