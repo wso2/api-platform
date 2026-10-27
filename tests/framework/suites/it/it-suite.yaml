@@ -532,9 +532,6 @@ blocks:
         tags: "gateway-version>=1.2.0"
         features:
           - features/gateway/routes-policies/redirect.feature
-      - name: request-rewrite
-        features:
-          - features/gateway/routes-policies/request_rewrite.feature
       - name: respond
         features:
           - features/gateway/routes-policies/respond.feature
