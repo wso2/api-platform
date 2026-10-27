@@ -558,9 +558,6 @@ blocks:
       - name: url-guardrail
         features:
           - features/gateway/guardrails-policies/url_guardrail.feature
-      - name: json-schema-guardrail
-        features:
-          - features/gateway/guardrails-policies/json_schema_guardrail.feature
       - name: cel-conditions
         features:
           - features/gateway/core/cel_conditions.feature
