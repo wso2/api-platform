@@ -524,6 +524,76 @@ blocks:
 	}
 }
 
+func TestMultiAxisMatrixImageResolution(t *testing.T) {
+	r := testRegistry(t)
+	require.NoError(t, r.Register(&components.Definition{
+		Name: "platform-gateway", Image: components.ImageRef{Ref: "pg:test"}, Alias: "platform-gateway",
+		Endpoints: []components.Endpoint{{Name: "http", Port: 8080, Scheme: "http"}},
+		DB: &components.DBContract{
+			Supported: []components.DBType{components.SQLite, components.Postgres, components.SQLServer},
+			Schema: map[components.DBType][]string{
+				components.Postgres:  {"pg.postgres.sql"},
+				components.SQLServer: {"pg.sqlserver.sql"},
+			},
+			SelfMigrates: []components.DBType{components.SQLite},
+			Env:          func(components.DSN) map[string]string { return nil },
+		},
+	}))
+	require.NoError(t, r.Validate())
+
+	src := `
+suite: s
+defaults:
+  db:
+    api-portal: postgres
+blocks:
+  - name: platform-api-core
+    components:
+      - name: gateway-controller
+        db:
+          matrix: [postgres:17-alpine, sqlite]
+      - name: platform-gateway
+        db:
+          matrix: [sqlserver:2022-latest, postgres:16-alpine]
+      - name: mock-platform-api
+      - name: api-portal
+    runners: [{name: r, features: [f.feature]}]
+`
+	resolved, err := Load([]byte(src), r)
+	require.NoError(t, err)
+	require.Len(t, resolved.Blocks, 4, "2 gateway-controller variants x 2 platform-gateway variants must multiply")
+
+	wantGatewayControllerImage := map[components.DBType]components.ImageRef{
+		components.Postgres: SupportedDBVariants["postgres:17-alpine"].Image,
+		components.SQLite:   SupportedDBVariants["sqlite"].Image,
+	}
+	wantPlatformGatewayImage := map[components.DBType]components.ImageRef{
+		components.SQLServer: SupportedDBVariants["sqlserver:2022-latest"].Image,
+		components.Postgres:  SupportedDBVariants["postgres:16-alpine"].Image,
+	}
+
+	for _, b := range resolved.Blocks {
+		byName := map[string]ResolvedComponent{}
+		for _, c := range b.Components {
+			byName[c.Def.Name] = c
+		}
+		gw, papi := byName["gateway-controller"], byName["platform-gateway"]
+
+		require.Equal(t, wantGatewayControllerImage[gw.DB], gw.Image,
+			"gateway-controller must resolve its own sweep's image, not platform-gateway's")
+		require.Equal(t, wantPlatformGatewayImage[papi.DB], papi.Image,
+			"platform-gateway must resolve its own sweep's image, not gateway-controller's")
+
+		if gw.DB == components.Postgres {
+			require.Contains(t, b.Name, "gateway-controller-postgres-17-alpine")
+		}
+		if papi.DB == components.Postgres {
+			require.Contains(t, b.Name, "platform-gateway-postgres")
+			require.NotContains(t, b.Name, "platform-gateway-postgres-17-alpine")
+		}
+	}
+}
+
 func TestStrictParsing(t *testing.T) {
 	t.Run("an unknown key is rejected", func(t *testing.T) {
 		src := `
