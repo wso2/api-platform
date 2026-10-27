@@ -20,6 +20,7 @@ Feature: APIP cloud environment lifecycle
   I want to manage a non-production environment
   So that duplicate creation and eventual deletion are verified
 
+  @ID_APIP_ENVIRONMENT_001
   Scenario: A non-production environment rejects duplicate creation and is eventually deleted
     Given I obtain an APIP cloud console token
     When I create a synthetic non-production APIP environment
