@@ -110,9 +110,11 @@ func (s *SQLiteStorage) initSchema() error {
 }
 
 // migrateSchemaV5ToV6 adds the certificates usage, role, match_json,
-// private_key_ciphertext and key_algorithm columns to a version 5 database
-// and sets user_version to 6. usage and role are defaulted; the rest are
-// nullable. No existing column changes.
+// private_key_ciphertext and key_algorithm columns to a version 5 database,
+// creates the graphql_apis table, and sets user_version to 6. usage and role
+// are defaulted; the rest are nullable. No existing column changes.
+// graphql_apis must exist before the controller starts: GetAllConfigs reads
+// every builtin resource table, so loading configurations fails without it.
 func (s *SQLiteStorage) migrateSchemaV5ToV6() error {
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -136,6 +138,15 @@ func (s *SQLiteStorage) migrateSchemaV5ToV6() error {
 	}
 	if _, err := tx.Exec(`ALTER TABLE certificates ADD COLUMN key_algorithm TEXT`); err != nil {
 		return fmt.Errorf("failed to add certificates.key_algorithm column: %w", err)
+	}
+	if _, err := tx.Exec(`CREATE TABLE IF NOT EXISTS graphql_apis (
+		uuid TEXT NOT NULL,
+		gateway_id TEXT NOT NULL,
+		configuration TEXT NOT NULL,
+		PRIMARY KEY (gateway_id, uuid),
+		FOREIGN KEY(gateway_id, uuid) REFERENCES artifacts(gateway_id, uuid) ON DELETE CASCADE
+	)`); err != nil {
+		return fmt.Errorf("failed to create graphql_apis table: %w", err)
 	}
 	if _, err := tx.Exec(fmt.Sprintf("PRAGMA user_version = %d", currentSchemaVersion)); err != nil {
 		return fmt.Errorf("failed to set schema version: %w", err)

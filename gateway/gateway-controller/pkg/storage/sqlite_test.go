@@ -25,6 +25,8 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -882,6 +884,112 @@ func TestSQLite_UpgradeAddsCertificateUsageColumns(t *testing.T) {
 		t.Fatal("expected a non-nil Match for the relay row saved after upgrading a v4 database")
 	}
 	assert.DeepEqual(t, savedRelay.Match.DNSSANs, relayCert.Match.DNSSANs)
+}
+
+// TestSQLite_UpgradeFromReleasedV5SchemaMatchesFreshSchema migrates the
+// version 5 schema that gateway 2026.09.24 shipped, loads every stored
+// configuration as the controller does at startup, and checks the migrated
+// database has the same tables, columns, foreign keys and indexes as a fresh
+// one. A table added to gateway-controller-db.sql but not to the migration
+// fails here, as graphql_apis did.
+func TestSQLite_UpgradeFromReleasedV5SchemaMatchesFreshSchema(t *testing.T) {
+	releasedSchema, err := os.ReadFile(filepath.Join("testdata", "gateway-controller-db.v5.sql"))
+	assert.NilError(t, err)
+
+	tmpDir := t.TempDir()
+	gatewayID := "platform-gateway-id"
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+
+	upgradedPath := filepath.Join(tmpDir, "upgraded.db")
+	rawDB, err := sql.Open("sqlite3", upgradedPath)
+	assert.NilError(t, err)
+	_, err = rawDB.Exec(string(releasedSchema))
+	assert.NilError(t, err)
+	var version int
+	assert.NilError(t, rawDB.QueryRow("PRAGMA user_version").Scan(&version))
+	assert.Equal(t, version, previousSchemaVersion)
+	assert.NilError(t, rawDB.Close())
+
+	upgraded, err := NewStorage(BackendConfig{Type: "sqlite", SQLitePath: upgradedPath, GatewayID: gatewayID}, logger)
+	assert.NilError(t, err)
+	defer upgraded.(*sqlStore).db.Close()
+
+	_, err = upgraded.GetAllConfigs()
+	assert.NilError(t, err, "loading configurations from a migrated version 5 database")
+
+	fresh, err := NewStorage(BackendConfig{Type: "sqlite", SQLitePath: filepath.Join(tmpDir, "fresh.db"), GatewayID: gatewayID}, logger)
+	assert.NilError(t, err)
+	defer fresh.(*sqlStore).db.Close()
+
+	assert.DeepEqual(t, sqliteSchemaShape(t, upgraded.(*sqlStore).db), sqliteSchemaShape(t, fresh.(*sqlStore).db))
+}
+
+// sqliteSchemaShape describes a database's schema by object name: each table's
+// columns and foreign keys, and each index's table and columns. Column
+// positions are left out, because a migration appends the columns it adds
+// while a fresh CREATE TABLE places them where the schema file does.
+func sqliteSchemaShape(t *testing.T, db *sql.DB) map[string]string {
+	t.Helper()
+
+	type object struct{ kind, name, table string }
+	var objects []object
+	rows, err := db.Query(`SELECT type, name, tbl_name FROM sqlite_master WHERE name NOT LIKE 'sqlite_%'`)
+	assert.NilError(t, err)
+	for rows.Next() {
+		var o object
+		assert.NilError(t, rows.Scan(&o.kind, &o.name, &o.table))
+		objects = append(objects, o)
+	}
+	assert.NilError(t, rows.Err())
+	assert.NilError(t, rows.Close())
+
+	shape := make(map[string]string, len(objects))
+	for _, o := range objects {
+		var parts []string
+		switch o.kind {
+		case "table":
+			parts = append(parts, pragmaRows(t, db, fmt.Sprintf("PRAGMA table_info(%q)", o.name), "cid")...)
+			parts = append(parts, pragmaRows(t, db, fmt.Sprintf("PRAGMA foreign_key_list(%q)", o.name), "id", "seq")...)
+		case "index":
+			parts = append(parts, "on="+o.table)
+			parts = append(parts, pragmaRows(t, db, fmt.Sprintf("PRAGMA index_info(%q)", o.name), "seqno", "cid")...)
+		}
+		sort.Strings(parts)
+		shape[o.kind+" "+o.name] = strings.Join(parts, "; ")
+	}
+	return shape
+}
+
+// pragmaRows runs a PRAGMA query and returns each row as column=value pairs,
+// leaving out the named columns.
+func pragmaRows(t *testing.T, db *sql.DB, query string, skip ...string) []string {
+	t.Helper()
+
+	rows, err := db.Query(query)
+	assert.NilError(t, err)
+	defer rows.Close()
+	columns, err := rows.Columns()
+	assert.NilError(t, err)
+
+	var out []string
+	for rows.Next() {
+		values := make([]sql.NullString, len(columns))
+		dest := make([]any, len(columns))
+		for i := range values {
+			dest[i] = &values[i]
+		}
+		assert.NilError(t, rows.Scan(dest...))
+		var fields []string
+		for i, column := range columns {
+			if slices.Contains(skip, column) {
+				continue
+			}
+			fields = append(fields, column+"="+values[i].String)
+		}
+		out = append(out, strings.Join(fields, ","))
+	}
+	assert.NilError(t, rows.Err())
+	return out
 }
 
 func TestSQLiteStorage_GetAPIKeyByID_NotFound(t *testing.T) {
