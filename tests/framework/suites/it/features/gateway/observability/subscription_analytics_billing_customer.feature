@@ -66,6 +66,7 @@ Feature: Subscription analytics attribute paid calls to the billing customer
 
     When I set header "Subscription-Key" to "${CTX:subToken}"
     And I send a "GET" request to "${CTX:apiContext}/v1.0/items/42" until status 200
+    And I wait for an analytics event for path "${CTX:apiContext}/v1.0/items/42" with response status 200
     And I wait for the analytics collector to settle
     And I reset the analytics collector
     And I send a "GET" request to "${CTX:apiContext}/v1.0/items/42"
@@ -114,6 +115,7 @@ Feature: Subscription analytics attribute paid calls to the billing customer
     # The first call uses the quota of 1; the next is over it, served and billed.
     When I set header "Subscription-Key" to "${CTX:subToken}"
     And I send a "GET" request to "${CTX:apiContext}/v1.0/health" until status 200
+    And I wait for an analytics event for path "${CTX:apiContext}/v1.0/health" with response status 200
     And I wait for the analytics collector to settle
     And I reset the analytics collector
     And I send a "GET" request to "${CTX:apiContext}/v1.0/health"
