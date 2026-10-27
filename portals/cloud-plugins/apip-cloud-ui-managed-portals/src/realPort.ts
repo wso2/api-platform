@@ -184,8 +184,7 @@ function fromWire(w: WirePortal): ManagedPortal {
  */
 async function awaitCreatedPortal(base: string, orgHandle: string, handle: string): Promise<ManagedPortal | null> {
   const deadline = Date.now() + CREATE_SETTLE_WINDOW_MS;
-  while (Date.now() < deadline) {
-    await new Promise((resolve) => setTimeout(resolve, CREATE_SETTLE_INTERVAL_MS));
+  for (;;) {
     try {
       const body = await request<WirePortal>(
         base,
@@ -195,11 +194,14 @@ async function awaitCreatedPortal(base: string, orgHandle: string, handle: strin
       );
       return fromWire(body);
     } catch (err) {
-      if (isPermanentPollError(err)) throw err;
-      // Not there yet, or a transient error; keep waiting until the deadline.
+      // Only a server answer that can change by waiting keeps the poll going;
+      // anything else is reported as it is.
+      if (!(err instanceof RequestError) || isPermanentPollError(err)) throw err;
     }
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) return null;
+    await new Promise((resolve) => setTimeout(resolve, Math.min(CREATE_SETTLE_INTERVAL_MS, remaining)));
   }
-  return null;
 }
 
 /** PortalPort backed by the BFF proxy at `base`, scoped to `orgHandle` via the X-Org-Id header. */
