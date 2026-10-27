@@ -79,6 +79,16 @@ const currentSchemaVersion = 6
 // in place. Any other stored version is refused rather than skipped.
 const previousSchemaVersion = 5
 
+// graphQLAPIsTableSQL creates graphql_apis as gateway-controller-db.sql does.
+// The version 5 to 6 migration and the version 6 repair both run it.
+const graphQLAPIsTableSQL = `CREATE TABLE IF NOT EXISTS graphql_apis (
+	uuid TEXT NOT NULL,
+	gateway_id TEXT NOT NULL,
+	configuration TEXT NOT NULL,
+	PRIMARY KEY (gateway_id, uuid),
+	FOREIGN KEY(gateway_id, uuid) REFERENCES artifacts(gateway_id, uuid) ON DELETE CASCADE
+)`
+
 // initSchema creates the database schema if it doesn't exist
 func (s *SQLiteStorage) initSchema() error {
 	var version int
@@ -101,6 +111,10 @@ func (s *SQLiteStorage) initSchema() error {
 			return fmt.Errorf("failed to migrate schema from version %d to %d: %w", version, currentSchemaVersion, err)
 		}
 		s.logger.Info("Database schema migrated successfully")
+	case version == currentSchemaVersion:
+		if err := s.repairMissingGraphQLAPIsTable(); err != nil {
+			return err
+		}
 	case version != currentSchemaVersion:
 		return fmt.Errorf("unsupported schema version %d, expected %d; delete the database to recreate", version, currentSchemaVersion)
 	}
@@ -139,13 +153,7 @@ func (s *SQLiteStorage) migrateSchemaV5ToV6() error {
 	if _, err := tx.Exec(`ALTER TABLE certificates ADD COLUMN key_algorithm TEXT`); err != nil {
 		return fmt.Errorf("failed to add certificates.key_algorithm column: %w", err)
 	}
-	if _, err := tx.Exec(`CREATE TABLE IF NOT EXISTS graphql_apis (
-		uuid TEXT NOT NULL,
-		gateway_id TEXT NOT NULL,
-		configuration TEXT NOT NULL,
-		PRIMARY KEY (gateway_id, uuid),
-		FOREIGN KEY(gateway_id, uuid) REFERENCES artifacts(gateway_id, uuid) ON DELETE CASCADE
-	)`); err != nil {
+	if _, err := tx.Exec(graphQLAPIsTableSQL); err != nil {
 		return fmt.Errorf("failed to create graphql_apis table: %w", err)
 	}
 	if _, err := tx.Exec(fmt.Sprintf("PRAGMA user_version = %d", currentSchemaVersion)); err != nil {
@@ -155,6 +163,26 @@ func (s *SQLiteStorage) migrateSchemaV5ToV6() error {
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("failed to commit migration: %w", err)
 	}
+	return nil
+}
+
+// repairMissingGraphQLAPIsTable creates graphql_apis in a version 6 database
+// that lacks it. Earlier controllers migrated version 5 databases to version 6
+// without the table, which left them unable to load configurations at startup.
+// It does nothing when the table exists.
+func (s *SQLiteStorage) repairMissingGraphQLAPIsTable() error {
+	var tables int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'graphql_apis'`).Scan(&tables); err != nil {
+		return fmt.Errorf("failed to check for the graphql_apis table: %w", err)
+	}
+	if tables > 0 {
+		return nil
+	}
+	if _, err := s.db.Exec(graphQLAPIsTableSQL); err != nil {
+		return fmt.Errorf("failed to create the missing graphql_apis table: %w", err)
+	}
+	s.logger.Warn("Created the graphql_apis table missing from a version 6 database",
+		slog.String("reason", "an earlier version 5 to 6 migration did not create it"))
 	return nil
 }
 

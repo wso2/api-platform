@@ -893,15 +893,51 @@ func TestSQLite_UpgradeAddsCertificateUsageColumns(t *testing.T) {
 // one. A table added to gateway-controller-db.sql but not to the migration
 // fails here, as graphql_apis did.
 func TestSQLite_UpgradeFromReleasedV5SchemaMatchesFreshSchema(t *testing.T) {
+	tmpDir := t.TempDir()
+	upgradedPath := filepath.Join(tmpDir, "upgraded.db")
+	createReleasedV5Database(t, upgradedPath)
+
+	assertStartsLikeFreshDatabase(t, upgradedPath, filepath.Join(tmpDir, "fresh.db"))
+}
+
+// TestSQLite_RepairsVersion6DatabaseWithoutGraphQLAPIs opens a database that an
+// earlier controller migrated from version 5 to 6 without graphql_apis: the
+// certificates columns were added and user_version set to 6, but the table was
+// never created. The controller creates it at startup and loads configurations.
+func TestSQLite_RepairsVersion6DatabaseWithoutGraphQLAPIs(t *testing.T) {
+	tmpDir := t.TempDir()
+	stuckPath := filepath.Join(tmpDir, "stuck.db")
+	createReleasedV5Database(t, stuckPath)
+
+	rawDB, err := sql.Open("sqlite3", stuckPath)
+	assert.NilError(t, err)
+	for _, statement := range []string{
+		`ALTER TABLE certificates ADD COLUMN usage TEXT NOT NULL DEFAULT 'upstream'`,
+		`ALTER TABLE certificates ADD COLUMN role TEXT NOT NULL DEFAULT 'client'`,
+		`ALTER TABLE certificates ADD COLUMN match_json TEXT`,
+		`ALTER TABLE certificates ADD COLUMN private_key_ciphertext TEXT`,
+		`ALTER TABLE certificates ADD COLUMN key_algorithm TEXT`,
+		fmt.Sprintf("PRAGMA user_version = %d", currentSchemaVersion),
+	} {
+		_, err = rawDB.Exec(statement)
+		assert.NilError(t, err)
+	}
+	var tables int
+	assert.NilError(t, rawDB.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'graphql_apis'`).Scan(&tables))
+	assert.Equal(t, tables, 0)
+	assert.NilError(t, rawDB.Close())
+
+	assertStartsLikeFreshDatabase(t, stuckPath, filepath.Join(tmpDir, "fresh.db"))
+}
+
+// createReleasedV5Database creates a database at path from the version 5 schema
+// that gateway 2026.09.24 shipped.
+func createReleasedV5Database(t *testing.T, path string) {
+	t.Helper()
+
 	releasedSchema, err := os.ReadFile(filepath.Join("testdata", "gateway-controller-db.v5.sql"))
 	assert.NilError(t, err)
-
-	tmpDir := t.TempDir()
-	gatewayID := "platform-gateway-id"
-	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-
-	upgradedPath := filepath.Join(tmpDir, "upgraded.db")
-	rawDB, err := sql.Open("sqlite3", upgradedPath)
+	rawDB, err := sql.Open("sqlite3", path)
 	assert.NilError(t, err)
 	_, err = rawDB.Exec(string(releasedSchema))
 	assert.NilError(t, err)
@@ -909,55 +945,121 @@ func TestSQLite_UpgradeFromReleasedV5SchemaMatchesFreshSchema(t *testing.T) {
 	assert.NilError(t, rawDB.QueryRow("PRAGMA user_version").Scan(&version))
 	assert.Equal(t, version, previousSchemaVersion)
 	assert.NilError(t, rawDB.Close())
+}
 
-	upgraded, err := NewStorage(BackendConfig{Type: "sqlite", SQLitePath: upgradedPath, GatewayID: gatewayID}, logger)
+// assertStartsLikeFreshDatabase opens the database at path as the controller
+// does, loads every stored configuration as it does at startup, and checks the
+// schema matches a fresh database created at freshPath.
+func assertStartsLikeFreshDatabase(t *testing.T, path, freshPath string) {
+	t.Helper()
+
+	gatewayID := "platform-gateway-id"
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+
+	opened, err := NewStorage(BackendConfig{Type: "sqlite", SQLitePath: path, GatewayID: gatewayID}, logger)
 	assert.NilError(t, err)
-	defer upgraded.(*sqlStore).db.Close()
+	defer opened.(*sqlStore).db.Close()
 
-	_, err = upgraded.GetAllConfigs()
-	assert.NilError(t, err, "loading configurations from a migrated version 5 database")
+	_, err = opened.GetAllConfigs()
+	assert.NilError(t, err, "loading configurations at startup")
 
-	fresh, err := NewStorage(BackendConfig{Type: "sqlite", SQLitePath: filepath.Join(tmpDir, "fresh.db"), GatewayID: gatewayID}, logger)
+	fresh, err := NewStorage(BackendConfig{Type: "sqlite", SQLitePath: freshPath, GatewayID: gatewayID}, logger)
 	assert.NilError(t, err)
 	defer fresh.(*sqlStore).db.Close()
 
-	assert.DeepEqual(t, sqliteSchemaShape(t, upgraded.(*sqlStore).db), sqliteSchemaShape(t, fresh.(*sqlStore).db))
+	assert.DeepEqual(t, sqliteSchemaShape(t, opened.(*sqlStore).db), sqliteSchemaShape(t, fresh.(*sqlStore).db))
 }
 
-// sqliteSchemaShape describes a database's schema by object name: each table's
-// columns and foreign keys, and each index's table and columns. Column
-// positions are left out, because a migration appends the columns it adds
-// while a fresh CREATE TABLE places them where the schema file does.
+// sqliteSchemaShape describes a database's schema: for each table, its
+// columns, foreign keys and indexes, and the names of any views and triggers.
+// Indexes include the ones SQLite creates for PRIMARY KEY and UNIQUE
+// constraints. Column positions are left out, because a migration appends the
+// columns it adds while a fresh CREATE TABLE places them where the schema file
+// does.
 func sqliteSchemaShape(t *testing.T, db *sql.DB) map[string]string {
 	t.Helper()
 
-	type object struct{ kind, name, table string }
-	var objects []object
-	rows, err := db.Query(`SELECT type, name, tbl_name FROM sqlite_master WHERE name NOT LIKE 'sqlite_%'`)
+	var tables, others []string
+	rows, err := db.Query(`SELECT type, name FROM sqlite_master WHERE type IN ('table', 'view', 'trigger') AND name NOT LIKE 'sqlite_%'`)
 	assert.NilError(t, err)
 	for rows.Next() {
-		var o object
-		assert.NilError(t, rows.Scan(&o.kind, &o.name, &o.table))
-		objects = append(objects, o)
+		var kind, name string
+		assert.NilError(t, rows.Scan(&kind, &name))
+		if kind == "table" {
+			tables = append(tables, name)
+		} else {
+			others = append(others, kind+" "+name)
+		}
 	}
 	assert.NilError(t, rows.Err())
 	assert.NilError(t, rows.Close())
 
-	shape := make(map[string]string, len(objects))
-	for _, o := range objects {
+	shape := make(map[string]string, len(tables)+1)
+	for _, table := range tables {
 		var parts []string
-		switch o.kind {
-		case "table":
-			parts = append(parts, pragmaRows(t, db, fmt.Sprintf("PRAGMA table_info(%q)", o.name), "cid")...)
-			parts = append(parts, pragmaRows(t, db, fmt.Sprintf("PRAGMA foreign_key_list(%q)", o.name), "id", "seq")...)
-		case "index":
-			parts = append(parts, "on="+o.table)
-			parts = append(parts, pragmaRows(t, db, fmt.Sprintf("PRAGMA index_info(%q)", o.name), "seqno", "cid")...)
-		}
+		parts = append(parts, pragmaRows(t, db, fmt.Sprintf("PRAGMA table_info(%q)", table), "cid")...)
+		parts = append(parts, pragmaRows(t, db, fmt.Sprintf("PRAGMA foreign_key_list(%q)", table), "id")...)
+		parts = append(parts, indexShapes(t, db, table)...)
 		sort.Strings(parts)
-		shape[o.kind+" "+o.name] = strings.Join(parts, "; ")
+		shape["table "+table] = strings.Join(parts, "; ")
 	}
+	sort.Strings(others)
+	shape["views and triggers"] = strings.Join(others, "; ")
 	return shape
+}
+
+// indexShapes describes each index on table: how it was created (c for CREATE
+// INDEX, u for a UNIQUE constraint, pk for a PRIMARY KEY), whether it is unique
+// or partial, and its columns in index order. Indexes from CREATE INDEX keep
+// their names; the names SQLite generates for constraint indexes are left out.
+func indexShapes(t *testing.T, db *sql.DB, table string) []string {
+	t.Helper()
+
+	type index struct{ name, unique, origin, partial string }
+	var indexes []index
+	rows, err := db.Query(fmt.Sprintf("PRAGMA index_list(%q)", table))
+	assert.NilError(t, err)
+	for rows.Next() {
+		var seq int
+		var ix index
+		assert.NilError(t, rows.Scan(&seq, &ix.name, &ix.unique, &ix.origin, &ix.partial))
+		indexes = append(indexes, ix)
+	}
+	assert.NilError(t, rows.Err())
+	assert.NilError(t, rows.Close())
+
+	shapes := make([]string, 0, len(indexes))
+	for _, ix := range indexes {
+		type column struct {
+			seqno int
+			name  string
+		}
+		var columns []column
+		columnRows, err := db.Query(fmt.Sprintf("PRAGMA index_info(%q)", ix.name))
+		assert.NilError(t, err)
+		for columnRows.Next() {
+			var c column
+			var cid int
+			var name sql.NullString
+			assert.NilError(t, columnRows.Scan(&c.seqno, &cid, &name))
+			c.name = name.String
+			columns = append(columns, c)
+		}
+		assert.NilError(t, columnRows.Err())
+		assert.NilError(t, columnRows.Close())
+		sort.Slice(columns, func(i, j int) bool { return columns[i].seqno < columns[j].seqno })
+
+		names := make([]string, len(columns))
+		for i, c := range columns {
+			names[i] = c.name
+		}
+		shape := fmt.Sprintf("index origin=%s unique=%s partial=%s columns=%s", ix.origin, ix.unique, ix.partial, strings.Join(names, ","))
+		if ix.origin == "c" {
+			shape += " name=" + ix.name
+		}
+		shapes = append(shapes, shape)
+	}
+	return shapes
 }
 
 // pragmaRows runs a PRAGMA query and returns each row as column=value pairs,
