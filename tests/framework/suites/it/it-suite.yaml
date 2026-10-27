@@ -892,9 +892,6 @@ blocks:
         tags: "gateway-version>=1.2.0"
         features:
           - features/ai-workspace-gateway/llm/llm_backend_timeout.feature
-      - name: interceptor-service
-        features:
-          - features/gateway/routes-policies/interceptor_service.feature
 
   - name: ai-workspace-cli
     components:
