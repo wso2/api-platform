@@ -124,6 +124,8 @@ Feature: A paid subscription's billing state decides its access at the gateway
       """
     Then the response status code should be 404
 
+  # Gateway 1.2.0 and older don't take a subscription's billing identifiers from the control plane.
+  @gateway-billing-identifiers
   Scenario: An administrator can suspend a paid subscription, and resuming it keeps its billing
     Given I generate a unique resource name from "paid-suspend-plan" and store it as "planHandle"
     When I send a "POST" request to the control plane at "/subscription-plans" with body:
