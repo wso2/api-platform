@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { QueryClient } from '@tanstack/react-query';
 import { http as mswHttp, HttpResponse } from 'msw';
 import { Route, Routes } from 'react-router-dom';
@@ -46,6 +46,7 @@ import {
   type PublicationFixture,
   type Recorder,
 } from '@/test/msw';
+import { mockDataGridLayout } from '@/test/dataGridLayout';
 import { makeConsoleScope } from '@/test/mockScope';
 import { server } from '@/test/server';
 import { makeTestQueryClient, renderWithProviders, screen, waitFor, within } from '@/test/utils';
@@ -205,6 +206,8 @@ const definitionText = (path: string, text: string, contentType: string) =>
 const YAML_DEFINITION =
   'openapi: 3.0.3\ninfo:\n  title: Loan Management Service\n  version: 1.0.0\npaths: {}\n';
 
+beforeAll(mockDataGridLayout);
+
 beforeEach(() => {
   requests = recorder();
   resetHttpClient();
@@ -238,6 +241,10 @@ function answerThumbnailSaves(...answers: ThumbnailSaveAnswer[]) {
 }
 
 /** Save Draft is off until something changes; a trailing space does, and is trimmed away on save. */
+/** The select checkbox in the Documentation table's row for a document, found by the name shown in it. */
+const documentBox = (name: string) =>
+  within(screen.getByText(name).closest('[role="row"]') as HTMLElement).getByRole('checkbox');
+
 const makeEdit = (user: ReturnType<typeof renderPage>['user']) =>
   user.type(screen.getByRole('textbox', { name: /^Name/ }), ' ');
 
@@ -414,7 +421,8 @@ describe('PortalPublishPage', () => {
     await screen.findByDisplayValue('Loan Management Service');
     await showDraft(user);
     await user.click(screen.getByRole('tab', { name: 'Documentation' }));
-    await user.click(await screen.findByRole('checkbox', { name: 'Common questions' }));
+    await screen.findByText('Common questions');
+    await user.click(documentBox('Common questions'));
     await user.click(screen.getByRole('button', { name: 'Save Draft' }));
 
     await waitFor(() => expect(draftRequests.count()).toBe(1));
@@ -424,7 +432,7 @@ describe('PortalPublishPage', () => {
 
     expect(await screen.findByText('Getting started')).toBeInTheDocument();
     expect(screen.queryByText('Common questions')).not.toBeInTheDocument();
-    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+    expect(documentBox('Getting started')).toBeChecked();
   });
 
   it('Subscription Plans tab saves the selection as part of the draft, and reads it back from the publication in the published view', async () => {
@@ -638,7 +646,41 @@ describe('PortalPublishPage', () => {
     expect(JSON.parse(draftRequests.last()?.body ?? '{}')).toMatchObject({ subscriptionPlanIds: ['gold'] });
   });
 
-  it('drops a selected document that no longer exists, says so, and does not send it', async () => {
+  it('leaves a deleted document out of the draft and saves without it, with nothing to clear first', async () => {
+    servePublicationState({
+      draft: aPublicationDraftDetails({
+        docIds: ['guide', 'gone'],
+        documents: [
+          { deleted: false, displayName: 'Getting started', edited: false, id: 'guide' },
+          { deleted: true, displayName: 'Old guide', edited: false, id: 'gone' },
+        ],
+      }),
+    });
+    server.use(
+      collection(DOCS_PATH, [{ contentType: 'text/markdown', displayName: 'Getting started', id: 'guide', type: 'HowTo' }]),
+    );
+    const draftRequests = recorder();
+    server.use(
+      accepts('put', DRAFT_PATH, aPublicationDraftDetails(), { record: draftRequests }),
+      accepts('put', DRAFT_DEFINITION_PATH, undefined),
+    );
+
+    const { user } = renderPage();
+
+    await screen.findByDisplayValue('Loan Management Service');
+    await makeEdit(user);
+    await user.click(screen.getByRole('tab', { name: 'Documentation' }));
+    await screen.findByText('Getting started');
+    expect(documentBox('Getting started')).toBeChecked();
+    expect(screen.queryByText('Old guide')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Save Draft' }));
+    await waitFor(() => expect(draftRequests.count()).toBe(1));
+    expect(JSON.parse(draftRequests.last()?.body ?? '{}')).toMatchObject({ docIds: ['guide'] });
+    expect(screen.queryByText(/Clear deleted documents/)).not.toBeInTheDocument();
+  });
+
+  it('drops a selected document that no longer exists, without a warning, and does not send it', async () => {
     servePublicationState({ draft: aPublicationDraftDetails({ docIds: ['guide', 'deleted'] }) });
     server.use(
       collection(DOCS_PATH, [{ contentType: 'text/markdown', displayName: 'Getting started', id: 'guide', type: 'HowTo' }]),
@@ -652,10 +694,6 @@ describe('PortalPublishPage', () => {
     const { user } = renderPage();
 
     await screen.findByDisplayValue('Loan Management Service');
-    expect(
-      await screen.findByText('A selected document no longer exists and was removed from the selection.'),
-    ).toBeInTheDocument();
-
     // It was never an edit of the user's, so nothing is left to save until they make one.
     await waitFor(() => expect(screen.getByRole('button', { name: 'Save Draft' })).toBeDisabled());
     expect(screen.queryByText('Unsaved changes', { exact: false })).not.toBeInTheDocument();
@@ -663,6 +701,7 @@ describe('PortalPublishPage', () => {
     await user.click(screen.getByRole('button', { name: 'Save Draft' }));
     await waitFor(() => expect(draftRequests.count()).toBe(1));
     expect(JSON.parse(draftRequests.last()?.body ?? '{}')).toMatchObject({ docIds: ['guide'] });
+    expect(screen.queryByText('A selected document no longer exists', { exact: false })).not.toBeInTheDocument();
   });
 
   it('keeps a selected document it cannot check because the document list was cut short', async () => {

@@ -18,7 +18,7 @@
 
 import { http as mswHttp, HttpResponse } from 'msw';
 import { Route, Routes } from 'react-router-dom';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ApiScopeProvider } from '@/api/core/ApiScopeProvider';
 import { resetHttpClient } from '@/api/core/http';
@@ -36,9 +36,10 @@ import {
   recorder,
   resource,
 } from '@/test/msw';
+import { mockDataGridLayout } from '@/test/dataGridLayout';
 import { makeConsoleScope } from '@/test/mockScope';
 import { server } from '@/test/server';
-import { renderWithProviders, screen, waitFor } from '@/test/utils';
+import { renderWithProviders, screen, waitFor, within } from '@/test/utils';
 import { GraphqlPortalPublishPage } from './GraphqlPortalPublishPage';
 
 // Monaco does not run in jsdom; the editor is a textarea holding the same text.
@@ -116,6 +117,8 @@ function serveFreshApi() {
     failure('get', `${BASE}/publication/definition`, 404, 'PUBLICATION_NOT_FOUND'),
   );
 }
+
+beforeAll(mockDataGridLayout);
 
 beforeEach(() => {
   resetHttpClient();
@@ -223,7 +226,8 @@ describe('GraphqlPortalPublishPage', () => {
 
     await screen.findByDisplayValue('Countries GraphQL API');
     await user.click(screen.getByRole('tab', { name: 'Documentation' }));
-    await user.click(await screen.findByRole('checkbox', { name: 'Schema guide' }));
+    const row = (await screen.findByText('Schema guide')).closest('[role="row"]') as HTMLElement;
+    await user.click(within(row).getByRole('checkbox'));
     await user.click(screen.getByRole('button', { name: 'Save Draft' }));
 
     await waitFor(() => expect(draftRequests.count()).toBe(1));

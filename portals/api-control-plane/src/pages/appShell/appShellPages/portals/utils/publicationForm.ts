@@ -48,20 +48,12 @@ const messages = defineMessages({
   },
 });
 
-/**
- * Form state and the pre-fill chain for the alpha "Publish to Portal" editor —
- * the API Details, Subscription Plans and Documentation fields this release covers
- * (`displayName`, `version`, `description`, the two endpoint URLs,
- * `agentVisibility`, `subscriptionPlanIds`, `docIds`). Everything else
- * `PublicationDetailsCore` carries (tags, labels, owners) belongs to a
- * tab this alpha doesn't show, so a save never sends it — a save sends every
- * field currently shown, not every field the schema could hold.
- */
 export type AgentVisibility = NonNullable<PublicationDraftDetailsInput['agentVisibility']>;
 
 /** What the server stores for a listing that never set it; shown until the user chooses. */
 const DEFAULT_AGENT_VISIBILITY: AgentVisibility = 'VISIBLE';
 
+/** Form state for the publish editor: the fields its tabs show. A save sends every field shown, not every field the schema could hold. */
 export type DraftFormValues = {
   displayName: string;
   version: string;
@@ -98,6 +90,9 @@ type SelectionSource = Pick<
   Publication | PublicationDraftDetails,
   'docIds' | 'documents' | 'subscriptionPlanIds' | 'subscriptionPlans'
 >;
+/** A saved listing, draft or live: the fields the form is filled from. */
+type ListingSource = SelectionSource &
+  Pick<Publication | PublicationDraftDetails, 'agentVisibility' | 'description' | 'displayName' | 'endpoints' | 'version'>;
 
 /** The selected items that still exist; a deleted one cannot be saved or published, so it never enters the form. */
 const existingIds = (selections: SelectionList, ids: string[] | undefined): string[] => {
@@ -150,6 +145,17 @@ export const emptyDraftFormValues: DraftFormValues = {
 /** The API fields a draft starts from — REST and GraphQL APIs both carry them. */
 export type PublishableApiDetails = Pick<RestApi, 'description' | 'displayName' | 'version'>;
 
+const valuesOfListing = (listing: ListingSource): DraftFormValues => ({
+  displayName: listing.displayName ?? '',
+  version: listing.version ?? '',
+  description: listing.description ?? '',
+  productionUrl: listing.endpoints?.productionUrl ?? '',
+  sandboxUrl: listing.endpoints?.sandboxUrl ?? '',
+  agentVisibility: listing.agentVisibility ?? DEFAULT_AGENT_VISIBILITY,
+  subscriptionPlanIds: existingIds(listing.subscriptionPlans, listing.subscriptionPlanIds),
+  docIds: existingIds(listing.documents, listing.docIds),
+});
+
 /**
  * The read chain, only for pre-filling the form: draft, then
  * publication, then the API's own — starting from the most recent edit,
@@ -166,30 +172,8 @@ export const resolveDraftFormValues = (
   api: PublishableApiDetails | undefined,
   defaultProductionUrl?: string,
 ): DraftFormValues => {
-  if (draft) {
-    return {
-      displayName: draft.displayName ?? '',
-      version: draft.version ?? '',
-      description: draft.description ?? '',
-      productionUrl: draft.endpoints?.productionUrl ?? '',
-      sandboxUrl: draft.endpoints?.sandboxUrl ?? '',
-      agentVisibility: draft.agentVisibility ?? DEFAULT_AGENT_VISIBILITY,
-      subscriptionPlanIds: existingIds(draft.subscriptionPlans, draft.subscriptionPlanIds),
-      docIds: existingIds(draft.documents, draft.docIds),
-    };
-  }
-  if (publication) {
-    return {
-      displayName: publication.displayName ?? '',
-      version: publication.version ?? '',
-      description: publication.description ?? '',
-      productionUrl: publication.endpoints?.productionUrl ?? '',
-      sandboxUrl: publication.endpoints?.sandboxUrl ?? '',
-      agentVisibility: publication.agentVisibility ?? DEFAULT_AGENT_VISIBILITY,
-      subscriptionPlanIds: existingIds(publication.subscriptionPlans, publication.subscriptionPlanIds),
-      docIds: existingIds(publication.documents, publication.docIds),
-    };
-  }
+  if (draft) return valuesOfListing(draft);
+  if (publication) return valuesOfListing(publication);
   if (api) {
     return {
       displayName: api.displayName ?? '',
@@ -238,9 +222,22 @@ export const draftFormValuesToInput = (values: DraftFormValues): PublicationDraf
 
 /** A selection is a set: the server ignores order, and an item toggled off and on moves to the end. */
 export const sameSelection = (a: string[], b: string[]) => {
+  if (a === b) return true;
   const members = new Set(a);
   return members.size === new Set(b).size && b.every((id) => members.has(id));
 };
+
+/** Whether two sets of form values hold the same content, comparing each selection as a set. */
+export const sameDraftFormValues = (a: DraftFormValues, b: DraftFormValues): boolean =>
+  (Object.keys(a) as (keyof DraftFormValues)[]).every((field) => {
+    const left = a[field];
+    const right = b[field];
+    return Array.isArray(left) && Array.isArray(right) ? sameSelection(left, right) : left === right;
+  });
+
+/** The selection with `id` added, or removed when it is already there. */
+export const toggleSelection = (ids: readonly string[], id: string): string[] =>
+  ids.includes(id) ? ids.filter((selected) => selected !== id) : [...ids, id];
 
 const THUMBNAIL_TYPES: readonly string[] = ['image/jpeg', 'image/png'];
 /** The server's default cap on a draft thumbnail (`publication_thumbnail_max_bytes`), checked before uploading. */

@@ -188,27 +188,26 @@ export function PlanCard({
   limit,
   onToggle,
   pricing,
-  readOnly: published,
+  readOnly,
   selected,
 }: PlanCardProps) {
   const intl = useIntl();
-  const readOnly = published;
-  const accent: Accent = published ? 'success' : 'primary';
+  const accent: Accent = readOnly ? 'success' : 'primary';
 
-  const flags: Record<Status, boolean> = { deleted, edited: edited && Boolean(published), inactive };
+  const flags: Record<Status, boolean> = { deleted, edited: edited && Boolean(readOnly), inactive };
   const status = STATUS_PRIORITY.find((state) => flags[state]);
 
   let notice: MessageDescriptor | undefined;
-  if (cleared && !published) notice = messages.cleared;
-  else if (status === 'deleted') notice = published ? messages.deletedPublished : messages.deletedDraft;
+  if (cleared && !readOnly) notice = messages.cleared;
+  else if (status === 'deleted') notice = readOnly ? messages.deletedPublished : messages.deletedDraft;
   else if (status === 'edited') notice = messages.editedPublished;
 
   // The notice is the short form; the tooltip says it in full.
   let hint: MessageDescriptor | undefined;
-  if (status === 'inactive' && published) hint = messages.inactivePublishedHint;
+  if (status === 'inactive' && readOnly) hint = messages.inactivePublishedHint;
   else if (status === 'inactive' && !cleared) hint = messages.inactiveSelected;
   else if (status === 'edited') hint = messages.editedPublishedHint;
-  else if (status === 'deleted' && published) hint = messages.deletedPublishedHint;
+  else if (status === 'deleted' && readOnly) hint = messages.deletedPublishedHint;
   else if (status === 'deleted' && !cleared) hint = messages.deletedDraftHint;
   const tooltip = hint ? intl.formatMessage(hint) : '';
 

@@ -24,8 +24,9 @@ import { useAllSubscriptionPlans, type SubscriptionPlan } from '@/api/resources/
 import { EmptyState, ErrorState, LoadingState } from '@/components/StateViews';
 import { pricingSummary, summaryMeterIds } from '../../settings/components/pricingFormat';
 import { getPlanLimitDisplay } from '../utils/subscriptionPlanLimit';
-import type { DeletedSelection, DraftFormValues } from '../utils/publicationForm';
+import { toggleSelection, type DeletedSelection, type DraftFormValues } from '../utils/publicationForm';
 import { PlanCard } from './PlanCard';
+import { SelectionSummary } from './SelectionSummary';
 
 const messages = defineMessages({
   loading: {
@@ -177,12 +178,7 @@ export function SubscriptionPlansTab({
     onChange?.({ ...values, subscriptionPlanIds: nextIds });
   };
 
-  const toggle = (planId: string) => {
-    const next = new Set(selectedIds);
-    if (next.has(planId)) next.delete(planId);
-    else next.add(planId);
-    commitSelection(Array.from(next));
-  };
+  const toggle = (planId: string) => commitSelection(toggleSelection(selectedIds, planId));
 
   // Select all keeps an already-selected inactive plan; Clear all clears everything.
   const toggleAll = () =>
@@ -192,43 +188,17 @@ export function SubscriptionPlansTab({
         : [...activePlans, ...inactiveShownPlans.filter((plan) => selectedSet.has(plan.id))].map((plan) => plan.id),
     );
 
-  const countStyle = {
-    color: readOnly ? 'success.main' : 'primary.main',
-    fontSize: 20,
-    fontWeight: 500,
-  } as const;
-
   return (
     <Box component="section" sx={{ containerType: 'inline-size', display: 'flex', flexDirection: 'column', gap: 2.5, p: 3 }}>
       <Box sx={{ alignItems: 'center', display: 'flex', gap: 2, justifyContent: 'space-between', minHeight: 32 }}>
         <Box sx={{ alignItems: 'baseline', display: 'flex', flexWrap: 'wrap', gap: 1.5 }}>
-          <Typography color="text.secondary" variant="body2">
-            {readOnly ? (
-              <FormattedMessage
-                {...messages.publishedSummary}
-                values={{
-                  count: shownPlans.length + deletedPlans.length,
-                  n: (chunks) => (
-                    <Typography component="span" sx={countStyle}>
-                      {chunks}
-                    </Typography>
-                  ),
-                }}
-              />
-            ) : (
-              <FormattedMessage
-                {...messages.selectedSummary}
-                values={{
-                  count: (
-                    <Typography component="span" sx={countStyle}>
-                      {selectedActiveCount}
-                    </Typography>
-                  ),
-                  total: activePlans.length,
-                }}
-              />
-            )}
-          </Typography>
+          <SelectionSummary
+            count={readOnly ? shownPlans.length + deletedPlans.length : selectedActiveCount}
+            published={messages.publishedSummary}
+            readOnly={readOnly}
+            selected={messages.selectedSummary}
+            total={activePlans.length}
+          />
           {!readOnly && deletedSelectedCount > 0 && (
             <Typography color="error.main" variant="body2">
               <FormattedMessage {...messages.deletedSelectedSummary} values={{ count: deletedSelectedCount }} />

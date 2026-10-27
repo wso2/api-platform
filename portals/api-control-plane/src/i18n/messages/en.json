@@ -2649,10 +2649,6 @@
     "defaultMessage": "Updated {time}",
     "description": "Banner byline. {time} is a relative time such as \"2 days ago\"."
   },
-  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.removedDocuments": {
-    "defaultMessage": "A selected document no longer exists and was removed from the selection.",
-    "description": "Notice when a document deleted elsewhere is dropped from the selected documents."
-  },
   "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.removedPlans": {
     "defaultMessage": "A selected subscription plan no longer exists and was removed from the selection.",
     "description": "Notice when a plan deleted elsewhere is dropped from the selected plans."
@@ -2750,6 +2746,18 @@
   "apiControlPlane.pages.appShell.appShellPages.portals.components.DocumentsTab.columnType": {
     "defaultMessage": "Type"
   },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.DocumentsTab.deletedPublishedHint": {
+    "defaultMessage": "This document was deleted. Republish to remove it from the listing.",
+    "description": "Tooltip on the name of a published document whose source no longer exists."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.DocumentsTab.edited": {
+    "defaultMessage": "Edited",
+    "description": "Chip after the name of a published document that was changed after it was last published."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.DocumentsTab.editedPublishedHint": {
+    "defaultMessage": "Document was edited after publishing. Republish to apply changes.",
+    "description": "Tooltip on the Edited chip of a published document."
+  },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.DocumentsTab.emptyDescription": {
     "defaultMessage": "Add documents to this API in Develop to choose from here."
   },
@@ -2782,9 +2790,21 @@
   "apiControlPlane.pages.appShell.appShellPages.portals.components.DocumentsTab.selectAll": {
     "defaultMessage": "Select all"
   },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.DocumentsTab.selectRow": {
+    "defaultMessage": "Select row",
+    "description": "Accessible name of the checkbox that adds a document to the listing; the row it sits in names the document."
+  },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.DocumentsTab.selectedSummary": {
     "defaultMessage": "{count} of {total} documents selected",
     "description": "{count} is a styled number rendered as a React element, not plain text; {total} is a plain number."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.DocumentsTab.typeUnknown": {
+    "defaultMessage": "—",
+    "description": "Type cell of a deleted document, whose type is no longer known."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.DocumentsTab.unselectRow": {
+    "defaultMessage": "Unselect row",
+    "description": "Accessible name of the checkbox that takes a document out of the listing; the row it sits in names the document."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.LandingPageTab.blankNotice": {
     "defaultMessage": "A blank landing page is not published."

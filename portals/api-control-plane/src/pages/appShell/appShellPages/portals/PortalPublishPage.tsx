@@ -60,13 +60,17 @@ import { usePublishPageData } from './usePublishPageData';
 import { buildLandingPageStarter } from './utils/landingPageStarter';
 import type { DefinitionFormat } from './utils/storedDefinition';
 import {
+  deletedDocumentsOf,
   deletedPlansOf,
+  documentNamesOf,
   draftFormValuesToInput,
+  editedDocIdsOf,
   editedPlanIdsOf,
   emptyDraftFormValues,
   planNamesOf,
   resolveDraftFormValues,
-  sameSelection,
+  sameDraftFormValues,
+  toggleSelection,
   validateDraftFormValues,
   validateThumbnailFile,
   type DraftFormField,
@@ -182,11 +186,6 @@ const messages = defineMessages({
     defaultMessage: 'A selected subscription plan no longer exists and was removed from the selection.',
     description: 'Notice when a plan deleted elsewhere is dropped from the selected plans.',
   },
-  removedDocuments: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.removedDocuments',
-    defaultMessage: 'A selected document no longer exists and was removed from the selection.',
-    description: 'Notice when a document deleted elsewhere is dropped from the selected documents.',
-  },
   published: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.published',
     defaultMessage: 'Published to {portalName}.',
@@ -271,6 +270,20 @@ const definitionAtFault = (error: unknown): boolean =>
 const rethrowUnreported = (error: unknown): void => {
   if (!isApiError(error)) throw error;
 };
+
+/** The ids of `cleared` that `listed` still holds; a cleared item has nothing left to clear once the draft stops listing it. */
+const keepListed = (listed: { id: string }[]) => (cleared: string[]) => {
+  const kept = cleared.filter((id) => listed.some((item) => item.id === id));
+  return kept.length === cleared.length ? cleared : kept;
+};
+
+/** Takes out of one selection the ids the server no longer knows. */
+const withoutUnknownIds =
+  (field: 'docIds' | 'subscriptionPlanIds', isKnown: (id: string) => boolean) =>
+  (current: DraftFormValues): DraftFormValues => ({ ...current, [field]: current[field].filter(isKnown) });
+
+/** Names for a warning, quoted and comma-separated. */
+const quoted = (names: string[]) => names.map((name) => `"${name}"`).join(', ');
 
 /** The fields that show a validation message. */
 const FORM_FIELDS: DraftFormField[] = ['displayName', 'version', 'productionUrl', 'sandboxUrl'];
@@ -404,15 +417,12 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
     });
     setDefinitionFormat(data.seed.definition?.format ?? (isGraphQL ? 'graphql' : 'json'));
     setInitialized(true);
-  }, [initialized, data.seed]);
+  }, [initialized, data.seed, isGraphQL]);
 
   // A cleared plan stays on screen until the refreshed draft no longer lists it; then it has nothing left to clear.
   useEffect(() => {
-    const listed = deletedPlansOf(draft ?? publication);
-    setClearedDeletedIds((cleared) => {
-      const kept = cleared.filter((id) => listed.some((plan) => plan.id === id));
-      return kept.length === cleared.length ? cleared : kept;
-    });
+    const saved = draft ?? publication;
+    setClearedDeletedIds(keepListed(deletedPlansOf(saved)));
   }, [draft, publication]);
 
   // A plan deleted elsewhere has no card to clear but would still be submitted, so drop it and say so.
@@ -421,18 +431,15 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
     const known = new Set(plansQuery.data.list.map((plan) => plan.id));
     const isKnown = (id: string) => known.has(id);
     if (values.subscriptionPlanIds.every(isKnown)) return;
-    const withoutUnknown = (current: DraftFormValues) => ({
-      ...current,
-      subscriptionPlanIds: current.subscriptionPlanIds.filter(isKnown),
-    });
+    const withoutUnknown = withoutUnknownIds('subscriptionPlanIds', isKnown);
     setValues(withoutUnknown);
     // The server dropped it from the saved draft too, so this isn't an edit to save.
     setSaved((current) => ({ ...current, values: withoutUnknown(current.values) }));
     notify(intl.formatMessage(messages.removedPlans), 'warning');
   }, [initialized, intl, notify, plansQuery.data, plansQuery.isSuccess, values.subscriptionPlanIds]);
 
-  // A document deleted elsewhere has no checkbox to clear but would still be submitted, so drop it
-  // and say so. Read only while a selection is held; the Documentation tab shares this query.
+  // A document deleted elsewhere is not listed but would still be submitted, so drop it quietly.
+  // Read only while a selection is held; the Documentation tab shares this query.
   // Not while it is being read again: an older cached list may predate a document added since.
   const documentsQuery = useAllApiDocuments(apiType, values.docIds.length > 0 ? apiHandler : undefined);
   useEffect(() => {
@@ -442,12 +449,11 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
     const known = new Set(documentsQuery.data.list.map((doc) => doc.id));
     const isKnown = (id: string) => known.has(id);
     if (values.docIds.every(isKnown)) return;
-    const withoutUnknown = (current: DraftFormValues) => ({ ...current, docIds: current.docIds.filter(isKnown) });
+    const withoutUnknown = withoutUnknownIds('docIds', isKnown);
     setValues(withoutUnknown);
     // The server dropped it from the saved draft too, so this isn't an edit to save.
     setSaved((current) => ({ ...current, values: withoutUnknown(current.values) }));
-    notify(intl.formatMessage(messages.removedDocuments), 'warning');
-  }, [initialized, intl, notify, documentsQuery.data, documentsQuery.isFetching, documentsQuery.isSuccess, values.docIds]);
+  }, [initialized, documentsQuery.data, documentsQuery.isFetching, documentsQuery.isSuccess, values.docIds]);
 
   const thumbnailUrl = useObjectUrl(thumbnail);
   const publishedThumbnailUrl = useObjectUrl(data.publishedThumbnail);
@@ -478,13 +484,7 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
     clearedDeletedIds.some((id) => savedDeletedPlans.some((plan) => plan.id === id)) ||
     thumbnail !== saved.thumbnail ||
     landingPage !== saved.landingPage ||
-    (Object.keys(values) as (keyof DraftFormValues)[]).some((field) => {
-      const current = values[field];
-      const savedValue = saved.values[field];
-      return Array.isArray(current) && Array.isArray(savedValue)
-        ? !sameSelection(current, savedValue)
-        : current !== savedValue;
-    });
+    !sameDraftFormValues(values, saved.values);
   const errors = validateDraftFormValues(values);
   const errorFor = (field: DraftFormField) => (touched[field] ? errors[field] : undefined);
   const formInvalid = Object.keys(errors).length > 0;
@@ -666,7 +666,7 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
 
   // The server refuses a selection that holds an inactive or a deleted plan; stop here and show the plans
   // instead of failing the request. The inactive check is skipped while the plan list is unavailable (the server still checks).
-  const blockedByUnusablePlans = (): boolean => {
+  const blockedByUnusableSelections = (): boolean => {
     const selected = new Set(values.subscriptionPlanIds);
     const inactive = (plansQuery.data?.list ?? []).filter(
       (plan) => plan.id && selected.has(plan.id) && plan.status !== 'ACTIVE',
@@ -674,7 +674,6 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
     const deleted = savedDeletedPlans.filter((plan) => !clearedDeletedIds.includes(plan.id));
     if (inactive.length === 0 && deleted.length === 0) return false;
     setTab('subscriptionPlans');
-    const quoted = (names: string[]) => names.map((name) => `"${name}"`).join(', ');
     if (inactive.length > 0) {
       notify(intl.formatMessage(messages.inactivePlansBlock, { names: quoted(inactive.map((plan) => plan.displayName)) }), 'warning');
     }
@@ -686,7 +685,7 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
 
   const handleSaveDraft = () =>
     runAction('saving', async () => {
-      if (blockedByUnusablePlans()) return;
+      if (blockedByUnusableSelections()) return;
       if (!(await saveDetails())) return;
       const definitionSaved = await saveDefinition();
       await saveAssets();
@@ -703,7 +702,7 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
 
   const handlePublish = () =>
     runAction('publishing', async () => {
-      if (blockedByUnusablePlans()) return;
+      if (blockedByUnusableSelections()) return;
       if (!(await saveDetails())) return;
       // Publish requires a saved, parseable definition — never proceed on a
       // partial save, which would publish whatever definition was already
@@ -751,8 +750,8 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
   const savedPlanIds = resolveDraftFormValues(draft, publication, undefined).subscriptionPlanIds;
   const publishedDeletedPlans = deletedPlansOf(publication);
   const publishedEditedPlanIds = editedPlanIdsOf(publication);
-  const toggleCleared = (id: string) => (current: string[]) =>
-    current.includes(id) ? current.filter((cleared) => cleared !== id) : [...current, id];
+  const publishedDeletedDocuments = deletedDocumentsOf(publication);
+  const publishedEditedDocIds = editedDocIdsOf(publication);
   const banner = showingPublished
     ? {
         meta: intl.formatMessage(canDeprecate ? messages.publishedBannerMeta : messages.deprecatedBannerMeta, {
@@ -763,22 +762,34 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
       ? { meta: draftBannerMeta }
       : undefined;
 
-  const renderContent = () => {
-    if (showingPublished) {
-      if (tab === 'details') {
+  /** The live listing's tab, read-only and from what is already loaded. */
+  const renderPublishedContent = () => {
+    switch (tab) {
+      case 'details':
         return <ApiDetailsTab readOnly thumbnailUrl={publishedThumbnailUrl} values={publishedValues} />;
-      }
-      if (tab === 'subscriptionPlans') return <SubscriptionPlansTab
-          deletedPlans={publishedDeletedPlans}
-          editedPlanIds={publishedEditedPlanIds}
-          readOnly
-          storedNames={planNamesOf(publication)}
-          values={publishedValues}
-        />;
-      if (tab === 'documentations') {
-        return <DocumentsTab apiHandle={apiHandler} apiType={apiType} readOnly values={publishedValues} />;
-      }
-      if (tab === 'landingPage') {
+      case 'subscriptionPlans':
+        return (
+          <SubscriptionPlansTab
+            deletedPlans={publishedDeletedPlans}
+            editedPlanIds={publishedEditedPlanIds}
+            readOnly
+            storedNames={planNamesOf(publication)}
+            values={publishedValues}
+          />
+        );
+      case 'documentations':
+        return (
+          <DocumentsTab
+            apiHandle={apiHandler}
+            apiType={apiType}
+            deletedDocuments={publishedDeletedDocuments}
+            editedDocIds={publishedEditedDocIds}
+            readOnly
+            storedNames={documentNamesOf(publication)}
+            values={publishedValues}
+          />
+        );
+      case 'landingPage':
         return (
           <LandingPageTab
             failed={data.publishedLandingPage.failed}
@@ -787,83 +798,86 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
             text={data.publishedLandingPage.text}
           />
         );
-      }
-      return (
-        <PublishedSpecificationTab
-          definition={data.publishedDefinition.definition}
-          failed={data.publishedDefinition.failed}
-          isLoading={data.publishedDefinition.isLoading}
-        />
-      );
+      case 'specification':
+        return (
+          <PublishedSpecificationTab
+            definition={data.publishedDefinition.definition}
+            failed={data.publishedDefinition.failed}
+            isLoading={data.publishedDefinition.isLoading}
+          />
+        );
     }
-    if (tab === 'details') {
-      return (
-        <ApiDetailsTab
-          disabled={pendingAction !== 'idle'}
-          errors={{
-            displayName: errorFor('displayName'),
-            version: errorFor('version'),
-            productionUrl: errorFor('productionUrl'),
-            sandboxUrl: errorFor('sandboxUrl'),
-          }}
-          onBlurField={markTouched}
-          onChange={handleChange}
-          onThumbnailPick={pickThumbnail}
-          productionUrlOptions={data.productionUrlOptions}
-          thumbnailUrl={thumbnailUrl}
-          values={values}
-        />
-      );
+  };
+
+  /** The draft's tab, editable. */
+  const renderDraftContent = () => {
+    switch (tab) {
+      case 'details':
+        return (
+          <ApiDetailsTab
+            disabled={pendingAction !== 'idle'}
+            errors={{
+              displayName: errorFor('displayName'),
+              version: errorFor('version'),
+              productionUrl: errorFor('productionUrl'),
+              sandboxUrl: errorFor('sandboxUrl'),
+            }}
+            onBlurField={markTouched}
+            onChange={handleChange}
+            onThumbnailPick={pickThumbnail}
+            productionUrlOptions={data.productionUrlOptions}
+            thumbnailUrl={thumbnailUrl}
+            values={values}
+          />
+        );
+      case 'subscriptionPlans':
+        return (
+          <SubscriptionPlansTab
+            clearedDeletedIds={clearedDeletedIds}
+            deletedPlans={savedDeletedPlans}
+            disabled={pendingAction !== 'idle'}
+            onChange={handleChange}
+            onToggleDeleted={(planId) => setClearedDeletedIds((current) => toggleSelection(current, planId))}
+            savedPlanIds={savedPlanIds}
+            values={values}
+          />
+        );
+      case 'documentations':
+        return (
+          <DocumentsTab
+            apiHandle={apiHandler}
+            apiType={apiType}
+            disabled={pendingAction !== 'idle'}
+            onChange={handleChange}
+            values={values}
+          />
+        );
+      case 'landingPage':
+        return (
+          <LandingPageTab
+            disabled={pendingAction !== 'idle'}
+            failed={landingPageFailed}
+            generated={generatedLandingPage !== undefined && landingPage === generatedLandingPage}
+            onChange={setLandingPage}
+            onCreate={createLandingPage}
+            text={landingPage}
+          />
+        );
+      case 'specification':
+        return (
+          <SpecificationTab
+            disabled={pendingAction !== 'idle'}
+            format={definitionFormat}
+            onFormatChange={setDefinitionFormat}
+            onChange={(text) => {
+              setDefinitionText(text);
+              if (definitionParseError) setDefinitionParseError(undefined);
+            }}
+            parseError={definitionParseError}
+            text={definitionText}
+          />
+        );
     }
-    if (tab === 'subscriptionPlans') {
-      return (
-        <SubscriptionPlansTab
-          clearedDeletedIds={clearedDeletedIds}
-          deletedPlans={savedDeletedPlans}
-          disabled={pendingAction !== 'idle'}
-          onChange={handleChange}
-          onToggleDeleted={(planId) => setClearedDeletedIds(toggleCleared(planId))}
-          savedPlanIds={savedPlanIds}
-          values={values}
-        />
-      );
-    }
-    if (tab === 'documentations') {
-      return (
-        <DocumentsTab
-          apiHandle={apiHandler}
-          apiType={apiType}
-          disabled={pendingAction !== 'idle'}
-          onChange={handleChange}
-          values={values}
-        />
-      );
-    }
-    if (tab === 'landingPage') {
-      return (
-        <LandingPageTab
-          disabled={pendingAction !== 'idle'}
-          failed={landingPageFailed}
-          generated={generatedLandingPage !== undefined && landingPage === generatedLandingPage}
-          onChange={setLandingPage}
-          onCreate={createLandingPage}
-          text={landingPage}
-        />
-      );
-    }
-    return (
-      <SpecificationTab
-        disabled={pendingAction !== 'idle'}
-        format={definitionFormat}
-        onFormatChange={setDefinitionFormat}
-        onChange={(text) => {
-          setDefinitionText(text);
-          if (definitionParseError) setDefinitionParseError(undefined);
-        }}
-        parseError={definitionParseError}
-        text={definitionText}
-      />
-    );
   };
 
   return (
@@ -912,7 +926,7 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
           </Stack>
 
           <PublicationVersionCard banner={banner} tone={view}>
-            {renderContent()}
+            {showingPublished ? renderPublishedContent() : renderDraftContent()}
           </PublicationVersionCard>
 
           {/* Reserves the bar's row while the published version is on screen, so the card doesn't resize. */}

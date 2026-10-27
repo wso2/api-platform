@@ -30,7 +30,9 @@ import {
   emptyDraftFormValues,
   planNamesOf,
   resolveDraftFormValues,
+  sameDraftFormValues,
   sameSelection,
+  toggleSelection,
   validateThumbnailFile,
 } from './publicationForm';
 
@@ -219,6 +221,26 @@ describe('sameSelection', () => {
     expect(sameSelection(['a'], ['a', 'b'])).toBe(false);
     expect(sameSelection(['a', 'b'], ['a', 'c'])).toBe(false);
     expect(sameSelection([], [])).toBe(true);
+  });
+});
+
+describe('sameDraftFormValues', () => {
+  const base = { ...emptyDraftFormValues, displayName: 'Loans', docIds: ['a', 'b'], subscriptionPlanIds: ['x'] };
+
+  it('compares every field, and each selection as a set', () => {
+    expect(sameDraftFormValues(base, { ...base, docIds: ['b', 'a'] })).toBe(true);
+    expect(sameDraftFormValues(base, { ...base, docIds: ['a'] })).toBe(false);
+    expect(sameDraftFormValues(base, { ...base, subscriptionPlanIds: [] })).toBe(false);
+    expect(sameDraftFormValues(base, { ...base, displayName: 'Other' })).toBe(false);
+  });
+});
+
+describe('toggleSelection', () => {
+  it('adds an id at the end, or removes it when already selected, without changing the input', () => {
+    const ids = ['a', 'b'];
+    expect(toggleSelection(ids, 'c')).toEqual(['a', 'b', 'c']);
+    expect(toggleSelection(ids, 'a')).toEqual(['b']);
+    expect(ids).toEqual(['a', 'b']);
   });
 });
 
