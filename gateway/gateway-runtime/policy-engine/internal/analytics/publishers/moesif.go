@@ -34,9 +34,8 @@ import (
 )
 
 const (
-	anonymous                = "anonymous"
-	userIDPropertyKey        = "x-wso2-user-id"
-	operationPathPropertyKey = "x-wso2-operation-path"
+	anonymous         = "anonymous"
+	userIDPropertyKey = "x-wso2-user-id"
 
 	// a2aAnalyticsProperty is the event property the collector assembles the A2A
 	// dimensions under. An in-process handle only — what leaves this publisher is
@@ -262,19 +261,15 @@ func (m *Moesif) Publish(event *dto.Event) {
 	// SynapseAnalyticsDataProvider#getOperation), which existing Moesif charts
 	// (e.g. "Top Queries/Mutations") group on via metadata.apiResourceTemplate.raw.
 	// Legacy emitted this for every API kind, so it's intentionally written here
-	// for every kind too — REST/LLM/MCP/Agent/WebSub included — not just GraphQL.
-	// As in legacy, it is the matched operation's path from the API definition
-	// (e.g. /orders/{id}), falling back to the request path when the route resolved
-	// to no operation.
-	// For a GraphQL API specifically, the path is always the
+	// for every kind too — REST/LLM/MCP/Agent/WebSub included — not just GraphQL;
+	// it duplicates the top-level Uri already sent for every event, so this adds
+	// no new exposure, only a redundant (but chart-compatible) metadata field.
+	// For a GraphQL API specifically, Operation.APIResourceTemplate is always the
 	// single fixed POST route (no per-operation identity, unlike legacy's
 	// schema-resolved resource name), so it's replaced with the client-supplied
 	// operationName, falling back to operationType, to keep that grouping
 	// meaningful — this substitution is the only GraphQL-specific part.
 	apiResourceTemplate := event.Operation.APIResourceTemplate
-	if operationPath, ok := event.Properties[operationPathPropertyKey].(string); ok && operationPath != "" {
-		apiResourceTemplate = operationPath
-	}
 	if event.API.APIType == "GraphQLApi" {
 		if graphqlAnalytics, ok := event.Properties["graphqlAnalytics"].(map[string]interface{}); ok {
 			if name, ok := graphqlAnalytics["operationName"].(string); ok && name != "" {

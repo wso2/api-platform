@@ -19,17 +19,17 @@
 @subscription-analytics-billing-customer
 Feature: Subscription analytics attribute paid calls to the billing customer
   As a platform administrator
-  I want a paid subscription's calls to carry its billing customer and the operation's path template in analytics events
+  I want a paid subscription's calls to carry its billing customer in analytics events
   So that usage can be billed to the right customer
 
-  # Runs on gateways newer than 1.2.0 only: older gateways don't send the path template, and don't
-  # attribute calls over a plan's quota to the billing customer.
+  # Runs on gateways newer than 1.2.0 only: older gateways don't send a paid subscription's billing
+  # customer as the company, and don't attribute calls over a plan's quota to it.
 
   Background:
     Given the gateway services are running
     And I authenticate using basic auth as "admin"
 
-  Scenario: A paid subscription's calls are attributed to its billing customer under the operation's path template
+  Scenario: A paid subscription's calls are attributed to its billing customer
     Given I generate a unique value from "subscription-analytics-template-plan" and store it as "planName"
     When I send a "POST" request to the "gateway-controller" service at "/subscription-plans" with body:
       """
@@ -66,13 +66,12 @@ Feature: Subscription analytics attribute paid calls to the billing customer
 
     When I set header "Subscription-Key" to "${CTX:subToken}"
     And I send a "GET" request to "${CTX:apiContext}/v1.0/items/42" until status 200
+    And I wait for an analytics event for path "${CTX:apiContext}/v1.0/items/42" with response status 200
     And I wait for the analytics collector to settle
     And I reset the analytics collector
     And I send a "GET" request to "${CTX:apiContext}/v1.0/items/42"
     Then the response status code should be 200
     And the analytics collector should have received 1 event
-    # Billing meters filter on the template, never the concrete path.
-    And the latest analytics event for path "${CTX:apiContext}/v1.0/items/42" should have metadata field "apiResourceTemplate" with value "/items/{id}"
     And the latest analytics event for path "${CTX:apiContext}/v1.0/items/42" should have company id "${CTX:customerId}"
     And the latest analytics event for path "${CTX:apiContext}/v1.0/items/42" should have metadata field "billingCustomerId" with value "${CTX:customerId}"
     And the latest analytics event for path "${CTX:apiContext}/v1.0/items/42" should have metadata field "billingSubscriptionId" with value "${CTX:billingSubId}"
@@ -114,6 +113,7 @@ Feature: Subscription analytics attribute paid calls to the billing customer
     # The first call uses the quota of 1; the next is over it, served and billed.
     When I set header "Subscription-Key" to "${CTX:subToken}"
     And I send a "GET" request to "${CTX:apiContext}/v1.0/health" until status 200
+    And I wait for an analytics event for path "${CTX:apiContext}/v1.0/health" with response status 200
     And I wait for the analytics collector to settle
     And I reset the analytics collector
     And I send a "GET" request to "${CTX:apiContext}/v1.0/health"
