@@ -132,6 +132,9 @@ export type RuntimeConfig = {
    * read as-is like every other field.
    */
   gatewayVersions: GatewayVersionEntry[];
+  sanitizeHtmlDocsEnabled: boolean;
+  sanitizeHtmlDocsAdditionalAllowedTags: string[];
+  sanitizeHtmlDocsAdditionalAllowedAttributes: Record<string, string[]>;
 };
 
 type LegacyWindowConfig = Partial<{
@@ -180,6 +183,9 @@ type LegacyWindowConfig = Partial<{
   toSServiceName: string;
   usersManagementApiUrl: string;
   gatewayVersions: string;
+  sanitizeHtmlDocsEnabled: boolean | string;
+  sanitizeHtmlDocsAdditionalAllowedTags: string;
+  sanitizeHtmlDocsAdditionalAllowedAttributes: string;
 }>;
 
 declare global {
@@ -196,7 +202,59 @@ const fromWindow = (): LegacyWindowConfig => ({
 
 const splitCommaConfigList = (value?: string) => value?.split(',').filter(Boolean) ?? [];
 
+/** "video, iframe" → ["video", "iframe"]: trimmed, blanks dropped. */
+const splitTrimmedList = (value: string) =>
+  value
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+/**
+ * A JSON array of strings, or a comma-separated list. A value starting with
+ * `[` is treated as JSON only, so broken JSON is ignored rather than split.
+ */
+const parseJsonStringArray = (value: string | undefined): string[] => {
+  const raw = value?.trim();
+  if (!raw) return [];
+  if (!raw.startsWith('[')) return splitTrimmedList(raw);
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed) && parsed.every((v) => typeof v === 'string')
+      ? (parsed as string[])
+      : [];
+  } catch {
+    return [];
+  }
+};
+
+/**
+ * A JSON object whose values are string arrays or comma-separated strings
+ * ("hidden", "controls,poster"). Entries of any other shape are dropped.
+ */
+const parseJsonRecordOfStringArrays = (value: string | undefined): Record<string, string[]> => {
+  if (!value) return {};
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    const out: Record<string, string[]> = {};
+    for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+      if (typeof v === 'string') {
+        const names = splitTrimmedList(v);
+        if (names.length > 0) out[k] = names;
+      } else if (Array.isArray(v) && v.every((item) => typeof item === 'string')) {
+        out[k] = v as string[];
+      }
+    }
+    return out;
+  } catch {
+    return {};
+  }
+};
+
 const readBoolean = (value: boolean | string | undefined) => value === true || value === 'true';
+
+const readSanitizeHtmlDocsEnabled = (value: boolean | string | undefined) =>
+  String(value ?? '').trim().toLowerCase() !== 'false';
 
 const readDeploymentMode = (value: string | undefined): RuntimeConfig['deploymentMode'] =>
   value === 'cloud' ? 'cloud' : 'onprem';
@@ -359,4 +417,15 @@ export const runtimeConfig: RuntimeConfig = {
     import.meta.env.VITE_USERS_MANAGEMENT_API_URL ||
     '',
   gatewayVersions: readGatewayVersions(fromWindow().gatewayVersions),
+  sanitizeHtmlDocsEnabled: readSanitizeHtmlDocsEnabled(
+    fromWindow().sanitizeHtmlDocsEnabled ?? import.meta.env.VITE_SANITIZE_HTML_DOCS_ENABLED,
+  ),
+  sanitizeHtmlDocsAdditionalAllowedTags: parseJsonStringArray(
+    fromWindow().sanitizeHtmlDocsAdditionalAllowedTags ??
+      import.meta.env.VITE_SANITIZE_HTML_DOCS_ADDITIONAL_ALLOWED_TAGS,
+  ),
+  sanitizeHtmlDocsAdditionalAllowedAttributes: parseJsonRecordOfStringArrays(
+    fromWindow().sanitizeHtmlDocsAdditionalAllowedAttributes ??
+      import.meta.env.VITE_SANITIZE_HTML_DOCS_ADDITIONAL_ALLOWED_ATTRIBUTES,
+  ),
 };

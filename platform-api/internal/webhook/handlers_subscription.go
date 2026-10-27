@@ -33,6 +33,7 @@ const (
 	EventSubscriptionPlanChanged      = "subscription.plan_changed"      // plan switched; token unchanged
 	EventSubscriptionTokenRegenerated = "subscription.token_regenerated" // token rotated (encrypted)
 	EventSubscriptionDeleted          = "subscription.deleted"
+	EventSubscriptionBillingUpdated   = "subscription.billing_updated"
 )
 
 // subscriptionPlanRef identifies a subscription plan. ref_id is the Platform API subscription plan
@@ -53,12 +54,38 @@ type subscriptionPlanRef struct {
 // envelope's encrypted_fields as "token"); once decrypted it is persisted as-is so the same token
 // validates end to end. When absent, the Platform API generates its own.
 type subscriptionData struct {
-	SubscriberID     string              `json:"subscriber_id"`
-	ApplicationID    string              `json:"application_id"`
-	Token            *EncryptedKey       `json:"token"`
-	SubscriptionPlan subscriptionPlanRef `json:"subscription_plan"`
-	API              apiRef              `json:"api"`
-	Status           string              `json:"status"`
+	SubscriberID     string                   `json:"subscriber_id"`
+	ApplicationID    string                   `json:"application_id"`
+	Token            *EncryptedKey            `json:"token"`
+	SubscriptionPlan subscriptionPlanRef      `json:"subscription_plan"`
+	API              apiRef                   `json:"api"`
+	Status           string                   `json:"status"`
+	Billing          *subscriptionBillingData `json:"billing"`
+}
+
+// subscriptionBillingData is the billing state of a paid subscription.
+type subscriptionBillingData struct {
+	Status         string `json:"status"`
+	CustomerID     string `json:"customer_id"`
+	SubscriptionID string `json:"subscription_id"`
+}
+
+// toModel validates the billing state and returns it with the time the API Portal recorded it.
+func (b *subscriptionBillingData) toModel(env *Envelope) (*model.SubscriptionBilling, error) {
+	status := strings.ToUpper(strings.TrimSpace(b.Status))
+	if !model.ValidBillingStatuses[status] {
+		return nil, fmt.Errorf("%w: data.billing.status is not a billing status", ErrInvalidEnvelope)
+	}
+	customer, err := requireHandle("billing.customer_id", b.CustomerID, 255)
+	if err != nil {
+		return nil, err
+	}
+	subscription, err := requireHandle("billing.subscription_id", b.SubscriptionID, 255)
+	if err != nil {
+		return nil, err
+	}
+	return &model.SubscriptionBilling{Status: status, CustomerID: customer, SubscriptionID: subscription,
+		UpdatedAt: occurredAt(env)}, nil
 }
 
 func (d *subscriptionData) validate() error {
@@ -110,7 +137,14 @@ func (r *Receiver) handleSubscriptionCreated(ctx context.Context, env *Envelope)
 
 	// API Portal sync events have no interactive platform user, so the audit
 	// actor is left empty (there is no internal-UUID identity to attribute).
-	_, err := r.subs.CreateSubscription(d.API.RefID, d.API.kind(), env.OrgID, d.SubscriberID, d.applicationIDPtr(), &d.SubscriptionPlan.RefID, token, d.Status, "")
+	var billing *model.SubscriptionBilling
+	if d.Billing != nil {
+		var err error
+		if billing, err = d.Billing.toModel(env); err != nil {
+			return err
+		}
+	}
+	_, err := r.subs.CreateSubscriptionWithBilling(d.API.RefID, d.API.kind(), env.OrgID, d.SubscriberID, d.applicationIDPtr(), &d.SubscriptionPlan.RefID, token, d.Status, "", billing)
 	if err != nil {
 		// Domain-level idempotency: a duplicate delivery whose subscription already exists is success.
 		if apperror.SubscriptionExists.Is(err) {
@@ -229,4 +263,24 @@ func (r *Receiver) handleSubscriptionDeleted(ctx context.Context, env *Envelope)
 		return err
 	}
 	return nil
+}
+
+// handleSubscriptionBillingUpdated applies a paid subscription's new billing state
+// (subscription.billing_updated).
+func (r *Receiver) handleSubscriptionBillingUpdated(ctx context.Context, env *Envelope) error {
+	var d subscriptionData
+	if err := env.decodeData(&d); err != nil {
+		return err
+	}
+	if err := d.validate(); err != nil {
+		return err
+	}
+	if d.Billing == nil {
+		return fmt.Errorf("%w: data.billing is required for %s", ErrInvalidEnvelope, env.EventType)
+	}
+	billing, err := d.Billing.toModel(env)
+	if err != nil {
+		return err
+	}
+	return r.subs.ApplyBillingFromWebhook(env.OrgID, d.API.RefID, d.API.kind(), d.SubscriberID, billing)
 }

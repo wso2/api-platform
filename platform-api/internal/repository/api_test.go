@@ -814,3 +814,38 @@ func TestAPIRepo_GetAPIVersionsByDisplayName_CrossOrgIsolation(t *testing.T) {
 		t.Fatalf("returned handle %q, want %q", versions[0].Handle, "shared-name-a")
 	}
 }
+
+// Clients read the versions list to decide whether a create will be accepted, so a version
+// the list reports as taken must be exactly one the uniqueness check refuses.
+func TestAPIRepo_GetAPIVersionsByDisplayName_AgreesWithUniquenessCheck(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	t.Cleanup(cleanup)
+
+	repo := NewAPIRepo(db)
+
+	orgUUID := "org-versions-agree"
+	projectUUID := "project-versions-agree"
+	createTestOrganizationAndProject(t, db, orgUUID, projectUUID)
+
+	makeVersionedAPI(t, repo, "agreement-v1", "agreement-api", "v1.0", projectUUID, orgUUID)
+
+	versions, err := repo.GetAPIVersionsByDisplayName(orgUUID, "agreement-api")
+	if err != nil {
+		t.Fatalf("GetAPIVersionsByDisplayName failed: %v", err)
+	}
+	taken := map[string]bool{}
+	for _, v := range versions {
+		taken[v.Version] = true
+	}
+
+	for _, version := range []string{"v1.0", "v2.0"} {
+		exists, err := repo.CheckAPIExistsByNameAndVersionInOrganization("agreement-api", version, orgUUID, "")
+		if err != nil {
+			t.Fatalf("CheckAPIExistsByNameAndVersionInOrganization failed: %v", err)
+		}
+		if taken[version] != exists {
+			t.Errorf("version %q: the versions list reports taken=%v, the uniqueness check reports exists=%v",
+				version, taken[version], exists)
+		}
+	}
+}

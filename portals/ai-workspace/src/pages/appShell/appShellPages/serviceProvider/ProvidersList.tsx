@@ -46,7 +46,7 @@ import {
 import { Clock, Plus, Search, Trash2 } from '@wso2/oxygen-ui-icons-react';
 import ErrorAlert from '../../../../Components/common/ErrorAlert';
 import { useApplications } from '../../../../contexts/ApplicationsContext';
-import { useAppAuth } from '../../../../contexts/AppAuthContext';
+import { useAppAuth, useAppAuthScopes } from '../../../../contexts/AppAuthContext';
 import { SCOPES } from '../../../../auth/permissions';
 import { useAppShell } from '../../../../contexts/AppShellContext';
 import {
@@ -123,6 +123,10 @@ function truncateText(text: string, maxLength: number): string {
 export default function ServiceProviders() {
   const navigate = useNavigate();
   const { hasPermission } = useAppAuth();
+  // Empty-state wording follows what the user may see, so it asks the held
+  // scopes rather than the read-only-aware permission: an admin in a read-only
+  // organization still gets the admin empty state, with its action disabled.
+  const { hasPermission: hasScope } = useAppAuthScopes();
   const {
     providersResponse,
     deleteProvider,
@@ -245,12 +249,18 @@ export default function ServiceProviders() {
 
     setCheckingProviderId(providerId);
     try {
+      // Only the total is needed here, not the items — request the smallest
+      // page and read pagination.total, which reports the true count even
+      // when more than `limit` proxies use this provider (unlike `.count`,
+      // which reflects only the items in this one page).
       const linkedProxiesResponse = await llmProviderApis.getLLMProviderProxies(
         providerId,
         currentOrganization.uuid,
-        apimBaseUrl
+        apimBaseUrl,
+        1,
+        0
       );
-      const linkedProxyCount = linkedProxiesResponse.count ?? 0;
+      const linkedProxyCount = linkedProxiesResponse.pagination?.total ?? 0;
       if (linkedProxyCount > 0) {
         const proxyLabel = linkedProxyCount === 1 ? 'Proxy' : 'Proxies';
         const usageVerb = linkedProxyCount === 1 ? 'is' : 'are';
@@ -292,7 +302,7 @@ export default function ServiceProviders() {
   const isDeleteConfirmationValid =
     deleteConfirmationInput.trim() === (deleteTarget?.name ?? '').trim();
 
-  const isDeveloper = !hasPermission(SCOPES.LLM_PROVIDER_CREATE);
+  const isDeveloper = !hasScope(SCOPES.LLM_PROVIDER_CREATE);
   const canCreateProvider =
     !isProjectLevel && hasPermission(SCOPES.LLM_PROVIDER_CREATE) && !isProviderQuotaReached;
   const shouldShowCreateProviderButton = !isProjectLevel;

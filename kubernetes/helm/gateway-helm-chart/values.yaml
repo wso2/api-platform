@@ -674,6 +674,13 @@ gateway:
       # Default (false) forwards to exactly the configured upstream path.
       append_resource_path_to_backend: false
 
+    # Gateway signing. The JWKS endpoint (/.well-known/jwks on every virtual
+    # host) is on by default; set jwks_endpoint_enabled: false to free that path,
+    # e.g. when an existing API already serves it. Left unset, no [signing] table
+    # is rendered and the gateway default (enabled) applies.
+    # signing:
+    #   jwks_endpoint_enabled: true
+
   # Raw TOML injected at the TOP of the generated config.toml, above every [table]
   # section. Use it for configuration the chart doesn't model as structured values.
   # Because it leads the file, it can carry BARE ROOT keys — e.g. policy "system

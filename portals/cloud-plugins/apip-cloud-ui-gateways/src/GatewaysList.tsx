@@ -362,13 +362,19 @@ const GatewaysList: FC<GatewaysListProps> = ({
 
   const renderActions = (gateway: Gateway) => (
     <>
-      <IconButton size="small" onClick={() => onEditClick(gateway.id)} aria-label={`Edit ${gateway.name}`}>
+      <IconButton
+        size="small"
+        onClick={() => onEditClick(gateway.id)}
+        disabled={gateway.status === 'deleting'}
+        aria-label={`Edit ${gateway.name}`}
+      >
         <Edit size={16} />
       </IconButton>
       {gateway.hosting === 'managed' ? (
         <IconButton
           size="small"
           onClick={() => setSettingsGateway(gateway)}
+          disabled={gateway.status === 'deleting'}
           aria-label={`Configure ${gateway.name}`}
         >
           <Settings size={16} />
@@ -378,6 +384,7 @@ const GatewaysList: FC<GatewaysListProps> = ({
         size="small"
         color="error"
         onClick={() => setDeleteTarget({ id: gateway.id, name: gateway.name })}
+        disabled={gateway.status === 'deleting'}
         aria-label={`Delete ${gateway.name}`}
       >
         <Trash2 size={16} />

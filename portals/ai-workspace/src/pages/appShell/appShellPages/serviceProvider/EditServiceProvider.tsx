@@ -38,6 +38,7 @@ import {
 import { useAppShell } from '../../../../contexts/AppShellContext';
 import { buildOrgPath } from '../../../../utils/projectRouting';
 import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
+import { useResourceLimits } from '../../../../hooks/useResourceLimits';
 
 const MAX_NAME_LENGTH = 255;
 const MAX_DESCRIPTION_LENGTH = 1023;
@@ -51,6 +52,10 @@ function EditServiceProviderForm() {
   const { provider, isLoading, error, updateProvider } = useLLMProvider();
   const showSnackbar = useAIWorkspaceSnackbar();
   const isReadOnlyProvider = Boolean(provider?.readOnly);
+  // The organization-wide read-only verdict, distinct from the artifact-level
+  // `readOnly` above: while it holds, the control plane refuses every update,
+  // so the form is shown but may not be submitted.
+  const { readOnly: isReadOnlyOrg, readOnlyMessage } = useResourceLimits();
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -191,6 +196,9 @@ function EditServiceProviderForm() {
 
         <Box sx={{ mb: 4 }}>
           <Stack spacing={3}>
+            {isReadOnlyOrg ? (
+              <Alert severity="info">{readOnlyMessage}</Alert>
+            ) : null}
             {isReadOnlyProvider ? (
               <Alert severity="info">
                 This provider was created from a gateway. The name and
@@ -271,7 +279,7 @@ function EditServiceProviderForm() {
           <Button
             variant="contained"
             onClick={handleSubmit}
-            disabled={isSubmitting || !isFormValid()}
+            disabled={isSubmitting || isReadOnlyOrg || !isFormValid()}
           >
             {isSubmitting ? 'Updating...' : 'Update'}
           </Button>

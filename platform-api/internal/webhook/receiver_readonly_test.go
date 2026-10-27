@@ -65,7 +65,7 @@ func newReadOnlyTestReceiver(t *testing.T) (*Receiver, config.Webhook) {
 		"org-a": &model.Organization{ID: readOnlyTestOrgA, Handle: "org-a"},
 		"org-b": &model.Organization{ID: readOnlyTestOrgB, Handle: "org-b"},
 	}
-	r, err := NewReceiver(cfg, nil, nil, nil, orgs, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	r, err := NewReceiver(cfg, nil, nil, nil, nil, nil, orgs, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if err != nil {
 		t.Fatalf("NewReceiver: %v", err)
 	}

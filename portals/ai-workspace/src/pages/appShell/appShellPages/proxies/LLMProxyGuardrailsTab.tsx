@@ -76,6 +76,7 @@ import PartialLoadWarning from '../../../../Components/common/PartialLoadWarning
 import { DisabledActionTooltip } from '../../../../utils/readOnlyArtifacts';
 import { useAppAuth } from '../../../../contexts/AppAuthContext';
 import { NO_PERMISSION_TOOLTIP, SCOPES } from '../../../../auth/permissions';
+import { useOrgReadOnly } from '../../../../Components/common/ReadOnlyTooltip';
 
 // ─── Shared helpers ──────────────────────────────────────────────────────────
 
@@ -212,7 +213,10 @@ export default function LLMProxyGuardrailsTab() {
   // because the caller lacks the update scope; both disable the same controls.
   const { hasPermission } = useAppAuth();
   const canEditProxy = hasPermission(SCOPES.LLM_PROXY_UPDATE);
-  const isReadOnlyProxy = Boolean(proxy?.readOnly) || !canEditProxy;
+  // Folded in with this artifact's own read-only flag: a read-only organization
+  // may not write at all, so every control these gate is disabled for that
+  // reason too, and no call site has to ask about both.
+  const isReadOnlyProxy = useOrgReadOnly() || Boolean(proxy?.readOnly) || !canEditProxy;
   const lockedActionTooltip = canEditProxy ? undefined : NO_PERMISSION_TOOLTIP;
   const {
     guardrails: availableGuardrails = [],

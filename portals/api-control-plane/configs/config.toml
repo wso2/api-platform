@@ -149,3 +149,105 @@ mode                  = '{{ env "APIP_ACP_AUTH_AUTHORIZATION_MODE" "scope" }}'
 # otherwise). Mount the SAME file the Platform API reads, so the console and the API
 # cannot disagree about what a role grants. Ignored in scope mode.
 role_to_scope_mapping = '{{ env "APIP_ACP_AUTH_AUTHORIZATION_ROLE_TO_SCOPE_MAPPING" "" }}'
+
+# ---------------------------------------------------------------------------
+# Gateway relay
+# ---------------------------------------------------------------------------
+# The Test page's Swagger console sends its try-out requests through the BFF
+# rather than straight at the gateway, which is what makes them work at all
+# when the gateway is a different origin (every deployment), speaks plain http
+# from an https portal, or sits on a cluster-internal address the browser
+# cannot route to. The browser never names a URL: it names the API and the
+# gateway, and the BFF resolves the address through Platform API using the
+# caller's own token. See bff/internal/gatewayrelay.
+#
+# Each value below is a limit that lets this feature ship enabled. To turn the
+# feature off, set `enabled = false` rather than relaxing them. Each default
+# matches the built-in value in bff/internal/config/default_config.go. Load
+# overlays the parsed keys unconditionally, so a present-but-empty key replaces
+# the built-in default instead of falling back to it.
+[api_control_plane.gateway_relay]
+
+enabled            = '{{ env "APIP_ACP_GATEWAY_RELAY_ENABLED" "true" }}'
+# One relayed call, end to end. The route's own write deadline sits just above
+# this, so a stuck gateway is caught here rather than by the outer bound.
+request_timeout    = '{{ env "APIP_ACP_GATEWAY_RELAY_REQUEST_TIMEOUT" "30s" }}'
+# Bounds the decoded request body. The JSON envelope carrying it is allowed to
+# be correspondingly larger, since a binary body travels base64-encoded.
+max_request_bytes  = '{{ env "APIP_ACP_GATEWAY_RELAY_MAX_REQUEST_BYTES" "2097152" }}'   # 2 MiB
+# Hitting this truncates the response body and says so, rather than failing the
+# call — a partial response is more use to someone testing an API than an error.
+max_response_bytes = '{{ env "APIP_ACP_GATEWAY_RELAY_MAX_RESPONSE_BYTES" "8388608" }}'  # 8 MiB
+# Relayed calls in flight at once, and how many may queue for a slot before new
+# ones are rejected with 503. The queue is bounded on purpose: an unbounded one
+# in front of a bounded pool is only delayed memory growth.
+max_concurrent     = '{{ env "APIP_ACP_GATEWAY_RELAY_MAX_CONCURRENT" "32" }}'
+max_pending        = '{{ env "APIP_ACP_GATEWAY_RELAY_MAX_PENDING" "64" }}'
+# How long a resolved target is cached before Platform API is queried again.
+resolve_cache_ttl  = '{{ env "APIP_ACP_GATEWAY_RELAY_RESOLVE_CACHE_TTL" "60s" }}'
+resolve_cache_size = '{{ env "APIP_ACP_GATEWAY_RELAY_RESOLVE_CACHE_SIZE" "1024" }}'
+# PEM bundle to trust for gateway certificates, appended to the system roots.
+ca_file            = '{{ env "APIP_ACP_GATEWAY_RELAY_CA_FILE" "" }}'
+# Dev/demo only; keep this operator-controlled, not browser-selectable.
+# Prefer ca_file.
+tls_skip_verify    = '{{ env "APIP_ACP_GATEWAY_RELAY_TLS_SKIP_VERIFY" "false" }}'
+
+# Where the relay may connect.
+#
+# Target resolution is the primary containment — the relay only ever dials a
+# gateway Platform API named as this API's deployed gateway, for this caller.
+# This block is the second layer, and it is what holds if the first is ever
+# weakened. A gateway's endpoint is tenant-settable data, so these settings are
+# how a deployment says what a gateway address is allowed to look like.
+#
+#Two rules, and that is the whole model:
+#   1. the always-refused ranges below win over any allow_hosts entry.
+#   2. nothing is reachable unless an allow_hosts entry matches; an empty
+#      list refuses every target.
+#
+# There is deliberately no setting that re-opens something deny closed.
+#
+# ALWAYS REFUSED, not configurable: link-local (where the 169.254.169.254 cloud
+# metadata endpoint lives), the unspecified address, multicast/broadcast, and
+# the IPv6 ranges that translate onward to IPv4 (6to4 2002::/16, NAT64
+# 64:ff9b::/96 — these reach an IPv4 address without matching an IPv4 denylist
+# entry naming it).
+[api_control_plane.gateway_relay.egress]
+
+# Complete set of targets the relay may dial. An empty list refuses all requests
+# with TARGET_NOT_ALLOWED.
+#
+# This list is the whole of the decision. Private, loopback and ClusterIP
+# addresses are all dialable, because that is where gateways legitimately
+# live — so an entry naming one is an operator choosing to reach it.
+#
+# Entries use "[scheme://]host[:port]":
+#
+#   gw.example.com                 any scheme/port
+#   https://gw.example.com         https, any port
+#   gw.example.com:8443            any scheme, port 8443
+#   https://gw.example.com:8443    exact combination
+#
+# Hosts may contain "*" to match any run of characters:
+#
+#   *.gw.example.com    a.gw.example.com, a.b.gw.example.com
+#                       not gw.example.com or evilgw.example.com
+#   gw-*.example.com    gw-eu.example.com, gw-us.example.com
+#   *                   every host; use deliberately
+#
+# Prefer narrow entries. Broad private-network patterns can expose other
+# in-cluster services; pinning the port helps distinguish the gateway.
+#
+# Set from the environment as a comma-separated list (whitespace around entries
+# is ignored; an empty value means an empty list):
+#
+#   APIP_ACP_GATEWAY_RELAY_EGRESS_ALLOW_HOSTS="https://*.gw.svc.cluster.local:9443,https://gw.api.example.com"
+#
+# A TOML array is still accepted in place of the token:
+#
+#   allow_hosts = ["https://*.gw.svc.cluster.local:9443", "https://gw.api.example.com"]
+
+# Always refused, regardless of allow_hosts: link-local, unspecified,
+# multicast/broadcast, and IPv6 prefixes that embed IPv4 addresses. Checked
+# against every resolved address at dial time.
+allow_hosts = '{{ env "APIP_ACP_GATEWAY_RELAY_EGRESS_ALLOW_HOSTS" "https://localhost:8443" }}'

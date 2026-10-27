@@ -55,7 +55,7 @@ import { formatRelativeTime } from '../../../../contexts/llmProvider';
 import { FormattedMessage, useIntl } from 'react-intl';
 import NoGW from '../../../../assets/images/NoGW.svg';
 import { useEnvironments } from '../../../../hooks/useEnvironments';
-import { useAppAuth } from '../../../../contexts/AppAuthContext';
+import { useAppAuthScopes } from '../../../../contexts/AppAuthContext';
 import { SCOPES } from '../../../../auth/permissions';
 import { useResourceLimits } from '../../../../hooks/useResourceLimits';
 
@@ -69,7 +69,7 @@ export default function GatewaysList() {
   const navigate = useNavigate();
   const intl = useIntl();
   const { currentOrganization } = useAppShell();
-  const { hasPermission } = useAppAuth();
+  const { hasPermission } = useAppAuthScopes();
   const isAdmin = hasPermission(SCOPES.GATEWAY_CREATE);
   const [searchQuery, setSearchQuery] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<{
