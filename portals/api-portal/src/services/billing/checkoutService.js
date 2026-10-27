@@ -389,16 +389,28 @@ async function activate(checkout, providerCheckout) {
     const apiPlan = await billingApiPlanDao.getApiPlan(checkout.org_uuid, checkout.api_uuid, checkout.plan_uuid);
     if (!apiPlan) throw new Error('The paid plan of the checkout has no billing API plan.');
 
-    let duplicateOf = null;
+    // One subscription per user per API: a second paid checkout does not create another. Its provider
+    // subscription bills for nothing the user does not already have, so it is ended and its payment
+    // refunded before the checkout is completed; a provider refusal is thrown, so the event is retried.
+    const kept = await subDao.findForUser(checkout.org_uuid, checkout.api_uuid, checkout.user_uuid);
+    if (kept) {
+        const refunded = await billingProvider.forConfiguration(conn).payments.cancelAndRefund(providerSub.ref);
+        logger.warn('Second paid checkout for an API: its subscription was cancelled and refunded', {
+            checkoutId: checkout.uuid, keptSubscriptionId: kept, refunded,
+        });
+    }
     try {
         await db.withTransaction(async (t) => {
-            // One subscription per user per API: a second paid checkout does not create another.
             const existing = await subDao.findForUser(checkout.org_uuid, checkout.api_uuid, checkout.user_uuid, t);
+            if (Boolean(existing) !== Boolean(kept)) {
+                // The user subscribed or unsubscribed since the check above.
+                throw Object.assign(new Error('subscription changed'), { subscriptionChanged: true });
+            }
             if (existing) {
+                // The checkout points at the subscription the user keeps.
                 if (!(await billingCheckoutDao.markCompleted(checkout.uuid, existing, t))) {
                     throw Object.assign(new Error('already activated'), { alreadyActivated: true });
                 }
-                duplicateOf = existing;
                 return;
             }
             const sub = await subscriptionService.createSubscriptionRecord({
@@ -422,24 +434,17 @@ async function activate(checkout, providerCheckout) {
                 currentPeriodEnd: providerSub.periodEnd,
             }, t);
         });
-        if (!duplicateOf) logger.info('Paid subscription activated', { checkoutId: checkout.uuid });
+        if (!kept) logger.info('Paid subscription activated', { checkoutId: checkout.uuid });
     } catch (err) {
         if (err.alreadyActivated) return billingCheckoutDao.getCheckout(checkout.uuid);
-        throw err;
-    }
-    if (duplicateOf) {
-        // The provider's subscription bills for nothing the user does not already have: end it and
-        // give the money back. The checkout points at the subscription the user keeps.
-        try {
-            const refunded = await billingProvider.forConfiguration(conn).payments.cancelAndRefund(providerSub.ref);
-            logger.warn('Second paid checkout for an API: its subscription was cancelled and refunded', {
-                checkoutId: checkout.uuid, keptSubscriptionId: duplicateOf, refunded,
-            });
-        } catch (err) {
-            logger.error('Second paid checkout for an API: its subscription could not be cancelled and refunded', {
-                checkoutId: checkout.uuid, keptSubscriptionId: duplicateOf, error: err.message,
-            });
+        // Subscribed meanwhile: activate again, so the payment is refunded before the checkout completes.
+        if (err.subscriptionChanged && !kept) return activate(checkout, providerCheckout);
+        if (err.subscriptionChanged) {
+            // Unsubscribed meanwhile: the payment is already refunded, so the checkout ends without a subscription.
+            await billingCheckoutDao.deleteOpenCheckout(checkout.uuid);
+            return { ...checkout, status: EXPIRED };
         }
+        throw err;
     }
     return billingCheckoutDao.getCheckout(checkout.uuid);
 }
