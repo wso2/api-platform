@@ -31,13 +31,20 @@ const VALID_EVENT_TYPES = new Set([
     'subscription.deleted',
     'subscription.plan_changed',
     'subscription.token_regenerated',
+    'subscription.billing_updated',
     'apikey.generated',
     'apikey.regenerated',
     'apikey.revoked',
     'apikey.application_updated',
     'application.created',
     'application.updated',
-    'application.deleted'
+    'application.deleted',
+    'subscription_plan.created',
+    'subscription_plan.updated',
+    'subscription_plan.deleted',
+    'meter.created',
+    'meter.updated',
+    'meter.deleted'
 ]);
 
 /**
