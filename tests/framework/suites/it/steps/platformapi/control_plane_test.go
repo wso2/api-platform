@@ -1035,6 +1035,42 @@ func TestTrackMCPToolResultRegistersAndDropsCleanupRecords(t *testing.T) {
 	require.Empty(t, pendingIDs(reg, platformProjectKind))
 }
 
+func TestTrackMCPToolResultDropsDeploymentRecordsOfWhatItUndeploysOrDeletes(t *testing.T) {
+	ctx, reg := trackingContext(t)
+	s := &Steps{}
+	ok := func(structured string) *httpx.Response {
+		return mcpResponse(http.StatusOK, `{"result":{"structuredContent":`+structured+`}}`)
+	}
+	deploy := func(apiID, deploymentID string) {
+		t.Helper()
+		require.NoError(t, trackMCP(t, ctx, s, "deploy_api",
+			[]byte(`{"apiType":"rest-api","apiId":"`+apiID+`","gatewayId":"it-gateway"}`),
+			ok(`{"apiId":"`+apiID+`","deployments":[{"id":"`+deploymentID+`","status":"DEPLOYING"}]}`)))
+	}
+
+	deploy("rest-api-1", "dep-1")
+	require.Equal(t, []string{"rest-apis\x00rest-api-1\x00dep-1\x00it-gateway"}, pendingIDs(reg, platformDeploymentKind))
+	require.NoError(t, trackMCP(t, ctx, s, "undeploy_api",
+		[]byte(`{"apiType":"rest-api","apiId":"rest-api-1","gatewayId":"it-gateway","confirm":true}`),
+		ok(`{"apiId":"rest-api-1","undeployed":[{"id":"dep-1","status":"UNDEPLOYED"}]}`)))
+	require.Empty(t, pendingIDs(reg, platformDeploymentKind))
+
+	require.NoError(t, trackMCP(t, ctx, s, "create_api", []byte(`{"apiType":"rest-api","payload":{}}`), ok(`{"id":"rest-api-1"}`)))
+	deploy("rest-api-1", "dep-2")
+	deploy("rest-api-10", "dep-3")
+	require.NoError(t, trackMCP(t, ctx, s, "delete_api",
+		[]byte(`{"apiType":"rest-api","apiId":"rest-api-1","confirm":true}`), ok(`{"apiType":"rest-api","deleted":"rest-api-1"}`)))
+	require.Empty(t, pendingIDs(reg, platformRESTAPIKind))
+	require.Equal(t, []string{"rest-apis\x00rest-api-10\x00dep-3\x00it-gateway"}, pendingIDs(reg, platformDeploymentKind),
+		"deleting rest-api-1 leaves the deployment of rest-api-10")
+
+	before := len(reg.Pending())
+	require.NoError(t, trackMCP(t, ctx, s, "undeploy_api",
+		[]byte(`{"apiType":"agent-proxy","apiId":"a-1","gatewayId":"gw-1","confirm":true}`),
+		ok(`{"apiId":"a-1","undeployed":[{"id":"dep-3","status":"UNDEPLOYED"}]}`)))
+	require.Len(t, reg.Pending(), before, "a type with no cleanup changes nothing")
+}
+
 func TestTrackMCPToolResultLeavesAFailedOrReadOnlyCallAlone(t *testing.T) {
 	ctx, reg := trackingContext(t)
 	s := &Steps{}
@@ -1048,9 +1084,20 @@ func TestTrackMCPToolResultLeavesAFailedOrReadOnlyCallAlone(t *testing.T) {
 	} {
 		require.NoError(t, trackMCP(t, ctx, s, "create_project", []byte(`{"name":"p"}`), resp), name)
 	}
+	require.NoError(t, trackMCP(t, ctx, s, "deploy_api",
+		[]byte(`{"apiType":"rest-api","apiId":"rest-api-1","gatewayId":"it-gateway"}`),
+		mcpResponse(http.StatusOK, `{"result":{"structuredContent":{"deployments":[{"id":"dep-1"}]}}}`)))
+	for name, resp := range map[string]*httpx.Response{
+		"tool error": mcpResponse(http.StatusOK, `{"result":{"isError":true,"structuredContent":{"undeployed":[{"id":"dep-1"}]}}}`),
+		"refused":    mcpResponse(http.StatusForbidden, ``),
+	} {
+		require.NoError(t, trackMCP(t, ctx, s, "undeploy_api",
+			[]byte(`{"apiType":"rest-api","apiId":"rest-api-1","gatewayId":"it-gateway","confirm":true}`), resp), name)
+		require.Len(t, pendingIDs(reg, platformDeploymentKind), 1, name)
+	}
 	require.NoError(t, trackMCP(t, ctx, s, "list_projects", []byte(`{}`),
 		mcpResponse(http.StatusOK, `{"result":{"structuredContent":{"items":[],"total":0}}}`)))
-	require.Empty(t, reg.Pending())
+	require.Len(t, reg.Pending(), 1, "only the deployment record from the setup call")
 }
 
 func TestTrackMCPToolResultRefusesWhatItCannotCleanUp(t *testing.T) {

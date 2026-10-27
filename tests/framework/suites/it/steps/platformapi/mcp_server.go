@@ -32,6 +32,7 @@ import (
 
 	"github.com/cucumber/godog"
 
+	"github.com/wso2/api-platform/tests/framework/core/cleanup"
 	"github.com/wso2/api-platform/tests/framework/core/util/httpx"
 	"github.com/wso2/api-platform/tests/framework/core/util/retry"
 	stepscommon "github.com/wso2/api-platform/tests/framework/suites/it/steps/common"
@@ -63,6 +64,9 @@ type mcpReply struct {
 			Deployments []struct {
 				ID string `json:"id"`
 			} `json:"deployments"`
+			Undeployed []struct {
+				ID string `json:"id"`
+			} `json:"undeployed"`
 		} `json:"structuredContent"`
 		Content []struct {
 			Text string `json:"text"`
@@ -376,6 +380,17 @@ func (s *Steps) trackMCPToolResult(
 			return err
 		}
 		return s.trackMCPTypedResult(ctx, tool, collection, args, reply)
+	case "undeploy_api":
+		collection, ok := mcpCollections[args.APIType]
+		if !ok {
+			return nil
+		}
+		for _, undeployed := range reply.Result.StructuredContent.Undeployed {
+			location := apiBase + "/" + collection + "/" + url.PathEscape(args.APIID) + "/deployments/" + url.PathEscape(undeployed.ID)
+			if err := deregisterDeletedPlatformResource(ctx, location); err != nil {
+				return err
+			}
+		}
 	}
 	return nil
 }
@@ -423,7 +438,10 @@ func (s *Steps) trackMCPTypedResult(
 	case "create_api":
 		return s.trackMCPCreated(ctx, tool, collection, reply.Result.StructuredContent.ID)
 	case "delete_api":
-		return deregisterDeletedPlatformResource(ctx, apiBase+"/"+collection+"/"+url.PathEscape(args.APIID))
+		if err := deregisterDeletedPlatformResource(ctx, apiBase+"/"+collection+"/"+url.PathEscape(args.APIID)); err != nil {
+			return err
+		}
+		return deregisterAPIDeployments(ctx, collection, args.APIID)
 	}
 	deployments := reply.Result.StructuredContent.Deployments
 	if len(deployments) == 0 || deployments[0].ID == "" {
@@ -435,6 +453,21 @@ func (s *Steps) trackMCPTypedResult(
 		return err
 	}
 	return s.trackCreatedPlatformResource(ctx, location, body)
+}
+
+// deregisterAPIDeployments drops the cleanup records of every deployment of a deleted API.
+func deregisterAPIDeployments(ctx context.Context, collection, apiID string) error {
+	reg, err := cleanup.Of(ctx)
+	if err != nil {
+		return err
+	}
+	prefix := collection + platformDeploymentSeparator + apiID + platformDeploymentSeparator
+	for _, pending := range reg.Pending() {
+		if pending.Kind.Name == platformDeploymentKind.Name && strings.HasPrefix(pending.ID, prefix) {
+			reg.Deregister(platformDeploymentKind, pending.ID)
+		}
+	}
+	return nil
 }
 
 func (s *Steps) trackMCPCreated(ctx context.Context, tool, collection, id string) error {
