@@ -235,7 +235,7 @@ export const aMeter = (overrides: Partial<MeterFixture> = {}): MeterFixture => (
   filterFields: [
     { field: 'Status code', eventKey: 'response.status' },
     { field: 'HTTP method', eventKey: 'request.verb' },
-    { field: 'Resource', eventKey: 'metadata.apiResourceTemplate' },
+    { field: 'Resource', eventKey: 'request.route' },
   ],
   ...overrides,
 });

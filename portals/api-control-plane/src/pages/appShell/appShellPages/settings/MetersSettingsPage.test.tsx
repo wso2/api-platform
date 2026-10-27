@@ -313,7 +313,7 @@ describe('MetersSettingsPage', () => {
     expect(await offered(user)).toEqual([
       'Status coderesponse.status',
       'HTTP methodrequest.verb',
-      'Resourcemetadata.apiResourceTemplate',
+      'Resourcerequest.route',
       'API typemetadata.apiType',
       'MCP methodmetadata.mcpAnalytics.jsonRpcMethod',
       'Toolmetadata.mcpAnalytics.capabilityName',
@@ -434,7 +434,7 @@ describe('MetersSettingsPage', () => {
     const gatewayProperties = [
       ['Status code', 'response.status'],
       ['HTTP method', 'request.verb'],
-      ['Resource', 'metadata.apiResourceTemplate'],
+      ['Resource', 'request.route'],
       ['API type', 'metadata.apiType'],
       ['MCP method', 'metadata.mcpAnalytics.jsonRpcMethod'],
       ['Tool', 'metadata.mcpAnalytics.capabilityName'],
@@ -590,7 +590,7 @@ describe('MetersSettingsPage', () => {
     expect(keys.map(valueOf)).toEqual([
       'response.status',
       'request.verb',
-      'metadata.apiResourceTemplate',
+      'request.route',
     ]);
     for (const key of keys) expect(key).toBeDisabled();
     expect(within(dialog).queryByRole('button', { name: 'Add filter' })).not.toBeInTheDocument();

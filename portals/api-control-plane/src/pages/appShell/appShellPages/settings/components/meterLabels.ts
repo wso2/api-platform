@@ -215,7 +215,7 @@ export const TOKEN_KEYS: readonly PropertyPreset[] = [
 export const PROPERTY_PRESETS: readonly PropertyPreset[] = [
   { eventKey: 'response.status', name: presetMessages.statusCode },
   { eventKey: 'request.verb', name: presetMessages.method },
-  { eventKey: 'metadata.apiResourceTemplate', name: presetMessages.resource },
+  { eventKey: 'request.route', name: presetMessages.resource },
   { eventKey: 'metadata.apiType', name: presetMessages.apiType },
   { eventKey: 'metadata.mcpAnalytics.jsonRpcMethod', name: presetMessages.mcpMethod },
   { eventKey: 'metadata.mcpAnalytics.capabilityName', name: presetMessages.tool },
