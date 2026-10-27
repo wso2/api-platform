@@ -959,6 +959,10 @@ blocks:
       - name: subscription-analytics
         features:
           - features/gateway/observability/subscription_analytics.feature
+      - name: subscription-analytics-billing-customer
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/observability/subscription_analytics_billing_customer.feature
       - name: mcp-analytics
         tags: "gateway-version>1.2.0"
         features:
