@@ -399,14 +399,12 @@ type SubscriptionCreatedEvent struct {
 
 // SubscriptionUpdatedEventPayload represents the payload of a subscription updated event.
 type SubscriptionUpdatedEventPayload struct {
-	APIID                 string `json:"apiId"`
-	SubscriptionID        string `json:"subscriptionId"`
-	ApplicationID         string `json:"applicationId,omitempty"`
-	SubscriptionToken     string `json:"subscriptionToken"`
-	SubscriptionPlanId    string `json:"subscriptionPlanId,omitempty"`
-	Status                string `json:"status"`
-	BillingCustomerID     string `json:"billingCustomerId,omitempty"`
-	BillingSubscriptionID string `json:"billingSubscriptionId,omitempty"`
+	APIID              string `json:"apiId"`
+	SubscriptionID     string `json:"subscriptionId"`
+	ApplicationID      string `json:"applicationId,omitempty"`
+	SubscriptionToken  string `json:"subscriptionToken"`
+	SubscriptionPlanId string `json:"subscriptionPlanId,omitempty"`
+	Status             string `json:"status"`
 }
 
 // SubscriptionUpdatedEvent represents the complete subscription.updated event.

@@ -637,19 +637,6 @@ func TestPublish_APIResourceTemplateMetadata(t *testing.T) {
 		assert.Equal(t, "/pets/{petId}", metadata["apiResourceTemplate"])
 	})
 
-	t.Run("REST uses the operation path from the API definition when known", func(t *testing.T) {
-		moesif := createTestMoesifWithoutAPI()
-
-		event := createBaseEvent()
-		event.Operation.APIResourceTemplate = "/test/v1.0/orders/42"
-		event.Properties["x-wso2-operation-path"] = "/orders/{id}"
-
-		moesif.Publish(event)
-
-		metadata := getMetadata(moesif.events[0])
-		assert.Equal(t, "/orders/{id}", metadata["apiResourceTemplate"])
-	})
-
 	t.Run("GraphQL uses operationName when present", func(t *testing.T) {
 		moesif := createTestMoesifWithoutAPI()
 
@@ -1050,57 +1037,4 @@ func TestPublish_SuccessCarriesNoError(t *testing.T) {
 	require.True(t, ok)
 	assert.NotContains(t, metadata, "error")
 	assert.NotContains(t, metadata, "errorType")
-}
-
-// A paid subscription's billing customer is sent as the company, which Moesif's billing
-// meters match usage by.
-func TestPublish_BillingCustomerIsTheCompany(t *testing.T) {
-	moesif := createTestMoesifWithoutAPI()
-	event := createBaseEvent()
-	event.Subscription = &dto.Subscription{BillingCustomerID: "cus_123", BillingSubscriptionID: "sub_456"}
-
-	moesif.Publish(event)
-
-	require.Len(t, moesif.events, 1)
-	require.NotNil(t, moesif.events[0].CompanyId)
-	assert.Equal(t, "cus_123", *moesif.events[0].CompanyId)
-	// A call made with only a subscription key is sent without the anonymous user, which
-	// Moesif would otherwise tie to this company.
-	assert.Nil(t, moesif.events[0].UserId)
-	metadata := getMetadata(moesif.events[0])
-	assert.Equal(t, "cus_123", metadata["billingCustomerId"])
-	assert.Equal(t, "sub_456", metadata["billingSubscriptionId"])
-}
-
-// A signed-in user on a paid call is still sent, together with the company.
-func TestPublish_BillingCustomerKeepsTheSignedInUser(t *testing.T) {
-	moesif := createTestMoesifWithoutAPI()
-	event := createBaseEvent()
-	event.Properties["x-wso2-user-id"] = "user-123"
-	event.Subscription = &dto.Subscription{BillingCustomerID: "cus_123"}
-
-	moesif.Publish(event)
-
-	require.Len(t, moesif.events, 1)
-	require.NotNil(t, moesif.events[0].UserId)
-	assert.Equal(t, "user-123", *moesif.events[0].UserId)
-	require.NotNil(t, moesif.events[0].CompanyId)
-	assert.Equal(t, "cus_123", *moesif.events[0].CompanyId)
-}
-
-// A call without a billing customer has no company and keeps the anonymous user.
-func TestPublish_NoCompanyWithoutBillingCustomer(t *testing.T) {
-	moesif := createTestMoesifWithoutAPI()
-	event := createBaseEvent()
-	event.Subscription = &dto.Subscription{Status: "ACTIVE"}
-
-	moesif.Publish(event)
-	moesif.Publish(createBaseEvent())
-
-	require.Len(t, moesif.events, 2)
-	for _, published := range moesif.events {
-		assert.Nil(t, published.CompanyId)
-		require.NotNil(t, published.UserId)
-		assert.Equal(t, "anonymous", *published.UserId)
-	}
 }

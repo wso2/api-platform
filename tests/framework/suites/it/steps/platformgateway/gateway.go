@@ -1189,8 +1189,6 @@ func (g *Gateway) register(sc *godog.ScenarioContext) {
 		g.analyticsResponseStatusForAPIContext)
 	sc.Step(`^the latest analytics event for path "([^"]*)" should have metadata field "([^"]*)" with value "([^"]*)"$`,
 		g.analyticsMetadataField)
-	sc.Step(`^the latest analytics event for path "([^"]*)" should (have|not have) company id(?: "([^"]*)")?$`,
-		g.analyticsCompanyID)
 	sc.Step(`^the response should be an oob-template list$`, g.oobTemplateList)
 	sc.Step(`^the lazy resources should contain template "([^"]*)" of type "([^"]*)"$`, g.lazyTemplatePresent)
 	sc.Step(`^the lazy resources should not contain template "([^"]*)"$`, g.lazyTemplateAbsent)
@@ -2170,9 +2168,8 @@ type analyticsEvent struct {
 		Status  int                 `json:"status"`
 		Headers map[string][]string `json:"headers"`
 	} `json:"response"`
-	Metadata  map[string]any `json:"metadata"`
-	UserID    string         `json:"user_id"`
-	CompanyID string         `json:"company_id"`
+	Metadata map[string]any `json:"metadata"`
+	UserID   string         `json:"user_id"`
 	// A2A is the event's first-class A2A dimension block, a sibling of metadata. It is decoded
 	// as a map because the assertions are about the published document: a typed mirror would
 	// let a renamed or relocated field compile and pass.
@@ -2456,43 +2453,6 @@ func (g *Gateway) analyticsMetadataField(ctx context.Context, path, field, want 
 	}
 	if got := fmt.Sprintf("%v", value); got != resolved {
 		return fmt.Errorf("latest analytics event metadata field %q is %q, want %q", field, got, resolved)
-	}
-	return nil
-}
-
-// analyticsCompanyID checks the company an event is attributed to. The gateway sets it to the
-// billing customer of a paid subscription, which is how Moesif bills that customer's usage.
-func (g *Gateway) analyticsCompanyID(ctx context.Context, path, mode, want string) error {
-	event, err := g.analyticsEventForPath(ctx, path)
-	if err != nil {
-		return err
-	}
-	resolved, err := stepscommon.Expand(ctx, want)
-	if err != nil {
-		return err
-	}
-	return companyIDAssert(event, path, mode, resolved)
-}
-
-// companyIDAssert checks an event's company id: "have" a given one, or "not have" one at all.
-func companyIDAssert(event *analyticsEvent, path, mode, want string) error {
-	switch mode {
-	case "have":
-		if want == "" {
-			return fmt.Errorf("a company id assertion needs the expected value")
-		}
-		if event.CompanyID != want {
-			return fmt.Errorf("analytics event for %q has company id %q, want %q", path, event.CompanyID, want)
-		}
-	case "not have":
-		if want != "" {
-			return fmt.Errorf("a missing company id assertion takes no value, got %q", want)
-		}
-		if event.CompanyID != "" {
-			return fmt.Errorf("analytics event for %q has company id %q, want none", path, event.CompanyID)
-		}
-	default:
-		return fmt.Errorf("unsupported company id assertion %q", mode)
 	}
 	return nil
 }
