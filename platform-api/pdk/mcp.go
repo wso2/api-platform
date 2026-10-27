@@ -49,6 +49,7 @@ type MCPTool struct {
 	// /api/v0.9. Their scopes are checked as for a built-in tool.
 	Routes []string
 	// Input is a zero value of the tool's input struct. Its type gives the schema.
+	// A string field named apiType gets the platform's API types as its allowed values.
 	// A destructive tool must not have a confirm input: the server adds it.
 	Input  any
 	Titles map[string]string // titles for inputs the Platform API does not title

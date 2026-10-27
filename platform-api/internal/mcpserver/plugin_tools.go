@@ -22,6 +22,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"slices"
 
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -55,7 +56,9 @@ func (s *Server) addPluginTools(srv *mcp.Server, tools []pdk.MCPTool) error {
 		if tool.Risk == pdk.MCPDestructive && schema.Properties["confirm"] != nil {
 			return fmt.Errorf("mcp server: plugin tool %q: a destructive tool gets confirm from the server; leave it out of the input", tool.Name)
 		}
-		s.inputSchema(schema, schema.Properties["apiType"] != nil)
+		apiType := schema.Properties["apiType"]
+		// Only a string apiType is the platform's API type; any other type keeps its own schema.
+		s.inputSchema(schema, apiType != nil && (apiType.Type == "string" || slices.Contains(apiType.Types, "string")))
 		for name, title := range tool.Titles {
 			if p := schema.Properties[name]; p != nil {
 				p.Title = title

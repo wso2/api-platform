@@ -289,6 +289,45 @@ func TestPluginTool_APITypeGetsTheEnum(t *testing.T) {
 	assert.Len(t, found, 2, "both tools are listed")
 }
 
+type numericAPITypeInput struct {
+	APIType int `json:"apiType" jsonschema:"A number."`
+}
+
+// An apiType field that is not a string keeps its own schema, so a call with it still runs.
+func TestPluginTool_NonStringAPITypeGetsNoEnum(t *testing.T) {
+	ran := false
+	tool := echoTool("numeric_thing", func(context.Context, pdk.MCPCall) (any, error) {
+		ran = true
+		return map[string]string{"ok": "yes"}, nil
+	})
+	tool.Input = numericAPITypeInput{}
+	s, err := newPluginServer(t, tool)
+	require.NoError(t, err)
+	cs := connect(t, s, who(testOrg, "ap:project:read"))
+
+	listed, err := cs.ListTools(context.Background(), nil)
+	require.NoError(t, err)
+	for _, entry := range listed.Tools {
+		if entry.Name != "numeric_thing" {
+			continue
+		}
+		var schema struct {
+			Properties map[string]struct {
+				Type string `json:"type"`
+				Enum []any  `json:"enum"`
+			} `json:"properties"`
+		}
+		b, _ := json.Marshal(entry.InputSchema)
+		require.NoError(t, json.Unmarshal(b, &schema))
+		assert.Equal(t, "integer", schema.Properties["apiType"].Type)
+		assert.Empty(t, schema.Properties["apiType"].Enum)
+	}
+
+	res, text := call(t, cs, "numeric_thing", map[string]any{"apiType": 7})
+	require.False(t, res.IsError, text)
+	assert.True(t, ran, "the call reaches Run")
+}
+
 // A destructive plugin tool takes confirm too, and runs only when it is true.
 func TestPluginTool_DestructiveNeedsConfirm(t *testing.T) {
 	ran := false
