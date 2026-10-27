@@ -60,43 +60,33 @@ type RetryableHTTPClient struct {
 
 // NewRetryableHTTPClient creates a new HTTP client with retry capabilities.
 //
-// This client is built around the single shared, SSRF-guarded *http.Client the process
-// constructs once at startup (see internal/utils.InitSharedHTTPClient) —
-// it does not build its own httpclient.New config. It inherits the shared
-// client's SSRF policy (netguard.PermitPrivateBlockMetadata() by default, operator-configurable
-// via platform_api.http_client in config.toml), and additionally refuses any redirect to a
-// non-HTTPS URL so a credential header is never sent in cleartext.
+// This client is built from the config of the single shared, SSRF-guarded *http.Client the
+// process constructs once at startup (see internal/utils.NewUpstreamClientWithTimeout). It
+// inherits the shared client's SSRF policy (netguard.PermitPrivateBlockMetadata() by default,
+// operator-configurable via platform_api.http_client in config.toml), and additionally refuses
+// any redirect to a non-HTTPS URL so a credential header is never sent in cleartext.
 //
 // Each attempt runs under its own cfg.AttemptTimeout; the request context's deadline is the
 // limit for the whole call and is the caller's to set.
 //
 // Returns:
 //   - *RetryableHTTPClient: A configured HTTP client with retry logic
-//   - error: if cfg is invalid, or the shared HTTP client has not yet been initialized
+//   - error: if cfg is invalid, or the shared HTTP client has not yet been initialized or can't
+//     take the attempt timeout
 func NewRetryableHTTPClient(cfg RetryConfig) (*RetryableHTTPClient, error) {
 	if err := cfg.validate(); err != nil {
 		return nil, err
 	}
-	sharedClient, err := utils.NewUpstreamFetchClient(0)
+	// Each attempt is limited by AttemptTimeout alone, both overall and while waiting for the
+	// response headers. The shared client's own limits suit quick probes, and would cut short a
+	// call the far side answers only once its work is done. The client keeps the shared client's
+	// policy, so the SSRF dial guard still applies, and the HTTPS-only redirect rule below stays
+	// local to it.
+	httpClient, err := utils.NewUpstreamClientWithTimeout(cfg.AttemptTimeout)
 	if err != nil {
 		return nil, err
 	}
-
-	// Copy the shared client so the HTTPS-only redirect rule stays local to this client. The
-	// copy, and the Transport cloned below, keep the shared dialer, so the SSRF dial guard still
-	// applies.
-	httpClient := *sharedClient
-	// Each attempt is limited by AttemptTimeout alone, both overall and while waiting for the
-	// response headers. The shared client's own limits suit quick probes, and would cut short a
-	// call the far side answers only when its work is done (an API Portal publish that creates
-	// the billing catalog).
-	httpClient.Timeout = cfg.AttemptTimeout
-	if transport, ok := sharedClient.Transport.(*http.Transport); ok {
-		own := transport.Clone()
-		own.ResponseHeaderTimeout = cfg.AttemptTimeout
-		httpClient.Transport = own
-	}
-	sharedCheckRedirect := sharedClient.CheckRedirect
+	sharedCheckRedirect := httpClient.CheckRedirect
 	httpClient.CheckRedirect = func(req *http.Request, via []*http.Request) error {
 		// Requests carry a credential; never follow a redirect to cleartext, regardless of the
 		// shared client's allowed_schemes setting.
@@ -109,7 +99,7 @@ func NewRetryableHTTPClient(cfg RetryConfig) (*RetryableHTTPClient, error) {
 		return nil
 	}
 
-	return &RetryableHTTPClient{client: &httpClient, cfg: cfg}, nil
+	return &RetryableHTTPClient{client: httpClient, cfg: cfg}, nil
 }
 
 // Do executes an HTTP request with retry logic

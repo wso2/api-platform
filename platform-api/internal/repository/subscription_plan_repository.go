@@ -18,6 +18,7 @@
 package repository
 
 import (
+	"bytes"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -429,8 +430,12 @@ func (r *SubscriptionPlanRepo) ExistsByHandleAndOrg(handle, orgUUID string) (boo
 	return exists == 1, nil
 }
 
-// restAPIPlanHandles returns the subscription plan handles a REST API's stored configuration lists.
+// restAPIPlanHandles returns the subscription plan handles a REST API's stored configuration lists;
+// an empty configuration lists none.
 func restAPIPlanHandles(configuration []byte) ([]string, error) {
+	if len(bytes.TrimSpace(configuration)) == 0 {
+		return nil, nil
+	}
 	var config struct {
 		SubscriptionPlans []string `json:"subscriptionPlans"`
 	}
