@@ -4713,7 +4713,7 @@ type MeterFilterField struct {
 
 // MeterFilterFieldRequest A property this meter's prices can filter on: a name the administrator gives it and the event field it reads. Any operator works on any property; the values a price gives must fit what the event field holds.
 type MeterFilterFieldRequest struct {
-	// EventKey The event field the property reads, as a full path in the gateway's analytics event; 1 to 255 characters with no spaces, unique within the meter. Our gateway sends, among others, `response.status`, `request.verb`, `metadata.apiResourceTemplate`, `metadata.apiType`, `metadata.mcpAnalytics.jsonRpcMethod`, `metadata.mcpAnalytics.capabilityName` and `metadata.aiTokenUsage.promptTokens`.
+	// EventKey The event field the property reads, as a full path in the Moesif event; 1 to 255 characters with no spaces, unique within the meter. Our gateway sends, among others, `response.status`, `request.verb`, `metadata.apiType`, `metadata.mcpAnalytics.jsonRpcMethod`, `metadata.mcpAnalytics.capabilityName` and `metadata.aiTokenUsage.promptTokens`, and Moesif adds `request.route`, the request path with its IDs as `:id`.
 	EventKey string `json:"eventKey" yaml:"eventKey"`
 
 	// Field The property's name, 1 to 40 characters, unique within the meter ignoring case, such as `Status code` or `Region`.

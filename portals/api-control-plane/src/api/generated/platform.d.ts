@@ -5464,7 +5464,7 @@ export interface components {
              */
             field: string;
             /**
-             * @description The event field the property reads, as a full path in the gateway's analytics event; 1 to 255 characters with no spaces, unique within the meter. Our gateway sends, among others, `response.status`, `request.verb`, `metadata.apiResourceTemplate`, `metadata.apiType`, `metadata.mcpAnalytics.jsonRpcMethod`, `metadata.mcpAnalytics.capabilityName` and `metadata.aiTokenUsage.promptTokens`.
+             * @description The event field the property reads, as a full path in the Moesif event; 1 to 255 characters with no spaces, unique within the meter. Our gateway sends, among others, `response.status`, `request.verb`, `metadata.apiType`, `metadata.mcpAnalytics.jsonRpcMethod`, `metadata.mcpAnalytics.capabilityName` and `metadata.aiTokenUsage.promptTokens`, and Moesif adds `request.route`, the request path with its IDs as `:id`.
              * @example response.status
              */
             eventKey: string;

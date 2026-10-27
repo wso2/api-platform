@@ -46,14 +46,14 @@ Feature: Meters for usage-based plans
     # Replacing the meter keeps its id and takes the new set of filter properties.
     When I send a "PUT" request to the control plane at "/meters/${CTX:meterId}" with body:
       """
-      {"displayName":"API calls ${CTX:meterId}","type":"REQUEST_COUNT","filterFields":[{"field":"Status","eventKey":"response.status"},{"field":"Method","eventKey":"request.verb"},{"field":"Resource","eventKey":"apiResourceTemplate"}]}
+      {"displayName":"API calls ${CTX:meterId}","type":"REQUEST_COUNT","filterFields":[{"field":"Status","eventKey":"response.status"},{"field":"Method","eventKey":"request.verb"},{"field":"Resource","eventKey":"request.route"}]}
       """
     Then the response status code should be 200
     When I send a "GET" request to the control plane at "/meters/${CTX:meterId}"
     Then the response status code should be 200
     And the JSON response array field "filterFields" should have 3 items
     And the JSON response field "filterFields[2].field" should be "Resource"
-    And the JSON response field "filterFields[2].eventKey" should be "apiResourceTemplate"
+    And the JSON response field "filterFields[2].eventKey" should be "request.route"
 
     When I send a "DELETE" request to the control plane at "/meters/${CTX:meterId}"
     Then the response status code should be 204
