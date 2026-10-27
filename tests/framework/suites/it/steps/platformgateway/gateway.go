@@ -1258,6 +1258,10 @@ func (g *Gateway) register(sc *godog.ScenarioContext) {
 		func(ctx context.Context, kind, handle string, literal *godog.DocString) error {
 			return g.assertStoredConfiguration(ctx, kind, handle, literal, false)
 		})
+	sc.Step(`^the gateway should record control-plane sync status "(pending|success|failed)" for the "([^"]*)" artifact "([^"]*)"$`,
+		g.assertCPSyncStatus)
+	sc.Step(`^the gateway should record a control-plane artifact id for the "([^"]*)" artifact "([^"]*)"$`,
+		g.assertCPArtifactID)
 
 	g.registerTimeoutSteps(sc)
 }
