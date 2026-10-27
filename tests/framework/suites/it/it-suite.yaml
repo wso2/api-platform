@@ -585,9 +585,6 @@ blocks:
       - name: prompt-template
         features:
           - features/ai-workspace-gateway/llm-policies/prompt_template.feature
-      - name: prompt-decorator
-        features:
-          - features/ai-workspace-gateway/llm-policies/prompt_decorator.feature
       - name: mcp-deploy
         features:
           - features/ai-workspace-gateway/mcp/mcp_deploy.feature
