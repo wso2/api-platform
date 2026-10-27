@@ -68,6 +68,16 @@ func (s *IdentityService) InternalUserID(r *http.Request) (string, error) {
 	return s.ToInternalUUID(identity)
 }
 
+// DisplayIdentity satisfies pdk.Identity: the identity a response shows for an
+// internal user id, resolved as ResolveIdentityField does. An empty id is
+// returned as is, the same as a field with no recorded user.
+func (s *IdentityService) DisplayIdentity(internalUserID string) (string, error) {
+	if internalUserID == "" {
+		return "", nil
+	}
+	return s.SubForUUID(internalUserID)
+}
+
 // SubForUUID resolves an internal UUID stored in an audit column back to the
 // raw identity that should be shown to external consumers (API responses,
 // gateway events), or constants.DeletedUser if uuid has no mapping (an

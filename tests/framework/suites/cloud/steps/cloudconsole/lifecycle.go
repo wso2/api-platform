@@ -112,7 +112,17 @@ func (s *Steps) findActiveGateway(ctx context.Context) error {
 			skipped = append(skipped, id+": no endpoint passed the data-plane host check")
 			continue
 		}
+		// The deploy names the environment as well as the gateway, so a gateway the list
+		// reports without one cannot be deployed to.
+		environment, _ := item["environment"].(string)
+		if strings.TrimSpace(environment) == "" {
+			skipped = append(skipped, id+": no environment")
+			continue
+		}
 		if err := tcontext.Set(ctx, keyGatewayID, id); err != nil {
+			return err
+		}
+		if err := tcontext.Set(ctx, keyGatewayEnv, environment); err != nil {
 			return err
 		}
 		return tcontext.Set(ctx, keyGatewayEndpoint, endpoint)
@@ -172,7 +182,13 @@ func (s *Steps) createAPI(ctx context.Context) error {
 	return tcontext.Set(ctx, keyAPIID, createdID)
 }
 
+// deployAPI deploys through the project's pipeline route, the one the console's deploy
+// page uses, to the active gateway in its own environment.
 func (s *Steps) deployAPI(ctx context.Context) error {
+	projectID, err := requiredValue(ctx, keyProjectID)
+	if err != nil {
+		return err
+	}
 	apiID, err := requiredValue(ctx, keyAPIID)
 	if err != nil {
 		return err
@@ -181,20 +197,45 @@ func (s *Steps) deployAPI(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	resp, err := s.doAuthenticated(ctx, http.MethodPost, "/rest-apis/"+url.PathEscape(apiID)+"/deployments", map[string]string{
-		"name": apiID + "-deploy", "base": "current", "gatewayId": gatewayID,
-	})
+	environment, err := requiredValue(ctx, keyGatewayEnv)
+	if err != nil {
+		return err
+	}
+	resp, err := s.doAuthenticated(ctx, http.MethodPost,
+		"/projects/"+url.PathEscape(projectID)+"/apis/"+url.PathEscape(apiID)+"/deployments?kind=RestApi",
+		map[string]any{
+			"environment": environment,
+			"gateways":    []map[string]string{{"gatewayId": gatewayID}},
+		})
 	if err != nil {
 		return err
 	}
 	if resp.StatusCode != http.StatusCreated {
 		return responseError(resp)
 	}
-	deploymentID, err := stringField(resp, "deploymentId")
+	items, err := listItems(resp)
+	if err != nil {
+		return fmt.Errorf("deploying APIP REST API: %w", err)
+	}
+	deploymentID, err := gatewayDeploymentID(items, gatewayID)
 	if err != nil {
 		return fmt.Errorf("deploying APIP REST API: %w", err)
 	}
 	return tcontext.Set(ctx, keyDeploymentID, deploymentID)
+}
+
+// gatewayDeploymentID picks the deployment a pipeline deploy made on the gateway.
+func gatewayDeploymentID(items []map[string]any, gatewayID string) (string, error) {
+	for _, item := range items {
+		if item["gatewayId"] != gatewayID {
+			continue
+		}
+		if id, ok := item["deploymentId"].(string); ok && strings.TrimSpace(id) != "" {
+			return id, nil
+		}
+		return "", fmt.Errorf("the deployment on gateway %q has no deploymentId", gatewayID)
+	}
+	return "", fmt.Errorf("no deployment was made on gateway %q", gatewayID)
 }
 
 func (s *Steps) waitDeployment(ctx context.Context) error {
