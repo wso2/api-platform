@@ -870,3 +870,263 @@ func TestGatewayUUIDResolvesTheBlockGatewayAmongOthers(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "it-gateway", id)
 }
+
+func TestCallHeaders(t *testing.T) {
+	ctx, _ := trackingContext(t)
+	local, _ := tcontext.LocalOf(ctx)
+	local.Set("origin", "cross-site")
+
+	headers, err := callHeaders(ctx, controlPlaneCall{
+		body:    []byte(`{}`),
+		headers: map[string]string{"Accept": "application/json", " Sec-Fetch-Site ": "${CTX:origin}"},
+	}, "tok")
+	require.NoError(t, err)
+	require.Equal(t, map[string]string{
+		"Authorization": "Bearer tok", "Content-Type": "application/json",
+		"Accept": "application/json", "Sec-Fetch-Site": "cross-site",
+	}, headers)
+
+	headers, err = callHeaders(ctx, controlPlaneCall{}, "")
+	require.NoError(t, err)
+	require.Empty(t, headers, "no token, no body and no extra header sends nothing")
+
+	_, err = callHeaders(ctx, controlPlaneCall{headers: map[string]string{"X": "${CTX:missing}"}}, "tok")
+	require.Error(t, err, "an unresolved placeholder in a header value is an error")
+}
+
+func TestCallTokenUsesTheCallsOwnBearer(t *testing.T) {
+	s := &Steps{}
+	for _, token := range []string{"", "garbage"} {
+		got, err := s.callToken(context.Background(), "https://unused.invalid", controlPlaneCall{bearer: &token}, actor.Credentials{})
+		require.NoError(t, err)
+		require.Equal(t, token, got, "an own bearer is used as it is, even when empty, without a login")
+	}
+}
+
+func TestMCPToolCallBody(t *testing.T) {
+	body, err := mcpToolCallBody("list_projects", nil)
+	require.NoError(t, err)
+	require.JSONEq(t, `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"list_projects","arguments":{}}}`, string(body))
+
+	body, err = mcpToolCallBody("get_api", []byte(`{"apiType":"rest-api","apiId":"a1"}`))
+	require.NoError(t, err)
+	require.JSONEq(t, `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_api","arguments":{"apiType":"rest-api","apiId":"a1"}}}`, string(body))
+
+	body, err = mcpToolCallBody("list_projects", []byte("  "))
+	require.NoError(t, err, "blank arguments mean none")
+	require.JSONEq(t, `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"list_projects","arguments":{}}}`, string(body))
+
+	for name, arguments := range map[string]string{
+		"not JSON":  `{"apiType":`,
+		"an array":  `[1]`,
+		"a string":  `"x"`,
+		"JSON null": `null`,
+		"a number":  `7`,
+	} {
+		_, err := mcpToolCallBody("get_api", []byte(arguments))
+		require.ErrorContains(t, err, "not a JSON object", name)
+	}
+}
+
+func mcpResponse(status int, body string) *httpx.Response {
+	return &httpx.Response{StatusCode: status, Body: []byte(body)}
+}
+
+func TestMCPToolSucceeded(t *testing.T) {
+	require.NoError(t, mcpToolSucceeded(mcpResponse(http.StatusOK, `{"result":{"structuredContent":{"id":"p1"}}}`)))
+
+	for name, resp := range map[string]*httpx.Response{
+		"nil":               nil,
+		"unauthorized":      mcpResponse(http.StatusUnauthorized, `{}`),
+		"not JSON":          mcpResponse(http.StatusOK, `nope`),
+		"JSON-RPC error":    mcpResponse(http.StatusOK, `{"error":{"code":-32602,"message":"unknown tool"}}`),
+		"tool error":        mcpResponse(http.StatusOK, `{"result":{"isError":true,"content":[{"text":"no"}]}}`),
+		"neither field set": mcpResponse(http.StatusOK, `{}`),
+	} {
+		require.Error(t, mcpToolSucceeded(resp), name)
+	}
+}
+
+func TestMCPToolFailedWith(t *testing.T) {
+	failure := mcpResponse(http.StatusOK, `{"result":{"isError":true,"content":[{"type":"text","text":"The specified gateway could not be found."}]}}`)
+	require.NoError(t, mcpToolFailedWith(failure, "The specified gateway could not be found."))
+	require.ErrorContains(t, mcpToolFailedWith(failure, "The specified gateway"), "expected \"The specified gateway\"",
+		"a sentence must match exactly, not as a prefix")
+
+	for name, resp := range map[string]*httpx.Response{
+		"success":        mcpResponse(http.StatusOK, `{"result":{"structuredContent":{}}}`),
+		"JSON-RPC error": mcpResponse(http.StatusOK, `{"error":{"message":"unknown tool"}}`),
+		"no content":     mcpResponse(http.StatusOK, `{"result":{"isError":true}}`),
+		"forbidden":      mcpResponse(http.StatusForbidden, ``),
+	} {
+		require.Error(t, mcpToolFailedWith(resp, "x"), name)
+	}
+}
+
+func TestMCPToolNamesAndSameToolNames(t *testing.T) {
+	got, err := mcpToolNames(mcpResponse(http.StatusOK, `{"result":{"tools":[{"name":"get_api"},{"name":"list_apis"},{"name":"get_api_schema"}]}}`))
+	require.NoError(t, err)
+	require.Equal(t, []string{"get_api", "get_api_schema", "list_apis"}, got, "names are sorted")
+
+	require.NoError(t, sameToolNames(got, "list_apis, get_api,get_api_schema"), "order and spacing do not matter")
+	require.ErrorContains(t, sameToolNames(got, "get_api, list_apis"), "unexpected [get_api_schema]")
+	require.ErrorContains(t, sameToolNames(got, "get_api, get_api_schema, list_apis, deploy_api"), "missing [deploy_api]")
+	require.Error(t, sameToolNames(nil, "get_api"))
+	require.NoError(t, sameToolNames([]string{}, ""), "an empty list matches an empty set")
+
+	empty, err := mcpToolNames(mcpResponse(http.StatusOK, `{"result":{"tools":[]}}`))
+	require.NoError(t, err)
+	require.Empty(t, empty)
+
+	for name, resp := range map[string]*httpx.Response{
+		"unauthorized":   mcpResponse(http.StatusUnauthorized, ``),
+		"JSON-RPC error": mcpResponse(http.StatusOK, `{"error":{"message":"bad"}}`),
+		"no result":      mcpResponse(http.StatusOK, `{}`),
+	} {
+		_, err := mcpToolNames(resp)
+		require.Error(t, err, name)
+	}
+}
+
+// trackMCP calls trackMCPToolResult with a sender that fails the test when it is used.
+func trackMCP(t *testing.T, ctx context.Context, s *Steps, tool string, arguments []byte, resp *httpx.Response) error {
+	t.Helper()
+	return s.trackMCPToolResult(ctx, "", tool, arguments, resp,
+		func(context.Context, string, []byte) (*httpx.Response, error) {
+			t.Errorf("unexpected compensating call after %s", tool)
+			return nil, errors.New("unexpected call")
+		})
+}
+
+func TestTrackMCPToolResultRegistersAndDropsCleanupRecords(t *testing.T) {
+	ctx, reg := trackingContext(t)
+	s := &Steps{}
+	ok := func(structured string) *httpx.Response {
+		return mcpResponse(http.StatusOK, `{"result":{"structuredContent":`+structured+`}}`)
+	}
+
+	require.NoError(t, trackMCP(t, ctx, s, "create_project", []byte(`{"name":"p"}`), ok(`{"id":"proj-1"}`)))
+	require.Equal(t, []string{"proj-1"}, pendingIDs(reg, platformProjectKind))
+
+	for apiType, kind := range map[string]string{
+		"rest-api": platformRESTAPIKind.Name, "llm-provider": platformProviderKind.Name,
+		"llm-proxy": platformProxyKind.Name, "mcp-proxy": platformMCPKind.Name,
+	} {
+		require.NoError(t, trackMCP(t, ctx, s, "create_api", []byte(`{"apiType":"`+apiType+`","payload":{}}`),
+			ok(`{"id":"`+apiType+`-1"}`)), apiType)
+		var ids []string
+		for _, res := range reg.Pending() {
+			if res.Kind.Name == kind {
+				ids = append(ids, res.ID)
+			}
+		}
+		require.Equal(t, []string{apiType + "-1"}, ids, apiType)
+	}
+
+	require.NoError(t, trackMCP(t, ctx, s, "deploy_api",
+		[]byte(`{"apiType":"rest-api","apiId":"rest-api-1","gatewayId":"it-gateway"}`),
+		ok(`{"apiId":"rest-api-1","deployments":[{"id":"dep-1","status":"DEPLOYING"}]}`)))
+	require.Equal(t, []string{"rest-apis\x00rest-api-1\x00dep-1\x00it-gateway"}, pendingIDs(reg, platformDeploymentKind))
+
+	require.NoError(t, trackMCP(t, ctx, s, "delete_api",
+		[]byte(`{"apiType":"rest-api","apiId":"rest-api-1","confirm":true}`), ok(`{"apiType":"rest-api","deleted":"rest-api-1"}`)))
+	require.Empty(t, pendingIDs(reg, platformRESTAPIKind))
+	require.NoError(t, trackMCP(t, ctx, s, "delete_project", []byte(`{"projectId":"proj-1","confirm":true}`), ok(`{"deleted":"proj-1"}`)))
+	require.Empty(t, pendingIDs(reg, platformProjectKind))
+}
+
+func TestTrackMCPToolResultLeavesAFailedOrReadOnlyCallAlone(t *testing.T) {
+	ctx, reg := trackingContext(t)
+	s := &Steps{}
+
+	for name, resp := range map[string]*httpx.Response{
+		"nil":            nil,
+		"unauthorized":   mcpResponse(http.StatusUnauthorized, ``),
+		"not JSON":       mcpResponse(http.StatusOK, `nope`),
+		"JSON-RPC error": mcpResponse(http.StatusOK, `{"error":{"message":"unknown tool"}}`),
+		"tool error":     mcpResponse(http.StatusOK, `{"result":{"isError":true,"content":[{"text":"no"}]}}`),
+	} {
+		require.NoError(t, trackMCP(t, ctx, s, "create_project", []byte(`{"name":"p"}`), resp), name)
+	}
+	require.NoError(t, trackMCP(t, ctx, s, "list_projects", []byte(`{}`),
+		mcpResponse(http.StatusOK, `{"result":{"structuredContent":{"items":[],"total":0}}}`)))
+	require.Empty(t, reg.Pending())
+}
+
+func TestTrackMCPToolResultRefusesWhatItCannotCleanUp(t *testing.T) {
+	ctx, reg := trackingContext(t)
+	s := &Steps{}
+	ok := func(structured string) *httpx.Response {
+		return mcpResponse(http.StatusOK, `{"result":{"structuredContent":`+structured+`}}`)
+	}
+
+	require.ErrorContains(t, trackMCP(t, ctx, s, "create_project", []byte(`{"name":"p"}`), ok(`{}`)), "no id")
+	require.ErrorContains(t, trackMCP(t, ctx, s, "create_api", []byte(`{"apiType":"rest-api"}`), ok(`{}`)), "no id")
+	require.ErrorContains(t, trackMCP(t, ctx, s, "deploy_api", []byte(`{"apiType":"rest-api","apiId":"a","gatewayId":"g"}`),
+		ok(`{"deployments":[]}`)), "no deployment id")
+	require.ErrorContains(t, trackMCP(t, ctx, s, "deploy_api", []byte(`{"apiType":"rest-api","apiId":"a"}`),
+		ok(`{"deployments":[{"id":"d"}]}`)), "names no gatewayId")
+	require.Empty(t, reg.Pending())
+}
+
+// Each undo call is the one a user would make, and the same user makes it.
+func TestTrackMCPToolResultUndoesWhatItCannotTrack(t *testing.T) {
+	ok := func(structured string) *httpx.Response {
+		return mcpResponse(http.StatusOK, `{"result":{"structuredContent":`+structured+`}}`)
+	}
+	for name, test := range map[string]struct {
+		tool, arguments, structured, undo, undoArguments string
+	}{
+		"create": {
+			"create_api", `{"apiType":"agent-proxy","payload":{}}`, `{"id":"new-1"}`,
+			"delete_api", `{"apiType":"agent-proxy","apiId":"new-1","confirm":true}`,
+		},
+		"deploy": {
+			"deploy_api", `{"apiType":"agent-proxy","apiId":"a-1","gatewayId":"gw-1"}`, `{"deployments":[{"id":"d-1"}]}`,
+			"undeploy_api", `{"apiType":"agent-proxy","apiId":"a-1","gatewayId":"gw-1","confirm":true}`,
+		},
+	} {
+		ctx, reg := trackingContext(t)
+		var who string
+		var sent [][]byte
+		send := func(_ context.Context, user string, body []byte) (*httpx.Response, error) {
+			who = user
+			sent = append(sent, body)
+			return ok(`{}`), nil
+		}
+		err := (&Steps{}).trackMCPToolResult(ctx, "publisher", test.tool, []byte(test.arguments), ok(test.structured), send)
+		require.ErrorContains(t, err, `no cleanup is defined for apiType "agent-proxy"`, name)
+		require.NotContains(t, err.Error(), "compensating", name)
+		require.Equal(t, "publisher", who, name)
+		wantBody, bodyErr := mcpToolCallBody(test.undo, []byte(test.undoArguments))
+		require.NoError(t, bodyErr, name)
+		require.Len(t, sent, 1, name)
+		require.JSONEq(t, string(wantBody), string(sent[0]), name)
+		require.Empty(t, reg.Pending(), name)
+	}
+}
+
+func TestTrackMCPToolResultReportsAFailedUndo(t *testing.T) {
+	ctx, _ := trackingContext(t)
+	ok := mcpResponse(http.StatusOK, `{"result":{"structuredContent":{"id":"new-1"}}}`)
+	arguments := []byte(`{"apiType":"agent-proxy","payload":{}}`)
+
+	for name, send := range map[string]mcpSender{
+		"transport error": func(context.Context, string, []byte) (*httpx.Response, error) { return nil, errors.New("boom") },
+		"tool error": func(context.Context, string, []byte) (*httpx.Response, error) {
+			return mcpResponse(http.StatusOK, `{"result":{"isError":true,"content":[{"text":"no"}]}}`), nil
+		},
+	} {
+		err := (&Steps{}).trackMCPToolResult(ctx, "", "create_api", arguments, ok, send)
+		require.ErrorContains(t, err, `no cleanup is defined for apiType "agent-proxy"`, name)
+		require.ErrorContains(t, err, "compensating call failed: delete_api", name)
+	}
+
+	err := (&Steps{}).trackMCPToolResult(ctx, "", "delete_api", []byte(`{"apiType":"agent-proxy","apiId":"a","confirm":true}`),
+		mcpResponse(http.StatusOK, `{"result":{"structuredContent":{"deleted":"a"}}}`),
+		func(context.Context, string, []byte) (*httpx.Response, error) {
+			t.Error("a delete leaves nothing to undo")
+			return nil, errors.New("unexpected call")
+		})
+	require.ErrorContains(t, err, "no cleanup is defined")
+}
