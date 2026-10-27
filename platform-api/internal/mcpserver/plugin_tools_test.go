@@ -250,6 +250,45 @@ func TestPluginTool_Schema(t *testing.T) {
 	t.Fatal("echo_thing is not listed")
 }
 
+type apiTypeInput struct {
+	APIType string `json:"apiType" jsonschema:"The API type."`
+}
+
+// A plugin input with an apiType field lists the same API types as the built-in tools.
+func TestPluginTool_APITypeGetsTheEnum(t *testing.T) {
+	typed := echoTool("typed_thing", func(context.Context, pdk.MCPCall) (any, error) { return nil, nil })
+	typed.Input = apiTypeInput{}
+	plain := echoTool("plain_thing", func(context.Context, pdk.MCPCall) (any, error) { return nil, nil })
+	s, err := newPluginServer(t, typed, plain)
+	require.NoError(t, err)
+	res, err := connect(t, s, who(testOrg, "ap:project:read")).ListTools(context.Background(), nil)
+	require.NoError(t, err)
+
+	var want []any
+	for _, apiKind := range apiTypes {
+		want = append(want, apiKind.name)
+	}
+	found := map[string]bool{}
+	for _, listed := range res.Tools {
+		var schema struct {
+			Properties map[string]struct {
+				Enum []any `json:"enum"`
+			} `json:"properties"`
+		}
+		b, _ := json.Marshal(listed.InputSchema)
+		require.NoError(t, json.Unmarshal(b, &schema))
+		switch listed.Name {
+		case "typed_thing":
+			found[listed.Name] = true
+			assert.Equal(t, want, schema.Properties["apiType"].Enum)
+		case "plain_thing":
+			found[listed.Name] = true
+			assert.NotContains(t, schema.Properties, "apiType")
+		}
+	}
+	assert.Len(t, found, 2, "both tools are listed")
+}
+
 // A destructive plugin tool takes confirm too, and runs only when it is true.
 func TestPluginTool_DestructiveNeedsConfirm(t *testing.T) {
 	ran := false
