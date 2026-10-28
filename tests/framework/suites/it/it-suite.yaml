@@ -782,9 +782,6 @@ blocks:
         tags: "gateway-version>=1.2.0"
         features:
           - features/gateway/observability/analytics_llm.feature
-      - name: analytics-header-filter
-        features:
-          - features/gateway/observability-policies/analytics_header_filter.feature
       - name: graphql-analytics
         tags: "gateway-version>1.2.0"
         features:
