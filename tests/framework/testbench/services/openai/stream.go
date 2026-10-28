@@ -20,10 +20,12 @@ package openai
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 )
 
 // StreamedReply is the assistant text every streamed reply carries, one word per delta.
@@ -32,6 +34,13 @@ const StreamedReply = "This is a streamed reply from the mock model."
 // StreamErrorTrigger, anywhere in a streaming request, ends the stream with the provider's
 // error event instead of a clean finish.
 const StreamErrorTrigger = "STREAM_ERROR"
+
+// StreamPacedTrigger, anywhere in a streaming request, writes each event on its own, streamPace
+// apart, so the gateway receives the stream as separate body chunks.
+const StreamPacedTrigger = "STREAM_PACED"
+
+// streamPace is the gap between the events of a paced stream.
+const streamPace = 20 * time.Millisecond
 
 // geminiStreamMethod is the Gemini method a streamed generateContent call uses.
 const geminiStreamMethod = ":streamGenerateContent"
@@ -53,8 +62,9 @@ func streamRequested(path string, body []byte) bool {
 //
 // The whole stream is written in a single flush. A policy reading the stream then sees the
 // same chunk boundaries on every run, so where a streaming guardrail or translator cuts the
-// stream off does not depend on network timing.
-func (s *Service) writeStream(w http.ResponseWriter, path string, body []byte) {
+// stream off does not depend on network timing. A request carrying StreamPacedTrigger opts out,
+// for a scenario that needs the stream to arrive in several chunks.
+func (s *Service) writeStream(ctx context.Context, w http.ResponseWriter, path string, body []byte) {
 	fail := bytes.Contains(body, []byte(StreamErrorTrigger))
 	var out strings.Builder
 	switch {
@@ -63,14 +73,42 @@ func (s *Service) writeStream(w http.ResponseWriter, path string, body []byte) {
 	case strings.HasPrefix(path, "/gemini/"):
 		geminiStream(&out, orElse(geminiStreamModel(path), "gemini-2.5-flash"), fail)
 	default:
-		openAIStream(&out, orElse(requestModel(body), "gpt-4.1-2025-04-14"), fail)
+		openAIStream(&out, orElse(requestModel(body), "gpt-4.1-2025-04-14"), fail, includeUsage(body))
 	}
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
-	_, _ = w.Write([]byte(out.String()))
-	if flusher, ok := w.(http.Flusher); ok {
-		flusher.Flush()
+	flusher, _ := w.(http.Flusher)
+	events := []string{out.String()}
+	if bytes.Contains(body, []byte(StreamPacedTrigger)) {
+		events = strings.SplitAfter(out.String(), "\n\n")
 	}
+	for i, event := range events {
+		if event == "" {
+			continue
+		}
+		if i > 0 {
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(streamPace):
+			}
+		}
+		_, _ = w.Write([]byte(event))
+		if flusher != nil {
+			flusher.Flush()
+		}
+	}
+}
+
+// includeUsage reports whether an OpenAI request asked for the usage chunk at the end of its
+// stream, through stream_options.include_usage.
+func includeUsage(body []byte) bool {
+	var req struct {
+		StreamOptions struct {
+			IncludeUsage bool `json:"include_usage"`
+		} `json:"stream_options"`
+	}
+	return json.Unmarshal(body, &req) == nil && req.StreamOptions.IncludeUsage
 }
 
 // geminiStreamModel returns the model a Gemini streaming path names: the segment after
@@ -108,8 +146,8 @@ func sseEvent(out *strings.Builder, event string, payload any) {
 }
 
 // openAIStream writes an OpenAI chat-completion chunk stream ending in [DONE], or in an
-// error object when fail is set.
-func openAIStream(out *strings.Builder, model string, fail bool) {
+// error object when fail is set. With withUsage, a usage chunk with no choices precedes [DONE].
+func openAIStream(out *strings.Builder, model string, fail, withUsage bool) {
 	chunk := func(delta map[string]any, finish any) map[string]any {
 		return map[string]any{
 			"id": "chatcmpl-mock-stream", "object": "chat.completion.chunk", "created": 1741569952,
@@ -128,6 +166,16 @@ func openAIStream(out *strings.Builder, model string, fail bool) {
 		return
 	}
 	sseData(out, chunk(map[string]any{}, "stop"))
+	if withUsage {
+		completion := len(replyWords())
+		sseData(out, map[string]any{
+			"id": "chatcmpl-mock-stream", "object": "chat.completion.chunk", "created": 1741569952,
+			"model": model, "choices": []any{},
+			"usage": map[string]any{
+				"prompt_tokens": 10, "completion_tokens": completion, "total_tokens": 10 + completion,
+			},
+		})
+	}
 	out.WriteString("data: [DONE]\n\n")
 }
 

@@ -54,6 +54,7 @@ jobs:
         run: |
           make -C tests/framework testbench
           make -C tests/framework a2a-trip-planner
+          make -C tests/framework otel-collector
           make -C tests/framework ap-cli
 
       - name: Run the integration framework suite with coverage

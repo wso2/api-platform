@@ -1,0 +1,15 @@
+# Request tracing with GenAI spans and content capture, exported over OTLP/gRPC to the block's
+# otel-collector. Analytics is off: it makes the engine read every body, and the tracing scenarios
+# must exercise the bodies the engine reads for the GenAI spans alone.
+[analytics]
+enabled = false
+
+[tracing]
+enabled = true
+endpoint = "otel-collector:4317"
+insecure = true
+batch_timeout = "200ms"
+sampling_rate = 1.0
+
+[tracing.genai]
+capture_content = true
