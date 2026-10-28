@@ -181,6 +181,16 @@ async function list(orgId, { apiId, createdBy } = {}) {
     return rows.map(decryptSubRecord);
 }
 
+/** The uuid of the user's subscription to the API, or null. One user has at most one per API. */
+async function findForUser(orgId, apiId, createdBy, t) {
+    const exec = t || db;
+    const row = await exec.queryOne(
+        `SELECT uuid FROM ${SUBSCRIPTIONS_TABLE} WHERE org_uuid = ? AND portal_id = ? AND api_uuid = ? AND created_by = ?`,
+        [orgId, getPortalId(), apiId, createdBy]
+    );
+    return row ? row.uuid : null;
+}
+
 async function get(orgId, subId, createdBy) {
     const where = ['uuid = ?', 'org_uuid = ?', 'portal_id = ?'];
     const params = [subId, orgId, getPortalId()];
@@ -312,6 +322,7 @@ const findByKey = async (orgId, apiId, planId, t) => {
 module.exports = {
     create,
     list,
+    findForUser,
     get,
     getById,
     updateStatus,

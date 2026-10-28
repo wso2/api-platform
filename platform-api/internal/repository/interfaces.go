@@ -214,8 +214,9 @@ type SubscriptionPlanRepository interface {
 	GetByID(planID, orgUUID string) (*model.SubscriptionPlan, error)
 	GetByIDs(planIDs []string, orgUUID string) (map[string]string, error)
 	GetByHandleAndOrg(handle, orgUUID string) (*model.SubscriptionPlan, error)
-	ListByOrganization(orgUUID string, opts ListOptions) ([]*model.SubscriptionPlan, error)
-	CountByOrganization(orgUUID, search string) (int, error)
+	// ListByOrganization and CountByOrganization filter by status too, "" for any.
+	ListByOrganization(orgUUID string, opts ListOptions, status string) ([]*model.SubscriptionPlan, error)
+	CountByOrganization(orgUUID, search, status string) (int, error)
 	Update(plan *model.SubscriptionPlan) error
 	Delete(planID, orgUUID string) error
 	ExistsByHandleAndOrg(handle, orgUUID string) (bool, error)
@@ -225,6 +226,20 @@ type SubscriptionPlanRepository interface {
 	// subscriptionPlanIds (existence and status) and to create missing plans on
 	// the API Portal.
 	GetByHandles(handles []string, orgUUID string) (map[string]*model.SubscriptionPlan, error)
+	// GetHandlesByIDs maps subscription_plan_uuid to handle, for reconstructing
+	// a subscriptionPlanIds response from stored mapping rows.
+	GetHandlesByIDs(planUUIDs []string, orgUUID string) (map[string]string, error)
+	// CreateWithPricing inserts the plan, its limit and, for a paid plan (pricing not nil), its
+	// pricing, in one transaction. The plan is dated with the CreatedAt the caller sets, or now.
+	CreateWithPricing(plan *model.SubscriptionPlan, pricing *model.SubscriptionPlanPricing) error
+	// GetUsage returns what offers or uses the plan: the REST APIs listing its handle, the
+	// publication drafts and live publications offering it, and its subscriptions.
+	GetUsage(planUUID, handle, orgUUID string) (*model.SubscriptionPlanUsage, error)
+	// DeleteWithReferences deletes the plan and every reference to it, in one transaction: the
+	// publication rows, REST APIs and artifact_subscription_plans that offer it, and the plan on
+	// its subscriptions, which are kept. Its limits and pricing go with it. It returns false when
+	// the plan does not exist.
+	DeleteWithReferences(planUUID, handle, orgUUID string) (bool, error)
 }
 
 // PublicationRepository defines the interface for api_publications and its
@@ -604,4 +619,38 @@ type UserOrganizationMappingRepository interface {
 	DeleteByUser(tx *sql.Tx, userUUID string) error
 	// DeleteByOrg removes all membership rows for orgUUID, within tx.
 	DeleteByOrg(tx *sql.Tx, orgUUID string) error
+}
+
+// MeterRepository stores the organization's meters, made here or copied from an API Portal, keyed by
+// organization and handle.
+type MeterRepository interface {
+	// GetByHandle returns the meter, or nil when the organization has no meter with that handle.
+	GetByHandle(orgUUID, handle string) (*model.Meter, error)
+	// ListByOrganization returns the organization's meters ordered by handle.
+	ListByOrganization(orgUUID string) ([]*model.Meter, error)
+	// Create stores a new meter; ErrMeterExists when the organization has one with that handle.
+	Create(meter *model.Meter) error
+	// Upsert creates the meter or replaces the stored meter with the same handle.
+	Upsert(meter *model.Meter) error
+	// Delete removes the meter; a meter that does not exist is not an error.
+	Delete(orgUUID, handle string) error
+}
+
+// SubscriptionPlanPricingRepository reads the pricing of paid plans, one per plan. Pricing is stored
+// with its plan (SubscriptionPlanRepository.CreateWithPricing) and never changes.
+type SubscriptionPlanPricingRepository interface {
+	// GetByPlan returns the pricing of the plan, or nil when the plan is free.
+	GetByPlan(planUUID, orgUUID string) (*model.SubscriptionPlanPricing, error)
+	// ListByOrganization returns the pricing of each of the organization's paid plans.
+	ListByOrganization(orgUUID string) ([]*model.SubscriptionPlanPricing, error)
+}
+
+// SubscriptionBillingRepository persists the billing state of paid subscriptions.
+type SubscriptionBillingRepository interface {
+	// Get returns the billing state of the subscription, or nil for a free subscription.
+	Get(subscriptionUUID, orgUUID string) (*model.SubscriptionBilling, error)
+	// GetMany returns the billing state of each given subscription that has one, by subscription UUID.
+	GetMany(subscriptionUUIDs []string, orgUUID string) (map[string]*model.SubscriptionBilling, error)
+	// Upsert stores the billing state of a subscription.
+	Upsert(billing *model.SubscriptionBilling) error
 }

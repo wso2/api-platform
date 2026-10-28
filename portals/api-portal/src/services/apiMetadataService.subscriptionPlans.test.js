@@ -55,7 +55,7 @@ const db = require('../db/driver');
 const subscriptionPlanDao = require('../dao/subscriptionPlanDao');
 const { addSubscriptionPlans, putSubscriptionPlans } = require('./apiMetadataService');
 
-function call(handler, body) {
+function call(handler, body, files) {
     return new Promise((resolve) => {
         const res = {
             statusCode: 200,
@@ -63,7 +63,7 @@ function call(handler, body) {
             json(payload) { resolve({ status: this.statusCode, body: payload }); return this; },
             send(payload) { resolve({ status: this.statusCode, body: payload }); return this; },
         };
-        const req = { orgId: 'org-1', user: { sub: 'admin-1' }, query: {}, params: {}, body };
+        const req = { orgId: 'org-1', user: { sub: 'admin-1' }, query: {}, params: {}, body, files };
         Promise.resolve(handler(req, res)).catch((error) => resolve({ status: 'THREW', body: error.message }));
     });
 }
@@ -96,4 +96,44 @@ test('bulk update answers 500 when a plan was not saved', async (t) => {
     const res = await call(putSubscriptionPlans, [{ id: 'gold', displayName: 'Gold' }]);
     assert.strictEqual(res.status, 500);
     assert.strictEqual(res.body.errors[0].message, 'Failed to upsert plan: gold');
+});
+
+// A plan from YAML takes metadata.name as its id, as APIs, applications and key managers do, so the
+// same YAML applied again updates that plan instead of creating another.
+const yamlFile = (text) => ({ subscriptionPlan: [{ buffer: Buffer.from(text) }] });
+const handlesSaved = (t, method) => {
+    const handles = [];
+    t.mock.method(subscriptionPlanDao, method, async (orgId, plan) => { handles.push(plan.handle); return null; });
+    return handles;
+};
+
+test('a plan created from YAML takes metadata.name as its id', async (t) => {
+    inTransaction(t);
+    const handles = handlesSaved(t, 'create');
+    await call(addSubscriptionPlans, {}, yamlFile('kind: SubscriptionPlan\nmetadata:\n  name: gold\nspec:\n  displayName: Gold\n'));
+    assert.deepStrictEqual(handles, ['gold']);
+});
+
+test('a plan in a YAML list takes its metadata.name as its id', async (t) => {
+    inTransaction(t);
+    const handles = handlesSaved(t, 'create');
+    await call(addSubscriptionPlans, {}, yamlFile('kind: SubscriptionPlanList\nitems:\n'
+        + '  - metadata:\n      name: gold\n    spec:\n      displayName: Gold\n'
+        + '  - metadata:\n      name: silver\n    spec:\n      displayName: Silver\n'));
+    assert.deepStrictEqual(handles, ['gold']);
+});
+
+test('a plan updated from YAML is found by its metadata.name', async (t) => {
+    inTransaction(t);
+    const handles = handlesSaved(t, 'put');
+    await call(putSubscriptionPlans, {}, yamlFile('kind: SubscriptionPlan\nmetadata:\n  name: gold\nspec:\n  displayName: Gold plus\n'));
+    assert.deepStrictEqual(handles, ['gold']);
+});
+
+test('a plan from YAML without metadata.name gets a generated id', async (t) => {
+    inTransaction(t);
+    const handles = handlesSaved(t, 'create');
+    await call(addSubscriptionPlans, {}, yamlFile('kind: SubscriptionPlan\nspec:\n  displayName: Gold\n'));
+    assert.strictEqual(handles.length, 1);
+    assert.match(handles[0], /^[0-9a-f-]{36}$/);
 });

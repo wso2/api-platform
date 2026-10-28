@@ -41,6 +41,14 @@
   var wizardIsMcp = false;
   var wizardEditType = null;
 
+  /* The reason a refusal gives. A coded refusal, such as ERR_BILLING_CATALOG, ERR_PLAN_SUB_EXIST or ERR_SUB_EXIST,
+     carries only its code as the message, and its reason as the first error. */
+  function reasonOf(err, fallback) {
+    var first = err && err.errors && err.errors[0];
+    if (first && first.message && /^ERR_[A-Z_]+$/.test(err.message || '')) return first.message;
+    return err.description || err.message || fallback;
+  }
+
   /* build id→api lookup and load all policies from server-rendered data blobs */
   var apiMap = {};
   (function() {
@@ -417,7 +425,7 @@
     /* Belt and braces: the tag input commits on blur, which normally fires before the
        Save click lands. Committing here too means a tag typed but never Entered is
        saved rather than quietly discarded, whatever order those events arrive in. */
-    commitTagInput();
+    if (tagChips) tagChips.commit();
     var name    = v('wz-name');
     var version = v('wz-version');
     var handle  = v('wz-handle');
@@ -484,7 +492,7 @@
         window.location.reload();
       } else {
         var err = await res.json().catch(function(){ return {}; });
-        await showAlert('Failed: ' + (err.description || err.message || res.statusText), 'error');
+        await showAlert('Failed: ' + reasonOf(err, res.statusText), 'error');
       }
     } catch(e) {
       await showAlert('Error: ' + e.message, 'error');
@@ -591,7 +599,7 @@
         pendingDelId = null;
       } else {
         var err = await res.json().catch(function(){ return {}; });
-        await showAlert('Delete failed: ' + (err.description || err.message || res.statusText), 'error');
+        await showAlert('Delete failed: ' + reasonOf(err, res.statusText), 'error');
       }
     } catch(e) { await showAlert('Error: ' + e.message, 'error'); }
   });
@@ -641,7 +649,7 @@
         window.location.reload();
       } else {
         var e2 = await putRes.json().catch(function(){ return {}; });
-        await showAlert('Failed: '+(e2.description||e2.message||putRes.statusText), 'error');
+        await showAlert('Failed: '+reasonOf(e2, putRes.statusText), 'error');
       }
     } catch(e) { await showAlert('Error: '+e.message, 'error'); }
   }

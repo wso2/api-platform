@@ -52,7 +52,8 @@ type apiKeyService interface {
 
 // subscriptionService is the subset of *service.SubscriptionService the receiver depends on.
 type subscriptionService interface {
-	CreateSubscription(apiID, kind, orgUUID, subscriberID string, applicationID, subscriptionPlanID *string, subscriptionToken, status, actor string) (*model.Subscription, error)
+	CreateSubscriptionWithBilling(apiID, kind, orgUUID, subscriberID string, applicationID, subscriptionPlanID *string, subscriptionToken, status, actor string, billing *model.SubscriptionBilling) (*model.Subscription, error)
+	ApplyBillingFromWebhook(orgUUID, apiHandle, kind, subscriberID string, billing *model.SubscriptionBilling) error
 	UpdateSubscription(subscriptionID, orgUUID, subscriberID, status, actor string) (*model.Subscription, error)
 	ChangePlan(subscriptionID, orgUUID, subscriberID, planUUID string) (*model.Subscription, error)
 	RegenerateToken(subscriptionID, orgUUID, subscriberID, newToken string) (*model.Subscription, error)
@@ -76,17 +77,33 @@ type applicationService interface {
 	SetAPIKeyApplication(keyName, artifactRef, kind, appIDOrHandle, orgID, userID string) error
 }
 
+// subscriptionPlanService is the subset of *service.SubscriptionPlanService the receiver depends
+// on to copy plans created or changed in the API Portal.
+type subscriptionPlanService interface {
+	UpsertPlanFromWebhook(orgUUID, handle, name string, limitCount *int, limitUnit string, pricing *model.SubscriptionPlanPricing, occurredAt time.Time) (*model.SubscriptionPlan, error)
+	DeletePlanFromWebhook(orgUUID, handle string, occurredAt time.Time) error
+}
+
+// monetizationService is the subset of *service.MonetizationService the receiver depends on to
+// keep copies of the meters made in the API Portal.
+type monetizationService interface {
+	UpsertMeterFromWebhook(meter *model.Meter) error
+	DeleteMeterFromWebhook(orgUUID, handle string, occurredAt time.Time) error
+}
+
 // Receiver is the gin handler implementing the webhook processing flow.
 type Receiver struct {
-	cfg       config.Webhook
-	verifier  *Verifier
-	decryptor *Decryptor
-	apiKeys   apiKeyService
-	subs      subscriptionService
-	apps      applicationService
-	orgs      organizationResolver
-	readOnly  readOnlyMode // TEMP-READ-ONLY-MODE: remove with receiver_readonly.go
-	slogger   *slog.Logger
+	cfg          config.Webhook
+	verifier     *Verifier
+	decryptor    *Decryptor
+	apiKeys      apiKeyService
+	subs         subscriptionService
+	apps         applicationService
+	plans        subscriptionPlanService
+	monetization monetizationService
+	orgs         organizationResolver
+	readOnly     readOnlyMode // TEMP-READ-ONLY-MODE: remove with receiver_readonly.go
+	slogger      *slog.Logger
 
 	handlers map[string]func(ctx context.Context, env *Envelope) error
 }
@@ -101,6 +118,8 @@ func NewReceiver(
 	apiKeys apiKeyService,
 	subs subscriptionService,
 	apps applicationService,
+	plans subscriptionPlanService,
+	monetization monetizationService,
 	orgs organizationResolver,
 	slogger *slog.Logger,
 ) (*Receiver, error) {
@@ -109,14 +128,16 @@ func NewReceiver(
 		return nil, err
 	}
 	r := &Receiver{
-		cfg:       cfg,
-		verifier:  NewVerifier(cfg.Secret, cfg.SignatureTolerance),
-		decryptor: decryptor,
-		apiKeys:   apiKeys,
-		subs:      subs,
-		apps:      apps,
-		orgs:      orgs,
-		slogger:   slogger,
+		cfg:          cfg,
+		verifier:     NewVerifier(cfg.Secret, cfg.SignatureTolerance),
+		decryptor:    decryptor,
+		apiKeys:      apiKeys,
+		subs:         subs,
+		apps:         apps,
+		plans:        plans,
+		orgs:         orgs,
+		monetization: monetization,
+		slogger:      slogger,
 	}
 	r.handlers = map[string]func(ctx context.Context, env *Envelope) error{
 		EventAPIKeyGenerated:              r.handleAPIKeyGenerated,
@@ -131,6 +152,13 @@ func NewReceiver(
 		EventApplicationUpdated:           r.handleApplicationUpdated,
 		EventApplicationDeleted:           r.handleApplicationDeleted,
 		EventAPIKeyApplicationUpdated:     r.handleAPIKeyApplicationUpdated,
+		EventSubscriptionPlanCreated:      r.handleSubscriptionPlanUpserted,
+		EventSubscriptionPlanUpdated:      r.handleSubscriptionPlanUpserted,
+		EventSubscriptionPlanDeleted:      r.handleSubscriptionPlanDeleted,
+		EventSubscriptionBillingUpdated:   r.handleSubscriptionBillingUpdated,
+		EventMeterCreated:                 r.handleMeterUpserted,
+		EventMeterUpdated:                 r.handleMeterUpserted,
+		EventMeterDeleted:                 r.handleMeterDeleted,
 	}
 	return r, nil
 }

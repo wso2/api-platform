@@ -46,6 +46,7 @@ const (
 	keyProjectID        = "cloudProjectID"
 	keyGatewayID        = "cloudGatewayID"
 	keyGatewayEndpoint  = "cloudGatewayEndpoint"
+	keyGatewayEnv       = "cloudGatewayEnvironment"
 	keyAPIID            = "cloudAPIID"
 	keyDeploymentID     = "cloudDeploymentID"
 	keyEnvironmentName  = "cloudEnvironmentName"

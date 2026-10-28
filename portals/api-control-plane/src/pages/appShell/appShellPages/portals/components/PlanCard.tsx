@@ -96,6 +96,7 @@ type PlanCardProps = {
   /** Absent for a deleted plan, whose limit is no longer known. */
   limit?: PlanLimitDisplay;
   onToggle?: () => void;
+  pricing?: string;
   readOnly?: boolean;
   selected: boolean;
 };
@@ -215,6 +216,8 @@ const planCardSx = (
  * `readOnly` (the published view) never sets `disabled`, which would grey the card out; it just has no
  * click handler, so hovering still shows the tooltip. A deleted plan in the draft stays clickable so
  * the user can clear it.
+ *
+ * `pricing` is the price of a paid plan in words; a free plan shows none.
  */
 export function PlanCard({
   deleted = false,
@@ -224,6 +227,7 @@ export function PlanCard({
   inactive = false,
   limit,
   onToggle,
+  pricing,
   readOnly: published,
   selected,
 }: PlanCardProps) {
@@ -293,6 +297,7 @@ export function PlanCard({
             </Box>
           )}
         </Box>
+        {pricing && <Typography variant="body2">{pricing}</Typography>}
       </Form.CardButton>
     </Tooltip>
   );

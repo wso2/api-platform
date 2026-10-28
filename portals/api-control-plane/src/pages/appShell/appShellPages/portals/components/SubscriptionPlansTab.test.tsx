@@ -20,7 +20,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ApiScopeProvider } from '@/api/core/ApiScopeProvider';
 import { resetHttpClient } from '@/api/core/http';
-import { aSubscriptionPlan, collection, failure, recorder, type SubscriptionPlanFixture } from '@/test/msw';
+import {
+  aMeter,
+  aPlanPricing,
+  aSubscriptionPlan,
+  collection,
+  failure,
+  recorder,
+  resource,
+  type SubscriptionPlanFixture,
+} from '@/test/msw';
 import { makeConsoleScope } from '@/test/mockScope';
 import { server } from '@/test/server';
 import { renderWithProviders, screen } from '@/test/utils';
@@ -125,6 +134,36 @@ describe('SubscriptionPlansTab', () => {
 
     await screen.findByText('Legacy');
     expect(cardOrder(['Legacy', 'Bronze'])).toEqual(['Legacy', 'Bronze']);
+  });
+
+  it("shows a paid plan's pricing on its card, and none on a free plan's", async () => {
+    const starter = aSubscriptionPlan({
+      displayName: 'Starter',
+      id: 'starter',
+      pricing: aPlanPricing({
+        subscriptionPlanId: 'starter',
+        pricingType: 'FLAT_RATE',
+        flatAmount: '29.00',
+        prices: [],
+      }),
+    });
+    const payAsYouGo = aSubscriptionPlan({
+      displayName: 'Pay as you go',
+      id: 'pay-as-you-go',
+      pricing: aPlanPricing({ subscriptionPlanId: 'pay-as-you-go' }),
+    });
+    // A per-unit price counts what its meter counts, so the meter is read for its unit.
+    server.use(
+      collection(PLANS_PATH, [bronze, starter, payAsYouGo]),
+      resource('/meters/successful-calls', aMeter()),
+    );
+
+    renderTab();
+
+    expect(await screen.findByText('$0.01 per request, billed monthly')).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: /Starter/ })).toHaveTextContent('$29.00 / month');
+    expect(screen.getByRole('checkbox', { name: /Bronze/ })).not.toHaveTextContent('$');
+    expect(screen.queryByText('Free')).not.toBeInTheDocument();
   });
 
   it('loads every page of plans, not just the first 20', async () => {

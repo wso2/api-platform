@@ -25,6 +25,37 @@ const ORG_HEADER = 'X-Org-Id';
 // Bounded so a stalled BFF request can't leave UI mutations pending indefinitely.
 const REQUEST_TIMEOUT_MS = 30_000;
 
+// A create can outlast the gateway's request timeout while the backend carries
+// on and finishes it, so a timed-out create is followed by polling for the
+// portal instead of being reported as a failure straight away.
+const CREATE_SETTLE_WINDOW_MS = 90_000;
+const CREATE_SETTLE_INTERVAL_MS = 3_000;
+const CREATE_STILL_RUNNING_MESSAGE =
+  'The portal is taking longer than expected to create. Check the portal list again in a few minutes.';
+
+/** Error from a platform-api call, with the HTTP status when the server answered. */
+class RequestError extends Error {
+  constructor(
+    message: string,
+    readonly status?: number,
+    readonly timedOut = false
+  ) {
+    super(message);
+    this.name = 'RequestError';
+  }
+}
+
+/** Whether a create failed only because the request ran out of time. */
+function isTimeout(err: unknown): boolean {
+  return err instanceof RequestError && (err.timedOut || err.status === 504);
+}
+
+/** Whether a poll error will not clear by waiting, so the poll should stop and report it. */
+function isPermanentPollError(err: unknown): boolean {
+  if (!(err instanceof RequestError) || err.status === undefined) return false;
+  return err.status >= 400 && err.status < 500 && ![404, 408, 429].includes(err.status);
+}
+
 type WindowRuntimeConfig = Partial<{
   platformApiBaseUrl: string;
   PLATFORM_API_BASE_URL: string;
@@ -76,7 +107,7 @@ async function request<T>(
     });
   } catch (err) {
     if ((err as { name?: string }).name === 'AbortError') {
-      throw new Error(`Request timed out after ${REQUEST_TIMEOUT_MS / 1000}s`);
+      throw new RequestError(`Request timed out after ${REQUEST_TIMEOUT_MS / 1000}s`, undefined, true);
     }
     throw err;
   } finally {
@@ -95,7 +126,7 @@ async function request<T>(
     } catch {
       // Non-JSON body; keep the status-based message.
     }
-    throw new Error(message);
+    throw new RequestError(message, response.status);
   }
 
   if (response.status === 204) return undefined as T;
@@ -147,6 +178,32 @@ function fromWire(w: WirePortal): ManagedPortal {
   };
 }
 
+/**
+ * Polls for a portal whose create timed out, returning it once it exists or null
+ * when the window passes without it.
+ */
+async function awaitCreatedPortal(base: string, orgHandle: string, handle: string): Promise<ManagedPortal | null> {
+  const deadline = Date.now() + CREATE_SETTLE_WINDOW_MS;
+  for (;;) {
+    try {
+      const body = await request<WirePortal>(
+        base,
+        orgHandle,
+        'GET',
+        `/managed-api-portals/${encodeURIComponent(handle)}`
+      );
+      return fromWire(body);
+    } catch (err) {
+      // Only a server answer that can change by waiting keeps the poll going;
+      // anything else is reported as it is.
+      if (!(err instanceof RequestError) || isPermanentPollError(err)) throw err;
+    }
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) return null;
+    await new Promise((resolve) => setTimeout(resolve, Math.min(CREATE_SETTLE_INTERVAL_MS, remaining)));
+  }
+}
+
 /** PortalPort backed by the BFF proxy at `base`, scoped to `orgHandle` via the X-Org-Id header. */
 export function createRealPortalPort(base: string, orgHandle: string): PortalPort {
   const url = (id: string) => `/managed-api-portals/${encodeURIComponent(id)}`;
@@ -160,13 +217,20 @@ export function createRealPortalPort(base: string, orgHandle: string): PortalPor
       return fromWire(body);
     },
     async create(input: CreateManagedPortalInput) {
-      const body = await request<WirePortal>(base, orgHandle, 'POST', '/managed-api-portals', {
-        handle: input.handle,
-        name: input.name,
-        description: input.description,
-        loginEnvironment: input.loginEnvironment,
-      });
-      return fromWire(body);
+      try {
+        const body = await request<WirePortal>(base, orgHandle, 'POST', '/managed-api-portals', {
+          handle: input.handle,
+          name: input.name,
+          description: input.description,
+          loginEnvironment: input.loginEnvironment,
+        });
+        return fromWire(body);
+      } catch (err) {
+        if (!isTimeout(err) || !input.handle) throw err;
+        const portal = await awaitCreatedPortal(base, orgHandle, input.handle);
+        if (portal) return portal;
+        throw new Error(CREATE_STILL_RUNNING_MESSAGE);
+      }
     },
     async update(id: string, input: UpdateManagedPortalInput) {
       const body = await request<WirePortal>(base, orgHandle, 'PUT', url(id), {

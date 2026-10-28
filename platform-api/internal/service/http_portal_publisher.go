@@ -45,6 +45,9 @@ import (
 // Documents, thumbnail and landing page travel separately, as a content ZIP (PublishContent).
 type HTTPPortalPublisher struct {
 	client *client.RetryableHTTPClient
+	// listingClient carries the listing push, whose attempt limit may be longer: with
+	// monetization the portal creates the API's new paid plans before it answers.
+	listingClient *client.RetryableHTTPClient
 	// contentClient carries the content push under a longer attempt limit.
 	contentClient *client.RetryableHTTPClient
 	authRegistry  *APIPortalAuthRegistry
@@ -56,8 +59,8 @@ type HTTPPortalPublisher struct {
 // API Portal over HTTP, authenticating via the shared-key S2S auth scheme —
 // the raw key is resolved per-portal through authRegistry (each api_portals
 // row carries its own encrypted key), never a single server-wide secret.
-func NewHTTPPortalPublisher(authRegistry *APIPortalAuthRegistry, lightClient, contentClient *client.RetryableHTTPClient, plansListingTimeout time.Duration) PortalPublisher {
-	return &HTTPPortalPublisher{client: lightClient, contentClient: contentClient, authRegistry: authRegistry, plansListingTimeout: plansListingTimeout}
+func NewHTTPPortalPublisher(authRegistry *APIPortalAuthRegistry, lightClient, listingClient, contentClient *client.RetryableHTTPClient, plansListingTimeout time.Duration) PortalPublisher {
+	return &HTTPPortalPublisher{client: lightClient, listingClient: listingClient, contentClient: contentClient, authRegistry: authRegistry, plansListingTimeout: plansListingTimeout}
 }
 
 // authHeader resolves the Authorization header for this specific portal via
@@ -87,8 +90,10 @@ type portalErrorEnvelope struct {
 // phrase. Raw portal error text is never forwarded to the client
 // (error-handling.md); any other code falls back to defaultPortalConflictReason.
 var knownPortalConflictReasons = map[string]string{
-	"ERR_SUB_EXIST": "active subscriptions are removed",
-	"ERR_KEY_EXIST": "active API keys are removed",
+	"ERR_SUB_EXIST":       "active subscriptions are removed",
+	"ERR_KEY_EXIST":       "active API keys are removed",
+	"ERR_BILLING_CATALOG": "its paid plans can be created with the billing provider",
+	"ERR_PLAN_SUB_EXIST":  "the subscriptions to the plans being removed from the API have ended",
 }
 
 // defaultPortalConflictReason is the fallback for any portal response that
@@ -204,7 +209,7 @@ func (p *HTTPPortalPublisher) pushMetadata(ctx context.Context, portal *model.AP
 	req.Header.Set("Content-Type", contentType)
 	req.Header.Set("Authorization", authHeader)
 
-	resp, err := p.client.Do(req)
+	resp, err := p.listingClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("portal metadata push failed: %w", err)
 	}

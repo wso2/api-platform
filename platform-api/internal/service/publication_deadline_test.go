@@ -41,8 +41,12 @@ func (d *deadlineRecorder) record(call string, ctx context.Context) {
 	}
 }
 
-func (d *deadlineRecorder) CreateMissingPlans(ctx context.Context, _ *model.APIPortal, _ []*model.SubscriptionPlan) error {
+func (d *deadlineRecorder) SyncPlans(ctx context.Context, _ *model.APIPortal, _ service.PlanSync) (service.PlanSyncResult, error) {
 	d.record("plans", ctx)
+	return service.PlanSyncResult{}, nil
+}
+
+func (d *deadlineRecorder) UndoPlanSync(_ context.Context, _ *model.APIPortal, _ service.PlanSyncResult) error {
 	return nil
 }
 
@@ -69,9 +73,13 @@ func (d *deadlineRecorder) PublishContent(ctx context.Context, _ *model.APIPorta
 // stalledPortal never answers: every call waits for its context to end.
 type stalledPortal struct{}
 
-func (stalledPortal) CreateMissingPlans(ctx context.Context, _ *model.APIPortal, _ []*model.SubscriptionPlan) error {
+func (stalledPortal) SyncPlans(ctx context.Context, _ *model.APIPortal, _ service.PlanSync) (service.PlanSyncResult, error) {
 	<-ctx.Done()
-	return ctx.Err()
+	return service.PlanSyncResult{}, ctx.Err()
+}
+
+func (stalledPortal) UndoPlanSync(_ context.Context, _ *model.APIPortal, _ service.PlanSyncResult) error {
+	return nil
 }
 
 func (stalledPortal) Publish(ctx context.Context, _ *model.APIPortal, _ string, _ string, _ *model.Publication, _ *model.PublicationContent) error {

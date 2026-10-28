@@ -55,10 +55,14 @@ type planSyncPublisher struct {
 	got   []*model.SubscriptionPlan
 }
 
-func (f *planSyncPublisher) CreateMissingPlans(_ context.Context, _ *model.APIPortal, plans []*model.SubscriptionPlan) error {
+func (f *planSyncPublisher) SyncPlans(_ context.Context, _ *model.APIPortal, sync PlanSync) (PlanSyncResult, error) {
 	f.calls++
-	f.got = plans
-	return f.err
+	f.got = sync.Plans
+	return PlanSyncResult{}, f.err
+}
+
+func (f *planSyncPublisher) UndoPlanSync(_ context.Context, _ *model.APIPortal, _ PlanSyncResult) error {
+	return nil
 }
 
 func newPublicationPlanService(repo *publicationPlanRepo, pub *planSyncPublisher) *PublicationService {
@@ -156,13 +160,13 @@ func TestActivePlansInOrder(t *testing.T) {
 	})
 }
 
-func TestCreateMissingPortalPlans(t *testing.T) {
+func TestSyncPortalPlans(t *testing.T) {
 	portal := &model.APIPortal{}
 	plans := []*model.SubscriptionPlan{{Handle: "silver"}, {Handle: "gold"}}
 
 	t.Run("no plans skips the portal", func(t *testing.T) {
 		pub := &planSyncPublisher{}
-		if err := newPublicationPlanService(publicationTestPlans(), pub).createMissingPortalPlans(context.Background(), portal, nil); err != nil {
+		if _, err := newPublicationPlanService(publicationTestPlans(), pub).syncPortalPlans(context.Background(), portal, "org", nil); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		if pub.calls != 0 {
@@ -172,7 +176,7 @@ func TestCreateMissingPortalPlans(t *testing.T) {
 
 	t.Run("sends the selected plans in order", func(t *testing.T) {
 		pub := &planSyncPublisher{}
-		if err := newPublicationPlanService(publicationTestPlans(), pub).createMissingPortalPlans(context.Background(), portal, plans); err != nil {
+		if _, err := newPublicationPlanService(publicationTestPlans(), pub).syncPortalPlans(context.Background(), portal, "org", plans); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		if pub.calls != 1 || len(pub.got) != 2 || pub.got[0].Handle != "silver" || pub.got[1].Handle != "gold" {
@@ -187,13 +191,14 @@ func TestCreateMissingPortalPlans(t *testing.T) {
 			is   func(error) bool
 		}{
 			{"rejection", &PortalConflictError{Message: "rejected"}, apperror.APIPublicationPortalConflict.Is},
+			{"copy priced differently", &PortalPlanPricingConflictError{Handle: "gold"}, apperror.APIPublicationPlanPricingConflict.Is},
 			{"unreachable", errors.New("connection refused"), apperror.APIPublicationPortalUnavailable.Is},
 			{"deadline", context.DeadlineExceeded, apperror.APIPublicationPortalUnavailable.Is},
 		}
 		for _, tc := range tests {
 			t.Run(tc.name, func(t *testing.T) {
 				pub := &planSyncPublisher{err: tc.err}
-				err := newPublicationPlanService(publicationTestPlans(), pub).createMissingPortalPlans(context.Background(), portal, plans)
+				_, err := newPublicationPlanService(publicationTestPlans(), pub).syncPortalPlans(context.Background(), portal, "org", plans)
 				if !tc.is(err) {
 					t.Fatalf("got %v", err)
 				}

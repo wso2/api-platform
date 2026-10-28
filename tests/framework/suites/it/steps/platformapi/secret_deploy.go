@@ -82,6 +82,7 @@ var platformCollectionKinds = map[string]cleanup.Kind{
 	"llm-proxies":        platformProxyKind,
 	"gateways":           platformGatewayKind,
 	"subscription-plans": platformSubscriptionPlanKind,
+	"meters":             platformMeterKind,
 	"applications":       platformApplicationKind,
 	"secrets":            platformSecretKind,
 	"api-portals":        platformAPIPortalKind,
