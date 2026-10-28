@@ -41,10 +41,12 @@ import (
 	"github.com/wso2/api-platform/tests/framework/testbench/services/jwks"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/mcp"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/mcpscripted"
+	"github.com/wso2/api-platform/tests/framework/testbench/services/moesif"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/oauth2"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/oidc"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/opa"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/openai"
+	"github.com/wso2/api-platform/tests/framework/testbench/services/stripe"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/webhook"
 )
 
@@ -157,6 +159,11 @@ func Testbench() *components.Definition {
 			// a scenario scripts, at http://testbench:3021/<partition>/mcp. See
 			// testbench/services/mcpscripted.
 			{Name: "mcp-scripted", Port: mcpscripted.Port, Scheme: "http", AwaitListening: true},
+			// stripe and moesif are STATEFUL and block-partitioned: the API Portal bills through
+			// them, addressed as http://testbench:3022/<block> and http://testbench:3023/<block>.
+			// See testbench/services/stripe and testbench/services/moesif.
+			{Name: "stripe", Port: stripe.Port, Scheme: "http", AwaitListening: true},
+			{Name: "moesif", Port: moesif.Port, Scheme: "http", AwaitListening: true},
 		},
 		Env: map[string]string{
 			oidc.EnvTLSCert: string(shared.IdentityProviderTLS().CertPEM),
