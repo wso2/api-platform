@@ -49,12 +49,6 @@ jobs:
           cd samples/sample-service
           make build
 
-      - name: Run Gateway integration tests
-        continue-on-error: true
-        run: |
-          cd gateway
-          make test-integration
-
       - name: Build CLI binary
         run: |
           cd cli/it
@@ -65,6 +59,38 @@ jobs:
         run: |
           cd cli/it
           make test
+
+      # The integration framework's coverage run for main. These steps mirror the source-built
+      # (-coverage) leg of it.yml, which uploads the same flags for pull requests; keep the two in
+      # step.
+      - name: Ensure C compiler is available
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential
+
+      - name: Raise the conntrack table limit
+        run: sudo sysctl -w net.netfilter.nf_conntrack_max=524288
+
+      - name: Build integration framework images
+        run: |
+          make -C tests/framework testbench
+          make -C tests/framework a2a-trip-planner
+          make -C tests/framework ap-cli
+
+      - name: Run the integration framework suite with coverage
+        continue-on-error: true
+        working-directory: tests/framework
+        env:
+          IT_COVERAGE_OUT: ${{ github.workspace }}/tests/framework/suites/it/coverage-out
+        # The policy-compat blocks require a sibling gateway-controllers checkout and are
+        # exercised by that repository's workflow.
+        run: |
+          go test ./suites/it -count=1 -timeout=60m -coverage \
+            -skip-blocks=policy-compat,policy-compat-semantic-ai
+
+      - name: Generate integration coverage report
+        continue-on-error: true
+        run: make -C tests/framework coverage-report
 
       - name: List generated coverage files
         run: |
@@ -85,12 +111,42 @@ jobs:
           files: gateway/gateway-controller/unit-test-coverage.txt,gateway/gateway-builder/unit-test-coverage.txt,gateway/gateway-runtime/policy-engine/unit-test-coverage.txt,cli/src/unit-test-coverage.txt
           flags: unit
 
-      - name: Upload Gateway integration test coverage to Codecov
+      # Integration flags, the same as it.yml's, so main and pull requests report into one view.
+      - name: Upload gateway-controller integration coverage to Codecov
+        continue-on-error: true
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          directory: gateway/it/coverage/output/txt
-          flags: integration
+          disable_search: true
+          files: tests/framework/suites/it/coverage-out/platform-gateway/controller/coverage.txt
+          flags: gateway-controller-integration
+
+      - name: Upload policy-engine integration coverage to Codecov
+        continue-on-error: true
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          disable_search: true
+          files: tests/framework/suites/it/coverage-out/platform-gateway/runtime/coverage.txt
+          flags: policy-engine-integration
+
+      - name: Upload platform-api integration coverage to Codecov
+        continue-on-error: true
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          disable_search: true
+          files: tests/framework/suites/it/coverage-out/platform-api/coverage.txt
+          flags: platform-api-integration
+
+      - name: Upload API Portal server integration coverage to Codecov
+        continue-on-error: true
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          disable_search: true
+          files: tests/framework/suites/it/coverage-out/api-portal/server/lcov.info
+          flags: api-portal-server-it
 
       - name: Upload CLI integration test coverage to Codecov
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
