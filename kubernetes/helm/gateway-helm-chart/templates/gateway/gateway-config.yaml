@@ -162,7 +162,7 @@ data:
     {{- end }}
 
     [controller.policies]
-    definitions_path = '{{ "{{" }} env "APIP_GW_CONTROLLER_POLICIES_DEFINITIONS_PATH" "{{ $gc.policies.definitions_path }}"{{ "}}" }}'
+    definitions_path = {{ printf "{{ env \"APIP_GW_CONTROLLER_POLICIES_DEFINITIONS_PATH\" %s }}" (printf "%q" $gc.policies.definitions_path) | quote }}
     {{- if $gc.policies.build_manifest_path }}
     build_manifest_path = {{ $gc.policies.build_manifest_path | quote }}
     {{- end }}
