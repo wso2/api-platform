@@ -176,7 +176,8 @@ func (r *Receiver) RegisterRoutes(mux *http.ServeMux) {
 }
 
 // ReceiveEvent runs the full webhook flow: size-limited read -> signature verify -> envelope
-// decode/validate -> idempotency -> dispatch -> mark processed.
+// decode/validate -> org resolve -> dispatch. Events are not persisted; duplicate deliveries are
+// absorbed by each handler being idempotent by domain identity.
 func (r *Receiver) ReceiveEvent(w http.ResponseWriter, req *http.Request) error {
 	if !r.cfg.Enabled {
 		return apperror.NotFound.New().WithLogMessage("webhook endpoint is disabled")
