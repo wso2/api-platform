@@ -8555,8 +8555,9 @@ paths:
         platform_api.webhook.rotation_grace so single-attempt deliveries signed
         across the rotation are not lost. The plaintext is returned **once** in
         this response and never again — losing it means rotating a new one. The
-        operator installs the returned secret (and receiverUrl) on the API Portal
-        subscriber row that targets Platform API.
+        operator installs the returned secret, with receiverPath prefixed by the
+        Platform API base URL portals reach, on the API Portal subscriber row
+        that targets Platform API.
       operationId: GenerateApiPortalWebhookSecret
       security:
         - OAuth2Security:
@@ -14215,29 +14216,26 @@ components:
       description: |
         Returned once by POST /api-portals/{apiPortalId}/webhook-secret. The
         secret is only ever present in this response — it is never readable
-        again; losing it means rotating a new one. receiverUrl is the full
-        receiver URL when platform_api.webhook.public_base_url is configured;
-        when the operator has not configured a public base URL, receiverUrl
-        contains only the receiver path and the operator must prepend their
-        own base.
+        again; losing it means rotating a new one. receiverPath is the
+        per-portal receiver path; the caller prepends the Platform API base URL
+        that portals reach (Platform API does not know its own public host).
       type: object
       required:
         - secret
-        - receiverUrl
+        - receiverPath
       properties:
         secret:
           type: string
           description: The per-portal webhook signing secret. 64 hex characters (32 bytes of entropy).
           pattern: '^[0-9a-f]{64}$'
           example: "a1b2c3d4e5f67890a1b2c3d4e5f67890a1b2c3d4e5f67890a1b2c3d4e5f67890"
-        receiverUrl:
+        receiverPath:
           type: string
           description: |
-            Either the fully-qualified receiver URL (when
-            platform_api.webhook.public_base_url is configured) or just the
-            receiver path (which the operator must prepend with their own base
-            URL).
-          example: "https://platform-api.example.com/api/internal/v0.9/webhook/portals/5c43e3f0-1d44-4b2f-9d6c-00f00b0f0a0a/events"
+            Path of this portal's receiver route on Platform API. Prepend the
+            Platform API base URL that portals reach to form the subscriber
+            row's target URL.
+          example: "/api/internal/v0.9/webhook/portals/5c43e3f0-1d44-4b2f-9d6c-00f00b0f0a0a/events"
 
     ApiPortalListItem:
       title: API Portal list projection

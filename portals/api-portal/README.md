@@ -354,14 +354,16 @@ the portal self-seeds its own `webhook_subscribers` row on boot.
    Authorization: Bearer <token with ap:api_portal:manage>
    ```
 
-   Platform API returns `{ secret, receiverUrl }` **exactly once**. The
+   Platform API returns `{ secret, receiverPath }` **exactly once**. The
    plaintext is not retrievable from Platform API after this response.
+   `receiverPath` is only the path; prepend the Platform API base URL this
+   portal reaches (the same host you would use for the legacy receiver).
 
-2. Paste both values into this portal's `config.toml`:
+2. Paste the URL and secret into this portal's `config.toml`:
 
    ```toml
    [api_portal.webhooks.platform_api]
-   url    = "<receiverUrl from step 1>"
+   url    = "<Platform API base URL><receiverPath from step 1>"
    secret = "<secret from step 1>"
    events = ["subscription.*", "apikey.*", "application.*"]
    ```

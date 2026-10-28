@@ -17,7 +17,7 @@
 
 // Integration tests for POST /api-portals/{apiPortalId}/webhook-secret and
 // the webhookSecretConfigured flag on GET /api-portals/{apiPortalId}. Covers
-// FR-006, FR-007, FR-009, FR-010, and the receiverUrl shape described in
+// FR-006, FR-007, FR-009, FR-010, and the receiverPath shape described in
 // research.md Decision 5.
 
 package handler
@@ -36,7 +36,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wso2/api-platform/platform-api/config"
 	"github.com/wso2/api-platform/platform-api/internal/database"
 	"github.com/wso2/api-platform/platform-api/internal/middleware"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
@@ -45,7 +44,6 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
-const apiPortalWebhookTestPublicBase = "https://platform-api.test.example.com"
 
 // setupAPIPortalWebhookSecretEnv is a sibling of setupAPIPortalHandlerEnv
 // (api_portal_integration_test.go) that wires the per-portal webhook secret
@@ -85,8 +83,7 @@ func setupAPIPortalWebhookSecretEnv(t *testing.T) (http.Handler, *database.DB, f
 	identityService := service.NewIdentityService(repository.NewUserIdentityMappingRepo(db))
 
 	svc := service.NewAPIPortalService(portalRepo, orgRepo, noopAudit{}, v, nil, webhookSecrets, identityService, slog.Default())
-	webhookCfg := config.Webhook{PublicBaseURL: apiPortalWebhookTestPublicBase}
-	h := NewAPIPortalHandler(svc, identityService, webhookCfg, slog.Default())
+	h := NewAPIPortalHandler(svc, identityService, slog.Default())
 
 	mux := http.NewServeMux()
 	h.RegisterRoutes(mux)
@@ -119,7 +116,7 @@ func createTestAPIPortal(t *testing.T, r http.Handler) string {
 // test can assert field names and types without importing the generated DTO.
 type webhookSecretResp struct {
 	Secret      string `json:"secret"`
-	ReceiverUrl string `json:"receiverUrl"`
+	ReceiverPath string `json:"receiverPath"`
 }
 
 // hexSecretPattern matches the 64-char lowercase hex secret shape FR-006
@@ -145,9 +142,9 @@ func TestAPIPortalHandler_WebhookSecret_FirstCallGeneratesAndReturnsPlaintext(t 
 	if !hexSecretPattern.MatchString(got.Secret) {
 		t.Errorf("FR-006: secret must be 64 lowercase hex characters, got %q (length %d)", got.Secret, len(got.Secret))
 	}
-	wantPrefix := apiPortalWebhookTestPublicBase + "/api/internal/v0.9/webhook/portals/"
-	if !strings.HasPrefix(got.ReceiverUrl, wantPrefix) || !strings.HasSuffix(got.ReceiverUrl, "/events") {
-		t.Errorf("receiverUrl shape wrong: %q (want prefix %q, suffix %q)", got.ReceiverUrl, wantPrefix, "/events")
+	wantPrefix := "/api/internal/v0.9/webhook/portals/"
+	if !strings.HasPrefix(got.ReceiverPath, wantPrefix) || !strings.HasSuffix(got.ReceiverPath, "/events") {
+		t.Errorf("receiverPath shape wrong: %q (want prefix %q, suffix %q)", got.ReceiverPath, wantPrefix, "/events")
 	}
 }
 
@@ -179,8 +176,8 @@ func TestAPIPortalHandler_WebhookSecret_SecondCallRotates(t *testing.T) {
 	if secondResp.Secret == firstResp.Secret {
 		t.Fatal("FR-008: second call MUST return a different secret than the first")
 	}
-	if secondResp.ReceiverUrl != firstResp.ReceiverUrl {
-		t.Errorf("receiverUrl must stay stable across rotations; got %q then %q", firstResp.ReceiverUrl, secondResp.ReceiverUrl)
+	if secondResp.ReceiverPath != firstResp.ReceiverPath {
+		t.Errorf("receiverPath must stay stable across rotations; got %q then %q", firstResp.ReceiverPath, secondResp.ReceiverPath)
 	}
 
 	// The database row MUST now carry both current and previous ciphertexts

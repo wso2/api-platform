@@ -496,9 +496,10 @@ tls_skip_verify = false
 
 # Exception to the rule above: the "platform-api" subscriber for the default
 # organization can be seeded from this file, so its signing secret never goes
-# through the admin REST API. Get both values from Platform API's
-# POST /api/v0.9/api-portals/{id}/webhook-secret (the secret is shown once),
-# paste them here, and restart. When url and secret are both set, the row is
+# through the admin REST API. Call Platform API's
+# POST /api/v0.9/api-portals/{id}/webhook-secret (the secret is shown once);
+# url is the Platform API base URL this portal reaches followed by the returned
+# receiverPath. Paste both here and restart. When url and secret are both set, the row is
 # upserted at boot and the admin API refuses PUT/DELETE on it. Leave unset to
 # keep managing it through the admin API.
 # [api_portal.webhooks.platform_api]

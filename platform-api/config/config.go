@@ -450,10 +450,6 @@ type Webhook struct {
 	// Portal delivery is single-attempt, so without a grace window any event signed between
 	// the rotation and the portal subscriber row PUT is lost.
 	RotationGrace time.Duration `koanf:"rotation_grace"`
-	// PublicBaseURL, when set, is used by POST /api/v0.9/api-portals/{id}/webhook-secret
-	// to return the full receiver URL for the OSS operator; when empty, only the receiver
-	// path is returned and the operator supplies the base.
-	PublicBaseURL string `koanf:"public_base_url"`
 	// SignatureTolerance bounds how old a signed request may be (replay protection).
 	SignatureTolerance time.Duration `koanf:"signature_tolerance"`
 	// MaxBodySize caps the request body size in bytes.

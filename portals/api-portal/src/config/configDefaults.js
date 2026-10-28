@@ -374,8 +374,8 @@ const DEFAULTS = {
         // it as read-only (PUT / DELETE return 403); every other subscriber row
         // keeps using the admin REST API as before.
         //
-        // url is the per-portal receiver URL from the Platform API endpoint
-        // POST /api-portals/{id}/webhook-secret — e.g.
+        // url is the Platform API base URL this portal reaches followed by the
+        // receiverPath returned by POST /api-portals/{id}/webhook-secret — e.g.
         // https://platform-api/api/internal/v0.9/webhook/portals/<uuid>/events.
         // secret is the plaintext signing secret returned in the same response.
         // events defaults to the three event families the receiver dispatches.

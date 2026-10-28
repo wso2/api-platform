@@ -3457,17 +3457,14 @@ type GatewayTokenListResponse struct {
 
 // GenerateApiPortalWebhookSecretResponse Returned once by POST /api-portals/{apiPortalId}/webhook-secret. The
 // secret is only ever present in this response — it is never readable
-// again; losing it means rotating a new one. receiverUrl is the full
-// receiver URL when platform_api.webhook.public_base_url is configured;
-// when the operator has not configured a public base URL, receiverUrl
-// contains only the receiver path and the operator must prepend their
-// own base.
+// again; losing it means rotating a new one. receiverPath is the
+// per-portal receiver path; the caller prepends the Platform API base URL
+// that portals reach (Platform API does not know its own public host).
 type GenerateApiPortalWebhookSecretResponse struct {
-	// ReceiverUrl Either the fully-qualified receiver URL (when
-	// platform_api.webhook.public_base_url is configured) or just the
-	// receiver path (which the operator must prepend with their own base
-	// URL).
-	ReceiverUrl string `json:"receiverUrl" yaml:"receiverUrl"`
+	// ReceiverPath Path of this portal's receiver route on Platform API. Prepend the
+	// Platform API base URL that portals reach to form the subscriber
+	// row's target URL.
+	ReceiverPath string `json:"receiverPath" yaml:"receiverPath"`
 
 	// Secret The per-portal webhook signing secret. 64 hex characters (32 bytes of entropy).
 	Secret string `json:"secret" yaml:"secret"`

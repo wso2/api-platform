@@ -25,7 +25,6 @@ import (
 	"strings"
 
 	"github.com/wso2/api-platform/platform-api/api"
-	"github.com/wso2/api-platform/platform-api/config"
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/middleware"
@@ -37,19 +36,16 @@ import (
 )
 
 // APIPortalHandler exposes /api-portals CRUD plus the webhook-secret rotation
-// endpoint. webhookCfg is captured by value at construction so the handler can
-// build the receiver URL for the response without reaching into shared config
-// state at request time.
+// endpoint.
 type APIPortalHandler struct {
-	svc        *service.APIPortalService
-	identity   *service.IdentityService
-	webhookCfg config.Webhook
-	slogger    *slog.Logger
+	svc      *service.APIPortalService
+	identity *service.IdentityService
+	slogger  *slog.Logger
 }
 
 // NewAPIPortalHandler constructs an APIPortalHandler.
-func NewAPIPortalHandler(svc *service.APIPortalService, identity *service.IdentityService, webhookCfg config.Webhook, slogger *slog.Logger) *APIPortalHandler {
-	return &APIPortalHandler{svc: svc, identity: identity, webhookCfg: webhookCfg, slogger: slogger}
+func NewAPIPortalHandler(svc *service.APIPortalService, identity *service.IdentityService, slogger *slog.Logger) *APIPortalHandler {
+	return &APIPortalHandler{svc: svc, identity: identity, slogger: slogger}
 }
 
 // CreateAPIPortal handles POST /api-portals.
@@ -190,15 +186,12 @@ func (h *APIPortalHandler) GenerateWebhookSecret(w http.ResponseWriter, r *http.
 		return serviceError(err, fmt.Sprintf("failed to generate or rotate webhook secret for api portal %q in org %s", handle, orgID))
 	}
 
-	receiverPath := strings.Replace(webhook.PerPortalRoutePath, "{portalUUID}", portalUUID, 1)
-	receiverURL := receiverPath
-	if base := strings.TrimSpace(h.webhookCfg.PublicBaseURL); base != "" {
-		receiverURL = strings.TrimRight(base, "/") + receiverPath
-	}
-
+	// Only the path is returned: Platform API cannot know the host portals reach it on
+	// (it differs per deployment), so the caller prepends its own base, as for the
+	// legacy receiver route.
 	resp := api.GenerateApiPortalWebhookSecretResponse{
-		Secret:      secret,
-		ReceiverUrl: receiverURL,
+		Secret:       secret,
+		ReceiverPath: strings.Replace(webhook.PerPortalRoutePath, "{portalUUID}", portalUUID, 1),
 	}
 	httputil.WriteJSON(w, http.StatusOK, resp)
 	return nil

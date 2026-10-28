@@ -24,9 +24,10 @@ release notes.
 
 - **OSS management endpoint `POST /api/v0.9/api-portals/{apiPortalId}/webhook-secret`.**
   Scope `ap:api_portal:manage`. Generates (or rotates) the per-portal secret
-  and returns `{ secret, receiverUrl }` **once** — the plaintext is not
-  retrievable from Platform API after this response. The operator pastes both
-  values into the API Portal's `config.toml` under
+  and returns `{ secret, receiverPath }` **once** — the plaintext is not
+  retrievable from Platform API after this response. The operator pastes the
+  secret, and the receiver URL (Platform API base URL + `receiverPath`), into
+  the API Portal's `config.toml` under
   `[api_portal.webhooks.platform_api]` and restarts the portal; the portal
   self-seeds its `platform-api` webhook subscriber row from that config. The
   OSS README's "Webhook signing secret for Platform API deliveries" section
@@ -71,10 +72,8 @@ release notes.
 ### Changed
 
 - **Platform API config `platform_api.webhook`.** New keys: `legacy_shared_secret`
-  (bool, default `true` in this release), `rotation_grace` (duration, default
-  `10m` — operator-configurable; negative values refuse to start), and
-  `public_base_url` (string, optional — when set, Platform API's generate /
-  rotate endpoint returns a fully-qualified `receiverUrl` instead of a path).
+  (bool, default `true` in this release) and `rotation_grace` (duration, default
+  `10m` — operator-configurable; negative values refuse to start).
 
 ### Upgrade notes
 

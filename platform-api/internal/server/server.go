@@ -427,7 +427,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	subscriptionPlanHandler := handler.NewSubscriptionPlanHandler(subscriptionPlanService, identityService, slogger)
 	publicationHandler := handler.NewPublicationHandler(publicationService, identityService, cfg.PublicationContentMaxBytes, cfg.PublicationThumbnailMaxBytes, slogger)
 	appHandler := handler.NewApplicationHandler(appService, identityService, cfg.Auth.Authorization.Mode, slogger)
-	apiPortalHandler := handler.NewAPIPortalHandler(apiPortalService, identityService, cfg.Webhook, slogger)
+	apiPortalHandler := handler.NewAPIPortalHandler(apiPortalService, identityService, slogger)
 	wsHandler := handler.NewWebSocketHandler(wsManager, gatewayService, deploymentService, cfg.Listeners.WebSocket.RateLimitPerMin, slogger)
 	internalGatewayHandler := handler.NewGatewayInternalAPIHandler(gatewayService, internalGatewayService, artifactImportService, secretService, slogger)
 	apiKeyHandler := handler.NewAPIKeyHandler(apiKeyService, identityService, cfg.Auth.Authorization.Mode, slogger)
