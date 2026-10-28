@@ -19,8 +19,10 @@
 import { Box, Button, Typography } from '@wso2/oxygen-ui';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
+import { useMetersById } from '@/api/resources/meters';
 import { useAllSubscriptionPlans, type SubscriptionPlan } from '@/api/resources/subscriptionPlans';
 import { EmptyState, ErrorState, LoadingState } from '@/components/StateViews';
+import { pricingSummary, summaryMeterIds } from '../../settings/components/pricingFormat';
 import { getPlanLimitDisplay } from '../utils/subscriptionPlanLimit';
 import type { DraftFormValues } from '../utils/publicationForm';
 import { PlanCard } from './PlanCard';
@@ -112,6 +114,8 @@ export function SubscriptionPlansTab({ disabled, onChange, readOnly, savedPlanId
   };
   const offeredPlans = [...activePlans, ...inactiveSelectedPlans].sort((a, b) => rank(a) - rank(b));
   const shownPlans = readOnly ? offeredPlans.filter((plan) => selectedSet.has(plan.id)) : offeredPlans;
+  // The unit a per-unit price counts (call or token) comes from its meter.
+  const { meters } = useMetersById(shownPlans.flatMap((plan) => summaryMeterIds(plan.pricing)));
 
   if (plansQuery.isPending) {
     return <LoadingState label={intl.formatMessage(messages.loading)} />;
@@ -220,6 +224,7 @@ export function SubscriptionPlansTab({ disabled, onChange, readOnly, savedPlanId
             key={plan.id}
             limit={getPlanLimitDisplay(plan)}
             onToggle={() => toggle(plan.id)}
+            pricing={plan.pricing ? pricingSummary(intl, plan.pricing, meters) : undefined}
             readOnly={readOnly}
             selected={selectedSet.has(plan.id)}
           />

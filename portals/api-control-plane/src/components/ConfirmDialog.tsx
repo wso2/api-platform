@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { useEffect, useId, useState, type FormEvent } from 'react';
+import { useEffect, useId, useState, type FormEvent, type ReactNode } from 'react';
 import {
   Box,
   Button,
@@ -47,6 +47,10 @@ export type ConfirmDialogProps = {
   confirmPhrase?: string;
   /** Label for the type-to-confirm field; defaults to a generic prompt. */
   confirmInputLabel?: string;
+  /** Keeps confirm disabled, for an action that isn't allowed right now; the message says why. */
+  confirmDisabled?: boolean;
+  /** Extra content shown under the message, such as the items that block the action. */
+  children?: ReactNode;
   loading?: boolean;
   maxWidth?: DialogProps['maxWidth'];
   onConfirm: () => void;
@@ -64,6 +68,8 @@ export function ConfirmDialog({
   confirmColor,
   confirmPhrase,
   confirmInputLabel,
+  confirmDisabled,
+  children,
   loading,
   maxWidth = 'xs',
   onConfirm,
@@ -81,7 +87,7 @@ export function ConfirmDialog({
   }, [open]);
 
   const matched = !confirmPhrase || typed === confirmPhrase;
-  const canConfirm = matched && !loading;
+  const canConfirm = matched && !confirmDisabled && !loading;
 
   // A real `form` element, so Enter in the phrase field confirms the way a form
   // is expected to — no key handler duplicating the browser's own behaviour.
@@ -97,6 +103,7 @@ export function ConfirmDialog({
         <DialogContent>
           <Form.Stack spacing={2}>
             <DialogContentText>{message}</DialogContentText>
+            {children}
             {confirmPhrase && (
               // `ElementWrapper` is the Oxygen form primitive for exactly this:
               // a full-width `FormControl` with its `FormLabel` bound to the
