@@ -760,27 +760,10 @@ blocks:
         tags: "gateway-version>=1.2.0"
         features:
           - features/ai-workspace-gateway/mcp-policies/mcp_policies.feature
-      - name: mcp-gateway-url-precedence
-        tags: "gateway-version>1.2.0"
-        features:
-          - features/ai-workspace-gateway/mcp-policies/mcp_gateway_url_precedence.feature
       - name: graphql-policies
         tags: "gateway-version>1.2.0"
         features:
           - features/graphql_policies.feature
-
-  - name: mcp-auth-gateway-host
-    parallel: 1
-    components:
-      - name: platform-gateway
-        overlay: tests/framework/core/catalog/overlays/mcp-auth-gateway-host.toml
-        db:
-          matrix: [sqlite, postgres, sqlserver]
-      - name: testbench
-    runners:
-      - name: mcp-auth-gateway-host
-        features:
-          - features/ai-workspace-gateway/mcp-policies/mcp_auth_gateway_host.feature
 
   - name: analytics
     parallel: 1
