@@ -99,6 +99,77 @@ func TestComponentVersion(t *testing.T) {
 	}
 }
 
+func TestCallbackURL(t *testing.T) {
+	portal := &components.Definition{
+		Name: "api-portal", Image: components.ImageRef{Ref: "api-portal:test"}, Alias: "api-portal",
+		Endpoints: []components.Endpoint{{Name: "https", Port: 9543, Scheme: "https"}},
+	}
+	testbench := &components.Definition{
+		Name: "testbench", Image: components.ImageRef{Ref: "testbench:test"}, Alias: "testbench", Shared: true,
+		Endpoints: []components.Endpoint{{Name: "stripe", Port: 3022, Scheme: "http"}},
+	}
+	stack := &components.Definition{
+		Name: "stack", Alias: "stack", Compose: &components.ComposeSpec{},
+		Endpoints: []components.Endpoint{{Name: "http", Port: 80, Scheme: "http"}},
+	}
+	set := components.NewSet()
+	for _, def := range []*components.Definition{portal, testbench, stack} {
+		inst, err := components.NewInstance(def, 0, 1, "127.0.0.1", nil)
+		require.NoError(t, err)
+		require.NoError(t, set.Add(inst))
+	}
+	block := &topology.ResolvedBlock{Name: "billing"}
+	topo := &Topology{Block: block, Instances: set, network: &Network{name: "6f1c2b9e-net", block: "billing"}}
+
+	t.Run("a block's component is named by its block's network", func(t *testing.T) {
+		got, err := topo.CallbackURL("api-portal", "https")
+		require.NoError(t, err)
+		require.Equal(t, "https://api-portal.6f1c2b9e-net:9543", got)
+	})
+
+	t.Run("a shared component keeps its own alias", func(t *testing.T) {
+		got, err := topo.CallbackURL("testbench", "stripe")
+		require.NoError(t, err)
+		require.Equal(t, "http://testbench:3022", got)
+	})
+
+	t.Run("a compose stack is refused", func(t *testing.T) {
+		_, err := topo.CallbackURL("stack", "http")
+		require.ErrorContains(t, err, "compose stack")
+	})
+
+	t.Run("an unknown component or endpoint is reported", func(t *testing.T) {
+		_, err := topo.CallbackURL("missing", "https")
+		require.Error(t, err)
+		_, err = topo.CallbackURL("api-portal", "nope")
+		require.ErrorContains(t, err, `no endpoint "nope"`)
+	})
+
+	t.Run("a block without a network is refused", func(t *testing.T) {
+		_, err := (&Topology{Block: block, Instances: set}).CallbackURL("api-portal", "https")
+		require.ErrorContains(t, err, `block "billing" has no network`)
+	})
+
+	t.Run("a nil topology is refused", func(t *testing.T) {
+		var missing *Topology
+		_, err := missing.CallbackURL("api-portal", "https")
+		require.ErrorContains(t, err, "topology is required")
+	})
+}
+
+func TestBuildRequestNamesTheContainerOnlyItsBlockNetworkKnows(t *testing.T) {
+	definition := &components.Definition{
+		Name: "api-portal", Image: components.ImageRef{Ref: "api-portal:test"}, Alias: "api-portal",
+		Endpoints: []components.Endpoint{{Name: "https", Port: 9543, Scheme: "https"}},
+	}
+	network := &Network{name: "6f1c2b9e-net", block: "billing"}
+
+	req, err := buildRequest(definition, Options{Network: network}, "api-portal", "amd64", 1)
+
+	require.NoError(t, err)
+	require.Equal(t, map[string][]string{"6f1c2b9e-net": {"api-portal", "api-portal.6f1c2b9e-net"}}, req.NetworkAliases)
+}
+
 func TestComposeStackCoverageServicesPreservesOutputNames(t *testing.T) {
 	stack := &ComposeStack{
 		def: &components.Definition{Compose: &components.ComposeSpec{

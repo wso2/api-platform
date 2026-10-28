@@ -72,6 +72,13 @@ func (n *Network) Block() string {
 	return n.block
 }
 
+// blockAlias is a second alias for a container on this network that no other network has. A
+// shared component is attached to every block's network, and the plain alias names a container
+// in each of them, so only this alias tells it which block's container to call.
+func (n *Network) blockAlias(alias string) string {
+	return alias + "." + n.name
+}
+
 // Remove tears down the network. It is safe to call repeatedly.
 func (n *Network) Remove(ctx context.Context) error {
 	if n == nil || n.inner == nil {
