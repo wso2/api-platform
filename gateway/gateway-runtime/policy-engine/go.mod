@@ -3,10 +3,10 @@ module github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine
 go 1.26.10
 
 require (
+	cel.dev/cel-go v0.33.1
 	github.com/andybalholm/brotli v1.2.7
 	github.com/envoyproxy/go-control-plane/envoy v1.40.0
 	github.com/go-viper/mapstructure/v2 v2.5.0
-	github.com/google/cel-go v0.31.0
 	github.com/google/uuid v1.6.0
 	github.com/klauspost/compress v1.19.2
 	github.com/knadh/koanf/parsers/toml/v2 v2.2.0
