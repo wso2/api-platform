@@ -895,17 +895,7 @@ func preserveMCPUpstreamAuthValue(existing, updated *model.UpstreamConfig) *mode
 	if existing == nil {
 		return updated
 	}
-	if updated.Main == nil {
-		return updated
-	}
-	if existing.Main == nil || existing.Main.Auth == nil {
-		return updated
-	}
-	if updated.Main.Auth == nil {
-		return updated
-	}
-	if updated.Main.Auth.Value == "" {
-		updated.Main.Auth.Value = existing.Main.Auth.Value
-	}
+	preserveEndpointAuthValue(existing.Main, updated.Main)
+	preserveEndpointAuthValue(existing.Sandbox, updated.Sandbox)
 	return updated
 }
