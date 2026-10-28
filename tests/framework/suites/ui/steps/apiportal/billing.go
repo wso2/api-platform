@@ -298,6 +298,12 @@ func (u *Steps) setUpBillingInSettings(ctx context.Context) error {
 	return u.expect.Locator(page.Locator("#cfg-billing-webhook-edit-btn")).ToBeVisible()
 }
 
+// billingWebhookBase is the address the shared testbench reaches this block's portal on, where its
+// Stripe service sends the portal's payment events.
+func (u *Steps) billingWebhookBase() (string, error) {
+	return u.topo.CallbackURL("api-portal", "https")
+}
+
 // moveWebhookHostAndRemoveBilling moves Stripe's events to the portal's address on the test
 // network, refusing an http address first, then removes billing: Moesif failing once keeps it, and
 // a second attempt removes it.
@@ -306,7 +312,7 @@ func (u *Steps) moveWebhookHostAndRemoveBilling(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	portalBase, err := u.apiPortalURL()
+	portalBase, err := u.billingWebhookBase()
 	if err != nil {
 		return err
 	}
@@ -634,7 +640,7 @@ func (u *Steps) setUpBillingByAPI(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	portalBase, err := u.apiPortalURL()
+	portalBase, err := u.billingWebhookBase()
 	if err != nil {
 		return err
 	}
