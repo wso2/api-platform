@@ -20,7 +20,7 @@
 # Uses event-gateway-builder to compile the event-gateway binary with embedded policies
 
 # Stage 1: Builder Base — compile the event-gateway-builder tool
-FROM --platform=$BUILDPLATFORM golang:1.26.5-bookworm AS builder-base
+FROM --platform=$BUILDPLATFORM golang:1.26.10-bookworm AS builder-base
 ARG BUILDARCH
 ARG VERSION=unknown
 ARG GIT_COMMIT=unknown
