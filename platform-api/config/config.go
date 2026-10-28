@@ -136,6 +136,7 @@ type Server struct {
 	APIPortalPublication APIPortalPublication `koanf:"api_portal_publication"`
 	AgentCardCache       AgentCardCache       `koanf:"agent_card_cache"`
 	ReadOnly             ReadOnly             `koanf:"read_only"` // TEMP-READ-ONLY-MODE: remove with config/readonly.go
+	MCPServer            MCPServer            `koanf:"mcp_server"`
 }
 
 // APIPortalPublication sets the time and retry limits of the calls made to an API Portal
@@ -891,6 +892,9 @@ func LoadConfig(configPaths ...string) (*Server, error) {
 		return nil, err
 	}
 	if err := validateWebhookConfig(&cfg.Webhook); err != nil {
+		return nil, err
+	}
+	if err := validateMCPServerConfig(&cfg.MCPServer, &cfg.Auth); err != nil {
 		return nil, err
 	}
 	if err := validateEncryptionKey(cfg.Security.EncryptionKey); err != nil {

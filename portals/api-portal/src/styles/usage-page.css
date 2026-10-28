@@ -1,0 +1,252 @@
+/* Usage page — usage-* prefix; tables and status messages reuse subscriptions-page.css */
+
+.usage-page {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.usage-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 1rem;
+}
+
+.usage-header-text {
+  flex: 1 1 22.5rem;
+}
+
+.usage-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.625rem;
+}
+
+.usage-filters[hidden] {
+  display: none;
+}
+
+.usage-filter {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.usage-filter .form-select {
+  min-height: 2.5rem;
+  min-width: 12rem;
+  font-weight: 400;
+}
+
+.usage-muted {
+  margin: 0;
+  font-size: 0.78125rem;
+  color: var(--text-muted);
+}
+
+.usage-notice {
+  margin: 0;
+  padding: 0.75rem 0.875rem;
+  border-radius: 0.6875rem;
+  background: var(--warning-surface);
+  color: var(--warning);
+  font-size: 0.84375rem;
+}
+
+#usageContent {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  transition: opacity 0.15s ease;
+}
+
+#usageContent[hidden] {
+  display: none;
+}
+
+/* Reading new usage over what is shown: the shown usage dims under a spinner until it is replaced. */
+#usageContent.is-loading {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+#usageContent.is-loading::after {
+  content: "";
+  position: absolute;
+  top: 7.5rem;
+  left: 50%;
+  width: 2rem;
+  height: 2rem;
+  margin-left: -1rem;
+  border: 3px solid var(--border);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: usage-spin 0.7s linear infinite;
+}
+
+/* The first read, before anything is shown. */
+.usage-loader {
+  display: flex;
+  justify-content: center;
+  padding: 4rem 0;
+}
+
+.usage-loader[hidden] {
+  display: none;
+}
+
+.usage-spinner {
+  width: 2rem;
+  height: 2rem;
+  border: 3px solid var(--border);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: usage-spin 0.7s linear infinite;
+}
+
+@keyframes usage-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .usage-spinner,
+  #usageContent.is-loading::after {
+    animation-duration: 2s;
+  }
+}
+
+.usage-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(13.75rem, 100%), 1fr));
+  gap: 1rem;
+}
+
+.usage-card {
+  padding: 1.125rem 1.25rem;
+  border: 1px solid var(--border);
+  border-radius: 0.875rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.usage-card-label,
+.usage-card-note {
+  font-size: 0.78125rem;
+  color: var(--text-muted);
+}
+
+.usage-card-value {
+  font-size: 1.625rem;
+  font-weight: 700;
+  color: var(--text-strong);
+}
+
+.usage-section {
+  padding: 1.25rem 1.375rem;
+  border: 1px solid var(--border);
+  border-radius: 0.875rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.usage-section-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-strong);
+}
+
+/* The usage chart: title, peak and the Hour / Day / Week bins above the chart. */
+.usage-chart-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.usage-chart-sub {
+  margin: 0.25rem 0 0;
+  font-size: 0.78125rem;
+  color: var(--text-muted);
+}
+
+.usage-bins {
+  display: inline-flex;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-sunken, transparent);
+}
+
+.usage-bin {
+  min-width: 3.5rem;
+  padding: 0.3125rem 0.75rem;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.usage-bin:hover:not([disabled]):not([aria-pressed="true"]) {
+  color: var(--primary);
+}
+
+.usage-bin[aria-pressed="true"] {
+  background: var(--primary);
+  color: #fff;
+}
+
+.usage-bin[disabled] {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.usage-bin:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 1px;
+}
+
+.usage-chart-canvas {
+  position: relative;
+  height: 18.75rem;
+}
+
+.usage-chart {
+  height: 13.75rem;
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  border-bottom: 1px solid var(--border);
+}
+
+.usage-bar {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 1px;
+  border-radius: 4px 4px 0 0;
+  background: var(--primary);
+}
+
+/* An hour or day of the billing period still to come: a slot with no bar. */
+.usage-bar--ahead {
+  min-height: 0;
+  background: transparent;
+}
+
+.usage-axis {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.71875rem;
+  color: var(--text-muted);
+}

@@ -58,6 +58,15 @@ blocks:
       - name: mcp-servers
         features:
           - features/apiportal/ai/mcp_servers.feature
+      - name: monetization-meters
+        features:
+          - features/apiportal/monetization/meters.feature
+      - name: monetization-priced-plans
+        features:
+          - features/apiportal/monetization/priced_plans.feature
+      - name: monetization-paid-plans-without-billing
+        features:
+          - features/apiportal/monetization/paid_plans_without_billing.feature
       - name: api-types
         features:
           - features/apiportal/core/api_types.feature
@@ -122,6 +131,9 @@ blocks:
       - name: webhook-delivery
         features:
           - features/apiportal/webhooks/webhook_delivery.feature
+      - name: monetization-events
+        features:
+          - features/apiportal/monetization/events.feature
 
   - name: api-portal-auth-scope
     parallel: 1
@@ -566,19 +578,6 @@ blocks:
       - name: secrets
         features:
           - features/gateway/security/secrets.feature
-      - name: token-based-ratelimit
-        features:
-          - features/ai-workspace-gateway/ratelimit-policies/token_based_ratelimit.feature
-      - name: token-based-ratelimit-provider-templates
-        tags: "gateway-version>=1.2.0"
-        features:
-          - features/ai-workspace-gateway/ratelimit-policies/token_based_ratelimit_provider_templates.feature
-      - name: llm-cost-based-ratelimit
-        # Excludes scenarios whose exact post-charge assertion is blocked by the
-        # gateway rejecting the non-billable readiness probe after exhaustion.
-        tags: "~@known-issue"
-        features:
-          - features/ai-workspace-gateway/ratelimit-policies/llm_cost_based_ratelimit.feature
       - name: llm-cost-calculation-providers
         tags: "gateway-version>=1.2.0"
         features:
@@ -628,9 +627,6 @@ blocks:
       - name: prompt-decorator
         features:
           - features/ai-workspace-gateway/llm-policies/prompt_decorator.feature
-      - name: prompt-compressor
-        features:
-          - features/ai-workspace-gateway/llm-policies/prompt_compressor.feature
       - name: aws-bedrock-guardrail
         tags: "gateway-version>1.2.0"
         features:
@@ -837,9 +833,6 @@ blocks:
       - name: semantic-prompt-guard
         features:
           - features/gateway/guardrails-policies/semantic_prompt_guard.feature
-      - name: semantic-tool-filtering
-        features:
-          - features/ai-workspace-gateway/llm-policies/semantic_tool_filtering.feature
 
   # Also hosts the gateway-native Agent (A2A) runners: they need the mock-jwks keymanager this
   # block's overlay configures and an A2A agent upstream, and the Agent kind exists only after
@@ -874,38 +867,10 @@ blocks:
         tags: "gateway-version>1.2.0"
         features:
           - features/ai-workspace-gateway/agent/agent_streaming.feature
-      # One runner per MCP policy, each file holding that policy's behaviour in both protocol
-      # eras. They are gated later than 1.2.0 because their 2026-07-28 scenarios need the
-      # operation resolver, which no released 1.2.0 carries - so this block's MCP policy
-      # coverage is source-build only, while mcp_policies.feature still runs on the release leg.
       - name: mcp-policies
         tags: "gateway-version>=1.2.0"
         features:
           - features/ai-workspace-gateway/mcp-policies/mcp_policies.feature
-      - name: mcp-auth-policy
-        tags: "gateway-version>1.2.0"
-        features:
-          - features/ai-workspace-gateway/mcp-policies/mcp_auth.feature
-      - name: mcp-authz-policy
-        tags: "gateway-version>1.2.0"
-        features:
-          - features/ai-workspace-gateway/mcp-policies/mcp_authz.feature
-      - name: mcp-ratelimit-policy
-        tags: "gateway-version>1.2.0"
-        features:
-          - features/ai-workspace-gateway/mcp-policies/mcp_ratelimit.feature
-      - name: mcp-acl-list-policy
-        tags: "gateway-version>1.2.0"
-        features:
-          - features/ai-workspace-gateway/mcp-policies/mcp_acl_list.feature
-      - name: mcp-rewrite-policy
-        tags: "gateway-version>1.2.0"
-        features:
-          - features/ai-workspace-gateway/mcp-policies/mcp_rewrite.feature
-      - name: mcp-spec-validation-policy
-        tags: "gateway-version>1.2.0"
-        features:
-          - features/ai-workspace-gateway/mcp-policies/mcp_spec_validation.feature
       - name: mcp-gateway-url-precedence
         tags: "gateway-version>1.2.0"
         features:
@@ -1072,6 +1037,9 @@ blocks:
         features:
           - features/management-portal/subscriptions/secured_api_invocation.feature
         tags: "~@known-issue"
+      - name: platform-api-mcp-server
+        features:
+          - features/management-portal/resources/mcp_server.feature
       - name: agent-proxy-management
         features:
           - features/ai-workspace-gateway/agent/agent_proxy_management.feature
@@ -1158,6 +1126,9 @@ blocks:
         features:
           - features/management-portal/subscriptions/secured_api_invocation.feature
         tags: "~@known-issue"
+      - name: platform-api-mcp-server
+        features:
+          - features/management-portal/resources/mcp_server.feature
       - name: agent-proxy-management
         features:
           - features/ai-workspace-gateway/agent/agent_proxy_management.feature
@@ -1244,6 +1215,9 @@ blocks:
         features:
           - features/management-portal/subscriptions/secured_api_invocation.feature
         tags: "~@known-issue"
+      - name: platform-api-mcp-server
+        features:
+          - features/management-portal/resources/mcp_server.feature
       - name: agent-proxy-management
         features:
           - features/ai-workspace-gateway/agent/agent_proxy_management.feature
@@ -1334,6 +1308,9 @@ blocks:
       - name: devportal-webhook
         features:
           - features/apiportal/webhooks/devportal_webhook.feature
+      - name: devportal-monetization-webhook
+        features:
+          - features/apiportal/webhooks/monetization_webhook.feature
 
   # Platform-api working with an API Portal and a gateway: publishing a REST API to the portal.
   # Platform-api registers the portal over HTTPS and trusts its certificate, so the block overlays
@@ -1361,6 +1338,9 @@ blocks:
       - name: publication-lifecycle
         features:
           - features/apiportal/publishing/publication_lifecycle.feature
+      - name: publication-monetization
+        features:
+          - features/apiportal/publishing/publication_monetization.feature
       - name: publication-failures
         features:
           - features/apiportal/publishing/publication_failures.feature
@@ -1372,6 +1352,12 @@ blocks:
       - name: publication-outage
         features:
           - features/apiportal/publishing/publication_outage.feature
+      # Bills through the testbench's Stripe and Moesif services, which hold one account per block.
+      - name: api-portal-billing
+        features:
+          - features/apiportal/monetization/billing_setup.feature
+          - features/apiportal/monetization/paid_checkout.feature
+          - features/apiportal/monetization/usage_billing.feature
 
   # Policy error compatibility: every migrated policy's main rejection, held to the error
   # response the policy returned before the change. The policies come from the adjacent
