@@ -155,7 +155,7 @@ services:
     ports:
       - "4010:4010"
     volumes:
-      - ./mock-api:/api:ro
+      - ../../kubernetes/helm/resources/apigateway-restapi-operator-demo/llm-mock-openapi-it/mock-api:/api:ro
     healthcheck:
       test: ["CMD", "wget", "--spider", "--quiet", "--tries=1", "http://127.0.0.1:4010/health"]
       interval: 5s
@@ -172,7 +172,7 @@ services:
     ports:
       - "9443:8443"
     volumes:
-      - ./mock-api/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ../../kubernetes/helm/resources/apigateway-restapi-operator-demo/llm-mock-openapi-it/mock-api/nginx.conf:/etc/nginx/nginx.conf:ro
       - ../gateway-controller/listener-certs:/etc/nginx/certs:ro
     depends_on:
       mock-openapi:
