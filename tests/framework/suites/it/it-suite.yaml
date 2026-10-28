@@ -553,10 +553,6 @@ blocks:
       - name: secrets
         features:
           - features/gateway/security/secrets.feature
-      - name: llm-cost-calculation-providers
-        tags: "gateway-version>=1.2.0"
-        features:
-          - features/ai-workspace-gateway/ratelimit-policies/llm_cost_calculation_providers.feature
       - name: llm-provider-global-ratelimit
         tags: "gateway-version>=1.2.0"
         features:
