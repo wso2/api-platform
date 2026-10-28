@@ -20,6 +20,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 
 import type { ApiError } from '../../core/errors';
 import { useApiScope } from '../../core/scope';
+import { meterKeys } from '../meters/meters.queries';
 import {
   createSubscriptionPlan,
   deleteSubscriptionPlan,
@@ -102,10 +103,26 @@ const useInvalidateSubscriptionPlans = (orgId?: string) => {
   };
 };
 
+/**
+ * A plan's prices name the meters they count with, so creating or deleting a plan
+ * changes those meters' `planCount`. A plan's pricing can't be updated, so plan
+ * updates leave the meters alone.
+ */
+const useInvalidateMeters = (orgId?: string) => {
+  const queryClient = useQueryClient();
+  const { org } = useApiScope({ orgId });
+
+  return () => {
+    if (!org) return;
+    void queryClient.invalidateQueries({ queryKey: meterKeys.all(org) });
+  };
+};
+
 export const useCreateSubscriptionPlan = (overrides: { orgId?: string } = {}) => {
   const { org, orgId } = useApiScope(overrides);
   const queryClient = useQueryClient();
   const invalidate = useInvalidateSubscriptionPlans(orgId);
+  const invalidateMeters = useInvalidateMeters(orgId);
 
   return useMutation<SubscriptionPlan, ApiError, CreateSubscriptionPlanBody>({
     mutationFn: (body) => createSubscriptionPlan(body, { orgId }),
@@ -120,6 +137,7 @@ export const useCreateSubscriptionPlan = (overrides: { orgId?: string } = {}) =>
         );
       }
       invalidate();
+      invalidateMeters();
     },
   });
 };
@@ -177,6 +195,7 @@ export const useDeleteSubscriptionPlan = (overrides: { orgId?: string } = {}) =>
   const { org, orgId } = useApiScope(overrides);
   const queryClient = useQueryClient();
   const invalidate = useInvalidateSubscriptionPlans(orgId);
+  const invalidateMeters = useInvalidateMeters(orgId);
 
   return useMutation<void, ApiError, { subscriptionPlanId: string }>({
     mutationFn: ({ subscriptionPlanId }) =>
@@ -188,6 +207,7 @@ export const useDeleteSubscriptionPlan = (overrides: { orgId?: string } = {}) =>
         });
       }
       invalidate();
+      invalidateMeters();
     },
   });
 };
