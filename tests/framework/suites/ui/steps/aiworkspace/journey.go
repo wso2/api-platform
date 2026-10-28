@@ -265,12 +265,14 @@ func (u *Steps) startAddingProviderFromTemplateVersion(ctx context.Context, temp
 	return nil
 }
 
-func (u *Steps) createProvider(ctx context.Context, name string) error {
+// createProvider submits the provider pointed at the mock LLM. apiKey is optional; without
+// one the suite's own placeholder key is used.
+func (u *Steps) createProvider(ctx context.Context, name, apiKey string) error {
 	upstream, err := u.mockLLMURL()
 	if err != nil {
 		return err
 	}
-	return u.submitProviderForm(ctx, name, &upstream)
+	return u.submitProviderFormForTemplate(ctx, name, &upstream, apiKey, "")
 }
 
 // createProviderFromBuiltInEndpoint is for templates that already bake in their own
@@ -305,16 +307,22 @@ func providerAutoContext(name string) string {
 // upstreamURL is filled only when non-nil; a nil value matches a template whose form has
 // no such field to begin with (ProviderTemplateFormFields.tsx renders it conditionally).
 func (u *Steps) submitProviderForm(ctx context.Context, name string, upstreamURL *string) error {
-	return u.submitProviderFormForTemplate(ctx, name, upstreamURL, "")
+	return u.submitProviderFormForTemplate(ctx, name, upstreamURL, "", "")
 }
+
+// defaultProviderAPIKey is the credential a provider form gets when a step names none.
+const defaultProviderAPIKey = "sk-ui-suite-provider-key"
 
 // submitProviderFormForTemplate submits a provider and, when expectedTemplateID is set,
 // verifies that the selected version was actually submitted. The returned provider is then
 // polled through the management API until the same association is visible there. This keeps
 // the subsequent template-delete assertion about committed product state rather than a
 // browser redirect or an eventually-consistent list.
+//
+// When apiKey is supplied the browser's /secrets call is recorded, so the secret the
+// form creates for the key is registered for cleanup alongside the provider.
 func (u *Steps) submitProviderFormForTemplate(ctx context.Context, name string, upstreamURL *string,
-	expectedTemplateID string) error {
+	apiKey, expectedTemplateID string) error {
 	var err error
 	name, err = expandUIValue(ctx, name)
 	if err != nil {
@@ -350,7 +358,13 @@ func (u *Steps) submitProviderFormForTemplate(ctx context.Context, name string, 
 			return err
 		}
 	}
-	if err := fillCyidInput(page, "provider-api-key-input", "sk-ui-suite-provider-key"); err != nil {
+	trackSecret := apiKey != ""
+	if !trackSecret {
+		apiKey = defaultProviderAPIKey
+	} else if err := u.watchSecretAndProviderCalls(ctx); err != nil {
+		return err
+	}
+	if err := fillCyidInput(page, "provider-api-key-input", apiKey); err != nil {
 		return err
 	}
 	resp, err := page.ExpectResponse(func(r playwright.Response) bool {
@@ -392,6 +406,11 @@ func (u *Steps) submitProviderFormForTemplate(ctx context.Context, name string, 
 			return fmt.Errorf("registering provider %q cleanup: %w; best-effort deletion also failed: %v", name, err, deleteErr)
 		}
 		return fmt.Errorf("registering provider %q cleanup: %w; provider was deleted", name, err)
+	}
+	if trackSecret {
+		if err := u.registerFormSecret(ctx); err != nil {
+			return err
+		}
 	}
 	return u.waitForProviderTemplateAssociation(ctx, body.ID, body.Template)
 }

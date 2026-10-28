@@ -154,3 +154,8 @@ blocks:
       - name: coverage-branches
         features:
           - features/coverage_branches.feature
+      # Sheet AIW-LLM, provider creation through the browser.
+      - name: aiw-llm-provider-creation
+        features:
+          - features/aiw_llm/provider_creation.feature
+        tags: "~@known-issue"

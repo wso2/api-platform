@@ -380,42 +380,42 @@ boot instead of reporting a test failure.
   concurrency requires comparison of resource state, partitions, browser
   diagnostics, and product logs before declaring a framework limitation.
 
-## Capability Map
+## Scenario Sheets
 
-`docs/capability-map.yml` is the source of truth for the integration suite's
-capability and feature vocabulary. Capability and feature identifiers used by
-scenario annotations must be defined in that file.
+Every product feature has a scenario sheet, mirrored by `coverage/<SHEET>.yaml` (for
+example `coverage/AIW-LLM.yaml`). The manifest is the source of truth for which sheet IDs
+exist and how each layer covers them; `make standards-check` validates it against the
+feature files.
 
-Before adding or modifying a product scenario:
-
-1. Identify the capability and feature being tested in the map.
-2. Review the existing feature files and coverage documentation.
-3. Extend an existing capability or feature when it already represents the
-   behavior. Add a new map entry only when the behavior is genuinely new.
-
-Unknown capability or feature identifiers must fail validation. Do not invent
-similar identifiers or use free-form capability names.
+- Every sheet ID must be accounted for in both layers: `ui` (browser journeys under
+  `suites/ui`) and `it` (API-level scenarios under `suites/it`). A layer's status is
+  `automated`, `known-issue` (with `issue`), `exempt` (with `reason`, approved by the
+  feature owner) or `planned`.
+- Tag each scenario with every sheet ID it covers (`@AIW-PRV-001`) and list the scenario in
+  that ID's manifest `refs` for its layer. Tag sheet IDs on scenarios only, never on a
+  feature or rule. A feature carries its sheet code as a feature tag (`@AIW-LLM`).
+- UI coverage is written as journeys: one scenario per user flow covering several IDs, with
+  `* sheet check "<ID>"` before each ID's steps. Every tagged ID needs exactly one check and
+  every check needs its tag. Order a journey by dependency, then priority.
+- A sheet ID whose expected result the product does not meet is never folded into a
+  passing journey and never asserted to the product's current behaviour without the feature
+  owner's decision. If it is a product defect, keep the sheet's expected result, move the ID
+  to a scenario of its own tagged `@known-issue`, and record the issue in the manifest.
+- IT coverage is one scenario per ID (or a Scenario Outline) through the publisher REST API,
+  the contract the UI, the CLI and customers share.
+- Do not invent IDs. An ID must exist on the sheet and in its manifest before it is tagged.
 
 ## Scenario Annotations
 
-Every product scenario must identify what it tests and how it is classified:
+Classify a scenario with the tags that apply:
 
 | Annotation | Cardinality | Meaning |
 |---|---:|---|
-| `@cap:<id>` | 1 | The capability under test and the subject of the assertions. |
-| `@feat:<id>` | 1 | The feature within that capability. |
-| `@rule:<slug>` | 0..1 | An optional subgroup within the feature. |
+| `@<SHEET-AREA-NNN>` | 0..N | A scenario-sheet ID the scenario covers; see Scenario Sheets. |
 | `@type:smoke`, `@type:negative`, `@type:regression` | 0..N | The nature or selection category of the scenario. |
-| `@dep:<cap>` | 0..N | A cross-capability prerequisite, not coverage of that capability. |
-| `@legacy:<id>` | 0..N | An optional legacy test identifier used for parity tracking. |
+| `@known-issue` | 0..1 | Asserts expected behaviour the product does not meet yet; excluded by runner tags. |
 
-Use exactly one `@cap` and one `@feat` for each product scenario. If a scenario
-tests multiple capabilities, split it unless one capability is clearly the
-subject and the others are only prerequisites. Do not use `@dep` for universal
-baseline requirements.
-
-Non-product or framework-support features must use one exclusion annotation
-instead of product capability annotations:
+Non-product or framework-support features must use one exclusion annotation instead:
 
 ```text
 @setup    @infra    @framework    @migration
@@ -433,8 +433,8 @@ duplicating it.
 
 ### Feature level
 
-- Search `docs/capability-map.yml` and existing `.feature` files for the
-  capability and feature under test.
+- Search the scenario sheet's manifest under `coverage/` and the existing `.feature` files
+  for the behaviour under test.
 - Add scenarios to the existing feature file when it already owns the behavior.
 - Extend a `Scenario Outline` with another example when only the inputs differ.
 - Create a new feature file only when no existing feature represents the

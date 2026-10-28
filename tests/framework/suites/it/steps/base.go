@@ -258,6 +258,7 @@ func (b *Base) registerBaseSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^the JSON response field "([^"]*)" should not equal "([^"]*)"$`, b.jsonFieldNotEqual)
 	sc.Step(`^the JSON response field "([^"]*)" should be:$`, b.jsonFieldIsDoc)
 	sc.Step(`^the JSON response field "([^"]*)" should contain "([^"]*)"$`, b.jsonFieldContains)
+	sc.Step(`^the JSON response field "([^"]*)" should match pattern "([^"]*)"$`, b.jsonFieldMatchesPattern)
 	sc.Step(`^the JSON response field "([^"]*)" should contain "([^"]*)" before "([^"]*)"$`,
 		b.jsonFieldContainsBefore)
 	sc.Step(`^the JSON response field "([^"]*)" should be greater than (\d+)$`,
@@ -1135,6 +1136,30 @@ func (b *Base) jsonFieldContains(ctx context.Context, field, want string) error 
 	}
 	if got := fmt.Sprintf("%v", value); !strings.Contains(got, resolved) {
 		return fmt.Errorf("expected field %q to contain %q, got %q", field, resolved, got)
+	}
+	return nil
+}
+
+// jsonFieldMatchesPattern asserts a JSON string field matches a regular expression.
+func (b *Base) jsonFieldMatchesPattern(ctx context.Context, field, pattern string) error {
+	resp, err := httpx.Published(ctx)
+	if err != nil {
+		return err
+	}
+	resolved, err := stepscommon.Expand(ctx, pattern)
+	if err != nil {
+		return err
+	}
+	re, err := regexp.Compile(resolved)
+	if err != nil {
+		return fmt.Errorf("the expected pattern %q is not a valid regular expression: %w", resolved, err)
+	}
+	value, err := jsonStringField(resp.Body, field)
+	if err != nil {
+		return err
+	}
+	if !re.MatchString(value) {
+		return fmt.Errorf("expected JSON field %q to match %q, got %q", field, resolved, value)
 	}
 	return nil
 }

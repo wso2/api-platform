@@ -165,6 +165,27 @@ jobs:
             ${{ matrix.suite_flags }} \
             -skip-blocks=gateway-controller-policies,policy-compat,policy-compat-semantic-ai
 
+      # Per sheet ID results for this gateway leg; the legs map onto the scenario sheet's
+      # "Result: Latest / 1.2.0 / 1.1.0" columns.
+      - name: Report scenario sheet results
+        if: always()
+        working-directory: tests/framework
+        run: |
+          go run ./cmd/sheetreport -manifests coverage -results it=suites/it/sheet-results \
+            -leg ${{ matrix.leg }} -format markdown >> "$GITHUB_STEP_SUMMARY"
+          go run ./cmd/sheetreport -manifests coverage -results it=suites/it/sheet-results \
+            -leg ${{ matrix.leg }} -out sheet-report-it-${{ matrix.leg }}.csv
+
+      - name: Upload scenario sheet results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sheet-results-${{ matrix.leg }}
+          path: |
+            tests/framework/sheet-report-it-${{ matrix.leg }}.csv
+            tests/framework/suites/it/sheet-results/**
+          if-no-files-found: warn
+
       # always(), and per leg: a failing run is exactly when the container logs are needed,
       # and each leg's artifact name must be unique or upload-artifact rejects the second.
       - name: Upload container log captures

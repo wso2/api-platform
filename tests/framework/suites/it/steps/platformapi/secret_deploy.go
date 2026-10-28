@@ -22,6 +22,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"mime/multipart"
 	"net/http"
@@ -126,30 +127,47 @@ func (s *Steps) registerPlatformResource(ctx context.Context, kind cleanup.Kind,
 		return err
 	}
 	if err := reg.RegisterDeleter(kind, func(ctx context.Context, res cleanup.Resource) error {
-		base, bearer, err := s.authed(ctx)
-		if err != nil {
-			return err
+		err := s.deletePlatformResource(ctx, path, res.ID)
+		var rejected *platformDeleteError
+		// The platform API deliberately retains the last project in an organization. A
+		// generated project may therefore be the baseline project at teardown; treat only
+		// that documented validation response as an intentional retention.
+		if kind == platformProjectKind && errors.As(err, &rejected) && isLastProjectValidation(rejected.resp) {
+			return nil
 		}
-		resp, err := s.client.Do(ctx, httpx.Request{Method: http.MethodDelete, URL: base + apiBase + path + "/" + res.ID,
-			Headers: map[string]string{"Authorization": "Bearer " + bearer}}, 0, 0)
-		if err != nil {
-			return err
-		}
-		if resp.StatusCode != http.StatusNotFound && !resp.Succeeded() {
-			// The platform API deliberately retains the last project in an
-			// organization. A generated project may therefore be the baseline
-			// project at teardown; treat only that documented validation response
-			// as an intentional retention, while preserving all other failures.
-			if kind == platformProjectKind && isLastProjectValidation(resp) {
-				return nil
-			}
-			return fmt.Errorf("deleting %s: %s", res.ID, resp.Describe())
-		}
-		return nil
+		return err
 	}); err != nil {
 		return err
 	}
 	return reg.Register(cleanup.Resource{Kind: kind, ID: id, Actor: "admin", Description: "created via platform-api"})
+}
+
+// platformDeleteError is a control-plane DELETE the platform API answered with a failure.
+type platformDeleteError struct {
+	id   string
+	resp *httpx.Response
+}
+
+func (e *platformDeleteError) Error() string {
+	return fmt.Sprintf("deleting %s: %s", e.id, e.resp.Describe())
+}
+
+// deletePlatformResource deletes path/id as the administrator. A 404 means it is already
+// gone, which is success.
+func (s *Steps) deletePlatformResource(ctx context.Context, path, id string) error {
+	base, bearer, err := s.authed(ctx)
+	if err != nil {
+		return err
+	}
+	resp, err := s.client.Do(ctx, httpx.Request{Method: http.MethodDelete, URL: base + apiBase + path + "/" + id,
+		Headers: map[string]string{"Authorization": "Bearer " + bearer}}, 0, 0)
+	if err != nil {
+		return err
+	}
+	if resp.StatusCode != http.StatusNotFound && !resp.Succeeded() {
+		return &platformDeleteError{id: id, resp: resp}
+	}
+	return nil
 }
 
 func isLastProjectValidation(resp *httpx.Response) bool {

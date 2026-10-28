@@ -37,6 +37,7 @@ import (
 	"github.com/wso2/api-platform/tests/framework/core/cleanup"
 	"github.com/wso2/api-platform/tests/framework/core/coverage"
 	"github.com/wso2/api-platform/tests/framework/core/logcapture"
+	"github.com/wso2/api-platform/tests/framework/core/sheet"
 	"github.com/wso2/api-platform/tests/framework/core/topology"
 	"github.com/wso2/api-platform/tests/framework/core/util/tcontext"
 	"github.com/wso2/api-platform/tests/framework/core/util/unique"
@@ -75,6 +76,11 @@ type Deps struct {
 	// into one file for the block's whole lifetime. Nil in a default run — the suite
 	// decides whether container output is being collected at all.
 	Logs *logcapture.Sink
+
+	// Sheets, when non-nil, receives one report per runner of the scenario-sheet IDs its
+	// scenarios covered. Every runner records sheet IDs and prints their summary either
+	// way; the sink only decides whether the reports are also written to disk.
+	Sheets *sheet.Sink
 }
 
 var runnerOutputMu sync.Mutex
@@ -233,6 +239,7 @@ func runRunner(
 	}
 
 	var out bytes.Buffer
+	sheets := sheet.NewRecorder()
 
 	opts := godog.Options{
 		Format:      "pretty",
@@ -271,6 +278,7 @@ func runRunner(
 				return ctx, scenarioErr
 			})
 
+			sheets.Bind(sc)
 			registrar(sc)
 		},
 		Options: &opts,
@@ -278,6 +286,12 @@ func runRunner(
 
 	status := suite.Run()
 
+	sheets.WriteSummary(&out)
+	if err := deps.Sheets.Write(sheet.Report{
+		Block: topo.Block.Name, Runner: runner.Name, Results: sheets.Results(),
+	}); err != nil {
+		t.Errorf("runner %q: %v", runner.Name, err)
+	}
 	flushRunnerOutput(os.Stdout, topo.Block.Name+"/"+runner.Name, &out)
 
 	if status != 0 {

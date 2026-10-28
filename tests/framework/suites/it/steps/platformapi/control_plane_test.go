@@ -306,6 +306,44 @@ func TestTrackAgentProxyResourceDeregistersWhatTheScenarioDeleted(t *testing.T) 
 	require.Equal(t, []string{"other"}, pendingIDs(reg, platformAgentProxyKind))
 }
 
+func TestTrackAgentProxyResourceTracksLLMProvidersAndProxies(t *testing.T) {
+	ctx, reg := trackingContext(t)
+	s := &Steps{}
+
+	require.NoError(t, s.trackAgentProxyResource(ctx, http.MethodPost, nil, created("/api/v0.9/llm-providers/prov-1")))
+	require.NoError(t, s.trackAgentProxyResource(ctx, http.MethodPost, nil, created("/api/v0.9/llm-proxies/proxy-1")))
+	require.Equal(t, []string{"prov-1"}, pendingIDs(reg, platformProviderKind))
+	require.Equal(t, []string{"proxy-1"}, pendingIDs(reg, platformProxyKind))
+
+	// Sub-resources and other outcomes are not providers or proxies of their own.
+	for _, resp := range []*httpx.Response{
+		created("/api/v0.9/llm-providers/prov-1/api-keys/k"),
+		created("/api/v0.9/llm-providers/prov-1/deployments/d"),
+		{StatusCode: http.StatusOK, Headers: http.Header{"Location": []string{"/api/v0.9/llm-providers/x"}}},
+		{StatusCode: http.StatusConflict},
+	} {
+		require.NoError(t, s.trackAgentProxyResource(ctx, http.MethodPost, []byte(`{"gatewayId":"gw"}`), resp))
+	}
+	require.Equal(t, []string{"prov-1"}, pendingIDs(reg, platformProviderKind))
+
+	// A scenario's own successful delete drops the record; a failed one keeps it.
+	require.NoError(t, s.trackAgentProxyResource(ctx, http.MethodDelete, nil,
+		&httpx.Response{StatusCode: http.StatusConflict, URL: "https://cp/api/v0.9/llm-providers/prov-1"}))
+	require.Len(t, pendingIDs(reg, platformProviderKind), 1)
+	require.NoError(t, s.trackAgentProxyResource(ctx, http.MethodDelete, nil,
+		&httpx.Response{StatusCode: http.StatusNoContent, URL: "https://cp/api/v0.9/llm-providers/prov-1"}))
+	require.Empty(t, pendingIDs(reg, platformProviderKind))
+	require.Equal(t, []string{"proxy-1"}, pendingIDs(reg, platformProxyKind))
+}
+
+func TestTrackLLMResourceFailsWithoutARegistry(t *testing.T) {
+	s := &Steps{}
+	tracked, err := s.trackLLMResource(context.Background(), http.MethodDelete,
+		&httpx.Response{StatusCode: http.StatusNoContent, URL: "https://cp/api/v0.9/llm-proxies/p"})
+	require.True(t, tracked)
+	require.Error(t, err)
+}
+
 func TestImportedAgentProxyCleanup(t *testing.T) {
 	ctx, reg := trackingContext(t)
 	s := &Steps{}

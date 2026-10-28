@@ -1,0 +1,522 @@
+# Scenario sheet: AI Workspace — LLM Providers and Proxies (AIW-LLM).
+#
+# One entry per sheet row. Each layer (ui, it) records how it covers the ID:
+#   automated    the refs run in CI and assert the sheet's expected result
+#   known-issue  the refs assert it but carry @known-issue until `issue` is fixed
+#   exempt       the layer deliberately does not test the ID, for `reason`
+#   planned      not automated in this layer yet
+# Refs are feature paths relative to tests/framework plus the exact scenario name.
+# `make standards-check` keeps this file, the scenario tags and the `sheet check`
+# steps in agreement; `go run ./cmd/sheetreport` turns a run into sheet columns.
+sheet: AIW-LLM
+title: LLM Providers and Proxies
+scenarios:
+  - id: AIW-PRV-001
+    title: Create a provider with name, template, endpoint and API key.
+    priority: P1
+    ui:
+      status: automated
+      refs:
+        - feature: suites/ui/features/aiw_llm/provider_creation.feature
+          scenario: "Journey: an administrator creates LLM providers from a template"
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/ai-workspace/llm-providers/create.feature
+          scenario: "A provider created from a template with an endpoint and an API key is stored and listed"
+  - id: AIW-PRV-002
+    title: Submit the create-provider form with required fields empty.
+    priority: P1
+    ui:
+      status: known-issue
+      issue: https://github.com/wso2/api-platform/issues/3964
+      refs:
+        - feature: suites/ui/features/aiw_llm/provider_creation.feature
+          scenario: "Submitting the add-provider form with its required fields empty shows inline errors and creates nothing"
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/ai-workspace/llm-providers/create.feature
+          scenario: "A provider with its required fields empty is rejected and nothing is created"
+  - id: AIW-PRV-003
+    title: Enter an invalid endpoint URL when creating a provider.
+    priority: P2
+    ui:
+      status: known-issue
+      issue: https://github.com/wso2/api-platform/issues/3962
+      refs:
+        - feature: suites/ui/features/aiw_llm/provider_creation.feature
+          scenario: "An invalid endpoint URL on the add-provider form shows a URL validation error"
+    it:
+      status: known-issue
+      issue: https://github.com/wso2/api-platform/issues/3962
+      refs:
+        - feature: suites/it/features/ai-workspace/llm-providers/create.feature
+          scenario: "A provider whose endpoint is not a valid URL is rejected and nothing is created"
+  - id: AIW-PRV-004
+    title: Create another provider with the same name or ID as an existing one.
+    priority: P2
+    sheetUpdate: "Creating a provider whose ID already exists is a conflict and no duplicate is created. The AI Workspace derives the ID from the name, so the same name conflicts in the UI; through the API only the ID must be unique, and a repeated display name with no ID gets a new, suffixed ID. (Decided 2026-10-28.)"
+    ui:
+      status: automated
+      refs:
+        - feature: suites/ui/features/aiw_llm/provider_creation.feature
+          scenario: "Journey: an administrator creates LLM providers from a template"
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/ai-workspace/llm-providers/create.feature
+          scenario: "Creating a provider with an ID that already exists is a conflict and leaves the original unchanged"
+  - id: AIW-PRV-005
+    title: Use a provider name with spaces or special characters.
+    priority: P2
+    # The product accepting any characters is the intended behaviour (decided 2026-10-28);
+    # the OpenAPI displayName pattern is out of date: https://github.com/wso2/api-platform/issues/3963
+    ui:
+      status: automated
+      refs:
+        - feature: suites/ui/features/aiw_llm/provider_creation.feature
+          scenario: "Journey: an administrator creates LLM providers from a template"
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/ai-workspace/llm-providers/create.feature
+          scenario: "A display name with spaces and special characters yields a valid generated ID"
+  - id: AIW-PRV-006
+    title: Run the LLM provider quick-start wizard (select template, configure).
+    priority: P3
+    ui:
+      status: planned
+    it:
+      status: planned
+  - id: AIW-PRV-007
+    title: Search and filter the provider list.
+    priority: P2
+    ui:
+      status: planned
+    it:
+      status: planned
+  - id: AIW-PRV-008
+    title: Open the provider overview tab.
+    priority: P2
+    ui:
+      status: planned
+    it:
+      status: planned
+  - id: AIW-PRV-009
+    title: Edit the endpoint on the connection tab and save.
+    priority: P1
+    ui:
+      status: planned
+    it:
+      status: planned
+  - id: AIW-PRV-010
+    title: Update the API key, then reload the page.
+    priority: P1
+    ui:
+      status: planned
+    it:
+      status: planned
+  - id: AIW-PRV-011
+    title: Save the connection with an empty or invalid key.
+    priority: P2
+    ui:
+      status: planned
+    it:
+      status: planned
+  - id: AIW-PRV-012
+    title: Add, edit and remove a model.
+    priority: P1
+    ui:
+      status: planned
+    it:
+      status: planned
+  - id: AIW-PRV-013
+    title: Add a model with a duplicate ID.
+    priority: P2
+    ui:
+      status: planned
+    it:
+      status: planned
+  - id: AIW-PRV-014
+    title: Attach a guardrail with parameters.
+    priority: P1
+    ui:
+      status: planned
+    it:
+      status: planned
+  - id: AIW-PRV-015
+    title: Send a request that violates the guardrail.
+    priority: P1
+    ui:
+      status: planned
+    it:
+      status: planned
+  - id: AIW-PRV-016
+    title: Edit and then remove the guardrail.
+    priority: P2
+    ui:
+      status: planned
+    it:
+      status: planned
+  - id: AIW-PRV-017
+    title: Set a request limit and a token limit.
+    priority: P1
+    ui:
+      status: planned
+    it:
+      status: planned
+  - id: AIW-PRV-018
+    title: Send requests above the limit, then wait for the window to reset.
+    priority: P1
+    ui:
+      status: planned
+    it:
+      status: planned
+  - id: AIW-PRV-019
+    title: Enter zero, negative, maximum and non-numeric limits.
+    priority: P2
+    ui:
+      status: planned
+    it:
+      status: planned
+  - id: AIW-PRV-020
+    title: Deploy the provider to the gateway.
+    priority: P1
+    ui:
+      status: planned
+    it:
+      status: planned
+  - id: AIW-PRV-021
+    title: Deploy the provider while the gateway is down.
+    priority: P2
+    ui:
+      status: planned
+    it:
+      status: planned
+  - id: AIW-PRV-022
+    title: Undeploy the provider.
+    priority: P2
+    ui:
+      status: planned
+    it:
+      status: planned
+  - id: AIW-PRV-023
+    title: Redeploy the provider after changing settings.
+    priority: P2
+    ui:
+      status: planned
+    it:
+      status: planned
+  - id: AIW-PRV-024
+    title: Send a chat completion through the gateway.
+    priority: P1
+    ui:
+      status: planned
+    it:
+      status: planned
+  - id: AIW-PRV-025
+    title: Send a chat completion with a wrong upstream key.
+    priority: P1
+    ui:
+      status: planned
+    it:
+      status: planned
+  - id: AIW-PRV-026
+    title: Send a streaming chat completion.
+    priority: P2
+    ui:
+      status: planned
+    it:
+      status: planned
+  - id: AIW-PRV-027
+    title: Create providers from different templates.
+    priority: P2
+    ui:
+      status: planned
+    it:
+      status: planned
+  - id: AIW-PRV-028
+    title: Delete a provider with no deployments or proxies.
+    priority: P2
+    ui:
+      status: planned
+    it:
+      status: planned
+  - id: AIW-PRV-029
+    title: Delete a provider used by a proxy or deployment.
+    priority: P1
+    ui:
+      status: planned
+    it:
+      status: planned
+  - id: AIW-PRV-030
+    title: Try to create or edit a provider as a read-only user.
+    priority: P2
+    ui:
+      status: planned
+    it:
+      status: planned
+  - id: AIW-PRV-031
+    title: Open project B's provider list when a provider exists in project A.
+    priority: P1
+    ui:
+      status: planned
+    it:
+      status: planned
+  - id: AIW-PRV-032
+    title: Open the provider list while the Platform API is stopped.
+    priority: P2
+    ui:
+      status: planned
+    it:
+      status: planned
+  - id: AIW-PRV-033
+    title: Compare latency of 50 requests via the gateway with direct upstream calls.
+    priority: P3
+    ui:
+      status: exempt
+      reason: Performance comparison; exempt until a dedicated load-test setup exists (decided 2026-10-28).
+    it:
+      status: exempt
+      reason: Performance comparison; exempt until a dedicated load-test setup exists (decided 2026-10-28).
+  - id: AIW-PRX-001
+    title: Create a proxy with name, version and provider.
+    priority: P1
+    ui:
+      status: planned
+    it:
+      status: planned
+  - id: AIW-PRX-002
+    title: Submit the create-proxy form with required fields empty.
+    priority: P1
+    ui:
+      status: planned
+    it:
+      status: planned
+  - id: AIW-PRX-003
+    title: Create another proxy with the same name or ID as an existing one.
+    priority: P2
+    ui:
+      status: planned
+    it:
+      status: planned
+  - id: AIW-PRX-004
+    title: Open the create-proxy form when no providers exist.
+    priority: P2
+    ui:
+      status: planned
+    it:
+      status: planned
+  - id: AIW-PRX-005
+    title: Set a custom context path on a proxy.
+    priority: P2
+    ui:
+      status: planned
+    it:
+      status: planned
+  - id: AIW-PRX-006
+    title: Create another proxy with an already-used context path.
+    priority: P2
+    ui:
+      status: planned
+    it:
+      status: planned
+  - id: AIW-PRX-007
+    title: Search and filter the proxy list.
+    priority: P2
+    ui:
+      status: planned
+    it:
+      status: planned
+  - id: AIW-PRX-008
+    title: Open the proxy overview tab.
+    priority: P2
+    ui:
+      status: planned
+    it:
+      status: planned
+  - id: AIW-PRX-009
+    title: Edit the proxy definition tab and save.
+    priority: P2
+    ui:
+      status: planned
+    it:
+      status: planned
+  - id: AIW-PRX-010
+    title: Save an invalid proxy definition.
+    priority: P2
+    ui:
+      status: planned
+    it:
+      status: planned
+  - id: AIW-PRX-011
+    title: Change the provider on the proxy's Providers tab.
+    priority: P1
+    ui:
+      status: planned
+    it:
+      status: planned
+  - id: AIW-PRX-012
+    title: View and edit the proxy's Resources tab.
+    priority: P2
+    ui:
+      status: planned
+    it:
+      status: planned
+  - id: AIW-PRX-013
+    title: Call a restricted path and an allowed path on a deployed proxy.
+    priority: P2
+    ui:
+      status: planned
+    it:
+      status: planned
+  - id: AIW-PRX-014
+    title: Enable API key authentication on a proxy.
+    priority: P1
+    ui:
+      status: planned
+    it:
+      status: planned
+  - id: AIW-PRX-015
+    title: Call a proxy with API key auth using a valid key, an invalid key and no key.
+    priority: P1
+    ui:
+      status: planned
+    it:
+      status: planned
+  - id: AIW-PRX-016
+    title: Disable auth, redeploy and call the proxy without a key.
+    priority: P2
+    ui:
+      status: planned
+    it:
+      status: planned
+  - id: AIW-PRX-017
+    title: Attach a guardrail with parameters to a proxy.
+    priority: P1
+    ui:
+      status: planned
+    it:
+      status: planned
+  - id: AIW-PRX-018
+    title: Send a violating request to a proxy with a guardrail.
+    priority: P1
+    ui:
+      status: planned
+    it:
+      status: planned
+  - id: AIW-PRX-019
+    title: Edit and remove a proxy guardrail, then redeploy.
+    priority: P2
+    ui:
+      status: planned
+    it:
+      status: planned
+  - id: AIW-PRX-020
+    title: Deploy the proxy.
+    priority: P1
+    ui:
+      status: planned
+    it:
+      status: planned
+  - id: AIW-PRX-021
+    title: Deploy the proxy while the gateway is down.
+    priority: P2
+    ui:
+      status: planned
+    it:
+      status: planned
+  - id: AIW-PRX-022
+    title: Deploy the same proxy to two gateways.
+    priority: P2
+    ui:
+      status: planned
+    it:
+      status: planned
+  - id: AIW-PRX-023
+    title: Undeploy the proxy.
+    priority: P1
+    ui:
+      status: planned
+    it:
+      status: planned
+  - id: AIW-PRX-024
+    title: Redeploy the proxy after editing it.
+    priority: P2
+    ui:
+      status: planned
+    it:
+      status: planned
+  - id: AIW-PRX-025
+    title: Send a chat completion through the proxy's invoke URL.
+    priority: P1
+    ui:
+      status: planned
+    it:
+      status: planned
+  - id: AIW-PRX-026
+    title: Send a streaming request through the proxy.
+    priority: P2
+    ui:
+      status: planned
+    it:
+      status: planned
+  - id: AIW-PRX-027
+    title: Send a malformed request body to the proxy.
+    priority: P2
+    ui:
+      status: planned
+    it:
+      status: planned
+  - id: AIW-PRX-028
+    title: Use the curl snippet from the UI.
+    priority: P3
+    ui:
+      status: planned
+    it:
+      status: planned
+  - id: AIW-PRX-029
+    title: Edit proxy details and save.
+    priority: P2
+    ui:
+      status: planned
+    it:
+      status: planned
+  - id: AIW-PRX-030
+    title: Delete an undeployed proxy.
+    priority: P2
+    ui:
+      status: planned
+    it:
+      status: planned
+  - id: AIW-PRX-031
+    title: Delete a deployed proxy.
+    priority: P1
+    ui:
+      status: planned
+    it:
+      status: planned
+  - id: AIW-PRX-032
+    title: Try to create, edit or deploy a proxy as a read-only user.
+    priority: P2
+    ui:
+      status: planned
+    it:
+      status: planned
+  - id: AIW-PRX-033
+    title: Open project B's proxy list when a proxy exists in project A.
+    priority: P1
+    ui:
+      status: planned
+    it:
+      status: planned
+  - id: AIW-PRX-034
+    title: Compare latency of 50 requests via the proxy with direct provider calls.
+    priority: P3
+    ui:
+      status: exempt
+      reason: Performance comparison; exempt until a dedicated load-test setup exists (decided 2026-10-28).
+    it:
+      status: exempt
+      reason: Performance comparison; exempt until a dedicated load-test setup exists (decided 2026-10-28).

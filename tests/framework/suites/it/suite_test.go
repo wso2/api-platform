@@ -40,6 +40,7 @@ import (
 	"github.com/wso2/api-platform/tests/framework/core/coverage"
 	"github.com/wso2/api-platform/tests/framework/core/logcapture"
 	frameworkruntime "github.com/wso2/api-platform/tests/framework/core/runtime"
+	"github.com/wso2/api-platform/tests/framework/core/sheet"
 	"github.com/wso2/api-platform/tests/framework/core/topology"
 	"github.com/wso2/api-platform/tests/framework/core/util/httpx"
 	"github.com/wso2/api-platform/tests/framework/suites/it/steps"
@@ -207,11 +208,23 @@ func TestIntegrationSuite(t *testing.T) {
 		t.Logf("logcapture: collecting container output into %s", logs.Root())
 	}
 
+	// Sheet results are always written: they are small, and they are what maps a run
+	// back onto the scenario sheets. Wiped on creation, like the sinks above.
+	sheetOut := os.Getenv(sheet.EnvOut)
+	if sheetOut == "" {
+		sheetOut = filepath.Join(dir, "sheet-results")
+	}
+	sheets, err := sheet.NewSink(sheetOut)
+	if err != nil {
+		t.Fatalf("preparing the sheet results sink: %v", err)
+	}
+
 	frameworkruntime.Run(t, narrowed, frameworkruntime.Deps{
 		RepoRoot:    root,
 		FeatureRoot: dir,
 		Coverage:    sink,
 		Logs:        logs,
+		Sheets:      sheets,
 		Steps: func(topo *frameworkruntime.Topology) (frameworkruntime.StepRegistrar, error) {
 			suite, err := steps.New(topo, dir)
 			if err != nil {

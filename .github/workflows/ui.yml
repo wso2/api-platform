@@ -191,6 +191,27 @@ jobs:
           path: tests/framework/suites/ui/coverage-out/**
           if-no-files-found: warn
 
+      # Per sheet ID results (coverage/*.yaml manifests): the CSV pastes into the scenario
+      # sheet's result columns, the Markdown table lands on the run's summary page.
+      - name: Report scenario sheet results
+        if: always()
+        working-directory: tests/framework
+        run: |
+          go run ./cmd/sheetreport -manifests coverage -results ui=suites/ui/sheet-results \
+            -leg latest -format markdown >> "$GITHUB_STEP_SUMMARY"
+          go run ./cmd/sheetreport -manifests coverage -results ui=suites/ui/sheet-results \
+            -leg latest -out sheet-report-ui.csv
+
+      - name: Upload scenario sheet results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ui-sheet-results
+          path: |
+            tests/framework/sheet-report-ui.csv
+            tests/framework/suites/ui/sheet-results/**
+          if-no-files-found: warn
+
       - name: Upload UI container log captures
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

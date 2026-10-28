@@ -99,8 +99,8 @@ func RegisterAgentProxy(sc *godog.ScenarioContext, s *Steps) {
 		s.pollControlPlaneJSONField)
 	sc.Step(`^I send a "([^"]*)" request to the control plane at "([^"]*)" until the response header "([^"]*)" matches "([^"]*)" with body:$`,
 		s.pollControlPlaneHeader)
-	sc.Step(`^I create an Agent proxy via the control plane from "([^"]*)"(?: as "([^"]*)")? with values:$`,
-		s.createAgentProxyFromTemplate)
+	sc.Step(`^I create an? (Agent proxy|LLM provider) via the control plane from "([^"]*)"(?: as "([^"]*)")? with values:$`,
+		s.createFromTemplate)
 	sc.Step(`^I update the Agent proxy "([^"]*)" via the control plane from "([^"]*)"(?: as "([^"]*)")? with values:$`,
 		s.updateAgentProxyFromTemplate)
 	sc.Step(`^I deploy the Agent proxy "([^"]*)" to the gateway via the control plane and store the deployment id as "([^"]*)"$`,
@@ -218,6 +218,9 @@ func (s *Steps) sendControlPlane(ctx context.Context, call controlPlaneCall) (*h
 // successful delete removed, so cleanup follows the product's own answer rather than the
 // scenario's expectation of it.
 func (s *Steps) trackAgentProxyResource(ctx context.Context, method string, body []byte, resp *httpx.Response) error {
+	if tracked, err := s.trackLLMResource(ctx, method, resp); tracked || err != nil {
+		return err
+	}
 	switch {
 	case method == http.MethodPost && resp.StatusCode == http.StatusCreated:
 		match := agentProxyLocationPattern.FindStringSubmatch(locationPath(resp.Headers.Get("Location")))
@@ -249,6 +252,48 @@ func (s *Steps) trackAgentProxyResource(ctx context.Context, method string, body
 		return deregisterDeleted(ctx, resp.URL)
 	}
 	return nil
+}
+
+// llmLocationPattern matches an LLM provider or proxy itself, not its sub-resources.
+var llmLocationPattern = regexp.MustCompile(`/(llm-providers|llm-proxies)/([^/?#]+)$`)
+
+// llmCollectionKinds maps an LLM collection to the cleanup kind that deletes its resources.
+var llmCollectionKinds = map[string]cleanup.Kind{
+	"llm-providers": platformProviderKind,
+	"llm-proxies":   platformProxyKind,
+}
+
+// trackLLMResource registers an LLM provider or proxy the funnel created, deleting it on the
+// spot when registration fails, and deregisters one the scenario deleted. It reports whether
+// the response concerned an LLM provider or proxy at all.
+func (s *Steps) trackLLMResource(ctx context.Context, method string, resp *httpx.Response) (bool, error) {
+	switch {
+	case method == http.MethodPost && resp.StatusCode == http.StatusCreated:
+		match := llmLocationPattern.FindStringSubmatch(locationPath(resp.Headers.Get("Location")))
+		if match == nil {
+			return false, nil
+		}
+		collection, handle := match[1], match[2]
+		if err := s.registerPlatformResource(ctx, llmCollectionKinds[collection], handle, "/"+collection); err != nil {
+			if delErr := s.deletePlatformResource(ctx, "/"+collection, handle); delErr != nil {
+				return true, fmt.Errorf("registering %s %q for cleanup: %w; compensating delete failed: %v", collection, handle, err, delErr)
+			}
+			return true, fmt.Errorf("registering %s %q for cleanup: %w", collection, handle, err)
+		}
+		return true, nil
+	case method == http.MethodDelete && resp.StatusCode == http.StatusNoContent:
+		match := llmLocationPattern.FindStringSubmatch(locationPath(resp.URL))
+		if match == nil {
+			return false, nil
+		}
+		reg, err := cleanup.Of(ctx)
+		if err != nil {
+			return true, err
+		}
+		reg.Deregister(llmCollectionKinds[match[1]], match[2])
+		return true, nil
+	}
+	return false, nil
 }
 
 // registerTracked registers a created resource for cleanup, deleting it on the spot when the
@@ -526,12 +571,25 @@ func jsonFieldEquals(resp *httpx.Response, field, want string) bool {
 	return ok && fmt.Sprintf("%v", got) == want
 }
 
-func (s *Steps) createAgentProxyFromTemplate(ctx context.Context, templateName, who string, table *godog.Table) error {
+// templateCollections maps the resource a template-create step names to its publisher-API
+// collection.
+var templateCollections = map[string]string{
+	"Agent proxy":  "/agent-proxies",
+	"LLM provider": "/llm-providers",
+}
+
+// createFromTemplate renders a control-plane resource template and POSTs it to the resource's
+// collection through the funnel, which publishes the response and registers what was created.
+func (s *Steps) createFromTemplate(ctx context.Context, resource, templateName, who string, table *godog.Table) error {
+	collection, ok := templateCollections[resource]
+	if !ok {
+		return fmt.Errorf("no control-plane collection is defined for %q", resource)
+	}
 	payload, err := s.renderJSONTemplate(ctx, templateName, table)
 	if err != nil {
 		return err
 	}
-	_, err = s.sendControlPlane(ctx, controlPlaneCall{method: http.MethodPost, path: "/agent-proxies", who: who, body: payload})
+	_, err = s.sendControlPlane(ctx, controlPlaneCall{method: http.MethodPost, path: collection, who: who, body: payload})
 	return err
 }
 

@@ -248,3 +248,142 @@ func Exported() {}
 	require.Contains(t, issues[0], "must contain doc.go")
 	require.Contains(t, strings.Join(issues, "\n"), "documentation comment")
 }
+
+// writeSheetFixture lays out a framework-shaped tree with one manifest and the given
+// UI and IT feature files, returning the manifest dir and the feature roots flag.
+func writeSheetFixture(t *testing.T, manifest, uiFeature, itFeature string) (string, string) {
+	t.Helper()
+	root := t.TempDir()
+	ui := filepath.Join(root, "suites", "ui", "features")
+	it := filepath.Join(root, "suites", "it", "features")
+	cov := filepath.Join(root, "coverage")
+	for _, dir := range []string{ui, it, cov} {
+		require.NoError(t, os.MkdirAll(dir, 0o755))
+	}
+	manifest = strings.ReplaceAll(manifest, "ROOT", root)
+	require.NoError(t, os.WriteFile(filepath.Join(cov, "AIW-LLM.yaml"), []byte(manifest), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(ui, "create.feature"), []byte(uiFeature), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(it, "create.feature"), []byte(itFeature), 0o600))
+	return cov, ui + "," + it
+}
+
+const sheetManifest = `sheet: AIW-LLM
+title: LLM
+scenarios:
+  - id: AIW-PRV-001
+    title: Create
+    ui:
+      status: automated
+      refs:
+        - feature: ROOT/suites/ui/features/create.feature
+          scenario: "Journey: create a provider"
+    it:
+      status: automated
+      refs:
+        - feature: ROOT/suites/it/features/create.feature
+          scenario: Create a provider
+  - id: AIW-PRV-002
+    title: Validation
+    ui:
+      status: automated
+      refs:
+        - feature: ROOT/suites/ui/features/create.feature
+          scenario: "Journey: create a provider"
+    it:
+      status: known-issue
+      issue: https://github.com/wso2/api-platform/issues/1
+      refs:
+        - feature: ROOT/suites/it/features/create.feature
+          scenario: Reject an empty form
+  - id: AIW-PRV-003
+    title: Later
+    ui:
+      status: planned
+    it:
+      status: exempt
+      reason: UI only
+`
+
+const sheetUIFeature = `@AIW-LLM
+Feature: Providers
+  Background:
+    Given the user is signed in
+
+  @AIW-PRV-001 @AIW-PRV-002
+  Scenario: Journey: create a provider
+    * sheet check "AIW-PRV-002"
+    When something
+    * sheet check "AIW-PRV-001"
+    Then something else
+
+  Scenario: Unrelated
+    Given nothing
+`
+
+const sheetITFeature = `Feature: Providers API
+  @AIW-PRV-001 @type:smoke
+  Scenario: Create a provider
+    Given something
+
+  @AIW-PRV-002 @known-issue
+  Scenario Outline: Reject an empty form
+    Given <x>
+
+    @AIW-NOT-TAGGEDHERE
+    Examples:
+      | x |
+      | y |
+`
+
+func TestCheckSheetsAcceptsConsistentManifest(t *testing.T) {
+	cov, roots := writeSheetFixture(t, sheetManifest, sheetUIFeature, sheetITFeature)
+	require.Empty(t, checkSheets(cov, roots))
+	require.Empty(t, checkSheets("", roots))
+}
+
+func TestCheckSheetsReportsDrift(t *testing.T) {
+	cases := []struct {
+		name, manifest, ui, it, want string
+	}{
+		{"missing manifest dir", "", sheetUIFeature, sheetITFeature, "no manifests found"},
+		{"unknown tag", sheetManifest, strings.Replace(sheetUIFeature, "Scenario: Unrelated", "@AIW-PRV-099\n  Scenario: Unrelated", 1), sheetITFeature, "which no sheet manifest lists"},
+		{"tag not referenced", strings.Replace(sheetManifest, "    it:\n      status: exempt\n      reason: UI only\n", "    it:\n      status: exempt\n      reason: UI only\n", 1), sheetUIFeature, strings.Replace(sheetITFeature, "@AIW-PRV-001 @type:smoke", "@AIW-PRV-001 @AIW-PRV-003", 1), "do not name it"},
+		{"missing check", sheetManifest, strings.Replace(sheetUIFeature, "    * sheet check \"AIW-PRV-001\"\n", "", 1), sheetITFeature, `has no ` + "`sheet check" + ` "AIW-PRV-001"`},
+		{"untagged check", sheetManifest, strings.Replace(sheetUIFeature, "    Given nothing", `    * sheet check "AIW-PRV-001"`, 1), sheetITFeature, "carries no sheet ID tags"},
+		{"check not tagged", sheetManifest, strings.Replace(sheetUIFeature, `    Then something else`, `    * sheet check "AIW-PRV-003"`, 1), sheetITFeature, "is not tagged @AIW-PRV-003"},
+		{"duplicate check", sheetManifest, strings.Replace(sheetUIFeature, `    Then something else`, `    * sheet check "AIW-PRV-001"`, 1), sheetITFeature, "more than once"},
+		{"check in background", sheetManifest, strings.Replace(sheetUIFeature, "    Given the user is signed in", `    * sheet check "AIW-PRV-001"`, 1), sheetITFeature, "not in a Background"},
+		{"feature-level id tag", sheetManifest, strings.Replace(sheetUIFeature, "@AIW-LLM", "@AIW-PRV-001", 1), sheetITFeature, "not on the feature or rule"},
+		{"ref to missing scenario", strings.Replace(sheetManifest, "scenario: Create a provider", "scenario: Gone", 1), sheetUIFeature, sheetITFeature, "no scenario with that name"},
+		{"ref to missing feature", strings.Replace(sheetManifest, "it/features/create.feature\n          scenario: Create", "it/features/gone.feature\n          scenario: Create", 1), sheetUIFeature, sheetITFeature, "feature file not found"},
+		{"ref in the wrong layer", strings.Replace(sheetManifest, "ROOT/suites/it/features/create.feature\n          scenario: Create a provider", "ROOT/suites/ui/features/create.feature\n          scenario: Create a provider", 1), sheetUIFeature, sheetITFeature, "must point into suites/it"},
+		{"ref scenario lacks tag", sheetManifest, sheetUIFeature, strings.Replace(sheetITFeature, "@AIW-PRV-001 @type:smoke", "@type:smoke", 1), "is not tagged @AIW-PRV-001"},
+		{"known-issue without tag", sheetManifest, sheetUIFeature, strings.Replace(sheetITFeature, "@AIW-PRV-002 @known-issue", "@AIW-PRV-002", 1), "needs the scenario tagged @known-issue"},
+		{"automated but known-issue", sheetManifest, sheetUIFeature, strings.Replace(sheetITFeature, "@AIW-PRV-001 @type:smoke", "@AIW-PRV-001 @known-issue", 1), "its status must be known-issue"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cov, roots := writeSheetFixture(t, tc.manifest, tc.ui, tc.it)
+			if tc.manifest == "" {
+				require.NoError(t, os.Remove(filepath.Join(cov, "AIW-LLM.yaml")))
+			}
+			issues := strings.Join(checkSheets(cov, roots), "\n")
+			require.Contains(t, issues, tc.want)
+		})
+	}
+}
+
+func TestParseFeatureFileHandlesTagsRulesAndComments(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "x.feature")
+	body := "@f1\nFeature: x\n  @r1\n  Rule: r\n    @s1 @s2 # trailing comment\n    Example: one\n      * sheet check \"AIW-PRV-001\"\n"
+	require.NoError(t, os.WriteFile(path, []byte(body), 0o600))
+	f, err := parseFeatureFile(path)
+	require.NoError(t, err)
+	require.Equal(t, []string{"f1", "r1"}, f.featureTags)
+	require.Len(t, f.scenarios, 1)
+	require.Equal(t, []string{"s1", "s2"}, f.scenarios[0].tags)
+	require.Equal(t, []string{"AIW-PRV-001"}, f.scenarios[0].checks)
+	_, err = parseFeatureFile(filepath.Join(t.TempDir(), "missing.feature"))
+	require.Error(t, err)
+	require.Equal(t, "", string(layerOf("tools/x.feature")))
+}

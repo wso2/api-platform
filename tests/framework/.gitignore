@@ -7,3 +7,8 @@ suites/ui/artifacts/
 
 # Local cloud environment-to-domain mapping.
 core/catalog/cloudconsole/environments.toml
+
+# Per-runner scenario-sheet results (cmd/sheetreport input).
+suites/*/sheet-results/
+sheet-report.csv
+sheet-report-*.csv

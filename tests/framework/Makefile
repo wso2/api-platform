@@ -6,7 +6,7 @@
 TESTBENCH_IMAGE ?= ghcr.io/wso2/api-platform/testbench:test
 A2A_TRIP_PLANNER_IMAGE ?= ghcr.io/wso2/api-platform/a2a-trip-planner:test
 
-.PHONY: help testbench a2a-trip-planner ap-cli coverage-report taxonomy taxonomy-check standards-check
+.PHONY: help testbench a2a-trip-planner ap-cli coverage-report sheet-report standards-check
 help: ## Show available targets
 	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | awk -F':.*##' '{printf "  %-12s %s\n", $$1, $$2}'
 
@@ -22,17 +22,11 @@ ap-cli: ## Build the ap CLI binary the ai-workspace-cli block drives (lands at c
 coverage-report: ## Merge counters from a -coverage run and render txt + HTML reports
 	./tools/coverage-report.sh
 
-taxonomy: ## Validate feature annotations and generate the capability coverage tree
-	go run ./cmd/taxonomy -map docs/capability-map.yml -features suites/it/features \
-		-suite suites/it/it-suite.yaml \
-		-output docs/coverage-tree.md
-
-taxonomy-check: ## Verify capability annotations and the generated coverage tree
-	go run ./cmd/taxonomy -map docs/capability-map.yml -features suites/it/features \
-		-suite suites/it/it-suite.yaml \
-		-output docs/coverage-tree.md -check
+sheet-report: ## Merge the last UI and IT runs' sheet results into sheet-report.csv
+	go run ./cmd/sheetreport -manifests coverage \
+		-results ui=suites/ui/sheet-results,it=suites/it/sheet-results -out sheet-report.csv
 
 standards-check: ## Check step and feature isolation rules
-	go run ./cmd/standards -root . -unit-root . -steps suites/it/steps -features suites/it/features -scripts tools -suites suites/it/it-suite.yaml,suites/ui/ui-suite.yaml -docs core
+	go run ./cmd/standards -root . -unit-root . -steps suites/it/steps -features suites/it/features -scripts tools -suites suites/it/it-suite.yaml,suites/ui/ui-suite.yaml -docs core -sheets coverage
 	go run ./cmd/standards -root . -unit-root . -steps suites/cloud/steps -features suites/cloud/features -scripts tools -suites suites/cloud/cloud-suite.yaml,suites/it/it-suite.yaml,suites/ui/ui-suite.yaml -docs core
 	go run ./cmd/standards -root "" -unit-root "" -steps "" -features suites/ui/features -scripts "" -suites "" -docs ""
