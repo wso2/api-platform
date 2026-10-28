@@ -939,6 +939,9 @@ blocks:
       - name: platform-api-publication-drafts
         features:
           - features/management-portal/resources/publication_drafts.feature
+      - name: platform-api-service-accounts
+        features:
+          - features/management-portal/resources/service_accounts.feature
       - name: platform-api-builds
         features:
           - features/management-portal/builds/build_lifecycle.feature
