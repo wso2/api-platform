@@ -187,20 +187,32 @@ func (t *Topology) URLAt(component string, ordinal int, endpoint string) (string
 // CallbackURL returns the network address a shared component, such as the testbench, calls to
 // reach an endpoint on this block's component. A shared component is attached to every block's
 // network, where the alias InternalURL uses can name a container in each block; this address
-// qualifies the alias with this block's network. A shared component is reached on its own alias,
-// which only it has.
+// qualifies the container's name with this block's network. A compose stack's container is named
+// by the service that serves the endpoint. A shared component is reached on its own alias, which
+// only it has.
 func (t *Topology) CallbackURL(component, endpoint string) (string, error) {
 	inst, err := t.Component(component)
 	if err != nil {
 		return "", err
 	}
-	if inst.Definition().Shared {
+	def := inst.Definition()
+	if def.Shared {
 		return inst.InternalURL(endpoint)
 	}
 	if t.network == nil {
 		return "", fmt.Errorf("runtime: block %q has no network", blockName(t.Block))
 	}
-	return inst.InternalURLAs(t.network.qualifiedName(inst.Alias()), endpoint)
+	name := inst.Alias()
+	if def.Compose != nil {
+		stack, ok := t.stacks[inst.Label()]
+		if !ok {
+			return "", fmt.Errorf("runtime: %s has no running compose stack in block %q", inst.Label(), blockName(t.Block))
+		}
+		if e, found := def.Endpoint(endpoint); found {
+			name = stack.endpointService(e)
+		}
+	}
+	return inst.InternalURLAs(t.network.qualifiedName(name), endpoint)
 }
 
 // BootBlock starts the block's storage and components in dependency order. logWriter,
