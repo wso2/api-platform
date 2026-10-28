@@ -556,7 +556,7 @@ blocks:
       - name: llm-provider-global-ratelimit
         tags: "gateway-version>=1.2.0"
         features:
-          - features/ai-workspace-gateway/ratelimit-policies/llm_provider_global_ratelimit.feature
+          - features/ai-workspace-gateway/llm/llm_provider_global_ratelimit.feature
       - name: llm-provider-management
         features:
           - features/ai-workspace-gateway/llm/llm_provider.feature
@@ -739,7 +739,7 @@ blocks:
       - name: agent-policies
         tags: "gateway-version>1.2.0"
         features:
-          - features/ai-workspace-gateway/agent-policies/agent_policies.feature
+          - features/ai-workspace-gateway/agent/agent_policies.feature
       - name: agent-card
         tags: "gateway-version>1.2.0"
         features:
@@ -755,7 +755,7 @@ blocks:
       - name: mcp-policies
         tags: "gateway-version>=1.2.0"
         features:
-          - features/ai-workspace-gateway/mcp-policies/mcp_policies.feature
+          - features/ai-workspace-gateway/mcp/mcp_policies.feature
       - name: graphql-policies
         tags: "gateway-version>1.2.0"
         features:
