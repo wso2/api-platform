@@ -283,10 +283,7 @@ func (u *Steps) setUpBillingInSettings(ctx context.Context) error {
 		return err
 	}
 
-	if err := save.Click(); err != nil {
-		return err
-	}
-	if err := u.expectToast(page, "Billing is set up."); err != nil {
+	if err := u.saveAndReload(page, save, "Billing is set up."); err != nil {
 		return err
 	}
 	if err := u.registerBilling(ctx); err != nil {
@@ -336,10 +333,7 @@ func (u *Steps) moveWebhookHostAndRemoveBilling(ctx context.Context) error {
 	if err := input.Fill(portalBase); err != nil {
 		return err
 	}
-	if err := save.Click(); err != nil {
-		return err
-	}
-	if err := u.expectToast(page, "Webhook host changed."); err != nil {
+	if err := u.saveAndReload(page, save, "Webhook host changed."); err != nil {
 		return err
 	}
 	if err := u.expect.Locator(page.Locator("#cfg-billing-webhook-edit-btn")).ToHaveAttribute("data-base-url", portalBase); err != nil {
@@ -374,10 +368,7 @@ func (u *Steps) moveWebhookHostAndRemoveBilling(ctx context.Context) error {
 	if err := removeBtn.Click(); err != nil {
 		return err
 	}
-	if err := page.Locator("#cfg-billing-remove-confirm").Click(); err != nil {
-		return err
-	}
-	if err := u.expectToast(page, "Billing removed."); err != nil {
+	if err := u.saveAndReload(page, page.Locator("#cfg-billing-remove-confirm"), "Billing removed."); err != nil {
 		return err
 	}
 	return u.expect.Locator(page.Locator("#cfg-billing-setup-btn")).ToBeVisible()
@@ -511,10 +502,7 @@ func (u *Steps) addMeterInSettings(ctx context.Context) error {
 	if err := u.expect.Locator(rows).ToHaveCount(2); err != nil {
 		return err
 	}
-	if err := save.Click(); err != nil {
-		return err
-	}
-	if err := u.expectToast(page, "Meter created."); err != nil {
+	if err := u.saveAndReload(page, save, "Meter created."); err != nil {
 		return err
 	}
 	row := meterRow(page, name)
@@ -590,10 +578,7 @@ func (u *Steps) editAndDeleteMeter(ctx context.Context) error {
 	if err := u.expect.Locator(page.Locator("#mtr-token-row")).ToBeHidden(); err != nil {
 		return err
 	}
-	if err := page.Locator("#cfg-meter-modal-save").Click(); err != nil {
-		return err
-	}
-	if err := u.expectToast(page, "Meter updated."); err != nil {
+	if err := u.saveAndReload(page, page.Locator("#cfg-meter-modal-save"), "Meter updated."); err != nil {
 		return err
 	}
 	if err := u.expect.Locator(row).ToContainText("Tokens counted for billing"); err != nil {
@@ -611,10 +596,7 @@ func (u *Steps) editAndDeleteMeter(ctx context.Context) error {
 	if err := row.Locator(".cfg-meter-delete-btn").Click(); err != nil {
 		return err
 	}
-	if err := page.Locator("#cfg-del-meter-confirm").Click(); err != nil {
-		return err
-	}
-	if err := u.expectToast(page, "Meter deleted."); err != nil {
+	if err := u.saveAndReload(page, page.Locator("#cfg-del-meter-confirm"), "Meter deleted."); err != nil {
 		return err
 	}
 	return u.expect.Locator(row).ToHaveCount(0)
@@ -722,6 +704,21 @@ func (u *Steps) saveExpecting(page playwright.Page, save, text string) error {
 	}
 	if err := u.expectToast(page, text); err != nil {
 		return fmt.Errorf("saving should say %q: %w", text, err)
+	}
+	return nil
+}
+
+// saveAndReload clicks a control whose success the page reports in a toast before reloading, and
+// waits until the reloaded page has loaded: its scripts have bound the controls the next action
+// clicks, and what is asserted next is asserted against it, not the page it replaces.
+func (u *Steps) saveAndReload(page playwright.Page, control playwright.Locator, toast string) error {
+	if _, err := page.ExpectNavigation(func() error {
+		if err := control.Click(); err != nil {
+			return err
+		}
+		return u.expectToast(page, toast)
+	}, playwright.PageExpectNavigationOptions{WaitUntil: playwright.WaitUntilStateLoad}); err != nil {
+		return fmt.Errorf("saving should say %q and reload the page: %w", toast, err)
 	}
 	return nil
 }
@@ -931,7 +928,7 @@ func (u *Steps) priceFlatRatePlanInSettings(ctx context.Context) error {
 	if err := fillAndCheck(page, "#pol-flat-amount", "49.00"); err != nil {
 		return err
 	}
-	if err := u.saveExpecting(page, "#cfg-plan-modal-save", "Plan created."); err != nil {
+	if err := u.saveAndReload(page, page.Locator("#cfg-plan-modal-save"), "Plan created."); err != nil {
 		return err
 	}
 	return u.registerPlan(ctx, page, name)
@@ -960,7 +957,7 @@ func (u *Steps) editAndDeletePlan(ctx context.Context) error {
 	if err := fillAndCheck(page, "#pol-desc", "A flat yearly fee"); err != nil {
 		return err
 	}
-	if err := u.saveExpecting(page, "#cfg-plan-modal-save", "Plan updated."); err != nil {
+	if err := u.saveAndReload(page, page.Locator("#cfg-plan-modal-save"), "Plan updated."); err != nil {
 		return err
 	}
 	if err := row.Locator(".cfg-plan-delete-btn").Click(); err != nil {
@@ -975,10 +972,7 @@ func (u *Steps) editAndDeletePlan(ctx context.Context) error {
 	if err := u.expect.Locator(page.Locator("#cfg-del-plan-name-txt")).ToHaveText(name); err != nil {
 		return err
 	}
-	if err := page.Locator("#cfg-del-plan-confirm").Click(); err != nil {
-		return err
-	}
-	if err := u.expectToast(page, "Plan deleted."); err != nil {
+	if err := u.saveAndReload(page, page.Locator("#cfg-del-plan-confirm"), "Plan deleted."); err != nil {
 		return err
 	}
 	return u.expect.Locator(row).ToHaveCount(0)
@@ -1251,7 +1245,7 @@ func (u *Steps) priceUsagePlanInSettings(ctx context.Context) error {
 	if err := u.expect.Locator(page.Locator("#pol-prices-list .cfg-price-box")).ToHaveCount(2); err != nil {
 		return err
 	}
-	if err := u.saveExpecting(page, save, "Plan created."); err != nil {
+	if err := u.saveAndReload(page, page.Locator(save), "Plan created."); err != nil {
 		return err
 	}
 	return u.registerPlan(ctx, page, name)
