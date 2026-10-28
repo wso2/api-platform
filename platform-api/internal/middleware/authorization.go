@@ -20,6 +20,7 @@ package middleware
 import (
 	"errors"
 	"net/http"
+	"slices"
 	"strings"
 
 	"github.com/wso2/api-platform/common/authenticators"
@@ -63,6 +64,10 @@ type ScopeEnforcerConfig struct {
 	// is the same list the authentication middleware bypasses — through the same
 	// hasPathPrefix matcher, so both exempt exactly the same requests.
 	SkipPaths []string
+	// ExemptRoutes are routes that check their own scopes (/mcp), in the
+	// "METHOD /path" form of the router's pattern. Unlike SkipPaths they match
+	// the route exactly, so a route added under the same path is still checked.
+	ExemptRoutes []string
 }
 
 // ScopeEnforcer returns a middleware that reads the required scopes for each request
@@ -128,6 +133,13 @@ func ScopeEnforcer(registry *ScopeRegistry, cfg ScopeEnforcerConfig) (func(http.
 				return
 			}
 
+			// These routes check scopes themselves, per call (/mcp reads the tool from
+			// the body). They declare none in the spec, so the check below would deny them.
+			if slices.Contains(cfg.ExemptRoutes, pattern) {
+				next.ServeHTTP(w, r)
+				return
+			}
+
 			// pattern is "METHOD /path/{param}" — extract the path portion.
 			path := pattern
 			if idx := strings.Index(pattern, " "); idx != -1 {
@@ -142,7 +154,7 @@ func ScopeEnforcer(registry *ScopeRegistry, cfg ScopeEnforcerConfig) (func(http.
 				return
 			}
 
-			effectiveScopes := resolveEffectiveScopes(r, mode)
+			effectiveScopes := ResolveEffectiveScopes(r, mode)
 
 			for _, required := range requiredScopes {
 				for _, have := range effectiveScopes {
@@ -171,8 +183,9 @@ func hasPathPrefix(reqPath string, prefixes []string) bool {
 	return authenticators.HasPathPrefix(reqPath, prefixes)
 }
 
-// resolveEffectiveScopes returns the effective scopes for the request.
-func resolveEffectiveScopes(r *http.Request, mode string) []string {
+// ResolveEffectiveScopes returns the effective scopes for the request: the scope
+// claim, or in role mode the IDP roles expanded via the role-scope map.
+func ResolveEffectiveScopes(r *http.Request, mode string) []string {
 	if mode == ValidationModeRole {
 		roles, _ := GetPlatformRolesFromRequest(r)
 		return roles
@@ -187,7 +200,7 @@ func resolveEffectiveScopes(r *http.Request, mode string) []string {
 // ScopeEnforcer matches: a scope grants only what it names, so every scope a
 // caller needs must be declared in the OpenAPI spec and held outright.
 func HasEffectiveScope(r *http.Request, mode, scope string) bool {
-	for _, have := range resolveEffectiveScopes(r, mode) {
+	for _, have := range ResolveEffectiveScopes(r, mode) {
 		if have == scope {
 			return true
 		}

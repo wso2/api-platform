@@ -46,6 +46,7 @@ type PlanCardProps = {
   inactive?: boolean;
   limit: PlanLimitDisplay;
   onToggle?: () => void;
+  pricing?: string;
   readOnly?: boolean;
   selected: boolean;
 };
@@ -119,6 +120,8 @@ const planCardSx = (
  *
  * `readOnly` (the published view) never sets `disabled`, which would grey the card out; `pointerEvents`
  * blocks interaction instead.
+ *
+ * `pricing` is the price of a paid plan in words; a free plan shows none.
  */
 export function PlanCard({
   disabled,
@@ -126,6 +129,7 @@ export function PlanCard({
   inactive = false,
   limit,
   onToggle,
+  pricing,
   readOnly,
   selected,
 }: PlanCardProps) {
@@ -190,6 +194,7 @@ export function PlanCard({
             <FormattedMessage {...limit.unit} values={limit.unlimited ? undefined : limit.unitValues} />
           </Typography>
         </Box>
+        {pricing && <Typography variant="body2">{pricing}</Typography>}
       </Form.CardButton>
     </Tooltip>
   );

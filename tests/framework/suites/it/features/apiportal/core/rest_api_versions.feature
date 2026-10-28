@@ -24,10 +24,10 @@ Feature: Listing the versions of a REST API through the control plane
   So that a client can tell a brand-new API from a new version of an existing one before
   attempting the create
 
-  # The over-the-wire half of this endpoint's coverage; the in-process half is
-  # platform-api/internal/integration/api_versions_test.go, which this does not replace.
+  # The over-the-wire half of this endpoint's coverage; the in-process half is the platform-api
+  # unit tests of GetAPIVersionsByDisplayName and GetAPIVersions, which this does not replace.
   # Not reproduced here: cross-org isolation (no second-org actor in this suite) and a version
-  # stored without a context (create rejects an empty one). Both stay in the Go suite.
+  # stored without a context (create rejects an empty one). The unit tests cover both.
 
   Background:
     Given I generate a unique value from "papi-versions-project" and store it as "projectHandle"
@@ -96,7 +96,7 @@ Feature: Listing the versions of a REST API through the control plane
     Then the response status code should be 400
 
   # Clients use this list to decide whether a create will be accepted, so the two endpoints
-  # must agree. The Go suite proves the two SQL statements do.
+  # must agree. A repository unit test proves the two SQL statements do.
   Scenario: What the list reports as taken is exactly what create refuses
     Given I generate a unique API context from "/papi-versions-agree-v1" and store it as "takenContext"
     And I generate a unique API context from "/papi-versions-agree-dup" and store it as "dupContext"

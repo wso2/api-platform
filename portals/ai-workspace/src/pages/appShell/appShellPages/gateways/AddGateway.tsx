@@ -40,6 +40,9 @@ import { buildOrgPath } from "../../../../utils/projectRouting";
 import { setRegistrationToken } from "./registrationTokenStore";
 import { useAIWorkspaceSnackbar } from "../../../../hooks/aiWorkspaceSnackbar";
 import { PLATFORM_GATEWAY_VERSIONS } from "../../../../config.env";
+import ReadOnlyTooltip, {
+  useOrgReadOnly,
+} from "../../../../Components/common/ReadOnlyTooltip";
 import type { GatewayVersionEntry } from "../../../../config.env";
 
 // Validation constants
@@ -93,6 +96,9 @@ export default function AddGateway() {
   const { currentOrganization } = useAppShell();
   const { createGateway, isCreating } = useGatewayList();
   const showSnackbar = useAIWorkspaceSnackbar();
+  // A read-only organization may not create anything; the control plane refuses
+  // the create, so the form must not offer to send it.
+  const isOrgReadOnly = useOrgReadOnly();
 
   const [displayName, setDisplayName] = useState("");
   const [name, setName] = useState("");
@@ -338,13 +344,15 @@ export default function AddGateway() {
             >
               Cancel
             </Button>
-            <Button
-              variant="contained"
-              type="submit"
-              disabled={isCreating || !isFormValid()}
-            >
-              {isCreating ? "Adding Gateway..." : "Add Gateway"}
-            </Button>
+            <ReadOnlyTooltip>
+              <Button
+                variant="contained"
+                type="submit"
+                disabled={isCreating || isOrgReadOnly || !isFormValid()}
+              >
+                {isCreating ? "Adding Gateway..." : "Add Gateway"}
+              </Button>
+            </ReadOnlyTooltip>
           </Box>
         </Box>
       </Box>

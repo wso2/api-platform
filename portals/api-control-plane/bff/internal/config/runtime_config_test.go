@@ -17,6 +17,8 @@
 package config
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -144,5 +146,66 @@ func TestBuildRuntimeConfig_NeverEmitsClientSecretOrAuthority(t *testing.T) {
 		if value == cfg.Auth.OIDC.ClientID || value == cfg.Auth.OIDC.ClientSecret || value == cfg.Auth.OIDC.Authority {
 			t.Errorf("runtime config key %q leaked an OIDC client secret/identity value", key)
 		}
+	}
+}
+
+// loadWithSanitize loads config.toml plus an overlay with the given
+// [sanitize_html_docs] body.
+func loadWithSanitize(t *testing.T, body string) *Config {
+	t.Helper()
+	overlay := filepath.Join(t.TempDir(), "overlay.toml")
+	if err := os.WriteFile(overlay, []byte("[api_control_plane.sanitize_html_docs]\n"+body+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load("../../../configs/config.toml", overlay)
+	if err != nil {
+		t.Fatalf("Load error = %v, want sanitize settings never to fail startup", err)
+	}
+	return cfg
+}
+
+func TestBuildRuntimeConfig_SanitizeHTMLDocsAbsentByDefault(t *testing.T) {
+	cfg, err := Load("../../../configs/config.toml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []string{
+		"sanitizeHtmlDocsEnabled",
+		"sanitizeHtmlDocsAdditionalAllowedTags",
+		"sanitizeHtmlDocsAdditionalAllowedAttributes",
+	} {
+		if v, present := cfg.RuntimeConfig[key]; present {
+			t.Errorf("%s = %q, want absent", key, v)
+		}
+	}
+}
+
+func TestBuildRuntimeConfig_SanitizeHTMLDocsPassThrough(t *testing.T) {
+	for name, tc := range map[string]struct{ body, key, want string }{
+		"bool false":       {`enabled = false`, "sanitizeHtmlDocsEnabled", "false"},
+		"string FALSE":     {`enabled = 'FALSE'`, "sanitizeHtmlDocsEnabled", "FALSE"},
+		"string no":        {`enabled = 'no'`, "sanitizeHtmlDocsEnabled", "no"},
+		"tags TOML array":  {`additional_allowed_tags = ["video", "iframe"]`, "sanitizeHtmlDocsAdditionalAllowedTags", `["video","iframe"]`},
+		"tags JSON string": {`additional_allowed_tags = '["video"]'`, "sanitizeHtmlDocsAdditionalAllowedTags", `["video"]`},
+		"tags comma list":  {`additional_allowed_tags = 'video,iframe'`, "sanitizeHtmlDocsAdditionalAllowedTags", `video,iframe`},
+		"attrs JSON string": {`additional_allowed_attributes = '{"iframe":["src"]}'`,
+			"sanitizeHtmlDocsAdditionalAllowedAttributes", `{"iframe":["src"]}`},
+		"attrs TOML table": {"[api_control_plane.sanitize_html_docs.additional_allowed_attributes]\niframe = [\"src\"]\ndiv = \"hidden\"",
+			"sanitizeHtmlDocsAdditionalAllowedAttributes", `{"div":"hidden","iframe":["src"]}`},
+	} {
+		t.Run(name, func(t *testing.T) {
+			cfg := loadWithSanitize(t, tc.body)
+			if got := cfg.RuntimeConfig[tc.key]; got != tc.want {
+				t.Errorf("%s = %q, want %q", tc.key, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestBuildRuntimeConfig_SanitizeHTMLDocsBlankEnvIsAbsent(t *testing.T) {
+	t.Setenv("APIP_ACP_SANITIZE_HTML_DOCS_ENABLED", "")
+	cfg := loadWithSanitize(t, `enabled = '{{ env "APIP_ACP_SANITIZE_HTML_DOCS_ENABLED" "" }}'`)
+	if v, present := cfg.RuntimeConfig["sanitizeHtmlDocsEnabled"]; present {
+		t.Errorf("sanitizeHtmlDocsEnabled = %q, want absent", v)
 	}
 }

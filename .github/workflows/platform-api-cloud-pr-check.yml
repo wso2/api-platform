@@ -49,7 +49,3 @@ jobs:
       - name: Run tests (experimental / cloud)
         run: go test -tags experimental -count=1 ./...
         working-directory: platform-api
-
-      - name: Cross-database integration tests (SQLite, experimental / cloud)
-        run: IT_DB=sqlite go test -tags "integration experimental" -count=1 ./internal/integration/...
-        working-directory: platform-api

@@ -32,6 +32,7 @@ import (
 	"github.com/cucumber/godog"
 	playwright "github.com/mxschmitt/playwright-go"
 
+	"github.com/wso2/api-platform/tests/framework/core/catalog/shared"
 	"github.com/wso2/api-platform/tests/framework/core/cleanup"
 	frameworkruntime "github.com/wso2/api-platform/tests/framework/core/runtime"
 	"github.com/wso2/api-platform/tests/framework/core/util/httpx"
@@ -52,10 +53,11 @@ type Steps struct {
 // New constructs API Portal bindings using the suite's isolated browser page.
 func New(topo *frameworkruntime.Topology, expect playwright.PlaywrightAssertions,
 	pageGetter func(context.Context) (playwright.Page, error)) *Steps {
+	portalTLS := shared.APIPortalClientTLS()
 	return &Steps{
 		topo: topo, expect: expect, pageGetter: pageGetter,
-		client:     httpx.NewClient(httpx.Options{MaxRetries: 1, FollowRedirects: true}),
-		noRedirect: httpx.NewClient(httpx.Options{MaxRetries: 1}),
+		client:     httpx.NewClient(httpx.Options{MaxRetries: 1, FollowRedirects: true, TLSClientConfig: portalTLS}),
+		noRedirect: httpx.NewClient(httpx.Options{MaxRetries: 1, TLSClientConfig: portalTLS}),
 	}
 }
 
@@ -125,6 +127,8 @@ func (u *Steps) Register(sc *godog.ScenarioContext) {
 	sc.Step(`^the user signs in and returns to Applications$`, u.signInAndReturnToApplications)
 	sc.Step(`^the user opens the seeded API's API Keys page while signed out$`, u.openSeededAPIKeysSignedOut)
 	sc.Step(`^the user signs in and returns to the seeded API's API Keys page$`, u.signInAndReturnToSeededAPIKeys)
+	u.registerBillingSteps(sc)
+	u.registerPaidSubscriptionSteps(sc)
 }
 
 const (
@@ -732,6 +736,11 @@ func (u *Steps) loginAsDeveloper(ctx context.Context) error {
 	if !ok || password == "" {
 		return fmt.Errorf("developer password has unexpected type %T", passwordValue)
 	}
+	return u.loginAs(ctx, username, password)
+}
+
+// loginAs signs out of the API Portal, and signs in again as the user.
+func (u *Steps) loginAs(ctx context.Context, username, password string) error {
 	if err := u.logoutAPIPortal(ctx); err != nil {
 		return err
 	}
@@ -746,7 +755,7 @@ func (u *Steps) loginAsDeveloper(ctx context.Context) error {
 		return err
 	}
 	if err := page.Locator(".ln-signin-btn").Click(); err != nil {
-		return fmt.Errorf("signing in as developer: %w", err)
+		return fmt.Errorf("signing in as %s: %w", username, err)
 	}
 	return u.expect.Locator(page.Locator(".profile-link")).ToBeVisible()
 }
@@ -2244,7 +2253,7 @@ func (u *Steps) apiPortalURL() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return inst.InternalURL("http")
+	return inst.InternalURL("https")
 }
 
 func (u *Steps) requestAPIPortalPath(ctx context.Context, path string) error {
@@ -2260,7 +2269,7 @@ func (u *Steps) requestAPIPortal(ctx context.Context, path string) error {
 }
 
 func (u *Steps) requestAPIPortalWithClient(ctx context.Context, path string, client *httpx.Client) error {
-	base, err := u.topo.URL("api-portal", "http")
+	base, err := u.topo.URL("api-portal", "https")
 	if err != nil {
 		return err
 	}

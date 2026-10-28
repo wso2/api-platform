@@ -30,6 +30,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -39,10 +40,15 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/wso2/api-platform/tests/framework/core/catalog/shared"
+	"github.com/wso2/api-platform/tests/framework/core/cleanup"
 	"github.com/wso2/api-platform/tests/framework/core/components"
 	"github.com/wso2/api-platform/tests/framework/core/util/httpx"
 	"github.com/wso2/api-platform/tests/framework/core/util/tcontext"
 )
+
+func TestNewPortalClientIsBuiltOnce(t *testing.T) {
+	require.Same(t, newPortalClient(), newPortalClient())
+}
 
 func TestTopLevelJSONArrayLength(t *testing.T) {
 	tests := []struct {
@@ -294,4 +300,85 @@ func TestTheIdentityProviderClientVerifiesTheProviderCertificate(t *testing.T) {
 	defer other.Close()
 	_, err = client.Do(context.Background(), httpx.Request{URL: other.URL}, 0, 0)
 	require.Error(t, err, "a certificate other than the provider's must not be trusted")
+}
+
+func TestAPIOffersPlan(t *testing.T) {
+	body := []byte(`{"id":"api-1","status":"PUBLISHED","subscriptionPlans":[{"id":"gold"},{"id":"silver"}]}`)
+
+	require.NoError(t, apiOffersPlan(body, "api-1", "silver"))
+	require.ErrorContains(t, apiOffersPlan(body, "api-1", "bronze"), "without plan")
+	require.ErrorContains(t, apiOffersPlan(body, "api-2", "gold"), "returned")
+	require.NoError(t, apiOffersPlan([]byte(`{"id":"api-1","status":"DEPRECATED","subscriptionPlans":[{"id":"gold"}]}`),
+		"api-1", "gold"))
+	require.ErrorContains(t, apiOffersPlan([]byte(`not json`), "api-1", "gold"), "decoding")
+}
+
+func TestAPIHasField(t *testing.T) {
+	body := []byte(`{"id":"api-1","status":"DEPRECATED","name":"Renamed"}`)
+
+	require.NoError(t, apiHasField(body, "api-1", "status", "DEPRECATED"))
+	require.NoError(t, apiHasField(body, "api-1", "name", "Renamed"))
+	require.ErrorContains(t, apiHasField(body, "api-1", "status", "PUBLISHED"), `with status "DEPRECATED"`)
+	require.ErrorContains(t, apiHasField(body, "api-1", "title", "x"), "want")
+	require.ErrorContains(t, apiHasField([]byte(`not json`), "api-1", "status", "x"), "decoding")
+}
+
+func TestTrackPublishedPlanRemovesThePlanFromThePortalAtCleanup(t *testing.T) {
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("runner"))
+	reg := cleanup.NewRegistry(slog.Default())
+	require.NoError(t, cleanup.Install(ctx, reg))
+	s := &Steps{}
+
+	require.NoError(t, s.trackPublishedPlan(ctx, "gold"))
+	require.NoError(t, s.trackPublishedPlan(ctx, "silver"))
+
+	var ids []string
+	for _, res := range reg.Pending() {
+		require.Equal(t, portalSubscriptionPlanKind.Name, res.Kind.Name)
+		ids = append(ids, res.ID)
+	}
+	require.ElementsMatch(t, []string{"gold", "silver"}, ids)
+
+	require.Error(t, s.trackPublishedPlan(context.Background(), "gold"), "without a cleanup registry nothing can be tracked")
+}
+
+func TestPortalProberTrustsOnlyThePortalCertificateAndFollowsRedirects(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, "/signin", http.StatusFound) })
+	mux.HandleFunc("/signin", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
+	serve := func(pair *shared.KeyPairPEM) *httptest.Server {
+		cert, err := tls.X509KeyPair(pair.CertPEM, pair.PrivateKeyPEM)
+		require.NoError(t, err)
+		server := httptest.NewUnstartedServer(mux)
+		server.TLS = &tls.Config{Certificates: []tls.Certificate{cert}}
+		server.StartTLS()
+		t.Cleanup(server.Close)
+		return server
+	}
+	prober := newPortalProber()
+
+	portal := serve(shared.APIPortalTLS())
+	status, err := prober.Probe(context.Background(), portal.URL+"/")
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, status, "the redirect to the sign-in page is followed")
+
+	stranger, err := shared.SelfSignedCert(shared.APIPortalHost, []string{shared.APIPortalHost})
+	require.NoError(t, err)
+	_, err = prober.Probe(context.Background(), serve(stranger).URL+"/")
+	require.Error(t, err, "a certificate that is not the portal's is refused even when it carries the portal's name")
+
+	portal.Close()
+	status, err = prober.Probe(context.Background(), portal.URL+"/")
+	require.Error(t, err)
+	require.Zero(t, status)
+}
+
+func TestPortalResourceKindGivesEachCollectionItsOwnDeleter(t *testing.T) {
+	require.Equal(t, portalSubscriptionPlanKind, portalResourceKind("/subscription-plans"))
+	require.Equal(t, portalMeterKind, portalResourceKind("/meters"))
+	require.Equal(t, portalWebhookKind, portalResourceKind("/webhook-subscribers"))
+	require.Equal(t, "api-portal-resource", portalResourceKind("/apis").Name)
+	// An API goes before the plans it offers, and a plan before the meters it prices.
+	require.Less(t, portalResourceKind("/apis").Order, portalSubscriptionPlanKind.Order)
+	require.Less(t, portalSubscriptionPlanKind.Order, portalMeterKind.Order)
 }

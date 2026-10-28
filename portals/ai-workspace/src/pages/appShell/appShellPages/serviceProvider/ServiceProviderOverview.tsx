@@ -94,7 +94,7 @@ import {
   truncateProviderDisplayName,
 } from '../../../../utils/providerTemplateDisplay';
 import { useProviderTemplates } from '../../../../contexts/llmProvider/providerTemplate';
-import { useAppAuth } from '../../../../contexts/AppAuthContext';
+import { useAppAuth, useAppAuthScopes } from '../../../../contexts/AppAuthContext';
 import {
   DISABLED_ACTION_SX,
   NO_PERMISSION_TOOLTIP,
@@ -142,6 +142,7 @@ import LLLMStepBanner, {
 } from '../quickStart/lllmStepBanner';
 import ServiceProviderResourcesTab from './ServiceProviderResourcesTab';
 import { useResourceLimits } from '../../../../hooks/useResourceLimits';
+import { useOrgReadOnly } from '../../../../Components/common/ReadOnlyTooltip';
 
 const PROVIDER_LOGO_MAP: Record<string, string> = {
   openai: OpenAILogo,
@@ -265,6 +266,9 @@ function ServiceProviderOverviewContent() {
   const navigate = useNavigate();
   const location = useLocation();
   const { hasPermission } = useAppAuth();
+  // Which variant of this page renders is a question of what the user may see,
+  // so it reads the held scopes rather than the read-only-aware permission.
+  const { hasPermission: hasScope } = useAppAuthScopes();
   const {
     currentProject,
     currentOrganization,
@@ -511,7 +515,15 @@ function ServiceProviderOverviewContent() {
   const { canCreate: canCreateComponent, limitMessage } = useResourceLimits();
   const isProxyQuotaReached = !canCreateComponent('llmProxies');
   const proxyQuotaTooltip = limitMessage('llmProxies');
-  const isReadOnlyProvider = Boolean(provider?.readOnly);
+  // Whether the artifact itself was created from a gateway, which owns its
+  // runtime configuration. Kept separate from the flag below because only this
+  // one is true of the artifact: the gateway-managed banners and warnings speak
+  // about the gateway, and must not appear merely because the organization has
+  // gone read-only.
+  const isGatewayManagedProvider = Boolean(provider?.readOnly);
+  // Everything that only disables a control reads this one: an organization
+  // that may not write at all disables the same controls the gateway does.
+  const isReadOnlyProvider = useOrgReadOnly() || isGatewayManagedProvider;
 
   useEffect(() => {
     const organizationId = currentOrganization?.uuid;
@@ -526,7 +538,7 @@ function ServiceProviderOverviewContent() {
 
     const resolveDeletePreconditions = async () => {
       const [deploymentsResult, linkedProxiesResult] = await Promise.allSettled([
-        isReadOnlyProvider
+        isGatewayManagedProvider
           ? getLLMProviderDeployments(providerId, organizationId, apimBaseUrl)
           : Promise.resolve({ list: [], count: 0 }),
         getLLMProviderProxies(providerId, organizationId, apimBaseUrl),
@@ -563,12 +575,12 @@ function ServiceProviderOverviewContent() {
     currentOrganization?.uuid,
     provider?.id,
     canDelete,
-    isReadOnlyProvider,
+    isGatewayManagedProvider,
     apimBaseUrl,
   ]);
 
   const deleteBlockedReason = useMemo(() => {
-    if (isReadOnlyProvider && activeDeploymentCount !== null && activeDeploymentCount > 0) {
+    if (isGatewayManagedProvider && activeDeploymentCount !== null && activeDeploymentCount > 0) {
       return activeDeploymentDeleteBlockedReason(
         'LLM Provider',
         activeDeploymentCount
@@ -578,7 +590,7 @@ function ServiceProviderOverviewContent() {
       return linkedProxiesDeleteBlockedReason(linkedProxyCount);
     }
     return null;
-  }, [isReadOnlyProvider, activeDeploymentCount, linkedProxyCount]);
+  }, [isGatewayManagedProvider, activeDeploymentCount, linkedProxyCount]);
 
   const canCreateProxy = hasPermission(SCOPES.LLM_PROXY_CREATE);
   const canDeployProvider = hasPermission(SCOPES.LLM_PROVIDER_DEPLOYMENT_CREATE);
@@ -937,7 +949,7 @@ function ServiceProviderOverviewContent() {
     );
   }
 
-  const isAdminOrgLevel = hasPermission(SCOPES.LLM_PROVIDER_MANAGE) && !isProjectLevel;
+  const isAdminOrgLevel = hasScope(SCOPES.LLM_PROVIDER_MANAGE) && !isProjectLevel;
   const { resources, rateLimiting, models } = serviceProviderOverviewMock;
   const tokenLimit = rateLimiting.backend.criteria.find(
     (item) => item.label === 'Token Count'
@@ -1150,7 +1162,7 @@ function ServiceProviderOverviewContent() {
         <strong>'{deleteTarget?.name ?? ''}'</strong>?
       </DialogTitle>
       <DialogContent>
-        {isReadOnlyProvider ? (
+        {isGatewayManagedProvider ? (
           <GatewayArtifactDeleteWarning
             artifactType="LLM Provider"
             artifactName={deleteTarget?.name}
@@ -1703,28 +1715,28 @@ function ServiceProviderOverviewContent() {
               </TabPanel>
 
               <TabPanel value={tabIndex} index={1}>
-                {isReadOnlyProvider && (
+                {isGatewayManagedProvider && (
                   <GatewayArtifactReadOnlyBanner message="Connection settings are managed by the gateway that created this provider and are read-only here." />
                 )}
                 <ServiceProviderConnectionTab />
               </TabPanel>
 
               <TabPanel value={tabIndex} index={2}>
-                {isReadOnlyProvider && (
+                {isGatewayManagedProvider && (
                   <GatewayArtifactReadOnlyBanner message="Access control is managed by the gateway that created this provider and is read-only here." />
                 )}
                 <ServiceProviderResourcesTab />
               </TabPanel>
 
               <TabPanel value={tabIndex} index={3}>
-                {isReadOnlyProvider && (
+                {isGatewayManagedProvider && (
                   <GatewayArtifactReadOnlyBanner message="Security settings are managed by the gateway that created this provider and are read-only here." />
                 )}
                 <ServiceProviderSecurityTab />
               </TabPanel>
 
               <TabPanel value={tabIndex} index={4}>
-                {isReadOnlyProvider && (
+                {isGatewayManagedProvider && (
                   <GatewayArtifactReadOnlyBanner message="Rate limiting is managed by the gateway that created this provider and is read-only here." />
                 )}
                 <ServiceProviderRateLimitingTab
@@ -1734,7 +1746,7 @@ function ServiceProviderOverviewContent() {
               </TabPanel>
 
               <TabPanel value={tabIndex} index={5}>
-                {isReadOnlyProvider && (
+                {isGatewayManagedProvider && (
                   <GatewayArtifactReadOnlyBanner message="Guardrails & policies are managed by the gateway that created this provider and are read-only here." />
                 )}
                 <ServiceProviderGuardrailsTab />
@@ -1779,7 +1791,12 @@ function ServiceProviderOverviewContent() {
                 </Button>
                 <Button
                   variant="contained"
-                  disabled={!hasUnsavedChanges || isSavingChanges || !isSecurityConfigValid}
+                  disabled={
+                    !hasUnsavedChanges ||
+                    isSavingChanges ||
+                    isReadOnlyProvider ||
+                    !isSecurityConfigValid
+                  }
                   onClick={() => void handleSaveChanges()}
                 >
                   Save

@@ -66,10 +66,25 @@ type PublicationService struct {
 	publicationRepo      repository.PublicationRepository
 	portalPublisher      PortalPublisher
 	slogger              *slog.Logger
+	// pricingRepo gives the pricing a plan is created with on a portal that does not have it.
+	pricingRepo repository.SubscriptionPlanPricingRepository
+	// meterRepo gives the meters such a plan's prices charge for, which the portal needs first.
+	meterRepo repository.MeterRepository
 
 	portalOperationTimeout time.Duration
 	// archiveMaxBytes bounds the content ZIP pushed to the portal.
 	archiveMaxBytes int64
+}
+
+// SetPricingRepository makes a publish send each plan the portal does not have with its pricing.
+func (s *PublicationService) SetPricingRepository(repo repository.SubscriptionPlanPricingRepository) {
+	s.pricingRepo = repo
+}
+
+// SetMeterRepository makes a publish send the meters those plans' prices charge for, as plans are
+// sent: a meter made here reaches a portal only with a plan published there.
+func (s *PublicationService) SetMeterRepository(repo repository.MeterRepository) {
+	s.meterRepo = repo
 }
 
 // NewPublicationService creates a new API Publication service.
@@ -384,6 +399,24 @@ func (s *PublicationService) resolvePlanUUIDs(handles []string, orgUUID string) 
 	return uuids, nil
 }
 
+// listingPricing returns the pricing of each paid plan of a listing, keyed by plan UUID.
+func (s *PublicationService) listingPricing(plans []*model.SubscriptionPlan, orgUUID string) (map[string]*model.SubscriptionPlanPricing, error) {
+	pricing := make(map[string]*model.SubscriptionPlanPricing, len(plans))
+	if s.pricingRepo == nil {
+		return pricing, nil
+	}
+	for _, plan := range plans {
+		planPricing, err := s.pricingRepo.GetByPlan(plan.UUID, orgUUID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get the pricing of subscription plan %s: %w", plan.UUID, err)
+		}
+		if planPricing != nil {
+			pricing[plan.UUID] = planPricing
+		}
+	}
+	return pricing, nil
+}
+
 // GetDraftDefinition returns the draft's stored definition content.
 func (s *PublicationService) GetDraftDefinition(apiType, apiId, apiPortalId, orgUUID string) (*model.PublicationContent, error) {
 	return s.getDraftContent(apiType, apiId, apiPortalId, orgUUID, model.PublicationContentTypeDefinition)
@@ -580,9 +613,14 @@ func (s *PublicationService) getPublicationContent(apiType, apiId, apiPortalId, 
 // PublicationRepository.PromoteDraftToPublication flips the draft row in place on a first
 // publish, or merges it into the live row on a republish, so the live row's uuid never changes.
 //
-// A draft saved during the push is not promoted (APIPublicationDraftChanged). A push is never
-// undone, so a failed content push after the listing was accepted leaves the portal ahead of
-// local state until the next publish.
+// A draft saved during the push is not promoted (APIPublicationDraftChanged).
+//
+// When something fails:
+//   - The listing push fails: the plans and meters this publish created in the portal are removed
+//     again (undoPlanSync). Name and limit updates of plans the portal already had stay, since they
+//     match the plans here.
+//   - The listing push succeeds but the content push or the local write then fails: nothing is
+//     undone, so the portal is ahead of local state until the next publish.
 func (s *PublicationService) Publish(ctx context.Context, apiType, apiId, apiPortalId, orgUUID, actor string) (*model.Publication, bool, error) {
 	artifactUUID, err := s.resolveArtifact(apiType, apiId, orgUUID)
 	if err != nil {
@@ -639,11 +677,13 @@ func (s *PublicationService) Publish(ctx context.Context, apiType, apiId, apiPor
 	ctx, cancel := s.portalOperationContext(ctx)
 	defer cancel()
 
-	if err := s.createMissingPortalPlans(ctx, portal, plans); err != nil {
+	created, err := s.syncPortalPlans(ctx, portal, orgUUID, plans)
+	if err != nil {
 		return nil, false, err
 	}
 
 	if err := s.portalPublisher.Publish(ctx, portal, apiType, apiId, draft, definition); err != nil {
+		s.undoPlanSync(ctx, portal, apiId, created)
 		return nil, false, portalPushError(err)
 	}
 	if content != nil {
@@ -779,16 +819,83 @@ func (s *PublicationService) activePlansInOrder(handles []string, orgUUID string
 	return plans, nil
 }
 
-// createMissingPortalPlans makes sure the portal has every plan the draft selects,
-// creating those it lacks. Failures come back already mapped for the caller.
-func (s *PublicationService) createMissingPortalPlans(ctx context.Context, portal *model.APIPortal, plans []*model.SubscriptionPlan) error {
+// syncPortalPlans makes sure the portal has every plan the draft selects, as it is here
+// (PortalPublisher.SyncPlans):
+//   - plans the portal lacks are created, each paid one with its pricing, after the meters its
+//     prices charge for;
+//   - copies whose name or limit differs are updated;
+//   - a plan copy priced differently, or a meter with other settings, refuses the publish.
+//
+// Errors come back already turned into the caller's API errors; the result names what was
+// created.
+func (s *PublicationService) syncPortalPlans(ctx context.Context, portal *model.APIPortal, orgUUID string, plans []*model.SubscriptionPlan) (PlanSyncResult, error) {
 	if len(plans) == 0 {
-		return nil
+		return PlanSyncResult{}, nil
 	}
-	if err := s.portalPublisher.CreateMissingPlans(ctx, portal, plans); err != nil {
-		return portalPushError(err)
+	pricing, err := s.listingPricing(plans, orgUUID)
+	if err != nil {
+		return PlanSyncResult{}, err
 	}
-	return nil
+	meters, err := s.listingMeters(pricing, orgUUID)
+	if err != nil {
+		return PlanSyncResult{}, err
+	}
+
+	created, err := s.portalPublisher.SyncPlans(ctx, portal, PlanSync{Plans: plans, Pricing: pricing, Meters: meters})
+	if err != nil {
+		var pricingConflict *PortalPlanPricingConflictError
+		if errors.As(err, &pricingConflict) {
+			return PlanSyncResult{}, apperror.APIPublicationPlanPricingConflict.New(pricingConflict.Handle)
+		}
+		var meterConflict *PortalMeterConflictError
+		if errors.As(err, &meterConflict) {
+			return PlanSyncResult{}, apperror.APIPublicationMeterConflict.New(meterConflict.Handle)
+		}
+		return PlanSyncResult{}, portalPushError(err)
+	}
+	return created, nil
+}
+
+// listingMeters returns the meters the prices of a listing's paid plans charge for, by handle.
+func (s *PublicationService) listingMeters(pricing map[string]*model.SubscriptionPlanPricing, orgUUID string) (map[string]*model.Meter, error) {
+	meters := make(map[string]*model.Meter)
+	if s.meterRepo == nil {
+		return meters, nil
+	}
+	for _, planPricing := range pricing {
+		for _, price := range planPricing.Prices {
+			if _, ok := meters[price.MeterHandle]; ok {
+				continue
+			}
+			meter, err := s.meterRepo.GetByHandle(orgUUID, price.MeterHandle)
+			if err != nil {
+				return nil, fmt.Errorf("failed to get meter %s: %w", price.MeterHandle, err)
+			}
+			if meter != nil {
+				meters[price.MeterHandle] = meter
+			}
+		}
+	}
+	return meters, nil
+}
+
+// undoPlanSync removes from the portal what a publish created before its listing push failed. It
+// runs on its own time limit, since the push may have failed because the publish's time ran out.
+// What cannot be removed is logged. That happens when the push in fact went through but timed out:
+// the portal then refuses to remove a plan the listing offers, and the plan stays with its listing.
+func (s *PublicationService) undoPlanSync(ctx context.Context, portal *model.APIPortal, apiHandle string, created PlanSyncResult) {
+	if len(created.Plans) == 0 && len(created.Meters) == 0 {
+		return
+	}
+	undoCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), portalUndoTimeout)
+	defer cancel()
+	if err := s.portalPublisher.UndoPlanSync(undoCtx, portal, created); err != nil {
+		s.slogger.Warn("A failed publish left plans or meters it created in the API Portal",
+			"portal", portal.Handle, "api", apiHandle, "plans", created.Plans, "meters", created.Meters, "error", err)
+		return
+	}
+	s.slogger.Info("Removed what a failed publish created in the API Portal",
+		"portal", portal.Handle, "api", apiHandle, "plans", created.Plans, "meters", created.Meters)
 }
 
 // portalPushError maps a failed portal call to 409 when the portal rejected the

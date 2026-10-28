@@ -1,0 +1,59 @@
+      <!-- ══ Meters ══ -->
+      <div class="cfg-panel" id="cfg-meters">
+        <div class="cfg-panel-header">
+          <div>
+            <h2 class="cfg-panel-title">Meters</h2>
+            <p class="cfg-panel-desc">Define the usage that paid subscription plans charge for.</p>
+          </div>
+          <button class="cfg-btn-primary" id="cfg-add-meter-btn" type="button">
+            <i class="bi bi-plus"></i> Add Meter
+          </button>
+        </div>
+
+        <div class="cfg-table-wrap">
+          <table class="cfg-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Type</th>
+                <th>Filters</th>
+                <th style="width:90px;"></th>
+              </tr>
+            </thead>
+            <tbody id="cfg-meters-tbody">
+              {{#orgMeters}}
+              <tr id="cfg-meter-row-{{id}}" data-id="{{id}}">
+                <td>
+                  <div style="font-size:.875rem;font-weight:600;color:#1a2433;">{{displayName}}</div>
+                  {{#if description}}<div style="font-size:.75rem;color:#637282;margin-top:2px;">{{description}}</div>{{/if}}
+                </td>
+                <td><span style="font-size:.8125rem;color:#1a2433;white-space:nowrap;">{{typeLabel}}</span></td>
+                <td>
+                  {{#if filterFieldsText}}
+                    <span style="font-size:.8125rem;color:#1a2433;">{{filterFieldsText}}</span>
+                  {{else}}
+                    <span style="color:#9aa3af;font-size:.8rem;">—</span>
+                  {{/if}}
+                </td>
+                <td>
+                  <div class="cfg-row-actions">
+                    {{!-- A meter that a plan prices can't change: it opens read-only, with Save disabled. --}}
+                    <button class="cfg-icon-btn cfg-meter-edit-btn" type="button"
+                      data-id="{{id}}" data-meter="{{{jsonAttr this}}}" title="Edit">
+                      <i class="bi bi-pencil"></i>
+                    </button>
+                    <button class="cfg-icon-btn cfg-icon-btn--danger cfg-meter-delete-btn" type="button"
+                      data-id="{{id}}" data-display="{{displayName}}" data-plans="{{planCount}}" title="Delete">
+                      <i class="bi bi-trash"></i>
+                    </button>
+                  </div>
+                </td>
+              </tr>
+              {{/orgMeters}}
+              {{#unless orgMeters.length}}
+              <tr><td colspan="5" class="cfg-tbl-empty">No meters yet. Add one, then charge for it in a subscription plan.</td></tr>
+              {{/unless}}
+            </tbody>
+          </table>
+        </div>
+      </div><!-- /#cfg-meters -->

@@ -32,7 +32,7 @@ import {
 } from '@wso2/oxygen-ui-icons-react';
 import McpMenuIcon from '../../assets/icons/McpMenuIcon';
 import { useAppShell } from '../../contexts/AppShellContext';
-import { useAppAuth } from '../../contexts/AppAuthContext';
+import { useAppAuthScopes } from '../../contexts/AppAuthContext';
 import { SCOPES } from '../../auth/permissions';
 import { isFeatureEnabled } from '../../config.env';
 import { buildOrgPath, buildProjectPath } from '../../utils/projectRouting';
@@ -63,7 +63,7 @@ export default function AppSidebar({
   projectCount,
 }: Props) {
   const { currentProject, currentOrganization } = useAppShell();
-  const { hasPermission, isAuthenticated } = useAppAuth();
+  const { hasPermission, isAuthenticated } = useAppAuthScopes();
   const sidebarExtensions = useSlot<AIWorkspaceExtension>(AI_WORKSPACE_SIDEBAR_SLOT);
   // A page override may carry its own nav placement (see `AIWorkspacePageOverride`).
   // Those render here rather than where the built-in item sits, so a cloud build

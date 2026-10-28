@@ -46,14 +46,23 @@ import {
 import { Plus, X } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, FormattedMessage, useIntl, type MessageDescriptor } from 'react-intl';
 
-import { ErrorCode, isErrorCode, type ApiError } from '@/api/core/errors';
+import { isErrorCode } from '@/api/core/errors';
+import { useMeters, useMetersById } from '@/api/resources/meters';
 import {
   useCreateSubscriptionPlan,
+  useSubscriptionPlan,
   useUpdateSubscriptionPlan,
   type SubscriptionPlan,
 } from '@/api/resources/subscriptionPlans';
 import { useNotifications } from '@/components/Notifications';
 import { popupPaperSx } from '@/theme/receipes';
+import { PlanPricingSection } from './PlanPricingSection';
+import {
+  buildPricingBody,
+  draftFromPricing,
+  freeDraft,
+  type PricingDraft,
+} from './planPricingDraft';
 
 /** One entry of `SubscriptionPlan['limits']`, generated from the spec. */
 type SubscriptionPlanLimit = NonNullable<SubscriptionPlan['limits']>[number];
@@ -93,13 +102,18 @@ const emptyForm = (): FormState => ({
   stopOnQuotaReach: true,
 });
 
-/** URL-friendly handle platform-api requires on create; the user never sees it. */
+/** The longest plan handle the Platform API keeps. */
+const MAX_HANDLE_CHARS = 40;
+
+/** URL-friendly handle the Platform API requires on create; the user never sees it. */
 const slugify = (value: string): string =>
   value
     .trim()
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
+    .replace(/^-+|-+$/g, '')
+    .slice(0, MAX_HANDLE_CHARS)
+    .replace(/-+$/, '');
 
 /** The picked calendar day, as that day at UTC midnight. */
 const toExpiryTime = (date: Date): string =>
@@ -112,6 +126,9 @@ const fromExpiryTime = (timestamp: string): Date => {
 };
 
 const isPositiveInteger = (value: string): boolean => /^[1-9]\d*$/.test(value.trim());
+
+/** The code the Platform API answers a new plan whose handle is taken with. */
+const PLAN_EXISTS = 'SUBSCRIPTION_PLAN_EXISTS';
 
 const messages = defineMessages({
   addLimit: {
@@ -168,6 +185,12 @@ const messages = defineMessages({
   expiryLabel: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.expiry.label',
     defaultMessage: 'Expiry date (optional)',
+  },
+  inUseNote: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.inUseNote',
+    defaultMessage: 'This plan is in use. To change its name or limit, create a new plan.',
+    description:
+      'Shown when editing a plan that APIs offer or subscriptions use; the name and limit fields are disabled.',
   },
   limitCountLabel: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.limit.countLabel',
@@ -316,7 +339,9 @@ export type SubscriptionPlanFormDialogProps = {
 
 /** Add/edit dialog for a subscription plan. Status (active/inactive) is not
  * edited here — it lives only as the toggle in the list, so a new plan is
- * always created `ACTIVE` and editing an existing one preserves its status. */
+ * always created `ACTIVE` and editing an existing one preserves its status.
+ * Pricing is set only when a plan is created, in the same request; an existing
+ * plan's pricing is shown read-only. */
 export function SubscriptionPlanFormDialog({
   open,
   plan,
@@ -326,15 +351,27 @@ export function SubscriptionPlanFormDialog({
   const { notify } = useNotifications();
   const createMutation = useCreateSubscriptionPlan();
   const updateMutation = useUpdateSubscriptionPlan();
+  // Whether the organization has a meter at all, for adding a usage price; the prices' meters are
+  // read by id, and a price's meter is found by searching (MeterPicker).
+  const anyMeterQuery = useMeters({ limit: 1 });
+  const hasMeters = (anyMeterQuery.data?.pagination.total ?? 0) > 0;
 
   const isEdit = plan !== null;
   const mutation = isEdit ? updateMutation : createMutation;
+  // A plan in use keeps its name and limit (the server refuses a change); its status, expiry and
+  // quota behaviour can still change.
+  const usageQuery = useSubscriptionPlan(open && isEdit ? plan.id : undefined);
+  const inUse = isEdit && usageQuery.data?.usage?.inUse === true;
 
   // Stable keys for limit rows across add/remove — a plain counter, since
   // limits carry no id of their own until the plan is saved.
   const nextLimitKey = useRef(0);
 
   const [form, setForm] = useState<FormState>(emptyForm);
+  const [pricing, setPricing] = useState<PricingDraft>(freeDraft);
+  const { meters, isPending: metersPending } = useMetersById(
+    pricing.prices.map((price) => price.meterId),
+  );
   const [submitted, setSubmitted] = useState(false);
   const [conflict, setConflict] = useState(false);
   const [nameVisit, setNameVisit] = useState<FieldVisit>(UNVISITED);
@@ -356,6 +393,7 @@ export function SubscriptionPlanFormDialog({
           }
         : emptyForm(),
     );
+    setPricing(draftFromPricing(plan?.pricing));
     setSubmitted(false);
     setConflict(false);
     setNameVisit(UNVISITED);
@@ -406,24 +444,19 @@ export function SubscriptionPlanFormDialog({
   const showNameError = (submitted || settled(nameVisit)) && hasNameError;
   const showLimitError = (submitted || settled(limitVisit)) && hasLimitError;
   const hasExpiryError = form.expiryDate !== null && Number.isNaN(form.expiryDate.getTime());
-  const canSubmit = !hasNameError && !hasLimitError && !hasExpiryError && !mutation.isPending;
-
-  // A 409 surfaces as an inline field error (the name is likely the culprit);
-  // anything else is a generic toast. Shared so create and update can't drift
-  // on which error code means what.
-  const notifyMutationError = (error: ApiError, fallback: MessageDescriptor) => {
-    if (isErrorCode(error, ErrorCode.CONFLICT)) {
-      setConflict(true);
-      return;
-    }
-    notify(error.message || intl.formatMessage(fallback), 'error');
-  };
+  // An existing plan's pricing is only shown, so it is neither checked nor sent.
+  const pricingResult = isEdit ? { body: null, problem: null } : buildPricingBody(pricing, meters);
+  const hasPricingError = pricingResult.problem !== null;
+  const busy = mutation.isPending;
+  // New pricing is checked against its meters, so it waits until they are read.
+  const canSubmit =
+    !hasNameError && !hasLimitError && !hasExpiryError && !busy && (isEdit || !metersPending);
 
   const handleSubmit = (event: FormEvent) => {
     // A real submit, so Enter in the name field saves the plan.
     event.preventDefault();
     setSubmitted(true);
-    if (hasNameError || hasLimitError || hasExpiryError || mutation.isPending) return;
+    if (hasNameError || hasLimitError || hasExpiryError || hasPricingError || busy) return;
 
     const limits: SubscriptionPlanLimit[] = form.limits.map((limit) => ({
       limitCount: Number(limit.limitCount),
@@ -439,13 +472,23 @@ export function SubscriptionPlanFormDialog({
     if (isEdit && plan) {
       updateMutation.mutate(
         {
-          // null, not undefined: an omitted expiryTime means "keep", so clearing
-          // the date has to be sent explicitly.
-          body: { ...plan, displayName: trimmedName, expiryTime: expiryTime ?? null, limits },
+          // The editable fields only: a body with pricing is refused, and the
+          // plan keeps the pricing it was created with. null, not undefined: an
+          // omitted expiryTime means "keep", so clearing the date has to be sent
+          // explicitly.
+          body: {
+            displayName: trimmedName,
+            expiryTime: expiryTime ?? null,
+            id: plan.id,
+            limits,
+            status: plan.status,
+          },
           subscriptionPlanId: plan.id ?? '',
         },
         {
-          onError: (error) => notifyMutationError(error, messages.updateFailed),
+          // The server's own reason, not a taken name: an edit keeps the plan's handle.
+          onError: (error) =>
+            notify(error.message || intl.formatMessage(messages.updateFailed), 'error'),
           onSuccess: () => {
             notify(intl.formatMessage(messages.updated, { name: trimmedName }), 'success');
             onClose();
@@ -455,10 +498,26 @@ export function SubscriptionPlanFormDialog({
       return;
     }
 
+    // A paid plan is created with its pricing in the one request.
     createMutation.mutate(
-      { displayName: trimmedName, expiryTime, id: slug, limits, status: 'ACTIVE' },
       {
-        onError: (error) => notifyMutationError(error, messages.createFailed),
+        displayName: trimmedName,
+        expiryTime,
+        id: slug,
+        limits,
+        status: 'ACTIVE',
+        ...(pricingResult.body ? { pricing: pricingResult.body } : {}),
+      },
+      {
+        // A taken handle surfaces as an inline field error (the name is the
+        // culprit); anything else, such as refused pricing, as the server's reason.
+        onError: (error) => {
+          if (isErrorCode(error, PLAN_EXISTS)) {
+            setConflict(true);
+            return;
+          }
+          notify(error.message || intl.formatMessage(messages.createFailed), 'error');
+        },
         onSuccess: () => {
           notify(intl.formatMessage(messages.created, { name: trimmedName }), 'success');
           onClose();
@@ -471,7 +530,7 @@ export function SubscriptionPlanFormDialog({
     <Dialog
       fullWidth
       maxWidth="sm"
-      onClose={mutation.isPending ? undefined : onClose}
+      onClose={busy ? undefined : onClose}
       open={open}
       slotProps={{ paper: { sx: { maxHeight: 'calc(100% - 64px)' } } }}
     >
@@ -482,7 +541,7 @@ export function SubscriptionPlanFormDialog({
           </Box>
           <IconButton
             aria-label={intl.formatMessage(messages.close)}
-            disabled={mutation.isPending}
+            disabled={busy}
             onClick={onClose}
             size="small"
           >
@@ -493,6 +552,12 @@ export function SubscriptionPlanFormDialog({
       <Box component="form" noValidate onSubmit={handleSubmit}>
         <DialogContent>
           <Form.Stack spacing={3}>
+            {inUse && (
+              <Alert severity="info">
+                <FormattedMessage {...messages.inUseNote} />
+              </Alert>
+            )}
+
             {conflict && (
               <Alert severity="error">
                 <AlertTitle sx={{ fontWeight: 600 }}>
@@ -509,6 +574,7 @@ export function SubscriptionPlanFormDialog({
               <OutlinedInput
                 aria-describedby={`${NAME_FIELD}-helper-text`}
                 autoFocus
+                disabled={inUse}
                 id={NAME_FIELD}
                 onBlur={() => setNameVisit((visit) => ({ ...visit, blurred: true }))}
                 onChange={(event) => {
@@ -531,7 +597,7 @@ export function SubscriptionPlanFormDialog({
                 <Form.Header sx={{ fontWeight: 600, typography: 'body2' }}>
                   <FormattedMessage {...messages.limitsLabel} />
                 </Form.Header>
-                {form.limits.length === 0 && (
+                {form.limits.length === 0 && !inUse && (
                   <Button
                     onClick={addLimit}
                     size="small"
@@ -554,6 +620,7 @@ export function SubscriptionPlanFormDialog({
                   }}
                 >
                   <Select
+                    disabled={inUse}
                     inputProps={{ 'aria-label': intl.formatMessage(messages.limitTypeLabel) }}
                     onChange={() => updateLimit(limit.key, {})}
                     size="small"
@@ -569,6 +636,7 @@ export function SubscriptionPlanFormDialog({
                     />
                   </Select>
                   <OutlinedInput
+                    disabled={inUse}
                     error={showLimitError && limitCountInvalid[index]}
                     inputProps={{
                       'aria-label': intl.formatMessage(messages.limitCountLabel),
@@ -589,6 +657,7 @@ export function SubscriptionPlanFormDialog({
                     <FormattedMessage {...messages.limitPer} />
                   </Typography>
                   <Select
+                    disabled={inUse}
                     inputProps={{ 'aria-label': intl.formatMessage(messages.limitUnitLabel) }}
                     onChange={(event) =>
                       updateLimit(limit.key, {
@@ -614,6 +683,7 @@ export function SubscriptionPlanFormDialog({
                   <IconButton
                     aria-label={intl.formatMessage(messages.removeLimit)}
                     color="error"
+                    disabled={inUse}
                     onClick={() => removeLimit(limit.key)}
                     size="small"
                   >
@@ -680,15 +750,26 @@ export function SubscriptionPlanFormDialog({
                 />
               </FormHelperText>
             </FormControl>
+
+            <Divider />
+            <PlanPricingSection
+              disabled={busy}
+              hasMeters={hasMeters}
+              meters={meters}
+              onChange={setPricing}
+              problem={submitted ? pricingResult.problem : null}
+              readOnly={isEdit}
+              value={pricing}
+            />
           </Form.Stack>
         </DialogContent>
         <Divider />
         <DialogActions>
-          <Button disabled={mutation.isPending} onClick={onClose} variant="outlined">
+          <Button disabled={busy} onClick={onClose} variant="outlined">
             <FormattedMessage {...messages.cancel} />
           </Button>
           <Button disabled={!canSubmit} type="submit" variant="contained">
-            {mutation.isPending ? (
+            {busy ? (
               <FormattedMessage {...(isEdit ? messages.saving : messages.adding)} />
             ) : (
               <FormattedMessage {...(isEdit ? messages.saveChanges : messages.addPlan)} />

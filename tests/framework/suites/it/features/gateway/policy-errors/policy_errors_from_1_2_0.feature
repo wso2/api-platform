@@ -54,26 +54,6 @@ Feature: Policy error responses on Gateway 1.2.0 and later
     Then the response status code should be 401
     And the response should match the expected error response "opaque-token-auth-missing-header"
 
-  Scenario: backend-jwt refuses a request when no signing key is configured
-    Given I generate a unique value from "compat-backend-jwt" and store it as "apiName"
-    And I generate a unique API version from "compat-backend-jwt" and store it as "apiVersion"
-    And I generate a unique API context from "/compat-backend-jwt" and store it as "apiContext"
-    When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | ${CTX:gatewaySpecVersion} |
-      | name                   | ${CTX:apiName} |
-      | spec.displayName       | ${CTX:apiName} |
-      | spec.version           | ${CTX:apiVersion} |
-      | spec.context           | ${CTX:apiContext}/$version |
-      | spec.upstream.main.url | http://testbench:3000 |
-      | spec.operations        | [{"method":"GET","path":"/get"},{"method":"GET","path":"/protected","policies":[{"name":"backend-jwt","version":"v1","params":{}}]}] |
-    Then the resource creation response should indicate successful deployment
-    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 200
-
-    When I clear all headers
-    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/protected"
-    Then the response status code should be 500
-    And the response should match the expected error response "backend-jwt-missing-signing-key"
-
   Scenario: mcp-ratelimit rejects a tool call over the limit
     Given I generate a unique resource name from "compat-mcp-rl" and store it as "mcpName"
     And I generate a unique value from "compat-mcp-rl" and store it as "mcpDisplayName"

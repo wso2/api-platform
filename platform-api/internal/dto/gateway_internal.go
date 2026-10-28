@@ -89,13 +89,15 @@ type GatewayHmacSecretsResponse struct {
 
 // GatewaySubscriptionInfo represents a subscription in internal gateway responses.
 type GatewaySubscriptionInfo struct {
-	ID                 string    `json:"id"`
-	APIID              string    `json:"apiId"`
-	ApplicationID      *string   `json:"applicationId,omitempty"`
-	SubscriptionToken  string    `json:"subscriptionToken"`
-	SubscriptionPlanID *string   `json:"subscriptionPlanId,omitempty"`
-	Status             string    `json:"status"`
-	CreatedAt          time.Time `json:"createdAt"`
-	UpdatedAt          time.Time `json:"updatedAt"`
-	Etag               string    `json:"etag"` // Deterministic UUIDv7 derived from id + updatedAt
+	ID                    string    `json:"id"`
+	APIID                 string    `json:"apiId"`
+	ApplicationID         *string   `json:"applicationId,omitempty"`
+	SubscriptionToken     string    `json:"subscriptionToken"`
+	SubscriptionPlanID    *string   `json:"subscriptionPlanId,omitempty"`
+	Status                string    `json:"status"`
+	BillingCustomerID     string    `json:"billingCustomerId,omitempty"`
+	BillingSubscriptionID string    `json:"billingSubscriptionId,omitempty"`
+	CreatedAt             time.Time `json:"createdAt"`
+	UpdatedAt             time.Time `json:"updatedAt"`
+	Etag                  string    `json:"etag"` // Deterministic UUIDv7 derived from id + updatedAt
 }

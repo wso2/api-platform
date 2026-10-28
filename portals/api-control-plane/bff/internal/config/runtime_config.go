@@ -16,6 +16,11 @@
 
 package config
 
+import (
+	"encoding/json"
+	"strings"
+)
+
 // buildRuntimeConfig collects the values the SPA reads from
 // window.__RUNTIME_CONFIG__ (see src/config/runtime.ts's fromWindow()). Unlike
 // ai-workspace's BFF — which invented its own APIP_AIW_* runtime-config
@@ -59,5 +64,31 @@ func buildRuntimeConfig(cfg *Config) map[string]string {
 		out["moesifAppUrl"] = cfg.ControlPlane.MoesifAppURL
 	}
 
+	// Only the [sanitize_html_docs] keys that are set; the SPA defaults the rest.
+	if v, ok := runtimeValue(cfg.SanitizeHTMLDocs.Enabled); ok {
+		out["sanitizeHtmlDocsEnabled"] = v
+	}
+	if v, ok := runtimeValue(cfg.SanitizeHTMLDocs.AdditionalAllowedTags); ok {
+		out["sanitizeHtmlDocsAdditionalAllowedTags"] = v
+	}
+	if v, ok := runtimeValue(cfg.SanitizeHTMLDocs.AdditionalAllowedAttributes); ok {
+		out["sanitizeHtmlDocsAdditionalAllowedAttributes"] = v
+	}
+
 	return out
+}
+
+// runtimeValue renders a config value for window.__RUNTIME_CONFIG__: a string
+// as-is, a native TOML bool, array or table as JSON. Unset or blank values
+// report false so the key is left out.
+func runtimeValue(v any) (string, bool) {
+	switch v := v.(type) {
+	case nil:
+		return "", false
+	case string:
+		return v, strings.TrimSpace(v) != ""
+	default:
+		b, err := json.Marshal(v)
+		return string(b), err == nil
+	}
 }

@@ -118,7 +118,7 @@
             <a href="{{../baseUrl}}/mcp/{{id}}#subscriptionPlans" class="api-card-view-sub-btn">
               <i class="bi bi-check-circle"></i> View subscription
             </a>
-            {{else}}
+            {{else if @root.access.offerSubscribe}}
             <a href="{{../baseUrl}}/mcp/{{id}}#subscriptionPlans"
                class="dp-btn dp-btn--primary"
                >Subscribe</a>

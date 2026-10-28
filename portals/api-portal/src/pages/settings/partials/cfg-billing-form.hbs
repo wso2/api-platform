@@ -1,0 +1,179 @@
+<!-- Set up Billing modal (billing is never edited: it is removed and set up again) -->
+<!-- Built from billingEngines, in two steps: the billing engine's keys, then the keys of the
+     payment provider it bills through. While there is only one billing engine and payment provider
+     (billingHasChoice is false), each step shows that provider's keys; once there are more, step 1
+     asks for the engine and step 2 for the payment provider, and each choice shows the keys that
+     provider needs. Both keys are checked together when the second step is saved. -->
+<div class="cfg-modal-overlay" id="cfg-billing-modal" style="display:none;">
+  <div class="cfg-form-modal cfg-form-modal--wide">
+    <div class="cfg-modal-titlerow">
+      <h2 class="cfg-modal-form-title" id="bil-form-title">Set up billing</h2>
+      <button type="button" class="cfg-modal-close" id="bil-form-close"><i class="bi bi-x-lg"></i></button>
+    </div>
+
+    <div class="cfg-stepper cfg-stepper--modal" id="bil-stepper">
+      <div class="cfg-step cfg-step--active" data-step="1">
+        <span class="cfg-step-circle">1</span>
+        <span class="cfg-step-label">{{#if billingHasChoice}}Billing engine{{else}}{{#each billingEngines}}{{name}}{{/each}}{{/if}}</span>
+      </div>
+      <div class="cfg-step-connector"></div>
+      <div class="cfg-step" data-step="2">
+        <span class="cfg-step-circle">2</span>
+        <span class="cfg-step-label">{{#if billingHasChoice}}Payment provider{{else}}{{#each billingEngines}}{{#each paymentProviders}}{{name}}{{/each}}{{/each}}{{/if}}</span>
+      </div>
+    </div>
+
+    <div class="cfg-billing-alert" id="bil-form-error" role="alert" hidden>
+      <i class="bi bi-exclamation-circle" aria-hidden="true"></i>
+      <span id="bil-form-error-text"></span>
+    </div>
+
+    <!-- Step 1: the billing engine and its keys. -->
+    <div class="bil-step" data-step="1">
+      {{#if billingHasChoice}}
+      <div class="cfg-form-group" style="margin-bottom:8px;">
+        <span class="cfg-form-legend" id="bil-engine-legend">Billing engine</span>
+        <div class="cfg-choice-group" role="radiogroup" aria-labelledby="bil-engine-legend">
+          {{#each billingEngines}}
+          <label class="cfg-choice">
+            <input type="radio" name="bil-engine" value="{{id}}" {{#if @first}}checked{{/if}} />
+            <span class="cfg-choice-body">
+              <span class="cfg-choice-title">{{name}}</span>
+              <span class="cfg-choice-desc">{{description}}</span>
+            </span>
+          </label>
+          {{/each}}
+        </div>
+      </div>
+      {{else}}
+      {{#each billingEngines}}
+      {{#each paymentProviders}}
+      <!-- The only pair: the steps name it rather than offering a choice of one. -->
+      <input type="hidden" name="bil-engine" value="{{../id}}" />
+      <input type="hidden" name="bil-payment-{{../id}}" value="{{id}}" />
+      {{/each}}
+      {{/each}}
+      {{/if}}
+
+      {{#each billingEngines}}
+      <div class="bil-engine-section" data-engine="{{id}}" hidden>
+        {{#if (eq id "MOESIF")}}
+        <div class="cfg-billing-key-card">
+          <div class="cfg-billing-key-card-head">
+            <span class="cfg-billing-key-card-icon" aria-hidden="true"><i class="bi bi-bar-chart-line"></i></span>
+            <div class="cfg-billing-key-card-heading">
+              <span class="cfg-billing-key-card-name">{{name}}</span>
+              <span class="cfg-billing-key-card-desc">{{description}}</span>
+            </div>
+            <span class="cfg-billing-key-card-role">Billing engine</span>
+          </div>
+          <div class="cfg-form-group" style="margin-bottom:16px;">
+            <label for="bil-moesif-app">Collector Application Id <span class="required">*</span></label>
+            <div class="cfg-secret-input">
+              <input type="password" id="bil-moesif-app" class="cfg-form-input cfg-form-input--mono" autocomplete="off" placeholder="Collector Application Id" data-field="moesifCollectorApplicationId" />
+              <button type="button" class="cfg-secret-toggle" data-reveal="bil-moesif-app" aria-label="Show the key" aria-pressed="false"><i class="bi bi-eye" aria-hidden="true"></i></button>
+            </div>
+            <p class="cfg-field-error" data-error-for="moesifCollectorApplicationId" role="alert" hidden></p>
+          </div>
+          <div class="cfg-form-group" style="margin-bottom:16px;">
+            <label for="bil-moesif-key">Management API key <span class="required">*</span></label>
+            <div class="cfg-secret-input">
+              <input type="password" id="bil-moesif-key" class="cfg-form-input cfg-form-input--mono" autocomplete="off" placeholder="Management API key" data-field="moesifManagementKey" />
+              <button type="button" class="cfg-secret-toggle" data-reveal="bil-moesif-key" aria-label="Show the key" aria-pressed="false"><i class="bi bi-eye" aria-hidden="true"></i></button>
+            </div>
+            <p class="cfg-field-error" data-error-for="moesifManagementKey" role="alert" hidden></p>
+          </div>
+        </div>
+        {{/if}}
+      </div>
+      {{/each}}
+    </div>
+
+    <!-- Step 2: the payment provider the chosen engine bills through, and its keys. -->
+    <div class="bil-step" data-step="2" hidden>
+      {{#each billingEngines}}
+      <div class="bil-engine-section" data-engine="{{id}}" hidden>
+        {{#if @root.billingHasChoice}}
+        <div class="cfg-form-group" style="margin-bottom:8px;">
+          <span class="cfg-form-legend" id="bil-payment-legend-{{id}}">Payment provider</span>
+          <div class="cfg-choice-group" role="radiogroup" aria-labelledby="bil-payment-legend-{{id}}">
+            {{#each paymentProviders}}
+            <label class="cfg-choice">
+              <input type="radio" name="bil-payment-{{../id}}" value="{{id}}" {{#if @first}}checked{{/if}} />
+              <span class="cfg-choice-body">
+                <span class="cfg-choice-title">{{name}}</span>
+                <span class="cfg-choice-desc">{{description}}</span>
+              </span>
+            </label>
+            {{/each}}
+          </div>
+        </div>
+        {{/if}}
+
+        {{#if (eq id "MOESIF")}}
+        <div class="bil-payment-section" data-payment="STRIPE" hidden>
+          <div class="cfg-billing-key-card">
+            <div class="cfg-billing-key-card-head">
+              <span class="cfg-billing-key-card-icon" aria-hidden="true"><i class="bi bi-credit-card"></i></span>
+              <div class="cfg-billing-key-card-heading">
+                <span class="cfg-billing-key-card-name">{{@root.billingPaymentProviders.STRIPE.name}}</span>
+                <span class="cfg-billing-key-card-desc">{{@root.billingPaymentProviders.STRIPE.description}}</span>
+              </div>
+              <span class="cfg-billing-key-card-role">Payment provider</span>
+            </div>
+            <div class="cfg-form-group" style="margin-bottom:16px;">
+              <label for="bil-stripe-pk">Publishable key <span class="required">*</span></label>
+              <div class="cfg-secret-input">
+                <input type="password" id="bil-stripe-pk" class="cfg-form-input cfg-form-input--mono" autocomplete="off" placeholder="Stripe publishable key" data-field="stripePublishableKey" />
+                <button type="button" class="cfg-secret-toggle" data-reveal="bil-stripe-pk" aria-label="Show the key" aria-pressed="false"><i class="bi bi-eye" aria-hidden="true"></i></button>
+              </div>
+              <p class="cfg-field-error" data-error-for="stripePublishableKey" role="alert" hidden></p>
+            </div>
+            <div class="cfg-form-group" style="margin-bottom:16px;">
+              <label for="bil-stripe-key">Secret key <span class="required">*</span></label>
+              <div class="cfg-secret-input">
+                <input type="password" id="bil-stripe-key" class="cfg-form-input cfg-form-input--mono" autocomplete="off" placeholder="Stripe secret key" data-field="stripeApiKey" />
+                <button type="button" class="cfg-secret-toggle" data-reveal="bil-stripe-key" aria-label="Show the key" aria-pressed="false"><i class="bi bi-eye" aria-hidden="true"></i></button>
+              </div>
+              <p class="cfg-field-error" data-error-for="stripeApiKey" role="alert" hidden></p>
+            </div>
+          </div>
+        </div>
+        {{/if}}
+      </div>
+      {{/each}}
+    </div>
+
+    <div class="cfg-modal-actions" style="margin-top:24px;">
+      <button type="button" class="cfg-btn-secondary" id="bil-form-cancel">Cancel</button>
+      <button type="button" class="cfg-btn-secondary" id="bil-form-back" style="display:none;">Back</button>
+      <button type="button" class="cfg-btn-primary" id="bil-form-next">Next</button>
+      <button type="button" class="cfg-btn-primary" id="bil-form-save" style="display:none;">Set up billing</button>
+    </div>
+  </div>
+</div>
+
+<!-- Edit webhook host modal (PUT /billing-configuration/webhook-endpoint): moves the portal's endpoint in
+     Stripe to another public address. Stripe keeps the endpoint's signing secret. -->
+<div class="cfg-modal-overlay" id="cfg-billing-webhook-modal" style="display:none;">
+  <div class="cfg-form-modal">
+    <div class="cfg-modal-titlerow">
+      <h2 class="cfg-modal-form-title">Edit webhook host</h2>
+      <button type="button" class="cfg-modal-close" id="bil-webhook-close"><i class="bi bi-x-lg"></i></button>
+    </div>
+    <div class="cfg-billing-alert" id="bil-webhook-error" role="alert" hidden>
+      <i class="bi bi-exclamation-circle" aria-hidden="true"></i>
+      <span id="bil-webhook-error-text"></span>
+    </div>
+    <div class="cfg-form-group" style="margin-bottom:0;">
+      <label for="bil-webhook-edit-base">Webhook host <span class="required">*</span></label>
+      <input type="text" id="bil-webhook-edit-base" class="cfg-form-input cfg-form-input--mono" autocomplete="off" spellcheck="false" placeholder="https://portal.example.com" data-field="webhookBaseUrl" />
+      <p class="cfg-field-hint">Stripe sends payment events to the portal at this address.</p>
+      <p class="cfg-field-error" data-error-for="webhookBaseUrl" role="alert" hidden></p>
+    </div>
+    <div class="cfg-modal-actions" style="margin-top:24px;">
+      <button type="button" class="cfg-btn-secondary" id="bil-webhook-cancel">Cancel</button>
+      <button type="button" class="cfg-btn-primary" id="bil-webhook-save">Save</button>
+    </div>
+  </div>
+</div>

@@ -20,17 +20,18 @@ const logger = require('../config/logger');
 const auditDao = require('../dao/auditDao');
 const util = require('../utils/util');
 const constants = require('../utils/constants');
+const { SENSITIVE_FIELDS, redactObject, redactQuery, redactUrl, sessionRef } = require('../utils/logRedaction');
 
 /**
  * Middleware for audit logging user interactions
  * @param {Object} options - Configuration options for audit logging
  * @param {Array} options.excludePaths - Paths to exclude from audit logging (e.g., health checks)
- * @param {Array} options.sensitiveFields - Fields to redact from request body
+ * @param {Array} options.sensitiveFields - Fields to redact from the request body, query and URL
  */
 function auditMiddleware(options = {}) {
     const { 
         excludePaths = ['/health', '/metrics', '/favicon.ico'],
-        sensitiveFields = ['password', 'token', 'secret', 'key', 'authorization']
+        sensitiveFields = SENSITIVE_FIELDS
     } = options;
 
     return (req, res, next) => {
@@ -49,18 +50,20 @@ function auditMiddleware(options = {}) {
             const endTime = Date.now();
             const duration = endTime - startTime;
             
-            // Redact sensitive information from request body
-            const sanitizedBody = sanitizeObject(req.body || {}, sensitiveFields);
+            // Redact sensitive information from the request body, the query and the URL (an OAuth
+            // sign-in callback carries its authorization code in the query).
+            const sanitizedBody = redactObject(req.body || {}, sensitiveFields);
 
             // Create and log audit log entry
             const auditEntry = {
                 userId: req.user ? (req.user[constants.USER_ID] || 'unknown') : 'anonymous',
-                sessionId: req.sessionID || 'no-session',
+                sessionId: sessionRef(req.sessionID),
                 ip: getClientIP(req),
                 requestBody: Object.keys(sanitizedBody).length > 0 ? sanitizedBody : "",
-                queryParams: Object.keys(req.query || {}).length > 0 ? req.query : "",
+                queryParams: Object.keys(req.query || {}).length > 0 ? redactQuery(req.query, sensitiveFields) : "",
             };
-            logger.audit(`${req.method} ${req.originalUrl || req.url} - ${res.statusCode} - ${duration}ms`, auditEntry);
+            logger.audit(`${req.method} ${redactUrl(req.originalUrl || req.url, sensitiveFields)} - ${res.statusCode} - ${duration}ms`,
+                auditEntry);
             
             // Call original end method
             originalEnd.call(this, chunk, encoding);
@@ -82,40 +85,6 @@ function getClientIP(req) {
 }
 
 /**
- * Sanitize object by removing or redacting sensitive fields
- * @param {Object} obj - Object to sanitize
- * @param {Array} sensitiveFields - Array of field names to redact
- * @returns {Object} Sanitized object
- */
-function sanitizeObject(obj, sensitiveFields) {
-    if (!obj || typeof obj !== 'object') {
-        return obj;
-    }
-    // An array is `typeof "object"`, so without this it is rebuilt below as a
-    // plain object and `["client_credentials"]` is logged as
-    // `{"0":"client_credentials"}` — which reads like the caller sent the wrong
-    // shape, and sends whoever is debugging after a bug that is not there.
-    if (Array.isArray(obj)) {
-        return obj.map((item) => sanitizeObject(item, sensitiveFields));
-    }
-    const sanitized = {};
-    for (const [key, value] of Object.entries(obj)) {
-        const lowerKey = key.toLowerCase();
-        
-        // Check if field is sensitive
-        if (sensitiveFields.some(field => lowerKey.includes(field.toLowerCase()))) {
-            sanitized[key] = '[REDACTED]';
-        } else if (typeof value === 'object' && value !== null) {
-            // Recursively sanitize nested objects
-            sanitized[key] = sanitizeObject(value, sensitiveFields);
-        } else {
-            sanitized[key] = value;
-        }
-    }
-    return sanitized;
-}
-
-/**
  * Enhanced audit logging for specific actions
  * @param {string} action - Action being performed
  * @param {Object} req - Express request object
@@ -128,12 +97,10 @@ function sanitizeObject(obj, sensitiveFields) {
  */
 function logUserAction(action, req, additionalData = {}) {
     const userId = req.user ? (req.user[constants.USER_ID] || 'unknown') : 'anonymous';
-    const sessionId = req.sessionID || 'no-session';
-
     const auditEntry = {
         action: action,
         userId: userId,
-        sessionId: sessionId,
+        sessionId: sessionRef(req.sessionID),
         timestamp: new Date().toISOString(),
         ...additionalData
     };

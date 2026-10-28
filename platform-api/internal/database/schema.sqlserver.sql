@@ -1005,3 +1005,79 @@ CREATE TABLE dbo.user_organization_mappings (
     FOREIGN KEY (user_uuid) REFERENCES user_idp_references(uuid) ON DELETE CASCADE,
     FOREIGN KEY (org_uuid)  REFERENCES organizations(uuid)       ON DELETE CASCADE
 );
+
+-- Meters (monetization): what a paid plan charges for. A meter made in the Management Portal is
+-- kept here and sent to an API Portal when a plan that charges for it is published there. A meter
+-- made in an API Portal is a copy, kept current by that portal's meter.* webhook events.
+--   - type REQUEST_COUNT counts API requests; type TOKENS adds up a number from the events of AI
+--     API requests, read at type_key (NULL for REQUEST_COUNT).
+--   - filter_fields lists the properties the meter's prices may filter on, each a name and the
+--     event field it reads (a JSON array of {field, event_key}; [] for none). A meter has no
+--     filters of its own: each price gives its own.
+--   - source_updated_at is when the meter last changed where it was made: the time of the request
+--     for a meter made here, the event's occurred_at for a copy. An older, late event is ignored.
+IF OBJECT_ID(N'dbo.meters', N'U') IS NULL
+CREATE TABLE dbo.meters (
+    uuid VARCHAR(40) PRIMARY KEY,
+    organization_uuid VARCHAR(40) NOT NULL,
+    handle VARCHAR(40) NOT NULL,
+    display_name VARCHAR(255) NOT NULL,
+    description VARCHAR(1023),
+    type VARCHAR(20) NOT NULL,
+    type_key VARCHAR(255),
+    filter_fields VARBINARY(MAX) NOT NULL,
+    source_updated_at DATETIME2(7) NOT NULL,
+    created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
+    UNIQUE(organization_uuid, handle)
+);
+
+-- Pricing of paid subscription plans (monetization); a plan without a row is free. A plan created
+-- through this REST API (the Management Portal) or in an API Portal (its subscription_plan.created
+-- webhook event) is stored with its pricing, in the same transaction, and the pricing never
+-- changes.
+-- prices is a JSON array, in order, that holds what the plan charges:
+--   - a flat rate plan: one entry, {pricing_model: FLAT, amount}, the amount charged every billing
+--     period;
+--   - a usage based plan: 1 to 20 usage prices. Each names its meter by handle, its filters
+--     ([{field, operator, values}], none to count every request of the meter) and one pricing
+--     model: PER_UNIT, VOLUME or GRADUATED.
+-- Amounts are decimal strings.
+-- created_at is when the pricing was set: the time of the request for a plan created through this
+-- REST API, the event's occurred_at for a plan created in an API Portal.
+-- organization_uuid uses NO ACTION (multiple cascade paths); deleting an
+-- organization still removes these rows via subscription_plans.
+IF OBJECT_ID(N'dbo.subscription_plan_pricing', N'U') IS NULL
+CREATE TABLE dbo.subscription_plan_pricing (
+    subscription_plan_uuid VARCHAR(40) PRIMARY KEY,
+    organization_uuid VARCHAR(40) NOT NULL,
+    currency VARCHAR(3) NOT NULL,
+    billing_period VARCHAR(20) NOT NULL,
+    prices VARBINARY(MAX) NOT NULL,
+    created_at DATETIME2(7) NOT NULL,
+    FOREIGN KEY (subscription_plan_uuid) REFERENCES subscription_plans(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE NO ACTION
+);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_subscription_plan_pricing_org' AND object_id = OBJECT_ID(N'dbo.subscription_plan_pricing'))
+CREATE INDEX idx_subscription_plan_pricing_org ON dbo.subscription_plan_pricing(organization_uuid);
+
+-- Billing state of a paid subscription (monetization), from the API Portal, which sends it with
+-- subscription.created and every subscription.billing_updated event. A free subscription has no
+-- row. billing_updated_at is the occurred_at of the event last applied, so a late event is
+-- ignored.
+-- organization_uuid uses NO ACTION (multiple cascade paths); deleting an
+-- organization still removes these rows via subscriptions.
+IF OBJECT_ID(N'dbo.subscription_billing', N'U') IS NULL
+CREATE TABLE dbo.subscription_billing (
+    subscription_uuid VARCHAR(40) PRIMARY KEY,
+    organization_uuid VARCHAR(40) NOT NULL,
+    billing_status VARCHAR(20) NOT NULL,
+    billing_customer_id VARCHAR(255) NOT NULL,
+    billing_subscription_id VARCHAR(255) NOT NULL,
+    billing_updated_at DATETIME2(7) NOT NULL,
+    created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
+    FOREIGN KEY (subscription_uuid) REFERENCES subscriptions(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE NO ACTION
+);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_subscription_billing_org' AND object_id = OBJECT_ID(N'dbo.subscription_billing'))
+CREATE INDEX idx_subscription_billing_org ON dbo.subscription_billing(organization_uuid);
