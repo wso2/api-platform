@@ -24,7 +24,7 @@ import { useAllSubscriptionPlans, type SubscriptionPlan } from '@/api/resources/
 import { EmptyState, ErrorState, LoadingState } from '@/components/StateViews';
 import { pricingSummary, summaryMeterIds } from '../../settings/components/pricingFormat';
 import { getPlanLimitDisplay } from '../utils/subscriptionPlanLimit';
-import type { DraftFormValues } from '../utils/publicationForm';
+import type { DeletedPlan, DraftFormValues } from '../utils/publicationForm';
 import { PlanCard } from './PlanCard';
 
 const messages = defineMessages({
@@ -63,6 +63,11 @@ const messages = defineMessages({
     defaultMessage: '{count, plural, one {# inactive plan selected} other {# inactive plans selected}}',
     description: 'Warning next to the selection summary: selected plans that are no longer active.',
   },
+  deletedSelectedSummary: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.deletedSelectedSummary',
+    defaultMessage: '{count, plural, one {# deleted plan selected} other {# deleted plans selected}}',
+    description: 'Warning next to the selection summary: selected plans whose subscription plan no longer exists.',
+  },
   selectAll: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.selectAll',
     defaultMessage: 'Select all',
@@ -74,7 +79,13 @@ const messages = defineMessages({
 });
 
 export type SubscriptionPlansTabProps = {
+  /** Selected plans whose subscription plan was deleted. They show as "Deleted" cards and count as published. */
+  deletedPlans?: readonly DeletedPlan[];
   disabled?: boolean;
+  /** Clears a deleted plan from the selection; it is dropped from the draft when the draft is saved. */
+  onClearDeleted?: (planId: string) => void;
+  /** Ids of selected plans changed in Settings since the selection was last saved or published; their cards carry an "Edited" tag. */
+  editedPlanIds?: readonly string[];
   /** Shows the live selection without letting it be changed; `onChange` is then never called. */
   readOnly?: boolean;
   onChange?: (values: DraftFormValues) => void;
@@ -95,14 +106,26 @@ type DisplayablePlan = SubscriptionPlan & { id: string };
  * selected, so it can be cleared (after which it drops out). The published view
  * lists exactly the plans the live listing holds.
  *
- * Cards are ordered inactive plans first (they need clearing), then the saved
- * selection, then the rest; each group keeps the server's order.
+ * Cards are ordered deleted plans first (they are gone from Settings and only
+ * linger until the next save or publish), then inactive plans (they need
+ * clearing), then the saved selection, then the rest; each group keeps the
+ * server's order.
  */
-export function SubscriptionPlansTab({ disabled, onChange, readOnly, savedPlanIds, values }: SubscriptionPlansTabProps) {
+export function SubscriptionPlansTab({
+  deletedPlans = [],
+  disabled,
+  editedPlanIds = [],
+  onChange,
+  onClearDeleted,
+  readOnly,
+  savedPlanIds,
+  values,
+}: SubscriptionPlansTabProps) {
   const intl = useIntl();
   const plansQuery = useAllSubscriptionPlans();
   const selectedIds = values.subscriptionPlanIds;
   const selectedSet = new Set(selectedIds);
+  const editedSet = new Set(editedPlanIds);
   const savedSet = new Set(savedPlanIds ?? selectedIds);
   const allPlans = (plansQuery.data?.list ?? []).filter((plan): plan is DisplayablePlan => Boolean(plan.id));
   const activePlans = allPlans.filter((plan) => plan.status === 'ACTIVE');
@@ -123,7 +146,7 @@ export function SubscriptionPlansTab({ disabled, onChange, readOnly, savedPlanId
   if (plansQuery.error) {
     return <ErrorState message={intl.formatMessage(messages.error)} />;
   }
-  if (shownPlans.length === 0) {
+  if (shownPlans.length === 0 && deletedPlans.length === 0) {
     return (
       <Box component="section" sx={{ p: 3 }}>
         <EmptyState
@@ -167,7 +190,7 @@ export function SubscriptionPlansTab({ disabled, onChange, readOnly, savedPlanId
               <FormattedMessage
                 {...messages.publishedSummary}
                 values={{
-                  count: shownPlans.length,
+                  count: shownPlans.length + deletedPlans.length,
                   n: (chunks) => (
                     <Typography component="span" sx={countStyle}>
                       {chunks}
@@ -189,6 +212,11 @@ export function SubscriptionPlansTab({ disabled, onChange, readOnly, savedPlanId
               />
             )}
           </Typography>
+          {!readOnly && deletedPlans.length > 0 && (
+            <Typography color="error.main" variant="body2">
+              <FormattedMessage {...messages.deletedSelectedSummary} values={{ count: deletedPlans.length }} />
+            </Typography>
+          )}
           {!readOnly && inactiveSelectedPlans.length > 0 && (
             <Typography color="warning.main" variant="body2">
               <FormattedMessage
@@ -209,6 +237,7 @@ export function SubscriptionPlansTab({ disabled, onChange, readOnly, savedPlanId
         sx={{
           display: 'grid',
           gap: 2,
+          gridAutoRows: '1fr', // every row as tall as its tallest card
           // Four per row, stepping down only when a card would drop below ~250px wide.
           gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
           '@container (max-width: 1059px)': { gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' },
@@ -216,10 +245,22 @@ export function SubscriptionPlansTab({ disabled, onChange, readOnly, savedPlanId
           '@container (max-width: 519px)': { gridTemplateColumns: 'minmax(0, 1fr)' },
         }}
       >
+        {deletedPlans.map((plan) => (
+          <PlanCard
+            deleted
+            disabled={disabled}
+            displayName={plan.displayName}
+            key={plan.id}
+            onToggle={() => onClearDeleted?.(plan.id)}
+            readOnly={readOnly}
+            selected
+          />
+        ))}
         {shownPlans.map((plan) => (
           <PlanCard
             disabled={disabled}
             displayName={plan.displayName}
+            edited={editedSet.has(plan.id)}
             inactive={plan.status !== 'ACTIVE'}
             key={plan.id}
             limit={getPlanLimitDisplay(plan)}

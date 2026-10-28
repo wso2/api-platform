@@ -22,6 +22,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
@@ -144,37 +145,56 @@ func (r *PublicationRepo) contentFlags(exec sqlExecutor, publicationUUID, orgUUI
 	return hasThumbnail, hasLandingPage, rows.Err()
 }
 
-// planUUIDsForPublication returns the subscription_plan_uuid values mapped to
-// publicationUUID, ordered for deterministic responses.
-func (r *PublicationRepo) planUUIDsForPublication(exec sqlExecutor, publicationUUID, orgUUID string) ([]string, error) {
-	return r.mappedUUIDs(exec, "api_publication_plan_mappings", "subscription_plan_uuid", publicationUUID, orgUUID)
+// planSelections returns the plans mapped to publicationUUID, ordered for
+// deterministic responses. Handle and display name come from the copy stored
+// with the mapping, falling back to the source row for rows written before the
+// copy columns existed. Deleted is true when the source plan no longer exists;
+// Edited is true when it was updated after the mapping row was stored.
+func (r *PublicationRepo) planSelections(exec sqlExecutor, publicationUUID, orgUUID string) ([]model.PublicationSelection, error) {
+	query := `
+		SELECT m.subscription_plan_uuid, COALESCE(m.plan_handle, p.handle, ''), COALESCE(m.display_name, p.display_name, ''),
+			CASE WHEN p.uuid IS NULL THEN 1 ELSE 0 END,
+			CASE WHEN p.updated_at > m.created_at THEN 1 ELSE 0 END
+		FROM api_publication_plan_mappings m
+		LEFT JOIN subscription_plans p ON p.uuid = m.subscription_plan_uuid AND p.organization_uuid = m.organization_uuid
+		WHERE m.publication_uuid = ? AND m.organization_uuid = ?
+		ORDER BY m.subscription_plan_uuid
+	`
+	return r.scanSelections(exec, query, "api_publication_plan_mappings", publicationUUID, orgUUID)
 }
 
-// docUUIDsForPublication returns the doc_uuid values mapped to publicationUUID,
-// ordered for deterministic responses.
-func (r *PublicationRepo) docUUIDsForPublication(exec sqlExecutor, publicationUUID, orgUUID string) ([]string, error) {
-	return r.mappedUUIDs(exec, "api_publication_doc_mappings", "doc_uuid", publicationUUID, orgUUID)
+// docSelections is planSelections' counterpart for documents.
+func (r *PublicationRepo) docSelections(exec sqlExecutor, publicationUUID, orgUUID string) ([]model.PublicationSelection, error) {
+	query := `
+		SELECT m.doc_uuid, COALESCE(m.doc_handle, d.handle, ''), COALESCE(m.display_name, d.display_name, ''),
+			CASE WHEN d.uuid IS NULL THEN 1 ELSE 0 END,
+			CASE WHEN d.updated_at > m.created_at THEN 1 ELSE 0 END
+		FROM api_publication_doc_mappings m
+		LEFT JOIN api_documents d ON d.uuid = m.doc_uuid AND d.organization_uuid = m.organization_uuid
+		WHERE m.publication_uuid = ? AND m.organization_uuid = ?
+		ORDER BY m.doc_uuid
+	`
+	return r.scanSelections(exec, query, "api_publication_doc_mappings", publicationUUID, orgUUID)
 }
 
-// mappedUUIDs reads one column of a publication mapping table. table and column
-// are fixed identifiers from the two callers above, never request input.
-func (r *PublicationRepo) mappedUUIDs(exec sqlExecutor, table, column, publicationUUID, orgUUID string) ([]string, error) {
-	query := "SELECT " + column + " FROM " + table +
-		" WHERE publication_uuid = ? AND organization_uuid = ? ORDER BY " + column
+func (r *PublicationRepo) scanSelections(exec sqlExecutor, query, table, publicationUUID, orgUUID string) ([]model.PublicationSelection, error) {
 	rows, err := exec.Query(r.db.Rebind(query), publicationUUID, orgUUID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load %s: %w", table, err)
 	}
 	defer rows.Close()
-	var ids []string
+	var selections []model.PublicationSelection
 	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
+		var sel model.PublicationSelection
+		var deleted, edited int
+		if err := rows.Scan(&sel.UUID, &sel.Handle, &sel.DisplayName, &deleted, &edited); err != nil {
 			return nil, fmt.Errorf("failed to scan %s: %w", table, err)
 		}
-		ids = append(ids, id)
+		sel.Deleted = deleted != 0
+		sel.Edited = edited != 0
+		selections = append(selections, sel)
 	}
-	return ids, rows.Err()
+	return selections, rows.Err()
 }
 
 // lookupRowUUID returns the uuid of the draft (isDraft true) or live row for
@@ -232,21 +252,21 @@ func (r *PublicationRepo) lockDraft(tx *sql.Tx, artifactUUID, apiPortalUUID, org
 // GetDraft returns the draft row for (artifactUUID, apiPortalUUID, orgUUID),
 // plus its raw plan/document UUIDs. Returns (nil, nil, nil, nil) when no draft
 // has been saved.
-func (r *PublicationRepo) GetDraft(artifactUUID, apiPortalUUID, orgUUID string) (*model.Publication, []string, []string, error) {
+func (r *PublicationRepo) GetDraft(artifactUUID, apiPortalUUID, orgUUID string) (*model.Publication, []model.PublicationSelection, []model.PublicationSelection, error) {
 	return r.getPublicationRow(artifactUUID, apiPortalUUID, orgUUID, true)
 }
 
 // GetPublication returns the live (is_draft = 0) row for (artifactUUID,
 // apiPortalUUID, orgUUID), plus its raw plan/document UUIDs. Returns
 // (nil, nil, nil, nil) when this API is not published to this portal.
-func (r *PublicationRepo) GetPublication(artifactUUID, apiPortalUUID, orgUUID string) (*model.Publication, []string, []string, error) {
+func (r *PublicationRepo) GetPublication(artifactUUID, apiPortalUUID, orgUUID string) (*model.Publication, []model.PublicationSelection, []model.PublicationSelection, error) {
 	return r.getPublicationRow(artifactUUID, apiPortalUUID, orgUUID, false)
 }
 
 // getPublicationRow loads either tier of api_publications — the draft
 // (isDraft true) or the live listing (isDraft false), which differ only in
 // that discriminator. Returns (nil, nil, nil, nil) when no such row exists.
-func (r *PublicationRepo) getPublicationRow(artifactUUID, apiPortalUUID, orgUUID string, isDraft bool) (*model.Publication, []string, []string, error) {
+func (r *PublicationRepo) getPublicationRow(artifactUUID, apiPortalUUID, orgUUID string, isDraft bool) (*model.Publication, []model.PublicationSelection, []model.PublicationSelection, error) {
 	query := `SELECT ` + publicationDetailColumns + `
 		FROM api_publications
 		WHERE organization_uuid = ? AND artifact_uuid = ? AND api_portal_uuid = ? AND is_draft = ?`
@@ -265,11 +285,11 @@ func (r *PublicationRepo) getPublicationRow(artifactUUID, apiPortalUUID, orgUUID
 		return nil, nil, nil, fmt.Errorf("failed to get publication row: %w", err)
 	}
 
-	planUUIDs, err := r.planUUIDsForPublication(r.db, pub.UUID, orgUUID)
+	plans, err := r.planSelections(r.db, pub.UUID, orgUUID)
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	docUUIDs, err := r.docUUIDsForPublication(r.db, pub.UUID, orgUUID)
+	docs, err := r.docSelections(r.db, pub.UUID, orgUUID)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -280,7 +300,7 @@ func (r *PublicationRepo) getPublicationRow(artifactUUID, apiPortalUUID, orgUUID
 	pub.HasThumbnail = hasThumbnail
 	pub.HasLandingPage = hasLandingPage
 
-	return pub, planUUIDs, docUUIDs, nil
+	return pub, plans, docs, nil
 }
 
 // ListStatusByArtifact returns every api_publications row (draft and/or
@@ -315,7 +335,7 @@ func (r *PublicationRepo) ListStatusByArtifact(artifactUUID, orgUUID string) ([]
 
 // SaveDraftDetails creates the draft row on first save, or replaces an
 // existing one in full, together with its plan/document mapping rows.
-func (r *PublicationRepo) SaveDraftDetails(pub *model.Publication, planUUIDs []string, docUUIDs []string, actor string) (*model.Publication, error) {
+func (r *PublicationRepo) SaveDraftDetails(pub *model.Publication, plans []model.PublicationSelection, docs []model.PublicationSelection, actor string) (*model.Publication, error) {
 	now := time.Now().UTC()
 
 	tagsBytes, err := marshalStringSlice(pub.Tags)
@@ -401,12 +421,12 @@ func (r *PublicationRepo) SaveDraftDetails(pub *model.Publication, planUUIDs []s
 	if _, err := tx.Exec(r.db.Rebind(deletePlanMappingsQuery), pub.OrganizationUUID, pub.UUID); err != nil {
 		return nil, fmt.Errorf("failed to clear publication plan mappings: %w", err)
 	}
-	for _, planUUID := range planUUIDs {
+	for _, plan := range plans {
 		insertPlanMappingQuery := `
-			INSERT INTO api_publication_plan_mappings (organization_uuid, publication_uuid, subscription_plan_uuid, created_by, created_at)
-			VALUES (?, ?, ?, ?, ?)
+			INSERT INTO api_publication_plan_mappings (organization_uuid, publication_uuid, subscription_plan_uuid, plan_handle, display_name, created_by, created_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?)
 		`
-		if _, err := tx.Exec(r.db.Rebind(insertPlanMappingQuery), pub.OrganizationUUID, pub.UUID, planUUID, actor, now); err != nil {
+		if _, err := tx.Exec(r.db.Rebind(insertPlanMappingQuery), pub.OrganizationUUID, pub.UUID, plan.UUID, plan.Handle, plan.DisplayName, actor, now); err != nil {
 			return nil, fmt.Errorf("failed to insert publication plan mapping: %w", err)
 		}
 	}
@@ -417,12 +437,12 @@ func (r *PublicationRepo) SaveDraftDetails(pub *model.Publication, planUUIDs []s
 	if _, err := tx.Exec(r.db.Rebind(deleteDocMappingsQuery), pub.OrganizationUUID, pub.UUID); err != nil {
 		return nil, fmt.Errorf("failed to clear publication document mappings: %w", err)
 	}
-	for _, docUUID := range docUUIDs {
+	for _, doc := range docs {
 		insertDocMappingQuery := `
-			INSERT INTO api_publication_doc_mappings (organization_uuid, publication_uuid, doc_uuid, created_by, created_at)
-			VALUES (?, ?, ?, ?, ?)
+			INSERT INTO api_publication_doc_mappings (organization_uuid, publication_uuid, doc_uuid, doc_handle, display_name, created_by, created_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?)
 		`
-		if _, err := tx.Exec(r.db.Rebind(insertDocMappingQuery), pub.OrganizationUUID, pub.UUID, docUUID, actor, now); err != nil {
+		if _, err := tx.Exec(r.db.Rebind(insertDocMappingQuery), pub.OrganizationUUID, pub.UUID, doc.UUID, doc.Handle, doc.DisplayName, actor, now); err != nil {
 			return nil, fmt.Errorf("failed to insert publication document mapping: %w", err)
 		}
 	}
@@ -570,7 +590,13 @@ func (r *PublicationRepo) mergeDraftIntoAnchor(tx *sql.Tx, anchorUUID, draftUUID
 // draftUpdatedAt is the draft's updated_at when the caller read it. If any
 // details or content save has bumped it since, nothing is promoted and
 // APIPublicationDraftChanged is returned.
-func (r *PublicationRepo) PromoteDraftToPublication(artifactUUID, apiPortalUUID, orgUUID, actor string, draftUpdatedAt time.Time) (pub *model.Publication, replaced bool, err error) {
+//
+// plans and docs are the selections that were pushed to the portal, read at
+// snapshotAt. Their copy columns are refreshed on the draft's mapping rows and
+// the rows are re-stamped with snapshotAt, so a plan or document edited after
+// that moment reads as edited; any mapping not in the lists is removed. All of
+// this happens before the rows become the live listing's.
+func (r *PublicationRepo) PromoteDraftToPublication(artifactUUID, apiPortalUUID, orgUUID, actor string, draftUpdatedAt time.Time, snapshotAt time.Time, plans, docs []model.PublicationSelection) (pub *model.Publication, replaced bool, err error) {
 	now := time.Now().UTC()
 
 	tx, err := r.db.Begin()
@@ -588,6 +614,9 @@ func (r *PublicationRepo) PromoteDraftToPublication(artifactUUID, apiPortalUUID,
 	}
 	if !currentUpdatedAt.Equal(draftUpdatedAt) {
 		return nil, false, apperror.APIPublicationDraftChanged.New()
+	}
+	if err := r.refreshSelectionCopies(tx, orgUUID, draftUUID, actor, snapshotAt, plans, docs); err != nil {
+		return nil, false, err
 	}
 
 	liveUUID, liveFound, err := r.lookupRowUUID(tx, artifactUUID, apiPortalUUID, orgUUID, false)
@@ -637,6 +666,75 @@ func (r *PublicationRepo) PromoteDraftToPublication(artifactUUID, apiPortalUUID,
 		return nil, false, fmt.Errorf("failed to commit publication promotion: %w", err)
 	}
 	return promoted, replaced, nil
+}
+
+// refreshSelectionCopies rewrites the copy columns of publicationUUID's mapping
+// rows from plans and docs, stamps them with snapshotAt, and deletes the rows
+// that are not in either list. A selection with no mapping row yet is inserted:
+// a plan or document deleted and recreated under the same handle while the
+// listing was pushed resolves to a new UUID, and would otherwise be pruned with
+// nothing in its place.
+func (r *PublicationRepo) refreshSelectionCopies(tx *sql.Tx, orgUUID, publicationUUID, actor string, snapshotAt time.Time, plans, docs []model.PublicationSelection) error {
+	planUUIDs := make([]string, 0, len(plans))
+	for _, plan := range plans {
+		planUUIDs = append(planUUIDs, plan.UUID)
+		if err := r.upsertSelectionCopy(tx, "api_publication_plan_mappings", "subscription_plan_uuid", "plan_handle", orgUUID, publicationUUID, actor, snapshotAt, plan); err != nil {
+			return fmt.Errorf("failed to refresh publication plan mapping: %w", err)
+		}
+	}
+	if err := r.deleteMappingsNotIn(tx, "api_publication_plan_mappings", "subscription_plan_uuid", orgUUID, publicationUUID, planUUIDs); err != nil {
+		return err
+	}
+
+	docUUIDs := make([]string, 0, len(docs))
+	for _, doc := range docs {
+		docUUIDs = append(docUUIDs, doc.UUID)
+		if err := r.upsertSelectionCopy(tx, "api_publication_doc_mappings", "doc_uuid", "doc_handle", orgUUID, publicationUUID, actor, snapshotAt, doc); err != nil {
+			return fmt.Errorf("failed to refresh publication document mapping: %w", err)
+		}
+	}
+	return r.deleteMappingsNotIn(tx, "api_publication_doc_mappings", "doc_uuid", orgUUID, publicationUUID, docUUIDs)
+}
+
+// upsertSelectionCopy refreshes the mapping row of sel in one mapping table, or inserts it
+// when there is none. table and the column names are fixed identifiers from the caller,
+// never request input.
+func (r *PublicationRepo) upsertSelectionCopy(tx *sql.Tx, table, pointerColumn, handleColumn, orgUUID, publicationUUID, actor string, snapshotAt time.Time, sel model.PublicationSelection) error {
+	updateQuery := "UPDATE " + table + " SET " + handleColumn + " = ?, display_name = ?, created_at = ? " +
+		"WHERE organization_uuid = ? AND publication_uuid = ? AND " + pointerColumn + " = ?"
+	result, err := tx.Exec(r.db.Rebind(updateQuery), sel.Handle, sel.DisplayName, snapshotAt, orgUUID, publicationUUID, sel.UUID)
+	if err != nil {
+		return err
+	}
+	updated, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if updated > 0 {
+		return nil
+	}
+	insertQuery := "INSERT INTO " + table + " (organization_uuid, publication_uuid, " + pointerColumn + ", " + handleColumn + ", display_name, created_by, created_at) " +
+		"VALUES (?, ?, ?, ?, ?, ?, ?)"
+	_, err = tx.Exec(r.db.Rebind(insertQuery), orgUUID, publicationUUID, sel.UUID, sel.Handle, sel.DisplayName, actor, snapshotAt)
+	return err
+}
+
+// deleteMappingsNotIn removes the rows of one mapping table whose pointer column
+// is not in keep. table and column are fixed identifiers from the caller, never
+// request input.
+func (r *PublicationRepo) deleteMappingsNotIn(tx *sql.Tx, table, column, orgUUID, publicationUUID string, keep []string) error {
+	query := "DELETE FROM " + table + " WHERE organization_uuid = ? AND publication_uuid = ?"
+	args := []any{orgUUID, publicationUUID}
+	if len(keep) > 0 {
+		query += " AND " + column + " NOT IN (" + strings.TrimSuffix(strings.Repeat("?,", len(keep)), ",") + ")"
+		for _, id := range keep {
+			args = append(args, id)
+		}
+	}
+	if _, err := tx.Exec(r.db.Rebind(query), args...); err != nil {
+		return fmt.Errorf("failed to prune %s: %w", table, err)
+	}
+	return nil
 }
 
 // UnpublishPublication is PromoteDraftToPublication's mirror, called only

@@ -2598,6 +2598,10 @@
   "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.definitionNotAnObject": {
     "defaultMessage": "The definition must be a JSON or YAML object."
   },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.deletedPlansBlock": {
+    "defaultMessage": "Clear deleted plans from this listing to save or publish: {names}.",
+    "description": "Warning when Save Draft or Publish is blocked because the selection still holds deleted plans. {names} is a comma-separated list of the plan names stored with the selection."
+  },
   "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.deprecateConfirmMessage": {
     "defaultMessage": "The API \"{name}\" will be marked as deprecated on {portalName}. It will remain listed."
   },
@@ -2721,12 +2725,48 @@
   "apiControlPlane.pages.appShell.appShellPages.portals.components.ApiDetailsTab.versionLabel": {
     "defaultMessage": "Version"
   },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PlanCard.deleted": {
+    "defaultMessage": "Deleted",
+    "description": "Status pill on a plan card whose subscription plan no longer exists."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PlanCard.deletedDraft": {
+    "defaultMessage": "Deleted after saving.",
+    "description": "Shown on a draft plan card whose subscription plan no longer exists."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PlanCard.deletedDraftHint": {
+    "defaultMessage": "This plan was deleted. Clear it to save or publish.",
+    "description": "Tooltip on the Deleted chip of a draft plan card."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PlanCard.deletedPublished": {
+    "defaultMessage": "Deleted after publishing.",
+    "description": "Shown on a published plan card whose subscription plan no longer exists."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PlanCard.deletedPublishedHint": {
+    "defaultMessage": "This plan was deleted. Clear it in draft, then republish.",
+    "description": "Tooltip on the Deleted chip of a published plan card."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PlanCard.edited": {
+    "defaultMessage": "Edited",
+    "description": "Status pill on a plan card whose subscription plan was changed after it was last saved or published."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PlanCard.editedPublished": {
+    "defaultMessage": "Edited after publishing.",
+    "description": "Shown in place of the limit on a published plan card whose plan was edited. Any edit counts (name, limit or status), so it does not say which."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PlanCard.editedPublishedHint": {
+    "defaultMessage": "Plan was edited after publishing. Republish to apply changes.",
+    "description": "Tooltip on the Edited chip of a published plan card."
+  },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.PlanCard.inactive": {
     "defaultMessage": "Inactive",
     "description": "Status pill on a plan card."
   },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PlanCard.inactivePublishedHint": {
+    "defaultMessage": "Plan is inactive. Clear it in draft, then republish.",
+    "description": "Tooltip on the Inactive chip of a published plan card."
+  },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.PlanCard.inactiveSelected": {
-    "defaultMessage": "Clear inactive plan to save or publish."
+    "defaultMessage": "Plan is inactive. Clear it to save or publish."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.PlanCard.unlimitedValue": {
     "defaultMessage": "Unlimited",
@@ -2803,6 +2843,10 @@
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.clearAll": {
     "defaultMessage": "Clear all"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.deletedSelectedSummary": {
+    "defaultMessage": "{count, plural, one {# deleted plan selected} other {# deleted plans selected}}",
+    "description": "Warning next to the selection summary: selected plans whose subscription plan no longer exists."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.emptyDescription": {
     "defaultMessage": "Create subscription plans in Settings to choose from here."

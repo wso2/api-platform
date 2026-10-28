@@ -326,9 +326,9 @@ func (s *SubscriptionPlanService) DeletePlan(handle, orgUUID, actor string) erro
 	return s.deletePlanWithReferences(existing, orgUUID, actor)
 }
 
-// deletePlanWithReferences deletes a plan and every reference to it, in one transaction:
-//   - the plan is removed from the publication drafts, live publications, REST APIs and
-//     artifact_subscription_plans rows that offer it;
+// deletePlanWithReferences deletes a plan and its references, in one transaction:
+//   - the plan is removed from the REST APIs and artifact_subscription_plans rows that offer it;
+//   - the publication drafts and live publications that offer it are kept, showing it as deleted;
 //   - its subscriptions are kept, without a plan;
 //   - the plan is deleted, with its limits and pricing.
 //
