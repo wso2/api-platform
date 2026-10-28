@@ -89,7 +89,7 @@ make test-integration-all
 make build-coverage
 ```
 
-For integration test details, see [it/README.md](it/README.md).
+For integration test details, see [tests/framework/README.md](../tests/framework/README.md).
 
 ### Clean
 
