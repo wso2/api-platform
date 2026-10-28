@@ -1412,6 +1412,7 @@ const createSubscriptionPlan = async (req, res) => {
     try {
         checkNewPlanHandle(subscriptionPlan);
         let createdPlanUuid;
+        let created;
         await db.withTransaction(async (t) => {
             const subscriptionPlanResponse = await subscriptionPlanDao.create(orgId, subscriptionPlan, userId, t);
             if (subscriptionPlanResponse) {
@@ -1425,11 +1426,13 @@ const createSubscriptionPlan = async (req, res) => {
                     orgId
                 });
                 const audit = await userIdpReferenceDao.buildSingleAuditFields(subscriptionPlanResponse);
-                res.status(201).send(new subscriptionPlanDTO(subscriptionPlanResponse, audit));
+                created = new subscriptionPlanDTO(subscriptionPlanResponse, audit);
             } else {
                 throw new CustomError(500, constants.ERROR_CODE[500], constants.ERROR_MESSAGE.SUBSCRIPTION_PLAN_CREATE_ERROR);
             }
         });
+        // Answered once committed, so a caller that uses the plan next (an API offering it) finds it.
+        res.status(201).send(created);
         logUserAction('SUBSCRIPTION_PLAN_CREATED', req, { orgId, resourceUuid: createdPlanUuid, resourceType: 'subscription_plan' });
     } catch (error) {
         logger.error('subscription plan create error failed', {
@@ -1506,6 +1509,7 @@ const updateSubscriptionPlan = async (req, res) => {
 
     try {
         let updatedPlanUuid;
+        let saved;
         await db.withTransaction(async (t) => {
             const { subscriptionPlanResponse, statusCode } =  await subscriptionPlanDao.put(orgId, subscriptionPlan, userId, t);
             if (statusCode === 201) checkNewPlanHandle(subscriptionPlan);
@@ -1518,11 +1522,13 @@ const updateSubscriptionPlan = async (req, res) => {
                         orgId, subscriptionPlanResponse, t);
                 }
                 const audit = await userIdpReferenceDao.buildSingleAuditFields(subscriptionPlanResponse);
-                res.status(statusCode).send(new subscriptionPlanDTO(subscriptionPlanResponse, audit));
+                saved = { statusCode, plan: new subscriptionPlanDTO(subscriptionPlanResponse, audit) };
             } else {
                 throw new CustomError(404, constants.ERROR_CODE[404], constants.ERROR_MESSAGE.SUBSCRIPTION_PLAN_NOT_FOUND);
             }
         });
+        // Answered once committed, so the caller's next request sees the saved plan.
+        res.status(saved.statusCode).send(saved.plan);
         logUserAction('SUBSCRIPTION_PLAN_UPDATED', req, { orgId, resourceUuid: updatedPlanUuid, resourceType: 'subscription_plan' });
     } catch (error) {
         logger.error('subscription plan not found failed', {
@@ -1636,8 +1642,9 @@ const deleteSubscriptionPlan = async (req, res) => {
                 throw new CustomError(404, constants.ERROR_CODE[404], constants.ERROR_MESSAGE.SUBSCRIPTION_PLAN_NOT_FOUND);
             }
             if (!sharedKeyAuth.madeByPlatformApi(req)) await subscriptionPlanEvents.publishPlanDeleted(orgId, plan, t);
-            res.status(204).send();
         });
+        // Answered once committed, so the caller's next request no longer sees the plan.
+        res.status(204).send();
         logUserAction('SUBSCRIPTION_PLAN_DELETED', req, { orgId, planId, resourceUuid: planId, resourceType: 'subscription_plan' });
     } catch (error) {
         logger.error('subscription plan delete error failed', {
