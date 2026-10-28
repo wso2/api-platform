@@ -283,6 +283,8 @@ func (b *Base) registerBaseSteps(sc *godog.ScenarioContext) {
 		b.jsonArrayItemFieldIs)
 	sc.Step(`^the JSON response array "([^"]*)" item with "([^"]*)" equal to "([^"]*)" should not have field "([^"]*)"$`,
 		b.jsonArrayItemFieldAbsent)
+	sc.Step(`^the JSON response array "([^"]*)" item with "([^"]*)" equal to "([^"]*)" should come before the item with "([^"]*)" equal to "([^"]*)"$`,
+		b.jsonArrayItemOrder)
 	sc.Step(`^I set header "([^"]*)" to "([^"]*)"$`, b.setHeader)
 	sc.Step(`^I clear all headers$`, b.clearHeaders)
 	sc.Step(`^I reset the request$`, b.resetRequest)
@@ -1616,6 +1618,48 @@ func (b *Base) jsonArrayItemPresence(ctx context.Context, field, presence, key, 
 		}
 	default:
 		return fmt.Errorf("unknown array presence %q", presence)
+	}
+	return nil
+}
+
+// jsonArrayItemOrder asserts two items of a JSON array appear in the stated order. It
+// compares positions within one response, so items other runners add in between do not
+// affect it.
+func (b *Base) jsonArrayItemOrder(ctx context.Context, field, firstKey, firstWant, secondKey, secondWant string) error {
+	items, resp, err := jsonArrayItems(ctx, field)
+	if err != nil {
+		return err
+	}
+	position := func(key, want string) (int, error) {
+		expected, err := stepscommon.Expand(ctx, want)
+		if err != nil {
+			return 0, err
+		}
+		found := -1
+		for i, item := range items {
+			if len(jsonArrayItemsMatching([]any{item}, key, expected)) == 1 {
+				if found >= 0 {
+					return 0, fmt.Errorf("JSON array %q has several items with %q equal to %q: %s", field, key, expected, resp.Describe())
+				}
+				found = i
+			}
+		}
+		if found < 0 {
+			return 0, fmt.Errorf("JSON array %q has no item with %q equal to %q: %s", field, key, expected, resp.Describe())
+		}
+		return found, nil
+	}
+	first, err := position(firstKey, firstWant)
+	if err != nil {
+		return err
+	}
+	second, err := position(secondKey, secondWant)
+	if err != nil {
+		return err
+	}
+	if first >= second {
+		return fmt.Errorf("JSON array %q has the %q=%q item at %d, not before the %q=%q item at %d",
+			field, firstKey, firstWant, first, secondKey, secondWant, second)
 	}
 	return nil
 }

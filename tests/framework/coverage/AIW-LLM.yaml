@@ -92,17 +92,33 @@ scenarios:
   - id: AIW-PRV-007
     title: Search and filter the provider list.
     priority: P2
+    sheetUpdate: "Test scenario: search the provider list. Expected: only matching providers are shown. (Decided 2026-10-28: search is the intended mechanism; there is no separate filter control.)"
     ui:
-      status: planned
+      status: known-issue
+      issue: https://github.com/wso2/api-platform/issues/3965
+      refs:
+        - feature: suites/ui/features/aiw_llm/provider_inspection.feature
+          scenario: "Journey: an administrator finds and inspects an LLM provider"
+        - feature: suites/ui/features/aiw_llm/provider_inspection.feature
+          scenario: "A provider created before twenty newer ones can still be found by searching the list"
     it:
-      status: planned
+      status: automated
+      refs:
+        - feature: suites/it/features/ai-workspace/llm-providers/inspect.feature
+          scenario: "The provider list pages newest first and keeps its page size within bounds"
   - id: AIW-PRV-008
     title: Open the provider overview tab.
     priority: P2
     ui:
-      status: planned
+      status: automated
+      refs:
+        - feature: suites/ui/features/aiw_llm/provider_inspection.feature
+          scenario: "Journey: an administrator finds and inspects an LLM provider"
     it:
-      status: planned
+      status: automated
+      refs:
+        - feature: suites/it/features/ai-workspace/llm-providers/inspect.feature
+          scenario: "A provider reads back what it was created with and never returns its credential"
   - id: AIW-PRV-009
     title: Edit the endpoint on the connection tab and save.
     priority: P1
@@ -261,9 +277,15 @@ scenarios:
     title: Open project B's provider list when a provider exists in project A.
     priority: P1
     ui:
-      status: planned
+      status: automated
+      refs:
+        - feature: suites/ui/features/aiw_llm/provider_inspection.feature
+          scenario: "Journey: an administrator finds and inspects an LLM provider"
     it:
-      status: planned
+      status: automated
+      refs:
+        - feature: suites/it/features/ai-workspace/llm-providers/inspect.feature
+          scenario: "One organization-level provider serves proxies in two different projects"
   - id: AIW-PRV-032
     title: Open the provider list while the Platform API is stopped.
     priority: P2

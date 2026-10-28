@@ -48,8 +48,9 @@ type CoverageStatus string
 const (
 	// Automated means the referenced scenarios run in CI and assert the sheet's expectation.
 	Automated CoverageStatus = "automated"
-	// KnownIssue means the referenced scenarios assert the expectation but are excluded
-	// with @known-issue until the linked product issue is fixed.
+	// KnownIssue means the product does not yet meet the expectation in this layer: at
+	// least one referenced scenario asserts it and is excluded with @known-issue until the
+	// linked issue is fixed; any other refs cover the part that already works.
 	KnownIssue CoverageStatus = "known-issue"
 	// Exempt means the layer deliberately does not test the ID, for the recorded reason.
 	Exempt CoverageStatus = "exempt"

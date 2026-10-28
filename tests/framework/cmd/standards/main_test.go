@@ -358,7 +358,7 @@ func TestCheckSheetsReportsDrift(t *testing.T) {
 		{"ref to missing feature", strings.Replace(sheetManifest, "it/features/create.feature\n          scenario: Create", "it/features/gone.feature\n          scenario: Create", 1), sheetUIFeature, sheetITFeature, "feature file not found"},
 		{"ref in the wrong layer", strings.Replace(sheetManifest, "ROOT/suites/it/features/create.feature\n          scenario: Create a provider", "ROOT/suites/ui/features/create.feature\n          scenario: Create a provider", 1), sheetUIFeature, sheetITFeature, "must point into suites/it"},
 		{"ref scenario lacks tag", sheetManifest, sheetUIFeature, strings.Replace(sheetITFeature, "@AIW-PRV-001 @type:smoke", "@type:smoke", 1), "is not tagged @AIW-PRV-001"},
-		{"known-issue without tag", sheetManifest, sheetUIFeature, strings.Replace(sheetITFeature, "@AIW-PRV-002 @known-issue", "@AIW-PRV-002", 1), "needs the scenario tagged @known-issue"},
+		{"known-issue without tag", sheetManifest, sheetUIFeature, strings.Replace(sheetITFeature, "@AIW-PRV-002 @known-issue", "@AIW-PRV-002", 1), "needs at least one referenced scenario tagged @known-issue"},
 		{"automated but known-issue", sheetManifest, sheetUIFeature, strings.Replace(sheetITFeature, "@AIW-PRV-001 @type:smoke", "@AIW-PRV-001 @known-issue", 1), "its status must be known-issue"},
 	}
 	for _, tc := range cases {
@@ -371,6 +371,19 @@ func TestCheckSheetsReportsDrift(t *testing.T) {
 			require.Contains(t, issues, tc.want)
 		})
 	}
+}
+
+func TestCheckSheetsAcceptsKnownIssueAlongsidePassingRefs(t *testing.T) {
+	// A known-issue layer may also reference passing scenarios, e.g. a journey that covers
+	// the ID's working part next to a known-issue scenario for its defect.
+	manifest := strings.Replace(sheetManifest, `          scenario: Reject an empty form
+`, `          scenario: Reject an empty form
+        - feature: ROOT/suites/it/features/create.feature
+          scenario: Create a provider
+`, 1)
+	it := strings.Replace(sheetITFeature, "@AIW-PRV-001 @type:smoke", "@AIW-PRV-001 @AIW-PRV-002 @type:smoke", 1)
+	cov, roots := writeSheetFixture(t, manifest, sheetUIFeature, it)
+	require.Empty(t, checkSheets(cov, roots))
 }
 
 func TestParseFeatureFileHandlesTagsRulesAndComments(t *testing.T) {

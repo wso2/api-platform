@@ -161,10 +161,16 @@ func checkSheets(manifestDir, featureRoots string) []string {
 			entries[e.ID] = e
 			for _, layer := range sheet.Layers {
 				cov := e.For(layer)
+				anyKnownIssue := false
 				for _, ref := range cov.Refs {
-					issues = append(issues, checkSheetRef(m.Path, e.ID, layer, cov.Status, ref, features)...)
+					refIssues, knownIssue := checkSheetRef(m.Path, e.ID, layer, cov.Status, ref, features)
+					issues = append(issues, refIssues...)
+					anyKnownIssue = anyKnownIssue || knownIssue
 					key := string(layer) + "|" + filepath.ToSlash(filepath.Clean(ref.Feature)) + "|" + ref.Scenario
 					referenced[key] = append(referenced[key], e.ID)
+				}
+				if cov.Status == sheet.KnownIssue && !anyKnownIssue {
+					issues = append(issues, fmt.Sprintf("%s: %s %s status known-issue needs at least one referenced scenario tagged @known-issue", m.Path, e.ID, layer))
 				}
 			}
 		}
@@ -219,15 +225,17 @@ func checkSheets(manifestDir, featureRoots string) []string {
 	return issues
 }
 
-func checkSheetRef(manifest, id string, layer sheet.Layer, status sheet.CoverageStatus, ref sheet.Ref, features map[string]parsedFeature) []string {
+// checkSheetRef validates one manifest ref and reports whether its scenario is tagged
+// @known-issue.
+func checkSheetRef(manifest, id string, layer sheet.Layer, status sheet.CoverageStatus, ref sheet.Ref, features map[string]parsedFeature) ([]string, bool) {
 	at := fmt.Sprintf("%s: %s %s ref %s / %q", manifest, id, layer, ref.Feature, ref.Scenario)
 	path := filepath.ToSlash(filepath.Clean(ref.Feature))
 	if layerOf(path) != layer {
-		return []string{fmt.Sprintf("%s: a %s ref must point into suites/%s", at, layer, layer)}
+		return []string{fmt.Sprintf("%s: a %s ref must point into suites/%s", at, layer, layer)}, false
 	}
 	f, ok := features[path]
 	if !ok {
-		return []string{fmt.Sprintf("%s: feature file not found in the checked feature roots", at)}
+		return []string{fmt.Sprintf("%s: feature file not found in the checked feature roots", at)}, false
 	}
 	for _, s := range f.scenarios {
 		if s.name != ref.Scenario {
@@ -239,13 +247,10 @@ func checkSheetRef(manifest, id string, layer sheet.Layer, status sheet.Coverage
 			issues = append(issues, fmt.Sprintf("%s: the scenario is not tagged @%s", at, id))
 		}
 		knownIssue := slices.Contains(tags, "known-issue")
-		if status == sheet.KnownIssue && !knownIssue {
-			issues = append(issues, fmt.Sprintf("%s: status known-issue needs the scenario tagged @known-issue", at))
-		}
 		if status == sheet.Automated && knownIssue {
 			issues = append(issues, fmt.Sprintf("%s: the scenario is tagged @known-issue, so its status must be known-issue", at))
 		}
-		return issues
+		return issues, knownIssue
 	}
-	return []string{fmt.Sprintf("%s: no scenario with that name in the feature", at)}
+	return []string{fmt.Sprintf("%s: no scenario with that name in the feature", at)}, false
 }

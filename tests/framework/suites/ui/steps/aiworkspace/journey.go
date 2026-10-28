@@ -398,6 +398,9 @@ func (u *Steps) submitProviderFormForTemplate(ctx context.Context, name string, 
 	if err := tcontext.Set(ctx, keyLatestProviderID, body.ID); err != nil {
 		return err
 	}
+	if err := rememberProviderID(ctx, name, body.ID); err != nil {
+		return err
+	}
 	if err := cleanup.Register(ctx, cleanup.Resource{
 		Kind: cleanup.KindLLMProvider, ID: body.ID, Actor: u.topo.Admin.Username,
 	}); err != nil {

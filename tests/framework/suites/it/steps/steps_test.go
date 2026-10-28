@@ -336,6 +336,16 @@ func TestJSONArrayItemSteps(t *testing.T) {
 		require.NoError(t, base.jsonArrayItemFieldAbsent(ctx, "list", "id", "b", "nested"))
 		require.ErrorContains(t, base.jsonArrayItemFieldAbsent(ctx, "list", "id", "a", "nested"), "should not have field")
 	})
+	t.Run("item order", func(t *testing.T) {
+		ctx := publish(t, listBody)
+		require.NoError(t, base.jsonArrayItemOrder(ctx, "list", "id", "a", "id", "b"))
+		require.ErrorContains(t, base.jsonArrayItemOrder(ctx, "list", "id", "b", "id", "a"), "not before")
+		require.ErrorContains(t, base.jsonArrayItemOrder(ctx, "list", "id", "a", "id", "a"), "not before")
+		require.ErrorContains(t, base.jsonArrayItemOrder(ctx, "list", "id", "a", "id", "z"), "no item")
+		dup := publish(t, `{"list":[{"id":"x"},{"id":"x"},{"id":"y"}]}`)
+		require.ErrorContains(t, base.jsonArrayItemOrder(dup, "list", "id", "x", "id", "y"), "several items")
+		require.Error(t, base.jsonArrayItemOrder(publish(t, `{"list":3}`), "list", "id", "a", "id", "b"))
+	})
 	t.Run("ambiguous selection", func(t *testing.T) {
 		ctx := publish(t, `{"list":[{"id":"dup","v":1},{"id":"dup","v":2}]}`)
 		require.ErrorContains(t, base.jsonArrayItemFieldIs(ctx, "list", "id", "dup", "v", "1"), "want exactly one")
