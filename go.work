@@ -1,7 +1,6 @@
 go 1.26.10
 
 use (
-	./cli/it
 	./cli/src
 	./common
 	./event-gateway/gateway-builder

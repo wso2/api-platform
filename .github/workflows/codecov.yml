@@ -39,27 +39,6 @@ jobs:
           cd cli/src
           make test
 
-      - name: Build coverage-instrumented images
-        run: |
-          cd gateway
-          make build-coverage
-
-      - name: Build sample-service
-        run: |
-          cd samples/sample-service
-          make build
-
-      - name: Build CLI binary
-        run: |
-          cd cli/it
-          make build-cli-coverage
-
-      - name: Run CLI integration tests
-        continue-on-error: true
-        run: |
-          cd cli/it
-          make test
-
       # The integration framework's coverage run for main. These steps mirror the source-built
       # (-coverage) leg of it.yml, which uploads the same flags for pull requests; keep the two in
       # step.
@@ -147,10 +126,3 @@ jobs:
           disable_search: true
           files: tests/framework/suites/it/coverage-out/api-portal/server/lcov.info
           flags: api-portal-server-it
-
-      - name: Upload CLI integration test coverage to Codecov
-        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          directory: cli/it/coverage/output/txt
-          flags: cli-integration
