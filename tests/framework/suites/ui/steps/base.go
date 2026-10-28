@@ -60,6 +60,9 @@ func New(topo *frameworkruntime.Topology, coverageSink *coverage.Sink) *UI {
 // Register wires the browser lifecycle and every step this suite provides.
 func (u *UI) Register(sc *godog.ScenarioContext) {
 	sc.Before(func(ctx context.Context, _ *godog.Scenario) (context.Context, error) {
+		// Runner-scoped state outlives a scenario; a sensitive page in one scenario must not
+		// suppress the failure evidence of the next.
+		tcontext.Remove(ctx, keySensitiveArtifacts)
 		ctx, err := u.openScenarioPage(ctx)
 		if err != nil {
 			return ctx, err

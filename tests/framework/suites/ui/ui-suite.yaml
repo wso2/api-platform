@@ -163,3 +163,7 @@ blocks:
         features:
           - features/aiw_llm/provider_inspection.feature
         tags: "~@known-issue"
+      - name: aiw-llm-provider-configuration
+        features:
+          - features/aiw_llm/provider_configuration.feature
+        tags: "~@known-issue"

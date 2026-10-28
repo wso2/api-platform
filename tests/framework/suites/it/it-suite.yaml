@@ -803,6 +803,10 @@ blocks:
         features:
           - features/ai-workspace/llm-providers/inspect.feature
         tags: "~@known-issue"
+      - name: aiw-llm-provider-configure
+        features:
+          - features/ai-workspace/llm-providers/configure.feature
+        tags: "~@known-issue"
 
   - name: platform-api-postgres
     parallel: 2
@@ -861,6 +865,10 @@ blocks:
         features:
           - features/ai-workspace/llm-providers/inspect.feature
         tags: "~@known-issue"
+      - name: aiw-llm-provider-configure
+        features:
+          - features/ai-workspace/llm-providers/configure.feature
+        tags: "~@known-issue"
 
   - name: platform-api-sqlserver
     parallel: 2
@@ -918,6 +926,10 @@ blocks:
       - name: aiw-llm-provider-inspect
         features:
           - features/ai-workspace/llm-providers/inspect.feature
+        tags: "~@known-issue"
+      - name: aiw-llm-provider-configure
+        features:
+          - features/ai-workspace/llm-providers/configure.feature
         tags: "~@known-issue"
 
   # Agent proxy recovery isolation: every scenario stops or restarts gateway-controller,

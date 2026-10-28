@@ -130,30 +130,58 @@ scenarios:
     title: Update the API key, then reload the page.
     priority: P1
     ui:
-      status: planned
+      status: automated
+      refs:
+        - feature: suites/ui/features/aiw_llm/provider_configuration.feature
+          scenario: "Journey: an administrator rotates a provider's credential and curates its models"
     it:
-      status: planned
+      status: automated
+      refs:
+        - feature: suites/it/features/ai-workspace/llm-providers/configure.feature
+          scenario: "Rotating a provider's credential keeps it out of every response"
   - id: AIW-PRV-011
     title: Save the connection with an empty or invalid key.
     priority: P2
+    sheetUpdate: "Test scenario: save the connection with an empty key. Expected: a clear validation error is shown and nothing is saved. (Decided 2026-10-28: there is no key format rule; a wrong key is caught at invoke time, AIW-PRV-025.)"
     ui:
-      status: planned
+      status: known-issue
+      issue: https://github.com/wso2/api-platform/issues/3967
+      refs:
+        - feature: suites/ui/features/aiw_llm/provider_configuration.feature
+          scenario: "Saving a provider's connection with an empty credential shows a validation error"
     it:
-      status: planned
+      status: known-issue
+      issue: https://github.com/wso2/api-platform/issues/3967
+      refs:
+        - feature: suites/it/features/ai-workspace/llm-providers/configure.feature
+          scenario: "Saving a provider's connection with an empty credential is rejected"
   - id: AIW-PRV-012
     title: Add, edit and remove a model.
     priority: P1
+    sheetUpdate: "Expected: models added and removed persist after a page reload. In the UI a model is edited by removing and re-adding it; the API edits a model directly. (Decided 2026-10-28.)"
     ui:
-      status: planned
+      status: automated
+      refs:
+        - feature: suites/ui/features/aiw_llm/provider_configuration.feature
+          scenario: "Journey: an administrator rotates a provider's credential and curates its models"
     it:
-      status: planned
+      status: automated
+      refs:
+        - feature: suites/it/features/ai-workspace/llm-providers/configure.feature
+          scenario: "A provider's models are added, edited and removed"
   - id: AIW-PRV-013
     title: Add a model with a duplicate ID.
     priority: P2
     ui:
-      status: planned
+      status: automated
+      refs:
+        - feature: suites/ui/features/aiw_llm/provider_configuration.feature
+          scenario: "Journey: an administrator rotates a provider's credential and curates its models"
     it:
-      status: planned
+      status: automated
+      refs:
+        - feature: suites/it/features/ai-workspace/llm-providers/configure.feature
+          scenario: "A model list with a duplicate model ID is rejected and the stored list is kept"
   - id: AIW-PRV-014
     title: Attach a guardrail with parameters.
     priority: P1
@@ -276,6 +304,7 @@ scenarios:
   - id: AIW-PRV-031
     title: Open project B's provider list when a provider exists in project A.
     priority: P1
+    sheetUpdate: "An organization-level provider is available to every project (e.g. offered when creating an App LLM Proxy in project A and in project B). (Decided 2026-10-28: providers belong to the organization, not to a project.)"
     ui:
       status: automated
       refs:

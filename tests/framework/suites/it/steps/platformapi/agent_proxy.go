@@ -101,8 +101,8 @@ func RegisterAgentProxy(sc *godog.ScenarioContext, s *Steps) {
 		s.pollControlPlaneHeader)
 	sc.Step(`^I create an? (Agent proxy|LLM provider) via the control plane from "([^"]*)"(?: as "([^"]*)")? with values:$`,
 		s.createFromTemplate)
-	sc.Step(`^I update the Agent proxy "([^"]*)" via the control plane from "([^"]*)"(?: as "([^"]*)")? with values:$`,
-		s.updateAgentProxyFromTemplate)
+	sc.Step(`^I update the (Agent proxy|LLM provider) "([^"]*)" via the control plane from "([^"]*)"(?: as "([^"]*)")? with values:$`,
+		s.updateFromTemplate)
 	sc.Step(`^I deploy the Agent proxy "([^"]*)" to the gateway via the control plane and store the deployment id as "([^"]*)"$`,
 		s.deployAgentProxy)
 	sc.Step(`^I store the registered gateway id as "([^"]*)"$`, s.storeGatewayID)
@@ -593,7 +593,13 @@ func (s *Steps) createFromTemplate(ctx context.Context, resource, templateName, 
 	return err
 }
 
-func (s *Steps) updateAgentProxyFromTemplate(ctx context.Context, handle, templateName, who string, table *godog.Table) error {
+// updateFromTemplate renders a control-plane resource template and PUTs it over the named
+// resource through the funnel.
+func (s *Steps) updateFromTemplate(ctx context.Context, resource, handle, templateName, who string, table *godog.Table) error {
+	collection, ok := templateCollections[resource]
+	if !ok {
+		return fmt.Errorf("no control-plane collection is defined for %q", resource)
+	}
 	resolved, err := stepscommon.Expand(ctx, handle)
 	if err != nil {
 		return err
@@ -603,7 +609,7 @@ func (s *Steps) updateAgentProxyFromTemplate(ctx context.Context, handle, templa
 		return err
 	}
 	_, err = s.sendControlPlane(ctx, controlPlaneCall{
-		method: http.MethodPut, path: "/agent-proxies/" + url.PathEscape(resolved), who: who, body: payload,
+		method: http.MethodPut, path: collection + "/" + url.PathEscape(resolved), who: who, body: payload,
 	})
 	return err
 }
