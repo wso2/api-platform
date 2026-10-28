@@ -188,8 +188,9 @@ func (t *Topology) URLAt(component string, ordinal int, endpoint string) (string
 // reach an endpoint on this block's component. A shared component is attached to every block's
 // network, where the alias InternalURL uses can name a container in each block; this address
 // qualifies the container's name with this block's network. A compose stack's container is named
-// by the service that serves the endpoint. A shared component is reached on its own alias, which
-// only it has.
+// by the service that serves the endpoint, so a component whose service another stack in the block
+// also runs has no address only it answers to, and is refused. A shared component is reached on
+// its own alias, which only it has.
 func (t *Topology) CallbackURL(component, endpoint string) (string, error) {
 	inst, err := t.Component(component)
 	if err != nil {
@@ -210,6 +211,12 @@ func (t *Topology) CallbackURL(component, endpoint string) (string, error) {
 		}
 		if e, found := def.Endpoint(endpoint); found {
 			name = stack.endpointService(e)
+		}
+		for label, other := range t.stacks {
+			if label != inst.Label() && other.runsService(name) {
+				return "", fmt.Errorf("runtime: %s and %s both run the %q service in block %q, so no address reaches %s alone",
+					inst.Label(), label, name, blockName(t.Block), inst.Label())
+			}
 		}
 	}
 	return inst.InternalURLAs(t.network.qualifiedName(name), endpoint)

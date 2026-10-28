@@ -121,7 +121,7 @@ func TestCallbackURL(t *testing.T) {
 		Block: block, Instances: components.NewSet(), stacks: map[string]*ComposeStack{},
 		network: &Network{name: "6f1c2b9e-net", block: "billing"},
 	}
-	add := func(def *components.Definition, ordinal, replicas int) {
+	add := func(topo *Topology, def *components.Definition, ordinal, replicas int) {
 		inst, err := components.NewInstance(def, ordinal, replicas, "127.0.0.1", nil)
 		require.NoError(t, err)
 		require.NoError(t, topo.Instances.Add(inst))
@@ -129,11 +129,18 @@ func TestCallbackURL(t *testing.T) {
 			topo.stacks[inst.Label()] = &ComposeStack{Instance: inst, def: def, suffix: instanceSuffix(ordinal, replicas)}
 		}
 	}
-	add(container, 0, 1)
-	add(testbench, 0, 1)
-	add(apiportal.APIPortal(), 0, 1)
-	add(apiportal.APIPortalOtherOrg(), 0, 1)
-	add(gateway, 1, 2)
+	add(topo, container, 0, 1)
+	add(topo, testbench, 0, 1)
+	add(topo, apiportal.APIPortal(), 0, 1)
+	add(topo, gateway, 1, 2)
+	newTopology := func() *Topology {
+		return &Topology{Block: block, Instances: components.NewSet(), stacks: map[string]*ComposeStack{}, network: topo.network}
+	}
+	otherOrg := newTopology()
+	add(otherOrg, apiportal.APIPortalOtherOrg(), 0, 1)
+	foreignOrg := newTopology()
+	add(foreignOrg, apiportal.APIPortal(), 0, 1)
+	add(foreignOrg, apiportal.APIPortalOtherOrg(), 0, 1)
 
 	tests := []struct {
 		name, component, endpoint, want string
@@ -144,8 +151,6 @@ func TestCallbackURL(t *testing.T) {
 			component: "testbench", endpoint: "stripe", want: "http://testbench:3022"},
 		{name: "the API Portal the billing steps call back is named by its service",
 			component: "api-portal", endpoint: "https", want: "https://api-portal.6f1c2b9e-net:9543"},
-		{name: "a compose component is named by its service, not its alias",
-			component: "api-portal-other-org", endpoint: "https", want: "https://api-portal.6f1c2b9e-net:9543"},
 		{name: "a replica's primary service carries its instance suffix",
 			component: "gateway", endpoint: "admin", want: "http://gateway-controller-2.6f1c2b9e-net:9090"},
 		{name: "an endpoint is named by the service that serves it",
@@ -158,6 +163,19 @@ func TestCallbackURL(t *testing.T) {
 			require.Equal(t, tt.want, got)
 		})
 	}
+
+	t.Run("a compose component is named by its service, not its alias", func(t *testing.T) {
+		got, err := otherOrg.CallbackURL("api-portal-other-org", "https")
+		require.NoError(t, err)
+		require.Equal(t, "https://api-portal.6f1c2b9e-net:9543", got)
+	})
+
+	t.Run("two compose components running the same service have no address of their own", func(t *testing.T) {
+		for _, component := range []string{"api-portal", "api-portal-other-org"} {
+			_, err := foreignOrg.CallbackURL(component, "https")
+			require.ErrorContains(t, err, `both run the "api-portal" service`)
+		}
+	})
 
 	t.Run("an unknown component or endpoint is reported", func(t *testing.T) {
 		_, err := topo.CallbackURL("missing", "https")

@@ -28,6 +28,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -792,6 +793,22 @@ func (c *ComposeStack) endpointService(e components.Endpoint) string {
 		service = e.Service
 	}
 	return service + c.suffix
+}
+
+// runsService reports whether this stack runs a service named name on the block network.
+func (c *ComposeStack) runsService(name string) bool {
+	if c == nil || c.def == nil || c.def.Compose == nil {
+		return false
+	}
+	if c.PrimaryService() == name || slices.Contains(c.Services(), name) {
+		return true
+	}
+	for _, e := range c.def.Endpoints {
+		if c.endpointService(e) == name {
+			return true
+		}
+	}
+	return false
 }
 
 func (c *ComposeStack) serviceContainer(ctx context.Context, service string) (testcontainers.Container, error) {
