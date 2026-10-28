@@ -615,7 +615,7 @@ func (r *PublicationRepo) PromoteDraftToPublication(artifactUUID, apiPortalUUID,
 	if !currentUpdatedAt.Equal(draftUpdatedAt) {
 		return nil, false, apperror.APIPublicationDraftChanged.New()
 	}
-	if err := r.refreshSelectionCopies(tx, orgUUID, draftUUID, snapshotAt, plans, docs); err != nil {
+	if err := r.refreshSelectionCopies(tx, orgUUID, draftUUID, actor, snapshotAt, plans, docs); err != nil {
 		return nil, false, err
 	}
 
@@ -670,16 +670,15 @@ func (r *PublicationRepo) PromoteDraftToPublication(artifactUUID, apiPortalUUID,
 
 // refreshSelectionCopies rewrites the copy columns of publicationUUID's mapping
 // rows from plans and docs, stamps them with snapshotAt, and deletes the rows
-// that are not in either list.
-func (r *PublicationRepo) refreshSelectionCopies(tx *sql.Tx, orgUUID, publicationUUID string, snapshotAt time.Time, plans, docs []model.PublicationSelection) error {
+// that are not in either list. A selection with no mapping row yet is inserted:
+// a plan or document deleted and recreated under the same handle while the
+// listing was pushed resolves to a new UUID, and would otherwise be pruned with
+// nothing in its place.
+func (r *PublicationRepo) refreshSelectionCopies(tx *sql.Tx, orgUUID, publicationUUID, actor string, snapshotAt time.Time, plans, docs []model.PublicationSelection) error {
 	planUUIDs := make([]string, 0, len(plans))
 	for _, plan := range plans {
 		planUUIDs = append(planUUIDs, plan.UUID)
-		updateQuery := `
-			UPDATE api_publication_plan_mappings SET plan_handle = ?, display_name = ?, created_at = ?
-			WHERE organization_uuid = ? AND publication_uuid = ? AND subscription_plan_uuid = ?
-		`
-		if _, err := tx.Exec(r.db.Rebind(updateQuery), plan.Handle, plan.DisplayName, snapshotAt, orgUUID, publicationUUID, plan.UUID); err != nil {
+		if err := r.upsertSelectionCopy(tx, "api_publication_plan_mappings", "subscription_plan_uuid", "plan_handle", orgUUID, publicationUUID, actor, snapshotAt, plan); err != nil {
 			return fmt.Errorf("failed to refresh publication plan mapping: %w", err)
 		}
 	}
@@ -690,15 +689,34 @@ func (r *PublicationRepo) refreshSelectionCopies(tx *sql.Tx, orgUUID, publicatio
 	docUUIDs := make([]string, 0, len(docs))
 	for _, doc := range docs {
 		docUUIDs = append(docUUIDs, doc.UUID)
-		updateQuery := `
-			UPDATE api_publication_doc_mappings SET doc_handle = ?, display_name = ?, created_at = ?
-			WHERE organization_uuid = ? AND publication_uuid = ? AND doc_uuid = ?
-		`
-		if _, err := tx.Exec(r.db.Rebind(updateQuery), doc.Handle, doc.DisplayName, snapshotAt, orgUUID, publicationUUID, doc.UUID); err != nil {
+		if err := r.upsertSelectionCopy(tx, "api_publication_doc_mappings", "doc_uuid", "doc_handle", orgUUID, publicationUUID, actor, snapshotAt, doc); err != nil {
 			return fmt.Errorf("failed to refresh publication document mapping: %w", err)
 		}
 	}
 	return r.deleteMappingsNotIn(tx, "api_publication_doc_mappings", "doc_uuid", orgUUID, publicationUUID, docUUIDs)
+}
+
+// upsertSelectionCopy refreshes the mapping row of sel in one mapping table, or inserts it
+// when there is none. table and the column names are fixed identifiers from the caller,
+// never request input.
+func (r *PublicationRepo) upsertSelectionCopy(tx *sql.Tx, table, pointerColumn, handleColumn, orgUUID, publicationUUID, actor string, snapshotAt time.Time, sel model.PublicationSelection) error {
+	updateQuery := "UPDATE " + table + " SET " + handleColumn + " = ?, display_name = ?, created_at = ? " +
+		"WHERE organization_uuid = ? AND publication_uuid = ? AND " + pointerColumn + " = ?"
+	result, err := tx.Exec(r.db.Rebind(updateQuery), sel.Handle, sel.DisplayName, snapshotAt, orgUUID, publicationUUID, sel.UUID)
+	if err != nil {
+		return err
+	}
+	updated, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if updated > 0 {
+		return nil
+	}
+	insertQuery := "INSERT INTO " + table + " (organization_uuid, publication_uuid, " + pointerColumn + ", " + handleColumn + ", display_name, created_by, created_at) " +
+		"VALUES (?, ?, ?, ?, ?, ?, ?)"
+	_, err = tx.Exec(r.db.Rebind(insertQuery), orgUUID, publicationUUID, sel.UUID, sel.Handle, sel.DisplayName, actor, snapshotAt)
+	return err
 }
 
 // deleteMappingsNotIn removes the rows of one mapping table whose pointer column
