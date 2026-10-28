@@ -74,6 +74,8 @@ policies:
     gomodule: github.com/wso2/gateway-controllers/policies/oauth2-token-exchange@v0
   - name: opaque-token-auth
     gomodule: github.com/wso2/gateway-controllers/policies/opaque-token-auth@v1
+  - name: opa-policy
+    gomodule: github.com/wso2/gateway-controllers/policies/opa-policy@v0
   - name: openai-to-anthropic-transformer
     gomodule: github.com/wso2/gateway-controllers/policies/openai-to-anthropic-transformer@v0
   - name: openai-to-azure-openai-transformer
