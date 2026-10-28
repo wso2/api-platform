@@ -1,0 +1,18 @@
+# Request tracing exported over OTLP/HTTP to the block's otel-collector, with the OTel analytics
+# publisher sending its log records to the same collector so a record can be joined to its trace.
+[analytics]
+enabled = true
+enabled_publishers = ["otel"]
+
+[analytics.publishers.otel]
+endpoint = "http://otel-collector:4318/v1/logs"
+allow_insecure_transport = true
+flush_interval = "500ms"
+
+[tracing]
+enabled = true
+protocol = "http"
+endpoint = "otel-collector:4318"
+insecure = true
+batch_timeout = "200ms"
+sampling_rate = 1.0

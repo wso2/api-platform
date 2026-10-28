@@ -20,7 +20,6 @@
 //
 //	GET  /test/spans?traceId=<hex>   spans received, flattened, optionally of one trace
 //	GET  /test/logs?traceId=<hex>    log records received, optionally of one trace
-//	POST /test/reset                 forget everything received
 //	GET  /test/health
 package main
 
@@ -111,12 +110,6 @@ func main() {
 	api := http.NewServeMux()
 	api.HandleFunc("GET /test/health", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte("ok"))
-	})
-	api.HandleFunc("POST /test/reset", func(w http.ResponseWriter, _ *http.Request) {
-		st.mu.Lock()
-		st.spans, st.logs = nil, nil
-		st.mu.Unlock()
-		w.WriteHeader(http.StatusNoContent)
 	})
 	api.HandleFunc("GET /test/spans", func(w http.ResponseWriter, r *http.Request) {
 		traceID := r.URL.Query().Get("traceId")

@@ -162,43 +162,14 @@ pricing_file = "/home/wso2/conf/llm-pricing/model_prices.json"
 # =============================================================================
 
 [analytics]
-# Overridden by the tracing runs (docker-compose.test.tracing.override.yaml): off to
-# exercise the bodies the engine reads for GenAI spans alone, or the otel publisher
-# to check that analytics records carry their trace.
-enabled = '{{ env "IT_ANALYTICS_ENABLED" "true" }}'
+enabled = true
 allow_payloads = false
 send_request_body = false
 send_response_body = false
-enabled_publishers = ['{{ env "IT_ANALYTICS_PUBLISHER" "moesif" }}']
+enabled_publishers = ["moesif"]
 
 [analytics.publishers.moesif]
 application_id = "test-application-id"
 moesif_base_url = "http://mock-analytics-collector:8080"
 publish_interval = 2
 timer_wakeup_seconds = 1
-
-[analytics.publishers.otel]
-endpoint = "http://it-mock-otlp-collector:4318/v1/logs"
-# The IT's mock collector, on the test network.
-allow_insecure_transport = true
-flush_interval = "500ms"
-
-# =============================================================================
-# TRACING CONFIGURATION
-# =============================================================================
-# Off in the default suite; the tracing runs turn it on through the environment
-# (docker-compose.test.tracing.override.yaml, make test-tracing).
-
-[tracing]
-enabled = '{{ env "IT_TRACING_ENABLED" "false" }}'
-protocol = '{{ env "IT_TRACING_PROTOCOL" "grpc" }}'
-endpoint = '{{ env "IT_TRACING_ENDPOINT" "it-mock-otlp-collector:4317" }}'
-insecure = true
-batch_timeout = "200ms"
-max_export_batch_size = 512
-sampling_rate = 1.0
-
-[tracing.genai]
-enabled = true
-capture_content = '{{ env "IT_TRACING_CAPTURE_CONTENT" "false" }}'
-max_content_bytes = 16384

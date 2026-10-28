@@ -1120,6 +1120,7 @@ func (g *Gateway) register(sc *godog.ScenarioContext) {
 	g.registerMTLSObservabilitySteps(sc)
 	g.registerA2AClientSteps(sc)
 	g.registerAgentSteps(sc)
+	g.registerTracingSteps(sc)
 	// Request state is runner-scoped, so clear it before each scenario.
 	sc.Before(func(ctx context.Context, _ *godog.Scenario) (context.Context, error) {
 		if err := tcontext.Set(ctx, keyGatewaySpecVersion, gatewaySpecVersionForVersion(gatewayVersion(g.topo))); err != nil {
@@ -1672,6 +1673,8 @@ var serviceEndpoints = map[string]struct {
 	// The A2A agent behind every Agent, addressed directly so a scenario can compare what the
 	// gateway serves with what the agent itself serves.
 	"a2a-trip-planner": {component: "a2a-trip-planner", endpoint: "http"},
+	// The OTLP collector a tracing block's gateway exports to, read back by trace id.
+	"otel-collector": {component: "otel-collector", endpoint: "api"},
 }
 
 // serviceURL resolves a feature's service name and path to a URL on the running topology.

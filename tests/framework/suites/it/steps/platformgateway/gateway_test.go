@@ -4168,3 +4168,67 @@ func TestWaitForAnalyticsEventWaitsForTheStatus(t *testing.T) {
 	defer cancel()
 	require.Error(t, gateway.waitForAnalyticsEvent(short, "/shop/v1.0/items/42", 500))
 }
+
+func TestStartTracePublishesASampledTraceparent(t *testing.T) {
+	ctx := tcontext.WithLocal(
+		tcontext.WithShared(context.Background(), tcontext.NewShared("block")),
+		tcontext.NewLocal("runner"),
+	)
+	_, err := scenarioTraceID(ctx)
+	require.Error(t, err, "a scenario that never started a trace has no trace id")
+
+	require.NoError(t, startTrace(ctx))
+	id, err := scenarioTraceID(ctx)
+	require.NoError(t, err)
+	require.Regexp(t, `^[0-9a-f]{32}$`, id)
+	traceparent, ok := tcontext.Get(ctx, keyTraceparent)
+	require.True(t, ok)
+	require.Regexp(t, `^00-`+id+`-[0-9a-f]{16}-01$`, traceparent)
+
+	require.NoError(t, startTrace(ctx))
+	next, err := scenarioTraceID(ctx)
+	require.NoError(t, err)
+	require.NotEqual(t, id, next, "each trace gets its own id")
+}
+
+func TestTraceSpanHelpers(t *testing.T) {
+	spans := []collectedSpan{
+		{SpanID: "r", Name: "ingress", Service: "router"},
+		{SpanID: "p", ParentSpanID: "r", Name: "external_processing.process", Service: "policy-engine"},
+		{SpanID: "c", ParentSpanID: "p", Name: "chat gpt-4o", Kind: "CLIENT"},
+		{SpanID: "o", ParentSpanID: "missing", Name: "orphan"},
+	}
+	require.Len(t, spansNamed(spans, "chat gpt-4o"), 1)
+	require.Empty(t, spansNamed(spans, "absent"))
+	require.Empty(t, spansNamed(nil, "chat gpt-4o"))
+
+	require.True(t, hasChildOf(spans, "chat gpt-4o", "external_processing.process", false))
+	require.False(t, hasChildOf(spans, "chat gpt-4o", "ingress", false), "a grandparent is not a parent")
+	require.True(t, hasChildOf(spans, "external_processing.process", "router", true))
+	require.False(t, hasChildOf(spans, "external_processing.process", "policy-engine", true))
+	require.False(t, hasChildOf(spans, "orphan", "ingress", false), "a parent that never arrived")
+	require.False(t, hasChildOf(spans, "absent", "ingress", false))
+}
+
+func TestAttrTextSpellsValuesAsAFeatureDoes(t *testing.T) {
+	require.Equal(t, "", attrText(nil))
+	require.Equal(t, "chat", attrText("chat"))
+	require.Equal(t, "19", attrText(float64(19)))
+	require.Equal(t, "0.5", attrText(0.5))
+	require.Equal(t, "true", attrText(true))
+	require.Equal(t, `["stop"]`, attrText([]any{"stop"}))
+}
+
+func TestChatBodyOfSize(t *testing.T) {
+	body, err := chatBodyOfSize(1 << 20)
+	require.NoError(t, err)
+	require.Len(t, body, 1<<20)
+	require.True(t, json.Valid(body))
+
+	smallest, err := chatBodyOfSize(len(`{"model":"gpt-4o-mini","messages":[{"role":"user","content":""}]}`))
+	require.NoError(t, err)
+	require.True(t, json.Valid(smallest))
+
+	_, err = chatBodyOfSize(10)
+	require.Error(t, err)
+}

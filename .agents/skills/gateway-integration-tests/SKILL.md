@@ -96,26 +96,6 @@ IT_FEATURE_PATHS=features/health.feature,features/api_deploy.feature,features/<t
 This mirrors how the feature runs inside the full default suite (where it executes
 after ~40 other features).
 
-### Tracing runs (not in the default suite)
-
-The tracing features need tracing turned on, which the default suite leaves off. Their
-Makefile targets layer `docker-compose.test.tracing.override.yaml` on the base stack. That
-override adds `it-mock-otlp-collector`, which the steps read spans back from at
-`http://localhost:8089/test/spans`, and `it-mock-llm-stream`, an LLM backend that
-really streams:
-
-```bash
-cd gateway/it
-make test-tracing             # features/tracing.feature over OTLP/gRPC, analytics off
-make test-tracing-http        # the same over OTLP/HTTP
-make test-tracing-analytics   # features/tracing-analytics.feature with the otel analytics publisher
-```
-
-The tracing run turns analytics off. The analytics system policy also makes the engine read AI
-route bodies, so with it on, the reads `[tracing.genai]` adds by itself would go untested. To
-look at the spans of a failed run, query the collector before `make clean`:
-`curl -s localhost:8089/test/spans | jq '.[].name'`.
-
 ## Step 3: Troubleshoot a failure
 
 When scenarios fail, find the **root cause** — do not just rerun. Work through:
