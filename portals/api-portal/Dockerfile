@@ -54,6 +54,10 @@ RUN --mount=type=bind,from=coverage-scripts,source=instrument-browser-coverage.j
         NODE_PATH=/tmp/coverage-npm-cache/node_modules node /tmp/instrument-browser-coverage.js src/scripts; \
     fi
 
+# Remove the npm CLI bundled with the base image. The entrypoint runs node directly,
+# so npm/npx are never used at runtime (the coverage step above is the last use).
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
+
 # Expose the application port
 EXPOSE 9543
 
