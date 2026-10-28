@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { alpha, Box, PageTitle, Stack, Tab, Tabs } from '@wso2/oxygen-ui';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
@@ -70,7 +70,6 @@ import {
   planNamesOf,
   resolveDraftFormValues,
   sameDraftFormValues,
-  toggleSelection,
   validateDraftFormValues,
   validateThumbnailFile,
   type DraftFormField,
@@ -171,21 +170,6 @@ const messages = defineMessages({
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.draftSavedDetailsOnly',
     defaultMessage: 'Details saved. The specification has an error and was not saved.',
   },
-  inactivePlansBlock: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.inactivePlansBlock',
-    defaultMessage: 'Clear inactive plans to save or publish: {names}.',
-    description: 'Warning when Save Draft or Publish is blocked because the selection still holds inactive plans. {names} is a comma-separated list of plan names.',
-  },
-  deletedPlansBlock: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.deletedPlansBlock',
-    defaultMessage: 'Clear deleted plans from this listing to save or publish: {names}.',
-    description: 'Warning when Save Draft or Publish is blocked because the selection still holds deleted plans. {names} is a comma-separated list of the plan names stored with the selection.',
-  },
-  removedPlans: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.removedPlans',
-    defaultMessage: 'A selected subscription plan no longer exists and was removed from the selection.',
-    description: 'Notice when a plan deleted elsewhere is dropped from the selected plans.',
-  },
   published: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.published',
     defaultMessage: 'Published to {portalName}.',
@@ -228,10 +212,7 @@ const messages = defineMessages({
   },
 });
 
-/**
- * The banner's unsaved-changes warning: a tinted highlight on the text itself. An inline
- * span's padding does not take part in line layout, so it cannot make the banner larger.
- */
+/** Tinted highlight on the text; an inline span's padding does not affect line layout, so it can't grow the banner. */
 const unsaved = (text: ReactNode) => (
   <Box
     component="span"
@@ -271,19 +252,10 @@ const rethrowUnreported = (error: unknown): void => {
   if (!isApiError(error)) throw error;
 };
 
-/** The ids of `cleared` that `listed` still holds; a cleared item has nothing left to clear once the draft stops listing it. */
-const keepListed = (listed: { id: string }[]) => (cleared: string[]) => {
-  const kept = cleared.filter((id) => listed.some((item) => item.id === id));
-  return kept.length === cleared.length ? cleared : kept;
-};
-
-/** Takes out of one selection the ids the server no longer knows. */
-const withoutUnknownIds =
-  (field: 'docIds' | 'subscriptionPlanIds', isKnown: (id: string) => boolean) =>
-  (current: DraftFormValues): DraftFormValues => ({ ...current, [field]: current[field].filter(isKnown) });
-
-/** Names for a warning, quoted and comma-separated. */
-const quoted = (names: string[]) => names.map((name) => `"${name}"`).join(', ');
+/** Takes out of one selection the ids the draft cannot offer: ones the server no longer knows, or plans that are not active. */
+const withoutUnusableIds =
+  (field: 'docIds' | 'subscriptionPlanIds', isUsable: (id: string) => boolean) =>
+  (current: DraftFormValues): DraftFormValues => ({ ...current, [field]: current[field].filter(isUsable) });
 
 /** The fields that show a validation message. */
 const FORM_FIELDS: DraftFormField[] = ['displayName', 'version', 'productionUrl', 'sandboxUrl'];
@@ -294,16 +266,9 @@ type PublishTab = 'details' | 'specification' | 'subscriptionPlans' | 'documenta
 type PendingAction = 'idle' | 'saving' | 'publishing' | 'unpublishing' | 'deprecating';
 
 /**
- * The publish/unpublish/deprecate flow for one API on one API Portal.
- *
- * Save Draft always writes `.../draft`. It writes `.../draft/definition` only when the
- * specification parses (and says so when it doesn't), and `.../draft/thumbnail` and
- * `.../draft/landing-page` only when the one shown differs from the draft's. Publish needs
- * all of those saves to succeed before it calls `.../publish`, which takes no body and
- * publishes only what the draft already holds.
- *
- * No `ScopeGate`: this page is only reachable from the Portals listing's card,
- * which is already fully API-scoped.
+ * The publish/unpublish/deprecate flow for one API on one API Portal. Publish takes no body and
+ * publishes what the draft already holds, so every save must succeed first.
+ * No `ScopeGate`: only reachable from the Portals listing's card, which is already API-scoped.
  */
 export function PortalPublishPage() {
   return (
@@ -343,6 +308,7 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
   const { notify } = useNotifications();
   const { apiHandle: apiHandler, apiType } = target;
   const isGraphQL = target.definitionKind === 'graphql';
+  const defaultFormat: DefinitionFormat = isGraphQL ? 'graphql' : 'json';
 
   // Passed by the portal card that linked here; falls back to the handle on a
   // direct link or refresh, where there is no navigation state.
@@ -366,7 +332,7 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
   const [values, setValues] = useState<DraftFormValues>(emptyDraftFormValues);
   const [touched, setTouched] = useState<Partial<Record<DraftFormField, boolean>>>({});
   const [definitionText, setDefinitionText] = useState('');
-  const [definitionFormat, setDefinitionFormat] = useState<DefinitionFormat>(isGraphQL ? 'graphql' : 'json');
+  const [definitionFormat, setDefinitionFormat] = useState<DefinitionFormat>(defaultFormat);
   const [definitionParseError, setDefinitionParseError] = useState<string>();
   // The thumbnail shown, and the draft's own; saving sends it only when they differ.
   const [thumbnail, setThumbnail] = useState<Blob>();
@@ -388,12 +354,11 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
     definitionText: '',
     values: emptyDraftFormValues,
   });
-  // Deleted plans the user cleared; the draft still holds them until it is saved.
-  const [clearedDeletedIds, setClearedDeletedIds] = useState<string[]>([]);
   const [pendingAction, setPendingAction] = useState<PendingAction>('idle');
+  const busy = pendingAction !== 'idle';
   // An action saves in steps, each refetching these; they are shown once, when it ends.
-  const draft = useFrozenWhile(data.draft, pendingAction !== 'idle');
-  const publication = useFrozenWhile(data.publication, pendingAction !== 'idle');
+  const draft = useFrozenWhile(data.draft, busy);
+  const publication = useFrozenWhile(data.publication, busy);
   const [confirmingUnpublish, setConfirmingUnpublish] = useState(false);
   const [confirmingDeprecate, setConfirmingDeprecate] = useState(false);
   const [initialized, setInitialized] = useState(false);
@@ -415,28 +380,27 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
       thumbnail: data.seed.thumbnail?.blob,
       values: data.seed.values,
     });
-    setDefinitionFormat(data.seed.definition?.format ?? (isGraphQL ? 'graphql' : 'json'));
+    setDefinitionFormat(data.seed.definition?.format ?? defaultFormat);
     setInitialized(true);
-  }, [initialized, data.seed, isGraphQL]);
+  }, [initialized, data.seed, defaultFormat]);
 
-  // A cleared plan stays on screen until the refreshed draft no longer lists it; then it has nothing left to clear.
-  useEffect(() => {
-    const saved = draft ?? publication;
-    setClearedDeletedIds(keepListed(deletedPlansOf(saved)));
-  }, [draft, publication]);
+  // Not an edit to save: the draft never shows a dropped id, and the next save or publish leaves it out.
+  const dropFromSelection = useCallback((field: 'docIds' | 'subscriptionPlanIds', isUsable: (id: string) => boolean) => {
+    const without = withoutUnusableIds(field, isUsable);
+    setValues(without);
+    setSaved((current) => ({ ...current, values: without(current.values) }));
+  }, []);
 
-  // A plan deleted elsewhere has no card to clear but would still be submitted, so drop it and say so.
+  // The draft offers active plans only, so a plan deleted or deactivated elsewhere is dropped quietly
+  // rather than submitted (the server refuses an inactive one).
   useEffect(() => {
-    if (!initialized || !plansQuery.isSuccess) return;
-    const known = new Set(plansQuery.data.list.map((plan) => plan.id));
-    const isKnown = (id: string) => known.has(id);
-    if (values.subscriptionPlanIds.every(isKnown)) return;
-    const withoutUnknown = withoutUnknownIds('subscriptionPlanIds', isKnown);
-    setValues(withoutUnknown);
-    // The server dropped it from the saved draft too, so this isn't an edit to save.
-    setSaved((current) => ({ ...current, values: withoutUnknown(current.values) }));
-    notify(intl.formatMessage(messages.removedPlans), 'warning');
-  }, [initialized, intl, notify, plansQuery.data, plansQuery.isSuccess, values.subscriptionPlanIds]);
+    // Not while it is being read again: an older cached list may predate a plan activated since.
+    if (!initialized || !plansQuery.isSuccess || plansQuery.isFetching) return;
+    const active = new Set(plansQuery.data.list.filter((plan) => plan.status === 'ACTIVE').map((plan) => plan.id));
+    const isActive = (id: string) => active.has(id);
+    if (values.subscriptionPlanIds.every(isActive)) return;
+    dropFromSelection('subscriptionPlanIds', isActive);
+  }, [dropFromSelection, initialized, plansQuery.data, plansQuery.isFetching, plansQuery.isSuccess, values.subscriptionPlanIds]);
 
   // A document deleted elsewhere is not listed but would still be submitted, so drop it quietly.
   // Read only while a selection is held; the Documentation tab shares this query.
@@ -449,11 +413,8 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
     const known = new Set(documentsQuery.data.list.map((doc) => doc.id));
     const isKnown = (id: string) => known.has(id);
     if (values.docIds.every(isKnown)) return;
-    const withoutUnknown = withoutUnknownIds('docIds', isKnown);
-    setValues(withoutUnknown);
-    // The server dropped it from the saved draft too, so this isn't an edit to save.
-    setSaved((current) => ({ ...current, values: withoutUnknown(current.values) }));
-  }, [initialized, documentsQuery.data, documentsQuery.isFetching, documentsQuery.isSuccess, values.docIds]);
+    dropFromSelection('docIds', isKnown);
+  }, [dropFromSelection, initialized, documentsQuery.data, documentsQuery.isFetching, documentsQuery.isSuccess, values.docIds]);
 
   const thumbnailUrl = useObjectUrl(thumbnail);
   const publishedThumbnailUrl = useObjectUrl(data.publishedThumbnail);
@@ -478,10 +439,8 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
   const pick = chosenView === 'published' && !isPublished ? undefined : chosenView;
   const view: PublicationVersionTone = pick ?? (isPublished ? 'published' : 'draft');
   const showingPublished = view === 'published';
-  const savedDeletedPlans = deletedPlansOf(draft ?? publication);
   const hasUnsavedChanges =
     definitionText !== saved.definitionText ||
-    clearedDeletedIds.some((id) => savedDeletedPlans.some((plan) => plan.id === id)) ||
     thumbnail !== saved.thumbnail ||
     landingPage !== saved.landingPage ||
     !sameDraftFormValues(values, saved.values);
@@ -501,14 +460,7 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
     setValues(next);
   };
 
-  /**
-   * Reads the definition buffer into the object the server expects. A draft
-   * is a work in progress — whether it's a genuinely valid, complete OpenAPI
-   * document is checked only at publish, not here — so this only blocks the
-   * save when the text isn't even parseable JSON/YAML, since that can't be
-   * sent as a definition at all. A GraphQL SDL is sent as its own text, and
-   * blocked the same way when it doesn't parse as a schema.
-   */
+  /** The definition as the server expects it. Only unparseable JSON/YAML (or SDL) blocks the save; completeness is checked at publish. */
   const parseDefinition = (): DraftDefinitionBody | undefined => {
     if (definitionFormat === 'graphql') {
       const sdlResult = definitionText.trim() === '' ? undefined : parseGraphQLSdl(definitionText);
@@ -533,13 +485,7 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
     return result.spec;
   };
 
-  /**
-   * The definition save 404s when the draft is gone (published from another
-   * tab or user in the moment since the details were saved). The server's own
-   * text doesn't tell the user what to do, so that case gets a clearer one; the
-   * mutation opts out of the global snackbar, so every other failure is reported
-   * here with the server's message.
-   */
+  /** A draft that is gone (published from another tab) gets a clearer message than the server's 404 text; the mutations opt out of the global snackbar, so other failures are reported here. */
   const reportingMissingDraft = async <T,>(call: Promise<T>): Promise<T> => {
     try {
       return await call;
@@ -569,11 +515,7 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
     return true;
   };
 
-  /**
-   * Saves the Specification definition alone. False, untouched, when the
-   * buffer doesn't parse — a content PUT would 404 anyway if the draft
-   * doesn't exist yet, which `reportingMissingDraft` turns into a clear message.
-   */
+  /** Saves the Specification definition alone. False, untouched, when the buffer doesn't parse. */
   const saveDefinition = async (): Promise<boolean> => {
     const definitionDocument = parseDefinition();
     if (!definitionDocument) return false;
@@ -589,12 +531,7 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
     return true;
   };
 
-  /**
-   * Saves the thumbnail alone, unless the draft already stores the one shown. A draft that
-   * has none yet cannot take one (the save 404s), which `reportingMissingDraft` explains.
-   * An image the server refuses is dropped for the last saved one, so it can't fail every later
-   * save; any other failure keeps it, so the next save retries it.
-   */
+  /** Saves the thumbnail unless the draft already stores it. A refused image reverts to the last saved one so it can't fail every later save; any other failure keeps it for retry. */
   const saveThumbnail = async () => {
     if (!thumbnail || thumbnail === storedThumbnail) return;
     try {
@@ -609,10 +546,7 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
     setSaved((current) => ({ ...current, thumbnail }));
   };
 
-  /**
-   * Saves the landing page alone, unless the draft already stores the one shown. A draft that
-   * has none yet cannot take one (the save 404s), which `reportingMissingDraft` explains.
-   */
+  /** Saves the landing page unless the draft already stores it. */
   const saveLandingPage = async () => {
     if (landingPage === undefined || landingPage === storedLandingPage) return;
     await reportingMissingDraft(
@@ -664,28 +598,8 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
     }
   };
 
-  // The server refuses a selection that holds an inactive or a deleted plan; stop here and show the plans
-  // instead of failing the request. The inactive check is skipped while the plan list is unavailable (the server still checks).
-  const blockedByUnusableSelections = (): boolean => {
-    const selected = new Set(values.subscriptionPlanIds);
-    const inactive = (plansQuery.data?.list ?? []).filter(
-      (plan) => plan.id && selected.has(plan.id) && plan.status !== 'ACTIVE',
-    );
-    const deleted = savedDeletedPlans.filter((plan) => !clearedDeletedIds.includes(plan.id));
-    if (inactive.length === 0 && deleted.length === 0) return false;
-    setTab('subscriptionPlans');
-    if (inactive.length > 0) {
-      notify(intl.formatMessage(messages.inactivePlansBlock, { names: quoted(inactive.map((plan) => plan.displayName)) }), 'warning');
-    }
-    if (deleted.length > 0) {
-      notify(intl.formatMessage(messages.deletedPlansBlock, { names: quoted(deleted.map((plan) => plan.displayName)) }), 'warning');
-    }
-    return true;
-  };
-
   const handleSaveDraft = () =>
     runAction('saving', async () => {
-      if (blockedByUnusableSelections()) return;
       if (!(await saveDetails())) return;
       const definitionSaved = await saveDefinition();
       await saveAssets();
@@ -702,7 +616,6 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
 
   const handlePublish = () =>
     runAction('publishing', async () => {
-      if (blockedByUnusableSelections()) return;
       if (!(await saveDetails())) return;
       // Publish requires a saved, parseable definition — never proceed on a
       // partial save, which would publish whatever definition was already
@@ -815,7 +728,7 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
       case 'details':
         return (
           <ApiDetailsTab
-            disabled={pendingAction !== 'idle'}
+            disabled={busy}
             errors={{
               displayName: errorFor('displayName'),
               version: errorFor('version'),
@@ -833,11 +746,8 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
       case 'subscriptionPlans':
         return (
           <SubscriptionPlansTab
-            clearedDeletedIds={clearedDeletedIds}
-            deletedPlans={savedDeletedPlans}
-            disabled={pendingAction !== 'idle'}
+            disabled={busy}
             onChange={handleChange}
-            onToggleDeleted={(planId) => setClearedDeletedIds((current) => toggleSelection(current, planId))}
             savedPlanIds={savedPlanIds}
             values={values}
           />
@@ -847,7 +757,7 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
           <DocumentsTab
             apiHandle={apiHandler}
             apiType={apiType}
-            disabled={pendingAction !== 'idle'}
+            disabled={busy}
             onChange={handleChange}
             values={values}
           />
@@ -855,7 +765,7 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
       case 'landingPage':
         return (
           <LandingPageTab
-            disabled={pendingAction !== 'idle'}
+            disabled={busy}
             failed={landingPageFailed}
             generated={generatedLandingPage !== undefined && landingPage === generatedLandingPage}
             onChange={setLandingPage}
@@ -866,7 +776,7 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
       case 'specification':
         return (
           <SpecificationTab
-            disabled={pendingAction !== 'idle'}
+            disabled={busy}
             format={definitionFormat}
             onFormatChange={setDefinitionFormat}
             onChange={(text) => {
@@ -918,7 +828,7 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
               <Tab label={intl.formatMessage(messages.tabLandingPage)} value="landingPage" />
             </Tabs>
             <PublicationVersionToggle
-              disabled={pendingAction !== 'idle'}
+              disabled={busy}
               onChange={setChosenView}
               publishedAvailable={isPublished}
               value={view}

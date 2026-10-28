@@ -18,46 +18,87 @@
 
 import { describe, expect, it } from 'vitest';
 
+import { aSubscriptionPlan } from '@/test/msw';
 import { renderWithProviders, screen } from '@/test/utils';
+import { getPlanLimitDisplay } from '../utils/subscriptionPlanLimit';
 import { PlanCard } from './PlanCard';
 
-const CHIPS = ['Deleted', 'Inactive', 'Edited'];
+const limit = getPlanLimitDisplay(aSubscriptionPlan({ displayName: 'Plan', id: 'plan' })); // no limits: "Unlimited"
 
-const cases = [
-  { deleted: false, edited: false, expected: undefined, inactive: false },
-  { deleted: false, edited: true, expected: 'Edited', inactive: false },
-  { deleted: false, edited: false, expected: 'Inactive', inactive: true },
-  { deleted: false, edited: true, expected: 'Inactive', inactive: true },
-  { deleted: true, edited: false, expected: 'Deleted', inactive: false },
-  { deleted: true, edited: true, expected: 'Deleted', inactive: false },
-  { deleted: true, edited: false, expected: 'Deleted', inactive: true },
-  { deleted: true, edited: true, expected: 'Deleted', inactive: true },
-];
+const chipsOf = (card: HTMLElement) => [...card.querySelectorAll('.MuiChip-root')];
 
-describe('PlanCard status chip', () => {
-  for (const readOnly of [false, true]) {
-    for (const { expected, ...flags } of cases) {
-      const label = Object.entries(flags)
-        .filter(([, on]) => on)
-        .map(([name]) => name)
-        .join(' + ');
-      it(`${readOnly ? 'published' : 'draft'}, ${label || 'no state'}: shows ${(!readOnly && expected === 'Edited' ? undefined : expected) ?? 'no chip'}`, () => {
-        renderWithProviders(<PlanCard {...flags} displayName="Plan" readOnly={readOnly} selected />);
-
-        const shown = CHIPS.filter((chip) => screen.queryByText(chip, { selector: '.MuiChip-label' }));
-        // The draft reads the live plan, so it never says Edited; only the published view does.
-        const visible = !readOnly && expected === 'Edited' ? undefined : expected;
-        expect(shown).toEqual(visible ? [visible] : []);
-      });
-    }
-  }
-
-  it('draft: a cleared card is unticked, says it will be removed, and keeps its chip', () => {
-    renderWithProviders(<PlanCard cleared inactive displayName="Plan" selected={false} />);
+describe('PlanCard', () => {
+  it('draft: shows only the name and the limit, whatever the plan has become', () => {
+    renderWithProviders(
+      <PlanCard deleted displayName="Plan" edited inactive limit={limit} selected />,
+    );
 
     const card = screen.getByRole('checkbox', { name: /Plan/ });
-    expect(card).toHaveAttribute('aria-checked', 'false');
-    expect(card).toHaveTextContent('Will be removed when you save.');
-    expect(card).toHaveTextContent('Inactive');
+    expect(chipsOf(card)).toHaveLength(0);
+    expect(card.querySelector('del')).toBeNull();
+    expect(card).toHaveTextContent('Unlimited');
+  });
+
+  it('published: a plain plan has no chip and keeps its limit', () => {
+    renderWithProviders(<PlanCard displayName="Plan" limit={limit} readOnly selected />);
+
+    const card = screen.getByRole('checkbox', { name: /Plan/ });
+    expect(chipsOf(card)).toHaveLength(0);
+    expect(card).toHaveTextContent('Unlimited');
+  });
+
+  it('published: an edited plan gets an outlined chip with no icon, right after the name', () => {
+    renderWithProviders(<PlanCard displayName="Plan" edited limit={limit} readOnly selected />);
+
+    const card = screen.getByRole('checkbox', { name: /Plan/ });
+    const [chip] = chipsOf(card);
+    expect(chip).toHaveTextContent('Edited');
+    expect(chip).toHaveClass('MuiChip-outlined', 'MuiChip-colorWarning');
+    expect(chip.querySelector('svg')).toBeNull();
+    expect(screen.getByText('Plan').nextElementSibling).toBe(chip);
+    // The card could only show the plan's current limit, so it shows none.
+    expect(card).not.toHaveTextContent('Unlimited');
+    expect(card).toHaveTextContent('Edited since last publish');
+  });
+
+  it('published: an inactive plan gets an outlined chip and keeps its limit', () => {
+    renderWithProviders(<PlanCard displayName="Plan" inactive limit={limit} readOnly selected />);
+
+    const card = screen.getByRole('checkbox', { name: /Plan/ });
+    const chips = chipsOf(card);
+    expect(card).toHaveTextContent('Unlimited');
+    expect(chips).toHaveLength(1);
+    expect(chips[0]).toHaveTextContent('Inactive');
+    expect(chips[0]).toHaveClass('MuiChip-outlined', 'MuiChip-colorDefault');
+    expect(chips[0].querySelector('svg')).toBeNull();
+    expect(card).not.toHaveTextContent('since last publish');
+  });
+
+  it('published: an inactive plan that was also edited wears Inactive but hides its limit', () => {
+    renderWithProviders(<PlanCard displayName="Plan" edited inactive limit={limit} readOnly selected />);
+
+    const card = screen.getByRole('checkbox', { name: /Plan/ });
+    const chips = chipsOf(card);
+    expect(chips).toHaveLength(1);
+    expect(chips[0]).toHaveTextContent('Inactive');
+    expect(card).not.toHaveTextContent('Unlimited');
+    expect(card).toHaveTextContent('Edited since last publish');
+  });
+
+  it('published: a deleted plan has its name struck through and no chip', () => {
+    renderWithProviders(<PlanCard deleted displayName="Plan" edited inactive readOnly selected />);
+
+    const card = screen.getByRole('checkbox', { name: /Plan/ });
+    expect(chipsOf(card)).toHaveLength(0);
+    expect(card.querySelector('del')).toHaveTextContent('Plan');
+    // The listing still holds it, so it stays ticked even though it is greyed.
+    expect(card).toHaveAttribute('aria-checked', 'true');
+    expect(card).toHaveTextContent('Deleted since last publish');
+  });
+
+  it('draft: shows no since-last-publish line', () => {
+    renderWithProviders(<PlanCard deleted displayName="Plan" edited limit={limit} selected />);
+
+    expect(screen.getByRole('checkbox', { name: /Plan/ })).not.toHaveTextContent('since last publish');
   });
 });
