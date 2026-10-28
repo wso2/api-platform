@@ -933,6 +933,38 @@ blocks:
         features:
           - features/gateway/observability/mcp_analytics.feature
 
+  # Request tracing with GenAI, MCP and agent spans, exported over OTLP/gRPC to the block's own
+  # otel-collector. Every scenario reads back only the trace it started.
+  - name: tracing
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/tracing.toml
+        db: sqlite
+      - name: testbench
+      - name: a2a-trip-planner
+      - name: otel-collector
+    runners:
+      - name: tracing
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/observability/tracing.feature
+
+  # The same export over OTLP/HTTP, with the OTel analytics publisher writing to the collector.
+  - name: tracing-otlp-http
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/tracing-otlp-http.toml
+        db: sqlite
+      - name: testbench
+      - name: otel-collector
+    runners:
+      - name: tracing-otlp-http
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/observability/tracing_otlp_http.feature
+
   - name: backend-timeout
     parallel: 2
     components:

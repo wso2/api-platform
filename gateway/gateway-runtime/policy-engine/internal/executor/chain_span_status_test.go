@@ -173,7 +173,7 @@ func TestConditionEvalFailure_SpanStatus_AllPhases(t *testing.T) {
 		chunk := &policy.StreamBody{Chunk: []byte("hello"), EndOfStream: true}
 
 		_, err := executor.ExecuteStreamingRequestPolicies(context.Background(), []policy.Policy{pol}, reqCtx, chunk,
-			[]policy.PolicySpec{newPolicySpec("streq", "v1.0.0", true, conditionStr())}, "api", "route", true)
+			[]policy.PolicySpec{newPolicySpec("streq", "v1.0.0", true, conditionStr())}, "api", "route", true, nil)
 
 		require.Error(t, err)
 		span := findSpanByName(sr.Ended(), "policy.request.streq")
@@ -195,7 +195,7 @@ func TestConditionEvalFailure_SpanStatus_AllPhases(t *testing.T) {
 		chunk := &policy.StreamBody{Chunk: []byte("hello"), EndOfStream: true}
 
 		_, err := executor.ExecuteStreamingResponsePolicies(context.Background(), []policy.Policy{pol}, respCtx, chunk,
-			[]policy.PolicySpec{newPolicySpec("stresp", "v1.0.0", true, conditionStr())}, "api", "route", true)
+			[]policy.PolicySpec{newPolicySpec("stresp", "v1.0.0", true, conditionStr())}, "api", "route", true, nil)
 
 		require.Error(t, err)
 		span := findSpanByName(sr.Ended(), "policy.response.stresp")

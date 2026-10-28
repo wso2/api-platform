@@ -31,6 +31,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
@@ -48,20 +49,7 @@ func InitTracer(cfg *config.Config) (func(), error) {
 		return func() {}, nil
 	}
 
-	endpoint := cfg.TracingConfig.Endpoint
-	if endpoint == "" {
-		endpoint = "otel-collector:4317"
-	}
-
-	slog.InfoContext(ctx, "Initializing OTLP exporter", "endpoint", endpoint)
-
-	// Create OTLP exporter with configured options
-	opts := []otlptracegrpc.Option{otlptracegrpc.WithEndpoint(endpoint)}
-	if cfg.TracingConfig.Insecure {
-		opts = append(opts, otlptracegrpc.WithInsecure())
-	}
-
-	exporter, err := otlptracegrpc.New(ctx, opts...)
+	exporter, err := newExporter(ctx, cfg.TracingConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -124,12 +112,7 @@ func InitTracer(cfg *config.Config) (func(), error) {
 		samplingRate = 1.0 // Default to sampling all requests
 	}
 
-	var sampler sdktrace.Sampler
-	if samplingRate >= 1.0 {
-		sampler = sdktrace.AlwaysSample()
-	} else {
-		sampler = sdktrace.TraceIDRatioBased(samplingRate)
-	}
+	sampler := newSampler(samplingRate)
 
 	slog.InfoContext(ctx, "Using trace sampler", "sampling_rate", samplingRate)
 
@@ -167,16 +150,35 @@ func InitTracer(cfg *config.Config) (func(), error) {
 	}, nil
 }
 
+// newExporter creates the OTLP span exporter for the configured transport.
+func newExporter(ctx context.Context, cfg config.TracingConfig) (sdktrace.SpanExporter, error) {
+	endpoint := cfg.Endpoint
+	if cfg.Protocol == config.TracingProtocolHTTP {
+		if endpoint == "" {
+			endpoint = "otel-collector:4318"
+		}
+		slog.InfoContext(ctx, "Initializing OTLP exporter", "endpoint", endpoint, "protocol", cfg.Protocol)
+		opts := []otlptracehttp.Option{otlptracehttp.WithEndpoint(endpoint)}
+		if cfg.Insecure {
+			opts = append(opts, otlptracehttp.WithInsecure())
+		}
+		return otlptracehttp.New(ctx, opts...)
+	}
+	if endpoint == "" {
+		endpoint = "otel-collector:4317"
+	}
+	slog.InfoContext(ctx, "Initializing OTLP exporter", "endpoint", endpoint, "protocol", config.TracingProtocolGRPC)
+	opts := []otlptracegrpc.Option{otlptracegrpc.WithEndpoint(endpoint)}
+	if cfg.Insecure {
+		opts = append(opts, otlptracegrpc.WithInsecure())
+	}
+	return otlptracegrpc.New(ctx, opts...)
+}
+
 // ExtractTraceContext extracts the W3C Trace Context (traceparent/tracestate)
-// from the given carrier and returns a context parented on the remote span.
-//
-// The carrier must be built from the downstream HTTP request headers that Envoy
-// delivers inside the RequestHeaders ProcessingRequest body — NOT from the
-// ext_proc gRPC stream metadata. The request's traceparent travels in the
-// message body, and the long-lived bidirectional ext_proc stream sets its gRPC
-// metadata only once at stream establishment, so it never carries a per-request
-// traceparent. Reading it from stream metadata always yielded an empty span
-// context, producing a new (unparented) root trace for every request.
+// from the given carrier and returns a context parented on the remote span. It
+// is agnostic to the carrier's source; the ext_proc server builds it from the
+// stream's gRPC metadata first and the RequestHeaders body as the fallback.
 //
 // When the carrier holds no valid traceparent, the input context is returned
 // unchanged and the caller will start a fresh root trace — an ordinary,
@@ -187,10 +189,50 @@ func ExtractTraceContext(ctx context.Context, carrier propagation.TextMapCarrier
 
 	span := trace.SpanContextFromContext(newCtx)
 	if span.IsValid() {
-		slog.DebugContext(ctx, "Extracted trace context from request headers", "trace_id", span.TraceID().String())
+		slog.DebugContext(ctx, "Extracted trace context", "trace_id", span.TraceID().String())
 	} else {
-		slog.DebugContext(ctx, "No trace context in request headers; starting a new root trace")
+		slog.DebugContext(ctx, "No trace context found; starting a new root trace")
 	}
 
 	return newCtx
+}
+
+// newSampler applies samplingRate only to traces that start in the engine. For a
+// request with a parent, the parent's sampled flag decides, so the engine records
+// exactly the requests Envoy records.
+func newSampler(samplingRate float64) sdktrace.Sampler {
+	if samplingRate >= 1.0 {
+		return sdktrace.ParentBased(sdktrace.AlwaysSample())
+	}
+	return sdktrace.ParentBased(sdktrace.TraceIDRatioBased(samplingRate))
+}
+
+// traceLogHandler stamps error records with the trace and span IDs of the span
+// active in the logging call's context, so an error log can be found in its trace.
+type traceLogHandler struct {
+	slog.Handler
+}
+
+func NewTraceLogHandler(next slog.Handler) slog.Handler {
+	return traceLogHandler{next}
+}
+
+func (h traceLogHandler) Handle(ctx context.Context, r slog.Record) error {
+	if r.Level >= slog.LevelError {
+		if sc := trace.SpanContextFromContext(ctx); sc.IsValid() {
+			r.AddAttrs(
+				slog.String("trace_id", sc.TraceID().String()),
+				slog.String("span_id", sc.SpanID().String()),
+			)
+		}
+	}
+	return h.Handler.Handle(ctx, r)
+}
+
+func (h traceLogHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	return traceLogHandler{h.Handler.WithAttrs(attrs)}
+}
+
+func (h traceLogHandler) WithGroup(name string) slog.Handler {
+	return traceLogHandler{h.Handler.WithGroup(name)}
 }

@@ -779,13 +779,24 @@ type MetricsConfig struct {
 	Port int `koanf:"port"`
 }
 
+// OTLP transports for TracingConfig.Protocol.
+const (
+	TracingProtocolGRPC = "grpc"
+	TracingProtocolHTTP = "http"
+)
+
 // TracingConfig holds OpenTelemetry tracing configuration
 type TracingConfig struct {
 	// Enabled toggles tracing on/off
 	Enabled bool `koanf:"enabled"`
 
-	// Endpoint is the OTLP gRPC endpoint (host:port)
+	// Endpoint is the OTLP collector endpoint (host:port): the gRPC port (4317) for
+	// protocol "grpc", the HTTP port (4318) for protocol "http".
 	Endpoint string `koanf:"endpoint"`
+
+	// Protocol is the OTLP transport: "grpc" (default) or "http" (OTLP/HTTP protobuf,
+	// POST /v1/traces). Collectors that accept only OTLP/HTTP need "http".
+	Protocol string `koanf:"protocol"`
 
 	// Insecure indicates whether to use an insecure connection (no TLS)
 	Insecure bool `koanf:"insecure"`
@@ -811,6 +822,27 @@ type TracingConfig struct {
 	// the environment (OTEL_RESOURCE_ATTRIBUTES) are still honoured, but these
 	// take precedence.
 	ResourceAttributes map[string]string `koanf:"resource_attributes"`
+
+	// GenAI configures the GenAI, MCP and A2A client spans ([tracing.genai]).
+	GenAI GenAITracingConfig `koanf:"genai"`
+}
+
+// GenAITracingConfig configures the spans the policy engine records for calls to
+// LLM providers, MCP servers and A2A agents, following the OpenTelemetry GenAI and
+// MCP semantic conventions. It applies only when tracing is enabled.
+type GenAITracingConfig struct {
+	// Enabled records a client span per LLM, MCP or A2A call. To read token usage
+	// and the response metadata, the engine reads the request and response bodies
+	// of LLM provider and MCP routes even when no policy needs them.
+	Enabled bool `koanf:"enabled"`
+
+	// CaptureContent records prompts, completions and tool arguments and results
+	// on the spans. Off by default: they can hold personal or confidential data.
+	CaptureContent bool `koanf:"capture_content"`
+
+	// MaxContentBytes caps each captured content attribute; longer content is
+	// truncated.
+	MaxContentBytes int `koanf:"max_content_bytes"`
 }
 
 // ServerConfig holds ext_proc server configuration
@@ -1447,11 +1479,17 @@ func defaultConfig() *Config {
 		TracingConfig: TracingConfig{
 			Enabled:            false,
 			Endpoint:           "otel-collector:4317",
+			Protocol:           TracingProtocolGRPC,
 			Insecure:           true,
 			ServiceVersion:     "1.0.0",
 			BatchTimeout:       1 * time.Second,
 			MaxExportBatchSize: 512,
 			SamplingRate:       1.0,
+			GenAI: GenAITracingConfig{
+				Enabled:         true,
+				CaptureContent:  false,
+				MaxContentBytes: 16384,
+			},
 		},
 	}
 }
@@ -1673,6 +1711,9 @@ func (c *Config) Validate() error {
 		if c.TracingConfig.Endpoint == "" {
 			return fmt.Errorf("tracing.endpoint is required when tracing is enabled")
 		}
+		if p := c.TracingConfig.Protocol; p != "" && p != TracingProtocolGRPC && p != TracingProtocolHTTP {
+			return fmt.Errorf("tracing.protocol must be %q or %q, got %q", TracingProtocolGRPC, TracingProtocolHTTP, p)
+		}
 		if c.TracingConfig.BatchTimeout <= 0 {
 			return fmt.Errorf("tracing.batch_timeout must be positive")
 		}
@@ -1681,6 +1722,9 @@ func (c *Config) Validate() error {
 		}
 		if c.TracingConfig.SamplingRate <= 0.0 || c.TracingConfig.SamplingRate > 1.0 {
 			return fmt.Errorf("tracing.sampling_rate must be > 0.0 and <= 1.0, got %f", c.TracingConfig.SamplingRate)
+		}
+		if c.TracingConfig.GenAI.Enabled && c.TracingConfig.GenAI.MaxContentBytes <= 0 {
+			return fmt.Errorf("tracing.genai.max_content_bytes must be positive, got %d", c.TracingConfig.GenAI.MaxContentBytes)
 		}
 	}
 

@@ -19,6 +19,7 @@
 package openai
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -85,6 +86,54 @@ func TestOpenAIStreamErrorTrigger(t *testing.T) {
 	frames := dataFrames(t, body)
 	require.Contains(t, frames[len(frames)-1], "error")
 	require.NotContains(t, body, "[DONE]")
+}
+
+func TestOpenAIStreamUsageChunk(t *testing.T) {
+	plain := dataFrames(t, send(t, "/openai/v1/chat/completions", `{"stream":true}`).Body.String())
+	require.NotContains(t, plain[len(plain)-1], "usage", "usage is sent only when the request asks for it")
+
+	frames := dataFrames(t, send(t, "/openai/v1/chat/completions",
+		`{"stream":true,"stream_options":{"include_usage":true}}`).Body.String())
+	require.Len(t, frames, len(plain)+1)
+	last := frames[len(frames)-1]
+	require.Empty(t, last["choices"])
+	require.Equal(t, map[string]any{
+		"prompt_tokens": float64(10), "completion_tokens": float64(len(replyWords())),
+		"total_tokens": float64(10 + len(replyWords())),
+	}, last["usage"])
+	require.Equal(t, "stop", frames[len(frames)-2]["choices"].([]any)[0].(map[string]any)["finish_reason"])
+}
+
+// flushCounter records how many times a stream was flushed.
+type flushCounter struct {
+	*httptest.ResponseRecorder
+	flushes int
+}
+
+func (f *flushCounter) Flush() { f.flushes++ }
+
+func TestPacedStreamWritesEachEventOnItsOwn(t *testing.T) {
+	stream := func(body string) *flushCounter {
+		rec := &flushCounter{ResponseRecorder: httptest.NewRecorder()}
+		New().Handler().ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodPost,
+			"/openai/v1/chat/completions", strings.NewReader(body)))
+		return rec
+	}
+	whole := stream(`{"stream":true,"messages":[{"role":"user","content":"hi"}]}`)
+	require.Equal(t, 1, whole.flushes)
+
+	paced := stream(`{"stream":true,"messages":[{"role":"user","content":"STREAM_PACED"}]}`)
+	require.Equal(t, strings.Count(paced.Body.String(), "\n\n"), paced.flushes, "one flush per event")
+	require.Equal(t, whole.Body.String(), paced.Body.String(), "pacing changes the timing, not the bytes")
+}
+
+func TestPacedStreamStopsWhenTheClientGoesAway(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	rec := httptest.NewRecorder()
+	New().Handler().ServeHTTP(rec, httptest.NewRequestWithContext(ctx, http.MethodPost,
+		"/openai/v1/chat/completions", strings.NewReader(`{"stream":true,"note":"STREAM_PACED"}`)))
+	require.Len(t, dataFrames(t, rec.Body.String()), 1, "only the event written before the first pause")
 }
 
 func TestAnthropicStream(t *testing.T) {

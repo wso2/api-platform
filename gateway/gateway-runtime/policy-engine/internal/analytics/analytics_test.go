@@ -1572,3 +1572,21 @@ func TestPrepareAnalyticEvent_DestinationDropsQueryString(t *testing.T) {
 		})
 	}
 }
+
+// The trace context the ext_proc handler stamped reaches the event (#3738).
+func TestPrepareAnalyticEvent_TraceContext(t *testing.T) {
+	analytics := NewAnalytics(&config.Config{})
+
+	event := analytics.prepareAnalyticEvent(createLogEntryWithMetadata(map[string]string{
+		APINameKey: "TestAPI",
+		TraceIDKey: "4bf92f3577b34da6a3ce929d0e0e4736",
+		SpanIDKey:  "00f067aa0ba902b7",
+	}))
+	require.NotNil(t, event)
+	assert.Equal(t, "4bf92f3577b34da6a3ce929d0e0e4736", event.MetaInfo.TraceID)
+	assert.Equal(t, "00f067aa0ba902b7", event.MetaInfo.SpanID)
+
+	untraced := analytics.prepareAnalyticEvent(createLogEntryWithMetadata(map[string]string{APINameKey: "TestAPI"}))
+	require.NotNil(t, untraced)
+	assert.Empty(t, untraced.MetaInfo.TraceID)
+}

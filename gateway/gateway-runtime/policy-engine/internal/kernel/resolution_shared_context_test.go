@@ -325,10 +325,10 @@ func TestResolutionFailure_CarriesTheAPIIdentityAndReasonToAnalytics(t *testing.
 
 // ─── The resolution reaches traces ───────────────────────────────────────────
 
-// contextId/taskId/messageId are caller-controlled and unbounded, which is precisely
-// why they belong on a span — per-request storage — and not on a metric label, whose
-// cardinality they would multiply.
-func TestRecordResolutionAttributes_CarriesTheProtocolRequestFacts(t *testing.T) {
+// Only closed-set facts reach a span (#3737). contextId/taskId/messageId are
+// caller-controlled and unique per request, so each would mint one index entry in the
+// tracing backend; they belong on the invoke_agent span.
+func TestRecordResolutionAttributes_KeepsOnlySpanSafeFacts(t *testing.T) {
 	f := newResolutionFixture(t)
 	ec := newPolicyExecutionContext(f.server, "POST|/rpc|example.com", nil)
 	ec.resolverName = "a2a"
@@ -336,6 +336,7 @@ func TestRecordResolutionAttributes_CarriesTheProtocolRequestFacts(t *testing.T)
 	ec.operation = "SendMessage"
 	ec.resolutionAttributes = map[string]string{
 		"a2a.transport":  "JSONRPC",
+		"a2a.operation":  "SendMessage",
 		"a2a.context.id": "ctx-1",
 		"a2a.task.id":    "task-1",
 	}
@@ -348,8 +349,31 @@ func TestRecordResolutionAttributes_CarriesTheProtocolRequestFacts(t *testing.T)
 		constants.AttrPolicyChainKey:    "POST|/SendMessage|example.com",
 		constants.AttrResolvedOperation: "SendMessage",
 		"a2a.transport":                 "JSONRPC",
-		"a2a.context.id":                "ctx-1",
-		"a2a.task.id":                   "task-1",
+		"a2a.operation":                 "SendMessage",
+	}, span.attrs)
+}
+
+// A tool name and a JSON-RPC id are open sets; the method and capability are not.
+func TestRecordResolutionAttributes_DropsMCPToolNameAndJSONRPCID(t *testing.T) {
+	f := newResolutionFixture(t)
+	ec := newPolicyExecutionContext(f.server, "POST|/mcp|example.com", nil)
+	ec.resolverName = "mcp"
+	ec.resolutionAttributes = map[string]string{
+		"mcp.body.method":             "tools/call",
+		"mcp.body.capability.type":    "tool",
+		"mcp.body.capability.name":    "get_invoice",
+		"mcp.body.jsonrpc.id":         "7",
+		"mcp.body.client.name":        "claude",
+		"mcp.body.request.state.hash": "abc",
+	}
+
+	span := &recordingSpan{}
+	ec.recordResolutionAttributes(span)
+
+	assert.Equal(t, map[string]string{
+		constants.AttrResolverName: "mcp",
+		"mcp.body.method":          "tools/call",
+		"mcp.body.capability.type": "tool",
 	}, span.attrs)
 }
 
