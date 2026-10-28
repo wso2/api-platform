@@ -151,7 +151,8 @@ func TestEveryBlockSweepsEveryEngine(t *testing.T) {
 // CLI runner moved into platform-api-core and now sweeps every engine with it. The API
 // definition block sweeps platform-api's engines instead: its subject is the control plane's
 // store, and the gateway only serves what was imported. So does the custom policy block: the
-// gateway reads the policy definitions from files, and the sync rules are the control plane's.
+// gateway reads the policy definitions from files, and the sync rules are the control plane's. The tracing blocks run on SQLite:
+// their subject is the spans the data plane exports.
 var singleEngineBlocks = map[string]components.DBType{
 	"platform-api-gateway-api-portal":                 components.Postgres,
 	"multigateway":                                    components.SQLite,
@@ -168,6 +169,9 @@ var singleEngineBlocks = map[string]components.DBType{
 	"health-dependency-outage": components.Postgres,
 	// Its scenarios refuse health probes, which do not depend on the gateway's database.
 	"health-restricted-clients": components.SQLite,
+	// Their subject is the spans the data plane exports, not the store.
+	"tracing":           components.SQLite,
+	"tracing-otlp-http": components.SQLite,
 }
 
 const coverageSubject = "platform-gateway"
