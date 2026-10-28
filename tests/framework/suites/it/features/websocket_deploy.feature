@@ -278,3 +278,34 @@ Feature: WebSocket API CRUD and connectivity
 
     When I delete the WebSocket API "${CTX:wsName}"
     Then the response should be successful
+
+  # A channel route matches only a WebSocket handshake. A plain GET to the same path must get
+  # the gateway's own 404 and never reach the backend; before the route required
+  # "Upgrade: websocket" it was proxied as an ordinary HTTP request, and this testbench backend
+  # answered such a request with 400. The handshake runs first so a 404 here cannot mean the
+  # route had not yet propagated.
+  Scenario: A plain GET to a channel path is not proxied to the backend
+    Given I generate a unique resource name from "websocket-plain-get" and store it as "wsName"
+    And I generate a unique value from "websocket-plain-get" and store it as "wsDisplayName"
+    And I generate a unique API version from "websocket-plain-get" and store it as "wsVersion"
+    And I generate a unique API context from "/websocket-plain-get" and store it as "wsContext"
+    When I create WebSocket API from "resources/templates/websocket-api.yaml" with values:
+      | apiVersion             | ${CTX:gatewaySpecVersion}      |
+      | name                   | ${CTX:wsName}                  |
+      | spec.displayName       | ${CTX:wsDisplayName}           |
+      | spec.version           | ${CTX:wsVersion}               |
+      | spec.context           | ${CTX:wsContext}               |
+      | spec.upstream.main.url | ws://testbench:3024/ws         |
+      | spec.channels          | [{"path":"/rooms"}]            |
+    Then the response should be successful
+
+    When I open a WebSocket connection to "${CTX:wsContext}/rooms" until status 101
+    Then the response status code should be 101
+    When I close the WebSocket connection
+
+    When I send a "GET" request to "${CTX:wsContext}/rooms"
+    Then the response status code should be 404
+    And the response body should contain "Not Found"
+
+    When I delete the WebSocket API "${CTX:wsName}"
+    Then the response should be successful

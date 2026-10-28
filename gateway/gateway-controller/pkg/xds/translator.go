@@ -498,6 +498,15 @@ func (t *Translator) createRouteFromRDC(routeKey string, rdcRoute *models.Route,
 	// Build the request matchers (shared with direct-response routes so both kinds of
 	// route match identical requests).
 	r.Match.Headers = buildMatchHeaders(method, rdcRoute)
+	// A WebSocketApi channel route matches only a WebSocket handshake. Without
+	// this, a plain GET to the channel path would match too and be proxied to
+	// the WebSocket backend as an ordinary HTTP request, exposing whatever else
+	// that backend serves on the path. A plain request now falls through to the
+	// gateway's 404 catch-all. Envoy rewrites an RFC 8441 extended CONNECT into
+	// this same HTTP/1-style upgrade before routing, so HTTP/2 handshakes match.
+	if rdcRoute.UpgradeWebSocket {
+		r.Match.Headers = append(r.Match.Headers, websocketUpgradeHeaderMatcher())
+	}
 	t.setMatchPathSpecifier(r.Match, fullPath, operationPath, rdcRoute)
 	setRouteHTTPRoute(r, fullPath)
 
@@ -789,6 +798,22 @@ func (t *Translator) createWeightedCluster(
 	return c, nil
 }
 
+// websocketUpgradeHeaderMatcher matches a request asking for the WebSocket
+// upgrade ("Upgrade: websocket", any case). Envoy drops the Upgrade header from
+// a request that is not a real upgrade before routing, so this matches only an
+// actual handshake.
+func websocketUpgradeHeaderMatcher() *route.HeaderMatcher {
+	return &route.HeaderMatcher{
+		Name: "upgrade",
+		HeaderMatchSpecifier: &route.HeaderMatcher_StringMatch{
+			StringMatch: &matcher.StringMatcher{
+				MatchPattern: &matcher.StringMatcher_Exact{Exact: websocketUpgradeType},
+				IgnoreCase:   true,
+			},
+		},
+	}
+}
+
 // buildNoAPIFoundUpgradeRoute builds the catch-all for WebSocket handshakes to
 // paths no API serves. It matches only requests carrying "Upgrade: websocket"
 // and enables that upgrade, so the router answers 404 for the never-defined
@@ -799,15 +824,7 @@ func buildNoAPIFoundUpgradeRoute(extProcDisabled *anypb.Any) *route.Route {
 		Name: constants.GatewayNoAPIFoundUpgradeRouteName,
 		Match: &route.RouteMatch{
 			PathSpecifier: &route.RouteMatch_Prefix{Prefix: "/"},
-			Headers: []*route.HeaderMatcher{{
-				Name: "upgrade",
-				HeaderMatchSpecifier: &route.HeaderMatcher_StringMatch{
-					StringMatch: &matcher.StringMatcher{
-						MatchPattern: &matcher.StringMatcher_Exact{Exact: websocketUpgradeType},
-						IgnoreCase:   true,
-					},
-				},
-			}},
+			Headers:       []*route.HeaderMatcher{websocketUpgradeHeaderMatcher()},
 		},
 		Action: &route.Route_Route{
 			Route: &route.RouteAction{

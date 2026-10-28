@@ -185,6 +185,7 @@ spec:
 	routes := websocketRoutesFor(t, resources)
 	require.NotEmpty(t, routes, "guard: the REST route must exist for this assertion to mean anything")
 	for _, r := range routes {
+		assert.False(t, hasWebSocketUpgradeMatcher(r), "REST route %s must not require an Upgrade header", r.GetName())
 		assert.Empty(t, r.GetRoute().GetUpgradeConfigs(),
 			"REST route %s must not be upgradable", r.GetName())
 	}
@@ -363,6 +364,8 @@ func websocketRoutesFor(t *testing.T, resources map[resource.Type][]types.Resour
 // a channel serves a handshake, and any other method on that path is not one.
 func assertMatchesGetOnly(t *testing.T, r *route.Route) {
 	t.Helper()
+	assert.True(t, hasWebSocketUpgradeMatcher(r),
+		"route %s must require \"Upgrade: websocket\", or a plain GET reaches the WebSocket backend", r.GetName())
 	for _, h := range r.GetMatch().GetHeaders() {
 		if h.GetName() == ":method" {
 			assert.Equal(t, "GET", h.GetStringMatch().GetExact(),
@@ -371,4 +374,15 @@ func assertMatchesGetOnly(t *testing.T, r *route.Route) {
 		}
 	}
 	t.Fatalf("route %s has no :method matcher, so it would route any method", r.GetName())
+}
+
+// hasWebSocketUpgradeMatcher reports whether the route only matches requests
+// carrying "Upgrade: websocket" (any case).
+func hasWebSocketUpgradeMatcher(r *route.Route) bool {
+	for _, h := range r.GetMatch().GetHeaders() {
+		if h.GetName() == "upgrade" && h.GetStringMatch().GetExact() == "websocket" && h.GetStringMatch().GetIgnoreCase() {
+			return true
+		}
+	}
+	return false
 }

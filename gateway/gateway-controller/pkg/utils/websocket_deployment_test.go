@@ -109,6 +109,20 @@ func TestValidateWebSocketAPIConfig_ChannelPathRules(t *testing.T) {
 	}{
 		{"empty", "   ", "spec.channels[0].path"},
 		{"no leading slash", "rooms", "spec.channels[0].path"},
+		// A wildcard would become a prefix match that upgrades every path below it.
+		{"wildcard", "/rooms/*", "spec.channels[0].path"},
+		{"root wildcard", "/*", "spec.channels[0].path"},
+		// These describe paths a normalised request never carries.
+		{"query", "/rooms?admin=1", "spec.channels[0].path"},
+		{"fragment", "/rooms#x", "spec.channels[0].path"},
+		{"dot-dot segment", "/rooms/../admin", "spec.channels[0].path"},
+		{"dot segment", "/./rooms", "spec.channels[0].path"},
+		{"empty segment", "/rooms//general", "spec.channels[0].path"},
+		{"unbalanced braces", "/rooms/{roomId", "spec.channels[0].path"},
+		{"empty parameter name", "/rooms/{}", "spec.channels[0].path"},
+		{"reversed braces", "/rooms/}x{", "spec.channels[0].path"},
+		{"space", "/my room", "spec.channels[0].path"},
+		{"non-ASCII", "/räume", "spec.channels[0].path"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			_, _, errs := validateWebSocketAPIConfig(validWebSocketAPI(func(spec *api.WebSocketAPIConfigData) {
@@ -116,6 +130,46 @@ func TestValidateWebSocketAPIConfig_ChannelPathRules(t *testing.T) {
 			}))
 			assert.True(t, fieldsWithErrors(errs)[tc.field], "got %+v", errs)
 		})
+	}
+
+	for _, path := range []string{"/", "/rooms/{roomId}", "/rooms/", "/a.b/c-d_e", "/rooms/{roomId}/messages", "/rooms/{room-id}", "/rooms/room-{id}", "/f/{a}-{b}", "/x%20y"} {
+		_, _, errs := validateWebSocketAPIConfig(validWebSocketAPI(func(spec *api.WebSocketAPIConfigData) {
+			spec.Channels = []api.WebSocketChannel{{Path: path}}
+		}))
+		assert.False(t, fieldsWithErrors(errs)["spec.channels[0].path"], "channel path %q should be accepted, got %+v", path, errs)
+	}
+}
+
+// Two channels that differ only in parameter names match the same requests, so
+// the second would never be used and its policies would silently not apply.
+// An exact path beside a parameterised one is allowed: the exact route wins.
+func TestValidateWebSocketAPIConfig_RejectsEquivalentChannelPaths(t *testing.T) {
+	_, _, errs := validateWebSocketAPIConfig(validWebSocketAPI(func(spec *api.WebSocketAPIConfigData) {
+		spec.Channels = []api.WebSocketChannel{{Path: "/rooms/{a}"}, {Path: "/rooms/{b}"}}
+	}))
+	assert.True(t, fieldsWithErrors(errs)["spec.channels[1].path"], "got %+v", errs)
+
+	_, _, errs = validateWebSocketAPIConfig(validWebSocketAPI(func(spec *api.WebSocketAPIConfigData) {
+		spec.Channels = []api.WebSocketChannel{{Path: "/rooms/general"}, {Path: "/rooms/{roomId}"}}
+	}))
+	assert.Empty(t, errs, "an exact channel beside a parameterised one is allowed")
+}
+
+// A channel may not claim a path the gateway serves on every virtual host, the
+// same reservation every other API kind honours, after $version is expanded and
+// dot segments are resolved.
+func TestValidateWebSocketAPIConfig_RejectsReservedGatewayPaths(t *testing.T) {
+	for _, tc := range []struct{ context, channel string }{
+		{"/_gateway-health", "/ready"},
+		{"/_gateway-health/$version", "/x"},
+		{"/", "/_gateway-health/healthy"},
+		{"/.well-known", "/jwks"},
+	} {
+		_, _, errs := validateWebSocketAPIConfig(validWebSocketAPI(func(spec *api.WebSocketAPIConfigData) {
+			spec.Context = tc.context
+			spec.Channels = []api.WebSocketChannel{{Path: tc.channel}}
+		}))
+		assert.True(t, fieldsWithErrors(errs)["spec.channels[0].path"], "context %q + channel %q must be rejected, got %+v", tc.context, tc.channel, errs)
 	}
 }
 

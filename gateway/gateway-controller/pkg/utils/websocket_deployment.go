@@ -202,7 +202,7 @@ func validateWebSocketAPIConfig(cfg any) (apiName, apiVersion string, validation
 		errors = append(errors, validateWebSocketUpstream("sandbox", spec.Upstream.Sandbox, defNames)...)
 	}
 
-	errors = append(errors, validateWebSocketChannels(spec.Channels)...)
+	errors = append(errors, validateWebSocketChannels(spec.Context, spec.Version, spec.Channels)...)
 	errors = append(errors, validateWebSocketVhosts(spec)...)
 
 	// Same rules as RestApi: timeout bounds the handshake (the route timeout does
@@ -286,13 +286,67 @@ func validateWebSocketVhosts(spec api.WebSocketAPIConfigData) []config.Validatio
 	return errors
 }
 
+// webSocketChannelParamPattern matches one {parameter} segment of a channel path.
+var webSocketChannelParamPattern = regexp.MustCompile(`\{[A-Za-z0-9_-]+\}`)
+
+// webSocketChannelPathCharsPattern is the set of characters a request path can
+// carry without percent-encoding (RFC 3986 pchar plus "/"), less "*".
+var webSocketChannelPathCharsPattern = regexp.MustCompile(`^[A-Za-z0-9\-._~!$&'()+,;=:@%/]*$`)
+
+// webSocketChannelShape returns the path with every parameter name erased, so
+// two channels that differ only in parameter names compare equal: they match
+// exactly the same requests, and the first route would shadow the second.
+func webSocketChannelShape(path string) string {
+	return webSocketChannelParamPattern.ReplaceAllString(path, "{}")
+}
+
+// webSocketChannelPathProblem returns why a channel path cannot be routed, or
+// "" when it can.
+func webSocketChannelPathProblem(path string) string {
+	if strings.ContainsAny(path, "*?#") {
+		return "Channel path must not contain '*', '?' or '#'; use {parameter} segments for variable parts"
+	}
+	if strings.Count(path, "{") != strings.Count(path, "}") {
+		return "Channel path has unbalanced braces in parameters"
+	}
+	// After the {parameter} segments are taken out, nothing else may be a brace,
+	// and every remaining character must be one a request path carries
+	// unencoded; anything else (a space, for instance) describes a path the
+	// router never sees, since it matches the encoded form.
+	literal := webSocketChannelParamPattern.ReplaceAllString(path, "")
+	if strings.ContainsAny(literal, "{}") {
+		return "Channel path parameters must be {name}, with a name of letters, digits, '_' or '-'"
+	}
+	if !webSocketChannelPathCharsPattern.MatchString(literal) {
+		return "Channel path may contain only letters, digits and the characters - . _ ~ ! $ & ' ( ) + , ; = : @ % /"
+	}
+	if path == "/" {
+		return ""
+	}
+	segments := strings.Split(strings.TrimPrefix(path, "/"), "/")
+	for i, segment := range segments {
+		if segment == "." || segment == ".." {
+			return "Channel path must not contain '.' or '..' segments"
+		}
+		if segment == "" && i != len(segments)-1 {
+			return "Channel path must not contain empty segments ('//')"
+		}
+	}
+	return ""
+}
+
 // validateWebSocketChannels enforces FR-003's channel rules: at least one
 // channel, each with a path, and no two channels sharing a path.
 //
 // Duplicate paths are rejected rather than last-one-wins because the routes they
 // generate are keyed by path: a duplicate would silently drop one channel's
 // policies while still appearing in the artifact.
-func validateWebSocketChannels(channels []api.WebSocketChannel) []config.ValidationError {
+//
+// A channel path is a literal path with optional {parameter} segments. A "*"
+// would become a prefix match that upgrades every path below it, "?" and "#"
+// and dot or empty segments describe a path no normalised request can carry,
+// and the full route path may not claim a path the gateway reserves for itself.
+func validateWebSocketChannels(context, version string, channels []api.WebSocketChannel) []config.ValidationError {
 	var errors []config.ValidationError
 
 	if len(channels) == 0 {
@@ -303,6 +357,7 @@ func validateWebSocketChannels(channels []api.WebSocketChannel) []config.Validat
 	}
 
 	seen := make(map[string]int, len(channels))
+	shapes := make(map[string]int, len(channels))
 	for i, channel := range channels {
 		field := fmt.Sprintf("spec.channels[%d].path", i)
 		path := strings.TrimSpace(channel.Path)
@@ -315,6 +370,15 @@ func validateWebSocketChannels(channels []api.WebSocketChannel) []config.Validat
 			errors = append(errors, config.ValidationError{Field: field, Message: "Channel path must start with '/'"})
 			continue
 		}
+		if msg := webSocketChannelPathProblem(path); msg != "" {
+			errors = append(errors, config.ValidationError{Field: field, Message: msg})
+			continue
+		}
+		fullPath := strings.TrimSuffix(strings.ReplaceAll(context, "$version", version), "/") + path
+		if reserved := config.ValidateNotReservedGatewayPath(field, fullPath); len(reserved) > 0 {
+			errors = append(errors, reserved...)
+			continue
+		}
 		if first, dup := seen[path]; dup {
 			errors = append(errors, config.ValidationError{
 				Field:   field,
@@ -323,6 +387,15 @@ func validateWebSocketChannels(channels []api.WebSocketChannel) []config.Validat
 			continue
 		}
 		seen[path] = i
+		if first, same := shapes[webSocketChannelShape(path)]; same {
+			errors = append(errors, config.ValidationError{
+				Field: field,
+				Message: fmt.Sprintf("Channel path %q matches the same requests as %q (spec.channels[%d]); only the first would ever be used",
+					path, strings.TrimSpace(channels[first].Path), first),
+			})
+			continue
+		}
+		shapes[webSocketChannelShape(path)] = i
 	}
 
 	return errors
