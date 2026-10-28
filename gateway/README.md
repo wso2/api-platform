@@ -77,7 +77,9 @@ connection, at-rest encryption, and how configuration is delivered — see
 make test
 
 # Integration tests: the gateway-core block of the integration framework (tests/framework)
-# on SQLite. The framework builds the gateway images from source.
+# on SQLite. The framework builds the gateway images from source; build the testbench image and
+# the ap CLI it also needs first (see tests/framework/README.md for the rest of the suite).
+make -C ../tests/framework testbench ap-cli
 make test-integration
 
 # The whole integration framework suite (every block and database)

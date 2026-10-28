@@ -52,10 +52,13 @@ export TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock
 unset TESTCONTAINERS_RYUK_DISABLED   # keep Ryuk: it removes what a killed run leaves behind
 ```
 
-Build the testbench image once (and again after changing `testbench/**`):
+Build the testbench image once (and again after changing `testbench/**`), and the `ap` CLI
+binary that the CLI runners (e.g. `ap-cli-gateway` in `gateway-core`) drive (again after
+changing `cli/src/**`):
 
 ```bash
 make -C tests/framework testbench
+make -C tests/framework ap-cli
 ```
 
 ## Step 2: Run the tests
@@ -139,6 +142,7 @@ Find the **root cause** — do not just rerun.
 | `reaper: … mkdir /Users/…/docker.sock: operation not supported` | Ryuk mounting the host socket path on a VM-backed Docker | Set `TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock` |
 | `"Started" matched 0 times` (Colima) | Docker environment incomplete | Set the variables in the README's "Docker environment" section |
 | Boot fails starting the testbench (image not found) | Testbench image not built | `make -C tests/framework testbench` |
+| `ap binary not found at …/cli/src/build/ap` | `ap` CLI not built | `make -C tests/framework ap-cli` |
 | Behaviour differs from current code | Run used released or stale images | Run without `-gateway-version` so the gateway is built from source |
 | `topology: no block matches <name> (available: …)` | Unknown block or variant name | Pick a name from the list the error prints |
 | `the suite executed NO scenarios` | The blocks matched, but no runner or feature did (e.g. a `-feature-tags` tag no selected block runs) | Check the feature's tag and that its runner is in the selected block |
