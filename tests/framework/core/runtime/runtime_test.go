@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"github.com/moby/moby/client"
 	"github.com/stretchr/testify/require"
+	"github.com/wso2/api-platform/tests/framework/core/catalog/apiportal"
 	"github.com/wso2/api-platform/tests/framework/core/catalog/platformgateway"
 	"github.com/wso2/api-platform/tests/framework/core/components"
 	"github.com/wso2/api-platform/tests/framework/core/logcapture"
@@ -133,9 +134,22 @@ func TestCallbackURL(t *testing.T) {
 		require.Equal(t, "http://testbench:3022", got)
 	})
 
-	t.Run("a compose stack is refused", func(t *testing.T) {
-		_, err := topo.CallbackURL("stack", "http")
-		require.ErrorContains(t, err, "compose stack")
+	t.Run("a compose stack's service is named by its block's network", func(t *testing.T) {
+		got, err := topo.CallbackURL("stack", "http")
+		require.NoError(t, err)
+		require.Equal(t, "http://stack.6f1c2b9e-net:80", got)
+	})
+
+	t.Run("the API Portal the billing steps call back is named by its block's network", func(t *testing.T) {
+		portals := components.NewSet()
+		inst, err := components.NewInstance(apiportal.APIPortal(), 0, 1, "127.0.0.1", nil)
+		require.NoError(t, err)
+		require.NoError(t, portals.Add(inst))
+		withPortal := &Topology{Block: block, Instances: portals, network: topo.network}
+
+		got, err := withPortal.CallbackURL("api-portal", "https")
+		require.NoError(t, err)
+		require.Equal(t, "https://api-portal.6f1c2b9e-net:9543", got)
 	})
 
 	t.Run("an unknown component or endpoint is reported", func(t *testing.T) {
@@ -155,19 +169,6 @@ func TestCallbackURL(t *testing.T) {
 		_, err := missing.CallbackURL("api-portal", "https")
 		require.ErrorContains(t, err, "topology is required")
 	})
-}
-
-func TestBuildRequestNamesTheContainerOnlyItsBlockNetworkKnows(t *testing.T) {
-	definition := &components.Definition{
-		Name: "api-portal", Image: components.ImageRef{Ref: "api-portal:test"}, Alias: "api-portal",
-		Endpoints: []components.Endpoint{{Name: "https", Port: 9543, Scheme: "https"}},
-	}
-	network := &Network{name: "6f1c2b9e-net", block: "billing"}
-
-	req, err := buildRequest(definition, Options{Network: network}, "api-portal", "amd64", 1)
-
-	require.NoError(t, err)
-	require.Equal(t, map[string][]string{"6f1c2b9e-net": {"api-portal", "api-portal.6f1c2b9e-net"}}, req.NetworkAliases)
 }
 
 func TestComposeStackCoverageServicesPreservesOutputNames(t *testing.T) {

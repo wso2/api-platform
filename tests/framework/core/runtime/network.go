@@ -72,11 +72,11 @@ func (n *Network) Block() string {
 	return n.block
 }
 
-// blockAlias is a second alias for a container on this network that no other network has. A
-// shared component is attached to every block's network, and the plain alias names a container
-// in each of them, so only this alias tells it which block's container to call.
-func (n *Network) blockAlias(alias string) string {
-	return alias + "." + n.name
+// qualifiedName returns name as only this network resolves it: Docker's DNS answers
+// <name>.<network> with the container that name refers to on that network. A shared component is
+// attached to every block's network, where a plain alias can refer to a container in each.
+func (n *Network) qualifiedName(name string) string {
+	return name + "." + n.name
 }
 
 // Remove tears down the network. It is safe to call repeatedly.

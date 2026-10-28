@@ -220,7 +220,7 @@ func buildRequest(
 		ExposedPorts:   exposed,
 		Env:            env,
 		Networks:       []string{opts.Network.Name()},
-		NetworkAliases: map[string][]string{opts.Network.Name(): {alias, opts.Network.blockAlias(alias)}},
+		NetworkAliases: map[string][]string{opts.Network.Name(): {alias}},
 		Files:          files,
 		WaitingFor:     strategy,
 		Labels: map[string]string{
