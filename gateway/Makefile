@@ -173,13 +173,17 @@ test-policy-engine: ## Test policy-engine
 	$(MAKE) -C gateway-runtime test
 
 # The integration framework builds the gateway images from source itself.
+# INTEGRATION_TEST_FLAGS passes extra suite flags, e.g. INTEGRATION_TEST_FLAGS=-logs to capture
+# container logs under IT_LOG_OUT.
+INTEGRATION_TEST_FLAGS ?=
+
 .PHONY: test-integration
 test-integration: ## Run the gateway-core integration tests on SQLite (tests/framework)
-	cd ../tests/framework && go test ./suites/it -count=1 -timeout=60m -blocks gateway-core/sqlite
+	cd ../tests/framework && go test ./suites/it -count=1 -timeout=60m -blocks gateway-core/sqlite $(INTEGRATION_TEST_FLAGS)
 
 .PHONY: test-integration-all
 test-integration-all: ## Run the whole integration framework suite (tests/framework)
-	cd ../tests/framework && go test ./suites/it -count=1 -timeout=90m
+	cd ../tests/framework && go test ./suites/it -count=1 -timeout=90m $(INTEGRATION_TEST_FLAGS)
 
 # Version Management Targets
 .PHONY: version-set

@@ -29,52 +29,33 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      # The gateway modules pin a published sdk/core; point them at this checkout's so the
+      # gateway is built and tested against the SDK under review.
       - name: Inject local SDK into gateway modules
         run: |
           cd gateway/gateway-runtime/policy-engine
-          go mod edit -replace github.com/wso2/api-platform/sdk=../../../sdk
+          go mod edit -replace github.com/wso2/api-platform/sdk/core=../../../sdk/core
 
           cd ../../gateway-builder
-          go mod edit -replace github.com/wso2/api-platform/sdk=../../sdk
+          go mod edit -replace github.com/wso2/api-platform/sdk/core=../../sdk/core
 
           cd ../gateway-controller
-          go mod edit -replace github.com/wso2/api-platform/sdk=../../sdk
-      - name: Build coverage-instrumented images
-        run: |
-          cd gateway
-          make build-coverage VERSION=test
+          go mod edit -replace github.com/wso2/api-platform/sdk/core=../../sdk/core
 
-      - name: Build mock server images
-        run: make -C tests/mock-servers build
+      - name: Build testbench image
+        run: make -C tests/framework testbench
 
-      - name: Build sample-service
-        run: |
-          cd samples/sample-service
-          make build
-
+      # The integration framework builds the gateway images from source, with the injected SDK.
       - name: Run gateway integration tests
-        run: |
-          cd gateway
-          make test-integration
+        env:
+          IT_LOG_OUT: ${{ github.workspace }}/tests/framework/suites/it/logs-out
+        run: make -C gateway test-integration INTEGRATION_TEST_FLAGS=-logs
 
-      - name: Debug on failure - Dump logs
-        if: failure()
-        run: |
-          echo "=== Docker Containers ==="
-          docker ps -a
-
-          echo ""
-          echo "=== gateway/it/logs Directory Contents ==="
-          if [ -d gateway/it/logs ]; then
-            if [ "$(ls -A gateway/it/logs)" ]; then
-              for f in gateway/it/logs/*; do
-                echo ""
-                echo "--- Contents of $f ---"
-                cat "$f"
-              done
-            else
-              echo "No log files found in gateway/it/logs."
-            fi
-          else
-            echo "Directory gateway/it/logs does not exist."
-          fi
+      - name: Upload container log captures
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: container-logs
+          path: tests/framework/suites/it/logs-out/**/*.log
+          if-no-files-found: warn
+          include-hidden-files: true
