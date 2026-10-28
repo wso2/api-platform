@@ -721,6 +721,11 @@ blocks:
       - name: startup-db-bootstrap
         features:
           - features/gateway/core/startup_db_bootstrap.feature
+      # Agents are served by Gateways newer than 1.2.0.
+      - name: startup-db-bootstrap-agent
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/core/startup_db_bootstrap_agent.feature
       - name: dp-to-cp-reconnect
         tags: "gateway-version>=1.2.0"
         features:
