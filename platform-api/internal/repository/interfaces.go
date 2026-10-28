@@ -235,10 +235,10 @@ type SubscriptionPlanRepository interface {
 	// GetUsage returns what offers or uses the plan: the REST APIs listing its handle, the
 	// publication drafts and live publications offering it, and its subscriptions.
 	GetUsage(planUUID, handle, orgUUID string) (*model.SubscriptionPlanUsage, error)
-	// DeleteWithReferences deletes the plan and every reference to it, in one transaction: the
-	// publication rows, REST APIs and artifact_subscription_plans that offer it, and the plan on
-	// its subscriptions, which are kept. Its limits and pricing go with it. It returns false when
-	// the plan does not exist.
+	// DeleteWithReferences deletes the plan and its references, in one transaction: the REST APIs
+	// and artifact_subscription_plans that offer it, and the plan on its subscriptions, which are
+	// kept. The publication rows that offer it are kept too, with their own copy of the plan. Its
+	// limits and pricing go with it. It returns false when the plan does not exist.
 	DeleteWithReferences(planUUID, handle, orgUUID string) (bool, error)
 }
 

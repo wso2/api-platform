@@ -285,7 +285,7 @@ func TestSubscriptionPlanRepo_UsageAndDeleteWithReferences(t *testing.T) {
 		`SELECT COUNT(*) FROM subscription_plans WHERE handle = 'gold'`:                                           0,
 		`SELECT COUNT(*) FROM subscription_plan_limits WHERE subscription_plan_uuid = '` + gold.UUID + `'`:        0,
 		`SELECT COUNT(*) FROM subscription_plan_pricing WHERE subscription_plan_uuid = '` + gold.UUID + `'`:       0,
-		`SELECT COUNT(*) FROM api_publication_plan_mappings WHERE subscription_plan_uuid = '` + gold.UUID + `'`:   0,
+		`SELECT COUNT(*) FROM api_publication_plan_mappings WHERE subscription_plan_uuid = '` + gold.UUID + `'`:   2,
 		`SELECT COUNT(*) FROM api_publication_plan_mappings WHERE subscription_plan_uuid = '` + silver.UUID + `'`: 2,
 		`SELECT COUNT(*) FROM artifact_subscription_plans`:                                                        0,
 		`SELECT COUNT(*) FROM subscriptions WHERE subscription_plan_uuid IS NULL`:                                 2,

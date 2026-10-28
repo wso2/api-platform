@@ -26,6 +26,7 @@ import (
 
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/model"
+	"github.com/wso2/api-platform/platform-api/internal/repository"
 	"github.com/wso2/api-platform/platform-api/internal/service"
 )
 
@@ -83,6 +84,33 @@ func TestPublicationSelections_SurviveDeletionOfTheSource(t *testing.T) {
 		}
 		if !reflect.DeepEqual(pub.SubscriptionPlanIds, []string{planHandleFor(g)}) || !reflect.DeepEqual(pub.DocIds, []string{docHandleFor(g)}) {
 			t.Errorf("%s: want the id lists to keep the deleted handles, got %v and %v", name, pub.SubscriptionPlanIds, pub.DocIds)
+		}
+	}
+}
+
+func TestPublicationSelections_SurviveThePortalDeletingThePlan(t *testing.T) {
+	tdb := openSchemaDB(t)
+	g := seedOrgGraph(t, tdb)
+	svc := newPublicationTestServiceWith(tdb, &deprecateRecorder{})
+	apiType, apiHandle, portalHandle := listingWithDraft(t, tdb, svc, g)
+	plans := service.NewSubscriptionPlanService(repository.NewSubscriptionPlanRepo(tdb.db), nil, nil, nil, nil, nil)
+
+	if err := plans.DeletePlanFromWebhook(g.org, planHandleFor(g), time.Now().Add(time.Hour)); err != nil {
+		t.Fatalf("DeletePlanFromWebhook failed: %v", err)
+	}
+
+	live, err := svc.GetPublication(apiType, apiHandle, portalHandle, g.org)
+	if err != nil {
+		t.Fatalf("GetPublication failed: %v", err)
+	}
+	draft, err := svc.GetDraft(apiType, apiHandle, portalHandle, g.org)
+	if err != nil {
+		t.Fatalf("GetDraft failed: %v", err)
+	}
+	for name, pub := range map[string]*model.Publication{"live": live, "draft": draft} {
+		plan := selectionByID(pub.SubscriptionPlans, planHandleFor(g))
+		if plan == nil || !plan.Deleted || plan.DisplayName == "" {
+			t.Errorf("%s: want the plan kept with its stored name and marked deleted, got %+v", name, pub.SubscriptionPlans)
 		}
 	}
 }

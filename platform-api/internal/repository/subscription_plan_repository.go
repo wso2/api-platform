@@ -514,8 +514,10 @@ func (r *SubscriptionPlanRepo) GetUsage(planUUID, handle, orgUUID string) (*mode
 }
 
 // DeleteWithReferences deletes the plan and every reference to it, in one transaction:
-//   - the plan is removed from the publication rows (drafts and live) that offer it, from the REST
-//     APIs whose configuration lists its handle, and from artifact_subscription_plans;
+//   - the plan is removed from the REST APIs whose configuration lists its handle and from
+//     artifact_subscription_plans;
+//   - the publication rows (drafts and live) that offer it are kept: they hold their own copy of the
+//     plan and show it as deleted;
 //   - its subscriptions are kept, without a plan;
 //   - the plan is deleted; its limits and pricing go with it (ON DELETE CASCADE).
 //
@@ -528,10 +530,6 @@ func (r *SubscriptionPlanRepo) DeleteWithReferences(planUUID, handle, orgUUID st
 	defer tx.Rollback()
 	now := time.Now().UTC()
 
-	if _, err := tx.Exec(r.db.Rebind(`DELETE FROM api_publication_plan_mappings WHERE organization_uuid = ? AND subscription_plan_uuid = ?`),
-		orgUUID, planUUID); err != nil {
-		return false, fmt.Errorf("failed to remove the plan from publications: %w", err)
-	}
 	if _, err := tx.Exec(r.db.Rebind(`DELETE FROM artifact_subscription_plans WHERE subscription_plan_uuid = ?`), planUUID); err != nil {
 		return false, fmt.Errorf("failed to remove the plan from artifacts: %w", err)
 	}
