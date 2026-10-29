@@ -235,7 +235,7 @@ func TestHTTPPortalPublisher_Unpublish_ConflictReasonFromKnownCode(t *testing.T)
 	p := newTestHTTPPortalPublisher(t, "test-shared-key")
 	portal := &model.APIPortal{URL: srv.URL}
 
-	err := p.Unpublish(context.Background(), portal, "my-api")
+	err := p.Unpublish(context.Background(), portal, constants.PublicationAPITypeRestAPI, "my-api")
 	var conflict *PortalConflictError
 	if !errors.As(err, &conflict) {
 		t.Fatalf("want *PortalConflictError, got %v", err)
@@ -564,7 +564,7 @@ func TestHTTPPortalPublisher_Unpublish_DeletesListing(t *testing.T) {
 	p := newTestHTTPPortalPublisher(t, "test-shared-key")
 	portal := &model.APIPortal{URL: srv.URL}
 
-	if err := p.Unpublish(context.Background(), portal, "my-api"); err != nil {
+	if err := p.Unpublish(context.Background(), portal, constants.PublicationAPITypeRestAPI, "my-api"); err != nil {
 		t.Fatalf("Unpublish: %v", err)
 	}
 	if gotMethod != http.MethodDelete || gotPath != portalRESTBase+"/apis/my-api" {
@@ -587,7 +587,7 @@ func TestHTTPPortalPublisher_Unpublish_NotFoundIsSuccess(t *testing.T) {
 	p := newTestHTTPPortalPublisher(t, "test-shared-key")
 	portal := &model.APIPortal{URL: srv.URL}
 
-	if err := p.Unpublish(context.Background(), portal, "my-api"); err != nil {
+	if err := p.Unpublish(context.Background(), portal, constants.PublicationAPITypeRestAPI, "my-api"); err != nil {
 		t.Fatalf("want a 404 treated as success, got %v", err)
 	}
 }
@@ -603,7 +603,7 @@ func TestHTTPPortalPublisher_Unpublish_ConflictMapped(t *testing.T) {
 	p := newTestHTTPPortalPublisher(t, "test-shared-key")
 	portal := &model.APIPortal{URL: srv.URL}
 
-	err := p.Unpublish(context.Background(), portal, "my-api")
+	err := p.Unpublish(context.Background(), portal, constants.PublicationAPITypeRestAPI, "my-api")
 	var conflict *PortalConflictError
 	if !errors.As(err, &conflict) {
 		t.Fatalf("want *PortalConflictError, got %v", err)
@@ -622,7 +622,7 @@ func TestHTTPPortalPublisher_Unpublish_UnavailableOnServerError(t *testing.T) {
 	p := newTestHTTPPortalPublisher(t, "test-shared-key")
 	portal := &model.APIPortal{URL: srv.URL}
 
-	err := p.Unpublish(context.Background(), portal, "my-api")
+	err := p.Unpublish(context.Background(), portal, constants.PublicationAPITypeRestAPI, "my-api")
 	if err == nil {
 		t.Fatal("want an error for a persistent 500")
 	}
@@ -650,7 +650,7 @@ func TestHTTPPortalPublisher_AuthFailureIsNotConflict(t *testing.T) {
 
 			calls := map[string]error{
 				"publish (existence check)": p.Publish(context.Background(), portal, constants.PublicationAPITypeRestAPI, "my-api", pub, nil),
-				"unpublish":                 p.Unpublish(context.Background(), portal, "my-api"),
+				"unpublish":                 p.Unpublish(context.Background(), portal, constants.PublicationAPITypeRestAPI, "my-api"),
 				"deprecate":                 p.Deprecate(context.Background(), portal, constants.PublicationAPITypeRestAPI, "my-api", pub),
 			}
 			for name, err := range calls {
@@ -875,11 +875,21 @@ func TestHTTPPortalPublisher_Deprecate_EscapesHandleInPath(t *testing.T) {
 func TestPortalURLsIncludeTheRESTBase(t *testing.T) {
 	for _, root := range []string{"https://portal.example.com", "https://portal.example.com/"} {
 		portal := &model.APIPortal{URL: root}
-		if got, want := apisURL(portal), "https://portal.example.com/api-portal/api/v0.9/apis"; got != want {
-			t.Errorf("apisURL(%q) = %q, want %q", root, got, want)
-		}
-		if got, want := apiURL(portal, "my-api"), "https://portal.example.com/api-portal/api/v0.9/apis/my-api"; got != want {
-			t.Errorf("apiURL(%q) = %q, want %q", root, got, want)
+		for apiType, collection := range map[string]string{
+			constants.PublicationAPITypeRestAPI:    "apis",
+			constants.PublicationAPITypeGraphQLAPI: "apis",
+			constants.PublicationAPITypeMCPProxy:   "mcp-servers",
+		} {
+			listing, err := portalListingFor(apiType)
+			if err != nil {
+				t.Fatalf("portalListingFor(%q): %v", apiType, err)
+			}
+			if got, want := listingsURL(portal, listing), "https://portal.example.com/api-portal/api/v0.9/"+collection; got != want {
+				t.Errorf("listingsURL(%q, %q) = %q, want %q", root, apiType, got, want)
+			}
+			if got, want := listingURL(portal, listing, "my-api"), "https://portal.example.com/api-portal/api/v0.9/"+collection+"/my-api"; got != want {
+				t.Errorf("listingURL(%q, %q) = %q, want %q", root, apiType, got, want)
+			}
 		}
 		if got, want := plansURL(portal), "https://portal.example.com/api-portal/api/v0.9/subscription-plans"; got != want {
 			t.Errorf("plansURL(%q) = %q, want %q", root, got, want)
@@ -908,7 +918,7 @@ func TestHTTPPortalPublisher_AttemptLimitsByCall(t *testing.T) {
 		defer srv.Close()
 		p := newTestHTTPPortalPublisherWithPolicies(t, "key", light, content)
 
-		if err := p.PublishContent(context.Background(), &model.APIPortal{URL: srv.URL}, "my-api", &PortalContent{Archive: []byte("zip")}); err != nil {
+		if err := p.PublishContent(context.Background(), &model.APIPortal{URL: srv.URL}, constants.PublicationAPITypeRestAPI, "my-api", &PortalContent{Archive: []byte("zip")}); err != nil {
 			t.Fatalf("PublishContent: %v", err)
 		}
 	})
@@ -927,7 +937,7 @@ func TestHTTPPortalPublisher_AttemptLimitsByCall(t *testing.T) {
 			return p.Deprecate(context.Background(), portal, constants.PublicationAPITypeRestAPI, "my-api", pub)
 		}},
 		{"unpublish", func(p *HTTPPortalPublisher, portal *model.APIPortal) error {
-			return p.Unpublish(context.Background(), portal, "my-api")
+			return p.Unpublish(context.Background(), portal, constants.PublicationAPITypeRestAPI, "my-api")
 		}},
 		{"plan listing", func(p *HTTPPortalPublisher, portal *model.APIPortal) error {
 			return syncPlansWithoutMeters(context.Background(), p, portal, []*model.SubscriptionPlan{{Handle: "gold"}}, nil)
@@ -971,7 +981,7 @@ func TestHTTPPortalPublisher_StopsAtTheContextDeadline(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
 	started := time.Now()
-	err := p.Unpublish(ctx, &model.APIPortal{URL: srv.URL}, "my-api")
+	err := p.Unpublish(ctx, &model.APIPortal{URL: srv.URL}, constants.PublicationAPITypeRestAPI, "my-api")
 	if err == nil {
 		t.Fatal("want a failure once the deadline passes")
 	}
@@ -1012,7 +1022,7 @@ func TestHTTPPortalPublisher_PublishContent_SendsTheArchive(t *testing.T) {
 	defer srv.Close()
 
 	p := newTestHTTPPortalPublisher(t, "test-shared-key")
-	err := p.PublishContent(context.Background(), &model.APIPortal{URL: srv.URL}, "my-api", &PortalContent{Archive: []byte("zip-bytes")})
+	err := p.PublishContent(context.Background(), &model.APIPortal{URL: srv.URL}, constants.PublicationAPITypeRestAPI, "my-api", &PortalContent{Archive: []byte("zip-bytes")})
 	if err != nil {
 		t.Fatalf("PublishContent: %v", err)
 	}
@@ -1048,7 +1058,7 @@ func TestHTTPPortalPublisher_PublishContent_ErrorMapping(t *testing.T) {
 			defer srv.Close()
 			p := newTestHTTPPortalPublisher(t, "key")
 
-			err := p.PublishContent(context.Background(), &model.APIPortal{URL: srv.URL}, "my-api", &PortalContent{Archive: []byte("zip")})
+			err := p.PublishContent(context.Background(), &model.APIPortal{URL: srv.URL}, constants.PublicationAPITypeRestAPI, "my-api", &PortalContent{Archive: []byte("zip")})
 			var conflict *PortalConflictError
 			if got := errors.As(err, &conflict); got != tc.wantReject {
 				t.Fatalf("want rejection=%v, got %v (%v)", tc.wantReject, got, err)
@@ -1086,11 +1096,121 @@ func TestHTTPPortalPublisher_PublishContent_FailuresBeforeAResponseAreNotRejecti
 				tc.setup(p)
 			}
 
-			err := p.PublishContent(context.Background(), tc.portal, "my-api", &PortalContent{Archive: []byte("zip")})
+			err := p.PublishContent(context.Background(), tc.portal, constants.PublicationAPITypeRestAPI, "my-api", &PortalContent{Archive: []byte("zip")})
 			var conflict *PortalConflictError
 			if err == nil || errors.As(err, &conflict) || !strings.Contains(err.Error(), tc.wantMsg) {
 				t.Fatalf("want a plain error containing %q, got %v", tc.wantMsg, err)
 			}
 		})
+	}
+}
+
+// An MCP proxy lives in the portal's own /mcp-servers collection: the portal refuses an
+// MCP-typed listing on /apis, so every call for it must stay off that collection.
+func TestHTTPPortalPublisher_MCPProxyUsesTheMCPServersCollection(t *testing.T) {
+	type call struct{ method, path string }
+	var calls []call
+	var gotYAML, gotDefinition []byte
+	var gotDefinitionName string
+	exists := false
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls = append(calls, call{r.Method, r.URL.Path})
+		switch r.Method {
+		case http.MethodGet:
+			if exists {
+				w.WriteHeader(http.StatusOK)
+			} else {
+				w.WriteHeader(http.StatusNotFound)
+			}
+			return
+		case http.MethodPost, http.MethodPut:
+			if strings.HasSuffix(r.URL.Path, "/assets") {
+				break
+			}
+			_, params, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+			if err != nil {
+				t.Fatalf("ParseMediaType: %v", err)
+			}
+			mr := multipart.NewReader(r.Body, params["boundary"])
+			for {
+				part, err := mr.NextPart()
+				if err == io.EOF {
+					break
+				}
+				if err != nil {
+					t.Fatalf("NextPart: %v", err)
+				}
+				switch part.FormName() {
+				case "metadata":
+					gotYAML, _ = io.ReadAll(part)
+				case "definition":
+					gotDefinitionName = part.FileName()
+					gotDefinition, _ = io.ReadAll(part)
+				}
+			}
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	ctx := context.Background()
+	portal := &model.APIPortal{URL: srv.URL}
+	p := newTestHTTPPortalPublisher(t, "test-shared-key")
+	pub := &model.Publication{DisplayName: "Travel", Version: "v1", AgentVisibility: "VISIBLE"}
+	capabilities := `{"tools":[{"name":"search"}]}`
+	definition := &model.PublicationContent{FileName: "definition.json", ContentType: "application/json", Content: []byte(capabilities)}
+	const mcpType = constants.PublicationAPITypeMCPProxy
+
+	if err := p.Publish(ctx, portal, mcpType, "travel", pub, definition); err != nil {
+		t.Fatalf("Publish (create): %v", err)
+	}
+	var envelope struct {
+		Kind string `yaml:"kind"`
+		Spec struct {
+			Type string `yaml:"type"`
+		} `yaml:"spec"`
+	}
+	if err := yaml.Unmarshal(gotYAML, &envelope); err != nil {
+		t.Fatalf("unmarshal sent YAML: %v\n%s", err, gotYAML)
+	}
+	if envelope.Kind != "MCP" || envelope.Spec.Type != "MCP" {
+		t.Fatalf("want kind MCP and type MCP, got kind=%q type=%q", envelope.Kind, envelope.Spec.Type)
+	}
+	if gotDefinitionName != "definition.json" || string(gotDefinition) != capabilities {
+		t.Fatalf("want the capabilities sent as the definition part, got %q: %q", gotDefinitionName, gotDefinition)
+	}
+
+	exists = true
+	if err := p.Publish(ctx, portal, mcpType, "travel", pub, definition); err != nil {
+		t.Fatalf("Publish (update): %v", err)
+	}
+	if err := p.Deprecate(ctx, portal, mcpType, "travel", pub); err != nil {
+		t.Fatalf("Deprecate: %v", err)
+	}
+	if err := p.PublishContent(ctx, portal, mcpType, "travel", &PortalContent{Archive: []byte("zip")}); err != nil {
+		t.Fatalf("PublishContent: %v", err)
+	}
+	if err := p.Unpublish(ctx, portal, mcpType, "travel"); err != nil {
+		t.Fatalf("Unpublish: %v", err)
+	}
+
+	base := portalRESTBase + "/mcp-servers"
+	want := []call{
+		{http.MethodGet, base + "/travel"},
+		{http.MethodPost, base},
+		{http.MethodGet, base + "/travel"},
+		{http.MethodPut, base + "/travel"},
+		{http.MethodPut, base + "/travel"},
+		{http.MethodPut, base + "/travel/assets"},
+		{http.MethodDelete, base + "/travel"},
+	}
+	if len(calls) != len(want) {
+		t.Fatalf("want %d portal calls, got %d: %v", len(want), len(calls), calls)
+	}
+	for i := range want {
+		if calls[i] != want[i] {
+			t.Errorf("call %d: want %v, got %v", i, want[i], calls[i])
+		}
 	}
 }

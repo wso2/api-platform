@@ -85,6 +85,10 @@ const PublicationAPITypeRestAPI = "rest-api"
 // GraphQLApi: the URL segment its publication routes use.
 const PublicationAPITypeGraphQLAPI = "graphql-api"
 
+// PublicationAPITypeMCPProxy is PublicationAPITypeRestAPI's counterpart for
+// MCP proxies: the URL segment their publication routes use.
+const PublicationAPITypeMCPProxy = "mcp-proxy"
+
 // Kinds of artifacts
 const (
 	RestApi             = "RestApi"

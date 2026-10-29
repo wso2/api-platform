@@ -29,6 +29,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -52,7 +53,7 @@ func (alwaysSucceedsPortalPublisher) Publish(_ context.Context, _ *model.APIPort
 	return nil
 }
 
-func (alwaysSucceedsPortalPublisher) Unpublish(_ context.Context, _ *model.APIPortal, _ string) error {
+func (alwaysSucceedsPortalPublisher) Unpublish(_ context.Context, _ *model.APIPortal, _, _ string) error {
 	return nil
 }
 
@@ -68,7 +69,7 @@ func (alwaysSucceedsPortalPublisher) Deprecate(_ context.Context, _ *model.APIPo
 	return nil
 }
 
-func (alwaysSucceedsPortalPublisher) PublishContent(_ context.Context, _ *model.APIPortal, _ string, _ *service.PortalContent) error {
+func (alwaysSucceedsPortalPublisher) PublishContent(_ context.Context, _ *model.APIPortal, _, _ string, _ *service.PortalContent) error {
 	return nil
 }
 
@@ -77,6 +78,12 @@ func (alwaysSucceedsPortalPublisher) PublishContent(_ context.Context, _ *model.
 // one active API Portal ("my-portal") and one subscription plan ("gold") — the
 // minimum every draft endpoint needs to resolve its path.
 func setupPublicationTestEnv(t *testing.T) (http.Handler, *database.DB, func()) {
+	t.Helper()
+	return setupPublicationTestEnvWith(t, alwaysSucceedsPortalPublisher{})
+}
+
+// setupPublicationTestEnvWith is setupPublicationTestEnv with the given portal publisher.
+func setupPublicationTestEnvWith(t *testing.T, publisher service.PortalPublisher) (http.Handler, *database.DB, func()) {
 	t.Helper()
 
 	dbPath := filepath.Join(t.TempDir(), "test.db")
@@ -119,7 +126,7 @@ func setupPublicationTestEnv(t *testing.T) (http.Handler, *database.DB, func()) 
 		repository.NewDocumentRepo(db),
 		repository.NewSubscriptionPlanRepo(db),
 		repository.NewPublicationRepo(db),
-		alwaysSucceedsPortalPublisher{},
+		publisher,
 		time.Minute,
 		0,
 		slog.Default(),
@@ -691,5 +698,77 @@ func TestPublicationHandler_ResolveAPIErrors(t *testing.T) {
 				t.Fatalf("want %d, got %d: %.200s", tc.want, w.Code, w.Body.String())
 			}
 		})
+	}
+}
+
+// recordingPortalPublisher records the apiType each portal call carries.
+type recordingPortalPublisher struct {
+	alwaysSucceedsPortalPublisher
+	calls *[]string
+}
+
+func (r recordingPortalPublisher) Publish(_ context.Context, _ *model.APIPortal, apiType, _ string, _ *model.Publication, _ *model.PublicationContent) error {
+	*r.calls = append(*r.calls, "publish:"+apiType)
+	return nil
+}
+
+func (r recordingPortalPublisher) Deprecate(_ context.Context, _ *model.APIPortal, apiType, _ string, _ *model.Publication) error {
+	*r.calls = append(*r.calls, "deprecate:"+apiType)
+	return nil
+}
+
+func (r recordingPortalPublisher) Unpublish(_ context.Context, _ *model.APIPortal, apiType, _ string) error {
+	*r.calls = append(*r.calls, "unpublish:"+apiType)
+	return nil
+}
+
+// An MCP proxy goes through draft, publish, deprecate and unpublish over HTTP, and the portal
+// publisher sees the mcp-proxy type on each call.
+func TestPublicationHandler_MCPProxyLifecycle(t *testing.T) {
+	var calls []string
+	r, db, cleanup := setupPublicationTestEnvWith(t, recordingPortalPublisher{calls: &calls})
+	defer cleanup()
+
+	for _, q := range []string{
+		`INSERT INTO artifacts (uuid, type, organization_uuid) VALUES ('mcp-artifact-1', 'Mcp', 'org-1')`,
+		`INSERT INTO mcp_proxies (uuid, organization_uuid, handle, display_name, version, project_uuid, configuration) VALUES ('mcp-artifact-1', 'org-1', 'my-mcp', 'My MCP', 'v1', 'proj-1', '{}')`,
+	} {
+		if _, err := db.Exec(q); err != nil {
+			t.Fatalf("seed failed (%s): %v", q, err)
+		}
+	}
+	base := "/api/v0.9/api-portals/my-portal/apis/mcp-proxy/my-mcp"
+
+	draft := []byte(`{"displayName":"My MCP","version":"v1","agentVisibility":"VISIBLE","endpoints":{"productionUrl":"https://gw.example.com/my-mcp"}}`)
+	if w := doPublicationRequest(r, http.MethodPut, base+"/draft", "application/json", draft); w.Code != http.StatusOK {
+		t.Fatalf("PUT draft: want 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	if w := doPublicationRequest(r, http.MethodPost, base+"/publish", "", nil); w.Code != http.StatusBadRequest {
+		t.Fatalf("publish without a definition: want 400, got %d: %s", w.Code, w.Body.String())
+	}
+	if len(calls) != 0 {
+		t.Fatalf("want nothing pushed to the portal for an invalid draft, got %v", calls)
+	}
+
+	if w := doPublicationRequest(r, http.MethodPut, base+"/draft/definition", "application/json", []byte(`{"tools":[{"name":"search"}]}`)); w.Code != http.StatusNoContent {
+		t.Fatalf("PUT definition: want 204, got %d: %s", w.Code, w.Body.String())
+	}
+	if w := doPublicationRequest(r, http.MethodPost, base+"/publish", "", nil); w.Code != http.StatusCreated {
+		t.Fatalf("publish: want 201, got %d: %s", w.Code, w.Body.String())
+	}
+	if w := doPublicationRequest(r, http.MethodGet, base+"/publication", "", nil); w.Code != http.StatusOK {
+		t.Fatalf("GET publication: want 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if w := doPublicationRequest(r, http.MethodPost, base+"/deprecate", "", nil); w.Code != http.StatusOK {
+		t.Fatalf("deprecate: want 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if w := doPublicationRequest(r, http.MethodPost, base+"/unpublish", "", nil); w.Code != http.StatusNoContent {
+		t.Fatalf("unpublish: want 204, got %d: %s", w.Code, w.Body.String())
+	}
+
+	want := []string{"publish:mcp-proxy", "deprecate:mcp-proxy", "unpublish:mcp-proxy"}
+	if !slices.Equal(calls, want) {
+		t.Fatalf("want portal calls %v, got %v", want, calls)
 	}
 }

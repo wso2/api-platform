@@ -73,6 +73,7 @@ func decodeJSONBody(w http.ResponseWriter, r *http.Request, maxBytes int64, dst 
 var publishableAPITypes = []string{
 	constants.PublicationAPITypeRestAPI,
 	constants.PublicationAPITypeGraphQLAPI,
+	constants.PublicationAPITypeMCPProxy,
 }
 
 // defaultPublicationContentMaxBytes/defaultPublicationThumbnailMaxBytes apply
