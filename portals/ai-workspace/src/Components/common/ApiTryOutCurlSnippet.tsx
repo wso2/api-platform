@@ -103,6 +103,21 @@ const TEMPLATE_ENDPOINTS: Record<string, EndpointOption> = {
       contents: [{ parts: [{ text: 'Say hello!' }] }],
     },
   },
+  // TypeSafe is an evaluation API, not chat: it answers typed questions about a
+  // state rather than continuing a conversation.
+  typesafe: {
+    path: '/v1/systemone',
+    body: {
+      state: 'Help! My payouts have been failing for 3 days.',
+      model: 'jev-latest',
+      questions: {
+        is_urgent: {
+          type: 'noul',
+          instructions: 'Does this convey urgency?',
+        },
+      },
+    },
+  },
 };
 
 /**

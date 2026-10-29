@@ -32,6 +32,7 @@ const MODEL_CATALOG_BY_KEY: Record<string, string[]> = {
     'mistral-small-latest',
     'open-mixtral-8x22b',
   ],
+  typesafe: ['jev-latest', 'jev-preview', 'jev-1.13.0'],
 };
 
 const TEMPLATE_TO_MODEL_KEY: Record<string, string> = {
@@ -44,6 +45,7 @@ const TEMPLATE_TO_MODEL_KEY: Record<string, string> = {
   awsbedrock: 'aws-bedrock',
   'aws-bedrock': 'aws-bedrock',
   mistralai: 'mistralai',
+  typesafe: 'typesafe',
 };
 
 const TEMPLATE_PROVIDER_NAME_BY_ID: Record<string, string> = {
@@ -57,6 +59,7 @@ const TEMPLATE_PROVIDER_NAME_BY_ID: Record<string, string> = {
   awsbedrock: 'AWS Bedrock',
   'aws-bedrock': 'AWS Bedrock',
   'google-vertex': 'Google Vertex',
+  typesafe: 'TypeSafe',
 };
 
 function buildModelProvidersFromTemplate(templateId?: string): ModelProvider[] {

@@ -26,6 +26,7 @@ const PROVIDER_TEMPLATE_NAME_MAP: Record<string, string> = {
   'aws-bedrock': 'AWS Bedrock',
   anthropic: 'Anthropic',
   'google-vertex': 'Google Vertex AI',
+  typesafe: 'TypeSafe',
 };
 
 /**
