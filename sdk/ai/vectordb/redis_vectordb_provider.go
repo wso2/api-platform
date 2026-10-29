@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"math"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -207,8 +208,21 @@ func (r *RedisVectorDBProvider) Retrieve(embeddings []float32, filter map[string
 
 	embeddingBytes := FloatsToBytes(embeddings)
 
+	//Escape Tag Queries
+	replacer := strings.NewReplacer(
+		`\`, `\\`,
+		`|`, `\|`,
+		`:`, `\:`,
+		`.`, `\.`,
+		`-`, `\-`,
+		`$`, `\$`,
+		`{`, `\{`,
+		`}`, `\}`,
+	)
+	apiID = replacer.Replace(apiID)
+
 	knnQuery := fmt.Sprintf(
-		"@api_id:{\"%s\"}=>[KNN $K @%s $vec AS score]",
+		"@api_id:{%s}=>[KNN $K @%s $vec AS score]",
 		apiID, embeddingField,
 	)
 	fmt.Printf("KNN Query: %s", knnQuery)
