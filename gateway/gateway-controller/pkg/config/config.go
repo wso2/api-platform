@@ -824,6 +824,30 @@ type PolicyEngineConfig struct {
 	TimeoutMs        uint32          `koanf:"timeout_ms"`
 	MessageTimeoutMs uint32          `koanf:"message_timeout_ms"`
 	TLS              PolicyEngineTLS `koanf:"tls"` // TLS configuration (TCP mode only)
+
+	// UpstreamProcessing enables a SECOND ext_proc stream at the upstream filter position,
+	// which Envoy re-invokes once per retry attempt. It is what lets a policy adapt a request
+	// for the target that attempt is about to reach — the provider's path, its transformer,
+	// its credential — none of which the downstream chain can vary, because Envoy runs that
+	// chain once per client request and never again.
+	//
+	// Defaults ON. The filter chain is attached PER CLUSTER and only to clusters that have
+	// per-attempt work, so an API that attaches no upstream policy carries no filter and pays
+	// nothing. The flag remains only as an operator kill-switch.
+	UpstreamProcessing bool `koanf:"upstream_processing"`
+
+	// PerAttemptProviderPolicies moves an LLM provider's transformer and credential OFF the
+	// downstream chain and into that provider's per-attempt chain.
+	//
+	// Downstream, they run once per client request, gated on the provider selected at that
+	// moment — which is correct until failover, when a later attempt reaches a DIFFERENT
+	// provider carrying the first provider's request shape and key. Per-attempt placement is
+	// what makes a cross-vendor fallback correctly formed and credentialed.
+	//
+	// Off by default. This moves credential injection onto a path that has never served
+	// production traffic, for every LLM proxy at once, so the two placements exist side by
+	// side until the per-attempt one has been exercised.
+	PerAttemptProviderPolicies bool `koanf:"per_attempt_provider_policies"`
 }
 
 // PolicyEngineTLS holds policy engine TLS configuration
@@ -1412,6 +1436,9 @@ func defaultConfig() *Config {
 				Port:             9001,            // Only used in TCP mode
 				TimeoutMs:        60000,
 				MessageTimeoutMs: 60000,
+				// On by default: the chain is attached per cluster and only where there is
+				// per-attempt work, so an API with no upstream policies carries no filter.
+				UpstreamProcessing: true,
 				TLS: PolicyEngineTLS{
 					Enabled:    false,
 					CertPath:   "",

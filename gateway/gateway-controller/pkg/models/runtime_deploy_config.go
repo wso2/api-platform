@@ -42,7 +42,23 @@ type RuntimeDeployConfig struct {
 	Routes              map[string]*Route
 	PolicyChains        map[string]*PolicyChain
 	UpstreamClusters    map[string]*UpstreamCluster
-	SensitiveValues     []string // resolved secret plaintext values for redaction; populated from StoredConfig.SensitiveValues
+
+	// UpstreamPolicyChains are the per-attempt chains, keyed by provider alias (the empty
+	// key being the API's own main upstream). Envoy re-runs the upstream filter chain once
+	// per attempt, so these are where work specific to the target an attempt actually
+	// reaches belongs: that provider's request shaping, its transformation, its credential.
+	//
+	// Distinct from PolicyChains, which are keyed by route and run ONCE per client request.
+	// A policy with external side effects — quota, rate limiting, analytics — must never
+	// appear here, or a failing request is charged once per attempt (FR-012d).
+	UpstreamPolicyChains map[string]*PolicyChain
+
+	// ProviderClusters maps a provider alias to the cluster serving it, with the empty key
+	// being the API's own main upstream. Computed once while routes are built, because that
+	// is the only place that knows both the alias an author writes and the cluster name
+	// derived from the upstream's hostname or definition name.
+	ProviderClusters map[string]interface{}
+	SensitiveValues  []string // resolved secret plaintext values for redaction; populated from StoredConfig.SensitiveValues
 }
 
 // Metadata contains identity information for the deployed API.
@@ -85,6 +101,10 @@ type Route struct {
 	// precedence (same path, method, and header-match count). Routes are emitted in
 	// ascending Order so the stable route sorter preserves rule order for ties.
 	Order int
+
+	// Failover, when non-nil and not Inert, makes this route generate a priority_group
+	// cluster specifier plus a retry policy so a failed attempt moves to the next target.
+	Failover *FailoverConfig
 
 	// UpstreamPathOverride is the path this route forwards to, relative to its
 	// upstream cluster's base path, when that is not simply OperationPath.
@@ -165,6 +185,98 @@ type RouteUpstream struct {
 	// the policy engine as the route's single default upstream field, regardless
 	// of which slot it is.
 	Default *policyenginev1.UpstreamInfo
+}
+
+// FailoverTarget is one addressable destination in a failover chain. Identity is the
+// (Model, Provider) pair, never Model alone: the same model reached through two provider
+// configurations is two distinct targets with independent health (FR-002, FR-017).
+type FailoverTarget struct {
+	Model    string // required, minLength 1
+	Provider string // optional; resolves to an additionalProviders[].as alias or provider id
+	Cluster  string // resolved upstream cluster name for this target
+}
+
+// FailoverFailureConditions decides which upstream outcomes move to the next target.
+// Transport failures are deliberately absent as a configurable condition. The generated
+// retry_on lists connect-failure, reset and refused-stream unconditionally, so they always
+// fail over; and the policy is never invoked for them, because Envoy does not call ext_proc for
+// its own locally generated replies. A flag here would control nothing.
+type FailoverFailureConditions struct {
+	// StatusCodes are response codes treated as failover-worthy. Each must be 400-599.
+	// Default [429, 500, 502, 503, 504] (FR-003).
+	StatusCodes []uint32
+}
+
+// FailoverSuspension carries all three suspension criteria plus the escalating backoff.
+// Any criterion can suspend a target independently (FR-018c).
+type FailoverSuspension struct {
+	// ConsecutiveFailures suspends after N failures in a row. 0 disables (FR-018).
+	ConsecutiveFailures int
+	// DurationSeconds is the BASE suspension duration. It doubles on each re-suspension
+	// up to MaxDurationSeconds, and resets to this value after BackoffResetSeconds of
+	// healthy operation (FR-019a, FR-019b, FR-019c).
+	DurationSeconds int
+	// MaxDurationSeconds caps the doubled duration. Must be >= DurationSeconds.
+	MaxDurationSeconds int
+	// BackoffResetSeconds is how long a restored target must stay healthy before its
+	// next suspension starts from DurationSeconds again. Must be >= 1.
+	BackoffResetSeconds int
+	// ErrorRatePercent suspends when the failure rate over WindowSeconds crosses this
+	// threshold, catching a target that fails intermittently and so never produces a run
+	// of consecutive failures. 0 disables. Range 0-100 (FR-018a).
+	ErrorRatePercent int
+	// WindowSeconds is the rolling window for ErrorRatePercent and P95LatencyMs. >= 1.
+	WindowSeconds int
+	// MinimumRequests is the sample size below which the windowed rules do not fire.
+	// Without it, two failures out of two requests reads as a 100% error rate and would
+	// suspend a healthy target during quiet periods. >= 1 (FR-018b).
+	MinimumRequests int
+	// P95LatencyMs suspends when the 95th-percentile latency over WindowSeconds crosses
+	// this threshold, subject to MinimumRequests. Judges sustained slowness; a single slow
+	// request fails over but never suspends on its own. 0 disables (FR-018e, FR-018f).
+	P95LatencyMs int
+}
+
+// FailoverConfig is the resolved per-operation failover configuration used to generate
+// the priority_group cluster specifier and the route retry policy.
+type FailoverConfig struct {
+	// Targets is the resolved chain in configured order. Unresolvable targets are dropped
+	// rather than rejected (FR-006a); an empty chain leaves the policy inert (FR-030b).
+	Targets           []FailoverTarget
+	FailureConditions FailoverFailureConditions
+	Suspension        FailoverSuspension
+	// PerAttemptTimeoutMs bounds a single attempt. Must be less than the operation's
+	// request timeout. Never suspends a target by itself (FR-005, FR-018f).
+	PerAttemptTimeoutMs int
+	// PerAttemptIdleTimeoutMs bounds a stalled stream within one attempt.
+	PerAttemptIdleTimeoutMs int
+}
+
+// ChainLength is the number of targets in the resolved chain. The route retry policy sets
+// NumRetries to ChainLength-1 so the attempt budget matches the chain exactly: this is what
+// guarantees at-most-once (FR-010), since a surplus attempt would be served outside the
+// published groups.
+func (f *FailoverConfig) ChainLength() int {
+	if f == nil {
+		return 0
+	}
+	// Only targets that resolved to a cluster are in the chain. An unresolvable target is
+	// skipped rather than rejected (FR-006a), so counting raw entries would overstate the
+	// chain and produce an attempt budget larger than the published groups — the surplus
+	// attempt would then be served outside them, breaking at-most-once (FR-010).
+	n := 0
+	for _, target := range f.Targets {
+		if target.Cluster != "" {
+			n++
+		}
+	}
+	return n
+}
+
+// Inert reports whether the policy has nothing to work with. An inert policy generates no
+// configuration at all and is indistinguishable from not being attached (FR-030b, FR-030e).
+func (f *FailoverConfig) Inert() bool {
+	return f.ChainLength() == 0
 }
 
 // PolicyChain is an ordered list of policies for a route.

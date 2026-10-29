@@ -58,6 +58,7 @@ import (
 	otelresourcedetectorsv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/tracers/opentelemetry/resource_detectors/v3"
 	tlsv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/transport_sockets/tls/v3"
 	matcher "github.com/envoyproxy/go-control-plane/envoy/type/matcher/v3"
+	matcherv3 "github.com/envoyproxy/go-control-plane/envoy/type/matcher/v3"
 	metadatav3 "github.com/envoyproxy/go-control-plane/envoy/type/metadata/v3"
 	tracingv3 "github.com/envoyproxy/go-control-plane/envoy/type/tracing/v3"
 	typev3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
@@ -105,7 +106,13 @@ func checkedUInt32FromPositiveInt(fieldName string, value int) (uint32, error) {
 
 // Translator converts API configurations to Envoy xDS resources
 type Translator struct {
-	logger            *slog.Logger
+	logger *slog.Logger
+
+	// failoverPlugins collects the priority_group cluster specifier plugins generated during
+	// this translation pass, keyed by plugin name. Routes reference a plugin by name while the
+	// definition lives on the route configuration, so the two are assembled at different points
+	// and must be carried across. Reset at the start of every pass.
+	failoverPlugins   map[string]*route.ClusterSpecifierPlugin
 	routerConfig      *config.RouterConfig
 	certStore         *certstore.CertStore
 	config            *config.Config
@@ -322,12 +329,18 @@ func (t *Translator) translateRuntimeConfig(rdc *models.RuntimeDeployConfig) ([]
 			if err != nil {
 				return nil, nil, fmt.Errorf("upstream cluster %q: %w", clusterName, err)
 			}
+			if err := t.attachUpstreamChainTo(c, rdc); err != nil {
+				return nil, nil, err
+			}
 			clusters = append(clusters, c)
 			continue
 		}
 		c, err := t.createWeightedCluster(clusterName, uc.Endpoints, uc.TLS, connectTimeout, validationSecretName)
 		if err != nil {
 			return nil, nil, fmt.Errorf("upstream cluster %q: %w", clusterName, err)
+		}
+		if err := t.attachUpstreamChainTo(c, rdc); err != nil {
+			return nil, nil, err
 		}
 		clusters = append(clusters, c)
 	}
@@ -406,12 +419,60 @@ func (t *Translator) createRouteFromRDC(routeKey string, rdcRoute *models.Route,
 		},
 	}
 
-	// Set cluster specifier
-	if rdcRoute.Upstream.UseClusterHeader {
+	// Set cluster specifier.
+	//
+	// A failover-enabled route delegates cluster selection to the priority_group specifier
+	// plugin, which picks the group by attempt number. The plugin and its retry policy are
+	// generated only for routes that attach the policy, so every other route — including one
+	// pointing at the same shared provider cluster — is unchanged (FR-030c).
+	failoverPlugin, failoverErr := buildFailoverSpecifierPlugin(
+		failoverSpecifierPluginName(routeKey), rdcRoute.Failover)
+	if failoverErr != nil {
+		// Building the specifier is internal marshalling, so a failure here is a bug rather
+		// than an environment mismatch. Log it and fall through to ordinary cluster selection:
+		// the route keeps working without failover instead of failing to deploy at all.
+		t.logger.Error("Failed to build failover cluster specifier; route will not fail over",
+			slog.String("route", routeKey),
+			slog.Any("error", failoverErr))
+		failoverPlugin = nil
+	}
+	// PRECEDENCE: failover displaces cluster_header routing on this route.
+	//
+	// A route has exactly one cluster specifier, so these are mutually exclusive by
+	// construction. When an operation attaches model-failover, the priority_group plugin owns
+	// cluster selection and the x-target-upstream header is no longer consulted for it.
+	//
+	// For model/provider steering that is the intended contract: a routing policy expresses its
+	// decision by publishing an ordered ranking into wso2.failover metadata, which the specifier
+	// reads per attempt, rather than by setting a header that only names one cluster and cannot
+	// survive a retry.
+	//
+	// It is NOT intended for a policy that steers to an arbitrary upstream definition — a
+	// dynamic-endpoint style redirect — which has no metadata path today and silently stops
+	// taking effect. UseClusterHeader is true for any API with upstream definitions or a
+	// sandbox, which includes every multi-provider LlmProxy, so the combination is common rather
+	// than exotic. Warned about below; see T024u.
+	switch {
+	case failoverPlugin != nil:
+		if rdcRoute.Upstream.UseClusterHeader {
+			t.logger.Warn("failover displaces cluster_header routing on this route; "+
+				"a policy steering via x-target-upstream will no longer select the cluster. "+
+				"Routing decisions must be published as a wso2.failover ranking instead",
+				slog.String("route", routeKey))
+		}
+		routeAction.Route.ClusterSpecifier = &route.RouteAction_ClusterSpecifierPlugin{
+			ClusterSpecifierPlugin: failoverPlugin.Extension.Name,
+		}
+		routeAction.Route.RetryPolicy = buildFailoverRetryPolicy(rdcRoute.Failover)
+		if t.failoverPlugins == nil {
+			t.failoverPlugins = make(map[string]*route.ClusterSpecifierPlugin)
+		}
+		t.failoverPlugins[failoverPlugin.Extension.Name] = failoverPlugin
+	case rdcRoute.Upstream.UseClusterHeader:
 		routeAction.Route.ClusterSpecifier = &route.RouteAction_ClusterHeader{
 			ClusterHeader: constants.TargetUpstreamHeader,
 		}
-	} else {
+	default:
 		routeAction.Route.ClusterSpecifier = &route.RouteAction_Cluster{
 			Cluster: rdcRoute.Upstream.ClusterKey,
 		}
@@ -811,6 +872,9 @@ func (t *Translator) TranslateConfigs(
 	resources := make(map[resource.Type][]types.Resource)
 
 	t.tlsSecretRefs = nil
+	// Reset per-pass state: a stale plugin from a previous translation would otherwise linger
+	// in the route configuration after its route was removed.
+	t.failoverPlugins = make(map[string]*route.ClusterSpecifierPlugin)
 
 	defaultClientCert, err := t.resolveDefaultClientCertificate()
 	if err != nil {
@@ -998,6 +1062,28 @@ func (t *Translator) TranslateConfigs(
 			// closing the gap where a client could otherwise self-suppress its own
 			// traffic/analytics record by sending a forged x-envoy-original-path.
 			RequestHeadersToRemove: []string{envoyOriginalPathHeader},
+
+			// Expose x-envoy-attempt-count on the downstream response when any route in this
+			// vhost fails over.
+			//
+			// The model-failover policy grades target health in its response phase, but that
+			// phase runs ONCE and sees only the final response — Envoy does not re-run
+			// downstream filters per attempt. Without the attempt count the policy cannot tell
+			// which target produced the response it is looking at, and would credit the first
+			// target for an answer the third produced. A consistently failing target would then
+			// be recorded healthy on every request failover rescued, and never suspended.
+			IncludeAttemptCountInResponse: t.vhostHasFailover(routes),
+
+			// The same count, sent UPSTREAM rather than back to the client. The per-attempt
+			// filter chain is the only place that can adapt a request for the target it is
+			// about to reach, and x-envoy-attempt-count is how it learns which attempt it is
+			// serving. Without this the header never reaches that chain and the whole
+			// per-attempt position is blind.
+			//
+			// Distinct field from the response one above, and easy to confuse: Envoy rejects
+			// the config outright if you reach for `include_attempt_count_in_request`, which
+			// does not exist.
+			IncludeRequestAttemptCount: t.vhostHasFailover(routes),
 		}
 		virtualHosts = append(virtualHosts, virtualHost)
 	}
@@ -1444,6 +1530,11 @@ func (t *Translator) createListenerWithCertRequest(virtualHosts []*route.Virtual
 
 	// Create router filter with typed config
 	routerConfig := &router.Router{}
+
+	// NOTE: the upstream per-attempt filter chain is NOT attached here. It hangs off each
+	// CLUSTER that has per-attempt work (see attachUpstreamFilters), because the Router's
+	// upstream_http_filters apply to every route on the listener (FR-043a).
+
 	routerAny, err := anypb.New(routerConfig)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create router config: %w", err)
@@ -1632,13 +1723,46 @@ func (t *Translator) createListenerWithCertRequest(virtualHosts []*route.Virtual
 	}, routeConfig, nil
 }
 
+// vhostHasFailover reports whether any route in this virtual host delegates cluster selection
+// to the failover specifier. The attempt count is only exposed when something needs it, so a
+// vhost with no failover keeps its responses byte-for-byte unchanged (FR-030c).
+func (t *Translator) vhostHasFailover(routes []*route.Route) bool {
+	for _, r := range routes {
+		action, ok := r.GetAction().(*route.Route_Route)
+		if !ok {
+			continue
+		}
+		if _, ok := action.Route.GetClusterSpecifier().(*route.RouteAction_ClusterSpecifierPlugin); ok {
+			return true
+		}
+	}
+	return false
+}
+
 // createRouteConfiguration creates a route configuration
 // Uses SharedRouteConfigName so it can be discovered via RDS
 func (t *Translator) createRouteConfiguration(virtualHosts []*route.VirtualHost) *route.RouteConfiguration {
-	return &route.RouteConfiguration{
+	rc := &route.RouteConfiguration{
 		Name:         SharedRouteConfigName,
 		VirtualHosts: virtualHosts,
 	}
+
+	// A route that delegates cluster selection to the failover specifier references the plugin
+	// by name; the plugin definition itself belongs on the route configuration. Emit one entry
+	// per failover-enabled route, in a stable order so an unchanged configuration produces an
+	// unchanged snapshot and does not churn xDS.
+	if len(t.failoverPlugins) > 0 {
+		names := make([]string, 0, len(t.failoverPlugins))
+		for name := range t.failoverPlugins {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		for _, name := range names {
+			rc.ClusterSpecifierPlugins = append(rc.ClusterSpecifierPlugins, t.failoverPlugins[name])
+		}
+	}
+
+	return rc
 }
 
 // getValueFromSourceConfig extracts a value from sourceConfig using a key path.
@@ -3746,13 +3870,35 @@ func (t *Translator) createExtProcFilter() (*hcm.HttpFilter, error) {
 		MutationRules: &mutationrules.HeaderMutationRules{
 			DisallowSystem:  wrapperspb.Bool(false),
 			DisallowIsError: wrapperspb.Bool(true),
+			// ext_proc refuses to modify x-envoy-* headers unless told otherwise, and with
+			// DisallowIsError that refusal fails the request rather than dropping the
+			// mutation. The failover policy sets x-envoy-max-retries to size the attempt
+			// budget to the ranking it just published, so without an allowance every
+			// failover request 500s.
+			//
+			// Narrowed to that ONE header rather than setting allow_envoy, which would let
+			// any downstream policy rewrite every x-envoy-* header — including
+			// x-envoy-upstream-rq-timeout-ms and the retry-policy overrides. A policy bug
+			// there would be a per-request denial-of-service on the upstream.
+			AllowExpression: &matcherv3.RegexMatcher{
+				Regex: "^" + constants.MaxRetriesHeader + "$",
+			},
 		},
 		MetadataOptions: &extproc.MetadataOptions{
+			// wso2.failover MUST be listed. Envoy drops a dynamic-metadata update for any
+			// namespace absent from this list -- logging "namespace not configured for
+			// receiving" and otherwise carrying on -- so a policy publishing a per-request
+			// ranking would have it silently discarded. The failure is near-invisible:
+			// priority_group then falls back to the group configured at that POSITION
+			// (Probe G), which routes plausibly enough to look like working failover while
+			// ignoring the ranking, the health state, and the ordering entirely.
 			ReceivingNamespaces: &extproc.MetadataOptions_MetadataNamespaces{
-				Untyped: []string{constants.ExtProcMetadataNamespace},
+				Untyped: []string{constants.ExtProcMetadataNamespace, FailoverOverrideMetadataNamespace},
 			},
+			// Forwarded as well, so the per-attempt position can read back the ranking this
+			// request actually installed (FR-057b).
 			ForwardingNamespaces: &extproc.MetadataOptions_MetadataNamespaces{
-				Untyped: []string{constants.ExtProcMetadataNamespace},
+				Untyped: []string{constants.ExtProcMetadataNamespace, FailoverOverrideMetadataNamespace},
 			},
 		},
 	}
