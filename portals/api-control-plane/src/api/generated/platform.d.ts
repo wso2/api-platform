@@ -972,6 +972,91 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api-portals/{apiPortalId}/apis/mcp-proxy/{apiId}/publish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
+                apiPortalId: components["parameters"]["apiPortalId"];
+                /** @description The API's handle, unique per organization within its own type. */
+                apiId: components["parameters"]["apiHandle"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Publish MCP proxy to API Portal
+         * @description Publishes the current draft. Takes no request body: details, plans, documents, definition,
+         *     landing page and thumbnail all come from the draft alone — publish never reads the API's
+         *     own content or the current publication to fill a gap. Requires a draft to exist.
+         *
+         *     The content is pushed to the API Portal before anything is written locally, so a failed
+         *     call leaves the draft intact and can simply be repeated.
+         *
+         *     Returns 201 on a first publish or a re-publish after unpublish, 200 otherwise.
+         */
+        post: operations["publishMcpProxyToApiPortal"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api-portals/{apiPortalId}/apis/mcp-proxy/{apiId}/unpublish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
+                apiPortalId: components["parameters"]["apiPortalId"];
+                /** @description The API's handle, unique per organization within its own type. */
+                apiId: components["parameters"]["apiHandle"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Unpublish MCP proxy from API Portal
+         * @description Removes the listing from the API Portal, along with its subscriptions and API keys, then
+         *     writes locally: if no draft exists, the publication is demoted into the draft in place; if
+         *     one exists, the publication is deleted and the existing draft is kept. A draft always
+         *     survives. Valid only when currently published or deprecated.
+         */
+        post: operations["unpublishMcpProxyFromApiPortal"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api-portals/{apiPortalId}/apis/mcp-proxy/{apiId}/deprecate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
+                apiPortalId: components["parameters"]["apiPortalId"];
+                /** @description The API's handle, unique per organization within its own type. */
+                apiId: components["parameters"]["apiHandle"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Deprecate MCP proxy on API Portal
+         * @description Marks the live listing deprecated on the API Portal, where it stays visible and is flagged as deprecated. Nothing is deleted and any draft is untouched. Valid only when currently published.
+         */
+        post: operations["deprecateMcpProxyOnApiPortal"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/apis/{apiType}/{apiId}/docs": {
         parameters: {
             query?: never;
@@ -8253,7 +8338,7 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
-        /** @description Either this API type has no projection onto the API Portal's own API types, so no listing can be created for it, the draft's stored definition is not a valid OpenAPI 3.x document — publish is the one point definition validity is enforced; the draft itself may hold anything — or a selected subscription plan is no longer active. */
+        /** @description Either this API type has no projection onto the API Portal's own API types, so no listing can be created for it, the draft's stored definition is not valid for the API type (an OpenAPI 3.x document for a REST API, a GraphQL SDL document defining a Query type for a GraphQL API, a JSON or YAML document listing named tools, resources or prompts for an MCP proxy) — publish is the one point definition validity is enforced; the draft itself may hold anything — or a selected subscription plan is no longer active. */
         PublicationPublishBadRequest: {
             headers: {
                 [name: string]: unknown;
@@ -10111,6 +10196,108 @@ export interface operations {
         };
     };
     deprecateGraphQLApiOnApiPortal: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
+                apiPortalId: components["parameters"]["apiPortalId"];
+                /** @description The API's handle, unique per organization within its own type. */
+                apiId: components["parameters"]["apiHandle"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Listing deprecated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Publication"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["PublicationConflict"];
+            500: components["responses"]["InternalServerError"];
+            503: components["responses"]["PortalUnavailable"];
+        };
+    };
+    publishMcpProxyToApiPortal: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
+                apiPortalId: components["parameters"]["apiPortalId"];
+                /** @description The API's handle, unique per organization within its own type. */
+                apiId: components["parameters"]["apiHandle"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Listing updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Publication"];
+                };
+            };
+            /** @description Listing created */
+            201: {
+                headers: {
+                    Location: components["headers"]["Location"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Publication"];
+                };
+            };
+            400: components["responses"]["PublicationPublishBadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["PublicationConflict"];
+            500: components["responses"]["InternalServerError"];
+            503: components["responses"]["PortalUnavailable"];
+        };
+    };
+    unpublishMcpProxyFromApiPortal: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
+                apiPortalId: components["parameters"]["apiPortalId"];
+                /** @description The API's handle, unique per organization within its own type. */
+                apiId: components["parameters"]["apiHandle"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Listing removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["PublicationConflict"];
+            500: components["responses"]["InternalServerError"];
+            503: components["responses"]["PortalUnavailable"];
+        };
+    };
+    deprecateMcpProxyOnApiPortal: {
         parameters: {
             query?: never;
             header?: never;

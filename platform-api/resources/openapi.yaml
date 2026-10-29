@@ -2087,6 +2087,124 @@ paths:
         '503':
           $ref: '#/components/responses/PortalUnavailable'
 
+  /api-portals/{apiPortalId}/apis/mcp-proxy/{apiId}/publish:
+    parameters:
+      - $ref: '#/components/parameters/apiPortalId'
+      - $ref: '#/components/parameters/apiHandle'
+    post:
+      summary: Publish MCP proxy to API Portal
+      description: |
+        Publishes the current draft. Takes no request body: details, plans, documents, definition,
+        landing page and thumbnail all come from the draft alone — publish never reads the API's
+        own content or the current publication to fill a gap. Requires a draft to exist.
+
+        The content is pushed to the API Portal before anything is written locally, so a failed
+        call leaves the draft intact and can simply be repeated.
+
+        Returns 201 on a first publish or a re-publish after unpublish, 200 otherwise.
+      operationId: publishMcpProxyToApiPortal
+      security:
+        - OAuth2Security:
+            - ap:api_portal:mcp_proxy:manage
+      tags:
+        - API Publications
+      responses:
+        '200':
+          description: Listing updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Publication'
+        '201':
+          description: Listing created
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Publication'
+        '400':
+          $ref: '#/components/responses/PublicationPublishBadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/PublicationConflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/PortalUnavailable'
+
+  /api-portals/{apiPortalId}/apis/mcp-proxy/{apiId}/unpublish:
+    parameters:
+      - $ref: '#/components/parameters/apiPortalId'
+      - $ref: '#/components/parameters/apiHandle'
+    post:
+      summary: Unpublish MCP proxy from API Portal
+      description: |
+        Removes the listing from the API Portal, along with its subscriptions and API keys, then
+        writes locally: if no draft exists, the publication is demoted into the draft in place; if
+        one exists, the publication is deleted and the existing draft is kept. A draft always
+        survives. Valid only when currently published or deprecated.
+      operationId: unpublishMcpProxyFromApiPortal
+      security:
+        - OAuth2Security:
+            - ap:api_portal:mcp_proxy:manage
+      tags:
+        - API Publications
+      responses:
+        '204':
+          description: Listing removed
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/PublicationConflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/PortalUnavailable'
+
+  /api-portals/{apiPortalId}/apis/mcp-proxy/{apiId}/deprecate:
+    parameters:
+      - $ref: '#/components/parameters/apiPortalId'
+      - $ref: '#/components/parameters/apiHandle'
+    post:
+      summary: Deprecate MCP proxy on API Portal
+      description: Marks the live listing deprecated on the API Portal, where it stays visible and is flagged as deprecated. Nothing is deleted and any draft is untouched. Valid only when currently published.
+      operationId: deprecateMcpProxyOnApiPortal
+      security:
+        - OAuth2Security:
+            - ap:api_portal:mcp_proxy:manage
+      tags:
+        - API Publications
+      responses:
+        '200':
+          description: Listing deprecated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Publication'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/PublicationConflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/PortalUnavailable'
+
   /apis/{apiType}/{apiId}/docs:
     parameters:
       - $ref: '#/components/parameters/apiType'
@@ -9153,6 +9271,7 @@ components:
             ap:api_portal:publication:read: Read an API's live listing on one portal
             ap:api_portal:read: Read API Portals
             ap:api_portal:graphql_api:manage: Publish, unpublish and deprecate a GraphQL API on a portal
+            ap:api_portal:mcp_proxy:manage: Publish, unpublish and deprecate an MCP proxy on a portal
             ap:api_portal:rest_api:manage: Publish, unpublish and deprecate a REST API on a portal
             ap:api_portal:update: Update an API Portal
             ap:api_publication:read: Read an API's publication status across every portal
@@ -15777,9 +15896,11 @@ components:
     PublicationPublishBadRequest:
       description: >-
         Either this API type has no projection onto the API Portal's own API types, so no listing can be
-        created for it, the draft's stored definition is not a valid OpenAPI 3.x document — publish is the
-        one point definition validity is enforced; the draft itself may hold anything — or a selected
-        subscription plan is no longer active.
+        created for it, the draft's stored definition is not valid for the API type (an OpenAPI 3.x document
+        for a REST API, a GraphQL SDL document defining a Query type for a GraphQL API, a JSON or YAML
+        document listing named tools, resources or prompts for an MCP proxy) — publish is the one point
+        definition validity is enforced; the draft itself may hold anything — or a selected subscription
+        plan is no longer active.
       content:
         application/json:
           schema:
