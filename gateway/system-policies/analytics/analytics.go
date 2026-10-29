@@ -1018,6 +1018,7 @@ func (a *AnalyticsPolicy) OnResponseBody(_ context.Context, ctx *policy.Response
 						"providerName", tokenInfo.ProviderName,
 						"providerDisplayName", tokenInfo.ProviderDisplayName,
 					)
+					dropUsageUnlessInvocation(tokenInfo, ctx.RequestMethod)
 					populateTokenAnalyticsMetadata(analyticsMetadata, tokenInfo)
 				}
 			}
@@ -1145,10 +1146,12 @@ func (a *AnalyticsPolicy) OnResponseBodyChunk(_ context.Context, ctx *policy.Res
 				tokenInfo, err := extractLLMProviderAnalyticsInfoFromBytes(
 					template, ctx.RequestHeaders, ctx.ResponseHeaders,
 					requestBodyBytes, accumulated, ctx.RequestPath,
+					llmResourcePath(ctx.SharedContext, ctx.RequestPath),
 				)
 				if err != nil {
 					slog.Warn("Failed to extract LLM token info from streaming response", "error", err)
 				} else if tokenInfo != nil {
+					dropUsageUnlessInvocation(tokenInfo, ctx.RequestMethod)
 					populateTokenAnalyticsMetadata(analyticsMetadata, tokenInfo)
 				}
 			}
@@ -1386,6 +1389,7 @@ func extractLLMProviderAnalyticsInfo(template map[string]interface{}, ctx *polic
 	return extractLLMProviderAnalyticsInfoFromBytes(
 		template, ctx.RequestHeaders, ctx.ResponseHeaders,
 		requestBodyBytes, responseBodyBytes, ctx.RequestPath,
+		llmResourcePath(ctx.SharedContext, ctx.RequestPath),
 	)
 }
 
@@ -1399,10 +1403,14 @@ func extractLLMProviderAnalyticsInfoFromBytes(
 	template map[string]interface{},
 	requestHeaders, responseHeaders *policy.Headers,
 	requestBodyBytes, responseBodyBytes []byte,
-	requestPath string,
+	requestPath, resourcePath string,
 ) (*LLMProviderAnalyticsInfo, error) {
 	var responseJSON map[string]interface{}
 	if len(responseBodyBytes) > 0 {
+		// Bedrock streams arrive in Amazon's binary event-stream framing; unwrap them to JSON.
+		if isEventStreamContent(responseHeaders) {
+			responseBodyBytes = decodeEventStream(responseBodyBytes)
+		}
 		// SSE responses: merge all data events so fields spread across events are visible.
 		if merged, err := parseSSEMergedDataEvents(responseBodyBytes); err == nil {
 			responseJSON = merged
@@ -1417,7 +1425,7 @@ func extractLLMProviderAnalyticsInfoFromBytes(
 		_ = json.Unmarshal(requestBodyBytes, &requestJSON)
 	}
 
-	return extractLLMAnalyticsFromJSON(template, requestHeaders, responseHeaders, requestJSON, responseJSON, requestPath)
+	return extractLLMAnalyticsFromJSON(template, requestHeaders, responseHeaders, requestJSON, responseJSON, requestPath, resourcePath)
 }
 
 // extractLLMAnalyticsFromJSON is the core extraction logic operating on pre-parsed JSON maps.
@@ -1425,31 +1433,21 @@ func extractLLMAnalyticsFromJSON(
 	template map[string]interface{},
 	requestHeaders, responseHeaders *policy.Headers,
 	requestJSON, responseJSON map[string]interface{},
-	requestPath string,
+	requestPath, resourcePath string,
 ) (*LLMProviderAnalyticsInfo, error) {
 	if template == nil {
 		return nil, fmt.Errorf("template is nil")
 	}
 
-	spec, ok := template["spec"].(map[string]interface{})
+	rootSpec, ok := template["spec"].(map[string]interface{})
 	if !ok {
 		return nil, fmt.Errorf("template spec is not a map")
 	}
+	spec := effectiveLLMSpec(rootSpec, resourcePath)
 
 	info := &LLMProviderAnalyticsInfo{}
 
-	extract := func(field string, fromRequest bool) (interface{}, error) {
-		fieldCfg, ok := spec[field].(map[string]interface{})
-		if !ok {
-			return nil, fmt.Errorf("field %s not found", field)
-		}
-
-		location, _ := fieldCfg["location"].(string)
-		identifier, _ := fieldCfg["identifier"].(string)
-		if identifier == "" {
-			return nil, fmt.Errorf("identifier missing for %s", field)
-		}
-
+	extractAt := func(field, location, identifier string, fromRequest bool) (interface{}, error) {
 		switch strings.ToLower(location) {
 		case "payload":
 			var src map[string]interface{}
@@ -1490,6 +1488,32 @@ func extractLLMAnalyticsFromJSON(
 		default:
 			return nil, fmt.Errorf("unsupported location %s", location)
 		}
+	}
+
+	// extract tries the field's primary identifier, then each fallback in order, and returns the
+	// first value found.
+	extract := func(field string, fromRequest bool) (interface{}, error) {
+		fieldCfg, ok := spec[field].(map[string]interface{})
+		if !ok {
+			return nil, fmt.Errorf("field %s not found", field)
+		}
+		identifiers := llmFieldIdentifiers(fieldCfg)
+		if len(identifiers) == 0 {
+			return nil, fmt.Errorf("identifier missing for %s", field)
+		}
+		location, _ := fieldCfg["location"].(string)
+		var lastErr error
+		for _, identifier := range identifiers {
+			value, err := extractAt(field, location, identifier, fromRequest)
+			if err == nil && value != nil {
+				return value, nil
+			}
+			lastErr = err
+		}
+		if lastErr == nil {
+			lastErr = fmt.Errorf("no value for %s", field)
+		}
+		return nil, lastErr
 	}
 
 	if v, err := extract("promptTokens", false); err == nil {
@@ -1582,6 +1606,17 @@ func compilePathParamRegex(pattern string) (*regexp.Regexp, error) {
 }
 
 // populateTokenAnalyticsMetadata copies LLM token fields into an analytics metadata map.
+// dropUsageUnlessInvocation clears the token counts of a request that did not invoke a model.
+// Only a POST does; reading a stored result back (GET /chat/completions/{id}, GET /responses/{id})
+// returns the original usage, which would otherwise be reported, and priced, as a second call.
+// The provider and model stay, so the event is still attributed. An unknown method is kept.
+func dropUsageUnlessInvocation(tokenInfo *LLMProviderAnalyticsInfo, method string) {
+	if method == "" || strings.EqualFold(method, "POST") {
+		return
+	}
+	tokenInfo.PromptTokens, tokenInfo.CompletionTokens, tokenInfo.TotalTokens = nil, nil, nil
+}
+
 func populateTokenAnalyticsMetadata(analyticsMetadata map[string]any, tokenInfo *LLMProviderAnalyticsInfo) {
 	if tokenInfo.PromptTokens != nil {
 		analyticsMetadata[PromptTokenCountMetadataKey] = strconv.FormatInt(*tokenInfo.PromptTokens, 10)

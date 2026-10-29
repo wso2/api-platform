@@ -1190,6 +1190,8 @@ func (g *Gateway) register(sc *godog.ScenarioContext) {
 		g.analyticsResponseStatusForAPIContext)
 	sc.Step(`^the latest analytics event for path "([^"]*)" should have metadata field "([^"]*)" with value "([^"]*)"$`,
 		g.analyticsMetadataField)
+	sc.Step(`^the latest analytics event for path "([^"]*)" should (have|not have) AI context field "([^"]*)"(?: with value "([^"]*)")?$`,
+		g.analyticsAIContextField)
 	sc.Step(`^the latest analytics event for path "([^"]*)" should (have|not have) company id(?: "([^"]*)")?$`,
 		g.analyticsCompanyID)
 	sc.Step(`^the response should be an oob-template list$`, g.oobTemplateList)
@@ -2182,6 +2184,9 @@ type analyticsEvent struct {
 	// as a map because the assertions are about the published document: a typed mirror would
 	// let a renamed or relocated field compile and pass.
 	A2A map[string]any `json:"a2a"`
+	// AIContext is the event's first-class LLM block (provider, model, usage), decoded as a map
+	// for the same reason as A2A.
+	AIContext map[string]any `json:"ai_context"`
 }
 
 func (g *Gateway) analyticsHeader(
@@ -2475,6 +2480,76 @@ func (g *Gateway) analyticsMetadataField(ctx context.Context, path, field, want 
 	}
 	if got := fmt.Sprintf("%v", value); got != resolved {
 		return fmt.Errorf("latest analytics event metadata field %q is %q, want %q", field, got, resolved)
+	}
+	return nil
+}
+
+// analyticsAIContextField asserts one field of the ai_context block on the latest analytics event
+// for a request path. The field is named by its dotted published path, such as
+// "usage.prompt_tokens", so a field that moved within the block fails rather than being found.
+func (g *Gateway) analyticsAIContextField(ctx context.Context, path, mode, field, want string) error {
+	if mode == "have" && want == "" {
+		return fmt.Errorf(`asserting AI context field %q requires a value: use 'with value "..."'`, field)
+	}
+	if mode != "have" && want != "" {
+		return fmt.Errorf("asserting that the event should %s AI context field %q takes no value", mode, field)
+	}
+	event, err := g.analyticsEventForPath(ctx, path)
+	if err != nil {
+		return err
+	}
+	resolved, err := stepscommon.Expand(ctx, want)
+	if err != nil {
+		return err
+	}
+	return aiContextAssert(event.AIContext, mode, field, resolved)
+}
+
+func aiContextAssert(block map[string]any, mode, field, want string) error {
+	if block == nil {
+		return fmt.Errorf("the analytics event carries no ai_context block")
+	}
+	value, ok := traverseJSON(block, field)
+	switch mode {
+	case "have":
+		if !ok {
+			return fmt.Errorf("AI context field %q not found in {%s}", field, sortedAnyKeys(block))
+		}
+		return aiContextValueMatches(field, value, want)
+	case "not have":
+		if ok {
+			return fmt.Errorf("expected no AI context field %q, but it is present with value %v", field, value)
+		}
+	default:
+		return fmt.Errorf("unsupported AI context assertion %q", mode)
+	}
+	return nil
+}
+
+// aiContextValueMatches compares a field against its expected text by the field's published type:
+// token counts under usage are JSON numbers and every other asserted field is a JSON string, so a
+// count published as a string, or a name published as a number, fails rather than matching.
+func aiContextValueMatches(field string, value any, want string) error {
+	if strings.HasPrefix(field, "usage.") {
+		got, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("expected AI context field %q to be a number, got %T %v", field, value, value)
+		}
+		expected, err := strconv.ParseFloat(want, 64)
+		if err != nil {
+			return fmt.Errorf("expected value %q for numeric AI context field %q is not a number", want, field)
+		}
+		if got != expected {
+			return fmt.Errorf("expected AI context field %q to be %s, got %v", field, want, got)
+		}
+		return nil
+	}
+	got, ok := value.(string)
+	if !ok {
+		return fmt.Errorf("expected AI context field %q to be a string, got %T %v", field, value, value)
+	}
+	if got != want {
+		return fmt.Errorf("expected AI context field %q to be %q, got %q", field, want, got)
 	}
 	return nil
 }
