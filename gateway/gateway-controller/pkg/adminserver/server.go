@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/pprof"
+	"sync/atomic"
 	"time"
 
 	adminapi "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/admin"
@@ -27,15 +28,29 @@ type apiServer interface {
 	GetXDSSyncStatusResponse() adminapi.XDSSyncStatusResponse
 }
 
+// apiServerRef holds the API server so it can be swapped in atomically.
+type apiServerRef struct {
+	apiServer
+}
+
 // Server is the controller admin HTTP server for debug endpoints.
 type Server struct {
-	cfg       *config.AdminServerConfig
-	apiServer apiServer
-	httpSrv   *http.Server
-	logger    *slog.Logger
+	cfg *config.AdminServerConfig
+	// api serves config_dump and xds_sync_status. It is set by SetAPIServer once the
+	// controller has finished starting; until then those endpoints answer 503, while
+	// the health probe is already served.
+	api     atomic.Pointer[apiServerRef]
+	health  http.Handler
+	httpSrv *http.Server
+	logger  *slog.Logger
 }
 
 // NewServer creates a new admin HTTP server.
+//
+// health serves the public health probes: the versioned liveness and readiness paths
+// and the legacy liveness path all answer from it.
+// The server can be started before the rest of the controller, so health probes get
+// an answer during startup; call SetAPIServer once the debug endpoints can be served.
 //
 // authMiddleware is the protection chain applied to every admin endpoint except
 // the public health probe. In production it composes the shared authentication
@@ -44,11 +59,12 @@ type Server struct {
 // A nil authMiddleware disables that protection entirely and is intended only for
 // tests that exercise the handlers or IP allowlist in isolation — production
 // callers must always pass a configured chain.
-func NewServer(cfg *config.AdminServerConfig, apiServer apiServer, authMiddleware func(http.Handler) http.Handler, logger *slog.Logger) *Server {
+func NewServer(cfg *config.AdminServerConfig, health http.Handler,
+	authMiddleware func(http.Handler) http.Handler, logger *slog.Logger) *Server {
 	s := &Server{
-		cfg:       cfg,
-		apiServer: apiServer,
-		logger:    logger,
+		cfg:    cfg,
+		health: health,
+		logger: logger,
 	}
 
 	// Authentication is the primary gate; the IP allowlist is defense-in-depth.
@@ -80,7 +96,8 @@ func NewServer(cfg *config.AdminServerConfig, apiServer apiServer, authMiddlewar
 	// Legacy unprefixed admin routes for backwards compatibility. These are
 	// deprecated; responses carry RFC 8594 headers pointing at the versioned
 	// paths. Remove once all clients (docker-compose healthchecks, older
-	// kubelet probes, etc.) have been migrated.
+	// kubelet probes, etc.) have been migrated. Readiness never had a legacy
+	// path, so the outermost wrapper answers it as not found.
 	adminapi.HandlerWithOptions(s, adminapi.StdHTTPServerOptions{
 		BaseURL:    "",
 		BaseRouter: mux,
@@ -88,6 +105,7 @@ func NewServer(cfg *config.AdminServerConfig, apiServer apiServer, authMiddlewar
 			createSelectiveIPWhitelistMiddleware(cfg.AllowedIPs),
 			deprecatedAdminPathMiddleware(AdminAPIBasePath),
 			authMW,
+			legacyReadyNotFoundMiddleware,
 		},
 	})
 
@@ -114,6 +132,22 @@ func NewServer(cfg *config.AdminServerConfig, apiServer apiServer, authMiddlewar
 	return s
 }
 
+// SetAPIServer makes the config_dump and xds_sync_status endpoints available.
+func (s *Server) SetAPIServer(api apiServer) {
+	s.api.Store(&apiServerRef{api})
+}
+
+// apiServerOrUnavailable returns the API server, or answers 503 and returns nil while
+// the controller is still starting.
+func (s *Server) apiServerOrUnavailable(w http.ResponseWriter) apiServer {
+	ref := s.api.Load()
+	if ref == nil {
+		http.Error(w, "Service unavailable: the gateway controller is starting", http.StatusServiceUnavailable)
+		return nil
+	}
+	return ref.apiServer
+}
+
 // Start starts the admin HTTP server in a blocking manner.
 func (s *Server) Start() error {
 	s.logger.Info("Starting controller admin HTTP server",
@@ -138,7 +172,11 @@ func (s *Server) GetConfigDump(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	body, err := s.apiServer.ConfigDumpJSON(s.logger)
+	api := s.apiServerOrUnavailable(w)
+	if api == nil {
+		return
+	}
+	body, err := api.ConfigDumpJSON(s.logger)
 	if err != nil {
 		http.Error(w, "Failed to retrieve configuration dump", http.StatusInternalServerError)
 		return
@@ -151,36 +189,62 @@ func (s *Server) GetConfigDump(w http.ResponseWriter, r *http.Request) {
 
 // GetXDSSyncStatus implements adminapi.ServerInterface.
 func (s *Server) GetXDSSyncStatus(w http.ResponseWriter, r *http.Request) {
-	resp := s.apiServer.GetXDSSyncStatusResponse()
+	api := s.apiServerOrUnavailable(w)
+	if api == nil {
+		return
+	}
+	resp := api.GetXDSSyncStatusResponse()
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	_ = json.NewEncoder(w).Encode(resp)
 }
 
-// GetHealth implements adminapi.ServerInterface.
+// GetHealth implements adminapi.ServerInterface. It reports whether the controller and
+// its dependencies are usable: 200 when healthy, 503 otherwise.
 func (s *Server) GetHealth(w http.ResponseWriter, r *http.Request) {
-	resp := map[string]string{
-		"status":    "healthy",
-		"timestamp": time.Now().UTC().Format(time.RFC3339),
-	}
+	s.health.ServeHTTP(w, r)
+}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	_ = json.NewEncoder(w).Encode(resp)
+// GetReady implements adminapi.ServerInterface. It is served by the same health handler
+// as GetHealth, so both paths share one evaluation and give the same answer.
+func (s *Server) GetReady(w http.ResponseWriter, r *http.Request) {
+	s.health.ServeHTTP(w, r)
+}
+
+// isHealthPath reports whether path is one of the public health probes: the versioned
+// liveness and readiness paths, or the legacy liveness alias. Paths are matched exactly
+// (not by prefix) so an unrelated path can never be mistaken for a probe.
+func isHealthPath(path string) bool {
+	switch path {
+	case AdminAPIBasePath + "/health", AdminAPIBasePath + "/ready", "/health":
+		return true
+	}
+	return false
+}
+
+// legacyReadyNotFoundMiddleware answers the unprefixed /ready path as not found. The
+// legacy registration creates that route along with the others, but readiness is
+// served only on the versioned path.
+func legacyReadyNotFoundMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/ready" {
+			http.NotFound(w, r)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // createSelectiveIPWhitelistMiddleware creates a middleware that applies IP whitelist
-// to all endpoints except /health (which must be accessible for Docker/k8s health probes).
-// Both the versioned (AdminAPIBasePath+"/health") and the deprecated legacy
-// ("/health") variants are exempt while legacy support is retained.
+// to all endpoints except the health probes (which must be accessible for Docker/k8s
+// health probes). The versioned liveness and readiness paths and the deprecated legacy
+// "/health" alias are exempt while legacy support is retained.
 func createSelectiveIPWhitelistMiddleware(allowedIPs []string) adminapi.MiddlewareFunc {
-	healthPath := AdminAPIBasePath + "/health"
-	const legacyHealthPath = "/health"
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Skip IP whitelist for health endpoints (versioned and legacy).
-			if r.URL.Path == healthPath || r.URL.Path == legacyHealthPath {
+			if isHealthPath(r.URL.Path) {
 				next.ServeHTTP(w, r)
 				return
 			}
@@ -202,12 +266,10 @@ func createSelectiveIPWhitelistMiddleware(allowedIPs []string) adminapi.Middlewa
 // admin endpoint (config_dump, xds_sync_status, pprof) requires valid credentials.
 //
 // The health paths are matched exactly (not by prefix) so an unrelated path can
-// never be mistaken for the public probe. When
+// never be mistaken for a public probe. When
 // authMiddleware is nil the returned wrapper is a passthrough; production callers
 // must supply a configured middleware (see NewServer).
 func createSelectiveAuthMiddleware(authMiddleware func(http.Handler) http.Handler) adminapi.MiddlewareFunc {
-	healthPath := AdminAPIBasePath + "/health"
-	const legacyHealthPath = "/health"
 	return func(next http.Handler) http.Handler {
 		// Build the authenticated handler once per wrapped route. When no
 		// authenticator is wired, fall through to the unauthenticated handler.
@@ -217,7 +279,7 @@ func createSelectiveAuthMiddleware(authMiddleware func(http.Handler) http.Handle
 		}
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Health probes must stay reachable without credentials.
-			if r.URL.Path == healthPath || r.URL.Path == legacyHealthPath {
+			if isHealthPath(r.URL.Path) {
 				next.ServeHTTP(w, r)
 				return
 			}

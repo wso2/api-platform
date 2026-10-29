@@ -46,7 +46,7 @@ const (
 
 	// GatewayAdminBasePath is the URL prefix under which the gateway-controller admin API
 	// is served. It must stay in sync with the controller admin OpenAPI spec.
-	GatewayAdminBasePath = "/api/admin/v0.9"
+	GatewayAdminBasePath = "/api/admin/v1"
 
 	// MCPServerPort is the port for MCP server
 	MCPServerPort = "3001"

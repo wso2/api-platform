@@ -55,6 +55,7 @@ Resolution semantics:
 - When `--gateway` is given, the command uses that named gateway in the resolved platform.
 
 > **Note:** The `health` command also routes to the gateway-controller admin API. When a gateway was added with a separate `--admin-server`, that URL is used for `health`; otherwise the management `--server` URL is reused.
+> The admin server answers health requests only from allowed clients (`controller.health.allowed_clients`, loopback by default). When the CLI runs on another host, or reaches a container through a published port, add the CLI host's address or network to that list (for example with `APIP_GW_CONTROLLER_HEALTH_ALLOWED_CLIENTS`), or the command fails with status 403.
 
 ## Apply Command
 

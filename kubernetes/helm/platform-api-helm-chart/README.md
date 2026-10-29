@@ -243,8 +243,29 @@ every key below with `platform-api.`.
   `createIssuer=false` with `issuerRef`) or `secret` (existing `tls.crt`/`tls.key`).
 - `persistence.*` — PVC for the SQLite file (1Gi, `ReadWriteOnce`, kept on uninstall). It can
   be disabled with an external database.
-- `deployment.*` — replicas, probes (`/health` over HTTPS), resources, security contexts,
-  scheduling, `extraEnv`/`extraEnvFrom`/`extraVolumes`/`extraVolumeMounts`.
+- `deployment.*` — replicas, probes over HTTPS (liveness `/health`; readiness and startup
+  `/ready`), resources, security contexts, scheduling,
+  `extraEnv`/`extraEnvFrom`/`extraVolumes`/`extraVolumeMounts`. Both endpoints answer 503
+  while the database is down or the server is still starting. Readiness (period 5 s ×
+  failureThreshold 3, ~15 s) takes the pod out of service; liveness (period 10 s ×
+  failureThreshold 12, ~2 min) restarts it only after a long outage. The startup probe allows
+  6 minutes, above `config.health.database.startupWait` (5m); set it to `null` to disable it.
+- `config.health.*` — `cacheTtl` and `allowedClients`, the IPs or CIDRs allowed to
+  call `/health` and `/ready` (others get 403; a single `"*"` allows every client). The
+  default is loopback plus the private ranges (`10.0.0.0/8`, `172.16.0.0/12`,
+  `192.168.0.0/16`, `fc00::/7`) so kubelet probes from node addresses pass. Narrow it to the
+  cluster's pod and node ranges, and add external load balancers, or clients whose address
+  is preserved (`externalTrafficPolicy: Local`), that call the health endpoints. Health
+  events go to stdout: one line when a check starts failing and one when it recovers.
+- `config.health.database.*` — the database check, rendered to
+  `[platform_api.health.database]`: `checkTimeout` (2s), `startupWait` (5m),
+  `failureWindow` (30s), `failureRatio` (0.5), `minAttempts` (5), `idlePeriod` (10s),
+  `poolSaturation` (0.9), `poolWaitLimit` (5s). The check decides from the outcomes of the
+  server's own database operations within `failureWindow`, pings the database only after
+  `idlePeriod` without operations, and also reports the database down when the connection
+  pool stays saturated longer than `poolWaitLimit`. The server fails at startup on
+  `check_timeout` or `startup_wait` set directly under `[platform_api.health]` (they moved to
+  the database table) and on any unknown key in `[platform_api.health.database]`.
 - `hpa.*` / `podDisruptionBudget.*` — autoscaling and the PDB. The HPA requires `postgres`
   or `sqlserver`, plus CPU requests.
 - `configMap.*`, `global.commonLabels`, `global.commonAnnotations` — extra metadata.

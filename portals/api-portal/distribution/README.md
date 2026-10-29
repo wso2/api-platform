@@ -67,11 +67,13 @@ docker compose up
 
 The admin password is generated and printed once by `setup.sh` — it is not stored anywhere; only its bcrypt hash lands in `api-platform.env`. Re-running `setup.sh` is safe: it only fills in what's missing and never overwrites an existing value — to rotate a value, delete it from `api-platform.env` (or delete `resources/certificates` for the TLS cert) and re-run. `ADMIN_USERNAME` / `ADMIN_PASSWORD` environment variables skip the interactive prompts (used by CI to pin known test credentials).
 
-Verify the Platform API is healthy:
+Verify the Platform API is ready:
 
 ```bash
-curl -fk https://localhost:9243/health
+curl -fk https://localhost:9243/ready
 ```
+
+Health endpoints answer only allowed clients (`allowed_clients`, loopback by default), and a call from the host through a published port arrives from the Docker network. To allow it, add `APIP_CP_HEALTH_ALLOWED_CLIENTS=127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7` to `api-platform.env` and restart the stack.
 
 Open the API Portal in a browser at `https://localhost:9543/api-portal/default/views/default` and log in with the admin credentials printed by `setup.sh`.
 

@@ -22,6 +22,12 @@ enabled = '{{ env "APIP_AP_SERVER_HTTPS_ENABLED" "false" }}'
 [api_portal.logging]
 console_only = '{{ env "APIP_AP_LOGGING_CONSOLE_ONLY" "true" }}'
 
+[api_portal.health]
+# Clients allowed to call /health and /ready. Requests through the published port
+# arrive from the compose network's gateway, not loopback, so the private ranges
+# are allowed alongside loopback.
+allowed_clients = '{{ env "APIP_AP_HEALTH_ALLOWED_CLIENTS" "127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7" }}'
+
 [api_portal.database]
 driver   = '{{ env "APIP_AP_DATABASE_DRIVER" "postgres" }}'
 host     = '{{ env "APIP_AP_DATABASE_HOST" "postgres" }}'

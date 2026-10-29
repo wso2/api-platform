@@ -64,6 +64,35 @@ config:
     format: text                 # text | json
     consoleOnly: true            # log to stdout only (no file)
 
+  # Health checks behind /health (liveness) and /ready (readiness), both also served
+  # under /api-portal. Health events go to stdout: one line when a check starts failing
+  # and one when it recovers. Durations use the Go notation ("3s", "500ms").
+  health:
+    cacheTtl: 3s                 # how long an evaluated health result is reused
+    # Clients (IPs or CIDRs) allowed to call /health and /ready; others get 403. Only
+    # the connection's peer address counts, never X-Forwarded-For. A single "*" allows
+    # every client. The default covers private ranges so kubelet probes from node
+    # addresses pass. Narrow it to the cluster's pod and node ranges, and add the
+    # addresses of external load balancers, or of clients whose address is preserved
+    # (externalTrafficPolicy: Local), that call the health endpoints.
+    allowedClients:
+      - "127.0.0.1"
+      - "::1"
+      - "10.0.0.0/8"
+      - "172.16.0.0/12"
+      - "192.168.0.0/16"
+      - "fc00::/7"
+    # The database check judges the database by the outcomes of the portal's own
+    # queries, and runs its own SELECT 1 only after idlePeriod without any.
+    database:
+      checkTimeout: 2s           # bound on the check's own SELECT 1
+      failureWindow: 30s         # how far back query outcomes count (>= cacheTtl)
+      failureRatio: 0.5          # down when connection failures / attempts reach this
+      minAttempts: 5             # attempts in the window needed before the ratio decides
+      idlePeriod: 10s            # quiet time before the check's own SELECT 1 (<= failureWindow)
+      poolSaturation: 0.9        # postgres/mssql: share of the pool in use, callers waiting
+      poolWaitLimit: 5s          # saturation lasting this long reports the database down
+
   # --- Database (the portal's OWN store, separate from the Platform API's) ---
   database:
     # sqlite   → file on the PVC; single replica; HPA unavailable.
@@ -392,18 +421,28 @@ deployment:
   podAnnotations: {}
   podLabels: {}
   priorityClassName: ""
+  # Liveness and readiness use the portal's health endpoints, so the probes must come
+  # from an address in config.health.allowedClients (kubelet probes arrive from the
+  # node's address). Both answer 503 while the database is unreachable: readiness
+  # takes the pod out of service quickly, and liveness restarts it only after the
+  # outage has lasted failureThreshold x periodSeconds (2 minutes).
   livenessProbe:
-    httpGet: { path: /, port: http, scheme: HTTPS }
-    initialDelaySeconds: 15
+    httpGet: { path: /health, port: http, scheme: HTTPS }
     periodSeconds: 10
     timeoutSeconds: 5
-    failureThreshold: 3
+    failureThreshold: 12
   readinessProbe:
-    httpGet: { path: /, port: http, scheme: HTTPS }
-    initialDelaySeconds: 10
+    httpGet: { path: /ready, port: http, scheme: HTTPS }
     periodSeconds: 5
     timeoutSeconds: 3
     failureThreshold: 3
+  # Holds off the liveness probe while the portal starts (up to 5 minutes). Set to
+  # null to disable.
+  startupProbe:
+    httpGet: { path: /ready, port: http, scheme: HTTPS }
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 60
   # Set CPU requests if you enable the HPA, so it can compute utilization.
   resources: {}
   podSecurityContext: {}

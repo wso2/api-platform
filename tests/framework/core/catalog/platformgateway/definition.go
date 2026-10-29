@@ -42,6 +42,9 @@ func PlatformGateway() *components.Definition {
 	env := map[string]string{
 		EnvImagePGController: shared.Image(shared.EnvImageGatewayController, shared.GatewayControllerRunImage()).Ref,
 		EnvImagePGRuntime:    shared.Image(shared.EnvImageGatewayRuntime, shared.GatewayRuntimeRunImage()).Ref,
+		// The controller reads both: the router value shapes the runtime's health routes.
+		envControllerHealthAllowedClients: shared.HealthAllowedClients,
+		envRouterHealthAllowedClients:     shared.HealthAllowedClients,
 	}
 	for key, value := range runtimeCoverageEnvironment() {
 		env[key] = value

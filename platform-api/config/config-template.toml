@@ -83,6 +83,26 @@ level = "info"   # debug | info | warn | error
 # Log encoding. Use "json" when shipping logs to an aggregator.
 format = "text"   # text | json
 
+# Health check behaviour (/health and /ready). Every key is optional; the values shown are
+# the defaults.
+[platform_api.health]
+# Clients allowed to call the health endpoints. The default is loopback only; add IP
+# addresses or CIDR ranges, comma-separated, or set "*" alone to allow every client.
+allowed_clients = '{{ env "APIP_CP_HEALTH_ALLOWED_CLIENTS" "127.0.0.1,::1" }}'
+# cache_ttl = "3s"    # how long an evaluated health result is reused
+
+# The database check decides from the outcomes of the platform's own database operations
+# and pings the database itself only while they are idle.
+[platform_api.health.database]
+# check_timeout   = '{{ env "APIP_CP_HEALTH_DATABASE_CHECK_TIMEOUT" "2s" }}'     # deadline for one run of the check and its ping
+# startup_wait    = '{{ env "APIP_CP_HEALTH_DATABASE_STARTUP_WAIT" "5m" }}'      # how long startup waits for the database before exiting
+# failure_window  = '{{ env "APIP_CP_HEALTH_DATABASE_FAILURE_WINDOW" "30s" }}'   # how far back operation outcomes are counted
+# failure_ratio   = '{{ env "APIP_CP_HEALTH_DATABASE_FAILURE_RATIO" "0.5" }}'    # share of failed operations that reports the database down
+# min_attempts    = '{{ env "APIP_CP_HEALTH_DATABASE_MIN_ATTEMPTS" "5" }}'       # operations needed in the window before the ratio decides
+# idle_period     = '{{ env "APIP_CP_HEALTH_DATABASE_IDLE_PERIOD" "10s" }}'      # idle time before the check pings; at most one ping per period
+# pool_saturation = '{{ env "APIP_CP_HEALTH_DATABASE_POOL_SATURATION" "0.9" }}'  # share of the connection pool in use that counts as saturated
+# pool_wait_limit = '{{ env "APIP_CP_HEALTH_DATABASE_POOL_WAIT_LIMIT" "5s" }}'   # how long the pool may stay saturated before the database is reported down
+
 # ---------------------------------------------------------------------------
 # Security
 # ---------------------------------------------------------------------------

@@ -239,6 +239,18 @@ gateway:
             # - text: Human-readable text format (recommended for development)
             format: json
 
+          # Clients (IPs or CIDRs) allowed to call the admin health and ready endpoints; others get 403.
+          # A single "*" allows every client. Private ranges let kubelet probes from node
+          # addresses pass; narrow them to the cluster's pod and node ranges.
+          health:
+            allowed_clients:
+              - "127.0.0.1"
+              - "::1"
+              - "10.0.0.0/8"
+              - "172.16.0.0/12"
+              - "192.168.0.0/16"
+              - "fc00::/7"
+
         # Router (Envoy) configuration
         router:
           # Gateway host for incoming requests
@@ -367,6 +379,20 @@ gateway:
 
               # Skip server certificate verification (insecure, development only)
               skip_verify: false
+
+          # Clients (IPs or CIDRs) allowed to call the gateway health routes; others get 403.
+          # A single "*" allows every client. Private ranges let kubelet probes from node
+          # addresses pass; narrow them to the cluster's pod and node ranges.
+          # Add the addresses of external load balancers, or of clients whose address is
+          # preserved (externalTrafficPolicy: Local), that call the readiness route.
+          health:
+            allowed_clients:
+              - "127.0.0.1"
+              - "::1"
+              - "10.0.0.0/8"
+              - "172.16.0.0/12"
+              - "192.168.0.0/16"
+              - "fc00::/7"
 
         policy_engine:
           server:

@@ -21,6 +21,8 @@ package xdsclient
 import (
 	"fmt"
 	"time"
+
+	"google.golang.org/grpc/keepalive"
 )
 
 // Config holds the xDS client configuration
@@ -61,6 +63,14 @@ type Config struct {
 	// this client offers, most preferred first (e.g. "X25519MLKEM768,X25519,P-256").
 	// Required whenever TLSEnabled -- see config.ParseAdminEcdhCurves.
 	TLSEcdhCurves string
+
+	// KeepaliveTime is how often an idle connection is pinged. Zero uses
+	// DefaultKeepaliveTime.
+	KeepaliveTime time.Duration
+
+	// KeepaliveTimeout is how long a ping may go unacknowledged before the
+	// connection is treated as dead. Zero uses DefaultKeepaliveTimeout.
+	KeepaliveTimeout time.Duration
 }
 
 // Validate validates the xDS client configuration
@@ -83,6 +93,14 @@ func (c *Config) Validate() error {
 
 	if c.MaxReconnectDelay <= 0 {
 		return fmt.Errorf("max reconnect delay must be positive")
+	}
+
+	if c.KeepaliveTime < 0 {
+		return fmt.Errorf("keepalive time must not be negative")
+	}
+
+	if c.KeepaliveTimeout < 0 {
+		return fmt.Errorf("keepalive timeout must not be negative")
 	}
 
 	if c.TLSEnabled {
@@ -112,5 +130,25 @@ func NewDefaultConfig(serverAddress string) *Config {
 		InitialReconnectDelay: DefaultInitialReconnectDelay,
 		MaxReconnectDelay:     DefaultMaxReconnectDelay,
 		TLSEnabled:            false,
+		KeepaliveTime:         DefaultKeepaliveTime,
+		KeepaliveTimeout:      DefaultKeepaliveTimeout,
 	}
+}
+
+// keepaliveParams returns the client keepalive settings, with defaults for unset
+// values. Pings are sent even when no stream is active, so a dead peer is noticed
+// between streams too.
+func (c *Config) keepaliveParams() keepalive.ClientParameters {
+	params := keepalive.ClientParameters{
+		Time:                c.KeepaliveTime,
+		Timeout:             c.KeepaliveTimeout,
+		PermitWithoutStream: true,
+	}
+	if params.Time == 0 {
+		params.Time = DefaultKeepaliveTime
+	}
+	if params.Timeout == 0 {
+		params.Timeout = DefaultKeepaliveTimeout
+	}
+	return params
 }

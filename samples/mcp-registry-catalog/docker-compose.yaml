@@ -78,7 +78,7 @@ services:
       - "9090:9090"   # REST API
       - "9094:9092"   # Admin API
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9092/api/admin/v1/health"]
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:9092/api/admin/v1/health"]
       interval: 10s
       timeout: 5s
       start_period: 20s

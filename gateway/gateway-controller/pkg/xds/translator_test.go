@@ -34,9 +34,11 @@ import (
 	cluster "github.com/envoyproxy/go-control-plane/envoy/config/cluster/v3"
 	core "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	listener "github.com/envoyproxy/go-control-plane/envoy/config/listener/v3"
+	rbacconfigv3 "github.com/envoyproxy/go-control-plane/envoy/config/rbac/v3"
 	route "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
 	tracev3 "github.com/envoyproxy/go-control-plane/envoy/config/trace/v3"
 	extproc "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
+	rbacv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/rbac/v3"
 	hcm "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/http_connection_manager/v3"
 	otelresourcedetectorsv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/tracers/opentelemetry/resource_detectors/v3"
 	tlsv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/transport_sockets/tls/v3"
@@ -54,6 +56,8 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/testutil/pki"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/wrapperspb"
 )
 
 func TestResolveUpstreamDefinition_Found(t *testing.T) {
@@ -2149,7 +2153,15 @@ func TestTranslator_TranslateConfigs_GatewayHealthRoutes(t *testing.T) {
 		assert.Less(t, healthyIdx, catchAllIdx,
 			"gateway-healthy must be evaluated before the Prefix:\"/\" catch-all or it will be shadowed")
 
+		// Health requests go through the policy engine; only the catch-all skips it.
+		assert.NotContains(t, readyRoute.GetTypedPerFilterConfig(), constants.ExtProcFilterName,
+			"gateway-ready must not bypass the policy engine")
+		assert.NotContains(t, healthyRoute.GetTypedPerFilterConfig(), constants.ExtProcFilterName,
+			"gateway-healthy must not bypass the policy engine")
+
 		catchAllRoute := vh.Routes[catchAllIdx]
+		assert.Contains(t, catchAllRoute.GetTypedPerFilterConfig(), constants.ExtProcFilterName,
+			"the no-api-found catch-all still bypasses the policy engine")
 		assert.Nil(t, catchAllRoute.GetTracing(),
 			"tracing suppression must be scoped to the health routes only, not the no-api-found catch-all")
 	}
@@ -2783,6 +2795,9 @@ func TestTranslator_CreateGRPCAccessLog(t *testing.T) {
 	assert.False(t, evalAccessLogFilter(t, accessLog.Filter, map[string]string{
 		":path": constants.GatewayHealthyPath,
 	}), "gateway health-check path is suppressed even with no ignore_path_prefixes configured")
+	assert.False(t, evalAccessLogFilter(t, accessLog.Filter, map[string]string{
+		":path": constants.GatewayReadyPath,
+	}), "the readiness path is suppressed too, so probes never reach analytics")
 	assert.True(t, evalAccessLogFilter(t, accessLog.Filter, map[string]string{
 		":path": "/orders",
 	}), "non-health path is still logged")
@@ -4329,4 +4344,171 @@ func TestTranslator_RoutesWithoutPolicyChain_StripClientCertificateHeaders(t *te
 		assert.Contains(t, r.RequestHeadersToRemove, xfccHeaderName, "%s must strip the forwarded-certificate header", name)
 		assert.Contains(t, r.RequestHeadersToRemove, "x-wso2-client-certificate", "%s must strip the relayed-certificate header", name)
 	}
+}
+
+// healthRouteRBAC returns the per-route RBAC config of r, or nil when it has none.
+func healthRouteRBAC(t *testing.T, r *route.Route) *rbacv3.RBACPerRoute {
+	t.Helper()
+	cfg, ok := r.GetTypedPerFilterConfig()[constants.RBACFilterName]
+	if !ok {
+		return nil
+	}
+	perRoute := &rbacv3.RBACPerRoute{}
+	require.NoError(t, cfg.UnmarshalTo(perRoute))
+	return perRoute
+}
+
+// Every listener's filter chain runs an RBAC filter with no rules ahead of ext_proc, so
+// API traffic is unaffected and a refused health request never reaches the policy engine.
+func TestTranslator_CreateListener_RBACFilterBeforeExtProc(t *testing.T) {
+	for _, isHTTPS := range []bool{false, true} {
+		t.Run(fmt.Sprintf("https=%t", isHTTPS), func(t *testing.T) {
+			logger := createTestLogger()
+			routerCfg := testRouterConfig()
+			routerCfg.HTTPSEnabled = isHTTPS
+			routerCfg.HTTPSPort = 8443
+			cfg := testConfig()
+			cfg.Router = *routerCfg
+			translator, err := NewTranslator(logger, routerCfg, nil, cfg)
+			require.NoError(t, err)
+			translator.certStore = certstore.NewCertStore(logger, nil, "", "")
+
+			lis, _, err := translator.createListener(nil, isHTTPS, isHTTPS)
+			require.NoError(t, err)
+			require.NotEmpty(t, lis.GetFilterChains())
+
+			for _, chain := range lis.GetFilterChains() {
+				manager := &hcm.HttpConnectionManager{}
+				require.NoError(t, chain.GetFilters()[0].GetTypedConfig().UnmarshalTo(manager))
+				rbacIdx, extProcIdx := -1, -1
+				for i, f := range manager.GetHttpFilters() {
+					switch f.GetName() {
+					case constants.RBACFilterName:
+						rbacIdx = i
+						base := &rbacv3.RBAC{}
+						require.NoError(t, f.GetTypedConfig().UnmarshalTo(base))
+						assert.Nil(t, base.GetRules(), "the listener-level RBAC config must have no rules")
+						assert.Nil(t, base.GetMatcher(), "the listener-level RBAC config must have no matcher")
+						assert.Nil(t, base.GetShadowRules())
+					case constants.ExtProcFilterName:
+						extProcIdx = i
+					}
+				}
+				require.NotEqual(t, -1, rbacIdx, "the RBAC filter must be on every filter chain")
+				require.NotEqual(t, -1, extProcIdx)
+				assert.Less(t, rbacIdx, extProcIdx, "RBAC must run before ext_proc")
+				assert.NotNil(t, manager.GetNormalizePath(), "path normalization must stay configured")
+			}
+		})
+	}
+}
+
+func TestTranslator_TranslateConfigs_HealthRouteRBAC(t *testing.T) {
+	translate := func(t *testing.T, allowed config.ClientList) []*route.VirtualHost {
+		t.Helper()
+		routerCfg := testRouterConfig()
+		routerCfg.Health.AllowedClients = allowed
+		cfg := testConfig()
+		cfg.Router = *routerCfg
+		translator, err := NewTranslator(createTestLogger(), routerCfg, nil, cfg)
+		require.NoError(t, err)
+		translator.SetGatewayJWKSRoute(true)
+		resources, err := translator.TranslateConfigs(
+			[]*models.StoredConfig{makeRestAPI("uuid-api-1", "api-one", "/api-one")}, "test-correlation-id")
+		require.NoError(t, err)
+		var out []*route.VirtualHost
+		for _, res := range resources[resource.RouteType] {
+			out = append(out, res.(*route.RouteConfiguration).VirtualHosts...)
+		}
+		require.NotEmpty(t, out)
+		return out
+	}
+	isHealthRoute := func(r *route.Route) bool {
+		return r.GetName() == constants.GatewayReadyRouteName || r.GetName() == constants.GatewayHealthyRouteName
+	}
+
+	tests := []struct {
+		name    string
+		allowed config.ClientList
+		want    []*core.CidrRange
+	}{
+		{
+			name:    "default loopback",
+			allowed: nil,
+			want: []*core.CidrRange{
+				{AddressPrefix: "127.0.0.1", PrefixLen: wrapperspb.UInt32(32)},
+				{AddressPrefix: "::1", PrefixLen: wrapperspb.UInt32(128)},
+			},
+		},
+		{
+			name:    "configured ranges",
+			allowed: config.ClientList{"10.1.0.0/16", "fc00::/7", "192.168.1.5", "::ffff:172.16.0.0/108"},
+			want: []*core.CidrRange{
+				{AddressPrefix: "10.1.0.0", PrefixLen: wrapperspb.UInt32(16)},
+				{AddressPrefix: "fc00::", PrefixLen: wrapperspb.UInt32(7)},
+				{AddressPrefix: "192.168.1.5", PrefixLen: wrapperspb.UInt32(32)},
+				{AddressPrefix: "172.16.0.0", PrefixLen: wrapperspb.UInt32(12)},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			for _, vh := range translate(t, tt.allowed) {
+				healthRoutes := 0
+				for _, r := range vh.GetRoutes() {
+					perRoute := healthRouteRBAC(t, r)
+					if !isHealthRoute(r) {
+						assert.Nil(t, perRoute, "route %q on %q must not carry RBAC", r.GetName(), vh.GetName())
+						continue
+					}
+					healthRoutes++
+					require.NotNil(t, perRoute, "route %q on %q must carry RBAC", r.GetName(), vh.GetName())
+					assert.NotContains(t, r.GetTypedPerFilterConfig(), constants.ExtProcFilterName,
+						"health routes still go through the policy engine")
+
+					rules := perRoute.GetRbac().GetRules()
+					require.NotNil(t, rules)
+					assert.Equal(t, rbacconfigv3.RBAC_ALLOW, rules.GetAction())
+					require.Len(t, rules.GetPolicies(), 1)
+					policy := rules.GetPolicies()[constants.GatewayHealthClientsPolicyName]
+					require.NotNil(t, policy)
+					require.Len(t, policy.GetPermissions(), 1)
+					assert.True(t, policy.GetPermissions()[0].GetAny())
+					require.Len(t, policy.GetPrincipals(), 1)
+					ids := policy.GetPrincipals()[0].GetOrIds().GetIds()
+					require.Len(t, ids, len(tt.want))
+					for i, id := range ids {
+						assert.Nil(t, id.GetRemoteIp(), "remote_ip follows forwarding headers")
+						assert.Nil(t, id.GetSourceIp())
+						assert.Nil(t, id.GetHeader(), "headers can be forged")
+						require.NotNil(t, id.GetDirectRemoteIp(), "clients must be matched on the connection peer")
+						assert.True(t, proto.Equal(tt.want[i], id.GetDirectRemoteIp()),
+							"want %v, got %v", tt.want[i], id.GetDirectRemoteIp())
+					}
+				}
+				assert.Equal(t, 2, healthRoutes, "virtual host %q", vh.GetName())
+			}
+		})
+	}
+
+	t.Run("wildcard emits no RBAC config", func(t *testing.T) {
+		for _, vh := range translate(t, config.ClientList{"*"}) {
+			for _, r := range vh.GetRoutes() {
+				assert.NotContains(t, r.GetTypedPerFilterConfig(), constants.RBACFilterName,
+					"route %q on %q", r.GetName(), vh.GetName())
+			}
+		}
+	})
+
+	t.Run("invalid allowed clients fail translation", func(t *testing.T) {
+		routerCfg := testRouterConfig()
+		routerCfg.Health.AllowedClients = config.ClientList{"*", "10.0.0.0/8"}
+		cfg := testConfig()
+		cfg.Router = *routerCfg
+		translator, err := NewTranslator(createTestLogger(), routerCfg, nil, cfg)
+		require.NoError(t, err)
+
+		_, err = translator.TranslateConfigs(nil, "test-correlation-id")
+		assert.EqualError(t, err, `router.health.allowed_clients: "*" cannot be combined with other entries`)
+	})
 }

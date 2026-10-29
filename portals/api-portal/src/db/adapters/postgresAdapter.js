@@ -21,8 +21,12 @@ const { Pool } = require('pg');
 const { buildDbSsl } = require('../dbSsl');
 const { isBinaryParam } = require('../paramTypes');
 
-/** PostgreSQL adapter (`pg`). Pool-backed; transactions check out a dedicated client. */
-function createPostgresAdapter(config) {
+/**
+ * PostgreSQL adapter (`pg`). Pool-backed; transactions check out a dedicated client.
+ *
+ * `hooks.onPoolError(err)` receives every error the pool raises about an idle client.
+ */
+function createPostgresAdapter(config, hooks = {}) {
     const poolConfig = {
         user: config.database.user,
         host: config.database.host,
@@ -44,6 +48,15 @@ function createPostgresAdapter(config) {
     }
 
     const pool = new Pool(poolConfig);
+
+    // An idle client whose connection drops (the database restarting, a proxy closing
+    // it) makes the pool emit 'error'. With no listener, that emit throws from inside
+    // the socket callback and becomes an uncaughtException, which exits the process
+    // (server.js). The pool has already discarded the broken client and replaces it on
+    // the next checkout, so the error is only reported to the hook, never rethrown.
+    pool.on('error', (err) => {
+        if (hooks.onPoolError) hooks.onPoolError(err);
+    });
 
     // `pg` auto-stringifies plain JS objects for us, but we JSON.stringify explicitly
     // here anyway so JSONB column behavior doesn't silently depend on that driver
@@ -103,6 +116,13 @@ function createPostgresAdapter(config) {
     };
 
     handle.close = async () => pool.end();
+
+    handle.poolStats = () => ({
+        max: pool.options.max,
+        total: pool.totalCount,
+        idle: pool.idleCount,
+        waiting: pool.waitingCount,
+    });
 
     return handle;
 }

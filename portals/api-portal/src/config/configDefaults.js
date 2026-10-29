@@ -121,6 +121,26 @@ const DEFAULTS = {
         poolConnectionTimeoutMs: 30000,
         poolRequestTimeoutMs: 30000,  // MSSQL only — per-query execution timeout
     },
+    // The /health and /ready endpoints (see src/health/). Durations use the Go
+    // notation ("3s", "500ms") the other components' health settings use; the
+    // loader adds a parsed millisecond twin (cacheTtlMs, checkTimeoutMs, ...) for
+    // each one.
+    health: {
+        cacheTtl: '3s',           // how long an evaluated result is reused
+        // Peer addresses (IP or CIDR) allowed to call the endpoints. Empty means
+        // loopback only; "*" alone allows every client. A comma-separated string
+        // is accepted too, so one env var can carry the list.
+        allowedClients: [],
+        database: {
+            checkTimeout: '2s',   // bound on the check's own round trip
+            failureWindow: '30s', // how far back outcomes of real queries count
+            failureRatio: 0.5,    // failed share of attempts that means "down"
+            minAttempts: 5,       // attempts needed before the ratio decides
+            idlePeriod: '10s',    // quiet time after which the check pings itself
+            poolSaturation: 0.9,  // share of the pool in use, with callers waiting
+            poolWaitLimit: '5s',  // how long saturation may last before "down"
+        },
+    },
     security: {
         encryptionKey: '',
         sessionSecret: '',

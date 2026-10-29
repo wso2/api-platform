@@ -48,6 +48,10 @@ const sessionStore = require('./db/sessionStoreConfig');
 const sessionCookies = require('./utils/sessionCookies');
 const { registerHelpers } = require('./helpers/handlebarsHelpers');
 const { configurePassport } = require('./middlewares/passportConfig');
+const { HealthChecker } = require('./health/checker');
+const { createDatabaseCheck } = require('./health/databaseCheck');
+const { parseAllowedClients } = require('./health/allowedClients');
+const { registerHealthRoutes } = require('./health/routes');
 
 const app = express();
 // Do not advertise Express in response headers.
@@ -76,7 +80,7 @@ registerHelpers();
 // to the prefix keeps the root a clean 404 (and keeps healthcheck probes off the session
 // store entirely).
 //
-// The routes that DO answer at the root — /health, /, /robots.txt, /llms.txt — are
+// The routes that DO answer at the root — /health, /ready, /, /robots.txt, /llms.txt — are
 // registered below and need no session, so they are unaffected either way.
 const sessionMiddleware = session({
     store: sessionStore,
@@ -95,17 +99,30 @@ const sessionMiddleware = session({
     },
 });
 
-// Registered at BOTH the true root and under the prefix, because the two ways this gets
-// probed see different paths: a container HEALTHCHECK or a Kubernetes probe dials the pod
-// directly, with no ingress to add the prefix, while anything routed through the ingress
-// that fronts a shared host only ever sees `${BASE_PATH}/*`. Registered up here so health
-// never touches the session store — a probe every few seconds otherwise churns a row per
-// check.
-const healthHandler = (req, res) => {
-    res.status(200).json({ status: 'ok' });
-};
-app.get('/health', healthHandler);
-app.get(`${constants.ROUTE.BASE_PATH}/health`, healthHandler);
+// /health and /ready, registered at BOTH the true root and under the prefix, because the
+// two ways they get probed see different paths: a container HEALTHCHECK or a Kubernetes
+// probe dials the pod directly, with no ingress to add the prefix, while anything routed
+// through the ingress that fronts a shared host only ever sees `${BASE_PATH}/*`.
+// Registered up here, ahead of session, passport, audit and CSRF handling, so a probe
+// never touches the session store (a probe every few seconds otherwise churns a row per
+// check) and never writes an audit entry. Design mode has no database, so it registers
+// no database check and always answers healthy.
+const healthChecker = new HealthChecker({ cacheTtlMs: config.health.cacheTtlMs });
+if (!config.designMode?.enabled) {
+    const db = require('./db/driver');
+    const dbHealth = config.health.database;
+    healthChecker.register('database', createDatabaseCheck({
+        window: db.outcomeWindow,
+        ping: db.healthPing,
+        poolStats: db.poolStats,
+        settings: dbHealth,
+    }), { timeoutMs: dbHealth.checkTimeoutMs });
+}
+registerHealthRoutes(app, {
+    checker: healthChecker,
+    allowedClients: parseAllowedClients('api_portal.health', config.health.allowedClients),
+    basePath: constants.ROUTE.BASE_PATH,
+});
 
 // Convenience redirect for anyone hitting the container's true root directly (a
 // path-routing proxy only ever forwards ${BASE_PATH}/*, so this never fires behind one):
@@ -161,10 +178,10 @@ app.use(skipForTryoutProxy(express.urlencoded({ extended: true, limit: bodyLimit
 
 // Add audit logging middleware. Runs at the app level (before the BASE_PATH parent
 // router strips the prefix), so the static-asset exclude paths carry BASE_PATH to match
-// the real request paths; /health and /metrics stay at the true root.
+// the real request paths; /health, /ready and /metrics stay at the true root.
 const BP = constants.ROUTE.BASE_PATH;
 app.use(auditMiddleware({
-    excludePaths: ['/health', '/metrics', '/favicon.ico', `${BP}/health`,
+    excludePaths: ['/health', '/ready', '/metrics', '/favicon.ico', `${BP}/health`, `${BP}/ready`,
         `${BP}/styles`, `${BP}/scripts`, `${BP}/images`, `${BP}/technical-styles`, `${BP}/technical-scripts`],
     sensitiveFields: SENSITIVE_FIELDS,
 }));

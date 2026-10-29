@@ -34,7 +34,7 @@ const (
 
 	// GatewayControllerHealthURL is the health check endpoint (served on the admin port
 	// under the admin API base path)
-	GatewayControllerHealthURL = GatewayControllerAdminURL + "/api/admin/v0.9/health"
+	GatewayControllerHealthURL = GatewayControllerAdminURL + "/api/admin/v1/health"
 
 	// RouterURL is the gateway router HTTP endpoint
 	RouterURL = "http://localhost:8080"

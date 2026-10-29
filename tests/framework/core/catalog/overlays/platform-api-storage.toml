@@ -1,4 +1,4 @@
-# Database and HTTPS configuration for platform-api.
+# Database, HTTPS and health access configuration for platform-api.
 
 [platform_api.database]
 driver   = '{{ env "APIP_CP_DATABASE_DRIVER" "sqlite3" }}'
@@ -20,6 +20,11 @@ key_file  = "/app/data/certs/key.pem"
 # The test suite uses HTTPS only.
 [platform_api.server.http]
 enabled = false
+
+# Health endpoints answer only the listed clients. The framework calls them from the host,
+# so the definition sets this variable to the private ranges.
+[platform_api.health]
+allowed_clients = '{{ env "APIP_CP_HEALTH_ALLOWED_CLIENTS" "127.0.0.1,::1" }}'
 
 # Test administrator credentials.
 [[platform_api.auth.file.users]]

@@ -65,6 +65,16 @@ services:
       - ./resources/keys/api-portal-session-secret:/etc/api-portal/keys/session-secret:ro
     ports:
       - "${APIP_AP_SERVER_PORT:-9543}:${APIP_AP_SERVER_PORT:-9543}"
+    healthcheck:
+      # The image has node but no curl. configs/config.toml serves HTTPS unless
+      # APIP_AP_SERVER_HTTPS_ENABLED is "false", with a certificate issued for the
+      # public host name, so the probe follows that setting and skips verification of
+      # its own loopback call.
+      test: ["CMD-SHELL", "node -e \"const c=process.env.APIP_AP_SERVER_HTTPS_ENABLED==='false'?require('http'):require('https');c.get({host:'localhost',port:process.env.APIP_AP_SERVER_PORT||9543,path:'/ready',rejectUnauthorized:false},r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))\""]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
     networks:
       - api-portal-network
 
