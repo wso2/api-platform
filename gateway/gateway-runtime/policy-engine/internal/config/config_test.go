@@ -19,7 +19,9 @@
 package config
 
 import (
+	"bytes"
 	"crypto/tls"
+	"log/slog"
 	"math"
 	"os"
 	"path/filepath"
@@ -61,6 +63,11 @@ func validConfig() *Config {
 			Logging: LoggingConfig{
 				Level:  "info",
 				Format: "json",
+			},
+			Health: HealthConfig{
+				CacheTTL:       3 * time.Second,
+				XDSConnection:  HealthXDSConnectionConfig{Grace: 5 * time.Minute},
+				PythonExecutor: HealthPythonExecutorConfig{CheckTimeout: 2 * time.Second},
 			},
 			PythonExecutor: PythonExecutorConfig{
 				Server: PythonExecutorServerConfig{
@@ -2368,4 +2375,316 @@ handle_upstream_faults = true
 
 	assert.True(t, cfg.PolicyEngine.FaultPolicies.HandleUpstreamFaults,
 		"policy_engine.fault_policies.handle_upstream_faults must reach the engine")
+}
+
+func TestDefaultConfig_Health(t *testing.T) {
+	h := defaultConfig().PolicyEngine.Health
+
+	assert.Equal(t, 3*time.Second, h.CacheTTL)
+	assert.Equal(t, 5*time.Minute, h.XDSConnection.Grace)
+	assert.Equal(t, 2*time.Second, h.PythonExecutor.CheckTimeout)
+}
+
+func TestLoad_HealthDefaultsWhenUnconfigured(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.toml")
+
+	configContent := `
+[policy_engine.config_mode]
+mode = "file"
+
+[policy_engine.file_config]
+path = "/tmp/policies.yaml"
+`
+	require.NoError(t, os.WriteFile(configPath, []byte(configContent), 0644))
+
+	cfg, err := Load(configPath)
+	require.NoError(t, err)
+
+	assert.Equal(t, defaultConfig().PolicyEngine.Health, cfg.PolicyEngine.Health)
+}
+
+func TestLoad_HealthOverrides(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.toml")
+
+	configContent := `
+[policy_engine.config_mode]
+mode = "file"
+
+[policy_engine.file_config]
+path = "/tmp/policies.yaml"
+
+[policy_engine.health]
+cache_ttl = "7s"
+
+[policy_engine.health.xds_connection]
+grace = "60s"
+
+[policy_engine.health.python_executor]
+check_timeout = "1s"
+`
+	require.NoError(t, os.WriteFile(configPath, []byte(configContent), 0644))
+
+	cfg, err := Load(configPath)
+	require.NoError(t, err)
+
+	h := cfg.PolicyEngine.Health
+	assert.Equal(t, 7*time.Second, h.CacheTTL)
+	assert.Equal(t, 60*time.Second, h.XDSConnection.Grace)
+	assert.Equal(t, time.Second, h.PythonExecutor.CheckTimeout)
+}
+
+func TestLoad_HealthIgnoresRemovedKeys(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.toml")
+
+	configContent := `
+[policy_engine.config_mode]
+mode = "file"
+
+[policy_engine.file_config]
+path = "/tmp/policies.yaml"
+
+[policy_engine.health]
+log_file = "relative/health.log"
+log_max_size_mb = 0
+log_max_files = 0
+backoff_initial = "15s"
+backoff_max = "10m"
+`
+	require.NoError(t, os.WriteFile(configPath, []byte(configContent), 0644))
+
+	cfg, err := Load(configPath)
+	require.NoError(t, err)
+
+	assert.Equal(t, defaultConfig().PolicyEngine.Health, cfg.PolicyEngine.Health)
+}
+
+func writeHealthTestConfig(t *testing.T, extra string) string {
+	t.Helper()
+	configPath := filepath.Join(t.TempDir(), "config.toml")
+	content := `
+[policy_engine.config_mode]
+mode = "file"
+
+[policy_engine.file_config]
+path = "/tmp/policies.yaml"
+` + extra
+	require.NoError(t, os.WriteFile(configPath, []byte(content), 0644))
+	return configPath
+}
+
+func TestLoad_HealthRejectsMovedAndUnknownKeys(t *testing.T) {
+	tests := []struct {
+		name      string
+		extra     string
+		wantError string
+	}{
+		{
+			name: "xds_grace moved",
+			extra: `
+[policy_engine.health]
+xds_grace = "60s"
+`,
+			wantError: "policy_engine.health.xds_grace has moved to policy_engine.health.xds_connection.grace",
+		},
+		{
+			name: "check_timeout moved",
+			extra: `
+[policy_engine.health]
+check_timeout = "1s"
+`,
+			wantError: "policy_engine.health.check_timeout has moved to policy_engine.health.python_executor.check_timeout",
+		},
+		{
+			name: "moved key set through an env token",
+			extra: `
+[policy_engine.health]
+xds_grace = '{{ env "APIP_GW_PE_HEALTH_TEST_UNSET_GRACE" "60s" }}'
+`,
+			wantError: "policy_engine.health.xds_grace has moved to policy_engine.health.xds_connection.grace",
+		},
+		{
+			name: "moved key alongside the new location",
+			extra: `
+[policy_engine.health]
+check_timeout = "1s"
+
+[policy_engine.health.python_executor]
+check_timeout = "1s"
+`,
+			wantError: "policy_engine.health.check_timeout has moved to policy_engine.health.python_executor.check_timeout",
+		},
+		{
+			name: "unknown key under xds_connection",
+			extra: `
+[policy_engine.health.xds_connection]
+grase = "60s"
+`,
+			wantError: `policy_engine.health.xds_connection: unknown key "grase"`,
+		},
+		{
+			name: "unknown key under python_executor",
+			extra: `
+[policy_engine.health.python_executor]
+check_timeout = "1s"
+timeout = "1s"
+`,
+			wantError: `policy_engine.health.python_executor: unknown key "timeout"`,
+		},
+		{
+			name: "first unknown key is reported in a stable order",
+			extra: `
+[policy_engine.health.xds_connection]
+zeta = 1
+alpha = 2
+`,
+			wantError: `policy_engine.health.xds_connection: unknown key "alpha"`,
+		},
+		{
+			name: "dependency table given as a value",
+			extra: `
+[policy_engine.health]
+xds_connection = "5m"
+`,
+			wantError: "policy_engine.health.xds_connection must be a table",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := Load(writeHealthTestConfig(t, tt.extra))
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tt.wantError)
+		})
+	}
+}
+
+func TestLoad_HealthKeyChecksIgnoreOtherComponents(t *testing.T) {
+	// The gateway configuration file is shared; settings for other components,
+	// including their own moved or unknown health keys, never fail the policy engine.
+	cfg, err := Load(writeHealthTestConfig(t, `
+[controller.health]
+check_timeout = "2s"
+startup_wait = "5m"
+xds_grace = "5m"
+
+[controller.health.database]
+faliure_ratio = 0.5
+
+[router.health]
+allowed_clients = "127.0.0.1,::1"
+check_timeout = "2s"
+
+[policy_engine.health]
+cache_ttl = "4s"
+
+[policy_engine.health.xds_connection]
+
+[policy_engine.health.python_executor]
+check_timeout = "1s"
+`))
+	require.NoError(t, err)
+
+	h := cfg.PolicyEngine.Health
+	assert.Equal(t, 4*time.Second, h.CacheTTL)
+	assert.Equal(t, 5*time.Minute, h.XDSConnection.Grace)
+	assert.Equal(t, time.Second, h.PythonExecutor.CheckTimeout)
+}
+
+func TestValidate_HealthConfig(t *testing.T) {
+	tests := []struct {
+		name      string
+		mutate    func(h *HealthConfig)
+		wantError string
+	}{
+		{
+			name:   "defaults are valid",
+			mutate: func(h *HealthConfig) {},
+		},
+		{
+			name:      "zero python_executor check_timeout",
+			mutate:    func(h *HealthConfig) { h.PythonExecutor.CheckTimeout = 0 },
+			wantError: "policy_engine.health.python_executor.check_timeout must be > 0",
+		},
+		{
+			name:      "negative python_executor check_timeout",
+			mutate:    func(h *HealthConfig) { h.PythonExecutor.CheckTimeout = -time.Second },
+			wantError: "policy_engine.health.python_executor.check_timeout must be > 0",
+		},
+		{
+			name:      "zero cache_ttl",
+			mutate:    func(h *HealthConfig) { h.CacheTTL = 0 },
+			wantError: "policy_engine.health.cache_ttl must be > 0",
+		},
+		{
+			name:      "negative cache_ttl",
+			mutate:    func(h *HealthConfig) { h.CacheTTL = -time.Second },
+			wantError: "policy_engine.health.cache_ttl must be > 0",
+		},
+		{
+			name:      "zero xds_connection grace",
+			mutate:    func(h *HealthConfig) { h.XDSConnection.Grace = 0 },
+			wantError: "policy_engine.health.xds_connection.grace must be > 0",
+		},
+		{
+			name:      "negative xds_connection grace",
+			mutate:    func(h *HealthConfig) { h.XDSConnection.Grace = -time.Minute },
+			wantError: "policy_engine.health.xds_connection.grace must be > 0",
+		},
+		{
+			name:   "python_executor check_timeout at default probe timeout is accepted",
+			mutate: func(h *HealthConfig) { h.PythonExecutor.CheckTimeout = 5 * time.Second },
+		},
+		{
+			name:   "python_executor check_timeout above default probe timeout is accepted",
+			mutate: func(h *HealthConfig) { h.PythonExecutor.CheckTimeout = 30 * time.Second },
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := validConfig()
+			tt.mutate(&cfg.PolicyEngine.Health)
+
+			err := cfg.Validate()
+			if tt.wantError != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.wantError)
+				return
+			}
+			require.NoError(t, err)
+		})
+	}
+}
+
+func TestValidate_HealthConfigWarnsWhenPythonExecutorTimeoutReachesProbeTimeout(t *testing.T) {
+	tests := []struct {
+		name     string
+		timeout  time.Duration
+		wantWarn bool
+	}{
+		{name: "below the probe timeout", timeout: 2 * time.Second},
+		{name: "at the probe timeout", timeout: 5 * time.Second, wantWarn: true},
+		{name: "above the probe timeout", timeout: 30 * time.Second, wantWarn: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var logs bytes.Buffer
+			previous := slog.Default()
+			slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
+			t.Cleanup(func() { slog.SetDefault(previous) })
+
+			cfg := validConfig()
+			cfg.PolicyEngine.Health.PythonExecutor.CheckTimeout = tt.timeout
+			require.NoError(t, cfg.validateHealthConfig())
+
+			if tt.wantWarn {
+				assert.Contains(t, logs.String(), "level=WARN")
+				assert.Contains(t, logs.String(), "policy_engine.health.python_executor.check_timeout")
+			} else {
+				assert.Empty(t, logs.String())
+			}
+		})
+	}
 }
