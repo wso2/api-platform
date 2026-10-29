@@ -1,0 +1,4 @@
+# Turns the OpenAI error envelope off for LLM APIs, for the
+# llm-openai-compatible-errors-disabled integration block.
+[policy_engine.llm_errors]
+disable_openai_format = true

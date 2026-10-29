@@ -973,6 +973,21 @@ blocks:
         features:
           - features/ai-workspace-gateway/llm/llm_openai_compatible_errors.feature
 
+  # The opt-out is a policy-engine setting, so it needs its own overlay.
+  - name: llm-openai-compatible-errors-disabled
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/llm-errors-openai-format-disabled.toml
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: testbench
+    runners:
+      - name: llm-openai-compatible-errors-disabled
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/ai-workspace-gateway/llm/llm_openai_compatible_errors_disabled.feature
+
   - name: ai-workspace-cli
     components:
       - name: platform-api

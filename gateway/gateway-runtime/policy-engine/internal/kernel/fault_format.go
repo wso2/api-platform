@@ -224,7 +224,8 @@ const (
 // ─── Error bodies on routes with no response-body policy ─────────────────────
 
 // needsErrorBodyForFormatting reports whether this response's body must be buffered for the
-// formatter although no policy on the route reads response bodies.
+// formatter although no policy on the route reads response bodies. False whenever
+// needsResponseBody already buffers it, so the two paths never claim the same response.
 //
 // Without it an LLM route whose policies stop at headers — the common case for a provider with
 // only auth and rate limiting — never sees its body phase, so a router 503 reaches an OpenAI
@@ -240,7 +241,7 @@ const (
 // whether or not it has a body, so reading it would cost a buffer for nothing — and so does one
 // whose provenance Envoy did not report, which may well be the provider's.
 func (ec *PolicyExecutionContext) needsErrorBodyForFormatting() bool {
-	if !ec.llmOpenAIErrors() || ec.policyChain == nil || ec.policyChain.RequiresResponseBody {
+	if !ec.llmOpenAIErrors() || ec.policyChain == nil || ec.needsResponseBody() {
 		return false
 	}
 	if ec.responseHeaderCtx == nil || ec.responseHeaderCtx.ResponseStatus < faultMinStatus {
