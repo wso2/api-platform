@@ -67,6 +67,11 @@ Required scopes (the token must carry at least one of): `ap:subscription:create`
   "subscriptionPlanName": "string",
   "organizationId": "acme",
   "status": "ACTIVE",
+  "billing": {
+    "status": "ACTIVE",
+    "customerId": "string",
+    "subscriptionId": "string"
+  },
   "createdBy": "john.doe",
   "updatedBy": "john.doe",
   "createdAt": "2019-08-24T14:15:22Z",
@@ -225,6 +230,11 @@ Required scopes (the token must carry at least one of): `ap:subscription:read`, 
       "subscriptionPlanName": "string",
       "organizationId": "acme",
       "status": "ACTIVE",
+      "billing": {
+        "status": "ACTIVE",
+        "customerId": "string",
+        "subscriptionId": "string"
+      },
       "createdBy": "john.doe",
       "updatedBy": "john.doe",
       "createdAt": "2019-08-24T14:15:22Z",
@@ -346,6 +356,11 @@ Required scopes (the token must carry at least one of): `ap:subscription:read`, 
   "subscriptionPlanName": "string",
   "organizationId": "acme",
   "status": "ACTIVE",
+  "billing": {
+    "status": "ACTIVE",
+    "customerId": "string",
+    "subscriptionId": "string"
+  },
   "createdBy": "john.doe",
   "updatedBy": "john.doe",
   "createdAt": "2019-08-24T14:15:22Z",
@@ -494,6 +509,11 @@ Required scopes (the token must carry at least one of): `ap:subscription:update`
   "subscriptionPlanName": "string",
   "organizationId": "acme",
   "status": "ACTIVE",
+  "billing": {
+    "status": "ACTIVE",
+    "customerId": "string",
+    "subscriptionId": "string"
+  },
   "createdBy": "john.doe",
   "updatedBy": "john.doe",
   "createdAt": "2019-08-24T14:15:22Z",

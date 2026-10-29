@@ -3277,7 +3277,37 @@ Time unit for API key expiration duration
     }
   ],
   "expiryTime": "2019-08-24T14:15:22Z",
-  "status": "ACTIVE"
+  "status": "ACTIVE",
+  "pricing": {
+    "pricingType": "FLAT_RATE",
+    "currency": "str",
+    "billingPeriod": "MONTH",
+    "flatAmount": "string",
+    "prices": [
+      {
+        "meterId": "string",
+        "filters": [
+          {
+            "field": "Status code",
+            "operator": "EQUALS",
+            "values": [
+              "string"
+            ]
+          }
+        ],
+        "pricingModel": "PER_UNIT",
+        "unitAmount": "string",
+        "unitQuantity": 1,
+        "tiers": [
+          {
+            "upTo": 0,
+            "unitAmount": "string",
+            "flatAmount": "string"
+          }
+        ]
+      }
+    ]
+  }
 }
 
 ```
@@ -3286,11 +3316,12 @@ Time unit for API key expiration duration
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|id|string|false|none|Handle (URL-friendly slug) for the plan. Immutable after creation.|
+|id|string|false|none|Handle (URL-friendly slug) for the plan. Immutable after creation. At most 40 characters; a longer one is refused with 400 "id must be at most 40 characters".|
 |displayName|string|true|none|Human-readable name for the subscription plan|
 |limits|[[SubscriptionPlanLimit](#schemasubscriptionplanlimit)]|false|none|Throttling limits for the plan (e.g. requests per hour, requests per month). The table backing this API already supports multiple limits per plan, but the platform-api currently only persists and enforces the first entry in this array; any additional entries are accepted but ignored.|
 |expiryTime|string(date-time)|false|none|Optional plan expiry time (RFC3339)|
 |status|string|false|none|none|
+|pricing|[SubscriptionPlanPricingRequest](#schemasubscriptionplanpricingrequest)|false|none|Makes the plan paid. Optional; a plan created without it is free. Pricing is set only when a plan is created and cannot be updated afterwards, so a free plan cannot become paid later, nor a paid plan free.|
 
 ##### Enumerated Values
 
@@ -3326,7 +3357,46 @@ Time unit for API key expiration duration
   "createdBy": "john.doe",
   "updatedBy": "john.doe",
   "createdAt": "2019-08-24T14:15:22Z",
-  "updatedAt": "2019-08-24T14:15:22Z"
+  "updatedAt": "2019-08-24T14:15:22Z",
+  "pricing": {
+    "subscriptionPlanId": "string",
+    "pricingType": "FLAT_RATE",
+    "currency": "string",
+    "billingPeriod": "MONTH",
+    "flatAmount": "string",
+    "prices": [
+      {
+        "meterId": "string",
+        "filters": [
+          {
+            "field": "Status code",
+            "operator": "EQUALS",
+            "values": [
+              "string"
+            ]
+          }
+        ],
+        "pricingModel": "PER_UNIT",
+        "unitAmount": "string",
+        "unitQuantity": 1,
+        "tiers": [
+          {
+            "upTo": 0,
+            "unitAmount": "string",
+            "flatAmount": "string"
+          }
+        ]
+      }
+    ],
+    "updatedAt": "2019-08-24T14:15:22Z"
+  },
+  "usage": {
+    "inUse": true,
+    "restApis": 0,
+    "drafts": 0,
+    "publications": 0,
+    "subscriptions": 0
+  }
 }
 
 ```
@@ -3345,6 +3415,8 @@ Time unit for API key expiration duration
 |updatedBy|string|false|read-only|User identifier of the user who last updated this resource. Only present in the detail response (GET /subscription-plans/{planId}), omitted from list responses.|
 |createdAt|string(date-time)|false|none|none|
 |updatedAt|string(date-time)|false|none|none|
+|pricing|[SubscriptionPlanPricing](#schemasubscriptionplanpricing)|false|read-only|The plan's pricing, present only on a paid plan. It is set when the plan is created (POST /subscription-plans) and is the only part of a plan that never changes, so a free plan stays free and a paid one paid. An update changes the plan's other fields and leaves `pricing` out: a body that carries it gets `409` SUBSCRIPTION_PLAN_PRICING_LOCKED.|
+|usage|[SubscriptionPlanUsage](#schemasubscriptionplanusage)|false|read-only|What offers or uses the plan. Only present in the detail response (GET /subscription-plans/{planId}), omitted from list responses. A plan in use cannot be deleted, and its name and limit cannot be updated.|
 
 ##### Enumerated Values
 
@@ -3352,6 +3424,497 @@ Time unit for API key expiration duration
 |---|---|
 |status|ACTIVE|
 |status|INACTIVE|
+
+## SubscriptionPlanUsage
+
+<a id="schemasubscriptionplanusage"></a>
+<a id="schema_SubscriptionPlanUsage"></a>
+<a id="tocSsubscriptionplanusage"></a>
+<a id="tocssubscriptionplanusage"></a>
+
+```json
+{
+  "inUse": true,
+  "restApis": 0,
+  "drafts": 0,
+  "publications": 0,
+  "subscriptions": 0
+}
+
+```
+
+Counts of what offers or uses a plan. Only counts are given: a plan may be offered by more APIs than a response or message can list.
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|inUse|boolean|true|none|Whether anything counted below offers or uses the plan.|
+|restApis|integer|true|none|How many REST APIs list the plan in their configuration.|
+|drafts|integer|true|none|How many APIs offer the plan in a publication draft (each API once).|
+|publications|integer|true|none|How many APIs offer the plan in a publication (each API once).|
+|subscriptions|integer|true|none|How many subscriptions use the plan.|
+
+## MeterRequest
+
+<a id="schemameterrequest"></a>
+<a id="schema_MeterRequest"></a>
+<a id="tocSmeterrequest"></a>
+<a id="tocsmeterrequest"></a>
+
+```json
+{
+  "id": "string",
+  "displayName": "string",
+  "description": "string",
+  "type": "REQUEST_COUNT",
+  "typeKey": "metadata.aiTokenUsage.promptTokens",
+  "filterFields": [
+    {
+      "field": "Status code",
+      "eventKey": "response.status"
+    }
+  ]
+}
+
+```
+
+A meter to create or replace. A field not listed here is refused.
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|id|string|false|none|The meter's id; derived from displayName when omitted on create.|
+|displayName|string|true|none|Says what the meter counts, for example "Input tokens".|
+|description|string|false|none|none|
+|type|string|true|none|What is counted: requests (REQUEST_COUNT), each counting one, or the tokens of AI API requests (TOKENS), adding up the number in the event field `typeKey` names. A meter has no conditions: each plan price gives its own filters.|
+|typeKey|string¦null|false|none|TOKENS only, and required there: the event field whose number the meter adds up, as a full path in the gateway's analytics event, such as `metadata.aiTokenUsage.promptTokens` (our gateway also sends `metadata.aiTokenUsage.completionTokens` and `metadata.aiTokenUsage.totalTokens`). 1 to 255 characters with no spaces. Refused for a REQUEST_COUNT meter.|
+|filterFields|[[MeterFilterFieldRequest](#schemameterfilterfieldrequest)]|false|none|The properties this meter's prices can filter on, at most 10, each named by the administrator and read from its own event field. Names and event keys are each unique within the meter. Optional; without them the meter's prices take no filters.|
+
+##### Enumerated Values
+
+|Property|Value|
+|---|---|
+|type|REQUEST_COUNT|
+|type|TOKENS|
+
+## MeterFilterFieldRequest
+
+<a id="schemameterfilterfieldrequest"></a>
+<a id="schema_MeterFilterFieldRequest"></a>
+<a id="tocSmeterfilterfieldrequest"></a>
+<a id="tocsmeterfilterfieldrequest"></a>
+
+```json
+{
+  "field": "Status code",
+  "eventKey": "response.status"
+}
+
+```
+
+A property this meter's prices can filter on: a name the administrator gives it and the event field it reads. Any operator works on any property; the values a price gives must fit what the event field holds.
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|field|string|true|none|The property's name, 1 to 40 characters, unique within the meter ignoring case, such as `Status code` or `Region`.|
+|eventKey|string|true|none|The event field the property reads, as a full path in the Moesif event; 1 to 255 characters with no spaces, unique within the meter. Our gateway sends, among others, `response.status`, `request.verb`, `metadata.apiType`, `metadata.mcpAnalytics.jsonRpcMethod`, `metadata.mcpAnalytics.capabilityName` and `metadata.aiTokenUsage.promptTokens`, and Moesif adds `request.route`, the request path with its IDs as `:id`.|
+
+## Meter
+
+<a id="schemameter"></a>
+<a id="schema_Meter"></a>
+<a id="tocSmeter"></a>
+<a id="tocsmeter"></a>
+
+```json
+{
+  "id": "string",
+  "displayName": "string",
+  "description": "string",
+  "type": "REQUEST_COUNT",
+  "typeKey": "string",
+  "filterFields": [
+    {
+      "field": "string",
+      "eventKey": "string"
+    }
+  ],
+  "updatedAt": "2019-08-24T14:15:22Z",
+  "planCount": 0
+}
+
+```
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|id|string|false|none|none|
+|displayName|string|false|none|none|
+|description|string|false|none|none|
+|type|string|false|none|none|
+|typeKey|string¦null|false|none|The event field whose number a TOKENS meter adds up, as stored on the meter, such as `metadata.aiTokenUsage.promptTokens`; null for REQUEST_COUNT.|
+|filterFields|[[MeterFilterField](#schemameterfilterfield)]|false|none|The fields this meter's prices can filter on, each with the event field it reads, as stored on the meter.|
+|updatedAt|string(date-time)|false|none|none|
+|planCount|integer|false|none|How many plans charge for this meter. While it is above 0, the meter cannot be updated or deleted.|
+
+##### Enumerated Values
+
+|Property|Value|
+|---|---|
+|type|REQUEST_COUNT|
+|type|TOKENS|
+
+## MeterFilterField
+
+<a id="schemameterfilterfield"></a>
+<a id="schema_MeterFilterField"></a>
+<a id="tocSmeterfilterfield"></a>
+<a id="tocsmeterfilterfield"></a>
+
+```json
+{
+  "field": "string",
+  "eventKey": "string"
+}
+
+```
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|field|string|true|none|The property's name, such as `Status code`.|
+|eventKey|string|true|none|The event field the property reads, such as `response.status`.|
+
+## MeterListResponse
+
+<a id="schemameterlistresponse"></a>
+<a id="schema_MeterListResponse"></a>
+<a id="tocSmeterlistresponse"></a>
+<a id="tocsmeterlistresponse"></a>
+
+```json
+{
+  "count": 0,
+  "list": [
+    {
+      "id": "string",
+      "displayName": "string",
+      "description": "string",
+      "type": "REQUEST_COUNT",
+      "typeKey": "string",
+      "filterFields": [
+        {
+          "field": "string",
+          "eventKey": "string"
+        }
+      ],
+      "updatedAt": "2019-08-24T14:15:22Z",
+      "planCount": 0
+    }
+  ],
+  "pagination": {
+    "total": 10,
+    "offset": 0,
+    "limit": 10
+  }
+}
+
+```
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|count|integer|true|none|none|
+|list|[[Meter](#schemameter)]|true|none|none|
+|pagination|[Pagination](#schemapagination)|true|none|none|
+
+## PriceTier
+
+<a id="schemapricetier"></a>
+<a id="schema_PriceTier"></a>
+<a id="tocSpricetier"></a>
+<a id="tocspricetier"></a>
+
+```json
+{
+  "upTo": 0,
+  "unitAmount": "string",
+  "flatAmount": "string"
+}
+
+```
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|upTo|integer(int64)¦null|false|none|The last unit of the tier; null on the last tier.|
+|unitAmount|string¦null|false|none|none|
+|flatAmount|string¦null|false|none|none|
+
+## PriceFilter
+
+<a id="schemapricefilter"></a>
+<a id="schema_PriceFilter"></a>
+<a id="tocSpricefilter"></a>
+<a id="tocspricefilter"></a>
+
+```json
+{
+  "field": "Status code",
+  "operator": "EQUALS",
+  "values": [
+    "string"
+  ]
+}
+
+```
+
+Narrows the requests a plan price counts, on one of its meter's properties. Any operator works on any property. EQUALS, NOT_EQUALS and STARTS_WITH take one text value; IN and NOT_IN one to 20; text values are matched exactly as written (case-sensitive). STARTS_WITH matches values that begin with the text, so `/orders` also matches `/orders-archive`. NOT_EQUALS and NOT_IN count the requests that have the property with another value: a request without it is not counted. GREATER_THAN (more than), GREATER_THAN_OR_EQUAL (at least), LESS_THAN (less than) and LESS_THAN_OR_EQUAL (at most) compare a number: exactly one whole number from 0 to 1000000000000. On one property a price has either one EQUALS, NOT_EQUALS, IN, NOT_IN or STARTS_WITH filter, or one or two comparisons, which make a range (more than 100 and at most 500) and must be able to hold together. Values are not checked against what the property holds: they must fit its event field, numbers for a number field and the exact text for a text field.
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|field|string|true|none|The name of one of the meter's properties, matched ignoring case.|
+|operator|string|true|none|none|
+|values|[string]|true|none|The values to match; for a comparison, exactly one whole number written as a string, such as "333".|
+
+##### Enumerated Values
+
+|Property|Value|
+|---|---|
+|operator|EQUALS|
+|operator|NOT_EQUALS|
+|operator|IN|
+|operator|NOT_IN|
+|operator|STARTS_WITH|
+|operator|GREATER_THAN|
+|operator|GREATER_THAN_OR_EQUAL|
+|operator|LESS_THAN|
+|operator|LESS_THAN_OR_EQUAL|
+
+## SubscriptionPlanPrice
+
+<a id="schemasubscriptionplanprice"></a>
+<a id="schema_SubscriptionPlanPrice"></a>
+<a id="tocSsubscriptionplanprice"></a>
+<a id="tocssubscriptionplanprice"></a>
+
+```json
+{
+  "meterId": "string",
+  "filters": [
+    {
+      "field": "Status code",
+      "operator": "EQUALS",
+      "values": [
+        "string"
+      ]
+    }
+  ],
+  "pricingModel": "PER_UNIT",
+  "unitAmount": "string",
+  "unitQuantity": 1,
+  "tiers": [
+    {
+      "upTo": 0,
+      "unitAmount": "string",
+      "flatAmount": "string"
+    }
+  ]
+}
+
+```
+
+A usage price of a paid plan: what the meter `meterId` counts, narrowed by the price's `filters`, charged in one pricing model. PER_UNIT charges `unitAmount` per `unitQuantity` units; VOLUME prices all the units at the tier their total falls in; GRADUATED prices the units in each tier at that tier's price. Fields of other models are not accepted. A plan may price one meter several times, but two prices on the same meter must not count the same request. A price has no name: it is shown as the meter's name followed by its filters.
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|meterId|string|true|none|The `id` of the meter that counts the units, one of the organization's meters (GET /meters).|
+|filters|[[PriceFilter](#schemapricefilter)]|false|none|Optional; each names one of the properties the meter lists in its filterFields. On one property a price has either one EQUALS, NOT_EQUALS, IN, NOT_IN or STARTS_WITH filter, or one or two comparisons. Without filters the price counts every request the meter counts.|
+|pricingModel|string|true|none|none|
+|unitAmount|string¦null|false|none|PER_UNIT only. The price per `unitQuantity` units, as a decimal string.|
+|unitQuantity|integer(int64)¦null|false|none|PER_UNIT only. How many units `unitAmount` is for (default 1).|
+|tiers|[[PriceTier](#schemapricetier)]¦null|false|none|VOLUME and GRADUATED only. In ascending order; the last tier has no `upTo`.|
+
+##### Enumerated Values
+
+|Property|Value|
+|---|---|
+|pricingModel|PER_UNIT|
+|pricingModel|VOLUME|
+|pricingModel|GRADUATED|
+
+## SubscriptionPlanPricingRequest
+
+<a id="schemasubscriptionplanpricingrequest"></a>
+<a id="schema_SubscriptionPlanPricingRequest"></a>
+<a id="tocSsubscriptionplanpricingrequest"></a>
+<a id="tocssubscriptionplanpricingrequest"></a>
+
+```json
+{
+  "pricingType": "FLAT_RATE",
+  "currency": "str",
+  "billingPeriod": "MONTH",
+  "flatAmount": "string",
+  "prices": [
+    {
+      "meterId": "string",
+      "filters": [
+        {
+          "field": "Status code",
+          "operator": "EQUALS",
+          "values": [
+            "string"
+          ]
+        }
+      ],
+      "pricingModel": "PER_UNIT",
+      "unitAmount": "string",
+      "unitQuantity": 1,
+      "tiers": [
+        {
+          "upTo": 0,
+          "unitAmount": "string",
+          "flatAmount": "string"
+        }
+      ]
+    }
+  ]
+}
+
+```
+
+What a paid subscription plan costs, given when the plan is created. A FLAT_RATE plan charges `flatAmount` every billing period and has no prices. A USAGE_BASED plan charges its `prices` (1 to 20) on one invoice per period and has no flat amount. A plan created without pricing is free. Pricing can't be updated once the plan exists, so a field the pricing, a price, a filter or a tier does not take is refused rather than ignored.
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|pricingType|string|true|none|none|
+|currency|string|true|none|none|
+|billingPeriod|string|true|none|none|
+|flatAmount|string¦null|false|none|FLAT_RATE only. The amount charged every billing period, as a decimal string in the currency.|
+|prices|[[SubscriptionPlanPrice](#schemasubscriptionplanprice)]|false|none|USAGE_BASED only.|
+
+##### Enumerated Values
+
+|Property|Value|
+|---|---|
+|pricingType|FLAT_RATE|
+|pricingType|USAGE_BASED|
+|billingPeriod|MONTH|
+|billingPeriod|YEAR|
+
+## SubscriptionPlanPricing
+
+<a id="schemasubscriptionplanpricing"></a>
+<a id="schema_SubscriptionPlanPricing"></a>
+<a id="tocSsubscriptionplanpricing"></a>
+<a id="tocssubscriptionplanpricing"></a>
+
+```json
+{
+  "subscriptionPlanId": "string",
+  "pricingType": "FLAT_RATE",
+  "currency": "string",
+  "billingPeriod": "MONTH",
+  "flatAmount": "string",
+  "prices": [
+    {
+      "meterId": "string",
+      "filters": [
+        {
+          "field": "Status code",
+          "operator": "EQUALS",
+          "values": [
+            "string"
+          ]
+        }
+      ],
+      "pricingModel": "PER_UNIT",
+      "unitAmount": "string",
+      "unitQuantity": 1,
+      "tiers": [
+        {
+          "upTo": 0,
+          "unitAmount": "string",
+          "flatAmount": "string"
+        }
+      ]
+    }
+  ],
+  "updatedAt": "2019-08-24T14:15:22Z"
+}
+
+```
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|subscriptionPlanId|string|false|none|none|
+|pricingType|string|false|none|none|
+|currency|string|false|none|none|
+|billingPeriod|string|false|none|none|
+|flatAmount|string¦null|false|none|none|
+|prices|[[SubscriptionPlanPrice](#schemasubscriptionplanprice)]|false|none|[A usage price of a paid plan: what the meter `meterId` counts, narrowed by the price's `filters`, charged in one pricing model. PER_UNIT charges `unitAmount` per `unitQuantity` units; VOLUME prices all the units at the tier their total falls in; GRADUATED prices the units in each tier at that tier's price. Fields of other models are not accepted. A plan may price one meter several times, but two prices on the same meter must not count the same request. A price has no name: it is shown as the meter's name followed by its filters.]|
+|updatedAt|string(date-time)|false|none|none|
+
+##### Enumerated Values
+
+|Property|Value|
+|---|---|
+|pricingType|FLAT_RATE|
+|pricingType|USAGE_BASED|
+|billingPeriod|MONTH|
+|billingPeriod|YEAR|
+
+## SubscriptionBilling
+
+<a id="schemasubscriptionbilling"></a>
+<a id="schema_SubscriptionBilling"></a>
+<a id="tocSsubscriptionbilling"></a>
+<a id="tocssubscriptionbilling"></a>
+
+```json
+{
+  "status": "ACTIVE",
+  "customerId": "string",
+  "subscriptionId": "string"
+}
+
+```
+
+The billing of a paid subscription, as the API Portal reports it from the billing provider.
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|status|string|false|none|Gateways refuse calls (403) while UNPAID or CANCELLED.|
+|customerId|string|false|none|The billing provider's customer.|
+|subscriptionId|string|false|none|The billing provider's subscription.|
+
+##### Enumerated Values
+
+|Property|Value|
+|---|---|
+|status|ACTIVE|
+|status|PAST_DUE|
+|status|UNPAID|
+|status|CANCELLED|
 
 ## SubscriptionPlanListResponse
 
@@ -3382,7 +3945,46 @@ Time unit for API key expiration duration
       "createdBy": "john.doe",
       "updatedBy": "john.doe",
       "createdAt": "2019-08-24T14:15:22Z",
-      "updatedAt": "2019-08-24T14:15:22Z"
+      "updatedAt": "2019-08-24T14:15:22Z",
+      "pricing": {
+        "subscriptionPlanId": "string",
+        "pricingType": "FLAT_RATE",
+        "currency": "string",
+        "billingPeriod": "MONTH",
+        "flatAmount": "string",
+        "prices": [
+          {
+            "meterId": "string",
+            "filters": [
+              {
+                "field": "Status code",
+                "operator": "EQUALS",
+                "values": [
+                  "string"
+                ]
+              }
+            ],
+            "pricingModel": "PER_UNIT",
+            "unitAmount": "string",
+            "unitQuantity": 1,
+            "tiers": [
+              {
+                "upTo": 0,
+                "unitAmount": "string",
+                "flatAmount": "string"
+              }
+            ]
+          }
+        ],
+        "updatedAt": "2019-08-24T14:15:22Z"
+      },
+      "usage": {
+        "inUse": true,
+        "restApis": 0,
+        "drafts": 0,
+        "publications": 0,
+        "subscriptions": 0
+      }
     }
   ],
   "count": 0,
@@ -3464,6 +4066,11 @@ Time unit for API key expiration duration
   "subscriptionPlanName": "string",
   "organizationId": "acme",
   "status": "ACTIVE",
+  "billing": {
+    "status": "ACTIVE",
+    "customerId": "string",
+    "subscriptionId": "string"
+  },
   "createdBy": "john.doe",
   "updatedBy": "john.doe",
   "createdAt": "2019-08-24T14:15:22Z",
@@ -3486,6 +4093,7 @@ Time unit for API key expiration duration
 |subscriptionPlanName|string|false|none|Subscription plan display name (e.g. Bronze, Gold)|
 |organizationId|string|false|none|Handle (URL-friendly slug) of the organization this subscription belongs to|
 |status|string|false|none|none|
+|billing|[SubscriptionBilling](#schemasubscriptionbilling)|false|none|The billing of a paid subscription, as the API Portal reports it from the billing provider.|
 |createdBy|string|false|read-only|User identifier of the user who created this resource|
 |updatedBy|string|false|read-only|User identifier of the user who last updated this resource. Only present in the detail response (GET /subscriptions/{subscriptionId}), omitted from list responses.|
 |createdAt|string(date-time)|false|none|none|
@@ -3524,6 +4132,11 @@ Time unit for API key expiration duration
       "subscriptionPlanName": "string",
       "organizationId": "acme",
       "status": "ACTIVE",
+      "billing": {
+        "status": "ACTIVE",
+        "customerId": "string",
+        "subscriptionId": "string"
+      },
       "createdBy": "john.doe",
       "updatedBy": "john.doe",
       "createdAt": "2019-08-24T14:15:22Z",
@@ -6738,6 +7351,34 @@ Secret metadata — never includes the plaintext value.
 
 *None*
 
+## PublicationSelection
+
+<a id="schemapublicationselection"></a>
+<a id="schema_PublicationSelection"></a>
+<a id="tocSpublicationselection"></a>
+<a id="tocspublicationselection"></a>
+
+```json
+{
+  "id": "string",
+  "displayName": "string",
+  "deleted": true,
+  "edited": true
+}
+
+```
+
+A subscription plan or document selected by a publication, as it was when last saved or published.
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|id|string|true|none|The plan or document handle.|
+|displayName|string|true|none|The name stored with the selection, so it can still be shown after the source is deleted.|
+|deleted|boolean|true|none|True when the plan or document no longer exists. The publication keeps the selection until the next publish.|
+|edited|boolean|true|none|True when the plan or document was changed after this selection was last saved (a draft) or published (a live listing). Saving the draft or publishing again clears it.|
+
 ## PublicationDraftDetailsInput
 
 <a id="schemapublicationdraftdetailsinput"></a>
@@ -6833,7 +7474,23 @@ and
   "updatedAt": "2019-08-24T14:15:22Z",
   "updatedBy": "string",
   "hasThumbnail": true,
-  "hasLandingPage": true
+  "hasLandingPage": true,
+  "subscriptionPlans": [
+    {
+      "id": "string",
+      "displayName": "string",
+      "deleted": true,
+      "edited": true
+    }
+  ],
+  "documents": [
+    {
+      "id": "string",
+      "displayName": "string",
+      "deleted": true,
+      "edited": true
+    }
+  ]
 }
 
 ```
@@ -6859,6 +7516,8 @@ and
 |*anonymous*|object|false|none|none|
 |» hasThumbnail|boolean|false|read-only|Whether this draft stores a thumbnail of its own.|
 |» hasLandingPage|boolean|false|read-only|Whether this draft stores a landing page of its own. It is always Markdown, so it has no file name.|
+|» subscriptionPlans|[[PublicationSelection](#schemapublicationselection)]|false|read-only|The selected subscription plans, including deleted ones. Same plans as subscriptionPlanIds.|
+|» documents|[[PublicationSelection](#schemapublicationselection)]|false|read-only|The selected documents, including deleted ones. Same documents as docIds.|
 
 ## Publication
 
@@ -6903,7 +7562,23 @@ and
     "string"
   ],
   "hasThumbnail": true,
-  "hasLandingPage": true
+  "hasLandingPage": true,
+  "subscriptionPlans": [
+    {
+      "id": "string",
+      "displayName": "string",
+      "deleted": true,
+      "edited": true
+    }
+  ],
+  "documents": [
+    {
+      "id": "string",
+      "displayName": "string",
+      "deleted": true,
+      "edited": true
+    }
+  ]
 }
 
 ```
@@ -6934,6 +7609,8 @@ and
 |» docIds|[DocIdList](#schemadocidlist)|false|none|none|
 |» hasThumbnail|boolean|false|read-only|Whether this publication stores a thumbnail.|
 |» hasLandingPage|boolean|false|read-only|Whether this publication stores a landing page.|
+|» subscriptionPlans|[[PublicationSelection](#schemapublicationselection)]|false|read-only|The selected subscription plans, including deleted ones. Same plans as subscriptionPlanIds.|
+|» documents|[[PublicationSelection](#schemapublicationselection)]|false|read-only|The selected documents, including deleted ones. Same documents as docIds.|
 
 ##### Enumerated Values
 
