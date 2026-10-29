@@ -16,6 +16,20 @@ console_only = true
 driver = '{{ env "APIP_AP_DATABASE_DRIVER" "sqlite" }}'
 path = '{{ env "APIP_AP_DATABASE_PATH" "./data/api-portal.db" }}'
 
+[api_portal.health]
+# Clients allowed to call /health and /ready: IP addresses or CIDR ranges,
+# comma-separated, or "*" alone for every client. Loopback only by default.
+allowed_clients = '{{ env "APIP_AP_HEALTH_ALLOWED_CLIENTS" "127.0.0.1,::1" }}'
+
+# [api_portal.health.database]
+# check_timeout   = "2s"
+# failure_window  = "30s"
+# failure_ratio   = 0.5
+# min_attempts    = 5
+# idle_period     = "10s"
+# pool_saturation = 0.9
+# pool_wait_limit = "5s"
+
 [api_portal.security]
 encryption_key = '{{ file "/etc/api-portal/keys/encryption.key" }}'
 session_secret = '{{ file "/etc/api-portal/keys/session-secret" }}'

@@ -177,6 +177,47 @@ pool_request_timeout_ms = 30000         # MSSQL only - per-query execution timeo
 # -----------------------------------------------------------------------------
 
 # =============================================================================
+# HEALTH ENDPOINTS
+# =============================================================================
+# /health (liveness) and /ready (readiness), also served under /api-portal. Both
+# run the same checks and give the same answer: 200 {"status":"ok"} when every
+# check is up, 503 {"status":"unhealthy"} otherwise. Every key is optional; the
+# values shown are the defaults. Durations use the Go notation ("3s", "500ms",
+# "1m30s"). An invalid value, or an unknown key in [api_portal.health.database],
+# refuses startup.
+
+[api_portal.health]
+cache_ttl = "3s"                # how long an evaluated result is reused
+# Clients allowed to call the endpoints: IP addresses or CIDR ranges, as a list
+# or a comma-separated string. Empty means loopback only (127.0.0.1, ::1); "*"
+# alone allows every client. Only the connection's peer address is checked —
+# X-Forwarded-For and trust-proxy settings are never consulted — so a probe that
+# reaches the portal through a proxy or a published container port arrives from
+# that hop's address. Refused clients get 403 {"status":"forbidden"}.
+allowed_clients = []
+# allowed_clients = '{{ env "APIP_AP_HEALTH_ALLOWED_CLIENTS" "127.0.0.1,::1" }}'
+
+# The database check judges the database by the outcomes of the portal's own
+# queries rather than querying it on every probe. Only connection-class failures
+# count (refused, reset, unreachable, authentication, server shutting down, file
+# cannot be opened); SQL errors and slow queries do not. Not registered in design
+# mode, which has no database.
+[api_portal.health.database]
+check_timeout = "2s"            # bound on the check's own SELECT 1 round trip
+failure_window = "30s"          # how far back query outcomes count; >= cache_ttl
+failure_ratio = 0.5             # down when failures / attempts reaches this (0 < r <= 1)
+min_attempts = 5                # attempts in the window needed before the ratio decides
+idle_period = "10s"             # with no queries for this long, the check runs its own
+                                # SELECT 1 (at most one per idle_period); <= failure_window
+pool_saturation = 0.9           # PostgreSQL / MSSQL: share of the pool in use, with callers
+                                # waiting, that counts as saturated (0 < r <= 1)
+pool_wait_limit = "5s"          # saturation lasting this long reports the database down
+                                # ("database connection pool exhausted")
+# SQLite serialises every statement behind one lock, so the check's own SELECT 1
+# waits behind a long-running statement and reports a timeout if it outlasts
+# check_timeout.
+
+# =============================================================================
 # SECURITY CONFIGURATION
 # =============================================================================
 
