@@ -793,7 +793,7 @@ the gateway produces on an `LlmProvider` or `LlmProxy` route is returned as
 | The error | What the client receives |
 |---|---|
 | A policy that described its failure in `Fault` | The envelope from that description |
-| A policy that wrote only its own body | The envelope, with the body's message lifted out (`message`, `error_description`, `detail` or `error`); a guardrail's body also yields an `error.guardrail` block (`interveningGuardrail`, `action`, `actionReason`, `direction`, and `assessments` when the guardrail's `showAssessment` put it there) |
+| A policy that wrote only its own body | The envelope, with the body's message lifted out (`message`, `error_description`, `detail`, `error` or `description`, or plain text up to 512 bytes); a guardrail's body also yields an `error.guardrail` block (`interveningGuardrail`, `action`, `actionReason`, `direction`, and `assessments` when the guardrail's `showAssessment` put it there) |
 | A policy body already in the OpenAI envelope, or an explicitly empty body | Kept as written |
 | A router failure (refused, reset, timeout, no healthy upstream) or an engine error | The envelope, with `server_error` and the failure's code (`101503`, `101504`, …) |
 | A body written by one of the API's fault policies | Kept as written |

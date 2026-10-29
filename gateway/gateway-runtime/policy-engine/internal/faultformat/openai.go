@@ -90,15 +90,21 @@ func (openAIRenderer) Render(in RenderInput) []byte {
 	if e.Code != "" {
 		code = &e.Code
 	}
-	body, err := json.Marshal(openAIErrorBody{Error: openAIErrorObject{
+	obj := openAIErrorObject{
 		Message:   openAIMessage(e, in.Status),
 		Type:      openAITypeFor(e.Type, in.Status),
 		Code:      code,
 		ErrorID:   in.ErrorID,
 		Guardrail: openAIGuardrailFor(e),
-	}})
-	if err != nil {
+	}
+	body, err := json.Marshal(openAIErrorBody{Error: obj})
+	if err != nil && obj.Guardrail != nil {
 		// Only an assessment map the guardrail filled with something unmarshalable gets here.
+		// Drop the block and keep the rest, so the client still gets the right type and message.
+		obj.Guardrail = nil
+		body, err = json.Marshal(openAIErrorBody{Error: obj})
+	}
+	if err != nil {
 		// A terse valid envelope beats an empty body to a client that parses JSON.
 		return []byte(`{"error":{"message":"An unexpected error occurred.","type":"server_error","param":null,"code":null}}`)
 	}

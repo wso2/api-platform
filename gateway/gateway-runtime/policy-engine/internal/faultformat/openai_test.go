@@ -188,7 +188,7 @@ func TestRender_OpenAI_GuardrailBlockSitsInsideTheErrorObject(t *testing.T) {
 }
 
 // A guardrail can fill its assessments with a value JSON cannot carry. The client still gets
-// an envelope it can parse rather than an empty body.
+// an envelope it can parse, with the failure's own type and message; only the block is lost.
 func TestRender_OpenAI_UnmarshalableAssessmentStillYieldsAnEnvelope(t *testing.T) {
 	body, _, ok := NewRegistry().Render(ShapeOpenAI, RenderInput{
 		Err: policy.FaultDetails{
@@ -204,8 +204,9 @@ func TestRender_OpenAI_UnmarshalableAssessmentStillYieldsAnEnvelope(t *testing.T
 	require.True(t, ok)
 
 	inner := decodeOpenAI(t, body)
-	assert.Equal(t, "server_error", inner["type"])
-	assert.NotEmpty(t, inner["message"])
+	assert.Equal(t, "invalid_request_error", inner["type"], "the type still follows the fault")
+	assert.Equal(t, "Blocked by content guardrail", inner["message"])
+	assert.NotContains(t, inner, "guardrail", "only the block that cannot be encoded is dropped")
 	assert.Contains(t, inner, "param")
 	assert.Contains(t, inner, "code")
 }

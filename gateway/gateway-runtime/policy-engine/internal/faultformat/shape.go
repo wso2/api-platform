@@ -59,7 +59,8 @@ const (
 	// ShapeXML is a plain XML error document, for a REST caller that asked for XML.
 	ShapeXML ShapeID = "xml"
 	// ShapeOpenAI is the OpenAI API's error envelope, for an LLM API whose callers are OpenAI
-	// SDKs. Reached only when the operator enables it — see OpenAIErrorKinds.
+	// SDKs. Reached unless policy_engine.llm_errors.disable_openai_format is set — see
+	// OpenAIErrorKinds.
 	ShapeOpenAI ShapeID = "openai"
 
 	// ShapeSOAP11 and ShapeSOAP12 are declared so Negotiate can name them, but are NOT
