@@ -65,7 +65,7 @@ export type GatewaysFeatureProps = {
 const STATUS_POLL_INTERVAL_MS = 5000;
 
 const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
-  const { apiFetch, notify } = port;
+  const { apiFetch, notify, resourceLimits } = port;
   const client = useMemo(() => createGatewaysClient(apiFetch), [apiFetch]);
   const selfHostedClient = useMemo(() => createSelfHostedGatewaysClient(apiFetch), [apiFetch]);
 
@@ -186,6 +186,8 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
         } else {
           await client.createGateway(input);
           notify(`Gateway "${input.name}" created.`, 'success');
+          // A create consumes quota; an edit does not.
+          resourceLimits?.refresh();
         }
         await load();
         return true;
@@ -199,7 +201,7 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
         submittingRef.current = false;
       }
     },
-    [client, load, notify]
+    [client, load, notify, resourceLimits]
   );
 
   /**
@@ -228,6 +230,7 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
         setSetupToken(token);
         setView('view');
         setEditingGatewayId(null);
+        resourceLimits?.refresh();
         return 'opened';
       } catch (submitError) {
         notify(
@@ -239,7 +242,7 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
         submittingRef.current = false;
       }
     },
-    [selfHostedClient, load, notify]
+    [selfHostedClient, load, notify, resourceLimits]
   );
 
   const removeGateway = useCallback(
@@ -269,6 +272,8 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
         // and the deleted gateway would otherwise stay listed.
         if (!deletionPending) setGateways((previous) => previous.filter((gateway) => gateway.id !== id));
         await load();
+        // Frees quota. Fired when pending too — teardown is already under way.
+        resourceLimits?.refresh();
       } catch (deleteError) {
         notify(
           deleteError instanceof Error ? deleteError.message : 'Unable to delete the gateway.',
@@ -278,7 +283,7 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
         deletingRef.current = false;
       }
     },
-    [client, selfHostedClient, gateways, load, notify]
+    [client, selfHostedClient, gateways, load, notify, resourceLimits]
   );
 
   if (loading) {

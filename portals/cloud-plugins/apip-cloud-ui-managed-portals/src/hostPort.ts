@@ -16,4 +16,14 @@ export type CloudHostPort = {
   projectHandle?: string;
   navigate: (path: string) => void;
   notify: (message: string, severity?: NotifySeverity) => void;
+  /**
+   * Quota, when the mounting console tracks any. `refresh` after a create or
+   * delete; `canCreate`/`limitMessage` gate this feature's own create button.
+   * Optional: a host without entitlements omits it and nothing is capped.
+   */
+  resourceLimits?: {
+    refresh: () => void;
+    canCreate?: (component: 'portals') => boolean;
+    limitMessage?: (component: 'portals') => string;
+  };
 };

@@ -60,6 +60,31 @@ export type PermissionMode = 'enforce' | 'permissive';
  * lookups for unknown or out-of-date generated maps. */
 export type PermissionOperation = OperationId | (string & {});
 
+/**
+ * Whether this operation *writes*, derived from the scopes the spec says it
+ * accepts rather than from its name.
+ *
+ * The rule: an operation that accepts any `:read` scope is a read; one that
+ * accepts none is a write. Verified across all 216 generated operations —
+ * **no** write-named operation accepts a `:read` scope, while 85 genuine reads
+ * also accept a `:manage` scope, which is why the obvious inverse test
+ * ("accepts create/update/delete/manage") misclassifies reads as writes.
+ *
+ * Name prefixes were the other candidate and are worse: `fetchAgentCard` and
+ * `copyLLMProviderTemplateVersion` both defeat a verb list, and a new operation
+ * naming itself unusually would silently land in the wrong bucket. The scope
+ * map is generated from the spec, so this follows the spec automatically.
+ *
+ * An unknown operation is treated as a **read**, so an out-of-date generated
+ * map leaves a control enabled rather than disabling it wrongly — the same
+ * fail-open posture as the rest of this module.
+ */
+export const isWriteOperation = (operation: PermissionOperation): boolean => {
+  const scopes = OPERATION_SCOPES[operation as OperationId] as readonly ApScope[] | undefined;
+  if (!scopes || scopes.length === 0) return false;
+  return !scopes.some((scope) => scope.endsWith(':read'));
+};
+
 /** Why a decision came out the way it did. */
 export type DecisionReason =
   'granted' | 'missing-scope' | 'unknown-scopes' | 'unknown-operation' | 'loading';

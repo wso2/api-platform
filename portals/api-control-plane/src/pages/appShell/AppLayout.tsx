@@ -18,20 +18,24 @@
 
 import { AppShell, Box, Footer, NotificationPanel } from '@wso2/oxygen-ui';
 import { Bell } from '@wso2/oxygen-ui-icons-react';
-import { Suspense } from 'react';
+import { Fragment, Suspense, useMemo } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 
 import { getBillingOrganization } from '../../billing/organization';
 import { AppPage } from '../../components/AppPage';
+import ReadOnlyBanner from '../../components/common/ReadOnlyBanner';
 import { ErrorBoundary } from '../../components/errors/ErrorBoundary';
 import { PageErrorFallback, SidebarErrorFallback } from '../../components/errors/ErrorFallback';
 import { LoadingState } from '../../components/StateViews';
 import { runtimeConfig } from '../../config/runtime';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
+import { useResourceLimits } from '../../hooks/useResourceLimits';
 import { usePageTitle } from '../../navigation/usePageTitle';
 import { useConsoleScope } from '../../scope/ConsoleScopeProvider';
 import { useNotifications } from '../../components/Notifications';
+import { APP_GATE_SLOT, type ApiControlPlaneAppGate } from '../../extensions';
 import { extensionApiFetch, PortProvider, type CloudHostPort } from '../../hostPort';
+import { useSlot } from '../../slots';
 import { AppHeader } from './AppHeader';
 import { APP_FOOTER_ID } from './appLayoutConstants';
 import { AppSidebar } from './AppSidebar';
@@ -46,6 +50,53 @@ export default function AppLayout() {
   // Every page inside the shell gets its tab title from here, so a new route
   // is named by its sidebar entry without touching the page itself.
   useDocumentTitle(usePageTitle());
+
+  // Read rather than owned here: ResourceLimitsProvider sits above this
+  // component (App.tsx) so the value can ride the Port. A cloud extension
+  // mounted on `app.gate` supplies the numbers through `resourceLimits.set`;
+  // this portal only carries them, and with no such extension every field
+  // stays at its inert default.
+  const {
+    canCreate,
+    limitMessage,
+    setResourceLimits,
+    refresh,
+    refreshSignal,
+    readOnly,
+    readOnlyMessage,
+    readOnlyBanner,
+    setReadOnly,
+  } = useResourceLimits();
+
+  const resourceLimits = useMemo(
+    () => ({
+      canCreate,
+      limitMessage,
+      set: setResourceLimits,
+      refresh,
+      refreshSignal,
+      readOnly,
+      readOnlyMessage,
+      readOnlyBanner,
+      setReadOnly,
+    }),
+    [
+      canCreate,
+      limitMessage,
+      readOnly,
+      readOnlyBanner,
+      readOnlyMessage,
+      refresh,
+      refreshSignal,
+      setReadOnly,
+      setResourceLimits,
+    ]
+  );
+
+  // Headless policy entries. They render nothing; mounting them is what runs
+  // them, and the one that matters today is the entitlement supplier that
+  // fills `resourceLimits`. Empty in any deployment registering no extension.
+  const appGates = useSlot<ApiControlPlaneAppGate>(APP_GATE_SLOT);
 
   // Built once per render from this portal's own hooks, then handed down as
   // a plain value to every extension's `render(port)` — see `hostPort.tsx`
@@ -63,6 +114,7 @@ export default function AppLayout() {
     // Only an explicitly configured host: the console's own fallback can be `localhost`, which
     // is no address for a gateway running somewhere else to dial.
     gatewayControlPlaneHost: runtimeConfig.gatewayControlPlaneHostOverride || undefined,
+    resourceLimits,
   };
 
   return (
@@ -80,6 +132,19 @@ export default function AppLayout() {
         </AppShell.Sidebar>
 
         <AppShell.Main>
+          {/* Headless — each returns null. Mounted inside PortProvider so a
+            gate receives the live Port, and inside the shell so it runs on
+            every in-shell route. */}
+          {appGates.map((gate) => (
+            <Fragment key={gate.id}>{gate.render(port)}</Fragment>
+          ))}
+
+          {/* Above the page, below the header: a user meeting a page of
+            disabled controls needs the one sentence that explains why. The
+            content is the supplier's own markup; this portal writes none of
+            it. Never rendered when nothing reports read-only. */}
+          {readOnly && <ReadOnlyBanner content={readOnlyBanner ?? readOnlyMessage} />}
+
           {/* Pages render their own container (`AppPage`, or `PageContent`
             directly), so the shell adds none and a page owns its width and
             padding. The fallbacks stand in for a page, so they bring one of

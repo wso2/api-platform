@@ -42,10 +42,38 @@ import {
 import { useManagedPortalList } from "./hooks";
 import type { ManagedPortal } from "./types";
 import { PortalIllustration } from "./PortalIllustration";
+import { usePortalFeature } from "./portContext";
 import UnexpectedErrorState from "./components/UnexpectedErrorState";
 
 const devportalLogo = new URL("./images/devportal-logo.png", import.meta.url)
   .href;
+
+/**
+ * Create button, disabled with the host's message when the portal quota is
+ * full. The span is required: a disabled MUI button sets `pointer-events:
+ * none`, so a Tooltip on it never fires.
+ */
+function AddPortalButton({ label, onClick }: { label: string; onClick: () => void }) {
+  const { host } = usePortalFeature();
+  const limits = host.resourceLimits;
+  const blocked = limits?.canCreate ? !limits.canCreate("portals") : false;
+  const button = (
+    <Button
+      variant="contained"
+      onClick={onClick}
+      startIcon={<Plus size={20} />}
+      disabled={blocked}
+    >
+      {label}
+    </Button>
+  );
+  if (!blocked) return button;
+  return (
+    <Tooltip title={limits?.limitMessage?.("portals") ?? ""}>
+      <span style={{ display: "inline-flex" }}>{button}</span>
+    </Tooltip>
+  );
+}
 
 export type ManagedPortalsListProps = {
   /** Switches parent to the create view; create is a full page, not a modal. */
@@ -151,13 +179,7 @@ export default function ManagedPortalsList({
               sx={{ ml: "auto", flexShrink: 0 }}
             >
               {portals.length > 0 ? (
-                <Button
-                  variant="contained"
-                  onClick={onCreate}
-                  startIcon={<Plus size={20} />}
-                >
-                  Add Portal
-                </Button>
+                <AddPortalButton label="Add Portal" onClick={onCreate} />
               ) : null}
             </Stack>
           </Box>
@@ -206,13 +228,7 @@ export default function ManagedPortalsList({
                   and get started with your services.
                 </Typography>
                 <Box sx={{ pt: 2 }}>
-                  <Button
-                    variant="contained"
-                    onClick={onCreate}
-                    startIcon={<Plus size={20} />}
-                  >
-                    Create Portal
-                  </Button>
+                  <AddPortalButton label="Create Portal" onClick={onCreate} />
                 </Box>
               </Stack>
             </Box>

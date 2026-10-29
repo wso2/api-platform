@@ -72,4 +72,14 @@ export type AIWorkspaceHostPort = {
    * the setup commands. Falls back to this page's own host when the host does not supply it.
    */
   controlPlaneHost?: string;
+  /**
+   * Quota, when the mounting console tracks any. `refresh` after a create or
+   * delete; `canCreate`/`limitMessage` gate this feature's own create button.
+   * Optional: a host without entitlements omits it and nothing is capped.
+   */
+  resourceLimits?: {
+    refresh: () => void;
+    canCreate?: (component: 'gateways') => boolean;
+    limitMessage?: (component: 'gateways') => string;
+  };
 };

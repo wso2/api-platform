@@ -1,0 +1,27 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    // Resolved against the API Control Plane's tree, not AI Workspace's like
+    // the other cloud plugins. This plugin is console-only, and it needs
+    // @wso2/oxygen-ui 0.18.0 for `TrialBadge`, which AI Workspace (on 0.5.0)
+    // does not have. A plugin pointed at AI Workspace compiles against AI
+    // Workspace's versions whatever its own package.json says.
+    "paths": {
+      "@wso2/oxygen-ui": ["../../api-control-plane/node_modules/@wso2/oxygen-ui"],
+      "react": ["../../api-control-plane/node_modules/@types/react/index.d.ts"],
+      "react/jsx-runtime": [
+        "../../api-control-plane/node_modules/@types/react/jsx-runtime.d.ts"
+      ]
+    },
+    "jsx": "react-jsx",
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true
+  },
+  "include": ["src"],
+  // Tests resolve `vitest` from this package's own node_modules, which these
+  // `paths` do not cover; `npm test` (vitest) typechecks and runs them.
+  "exclude": ["src/**/*.test.ts"]
+}

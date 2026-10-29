@@ -182,6 +182,32 @@ export const PAGE_API_OBSERVABILITY_LOGS_SLOT = 'page.apiObservabilityLogs';
  */
 export const HEADER_ACTIONS_SLOT = 'header.actions';
 
+/**
+ * Slot for a headless, host-mounted policy hook, rendered on every in-shell
+ * route.
+ *
+ * Entries render nothing. They exist so a deployment can run cross-cutting
+ * policy the portal itself has no opinion about — the first case being cloud's
+ * entitlement supplier, which reads an organization's limits and hands them to
+ * `resourceLimits.set` on the Port (`hostPort.tsx`). That decision is a
+ * property of one deployment's commercial model, not portal behaviour, which is
+ * why it is a slot rather than something built in.
+ *
+ * A deployment that registers nothing here leaves the portal exactly as it was:
+ * no limits are ever supplied, so every create action stays enabled.
+ */
+export const APP_GATE_SLOT = 'app.gate';
+
+/**
+ * A headless `app.gate` entry — see `APP_GATE_SLOT`. Like a header action, it
+ * carries only `render`, because it has no page and no nav presence; declaring
+ * `routePath`/`level` would claim otherwise. `render` is called with the live
+ * Port on every in-shell route and normally returns `null`.
+ */
+export type ApiControlPlaneAppGate = SlotEntry & {
+  render: ExtensionRender;
+};
+
 /** Whether this entry is a top-level sidebar item rather than a nested one. */
 export const isSidebarExtension = (
   extension: ApiControlPlaneExtension
@@ -240,7 +266,12 @@ export type ApiControlPlaneHeaderAction = SlotEntry & {
  */
 export type ApiControlPlaneCloudEntry =
   | ApiControlPlaneExtension
-  | ApiControlPlaneHeaderAction;
+  | ApiControlPlaneHeaderAction
+  // Structurally identical to a header action — both are `SlotEntry & {
+  // render }` — so this arm admits nothing new on its own. Named anyway: a gate
+  // being accepted by accident, because it happens to match another arm, is not
+  // the same as the registry declaring that gates are entries.
+  | ApiControlPlaneAppGate;
 
 export function ExtensionsProvider({
   extensions,

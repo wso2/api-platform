@@ -37,6 +37,7 @@ import {
   Stack,
   TablePagination,
   TextField,
+  Tooltip,
   Typography,
 } from '@wso2/oxygen-ui';
 import { Cloud, Edit, Plus, Search, Server, Settings, Trash2 } from '@wso2/oxygen-ui-icons-react';
@@ -45,6 +46,35 @@ import { gatewayStatusColor, gatewayStatusLabel, gatewayTypeLabel } from './util
 import NoGatewayState from './components/NoGatewayState';
 import type { AIWorkspaceHostPort } from './hostPort';
 import type { Environment, Gateway, GatewayHosting } from './types';
+
+/**
+ * Create button, disabled with the host's message when the gateway quota is
+ * full. The span is required: a disabled MUI button sets `pointer-events:
+ * none`, so a Tooltip on it never fires.
+ */
+const AddGatewayButton: FC<{ port: AIWorkspaceHostPort; onClick: () => void }> = ({
+  port,
+  onClick,
+}) => {
+  const limits = port.resourceLimits;
+  const blocked = limits?.canCreate ? !limits.canCreate('gateways') : false;
+  const button = (
+    <Button
+      variant="contained"
+      onClick={onClick}
+      startIcon={<Plus size={20} />}
+      disabled={blocked}
+    >
+      Add Gateway
+    </Button>
+  );
+  if (!blocked) return button;
+  return (
+    <Tooltip title={limits?.limitMessage?.('gateways') ?? ''}>
+      <span style={{ display: 'inline-flex' }}>{button}</span>
+    </Tooltip>
+  );
+};
 
 export type GatewaysListProps = {
   gateways: Gateway[];
@@ -408,9 +438,7 @@ const GatewaysList: FC<GatewaysListProps> = ({
 
             <Stack direction="row" spacing={1.5} sx={{ ml: 'auto', flexShrink: 0 }}>
               {gateways.length > 0 ? (
-                <Button variant="contained" onClick={() => onAddClick()} startIcon={<Plus size={20} />}>
-                  Add Gateway
-                </Button>
+                <AddGatewayButton onClick={() => onAddClick()} port={port} />
               ) : null}
             </Stack>
           </Box>
@@ -418,7 +446,13 @@ const GatewaysList: FC<GatewaysListProps> = ({
 
         {gateways.length === 0 ? (
           <Grid size={{ xs: 12 }}>
-            <NoGatewayState onAdd={onAddClick} />
+            <NoGatewayState
+              onAdd={onAddClick}
+              disabled={
+                port.resourceLimits?.canCreate ? !port.resourceLimits.canCreate('gateways') : false
+              }
+              disabledMessage={port.resourceLimits?.limitMessage?.('gateways') ?? ''}
+            />
           </Grid>
         ) : (
           <Grid size={{ xs: 12 }}>

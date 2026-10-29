@@ -151,6 +151,7 @@ export function useManagedPortalList() {
         const portal = await port.create(input);
         host.notify(`Portal "${portal.name}" created`, 'success');
         await refetch();
+        host.resourceLimits?.refresh(); // a create consumes quota
         return portal;
       } catch (err) {
         host.notify(errorMessage(err, 'Failed to create portal'), 'error');
@@ -181,6 +182,7 @@ export function useManagedPortalList() {
         await port.remove(id);
         host.notify('Portal deleted', 'success');
         await refetch();
+        host.resourceLimits?.refresh(); // a delete frees quota
       } catch (err) {
         host.notify(errorMessage(err, 'Failed to delete portal'), 'error');
         throw err;

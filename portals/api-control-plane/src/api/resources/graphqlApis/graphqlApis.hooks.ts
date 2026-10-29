@@ -24,6 +24,7 @@ import {
   useQueryClient,
 } from '@tanstack/react-query';
 
+import { useResourceLimits } from '../../../hooks/useResourceLimits';
 import type { ApiError } from '../../core/errors';
 import { HANDLED_LOCALLY } from '../../core/queryClient';
 import { useApiScope } from '../../core/scope';
@@ -215,11 +216,16 @@ export const useCreateGraphQLApi = (
 ) => {
   const { orgId } = useApiScope(overrides);
   const invalidate = useInvalidateGraphQLApis(orgId);
+  const { refresh: refreshResourceLimits } = useResourceLimits();
 
   return useMutation<GraphQLApi, ApiError, CreateGraphQLApiBody>({
     meta: overrides.handlesErrors ? HANDLED_LOCALLY : undefined,
     mutationFn: (body) => createGraphQLApi(body, { orgId }),
     onSuccess: invalidate,
+    // Same reasoning as `useCreateRestApi`: both consume the one shared
+    // interfaces budget, so either one changing means the counts need a
+    // re-read — on settle, because a refusal is the stale-count case.
+    onSettled: () => refreshResourceLimits(),
   });
 };
 
@@ -249,6 +255,7 @@ export const useDeleteGraphQLApi = (overrides: { orgId?: string } = {}) => {
   const { org, orgId } = useApiScope(overrides);
   const queryClient = useQueryClient();
   const invalidate = useInvalidateGraphQLApis(orgId);
+  const { refresh: refreshResourceLimits } = useResourceLimits();
 
   return useMutation<void, ApiError, { graphqlApiId: string }>({
     mutationFn: ({ graphqlApiId }) => deleteGraphQLApi(graphqlApiId, { orgId }),
@@ -257,6 +264,8 @@ export const useDeleteGraphQLApi = (overrides: { orgId?: string } = {}) => {
         queryClient.removeQueries({ queryKey: graphQLApiKeys.detail(org, graphqlApiId) });
       }
       invalidate();
+      // Frees shared budget — see `useDeleteRestApi`.
+      refreshResourceLimits();
     },
   });
 };

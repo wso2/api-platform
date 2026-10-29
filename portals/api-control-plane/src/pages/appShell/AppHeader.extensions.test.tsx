@@ -24,7 +24,7 @@ import {
   HEADER_ACTIONS_SLOT,
   type ApiControlPlaneHeaderAction,
 } from '../../extensions';
-import { PortProvider, type CloudHostPort } from '../../hostPort';
+import { NO_RESOURCE_LIMITS, PortProvider, type CloudHostPort } from '../../hostPort';
 import { renderWithProviders, screen } from '../../test/utils';
 
 import { AppHeader } from './AppHeader';
@@ -35,6 +35,7 @@ const port: CloudHostPort = {
   notify: () => {},
   apiFetch: async () => undefined as never,
   billing: { organization: async () => null },
+  resourceLimits: NO_RESOURCE_LIMITS,
 };
 
 const headerEntry: ApiControlPlaneHeaderAction = {
