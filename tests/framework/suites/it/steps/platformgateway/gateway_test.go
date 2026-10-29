@@ -3626,6 +3626,14 @@ func TestAIContextAssertions(t *testing.T) {
 	require.ErrorContains(t, aiContextAssert(block, "count", "provider", ""), "unsupported")
 	require.ErrorContains(t, aiContextAssert(nil, "have", "provider", "openai"), "no ai_context block")
 	require.ErrorContains(t, aiContextAssert(nil, "not have", "cost_metrics", ""), "no ai_context block")
+
+	// Values are compared by their published type: a count sent as a string, or a name sent as a
+	// number, fails even when its text matches.
+	stringly := map[string]any{"provider": float64(1), "usage": map[string]any{"prompt_tokens": "19"}}
+	require.ErrorContains(t, aiContextAssert(stringly, "have", "usage.prompt_tokens", "19"), "to be a number")
+	require.ErrorContains(t, aiContextAssert(stringly, "have", "provider", "1"), "to be a string")
+	require.ErrorContains(t, aiContextAssert(block, "have", "usage.prompt_tokens", "nineteen"), "is not a number")
+	require.ErrorContains(t, aiContextAssert(block, "have", "usage.prompt_tokens", "20"), "to be 20")
 }
 
 func TestAnalyticsAIContextFieldValidatesTheValueClause(t *testing.T) {

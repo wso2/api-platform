@@ -2515,15 +2515,41 @@ func aiContextAssert(block map[string]any, mode, field, want string) error {
 		if !ok {
 			return fmt.Errorf("AI context field %q not found in {%s}", field, sortedAnyKeys(block))
 		}
-		if got := fmt.Sprintf("%v", value); got != want {
-			return fmt.Errorf("expected AI context field %q to be %q, got %q", field, want, got)
-		}
+		return aiContextValueMatches(field, value, want)
 	case "not have":
 		if ok {
 			return fmt.Errorf("expected no AI context field %q, but it is present with value %v", field, value)
 		}
 	default:
 		return fmt.Errorf("unsupported AI context assertion %q", mode)
+	}
+	return nil
+}
+
+// aiContextValueMatches compares a field against its expected text by the field's published type:
+// token counts under usage are JSON numbers and every other asserted field is a JSON string, so a
+// count published as a string, or a name published as a number, fails rather than matching.
+func aiContextValueMatches(field string, value any, want string) error {
+	if strings.HasPrefix(field, "usage.") {
+		got, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("expected AI context field %q to be a number, got %T %v", field, value, value)
+		}
+		expected, err := strconv.ParseFloat(want, 64)
+		if err != nil {
+			return fmt.Errorf("expected value %q for numeric AI context field %q is not a number", want, field)
+		}
+		if got != expected {
+			return fmt.Errorf("expected AI context field %q to be %s, got %v", field, want, got)
+		}
+		return nil
+	}
+	got, ok := value.(string)
+	if !ok {
+		return fmt.Errorf("expected AI context field %q to be a string, got %T %v", field, value, value)
+	}
+	if got != want {
+		return fmt.Errorf("expected AI context field %q to be %q, got %q", field, want, got)
 	}
 	return nil
 }
