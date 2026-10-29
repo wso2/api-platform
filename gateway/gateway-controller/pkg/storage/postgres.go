@@ -21,6 +21,7 @@ package storage
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -30,8 +31,10 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgconn"
-	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/jmoiron/sqlx"
+
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage/observe"
 )
 
 const (
@@ -61,28 +64,15 @@ type PostgresStorage struct {
 	logger *slog.Logger
 }
 
-// newPostgresStorage creates a new PostgreSQL storage instance.
-func newPostgresStorage(cfg PostgresConnectionConfig, logger *slog.Logger) (*PostgresStorage, error) {
+// newPostgresStorage creates a new PostgreSQL storage instance and confirms the database
+// answers. Database operation outcomes are recorded in window.
+func newPostgresStorage(cfg PostgresConnectionConfig, window *observe.Window, logger *slog.Logger) (*PostgresStorage, error) {
 	cfg = withDefaultPostgresConfig(cfg)
-	dsn, err := buildPostgresDSN(cfg)
+	storage, dsn, err := openPostgresStorage(cfg, window, logger)
 	if err != nil {
-		return nil, fmt.Errorf("failed to build postgres dsn: %w", err)
+		return nil, err
 	}
-
-	db, err := sql.Open("pgx", dsn)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open postgres database: %w", err)
-	}
-
-	db.SetMaxOpenConns(cfg.MaxOpenConns)
-	db.SetMaxIdleConns(cfg.MaxIdleConns)
-	db.SetConnMaxLifetime(cfg.ConnMaxLifetime)
-	db.SetConnMaxIdleTime(cfg.ConnMaxIdleTime)
-
-	storage := &PostgresStorage{
-		db:     db,
-		logger: logger,
-	}
+	db := storage.db
 
 	pingTimeout := cfg.ConnectTimeout
 	if pingTimeout <= 0 {
@@ -107,6 +97,34 @@ func newPostgresStorage(cfg PostgresConnectionConfig, logger *slog.Logger) (*Pos
 		slog.String("dsn", sanitizePostgresDSN(dsn)))
 
 	return storage, nil
+}
+
+// openPostgresStorage opens the PostgreSQL connection pool without connecting, so only
+// configuration errors fail here. It also returns the DSN, for logging in sanitized form.
+// Database operation outcomes are recorded in window.
+func openPostgresStorage(cfg PostgresConnectionConfig, window *observe.Window, logger *slog.Logger) (*PostgresStorage, string, error) {
+	cfg = withDefaultPostgresConfig(cfg)
+	dsn, err := buildPostgresDSN(cfg)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to build postgres dsn: %w", err)
+	}
+
+	connector, err := stdlib.GetDefaultDriver().(driver.DriverContext).OpenConnector(dsn)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to open postgres database: %w", err)
+	}
+	db := sql.OpenDB(observe.Wrap(connector, window))
+
+	db.SetMaxOpenConns(cfg.MaxOpenConns)
+	db.SetMaxIdleConns(cfg.MaxIdleConns)
+	db.SetConnMaxLifetime(cfg.ConnMaxLifetime)
+	db.SetConnMaxIdleTime(cfg.ConnMaxIdleTime)
+
+	storage := &PostgresStorage{
+		db:     db,
+		logger: logger,
+	}
+	return storage, dsn, nil
 }
 
 func withDefaultPostgresConfig(cfg PostgresConnectionConfig) PostgresConnectionConfig {

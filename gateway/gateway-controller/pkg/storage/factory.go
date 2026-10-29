@@ -24,6 +24,8 @@ import (
 	"strings"
 
 	"github.com/jmoiron/sqlx"
+
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage/observe"
 )
 
 // BackendConfig contains the minimal storage backend configuration required by NewStorage.
@@ -33,13 +35,32 @@ type BackendConfig struct {
 	Postgres   PostgresConnectionConfig
 	SQLServer  SQLServerConnectionConfig
 	GatewayID  string
+	// Window receives the outcome of every database operation on the backend's pool, so
+	// database health can be judged from real traffic. Several backends may share one
+	// window. Nil records into a private window.
+	Window *observe.Window
 }
 
-// NewStorage creates the configured persistent storage backend.
+// NewStorage creates the configured persistent storage backend and, for the network
+// databases, confirms the database answers.
 func NewStorage(cfg BackendConfig, logger *slog.Logger) (Storage, error) {
+	return newStorage(cfg, logger, true)
+}
+
+// Open creates the configured persistent storage backend without connecting to a
+// network database (PostgreSQL, SQL Server), so only configuration errors fail here;
+// whether the database answers is left to the caller, which can then wait for it.
+// SQLite is a local file and is opened exactly as NewStorage does.
+func Open(cfg BackendConfig, logger *slog.Logger) (Storage, error) {
+	return newStorage(cfg, logger, false)
+}
+
+// newStorage builds the storage backend; connect selects whether a network database
+// must answer before it returns.
+func newStorage(cfg BackendConfig, logger *slog.Logger, connect bool) (Storage, error) {
 	switch cfg.Type {
 	case "sqlite":
-		backend, err := newSQLiteStorage(cfg.SQLitePath, logger)
+		backend, err := newSQLiteStorage(cfg.SQLitePath, cfg.Window, logger)
 		if err != nil {
 			if strings.Contains(err.Error(), "database is locked") {
 				return nil, fmt.Errorf("%w: %w", ErrDatabaseLocked, err)
@@ -53,7 +74,13 @@ func NewStorage(cfg BackendConfig, logger *slog.Logger) (Storage, error) {
 		return store, nil
 
 	case "postgres":
-		backend, err := newPostgresStorage(cfg.Postgres, logger)
+		var backend *PostgresStorage
+		var err error
+		if connect {
+			backend, err = newPostgresStorage(cfg.Postgres, cfg.Window, logger)
+		} else {
+			backend, _, err = openPostgresStorage(cfg.Postgres, cfg.Window, logger)
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -64,7 +91,13 @@ func NewStorage(cfg BackendConfig, logger *slog.Logger) (Storage, error) {
 		return store, nil
 
 	case "sqlserver":
-		backend, err := newSQLServerStorage(cfg.SQLServer, logger)
+		var backend *SQLServerStorage
+		var err error
+		if connect {
+			backend, err = newSQLServerStorage(cfg.SQLServer, cfg.Window, logger)
+		} else {
+			backend, _, err = openSQLServerStorage(cfg.SQLServer, cfg.Window, logger)
+		}
 		if err != nil {
 			return nil, err
 		}

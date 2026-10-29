@@ -6,11 +6,12 @@ info:
 
     These endpoints are served on the dedicated admin server port (default: 9092).
 
-    All endpoints except the health probe require HTTP Basic authentication using
+    All endpoints except the health probes require HTTP Basic authentication using
     the same credentials configured for the management API (`controller.auth.basic`),
-    and the authenticated user must additionally hold the `admin` role. Both the
-    versioned `/api/admin/v1/health` path and its legacy `/health` alias are
-    intentionally left unauthenticated
+    and the authenticated user must additionally hold the `admin` role. The
+    `/api/admin/v1/health` and `/api/admin/v1/ready` paths, and the legacy `/health`
+    alias, are intentionally left unauthenticated and outside the admin IP allowlist;
+    they answer only the clients in `controller.health.allowed_clients`.
   version: 1.0.0
   contact:
     name: WSO2 API Platform Team
@@ -63,12 +64,17 @@ paths:
 
   /health:
     get:
-      summary: Health check
+      summary: Liveness check
       description: |
-        Returns the health status of the gateway controller.
-        This endpoint is exempt from both authentication and the IP whitelist so
+        Returns the health status of the gateway controller, including whether its
+        database is reachable. Each dependency is reported under `checks`; a failing
+        check carries only a generic reason. The result is cached for a few seconds
+        and shared with `/ready`.
+        This endpoint is exempt from both authentication and the admin IP allowlist so
         that Docker and Kubernetes health probes can reach it. The exemption
-        applies to both this versioned path and the legacy `/health` alias.
+        applies to both this versioned path and the legacy `/health` alias. Only
+        clients in `controller.health.allowed_clients` get an answer; any other
+        client gets 403.
       operationId: getHealth
       tags:
         - System
@@ -76,6 +82,52 @@ paths:
       responses:
         "200":
           description: Gateway controller is healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+        "403":
+          description: The client is not in `controller.health.allowed_clients`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthForbiddenResponse"
+        "503":
+          description: Gateway controller is unhealthy; at least one check is down
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+
+  /ready:
+    get:
+      summary: Readiness check
+      description: |
+        Returns whether the gateway controller is ready to serve, with the same checks
+        and answer as `/health`; both paths are served from one cached evaluation.
+        This endpoint is exempt from both authentication and the admin IP allowlist so
+        that Docker and Kubernetes health probes can reach it. It has no legacy
+        unprefixed alias. Only clients in `controller.health.allowed_clients` get an
+        answer; any other client gets 403.
+      operationId: getReady
+      tags:
+        - System
+      security: []
+      responses:
+        "200":
+          description: Gateway controller is ready
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+        "403":
+          description: The client is not in `controller.health.allowed_clients`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthForbiddenResponse"
+        "503":
+          description: Gateway controller is not ready; at least one check is down
           content:
             application/json:
               schema:
@@ -128,7 +180,7 @@ components:
       description: |
         HTTP Basic authentication using the credentials configured under
         `controller.auth.basic`. The authenticated user must also hold the
-        `admin` role. Applies to every admin endpoint except the health probe.
+        `admin` role. Applies to every admin endpoint except the health probes.
   schemas:
     ErrorResponse:
       type: object
@@ -269,14 +321,52 @@ components:
 
     HealthResponse:
       type: object
+      required:
+        - status
+        - timestamp
       properties:
         status:
           type: string
-          description: Health status ("healthy")
+          enum: [healthy, unhealthy]
+          description: Health status ("healthy" when every check is up, otherwise "unhealthy")
         timestamp:
           type: string
           format: date-time
           description: Timestamp of the health check
+        checks:
+          type: object
+          description: Result of each dependency check, keyed by check name (for example `database`)
+          additionalProperties:
+            $ref: "#/components/schemas/HealthCheck"
+
+    HealthForbiddenResponse:
+      type: object
+      description: Answer to a client outside the allowed set; it carries no check detail
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum: [forbidden]
+      example:
+        status: forbidden
+
+    HealthCheck:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum: [up, down]
+          description: Whether the dependency is usable
+        error:
+          type: string
+          description: Generic reason the check is down; present only when down
+        since:
+          type: string
+          format: date-time
+          description: When the check started failing; present only when down
 
     XDSSyncStatusResponse:
       type: object
