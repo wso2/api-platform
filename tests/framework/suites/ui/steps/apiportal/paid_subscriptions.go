@@ -716,32 +716,41 @@ func (u *Steps) readRevenue(ctx context.Context) error {
 	if err := u.expect.Locator(revenueCard(page, "Paid subscriptions")).ToHaveText("1"); err != nil {
 		return err
 	}
+	billingMonth, err := resolveText(ctx, keyBillingMonth)
+	if err != nil {
+		return err
+	}
 	slots := page.Locator("#cfgRevenueChart .cfg-revenue-slot")
-	if err := u.expect.Locator(slots).ToHaveCount(1); err != nil {
+	current := slots.Last()
+	if err := u.expect.Locator(current).ToHaveAttribute("aria-pressed", "true"); err != nil {
+		return fmt.Errorf("the report should open on the current month: %w", err)
+	}
+	if err := u.expect.Locator(slots.First()).ToHaveAttribute("aria-label", regexp.MustCompile(`^`+billingMonth+`\b`)); err != nil {
 		return fmt.Errorf("the report should start at the month billing was set up: %w", err)
 	}
-	if err := u.expect.Locator(slots.First()).ToHaveAttribute("aria-pressed", "true"); err != nil {
-		return fmt.Errorf("the report should open on the current month: %w", err)
+	months, err := slots.Count()
+	if err != nil {
+		return err
 	}
 	if err := u.expect.Locator(page.Locator("#cfgRevenueCards")).ToContainText("so far"); err != nil {
 		return err
 	}
-	if err := slots.First().Click(); err != nil {
+	if err := current.Click(); err != nil {
 		return err
 	}
 	if err := u.expect.Locator(page.Locator("#cfgRevenueCards")).ToContainText("in the last 3 months"); err != nil {
 		return err
 	}
-	if err := slots.First().Click(); err != nil {
+	if err := current.Click(); err != nil {
 		return err
 	}
-	if err := u.expect.Locator(slots.First()).ToHaveAttribute("aria-pressed", "true"); err != nil {
+	if err := u.expect.Locator(current).ToHaveAttribute("aria-pressed", "true"); err != nil {
 		return err
 	}
 	if _, err := page.Locator("#cfgRevenueMonths").SelectOption(playwright.SelectOptionValues{Values: &[]string{"ALL"}}); err != nil {
 		return err
 	}
-	if err := u.expect.Locator(slots).ToHaveCount(1); err != nil {
+	if err := u.expect.Locator(slots).ToHaveCount(months); err != nil {
 		return err
 	}
 	if err := fillAndCheck(page, "#cfgRevenueSearch", "no such subscriber"); err != nil {
