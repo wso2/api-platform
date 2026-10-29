@@ -1431,7 +1431,6 @@ const createSubscriptionPlan = async (req, res) => {
                 throw new CustomError(500, constants.ERROR_CODE[500], constants.ERROR_MESSAGE.SUBSCRIPTION_PLAN_CREATE_ERROR);
             }
         });
-        // Answered once committed, so a caller that uses the plan next (an API offering it) finds it.
         res.status(201).send(created);
         logUserAction('SUBSCRIPTION_PLAN_CREATED', req, { orgId, resourceUuid: createdPlanUuid, resourceType: 'subscription_plan' });
     } catch (error) {
@@ -1527,7 +1526,6 @@ const updateSubscriptionPlan = async (req, res) => {
                 throw new CustomError(404, constants.ERROR_CODE[404], constants.ERROR_MESSAGE.SUBSCRIPTION_PLAN_NOT_FOUND);
             }
         });
-        // Answered once committed, so the caller's next request sees the saved plan.
         res.status(saved.statusCode).send(saved.plan);
         logUserAction('SUBSCRIPTION_PLAN_UPDATED', req, { orgId, resourceUuid: updatedPlanUuid, resourceType: 'subscription_plan' });
     } catch (error) {
@@ -1643,7 +1641,6 @@ const deleteSubscriptionPlan = async (req, res) => {
             }
             if (!sharedKeyAuth.madeByPlatformApi(req)) await subscriptionPlanEvents.publishPlanDeleted(orgId, plan, t);
         });
-        // Answered once committed, so the caller's next request no longer sees the plan.
         res.status(204).send();
         logUserAction('SUBSCRIPTION_PLAN_DELETED', req, { orgId, planId, resourceUuid: planId, resourceType: 'subscription_plan' });
     } catch (error) {
