@@ -17,8 +17,10 @@
  *
  * The UI's job is to distinguish "still provisioning" from "ready to visit"
  * on Create; a rare post-provisioning outage is not something we surface.
+ * `deleting` is a portal the cloud's orchestrator is tearing down: it stays
+ * listed until it is gone.
  */
-export type ManagedPortalStatus = 'pending' | 'active' | 'failed';
+export type ManagedPortalStatus = 'pending' | 'active' | 'failed' | 'deleting';
 
 export interface ManagedPortal {
   /** Portal id; equal to `handle` in the current backend. */
@@ -79,7 +81,8 @@ export interface PortalPort {
   get(id: string): Promise<ManagedPortal>;
   create(input: CreateManagedPortalInput): Promise<ManagedPortal>;
   update(id: string, input: UpdateManagedPortalInput): Promise<ManagedPortal>;
-  remove(id: string): Promise<void>;
+  /** `pending` is true when the portal is torn down in the background and reads as deleting until it is gone. */
+  remove(id: string): Promise<{ pending: boolean }>;
   /** Empty list means the org has no environments yet; callers should surface that rather than defaulting. */
   listEnvironments(): Promise<OrgEnvironment[]>;
 }

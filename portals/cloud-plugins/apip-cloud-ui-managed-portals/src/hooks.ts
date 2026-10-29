@@ -132,11 +132,12 @@ export function useManagedPortalList() {
     void refetch();
   }, [refetch]);
 
-  // Watch for any pending portal in the current list; re-poll at
-  // PENDING_POLL_INTERVAL_MS until every row is non-pending. The interval is
-  // torn down on the transition to steady state and on unmount, so an org
-  // whose portals are all active does zero background work.
-  const hasPending = portals.some((p) => p.status === 'pending');
+  // Watch for any pending or deleting portal in the current list; re-poll at
+  // PENDING_POLL_INTERVAL_MS until every row has settled (a deleting one by
+  // leaving the list). The interval is torn down on the transition to steady
+  // state and on unmount, so an org whose portals are all active does zero
+  // background work.
+  const hasPending = portals.some((p) => p.status === 'pending' || p.status === 'deleting');
   useEffect(() => {
     if (!hasPending) return undefined;
     const id = window.setInterval(() => {
@@ -178,8 +179,8 @@ export function useManagedPortalList() {
   const remove = useCallback(
     async (id: string) => {
       try {
-        await port.remove(id);
-        host.notify('Portal deleted', 'success');
+        const { pending } = await port.remove(id);
+        host.notify(pending ? 'Portal is being deleted' : 'Portal deleted', pending ? 'info' : 'success');
         await refetch();
       } catch (err) {
         host.notify(errorMessage(err, 'Failed to delete portal'), 'error');
