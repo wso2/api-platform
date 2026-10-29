@@ -97,6 +97,12 @@ enabled = true
 # ROUTER CONFIGURATION
 # =============================================================================
 
+# Per-attempt placement of a provider's transformer and credential. Off by default in
+# production until exercised; on here so the IT suite covers the path a cross-vendor failover
+# actually takes.
+[router.policy_engine]
+per_attempt_provider_policies = true
+
 [router.access_logs]
 enabled = true
 format = "text"

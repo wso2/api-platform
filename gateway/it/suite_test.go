@@ -115,6 +115,13 @@ func getFeaturePaths() []string {
 		"features/model-round-robin.feature",
 		"features/model-round-robin-multi-provider.feature",
 		"features/model-weighted-round-robin-multi-provider.feature",
+		// features/failover-core.feature is NOT in the default suite yet. Its core
+		// scenario cannot pass until the per-attempt upstream filter lands (T021-T023):
+		// Envoy switches clusters correctly on retry, but every LlmProxy provider
+		// cluster is a loopback to the same socket, and the real provider selector is
+		// the route's fixed path rewrite -- which does not change between attempts.
+		// Run it directly with IT_FEATURE_PATHS=features/failover-core.feature, and
+		// register it here once the data-plane half is implemented.
 		"features/json-schema-guardrail.feature",
 		"features/llm-provider-templates.feature",
 		"features/analytics-header-filter.feature",

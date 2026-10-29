@@ -1,0 +1,107 @@
+# PROBE H — can the attempt budget be set PER REQUEST?
+#
+# num_retries lives in route config, pushed once over xDS. Dynamic metadata can override the
+# cluster specifier's groups but has no hook for retry count, so a policy can reorder the chain
+# freely and lengthen it not at all. If x-envoy-max-retries works, the downstream policy can size
+# the budget to the ranking it just published.
+#
+# Three questions, one setup:
+#   (a) is the header honoured when retry_policy comes from ROUTE config, not the router filter?
+#   (b) can it RAISE the budget above the configured num_retries, or only lower it?
+#   (c) is it stripped from CLIENT requests? If not, a caller sets x-envoy-max-retries: 50 and
+#       fans their request across 50 providers — unbounded inference spend from an untrusted
+#       header, which is a cost and abuse problem rather than a correctness one.
+#
+# Setup: 3 groups, first two always fail, third is healthy. num_retries: 1 allows 2 attempts, so
+# the healthy third group is UNREACHABLE unless the budget is raised. Reaching provider b is
+# therefore unambiguous proof the budget grew.
+#
+# (b) and (c) are distinguished by WHO sets the header: curl sets it directly to test client
+# trust; x-probe-raise makes the Lua filter set it, standing in for our policy.
+admin: { address: { socket_address: { address: 0.0.0.0, port_value: 9901 } } }
+static_resources:
+  listeners:
+  - name: main
+    address: { socket_address: { address: 0.0.0.0, port_value: 10000 } }
+    filter_chains:
+    - filters:
+      - name: envoy.filters.network.http_connection_manager
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+          stat_prefix: probe
+          access_log:
+          - name: envoy.access_loggers.stdout
+            typed_config:
+              "@type": type.googleapis.com/envoy.extensions.access_loggers.stream.v3.StdoutAccessLog
+              log_format:
+                text_format_source:
+                  inline_string: "ACCESSLOG cluster=%UPSTREAM_CLUSTER% attempts=%UPSTREAM_REQUEST_ATTEMPT_COUNT% status=%RESPONSE_CODE% maxretries_seen=%REQ(X-ENVOY-MAX-RETRIES)%\n"
+          route_config:
+            name: rc
+            cluster_specifier_plugins:
+            - extension:
+                name: failover-groups
+                typed_config:
+                  "@type": type.googleapis.com/envoy.extensions.router.cluster_specifiers.priority_group.v3.PriorityGroupClusterSpecifier
+                  override_metadata_namespace: wso2.failover
+                  priority_groups:
+                  - name: rank-1
+                    clusters: [ { cluster_name: provider_a, weight: 1 } ]
+                  - name: rank-2
+                    clusters: [ { cluster_name: provider_c, weight: 1 } ]
+                  - name: rank-3
+                    clusters: [ { cluster_name: provider_b, weight: 1 } ]
+            virtual_hosts:
+            - name: vh
+              domains: ["*"]
+              include_attempt_count_in_response: true
+              routes:
+              - match: { prefix: "/" }
+                route:
+                  cluster_specifier_plugin: failover-groups
+                  retry_policy:
+                    retry_on: "5xx,connect-failure,reset,retriable-status-codes"
+                    retriable_status_codes: [429, 500, 503]
+                    # 2 attempts by configuration. Group 3 is out of reach without a raise.
+                    num_retries: 1
+                    per_try_timeout: 5s
+                    refresh_cluster_on_retry: true
+          http_filters:
+          - name: envoy.filters.http.lua
+            typed_config:
+              "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
+              default_source_code:
+                inline_string: |
+                  -- Stands in for the downstream failover policy: having just published an
+                  -- ordering, size the attempt budget to match it.
+                  function envoy_on_request(handle)
+                    local raise = handle:headers():get("x-probe-raise")
+                    if raise ~= nil and raise ~= "" then
+                      handle:headers():replace("x-envoy-max-retries", raise)
+                      handle:logWarn("PROBE policy set x-envoy-max-retries=" .. raise)
+                    end
+                    local seen = handle:headers():get("x-envoy-max-retries")
+                    handle:logWarn("PROBE at policy, x-envoy-max-retries=" .. tostring(seen))
+                  end
+          - name: envoy.filters.http.router
+            typed_config:
+              "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+  clusters:
+  - name: provider_a
+    connect_timeout: 2s
+    type: STATIC
+    load_assignment:
+      cluster_name: provider_a
+      endpoints: [ { lb_endpoints: [ { endpoint: { address: { socket_address: { address: 172.28.0.11, port_value: 8080 } } } } ] } ]
+  - name: provider_b
+    connect_timeout: 2s
+    type: STATIC
+    load_assignment:
+      cluster_name: provider_b
+      endpoints: [ { lb_endpoints: [ { endpoint: { address: { socket_address: { address: 172.28.0.12, port_value: 8080 } } } } ] } ]
+  - name: provider_c
+    connect_timeout: 2s
+    type: STATIC
+    load_assignment:
+      cluster_name: provider_c
+      endpoints: [ { lb_endpoints: [ { endpoint: { address: { socket_address: { address: 172.28.0.13, port_value: 8080 } } } } ] } ]
