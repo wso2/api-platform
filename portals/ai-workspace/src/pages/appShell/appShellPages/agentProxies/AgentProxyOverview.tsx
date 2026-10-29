@@ -97,6 +97,10 @@ import {
 } from '../../../../utils/readOnlyArtifacts';
 import { useAppAuth } from '../../../../contexts/AppAuthContext';
 import {
+  OVERVIEW_AVATAR_SX,
+  overviewButtonSx,
+} from '../../../../utils/overviewHeaderStyles';
+import {
   NO_PERMISSION_TOOLTIP,
   SCOPES,
 } from '../../../../auth/permissions';
@@ -1033,31 +1037,24 @@ function AgentProxyOverviewContent(): React.JSX.Element {
       />
 
       <Stack spacing={3} sx={{ mt: 2, mb: 4 }}>
-        <Card>
-          <Box
-            sx={{
-              display: 'flex',
-              alignItems: 'stretch',
-              justifyContent: 'space-between',
-              flexWrap: 'wrap',
-              gap: 2,
-              padding: 2,
-            }}
+        <Card sx={{ overflow: 'hidden' }}>
+          <Stack
+            alignItems="flex-start"
+            direction="row"
+            flexWrap="wrap"
+            gap={3}
+            justifyContent="space-between"
+            sx={{ p: 3 }}
           >
-            <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2 }}>
-              <Avatar
-                sx={{
-                  width: 72,
-                  height: 72,
-                  fontWeight: 600,
-                  fontSize: 28,
-                  bgcolor: 'primary.light',
-                  color: 'primary.contrastText',
-                }}
-              >
+            <Stack
+              direction="row"
+              spacing={2.5}
+              sx={{ flex: '1 1 380px', minWidth: 0 }}
+            >
+              <Avatar sx={OVERVIEW_AVATAR_SX} variant="rounded">
                 {getInitials(agentProxy.displayName)}
               </Avatar>
-              <Stack spacing={0.75} sx={{ minWidth: 0 }}>
+              <Stack spacing={1.5} sx={{ minWidth: 0 }}>
                 <Stack
                   direction="row"
                   spacing={1}
@@ -1086,11 +1083,13 @@ function AgentProxyOverviewContent(): React.JSX.Element {
                 </Stack>
                 <Stack
                   direction="row"
-                  spacing={1}
+                  spacing={1.5}
                   alignItems="center"
                   flexWrap="wrap"
                 >
-                  <Typography variant="h3">{agentProxy.displayName}</Typography>
+                  <Typography sx={{ overflowWrap: 'anywhere' }} variant="h3">
+                    {agentProxy.displayName}
+                  </Typography>
                   <Chip
                     label={agentProxy.version}
                     size="small"
@@ -1098,12 +1097,12 @@ function AgentProxyOverviewContent(): React.JSX.Element {
                     color="primary"
                   />
                   <Tooltip title="Edit Agent Proxy">
-                    <IconButton component={RouterLink} to="edit" size="small">
-                      <Edit size={16} />
+                    <IconButton component={RouterLink} to="edit">
+                      <Edit size={18} />
                     </IconButton>
                   </Tooltip>
                 </Stack>
-                <Stack spacing={0.2}>
+                <Stack spacing={0.25}>
                   <Stack direction="row" alignItems="center" gap={2}>
                     <Typography variant="caption" color="text.secondary">
                       <FormattedMessage
@@ -1115,32 +1114,40 @@ function AgentProxyOverviewContent(): React.JSX.Element {
                       {agentProxy.context || '/'}
                     </Typography>
                   </Stack>
-                  <Stack direction="row" spacing={0.75} alignItems="center">
-                    <Typography variant="caption" color="text.secondary">
-                      <FormattedMessage
-                        id="aiWorkspace.pages.appShell.appShellPages.agentProxies.overview.updated"
-                        defaultMessage="Last updated :"
-                      />
-                    </Typography>
-                    <Clock size={14} />
-                    <Typography variant="caption" color="text.secondary">
-                      {formatRelativeTime(agentProxy.updatedAt)}
-                    </Typography>
-                  </Stack>
+                  <Tooltip
+                    title={
+                      agentProxy.updatedAt
+                        ? new Date(agentProxy.updatedAt).toLocaleString()
+                        : ''
+                    }
+                  >
+                    <Stack direction="row" spacing={0.75} alignItems="center">
+                      <Typography variant="caption" color="text.secondary">
+                        <FormattedMessage
+                          id="aiWorkspace.pages.appShell.appShellPages.agentProxies.overview.updated"
+                          defaultMessage="Last updated :"
+                        />
+                      </Typography>
+                      <Clock size={14} />
+                      <Typography variant="caption" color="text.secondary">
+                        {formatRelativeTime(agentProxy.updatedAt)}
+                      </Typography>
+                    </Stack>
+                  </Tooltip>
                 </Stack>
               </Stack>
-            </Box>
+            </Stack>
             <Stack
-              direction="column"
-              justifyContent="space-between"
               alignItems="flex-end"
-              spacing={1.5}
+              justifyContent="space-between"
+              spacing={2}
               sx={{ alignSelf: 'stretch' }}
             >
               <Button
                 variant="contained"
                 component={RouterLink}
                 to={`${listPath}/${agentProxyId}/deploy`}
+                sx={overviewButtonSx()}
               >
                 <FormattedMessage
                   id="aiWorkspace.pages.appShell.appShellPages.agentProxies.overview.deploy"
@@ -1157,11 +1164,11 @@ function AgentProxyOverviewContent(): React.JSX.Element {
                   onClick={() => setIsDeleteDialogOpen(true)}
                   aria-label={`Delete ${agentProxy.displayName}`}
                 >
-                  <Trash2 size={16} />
+                  <Trash2 size={20} />
                 </IconButton>
               </DisabledActionTooltip>
             </Stack>
-          </Box>
+          </Stack>
         </Card>
 
         <Card>

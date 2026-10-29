@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { get, post, put, del } from '../../clients/choreoApiClient';
+import { get, getBlob, getText, post, put, putFormData, putText, del } from '../../clients/choreoApiClient';
 import { logger } from '../../utils/logger';
 import { BFF_API_BASE_URL } from '../../paths';
 
@@ -28,6 +28,10 @@ import type {
   Publication,
   PublicationDraftDetails,
   PublicationDraftDetailsInput,
+  PublicationSummaryResponse,
+  MCPProxyDocument,
+  MCPProxyDocumentContent,
+  MCPProxyDocumentListResponse,
 } from '../../utils/types';
 
 // ============================================================================
@@ -245,6 +249,198 @@ export async function unpublishMcpProxyFromApiPortal(
   await post<void>(mcpProxyPortalPath(apiPortalId, mcpProxyId, '/unpublish'), undefined, baseUrl);
 }
 
+/** The server's maximum page size for a publication list. */
+const PUBLICATIONS_PAGE_SIZE = 100;
+
+/**
+ * Every API Portal registered in the organization, each annotated with this MCP
+ * proxy's publication status on it (`GET /api-publications`). An organization with
+ * no portals gets an empty list, not an error.
+ *
+ * Scope: `ap:api_publication:read`.
+ */
+export async function listMcpProxyApiPortalPublications(
+  mcpProxyId: string,
+  baseUrl: string
+): Promise<PublicationSummaryResponse> {
+  return get<PublicationSummaryResponse>(
+    '/api-publications',
+    { apiType: MCP_PROXY_API_TYPE, apiId: mcpProxyId, limit: PUBLICATIONS_PAGE_SIZE },
+    baseUrl
+  );
+}
+
+/**
+ * Replace the publication draft wholesale, creating it on first save.
+ *
+ * Unlike `publishMcpProxyToApiPortal` this does not publish: the page saves the
+ * draft and its definition separately, then publishes what the draft holds.
+ */
+export async function saveMcpProxyApiPortalDraft(
+  apiPortalId: string,
+  mcpProxyId: string,
+  draft: PublicationDraftDetailsInput,
+  baseUrl: string
+): Promise<PublicationDraftDetails> {
+  return put<PublicationDraftDetails>(mcpProxyPortalPath(apiPortalId, mcpProxyId, '/draft'), draft, baseUrl);
+}
+
+/**
+ * Store the MCP definition (the tools, resources and prompts the listing
+ * advertises) on an existing draft. Sent as `application/json`; the draft must
+ * already have been saved or the call is a 404.
+ */
+export async function saveMcpProxyApiPortalDraftDefinition(
+  apiPortalId: string,
+  mcpProxyId: string,
+  definition: Record<string, unknown>,
+  baseUrl: string
+): Promise<void> {
+  await put<void>(mcpProxyPortalPath(apiPortalId, mcpProxyId, '/draft/definition'), definition, baseUrl);
+}
+
+/** The definition stored on the draft; 404 when the draft has not stored one. */
+export async function getMcpProxyApiPortalDraftDefinition(
+  apiPortalId: string,
+  mcpProxyId: string,
+  baseUrl: string
+): Promise<Record<string, unknown>> {
+  return get<Record<string, unknown>>(
+    mcpProxyPortalPath(apiPortalId, mcpProxyId, '/draft/definition'),
+    undefined,
+    baseUrl
+  );
+}
+
+/** The definition stored on the live listing; 404 when the listing has none. */
+export async function getMcpProxyApiPortalPublicationDefinition(
+  apiPortalId: string,
+  mcpProxyId: string,
+  baseUrl: string
+): Promise<Record<string, unknown>> {
+  return get<Record<string, unknown>>(
+    mcpProxyPortalPath(apiPortalId, mcpProxyId, '/publication/definition'),
+    undefined,
+    baseUrl
+  );
+}
+
+/** Publish the saved draft. Takes no body; 201 on a first publish, 200 on a refresh. */
+export async function publishSavedMcpProxyDraft(
+  apiPortalId: string,
+  mcpProxyId: string,
+  baseUrl: string
+): Promise<Publication> {
+  return post<Publication>(mcpProxyPortalPath(apiPortalId, mcpProxyId, '/publish'), undefined, baseUrl);
+}
+
+/** Mark the live listing as deprecated. Valid only while it is published. */
+export async function deprecateMcpProxyOnApiPortal(
+  apiPortalId: string,
+  mcpProxyId: string,
+  baseUrl: string
+): Promise<Publication> {
+  return post<Publication>(mcpProxyPortalPath(apiPortalId, mcpProxyId, '/deprecate'), undefined, baseUrl);
+}
+
+/** The draft's landing page as Markdown; 404 when it has none (`hasLandingPage`). */
+export async function getMcpProxyApiPortalDraftLandingPage(
+  apiPortalId: string,
+  mcpProxyId: string,
+  baseUrl: string
+): Promise<string> {
+  return (await getText(mcpProxyPortalPath(apiPortalId, mcpProxyId, '/draft/landing-page'), baseUrl)).text;
+}
+
+/** Create or replace the draft's landing page. The draft must already exist or the call is a 404. */
+export async function saveMcpProxyApiPortalDraftLandingPage(
+  apiPortalId: string,
+  mcpProxyId: string,
+  markdown: string,
+  baseUrl: string
+): Promise<void> {
+  await putText(mcpProxyPortalPath(apiPortalId, mcpProxyId, '/draft/landing-page'), markdown, 'text/markdown', baseUrl);
+}
+
+/** The landing page on the live listing as Markdown; 404 when it has none (`hasLandingPage`). */
+export async function getMcpProxyApiPortalPublicationLandingPage(
+  apiPortalId: string,
+  mcpProxyId: string,
+  baseUrl: string
+): Promise<string> {
+  return (await getText(mcpProxyPortalPath(apiPortalId, mcpProxyId, '/publication/landing-page'), baseUrl)).text;
+}
+
+/** The draft's thumbnail; 404 when it has none (`hasThumbnail`). */
+export async function getMcpProxyApiPortalDraftThumbnail(
+  apiPortalId: string,
+  mcpProxyId: string,
+  baseUrl: string
+): Promise<Blob> {
+  return getBlob(mcpProxyPortalPath(apiPortalId, mcpProxyId, '/draft/thumbnail'), baseUrl);
+}
+
+/**
+ * Create or replace the draft's thumbnail, as a multipart `file`. The draft must already
+ * exist or the call is a 404. The server accepts PNG and JPEG, judged by the bytes.
+ */
+export async function saveMcpProxyApiPortalDraftThumbnail(
+  apiPortalId: string,
+  mcpProxyId: string,
+  image: Blob,
+  baseUrl: string
+): Promise<void> {
+  const form = new FormData();
+  form.append('file', image);
+  await putFormData(mcpProxyPortalPath(apiPortalId, mcpProxyId, '/draft/thumbnail'), form, baseUrl);
+}
+
+/** The thumbnail on the live listing; 404 when it has none (`hasThumbnail`). */
+export async function getMcpProxyApiPortalPublicationThumbnail(
+  apiPortalId: string,
+  mcpProxyId: string,
+  baseUrl: string
+): Promise<Blob> {
+  return getBlob(mcpProxyPortalPath(apiPortalId, mcpProxyId, '/publication/thumbnail'), baseUrl);
+}
+
+/** The server's maximum page size for a document list. */
+const DOCUMENTS_PAGE_SIZE = 100;
+
+/**
+ * Every document of the MCP proxy, paging through the list until the server's total is
+ * held. A document created while the pages are read can come up twice; it is listed once.
+ * Scope: `ap:docs:read`.
+ */
+export async function listMcpProxyDocuments(mcpProxyId: string, baseUrl: string): Promise<MCPProxyDocument[]> {
+  const path = `/apis/${MCP_PROXY_API_TYPE}/${encodeURIComponent(mcpProxyId)}/docs`;
+  const documents: MCPProxyDocument[] = [];
+  const seen = new Set<string>();
+  let received = 0;
+  for (;;) {
+    const page = await get<MCPProxyDocumentListResponse>(path, { limit: DOCUMENTS_PAGE_SIZE, offset: received }, baseUrl);
+    received += page.list.length;
+    for (const document of page.list) {
+      if (seen.has(document.id)) continue;
+      seen.add(document.id);
+      documents.push(document);
+    }
+    if (page.list.length === 0 || received >= page.pagination.total) return documents;
+  }
+}
+
+/** One document's body as stored, with the content type it was stored under. Scope: `ap:docs:read`. */
+export async function getMcpProxyDocumentContent(
+  mcpProxyId: string,
+  docId: string,
+  baseUrl: string
+): Promise<MCPProxyDocumentContent> {
+  return getText(
+    `/apis/${MCP_PROXY_API_TYPE}/${encodeURIComponent(mcpProxyId)}/docs/${encodeURIComponent(docId)}/content`,
+    baseUrl
+  );
+}
+
 export const mcpProxiesApis = {
   createMCPServer,
   getMCPServers,
@@ -255,4 +451,19 @@ export const mcpProxiesApis = {
   getMcpProxyApiPortalDraft,
   publishMcpProxyToApiPortal,
   unpublishMcpProxyFromApiPortal,
+  listMcpProxyApiPortalPublications,
+  saveMcpProxyApiPortalDraft,
+  saveMcpProxyApiPortalDraftDefinition,
+  getMcpProxyApiPortalDraftDefinition,
+  getMcpProxyApiPortalPublicationDefinition,
+  publishSavedMcpProxyDraft,
+  deprecateMcpProxyOnApiPortal,
+  getMcpProxyApiPortalDraftLandingPage,
+  saveMcpProxyApiPortalDraftLandingPage,
+  getMcpProxyApiPortalPublicationLandingPage,
+  getMcpProxyApiPortalDraftThumbnail,
+  saveMcpProxyApiPortalDraftThumbnail,
+  getMcpProxyApiPortalPublicationThumbnail,
+  listMcpProxyDocuments,
+  getMcpProxyDocumentContent,
 };

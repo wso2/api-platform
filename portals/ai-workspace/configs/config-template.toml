@@ -66,9 +66,8 @@
 default_org_region = "us"
 
 # Whether the SPA shows MCP proxy publish/unpublish to the API Portal (MCP Hub).
-# Browser-safe. Off by default — this feature's Platform API endpoints
-# (/api-portals/{apiPortalId}/apis/mcp-proxy/{id}/publish|unpublish, per
-# https://github.com/wso2/api-platform/discussions/3242) are not yet implemented.
+# Browser-safe. Off by default. Backed by the Platform API's
+# /api-portals/{apiPortalId}/apis/mcp-proxy/{id}/publish|unpublish|deprecate.
 api_portal_enabled = false
 
 # Address of the API Portal this deployment publishes to — the same portal

@@ -18,6 +18,7 @@
 package service
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -92,6 +93,47 @@ func TestValidateDefinitionContent_UnregisteredApiTypeIsRejected(t *testing.T) {
 	}
 }
 
+// TestValidateDefinitionContent_NamesTheDefinitionField checks that every way a definition can
+// fail publish validation reports "definition" as the field, so a client can tell it from a
+// problem in the other content sent with a publish.
+func TestValidateDefinitionContent_NamesTheDefinitionField(t *testing.T) {
+	tests := []struct {
+		name       string
+		apiType    string
+		definition *model.PublicationContent
+	}{
+		{"rest, none saved", restAPITypeValue, nil},
+		{"rest, empty", restAPITypeValue, contentOf("application/json", "{}")},
+		{"rest, unparseable", restAPITypeValue, contentOf("application/json", "{not json")},
+		{"rest, not OpenAPI", restAPITypeValue, contentOf("application/json", `{"openapi":"3.0.0"}`)},
+		{"rest, wrong content type", restAPITypeValue, contentOf("application/xml", validRESTDefinitionSpec)},
+		{"graphql, wrong content type", constants.PublicationAPITypeGraphQLAPI, contentOf("application/json", "type Query { hello: String }")},
+		{"graphql, malformed", constants.PublicationAPITypeGraphQLAPI, contentOf("application/graphql", "type Query { hello: }")},
+		{"mcp, none saved", constants.PublicationAPITypeMCPProxy, nil},
+		{"mcp, wrong content type", constants.PublicationAPITypeMCPProxy, contentOf("application/graphql", `{"tools":[{"name":"a"}]}`)},
+		{"mcp, not an object", constants.PublicationAPITypeMCPProxy, contentOf("application/json", `"text"`)},
+		{"mcp, flat entry without a type", constants.PublicationAPITypeMCPProxy, contentOf("application/json", `[{"name":"a"}]`)},
+		{"mcp, two yaml documents", constants.PublicationAPITypeMCPProxy, contentOf("application/yaml", "tools:\n  - name: a\n---\nfoo: 1\n")},
+		{"mcp, kind is not a list", constants.PublicationAPITypeMCPProxy, contentOf("application/json", `{"tools":{"name":"a"}}`)},
+		{"mcp, entry without a name", constants.PublicationAPITypeMCPProxy, contentOf("application/json", `{"tools":[{"description":"d"}]}`)},
+		{"mcp, nothing listed", constants.PublicationAPITypeMCPProxy, contentOf("application/json", `{}`)},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateDefinitionContent(tt.apiType, tt.definition)
+
+			var appErr *apperror.Error
+			if !errors.As(err, &appErr) || !apperror.APIPublicationValidationFailed.Is(err) {
+				t.Fatalf("got %v, want a publication validation failure", err)
+			}
+			want := []apperror.FieldError{{Field: "definition", Message: appErr.Message}}
+			if len(appErr.FieldErrors) != 1 || appErr.FieldErrors[0] != want[0] {
+				t.Fatalf("got field errors %v, want %v", appErr.FieldErrors, want)
+			}
+		})
+	}
+}
+
 // TestValidateDefinitionContent_GraphQLAPI checks the graphql-api validator:
 // only an application/graphql SDL defining a Query type can be published.
 func TestValidateDefinitionContent_GraphQLAPI(t *testing.T) {
@@ -152,5 +194,54 @@ func TestValidateDefinitionContent_RestAPIDelegates(t *testing.T) {
 				t.Fatalf("got %v, want error containing %q", err, tt.wantErr)
 			}
 		})
+	}
+}
+
+func TestValidateDefinitionContent_MCPProxy(t *testing.T) {
+	tests := []struct {
+		name        string
+		contentType string
+		data        string
+		wantErr     string
+	}{
+		{"json tools only", "application/json", `{"tools":[{"name":"search"}]}`, ""},
+		{"json all three kinds", "application/json", `{"tools":[{"name":"a"}],"resources":[{"name":"b","uri":"x://b"}],"prompts":[{"name":"c"}]}`, ""},
+		{"yaml", "application/yaml", "prompts:\n  - name: summarize\n", ""},
+		{"unrelated keys are left alone", "application/json", `{"tools":[{"name":"a"}],"serverInfo":{"name":"x"}}`, ""},
+		{"empty object", "application/json", `{}`, "at least one"},
+		{"empty lists", "application/json", `{"tools":[],"resources":[],"prompts":[]}`, "at least one"},
+		{"flat list, as the API Portal stores it", "application/yaml", "- type: TOOL\n  name: echo\n- type: PROMPT\n  name: greet\n", ""},
+		{"flat entry with an unknown type", "application/json", `[{"type":"TOOL","name":"a"},{"type":"tool","name":"b"}]`, "Entry 2 of the definition must have a type"},
+		{"flat entry without a name", "application/json", `[{"type":"RESOURCE","uri":"x://a"}]`, "Entry 1 of the definition's resources"},
+		{"two yaml documents", "application/yaml", "tools:\n  - name: a\n---\nfoo: 1\n", "single YAML document"},
+		{"not an object or list", "application/json", `"text"`, "object with tools"},
+		{"invalid json", "application/json", `{`, "object with tools"},
+		{"empty yaml", "application/yaml", "", "object with tools"},
+		{"kind is not a list", "application/json", `{"tools":{"name":"a"}}`, "tools must be a list"},
+		{"entry without a name", "application/json", `{"tools":[{"description":"d"}]}`, "Entry 1 of the definition's tools"},
+		{"blank name", "application/json", `{"prompts":[{"name":"ok"},{"name":"  "}]}`, "Entry 2 of the definition's prompts"},
+		{"entry is not an object", "application/json", `{"resources":["a"]}`, "Entry 1 of the definition's resources"},
+		{"unsupported content type", "application/graphql", `{"tools":[{"name":"a"}]}`, "application/json or application/yaml"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateDefinitionContent(constants.PublicationAPITypeMCPProxy, contentOf(tt.contentType, tt.data))
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Fatalf("want the definition accepted, got %v", err)
+				}
+				return
+			}
+			if !apperror.APIPublicationValidationFailed.Is(err) || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("want a validation failure containing %q, got %v", tt.wantErr, err)
+			}
+		})
+	}
+}
+
+func TestValidateDefinitionContent_MCPProxyRequiresDefinition(t *testing.T) {
+	err := validateDefinitionContent(constants.PublicationAPITypeMCPProxy, nil)
+	if !apperror.APIPublicationValidationFailed.Is(err) {
+		t.Fatalf("want a validation failure for a missing definition, got %v", err)
 	}
 }

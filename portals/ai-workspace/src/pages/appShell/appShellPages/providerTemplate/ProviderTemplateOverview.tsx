@@ -49,6 +49,8 @@ import { Check, ChevronDown, ChevronLeft, Clock, Copy, Download, Edit, GitBranch
 import { FormattedMessage } from 'react-intl';
 import { formatRelativeTime } from '../../../../contexts/llmProvider';
 import { useProviderTemplates } from '../../../../contexts/llmProvider/providerTemplate';
+import OverviewDescription from '../../../../Components/OverviewDescription/OverviewDescription';
+import { OVERVIEW_AVATAR_SX, overviewButtonSx } from '../../../../utils/overviewHeaderStyles';
 import { useAppShell } from '../../../../contexts/AppShellContext';
 import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
 import { useAppAuth } from '../../../../contexts/AppAuthContext';
@@ -684,44 +686,44 @@ export default function ProviderTemplateOverview() {
 
       <Stack spacing={3} sx={{ mt: 2 }}>
         {/* Header card */}
-        <Card>
-          <Box
-            sx={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              flexWrap: 'wrap',
-              gap: 2,
-              padding: 2,
-            }}
+        <Card sx={{ overflow: 'hidden' }}>
+          <Stack
+            alignItems="flex-start"
+            direction="row"
+            flexWrap="wrap"
+            gap={3}
+            justifyContent="space-between"
+            sx={{ p: 3 }}
           >
-            <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2 }}>
+            <Stack direction="row" spacing={2.5} sx={{ flex: '1 1 380px', minWidth: 0 }}>
               <Avatar
                 src={hasLogo ? logoUrl : undefined}
-                sx={{
-                  width: 72,
-                  height: 72,
-                  fontWeight: 600,
-                  fontSize: 28,
-                  bgcolor: hasLogo ? 'common.white' : 'primary.light',
-                  color: hasLogo ? 'text.primary' : 'primary.contrastText',
-                  border: hasLogo ? '1px solid' : 'none',
-                  borderColor: 'divider',
-                  p: hasLogo ? 0.5 : 0,
-                  '& img': { objectFit: 'contain' },
-                }}
+                sx={
+                  hasLogo
+                    ? {
+                        ...OVERVIEW_AVATAR_SX,
+                        bgcolor: 'common.white',
+                        border: '1px solid',
+                        borderColor: 'divider',
+                        color: 'text.primary',
+                        p: 0.5,
+                        '& img': { objectFit: 'contain' },
+                      }
+                    : OVERVIEW_AVATAR_SX
+                }
+                variant="rounded"
               >
                 {!hasLogo ? getInitials(template.displayName) : null}
               </Avatar>
-              <Stack spacing={0.75} sx={{ minWidth: 0 }}>
-                <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
-                  <Typography variant="h3" title={template.displayName}>
+              <Stack spacing={1.5} sx={{ minWidth: 0 }}>
+                <Stack direction="row" spacing={1.5} alignItems="center" flexWrap="wrap">
+                  <Typography sx={{ overflowWrap: 'anywhere' }} variant="h3" title={template.displayName}>
                     {truncateProviderDisplayName(template.displayName)}
                   </Typography>
                   {canEdit && (
                     <Tooltip title="Edit template">
-                      <IconButton component={RouterLink} to="edit" size="small">
-                        <Edit size={16} />
+                      <IconButton component={RouterLink} to="edit">
+                        <Edit size={18} />
                       </IconButton>
                     </Tooltip>
                   )}
@@ -805,13 +807,7 @@ export default function ProviderTemplateOverview() {
                     })()}
                   </Menu>
                 </Stack>
-                <Typography
-                  variant="body2"
-                  color="text.secondary"
-                  title={description || undefined}
-                >
-                  {description ? truncateProviderDisplayName(description, 70) : ''}
-                </Typography>
+                {description ? <OverviewDescription text={description} /> : null}
                 <Stack direction="row" spacing={0.75} alignItems="center">
                   <Typography variant="caption" color="text.secondary">
                     <FormattedMessage
@@ -825,7 +821,7 @@ export default function ProviderTemplateOverview() {
                   </Typography>
                 </Stack>
               </Stack>
-            </Box>
+            </Stack>
 
             <Stack direction="column" spacing={1.5} alignItems="flex-end">
               {isBuiltIn && (
@@ -843,6 +839,7 @@ export default function ProviderTemplateOverview() {
                         })
                       }
                       data-cyid="provider-template-create-copy-button"
+                      sx={overviewButtonSx()}
                     >
                       Create a copy
                     </Button>
@@ -857,6 +854,7 @@ export default function ProviderTemplateOverview() {
                     showSnackbar(`${name} downloaded`, 'success');
                   }}
                   startIcon={<Download size={16} />}
+                  sx={overviewButtonSx()}
                 >
                   <FormattedMessage
                     id="aiWorkspace.pages.appShell.appShellPages.providerTemplate.ProviderTemplateOverview.downloadYaml"
@@ -901,7 +899,7 @@ export default function ProviderTemplateOverview() {
                 </Button>
               )}
             </Stack>
-          </Box>
+          </Stack>
         </Card>
 
         {/* Built-in base version: read-only notice. */}
