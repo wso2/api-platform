@@ -18,6 +18,7 @@
 package service
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"time"
@@ -43,7 +44,7 @@ type ProjectService struct {
 	agentProxyRepo repository.AgentProxyRepository
 	appRepo        repository.ApplicationRepository
 	deletionGuards []ProjectDeletionGuard
-	auditRepo      repository.AuditRepository
+	audit          *AuditService
 	identity       *IdentityService
 	slogger        *slog.Logger
 }
@@ -51,7 +52,7 @@ type ProjectService struct {
 func NewProjectService(projectRepo repository.ProjectRepository, orgRepo repository.OrganizationRepository,
 	apiRepo repository.APIRepository, mcpProxyRepo repository.MCPProxyRepository,
 	agentProxyRepo repository.AgentProxyRepository,
-	appRepo repository.ApplicationRepository, auditRepo repository.AuditRepository,
+	appRepo repository.ApplicationRepository, audit *AuditService,
 	identity *IdentityService, slogger *slog.Logger) *ProjectService {
 	return &ProjectService{
 		projectRepo:    projectRepo,
@@ -60,7 +61,7 @@ func NewProjectService(projectRepo repository.ProjectRepository, orgRepo reposit
 		mcpProxyRepo:   mcpProxyRepo,
 		agentProxyRepo: agentProxyRepo,
 		appRepo:        appRepo,
-		auditRepo:      auditRepo,
+		audit:          audit,
 		identity:       identity,
 		slogger:        slogger,
 	}
@@ -72,7 +73,7 @@ func (s *ProjectService) RegisterDeletionGuard(guard ProjectDeletionGuard) {
 	s.deletionGuards = append(s.deletionGuards, guard)
 }
 
-func (s *ProjectService) CreateProject(req *api.CreateProjectRequest, organizationID, actor string) (*api.Project, error) {
+func (s *ProjectService) CreateProject(ctx context.Context, req *api.CreateProjectRequest, organizationID, actor string) (*api.Project, error) {
 	if req.DisplayName == "" {
 		return nil, apperror.ValidationFailed.New("Project displayName is required")
 	}
@@ -143,9 +144,21 @@ func (s *ProjectService) CreateProject(req *api.CreateProjectRequest, organizati
 	projectModel.UpdatedBy = actor
 
 	if err = s.projectRepo.CreateProject(projectModel); err != nil {
+		if IsAuditableFailure(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Action: model.AuditActionCreate, ResourceType: model.AuditResourceTypeProject,
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: organizationID, PerformedBy: actor,
+				ResourceUUID: projectModel.ID, ResourceName: projectModel.Handle,
+			})
+		}
 		return nil, err
 	}
-	_ = s.auditRepo.Record("CREATE", projectModel.ID, "project", organizationID, actor)
+	s.audit.Record(ctx, &AuditEvent{
+		Action: model.AuditActionCreate, ResourceType: model.AuditResourceTypeProject,
+		ResourceUUID: projectModel.ID, OrganizationUUID: organizationID, PerformedBy: actor,
+		ResourceName: projectModel.Handle, Outcome: model.AuditOutcomeSucceeded,
+		EventData: projectAuditFields(projectModel),
+	})
 
 	return s.modelToAPI(projectModel, org.Handle)
 }
@@ -218,7 +231,7 @@ func (s *ProjectService) ListProjects(organizationID string, limit, offset int) 
 		repository.ListOptions{Limit: limit, Offset: offset, SortOrder: "desc"})
 }
 
-func (s *ProjectService) UpdateProject(handle string, req *api.Project, orgId, actor string) (*api.Project, error) {
+func (s *ProjectService) UpdateProject(ctx context.Context, handle string, req *api.Project, orgId, actor string) (*api.Project, error) {
 	project, err := s.projectRepo.GetProjectByHandleAndOrgID(handle, orgId)
 	if err != nil {
 		return nil, err
@@ -227,6 +240,7 @@ func (s *ProjectService) UpdateProject(handle string, req *api.Project, orgId, a
 		return nil, apperror.ProjectNotFound.New()
 	}
 
+	before := projectAuditFields(project)
 	if req.DisplayName != project.Name {
 		existingProjects, err := s.projectRepo.GetProjectsByOrganizationID(project.OrganizationID)
 		if err != nil {
@@ -247,9 +261,21 @@ func (s *ProjectService) UpdateProject(handle string, req *api.Project, orgId, a
 	project.UpdatedBy = actor
 
 	if err = s.projectRepo.UpdateProject(project); err != nil {
+		if IsAuditableFailure(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Action: model.AuditActionUpdate, ResourceType: model.AuditResourceTypeProject,
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgId, PerformedBy: actor,
+				ResourceUUID: project.ID, ResourceName: project.Handle,
+			})
+		}
 		return nil, err
 	}
-	_ = s.auditRepo.Record("UPDATE", project.ID, "project", orgId, actor)
+	s.audit.Record(ctx, &AuditEvent{
+		Action: model.AuditActionUpdate, ResourceType: model.AuditResourceTypeProject,
+		ResourceUUID: project.ID, OrganizationUUID: orgId, PerformedBy: actor,
+		ResourceName: project.Handle, Outcome: model.AuditOutcomeSucceeded,
+		EventData: AuditDiff(before, projectAuditFields(project)),
+	})
 
 	org, err := s.orgRepo.GetOrganizationByUUID(orgId)
 	if err != nil {
@@ -263,7 +289,7 @@ func (s *ProjectService) UpdateProject(handle string, req *api.Project, orgId, a
 	return s.modelToAPI(project, orgHandle)
 }
 
-func (s *ProjectService) DeleteProject(handle, orgId, actor string) error {
+func (s *ProjectService) DeleteProject(ctx context.Context, handle, orgId, actor string) error {
 	project, err := s.projectRepo.GetProjectByHandleAndOrgID(handle, orgId)
 	if err != nil {
 		return err
@@ -324,9 +350,20 @@ func (s *ProjectService) DeleteProject(handle, orgId, actor string) error {
 	}
 
 	if err := s.projectRepo.DeleteProject(project.ID); err != nil {
+		if IsAuditableFailure(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Action: model.AuditActionDelete, ResourceType: model.AuditResourceTypeProject,
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgId, PerformedBy: actor,
+				ResourceUUID: project.ID, ResourceName: project.Handle,
+			})
+		}
 		return err
 	}
-	_ = s.auditRepo.Record("DELETE", project.ID, "project", orgId, actor)
+	s.audit.Record(ctx, &AuditEvent{
+		Action: model.AuditActionDelete, ResourceType: model.AuditResourceTypeProject,
+		ResourceUUID: project.ID, OrganizationUUID: orgId, PerformedBy: actor,
+		ResourceName: project.Handle, Outcome: model.AuditOutcomeSucceeded,
+	})
 	return nil
 }
 
@@ -404,4 +441,11 @@ func (s *ProjectService) modelToAPI(projectModel *model.Project, orgHandle strin
 		return nil, err
 	}
 	return resp, nil
+}
+
+// projectAuditFields lists the project fields recorded in audit events.
+func projectAuditFields(p *model.Project) map[string]any {
+	return map[string]any{
+		"displayName": p.Name,
+	}
 }

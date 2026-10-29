@@ -53,7 +53,7 @@ type MCPProxyService struct {
 	gatewayEventsService *GatewayEventsService
 	secretService        *SecretService
 	slogger              *slog.Logger
-	auditRepo            repository.AuditRepository
+	audit                *AuditService
 	cfg                  *config.Server
 	identity             *IdentityService
 }
@@ -61,8 +61,8 @@ type MCPProxyService struct {
 // NewMCPProxyService creates a new MCPProxyService instance
 func NewMCPProxyService(repo repository.MCPProxyRepository, projectRepo repository.ProjectRepository,
 	deploymentRepo repository.DeploymentRepository, gatewayRepo repository.GatewayRepository,
-	gatewayEventsService *GatewayEventsService, slogger *slog.Logger, auditRepo repository.AuditRepository,
-	cfg *config.Server, identity *IdentityService) *MCPProxyService {
+	gatewayEventsService *GatewayEventsService, slogger *slog.Logger,
+	cfg *config.Server, identity *IdentityService, audit *AuditService) *MCPProxyService {
 	return &MCPProxyService{
 		repo:                 repo,
 		projectRepo:          projectRepo,
@@ -70,7 +70,7 @@ func NewMCPProxyService(repo repository.MCPProxyRepository, projectRepo reposito
 		gatewayRepo:          gatewayRepo,
 		gatewayEventsService: gatewayEventsService,
 		slogger:              slogger,
-		auditRepo:            auditRepo,
+		audit:                audit,
 		cfg:                  cfg,
 		identity:             identity,
 	}
@@ -140,7 +140,7 @@ func (s *MCPProxyService) WithSecretService(ss *SecretService) {
 }
 
 // Create creates a new MCP proxy
-func (s *MCPProxyService) Create(orgUUID, createdBy string, req *api.MCPProxy) (*api.MCPProxy, error) {
+func (s *MCPProxyService) Create(ctx context.Context, orgUUID, createdBy string, req *api.MCPProxy) (*api.MCPProxy, error) {
 	if req == nil {
 		return nil, apperror.ValidationFailed.New("A request body is required.")
 	}
@@ -250,10 +250,22 @@ func (s *MCPProxyService) Create(orgUUID, createdBy string, req *api.MCPProxy) (
 		if isSQLiteUniqueConstraint(err) {
 			return nil, apperror.MCPProxyExists.Wrap(err)
 		}
+		if IsAuditableFailure(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Action: model.AuditActionCreate, ResourceType: model.AuditResourceTypeMCP,
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgUUID, PerformedBy: createdBy,
+				ResourceUUID: m.UUID, ResourceName: m.Handle,
+			})
+		}
 		return nil, fmt.Errorf("failed to create MCP proxy: %w", err)
 	}
 
-	_ = s.auditRepo.Record("CREATE", m.UUID, "mcp_proxy", orgUUID, createdBy)
+	s.audit.Record(ctx, &AuditEvent{
+		OrganizationUUID: orgUUID, Action: model.AuditActionCreate,
+		ResourceType: model.AuditResourceTypeMCP, Outcome: model.AuditOutcomeSucceeded,
+		PerformedBy: createdBy, ResourceUUID: m.UUID, ResourceName: m.Handle,
+		EventData: mcpProxyAuditFields(m),
+	})
 	return s.Get(orgUUID, handle)
 }
 
@@ -380,7 +392,7 @@ func (s *MCPProxyService) Get(orgUUID, handle string) (*api.MCPProxy, error) {
 }
 
 // Update updates an existing MCP proxy
-func (s *MCPProxyService) Update(orgUUID, handle, updatedBy string, req *api.MCPProxy) (*api.MCPProxy, error) {
+func (s *MCPProxyService) Update(ctx context.Context, orgUUID, handle, updatedBy string, req *api.MCPProxy) (*api.MCPProxy, error) {
 	if handle == "" || req == nil {
 		return nil, apperror.ValidationFailed.New("The MCP proxy id and a request body are required.")
 	}
@@ -429,6 +441,7 @@ func (s *MCPProxyService) Update(orgUUID, handle, updatedBy string, req *api.MCP
 	origName := existing.Name
 	origVersion := existing.Version
 	origConfiguration := existing.Configuration
+	before := mcpProxyAuditFields(existing)
 
 	// Update fields
 	existing.Name = req.DisplayName
@@ -478,6 +491,13 @@ func (s *MCPProxyService) Update(orgUUID, handle, updatedBy string, req *api.MCP
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, apperror.MCPProxyNotFound.Wrap(err)
 		}
+		if IsAuditableFailure(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Action: model.AuditActionUpdate, ResourceType: model.AuditResourceTypeMCP,
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgUUID, PerformedBy: updatedBy,
+				ResourceUUID: existing.UUID, ResourceName: existing.Handle,
+			})
+		}
 		return nil, fmt.Errorf("failed to update MCP proxy: %w", err)
 	}
 
@@ -494,7 +514,12 @@ func (s *MCPProxyService) Update(orgUUID, handle, updatedBy string, req *api.MCP
 		)
 	}
 
-	_ = s.auditRepo.Record("UPDATE", existing.UUID, "mcp_proxy", orgUUID, updatedBy)
+	s.audit.Record(ctx, &AuditEvent{
+		OrganizationUUID: orgUUID, Action: model.AuditActionUpdate,
+		ResourceType: model.AuditResourceTypeMCP, Outcome: model.AuditOutcomeSucceeded,
+		PerformedBy: updatedBy, ResourceUUID: existing.UUID, ResourceName: existing.Handle,
+		EventData: AuditDiff(before, mcpProxyAuditFields(existing)),
+	})
 	return s.Get(orgUUID, handle)
 }
 
@@ -515,6 +540,14 @@ func (s *MCPProxyService) Delete(ctx context.Context, orgUUID, handle, deletedBy
 
 	// DP-originated artifacts may only be deleted once undeployed on all gateways.
 	if err := ensureOriginDeletable(s.deploymentRepo, mcpProxy.Origin, mcpProxy.UUID, orgUUID); err != nil {
+		if IsOriginDenial(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Action: model.AuditActionDelete, ResourceType: model.AuditResourceTypeMCP,
+				Outcome: model.AuditOutcomeDenied, OrganizationUUID: orgUUID, PerformedBy: deletedBy,
+				ResourceUUID: mcpProxy.UUID, ResourceName: mcpProxy.Handle,
+				EventData: map[string]any{"reason": "dp_originated"},
+			})
+		}
 		return err
 	}
 
@@ -536,10 +569,21 @@ func (s *MCPProxyService) Delete(ctx context.Context, orgUUID, handle, deletedBy
 		if errors.Is(err, sql.ErrNoRows) {
 			return apperror.MCPProxyNotFound.Wrap(err)
 		}
+		if IsAuditableFailure(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Action: model.AuditActionDelete, ResourceType: model.AuditResourceTypeMCP,
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgUUID, PerformedBy: deletedBy,
+				ResourceUUID: mcpProxy.UUID, ResourceName: mcpProxy.Handle,
+			})
+		}
 		return fmt.Errorf("failed to delete MCP proxy: %w", err)
 	}
 
-	_ = s.auditRepo.Record("DELETE", mcpProxy.UUID, "mcp_proxy", orgUUID, deletedBy)
+	s.audit.Record(ctx, &AuditEvent{
+		OrganizationUUID: orgUUID, Action: model.AuditActionDelete,
+		ResourceType: model.AuditResourceTypeMCP, Outcome: model.AuditOutcomeSucceeded,
+		PerformedBy: deletedBy, ResourceUUID: mcpProxy.UUID, ResourceName: mcpProxy.Handle,
+	})
 	// Send deletion events to all gateways in the organization
 	if s.gatewayEventsService != nil && len(gateways) > 0 {
 		for _, gateway := range gateways {
@@ -816,6 +860,17 @@ func mapMcpCapabilitiesAPIToModel(in *api.MCPProxyCapabilities) *model.MCPProxyC
 		Prompts:   in.Prompts,
 		Resources: in.Resources,
 		Tools:     in.Tools,
+	}
+}
+
+// mcpProxyAuditFields lists the MCP proxy fields recorded in audit events.
+func mcpProxyAuditFields(m *model.MCPProxy) map[string]any {
+	return map[string]any{
+		"displayName": m.Name,
+		"version":     m.Version,
+		"context":     utils.ValueOrEmpty(m.Configuration.Context),
+		"vhost":       utils.ValueOrEmpty(m.Configuration.Vhost),
+		"policies":    policyNames(m.Configuration.Policies),
 	}
 }
 

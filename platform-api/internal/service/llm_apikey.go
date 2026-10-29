@@ -40,6 +40,7 @@ type LLMProviderAPIKeyService struct {
 	apiKeyRepo           repository.APIKeyRepository
 	gatewayEventsService *GatewayEventsService
 	identity             *IdentityService
+	audit                *AuditService
 	slogger              *slog.Logger
 }
 
@@ -50,6 +51,7 @@ func NewLLMProviderAPIKeyService(
 	apiKeyRepo repository.APIKeyRepository,
 	gatewayEventsService *GatewayEventsService,
 	identity *IdentityService,
+	audit *AuditService,
 	slogger *slog.Logger,
 ) *LLMProviderAPIKeyService {
 	return &LLMProviderAPIKeyService{
@@ -58,6 +60,7 @@ func NewLLMProviderAPIKeyService(
 		apiKeyRepo:           apiKeyRepo,
 		gatewayEventsService: gatewayEventsService,
 		identity:             identity,
+		audit:                audit,
 		slogger:              slogger,
 	}
 }
@@ -156,8 +159,22 @@ func (s *LLMProviderAPIKeyService) DeleteLLMProviderAPIKey(
 
 	if err := s.apiKeyRepo.Delete(provider.UUID, keyName); err != nil {
 		s.slogger.Error("Failed to delete LLM provider API key from database", "providerId", providerID, "keyName", keyName, "error", err)
+		if IsAuditableFailure(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Action: model.AuditActionRevoke, ResourceType: model.AuditResourceTypeLLMAPIKey,
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgID, PerformedBy: userID,
+				ResourceUUID: existingKey.UUID, ResourceName: keyName,
+				EventData: map[string]any{"providerId": providerID},
+			})
+		}
 		return fmt.Errorf("failed to delete API key: %w", err)
 	}
+	s.audit.Record(ctx, &AuditEvent{
+		Action: model.AuditActionRevoke, ResourceType: model.AuditResourceTypeLLMAPIKey,
+		Outcome: model.AuditOutcomeSucceeded, OrganizationUUID: orgID, PerformedBy: userID,
+		ResourceUUID: existingKey.UUID, ResourceName: keyName,
+		EventData: map[string]any{"providerId": providerID},
+	})
 
 	s.slogger.Info("Successfully deleted LLM provider API key", "providerId", providerID, "keyName", keyName)
 
@@ -303,8 +320,22 @@ func (s *LLMProviderAPIKeyService) CreateLLMProviderAPIKey(
 			return nil, apperror.LLMProviderAPIKeyConflict.New()
 		}
 		s.slogger.Error("Failed to persist LLM provider API key to database", "providerId", providerID, "keyName", name, "error", err)
+		if IsAuditableFailure(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Action: model.AuditActionCreate, ResourceType: model.AuditResourceTypeLLMAPIKey,
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgID, PerformedBy: userID,
+				ResourceUUID: apiKeyUUID, ResourceName: name,
+				EventData: map[string]any{"providerId": providerID},
+			})
+		}
 		return nil, fmt.Errorf("failed to persist API key: %w", err)
 	}
+	s.audit.Record(ctx, &AuditEvent{
+		Action: model.AuditActionCreate, ResourceType: model.AuditResourceTypeLLMAPIKey,
+		Outcome: model.AuditOutcomeSucceeded, OrganizationUUID: orgID, PerformedBy: userID,
+		ResourceUUID: apiKeyUUID, ResourceName: name,
+		EventData: map[string]any{"providerId": providerID},
+	})
 
 	event := &model.APIKeyCreatedEvent{
 		UUID:         apiKeyUUID,

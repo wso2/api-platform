@@ -37,7 +37,7 @@ type SubscriptionService struct {
 	planRepo         repository.SubscriptionPlanRepository
 	orgRepo          repository.OrganizationRepository
 	gatewayEvents    *GatewayEventsService
-	auditRepo        repository.AuditRepository
+	audit            *AuditService
 	billingRepo      repository.SubscriptionBillingRepository
 	slogger          *slog.Logger
 }
@@ -89,8 +89,8 @@ func NewSubscriptionService(
 	planRepo repository.SubscriptionPlanRepository,
 	orgRepo repository.OrganizationRepository,
 	gatewayEvents *GatewayEventsService,
-	auditRepo repository.AuditRepository,
 	slogger *slog.Logger,
+	audit *AuditService,
 ) *SubscriptionService {
 	if slogger == nil {
 		slogger = slog.Default()
@@ -102,7 +102,7 @@ func NewSubscriptionService(
 		planRepo:         planRepo,
 		orgRepo:          orgRepo,
 		gatewayEvents:    gatewayEvents,
-		auditRepo:        auditRepo,
+		audit:            audit,
 		slogger:          slogger,
 	}
 }
@@ -263,9 +263,21 @@ func (s *SubscriptionService) CreateSubscriptionWithBilling(ctx context.Context,
 		UpdatedBy:          actor,
 	}
 	if err := s.subscriptionRepo.Create(sub); err != nil {
+		if IsAuditableFailure(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Action: model.AuditActionCreate, ResourceType: model.AuditResourceTypeSubscription,
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: sub.OrganizationUUID, PerformedBy: actor,
+				ResourceUUID: sub.UUID,
+			})
+		}
 		return nil, err
 	}
-	_ = s.auditRepo.Record("CREATE", sub.UUID, "subscription", sub.OrganizationUUID, actor)
+	s.audit.Record(ctx, &AuditEvent{
+		OrganizationUUID: sub.OrganizationUUID, Action: model.AuditActionCreate,
+		ResourceType: model.AuditResourceTypeSubscription, Outcome: model.AuditOutcomeSucceeded,
+		PerformedBy: actor, ResourceUUID: sub.UUID,
+		EventData: map[string]any{"apiHandle": apiId, "kind": kind},
+	})
 	if billing != nil {
 		billing.SubscriptionUUID = sub.UUID
 		billing.OrganizationUUID = orgUUID
@@ -393,6 +405,7 @@ func (s *SubscriptionService) UpdateSubscription(ctx context.Context, subscripti
 	if sub.SubscriberID != subscriberID {
 		return nil, apperror.SubscriptionForbidden.New()
 	}
+	before := map[string]any{"status": sub.Status}
 	if status != "" {
 		st := model.SubscriptionStatus(status)
 		switch st {
@@ -408,9 +421,20 @@ func (s *SubscriptionService) UpdateSubscription(ctx context.Context, subscripti
 	}
 	sub.UpdatedBy = actor
 	if err := s.subscriptionRepo.Update(sub); err != nil {
+		if IsAuditableFailure(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Action: model.AuditActionUpdate, ResourceType: model.AuditResourceTypeSubscription,
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: sub.OrganizationUUID, PerformedBy: actor,
+				ResourceUUID: sub.UUID,
+			})
+		}
 		return nil, err
 	}
-	_ = s.auditRepo.Record("UPDATE", sub.UUID, "subscription", sub.OrganizationUUID, actor)
+	s.audit.Record(ctx, &AuditEvent{
+		OrganizationUUID: sub.OrganizationUUID, Action: model.AuditActionUpdate,
+		ResourceType: model.AuditResourceTypeSubscription, Outcome: model.AuditOutcomeSucceeded,
+		PerformedBy: actor, ResourceUUID: sub.UUID, EventData: AuditDiff(before, map[string]any{"status": sub.Status}),
+	})
 
 	if s.gatewayEvents != nil {
 		gateways, err := s.apiRepo.GetAPIGatewaysWithDetails(sub.ArtifactUUID, orgUUID)
@@ -607,10 +631,22 @@ func (s *SubscriptionService) RegenerateToken(ctx context.Context, subscriptionI
 		return nil, err
 	}
 	if err := s.subscriptionRepo.UpdateToken(subscriptionId, orgUUID, newToken); err != nil {
+		if IsAuditableFailure(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Action: model.AuditActionUpdate, ResourceType: model.AuditResourceTypeSubscription,
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: sub.OrganizationUUID, PerformedBy: subscriberID,
+				ResourceUUID: sub.UUID,
+			})
+		}
 		return nil, err
 	}
 	sub.SubscriptionToken = newToken
-	_ = s.auditRepo.Record("UPDATE", sub.UUID, "subscription", sub.OrganizationUUID, subscriberID)
+	s.audit.Record(ctx, &AuditEvent{
+		OrganizationUUID: sub.OrganizationUUID, Action: model.AuditActionUpdate,
+		ResourceType: model.AuditResourceTypeSubscription, Outcome: model.AuditOutcomeSucceeded,
+		PerformedBy: subscriberID, ResourceUUID: sub.UUID,
+		EventData: map[string]any{"subscriptionToken": map[string]any{"changed": true}},
+	})
 
 	if s.gatewayEvents != nil {
 		gateways, err := s.apiRepo.GetAPIGatewaysWithDetails(sub.ArtifactUUID, orgUUID)
@@ -659,9 +695,21 @@ func (s *SubscriptionService) DeleteSubscription(ctx context.Context, subscripti
 	}
 
 	if err := s.subscriptionRepo.Delete(subscriptionId, orgUUID); err != nil {
+		if IsAuditableFailure(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Action: model.AuditActionDelete, ResourceType: model.AuditResourceTypeSubscription,
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgUUID, PerformedBy: actor,
+				ResourceUUID: subscriptionId,
+			})
+		}
 		return err
 	}
-	_ = s.auditRepo.Record("DELETE", subscriptionId, "subscription", orgUUID, actor)
+	s.audit.Record(ctx, &AuditEvent{
+		OrganizationUUID: orgUUID, Action: model.AuditActionDelete,
+		ResourceType: model.AuditResourceTypeSubscription, Outcome: model.AuditOutcomeSucceeded,
+		PerformedBy: actor, ResourceUUID: subscriptionId,
+		EventData: map[string]any{"apiId": sub.ArtifactUUID},
+	})
 
 	if s.gatewayEvents != nil {
 		gateways, err := s.apiRepo.GetAPIGatewaysWithDetails(sub.ArtifactUUID, orgUUID)

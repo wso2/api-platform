@@ -127,7 +127,8 @@ func (h *WebSubAPIDeploymentHandler) UndeployDeployment(w http.ResponseWriter, r
 		return
 	}
 
-	deployment, err := h.websubAPIDeploymentService.UndeployWebSubAPIDeploymentByHandle(r.Context(), apiId, deploymentId, gatewayId, orgId)
+	actor, _ := h.identity.InternalUserID(r)
+	deployment, err := h.websubAPIDeploymentService.UndeployWebSubAPIDeploymentByHandle(r.Context(), apiId, deploymentId, gatewayId, orgId, actor)
 	if err != nil {
 		h.handleDeploymentError(w, err, apiId)
 		return
@@ -156,7 +157,8 @@ func (h *WebSubAPIDeploymentHandler) RestoreDeployment(w http.ResponseWriter, r 
 		return
 	}
 
-	deployment, err := h.websubAPIDeploymentService.RestoreWebSubAPIDeploymentByHandle(r.Context(), apiId, deploymentId, gatewayId, orgId)
+	actor, _ := h.identity.InternalUserID(r)
+	deployment, err := h.websubAPIDeploymentService.RestoreWebSubAPIDeploymentByHandle(r.Context(), apiId, deploymentId, gatewayId, orgId, actor)
 	if err != nil {
 		h.handleDeploymentError(w, err, apiId)
 		return
@@ -237,7 +239,8 @@ func (h *WebSubAPIDeploymentHandler) DeleteDeployment(w http.ResponseWriter, r *
 	apiId := r.PathValue("webSubApiId")
 	deploymentId := r.PathValue("deploymentId")
 
-	if err := h.websubAPIDeploymentService.DeleteWebSubAPIDeploymentByHandle(apiId, deploymentId, orgId); err != nil {
+	actor, _ := h.identity.InternalUserID(r)
+	if err := h.websubAPIDeploymentService.DeleteWebSubAPIDeploymentByHandle(r.Context(), apiId, deploymentId, orgId, actor); err != nil {
 		h.handleDeploymentError(w, err, apiId)
 		return
 	}

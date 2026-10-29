@@ -272,12 +272,11 @@ func TestCPProviderFromDPTemplate(t *testing.T) {
 		repository.NewGatewayRepo(d.db),
 		nil, // gatewayEventsService unused on create
 		newTestLogger(),
-		&noopAuditRepo{},
 		&config.Server{},
-		NewIdentityService(repository.NewUserIdentityMappingRepo(d.db)),
+		NewIdentityService(repository.NewUserIdentityMappingRepo(d.db)), nil,
 	)
 
-	created, err := providerSvc.Create(importTestOrgID, "tester", &api.LLMProvider{
+	created, err := providerSvc.Create(context.Background(), importTestOrgID, "tester", &api.LLMProvider{
 		Id:            strPointer("cp-provider"),
 		DisplayName:   "CP Provider",
 		Version:       "v1.0",
@@ -315,7 +314,7 @@ func TestCPProxyFromDPProvider(t *testing.T) {
 		repository.NewGatewayRepo(d.db),
 		nil, // gatewayEventsService unused on create
 		newTestLogger(),
-		&noopAuditRepo{},
+		nil,
 		&config.Server{},
 		NewIdentityService(repository.NewUserIdentityMappingRepo(d.db)),
 	)
@@ -348,11 +347,11 @@ func TestLLMProviderCreate_DefaultsUpstreamAuthToNone(t *testing.T) {
 	repo := repository.NewLLMProviderRepo(d.db)
 	providerSvc := NewLLMProviderService(
 		repo, d.templateRepo, repository.NewOrganizationRepo(d.db), nil, d.deployment,
-		repository.NewGatewayRepo(d.db), nil, newTestLogger(), &noopAuditRepo{}, &config.Server{},
-		NewIdentityService(repository.NewUserIdentityMappingRepo(d.db)),
+		repository.NewGatewayRepo(d.db), nil, newTestLogger(), &config.Server{},
+		NewIdentityService(repository.NewUserIdentityMappingRepo(d.db)), nil,
 	)
 
-	created, err := providerSvc.Create(importTestOrgID, "tester", &api.LLMProvider{
+	created, err := providerSvc.Create(context.Background(), importTestOrgID, "tester", &api.LLMProvider{
 		Id: strPointer("cp-create-none-prov"), DisplayName: "P", Version: "v1.0", Template: templateHandle,
 		Upstream:      api.Upstream{Main: api.UpstreamDefinition{Url: strPointer("https://api.openai.com")}},
 		AccessControl: api.LLMAccessControl{Mode: api.LLMAccessControlMode("deny_all")},
@@ -384,7 +383,7 @@ func TestLLMProxyCreate_DefaultsUpstreamAuthToNone(t *testing.T) {
 	repo := repository.NewLLMProxyRepo(d.db)
 	proxySvc := NewLLMProxyService(
 		repo, repository.NewLLMProviderRepo(d.db), repository.NewProjectRepo(d.db), d.deployment,
-		repository.NewGatewayRepo(d.db), nil, newTestLogger(), &noopAuditRepo{}, &config.Server{},
+		repository.NewGatewayRepo(d.db), nil, newTestLogger(), nil, &config.Server{},
 		NewIdentityService(repository.NewUserIdentityMappingRepo(d.db)),
 	)
 
@@ -421,12 +420,12 @@ func TestLLMProviderUpdate_DefaultsUpstreamAuthToNone(t *testing.T) {
 	repo := repository.NewLLMProviderRepo(d.db)
 	providerSvc := NewLLMProviderService(
 		repo, d.templateRepo, repository.NewOrganizationRepo(d.db), nil, d.deployment,
-		repository.NewGatewayRepo(d.db), nil, newTestLogger(), &noopAuditRepo{}, &config.Server{},
-		NewIdentityService(repository.NewUserIdentityMappingRepo(d.db)),
+		repository.NewGatewayRepo(d.db), nil, newTestLogger(), &config.Server{},
+		NewIdentityService(repository.NewUserIdentityMappingRepo(d.db)), nil,
 	)
 
-	apiKey := api.UpstreamAuthType(api.ApiKey)
-	created, err := providerSvc.Create(importTestOrgID, "tester", &api.LLMProvider{
+	apiKey := api.UpstreamAuthType(api.UpstreamAuthTypeApiKey)
+	created, err := providerSvc.Create(context.Background(), importTestOrgID, "tester", &api.LLMProvider{
 		Id:          strPointer("cp-none-prov"),
 		DisplayName: "CP None Provider",
 		Version:     "v1.0",
@@ -442,7 +441,7 @@ func TestLLMProviderUpdate_DefaultsUpstreamAuthToNone(t *testing.T) {
 	}
 
 	// Update omitting the upstream auth object entirely (explicit removal).
-	if _, err := providerSvc.Update(importTestOrgID, *created.Id, "tester", &api.LLMProvider{
+	if _, err := providerSvc.Update(context.Background(), importTestOrgID, *created.Id, "tester", &api.LLMProvider{
 		DisplayName:   "CP None Provider",
 		Version:       "v1.0",
 		Template:      templateHandle,
@@ -476,11 +475,11 @@ func TestLLMProxyUpdate_DefaultsUpstreamAuthToNone(t *testing.T) {
 	repo := repository.NewLLMProxyRepo(d.db)
 	proxySvc := NewLLMProxyService(
 		repo, repository.NewLLMProviderRepo(d.db), repository.NewProjectRepo(d.db), d.deployment,
-		repository.NewGatewayRepo(d.db), nil, newTestLogger(), &noopAuditRepo{}, &config.Server{},
+		repository.NewGatewayRepo(d.db), nil, newTestLogger(), nil, &config.Server{},
 		NewIdentityService(repository.NewUserIdentityMappingRepo(d.db)),
 	)
 
-	apiKey := api.UpstreamAuthType(api.ApiKey)
+	apiKey := api.UpstreamAuthType(api.UpstreamAuthTypeApiKey)
 	created, err := proxySvc.Create(context.Background(), importTestOrgID, "tester", &api.LLMProxy{
 		Id:          strPointer("cp-none-proxy"),
 		DisplayName: "CP None Proxy",
@@ -496,7 +495,7 @@ func TestLLMProxyUpdate_DefaultsUpstreamAuthToNone(t *testing.T) {
 	}
 
 	// Update with the provider auth override omitted entirely.
-	if _, err := proxySvc.Update(importTestOrgID, *created.Id, "tester", &api.LLMProxy{
+	if _, err := proxySvc.Update(context.Background(), importTestOrgID, *created.Id, "tester", &api.LLMProxy{
 		DisplayName: "CP None Proxy",
 		Version:     "v1.0",
 		ProjectId:   "default",
@@ -529,12 +528,12 @@ func TestLLMProviderUpdate_SwitchApiKeyToOther_ClearsStoredCredential(t *testing
 	repo := repository.NewLLMProviderRepo(d.db)
 	providerSvc := NewLLMProviderService(
 		repo, d.templateRepo, repository.NewOrganizationRepo(d.db), nil, d.deployment,
-		repository.NewGatewayRepo(d.db), nil, newTestLogger(), &noopAuditRepo{}, &config.Server{},
-		NewIdentityService(repository.NewUserIdentityMappingRepo(d.db)),
+		repository.NewGatewayRepo(d.db), nil, newTestLogger(), &config.Server{},
+		NewIdentityService(repository.NewUserIdentityMappingRepo(d.db)), nil,
 	)
 
-	apiKey := api.UpstreamAuthType(api.ApiKey)
-	created, err := providerSvc.Create(importTestOrgID, "tester", &api.LLMProvider{
+	apiKey := api.UpstreamAuthType(api.UpstreamAuthTypeApiKey)
+	created, err := providerSvc.Create(context.Background(), importTestOrgID, "tester", &api.LLMProvider{
 		Id: strPointer("cp-switch-prov"), DisplayName: "P", Version: "v1.0", Template: templateHandle,
 		Upstream: api.Upstream{Main: api.UpstreamDefinition{
 			Url:  strPointer("https://api.openai.com"),
@@ -546,8 +545,8 @@ func TestLLMProviderUpdate_SwitchApiKeyToOther_ClearsStoredCredential(t *testing
 		t.Fatalf("create provider: %v", err)
 	}
 
-	other := api.UpstreamAuthType(api.Other)
-	if _, err := providerSvc.Update(importTestOrgID, *created.Id, "tester", &api.LLMProvider{
+	other := api.UpstreamAuthType(api.UpstreamAuthTypeOther)
+	if _, err := providerSvc.Update(context.Background(), importTestOrgID, *created.Id, "tester", &api.LLMProvider{
 		DisplayName: "P", Version: "v1.0", Template: templateHandle,
 		Upstream: api.Upstream{Main: api.UpstreamDefinition{
 			Url:  strPointer("https://api.openai.com"),
@@ -582,11 +581,11 @@ func TestLLMProxyUpdate_SwitchApiKeyToOther_ClearsStoredCredential(t *testing.T)
 	repo := repository.NewLLMProxyRepo(d.db)
 	proxySvc := NewLLMProxyService(
 		repo, repository.NewLLMProviderRepo(d.db), repository.NewProjectRepo(d.db), d.deployment,
-		repository.NewGatewayRepo(d.db), nil, newTestLogger(), &noopAuditRepo{}, &config.Server{},
+		repository.NewGatewayRepo(d.db), nil, newTestLogger(), nil, &config.Server{},
 		NewIdentityService(repository.NewUserIdentityMappingRepo(d.db)),
 	)
 
-	apiKey := api.UpstreamAuthType(api.ApiKey)
+	apiKey := api.UpstreamAuthType(api.UpstreamAuthTypeApiKey)
 	created, err := proxySvc.Create(context.Background(), importTestOrgID, "tester", &api.LLMProxy{
 		Id: strPointer("cp-switch-proxy"), DisplayName: "X", Version: "v1.0", ProjectId: "default",
 		Provider: &api.LLMProxyProvider{
@@ -598,8 +597,8 @@ func TestLLMProxyUpdate_SwitchApiKeyToOther_ClearsStoredCredential(t *testing.T)
 		t.Fatalf("create proxy: %v", err)
 	}
 
-	other := api.UpstreamAuthType(api.Other)
-	if _, err := proxySvc.Update(importTestOrgID, *created.Id, "tester", &api.LLMProxy{
+	other := api.UpstreamAuthType(api.UpstreamAuthTypeOther)
+	if _, err := proxySvc.Update(context.Background(), importTestOrgID, *created.Id, "tester", &api.LLMProxy{
 		DisplayName: "X", Version: "v1.0", ProjectId: "default",
 		Provider: &api.LLMProxyProvider{Id: providerHandle, Auth: &api.UpstreamAuth{Type: &other}},
 	}); err != nil {
@@ -646,13 +645,13 @@ func TestLLMProviderUpdate_SwitchToOther_PreservesReferencedSecret(t *testing.T)
 	repo := repository.NewLLMProviderRepo(d.db)
 	providerSvc := NewLLMProviderService(
 		repo, d.templateRepo, repository.NewOrganizationRepo(d.db), nil, d.deployment,
-		repository.NewGatewayRepo(d.db), nil, newTestLogger(), &noopAuditRepo{}, &config.Server{},
-		NewIdentityService(repository.NewUserIdentityMappingRepo(d.db)),
+		repository.NewGatewayRepo(d.db), nil, newTestLogger(), &config.Server{},
+		NewIdentityService(repository.NewUserIdentityMappingRepo(d.db)), nil,
 	)
 	providerSvc.SetSecretService(secretSvc)
 
-	apiKey := api.UpstreamAuthType(api.ApiKey)
-	created, err := providerSvc.Create(importTestOrgID, "tester", &api.LLMProvider{
+	apiKey := api.UpstreamAuthType(api.UpstreamAuthTypeApiKey)
+	created, err := providerSvc.Create(context.Background(), importTestOrgID, "tester", &api.LLMProvider{
 		Id: strPointer("cp-secret-prov"), DisplayName: "P", Version: "v1.0", Template: templateHandle,
 		Upstream: api.Upstream{Main: api.UpstreamDefinition{
 			Url:  strPointer("https://api.openai.com"),
@@ -664,8 +663,8 @@ func TestLLMProviderUpdate_SwitchToOther_PreservesReferencedSecret(t *testing.T)
 		t.Fatalf("create provider: %v", err)
 	}
 
-	other := api.UpstreamAuthType(api.Other)
-	if _, err := providerSvc.Update(importTestOrgID, *created.Id, "tester", &api.LLMProvider{
+	other := api.UpstreamAuthType(api.UpstreamAuthTypeOther)
+	if _, err := providerSvc.Update(context.Background(), importTestOrgID, *created.Id, "tester", &api.LLMProvider{
 		DisplayName: "P", Version: "v1.0", Template: templateHandle,
 		Upstream: api.Upstream{Main: api.UpstreamDefinition{
 			Url:  strPointer("https://api.openai.com"),

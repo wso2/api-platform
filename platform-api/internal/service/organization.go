@@ -18,6 +18,7 @@
 package service
 
 import (
+	"context"
 	"fmt"
 	"github.com/wso2/api-platform/platform-api/api"
 	"github.com/wso2/api-platform/platform-api/config"
@@ -39,7 +40,7 @@ type OrganizationService struct {
 	llmProxyRepo       repository.LLMProxyRepository
 	mcpProxyRepo       repository.MCPProxyRepository
 	llmTemplateSeeder  *LLMTemplateSeeder
-	auditRepo          repository.AuditRepository
+	audit              *AuditService
 	userOrgMappingRepo repository.UserOrganizationMappingRepository
 	identity           *IdentityService
 	config             *config.Server
@@ -55,7 +56,7 @@ func NewOrganizationService(orgRepo repository.OrganizationRepository,
 	llmProxyRepo repository.LLMProxyRepository,
 	mcpProxyRepo repository.MCPProxyRepository,
 	llmTemplateSeeder *LLMTemplateSeeder,
-	auditRepo repository.AuditRepository,
+	audit *AuditService,
 	userOrgMappingRepo repository.UserOrganizationMappingRepository,
 	identity *IdentityService,
 	cfg *config.Server,
@@ -71,7 +72,7 @@ func NewOrganizationService(orgRepo repository.OrganizationRepository,
 		llmProxyRepo:       llmProxyRepo,
 		mcpProxyRepo:       mcpProxyRepo,
 		llmTemplateSeeder:  llmTemplateSeeder,
-		auditRepo:          auditRepo,
+		audit:              audit,
 		userOrgMappingRepo: userOrgMappingRepo,
 		identity:           identity,
 		config:             cfg,
@@ -79,7 +80,7 @@ func NewOrganizationService(orgRepo repository.OrganizationRepository,
 	}
 }
 
-func (s *OrganizationService) RegisterOrganization(id string, handle string, name string, region string, idpOrgRefUUID string, performedBy string) (*api.Organization, error) {
+func (s *OrganizationService) RegisterOrganization(ctx context.Context, id string, handle string, name string, region string, idpOrgRefUUID string, performedBy string) (*api.Organization, error) {
 	// Auto-generate handle from name if not provided; otherwise validate the explicit handle.
 	if handle == "" {
 		generated, genErr := utils.GenerateHandle(name, func(h string) bool {
@@ -134,9 +135,22 @@ func (s *OrganizationService) RegisterOrganization(id string, handle string, nam
 	orgModel.UpdatedBy = performedBy
 	err = s.orgRepo.CreateOrganization(orgModel)
 	if err != nil {
+		if IsAuditableFailure(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Action: model.AuditActionCreate, ResourceType: model.AuditResourceTypeOrganization,
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgModel.ID, PerformedBy: performedBy,
+				ResourceUUID: orgModel.ID, ResourceName: orgModel.Handle,
+			})
+		}
 		return nil, err
 	}
-	_ = s.auditRepo.Record("CREATE", orgModel.ID, "organization", orgModel.ID, performedBy)
+	s.audit.Record(ctx, &AuditEvent{
+		Action: model.AuditActionCreate, ResourceType: model.AuditResourceTypeOrganization,
+		Outcome: model.AuditOutcomeSucceeded,
+		ResourceUUID: orgModel.ID, OrganizationUUID: orgModel.ID, PerformedBy: performedBy,
+		ResourceName: orgModel.Handle,
+		EventData:    map[string]any{"region": region},
+	})
 
 	// Record that the registering user has onboarded to this organization.
 	// Best-effort: user_organization_mappings.user_uuid FKs to

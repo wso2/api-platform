@@ -236,7 +236,7 @@ func (h *APIDocumentHandler) CreateDocument(w http.ResponseWriter, r *http.Reque
 		OtherTypeName: parsed.otherTypeName,
 	}
 
-	handle, err := h.service.CreateApiDocument(req, orgID, createdBy, artifactUUID)
+	handle, err := h.service.CreateApiDocument(r.Context(), req, orgID, createdBy, artifactUUID)
 	if err != nil {
 		return serviceError(err, "failed to create document")
 	}

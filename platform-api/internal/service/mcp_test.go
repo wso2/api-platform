@@ -18,6 +18,7 @@
 package service
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -56,12 +57,12 @@ func validMCPProxyRequest() *api.MCPProxy {
 }
 
 func TestMCPProxyServiceCreateRejectsInvalidPolicyVersion(t *testing.T) {
-	service := NewMCPProxyService(&mockMCPProxyRepository{}, nil, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
+	service := NewMCPProxyService(&mockMCPProxyRepository{}, nil, nil, nil, nil, slog.Default(), &config.Server{}, newTestIdentityService(), nil)
 
 	request := validMCPProxyRequest()
 	request.Policies = &[]api.Policy{{Name: "api-key-auth", Version: "v1.0.0"}}
 
-	_, err := service.Create("org-1", "alice", request)
+	_, err := service.Create(context.Background(), "org-1", "alice", request)
 	if !apperror.ValidationFailed.Is(err) {
 		t.Fatalf("expected ErrInvalidPolicyVersion, got: %v", err)
 	}
@@ -79,7 +80,7 @@ func TestMCPProxyServiceGetReturnsProjectHandle(t *testing.T) {
 		ProjectUUID: &projectUUID,
 	}}
 	projectRepo := &mockProjectRepo{project: &model.Project{ID: projectUUID, Handle: "test-project", OrganizationID: "org-1"}}
-	service := NewMCPProxyService(repo, projectRepo, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
+	service := NewMCPProxyService(repo, projectRepo, nil, nil, nil, slog.Default(), &config.Server{}, newTestIdentityService(), nil)
 
 	resp, err := service.Get("org-1", "mcp-proxy-1")
 	require.NoError(t, err)
@@ -89,12 +90,12 @@ func TestMCPProxyServiceGetReturnsProjectHandle(t *testing.T) {
 
 func TestMCPProxyServiceUpdateRejectsInvalidPolicyVersion(t *testing.T) {
 	repo := &mockMCPProxyRepository{getByHandleResult: &model.MCPProxy{Handle: "mcp-proxy-1"}}
-	service := NewMCPProxyService(repo, nil, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
+	service := NewMCPProxyService(repo, nil, nil, nil, nil, slog.Default(), &config.Server{}, newTestIdentityService(), nil)
 
 	request := validMCPProxyRequest()
 	request.Policies = &[]api.Policy{{Name: "api-key-auth", Version: "1"}}
 
-	_, err := service.Update("org-1", "mcp-proxy-1", "alice", request)
+	_, err := service.Update(context.Background(), "org-1", "mcp-proxy-1", "alice", request)
 	if !apperror.ValidationFailed.Is(err) {
 		t.Fatalf("expected ErrInvalidPolicyVersion, got: %v", err)
 	}
@@ -144,7 +145,7 @@ func TestFetchServerInfoRefetchUsesStoredURLVerbatim(t *testing.T) {
 				},
 			}
 			repo := &mockMCPProxyRepository{getByHandleResult: proxy}
-			service := NewMCPProxyService(repo, nil, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
+			service := NewMCPProxyService(repo, nil, nil, nil, nil, slog.Default(), &config.Server{}, newTestIdentityService(), nil)
 
 			proxyID := "mcp-proxy-1"
 			_, err := service.FetchServerInfo("org-1", &api.MCPServerInfoFetchRequest{ProxyId: &proxyID})
@@ -183,7 +184,7 @@ func TestFetchServerInfoRejectsAmbiguousTargets(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			repo := &mockMCPProxyRepository{getByHandleResult: &model.MCPProxy{Handle: proxyID}}
-			service := NewMCPProxyService(repo, nil, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
+			service := NewMCPProxyService(repo, nil, nil, nil, nil, slog.Default(), &config.Server{}, newTestIdentityService(), nil)
 
 			_, err := service.FetchServerInfo("org-1", tt.req)
 			assert.True(t, apperror.ValidationFailed.Is(err), "expected a validation failure, got: %v", err)
@@ -230,7 +231,7 @@ func TestFetchServerInfoSuppliedURLWithStoredCredential(t *testing.T) {
 		},
 	}
 	repo := &mockMCPProxyRepository{getByHandleResult: proxy}
-	service := NewMCPProxyService(repo, nil, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
+	service := NewMCPProxyService(repo, nil, nil, nil, nil, slog.Default(), &config.Server{}, newTestIdentityService(), nil)
 
 	proxyID := "mcp-proxy-1"
 	editedURL := srv.URL + "/api/v2/mcp" // an unsaved endpoint edit

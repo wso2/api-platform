@@ -18,6 +18,7 @@
 package service
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
@@ -78,7 +79,7 @@ type GatewayService struct {
 	slogger                             *slog.Logger
 	enableVersionVerification           bool
 	enableFunctionalityTypeVerification bool
-	auditRepo                           repository.AuditRepository
+	audit                               *AuditService
 	identity                            *IdentityService
 }
 
@@ -87,7 +88,7 @@ func NewGatewayService(gatewayRepo repository.GatewayRepository, orgRepo reposit
 	apiRepo repository.APIRepository, customPolicyRepo repository.CustomPolicyRepository,
 	gatewayEventsService *GatewayEventsService, slogger *slog.Logger,
 	enableVersionVerification bool, enableFunctionalityTypeVerification bool,
-	auditRepo repository.AuditRepository, identity *IdentityService) *GatewayService {
+	audit *AuditService, identity *IdentityService) *GatewayService {
 	return &GatewayService{
 		gatewayRepo:                         gatewayRepo,
 		orgRepo:                             orgRepo,
@@ -97,7 +98,7 @@ func NewGatewayService(gatewayRepo repository.GatewayRepository, orgRepo reposit
 		slogger:                             slogger,
 		enableVersionVerification:           enableVersionVerification,
 		enableFunctionalityTypeVerification: enableFunctionalityTypeVerification,
-		auditRepo:                           auditRepo,
+		audit:                               audit,
 		identity:                            identity,
 	}
 }
@@ -329,7 +330,7 @@ func parseVersion(v string) (parsedVersion, error) {
 // exist in the manifest and it should be a custom policy. createdBy is the internal platform UUID of the
 // user who triggered the sync (resolved from the token), and is what lands in created_by/updated_by —
 // never the gateway's own ID.
-func (s *GatewayService) SyncCustomPolicy(gatewayHandle, orgID, policyName, version, createdBy string) (*model.CustomPolicy, error) {
+func (s *GatewayService) SyncCustomPolicy(ctx context.Context, gatewayHandle, orgID, policyName, version, createdBy string) (*model.CustomPolicy, error) {
 	policyName = strings.ToLower(policyName)
 
 	gateway, err := s.gatewayRepo.GetByHandleAndOrgID(gatewayHandle, orgID)
@@ -418,6 +419,7 @@ func (s *GatewayService) SyncCustomPolicy(gatewayHandle, orgID, policyName, vers
 		CreatedBy:        createdBy,
 		UpdatedBy:        createdBy,
 	}
+	auditAction := model.AuditActionCreate
 
 	if sameMajorVersionedPolicy != nil {
 		existingVer, err := parseVersion(sameMajorVersionedPolicy.Version)
@@ -445,6 +447,7 @@ func (s *GatewayService) SyncCustomPolicy(gatewayHandle, orgID, policyName, vers
 		// the returned model matches the persisted row.
 		policy.UUID = sameMajorVersionedPolicy.UUID
 		policy.CreatedBy = sameMajorVersionedPolicy.CreatedBy
+		auditAction = model.AuditActionUpdate
 		if err := s.customPolicyRepo.UpdateCustomPolicy(policy, sameMajorVersionedPolicy.Version); err != nil {
 			s.slogger.Error("failed to update custom policy", slog.String("org_id", orgID), slog.String("policy_name", policyName), slog.String("old_version", sameMajorVersionedPolicy.Version), slog.String("new_version", version))
 			return nil, fmt.Errorf("failed to update custom policy: %w", err)
@@ -476,17 +479,24 @@ func (s *GatewayService) SyncCustomPolicy(gatewayHandle, orgID, policyName, vers
 
 	persisted, err := s.customPolicyRepo.GetCustomPolicyByNameAndVersion(orgID, policyName, version)
 	if err != nil || persisted == nil {
-		if s.auditRepo != nil {
-			_ = s.auditRepo.Record("CREATE", policy.UUID, "custom_policy", orgID, createdBy)
-		}
+		// Write succeeded but read-back failed — audit as succeeded using the in-memory model.
+		s.audit.Record(ctx, &AuditEvent{
+			Action: auditAction, ResourceType: model.AuditResourceTypeCustomPolicy,
+			ResourceUUID: policy.UUID, OrganizationUUID: orgID, PerformedBy: createdBy,
+			ResourceName: policyName, Outcome: model.AuditOutcomeSucceeded,
+			EventData: map[string]any{"version": version, "gatewayHandle": gatewayHandle},
+		})
 		if err := s.resolveCustomPolicyIdentity(policy); err != nil {
 			return nil, err
 		}
 		return policy, nil
 	}
-	if s.auditRepo != nil {
-		_ = s.auditRepo.Record("CREATE", persisted.UUID, "custom_policy", orgID, createdBy)
-	}
+	s.audit.Record(ctx, &AuditEvent{
+		Action: auditAction, ResourceType: model.AuditResourceTypeCustomPolicy,
+		ResourceUUID: persisted.UUID, OrganizationUUID: orgID, PerformedBy: createdBy,
+		ResourceName: policyName, Outcome: model.AuditOutcomeSucceeded,
+		EventData: map[string]any{"version": version, "gatewayHandle": gatewayHandle},
+	})
 	if err := s.resolveCustomPolicyIdentity(persisted); err != nil {
 		return nil, err
 	}
@@ -585,7 +595,7 @@ func (s *GatewayService) GetCustomPolicyByUUID(orgID, policyUUID, version string
 }
 
 // DeleteCustomPolicyByUUID deletes a custom policy by UUID, verifying org ownership, version, and no active usages.
-func (s *GatewayService) DeleteCustomPolicyByUUID(orgID, policyUUID, version string) error {
+func (s *GatewayService) DeleteCustomPolicyByUUID(ctx context.Context, orgID, policyUUID, version string) error {
 	policy, err := s.customPolicyRepo.GetCustomPolicyByUUID(orgID, policyUUID)
 	if err != nil {
 		return fmt.Errorf("failed to retrieve custom policy (org_id=%s, policy_uuid=%s): %w", orgID, policyUUID, err)
@@ -605,9 +615,12 @@ func (s *GatewayService) DeleteCustomPolicyByUUID(orgID, policyUUID, version str
 	if err != nil {
 		return err
 	}
-	if s.auditRepo != nil {
-		_ = s.auditRepo.Record("DELETE", policyUUID, "custom_policy", orgID, "")
-	}
+	s.audit.Record(ctx, &AuditEvent{
+		Action: model.AuditActionDelete, ResourceType: model.AuditResourceTypeCustomPolicy,
+		ResourceUUID: policyUUID, OrganizationUUID: orgID,
+		ResourceName: policy.Name, Outcome: model.AuditOutcomeSucceeded,
+		EventData: map[string]any{"version": version},
+	})
 	return nil
 }
 
@@ -622,7 +635,7 @@ func (s *GatewayService) DeleteCustomPolicyByUUID(orgID, policyUUID, version str
 const defaultGatewayVersion = "1.0"
 
 // RegisterGateway registers a new gateway with organization validation
-func (s *GatewayService) RegisterGateway(orgID string, id *string, displayName, description string, endpoints []string, isCritical bool,
+func (s *GatewayService) RegisterGateway(ctx context.Context, orgID string, id *string, displayName, description string, endpoints []string, isCritical bool,
 	functionalityType, version, createdBy string, properties map[string]interface{}) (*api.GatewayResponse, error) {
 	// Determine handle: use provided id or auto-generate from displayName
 	var name string
@@ -715,12 +728,22 @@ func (s *GatewayService) RegisterGateway(orgID string, id *string, displayName, 
 
 	// 6. Insert gateway
 	if err := s.gatewayRepo.Create(gateway); err != nil {
+		if IsAuditableFailure(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Action: model.AuditActionCreate, ResourceType: model.AuditResourceTypeGateway,
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgID, PerformedBy: createdBy,
+				ResourceUUID: gateway.ID, ResourceName: name,
+			})
+		}
 		return nil, fmt.Errorf("failed to create gateway: %w", err)
 	}
 
-	if s.auditRepo != nil {
-		_ = s.auditRepo.Record("CREATE", gateway.ID, "gateway", orgID, createdBy)
-	}
+	s.audit.Record(ctx, &AuditEvent{
+		Action: model.AuditActionCreate, ResourceType: model.AuditResourceTypeGateway,
+		ResourceUUID: gateway.ID, OrganizationUUID: orgID, PerformedBy: createdBy,
+		ResourceName: name, Outcome: model.AuditOutcomeSucceeded,
+		EventData: gatewayAuditFields(gateway),
+	})
 
 	// 7. Return GatewayResponse
 	return s.gatewayModelToAPI(gateway)
@@ -790,7 +813,7 @@ func (s *GatewayService) GetGateway(gatewayId, orgId string) (*api.GatewayRespon
 }
 
 // UpdateGateway updates gateway details
-func (s *GatewayService) UpdateGateway(gatewayId, orgId, updatedBy string, req *api.GatewayResponse) (*api.GatewayResponse, error) {
+func (s *GatewayService) UpdateGateway(ctx context.Context, gatewayId, orgId, updatedBy string, req *api.GatewayResponse) (*api.GatewayResponse, error) {
 	// Get existing gateway by handle
 	gateway, err := s.gatewayRepo.GetByHandleAndOrgID(gatewayId, orgId)
 	if err != nil {
@@ -800,6 +823,7 @@ func (s *GatewayService) UpdateGateway(gatewayId, orgId, updatedBy string, req *
 		return nil, apperror.GatewayNotFound.New()
 	}
 
+	before := gatewayAuditFields(gateway)
 	gateway.Name = req.DisplayName
 	if req.Description != nil {
 		gateway.Description = *req.Description
@@ -817,12 +841,22 @@ func (s *GatewayService) UpdateGateway(gatewayId, orgId, updatedBy string, req *
 
 	err = s.gatewayRepo.UpdateGateway(gateway)
 	if err != nil {
+		if IsAuditableFailure(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Action: model.AuditActionUpdate, ResourceType: model.AuditResourceTypeGateway,
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgId, PerformedBy: updatedBy,
+				ResourceUUID: gateway.ID, ResourceName: gateway.Handle,
+			})
+		}
 		return nil, err
 	}
 
-	if s.auditRepo != nil {
-		_ = s.auditRepo.Record("UPDATE", gateway.ID, "gateway", orgId, updatedBy)
-	}
+	s.audit.Record(ctx, &AuditEvent{
+		Action: model.AuditActionUpdate, ResourceType: model.AuditResourceTypeGateway,
+		ResourceUUID: gateway.ID, OrganizationUUID: orgId, PerformedBy: updatedBy,
+		ResourceName: gateway.Handle, Outcome: model.AuditOutcomeSucceeded,
+		EventData: AuditDiff(before, gatewayAuditFields(gateway)),
+	})
 
 	return s.gatewayModelToAPI(gateway)
 }
@@ -830,7 +864,7 @@ func (s *GatewayService) UpdateGateway(gatewayId, orgId, updatedBy string, req *
 // DeleteGateway deletes a gateway along with all its deployment information (deployments,
 // deployment statuses, gateway-scoped secret refs, artifact-gateway mappings) and tokens,
 // so no artifact is left appearing deployed on the removed gateway.
-func (s *GatewayService) DeleteGateway(gatewayID, orgID, deletedBy string) error {
+func (s *GatewayService) DeleteGateway(ctx context.Context, gatewayID, orgID, deletedBy string) error {
 	// Verify gateway exists and belongs to organization (gatewayID is now the handle)
 	gateway, err := s.gatewayRepo.GetByHandleAndOrgID(gatewayID, orgID)
 	if err != nil {
@@ -844,12 +878,21 @@ func (s *GatewayService) DeleteGateway(gatewayID, orgID, deletedBy string) error
 	// association mappings, and FK CASCADE removes gateway_tokens/gateway_endpoints.
 	err = s.gatewayRepo.Delete(gateway.ID, orgID)
 	if err != nil {
+		if IsAuditableFailure(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Action: model.AuditActionDelete, ResourceType: model.AuditResourceTypeGateway,
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgID, PerformedBy: deletedBy,
+				ResourceUUID: gateway.ID, ResourceName: gateway.Handle,
+			})
+		}
 		return err
 	}
 
-	if s.auditRepo != nil {
-		_ = s.auditRepo.Record("DELETE", gateway.ID, "gateway", orgID, deletedBy)
-	}
+	s.audit.Record(ctx, &AuditEvent{
+		Action: model.AuditActionDelete, ResourceType: model.AuditResourceTypeGateway,
+		ResourceUUID: gateway.ID, OrganizationUUID: orgID, PerformedBy: deletedBy,
+		ResourceName: gateway.Handle, Outcome: model.AuditOutcomeSucceeded,
+	})
 
 	return nil
 }
@@ -928,7 +971,7 @@ func (s *GatewayService) ListTokens(gatewayId, orgId string, limit, offset int) 
 }
 
 // RotateToken generates a new token for a gateway (max 2 active tokens)
-func (s *GatewayService) RotateToken(gatewayId, orgId, createdBy string) (*api.TokenRotationResponse, error) {
+func (s *GatewayService) RotateToken(ctx context.Context, gatewayId, orgId, createdBy string) (*api.TokenRotationResponse, error) {
 	// 1. Validate gateway exists
 	gateway, err := s.gatewayRepo.GetByHandleAndOrgID(gatewayId, orgId)
 	if err != nil {
@@ -977,15 +1020,27 @@ func (s *GatewayService) RotateToken(gatewayId, orgId, createdBy string) (*api.T
 
 	// 7. Insert token using repository
 	if err := s.gatewayRepo.CreateToken(gatewayToken); err != nil {
+		if IsAuditableFailure(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgId, Action: model.AuditActionUpdate, ResourceType: model.AuditResourceTypeGateway,
+				PerformedBy: createdBy, ResourceUUID: gateway.ID, ResourceName: gateway.Handle,
+				EventData: map[string]any{"tokens": map[string]any{"added": []string{tokenId}}},
+			})
+		}
 		return nil, fmt.Errorf("failed to create token: %w", err)
 	}
+	s.audit.Record(ctx, &AuditEvent{
+		Outcome: model.AuditOutcomeSucceeded, OrganizationUUID: orgId, Action: model.AuditActionUpdate, ResourceType: model.AuditResourceTypeGateway,
+		PerformedBy: createdBy, ResourceUUID: gateway.ID, ResourceName: gateway.Handle,
+		EventData: map[string]any{"tokens": map[string]any{"added": []string{tokenId}}},
+	})
 
 	// 8. Return TokenRotationResponse
 	return tokenRotationModelToAPI(tokenId, plainToken, gatewayToken.CreatedAt), nil
 }
 
 // RevokeToken revokes a specific token for a gateway
-func (s *GatewayService) RevokeToken(gatewayId, tokenId, orgId, revokedBy string) error {
+func (s *GatewayService) RevokeToken(ctx context.Context, gatewayId, tokenId, orgId, revokedBy string) error {
 	gateway, err := s.gatewayRepo.GetByHandleAndOrgID(gatewayId, orgId)
 	if err != nil {
 		return fmt.Errorf("failed to query gateway: %w", err)
@@ -1006,8 +1061,20 @@ func (s *GatewayService) RevokeToken(gatewayId, tokenId, orgId, revokedBy string
 	}
 
 	if err := s.gatewayRepo.RevokeToken(tokenId, revokedBy); err != nil {
+		if IsAuditableFailure(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgId, Action: model.AuditActionUpdate, ResourceType: model.AuditResourceTypeGateway,
+				PerformedBy: revokedBy, ResourceUUID: gateway.ID, ResourceName: gateway.Handle,
+				EventData: map[string]any{"tokens": map[string]any{"revoked": []string{tokenId}}},
+			})
+		}
 		return fmt.Errorf("failed to revoke token: %w", err)
 	}
+	s.audit.Record(ctx, &AuditEvent{
+		Outcome: model.AuditOutcomeSucceeded, OrganizationUUID: orgId, Action: model.AuditActionUpdate, ResourceType: model.AuditResourceTypeGateway,
+		PerformedBy: revokedBy, ResourceUUID: gateway.ID, ResourceName: gateway.Handle,
+		EventData: map[string]any{"tokens": map[string]any{"revoked": []string{tokenId}}},
+	})
 
 	return nil
 }
@@ -1232,5 +1299,13 @@ func tokenRotationModelToAPI(tokenID string, token string, createdAt time.Time) 
 		Token:     &token,
 		CreatedAt: &createdAt,
 		Message:   &message,
+	}
+}
+
+// gatewayAuditFields lists the gateway fields recorded in audit events.
+func gatewayAuditFields(gw *model.Gateway) map[string]any {
+	return map[string]any{
+		"displayName": gw.Name,
+		"isCritical":  gw.IsCritical,
 	}
 }

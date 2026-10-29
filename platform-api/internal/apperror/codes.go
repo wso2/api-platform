@@ -242,6 +242,14 @@ const (
 	CodeHmacSecretNotConfigured = "HMAC_SECRET_NOT_CONFIGURED"
 )
 
+// Audit log domain codes.
+//   - CodeAuditInvalidFilter: a filter query parameter failed validation —
+//     unparseable timestamp, inverted time range, or an unknown value for a
+//     closed-enum filter (action, resourceType, outcome).
+const (
+	CodeAuditInvalidFilter = "AUDIT_INVALID_FILTER"
+)
+
 // API Publication domain codes. CodeAPIPublicationAPINotFound covers an
 // unknown (apiType, apiId) pair or an apiType this build doesn't serve —
 // distinct from CodeArtifactNotFound (used elsewhere in the codebase for the

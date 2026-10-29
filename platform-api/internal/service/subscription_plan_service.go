@@ -43,7 +43,7 @@ type SubscriptionPlanService struct {
 	gatewayRepo   repository.GatewayRepository
 	orgRepo       repository.OrganizationRepository
 	gatewayEvents *GatewayEventsService
-	auditRepo     repository.AuditRepository
+	audit         *AuditService
 	slogger       *slog.Logger
 	// meterRepo and pricingRepo check and store the pricing a plan is created with. While they are
 	// nil, a plan with pricing is refused.
@@ -63,8 +63,8 @@ func NewSubscriptionPlanService(
 	gatewayRepo repository.GatewayRepository,
 	orgRepo repository.OrganizationRepository,
 	gatewayEvents *GatewayEventsService,
-	auditRepo repository.AuditRepository,
 	slogger *slog.Logger,
+	audit *AuditService,
 ) *SubscriptionPlanService {
 	if slogger == nil {
 		slogger = slog.Default()
@@ -74,7 +74,7 @@ func NewSubscriptionPlanService(
 		gatewayRepo:   gatewayRepo,
 		orgRepo:       orgRepo,
 		gatewayEvents: gatewayEvents,
-		auditRepo:     auditRepo,
+		audit:         audit,
 		slogger:       slogger,
 	}
 }
@@ -143,11 +143,21 @@ func (s *SubscriptionPlanService) createPlan(ctx context.Context, orgUUID, actor
 	}
 
 	if err := s.planRepo.CreateWithPricing(plan, pricing); err != nil {
+		if IsAuditableFailure(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Action: model.AuditActionCreate, ResourceType: model.AuditResourceTypeSubscriptionPlan,
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgUUID, PerformedBy: actor,
+				ResourceUUID: plan.UUID, ResourceName: plan.Handle,
+			})
+		}
 		return nil, err
 	}
-	if s.auditRepo != nil {
-		_ = s.auditRepo.Record("CREATE", plan.UUID, "subscription_plan", orgUUID, actor)
-	}
+	s.audit.Record(ctx, &AuditEvent{
+		OrganizationUUID: orgUUID, Action: model.AuditActionCreate,
+		ResourceType: model.AuditResourceTypeSubscriptionPlan, Outcome: model.AuditOutcomeSucceeded,
+		PerformedBy: actor, ResourceUUID: plan.UUID, ResourceName: plan.Handle,
+		EventData: subscriptionPlanAuditFields(plan),
+	})
 
 	s.broadcastPlanEvent(ctx, orgUUID, "created", &model.SubscriptionPlanCreatedEvent{
 		PlanId:             plan.UUID,
@@ -251,6 +261,7 @@ func changesPortalValues(existing *model.SubscriptionPlan, update *model.Subscri
 
 // applyPlanUpdate applies update to existing, saves it and tells the gateways.
 func (s *SubscriptionPlanService) applyPlanUpdate(ctx context.Context, existing *model.SubscriptionPlan, orgUUID, actor string, update *model.SubscriptionPlanUpdate) (*model.SubscriptionPlan, error) {
+	before := subscriptionPlanAuditFields(existing)
 	if update.Name != nil {
 		if *update.Name == "" {
 			return nil, apperror.ValidationFailed.New("name is required")
@@ -289,11 +300,21 @@ func (s *SubscriptionPlanService) applyPlanUpdate(ctx context.Context, existing 
 
 	existing.UpdatedBy = actor
 	if err := s.planRepo.Update(existing); err != nil {
+		if IsAuditableFailure(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Action: model.AuditActionUpdate, ResourceType: model.AuditResourceTypeSubscriptionPlan,
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgUUID, PerformedBy: actor,
+				ResourceUUID: existing.UUID, ResourceName: existing.Handle,
+			})
+		}
 		return nil, err
 	}
-	if s.auditRepo != nil {
-		_ = s.auditRepo.Record("UPDATE", existing.UUID, "subscription_plan", orgUUID, actor)
-	}
+	s.audit.Record(ctx, &AuditEvent{
+		OrganizationUUID: orgUUID, Action: model.AuditActionUpdate,
+		ResourceType: model.AuditResourceTypeSubscriptionPlan, Outcome: model.AuditOutcomeSucceeded,
+		PerformedBy: actor, ResourceUUID: existing.UUID, ResourceName: existing.Handle,
+		EventData: AuditDiff(before, subscriptionPlanAuditFields(existing)),
+	})
 
 	s.broadcastPlanEvent(ctx, orgUUID, "updated", &model.SubscriptionPlanUpdatedEvent{
 		PlanId:             existing.UUID,
@@ -339,15 +360,25 @@ func (s *SubscriptionPlanService) DeletePlan(ctx context.Context, handle, orgUUI
 func (s *SubscriptionPlanService) deletePlanWithReferences(ctx context.Context, plan *model.SubscriptionPlan, orgUUID, actor string) error {
 	deleted, err := s.planRepo.DeleteWithReferences(plan.UUID, plan.Handle, orgUUID)
 	if err != nil {
+		if IsAuditableFailure(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Action: model.AuditActionDelete, ResourceType: model.AuditResourceTypeSubscriptionPlan,
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgUUID, PerformedBy: actor,
+				ResourceUUID: plan.UUID, ResourceName: plan.Handle,
+			})
+		}
 		return err
 	}
 	if !deleted {
 		// A concurrent delete removed it first.
 		return nil
 	}
-	if s.auditRepo != nil {
-		_ = s.auditRepo.Record("DELETE", plan.UUID, "subscription_plan", orgUUID, actor)
-	}
+	s.audit.Record(ctx, &AuditEvent{
+		OrganizationUUID: orgUUID, Action: model.AuditActionDelete,
+		ResourceType: model.AuditResourceTypeSubscriptionPlan, Outcome: model.AuditOutcomeSucceeded,
+		PerformedBy: actor, ResourceUUID: plan.UUID, ResourceName: plan.Handle,
+		EventData: map[string]any{"handle": plan.Handle},
+	})
 
 	s.broadcastPlanEvent(ctx, orgUUID, "deleted", &model.SubscriptionPlanDeletedEvent{
 		PlanId:   plan.UUID,
@@ -519,4 +550,19 @@ func (s *SubscriptionPlanService) broadcastPlanEvent(ctx context.Context, orgUUI
 				"gatewayId", gw.ID, "action", action, "error", broadcastErr)
 		}
 	}
+}
+
+// subscriptionPlanAuditFields lists the subscription plan fields recorded in audit events.
+func subscriptionPlanAuditFields(p *model.SubscriptionPlan) map[string]any {
+	fields := map[string]any{
+		"name":               p.Name,
+		"status":             p.Status,
+		"stopOnQuotaReach":   p.StopOnQuotaReach,
+		"throttleLimitUnit":  p.ThrottleLimitUnit,
+		"throttleLimitCount": nil,
+	}
+	if p.ThrottleLimitCount != nil {
+		fields["throttleLimitCount"] = *p.ThrottleLimitCount
+	}
+	return fields
 }

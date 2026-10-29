@@ -59,7 +59,7 @@ type DeploymentService struct {
 	orgRepo              repository.OrganizationRepository
 	apiKeyRepo           repository.APIKeyRepository
 	gatewayEventsService *GatewayEventsService
-	auditRepo            repository.AuditRepository
+	audit                *AuditService
 	apiUtil              *utils.APIUtil
 	// builds is the shared build store, used by every artifact kind. REST API
 	// builds go through it rather than having their own copy.
@@ -77,12 +77,12 @@ func NewDeploymentService(
 	orgRepo repository.OrganizationRepository,
 	apiKeyRepo repository.APIKeyRepository,
 	gatewayEventsService *GatewayEventsService,
-	auditRepo repository.AuditRepository,
 	apiUtil *utils.APIUtil,
 	definitions ArtifactDefinitions,
 	identity *IdentityService,
 	cfg *config.Server,
 	slogger *slog.Logger,
+	audit *AuditService,
 ) *DeploymentService {
 	return &DeploymentService{
 		apiRepo:              apiRepo,
@@ -92,7 +92,7 @@ func NewDeploymentService(
 		orgRepo:              orgRepo,
 		apiKeyRepo:           apiKeyRepo,
 		gatewayEventsService: gatewayEventsService,
-		auditRepo:            auditRepo,
+		audit:                audit,
 		apiUtil:              apiUtil,
 		builds:               NewBuildService(artifactRepo, deploymentRepo, definitions, identity, cfg, slogger),
 		cfg:                  cfg,
@@ -432,8 +432,22 @@ func (s *DeploymentService) DeployAPI(ctx context.Context, apiUUID string, req *
 		if limitErr := s.buildLimitError(err); limitErr != err {
 			return nil, limitErr
 		}
+		if IsAuditableFailure(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Action: model.AuditActionDeploy, ResourceType: model.AuditResourceTypeDeployment,
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgUUID, PerformedBy: createdBy,
+				EventData: map[string]any{"gatewayHandle": gatewayHandle, "apiId": apiUUID},
+			})
+		}
 		return nil, fmt.Errorf("failed to create deployment: %w", err)
 	}
+
+	s.audit.Record(ctx, &AuditEvent{
+		Action: model.AuditActionDeploy, ResourceType: model.AuditResourceTypeDeployment,
+		Outcome: model.AuditOutcomeSucceeded, OrganizationUUID: orgUUID, PerformedBy: createdBy,
+		ResourceUUID: deploymentID, ResourceName: deployment.Name,
+		EventData: map[string]any{"gatewayHandle": gatewayHandle, "apiId": apiUUID},
+	})
 
 	// Ensure API-Gateway association exists
 	if err := s.ensureAPIGatewayAssociation(apiUUID, gatewayID, orgUUID, createdBy); err != nil {
@@ -493,6 +507,14 @@ func (s *DeploymentService) RestoreDeployment(ctx context.Context, apiUUID, depl
 	// DP-originated artifacts are read-only in the control plane; their deployment
 	// lifecycle is owned by the data-plane gateway, so restore cannot be CP-initiated.
 	if err := ensureArtifactMutableByUUID(s.artifactRepo, apiUUID, orgUUID); err != nil {
+		if IsOriginDenial(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Action: model.AuditActionRestore, ResourceType: model.AuditResourceTypeDeployment,
+				Outcome: model.AuditOutcomeDenied, OrganizationUUID: orgUUID, PerformedBy: actor,
+				ResourceUUID: deploymentID,
+				EventData:    map[string]any{"reason": "dp_originated"},
+			})
+		}
 		return nil, err
 	}
 
@@ -541,6 +563,13 @@ func (s *DeploymentService) RestoreDeployment(ctx context.Context, apiUUID, depl
 		&performedAt, "",
 	)
 	if err != nil {
+		if IsAuditableFailure(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Action: model.AuditActionRestore, ResourceType: model.AuditResourceTypeDeployment,
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgUUID, PerformedBy: actor,
+				ResourceUUID: deploymentID, ResourceName: targetDeployment.Name,
+			})
+		}
 		return nil, fmt.Errorf("failed to set current deployment: %w", err)
 	}
 
@@ -561,9 +590,12 @@ func (s *DeploymentService) RestoreDeployment(ctx context.Context, apiUUID, depl
 		s.backfillAPIKeysToGateway(ctx, apiUUID, targetDeployment.GatewayID, actor)
 	}
 
-	if s.auditRepo != nil {
-		_ = s.auditRepo.Record("RESTORE", deploymentID, "deployment", orgUUID, actor)
-	}
+	s.audit.Record(ctx, &AuditEvent{
+		OrganizationUUID: orgUUID, Action: model.AuditActionRestore,
+		ResourceType: model.AuditResourceTypeDeployment, Outcome: model.AuditOutcomeSucceeded,
+		PerformedBy: actor, ResourceUUID: deploymentID, ResourceName: targetDeployment.Name,
+		EventData: map[string]any{"gatewayId": targetDeployment.GatewayID, "gatewayHandle": gateway.Handle, "apiId": apiUUID},
+	})
 
 	resp, err := toAPIDeploymentResponse(
 		s.gatewayRepo,
@@ -590,6 +622,14 @@ func (s *DeploymentService) UndeployDeployment(ctx context.Context, apiUUID, dep
 	// lifecycle is owned by the data-plane gateway (driven by the DP->CP push), so the
 	// control plane must not initiate an undeployment for them.
 	if err := ensureArtifactMutableByUUID(s.artifactRepo, apiUUID, orgUUID); err != nil {
+		if IsOriginDenial(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Action: model.AuditActionUndeploy, ResourceType: model.AuditResourceTypeDeployment,
+				Outcome: model.AuditOutcomeDenied, OrganizationUUID: orgUUID, PerformedBy: actor,
+				ResourceUUID: deploymentID,
+				EventData:    map[string]any{"reason": "dp_originated"},
+			})
+		}
 		return nil, err
 	}
 
@@ -630,6 +670,13 @@ func (s *DeploymentService) UndeployDeployment(ctx context.Context, apiUUID, dep
 		&performedAt, "",
 	)
 	if err != nil {
+		if IsAuditableFailure(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Action: model.AuditActionUndeploy, ResourceType: model.AuditResourceTypeDeployment,
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgUUID, PerformedBy: actor,
+				ResourceUUID: deploymentID, ResourceName: deployment.Name,
+			})
+		}
 		return nil, fmt.Errorf("failed to update deployment status: %w", err)
 	}
 
@@ -646,9 +693,12 @@ func (s *DeploymentService) UndeployDeployment(ctx context.Context, apiUUID, dep
 		}
 	}
 
-	if s.auditRepo != nil {
-		_ = s.auditRepo.Record("UNDEPLOY", deploymentID, "deployment", orgUUID, actor)
-	}
+	s.audit.Record(ctx, &AuditEvent{
+		OrganizationUUID: orgUUID, Action: model.AuditActionUndeploy,
+		ResourceType: model.AuditResourceTypeDeployment, Outcome: model.AuditOutcomeSucceeded,
+		PerformedBy: actor, ResourceUUID: deploymentID, ResourceName: deployment.Name,
+		EventData: map[string]any{"gatewayId": deployment.GatewayID, "gatewayHandle": gateway.Handle, "apiId": apiUUID},
+	})
 
 	resp, err := toAPIDeploymentResponse(
 		s.gatewayRepo,
@@ -670,7 +720,7 @@ func (s *DeploymentService) UndeployDeployment(ctx context.Context, apiUUID, dep
 }
 
 // DeleteDeployment permanently deletes an undeployed deployment artifact
-func (s *DeploymentService) DeleteDeployment(apiUUID, deploymentID, orgUUID, actor string) error {
+func (s *DeploymentService) DeleteDeployment(ctx context.Context, apiUUID, deploymentID, orgUUID, actor string) error {
 	// Verify deployment exists and belongs to the API
 	deployment, err := s.deploymentRepo.GetWithState(deploymentID, apiUUID, orgUUID)
 	if err != nil {
@@ -687,11 +737,21 @@ func (s *DeploymentService) DeleteDeployment(apiUUID, deploymentID, orgUUID, act
 
 	// Delete the deployment artifact
 	if err := s.deploymentRepo.Delete(deploymentID, apiUUID, orgUUID); err != nil {
+		if IsAuditableFailure(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Action: model.AuditActionDelete, ResourceType: model.AuditResourceTypeDeployment,
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgUUID, PerformedBy: actor,
+				ResourceUUID: deploymentID, ResourceName: deployment.Name,
+			})
+		}
 		return fmt.Errorf("failed to delete deployment: %w", err)
 	}
-	if s.auditRepo != nil {
-		_ = s.auditRepo.Record("DELETE", deploymentID, "deployment", orgUUID, actor)
-	}
+	s.audit.Record(ctx, &AuditEvent{
+		OrganizationUUID: orgUUID, Action: model.AuditActionDelete,
+		ResourceType: model.AuditResourceTypeDeployment, Outcome: model.AuditOutcomeSucceeded,
+		PerformedBy: actor, ResourceUUID: deploymentID, ResourceName: deployment.Name,
+		EventData: map[string]any{"deploymentName": deployment.Name, "gatewayId": deployment.GatewayID, "apiId": apiUUID},
+	})
 
 	return nil
 }
@@ -1168,14 +1228,14 @@ func (s *DeploymentService) UndeployDeploymentByHandle(ctx context.Context, apiH
 }
 
 // DeleteDeploymentByHandle deletes a deployment using API handle
-func (s *DeploymentService) DeleteDeploymentByHandle(apiHandle, deploymentID, orgUUID, actor string) error {
+func (s *DeploymentService) DeleteDeploymentByHandle(ctx context.Context, apiHandle, deploymentID, orgUUID, actor string) error {
 	// Convert API handle to UUID
 	apiUUID, err := s.getUUIDByHandle(apiHandle, orgUUID)
 	if err != nil {
 		return err
 	}
 
-	return s.DeleteDeployment(apiUUID, deploymentID, orgUUID, actor)
+	return s.DeleteDeployment(ctx, apiUUID, deploymentID, orgUUID, actor)
 }
 
 // GetDeploymentContentByHandle retrieves deployment artifact content using API handle

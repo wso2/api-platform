@@ -63,7 +63,7 @@ func (h *APIPortalHandler) CreateAPIPortal(w http.ResponseWriter, r *http.Reques
 		return err
 	}
 
-	resp, err := h.svc.CreateAPIPortal(&req, orgID, createdBy)
+	resp, err := h.svc.CreateAPIPortal(r.Context(), &req, orgID, createdBy)
 	if err != nil {
 		return serviceError(err, fmt.Sprintf("failed to create api portal %q for org %s by user %s", req.Handle, orgID, createdBy))
 	}
@@ -132,7 +132,7 @@ func (h *APIPortalHandler) UpdateAPIPortal(w http.ResponseWriter, r *http.Reques
 		return err
 	}
 
-	resp, err := h.svc.UpdateAPIPortal(handle, &req, orgID, updatedBy)
+	resp, err := h.svc.UpdateAPIPortal(r.Context(), handle, &req, orgID, updatedBy)
 	if err != nil {
 		return serviceError(err, fmt.Sprintf("failed to update api portal %q in org %s by user %s", handle, orgID, updatedBy))
 	}
@@ -157,7 +157,7 @@ func (h *APIPortalHandler) DeleteAPIPortal(w http.ResponseWriter, r *http.Reques
 		return err
 	}
 
-	if err := h.svc.DeleteAPIPortal(handle, orgID, actor); err != nil {
+	if err := h.svc.DeleteAPIPortal(r.Context(), handle, orgID, actor); err != nil {
 		return serviceError(err, fmt.Sprintf("failed to delete api portal %q in org %s by user %s", handle, orgID, actor))
 	}
 	w.WriteHeader(http.StatusNoContent)

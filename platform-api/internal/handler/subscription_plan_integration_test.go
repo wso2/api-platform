@@ -89,8 +89,8 @@ func setupPlanHandlerTestEnvWithDB(t *testing.T) (http.Handler, *database.DB) {
 		repository.NewGatewayRepo(db),
 		repository.NewOrganizationRepo(db),
 		service.NewGatewayEventsService(noopEventHub{}, identityService, slog.Default()),
-		noopAudit{},
 		slog.Default(),
+		nil,
 	)
 
 	mux := http.NewServeMux()

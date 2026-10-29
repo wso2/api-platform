@@ -81,7 +81,7 @@ func (h *MCPProxyHandler) CreateMCPProxy(w http.ResponseWriter, r *http.Request)
 		h.slogger.Debug("No project ID provided for MCP proxy, proceeding without project association", "mcpProxyId", req.Id)
 	}
 
-	resp, err := h.service.Create(orgID, createdBy, &req)
+	resp, err := h.service.Create(r.Context(), orgID, createdBy, &req)
 	if err != nil {
 		return h.mapServiceError(err)
 	}
@@ -156,7 +156,7 @@ func (h *MCPProxyHandler) UpdateMCPProxy(w http.ResponseWriter, r *http.Request)
 	if err != nil {
 		return err
 	}
-	resp, err := h.service.Update(orgID, id, updatedBy, &req)
+	resp, err := h.service.Update(r.Context(), orgID, id, updatedBy, &req)
 	if err != nil {
 		return h.mapServiceError(err)
 	}

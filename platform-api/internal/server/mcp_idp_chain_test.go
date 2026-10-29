@@ -53,6 +53,7 @@ const (
 type countingUserRows struct{ created int }
 
 func (c *countingUserRows) GetOrCreateUUID(string) (string, error)             { c.created++; return "u1", nil }
+func (c *countingUserRows) GetUUIDByIdentity(string) (string, error)           { return "", nil }
 func (c *countingUserRows) GetSubByUUID(string) (string, bool, error)          { return "", false, nil }
 func (c *countingUserRows) GetSubsByUUIDs([]string) (map[string]string, error) { return nil, nil }
 

@@ -141,7 +141,7 @@ func (p *EventGatewayPlugin) Init(deps *plugin.Deps) error {
 		deps.GatewayEventsService,
 		apiUtil,
 		logger,
-		deps.AuditRepo,
+		deps.AuditService,
 		cfg,
 		deps.IdentityService,
 	)
@@ -157,6 +157,7 @@ func (p *EventGatewayPlugin) Init(deps *plugin.Deps) error {
 		deps.GatewayEventsService,
 		cfg,
 		logger,
+		deps.AuditService,
 	)
 
 	webbrokerAPISvc := egservice.NewWebBrokerAPIService(
@@ -166,7 +167,7 @@ func (p *EventGatewayPlugin) Init(deps *plugin.Deps) error {
 		deps.GatewayEventsService,
 		apiUtil,
 		logger,
-		deps.AuditRepo,
+		deps.AuditService,
 		cfg,
 		deps.IdentityService,
 	)
@@ -182,6 +183,7 @@ func (p *EventGatewayPlugin) Init(deps *plugin.Deps) error {
 		deps.GatewayEventsService,
 		cfg,
 		logger,
+		deps.AuditService,
 	)
 
 	// HMAC secret service — optional; warn and continue if disabled.
@@ -192,6 +194,7 @@ func (p *EventGatewayPlugin) Init(deps *plugin.Deps) error {
 		deps.GatewayRepo,
 		deps.DBEncryptionKey,
 		logger,
+		deps.AuditService,
 	)
 	if err != nil {
 		logger.Warn("eventgateway: HMAC secret service disabled", "reason", err.Error())

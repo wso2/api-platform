@@ -91,7 +91,7 @@ func setupAPIPortalHandlerEnv(t *testing.T) (http.Handler, *database.DB, func())
 	portalRepo := repository.NewAPIPortalRepo(db)
 	orgRepo := repository.NewOrganizationRepo(db)
 	identityService := service.NewIdentityService(repository.NewUserIdentityMappingRepo(db))
-	svc := service.NewAPIPortalService(portalRepo, orgRepo, noopAudit{}, apiPortalTestVault(t), nil, identityService, slog.Default())
+	svc := service.NewAPIPortalService(portalRepo, orgRepo, nil, apiPortalTestVault(t), nil, identityService, slog.Default())
 	h := NewAPIPortalHandler(svc, identityService, slog.Default())
 
 	mux := http.NewServeMux()

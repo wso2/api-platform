@@ -29,6 +29,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
+	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
 	"github.com/wso2/api-platform/platform-api/internal/utils"
@@ -66,6 +67,7 @@ type PublicationService struct {
 	publicationRepo      repository.PublicationRepository
 	portalPublisher      PortalPublisher
 	slogger              *slog.Logger
+	audit                *AuditService
 	// pricingRepo gives the pricing a plan is created with on a portal that does not have it.
 	pricingRepo repository.SubscriptionPlanPricingRepository
 	// meterRepo gives the meters such a plan's prices charge for, which the portal needs first.
@@ -98,6 +100,7 @@ func NewPublicationService(
 	portalOperationTimeout time.Duration,
 	archiveMaxBytes int64,
 	slogger *slog.Logger,
+	audit *AuditService,
 ) *PublicationService {
 	if slogger == nil {
 		slogger = slog.Default()
@@ -113,6 +116,7 @@ func NewPublicationService(
 		publicationRepo:      publicationRepo,
 		portalPublisher:      portalPublisher,
 		slogger:              slogger,
+		audit:                audit,
 
 		portalOperationTimeout: portalOperationTimeout,
 		archiveMaxBytes:        archiveMaxBytes,
@@ -726,6 +730,13 @@ func (s *PublicationService) Publish(ctx context.Context, apiType, apiId, apiPor
 	}
 	published, wasReplace, err := s.publicationRepo.PromoteDraftToPublication(artifactUUID, portal.ID, orgUUID, actor, draft.UpdatedAt, snapshotAt, pushedPlans, pushedDocs)
 	if err != nil {
+		if IsAuditableFailure(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgUUID, Action: model.AuditActionUpdate, ResourceType: publicationAuditResourceType(apiType),
+				PerformedBy: actor, ResourceUUID: artifactUUID, ResourceName: apiId,
+				EventData: map[string]any{"apiPortals": map[string]any{"published": []string{portal.Handle}}},
+			})
+		}
 		return nil, false, fmt.Errorf("failed to promote publication draft: %w", err)
 	}
 	if published == nil {
@@ -733,6 +744,11 @@ func (s *PublicationService) Publish(ctx context.Context, apiType, apiId, apiPor
 		// same defensive DRAFT_NOT_FOUND, not a normal outcome.
 		return nil, false, apperror.APIPublicationDraftNotFound.New()
 	}
+	s.audit.Record(ctx, &AuditEvent{
+		Outcome: model.AuditOutcomeSucceeded, OrganizationUUID: orgUUID, Action: model.AuditActionUpdate, ResourceType: publicationAuditResourceType(apiType),
+		PerformedBy: actor, ResourceUUID: artifactUUID, ResourceName: apiId,
+		EventData: map[string]any{"apiPortals": map[string]any{"published": []string{portal.Handle}}},
+	})
 
 	published.APIPortalHandle = portal.Handle
 	published.APIPortalName = portal.Name
@@ -775,6 +791,13 @@ func (s *PublicationService) Unpublish(ctx context.Context, apiType, apiId, apiP
 
 	found, err := s.publicationRepo.UnpublishPublication(artifactUUID, portal.ID, orgUUID, actor)
 	if err != nil {
+		if IsAuditableFailure(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgUUID, Action: model.AuditActionUpdate, ResourceType: publicationAuditResourceType(apiType),
+				PerformedBy: actor, ResourceUUID: artifactUUID, ResourceName: apiId,
+				EventData: map[string]any{"apiPortals": map[string]any{"unpublished": []string{portal.Handle}}},
+			})
+		}
 		return fmt.Errorf("failed to unpublish publication: %w", err)
 	}
 	if !found {
@@ -782,6 +805,11 @@ func (s *PublicationService) Unpublish(ctx context.Context, apiType, apiId, apiP
 		// same defensive precondition failure, not a normal outcome.
 		return apperror.APIPublicationStateConflict.New("This API was already unpublished by another request. No changes were made.")
 	}
+	s.audit.Record(ctx, &AuditEvent{
+		Outcome: model.AuditOutcomeSucceeded, OrganizationUUID: orgUUID, Action: model.AuditActionUpdate, ResourceType: publicationAuditResourceType(apiType),
+		PerformedBy: actor, ResourceUUID: artifactUUID, ResourceName: apiId,
+		EventData: map[string]any{"apiPortals": map[string]any{"unpublished": []string{portal.Handle}}},
+	})
 	return nil
 }
 
@@ -819,12 +847,24 @@ func (s *PublicationService) Deprecate(ctx context.Context, apiType, apiId, apiP
 
 	found, err := s.publicationRepo.DeprecatePublication(artifactUUID, portal.ID, orgUUID, actor)
 	if err != nil {
+		if IsAuditableFailure(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgUUID, Action: model.AuditActionUpdate, ResourceType: publicationAuditResourceType(apiType),
+				PerformedBy: actor, ResourceUUID: artifactUUID, ResourceName: apiId,
+				EventData: map[string]any{"apiPortals": map[string]any{"deprecated": []string{portal.Handle}}},
+			})
+		}
 		return nil, fmt.Errorf("failed to deprecate publication: %w", err)
 	}
 	if !found {
 		// The row changed since the check above (for example, a concurrent unpublish).
 		return nil, apperror.APIPublicationStateConflict.New("The API status changed during the request. No changes were made.")
 	}
+	s.audit.Record(ctx, &AuditEvent{
+		Outcome: model.AuditOutcomeSucceeded, OrganizationUUID: orgUUID, Action: model.AuditActionUpdate, ResourceType: publicationAuditResourceType(apiType),
+		PerformedBy: actor, ResourceUUID: artifactUUID, ResourceName: apiId,
+		EventData: map[string]any{"apiPortals": map[string]any{"deprecated": []string{portal.Handle}}},
+	})
 	return s.getPublicationRow(apiType, apiId, apiPortalId, orgUUID)
 }
 
@@ -937,6 +977,16 @@ func portalPushError(err error) error {
 // publicationStatusNotPublished is the rollup's own label for "no live row
 // exists" — never a value api_publications itself stores.
 const publicationStatusNotPublished = "NOT_PUBLISHED"
+
+// publicationAuditResourceType translates the publication route value to the
+// canonical audit resource type. Publication APIs use "rest-api" in their
+// paths, while audit filtering uses the resource enum value "RestApi".
+func publicationAuditResourceType(apiType string) string {
+	if apiType == constants.PublicationAPITypeRestAPI {
+		return model.AuditResourceTypeRestAPI
+	}
+	return apiType
+}
 
 // ListPublicationSummary returns the GET /api-publications rollup: every
 // active API Portal for the org, annotated with this API's publication

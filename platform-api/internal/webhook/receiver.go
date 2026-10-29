@@ -34,6 +34,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/middleware"
 	"github.com/wso2/api-platform/platform-api/internal/model"
+	"github.com/wso2/api-platform/platform-api/internal/service"
 )
 
 // RoutePath is the webhook endpoint under the resource API version prefix (constants.APIVersion,
@@ -71,7 +72,7 @@ type organizationResolver interface {
 // reconcile API Portal application events. The webhook-specific create/reconcile logic (default
 // project, "genai" type, DP-id-as-handle, single-app key mapping) lives in the service.
 type applicationService interface {
-	CreateApplicationFromWebhook(handle, name, description, appType, orgID string) (*api.Application, error)
+	CreateApplicationFromWebhook(ctx context.Context, handle, name, description, appType, orgID string) (*api.Application, error)
 	UpdateApplication(ctx context.Context, appIDOrHandle string, req *api.Application, orgID, userID string) (*api.Application, error)
 	DeleteApplication(ctx context.Context, appIDOrHandle, orgID, actor string) error
 	SetAPIKeyApplication(ctx context.Context, keyName, artifactRef, kind, appIDOrHandle, orgID, userID string) error
@@ -222,7 +223,9 @@ func (r *Receiver) ReceiveEvent(w http.ResponseWriter, req *http.Request) error 
 		return apperror.ValidationFailed.New("Unsupported event type")
 	}
 
-	if err := handle(req.Context(), env); err != nil {
+	// API Portal events replay what a developer already did in the portal, so they are
+	// not audited here.
+	if err := handle(service.WithoutAudit(req.Context()), env); err != nil {
 		log.Error("Webhook event handling failed", "error", err)
 		return mapWebhookError(err)
 	}

@@ -24,6 +24,7 @@
 package service
 
 import (
+	"context"
 	"database/sql"
 	"os"
 	"path/filepath"
@@ -381,7 +382,7 @@ func TestAPIService_UpdateAPI_PreservesCreatedByAcrossDifferentActor(t *testing.
 		projectRepo: repository.NewProjectRepo(db),
 		apiUtil:     &utils.APIUtil{},
 		identity:    identity,
-		auditRepo:   &noopAuditRepo{},
+
 	}
 
 	updateReq := &api.RESTAPI{
@@ -391,7 +392,7 @@ func TestAPIService_UpdateAPI_PreservesCreatedByAcrossDifferentActor(t *testing.
 			Main: api.UpstreamDefinition{Url: ptr("https://example.com")},
 		},
 	}
-	updated, err := apiSvc.UpdateAPI(apiModel.ID, updateReq, orgUUID, updaterUUID)
+	updated, err := apiSvc.UpdateAPI(context.Background(), apiModel.ID, updateReq, orgUUID, updaterUUID)
 	if err != nil {
 		t.Fatalf("UpdateAPI failed: %v", err)
 	}

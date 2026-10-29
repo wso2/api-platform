@@ -77,7 +77,7 @@ func setupOrganizationHandlerTestEnv(t *testing.T) (http.Handler, *database.DB, 
 		nil, // llmProxyRepo
 		nil, // mcpProxyRepo
 		nil, // llmTemplateSeeder — nil-checked, best-effort
-		noopAudit{},
+		nil,
 		repository.NewUserOrganizationMappingRepo(db),
 		identityService,
 		&config.Server{},

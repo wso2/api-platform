@@ -59,7 +59,7 @@ func (r *Receiver) handleApplicationCreated(ctx context.Context, env *Envelope) 
 	if strings.TrimSpace(d.DisplayName) == "" {
 		return fmt.Errorf("%w: data.display_name is required", ErrInvalidEnvelope)
 	}
-	_, err := r.apps.CreateApplicationFromWebhook(d.Handle, d.DisplayName, d.Description, d.Type, env.OrgID)
+	_, err := r.apps.CreateApplicationFromWebhook(ctx, d.Handle, d.DisplayName, d.Description, d.Type, env.OrgID)
 	if err != nil {
 		// Domain-level idempotency: a duplicate delivery whose application already exists is success.
 		if apperror.ApplicationExists.Is(err) {
@@ -100,7 +100,7 @@ func (r *Receiver) handleApplicationUpdated(ctx context.Context, env *Envelope) 
 		return err
 	}
 	// Upsert: the create event was likely missed.
-	if _, cerr := r.apps.CreateApplicationFromWebhook(handle, name, d.Description, d.Type, env.OrgID); cerr != nil &&
+	if _, cerr := r.apps.CreateApplicationFromWebhook(ctx, handle, name, d.Description, d.Type, env.OrgID); cerr != nil &&
 		!apperror.ApplicationExists.Is(cerr) {
 		return cerr
 	}

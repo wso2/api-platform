@@ -51,12 +51,13 @@ type MCPDeploymentService struct {
 	// builds is the shared build store every artifact kind uses.
 	builds  *BuildService
 	slogger *slog.Logger
+	audit   *AuditService
 }
 
 func NewMCPDeploymentService(mcpRepo repository.MCPProxyRepository, deploymentRepo repository.DeploymentRepository,
 	gatewayRepo repository.GatewayRepository, orgRepo repository.OrganizationRepository, artifactRepo repository.ArtifactRepository,
 	apiKeyRepo repository.APIKeyRepository, gatewayEventsService *GatewayEventsService,
-	definitions ArtifactDefinitions, identity *IdentityService, cfg *config.Server, slogger *slog.Logger) *MCPDeploymentService {
+	definitions ArtifactDefinitions, identity *IdentityService, cfg *config.Server, slogger *slog.Logger, audit *AuditService) *MCPDeploymentService {
 	return &MCPDeploymentService{
 		mcpRepo:              mcpRepo,
 		deploymentRepo:       deploymentRepo,
@@ -69,6 +70,7 @@ func NewMCPDeploymentService(mcpRepo repository.MCPProxyRepository, deploymentRe
 		utils:                &utils.MCPUtils{},
 		builds:               NewBuildService(artifactRepo, deploymentRepo, definitions, identity, cfg, slogger),
 		slogger:              slogger,
+		audit:                audit,
 	}
 }
 
@@ -127,7 +129,7 @@ func (s *MCPDeploymentService) DeployMCPProxyByHandle(ctx context.Context, proxy
 // RestoreMCPDeploymentByHandle restores a previous deployment using the MCP proxy
 // handle and the gateway handle. Deploy resolves the gateway by handle, so restore
 // resolves the handle to the gateway UUID here to keep the contract consistent.
-func (s *MCPDeploymentService) RestoreMCPDeploymentByHandle(ctx context.Context, proxyHandle, deploymentID, gatewayHandle, orgUUID string) (*api.DeploymentResponse, error) {
+func (s *MCPDeploymentService) RestoreMCPDeploymentByHandle(ctx context.Context, proxyHandle, deploymentID, gatewayHandle, orgUUID, actor string) (*api.DeploymentResponse, error) {
 	// Convert MCP proxy handle to UUID
 	proxyUUID, err := s.getMCPProxyUUIDByHandle(proxyHandle, orgUUID)
 	if err != nil {
@@ -144,13 +146,29 @@ func (s *MCPDeploymentService) RestoreMCPDeploymentByHandle(ctx context.Context,
 	}
 	gatewayUUID := gateway.ID
 
-	return s.restoreMCPProxyDeployment(ctx, proxyUUID, &deploymentID, &gatewayUUID, orgUUID)
+	resp, err := s.restoreMCPProxyDeployment(ctx, proxyUUID, &deploymentID, &gatewayUUID, orgUUID, actor)
+	if err != nil {
+		if IsAuditableFailure(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgUUID, Action: model.AuditActionRestore, ResourceType: model.AuditResourceTypeDeployment,
+				PerformedBy: actor, ResourceUUID: deploymentID,
+				EventData: map[string]any{"gatewayHandle": gateway.Handle, "mcpProxyId": proxyHandle},
+			})
+		}
+		return resp, err
+	}
+	s.audit.Record(ctx, &AuditEvent{
+		Outcome: model.AuditOutcomeSucceeded, OrganizationUUID: orgUUID, Action: model.AuditActionRestore, ResourceType: model.AuditResourceTypeDeployment,
+		PerformedBy: actor, ResourceUUID: deploymentID,
+		EventData: map[string]any{"gatewayHandle": gateway.Handle, "mcpProxyId": proxyHandle},
+	})
+	return resp, nil
 }
 
 // UndeployDeploymentByHandle undeploys a deployment using the MCP proxy handle and
 // the gateway handle. Deploy resolves the gateway by handle, so undeploy resolves
 // the handle to the gateway UUID here to keep the contract consistent.
-func (s *MCPDeploymentService) UndeployDeploymentByHandle(ctx context.Context, proxyHandle, deploymentID, gatewayHandle, orgUUID string) (*api.DeploymentResponse, error) {
+func (s *MCPDeploymentService) UndeployDeploymentByHandle(ctx context.Context, proxyHandle, deploymentID, gatewayHandle, orgUUID, actor string) (*api.DeploymentResponse, error) {
 	// Convert MCP proxy handle to UUID
 	proxyUUID, err := s.getMCPProxyUUIDByHandle(proxyHandle, orgUUID)
 	if err != nil {
@@ -167,18 +185,50 @@ func (s *MCPDeploymentService) UndeployDeploymentByHandle(ctx context.Context, p
 	}
 	gatewayUUID := gateway.ID
 
-	return s.undeployMCPProxyDeployment(ctx, proxyUUID, &deploymentID, &gatewayUUID, orgUUID)
+	resp, err := s.undeployMCPProxyDeployment(ctx, proxyUUID, &deploymentID, &gatewayUUID, orgUUID, actor)
+	if err != nil {
+		if IsAuditableFailure(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgUUID, Action: model.AuditActionUndeploy, ResourceType: model.AuditResourceTypeDeployment,
+				PerformedBy: actor, ResourceUUID: deploymentID,
+				EventData: map[string]any{"gatewayHandle": gateway.Handle, "mcpProxyId": proxyHandle},
+			})
+		}
+		return resp, err
+	}
+	s.audit.Record(ctx, &AuditEvent{
+		Outcome: model.AuditOutcomeSucceeded, OrganizationUUID: orgUUID, Action: model.AuditActionUndeploy, ResourceType: model.AuditResourceTypeDeployment,
+		PerformedBy: actor, ResourceUUID: deploymentID,
+		EventData: map[string]any{"gatewayHandle": gateway.Handle, "mcpProxyId": proxyHandle},
+	})
+	return resp, nil
 }
 
 // DeleteDeploymentByHandle deletes a deployment using MCP proxy handle
-func (s *MCPDeploymentService) DeleteDeploymentByHandle(proxyHandle, deploymentID, orgUUID string) error {
+func (s *MCPDeploymentService) DeleteDeploymentByHandle(ctx context.Context, proxyHandle, deploymentID, orgUUID, actor string) error {
 	// Convert MCP proxy handle to UUID
 	proxyUUID, err := s.getMCPProxyUUIDByHandle(proxyHandle, orgUUID)
 	if err != nil {
 		return err
 	}
 
-	return s.deleteMCPProxyDeployment(proxyUUID, deploymentID, orgUUID)
+	err = s.deleteMCPProxyDeployment(proxyUUID, deploymentID, orgUUID)
+	if err != nil {
+		if IsAuditableFailure(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgUUID, Action: model.AuditActionDelete, ResourceType: model.AuditResourceTypeDeployment,
+				PerformedBy: actor, ResourceUUID: deploymentID,
+				EventData: map[string]any{"mcpProxyId": proxyHandle},
+			})
+		}
+		return err
+	}
+	s.audit.Record(ctx, &AuditEvent{
+		Outcome: model.AuditOutcomeSucceeded, OrganizationUUID: orgUUID, Action: model.AuditActionDelete, ResourceType: model.AuditResourceTypeDeployment,
+		PerformedBy: actor, ResourceUUID: deploymentID,
+		EventData: map[string]any{"mcpProxyId": proxyHandle},
+	})
+	return nil
 }
 
 // GetDeploymentByHandle retrieves a single deployment using MCP proxy handle
@@ -266,6 +316,11 @@ func (s *MCPDeploymentService) deployMCPProxy(ctx context.Context, proxyUUID str
 	// DP-originated artifacts are read-only in the control plane and cannot be
 	// (re)deployed from the CP.
 	if err := ensureOriginMutable(mcpProxy.Origin); err != nil {
+		s.audit.Record(ctx, &AuditEvent{
+			Action: model.AuditActionDeploy, ResourceType: model.AuditResourceTypeDeployment,
+			Outcome: model.AuditOutcomeDenied, OrganizationUUID: orgId, PerformedBy: createdBy,
+			EventData: map[string]any{"reason": "dp_originated"},
+		})
 		return nil, err
 	}
 
@@ -372,8 +427,20 @@ func (s *MCPDeploymentService) deployMCPProxy(ctx context.Context, proxyUUID str
 		if limitErr := s.builds.LimitError(err); limitErr != err {
 			return nil, limitErr
 		}
+		if IsAuditableFailure(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgId, Action: model.AuditActionDeploy, ResourceType: model.AuditResourceTypeDeployment,
+				PerformedBy: createdBy, ResourceUUID: deploymentID, ResourceName: req.Name,
+				EventData: map[string]any{"gatewayHandle": gatewayHandle, "mcpProxyId": mcpProxy.Handle},
+			})
+		}
 		return nil, fmt.Errorf("failed to create deployment: %w", err)
 	}
+	s.audit.Record(ctx, &AuditEvent{
+		Outcome: model.AuditOutcomeSucceeded, OrganizationUUID: orgId, Action: model.AuditActionDeploy, ResourceType: model.AuditResourceTypeDeployment,
+		PerformedBy: createdBy, ResourceUUID: deploymentID, ResourceName: req.Name,
+		EventData: map[string]any{"gatewayHandle": gatewayHandle, "mcpProxyId": mcpProxy.Handle},
+	})
 
 	// Transitional until the gateway acknowledges the artifact.
 	initialStatus := model.DeploymentStatusDeploying
@@ -442,10 +509,17 @@ func extractEndpointURLOverride(metadata map[string]interface{}) (*string, error
 }
 
 // UndeployMCPProxyDeployment undeploys an MCP proxy from a gateway
-func (s *MCPDeploymentService) undeployMCPProxyDeployment(ctx context.Context, proxyUUID string, deploymentId *string, gatewayId *string, orgId string) (*api.DeploymentResponse, error) {
+func (s *MCPDeploymentService) undeployMCPProxyDeployment(ctx context.Context, proxyUUID string, deploymentId *string, gatewayId *string, orgId, actor string) (*api.DeploymentResponse, error) {
 	// DP-originated artifacts are read-only in the control plane; their deployment
 	// lifecycle is owned by the data-plane gateway, so undeploy cannot be CP-initiated.
 	if err := ensureArtifactMutableByUUID(s.artifactRepo, proxyUUID, orgId); err != nil {
+		if IsOriginDenial(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Action: model.AuditActionUndeploy, ResourceType: model.AuditResourceTypeDeployment,
+				Outcome: model.AuditOutcomeDenied, OrganizationUUID: orgId, PerformedBy: actor,
+				EventData: map[string]any{"reason": "dp_originated"},
+			})
+		}
 		return nil, err
 	}
 
@@ -543,10 +617,17 @@ func (s *MCPDeploymentService) undeployMCPProxyDeployment(ctx context.Context, p
 }
 
 // restoreMCPProxyDeployment restores a previously undeployed MCP proxy deployment
-func (s *MCPDeploymentService) restoreMCPProxyDeployment(ctx context.Context, proxyUUID string, deploymentId *string, gatewayId *string, orgId string) (*api.DeploymentResponse, error) {
+func (s *MCPDeploymentService) restoreMCPProxyDeployment(ctx context.Context, proxyUUID string, deploymentId *string, gatewayId *string, orgId, actor string) (*api.DeploymentResponse, error) {
 	// DP-originated artifacts are read-only in the control plane; their deployment
 	// lifecycle is owned by the data-plane gateway, so restore cannot be CP-initiated.
 	if err := ensureArtifactMutableByUUID(s.artifactRepo, proxyUUID, orgId); err != nil {
+		if IsOriginDenial(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Action: model.AuditActionRestore, ResourceType: model.AuditResourceTypeDeployment,
+				Outcome: model.AuditOutcomeDenied, OrganizationUUID: orgId, PerformedBy: actor,
+				EventData: map[string]any{"reason": "dp_originated"},
+			})
+		}
 		return nil, err
 	}
 

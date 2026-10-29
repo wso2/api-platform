@@ -66,7 +66,7 @@ func (f *planSyncPublisher) UndoPlanSync(_ context.Context, _ *model.APIPortal, 
 }
 
 func newPublicationPlanService(repo *publicationPlanRepo, pub *planSyncPublisher) *PublicationService {
-	return NewPublicationService(nil, nil, nil, repo, nil, pub, time.Minute, 0, nil)
+	return NewPublicationService(nil, nil, nil, repo, nil, pub, time.Minute, 0, nil, nil)
 }
 
 func publicationTestPlans() *publicationPlanRepo {
@@ -251,7 +251,7 @@ func TestPublish_StopsWhenThePlanStepFails(t *testing.T) {
 			pub := &planSyncPublisher{err: tc.err}
 			svc := NewPublicationService(
 				publishFlowArtifactRepo{}, publishFlowPortalRepo{}, nil,
-				publicationTestPlans(), publishFlowPublicationRepo{}, pub, time.Minute, 0, nil)
+				publicationTestPlans(), publishFlowPublicationRepo{}, pub, time.Minute, 0, nil, nil)
 
 			published, _, err := svc.Publish(context.Background(), restAPITypeValue, "my-api", "my-portal", "org", "actor")
 			if !tc.is(err) || published != nil {

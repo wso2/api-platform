@@ -52,6 +52,7 @@ type WebBrokerAPIDeploymentService struct {
 	gatewayEventsService *coreservice.GatewayEventsService
 	cfg                  *config.Server
 	slogger              *slog.Logger
+	audit                *coreservice.AuditService
 }
 
 // NewWebBrokerAPIDeploymentService creates a new WebBrokerAPIDeploymentService
@@ -66,6 +67,7 @@ func NewWebBrokerAPIDeploymentService(
 	gatewayEventsService *coreservice.GatewayEventsService,
 	cfg *config.Server,
 	slogger *slog.Logger,
+	audit *coreservice.AuditService,
 ) *WebBrokerAPIDeploymentService {
 	return &WebBrokerAPIDeploymentService{
 		webbrokerAPIRepo:     webbrokerAPIRepo,
@@ -78,6 +80,7 @@ func NewWebBrokerAPIDeploymentService(
 		gatewayEventsService: gatewayEventsService,
 		cfg:                  cfg,
 		slogger:              slogger,
+		audit:                audit,
 	}
 }
 
@@ -91,30 +94,78 @@ func (s *WebBrokerAPIDeploymentService) DeployWebBrokerAPIByHandle(ctx context.C
 }
 
 // RestoreWebBrokerAPIDeploymentByHandle restores a previous deployment using WebBroker API handle
-func (s *WebBrokerAPIDeploymentService) RestoreWebBrokerAPIDeploymentByHandle(ctx context.Context, apiHandle, deploymentID, gatewayID, orgUUID string) (*api.DeploymentResponse, error) {
+func (s *WebBrokerAPIDeploymentService) RestoreWebBrokerAPIDeploymentByHandle(ctx context.Context, apiHandle, deploymentID, gatewayID, orgUUID, actor string) (*api.DeploymentResponse, error) {
 	apiUUID, err := s.getWebBrokerAPIUUIDByHandle(apiHandle, orgUUID)
 	if err != nil {
 		return nil, err
 	}
-	return s.restoreWebBrokerAPIDeployment(ctx, apiUUID, &deploymentID, &gatewayID, orgUUID)
+	resp, err := s.restoreWebBrokerAPIDeployment(ctx, apiUUID, &deploymentID, &gatewayID, orgUUID, actor)
+	if err != nil {
+		if coreservice.IsAuditableFailure(err) {
+			s.audit.Record(ctx, &coreservice.AuditEvent{
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgUUID, Action: model.AuditActionRestore, ResourceType: model.AuditResourceTypeDeployment,
+				PerformedBy: actor, ResourceUUID: deploymentID,
+				EventData: map[string]any{"gatewayHandle": gatewayID, "webBrokerApiId": apiHandle},
+			})
+		}
+		return resp, err
+	}
+	s.audit.Record(ctx, &coreservice.AuditEvent{
+		Outcome: model.AuditOutcomeSucceeded, OrganizationUUID: orgUUID, Action: model.AuditActionRestore, ResourceType: model.AuditResourceTypeDeployment,
+		PerformedBy: actor, ResourceUUID: deploymentID,
+		EventData: map[string]any{"gatewayHandle": gatewayID, "webBrokerApiId": apiHandle},
+	})
+	return resp, nil
 }
 
 // UndeployWebBrokerAPIDeploymentByHandle undeploys a deployment using WebBroker API handle
-func (s *WebBrokerAPIDeploymentService) UndeployWebBrokerAPIDeploymentByHandle(ctx context.Context, apiHandle, deploymentID, gatewayID, orgUUID string) (*api.DeploymentResponse, error) {
+func (s *WebBrokerAPIDeploymentService) UndeployWebBrokerAPIDeploymentByHandle(ctx context.Context, apiHandle, deploymentID, gatewayID, orgUUID, actor string) (*api.DeploymentResponse, error) {
 	apiUUID, err := s.getWebBrokerAPIUUIDByHandle(apiHandle, orgUUID)
 	if err != nil {
 		return nil, err
 	}
-	return s.undeployWebBrokerAPIDeployment(ctx, apiUUID, &deploymentID, &gatewayID, orgUUID)
+	resp, err := s.undeployWebBrokerAPIDeployment(ctx, apiUUID, &deploymentID, &gatewayID, orgUUID, actor)
+	if err != nil {
+		if coreservice.IsAuditableFailure(err) {
+			s.audit.Record(ctx, &coreservice.AuditEvent{
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgUUID, Action: model.AuditActionUndeploy, ResourceType: model.AuditResourceTypeDeployment,
+				PerformedBy: actor, ResourceUUID: deploymentID,
+				EventData: map[string]any{"gatewayHandle": gatewayID, "webBrokerApiId": apiHandle},
+			})
+		}
+		return resp, err
+	}
+	s.audit.Record(ctx, &coreservice.AuditEvent{
+		Outcome: model.AuditOutcomeSucceeded, OrganizationUUID: orgUUID, Action: model.AuditActionUndeploy, ResourceType: model.AuditResourceTypeDeployment,
+		PerformedBy: actor, ResourceUUID: deploymentID,
+		EventData: map[string]any{"gatewayHandle": gatewayID, "webBrokerApiId": apiHandle},
+	})
+	return resp, nil
 }
 
 // DeleteWebBrokerAPIDeploymentByHandle deletes a deployment using WebBroker API handle
-func (s *WebBrokerAPIDeploymentService) DeleteWebBrokerAPIDeploymentByHandle(apiHandle, deploymentID, orgUUID string) error {
+func (s *WebBrokerAPIDeploymentService) DeleteWebBrokerAPIDeploymentByHandle(ctx context.Context, apiHandle, deploymentID, orgUUID, actor string) error {
 	apiUUID, err := s.getWebBrokerAPIUUIDByHandle(apiHandle, orgUUID)
 	if err != nil {
 		return err
 	}
-	return s.deleteWebBrokerAPIDeployment(apiUUID, deploymentID, orgUUID)
+	err = s.deleteWebBrokerAPIDeployment(apiUUID, deploymentID, orgUUID)
+	if err != nil {
+		if coreservice.IsAuditableFailure(err) {
+			s.audit.Record(ctx, &coreservice.AuditEvent{
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgUUID, Action: model.AuditActionDelete, ResourceType: model.AuditResourceTypeDeployment,
+				PerformedBy: actor, ResourceUUID: deploymentID,
+				EventData: map[string]any{"webBrokerApiId": apiHandle},
+			})
+		}
+		return err
+	}
+	s.audit.Record(ctx, &coreservice.AuditEvent{
+		Outcome: model.AuditOutcomeSucceeded, OrganizationUUID: orgUUID, Action: model.AuditActionDelete, ResourceType: model.AuditResourceTypeDeployment,
+		PerformedBy: actor, ResourceUUID: deploymentID,
+		EventData: map[string]any{"webBrokerApiId": apiHandle},
+	})
+	return nil
 }
 
 // GetWebBrokerAPIDeploymentByHandle retrieves a single deployment using WebBroker API handle
@@ -162,6 +213,13 @@ func (s *WebBrokerAPIDeploymentService) deployWebBrokerAPI(ctx context.Context, 
 	}
 	// DP-originated artifacts are read-only in the control plane; deployment cannot be CP-initiated.
 	if err := ensureArtifactMutableByUUID(s.artifactRepo, apiUUID, orgID); err != nil {
+		if coreservice.IsOriginDenial(err) {
+			s.audit.Record(ctx, &coreservice.AuditEvent{
+				Action: model.AuditActionDeploy, ResourceType: model.AuditResourceTypeDeployment,
+				Outcome: model.AuditOutcomeDenied, OrganizationUUID: orgID, PerformedBy: createdBy,
+				EventData: map[string]any{"reason": "dp_originated"},
+			})
+		}
 		return nil, err
 	}
 	if req.Base == "" {
@@ -246,8 +304,20 @@ func (s *WebBrokerAPIDeploymentService) deployWebBrokerAPI(ctx context.Context, 
 	}
 	hardLimit := s.cfg.Deployments.MaxPerAPIGateway + constants.DeploymentLimitBuffer
 	if err := s.deploymentRepo.CreateWithLimitEnforcement(deployment, hardLimit); err != nil {
+		if coreservice.IsAuditableFailure(err) {
+			s.audit.Record(ctx, &coreservice.AuditEvent{
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgID, Action: model.AuditActionDeploy, ResourceType: model.AuditResourceTypeDeployment,
+				PerformedBy: createdBy, ResourceUUID: deployment.DeploymentID, ResourceName: req.Name,
+				EventData: map[string]any{"gatewayHandle": gatewayHandle, "webBrokerApiId": webbrokerAPI.Handle},
+			})
+		}
 		return nil, fmt.Errorf("failed to create deployment: %w", err)
 	}
+	s.audit.Record(ctx, &coreservice.AuditEvent{
+		Outcome: model.AuditOutcomeSucceeded, OrganizationUUID: orgID, Action: model.AuditActionDeploy, ResourceType: model.AuditResourceTypeDeployment,
+		PerformedBy: createdBy, ResourceUUID: deployment.DeploymentID, ResourceName: req.Name,
+		EventData: map[string]any{"gatewayHandle": gatewayHandle, "webBrokerApiId": webbrokerAPI.Handle},
+	})
 
 	// Ensure API-Gateway association exists
 	if err := s.ensureAPIGatewayAssociation(apiUUID, gatewayID, orgID); err != nil {
@@ -295,7 +365,7 @@ func (s *WebBrokerAPIDeploymentService) deployWebBrokerAPI(ctx context.Context, 
 }
 
 // undeployWebBrokerAPIDeployment undeploys a WebBroker API from a gateway
-func (s *WebBrokerAPIDeploymentService) undeployWebBrokerAPIDeployment(ctx context.Context, apiUUID string, deploymentId *string, gatewayId *string, orgID string) (*api.DeploymentResponse, error) {
+func (s *WebBrokerAPIDeploymentService) undeployWebBrokerAPIDeployment(ctx context.Context, apiUUID string, deploymentId *string, gatewayId *string, orgID, actor string) (*api.DeploymentResponse, error) {
 	// DP-originated artifacts are read-only in the control plane: their deploy/undeploy
 	// lifecycle is owned by the data-plane gateway, so the control plane must not
 	// initiate an undeployment for them.
@@ -306,6 +376,11 @@ func (s *WebBrokerAPIDeploymentService) undeployWebBrokerAPIDeployment(ctx conte
 		}
 		if artifact != nil {
 			if err := ensureOriginMutable(artifact.Origin); err != nil {
+				s.audit.Record(ctx, &coreservice.AuditEvent{
+					Action: model.AuditActionUndeploy, ResourceType: model.AuditResourceTypeDeployment,
+					Outcome: model.AuditOutcomeDenied, OrganizationUUID: orgID, PerformedBy: actor,
+					EventData: map[string]any{"reason": "dp_originated"},
+				})
 				return nil, err
 			}
 		}
@@ -395,10 +470,17 @@ func (s *WebBrokerAPIDeploymentService) undeployWebBrokerAPIDeployment(ctx conte
 }
 
 // restoreWebBrokerAPIDeployment restores a previously undeployed WebBroker API deployment
-func (s *WebBrokerAPIDeploymentService) restoreWebBrokerAPIDeployment(ctx context.Context, apiUUID string, deploymentId *string, gatewayId *string, orgID string) (*api.DeploymentResponse, error) {
+func (s *WebBrokerAPIDeploymentService) restoreWebBrokerAPIDeployment(ctx context.Context, apiUUID string, deploymentId *string, gatewayId *string, orgID, actor string) (*api.DeploymentResponse, error) {
 	// DP-originated artifacts are read-only in the control plane; their deployment
 	// lifecycle is owned by the data-plane gateway, so restore cannot be CP-initiated.
 	if err := ensureArtifactMutableByUUID(s.artifactRepo, apiUUID, orgID); err != nil {
+		if coreservice.IsOriginDenial(err) {
+			s.audit.Record(ctx, &coreservice.AuditEvent{
+				Action: model.AuditActionRestore, ResourceType: model.AuditResourceTypeDeployment,
+				Outcome: model.AuditOutcomeDenied, OrganizationUUID: orgID, PerformedBy: actor,
+				EventData: map[string]any{"reason": "dp_originated"},
+			})
+		}
 		return nil, err
 	}
 

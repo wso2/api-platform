@@ -110,6 +110,9 @@ func defaultConfig() *Server {
 				Users: FileBasedUsers{},
 			},
 		},
+		Audit: Audit{
+			Enabled: false,
+		},
 		Deployments: Deployments{
 			MaxPerAPIGateway: 20,
 			MaxBuildsPerAPI:  5,

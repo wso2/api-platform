@@ -48,7 +48,7 @@ type APIService struct {
 	secretService        *SecretService
 	apiUtil              *utils.APIUtil
 	slogger              *slog.Logger
-	auditRepo            repository.AuditRepository
+	audit                *AuditService
 	identity             *IdentityService
 }
 
@@ -59,7 +59,7 @@ func NewAPIService(apiRepo repository.APIRepository, projectRepo repository.Proj
 	subscriptionPlanRepo repository.SubscriptionPlanRepository,
 	customPolicyRepo repository.CustomPolicyRepository,
 	gatewayEventsService *GatewayEventsService, apiUtil *utils.APIUtil,
-	slogger *slog.Logger, auditRepo repository.AuditRepository, identity *IdentityService) *APIService {
+	slogger *slog.Logger, identity *IdentityService, audit *AuditService) *APIService {
 	return &APIService{
 		apiRepo:              apiRepo,
 		projectRepo:          projectRepo,
@@ -71,7 +71,7 @@ func NewAPIService(apiRepo repository.APIRepository, projectRepo repository.Proj
 		gatewayEventsService: gatewayEventsService,
 		apiUtil:              apiUtil,
 		slogger:              slogger,
-		auditRepo:            auditRepo,
+		audit:                audit,
 		identity:             identity,
 	}
 }
@@ -98,7 +98,7 @@ func (s *APIService) resolveRESTAPIIdentity(resp *api.RESTAPI) error {
 // CreateAPI creates a new API with validation and business logic.
 // The second return value is the internal artifact UUID (not the public handle);
 // callers that need to link a child resource (e.g. documents) use it directly.
-func (s *APIService) CreateAPI(req *api.CreateRESTAPIRequest, orgUUID, createdBy string) (*api.RESTAPI, string, error) {
+func (s *APIService) CreateAPI(ctx context.Context, req *api.CreateRESTAPIRequest, orgUUID, createdBy string) (*api.RESTAPI, string, error) {
 	// Validate request
 	if err := s.validateCreateAPIRequest(req, orgUUID); err != nil {
 		return nil, "", err
@@ -170,6 +170,13 @@ func (s *APIService) CreateAPI(req *api.CreateRESTAPIRequest, orgUUID, createdBy
 	// Create API in repository (UUID is generated internally by CreateAPI)
 	if err := s.apiRepo.CreateAPI(apiModel); err != nil {
 		s.slogger.Error("Failed to create API in repository", "apiName", req.DisplayName, "error", err)
+		if IsAuditableFailure(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Action: model.AuditActionCreate, ResourceType: model.AuditResourceTypeRestAPI,
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgUUID, PerformedBy: createdBy,
+				ResourceName: apiModel.Handle,
+			})
+		}
 		return nil, "", fmt.Errorf("failed to create api: %w", err)
 	}
 
@@ -178,7 +185,12 @@ func (s *APIService) CreateAPI(req *api.CreateRESTAPIRequest, orgUUID, createdBy
 
 	s.refreshCustomPolicyUsages(apiUUID, orgUUID, apiModel)
 
-	_ = s.auditRepo.Record("CREATE", apiUUID, "rest_api", orgUUID, createdBy)
+	s.audit.Record(ctx, &AuditEvent{
+		OrganizationUUID: orgUUID, Action: model.AuditActionCreate,
+		ResourceType: model.AuditResourceTypeRestAPI, Outcome: model.AuditOutcomeSucceeded,
+		PerformedBy: createdBy, ResourceUUID: apiUUID, ResourceName: apiModel.Handle,
+		EventData: restAPIAuditFields(apiModel),
+	})
 
 	restAPI, err := s.modelToRESTAPI(apiModel)
 	return restAPI, apiUUID, err
@@ -401,7 +413,7 @@ func (s *APIService) modelToRESTAPIVersion(apiModel *model.API) (*api.RESTAPIVer
 }
 
 // UpdateAPI updates an existing API
-func (s *APIService) UpdateAPI(apiUUID string, req *api.RESTAPI, orgUUID, updatedBy string) (*api.RESTAPI, error) {
+func (s *APIService) UpdateAPI(ctx context.Context, apiUUID string, req *api.RESTAPI, orgUUID, updatedBy string) (*api.RESTAPI, error) {
 	if apiUUID == "" {
 		return nil, apperror.ValidationFailed.New("API id is required")
 	}
@@ -454,10 +466,25 @@ func (s *APIService) UpdateAPI(apiUUID string, req *api.RESTAPI, orgUUID, update
 	// deployment YAML unchanged (e.g. description, lifecycle status) by diffing the
 	// artifact the stored vs updated model produces.
 	if err := s.ensureRESTRuntimeArtifactUnchanged(existingAPIModel, updatedAPIModel); err != nil {
+		if IsOriginDenial(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Action: model.AuditActionUpdate, ResourceType: model.AuditResourceTypeRestAPI,
+				Outcome: model.AuditOutcomeDenied, OrganizationUUID: orgUUID, PerformedBy: updatedBy,
+				ResourceUUID: apiUUID, ResourceName: existingAPIModel.Handle,
+				EventData: map[string]any{"reason": "dp_runtime_change"},
+			})
+		}
 		return nil, err
 	}
 
 	if err := s.apiRepo.UpdateAPI(updatedAPIModel); err != nil {
+		if IsAuditableFailure(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Action: model.AuditActionUpdate, ResourceType: model.AuditResourceTypeRestAPI,
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgUUID, PerformedBy: updatedBy,
+				ResourceUUID: apiUUID, ResourceName: updatedAPIModel.Handle,
+			})
+		}
 		return nil, err
 	}
 
@@ -483,9 +510,46 @@ func (s *APIService) UpdateAPI(apiUUID string, req *api.RESTAPI, orgUUID, update
 
 	s.refreshCustomPolicyUsages(apiUUID, orgUUID, updatedAPIModel)
 
-	_ = s.auditRepo.Record("UPDATE", apiUUID, "rest_api", orgUUID, updatedBy)
+	s.audit.Record(ctx, &AuditEvent{
+		OrganizationUUID: orgUUID, Action: model.AuditActionUpdate,
+		ResourceType: model.AuditResourceTypeRestAPI, Outcome: model.AuditOutcomeSucceeded,
+		PerformedBy: updatedBy, ResourceUUID: apiUUID, ResourceName: updatedAPIModel.Handle,
+		EventData: AuditDiff(restAPIAuditFields(existingAPIModel), restAPIAuditFields(updatedAPIModel)),
+	})
 
 	return s.modelToRESTAPI(updatedAPIModel)
+}
+
+// restAPIAuditFields lists the REST API fields recorded in audit events.
+func restAPIAuditFields(a *model.API) map[string]any {
+	operations := make([]string, 0, len(a.Configuration.Operations))
+	policies := policyNames(a.Configuration.Policies)
+	for _, op := range a.Configuration.Operations {
+		if op.Request != nil {
+			operation := op.Request.Method + " " + op.Request.Path
+			operations = append(operations, operation)
+			for _, p := range op.Request.Policies {
+				policies = append(policies, p.Name+" "+p.Version+" ("+operation+")")
+			}
+		}
+	}
+	return map[string]any{
+		"displayName":     a.Name,
+		"version":         a.Version,
+		"lifeCycleStatus": a.LifeCycleStatus,
+		"context":         utils.ValueOrEmpty(a.Configuration.Context),
+		"policies":        policies,
+		"operations":      operations,
+	}
+}
+
+// policyNames lists API-level policies as "name version" for audit events.
+func policyNames(policies []model.Policy) []string {
+	names := make([]string, 0, len(policies))
+	for _, p := range policies {
+		names = append(names, p.Name+" "+p.Version)
+	}
+	return names
 }
 
 // ensureRESTRuntimeArtifactUnchanged rejects an edit to a DP-originated REST API when it
@@ -534,6 +598,14 @@ func (s *APIService) DeleteAPI(ctx context.Context, apiUUID, orgUUID, deletedBy 
 
 	// DP-originated artifacts may only be deleted once undeployed on all gateways.
 	if err := ensureOriginDeletable(s.deploymentRepo, api.Origin, apiUUID, orgUUID); err != nil {
+		if IsOriginDenial(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Action: model.AuditActionDelete, ResourceType: model.AuditResourceTypeRestAPI,
+				Outcome: model.AuditOutcomeDenied, OrganizationUUID: orgUUID, PerformedBy: deletedBy,
+				ResourceUUID: apiUUID, ResourceName: api.Handle,
+				EventData: map[string]any{"reason": "dp_originated"},
+			})
+		}
 		return err
 	}
 
@@ -553,10 +625,22 @@ func (s *APIService) DeleteAPI(ctx context.Context, apiUUID, orgUUID, deletedBy 
 
 	// Delete API from repository (this also deletes associations)
 	if err := s.apiRepo.DeleteAPI(apiUUID, orgUUID); err != nil {
+		if IsAuditableFailure(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Action: model.AuditActionDelete, ResourceType: model.AuditResourceTypeRestAPI,
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgUUID, PerformedBy: deletedBy,
+				ResourceUUID: apiUUID, ResourceName: api.Handle,
+			})
+		}
 		return fmt.Errorf("failed to delete api: %w", err)
 	}
 
-	_ = s.auditRepo.Record("DELETE", apiUUID, "rest_api", orgUUID, deletedBy)
+	s.audit.Record(ctx, &AuditEvent{
+		OrganizationUUID: orgUUID, Action: model.AuditActionDelete,
+		ResourceType: model.AuditResourceTypeRestAPI, Outcome: model.AuditOutcomeSucceeded,
+		PerformedBy: deletedBy, ResourceUUID: apiUUID, ResourceName: api.Handle,
+		EventData: map[string]any{"version": api.Version},
+	})
 
 	// Send deletion events to all gateways in the organization
 	if s.gatewayEventsService != nil && len(gateways) > 0 {
@@ -577,7 +661,7 @@ func (s *APIService) DeleteAPI(ctx context.Context, apiUUID, orgUUID, deletedBy 
 }
 
 // UpdateAPIByHandle updates an existing API identified by handle
-func (s *APIService) UpdateAPIByHandle(handle string, req *api.RESTAPI, orgId, updatedBy string) (*api.RESTAPI, error) {
+func (s *APIService) UpdateAPIByHandle(ctx context.Context, handle string, req *api.RESTAPI, orgId, updatedBy string) (*api.RESTAPI, error) {
 	// The id (handle) is immutable: a body id must match the API being updated.
 	if req != nil {
 		if err := utils.ValidateHandleImmutable(handle, req.Id); err != nil {
@@ -588,7 +672,7 @@ func (s *APIService) UpdateAPIByHandle(handle string, req *api.RESTAPI, orgId, u
 	if err != nil {
 		return nil, err
 	}
-	return s.UpdateAPI(apiUUID, req, orgId, updatedBy)
+	return s.UpdateAPI(ctx, apiUUID, req, orgId, updatedBy)
 }
 
 // DeleteAPIByHandle deletes an API identified by handle
@@ -604,12 +688,12 @@ func (s *APIService) DeleteAPIByHandle(ctx context.Context, handle, orgId, delet
 }
 
 // AddGatewaysToAPIByHandle associates multiple gateways with an API identified by handle
-func (s *APIService) AddGatewaysToAPIByHandle(handle string, gatewayIds []string, orgId, createdBy string) (*api.RESTAPIGatewayListResponse, error) {
+func (s *APIService) AddGatewaysToAPIByHandle(ctx context.Context, handle string, gatewayIds []string, orgId, createdBy string) (*api.RESTAPIGatewayListResponse, error) {
 	apiUUID, err := s.getAPIUUIDByHandle(handle, orgId)
 	if err != nil {
 		return nil, err
 	}
-	return s.AddGatewaysToAPI(apiUUID, gatewayIds, orgId, createdBy)
+	return s.AddGatewaysToAPI(ctx, apiUUID, gatewayIds, orgId, createdBy)
 }
 
 // GetAPIGatewaysByHandle retrieves a page of gateways associated with an API
@@ -655,7 +739,7 @@ func (s *APIService) GetAPIGatewaysByHandle(handle, orgId string, limit, offset 
 }
 
 // AddGatewaysToAPI associates multiple gateways with an API
-func (s *APIService) AddGatewaysToAPI(apiUUID string, gatewayIds []string, orgUUID, createdBy string) (*api.RESTAPIGatewayListResponse, error) {
+func (s *APIService) AddGatewaysToAPI(ctx context.Context, apiUUID string, gatewayIds []string, orgUUID, createdBy string) (*api.RESTAPIGatewayListResponse, error) {
 	apiModel, err := s.apiRepo.GetAPIByUUID(apiUUID, orgUUID)
 	if err != nil {
 		return nil, err
@@ -687,9 +771,7 @@ func (s *APIService) AddGatewaysToAPI(apiUUID string, gatewayIds []string, orgUU
 	}
 	for _, gateway := range validGateways {
 		if existingGatewayIds[gateway.ID] {
-			if err := s.apiRepo.UpdateAPIAssociation(apiUUID, gateway.ID, constants.AssociationTypeGateway, orgUUID, createdBy); err != nil {
-				return nil, err
-			}
+			err = s.apiRepo.UpdateAPIAssociation(apiUUID, gateway.ID, constants.AssociationTypeGateway, orgUUID, createdBy)
 		} else {
 			association := &model.APIAssociation{
 				ArtifactID:     apiUUID,
@@ -697,12 +779,28 @@ func (s *APIService) AddGatewaysToAPI(apiUUID string, gatewayIds []string, orgUU
 				GatewayID:      gateway.ID,
 				CreatedBy:      createdBy,
 			}
-			if err := s.apiRepo.CreateAPIAssociation(association); err != nil {
-				return nil, err
-			}
+			err = s.apiRepo.CreateAPIAssociation(association)
 			existingGatewayIds[gateway.ID] = true
 		}
+		if err != nil {
+			break
+		}
 	}
+	if err != nil {
+		if IsAuditableFailure(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgUUID, Action: model.AuditActionUpdate, ResourceType: model.AuditResourceTypeRestAPI,
+				PerformedBy: createdBy, ResourceUUID: apiUUID, ResourceName: apiModel.Handle,
+				EventData: map[string]any{"gateways": map[string]any{"added": gatewayIds}},
+			})
+		}
+		return nil, err
+	}
+	s.audit.Record(ctx, &AuditEvent{
+		Outcome: model.AuditOutcomeSucceeded, OrganizationUUID: orgUUID, Action: model.AuditActionUpdate, ResourceType: model.AuditResourceTypeRestAPI,
+		PerformedBy: createdBy, ResourceUUID: apiUUID, ResourceName: apiModel.Handle,
+		EventData: map[string]any{"gateways": map[string]any{"added": gatewayIds}},
+	})
 	return s.GetAPIGateways(apiUUID, orgUUID)
 }
 

@@ -111,7 +111,7 @@ func (h *GatewayHandler) CreateGateway(w http.ResponseWriter, r *http.Request) e
 	if err != nil {
 		return err
 	}
-	gateway, err := h.gatewayService.RegisterGateway(orgId, req.Id, req.DisplayName, description, req.Endpoints,
+	gateway, err := h.gatewayService.RegisterGateway(r.Context(), orgId, req.Id, req.DisplayName, description, req.Endpoints,
 		isCritical, functionalityType, version, createdBy, properties)
 	if err != nil {
 		// The service constructs typed catalog errors (not found, conflict,
@@ -233,7 +233,7 @@ func (h *GatewayHandler) UpdateGateway(w http.ResponseWriter, r *http.Request) e
 	if err != nil {
 		return err
 	}
-	response, err := h.gatewayService.UpdateGateway(gatewayId, orgId, updatedBy, &req)
+	response, err := h.gatewayService.UpdateGateway(r.Context(), gatewayId, orgId, updatedBy, &req)
 	if err != nil {
 		return serviceError(err, "failed to update gateway")
 	}
@@ -259,7 +259,7 @@ func (h *GatewayHandler) DeleteGateway(w http.ResponseWriter, r *http.Request) e
 	if err != nil {
 		return err
 	}
-	if err := h.gatewayService.DeleteGateway(gatewayId, orgId, deletedBy); err != nil {
+	if err := h.gatewayService.DeleteGateway(r.Context(), gatewayId, orgId, deletedBy); err != nil {
 		// Check for specific error types
 
 		if strings.Contains(err.Error(), "invalid UUID") {
@@ -319,7 +319,7 @@ func (h *GatewayHandler) RotateToken(w http.ResponseWriter, r *http.Request) err
 	if err != nil {
 		return err
 	}
-	response, err := h.gatewayService.RotateToken(gatewayId, orgId, createdBy)
+	response, err := h.gatewayService.RotateToken(r.Context(), gatewayId, orgId, createdBy)
 	if err != nil {
 		var appErr *apperror.Error
 		if errors.As(err, &appErr) {
@@ -359,7 +359,7 @@ func (h *GatewayHandler) RevokeToken(w http.ResponseWriter, r *http.Request) err
 	if err != nil {
 		return err
 	}
-	if err := h.gatewayService.RevokeToken(gatewayId, tokenId, orgId, revokedBy); err != nil {
+	if err := h.gatewayService.RevokeToken(r.Context(), gatewayId, tokenId, orgId, revokedBy); err != nil {
 		var appErr *apperror.Error
 		if errors.As(err, &appErr) {
 			return err
@@ -416,7 +416,7 @@ func (h *GatewayHandler) SyncCustomPolicy(w http.ResponseWriter, r *http.Request
 		return err
 	}
 
-	policy, err := h.gatewayService.SyncCustomPolicy(gatewayHandle, orgId, policyName, version, createdBy)
+	policy, err := h.gatewayService.SyncCustomPolicy(r.Context(), gatewayHandle, orgId, policyName, version, createdBy)
 	if err != nil {
 		var appErr *apperror.Error
 		if errors.As(err, &appErr) {
@@ -468,7 +468,7 @@ func (h *GatewayHandler) DeleteCustomPolicy(w http.ResponseWriter, r *http.Reque
 		return apperror.ValidationFailed.New("customPolicyUuid and version are required")
 	}
 
-	if err := h.gatewayService.DeleteCustomPolicyByUUID(orgId, policyUUID, version); err != nil {
+	if err := h.gatewayService.DeleteCustomPolicyByUUID(r.Context(), orgId, policyUUID, version); err != nil {
 		var appErr *apperror.Error
 		if errors.As(err, &appErr) {
 			return err

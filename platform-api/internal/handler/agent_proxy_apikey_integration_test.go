@@ -148,24 +148,32 @@ func agentKeyExists(t *testing.T, env *agentProxyTestEnv, proxy, key string) boo
 
 type auditRow struct{ Action, ResourceType, OrgUUID, PerformedBy string }
 
-// auditRowsFor returns the audit rows recorded against one resource UUID.
+// auditRowsFor returns the audit-log rows recorded against one resource UUID. Audit writes are
+// asynchronous, so it waits briefly for at least one row.
 func auditRowsFor(t *testing.T, env *agentProxyTestEnv, resourceUUID string) []auditRow {
 	t.Helper()
-	rows, err := env.db.Query(`SELECT action, resource_type, organization_uuid, performed_by
-		FROM audit WHERE resource_uuid = ? ORDER BY performed_at`, resourceUUID)
-	if err != nil {
-		t.Fatalf("query audit rows: %v", err)
-	}
-	defer rows.Close()
 	var out []auditRow
-	for rows.Next() {
-		var r auditRow
-		if err := rows.Scan(&r.Action, &r.ResourceType, &r.OrgUUID, &r.PerformedBy); err != nil {
-			t.Fatalf("scan audit row: %v", err)
+	for deadline := time.Now().Add(2 * time.Second); ; {
+		rows, err := env.db.Query(`SELECT action, resource_type, organization_uuid, performed_by
+			FROM audit_log WHERE resource_uuid = ? ORDER BY performed_at`, resourceUUID)
+		if err != nil {
+			t.Fatalf("query audit rows: %v", err)
 		}
-		out = append(out, r)
+		out = out[:0]
+		for rows.Next() {
+			var r auditRow
+			if err := rows.Scan(&r.Action, &r.ResourceType, &r.OrgUUID, &r.PerformedBy); err != nil {
+				rows.Close()
+				t.Fatalf("scan audit row: %v", err)
+			}
+			out = append(out, r)
+		}
+		rows.Close()
+		if len(out) > 0 || time.Now().After(deadline) {
+			return out
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
-	return out
 }
 
 func countAgentKeys(t *testing.T, env *agentProxyTestEnv) int {
@@ -558,11 +566,11 @@ func TestAgentProxyAPIKey_DeleteRemovesTheKeyAndAuditsIt(t *testing.T) {
 
 	var deletes []auditRow
 	for _, r := range auditRowsFor(t, env.agentProxyTestEnv, stored.UUID) {
-		if r.Action == "DELETE" {
+		if r.Action == "delete" {
 			deletes = append(deletes, r)
 		}
 	}
-	want := auditRow{Action: "DELETE", ResourceType: "api_key", OrgUUID: agentProxyOrg, PerformedBy: stored.CreatedBy}
+	want := auditRow{Action: "delete", ResourceType: "ApiKey", OrgUUID: agentProxyOrg, PerformedBy: stored.CreatedBy}
 	if len(deletes) != 1 || deletes[0] != want {
 		t.Fatalf("DELETE audit rows = %+v, want exactly [%+v]", deletes, want)
 	}

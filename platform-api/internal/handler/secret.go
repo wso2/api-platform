@@ -27,6 +27,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/dto"
 	"github.com/wso2/api-platform/platform-api/internal/middleware"
+	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/router"
 	"github.com/wso2/api-platform/platform-api/internal/service"
 
@@ -36,11 +37,12 @@ import (
 type SecretHandler struct {
 	secretService *service.SecretService
 	identity      *service.IdentityService
+	audit         *service.AuditService
 	slogger       *slog.Logger
 }
 
-func NewSecretHandler(secretService *service.SecretService, identity *service.IdentityService, slogger *slog.Logger) *SecretHandler {
-	return &SecretHandler{secretService: secretService, identity: identity, slogger: slogger}
+func NewSecretHandler(secretService *service.SecretService, identity *service.IdentityService, audit *service.AuditService, slogger *slog.Logger) *SecretHandler {
+	return &SecretHandler{secretService: secretService, identity: identity, audit: audit, slogger: slogger}
 }
 
 func (h *SecretHandler) RegisterRoutes(mux router.Router) {
@@ -79,8 +81,20 @@ func (h *SecretHandler) CreateSecret(w http.ResponseWriter, r *http.Request) err
 
 	resp, err := h.secretService.Create(orgID, userID, &req)
 	if err != nil {
+		if service.IsAuditableFailure(err) {
+			h.audit.Record(r.Context(), &service.AuditEvent{
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgID, Action: model.AuditActionCreate, ResourceType: model.AuditResourceTypeSecret,
+				PerformedBy: userID, ResourceName: req.Handle,
+				EventData: map[string]any{"displayName": req.DisplayName, "type": req.Type},
+			})
+		}
 		return serviceError(err, "failed to create secret")
 	}
+	h.audit.Record(r.Context(), &service.AuditEvent{
+		Outcome: model.AuditOutcomeSucceeded, OrganizationUUID: orgID, Action: model.AuditActionCreate, ResourceType: model.AuditResourceTypeSecret,
+		PerformedBy: userID, ResourceName: req.Handle,
+		EventData: map[string]any{"displayName": req.DisplayName, "type": req.Type},
+	})
 
 	setLocation(w, "secrets", resp.Handle)
 	httputil.WriteJSON(w, http.StatusCreated, resp)
@@ -171,8 +185,18 @@ func (h *SecretHandler) UpdateSecret(w http.ResponseWriter, r *http.Request) err
 
 	resp, err := h.secretService.Update(orgID, handle, userID, &req)
 	if err != nil {
+		if service.IsAuditableFailure(err) {
+			h.audit.Record(r.Context(), &service.AuditEvent{
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgID, Action: model.AuditActionUpdate, ResourceType: model.AuditResourceTypeSecret,
+				PerformedBy: userID, ResourceName: handle,
+			})
+		}
 		return serviceError(err, "failed to update secret")
 	}
+	h.audit.Record(r.Context(), &service.AuditEvent{
+		Outcome: model.AuditOutcomeSucceeded, OrganizationUUID: orgID, Action: model.AuditActionUpdate, ResourceType: model.AuditResourceTypeSecret,
+		PerformedBy: userID, ResourceName: handle,
+	})
 
 	httputil.WriteJSON(w, http.StatusOK, resp)
 	return nil
@@ -208,8 +232,18 @@ func (h *SecretHandler) DeleteSecret(w http.ResponseWriter, r *http.Request) err
 			return apperror.SecretInUse.New().WithDetails(dto.SecretInUseDetails{References: refs})
 		}
 
+		if service.IsAuditableFailure(err) {
+			h.audit.Record(r.Context(), &service.AuditEvent{
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgID, Action: model.AuditActionDelete, ResourceType: model.AuditResourceTypeSecret,
+				PerformedBy: userID, ResourceName: handle,
+			})
+		}
 		return serviceError(err, "failed to delete secret")
 	}
+	h.audit.Record(r.Context(), &service.AuditEvent{
+		Outcome: model.AuditOutcomeSucceeded, OrganizationUUID: orgID, Action: model.AuditActionDelete, ResourceType: model.AuditResourceTypeSecret,
+		PerformedBy: userID, ResourceName: handle,
+	})
 
 	w.WriteHeader(http.StatusNoContent)
 	return nil

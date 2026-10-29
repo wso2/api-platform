@@ -165,7 +165,7 @@ func TestDecodeAgentCardFetchRequest_AcceptsNoneAuth(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DecodeAgentCardFetchRequest() error = %v, want nil", err)
 	}
-	if got.Auth == nil || got.Auth.Type == nil || *got.Auth.Type != api.None {
+	if got.Auth == nil || got.Auth.Type == nil || *got.Auth.Type != api.UpstreamAuthTypeNone {
 		t.Fatalf("Auth = %+v, want type none", got.Auth)
 	}
 }

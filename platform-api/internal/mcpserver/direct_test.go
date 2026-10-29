@@ -186,24 +186,24 @@ func newRealDirect(t *testing.T) realDirect {
 		service.NewGraphQLAPIDefinition(graphqlAPIRepo, projectRepo),
 	)
 
-	providers := service.NewLLMProviderService(providerRepo, templateRepo, orgRepo, seeder, deploymentRepo, gatewayRepo, events, logger, auditRepo, cfg, identity)
+	providers := service.NewLLMProviderService(providerRepo, templateRepo, orgRepo, seeder, deploymentRepo, gatewayRepo, events, logger, cfg, identity, nil)
 	providers.SetProxyRepository(proxyRepo)
-	proxies := service.NewLLMProxyService(proxyRepo, providerRepo, projectRepo, deploymentRepo, gatewayRepo, events, logger, auditRepo, cfg, identity)
+	proxies := service.NewLLMProxyService(proxyRepo, providerRepo, projectRepo, deploymentRepo, gatewayRepo, events, logger, nil, cfg, identity)
 	proxies.SetTemplateRepository(templateRepo)
 
 	dir, err := newDirect(Deps{
-		Projects: service.NewProjectService(projectRepo, orgRepo, apiRepo, mcpProxyRepo, agentProxyRepo, appRepo, auditRepo, identity, logger),
+		Projects: service.NewProjectService(projectRepo, orgRepo, apiRepo, mcpProxyRepo, agentProxyRepo, appRepo, nil, identity, logger),
 		APIs: service.NewAPIService(apiRepo, projectRepo, orgRepo, gatewayRepo, deploymentRepo,
-			subscriptionPlanRepo, customPolicyRepo, events, apiUtil, logger, auditRepo, identity),
-		Deployments: service.NewDeploymentService(apiRepo, artifactRepo, deploymentRepo, gatewayRepo, orgRepo, apiKeyRepo, events, auditRepo, apiUtil, definitions, identity, cfg, logger),
-		Gateways:    service.NewGatewayService(gatewayRepo, orgRepo, apiRepo, customPolicyRepo, events, logger, false, false, auditRepo, identity),
+			subscriptionPlanRepo, customPolicyRepo, events, apiUtil, logger, identity, nil),
+		Deployments: service.NewDeploymentService(apiRepo, artifactRepo, deploymentRepo, gatewayRepo, orgRepo, apiKeyRepo, events, apiUtil, definitions, identity, cfg, logger, nil),
+		Gateways:    service.NewGatewayService(gatewayRepo, orgRepo, apiRepo, customPolicyRepo, events, logger, false, false, nil, identity),
 
 		LLMProviders:           providers,
-		LLMProviderDeployments: service.NewLLMProviderDeploymentService(providerRepo, templateRepo, deploymentRepo, gatewayRepo, orgRepo, apiKeyRepo, events, artifactRepo, definitions, identity, cfg, logger),
+		LLMProviderDeployments: service.NewLLMProviderDeploymentService(providerRepo, templateRepo, deploymentRepo, gatewayRepo, orgRepo, apiKeyRepo, events, artifactRepo, definitions, identity, cfg, logger, nil),
 		LLMProxies:             proxies,
-		LLMProxyDeployments:    service.NewLLMProxyDeploymentService(proxyRepo, deploymentRepo, gatewayRepo, orgRepo, apiKeyRepo, events, artifactRepo, definitions, identity, cfg, logger),
-		MCPProxies:             service.NewMCPProxyService(mcpProxyRepo, projectRepo, deploymentRepo, gatewayRepo, events, logger, auditRepo, cfg, identity),
-		MCPProxyDeployments:    service.NewMCPDeploymentService(mcpProxyRepo, deploymentRepo, gatewayRepo, orgRepo, artifactRepo, apiKeyRepo, events, definitions, identity, cfg, logger),
+		LLMProxyDeployments:    service.NewLLMProxyDeploymentService(proxyRepo, deploymentRepo, gatewayRepo, orgRepo, apiKeyRepo, events, artifactRepo, definitions, identity, cfg, logger, nil),
+		MCPProxies:             service.NewMCPProxyService(mcpProxyRepo, projectRepo, deploymentRepo, gatewayRepo, events, logger, cfg, identity, nil),
+		MCPProxyDeployments:    service.NewMCPDeploymentService(mcpProxyRepo, deploymentRepo, gatewayRepo, orgRepo, artifactRepo, apiKeyRepo, events, definitions, identity, cfg, logger, nil),
 		AgentProxies:           service.NewAgentProxyService(agentProxyRepo, projectRepo, deploymentRepo, gatewayRepo, events, logger, auditRepo, cfg, identity),
 		AgentProxyDeployments:  service.NewAgentDeploymentService(agentProxyRepo, deploymentRepo, gatewayRepo, artifactRepo, apiKeyRepo, events, definitions, identity, cfg, logger),
 	})

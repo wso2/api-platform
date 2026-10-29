@@ -187,7 +187,8 @@ func (h *WebSubAPIHmacSecretHandler) DeleteHmacSecret(w http.ResponseWriter, r *
 		return
 	}
 
-	if err := h.secretService.Delete(r.Context(), orgID, apiHandle, secretName); err != nil {
+	userID, _ := h.identity.InternalUserID(r)
+	if err := h.secretService.Delete(r.Context(), orgID, apiHandle, secretName, userID); err != nil {
 		h.handleServiceError(w, err)
 		return
 	}

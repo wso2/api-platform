@@ -58,3 +58,6 @@ roles         = ["ap_admin"]
 enabled   = true
 cert_file = "./resources/certificates/cert.pem"
 key_file  = "./resources/certificates/key.pem"
+
+[platform_api.audit]
+enabled = true

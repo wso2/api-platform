@@ -18,6 +18,7 @@
 package service
 
 import (
+	"context"
 	"errors"
 	"testing"
 	"time"
@@ -912,9 +913,8 @@ func TestImport_MCPProxy_ReadOnlyInGetAndList(t *testing.T) {
 		repository.NewGatewayRepo(d.db),
 		nil, // gatewayEventsService unused on create/get/list
 		newTestLogger(),
-		&noopAuditRepo{},
 		&config.Server{},
-		NewIdentityService(repository.NewUserIdentityMappingRepo(d.db)),
+		NewIdentityService(repository.NewUserIdentityMappingRepo(d.db)), nil,
 	)
 
 	// DP-origin MCP proxy via the gateway import flow.
@@ -923,7 +923,7 @@ func TestImport_MCPProxy_ReadOnlyInGetAndList(t *testing.T) {
 	// CP-origin MCP proxy via the service. ProjectId is the project handle
 	// ("default" for the seeded project), resolved to the UUID on create.
 	proj := "default"
-	if _, err := svc.Create(importTestOrgID, "tester", &api.MCPProxy{
+	if _, err := svc.Create(context.Background(), importTestOrgID, "tester", &api.MCPProxy{
 		Id:          strPointer("cp-mcp"),
 		DisplayName: "CP MCP",
 		Version:     "v1.0",
@@ -990,11 +990,11 @@ func TestCPSideGuard_DPOriginUpdate(t *testing.T) {
 
 	t.Run("LLMProviderTemplate", func(t *testing.T) {
 		d := setupImportTest(t)
-		svc := NewLLMProviderTemplateService(d.templateRepo, &noopAuditRepo{}, NewIdentityService(repository.NewUserIdentityMappingRepo(d.db)))
+		svc := NewLLMProviderTemplateService(d.templateRepo, nil, NewIdentityService(repository.NewUserIdentityMappingRepo(d.db)))
 		mustImport(t, d, dpTemplateReq("dp-t", "blk-tmpl", "T"))
 
 		// Changing a gateway-consumed field (a token-extraction identifier) is rejected.
-		if _, err := svc.Update(importTestOrgID, "blk-tmpl", "tester", &api.LLMProviderTemplate{
+		if _, err := svc.Update(context.Background(), importTestOrgID, "blk-tmpl", "tester", &api.LLMProviderTemplate{
 			DisplayName:  "T",
 			PromptTokens: &api.ExtractionIdentifier{Location: api.ExtractionIdentifierLocation("payload"), Identifier: "$.usage.prompt_tokens"},
 		}); !apperror.ArtifactRuntimeImmutable.Is(err) {
@@ -1004,7 +1004,7 @@ func TestCPSideGuard_DPOriginUpdate(t *testing.T) {
 		// Editing the OpenAPI spec URL / display name (neither read by the gateway at request
 		// time) leaves the runtime artifact untouched and is allowed.
 		specURL := "https://example.com/openapi.yaml"
-		if _, err := svc.Update(importTestOrgID, "blk-tmpl", "tester", &api.LLMProviderTemplate{
+		if _, err := svc.Update(context.Background(), importTestOrgID, "blk-tmpl", "tester", &api.LLMProviderTemplate{
 			DisplayName: "Renamed",
 			Metadata:    &api.LLMProviderTemplateMetadata{OpenapiSpecUrl: &specURL},
 		}); err != nil {
@@ -1015,7 +1015,7 @@ func TestCPSideGuard_DPOriginUpdate(t *testing.T) {
 	t.Run("LLMProvider", func(t *testing.T) {
 		d := setupImportTest(t)
 		svc := NewLLMProviderService(repository.NewLLMProviderRepo(d.db), d.templateRepo,
-			repository.NewOrganizationRepo(d.db), nil, d.deployment, repository.NewGatewayRepo(d.db), nil, logger, &noopAuditRepo{}, &config.Server{}, NewIdentityService(repository.NewUserIdentityMappingRepo(d.db)))
+			repository.NewOrganizationRepo(d.db), nil, d.deployment, repository.NewGatewayRepo(d.db), nil, logger, &config.Server{}, NewIdentityService(repository.NewUserIdentityMappingRepo(d.db)), nil)
 		mustImport(t, d, dpTemplateReq("dp-t", "p-tmpl", "T"))
 		provReq := dpProviderReq("dp-p", "blk-prov", "P", "p-tmpl")
 		provReq.Configuration.Spec["upstream"] = map[string]interface{}{"url": "https://api.example.com"}
@@ -1024,7 +1024,7 @@ func TestCPSideGuard_DPOriginUpdate(t *testing.T) {
 		// A runtime edit (name + upstream) is silently preserved and metadata (description)
 		// is applied: the update must succeed, and the gateway-owned name/upstream must stay
 		// unchanged. (The request still carries a valid upstream so field validation passes.)
-		updated, err := svc.Update(importTestOrgID, "blk-prov", "tester", &api.LLMProvider{
+		updated, err := svc.Update(context.Background(), importTestOrgID, "blk-prov", "tester", &api.LLMProvider{
 			DisplayName: "Hacked", Version: "v1.0", Template: "p-tmpl",
 			Description: strPointer("a new description"),
 			Upstream:    api.Upstream{Main: api.UpstreamDefinition{Url: strPointer("https://changed.example.com")}},
@@ -1043,12 +1043,12 @@ func TestCPSideGuard_DPOriginUpdate(t *testing.T) {
 	t.Run("LLMProxy", func(t *testing.T) {
 		d := setupImportTest(t)
 		svc := NewLLMProxyService(repository.NewLLMProxyRepo(d.db), repository.NewLLMProviderRepo(d.db),
-			repository.NewProjectRepo(d.db), d.deployment, repository.NewGatewayRepo(d.db), nil, logger, &noopAuditRepo{}, &config.Server{}, NewIdentityService(repository.NewUserIdentityMappingRepo(d.db)))
+			repository.NewProjectRepo(d.db), d.deployment, repository.NewGatewayRepo(d.db), nil, logger, nil, &config.Server{}, NewIdentityService(repository.NewUserIdentityMappingRepo(d.db)))
 		mustImport(t, d, dpTemplateReq("dp-t", "px-tmpl", "T"))
 		mustImport(t, d, dpProviderReq("dp-p", "px-prov", "P", "px-tmpl"))
 		mustImport(t, d, dpProxyReq("dp-x", "blk-proxy", "X", "px-prov"))
 
-		updated, err := svc.Update(importTestOrgID, "blk-proxy", "tester", &api.LLMProxy{
+		updated, err := svc.Update(context.Background(), importTestOrgID, "blk-proxy", "tester", &api.LLMProxy{
 			DisplayName: "Hacked", Version: "v2", Provider: &api.LLMProxyProvider{Id: "px-prov"},
 			Description: strPointer("a new description"),
 		})
@@ -1066,10 +1066,10 @@ func TestCPSideGuard_DPOriginUpdate(t *testing.T) {
 	t.Run("MCPProxy", func(t *testing.T) {
 		d := setupImportTest(t)
 		svc := NewMCPProxyService(repository.NewMCPProxyRepo(d.db), repository.NewProjectRepo(d.db),
-			d.deployment, repository.NewGatewayRepo(d.db), nil, logger, &noopAuditRepo{}, &config.Server{}, NewIdentityService(repository.NewUserIdentityMappingRepo(d.db)))
+			d.deployment, repository.NewGatewayRepo(d.db), nil, logger, &config.Server{}, NewIdentityService(repository.NewUserIdentityMappingRepo(d.db)), nil)
 		mustImport(t, d, dpMCPReq("dp-m", "blk-mcp", "M"))
 
-		updated, err := svc.Update(importTestOrgID, "blk-mcp", "tester", &api.MCPProxy{
+		updated, err := svc.Update(context.Background(), importTestOrgID, "blk-mcp", "tester", &api.MCPProxy{
 			Id: strPointer("blk-mcp"), DisplayName: "Hacked", Version: "v2",
 			Description: strPointer("a new description"),
 			Upstream:    api.Upstream{Main: api.UpstreamDefinition{Url: strPointer("https://api.example.com")}},

@@ -87,7 +87,7 @@ func (h *OrganizationHandler) RegisterOrganization(w http.ResponseWriter, r *htt
 	// resolve the claim against, so this still reflects the raw IDP org id.
 	// Empty in file-based mode.
 	idpOrgRefUUID, _ := middleware.GetOrganizationFromRequest(r)
-	org, err := h.orgService.RegisterOrganization(id, handle, req.DisplayName, req.Region, idpOrgRefUUID, performedBy)
+	org, err := h.orgService.RegisterOrganization(r.Context(), id, handle, req.DisplayName, req.Region, idpOrgRefUUID, performedBy)
 	if err != nil {
 		var appErr *apperror.Error
 		if errors.As(err, &appErr) {

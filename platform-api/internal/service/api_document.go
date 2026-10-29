@@ -18,6 +18,7 @@
 package service
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -42,6 +43,7 @@ type APIDocumentService struct {
 	documentRepo repository.DocumentRepository
 	artifactRepo repository.ArtifactRepository
 	auditRepo    repository.AuditRepository
+	audit        *AuditService
 	slogger      *slog.Logger
 }
 
@@ -49,11 +51,12 @@ type APIDocumentService struct {
 // required for the /apis/{apiType}/{apiId}/docs endpoints to resolve a
 // kind-aware handle to an artifact UUID; nil is acceptable only in tests that
 // never call ResolveArtifactUUID.
-func NewAPIDocumentService(documentRepo repository.DocumentRepository, artifactRepo repository.ArtifactRepository, auditRepo repository.AuditRepository, slogger *slog.Logger) *APIDocumentService {
+func NewAPIDocumentService(documentRepo repository.DocumentRepository, artifactRepo repository.ArtifactRepository, auditRepo repository.AuditRepository, audit *AuditService, slogger *slog.Logger) *APIDocumentService {
 	return &APIDocumentService{
 		documentRepo: documentRepo,
 		artifactRepo: artifactRepo,
 		auditRepo:    auditRepo,
+		audit:        audit,
 		slogger:      slogger,
 	}
 }
@@ -79,7 +82,7 @@ func (s *APIDocumentService) ResolveArtifactUUID(apiType, apiID, orgID string) (
 
 // CreateDocument creates a document for a reserved type
 // (DEFINITION / THUMBNAIL) that is managed via its own dedicated endpoints.
-func (s *APIDocumentService) CreateDocument(req *dto.CreateAPIDocumentRequest, orgId string, userId string, artifactUUID string) (string, error) {
+func (s *APIDocumentService) CreateDocument(ctx context.Context, req *dto.CreateAPIDocumentRequest, orgId string, userId string, artifactUUID string) (string, error) {
 	if req == nil {
 		return "", apperror.ValidationFailed.New("document request is required")
 	}
@@ -126,12 +129,17 @@ func (s *APIDocumentService) CreateDocument(req *dto.CreateAPIDocumentRequest, o
 			return "", apperror.Conflict.New().WithLogMessage("document handle already exists for artifact")
 		}
 		s.slogger.Error("Failed to create document", "artifactUUID", doc.ArtifactUUID, "error", err)
+		if doc.Type == constants.DocumentTypeDefinition && IsAuditableFailure(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Action: model.AuditActionCreate, ResourceType: model.AuditResourceTypeAPIDefinition,
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: doc.OrganizationUUID, PerformedBy: doc.CreatedBy,
+				ResourceUUID: doc.ArtifactUUID, ResourceName: doc.Handle,
+			})
+		}
 		return "", err
 	}
 
-	if err := s.auditRepo.Record("CREATE", doc.ArtifactUUID, auditResourceTypeFor(doc.Type), doc.OrganizationUUID, doc.CreatedBy); err != nil {
-		s.slogger.Error("Failed to record audit entry for document create", "artifactUUID", doc.ArtifactUUID, "error", err)
-	}
+	s.recordDocumentAudit(ctx, doc, model.AuditActionCreate, doc.CreatedBy)
 	return doc.Handle, nil
 }
 
@@ -170,7 +178,7 @@ func resolveStoredDocType(docType, otherTypeName string) string {
 }
 
 // CreateApiDocument creates a user-authored document attached to an artifact.
-func (s *APIDocumentService) CreateApiDocument(req *dto.CreateAPIDocumentRequest, orgID, userID, artifactUUID string) (string, error) {
+func (s *APIDocumentService) CreateApiDocument(ctx context.Context, req *dto.CreateAPIDocumentRequest, orgID, userID, artifactUUID string) (string, error) {
 	if req == nil {
 		return "", apperror.ValidationFailed.New("document request is required")
 	}
@@ -188,7 +196,7 @@ func (s *APIDocumentService) CreateApiDocument(req *dto.CreateAPIDocumentRequest
 			}
 			if maxName := maxDocTypeLen - len(constants.DocumentTypePrefix); len(trimmed) > maxName {
 				return "", apperror.ValidationFailed.New(fmt.Sprintf("otherTypeName must be at most %d characters", maxName))
- 			}
+			}
 		}
 	}
 	req.Type = resolveStoredDocType(req.Type, req.OtherTypeName)
@@ -218,13 +226,13 @@ func (s *APIDocumentService) CreateApiDocument(req *dto.CreateAPIDocumentRequest
 		}
 	}
 
-	return s.CreateDocument(req, orgID, userID, artifactUUID)
+	return s.CreateDocument(ctx, req, orgID, userID, artifactUUID)
 }
 
 // UpsertDocument updates or creates a document for an artifact.
 // If a document of the same type already exists, it is updated in-place.
 // If no document exists, a new one is created.
-func (s *APIDocumentService) UpsertDocument(req *dto.CreateAPIDocumentRequest, orgId string, userId string, artifactUUID string) error {
+func (s *APIDocumentService) UpsertDocument(ctx context.Context, req *dto.CreateAPIDocumentRequest, orgId string, userId string, artifactUUID string) error {
 	if req == nil {
 		return apperror.ValidationFailed.New("document request is required")
 	}
@@ -276,17 +284,44 @@ func (s *APIDocumentService) UpsertDocument(req *dto.CreateAPIDocumentRequest, o
 
 	if err := s.documentRepo.UpsertDocument(doc); err != nil {
 		s.slogger.Error("Failed to upsert document", "artifactUUID", doc.ArtifactUUID, "error", err)
+		if doc.Type == constants.DocumentTypeDefinition && IsAuditableFailure(err) {
+			failedAction := model.AuditActionCreate
+			if isUpdate {
+				failedAction = model.AuditActionUpdate
+			}
+			s.audit.Record(ctx, &AuditEvent{
+				Action: failedAction, ResourceType: model.AuditResourceTypeAPIDefinition,
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: doc.OrganizationUUID, PerformedBy: doc.UpdatedBy,
+				ResourceUUID: doc.ArtifactUUID, ResourceName: doc.Handle,
+			})
+		}
 		return err
 	}
 
-	action := "CREATE"
+	action := model.AuditActionCreate
 	if isUpdate {
-		action = "UPDATE"
+		action = model.AuditActionUpdate
 	}
-	if err := s.auditRepo.Record(action, doc.ArtifactUUID, auditResourceTypeFor(doc.Type), doc.OrganizationUUID, doc.UpdatedBy); err != nil {
-		s.slogger.Error("Failed to record audit entry for document upsert", "artifactUUID", doc.ArtifactUUID, "error", err)
-	}
+	s.recordDocumentAudit(ctx, doc, action, doc.UpdatedBy)
 	return nil
+}
+
+// recordDocumentAudit writes the audit entry for a created/updated document. The API
+// definition goes to the audit log; other document types still use the legacy audit table.
+func (s *APIDocumentService) recordDocumentAudit(ctx context.Context, doc *model.Document, action, actor string) {
+	if doc.Type == constants.DocumentTypeDefinition {
+		s.audit.Record(ctx, &AuditEvent{
+			Action: action, ResourceType: model.AuditResourceTypeAPIDefinition,
+			Outcome:      model.AuditOutcomeSucceeded,
+			ResourceUUID: doc.ArtifactUUID, OrganizationUUID: doc.OrganizationUUID, PerformedBy: actor,
+			ResourceName: doc.Handle,
+			EventData:    map[string]any{"type": doc.Type, "contentType": doc.ContentType},
+		})
+		return
+	}
+	if err := s.auditRepo.Record(strings.ToUpper(action), doc.ArtifactUUID, auditResourceTypeFor(doc.Type), doc.OrganizationUUID, actor); err != nil {
+		s.slogger.Error("Failed to record audit entry for document", "artifactUUID", doc.ArtifactUUID, "error", err)
+	}
 }
 
 // auditResourceTypeFor maps a document type to its audit resource-type label.

@@ -25,6 +25,7 @@
 package service
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"log/slog"
@@ -91,9 +92,8 @@ func setupAPISecretTestEnv(t *testing.T) (*APIService, *SecretService, func()) {
 
 	apiRepo := repository.NewAPIRepo(db)
 	projectRepo := repository.NewProjectRepo(db)
-	auditRepo := repository.NewAuditRepo(db)
 
-	apiSvc := NewAPIService(apiRepo, projectRepo, nil, nil, nil, nil, nil, nil, &utils.APIUtil{}, slog.Default(), auditRepo, identity)
+	apiSvc := NewAPIService(apiRepo, projectRepo, nil, nil, nil, nil, nil, nil, &utils.APIUtil{}, slog.Default(), identity, nil)
 	apiSvc.SetSecretService(secretSvc)
 
 	cleanup := func() { sqlDB.Close() }
@@ -143,7 +143,7 @@ func TestAPIServiceSecretLifecycle_Integration(t *testing.T) {
 			},
 		},
 	}
-	created, _, err := apiSvc.CreateAPI(createReq, apiSecretITOrgUUID, "alice")
+	created, _, err := apiSvc.CreateAPI(context.Background(), createReq, apiSecretITOrgUUID, "alice")
 	if err != nil {
 		t.Fatalf("CreateAPI failed: %v", err)
 	}
@@ -183,7 +183,7 @@ func TestAPIServiceSecretLifecycle_Integration(t *testing.T) {
 			Main: api.UpstreamDefinition{Url: utils.StringPtrIfNotEmpty("https://backend-v2.internal/api")},
 		},
 	}
-	updated, err := apiSvc.UpdateAPIByHandle(*apiUUID, updateReq, apiSecretITOrgUUID, "alice")
+	updated, err := apiSvc.UpdateAPIByHandle(context.Background(), *apiUUID, updateReq, apiSecretITOrgUUID, "alice")
 	if err != nil {
 		t.Fatalf("UpdateAPI (URL-only) failed: %v", err)
 	}
@@ -211,7 +211,7 @@ func TestAPIServiceSecretLifecycle_Integration(t *testing.T) {
 			},
 		},
 	}
-	if _, err := apiSvc.UpdateAPIByHandle(*apiUUID, rotateReq, apiSecretITOrgUUID, "alice"); err != nil {
+	if _, err := apiSvc.UpdateAPIByHandle(context.Background(), *apiUUID, rotateReq, apiSecretITOrgUUID, "alice"); err != nil {
 		t.Fatalf("UpdateAPI (rotate) failed: %v", err)
 	}
 
@@ -249,7 +249,7 @@ func TestAPIServiceSecretLifecycle_Integration(t *testing.T) {
 			},
 		},
 	}
-	if _, err := apiSvc.UpdateAPIByHandle(*apiUUID, badUpstreamReq, apiSecretITOrgUUID, "alice"); err == nil {
+	if _, err := apiSvc.UpdateAPIByHandle(context.Background(), *apiUUID, badUpstreamReq, apiSecretITOrgUUID, "alice"); err == nil {
 		t.Fatal("expected update with a nonexistent upstream secret ref to be rejected, got nil error")
 	} else if !apperror.ValidationFailed.Is(err) {
 		t.Errorf("expected a validation error for missing secret ref, got: %v", err)
@@ -266,7 +266,7 @@ func TestAPIServiceSecretLifecycle_Integration(t *testing.T) {
 		},
 		Policies: &[]api.Policy{{Name: "basic-auth", Version: "v1", Params: &params}},
 	}
-	if _, err := apiSvc.UpdateAPIByHandle(*apiUUID, badPolicyReq, apiSecretITOrgUUID, "alice"); err == nil {
+	if _, err := apiSvc.UpdateAPIByHandle(context.Background(), *apiUUID, badPolicyReq, apiSecretITOrgUUID, "alice"); err == nil {
 		t.Fatal("expected update with a nonexistent policy secret ref to be rejected, got nil error")
 	} else if !apperror.ValidationFailed.Is(err) {
 		t.Errorf("expected a validation error for missing secret ref, got: %v", err)

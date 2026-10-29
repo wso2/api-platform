@@ -117,7 +117,8 @@ func (h *LLMProviderDeploymentHandler) UndeployLLMProviderDeployment(w http.Resp
 	if providerId == "" {
 		return apperror.ValidationFailed.New("LLM provider ID is required")
 	}
-	deployment, err := h.deploymentService.UndeployLLMProviderDeployment(r.Context(), providerId, deploymentId, gatewayId, orgId)
+	actor, _ := h.identity.InternalUserID(r)
+	deployment, err := h.deploymentService.UndeployLLMProviderDeployment(r.Context(), providerId, deploymentId, gatewayId, orgId, actor)
 	if err != nil {
 		// DP-originated artifacts are read-only: undeployment cannot be initiated from the CP.
 		return serviceError(err, fmt.Sprintf("failed to undeploy LLM provider %s deployment %s on gateway %q", providerId, deploymentId, gatewayId))
@@ -142,7 +143,8 @@ func (h *LLMProviderDeploymentHandler) RestoreLLMProviderDeployment(w http.Respo
 	if providerId == "" {
 		return apperror.ValidationFailed.New("LLM provider ID is required")
 	}
-	deployment, err := h.deploymentService.RestoreLLMProviderDeployment(r.Context(), providerId, deploymentId, gatewayId, orgId)
+	actor, _ := h.identity.InternalUserID(r)
+	deployment, err := h.deploymentService.RestoreLLMProviderDeployment(r.Context(), providerId, deploymentId, gatewayId, orgId, actor)
 	if err != nil {
 		// DP-originated artifacts are read-only: restore cannot be initiated from the CP.
 		return serviceError(err, fmt.Sprintf("failed to restore LLM provider %s deployment %s on gateway %q", providerId, deploymentId, gatewayId))
@@ -170,7 +172,8 @@ func (h *LLMProviderDeploymentHandler) DeleteLLMProviderDeployment(w http.Respon
 		return apperror.ValidationFailed.New("Deployment ID is required")
 	}
 
-	err := h.deploymentService.DeleteLLMProviderDeployment(providerId, deploymentId, orgId)
+	actor, _ := h.identity.InternalUserID(r)
+	err := h.deploymentService.DeleteLLMProviderDeployment(r.Context(), providerId, deploymentId, orgId, actor)
 	if err != nil {
 		return serviceError(err, fmt.Sprintf("failed to delete LLM provider %s deployment %s", providerId, deploymentId))
 	}
@@ -320,7 +323,8 @@ func (h *LLMProxyDeploymentHandler) UndeployLLMProxyDeployment(w http.ResponseWr
 	if proxyId == "" {
 		return apperror.ValidationFailed.New("LLM proxy ID is required")
 	}
-	deployment, err := h.deploymentService.UndeployLLMProxyDeployment(r.Context(), proxyId, deploymentId, gatewayId, orgId)
+	actor, _ := h.identity.InternalUserID(r)
+	deployment, err := h.deploymentService.UndeployLLMProxyDeployment(r.Context(), proxyId, deploymentId, gatewayId, orgId, actor)
 	if err != nil {
 		// DP-originated artifacts are read-only: undeployment cannot be initiated from the CP.
 		return serviceError(err, fmt.Sprintf("failed to undeploy LLM proxy %s deployment %s on gateway %q", proxyId, deploymentId, gatewayId))
@@ -345,7 +349,8 @@ func (h *LLMProxyDeploymentHandler) RestoreLLMProxyDeployment(w http.ResponseWri
 	if proxyId == "" {
 		return apperror.ValidationFailed.New("LLM proxy ID is required")
 	}
-	deployment, err := h.deploymentService.RestoreLLMProxyDeployment(r.Context(), proxyId, deploymentId, gatewayId, orgId)
+	actor, _ := h.identity.InternalUserID(r)
+	deployment, err := h.deploymentService.RestoreLLMProxyDeployment(r.Context(), proxyId, deploymentId, gatewayId, orgId, actor)
 	if err != nil {
 		// DP-originated artifacts are read-only: restore cannot be initiated from the CP.
 		return serviceError(err, fmt.Sprintf("failed to restore LLM proxy %s deployment %s on gateway %q", proxyId, deploymentId, gatewayId))
@@ -373,7 +378,8 @@ func (h *LLMProxyDeploymentHandler) DeleteLLMProxyDeployment(w http.ResponseWrit
 		return apperror.ValidationFailed.New("Deployment ID is required")
 	}
 
-	err := h.deploymentService.DeleteLLMProxyDeployment(proxyId, deploymentId, orgId)
+	actor, _ := h.identity.InternalUserID(r)
+	err := h.deploymentService.DeleteLLMProxyDeployment(r.Context(), proxyId, deploymentId, orgId, actor)
 	if err != nil {
 		return serviceError(err, fmt.Sprintf("failed to delete LLM proxy %s deployment %s", proxyId, deploymentId))
 	}

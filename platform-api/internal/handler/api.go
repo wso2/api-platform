@@ -105,7 +105,7 @@ func (h *APIHandler) CreateAPI(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	apiResponse, _, err := h.apiService.CreateAPI(&req, orgId, createdBy)
+	apiResponse, _, err := h.apiService.CreateAPI(r.Context(), &req, orgId, createdBy)
 	if err != nil {
 		return serviceError(err, fmt.Sprintf("failed to create API in org %s", orgId))
 	}
@@ -225,7 +225,7 @@ func (h *APIHandler) UpdateAPI(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	apiResponse, err := h.apiService.UpdateAPIByHandle(apiId, &req, orgId, updatedBy)
+	apiResponse, err := h.apiService.UpdateAPIByHandle(r.Context(), apiId, &req, orgId, updatedBy)
 	if err != nil {
 		return serviceError(err, fmt.Sprintf("failed to update API %s in org %s", apiId, orgId))
 	}
@@ -292,7 +292,7 @@ func (h *APIHandler) AddGatewaysToAPI(w http.ResponseWriter, r *http.Request) er
 		return err
 	}
 
-	gatewaysResponse, err := h.apiService.AddGatewaysToAPIByHandle(apiId, gatewayIds, orgId, createdBy)
+	gatewaysResponse, err := h.apiService.AddGatewaysToAPIByHandle(r.Context(), apiId, gatewayIds, orgId, createdBy)
 	if err != nil {
 		return serviceError(err, fmt.Sprintf("failed to associate gateways with API %s in org %s", apiId, orgId))
 	}
@@ -406,7 +406,7 @@ func (h *APIHandler) ImportOpenAPI(w http.ResponseWriter, r *http.Request) error
 		Operations:  &operations,
 	}
 
-	apiResponse, artifactUUID, err := h.apiService.CreateAPI(createReq, orgId, createdBy)
+	apiResponse, artifactUUID, err := h.apiService.CreateAPI(r.Context(), createReq, orgId, createdBy)
 	if err != nil {
 		return serviceError(err, "failed to create API in org "+orgId)
 	}
@@ -421,7 +421,7 @@ func (h *APIHandler) ImportOpenAPI(w http.ResponseWriter, r *http.Request) error
 		Content:     specContent,
 	}
 
-	_, docErr := h.apiDocumentService.CreateDocument(docReq, orgId, createdBy, artifactUUID)
+	_, docErr := h.apiDocumentService.CreateDocument(r.Context(), docReq, orgId, createdBy, artifactUUID)
 	if docErr != nil {
 		h.slogger.Error("Failed to persist OpenAPI spec document; rolling back API",
 			"apiId", artifactUUID, "error", docErr)
@@ -527,7 +527,7 @@ func (h *APIHandler) PutOpenAPISpec(w http.ResponseWriter, r *http.Request) erro
 		if len(syncedOps) > 0 {
 			updatedAPI := *existingAPI
 			updatedAPI.Operations = &syncedOps
-			_, err = h.apiService.UpdateAPIByHandle(restApiId, &updatedAPI, orgId, updatedBy)
+			_, err = h.apiService.UpdateAPIByHandle(r.Context(), restApiId, &updatedAPI, orgId, updatedBy)
 			if err != nil {
 				return serviceError(err, "failed to update operations for API "+restApiId+" after spec change")
 			}
@@ -544,10 +544,10 @@ func (h *APIHandler) PutOpenAPISpec(w http.ResponseWriter, r *http.Request) erro
 		Content:     specContent,
 	}
 
-	if err := h.apiDocumentService.UpsertDocument(docReq, orgId, updatedBy, artifactUUID); err != nil {
+	if err := h.apiDocumentService.UpsertDocument(r.Context(), docReq, orgId, updatedBy, artifactUUID); err != nil {
 		h.slogger.Error("Failed to persist spec", "api", restApiId, "error", err)
 		if operationsUpdated {
-			if _, rollbackErr := h.apiService.UpdateAPIByHandle(restApiId, existingAPI, orgId, updatedBy); rollbackErr != nil {
+			if _, rollbackErr := h.apiService.UpdateAPIByHandle(r.Context(), restApiId, existingAPI, orgId, updatedBy); rollbackErr != nil {
 				h.slogger.Error("Failed to restore operations after spec persist failure",
 					"api", restApiId, "error", rollbackErr)
 			}

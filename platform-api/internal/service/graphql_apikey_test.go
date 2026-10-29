@@ -63,7 +63,7 @@ func TestGraphQLAPIKey_CreateAndRevoke_Success(t *testing.T) {
 	keyRepo := &dpCapturingAPIKeyRepo{}
 	events := NewGatewayEventsService(dpNoopEventHub{}, newTestIdentityService(), newTestLogger())
 
-	svc := NewAPIKeyService(apiRepo, artifactRepo, keyRepo, events, &noopAuditRepo{}, nil, newTestLogger())
+	svc := NewAPIKeyService(apiRepo, artifactRepo, keyRepo, events, nil, newTestLogger(), nil)
 
 	plaintextKey := "test-plaintext-key"
 	createReq := &api.CreateAPIKeyRequest{
@@ -97,7 +97,7 @@ func TestGraphQLAPIKey_Revoke_NotCreator_Forbidden(t *testing.T) {
 	keyRepo := &dpCapturingAPIKeyRepo{}
 	events := NewGatewayEventsService(dpNoopEventHub{}, newTestIdentityService(), newTestLogger())
 
-	svc := NewAPIKeyService(apiRepo, artifactRepo, keyRepo, events, &noopAuditRepo{}, nil, newTestLogger())
+	svc := NewAPIKeyService(apiRepo, artifactRepo, keyRepo, events, nil, newTestLogger(), nil)
 
 	plaintextKey := "test-plaintext-key"
 	createReq := &api.CreateAPIKeyRequest{ApiKey: &plaintextKey, DisplayName: "My GraphQL Key"}

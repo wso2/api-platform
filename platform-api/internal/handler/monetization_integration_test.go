@@ -112,8 +112,8 @@ func setupMonetizationHandlerTestEnv(t *testing.T) http.Handler {
 		repository.NewGatewayRepo(db),
 		repository.NewOrganizationRepo(db),
 		service.NewGatewayEventsService(noopEventHub{}, identityService, slog.Default()),
-		noopAudit{},
 		slog.Default(),
+		nil,
 	)
 	planService.SetPricingRepositories(meterRepo, pricingRepo)
 	// Meters and pricing are kept here, so no API Portal is involved.

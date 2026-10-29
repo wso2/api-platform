@@ -80,13 +80,6 @@ func (r *recordingAPIKeyRepo) GetByArtifactAndName(artifactUUID, name string) (*
 	return r.existing[name], nil
 }
 
-type stubCreateAuditRepo struct {
-	repository.AuditRepository
-}
-
-func (stubCreateAuditRepo) Record(action, resourceUUID, resourceType, orgUUID, performedBy string) error {
-	return nil
-}
 
 // newCreateAPIKeyTestService wires an APIKeyService against in-memory stubs and returns it
 // alongside the key repo, so a test can assert on what was actually persisted.
@@ -108,9 +101,9 @@ func newCreateAPIKeyTestService(t *testing.T, existing map[string]*model.APIKey)
 		}},
 		keyRepo,
 		NewGatewayEventsService(&capturingEventHub{}, newTestIdentityService(), newTestLogger()),
-		stubCreateAuditRepo{},
 		nil, // defaults to [sha256]
 		newTestLogger(),
+		nil,
 	)
 	return svc, keyRepo
 }

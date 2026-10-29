@@ -18,6 +18,7 @@
 package service
 
 import (
+	"context"
 	"testing"
 
 	"github.com/wso2/api-platform/platform-api/internal/constants"
@@ -51,13 +52,13 @@ func TestRegisterGatewayVersionStored(t *testing.T) {
 			service := &GatewayService{
 				gatewayRepo: mockGatewayRepo,
 				orgRepo:     &mockOrganizationRepository{org: &model.Organization{ID: orgID}},
-				auditRepo:   &noopAuditRepo{},
+				audit:       nil,
 				identity:    newTestIdentityService(),
 			}
 
 			// Unique handle per case so uniqueness checks never collide.
 			gatewayID := "gw-version-case-" + string(rune('a'+i))
-			_, err := service.RegisterGateway(
+			_, err := service.RegisterGateway(context.Background(),
 				orgID,
 				&gatewayID,
 				"Version Case Gateway",

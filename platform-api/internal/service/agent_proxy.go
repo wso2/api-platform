@@ -562,7 +562,7 @@ func (s *AgentProxyService) fetchStoredAgentCard(orgUUID, handle string, noCache
 // either: a failure returns apperror.Internal's fixed message, with the cause
 // confined to the internal-only detail.
 func (s *AgentProxyService) resolveStoredAgentCardAuth(orgUUID string, auth *model.UpstreamAuth) (string, string, error) {
-	if auth == nil || auth.Type == string(api.None) || auth.Header == "" {
+	if auth == nil || auth.Type == string(api.UpstreamAuthTypeNone) || auth.Header == "" {
 		return "", "", nil
 	}
 	if handle := extractSecretHandle(auth.Value); handle != "" {
@@ -584,7 +584,7 @@ func (s *AgentProxyService) resolveStoredAgentCardAuth(orgUUID string, auth *mod
 // header the fetch sends. Nothing here is stored or resolved through the secret
 // store: the value is the caller's own credential, used for this request alone.
 func suppliedAgentCardAuthHeader(auth *api.UpstreamAuth) (string, string) {
-	if auth == nil || auth.Type == nil || *auth.Type == api.None {
+	if auth == nil || auth.Type == nil || *auth.Type == api.UpstreamAuthTypeNone {
 		return "", ""
 	}
 	if auth.Header == nil || auth.Value == nil {
@@ -858,7 +858,7 @@ func validateEndpointAuthComplete(endpoint *model.UpstreamEndpoint, name string)
 	}
 	// "none" is the documented way to remove authentication, so it is the one
 	// type that is complete without a credential.
-	if endpoint.Auth.Type == string(api.None) {
+	if endpoint.Auth.Type == string(api.UpstreamAuthTypeNone) {
 		return nil
 	}
 	if strings.TrimSpace(endpoint.Auth.Value) == "" {

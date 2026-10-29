@@ -40,6 +40,7 @@ type LLMProxyAPIKeyService struct {
 	apiKeyRepo           repository.APIKeyRepository
 	gatewayEventsService *GatewayEventsService
 	identity             *IdentityService
+	audit                *AuditService
 	slogger              *slog.Logger
 }
 
@@ -50,6 +51,7 @@ func NewLLMProxyAPIKeyService(
 	apiKeyRepo repository.APIKeyRepository,
 	gatewayEventsService *GatewayEventsService,
 	identity *IdentityService,
+	audit *AuditService,
 	slogger *slog.Logger,
 ) *LLMProxyAPIKeyService {
 	return &LLMProxyAPIKeyService{
@@ -58,6 +60,7 @@ func NewLLMProxyAPIKeyService(
 		apiKeyRepo:           apiKeyRepo,
 		gatewayEventsService: gatewayEventsService,
 		identity:             identity,
+		audit:                audit,
 		slogger:              slogger,
 	}
 }
@@ -137,8 +140,22 @@ func (s *LLMProxyAPIKeyService) DeleteLLMProxyAPIKey(
 
 	if err := s.apiKeyRepo.Delete(proxy.UUID, keyName); err != nil {
 		s.slogger.Error("Failed to delete LLM proxy API key from database", "proxyId", proxyID, "keyName", keyName, "error", err)
+		if IsAuditableFailure(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Action: model.AuditActionRevoke, ResourceType: model.AuditResourceTypeLLMAPIKey,
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgID, PerformedBy: userID,
+				ResourceUUID: existingKey.UUID, ResourceName: keyName,
+				EventData: map[string]any{"proxyId": proxyID},
+			})
+		}
 		return fmt.Errorf("failed to delete API key: %w", err)
 	}
+	s.audit.Record(ctx, &AuditEvent{
+		Action: model.AuditActionRevoke, ResourceType: model.AuditResourceTypeLLMAPIKey,
+		Outcome: model.AuditOutcomeSucceeded, OrganizationUUID: orgID, PerformedBy: userID,
+		ResourceUUID: existingKey.UUID, ResourceName: keyName,
+		EventData: map[string]any{"proxyId": proxyID},
+	})
 
 	s.slogger.Info("Successfully deleted LLM proxy API key", "proxyId", proxyID, "keyName", keyName)
 
@@ -274,8 +291,22 @@ func (s *LLMProxyAPIKeyService) CreateLLMProxyAPIKey(
 			return nil, apperror.LLMProxyAPIKeyConflict.New()
 		}
 		s.slogger.Error("Failed to persist LLM proxy API key to database", "proxyId", proxyID, "keyName", name, "error", err)
+		if IsAuditableFailure(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Action: model.AuditActionCreate, ResourceType: model.AuditResourceTypeLLMAPIKey,
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgID, PerformedBy: userID,
+				ResourceUUID: apiKeyUUID, ResourceName: name,
+				EventData: map[string]any{"proxyId": proxyID},
+			})
+		}
 		return nil, fmt.Errorf("failed to persist API key: %w", err)
 	}
+	s.audit.Record(ctx, &AuditEvent{
+		Action: model.AuditActionCreate, ResourceType: model.AuditResourceTypeLLMAPIKey,
+		Outcome: model.AuditOutcomeSucceeded, OrganizationUUID: orgID, PerformedBy: userID,
+		ResourceUUID: apiKeyUUID, ResourceName: name,
+		EventData: map[string]any{"proxyId": proxyID},
+	})
 
 	var expiresAt *string
 	if req.ExpiresAt != nil {

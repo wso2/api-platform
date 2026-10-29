@@ -40,7 +40,7 @@ type ApplicationService struct {
 	orgRepo              repository.OrganizationRepository
 	apiRepo              repository.APIRepository
 	gatewayEventsService *GatewayEventsService
-	auditRepo            repository.AuditRepository
+	audit                *AuditService
 	identity             *IdentityService
 	slogger              *slog.Logger
 }
@@ -75,9 +75,9 @@ func NewApplicationService(
 	orgRepo repository.OrganizationRepository,
 	apiRepo repository.APIRepository,
 	gatewayEventsService *GatewayEventsService,
-	auditRepo repository.AuditRepository,
 	identity *IdentityService,
 	slogger *slog.Logger,
+	audit *AuditService,
 ) *ApplicationService {
 	return &ApplicationService{
 		appRepo:              appRepo,
@@ -85,13 +85,13 @@ func NewApplicationService(
 		orgRepo:              orgRepo,
 		apiRepo:              apiRepo,
 		gatewayEventsService: gatewayEventsService,
-		auditRepo:            auditRepo,
+		audit:                audit,
 		identity:             identity,
 		slogger:              slogger,
 	}
 }
 
-func (s *ApplicationService) CreateApplication(req *api.CreateApplicationRequest, orgID, createdBy string) (*api.Application, error) {
+func (s *ApplicationService) CreateApplication(ctx context.Context, req *api.CreateApplicationRequest, orgID, createdBy string) (*api.Application, error) {
 	if strings.TrimSpace(req.DisplayName) == "" {
 		return nil, apperror.ValidationFailed.New("The displayName field is required.")
 	}
@@ -165,9 +165,21 @@ func (s *ApplicationService) CreateApplication(req *api.CreateApplicationRequest
 	}
 
 	if err := s.appRepo.CreateApplication(app); err != nil {
+		if IsAuditableFailure(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Action: model.AuditActionCreate, ResourceType: model.AuditResourceTypeApplication,
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgID, PerformedBy: actor,
+				ResourceUUID: app.UUID, ResourceName: app.Handle,
+			})
+		}
 		return nil, err
 	}
-	_ = s.auditRepo.Record("CREATE", app.UUID, "application", orgID, actor)
+	s.audit.Record(ctx, &AuditEvent{
+		OrganizationUUID: orgID, Action: model.AuditActionCreate,
+		ResourceType: model.AuditResourceTypeApplication, Outcome: model.AuditOutcomeSucceeded,
+		PerformedBy: actor, ResourceUUID: app.UUID, ResourceName: app.Handle,
+		EventData: applicationAuditFields(app),
+	})
 
 	return s.modelToApplicationResponse(app)
 }
@@ -267,6 +279,7 @@ func (s *ApplicationService) UpdateApplication(ctx context.Context, appIDOrHandl
 	if err := utils.ValidateHandleImmutableRequired(app.Handle, req.Id); err != nil {
 		return nil, err
 	}
+	before := applicationAuditFields(app)
 
 	name := strings.TrimSpace(req.DisplayName)
 	if name == "" {
@@ -298,9 +311,21 @@ func (s *ApplicationService) UpdateApplication(ctx context.Context, appIDOrHandl
 	app.UpdatedBy = userID
 
 	if err := s.appRepo.UpdateApplication(app); err != nil {
+		if IsAuditableFailure(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Action: model.AuditActionUpdate, ResourceType: model.AuditResourceTypeApplication,
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: app.OrganizationUUID, PerformedBy: userID,
+				ResourceUUID: app.UUID, ResourceName: app.Handle,
+			})
+		}
 		return nil, err
 	}
-	_ = s.auditRepo.Record("UPDATE", app.UUID, "application", app.OrganizationUUID, userID)
+	s.audit.Record(ctx, &AuditEvent{
+		OrganizationUUID: app.OrganizationUUID, Action: model.AuditActionUpdate,
+		ResourceType: model.AuditResourceTypeApplication, Outcome: model.AuditOutcomeSucceeded,
+		PerformedBy: userID, ResourceUUID: app.UUID, ResourceName: app.Handle,
+		EventData: AuditDiff(before, applicationAuditFields(app)),
+	})
 
 	broadcastKeys, err := s.listMappedAPIKeysForBroadcast(app.UUID)
 	if err != nil {
@@ -334,9 +359,21 @@ func (s *ApplicationService) DeleteApplication(ctx context.Context, appIDOrHandl
 	}
 
 	if err := s.appRepo.DeleteApplication(app.UUID, orgID); err != nil {
+		if IsAuditableFailure(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Action: model.AuditActionDelete, ResourceType: model.AuditResourceTypeApplication,
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgID, PerformedBy: actor,
+				ResourceUUID: app.UUID, ResourceName: app.Handle,
+			})
+		}
 		return err
 	}
-	_ = s.auditRepo.Record("DELETE", app.UUID, "application", orgID, actor)
+	s.audit.Record(ctx, &AuditEvent{
+		OrganizationUUID: orgID, Action: model.AuditActionDelete,
+		ResourceType: model.AuditResourceTypeApplication, Outcome: model.AuditOutcomeSucceeded,
+		PerformedBy: actor, ResourceUUID: app.UUID, ResourceName: app.Handle,
+		EventData: map[string]any{"type": app.Type},
+	})
 
 	// Broadcast an empty mapping set so the gateways clear every key for this application. The
 	// removed keys' artifacts are passed as hints so the correct gateways are targeted (the
@@ -422,8 +459,12 @@ func (s *ApplicationService) AddMappedAPIKeys(ctx context.Context, appIDOrHandle
 	}
 
 	if err := s.appRepo.AddApplicationAPIKeys(app.UUID, apiKeyIDs); err != nil {
+		if IsAuditableFailure(err) {
+			s.audit.Record(ctx, applicationChange(app, userID, model.AuditOutcomeFailed, "apiKeys", "added", req.ApiKeys))
+		}
 		return nil, err
 	}
+	s.audit.Record(ctx, applicationChange(app, userID, model.AuditOutcomeSucceeded, "apiKeys", "added", req.ApiKeys))
 
 	keys, err := s.buildMappedAPIKeyList(app.UUID)
 	if err != nil {
@@ -443,7 +484,7 @@ func (s *ApplicationService) AddMappedAPIKeys(ctx context.Context, appIDOrHandle
 
 // CreateApplicationFromWebhook creates an application reconciled from a API Portal
 // application.created/updated event. DP applications carry no project.
-func (s *ApplicationService) CreateApplicationFromWebhook(handle, name, description, appType, orgID string) (*api.Application, error) {
+func (s *ApplicationService) CreateApplicationFromWebhook(ctx context.Context, handle, name, description, appType, orgID string) (*api.Application, error) {
 	id := strings.TrimSpace(handle)
 	desc := strings.TrimSpace(description)
 	// ProjectId is intentionally left empty: webhook-reconciled applications have no project.
@@ -453,7 +494,7 @@ func (s *ApplicationService) CreateApplicationFromWebhook(handle, name, descript
 		Type:        api.ApplicationType(strings.TrimSpace(appType)),
 		Description: &desc,
 	}
-	return s.CreateApplication(req, orgID, "")
+	return s.CreateApplication(ctx, req, orgID, "")
 }
 
 // SetAPIKeyApplication reconciles which application an API key belongs to, from a API Portal
@@ -541,7 +582,7 @@ func (s *ApplicationService) SetAPIKeyApplication(ctx context.Context, keyName, 
 	return nil
 }
 
-func (s *ApplicationService) AddApplicationAssociations(appIDOrHandle string, req *AddApplicationAssociationsRequest, orgID string) (*ApplicationAssociationListResponse, error) {
+func (s *ApplicationService) AddApplicationAssociations(ctx context.Context, appIDOrHandle string, req *AddApplicationAssociationsRequest, orgID, userID string) (*ApplicationAssociationListResponse, error) {
 	app, err := s.getApplication(appIDOrHandle, orgID)
 	if err != nil {
 		return nil, err
@@ -553,8 +594,12 @@ func (s *ApplicationService) AddApplicationAssociations(appIDOrHandle string, re
 	}
 
 	if err := s.appRepo.AddApplicationAssociations(app.UUID, targetUUIDs); err != nil {
+		if IsAuditableFailure(err) {
+			s.audit.Record(ctx, applicationChange(app, userID, model.AuditOutcomeFailed, "associations", "added", req.Associations))
+		}
 		return nil, err
 	}
+	s.audit.Record(ctx, applicationChange(app, userID, model.AuditOutcomeSucceeded, "associations", "added", req.Associations))
 
 	return s.buildApplicationAssociationListPaginated(app.UUID, -1, 0)
 }
@@ -575,9 +620,14 @@ func (s *ApplicationService) RemoveMappedAPIKey(ctx context.Context, appIDOrHand
 		return err
 	}
 
+	removed := []api.APIKeyMappingSelector{{KeyId: keyID, AssociatedEntity: api.APIKeyMappingAssociatedEntity{Id: entityID}}}
 	if err := s.appRepo.RemoveApplicationAPIKey(app.UUID, key.ID); err != nil {
+		if IsAuditableFailure(err) {
+			s.audit.Record(ctx, applicationChange(app, userID, model.AuditOutcomeFailed, "apiKeys", "removed", removed))
+		}
 		return err
 	}
+	s.audit.Record(ctx, applicationChange(app, userID, model.AuditOutcomeSucceeded, "apiKeys", "removed", removed))
 
 	broadcastKeys, err := s.listMappedAPIKeysForBroadcast(app.UUID)
 	if err != nil {
@@ -591,7 +641,7 @@ func (s *ApplicationService) RemoveMappedAPIKey(ctx context.Context, appIDOrHand
 	return nil
 }
 
-func (s *ApplicationService) RemoveApplicationAssociation(appIDOrHandle, associationIDOrHandle, orgID string) error {
+func (s *ApplicationService) RemoveApplicationAssociation(ctx context.Context, appIDOrHandle, associationIDOrHandle, orgID, userID string) error {
 	app, err := s.getApplication(appIDOrHandle, orgID)
 	if err != nil {
 		return err
@@ -609,7 +659,26 @@ func (s *ApplicationService) RemoveApplicationAssociation(appIDOrHandle, associa
 		return err
 	}
 
-	return s.appRepo.RemoveApplicationAssociation(app.UUID, target.UUID)
+	removed := []ApplicationAssociationSelector{{Id: target.Handle, Kind: target.Type}}
+	if err := s.appRepo.RemoveApplicationAssociation(app.UUID, target.UUID); err != nil {
+		if IsAuditableFailure(err) {
+			s.audit.Record(ctx, applicationChange(app, userID, model.AuditOutcomeFailed, "associations", "removed", removed))
+		}
+		return err
+	}
+	s.audit.Record(ctx, applicationChange(app, userID, model.AuditOutcomeSucceeded, "associations", "removed", removed))
+	return nil
+}
+
+// applicationChange is the audit event for linking or unlinking something to an
+// application, recorded as an update of the application, e.g. {"apiKeys": {"added": [...]}}.
+func applicationChange(app *model.Application, userID, outcome, field, change string, items any) *AuditEvent {
+	return &AuditEvent{
+		OrganizationUUID: app.OrganizationUUID, Action: model.AuditActionUpdate,
+		ResourceType: model.AuditResourceTypeApplication, Outcome: outcome, PerformedBy: userID,
+		ResourceUUID: app.UUID, ResourceName: app.Handle,
+		EventData: map[string]any{field: map[string]any{change: items}},
+	}
 }
 
 func (s *ApplicationService) HandleExistsCheck(orgID string) func(string) bool {
@@ -1123,4 +1192,12 @@ func (s *ApplicationService) broadcastApplicationMappingUpdateWithArtifactHints(
 	}
 
 	return nil
+}
+
+// applicationAuditFields lists the application fields recorded in audit events.
+func applicationAuditFields(app *model.Application) map[string]any {
+	return map[string]any{
+		"displayName": app.Name,
+		"type":        app.Type,
+	}
 }

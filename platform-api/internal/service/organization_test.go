@@ -18,13 +18,14 @@
 package service
 
 import (
+	"context"
+	"database/sql"
 	"errors"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
 
-	"database/sql"
 
 	"github.com/wso2/api-platform/platform-api/internal/database"
 	"github.com/wso2/api-platform/platform-api/internal/model"
@@ -60,7 +61,7 @@ func setupOrganizationTestEnv(t *testing.T) (*OrganizationService, *database.DB,
 	svc := &OrganizationService{
 		orgRepo:            orgRepo,
 		projectRepo:        repository.NewProjectRepo(db),
-		auditRepo:          &noopAuditRepo{},
+		audit:               nil,
 		userOrgMappingRepo: repository.NewUserOrganizationMappingRepo(db),
 		identity:           NewIdentityService(repository.NewUserIdentityMappingRepo(db)),
 		slogger:            slog.Default(),
@@ -82,7 +83,7 @@ func TestOrganizationService_RegisterOrganization_RecordsMembership(t *testing.T
 		t.Fatalf("ToInternalUUID failed: %v", err)
 	}
 
-	org, err := svc.RegisterOrganization("org-register-1", "register-org", "Register Org", "us", "", actorUUID)
+	org, err := svc.RegisterOrganization(context.Background(), "org-register-1", "register-org", "Register Org", "us", "", actorUUID)
 	if err != nil {
 		t.Fatalf("RegisterOrganization failed: %v", err)
 	}

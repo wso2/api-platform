@@ -78,7 +78,7 @@ type APIKeyService struct {
 	artifactRepo         repository.ArtifactRepository
 	apiKeyRepo           repository.APIKeyRepository
 	gatewayEventsService *GatewayEventsService
-	auditRepo            repository.AuditRepository
+	audit                *AuditService
 	hashingAlgorithms    []string
 	slogger              *slog.Logger
 }
@@ -86,7 +86,7 @@ type APIKeyService struct {
 // NewAPIKeyService creates a new API key service instance.
 // hashingAlgorithms specifies the algorithms used to hash API keys before storage and broadcast.
 // If empty, defaults to [sha256].
-func NewAPIKeyService(apiRepo repository.APIRepository, artifactRepo repository.ArtifactRepository, apiKeyRepo repository.APIKeyRepository, gatewayEventsService *GatewayEventsService, auditRepo repository.AuditRepository, hashingAlgorithms []string, slogger *slog.Logger) *APIKeyService {
+func NewAPIKeyService(apiRepo repository.APIRepository, artifactRepo repository.ArtifactRepository, apiKeyRepo repository.APIKeyRepository, gatewayEventsService *GatewayEventsService, hashingAlgorithms []string, slogger *slog.Logger, audit *AuditService) *APIKeyService {
 	if len(hashingAlgorithms) == 0 {
 		hashingAlgorithms = []string{defaultHashingAlgorithm}
 	}
@@ -95,7 +95,7 @@ func NewAPIKeyService(apiRepo repository.APIRepository, artifactRepo repository.
 		artifactRepo:         artifactRepo,
 		apiKeyRepo:           apiKeyRepo,
 		gatewayEventsService: gatewayEventsService,
-		auditRepo:            auditRepo,
+		audit:                audit,
 		hashingAlgorithms:    hashingAlgorithms,
 		slogger:              slogger,
 	}
@@ -590,9 +590,21 @@ func (s *APIKeyService) CreateAPIKey(ctx context.Context, apiHandle, kind, orgId
 	}
 	if err := s.apiKeyRepo.Create(dbKey); err != nil {
 		s.slogger.Error("Failed to persist API key to database", "apiHandle", apiHandle, "keyName", keyName, "error", err)
+		if IsAuditableFailure(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Action: model.AuditActionCreate, ResourceType: model.AuditResourceTypeAPIKey,
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgId, PerformedBy: userId,
+				ResourceUUID: apiKeyUUID, ResourceName: keyName,
+			})
+		}
 		return nil, fmt.Errorf("failed to persist API key: %w", err)
 	}
-	_ = s.auditRepo.Record("CREATE", apiKeyUUID, "api_key", orgId, userId)
+	s.audit.Record(ctx, &AuditEvent{
+		OrganizationUUID: orgId, Action: model.AuditActionCreate,
+		ResourceType: model.AuditResourceTypeAPIKey, Outcome: model.AuditOutcomeSucceeded,
+		PerformedBy: userId, ResourceUUID: apiKeyUUID, ResourceName: keyName,
+		EventData: map[string]any{"apiHandle": apiHandle},
+	})
 
 	// Build the API key created event — send the hash JSON and masked key, not the plain key
 	event := APIKeyCreatedEventFromModel(dbKey)
@@ -713,11 +725,21 @@ func (s *APIKeyService) UpdateAPIKey(ctx context.Context, apiHandle, kind, orgId
 	}
 	if err := s.apiKeyRepo.Update(dbKey); err != nil {
 		s.slogger.Error("Failed to update API key in database", "apiHandle", apiHandle, "keyName", keyName, "error", err)
+		if IsAuditableFailure(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Action: model.AuditActionUpdate, ResourceType: model.AuditResourceTypeAPIKey,
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgId, PerformedBy: userId,
+				ResourceUUID: existingKey.UUID, ResourceName: keyName,
+			})
+		}
 		return fmt.Errorf("failed to update API key in database: %w", err)
 	}
-	if s.auditRepo != nil {
-		_ = s.auditRepo.Record("UPDATE", existingKey.UUID, "api_key", orgId, userId)
-	}
+	s.audit.Record(ctx, &AuditEvent{
+		OrganizationUUID: orgId, Action: model.AuditActionUpdate,
+		ResourceType: model.AuditResourceTypeAPIKey, Outcome: model.AuditOutcomeSucceeded,
+		PerformedBy: userId, ResourceUUID: existingKey.UUID, ResourceName: keyName,
+		EventData: map[string]any{"apiHandle": apiHandle},
+	})
 
 	// Build the API key updated event — send the hash JSON and masked key, not the plain key
 	event := &model.APIKeyUpdatedEvent{
@@ -815,11 +837,21 @@ func (s *APIKeyService) RevokeAPIKey(ctx context.Context, apiHandle, kind, orgId
 	// Revoke the API key in the database before broadcasting.
 	if err := s.apiKeyRepo.Revoke(apiId, keyName, userId); err != nil {
 		s.slogger.Error("Failed to revoke API key in database", "apiHandle", apiHandle, "keyName", keyName, "error", err)
+		if IsAuditableFailure(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Action: model.AuditActionRevoke, ResourceType: model.AuditResourceTypeAPIKey,
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgId, PerformedBy: userId,
+				ResourceUUID: revokeKey.UUID, ResourceName: keyName,
+			})
+		}
 		return fmt.Errorf("failed to revoke API key in database: %w", err)
 	}
-	if s.auditRepo != nil {
-		_ = s.auditRepo.Record("REVOKE", revokeKey.UUID, "api_key", orgId, userId)
-	}
+	s.audit.Record(ctx, &AuditEvent{
+		OrganizationUUID: orgId, Action: model.AuditActionRevoke,
+		ResourceType: model.AuditResourceTypeAPIKey, Outcome: model.AuditOutcomeSucceeded,
+		PerformedBy: userId, ResourceUUID: revokeKey.UUID, ResourceName: keyName,
+		EventData: map[string]any{"apiHandle": apiHandle},
+	})
 
 	// Build the API key revoked event
 	event := &model.APIKeyRevokedEvent{
@@ -893,11 +925,21 @@ func (s *APIKeyService) DeleteAPIKey(ctx context.Context, apiHandle, kind, orgId
 
 	if err := s.apiKeyRepo.Delete(apiId, keyName); err != nil {
 		s.slogger.Error("Failed to delete API key from database", "apiHandle", apiHandle, "keyName", keyName, "error", err)
+		if IsAuditableFailure(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Action: model.AuditActionDelete, ResourceType: model.AuditResourceTypeAPIKey,
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgId, PerformedBy: userId,
+				ResourceUUID: existingKey.UUID, ResourceName: keyName,
+			})
+		}
 		return fmt.Errorf("failed to delete API key: %w", err)
 	}
-	if s.auditRepo != nil {
-		_ = s.auditRepo.Record("DELETE", existingKey.UUID, "api_key", orgId, userId)
-	}
+	s.audit.Record(ctx, &AuditEvent{
+		OrganizationUUID: orgId, Action: model.AuditActionDelete,
+		ResourceType: model.AuditResourceTypeAPIKey, Outcome: model.AuditOutcomeSucceeded,
+		PerformedBy: userId, ResourceUUID: existingKey.UUID, ResourceName: keyName,
+		EventData: map[string]any{"apiHandle": apiHandle},
+	})
 
 	s.slogger.Info("Successfully deleted API key", "apiHandle", apiHandle, "kind", kind, "keyName", keyName)
 

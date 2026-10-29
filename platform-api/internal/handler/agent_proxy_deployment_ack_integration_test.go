@@ -54,8 +54,8 @@ func setupAgentAckEnv(t *testing.T) *agentAckEnv {
 	registry := repository.NewArtifactTableRegistry()
 	deploymentRepo := repository.NewDeploymentRepo(env.db, registry)
 	acks := service.NewDeploymentService(nil, repository.NewArtifactRepo(env.db, registry), deploymentRepo,
-		repository.NewGatewayRepo(env.db), nil, nil, nil, nil, nil,
-		service.NewArtifactDefinitions(), nil, agentDeployConfig(), slog.Default())
+		repository.NewGatewayRepo(env.db), nil, nil, nil, nil,
+		service.NewArtifactDefinitions(), nil, agentDeployConfig(), slog.Default(), nil)
 
 	var proxyUUID string
 	if err := env.db.QueryRow(`SELECT uuid FROM agent_proxies WHERE handle = ? AND organization_uuid = ?`,

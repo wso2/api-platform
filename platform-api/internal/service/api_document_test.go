@@ -18,6 +18,7 @@
 package service
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"log/slog"
@@ -166,7 +167,7 @@ func newTestDocumentService() (*APIDocumentService, *mockDocumentRepository, *re
 	docRepo := &mockDocumentRepository{}
 	auditRepo := &recordingAuditRepo{}
 	artifactRepo := &mockArtifactRepository{}
-	svc := NewAPIDocumentService(docRepo, artifactRepo, auditRepo, slog.New(slog.NewTextHandler(discard{}, nil)))
+	svc := NewAPIDocumentService(docRepo, artifactRepo, auditRepo, nil, slog.New(slog.NewTextHandler(discard{}, nil)))
 	return svc, docRepo, auditRepo, artifactRepo
 }
 
@@ -192,7 +193,7 @@ func TestAPIDocumentService_CreateApiDocument_RejectsReservedType(t *testing.T) 
 		t.Run(tc.name, func(t *testing.T) {
 			svc, docRepo, _, _ := newTestDocumentService()
 
-			_, err := svc.CreateApiDocument(&dto.CreateAPIDocumentRequest{
+			_, err := svc.CreateApiDocument(context.Background(), &dto.CreateAPIDocumentRequest{
 				Type:        tc.docType,
 				DisplayName: "attempt",
 			}, "org-1", "alice", "artifact-1")
@@ -211,7 +212,7 @@ func TestAPIDocumentService_CreateApiDocument_RejectsReservedType(t *testing.T) 
 func TestAPIDocumentService_CreateApiDocument_RejectsReservedHandle(t *testing.T) {
 	svc, docRepo, _, _ := newTestDocumentService()
 
-	_, err := svc.CreateApiDocument(&dto.CreateAPIDocumentRequest{
+	_, err := svc.CreateApiDocument(context.Background(), &dto.CreateAPIDocumentRequest{
 		Type:        constants.DocumentTypeHowTo,
 		DisplayName: "Getting started",
 		Handle:      constants.DocumentHandleThumbnail,
@@ -239,7 +240,7 @@ func TestAPIDocumentService_CreateApiDocument_ForbiddenOtherNameRejected(t *test
 	}
 
 	svc, _, _, _ := newTestDocumentService()
-	_, err := svc.CreateApiDocument(&dto.CreateAPIDocumentRequest{
+	_, err := svc.CreateApiDocument(context.Background(), &dto.CreateAPIDocumentRequest{
 		Type:          constants.DocumentTypeOther,
 		OtherTypeName: forbiddenName,
 		DisplayName:   "benign display",
@@ -256,7 +257,7 @@ func TestAPIDocumentService_CreateApiDocument_AllowsDOCPrefixedOtherTypeName(t *
 	cases := []string{"DOC_HowTo", "doc_samples", "DOC_Other", "DOC_Custom"}
 	for _, name := range cases {
 		svc, docRepo, _, _ := newTestDocumentService()
-		_, err := svc.CreateApiDocument(&dto.CreateAPIDocumentRequest{
+		_, err := svc.CreateApiDocument(context.Background(), &dto.CreateAPIDocumentRequest{
 			Type:          constants.DocumentTypeOther,
 			OtherTypeName: name,
 			DisplayName:   "fine display",
@@ -295,7 +296,7 @@ func TestAPIDocumentService_UpdateApiDocument_AllowsDOCPrefixedOtherTypeName(t *
 func TestAPIDocumentService_CreateApiDocument_DuplicateDisplayNameAllowed(t *testing.T) {
 	svc, docRepo, _, _ := newTestDocumentService()
 
-	_, err := svc.CreateApiDocument(&dto.CreateAPIDocumentRequest{
+	_, err := svc.CreateApiDocument(context.Background(), &dto.CreateAPIDocumentRequest{
 		Type:        constants.DocumentTypeHowTo,
 		DisplayName: "Getting started",
 	}, "org-1", "alice", "artifact-1")
@@ -313,7 +314,7 @@ func TestAPIDocumentService_CreateApiDocument_DuplicateHandleRejected(t *testing
 	svc, docRepo, _, _ := newTestDocumentService()
 	docRepo.handleExistsResult = true
 
-	_, err := svc.CreateApiDocument(&dto.CreateAPIDocumentRequest{
+	_, err := svc.CreateApiDocument(context.Background(), &dto.CreateAPIDocumentRequest{
 		Type:        constants.DocumentTypeHowTo,
 		DisplayName: "Different name",
 		Handle:      "overview",
@@ -1029,7 +1030,7 @@ func TestAPIDocumentService_UpsertDocument_CreateRecordsCreateAudit(t *testing.T
 		FileName:    "logo.png",
 		Content:     []byte("\x89PNG\r\n\x1a\n"),
 	}
-	if err := svc.UpsertDocument(req, "org-1", "alice", "artifact-1"); err != nil {
+	if err := svc.UpsertDocument(context.Background(), req, "org-1", "alice", "artifact-1"); err != nil {
 		t.Fatalf("UpsertDocument err = %v", err)
 	}
 	if len(docRepo.upsertCalls) != 1 {
@@ -1060,7 +1061,7 @@ func TestAPIDocumentService_UpsertDocument_ExistingRowIsUpdateAudit(t *testing.T
 		FileName:    "new.png",
 		Content:     []byte("\x89PNG\r\n\x1a\n"),
 	}
-	if err := svc.UpsertDocument(req, "org-1", "bob", "artifact-1"); err != nil {
+	if err := svc.UpsertDocument(context.Background(), req, "org-1", "bob", "artifact-1"); err != nil {
 		t.Fatalf("UpsertDocument err = %v", err)
 	}
 	stored := docRepo.upsertCalls[0].doc
@@ -1077,10 +1078,10 @@ func TestAPIDocumentService_UpsertDocument_ExistingRowIsUpdateAudit(t *testing.T
 
 func TestAPIDocumentService_UpsertDocument_Validation(t *testing.T) {
 	svc, _, _, _ := newTestDocumentService()
-	if err := svc.UpsertDocument(nil, "org-1", "alice", "artifact-1"); err == nil || !apperror.ValidationFailed.Is(err) {
+	if err := svc.UpsertDocument(context.Background(), nil, "org-1", "alice", "artifact-1"); err == nil || !apperror.ValidationFailed.Is(err) {
 		t.Errorf("nil request: err = %v, want ValidationFailed", err)
 	}
-	if err := svc.UpsertDocument(&dto.CreateAPIDocumentRequest{Type: constants.DocumentTypeThumbnail}, "org-1", "alice", ""); err == nil || !apperror.ValidationFailed.Is(err) {
+	if err := svc.UpsertDocument(context.Background(), &dto.CreateAPIDocumentRequest{Type: constants.DocumentTypeThumbnail}, "org-1", "alice", ""); err == nil || !apperror.ValidationFailed.Is(err) {
 		t.Errorf("empty artifact UUID: err = %v, want ValidationFailed", err)
 	}
 }
@@ -1088,7 +1089,7 @@ func TestAPIDocumentService_UpsertDocument_Validation(t *testing.T) {
 func TestAPIDocumentService_UpsertDocument_RepoErrorIsSurfaced(t *testing.T) {
 	svc, docRepo, _, _ := newTestDocumentService()
 	docRepo.upsertDocErr = errors.New("disk full")
-	err := svc.UpsertDocument(&dto.CreateAPIDocumentRequest{
+	err := svc.UpsertDocument(context.Background(), &dto.CreateAPIDocumentRequest{
 		Type: constants.DocumentTypeThumbnail, Handle: constants.DocumentHandleThumbnail,
 		DisplayName: constants.DocumentDisplayNameThumbnail,
 		Content:     []byte("\x89PNG\r\n\x1a\n"),
@@ -1178,7 +1179,7 @@ func TestAPIDocumentService_CreateDocument_GeneratesHandleFromDisplayName(t *tes
 		DisplayName: "Release Notes",
 		Content:     []byte("# body"),
 	}
-	handle, err := svc.CreateDocument(req, "org", "alice", "artifact-1")
+	handle, err := svc.CreateDocument(context.Background(), req, "org", "alice", "artifact-1")
 	if err != nil {
 		t.Fatalf("CreateDocument err = %v", err)
 	}
@@ -1204,7 +1205,7 @@ func TestAPIDocumentService_CreateDocument_SynthesisesMarkdownFileName(t *testin
 		DisplayName: "Overview",
 		Content:     []byte("# body"),
 	}
-	if _, err := svc.CreateDocument(req, "org", "alice", "artifact-1"); err != nil {
+	if _, err := svc.CreateDocument(context.Background(), req, "org", "alice", "artifact-1"); err != nil {
 		t.Fatalf("err = %v", err)
 	}
 	if got := docRepo.createdDocs[0].FileName; got != "overview.md" {
@@ -1223,7 +1224,7 @@ func TestAPIDocumentService_CreateDocument_UniqueViolationIsConflict(t *testing.
 	// SQL Server markers; the SQLite flavour is enough here.
 	docRepo.createDocErr = errors.New("UNIQUE constraint failed: api_documents.handle")
 
-	_, err := svc.CreateDocument(&dto.CreateAPIDocumentRequest{
+	_, err := svc.CreateDocument(context.Background(), &dto.CreateAPIDocumentRequest{
 		Type: constants.DocumentTypePrefix + constants.DocumentTypeHowTo, Handle: "x",
 		DisplayName: "X", Content: []byte("x"),
 	}, "org", "alice", "artifact-1")
@@ -1257,7 +1258,7 @@ func TestAPIDocumentService_CreateApiDocument_ValidationGates(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			svc, docRepo, _, _ := newTestDocumentService()
-			_, err := svc.CreateApiDocument(tc.req, "org", "alice", "artifact-1")
+			_, err := svc.CreateApiDocument(context.Background(), tc.req, "org", "alice", "artifact-1")
 			if err == nil {
 				t.Fatalf("err = nil, want validation error")
 			}
@@ -1274,7 +1275,7 @@ func TestAPIDocumentService_CreateApiDocument_DuplicateHandleIsConflict(t *testi
 	svc, docRepo, _, _ := newTestDocumentService()
 	docRepo.handleExistsResult = true
 
-	_, err := svc.CreateApiDocument(&dto.CreateAPIDocumentRequest{
+	_, err := svc.CreateApiDocument(context.Background(), &dto.CreateAPIDocumentRequest{
 		Type: constants.DocumentTypeHowTo, Handle: "existing",
 		DisplayName: "Dup", Content: []byte("x"),
 	}, "org", "alice", "artifact-1")
@@ -1292,7 +1293,7 @@ func TestAPIDocumentService_CreateApiDocument_HandleExistsCheckErrorIsInternal(t
 	svc, docRepo, _, _ := newTestDocumentService()
 	docRepo.handleExistsErr = errors.New("db down")
 
-	_, err := svc.CreateApiDocument(&dto.CreateAPIDocumentRequest{
+	_, err := svc.CreateApiDocument(context.Background(), &dto.CreateAPIDocumentRequest{
 		Type: constants.DocumentTypeHowTo, Handle: "overview",
 		DisplayName: "x", Content: []byte("x"),
 	}, "org", "alice", "artifact-1")

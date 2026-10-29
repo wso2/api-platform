@@ -929,6 +929,30 @@ CREATE INDEX idx_artifact_gateway_mappings_gateway ON dbo.artifact_gateway_mappi
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_audit_org' AND object_id = OBJECT_ID(N'dbo.audit'))
 CREATE INDEX idx_audit_org ON dbo.audit(organization_uuid);
 
+IF OBJECT_ID(N'dbo.audit_log', N'U') IS NULL
+CREATE TABLE dbo.audit_log (
+    uuid              VARCHAR(40)    NOT NULL,
+    organization_uuid VARCHAR(40)    NOT NULL,
+    correlation_id    VARCHAR(64)    NULL,
+    action            NVARCHAR(50)   NOT NULL,
+    resource_type     NVARCHAR(50)   NOT NULL,
+    resource_uuid     VARCHAR(40)    NULL,
+    resource_name     NVARCHAR(255)  NULL,
+    performed_by      NVARCHAR(200)  NULL,
+    performed_at      DATETIME2(7)   NOT NULL DEFAULT SYSUTCDATETIME(),
+    outcome           NVARCHAR(20)   NOT NULL,
+    event_data        NVARCHAR(MAX)  NULL,
+    PRIMARY KEY (uuid),
+    FOREIGN KEY (organization_uuid) REFERENCES dbo.organizations(uuid) ON DELETE CASCADE
+);
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_audit_log_org_time' AND object_id = OBJECT_ID(N'dbo.audit_log'))
+CREATE INDEX idx_audit_log_org_time ON dbo.audit_log(organization_uuid, performed_at DESC);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_audit_log_outcome' AND object_id = OBJECT_ID(N'dbo.audit_log'))
+CREATE INDEX idx_audit_log_outcome ON dbo.audit_log(organization_uuid, outcome, performed_at DESC);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_audit_log_actor' AND object_id = OBJECT_ID(N'dbo.audit_log'))
+CREATE INDEX idx_audit_log_actor ON dbo.audit_log(organization_uuid, performed_by, performed_at DESC);
+
 -- Secrets table for encrypted secret management
 IF OBJECT_ID(N'dbo.secrets', N'U') IS NULL
 CREATE TABLE dbo.secrets (

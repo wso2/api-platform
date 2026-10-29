@@ -202,23 +202,6 @@ func (m *mockAPIPortalOrgRepository) GetOrganizationByUUID(uuid string) (*model.
 	return m.result, m.err
 }
 
-type mockAPIPortalAuditRepository struct {
-	repository.AuditRepository
-	records []auditRecord
-}
-
-type auditRecord struct {
-	action       string
-	resourceUUID string
-	resourceType string
-	orgUUID      string
-	performedBy  string
-}
-
-func (m *mockAPIPortalAuditRepository) Record(action, resourceUUID, resourceType, orgUUID, performedBy string) error {
-	m.records = append(m.records, auditRecord{action, resourceUUID, resourceType, orgUUID, performedBy})
-	return nil
-}
 
 // newTestAPIPortalService wires the three mocks together with a real
 // InHouseVault. identity + slogger are nil because the service does not invoke
@@ -228,9 +211,13 @@ func (m *mockAPIPortalAuditRepository) Record(action, resourceUUID, resourceType
 func newTestAPIPortalService(t *testing.T,
 	portalRepo repository.APIPortalRepository,
 	orgRepo repository.OrganizationRepository,
-	auditRepo repository.AuditRepository,
+	auditRepo ...repository.AuditRepository,
 ) *APIPortalService {
-	return NewAPIPortalService(portalRepo, orgRepo, auditRepo, newTestVault(t), nil, nil, nil)
+	svc := NewAPIPortalService(portalRepo, orgRepo, nil, newTestVault(t), nil, nil, nil)
+	if len(auditRepo) > 0 {
+		svc.SetAuditRepository(auditRepo[0])
+	}
+	return svc
 }
 
 func apiPortalStrPtr(s string) *string { return &s }
@@ -292,8 +279,7 @@ func (r testUpdateReq) build() *api.UpdateApiPortalRequest {
 func TestAPIPortalService_CreateAPIPortal_HappyPath(t *testing.T) {
 	portalRepo := &mockAPIPortalRepository{}
 	orgRepo := &mockAPIPortalOrgRepository{result: &model.Organization{}}
-	auditRepo := &mockAPIPortalAuditRepository{}
-	svc := newTestAPIPortalService(t, portalRepo, orgRepo, auditRepo)
+	svc := newTestAPIPortalService(t, portalRepo, orgRepo)
 
 	req := testCreateReq{
 		Handle:      "acme",
@@ -303,7 +289,7 @@ func TestAPIPortalService_CreateAPIPortal_HappyPath(t *testing.T) {
 		SharedKey:   testSharedKeyHex,
 		Metadata:    map[string]interface{}{"loginEnvironment": "development"},
 	}
-	got, err := svc.CreateAPIPortal(req.build(), "org-1", "user-1")
+	got, err := svc.CreateAPIPortal(context.Background(), req.build(), "org-1", "user-1")
 	if err != nil {
 		t.Fatalf("CreateAPIPortal: %v", err)
 	}
@@ -331,14 +317,11 @@ func TestAPIPortalService_CreateAPIPortal_HappyPath(t *testing.T) {
 	if len(portalRepo.createCapturedInput.InternalAuthKey) == 0 {
 		t.Error("InternalAuthKey empty; expected encrypted ciphertext")
 	}
-	if len(auditRepo.records) != 1 || auditRepo.records[0].action != "CREATE" {
-		t.Errorf("expected 1 CREATE audit record, got %+v", auditRepo.records)
-	}
 }
 
 func TestAPIPortalService_CreateAPIPortal_MissingName(t *testing.T) {
-	svc := newTestAPIPortalService(t, &mockAPIPortalRepository{}, &mockAPIPortalOrgRepository{result: &model.Organization{}}, &mockAPIPortalAuditRepository{})
-	_, err := svc.CreateAPIPortal(testCreateReq{
+	svc := newTestAPIPortalService(t, &mockAPIPortalRepository{}, &mockAPIPortalOrgRepository{result: &model.Organization{}})
+	_, err := svc.CreateAPIPortal(context.Background(), testCreateReq{
 		Handle:    "acme",
 		SharedKey: testSharedKeyHex,
 	}.build(), "org-1", "user-1")
@@ -351,8 +334,8 @@ func TestAPIPortalService_CreateAPIPortal_MissingName(t *testing.T) {
 }
 
 func TestAPIPortalService_CreateAPIPortal_InvalidHandle(t *testing.T) {
-	svc := newTestAPIPortalService(t, &mockAPIPortalRepository{}, &mockAPIPortalOrgRepository{result: &model.Organization{}}, &mockAPIPortalAuditRepository{})
-	_, err := svc.CreateAPIPortal(testCreateReq{
+	svc := newTestAPIPortalService(t, &mockAPIPortalRepository{}, &mockAPIPortalOrgRepository{result: &model.Organization{}})
+	_, err := svc.CreateAPIPortal(context.Background(), testCreateReq{
 		Handle:    "AB", // too short + uppercase
 		Name:      "x",
 		SharedKey: testSharedKeyHex,
@@ -363,8 +346,8 @@ func TestAPIPortalService_CreateAPIPortal_InvalidHandle(t *testing.T) {
 }
 
 func TestAPIPortalService_CreateAPIPortal_MissingSharedKey(t *testing.T) {
-	svc := newTestAPIPortalService(t, &mockAPIPortalRepository{}, &mockAPIPortalOrgRepository{result: &model.Organization{}}, &mockAPIPortalAuditRepository{})
-	_, err := svc.CreateAPIPortal(testCreateReq{
+	svc := newTestAPIPortalService(t, &mockAPIPortalRepository{}, &mockAPIPortalOrgRepository{result: &model.Organization{}})
+	_, err := svc.CreateAPIPortal(context.Background(), testCreateReq{
 		Handle:    "acme",
 		Name:      "Acme",
 		URL:       "https://acme.example.com",
@@ -390,9 +373,8 @@ func TestAPIPortalService_CreateAPIPortal_InvalidSharedKey(t *testing.T) {
 			svc := newTestAPIPortalService(t,
 				&mockAPIPortalRepository{},
 				&mockAPIPortalOrgRepository{result: &model.Organization{}},
-				&mockAPIPortalAuditRepository{},
 			)
-			_, err := svc.CreateAPIPortal(testCreateReq{
+			_, err := svc.CreateAPIPortal(context.Background(), testCreateReq{
 				Handle:    "acme",
 				Name:      "Acme",
 				URL:       "https://acme.example.com",
@@ -406,8 +388,8 @@ func TestAPIPortalService_CreateAPIPortal_InvalidSharedKey(t *testing.T) {
 }
 
 func TestAPIPortalService_CreateAPIPortal_OrgNotFound(t *testing.T) {
-	svc := newTestAPIPortalService(t, &mockAPIPortalRepository{}, &mockAPIPortalOrgRepository{result: nil}, &mockAPIPortalAuditRepository{})
-	_, err := svc.CreateAPIPortal(testCreateReq{
+	svc := newTestAPIPortalService(t, &mockAPIPortalRepository{}, &mockAPIPortalOrgRepository{result: nil})
+	_, err := svc.CreateAPIPortal(context.Background(), testCreateReq{
 		Handle: "acme", Name: "Acme", SharedKey: testSharedKeyHex,
 		URL: "https://acme.example.com",
 	}.build(), "org-missing", "user-1")
@@ -420,9 +402,8 @@ func TestAPIPortalService_CreateAPIPortal_HandleAlreadyExists(t *testing.T) {
 	svc := newTestAPIPortalService(t,
 		&mockAPIPortalRepository{existsResult: true},
 		&mockAPIPortalOrgRepository{result: &model.Organization{}},
-		&mockAPIPortalAuditRepository{},
 	)
-	_, err := svc.CreateAPIPortal(testCreateReq{
+	_, err := svc.CreateAPIPortal(context.Background(), testCreateReq{
 		Handle: "acme", Name: "Acme", SharedKey: testSharedKeyHex,
 		URL: "https://acme.example.com",
 	}.build(), "org-1", "user-1")
@@ -437,9 +418,8 @@ func TestAPIPortalService_CreateAPIPortal_RaceOnUniqueConstraint(t *testing.T) {
 	svc := newTestAPIPortalService(t,
 		&mockAPIPortalRepository{existsResult: false, createReturnUnique: true},
 		&mockAPIPortalOrgRepository{result: &model.Organization{}},
-		&mockAPIPortalAuditRepository{},
 	)
-	_, err := svc.CreateAPIPortal(testCreateReq{
+	_, err := svc.CreateAPIPortal(context.Background(), testCreateReq{
 		Handle: "acme", Name: "Acme", SharedKey: testSharedKeyHex,
 		URL: "https://acme.example.com",
 	}.build(), "org-1", "user-1")
@@ -465,9 +445,8 @@ func TestAPIPortalService_CreateAPIPortal_InvalidURL(t *testing.T) {
 			svc := newTestAPIPortalService(t,
 				&mockAPIPortalRepository{},
 				&mockAPIPortalOrgRepository{result: &model.Organization{}},
-				&mockAPIPortalAuditRepository{},
 			)
-			_, err := svc.CreateAPIPortal(testCreateReq{
+			_, err := svc.CreateAPIPortal(context.Background(), testCreateReq{
 				Handle:    "acme",
 				Name:      "Acme",
 				SharedKey: testSharedKeyHex,
@@ -484,9 +463,8 @@ func TestAPIPortalService_CreateAPIPortal_ValidHTTPSAccepted(t *testing.T) {
 	svc := newTestAPIPortalService(t,
 		&mockAPIPortalRepository{},
 		&mockAPIPortalOrgRepository{result: &model.Organization{}},
-		&mockAPIPortalAuditRepository{},
 	)
-	got, err := svc.CreateAPIPortal(testCreateReq{
+	got, err := svc.CreateAPIPortal(context.Background(), testCreateReq{
 		Handle:    "acme",
 		Name:      "Acme",
 		SharedKey: testSharedKeyHex,
@@ -505,9 +483,8 @@ func TestAPIPortalService_CreateAPIPortal_EmptyURLRejected(t *testing.T) {
 	svc := newTestAPIPortalService(t,
 		&mockAPIPortalRepository{},
 		&mockAPIPortalOrgRepository{result: &model.Organization{}},
-		&mockAPIPortalAuditRepository{},
 	)
-	_, err := svc.CreateAPIPortal(testCreateReq{
+	_, err := svc.CreateAPIPortal(context.Background(), testCreateReq{
 		Handle:    "acme",
 		Name:      "Acme",
 		SharedKey: testSharedKeyHex,
@@ -525,9 +502,8 @@ func TestAPIPortalService_CreateAPIPortal_ResponseDoesNotEchoSharedKey(t *testin
 	svc := newTestAPIPortalService(t,
 		&mockAPIPortalRepository{},
 		&mockAPIPortalOrgRepository{result: &model.Organization{}},
-		&mockAPIPortalAuditRepository{},
 	)
-	got, err := svc.CreateAPIPortal(testCreateReq{
+	got, err := svc.CreateAPIPortal(context.Background(), testCreateReq{
 		Handle: "acme", Name: "Acme", URL: "https://acme.example.com",
 		SharedKey: testSharedKeyHex,
 	}.build(), "org-1", "user-1")
@@ -552,7 +528,6 @@ func TestAPIPortalService_GetAPIPortal_HappyPath(t *testing.T) {
 	svc := newTestAPIPortalService(t,
 		&mockAPIPortalRepository{getResult: portal},
 		&mockAPIPortalOrgRepository{result: &model.Organization{}},
-		&mockAPIPortalAuditRepository{},
 	)
 	got, err := svc.GetAPIPortal("acme", "org-1")
 	if err != nil {
@@ -564,7 +539,7 @@ func TestAPIPortalService_GetAPIPortal_HappyPath(t *testing.T) {
 }
 
 func TestAPIPortalService_GetAPIPortal_NotFound(t *testing.T) {
-	svc := newTestAPIPortalService(t, &mockAPIPortalRepository{getResult: nil}, &mockAPIPortalOrgRepository{}, &mockAPIPortalAuditRepository{})
+	svc := newTestAPIPortalService(t, &mockAPIPortalRepository{getResult: nil}, &mockAPIPortalOrgRepository{})
 	_, err := svc.GetAPIPortal("ghost", "org-1")
 	if err == nil || !apperror.APIPortalNotFound.Is(err) {
 		t.Fatalf("want APIPortalNotFound, got %v", err)
@@ -578,7 +553,6 @@ func TestAPIPortalService_ListAPIPortals_HappyPath(t *testing.T) {
 	svc := newTestAPIPortalService(t,
 		&mockAPIPortalRepository{listResult: portals, countResult: 5},
 		&mockAPIPortalOrgRepository{result: &model.Organization{}},
-		&mockAPIPortalAuditRepository{},
 	)
 	resp, err := svc.ListAPIPortals("org-1", 0, 0, "", "", "")
 	if err != nil {
@@ -593,7 +567,7 @@ func TestAPIPortalService_ListAPIPortals_HappyPath(t *testing.T) {
 }
 
 func TestAPIPortalService_ListAPIPortals_OrgNotFound(t *testing.T) {
-	svc := newTestAPIPortalService(t, &mockAPIPortalRepository{}, &mockAPIPortalOrgRepository{result: nil}, &mockAPIPortalAuditRepository{})
+	svc := newTestAPIPortalService(t, &mockAPIPortalRepository{}, &mockAPIPortalOrgRepository{result: nil})
 	_, err := svc.ListAPIPortals("org-missing", 0, 0, "", "", "")
 	if err == nil || !apperror.OrganizationNotFound.Is(err) {
 		t.Fatalf("want OrganizationNotFound, got %v", err)
@@ -604,7 +578,6 @@ func TestAPIPortalService_ListAPIPortals_LimitClamping(t *testing.T) {
 	svc := newTestAPIPortalService(t,
 		&mockAPIPortalRepository{listResult: nil, countResult: 0},
 		&mockAPIPortalOrgRepository{result: &model.Organization{}},
-		&mockAPIPortalAuditRepository{},
 	)
 	resp, err := svc.ListAPIPortals("org-1", 500, -5, "", "", "")
 	if err != nil {
@@ -629,14 +602,13 @@ func TestAPIPortalService_UpdateAPIPortal_HappyPath(t *testing.T) {
 		InternalAuthKey: []byte("pre-existing-ciphertext"),
 	}
 	portalRepo := &mockAPIPortalRepository{getResult: existing}
-	auditRepo := &mockAPIPortalAuditRepository{}
-	svc := newTestAPIPortalService(t, portalRepo, &mockAPIPortalOrgRepository{}, auditRepo)
+	svc := newTestAPIPortalService(t, portalRepo, &mockAPIPortalOrgRepository{})
 
 	req := testUpdateReq{
 		Name:        apiPortalStrPtr("Renamed"),
 		Description: apiPortalStrPtr("new description"),
 	}
-	got, err := svc.UpdateAPIPortal("acme", req.build(), "org-1", "editor")
+	got, err := svc.UpdateAPIPortal(context.Background(), "acme", req.build(), "org-1", "editor")
 	if err != nil {
 		t.Fatalf("UpdateAPIPortal: %v", err)
 	}
@@ -657,9 +629,6 @@ func TestAPIPortalService_UpdateAPIPortal_HappyPath(t *testing.T) {
 		t.Errorf("InternalAuthKey mutated on non-rotate Update: %q",
 			portalRepo.updateCapturedInput.InternalAuthKey)
 	}
-	if len(auditRepo.records) != 1 || auditRepo.records[0].action != "UPDATE" {
-		t.Errorf("expected 1 UPDATE audit record, got %+v", auditRepo.records)
-	}
 }
 
 func TestAPIPortalService_UpdateAPIPortal_SharedKeyRotation(t *testing.T) {
@@ -673,11 +642,11 @@ func TestAPIPortalService_UpdateAPIPortal_SharedKeyRotation(t *testing.T) {
 		InternalAuthKey: []byte("old-ciphertext"),
 	}
 	portalRepo := &mockAPIPortalRepository{getResult: existing}
-	svc := newTestAPIPortalService(t, portalRepo, &mockAPIPortalOrgRepository{}, &mockAPIPortalAuditRepository{})
+	svc := newTestAPIPortalService(t, portalRepo, &mockAPIPortalOrgRepository{})
 
 	newKey := strings.Repeat("b", 64)
 	req := testUpdateReq{SharedKey: &newKey}
-	if _, err := svc.UpdateAPIPortal("acme", req.build(), "org-1", "editor"); err != nil {
+	if _, err := svc.UpdateAPIPortal(context.Background(), "acme", req.build(), "org-1", "editor"); err != nil {
 		t.Fatalf("rotation: %v", err)
 	}
 	if bytes.Equal(portalRepo.updateCapturedInput.InternalAuthKey, []byte("old-ciphertext")) {
@@ -696,10 +665,9 @@ func TestAPIPortalService_UpdateAPIPortal_InvalidSharedKeyRejected(t *testing.T)
 	svc := newTestAPIPortalService(t,
 		&mockAPIPortalRepository{getResult: existing},
 		&mockAPIPortalOrgRepository{},
-		&mockAPIPortalAuditRepository{},
 	)
 	bad := "not-hex"
-	_, err := svc.UpdateAPIPortal("acme", testUpdateReq{SharedKey: &bad}.build(), "org-1", "editor")
+	_, err := svc.UpdateAPIPortal(context.Background(), "acme", testUpdateReq{SharedKey: &bad}.build(), "org-1", "editor")
 	if err == nil || !apperror.ValidationFailed.Is(err) {
 		t.Fatalf("want ValidationFailed for bad sharedKey on Update, got %v", err)
 	}
@@ -713,9 +681,9 @@ func TestAPIPortalService_UpdateAPIPortal_PartialUpdate(t *testing.T) {
 		Status:          constants.APIPortalStatusActive,
 		InternalAuthKey: []byte("keep-ciphertext"),
 	}
-	svc := newTestAPIPortalService(t, &mockAPIPortalRepository{getResult: existing}, &mockAPIPortalOrgRepository{}, &mockAPIPortalAuditRepository{})
+	svc := newTestAPIPortalService(t, &mockAPIPortalRepository{getResult: existing}, &mockAPIPortalOrgRepository{})
 	// Only Description supplied; everything else must remain unchanged.
-	got, err := svc.UpdateAPIPortal("acme", testUpdateReq{Description: apiPortalStrPtr("new desc")}.build(), "org-1", "editor")
+	got, err := svc.UpdateAPIPortal(context.Background(), "acme", testUpdateReq{Description: apiPortalStrPtr("new desc")}.build(), "org-1", "editor")
 	if err != nil {
 		t.Fatalf("UpdateAPIPortal: %v", err)
 	}
@@ -735,9 +703,8 @@ func TestAPIPortalService_UpdateAPIPortal_InvalidURLRejected(t *testing.T) {
 	svc := newTestAPIPortalService(t,
 		&mockAPIPortalRepository{getResult: existing},
 		&mockAPIPortalOrgRepository{},
-		&mockAPIPortalAuditRepository{},
 	)
-	_, err := svc.UpdateAPIPortal("acme", testUpdateReq{
+	_, err := svc.UpdateAPIPortal(context.Background(), "acme", testUpdateReq{
 		URL: apiPortalStrPtr("http://insecure.example.com"),
 	}.build(), "org-1", "editor")
 	if err == nil || !apperror.ValidationFailed.Is(err) {
@@ -751,9 +718,9 @@ func TestAPIPortalService_UpdateAPIPortal_PendingURLChangeRejected(t *testing.T)
 		Name: "Acme", URL: "https://acme.portals.example.com", Status: constants.APIPortalStatusPending,
 	}
 	repo := &mockAPIPortalRepository{getResult: existing}
-	svc := newTestAPIPortalService(t, repo, &mockAPIPortalOrgRepository{}, &mockAPIPortalAuditRepository{})
+	svc := newTestAPIPortalService(t, repo, &mockAPIPortalOrgRepository{})
 
-	_, err := svc.UpdateAPIPortal("acme", testUpdateReq{
+	_, err := svc.UpdateAPIPortal(context.Background(), "acme", testUpdateReq{
 		URL: apiPortalStrPtr("https://elsewhere.example.com"),
 	}.build(), "org-1", "editor")
 	if err == nil || !apperror.ValidationFailed.Is(err) {
@@ -770,8 +737,8 @@ func TestAPIPortalService_UpdateAPIPortal_PendingInvalidURLRejected(t *testing.T
 		Name: "Acme", URL: "https://acme.portals.example.com", Status: constants.APIPortalStatusPending,
 	}
 	repo := &mockAPIPortalRepository{getResult: existing}
-	svc := newTestAPIPortalService(t, repo, &mockAPIPortalOrgRepository{}, &mockAPIPortalAuditRepository{})
-	_, err := svc.UpdateAPIPortal("acme", testUpdateReq{URL: apiPortalStrPtr("http://acme.portals.example.com")}.build(), "org-1", "editor")
+	svc := newTestAPIPortalService(t, repo, &mockAPIPortalOrgRepository{})
+	_, err := svc.UpdateAPIPortal(context.Background(), "acme", testUpdateReq{URL: apiPortalStrPtr("http://acme.portals.example.com")}.build(), "org-1", "editor")
 	if err == nil || !apperror.ValidationFailed.Is(err) {
 		t.Fatalf("want ValidationFailed for an invalid URL on a pending portal, got %v", err)
 	}
@@ -786,8 +753,8 @@ func TestAPIPortalService_UpdateAPIPortal_PendingAllowsUnchangedURL(t *testing.T
 		ID: "p1", Handle: "acme", OrganizationID: "org-1",
 		Name: "Acme", URL: "https://acme.portals.example.com", Status: constants.APIPortalStatusPending,
 	}
-	svc := newTestAPIPortalService(t, &mockAPIPortalRepository{getResult: existing}, &mockAPIPortalOrgRepository{}, &mockAPIPortalAuditRepository{})
-	got, err := svc.UpdateAPIPortal("acme", testUpdateReq{
+	svc := newTestAPIPortalService(t, &mockAPIPortalRepository{getResult: existing}, &mockAPIPortalOrgRepository{})
+	got, err := svc.UpdateAPIPortal(context.Background(), "acme", testUpdateReq{
 		Name: apiPortalStrPtr("Renamed"),
 		URL:  apiPortalStrPtr("https://acme.portals.example.com"),
 	}.build(), "org-1", "editor")
@@ -803,8 +770,8 @@ func TestAPIPortalService_UpdateAPIPortal_PendingGuardIsURLOnly(t *testing.T) {
 		ID: "p1", Handle: "acme", OrganizationID: "org-1",
 		Name: "Acme", URL: "https://acme.portals.example.com", Status: constants.APIPortalStatusPending,
 	}
-	svc := newTestAPIPortalService(t, &mockAPIPortalRepository{getResult: pending}, &mockAPIPortalOrgRepository{}, &mockAPIPortalAuditRepository{})
-	if _, err := svc.UpdateAPIPortal("acme", testUpdateReq{Name: apiPortalStrPtr("Renamed")}.build(), "org-1", "editor"); err != nil {
+	svc := newTestAPIPortalService(t, &mockAPIPortalRepository{getResult: pending}, &mockAPIPortalOrgRepository{})
+	if _, err := svc.UpdateAPIPortal(context.Background(), "acme", testUpdateReq{Name: apiPortalStrPtr("Renamed")}.build(), "org-1", "editor"); err != nil {
 		t.Fatalf("name change on a pending portal: %v", err)
 	}
 
@@ -812,16 +779,16 @@ func TestAPIPortalService_UpdateAPIPortal_PendingGuardIsURLOnly(t *testing.T) {
 		ID: "p1", Handle: "acme", OrganizationID: "org-1",
 		Name: "Acme", URL: "https://acme.portals.example.com", Status: constants.APIPortalStatusActive,
 	}
-	svc = newTestAPIPortalService(t, &mockAPIPortalRepository{getResult: active}, &mockAPIPortalOrgRepository{}, &mockAPIPortalAuditRepository{})
-	got, err := svc.UpdateAPIPortal("acme", testUpdateReq{URL: apiPortalStrPtr("https://moved.example.com")}.build(), "org-1", "editor")
+	svc = newTestAPIPortalService(t, &mockAPIPortalRepository{getResult: active}, &mockAPIPortalOrgRepository{})
+	got, err := svc.UpdateAPIPortal(context.Background(), "acme", testUpdateReq{URL: apiPortalStrPtr("https://moved.example.com")}.build(), "org-1", "editor")
 	if err != nil || got.Url != "https://moved.example.com" {
 		t.Fatalf("URL change on an active portal: got %+v, %v", got, err)
 	}
 }
 
 func TestAPIPortalService_UpdateAPIPortal_NotFound(t *testing.T) {
-	svc := newTestAPIPortalService(t, &mockAPIPortalRepository{getResult: nil}, &mockAPIPortalOrgRepository{}, &mockAPIPortalAuditRepository{})
-	_, err := svc.UpdateAPIPortal("ghost", testUpdateReq{Name: apiPortalStrPtr("x")}.build(), "org-1", "editor")
+	svc := newTestAPIPortalService(t, &mockAPIPortalRepository{getResult: nil}, &mockAPIPortalOrgRepository{})
+	_, err := svc.UpdateAPIPortal(context.Background(), "ghost", testUpdateReq{Name: apiPortalStrPtr("x")}.build(), "org-1", "editor")
 	if err == nil || !apperror.APIPortalNotFound.Is(err) {
 		t.Fatalf("want APIPortalNotFound, got %v", err)
 	}
@@ -829,8 +796,8 @@ func TestAPIPortalService_UpdateAPIPortal_NotFound(t *testing.T) {
 
 func TestAPIPortalService_UpdateAPIPortal_EmptyName(t *testing.T) {
 	existing := &model.APIPortal{ID: "p1", Handle: "acme", OrganizationID: "org-1", Name: "old"}
-	svc := newTestAPIPortalService(t, &mockAPIPortalRepository{getResult: existing}, &mockAPIPortalOrgRepository{}, &mockAPIPortalAuditRepository{})
-	_, err := svc.UpdateAPIPortal("acme", testUpdateReq{Name: apiPortalStrPtr("   ")}.build(), "org-1", "editor")
+	svc := newTestAPIPortalService(t, &mockAPIPortalRepository{getResult: existing}, &mockAPIPortalOrgRepository{})
+	_, err := svc.UpdateAPIPortal(context.Background(), "acme", testUpdateReq{Name: apiPortalStrPtr("   ")}.build(), "org-1", "editor")
 	if err == nil || !apperror.ValidationFailed.Is(err) {
 		t.Fatalf("want ValidationFailed for empty name, got %v", err)
 	}
@@ -841,22 +808,18 @@ func TestAPIPortalService_UpdateAPIPortal_EmptyName(t *testing.T) {
 func TestAPIPortalService_DeleteAPIPortal_HappyPath(t *testing.T) {
 	existing := &model.APIPortal{ID: "p1", Handle: "acme", OrganizationID: "org-1"}
 	portalRepo := &mockAPIPortalRepository{getResult: existing}
-	auditRepo := &mockAPIPortalAuditRepository{}
-	svc := newTestAPIPortalService(t, portalRepo, &mockAPIPortalOrgRepository{}, auditRepo)
-	if err := svc.DeleteAPIPortal("acme", "org-1", "actor"); err != nil {
+	svc := newTestAPIPortalService(t, portalRepo, &mockAPIPortalOrgRepository{})
+	if err := svc.DeleteAPIPortal(context.Background(), "acme", "org-1", "actor"); err != nil {
 		t.Fatalf("DeleteAPIPortal: %v", err)
 	}
 	if portalRepo.deleteCalledWith != [2]string{"p1", "org-1"} {
 		t.Errorf("Delete called with wrong args: %+v", portalRepo.deleteCalledWith)
 	}
-	if len(auditRepo.records) != 1 || auditRepo.records[0].action != "DELETE" {
-		t.Errorf("expected 1 DELETE audit record, got %+v", auditRepo.records)
-	}
 }
 
 func TestAPIPortalService_DeleteAPIPortal_NotFound(t *testing.T) {
-	svc := newTestAPIPortalService(t, &mockAPIPortalRepository{getResult: nil}, &mockAPIPortalOrgRepository{}, &mockAPIPortalAuditRepository{})
-	err := svc.DeleteAPIPortal("ghost", "org-1", "actor")
+	svc := newTestAPIPortalService(t, &mockAPIPortalRepository{getResult: nil}, &mockAPIPortalOrgRepository{})
+	err := svc.DeleteAPIPortal(context.Background(), "ghost", "org-1", "actor")
 	if err == nil || !apperror.APIPortalNotFound.Is(err) {
 		t.Fatalf("want APIPortalNotFound, got %v", err)
 	}
@@ -944,10 +907,10 @@ func TestAPIPortalService_CreateAPIPortal_WritesActiveByDefault(t *testing.T) {
 	// into the OSS-native path or change the default the OSS REST path writes.
 	portalRepo := &mockAPIPortalRepository{}
 	orgRepo := &mockAPIPortalOrgRepository{result: &model.Organization{}}
-	svc := newTestAPIPortalService(t, portalRepo, orgRepo, &mockAPIPortalAuditRepository{})
+	svc := newTestAPIPortalService(t, portalRepo, orgRepo)
 
 	req := testCreateReq{Handle: "acme", Name: "Acme", URL: "https://acme.example.com", SharedKey: testSharedKeyHex}.build()
-	if _, err := svc.CreateAPIPortal(req, "org-1", "tester"); err != nil {
+	if _, err := svc.CreateAPIPortal(context.Background(), req, "org-1", "tester"); err != nil {
 		t.Fatalf("CreateAPIPortal: %v", err)
 	}
 	if got := portalRepo.createCapturedInput; got == nil || got.Status != constants.APIPortalStatusActive {
@@ -958,10 +921,10 @@ func TestAPIPortalService_CreateAPIPortal_WritesActiveByDefault(t *testing.T) {
 func TestAPIPortalService_CreateAPIPortalWithStatus_HonoursCallerStatus(t *testing.T) {
 	portalRepo := &mockAPIPortalRepository{}
 	orgRepo := &mockAPIPortalOrgRepository{result: &model.Organization{}}
-	svc := newTestAPIPortalService(t, portalRepo, orgRepo, &mockAPIPortalAuditRepository{})
+	svc := newTestAPIPortalService(t, portalRepo, orgRepo)
 
 	req := testCreateReq{Handle: "acme", Name: "Acme", URL: "https://acme.example.com", SharedKey: testSharedKeyHex}.build()
-	if _, err := svc.CreateAPIPortalWithStatus(req, "org-1", "tester", constants.APIPortalStatusPending); err != nil {
+	if _, err := svc.CreateAPIPortalWithStatus(context.Background(), req, "org-1", "tester", constants.APIPortalStatusPending); err != nil {
 		t.Fatalf("CreateAPIPortalWithStatus: %v", err)
 	}
 	if got := portalRepo.createCapturedInput; got == nil || got.Status != constants.APIPortalStatusPending {
@@ -972,10 +935,10 @@ func TestAPIPortalService_CreateAPIPortalWithStatus_HonoursCallerStatus(t *testi
 func TestAPIPortalService_CreateAPIPortalWithStatus_RejectsUnknownStatus(t *testing.T) {
 	portalRepo := &mockAPIPortalRepository{}
 	orgRepo := &mockAPIPortalOrgRepository{result: &model.Organization{}}
-	svc := newTestAPIPortalService(t, portalRepo, orgRepo, &mockAPIPortalAuditRepository{})
+	svc := newTestAPIPortalService(t, portalRepo, orgRepo)
 
 	req := testCreateReq{Handle: "acme", Name: "Acme", URL: "https://acme.example.com", SharedKey: testSharedKeyHex}.build()
-	_, err := svc.CreateAPIPortalWithStatus(req, "org-1", "tester", "bogus")
+	_, err := svc.CreateAPIPortalWithStatus(context.Background(), req, "org-1", "tester", "bogus")
 	if err == nil {
 		t.Fatal("bogus status must be rejected before any repo call")
 	}
@@ -991,7 +954,7 @@ func TestAPIPortalService_UpdateAPIPortalStatus_HappyPath(t *testing.T) {
 	portalRepo := &mockAPIPortalRepository{
 		getResult: &model.APIPortal{ID: "portal-uuid", Handle: "acme"},
 	}
-	svc := newTestAPIPortalService(t, portalRepo, &mockAPIPortalOrgRepository{}, &mockAPIPortalAuditRepository{})
+	svc := newTestAPIPortalService(t, portalRepo, &mockAPIPortalOrgRepository{})
 
 	if err := svc.UpdateAPIPortalStatus("acme", "org-1", "poller", constants.APIPortalStatusActive); err != nil {
 		t.Fatalf("UpdateAPIPortalStatus: %v", err)
@@ -1029,7 +992,7 @@ func TestAPIPortalService_UpdateAPIPortalStatus_RejectsUnknownStatus(t *testing.
 	// status turns into a repo call that then rejects it, wasting a round-trip
 	// and leaking the noise past the validation layer.
 	portalRepo := &mockAPIPortalRepository{}
-	svc := newTestAPIPortalService(t, portalRepo, &mockAPIPortalOrgRepository{}, &mockAPIPortalAuditRepository{})
+	svc := newTestAPIPortalService(t, portalRepo, &mockAPIPortalOrgRepository{})
 
 	err := svc.UpdateAPIPortalStatus("acme", "org-1", "poller", "bogus")
 	if err == nil {
@@ -1046,7 +1009,7 @@ func TestAPIPortalService_UpdateAPIPortalStatus_RejectsUnknownStatus(t *testing.
 // be hit at all when the guard trips.
 func TestAPIPortalService_UpdateAPIPortalStatus_RejectsPendingTarget(t *testing.T) {
 	portalRepo := &mockAPIPortalRepository{}
-	svc := newTestAPIPortalService(t, portalRepo, &mockAPIPortalOrgRepository{}, &mockAPIPortalAuditRepository{})
+	svc := newTestAPIPortalService(t, portalRepo, &mockAPIPortalOrgRepository{})
 
 	err := svc.UpdateAPIPortalStatus("acme", "org-1", "poller", constants.APIPortalStatusPending)
 	if err == nil {
@@ -1062,7 +1025,7 @@ func TestAPIPortalService_UpdateAPIPortalStatus_NotFound(t *testing.T) {
 	// the service must surface this as APIPortalNotFound rather than a repo error
 	// or a silent no-op update.
 	portalRepo := &mockAPIPortalRepository{getResult: nil}
-	svc := newTestAPIPortalService(t, portalRepo, &mockAPIPortalOrgRepository{}, &mockAPIPortalAuditRepository{})
+	svc := newTestAPIPortalService(t, portalRepo, &mockAPIPortalOrgRepository{})
 
 	err := svc.UpdateAPIPortalStatus("acme", "org-1", "poller", constants.APIPortalStatusActive)
 	if err == nil {
@@ -1075,7 +1038,7 @@ func TestAPIPortalService_UpdateAPIPortalStatus_NotFound(t *testing.T) {
 
 func TestAPIPortalService_GetAPIPortalStatus_HappyPath(t *testing.T) {
 	portalRepo := &mockAPIPortalRepository{getStatusResult: constants.APIPortalStatusFailed}
-	svc := newTestAPIPortalService(t, portalRepo, &mockAPIPortalOrgRepository{}, &mockAPIPortalAuditRepository{})
+	svc := newTestAPIPortalService(t, portalRepo, &mockAPIPortalOrgRepository{})
 
 	got, err := svc.GetAPIPortalStatus("acme", "org-1")
 	if err != nil {
@@ -1091,7 +1054,7 @@ func TestAPIPortalService_GetAPIPortalStatus_HappyPath(t *testing.T) {
 
 func TestAPIPortalService_GetAPIPortalStatus_NotFound(t *testing.T) {
 	portalRepo := &mockAPIPortalRepository{getStatusErr: sql.ErrNoRows}
-	svc := newTestAPIPortalService(t, portalRepo, &mockAPIPortalOrgRepository{}, &mockAPIPortalAuditRepository{})
+	svc := newTestAPIPortalService(t, portalRepo, &mockAPIPortalOrgRepository{})
 
 	_, err := svc.GetAPIPortalStatus("acme", "org-1")
 	if !apperror.APIPortalNotFound.Is(err) {
@@ -1109,7 +1072,7 @@ func TestAPIPortalService_ListAPIPortalStatuses_PassthroughAndScope(t *testing.T
 			"beta":  constants.APIPortalStatusPending,
 		},
 	}
-	svc := newTestAPIPortalService(t, portalRepo, &mockAPIPortalOrgRepository{}, &mockAPIPortalAuditRepository{})
+	svc := newTestAPIPortalService(t, portalRepo, &mockAPIPortalOrgRepository{})
 
 	got, err := svc.ListAPIPortalStatuses("org-1")
 	if err != nil {
@@ -1132,7 +1095,7 @@ func TestAPIPortalService_ListAPIPortalLoginEnvironments_PassthroughAndScope(t *
 			"beta":  "staging",
 		},
 	}
-	svc := newTestAPIPortalService(t, portalRepo, &mockAPIPortalOrgRepository{}, &mockAPIPortalAuditRepository{})
+	svc := newTestAPIPortalService(t, portalRepo, &mockAPIPortalOrgRepository{})
 
 	got, err := svc.ListAPIPortalLoginEnvironments("org-1")
 	if err != nil {
@@ -1156,7 +1119,7 @@ func TestAPIPortalService_ListAPIPortalsByStatus_ProjectsIdentity(t *testing.T) 
 			{OrganizationID: "org-b", Handle: "p-2", URL: "https://p-2.example.com", Status: constants.APIPortalStatusPending},
 		},
 	}
-	svc := newTestAPIPortalService(t, portalRepo, &mockAPIPortalOrgRepository{}, &mockAPIPortalAuditRepository{})
+	svc := newTestAPIPortalService(t, portalRepo, &mockAPIPortalOrgRepository{})
 
 	got, err := svc.ListAPIPortalsByStatus(constants.APIPortalStatusPending)
 	if err != nil {
@@ -1179,7 +1142,7 @@ func TestAPIPortalService_ListAPIPortalsByStatus_ProjectsIdentity(t *testing.T) 
 
 func TestAPIPortalService_ListAPIPortalsByStatus_RejectsUnknownStatus(t *testing.T) {
 	portalRepo := &mockAPIPortalRepository{}
-	svc := newTestAPIPortalService(t, portalRepo, &mockAPIPortalOrgRepository{}, &mockAPIPortalAuditRepository{})
+	svc := newTestAPIPortalService(t, portalRepo, &mockAPIPortalOrgRepository{})
 
 	_, err := svc.ListAPIPortalsByStatus("bogus")
 	if err == nil {
@@ -1252,4 +1215,22 @@ func TestAPIPortalService_StatusChangesReturnRepositoryErrors(t *testing.T) {
 			}
 		})
 	}
+}
+
+type mockAPIPortalAuditRepository struct {
+	repository.AuditRepository
+	records []auditRecord
+}
+
+type auditRecord struct {
+	action       string
+	resourceUUID string
+	resourceType string
+	orgUUID      string
+	performedBy  string
+}
+
+func (m *mockAPIPortalAuditRepository) Record(action, resourceUUID, resourceType, orgUUID, performedBy string) error {
+	m.records = append(m.records, auditRecord{action, resourceUUID, resourceType, orgUUID, performedBy})
+	return nil
 }

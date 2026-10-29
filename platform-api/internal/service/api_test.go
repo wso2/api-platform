@@ -18,6 +18,7 @@
 package service
 
 import (
+	"context"
 	"reflect"
 	"strings"
 	"testing"
@@ -736,7 +737,7 @@ func TestAPIServiceUpdate_CleansUpRotatedSecret(t *testing.T) {
 		apiUtil:       &utils.APIUtil{},
 		secretService: secretService,
 		identity:      newTestIdentityService(),
-		auditRepo:     &noopAuditRepo{},
+
 	}
 
 	req := &api.RESTAPI{
@@ -752,7 +753,7 @@ func TestAPIServiceUpdate_CleansUpRotatedSecret(t *testing.T) {
 		},
 	}
 
-	_, err := service.UpdateAPI("api-uuid", req, "org-1", "alice")
+	_, err := service.UpdateAPI(context.Background(), "api-uuid", req, "org-1", "alice")
 	if err != nil {
 		t.Fatalf("expected no error, got: %v", err)
 	}
@@ -804,7 +805,7 @@ func TestAPIServiceCreate_MissingSecretRef_Rejected(t *testing.T) {
 		Policies:    &[]api.Policy{{Name: "set-headers", Version: "v1", Params: &params}},
 	}
 
-	_, _, err := service.CreateAPI(req, "org-1", "alice")
+	_, _, err := service.CreateAPI(context.Background(), req, "org-1", "alice")
 	if err == nil {
 		t.Fatal("expected error for non-existent secret placeholder, got nil")
 	}
@@ -844,7 +845,7 @@ func TestAPIServiceUpdate_MissingSecretRef_Rejected(t *testing.T) {
 		Policies:    &[]api.Policy{{Name: "set-headers", Version: "v1", Params: &params}},
 	}
 
-	_, err := service.UpdateAPI("api-uuid", req, "org-1", "alice")
+	_, err := service.UpdateAPI(context.Background(), "api-uuid", req, "org-1", "alice")
 	if err == nil {
 		t.Fatal("expected error for non-existent secret placeholder, got nil")
 	}

@@ -126,6 +126,7 @@ type Server struct {
 
 	Database             Database             `koanf:"database"`
 	Auth                 Auth                 `koanf:"auth"`
+	Audit                Audit                `koanf:"audit"`
 	Deployments          Deployments          `koanf:"deployments"`
 	Listeners            ServerListeners      `koanf:"server"`
 	Security             Security             `koanf:"security"`
@@ -687,6 +688,31 @@ type Database struct {
 	MaxOpenConns    int    `koanf:"max_open_conns"`
 	MaxIdleConns    int    `koanf:"max_idle_conns"`
 	ConnMaxLifetime int    `koanf:"conn_max_lifetime"`
+}
+
+type Audit struct {
+	Enabled bool `koanf:"enabled"`
+	// Sinks are written in addition to the database, which is always on.
+	Sinks AuditSinks `koanf:"sinks"`
+}
+
+// AuditSinks holds the optional audit sinks.
+type AuditSinks struct {
+	File   AuditFileSink   `koanf:"file"`
+	Stdout AuditStdoutSink `koanf:"stdout"`
+}
+
+// AuditFileSink appends audit events, one JSON object per line, to audit.log
+// in Path.
+type AuditFileSink struct {
+	Enabled bool `koanf:"enabled"`
+	// Path is the directory for audit.log; the file name is fixed. Default: ./data/logs.
+	Path string `koanf:"path"`
+}
+
+// AuditStdoutSink writes audit events, one JSON object per line, to stdout.
+type AuditStdoutSink struct {
+	Enabled bool `koanf:"enabled"`
 }
 
 // Deployments holds deployment-specific configuration.

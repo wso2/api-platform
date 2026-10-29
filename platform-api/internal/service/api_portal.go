@@ -81,6 +81,9 @@ func validateAndEncryptSharedKey(v vault.SecretVault, raw string) ([]byte, error
 type APIPortalService struct {
 	portalRepo   repository.APIPortalRepository
 	orgRepo      repository.OrganizationRepository
+	audit        *AuditService
+	// auditRepo records the lifecycle transitions the cloud plugin drives (no user operation, so
+	// they stay out of the audit log); nil records nothing.
 	auditRepo    repository.AuditRepository
 	vault        vault.SecretVault
 	authRegistry *APIPortalAuthRegistry
@@ -92,7 +95,7 @@ type APIPortalService struct {
 func NewAPIPortalService(
 	portalRepo repository.APIPortalRepository,
 	orgRepo repository.OrganizationRepository,
-	auditRepo repository.AuditRepository,
+	audit *AuditService,
 	secretVault vault.SecretVault,
 	authRegistry *APIPortalAuthRegistry,
 	identity *IdentityService,
@@ -101,7 +104,7 @@ func NewAPIPortalService(
 	return &APIPortalService{
 		portalRepo:   portalRepo,
 		orgRepo:      orgRepo,
-		auditRepo:    auditRepo,
+		audit:        audit,
 		vault:        secretVault,
 		authRegistry: authRegistry,
 		identity:     identity,
@@ -147,8 +150,8 @@ func derefStr(p *string) string {
 // The row is created with status "active" - the OSS-native lifecycle has no
 // intermediate provisioning state. Cloud-plugin callers that need to insert
 // with a different initial status should use CreateAPIPortalWithStatus.
-func (s *APIPortalService) CreateAPIPortal(req *api.CreateApiPortalRequest, orgID, createdBy string) (*api.ApiPortalResponse, error) {
-	return s.CreateAPIPortalWithStatus(req, orgID, createdBy, constants.APIPortalStatusActive)
+func (s *APIPortalService) CreateAPIPortal(ctx context.Context, req *api.CreateApiPortalRequest, orgID, createdBy string) (*api.ApiPortalResponse, error) {
+	return s.CreateAPIPortalWithStatus(ctx, req, orgID, createdBy, constants.APIPortalStatusActive)
 }
 
 // CreateAPIPortalWithStatus is the create path for callers that own the
@@ -157,7 +160,7 @@ func (s *APIPortalService) CreateAPIPortal(req *api.CreateApiPortalRequest, orgI
 // provided status instead of hardcoding active. Not exposed via REST; only
 // Go-embedding callers can reach it. The status value is validated against
 // the platform-api constants set.
-func (s *APIPortalService) CreateAPIPortalWithStatus(req *api.CreateApiPortalRequest, orgID, createdBy, status string) (*api.ApiPortalResponse, error) {
+func (s *APIPortalService) CreateAPIPortalWithStatus(ctx context.Context, req *api.CreateApiPortalRequest, orgID, createdBy, status string) (*api.ApiPortalResponse, error) {
 	if req == nil {
 		return nil, apperror.ValidationFailed.New("The request body is required.")
 	}
@@ -219,9 +222,22 @@ func (s *APIPortalService) CreateAPIPortalWithStatus(req *api.CreateApiPortalReq
 			// Concurrent create won the race between Exists and INSERT.
 			return nil, apperror.APIPortalExists.New()
 		}
+		if IsAuditableFailure(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Action: model.AuditActionCreate, ResourceType: model.AuditResourceTypeAPIPortal,
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgID, PerformedBy: actor,
+				ResourceUUID: portal.ID, ResourceName: portal.Handle,
+			})
+		}
 		return nil, err
 	}
-	_ = s.auditRepo.Record("CREATE", portal.ID, "api_portal", orgID, actor)
+	s.audit.Record(ctx, &AuditEvent{
+		Action: model.AuditActionCreate, ResourceType: model.AuditResourceTypeAPIPortal,
+		Outcome: model.AuditOutcomeSucceeded,
+		ResourceUUID: portal.ID, OrganizationUUID: orgID, PerformedBy: actor,
+		ResourceName: portal.Handle,
+		EventData:    apiPortalAuditFields(portal),
+	})
 	return ModelToAPIPortalResponse(portal), nil
 }
 
@@ -280,7 +296,7 @@ func (s *APIPortalService) UpdateAPIPortalStatus(handle, orgID, updatedBy, statu
 	if err != nil {
 		return err
 	}
-	_ = s.auditRepo.Record("UPDATE_STATUS", portal.ID, "api_portal", orgID, actor)
+	s.recordStatusTransition(portal.ID, orgID, actor)
 	return nil
 }
 
@@ -300,7 +316,7 @@ func (s *APIPortalService) ReopenAPIPortal(handle, orgID, updatedBy string) erro
 	if err != nil {
 		return err
 	}
-	_ = s.auditRepo.Record("UPDATE_STATUS", portal.ID, "api_portal", orgID, actor)
+	s.recordStatusTransition(portal.ID, orgID, actor)
 	return nil
 }
 
@@ -413,7 +429,7 @@ func (s *APIPortalService) ListAPIPortals(orgID string, limit, offset int, sortB
 }
 
 // UpdateAPIPortal applies whitelisted mutations from req; nil pointer fields mean "not sent" and are left unchanged. A non-nil SharedKey re-encrypts and rotates the stored value.
-func (s *APIPortalService) UpdateAPIPortal(handle string, req *api.UpdateApiPortalRequest, orgID, updatedBy string) (*api.ApiPortalResponse, error) {
+func (s *APIPortalService) UpdateAPIPortal(ctx context.Context, handle string, req *api.UpdateApiPortalRequest, orgID, updatedBy string) (*api.ApiPortalResponse, error) {
 	if req == nil {
 		return nil, apperror.ValidationFailed.New("The request body is required.")
 	}
@@ -435,6 +451,7 @@ func (s *APIPortalService) UpdateAPIPortal(handle string, req *api.UpdateApiPort
 		}
 	}
 
+	before := apiPortalAuditFields(portal)
 	if req.Name != nil {
 		name := strings.TrimSpace(*req.Name)
 		if name == "" {
@@ -469,16 +486,28 @@ func (s *APIPortalService) UpdateAPIPortal(handle string, req *api.UpdateApiPort
 	portal.UpdatedBy = strings.TrimSpace(updatedBy)
 
 	if err := s.portalRepo.Update(portal); err != nil {
+		if IsAuditableFailure(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Action: model.AuditActionUpdate, ResourceType: model.AuditResourceTypeAPIPortal,
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgID, PerformedBy: portal.UpdatedBy,
+				ResourceUUID: portal.ID, ResourceName: portal.Handle,
+			})
+		}
 		return nil, err
 	}
-	_ = s.auditRepo.Record("UPDATE", portal.ID, "api_portal", orgID, portal.UpdatedBy)
+	s.audit.Record(ctx, &AuditEvent{
+		Action: model.AuditActionUpdate, ResourceType: model.AuditResourceTypeAPIPortal,
+		Outcome: model.AuditOutcomeSucceeded,
+		ResourceUUID: portal.ID, OrganizationUUID: orgID, PerformedBy: portal.UpdatedBy,
+		ResourceName: portal.Handle, EventData: AuditDiff(before, apiPortalAuditFields(portal)),
+	})
 	// Config may have changed; drop cached AuthProvider so next call rebuilds.
 	s.invalidateCachedAuthProvider(portal.Handle, portal.OrganizationID)
 	return ModelToAPIPortalResponse(portal), nil
 }
 
 // DeleteAPIPortal removes the API Portal identified by its handle within orgID.
-func (s *APIPortalService) DeleteAPIPortal(handle, orgID, actor string) error {
+func (s *APIPortalService) DeleteAPIPortal(ctx context.Context, handle, orgID, actor string) error {
 	portal, err := s.portalRepo.GetByHandleAndOrgID(strings.TrimSpace(handle), orgID)
 	if err != nil {
 		return err
@@ -487,9 +516,40 @@ func (s *APIPortalService) DeleteAPIPortal(handle, orgID, actor string) error {
 		return apperror.APIPortalNotFound.New()
 	}
 	if err := s.portalRepo.Delete(portal.ID, orgID); err != nil {
+		if IsAuditableFailure(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Action: model.AuditActionDelete, ResourceType: model.AuditResourceTypeAPIPortal,
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgID, PerformedBy: strings.TrimSpace(actor),
+				ResourceUUID: portal.ID, ResourceName: portal.Handle,
+			})
+		}
 		return err
 	}
-	_ = s.auditRepo.Record("DELETE", portal.ID, "api_portal", orgID, strings.TrimSpace(actor))
+	s.audit.Record(ctx, &AuditEvent{
+		Action: model.AuditActionDelete, ResourceType: model.AuditResourceTypeAPIPortal,
+		Outcome: model.AuditOutcomeSucceeded,
+		ResourceUUID: portal.ID, OrganizationUUID: orgID, PerformedBy: strings.TrimSpace(actor),
+		ResourceName: portal.Handle,
+	})
 	s.invalidateCachedAuthProvider(portal.Handle, portal.OrganizationID)
 	return nil
+}
+
+// apiPortalAuditFields lists the API portal fields recorded in audit events.
+func apiPortalAuditFields(p *model.APIPortal) map[string]any {
+	return map[string]any{
+		"displayName": p.Name,
+	}
+}
+
+// SetAuditRepository sets where portal lifecycle transitions are recorded.
+func (s *APIPortalService) SetAuditRepository(repo repository.AuditRepository) {
+	s.auditRepo = repo
+}
+
+// recordStatusTransition writes the legacy audit row for a portal lifecycle transition.
+func (s *APIPortalService) recordStatusTransition(portalID, orgID, actor string) {
+	if s.auditRepo != nil {
+		_ = s.auditRepo.Record("UPDATE_STATUS", portalID, "api_portal", orgID, actor)
+	}
 }

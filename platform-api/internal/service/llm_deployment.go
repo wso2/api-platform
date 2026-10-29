@@ -67,6 +67,7 @@ type LLMProviderDeploymentService struct {
 	secretService *SecretService
 	cfg           *config.Server
 	slogger       *slog.Logger
+	audit         *AuditService
 }
 
 // LLMProxyDeploymentService handles business logic for LLM proxy deployment operations
@@ -82,6 +83,7 @@ type LLMProxyDeploymentService struct {
 	gatewayEventsService *GatewayEventsService
 	cfg                  *config.Server
 	slogger              *slog.Logger
+	audit                *AuditService
 }
 
 // NewLLMProviderDeploymentService creates a new LLM provider deployment service
@@ -98,6 +100,7 @@ func NewLLMProviderDeploymentService(
 	identity *IdentityService,
 	cfg *config.Server,
 	slogger *slog.Logger,
+	audit *AuditService,
 ) *LLMProviderDeploymentService {
 	return &LLMProviderDeploymentService{
 		builds:               NewBuildService(artifactRepo, deploymentRepo, definitions, identity, cfg, slogger),
@@ -110,6 +113,7 @@ func NewLLMProviderDeploymentService(
 		gatewayEventsService: gatewayEventsService,
 		cfg:                  cfg,
 		slogger:              slogger,
+		audit:                audit,
 	}
 }
 
@@ -133,6 +137,7 @@ func NewLLMProxyDeploymentService(
 	identity *IdentityService,
 	cfg *config.Server,
 	slogger *slog.Logger,
+	audit *AuditService,
 ) *LLMProxyDeploymentService {
 	return &LLMProxyDeploymentService{
 		builds:               NewBuildService(artifactRepo, deploymentRepo, definitions, identity, cfg, slogger),
@@ -144,6 +149,7 @@ func NewLLMProxyDeploymentService(
 		gatewayEventsService: gatewayEventsService,
 		cfg:                  cfg,
 		slogger:              slogger,
+		audit:                audit,
 	}
 }
 
@@ -410,8 +416,20 @@ func (s *LLMProviderDeploymentService) DeployLLMProvider(ctx context.Context, pr
 		if limitErr := s.builds.LimitError(err); limitErr != err {
 			return nil, limitErr
 		}
+		if IsAuditableFailure(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgUUID, Action: model.AuditActionDeploy, ResourceType: model.AuditResourceTypeDeployment,
+				PerformedBy: createdBy, ResourceUUID: deploymentID, ResourceName: req.Name,
+				EventData: map[string]any{"gatewayHandle": gatewayHandle, "llmProviderId": providerID},
+			})
+		}
 		return nil, fmt.Errorf("failed to create deployment: %w", err)
 	}
+	s.audit.Record(ctx, &AuditEvent{
+		Outcome: model.AuditOutcomeSucceeded, OrganizationUUID: orgUUID, Action: model.AuditActionDeploy, ResourceType: model.AuditResourceTypeDeployment,
+		PerformedBy: createdBy, ResourceUUID: deploymentID, ResourceName: req.Name,
+		EventData: map[string]any{"gatewayHandle": gatewayHandle, "llmProviderId": providerID},
+	})
 
 	// Transitional until the gateway acknowledges the artifact.
 	initialStatus := model.DeploymentStatusDeploying
@@ -465,7 +483,7 @@ func (s *LLMProviderDeploymentService) DeployLLMProvider(ctx context.Context, pr
 }
 
 // RestoreLLMProviderDeployment restores a previous deployment (ARCHIVED or UNDEPLOYED)
-func (s *LLMProviderDeploymentService) RestoreLLMProviderDeployment(ctx context.Context, providerID, deploymentID, gatewayID, orgUUID string) (*api.DeploymentResponse, error) {
+func (s *LLMProviderDeploymentService) RestoreLLMProviderDeployment(ctx context.Context, providerID, deploymentID, gatewayID, orgUUID, actor string) (*api.DeploymentResponse, error) {
 	provider, err := s.providerRepo.GetByID(providerID, orgUUID)
 	if err != nil {
 		return nil, err
@@ -527,8 +545,20 @@ func (s *LLMProviderDeploymentService) RestoreLLMProviderDeployment(ctx context.
 		&performedAt, "",
 	)
 	if err != nil {
+		if IsAuditableFailure(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgUUID, Action: model.AuditActionRestore, ResourceType: model.AuditResourceTypeDeployment,
+				PerformedBy: actor, ResourceUUID: deploymentID, ResourceName: targetDeployment.Name,
+				EventData: map[string]any{"gatewayHandle": resolvedGateway.Handle, "llmProviderId": providerID},
+			})
+		}
 		return nil, fmt.Errorf("failed to set current deployment: %w", err)
 	}
+	s.audit.Record(ctx, &AuditEvent{
+		Outcome: model.AuditOutcomeSucceeded, OrganizationUUID: orgUUID, Action: model.AuditActionRestore, ResourceType: model.AuditResourceTypeDeployment,
+		PerformedBy: actor, ResourceUUID: deploymentID, ResourceName: targetDeployment.Name,
+		EventData: map[string]any{"gatewayHandle": resolvedGateway.Handle, "llmProviderId": providerID},
+	})
 
 	// Broadcast LLM provider deployment event to gateway
 	if s.gatewayEventsService != nil {
@@ -562,7 +592,7 @@ func (s *LLMProviderDeploymentService) RestoreLLMProviderDeployment(ctx context.
 }
 
 // UndeployLLMProviderDeployment undeploys an active deployment
-func (s *LLMProviderDeploymentService) UndeployLLMProviderDeployment(ctx context.Context, providerID, deploymentID, gatewayID, orgUUID string) (*api.DeploymentResponse, error) {
+func (s *LLMProviderDeploymentService) UndeployLLMProviderDeployment(ctx context.Context, providerID, deploymentID, gatewayID, orgUUID, actor string) (*api.DeploymentResponse, error) {
 	provider, err := s.providerRepo.GetByID(providerID, orgUUID)
 	if err != nil {
 		return nil, err
@@ -617,8 +647,20 @@ func (s *LLMProviderDeploymentService) UndeployLLMProviderDeployment(ctx context
 		&performedAt, "",
 	)
 	if err != nil {
+		if IsAuditableFailure(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgUUID, Action: model.AuditActionUndeploy, ResourceType: model.AuditResourceTypeDeployment,
+				PerformedBy: actor, ResourceUUID: deploymentID, ResourceName: deployment.Name,
+				EventData: map[string]any{"gatewayHandle": resolvedGateway.Handle, "llmProviderId": providerID},
+			})
+		}
 		return nil, fmt.Errorf("failed to update deployment status: %w", err)
 	}
+	s.audit.Record(ctx, &AuditEvent{
+		Outcome: model.AuditOutcomeSucceeded, OrganizationUUID: orgUUID, Action: model.AuditActionUndeploy, ResourceType: model.AuditResourceTypeDeployment,
+		PerformedBy: actor, ResourceUUID: deploymentID, ResourceName: deployment.Name,
+		EventData: map[string]any{"gatewayHandle": resolvedGateway.Handle, "llmProviderId": providerID},
+	})
 
 	// Broadcast LLM provider undeployment event to gateway
 	if s.gatewayEventsService != nil {
@@ -649,7 +691,7 @@ func (s *LLMProviderDeploymentService) UndeployLLMProviderDeployment(ctx context
 }
 
 // DeleteLLMProviderDeployment permanently deletes an undeployed deployment artifact
-func (s *LLMProviderDeploymentService) DeleteLLMProviderDeployment(providerID, deploymentID, orgUUID string) error {
+func (s *LLMProviderDeploymentService) DeleteLLMProviderDeployment(ctx context.Context, providerID, deploymentID, orgUUID, actor string) error {
 	provider, err := s.providerRepo.GetByID(providerID, orgUUID)
 	if err != nil {
 		return err
@@ -670,8 +712,20 @@ func (s *LLMProviderDeploymentService) DeleteLLMProviderDeployment(providerID, d
 	}
 
 	if err := s.deploymentRepo.Delete(deploymentID, provider.UUID, orgUUID); err != nil {
+		if IsAuditableFailure(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgUUID, Action: model.AuditActionDelete, ResourceType: model.AuditResourceTypeDeployment,
+				PerformedBy: actor, ResourceUUID: deploymentID, ResourceName: deployment.Name,
+				EventData: map[string]any{"llmProviderId": providerID},
+			})
+		}
 		return fmt.Errorf("failed to delete deployment: %w", err)
 	}
+	s.audit.Record(ctx, &AuditEvent{
+		Outcome: model.AuditOutcomeSucceeded, OrganizationUUID: orgUUID, Action: model.AuditActionDelete, ResourceType: model.AuditResourceTypeDeployment,
+		PerformedBy: actor, ResourceUUID: deploymentID, ResourceName: deployment.Name,
+		EventData: map[string]any{"llmProviderId": providerID},
+	})
 
 	return nil
 }
@@ -978,7 +1032,7 @@ func (s *LLMProviderDeploymentService) applyUpstreamAuthHeaderOverride(
 	if header = strings.TrimSpace(header); header == "" {
 		return nil
 	}
-	if normalizeUpstreamAuthType(string(*auth.Type)) != string(api.ApiKey) {
+	if normalizeUpstreamAuthType(string(*auth.Type)) != string(api.UpstreamAuthTypeApiKey) {
 		return apperror.LLMProviderDeploymentValidationFailed.New(fmt.Sprintf(
 			"Metadata %q applies only to an upstream that authenticates with an api-key.",
 			constants.MetadataKeyUpstreamAuthHeader))
@@ -1796,8 +1850,20 @@ func (s *LLMProxyDeploymentService) DeployLLMProxy(ctx context.Context, proxyID 
 		if limitErr := s.builds.LimitError(err); limitErr != err {
 			return nil, limitErr
 		}
+		if IsAuditableFailure(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgUUID, Action: model.AuditActionDeploy, ResourceType: model.AuditResourceTypeDeployment,
+				PerformedBy: createdBy, ResourceUUID: deploymentID, ResourceName: req.Name,
+				EventData: map[string]any{"gatewayHandle": gatewayHandle, "llmProxyId": proxyID},
+			})
+		}
 		return nil, fmt.Errorf("failed to create deployment: %w", err)
 	}
+	s.audit.Record(ctx, &AuditEvent{
+		Outcome: model.AuditOutcomeSucceeded, OrganizationUUID: orgUUID, Action: model.AuditActionDeploy, ResourceType: model.AuditResourceTypeDeployment,
+		PerformedBy: createdBy, ResourceUUID: deploymentID, ResourceName: req.Name,
+		EventData: map[string]any{"gatewayHandle": gatewayHandle, "llmProxyId": proxyID},
+	})
 
 	// Transitional until the gateway acknowledges the artifact.
 	initialStatus := model.DeploymentStatusDeploying
@@ -1842,7 +1908,7 @@ func (s *LLMProxyDeploymentService) DeployLLMProxy(ctx context.Context, proxyID 
 }
 
 // RestoreLLMProxyDeployment restores a previous deployment (ARCHIVED or UNDEPLOYED)
-func (s *LLMProxyDeploymentService) RestoreLLMProxyDeployment(ctx context.Context, proxyID, deploymentID, gatewayID, orgUUID string) (*api.DeploymentResponse, error) {
+func (s *LLMProxyDeploymentService) RestoreLLMProxyDeployment(ctx context.Context, proxyID, deploymentID, gatewayID, orgUUID, actor string) (*api.DeploymentResponse, error) {
 	proxy, err := s.proxyRepo.GetByID(proxyID, orgUUID)
 	if err != nil {
 		return nil, err
@@ -1904,8 +1970,20 @@ func (s *LLMProxyDeploymentService) RestoreLLMProxyDeployment(ctx context.Contex
 		&performedAt, "",
 	)
 	if err != nil {
+		if IsAuditableFailure(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgUUID, Action: model.AuditActionRestore, ResourceType: model.AuditResourceTypeDeployment,
+				PerformedBy: actor, ResourceUUID: deploymentID, ResourceName: targetDeployment.Name,
+				EventData: map[string]any{"gatewayHandle": resolvedGateway.Handle, "llmProxyId": proxyID},
+			})
+		}
 		return nil, fmt.Errorf("failed to set current deployment: %w", err)
 	}
+	s.audit.Record(ctx, &AuditEvent{
+		Outcome: model.AuditOutcomeSucceeded, OrganizationUUID: orgUUID, Action: model.AuditActionRestore, ResourceType: model.AuditResourceTypeDeployment,
+		PerformedBy: actor, ResourceUUID: deploymentID, ResourceName: targetDeployment.Name,
+		EventData: map[string]any{"gatewayHandle": resolvedGateway.Handle, "llmProxyId": proxyID},
+	})
 
 	// Broadcast LLM proxy deployment event to gateway
 	if s.gatewayEventsService != nil {
@@ -1939,7 +2017,7 @@ func (s *LLMProxyDeploymentService) RestoreLLMProxyDeployment(ctx context.Contex
 }
 
 // UndeployLLMProxyDeployment undeploys an active deployment
-func (s *LLMProxyDeploymentService) UndeployLLMProxyDeployment(ctx context.Context, proxyID, deploymentID, gatewayID, orgUUID string) (*api.DeploymentResponse, error) {
+func (s *LLMProxyDeploymentService) UndeployLLMProxyDeployment(ctx context.Context, proxyID, deploymentID, gatewayID, orgUUID, actor string) (*api.DeploymentResponse, error) {
 	proxy, err := s.proxyRepo.GetByID(proxyID, orgUUID)
 	if err != nil {
 		return nil, err
@@ -1994,8 +2072,20 @@ func (s *LLMProxyDeploymentService) UndeployLLMProxyDeployment(ctx context.Conte
 		&performedAt, "",
 	)
 	if err != nil {
+		if IsAuditableFailure(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgUUID, Action: model.AuditActionUndeploy, ResourceType: model.AuditResourceTypeDeployment,
+				PerformedBy: actor, ResourceUUID: deploymentID, ResourceName: deployment.Name,
+				EventData: map[string]any{"gatewayHandle": resolvedGateway.Handle, "llmProxyId": proxyID},
+			})
+		}
 		return nil, fmt.Errorf("failed to update deployment status: %w", err)
 	}
+	s.audit.Record(ctx, &AuditEvent{
+		Outcome: model.AuditOutcomeSucceeded, OrganizationUUID: orgUUID, Action: model.AuditActionUndeploy, ResourceType: model.AuditResourceTypeDeployment,
+		PerformedBy: actor, ResourceUUID: deploymentID, ResourceName: deployment.Name,
+		EventData: map[string]any{"gatewayHandle": resolvedGateway.Handle, "llmProxyId": proxyID},
+	})
 
 	// Broadcast LLM proxy undeployment event to gateway
 	if s.gatewayEventsService != nil {
@@ -2026,7 +2116,7 @@ func (s *LLMProxyDeploymentService) UndeployLLMProxyDeployment(ctx context.Conte
 }
 
 // DeleteLLMProxyDeployment permanently deletes an undeployed deployment artifact
-func (s *LLMProxyDeploymentService) DeleteLLMProxyDeployment(proxyID, deploymentID, orgUUID string) error {
+func (s *LLMProxyDeploymentService) DeleteLLMProxyDeployment(ctx context.Context, proxyID, deploymentID, orgUUID, actor string) error {
 	proxy, err := s.proxyRepo.GetByID(proxyID, orgUUID)
 	if err != nil {
 		return err
@@ -2047,8 +2137,20 @@ func (s *LLMProxyDeploymentService) DeleteLLMProxyDeployment(proxyID, deployment
 	}
 
 	if err := s.deploymentRepo.Delete(deploymentID, proxy.UUID, orgUUID); err != nil {
+		if IsAuditableFailure(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgUUID, Action: model.AuditActionDelete, ResourceType: model.AuditResourceTypeDeployment,
+				PerformedBy: actor, ResourceUUID: deploymentID, ResourceName: deployment.Name,
+				EventData: map[string]any{"llmProxyId": proxyID},
+			})
+		}
 		return fmt.Errorf("failed to delete deployment: %w", err)
 	}
+	s.audit.Record(ctx, &AuditEvent{
+		Outcome: model.AuditOutcomeSucceeded, OrganizationUUID: orgUUID, Action: model.AuditActionDelete, ResourceType: model.AuditResourceTypeDeployment,
+		PerformedBy: actor, ResourceUUID: deploymentID, ResourceName: deployment.Name,
+		EventData: map[string]any{"llmProxyId": proxyID},
+	})
 
 	return nil
 }
@@ -2438,10 +2540,10 @@ func legacyProvidersFor(
 // the type - no header/value. "api-key" (and legacy basic/bearer) carry the header and value.
 func mapModelAuthToAPI(auth *model.UpstreamAuth) *api.UpstreamAuth {
 	if auth == nil {
-		t := api.None
+		t := api.UpstreamAuthTypeNone
 		return &api.UpstreamAuth{Type: &t}
 	}
-	authType := string(api.None)
+	authType := string(api.UpstreamAuthTypeNone)
 	if normalized := normalizeUpstreamAuthType(auth.Type); normalized != "" {
 		authType = normalized
 	}

@@ -18,6 +18,7 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -428,7 +429,7 @@ func TestSyncCustomPolicy(t *testing.T) {
 			}
 
 			svc := newTestGatewayService(gwRepo, cpRepo)
-			policy, err := svc.SyncCustomPolicy(gwID, orgID, tt.policyName, tt.version, testActorUUID)
+			policy, err := svc.SyncCustomPolicy(context.Background(), gwID, orgID, tt.policyName, tt.version, testActorUUID)
 
 			if (err != nil) != tt.wantErr {
 				t.Errorf("SyncCustomPolicy() error = %v, wantErr %v", err, tt.wantErr)
@@ -478,7 +479,7 @@ func TestSyncCustomPolicy_MinorUpdatePreservesUUID(t *testing.T) {
 	}
 
 	svc := newTestGatewayService(gwRepo, cpRepo)
-	result, err := svc.SyncCustomPolicy(gwID, orgID, "my-policy", "1.2.0", testActorUUID)
+	result, err := svc.SyncCustomPolicy(context.Background(), gwID, orgID, "my-policy", "1.2.0", testActorUUID)
 	if err != nil {
 		t.Fatalf("SyncCustomPolicy() unexpected error: %v", err)
 	}
@@ -633,7 +634,7 @@ func TestDeleteCustomPolicyByUUID(t *testing.T) {
 			}
 			svc := newTestGatewayService(&mockGatewayRepoForPolicy{}, cpRepo)
 
-			err := svc.DeleteCustomPolicyByUUID(orgID, policyUUID, tt.version)
+			err := svc.DeleteCustomPolicyByUUID(context.Background(), orgID, policyUUID, tt.version)
 
 			if (err != nil) != tt.wantErr {
 				t.Errorf("DeleteCustomPolicyByUUID() error = %v, wantErr %v", err, tt.wantErr)
@@ -775,7 +776,7 @@ func TestSyncCustomPolicy_ActorRecordedAsCreator(t *testing.T) {
 		cpRepo := &mockCustomPolicyRepo{}
 
 		svc := newTestGatewayService(gwRepo, cpRepo)
-		if _, err := svc.SyncCustomPolicy(gwID, orgID, "my-policy", "1.0.0", testActorUUID); err != nil {
+		if _, err := svc.SyncCustomPolicy(context.Background(), gwID, orgID, "my-policy", "1.0.0", testActorUUID); err != nil {
 			t.Fatalf("SyncCustomPolicy() unexpected error: %v", err)
 		}
 		if cpRepo.insertedPolicy == nil {
@@ -801,7 +802,7 @@ func TestSyncCustomPolicy_ActorRecordedAsCreator(t *testing.T) {
 		cpRepo := &mockCustomPolicyRepo{getPoliciesByName: []*model.CustomPolicy{existing}}
 
 		svc := newTestGatewayService(gwRepo, cpRepo)
-		if _, err := svc.SyncCustomPolicy(gwID, orgID, "my-policy", "1.2.0", testActorUUID); err != nil {
+		if _, err := svc.SyncCustomPolicy(context.Background(), gwID, orgID, "my-policy", "1.2.0", testActorUUID); err != nil {
 			t.Fatalf("SyncCustomPolicy() unexpected error: %v", err)
 		}
 		if cpRepo.updatedPolicy == nil {
@@ -825,6 +826,15 @@ type mappingIdentityRepo struct {
 
 func (m mappingIdentityRepo) GetOrCreateUUID(identity string) (string, error) {
 	return identity, nil
+}
+
+func (m mappingIdentityRepo) GetUUIDByIdentity(identity string) (string, error) {
+	for uuid, sub := range m.subs {
+		if sub == identity {
+			return uuid, nil
+		}
+	}
+	return "", nil
 }
 
 func (m mappingIdentityRepo) GetSubByUUID(uuid string) (string, bool, error) {
@@ -870,7 +880,7 @@ func TestCustomPolicyResponses_ResolveIdentity(t *testing.T) {
 			manifest: sampleManifest("my-policy", "1.0.0"),
 		}, &mockCustomPolicyRepo{getPolicyByNameVersion: persisted})
 
-		got, err := svc.SyncCustomPolicy(gwID, orgID, "my-policy", "1.0.0", testActorUUID)
+		got, err := svc.SyncCustomPolicy(context.Background(), gwID, orgID, "my-policy", "1.0.0", testActorUUID)
 		if err != nil {
 			t.Fatalf("SyncCustomPolicy() unexpected error: %v", err)
 		}

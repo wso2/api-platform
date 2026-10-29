@@ -123,6 +123,7 @@ func setupPublicationTestEnv(t *testing.T) (http.Handler, *database.DB, func()) 
 		time.Minute,
 		0,
 		slog.Default(),
+		nil,
 	)
 	h := NewPublicationHandler(publicationService, identityService, 0, 0, slog.Default())
 

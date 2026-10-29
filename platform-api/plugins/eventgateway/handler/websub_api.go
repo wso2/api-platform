@@ -82,7 +82,7 @@ func (h *WebSubAPIHandler) CreateWebSubAPI(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	resp, err := h.websubAPIService.Create(orgID, createdBy, &req)
+	resp, err := h.websubAPIService.Create(r.Context(), orgID, createdBy, &req)
 	if err != nil {
 		h.handleServiceError(w, err)
 		return
@@ -171,7 +171,7 @@ func (h *WebSubAPIHandler) UpdateWebSubAPI(w http.ResponseWriter, r *http.Reques
 	if !ok {
 		return
 	}
-	resp, err := h.websubAPIService.Update(orgID, id, updatedBy, &req)
+	resp, err := h.websubAPIService.Update(r.Context(), orgID, id, updatedBy, &req)
 	if err != nil {
 		h.handleServiceError(w, err)
 		return

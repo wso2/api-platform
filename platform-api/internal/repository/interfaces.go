@@ -594,9 +594,22 @@ type AuditRepository interface {
 	Record(action, resourceUUID, resourceType, orgUUID, performedBy string) error
 }
 
+// AuditLogRepository defines the interface for structured audit-log reads and
+// writes. This is the per-action audit trail added for the audit-logs feature.
+type AuditLogRepository interface {
+	Create(row *model.AuditLog) error
+	List(f AuditLogFilter, limit, offset int) ([]*model.AuditLog, error)
+	// Count returns the total matching f, independent of pagination. The list
+	// service uses it to populate Pagination.Total.
+	Count(f AuditLogFilter) (int, error)
+}
+
 // UserIdentityMappingRepository defines the interface for internal-UUID <-> IdP-identity mapping persistence.
 type UserIdentityMappingRepository interface {
 	GetOrCreateUUID(identity string) (string, error)
+	// GetUUIDByIdentity returns the internal UUID for the given IDP identity, or
+	// "" if no mapping exists. Never creates a row.
+	GetUUIDByIdentity(identity string) (string, error)
 	// GetSubByUUID returns the resolved actor identity mapped to uuid, or
 	// found=false if uuid has no mapping (a "hanging" UUID).
 	GetSubByUUID(uuid string) (identity string, found bool, err error)

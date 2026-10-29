@@ -52,6 +52,7 @@ type WebSubAPIDeploymentService struct {
 	gatewayEventsService *coreservice.GatewayEventsService
 	cfg                  *config.Server
 	slogger              *slog.Logger
+	audit                *coreservice.AuditService
 }
 
 // NewWebSubAPIDeploymentService creates a new WebSubAPIDeploymentService
@@ -66,6 +67,7 @@ func NewWebSubAPIDeploymentService(
 	gatewayEventsService *coreservice.GatewayEventsService,
 	cfg *config.Server,
 	slogger *slog.Logger,
+	audit *coreservice.AuditService,
 ) *WebSubAPIDeploymentService {
 	return &WebSubAPIDeploymentService{
 		websubAPIRepo:        websubAPIRepo,
@@ -78,6 +80,7 @@ func NewWebSubAPIDeploymentService(
 		gatewayEventsService: gatewayEventsService,
 		cfg:                  cfg,
 		slogger:              slogger,
+		audit:                audit,
 	}
 }
 
@@ -91,30 +94,78 @@ func (s *WebSubAPIDeploymentService) DeployWebSubAPIByHandle(ctx context.Context
 }
 
 // RestoreWebSubAPIDeploymentByHandle restores a previous deployment using WebSub API handle
-func (s *WebSubAPIDeploymentService) RestoreWebSubAPIDeploymentByHandle(ctx context.Context, apiHandle, deploymentID, gatewayID, orgUUID string) (*api.DeploymentResponse, error) {
+func (s *WebSubAPIDeploymentService) RestoreWebSubAPIDeploymentByHandle(ctx context.Context, apiHandle, deploymentID, gatewayID, orgUUID, actor string) (*api.DeploymentResponse, error) {
 	apiUUID, err := s.getWebSubAPIUUIDByHandle(apiHandle, orgUUID)
 	if err != nil {
 		return nil, err
 	}
-	return s.restoreWebSubAPIDeployment(ctx, apiUUID, &deploymentID, &gatewayID, orgUUID)
+	resp, err := s.restoreWebSubAPIDeployment(ctx, apiUUID, &deploymentID, &gatewayID, orgUUID, actor)
+	if err != nil {
+		if coreservice.IsAuditableFailure(err) {
+			s.audit.Record(ctx, &coreservice.AuditEvent{
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgUUID, Action: model.AuditActionRestore, ResourceType: model.AuditResourceTypeDeployment,
+				PerformedBy: actor, ResourceUUID: deploymentID,
+				EventData: map[string]any{"gatewayHandle": gatewayID, "webSubApiId": apiHandle},
+			})
+		}
+		return resp, err
+	}
+	s.audit.Record(ctx, &coreservice.AuditEvent{
+		Outcome: model.AuditOutcomeSucceeded, OrganizationUUID: orgUUID, Action: model.AuditActionRestore, ResourceType: model.AuditResourceTypeDeployment,
+		PerformedBy: actor, ResourceUUID: deploymentID,
+		EventData: map[string]any{"gatewayHandle": gatewayID, "webSubApiId": apiHandle},
+	})
+	return resp, nil
 }
 
 // UndeployWebSubAPIDeploymentByHandle undeploys a deployment using WebSub API handle
-func (s *WebSubAPIDeploymentService) UndeployWebSubAPIDeploymentByHandle(ctx context.Context, apiHandle, deploymentID, gatewayID, orgUUID string) (*api.DeploymentResponse, error) {
+func (s *WebSubAPIDeploymentService) UndeployWebSubAPIDeploymentByHandle(ctx context.Context, apiHandle, deploymentID, gatewayID, orgUUID, actor string) (*api.DeploymentResponse, error) {
 	apiUUID, err := s.getWebSubAPIUUIDByHandle(apiHandle, orgUUID)
 	if err != nil {
 		return nil, err
 	}
-	return s.undeployWebSubAPIDeployment(ctx, apiUUID, &deploymentID, &gatewayID, orgUUID)
+	resp, err := s.undeployWebSubAPIDeployment(ctx, apiUUID, &deploymentID, &gatewayID, orgUUID, actor)
+	if err != nil {
+		if coreservice.IsAuditableFailure(err) {
+			s.audit.Record(ctx, &coreservice.AuditEvent{
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgUUID, Action: model.AuditActionUndeploy, ResourceType: model.AuditResourceTypeDeployment,
+				PerformedBy: actor, ResourceUUID: deploymentID,
+				EventData: map[string]any{"gatewayHandle": gatewayID, "webSubApiId": apiHandle},
+			})
+		}
+		return resp, err
+	}
+	s.audit.Record(ctx, &coreservice.AuditEvent{
+		Outcome: model.AuditOutcomeSucceeded, OrganizationUUID: orgUUID, Action: model.AuditActionUndeploy, ResourceType: model.AuditResourceTypeDeployment,
+		PerformedBy: actor, ResourceUUID: deploymentID,
+		EventData: map[string]any{"gatewayHandle": gatewayID, "webSubApiId": apiHandle},
+	})
+	return resp, nil
 }
 
 // DeleteWebSubAPIDeploymentByHandle deletes a deployment using WebSub API handle
-func (s *WebSubAPIDeploymentService) DeleteWebSubAPIDeploymentByHandle(apiHandle, deploymentID, orgUUID string) error {
+func (s *WebSubAPIDeploymentService) DeleteWebSubAPIDeploymentByHandle(ctx context.Context, apiHandle, deploymentID, orgUUID, actor string) error {
 	apiUUID, err := s.getWebSubAPIUUIDByHandle(apiHandle, orgUUID)
 	if err != nil {
 		return err
 	}
-	return s.deleteWebSubAPIDeployment(apiUUID, deploymentID, orgUUID)
+	err = s.deleteWebSubAPIDeployment(apiUUID, deploymentID, orgUUID)
+	if err != nil {
+		if coreservice.IsAuditableFailure(err) {
+			s.audit.Record(ctx, &coreservice.AuditEvent{
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgUUID, Action: model.AuditActionDelete, ResourceType: model.AuditResourceTypeDeployment,
+				PerformedBy: actor, ResourceUUID: deploymentID,
+				EventData: map[string]any{"webSubApiId": apiHandle},
+			})
+		}
+		return err
+	}
+	s.audit.Record(ctx, &coreservice.AuditEvent{
+		Outcome: model.AuditOutcomeSucceeded, OrganizationUUID: orgUUID, Action: model.AuditActionDelete, ResourceType: model.AuditResourceTypeDeployment,
+		PerformedBy: actor, ResourceUUID: deploymentID,
+		EventData: map[string]any{"webSubApiId": apiHandle},
+	})
+	return nil
 }
 
 // GetWebSubAPIDeploymentByHandle retrieves a single deployment using WebSub API handle
@@ -162,6 +213,13 @@ func (s *WebSubAPIDeploymentService) deployWebSubAPI(ctx context.Context, apiUUI
 	}
 	// DP-originated artifacts are read-only in the control plane; deployment cannot be CP-initiated.
 	if err := ensureArtifactMutableByUUID(s.artifactRepo, apiUUID, orgID); err != nil {
+		if coreservice.IsOriginDenial(err) {
+			s.audit.Record(ctx, &coreservice.AuditEvent{
+				Action: model.AuditActionDeploy, ResourceType: model.AuditResourceTypeDeployment,
+				Outcome: model.AuditOutcomeDenied, OrganizationUUID: orgID, PerformedBy: createdBy,
+				EventData: map[string]any{"reason": "dp_originated"},
+			})
+		}
 		return nil, err
 	}
 	if req.Base == "" {
@@ -246,8 +304,20 @@ func (s *WebSubAPIDeploymentService) deployWebSubAPI(ctx context.Context, apiUUI
 	}
 	hardLimit := s.cfg.Deployments.MaxPerAPIGateway + constants.DeploymentLimitBuffer
 	if err := s.deploymentRepo.CreateWithLimitEnforcement(deployment, hardLimit); err != nil {
+		if coreservice.IsAuditableFailure(err) {
+			s.audit.Record(ctx, &coreservice.AuditEvent{
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgID, Action: model.AuditActionDeploy, ResourceType: model.AuditResourceTypeDeployment,
+				PerformedBy: createdBy, ResourceUUID: deployment.DeploymentID, ResourceName: req.Name,
+				EventData: map[string]any{"gatewayHandle": gatewayHandle, "webSubApiId": websubAPI.Handle},
+			})
+		}
 		return nil, fmt.Errorf("failed to create deployment: %w", err)
 	}
+	s.audit.Record(ctx, &coreservice.AuditEvent{
+		Outcome: model.AuditOutcomeSucceeded, OrganizationUUID: orgID, Action: model.AuditActionDeploy, ResourceType: model.AuditResourceTypeDeployment,
+		PerformedBy: createdBy, ResourceUUID: deployment.DeploymentID, ResourceName: req.Name,
+		EventData: map[string]any{"gatewayHandle": gatewayHandle, "webSubApiId": websubAPI.Handle},
+	})
 
 	// Ensure API-Gateway association exists
 	if err := s.ensureAPIGatewayAssociation(apiUUID, gatewayID, orgID); err != nil {
@@ -295,7 +365,7 @@ func (s *WebSubAPIDeploymentService) deployWebSubAPI(ctx context.Context, apiUUI
 }
 
 // undeployWebSubAPIDeployment undeploys a WebSub API from a gateway
-func (s *WebSubAPIDeploymentService) undeployWebSubAPIDeployment(ctx context.Context, apiUUID string, deploymentId *string, gatewayId *string, orgID string) (*api.DeploymentResponse, error) {
+func (s *WebSubAPIDeploymentService) undeployWebSubAPIDeployment(ctx context.Context, apiUUID string, deploymentId *string, gatewayId *string, orgID, actor string) (*api.DeploymentResponse, error) {
 	// DP-originated artifacts are read-only in the control plane: their deploy/undeploy
 	// lifecycle is owned by the data-plane gateway, so the control plane must not
 	// initiate an undeployment for them.
@@ -306,6 +376,11 @@ func (s *WebSubAPIDeploymentService) undeployWebSubAPIDeployment(ctx context.Con
 		}
 		if artifact != nil {
 			if err := ensureOriginMutable(artifact.Origin); err != nil {
+				s.audit.Record(ctx, &coreservice.AuditEvent{
+					Action: model.AuditActionUndeploy, ResourceType: model.AuditResourceTypeDeployment,
+					Outcome: model.AuditOutcomeDenied, OrganizationUUID: orgID, PerformedBy: actor,
+					EventData: map[string]any{"reason": "dp_originated"},
+				})
 				return nil, err
 			}
 		}
@@ -394,10 +469,17 @@ func (s *WebSubAPIDeploymentService) undeployWebSubAPIDeployment(ctx context.Con
 }
 
 // restoreWebSubAPIDeployment restores a previously undeployed WebSub API deployment
-func (s *WebSubAPIDeploymentService) restoreWebSubAPIDeployment(ctx context.Context, apiUUID string, deploymentId *string, gatewayId *string, orgID string) (*api.DeploymentResponse, error) {
+func (s *WebSubAPIDeploymentService) restoreWebSubAPIDeployment(ctx context.Context, apiUUID string, deploymentId *string, gatewayId *string, orgID, actor string) (*api.DeploymentResponse, error) {
 	// DP-originated artifacts are read-only in the control plane; their deployment
 	// lifecycle is owned by the data-plane gateway, so restore cannot be CP-initiated.
 	if err := ensureArtifactMutableByUUID(s.artifactRepo, apiUUID, orgID); err != nil {
+		if coreservice.IsOriginDenial(err) {
+			s.audit.Record(ctx, &coreservice.AuditEvent{
+				Action: model.AuditActionRestore, ResourceType: model.AuditResourceTypeDeployment,
+				Outcome: model.AuditOutcomeDenied, OrganizationUUID: orgID, PerformedBy: actor,
+				EventData: map[string]any{"reason": "dp_originated"},
+			})
+		}
 		return nil, err
 	}
 

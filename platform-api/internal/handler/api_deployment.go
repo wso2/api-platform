@@ -195,7 +195,7 @@ func (h *DeploymentHandler) DeleteDeployment(w http.ResponseWriter, r *http.Requ
 	if err != nil {
 		return err
 	}
-	if err := h.deploymentService.DeleteDeploymentByHandle(apiId, deploymentId, orgId, actor); err != nil {
+	if err := h.deploymentService.DeleteDeploymentByHandle(r.Context(), apiId, deploymentId, orgId, actor); err != nil {
 		return serviceError(err, fmt.Sprintf("failed to delete API %s deployment %s", apiId, deploymentId))
 	}
 

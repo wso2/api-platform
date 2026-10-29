@@ -135,3 +135,10 @@ func ensureOriginDeletable(deploymentRepo repository.DeploymentRepository, origi
 	}
 	return nil
 }
+
+// IsOriginDenial reports whether err is a guard above rejecting a change to a
+// DP-originated artifact, as opposed to a lookup failure inside the guard. Only a
+// rejection is audited as denied.
+func IsOriginDenial(err error) bool {
+	return apperror.ArtifactReadOnly.Is(err) || apperror.ArtifactRuntimeImmutable.Is(err) || apperror.ArtifactDeployed.Is(err)
+}

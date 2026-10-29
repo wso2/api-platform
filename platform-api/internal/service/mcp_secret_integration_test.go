@@ -24,6 +24,7 @@
 package service
 
 import (
+	"context"
 	"database/sql"
 	"log/slog"
 	"os"
@@ -83,7 +84,7 @@ func TestMCPProxyServiceUpdate_CleansUpRotatedSecret_Integration(t *testing.T) {
 	createTestSecret(t, secretSvc, mcpSecretITOrgUUID, "mcp-it-secret-b", "sk-mcp-real-token-B")
 
 	mcpRepo := repository.NewMCPProxyRepo(db)
-	mcpSvc := NewMCPProxyService(mcpRepo, nil, nil, nil, nil, slog.Default(), repository.NewAuditRepo(db), &config.Server{}, identity)
+	mcpSvc := NewMCPProxyService(mcpRepo, nil, nil, nil, nil, slog.Default(), &config.Server{}, identity, nil)
 	mcpSvc.WithSecretService(secretSvc)
 
 	createReq := &api.MCPProxy{
@@ -100,7 +101,7 @@ func TestMCPProxyServiceUpdate_CleansUpRotatedSecret_Integration(t *testing.T) {
 			},
 		},
 	}
-	created, err := mcpSvc.Create(mcpSecretITOrgUUID, "alice", createReq)
+	created, err := mcpSvc.Create(context.Background(), mcpSecretITOrgUUID, "alice", createReq)
 	if err != nil {
 		t.Fatalf("Create failed: %v", err)
 	}
@@ -119,7 +120,7 @@ func TestMCPProxyServiceUpdate_CleansUpRotatedSecret_Integration(t *testing.T) {
 			},
 		},
 	}
-	if _, err := mcpSvc.Update(mcpSecretITOrgUUID, *created.Id, "alice", rotateReq); err != nil {
+	if _, err := mcpSvc.Update(context.Background(), mcpSecretITOrgUUID, *created.Id, "alice", rotateReq); err != nil {
 		t.Fatalf("Update (rotate) failed: %v", err)
 	}
 

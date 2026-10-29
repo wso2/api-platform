@@ -49,6 +49,7 @@ type WebSubAPIHmacSecretService struct {
 	gatewayEventsService *coreservice.GatewayEventsService
 	gatewayRepo          repository.GatewayRepository
 	slogger              *slog.Logger
+	audit                *coreservice.AuditService
 }
 
 // NewWebSubAPIHmacSecretService creates a new WebSubAPIHmacSecretService.
@@ -61,6 +62,7 @@ func NewWebSubAPIHmacSecretService(
 	gatewayRepo repository.GatewayRepository,
 	encryptionKeyStr string,
 	slogger *slog.Logger,
+	audit *coreservice.AuditService,
 ) (*WebSubAPIHmacSecretService, error) {
 	if encryptionKeyStr == "" {
 		return nil, apperror.HmacSecretNotConfigured.New()
@@ -76,6 +78,7 @@ func NewWebSubAPIHmacSecretService(
 		gatewayEventsService: gatewayEventsService,
 		gatewayRepo:          gatewayRepo,
 		slogger:              slogger,
+		audit:                audit,
 	}, nil
 }
 
@@ -140,8 +143,20 @@ func (s *WebSubAPIHmacSecretService) Generate(ctx context.Context, orgUUID, apiH
 		if isUniqueConstraintError(err) {
 			return nil, "", apperror.HmacSecretExists.New()
 		}
+		if coreservice.IsAuditableFailure(err) {
+			s.audit.Record(ctx, &coreservice.AuditEvent{
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgUUID, Action: model.AuditActionUpdate, ResourceType: model.AuditResourceTypeWebSubAPI,
+				PerformedBy: userID, ResourceUUID: api.UUID, ResourceName: api.Handle,
+				EventData: map[string]any{"hmacSecrets": map[string]any{"added": []string{handle}}},
+			})
+		}
 		return nil, "", fmt.Errorf("failed to persist HMAC secret: %w", err)
 	}
+	s.audit.Record(ctx, &coreservice.AuditEvent{
+		Outcome: model.AuditOutcomeSucceeded, OrganizationUUID: orgUUID, Action: model.AuditActionUpdate, ResourceType: model.AuditResourceTypeWebSubAPI,
+		PerformedBy: userID, ResourceUUID: api.UUID, ResourceName: api.Handle,
+		EventData: map[string]any{"hmacSecrets": map[string]any{"added": []string{handle}}},
+	})
 
 	s.broadcastSecretEvent(ctx, orgUUID, api.UUID, handle, "CREATED")
 	return secret, plaintext, nil
@@ -203,15 +218,27 @@ func (s *WebSubAPIHmacSecretService) Regenerate(ctx context.Context, orgUUID, ap
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, "", apperror.HmacSecretNotFound.Wrap(err)
 		}
+		if coreservice.IsAuditableFailure(err) {
+			s.audit.Record(ctx, &coreservice.AuditEvent{
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgUUID, Action: model.AuditActionUpdate, ResourceType: model.AuditResourceTypeWebSubAPI,
+				PerformedBy: userID, ResourceUUID: api.UUID, ResourceName: api.Handle,
+				EventData: map[string]any{"hmacSecrets": map[string]any{"regenerated": []string{secretName}}},
+			})
+		}
 		return nil, "", fmt.Errorf("failed to update HMAC secret: %w", err)
 	}
+	s.audit.Record(ctx, &coreservice.AuditEvent{
+		Outcome: model.AuditOutcomeSucceeded, OrganizationUUID: orgUUID, Action: model.AuditActionUpdate, ResourceType: model.AuditResourceTypeWebSubAPI,
+		PerformedBy: userID, ResourceUUID: api.UUID, ResourceName: api.Handle,
+		EventData: map[string]any{"hmacSecrets": map[string]any{"regenerated": []string{secretName}}},
+	})
 
 	s.broadcastSecretEvent(ctx, orgUUID, api.UUID, secretName, "UPDATED")
 	return existing, plaintext, nil
 }
 
 // Delete permanently removes a named HMAC secret.
-func (s *WebSubAPIHmacSecretService) Delete(ctx context.Context, orgUUID, apiHandle, secretName string) error {
+func (s *WebSubAPIHmacSecretService) Delete(ctx context.Context, orgUUID, apiHandle, secretName, userID string) error {
 	api, err := s.websubRepo.GetByHandle(apiHandle, orgUUID)
 	if err != nil {
 		return fmt.Errorf("failed to look up WebSub API: %w", err)
@@ -232,8 +259,20 @@ func (s *WebSubAPIHmacSecretService) Delete(ctx context.Context, orgUUID, apiHan
 		if errors.Is(err, sql.ErrNoRows) {
 			return apperror.HmacSecretNotFound.Wrap(err)
 		}
+		if coreservice.IsAuditableFailure(err) {
+			s.audit.Record(ctx, &coreservice.AuditEvent{
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgUUID, Action: model.AuditActionUpdate, ResourceType: model.AuditResourceTypeWebSubAPI,
+				PerformedBy: userID, ResourceUUID: api.UUID, ResourceName: api.Handle,
+				EventData: map[string]any{"hmacSecrets": map[string]any{"removed": []string{secretName}}},
+			})
+		}
 		return fmt.Errorf("failed to delete HMAC secret: %w", err)
 	}
+	s.audit.Record(ctx, &coreservice.AuditEvent{
+		Outcome: model.AuditOutcomeSucceeded, OrganizationUUID: orgUUID, Action: model.AuditActionUpdate, ResourceType: model.AuditResourceTypeWebSubAPI,
+		PerformedBy: userID, ResourceUUID: api.UUID, ResourceName: api.Handle,
+		EventData: map[string]any{"hmacSecrets": map[string]any{"removed": []string{secretName}}},
+	})
 
 	s.broadcastSecretEvent(ctx, orgUUID, api.UUID, secretName, "DELETED")
 	return nil

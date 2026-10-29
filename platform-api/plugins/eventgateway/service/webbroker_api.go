@@ -25,6 +25,8 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
+	"slices"
 
 	"github.com/wso2/api-platform/platform-api/api"
 	"github.com/wso2/api-platform/platform-api/config"
@@ -44,7 +46,7 @@ type WebBrokerAPIService struct {
 	gatewayEventsService *coreservice.GatewayEventsService
 	apiUtil              *utils.APIUtil
 	slogger              *slog.Logger
-	auditRepo            repository.AuditRepository
+	audit                *coreservice.AuditService
 	cfg                  *config.Server
 	identity             *coreservice.IdentityService
 }
@@ -57,7 +59,7 @@ func NewWebBrokerAPIService(
 	gatewayEventsService *coreservice.GatewayEventsService,
 	apiUtil *utils.APIUtil,
 	slogger *slog.Logger,
-	auditRepo repository.AuditRepository,
+	audit *coreservice.AuditService,
 	cfg *config.Server,
 	identity *coreservice.IdentityService,
 ) *WebBrokerAPIService {
@@ -68,7 +70,7 @@ func NewWebBrokerAPIService(
 		gatewayEventsService: gatewayEventsService,
 		apiUtil:              apiUtil,
 		slogger:              slogger,
-		auditRepo:            auditRepo,
+		audit:                audit,
 		cfg:                  cfg,
 		identity:             identity,
 	}
@@ -92,7 +94,7 @@ func (s *WebBrokerAPIService) toWebBrokerAPI(m *model.WebBrokerAPI) (*api.WebBro
 }
 
 // Create creates a new WebBroker API
-func (s *WebBrokerAPIService) Create(orgUUID, createdBy string, req *api.WebBrokerAPI) (*api.WebBrokerAPI, error) {
+func (s *WebBrokerAPIService) Create(ctx context.Context, orgUUID, createdBy string, req *api.WebBrokerAPI) (*api.WebBrokerAPI, error) {
 	if req == nil {
 		return nil, apperror.ValidationFailed.New("A request body is required.")
 	}
@@ -173,12 +175,23 @@ func (s *WebBrokerAPIService) Create(orgUUID, createdBy string, req *api.WebBrok
 		if isSQLiteUniqueConstraint(err) {
 			return nil, apperror.WebBrokerAPIExists.Wrap(err)
 		}
+		if coreservice.IsAuditableFailure(err) {
+			s.audit.Record(ctx, &coreservice.AuditEvent{
+				Action: model.AuditActionCreate, ResourceType: model.AuditResourceTypeWebBrokerAPI,
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgUUID, PerformedBy: createdBy,
+				ResourceUUID: m.UUID, ResourceName: m.Handle,
+			})
+		}
 		return nil, fmt.Errorf("failed to create WebBroker API: %w", err)
 	}
 
-	if s.auditRepo != nil {
-		_ = s.auditRepo.Record("CREATE", m.UUID, "webbroker_api", orgUUID, createdBy)
-	}
+	s.audit.Record(ctx, &coreservice.AuditEvent{
+		Action: model.AuditActionCreate, ResourceType: model.AuditResourceTypeWebBrokerAPI,
+		Outcome: model.AuditOutcomeSucceeded,
+		ResourceUUID: m.UUID, OrganizationUUID: orgUUID, PerformedBy: createdBy,
+		ResourceName: m.Handle,
+		EventData:    webBrokerAPIAuditFields(m),
+	})
 	return s.Get(orgUUID, handle)
 }
 
@@ -253,7 +266,7 @@ func (s *WebBrokerAPIService) List(orgUUID, projectUUID string, limit, offset in
 }
 
 // Update updates an existing WebBroker API
-func (s *WebBrokerAPIService) Update(orgUUID, handle, updatedBy string, req *api.WebBrokerAPI) (*api.WebBrokerAPI, error) {
+func (s *WebBrokerAPIService) Update(ctx context.Context, orgUUID, handle, updatedBy string, req *api.WebBrokerAPI) (*api.WebBrokerAPI, error) {
 	if handle == "" || req == nil {
 		return nil, apperror.ValidationFailed.New("The WebBroker API id and a request body are required.")
 	}
@@ -291,6 +304,7 @@ func (s *WebBrokerAPIService) Update(orgUUID, handle, updatedBy string, req *api
 		subscriptionPlans = *req.SubscriptionPlans
 	}
 
+	before := webBrokerAPIAuditFields(existing)
 	existing.Name = req.DisplayName
 	existing.Version = req.Version
 	existing.Description = utils.ValueOrEmpty(req.Description)
@@ -312,12 +326,22 @@ func (s *WebBrokerAPIService) Update(orgUUID, handle, updatedBy string, req *api
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, apperror.WebBrokerAPINotFound.Wrap(err)
 		}
+		if coreservice.IsAuditableFailure(err) {
+			s.audit.Record(ctx, &coreservice.AuditEvent{
+				Action: model.AuditActionUpdate, ResourceType: model.AuditResourceTypeWebBrokerAPI,
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgUUID, PerformedBy: updatedBy,
+				ResourceUUID: existing.UUID, ResourceName: existing.Handle,
+			})
+		}
 		return nil, fmt.Errorf("failed to update WebBroker API: %w", err)
 	}
 
-	if s.auditRepo != nil {
-		_ = s.auditRepo.Record("UPDATE", existing.UUID, "webbroker_api", orgUUID, updatedBy)
-	}
+	s.audit.Record(ctx, &coreservice.AuditEvent{
+		Action: model.AuditActionUpdate, ResourceType: model.AuditResourceTypeWebBrokerAPI,
+		Outcome: model.AuditOutcomeSucceeded,
+		ResourceUUID: existing.UUID, OrganizationUUID: orgUUID, PerformedBy: updatedBy,
+		ResourceName: existing.Handle, EventData: coreservice.AuditDiff(before, webBrokerAPIAuditFields(existing)),
+	})
 	return s.Get(orgUUID, handle)
 }
 
@@ -355,12 +379,22 @@ func (s *WebBrokerAPIService) Delete(ctx context.Context, orgUUID, handle, delet
 		if errors.Is(err, sql.ErrNoRows) {
 			return apperror.WebBrokerAPINotFound.Wrap(err)
 		}
+		if coreservice.IsAuditableFailure(err) {
+			s.audit.Record(ctx, &coreservice.AuditEvent{
+				Action: model.AuditActionDelete, ResourceType: model.AuditResourceTypeWebBrokerAPI,
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgUUID, PerformedBy: deletedBy,
+				ResourceUUID: webbrokerAPI.UUID, ResourceName: webbrokerAPI.Handle,
+			})
+		}
 		return fmt.Errorf("failed to delete WebBroker API: %w", err)
 	}
 
-	if s.auditRepo != nil {
-		_ = s.auditRepo.Record("DELETE", webbrokerAPI.UUID, "webbroker_api", orgUUID, deletedBy)
-	}
+	s.audit.Record(ctx, &coreservice.AuditEvent{
+		Action: model.AuditActionDelete, ResourceType: model.AuditResourceTypeWebBrokerAPI,
+		Outcome: model.AuditOutcomeSucceeded,
+		ResourceUUID: webbrokerAPI.UUID, OrganizationUUID: orgUUID, PerformedBy: deletedBy,
+		ResourceName: webbrokerAPI.Handle,
+	})
 	// Send deletion events to all gateways in the organization
 	if s.gatewayEventsService != nil && len(gateways) > 0 {
 		for _, gateway := range gateways {
@@ -630,5 +664,17 @@ func mapWebBrokerAPIModelToListItem(m *model.WebBrokerAPI) *api.WebBrokerAPIList
 		CreatedBy:       utils.StringPtrIfNotEmpty(m.CreatedBy),
 		CreatedAt:       utils.TimePtr(m.CreatedAt),
 		UpdatedAt:       utils.TimePtr(m.UpdatedAt),
+	}
+}
+
+// webBrokerAPIAuditFields lists the WebBroker API fields recorded in audit events.
+func webBrokerAPIAuditFields(m *model.WebBrokerAPI) map[string]any {
+	return map[string]any{
+		"displayName":       m.Name,
+		"version":           m.Version,
+		"lifeCycleStatus":   m.LifeCycleStatus,
+		"context":           utils.ValueOrEmpty(m.Configuration.Context),
+		"channels":          slices.Sorted(maps.Keys(m.Configuration.Channels)),
+		"subscriptionPlans": m.Configuration.SubscriptionPlans,
 	}
 }

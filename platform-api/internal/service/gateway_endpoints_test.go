@@ -18,6 +18,7 @@
 package service
 
 import (
+	"context"
 	"reflect"
 	"strings"
 	"testing"
@@ -42,14 +43,14 @@ func TestRegisterGatewayEndpoints(t *testing.T) {
 		svc := &GatewayService{
 			gatewayRepo: repo,
 			orgRepo:     &mockOrganizationRepository{org: &model.Organization{ID: orgID}},
-			auditRepo:   &noopAuditRepo{},
+			audit:       nil,
 			identity:    newTestIdentityService(),
 		}
 		return svc, repo
 	}
 
 	register := func(svc *GatewayService, handle string, endpoints []string) (*api.GatewayResponse, error) {
-		return svc.RegisterGateway(
+		return svc.RegisterGateway(context.Background(),
 			orgID, &handle, "Production Gateway", "", endpoints,
 			false, constants.GatewayFunctionalityTypeRegular, "1.0", "test-user", nil,
 		)
@@ -178,7 +179,7 @@ func TestUpdateGatewayEndpoints(t *testing.T) {
 		svc := &GatewayService{
 			gatewayRepo: repo,
 			orgRepo:     &mockOrganizationRepository{org: &model.Organization{ID: orgID, Handle: "test-org"}},
-			auditRepo:   &noopAuditRepo{},
+			audit:       nil,
 			identity:    newTestIdentityService(),
 		}
 		return svc, repo
@@ -187,7 +188,7 @@ func TestUpdateGatewayEndpoints(t *testing.T) {
 	t.Run("endpoints provided — replaced", func(t *testing.T) {
 		svc, repo := newService()
 		newEndpoints := []string{"https://new.example.com:8443"}
-		response, err := svc.UpdateGateway(gatewayID, orgID, "test-user", &api.GatewayResponse{
+		response, err := svc.UpdateGateway(context.Background(), gatewayID, orgID, "test-user", &api.GatewayResponse{
 			DisplayName: "my-gateway",
 			Endpoints:   &newEndpoints,
 		})
@@ -208,7 +209,7 @@ func TestUpdateGatewayEndpoints(t *testing.T) {
 
 	t.Run("endpoints omitted — preserved", func(t *testing.T) {
 		svc, repo := newService()
-		response, err := svc.UpdateGateway(gatewayID, orgID, "test-user", &api.GatewayResponse{
+		response, err := svc.UpdateGateway(context.Background(), gatewayID, orgID, "test-user", &api.GatewayResponse{
 			DisplayName: "my-gateway",
 		})
 		if err != nil {

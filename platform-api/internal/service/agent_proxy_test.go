@@ -23,6 +23,7 @@
 package service
 
 import (
+	"context"
 	"log/slog"
 	"reflect"
 	"testing"
@@ -242,16 +243,16 @@ func TestProjectDeletionIsRefusedWhileAgentProxiesRemain(t *testing.T) {
 		},
 	}
 	svc := NewProjectService(projectRepo, nil, &emptyAPIRepo{}, &mockAgentProjectMCPRepo{},
-		agentRepo, &emptyApplicationRepo{}, &noopAuditRepo{}, newTestIdentityService(), slog.Default())
+		agentRepo, &emptyApplicationRepo{}, nil, newTestIdentityService(), slog.Default())
 
-	err := svc.DeleteProject("default-project", agentTestOrg, "alice")
+	err := svc.DeleteProject(context.Background(), "default-project", agentTestOrg, "alice")
 	if !apperror.ValidationFailed.Is(err) {
 		t.Fatalf("expected a validation failure while Agent proxies remain, got: %v", err)
 	}
 
 	// With none left the guard no longer applies, so the same call proceeds.
 	agentRepo.countByProject = 0
-	if err := svc.DeleteProject("default-project", agentTestOrg, "alice"); err != nil {
+	if err := svc.DeleteProject(context.Background(), "default-project", agentTestOrg, "alice"); err != nil {
 		t.Fatalf("delete with no Agent proxies remaining: %v", err)
 	}
 }

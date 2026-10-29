@@ -68,6 +68,10 @@ func (r *UserIdentityMappingRepo) GetOrCreateUUID(identity string) (string, erro
 	return newUUID, nil
 }
 
+func (r *UserIdentityMappingRepo) GetUUIDByIdentity(identity string) (string, error) {
+	return r.getUUID(identity)
+}
+
 func (r *UserIdentityMappingRepo) getUUID(identity string) (string, error) {
 	query := `SELECT uuid FROM user_idp_references WHERE idp_id = ?`
 	var mappedUUID string

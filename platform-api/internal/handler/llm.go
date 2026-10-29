@@ -125,7 +125,7 @@ func (h *LLMHandler) CreateLLMProviderTemplate(w http.ResponseWriter, r *http.Re
 		return err
 	}
 
-	created, err := h.templateService.Create(orgID, createdBy, &req)
+	created, err := h.templateService.Create(r.Context(), orgID, createdBy, &req)
 	if err != nil {
 		return serviceError(err, fmt.Sprintf("failed to create LLM provider template in org %s", orgID))
 	}
@@ -169,7 +169,7 @@ func (h *LLMHandler) CopyLLMProviderTemplateVersion(w http.ResponseWriter, r *ht
 		overrides = &vreq
 	}
 
-	created, err := h.templateService.CopyVersion(orgID, fromTemplateID, toTemplateID, toVersion, createdBy, overrides)
+	created, err := h.templateService.CopyVersion(r.Context(), orgID, fromTemplateID, toTemplateID, toVersion, createdBy, overrides)
 	if err != nil {
 		return serviceError(err, fmt.Sprintf("failed to copy LLM provider template version from %s to version %s in org %s", fromTemplateID, toVersion, orgID))
 	}
@@ -252,7 +252,8 @@ func (h *LLMHandler) SetLLMProviderTemplateVersionEnabled(w http.ResponseWriter,
 		return apperror.ValidationFailed.New("Request body must include a boolean 'enabled' field")
 	}
 
-	resp, err := h.templateService.SetEnabledByHandle(orgID, id, *body.Enabled)
+	actor, _ := h.identity.InternalUserID(r)
+	resp, err := h.templateService.SetEnabledByHandle(r.Context(), orgID, id, actor, *body.Enabled)
 	if err != nil {
 		return serviceError(err, fmt.Sprintf("failed to set LLM provider template version enabled for template %s in org %s", id, orgID))
 	}
@@ -281,7 +282,7 @@ func (h *LLMHandler) UpdateLLMProviderTemplate(w http.ResponseWriter, r *http.Re
 	if err != nil {
 		return err
 	}
-	resp, err := h.templateService.Update(orgID, id, updatedBy, &req)
+	resp, err := h.templateService.Update(r.Context(), orgID, id, updatedBy, &req)
 	if err != nil {
 		return serviceError(err, fmt.Sprintf("failed to update LLM provider template %s in org %s", id, orgID))
 	}
@@ -298,7 +299,8 @@ func (h *LLMHandler) DeleteLLMProviderTemplateVersion(w http.ResponseWriter, r *
 	}
 	id := r.PathValue("llmProviderTemplateId")
 
-	if err := h.templateService.DeleteByHandle(orgID, id); err != nil {
+	actor, _ := h.identity.InternalUserID(r)
+	if err := h.templateService.DeleteByHandle(r.Context(), orgID, id, actor); err != nil {
 		return serviceError(err, fmt.Sprintf("failed to delete LLM provider template version %s in org %s", id, orgID))
 	}
 
@@ -324,7 +326,7 @@ func (h *LLMHandler) CreateLLMProvider(w http.ResponseWriter, r *http.Request) e
 		return err
 	}
 
-	created, err := h.providerService.Create(orgID, createdBy, &req)
+	created, err := h.providerService.Create(r.Context(), orgID, createdBy, &req)
 	if err != nil {
 		return serviceError(err, fmt.Sprintf("failed to create LLM provider in org %s", orgID))
 	}
@@ -387,7 +389,7 @@ func (h *LLMHandler) UpdateLLMProvider(w http.ResponseWriter, r *http.Request) e
 	if err != nil {
 		return err
 	}
-	resp, err := h.providerService.Update(orgID, id, updatedBy, &req)
+	resp, err := h.providerService.Update(r.Context(), orgID, id, updatedBy, &req)
 	if err != nil {
 		return serviceError(err, fmt.Sprintf("failed to update LLM provider %s in org %s", id, orgID))
 	}
@@ -520,7 +522,7 @@ func (h *LLMHandler) UpdateLLMProxy(w http.ResponseWriter, r *http.Request) erro
 	if err != nil {
 		return err
 	}
-	resp, err := h.proxyService.Update(orgID, id, updatedBy, &req)
+	resp, err := h.proxyService.Update(r.Context(), orgID, id, updatedBy, &req)
 	if err != nil {
 		return serviceError(err, fmt.Sprintf("failed to update LLM proxy %s in org %s", id, orgID))
 	}

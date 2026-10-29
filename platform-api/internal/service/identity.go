@@ -68,6 +68,15 @@ func (s *IdentityService) InternalUserID(r *http.Request) (string, error) {
 	return s.ToInternalUUID(identity)
 }
 
+// UUIDForSub returns the internal UUID for the given IDP subject identifier,
+// or "" if no mapping exists. Unlike ToInternalUUID, this never creates a row.
+func (s *IdentityService) UUIDForSub(sub string) (string, error) {
+	if sub == "" {
+		return "", nil
+	}
+	return s.repo.GetUUIDByIdentity(sub)
+}
+
 // DisplayIdentity satisfies pdk.Identity: the identity a response shows for an
 // internal user id, resolved as ResolveIdentityField does. An empty id is
 // returned as is, the same as a field with no recorded user.

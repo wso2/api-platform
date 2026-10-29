@@ -999,7 +999,7 @@ func TestDeleteDeployment(t *testing.T) {
 				deploymentRepo: mockDeploymentRepo,
 			}
 
-			err := service.DeleteDeployment(testAPIUUID, tt.deploymentID, testOrgUUID, "")
+			err := service.DeleteDeployment(context.Background(), testAPIUUID, tt.deploymentID, testOrgUUID, "")
 
 			// Check error expectation
 			if (err != nil) != tt.wantErr {
@@ -1514,7 +1514,7 @@ func TestDeleteDeployment_ArchivedWithNoStatusRow(t *testing.T) {
 		deploymentRepo: mockDeploymentRepo,
 	}
 
-	err := service.DeleteDeployment(testAPIUUID, testDeploymentID, testOrgUUID, "")
+	err := service.DeleteDeployment(context.Background(), testAPIUUID, testDeploymentID, testOrgUUID, "")
 
 	if err != nil {
 		t.Fatalf("DeleteDeployment() unexpected error for ARCHIVED deployment: %v", err)
@@ -1754,7 +1754,7 @@ func TestDeleteDeployment_CannotDeleteDeployed(t *testing.T) {
 		deploymentRepo: mockDeploymentRepo,
 	}
 
-	err := service.DeleteDeployment(testAPIUUID, testDeploymentID, testOrgUUID, "")
+	err := service.DeleteDeployment(context.Background(), testAPIUUID, testDeploymentID, testOrgUUID, "")
 
 	if err == nil {
 		t.Fatal("Expected error when deleting DEPLOYED deployment")

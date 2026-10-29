@@ -208,6 +208,132 @@ func (e ApplicationType) Valid() bool {
 	}
 }
 
+// Defines values for AuditAction.
+const (
+	Create   AuditAction = "create"
+	Delete   AuditAction = "delete"
+	Deploy   AuditAction = "deploy"
+	Restore  AuditAction = "restore"
+	Revoke   AuditAction = "revoke"
+	Undeploy AuditAction = "undeploy"
+	Update   AuditAction = "update"
+)
+
+// Valid indicates whether the value is a known member of the AuditAction enum.
+func (e AuditAction) Valid() bool {
+	switch e {
+	case Create:
+		return true
+	case Delete:
+		return true
+	case Deploy:
+		return true
+	case Restore:
+		return true
+	case Revoke:
+		return true
+	case Undeploy:
+		return true
+	case Update:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AuditOutcome.
+const (
+	AuditOutcomeDenied    AuditOutcome = "denied"
+	AuditOutcomeFailed    AuditOutcome = "failed"
+	AuditOutcomeSucceeded AuditOutcome = "succeeded"
+)
+
+// Valid indicates whether the value is a known member of the AuditOutcome enum.
+func (e AuditOutcome) Valid() bool {
+	switch e {
+	case AuditOutcomeDenied:
+		return true
+	case AuditOutcomeFailed:
+		return true
+	case AuditOutcomeSucceeded:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AuditResourceType.
+const (
+	AuditResourceTypeApiDefinition       AuditResourceType = "ApiDefinition"
+	AuditResourceTypeApiKey              AuditResourceType = "ApiKey"
+	AuditResourceTypeApiPortal           AuditResourceType = "ApiPortal"
+	AuditResourceTypeApplication         AuditResourceType = "Application"
+	AuditResourceTypeCustomPolicy        AuditResourceType = "CustomPolicy"
+	AuditResourceTypeDeployment          AuditResourceType = "Deployment"
+	AuditResourceTypeGateway             AuditResourceType = "Gateway"
+	AuditResourceTypeLlmApiKey           AuditResourceType = "LlmApiKey"
+	AuditResourceTypeLlmProvider         AuditResourceType = "LlmProvider"
+	AuditResourceTypeLlmProviderTemplate AuditResourceType = "LlmProviderTemplate"
+	AuditResourceTypeLlmProxy            AuditResourceType = "LlmProxy"
+	AuditResourceTypeMcp                 AuditResourceType = "Mcp"
+	AuditResourceTypeOrganization        AuditResourceType = "Organization"
+	AuditResourceTypeProject             AuditResourceType = "Project"
+	AuditResourceTypeRestApi             AuditResourceType = "RestApi"
+	AuditResourceTypeSecret              AuditResourceType = "Secret"
+	AuditResourceTypeSubscription        AuditResourceType = "Subscription"
+	AuditResourceTypeSubscriptionPlan    AuditResourceType = "SubscriptionPlan"
+	AuditResourceTypeWebBrokerApi        AuditResourceType = "WebBrokerApi"
+	AuditResourceTypeWebSubApi           AuditResourceType = "WebSubApi"
+)
+
+// Valid indicates whether the value is a known member of the AuditResourceType enum.
+func (e AuditResourceType) Valid() bool {
+	switch e {
+	case AuditResourceTypeApiDefinition:
+		return true
+	case AuditResourceTypeApiKey:
+		return true
+	case AuditResourceTypeApiPortal:
+		return true
+	case AuditResourceTypeApplication:
+		return true
+	case AuditResourceTypeCustomPolicy:
+		return true
+	case AuditResourceTypeDeployment:
+		return true
+	case AuditResourceTypeGateway:
+		return true
+	case AuditResourceTypeLlmApiKey:
+		return true
+	case AuditResourceTypeLlmProvider:
+		return true
+	case AuditResourceTypeLlmProviderTemplate:
+		return true
+	case AuditResourceTypeLlmProxy:
+		return true
+	case AuditResourceTypeMcp:
+		return true
+	case AuditResourceTypeOrganization:
+		return true
+	case AuditResourceTypeProject:
+		return true
+	case AuditResourceTypeRestApi:
+		return true
+	case AuditResourceTypeSecret:
+		return true
+	case AuditResourceTypeSubscription:
+		return true
+	case AuditResourceTypeSubscriptionPlan:
+		return true
+	case AuditResourceTypeWebBrokerApi:
+		return true
+	case AuditResourceTypeWebSubApi:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ChannelRequestMethod.
 const (
 	SUB ChannelRequestMethod = "SUB"
@@ -1503,25 +1629,25 @@ func (e UpdateAPIKeyResponseStatus) Valid() bool {
 
 // Defines values for UpstreamAuthType.
 const (
-	ApiKey UpstreamAuthType = "api-key"
-	Basic  UpstreamAuthType = "basic"
-	Bearer UpstreamAuthType = "bearer"
-	None   UpstreamAuthType = "none"
-	Other  UpstreamAuthType = "other"
+	UpstreamAuthTypeApiKey UpstreamAuthType = "api-key"
+	UpstreamAuthTypeBasic  UpstreamAuthType = "basic"
+	UpstreamAuthTypeBearer UpstreamAuthType = "bearer"
+	UpstreamAuthTypeNone   UpstreamAuthType = "none"
+	UpstreamAuthTypeOther  UpstreamAuthType = "other"
 )
 
 // Valid indicates whether the value is a known member of the UpstreamAuthType enum.
 func (e UpstreamAuthType) Valid() bool {
 	switch e {
-	case ApiKey:
+	case UpstreamAuthTypeApiKey:
 		return true
-	case Basic:
+	case UpstreamAuthTypeBasic:
 		return true
-	case Bearer:
+	case UpstreamAuthTypeBearer:
 		return true
-	case None:
+	case UpstreamAuthTypeNone:
 		return true
-	case Other:
+	case UpstreamAuthTypeOther:
 		return true
 	default:
 		return false
@@ -2801,6 +2927,59 @@ type AssociatedGateway struct {
 	// Id Handle of the gateway this artifact can be deployed to
 	Id string `json:"id" yaml:"id"`
 }
+
+// AuditAction Audited action verb. Unknown values in a response should be treated as opaque.
+type AuditAction string
+
+// AuditEvent A single recorded audit event.
+type AuditEvent struct {
+	// Action Audited action verb. Unknown values in a response should be treated as opaque.
+	Action AuditAction `json:"action" yaml:"action"`
+
+	// CorrelationId X-Correlation-ID of the request that produced this event (if any).
+	CorrelationId *string `json:"correlationId,omitempty" yaml:"correlationId,omitempty"`
+
+	// EventData Action-specific payload. Must not contain secret material.
+	EventData *map[string]interface{} `json:"eventData,omitempty" yaml:"eventData,omitempty"`
+
+	// Id UUIDv7 event identifier.
+	Id string `json:"id" yaml:"id"`
+
+	// OrganizationId The organization the caller's JWT resolves to.
+	OrganizationId string `json:"organizationId" yaml:"organizationId"`
+
+	// Outcome Terminal outcome of the audited action.
+	Outcome AuditOutcome `json:"outcome" yaml:"outcome"`
+
+	// PerformedAt RFC 3339 UTC, millisecond precision.
+	PerformedAt time.Time `json:"performedAt" yaml:"performedAt"`
+
+	// PerformedBy IDP subject identifier of the actor.
+	PerformedBy *string `json:"performedBy,omitempty" yaml:"performedBy,omitempty"`
+
+	// ResourceId Target resource identifier. `null` for pre-id creation failures.
+	ResourceId *string `json:"resourceId,omitempty" yaml:"resourceId,omitempty"`
+
+	// ResourceName Human-friendly resource label at the time of action; not backfilled on rename.
+	ResourceName *string `json:"resourceName,omitempty" yaml:"resourceName,omitempty"`
+
+	// ResourceType Audited resource type. Unknown values in a response should be treated as opaque.
+	ResourceType AuditResourceType `json:"resourceType" yaml:"resourceType"`
+}
+
+// AuditEventListResponse Paginated list of audit events.
+type AuditEventListResponse struct {
+	// Count Number of items in current response
+	Count      int          `json:"count" yaml:"count"`
+	List       []AuditEvent `json:"list" yaml:"list"`
+	Pagination Pagination   `json:"pagination" yaml:"pagination"`
+}
+
+// AuditOutcome Terminal outcome of the audited action.
+type AuditOutcome string
+
+// AuditResourceType Audited resource type. Unknown values in a response should be treated as opaque.
+type AuditResourceType string
 
 // BuildListResponse defines model for BuildListResponse.
 type BuildListResponse struct {
@@ -6500,6 +6679,41 @@ type ListApplicationAssociationsParams struct {
 
 // ListApplicationAssociationAPIKeysParams defines parameters for ListApplicationAssociationAPIKeys.
 type ListApplicationAssociationAPIKeysParams struct {
+	// Limit Maximum number of items to return per page.
+	Limit *LimitQ `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
+
+	// Offset Zero-based index of the first item to return.
+	Offset *OffsetQ `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
+}
+
+// ListAuditLogsParams defines parameters for ListAuditLogs.
+type ListAuditLogsParams struct {
+	// StartTime Inclusive lower bound on `performedAt` (RFC 3339 UTC). Rejected
+	// with `400 AUDIT_INVALID_FILTER` if not parseable.
+	StartTime *time.Time `form:"startTime,omitempty" json:"startTime,omitempty" yaml:"startTime,omitempty"`
+
+	// EndTime Inclusive upper bound on `performedAt` (RFC 3339 UTC). Rejected
+	// with `400 AUDIT_INVALID_FILTER` if not parseable, or if
+	// `endTime <= startTime`.
+	EndTime *time.Time `form:"endTime,omitempty" json:"endTime,omitempty" yaml:"endTime,omitempty"`
+
+	// PerformedBy Filter by IDP subject identifier of the actor.
+	PerformedBy *string `form:"performedBy,omitempty" json:"performedBy,omitempty" yaml:"performedBy,omitempty"`
+
+	// ResourceId Exact match on the target resource identifier.
+	ResourceId *string `form:"resourceId,omitempty" json:"resourceId,omitempty" yaml:"resourceId,omitempty"`
+
+	// Action Filter by action verb (closed enum).
+	Action *AuditAction `form:"action,omitempty" json:"action,omitempty" yaml:"action,omitempty"`
+
+	// ResourceType Target resource types (closed enum). Repeat the parameter to
+	// return events of any listed type. If omitted, all types are
+	// returned.
+	ResourceType *[]AuditResourceType `form:"resourceType,omitempty" json:"resourceType,omitempty" yaml:"resourceType,omitempty"`
+
+	// Outcome Filter by outcome (closed enum).
+	Outcome *AuditOutcome `form:"outcome,omitempty" json:"outcome,omitempty" yaml:"outcome,omitempty"`
+
 	// Limit Maximum number of items to return per page.
 	Limit *LimitQ `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
 

@@ -226,7 +226,7 @@ func newDocHEnvWithIdentity(t *testing.T, cfg *config.Server, identityRepo repos
 		audit:     &docHAudit{},
 		artifacts: &docHArtifactRepo{},
 	}
-	svc := service.NewAPIDocumentService(env.docs, env.artifacts, env.audit, logger)
+	svc := service.NewAPIDocumentService(env.docs, env.artifacts, env.audit, nil, logger)
 	identity := service.NewIdentityService(identityRepo)
 	env.mux = http.NewServeMux()
 	NewAPIDocumentHandler(svc, identity, logger, cfg).RegisterRoutes(env.mux)

@@ -70,7 +70,7 @@ func (r contentDocumentRepo) GetDocument(_, handle, _, _ string) (*model.Documen
 }
 
 func newContentService(docs map[string]*model.Document) *PublicationService {
-	return NewPublicationService(nil, nil, contentDocumentRepo{docs: docs}, nil, nil, nil, time.Minute, 0, nil)
+	return NewPublicationService(nil, nil, contentDocumentRepo{docs: docs}, nil, nil, nil, time.Minute, 0, nil, nil)
 }
 
 func TestLoadPortalContent(t *testing.T) {
@@ -128,7 +128,7 @@ func TestLoadPortalContent(t *testing.T) {
 	})
 
 	t.Run("rejects a document removed after it was selected", func(t *testing.T) {
-		svc := NewPublicationService(nil, nil, contentDocumentRepo{docs: docs, removedOnLoad: true}, nil, nil, nil, time.Minute, 0, nil)
+		svc := NewPublicationService(nil, nil, contentDocumentRepo{docs: docs, removedOnLoad: true}, nil, nil, nil, time.Minute, 0, nil, nil)
 		_, err := svc.loadPortalContent(portalContentSource{ArtifactUUID: "artifact", OrgUUID: "org", DocHandles: []string{"guide"}})
 		if !apperror.APIPublicationValidationFailed.Is(err) || !strings.Contains(err.Error(), `"guide" was removed`) {
 			t.Fatalf("want a validation error naming the document, got %v", err)
@@ -137,7 +137,7 @@ func TestLoadPortalContent(t *testing.T) {
 
 	t.Run("reports a failure to load a document", func(t *testing.T) {
 		loadErr := errors.New("db down")
-		svc := NewPublicationService(nil, nil, contentDocumentRepo{docs: docs, loadErr: loadErr}, nil, nil, nil, time.Minute, 0, nil)
+		svc := NewPublicationService(nil, nil, contentDocumentRepo{docs: docs, loadErr: loadErr}, nil, nil, nil, time.Minute, 0, nil, nil)
 		_, err := svc.loadPortalContent(portalContentSource{ArtifactUUID: "artifact", OrgUUID: "org", DocHandles: []string{"guide"}})
 		if !errors.Is(err, loadErr) || apperror.APIPublicationValidationFailed.Is(err) {
 			t.Fatalf("want the repository failure, not a validation error, got %v", err)
@@ -153,7 +153,7 @@ func TestLoadPortalContent(t *testing.T) {
 			handles = append(handles, h)
 		}
 		var loads int
-		svc := NewPublicationService(nil, nil, contentDocumentRepo{docs: many, loads: &loads}, nil, nil, nil, time.Minute, 0, nil)
+		svc := NewPublicationService(nil, nil, contentDocumentRepo{docs: many, loads: &loads}, nil, nil, nil, time.Minute, 0, nil, nil)
 		_, err := svc.loadPortalContent(portalContentSource{ArtifactUUID: "artifact", OrgUUID: "org", DocHandles: handles})
 		if !apperror.APIPublicationValidationFailed.Is(err) || !strings.Contains(err.Error(), "too large") {
 			t.Fatalf("want a too large error, got %v", err)
@@ -236,7 +236,7 @@ func newPublishDocsService(pub PortalPublisher, docUUIDs []string, thumbnail *mo
 	return NewPublicationService(
 		publishFlowArtifactRepo{}, publishFlowPortalRepo{}, contentDocumentRepo{docs: docs},
 		publicationTestPlans(), publishFlowDocsPublicationRepo{docUUIDs: docUUIDs, thumbnail: thumbnail, promoted: promoted},
-		pub, time.Minute, 0, nil)
+		pub, time.Minute, 0, nil, nil)
 }
 
 func TestPublish_PushesDocumentsAfterTheListing(t *testing.T) {
@@ -360,7 +360,7 @@ func TestPublish_StopsBeforeAnyPortalCallWhenTheContentCannotBeLoaded(t *testing
 			pub := &callLog{}
 			svc := NewPublicationService(
 				publishFlowArtifactRepo{}, publishFlowPortalRepo{}, tc.docs,
-				tc.plans, tc.repo, pub, time.Minute, 0, nil)
+				tc.plans, tc.repo, pub, time.Minute, 0, nil, nil)
 
 			published, _, err := svc.Publish(context.Background(), restAPITypeValue, "my-api", "my-portal", "org", "actor")
 			if !tc.is(err) || published != nil {

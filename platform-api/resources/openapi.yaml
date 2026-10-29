@@ -9088,6 +9088,106 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /audit-logs:
+    get:
+      summary: List audit events
+      description: |
+        Returns a paginated, filtered slice of the caller's organization's
+        audit-log trail. The caller must hold `ap:audit:read`.
+
+        Tenant scoping: `organizationId` is always sourced from the verified
+        JWT claim. An `organizationId` supplied in the query string is
+        silently ignored and never echoed back.
+
+        Immutability: no PUT / PATCH / POST / DELETE is defined on this
+        collection. Write-method requests return `405 Method Not Allowed`
+        from the router.
+      operationId: ListAuditLogs
+      tags:
+        - Audit Logs
+      security:
+        - OAuth2Security:
+            - ap:audit:read
+      parameters:
+        - name: startTime
+          in: query
+          required: false
+          description: |
+            Inclusive lower bound on `performedAt` (RFC 3339 UTC). Rejected
+            with `400 AUDIT_INVALID_FILTER` if not parseable.
+          schema:
+            type: string
+            format: date-time
+          example: "2026-10-11T00:00:00Z"
+        - name: endTime
+          in: query
+          required: false
+          description: |
+            Inclusive upper bound on `performedAt` (RFC 3339 UTC). Rejected
+            with `400 AUDIT_INVALID_FILTER` if not parseable, or if
+            `endTime <= startTime`.
+          schema:
+            type: string
+            format: date-time
+          example: "2026-10-12T00:00:00Z"
+        - name: performedBy
+          in: query
+          required: false
+          description: Filter by IDP subject identifier of the actor.
+          schema:
+            type: string
+            maxLength: 200
+        - name: resourceId
+          in: query
+          required: false
+          description: Exact match on the target resource identifier.
+          schema:
+            type: string
+            maxLength: 40
+        - name: action
+          in: query
+          required: false
+          description: Filter by action verb (closed enum).
+          schema:
+            $ref: '#/components/schemas/AuditAction'
+        - name: resourceType
+          in: query
+          required: false
+          description: |
+            Target resource types (closed enum). Repeat the parameter to
+            return events of any listed type. If omitted, all types are
+            returned.
+          schema:
+            type: array
+            items:
+              $ref: '#/components/schemas/AuditResourceType'
+          style: form
+          explode: true
+          example: [LlmProvider, Mcp]
+        - name: outcome
+          in: query
+          required: false
+          description: Filter by outcome (closed enum).
+          schema:
+            $ref: '#/components/schemas/AuditOutcome'
+        - $ref: '#/components/parameters/limit-Q'
+        - $ref: '#/components/parameters/offset-Q'
+      responses:
+        '200':
+          description: Filtered audit-event slice.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditEventListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
 components:
   headers:
     Location:
@@ -9170,6 +9270,7 @@ components:
             ap:application:manage: Full access to applications
             ap:application:read: Read applications
             ap:application:update: Update an application
+            ap:audit:read: Read and export audit events for the caller's organization
             ap:gateway:create: Create a gateway
             ap:gateway:delete: Delete a gateway
             ap:gateway:manage: Full access to gateways
@@ -9682,6 +9783,128 @@ components:
             $ref: '#/components/schemas/Application'
         pagination:
           $ref: '#/components/schemas/Pagination'
+
+    AuditEventListResponse:
+      type: object
+      description: Paginated list of audit events.
+      required:
+        - count
+        - list
+        - pagination
+      properties:
+        count:
+          type: integer
+          description: Number of items in current response
+          example: 50
+        list:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuditEvent'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    AuditEvent:
+      type: object
+      description: A single recorded audit event.
+      required:
+        - id
+        - organizationId
+        - action
+        - resourceType
+        - performedAt
+        - outcome
+      properties:
+        id:
+          type: string
+          description: UUIDv7 event identifier.
+          maxLength: 40
+          example: "01932c70-3f8a-7000-8000-abcdef123456"
+        organizationId:
+          type: string
+          description: The organization the caller's JWT resolves to.
+          maxLength: 40
+          example: "9f1e4a76-5d1b-4b2f-9c35-7bcdabcd1234"
+        correlationId:
+          type: string
+          description: X-Correlation-ID of the request that produced this event (if any).
+          nullable: true
+          maxLength: 64
+        action:
+          $ref: '#/components/schemas/AuditAction'
+        resourceType:
+          $ref: '#/components/schemas/AuditResourceType'
+        resourceId:
+          type: string
+          description: Target resource identifier. `null` for pre-id creation failures.
+          nullable: true
+          maxLength: 40
+        resourceName:
+          type: string
+          description: Human-friendly resource label at the time of action; not backfilled on rename.
+          nullable: true
+          maxLength: 255
+        performedBy:
+          type: string
+          description: IDP subject identifier of the actor.
+          nullable: true
+          maxLength: 200
+        performedAt:
+          type: string
+          format: date-time
+          description: RFC 3339 UTC, millisecond precision.
+          example: "2026-10-11T18:42:03.419Z"
+        outcome:
+          $ref: '#/components/schemas/AuditOutcome'
+        eventData:
+          type: object
+          description: Action-specific payload. Must not contain secret material.
+          additionalProperties: true
+          nullable: true
+
+    AuditAction:
+      type: string
+      description: Audited action verb. Unknown values in a response should be treated as opaque.
+      enum:
+        - create
+        - update
+        - delete
+        - deploy
+        - undeploy
+        - restore
+        - revoke
+
+    AuditResourceType:
+      type: string
+      description: Audited resource type. Unknown values in a response should be treated as opaque.
+      enum:
+        - RestApi
+        - Application
+        - LlmProvider
+        - LlmApiKey
+        - LlmProviderTemplate
+        - LlmProxy
+        - Subscription
+        - SubscriptionPlan
+        - Mcp
+        - ApiKey
+        - Deployment
+        - Gateway
+        - CustomPolicy
+        - Project
+        - Organization
+        - ApiPortal
+        - ApiDefinition
+        - WebSubApi
+        - WebBrokerApi
+        - Secret
+
+    AuditOutcome:
+      type: string
+      description: Terminal outcome of the audited action.
+      enum:
+        - succeeded
+        - failed
+        - denied
 
     AddApplicationAPIKeysRequest:
       type: object
@@ -16395,3 +16618,5 @@ tags:
     description: Subscription management operations linking applications to APIs under a subscription plan
   - name: Secrets
     description: Encrypted secret management — create, rotate, and delete organization-scoped secrets referenced via {{ secret "name" }} placeholders
+  - name: Audit Logs
+    description: Read and export audit events recording every mutating action performed in the caller's organization

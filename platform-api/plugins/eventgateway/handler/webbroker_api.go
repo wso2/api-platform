@@ -82,7 +82,7 @@ func (h *WebBrokerAPIHandler) CreateWebBrokerAPI(w http.ResponseWriter, r *http.
 		return
 	}
 
-	resp, err := h.webbrokerAPIService.Create(orgID, createdBy, &req)
+	resp, err := h.webbrokerAPIService.Create(r.Context(), orgID, createdBy, &req)
 	if err != nil {
 		h.handleServiceError(w, err)
 		return
@@ -180,7 +180,7 @@ func (h *WebBrokerAPIHandler) UpdateWebBrokerAPI(w http.ResponseWriter, r *http.
 	if !ok {
 		return
 	}
-	resp, err := h.webbrokerAPIService.Update(orgID, id, updatedBy, &req)
+	resp, err := h.webbrokerAPIService.Update(r.Context(), orgID, id, updatedBy, &req)
 	if err != nil {
 		h.handleServiceError(w, err)
 		return

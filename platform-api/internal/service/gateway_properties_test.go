@@ -18,6 +18,7 @@
 package service
 
 import (
+	"context"
 	"reflect"
 	"testing"
 
@@ -96,12 +97,12 @@ func TestRegisterGatewayProperties(t *testing.T) {
 	service := &GatewayService{
 		gatewayRepo: mockGatewayRepo,
 		orgRepo:     mockOrgRepo,
-		auditRepo:   &noopAuditRepo{},
+		audit:       nil,
 		identity:    newTestIdentityService(),
 	}
 
 	gatewayID := "prod-gateway-01"
-	response, err := service.RegisterGateway(
+	response, err := service.RegisterGateway(context.Background(),
 		orgID,
 		&gatewayID,
 		"Production Gateway",
@@ -157,12 +158,12 @@ func TestUpdateGatewayProperties(t *testing.T) {
 		service := &GatewayService{
 			gatewayRepo: mockGatewayRepo,
 			orgRepo:     &mockOrganizationRepository{org: &model.Organization{ID: orgID, Handle: "test-org"}},
-			auditRepo:   &noopAuditRepo{},
+			audit:       nil,
 			identity:    newTestIdentityService(),
 		}
 
 		newDescription := "New description"
-		response, err := service.UpdateGateway(gatewayID, orgID, "test-user", &api.GatewayResponse{
+		response, err := service.UpdateGateway(context.Background(), gatewayID, orgID, "test-user", &api.GatewayResponse{
 			DisplayName: baseGateway.Name,
 			Description: &newDescription,
 		})
@@ -197,7 +198,7 @@ func TestUpdateGatewayProperties(t *testing.T) {
 		service := &GatewayService{
 			gatewayRepo: mockGatewayRepo,
 			orgRepo:     &mockOrganizationRepository{org: &model.Organization{ID: orgID, Handle: "test-org"}},
-			auditRepo:   &noopAuditRepo{},
+			audit:       nil,
 			identity:    newTestIdentityService(),
 		}
 
@@ -206,7 +207,7 @@ func TestUpdateGatewayProperties(t *testing.T) {
 			"tier":   "premium",
 		}
 
-		response, err := service.UpdateGateway(gatewayID, orgID, "test-user", &api.GatewayResponse{
+		response, err := service.UpdateGateway(context.Background(), gatewayID, orgID, "test-user", &api.GatewayResponse{
 			DisplayName: freshGateway.Name,
 			Properties:  &newProperties,
 		})

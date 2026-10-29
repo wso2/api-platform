@@ -102,7 +102,7 @@ func (g billingApplyGateways) GetAPIGatewaysWithDetails(apiUUID, orgUUID string)
 func newBillingApplyService(store *billingApplyStore, gateways billingApplyGateways) (*SubscriptionService, *capturingEventHub) {
 	hub := &capturingEventHub{}
 	svc := NewSubscriptionService(gateways, billingApplyArtifacts{}, billingApplySubscriptions{}, nil, nil,
-		NewGatewayEventsService(hub, newTestIdentityService(), newTestLogger()), nil, newTestLogger())
+		NewGatewayEventsService(hub, newTestIdentityService(), newTestLogger()), newTestLogger(), nil)
 	if store != nil {
 		svc.SetBillingRepository(store)
 	}

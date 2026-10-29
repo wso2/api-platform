@@ -77,7 +77,7 @@ func (h *ApplicationHandler) CreateApplication(w http.ResponseWriter, r *http.Re
 	if err != nil {
 		return err
 	}
-	app, err := h.applicationService.CreateApplication(&req, orgID, createdBy)
+	app, err := h.applicationService.CreateApplication(r.Context(), &req, orgID, createdBy)
 	if err != nil {
 		return serviceError(err, fmt.Sprintf("failed to create application in project %s for org %s by user %s", req.ProjectId, orgID, createdBy))
 	}
@@ -227,8 +227,9 @@ func (h *ApplicationHandler) AddApplicationAssociations(w http.ResponseWriter, r
 	if len(req.Associations) == 0 {
 		return apperror.ValidationFailed.New("At least one association is required")
 	}
+	userID, _ := h.identity.InternalUserID(r)
 
-	associations, err := h.applicationService.AddApplicationAssociations(appID, &req, orgID)
+	associations, err := h.applicationService.AddApplicationAssociations(r.Context(), appID, &req, orgID, userID)
 	if err != nil {
 		return serviceError(err, fmt.Sprintf("failed to add associations for application %s in org %s", appID, orgID))
 	}
@@ -253,7 +254,8 @@ func (h *ApplicationHandler) RemoveApplicationAssociation(w http.ResponseWriter,
 		return apperror.ValidationFailed.New("Association ID is required")
 	}
 
-	if err := h.applicationService.RemoveApplicationAssociation(appID, associationID, orgID); err != nil {
+	userID, _ := h.identity.InternalUserID(r)
+	if err := h.applicationService.RemoveApplicationAssociation(r.Context(), appID, associationID, orgID, userID); err != nil {
 		return serviceError(err, fmt.Sprintf("failed to remove association %s for application %s in org %s", associationID, appID, orgID))
 	}
 

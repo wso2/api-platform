@@ -776,6 +776,25 @@ CREATE TABLE IF NOT EXISTS audit (
 );
 CREATE INDEX IF NOT EXISTS idx_audit_org ON audit(organization_uuid);
 
+CREATE TABLE IF NOT EXISTS audit_log (
+   uuid              VARCHAR(40)  NOT NULL,
+   organization_uuid VARCHAR(40)  NOT NULL,
+   correlation_id    VARCHAR(64)  NULL,
+   action            VARCHAR(50)  NOT NULL,
+   resource_type     VARCHAR(50)  NOT NULL,
+   resource_uuid     VARCHAR(40)  NULL,
+   resource_name     VARCHAR(255) NULL,
+   performed_by      VARCHAR(200) NULL,
+   performed_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   outcome           VARCHAR(20)  NOT NULL,
+   event_data        TEXT         NULL,
+   PRIMARY KEY (uuid),
+   FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_audit_log_org_time ON audit_log(organization_uuid, performed_at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_log_outcome ON audit_log(organization_uuid, outcome, performed_at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_log_actor ON audit_log(organization_uuid, performed_by, performed_at DESC);
+
 -- Secrets table for encrypted secret management
 CREATE TABLE IF NOT EXISTS secrets (
     uuid              VARCHAR(40)   PRIMARY KEY,

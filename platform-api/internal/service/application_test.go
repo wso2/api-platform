@@ -690,10 +690,10 @@ func TestAddApplicationAssociations_AssociatesProviderAndProxy(t *testing.T) {
 
 	svc := &ApplicationService{appRepo: appRepo, identity: newTestIdentityService()}
 
-	_, err := svc.AddApplicationAssociations("my-app", &AddApplicationAssociationsRequest{Associations: []ApplicationAssociationSelector{
+	_, err := svc.AddApplicationAssociations(context.Background(), "my-app", &AddApplicationAssociationsRequest{Associations: []ApplicationAssociationSelector{
 		{Id: "provider-1", Kind: constants.LLMProvider},
 		{Id: "proxy-1", Kind: constants.LLMProxy},
-	}}, "org-1")
+	}}, "org-1", "user-1")
 	if err != nil {
 		t.Fatalf("expected nil error, got %v", err)
 	}
@@ -724,10 +724,10 @@ func TestAddApplicationAssociations_RejectsCrossProjectProxy(t *testing.T) {
 
 	svc := &ApplicationService{appRepo: appRepo, identity: newTestIdentityService()}
 
-	_, err := svc.AddApplicationAssociations("my-app", &AddApplicationAssociationsRequest{Associations: []ApplicationAssociationSelector{{
+	_, err := svc.AddApplicationAssociations(context.Background(), "my-app", &AddApplicationAssociationsRequest{Associations: []ApplicationAssociationSelector{{
 		Id:   "proxy-1",
 		Kind: constants.LLMProxy,
-	}}}, "org-1")
+	}}}, "org-1", "user-1")
 	if !apperror.ValidationFailed.Is(err) {
 		t.Fatalf("expected ErrInvalidInput, got %v", err)
 	}
@@ -776,7 +776,7 @@ func TestRemoveApplicationAssociation_RemovesByResolvedTarget(t *testing.T) {
 
 	svc := &ApplicationService{appRepo: appRepo, identity: newTestIdentityService()}
 
-	err := svc.RemoveApplicationAssociation("my-app", "proxy-1", "org-1")
+	err := svc.RemoveApplicationAssociation(context.Background(), "my-app", "proxy-1", "org-1", "user-1")
 	if err != nil {
 		t.Fatalf("expected nil error, got %v", err)
 	}
@@ -886,7 +886,7 @@ func TestDeleteApplication_BroadcastsMappingClear(t *testing.T) {
 		},
 	}
 
-	svc := &ApplicationService{appRepo: appRepo, gatewayEventsService: &GatewayEventsService{}, auditRepo: &noopAuditRepo{}}
+	svc := &ApplicationService{appRepo: appRepo, gatewayEventsService: &GatewayEventsService{}}
 
 	if err := svc.DeleteApplication(context.Background(), "my-app", orgID, ""); err != nil {
 		t.Fatalf("expected nil error deleting application, got %v", err)
@@ -921,13 +921,13 @@ func TestCreateApplication_AllowsMissingProjectID(t *testing.T) {
 		appRepo:     appRepo,
 		projectRepo: projectRepo,
 		orgRepo:     orgRepo,
-		auditRepo:   &noopAuditRepo{},
+
 		identity:    newTestIdentityService(),
 	}
 
 	// project_uuid is optional: creating without a project id succeeds and persists a project-less
 	// application rather than erroring.
-	resp, err := svc.CreateApplication(&api.CreateApplicationRequest{
+	resp, err := svc.CreateApplication(context.Background(), &api.CreateApplicationRequest{
 		DisplayName: "Sample App",
 		Type:        api.ApplicationType("genai"),
 	}, orgID, "")
@@ -961,12 +961,12 @@ func TestCreateApplication_AcceptsWebType(t *testing.T) {
 		appRepo:     appRepo,
 		projectRepo: projectRepo,
 		orgRepo:     orgRepo,
-		auditRepo:   &noopAuditRepo{},
+
 	}
 
 	// "web" is an accepted application type (alongside "genai"): webhook-reconciled applications
 	// carry their own type, so creation must not be hardcoded to genai.
-	resp, err := svc.CreateApplication(&api.CreateApplicationRequest{
+	resp, err := svc.CreateApplication(context.Background(), &api.CreateApplicationRequest{
 		DisplayName: "My Mobile App",
 		Type:        api.ApplicationType("web"),
 	}, orgID, "")
@@ -988,10 +988,10 @@ func TestCreateApplication_RejectsUnsupportedType(t *testing.T) {
 		appRepo:     &mockApplicationRepository{},
 		projectRepo: &mockProjectRepository{},
 		orgRepo:     &mockApplicationOrganizationRepository{org: &model.Organization{ID: orgID}},
-		auditRepo:   &noopAuditRepo{},
+
 	}
 
-	_, err := svc.CreateApplication(&api.CreateApplicationRequest{
+	_, err := svc.CreateApplication(context.Background(), &api.CreateApplicationRequest{
 		DisplayName: "Bad Type App",
 		Type:        api.ApplicationType("mobile"),
 	}, orgID, "")
@@ -1035,7 +1035,7 @@ func TestCreateApplication_ValidatesProvidedProjectID(t *testing.T) {
 		identity:    newTestIdentityService(),
 	}
 
-	_, err := svc.CreateApplication(&api.CreateApplicationRequest{
+	_, err := svc.CreateApplication(context.Background(), &api.CreateApplicationRequest{
 		DisplayName: "Sample App",
 		ProjectId:   "some-project-handle",
 		Type:        api.ApplicationType("genai"),

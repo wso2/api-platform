@@ -63,6 +63,7 @@ var messageArity = map[string]int{
 	CodeOf(MeterExists):                           1,
 	CodeOf(MeterInUse):                            1,
 	CodeOf(SubscriptionPlanInUse):                 1,
+	CodeOf(AuditInvalidFilter):                    1,
 }
 
 // CodeOf makes the arity table read as a set of catalog references rather

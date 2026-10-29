@@ -181,6 +181,7 @@ func newPublicationTestServiceWithTimeout(tdb *schemaDB, portalPublisher service
 		operationTimeout,
 		0,
 		nil,
+		nil,
 	)
 }
 
@@ -616,6 +617,7 @@ func TestPublicationUnpublish_PortalConflict(t *testing.T) {
 		publicationTestOperationTimeout,
 		0,
 		nil,
+		nil,
 	)
 
 	apiType, apiHandle, portalHandle := "rest-api", apiHandleFor(g), portalHandleFor(g)
@@ -695,6 +697,7 @@ func TestPublicationUnpublish_PortalConflictReasonSurfaced(t *testing.T) {
 		unpublishSubscriptionConflictPublisher{},
 		publicationTestOperationTimeout,
 		0,
+		nil,
 		nil,
 	)
 

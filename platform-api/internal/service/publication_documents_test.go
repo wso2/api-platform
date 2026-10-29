@@ -34,7 +34,7 @@ func TestResolveDocSelections(t *testing.T) {
 		"faq":   {ID: "uuid-faq", Handle: "faq", Type: "DOC_FAQ", FileName: "faq.md"},
 	}
 	newService := func(repo contentDocumentRepo) *PublicationService {
-		return NewPublicationService(nil, nil, repo, nil, nil, nil, time.Minute, 0, nil)
+		return NewPublicationService(nil, nil, repo, nil, nil, nil, time.Minute, 0, nil, nil)
 	}
 
 	t.Run("returns the selections in handle order with their stored copies", func(t *testing.T) {
@@ -76,7 +76,7 @@ func TestResolveDocSelections(t *testing.T) {
 }
 
 func TestSaveDraftDetails_RejectsAnUnknownDocument(t *testing.T) {
-	svc := NewPublicationService(publishFlowArtifactRepo{}, publishFlowPortalRepo{}, contentDocumentRepo{}, nil, nil, nil, time.Minute, 0, nil)
+	svc := NewPublicationService(publishFlowArtifactRepo{}, publishFlowPortalRepo{}, contentDocumentRepo{}, nil, nil, nil, time.Minute, 0, nil, nil)
 	draft := &model.Publication{DisplayName: "My API", Version: "1.0"}
 
 	_, err := svc.SaveDraftDetails(restAPITypeValue, "my-api", "my-portal", "org", "actor", draft, nil, []string{"nope"})

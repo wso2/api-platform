@@ -137,7 +137,7 @@ func createProxyForCompat(t *testing.T, request *api.LLMProxy) (*api.LLMProxy, *
 		OrganizationID: "org-1",
 	}}
 	service := NewLLMProxyService(proxyRepo, providerRepo, projectRepo, nil, nil, nil,
-		slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
+		slog.Default(), nil, &config.Server{}, newTestIdentityService())
 
 	response, err := service.Create(context.Background(), "org-1", "compat-user", request)
 	if err != nil {

@@ -70,7 +70,7 @@ func (h *ProjectHandler) CreateProject(w http.ResponseWriter, r *http.Request) e
 	if err != nil {
 		return err
 	}
-	project, err := h.projectService.CreateProject(&req, organizationID, actor)
+	project, err := h.projectService.CreateProject(r.Context(), &req, organizationID, actor)
 	if err != nil {
 		var appErr *apperror.Error
 		if errors.As(err, &appErr) {
@@ -175,7 +175,7 @@ func (h *ProjectHandler) UpdateProject(w http.ResponseWriter, r *http.Request) e
 	if err != nil {
 		return err
 	}
-	project, err := h.projectService.UpdateProject(projectId, &req, orgID, actor)
+	project, err := h.projectService.UpdateProject(r.Context(), projectId, &req, orgID, actor)
 	if err != nil {
 		return serviceError(err, fmt.Sprintf("failed to update project %s in org %s", projectId, orgID))
 	}
@@ -201,7 +201,7 @@ func (h *ProjectHandler) DeleteProject(w http.ResponseWriter, r *http.Request) e
 	if err != nil {
 		return err
 	}
-	if err := h.projectService.DeleteProject(projectId, orgID, actor); err != nil {
+	if err := h.projectService.DeleteProject(r.Context(), projectId, orgID, actor); err != nil {
 		var appErr *apperror.Error
 		if errors.As(err, &appErr) {
 			return err

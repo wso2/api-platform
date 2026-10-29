@@ -120,12 +120,12 @@ func (a mcpDeployments) Deploy(ctx context.Context, handle string, req *api.Depl
 	return a.DeployMCPProxyByHandle(ctx, handle, req, orgID, actor)
 }
 
-func (a mcpDeployments) Undeploy(ctx context.Context, handle, deploymentID, gatewayHandle, orgID, _ string) (*api.DeploymentResponse, error) {
-	return a.UndeployDeploymentByHandle(ctx, handle, deploymentID, gatewayHandle, orgID)
+func (a mcpDeployments) Undeploy(ctx context.Context, handle, deploymentID, gatewayHandle, orgID, actor string) (*api.DeploymentResponse, error) {
+	return a.UndeployDeploymentByHandle(ctx, handle, deploymentID, gatewayHandle, orgID, actor)
 }
 
-func (a mcpDeployments) Restore(ctx context.Context, handle, deploymentID, gatewayHandle, orgID, _ string) (*api.DeploymentResponse, error) {
-	return a.RestoreMCPDeploymentByHandle(ctx, handle, deploymentID, gatewayHandle, orgID)
+func (a mcpDeployments) Restore(ctx context.Context, handle, deploymentID, gatewayHandle, orgID, actor string) (*api.DeploymentResponse, error) {
+	return a.RestoreMCPDeploymentByHandle(ctx, handle, deploymentID, gatewayHandle, orgID, actor)
 }
 
 func (a mcpDeployments) GetDeployment(handle, deploymentID, orgID string) (*api.DeploymentResponse, error) {
@@ -144,12 +144,12 @@ func (a llmProxyDeployments) Deploy(ctx context.Context, handle string, req *api
 	return a.DeployLLMProxy(ctx, handle, req, orgID, actor)
 }
 
-func (a llmProxyDeployments) Undeploy(ctx context.Context, handle, deploymentID, gatewayHandle, orgID, _ string) (*api.DeploymentResponse, error) {
-	return a.UndeployLLMProxyDeployment(ctx, handle, deploymentID, gatewayHandle, orgID)
+func (a llmProxyDeployments) Undeploy(ctx context.Context, handle, deploymentID, gatewayHandle, orgID, actor string) (*api.DeploymentResponse, error) {
+	return a.UndeployLLMProxyDeployment(ctx, handle, deploymentID, gatewayHandle, orgID, actor)
 }
 
-func (a llmProxyDeployments) Restore(ctx context.Context, handle, deploymentID, gatewayHandle, orgID, _ string) (*api.DeploymentResponse, error) {
-	return a.RestoreLLMProxyDeployment(ctx, handle, deploymentID, gatewayHandle, orgID)
+func (a llmProxyDeployments) Restore(ctx context.Context, handle, deploymentID, gatewayHandle, orgID, actor string) (*api.DeploymentResponse, error) {
+	return a.RestoreLLMProxyDeployment(ctx, handle, deploymentID, gatewayHandle, orgID, actor)
 }
 
 func (a llmProxyDeployments) GetDeployment(handle, deploymentID, orgID string) (*api.DeploymentResponse, error) {
@@ -167,12 +167,12 @@ func (a llmProviderDeployments) Deploy(ctx context.Context, handle string, req *
 	return a.DeployLLMProvider(ctx, handle, req, orgID, actor)
 }
 
-func (a llmProviderDeployments) Undeploy(ctx context.Context, handle, deploymentID, gatewayHandle, orgID, _ string) (*api.DeploymentResponse, error) {
-	return a.UndeployLLMProviderDeployment(ctx, handle, deploymentID, gatewayHandle, orgID)
+func (a llmProviderDeployments) Undeploy(ctx context.Context, handle, deploymentID, gatewayHandle, orgID, actor string) (*api.DeploymentResponse, error) {
+	return a.UndeployLLMProviderDeployment(ctx, handle, deploymentID, gatewayHandle, orgID, actor)
 }
 
-func (a llmProviderDeployments) Restore(ctx context.Context, handle, deploymentID, gatewayHandle, orgID, _ string) (*api.DeploymentResponse, error) {
-	return a.RestoreLLMProviderDeployment(ctx, handle, deploymentID, gatewayHandle, orgID)
+func (a llmProviderDeployments) Restore(ctx context.Context, handle, deploymentID, gatewayHandle, orgID, actor string) (*api.DeploymentResponse, error) {
+	return a.RestoreLLMProviderDeployment(ctx, handle, deploymentID, gatewayHandle, orgID, actor)
 }
 
 func (a llmProviderDeployments) GetDeployment(handle, deploymentID, orgID string) (*api.DeploymentResponse, error) {

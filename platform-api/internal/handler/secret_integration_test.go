@@ -84,7 +84,7 @@ func setupSecretTestEnv(t *testing.T) (http.Handler, func()) {
 	repo := repository.NewSecretRepo(db)
 	identityService := service.NewIdentityService(repository.NewUserIdentityMappingRepo(db))
 	svc := service.NewSecretService(repo, v, identityService)
-	h := NewSecretHandler(svc, identityService, slog.Default())
+	h := NewSecretHandler(svc, identityService, nil, slog.Default())
 
 	mux := http.NewServeMux()
 	h.RegisterRoutes(mux)
@@ -376,7 +376,7 @@ func TestSecretHandler_Update_ReactivatesDeprecatedSecret(t *testing.T) {
 	svc := service.NewSecretService(repo, v, identityService)
 
 	mux := http.NewServeMux()
-	NewSecretHandler(svc, identityService, slog.Default()).RegisterRoutes(mux)
+	NewSecretHandler(svc, identityService, nil, slog.Default()).RegisterRoutes(mux)
 	r := middleware.NewTestContextMiddleware(mux)
 
 	// Create then soft-delete (deprecate) the secret.
@@ -482,7 +482,7 @@ func TestSecretHandler_Delete_409_ReferencedByArtifact(t *testing.T) {
 	repo := repository.NewSecretRepo(db)
 	identityService := service.NewIdentityService(repository.NewUserIdentityMappingRepo(db))
 	svc := service.NewSecretService(repo, v, identityService)
-	h := NewSecretHandler(svc, identityService, slog.Default())
+	h := NewSecretHandler(svc, identityService, nil, slog.Default())
 
 	mux2 := http.NewServeMux()
 	h.RegisterRoutes(mux2)
@@ -670,7 +670,7 @@ func TestSecretHandler_Delete_SoftDeletesRow(t *testing.T) {
 	svc := service.NewSecretService(repo, v, identityService)
 
 	mux3 := http.NewServeMux()
-	NewSecretHandler(svc, identityService, slog.Default()).RegisterRoutes(mux3)
+	NewSecretHandler(svc, identityService, nil, slog.Default()).RegisterRoutes(mux3)
 	r := middleware.NewTestContextMiddleware(mux3)
 
 	// (a) Create and DELETE → 204

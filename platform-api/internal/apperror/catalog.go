@@ -276,6 +276,11 @@ var (
 	HmacSecretNotConfigured = def(CodeHmacSecretNotConfigured, http.StatusServiceUnavailable, "HMAC secret management is not configured on this server.")
 )
 
+// Audit log entries.
+var (
+	AuditInvalidFilter = def(CodeAuditInvalidFilter, http.StatusBadRequest, "%s")
+)
+
 // API Publication entries: the per-portal draft and the live publication.
 var (
 	APIPublicationAPINotFound   = def(CodeAPIPublicationAPINotFound, http.StatusNotFound, "The specified API could not be found.")

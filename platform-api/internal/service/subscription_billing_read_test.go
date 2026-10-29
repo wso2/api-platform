@@ -84,8 +84,8 @@ func (r billingReadRepo) Upsert(*model.SubscriptionBilling) error {
 func newBillingReadService(readErr error) (*SubscriptionService, *billingReadSubRepo) {
 	subs := &billingReadSubRepo{sub: &model.Subscription{UUID: "sub-1", SubscriberID: "alice",
 		ArtifactUUID: "api-1", Status: model.SubscriptionStatusActive}}
-	svc := NewSubscriptionService(nil, nil, subs, billingReadPlanRepo{}, nil, nil, billingReadAuditRepo{},
-		slog.New(slog.NewTextHandler(io.Discard, nil)))
+	svc := NewSubscriptionService(nil, nil, subs, billingReadPlanRepo{}, nil, nil,
+		slog.New(slog.NewTextHandler(io.Discard, nil)), nil)
 	svc.SetBillingRepository(billingReadRepo{err: readErr})
 	return svc, subs
 }

@@ -44,9 +44,9 @@ const (
 )
 
 type LLMProviderTemplateService struct {
-	repo      repository.LLMProviderTemplateRepository
-	auditRepo repository.AuditRepository
-	identity  *IdentityService
+	repo     repository.LLMProviderTemplateRepository
+	audit    *AuditService
+	identity *IdentityService
 }
 
 type LLMProviderService struct {
@@ -61,7 +61,7 @@ type LLMProviderService struct {
 	proxyRepo            repository.LLMProxyRepository
 	secretService        *SecretService
 	slogger              *slog.Logger
-	auditRepo            repository.AuditRepository
+	audit                *AuditService
 	cfg                  *config.Server
 	identity             *IdentityService
 }
@@ -76,13 +76,13 @@ type LLMProxyService struct {
 	gatewayEventsService *GatewayEventsService
 	secretService        *SecretService
 	slogger              *slog.Logger
-	auditRepo            repository.AuditRepository
+	audit                *AuditService
 	cfg                  *config.Server
 	identity             *IdentityService
 }
 
-func NewLLMProviderTemplateService(repo repository.LLMProviderTemplateRepository, auditRepo repository.AuditRepository, identity *IdentityService) *LLMProviderTemplateService {
-	return &LLMProviderTemplateService{repo: repo, auditRepo: auditRepo, identity: identity}
+func NewLLMProviderTemplateService(repo repository.LLMProviderTemplateRepository, audit *AuditService, identity *IdentityService) *LLMProviderTemplateService {
+	return &LLMProviderTemplateService{repo: repo, audit: audit, identity: identity}
 }
 
 // toTemplateAPI converts m via mapTemplateModelToAPI and resolves its
@@ -110,9 +110,9 @@ func NewLLMProviderService(
 	gatewayRepo repository.GatewayRepository,
 	gatewayEventsService *GatewayEventsService,
 	slogger *slog.Logger,
-	auditRepo repository.AuditRepository,
 	cfg *config.Server,
 	identity *IdentityService,
+	audit *AuditService,
 ) *LLMProviderService {
 	return &LLMProviderService{
 		repo:                 repo,
@@ -123,7 +123,7 @@ func NewLLMProviderService(
 		gatewayRepo:          gatewayRepo,
 		gatewayEventsService: gatewayEventsService,
 		slogger:              slogger,
-		auditRepo:            auditRepo,
+		audit:                audit,
 		cfg:                  cfg,
 		identity:             identity,
 	}
@@ -190,7 +190,7 @@ func NewLLMProxyService(
 	gatewayRepo repository.GatewayRepository,
 	gatewayEventsService *GatewayEventsService,
 	slogger *slog.Logger,
-	auditRepo repository.AuditRepository,
+	audit *AuditService,
 	cfg *config.Server,
 	identity *IdentityService,
 ) *LLMProxyService {
@@ -202,7 +202,7 @@ func NewLLMProxyService(
 		gatewayRepo:          gatewayRepo,
 		gatewayEventsService: gatewayEventsService,
 		slogger:              slogger,
-		auditRepo:            auditRepo,
+		audit:                audit,
 		cfg:                  cfg,
 		identity:             identity,
 	}
@@ -265,7 +265,7 @@ func (s *LLMProxyService) toProxyAPI(orgUUID string, m *model.LLMProxy) (*api.LL
 	return resp, nil
 }
 
-func (s *LLMProviderTemplateService) Create(orgUUID, createdBy string, req *api.LLMProviderTemplate) (*api.LLMProviderTemplate, error) {
+func (s *LLMProviderTemplateService) Create(ctx context.Context, orgUUID, createdBy string, req *api.LLMProviderTemplate) (*api.LLMProviderTemplate, error) {
 	if req == nil {
 		return nil, apperror.ValidationFailed.New("A request body is required.")
 	}
@@ -334,10 +334,23 @@ func (s *LLMProviderTemplateService) Create(orgUUID, createdBy string, req *api.
 		if isSQLiteUniqueConstraint(err) {
 			return nil, apperror.LLMProviderTemplateExists.New()
 		}
+		if IsAuditableFailure(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Action: model.AuditActionCreate, ResourceType: model.AuditResourceTypeLLMProviderTemplate,
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgUUID, PerformedBy: createdBy,
+				ResourceUUID: m.UUID, ResourceName: m.ID,
+			})
+		}
 		return nil, fmt.Errorf("failed to create template: %w", err)
 	}
 
-	_ = s.auditRepo.Record("CREATE", m.UUID, "llm_provider_template", orgUUID, createdBy)
+	s.audit.Record(ctx, &AuditEvent{
+		Action: model.AuditActionCreate, ResourceType: model.AuditResourceTypeLLMProviderTemplate,
+		Outcome:      model.AuditOutcomeSucceeded,
+		ResourceUUID: m.UUID, OrganizationUUID: orgUUID, PerformedBy: createdBy,
+		ResourceName: m.ID,
+		EventData:    llmProviderTemplateAuditFields(m),
+	})
 
 	return s.toTemplateAPI(m)
 }
@@ -391,7 +404,7 @@ func (s *LLMProviderTemplateService) Get(orgUUID, handle string) (*api.LLMProvid
 	return s.toTemplateAPI(m)
 }
 
-func (s *LLMProviderTemplateService) Update(orgUUID, handle, updatedBy string, req *api.LLMProviderTemplate) (*api.LLMProviderTemplate, error) {
+func (s *LLMProviderTemplateService) Update(ctx context.Context, orgUUID, handle, updatedBy string, req *api.LLMProviderTemplate) (*api.LLMProviderTemplate, error) {
 	if handle == "" || req == nil {
 		return nil, apperror.ValidationFailed.New("The template id and a request body are required.")
 	}
@@ -472,6 +485,13 @@ func (s *LLMProviderTemplateService) Update(orgUUID, handle, updatedBy string, r
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, apperror.LLMProviderTemplateNotFound.New()
 		}
+		if IsAuditableFailure(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Action: model.AuditActionUpdate, ResourceType: model.AuditResourceTypeLLMProviderTemplate,
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgUUID, PerformedBy: updatedBy,
+				ResourceUUID: m.UUID, ResourceName: m.ID,
+			})
+		}
 		return nil, fmt.Errorf("failed to update template: %w", err)
 	}
 
@@ -493,7 +513,13 @@ func (s *LLMProviderTemplateService) Update(orgUUID, handle, updatedBy string, r
 		return nil, apperror.LLMProviderTemplateNotFound.New()
 	}
 
-	_ = s.auditRepo.Record("UPDATE", updated.UUID, "llm_provider_template", orgUUID, updatedBy)
+	s.audit.Record(ctx, &AuditEvent{
+		Action: model.AuditActionUpdate, ResourceType: model.AuditResourceTypeLLMProviderTemplate,
+		Outcome:      model.AuditOutcomeSucceeded,
+		ResourceUUID: updated.UUID, OrganizationUUID: orgUUID, PerformedBy: updatedBy,
+		ResourceName: updated.ID,
+		EventData:    AuditDiff(llmProviderTemplateAuditFields(existing), llmProviderTemplateAuditFields(updated)),
+	})
 
 	return s.toTemplateAPI(updated)
 }
@@ -644,7 +670,7 @@ func (s *LLMProviderTemplateService) CreateVersion(orgUUID, groupID, createdBy s
 	return s.toTemplateAPI(m)
 }
 
-func (s *LLMProviderTemplateService) CopyVersion(orgUUID, fromTemplateID, toTemplateID, toVersion, createdBy string, req *api.CreateLLMProviderTemplateVersionRequest) (*api.LLMProviderTemplate, error) {
+func (s *LLMProviderTemplateService) CopyVersion(ctx context.Context, orgUUID, fromTemplateID, toTemplateID, toVersion, createdBy string, req *api.CreateLLMProviderTemplateVersionRequest) (*api.LLMProviderTemplate, error) {
 	fromTemplateID = strings.TrimSpace(fromTemplateID)
 	if fromTemplateID == "" {
 		return nil, apperror.ValidationFailed.New("The source template id is required.")
@@ -719,7 +745,23 @@ func (s *LLMProviderTemplateService) CopyVersion(orgUUID, fromTemplateID, toTemp
 		}
 	}
 
-	return s.CreateVersion(orgUUID, groupID, createdBy, merged)
+	created, err := s.CreateVersion(orgUUID, groupID, createdBy, merged)
+	if err != nil {
+		if IsAuditableFailure(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgUUID, Action: model.AuditActionCreate, ResourceType: model.AuditResourceTypeLLMProviderTemplate,
+				PerformedBy: createdBy, ResourceName: makeTemplateHandle(groupID, version),
+				EventData: map[string]any{"version": version, "copiedFrom": fromTemplateID},
+			})
+		}
+		return created, err
+	}
+	s.audit.Record(ctx, &AuditEvent{
+		Outcome: model.AuditOutcomeSucceeded, OrganizationUUID: orgUUID, Action: model.AuditActionCreate, ResourceType: model.AuditResourceTypeLLMProviderTemplate,
+		PerformedBy: createdBy, ResourceName: makeTemplateHandle(groupID, version),
+		EventData: map[string]any{"version": version, "copiedFrom": fromTemplateID},
+	})
+	return created, nil
 }
 
 func (s *LLMProviderTemplateService) ListVersions(orgUUID, groupID string, limit, offset int) (*api.LLMProviderTemplateListResponse, error) {
@@ -859,7 +901,7 @@ func (s *LLMProviderTemplateService) DeleteVersion(orgUUID, groupID, version str
 
 // SetEnabledByHandle enables or disables the single template version identified by its unique handle.
 // The handle is resolved to its (groupId, version) and the existing version-level rules apply (built-ins are read-only).
-func (s *LLMProviderTemplateService) SetEnabledByHandle(orgUUID, handle string, enabled bool) (*api.LLMProviderTemplate, error) {
+func (s *LLMProviderTemplateService) SetEnabledByHandle(ctx context.Context, orgUUID, handle, actor string, enabled bool) (*api.LLMProviderTemplate, error) {
 	if strings.TrimSpace(handle) == "" {
 		return nil, apperror.ValidationFailed.New("The template id is required.")
 	}
@@ -870,10 +912,26 @@ func (s *LLMProviderTemplateService) SetEnabledByHandle(orgUUID, handle string, 
 	if target == nil {
 		return nil, apperror.LLMProviderTemplateNotFound.New()
 	}
-	return s.SetVersionEnabled(orgUUID, target.GroupID, target.Version, enabled)
+	resp, err := s.SetVersionEnabled(orgUUID, target.GroupID, target.Version, enabled)
+	if err != nil {
+		if IsAuditableFailure(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgUUID, Action: model.AuditActionUpdate, ResourceType: model.AuditResourceTypeLLMProviderTemplate,
+				PerformedBy: actor, ResourceUUID: target.UUID, ResourceName: target.ID,
+				EventData: AuditDiff(map[string]any{"enabled": target.Enabled}, map[string]any{"enabled": enabled}),
+			})
+		}
+		return resp, err
+	}
+	s.audit.Record(ctx, &AuditEvent{
+		Outcome: model.AuditOutcomeSucceeded, OrganizationUUID: orgUUID, Action: model.AuditActionUpdate, ResourceType: model.AuditResourceTypeLLMProviderTemplate,
+		PerformedBy: actor, ResourceUUID: target.UUID, ResourceName: target.ID,
+		EventData: AuditDiff(map[string]any{"enabled": target.Enabled}, map[string]any{"enabled": enabled}),
+	})
+	return resp, nil
 }
 
-func (s *LLMProviderTemplateService) DeleteByHandle(orgUUID, handle string) error {
+func (s *LLMProviderTemplateService) DeleteByHandle(ctx context.Context, orgUUID, handle, actor string) error {
 	if strings.TrimSpace(handle) == "" {
 		return apperror.ValidationFailed.New("The template id is required.")
 	}
@@ -884,10 +942,26 @@ func (s *LLMProviderTemplateService) DeleteByHandle(orgUUID, handle string) erro
 	if target == nil {
 		return apperror.LLMProviderTemplateNotFound.New()
 	}
-	return s.DeleteVersion(orgUUID, target.GroupID, target.Version)
+	err = s.DeleteVersion(orgUUID, target.GroupID, target.Version)
+	if err != nil {
+		if IsAuditableFailure(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgUUID, Action: model.AuditActionDelete, ResourceType: model.AuditResourceTypeLLMProviderTemplate,
+				PerformedBy: actor, ResourceUUID: target.UUID, ResourceName: target.ID,
+				EventData: map[string]any{"version": target.Version},
+			})
+		}
+		return err
+	}
+	s.audit.Record(ctx, &AuditEvent{
+		Outcome: model.AuditOutcomeSucceeded, OrganizationUUID: orgUUID, Action: model.AuditActionDelete, ResourceType: model.AuditResourceTypeLLMProviderTemplate,
+		PerformedBy: actor, ResourceUUID: target.UUID, ResourceName: target.ID,
+		EventData: map[string]any{"version": target.Version},
+	})
+	return nil
 }
 
-func (s *LLMProviderService) Create(orgUUID, createdBy string, req *api.LLMProvider) (*api.LLMProvider, error) {
+func (s *LLMProviderService) Create(ctx context.Context, orgUUID, createdBy string, req *api.LLMProvider) (*api.LLMProvider, error) {
 	if req == nil {
 		return nil, apperror.ValidationFailed.New("A request body is required.")
 	}
@@ -1047,6 +1121,13 @@ func (s *LLMProviderService) Create(orgUUID, createdBy string, req *api.LLMProvi
 		if isSQLiteUniqueConstraint(err) {
 			return nil, apperror.LLMProviderExists.New()
 		}
+		if IsAuditableFailure(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Action: model.AuditActionCreate, ResourceType: model.AuditResourceTypeLLMProvider,
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgUUID, PerformedBy: createdBy,
+				ResourceName: handle,
+			})
+		}
 		return nil, fmt.Errorf("failed to create provider: %w", err)
 	}
 
@@ -1057,7 +1138,12 @@ func (s *LLMProviderService) Create(orgUUID, createdBy string, req *api.LLMProvi
 	if created == nil {
 		return nil, apperror.LLMProviderNotFound.New()
 	}
-	_ = s.auditRepo.Record("CREATE", created.UUID, "llm_provider", orgUUID, createdBy)
+	s.audit.Record(ctx, &AuditEvent{
+		OrganizationUUID: orgUUID, Action: model.AuditActionCreate,
+		ResourceType: model.AuditResourceTypeLLMProvider, Outcome: model.AuditOutcomeSucceeded,
+		PerformedBy: createdBy, ResourceUUID: created.UUID, ResourceName: created.ID,
+		EventData: llmProviderAuditFields(created),
+	})
 
 	return s.toProviderAPI(created, tpl.ID)
 }
@@ -1143,7 +1229,7 @@ func (s *LLMProviderService) Get(orgUUID, handle string) (*api.LLMProvider, erro
 	return s.toProviderAPI(m, tplHandle)
 }
 
-func (s *LLMProviderService) Update(orgUUID, handle, updatedBy string, req *api.LLMProvider) (*api.LLMProvider, error) {
+func (s *LLMProviderService) Update(ctx context.Context, orgUUID, handle, updatedBy string, req *api.LLMProvider) (*api.LLMProvider, error) {
 	if handle == "" || req == nil {
 		return nil, apperror.ValidationFailed.New("The LLM provider id and a request body are required.")
 	}
@@ -1282,6 +1368,13 @@ func (s *LLMProviderService) Update(orgUUID, handle, updatedBy string, req *api.
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, apperror.LLMProviderNotFound.New()
 		}
+		if IsAuditableFailure(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Action: model.AuditActionUpdate, ResourceType: model.AuditResourceTypeLLMProvider,
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgUUID, PerformedBy: updatedBy,
+				ResourceUUID: existing.UUID, ResourceName: existing.ID,
+			})
+		}
 		return nil, fmt.Errorf("failed to update provider: %w", err)
 	}
 
@@ -1308,7 +1401,12 @@ func (s *LLMProviderService) Update(orgUUID, handle, updatedBy string, req *api.
 	if updated == nil {
 		return nil, apperror.LLMProviderNotFound.New()
 	}
-	_ = s.auditRepo.Record("UPDATE", updated.UUID, "llm_provider", orgUUID, updatedBy)
+	s.audit.Record(ctx, &AuditEvent{
+		OrganizationUUID: orgUUID, Action: model.AuditActionUpdate,
+		ResourceType: model.AuditResourceTypeLLMProvider, Outcome: model.AuditOutcomeSucceeded,
+		PerformedBy: updatedBy, ResourceUUID: updated.UUID, ResourceName: updated.ID,
+		EventData: AuditDiff(llmProviderAuditFields(existing), llmProviderAuditFields(updated)),
+	})
 
 	return s.toProviderAPI(updated, tpl.ID)
 }
@@ -1400,6 +1498,14 @@ func (s *LLMProviderService) Delete(ctx context.Context, orgUUID, handle, delete
 
 	// DP-originated artifacts may only be deleted once undeployed on all gateways.
 	if err := ensureOriginDeletable(s.deploymentRepo, provider.Origin, provider.UUID, orgUUID); err != nil {
+		if IsOriginDenial(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Action: model.AuditActionDelete, ResourceType: model.AuditResourceTypeLLMProvider,
+				Outcome: model.AuditOutcomeDenied, OrganizationUUID: orgUUID, PerformedBy: deletedBy,
+				ResourceUUID: provider.UUID, ResourceName: provider.ID,
+				EventData: map[string]any{"reason": "dp_originated"},
+			})
+		}
 		return err
 	}
 
@@ -1435,10 +1541,21 @@ func (s *LLMProviderService) Delete(ctx context.Context, orgUUID, handle, delete
 		if errors.Is(err, sql.ErrNoRows) {
 			return apperror.LLMProviderNotFound.New()
 		}
+		if IsAuditableFailure(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Action: model.AuditActionDelete, ResourceType: model.AuditResourceTypeLLMProvider,
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgUUID, PerformedBy: deletedBy,
+				ResourceUUID: provider.UUID, ResourceName: provider.ID,
+			})
+		}
 		return fmt.Errorf("failed to delete provider: %w", err)
 	}
 
-	_ = s.auditRepo.Record("DELETE", provider.UUID, "llm_provider", orgUUID, deletedBy)
+	s.audit.Record(ctx, &AuditEvent{
+		OrganizationUUID: orgUUID, Action: model.AuditActionDelete,
+		ResourceType: model.AuditResourceTypeLLMProvider, Outcome: model.AuditOutcomeSucceeded,
+		PerformedBy: deletedBy, ResourceUUID: provider.UUID, ResourceName: provider.ID,
+	})
 
 	// Send deletion events to all gateways in the organization
 	if s.gatewayEventsService != nil && len(gateways) > 0 {
@@ -1925,10 +2042,23 @@ func (s *LLMProxyService) Create(ctx context.Context, orgUUID, createdBy string,
 		if isSQLiteUniqueConstraint(err) {
 			return nil, apperror.LLMProxyExists.New()
 		}
+		if IsAuditableFailure(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Action: model.AuditActionCreate, ResourceType: model.AuditResourceTypeLLMProxy,
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgUUID, PerformedBy: createdBy,
+				ResourceUUID: m.UUID, ResourceName: m.ID,
+			})
+		}
 		return nil, fmt.Errorf("failed to create proxy: %w", err)
 	}
 
-	_ = s.auditRepo.Record("CREATE", m.UUID, "llm_proxy", orgUUID, createdBy)
+	s.audit.Record(ctx, &AuditEvent{
+		Action: model.AuditActionCreate, ResourceType: model.AuditResourceTypeLLMProxy,
+		Outcome:      model.AuditOutcomeSucceeded,
+		ResourceUUID: m.UUID, OrganizationUUID: orgUUID, PerformedBy: createdBy,
+		ResourceName: m.ID,
+		EventData:    llmProxyAuditFields(m),
+	})
 	created, err := s.repo.GetByID(handle, orgUUID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch created proxy: %w", err)
@@ -2129,7 +2259,7 @@ func (s *LLMProxyService) Get(orgUUID, handle string) (*api.LLMProxy, error) {
 	return s.toProxyAPI(orgUUID, m)
 }
 
-func (s *LLMProxyService) Update(orgUUID, handle, updatedBy string, req *api.LLMProxy) (*api.LLMProxy, error) {
+func (s *LLMProxyService) Update(ctx context.Context, orgUUID, handle, updatedBy string, req *api.LLMProxy) (*api.LLMProxy, error) {
 	if handle == "" || req == nil {
 		return nil, apperror.ValidationFailed.New("The LLM proxy id and a request body are required.")
 	}
@@ -2293,6 +2423,13 @@ func (s *LLMProxyService) Update(orgUUID, handle, updatedBy string, req *api.LLM
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, apperror.LLMProxyNotFound.New()
 		}
+		if IsAuditableFailure(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Action: model.AuditActionUpdate, ResourceType: model.AuditResourceTypeLLMProxy,
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgUUID, PerformedBy: updatedBy,
+				ResourceUUID: existing.UUID, ResourceName: existing.ID,
+			})
+		}
 		return nil, fmt.Errorf("failed to update proxy: %w", err)
 	}
 
@@ -2355,7 +2492,13 @@ func (s *LLMProxyService) Update(orgUUID, handle, updatedBy string, req *api.LLM
 	if updated == nil {
 		return nil, apperror.LLMProxyNotFound.New()
 	}
-	_ = s.auditRepo.Record("UPDATE", existing.UUID, "llm_proxy", orgUUID, updatedBy)
+	s.audit.Record(ctx, &AuditEvent{
+		Action: model.AuditActionUpdate, ResourceType: model.AuditResourceTypeLLMProxy,
+		Outcome:      model.AuditOutcomeSucceeded,
+		ResourceUUID: existing.UUID, OrganizationUUID: orgUUID, PerformedBy: updatedBy,
+		ResourceName: updated.ID,
+		EventData:    AuditDiff(llmProxyAuditFields(existing), llmProxyAuditFields(updated)),
+	})
 	return s.toProxyAPI(orgUUID, updated)
 }
 
@@ -2375,6 +2518,14 @@ func (s *LLMProxyService) Delete(ctx context.Context, orgUUID, handle, deletedBy
 
 	// DP-originated artifacts may only be deleted once undeployed on all gateways.
 	if err := ensureOriginDeletable(s.deploymentRepo, proxy.Origin, proxy.UUID, orgUUID); err != nil {
+		if IsOriginDenial(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Action: model.AuditActionDelete, ResourceType: model.AuditResourceTypeLLMProxy,
+				Outcome: model.AuditOutcomeDenied, OrganizationUUID: orgUUID, PerformedBy: deletedBy,
+				ResourceUUID: proxy.UUID, ResourceName: proxy.ID,
+				EventData: map[string]any{"reason": "dp_originated"},
+			})
+		}
 		return err
 	}
 
@@ -2396,10 +2547,22 @@ func (s *LLMProxyService) Delete(ctx context.Context, orgUUID, handle, deletedBy
 		if errors.Is(err, sql.ErrNoRows) {
 			return apperror.LLMProxyNotFound.New()
 		}
+		if IsAuditableFailure(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Action: model.AuditActionDelete, ResourceType: model.AuditResourceTypeLLMProxy,
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgUUID, PerformedBy: deletedBy,
+				ResourceUUID: proxy.UUID, ResourceName: proxy.ID,
+			})
+		}
 		return fmt.Errorf("failed to delete proxy: %w", err)
 	}
 
-	_ = s.auditRepo.Record("DELETE", proxy.UUID, "llm_proxy", orgUUID, deletedBy)
+	s.audit.Record(ctx, &AuditEvent{
+		Action: model.AuditActionDelete, ResourceType: model.AuditResourceTypeLLMProxy,
+		Outcome:      model.AuditOutcomeSucceeded,
+		ResourceUUID: proxy.UUID, OrganizationUUID: orgUUID, PerformedBy: deletedBy,
+		ResourceName: proxy.ID,
+	})
 	// Send deletion events to all gateways in the organization
 	if s.gatewayEventsService != nil && len(gateways) > 0 {
 		for _, gateway := range gateways {
@@ -2868,15 +3031,15 @@ func normalizeUpstreamAuthType(authType string) string {
 	canonical := strings.ToLower(strings.ReplaceAll(strings.ReplaceAll(normalized, "-", ""), "_", ""))
 	switch canonical {
 	case "apikey":
-		return string(api.ApiKey)
+		return string(api.UpstreamAuthTypeApiKey)
 	case "basic":
-		return string(api.Basic)
+		return string(api.UpstreamAuthTypeBasic)
 	case "bearer":
-		return string(api.Bearer)
+		return string(api.UpstreamAuthTypeBearer)
 	case "other":
-		return string(api.Other)
+		return string(api.UpstreamAuthTypeOther)
 	case "none":
-		return string(api.None)
+		return string(api.UpstreamAuthTypeNone)
 	default:
 		return normalized
 	}
@@ -3386,6 +3549,59 @@ func mapAssociatedGatewaysModelToAPI(in []model.AssociatedGatewayMapping) *[]api
 		out = append(out, ag)
 	}
 	return &out
+}
+
+// llmProviderTemplateAuditFields lists the LLM provider template fields recorded in audit events.
+func llmProviderTemplateAuditFields(t *model.LLMProviderTemplate) map[string]any {
+	return map[string]any{
+		"displayName": t.Name,
+		"version":     t.Version,
+		"managedBy":   t.ManagedBy,
+	}
+}
+
+// llmProviderAuditFields lists the LLM provider fields recorded in audit events.
+func llmProviderAuditFields(p *model.LLMProvider) map[string]any {
+	return map[string]any{
+		"displayName": p.Name,
+		"version":     p.Version,
+		"context":     utils.ValueOrEmpty(p.Configuration.Context),
+		"vhost":       utils.ValueOrEmpty(p.Configuration.VHost),
+		"policies":    llmPolicyNames(p.Configuration.GlobalPolicies, p.Configuration.OperationPolicies),
+	}
+}
+
+// llmProxyAuditFields lists the LLM proxy fields recorded in audit events.
+func llmProxyAuditFields(p *model.LLMProxy) map[string]any {
+	additionalProviders := make([]string, 0, len(p.Configuration.AdditionalProviders))
+	for _, ap := range p.Configuration.AdditionalProviders {
+		additionalProviders = append(additionalProviders, ap.ID)
+	}
+	return map[string]any{
+		"displayName":         p.Name,
+		"version":             p.Version,
+		"context":             utils.ValueOrEmpty(p.Configuration.Context),
+		"vhost":               utils.ValueOrEmpty(p.Configuration.Vhost),
+		"provider":            p.Configuration.Provider,
+		"additionalProviders": additionalProviders,
+		"policies":            llmPolicyNames(p.Configuration.GlobalPolicies, p.Configuration.OperationPolicies),
+	}
+}
+
+// llmPolicyNames lists policies for audit events: global ones as "name version", operation
+// ones as "name version (METHODS /path)" once per path they are attached to.
+func llmPolicyNames(global []model.GlobalPolicy, operation []model.OperationPolicy) []string {
+	names := make([]string, 0, len(global)+len(operation))
+	for _, p := range global {
+		names = append(names, p.Name+" "+p.Version)
+	}
+	for _, p := range operation {
+		for _, path := range p.Paths {
+			target := strings.TrimSpace(strings.Join(path.Methods, ",") + " " + path.Path)
+			names = append(names, p.Name+" "+p.Version+" ("+target+")")
+		}
+	}
+	return names
 }
 
 func validateModelProviders(template string, providers *[]api.LLMModelProvider) error {
@@ -3932,10 +4148,10 @@ func resolveTemplateOpenAPISpec(ctx context.Context, tpl *model.LLMProviderTempl
 // strips credentials from credential-less types.
 func defaultUpstreamAuthToNone(auth *model.UpstreamAuth) *model.UpstreamAuth {
 	if auth == nil {
-		return &model.UpstreamAuth{Type: string(api.None)}
+		return &model.UpstreamAuth{Type: string(api.UpstreamAuthTypeNone)}
 	}
 	if strings.TrimSpace(auth.Type) == "" {
-		auth.Type = string(api.None)
+		auth.Type = string(api.UpstreamAuthTypeNone)
 	}
 	if isCredentialLessUpstreamAuthType(auth.Type) {
 		auth.Header = ""
@@ -3948,7 +4164,7 @@ func defaultUpstreamAuthToNone(auth *model.UpstreamAuth) *model.UpstreamAuth {
 // credentials ("none" or "other"), in which case header/value are irrelevant.
 func isCredentialLessUpstreamAuthType(authType string) bool {
 	switch normalizeUpstreamAuthType(authType) {
-	case string(api.None), string(api.Other):
+	case string(api.UpstreamAuthTypeNone), string(api.UpstreamAuthTypeOther):
 		return true
 	default:
 		return false

@@ -127,7 +127,8 @@ func (h *WebBrokerAPIDeploymentHandler) UndeployDeployment(w http.ResponseWriter
 		return
 	}
 
-	deployment, err := h.webbrokerAPIDeploymentService.UndeployWebBrokerAPIDeploymentByHandle(r.Context(), apiId, deploymentId, gatewayId, orgId)
+	actor, _ := h.identity.InternalUserID(r)
+	deployment, err := h.webbrokerAPIDeploymentService.UndeployWebBrokerAPIDeploymentByHandle(r.Context(), apiId, deploymentId, gatewayId, orgId, actor)
 	if err != nil {
 		h.handleDeploymentError(w, err, apiId)
 		return
@@ -156,7 +157,8 @@ func (h *WebBrokerAPIDeploymentHandler) RestoreDeployment(w http.ResponseWriter,
 		return
 	}
 
-	deployment, err := h.webbrokerAPIDeploymentService.RestoreWebBrokerAPIDeploymentByHandle(r.Context(), apiId, deploymentId, gatewayId, orgId)
+	actor, _ := h.identity.InternalUserID(r)
+	deployment, err := h.webbrokerAPIDeploymentService.RestoreWebBrokerAPIDeploymentByHandle(r.Context(), apiId, deploymentId, gatewayId, orgId, actor)
 	if err != nil {
 		h.handleDeploymentError(w, err, apiId)
 		return
@@ -237,7 +239,8 @@ func (h *WebBrokerAPIDeploymentHandler) DeleteDeployment(w http.ResponseWriter, 
 	apiId := r.PathValue("webBrokerApiId")
 	deploymentId := r.PathValue("deploymentId")
 
-	if err := h.webbrokerAPIDeploymentService.DeleteWebBrokerAPIDeploymentByHandle(apiId, deploymentId, orgId); err != nil {
+	actor, _ := h.identity.InternalUserID(r)
+	if err := h.webbrokerAPIDeploymentService.DeleteWebBrokerAPIDeploymentByHandle(r.Context(), apiId, deploymentId, orgId, actor); err != nil {
 		h.handleDeploymentError(w, err, apiId)
 		return
 	}

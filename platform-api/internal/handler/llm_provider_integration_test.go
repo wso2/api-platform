@@ -88,7 +88,7 @@ func setupLLMProviderEnv(t *testing.T) (http.Handler, func()) {
 	providerService := service.NewLLMProviderService(
 		providerRepo, templateRepo, orgRepo, seeder,
 		nil, nil, nil, // deploymentRepo, gatewayRepo, gatewayEventsService: unused by Create in these tests
-		slog.Default(), noopAudit{}, cfg, identityService,
+		slog.Default(), cfg, identityService, nil,
 	)
 
 	secretRepo := repository.NewSecretRepo(db)

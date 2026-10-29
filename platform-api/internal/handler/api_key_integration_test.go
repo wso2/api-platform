@@ -121,9 +121,9 @@ func setupAPIKeyHandlerTestEnv(t *testing.T) (http.Handler, *database.DB, func()
 		repository.NewArtifactRepo(db, registry),
 		repository.NewAPIKeyRepo(db, registry),
 		service.NewGatewayEventsService(noopEventHub{}, identityService, slog.Default()),
-		noopAudit{},
 		nil, // hashingAlgorithms — defaults to [sha256]
 		slog.Default(),
+		nil,
 	)
 
 	mux := http.NewServeMux()

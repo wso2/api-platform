@@ -181,7 +181,7 @@ func (h *APIThumbnailHandler) UpsertThumbnail(w http.ResponseWriter, r *http.Req
 		Content:     data,
 	}
 
-	if err := h.service.UpsertDocument(req, orgID, updatedBy, artifactUUID); err != nil {
+	if err := h.service.UpsertDocument(r.Context(), req, orgID, updatedBy, artifactUUID); err != nil {
 		return serviceError(err, "failed to upsert thumbnail")
 	}
 	w.WriteHeader(http.StatusNoContent)

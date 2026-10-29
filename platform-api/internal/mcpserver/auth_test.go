@@ -77,6 +77,7 @@ func signedIn(org string, aud ...string) func(http.Handler) http.Handler {
 type countingMappings struct{ created int }
 
 func (c *countingMappings) GetOrCreateUUID(string) (string, error)             { c.created++; return "u1", nil }
+func (c *countingMappings) GetUUIDByIdentity(string) (string, error)           { return "", nil }
 func (c *countingMappings) GetSubByUUID(string) (string, bool, error)          { return "", false, nil }
 func (c *countingMappings) GetSubsByUUIDs([]string) (map[string]string, error) { return nil, nil }
 

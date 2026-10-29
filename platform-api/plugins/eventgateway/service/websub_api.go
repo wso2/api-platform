@@ -25,6 +25,8 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
+	"slices"
 
 	"github.com/wso2/api-platform/platform-api/api"
 	"github.com/wso2/api-platform/platform-api/config"
@@ -44,7 +46,7 @@ type WebSubAPIService struct {
 	gatewayEventsService *coreservice.GatewayEventsService
 	apiUtil              *utils.APIUtil
 	slogger              *slog.Logger
-	auditRepo            repository.AuditRepository
+	audit                *coreservice.AuditService
 	cfg                  *config.Server
 	identity             *coreservice.IdentityService
 }
@@ -57,7 +59,7 @@ func NewWebSubAPIService(
 	gatewayEventsService *coreservice.GatewayEventsService,
 	apiUtil *utils.APIUtil,
 	slogger *slog.Logger,
-	auditRepo repository.AuditRepository,
+	audit *coreservice.AuditService,
 	cfg *config.Server,
 	identity *coreservice.IdentityService,
 ) *WebSubAPIService {
@@ -68,7 +70,7 @@ func NewWebSubAPIService(
 		gatewayEventsService: gatewayEventsService,
 		apiUtil:              apiUtil,
 		slogger:              slogger,
-		auditRepo:            auditRepo,
+		audit:                audit,
 		cfg:                  cfg,
 		identity:             identity,
 	}
@@ -92,7 +94,7 @@ func (s *WebSubAPIService) toWebSubAPI(m *model.WebSubAPI) (*api.WebSubAPI, erro
 }
 
 // Create creates a new WebSub API
-func (s *WebSubAPIService) Create(orgUUID, createdBy string, req *api.WebSubAPI) (*api.WebSubAPI, error) {
+func (s *WebSubAPIService) Create(ctx context.Context, orgUUID, createdBy string, req *api.WebSubAPI) (*api.WebSubAPI, error) {
 	if req == nil {
 		return nil, apperror.ValidationFailed.New("A request body is required.")
 	}
@@ -172,12 +174,23 @@ func (s *WebSubAPIService) Create(orgUUID, createdBy string, req *api.WebSubAPI)
 		if isSQLiteUniqueConstraint(err) {
 			return nil, apperror.WebSubAPIExists.Wrap(err)
 		}
+		if coreservice.IsAuditableFailure(err) {
+			s.audit.Record(ctx, &coreservice.AuditEvent{
+				Action: model.AuditActionCreate, ResourceType: model.AuditResourceTypeWebSubAPI,
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgUUID, PerformedBy: createdBy,
+				ResourceUUID: m.UUID, ResourceName: m.Handle,
+			})
+		}
 		return nil, fmt.Errorf("failed to create WebSub API: %w", err)
 	}
 
-	if s.auditRepo != nil {
-		_ = s.auditRepo.Record("CREATE", m.UUID, "websub_api", orgUUID, createdBy)
-	}
+	s.audit.Record(ctx, &coreservice.AuditEvent{
+		Action: model.AuditActionCreate, ResourceType: model.AuditResourceTypeWebSubAPI,
+		Outcome: model.AuditOutcomeSucceeded,
+		ResourceUUID: m.UUID, OrganizationUUID: orgUUID, PerformedBy: createdBy,
+		ResourceName: m.Handle,
+		EventData:    webSubAPIAuditFields(m),
+	})
 	return s.Get(orgUUID, handle)
 }
 
@@ -252,7 +265,7 @@ func (s *WebSubAPIService) List(orgUUID, projectUUID string, limit, offset int) 
 }
 
 // Update updates an existing WebSub API
-func (s *WebSubAPIService) Update(orgUUID, handle, updatedBy string, req *api.WebSubAPI) (*api.WebSubAPI, error) {
+func (s *WebSubAPIService) Update(ctx context.Context, orgUUID, handle, updatedBy string, req *api.WebSubAPI) (*api.WebSubAPI, error) {
 	if handle == "" || req == nil {
 		return nil, apperror.ValidationFailed.New("The WebSub API id and a request body are required.")
 	}
@@ -290,6 +303,7 @@ func (s *WebSubAPIService) Update(orgUUID, handle, updatedBy string, req *api.We
 		subscriptionPlans = *req.SubscriptionPlans
 	}
 
+	before := webSubAPIAuditFields(existing)
 	existing.Name = req.DisplayName
 	existing.Version = req.Version
 	existing.Description = utils.ValueOrEmpty(req.Description)
@@ -310,12 +324,22 @@ func (s *WebSubAPIService) Update(orgUUID, handle, updatedBy string, req *api.We
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, apperror.WebSubAPINotFound.Wrap(err)
 		}
+		if coreservice.IsAuditableFailure(err) {
+			s.audit.Record(ctx, &coreservice.AuditEvent{
+				Action: model.AuditActionUpdate, ResourceType: model.AuditResourceTypeWebSubAPI,
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgUUID, PerformedBy: updatedBy,
+				ResourceUUID: existing.UUID, ResourceName: existing.Handle,
+			})
+		}
 		return nil, fmt.Errorf("failed to update WebSub API: %w", err)
 	}
 
-	if s.auditRepo != nil {
-		_ = s.auditRepo.Record("UPDATE", existing.UUID, "websub_api", orgUUID, updatedBy)
-	}
+	s.audit.Record(ctx, &coreservice.AuditEvent{
+		Action: model.AuditActionUpdate, ResourceType: model.AuditResourceTypeWebSubAPI,
+		Outcome: model.AuditOutcomeSucceeded,
+		ResourceUUID: existing.UUID, OrganizationUUID: orgUUID, PerformedBy: updatedBy,
+		ResourceName: existing.Handle, EventData: coreservice.AuditDiff(before, webSubAPIAuditFields(existing)),
+	})
 	return s.Get(orgUUID, handle)
 }
 
@@ -353,12 +377,22 @@ func (s *WebSubAPIService) Delete(ctx context.Context, orgUUID, handle, deletedB
 		if errors.Is(err, sql.ErrNoRows) {
 			return apperror.WebSubAPINotFound.Wrap(err)
 		}
+		if coreservice.IsAuditableFailure(err) {
+			s.audit.Record(ctx, &coreservice.AuditEvent{
+				Action: model.AuditActionDelete, ResourceType: model.AuditResourceTypeWebSubAPI,
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgUUID, PerformedBy: deletedBy,
+				ResourceUUID: websubAPI.UUID, ResourceName: websubAPI.Handle,
+			})
+		}
 		return fmt.Errorf("failed to delete WebSub API: %w", err)
 	}
 
-	if s.auditRepo != nil {
-		_ = s.auditRepo.Record("DELETE", websubAPI.UUID, "websub_api", orgUUID, deletedBy)
-	}
+	s.audit.Record(ctx, &coreservice.AuditEvent{
+		Action: model.AuditActionDelete, ResourceType: model.AuditResourceTypeWebSubAPI,
+		Outcome: model.AuditOutcomeSucceeded,
+		ResourceUUID: websubAPI.UUID, OrganizationUUID: orgUUID, PerformedBy: deletedBy,
+		ResourceName: websubAPI.Handle,
+	})
 	// Send deletion events to all gateways in the organization
 	if s.gatewayEventsService != nil && len(gateways) > 0 {
 		for _, gateway := range gateways {
@@ -573,5 +607,17 @@ func mapWebSubAPIModelToListItem(m *model.WebSubAPI) *api.WebSubAPIListItem {
 		CreatedBy:       utils.StringPtrIfNotEmpty(m.CreatedBy),
 		CreatedAt:       utils.TimePtr(m.CreatedAt),
 		UpdatedAt:       utils.TimePtr(m.UpdatedAt),
+	}
+}
+
+// webSubAPIAuditFields lists the WebSub API fields recorded in audit events.
+func webSubAPIAuditFields(m *model.WebSubAPI) map[string]any {
+	return map[string]any{
+		"displayName":       m.Name,
+		"version":           m.Version,
+		"lifeCycleStatus":   m.LifeCycleStatus,
+		"context":           utils.ValueOrEmpty(m.Configuration.Context),
+		"channels":          slices.Sorted(maps.Keys(m.Configuration.Channels)),
+		"subscriptionPlans": m.Configuration.SubscriptionPlans,
 	}
 }

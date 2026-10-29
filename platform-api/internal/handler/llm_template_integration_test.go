@@ -85,7 +85,7 @@ func setupLLMTemplateEnv(t *testing.T) (http.Handler, *database.DB, func()) {
 	}
 
 	identityService := service.NewIdentityService(repository.NewUserIdentityMappingRepo(db))
-	svc := service.NewLLMProviderTemplateService(repo, noopAudit{}, identityService)
+	svc := service.NewLLMProviderTemplateService(repo, nil, identityService)
 	h := NewLLMHandler(svc, nil, nil, identityService, slog.Default())
 	mux := http.NewServeMux()
 	h.RegisterRoutes(mux)

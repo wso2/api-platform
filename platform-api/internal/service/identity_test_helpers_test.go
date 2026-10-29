@@ -28,6 +28,10 @@ func (passthroughIdentityRepo) GetOrCreateUUID(identity string) (string, error) 
 	return identity, nil
 }
 
+func (passthroughIdentityRepo) GetUUIDByIdentity(identity string) (string, error) {
+	return identity, nil
+}
+
 func (passthroughIdentityRepo) GetSubByUUID(uuid string) (string, bool, error) {
 	if uuid == "" {
 		return "", false, nil
