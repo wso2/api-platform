@@ -23,7 +23,7 @@
 - Q: Should model failover be a capability built into each existing routing policy, or one separate policy that reads the routing policy's decision and owns the retry and health logic? → A: A separate `model-failover` policy. It works standalone with its own ordered target list, and when a routing policy is present it consumes that policy's target selection through the existing shared-metadata contract. Existing routing policies are not modified and need no re-release.
 - Q: When a routing policy picked the first target and it fails, where does the next target come from? → A: Routing policies publish an **ordered preference list** of targets rather than a single winner, and failover traverses that list in order. The routing algorithm is consulted once per request, never re-run per attempt. A routing policy that still publishes only a single selection degrades gracefully to a one-element list, after which failover continues with its own configured chain.
 - Q: Which routing policies should publish the ordered preference list as part of this feature? → A: `model-round-robin` and `model-weighted-round-robin` adopt the contract at launch. `llm-header-router` and `typesafe-jev-model-routing` (vendor-owned) keep publishing a single selection and compose through the graceful-degradation path until they adopt it later.
-- Q: When failover is attached to the same operation as a routing policy that has its own `suspendDuration`, which health view governs? → A: The routing policy defers — it ranks over the healthy target set failover publishes, and its own `suspendDuration` becomes inert for that operation. The override is surfaced at deployment time and in telemetry rather than applied silently. `suspendDuration` keeps working unchanged when the routing policy is used without failover.
+- Q: When failover is attached to the same operation as a routing policy that has its own `suspendDuration`, which health view governs? → A: The routing policy defers — it ranks over the healthy target set failover publishes, and its own `suspendDuration` becomes inert for that operation. The override is surfaced at deployment time and in telemetry rather than applied silently. `suspendDuration` keeps working unchanged when the routing policy is used without failover. **[SUPERSEDED 2026-10-29 — implemented, then reverted. Neither half survived: failover publishes no health state (FR-026 withdrawn), and the routing policy's `suspendDuration` is not overridden (FR-026a/FR-026b withdrawn). Both policies keep their own verdict and both are correct, because a routing policy only ever observes the final status of a request. See US6 acceptance scenarios 3-5 and 7.]**
 - Q: Does the failover policy still need its own target list once routing policies publish one, and how do the two combine? → A: Keep one `targets` list, but make it **optional when an adopting routing policy is attached** and required otherwise. When both exist, the routing policy's published list is traversed first and failover's own targets that are not already in it follow as a last-resort tail, deduplicated. Omitting `targets` with an adopting routing policy present means the published rotation is the whole chain.
   **Superseded 2026-10-29 by FR-021/FR-021a**: configured fallbacks now take precedence over the remainder of the published list, and the chain is selected by the target actually used rather than by the requested model.
 - Q: If same-request retry requires changes to the gateway's core routing configuration rather than living entirely inside the new policy, is that in scope? → A: Yes. The feature may add the missing re-dispatch capability at the gateway routing layer, recorded in the plan's Complexity Tracking table as a justified deviation from the policy-first principle. Dropping FR-008 and shipping next-request failover only is explicitly rejected — it would duplicate what the existing routing policies already do.
@@ -207,8 +207,8 @@ failover chain (Story 1) and the health tracking (Story 4) already working.
 
 **Independent Test**: Configure an operation with both a routing policy and failover over the same
 targets, force one target to fail persistently, and confirm requests still succeed by walking the
-routing policy's published order, that the failing target drops out of published lists once
-suspended, and that load spreads across the remaining healthy targets.
+routing policy's published order, that the failing target stops being attempted once suspended even
+though the routing policy keeps nominating it, and that load spreads across the remaining targets.
 
 **Acceptance Scenarios**:
 
@@ -218,16 +218,30 @@ suspended, and that load spreads across the remaining healthy targets.
 2. **Given** that same request, **When** failover traverses the list, **Then** the routing policy is
    invoked only once — no re-classification, re-scoring, or re-drawn weighting occurs per attempt.
 3. **Given** that configuration, **When** target B crosses the consecutive-failure threshold, **Then**
-   B is suspended and subsequent lists published by the routing policy exclude it.
-4. **Given** a weighted routing policy, **When** one target is suspended, **Then** the published lists
-   order the remaining healthy targets in proportion to their configured weights.
-5. **Given** a suspended target whose suspension expires, **Then** the routing policy resumes
-   including it in published lists at its configured share.
+   B is suspended and is no longer attempted — including when the routing policy nominates it first,
+   in which case the request leads with the next unsuspended target in the published order.
+   *(Revised 2026-10-29: originally "subsequent lists published by the routing policy exclude it".
+   A routing policy cannot exclude it — failover's health is private to failover, FR-026 withdrawn.
+   It keeps nominating B; B simply stops being attempted. Enforced where the chain is resolved.)*
+4. **Given** a weighted routing policy, **When** one target is suspended, **Then** its published
+   ordering is unchanged — weights are its own concern — and the suspended target is skipped at chain
+   resolution rather than removed from the ranking, so a skip costs no attempt.
+   *(Revised 2026-10-29 for the same reason as scenario 3: re-normalizing weights over "the healthy
+   set" required a healthy set the routing policy can no longer see.)*
+5. **Given** a suspended target whose suspension expires, **When** a later request is routed to it,
+   **Then** it is admitted as a half-open probe and returns to the chain once the probe succeeds. The
+   routing policy was nominating it throughout and needs no signal that it is back.
+   *(Revised 2026-10-29: originally "the routing policy resumes including it in published lists".)*
 6. **Given** a routing policy that publishes only a single selection, **When** that target fails,
    **Then** failover continues through its own configured chain and the request still succeeds.
 7. **Given** a routing policy configured with its own suspension setting and failover attached to the
-   same operation, **When** a target fails, **Then** the failure is counted once under failover's
-   threshold, the routing policy's own setting has no effect, and the override is reported.
+   same operation, **When** a target fails, **Then** both policies keep their own health verdict and
+   neither is overridden.
+   *(Revised 2026-10-29: originally required failover to supersede the routing policy's setting and
+   report the override, FR-026a/FR-026b — both withdrawn. The double count they guarded against does
+   not occur: the downstream chain is entered once per client request, so a routing policy observes
+   only the final status. A rescued request reports success and suspends nothing; a 5xx arrives only
+   on a fully exhausted chain, where the target it selected did fail. Both verdicts are correct.)*
 8. **Given** that same routing policy used on an operation with no failover, **Then** its suspension
    setting behaves exactly as before.
 9. **Given** that configuration, **When** every target is suspended, **Then** the client receives the
@@ -309,13 +323,16 @@ suspended, and that load spreads across the remaining healthy targets.
   rather than honoring the ranking into a known-dead target.
 - **Target in both the published list and the configured chain**: It is attempted once, at its
   position in the published list, and not re-attempted when the chain is traversed.
-- **Layered health settings conflict**: When a routing policy declares its own suspension setting
-  and failover is also configured, failover's health view governs, the routing policy's setting goes
-  inert, and the publisher is told which setting was superseded — rather than two suspension verdicts
-  racing on the same target.
-- **Suspension during rotation**: A target suspended mid-rotation is excluded from subsequently
-  published lists; the remaining targets' shares are re-normalized rather than leaving a dead slot
-  that silently drops its share of traffic.
+- **Layered health settings conflict** *(revised 2026-10-29)*: When a routing policy declares its own
+  suspension setting and failover is also configured, both keep their own verdict and neither is
+  overridden. The two do not race: the downstream chain is entered once per client request, so a
+  routing policy observes only the final status — a rescued request reports success and suspends
+  nothing, and a 5xx arrives only on a fully exhausted chain, where the target it selected did fail.
+- **Suspension during rotation** *(revised 2026-10-29)*: A target suspended by failover stays in the
+  routing policy's rotation — failover's health is private to it — and is skipped at chain
+  resolution instead. The skip costs no attempt, so the request simply leads with the next
+  unsuspended target. Shares are not re-normalized: doing so would require the routing policy to see
+  a healthy set it has no access to.
 - **Detection lag across instances**: A target failing while several gateway instances serve the API
   is suspended by each instance separately, so a few additional failed attempts may occur per
   instance before all of them skip it. Each such request still fails over successfully.
