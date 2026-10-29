@@ -157,6 +157,19 @@ const (
 	// fails open, such a request gets Envoy's 503 rather than reaching anything.
 	GatewayInternalSinkClusterName = "api-platform/gateway-internal-sink"
 
+	// GatewayReadyRouteName and GatewayHealthyRouteName name the Envoy routes for
+	// GatewayReadyPath and GatewayHealthyPath. The policy engine recognises health
+	// requests by these route names, so they must not change independently of it.
+	GatewayReadyRouteName   = "gateway-ready"
+	GatewayHealthyRouteName = "gateway-healthy"
+
+	// RBACFilterName is Envoy's RBAC HTTP filter. Every listener carries it with no
+	// rules, so it enforces nothing on its own; the gateway health routes enable it per
+	// route to admit only router.health.allowed_clients.
+	RBACFilterName = "envoy.filters.http.rbac"
+	// GatewayHealthClientsPolicyName names the RBAC policy on the gateway health routes.
+	GatewayHealthClientsPolicyName = "health-clients"
+
 	// gRPC Access Log Service
 	GRPCAccessLogClusterName = "apip_als_cluster"
 	DefaultALSSocketPath     = "/var/run/api-platform/gateway-analytics.sock"
