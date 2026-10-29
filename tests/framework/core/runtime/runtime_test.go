@@ -460,6 +460,43 @@ func TestServerDefinitionsUseConfiguredImages(t *testing.T) {
 	require.Equal(t, "mcr.microsoft.com/azure-sql-edge:latest", sqlserverDefault.Image.ByArch["arm64"])
 }
 
+func TestIsFloatingImageTag(t *testing.T) {
+	require.True(t, isFloatingImageTag("ghcr.io/wso2/api-platform/testbench:latest"),
+		"only the framework's own published :latest is force-pulled")
+
+	require.False(t, isFloatingImageTag("ghcr.io/wso2/api-platform/testbench:test"),
+		"the local-build-only tag is never pushed to a registry, so it must never be force-pulled")
+	require.False(t, isFloatingImageTag("ghcr.io/wso2/api-platform/testbench:0.3.1"))
+	require.False(t, isFloatingImageTag(""), "an empty, build-only resolved image must never be force-pulled")
+	require.False(t, isFloatingImageTag("postgres"), "an upstream image's own :latest default is left alone")
+	require.False(t, isFloatingImageTag("postgres:16-alpine"))
+	require.False(t, isFloatingImageTag("localhost:5000/testbench:latest"),
+		"a different repository must never be force-pulled, even sharing the tag and image name —"+
+			" this also covers an operator override that happens to be tagged :latest for a local build")
+}
+
+func TestBuildRequestNeverForcePullsAnEmptyImage(t *testing.T) {
+	net := &Network{name: "test-net", block: "test-block"}
+
+	buildOnly := &components.Definition{
+		Name:  "build-only",
+		Image: components.ImageRef{Build: &components.ImageBuild{Context: "."}},
+	}
+	req, err := buildRequest(buildOnly, Options{Network: net}, "build-only", "amd64", 1)
+	require.NoError(t, err)
+	require.Empty(t, req.Image, "Resolve returns Ref, which is empty for a build-only definition")
+	require.False(t, req.AlwaysPullImage,
+		"an empty resolved image must never be marked for a forced pull")
+
+	pullBased := &components.Definition{
+		Name:  "pull-based",
+		Image: components.ImageRef{Ref: "ghcr.io/wso2/api-platform/testbench:latest"},
+	}
+	req, err = buildRequest(pullBased, Options{Network: net}, "pull-based", "amd64", 1)
+	require.NoError(t, err)
+	require.True(t, req.AlwaysPullImage)
+}
+
 func TestBuildPlanSchema(t *testing.T) {
 	t.Run("the framework applies schema for an external engine", func(t *testing.T) {
 		plan, err := BuildPlan([]Request{{Def: owner("gateway-controller"), Type: components.Postgres}})
