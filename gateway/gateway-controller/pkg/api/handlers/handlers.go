@@ -46,6 +46,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/secrets"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/agent"
+	auditservice "github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/audit"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/restapi"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
@@ -83,6 +84,7 @@ type APIServer struct {
 	gatewayID                   string
 	subscriptionSnapshotUpdater utils.SubscriptionSnapshotUpdater
 	subscriptionResourceService *utils.SubscriptionResourceService
+	auditService                *auditservice.AuditService
 
 	// clientAuthorities republishes the client certificate authority pool to
 	// the policy engine after every certificate write that can change it.
@@ -150,6 +152,7 @@ func NewAPIServer(
 	policyValidator := config.NewPolicyValidator(policyDefinitions, nil)
 	parser := config.NewParser()
 	routerConfig := &systemConfig.Router
+
 	mcpDeploymentService := utils.NewMCPDeploymentService(store, db, snapshotManager, policyManager, policyValidator, eventHub, gatewayID, secretService, policyVersionResolver)
 
 	server := &APIServer{
@@ -199,6 +202,15 @@ func NewAPIServer(
 	snapshotManager.SetStatusCallback(server.handleStatusUpdate)
 
 	return server, nil
+}
+
+// SetAuditService enables audit logging for the server's handlers and the services it
+// creates. Passing nil (the default) disables it.
+func (s *APIServer) SetAuditService(audit *auditservice.AuditService) {
+	s.auditService = audit
+	s.apiKeyService.SetAuditService(audit)
+	s.mcpDeploymentService.SetAuditService(audit)
+	s.llmDeploymentService.SetAuditService(audit)
 }
 
 func (s *APIServer) getSubscriptionResourceService() *utils.SubscriptionResourceService {

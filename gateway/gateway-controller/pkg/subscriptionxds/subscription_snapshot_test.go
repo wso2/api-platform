@@ -29,6 +29,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	policyenginev1 "github.com/wso2/api-platform/sdk/core/policyengine"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
@@ -191,6 +192,11 @@ func (m *MockStorage) GetWebhookSecretByUUID(uuid string) (*models.WebhookSecret
 func (m *MockStorage) UpdateWebhookSecret(secret *models.WebhookSecret) error { return nil }
 func (m *MockStorage) DeleteWebhookSecret(artifactUUID, name string) error    { return nil }
 func (m *MockStorage) GetAllWebhookSecrets() ([]*models.WebhookSecret, error) { return nil, nil }
+func (m *MockStorage) CreateAuditLog(row *models.AuditLog) error               { return nil }
+func (m *MockStorage) ListAuditLogs(f storage.AuditLogFilter, limit, offset int) ([]*models.AuditLog, error) {
+	return nil, nil
+}
+func (m *MockStorage) CountAuditLogs(f storage.AuditLogFilter) (int, error) { return 0, nil }
 
 func TestNewSnapshotManager(t *testing.T) {
 	t.Run("creates snapshot manager with nil logger", func(t *testing.T) {

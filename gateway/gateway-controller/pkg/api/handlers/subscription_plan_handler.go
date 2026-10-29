@@ -28,6 +28,7 @@ import (
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
+	auditservice "github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/audit"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/httpkit/httputil"
 )
@@ -124,9 +125,26 @@ func (s *APIServer) CreateSubscriptionPlan(w http.ResponseWriter, r *http.Reques
 			return
 		}
 		log.Error("Failed to save subscription plan", slog.Any("error", err))
+		s.auditService.Record(r.Context(), &auditservice.AuditEvent{
+			Action:       models.AuditActionCreate,
+			ResourceType: models.AuditResourceTypeSubscriptionPlan,
+			Outcome:      models.AuditOutcomeFailed,
+			PerformedBy:  actorFromRequest(r),
+			ResourceUUID: plan.ID,
+			ResourceName: plan.PlanName,
+		})
 		httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to create subscription plan"})
 		return
 	}
+	s.auditService.Record(r.Context(), &auditservice.AuditEvent{
+		Action:       models.AuditActionCreate,
+		ResourceType: models.AuditResourceTypeSubscriptionPlan,
+		Outcome:      models.AuditOutcomeSucceeded,
+		PerformedBy:  actorFromRequest(r),
+		ResourceUUID: plan.ID,
+		ResourceName: plan.PlanName,
+		EventData:    planAuditFields(plan),
+	})
 	httputil.WriteJSON(w, http.StatusCreated, subscriptionPlanToResponse(plan))
 }
 
@@ -193,6 +211,7 @@ func (s *APIServer) UpdateSubscriptionPlan(w http.ResponseWriter, r *http.Reques
 	}
 
 	r.Body = http.MaxBytesReader(w, r.Body, maxSubscriptionRequestBodyBytes)
+	before := planAuditFields(existing)
 	var req api.SubscriptionPlanUpdateRequest
 	fields, err := s.bindRequestBodyWithFields(r, &req)
 	if err != nil {
@@ -287,9 +306,26 @@ func (s *APIServer) UpdateSubscriptionPlan(w http.ResponseWriter, r *http.Reques
 			return
 		}
 		log.Error("Failed to update subscription plan", slog.Any("error", err))
+		s.auditService.Record(r.Context(), &auditservice.AuditEvent{
+			Action:       models.AuditActionUpdate,
+			ResourceType: models.AuditResourceTypeSubscriptionPlan,
+			Outcome:      models.AuditOutcomeFailed,
+			PerformedBy:  actorFromRequest(r),
+			ResourceUUID: existing.ID,
+			ResourceName: existing.PlanName,
+		})
 		httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to update subscription plan"})
 		return
 	}
+	s.auditService.Record(r.Context(), &auditservice.AuditEvent{
+		Action:       models.AuditActionUpdate,
+		ResourceType: models.AuditResourceTypeSubscriptionPlan,
+		Outcome:      models.AuditOutcomeSucceeded,
+		PerformedBy:  actorFromRequest(r),
+		ResourceUUID: updated.ID,
+		ResourceName: updated.PlanName,
+		EventData:    auditservice.AuditDiff(before, planAuditFields(&updated)),
+	})
 	httputil.WriteJSON(w, http.StatusOK, subscriptionPlanToResponse(&updated))
 }
 
@@ -312,10 +348,43 @@ func (s *APIServer) DeleteSubscriptionPlan(w http.ResponseWriter, r *http.Reques
 			return
 		}
 		log.Error("Failed to delete subscription plan", slog.Any("error", err))
+		s.auditService.Record(r.Context(), &auditservice.AuditEvent{
+			Action:       models.AuditActionDelete,
+			ResourceType: models.AuditResourceTypeSubscriptionPlan,
+			Outcome:      models.AuditOutcomeFailed,
+			PerformedBy:  actorFromRequest(r),
+			ResourceUUID: planId,
+		})
 		httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to delete subscription plan"})
 		return
 	}
+	s.auditService.Record(r.Context(), &auditservice.AuditEvent{
+		Action:       models.AuditActionDelete,
+		ResourceType: models.AuditResourceTypeSubscriptionPlan,
+		Outcome:      models.AuditOutcomeSucceeded,
+		PerformedBy:  actorFromRequest(r),
+		ResourceUUID: planId,
+	})
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// planAuditFields is the audit event data for a subscription plan. Unset throttle
+// limits are recorded as nil so every snapshot has the same keys.
+func planAuditFields(p *models.SubscriptionPlan) map[string]any {
+	fields := map[string]any{
+		"name":               p.PlanName,
+		"status":             string(p.Status),
+		"stopOnQuotaReach":   p.StopOnQuotaReach,
+		"throttleLimitCount": nil,
+		"throttleLimitUnit":  nil,
+	}
+	if p.ThrottleLimitCount != nil {
+		fields["throttleLimitCount"] = *p.ThrottleLimitCount
+	}
+	if p.ThrottleLimitUnit != nil {
+		fields["throttleLimitUnit"] = *p.ThrottleLimitUnit
+	}
+	return fields
 }
 
 func subscriptionPlanToResponse(plan *models.SubscriptionPlan) api.SubscriptionPlanResponse {

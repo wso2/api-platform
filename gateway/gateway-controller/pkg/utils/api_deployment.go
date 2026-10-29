@@ -34,6 +34,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
+	auditservice "github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/audit"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine/funcs"
@@ -51,6 +52,7 @@ type APIDeploymentParams struct {
 	DeployedAt    *time.Time    // Deployment timestamp from platform event (nil for gateway-api origin)
 	CorrelationID string        // Correlation ID for tracking
 	Logger        *slog.Logger  // Logger instance
+	Actor         string        // Authenticated user performing the operation (for audit)
 }
 
 // APIDeploymentResult contains the result of API deployment
@@ -82,6 +84,13 @@ type APIDeploymentService struct {
 	eventHub        eventhub.EventHub
 	gatewayID       string
 	secretResolver  funcs.SecretResolver
+	audit           *auditservice.AuditService
+}
+
+// SetAuditService enables audit logging of failed persistence for management-API
+// deployments. Passing nil (the default) disables it.
+func (s *APIDeploymentService) SetAuditService(audit *auditservice.AuditService) {
+	s.audit = audit
 }
 
 func (s *APIDeploymentService) validateArtifactConflicts(kind, currentID, displayName, version, handle string) error {
@@ -371,6 +380,21 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 	// affected=false means a newer version already exists (stale event — no-op).
 	affected, saveErr := s.saveOrUpdateConfig(storedCfg, params.Logger)
 	if saveErr != nil {
+		if params.Origin != models.OriginControlPlane {
+			auditAction := models.AuditActionCreate
+			if isUpdate {
+				auditAction = models.AuditActionUpdate
+			}
+			s.audit.Record(context.Background(), &auditservice.AuditEvent{
+				Action:        auditAction,
+				ResourceType:  models.AuditResourceTypeRestAPI,
+				Outcome:       models.AuditOutcomeFailed,
+				PerformedBy:   params.Actor,
+				ResourceUUID:  storedCfg.UUID,
+				ResourceName:  storedCfg.Handle,
+				CorrelationID: params.CorrelationID,
+			})
+		}
 		return nil, saveErr
 	}
 

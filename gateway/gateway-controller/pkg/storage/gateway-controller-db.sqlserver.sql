@@ -329,3 +329,29 @@ CREATE TABLE dbo.secrets (
 
 -- Note: webhook_secrets (per-API HMAC secrets for the websub-hmac-auth policy)
 -- is also owned by event-gateway/gateway-controller/pkg/dbschema — see note above.
+
+-- Audit log table (added in schema version 6)
+IF OBJECT_ID(N'dbo.audit_log', N'U') IS NULL
+CREATE TABLE dbo.audit_log (
+    uuid NVARCHAR(40) NOT NULL,
+    gateway_id NVARCHAR(64) NOT NULL,
+    correlation_id NVARCHAR(64),
+    action NVARCHAR(50) NOT NULL,
+    resource_type NVARCHAR(50) NOT NULL,
+    resource_uuid NVARCHAR(40),
+    resource_name NVARCHAR(255),
+    performed_by NVARCHAR(200),
+    performed_at DATETIME2(7) NOT NULL DEFAULT SYSUTCDATETIME(),
+    outcome NVARCHAR(20) NOT NULL,
+    event_data NVARCHAR(MAX),
+    PRIMARY KEY (uuid, gateway_id)
+);
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_audit_log_gw_time' AND object_id = OBJECT_ID(N'dbo.audit_log'))
+CREATE INDEX idx_audit_log_gw_time ON dbo.audit_log (gateway_id, performed_at DESC);
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_audit_log_gw_outcome' AND object_id = OBJECT_ID(N'dbo.audit_log'))
+CREATE INDEX idx_audit_log_gw_outcome ON dbo.audit_log (gateway_id, outcome, performed_at DESC);
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_audit_log_gw_actor' AND object_id = OBJECT_ID(N'dbo.audit_log'))
+CREATE INDEX idx_audit_log_gw_actor ON dbo.audit_log (gateway_id, performed_by, performed_at DESC);

@@ -829,6 +829,16 @@ func TestGenerateAuthConfig(t *testing.T) {
 			assert.Equal(t, authConfig.ResourceRoles[prefixed], authConfig.ResourceRoles[route])
 		}
 	})
+
+	t.Run("Audit log route has a role entry", func(t *testing.T) {
+		authConfig, err := generateAuthConfig(&config.Config{})
+		require.NoError(t, err)
+
+		route := "GET " + managementAPIBasePath + "/audit-logs"
+		require.Contains(t, authConfig.ResourceRoles, route, "no role entry for %q — the endpoint would 403 for every caller", route)
+		assert.ElementsMatch(t, []string{"admin"}, authConfig.ResourceRoles[route])
+		assert.Equal(t, authConfig.ResourceRoles[route], authConfig.ResourceRoles["GET /audit-logs"])
+	})
 }
 
 // Additional edge case tests for policybuilder.DerivePolicyFromAPIConfig

@@ -19,6 +19,7 @@
 package secrets
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -27,6 +28,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/encryption"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
+	auditservice "github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/audit"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 )
 
@@ -37,10 +39,11 @@ const (
 
 // SecretParams carries input to encrypt/save a secret
 type SecretParams struct {
-	Data          []byte       // Raw configuration data (YAML/JSON)
-	ContentType   string       // Content type for parsing
+	Data          []byte          // Raw configuration data (YAML/JSON)
+	ContentType   string          // Content type for parsing
 	CorrelationID string       // Correlation ID for tracking
 	Logger        *slog.Logger // Logger
+	Actor         string       // Authenticated user performing the operation (for audit)
 }
 
 // SecretService handles business logic for secret operations
@@ -50,6 +53,7 @@ type SecretService struct {
 	parser          *config.Parser
 	validator       *config.SecretValidator
 	logger          *slog.Logger
+	audit           *auditservice.AuditService
 }
 
 // NewSecretsService creates a new secret service
@@ -65,6 +69,12 @@ func NewSecretsService(
 		validator:       config.NewSecretValidator(),
 		logger:          logger,
 	}
+}
+
+// SetAuditService enables audit logging for this service. Passing nil (the default)
+// disables it.
+func (s *SecretService) SetAuditService(audit *auditservice.AuditService) {
+	s.audit = audit
 }
 
 // CreateSecret creates a new secret with encryption
@@ -134,6 +144,16 @@ func (s *SecretService) CreateSecret(params SecretParams) (*models.Secret, error
 			slog.String("correlation_id", params.CorrelationID),
 			slog.Any("error", err),
 		)
+		if !storage.IsConflictError(err) {
+			s.audit.Record(context.Background(), &auditservice.AuditEvent{
+				Action:        models.AuditActionCreate,
+				ResourceType:  models.AuditResourceTypeSecret,
+				Outcome:       models.AuditOutcomeFailed,
+				PerformedBy:   params.Actor,
+				ResourceName:  secret.Handle,
+				CorrelationID: params.CorrelationID,
+			})
+		}
 		return nil, fmt.Errorf("storage failed: %w", err)
 	}
 
@@ -143,6 +163,19 @@ func (s *SecretService) CreateSecret(params SecretParams) (*models.Secret, error
 		slog.String("provider", payload.Provider),
 		slog.String("key_version", payload.KeyVersion),
 	)
+
+	s.audit.Record(context.Background(), &auditservice.AuditEvent{
+		Action:        models.AuditActionCreate,
+		ResourceType:  models.AuditResourceTypeSecret,
+		Outcome:       models.AuditOutcomeSucceeded,
+		PerformedBy:   params.Actor,
+		ResourceName:  secret.Handle,
+		CorrelationID: params.CorrelationID,
+		EventData: map[string]any{
+			"displayName": secret.DisplayName,
+			"provider":    payload.Provider,
+		},
+	})
 
 	// Return secret with plaintext value for response
 	secret.Value = secretConfig.Spec.Value
@@ -321,6 +354,14 @@ func (s *SecretService) UpdateSecret(handle string, params SecretParams) (*model
 			slog.String("correlation_id", params.CorrelationID),
 			slog.Any("error", err),
 		)
+		s.audit.Record(context.Background(), &auditservice.AuditEvent{
+			Action:        models.AuditActionUpdate,
+			ResourceType:  models.AuditResourceTypeSecret,
+			Outcome:       models.AuditOutcomeFailed,
+			PerformedBy:   params.Actor,
+			ResourceName:  handle,
+			CorrelationID: params.CorrelationID,
+		})
 		return nil, fmt.Errorf("storage update failed: %w", err)
 	}
 
@@ -330,6 +371,18 @@ func (s *SecretService) UpdateSecret(handle string, params SecretParams) (*model
 		slog.String("provider", payload.Provider),
 		slog.String("key_version", payload.KeyVersion),
 	)
+
+	s.audit.Record(context.Background(), &auditservice.AuditEvent{
+		Action:        models.AuditActionUpdate,
+		ResourceType:  models.AuditResourceTypeSecret,
+		Outcome:       models.AuditOutcomeSucceeded,
+		PerformedBy:   params.Actor,
+		ResourceName:  handle,
+		CorrelationID: params.CorrelationID,
+		EventData: map[string]any{
+			"provider": payload.Provider,
+		},
+	})
 
 	// Return secret with plaintext value
 	updatedSecret.Value = secretConfig.Spec.Value
@@ -369,7 +422,7 @@ func (s *SecretService) UpsertFromPlatform(handle, displayName, plaintext string
 }
 
 // Delete permanently removes a secret
-func (s *SecretService) Delete(id string, correlationID string) error {
+func (s *SecretService) Delete(ctx context.Context, actor, id string, correlationID string) error {
 	s.logger.Info("Deleting secret",
 		slog.String("secret_handle", id),
 		slog.String("correlation_id", correlationID),
@@ -388,6 +441,13 @@ func (s *SecretService) Delete(id string, correlationID string) error {
 				slog.String("correlation_id", correlationID),
 				slog.Any("error", err),
 			)
+			s.audit.Record(ctx, &auditservice.AuditEvent{
+				Action:       models.AuditActionDelete,
+				ResourceType: models.AuditResourceTypeSecret,
+				Outcome:      models.AuditOutcomeFailed,
+				PerformedBy:  actor,
+				ResourceName: id,
+			})
 		}
 		return err
 	}
@@ -396,6 +456,14 @@ func (s *SecretService) Delete(id string, correlationID string) error {
 		slog.String("secret_handle", id),
 		slog.String("correlation_id", correlationID),
 	)
+
+	s.audit.Record(ctx, &auditservice.AuditEvent{
+		Action:       models.AuditActionDelete,
+		ResourceType: models.AuditResourceTypeSecret,
+		Outcome:      models.AuditOutcomeSucceeded,
+		PerformedBy:  actor,
+		ResourceName: id,
+	})
 
 	return nil
 }

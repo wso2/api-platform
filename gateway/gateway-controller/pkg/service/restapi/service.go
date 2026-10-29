@@ -19,6 +19,7 @@
 package restapi
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -34,6 +35,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/controlplane"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
+	auditservice "github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/audit"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine/funcs"
@@ -87,6 +89,8 @@ type RestAPIService struct {
 	logger             *slog.Logger
 	eventHub           eventhub.EventHub
 	secretResolver     funcs.SecretResolver
+
+	audit *auditservice.AuditService
 
 	// webSubTopicDeregistrar is an optional hook, set by an event-gateway-controller
 	// binary, that deregisters WebSub hub topics for a deleted WebSubApi config.
@@ -153,6 +157,13 @@ func NewRestAPIService(
 	}
 }
 
+// SetAuditService enables audit logging for this service. Passing nil (the default)
+// disables it.
+func (s *RestAPIService) SetAuditService(audit *auditservice.AuditService) {
+	s.audit = audit
+	s.deploymentService.SetAuditService(audit)
+}
+
 // CreateParams holds parameters for the Create operation.
 type CreateParams struct {
 	Body          []byte
@@ -160,6 +171,7 @@ type CreateParams struct {
 	CorrelationID string
 	Kind          string
 	Logger        *slog.Logger
+	Actor         string
 }
 
 // Create deploys a new REST API configuration.
@@ -179,6 +191,7 @@ func (s *RestAPIService) Create(params CreateParams) (*CreateResult, error) {
 		Origin:        models.OriginGatewayAPI,
 		CorrelationID: params.CorrelationID,
 		Logger:        log,
+		Actor:         params.Actor,
 	})
 	if err != nil {
 		return nil, err
@@ -205,6 +218,21 @@ func (s *RestAPIService) Create(params CreateParams) (*CreateResult, error) {
 			})
 		}
 	}
+
+	restapiAuditAction := models.AuditActionCreate
+	if result.IsUpdate {
+		restapiAuditAction = models.AuditActionUpdate
+	}
+	s.audit.Record(context.Background(), &auditservice.AuditEvent{
+		Action:        restapiAuditAction,
+		ResourceType:  models.AuditResourceTypeRestAPI,
+		Outcome:       models.AuditOutcomeSucceeded,
+		PerformedBy:   params.Actor,
+		ResourceUUID:  result.StoredConfig.UUID,
+		ResourceName:  result.StoredConfig.Handle,
+		CorrelationID: params.CorrelationID,
+		EventData:     utils.ConfigAuditFields(result.StoredConfig),
+	})
 
 	return &CreateResult{
 		StoredConfig: result.StoredConfig,
@@ -314,6 +342,7 @@ type UpdateParams struct {
 	ContentType   string
 	CorrelationID string
 	Logger        *slog.Logger
+	Actor         string
 }
 
 // Update modifies an existing REST API configuration.
@@ -345,6 +374,7 @@ func (s *RestAPIService) Update(params UpdateParams) (*UpdateResult, error) {
 	if err != nil {
 		return nil, ErrNotFound
 	}
+	before := utils.ConfigAuditFields(existing)
 
 	// Populate existing with the incoming config so RenderSpec can operate on it.
 	existing.Configuration = apiConfig
@@ -389,8 +419,28 @@ func (s *RestAPIService) Update(params UpdateParams) (*UpdateResult, error) {
 	// Dual-write: database first, then in-memory
 	if err := s.db.UpdateConfig(existing); err != nil {
 		log.Error("Failed to update config in database", slog.Any("error", err))
+		s.audit.Record(context.Background(), &auditservice.AuditEvent{
+			Action:        models.AuditActionUpdate,
+			ResourceType:  models.AuditResourceTypeRestAPI,
+			Outcome:       models.AuditOutcomeFailed,
+			PerformedBy:   params.Actor,
+			ResourceUUID:  existing.UUID,
+			ResourceName:  existing.Handle,
+			CorrelationID: params.CorrelationID,
+		})
 		return nil, fmt.Errorf("failed to persist configuration update: %w", err)
 	}
+
+	s.audit.Record(context.Background(), &auditservice.AuditEvent{
+		Action:        models.AuditActionUpdate,
+		ResourceType:  models.AuditResourceTypeRestAPI,
+		Outcome:       models.AuditOutcomeSucceeded,
+		PerformedBy:   params.Actor,
+		ResourceUUID:  existing.UUID,
+		ResourceName:  existing.Handle,
+		CorrelationID: params.CorrelationID,
+		EventData:     auditservice.AuditDiff(before, utils.ConfigAuditFields(existing)),
+	})
 
 	s.publishEvent(eventhub.EventTypeAPI, "UPDATE", existing.UUID, params.CorrelationID, log)
 
@@ -428,6 +478,7 @@ type DeleteParams struct {
 	Handle        string
 	CorrelationID string
 	Logger        *slog.Logger
+	Actor         string
 }
 
 // Delete removes a REST API configuration.
@@ -446,8 +497,27 @@ func (s *RestAPIService) Delete(params DeleteParams) (*DeleteResult, error) {
 	// Delete from database
 	if err := s.db.DeleteConfig(cfg.UUID); err != nil {
 		log.Error("Failed to delete config from database", slog.Any("error", err))
+		s.audit.Record(context.Background(), &auditservice.AuditEvent{
+			Action:        models.AuditActionDelete,
+			ResourceType:  models.AuditResourceTypeRestAPI,
+			Outcome:       models.AuditOutcomeFailed,
+			PerformedBy:   params.Actor,
+			ResourceUUID:  cfg.UUID,
+			ResourceName:  cfg.Handle,
+			CorrelationID: params.CorrelationID,
+		})
 		return nil, fmt.Errorf("failed to delete configuration: %w", err)
 	}
+
+	s.audit.Record(context.Background(), &auditservice.AuditEvent{
+		Action:        models.AuditActionDelete,
+		ResourceType:  models.AuditResourceTypeRestAPI,
+		Outcome:       models.AuditOutcomeSucceeded,
+		PerformedBy:   params.Actor,
+		ResourceUUID:  cfg.UUID,
+		ResourceName:  cfg.Handle,
+		CorrelationID: params.CorrelationID,
+	})
 
 	// Delete associated API keys from database
 	if err := s.db.RemoveAPIKeysAPI(cfg.UUID); err != nil {

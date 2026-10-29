@@ -222,6 +222,34 @@ type Controller struct {
 	Metrics      MetricsConfig      `koanf:"metrics"`
 	Encryption   EncryptionConfig   `koanf:"encryption"`
 	EventHub     EventHubConfig     `koanf:"event_hub"`
+	Audit        AuditConfig        `koanf:"audit"`
+}
+
+// AuditConfig controls audit log recording for the management API.
+type AuditConfig struct {
+	// Enabled turns audit logging on or off. Default: false.
+	Enabled bool `koanf:"enabled"`
+	// Sinks are written in addition to the database, which is always on.
+	Sinks AuditSinksConfig `koanf:"sinks"`
+}
+
+// AuditSinksConfig holds the optional audit sinks.
+type AuditSinksConfig struct {
+	File   AuditFileSinkConfig   `koanf:"file"`
+	Stdout AuditStdoutSinkConfig `koanf:"stdout"`
+}
+
+// AuditFileSinkConfig appends audit events, one JSON object per line, to
+// audit.log in Path.
+type AuditFileSinkConfig struct {
+	Enabled bool `koanf:"enabled"`
+	// Path is the directory for audit.log; the file name is fixed. Default: ./data/logs.
+	Path string `koanf:"path"`
+}
+
+// AuditStdoutSinkConfig writes audit events, one JSON object per line, to stdout.
+type AuditStdoutSinkConfig struct {
+	Enabled bool `koanf:"enabled"`
 }
 
 // MetricsConfig holds Prometheus metrics server configuration

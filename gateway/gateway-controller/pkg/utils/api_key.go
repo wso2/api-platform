@@ -19,6 +19,7 @@
 package utils
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
@@ -40,6 +41,7 @@ import (
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
+	auditservice "github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/audit"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 )
 
@@ -60,8 +62,8 @@ type APIKeyCreationParams struct {
 	Handle        string                    // API handle/ID
 	Request       api.APIKeyCreationRequest // Request body with API key creation details
 	User          *commonmodels.AuthContext // User who initiated the request
-	CorrelationID string                    // Correlation ID for tracking
-	Logger        *slog.Logger              // Logger instance
+	CorrelationID string       // Correlation ID for tracking
+	Logger        *slog.Logger // Logger instance
 	// UUID is the pre-assigned key UUID from the platform API event path.
 	// Nil in the REST API path (a new UUID is generated instead).
 	UUID *string
@@ -75,6 +77,10 @@ type APIKeyCreationParams struct {
 	// UpdatedAt is the last-updated timestamp from the platform API. When set (external
 	// event path), this value is used instead of time.Now().
 	UpdatedAt *time.Time
+	// TrustedOrigin marks a key pushed by the platform API as an event. Set only on the
+	// platform-api event path (see CreateExternalAPIKeyFromEvent); the operation is not
+	// audited because the platform API audits the user's action.
+	TrustedOrigin bool
 }
 
 // APIKeyCreationResult contains the result of API key creation.
@@ -90,13 +96,13 @@ type APIKeyRevocationParams struct {
 	Handle        string                    // API handle/ID
 	APIKeyName    string                    // // Name of the API key to revoke
 	User          *commonmodels.AuthContext // User who initiated the request
-	CorrelationID string                    // Correlation ID for tracking
-	Logger        *slog.Logger              // Logger instance
+	CorrelationID string       // Correlation ID for tracking
+	Logger        *slog.Logger // Logger instance
 	// TrustedOrigin marks this operation as coming from a pre-validated origin — the
 	// platform API already authorized it before broadcasting, so the gateway must not
 	// re-run its own creator check. Set only on the platform-api event path (see
 	// RevokeExternalAPIKeyFromEvent); always false for requests arriving on the
-	// gateway's own REST API.
+	// gateway's own REST API. Such operations are not audited.
 	TrustedOrigin bool
 }
 
@@ -112,8 +118,8 @@ type APIKeyRegenerationParams struct {
 	APIKeyName    string                        // Name of the API key to regenerate
 	Request       api.APIKeyRegenerationRequest // Request body with regeneration details
 	User          *commonmodels.AuthContext     // User who initiated the request
-	CorrelationID string                        // Correlation ID for tracking
-	Logger        *slog.Logger                  // Logger instance
+	CorrelationID string       // Correlation ID for tracking
+	Logger        *slog.Logger // Logger instance
 }
 
 // APIKeyRegenerationResult contains the result of API key regeneration
@@ -129,8 +135,8 @@ type APIKeyUpdateParams struct {
 	APIKeyName    string                    // Name of the API key to update
 	Request       api.APIKeyCreationRequest // Request body with update details
 	User          *commonmodels.AuthContext // User who initiated the request
-	CorrelationID string                    // Correlation ID for tracking
-	Logger        *slog.Logger              // Logger instance
+	CorrelationID string       // Correlation ID for tracking
+	Logger        *slog.Logger // Logger instance
 	// ApiKeyHashes contains pre-computed hashes from the platform API event path.
 	// Nil in the REST API path (which provides a plain-text key instead).
 	ApiKeyHashes *string
@@ -141,7 +147,7 @@ type APIKeyUpdateParams struct {
 	// platform API already authorized it before broadcasting, so the gateway must not
 	// re-run its own creator check. Set only on the platform-api event path (see
 	// UpdateExternalAPIKeyFromEvent); always false for requests arriving on the
-	// gateway's own REST API.
+	// gateway's own REST API. Such operations are not audited.
 	TrustedOrigin bool
 }
 
@@ -186,6 +192,7 @@ type APIKeyService struct {
 	apiKeyConfig *config.APIKeyConfig // Configuration for API keys
 	eventHub     eventhub.EventHub
 	gatewayID    string
+	audit        *auditservice.AuditService
 }
 
 // NewAPIKeyService creates a new API key generation service
@@ -204,6 +211,12 @@ func NewAPIKeyService(store *storage.ConfigStore, db storage.Storage, xdsManager
 		eventHub:     eventHub,
 		gatewayID:    trimmedGatewayID,
 	}
+}
+
+// SetAuditService enables audit logging for this service. Passing nil (the default)
+// disables it.
+func (s *APIKeyService) SetAuditService(audit *auditservice.AuditService) {
+	s.audit = audit
 }
 
 // getAPIConfigByHandle resolves an artifact configuration by kind and handle.
@@ -330,6 +343,12 @@ func (s *APIKeyService) CreateAPIKey(params APIKeyCreationParams) (*APIKeyCreati
 		return nil, fmt.Errorf("failed to generate API key: %w", err)
 	}
 
+	// Keys the platform API pushes as events are machine-to-machine; only
+	// management-API calls are audited.
+	auditCtx := context.Background()
+	if params.TrustedOrigin {
+		auditCtx = auditservice.WithoutAudit(auditCtx)
+	}
 	// Persist to database.
 	// UpsertAPIKey is used for all paths so that:
 	//   - A new key is inserted when it does not yet exist.
@@ -351,6 +370,16 @@ func (s *APIKeyService) CreateAPIKey(params APIKeyCreationParams) (*APIKeyCreati
 				logger.Error("Failed to save API key after retry",
 					slog.String("operation", operationType+"_key"),
 					slog.Any("error", err))
+				s.audit.Record(auditCtx, &auditservice.AuditEvent{
+					Action:        models.AuditActionCreate,
+					ResourceType:  models.AuditResourceTypeAPIKey,
+					Outcome:       models.AuditOutcomeFailed,
+					PerformedBy:   user.UserID,
+					ResourceUUID:  apiKey.UUID,
+					ResourceName:  apiKey.Name,
+					CorrelationID: params.CorrelationID,
+					EventData:     map[string]any{"apiHandle": config.Handle, "kind": kind},
+				})
 				return nil, fmt.Errorf("failed to save API key after retry: %w", err)
 			}
 			result.IsRetry = true
@@ -358,6 +387,16 @@ func (s *APIKeyService) CreateAPIKey(params APIKeyCreationParams) (*APIKeyCreati
 			logger.Error("Failed to save API key to database",
 				slog.String("operation", operationType+"_key"),
 				slog.Any("error", err))
+			s.audit.Record(auditCtx, &auditservice.AuditEvent{
+				Action:        models.AuditActionCreate,
+				ResourceType:  models.AuditResourceTypeAPIKey,
+				Outcome:       models.AuditOutcomeFailed,
+				PerformedBy:   user.UserID,
+				ResourceUUID:  apiKey.UUID,
+				ResourceName:  apiKey.Name,
+				CorrelationID: params.CorrelationID,
+				EventData:     map[string]any{"apiHandle": config.Handle, "kind": kind},
+			})
 			return nil, fmt.Errorf("failed to save API key to database: %w", err)
 		}
 	}
@@ -367,6 +406,17 @@ func (s *APIKeyService) CreateAPIKey(params APIKeyCreationParams) (*APIKeyCreati
 
 	apiId := config.UUID
 	s.publishAPIKeyEvent("CREATE", apiId, apiKey.UUID, params.CorrelationID, logger)
+
+	s.audit.Record(auditCtx, &auditservice.AuditEvent{
+		Action:        models.AuditActionCreate,
+		ResourceType:  models.AuditResourceTypeAPIKey,
+		Outcome:       models.AuditOutcomeSucceeded,
+		PerformedBy:   user.UserID,
+		ResourceUUID:  apiKey.UUID,
+		ResourceName:  apiKey.Name,
+		CorrelationID: params.CorrelationID,
+		EventData:     map[string]any{"apiHandle": config.Handle, "kind": kind},
+	})
 
 	// Build response following the generated schema
 	result.Response = s.buildAPIKeyResponse(apiKey, params.Handle, plainAPIKey, isExternalKeyInjection)
@@ -449,6 +499,12 @@ func (s *APIKeyService) RevokeAPIKey(params APIKeyRevocationParams) (*APIKeyRevo
 	}
 
 	// Validate that API exists
+	// Keys the platform API pushes as events are machine-to-machine; only
+	// management-API calls are audited.
+	auditCtx := context.Background()
+	if params.TrustedOrigin {
+		auditCtx = auditservice.WithoutAudit(auditCtx)
+	}
 	kind := params.Kind
 	if kind == "" {
 		kind = models.KindRestApi
@@ -521,6 +577,16 @@ func (s *APIKeyService) RevokeAPIKey(params APIKeyRevocationParams) (*APIKeyRevo
 		if err := s.db.UpdateAPIKey(apiKey); err != nil {
 			logger.Error("Failed to update API key status in database",
 				slog.Any("error", err))
+			s.audit.Record(auditCtx, &auditservice.AuditEvent{
+				Action:        models.AuditActionRevoke,
+				ResourceType:  models.AuditResourceTypeAPIKey,
+				Outcome:       models.AuditOutcomeFailed,
+				PerformedBy:   user.UserID,
+				ResourceUUID:  apiKey.UUID,
+				ResourceName:  apiKey.Name,
+				CorrelationID: params.CorrelationID,
+				EventData:     map[string]any{"apiHandle": config.Handle, "kind": kind},
+			})
 			return nil, fmt.Errorf("failed to revoke API key: %w", err)
 		}
 
@@ -536,6 +602,19 @@ func (s *APIKeyService) RevokeAPIKey(params APIKeyRevocationParams) (*APIKeyRevo
 
 	logger.Info("API key revoked successfully",
 		slog.String("api key", apiKeyName))
+
+	if apiKey != nil {
+		s.audit.Record(auditCtx, &auditservice.AuditEvent{
+			Action:        models.AuditActionRevoke,
+			ResourceType:  models.AuditResourceTypeAPIKey,
+			Outcome:       models.AuditOutcomeSucceeded,
+			PerformedBy:   user.UserID,
+			ResourceUUID:  apiKey.UUID,
+			ResourceName:  apiKey.Name,
+			CorrelationID: params.CorrelationID,
+			EventData:     map[string]any{"apiHandle": config.Handle, "kind": kind},
+		})
+	}
 
 	return result, nil
 }
@@ -569,6 +648,12 @@ func (s *APIKeyService) UpdateAPIKey(params APIKeyUpdateParams) (*APIKeyUpdateRe
 	}
 
 	// Get the API configuration
+	// Keys the platform API pushes as events are machine-to-machine; only
+	// management-API calls are audited.
+	auditCtx := context.Background()
+	if params.TrustedOrigin {
+		auditCtx = auditservice.WithoutAudit(auditCtx)
+	}
 	kind := params.Kind
 	if kind == "" {
 		kind = models.KindRestApi
@@ -608,6 +693,7 @@ func (s *APIKeyService) UpdateAPIKey(params APIKeyUpdateParams) (*APIKeyUpdateRe
 				CorrelationID: params.CorrelationID,
 				Logger:        logger,
 				ApiKeyHashes:  params.ApiKeyHashes,
+				TrustedOrigin: params.TrustedOrigin,
 			}
 
 			creationResult, err := s.CreateAPIKey(creationParams)
@@ -679,6 +765,16 @@ func (s *APIKeyService) UpdateAPIKey(params APIKeyUpdateParams) (*APIKeyUpdateRe
 	if err := s.db.UpdateAPIKey(updatedKey); err != nil {
 		logger.Error("Failed to update API key in database",
 			slog.Any("error", err))
+		s.audit.Record(auditCtx, &auditservice.AuditEvent{
+			Action:        models.AuditActionUpdate,
+			ResourceType:  models.AuditResourceTypeAPIKey,
+			Outcome:       models.AuditOutcomeFailed,
+			PerformedBy:   user.UserID,
+			ResourceUUID:  updatedKey.UUID,
+			ResourceName:  updatedKey.Name,
+			CorrelationID: params.CorrelationID,
+			EventData:     map[string]any{"apiHandle": config.Handle, "kind": kind},
+		})
 		return nil, fmt.Errorf("failed to update API key in database: %w", err)
 	}
 
@@ -710,6 +806,17 @@ func (s *APIKeyService) UpdateAPIKey(params APIKeyUpdateParams) (*APIKeyUpdateRe
 
 	logger.Info("API key update completed successfully",
 		slog.String("key_id", updatedKey.UUID))
+
+	s.audit.Record(auditCtx, &auditservice.AuditEvent{
+		Action:        models.AuditActionUpdate,
+		ResourceType:  models.AuditResourceTypeAPIKey,
+		Outcome:       models.AuditOutcomeSucceeded,
+		PerformedBy:   user.UserID,
+		ResourceUUID:  updatedKey.UUID,
+		ResourceName:  updatedKey.Name,
+		CorrelationID: params.CorrelationID,
+		EventData:     map[string]any{"apiHandle": config.Handle, "kind": kind},
+	})
 
 	return result, nil
 }
@@ -835,6 +942,16 @@ func (s *APIKeyService) RegenerateAPIKey(params APIKeyRegenerationParams) (*APIK
 				logger.Error("Failed to save regenerated API key after retry",
 					slog.Any("error", err),
 					slog.String("correlation_id", params.CorrelationID))
+				s.audit.Record(context.Background(), &auditservice.AuditEvent{
+					Action:        models.AuditActionUpdate,
+					ResourceType:  models.AuditResourceTypeAPIKey,
+					Outcome:       models.AuditOutcomeFailed,
+					PerformedBy:   user.UserID,
+					ResourceUUID:  regeneratedKey.UUID,
+					ResourceName:  regeneratedKey.Name,
+					CorrelationID: params.CorrelationID,
+					EventData:     map[string]any{"apiHandle": config.Handle, "kind": kind, "regenerated": true},
+				})
 				return nil, fmt.Errorf("failed to save regenerated API key after retry: %w", err)
 			}
 
@@ -844,6 +961,16 @@ func (s *APIKeyService) RegenerateAPIKey(params APIKeyRegenerationParams) (*APIK
 				slog.Any("error", err),
 				slog.String("handle", params.Handle),
 				slog.String("correlation_id", params.CorrelationID))
+			s.audit.Record(context.Background(), &auditservice.AuditEvent{
+				Action:        models.AuditActionUpdate,
+				ResourceType:  models.AuditResourceTypeAPIKey,
+				Outcome:       models.AuditOutcomeFailed,
+				PerformedBy:   user.UserID,
+				ResourceUUID:  regeneratedKey.UUID,
+				ResourceName:  regeneratedKey.Name,
+				CorrelationID: params.CorrelationID,
+				EventData:     map[string]any{"apiHandle": config.Handle, "kind": kind, "regenerated": true},
+			})
 			return nil, fmt.Errorf("failed to save regenerated API key to database: %w", err)
 		}
 	}
@@ -863,6 +990,17 @@ func (s *APIKeyService) RegenerateAPIKey(params APIKeyRegenerationParams) (*APIK
 		slog.String("api_key_name", params.APIKeyName),
 		slog.String("new_key_id", regeneratedKey.UUID),
 		slog.String("correlation_id", params.CorrelationID))
+
+	s.audit.Record(context.Background(), &auditservice.AuditEvent{
+		Action:        models.AuditActionUpdate,
+		ResourceType:  models.AuditResourceTypeAPIKey,
+		Outcome:       models.AuditOutcomeSucceeded,
+		PerformedBy:   user.UserID,
+		ResourceUUID:  regeneratedKey.UUID,
+		ResourceName:  regeneratedKey.Name,
+		CorrelationID: params.CorrelationID,
+		EventData:     map[string]any{"apiHandle": config.Handle, "kind": kind, "regenerated": true},
+	})
 
 	return result, nil
 }
@@ -1803,6 +1941,7 @@ func (s *APIKeyService) CreateExternalAPIKeyFromEvent(
 		ApiKeyHashes:  apiKeyHashes,
 		CreatedAt:     createdAt,
 		UpdatedAt:     updatedAt,
+		TrustedOrigin: true,
 	}
 
 	result, err := s.CreateAPIKey(params)

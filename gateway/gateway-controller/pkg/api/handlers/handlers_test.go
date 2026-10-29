@@ -1098,6 +1098,12 @@ func (m *MockStorage) GetAllWebhookSecrets() ([]*models.WebhookSecret, error) {
 	return result, nil
 }
 
+func (m *MockStorage) CreateAuditLog(_ *models.AuditLog) error        { return nil }
+func (m *MockStorage) ListAuditLogs(_ storage.AuditLogFilter, _, _ int) ([]*models.AuditLog, error) {
+	return nil, nil
+}
+func (m *MockStorage) CountAuditLogs(_ storage.AuditLogFilter) (int, error) { return 0, nil }
+
 func (m *MockControlPlaneClient) SyncArtifactsToOnPremAPIM(apimConfig *utils.APIMConfig) error {
 	// Mock implementation - does nothing for testing
 	return nil

@@ -453,4 +453,25 @@ type Storage interface {
 	// Should be called during graceful shutdown.
 	// Implementations should ensure all pending writes are flushed.
 	Close() error
+
+	// ========================================
+	// Audit Log Methods
+	// ========================================
+
+	// CreateAuditLog inserts a new audit log row.
+	//
+	// UUID and PerformedAt are populated by the implementation if zero.
+	// GatewayID is always set from the store's own gatewayId, never from the caller.
+	CreateAuditLog(row *models.AuditLog) error
+
+	// ListAuditLogs returns audit log rows matching f, ordered by performed_at DESC.
+	//
+	// Results are scoped to the store's own gatewayId; callers must not supply one
+	// in the filter. limit and offset implement page-based pagination.
+	ListAuditLogs(f AuditLogFilter, limit, offset int) ([]*models.AuditLog, error)
+
+	// CountAuditLogs returns the total number of audit log rows matching f.
+	//
+	// Uses the same predicate builder as ListAuditLogs so counts never drift.
+	CountAuditLogs(f AuditLogFilter) (int, error)
 }

@@ -43,6 +43,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/encryption"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/gatewayidentity"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
+	auditservice "github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/audit"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 	"github.com/wso2/api-platform/httpkit/httputil"
@@ -288,12 +289,29 @@ func (s *APIServer) UploadCertificate(w http.ResponseWriter, r *http.Request) {
 		log.Error("Failed to save certificate to database",
 			slog.String("name", req.Name),
 			slog.Any("error", err))
+		s.auditService.Record(r.Context(), &auditservice.AuditEvent{
+			Action:       models.AuditActionCreate,
+			ResourceType: models.AuditResourceTypeCertificate,
+			Outcome:      models.AuditOutcomeFailed,
+			PerformedBy:  actorFromRequest(r),
+			ResourceUUID: certID,
+			ResourceName: req.Name,
+		})
 		httputil.WriteJSON(w, http.StatusInternalServerError, map[string]any{
 			"status":  "error",
 			"message": "Failed to save certificate",
 		})
 		return
 	}
+
+	s.auditService.Record(r.Context(), &auditservice.AuditEvent{
+		Action:       models.AuditActionCreate,
+		ResourceType: models.AuditResourceTypeCertificate,
+		Outcome:      models.AuditOutcomeSucceeded,
+		PerformedBy:  actorFromRequest(r),
+		ResourceUUID: certID,
+		ResourceName: req.Name,
+	})
 
 	log.Info("Certificate saved to database successfully",
 		slog.String("id", certID),
@@ -582,6 +600,15 @@ func (s *APIServer) DeleteCertificate(w http.ResponseWriter, r *http.Request, id
 		log.Error("Failed to delete certificate",
 			slog.String("id", id),
 			slog.Any("error", err))
+		if !storage.IsNotFoundError(err) {
+			s.auditService.Record(r.Context(), &auditservice.AuditEvent{
+				Action:       models.AuditActionDelete,
+				ResourceType: models.AuditResourceTypeCertificate,
+				Outcome:      models.AuditOutcomeFailed,
+				PerformedBy:  actorFromRequest(r),
+				ResourceUUID: id,
+			})
+		}
 		httputil.WriteJSON(w, http.StatusNotFound, map[string]any{
 			"status":  "error",
 			"message": "Certificate not found or failed to delete: " + err.Error(),
@@ -591,6 +618,14 @@ func (s *APIServer) DeleteCertificate(w http.ResponseWriter, r *http.Request, id
 
 	log.Info("Certificate deleted from database", slog.String("id", id))
 	s.publishCertificateEvent("DELETE", id, correlationID, log)
+
+	s.auditService.Record(r.Context(), &auditservice.AuditEvent{
+		Action:       models.AuditActionDelete,
+		ResourceType: models.AuditResourceTypeCertificate,
+		Outcome:      models.AuditOutcomeSucceeded,
+		PerformedBy:  actorFromRequest(r),
+		ResourceUUID: id,
+	})
 
 	certStore := translator.GetCertStore()
 

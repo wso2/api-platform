@@ -125,6 +125,10 @@ Base URLs:
 - [Update a secret](secrets-management.md#update-a-secret)
 - [Delete a secret](secrets-management.md#delete-a-secret)
 
+### [Audit Log Management](audit-log-management.md)
+
+- [List audit events](audit-log-management.md#list-audit-events)
+
 ### [Schemas](schemas.md)
 
 - [ResourceStatus](schemas.md#resourcestatus)
@@ -224,4 +228,10 @@ Base URLs:
 - [SecretResourceServiceStatus](schemas.md#secretresourceservicestatus)
 - [SecretConfigurationResponseCreateUpdate](schemas.md#secretconfigurationresponsecreateupdate)
 - [SecretConfigurationResponseRetrieved](schemas.md#secretconfigurationresponseretrieved)
+- [AuditEventListResponse](schemas.md#auditeventlistresponse)
+- [Pagination](schemas.md#pagination)
+- [AuditEvent](schemas.md#auditevent)
+- [AuditAction](schemas.md#auditaction)
+- [AuditResourceType](schemas.md#auditresourcetype)
+- [AuditOutcome](schemas.md#auditoutcome)
 

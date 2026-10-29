@@ -609,6 +609,14 @@ func (m *mockStorageForDeletion) GetDB() *sql.DB {
 	return nil
 }
 
+func (m *mockStorageForDeletion) CreateAuditLog(row *models.AuditLog) error { return nil }
+func (m *mockStorageForDeletion) ListAuditLogs(f storage.AuditLogFilter, limit, offset int) ([]*models.AuditLog, error) {
+	return nil, nil
+}
+func (m *mockStorageForDeletion) CountAuditLogs(f storage.AuditLogFilter) (int, error) {
+	return 0, nil
+}
+
 // Bottom-up sync methods
 func (m *mockStorageForDeletion) UpdateCPSyncStatus(uuid, cpArtifactID string, status models.CPSyncStatus, reason string) error {
 	if config, ok := m.configs[uuid]; ok {

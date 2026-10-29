@@ -32,6 +32,7 @@ import (
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
+	auditservice "github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/audit"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/httpkit/httputil"
 )
@@ -140,9 +141,25 @@ func (s *APIServer) CreateSubscription(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		log.Error("Failed to save subscription", slog.Any("error", err))
+		s.auditService.Record(r.Context(), &auditservice.AuditEvent{
+			Action:       models.AuditActionCreate,
+			ResourceType: models.AuditResourceTypeSubscription,
+			Outcome:      models.AuditOutcomeFailed,
+			PerformedBy:  actorFromRequest(r),
+			ResourceUUID: sub.ID,
+			EventData:    map[string]any{"apiHandle": req.ApiId, "status": string(sub.Status)},
+		})
 		httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to create subscription"})
 		return
 	}
+	s.auditService.Record(r.Context(), &auditservice.AuditEvent{
+		Action:       models.AuditActionCreate,
+		ResourceType: models.AuditResourceTypeSubscription,
+		Outcome:      models.AuditOutcomeSucceeded,
+		PerformedBy:  actorFromRequest(r),
+		ResourceUUID: sub.ID,
+		EventData:    map[string]any{"apiHandle": req.ApiId, "status": string(sub.Status)},
+	})
 	resp := subscriptionToResponseWithToken(sub)
 	httputil.WriteJSON(w, http.StatusCreated, resp)
 }
@@ -235,6 +252,7 @@ func (s *APIServer) UpdateSubscription(w http.ResponseWriter, r *http.Request, s
 		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, maxSubscriptionRequestBodyBytes)
+	before := map[string]any{"status": string(sub.Status)}
 	var req api.SubscriptionUpdateRequest
 	planIDPresent, err := s.bindSubscriptionUpdateBody(r, &req)
 	if err != nil {
@@ -305,9 +323,24 @@ func (s *APIServer) UpdateSubscription(w http.ResponseWriter, r *http.Request, s
 			return
 		}
 		log.Error("Failed to update subscription", slog.Any("error", err))
+		s.auditService.Record(r.Context(), &auditservice.AuditEvent{
+			Action:       models.AuditActionUpdate,
+			ResourceType: models.AuditResourceTypeSubscription,
+			Outcome:      models.AuditOutcomeFailed,
+			PerformedBy:  actorFromRequest(r),
+			ResourceUUID: sub.ID,
+		})
 		httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to update subscription"})
 		return
 	}
+	s.auditService.Record(r.Context(), &auditservice.AuditEvent{
+		Action:       models.AuditActionUpdate,
+		ResourceType: models.AuditResourceTypeSubscription,
+		Outcome:      models.AuditOutcomeSucceeded,
+		PerformedBy:  actorFromRequest(r),
+		ResourceUUID: sub.ID,
+		EventData:    auditservice.AuditDiff(before, map[string]any{"status": string(sub.Status)}),
+	})
 	httputil.WriteJSON(w, http.StatusOK, subscriptionToResponse(sub))
 }
 
@@ -339,9 +372,23 @@ func (s *APIServer) DeleteSubscription(w http.ResponseWriter, r *http.Request, s
 			return
 		}
 		log.Error("Failed to delete subscription", slog.Any("error", err))
+		s.auditService.Record(r.Context(), &auditservice.AuditEvent{
+			Action:       models.AuditActionDelete,
+			ResourceType: models.AuditResourceTypeSubscription,
+			Outcome:      models.AuditOutcomeFailed,
+			PerformedBy:  actorFromRequest(r),
+			ResourceUUID: subscriptionId,
+		})
 		httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to delete subscription"})
 		return
 	}
+	s.auditService.Record(r.Context(), &auditservice.AuditEvent{
+		Action:       models.AuditActionDelete,
+		ResourceType: models.AuditResourceTypeSubscription,
+		Outcome:      models.AuditOutcomeSucceeded,
+		PerformedBy:  actorFromRequest(r),
+		ResourceUUID: subscriptionId,
+	})
 	w.WriteHeader(http.StatusNoContent)
 }
 

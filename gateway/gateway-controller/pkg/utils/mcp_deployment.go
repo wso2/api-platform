@@ -19,6 +19,7 @@
 package utils
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -30,6 +31,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
+	auditservice "github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/audit"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine/funcs"
@@ -55,6 +57,7 @@ type MCPDeploymentParams struct {
 	CorrelationID string              // Correlation ID for tracking
 	Logger        *slog.Logger        // Logger instance
 	DesiredState  models.DesiredState // Desired deployment state; empty defaults to StateDeployed
+	Actor         string              // Authenticated user performing the operation (for audit)
 }
 
 // MCPDeploymentService provides utilities for MCP proxy configuration deployment
@@ -70,6 +73,8 @@ type MCPDeploymentService struct {
 	eventHub              eventhub.EventHub
 	gatewayID             string
 	secretResolver        funcs.SecretResolver
+
+	audit *auditservice.AuditService
 
 	// controlPlaneClient and deploymentPushEnabled drive the DP->CP push performed when a
 	// gateway-originated MCP proxy is created here including via the immutable-gateway loader.
@@ -107,6 +112,12 @@ func NewMCPDeploymentService(
 		gatewayID:             trimmedGatewayID,
 		secretResolver:        secretResolver,
 	}
+}
+
+// SetAuditService enables audit logging for this service. Passing nil (the default)
+// disables it.
+func (s *MCPDeploymentService) SetAuditService(audit *auditservice.AuditService) {
+	s.audit = audit
 }
 
 // SetControlPlanePusher wires the control-plane push dependency used to forward
@@ -281,6 +292,21 @@ func (s *MCPDeploymentService) DeployMCPConfiguration(params MCPDeploymentParams
 	// affected=false means a newer version already exists (stale event — no-op).
 	affected, err := s.saveOrUpdateConfig(storedCfg, params.Logger)
 	if err != nil {
+		if params.Origin != models.OriginControlPlane {
+			auditAction := models.AuditActionCreate
+			if isUpdate {
+				auditAction = models.AuditActionUpdate
+			}
+			s.audit.Record(context.Background(), &auditservice.AuditEvent{
+				Action:        auditAction,
+				ResourceType:  models.AuditResourceTypeMCPProxy,
+				Outcome:       models.AuditOutcomeFailed,
+				PerformedBy:   params.Actor,
+				ResourceUUID:  storedCfg.UUID,
+				ResourceName:  storedCfg.Handle,
+				CorrelationID: params.CorrelationID,
+			})
+		}
 		return nil, err
 	}
 
@@ -427,6 +453,20 @@ func (s *MCPDeploymentService) CreateMCPProxy(params MCPDeploymentParams) (*APID
 	if err != nil {
 		return nil, err
 	}
+	auditAction := models.AuditActionCreate
+	if result.IsUpdate {
+		auditAction = models.AuditActionUpdate
+	}
+	s.audit.Record(context.Background(), &auditservice.AuditEvent{
+		Action:        auditAction,
+		ResourceType:  models.AuditResourceTypeMCPProxy,
+		Outcome:       models.AuditOutcomeSucceeded,
+		PerformedBy:   params.Actor,
+		ResourceUUID:  result.StoredConfig.UUID,
+		ResourceName:  result.StoredConfig.Handle,
+		CorrelationID: params.CorrelationID,
+		EventData:     ConfigAuditFields(result.StoredConfig),
+	})
 	s.pushDeployableArtifact(result, params.CorrelationID, params.Logger)
 	return result, nil
 }
@@ -439,6 +479,7 @@ func (s *MCPDeploymentService) UpdateMCPProxy(handle string, params MCPDeploymen
 	if err != nil || existing == nil {
 		return nil, fmt.Errorf("MCP proxy configuration with handle '%s' not found", handle)
 	}
+	before := ConfigAuditFields(existing)
 
 	// Extract deploymentState from the incoming config
 	if isUndeploy, err := s.isMCPUndeployRequest(params); err != nil {
@@ -458,6 +499,16 @@ func (s *MCPDeploymentService) UpdateMCPProxy(handle string, params MCPDeploymen
 	if err != nil {
 		return nil, err
 	}
+	s.audit.Record(context.Background(), &auditservice.AuditEvent{
+		Action:        models.AuditActionUpdate,
+		ResourceType:  models.AuditResourceTypeMCPProxy,
+		Outcome:       models.AuditOutcomeSucceeded,
+		PerformedBy:   params.Actor,
+		ResourceUUID:  res.StoredConfig.UUID,
+		ResourceName:  res.StoredConfig.Handle,
+		CorrelationID: params.CorrelationID,
+		EventData:     auditservice.AuditDiff(before, ConfigAuditFields(res.StoredConfig)),
+	})
 	s.pushDeployableArtifact(res, params.CorrelationID, params.Logger)
 	return res.StoredConfig, nil
 }
@@ -473,7 +524,7 @@ func (s *MCPDeploymentService) isMCPUndeployRequest(params MCPDeploymentParams) 
 }
 
 // DeleteMCPProxy deletes an MCP proxy by handle using store/db and updates snapshot
-func (s *MCPDeploymentService) DeleteMCPProxy(handle, correlationID string, logger *slog.Logger) (*models.StoredConfig, error) {
+func (s *MCPDeploymentService) DeleteMCPProxy(ctx context.Context, actor, handle, correlationID string, logger *slog.Logger) (*models.StoredConfig, error) {
 	cfg, err := s.GetMCPProxyByHandle(handle)
 	if err != nil {
 		if isMCPNotFoundError(err) {
@@ -497,8 +548,24 @@ func (s *MCPDeploymentService) DeleteMCPProxy(handle, correlationID string, logg
 
 	if err := s.db.DeleteConfig(cfg.UUID); err != nil {
 		logger.Error("Failed to delete config from database", slog.Any("error", err))
+		s.audit.Record(ctx, &auditservice.AuditEvent{
+			Action:       models.AuditActionDelete,
+			ResourceType: models.AuditResourceTypeMCPProxy,
+			Outcome:      models.AuditOutcomeFailed,
+			PerformedBy:  actor,
+			ResourceUUID: cfg.UUID,
+			ResourceName: cfg.Handle,
+		})
 		return nil, fmt.Errorf("failed to delete configuration from database: %w", err)
 	}
+	s.audit.Record(ctx, &auditservice.AuditEvent{
+		Action:       models.AuditActionDelete,
+		ResourceType: models.AuditResourceTypeMCPProxy,
+		Outcome:      models.AuditOutcomeSucceeded,
+		PerformedBy:  actor,
+		ResourceUUID: cfg.UUID,
+		ResourceName: cfg.Handle,
+	})
 	s.publishMCPProxyEvent("DELETE", cfg.UUID, correlationID, logger)
 	return cfg, nil
 }

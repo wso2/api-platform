@@ -27,6 +27,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/wso2/api-platform/common/authenticators"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/clientca"
@@ -85,6 +86,7 @@ func (h *RestAPIHandler) CreateRestAPI(w http.ResponseWriter, r *http.Request) {
 		ContentType:   r.Header.Get("Content-Type"),
 		CorrelationID: correlationID,
 		Logger:        log,
+		Actor:         actorFromRequest(r),
 	})
 	if err != nil {
 		log.Error("Failed to deploy API configuration", slog.Any("error", err))
@@ -184,6 +186,7 @@ func (h *RestAPIHandler) UpdateRestAPI(w http.ResponseWriter, r *http.Request, i
 		ContentType:   r.Header.Get("Content-Type"),
 		CorrelationID: correlationID,
 		Logger:        log,
+		Actor:         actorFromRequest(r),
 	})
 	if err != nil {
 		log.Error("Failed to update API configuration", slog.Any("error", err))
@@ -254,6 +257,7 @@ func (h *RestAPIHandler) DeleteRestAPI(w http.ResponseWriter, r *http.Request, i
 		Handle:        id,
 		CorrelationID: correlationID,
 		Logger:        log,
+		Actor:         actorFromRequest(r),
 	})
 	if err != nil {
 		metrics.APIOperationsTotal.WithLabelValues(operation, "error", "rest_api").Inc()
@@ -441,4 +445,11 @@ func (h *RestAPIHandler) logDeployWarnings(stored *models.StoredConfig, warnings
 		}
 		h.logger.Warn("Deployment warning", attrs...)
 	}
+}
+
+// actorFromRequest extracts the authenticated user's ID from the request context.
+// Returns an empty string when no auth context is present (e.g. auth disabled).
+func actorFromRequest(r *http.Request) string {
+	user, _ := authenticators.GetAuthContext(r)
+	return user.UserID
 }

@@ -19,6 +19,7 @@
 package middleware
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 
@@ -43,6 +44,13 @@ func CorrelationIDMiddleware(baseLogger *slog.Logger) func(http.Handler) http.Ha
 // GetCorrelationID returns the correlation ID stored by CorrelationIDMiddleware.
 func GetCorrelationID(r *http.Request) string {
 	return gohttpkit.GetCorrelationID(r)
+}
+
+// GetCorrelationIDFromContext returns the correlation ID stored in ctx by
+// CorrelationIDMiddleware. Used by non-HTTP code paths (e.g. AuditService)
+// that have a context but not an *http.Request.
+func GetCorrelationIDFromContext(ctx context.Context) string {
+	return gohttpkit.GetCorrelationIDFromContext(ctx)
 }
 
 // GetLogger returns the correlation-aware logger stored by CorrelationIDMiddleware,

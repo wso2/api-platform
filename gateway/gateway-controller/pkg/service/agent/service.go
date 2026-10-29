@@ -23,6 +23,7 @@
 package agent
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -33,6 +34,7 @@ import (
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
+	auditservice "github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/audit"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine/funcs"
@@ -79,6 +81,8 @@ type AgentService struct {
 	eventHub       eventhub.EventHub
 	secretResolver funcs.SecretResolver
 	gatewayID      string
+
+	audit *auditservice.AuditService
 
 	// controlPlaneClient and deploymentPushEnabled drive the DP->CP push. Both
 	// are set by SetControlPlanePusher; until then, and whenever
@@ -137,6 +141,12 @@ func NewAgentService(
 	}
 }
 
+// SetAuditService enables audit logging for this service. Passing nil (the default)
+// disables it.
+func (s *AgentService) SetAuditService(audit *auditservice.AuditService) {
+	s.audit = audit
+}
+
 // CreateParams holds parameters for the Create operation.
 type CreateParams struct {
 	Body          []byte
@@ -152,6 +162,7 @@ type CreateParams struct {
 	// stale one. Defaults to now.
 	DeployedAt *time.Time
 	Logger     *slog.Logger
+	Actor      string
 }
 
 // Create deploys a new Agent configuration.
@@ -225,8 +236,26 @@ func (s *AgentService) Create(params CreateParams) (*CreateResult, error) {
 	// Timestamp-guarded upsert: affected=false means a newer version of this
 	// artifact is already stored, so this request lost a race and must not
 	// publish an event that would make replicas converge backwards.
+	// Control-plane deployments are machine-to-machine; only management-API calls are audited.
+	auditCtx := context.Background()
+	if origin == models.OriginControlPlane {
+		auditCtx = auditservice.WithoutAudit(auditCtx)
+	}
+	agentAuditAction := models.AuditActionCreate
+	if isUpdate {
+		agentAuditAction = models.AuditActionUpdate
+	}
 	affected, err := s.db.UpsertConfig(storedCfg)
 	if err != nil {
+		s.audit.Record(auditCtx, &auditservice.AuditEvent{
+			Action:        agentAuditAction,
+			ResourceType:  models.AuditResourceTypeAgent,
+			Outcome:       models.AuditOutcomeFailed,
+			PerformedBy:   params.Actor,
+			ResourceUUID:  storedCfg.UUID,
+			ResourceName:  storedCfg.Handle,
+			CorrelationID: params.CorrelationID,
+		})
 		return nil, fmt.Errorf("failed to persist agent configuration: %w", err)
 	}
 	if !affected {
@@ -241,6 +270,17 @@ func (s *AgentService) Create(params CreateParams) (*CreateResult, error) {
 		action = "UPDATE"
 	}
 	s.publishEvent(action, artifactID, params.CorrelationID, log)
+
+	s.audit.Record(auditCtx, &auditservice.AuditEvent{
+		Action:        agentAuditAction,
+		ResourceType:  models.AuditResourceTypeAgent,
+		Outcome:       models.AuditOutcomeSucceeded,
+		PerformedBy:   params.Actor,
+		ResourceUUID:  storedCfg.UUID,
+		ResourceName:  storedCfg.Handle,
+		CorrelationID: params.CorrelationID,
+		EventData:     utils.ConfigAuditFields(storedCfg),
+	})
 
 	s.pushDeployedArtifact(storedCfg, params.CorrelationID, log)
 
@@ -345,6 +385,7 @@ type UpdateParams struct {
 	ContentType   string
 	CorrelationID string
 	Logger        *slog.Logger
+	Actor         string
 }
 
 // Update modifies an existing Agent configuration.
@@ -370,6 +411,7 @@ func (s *AgentService) Update(params UpdateParams) (*UpdateResult, error) {
 		}
 		return nil, ErrNotFound
 	}
+	before := utils.ConfigAuditFields(existing)
 
 	// A request that omits the write-only upstream credential inherits the
 	// stored one, so an update authored from a GET response (which never
@@ -399,10 +441,31 @@ func (s *AgentService) Update(params UpdateParams) (*UpdateResult, error) {
 
 	if err := s.db.UpdateConfig(existing); err != nil {
 		log.Error("Failed to update agent config in database", slog.Any("error", err))
+		s.audit.Record(context.Background(), &auditservice.AuditEvent{
+			Action:        models.AuditActionUpdate,
+			ResourceType:  models.AuditResourceTypeAgent,
+			Outcome:       models.AuditOutcomeFailed,
+			PerformedBy:   params.Actor,
+			ResourceUUID:  existing.UUID,
+			ResourceName:  existing.Handle,
+			CorrelationID: params.CorrelationID,
+		})
 		return nil, fmt.Errorf("failed to persist configuration update: %w", err)
 	}
 
 	s.publishEvent("UPDATE", existing.UUID, params.CorrelationID, log)
+
+	s.audit.Record(context.Background(), &auditservice.AuditEvent{
+		Action:        models.AuditActionUpdate,
+		ResourceType:  models.AuditResourceTypeAgent,
+		Outcome:       models.AuditOutcomeSucceeded,
+		PerformedBy:   params.Actor,
+		ResourceUUID:  existing.UUID,
+		ResourceName:  existing.Handle,
+		CorrelationID: params.CorrelationID,
+		EventData:     auditservice.AuditDiff(before, utils.ConfigAuditFields(existing)),
+	})
+
 	s.pushDeployedArtifact(existing, params.CorrelationID, log)
 
 	log.Info("Agent configuration updated",
@@ -494,6 +557,10 @@ type DeleteParams struct {
 	Handle        string
 	CorrelationID string
 	Logger        *slog.Logger
+	Actor         string
+	// Origin is models.OriginControlPlane when the control plane deletes the agent;
+	// that machine-to-machine call is not audited.
+	Origin models.Origin
 }
 
 // Delete removes an Agent configuration.
@@ -508,8 +575,21 @@ func (s *AgentService) Delete(params DeleteParams) (*DeleteResult, error) {
 		return nil, ErrNotFound
 	}
 
+	auditCtx := context.Background()
+	if params.Origin == models.OriginControlPlane {
+		auditCtx = auditservice.WithoutAudit(auditCtx)
+	}
 	if err := s.db.DeleteConfig(cfg.UUID); err != nil {
 		log.Error("Failed to delete agent config from database", slog.Any("error", err))
+		s.audit.Record(auditCtx, &auditservice.AuditEvent{
+			Action:        models.AuditActionDelete,
+			ResourceType:  models.AuditResourceTypeAgent,
+			Outcome:       models.AuditOutcomeFailed,
+			PerformedBy:   params.Actor,
+			ResourceUUID:  cfg.UUID,
+			ResourceName:  cfg.Handle,
+			CorrelationID: params.CorrelationID,
+		})
 		return nil, fmt.Errorf("failed to delete configuration: %w", err)
 	}
 
@@ -523,6 +603,17 @@ func (s *AgentService) Delete(params DeleteParams) (*DeleteResult, error) {
 	}
 
 	s.publishEvent("DELETE", cfg.UUID, params.CorrelationID, log)
+
+	s.audit.Record(auditCtx, &auditservice.AuditEvent{
+		Action:        models.AuditActionDelete,
+		ResourceType:  models.AuditResourceTypeAgent,
+		Outcome:       models.AuditOutcomeSucceeded,
+		PerformedBy:   params.Actor,
+		ResourceUUID:  cfg.UUID,
+		ResourceName:  cfg.Handle,
+		CorrelationID: params.CorrelationID,
+	})
+
 	s.pushArtifactUndeploy(cfg, log)
 
 	log.Info("Agent configuration deleted",

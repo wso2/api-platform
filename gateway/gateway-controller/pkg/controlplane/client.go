@@ -37,6 +37,7 @@ import (
 
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
+	auditservice "github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/audit"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine/funcs"
 
 	"github.com/gorilla/websocket"
@@ -2923,7 +2924,7 @@ func (c *Client) handleLLMProviderDeletedEvent(event map[string]interface{}) {
 
 	// Delete via LLM deployment service (handles DB cleanup, store cleanup,
 	// eventHub publish, template mapping removal, and xDS update)
-	_, err = c.llmDeploymentService.DeleteLLMProvider(providerConfig.Handle, deletedEvent.CorrelationID, c.logger)
+	_, err = c.llmDeploymentService.DeleteLLMProvider(auditservice.WithoutAudit(context.Background()), "", providerConfig.Handle, deletedEvent.CorrelationID, c.logger)
 	if err != nil {
 		c.logger.Error("Failed to delete LLM provider configuration",
 			slog.String("provider_id", providerID),
@@ -3014,7 +3015,7 @@ func (c *Client) handleLLMProxyDeletedEvent(event map[string]interface{}) {
 
 	// Delete via LLM deployment service (handles DB cleanup, store cleanup,
 	// eventHub publish, and xDS update)
-	_, err = c.llmDeploymentService.DeleteLLMProxy(proxyConfig.Handle, deletedEvent.CorrelationID, c.logger)
+	_, err = c.llmDeploymentService.DeleteLLMProxy(auditservice.WithoutAudit(context.Background()), "", proxyConfig.Handle, deletedEvent.CorrelationID, c.logger)
 	if err != nil {
 		c.logger.Error("Failed to delete LLM proxy configuration",
 			slog.String("proxy_id", proxyID),
@@ -3289,7 +3290,7 @@ func (c *Client) handleMCPProxyDeletedEvent(event map[string]any) {
 		return
 	}
 
-	_, err = c.mcpDeploymentService.DeleteMCPProxy(mcpConfig.Handle, deletedEvent.CorrelationID, c.logger)
+	_, err = c.mcpDeploymentService.DeleteMCPProxy(auditservice.WithoutAudit(context.Background()), "", mcpConfig.Handle, deletedEvent.CorrelationID, c.logger)
 	if err != nil {
 		c.logger.Error("Failed to delete MCP proxy configuration",
 			slog.String("proxy_id", proxyID),
@@ -3685,6 +3686,7 @@ func (c *Client) handleAgentDeletedEvent(event map[string]any) {
 		Handle:        agentConfig.Handle,
 		CorrelationID: deletedEvent.CorrelationID,
 		Logger:        c.logger,
+		Origin:        models.OriginControlPlane,
 	})
 	if err != nil {
 		c.logger.Error("Failed to delete agent configuration",

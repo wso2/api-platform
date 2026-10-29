@@ -336,4 +336,24 @@ CREATE TABLE IF NOT EXISTS secrets (
 -- Note: webhook_secrets (per-API HMAC secrets for the websub-hmac-auth policy)
 -- is also owned by event-gateway/gateway-controller/pkg/dbschema — see note above.
 
+-- Audit log table (added in schema version 6)
+CREATE TABLE IF NOT EXISTS audit_log (
+    uuid TEXT NOT NULL,
+    gateway_id TEXT NOT NULL,
+    correlation_id TEXT,
+    action TEXT NOT NULL,
+    resource_type TEXT NOT NULL,
+    resource_uuid TEXT,
+    resource_name TEXT,
+    performed_by TEXT,
+    performed_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    outcome TEXT NOT NULL,
+    event_data TEXT,
+    PRIMARY KEY (uuid, gateway_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_audit_log_gw_time ON audit_log (gateway_id, performed_at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_log_gw_outcome ON audit_log (gateway_id, outcome, performed_at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_log_gw_actor ON audit_log (gateway_id, performed_by, performed_at DESC);
+
 PRAGMA user_version = 6;

@@ -3922,6 +3922,117 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /audit-logs:
+    get:
+      summary: List audit events
+      description: |
+        Returns a paginated, filtered slice of this gateway's audit-log trail.
+        Results are always scoped to the gateway's own ID — no caller-supplied
+        gateway filter is accepted.
+      operationId: listAuditLogs
+      x-basicauth-roles: [admin]
+      tags:
+        - Audit Log Management
+      parameters:
+        - name: startTime
+          in: query
+          required: false
+          description: Inclusive lower bound on performedAt (RFC 3339 UTC).
+          schema:
+            type: string
+            format: date-time
+          example: "2026-10-11T00:00:00Z"
+        - name: endTime
+          in: query
+          required: false
+          description: Inclusive upper bound on performedAt (RFC 3339 UTC). Must be after startTime when both are supplied.
+          schema:
+            type: string
+            format: date-time
+          example: "2026-10-12T00:00:00Z"
+        - name: performedBy
+          in: query
+          required: false
+          description: Filter by actor identifier.
+          schema:
+            type: string
+            maxLength: 200
+        - name: resourceId
+          in: query
+          required: false
+          description: Exact match on the target resource identifier.
+          schema:
+            type: string
+            maxLength: 40
+        - name: action
+          in: query
+          required: false
+          description: Filter by action verb.
+          schema:
+            $ref: '#/components/schemas/AuditAction'
+        - name: resourceType
+          in: query
+          required: false
+          description: Filter by target resource type.
+          schema:
+            $ref: '#/components/schemas/AuditResourceType'
+        - name: outcome
+          in: query
+          required: false
+          description: Filter by outcome.
+          schema:
+            $ref: '#/components/schemas/AuditOutcome'
+        - name: limit
+          in: query
+          required: false
+          description: Maximum number of events to return (1-100, default 20).
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: offset
+          in: query
+          required: false
+          description: Zero-based offset for pagination.
+          schema:
+            type: integer
+            format: int32
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: Filtered audit-event slice.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditEventListResponse'
+        '400':
+          description: Invalid filter parameter
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized - authentication required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden - insufficient role
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
 components:
   securitySchemes:
     basicAuth:
@@ -7675,6 +7786,131 @@ components:
           createdAt: "2026-01-05T10:30:00Z"
           updatedAt: "2026-01-05T10:30:00Z"
 
+    AuditEventListResponse:
+      type: object
+      description: Paginated list of audit events.
+      required:
+        - count
+        - events
+        - pagination
+      properties:
+        count:
+          type: integer
+          description: Number of events in this response.
+          example: 20
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuditEvent'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    Pagination:
+      type: object
+      description: Where this page sits in the full result set.
+      required:
+        - total
+        - offset
+        - limit
+      properties:
+        total:
+          type: integer
+          description: Total number of matching items across all pages.
+          example: 50
+        offset:
+          type: integer
+          description: Zero-based index of the first item in this response.
+          example: 0
+        limit:
+          type: integer
+          description: Page size the server applied, after defaulting and capping the requested limit.
+          example: 20
+
+    AuditEvent:
+      type: object
+      description: A single recorded audit event.
+      required:
+        - id
+        - action
+        - resourceType
+        - performedAt
+        - outcome
+      properties:
+        id:
+          type: string
+          description: UUIDv7 event identifier.
+          maxLength: 40
+          example: "01932c70-3f8a-7000-8000-abcdef123456"
+        correlationId:
+          type: string
+          description: X-Correlation-ID of the request that produced this event (if any).
+          nullable: true
+          maxLength: 64
+        action:
+          $ref: '#/components/schemas/AuditAction'
+        resourceType:
+          $ref: '#/components/schemas/AuditResourceType'
+        resourceId:
+          type: string
+          description: Target resource identifier. Null for pre-id creation failures.
+          nullable: true
+          maxLength: 40
+        resourceName:
+          type: string
+          description: Human-friendly resource label at the time of action.
+          nullable: true
+          maxLength: 255
+        performedBy:
+          type: string
+          description: Actor identifier.
+          nullable: true
+          maxLength: 200
+        performedAt:
+          type: string
+          format: date-time
+          description: RFC 3339 UTC timestamp.
+          example: "2026-10-11T18:42:03.419Z"
+        outcome:
+          $ref: '#/components/schemas/AuditOutcome'
+        eventData:
+          type: object
+          description: Action-specific payload. Must not contain secret material.
+          additionalProperties: true
+          nullable: true
+
+    AuditAction:
+      type: string
+      description: Audited action verb.
+      enum:
+        - create
+        - update
+        - delete
+        - revoke
+
+    AuditResourceType:
+      type: string
+      description: Audited resource type.
+      enum:
+        - RestApi
+        - LlmProvider
+        - LlmProviderTemplate
+        - LlmProxy
+        - McpProxy
+        - Agent
+        - ApiKey
+        - SubscriptionPlan
+        - Subscription
+        - Certificate
+        - Secret
+
+    AuditOutcome:
+      type: string
+      description: Terminal outcome of the audited action.
+      enum:
+        - succeeded
+        - failed
+        - denied
+
 tags:
   - name: Rest API Management
     description: CRUD operations for Rest APIs
@@ -7694,3 +7930,5 @@ tags:
     description: CRUD operations for LLM Proxy configurations
   - name: Secrets Management
     description: CRUD operations for Secrets
+  - name: Audit Log Management
+    description: Read-only access to the gateway audit log trail

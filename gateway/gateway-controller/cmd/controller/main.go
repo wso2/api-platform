@@ -40,6 +40,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/agent"
+	auditservice "github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/audit"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/restapi"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/transform"
@@ -258,6 +259,14 @@ func main() {
 	var encryptionProviderManager *encryption.ProviderManager
 	var secretsService *secrets.SecretService
 
+	// Create audit service once; all gateway services share the same instance.
+	// Only operations a user performs through the management API are audited. An
+	// immutable gateway rejects every mutating API call, so its only writes are the
+	// boot-time artifact loader's, and nothing is audited.
+	auditCfg := cfg.Controller.Audit
+	auditCfg.Enabled = auditCfg.Enabled && !cfg.ImmutableGateway.Enabled
+	mainAuditSvc := auditservice.NewAuditService(auditCfg, gatewayID, db, log)
+
 	// Load configurations from database on startup
 	log.Info("Loading configurations from database")
 	if err := storage.LoadFromDatabase(db, configStore); err != nil {
@@ -315,8 +324,8 @@ func main() {
 			log.Error("Failed to initialize provider manager", slog.Any("error", err))
 			os.Exit(1)
 		}
-		// Create secrets service
 		secretsService = secrets.NewSecretsService(db, encryptionProviderManager, log)
+		secretsService.SetAuditService(mainAuditSvc)
 	}
 	log.Info("Loaded encryption providers")
 
@@ -652,9 +661,12 @@ func main() {
 	}
 
 	apiSvc := utils.NewAPIDeploymentService(configStore, db, snapshotManager, validator, &cfg.Router, eventHubInstance, gatewayID, secretsService, sharedHTTPClient)
+
 	mcpSvc := utils.NewMCPDeploymentService(configStore, db, snapshotManager, policyManager, policyValidator, eventHubInstance, gatewayID, secretsService, policyVersionResolver)
 	llmSvc := utils.NewLLMDeploymentService(configStore, db, snapshotManager, lazyResourceXDSManager, templateDefinitions,
 		apiSvc, &cfg.Router, policyVersionResolver, policyValidator)
+	mcpSvc.SetAuditService(mainAuditSvc)
+	llmSvc.SetAuditService(mainAuditSvc)
 
 	// Initialize and start control plane client with dependencies for API creation and API key management
 	cpClient := controlplane.NewClient(
@@ -703,6 +715,8 @@ func main() {
 			WithUpstreamTLSValidator(upstreamTLSValidator),
 		log, eventHubInstance, secretsService, cfg.Controller.Server.GatewayID,
 	)
+	restAPIService.SetAuditService(mainAuditSvc)
+	agentSvc.SetAuditService(mainAuditSvc)
 	agentSvc.SetControlPlanePusher(cpClient, cfg.Controller.ControlPlane.DeploymentSyncEnabled)
 
 	igw := immutable.NewImmutableGW(cfg.ImmutableGateway, restAPIService, llmSvc, mcpSvc, agentSvc)
@@ -788,6 +802,7 @@ func main() {
 	// every 24h.
 	certSweepCtx, certSweepCancel := context.WithCancel(context.Background())
 	go certmetrics.Sweep(certSweepCtx, db, log)
+	apiServer.SetAuditService(mainAuditSvc)
 
 	// Load immutable gateway artifacts from the filesystem (no-op when immutable mode is disabled).
 	if err := igw.LoadArtifacts(log); err != nil {
@@ -1144,6 +1159,8 @@ func generateAuthConfig(config *config.Config) (commonmodels.AuthConfig, error) 
 		"GET /secrets/{id}":    {"admin"},
 		"PUT /secrets/{id}":    {"admin"},
 		"DELETE /secrets/{id}": {"admin"},
+
+		"GET /audit-logs": {"admin"},
 	}
 
 	// Populate both the versioned and legacy (unprefixed) keys so the auth

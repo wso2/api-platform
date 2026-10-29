@@ -1868,6 +1868,35 @@ func TestSQLiteStorage_GetAPIKeysByApplicationUUID_ReturnsMappedActiveKeys(t *te
 	}
 }
 
+func TestSQLiteStorage_ListAuditLogsPaging(t *testing.T) {
+	testAuditLogPaging(t, setupTestStorage(t))
+}
+
+// testAuditLogPaging writes three audit rows for one resource and checks that
+// limit/offset page through them newest first.
+func testAuditLogPaging(t *testing.T, s Storage) {
+	resourceUUID := fmt.Sprintf("paging-%d", time.Now().UnixNano())
+	base := time.Now().UTC().Truncate(time.Second)
+	for i, action := range []string{"create", "update", "delete"} {
+		assert.NilError(t, s.CreateAuditLog(&models.AuditLog{
+			Action: action, ResourceType: "RestApi", ResourceUUID: resourceUUID,
+			Outcome: "succeeded", PerformedAt: base.Add(time.Duration(i) * time.Second),
+		}))
+	}
+	filter := AuditLogFilter{ResourceUUID: resourceUUID}
+
+	first, err := s.ListAuditLogs(filter, 2, 0)
+	assert.NilError(t, err)
+	assert.Equal(t, len(first), 2)
+	assert.Equal(t, first[0].Action, "delete")
+	assert.Equal(t, first[1].Action, "update")
+
+	rest, err := s.ListAuditLogs(filter, 2, 2)
+	assert.NilError(t, err)
+	assert.Equal(t, len(rest), 1)
+	assert.Equal(t, rest[0].Action, "create")
+}
+
 // Helper functions
 
 func setupTestStorage(t *testing.T) *sqlStore {

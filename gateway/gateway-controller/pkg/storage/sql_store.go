@@ -31,6 +31,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
@@ -4091,3 +4092,157 @@ func primaryProviderID(spec api.LLMProxyConfigData) string {
 	}
 	return primary.Id
 }
+
+// ========================================
+// Audit Log Methods
+// ========================================
+
+func (s *sqlStore) CreateAuditLog(row *models.AuditLog) error {
+	if row.UUID == "" {
+		u, err := uuid.NewV7()
+		if err != nil {
+			return fmt.Errorf("failed to generate audit log UUID: %w", err)
+		}
+		row.UUID = u.String()
+	}
+	if row.PerformedAt.IsZero() {
+		row.PerformedAt = time.Now().UTC()
+	}
+
+	query := `
+		INSERT INTO audit_log (
+			uuid, gateway_id, correlation_id, action, resource_type,
+			resource_uuid, resource_name, performed_by, performed_at, outcome, event_data
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+
+	_, err := s.exec(query,
+		row.UUID,
+		s.gatewayId,
+		nullableString(row.CorrelationID),
+		row.Action,
+		row.ResourceType,
+		nullableString(row.ResourceUUID),
+		nullableString(row.ResourceName),
+		nullableString(row.PerformedBy),
+		row.PerformedAt,
+		row.Outcome,
+		nullableString(row.EventData),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to insert audit log: %w", err)
+	}
+	return nil
+}
+
+// paginationClause pages a query; SQL Server has no LIMIT and needs an ORDER BY.
+func (s *sqlStore) paginationClause(limit, offset int) (string, []interface{}) {
+	if s.backendName == "sqlserver" {
+		return "OFFSET ? ROWS FETCH NEXT ? ROWS ONLY", []interface{}{offset, limit}
+	}
+	return "LIMIT ? OFFSET ?", []interface{}{limit, offset}
+}
+
+func (s *sqlStore) ListAuditLogs(f AuditLogFilter, limit, offset int) ([]*models.AuditLog, error) {
+	where, args := s.buildAuditLogWhere(f)
+	page, pageArgs := s.paginationClause(limit, offset)
+	query := `SELECT uuid, gateway_id, correlation_id, action, resource_type,
+		resource_uuid, resource_name, performed_by, performed_at, outcome, event_data
+		FROM audit_log` + where + ` ORDER BY performed_at DESC, uuid DESC ` + page
+	args = append(args, pageArgs...)
+
+	rows, err := s.query(query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list audit logs: %w", err)
+	}
+	defer rows.Close()
+
+	var result []*models.AuditLog
+	for rows.Next() {
+		row, err := scanAuditLog(rows)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan audit log: %w", err)
+		}
+		result = append(result, row)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating audit logs: %w", err)
+	}
+	return result, nil
+}
+
+func (s *sqlStore) CountAuditLogs(f AuditLogFilter) (int, error) {
+	where, args := s.buildAuditLogWhere(f)
+	query := `SELECT COUNT(*) FROM audit_log` + where
+
+	var count int
+	if err := s.queryRow(query, args...).Scan(&count); err != nil {
+		return 0, fmt.Errorf("failed to count audit logs: %w", err)
+	}
+	return count, nil
+}
+
+// buildAuditLogWhere constructs the WHERE clause and positional args for
+// audit log queries. gateway_id is always the first predicate.
+func (s *sqlStore) buildAuditLogWhere(f AuditLogFilter) (string, []interface{}) {
+	clauses := []string{"gateway_id = ?"}
+	args := []interface{}{s.gatewayId}
+
+	if f.StartTime != nil {
+		clauses = append(clauses, "performed_at >= ?")
+		args = append(args, *f.StartTime)
+	}
+	if f.EndTime != nil {
+		clauses = append(clauses, "performed_at <= ?")
+		args = append(args, *f.EndTime)
+	}
+	if f.Outcome != "" {
+		clauses = append(clauses, "outcome = ?")
+		args = append(args, f.Outcome)
+	}
+	if f.PerformedBy != "" {
+		clauses = append(clauses, "performed_by = ?")
+		args = append(args, f.PerformedBy)
+	}
+	if f.Action != "" {
+		clauses = append(clauses, "action = ?")
+		args = append(args, f.Action)
+	}
+	if f.ResourceType != "" {
+		clauses = append(clauses, "resource_type = ?")
+		args = append(args, f.ResourceType)
+	}
+	if f.ResourceUUID != "" {
+		clauses = append(clauses, "resource_uuid = ?")
+		args = append(args, f.ResourceUUID)
+	}
+
+	return " WHERE " + strings.Join(clauses, " AND "), args
+}
+
+func scanAuditLog(rows *sql.Rows) (*models.AuditLog, error) {
+	var row models.AuditLog
+	var correlationID, resourceUUID, resourceName, performedBy, eventData sql.NullString
+	err := rows.Scan(
+		&row.UUID,
+		&row.GatewayID,
+		&correlationID,
+		&row.Action,
+		&row.ResourceType,
+		&resourceUUID,
+		&resourceName,
+		&performedBy,
+		&row.PerformedAt,
+		&row.Outcome,
+		&eventData,
+	)
+	if err != nil {
+		return nil, err
+	}
+	row.CorrelationID = correlationID.String
+	row.ResourceUUID = resourceUUID.String
+	row.ResourceName = resourceName.String
+	row.PerformedBy = performedBy.String
+	row.EventData = eventData.String
+	return &row, nil
+}
+

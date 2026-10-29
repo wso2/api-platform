@@ -20,6 +20,7 @@ package utils
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -363,7 +364,7 @@ func TestMCPDeploymentService_DeleteMCPProxy_NoDatabase(t *testing.T) {
 	service := newTestMCPDeploymentService(store, nil, nil, nil, nil)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-	_, err := service.DeleteMCPProxy("0000-test-handle-0000-000000000000", "corr-id", logger)
+	_, err := service.DeleteMCPProxy(context.Background(), "", "0000-test-handle-0000-000000000000", "corr-id", logger)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "not found")
 }

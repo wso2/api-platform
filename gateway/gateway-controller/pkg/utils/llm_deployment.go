@@ -19,6 +19,7 @@
 package utils
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -31,6 +32,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/lazyresourcexds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
+	auditservice "github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/audit"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
@@ -68,6 +70,7 @@ type LLMDeploymentParams struct {
 	Logger        *slog.Logger        // Logger
 	IsUpdate      bool                // True when the caller has resolved this as an update (e.g. from DB lookup)
 	DesiredState  models.DesiredState // Desired deployment state; empty defaults to StateDeployed
+	Actor         string              // Authenticated user performing the operation (for audit)
 }
 
 // LLMDeploymentService encapsulates validate+transform+persist+deploy for LLM Providers
@@ -83,6 +86,8 @@ type LLMDeploymentService struct {
 	policyValidator     *config.PolicyValidator
 	transformer         Transformer
 	routerConfig        *config.RouterConfig
+
+	audit *auditservice.AuditService
 
 	// controlPlaneClient and deploymentPushEnabled drive the DP->CP push performed when a
 	// gateway-originated artifact is created here including via the immutable-gateway loader.
@@ -130,6 +135,12 @@ func NewLLMDeploymentService(store *storage.ConfigStore, db storage.Storage,
 	}
 
 	return service
+}
+
+// SetAuditService enables audit logging for this service. Passing nil (the default)
+// disables it.
+func (s *LLMDeploymentService) SetAuditService(audit *auditservice.AuditService) {
+	s.audit = audit
 }
 
 // SetControlPlanePusher wires the control-plane push dependency used to forward
@@ -393,6 +404,21 @@ func (s *LLMDeploymentService) DeployLLMProviderConfiguration(params LLMDeployme
 		params.Logger.Error("Failed to save or update LLM provider configuration",
 			slog.String("handle", storedCfg.Handle),
 			slog.Any("error", err))
+		if params.Origin != models.OriginControlPlane {
+			auditAction := models.AuditActionCreate
+			if isUpdate {
+				auditAction = models.AuditActionUpdate
+			}
+			s.audit.Record(context.Background(), &auditservice.AuditEvent{
+				Action:        auditAction,
+				ResourceType:  models.AuditResourceTypeLLMProvider,
+				Outcome:       models.AuditOutcomeFailed,
+				PerformedBy:   params.Actor,
+				ResourceUUID:  storedCfg.UUID,
+				ResourceName:  storedCfg.Handle,
+				CorrelationID: params.CorrelationID,
+			})
+		}
 		return nil, fmt.Errorf("failed to save or update LLM provider configuration")
 	}
 
@@ -577,6 +603,21 @@ func (s *LLMDeploymentService) DeployLLMProxyConfiguration(params LLMDeploymentP
 	// published event, immediately before UpsertAPIConfig is called.
 	affected, err := s.deploymentService.saveOrUpdateConfig(storedCfg, params.Logger)
 	if err != nil {
+		if params.Origin != models.OriginControlPlane {
+			proxyAuditAction := models.AuditActionCreate
+			if isUpdate {
+				proxyAuditAction = models.AuditActionUpdate
+			}
+			s.audit.Record(context.Background(), &auditservice.AuditEvent{
+				Action:        proxyAuditAction,
+				ResourceType:  models.AuditResourceTypeLLMProxy,
+				Outcome:       models.AuditOutcomeFailed,
+				PerformedBy:   params.Actor,
+				ResourceUUID:  storedCfg.UUID,
+				ResourceName:  storedCfg.Handle,
+				CorrelationID: params.CorrelationID,
+			})
+		}
 		return nil, fmt.Errorf("failed to save or update LLM proxy configuration: %w", err)
 	}
 
@@ -621,6 +662,7 @@ type LLMTemplateParams struct {
 	ContentType   string
 	CorrelationID string
 	Logger        *slog.Logger
+	Actor         string
 }
 
 // normalizeTemplateDefaults fills in default values for GroupId, Version, and ManagedBy if they are missing or empty.
@@ -673,6 +715,16 @@ func (s *LLMDeploymentService) parseAndValidateLLMTemplate(params LLMTemplatePar
 	return &tmpl, nil
 }
 
+// templateAuditFields is the audit event data for an LLM provider template.
+func templateAuditFields(t *models.StoredLLMProviderTemplate) map[string]any {
+	return map[string]any{
+		"displayName": t.Configuration.Spec.DisplayName,
+		"groupId":     t.GetGroupID(),
+		"version":     t.GetVersion(),
+		"managedBy":   t.GetManagedBy(),
+	}
+}
+
 // CreateLLMProviderTemplate parses, validates, and persists a template
 func (s *LLMDeploymentService) CreateLLMProviderTemplate(params LLMTemplateParams) (*models.StoredLLMProviderTemplate, error) {
 	tmpl, err := s.parseAndValidateLLMTemplate(params)
@@ -701,12 +753,32 @@ func (s *LLMDeploymentService) CreateLLMProviderTemplate(params LLMTemplateParam
 		if storage.IsConflictError(err) || strings.Contains(err.Error(), "already exists") {
 			return nil, fmt.Errorf("%w: template with handle '%s' already exists", storage.ErrConflict, tmpl.Metadata.Name)
 		}
+		s.audit.Record(context.Background(), &auditservice.AuditEvent{
+			Action:        models.AuditActionCreate,
+			ResourceType:  models.AuditResourceTypeLLMProviderTemplate,
+			Outcome:       models.AuditOutcomeFailed,
+			PerformedBy:   params.Actor,
+			ResourceUUID:  stored.UUID,
+			ResourceName:  stored.GetHandle(),
+			CorrelationID: params.CorrelationID,
+		})
 		return nil, fmt.Errorf("failed to save template to database: %w", err)
 	}
 
 	s.publishLLMTemplateEvent("CREATE", stored.UUID, params.CorrelationID, params.Logger)
 
 	s.pushTemplateToControlPlane(stored, params.Logger)
+
+	s.audit.Record(context.Background(), &auditservice.AuditEvent{
+		Action:        models.AuditActionCreate,
+		ResourceType:  models.AuditResourceTypeLLMProviderTemplate,
+		Outcome:       models.AuditOutcomeSucceeded,
+		PerformedBy:   params.Actor,
+		ResourceUUID:  stored.UUID,
+		ResourceName:  stored.GetHandle(),
+		CorrelationID: params.CorrelationID,
+		EventData:     templateAuditFields(stored),
+	})
 
 	return stored, nil
 }
@@ -916,6 +988,15 @@ func (s *LLMDeploymentService) UpdateLLMProviderTemplate(handle string, params L
 
 	// Update DB
 	if err := s.db.UpdateLLMProviderTemplate(updated); err != nil {
+		s.audit.Record(context.Background(), &auditservice.AuditEvent{
+			Action:        models.AuditActionUpdate,
+			ResourceType:  models.AuditResourceTypeLLMProviderTemplate,
+			Outcome:       models.AuditOutcomeFailed,
+			PerformedBy:   params.Actor,
+			ResourceUUID:  updated.UUID,
+			ResourceName:  updated.GetHandle(),
+			CorrelationID: params.CorrelationID,
+		})
 		return nil, fmt.Errorf("failed to update template in database: %w", err)
 	}
 
@@ -923,11 +1004,22 @@ func (s *LLMDeploymentService) UpdateLLMProviderTemplate(handle string, params L
 
 	s.pushTemplateToControlPlane(updated, params.Logger)
 
+	s.audit.Record(context.Background(), &auditservice.AuditEvent{
+		Action:        models.AuditActionUpdate,
+		ResourceType:  models.AuditResourceTypeLLMProviderTemplate,
+		Outcome:       models.AuditOutcomeSucceeded,
+		PerformedBy:   params.Actor,
+		ResourceUUID:  updated.UUID,
+		ResourceName:  updated.GetHandle(),
+		CorrelationID: params.CorrelationID,
+		EventData:     auditservice.AuditDiff(templateAuditFields(existing), templateAuditFields(updated)),
+	})
+
 	return updated, nil
 }
 
 // DeleteLLMProviderTemplate deletes a template by name
-func (s *LLMDeploymentService) DeleteLLMProviderTemplate(handle, correlationID string, logger *slog.Logger) (*models.StoredLLMProviderTemplate, error) {
+func (s *LLMDeploymentService) DeleteLLMProviderTemplate(ctx context.Context, actor, handle, correlationID string, logger *slog.Logger) (*models.StoredLLMProviderTemplate, error) {
 	tmpl, err := s.GetLLMProviderTemplateByHandle(handle)
 	if err != nil {
 		if storage.IsNotFoundError(err) {
@@ -937,9 +1029,27 @@ func (s *LLMDeploymentService) DeleteLLMProviderTemplate(handle, correlationID s
 	}
 
 	if err := s.db.DeleteLLMProviderTemplate(tmpl.UUID); err != nil {
+		s.audit.Record(ctx, &auditservice.AuditEvent{
+			Action:       models.AuditActionDelete,
+			ResourceType: models.AuditResourceTypeLLMProviderTemplate,
+			Outcome:      models.AuditOutcomeFailed,
+			PerformedBy:  actor,
+			ResourceUUID: tmpl.UUID,
+			ResourceName: tmpl.GetHandle(),
+		})
 		return nil, fmt.Errorf("failed to delete template from database: %w", err)
 	}
 	s.publishLLMTemplateEvent("DELETE", tmpl.UUID, correlationID, logger)
+
+	s.audit.Record(ctx, &auditservice.AuditEvent{
+		Action:       models.AuditActionDelete,
+		ResourceType: models.AuditResourceTypeLLMProviderTemplate,
+		Outcome:      models.AuditOutcomeSucceeded,
+		PerformedBy:  actor,
+		ResourceUUID: tmpl.UUID,
+		ResourceName: tmpl.GetHandle(),
+	})
+
 	return tmpl, nil
 }
 
@@ -1053,6 +1163,22 @@ func (s *LLMDeploymentService) CreateLLMProvider(params LLMDeploymentParams) (*A
 		return nil, err
 	}
 	s.pushDeployableArtifact(result, params.CorrelationID, params.Logger)
+
+	auditAction := models.AuditActionCreate
+	if result.IsUpdate {
+		auditAction = models.AuditActionUpdate
+	}
+	s.audit.Record(context.Background(), &auditservice.AuditEvent{
+		Action:        auditAction,
+		ResourceType:  models.AuditResourceTypeLLMProvider,
+		Outcome:       models.AuditOutcomeSucceeded,
+		PerformedBy:   params.Actor,
+		ResourceUUID:  result.StoredConfig.UUID,
+		ResourceName:  result.StoredConfig.Handle,
+		CorrelationID: params.CorrelationID,
+		EventData:     ConfigAuditFields(result.StoredConfig),
+	})
+
 	return result, nil
 }
 
@@ -1170,6 +1296,7 @@ func (s *LLMDeploymentService) UpdateLLMProvider(handle string, params LLMDeploy
 	if existing == nil {
 		return nil, fmt.Errorf("LLM provider configuration with handle '%s' not found", handle)
 	}
+	before := ConfigAuditFields(existing)
 
 	// Extract deploymentState from the incoming config
 	if isUndeploy, err := s.isLLMProviderUndeployRequest(params); err != nil {
@@ -1191,11 +1318,23 @@ func (s *LLMDeploymentService) UpdateLLMProvider(handle string, params LLMDeploy
 		return nil, err
 	}
 	s.pushDeployableArtifact(result, params.CorrelationID, params.Logger)
+
+	s.audit.Record(context.Background(), &auditservice.AuditEvent{
+		Action:        models.AuditActionUpdate,
+		ResourceType:  models.AuditResourceTypeLLMProvider,
+		Outcome:       models.AuditOutcomeSucceeded,
+		PerformedBy:   params.Actor,
+		ResourceUUID:  result.StoredConfig.UUID,
+		ResourceName:  result.StoredConfig.Handle,
+		CorrelationID: params.CorrelationID,
+		EventData:     auditservice.AuditDiff(before, ConfigAuditFields(result.StoredConfig)),
+	})
+
 	return result, nil
 }
 
 // DeleteLLMProvider deletes by name+version using store/db and updates snapshot
-func (s *LLMDeploymentService) DeleteLLMProvider(handle, correlationID string,
+func (s *LLMDeploymentService) DeleteLLMProvider(ctx context.Context, actor, handle, correlationID string,
 	logger *slog.Logger) (*models.StoredConfig, error) {
 	cfg, err := s.GetLLMProviderByHandle(handle)
 	if err != nil {
@@ -1207,12 +1346,38 @@ func (s *LLMDeploymentService) DeleteLLMProvider(handle, correlationID string,
 	// Remove the canonical row first so every replica observes the same delete
 	// via the follow-up event, instead of each writer mutating local state inline.
 	if err := s.db.RemoveAPIKeysAPI(cfg.UUID); err != nil {
+		s.audit.Record(ctx, &auditservice.AuditEvent{
+			Action:       models.AuditActionDelete,
+			ResourceType: models.AuditResourceTypeLLMProvider,
+			Outcome:      models.AuditOutcomeFailed,
+			PerformedBy:  actor,
+			ResourceUUID: cfg.UUID,
+			ResourceName: cfg.Handle,
+		})
 		return cfg, fmt.Errorf("failed to delete LLM provider API keys from database: %w", err)
 	}
 	if err := s.db.DeleteConfig(cfg.UUID); err != nil {
+		s.audit.Record(ctx, &auditservice.AuditEvent{
+			Action:       models.AuditActionDelete,
+			ResourceType: models.AuditResourceTypeLLMProvider,
+			Outcome:      models.AuditOutcomeFailed,
+			PerformedBy:  actor,
+			ResourceUUID: cfg.UUID,
+			ResourceName: cfg.Handle,
+		})
 		return cfg, fmt.Errorf("failed to delete configuration from database: %w", err)
 	}
 	s.publishLLMProviderEvent("DELETE", cfg.UUID, correlationID, logger)
+
+	s.audit.Record(ctx, &auditservice.AuditEvent{
+		Action:       models.AuditActionDelete,
+		ResourceType: models.AuditResourceTypeLLMProvider,
+		Outcome:      models.AuditOutcomeSucceeded,
+		PerformedBy:  actor,
+		ResourceUUID: cfg.UUID,
+		ResourceName: cfg.Handle,
+	})
+
 	return cfg, nil
 }
 
@@ -1258,6 +1423,20 @@ func (s *LLMDeploymentService) CreateLLMProxy(params LLMDeploymentParams) (*APID
 	if err != nil {
 		return nil, err
 	}
+	auditAction2 := models.AuditActionCreate
+	if result.IsUpdate {
+		auditAction2 = models.AuditActionUpdate
+	}
+	s.audit.Record(context.Background(), &auditservice.AuditEvent{
+		Action:        auditAction2,
+		ResourceType:  models.AuditResourceTypeLLMProxy,
+		Outcome:       models.AuditOutcomeSucceeded,
+		PerformedBy:   params.Actor,
+		ResourceUUID:  result.StoredConfig.UUID,
+		ResourceName:  result.StoredConfig.Handle,
+		CorrelationID: params.CorrelationID,
+		EventData:     ConfigAuditFields(result.StoredConfig),
+	})
 	s.pushDeployableArtifact(result, params.CorrelationID, params.Logger)
 	return result, nil
 }
@@ -1273,6 +1452,7 @@ func (s *LLMDeploymentService) UpdateLLMProxy(id string, params LLMDeploymentPar
 	if existing == nil {
 		return nil, fmt.Errorf("%w: LLM proxy configuration with handle '%s' not found", storage.ErrNotFound, id)
 	}
+	before := ConfigAuditFields(existing)
 
 	// Extract deploymentState from the incoming config
 	if isUndeploy, err := s.isLLMProxyUndeployRequest(params); err != nil {
@@ -1293,6 +1473,16 @@ func (s *LLMDeploymentService) UpdateLLMProxy(id string, params LLMDeploymentPar
 	if err != nil {
 		return nil, err
 	}
+	s.audit.Record(context.Background(), &auditservice.AuditEvent{
+		Action:        models.AuditActionUpdate,
+		ResourceType:  models.AuditResourceTypeLLMProxy,
+		Outcome:       models.AuditOutcomeSucceeded,
+		PerformedBy:   params.Actor,
+		ResourceUUID:  result.StoredConfig.UUID,
+		ResourceName:  result.StoredConfig.Handle,
+		CorrelationID: params.CorrelationID,
+		EventData:     auditservice.AuditDiff(before, ConfigAuditFields(result.StoredConfig)),
+	})
 	s.pushDeployableArtifact(result, params.CorrelationID, params.Logger)
 	return result, nil
 }
@@ -1327,7 +1517,7 @@ func (s *LLMDeploymentService) GetLLMProxyByHandle(handle string) (*models.Store
 }
 
 // DeleteLLMProxy deletes by name+version using store/db and updates snapshot
-func (s *LLMDeploymentService) DeleteLLMProxy(handle, correlationID string, logger *slog.Logger) (*models.StoredConfig, error) {
+func (s *LLMDeploymentService) DeleteLLMProxy(ctx context.Context, actor, handle, correlationID string, logger *slog.Logger) (*models.StoredConfig, error) {
 	cfg, err := s.GetLLMProxyByHandle(handle)
 	if err != nil {
 		return nil, fmt.Errorf("failed to look up LLM proxy: %w", err)
@@ -1336,11 +1526,35 @@ func (s *LLMDeploymentService) DeleteLLMProxy(handle, correlationID string, logg
 		return nil, fmt.Errorf("%w: LLM proxy configuration with handle '%s' not found", storage.ErrNotFound, handle)
 	}
 	if err := s.db.RemoveAPIKeysAPI(cfg.UUID); err != nil {
+		s.audit.Record(ctx, &auditservice.AuditEvent{
+			Action:       models.AuditActionDelete,
+			ResourceType: models.AuditResourceTypeLLMProxy,
+			Outcome:      models.AuditOutcomeFailed,
+			PerformedBy:  actor,
+			ResourceUUID: cfg.UUID,
+			ResourceName: cfg.Handle,
+		})
 		return cfg, fmt.Errorf("failed to delete LLM proxy API keys from database: %w", err)
 	}
 	if err := s.db.DeleteConfig(cfg.UUID); err != nil {
+		s.audit.Record(ctx, &auditservice.AuditEvent{
+			Action:       models.AuditActionDelete,
+			ResourceType: models.AuditResourceTypeLLMProxy,
+			Outcome:      models.AuditOutcomeFailed,
+			PerformedBy:  actor,
+			ResourceUUID: cfg.UUID,
+			ResourceName: cfg.Handle,
+		})
 		return cfg, fmt.Errorf("failed to delete configuration from database: %w", err)
 	}
+	s.audit.Record(ctx, &auditservice.AuditEvent{
+		Action:       models.AuditActionDelete,
+		ResourceType: models.AuditResourceTypeLLMProxy,
+		Outcome:      models.AuditOutcomeSucceeded,
+		PerformedBy:  actor,
+		ResourceUUID: cfg.UUID,
+		ResourceName: cfg.Handle,
+	})
 	s.publishLLMProxyEvent("DELETE", cfg.UUID, correlationID, logger)
 	return cfg, nil
 }

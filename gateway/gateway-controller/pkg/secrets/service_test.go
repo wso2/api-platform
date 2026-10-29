@@ -19,6 +19,7 @@
 package secrets
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"log/slog"
@@ -294,6 +295,11 @@ func (m *minimalStorage) DeleteWebhookSecret(artifactUUID, name string) error   
 func (m *minimalStorage) GetAllWebhookSecrets() ([]*models.WebhookSecret, error) { return nil, nil }
 func (m *minimalStorage) GetDB() *sql.DB                                         { return nil }
 func (m *minimalStorage) Close() error                                           { return nil }
+func (m *minimalStorage) CreateAuditLog(row *models.AuditLog) error              { return nil }
+func (m *minimalStorage) ListAuditLogs(f storage.AuditLogFilter, limit, offset int) ([]*models.AuditLog, error) {
+	return nil, nil
+}
+func (m *minimalStorage) CountAuditLogs(f storage.AuditLogFilter) (int, error) { return 0, nil }
 
 func newMinimalStorage() *minimalStorage {
 	return &minimalStorage{MockStorage: NewMockStorage()}
@@ -945,7 +951,7 @@ func TestSecretService_Delete(t *testing.T) {
 			pm := createTestProviderManager()
 			svc := NewSecretsService(store, pm, testLogger())
 
-			err := svc.Delete(tt.handle, "test-corr-id")
+			err := svc.Delete(context.Background(), "", tt.handle, "test-corr-id")
 
 			if tt.wantErr {
 				require.Error(t, err)

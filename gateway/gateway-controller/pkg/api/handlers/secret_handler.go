@@ -64,6 +64,7 @@ func (s *APIServer) CreateSecret(w http.ResponseWriter, r *http.Request) {
 		ContentType:   r.Header.Get("Content-Type"),
 		CorrelationID: correlationID,
 		Logger:        log,
+		Actor:         actorFromRequest(r),
 	})
 	if err != nil {
 		log.Error("Failed to encrypt Secret", slog.Any("error", err))
@@ -241,6 +242,7 @@ func (s *APIServer) UpdateSecret(w http.ResponseWriter, r *http.Request, id stri
 		ContentType:   r.Header.Get("Content-Type"),
 		CorrelationID: correlationID,
 		Logger:        log,
+		Actor:         actorFromRequest(r),
 	})
 	if err != nil {
 		log.Error("Failed to encrypt Secret", slog.Any("error", err))
@@ -295,7 +297,7 @@ func (s *APIServer) DeleteSecret(w http.ResponseWriter, r *http.Request, id stri
 	}
 
 	// Delete secret
-	if err := s.secretService.Delete(id, correlationID); err != nil {
+	if err := s.secretService.Delete(r.Context(), actorFromRequest(r), id, correlationID); err != nil {
 		// Check for not found error
 		if storage.IsNotFoundError(err) {
 			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{

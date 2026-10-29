@@ -5658,3 +5658,205 @@ GET /secrets/{id} response including decrypted `spec.value`.
 |---|---|
 |apiVersion|gateway.api-platform.wso2.com/v1|
 |kind|Secret|
+
+## AuditEventListResponse
+
+<a id="schemaauditeventlistresponse"></a>
+<a id="schema_AuditEventListResponse"></a>
+<a id="tocSauditeventlistresponse"></a>
+<a id="tocsauditeventlistresponse"></a>
+
+```json
+{
+  "count": 20,
+  "events": [
+    {
+      "id": "01932c70-3f8a-7000-8000-abcdef123456",
+      "correlationId": "string",
+      "action": "create",
+      "resourceType": "RestApi",
+      "resourceId": "string",
+      "resourceName": "string",
+      "performedBy": "string",
+      "performedAt": "2026-10-11T18:42:03.419Z",
+      "outcome": "succeeded",
+      "eventData": {}
+    }
+  ],
+  "pagination": {
+    "total": 50,
+    "offset": 0,
+    "limit": 20
+  }
+}
+
+```
+
+Paginated list of audit events.
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|count|integer|true|none|Number of events in this response.|
+|events|[[AuditEvent](#schemaauditevent)]|true|none|[A single recorded audit event.]|
+|pagination|[Pagination](#schemapagination)|true|none|Where this page sits in the full result set.|
+
+## Pagination
+
+<a id="schemapagination"></a>
+<a id="schema_Pagination"></a>
+<a id="tocSpagination"></a>
+<a id="tocspagination"></a>
+
+```json
+{
+  "total": 50,
+  "offset": 0,
+  "limit": 20
+}
+
+```
+
+Where this page sits in the full result set.
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|total|integer|true|none|Total number of matching items across all pages.|
+|offset|integer|true|none|Zero-based index of the first item in this response.|
+|limit|integer|true|none|Page size the server applied, after defaulting and capping the requested limit.|
+
+## AuditEvent
+
+<a id="schemaauditevent"></a>
+<a id="schema_AuditEvent"></a>
+<a id="tocSauditevent"></a>
+<a id="tocsauditevent"></a>
+
+```json
+{
+  "id": "01932c70-3f8a-7000-8000-abcdef123456",
+  "correlationId": "string",
+  "action": "create",
+  "resourceType": "RestApi",
+  "resourceId": "string",
+  "resourceName": "string",
+  "performedBy": "string",
+  "performedAt": "2026-10-11T18:42:03.419Z",
+  "outcome": "succeeded",
+  "eventData": {}
+}
+
+```
+
+A single recorded audit event.
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|id|string|true|none|UUIDv7 event identifier.|
+|correlationId|string¦null|false|none|X-Correlation-ID of the request that produced this event (if any).|
+|action|[AuditAction](#schemaauditaction)|true|none|Audited action verb.|
+|resourceType|[AuditResourceType](#schemaauditresourcetype)|true|none|Audited resource type.|
+|resourceId|string¦null|false|none|Target resource identifier. Null for pre-id creation failures.|
+|resourceName|string¦null|false|none|Human-friendly resource label at the time of action.|
+|performedBy|string¦null|false|none|Actor identifier.|
+|performedAt|string(date-time)|true|none|RFC 3339 UTC timestamp.|
+|outcome|[AuditOutcome](#schemaauditoutcome)|true|none|Terminal outcome of the audited action.|
+|eventData|object¦null|false|none|Action-specific payload. Must not contain secret material.|
+
+## AuditAction
+
+<a id="schemaauditaction"></a>
+<a id="schema_AuditAction"></a>
+<a id="tocSauditaction"></a>
+<a id="tocsauditaction"></a>
+
+```json
+"create"
+
+```
+
+Audited action verb.
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|string|false|none|Audited action verb.|
+
+##### Enumerated Values
+
+|Property|Value|
+|---|---|
+|*anonymous*|create|
+|*anonymous*|update|
+|*anonymous*|delete|
+|*anonymous*|revoke|
+
+## AuditResourceType
+
+<a id="schemaauditresourcetype"></a>
+<a id="schema_AuditResourceType"></a>
+<a id="tocSauditresourcetype"></a>
+<a id="tocsauditresourcetype"></a>
+
+```json
+"RestApi"
+
+```
+
+Audited resource type.
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|string|false|none|Audited resource type.|
+
+##### Enumerated Values
+
+|Property|Value|
+|---|---|
+|*anonymous*|RestApi|
+|*anonymous*|LlmProvider|
+|*anonymous*|LlmProviderTemplate|
+|*anonymous*|LlmProxy|
+|*anonymous*|McpProxy|
+|*anonymous*|Agent|
+|*anonymous*|ApiKey|
+|*anonymous*|SubscriptionPlan|
+|*anonymous*|Subscription|
+|*anonymous*|Certificate|
+|*anonymous*|Secret|
+
+## AuditOutcome
+
+<a id="schemaauditoutcome"></a>
+<a id="schema_AuditOutcome"></a>
+<a id="tocSauditoutcome"></a>
+<a id="tocsauditoutcome"></a>
+
+```json
+"succeeded"
+
+```
+
+Terminal outcome of the audited action.
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|string|false|none|Terminal outcome of the audited action.|
+
+##### Enumerated Values
+
+|Property|Value|
+|---|---|
+|*anonymous*|succeeded|
+|*anonymous*|failed|
+|*anonymous*|denied|

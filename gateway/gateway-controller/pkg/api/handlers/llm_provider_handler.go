@@ -85,6 +85,7 @@ func (s *APIServer) CreateLLMProvider(w http.ResponseWriter, r *http.Request) {
 		CorrelationID: correlationID,
 		Origin:        models.OriginGatewayAPI,
 		Logger:        log,
+		Actor:         actorFromRequest(r),
 	})
 	if err != nil {
 		log.Error("Failed to create LLM provider", slog.Any("error", err))
@@ -191,6 +192,7 @@ func (s *APIServer) UpdateLLMProvider(w http.ResponseWriter, r *http.Request, id
 		Origin:        models.OriginGatewayAPI,
 		CorrelationID: correlationID,
 		Logger:        log,
+		Actor:         actorFromRequest(r),
 	})
 	if err != nil {
 		log.Error("Failed to update LLM provider configuration", slog.Any("error", err))
@@ -228,7 +230,7 @@ func (s *APIServer) DeleteLLMProvider(w http.ResponseWriter, r *http.Request, id
 	log := middleware.GetLogger(r, s.logger)
 	correlationID := middleware.GetCorrelationID(r)
 
-	cfg, err := s.llmDeploymentService.DeleteLLMProvider(id, correlationID, log)
+	cfg, err := s.llmDeploymentService.DeleteLLMProvider(r.Context(), actorFromRequest(r), id, correlationID, log)
 	if err != nil {
 		log.Warn("Failed to delete LLM provider configuration", slog.String("handle", id))
 		// Check if it's a not found error

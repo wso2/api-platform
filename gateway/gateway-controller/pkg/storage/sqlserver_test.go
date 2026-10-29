@@ -79,6 +79,10 @@ func TestSQLServerStorage_ConfigCRUD(t *testing.T) {
 	assert.Assert(t, IsNotFoundError(err))
 }
 
+func TestSQLServerStorage_ListAuditLogsPaging(t *testing.T) {
+	testAuditLogPaging(t, setupTestSQLServerStorage(t))
+}
+
 func TestSQLServerStorage_TemplateAndAPIKeyCRUD(t *testing.T) {
 	ms := setupTestSQLServerStorage(t)
 

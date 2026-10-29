@@ -20,6 +20,7 @@ package controlplane
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -28,6 +29,7 @@ import (
 	"github.com/wso2/api-platform/common/eventhub"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/agent"
+	auditservice "github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/audit"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 )
@@ -546,7 +548,7 @@ func (c *Client) processSyncDeletion(artifactID, kind, gatewayID string) {
 				)
 				return
 			}
-			_, err = c.llmDeploymentService.DeleteLLMProvider(cfg.Handle, correlationID, c.logger)
+			_, err = c.llmDeploymentService.DeleteLLMProvider(auditservice.WithoutAudit(context.Background()), "", cfg.Handle, correlationID, c.logger)
 			if err != nil {
 				c.logger.Error("Failed to delete LLM provider during sync",
 					slog.String("artifact_id", artifactID),
@@ -566,7 +568,7 @@ func (c *Client) processSyncDeletion(artifactID, kind, gatewayID string) {
 				)
 				return
 			}
-			_, err = c.llmDeploymentService.DeleteLLMProxy(cfg.Handle, correlationID, c.logger)
+			_, err = c.llmDeploymentService.DeleteLLMProxy(auditservice.WithoutAudit(context.Background()), "", cfg.Handle, correlationID, c.logger)
 			if err != nil {
 				c.logger.Error("Failed to delete LLM proxy during sync",
 					slog.String("artifact_id", artifactID),
@@ -606,7 +608,7 @@ func (c *Client) processSyncDeletion(artifactID, kind, gatewayID string) {
 				)
 				return
 			}
-			_, err = c.mcpDeploymentService.DeleteMCPProxy(cfg.Handle, correlationID, c.logger)
+			_, err = c.mcpDeploymentService.DeleteMCPProxy(auditservice.WithoutAudit(context.Background()), "", cfg.Handle, correlationID, c.logger)
 			if err != nil {
 				c.logger.Error("Failed to delete MCP proxy during sync",
 					slog.String("artifact_id", artifactID),
@@ -630,6 +632,7 @@ func (c *Client) processSyncDeletion(artifactID, kind, gatewayID string) {
 				Handle:        cfg.Handle,
 				CorrelationID: correlationID,
 				Logger:        c.logger,
+				Origin:        models.OriginControlPlane,
 			})
 			if err != nil {
 				c.logger.Error("Failed to delete agent during sync",
