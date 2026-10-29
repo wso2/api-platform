@@ -37,6 +37,8 @@
  *                                  it correctly — see ./paramTypes.js
  *   db.runDetached(fn)          -> run fn() with no ambient transaction in scope,
  *                                  even if the caller is currently inside one
+ *   db.healthPing(opts)         -> the database health check's own SELECT 1
+ *   db.poolStats()              -> current pool counters, or null without a pool
  *
  * Every DAO query is written once with ANSI SQL and positional `?`
  * placeholders; this module (via ./rebind.js) is the only place that knows
@@ -47,6 +49,8 @@ const crypto = require('node:crypto');
 const { config } = require('../config/configLoader');
 const rebindHelpers = require('./rebind');
 const { binaryParam } = require('./paramTypes');
+const { OutcomeWindow } = require('../health/dbWindow');
+const { failureKind } = require('../health/dbFailure');
 
 const dialect = config.database.driver;
 
@@ -91,6 +95,22 @@ function createDesignModeStub() {
     };
 }
 
+/**
+ * Outcomes of every database operation this process runs, for the database health
+ * check (see health/databaseCheck.js). Everything below that reaches the database —
+ * DAO queries, transactions, the session store, the webhook pollers — goes through
+ * this module, which makes it the one place that sees them all.
+ */
+const outcomes = new OutcomeWindow({ windowMs: config.health?.database?.failureWindowMs ?? 30000 });
+
+// An error the pool raises about one of its idle connections — the database restarting
+// under it, say. No caller asked for that connection, so it counts against the
+// database without counting as application activity. Nothing is logged per event: the
+// health check's transition log reports the outage once.
+const adapterHooks = {
+    onPoolError: (err) => outcomes.record({ failure: failureKind(err), activity: false }),
+};
+
 function loadAdapter() {
     if (config.designMode?.enabled) {
         return createDesignModeStub();
@@ -99,9 +119,9 @@ function loadAdapter() {
         case rebindHelpers.DIALECTS.SQLITE:
             return require('./adapters/sqliteAdapter').createSqliteAdapter(config);
         case rebindHelpers.DIALECTS.POSTGRES:
-            return require('./adapters/postgresAdapter').createPostgresAdapter(config);
+            return require('./adapters/postgresAdapter').createPostgresAdapter(config, adapterHooks);
         case rebindHelpers.DIALECTS.MSSQL:
-            return require('./adapters/mssqlAdapter').createMssqlAdapter(config);
+            return require('./adapters/mssqlAdapter').createMssqlAdapter(config, adapterHooks);
         default:
             throw new Error(
                 `Unsupported database.driver "${dialect}" — expected one of: ` +
@@ -112,13 +132,120 @@ function loadAdapter() {
 
 const adapter = loadAdapter();
 
+/**
+ * Runs one database operation and records its outcome, handing back exactly what the
+ * operation produced: the same resolved value, or the same error, rethrown.
+ */
+function observe(run, options) {
+    let result;
+    try {
+        result = run();
+    } catch (err) {
+        outcomes.recordError(err, options);
+        throw err;
+    }
+    if (!result || typeof result.then !== 'function') {
+        outcomes.recordSuccess(options);
+        return result;
+    }
+    return result.then(
+        (value) => {
+            outcomes.recordSuccess(options);
+            return value;
+        },
+        (err) => {
+            outcomes.recordError(err, options);
+            throw err;
+        }
+    );
+}
+
 function wrap(handle) {
+    const call = (method) => (sqlText, params) => {
+        const bound = rebindHelpers.rebind(dialect, sqlText);
+        return observe(() => handle[method](bound, params));
+    };
     return {
         getDialect: () => dialect,
-        query: (sqlText, params) => handle.query(rebindHelpers.rebind(dialect, sqlText), params),
-        queryOne: (sqlText, params) => handle.queryOne(rebindHelpers.rebind(dialect, sqlText), params),
-        execute: (sqlText, params) => handle.execute(rebindHelpers.rebind(dialect, sqlText), params),
+        query: call('query'),
+        queryOne: call('queryOne'),
+        execute: call('execute'),
     };
+}
+
+/**
+ * Runs `fn` in a transaction and records what the statements inside it cannot show:
+ * whether the connection could be checked out, the transaction begun and committed.
+ * Statements run inside `fn` are recorded by the wrapped handle it receives, so an
+ * error `fn` itself threw is not recorded a second time on its way out.
+ */
+function observeTransaction(fn) {
+    let callbackError;
+    let callbackFailed = false;
+    const failed = (err) => {
+        callbackFailed = true;
+        callbackError = err;
+        throw err;
+    };
+    const result = adapter.withTransaction((tx) => {
+        const wrappedTx = wrap(tx);
+        let out;
+        try {
+            out = txStorage.run(wrappedTx, () => fn(wrappedTx));
+        } catch (err) {
+            failed(err);
+        }
+        return out && typeof out.then === 'function' ? out.then(undefined, failed) : out;
+    });
+    return result.then(
+        (value) => {
+            outcomes.recordSuccess();
+            return value;
+        },
+        (err) => {
+            if (!(callbackFailed && err === callbackError)) {
+                outcomes.recordError(err);
+            }
+            throw err;
+        }
+    );
+}
+
+/**
+ * The health check's own round trip: SELECT 1 straight through the adapter, outside
+ * any ambient transaction, recorded as a ping so it never counts as application
+ * activity. When it outlasts `timeoutMs` it is recorded as a timed-out attempt and
+ * rejected with `timedOut` set; its late outcome, if any, is then ignored.
+ */
+function healthPing({ timeoutMs } = {}) {
+    return new Promise((resolve, reject) => {
+        let settled = false;
+        let timer;
+        const settle = (record, done) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            record();
+            done();
+        };
+        if (timeoutMs > 0) {
+            timer = setTimeout(() => settle(
+                () => outcomes.record({ failure: 'timeout', ping: true }),
+                () => reject(Object.assign(new Error('database health ping timed out'), { timedOut: true }))
+            ), timeoutMs);
+            timer.unref?.();
+        }
+        let pending;
+        try {
+            pending = Promise.resolve(adapter.query('SELECT 1', []));
+        } catch (err) {
+            pending = Promise.reject(err);
+        }
+        pending.then(
+            () => settle(() => outcomes.recordSuccess({ ping: true }), resolve),
+            (err) => settle(() => outcomes.recordError(err, { ping: true }), () => reject(err))
+        );
+    });
 }
 
 const wrapped = wrap(adapter);
@@ -139,10 +266,7 @@ const driverApi = {
     query: ambient('query'),
     queryOne: ambient('queryOne'),
     execute: ambient('execute'),
-    withTransaction: (fn) => adapter.withTransaction((tx) => {
-        const wrappedTx = wrap(tx);
-        return txStorage.run(wrappedTx, () => fn(wrappedTx));
-    }),
+    withTransaction: observeTransaction,
     /**
      * Runs `fn` with the ambient transaction store explicitly cleared, so any
      * bare db.query/queryOne/execute call made inside it (or inside anything
@@ -204,6 +328,14 @@ const driverApi = {
         }
     },
     close: () => adapter.close(),
+    /** The outcome window the database health check reads. */
+    outcomeWindow: outcomes,
+    healthPing,
+    /**
+     * The adapter's current pool counters, or null when it has no pool to report
+     * (SQLite, design mode): pg {max, total, idle, waiting}, mssql {max, borrowed, pending}.
+     */
+    poolStats: () => (typeof adapter.poolStats === 'function' ? adapter.poolStats() : null),
 };
 
 module.exports = driverApi;

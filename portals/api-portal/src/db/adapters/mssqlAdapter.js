@@ -72,7 +72,8 @@ function isVarcharSafe(value) {
     return typeof value === 'string' && value.length <= VARCHAR_PARAM_LENGTH && ASCII_ONLY.test(value);
 }
 
-function createMssqlAdapter(config) {
+/** `hooks.onPoolError(err)` receives every connection error the pool raises. */
+function createMssqlAdapter(config, hooks = {}) {
     const pool = new sql.ConnectionPool(buildConnectionConfig(config));
     const ready = pool.connect();
     // Every caller awaits `ready` before issuing a query (see run()/withTransaction()
@@ -82,8 +83,11 @@ function createMssqlAdapter(config) {
     // still propagates through every `await ready` call site.
     ready.catch(() => { /* surfaced to callers via query rejections */ });
     // Surface pool-level connection errors instead of letting them crash the
-    // process as unhandled 'error' events (mssql/tedious convention).
-    pool.on('error', () => { /* connection errors surface to callers via query rejections */ });
+    // process as unhandled 'error' events (mssql/tedious convention). Callers still see
+    // their own failures through query rejections; the hook only counts the event.
+    pool.on('error', (err) => {
+        if (hooks.onPoolError) hooks.onPoolError(err);
+    });
 
     // Unlike `pg`, the `mssql` package does not serialize plain JS objects for
     // NVARCHAR(MAX) "JSON column" storage (this schema has no native JSON type on
@@ -162,6 +166,12 @@ function createMssqlAdapter(config) {
     };
 
     handle.close = async () => pool.close();
+
+    handle.poolStats = () => ({
+        max: pool.config?.pool?.max,
+        borrowed: pool.borrowed,
+        pending: pool.pending,
+    });
 
     return handle;
 }
