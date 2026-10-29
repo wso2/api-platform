@@ -35,6 +35,21 @@ data:
     level = {{ $cfg.logging.level | quote }}
     format = {{ $cfg.logging.format | quote }}
 
+    [platform_api.health]
+    cache_ttl = {{ $cfg.health.cacheTtl | quote }}
+    allowed_clients = [{{ range $i, $c := $cfg.health.allowedClients }}{{ if $i }}, {{ end }}{{ $c | toString | quote }}{{ end }}]
+
+    [platform_api.health.database]
+    {{- $hdb := $cfg.health.database }}
+    check_timeout = {{ $hdb.checkTimeout | quote }}
+    startup_wait = {{ $hdb.startupWait | quote }}
+    failure_window = {{ $hdb.failureWindow | quote }}
+    failure_ratio = {{ $hdb.failureRatio }}
+    min_attempts = {{ $hdb.minAttempts | int }}
+    idle_period = {{ $hdb.idlePeriod | quote }}
+    pool_saturation = {{ $hdb.poolSaturation }}
+    pool_wait_limit = {{ $hdb.poolWaitLimit | quote }}
+
     [platform_api.security]
     encryption_key = {{ `'{{ env "APIP_CP_ENCRYPTION_KEY" }}'` }}
 

@@ -306,6 +306,9 @@ data:
     {{- end }}
     {{- end }}
 
+    [router.health]
+    allowed_clients = [{{ range $i, $c := ($router.health).allowed_clients }}{{ if $i }}, {{ end }}{{ $c | toString | quote }}{{ end }}]
+
     {{- if $gc.auth }}
     {{- if $gc.auth.basic }}
     [controller.auth.basic]
@@ -342,6 +345,22 @@ data:
     [controller.logging]
     level = {{ $gc.logging.level | quote }}
     format = {{ $gc.logging.format | quote }}
+
+    [controller.health]
+    cache_ttl = {{ $gc.health.cache_ttl | quote }}
+    allowed_clients = [{{ range $i, $c := $gc.health.allowed_clients }}{{ if $i }}, {{ end }}{{ $c | toString | quote }}{{ end }}]
+
+    {{- $gcdb := $gc.health.database }}
+
+    [controller.health.database]
+    check_timeout = {{ $gcdb.check_timeout | quote }}
+    startup_wait = {{ $gcdb.startup_wait | quote }}
+    failure_window = {{ $gcdb.failure_window | quote }}
+    failure_ratio = {{ $gcdb.failure_ratio }}
+    min_attempts = {{ $gcdb.min_attempts | int }}
+    idle_period = {{ $gcdb.idle_period | quote }}
+    pool_saturation = {{ $gcdb.pool_saturation }}
+    pool_wait_limit = {{ $gcdb.pool_wait_limit | quote }}
 
     [controller.metrics]
     enabled = {{ .Values.gateway.controller.metrics.enabled }}
@@ -394,6 +413,15 @@ data:
     [policy_engine.logging]
     level = {{ $pe.logging.level | quote }}
     format = {{ $pe.logging.format | quote }}
+
+    [policy_engine.health]
+    cache_ttl = {{ $pe.health.cache_ttl | quote }}
+
+    [policy_engine.health.xds_connection]
+    grace = {{ $pe.health.xds_connection.grace | quote }}
+
+    [policy_engine.health.python_executor]
+    check_timeout = {{ $pe.health.python_executor.check_timeout | quote }}
 
     [policy_engine.metrics]
     enabled = {{ $pe.metrics.enabled }}

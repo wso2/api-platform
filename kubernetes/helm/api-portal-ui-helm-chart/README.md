@@ -171,6 +171,8 @@ kubectl logs -l app.kubernetes.io/component=api-portal -n api-portal
   supported values. On SQL Server, anything else would connect unencrypted.
 - **`deployment.replicaCount > 1 requires an external database` / HPA render failure** —
   switch `config.database.driver` to `postgres` or `mssql`.
+- **Probes fail with 403** — the kubelet's address is outside `config.health.allowedClients`.
+  Add the node range, or the probing address, to the list.
 - **Pages return 403 for valid users** — `config.auth.authorization.pageRoleValidation=true`
   gates pages on `portalRoles.admin` / `portalRoles.subscriber`. Those role names must
   appear in the token's `roles` claim.
@@ -207,6 +209,19 @@ every key below with `api-portal-ui.`.
   PVC), `postgres`, or `mssql`. Aliases such as `sqlite3`, `postgresql`, and `sqlserver` are
   normalized. `host`/`port`/`database`/`user`, `sslmode` (`disable` | `verify-full`), and
   pool tuning also live here.
+- `config.health.*` — the `/health` and `/ready` endpoints (also under `/api-portal`).
+  `cacheTtl` sets how long an evaluated result is reused. `allowedClients` lists the IPs
+  or CIDRs allowed to call them; others get 403, and a single `"*"` allows every client.
+  Only the connection's peer address counts, never `X-Forwarded-For`. The default is
+  loopback plus the private ranges (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`,
+  `fc00::/7`) so kubelet probes from node addresses pass. Narrow it to the cluster's pod and
+  node ranges, and add external load balancers, or clients whose address is preserved
+  (`externalTrafficPolicy: Local`), that call the health endpoints.
+  `config.health.database.*` tunes the database check, which judges the database by the
+  outcomes of the portal's own queries and runs its own `SELECT 1` only after `idlePeriod`
+  without any: `checkTimeout`, `failureWindow`, `failureRatio`, `minAttempts`, `idlePeriod`,
+  and the pool-exhaustion rule (`poolSaturation`, `poolWaitLimit`). Health events go to
+  stdout: one line when a check starts failing and one when it recovers.
 - `config.platformApi.baseUrl` / `insecure` — the Platform API endpoint (derived under the
   umbrella) and dev-only TLS skip.
 - `config.auth.*` — `publicKeyPath` for the mounted Platform API key, `claimMappings`, and
@@ -233,7 +248,12 @@ every key below with `api-portal-ui.`.
 - `tls.*` — `certificateProvider` is `cert-manager` (default), `secret`, or `none`.
 - `persistence.*` — SQLite PVC (1Gi, kept on uninstall).
 - `deployment.*`, `hpa.*`, `podDisruptionBudget.*`, `configMap.*` — pod spec, autoscaling
-  (requires `postgres`/`mssql`), PDB, and extra metadata.
+  (requires `postgres`/`mssql`), PDB, and extra metadata. Probes run over HTTPS: liveness
+  `/health`, readiness and startup `/ready`. Both endpoints answer 503 while the database is
+  unreachable. Readiness (period 5 s × failureThreshold 3, ~15 s) takes the pod out of
+  service; liveness (period 10 s × failureThreshold 12, ~2 min) restarts it only after a long
+  outage. The startup probe allows 5 minutes; set `deployment.startupProbe` to `null` to
+  disable it.
 - `openshift.*`: an OpenShift Route to the portal (`openshift.routes.apiPortal`), rendered
   only when `openshift.enabled=true`. The Service serves HTTPS only, so the Route uses
   `passthrough` (default) or `reencrypt`. Security contexts are set through

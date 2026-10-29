@@ -74,6 +74,37 @@ config:
     level: info                  # debug | info | warn | error
     format: json                 # text | json
 
+  # Health checks behind /health (liveness) and /ready (readiness). Health events go to
+  # stdout: one line when a check starts failing and one when it recovers.
+  health:
+    cacheTtl: 3s                 # how long an evaluated health result is reused
+    # Clients (IPs or CIDRs) allowed to call /health and /ready; others get 403.
+    # A single "*" allows every client. The default covers private ranges so kubelet
+    # probes from node addresses pass. Narrow it to the cluster's pod and node ranges,
+    # and add the addresses of external load balancers, or of clients whose address is
+    # preserved (externalTrafficPolicy: Local), that call the health endpoints.
+    allowedClients:
+      - "127.0.0.1"
+      - "::1"
+      - "10.0.0.0/8"
+      - "172.16.0.0/12"
+      - "192.168.0.0/16"
+      - "fc00::/7"
+    # Database check, rendered to [platform_api.health.database]. It decides from the
+    # outcomes of the server's own database operations, and pings the database only
+    # while those are idle.
+    database:
+      checkTimeout: 2s           # deadline for one run of the check, and so for its ping
+      # How long startup waits for the database before the server exits. Keep it below
+      # the deployment.startupProbe allowance (6 minutes by default).
+      startupWait: 5m
+      failureWindow: 30s         # how far back operation outcomes are counted
+      failureRatio: 0.5          # share of failed operations at or above which the database is down
+      minAttempts: 5             # operations the window must hold before the ratio decides
+      idlePeriod: 10s            # with no operations for this long, the check pings (at most once per period)
+      poolSaturation: 0.9        # share of the connection pool in use that counts as saturated
+      poolWaitLimit: 5s          # how long the pool may stay saturated before the database is down
+
   security:
     apiKey:
       # Accepted API-key hashing algorithms, e.g. "sha256" or "sha256,sha512".
@@ -295,7 +326,10 @@ config:
     signatureHeader: X-Api-Portal-Signature
 
 # Escape hatch: raw TOML appended verbatim to the generated config file, for keys
-# not exposed as structured values above.
+# not exposed as structured values above. Do not redefine a table the chart already
+# renders (for example [platform_api.health] or [platform_api.health.database]; use
+# config.health and config.health.database instead): a second copy
+# of a table is a TOML error and the server will not start.
 configToml: ""
 
 # ----------------------------------------------------------------------------
@@ -452,32 +486,37 @@ deployment:
   podAnnotations: {}
   podLabels: {}
   priorityClassName: ""
+  # Liveness probes /health; readiness and startup probe /ready. Both answer 503 while a
+  # dependency (the database) is down and while the server is still starting. Readiness
+  # takes the pod out of the Service after about 15 s of failed answers; liveness restarts
+  # it only after about 2 minutes, so a short database outage never causes a restart.
   livenessProbe:
     httpGet:
       path: /health
       port: http
       scheme: HTTPS
-    initialDelaySeconds: 20
     periodSeconds: 10
     timeoutSeconds: 5
-    failureThreshold: 3
+    failureThreshold: 12
   readinessProbe:
     httpGet:
-      path: /health
+      path: /ready
       port: http
       scheme: HTTPS
-    initialDelaySeconds: 10
     periodSeconds: 5
     timeoutSeconds: 3
     failureThreshold: 3
-  # Optional startup probe for slow first starts (uncomment to enable):
-  # startupProbe:
-  #   httpGet:
-  #     path: /health
-  #     port: http
-  #     scheme: HTTPS
-  #   periodSeconds: 5
-  #   failureThreshold: 30
+  # Holds off the liveness probe while the server starts. It allows 6 minutes; keep this
+  # above config.health.database.startupWait so the server, not the probe, decides when a
+  # database wait gives up. Set to null to disable.
+  startupProbe:
+    httpGet:
+      path: /ready
+      port: http
+      scheme: HTTPS
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 72
   # CPU/memory requests & limits. NOTE: set CPU requests if you enable the HPA,
   # otherwise it can't compute utilization.
   resources: {}

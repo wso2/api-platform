@@ -55,6 +55,17 @@ gateway:
       logging:
         level: info
         format: json
+      # Clients (IPs or CIDRs) allowed to call the admin health and ready endpoints; others get 403.
+      # A single "*" allows every client. Private ranges let kubelet probes from node
+      # addresses pass; narrow them to the cluster's pod and node ranges.
+      health:
+        allowed_clients:
+          - "127.0.0.1"
+          - "::1"
+          - "10.0.0.0/8"
+          - "172.16.0.0/12"
+          - "192.168.0.0/16"
+          - "fc00::/7"
     router:
       gateway_host: "*"
       listener_port: 8080
@@ -131,6 +142,19 @@ gateway:
           route_timeout_ms: 60000
           route_idle_timeout_ms: 300000
           connect_timeout_ms: 5000
+      # Clients (IPs or CIDRs) allowed to call the gateway health routes; others get 403.
+      # A single "*" allows every client. Private ranges let kubelet probes from node
+      # addresses pass; narrow them to the cluster's pod and node ranges.
+      # Add the addresses of external load balancers, or of clients whose address is
+      # preserved (externalTrafficPolicy: Local), that call the readiness route.
+      health:
+        allowed_clients:
+          - "127.0.0.1"
+          - "::1"
+          - "10.0.0.0/8"
+          - "172.16.0.0/12"
+          - "192.168.0.0/16"
+          - "fc00::/7"
     policy_engine:
       server:
         extproc_port: 9001
