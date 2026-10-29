@@ -110,6 +110,9 @@ roles:
       - ap:subscription_plan:manage
       - ap:content:read
       - ap:portal:read
+      # MCP proxy publishing to a portal, kept from the pre-tree ap:api_portal:manage
+      # grant (reserved: the AI Workspace gates on it ahead of the API operation).
+      - ap:portal:mcp_proxy:manage
       - ap:publication:read
       - ap:credential:secret:read
       - ap:credential:api_key:read

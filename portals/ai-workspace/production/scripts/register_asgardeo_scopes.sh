@@ -371,6 +371,7 @@ SCOPES=(
   "ap:portal:publication:read"
   "ap:portal:rest_api:manage"
   "ap:portal:graphql_api:manage"
+  "ap:portal:mcp_proxy:manage"
   "ap:credential:secret:read"
   "ap:credential:secret:manage"
   "ap:credential:api_key:read"

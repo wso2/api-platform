@@ -107,6 +107,12 @@ class Node:
         self.actions = list(raw.get("actions", []))
         self.legacy = list(raw.get("legacy", []))
         self.plugin = raw.get("plugin") or (parent.plugin if parent else None)
+        # A reserved node's permissions are declared and grantable, but no
+        # operation accepts them yet: a feature whose UI gates on it before its
+        # API ships. They are written to the main spec's x-reserved-permissions
+        # (and catalog) instead of any security block; drop `reserved` once an
+        # operation binds to the node.
+        self.reserved = bool(raw.get("reserved", False))
         self.parent = parent
         self.children = []
 
@@ -445,6 +451,19 @@ def write_if_changed(path, new, check):
     return True
 
 
+RESERVED_RE = re.compile(r"^x-reserved-permissions:\n(?:  - .*\n)*\n?", re.M)
+
+
+def rewrite_reserved(text, reserved):
+    """Write the top-level x-reserved-permissions list just before `paths:`."""
+    text = RESERVED_RE.sub("", text)
+    if not reserved:
+        return text
+    block = "x-reserved-permissions:\n" + "".join(f"  - {p}\n" for p in sorted(reserved)) + "\n"
+    i = text.index("\npaths:\n") + 1
+    return text[:i] + block + text[i:]
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--check", action="store_true")
@@ -460,7 +479,9 @@ def main():
         used = declared_scopes(new)
         declared |= used
         if catalog:
-            new = rewrite_catalog(new, tree, used)
+            reserved = {n.perm(a) for n in tree.nodes if n.reserved for a in n.actions}
+            new = rewrite_reserved(new, reserved)
+            new = rewrite_catalog(new, tree, used | reserved)
         stale |= write_if_changed(path, new, args.check)
         # Parse the spec once for the count — calling operation_keys() inside the
         # generator re-parsed the whole spec for every bound operation.
@@ -469,7 +490,11 @@ def main():
     dead = [key for key in tree.bindings if key not in bound]
     if dead:
         sys.exit(f"x-operation-permissions binds operations no spec declares: {dead} — remove them from permission-tree.yaml")
-    unused = sorted(p for p in tree.perms if p not in declared and p != OWNERSHIP_MODIFIER)
+    reserved = {n.perm(a) for n in tree.nodes if n.reserved for a in n.actions}
+    live = sorted(p for p in reserved if p in declared)
+    if live:
+        sys.exit(f"reserved permissions are accepted by an operation: {live} — drop `reserved` from their node")
+    unused = sorted(p for p in tree.perms if p not in declared and p not in reserved and p != OWNERSHIP_MODIFIER)
     if unused:
         sys.exit(f"permission-tree.yaml defines permissions no operation accepts: {unused} — remove the node or action")
     legacy_scopes = validate_legacy_map(LEGACY_MAP, tree, declared)

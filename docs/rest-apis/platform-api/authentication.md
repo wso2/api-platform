@@ -248,7 +248,9 @@ which part of a credential was wrong.
 ## Scope Reference
 
 The complete set of scopes defined by this API, as declared in the OpenAPI `OAuth2Security` scheme
-(the permission tree's permissions that at least one operation accepts; pre-tree names are not
+(the permission tree's permissions that at least one operation accepts, plus the spec's
+`x-reserved-permissions`: permissions a role may grant ahead of the operation that will accept
+them, marked *reserved* below — no operation admits them yet; pre-tree names are not
 declared — see [Scope naming convention](#scope-naming-convention)).
 
 - OAuth2, flow: `clientCredentials`
@@ -441,6 +443,9 @@ login endpoint described under [Obtaining a token](#obtaining-a-token)
 |ap:portal:graphql_api:publish|Publish Portal Graphql Api|
 |ap:portal:graphql_api:unpublish|Unpublish Portal Graphql Api|
 |ap:portal:manage|Full access to API Portals and publishing to them|
+|ap:portal:mcp_proxy:manage|Full access to publishing MCP proxies to an API Portal (reserved — no operation accepts it yet)|
+|ap:portal:mcp_proxy:publish|Publish an MCP proxy to an API Portal (reserved — no operation accepts it yet)|
+|ap:portal:mcp_proxy:unpublish|Unpublish an MCP proxy from an API Portal (reserved — no operation accepts it yet)|
 |ap:portal:publication:read|Read Portal listings (incl. /api-publications)|
 |ap:portal:read|Read API Portals and publishing to them|
 |ap:portal:rest_api:deprecate|Deprecate Portal Rest Api|

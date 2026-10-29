@@ -617,7 +617,7 @@ const defaultOIDCScopes = "openid profile email offline_access" +
 	" ap:api:graphql:build:manage ap:api:graphql:deployment:manage ap:api:llm:build:manage ap:api:llm:deployment:manage ap:api:mcp:build:manage" +
 	" ap:api:mcp:deployment:manage ap:api:rest:build:manage ap:api:rest:deployment:manage ap:content:manage ap:content:read" +
 	" ap:credential:api_key:read ap:credential:secret:manage ap:credential:secret:read ap:gateway_policy:manage ap:gateway_policy:read" +
-	" ap:llm_provider:build:manage ap:llm_provider:template:manage ap:portal:read ap:portal:draft:manage ap:portal:graphql_api:manage" +
+	" ap:llm_provider:build:manage ap:llm_provider:template:manage ap:portal:read ap:portal:draft:manage ap:portal:graphql_api:manage ap:portal:mcp_proxy:manage" +
 	" ap:portal:rest_api:manage ap:publication:read ap:subscription:manage ap:subscription:read ap:subscription_plan:manage" +
 	" ap:subscription_plan:read"
 

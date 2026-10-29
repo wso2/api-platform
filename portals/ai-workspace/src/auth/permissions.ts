@@ -96,7 +96,6 @@ export const SCOPES = {
   GATEWAY_CUSTOM_POLICY_CREATE:  'ap:gateway_custom_policy:create',
   GATEWAY_CUSTOM_POLICY_DELETE:  'ap:gateway_custom_policy:delete',
   GATEWAY_CUSTOM_POLICY_MANAGE:  'ap:gateway_custom_policy:manage',
-  GATEWAY_ARTIFACTS_READ: 'ap:gateway:artifact:read',
   GATEWAY_MANIFEST_READ:  'ap:gateway:manifest:read',
 
   // REST APIs
@@ -117,7 +116,6 @@ export const SCOPES = {
   REST_API_API_KEY_UPDATE:    'ap:rest_api:api_key:update',
   REST_API_API_KEY_DELETE:    'ap:rest_api:api_key:delete',
   REST_API_API_KEY_MANAGE:    'ap:rest_api:api_key:manage',
-  REST_API_PUBLICATION_READ:  'ap:rest_api:publication:read',
 
   // Subscriptions
   SUBSCRIPTION_READ:        'ap:subscription:read',
@@ -218,7 +216,6 @@ export const SCOPES = {
   WEBBROKER_API_MANAGE:            'ap:webbroker_api:manage',
   WEBBROKER_API_API_KEY_MANAGE:    'ap:webbroker_api:api_key:manage',
   WEBBROKER_API_DEPLOYMENT_MANAGE: 'ap:webbroker_api:deployment:manage',
-  WEBBROKER_API_PUBLICATION_READ:  'ap:webbroker_api:publication:read',
 
   // Secrets
   SECRET_READ:   'ap:secret:read',
@@ -294,8 +291,11 @@ const isOwnershipOverride = (scope: string): boolean =>
  * `ap:api:llm:api_key:manage`, `ap:api:llm:manage`, `ap:api:manage` and
  * `ap:manage` — not `ap:api:llm:create`.
  *
- * Returns nothing for a resource the tree does not know, so a scope the spec no
- * longer declares cannot be satisfied by accident.
+ * Every gate in SCOPES resolves to a tree node — a feature whose API has not
+ * shipped yet (MCP proxy publishing, `ap:portal:mcp_proxy`) is a reserved node
+ * of the tree, not a special case here. Returns nothing for a resource the tree
+ * does not know, so a scope the spec no longer declares cannot be satisfied by
+ * accident.
  */
 export function treePermissionsFor(scope: string): string[] {
   const parts = scope.split(':');

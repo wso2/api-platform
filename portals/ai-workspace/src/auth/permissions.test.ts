@@ -104,6 +104,26 @@ describe('treePermissionsFor', () => {
     expect(treePermissionsFor(SCOPES.SECRET_MANAGE)).toEqual(['ap:credential:secret:manage', 'ap:manage']);
   });
 
+  it('resolves every gate in SCOPES to tree permissions', () => {
+    // A gate the tree cannot place would silently deny everyone; a feature
+    // whose API has not shipped yet is a reserved tree node instead.
+    for (const [name, scope] of Object.entries(SCOPES)) {
+      expect(treePermissionsFor(scope), name).not.toEqual([]);
+    }
+  });
+
+  it('keeps MCP proxy portal publishing for admins and operators, not publishers', () => {
+    // Reserved node ap:portal:mcp_proxy, carried over from ap:api_portal:manage.
+    expect(treePermissionsFor(SCOPES.MCP_PROXY_API_PORTAL_PUBLISH)).toEqual([
+      'ap:portal:mcp_proxy:publish', 'ap:portal:mcp_proxy:manage', 'ap:portal:manage', 'ap:manage',
+    ]);
+    expect(checkPermission(['ap:manage'], SCOPES.MCP_PROXY_API_PORTAL_PUBLISH)).toBe(true);
+    expect(checkPermission(['ap:portal:read', 'ap:portal:mcp_proxy:manage'], SCOPES.MCP_PROXY_API_PORTAL_UNPUBLISH)).toBe(true);
+    expect(checkPermission(['ap:portal:read', 'ap:portal:draft:manage', 'ap:portal:rest_api:manage'], SCOPES.MCP_PROXY_API_PORTAL_PUBLISH)).toBe(false);
+    // The pre-tree names still work as before.
+    expect(checkPermission(['ap:api_portal:manage'], SCOPES.MCP_PROXY_API_PORTAL_PUBLISH)).toBe(true);
+  });
+
   it('returns nothing for a resource the tree does not know, or for the ownership override', () => {
     expect(treePermissionsFor('ap:gateway:artifact:read')).toEqual([]);
     expect(treePermissionsFor('ap:api_key:all:manage')).toEqual([]);

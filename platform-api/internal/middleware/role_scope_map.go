@@ -106,6 +106,9 @@ func ValidateRoleScopeMap(m map[string][]string, registry *ScopeRegistry, legacy
 			if _, ok := legacy[s]; ok {
 				continue // a pre-tree name — translated per request
 			}
+			if registry.IsReserved(s) {
+				continue // declared ahead of the operation that will accept it
+			}
 			return fmt.Errorf("role-to-scope-mapping.yaml: role %q references unknown scope %q — check the OpenAPI spec for valid scope names", role, s)
 		}
 	}

@@ -530,6 +530,18 @@ tree:
       - unpublish
       legacy:
       - api_portal:graphql_api
+    - handle: mcp_proxy
+      name: Mcp Proxy
+      # Reserved: the AI Workspace gates MCP proxy publish/unpublish on these,
+      # but the Platform API has no MCP proxy publish operation yet. Drop
+      # `reserved` and bind the operations once it ships.
+      reserved: true
+      actions:
+      - manage
+      - publish
+      - unpublish
+      legacy:
+      - api_portal:mcp_proxy
     - handle: publication
       name: Publication
       actions:
