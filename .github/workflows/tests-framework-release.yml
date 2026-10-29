@@ -140,7 +140,8 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           set -euo pipefail
-          echo "tags=$(go run ./cmd/release floating-tags -repo . -released "${VERSION}")" >> "$GITHUB_OUTPUT"
+          tags="$(go run ./cmd/release floating-tags -repo . -released "${VERSION}")"
+          echo "tags=${tags}" >> "$GITHUB_OUTPUT"
 
       - name: Generate the embedded snapshots
         run: go run ./cmd/syncassets

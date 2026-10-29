@@ -46,10 +46,31 @@ type ghcrClient struct {
 	pkg        string
 }
 
+const (
+	versionsPageSize = 100
+	maxVersionPages = 50
+)
+
 // listVersions returns every version of the package, each with the tags currently applied to it.
 func (c *ghcrClient) listVersions(ctx context.Context) ([]ghcrVersion, error) {
-	reqURL := fmt.Sprintf("%s/orgs/%s/packages/container/%s/versions?per_page=100",
-		c.baseURL, url.PathEscape(c.org), url.PathEscape(c.pkg))
+	var all []ghcrVersion
+	for page := 1; page <= maxVersionPages; page++ {
+		versions, err := c.listVersionsPage(ctx, page)
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, versions...)
+		if len(versions) < versionsPageSize {
+			return all, nil
+		}
+	}
+	return nil, fmt.Errorf("listing package versions: more than %d pages of %d versions",
+		maxVersionPages, versionsPageSize)
+}
+
+func (c *ghcrClient) listVersionsPage(ctx context.Context, page int) ([]ghcrVersion, error) {
+	reqURL := fmt.Sprintf("%s/orgs/%s/packages/container/%s/versions?per_page=%d&page=%d",
+		c.baseURL, url.PathEscape(c.org), url.PathEscape(c.pkg), versionsPageSize, page)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {
 		return nil, err
