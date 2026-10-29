@@ -186,9 +186,15 @@ scenarios:
     title: Attach a guardrail with parameters.
     priority: P1
     ui:
-      status: planned
+      status: automated
+      refs:
+        - feature: suites/ui/features/aiw_llm/provider_policies.feature
+          scenario: "Journey: an administrator attaches a guardrail and sets rate limits on a provider"
     it:
-      status: planned
+      status: automated
+      refs:
+        - feature: suites/it/features/ai-workspace/llm-providers/policies.feature
+          scenario: "A guardrail attached with parameters is stored on the provider"
   - id: AIW-PRV-015
     title: Send a request that violates the guardrail.
     priority: P1
@@ -207,9 +213,15 @@ scenarios:
     title: Set a request limit and a token limit.
     priority: P1
     ui:
-      status: planned
+      status: automated
+      refs:
+        - feature: suites/ui/features/aiw_llm/provider_policies.feature
+          scenario: "Journey: an administrator attaches a guardrail and sets rate limits on a provider"
     it:
-      status: planned
+      status: automated
+      refs:
+        - feature: suites/it/features/ai-workspace/llm-providers/policies.feature
+          scenario: "Request and token limits set on a provider are stored and read back"
   - id: AIW-PRV-018
     title: Send requests above the limit, then wait for the window to reset.
     priority: P1
@@ -221,9 +233,24 @@ scenarios:
     title: Enter zero, negative, maximum and non-numeric limits.
     priority: P2
     ui:
-      status: planned
+      status: known-issue
+      issue: https://github.com/wso2/api-platform/issues/3973
+      refs:
+        - feature: suites/ui/features/aiw_llm/provider_policies.feature
+          scenario: "A provider request limit of <case> is refused with a clear message"
+        - feature: suites/ui/features/aiw_llm/provider_policies.feature
+          scenario: "A provider request limit of <case> is saved exactly"
+        - feature: suites/ui/features/aiw_llm/provider_policies.feature
+          scenario: "The platform's maximum provider request limit is saved exactly"
+        - feature: suites/ui/features/aiw_llm/provider_policies.feature
+          scenario: "A decimal provider request limit is refused with a clear message"
     it:
-      status: planned
+      status: automated
+      refs:
+        - feature: suites/it/features/ai-workspace/llm-providers/policies.feature
+          scenario: "A provider request limit of <case> is rejected"
+        - feature: suites/it/features/ai-workspace/llm-providers/policies.feature
+          scenario: "A provider request limit of <case> is stored exactly"
   - id: AIW-PRV-020
     title: Deploy the provider to the gateway.
     priority: P1
@@ -277,9 +304,15 @@ scenarios:
     title: Create providers from different templates.
     priority: P2
     ui:
-      status: planned
+      status: automated
+      refs:
+        - feature: suites/ui/features/aiw_llm/provider_templates.feature
+          scenario: "Journey: an administrator creates providers from two vendors' templates"
     it:
-      status: planned
+      status: automated
+      refs:
+        - feature: suites/it/features/ai-workspace/llm-providers/templates.feature
+          scenario: "Providers created from two vendors' templates each carry their vendor's API definition"
   - id: AIW-PRV-028
     title: Delete a provider with no deployments or proxies.
     priority: P2

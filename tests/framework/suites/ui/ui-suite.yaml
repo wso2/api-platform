@@ -167,3 +167,11 @@ blocks:
         features:
           - features/aiw_llm/provider_configuration.feature
         tags: "~@known-issue"
+      - name: aiw-llm-provider-policies
+        features:
+          - features/aiw_llm/provider_policies.feature
+        tags: "~@known-issue"
+      - name: aiw-llm-provider-templates
+        features:
+          - features/aiw_llm/provider_templates.feature
+        tags: "~@known-issue"

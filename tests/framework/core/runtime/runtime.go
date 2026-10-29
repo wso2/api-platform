@@ -86,11 +86,24 @@ type Deps struct {
 var runnerOutputMu sync.Mutex
 
 // flushRunnerOutput writes one runner report without interleaving it with another report.
-func flushRunnerOutput(dst io.Writer, label string, buf *bytes.Buffer) {
+//
+// A child process sharing stdout (the browser driver, a container runtime) can leave it in
+// non-blocking mode, where one large write stops at the pipe's capacity — about 64 KiB —
+// and the rest of a report, failure summary included, is lost. Fd puts an *os.File back
+// into blocking mode first, and any error is returned rather than dropped.
+func flushRunnerOutput(dst io.Writer, label string, buf *bytes.Buffer) error {
 	runnerOutputMu.Lock()
 	defer runnerOutputMu.Unlock()
-	fmt.Fprintf(dst, "\n=== %s ===\n", label)
-	_, _ = io.Copy(dst, buf)
+	if f, ok := dst.(*os.File); ok {
+		f.Fd()
+	}
+	if _, err := fmt.Fprintf(dst, "\n=== %s ===\n", label); err != nil {
+		return fmt.Errorf("writing the %s report: %w", label, err)
+	}
+	if _, err := io.Copy(dst, buf); err != nil {
+		return fmt.Errorf("writing the %s report: %w", label, err)
+	}
+	return nil
 }
 
 // Run executes a resolved suite with parallel blocks and sequential scenarios per runner.
@@ -292,7 +305,9 @@ func runRunner(
 	}); err != nil {
 		t.Errorf("runner %q: %v", runner.Name, err)
 	}
-	flushRunnerOutput(os.Stdout, topo.Block.Name+"/"+runner.Name, &out)
+	if err := flushRunnerOutput(os.Stdout, topo.Block.Name+"/"+runner.Name, &out); err != nil {
+		t.Errorf("runner %q: %v", runner.Name, err)
+	}
 
 	if status != 0 {
 		t.Errorf("runner %q finished with status %d", runner.Name, status)

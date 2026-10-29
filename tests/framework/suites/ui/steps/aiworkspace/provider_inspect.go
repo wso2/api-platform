@@ -314,3 +314,47 @@ func (u *Steps) providerOfferedForProxyInProject(ctx context.Context, providerNa
 	}
 	return page.Keyboard().Press("Escape")
 }
+
+// connectionTabShowsEndpointAndHeader checks the Connection tab's endpoint and the header the
+// credential is sent in, the two fields a provider template sets.
+func (u *Steps) connectionTabShowsEndpointAndHeader(ctx context.Context, endpoint, header string) error {
+	if endpoint == "the mock LLM" {
+		mock, err := u.mockLLMURL()
+		if err != nil {
+			return err
+		}
+		endpoint = mock
+	}
+	page, err := u.page(ctx)
+	if err != nil {
+		return err
+	}
+	field := func(label string) playwright.Locator {
+		return page.Locator("label").Filter(playwright.LocatorFilterOptions{HasText: regexp.MustCompile(`^` + label)}).
+			Locator("xpath=..").Locator("input")
+	}
+	if err := u.expect.Locator(field("Provider Endpoint")).ToHaveValue(endpoint); err != nil {
+		return fmt.Errorf("the Connection tab does not show the endpoint %q: %w", endpoint, err)
+	}
+	if err := u.expect.Locator(field("Authentication Header")).ToHaveValue(header); err != nil {
+		return fmt.Errorf("the Connection tab does not show the authentication header %q: %w", header, err)
+	}
+	return nil
+}
+
+// addProviderFormAsksForEndpoint checks whether the form for the chosen template offers an
+// endpoint field: a template with a built-in endpoint does not.
+func (u *Steps) addProviderFormAsksForEndpoint(ctx context.Context, asks string) error {
+	page, err := u.page(ctx)
+	if err != nil {
+		return err
+	}
+	if err := u.expect.Locator(cyid(page, "provider-name-input")).ToBeVisible(); err != nil {
+		return fmt.Errorf("the add-provider form is not shown: %w", err)
+	}
+	field := cyid(page, "provider-upstream-url-input")
+	if asks == "asks" {
+		return u.expect.Locator(field).ToBeVisible()
+	}
+	return u.expect.Locator(field).ToHaveCount(0)
+}
