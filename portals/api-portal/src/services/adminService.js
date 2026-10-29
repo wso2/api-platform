@@ -256,9 +256,10 @@ const updateOrganization = async (req, res) => {
             return util.handleError(res, error);
         }
     }
+    // The field names only: the values include the business owner's contact details.
     logger.info('Initiate update organization...', {
         orgId,
-        ...req.body
+        fields: Object.keys(req.body || {})
     });
     try {
         // Only this instance's own organization is updatable, whatever else the
@@ -384,6 +385,22 @@ const deleteOrganization = async (req, res) => {
         // insert below will be dropped (caught, logged, non-fatal), same limitation
         // platform-api's own audit table has for its own org-delete cascade.
         const orgUuid = await orgDao.getId(orgId);
+        // Billing is removed first.
+        if (orgUuid) {
+            const billingConfiguration = require('./billing/billingConfigurationService');
+            try {
+                await billingConfiguration.removeBilling(orgUuid);
+            } catch (error) {
+                if (error instanceof billingConfiguration.SubscriptionsActiveError) {
+                    throw new CustomError(409, 'Conflict', 'The organization has active paid subscriptions, so it '
+                        + 'can\'t be deleted until they have ended.');
+                }
+                if (error instanceof billingConfiguration.RemovalStepError) {
+                    throw new CustomError(error.retryable ? 502 : 400, 'Billing removal failed', error.message);
+                }
+                throw error;
+            }
+        }
         const deletedRowsCount = await db.withTransaction((t) => orgDao.delete(orgId, t));
         if (deletedRowsCount > 0) {
             logger.info('Organization deletion successful', {
@@ -504,6 +521,7 @@ const applyTheme = async (req, res) => {
         if (tempZipPath) fs.rmSync(tempZipPath, { force: true });
         const organization = await orgDao.getByUuid(orgId);
         res.status(200).json({ id: organization.handle, fileName: zipFile.originalname });
+        logUserAction('THEME_APPLIED', req, { orgId, viewId: viewName, fileName: zipFile.originalname, resourceUuid: orgId, resourceType: 'theme' });
     } catch (error) {
         logger.error('Apply theme failed', { error: error.message, stack: error.stack, orgId, viewName });
         fs.rmSync(extractPath, { recursive: true, force: true });
@@ -518,6 +536,7 @@ const resetTheme = async (req, res) => {
     try {
         await orgDao.deleteThemeContent(orgId, viewName);
         res.status(204).send();
+        logUserAction('THEME_RESET', req, { orgId, viewId: viewName, resourceUuid: orgId, resourceType: 'theme' });
     } catch (error) {
         logger.error('Reset theme failed', { error: error.message, stack: error.stack, orgId, viewName });
         util.handleError(res, error);

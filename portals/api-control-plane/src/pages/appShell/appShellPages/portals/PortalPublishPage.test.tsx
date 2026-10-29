@@ -473,6 +473,75 @@ describe('PortalPublishPage', () => {
     expect(JSON.parse(draftRequests.last()?.body ?? '{}')).toMatchObject({ subscriptionPlanIds: ['gold'] });
   });
 
+  it('lets a deleted plan be cleared from the draft, which turns on Save Draft and drops it on save', async () => {
+    const gold = aSubscriptionPlan({ displayName: 'Gold', id: 'gold' });
+    servePublicationState({
+      draft: aPublicationDraftDetails({
+        subscriptionPlanIds: ['gold', 'old'],
+        subscriptionPlans: [
+          { deleted: false, displayName: 'Gold', edited: false, id: 'gold' },
+          { deleted: true, displayName: 'Platinum', edited: false, id: 'old' },
+        ],
+      }),
+      plans: [gold],
+    });
+    const draftRequests = recorder();
+    server.use(
+      accepts('put', DRAFT_PATH, aPublicationDraftDetails(), { record: draftRequests }),
+      accepts('put', DRAFT_DEFINITION_PATH, undefined),
+    );
+
+    const { user } = renderPage();
+
+    await screen.findByDisplayValue('Loan Management Service');
+    await user.click(screen.getByRole('tab', { name: 'Subscription Plans' }));
+    expect(screen.getByRole('button', { name: 'Save Draft' })).toBeDisabled();
+
+    await user.click(await screen.findByRole('checkbox', { name: /Platinum/ }));
+    expect(screen.queryByRole('checkbox', { name: /Platinum/ })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Save Draft' }));
+    await waitFor(() => expect(draftRequests.count()).toBe(1));
+    expect(JSON.parse(draftRequests.last()?.body ?? '{}')).toMatchObject({ subscriptionPlanIds: ['gold'] });
+  });
+
+  it('stops Save Draft and Publish at a deleted plan until it is cleared', async () => {
+    const gold = aSubscriptionPlan({ displayName: 'Gold', id: 'gold' });
+    servePublicationState({
+      draft: aPublicationDraftDetails({
+        subscriptionPlanIds: ['gold', 'old'],
+        subscriptionPlans: [
+          { deleted: false, displayName: 'Gold', edited: false, id: 'gold' },
+          { deleted: true, displayName: 'Platinum', edited: false, id: 'old' },
+        ],
+      }),
+      plans: [gold],
+    });
+    const draftRequests = recorder();
+    const publishRequests = recorder();
+    server.use(
+      accepts('put', DRAFT_PATH, aPublicationDraftDetails(), { record: draftRequests }),
+      accepts('put', DRAFT_DEFINITION_PATH, undefined),
+      accepts('post', PUBLISH_PATH, aPublication(), { record: publishRequests }),
+    );
+
+    const { user } = renderPage();
+
+    await screen.findByDisplayValue('Loan Management Service');
+    await makeEdit(user);
+
+    await user.click(screen.getByRole('button', { name: 'Save Draft' }));
+    expect(await screen.findByText('Clear deleted plans from this listing to save or publish: "Platinum".')).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: /Platinum/ })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Publish' }));
+    expect(draftRequests.count()).toBe(0);
+    expect(publishRequests.count()).toBe(0);
+
+    await user.click(screen.getByRole('checkbox', { name: /Platinum/ }));
+    await user.click(screen.getByRole('button', { name: 'Save Draft' }));
+    await waitFor(() => expect(draftRequests.count()).toBe(1));
+    expect(JSON.parse(draftRequests.last()?.body ?? '{}')).toMatchObject({ subscriptionPlanIds: ['gold'] });
+  });
+
   it('lists the saved inactive plan first, then the saved selection, then the other plans, and keeps that order when a plan is selected', async () => {
     const bronze = aSubscriptionPlan({ displayName: 'Bronze', id: 'bronze' });
     const gold = aSubscriptionPlan({ displayName: 'Gold', id: 'gold' });

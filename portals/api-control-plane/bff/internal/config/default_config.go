@@ -63,6 +63,26 @@ func defaultConfig() *Config {
 				SameSite: "lax",
 			},
 		},
+		// The gateway relay ships ON: the Test page's console is unusable
+		// without it in any deployment where the gateway is a different origin
+		// from the portal, which is every deployment. The bounds below are what
+		// make that safe by default; an operator turns the feature off rather
+		// than tuning them away.
+		//
+		// Egress ships closed: production refuses private, loopback, CGNAT and
+		// IP-literal targets, and an empty allow_hosts reaches nothing. A
+		// deployment lists its gateway targets in allow_hosts, and selects
+		// "development" only where gateways genuinely live on private space.
+		GatewayRelay: GatewayRelayConfig{
+			Enabled:          true,
+			RequestTimeout:   30 * time.Second,
+			MaxRequestBytes:  2 << 20, // 2 MiB
+			MaxResponseBytes: 8 << 20, // 8 MiB
+			MaxConcurrent:    32,
+			MaxPending:       64,
+			ResolveCacheTTL:  60 * time.Second,
+			ResolveCacheSize: 1024,
+		},
 		Auth: AuthConfig{
 			Mode: "basic",
 			OIDC: OIDCConfig{

@@ -36,6 +36,9 @@ import { useAppShell } from '../../../../contexts/AppShellContext';
 import { buildOrgPath } from '../../../../utils/projectRouting';
 import { useAIWorkspaceSnackbar } from '../../../../hooks/aiWorkspaceSnackbar';
 import { getGateways } from '../../../../apis/gateway/gatewayApi';
+import ReadOnlyTooltip, {
+  useOrgReadOnly,
+} from '../../../../Components/common/ReadOnlyTooltip';
 
 // Validation constants
 const MAX_NAME_LENGTH = 255;
@@ -63,6 +66,9 @@ export default function EditGateway() {
   const { currentOrganization } = useAppShell();
   const { updateGatewayById, isUpdating } = useGatewayList();
   const showSnackbar = useAIWorkspaceSnackbar();
+  // A read-only organization may not update anything; the control plane refuses
+  // the update, so the form must not offer to send it.
+  const isOrgReadOnly = useOrgReadOnly();
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -272,13 +278,15 @@ export default function EditGateway() {
           <Button variant="outlined" color="secondary" onClick={handleCancel}>
             Cancel
           </Button>
-          <Button
-            variant="contained"
-            onClick={handleSubmit}
-            disabled={isUpdating || !isFormValid()}
-          >
-            {isUpdating ? 'Updating...' : 'Update'}
-          </Button>
+          <ReadOnlyTooltip>
+            <Button
+              variant="contained"
+              onClick={handleSubmit}
+              disabled={isUpdating || isOrgReadOnly || !isFormValid()}
+            >
+              {isUpdating ? 'Updating...' : 'Update'}
+            </Button>
+          </ReadOnlyTooltip>
         </Box>
       </Box>
     </PageContent>

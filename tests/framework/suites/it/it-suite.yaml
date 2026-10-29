@@ -49,12 +49,24 @@ blocks:
       - name: rest-apis
         features:
           - features/apiportal/core/rest_apis.feature
+      - name: rest-api-versions
+        features:
+          - features/apiportal/core/rest_api_versions.feature
       - name: resources
         features:
           - features/apiportal/core/resources.feature
       - name: mcp-servers
         features:
           - features/apiportal/ai/mcp_servers.feature
+      - name: monetization-meters
+        features:
+          - features/apiportal/monetization/meters.feature
+      - name: monetization-priced-plans
+        features:
+          - features/apiportal/monetization/priced_plans.feature
+      - name: monetization-paid-plans-without-billing
+        features:
+          - features/apiportal/monetization/paid_plans_without_billing.feature
       - name: api-types
         features:
           - features/apiportal/core/api_types.feature
@@ -119,6 +131,9 @@ blocks:
       - name: webhook-delivery
         features:
           - features/apiportal/webhooks/webhook_delivery.feature
+      - name: monetization-events
+        features:
+          - features/apiportal/monetization/events.feature
 
   - name: api-portal-auth-scope
     parallel: 1
@@ -432,10 +447,18 @@ blocks:
     parallel: 7
     components:
       - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/gateway-signing.toml
         db:
           matrix: [sqlite, postgres, sqlserver]
       - name: testbench
+    wiring:
+      platform-gateway:
+        signingKeys: true
     runners:
+      - name: gateway-jwks
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/security/jwks.feature
       - name: api-error-responses
         features:
           - features/gateway/core/api_error_responses.feature
@@ -490,10 +513,6 @@ blocks:
       - name: lazy-resources-xds
         features:
           - features/gateway/core/lazy_resources_xds.feature
-      - name: dynamic-endpoint
-        tags: "gateway-version>=1.2.0"
-        features:
-          - features/gateway/routes-policies/dynamic_endpoint.feature
       - name: route-path-matching
         features:
           - features/gateway/routes/route_path_matching.feature
@@ -509,9 +528,6 @@ blocks:
         tags: "gateway-version>=1.2.0"
         features:
           - features/gateway/routes/header_routing.feature
-      - name: host-rewrite
-        features:
-          - features/gateway/routes-policies/host_rewrite.feature
       - name: redirect
         tags: "gateway-version>=1.2.0"
         features:
@@ -519,9 +535,6 @@ blocks:
       - name: request-rewrite
         features:
           - features/gateway/routes-policies/request_rewrite.feature
-      - name: cors
-        features:
-          - features/gateway/security-policies/cors.feature
       - name: respond
         features:
           - features/gateway/routes-policies/respond.feature
@@ -565,34 +578,6 @@ blocks:
       - name: secrets
         features:
           - features/gateway/security/secrets.feature
-      - name: basic-ratelimit
-        features:
-          - features/gateway/ratelimit-policies/basic_ratelimit.feature
-      - name: ratelimit-headers
-        features:
-          - features/gateway/ratelimit-policies/ratelimit_headers.feature
-      - name: ratelimit-cost-extraction
-        features:
-          - features/gateway/ratelimit-policies/ratelimit_cost_extraction.feature
-      - name: ratelimit-key-extraction
-        features:
-          - features/gateway/ratelimit-policies/ratelimit_key_extraction.feature
-      - name: ratelimit-multi-quota
-        features:
-          - features/gateway/ratelimit-policies/ratelimit_multi_quota.feature
-      - name: token-based-ratelimit
-        features:
-          - features/ai-workspace-gateway/ratelimit-policies/token_based_ratelimit.feature
-      - name: token-based-ratelimit-provider-templates
-        tags: "gateway-version>=1.2.0"
-        features:
-          - features/ai-workspace-gateway/ratelimit-policies/token_based_ratelimit_provider_templates.feature
-      - name: llm-cost-based-ratelimit
-        # Excludes scenarios whose exact post-charge assertion is blocked by the
-        # gateway rejecting the non-billable readiness probe after exhaustion.
-        tags: "~@known-issue"
-        features:
-          - features/ai-workspace-gateway/ratelimit-policies/llm_cost_based_ratelimit.feature
       - name: llm-cost-calculation-providers
         tags: "gateway-version>=1.2.0"
         features:
@@ -642,9 +627,6 @@ blocks:
       - name: prompt-decorator
         features:
           - features/ai-workspace-gateway/llm-policies/prompt_decorator.feature
-      - name: prompt-compressor
-        features:
-          - features/ai-workspace-gateway/llm-policies/prompt_compressor.feature
       - name: aws-bedrock-guardrail
         tags: "gateway-version>1.2.0"
         features:
@@ -683,10 +665,6 @@ blocks:
         tags: "gateway-version>1.2.0"
         features:
           - features/graphql_api_keys.feature
-      - name: oauth2-auth
-        tags: "gateway-version>1.2.0"
-        features:
-          - features/gateway/security-policies/oauth2_auth.feature
       - name: policy-engine-admin
         features:
           - features/gateway/core/policy_engine_admin.feature
@@ -786,6 +764,10 @@ blocks:
         tags: "gateway-version>1.2.0"
         features:
           - features/gateway/core/request_id_response_disabled.feature
+      - name: jwks-disabled
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/security/jwks_disabled.feature
 
   - name: vhost-routing-single
     parallel: 1
@@ -851,9 +833,6 @@ blocks:
       - name: semantic-prompt-guard
         features:
           - features/gateway/guardrails-policies/semantic_prompt_guard.feature
-      - name: semantic-tool-filtering
-        features:
-          - features/ai-workspace-gateway/llm-policies/semantic_tool_filtering.feature
 
   # Also hosts the gateway-native Agent (A2A) runners: they need the mock-jwks keymanager this
   # block's overlay configures and an A2A agent upstream, and the Agent kind exists only after
@@ -888,49 +867,14 @@ blocks:
         tags: "gateway-version>1.2.0"
         features:
           - features/ai-workspace-gateway/agent/agent_streaming.feature
-      # One runner per MCP policy, each file holding that policy's behaviour in both protocol
-      # eras. They are gated later than 1.2.0 because their 2026-07-28 scenarios need the
-      # operation resolver, which no released 1.2.0 carries - so this block's MCP policy
-      # coverage is source-build only, while mcp_policies.feature still runs on the release leg.
       - name: mcp-policies
         tags: "gateway-version>=1.2.0"
         features:
           - features/ai-workspace-gateway/mcp-policies/mcp_policies.feature
-      - name: mcp-auth-policy
-        tags: "gateway-version>1.2.0"
-        features:
-          - features/ai-workspace-gateway/mcp-policies/mcp_auth.feature
-      - name: mcp-authz-policy
-        tags: "gateway-version>1.2.0"
-        features:
-          - features/ai-workspace-gateway/mcp-policies/mcp_authz.feature
-      - name: mcp-ratelimit-policy
-        tags: "gateway-version>1.2.0"
-        features:
-          - features/ai-workspace-gateway/mcp-policies/mcp_ratelimit.feature
-      - name: mcp-acl-list-policy
-        tags: "gateway-version>1.2.0"
-        features:
-          - features/ai-workspace-gateway/mcp-policies/mcp_acl_list.feature
-      - name: mcp-rewrite-policy
-        tags: "gateway-version>1.2.0"
-        features:
-          - features/ai-workspace-gateway/mcp-policies/mcp_rewrite.feature
-      - name: mcp-spec-validation-policy
-        tags: "gateway-version>1.2.0"
-        features:
-          - features/ai-workspace-gateway/mcp-policies/mcp_spec_validation.feature
       - name: mcp-gateway-url-precedence
         tags: "gateway-version>1.2.0"
         features:
           - features/ai-workspace-gateway/mcp-policies/mcp_gateway_url_precedence.feature
-      - name: jwt-auth
-        features:
-          - features/gateway/security-policies/jwt_auth.feature
-      - name: jwt-auth-scope-claim-rules
-        tags: "gateway-version>=1.2.0"
-        features:
-          - features/gateway/security-policies/jwt_auth_scope_claim_rules.feature
       - name: graphql-policies
         tags: "gateway-version>1.2.0"
         features:
@@ -985,6 +929,10 @@ blocks:
       - name: subscription-analytics
         features:
           - features/gateway/observability/subscription_analytics.feature
+      - name: subscription-analytics-billing-customer
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/observability/subscription_analytics_billing_customer.feature
       - name: mcp-analytics
         tags: "gateway-version>1.2.0"
         features:
@@ -1052,10 +1000,51 @@ blocks:
       - name: platform-api-deployment
         features:
           - features/management-portal/deployments/api_deployment.feature
+      - name: platform-api-build-deployment
+        features:
+          - features/management-portal/builds/build_deployment.feature
+      - name: platform-api-resource-search
+        features:
+          - features/management-portal/resources/resource_search.feature
+      - name: platform-api-artifact-management
+        features:
+          - features/management-portal/resources/artifact_management.feature
+      - name: platform-api-gateway-management
+        features:
+          - features/management-portal/resources/gateway_management.feature
+      - name: platform-api-subscription-management
+        features:
+          - features/management-portal/resources/subscription_management.feature
+      - name: platform-api-paid-subscription-access
+        features:
+          - features/management-portal/monetization/paid_subscription_access.feature
+        tags: "~@known-issue"
+      - name: platform-api-paid-subscription-suspension
+        features:
+          - features/management-portal/monetization/paid_subscription_suspension.feature
+        tags: "gateway-version>1.2.0;~@known-issue"
+      - name: platform-api-monetization-meters
+        features:
+          - features/management-portal/monetization/meters.feature
+      - name: platform-api-monetization-priced-plans
+        features:
+          - features/management-portal/monetization/priced_plans.feature
+      - name: platform-api-monetization-portal-events
+        features:
+          - features/management-portal/monetization/portal_events.feature
+      - name: platform-api-publication-drafts
+        features:
+          - features/management-portal/resources/publication_drafts.feature
+      - name: platform-api-builds
+        features:
+          - features/management-portal/builds/build_lifecycle.feature
       - name: platform-api-secured-invocation
         features:
           - features/management-portal/subscriptions/secured_api_invocation.feature
         tags: "~@known-issue"
+      - name: platform-api-mcp-server
+        features:
+          - features/management-portal/resources/mcp_server.feature
       - name: agent-proxy-management
         features:
           - features/ai-workspace-gateway/agent/agent_proxy_management.feature
@@ -1100,10 +1089,51 @@ blocks:
       - name: platform-api-deployment
         features:
           - features/management-portal/deployments/api_deployment.feature
+      - name: platform-api-build-deployment
+        features:
+          - features/management-portal/builds/build_deployment.feature
+      - name: platform-api-resource-search
+        features:
+          - features/management-portal/resources/resource_search.feature
+      - name: platform-api-artifact-management
+        features:
+          - features/management-portal/resources/artifact_management.feature
+      - name: platform-api-gateway-management
+        features:
+          - features/management-portal/resources/gateway_management.feature
+      - name: platform-api-subscription-management
+        features:
+          - features/management-portal/resources/subscription_management.feature
+      - name: platform-api-paid-subscription-access
+        features:
+          - features/management-portal/monetization/paid_subscription_access.feature
+        tags: "~@known-issue"
+      - name: platform-api-paid-subscription-suspension
+        features:
+          - features/management-portal/monetization/paid_subscription_suspension.feature
+        tags: "gateway-version>1.2.0;~@known-issue"
+      - name: platform-api-monetization-meters
+        features:
+          - features/management-portal/monetization/meters.feature
+      - name: platform-api-monetization-priced-plans
+        features:
+          - features/management-portal/monetization/priced_plans.feature
+      - name: platform-api-monetization-portal-events
+        features:
+          - features/management-portal/monetization/portal_events.feature
+      - name: platform-api-publication-drafts
+        features:
+          - features/management-portal/resources/publication_drafts.feature
+      - name: platform-api-builds
+        features:
+          - features/management-portal/builds/build_lifecycle.feature
       - name: platform-api-secured-invocation
         features:
           - features/management-portal/subscriptions/secured_api_invocation.feature
         tags: "~@known-issue"
+      - name: platform-api-mcp-server
+        features:
+          - features/management-portal/resources/mcp_server.feature
       - name: agent-proxy-management
         features:
           - features/ai-workspace-gateway/agent/agent_proxy_management.feature
@@ -1148,10 +1178,51 @@ blocks:
       - name: platform-api-deployment
         features:
           - features/management-portal/deployments/api_deployment.feature
+      - name: platform-api-build-deployment
+        features:
+          - features/management-portal/builds/build_deployment.feature
+      - name: platform-api-resource-search
+        features:
+          - features/management-portal/resources/resource_search.feature
+      - name: platform-api-artifact-management
+        features:
+          - features/management-portal/resources/artifact_management.feature
+      - name: platform-api-gateway-management
+        features:
+          - features/management-portal/resources/gateway_management.feature
+      - name: platform-api-subscription-management
+        features:
+          - features/management-portal/resources/subscription_management.feature
+      - name: platform-api-paid-subscription-access
+        features:
+          - features/management-portal/monetization/paid_subscription_access.feature
+        tags: "~@known-issue"
+      - name: platform-api-paid-subscription-suspension
+        features:
+          - features/management-portal/monetization/paid_subscription_suspension.feature
+        tags: "gateway-version>1.2.0;~@known-issue"
+      - name: platform-api-monetization-meters
+        features:
+          - features/management-portal/monetization/meters.feature
+      - name: platform-api-monetization-priced-plans
+        features:
+          - features/management-portal/monetization/priced_plans.feature
+      - name: platform-api-monetization-portal-events
+        features:
+          - features/management-portal/monetization/portal_events.feature
+      - name: platform-api-publication-drafts
+        features:
+          - features/management-portal/resources/publication_drafts.feature
+      - name: platform-api-builds
+        features:
+          - features/management-portal/builds/build_lifecycle.feature
       - name: platform-api-secured-invocation
         features:
           - features/management-portal/subscriptions/secured_api_invocation.feature
         tags: "~@known-issue"
+      - name: platform-api-mcp-server
+        features:
+          - features/management-portal/resources/mcp_server.feature
       - name: agent-proxy-management
         features:
           - features/ai-workspace-gateway/agent/agent_proxy_management.feature
@@ -1242,6 +1313,56 @@ blocks:
       - name: devportal-webhook
         features:
           - features/apiportal/webhooks/devportal_webhook.feature
+      - name: devportal-monetization-webhook
+        features:
+          - features/apiportal/webhooks/monetization_webhook.feature
+
+  # Platform-api working with an API Portal and a gateway: publishing a REST API to the portal.
+  # Platform-api registers the portal over HTTPS and trusts its certificate, so the block overlays
+  # the portal's own certificate onto platform-api's outbound trust and gives the portal the hash
+  # of the key platform-api publishes with. The portal stages its product role file, which grants
+  # the platform-api-system role the publishing calls are authorized as; the shared IT role files
+  # do not. The outage runner stops the portal, so runners must not overlap: keep parallel at 1.
+  - name: platform-api-gateway-api-portal
+    parallel: 1
+    components:
+      - name: platform-api
+        overlay: tests/framework/core/catalog/overlays/platform-api-portal-publishing.toml
+        db: postgres
+      - name: api-portal
+        dependsOn: [platform-api]
+        db: postgres
+        overlay: tests/framework/core/catalog/overlays/api-portal-publishing.toml
+        stagedFiles:
+          role-to-scope-mapping.yaml: portals/api-portal/resources/role-to-scope-mapping.yaml
+      - name: platform-gateway
+        dependsOn: [platform-api]
+        db: postgres
+      - name: testbench
+    runners:
+      - name: publication-lifecycle
+        features:
+          - features/apiportal/publishing/publication_lifecycle.feature
+      - name: publication-monetization
+        features:
+          - features/apiportal/publishing/publication_monetization.feature
+      - name: publication-failures
+        features:
+          - features/apiportal/publishing/publication_failures.feature
+      - name: publication-content
+        # Excludes the scenarios for content that stays on the portal after it is unselected.
+        features:
+          - features/apiportal/publishing/publication_content.feature
+        tags: "~@known-issue"
+      - name: publication-outage
+        features:
+          - features/apiportal/publishing/publication_outage.feature
+      # Bills through the testbench's Stripe and Moesif services, which hold one account per block.
+      - name: api-portal-billing
+        features:
+          - features/apiportal/monetization/billing_setup.feature
+          - features/apiportal/monetization/paid_checkout.feature
+          - features/apiportal/monetization/usage_billing.feature
 
   # Policy error compatibility: every migrated policy's main rejection, held to the error
   # response the policy returned before the change. The policies come from the adjacent

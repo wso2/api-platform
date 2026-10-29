@@ -21,12 +21,14 @@
  * Tag: Webhook Subscribers
  */
 const webhookSubscriberService = require('../../../services/webhookSubscriberService');
+const { compose } = require('./compose');
+const { requireCsrfForMutatingApi } = require('../../../middlewares/csrfProtection');
 
 module.exports = {
-    createWebhookSubscriber: webhookSubscriberService.createWebhookSubscriber,
+    createWebhookSubscriber: compose(requireCsrfForMutatingApi, webhookSubscriberService.createWebhookSubscriber),
     getWebhookSubscribers: webhookSubscriberService.getWebhookSubscribers,
     getWebhookSubscriber: webhookSubscriberService.getWebhookSubscriber,
-    updateWebhookSubscriber: webhookSubscriberService.updateWebhookSubscriber,
+    updateWebhookSubscriber: compose(requireCsrfForMutatingApi, webhookSubscriberService.updateWebhookSubscriber),
     getWebhookSubscriberDeliveries: webhookSubscriberService.getWebhookSubscriberDeliveries,
-    deleteWebhookSubscriber: webhookSubscriberService.deleteWebhookSubscriber,
+    deleteWebhookSubscriber: compose(requireCsrfForMutatingApi, webhookSubscriberService.deleteWebhookSubscriber),
 };

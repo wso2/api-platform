@@ -63,10 +63,16 @@ export async function createProxy(
  * @param baseUrl - The APIM base URL
  * @returns Promise with the list of proxies
  */
-export async function getProxies(organizationId: string, projectId: string, baseUrl: string): Promise<ProxiesResponse> {
+export async function getProxies(
+  organizationId: string,
+  projectId: string,
+  baseUrl: string,
+  limit: number = 20,
+  offset: number = 0
+): Promise<ProxiesResponse> {
   try {
     const response = await get<ProxiesResponse>(
-      `/llm-proxies?projectId=${encodeURIComponent(projectId)}`,
+      `/llm-proxies?projectId=${encodeURIComponent(projectId)}&limit=${limit}&offset=${offset}`,
       undefined,
       baseUrl
     );

@@ -188,8 +188,8 @@ func gatewayListenerTLSConfig(pem []byte) (*tls.Config, error) {
 func (s *Suite) Register(sc *godog.ScenarioContext) {
 	s.registerBaseSteps(sc)
 	platformgateway.Register(sc, s.Base, s.topo, s.funnel)
-	platformapi.Register(sc, s.topo, s.funnel, s.featureRoot)
-	apiportal.Register(sc, s.topo, s.funnel.Client())
+	trackPortalPlan := apiportal.Register(sc, s.topo, s.funnel.Client())
+	platformapi.Register(sc, s.topo, s.funnel, s.featureRoot, trackPortalPlan)
 	aiworkspacecli.Register(sc, s.topo, s.funnel, s.featureRoot)
 	apcli.Register(sc, s.topo, s.featureRoot)
 }

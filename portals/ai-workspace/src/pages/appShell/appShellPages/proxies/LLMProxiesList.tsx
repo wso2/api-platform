@@ -44,6 +44,7 @@ import {
   TableCell,
   TableContainer,
   TableHead,
+  TablePagination,
   TableRow,
   TextField,
   Tooltip,
@@ -84,6 +85,14 @@ function getErrorDescription(error: unknown, fallbackMessage: string): string {
   return getErrorMessage(error, fallbackMessage);
 }
 
+// -1 is MUI's convention for an "All" rows-per-page option.
+const ALL_ROWS = -1;
+const ROWS_PER_PAGE_OPTIONS = [
+  20,
+  50,
+  { label: 'All', value: ALL_ROWS },
+];
+
 type LLMProxyListLocationState = {
   proxyDeleted?: boolean;
 } | null;
@@ -115,6 +124,8 @@ export default function LLMProxiesList() {
     ? buildProjectPath(currentOrganization, currentProject, '/proxies/create')
     : buildOrgPath(currentOrganization, '/proxies/create');
   const [searchQuery, setSearchQuery] = useState('');
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(20);
   const [selectedProjectId, setSelectedProjectId] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<{
     id: string;
@@ -190,6 +201,31 @@ export default function LLMProxiesList() {
       return haystack.includes(query);
     });
   }, [proxies, searchQuery]);
+
+  useEffect(() => {
+    setPage(0);
+  }, [searchQuery, rowsPerPage]);
+
+  // A search/rowsPerPage change is handled above, but the list can also
+  // shrink out from under the current page from other causes — a delete, a
+  // refresh, or switching projects — which must clamp `page` back into range
+  // too, or the table renders an empty slice while results still exist.
+  useEffect(() => {
+    if (rowsPerPage === ALL_ROWS) return;
+    const maxPage = Math.max(
+      0,
+      Math.ceil(filteredProxies.length / rowsPerPage) - 1
+    );
+    if (page > maxPage) setPage(maxPage);
+  }, [filteredProxies.length, rowsPerPage, page]);
+
+  const pagedProxies = useMemo(() => {
+    if (rowsPerPage === ALL_ROWS) return filteredProxies;
+    return filteredProxies.slice(
+      page * rowsPerPage,
+      page * rowsPerPage + rowsPerPage
+    );
+  }, [filteredProxies, page, rowsPerPage]);
 
   const handleDeleteConfirm = async () => {
     if (!deleteTarget) return;
@@ -470,7 +506,7 @@ export default function LLMProxiesList() {
                           </TableCell>
                         </TableRow>
                       ) : (
-                        filteredProxies.map((proxy) => (
+                        pagedProxies.map((proxy) => (
                           <TableRow
                             key={proxy.id}
                             hover
@@ -560,6 +596,20 @@ export default function LLMProxiesList() {
                     </TableBody>
                   </Table>
                 </TableContainer>
+
+                {filteredProxies.length >= 20 && (
+                  <TablePagination
+                    component="div"
+                    count={filteredProxies.length}
+                    page={page}
+                    onPageChange={(_event, nextPage) => setPage(nextPage)}
+                    rowsPerPage={rowsPerPage}
+                    onRowsPerPageChange={(event) =>
+                      setRowsPerPage(parseInt(event.target.value, 10))
+                    }
+                    rowsPerPageOptions={ROWS_PER_PAGE_OPTIONS}
+                  />
+                )}
               </Card>
             </Grid>
           </>

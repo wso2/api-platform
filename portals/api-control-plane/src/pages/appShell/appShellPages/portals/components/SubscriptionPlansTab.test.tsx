@@ -20,7 +20,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ApiScopeProvider } from '@/api/core/ApiScopeProvider';
 import { resetHttpClient } from '@/api/core/http';
-import { aSubscriptionPlan, collection, failure, recorder, type SubscriptionPlanFixture } from '@/test/msw';
+import {
+  aMeter,
+  aPlanPricing,
+  aSubscriptionPlan,
+  collection,
+  failure,
+  recorder,
+  resource,
+  type SubscriptionPlanFixture,
+} from '@/test/msw';
 import { makeConsoleScope } from '@/test/mockScope';
 import { server } from '@/test/server';
 import { renderWithProviders, screen } from '@/test/utils';
@@ -125,6 +134,36 @@ describe('SubscriptionPlansTab', () => {
 
     await screen.findByText('Legacy');
     expect(cardOrder(['Legacy', 'Bronze'])).toEqual(['Legacy', 'Bronze']);
+  });
+
+  it("shows a paid plan's pricing on its card, and none on a free plan's", async () => {
+    const starter = aSubscriptionPlan({
+      displayName: 'Starter',
+      id: 'starter',
+      pricing: aPlanPricing({
+        subscriptionPlanId: 'starter',
+        pricingType: 'FLAT_RATE',
+        flatAmount: '29.00',
+        prices: [],
+      }),
+    });
+    const payAsYouGo = aSubscriptionPlan({
+      displayName: 'Pay as you go',
+      id: 'pay-as-you-go',
+      pricing: aPlanPricing({ subscriptionPlanId: 'pay-as-you-go' }),
+    });
+    // A per-unit price counts what its meter counts, so the meter is read for its unit.
+    server.use(
+      collection(PLANS_PATH, [bronze, starter, payAsYouGo]),
+      resource('/meters/successful-calls', aMeter()),
+    );
+
+    renderTab();
+
+    expect(await screen.findByText('$0.01 per request, billed monthly')).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: /Starter/ })).toHaveTextContent('$29.00 / month');
+    expect(screen.getByRole('checkbox', { name: /Bronze/ })).not.toHaveTextContent('$');
+    expect(screen.queryByText('Free')).not.toBeInTheDocument();
   });
 
   it('loads every page of plans, not just the first 20', async () => {
@@ -242,12 +281,17 @@ describe('SubscriptionPlansTab', () => {
     server.use(collection(PLANS_PATH, plans));
     const onChange = vi.fn();
 
-    renderTab({ onChange, readOnly: true, values: values({ subscriptionPlanIds: ['bronze', 'legacy'] }) });
+    const { user } = renderTab({
+      onChange,
+      readOnly: true,
+      values: values({ subscriptionPlanIds: ['bronze', 'legacy'] }),
+    });
 
     await screen.findByText('Bronze');
     expect(screen.queryByRole('checkbox', { name: /Gold/ })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /select all|clear all/i })).not.toBeInTheDocument();
     expect(summaryText('2 plans published')).toBeInTheDocument();
+    expect(screen.queryByText(/deleted plan.* selected/)).not.toBeInTheDocument();
     expect(screen.getByText('Inactive')).toBeInTheDocument();
 
     for (const name of [/Bronze/, /Legacy/]) {
@@ -255,11 +299,9 @@ describe('SubscriptionPlansTab', () => {
       expect(card).toHaveAttribute('aria-checked', 'true');
       expect(card).toHaveAttribute('aria-disabled', 'true');
       expect(card).toHaveAttribute('tabindex', '-1');
-      // `pointerEvents: none` (asserted directly, since a real click can't even
-      // reach an element in this state) is what makes the card inert — no click
-      // handler is wired at all when `readOnly`.
-      expect(card).toHaveStyle({ pointerEvents: 'none' });
+      await user.click(card);
     }
+    expect(onChange).not.toHaveBeenCalled();
   });
 
   it('read-only: an inactive plan the listing holds is shown even when every plan is inactive, and an unpublished selection says so', async () => {
@@ -276,5 +318,149 @@ describe('SubscriptionPlansTab', () => {
       </ApiScopeProvider>,
     );
     expect(await screen.findByText('This listing has no subscription plans.')).toBeInTheDocument();
+  });
+
+  it('shows a deleted plan as a Deleted card with its stored name and no limit, which can be cleared', async () => {
+    server.use(collection(PLANS_PATH, [bronze, gold]));
+    const onClearDeleted = vi.fn();
+
+    const { user } = renderTab({
+      deletedPlans: [{ id: 'old', displayName: 'Platinum' }],
+      onClearDeleted,
+      values: values({ subscriptionPlanIds: ['bronze'] }),
+    });
+
+    const card = await screen.findByRole('checkbox', { name: /Platinum/ });
+    expect(card).toHaveAttribute('aria-checked', 'true');
+    expect(card).toHaveTextContent('Deleted');
+    expect(card).toHaveTextContent('Deleted after saving.');
+    await user.click(card);
+    expect(onClearDeleted).toHaveBeenCalledWith('old');
+    expect(card).not.toHaveTextContent('Unlimited');
+    expect(cardOrder(['Platinum', 'Bronze', 'Gold'])[0]).toBe('Platinum');
+    expect(summaryText('1 of 2 plans selected')).toBeInTheDocument();
+    expect(screen.getByText('1 deleted plan selected')).toBeInTheDocument();
+  });
+
+  it('read-only: counts a deleted plan among the published plans', async () => {
+    server.use(collection(PLANS_PATH, [bronze, gold]));
+
+    renderTab({
+      deletedPlans: [{ id: 'old', displayName: 'Platinum' }],
+      readOnly: true,
+      values: values({ subscriptionPlanIds: ['bronze'] }),
+    });
+
+    const card = await screen.findByRole('checkbox', { name: /Platinum/ });
+    expect(card).toHaveTextContent('Deleted after publishing.');
+    expect(summaryText('2 plans published')).toBeInTheDocument();
+  });
+
+  it('read-only: a listing holding only a deleted plan is not shown as empty', async () => {
+    server.use(collection(PLANS_PATH, [bronze]));
+
+    renderTab({ deletedPlans: [{ id: 'old', displayName: 'Platinum' }], readOnly: true, values: values() });
+
+    expect(await screen.findByRole('checkbox', { name: /Platinum/ })).toBeInTheDocument();
+    expect(screen.queryByText('This listing has no subscription plans.')).not.toBeInTheDocument();
+  });
+
+  it('tags a plan edited since it was published in the published view only; the draft shows the live plan', async () => {
+    server.use(collection(PLANS_PATH, [bronze, gold]));
+
+    const { rerender } = renderTab({ editedPlanIds: ['bronze'], values: values({ subscriptionPlanIds: ['bronze', 'gold'] }) });
+
+    const draftCard = await screen.findByRole('checkbox', { name: /Bronze/ });
+    expect(draftCard).not.toHaveTextContent('Edited');
+    expect(draftCard).toHaveTextContent('1,000');
+
+    rerender(
+      <ApiScopeProvider orgId={ORG}>
+        <SubscriptionPlansTab editedPlanIds={['bronze']} readOnly values={values({ subscriptionPlanIds: ['bronze', 'gold'] })} />
+      </ApiScopeProvider>,
+    );
+    const published = await screen.findByRole('checkbox', { name: /Bronze/ });
+    expect(published).toHaveTextContent('Edited');
+    expect(published).toHaveTextContent('Edited after publishing.');
+    expect(published).not.toHaveTextContent('1,000');
+    expect(screen.getByRole('checkbox', { name: /Gold/ })).not.toHaveTextContent('Edited');
+    expect(screen.getByRole('checkbox', { name: /Gold/ })).toHaveTextContent('Unlimited');
+  });
+
+  it('draft: shows one chip per card, Deleted or Inactive, and never Edited', async () => {
+    server.use(collection(PLANS_PATH, [bronze, legacy]));
+
+    renderTab({
+      deletedPlans: [{ id: 'old', displayName: 'Platinum' }],
+      editedPlanIds: ['legacy', 'bronze'],
+      values: values({ subscriptionPlanIds: ['bronze', 'legacy'] }),
+    });
+
+    const inactiveEdited = await screen.findByRole('checkbox', { name: /Legacy/ });
+    expect(inactiveEdited).toHaveTextContent('Inactive');
+    expect(inactiveEdited).not.toHaveTextContent('Edited');
+    expect(screen.getByRole('checkbox', { name: /Bronze/ })).not.toHaveTextContent('Edited');
+    expect(screen.getByRole('checkbox', { name: /Platinum/ })).toHaveTextContent('Deleted');
+  });
+
+  it('explains Deleted and Inactive in a tooltip on hover in the draft, and Deleted, Inactive and Edited in the published view', async () => {
+    server.use(collection(PLANS_PATH, [bronze, legacy]));
+
+    const { user, rerender } = renderTab({
+      deletedPlans: [{ id: 'old', displayName: 'Platinum' }],
+      editedPlanIds: ['bronze', 'legacy'],
+      values: values({ subscriptionPlanIds: ['bronze', 'legacy'] }),
+    });
+
+    await user.hover(await screen.findByRole('checkbox', { name: /Platinum/ }));
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('This plan was deleted. Clear it to save or publish.');
+    await user.unhover(screen.getByRole('checkbox', { name: /Platinum/ }));
+
+    await user.hover(screen.getByRole('checkbox', { name: /Legacy/ }));
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('Plan is inactive. Clear it to save or publish.');
+    await user.unhover(screen.getByRole('checkbox', { name: /Legacy/ }));
+
+    rerender(
+      <ApiScopeProvider orgId={ORG}>
+        <SubscriptionPlansTab
+          deletedPlans={[{ id: 'old', displayName: 'Platinum' }]}
+          editedPlanIds={['bronze']}
+          readOnly
+          values={values({ subscriptionPlanIds: ['bronze', 'legacy'] })}
+        />
+      </ApiScopeProvider>,
+    );
+    await user.hover(await screen.findByRole('checkbox', { name: /Platinum/ }));
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('This plan was deleted. Clear it in draft, then republish.');
+    await user.unhover(screen.getByRole('checkbox', { name: /Platinum/ }));
+
+    await user.hover(screen.getByRole('checkbox', { name: /Bronze/ }));
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('Plan was edited after publishing. Republish to apply changes.');
+    await user.unhover(screen.getByRole('checkbox', { name: /Bronze/ }));
+
+    await user.hover(screen.getByRole('checkbox', { name: /Legacy/ }));
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('Plan is inactive. Clear it in draft, then republish.');
+  });
+
+  it('read-only: shows one chip per card by the same priority as the draft', async () => {
+    server.use(collection(PLANS_PATH, [bronze, legacy]));
+
+    renderTab({
+      deletedPlans: [{ id: 'old', displayName: 'Platinum' }],
+      editedPlanIds: ['legacy', 'bronze'],
+      readOnly: true,
+      values: values({ subscriptionPlanIds: ['bronze', 'legacy'] }),
+    });
+
+    const inactiveEdited = await screen.findByRole('checkbox', { name: /Legacy/ });
+    expect(inactiveEdited).toHaveTextContent('Inactive');
+    expect(inactiveEdited.querySelectorAll('.MuiChip-root')).toHaveLength(1);
+    // The notice follows the chip: Inactive has none, so the card shows the limit rather than the edited notice.
+    expect(inactiveEdited).not.toHaveTextContent('Edited after publishing');
+    expect(inactiveEdited).toHaveTextContent('Unlimited');
+    expect(screen.getByRole('checkbox', { name: /Bronze/ }).querySelectorAll('.MuiChip-root')).toHaveLength(1);
+    expect(screen.getByRole('checkbox', { name: /Bronze/ })).toHaveTextContent('Edited');
+    expect(screen.getByRole('checkbox', { name: /Platinum/ }).querySelectorAll('.MuiChip-root')).toHaveLength(1);
+    expect(screen.getByRole('checkbox', { name: /Platinum/ })).toHaveTextContent('Deleted');
   });
 });

@@ -571,6 +571,40 @@ func (r *APIRepo) CheckAPIExistsByNameAndVersionInOrganization(name, version, or
 	return count > 0, nil
 }
 
+// GetAPIVersionsByDisplayName returns every REST API sharing the given display name in an
+// organization, ordered by version.
+func (r *APIRepo) GetAPIVersionsByDisplayName(orgUUID, displayName string) ([]*model.API, error) {
+	query := `
+		SELECT uuid, handle, display_name, description, version, created_by, updated_by,
+			project_uuid, organization_uuid, lifecycle_status, configuration, origin, data_version, created_at, updated_at
+		FROM rest_apis
+		WHERE organization_uuid = ? AND display_name = ?`
+	args := []interface{}{orgUUID, displayName}
+
+	// Fixed sort columns - no caller input reaches the identifier position.
+	query += " ORDER BY version ASC, handle ASC"
+
+	rows, err := r.db.Query(r.db.Rebind(query), args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var apis []*model.API
+	for rows.Next() {
+		apiModel, err := r.scanAPI(rows)
+		if err != nil {
+			return nil, err
+		}
+		apis = append(apis, apiModel)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return apis, nil
+}
+
 // CreateAPIAssociation creates a gateway-API association in artifact_gateway_mappings.
 // Delegates to the kind-agnostic createArtifactGatewayAssociation helper — see that
 // function's doc comment (this method exists only to satisfy APIRepository).

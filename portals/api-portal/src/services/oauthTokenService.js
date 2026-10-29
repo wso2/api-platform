@@ -73,9 +73,13 @@ async function generateToken(tokenEndpoint, clientId, clientSecret, scopes, vali
         // consumer secret) as-is so the caller sees a 4xx, not a masked 500.
         // Upstream 5xx, timeouts, and connection failures aren't the caller's
         // fault, so they surface as a 500.
+        // The reply names no host or client error text, which can reveal internal addresses; the log
+        // above has the details.
         const upstreamStatus = error.response?.status;
-        const statusCode = upstreamStatus >= 400 && upstreamStatus < 500 ? upstreamStatus : 500;
-        throw new CustomError(statusCode, `Token generation failed: ${error.message}`);
+        const clientError = upstreamStatus >= 400 && upstreamStatus < 500;
+        throw new CustomError(clientError ? upstreamStatus : 500, clientError
+            ? `Token generation failed: the key manager refused the request (${upstreamStatus}).`
+            : 'Token generation failed: the key manager could not be reached.');
     }
 }
 

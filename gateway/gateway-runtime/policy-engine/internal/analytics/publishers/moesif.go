@@ -490,6 +490,16 @@ func (m *Moesif) Publish(event *dto.Event) {
 		AiContext: aiContext,
 		A2a:       a2aBlock,
 	}
+
+	// Set company ID to the billing customer of a paid subscription, and remove the
+	// anonymous user so that Moesif does not link it to that company
+	if event.Subscription != nil && event.Subscription.BillingCustomerID != "" {
+		companyID := event.Subscription.BillingCustomerID
+		eventModel.CompanyId = &companyID
+		if userID == anonymous {
+			eventModel.UserId = nil
+		}
+	}
 	m.events = append(m.events, eventModel)
 	slog.Debug("Event added to the queue", "queueSize", len(m.events))
 }

@@ -36,6 +36,11 @@ export type SubscriptionPlanListResponse = ResponseOf<'ListSubscriptionPlans'>;
 export type ListSubscriptionPlansQuery = QueryOf<'ListSubscriptionPlans'>;
 export type CreateSubscriptionPlanBody = BodyOf<'CreateSubscriptionPlan'>;
 export type UpdateSubscriptionPlanBody = BodyOf<'UpdateSubscriptionPlan'>;
+export type SubscriptionPlanPricing = Schema<'SubscriptionPlanPricing'>;
+export type SubscriptionPlanPricingBody = Schema<'SubscriptionPlanPricingRequest'>;
+export type PriceTier = Schema<'PriceTier'>;
+export type SubscriptionPlanPrice = Schema<'SubscriptionPlanPrice'>;
+export type PriceFilter = Schema<'PriceFilter'>;
 
 const BASE = '/subscription-plans';
 
@@ -62,6 +67,7 @@ export const getSubscriptionPlan = async (
   });
 };
 
+/** Creates a plan; a paid plan is created with its `pricing`, which can't be updated afterwards. */
 export const createSubscriptionPlan = async (
   body: CreateSubscriptionPlanBody,
   options?: RequestOptions
@@ -72,6 +78,12 @@ export const createSubscriptionPlan = async (
   });
 };
 
+/**
+ * Updates a plan's name, limits, status or expiry. The name and request limit
+ * can't change while anything offers or uses the plan (409
+ * `SUBSCRIPTION_PLAN_IN_USE`), and a body with `pricing` is refused (409
+ * `SUBSCRIPTION_PLAN_PRICING_LOCKED`). The change is not sent to API Portals.
+ */
 export const updateSubscriptionPlan = async (
   subscriptionPlanId: string,
   body: UpdateSubscriptionPlanBody,
@@ -84,8 +96,9 @@ export const updateSubscriptionPlan = async (
 };
 
 /**
- * Deletes a plan. The backend refuses while subscriptions still reference it,
- * answering with a specific `code` that reaches the caller as `ApiError.code`.
+ * Deletes a plan, only while nothing offers or uses it: otherwise 409
+ * `SUBSCRIPTION_PLAN_IN_USE`, with a message that counts what does. The delete
+ * is not sent to API Portals.
  */
 export const deleteSubscriptionPlan = async (
   subscriptionPlanId: string,
@@ -94,5 +107,21 @@ export const deleteSubscriptionPlan = async (
   await http.delete<void>(resourcePath(subscriptionPlanId), {
     ...options,
     operationName: 'DeleteSubscriptionPlan',
+  });
+};
+
+const pricingPath = (subscriptionPlanId: string): string => `${resourcePath(subscriptionPlanId)}/pricing`;
+
+/**
+ * A paid plan's pricing, set when the plan was created. A free plan has none
+ * (404).
+ */
+export const getSubscriptionPlanPricing = async (
+  subscriptionPlanId: string,
+  options?: RequestOptions
+): Promise<SubscriptionPlanPricing> => {
+  return http.get<SubscriptionPlanPricing>(pricingPath(subscriptionPlanId), {
+    ...options,
+    operationName: 'GetSubscriptionPlanPricing',
   });
 };

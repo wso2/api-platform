@@ -111,6 +111,11 @@ type Server struct {
 	// upload. Kept separate from PublicationContentMaxBytes — a thumbnail is a small
 	// icon, not a spec document, so it gets its own, tighter default (2 MiB) when <= 0.
 	PublicationThumbnailMaxBytes int64 `koanf:"publication_thumbnail_max_bytes"`
+	// PublicationArchiveMaxBytes bounds the content ZIP pushed to an API Portal on publish;
+	// a larger one is rejected before any portal call. <= 0 falls back to 10 MiB. A publish
+	// holds the loaded documents (up to 50 MiB) and two copies of the archive in memory
+	// until the push ends, so peak heap per concurrent publish is about 50 MiB plus twice this.
+	PublicationArchiveMaxBytes int64 `koanf:"publication_archive_max_bytes"`
 	// ThumbnailMaxFetchBytes bounds a single-artifact thumbnail upload.
 	ThumbnailMaxFetchBytes int64 `koanf:"thumbnail_max_fetch_bytes"`
 	// AgentCardMaxFetchBytes bounds the body read from an upstream agent's Agent Card
@@ -131,6 +136,7 @@ type Server struct {
 	APIPortalPublication APIPortalPublication `koanf:"api_portal_publication"`
 	AgentCardCache       AgentCardCache       `koanf:"agent_card_cache"`
 	ReadOnly             ReadOnly             `koanf:"read_only"` // TEMP-READ-ONLY-MODE: remove with config/readonly.go
+	MCPServer            MCPServer            `koanf:"mcp_server"`
 }
 
 // APIPortalPublication sets the time and retry limits of the calls made to an API Portal
@@ -140,6 +146,7 @@ type Server struct {
 type APIPortalPublication struct {
 	RequestTimeout        time.Duration `koanf:"request_timeout"`
 	ListingRequestTimeout time.Duration `koanf:"listing_request_timeout"`
+	ContentRequestTimeout time.Duration `koanf:"content_request_timeout"`
 	MaxRetries            int           `koanf:"max_retries"`
 	RetryBackoff          time.Duration `koanf:"retry_backoff"`
 	OverallTimeout        time.Duration `koanf:"overall_timeout"`
@@ -154,8 +161,15 @@ func (c *APIPortalPublication) RequestWorstCase() time.Duration {
 	return c.callWorstCase(c.RequestTimeout)
 }
 
+// ListingRequestWorstCase is the worst case of the listing push. With monetization the portal
+// creates the API's new paid plans before it answers, so this attempt may need to be longer.
 func (c *APIPortalPublication) ListingRequestWorstCase() time.Duration {
 	return c.callWorstCase(c.ListingRequestTimeout)
+}
+
+// ContentRequestWorstCase is the worst case of the content push, which gets a longer attempt.
+func (c *APIPortalPublication) ContentRequestWorstCase() time.Duration {
+	return c.callWorstCase(c.ContentRequestTimeout)
 }
 
 // PlanListingBudget bounds the plan listing, all its pages together, to the worst case of
@@ -164,8 +178,10 @@ func (c *APIPortalPublication) PlanListingBudget() time.Duration {
 	return c.RequestWorstCase()
 }
 
+// PublishWorstCase adds up a publish's calls: plan listing, plan create, existence check,
+// listing push and content push.
 func (c *APIPortalPublication) PublishWorstCase() time.Duration {
-	return c.PlanListingBudget() + 2*c.RequestWorstCase() + c.ListingRequestWorstCase()
+	return c.PlanListingBudget() + 2*c.RequestWorstCase() + c.ListingRequestWorstCase() + c.ContentRequestWorstCase()
 }
 
 // AgentCardCache configures the in-process cache sitting in front of the
@@ -856,6 +872,10 @@ func LoadConfig(configPaths ...string) (*Server, error) {
 	if err := validateTimeoutsConfig(&cfg.Listeners.Timeouts); err != nil {
 		return nil, err
 	}
+	// Without listing_request_timeout, the listing push gets the time of any other call.
+	if cfg.APIPortalPublication.ListingRequestTimeout == 0 {
+		cfg.APIPortalPublication.ListingRequestTimeout = cfg.APIPortalPublication.RequestTimeout
+	}
 	if err := validateAPIPortalPublicationConfig(&cfg.APIPortalPublication, cfg.Listeners.Timeouts.Write); err != nil {
 		return nil, err
 	}
@@ -872,6 +892,9 @@ func LoadConfig(configPaths ...string) (*Server, error) {
 		return nil, err
 	}
 	if err := validateWebhookConfig(&cfg.Webhook); err != nil {
+		return nil, err
+	}
+	if err := validateMCPServerConfig(&cfg.MCPServer, &cfg.Auth); err != nil {
 		return nil, err
 	}
 	if err := validateEncryptionKey(cfg.Security.EncryptionKey); err != nil {
@@ -989,6 +1012,7 @@ func validateAPIPortalPublicationConfig(cfg *APIPortalPublication, writeTimeout 
 	}{
 		{"api_portal_publication.request_timeout", cfg.RequestTimeout},
 		{"api_portal_publication.listing_request_timeout", cfg.ListingRequestTimeout},
+		{"api_portal_publication.content_request_timeout", cfg.ContentRequestTimeout},
 		{"api_portal_publication.overall_timeout", cfg.OverallTimeout},
 	} {
 		if f.value <= 0 {
@@ -1005,6 +1029,12 @@ func validateAPIPortalPublicationConfig(cfg *APIPortalPublication, writeTimeout 
 		return fmt.Errorf(
 			"api_portal_publication.listing_request_timeout (%s) must not be shorter than api_portal_publication.request_timeout (%s)",
 			cfg.ListingRequestTimeout, cfg.RequestTimeout,
+		)
+	}
+	if cfg.ContentRequestTimeout < cfg.RequestTimeout {
+		return fmt.Errorf(
+			"api_portal_publication.content_request_timeout (%s) must not be shorter than api_portal_publication.request_timeout (%s)",
+			cfg.ContentRequestTimeout, cfg.RequestTimeout,
 		)
 	}
 	if worst := cfg.PublishWorstCase(); cfg.OverallTimeout < worst {

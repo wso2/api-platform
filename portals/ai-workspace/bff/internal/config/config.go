@@ -147,8 +147,11 @@ type ControlPlaneConfig struct {
 	TLSSkipVerify       bool   `koanf:"tls_skip_verify"`
 	PlatformAPIBasePath string `koanf:"platform_api_base_path"`
 	PortalAPIBasePath   string `koanf:"portal_api_base_path"`
-	// MoesifURL is an optional second hop for Moesif analytics. When set,
-	// <base>/proxy/moesif/* is proxied there instead of the primary control plane.
+	// MoesifURL is an optional second hop for Moesif analytics. When set, every
+	// prefix in server.AnalyticsHopPrefixes (<base>/proxy/cloud/*,
+	// <base>/proxy/moesif/*) is proxied there instead of the primary control
+	// plane. Those routes are named for what each consumer already calls them;
+	// this key is named for the service they all point at.
 	// Include whatever path prefix the upstream publishes under (e.g.
 	// https://host:8443/cloud for wso2cloud's platform-api, or
 	// https://apis.<env>.choreo.dev/moesif-key/0.1.0 for Choreo's moesif-key API).

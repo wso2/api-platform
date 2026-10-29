@@ -1,0 +1,13 @@
+# Gateway signing keys for blocks wired with signingKeys: true, which copies the fixed test keys
+# to these paths. The active key's kid is its RFC 7638 thumbprint; the previous key is
+# verify-only and still published.
+[signing]
+jwks_cache_max_age = "5m"
+
+[[signing.keys]]
+path = "/secrets/gateway-runtime/signing/active.pem"
+active = true
+
+[[signing.keys]]
+path = "/secrets/gateway-runtime/signing/previous.pem"
+kid = "it-gateway-previous"

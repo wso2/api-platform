@@ -35,6 +35,7 @@ describe('gateway status', () => {
       ['FAILED', 'failed'],
       ['ACTIVE', 'active'],
       ['DISCONNECTED', 'inactive'],
+      ['DELETING', 'deleting'],
     ];
     for (const [reported, want] of cases) {
       // isActive deliberately contradicts the status on two of these: the
@@ -61,5 +62,20 @@ describe('gateway status', () => {
     expect((await first([{ id: 'dev-default', isActive: true }])).status).toBe('active');
     expect((await first([{ id: 'dev-default', isActive: false }])).status).toBe('inactive');
     expect((await first([{ id: 'dev-default', status: 'SOMETHING_NEW', isActive: true }])).status).toBe('active');
+  });
+});
+
+describe('deleteGateway', () => {
+  const answering = (response: unknown): ApiFetch => (async () => response) as ApiFetch;
+
+  it('is pending while the server tears the gateway down', async () => {
+    const client = createGatewaysClient(answering({ id: 'development-edge', status: 'DELETING' }));
+    expect(await client.deleteGateway('development-edge')).toEqual({ pending: true });
+  });
+
+  it('is done when the server deletes the gateway on the spot', async () => {
+    // A 204 reaches the client as no body at all.
+    const client = createGatewaysClient(answering(undefined));
+    expect(await client.deleteGateway('development-edge')).toEqual({ pending: false });
   });
 });

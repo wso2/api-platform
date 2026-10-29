@@ -24,8 +24,10 @@ import {
   accepts,
   aSubscriptionPlan,
   collection,
+  failure,
   noContent,
   recorder,
+  resource,
   type Recorder,
   type SubscriptionPlanFixture,
 } from '@/test/msw';
@@ -56,6 +58,13 @@ const plans: SubscriptionPlanFixture[] = [
 
 let requests: Recorder;
 
+/** The usage of a plan nothing offers or uses. */
+const UNUSED = { drafts: 0, inUse: false, publications: 0, restApis: 0, subscriptions: 0 };
+
+/** The plan's own read, which carries its usage. */
+const planRead = (plan: SubscriptionPlanFixture, usage = UNUSED) =>
+  resource(`${PLANS}/${plan.id}`, { ...plan, usage });
+
 const manyPlans = (count: number): SubscriptionPlanFixture[] =>
   Array.from({ length: count }, (_, index) =>
     aSubscriptionPlan({ displayName: `Plan ${index + 1}`, id: `plan-${index + 1}` }),
@@ -81,6 +90,8 @@ function renderPage() {
 beforeEach(() => {
   requests = recorder();
   resetHttpClient();
+  // The plan dialog's Paid plan section lists the organization's meters.
+  server.use(collection('/meters', []));
 });
 
 describe('SubscriptionPlansSettingsPage', () => {
@@ -214,7 +225,7 @@ describe('SubscriptionPlansSettingsPage', () => {
   });
 
   it('opens the edit dialog only from the pencil icon, not the row itself', async () => {
-    server.use(collection(PLANS, plans, { record: requests }));
+    server.use(collection(PLANS, plans, { record: requests }), planRead(plans[0]));
     const { user } = renderPage();
 
     await screen.findByText('Bronze');
@@ -230,6 +241,7 @@ describe('SubscriptionPlansSettingsPage', () => {
   it('deletes a plan once its name is typed to confirm', async () => {
     server.use(
       collection(PLANS, plans, { record: requests }),
+      planRead(plans[0]),
       noContent('delete', `${PLANS}/bronze`, { record: requests }),
     );
     const { user } = renderPage();
@@ -240,7 +252,7 @@ describe('SubscriptionPlansSettingsPage', () => {
     const dialog = screen.getByRole('dialog');
     expect(within(dialog).getByRole('button', { name: 'Delete' })).toBeDisabled();
 
-    await user.type(within(dialog).getByRole('textbox'), 'Bronze');
+    await user.type(await within(dialog).findByRole('textbox'), 'Bronze');
     await user.click(within(dialog).getByRole('button', { name: 'Delete' }));
 
     // Not `.last()`: a successful delete also invalidates the list, and that
@@ -249,5 +261,84 @@ describe('SubscriptionPlansSettingsPage', () => {
     // The dialog closes from the mutation's own onSuccess, a tick after the
     // request itself resolves — not necessarily settled by the line above.
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  });
+
+  it.each([
+    [
+      'what still uses the plan',
+      409,
+      'SUBSCRIPTION_PLAN_IN_USE',
+      "The plan Bronze is in use and can't be deleted.",
+    ],
+    [
+      'a plan that is already gone',
+      404,
+      'SUBSCRIPTION_PLAN_NOT_FOUND',
+      'The specified subscription plan could not be found.',
+    ],
+  ])(
+    "shows the server's reason for refusing a delete: %s",
+    async (_case, status, code, message) => {
+      // The plan looked unused when the dialog opened: the server's refusal is still shown.
+      server.use(
+        collection(PLANS, plans),
+        planRead(plans[0]),
+        failure('delete', `${PLANS}/bronze`, status, code, { message, record: requests }),
+      );
+      const { user } = renderPage();
+
+      await screen.findByText('Bronze');
+      await user.click(screen.getByRole('button', { name: 'Delete Bronze' }));
+      const dialog = screen.getByRole('dialog');
+      await user.type(await within(dialog).findByRole('textbox'), 'Bronze');
+      await user.click(within(dialog).getByRole('button', { name: 'Delete' }));
+
+      expect(await screen.findByText(message)).toBeInTheDocument();
+      expect(requests.count()).toBe(1);
+      // Nothing was deleted, so the plan stays listed.
+      expect(screen.getByText('Bronze')).toBeInTheDocument();
+    },
+  );
+
+  it('says a plan is in use instead of offering to delete it', async () => {
+    server.use(
+      collection(PLANS, plans),
+      planRead(plans[0], {
+        drafts: 0,
+        inUse: true,
+        publications: 1,
+        restApis: 240,
+        subscriptions: 2,
+      }),
+      noContent('delete', `${PLANS}/bronze`, { record: requests }),
+    );
+    const { user } = renderPage();
+
+    await screen.findByText('Bronze');
+    await user.click(screen.getByRole('button', { name: 'Delete Bronze' }));
+    const dialog = screen.getByRole('dialog');
+
+    expect(
+      await within(dialog).findByText('"Bronze" is in use and can\'t be deleted.'),
+    ).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'Delete' })).toBeDisabled();
+    expect(within(dialog).queryByRole('textbox')).not.toBeInTheDocument();
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(requests.count()).toBe(0);
+  });
+
+  it("shows the server's reason for refusing a status change", async () => {
+    const message = 'The specified subscription plan could not be found.';
+    server.use(
+      collection(PLANS, plans),
+      failure('put', `${PLANS}/bronze`, 404, 'SUBSCRIPTION_PLAN_NOT_FOUND', { message }),
+    );
+    const { user } = renderPage();
+
+    await screen.findByText('Bronze');
+    await user.click(screen.getByRole('checkbox', { name: 'Bronze, active' }));
+
+    expect(await screen.findByText(message)).toBeInTheDocument();
   });
 });

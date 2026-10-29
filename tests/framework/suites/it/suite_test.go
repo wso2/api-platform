@@ -130,7 +130,8 @@ func TestEveryBlockSweepsEveryEngine(t *testing.T) {
 }
 
 // singleEngineBlocks are the gateway blocks that run one engine by design, with that engine.
-// The webhook block follows its control plane's PostgreSQL store, the multigateway block
+// The webhook block follows its control plane's PostgreSQL store, the publishing block follows
+// the API Portal's PostgreSQL store, the multigateway block
 // runs two gateway stacks rather than an engine matrix, the AI Workspace CLI block runs one
 // SQLite stack, and the two-controller block needs
 // a database server both controllers share. The hostname blocks that set their own
@@ -139,6 +140,7 @@ func TestEveryBlockSweepsEveryEngine(t *testing.T) {
 // default identity blocks, whose subjects are the data plane's behaviour, not the store.
 var singleEngineBlocks = map[string]components.DBType{
 	"devportal-webhook":                               components.Postgres,
+	"platform-api-gateway-api-portal":                 components.Postgres,
 	"multigateway":                                    components.SQLite,
 	"ai-workspace-cli":                                components.SQLite,
 	"gateway-mtls-ha":                                 components.Postgres,

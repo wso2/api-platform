@@ -19,6 +19,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import {
+  aPlanPricing,
   aSubscriptionPlan,
   accepts,
   collection,
@@ -35,6 +36,7 @@ import {
   createSubscriptionPlan,
   deleteSubscriptionPlan,
   getSubscriptionPlan,
+  getSubscriptionPlanPricing,
   listSubscriptionPlans,
   updateSubscriptionPlan,
 } from './subscriptionPlans.endpoints';
@@ -43,10 +45,10 @@ import {
  * Contract tests for `/subscription-plans` — the rate-limit tiers a
  * subscription attaches to.
  *
- * A plain CRUD resource, so most of this is URL and method pinning. The one
- * behaviour specific to it is the delete guard: a plan still referenced by
- * subscriptions cannot be removed, and only `code` distinguishes that from any
- * other failure.
+ * A plain CRUD resource, so most of this is URL and method pinning. A paid
+ * plan is created with its pricing in the same request; afterwards the pricing
+ * is only read. The delete guard is the one failure specific to it: a plan still
+ * in use cannot be removed, and only `code` distinguishes that from any other.
  */
 
 const PLAN_ID = 'gold';
@@ -100,9 +102,7 @@ describe('plan CRUD', () => {
   });
 
   it('POSTs a new plan with the request body', async () => {
-    server.use(
-      accepts('post', '/subscription-plans', aSubscriptionPlan(), { record: requests })
-    );
+    server.use(accepts('post', '/subscription-plans', aSubscriptionPlan(), { record: requests }));
 
     await createSubscriptionPlan({ displayName: 'Platinum' } as never);
 
@@ -132,14 +132,12 @@ describe('plan CRUD', () => {
     server.use(
       resource('/subscription-plans/:subscriptionPlanId', aSubscriptionPlan(), {
         record: requests,
-      })
+      }),
     );
 
     await getSubscriptionPlan('weird/id');
 
-    expect(requests.last()?.url.pathname).toBe(
-      '/api/v0.9/subscription-plans/weird%2Fid'
-    );
+    expect(requests.last()?.url.pathname).toBe('/api/v0.9/subscription-plans/weird%2Fid');
   });
 });
 
@@ -149,12 +147,10 @@ describe('failures', () => {
       failure('delete', RESOURCE, 409, 'SUBSCRIPTION_PLAN_IN_USE', {
         details: { subscriptions: 4 },
         message: 'Subscriptions still reference this plan.',
-      })
+      }),
     );
 
-    const error = (await deleteSubscriptionPlan(PLAN_ID).catch(
-      (e: unknown) => e
-    )) as ApiError;
+    const error = (await deleteSubscriptionPlan(PLAN_ID).catch((e: unknown) => e)) as ApiError;
 
     expect(error.code).toBe('SUBSCRIPTION_PLAN_IN_USE');
     expect(error.details).toEqual({ subscriptions: 4 });
@@ -163,10 +159,85 @@ describe('failures', () => {
   it('labels the failing operation', async () => {
     server.use(failure('get', RESOURCE, 404, 'NOT_FOUND'));
 
-    const error = (await getSubscriptionPlan(PLAN_ID).catch(
-      (e: unknown) => e
-    )) as ApiError;
+    const error = (await getSubscriptionPlan(PLAN_ID).catch((e: unknown) => e)) as ApiError;
 
     expect(error.operation).toBe('GetSubscriptionPlan');
+  });
+});
+
+describe('plan pricing', () => {
+  const PRICING = `${RESOURCE}/pricing`;
+
+  it('POSTs a paid plan with its pricing in the one request', async () => {
+    server.use(
+      accepts('post', '/subscription-plans', aSubscriptionPlan({ pricing: aPlanPricing() }), {
+        record: requests,
+      }),
+    );
+
+    const pricing = {
+      billingPeriod: 'MONTH' as const,
+      currency: 'USD',
+      prices: [
+        {
+          filters: [
+            { field: 'API type', operator: 'EQUALS' as const, values: ['LlmProvider'] },
+          ],
+          meterId: 'llm-tokens',
+          pricingModel: 'PER_UNIT' as const,
+          tiers: null,
+          unitAmount: '2.50',
+          unitQuantity: 1000000,
+        },
+      ],
+      pricingType: 'USAGE_BASED' as const,
+    };
+
+    const created = await createSubscriptionPlan({
+      displayName: 'Gold',
+      id: PLAN_ID,
+      pricing,
+      status: 'ACTIVE',
+    });
+
+    expect(requests.calls.map((r) => [r.method, r.url.pathname])).toEqual([
+      ['POST', '/api/v0.9/subscription-plans'],
+    ]);
+    expect(JSON.parse(requests.last()!.body)).toEqual({
+      displayName: 'Gold',
+      id: PLAN_ID,
+      pricing,
+      status: 'ACTIVE',
+    });
+    expect(created.pricing?.pricingType).toBe('USAGE_BASED');
+  });
+
+  it('GETs the pricing under the plan', async () => {
+    server.use(resource(PRICING, aPlanPricing(), { record: requests }));
+
+    await getSubscriptionPlanPricing(PLAN_ID);
+
+    expect(requests.last()?.method).toBe('GET');
+    expect(requests.last()?.url.pathname).toBe('/api/v0.9/subscription-plans/gold/pricing');
+  });
+
+  it('surfaces the refusal of an update that carries pricing', async () => {
+    server.use(
+      failure('put', RESOURCE, 400, 'VALIDATION_FAILED', {
+        message:
+          "Pricing can't be updated once a plan is created. Create a new plan with the new pricing.",
+      }),
+    );
+
+    const error = (await updateSubscriptionPlan(
+      PLAN_ID,
+      aSubscriptionPlan({ pricing: aPlanPricing() }),
+    ).catch((e: unknown) => e)) as ApiError;
+
+    expect(error.isValidation).toBe(true);
+    expect(error.message).toBe(
+      "Pricing can't be updated once a plan is created. Create a new plan with the new pricing.",
+    );
+    expect(error.operation).toBe('UpdateSubscriptionPlan');
   });
 });

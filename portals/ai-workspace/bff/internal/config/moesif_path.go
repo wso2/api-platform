@@ -28,13 +28,16 @@ import (
 // forwarding paths untouched, exactly as it did before this existed).
 //
 // It exists because the upstream a deployment points MoesifURL at may publish
-// these routes under names of its own. The SPA asks for `/id_token`,
-// `/organization` and `/moesif_key` — the names Choreo's moesif-key API uses —
-// so that upstream needs no mapping. wso2cloud's platform-api, which serves the
-// viewer token at `/analytics/id-token`, does:
+// these routes under names of its own. The SPA — the shared Insights plugin —
+// asks for `/analytics/id-token`, the name wso2cloud's platform-api uses, so
+// that upstream needs no mapping at all:
 //
-//	moesif_url           = "https://host:8443/cloud"
-//	moesif_path_mappings = "/id_token=/analytics/id-token"
+//	moesif_url = "https://host:8443/cloud"   # /proxy/cloud/analytics/id-token -> /cloud/analytics/id-token
+//
+// Choreo's moesif-key API, which serves the viewer token at `/id_token`, does:
+//
+//	moesif_url           = "https://apis.<env>.choreo.dev/moesif-key/0.1.0"
+//	moesif_path_mappings = "/analytics/id-token=/id_token"
 //
 // Keeping this on the BFF rather than in the SPA is deliberate: the call has to
 // stay server-side anyway (the browser holds no token — the session is an

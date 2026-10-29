@@ -27,20 +27,6 @@ import { managedGatewaysPath, toEnvironments, type ManagedGatewayDTO, type Stage
 export type ArtifactKind = 'RestApi' | 'Mcp' | 'LlmProxy' | 'LlmProvider' | 'AgentProxy' | 'GraphQLApi';
 
 /**
- * Each kind's own path on the platform API. The pipeline routes are shared, but a
- * few calls go straight to the artifact's own resource — deleting a build, reading
- * an API's backend URL — and those are split by kind.
- */
-const NATIVE_PATH: Record<ArtifactKind, string> = {
-  RestApi: 'rest-apis',
-  GraphQLApi: 'graphql-apis',
-  Mcp: 'mcp-proxies',
-  LlmProxy: 'llm-proxies',
-  LlmProvider: 'llm-providers',
-  AgentProxy: 'agent-proxies',
-};
-
-/**
  * The kinds of gateway each artifact kind runs on. A gateway's kind decides what
  * its runtime can serve, so this is the same mapping the server enforces the deploy
  * against — kept here only to narrow the gateways the page asks for, never as the
@@ -153,18 +139,15 @@ export function createDeployClient(
      * Deletes one of the API's builds, which is how room is made once an API is at
      * its build limit and deploying is refused.
      *
-     * This goes straight to the API's own resource rather than through the project
-     * path: a build belongs to the API, not to a pipeline, and the platform already
-     * scopes the call to the caller's organization. Refused with 409 while a gateway
-     * is serving the build; undeploying releases it. Deployments that ran the build
-     * survive and stay redeployable from their own artifact, but stop reporting it,
-     * so they can no longer be promoted onward.
+     * Goes through the project path like the page's other calls, so preparing,
+     * listing, deploying and deleting are governed by the same deployment
+     * permissions. Refused with 409 while a gateway is serving the build;
+     * undeploying releases it. Deployments that ran the build survive and stay
+     * redeployable from their own artifact, but stop reporting it, so they can no
+     * longer be promoted onward.
      */
     async deleteBuild(buildId: string): Promise<void> {
-      await apiFetch(
-        'DELETE',
-        `/${NATIVE_PATH[kind]}/${encodeURIComponent(apiHandle)}/builds/${encodeURIComponent(buildId)}`
-      );
+      await apiFetch('DELETE', withKind(`${base}/builds/${encodeURIComponent(buildId)}`));
     },
 
     /**

@@ -30,19 +30,28 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"testing"
 
 	"github.com/cucumber/godog"
 	"github.com/stretchr/testify/require"
 
 	"github.com/wso2/api-platform/tests/framework/core/catalog/shared"
+	"github.com/wso2/api-platform/tests/framework/core/cleanup"
 	"github.com/wso2/api-platform/tests/framework/core/components"
+	"github.com/wso2/api-platform/tests/framework/core/runtime"
+	"github.com/wso2/api-platform/tests/framework/core/topology"
 	"github.com/wso2/api-platform/tests/framework/core/util/httpx"
 	"github.com/wso2/api-platform/tests/framework/core/util/tcontext"
 )
+
+func TestNewPortalClientIsBuiltOnce(t *testing.T) {
+	require.Same(t, newPortalClient(), newPortalClient())
+}
 
 func TestTopLevelJSONArrayLength(t *testing.T) {
 	tests := []struct {
@@ -294,4 +303,200 @@ func TestTheIdentityProviderClientVerifiesTheProviderCertificate(t *testing.T) {
 	defer other.Close()
 	_, err = client.Do(context.Background(), httpx.Request{URL: other.URL}, 0, 0)
 	require.Error(t, err, "a certificate other than the provider's must not be trusted")
+}
+
+func TestAPIOffersPlan(t *testing.T) {
+	body := []byte(`{"id":"api-1","status":"PUBLISHED","subscriptionPlans":[{"id":"gold"},{"id":"silver"}]}`)
+
+	require.NoError(t, apiOffersPlan(body, "api-1", "silver"))
+	require.ErrorContains(t, apiOffersPlan(body, "api-1", "bronze"), "without plan")
+	require.ErrorContains(t, apiOffersPlan(body, "api-2", "gold"), "returned")
+	require.NoError(t, apiOffersPlan([]byte(`{"id":"api-1","status":"DEPRECATED","subscriptionPlans":[{"id":"gold"}]}`),
+		"api-1", "gold"))
+	require.ErrorContains(t, apiOffersPlan([]byte(`not json`), "api-1", "gold"), "decoding")
+}
+
+func TestAPIHasField(t *testing.T) {
+	body := []byte(`{"id":"api-1","status":"DEPRECATED","name":"Renamed"}`)
+
+	require.NoError(t, apiHasField(body, "api-1", "status", "DEPRECATED"))
+	require.NoError(t, apiHasField(body, "api-1", "name", "Renamed"))
+	require.ErrorContains(t, apiHasField(body, "api-1", "status", "PUBLISHED"), `with status "DEPRECATED"`)
+	require.ErrorContains(t, apiHasField(body, "api-1", "title", "x"), "want")
+	require.ErrorContains(t, apiHasField([]byte(`not json`), "api-1", "status", "x"), "decoding")
+}
+
+func TestTrackPublishedPlanRemovesThePlanFromThePortalAtCleanup(t *testing.T) {
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("runner"))
+	reg := cleanup.NewRegistry(slog.Default())
+	require.NoError(t, cleanup.Install(ctx, reg))
+	s := &Steps{}
+
+	require.NoError(t, s.trackPublishedPlan(ctx, "gold"))
+	require.NoError(t, s.trackPublishedPlan(ctx, "silver"))
+
+	var ids []string
+	for _, res := range reg.Pending() {
+		require.Equal(t, portalSubscriptionPlanKind.Name, res.Kind.Name)
+		ids = append(ids, res.ID)
+	}
+	require.ElementsMatch(t, []string{"gold", "silver"}, ids)
+
+	require.Error(t, s.trackPublishedPlan(context.Background(), "gold"), "without a cleanup registry nothing can be tracked")
+}
+
+func TestPortalProberTrustsOnlyThePortalCertificateAndFollowsRedirects(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, "/signin", http.StatusFound) })
+	mux.HandleFunc("/signin", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
+	serve := func(pair *shared.KeyPairPEM) *httptest.Server {
+		cert, err := tls.X509KeyPair(pair.CertPEM, pair.PrivateKeyPEM)
+		require.NoError(t, err)
+		server := httptest.NewUnstartedServer(mux)
+		server.TLS = &tls.Config{Certificates: []tls.Certificate{cert}}
+		server.StartTLS()
+		t.Cleanup(server.Close)
+		return server
+	}
+	prober := newPortalProber()
+
+	portal := serve(shared.APIPortalTLS())
+	status, err := prober.Probe(context.Background(), portal.URL+"/")
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, status, "the redirect to the sign-in page is followed")
+
+	stranger, err := shared.SelfSignedCert(shared.APIPortalHost, []string{shared.APIPortalHost})
+	require.NoError(t, err)
+	_, err = prober.Probe(context.Background(), serve(stranger).URL+"/")
+	require.Error(t, err, "a certificate that is not the portal's is refused even when it carries the portal's name")
+
+	portal.Close()
+	status, err = prober.Probe(context.Background(), portal.URL+"/")
+	require.Error(t, err)
+	require.Zero(t, status)
+}
+
+func TestPortalResourceKindGivesEachCollectionItsOwnDeleter(t *testing.T) {
+	require.Equal(t, portalSubscriptionPlanKind, portalResourceKind("/subscription-plans"))
+	require.Equal(t, portalMeterKind, portalResourceKind("/meters"))
+	require.Equal(t, portalWebhookKind, portalResourceKind("/webhook-subscribers"))
+	require.Equal(t, "api-portal-resource", portalResourceKind("/apis").Name)
+	// An API goes before the plans it offers, and a plan before the meters it prices.
+	require.Less(t, portalResourceKind("/apis").Order, portalSubscriptionPlanKind.Order)
+	require.Less(t, portalSubscriptionPlanKind.Order, portalMeterKind.Order)
+}
+
+// billingFakes returns steps whose topology holds fakes of the testbench Stripe service, the API
+// Portal and the control plane's sign-in. Paying checkout "cs-1" delivers one event, which the
+// portal answers with deliveryStatus; reading the checkout finds it completed with subscription
+// "sub-1", as the portal reports once it has confirmed the payment with Stripe.
+func billingFakes(t *testing.T, deliveryStatus int) *Steps {
+	t.Helper()
+	serveTLS := func(certPEM, keyPEM []byte, handler http.HandlerFunc) *httptest.Server {
+		cert, err := tls.X509KeyPair(certPEM, keyPEM)
+		require.NoError(t, err)
+		server := httptest.NewUnstartedServer(handler)
+		server.TLS = &tls.Config{Certificates: []tls.Certificate{cert}}
+		server.StartTLS()
+		t.Cleanup(server.Close)
+		return server
+	}
+	writeJSON := func(w http.ResponseWriter, body any) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(body)
+	}
+
+	stripe := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/billing/test/checkout-sessions/cs-1/complete" {
+			http.NotFound(w, r)
+			return
+		}
+		writeJSON(w, map[string]any{"deliveries": []map[string]any{{
+			"url":    "https://api-portal.6f1c2b9e-net:9543/api-portal/billing/stripe/webhooks/org-1",
+			"status": deliveryStatus,
+		}}})
+	}))
+	t.Cleanup(stripe.Close)
+	portalPair := shared.APIPortalTLS()
+	portal := serveTLS(portalPair.CertPEM, portalPair.PrivateKeyPEM, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != apiPrefix+"/checkout-sessions/cs-1" {
+			http.NotFound(w, r)
+			return
+		}
+		writeJSON(w, map[string]any{"status": "COMPLETED", "subscriptionId": "sub-1"})
+	})
+	crypto := shared.ControlPlaneCrypto()
+	controlPlane := serveTLS(crypto["certs/cert.pem"], crypto["certs/key.pem"], func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/api/portal/v0.9/auth/login" {
+			http.NotFound(w, r)
+			return
+		}
+		writeJSON(w, map[string]any{"token": "token"})
+	})
+
+	set := components.NewSet()
+	add := func(name string, endpoint components.Endpoint, server *httptest.Server) {
+		address, err := url.Parse(server.URL)
+		require.NoError(t, err)
+		port, err := strconv.Atoi(address.Port())
+		require.NoError(t, err)
+		definition := &components.Definition{Name: name, Alias: name, Endpoints: []components.Endpoint{endpoint}}
+		inst, err := components.NewInstance(definition, 0, 1, "127.0.0.1", map[int]int{endpoint.Port: port})
+		require.NoError(t, err)
+		require.NoError(t, set.Add(inst))
+	}
+	add("testbench", components.Endpoint{Name: "stripe", Port: 3022, Scheme: "http"}, stripe)
+	add(portalService, components.Endpoint{Name: "https", Port: 9543, Scheme: "https"}, portal)
+	add("platform-api", components.Endpoint{Name: "https", Port: 9243, Scheme: "https"}, controlPlane)
+
+	return &Steps{
+		topo:   &runtime.Topology{Block: &topology.ResolvedBlock{Name: "billing"}, Instances: set},
+		client: newPortalClient(),
+	}
+}
+
+func TestPayCheckoutEndsTheSubscriptionAtCleanupEvenWhenStripesEventIsRefused(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		status  int
+		wantErr string
+	}{
+		{name: "every event is accepted", status: http.StatusOK},
+		{name: "an event is refused", status: http.StatusNotFound,
+			wantErr: "was not accepted by https://api-portal.6f1c2b9e-net:9543/api-portal/billing/stripe/webhooks/org-1: status 404"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := billingFakes(t, tc.status)
+			ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("runner"))
+			reg := cleanup.NewRegistry(slog.Default())
+			require.NoError(t, cleanup.Install(ctx, reg))
+
+			err := s.payCheckout(ctx, "cs-1", "developer", "subscriptionId")
+
+			pending := reg.Pending()
+			require.Len(t, pending, 1, "the subscription is ended when the scenario ends")
+			require.Equal(t, paidSubscriptionKind("developer").Name, pending[0].Kind.Name)
+			require.Equal(t, "sub-1", pending[0].ID)
+			stored, ok := tcontext.Get(ctx, "subscriptionId")
+			if tc.wantErr != "" {
+				require.ErrorContains(t, err, tc.wantErr)
+				require.False(t, ok, "a refused event fails the step before the subscription is stored")
+				return
+			}
+			require.NoError(t, err)
+			require.True(t, ok)
+			require.Equal(t, "sub-1", stored)
+		})
+	}
+}
+
+func TestPayCheckoutNeedsACleanupRegistry(t *testing.T) {
+	s := billingFakes(t, http.StatusOK)
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("runner"))
+
+	err := s.payCheckout(ctx, "cs-1", "developer", "subscriptionId")
+
+	require.Error(t, err, "a subscription that cannot be ended at cleanup fails the step")
+	_, ok := tcontext.Get(ctx, "subscriptionId")
+	require.False(t, ok)
 }

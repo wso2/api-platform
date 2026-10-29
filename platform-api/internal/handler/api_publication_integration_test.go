@@ -28,6 +28,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -55,11 +56,19 @@ func (alwaysSucceedsPortalPublisher) Unpublish(_ context.Context, _ *model.APIPo
 	return nil
 }
 
-func (alwaysSucceedsPortalPublisher) CreateMissingPlans(_ context.Context, _ *model.APIPortal, _ []*model.SubscriptionPlan) error {
+func (alwaysSucceedsPortalPublisher) SyncPlans(_ context.Context, _ *model.APIPortal, _ service.PlanSync) (service.PlanSyncResult, error) {
+	return service.PlanSyncResult{}, nil
+}
+
+func (alwaysSucceedsPortalPublisher) UndoPlanSync(_ context.Context, _ *model.APIPortal, _ service.PlanSyncResult) error {
 	return nil
 }
 
 func (alwaysSucceedsPortalPublisher) Deprecate(_ context.Context, _ *model.APIPortal, _, _ string, _ *model.Publication) error {
+	return nil
+}
+
+func (alwaysSucceedsPortalPublisher) PublishContent(_ context.Context, _ *model.APIPortal, _ string, _ *service.PortalContent) error {
 	return nil
 }
 
@@ -112,6 +121,7 @@ func setupPublicationTestEnv(t *testing.T) (http.Handler, *database.DB, func()) 
 		repository.NewPublicationRepo(db),
 		alwaysSucceedsPortalPublisher{},
 		time.Minute,
+		0,
 		slog.Default(),
 	)
 	h := NewPublicationHandler(publicationService, identityService, 0, 0, slog.Default())
@@ -415,10 +425,10 @@ func TestPublicationHandler_GetPublication_RoundTrip(t *testing.T) {
 			'pub-1', 'org-1', 'api-artifact-1', 'portal-1', 0, 'PUBLISHED',
 			'My Listing', '1.0.0', 'live desc', 'VISIBLE', 'alice', 'alice'
 		)`,
-		`INSERT INTO api_publication_plan_mappings (organization_uuid, publication_uuid, subscription_plan_uuid, created_by)
-			VALUES ('org-1', 'pub-1', 'plan-1', 'alice')`,
-		`INSERT INTO api_publication_doc_mappings (organization_uuid, publication_uuid, doc_uuid, created_by)
-			VALUES ('org-1', 'pub-1', 'doc-1', 'alice')`,
+		`INSERT INTO api_publication_plan_mappings (organization_uuid, publication_uuid, subscription_plan_uuid, plan_handle, display_name, created_by)
+			VALUES ('org-1', 'pub-1', 'plan-1', 'gold', 'Gold plan', 'alice')`,
+		`INSERT INTO api_publication_doc_mappings (organization_uuid, publication_uuid, doc_uuid, doc_handle, display_name, created_by)
+			VALUES ('org-1', 'pub-1', 'doc-1', 'quickstart', 'Quickstart', 'alice')`,
 		`INSERT INTO api_publication_contents (uuid, organization_uuid, publication_uuid, type, content_type, content, created_by, updated_by)
 			VALUES ('content-1', 'org-1', 'pub-1', 'API_DEFINITION', 'application/json', '{"openapi":"3.0.0"}', 'alice', 'alice')`,
 		`INSERT INTO api_publication_contents (uuid, organization_uuid, publication_uuid, type, content_type, content, created_by, updated_by)
@@ -451,6 +461,14 @@ func TestPublicationHandler_GetPublication_RoundTrip(t *testing.T) {
 	docs, _ := got["docIds"].([]any)
 	if len(docs) != 1 || docs[0] != "quickstart" {
 		t.Fatalf("GET publication: want docIds [quickstart], got %v", got["docIds"])
+	}
+	planSelections, _ := got["subscriptionPlans"].([]any)
+	if len(planSelections) != 1 || !reflect.DeepEqual(planSelections[0], map[string]any{"id": "gold", "displayName": "Gold plan", "deleted": false, "edited": false}) {
+		t.Fatalf("GET publication: want subscriptionPlans [gold], got %v", got["subscriptionPlans"])
+	}
+	docSelections, _ := got["documents"].([]any)
+	if len(docSelections) != 1 || !reflect.DeepEqual(docSelections[0], map[string]any{"id": "quickstart", "displayName": "Quickstart", "deleted": false, "edited": false}) {
+		t.Fatalf("GET publication: want documents [quickstart], got %v", got["documents"])
 	}
 	if got["hasThumbnail"] != true || got["hasLandingPage"] != true {
 		t.Fatalf("GET publication: want hasThumbnail/hasLandingPage true, got %v", got)

@@ -66,8 +66,25 @@ type PublicationService struct {
 	publicationRepo      repository.PublicationRepository
 	portalPublisher      PortalPublisher
 	slogger              *slog.Logger
+	// pricingRepo gives the pricing a plan is created with on a portal that does not have it.
+	pricingRepo repository.SubscriptionPlanPricingRepository
+	// meterRepo gives the meters such a plan's prices charge for, which the portal needs first.
+	meterRepo repository.MeterRepository
 
 	portalOperationTimeout time.Duration
+	// archiveMaxBytes bounds the content ZIP pushed to the portal.
+	archiveMaxBytes int64
+}
+
+// SetPricingRepository makes a publish send each plan the portal does not have with its pricing.
+func (s *PublicationService) SetPricingRepository(repo repository.SubscriptionPlanPricingRepository) {
+	s.pricingRepo = repo
+}
+
+// SetMeterRepository makes a publish send the meters those plans' prices charge for, as plans are
+// sent: a meter made here reaches a portal only with a plan published there.
+func (s *PublicationService) SetMeterRepository(repo repository.MeterRepository) {
+	s.meterRepo = repo
 }
 
 // NewPublicationService creates a new API Publication service.
@@ -79,10 +96,14 @@ func NewPublicationService(
 	publicationRepo repository.PublicationRepository,
 	portalPublisher PortalPublisher,
 	portalOperationTimeout time.Duration,
+	archiveMaxBytes int64,
 	slogger *slog.Logger,
 ) *PublicationService {
 	if slogger == nil {
 		slogger = slog.Default()
+	}
+	if archiveMaxBytes <= 0 {
+		archiveMaxBytes = defaultPublicationArchiveMaxBytes
 	}
 	return &PublicationService{
 		artifactRepo:         artifactRepo,
@@ -94,6 +115,7 @@ func NewPublicationService(
 		slogger:              slogger,
 
 		portalOperationTimeout: portalOperationTimeout,
+		archiveMaxBytes:        archiveMaxBytes,
 	}
 }
 
@@ -163,37 +185,65 @@ func (s *PublicationService) getDraftRow(apiType, apiId, apiPortalId, orgUUID st
 		return nil, err
 	}
 
-	pub, planUUIDs, docUUIDs, err := s.publicationRepo.GetDraft(artifactUUID, portalUUID, orgUUID)
+	pub, plans, docs, err := s.publicationRepo.GetDraft(artifactUUID, portalUUID, orgUUID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get publication draft: %w", err)
 	}
 	if pub == nil {
 		return nil, apperror.APIPublicationDraftNotFound.New()
 	}
-	if err := s.resolveHandles(pub, planUUIDs, docUUIDs, orgUUID); err != nil {
-		return nil, err
-	}
+	applySelections(pub, plans, docs)
 	return pub, nil
 }
 
-// resolveHandles fills pub.SubscriptionPlanIds/DocIds from the raw UUIDs the
-// mapping tables store. Entries that fail to resolve (should not normally
-// happen — subscription_plans is ON DELETE RESTRICT and api_documents rows
-// cascade their mapping row away on delete) are silently dropped rather than
-// failing the read, so a GET stays robust against any inconsistency.
-func (s *PublicationService) resolveHandles(pub *model.Publication, planUUIDs, docUUIDs []string, orgUUID string) error {
-	planHandles, err := s.subscriptionPlanRepo.GetHandlesByIDs(planUUIDs, orgUUID)
-	if err != nil {
-		return fmt.Errorf("failed to resolve subscription plan handles: %w", err)
-	}
-	pub.SubscriptionPlanIds = mapValuesInOrder(planUUIDs, planHandles)
+// applySelections fills a publication's plan and document selections from its
+// mapping rows. The id lists include selections whose source was deleted, so
+// the live listing keeps sending them to the portal; Subscription Plans and
+// Documents say which ones are deleted.
+func applySelections(pub *model.Publication, plans, docs []model.PublicationSelection) {
+	pub.SubscriptionPlans = nonNilSelections(plans)
+	pub.Documents = nonNilSelections(docs)
+	pub.SubscriptionPlanIds = selectionHandles(plans)
+	pub.DocIds = selectionHandles(docs)
+}
 
-	docHandles, err := s.documentRepo.GetDocumentHandlesByUUIDs(docUUIDs, orgUUID)
-	if err != nil {
-		return fmt.Errorf("failed to resolve document handles: %w", err)
+// selectionHandles returns the handles of selections in order. It is never nil,
+// so it serializes as "[]" rather than "null" when empty.
+func selectionHandles(selections []model.PublicationSelection) []string {
+	handles := make([]string, 0, len(selections))
+	for _, sel := range selections {
+		handles = append(handles, sel.Handle)
 	}
-	pub.DocIds = mapValuesInOrder(docUUIDs, docHandles)
-	return nil
+	return handles
+}
+
+func nonNilSelections(selections []model.PublicationSelection) []model.PublicationSelection {
+	if selections == nil {
+		return []model.PublicationSelection{}
+	}
+	return selections
+}
+
+// withoutDeleted returns the selections whose source still exists.
+func withoutDeleted(selections []model.PublicationSelection) []model.PublicationSelection {
+	kept := make([]model.PublicationSelection, 0, len(selections))
+	for _, sel := range selections {
+		if !sel.Deleted {
+			kept = append(kept, sel)
+		}
+	}
+	return kept
+}
+
+// deletedHandles returns the handles of selections whose source was deleted.
+func deletedHandles(selections []model.PublicationSelection) []string {
+	var handles []string
+	for _, sel := range selections {
+		if sel.Deleted {
+			handles = append(handles, sel.Handle)
+		}
+	}
+	return handles
 }
 
 // conflictReasonOrDefault returns conflict.Reason, or defaultPortalConflictReason
@@ -203,19 +253,6 @@ func conflictReasonOrDefault(conflict *PortalConflictError) string {
 		return defaultPortalConflictReason
 	}
 	return conflict.Reason
-}
-
-// mapValuesInOrder looks up each id in m, preserving ids's order and skipping
-// any id absent from m. Always returns a non-nil slice so it serializes as
-// "[]" rather than "null" when empty.
-func mapValuesInOrder(ids []string, m map[string]string) []string {
-	out := make([]string, 0, len(ids))
-	for _, id := range ids {
-		if v, ok := m[id]; ok {
-			out = append(out, v)
-		}
-	}
-	return out
 }
 
 // dedupe removes duplicate handles, preserving first-occurrence order. A
@@ -272,11 +309,11 @@ func (s *PublicationService) SaveDraftDetails(apiType, apiId, apiPortalId, orgUU
 	planHandles = dedupe(planHandles)
 	docHandles = dedupe(docHandles)
 
-	planUUIDs, err := s.resolvePlanUUIDs(planHandles, orgUUID)
+	plans, err := s.resolvePlanSelections(planHandles, orgUUID)
 	if err != nil {
 		return nil, err
 	}
-	docUUIDs, err := s.resolveDocUUIDs(artifactUUID, docHandles, orgUUID)
+	docs, err := s.resolveDocSelections(artifactUUID, docHandles, orgUUID)
 	if err != nil {
 		return nil, err
 	}
@@ -286,14 +323,13 @@ func (s *PublicationService) SaveDraftDetails(apiType, apiId, apiPortalId, orgUU
 	draft.APIPortalUUID = portalUUID
 	draft.IsDraft = true
 
-	saved, err := s.publicationRepo.SaveDraftDetails(draft, planUUIDs, docUUIDs, actor)
+	saved, err := s.publicationRepo.SaveDraftDetails(draft, plans, docs, actor)
 	if err != nil {
 		return nil, fmt.Errorf("failed to save publication draft: %w", err)
 	}
 	// Echo back exactly what was validated and stored, rather than a second
-	// round trip through the mapping tables to re-resolve UUIDs to handles.
-	saved.SubscriptionPlanIds = nonNil(planHandles)
-	saved.DocIds = nonNil(docHandles)
+	// round trip through the mapping tables.
+	applySelections(saved, plans, docs)
 	return saved, nil
 }
 
@@ -360,9 +396,10 @@ func (s *PublicationService) loadActivePlans(handles []string, orgUUID string) (
 	return plans, nil
 }
 
-// resolvePlanUUIDs resolves each subscription plan handle to its UUID, rejecting
-// any handle that is unknown or not ACTIVE.
-func (s *PublicationService) resolvePlanUUIDs(handles []string, orgUUID string) ([]string, error) {
+// resolvePlanSelections resolves each subscription plan handle to a selection
+// carrying the plan's UUID, handle and name, rejecting any handle that is
+// unknown or not ACTIVE.
+func (s *PublicationService) resolvePlanSelections(handles []string, orgUUID string) ([]model.PublicationSelection, error) {
 	if len(handles) == 0 {
 		return nil, nil
 	}
@@ -370,44 +407,33 @@ func (s *PublicationService) resolvePlanUUIDs(handles []string, orgUUID string) 
 	if err != nil {
 		return nil, err
 	}
-	uuids := make([]string, 0, len(handles))
-	for _, h := range handles {
-		uuids = append(uuids, plans[h].UUID)
-	}
-	return uuids, nil
+	return planSelections(handles, plans), nil
 }
 
-// resolveDocUUIDs resolves each document handle to its doc_uuid, scoped to
-// artifactUUID (a handle can legitimately repeat across two APIs in the same
-// org), rejecting any handle absent for this artifact.
-func (s *PublicationService) resolveDocUUIDs(artifactUUID string, handles []string, orgUUID string) ([]string, error) {
-	if len(handles) == 0 {
-		return nil, nil
+func planSelections(handles []string, plans map[string]*model.SubscriptionPlan) []model.PublicationSelection {
+	selections := make([]model.PublicationSelection, 0, len(handles))
+	for _, h := range handles {
+		selections = append(selections, model.PublicationSelection{UUID: plans[h].UUID, Handle: h, DisplayName: plans[h].Name})
 	}
-	resolved, err := s.documentRepo.GetDocumentUUIDsByHandles(artifactUUID, handles, orgUUID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to resolve document handles: %w", err)
-	}
-	return docUUIDsForHandles(handles, resolved)
+	return selections
 }
 
-// docUUIDsForHandles returns the UUID of every document handle in order, or a
-// validation error listing the handles that have none.
-func docUUIDsForHandles(handles []string, resolved map[string]string) ([]string, error) {
-	uuids := make([]string, 0, len(handles))
-	var unresolved []string
-	for _, h := range handles {
-		if id, ok := resolved[h]; ok {
-			uuids = append(uuids, id)
-		} else {
-			unresolved = append(unresolved, h)
+// listingPricing returns the pricing of each paid plan of a listing, keyed by plan UUID.
+func (s *PublicationService) listingPricing(plans []*model.SubscriptionPlan, orgUUID string) (map[string]*model.SubscriptionPlanPricing, error) {
+	pricing := make(map[string]*model.SubscriptionPlanPricing, len(plans))
+	if s.pricingRepo == nil {
+		return pricing, nil
+	}
+	for _, plan := range plans {
+		planPricing, err := s.pricingRepo.GetByPlan(plan.UUID, orgUUID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get the pricing of subscription plan %s: %w", plan.UUID, err)
+		}
+		if planPricing != nil {
+			pricing[plan.UUID] = planPricing
 		}
 	}
-	if len(unresolved) > 0 {
-		return nil, apperror.APIPublicationValidationFailed.New(
-			"docIds not found in the organization's documents: " + strings.Join(unresolved, ", "))
-	}
-	return uuids, nil
+	return pricing, nil
 }
 
 // GetDraftDefinition returns the draft's stored definition content.
@@ -539,16 +565,14 @@ func (s *PublicationService) getPublicationRow(apiType, apiId, apiPortalId, orgU
 		return nil, err
 	}
 
-	pub, planUUIDs, docUUIDs, err := s.publicationRepo.GetPublication(artifactUUID, portal.ID, orgUUID)
+	pub, plans, docs, err := s.publicationRepo.GetPublication(artifactUUID, portal.ID, orgUUID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get publication: %w", err)
 	}
 	if pub == nil {
 		return nil, apperror.APIPublicationNotFound.New()
 	}
-	if err := s.resolveHandles(pub, planUUIDs, docUUIDs, orgUUID); err != nil {
-		return nil, err
-	}
+	applySelections(pub, plans, docs)
 	pub.APIPortalHandle = portal.Handle
 	pub.APIPortalName = portal.Name
 	return pub, nil
@@ -597,32 +621,24 @@ func (s *PublicationService) getPublicationContent(apiType, apiId, apiPortalId, 
 	return content, nil
 }
 
-// Publish publishes the current draft to the API Portal. In the UI's own
-// flow, the client always saves the draft (draft PUT) immediately before
-// calling this bodyless action, so a draft is guaranteed to exist by the
-// time this runs — APIPublicationDraftNotFound here is a defensive,
-// fail-closed check for a client bug or a failed prior save proceeding
-// anyway, not a normal user-facing gate.
+// Publish publishes the current draft to the API Portal. The client saves the draft just
+// before calling, so APIPublicationDraftNotFound is a fail-closed check, not a normal gate.
+// This is the one place a definition must exist and be valid.
 //
-// This is the one place a definition is required to exist and be valid —
-// SaveDraftDefinition accepts anything (or nothing), so nothing upstream can
-// be assumed to have checked it.
+// The portal is pushed first (listing, then content), after the content is loaded and packed
+// outside the portal deadline; nothing local changes unless the push succeeds. Then
+// PublicationRepository.PromoteDraftToPublication flips the draft row in place on a first
+// publish, or merges it into the live row on a republish, so the live row's uuid never changes.
 //
-// The portal is pushed first: nothing local changes unless that succeeds. On
-// success, one transaction (PublicationRepository.PromoteDraftToPublication):
-// on a first publish, flip the draft row in place — same row, same uuid; on
-// a republish, merge the draft's content into the existing live row (the
-// anchor) instead, so the anchor's uuid — the durable identity for this
-// (API, portal) pairing — never changes across a republish. A repeat publish
-// with no intervening edit goes through the same path and is a normal
-// no-op refresh, not an error.
+// A draft saved during the push is not promoted (APIPublicationDraftChanged).
 //
-// A draft saved during the portal push is not promoted (APIPublicationDraftChanged).
-// The push is not undone, so the portal may differ until the caller publishes again.
+// When something fails:
+//   - The listing push fails: the plans and meters this publish created in the portal are removed
+//     again (undoPlanSync). Name and limit updates of plans the portal already had stay, since they
+//     match the plans here.
+//   - The listing push succeeds but the content push or the local write then fails: nothing is
+//     undone, so the portal is ahead of local state until the next publish.
 func (s *PublicationService) Publish(ctx context.Context, apiType, apiId, apiPortalId, orgUUID, actor string) (*model.Publication, bool, error) {
-	ctx, cancel := s.portalOperationContext(ctx)
-	defer cancel()
-
 	artifactUUID, err := s.resolveArtifact(apiType, apiId, orgUUID)
 	if err != nil {
 		return nil, false, err
@@ -632,7 +648,7 @@ func (s *PublicationService) Publish(ctx context.Context, apiType, apiId, apiPor
 		return nil, false, err
 	}
 
-	draft, planUUIDs, docUUIDs, err := s.publicationRepo.GetDraft(artifactUUID, portal.ID, orgUUID)
+	draft, draftPlans, draftDocs, err := s.publicationRepo.GetDraft(artifactUUID, portal.ID, orgUUID)
 	if err != nil {
 		return nil, false, fmt.Errorf("failed to get publication draft: %w", err)
 	}
@@ -640,9 +656,9 @@ func (s *PublicationService) Publish(ctx context.Context, apiType, apiId, apiPor
 		// Defensive only — see doc comment above.
 		return nil, false, apperror.APIPublicationDraftNotFound.New()
 	}
-	if err := s.resolveHandles(draft, planUUIDs, docUUIDs, orgUUID); err != nil {
-		return nil, false, err
-	}
+	// A deleted document is dropped from the listing; a deleted plan is refused below.
+	draftDocs = withoutDeleted(draftDocs)
+	applySelections(draft, draftPlans, draftDocs)
 
 	definition, err := s.publicationRepo.GetContent(draft.UUID, model.PublicationContentTypeDefinition, orgUUID)
 	if err != nil {
@@ -652,15 +668,63 @@ func (s *PublicationService) Publish(ctx context.Context, apiType, apiId, apiPor
 		return nil, false, err
 	}
 
-	if err := s.createMissingPortalPlans(ctx, portal, orgUUID, draft.SubscriptionPlanIds); err != nil {
+	// Taken before the plans and documents are read, so an edit that lands while
+	// publishing still reads as edited afterwards.
+	snapshotAt := time.Now().UTC()
+	if deleted := deletedHandles(draftPlans); len(deleted) > 0 {
+		return nil, false, apperror.APIPublicationValidationFailed.New(
+			"subscriptionPlanIds that were deleted: " + strings.Join(deleted, ", "))
+	}
+	plans, err := s.activePlansInOrder(draft.SubscriptionPlanIds, orgUUID)
+	if err != nil {
+		return nil, false, err
+	}
+	pushedDocs, err := s.resolveDocSelections(artifactUUID, draft.DocIds, orgUUID)
+	if err != nil {
+		return nil, false, err
+	}
+	thumbnail, err := s.publicationRepo.GetContent(draft.UUID, model.PublicationContentTypeImage, orgUUID)
+	if err != nil {
+		return nil, false, fmt.Errorf("failed to get publication draft thumbnail: %w", err)
+	}
+	landingPage, err := s.publicationRepo.GetContent(draft.UUID, model.PublicationContentTypeMarketing, orgUUID)
+	if err != nil {
+		return nil, false, fmt.Errorf("failed to get publication draft landing page: %w", err)
+	}
+	content, err := s.loadPortalContent(portalContentSource{
+		ArtifactUUID: artifactUUID,
+		OrgUUID:      orgUUID,
+		DocHandles:   draft.DocIds,
+		Thumbnail:    thumbnail,
+		LandingPage:  landingPage,
+	})
+	if err != nil {
+		return nil, false, err
+	}
+
+	ctx, cancel := s.portalOperationContext(ctx)
+	defer cancel()
+
+	created, err := s.syncPortalPlans(ctx, portal, orgUUID, plans)
+	if err != nil {
 		return nil, false, err
 	}
 
 	if err := s.portalPublisher.Publish(ctx, portal, apiType, apiId, draft, definition); err != nil {
+		s.undoPlanSync(ctx, portal, apiId, created)
 		return nil, false, portalPushError(err)
 	}
+	if content != nil {
+		if err := s.portalPublisher.PublishContent(ctx, portal, apiId, content); err != nil {
+			return nil, false, portalPushError(err)
+		}
+	}
 
-	published, wasReplace, err := s.publicationRepo.PromoteDraftToPublication(artifactUUID, portal.ID, orgUUID, actor, draft.UpdatedAt)
+	pushedPlans := make([]model.PublicationSelection, 0, len(plans))
+	for _, plan := range plans {
+		pushedPlans = append(pushedPlans, model.PublicationSelection{UUID: plan.UUID, Handle: plan.Handle, DisplayName: plan.Name})
+	}
+	published, wasReplace, err := s.publicationRepo.PromoteDraftToPublication(artifactUUID, portal.ID, orgUUID, actor, draft.UpdatedAt, snapshotAt, pushedPlans, pushedDocs)
 	if err != nil {
 		return nil, false, fmt.Errorf("failed to promote publication draft: %w", err)
 	}
@@ -672,11 +736,7 @@ func (s *PublicationService) Publish(ctx context.Context, apiType, apiId, apiPor
 
 	published.APIPortalHandle = portal.Handle
 	published.APIPortalName = portal.Name
-	// The plan/doc selections themselves didn't change during promotion —
-	// only which row they're attached to may have (a republish reparents
-	// them onto the anchor) — so the already-resolved handles still apply.
-	published.SubscriptionPlanIds = draft.SubscriptionPlanIds
-	published.DocIds = draft.DocIds
+	applySelections(published, pushedPlans, pushedDocs)
 	return published, wasReplace, nil
 }
 
@@ -741,7 +801,7 @@ func (s *PublicationService) Deprecate(ctx context.Context, apiType, apiId, apiP
 		return nil, err
 	}
 
-	live, planUUIDs, docUUIDs, err := s.publicationRepo.GetPublication(artifactUUID, portal.ID, orgUUID)
+	live, livePlans, liveDocs, err := s.publicationRepo.GetPublication(artifactUUID, portal.ID, orgUUID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get publication: %w", err)
 	}
@@ -751,9 +811,7 @@ func (s *PublicationService) Deprecate(ctx context.Context, apiType, apiId, apiP
 	if live.Status != model.PublicationStatusPublished {
 		return nil, apperror.APIPublicationStateConflict.New("This API is already deprecated on this API Portal. No changes were made.")
 	}
-	if err := s.resolveHandles(live, planUUIDs, docUUIDs, orgUUID); err != nil {
-		return nil, err
-	}
+	applySelections(live, livePlans, liveDocs)
 
 	if err := s.portalPublisher.Deprecate(ctx, portal, apiType, apiId, live); err != nil {
 		return nil, portalPushError(err)
@@ -770,25 +828,100 @@ func (s *PublicationService) Deprecate(ctx context.Context, apiType, apiId, apiP
 	return s.getPublicationRow(apiType, apiId, apiPortalId, orgUUID)
 }
 
-// createMissingPortalPlans makes sure the portal has every plan the draft selects,
-// creating those it lacks. Failures come back already mapped for the caller.
-func (s *PublicationService) createMissingPortalPlans(ctx context.Context, portal *model.APIPortal, orgUUID string, handles []string) error {
+// activePlansInOrder loads the plans for handles, in handle order, rejecting any that
+// is unknown or not active.
+func (s *PublicationService) activePlansInOrder(handles []string, orgUUID string) ([]*model.SubscriptionPlan, error) {
 	if len(handles) == 0 {
-		return nil
+		return nil, nil
 	}
 	byHandle, err := s.loadActivePlans(handles, orgUUID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	plans := make([]*model.SubscriptionPlan, 0, len(handles))
 	for _, h := range handles {
 		plans = append(plans, byHandle[h])
 	}
+	return plans, nil
+}
 
-	if err := s.portalPublisher.CreateMissingPlans(ctx, portal, plans); err != nil {
-		return portalPushError(err)
+// syncPortalPlans makes sure the portal has every plan the draft selects, as it is here
+// (PortalPublisher.SyncPlans):
+//   - plans the portal lacks are created, each paid one with its pricing, after the meters its
+//     prices charge for;
+//   - copies whose name or limit differs are updated;
+//   - a plan copy priced differently, or a meter with other settings, refuses the publish.
+//
+// Errors come back already turned into the caller's API errors; the result names what was
+// created.
+func (s *PublicationService) syncPortalPlans(ctx context.Context, portal *model.APIPortal, orgUUID string, plans []*model.SubscriptionPlan) (PlanSyncResult, error) {
+	if len(plans) == 0 {
+		return PlanSyncResult{}, nil
 	}
-	return nil
+	pricing, err := s.listingPricing(plans, orgUUID)
+	if err != nil {
+		return PlanSyncResult{}, err
+	}
+	meters, err := s.listingMeters(pricing, orgUUID)
+	if err != nil {
+		return PlanSyncResult{}, err
+	}
+
+	created, err := s.portalPublisher.SyncPlans(ctx, portal, PlanSync{Plans: plans, Pricing: pricing, Meters: meters})
+	if err != nil {
+		var pricingConflict *PortalPlanPricingConflictError
+		if errors.As(err, &pricingConflict) {
+			return PlanSyncResult{}, apperror.APIPublicationPlanPricingConflict.New(pricingConflict.Handle)
+		}
+		var meterConflict *PortalMeterConflictError
+		if errors.As(err, &meterConflict) {
+			return PlanSyncResult{}, apperror.APIPublicationMeterConflict.New(meterConflict.Handle)
+		}
+		return PlanSyncResult{}, portalPushError(err)
+	}
+	return created, nil
+}
+
+// listingMeters returns the meters the prices of a listing's paid plans charge for, by handle.
+func (s *PublicationService) listingMeters(pricing map[string]*model.SubscriptionPlanPricing, orgUUID string) (map[string]*model.Meter, error) {
+	meters := make(map[string]*model.Meter)
+	if s.meterRepo == nil {
+		return meters, nil
+	}
+	for _, planPricing := range pricing {
+		for _, price := range planPricing.Prices {
+			if _, ok := meters[price.MeterHandle]; ok {
+				continue
+			}
+			meter, err := s.meterRepo.GetByHandle(orgUUID, price.MeterHandle)
+			if err != nil {
+				return nil, fmt.Errorf("failed to get meter %s: %w", price.MeterHandle, err)
+			}
+			if meter != nil {
+				meters[price.MeterHandle] = meter
+			}
+		}
+	}
+	return meters, nil
+}
+
+// undoPlanSync removes from the portal what a publish created before its listing push failed. It
+// runs on its own time limit, since the push may have failed because the publish's time ran out.
+// What cannot be removed is logged. That happens when the push in fact went through but timed out:
+// the portal then refuses to remove a plan the listing offers, and the plan stays with its listing.
+func (s *PublicationService) undoPlanSync(ctx context.Context, portal *model.APIPortal, apiHandle string, created PlanSyncResult) {
+	if len(created.Plans) == 0 && len(created.Meters) == 0 {
+		return
+	}
+	undoCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), portalUndoTimeout)
+	defer cancel()
+	if err := s.portalPublisher.UndoPlanSync(undoCtx, portal, created); err != nil {
+		s.slogger.Warn("A failed publish left plans or meters it created in the API Portal",
+			"portal", portal.Handle, "api", apiHandle, "plans", created.Plans, "meters", created.Meters, "error", err)
+		return
+	}
+	s.slogger.Info("Removed what a failed publish created in the API Portal",
+		"portal", portal.Handle, "api", apiHandle, "plans", created.Plans, "meters", created.Meters)
 }
 
 // portalPushError maps a failed portal call to 409 when the portal rejected the

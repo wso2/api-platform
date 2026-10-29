@@ -40,10 +40,14 @@ spec:
     metadata:
       labels:
         {{- include "apip.componentPodLabels" (list . "api-portal" $deployment.podLabels) | nindent 8 }}
-      {{- with (merge (dict) (default (dict) $deployment.podAnnotations) (default (dict) .Values.global.commonAnnotations)) }}
+      {{- $podAnnotations := omit (merge (dict) (default (dict) $deployment.podAnnotations) (default (dict) .Values.global.commonAnnotations)) "checksum/config" }}
       annotations:
+        # Rolls the pods whenever the rendered config.toml changes; the portal reads
+        # its config once at startup, so a ConfigMap edit alone would not apply.
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- with $podAnnotations }}
         {{- include "apip.renderStringMap" . | nindent 8 }}
-      {{- end }}
+        {{- end }}
     spec:
       serviceAccountName: {{ include "apip.serviceAccountName" . }}
       {{- with (include "apip.componentImagePullSecretsBlock" (dict "root" . "componentPullSecrets" $ap.imagePullSecrets)) }}

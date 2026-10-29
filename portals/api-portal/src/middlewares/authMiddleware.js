@@ -34,7 +34,8 @@
  */
 
 const { safeDecodeJwt, getNestedClaim } = require('../utils/jwtDecode');
-const { jwtVerify, createRemoteJWKSet } = require('jose');
+const { jwtVerify } = require('jose');
+const { getJwksResolver } = require('../utils/jwksResolver');
 
 const { config } = require('../config/configLoader');
 const constants = require('../utils/constants');
@@ -127,23 +128,6 @@ async function resolveUserUuid(req, sub) {
     return userUuid;
 }
 
-// Key sets for per-organization issuers (multi-organization mode), reused across requests so
-// each organization's JWKS is fetched once and then refreshed by jose on key-id misses
-// rather than on every call. Bounded: the issuer an entry is keyed from arrives in an
-// unverified token, so a caller could otherwise grow this without limit by varying it.
-const ORG_JWKS_CACHE_MAX_ENTRIES = 1000;
-const orgJwksCache = new Map(); // jwksUrl -> createRemoteJWKSet()
-
-function orgJwks(jwksUrl) {
-    let jwks = orgJwksCache.get(jwksUrl);
-    if (!jwks) {
-        if (orgJwksCache.size >= ORG_JWKS_CACHE_MAX_ENTRIES) orgJwksCache.clear();
-        jwks = createRemoteJWKSet(new URL(jwksUrl));
-        orgJwksCache.set(jwksUrl, jwks);
-    }
-    return jwks;
-}
-
 /**
  * Multi-organization mode: when the token names a per-organization issuer
  * (orgIssuer.js), the key set and exact issuer to verify it against, plus the
@@ -158,8 +142,11 @@ function perOrgVerification(token) {
 
 async function verifyJwksWithRefresh(token, jwksURL, req) {
     try {
+        // Multi-org mode: route per-org issuers to their own JWKS URL; everything
+        // else goes to the config-driven URL. getJwksResolver caches per URL, so
+        // both paths reuse keys across requests and bound their total entries.
         const perOrg = perOrgVerification(token);
-        const jwks = perOrg ? orgJwks(perOrg.jwksUrl) : await createRemoteJWKSet(new URL(jwksURL));
+        const jwks = getJwksResolver(perOrg ? perOrg.jwksUrl : jwksURL);
         const jwtVerifyOptions = { algorithms: constants.JWT_ASYMMETRIC_ALGORITHMS };
         if (perOrg) jwtVerifyOptions.issuer = perOrg.issuer;
         else if (config.auth.idp?.issuer) jwtVerifyOptions.issuer = config.auth.idp.issuer;

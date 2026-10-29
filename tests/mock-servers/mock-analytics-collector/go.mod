@@ -1,5 +1,5 @@
 module github.com/wso2/api-platform/tests/mock-servers/mock-analytics-collector
 
-go 1.26.5
+go 1.26.10
 
 require github.com/gorilla/mux v1.8.1

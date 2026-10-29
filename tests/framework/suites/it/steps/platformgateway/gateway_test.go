@@ -4130,3 +4130,67 @@ func TestResolveServiceURLAndStoreChoosesTheNetworkOfTheClient(t *testing.T) {
 	require.Error(t, gateway.resolveServiceURLAndStore(ctx, "mcp", " host", "/mcp", " "))
 	require.Error(t, gateway.resolveServiceURLAndStore(ctx, "unknown", " host", "/mcp", "x"))
 }
+
+func TestAnalyticsCompanyIDAssertions(t *testing.T) {
+	var paid analyticsEvent
+	require.NoError(t, json.Unmarshal([]byte(`{"company_id":"cus-1","metadata":{}}`), &paid))
+	free := &analyticsEvent{}
+
+	require.NoError(t, companyIDAssert(&paid, "/p", "have", "cus-1"))
+	require.ErrorContains(t, companyIDAssert(&paid, "/p", "have", "cus-2"), `company id "cus-1", want "cus-2"`)
+	require.ErrorContains(t, companyIDAssert(free, "/p", "have", "cus-1"), `company id "", want "cus-1"`)
+	require.ErrorContains(t, companyIDAssert(&paid, "/p", "have", ""), "needs the expected value")
+	require.NoError(t, companyIDAssert(free, "/p", "not have", ""))
+	require.ErrorContains(t, companyIDAssert(&paid, "/p", "not have", ""), "want none")
+	require.ErrorContains(t, companyIDAssert(free, "/p", "not have", "x"), "takes no value")
+	require.ErrorContains(t, companyIDAssert(free, "/p", "count", ""), "unsupported")
+}
+
+// A readiness call's event is what a scenario waits for before resetting the collector: an event
+// for the path with another status doesn't count, so the step keeps polling until the wanted one
+// arrives, and fails when it never does.
+func TestWaitForAnalyticsEventWaitsForTheStatus(t *testing.T) {
+	var mu sync.Mutex
+	polls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/analytics-block/test/events", r.URL.Path)
+		mu.Lock()
+		polls++
+		n := polls
+		mu.Unlock()
+		events := `[{"request":{"uri":"/items/42"},"response":{"status":403}}]`
+		if n >= 2 {
+			events = `[{"request":{"uri":"/items/42"},"response":{"status":403}},` +
+				`{"request":{"uri":"/items/42"},"response":{"status":200}}]`
+		}
+		_, _ = io.WriteString(w, events)
+	}))
+	t.Cleanup(server.Close)
+	parsed, err := url.Parse(server.URL)
+	require.NoError(t, err)
+	serverPort, err := strconv.Atoi(parsed.Port())
+	require.NoError(t, err)
+	definition := &components.Definition{
+		Name: "testbench", Alias: "testbench",
+		Endpoints: []components.Endpoint{{Name: "analytics", Port: 3008, Scheme: "http"}},
+	}
+	instance, err := components.NewInstance(definition, 0, 1, "127.0.0.1", map[int]int{3008: serverPort})
+	require.NoError(t, err)
+	instances := components.NewSet()
+	require.NoError(t, instances.Add(instance))
+	gateway := &Gateway{
+		topo:   &frameworkruntime.Topology{Instances: instances, Block: &topology.ResolvedBlock{Name: "analytics-block"}},
+		funnel: httpx.NewFunnel(httpx.NewClient(httpx.Options{Timeout: 5 * time.Second}), 0, time.Millisecond),
+		base:   stubBase{},
+	}
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("runner"))
+
+	require.NoError(t, gateway.waitForAnalyticsEvent(ctx, "/shop/v1.0/items/42", 200))
+	mu.Lock()
+	require.GreaterOrEqual(t, polls, 2, "a 403 event for the path is not the readiness call's 200")
+	mu.Unlock()
+
+	short, cancel := context.WithTimeout(ctx, 1500*time.Millisecond)
+	defer cancel()
+	require.Error(t, gateway.waitForAnalyticsEvent(short, "/shop/v1.0/items/42", 500))
+}

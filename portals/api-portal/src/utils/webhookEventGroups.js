@@ -24,10 +24,12 @@ const GROUP_LABELS = {
     subscription: 'Subscriptions',
     apikey: 'API keys',
     application: 'Applications',
+    subscription_plan: 'Subscription plans',
+    meter: 'Meters',
 };
 
 // Display order for known prefixes. Unknown prefixes sort alphabetically after these.
-const GROUP_ORDER = ['subscription', 'apikey', 'application'];
+const GROUP_ORDER = ['subscription', 'apikey', 'application', 'subscription_plan', 'meter'];
 
 function labelFor(prefix) {
     if (GROUP_LABELS[prefix]) return GROUP_LABELS[prefix];

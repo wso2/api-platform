@@ -762,10 +762,10 @@ func TestDocumentRepo_DocumentDisplayNameExistsForArtifact_UnknownNameIsFalse(t 
 }
 
 // ---------------------------------------------------------------------------
-// GetDocumentUUIDsByHandles — handle → uuid, scoped to artifact
+// GetDocumentsByHandles — handle → document, scoped to artifact
 // ---------------------------------------------------------------------------
 
-func TestDocumentRepo_GetDocumentUUIDsByHandles_ResolvesHandlesWithinArtifact(t *testing.T) {
+func TestDocumentRepo_GetDocumentsByHandles_ResolvesHandlesWithinArtifact(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	t.Cleanup(cleanup)
 
@@ -800,22 +800,56 @@ func TestDocumentRepo_GetDocumentUUIDsByHandles_ResolvesHandlesWithinArtifact(t 
 	})
 
 	repo := NewDocumentRepo(db)
-	m, err := repo.GetDocumentUUIDsByHandles(artifactA, []string{"overview", "faq", "missing"}, orgUUID)
+	m, err := repo.GetDocumentsByHandles(artifactA, []string{"overview", "faq", "missing"}, orgUUID)
 	if err != nil {
 		t.Fatalf("err = %v", err)
 	}
-	if m["overview"] != "doc-A" {
-		t.Errorf("overview = %q, want doc-A (artifact B's uuid must NOT leak)", m["overview"])
+	if m["overview"] == nil || m["overview"].ID != "doc-A" {
+		t.Errorf("overview = %+v, want doc-A (artifact B's uuid must NOT leak)", m["overview"])
 	}
-	if m["faq"] != "doc-A-faq" {
-		t.Errorf("faq = %q, want doc-A-faq", m["faq"])
+	if faq := m["faq"]; faq == nil || faq.ID != "doc-A-faq" || faq.Type != constants.DocumentTypePrefix+"FAQ" {
+		t.Errorf("faq = %+v, want doc-A-faq with its stored type", faq)
 	}
 	if _, ok := m["missing"]; ok {
 		t.Errorf("missing handle must not appear in result; got %v", m)
 	}
 }
 
-func TestDocumentRepo_GetDocumentUUIDsByHandles_EmptyInputReturnsEmptyMap(t *testing.T) {
+func TestDocumentRepo_GetDocumentsByHandles_ReturnsFileNameAndSkipsReservedTypes(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	t.Cleanup(cleanup)
+
+	const orgUUID = "org-u2h-reserved"
+	const artifact = "artifact-u2h-reserved"
+	seedTestArtifact(t, db, orgUUID, artifact)
+
+	insertDocumentRow(t, db, &model.Document{
+		ID: "doc-guide", ArtifactUUID: artifact, OrganizationUUID: orgUUID,
+		Type: constants.DocumentTypePrefix + constants.DocumentTypeHowTo, Handle: "guide",
+		DisplayName: "Guide", FileName: "guide.md", Content: []byte("# guide"),
+	})
+	insertDocumentRow(t, db, &model.Document{
+		ID: "doc-def", ArtifactUUID: artifact, OrganizationUUID: orgUUID,
+		Type: constants.DocumentTypeDefinition, Handle: constants.DocumentHandleDefinition,
+		DisplayName: "OpenAPI Definition", Content: []byte("{}"),
+	})
+	insertDocumentRow(t, db, &model.Document{
+		ID: "doc-thumb", ArtifactUUID: artifact, OrganizationUUID: orgUUID,
+		Type: constants.DocumentTypeThumbnail, Handle: constants.DocumentHandleThumbnail,
+		DisplayName: "API Thumbnail", Content: []byte("png"),
+	})
+
+	m, err := NewDocumentRepo(db).GetDocumentsByHandles(artifact,
+		[]string{"guide", constants.DocumentHandleDefinition, constants.DocumentHandleThumbnail}, orgUUID)
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	if len(m) != 1 || m["guide"] == nil || m["guide"].FileName != "guide.md" {
+		t.Errorf("result = %+v, want only the guide document with its file name", m)
+	}
+}
+
+func TestDocumentRepo_GetDocumentsByHandles_EmptyInputReturnsEmptyMap(t *testing.T) {
 	// Guard against the SQL `IN ()` degenerate case: callers batch up handles
 	// and may legitimately pass an empty slice. The function must short-circuit
 	// before running a query against zero placeholders.
@@ -823,64 +857,7 @@ func TestDocumentRepo_GetDocumentUUIDsByHandles_EmptyInputReturnsEmptyMap(t *tes
 	t.Cleanup(cleanup)
 	repo := NewDocumentRepo(db)
 
-	m, err := repo.GetDocumentUUIDsByHandles("any", nil, "any-org")
-	if err != nil {
-		t.Fatalf("err = %v", err)
-	}
-	if m == nil || len(m) != 0 {
-		t.Errorf("result = %+v, want an empty (non-nil) map", m)
-	}
-}
-
-// ---------------------------------------------------------------------------
-// GetDocumentHandlesByUUIDs — the inverse direction
-// ---------------------------------------------------------------------------
-
-func TestDocumentRepo_GetDocumentHandlesByUUIDs_ScopedByOrganization(t *testing.T) {
-	db, cleanup := setupTestDB(t)
-	t.Cleanup(cleanup)
-
-	// Two orgs, each with a doc; the function must only resolve uuids that
-	// belong to the requested organization, not every row that happens to
-	// carry the uuid.
-	const orgA = "org-h2u-A"
-	const orgB = "org-h2u-B"
-	seedTestArtifact(t, db, orgA, "artifact-h2u-A")
-	seedTestArtifact(t, db, orgB, "artifact-h2u-B")
-
-	insertDocumentRow(t, db, &model.Document{
-		ID: "doc-A", ArtifactUUID: "artifact-h2u-A", OrganizationUUID: orgA,
-		Type: constants.DocumentTypePrefix + constants.DocumentTypeHowTo, Handle: "overview-a",
-		DisplayName: "Overview A", Content: []byte("# a"),
-	})
-	insertDocumentRow(t, db, &model.Document{
-		ID: "doc-B", ArtifactUUID: "artifact-h2u-B", OrganizationUUID: orgB,
-		Type: constants.DocumentTypePrefix + constants.DocumentTypeHowTo, Handle: "overview-b",
-		DisplayName: "Overview B", Content: []byte("# b"),
-	})
-
-	repo := NewDocumentRepo(db)
-	m, err := repo.GetDocumentHandlesByUUIDs([]string{"doc-A", "doc-B", "missing"}, orgA)
-	if err != nil {
-		t.Fatalf("err = %v", err)
-	}
-	if m["doc-A"] != "overview-a" {
-		t.Errorf("doc-A = %q, want overview-a", m["doc-A"])
-	}
-	if _, ok := m["doc-B"]; ok {
-		t.Errorf("doc-B must not leak into another org's lookup; got %v", m)
-	}
-	if _, ok := m["missing"]; ok {
-		t.Errorf("missing uuid must not appear in result; got %v", m)
-	}
-}
-
-func TestDocumentRepo_GetDocumentHandlesByUUIDs_EmptyInputReturnsEmptyMap(t *testing.T) {
-	db, cleanup := setupTestDB(t)
-	t.Cleanup(cleanup)
-	repo := NewDocumentRepo(db)
-
-	m, err := repo.GetDocumentHandlesByUUIDs(nil, "any-org")
+	m, err := repo.GetDocumentsByHandles("any", nil, "any-org")
 	if err != nil {
 		t.Fatalf("err = %v", err)
 	}

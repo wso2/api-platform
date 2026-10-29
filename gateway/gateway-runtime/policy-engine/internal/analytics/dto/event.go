@@ -67,6 +67,11 @@ const (
 	// "$ctx:metadata['<key>']" property (see internal/analytics/publishers/global_properties.go).
 	PropKeyMetadata = "x-wso2-metadata"
 
+	// PropKeyOperationPath carries the matched operation path template (e.g.
+	// "/basepath/auth/{channel}") as configured on the API, as opposed to the concrete
+	// request path. Consumed by the traffic-logging global "$ctx:request.pathTemplate" property.
+	PropKeyOperationPath = "x-wso2-operation-path"
+
 	// Fault metadata keys, written only on the fault path by the collector system policy's
 	// OnFault (gateway/system-policies/analytics — a separate Go module, hence the matching
 	// string literals here rather than a shared Go constant, exactly as for PropKeyAuth*

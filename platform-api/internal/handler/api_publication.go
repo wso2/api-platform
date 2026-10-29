@@ -645,11 +645,23 @@ func ownersToResponse(pub *model.Publication) *ownersResponse {
 	}
 }
 
+// selectionsToResponse converts stored plan or document selections, never
+// returning nil so the list serializes as "[]".
+func selectionsToResponse(selections []model.PublicationSelection) []api.PublicationSelection {
+	out := make([]api.PublicationSelection, 0, len(selections))
+	for _, sel := range selections {
+		out = append(out, api.PublicationSelection{Id: sel.Handle, DisplayName: sel.DisplayName, Deleted: sel.Deleted, Edited: sel.Edited})
+	}
+	return out
+}
+
 // draftModelToResponse converts the internal model into the generated
 // response shape.
 func draftModelToResponse(pub *model.Publication) api.PublicationDraftDetails {
 	planIds := api.SubscriptionPlanIdList(pub.SubscriptionPlanIds)
 	docIds := api.DocIdList(pub.DocIds)
+	plans := selectionsToResponse(pub.SubscriptionPlans)
+	docs := selectionsToResponse(pub.Documents)
 	resp := api.PublicationDraftDetails{
 		DisplayName:         pub.DisplayName,
 		Version:             pub.Version,
@@ -658,6 +670,8 @@ func draftModelToResponse(pub *model.Publication) api.PublicationDraftDetails {
 		Owners:              ownersToResponse(pub),
 		SubscriptionPlanIds: &planIds,
 		DocIds:              &docIds,
+		SubscriptionPlans:   &plans,
+		Documents:           &docs,
 		HasThumbnail:        &pub.HasThumbnail,
 		HasLandingPage:      &pub.HasLandingPage,
 		CreatedBy:           stringPtrIfSet(pub.CreatedBy),
@@ -709,6 +723,8 @@ func publicationSummariesToResponse(items []*model.PublicationSummary) []api.Pub
 func publicationModelToResponse(pub *model.Publication) api.Publication {
 	planIds := api.SubscriptionPlanIdList(pub.SubscriptionPlanIds)
 	docIds := api.DocIdList(pub.DocIds)
+	plans := selectionsToResponse(pub.SubscriptionPlans)
+	docs := selectionsToResponse(pub.Documents)
 	resp := api.Publication{
 		DisplayName:         &pub.DisplayName,
 		Version:             &pub.Version,
@@ -719,6 +735,8 @@ func publicationModelToResponse(pub *model.Publication) api.Publication {
 		Owners:              ownersToResponse(pub),
 		SubscriptionPlanIds: &planIds,
 		DocIds:              &docIds,
+		SubscriptionPlans:   &plans,
+		Documents:           &docs,
 		HasThumbnail:        &pub.HasThumbnail,
 		HasLandingPage:      &pub.HasLandingPage,
 		CreatedBy:           stringPtrIfSet(pub.CreatedBy),

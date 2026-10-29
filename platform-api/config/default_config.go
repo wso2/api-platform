@@ -208,7 +208,7 @@ func defaultConfig() *Server {
 		},
 		APIPortalPublication: APIPortalPublication{
 			RequestTimeout:        5 * time.Second,
-			ListingRequestTimeout: 15 * time.Second,
+			ContentRequestTimeout: 10 * time.Second,
 			MaxRetries:            1,
 			RetryBackoff:          1 * time.Second,
 			OverallTimeout:        65 * time.Second,
@@ -229,6 +229,10 @@ func defaultConfig() *Server {
 		ReadOnly: ReadOnly{
 			Enabled:               false,
 			WritableOrganizations: nil,
+		},
+		MCPServer: MCPServer{
+			Enabled:         false,
+			MaxRequestBytes: 1 << 20,
 		},
 	}
 }

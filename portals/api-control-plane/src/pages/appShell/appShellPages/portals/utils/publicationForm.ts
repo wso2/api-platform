@@ -80,6 +80,25 @@ export const buildProductionUrlOptions = (
     .map((gateway) => ({ gatewayName: gateway.displayName, url: buildInvokeUrl(gatewayEndpoint(gateway), context) }))
     .filter((option) => option.url !== '');
 
+/** A plan the listing still selects whose subscription plan has since been deleted; only its stored name is left. */
+export type DeletedPlan = { id: string; displayName: string };
+
+type PlanSelectionSource = Pick<Publication | PublicationDraftDetails, 'subscriptionPlanIds' | 'subscriptionPlans'>;
+
+/** The selected plans that still exist; a deleted one cannot be saved or published, so it never enters the form. */
+const existingPlanIds = (source: PlanSelectionSource): string[] => {
+  if (!source.subscriptionPlans) return source.subscriptionPlanIds ?? [];
+  return source.subscriptionPlans.filter((plan) => !plan.deleted).map((plan) => plan.id);
+};
+
+/** The selected plans whose subscription plan was deleted, for the "Deleted" cards. */
+export const deletedPlansOf = (source: PlanSelectionSource | undefined): DeletedPlan[] =>
+  (source?.subscriptionPlans ?? []).filter((plan) => plan.deleted).map(({ id, displayName }) => ({ id, displayName }));
+
+/** The ids of selected plans changed in Settings after the selection was last saved or published. */
+export const editedPlanIdsOf = (source: PlanSelectionSource | undefined): string[] =>
+  (source?.subscriptionPlans ?? []).filter((plan) => plan.edited && !plan.deleted).map((plan) => plan.id);
+
 export const emptyDraftFormValues: DraftFormValues = {
   displayName: '',
   version: '',
@@ -117,7 +136,7 @@ export const resolveDraftFormValues = (
       productionUrl: draft.endpoints?.productionUrl ?? '',
       sandboxUrl: draft.endpoints?.sandboxUrl ?? '',
       agentVisibility: draft.agentVisibility ?? DEFAULT_AGENT_VISIBILITY,
-      subscriptionPlanIds: draft.subscriptionPlanIds ?? [],
+      subscriptionPlanIds: existingPlanIds(draft),
     };
   }
   if (publication) {
@@ -128,7 +147,7 @@ export const resolveDraftFormValues = (
       productionUrl: publication.endpoints?.productionUrl ?? '',
       sandboxUrl: publication.endpoints?.sandboxUrl ?? '',
       agentVisibility: publication.agentVisibility ?? DEFAULT_AGENT_VISIBILITY,
-      subscriptionPlanIds: publication.subscriptionPlanIds ?? [],
+      subscriptionPlanIds: existingPlanIds(publication),
     };
   }
   if (api) {

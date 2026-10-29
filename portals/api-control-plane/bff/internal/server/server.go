@@ -30,6 +30,7 @@ import (
 
 	"api-control-plane-bff/internal/auth"
 	"api-control-plane-bff/internal/config"
+	"api-control-plane-bff/internal/gatewayrelay"
 	"api-control-plane-bff/internal/proxy"
 	"api-control-plane-bff/internal/session"
 )
@@ -61,6 +62,12 @@ type Server struct {
 	oidc      *auth.OIDC
 	proxies   []mountedProxy
 	handler   http.Handler
+
+	// Gateway-relay relay. Both are nil when [gateway_relay] is disabled. The
+	// tenant-controlled target is resolved per request and never receives the
+	// session bearer token (see internal/gatewayrelay).
+	gatewayResolver *gatewayrelay.Resolver
+	gatewayRelay    *gatewayrelay.Relay
 
 	refreshMu    sync.Mutex
 	refreshLocks map[string]*refreshLock
@@ -162,6 +169,35 @@ func New(ctx context.Context, cfg *config.Config) (*Server, error) {
 		s.oidc = o
 	}
 
+	if cfg.GatewayRelay.Enabled {
+		// The resolver uses the primary client; the relay gets its own guarded
+		// client because the upstreams have different threat models.
+		s.gatewayResolver = gatewayrelay.NewResolver(
+			upstream,
+			cfg.ControlPlane.URL,
+			cfg.GatewayRelay.ResolveCacheTTL,
+			cfg.GatewayRelay.ResolveCacheSize,
+		)
+		egressPolicy, err := cfg.GatewayRelay.Egress.Policy()
+		if err != nil {
+			return nil, err
+		}
+		relay, err := gatewayrelay.NewRelay(gatewayrelay.RelayOptions{
+			RequestTimeout:   cfg.GatewayRelay.RequestTimeout,
+			MaxRequestBytes:  cfg.GatewayRelay.MaxRequestBytes,
+			MaxResponseBytes: cfg.GatewayRelay.MaxResponseBytes,
+			MaxConcurrent:    cfg.GatewayRelay.MaxConcurrent,
+			MaxPending:       cfg.GatewayRelay.MaxPending,
+			CAFile:           cfg.GatewayRelay.CAFile,
+			TLSSkipVerify:    cfg.GatewayRelay.TLSSkipVerify,
+			Egress:           egressPolicy,
+		})
+		if err != nil {
+			return nil, err
+		}
+		s.gatewayRelay = relay
+	}
+
 	s.handler = s.routes()
 	return s, nil
 }
@@ -194,8 +230,16 @@ const nonStreamingWriteDeadline = 30 * time.Second
 // the per-request deadline http.ResponseController exposes — the reverse
 // proxy handler is intentionally never wrapped with this.
 func withWriteDeadline(next http.HandlerFunc) http.HandlerFunc {
+	return withWriteDeadlineOf(nonStreamingWriteDeadline, next)
+}
+
+// withWriteDeadlineOf is withWriteDeadline for a handler whose own bound is not
+// the generic one; the gateway relay, which already bounds itself by its
+// configured request timeout and needs an outer deadline sized just above that
+// rather than a fixed default that could be either far looser or far tighter.
+func withWriteDeadlineOf(d time.Duration, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(nonStreamingWriteDeadline))
+		_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(d))
 		next.ServeHTTP(w, r)
 	}
 }
@@ -217,6 +261,10 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /api/session", withWriteDeadline(s.handleSession))
 	mux.HandleFunc("GET /api/auth/login", withWriteDeadline(s.handleOIDCLogin))
 	mux.HandleFunc("GET /api/auth/callback", withWriteDeadline(s.handleOIDCCallback))
+
+	// Gateway-relay relay. The handler returns 404 when disabled.
+	mux.HandleFunc("POST /api/gateway-relay/invoke",
+		withWriteDeadlineOf(s.gatewayInvokeWriteDeadline(), s.handleGatewayInvoke))
 
 	// Same-origin reverse proxy(ies): the primary control plane, plus any
 	// named upstream. Each Rewrite hook already strips its own prefix, so the

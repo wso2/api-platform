@@ -450,6 +450,87 @@ func TestAPIValidator_ValidateOperations_ReservedHealthPath(t *testing.T) {
 	}
 }
 
+func TestAPIValidator_ValidateOperations_ReservedJWKSPath(t *testing.T) {
+	v := NewAPIValidator()
+
+	tests := []struct {
+		name    string
+		context string
+		path    string
+		wantErr bool
+	}{
+		{"context+path is the JWKS endpoint", "/.well-known", "/jwks", true},
+		{"root context with the JWKS path", "/", constants.GatewayJWKSPath, true},
+		{"dot-segment path resolves to the JWKS endpoint", "/foo", "/../.well-known/jwks", true},
+		{"other /.well-known documents are unaffected", "/.well-known", "/openid-configuration", false},
+		{"a JWKS nested under an API context is unaffected", "/orders", constants.GatewayJWKSPath, false},
+		{"a sibling of the JWKS path is unaffected", "/.well-known", "/jwks.json", false},
+		{"a path under the JWKS path is unaffected", "/.well-known", "/jwks/keys", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			config := createValidRestAPIConfig()
+			config.Spec.Context = tt.context
+			config.Spec.Operations = []api.Operation{
+				{Method: api.Ptr(api.OperationMethodGET), Path: api.Ptr(tt.path)},
+			}
+
+			hasReservedErr := false
+			for _, e := range v.Validate(config) {
+				if strings.Contains(e.Message, "reserved gateway JWKS endpoint") {
+					hasReservedErr = true
+				}
+			}
+			if hasReservedErr != tt.wantErr {
+				t.Errorf("reserved-JWKS-path error presence = %v, want %v", hasReservedErr, tt.wantErr)
+			}
+		})
+	}
+}
+
+// With the JWKS endpoint disabled the path is not the gateway's, so an API may
+// register it — the escape hatch for one that already did before the endpoint
+// existed.
+func TestAPIValidator_JWKSPathFreeWhenEndpointDisabled(t *testing.T) {
+	t.Cleanup(func() { SetGatewayJWKSPathReserved(true) })
+
+	config := createValidRestAPIConfig()
+	config.Spec.Context = "/.well-known"
+	config.Spec.Operations = []api.Operation{{Method: api.Ptr(api.OperationMethodGET), Path: api.Ptr("/jwks")}}
+
+	hasJWKSErr := func() bool {
+		for _, e := range NewAPIValidator().Validate(config) {
+			if strings.Contains(e.Message, "reserved gateway JWKS endpoint") {
+				return true
+			}
+		}
+		return false
+	}
+
+	// Reserved by default: the same config is rejected before the switch flips,
+	// so the acceptance below is attributable to the switch alone.
+	if !hasJWKSErr() {
+		t.Fatalf("%s must be rejected while the JWKS endpoint is enabled", constants.GatewayJWKSPath)
+	}
+
+	SetGatewayJWKSPathReserved(false)
+	if hasJWKSErr() {
+		t.Fatalf("%s must not be reserved while the JWKS endpoint is disabled", constants.GatewayJWKSPath)
+	}
+
+	// The health namespace stays reserved regardless.
+	config.Spec.Context = constants.GatewayHealthPathPrefix
+	config.Spec.Operations = []api.Operation{{Method: api.Ptr(api.OperationMethodGET), Path: api.Ptr("/ready")}}
+	found := false
+	for _, e := range NewAPIValidator().Validate(config) {
+		found = found || strings.Contains(e.Message, constants.GatewayHealthPathPrefix)
+	}
+	if !found {
+		t.Fatal("the health namespace must stay reserved with the JWKS endpoint disabled")
+	}
+}
+
 func TestAPIValidator_ValidateResilience(t *testing.T) {
 	v := NewAPIValidator()
 

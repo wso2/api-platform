@@ -236,9 +236,6 @@ CREATE TABLE IF NOT EXISTS api_publication_contents (
 );
 
 -- Documents table for storing API-related documents (e.g. OpenAPI spec definitions).
--- Positioned here, ahead of its original location further down this file, so
--- api_publication_doc_mappings below (which references it) doesn't create
--- before its FK target exists — Postgres validates that at CREATE TABLE time.
 CREATE TABLE IF NOT EXISTS api_documents (
     uuid              VARCHAR(40)  PRIMARY KEY,
     artifact_uuid     VARCHAR(40)  NOT NULL,
@@ -263,42 +260,44 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_api_documents_artifact_handle ON api_docume
 
 -- =====================================================================
 -- api_publication_doc_mappings: the documents selected for a publication row.
+-- doc_uuid is a pointer, not a foreign key, so deleting a document leaves the
+-- selection intact. doc_handle and display_name are copies taken at
+-- the last save or publish. A selection whose pointer matches no api_documents
+-- row is reported as deleted.
 -- =====================================================================
 CREATE TABLE IF NOT EXISTS api_publication_doc_mappings (
     organization_uuid VARCHAR(40)  NOT NULL,
     publication_uuid  VARCHAR(40)  NOT NULL,        -- the api_publications row this belongs to, draft or live
     doc_uuid          VARCHAR(40)  NOT NULL,
+    doc_handle        VARCHAR(40)  NOT NULL,
+    display_name      VARCHAR(255) NOT NULL,
     created_by        VARCHAR(200) NOT NULL,
     created_at        TIMESTAMPTZ  DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (organization_uuid, publication_uuid, doc_uuid),
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
     FOREIGN KEY (publication_uuid, organization_uuid)
-        REFERENCES api_publications(uuid, organization_uuid) ON DELETE CASCADE,
-    -- api_documents has no UNIQUE(organization_uuid, uuid) — single-column FK,
-    -- org match checked in the service layer, same exception as subscription_plans.
-    -- CASCADE: documents are authored outside this feature. Deleting one there
-    -- withdraws it from the selection here rather than blocking the deletion.
-    FOREIGN KEY (doc_uuid) REFERENCES api_documents(uuid) ON DELETE CASCADE
+        REFERENCES api_publications(uuid, organization_uuid) ON DELETE CASCADE
 );
 
 -- =====================================================================
 -- api_publication_plan_mappings: the subscription plans selected for a
--- publication row. subscription_plans has no UNIQUE(organization_uuid, uuid),
--- so the plan reference is single-column and the organization match is checked
--- in the service layer.
+-- publication row. subscription_plan_uuid is a pointer, not a foreign key, so
+-- deleting a plan leaves the selection intact. plan_handle and display_name are
+-- copies taken at the last save or publish. A selection whose pointer matches
+-- no subscription_plans row is reported as deleted.
 -- =====================================================================
 CREATE TABLE IF NOT EXISTS api_publication_plan_mappings (
     organization_uuid      VARCHAR(40)  NOT NULL,
     publication_uuid       VARCHAR(40)  NOT NULL,   -- the api_publications row this belongs to, draft or live
     subscription_plan_uuid VARCHAR(40)  NOT NULL,
+    plan_handle            VARCHAR(40)  NOT NULL,
+    display_name           VARCHAR(255) NOT NULL,
     created_by             VARCHAR(200) NOT NULL,
     created_at             TIMESTAMPTZ  DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (organization_uuid, publication_uuid, subscription_plan_uuid),
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
     FOREIGN KEY (publication_uuid, organization_uuid)
-        REFERENCES api_publications(uuid, organization_uuid) ON DELETE CASCADE,
-    FOREIGN KEY (subscription_plan_uuid)
-        REFERENCES subscription_plans(uuid) ON DELETE RESTRICT
+        REFERENCES api_publications(uuid, organization_uuid) ON DELETE CASCADE
 );
 
 -- API Publication indexes
@@ -848,3 +847,70 @@ CREATE TABLE IF NOT EXISTS user_organization_mappings (
     FOREIGN KEY (user_uuid) REFERENCES user_idp_references(uuid) ON DELETE CASCADE,
     FOREIGN KEY (org_uuid)  REFERENCES organizations(uuid)       ON DELETE CASCADE
 );
+
+-- Meters (monetization): what a paid plan charges for. A meter made in the Management Portal is
+-- kept here and sent to an API Portal when a plan that charges for it is published there. A meter
+-- made in an API Portal is a copy, kept current by that portal's meter.* webhook events.
+--   - type REQUEST_COUNT counts API requests; type TOKENS adds up a number from the events of AI
+--     API requests, read at type_key (NULL for REQUEST_COUNT).
+--   - filter_fields lists the properties the meter's prices may filter on, each a name and the
+--     event field it reads (a JSON array of {field, event_key}; [] for none). A meter has no
+--     filters of its own: each price gives its own.
+--   - source_updated_at is when the meter last changed where it was made: the time of the request
+--     for a meter made here, the event's occurred_at for a copy. An older, late event is ignored.
+CREATE TABLE IF NOT EXISTS meters (
+    uuid VARCHAR(40) PRIMARY KEY,
+    organization_uuid VARCHAR(40) NOT NULL,
+    handle VARCHAR(40) NOT NULL,
+    display_name VARCHAR(255) NOT NULL,
+    description VARCHAR(1023),
+    type VARCHAR(20) NOT NULL,
+    type_key VARCHAR(255),
+    filter_fields BYTEA NOT NULL,
+    source_updated_at TIMESTAMPTZ NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
+    UNIQUE(organization_uuid, handle)
+);
+
+-- Pricing of paid subscription plans (monetization); a plan without a row is free. A plan created
+-- through this REST API (the Management Portal) or in an API Portal (its subscription_plan.created
+-- webhook event) is stored with its pricing, in the same transaction, and the pricing never
+-- changes.
+-- prices is a JSON array, in order, that holds what the plan charges:
+--   - a flat rate plan: one entry, {pricing_model: FLAT, amount}, the amount charged every billing
+--     period;
+--   - a usage based plan: 1 to 20 usage prices. Each names its meter by handle, its filters
+--     ([{field, operator, values}], none to count every request of the meter) and one pricing
+--     model: PER_UNIT, VOLUME or GRADUATED.
+-- Amounts are decimal strings.
+-- created_at is when the pricing was set: the time of the request for a plan created through this
+-- REST API, the event's occurred_at for a plan created in an API Portal.
+CREATE TABLE IF NOT EXISTS subscription_plan_pricing (
+    subscription_plan_uuid VARCHAR(40) PRIMARY KEY,
+    organization_uuid VARCHAR(40) NOT NULL,
+    currency VARCHAR(3) NOT NULL,
+    billing_period VARCHAR(20) NOT NULL,
+    prices BYTEA NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL,
+    FOREIGN KEY (subscription_plan_uuid) REFERENCES subscription_plans(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_subscription_plan_pricing_org ON subscription_plan_pricing(organization_uuid);
+
+-- Billing state of a paid subscription (monetization), from the API Portal, which sends it with
+-- subscription.created and every subscription.billing_updated event. A free subscription has no
+-- row. billing_updated_at is the occurred_at of the event last applied, so a late event is
+-- ignored.
+CREATE TABLE IF NOT EXISTS subscription_billing (
+    subscription_uuid VARCHAR(40) PRIMARY KEY,
+    organization_uuid VARCHAR(40) NOT NULL,
+    billing_status VARCHAR(20) NOT NULL,
+    billing_customer_id VARCHAR(255) NOT NULL,
+    billing_subscription_id VARCHAR(255) NOT NULL,
+    billing_updated_at TIMESTAMPTZ NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (subscription_uuid) REFERENCES subscriptions(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_subscription_billing_org ON subscription_billing(organization_uuid);
