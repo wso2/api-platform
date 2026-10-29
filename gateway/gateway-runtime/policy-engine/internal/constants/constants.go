@@ -22,6 +22,45 @@ const (
 	ExtProcFilterName = "api_platform.policy_engine.envoy.filters.http.ext_proc"
 	ExtProcFilter     = "envoy.filters.http.ext_proc"
 
+	// PolicyPositionMetadataKey is gRPC initial metadata naming which filter position an
+	// ext_proc stream serves. Set by the router on the upstream processor only; must match
+	// the controller constant of the same name.
+	PolicyPositionMetadataKey = "x-wso2-policy-position"
+	// PolicyPositionUpstream marks the per-attempt stream.
+	PolicyPositionUpstream = "upstream"
+
+	// ExtProcAttributeRouteName names the route an attempt belongs to, which is how the
+	// per-attempt handler reaches the route's upstream-definition base paths.
+	ExtProcAttributeRouteName = "xds.route_name"
+
+	// ExtProcAttributeClusterName names the cluster Envoy selected for THIS attempt, which is
+	// how a per-attempt policy learns its target.
+	ExtProcAttributeClusterName = "xds.cluster_name"
+
+	// AttemptCountHeader tells an upstream invocation which attempt it is serving. Present
+	// because the virtual host is generated with include_request_attempt_count.
+	AttemptCountHeader = "x-envoy-attempt-count"
+
+	// AttemptMetadataNamespace is the reserved shared-context namespace through which a
+	// per-attempt policy learns which attempt it is running for and which target it is aimed
+	// at. A policy whose decision varies per attempt (a failover policy substituting that
+	// attempt's model) cannot work it out otherwise: the downstream chain ran once, before any
+	// target was chosen, and Envoy reports the selection only as an ext_proc attribute on the
+	// attempt's first message.
+	//
+	// Reserved: the engine writes this namespace on every per-attempt chain, so a policy must
+	// read it rather than publish into it.
+	AttemptMetadataNamespace = "wso2.attempt"
+
+	// AttemptMetadataNumber is the 1-based attempt index -- 1 is the original try.
+	AttemptMetadataNumber = "number"
+
+	// AttemptMetadataCluster names the upstream cluster this attempt targets. Prefer it over
+	// the attempt number when a policy needs to identify WHICH target it is talking to: an
+	// index into a published ranking goes wrong the moment a member is suspended or skipped,
+	// whereas the cluster names the target directly.
+	AttemptMetadataCluster = "cluster"
+
 	// Connection-level ext_proc attributes carrying the mTLS verdict and peer
 	// certificate, read from req.Attributes[ExtProcFilter].Fields. The strings
 	// must match the controller's copies exactly: the modules share no type.
