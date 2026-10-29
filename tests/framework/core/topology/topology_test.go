@@ -440,6 +440,13 @@ blocks:
 		"a sharer must follow its owner's engine through the matrix")
 }
 
+func TestMultiAxisLabel(t *testing.T) {
+	require.Equal(t, "api", multiAxisLabel("platform-api"))
+	require.Equal(t, "gateway", multiAxisLabel("platform-gateway"))
+	require.Equal(t, "gateway-controller", multiAxisLabel("gateway-controller"),
+		"a component without the platform- prefix is used as is")
+}
+
 func TestMultiAxisMatrixExpansion(t *testing.T) {
 	r := testRegistry(t)
 	require.NoError(t, r.Register(&components.Definition{
@@ -463,7 +470,7 @@ defaults:
   db:
     api-portal: postgres
 blocks:
-  - name: platform-api-core
+  - name: mx
     components:
       - name: gateway-controller
         db:
@@ -482,12 +489,9 @@ blocks:
 
 	seen := map[string]bool{}
 	for _, b := range resolved.Blocks {
-		require.Equal(t, "platform-api-core", b.Source)
+		require.Equal(t, "mx", b.Source)
 		require.False(t, seen[b.Name], "block name %q must be unique", b.Name)
 		seen[b.Name] = true
-
-		require.Contains(t, b.Name, "gateway-controller-")
-		require.Contains(t, b.Name, "platform-gateway-")
 
 		require.Empty(t, b.DB,
 			"ResolvedBlock.DB is only meaningful for a single varying component; it stays empty when two or more vary")
@@ -496,6 +500,10 @@ blocks:
 		for _, c := range b.Components {
 			byName[c.Def.Name] = c
 		}
+
+		require.Contains(t, b.Name, "gateway-controller-"+string(byName["gateway-controller"].DB))
+		require.Contains(t, b.Name, "gateway-"+string(byName["platform-gateway"].DB),
+			"platform-gateway's multi-axis label drops the platform- prefix to stay under the testbench partition-key budget")
 
 		require.Equal(t, components.Postgres, byName["api-portal"].DB,
 			"an independent sibling must keep its own engine across every combination")
@@ -526,19 +534,23 @@ blocks:
 
 func TestMultiAxisMatrixImageResolution(t *testing.T) {
 	r := testRegistry(t)
-	require.NoError(t, r.Register(&components.Definition{
-		Name: "platform-gateway", Image: components.ImageRef{Ref: "pg:test"}, Alias: "platform-gateway",
-		Endpoints: []components.Endpoint{{Name: "http", Port: 8080, Scheme: "http"}},
-		DB: &components.DBContract{
-			Supported: []components.DBType{components.SQLite, components.Postgres, components.SQLServer},
-			Schema: map[components.DBType][]string{
-				components.Postgres:  {"pg.postgres.sql"},
-				components.SQLServer: {"pg.sqlserver.sql"},
+	// c1/c2, not gateway-controller/platform-gateway: those names leave no room under the
+	// testbench partition-key budget once versioned matrix keys lengthen the block name.
+	for _, name := range []string{"c1", "c2"} {
+		require.NoError(t, r.Register(&components.Definition{
+			Name: name, Image: components.ImageRef{Ref: name + ":test"}, Alias: name,
+			Endpoints: []components.Endpoint{{Name: "http", Port: 8080, Scheme: "http"}},
+			DB: &components.DBContract{
+				Supported: []components.DBType{components.SQLite, components.Postgres, components.SQLServer},
+				Schema: map[components.DBType][]string{
+					components.Postgres:  {name + ".postgres.sql"},
+					components.SQLServer: {name + ".sqlserver.sql"},
+				},
+				SelfMigrates: []components.DBType{components.SQLite},
+				Env:          func(components.DSN) map[string]string { return nil },
 			},
-			SelfMigrates: []components.DBType{components.SQLite},
-			Env:          func(components.DSN) map[string]string { return nil },
-		},
-	}))
+		}))
+	}
 	require.NoError(t, r.Validate())
 
 	src := `
@@ -547,27 +559,26 @@ defaults:
   db:
     api-portal: postgres
 blocks:
-  - name: platform-api-core
+  - name: mx
     components:
-      - name: gateway-controller
+      - name: c1
         db:
           matrix: [postgres:17-alpine, sqlite]
-      - name: platform-gateway
+      - name: c2
         db:
           matrix: [sqlserver:2022-latest, postgres:16-alpine]
-      - name: mock-platform-api
       - name: api-portal
     runners: [{name: r, features: [f.feature]}]
 `
 	resolved, err := Load([]byte(src), r)
 	require.NoError(t, err)
-	require.Len(t, resolved.Blocks, 4, "2 gateway-controller variants x 2 platform-gateway variants must multiply")
+	require.Len(t, resolved.Blocks, 4, "2 c1 variants x 2 c2 variants must multiply")
 
-	wantGatewayControllerImage := map[components.DBType]components.ImageRef{
+	wantC1Image := map[components.DBType]components.ImageRef{
 		components.Postgres: SupportedDBVariants["postgres:17-alpine"].Image,
 		components.SQLite:   SupportedDBVariants["sqlite"].Image,
 	}
-	wantPlatformGatewayImage := map[components.DBType]components.ImageRef{
+	wantC2Image := map[components.DBType]components.ImageRef{
 		components.SQLServer: SupportedDBVariants["sqlserver:2022-latest"].Image,
 		components.Postgres:  SupportedDBVariants["postgres:16-alpine"].Image,
 	}
@@ -577,19 +588,17 @@ blocks:
 		for _, c := range b.Components {
 			byName[c.Def.Name] = c
 		}
-		gw, papi := byName["gateway-controller"], byName["platform-gateway"]
+		c1, c2 := byName["c1"], byName["c2"]
 
-		require.Equal(t, wantGatewayControllerImage[gw.DB], gw.Image,
-			"gateway-controller must resolve its own sweep's image, not platform-gateway's")
-		require.Equal(t, wantPlatformGatewayImage[papi.DB], papi.Image,
-			"platform-gateway must resolve its own sweep's image, not gateway-controller's")
+		require.Equal(t, wantC1Image[c1.DB], c1.Image, "c1 must resolve its own sweep's image, not c2's")
+		require.Equal(t, wantC2Image[c2.DB], c2.Image, "c2 must resolve its own sweep's image, not c1's")
 
-		if gw.DB == components.Postgres {
-			require.Contains(t, b.Name, "gateway-controller-postgres-17-alpine")
+		if c1.DB == components.Postgres {
+			require.Contains(t, b.Name, "c1-postgres-17-alpine")
 		}
-		if papi.DB == components.Postgres {
-			require.Contains(t, b.Name, "platform-gateway-postgres")
-			require.NotContains(t, b.Name, "platform-gateway-postgres-17-alpine")
+		if c2.DB == components.Postgres {
+			require.Contains(t, b.Name, "c2-postgres")
+			require.NotContains(t, b.Name, "c2-postgres-17-alpine")
 		}
 	}
 }
@@ -1017,6 +1026,27 @@ blocks:
 	require.ErrorContains(t, err, "gateway-analytics")
 }
 
+func TestPartitionKeyMustFitTheTestbenchLimit(t *testing.T) {
+	const src = `
+suite: api-platform-it
+defaults:
+  parallel: 2
+  db:
+    gateway-controller: sqlite
+    api-portal: postgres
+blocks:
+  - name: this-block-name-is-deliberately-long-enough-to-exceed-the-testbench-partition-key-limit
+    components:
+      - name: mock-jwks
+    runners:
+      - name: one
+        features: [features/api_deploy.feature]
+`
+	_, err := load(t, src)
+	require.ErrorContains(t, err, "partition key")
+	require.ErrorContains(t, err, "64 characters")
+}
+
 func TestDBSpecGrammar(t *testing.T) {
 	decode := func(t *testing.T, src string) (DBSpec, error) {
 		t.Helper()
@@ -1189,9 +1219,10 @@ func TestExpandMatrixFindsTheVaryingComponent(t *testing.T) {
 			gw, ok := v.sweepFor("platform-gateway")
 			require.True(t, ok)
 
-			require.Contains(t, v.name, "platform-api-"+string(papi.db),
+			require.Contains(t, v.name, "api-"+string(papi.db),
 				"a multi-axis name must identify which engine belongs to which component")
-			require.Contains(t, v.name, "platform-gateway-"+string(gw.db))
+			require.Contains(t, v.name, "gateway-"+string(gw.db),
+				"the platform- prefix is dropped to stay under the testbench partition-key budget")
 
 			combo := [2]components.DBType{papi.db, gw.db}
 			require.False(t, seenCombos[combo], "combination %v must appear only once", combo)

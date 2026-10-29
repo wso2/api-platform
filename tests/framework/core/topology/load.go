@@ -385,12 +385,17 @@ func expandMatrix(block *Block) ([]variant, error) {
 			sweeps[i] = sweep{component: axis.component, db: db.Engine, image: db, name: suffix}
 			parts[i] = suffix
 			if multiAxis {
-				parts[i] = axis.component + "-" + suffix
+				parts[i] = multiAxisLabel(axis.component) + "-" + suffix
 			}
 		}
 		out = append(out, variant{name: strings.Join(parts, "_"), sweeps: sweeps})
 	}
 	return out, nil
+}
+
+// multiAxisLabel shortens a component name for a multi-axis variant suffix
+func multiAxisLabel(component string) string {
+	return strings.TrimPrefix(component, "platform-")
 }
 
 // variantSuffix suffixes an engine: its bare name for the default variant, else the variant key.
