@@ -39,7 +39,7 @@ type PortalPublisher interface {
 	// Unpublish removes apiHandle's listing from portal. A nil error means the
 	// portal no longer carries the listing, including when it was already gone.
 	// Errors follow the same contract as Publish.
-	Unpublish(ctx context.Context, portal *model.APIPortal, apiHandle string) error
+	Unpublish(ctx context.Context, portal *model.APIPortal, apiType, apiHandle string) error
 
 	// SyncPlans makes the portal's copy of each plan in sync.Plans (matched by
 	// exact handle) match the plan here:
@@ -68,7 +68,7 @@ type PortalPublisher interface {
 	// PublishContent adds the files in content to apiHandle's listing on portal, replacing
 	// any with the same path; nothing else is removed. Errors follow the same contract as
 	// Publish.
-	PublishContent(ctx context.Context, portal *model.APIPortal, apiHandle string, content *PortalContent) error
+	PublishContent(ctx context.Context, portal *model.APIPortal, apiType, apiHandle string, content *PortalContent) error
 
 	// Deprecate marks apiHandle's listing on portal as deprecated, re-sending live
 	// with only the status changed. Errors follow the same contract as Publish.
