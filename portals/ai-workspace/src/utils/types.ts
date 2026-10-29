@@ -1167,12 +1167,30 @@ export interface PublicationDraftDetailsInput extends PublicationDetailsCore {
 }
 
 /**
+ * A plan or document a draft or listing selects, as it was when last saved or
+ * published (schema `PublicationSelection`). `deleted` and `edited` say what
+ * became of the source since.
+ */
+export interface PublicationSelection {
+  /** The plan or document handle. */
+  id: string;
+  /** The name stored with the selection, so it can still be shown after the source is deleted. */
+  displayName: string;
+  deleted: boolean;
+  edited: boolean;
+}
+
+/**
  * A saved draft as returned by the API (schema `PublicationDraftDetails`) —
  * the input fields plus read-only audit/asset flags.
  */
 export interface PublicationDraftDetails extends PublicationDraftDetailsInput, PublicationAuditFields {
   hasThumbnail?: boolean;
   hasLandingPage?: boolean;
+  /** The selected plans, including deleted ones. Same plans as `subscriptionPlanIds`. */
+  subscriptionPlans?: PublicationSelection[];
+  /** The selected documents, including deleted ones. Same documents as `docIds`. */
+  documents?: PublicationSelection[];
 }
 
 /** The live listing for one (API, portal) pairing (schema `Publication`). */
@@ -1185,6 +1203,75 @@ export interface Publication extends PublicationDetailsCore, PublicationAuditFie
   docIds?: string[];
   hasThumbnail?: boolean;
   hasLandingPage?: boolean;
+  /** The selected plans, including deleted ones. Same plans as `subscriptionPlanIds`. */
+  subscriptionPlans?: PublicationSelection[];
+  /** The selected documents, including deleted ones. Same documents as `docIds`. */
+  documents?: PublicationSelection[];
+}
+
+/**
+ * One API Portal's row in the `GET /api-publications` rollup (schema
+ * `PublicationSummaryItem`): the portal, plus this API's publication status on it.
+ */
+export interface PublicationSummaryItem {
+  /** The API Portal's handle. */
+  apiPortalId?: string;
+  apiPortalName?: string;
+  apiPortalDescription?: string;
+  apiPortalUrl?: string;
+  /** `NOT_PUBLISHED` when the API has no live listing on this portal. */
+  status?: ApiPublicationStatus | 'NOT_PUBLISHED';
+  /** Set when a draft exists for this (API, portal) pairing. */
+  draftUpdatedAt?: string;
+  publicationUpdatedAt?: string;
+}
+
+export interface PublicationSummaryResponse {
+  list: PublicationSummaryItem[];
+  pagination: Pagination;
+}
+
+/** One document of an MCP proxy (schema `APIDocumentMetadata`); `id` is the handle `docIds` carries. */
+export interface MCPProxyDocument {
+  id: string;
+  type: string;
+  displayName: string;
+  fileName?: string;
+  contentType?: string;
+}
+
+/** A document's body, with the content type it was stored under. */
+export interface MCPProxyDocumentContent {
+  contentType: string;
+  text: string;
+}
+
+export interface MCPProxyDocumentListResponse {
+  list: MCPProxyDocument[];
+  pagination: Pagination;
+}
+
+/** One throttling limit of a subscription plan (schema `SubscriptionPlanLimit`). */
+export interface SubscriptionPlanLimit {
+  limitType?: 'REQUEST_COUNT' | 'BANDWIDTH' | 'TOTAL_TOKEN_COUNT';
+  timeUnit?: 'MINUTE' | 'HOUR' | 'DAY' | 'MONTH';
+  timeAmount?: number;
+  limitCount: number;
+  /** The unit of a bandwidth limit, e.g. `MB`. */
+  limitCountUnit?: string;
+}
+
+/** An organization's subscription plan (schema `SubscriptionPlan`); `id` is the handle `subscriptionPlanIds` carries. */
+export interface SubscriptionPlan {
+  id: string;
+  displayName: string;
+  status?: 'ACTIVE' | 'INACTIVE';
+  limits?: SubscriptionPlanLimit[];
+}
+
+export interface SubscriptionPlanListResponse {
+  list: SubscriptionPlan[];
+  pagination: Pagination;
 }
 
 /**
