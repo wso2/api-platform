@@ -522,13 +522,16 @@ func TestNegotiate_AgentShapeFollowsTheTransport(t *testing.T) {
 // The transport decides an Agent's shape and nothing else's. A stray value on another kind
 // must not pull it into a JSON-RPC envelope.
 func TestNegotiate_TransportIsIgnoredOffAgent(t *testing.T) {
-	for _, kind := range []policy.APIKind{policy.APIKindRestApi, policy.APIKindLlmProxy} {
+	for kind, want := range map[policy.APIKind]ShapeID{
+		policy.APIKindRestApi:  ShapeJSON,
+		policy.APIKindLlmProxy: ShapeOpenAI,
+	} {
 		got := Negotiate(Request{
 			APIKind:     kind,
 			Transport:   string(agentproto.TransportJSONRPC),
 			ContentType: "application/json",
 		})
-		assert.Equal(t, ShapeJSON, got, "%s must not follow an Agent transport", kind)
+		assert.Equal(t, want, got, "%s must not follow an Agent transport", kind)
 	}
 }
 

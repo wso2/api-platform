@@ -82,15 +82,18 @@ info "Prompt : ${INJECTION_PROMPT}"
 FULL=$(chat_req "${INJECTION_PROMPT}")
 STATUS=$(echo "${FULL}" | tail -1)
 BODY=$(echo "${FULL}" | sed '$d')
-GUARDRAIL_TYPE=$(echo "${BODY}" | jq -r '.type // "unknown"' 2>/dev/null)
+# Which guardrail intervened. LLM routes return the OpenAI error envelope by default, with the
+# guardrail under error.guardrail; with policy_engine.llm_errors.disable_openai_format set it is
+# under message in the guardrail's own body. Both are read.
+GUARDRAIL_TYPE=$(echo "${BODY}" | jq -r '(.error | objects | .guardrail.interveningGuardrail) // (.message | objects | .interveningGuardrail) // "unknown"' 2>/dev/null)
 
 echo "Status         : HTTP ${STATUS}"
 echo "Body           : ${BODY}"
-echo "Guardrail type : ${GUARDRAIL_TYPE}"
-if [[ "${STATUS}" == "422" && "${GUARDRAIL_TYPE}" == "REGEX_GUARDRAIL" ]]; then
+echo "Guardrail      : ${GUARDRAIL_TYPE}"
+if [[ "${STATUS}" == "422" && "${GUARDRAIL_TYPE}" == "regex-guardrail" ]]; then
   pass "Injection attempt BLOCKED by regex-guardrail."
 else
-  fail "Expected HTTP 422 / REGEX_GUARDRAIL, got HTTP ${STATUS} / ${GUARDRAIL_TYPE}."
+  fail "Expected HTTP 422 / regex-guardrail, got HTTP ${STATUS} / ${GUARDRAIL_TYPE}."
   FAILURES=$((FAILURES + 1))
 fi
 

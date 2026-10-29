@@ -65,6 +65,9 @@ Expected response:
 {"error": "Too Many Requests", "message": "Rate limit exceeded. Please try again later."}
 ```
 
+Releases after v1.2.0 return LLM API errors in the OpenAI error envelope instead (unless `[policy_engine.llm_errors] disable_openai_format = true`):
+`{"error":{"message":"Rate limit exceeded. Please try again later.","type":"rate_limit_error","param":null,"code":null}}`.
+
 > The rate limit resets at the start of each fixed 1-minute window.
 
 ## Verify with test.sh
