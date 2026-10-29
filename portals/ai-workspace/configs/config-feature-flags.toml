@@ -49,3 +49,9 @@
 
 [ai_workspace.feature_flags]
 agent_proxy_enabled = true
+# Multiple API Portals per organization: the WSO2-managed API Portals page (create /
+# edit / delete an organization's hosted portals), contributed by the cloud plugins, and
+# MCP proxy publishing through the MCP Hub list and a page per hub instead of the
+# single-hub dialog. Read by src/config.env.ts (MULTI_HUB_PUBLISHING). Also adds
+# ap:subscription_plan:read and ap:docs:read to the default OIDC scopes the BFF requests.
+api_portal_integration_enabled = true

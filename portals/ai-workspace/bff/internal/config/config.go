@@ -633,6 +633,14 @@ const defaultOIDCScopes = "openid profile email offline_access" +
 	" ap:api_publication:read" +
 	" ap:secret:read ap:secret:create ap:secret:update ap:secret:delete ap:secret:manage"
 
+// hubPublishingOIDCScopes list the organization's plans and the MCP proxy's documents
+// on the MCP Hub publish pages. They are requested only where those pages are on, so a
+// deployment without them never asks its IDP for scopes it does not use.
+const hubPublishingOIDCScopes = "ap:subscription_plan:read ap:docs:read"
+
+// hubPublishingFlagKey is the feature flag that turns the MCP Hub publish pages on.
+const hubPublishingFlagKey = "feature_flags.api_portal_integration_enabled"
+
 // Load resolves configuration from one or more config.toml files. At least one path
 // is required and each must exist and parse — there is no default path and no
 // silent fallback to built-in defaults (the container ENTRYPOINT and `make bff-run`
@@ -668,6 +676,12 @@ func Load(paths ...string) (*Config, error) {
 		},
 	}); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
+	}
+
+	// Before normalize, so token exchange inherits them with the rest. An operator's own
+	// scope list already says exactly what to request, so it is left as written.
+	if cfg.Auth.OIDC.Scopes == defaultOIDCScopes && k.Bool(hubPublishingFlagKey) {
+		cfg.Auth.OIDC.Scopes += " " + hubPublishingOIDCScopes
 	}
 
 	cfg.normalize()

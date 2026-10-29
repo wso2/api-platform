@@ -105,14 +105,16 @@ func specPaths() []string {
 var excludedScopeResources = []string{
 	"ap:rest_api:",
 	"ap:subscription:",
+	// Only ap:subscription_plan:read is requested, and only with the MCP Hub publish
+	// pages on (hubPublishingOIDCScopes); creating plans is the Platform API's own job.
 	"ap:subscription_plan:",
 	"ap:meter:",
 	"ap:websub_api:",
 	"ap:webbroker_api:",
 	// Publishing a REST API to a portal, unlike the type-agnostic draft/publication
-	// scopes above, lives on dedicated rest-api-only endpoints and will never cover an
-	// MCP proxy — that gets its own scopes (see ap:api_portal:mcp_proxy: above) once it
-	// ships. Consistent with ap:rest_api: itself being excluded.
+	// scopes, lives on dedicated rest-api-only endpoints and never covers an MCP
+	// proxy, which has its own ap:api_portal:mcp_proxy: scopes. Consistent with
+	// ap:rest_api: itself being excluded.
 	"ap:api_portal:rest_api:",
 	// GraphQL API publishing is the same per-type flow as REST's, surfaced only in
 	// the API control plane console — the AI Workspace has no GraphQL publish page.
@@ -214,4 +216,64 @@ func TestDefaultOIDCScopesRequestGranularScopes(t *testing.T) {
 	}
 	t.Logf("requesting %d scopes, %d bytes encoded (Entra ID deployments must override this)",
 		len(granted), len(url.QueryEscape(defaultOIDCScopes)))
+}
+
+// The MCP Hub publish pages list the organization's plans and the proxy's documents. Their
+// scopes are requested only where the pages are on, and never added to an operator's own list.
+func TestLoad_RequestsHubPublishingScopesOnlyWithTheFlag(t *testing.T) {
+	const oidc = `
+[ai_workspace.auth]
+mode = "oidc"
+
+[ai_workspace.control_plane]
+url = "https://platform-api:9243"
+
+[ai_workspace.auth.oidc]
+authority     = "https://idp.example.com"
+client_id     = "client-id"
+client_secret = "client-secret"
+redirect_url  = "https://localhost:9643/api/auth/callback"
+
+[ai_workspace.session.cookie]
+encryption_key = "test-session-key-at-least-32-characters"
+`
+	hub := strings.Fields(hubPublishingOIDCScopes)
+	for _, tc := range []struct {
+		name  string
+		extra string
+		want  bool
+	}{
+		{name: "flag absent", want: false},
+		{name: "flag off", extra: "[ai_workspace.feature_flags]\napi_portal_integration_enabled = false\n", want: false},
+		{name: "flag on", extra: "[ai_workspace.feature_flags]\napi_portal_integration_enabled = true\n", want: true},
+		{name: "flag on from an env token", extra: "[ai_workspace.feature_flags]\napi_portal_integration_enabled = '{{ env \"HUB_FLAG\" }}'\n", want: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("HUB_FLAG", "true")
+			cfg, err := Load(writeConfig(t, oidc+tc.extra))
+			if err != nil {
+				t.Fatalf("Load() error = %v", err)
+			}
+			for _, scopes := range []string{cfg.Auth.OIDC.Scopes, cfg.Auth.OIDC.TokenExchange.Scopes} {
+				requested := strings.Fields(scopes)
+				for _, scope := range hub {
+					if got := slices.Contains(requested, scope); got != tc.want {
+						t.Errorf("requests %s = %v, want %v", scope, got, tc.want)
+					}
+				}
+			}
+		})
+	}
+
+	t.Run("own scope list with the flag on", func(t *testing.T) {
+		own := "openid offline_access ap:mcp_proxy:read"
+		body := strings.Replace(oidc, "client_id ", "scope = \""+own+"\"\nclient_id ", 1)
+		cfg, err := Load(writeConfig(t, body+"[ai_workspace.feature_flags]\napi_portal_integration_enabled = true\n"))
+		if err != nil {
+			t.Fatalf("Load() error = %v", err)
+		}
+		if cfg.Auth.OIDC.Scopes != own {
+			t.Errorf("Scopes = %q, want the operator's own list %q unchanged", cfg.Auth.OIDC.Scopes, own)
+		}
+	})
 }
