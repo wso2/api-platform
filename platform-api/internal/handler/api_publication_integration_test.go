@@ -52,7 +52,7 @@ func (alwaysSucceedsPortalPublisher) Publish(_ context.Context, _ *model.APIPort
 	return nil
 }
 
-func (alwaysSucceedsPortalPublisher) Unpublish(_ context.Context, _ *model.APIPortal, _ string) error {
+func (alwaysSucceedsPortalPublisher) Unpublish(_ context.Context, _ *model.APIPortal, _, _ string) error {
 	return nil
 }
 
@@ -68,7 +68,7 @@ func (alwaysSucceedsPortalPublisher) Deprecate(_ context.Context, _ *model.APIPo
 	return nil
 }
 
-func (alwaysSucceedsPortalPublisher) PublishContent(_ context.Context, _ *model.APIPortal, _ string, _ *service.PortalContent) error {
+func (alwaysSucceedsPortalPublisher) PublishContent(_ context.Context, _ *model.APIPortal, _, _ string, _ *service.PortalContent) error {
 	return nil
 }
 

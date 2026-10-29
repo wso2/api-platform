@@ -182,7 +182,7 @@ func (l *callLog) Publish(context.Context, *model.APIPortal, string, string, *mo
 	return nil
 }
 
-func (l *callLog) PublishContent(_ context.Context, _ *model.APIPortal, _ string, content *PortalContent) error {
+func (l *callLog) PublishContent(_ context.Context, _ *model.APIPortal, _, _ string, content *PortalContent) error {
 	l.calls = append(l.calls, "content")
 	l.archive = content.Archive
 	return l.contentErr

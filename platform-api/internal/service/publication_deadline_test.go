@@ -55,7 +55,7 @@ func (d *deadlineRecorder) Publish(ctx context.Context, _ *model.APIPortal, _ st
 	return nil
 }
 
-func (d *deadlineRecorder) Unpublish(ctx context.Context, _ *model.APIPortal, _ string) error {
+func (d *deadlineRecorder) Unpublish(ctx context.Context, _ *model.APIPortal, _, _ string) error {
 	d.record("unpublish", ctx)
 	return nil
 }
@@ -65,7 +65,7 @@ func (d *deadlineRecorder) Deprecate(ctx context.Context, _ *model.APIPortal, _ 
 	return nil
 }
 
-func (d *deadlineRecorder) PublishContent(ctx context.Context, _ *model.APIPortal, _ string, _ *service.PortalContent) error {
+func (d *deadlineRecorder) PublishContent(ctx context.Context, _ *model.APIPortal, _, _ string, _ *service.PortalContent) error {
 	d.record("content", ctx)
 	return nil
 }
@@ -87,7 +87,7 @@ func (stalledPortal) Publish(ctx context.Context, _ *model.APIPortal, _ string, 
 	return ctx.Err()
 }
 
-func (stalledPortal) Unpublish(ctx context.Context, _ *model.APIPortal, _ string) error {
+func (stalledPortal) Unpublish(ctx context.Context, _ *model.APIPortal, _, _ string) error {
 	<-ctx.Done()
 	return ctx.Err()
 }
@@ -97,7 +97,7 @@ func (stalledPortal) Deprecate(ctx context.Context, _ *model.APIPortal, _ string
 	return ctx.Err()
 }
 
-func (stalledPortal) PublishContent(ctx context.Context, _ *model.APIPortal, _ string, _ *service.PortalContent) error {
+func (stalledPortal) PublishContent(ctx context.Context, _ *model.APIPortal, _, _ string, _ *service.PortalContent) error {
 	<-ctx.Done()
 	return ctx.Err()
 }
