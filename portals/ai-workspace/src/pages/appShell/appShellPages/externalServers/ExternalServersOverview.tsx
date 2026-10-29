@@ -68,7 +68,7 @@ import {
   getProjectSlug,
 } from '../../../../utils/projectRouting';
 import { PLATFORM_API_BASE_URL } from '../../../../paths';
-import { API_PORTAL_ENABLED, DEFAULT_API_PORTAL_ID } from '../../../../config.env';
+import { API_PORTAL_ENABLED, DEFAULT_API_PORTAL_ID, MULTI_HUB_PUBLISHING } from '../../../../config.env';
 import { mcpProxiesApis } from '../../../../apis/MCP/mcpProxiesApis';
 import * as mcpServerValidationApis from '../../../../apis/MCP/mcpServerValidationApis';
 import {
@@ -104,6 +104,8 @@ import PolicyMapper from './PolicyMapper';
 import type { SelectedPolicy } from './PolicyMapper';
 import ExternalServersValidationDetails from './ExternalServersValidationDetails';
 import CapabilitiesDrawer from './CapabilitiesDrawer';
+import HubOverviewHeader from './HubOverviewHeader';
+import { useHubPublishing } from '../publish/useHubPublishing';
 import type { EndpointValidationResponse } from './externalServersValidationTypes';
 import { overviewButtonSx } from '../../../../utils/overviewHeaderStyles';
 import OverviewIdentity from './OverviewIdentity';
@@ -258,12 +260,14 @@ export default function ExternalServersOverview(): JSX.Element {
 
   const navigate = useNavigate();
   const showSnackbar = useAIWorkspaceSnackbar();
+  const hubPublishing = useHubPublishing(serverId);
   const { hasPermission } = useAppAuth();
   const canDeleteMcpProxy = hasPermission(SCOPES.MCP_PROXY_DELETE);
   const canDeployMcpProxy = hasPermission(SCOPES.MCP_PROXY_DEPLOYMENT_CREATE);
   const canViewDeployments = hasPermission(SCOPES.MCP_PROXY_DEPLOYMENT_READ);
   const canPublishToAPIPortal = hasPermission(SCOPES.MCP_PROXY_API_PORTAL_PUBLISH);
   const canUnpublishFromAPIPortal = hasPermission(SCOPES.MCP_PROXY_API_PORTAL_UNPUBLISH);
+  const canOpenHubPublishPage = hasPermission(SCOPES.MCP_PROXY_API_PORTAL_MANAGE);
   const [server, setServer] = useState<MCPServer | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSavingChanges, setIsSavingChanges] = useState(false);
@@ -1002,7 +1006,7 @@ export default function ExternalServersOverview(): JSX.Element {
   // least one active gateway deployment — never on the status check below,
   // so a failed/not-yet-implemented publish backend can't hide the action.
   useEffect(() => {
-    setIsAPIPortalAvailable(API_PORTAL_ENABLED && deployedGateways.length > 0);
+    setIsAPIPortalAvailable(API_PORTAL_ENABLED && !MULTI_HUB_PUBLISHING && deployedGateways.length > 0);
   }, [deployedGateways]);
 
   // The portal's address, not the listing's: read once per organization, and
@@ -1163,6 +1167,15 @@ export default function ExternalServersOverview(): JSX.Element {
       setTabIndex(1);
     } else if (stepId === 'deploy-to-gateway') {
       navigate('deploy');
+    } else if (stepId === 'publish-to-mcp-hub') {
+      // The same checks as the header's Publish to MCP Hub button.
+      if (!canOpenHubPublishPage) {
+        showSnackbar(NO_PERMISSION_TOOLTIP, 'error');
+      } else if (hasUnsavedChanges) {
+        showSnackbar(UNSAVED_CHANGES_MESSAGE, 'error');
+      } else {
+        navigate(hubPublishing.publishUrl);
+      }
     }
   };
 
@@ -1329,11 +1342,23 @@ export default function ExternalServersOverview(): JSX.Element {
         serverName={server?.displayName}
         hasPolicies={(server?.policies?.length ?? 0) > 0}
         hasDeployments={deployedGateways.length > 0}
+        hasPublication={hubPublishing.hasPublication}
         onStepClick={handleStepBannerClick}
       />
 
       <Stack spacing={3} sx={{ mt: 2, mb: 4 }}>
         {/* Top Card - Server Info */}
+        {MULTI_HUB_PUBLISHING ? (
+          <HubOverviewHeader
+            deleteBlockedReason={deleteBlockedReason}
+            initials={getInitials(server.displayName)}
+            isReadOnlyServer={isReadOnlyServer}
+            onBlockedNavigation={handleBlockedNavigation}
+            onDeleteClick={() => setIsDeleteDialogOpen(true)}
+            publishUrl={hubPublishing.publishUrl}
+            server={server}
+          />
+        ) : (
         <Card sx={{ overflow: 'hidden' }}>
           <Stack
             alignItems="flex-start"
@@ -1465,6 +1490,7 @@ export default function ExternalServersOverview(): JSX.Element {
             </Stack>
           </Stack>
         </Card>
+        )}
 
         {/* Tab Card - Overview & Policies */}
         <Card>
