@@ -316,7 +316,8 @@ export default function AppLayout(): JSX.Element {
       }
       if (
         tertiarySegment === 'external-servers' ||
-        tertiarySegment === 'mcp-proxy'
+        tertiarySegment === 'mcp-proxy' ||
+        tertiarySegment === 'publish'
       ) {
         shellActions.setActiveMenuItem('external-servers');
         return;
@@ -360,7 +361,8 @@ export default function AppLayout(): JSX.Element {
     }
     if (
       primarySegment === 'external-servers' ||
-      primarySegment === 'mcp-proxy'
+      primarySegment === 'mcp-proxy' ||
+      primarySegment === 'publish'
     ) {
       shellActions.setActiveMenuItem('external-servers');
       return;
