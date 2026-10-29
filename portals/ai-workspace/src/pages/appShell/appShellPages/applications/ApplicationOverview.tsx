@@ -53,6 +53,8 @@ import type { Application } from '../../../../utils/types';
 import { ApplicationAssociationsProvider } from '../../../../contexts/ApplicationAssociationsContext';
 import AssociationsTab from './OverviewTabs/AssociationsTab';
 import { getErrorMessage } from '../../../../utils/apiError';
+import OverviewDescription from '../../../../Components/OverviewDescription/OverviewDescription';
+import { OVERVIEW_AVATAR_SX } from '../../../../utils/overviewHeaderStyles';
 
 type LocationState = {
   applicationAdded?: boolean;
@@ -169,67 +171,55 @@ export default function ApplicationOverview() {
       </Button>
 
       <Stack spacing={3} sx={{ mt: 2 }}>
-        <Card>
-          <Box sx={{ p: 2 }}>
-            <Box
-              sx={{
-                display: 'flex',
-                alignItems: 'flex-start',
-                gap: 2,
-              }}
-            >
-              <Avatar
-                sx={{
-                  width: 72,
-                  height: 72,
-                  fontWeight: 600,
-                  flexShrink: 0,
-                  fontSize: 28,
-                  bgcolor: 'primary.light',
-                  color: 'primary.contrastText',
-                }}
-              >
-                {(application.displayName || '—')
-                  .trim()
-                  .slice(0, 2)
-                  .toUpperCase()}
-              </Avatar>
+        <Card sx={{ overflow: 'hidden' }}>
+          <Stack
+            alignItems="flex-start"
+            direction="row"
+            spacing={2.5}
+            sx={{ p: 3 }}
+          >
+            <Avatar sx={OVERVIEW_AVATAR_SX} variant="rounded">
+              {(application.displayName || '—')
+                .trim()
+                .slice(0, 2)
+                .toUpperCase()}
+            </Avatar>
 
-              <Stack spacing={0.75} sx={{ minWidth: 0, flex: 1 }}>
-                <Stack
-                  direction="row"
-                  spacing={1}
-                  alignItems="center"
-                  flexWrap="wrap"
-                >
-                  <Typography variant="h3">
-                    {application.displayName || '—'}
-                  </Typography>
-                  <Tooltip title="Edit Application">
-                    <IconButton
-                      component={RouterLink}
-                      to={`${applicationsPath}/${applicationId}/edit`}
-                      size="small"
-                    >
-                      <Edit size={16} />
-                    </IconButton>
-                  </Tooltip>
-                </Stack>
-                <Typography variant="body2" color="text.secondary">
-                  {application.description || '—'}
+            <Stack spacing={1.5} sx={{ minWidth: 0, flex: 1 }}>
+              <Stack
+                direction="row"
+                spacing={1.5}
+                alignItems="center"
+                flexWrap="wrap"
+              >
+                <Typography sx={{ overflowWrap: 'anywhere' }} variant="h3">
+                  {application.displayName || '—'}
                 </Typography>
+                <Tooltip title="Edit Application">
+                  <IconButton
+                    component={RouterLink}
+                    to={`${applicationsPath}/${applicationId}/edit`}
+                  >
+                    <Edit size={18} />
+                  </IconButton>
+                </Tooltip>
+              </Stack>
+              <OverviewDescription text={application.description || '—'} />
+              <Tooltip
+                title={lastUpdated ? new Date(lastUpdated).toLocaleString() : ''}
+              >
                 <Stack direction="row" spacing={0.75} alignItems="center">
                   <Typography variant="caption" color="text.secondary">
-                    Last updated
+                    Last updated :
                   </Typography>
                   <Clock size={14} />
                   <Typography variant="caption" color="text.secondary">
                     {formatRelativeTime(lastUpdated)}
                   </Typography>
                 </Stack>
-              </Stack>
-            </Box>
-          </Box>
+              </Tooltip>
+            </Stack>
+          </Stack>
         </Card>
 
         <Box

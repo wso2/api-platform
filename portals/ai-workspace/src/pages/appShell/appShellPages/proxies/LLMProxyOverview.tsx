@@ -46,7 +46,7 @@ import {
   Tooltip,
   Typography,
 } from '@wso2/oxygen-ui';
-import { ChevronLeft, Edit, Trash2 } from '@wso2/oxygen-ui-icons-react';
+import { ChevronLeft, Clock, Edit, Trash2 } from '@wso2/oxygen-ui-icons-react';
 
 import { formatRelativeTime } from './LLMProxyLayout';
 import { ProxyProvider, useProxy } from '../../../../contexts/proxy';
@@ -70,6 +70,11 @@ import {
   NO_PERMISSION_TOOLTIP,
   SCOPES,
 } from '../../../../auth/permissions';
+import OverviewDescription from '../../../../Components/OverviewDescription/OverviewDescription';
+import {
+  OVERVIEW_AVATAR_SX,
+  overviewButtonSx,
+} from '../../../../utils/overviewHeaderStyles';
 import { truncateProviderDisplayName } from '../../../../utils/providerTemplateDisplay';
 import { withPrimaryFirst } from '../../../../utils/proxyProviders';
 import { FormattedMessage } from 'react-intl';
@@ -426,157 +431,154 @@ function ProxyOverviewContent() {
         )}
 
         {/* Header card with editable fields */}
-        <Card>
-          <Box sx={{ p: 2 }}>
-            <Box
-              sx={{
-                display: 'flex',
-                alignItems: 'stretch',
-                justifyContent: 'space-between',
-                gap: 2,
-              }}
+        <Card sx={{ overflow: 'hidden' }}>
+          <Stack
+            alignItems="flex-start"
+            direction="row"
+            flexWrap="wrap"
+            gap={3}
+            justifyContent="space-between"
+            sx={{ p: 3 }}
+          >
+            <Stack
+              direction="row"
+              spacing={2.5}
+              sx={{ flex: '1 1 380px', minWidth: 0 }}
             >
-              <Box
-                sx={{
-                  display: 'flex',
-                  alignItems: 'flex-start',
-                  gap: 2,
-                  minWidth: 0,
-                }}
-              >
-                <Avatar
-                  color="secondary"
-                  sx={{
-                    width: 70,
-                    height: 70,
-                    backgroundColor: 'primary.light',
-                    color: 'primary.contrastText',
-                    fontSize: 32,
-                  }}
-                >
-                  {(proxy.displayName || '\u2014').trim().slice(0, 2).toUpperCase()}
-                </Avatar>
+              <Avatar sx={OVERVIEW_AVATAR_SX} variant="rounded">
+                {(proxy.displayName || '\u2014').trim().slice(0, 2).toUpperCase()}
+              </Avatar>
 
-                <Box sx={{ minWidth: 0 }}>
-                  <Stack
-                    direction="row"
-                    spacing={1}
-                    alignItems="center"
-                    flexWrap="wrap"
+              <Stack spacing={1.5} sx={{ minWidth: 0 }}>
+                <Stack
+                  alignItems="center"
+                  direction="row"
+                  flexWrap="wrap"
+                  spacing={1.5}
+                >
+                  <Typography sx={{ overflowWrap: 'anywhere' }} variant="h3">
+                    {truncateProviderDisplayName(proxy.displayName || '\u2014')}
+                  </Typography>
+                  <Chip
+                    label={`${proxy.version || '1.0'}`}
+                    size="small"
+                    variant="outlined"
+                    color="primary"
+                  />
+                  {/* Edit page (name/version/context/description). Enabled even
+                      for gateway-created proxies — the page keeps the runtime
+                      fields read-only and allows only the description. */}
+                  <Tooltip
+                    title={
+                      canUpdateProxy ? 'Edit Proxy' : NO_PERMISSION_TOOLTIP
+                    }
                   >
-                    <Typography variant="h3">
-                      {truncateProviderDisplayName(proxy.displayName || '\u2014')}
+                    <Box component="span">
+                      <IconButton
+                        component={RouterLink}
+                        to={`${proxiesPath}/${proxy.id}/edit`}
+                        disabled={!canUpdateProxy}
+                        sx={DISABLED_ACTION_SX}
+                      >
+                        <Edit size={18} />
+                      </IconButton>
+                    </Box>
+                  </Tooltip>
+                </Stack>
+                {proxy.description ? (
+                  <OverviewDescription text={proxy.description} />
+                ) : null}
+                <Stack spacing={0.25}>
+                  <Stack direction="row" alignItems="center" gap={2}>
+                    <Typography variant="caption" color="text.secondary">
+                      <FormattedMessage
+                        id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyOverview.provider"
+                        defaultMessage="Provider :"
+                      />
                     </Typography>
-                    <Chip
-                      label={`${proxy.version || '1.0'}`}
-                      size="small"
-                      variant="outlined"
-                      color="primary"
-                    />
-                    {/* Edit page (name/version/context/description). Enabled even
-                        for gateway-created proxies — the page keeps the runtime
-                        fields read-only and allows only the description. */}
-                    <Tooltip
-                      title={
-                        canUpdateProxy ? 'Edit Proxy' : NO_PERMISSION_TOOLTIP
-                      }
-                    >
-                      <Box component="span">
-                        <IconButton
-                          component={RouterLink}
-                          to={`${proxiesPath}/${proxy.id}/edit`}
-                          size="small"
-                          disabled={!canUpdateProxy}
-                          sx={DISABLED_ACTION_SX}
-                        >
-                          <Edit size={16} />
-                        </IconButton>
-                      </Box>
-                    </Tooltip>
+                    <Typography variant="body2">
+                      {resolveProviderName(proxy.provider)}
+                    </Typography>
                   </Stack>
-                  <Stack spacing={0.1} sx={{ mt: 1 }}>
-                    <Stack direction="row" alignItems="center" gap={2}>
-                      <Typography variant="caption" color="text.secondary">
-                        <FormattedMessage
-                          id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyOverview.provider"
-                          defaultMessage="Provider :"
-                        />
-                      </Typography>
-                      <Typography variant="body2">
-                        {resolveProviderName(proxy.provider)}
-                      </Typography>
-                    </Stack>
-                    <Stack direction="row" alignItems="center" gap={2}>
-                      <Typography variant="caption" color="text.secondary">
-                        <FormattedMessage
-                          id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyOverview.context.label"
-                          defaultMessage="Context :"
-                        />
-                      </Typography>
-                      <Typography variant="body2">
-                        {proxy.context || '/'}
-                      </Typography>
-                    </Stack>
-                    <Stack direction="row" alignItems="center" gap={2}>
+                  <Stack direction="row" alignItems="center" gap={2}>
+                    <Typography variant="caption" color="text.secondary">
+                      <FormattedMessage
+                        id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyOverview.context.label"
+                        defaultMessage="Context :"
+                      />
+                    </Typography>
+                    <Typography variant="body2">
+                      {proxy.context || '/'}
+                    </Typography>
+                  </Stack>
+                  <Tooltip
+                    title={
+                      proxy.updatedAt
+                        ? new Date(proxy.updatedAt).toLocaleString()
+                        : ''
+                    }
+                  >
+                    <Stack direction="row" alignItems="center" spacing={0.75}>
                       <Typography variant="caption" color="text.secondary">
                         <FormattedMessage
                           id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyOverview.last.updated"
                           defaultMessage={'Last updated :'}
                         />
                       </Typography>
-                      <Typography variant="body2">
+                      <Clock size={14} />
+                      <Typography variant="caption" color="text.secondary">
                         {formatRelativeTime(proxy.updatedAt)}
                       </Typography>
                     </Stack>
-                  </Stack>
-                </Box>
-              </Box>
-
-              <Stack
-                direction="column"
-                justifyContent="space-between"
-                alignItems="flex-end"
-                sx={{ alignSelf: 'stretch' }}
-              >
-                {/* Deployments remain viewable for gateway-created proxies, and for
-                    users holding only the deployment-read scope (deploy/redeploy/
-                    restore/undeploy are disabled on the page itself), so the button
-                    navigates but is relabelled "View Deployments". Without even
-                    deployment-read there is nothing to see, so it is disabled. */}
-                <DisabledActionTooltip
-                  disabled={!canViewDeployments}
-                  title={NO_PERMISSION_TOOLTIP}
-                >
-                  <Button
-                    variant="contained"
-                    component={RouterLink}
-                    to={`${proxiesPath}/${proxy.id}/deploy`}
-                    disabled={!canViewDeployments}
-                    sx={DISABLED_ACTION_SX}
-                  >
-                    {isReadOnlyProxy || !canDeployProxy
-                      ? 'View Deployments'
-                      : 'Deploy to Gateway'}
-                  </Button>
-                </DisabledActionTooltip>
-                <DisabledActionTooltip
-                  disabled={!canDeleteProxy || Boolean(deleteBlockedReason)}
-                  title={
-                    !canDeleteProxy ? NO_PERMISSION_TOOLTIP : deleteBlockedReason
-                  }
-                >
-                  <IconButton
-                    color="error"
-                    disabled={!canDeleteProxy || Boolean(deleteBlockedReason)}
-                    onClick={() => setDeleteDialogOpen(true)}
-                    aria-label="Delete proxy"
-                  >
-                    <Trash2 size={16} />
-                  </IconButton>
-                </DisabledActionTooltip>
+                  </Tooltip>
+                </Stack>
               </Stack>
-            </Box>
-          </Box>
+            </Stack>
+
+            <Stack
+              alignItems="flex-end"
+              justifyContent="space-between"
+              spacing={2}
+              sx={{ alignSelf: 'stretch' }}
+            >
+              {/* Deployments remain viewable for gateway-created proxies, and for
+                  users holding only the deployment-read scope (deploy/redeploy/
+                  restore/undeploy are disabled on the page itself), so the button
+                  navigates but is relabelled "View Deployments". Without even
+                  deployment-read there is nothing to see, so it is disabled. */}
+              <DisabledActionTooltip
+                disabled={!canViewDeployments}
+                title={NO_PERMISSION_TOOLTIP}
+              >
+                <Button
+                  variant="contained"
+                  component={RouterLink}
+                  to={`${proxiesPath}/${proxy.id}/deploy`}
+                  disabled={!canViewDeployments}
+                  sx={overviewButtonSx()}
+                >
+                  {isReadOnlyProxy || !canDeployProxy
+                    ? 'View Deployments'
+                    : 'Deploy to Gateway'}
+                </Button>
+              </DisabledActionTooltip>
+              <DisabledActionTooltip
+                disabled={!canDeleteProxy || Boolean(deleteBlockedReason)}
+                title={
+                  !canDeleteProxy ? NO_PERMISSION_TOOLTIP : deleteBlockedReason
+                }
+              >
+                <IconButton
+                  color="error"
+                  disabled={!canDeleteProxy || Boolean(deleteBlockedReason)}
+                  onClick={() => setDeleteDialogOpen(true)}
+                  aria-label="Delete proxy"
+                >
+                  <Trash2 size={20} />
+                </IconButton>
+              </DisabledActionTooltip>
+            </Stack>
+          </Stack>
         </Card>
 
         {/* Two-column layout for Provider tab and Deployments */}

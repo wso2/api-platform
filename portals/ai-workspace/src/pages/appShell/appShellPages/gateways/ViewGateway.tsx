@@ -61,6 +61,8 @@ import DockerIcon from "../../../../assets/icons/docker.svg";
 import HelmIcon from "../../../../assets/icons/helm.svg";
 import { useAppShell } from "../../../../contexts/AppShellContext";
 import { buildOrgPath } from "../../../../utils/projectRouting";
+import OverviewDescription from "../../../../Components/OverviewDescription/OverviewDescription";
+import { OVERVIEW_AVATAR_SX } from "../../../../utils/overviewHeaderStyles";
 import { useAIWorkspaceSnackbar } from "../../../../hooks/aiWorkspaceSnackbar";
 import { PLATFORM_GATEWAY_VERSIONS, CONTROLPLANE_HOST } from "../../../../config.env";
 import { PLATFORM_API_BASE_URL } from "../../../../paths";
@@ -624,10 +626,6 @@ export default function ViewGateway() {
         : "API Gateway";
 
   const descriptionText = gateway?.description?.trim() || "";
-  const truncatedDescription =
-    descriptionText.length > 200
-      ? `${descriptionText.slice(0, 200).trim()}…`
-      : descriptionText;
 
   const lastUpdated = gateway?.createdAt ?? gateway?.lastUpdated;
   const gatewayConfigItemsWithKeyManagers = withKeyManagerEntries(
@@ -681,38 +679,31 @@ export default function ViewGateway() {
       )}
 
       {/* Gateway Header Card */}
-      <Card sx={{ mb: 2 }}>
-        <Box
-          sx={{
-            display: "flex",
-            alignItems: "flex-start",
-            justifyContent: "space-between",
-            flexWrap: "wrap",
-            gap: 2,
-            p: 2,
-          }}
+      <Card sx={{ mb: 2, overflow: "hidden" }}>
+        <Stack
+          alignItems="flex-start"
+          direction="row"
+          flexWrap="wrap"
+          gap={3}
+          justifyContent="space-between"
+          sx={{ p: 3 }}
         >
-          <Box sx={{ display: "flex", alignItems: "flex-start", gap: 2 }}>
-            <Avatar
-              sx={{
-                width: 72,
-                height: 72,
-                fontWeight: 600,
-                fontSize: 28,
-                bgcolor: "primary.light",
-                color: "primary.contrastText",
-              }}
-            >
+          <Stack
+            direction="row"
+            spacing={2.5}
+            sx={{ flex: "1 1 380px", minWidth: 0 }}
+          >
+            <Avatar sx={OVERVIEW_AVATAR_SX} variant="rounded">
               {getInitials(gateway?.displayName || gateway?.name || "GW")}
             </Avatar>
-            <Stack spacing={0.75} sx={{ minWidth: 0 }}>
+            <Stack spacing={1.5} sx={{ minWidth: 0 }}>
               <Stack
                 direction="row"
-                spacing={1}
+                spacing={1.5}
                 alignItems="center"
                 flexWrap="wrap"
               >
-                <Typography variant="h3">
+                <Typography sx={{ overflowWrap: "anywhere" }} variant="h3">
                   {gateway?.displayName || gateway?.name}
                 </Typography>
                 {gateway?.version && (
@@ -739,33 +730,33 @@ export default function ViewGateway() {
                         currentOrganization,
                         `/gateways/edit/${gatewayName}`,
                       )}
-                      size="small"
                       disabled={!canUpdateGateway}
                       sx={DISABLED_ACTION_SX}
                     >
-                      <Edit size={16} />
+                      <Edit size={18} />
                     </IconButton>
                   </Box>
                 </Tooltip>
               </Stack>
-              <Typography variant="body2" color="text.secondary">
-                {truncatedDescription}
-              </Typography>
-              {/* <Typography variant="body2" color="text.secondary">
-                vhost: {gateway?.vhost || '—'}
-              </Typography> */}
-              <Stack direction="row" spacing={0.75} alignItems="center">
-                <Typography variant="caption" color="text.secondary">
-                  Created
-                </Typography>
-                <Clock size={14} />
-                <Typography variant="caption" color="text.secondary">
-                  {lastUpdated ? formatRelativeTime(lastUpdated) : "—"}
-                </Typography>
-              </Stack>
+              {descriptionText ? (
+                <OverviewDescription text={descriptionText} />
+              ) : null}
+              <Tooltip
+                title={lastUpdated ? new Date(lastUpdated).toLocaleString() : ""}
+              >
+                <Stack direction="row" spacing={0.75} alignItems="center">
+                  <Typography variant="caption" color="text.secondary">
+                    Created :
+                  </Typography>
+                  <Clock size={14} />
+                  <Typography variant="caption" color="text.secondary">
+                    {lastUpdated ? formatRelativeTime(lastUpdated) : "—"}
+                  </Typography>
+                </Stack>
+              </Tooltip>
             </Stack>
-          </Box>
-        </Box>
+          </Stack>
+        </Stack>
       </Card>
 
       <Card>

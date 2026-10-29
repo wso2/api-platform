@@ -66,6 +66,11 @@ import {
   formatRelativeTime,
 } from '../../../../contexts/llmProvider';
 import { GatewayDeployProvider } from '../../../../contexts/GatewayDeployContext';
+import OverviewDescription from '../../../../Components/OverviewDescription/OverviewDescription';
+import {
+  OVERVIEW_AVATAR_SX,
+  overviewButtonSx,
+} from '../../../../utils/overviewHeaderStyles';
 import ServiceProviderConnectionTab from './ServiceProviderConnectionTab';
 import ServiceProviderOverviewTab from './ServiceProviderOverviewTab';
 import ServiceProviderSecurityTab from './ServiceProviderSecurityTab';
@@ -96,7 +101,6 @@ import {
 import { useProviderTemplates } from '../../../../contexts/llmProvider/providerTemplate';
 import { useAppAuth, useAppAuthScopes } from '../../../../contexts/AppAuthContext';
 import {
-  DISABLED_ACTION_SX,
   NO_PERMISSION_TOOLTIP,
   SCOPES,
 } from '../../../../auth/permissions';
@@ -168,6 +172,9 @@ const TEMPLATE_LOGO_MAP: Record<string, string> = {
   mistralai: MistralAILogo,
   mistral: MistralAILogo,
 };
+
+/** Wide enough for "Create App LLM Proxy" and "Deploy to Gateway" on one line. */
+const PROVIDER_BUTTON_WIDTH = 200;
 
 function getInitials(name: string): string {
   const words = name.trim().split(/\s+/);
@@ -987,10 +994,6 @@ function ServiceProviderOverviewContent() {
     TEMPLATE_LOGO_MAP[templateKey];
   const hasTemplateLogo = Boolean(templateLogo);
   const descriptionText = provider.description?.trim() || '';
-  const truncatedDescription =
-    descriptionText.length > 200
-      ? `${descriptionText.slice(0, 200).trim()}…`
-      : descriptionText;
   const lastUpdated =
     provider.updatedAt ?? provider.lastUpdated ?? provider.createdAt;
   const modelProviders = provider.modelProviders ?? [];
@@ -1007,7 +1010,6 @@ function ServiceProviderOverviewContent() {
         title={deleteBlockedReason}
       >
         <IconButton
-          size="small"
           color="error"
           disabled={
             checkingProviderId === providerKey || Boolean(deleteBlockedReason)
@@ -1021,7 +1023,7 @@ function ServiceProviderOverviewContent() {
           aria-label={`Delete ${providerDisplayName}`}
           data-cyid="delete-provider-button"
         >
-          <Trash2 size={16} />
+          <Trash2 size={20} />
         </IconButton>
       </DisabledActionTooltip>
     </Box>
@@ -1216,6 +1218,94 @@ function ServiceProviderOverviewContent() {
     </Dialog>
   );
 
+  const renderProviderIdentity = (editAction?: React.ReactNode) => (
+    <Stack direction="row" spacing={2.5} sx={{ flex: '1 1 380px', minWidth: 0 }}>
+      <Avatar
+        src={hasLogo ? logoUrl : undefined}
+        sx={
+          hasLogo
+            ? {
+                ...OVERVIEW_AVATAR_SX,
+                bgcolor: 'common.white',
+                border: '1px solid',
+                borderColor: 'divider',
+                color: 'text.primary',
+                p: 0.5,
+                '& img': { objectFit: 'contain' },
+              }
+            : OVERVIEW_AVATAR_SX
+        }
+        variant="rounded"
+      >
+        {!hasLogo ? getInitials(provider.displayName) : null}
+      </Avatar>
+      <Stack spacing={1.5} sx={{ minWidth: 0 }}>
+        {templateDisplayName ? (
+          <Stack alignItems="center" direction="row" flexWrap="wrap" spacing={1}>
+            <Chip
+              label={` ${templateDisplayName}`}
+              size="small"
+              variant="outlined"
+              color="primary"
+              sx={{ borderRadius: 0.5 }}
+              icon={
+                hasTemplateLogo ? (
+                  <Avatar
+                    src={templateLogo}
+                    variant="circular"
+                    sx={{
+                      width: 16,
+                      height: 16,
+                      '& img': { objectFit: 'contain' },
+                    }}
+                  />
+                ) : undefined
+              }
+            />
+          </Stack>
+        ) : null}
+        <Stack alignItems="center" direction="row" flexWrap="wrap" spacing={1.5}>
+          <Typography sx={{ overflowWrap: 'anywhere' }} variant="h3">
+            {providerDisplayName}
+          </Typography>
+          <Chip
+            label={`${provider.version || '1.0'}`}
+            size="small"
+            variant="outlined"
+            color="primary"
+          />
+          {editAction}
+        </Stack>
+        {descriptionText ? <OverviewDescription text={descriptionText} /> : null}
+        <Stack spacing={0.25}>
+          <Stack alignItems="center" direction="row" gap={2}>
+            <Typography variant="caption" color="text.secondary">
+              <FormattedMessage
+                id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProviderOverview.context.label"
+                defaultMessage="Context :"
+              />
+            </Typography>
+            <Typography variant="body2">{provider.context || '/'}</Typography>
+          </Stack>
+          <Tooltip title={lastUpdated ? new Date(lastUpdated).toLocaleString() : ''}>
+            <Stack alignItems="center" direction="row" spacing={0.75}>
+              <Typography variant="caption" color="text.secondary">
+                <FormattedMessage
+                  id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProviderOverview.created"
+                  defaultMessage="Last updated :"
+                />
+              </Typography>
+              <Clock size={14} />
+              <Typography variant="caption" color="text.secondary">
+                {lastUpdated ? formatRelativeTime(lastUpdated) : '—'}
+              </Typography>
+            </Stack>
+          </Tooltip>
+        </Stack>
+      </Stack>
+    </Stack>
+  );
+
   if (!isAdminOrgLevel) {
     return (
       <PageContent fullWidth>
@@ -1231,144 +1321,35 @@ function ServiceProviderOverviewContent() {
             defaultMessage={'Back to list'}
           />
         </Button>
-        <Card sx={{ mb: 2, mt: 1 }}>
-          <Box>
-            <Box
-              sx={{
-                display: 'flex',
-                alignItems: 'flex-start',
-                justifyContent: 'space-between',
-                flexWrap: 'wrap',
-                gap: 2,
-              }}
-            >
-              <Box
-                sx={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  flexWrap: 'wrap',
-                  gap: 2,
-                  padding: 2,
-                }}
-              >
-                <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2 }}>
-                  <Avatar
-                    src={hasLogo ? logoUrl : undefined}
-                    sx={{
-                      width: 72,
-                      height: 72,
-                      fontWeight: 600,
-                      fontSize: 28,
-                      bgcolor: hasLogo ? 'common.white' : 'primary.light',
-                      color: hasLogo ? 'text.primary' : 'primary.contrastText',
-                      border: hasLogo ? '1px solid' : 'none',
-                      borderColor: 'divider',
-                      p: hasLogo ? 0.5 : 0,
-                      '& img': {
-                        objectFit: 'contain',
-                      },
-                    }}
+        <Card sx={{ mb: 2, mt: 1, overflow: 'hidden' }}>
+          <Stack
+            alignItems="flex-start"
+            direction="row"
+            flexWrap="wrap"
+            gap={3}
+            justifyContent="space-between"
+            sx={{ p: 3 }}
+          >
+            {renderProviderIdentity()}
+            <Stack alignItems="flex-end" spacing={1.5} sx={{ alignSelf: 'stretch' }}>
+              <Tooltip title={createProxyTooltip}>
+                <Box component="span">
+                  <Button
+                    variant="outlined"
+                    onClick={handleCreateProxyClick}
+                    disabled={isCreateProxyDisabled}
+                    data-cyid="create-app-llm-proxy-button"
+                    sx={overviewButtonSx(PROVIDER_BUTTON_WIDTH)}
                   >
-                    {!hasLogo ? getInitials(provider.displayName) : null}
-                  </Avatar>
-                  <Stack spacing={0.75} sx={{ minWidth: 0 }}>
-                    <Stack
-                      direction="row"
-                      spacing={1}
-                      alignItems="center"
-                      flexWrap="wrap"
-                    >
-                      {templateDisplayName ? (
-                        <Chip
-                          label={` ${templateDisplayName}`}
-                          size="small"
-                          variant="outlined"
-                          color="primary"
-                          sx={{ borderRadius: 0.5 }}
-                          icon={
-                            hasTemplateLogo ? (
-                              <Avatar
-                                src={templateLogo}
-                                variant="circular"
-                                sx={{
-                                  width: 16,
-                                  height: 16,
-                                  '& img': { objectFit: 'contain' },
-                                }}
-                              />
-                            ) : undefined
-                          }
-                        />
-                      ) : null}
-                    </Stack>
-                    <Stack
-                      direction="row"
-                      spacing={1}
-                      alignItems="center"
-                      flexWrap="wrap"
-                    >
-                      <Typography variant="h3">
-                        {providerDisplayName}
-                      </Typography>
-                      <Chip
-                        label={`${provider.version || '1.0'}`}
-                        size="small"
-                        variant="outlined"
-                        color="primary"
-                      />
-                    </Stack>
-                    <Typography variant="body2" color="text.secondary">
-                      {truncatedDescription}
-                    </Typography>
-                    <Stack spacing={0.25}>
-                      <Typography variant="caption" color="text.secondary">
-                        <FormattedMessage
-                          id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProviderOverview.context.label"
-                          defaultMessage={'Context: {context}'}
-                          values={{ context: provider.context || '/' }}
-                        />
-                      </Typography>
-                      <Stack direction="row" spacing={0.75} alignItems="center">
-                        <Typography variant="caption" color="text.secondary">
-                          <FormattedMessage
-                            id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProviderOverview.created"
-                            defaultMessage="Last updated :"
-                          />
-                        </Typography>
-                        <Clock size={14} />
-                        <Typography variant="caption" color="text.secondary">
-                          {lastUpdated ? formatRelativeTime(lastUpdated) : '—'}
-                        </Typography>
-                      </Stack>
-                    </Stack>
-                  </Stack>
+                    <FormattedMessage
+                      id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProviderOverview.create.llm.proxy"
+                      defaultMessage="Create App LLM Proxy"
+                    />
+                  </Button>
                 </Box>
-              </Box>
-
-              <Stack
-                spacing={2}
-                p={2}
-                sx={{ width: { xs: '100%', sm: 200 }, alignItems: 'stretch' }}
-              >
-                <Tooltip title={createProxyTooltip}>
-                  <Box component="span">
-                    <Button
-                      variant="outlined"
-                      onClick={handleCreateProxyClick}
-                      disabled={isCreateProxyDisabled}
-                      data-cyid="create-app-llm-proxy-button"
-                    >
-                      <FormattedMessage
-                        id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProviderOverview.create.llm.proxy"
-                        defaultMessage="Create App LLM Proxy"
-                      />
-                    </Button>
-                  </Box>
-                </Tooltip>
-              </Stack>
-            </Box>
-          </Box>
+              </Tooltip>
+            </Stack>
+          </Stack>
         </Card>
 
         {/* Two-column layout for Resources and Deployments */}
@@ -1509,128 +1490,31 @@ function ServiceProviderOverviewContent() {
         />
       </Box>
       <Stack spacing={3} sx={{ mt: 2 }}>
-        <Card>
-          <Box
-            sx={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              flexWrap: 'wrap',
-              gap: 2,
-              padding: 2,
-            }}
+        <Card sx={{ overflow: 'hidden' }}>
+          <Stack
+            alignItems="flex-start"
+            direction="row"
+            flexWrap="wrap"
+            gap={3}
+            justifyContent="space-between"
+            sx={{ p: 3 }}
           >
-            <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2 }}>
-              <Avatar
-                src={hasLogo ? logoUrl : undefined}
-                sx={{
-                  width: 72,
-                  height: 72,
-                  fontWeight: 600,
-                  fontSize: 28,
-                  bgcolor: hasLogo ? 'common.white' : 'primary.light',
-                  color: hasLogo ? 'text.primary' : 'primary.contrastText',
-                  border: hasLogo ? '1px solid' : 'none',
-                  borderColor: 'divider',
-                  p: hasLogo ? 0.5 : 0,
-                  '& img': {
-                    objectFit: 'contain',
-                  },
-                }}
-              >
-                {!hasLogo ? getInitials(provider.displayName) : null}
-              </Avatar>
-              <Stack spacing={0.75} sx={{ minWidth: 0 }}>
-                <Stack
-                  direction="row"
-                  spacing={1}
-                  alignItems="center"
-                  flexWrap="wrap"
-                >
-                  {templateDisplayName ? (
-                    <Chip
-                      label={` ${templateDisplayName}`}
-                      size="small"
-                      variant="outlined"
-                      color="primary"
-                      sx={{ borderRadius: 0.5 }}
-                      icon={
-                        hasTemplateLogo ? (
-                          <Avatar
-                            src={templateLogo}
-                            variant="circular"
-                            sx={{
-                              width: 16,
-                              height: 16,
-                              '& img': { objectFit: 'contain' },
-                            }}
-                          />
-                        ) : undefined
-                      }
-                    />
-                  ) : null}
-                </Stack>
-                <Stack
-                  direction="row"
-                  spacing={1}
-                  alignItems="center"
-                  flexWrap="wrap"
-                >
-                  <Typography variant="h3">{providerDisplayName}</Typography>
-                  <Chip
-                    label={`${provider.version || '1.0'}`}
-                    size="small"
-                    variant="outlined"
-                    color="primary"
-                  />
-                  {/* Edit page (name/version/context/description). Enabled even for
-                      gateway-created providers — the page itself keeps the runtime
-                      fields (name/version/context) read-only and allows only the
-                      description, which is not part of the gateway runtime artifact. */}
-                  <IconButton
-                    component={RouterLink}
-                    to="edit"
-                    size="small"
-                  >
-                    <Edit size={16} />
-                  </IconButton>
-                </Stack>
-                <Typography variant="body2" color="text.secondary">
-                  {truncatedDescription}
-                </Typography>
-                <Stack spacing={0.25}>
-                  <Typography variant="caption" color="text.secondary">
-                    <FormattedMessage
-                      id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProviderOverview.context.label"
-                      defaultMessage={'Context: {context}'}
-                      values={{ context: provider.context || '/' }}
-                    />
-                  </Typography>
-                  <Stack direction="row" spacing={0.75} alignItems="center">
-                    <Typography variant="caption" color="text.secondary">
-                      <FormattedMessage
-                        id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProviderOverview.created"
-                        defaultMessage="Last updated :"
-                      />
-                    </Typography>
-                    <Clock size={14} />
-                    <Typography variant="caption" color="text.secondary">
-                      {lastUpdated ? formatRelativeTime(lastUpdated) : '—'}
-                    </Typography>
-                  </Stack>
-                </Stack>
-              </Stack>
-            </Box>
+            {/* Edit page (name/version/context/description). Enabled even for
+                gateway-created providers — the page itself keeps the runtime
+                fields (name/version/context) read-only and allows only the
+                description, which is not part of the gateway runtime artifact. */}
+            {renderProviderIdentity(
+              <IconButton component={RouterLink} to="edit">
+                <Edit size={18} />
+              </IconButton>
+            )}
             <Stack
-              sx={{
-                alignSelf: 'stretch',
-                ml: 'auto',
-                justifyContent: 'space-between',
-                alignItems: 'stretch',
-                width: { xs: '100%', sm: 200 },
-              }}
+              alignItems="flex-end"
+              justifyContent="space-between"
+              spacing={2}
+              sx={{ alignSelf: 'stretch' }}
             >
-              <Stack spacing={1} sx={{ alignItems: 'stretch' }}>
+              <Stack alignItems="flex-end" spacing={1.5}>
                 {/* For gateway-created (read-only) providers, and for users holding
                     only the deployment-read scope, the deployments remain viewable
                     (deploy/redeploy/restore/undeploy are disabled on the page itself),
@@ -1640,7 +1524,6 @@ function ServiceProviderOverviewContent() {
                 <DisabledActionTooltip
                   disabled={!canViewDeployments}
                   title={NO_PERMISSION_TOOLTIP}
-                  fullWidth
                 >
                   <Button
                     variant="contained"
@@ -1650,8 +1533,7 @@ function ServiceProviderOverviewContent() {
                       isReadOnlyProvider ? undefined : handleBlockedNavigation
                     }
                     disabled={!canViewDeployments}
-                    sx={DISABLED_ACTION_SX}
-                    fullWidth
+                    sx={overviewButtonSx(PROVIDER_BUTTON_WIDTH)}
                   >
                     {isReadOnlyProvider || !canDeployProvider ? (
                       <FormattedMessage
@@ -1669,13 +1551,12 @@ function ServiceProviderOverviewContent() {
                 <DisabledActionTooltip
                   disabled={isProxyQuotaReached || !canCreateProxy}
                   title={createProxyTooltip}
-                  fullWidth
                 >
                   <Button
                     variant="outlined"
                     onClick={handleCreateProxyClick}
                     disabled={isCreateProxyDisabled}
-                    fullWidth
+                    sx={overviewButtonSx(PROVIDER_BUTTON_WIDTH)}
                   >
                     <FormattedMessage
                       id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProviderOverview.create.llm.proxy"
@@ -1686,7 +1567,7 @@ function ServiceProviderOverviewContent() {
               </Stack>
               {providerDeleteAction}
             </Stack>
-          </Box>
+          </Stack>
         </Card>
 
         <Card>
