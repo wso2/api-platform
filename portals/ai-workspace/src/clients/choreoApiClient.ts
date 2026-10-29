@@ -195,6 +195,97 @@ export const patch = <T>(
 ): Promise<T> => request<T>({ path, method: 'PATCH', data, baseUrl });
 
 // ---------------------------------------------------------------------------
+// Bodies that are not JSON — stored documents, Markdown and images.
+// ---------------------------------------------------------------------------
+
+/** A text response with the content type the server labelled it with. */
+export type TextResponse = { text: string; contentType: string };
+
+/** Throws the API error a failed response describes. */
+const rejectFailedResponse = async (res: Response, method: HttpMethod, url: string): Promise<never> => {
+  let data: unknown;
+  try {
+    data = await res.json();
+  } catch { /* body not JSON */ }
+  const err = buildApiError(res.status, data, `HTTP ${res.status}`);
+  // Pass the code so only a genuine UNAUTHORIZED tears down the session.
+  handleUnauthorizedResponse(res, err.code);
+  logger.error(
+    `[platformApiClient] ${method} ${url} → ${res.status} [${err.code ?? 'UNKNOWN'}]: ${err.message}`
+    + (err.trackingId ? ` (trackingId: ${err.trackingId})` : ''),
+  );
+  throw err;
+};
+
+/**
+ * GET a response that is not JSON, as text. An empty (204) response is empty text,
+ * not an error.
+ */
+export const getText = async (path: string, baseUrl?: string): Promise<TextResponse> => {
+  const url = buildUrl(path, baseUrl || PLATFORM_API_BASE_URL);
+
+  logger.info(`[platformApiClient] GET ${url}`);
+
+  const res = await fetch(url, { method: 'GET', credentials: 'include', headers: { [CSRF_HEADER]: CSRF_VALUE } });
+
+  if (!res.ok) return rejectFailedResponse(res, 'GET', url);
+  if (res.status === 204) return { text: '', contentType: '' };
+  return { text: await res.text(), contentType: res.headers.get('content-type') ?? '' };
+};
+
+/** GET a response that is not JSON or text, as a Blob (e.g. an image); its `type` is the content type. */
+export const getBlob = async (path: string, baseUrl?: string): Promise<Blob> => {
+  const url = buildUrl(path, baseUrl || PLATFORM_API_BASE_URL);
+
+  logger.info(`[platformApiClient] GET ${url}`);
+
+  const res = await fetch(url, { method: 'GET', credentials: 'include', headers: { [CSRF_HEADER]: CSRF_VALUE } });
+
+  if (!res.ok) return rejectFailedResponse(res, 'GET', url);
+  return res.blob();
+};
+
+/**
+ * PUT a multipart form to an endpoint that answers without a body (204). The browser sets
+ * the multipart boundary, so there is no Content-Type here.
+ */
+export const putFormData = async (path: string, form: FormData, baseUrl?: string): Promise<void> => {
+  const url = buildUrl(path, baseUrl || PLATFORM_API_BASE_URL);
+
+  logger.info(`[platformApiClient] PUT ${url}`);
+
+  const res = await fetch(url, {
+    method: 'PUT',
+    credentials: 'include',
+    headers: { Accept: 'application/json', [CSRF_HEADER]: CSRF_VALUE },
+    body: form,
+  });
+
+  if (!res.ok) await rejectFailedResponse(res, 'PUT', url);
+};
+
+/** PUT a text body (e.g. Markdown) as `contentType`. */
+export const putText = async (
+  path: string,
+  text: string,
+  contentType: string,
+  baseUrl?: string,
+): Promise<void> => {
+  const url = buildUrl(path, baseUrl || PLATFORM_API_BASE_URL);
+
+  logger.info(`[platformApiClient] PUT ${url}`);
+
+  const res = await fetch(url, {
+    method: 'PUT',
+    credentials: 'include',
+    headers: { Accept: 'application/json', 'Content-Type': contentType, [CSRF_HEADER]: CSRF_VALUE },
+    body: text,
+  });
+
+  if (!res.ok) await rejectFailedResponse(res, 'PUT', url);
+};
+
+// ---------------------------------------------------------------------------
 // GraphQL shim — the platform API uses REST, but a few call-sites still
 // call graphqlQuery(). We forward the request and return an empty data set
 // so the UI degrades gracefully rather than crashing.
