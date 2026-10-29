@@ -337,6 +337,33 @@ issuer = "api-platform-devportal"
 level = '{{ env "APIP_GW_CONTROLLER_LOGGING_LEVEL" "info" }}'
 format = "text"
 
+# Health check behaviour. Every key is optional; the values shown are the defaults.
+# allowed_clients lists the clients (IP addresses or CIDR ranges) that the admin health
+# endpoints answer; any other client gets 403. The default allows loopback only
+# (127.0.0.1 and ::1). Add ranges, comma-separated in the environment variable (for
+# example "127.0.0.1,::1,10.0.0.0/8"), for probes from other hosts, or use "*" alone to
+# allow every client.
+[controller.health]
+allowed_clients = '{{ env "APIP_GW_CONTROLLER_HEALTH_ALLOWED_CLIENTS" "127.0.0.1,::1" }}'
+# cache_ttl     = '{{ env "APIP_GW_CONTROLLER_HEALTH_CACHE_TTL" "3s" }}'    # how long an evaluated health result is reused
+
+# The database check decides from the outcomes of the controller's own database
+# operations, so it adds no database calls while traffic flows. It pings the database
+# itself only after idle_period without database activity, at most once per idle_period.
+# It fails when at least failure_ratio of the operations in the last failure_window lost
+# their connection (once min_attempts were made), or when at least pool_saturation of the
+# connection pool has stayed in use for pool_wait_limit. Every key is optional; the
+# values shown are the defaults.
+# [controller.health.database]
+# check_timeout   = '{{ env "APIP_GW_CONTROLLER_HEALTH_DATABASE_CHECK_TIMEOUT" "2s" }}'     # deadline for the check's own ping
+# startup_wait    = '{{ env "APIP_GW_CONTROLLER_HEALTH_DATABASE_STARTUP_WAIT" "5m" }}'      # how long startup waits for the database before exiting
+# failure_window  = '{{ env "APIP_GW_CONTROLLER_HEALTH_DATABASE_FAILURE_WINDOW" "30s" }}'   # sliding window of operation outcomes
+# failure_ratio   = '{{ env "APIP_GW_CONTROLLER_HEALTH_DATABASE_FAILURE_RATIO" "0.5" }}'    # share of failed operations that fails the check
+# min_attempts    = '{{ env "APIP_GW_CONTROLLER_HEALTH_DATABASE_MIN_ATTEMPTS" "5" }}'       # operations needed in the window before the ratio decides
+# idle_period     = '{{ env "APIP_GW_CONTROLLER_HEALTH_DATABASE_IDLE_PERIOD" "10s" }}'      # inactivity after which the check pings the database
+# pool_saturation = '{{ env "APIP_GW_CONTROLLER_HEALTH_DATABASE_POOL_SATURATION" "0.9" }}'  # share of the connection pool in use that counts as saturated
+# pool_wait_limit = '{{ env "APIP_GW_CONTROLLER_HEALTH_DATABASE_POOL_WAIT_LIMIT" "5s" }}'   # how long the pool may stay saturated
+
 [controller.metrics]
 enabled = false
 port = '{{ env "APIP_GW_CONTROLLER_METRICS_PORT" "9091" }}'
@@ -497,6 +524,16 @@ request_headers_timeout = "0s"
 stream_idle_timeout = "5m"
 # Idle timeout for the downstream connection
 idle_timeout = "1h"
+
+# The gateway's own readiness and liveness routes (/_gateway-health/ready and
+# /_gateway-health/healthy) on every traffic listener. allowed_clients lists the clients
+# (IP addresses or CIDR ranges) Envoy lets reach them, judged by the connection's peer
+# address; any other client gets 403. The default allows loopback only (127.0.0.1 and
+# ::1). Add ranges, comma-separated in the environment variable (for example
+# "127.0.0.1,::1,10.0.0.0/8"), for probes from other hosts, or use "*" alone to allow
+# every client.
+[router.health]
+allowed_clients = '{{ env "APIP_GW_ROUTER_HEALTH_ALLOWED_CLIENTS" "127.0.0.1,::1" }}'
 
 [router.policy_engine]
 host = "policy-engine"
@@ -673,6 +710,16 @@ path = ""
 [policy_engine.logging]
 level = "info"
 format = "text"
+
+# Health check behaviour. Every key is optional; the values shown are the defaults.
+# [policy_engine.health]
+# cache_ttl = "3s"        # how long an evaluated health result is reused
+#
+# [policy_engine.health.xds_connection]
+# grace = "5m"            # how long the controller link may be down before readiness fails
+#
+# [policy_engine.health.python_executor]
+# check_timeout = "2s"    # deadline for the Python executor check
 
 # Configures the single shared outbound *http.Client that the policy engine builds once at
 # startup and injects into every policy instance via PolicyMetadata.SharedHTTPClient (see

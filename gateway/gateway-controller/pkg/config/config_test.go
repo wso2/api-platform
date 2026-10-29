@@ -22,6 +22,7 @@ import (
 	"crypto/tls"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -57,6 +58,19 @@ func validConfig() *Config {
 			Logging: LoggingConfig{
 				Level:  "info",
 				Format: "json",
+			},
+			Health: HealthConfig{
+				CacheTTL: 3 * time.Second,
+				Database: HealthDatabaseConfig{
+					CheckTimeout:   2 * time.Second,
+					StartupWait:    5 * time.Minute,
+					FailureWindow:  30 * time.Second,
+					FailureRatio:   0.5,
+					MinAttempts:    5,
+					IdlePeriod:     10 * time.Second,
+					PoolSaturation: 0.9,
+					PoolWaitLimit:  5 * time.Second,
+				},
 			},
 			ControlPlane: ControlPlaneConfig{
 				Host:             "localhost",
@@ -2273,6 +2287,385 @@ idle_timeout = "30m"
 	})
 }
 
+func TestDefaultConfig_HealthDefaults(t *testing.T) {
+	h := defaultConfig().Controller.Health
+	assert.Equal(t, 3*time.Second, h.CacheTTL)
+	assert.Empty(t, h.AllowedClients)
+	assert.Equal(t, HealthDatabaseConfig{
+		CheckTimeout:   2 * time.Second,
+		StartupWait:    5 * time.Minute,
+		FailureWindow:  30 * time.Second,
+		FailureRatio:   0.5,
+		MinAttempts:    5,
+		IdlePeriod:     10 * time.Second,
+		PoolSaturation: 0.9,
+		PoolWaitLimit:  5 * time.Second,
+	}, h.Database)
+	assert.Empty(t, defaultConfig().Router.Health.AllowedClients)
+}
+
+func TestLoadConfig_Health(t *testing.T) {
+	t.Run("explicit values parse from toml", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		configPath := filepath.Join(tmpDir, "config.toml")
+		toml := `
+[controller.health]
+cache_ttl = "7s"
+
+[controller.health.database]
+check_timeout = "1500ms"
+startup_wait = "90s"
+failure_window = "1m"
+failure_ratio = 0.25
+min_attempts = 10
+idle_period = "20s"
+pool_saturation = 0.75
+pool_wait_limit = "8s"
+`
+		require.NoError(t, os.WriteFile(configPath, []byte(toml), 0o644))
+
+		cfg, err := LoadConfig(configPath)
+		require.NoError(t, err)
+		h := cfg.Controller.Health
+		assert.Equal(t, 7*time.Second, h.CacheTTL)
+		assert.Equal(t, HealthDatabaseConfig{
+			CheckTimeout:   1500 * time.Millisecond,
+			StartupWait:    90 * time.Second,
+			FailureWindow:  time.Minute,
+			FailureRatio:   0.25,
+			MinAttempts:    10,
+			IdlePeriod:     20 * time.Second,
+			PoolSaturation: 0.75,
+			PoolWaitLimit:  8 * time.Second,
+		}, h.Database)
+	})
+
+	t.Run("partial database table keeps the other defaults", func(t *testing.T) {
+		configPath := filepath.Join(t.TempDir(), "config.toml")
+		require.NoError(t, os.WriteFile(configPath, []byte(`
+[controller.health.database]
+idle_period = "5s"
+`), 0o644))
+
+		cfg, err := LoadConfig(configPath)
+		require.NoError(t, err)
+		want := defaultConfig().Controller.Health
+		want.Database.IdlePeriod = 5 * time.Second
+		assert.Equal(t, want, cfg.Controller.Health)
+	})
+
+	t.Run("removed keys are ignored", func(t *testing.T) {
+		configPath := filepath.Join(t.TempDir(), "config.toml")
+		toml := `
+[controller.health]
+cache_ttl = "7s"
+log_file = "/var/log/health.log"
+log_max_size_mb = 25
+log_max_files = 3
+backoff_initial = "20s"
+backoff_max = "10m"
+`
+		require.NoError(t, os.WriteFile(configPath, []byte(toml), 0o644))
+
+		cfg, err := LoadConfig(configPath)
+		require.NoError(t, err)
+		want := defaultConfig().Controller.Health
+		want.CacheTTL = 7 * time.Second
+		assert.Equal(t, want, cfg.Controller.Health)
+	})
+
+	t.Run("omitted section falls back to defaults", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		configPath := filepath.Join(tmpDir, "config.toml")
+		require.NoError(t, os.WriteFile(configPath, []byte(""), 0o644))
+
+		cfg, err := LoadConfig(configPath)
+		require.NoError(t, err)
+		assert.Equal(t, defaultConfig().Controller.Health, cfg.Controller.Health)
+	})
+}
+
+func TestConfig_ValidateHealthConfig(t *testing.T) {
+	tests := []struct {
+		name        string
+		mutate      func(h *HealthConfig)
+		errContains string
+	}{
+		{name: "Defaults are valid", mutate: func(h *HealthConfig) {}},
+		{name: "Zero cache_ttl", mutate: func(h *HealthConfig) { h.CacheTTL = 0 }, errContains: "controller.health.cache_ttl must be > 0"},
+		{name: "Zero check_timeout", mutate: func(h *HealthConfig) { h.Database.CheckTimeout = 0 }, errContains: "controller.health.database.check_timeout must be > 0, got: 0s"},
+		{name: "Negative check_timeout", mutate: func(h *HealthConfig) { h.Database.CheckTimeout = -time.Second }, errContains: "controller.health.database.check_timeout must be > 0"},
+		{name: "Zero startup_wait", mutate: func(h *HealthConfig) { h.Database.StartupWait = 0 }, errContains: "controller.health.database.startup_wait must be > 0"},
+		{name: "Negative startup_wait", mutate: func(h *HealthConfig) { h.Database.StartupWait = -time.Minute }, errContains: "controller.health.database.startup_wait must be > 0"},
+		{name: "Zero failure_window", mutate: func(h *HealthConfig) { h.Database.FailureWindow = 0 }, errContains: "controller.health.database.failure_window must be > 0"},
+		{name: "Zero idle_period", mutate: func(h *HealthConfig) { h.Database.IdlePeriod = 0 }, errContains: "controller.health.database.idle_period must be > 0"},
+		{name: "Negative pool_wait_limit", mutate: func(h *HealthConfig) { h.Database.PoolWaitLimit = -time.Second }, errContains: "controller.health.database.pool_wait_limit must be > 0"},
+		{name: "Zero failure_ratio", mutate: func(h *HealthConfig) { h.Database.FailureRatio = 0 }, errContains: "controller.health.database.failure_ratio must be > 0 and <= 1, got: 0"},
+		{name: "failure_ratio above one", mutate: func(h *HealthConfig) { h.Database.FailureRatio = 1.5 }, errContains: "controller.health.database.failure_ratio must be > 0 and <= 1, got: 1.5"},
+		{name: "failure_ratio of one", mutate: func(h *HealthConfig) { h.Database.FailureRatio = 1 }},
+		{name: "Negative pool_saturation", mutate: func(h *HealthConfig) { h.Database.PoolSaturation = -0.1 }, errContains: "controller.health.database.pool_saturation must be > 0 and <= 1"},
+		{name: "pool_saturation above one", mutate: func(h *HealthConfig) { h.Database.PoolSaturation = 1.01 }, errContains: "controller.health.database.pool_saturation must be > 0 and <= 1"},
+		{name: "Zero min_attempts", mutate: func(h *HealthConfig) { h.Database.MinAttempts = 0 }, errContains: "controller.health.database.min_attempts must be >= 1, got: 0"},
+		{name: "min_attempts of one", mutate: func(h *HealthConfig) { h.Database.MinAttempts = 1 }},
+		{
+			name:        "failure_window shorter than cache_ttl",
+			mutate:      func(h *HealthConfig) { h.Database.FailureWindow = 2 * time.Second; h.Database.IdlePeriod = time.Second },
+			errContains: "controller.health.database.failure_window must be >= controller.health.cache_ttl (3s), got: 2s",
+		},
+		{name: "failure_window equal to cache_ttl", mutate: func(h *HealthConfig) {
+			h.Database.FailureWindow = 3 * time.Second
+			h.Database.IdlePeriod = 3 * time.Second
+		}},
+		{
+			name:        "idle_period longer than failure_window",
+			mutate:      func(h *HealthConfig) { h.Database.IdlePeriod = 31 * time.Second },
+			errContains: "controller.health.database.idle_period must be <= controller.health.database.failure_window (30s), got: 31s",
+		},
+		{name: "allowed_clients ranges", mutate: func(h *HealthConfig) { h.AllowedClients = ClientList{"10.0.0.0/8", "::1"} }},
+		{name: "allowed_clients wildcard", mutate: func(h *HealthConfig) { h.AllowedClients = ClientList{"*"} }},
+		{
+			name:        "allowed_clients wildcard with others",
+			mutate:      func(h *HealthConfig) { h.AllowedClients = ClientList{"*", "10.0.0.0/8"} },
+			errContains: `controller.health.allowed_clients: "*" cannot be combined with other entries`,
+		},
+		{
+			name:        "allowed_clients invalid entry",
+			mutate:      func(h *HealthConfig) { h.AllowedClients = ClientList{"127.0.0.1", "gateway.local"} },
+			errContains: "controller.health.allowed_clients[1] is not a valid IP address or CIDR range",
+		},
+		{name: "check_timeout at default probe timeout", mutate: func(h *HealthConfig) { h.Database.CheckTimeout = 5 * time.Second }},
+		{name: "check_timeout above default probe timeout", mutate: func(h *HealthConfig) { h.Database.CheckTimeout = 8 * time.Second }},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := validConfig()
+			tt.mutate(&cfg.Controller.Health)
+			err := cfg.Validate()
+			if tt.errContains != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.errContains)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestLoadConfig_HealthKeyLayout(t *testing.T) {
+	load := func(t *testing.T, toml string) (*Config, error) {
+		t.Helper()
+		configPath := filepath.Join(t.TempDir(), "config.toml")
+		require.NoError(t, os.WriteFile(configPath, []byte(toml), 0o644))
+		return LoadConfig(configPath)
+	}
+
+	tests := []struct {
+		name    string
+		toml    string
+		wantErr string
+	}{
+		{
+			name:    "check_timeout in the health table",
+			toml:    "[controller.health]\ncheck_timeout = \"2s\"\n",
+			wantErr: "controller.health.check_timeout has moved to controller.health.database.check_timeout",
+		},
+		{
+			name:    "startup_wait in the health table",
+			toml:    "[controller.health]\nstartup_wait = \"5m\"\n",
+			wantErr: "controller.health.startup_wait has moved to controller.health.database.startup_wait",
+		},
+		{
+			name:    "moved key set from the environment",
+			toml:    "[controller.health]\nstartup_wait = '{{ env \"APIP_GW_CONTROLLER_HEALTH_STARTUP_WAIT\" \"5m\" }}'\n",
+			wantErr: "controller.health.startup_wait has moved to controller.health.database.startup_wait",
+		},
+		{
+			name:    "misspelled key in the database table",
+			toml:    "[controller.health.database]\nfaliure_ratio = 0.5\n",
+			wantErr: `controller.health.database: unknown key "faliure_ratio"`,
+		},
+		{
+			name:    "nested table in the database table",
+			toml:    "[controller.health.database.pool]\nlimit = 3\n",
+			wantErr: `controller.health.database: unknown key "pool"`,
+		},
+		{
+			name:    "database set to a value",
+			toml:    "[controller.health]\ndatabase = \"postgres\"\n",
+			wantErr: "controller.health.database must be a table",
+		},
+		{
+			name: "every known key in the database table",
+			toml: `
+[controller.health.database]
+check_timeout = "2s"
+startup_wait = "5m"
+failure_window = "30s"
+failure_ratio = 0.5
+min_attempts = 5
+idle_period = "10s"
+pool_saturation = 0.9
+pool_wait_limit = "5s"
+`,
+		},
+		{
+			name: "other components' health keys are not inspected",
+			toml: `
+[policy_engine.health]
+check_timeout = "2s"
+xds_grace = "5m"
+
+[policy_engine.health.python_executor]
+check_timeout = "2s"
+unknown = true
+
+[policy_engine.health.xds_connection]
+grace = "5m"
+`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := load(t, tt.toml)
+			if tt.wantErr == "" {
+				assert.NoError(t, err)
+				return
+			}
+			require.Error(t, err)
+			assert.Equal(t, tt.wantErr, err.Error())
+		})
+	}
+}
+
+func TestConfig_ValidateRouterHealthConfig(t *testing.T) {
+	tests := []struct {
+		name    string
+		clients ClientList
+		wantErr string
+	}{
+		{name: "default", clients: nil},
+		{name: "ranges", clients: ClientList{"127.0.0.1", "fc00::/7"}},
+		{name: "wildcard", clients: ClientList{"*"}},
+		{name: "wildcard with others", clients: ClientList{"::1", "*"},
+			wantErr: `router.health.allowed_clients: "*" cannot be combined with other entries`},
+		{name: "invalid entry", clients: ClientList{"10.0.0.0/40"},
+			wantErr: "router.health.allowed_clients[0] is not a valid IP address or CIDR range"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := validConfig()
+			cfg.Router.Health.AllowedClients = tt.clients
+			err := cfg.Validate()
+			if tt.wantErr != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.wantErr)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestLoadConfig_HealthAllowedClients(t *testing.T) {
+	load := func(t *testing.T, toml string) *Config {
+		t.Helper()
+		configPath := filepath.Join(t.TempDir(), "config.toml")
+		require.NoError(t, os.WriteFile(configPath, []byte(toml), 0o644))
+		cfg, err := LoadConfig(configPath)
+		require.NoError(t, err)
+		return cfg
+	}
+
+	t.Run("toml arrays", func(t *testing.T) {
+		cfg := load(t, `
+[controller.health]
+allowed_clients = ["127.0.0.1", "::1", "10.0.0.0/8"]
+
+[router.health]
+allowed_clients = ["*"]
+`)
+		assert.Equal(t, ClientList{"127.0.0.1", "::1", "10.0.0.0/8"}, cfg.Controller.Health.AllowedClients)
+		assert.Equal(t, ClientList{"*"}, cfg.Router.Health.AllowedClients)
+	})
+
+	t.Run("comma-separated strings", func(t *testing.T) {
+		cfg := load(t, `
+[controller.health]
+allowed_clients = "127.0.0.1, ::1,10.0.0.0/8"
+
+[router.health]
+allowed_clients = "192.168.0.0/16"
+`)
+		assert.Equal(t, ClientList{"127.0.0.1", "::1", "10.0.0.0/8"}, cfg.Controller.Health.AllowedClients)
+		assert.Equal(t, ClientList{"192.168.0.0/16"}, cfg.Router.Health.AllowedClients)
+	})
+
+	t.Run("env tokens", func(t *testing.T) {
+		toml := `
+[controller.health]
+allowed_clients = '{{ env "APIP_GW_CONTROLLER_HEALTH_ALLOWED_CLIENTS" "127.0.0.1,::1" }}'
+
+[router.health]
+allowed_clients = '{{ env "APIP_GW_ROUTER_HEALTH_ALLOWED_CLIENTS" "127.0.0.1,::1" }}'
+`
+		cfg := load(t, toml)
+		assert.Equal(t, ClientList{"127.0.0.1", "::1"}, cfg.Controller.Health.AllowedClients)
+		assert.Equal(t, ClientList{"127.0.0.1", "::1"}, cfg.Router.Health.AllowedClients)
+
+		t.Setenv("APIP_GW_CONTROLLER_HEALTH_ALLOWED_CLIENTS", "10.0.0.0/8,172.16.0.0/12")
+		t.Setenv("APIP_GW_ROUTER_HEALTH_ALLOWED_CLIENTS", "*")
+		cfg = load(t, toml)
+		assert.Equal(t, ClientList{"10.0.0.0/8", "172.16.0.0/12"}, cfg.Controller.Health.AllowedClients)
+		assert.Equal(t, ClientList{"*"}, cfg.Router.Health.AllowedClients)
+	})
+
+	t.Run("empty string means the default", func(t *testing.T) {
+		cfg := load(t, `
+[controller.health]
+allowed_clients = ""
+`)
+		assert.Empty(t, cfg.Controller.Health.AllowedClients)
+	})
+
+	t.Run("invalid entry fails loading", func(t *testing.T) {
+		configPath := filepath.Join(t.TempDir(), "config.toml")
+		require.NoError(t, os.WriteFile(configPath, []byte(`
+[router.health]
+allowed_clients = "127.0.0.1,not-an-ip"
+`), 0o644))
+		_, err := LoadConfig(configPath)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "router.health.allowed_clients[1] is not a valid IP address or CIDR range")
+	})
+
+	t.Run("other list keys still decode a plain string as one entry", func(t *testing.T) {
+		cfg := load(t, `
+[controller.admin_server]
+allowed_ips = "127.0.0.1,10.0.0.1"
+`)
+		assert.Equal(t, []string{"127.0.0.1,10.0.0.1"}, cfg.Controller.AdminServer.AllowedIPs)
+	})
+}
+
+func TestStringToClientListHook(t *testing.T) {
+	strType := reflect.TypeOf("")
+	sliceType := reflect.TypeOf([]string(nil))
+
+	got, err := stringToClientListHook(strType, clientListType, " a , ,b,")
+	require.NoError(t, err)
+	assert.Equal(t, ClientList{"a", "b"}, got)
+
+	got, err = stringToClientListHook(strType, sliceType, "a,b")
+	require.NoError(t, err)
+	assert.Equal(t, "a,b", got, "a plain []string target is left to the default decoding")
+
+	in := []any{"a", "b"}
+	got, err = stringToClientListHook(reflect.TypeOf(in), clientListType, in)
+	require.NoError(t, err)
+	assert.Equal(t, in, got, "an array is left to the default decoding")
+}
+
 func TestLoadConfig_TracingResourceAttributes(t *testing.T) {
 	t.Run("inline table parses into a string map", func(t *testing.T) {
 		tmpDir := t.TempDir()
@@ -2590,4 +2983,111 @@ active = true
 `)
 		assert.True(t, cfg.Signing.JWKSEndpointEnabled)
 	})
+}
+
+// shippedControllerHealthExample returns the [controller.health] and
+// [controller.health.database] tables of the shipped config template with their commented
+// lines uncommented, as an operator would enable them.
+func shippedControllerHealthExample(t *testing.T) string {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join("..", "..", "..", "configs", "config-template.toml"))
+	require.NoError(t, err)
+	var out []string
+	for _, header := range []string{"[controller.health]", "[controller.health.database]"} {
+		var lines []string
+		inBlock := false
+		for _, line := range strings.Split(string(raw), "\n") {
+			line = strings.TrimPrefix(line, "# ")
+			if line == header {
+				inBlock = true
+			}
+			if !inBlock {
+				continue
+			}
+			if strings.TrimSpace(line) == "" {
+				break
+			}
+			lines = append(lines, line)
+		}
+		require.NotEmpty(t, lines, "the config template must carry the %s table", header)
+		out = append(out, lines...)
+		out = append(out, "")
+	}
+	return strings.Join(out, "\n")
+}
+
+// The health tables in the shipped config template load once their commented keys are
+// enabled, carry the defaults, and are overridable from the environment.
+func TestLoadConfig_ShippedHealthExampleIsValid(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.toml")
+	example := shippedControllerHealthExample(t)
+	require.NoError(t, os.WriteFile(configPath, []byte(example), 0o644))
+	for _, removed := range []string{"log_file", "log_max", "backoff"} {
+		assert.NotContains(t, example, removed)
+	}
+
+	cfg, err := LoadConfig(configPath)
+	require.NoError(t, err)
+	want := defaultConfig().Controller.Health
+	want.AllowedClients = ClientList{"127.0.0.1", "::1"}
+	assert.Equal(t, want, cfg.Controller.Health)
+
+	env := map[string]string{
+		"APIP_GW_CONTROLLER_HEALTH_ALLOWED_CLIENTS":          "127.0.0.1,::1,10.0.0.0/8",
+		"APIP_GW_CONTROLLER_HEALTH_CACHE_TTL":                "4s",
+		"APIP_GW_CONTROLLER_HEALTH_DATABASE_CHECK_TIMEOUT":   "1s",
+		"APIP_GW_CONTROLLER_HEALTH_DATABASE_STARTUP_WAIT":    "90s",
+		"APIP_GW_CONTROLLER_HEALTH_DATABASE_FAILURE_WINDOW":  "1m",
+		"APIP_GW_CONTROLLER_HEALTH_DATABASE_FAILURE_RATIO":   "0.25",
+		"APIP_GW_CONTROLLER_HEALTH_DATABASE_MIN_ATTEMPTS":    "3",
+		"APIP_GW_CONTROLLER_HEALTH_DATABASE_IDLE_PERIOD":     "15s",
+		"APIP_GW_CONTROLLER_HEALTH_DATABASE_POOL_SATURATION": "0.8",
+		"APIP_GW_CONTROLLER_HEALTH_DATABASE_POOL_WAIT_LIMIT": "7s",
+	}
+	for name, value := range env {
+		t.Setenv(name, value)
+	}
+	cfg, err = LoadConfig(configPath)
+	require.NoError(t, err)
+	assert.Equal(t, HealthConfig{
+		CacheTTL:       4 * time.Second,
+		AllowedClients: ClientList{"127.0.0.1", "::1", "10.0.0.0/8"},
+		Database: HealthDatabaseConfig{
+			CheckTimeout:   time.Second,
+			StartupWait:    90 * time.Second,
+			FailureWindow:  time.Minute,
+			FailureRatio:   0.25,
+			MinAttempts:    3,
+			IdlePeriod:     15 * time.Second,
+			PoolSaturation: 0.8,
+			PoolWaitLimit:  7 * time.Second,
+		},
+	}, cfg.Controller.Health)
+}
+
+// shippedRouterHealthSection returns the [router.health] section of the shipped config
+// template.
+func shippedRouterHealthSection(t *testing.T) string {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join("..", "..", "..", "configs", "config-template.toml"))
+	require.NoError(t, err)
+	content := string(raw)
+	start := strings.Index(content, "\n[router.health]\n")
+	require.NotEqual(t, -1, start, "the config template must carry the [router.health] section")
+	section := content[start+1:]
+	return section[:strings.Index(section, "\n\n")+1]
+}
+
+func TestLoadConfig_ShippedRouterHealthSectionIsValid(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.toml")
+	require.NoError(t, os.WriteFile(configPath, []byte(shippedRouterHealthSection(t)), 0o644))
+
+	cfg, err := LoadConfig(configPath)
+	require.NoError(t, err)
+	assert.Equal(t, ClientList{"127.0.0.1", "::1"}, cfg.Router.Health.AllowedClients)
+
+	t.Setenv("APIP_GW_ROUTER_HEALTH_ALLOWED_CLIENTS", "*")
+	cfg, err = LoadConfig(configPath)
+	require.NoError(t, err)
+	assert.Equal(t, ClientList{"*"}, cfg.Router.Health.AllowedClients)
 }

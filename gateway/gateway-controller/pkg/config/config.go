@@ -21,7 +21,9 @@ package config
 import (
 	"fmt"
 	"log/slog"
+	"reflect"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -35,6 +37,7 @@ import (
 	"github.com/wso2/api-platform/common/configinterpolate"
 	commonconstants "github.com/wso2/api-platform/common/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/health"
 )
 
 const (
@@ -213,6 +216,7 @@ type Controller struct {
 	AdminServer  AdminServerConfig  `koanf:"admin_server"`
 	Storage      StorageConfig      `koanf:"storage"`
 	Logging      LoggingConfig      `koanf:"logging"`
+	Health       HealthConfig       `koanf:"health"`
 	ControlPlane ControlPlaneConfig `koanf:"controlplane"`
 	HTTPClient   HTTPClientConfig   `koanf:"http_client"`
 	PolicyServer PolicyServerConfig `koanf:"policy_server"`
@@ -645,6 +649,17 @@ type RouterConfig struct {
 
 	// HTTPListener configuration
 	HTTPListener HTTPListenerConfig `koanf:"http_listener"`
+
+	// Health configures the gateway's own readiness and liveness routes.
+	Health RouterHealthConfig `koanf:"health"`
+}
+
+// RouterHealthConfig configures the gateway's own readiness and liveness routes on the
+// traffic listeners.
+type RouterHealthConfig struct {
+	// AllowedClients are the peer addresses (IPs or CIDR ranges) Envoy lets reach the
+	// health routes. Empty means loopback only; "*" alone means every client.
+	AllowedClients ClientList `koanf:"allowed_clients"`
 }
 
 // RouterUpstream holds upstream-side configuration (TLS and timeouts for Envoy upstream).
@@ -864,6 +879,53 @@ type LoggingConfig struct {
 	Format string `koanf:"format"` // "json" (default) or "text"
 }
 
+// HealthConfig holds health check configuration
+type HealthConfig struct {
+	CacheTTL time.Duration `koanf:"cache_ttl"` // How long an evaluated health result is reused
+	// AllowedClients are the peer addresses (IPs or CIDR ranges) answered by the admin
+	// health endpoints. Empty means loopback only; "*" alone means every client.
+	AllowedClients ClientList `koanf:"allowed_clients"`
+	// Database holds the settings of the database check.
+	Database HealthDatabaseConfig `koanf:"database"`
+}
+
+// HealthDatabaseConfig holds the settings of the database health check. The check decides
+// from the outcomes of the controller's own database operations, and pings the database
+// itself only when there has been no database activity for IdlePeriod.
+type HealthDatabaseConfig struct {
+	CheckTimeout   time.Duration `koanf:"check_timeout"`   // Deadline for the check's own ping
+	StartupWait    time.Duration `koanf:"startup_wait"`    // How long startup waits for the database before exiting
+	FailureWindow  time.Duration `koanf:"failure_window"`  // Sliding window of operation outcomes the check decides from
+	FailureRatio   float64       `koanf:"failure_ratio"`   // Share of failed operations in the window that marks the database down
+	MinAttempts    int           `koanf:"min_attempts"`    // Operations the window needs before the ratio decides
+	IdlePeriod     time.Duration `koanf:"idle_period"`     // Inactivity after which the check pings the database itself
+	PoolSaturation float64       `koanf:"pool_saturation"` // Share of the connection pool in use that counts as saturated
+	PoolWaitLimit  time.Duration `koanf:"pool_wait_limit"` // How long the pool may stay saturated before the check fails
+}
+
+// ClientList is a list of client addresses. In configuration it is a TOML array, or a
+// single comma-separated string so that one environment variable can set the whole list.
+type ClientList []string
+
+// clientListType is the reflected type of ClientList, used by the decode hook.
+var clientListType = reflect.TypeOf(ClientList(nil))
+
+// stringToClientListHook decodes a comma-separated string into a ClientList, trimming
+// each entry and dropping empty ones, so an empty string decodes to an empty list. It
+// applies only when the target is a ClientList; every other key decodes as before.
+func stringToClientListHook(from, to reflect.Type, data any) (any, error) {
+	if to != clientListType || from.Kind() != reflect.String {
+		return data, nil
+	}
+	list := ClientList{}
+	for _, entry := range strings.Split(reflect.ValueOf(data).String(), ",") {
+		if entry = strings.TrimSpace(entry); entry != "" {
+			list = append(list, entry)
+		}
+	}
+	return list, nil
+}
+
 // ControlPlaneConfig holds control plane connection configuration
 type ControlPlaneConfig struct {
 	Host                  string        `koanf:"host"`                    // Control plane hostname
@@ -1078,13 +1140,21 @@ func LoadConfig(configPaths ...string) (*Config, error) {
 		return nil, err
 	}
 
-	// Unmarshal into Config struct with DecodeHook for duration strings
+	if err := checkHealthKeys(k); err != nil {
+		return nil, err
+	}
+
+	// Unmarshal into Config struct with DecodeHooks for duration strings and for
+	// comma-separated client lists
 	if err := k.UnmarshalWithConf("", cfg, koanf.UnmarshalConf{
 		DecoderConfig: &mapstructure.DecoderConfig{
 			TagName:          "koanf",
 			WeaklyTypedInput: true,
 			Result:           cfg,
-			DecodeHook:       mapstructure.StringToTimeDurationHookFunc(),
+			DecodeHook: mapstructure.ComposeDecodeHookFunc(
+				mapstructure.StringToTimeDurationHookFunc(),
+				stringToClientListHook,
+			),
 		},
 	}); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
@@ -1096,6 +1166,54 @@ func LoadConfig(configPaths ...string) (*Config, error) {
 	}
 
 	return cfg, nil
+}
+
+// movedHealthKeys are the controller.health keys that moved into the
+// controller.health.database table.
+var movedHealthKeys = []string{"check_timeout", "startup_wait"}
+
+// checkHealthKeys rejects health keys the controller would otherwise silently ignore: a
+// key that moved into the database table, and an unknown (for example misspelled) key
+// inside that table. Only the controller's own health subtree is inspected, because the
+// gateway configuration file is shared with other components.
+func checkHealthKeys(k *koanf.Koanf) error {
+	for _, key := range movedHealthKeys {
+		if k.Exists("controller.health." + key) {
+			return fmt.Errorf("controller.health.%s has moved to controller.health.database.%s", key, key)
+		}
+	}
+
+	const tablePath = "controller.health.database"
+	if !k.Exists(tablePath) {
+		return nil
+	}
+	table, ok := k.Get(tablePath).(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("%s must be a table", tablePath)
+	}
+	known := koanfKeys(reflect.TypeOf(HealthDatabaseConfig{}))
+	keys := make([]string, 0, len(table))
+	for key := range table {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		if !known[key] {
+			return fmt.Errorf("%s: unknown key %q", tablePath, key)
+		}
+	}
+	return nil
+}
+
+// koanfKeys returns the koanf key names of a struct type's fields.
+func koanfKeys(t reflect.Type) map[string]bool {
+	keys := make(map[string]bool, t.NumField())
+	for i := 0; i < t.NumField(); i++ {
+		if tag := t.Field(i).Tag.Get("koanf"); tag != "" {
+			keys[tag] = true
+		}
+	}
+	return keys
 }
 
 // interpolate resolves Go template tokens ({{ env }} / {{ file }}) in the merged
@@ -1260,6 +1378,19 @@ func defaultConfig() *Config {
 			Logging: LoggingConfig{
 				Level:  "info",
 				Format: "text",
+			},
+			Health: HealthConfig{
+				CacheTTL: 3 * time.Second,
+				Database: HealthDatabaseConfig{
+					CheckTimeout:   2 * time.Second,
+					StartupWait:    5 * time.Minute,
+					FailureWindow:  30 * time.Second,
+					FailureRatio:   0.5,
+					MinAttempts:    5,
+					IdlePeriod:     10 * time.Second,
+					PoolSaturation: 0.9,
+					PoolWaitLimit:  5 * time.Second,
+				},
 			},
 			Metrics: MetricsConfig{
 				Enabled: false,
@@ -1954,6 +2085,11 @@ func (c *Config) Validate() error {
 		return err
 	}
 
+	// Validate health check configuration
+	if err := c.validateHealthConfig(); err != nil {
+		return err
+	}
+
 	// Validate subscriptions configuration (subscription token encryption key when set)
 	if err := c.validateSubscriptionsConfig(); err != nil {
 		return err
@@ -2206,6 +2342,81 @@ func validateEcdhCurves(fieldPath, curves string) error {
 		if strings.TrimSpace(curve) == "" {
 			return fmt.Errorf("%s cannot contain an empty curve name (use comma-separated values)", fieldPath)
 		}
+	}
+	return nil
+}
+
+// healthProbeTimeoutDefault is the default timeout of the probes that consume
+// the health endpoints.
+const healthProbeTimeoutDefault = 5 * time.Second
+
+// validateHealthConfig validates the health check configuration
+func (c *Config) validateHealthConfig() error {
+	h := &c.Controller.Health
+
+	if h.CacheTTL <= 0 {
+		return fmt.Errorf("controller.health.cache_ttl must be > 0, got: %s", h.CacheTTL)
+	}
+	if err := validateHealthDatabaseConfig(&h.Database, h.CacheTTL); err != nil {
+		return err
+	}
+	if _, err := health.ParseAllowedClients("controller.health", h.AllowedClients); err != nil {
+		return err
+	}
+	if _, err := health.ParseAllowedClients("router.health", c.Router.Health.AllowedClients); err != nil {
+		return err
+	}
+
+	// Warn rather than fail: a slower check is a legitimate choice, but a probe
+	// that gives up first reports the gateway unhealthy while the check is still running.
+	if h.Database.CheckTimeout >= healthProbeTimeoutDefault {
+		slog.Warn("controller.health.database.check_timeout is at or above the default 5s probe timeout; probes may give up before checks complete",
+			slog.Duration("check_timeout", h.Database.CheckTimeout))
+	}
+	return nil
+}
+
+// validateHealthDatabaseConfig validates the database check settings. The window must
+// outlast the cached answer, and an idle instance must ping at least once per window.
+func validateHealthDatabaseConfig(d *HealthDatabaseConfig, cacheTTL time.Duration) error {
+	const prefix = "controller.health.database."
+	durations := []struct {
+		key   string
+		value time.Duration
+	}{
+		{"check_timeout", d.CheckTimeout},
+		{"startup_wait", d.StartupWait},
+		{"failure_window", d.FailureWindow},
+		{"idle_period", d.IdlePeriod},
+		{"pool_wait_limit", d.PoolWaitLimit},
+	}
+	for _, f := range durations {
+		if f.value <= 0 {
+			return fmt.Errorf("%s%s must be > 0, got: %s", prefix, f.key, f.value)
+		}
+	}
+	ratios := []struct {
+		key   string
+		value float64
+	}{
+		{"failure_ratio", d.FailureRatio},
+		{"pool_saturation", d.PoolSaturation},
+	}
+	for _, f := range ratios {
+		if f.value <= 0 || f.value > 1 {
+			return fmt.Errorf("%s%s must be > 0 and <= 1, got: %g", prefix, f.key, f.value)
+		}
+	}
+	if d.MinAttempts < 1 {
+		return fmt.Errorf("%smin_attempts must be >= 1, got: %d", prefix, d.MinAttempts)
+	}
+	if d.FailureWindow < cacheTTL {
+		return fmt.Errorf("%sfailure_window must be >= controller.health.cache_ttl (%s), got: %s",
+			prefix, cacheTTL, d.FailureWindow)
+	}
+	if d.IdlePeriod > d.FailureWindow {
+		return fmt.Errorf("%sidle_period must be <= %sfailure_window (%s), got: %s",
+			prefix, prefix, d.FailureWindow, d.IdlePeriod)
 	}
 	return nil
 }
