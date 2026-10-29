@@ -2774,7 +2774,7 @@ export interface paths {
          * List API keys for an Agent proxy
          * @description Returns API-key metadata for the specified Agent proxy. Key material is never returned by
          *     this operation. Only keys the caller created are listed, unless the caller holds
-         *     `ap:api_key:all:manage`, which lists every key on the Agent proxy.
+         *     `ap:credential:api_key:all:manage`, which lists every key on the Agent proxy.
          */
         get: operations["listAgentProxyAPIKeys"];
         put?: never;
@@ -2811,7 +2811,7 @@ export interface paths {
          * @description Updates an existing API key for the specified Agent proxy, with the same behavior as
          *     REST API keys: the supplied `apiKey` value replaces the key material, is hashed before
          *     storage, and is broadcast to the gateways the Agent proxy is deployed to. Only the
-         *     key's creator may update it, unless the caller holds `ap:api_key:all:manage`. The
+         *     key's creator may update it, unless the caller holds `ap:credential:api_key:all:manage`. The
          *     Agent proxy must be associated with at least one gateway; otherwise the update is
          *     refused with 503.
          */
@@ -2825,7 +2825,7 @@ export interface paths {
          *     confirms the control-plane deletion, not that every gateway has already dropped the key.
          *     An Agent proxy associated with no gateway has nothing to notify, and the key is still
          *     deleted. Only the key's creator may delete it, unless the caller holds
-         *     `ap:api_key:all:manage`.
+         *     `ap:credential:api_key:all:manage`.
          */
         delete: operations["revokeAgentProxyAPIKey"];
         options?: never;
@@ -3358,9 +3358,9 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * List API keys for the current user, or for all users with `ap:api_key:all:manage`
+         * List API keys for the current user, or for all users with `ap:credential:api_key:all:manage`
          * @description Returns API keys created by the caller within the organization.
-         *     Callers holding the `ap:api_key:all:manage` scope instead receive every user's API keys
+         *     Callers holding the `ap:credential:api_key:all:manage` scope instead receive every user's API keys
          *     in the organization; the `createdBy` field identifies each key's creator.
          *     Optionally filter by one or more artifact types using a comma-separated `type` query parameter.
          *     The plain key value is never returned.

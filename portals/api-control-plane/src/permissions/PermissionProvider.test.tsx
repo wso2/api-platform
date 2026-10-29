@@ -38,7 +38,7 @@ function Probe() {
   const canCreate = useCan('CreateProject');
   const canDelete = useCan('DeleteProject');
   const canDeployOrUndeploy = useCanAny(['DeployAPI', 'UndeployDeployment']);
-  const isKeyAdmin = useHasScope('ap:api_key:all:manage');
+  const isKeyAdmin = useHasScope('ap:credential:api_key:all:manage');
   const del = useActionPermission('DeleteProject');
 
   return (
@@ -90,9 +90,10 @@ const renderWithScopes = (
 
 describe('PermissionProvider', () => {
   it('derives permissions from the session scope claim', () => {
-    const shown = renderWithScopes(['ap:project:create', 'ap:project:read']);
+    const shown = renderWithScopes(['ap:api:rest:deployment:manage', 'ap:project:read']);
 
-    expect(shown('create')).toBe('create:true');
+    expect(shown('deployAny')).toBe('deployAny:true');
+    expect(shown('create')).toBe('create:false');
     expect(shown('delete')).toBe('delete:false');
     expect(shown('reason')).toBe('reason:missing-scope');
   });
@@ -104,11 +105,18 @@ describe('PermissionProvider', () => {
     expect(shown('delete')).toBe('delete:true');
   });
 
+  it('translates a session that still carries pre-tree scope names', () => {
+    const shown = renderWithScopes(['ap:rest_api:deployment:manage', 'ap:project:read']);
+
+    expect(shown('deployAny')).toBe('deployAny:true');
+    expect(shown('create')).toBe('create:false');
+  });
+
   it('offers an action once any one of several operations is reachable', () => {
-    const readOnly = renderWithScopes(['ap:rest_api:read']);
+    const readOnly = renderWithScopes(['ap:api:rest:read']);
     expect(readOnly('deployAny')).toBe('deployAny:false');
 
-    const deployer = renderWithScopes(['ap:rest_api:deployment:manage']);
+    const deployer = renderWithScopes(['ap:api:rest:deployment:manage']);
     expect(deployer('deployAny')).toBe('deployAny:true');
   });
 
@@ -144,10 +152,10 @@ describe('PermissionProvider', () => {
   });
 
   it('resolves an override scope that maps to no single operation', () => {
-    const admin = renderWithScopes(['ap:api_key:all:manage']);
+    const admin = renderWithScopes(['ap:credential:api_key:all:manage']);
     expect(admin('keyAdmin')).toBe('keyAdmin:true');
 
-    const reader = renderWithScopes(['ap:api_key:read']);
+    const reader = renderWithScopes(['ap:credential:api_key:read']);
     expect(reader('keyAdmin')).toBe('keyAdmin:false');
   });
 

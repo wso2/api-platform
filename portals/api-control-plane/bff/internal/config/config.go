@@ -299,6 +299,11 @@ type OIDCConfig struct {
 	RedirectURL           string `koanf:"redirect_url"` // must equal the IDP-registered redirect, points at /api/auth/callback
 	PostLogoutRedirectURL string `koanf:"post_logout_redirect_url"`
 	Scopes                string `koanf:"scope"` // space-separated
+	// RequestLegacyScopes adds legacyOIDCScopes to the default login scope
+	// request. Consulted only when scope is not set. Defaults to true so an
+	// upgraded deployment keeps requesting the pre-permission-tree names its
+	// IDP may still assign; the shipped config template sets it to false.
+	RequestLegacyScopes bool `koanf:"request_legacy_scopes"`
 }
 
 // ClaimMappingConfig is [api_control_plane.auth.claim_mappings]: which claim
@@ -329,32 +334,61 @@ type ClaimMappingConfig struct {
 // this value.
 const CSRFHeaderName = "X-Requested-By"
 
-// defaultOIDCScopes requests every ap:* permission Platform API authorizes
-// against, so a logged-in user's access token carries them all. The IDP must
-// have these scopes registered and granted to the user, otherwise it drops the
-// ungranted ones. Override with the [auth.oidc] scope config key to request a
-// narrower set — a deployment against an IdP that cannot grant this many scopes
-// (or any ap:* scope at all) MUST override this rather than silently losing
-// access to scope-gated features.
+// defaultOIDCScopes is what the BFF requests at login when [api_control_plane.auth.oidc]
+// scope is not set and request_legacy_scopes is false: openid, profile, email,
+// offline_access and exactly the permission-tree scopes the shipped roles in
+// platform-api/resources/role-to-scope-mapping.yaml grant. An IDP issues the
+// intersection of requested and entitled scopes, so a user whose IDP role
+// mirrors a shipped role receives that role's full grant, and nothing a role
+// does not hold is ever requested. A parent or root permission (ap:api:manage,
+// ap:manage) admits every operation beneath it, so the fine-grained tree
+// actions are not requested; a deployment whose IDP roles grant one of those
+// adds it through the scope config key. The API-key ownership override
+// (ap:credential:api_key:all:manage) is deliberately never requested.
 //
 // offline_access is required: without it most IDPs issue no refresh token, so
 // the BFF cannot silently renew the access token and the user is logged out the
 // moment it expires. Keep it in any override.
 const defaultOIDCScopes = "openid profile email offline_access" +
-	" ap:organization:read ap:organization:manage ap:organization:subscription:read" +
-	" ap:project:read ap:project:create ap:project:update ap:project:delete ap:project:manage" +
-	" ap:application:read ap:application:create ap:application:update ap:application:delete ap:application:manage" +
-	" ap:application:api_key:read ap:application:api_key:create ap:application:api_key:delete ap:application:api_key:manage" +
-	" ap:gateway:read ap:gateway:create ap:gateway:update ap:gateway:delete ap:gateway:manage" +
-	" ap:gateway:token:read ap:gateway:token:create ap:gateway:token:delete ap:gateway:token:manage" +
-	" ap:rest_api:read ap:rest_api:create ap:rest_api:update ap:rest_api:delete ap:rest_api:manage ap:rest_api:import" +
-	" ap:rest_api:deployment:read ap:rest_api:deployment:create ap:rest_api:deployment:delete ap:rest_api:deployment:manage" +
-	" ap:rest_api:build:read ap:rest_api:build:create ap:rest_api:build:delete ap:rest_api:build:manage" +
-	" ap:rest_api:api_key:read ap:rest_api:api_key:create ap:rest_api:api_key:update ap:rest_api:api_key:delete ap:rest_api:api_key:manage" +
-	" ap:subscription:read ap:subscription:create ap:subscription:update ap:subscription:delete ap:subscription:manage" +
-	" ap:subscription_plan:read ap:subscription_plan:create ap:subscription_plan:update ap:subscription_plan:delete ap:subscription_plan:manage" +
-	" ap:secret:read ap:secret:create ap:secret:update ap:secret:delete ap:secret:manage" +
-	" ap:docs:read ap:docs:manage ap:thumbnail:read ap:thumbnail:manage"
+	" ap:organization:read ap:project:read ap:project:manage ap:application:read ap:application:manage" +
+	" ap:gateway:read ap:gateway:manage ap:subscription:read ap:subscription:manage ap:subscription_plan:read" +
+	" ap:subscription_plan:manage ap:manage ap:read ap:api:manage ap:api:read" +
+	" ap:api:agent:build:manage ap:api:agent:deployment:manage ap:api:graphql:build:manage ap:api:graphql:deployment:manage ap:api:llm:build:manage" +
+	" ap:api:llm:deployment:manage ap:api:mcp:build:manage ap:api:mcp:deployment:manage ap:api:rest:build:manage ap:api:rest:deployment:manage" +
+	" ap:content:manage ap:content:read ap:credential:api_key:read ap:credential:secret:manage ap:credential:secret:read" +
+	" ap:gateway_policy:manage ap:gateway_policy:read ap:llm_provider:read ap:llm_provider:build:manage ap:llm_provider:deployment:manage" +
+	" ap:llm_provider:template:manage ap:portal:read ap:portal:draft:manage ap:portal:graphql_api:manage ap:portal:rest_api:manage" +
+	" ap:publication:read"
+
+// legacyOIDCScopes are added to defaultOIDCScopes while request_legacy_scopes
+// is true (the built-in default, so an upgraded deployment keeps requesting
+// what it did before the permission tree): the pre-tree scope names
+// (ap:rest_api:manage, ...) that the Platform API still translates through
+// platform-api/resources/legacy-scope-mapping.yaml, and the fine-grained
+// actions no shipped role grants. An IDP that still assigns those names keeps
+// issuing them; once its roles carry the permission-tree names, set
+// request_legacy_scopes = false to request defaultOIDCScopes alone.
+const legacyOIDCScopes = "" +
+	" ap:organization:manage ap:organization:subscription:read ap:project:create ap:project:update ap:project:delete" +
+	" ap:application:create ap:application:update ap:application:delete ap:application:api_key:read ap:application:api_key:create" +
+	" ap:application:api_key:delete ap:application:api_key:manage ap:gateway:create ap:gateway:update ap:gateway:delete" +
+	" ap:gateway:token:read ap:gateway:token:create ap:gateway:token:delete ap:gateway:token:manage ap:rest_api:read" +
+	" ap:rest_api:create ap:rest_api:update ap:rest_api:delete ap:rest_api:manage ap:rest_api:import" +
+	" ap:rest_api:deployment:read ap:rest_api:deployment:create ap:rest_api:deployment:delete ap:rest_api:deployment:manage ap:rest_api:build:read" +
+	" ap:rest_api:build:create ap:rest_api:build:delete ap:rest_api:build:manage ap:rest_api:api_key:read ap:rest_api:api_key:create" +
+	" ap:rest_api:api_key:update ap:rest_api:api_key:delete ap:rest_api:api_key:manage ap:subscription:create ap:subscription:update" +
+	" ap:subscription:delete ap:subscription_plan:create ap:subscription_plan:update ap:subscription_plan:delete ap:secret:read" +
+	" ap:secret:create ap:secret:update ap:secret:delete ap:secret:manage ap:docs:read" +
+	" ap:docs:manage ap:thumbnail:read ap:thumbnail:manage"
+
+// defaultLoginScopes is the login scope request used when [auth.oidc] scope is
+// not set: defaultOIDCScopes, plus legacyOIDCScopes when requestLegacy is true.
+func defaultLoginScopes(requestLegacy bool) string {
+	if requestLegacy {
+		return defaultOIDCScopes + legacyOIDCScopes
+	}
+	return defaultOIDCScopes
+}
 
 // Load resolves configuration from one or more config.toml files. At least one
 // path is required and each must exist and parse — there is no default path and
@@ -419,6 +453,12 @@ func (c *Config) normalize() {
 	c.Logging.Format = strings.ToLower(c.Logging.Format)
 	c.Auth.Mode = strings.ToLower(c.Auth.Mode)
 	c.Auth.Authorization.Mode = strings.ToLower(c.Auth.Authorization.Mode)
+	// An unset scope (or an {{ env }} token with nothing behind it) means "the
+	// default request", resolved here so the token-exchange inheritance below and
+	// every reader of Scopes see the final list.
+	if strings.TrimSpace(c.Auth.OIDC.Scopes) == "" {
+		c.Auth.OIDC.Scopes = defaultLoginScopes(c.Auth.OIDC.RequestLegacyScopes)
+	}
 	c.PolicyHub.BaseURL = strings.TrimRight(strings.TrimSpace(c.PolicyHub.BaseURL), "/")
 	// An empty environment template must not erase the built-in catalog URL.
 	if c.PolicyHub.BaseURL == "" {

@@ -25,7 +25,7 @@ Returns all custom policies synced to the current organization (from the JWT `or
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:gateway_custom_policy:read`, `ap:gateway_custom_policy:manage`
+Required scopes (the token must carry at least one of): `ap:gateway_policy:read`, `ap:gateway_policy:manage`, `ap:read`, `ap:manage`
 
 </aside>
 
@@ -122,7 +122,7 @@ After syncing, the policy can be applied to APIs in the organization.
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:gateway_custom_policy:create`, `ap:gateway_custom_policy:manage`
+Required scopes (the token must carry at least one of): `ap:gateway_policy:create`, `ap:gateway_policy:manage`, `ap:manage`
 
 </aside>
 
@@ -264,7 +264,7 @@ Returns a custom policy by its UUID and version for the current organization.
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:gateway_custom_policy:read`, `ap:gateway_custom_policy:manage`
+Required scopes (the token must carry at least one of): `ap:gateway_policy:read`, `ap:gateway_policy:manage`, `ap:read`, `ap:manage`
 
 </aside>
 
@@ -355,7 +355,7 @@ Deletes a custom policy by its UUID and version. The policy must not be in use b
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:gateway_custom_policy:delete`, `ap:gateway_custom_policy:manage`
+Required scopes (the token must carry at least one of): `ap:gateway_policy:delete`, `ap:gateway_policy:manage`, `ap:manage`
 
 </aside>
 

@@ -18,6 +18,8 @@
 package server
 
 import (
+	"net/http"
+	"sort"
 	"strings"
 	"testing"
 
@@ -41,36 +43,47 @@ func TestShippedRoleScopeMapResolvesAgainstTheShippedSpec(t *testing.T) {
 		t.Fatalf("role-to-scope map loaded from %q is empty", realRoleScopeMapPath)
 	}
 
-	if err := middleware.ValidateRoleScopeMap(roleScopes, loadMergedRegistry(t)); err != nil {
+	if err := middleware.ValidateRoleScopeMap(roleScopes, loadMergedRegistry(t), loadShippedLegacyScopeMap(t)); err != nil {
 		t.Fatal(err)
 	}
 }
 
-// TestAgentProxyScopesAreGrantedAndDeclared asserts the Agent Proxy scope family
-// is wired at both ends: declared by an operation in the spec (which is what
-// makes it grantable at all), and actually granted to at least one role (without
-// which every Agent Proxy endpoint is reachable by nobody).
+// TestShippedRoleScopeMapGrantsTreePermissionsOnly pins the shipped roles to
+// the permission-tree vocabulary: a pre-tree name still works through the
+// legacy mapping, but the file that documents each persona must not rely on
+// it, or the mapping could never be retired.
+func TestShippedRoleScopeMapGrantsTreePermissionsOnly(t *testing.T) {
+	roleScopes, err := middleware.LoadRoleScopeMap(realRoleScopeMapPath)
+	if err != nil {
+		t.Fatalf("LoadRoleScopeMap(%q): %v", realRoleScopeMapPath, err)
+	}
+	legacy := loadShippedLegacyScopeMap(t)
+	for role, scopes := range roleScopes {
+		for _, s := range scopes {
+			if _, isLegacy := legacy[s]; isLegacy {
+				t.Errorf("role %q grants pre-tree scope %q; grant %v instead", role, s, legacy[s])
+			}
+		}
+	}
+}
+
+// TestAgentProxyScopesAreGrantedAndDeclared asserts the Agent Proxy permission
+// family is wired at both ends: declared by an operation in the spec (which is
+// what makes it grantable at all), and actually granted to at least one role —
+// directly or through an ancestor (ap:api) — without which every Agent Proxy
+// endpoint is reachable by nobody.
 func TestAgentProxyScopesAreGrantedAndDeclared(t *testing.T) {
-	const agentScopePrefix = "ap:agent_proxy:"
+	const agentTreePrefix = "ap:api:agent:"
 
 	declared := loadMergedRegistry(t).AllScopes()
 	for _, scope := range []string{
-		agentScopePrefix + "create",
-		agentScopePrefix + "read",
-		agentScopePrefix + "update",
-		agentScopePrefix + "delete",
-		agentScopePrefix + "manage",
-		agentScopePrefix + "deployment:create",
-		agentScopePrefix + "deployment:read",
-		agentScopePrefix + "deployment:delete",
-		agentScopePrefix + "deployment:undeploy",
-		agentScopePrefix + "deployment:restore",
-		agentScopePrefix + "deployment:manage",
-		agentScopePrefix + "api_key:create",
-		agentScopePrefix + "api_key:read",
-		agentScopePrefix + "api_key:update",
-		agentScopePrefix + "api_key:delete",
-		agentScopePrefix + "api_key:manage",
+		agentTreePrefix + "read",
+		agentTreePrefix + "manage",
+		agentTreePrefix + "build:read",
+		agentTreePrefix + "build:manage",
+		agentTreePrefix + "deployment:read",
+		agentTreePrefix + "deployment:manage",
+		agentTreePrefix + "api_key:read",
 	} {
 		if _, ok := declared[scope]; !ok {
 			t.Errorf("scope %q is declared by no operation in the OpenAPI spec", scope)
@@ -84,21 +97,23 @@ func TestAgentProxyScopesAreGrantedAndDeclared(t *testing.T) {
 	granted := false
 	for _, scopes := range roleScopes {
 		for _, s := range scopes {
-			if strings.HasPrefix(s, agentScopePrefix) {
+			if strings.HasPrefix(s, agentTreePrefix) || s == "ap:api:read" || s == "ap:api:manage" {
 				granted = true
 			}
 		}
 	}
 	if !granted {
-		t.Errorf("no role in %q grants any %s* scope", realRoleScopeMapPath, agentScopePrefix)
+		t.Errorf("no role in %q grants any %s* scope or an ancestor of it", realRoleScopeMapPath, agentTreePrefix)
 	}
 }
 
 // TestAgentProxyOperationsAcceptScopeAlternatives pins the OR semantics the
-// Agent Proxy operations are specified with: each fine-grained scope and the
-// owning :manage umbrella are separate Security Requirement Objects, and the
-// registry flattens them into one accepted-scope list. A read scope must never
-// end up accepted on a mutating operation.
+// Agent Proxy operations are specified with: each operation accepts its own
+// node's permission and the same action on every ancestor (ap:api), flattened
+// by the registry into one accepted-scope list. A read permission must never
+// end up accepted on a mutating operation, and the API-key node — which
+// defines no :manage of its own — admits writes only through its ancestors and
+// the ownership override.
 func TestAgentProxyOperationsAcceptScopeAlternatives(t *testing.T) {
 	registry := loadMergedRegistry(t)
 	const base = "/api/v0.9/agent-proxies"
@@ -108,27 +123,27 @@ func TestAgentProxyOperationsAcceptScopeAlternatives(t *testing.T) {
 		want         []string
 		forbidden    []string
 	}{
-		{"POST", base, []string{"ap:agent_proxy:create", "ap:agent_proxy:manage"},
-			[]string{"ap:agent_proxy:read"}},
-		{"GET", base, []string{"ap:agent_proxy:read", "ap:agent_proxy:manage"}, nil},
-		{"PUT", base + "/{agentProxyId}", []string{"ap:agent_proxy:update", "ap:agent_proxy:manage"},
-			[]string{"ap:agent_proxy:read"}},
-		{"DELETE", base + "/{agentProxyId}", []string{"ap:agent_proxy:delete", "ap:agent_proxy:manage"},
-			[]string{"ap:agent_proxy:read"}},
-		{"POST", base + "/fetch-agent-card", []string{"ap:agent_proxy:read", "ap:agent_proxy:manage"},
-			[]string{"ap:agent_proxy:create"}},
+		{"POST", base, []string{"ap:api:agent:manage", "ap:api:manage"},
+			[]string{"ap:api:agent:read", "ap:api:read"}},
+		{"GET", base, []string{"ap:api:agent:read", "ap:api:agent:manage", "ap:api:read", "ap:api:manage"}, nil},
+		{"PUT", base + "/{agentProxyId}", []string{"ap:api:agent:manage", "ap:api:manage"},
+			[]string{"ap:api:agent:read", "ap:api:read"}},
+		{"DELETE", base + "/{agentProxyId}", []string{"ap:api:agent:manage", "ap:api:manage"},
+			[]string{"ap:api:agent:read", "ap:api:read"}},
+		{"POST", base + "/fetch-agent-card", []string{"ap:api:agent:read", "ap:api:agent:manage", "ap:api:read", "ap:api:manage"},
+			nil},
 		{"GET", base + "/{agentProxyId}/api-keys",
-			[]string{"ap:agent_proxy:api_key:read", "ap:agent_proxy:api_key:manage", "ap:agent_proxy:manage", "ap:api_key:all:manage"},
-			[]string{"ap:agent_proxy:read", "ap:api_key:read"}},
+			[]string{"ap:api:agent:api_key:read", "ap:api:agent:read", "ap:api:agent:manage", "ap:api:read", "ap:api:manage", "ap:credential:api_key:all:manage"},
+			[]string{"ap:credential:api_key:read", "ap:api:llm:api_key:read"}},
 		{"POST", base + "/{agentProxyId}/api-keys",
-			[]string{"ap:agent_proxy:api_key:create", "ap:agent_proxy:api_key:manage", "ap:agent_proxy:manage", "ap:api_key:all:manage"},
-			[]string{"ap:agent_proxy:api_key:read", "ap:agent_proxy:read", "ap:agent_proxy:create", "ap:agent_proxy:api_key:update"}},
+			[]string{"ap:api:agent:manage", "ap:api:manage", "ap:credential:api_key:all:manage"},
+			[]string{"ap:api:agent:api_key:read", "ap:api:agent:read", "ap:api:read", "ap:credential:api_key:read"}},
 		{"PUT", base + "/{agentProxyId}/api-keys/{apiKeyId}",
-			[]string{"ap:agent_proxy:api_key:update", "ap:agent_proxy:api_key:manage", "ap:agent_proxy:manage", "ap:api_key:all:manage"},
-			[]string{"ap:agent_proxy:api_key:read", "ap:agent_proxy:read", "ap:agent_proxy:update", "ap:agent_proxy:api_key:create"}},
+			[]string{"ap:api:agent:manage", "ap:api:manage", "ap:credential:api_key:all:manage"},
+			[]string{"ap:api:agent:api_key:read", "ap:api:agent:read", "ap:api:read", "ap:credential:api_key:read"}},
 		{"DELETE", base + "/{agentProxyId}/api-keys/{apiKeyId}",
-			[]string{"ap:agent_proxy:api_key:delete", "ap:agent_proxy:api_key:manage", "ap:agent_proxy:manage", "ap:api_key:all:manage"},
-			[]string{"ap:agent_proxy:api_key:read", "ap:agent_proxy:read", "ap:agent_proxy:delete", "ap:agent_proxy:api_key:update"}},
+			[]string{"ap:api:agent:manage", "ap:api:manage", "ap:credential:api_key:all:manage"},
+			[]string{"ap:api:agent:api_key:read", "ap:api:agent:read", "ap:api:read", "ap:credential:api_key:read"}},
 	} {
 		scopes, ok := registry.Lookup(tc.method, tc.path)
 		if !ok {
@@ -148,6 +163,127 @@ func TestAgentProxyOperationsAcceptScopeAlternatives(t *testing.T) {
 			if _, found := accepted[s]; found {
 				t.Errorf("%s %s wrongly accepts %q", tc.method, tc.path, s)
 			}
+		}
+	}
+}
+
+// shippedSpecRegistry loads only the spec a default build ships. The
+// event-gateway plugin's grants are commented out in the shipped mapping, so its
+// operations are deliberately outside the persona checks below.
+func shippedSpecRegistry(t *testing.T) *middleware.ScopeRegistry {
+	t.Helper()
+	registry, err := middleware.LoadScopeRegistry(realSpecPath)
+	if err != nil {
+		t.Fatalf("LoadScopeRegistry(%q): %v", realSpecPath, err)
+	}
+	return registry
+}
+
+// shippedRoleScopeSets loads the shipped mapping as role -> set of granted scopes.
+func shippedRoleScopeSets(t *testing.T) map[string]map[string]struct{} {
+	t.Helper()
+	roleScopes, err := middleware.LoadRoleScopeMap(realRoleScopeMapPath)
+	if err != nil {
+		t.Fatalf("LoadRoleScopeMap(%q): %v", realRoleScopeMapPath, err)
+	}
+	sets := make(map[string]map[string]struct{}, len(roleScopes))
+	for role, scopes := range roleScopes {
+		set := make(map[string]struct{}, len(scopes))
+		for _, s := range scopes {
+			set[s] = struct{}{}
+		}
+		sets[role] = set
+	}
+	return sets
+}
+
+// roleReaches applies the same OR-evaluation ScopeEnforcer does: a role reaches
+// an operation when it holds any one of the operation's accepted scopes.
+func roleReaches(granted map[string]struct{}, accepted []string) bool {
+	for _, s := range accepted {
+		if _, ok := granted[s]; ok {
+			return true
+		}
+	}
+	return false
+}
+
+// sortedOperations returns the registry's operations in a stable order so a
+// failure lists the same operations in the same order on every run.
+func sortedOperations(registry *middleware.ScopeRegistry) []middleware.Operation {
+	ops := registry.Operations()
+	sort.Slice(ops, func(i, j int) bool {
+		if ops[i].Path != ops[j].Path {
+			return ops[i].Path < ops[j].Path
+		}
+		return ops[i].Method < ops[j].Method
+	})
+	return ops
+}
+
+// isReadOperation reports whether an operation is side-effect free. The two
+// POSTs are reads the spec models as POSTs — they carry an upstream URL to probe
+// in the request body and mutate nothing — which is why the shipped read-only
+// role grants them.
+func isReadOperation(op middleware.Operation) bool {
+	switch op.Method {
+	case http.MethodGet, http.MethodHead:
+		return true
+	case http.MethodPost:
+		return op.Path == "/api/v0.9/mcp-proxies/fetch-server-info" ||
+			op.Path == "/api/v0.9/agent-proxies/fetch-agent-card"
+	}
+	return false
+}
+
+// TestShippedAdminReachesEveryOperation pins the ap_admin persona — "every
+// resource and operation". ap_admin is the role every pack's file-mode admin is
+// given, so an operation none of its grants reach would ship usable by nobody
+// out of the box.
+func TestShippedAdminReachesEveryOperation(t *testing.T) {
+	registry := shippedSpecRegistry(t)
+	admin := shippedRoleScopeSets(t)["ap_admin"]
+	for _, op := range sortedOperations(registry) {
+		accepted, _ := registry.Lookup(op.Method, op.Path)
+		if !roleReaches(admin, accepted) {
+			t.Errorf("ap_admin cannot reach %s %s (accepts %v)", op.Method, op.Path, accepted)
+		}
+	}
+}
+
+// TestShippedOperatorReadsEverything pins the "reads everything else" half of
+// the ap_operator persona: every read operation in the spec must be reachable.
+// Writes are not checked here — which of them an operator runs is a product
+// decision recorded in the mapping itself.
+func TestShippedOperatorReadsEverything(t *testing.T) {
+	registry := shippedSpecRegistry(t)
+	operator := shippedRoleScopeSets(t)["ap_operator"]
+	for _, op := range sortedOperations(registry) {
+		if !isReadOperation(op) {
+			continue
+		}
+		accepted, _ := registry.Lookup(op.Method, op.Path)
+		if !roleReaches(operator, accepted) {
+			t.Errorf("ap_operator cannot read %s %s (accepts %v)", op.Method, op.Path, accepted)
+		}
+	}
+}
+
+// TestShippedViewerIsReadOnlyAndComplete pins the ap_viewer persona at both
+// ends: every read operation is reachable, and no mutating operation is. A new
+// read endpoint the auditor cannot see, or a write it can suddenly perform, both
+// fail here rather than surfacing in a deployment.
+func TestShippedViewerIsReadOnlyAndComplete(t *testing.T) {
+	registry := shippedSpecRegistry(t)
+	viewer := shippedRoleScopeSets(t)["ap_viewer"]
+	for _, op := range sortedOperations(registry) {
+		accepted, _ := registry.Lookup(op.Method, op.Path)
+		reaches := roleReaches(viewer, accepted)
+		switch {
+		case isReadOperation(op) && !reaches:
+			t.Errorf("ap_viewer cannot read %s %s (accepts %v)", op.Method, op.Path, accepted)
+		case !isReadOperation(op) && reaches:
+			t.Errorf("ap_viewer can mutate via %s %s (accepts %v)", op.Method, op.Path, accepted)
 		}
 	}
 }

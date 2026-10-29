@@ -35,6 +35,15 @@ GET /api/session ─► user.scopes ─► PermissionProvider ─► can('Create
 Nothing is fetched. The scopes arrive with the session, already resolved by the
 BFF, so there is no request to make and no cache to invalidate.
 
+A session may still carry **pre-permission-tree names** (`ap:rest_api:manage`,
+`ap:api_key:all:manage`) from an older token, IDP role or role file. The Platform
+API translates those per request through `legacy-scope-mapping.yaml`; the
+console translates them the same way, from the same file, in `toGrantedSet`:
+`npm run api:codegen` emits `LEGACY_SCOPES` beside the operation map, and the
+granted set holds each old name together with the tree permission it grants. So
+`ap:rest_api:manage` offers everything `ap:api:rest:manage` does, parent
+privilege included, and a name the file does not list offers nothing extra.
+
 ## Using it
 
 Ask for the **operation**, never for a scope string:
@@ -42,6 +51,13 @@ Ask for the **operation**, never for a scope string:
 ```tsx
 useCan('CreateProject'); // ✅ generated any-of list, includes ap:project:manage
 useHasScope('ap:project:create'); // ❌ locks out an org admin who holds only :manage
+
+// Likewise for a sub-resource: the generated list for DeployAPI carries the
+// node's own ap:api:rest:deployment:create and :manage, the parent's
+// ap:api:rest:manage, ap:api:manage and the root's ap:manage — every permission
+// the Platform API accepts (only read and manage flow down a parent), so a user
+// granted at any level is offered the action. The console never infers that
+// itself; it comes from the spec.
 ```
 
 Three call shapes cover almost everything:
@@ -154,13 +170,14 @@ Both are committed and CI-checked. The map is
 `satisfies Record<keyof operations, readonly ApScope[]>`, so an operation added to
 the spec but missing from the map fails `tsc`. The generator also refuses to emit
 when the spec breaks an assumption the evaluator depends on: more than one
-security requirement object per operation, an undeclared scope, or a narrow scope
-listed without its sibling `:manage` where one exists.
+security requirement object per operation, an undeclared scope, a narrow scope
+listed without its sibling `:manage` where one exists, or a legacy name that is
+still declared or maps onto an undeclared scope.
 
 ## What does not belong here
 
 **Row-level ownership.** API keys are creator-scoped: the server compares
-`created_by` against the caller unless they hold `ap:api_key:all:manage`. No scope
+`created_by` against the caller unless they hold `ap:credential:api_key:all:manage`. No scope
 set can answer "is this row mine" — that needs the row. Put those predicates in
 the owning resource module and have them _consume_ `useHasScope`; do not push
 them into `useCan`, which answers a different question.

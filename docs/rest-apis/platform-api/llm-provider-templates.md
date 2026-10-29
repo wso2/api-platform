@@ -108,7 +108,7 @@ identified via the JWT token.
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:llm_template:create`, `ap:llm_template:manage`
+Required scopes (the token must carry at least one of): `ap:llm_provider:template:create`, `ap:llm_provider:template:manage`, `ap:llm_provider:manage`, `ap:manage`
 
 </aside>
 
@@ -324,7 +324,7 @@ otherwise returns an `LLMProviderTemplateListResponse`.
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:llm_template:read`, `ap:llm_template:manage`
+Required scopes (the token must carry at least one of): `ap:llm_provider:template:read`, `ap:llm_provider:template:manage`, `ap:llm_provider:read`, `ap:llm_provider:manage`, `ap:read`, `ap:manage`
 
 </aside>
 
@@ -596,7 +596,7 @@ its own `group_id` and starts at v1.0.
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:llm_template:create`, `ap:llm_template:manage`
+Required scopes (the token must carry at least one of): `ap:llm_provider:template:create`, `ap:llm_provider:template:manage`, `ap:llm_provider:manage`, `ap:manage`
 
 </aside>
 
@@ -737,7 +737,7 @@ Retrieve the complete configuration for a specific LLM provider template.
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:llm_template:read`, `ap:llm_template:manage`
+Required scopes (the token must carry at least one of): `ap:llm_provider:template:read`, `ap:llm_provider:template:manage`, `ap:llm_provider:read`, `ap:llm_provider:manage`, `ap:read`, `ap:manage`
 
 </aside>
 
@@ -980,7 +980,7 @@ version of the template.
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:llm_template:update`, `ap:llm_template:manage`
+Required scopes (the token must carry at least one of): `ap:llm_provider:template:update`, `ap:llm_provider:template:manage`, `ap:llm_provider:manage`, `ap:manage`
 
 </aside>
 
@@ -1182,7 +1182,7 @@ by a provider is rejected (409).
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:llm_template:update`, `ap:llm_template:manage`
+Required scopes (the token must carry at least one of): `ap:llm_provider:template:update`, `ap:llm_provider:template:manage`, `ap:llm_provider:manage`, `ap:manage`
 
 </aside>
 
@@ -1386,7 +1386,7 @@ provider is blocked (409).
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:llm_template:delete`, `ap:llm_template:manage`
+Required scopes (the token must carry at least one of): `ap:llm_provider:template:delete`, `ap:llm_provider:template:manage`, `ap:llm_provider:manage`, `ap:manage`
 
 </aside>
 

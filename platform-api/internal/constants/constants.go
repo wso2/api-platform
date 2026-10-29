@@ -209,7 +209,11 @@ const (
 // restricted to the key's creator; a caller holding this scope passes that
 // ownership check for any key. It is an organization-wide, admin-like grant —
 // keep it out of self-service/developer roles.
-const ScopeAPIKeyAllManage = "ap:api_key:all:manage"
+//
+// Its pre-permission-tree name, ap:api_key:all:manage, is translated to this
+// one by resources/legacy-scope-mapping.yaml before any check runs, so a check
+// against this constant alone honours both.
+const ScopeAPIKeyAllManage = "ap:credential:api_key:all:manage"
 
 // ScopeDocsRead and ScopeDocsManage govern the /apis/{apiType}/{apiId}/docs endpoints.
 const (

@@ -18,6 +18,7 @@
 package middleware
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strings"
@@ -63,6 +64,29 @@ type ScopeEnforcerConfig struct {
 	// is the same list the authentication middleware bypasses — through the same
 	// hasPathPrefix matcher, so both exempt exactly the same requests.
 	SkipPaths []string
+	// LegacyScopes translates the pre-permission-tree scope names a token, an
+	// IDP role or a role-to-scope mapping may still carry into the permissions
+	// the OpenAPI spec declares (resources/legacy-scope-mapping.yaml). Every
+	// request's held scopes are expanded through it before matching, in both
+	// validation modes. Nil accepts only the scopes the spec declares.
+	LegacyScopes LegacyScopeMap
+}
+
+// keyEffectiveScopes carries the request's effective scopes — the scope claim
+// or expanded roles, with legacy names translated — from ScopeEnforcer to the
+// handlers' own checks (HasEffectiveScope), so both see the same set.
+const keyEffectiveScopes contextKey = "effective_scopes"
+
+// effectiveScopes is the context value under keyEffectiveScopes. A pointer
+// type, so that an unauthenticated request's empty list is still recorded as
+// "resolved" and not mistaken for "ScopeEnforcer never ran".
+type effectiveScopes struct {
+	scopes []string
+}
+
+// withEffectiveScopes records the request's effective scopes for the handlers.
+func withEffectiveScopes(r *http.Request, scopes []string) *http.Request {
+	return r.WithContext(context.WithValue(r.Context(), keyEffectiveScopes, &effectiveScopes{scopes: scopes}))
 }
 
 // ScopeEnforcer returns a middleware that reads the required scopes for each request
@@ -75,6 +99,28 @@ type ScopeEnforcerConfig struct {
 // without a corresponding OpenAPI security block fails closed instead of
 // becoming a silently unprotected endpoint. Requests under cfg.SkipPaths, and
 // requests the authenticator flagged as authz-skipped, bypass the check.
+//
+// Matching is an OR over the operation's accepted-scope list, by exact string
+// equality: the caller is admitted when any scope it effectively holds names
+// one of them. Two things make that OR reach further than the strings a token
+// literally carries, and both are resolved before the comparison, never by
+// pattern-matching the scope strings at request time:
+//
+//   - Parents in the permission tree. The accepted list is generated from
+//     resources/permission-tree.yaml (scripts/permission_tree.py) and already
+//     names, for the node an operation is bound to, that node's permission and
+//     the same action's permission on every ancestor that defines it — so a
+//     request bound to ap:api:rest:deployment:manage is admitted by
+//     ap:api:rest:manage or ap:api:manage as well. A permission the tree does
+//     not define is therefore never accepted, however its string reads.
+//   - Legacy names. cfg.LegacyScopes expands the pre-tree names a token may
+//     still carry (ap:rest_api:manage) into the tree permission each grants
+//     (ap:api:rest:manage), which then matches the generated list exactly as
+//     a native tree token would — including through the parent entries above.
+//
+// The expanded set is recorded on the request for the handlers' own checks
+// (HasEffectiveScope) whether or not enforcement is enabled, so a handler's
+// ownership-override decision sees the same scopes the enforcer did.
 //
 // It returns an error when the configuration cannot enforce anything it claims
 // to (GO-AUTH-011) — enforcement enabled with no registry or no route matcher —
@@ -97,6 +143,11 @@ func ScopeEnforcer(registry *ScopeRegistry, cfg ScopeEnforcerConfig) (func(http.
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Resolve the effective scopes once — claim or expanded roles, then
+			// legacy names translated — and hand the same set to the handlers.
+			effective := cfg.LegacyScopes.Expand(rawEffectiveScopes(r, mode))
+			r = withEffectiveScopes(r, effective)
+
 			if !cfg.Enabled {
 				next.ServeHTTP(w, r)
 				return
@@ -142,10 +193,8 @@ func ScopeEnforcer(registry *ScopeRegistry, cfg ScopeEnforcerConfig) (func(http.
 				return
 			}
 
-			effectiveScopes := resolveEffectiveScopes(r, mode)
-
 			for _, required := range requiredScopes {
-				for _, have := range effectiveScopes {
+				for _, have := range effective {
 					if have == required {
 						next.ServeHTTP(w, r)
 						return
@@ -171,8 +220,10 @@ func hasPathPrefix(reqPath string, prefixes []string) bool {
 	return authenticators.HasPathPrefix(reqPath, prefixes)
 }
 
-// resolveEffectiveScopes returns the effective scopes for the request.
-func resolveEffectiveScopes(r *http.Request, mode string) []string {
+// rawEffectiveScopes returns the scopes the request holds before any legacy
+// translation: the scope claim in "scope" mode, or the IDP roles expanded via
+// the role-scope map in "role" mode.
+func rawEffectiveScopes(r *http.Request, mode string) []string {
 	if mode == ValidationModeRole {
 		roles, _ := GetPlatformRolesFromRequest(r)
 		return roles
@@ -181,11 +232,23 @@ func resolveEffectiveScopes(r *http.Request, mode string) []string {
 	return strings.Fields(scope)
 }
 
+// resolveEffectiveScopes returns the effective scopes for the request: the set
+// ScopeEnforcer recorded (legacy names translated) when it ran, otherwise the
+// raw claim or roles.
+func resolveEffectiveScopes(r *http.Request, mode string) []string {
+	if recorded, ok := r.Context().Value(keyEffectiveScopes).(*effectiveScopes); ok {
+		return recorded.scopes
+	}
+	return rawEffectiveScopes(r, mode)
+}
+
 // HasEffectiveScope reports whether the request's effective scopes (the scope
 // claim in "scope" mode, or IDP roles expanded via the role-scope map in
-// "role" mode) include the given scope. Matching is exact, the same way
-// ScopeEnforcer matches: a scope grants only what it names, so every scope a
-// caller needs must be declared in the OpenAPI spec and held outright.
+// "role" mode, with legacy names translated by ScopeEnforcer) include the
+// given scope. Matching is exact, the same way ScopeEnforcer matches: a scope
+// grants only what it names, so every scope a caller needs must be declared in
+// the OpenAPI spec and held outright — or held by a legacy name that
+// resources/legacy-scope-mapping.yaml maps onto it.
 func HasEffectiveScope(r *http.Request, mode, scope string) bool {
 	for _, have := range resolveEffectiveScopes(r, mode) {
 		if have == scope {

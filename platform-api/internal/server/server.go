@@ -600,10 +600,18 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		}
 	}()
 
+	// Load and validate the legacy scope names the enforcer translates. Runs
+	// after initPlugins because a plugin resource's pre-tree name maps onto a
+	// permission only that plugin's spec declares.
+	legacyScopes, err := loadLegacyScopeMap(cfg, scopeRegistry, slogger)
+	if err != nil {
+		return nil, err
+	}
+
 	// Load and validate the role-to-scope map when role-to-scope-mapping.yaml is configured.
 	// Runs after initPlugins so a role may map to a plugin-declared scope, and
 	// after the defer above so a bad role-to-scope-mapping.yaml still stops the plugins.
-	roleScopeMap, err := loadRoleScopeMap(cfg, scopeRegistry, slogger)
+	roleScopeMap, err := loadRoleScopeMap(cfg, scopeRegistry, legacyScopes, slogger)
 	if err != nil {
 		return nil, err
 	}
@@ -760,6 +768,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		Enabled:        cfg.Auth.Authorization.Enabled,
 		Routes:         mux,
 		SkipPaths:      cfg.Auth.SkipPaths,
+		LegacyScopes:   legacyScopes,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to build scope enforcer: %w", err)
@@ -919,7 +928,7 @@ func buildAuthenticator(cfg *config.Server, slogger *slog.Logger, roleScopeMap m
 // scopes even while authorization itself runs in "scope" mode. Config validation
 // requires the path wherever it is needed, so an empty path here means nothing
 // consumes the mapping.
-func loadRoleScopeMap(cfg *config.Server, registry *middleware.ScopeRegistry, slogger *slog.Logger) (map[string][]string, error) {
+func loadRoleScopeMap(cfg *config.Server, registry *middleware.ScopeRegistry, legacy middleware.LegacyScopeMap, slogger *slog.Logger) (map[string][]string, error) {
 	if cfg.Auth.Authorization.RoleToScopeMapping == "" {
 		return nil, nil
 	}
@@ -928,10 +937,34 @@ func loadRoleScopeMap(cfg *config.Server, registry *middleware.ScopeRegistry, sl
 	if err != nil {
 		return nil, fmt.Errorf("failed to load role mappings file: %w", err)
 	}
-	if err := middleware.ValidateRoleScopeMap(m, registry); err != nil {
+	if err := middleware.ValidateRoleScopeMap(m, registry, legacy); err != nil {
 		return nil, fmt.Errorf("invalid role-to-scope-mapping.yaml: %w", err)
 	}
 	slogger.Info("Loaded role-to-scope mapping", "path", cfg.Auth.Authorization.RoleToScopeMapping, "roles", len(m))
+
+	return m, nil
+}
+
+// loadLegacyScopeMap loads the pre-permission-tree scope names the enforcer
+// translates (resources/legacy-scope-mapping.yaml). An empty path is the
+// operator's explicit choice to accept only the scopes the OpenAPI spec
+// declares; a configured path that fails to load or validate stops startup, as
+// a missing translation would otherwise surface as a 403 for every token that
+// still carries an old name.
+func loadLegacyScopeMap(cfg *config.Server, registry *middleware.ScopeRegistry, slogger *slog.Logger) (middleware.LegacyScopeMap, error) {
+	if cfg.LegacyScopeMappingPath == "" {
+		slogger.Info("Legacy scope names disabled — only scopes declared in the OpenAPI spec are accepted")
+		return nil, nil
+	}
+
+	m, err := middleware.LoadLegacyScopeMap(cfg.LegacyScopeMappingPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load legacy scope mapping file: %w", err)
+	}
+	if err := middleware.ValidateLegacyScopeMap(m, registry); err != nil {
+		return nil, fmt.Errorf("invalid legacy-scope-mapping.yaml: %w", err)
+	}
+	slogger.Info("Loaded legacy scope mapping", "path", cfg.LegacyScopeMappingPath, "scopes", len(m))
 
 	return m, nil
 }

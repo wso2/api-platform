@@ -39,7 +39,7 @@ Creates a new application within the organization specified in the JWT token.
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:application:create`, `ap:application:manage`
+Required scopes (the token must carry at least one of): `ap:application:create`, `ap:application:manage`, `ap:manage`
 
 </aside>
 
@@ -176,7 +176,7 @@ Filters by project using the required `projectId` query parameter.
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:application:read`, `ap:application:manage`
+Required scopes (the token must carry at least one of): `ap:application:read`, `ap:application:manage`, `ap:read`, `ap:manage`
 
 </aside>
 
@@ -296,7 +296,7 @@ the organization in the JWT token.
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:application:read`, `ap:application:manage`
+Required scopes (the token must carry at least one of): `ap:application:read`, `ap:application:manage`, `ap:read`, `ap:manage`
 
 </aside>
 
@@ -422,7 +422,7 @@ Updates an existing application by handle.
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:application:update`, `ap:application:manage`
+Required scopes (the token must carry at least one of): `ap:application:update`, `ap:application:manage`, `ap:manage`
 
 </aside>
 
@@ -557,7 +557,7 @@ Deletes an existing application by handle.
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:application:delete`, `ap:application:manage`
+Required scopes (the token must carry at least one of): `ap:application:delete`, `ap:application:manage`, `ap:manage`
 
 </aside>
 
@@ -664,7 +664,7 @@ Lists all API keys mapped to the specified application.
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:application:api_key:read`, `ap:application:api_key:manage`, `ap:application:manage`, `ap:api_key:all:manage`
+Required scopes (the token must carry at least one of): `ap:application:api_key:read`, `ap:application:api_key:manage`, `ap:application:read`, `ap:application:manage`, `ap:read`, `ap:manage`, `ap:credential:api_key:all:manage`
 
 </aside>
 
@@ -817,7 +817,7 @@ Adds API key mappings to the specified application.
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:application:api_key:create`, `ap:application:api_key:manage`, `ap:application:manage`, `ap:api_key:all:manage`
+Required scopes (the token must carry at least one of): `ap:application:api_key:create`, `ap:application:api_key:manage`, `ap:application:manage`, `ap:manage`, `ap:credential:api_key:all:manage`
 
 </aside>
 
@@ -952,7 +952,7 @@ Removes a mapped API key from the specified application.
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:application:api_key:delete`, `ap:application:api_key:manage`, `ap:application:manage`, `ap:api_key:all:manage`
+Required scopes (the token must carry at least one of): `ap:application:api_key:delete`, `ap:application:api_key:manage`, `ap:application:manage`, `ap:manage`, `ap:credential:api_key:all:manage`
 
 </aside>
 
@@ -1065,7 +1065,7 @@ Lists association targets mapped to the specified application.
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:application:association:read`, `ap:application:association:manage`, `ap:application:manage`
+Required scopes (the token must carry at least one of): `ap:application:association:read`, `ap:application:association:manage`, `ap:application:read`, `ap:application:manage`, `ap:read`, `ap:manage`
 
 </aside>
 
@@ -1201,7 +1201,7 @@ Adds association targets to the specified application.
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:application:association:create`, `ap:application:association:manage`, `ap:application:manage`
+Required scopes (the token must carry at least one of): `ap:application:association:create`, `ap:application:association:manage`, `ap:application:manage`, `ap:manage`
 
 </aside>
 
@@ -1332,7 +1332,7 @@ Removes an association target from the specified application.
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:application:association:delete`, `ap:application:association:manage`, `ap:application:manage`
+Required scopes (the token must carry at least one of): `ap:application:association:delete`, `ap:application:association:manage`, `ap:application:manage`, `ap:manage`
 
 </aside>
 
@@ -1442,7 +1442,7 @@ Lists API keys mapped to the specified application for the given associated targ
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:application:association:api_key:read`, `ap:application:association:manage`, `ap:application:manage`, `ap:api_key:all:manage`
+Required scopes (the token must carry at least one of): `ap:application:association:api_key:read`, `ap:application:association:read`, `ap:application:association:manage`, `ap:application:read`, `ap:application:manage`, `ap:read`, `ap:manage`, `ap:credential:api_key:all:manage`
 
 </aside>
 

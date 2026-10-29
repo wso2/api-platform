@@ -118,13 +118,24 @@ var excludedScopeResources = []string{
 	"ap:api_portal:graphql_api:",
 	"ap:docs:",
 	"ap:thumbnail:",
+	// The same resources by their permission-tree names (permission-tree.yaml).
+	"ap:api:rest:",
+	"ap:api:websub:",
+	"ap:api:webbroker:",
+	"ap:portal:rest_api:",
+	"ap:portal:graphql_api:",
+	"ap:content:",
 }
+
+// ownershipOverrideScopes widen whose API keys a caller reaches; they are never
+// requested on a user's behalf, by either of their names.
+var ownershipOverrideScopes = []string{"ap:credential:api_key:all:manage", "ap:api_key:all:manage"}
 
 func isExcludedScope(scope string) bool {
 	// The cross-user ownership override is never requested by default
 	// (TestDefaultOIDCScopesExcludeOwnershipOverride), so it can't stand in as the
 	// remaining alternative that keeps an excluded-family operation in the check.
-	if scope == "ap:api_key:all:manage" {
+	if slices.Contains(ownershipOverrideScopes, scope) {
 		return true
 	}
 	return slices.ContainsFunc(excludedScopeResources, func(prefix string) bool {
@@ -172,8 +183,10 @@ func TestDefaultOIDCScopesCoverEveryOperation(t *testing.T) {
 // endpoint accepting it also accepts a narrower scope, so it must never be requested
 // for every session by default.
 func TestDefaultOIDCScopesExcludeOwnershipOverride(t *testing.T) {
-	if slices.Contains(strings.Fields(defaultOIDCScopes), "ap:api_key:all:manage") {
-		t.Error("defaultOIDCScopes requests the cross-user override scope ap:api_key:all:manage")
+	for _, scope := range ownershipOverrideScopes {
+		if slices.Contains(strings.Fields(defaultLoginScopes(true)), scope) {
+			t.Errorf("defaultOIDCScopes requests the cross-user override scope %s", scope)
+		}
 	}
 }
 
@@ -185,11 +198,17 @@ func TestDefaultOIDCScopesRequestOfflineAccess(t *testing.T) {
 	}
 }
 
-// Within the resource families the workspace does surface, the default set requests
-// every declared scope on purpose, so that whatever subset a least-privilege user
-// actually holds survives the IDP's intersection of requested and entitled. A user
-// granted only ap:llm_proxy:create would lose it if the request were trimmed to
-// :manage/:read.
+// The default set requests two vocabularies, each on its own rule, so that whatever
+// a least-privilege user actually holds survives the IDP's intersection of requested
+// and entitled:
+//
+//   - Pre-tree names: every declared one, as before. A user granted only
+//     ap:llm_proxy:create would lose it if the request were trimmed to :manage/:read.
+//   - Permission-tree names: exactly the permissions the shipped roles in
+//     platform-api/resources/role-to-scope-mapping.yaml grant. A parent or root
+//     permission (ap:api:manage, ap:manage) admits every operation beneath it, so
+//     the fine-grained tree actions are not requested; a deployment whose IDP roles
+//     grant one of those overrides [auth.oidc] scope.
 //
 // The cost is size: encoded, this parameter is several kilobytes, which exceeds
 // Microsoft Entra ID's authorize-URL limit outright (AADSTS90015). That is not fixed by
@@ -198,8 +217,10 @@ func TestDefaultOIDCScopesRequestOfflineAccess(t *testing.T) {
 // with [auth.authorization] mode = "role". This test pins the trade-off so the size is
 // a conscious decision rather than a surprise.
 func TestDefaultOIDCScopesRequestGranularScopes(t *testing.T) {
-	granted := strings.Fields(defaultOIDCScopes)
-	// Representative granular scopes that a :manage/:read-only request would drop.
+	// While request_legacy_scopes is on (the built-in default), the pre-tree
+	// granular names are still requested.
+	granted := strings.Fields(defaultLoginScopes(true))
+	// Representative pre-tree granular scopes that a :manage/:read-only request would drop.
 	for _, scope := range []string{
 		"ap:llm_proxy:create",
 		"ap:project:delete",
@@ -209,6 +230,37 @@ func TestDefaultOIDCScopesRequestGranularScopes(t *testing.T) {
 		if !slices.Contains(granted, scope) {
 			t.Errorf("defaultOIDCScopes omits %s — a user holding only that grant would lose it, "+
 				"since an IDP grants the intersection of requested and entitled", scope)
+		}
+	}
+
+	// Every tree permission a shipped role grants, read from the file so the two
+	// cannot drift apart, is in the minimal request (defaultOIDCScopes) — which
+	// is what request_legacy_scopes = false sends. The ownership override is
+	// never requested by default.
+	granted = strings.Fields(defaultOIDCScopes)
+	rolesPath := filepath.Join("..", "..", "..", "..", "..", "platform-api", "resources", "role-to-scope-mapping.yaml")
+	data, err := os.ReadFile(rolesPath)
+	if err != nil {
+		t.Logf("role mapping not present, skipping the role-grant check: %s", rolesPath)
+	} else {
+		var doc struct {
+			Roles []struct {
+				Name   string   `yaml:"name"`
+				Scopes []string `yaml:"scopes"`
+			} `yaml:"roles"`
+		}
+		if err := yaml.Unmarshal(data, &doc); err != nil {
+			t.Fatalf("parse %s: %v", rolesPath, err)
+		}
+		for _, role := range doc.Roles {
+			for _, scope := range role.Scopes {
+				if !strings.HasPrefix(scope, "ap:") || slices.Contains(ownershipOverrideScopes, scope) {
+					continue
+				}
+				if !slices.Contains(granted, scope) {
+					t.Errorf("defaultOIDCScopes omits %s, which the shipped role %s grants — an IDP role mirroring it would lose it", scope, role.Name)
+				}
+			}
 		}
 	}
 	t.Logf("requesting %d scopes, %d bytes encoded (Entra ID deployments must override this)",

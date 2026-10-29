@@ -1,8 +1,8 @@
 <h1 id="wso2-api-platform-platform-api-api-keys">API Keys</h1>
 
-API key management operations for REST APIs and LLM Providers
+API key management operations for REST APIs, LLM Providers, and GraphQL APIs
 
-## List API keys for the current user, or for all users with `ap:api_key:all:manage`
+## List API keys for the current user, or for all users with `ap:credential:api_key:all:manage`
 
 <a id="opIdlistUserAPIKeys"></a>
 
@@ -19,7 +19,7 @@ curl -X GET https://localhost:9243/api/v0.9/me/api-keys \
 ```
 
 Returns API keys created by the caller within the organization.
-Callers holding the `ap:api_key:all:manage` scope instead receive every user's API keys
+Callers holding the `ap:credential:api_key:all:manage` scope instead receive every user's API keys
 in the organization; the `createdBy` field identifies each key's creator.
 Optionally filter by one or more artifact types using a comma-separated `type` query parameter.
 The plain key value is never returned.
@@ -29,11 +29,11 @@ The plain key value is never returned.
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:api_key:read`, `ap:api_key:all:manage`
+Required scopes (the token must carry at least one of): `ap:credential:api_key:read`, `ap:read`, `ap:manage`, `ap:credential:api_key:all:manage`
 
 </aside>
 
-<h3 id="list-api-keys-for-the-current-user,-or-for-all-users-with-`ap:api_key:all:manage`-parameters">Parameters</h3>
+<h3 id="list-api-keys-for-the-current-user,-or-for-all-users-with-`ap:credential:api_key:all:manage`-parameters">Parameters</h3>
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
@@ -53,6 +53,8 @@ If omitted, all types are returned.
 |type|RestApi|
 |type|LlmProvider|
 |type|LlmProxy|
+|type|AgentProxy|
+|type|GraphQLApi|
 
 > Example responses
 >
@@ -106,7 +108,7 @@ If omitted, all types are returned.
 }
 ```
 
-<h3 id="list-api-keys-for-the-current-user,-or-for-all-users-with-`ap:api_key:all:manage`-responses">Responses</h3>
+<h3 id="list-api-keys-for-the-current-user,-or-for-all-users-with-`ap:credential:api_key:all:manage`-responses">Responses</h3>
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|

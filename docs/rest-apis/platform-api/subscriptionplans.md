@@ -48,7 +48,7 @@ Creates an organization-scoped subscription plan.
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:subscription_plan:create`, `ap:subscription_plan:manage`
+Required scopes (the token must carry at least one of): `ap:subscription_plan:create`, `ap:subscription_plan:manage`, `ap:manage`
 
 </aside>
 
@@ -183,7 +183,7 @@ Returns subscription plans for the organization.
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:subscription_plan:read`, `ap:subscription_plan:manage`
+Required scopes (the token must carry at least one of): `ap:subscription_plan:read`, `ap:subscription_plan:manage`, `ap:read`, `ap:manage`
 
 </aside>
 
@@ -193,6 +193,7 @@ Required scopes (the token must carry at least one of): `ap:subscription_plan:re
 |---|---|---|---|---|
 |limit|query|integer|false|Maximum number of items to return per page.|
 |offset|query|integer|false|Zero-based index of the first item to return.|
+|query|query|string|false|Case-insensitive substring filter matched against the resource display name and id (handle).|
 
 > Example responses
 >
@@ -282,7 +283,7 @@ curl -X GET https://localhost:9243/api/v0.9/subscription-plans/{subscriptionPlan
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:subscription_plan:read`, `ap:subscription_plan:manage`
+Required scopes (the token must carry at least one of): `ap:subscription_plan:read`, `ap:subscription_plan:manage`, `ap:read`, `ap:manage`
 
 </aside>
 
@@ -407,7 +408,7 @@ curl -X PUT https://localhost:9243/api/v0.9/subscription-plans/{subscriptionPlan
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:subscription_plan:update`, `ap:subscription_plan:manage`
+Required scopes (the token must carry at least one of): `ap:subscription_plan:update`, `ap:subscription_plan:manage`, `ap:manage`
 
 </aside>
 
@@ -546,7 +547,7 @@ curl -X DELETE https://localhost:9243/api/v0.9/subscription-plans/{subscriptionP
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:subscription_plan:delete`, `ap:subscription_plan:manage`
+Required scopes (the token must carry at least one of): `ap:subscription_plan:delete`, `ap:subscription_plan:manage`, `ap:manage`
 
 </aside>
 

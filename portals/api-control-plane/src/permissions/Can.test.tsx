@@ -44,7 +44,7 @@ describe('Can', () => {
       <Can do="CreateProject">
         <Button>New project</Button>
       </Can>,
-      ['ap:project:create'],
+      ['ap:project:manage'],
     );
 
     expect(screen.getByRole('button', { name: 'New project' })).toBeEnabled();
@@ -119,7 +119,7 @@ describe('Can', () => {
       <Can do={['DeployAPI', 'UndeployDeployment']}>
         <Button>Actions</Button>
       </Can>,
-      ['ap:rest_api:deployment:manage'],
+      ['ap:api:rest:deployment:manage'],
     );
     expect(screen.getByRole('button', { name: 'Actions' })).toBeInTheDocument();
   });
@@ -129,7 +129,7 @@ describe('Can', () => {
       <Can do={['DeployAPI', 'UndeployDeployment']}>
         <Button>Actions</Button>
       </Can>,
-      ['ap:rest_api:read'],
+      ['ap:api:rest:read'],
     );
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });

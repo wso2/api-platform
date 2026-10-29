@@ -150,33 +150,21 @@ config:
       # ap_operator, ap_publisher, ap_subscriber, ap_viewer); copy the entries you
       # need from it. An ap: scope the Platform API's OpenAPI spec does not declare
       # fails startup; dp: scopes (API Portal) are checked for shape only.
-      # A resource-level :manage already covers that resource's subresources
-      # (each subresource operation lists the parent :manage in its own accepted
-      # scopes), so ap:llm_provider:manage needs no separate
-      # ap:llm_provider:api_key:manage. Kept in sync with the ap_admin entry in
+      # Scopes are permissions from platform-api/resources/permission-tree.yaml:
+      # ap:<node>:read covers every read on that node and everything below it,
+      # ap:<node>:manage every operation there, and the root ap:manage every
+      # Platform API operation. This vocabulary needs a platform-api image that
+      # ships the permission tree (the pre-tree names stay accepted on it).
+      # Kept in sync with the ap_admin entry in
       # platform-api/resources/role-to-scope-mapping.yaml.
       roles:
         - name: ap_admin
           scopes:
-            - ap:organization:manage
-            - ap:project:manage
-            - ap:gateway:manage
-            - ap:gateway_custom_policy:manage
-            - ap:rest_api:manage
-            - ap:llm_provider:manage
-            - ap:llm_proxy:manage
-            - ap:llm_template:manage
-            - ap:mcp_proxy:manage
-            - ap:application:manage
-            - ap:subscription:manage
-            - ap:subscription_plan:manage
-            - ap:secret:manage
-            - ap:api_key:read
+            # The root permission admits every Platform API operation.
+            - ap:manage
             # Ownership override — every user's API keys, not just the caller's.
-            # Never implied by ap:api_key:read, so it is listed explicitly.
-            - ap:api_key:all:manage
-            - ap:docs:manage
-            - ap:thumbnail:manage
+            # Never implied by any other permission, the root included.
+            - ap:credential:api_key:all:manage
     # Claim-name mappings shared by all modes.
     claimMappings:
       organization: organization

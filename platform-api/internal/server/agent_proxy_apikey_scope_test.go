@@ -41,6 +41,7 @@ func TestScopeEnforcementOnAgentProxyAPIKeyRoutes(t *testing.T) {
 		ValidationMode: middleware.ValidationModeScope,
 		Enabled:        true,
 		Routes:         mux,
+		LegacyScopes:   loadShippedLegacyScopeMap(t),
 	})
 	if err != nil {
 		t.Fatalf("ScopeEnforcer: %v", err)
@@ -50,23 +51,37 @@ func TestScopeEnforcementOnAgentProxyAPIKeyRoutes(t *testing.T) {
 		collection = "/api/v0.9/agent-proxies/weather-agent/api-keys"
 		member     = collection + "/consumer-key"
 	)
-	umbrellas := []string{"ap:agent_proxy:api_key:manage", "ap:agent_proxy:manage", "ap:api_key:all:manage"}
+	// Every operation is admitted by the node's and its ancestors' :manage and
+	// by the ownership override — under their tree names and, through the
+	// shipped legacy mapping, their pre-tree names (ap:agent_proxy:api_key:manage
+	// maps onto ap:api:agent:api_key:manage).
+	umbrellas := []string{
+		"ap:api:agent:manage", "ap:api:manage", "ap:credential:api_key:all:manage",
+		"ap:agent_proxy:api_key:manage", "ap:agent_proxy:manage", "ap:api_key:all:manage",
+	}
 
 	for _, op := range []struct {
 		method, path string
-		fineGrained  string
+		admitted     []string
 		denied       []string
 	}{
-		{http.MethodGet, collection, "ap:agent_proxy:api_key:read",
-			[]string{"ap:agent_proxy:read", "ap:api_key:read", "ap:llm_proxy:api_key:read"}},
-		{http.MethodPost, collection, "ap:agent_proxy:api_key:create",
-			[]string{"ap:agent_proxy:api_key:read", "ap:agent_proxy:create", "ap:agent_proxy:api_key:update", "ap:llm_proxy:api_key:create"}},
-		{http.MethodPut, member, "ap:agent_proxy:api_key:update",
-			[]string{"ap:agent_proxy:api_key:read", "ap:agent_proxy:update", "ap:agent_proxy:api_key:create", "ap:rest_api:api_key:update"}},
-		{http.MethodDelete, member, "ap:agent_proxy:api_key:delete",
-			[]string{"ap:agent_proxy:api_key:read", "ap:agent_proxy:delete", "ap:agent_proxy:api_key:update", "ap:llm_proxy:api_key:delete"}},
+		{http.MethodGet, collection,
+			[]string{"ap:api:agent:api_key:read", "ap:api:agent:read", "ap:api:read", "ap:agent_proxy:api_key:read", "ap:agent_proxy:read"},
+			[]string{"ap:credential:api_key:read", "ap:api:llm:api_key:read", "ap:api:llm:read", "ap:api_key:read", "ap:llm_proxy:api_key:read"}},
+		{http.MethodPost, collection,
+			[]string{"ap:agent_proxy:api_key:create"},
+			[]string{"ap:api:agent:api_key:read", "ap:api:agent:read", "ap:api:read", "ap:api:llm:manage", "ap:agent_proxy:api_key:read", "ap:agent_proxy:read", "ap:llm_proxy:api_key:create"}},
+		{http.MethodPut, member,
+			[]string{"ap:agent_proxy:api_key:update"},
+			[]string{"ap:api:agent:api_key:read", "ap:api:agent:read", "ap:api:read", "ap:api:rest:manage", "ap:agent_proxy:api_key:read", "ap:rest_api:api_key:update"}},
+		{http.MethodDelete, member,
+			[]string{"ap:agent_proxy:api_key:delete"},
+			[]string{"ap:api:agent:api_key:read", "ap:api:agent:read", "ap:api:read", "ap:api:llm:manage", "ap:agent_proxy:api_key:read", "ap:llm_proxy:api_key:delete"}},
 	} {
-		cases := map[string]int{"": http.StatusForbidden, op.fineGrained: http.StatusOK}
+		cases := map[string]int{"": http.StatusForbidden}
+		for _, s := range op.admitted {
+			cases[s] = http.StatusOK
+		}
 		for _, s := range umbrellas {
 			cases[s] = http.StatusOK
 		}

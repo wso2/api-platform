@@ -47,6 +47,24 @@ import * as prettier from 'prettier';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SPEC_PATH = path.resolve(HERE, '../../../platform-api/resources/openapi.yaml');
+/**
+ * The pre-permission-tree scope names the Platform API still accepts and the
+ * permission each one grants. The API translates them per request; the console
+ * must translate the same way, from the same file, or a session that carries
+ * only old names reaches the API and sees an empty console.
+ */
+const LEGACY_MAP_PATH = path.resolve(
+  HERE,
+  '../../../platform-api/resources/legacy-scope-mapping.yaml',
+);
+/**
+ * Specs of Platform API plugins. The console gates none of their operations,
+ * but a legacy name may map onto a permission only a plugin declares, and that
+ * is still a valid mapping rather than a typo.
+ */
+const PLUGIN_SPEC_PATHS = [
+  path.resolve(HERE, '../../../platform-api/plugins/eventgateway/openapi.yaml'),
+];
 const OUT_PATH = path.resolve(HERE, '../src/api/generated/operationScopes.ts');
 
 /** The only security scheme this generator understands. */
@@ -232,6 +250,56 @@ for (const [pathName, pathItem] of Object.entries(spec.paths ?? {})) {
 }
 
 /* -------------------------------------------------------------------------- */
+/* Legacy scope names                                                          */
+/* -------------------------------------------------------------------------- */
+
+type LegacyMap = { scopes?: Record<string, string[]> };
+
+/** Every scope a plugin spec's operations declare. */
+const pluginDeclared = new Set<string>();
+for (const pluginPath of PLUGIN_SPEC_PATHS) {
+  const plugin = yaml.load(readFileSync(pluginPath, 'utf8')) as Spec;
+  for (const pathItem of Object.values(plugin.paths ?? {})) {
+    for (const [field, value] of Object.entries(pathItem)) {
+      if (!HTTP_METHODS.includes(field)) continue;
+      for (const requirement of (value as SpecOperation).security ?? []) {
+        for (const scopes of Object.values(requirement))
+          scopes.forEach((s) => pluginDeclared.add(s));
+      }
+    }
+  }
+}
+
+/** pre-tree scope name -> tree permissions it grants, any-of, sorted. */
+const legacyScopes = new Map<string, string[]>();
+{
+  const legacy = yaml.load(readFileSync(LEGACY_MAP_PATH, 'utf8')) as LegacyMap;
+  const entries = Object.entries(legacy?.scopes ?? {});
+  if (entries.length === 0) record(`${LEGACY_MAP_PATH} declares no scopes`);
+  for (const [name, targets] of entries) {
+    // The same checks the Platform API applies to this file at startup: a name
+    // the spec still declares needs no translation (and translating it would
+    // widen it), and a target no spec declares grants nothing.
+    if (!name.startsWith('ap:')) record(`legacy scope "${name}" is outside the ap: namespace`);
+    if (catalog.has(name)) record(`legacy scope "${name}" is still declared by the spec`);
+    if (!Array.isArray(targets) || targets.length === 0) {
+      record(`legacy scope "${name}" maps to no permission`);
+      continue;
+    }
+    const undeclared = targets.filter(
+      (target) => !catalog.has(target) && !pluginDeclared.has(target),
+    );
+    if (undeclared.length > 0) {
+      record(`legacy scope "${name}" maps to undeclared scope(s): ${undeclared.join(', ')}`);
+    }
+    // Only a permission the console's own catalog declares can gate anything
+    // here; a name that maps solely onto plugin permissions is left out.
+    const gated = targets.filter((target) => catalog.has(target)).sort();
+    if (gated.length > 0) legacyScopes.set(name, gated);
+  }
+}
+
+/* -------------------------------------------------------------------------- */
 /* Assert the convention the client relies on                                  */
 /* -------------------------------------------------------------------------- */
 
@@ -272,6 +340,7 @@ if (problems.length > 0) abort();
 
 const scopeUnion = [...catalog.keys()].sort();
 const entries = [...operationScopes.entries()].sort(([a], [b]) => a.localeCompare(b));
+const legacyEntries = [...legacyScopes.entries()].sort(([a], [b]) => a.localeCompare(b));
 
 const source = `/*
  * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
@@ -295,7 +364,8 @@ const source = `/*
  * GENERATED FILE — do not edit.
  *
  * Produced by \`scripts/generateOperationScopes.ts\` (\`npm run api:codegen\`)
- * from platform-api/resources/openapi.yaml. Edit the spec, not this file.
+ * from platform-api/resources/openapi.yaml and
+ * platform-api/resources/legacy-scope-mapping.yaml. Edit those, not this file.
  */
 
 import type { operations } from './platform';
@@ -332,6 +402,19 @@ ${entries
   )
   .join('\n')}
 } as const satisfies Record<keyof operations, readonly ApScope[]>;
+
+/**
+ * Pre-permission-tree scope names the Platform API still accepts, and the
+ * permissions each one grants. Mirrors legacy-scope-mapping.yaml, which the
+ * API applies to every request; the evaluator applies it to a session's scopes
+ * so a token or role that still carries an old name is offered what the API
+ * will let it do. Keys are not \`ApScope\`s: the spec no longer declares them.
+ */
+export const LEGACY_SCOPES: Readonly<Record<string, readonly ApScope[]>> = {
+${legacyEntries
+  .map(([name, targets]) => `  '${name}': [${targets.map((scope) => `'${scope}'`).join(', ')}],`)
+  .join('\n')}
+};
 `;
 
 const prettierConfig = await prettier.resolveConfig(OUT_PATH);
@@ -343,8 +426,8 @@ const formatted = await prettier.format(source, {
 writeFileSync(OUT_PATH, formatted, 'utf8');
 
 console.log(
-  `operationScopes: ${entries.length} operations, ${scopeUnion.length} scopes → ` +
-    path.relative(process.cwd(), OUT_PATH),
+  `operationScopes: ${entries.length} operations, ${scopeUnion.length} scopes, ` +
+    `${legacyEntries.length} legacy names → ${path.relative(process.cwd(), OUT_PATH)}`,
 );
 if (unrestricted.length > 0) {
   console.log(

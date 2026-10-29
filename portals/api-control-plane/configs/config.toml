@@ -74,6 +74,12 @@ client_auth_method       = '{{ env "APIP_ACP_AUTH_OIDC_CLIENT_AUTH_METHOD" "clie
 # Must equal the IdP-registered redirect URI, pointing at /api/auth/callback.
 redirect_url             = '{{ env "APIP_ACP_AUTH_OIDC_REDIRECT_URL" "" }}'
 post_logout_redirect_url = '{{ env "APIP_ACP_AUTH_OIDC_POST_LOGOUT_REDIRECT_URL" "" }}'
+# Whether the default login request (scope is not set here) also asks for the
+# pre-permission-tree scope names (ap:rest_api:manage, ...). true keeps an
+# upgraded deployment requesting what it did before; set it to false once the
+# IdP's roles assign the permission-tree names (a new installation's do), and
+# only the scopes the shipped roles grant are requested.
+request_legacy_scopes    = '{{ env "APIP_ACP_AUTH_OIDC_REQUEST_LEGACY_SCOPES" "true" }}'
 # No `scope` key here on purpose: Load overlays this file's parsed keys onto
 # defaultConfig() unconditionally (mapstructure decode, not an omitempty-aware
 # merge), so a present-but-empty key would silently blank out the built-in

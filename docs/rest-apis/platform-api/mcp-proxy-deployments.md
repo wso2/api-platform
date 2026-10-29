@@ -2,6 +2,489 @@
 
 MCP proxy deployment operations
 
+## Prepare a build of a MCP proxy
+
+<a id="opIdCreateMCPProxyBuild"></a>
+
+`POST /mcp-proxies/{mcpProxyId}/builds`
+
+> Code samples
+
+```shell
+
+curl -X POST https://localhost:9243/api/v0.9/mcp-proxies/{mcpProxyId}/builds \
+  -H 'Authorization: Bearer {access_token}' \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json' \
+  -d @payload.json
+
+```
+
+Renders the MCP proxy's current definition into an immutable snapshot and stores it,
+without deploying it anywhere.
+
+Preparing and deploying are separate steps so that what reaches a gateway is a
+snapshot taken at a known moment: a deploy that names a build cannot silently
+pick up edits made to the API since, and the same build can be deployed to any
+number of gateways, and promoted onward, without being re-rendered.
+
+The artifact is stored at the platform's own data version; it is translated to
+the target gateway's version when it is deployed.
+
+A MCP proxy keeps at most `deployments.max_builds_per_api` builds. Preparing another
+first removes the oldest builds no current deployment is using; if every one is
+in use, the request is refused with a `409` and a build has to be deleted to
+make room.
+
+Access is validated against the organization in the JWT token.
+
+> Payload
+
+```json
+{
+  "description": "Adds the /reports endpoint",
+  "metadata": {
+    "commitId": "9f1c2ab"
+  }
+}
+```
+
+### Authentication
+
+<aside class="warning">
+This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
+
+Required scopes (the token must carry at least one of): `ap:api:mcp:build:create`, `ap:api:mcp:build:manage`, `ap:api:mcp:manage`, `ap:api:manage`, `ap:manage`
+
+</aside>
+
+<h3 id="prepare-a-build-of-a-mcp-proxy-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|mcpProxyId|path|string|true|Identifier of the MCP proxy|
+|body|body|[BuildRequest](schemas.md#schemabuildrequest)|false|none|
+
+> Example responses
+>
+> 201 Response
+
+```json
+{
+  "buildId": "2026-01-31-2",
+  "uuid": "095be615-a8ad-4c33-8e9c-c7612fbf6c9f",
+  "description": "string",
+  "dataVersion": "string",
+  "metadata": {},
+  "createdBy": "string",
+  "createdAt": "2019-08-24T14:15:22Z"
+}
+```
+
+> 400 Response
+
+```json
+{
+  "status": "error",
+  "code": "VALIDATION_FAILED",
+  "message": "The request failed validation.",
+  "errors": [
+    {
+      "field": "<name of the offending field>",
+      "message": "<reason this field failed validation>"
+    }
+  ]
+}
+```
+
+> 401 Response
+
+```json
+{
+  "status": "error",
+  "code": "UNAUTHORIZED",
+  "message": "Authorization header is required, or the token is invalid or expired."
+}
+```
+
+> 403 Response
+
+```json
+{
+  "status": "error",
+  "code": "FORBIDDEN",
+  "message": "You do not have permission to perform this action."
+}
+```
+
+> 404 Response
+
+```json
+{
+  "status": "error",
+  "code": "NOT_FOUND",
+  "message": "The specified resource does not exist."
+}
+```
+
+> 409 Response
+
+```json
+{
+  "status": "error",
+  "code": "CONFLICT",
+  "message": "The request conflicts with the current state of the resource."
+}
+```
+
+> 500 Response
+
+```json
+{
+  "status": "error",
+  "code": "INTERNAL_ERROR",
+  "message": "An unexpected error occurred.",
+  "trackingId": "4f1c6f2e-8a4b-4c93-b1de-9f2f6f0c2a11"
+}
+```
+
+<h3 id="prepare-a-build-of-a-mcp-proxy-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|Build prepared successfully|[BuildResponse](schemas.md#schemabuildresponse)|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad Request. Invalid request or validation error.|[Error](schemas.md#schemaerror)|
+|401|[Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)|Unauthorized. Authentication credentials are missing or invalid.|[Error](schemas.md#schemaerror)|
+|403|[Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)|Forbidden. The authenticated user does not have permission to access this resource.|[Error](schemas.md#schemaerror)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Not Found. The specified resource does not exist.|[Error](schemas.md#schemaerror)|
+|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict. The request conflicts with the current state of the resource.|[Error](schemas.md#schemaerror)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal Server Error.|[Error](schemas.md#schemaerror)|
+
+### Response Headers
+
+|Status|Header|Type|Format|Description|
+|---|---|---|---|---|
+|201|Location|string|uri|URL of the newly created resource.|
+
+## Get builds for a MCP proxy
+
+<a id="opIdGetMCPProxyBuilds"></a>
+
+`GET /mcp-proxies/{mcpProxyId}/builds`
+
+> Code samples
+
+```shell
+
+curl -X GET https://localhost:9243/api/v0.9/mcp-proxies/{mcpProxyId}/builds \
+  -H 'Authorization: Bearer {access_token}' \
+  -H 'Accept: application/json'
+
+```
+
+Lists the MCP proxy's builds, newest first. The rendered artifact itself is not
+included; a listing is for choosing which build to deploy.
+Access is validated against the organization in the JWT token.
+
+### Authentication
+
+<aside class="warning">
+This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
+
+Required scopes (the token must carry at least one of): `ap:api:mcp:build:read`, `ap:api:mcp:build:manage`, `ap:api:mcp:read`, `ap:api:mcp:manage`, `ap:api:read`, `ap:api:manage`, `ap:read`, `ap:manage`
+
+</aside>
+
+<h3 id="get-builds-for-a-mcp-proxy-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|mcpProxyId|path|string|true|Identifier of the MCP proxy|
+|limit|query|integer|false|Maximum number of items to return per page.|
+
+> Example responses
+>
+> 200 Response
+
+```json
+{
+  "count": 0,
+  "list": [
+    {
+      "buildId": "2026-01-31-2",
+      "uuid": "095be615-a8ad-4c33-8e9c-c7612fbf6c9f",
+      "description": "string",
+      "dataVersion": "string",
+      "metadata": {},
+      "createdBy": "string",
+      "createdAt": "2019-08-24T14:15:22Z"
+    }
+  ]
+}
+```
+
+> 401 Response
+
+```json
+{
+  "status": "error",
+  "code": "UNAUTHORIZED",
+  "message": "Authorization header is required, or the token is invalid or expired."
+}
+```
+
+> 403 Response
+
+```json
+{
+  "status": "error",
+  "code": "FORBIDDEN",
+  "message": "You do not have permission to perform this action."
+}
+```
+
+> 404 Response
+
+```json
+{
+  "status": "error",
+  "code": "NOT_FOUND",
+  "message": "The specified resource does not exist."
+}
+```
+
+> 500 Response
+
+```json
+{
+  "status": "error",
+  "code": "INTERNAL_ERROR",
+  "message": "An unexpected error occurred.",
+  "trackingId": "4f1c6f2e-8a4b-4c93-b1de-9f2f6f0c2a11"
+}
+```
+
+<h3 id="get-builds-for-a-mcp-proxy-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Builds retrieved successfully|[BuildListResponse](schemas.md#schemabuildlistresponse)|
+|401|[Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)|Unauthorized. Authentication credentials are missing or invalid.|[Error](schemas.md#schemaerror)|
+|403|[Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)|Forbidden. The authenticated user does not have permission to access this resource.|[Error](schemas.md#schemaerror)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Not Found. The specified resource does not exist.|[Error](schemas.md#schemaerror)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal Server Error.|[Error](schemas.md#schemaerror)|
+
+## Get build by ID
+
+<a id="opIdGetMCPProxyBuild"></a>
+
+`GET /mcp-proxies/{mcpProxyId}/builds/{buildId}`
+
+> Code samples
+
+```shell
+
+curl -X GET https://localhost:9243/api/v0.9/mcp-proxies/{mcpProxyId}/builds/{buildId} \
+  -H 'Authorization: Bearer {access_token}' \
+  -H 'Accept: application/json'
+
+```
+
+Retrieves metadata for a single build.
+Access is validated against the organization in the JWT token.
+
+### Authentication
+
+<aside class="warning">
+This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
+
+Required scopes (the token must carry at least one of): `ap:api:mcp:build:read`, `ap:api:mcp:build:manage`, `ap:api:mcp:read`, `ap:api:mcp:manage`, `ap:api:read`, `ap:api:manage`, `ap:read`, `ap:manage`
+
+</aside>
+
+<h3 id="get-build-by-id-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|mcpProxyId|path|string|true|Identifier of the MCP proxy|
+|buildId|path|string|true|Identifier of the build|
+
+> Example responses
+>
+> 200 Response
+
+```json
+{
+  "buildId": "2026-01-31-2",
+  "uuid": "095be615-a8ad-4c33-8e9c-c7612fbf6c9f",
+  "description": "string",
+  "dataVersion": "string",
+  "metadata": {},
+  "createdBy": "string",
+  "createdAt": "2019-08-24T14:15:22Z"
+}
+```
+
+> 401 Response
+
+```json
+{
+  "status": "error",
+  "code": "UNAUTHORIZED",
+  "message": "Authorization header is required, or the token is invalid or expired."
+}
+```
+
+> 403 Response
+
+```json
+{
+  "status": "error",
+  "code": "FORBIDDEN",
+  "message": "You do not have permission to perform this action."
+}
+```
+
+> 404 Response
+
+```json
+{
+  "status": "error",
+  "code": "NOT_FOUND",
+  "message": "The specified resource does not exist."
+}
+```
+
+> 500 Response
+
+```json
+{
+  "status": "error",
+  "code": "INTERNAL_ERROR",
+  "message": "An unexpected error occurred.",
+  "trackingId": "4f1c6f2e-8a4b-4c93-b1de-9f2f6f0c2a11"
+}
+```
+
+<h3 id="get-build-by-id-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Build metadata retrieved successfully|[BuildResponse](schemas.md#schemabuildresponse)|
+|401|[Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)|Unauthorized. Authentication credentials are missing or invalid.|[Error](schemas.md#schemaerror)|
+|403|[Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)|Forbidden. The authenticated user does not have permission to access this resource.|[Error](schemas.md#schemaerror)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Not Found. The specified resource does not exist.|[Error](schemas.md#schemaerror)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal Server Error.|[Error](schemas.md#schemaerror)|
+
+## Delete a build
+
+<a id="opIdDeleteMCPProxyBuild"></a>
+
+`DELETE /mcp-proxies/{mcpProxyId}/builds/{buildId}`
+
+> Code samples
+
+```shell
+
+curl -X DELETE https://localhost:9243/api/v0.9/mcp-proxies/{mcpProxyId}/builds/{buildId} \
+  -H 'Authorization: Bearer {access_token}' \
+  -H 'Accept: application/json'
+
+```
+
+Deletes one of the MCP proxy's builds, freeing a slot when the API is at its build
+limit.
+
+Refused with a conflict while a gateway is serving the build — that is, while
+any `DEPLOYED`, `DEPLOYING` or `UNDEPLOYING` deployment runs it. Undeploy it
+first.
+
+Undeployed, failed and superseded deployments release the build. They keep the
+artifact they were created with, so they can still be redeployed, but they stop
+reporting a `buildId` and can no longer be promoted to a later environment.
+
+Access is validated against the organization in the JWT token.
+
+### Authentication
+
+<aside class="warning">
+This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
+
+Required scopes (the token must carry at least one of): `ap:api:mcp:build:delete`, `ap:api:mcp:build:manage`, `ap:api:mcp:manage`, `ap:api:manage`, `ap:manage`
+
+</aside>
+
+<h3 id="delete-a-build-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|mcpProxyId|path|string|true|Identifier of the MCP proxy|
+|buildId|path|string|true|Identifier of the build|
+
+> Example responses
+>
+> 401 Response
+
+```json
+{
+  "status": "error",
+  "code": "UNAUTHORIZED",
+  "message": "Authorization header is required, or the token is invalid or expired."
+}
+```
+
+> 403 Response
+
+```json
+{
+  "status": "error",
+  "code": "FORBIDDEN",
+  "message": "You do not have permission to perform this action."
+}
+```
+
+> 404 Response
+
+```json
+{
+  "status": "error",
+  "code": "NOT_FOUND",
+  "message": "The specified resource does not exist."
+}
+```
+
+> 409 Response
+
+```json
+{
+  "status": "error",
+  "code": "CONFLICT",
+  "message": "The request conflicts with the current state of the resource."
+}
+```
+
+> 500 Response
+
+```json
+{
+  "status": "error",
+  "code": "INTERNAL_ERROR",
+  "message": "An unexpected error occurred.",
+  "trackingId": "4f1c6f2e-8a4b-4c93-b1de-9f2f6f0c2a11"
+}
+```
+
+<h3 id="delete-a-build-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|204|[No Content](https://tools.ietf.org/html/rfc7231#section-6.3.5)|Build deleted successfully|None|
+|401|[Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)|Unauthorized. Authentication credentials are missing or invalid.|[Error](schemas.md#schemaerror)|
+|403|[Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)|Forbidden. The authenticated user does not have permission to access this resource.|[Error](schemas.md#schemaerror)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Not Found. The specified resource does not exist.|[Error](schemas.md#schemaerror)|
+|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict. The request conflicts with the current state of the resource.|[Error](schemas.md#schemaerror)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal Server Error.|[Error](schemas.md#schemaerror)|
+
 ## Create and deploy a new deployment for MCP proxy
 
 <a id="opIdDeployMCPProxy"></a>
@@ -31,6 +514,7 @@ Access is validated against the organization in the JWT token.
 {
   "name": "v1.0-production",
   "base": "current",
+  "buildId": "2026-01-31-2",
   "gatewayId": "prod-gateway-01",
   "metadata": {}
 }
@@ -41,7 +525,7 @@ Access is validated against the organization in the JWT token.
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:mcp_proxy:deployment:create`, `ap:mcp_proxy:deployment:manage`, `ap:mcp_proxy:manage`
+Required scopes (the token must carry at least one of): `ap:api:mcp:deployment:create`, `ap:api:mcp:deployment:manage`, `ap:api:mcp:manage`, `ap:api:manage`, `ap:manage`
 
 </aside>
 
@@ -157,7 +641,7 @@ Access is validated against the organization in the JWT token.
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:mcp_proxy:deployment:read`, `ap:mcp_proxy:deployment:manage`, `ap:mcp_proxy:manage`
+Required scopes (the token must carry at least one of): `ap:api:mcp:deployment:read`, `ap:api:mcp:deployment:manage`, `ap:api:mcp:read`, `ap:api:mcp:manage`, `ap:api:read`, `ap:api:manage`, `ap:read`, `ap:manage`
 
 </aside>
 
@@ -200,6 +684,7 @@ Required scopes (the token must carry at least one of): `ap:mcp_proxy:deployment
       "gatewayId": "prod-gateway-01",
       "status": "DEPLOYED",
       "baseDeploymentId": "be6d8692-b9de-400e-b6c1-14db50154e27",
+      "buildId": "2026-01-31-2",
       "metadata": {},
       "createdAt": "2019-08-24T14:15:22Z",
       "statusReason": "string",
@@ -295,7 +780,7 @@ and timestamps. Access is validated against the organization in the JWT token.
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:mcp_proxy:deployment:read`, `ap:mcp_proxy:deployment:manage`, `ap:mcp_proxy:manage`
+Required scopes (the token must carry at least one of): `ap:api:mcp:deployment:read`, `ap:api:mcp:deployment:manage`, `ap:api:mcp:read`, `ap:api:mcp:manage`, `ap:api:read`, `ap:api:manage`, `ap:read`, `ap:manage`
 
 </aside>
 
@@ -317,6 +802,7 @@ Required scopes (the token must carry at least one of): `ap:mcp_proxy:deployment
   "gatewayId": "prod-gateway-01",
   "status": "DEPLOYED",
   "baseDeploymentId": "be6d8692-b9de-400e-b6c1-14db50154e27",
+  "buildId": "2026-01-31-2",
   "metadata": {},
   "createdAt": "2019-08-24T14:15:22Z",
   "statusReason": "string",
@@ -388,7 +874,7 @@ Access is validated against the organization in the JWT token.
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:mcp_proxy:deployment:delete`, `ap:mcp_proxy:deployment:manage`, `ap:mcp_proxy:manage`
+Required scopes (the token must carry at least one of): `ap:api:mcp:deployment:delete`, `ap:api:mcp:deployment:manage`, `ap:api:mcp:manage`, `ap:api:manage`, `ap:manage`
 
 </aside>
 
@@ -497,7 +983,7 @@ Access is validated against the organization in the JWT token.
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:mcp_proxy:deployment:undeploy`, `ap:mcp_proxy:deployment:manage`, `ap:mcp_proxy:manage`
+Required scopes (the token must carry at least one of): `ap:api:mcp:deployment:undeploy`, `ap:api:mcp:deployment:manage`, `ap:api:mcp:manage`, `ap:api:manage`, `ap:manage`
 
 </aside>
 
@@ -622,7 +1108,7 @@ Access is validated against the organization in the JWT token.
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:mcp_proxy:deployment:restore`, `ap:mcp_proxy:deployment:manage`, `ap:mcp_proxy:manage`
+Required scopes (the token must carry at least one of): `ap:api:mcp:deployment:restore`, `ap:api:mcp:deployment:manage`, `ap:api:mcp:manage`, `ap:api:manage`, `ap:manage`
 
 </aside>
 

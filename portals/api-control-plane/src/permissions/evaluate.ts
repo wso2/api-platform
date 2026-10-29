@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { OPERATION_SCOPES, type ApScope, type OperationId } from '../api/core/spec';
+import { LEGACY_SCOPES, OPERATION_SCOPES, type ApScope, type OperationId } from '../api/core/spec';
 
 /**
  * Re-exported so everything inside `permissions/` names scopes from one place,
@@ -173,12 +173,27 @@ const decision = (
  *
  * Null/undefined input returns undefined (no scope claim). An array returns a
  * Set; empty-string entries are removed.
+ *
+ * A pre-permission-tree name (`ap:rest_api:manage`, `ap:api_key:all:manage`)
+ * is kept and also contributes the permissions `LEGACY_SCOPES` says it grants,
+ * exactly as the Platform API's `ScopeEnforcer` expands a request's scopes
+ * through `legacy-scope-mapping.yaml` before matching. This is a translation of
+ * names, not an inference of privilege: the generated map is the API's own
+ * file, and a name it does not list grants nothing extra. It is the one place
+ * the translation happens, so every decision below sees the same set the API
+ * will.
  */
 export const toGrantedSet = (
   scopes: readonly string[] | null | undefined,
 ): ReadonlySet<string> | undefined => {
   if (!scopes) return undefined;
-  return new Set(scopes.filter((scope) => scope.trim() !== ''));
+  const granted = new Set<string>();
+  for (const scope of scopes) {
+    if (scope.trim() === '') continue;
+    granted.add(scope);
+    for (const translated of LEGACY_SCOPES[scope] ?? []) granted.add(translated);
+  }
+  return granted;
 };
 
 /** Short helper: returns the any-of scopes an operation accepts, or
@@ -194,7 +209,9 @@ export const requiredScopesFor = (operation: PermissionOperation): readonly stri
  * - Unknown operations are allowed (surface backend errors on use).
  * - If an operation requires no scopes, allow.
  * - If scopes are unknown, consult `mode`.
- * - Otherwise require exact any-of scope match (no wildcards or inheritance).
+ * - Otherwise require exact any-of scope match (no wildcards or inheritance;
+ *   parent and root permissions are already in the generated list, and legacy
+ *   names were translated by `toGrantedSet`).
  */
 export const decideOperation = (
   operation: PermissionOperation,

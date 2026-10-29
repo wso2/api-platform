@@ -51,7 +51,15 @@ Deploy a new MCP proxy configuration.
       }
     }
   },
-  "mcpSpecVersion": "2025-06-18",
+  "mcpSpecVersion": "string",
+  "mcpSpecVersions": [
+    "2025-06-18",
+    "2026-07-28"
+  ],
+  "upstreamMcpSpecVersions": [
+    "2025-06-18",
+    "2026-07-28"
+  ],
   "policies": [
     {
       "executionCondition": "request.header.x-custom == 'enabled'",
@@ -91,7 +99,7 @@ Deploy a new MCP proxy configuration.
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:mcp_proxy:create`, `ap:mcp_proxy:manage`
+Required scopes (the token must carry at least one of): `ap:api:mcp:create`, `ap:api:mcp:manage`, `ap:api:manage`, `ap:manage`
 
 </aside>
 
@@ -135,7 +143,15 @@ Required scopes (the token must carry at least one of): `ap:mcp_proxy:create`, `
       }
     }
   },
-  "mcpSpecVersion": "2025-06-18",
+  "mcpSpecVersion": "string",
+  "mcpSpecVersions": [
+    "2025-06-18",
+    "2026-07-28"
+  ],
+  "upstreamMcpSpecVersions": [
+    "2025-06-18",
+    "2026-07-28"
+  ],
   "policies": [
     {
       "executionCondition": "request.header.x-custom == 'enabled'",
@@ -269,7 +285,7 @@ Retrieve a list of all MCP proxies for a project. Requires the projectId query p
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:mcp_proxy:read`, `ap:mcp_proxy:manage`
+Required scopes (the token must carry at least one of): `ap:api:mcp:read`, `ap:api:mcp:manage`, `ap:api:read`, `ap:api:manage`, `ap:read`, `ap:manage`
 
 </aside>
 
@@ -303,6 +319,10 @@ Required scopes (the token must carry at least one of): `ap:mcp_proxy:read`, `ap
       "projectId": "default-project",
       "status": "deployed",
       "mcpSpecVersion": "2025-11-25",
+      "mcpSpecVersions": [
+        "2025-06-18",
+        "2026-07-28"
+      ],
       "createdAt": "2025-11-25T10:30:00Z",
       "updatedAt": "2025-11-25T10:30:00Z",
       "readOnly": false
@@ -368,7 +388,7 @@ Retrieve the complete configuration for a specific MCP proxy.
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:mcp_proxy:read`, `ap:mcp_proxy:manage`
+Required scopes (the token must carry at least one of): `ap:api:mcp:read`, `ap:api:mcp:manage`, `ap:api:read`, `ap:api:manage`, `ap:read`, `ap:manage`
 
 </aside>
 
@@ -412,7 +432,15 @@ Required scopes (the token must carry at least one of): `ap:mcp_proxy:read`, `ap
       }
     }
   },
-  "mcpSpecVersion": "2025-06-18",
+  "mcpSpecVersion": "string",
+  "mcpSpecVersions": [
+    "2025-06-18",
+    "2026-07-28"
+  ],
+  "upstreamMcpSpecVersions": [
+    "2025-06-18",
+    "2026-07-28"
+  ],
   "policies": [
     {
       "executionCondition": "request.header.x-custom == 'enabled'",
@@ -538,7 +566,15 @@ Update the configuration of an existing MCP proxy.
       }
     }
   },
-  "mcpSpecVersion": "2025-06-18",
+  "mcpSpecVersion": "string",
+  "mcpSpecVersions": [
+    "2025-06-18",
+    "2026-07-28"
+  ],
+  "upstreamMcpSpecVersions": [
+    "2025-06-18",
+    "2026-07-28"
+  ],
   "policies": [
     {
       "executionCondition": "request.header.x-custom == 'enabled'",
@@ -578,7 +614,7 @@ Update the configuration of an existing MCP proxy.
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:mcp_proxy:update`, `ap:mcp_proxy:manage`
+Required scopes (the token must carry at least one of): `ap:api:mcp:update`, `ap:api:mcp:manage`, `ap:api:manage`, `ap:manage`
 
 </aside>
 
@@ -623,7 +659,15 @@ Required scopes (the token must carry at least one of): `ap:mcp_proxy:update`, `
       }
     }
   },
-  "mcpSpecVersion": "2025-06-18",
+  "mcpSpecVersion": "string",
+  "mcpSpecVersions": [
+    "2025-06-18",
+    "2026-07-28"
+  ],
+  "upstreamMcpSpecVersions": [
+    "2025-06-18",
+    "2026-07-28"
+  ],
   "policies": [
     {
       "executionCondition": "request.header.x-custom == 'enabled'",
@@ -751,7 +795,7 @@ Remove an MCP proxy.
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:mcp_proxy:delete`, `ap:mcp_proxy:manage`
+Required scopes (the token must carry at least one of): `ap:api:mcp:delete`, `ap:api:mcp:manage`, `ap:api:manage`, `ap:manage`
 
 </aside>
 
@@ -871,7 +915,7 @@ This is used to validate connectivity and retrieve metadata about the backend se
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:mcp_proxy:read`, `ap:mcp_proxy:manage`
+Required scopes (the token must carry at least one of): `ap:api:mcp:read`, `ap:api:mcp:manage`, `ap:api:read`, `ap:api:manage`, `ap:read`, `ap:manage`
 
 </aside>
 
@@ -888,6 +932,10 @@ Required scopes (the token must carry at least one of): `ap:mcp_proxy:read`, `ap
 ```json
 {
   "serverInfo": {},
+  "supportedVersions": [
+    "2025-06-18",
+    "2026-07-28"
+  ],
   "tools": [
     {}
   ],

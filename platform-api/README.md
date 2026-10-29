@@ -51,8 +51,8 @@ outlives a plain `pkill`/Ctrl-C on the wrapper process.
 `platform_api.auth.mode = "file"` (username/password login backed by the organization/user block in
 that file). It's the one Platform API config shared by every quickstart, so its admin user is
 granted the `ap_admin` role from the mounted
-[`resources/role-to-scope-mapping.yaml`](resources/role-to-scope-mapping.yaml), which covers both
-the `ap:*` (Platform API) and `dp:*` (API Portal) namespaces. That one role is the whole grant —
+[`resources/role-to-scope-mapping.yaml`](resources/role-to-scope-mapping.yaml), which grants every
+Platform API (`ap:*`) permission. That one role is the whole grant —
 replace it, name more roles alongside it, or edit what it grants in `role-to-scope-mapping.yaml`.
 
 There is no default admin credential: `APIP_CP_ADMIN_USERNAME` and `APIP_CP_ADMIN_PASSWORD_HASH` are
@@ -350,9 +350,8 @@ key silently ignored.
 #### Role-Based Access Control (RBAC)
 
 Per-route scope checks are enforced when `platform_api.auth.authorization.enabled = true`. The
-shipped [`resources/role-to-scope-mapping.yaml`](resources/role-to-scope-mapping.yaml) defines five roles, each granting scopes in
-both the `ap:*` (Platform API) and `dp:*` (Developer Portal) namespaces — one role covers a persona
-across both components:
+shipped [`resources/role-to-scope-mapping.yaml`](resources/role-to-scope-mapping.yaml) defines five roles, each granting
+Platform API (`ap:*`) scopes — one role covers a persona:
 
 | Role | Persona | Access level |
 |---|---|---|
@@ -394,9 +393,24 @@ sample (`resources/role-to-scope-mapping.yaml`) at `/etc/platform-api/role-to-sc
 Validation of that file is namespace-scoped. An `ap:` scope must be declared in this server's OpenAPI
 spec (plus any its compiled-in plugins declare) — an unknown one fails startup rather than silently
 denying requests later. A scope in
-another component's namespace (`dp:*`) is checked only for shape: this server mints it into the token
-but never enforces it, so it can neither confirm nor deny that it exists. That is what lets one role
-describe a persona across the whole platform — and what makes a per-user scope list unnecessary.
+another component's namespace (the Developer Portal's `dp:*`, if you add one to a role) is checked
+only for shape: this server mints it into the token but never enforces it, so it can neither confirm
+nor deny that it exists. That is what lets one role describe a persona across the whole platform —
+and what makes a per-user scope list unnecessary.
+
+`ap:` scopes are permissions from the permission tree in
+[`resources/permission-tree.yaml`](resources/permission-tree.yaml) (`ap:<node>[:<sub-node>...]:<action>`,
+e.g. `ap:api:rest:deployment:undeploy`); `ap:<node>:read` covers every read on that node and everything
+below it, `ap:<node>:manage` every operation there, and any other action (`create`, `update`, `delete`,
+`restore`, `undeploy`, ...) that one action on that node only — read and manage flow down the tree,
+nothing else does. The root is a node too: `ap:manage` admits every operation and `ap:read` every read. The
+pre-tree names (`ap:rest_api:manage`,
+`ap:llm_proxy:deployment:read`, ...) are no longer declared by the spec but keep working: the image
+ships [`resources/legacy-scope-mapping.yaml`](resources/legacy-scope-mapping.yaml), which names the
+permission each one grants, and the scope enforcer translates them on every request — in a token's
+scope claim, in an expanded IDP role, and in a role-to-scope mapping that still lists them. Point
+`platform_api.legacy_scope_mapping_path` elsewhere to customise it, or set it to `""` to accept only
+the names the spec declares.
 
 ##### Granting a file-mode user roles
 

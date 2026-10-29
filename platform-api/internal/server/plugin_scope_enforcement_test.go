@@ -138,6 +138,7 @@ func TestScopeEnforcementOnRealPluginRoutes(t *testing.T) {
 		ValidationMode: middleware.ValidationModeScope,
 		Enabled:        true,
 		Routes:         mux,
+		LegacyScopes:   loadShippedLegacyScopeMap(t),
 	})
 	if err != nil {
 		t.Fatalf("ScopeEnforcer: %v", err)
@@ -149,8 +150,9 @@ func TestScopeEnforcementOnRealPluginRoutes(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	// Spec: DELETE /api/v0.9/websub-apis/{apiId} requires
-	// ap:websub_api:delete or ap:websub_api:manage.
+	// Spec: DELETE /api/v0.9/websub-apis/{apiId} is bound to ap:api:websub:manage,
+	// so it accepts that and ap:api:manage; the pre-tree ap:websub_api:delete and
+	// ap:websub_api:manage reach it through the shipped legacy mapping.
 	// Route: DELETE /api/v0.9/websub-apis/{webSubApiId}.
 	tests := []struct {
 		name  string
@@ -158,11 +160,15 @@ func TestScopeEnforcementOnRealPluginRoutes(t *testing.T) {
 		want  int
 	}{
 		{"no scopes", "", http.StatusForbidden},
-		{"read scope on a delete operation", "ap:websub_api:read", http.StatusForbidden},
-		{"delete scope on another resource", "ap:webbroker_api:delete", http.StatusForbidden},
-		{"declared delete scope", "ap:websub_api:delete", http.StatusOK},
-		{"declared manage scope", "ap:websub_api:manage", http.StatusOK},
-		{"resource wildcard grants nothing", "ap:websub_api:*", http.StatusForbidden},
+		{"read permission on a delete operation", "ap:api:websub:read", http.StatusForbidden},
+		{"manage permission of another API kind", "ap:api:webbroker:manage", http.StatusForbidden},
+		{"declared manage permission", "ap:api:websub:manage", http.StatusOK},
+		{"parent permission", "ap:api:manage", http.StatusOK},
+		{"legacy delete scope", "ap:websub_api:delete", http.StatusOK},
+		{"legacy manage scope", "ap:websub_api:manage", http.StatusOK},
+		{"legacy read scope on a delete operation", "ap:websub_api:read", http.StatusForbidden},
+		{"legacy delete scope on another resource", "ap:webbroker_api:delete", http.StatusForbidden},
+		{"resource wildcard grants nothing", "ap:api:websub:*", http.StatusForbidden},
 	}
 
 	for _, tc := range tests {
