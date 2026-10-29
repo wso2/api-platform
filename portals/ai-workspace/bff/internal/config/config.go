@@ -182,22 +182,18 @@ type ControlPlaneConfig struct {
 	BillingTLSSkipVerify bool   `koanf:"billing_tls_skip_verify"`
 }
 
-// DocsAssistantConfig is [ai_workspace.docs_assistant]: the documentation assistant
-// behind Ask AI. The BFF calls it server-side with an API key the browser never sees,
-// so the SPA only learns whether the feature is on (see buildRuntimeConfig).
+// DocsAssistantConfig is [ai_workspace.docs_assistant]: the Ask AI gateway in front of
+// the documentation assistant. The BFF calls it server-side with an API key the browser
+// never sees, so the SPA only learns whether the feature is on (see buildRuntimeConfig).
 type DocsAssistantConfig struct {
-	// Endpoint is the assistant's base URL; "chat" is appended to it. Must be https://.
+	// Endpoint is the gateway's base URL; "chat" is appended to it. Must be https://.
 	// Empty leaves the feature off.
 	Endpoint string `koanf:"endpoint"`
 	// APIKey is sent as the api-key header. A secret: supply it with {{ env }} or
 	// {{ file }}, never as a literal.
 	APIKey string `koanf:"api_key"`
-	// Product and Branch select the documentation index (the assistant's product and
-	// branch headers).
-	Product string `koanf:"product"`
-	Branch  string `koanf:"branch"`
 	// Timeout bounds one call, including the wait for the first response byte: the
-	// assistant answers only once the whole answer is generated.
+	// gateway answers only once the whole answer is generated.
 	Timeout time.Duration `koanf:"timeout"`
 }
 
@@ -211,8 +207,6 @@ func (d *DocsAssistantConfig) normalize() {
 	if d.Endpoint != "" {
 		d.Endpoint = strings.TrimRight(d.Endpoint, "/") + "/"
 	}
-	d.Product = strings.TrimSpace(d.Product)
-	d.Branch = strings.TrimSpace(d.Branch)
 }
 
 // SessionConfig is [ai_workspace.session]: where the session's server-side state
@@ -1026,9 +1020,6 @@ func (c *Config) validateDocsAssistant() error {
 	}
 	if d.APIKey == "" {
 		return fmt.Errorf("[docs_assistant] api_key is required when endpoint is set")
-	}
-	if d.Product == "" || d.Branch == "" {
-		return fmt.Errorf("[docs_assistant] product and branch are required when endpoint is set")
 	}
 	if d.Timeout < minDocsAssistantTimeout || d.Timeout > maxDocsAssistantTimeout {
 		return fmt.Errorf("[docs_assistant] timeout must be between %s and %s, got %s",

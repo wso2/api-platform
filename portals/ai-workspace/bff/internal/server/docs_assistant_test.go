@@ -18,6 +18,7 @@ package server
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -34,10 +35,17 @@ import (
 )
 
 const (
-	docsTestJWT      = "test-jwt"
+	docsTestSubject  = "docs-test-user"
 	docsTestAPIKey   = "test-docs-api-key"
 	docsTestQuestion = "How do I create an LLM proxy?"
+	// docsTestUserKey is the SHA-256 hex of docsTestSubject: the value API Manager
+	// sends for the same subject.
+	docsTestUserKey = "c8c4b53b9b05138603515362bb12461c1e496dc24bf4b6b44e7f424289826756"
 )
+
+// docsTestJWT is an unsigned session token whose subject is docsTestSubject.
+var docsTestJWT = "eyJhbGciOiJub25lIn0." +
+	base64.RawURLEncoding.EncodeToString([]byte(`{"sub":"`+docsTestSubject+`"}`)) + ".sig"
 
 // docsUpstreamCall is what the fake assistant received.
 type docsUpstreamCall struct {
@@ -46,9 +54,17 @@ type docsUpstreamCall struct {
 	payload map[string]any
 }
 
-// fakeDocsAssistant answers /chat with the given status and body, after delay, and
-// records each call.
+// fakeDocsAssistant stands in for the Ask AI gateway: it answers /chat with the given
+// status and body, after delay, and records each call.
 func fakeDocsAssistant(t *testing.T, status int, body string, delay time.Duration) (*httptest.Server, *[]docsUpstreamCall) {
+	t.Helper()
+	return fakeDocsAssistantWithHeaders(t, status, body, delay, nil)
+}
+
+// fakeDocsAssistantWithHeaders is fakeDocsAssistant that also sets the given response
+// headers.
+func fakeDocsAssistantWithHeaders(t *testing.T, status int, body string, delay time.Duration,
+	headers map[string]string) (*httptest.Server, *[]docsUpstreamCall) {
 	t.Helper()
 	var mu sync.Mutex
 	var calls []docsUpstreamCall
@@ -65,6 +81,9 @@ func fakeDocsAssistant(t *testing.T, status int, body string, delay time.Duratio
 			case <-r.Context().Done():
 				return
 			}
+		}
+		for k, v := range headers {
+			w.Header().Set(k, v)
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(status)
@@ -103,8 +122,6 @@ func docsTestServer(t *testing.T, platformURL, assistantURL string, timeout time
 		DocsAssistant: config.DocsAssistantConfig{
 			Endpoint: assistantURL + "/",
 			APIKey:   docsTestAPIKey,
-			Product:  "bijira",
-			Branch:   "main",
 			Timeout:  timeout,
 		},
 	}
@@ -177,10 +194,9 @@ func TestDocsAssistantChat_ForwardsQuestionAndReturnsContent(t *testing.T) {
 		t.Errorf("path = %q, want /chat", call.path)
 	}
 	for header, want := range map[string]string{
-		"Api-Key":      docsTestAPIKey,
-		"Product":      "bijira",
-		"Branch":       "main",
-		"Content-Type": "application/json",
+		"Api-Key":       docsTestAPIKey,
+		"X-Ask-Ai-User": docsTestUserKey,
+		"Content-Type":  "application/json",
 	} {
 		if got := call.header.Get(header); got != want {
 			t.Errorf("header %s = %q, want %q", header, got, want)
@@ -195,6 +211,67 @@ func TestDocsAssistantChat_ForwardsQuestionAndReturnsContent(t *testing.T) {
 	}
 	if call.payload["question_context"] != "User: hi\nAssistant: hello" {
 		t.Errorf("question_context = %v", call.payload["question_context"])
+	}
+}
+
+// A session token without a subject cannot be rate limited per user, so the gateway is
+// never called.
+func TestDocsAssistantChat_TokenWithoutSubjectIsRefused(t *testing.T) {
+	platform, _ := fakeSessionCheck(t, http.StatusOK)
+	assistant, calls := fakeDocsAssistant(t, http.StatusOK, `{"content":"ok"}`, 0)
+	s := docsTestServer(t, platform.URL, assistant.URL, 5*time.Second)
+
+	rec := postChat(t, s, "opaque-token", chatBody(docsTestQuestion, ""))
+	if rec.Code != http.StatusInternalServerError || len(*calls) != 0 {
+		t.Errorf("status = %d, gateway calls = %d; want 500 and no call", rec.Code, len(*calls))
+	}
+}
+
+// The gateway's rate limit answer reaches the browser as a 429, with a valid
+// Retry-After kept and anything else dropped.
+func TestDocsAssistantChat_PassesRateLimit(t *testing.T) {
+	cases := []struct {
+		name, retryAfter, want string
+	}{
+		{"with retry-after", "17", "17"},
+		{"without retry-after", "", ""},
+		{"not a number of seconds", "Wed, 21 Oct 2026 07:28:00 GMT", ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			platform, _ := fakeSessionCheck(t, http.StatusOK)
+			headers := map[string]string{}
+			if tc.retryAfter != "" {
+				headers["Retry-After"] = tc.retryAfter
+			}
+			assistant, _ := fakeDocsAssistantWithHeaders(t, http.StatusTooManyRequests,
+				`{"message":"rate limit exceeded"}`, 0, headers)
+			s := docsTestServer(t, platform.URL, assistant.URL, 5*time.Second)
+
+			rec := postChat(t, s, docsTestJWT, chatBody(docsTestQuestion, ""))
+			if rec.Code != http.StatusTooManyRequests || !strings.Contains(rec.Body.String(), "DOCS_ASSISTANT_RATE_LIMITED") {
+				t.Errorf("status = %d, body = %s; want 429 DOCS_ASSISTANT_RATE_LIMITED", rec.Code, rec.Body.String())
+			}
+			if got := rec.Header().Get("Retry-After"); got != tc.want {
+				t.Errorf("Retry-After = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// The gateway's size and word-count guardrails answer 422; the browser gets a 422 so
+// it can ask for a shorter question.
+func TestDocsAssistantChat_PassesQuestionRejected(t *testing.T) {
+	platform, _ := fakeSessionCheck(t, http.StatusOK)
+	assistant, _ := fakeDocsAssistant(t, http.StatusUnprocessableEntity, `{"detail":"secret internal detail"}`, 0)
+	s := docsTestServer(t, platform.URL, assistant.URL, 5*time.Second)
+
+	rec := postChat(t, s, docsTestJWT, chatBody(docsTestQuestion, ""))
+	if rec.Code != http.StatusUnprocessableEntity || !strings.Contains(rec.Body.String(), "DOCS_ASSISTANT_QUESTION_REJECTED") {
+		t.Errorf("status = %d, body = %s; want 422 DOCS_ASSISTANT_QUESTION_REJECTED", rec.Code, rec.Body.String())
+	}
+	if strings.Contains(rec.Body.String(), "secret internal detail") {
+		t.Errorf("upstream body leaked to the browser: %s", rec.Body.String())
 	}
 }
 
@@ -374,7 +451,7 @@ func TestDocsAssistantChat_DoesNotLogUserContentOrKey(t *testing.T) {
 		postChat(t, s, docsTestJWT, chatBody("my private question", "my private context"))
 	}
 
-	for _, secret := range []string{"my private question", "my private context", "the private answer", docsTestAPIKey} {
+	for _, secret := range []string{"my private question", "my private context", "the private answer", docsTestAPIKey, docsTestSubject} {
 		if strings.Contains(logs.String(), secret) {
 			t.Errorf("logs contain %q:\n%s", secret, logs.String())
 		}

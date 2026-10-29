@@ -122,9 +122,9 @@ func defaultConfig() *Config {
 			},
 		},
 		// Off by default (no endpoint). The timeout covers answer generation, which
-		// the assistant finishes before sending its first byte.
+		// finishes before the first byte arrives; it matches the gateway's own timeout.
 		DocsAssistant: DocsAssistantConfig{
-			Timeout: 60 * time.Second,
+			Timeout: 120 * time.Second,
 		},
 	}
 }

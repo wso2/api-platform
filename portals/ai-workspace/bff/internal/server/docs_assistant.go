@@ -16,20 +16,25 @@
 
 package server
 
-// Ask AI: the BFF calls the documentation assistant server-side with an API key from
-// [docs_assistant], so the key never reaches the browser.
+// Ask AI: the BFF calls the Ask AI gateway server-side with an API key from
+// [docs_assistant], so the key never reaches the browser. The gateway rate limits per
+// user and across all users, caps request sizes, and forwards to the documentation
+// assistant.
 //
 // Questions, conversation context and answers are user content and are never logged.
 
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -37,7 +42,13 @@ import (
 	"ai-workspace-bff/internal/config"
 	"ai-workspace-bff/internal/paths"
 	"ai-workspace-bff/internal/proxy"
+	"ai-workspace-bff/internal/session"
 )
+
+// docsAssistantUserHeader carries a SHA-256 hash of the signed-in user's subject. The
+// gateway's per-user rate limit is keyed on it; API Manager sends the same hash for
+// console users.
+const docsAssistantUserHeader = "x-ask-ai-user"
 
 const (
 	// maxDocsAssistantRequestBytes caps the browser's request body: a question plus
@@ -113,7 +124,15 @@ func (s *Server) handleDocsAssistantChat(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	if !s.verifySession(w, r) {
+	upstreamToken, ok := s.verifySession(w, r)
+	if !ok {
+		return
+	}
+	userKey, ok := docsAssistantUserKey(upstreamToken)
+	if !ok {
+		slog.Warn("no subject in the session token for an Ask AI request", "request_id", trackingID)
+		writeServerErrorJSON(w, http.StatusInternalServerError, "DOCS_ASSISTANT_NO_USER",
+			"Ask AI could not answer right now", trackingID)
 		return
 	}
 
@@ -141,9 +160,22 @@ func (s *Server) handleDocsAssistantChat(w http.ResponseWriter, r *http.Request)
 	}
 
 	start := time.Now()
-	resp, status, err := s.callDocsAssistant(r.Context(), question, questionContext, trackingID)
+	resp, status, err := s.callDocsAssistant(r.Context(), question, questionContext, userKey, trackingID)
 	dur := time.Since(start).Milliseconds()
+	var statusErr *docsAssistantStatusError
 	switch {
+	case errors.As(err, &statusErr) && statusErr.status == http.StatusTooManyRequests:
+		slog.Info("docs assistant rate limited", "request_id", trackingID, "dur_ms", dur)
+		if statusErr.retryAfter != "" {
+			w.Header().Set("Retry-After", statusErr.retryAfter)
+		}
+		writeErrorJSON(w, http.StatusTooManyRequests, "DOCS_ASSISTANT_RATE_LIMITED",
+			"Ask AI is receiving too many questions right now")
+	case errors.As(err, &statusErr) && statusErr.status == http.StatusUnprocessableEntity:
+		// The gateway's size and word-count limits.
+		slog.Info("docs assistant rejected the question", "request_id", trackingID, "dur_ms", dur)
+		writeErrorJSON(w, http.StatusUnprocessableEntity, "DOCS_ASSISTANT_QUESTION_REJECTED",
+			"Ask AI could not process this question")
 	case errors.Is(err, context.DeadlineExceeded) || isTimeout(err):
 		slog.Warn("docs assistant timed out", "request_id", trackingID, "dur_ms", dur)
 		writeServerErrorJSON(w, http.StatusGatewayTimeout, "DOCS_ASSISTANT_TIMEOUT",
@@ -161,44 +193,69 @@ func (s *Server) handleDocsAssistantChat(w http.ResponseWriter, r *http.Request)
 // verifySession confirms the caller has a session the Platform API accepts. The BFF
 // never verifies tokens itself, and this route forwards no user token to anyone, so
 // without this check a cookie that merely looks like a session would be enough to use
-// the assistant. Asking the Platform API is authoritative in every auth mode. On
-// failure it has already written the response.
-func (s *Server) verifySession(w http.ResponseWriter, r *http.Request) bool {
+// the assistant. Asking the Platform API is authoritative in every auth mode. It
+// returns the token the Platform API accepted. On failure it has already written the
+// response.
+func (s *Server) verifySession(w http.ResponseWriter, r *http.Request) (string, bool) {
 	jwt, ok := s.sessionToken(w, r)
 	if !ok {
-		return false
+		return "", false
 	}
 	upstream, err := s.upstreamToken(r.Context(), jwt)
 	if err != nil {
 		slog.Warn("token exchange failed for an Ask AI request", "err", err)
 		s.writeExchangeError(w, r, err)
-		return false
+		return "", false
 	}
 	resp, err := s.platformDo(r.Context(), upstream, http.MethodGet, sessionCheckPath, nil, nil)
 	if err != nil {
 		slog.Warn("could not confirm the session for an Ask AI request", "err", err)
 		writeErrorJSON(w, http.StatusBadGateway, "UPSTREAM_UNAVAILABLE", "upstream temporarily unavailable")
-		return false
+		return "", false
 	}
 	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxDocsAssistantResponseBytes))
 	_ = resp.Body.Close()
 	switch {
 	case resp.StatusCode == http.StatusOK:
-		return true
+		return upstream, true
 	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
 		writeErrorJSON(w, http.StatusUnauthorized, "UNAUTHORIZED", "Invalid or expired credentials.")
-		return false
+		return "", false
 	default:
 		slog.Warn("unexpected status confirming the session for an Ask AI request", "status", resp.StatusCode)
 		writeErrorJSON(w, http.StatusBadGateway, "UPSTREAM_UNAVAILABLE", "upstream temporarily unavailable")
-		return false
+		return "", false
 	}
 }
 
-// callDocsAssistant sends one question to the assistant and returns its answer. The
+// docsAssistantUserKey returns the SHA-256 hex of the token's subject, the per-user
+// rate limit key. The token is the one the Platform API just accepted, so its subject
+// is trusted; with token exchange on it is the exchanged token, whose subject matches
+// the one API Manager hashes for the same user.
+func docsAssistantUserKey(token string) (string, bool) {
+	sub, _ := session.DecodeJWTClaims(token)["sub"].(string)
+	if strings.TrimSpace(sub) == "" {
+		return "", false
+	}
+	sum := sha256.Sum256([]byte(sub))
+	return hex.EncodeToString(sum[:]), true
+}
+
+// docsAssistantStatusError is a non-200 answer from the gateway. retryAfter is the
+// gateway's Retry-After in seconds, set only on a 429 that sent a valid one.
+type docsAssistantStatusError struct {
+	status     int
+	retryAfter string
+}
+
+func (e *docsAssistantStatusError) Error() string {
+	return fmt.Sprintf("assistant answered %d", e.status)
+}
+
+// callDocsAssistant sends one question to the gateway and returns its answer. The
 // returned status is the upstream HTTP status (0 when no response arrived). Errors never
 // carry the upstream body, which could echo user content.
-func (s *Server) callDocsAssistant(ctx context.Context, question, questionContext, requestID string) (*docsAssistantChatResponse, int, error) {
+func (s *Server) callDocsAssistant(ctx context.Context, question, questionContext, userKey, requestID string) (*docsAssistantChatResponse, int, error) {
 	cfg := s.cfg.DocsAssistant
 	body, err := json.Marshal(docsAssistantUpstreamRequest{
 		Questions:       []string{question},
@@ -214,8 +271,7 @@ func (s *Server) callDocsAssistant(ctx context.Context, question, questionContex
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("api-key", cfg.APIKey)
-	req.Header.Set("product", cfg.Product)
-	req.Header.Set("branch", cfg.Branch)
+	req.Header.Set(docsAssistantUserHeader, userKey)
 	if requestID != "" {
 		req.Header.Set("X-Request-Id", requestID)
 	}
@@ -230,7 +286,13 @@ func (s *Server) callDocsAssistant(ctx context.Context, question, questionContex
 		return nil, resp.StatusCode, fmt.Errorf("reading the response: %w", readErr)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, resp.StatusCode, fmt.Errorf("assistant answered %d", resp.StatusCode)
+		statusErr := &docsAssistantStatusError{status: resp.StatusCode}
+		if resp.StatusCode == http.StatusTooManyRequests {
+			if secs, err := strconv.Atoi(strings.TrimSpace(resp.Header.Get("Retry-After"))); err == nil && secs >= 0 {
+				statusErr.retryAfter = strconv.Itoa(secs)
+			}
+		}
+		return nil, resp.StatusCode, statusErr
 	}
 	var up docsAssistantUpstreamResponse
 	if err := json.Unmarshal(raw, &up); err != nil {

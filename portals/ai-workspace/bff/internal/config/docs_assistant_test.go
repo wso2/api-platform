@@ -31,10 +31,8 @@ func docsAssistantConfig(d DocsAssistantConfig) *Config {
 
 func validDocsAssistant() DocsAssistantConfig {
 	return DocsAssistantConfig{
-		Endpoint: "https://assistant.example.com/godzilla/ai-docs-assistant/v1.0",
+		Endpoint: "https://gateway.example.com/godzilla/ask-ai-gateway/v1.0/assistant",
 		APIKey:   "key",
-		Product:  "bijira",
-		Branch:   "main",
 		Timeout:  60 * time.Second,
 	}
 }
@@ -51,8 +49,6 @@ func TestValidateDocsAssistant(t *testing.T) {
 		{"http endpoint", func(d *DocsAssistantConfig) { d.Endpoint = "http://assistant.example.com/" }, "endpoint"},
 		{"relative endpoint", func(d *DocsAssistantConfig) { d.Endpoint = "/chat" }, "endpoint"},
 		{"missing api key", func(d *DocsAssistantConfig) { d.APIKey = "" }, "api_key"},
-		{"missing product", func(d *DocsAssistantConfig) { d.Product = " " }, "product"},
-		{"missing branch", func(d *DocsAssistantConfig) { d.Branch = "" }, "branch"},
 		{"timeout too short", func(d *DocsAssistantConfig) { d.Timeout = 500 * time.Millisecond }, "timeout"},
 		{"timeout too long", func(d *DocsAssistantConfig) { d.Timeout = 3 * time.Minute }, "timeout"},
 	}
@@ -109,8 +105,7 @@ func TestNormalizeDocsAssistantEndpointEndsWithOneSlash(t *testing.T) {
 	}
 }
 
-// Only a bare "enabled" flag reaches the browser; the endpoint, key, product and
-// branch never do.
+// Only a bare "enabled" flag reaches the browser; the endpoint and key never do.
 func TestLoad_DocsAssistantRuntimeConfig(t *testing.T) {
 	base := `
 [ai_workspace.control_plane]
@@ -129,10 +124,8 @@ url = "https://platform-api:9243"
 	t.Run("on", func(t *testing.T) {
 		cfg, err := Load(writeConfig(t, base+`
 [ai_workspace.docs_assistant]
-endpoint = "https://assistant.example.com/godzilla/ai-docs-assistant/v1.0"
+endpoint = "https://gateway.example.com/godzilla/ask-ai-gateway/v1.0/assistant"
 api_key  = "docs-s3cr3t"
-product  = "bijira-product"
-branch   = "main-branch"
 `))
 		if err != nil {
 			t.Fatalf("Load() error = %v", err)
@@ -140,11 +133,11 @@ branch   = "main-branch"
 		if got := cfg.RuntimeConfig["APIP_AIW_DOCS_ASSISTANT_ENABLED"]; got != "true" {
 			t.Errorf("APIP_AIW_DOCS_ASSISTANT_ENABLED = %q, want \"true\"", got)
 		}
-		if cfg.DocsAssistant.Timeout != 60*time.Second {
-			t.Errorf("timeout = %s, want the 60s default", cfg.DocsAssistant.Timeout)
+		if cfg.DocsAssistant.Timeout != 120*time.Second {
+			t.Errorf("timeout = %s, want the 120s default", cfg.DocsAssistant.Timeout)
 		}
 		for k, v := range cfg.RuntimeConfig {
-			for _, secret := range []string{"docs-s3cr3t", "assistant.example.com", "bijira-product", "main-branch"} {
+			for _, secret := range []string{"docs-s3cr3t", "gateway.example.com"} {
 				if strings.Contains(v, secret) {
 					t.Errorf("runtime config %s leaked a server-side docs assistant value: %q", k, v)
 				}
