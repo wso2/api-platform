@@ -118,9 +118,11 @@ function idpAuthorizationError(req, err) {
     const queryError = typeof req.query?.error === 'string' ? req.query.error : null;
     if (err?.name !== 'AuthorizationError' && !(err == null && queryError)) return null;
     const description = typeof req.query?.error_description === 'string' ? req.query.error_description : '';
+    // passport copies the query value into err.code as is, and a repeated parameter
+    // arrives as an array, so both values are made strings before they are bounded.
     return {
-        error: (err?.code || queryError || 'unknown').slice(0, MAX_IDP_ERROR_LENGTH),
-        errorDescription: (description || err?.message || '').slice(0, MAX_IDP_ERROR_LENGTH),
+        error: String(err?.code || queryError || 'unknown').slice(0, MAX_IDP_ERROR_LENGTH),
+        errorDescription: String(description || err?.message || '').slice(0, MAX_IDP_ERROR_LENGTH),
     };
 }
 

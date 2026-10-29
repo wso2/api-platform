@@ -91,6 +91,16 @@ test('other IDP authorization errors are a 400 sign-in failure', async () => {
     assert.deepEqual(warnings[0].meta, { error: 'server_error', errorDescription: 'IDP unavailable' });
 });
 
+test('a repeated error parameter is logged as one bounded string', async () => {
+    // A repeated query parameter is parsed as an array, which passport copies into err.code.
+    const repeated = ['server_error', 'x'.repeat(2000)];
+    const { forwarded } = await callback({ error: repeated, error_description: 'IDP unavailable' },
+        [authorizationError(repeated, 'IDP unavailable'), false]);
+    assert.equal(forwarded.status, 400);
+    assert.equal(typeof warnings[0].meta.error, 'string');
+    assert.ok(warnings[0].meta.error.length <= 500);
+});
+
 test('login_required still returns the user to where they were', async () => {
     const { res, forwarded } = await callback({ error: 'login_required' },
         [authorizationError('login_required', 'Login required'), false]);
