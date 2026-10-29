@@ -25,7 +25,14 @@ import UnexpectedErrorState from './components/UnexpectedErrorState';
 import { createGatewaysClient } from './gatewaysApi';
 import { createSelfHostedGatewaysClient } from './selfHostedGatewaysApi';
 import type { AIWorkspaceHostPort } from './hostPort';
-import type { Environment, Gateway, GatewayInput, GatewayType, SelfHostedGatewayInput } from './types';
+import type {
+  Environment,
+  Gateway,
+  GatewayHosting,
+  GatewayInput,
+  GatewayType,
+  SelfHostedGatewayInput,
+} from './types';
 
 export type GatewaysFeatureProps = {
   port: AIWorkspaceHostPort;
@@ -61,6 +68,8 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
   const client = useMemo(() => createGatewaysClient(apiFetch), [apiFetch]);
   const selfHostedClient = useMemo(() => createSelfHostedGatewaysClient(apiFetch), [apiFetch]);
 
+  // The hosting the empty state's button asked for; null when Add Gateway was used.
+  const [initialHosting, setInitialHosting] = useState<GatewayHosting | null>(null);
   const [view, setView] = useState<'list' | 'create' | 'edit' | 'view'>('list');
   const [editingGatewayId, setEditingGatewayId] = useState<string | null>(null);
   const [viewingGatewayId, setViewingGatewayId] = useState<string | null>(null);
@@ -269,6 +278,7 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
         gateways={visibleGateways}
         environments={environments}
         gatewayVersions={port.gatewayVersions}
+        initialHosting={initialHosting}
         onBack={() => {
           setView('list');
           setEditingGatewayId(null);
@@ -308,6 +318,7 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
       <GatewayOverview
         gateway={viewedGateway}
         environmentNames={environmentNames}
+        controlPlaneHost={port.controlPlaneHost ?? window.location.host}
         gatewayVersions={port.gatewayVersions}
         onBack={() => {
           setView('list');
@@ -328,7 +339,10 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
       gateways={visibleGateways}
       environments={environments}
       port={port}
-      onAddClick={() => setView('create')}
+      onAddClick={(hosting) => {
+        setInitialHosting(hosting ?? null);
+        setView('create');
+      }}
       onEditClick={(gatewayId) => {
         setEditingGatewayId(gatewayId);
         setView('edit');

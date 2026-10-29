@@ -42,7 +42,7 @@ import {
 import { Cloud, Edit, Plus, Search, Server, Settings, Trash2 } from '@wso2/oxygen-ui-icons-react';
 import GatewaySettingsDrawer from './components/GatewaySettingsDrawer';
 import { gatewayStatusColor, gatewayStatusLabel, gatewayTypeLabel } from './utils/gateway';
-import NoGatewaysImage from './assets/images/NoGW.svg';
+import NoGatewayState from './components/NoGatewayState';
 import type { AIWorkspaceHostPort } from './hostPort';
 import type { Environment, Gateway, GatewayHosting } from './types';
 
@@ -51,7 +51,8 @@ export type GatewaysListProps = {
   environments: Environment[];
   /** Passed through to the configuration drawer, which calls platform-api itself. */
   port: AIWorkspaceHostPort;
-  onAddClick: () => void;
+  /** Opens the Add Gateway form; `hosting` preselects its Hosting option. */
+  onAddClick: (hosting?: GatewayHosting) => void;
   onEditClick: (gatewayId: string) => void;
   /** A self-hosted gateway's row opens its overview (Quick Start, connection setup) there. */
   onViewClick: (gatewayId: string) => void;
@@ -404,7 +405,7 @@ const GatewaysList: FC<GatewaysListProps> = ({
 
             <Stack direction="row" spacing={1.5} sx={{ ml: 'auto', flexShrink: 0 }}>
               {gateways.length > 0 ? (
-                <Button variant="contained" onClick={onAddClick} startIcon={<Plus size={20} />}>
+                <Button variant="contained" onClick={() => onAddClick()} startIcon={<Plus size={20} />}>
                   Add Gateway
                 </Button>
               ) : null}
@@ -414,17 +415,7 @@ const GatewaysList: FC<GatewaysListProps> = ({
 
         {gateways.length === 0 ? (
           <Grid size={{ xs: 12 }}>
-            <Box sx={{ alignItems: 'center', display: 'flex', justifyContent: 'center', py: 6, width: '100%' }}>
-              <Stack spacing={1.5} alignItems="center" justifyContent="center" sx={{ textAlign: 'center' }}>
-                <Box component="img" src={NoGatewaysImage} alt="No gateways" sx={{ width: 200, maxWidth: '80%' }} />
-                <Typography variant="body1" color="text.secondary">
-                  No available gateways
-                </Typography>
-                <Button variant="contained" onClick={onAddClick} startIcon={<Plus size={20} />}>
-                  Add Gateway
-                </Button>
-              </Stack>
-            </Box>
+            <NoGatewayState onAdd={onAddClick} />
           </Grid>
         ) : (
           <Grid size={{ xs: 12 }}>

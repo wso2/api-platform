@@ -20,8 +20,15 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FC } from 'reac
 import { Box, Button, CircularProgress, PageContent, PageTitle, Typography } from '@wso2/oxygen-ui';
 import DeployPage from './DeployPage';
 import { createDeployClient, takesEndpointUrl, type ArtifactKind } from './deployApi';
+import { createManagedGatewaysClient, DEFAULT_GATEWAY_NAME } from './managedGatewaysApi';
+import {
+  createSelfHostedGatewaysClient,
+  DEFAULT_SELF_HOSTED_NAME,
+  latestRegularVersion,
+} from './selfHostedGatewaysApi';
+import SelfHostedSetupDrawer from './components/SelfHostedSetupDrawer';
 import { isSettling } from './utils/status';
-import type { CloudHostPort } from './hostPort';
+import type { CloudHostPort, GatewayVersionEntry } from './hostPort';
 import type { ApiOwnership, Build, Environment } from './types';
 
 export type DeployFeatureProps = {
@@ -56,11 +63,12 @@ const errorMessage = (error: unknown, fallback: string) =>
  * reject.
  */
 const DeployFeature: FC<DeployFeatureProps> = ({ port, kind = 'RestApi', artifactHandle }) => {
-  const { apiFetch, projectHandle, apiHandle, notify } = port;
+  const { apiFetch, projectHandle, apiHandle, notify, gatewayVersions, gatewayControlPlaneHost } = port;
   const handle = artifactHandle ?? apiHandle;
 
   const [environments, setEnvironments] = useState<Environment[]>([]);
   const [builds, setBuilds] = useState<Build[]>([]);
+  const [apiName, setApiName] = useState<string | undefined>(undefined);
   const [apiEndpointUrl, setApiEndpointUrl] = useState<string | undefined>(undefined);
   // Starts unresolved: deploy actions stay disabled until a successful read
   // confirms the control plane owns this API.
@@ -72,6 +80,29 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port, kind = 'RestApi', artifac
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  // The managed gateway being created from the empty page, until it is active.
+  const [provisioning, setProvisioning] = useState<{
+    startedAt: number;
+    environment: string;
+    gatewayId?: string;
+  } | null>(null);
+  // The self-hosted gateway just added, whose setup steps the drawer shows. It lives
+  // here rather than on the empty page, which gives way to the pipeline once the
+  // gateway exists.
+  const [selfHosted, setSelfHosted] = useState<{
+    id: string;
+    environment: string;
+    token: string | null;
+    version?: GatewayVersionEntry;
+  } | null>(null);
+  // Set from the moment the self-hosted registration request is sent until it
+  // resolves (success or failure) — covers the brief window before `selfHosted`
+  // exists, during which the empty page's card shows a provisioning state like
+  // the managed gateway's does.
+  const [selfHostedPending, setSelfHostedPending] = useState<{ startedAt: number } | null>(null);
+  const selfHostedClient = useMemo(() => createSelfHostedGatewaysClient(apiFetch), [apiFetch]);
+  const gatewaysClient = useMemo(() => createManagedGatewaysClient(apiFetch), [apiFetch]);
 
   const client = useMemo(
     () =>
@@ -121,11 +152,13 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port, kind = 'RestApi', artifac
     void client.readApi().then(
       (api) => {
         if (cancelled) return;
+        setApiName(api.name);
         setApiEndpointUrl(api.endpointUrl);
         setOwnership(api.readOnly ? 'gateway' : 'control-plane');
       },
       () => {
         if (cancelled) return;
+        setApiName(undefined);
         setApiEndpointUrl(undefined);
         setOwnership('unverified');
       }
@@ -203,6 +236,71 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port, kind = 'RestApi', artifac
     );
   };
 
+  const handleAddSelfHostedGateway = (environment: string) => {
+    if (busy) return;
+    const version = latestRegularVersion(gatewayVersions);
+    setBusy(true);
+    setSelfHostedPending({ startedAt: Date.now() });
+    selfHostedClient
+      .createDefaultGateway(environment, version?.version)
+      .then(({ id, token }) => {
+        setSelfHosted({ id, environment, token, version });
+        notify(`Self-hosted gateway "${DEFAULT_SELF_HOSTED_NAME}" registered.`, 'success');
+        return load({ quiet: true });
+      })
+      .catch((createError) =>
+        notify(errorMessage(createError, 'Unable to register the gateway.'), 'error')
+      )
+      .finally(() => {
+        setBusy(false);
+        setSelfHostedPending(null);
+      });
+  };
+
+  const handleAddCloudGateway = (environment: string) => {
+    if (provisioning) return;
+    setProvisioning({ startedAt: Date.now(), environment });
+    gatewaysClient.createDefaultGateway(environment).then(
+      ({ id }) => setProvisioning((current) => (current ? { ...current, gatewayId: id } : current)),
+      (createError) => {
+        setProvisioning(null);
+        notify(errorMessage(createError, 'Unable to create the gateway.'), 'error');
+      }
+    );
+  };
+
+  // Until the gateway is really active, keep reading the managed gateways. Once
+  // it is, the pipeline is read again and now has a gateway to deploy to.
+  useEffect(() => {
+    if (!provisioning) return undefined;
+    let cancelled = false;
+    const check = async () => {
+      try {
+        const gateways = await gatewaysClient.listGateways();
+        if (cancelled) return;
+        const mine = gateways.find((gateway) =>
+          provisioning.gatewayId
+            ? gateway.id === provisioning.gatewayId
+            : gateway.environment === provisioning.environment && gateway.displayName === DEFAULT_GATEWAY_NAME
+        );
+        if (mine?.status === 'active') {
+          setProvisioning(null);
+          void load({ quiet: true });
+        } else if (mine?.status === 'failed') {
+          setProvisioning(null);
+          notify(mine.statusReason || 'The gateway could not be created.', 'error');
+        }
+      } catch {
+        // A failed read is retried on the next tick.
+      }
+    };
+    const timer = setInterval(() => void check(), POLL_INTERVAL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [provisioning, gatewaysClient, load, notify]);
+
   const handleStop = (environment: Environment, gatewayId: string) => {
     const gateway = environment.gateways.find((candidate) => candidate.id === gatewayId);
     if (!client || !gateway?.deploymentId) return;
@@ -270,10 +368,16 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port, kind = 'RestApi', artifac
   }
 
   return (
+    <>
     <DeployPage
       environments={environments}
       builds={builds}
+      apiName={apiName ?? handle}
       apiEndpointUrl={apiEndpointUrl}
+      onAddGateway={handleAddSelfHostedGateway}
+      onAddCloudGateway={handleAddCloudGateway}
+      provisioning={provisioning ?? undefined}
+      selfHostedPending={selfHostedPending ?? undefined}
       takesEndpoint={takesEndpoint}
       ownership={ownership}
       busy={busy}
@@ -281,6 +385,24 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port, kind = 'RestApi', artifac
       onStopGateway={handleStop}
       onDeleteBuild={handleDeleteBuild}
     />
+    {selfHosted && (
+      <SelfHostedSetupDrawer
+        key={selfHosted.id}
+        open
+        gatewayName={DEFAULT_SELF_HOSTED_NAME}
+        environment={selfHosted.environment}
+        versionEntry={selfHosted.version}
+        controlPlaneHost={gatewayControlPlaneHost ?? window.location.host}
+        initialToken={selfHosted.token}
+        isActive={environments
+          .flatMap((environment) => environment.gateways)
+          .some((gateway) => gateway.id === selfHosted.id && gateway.health === 'active')}
+        onGenerateToken={() => selfHostedClient.generateToken(selfHosted.id)}
+        onError={(message) => notify(message, 'error')}
+        onClose={() => setSelfHosted(null)}
+      />
+    )}
+    </>
   );
 };
 

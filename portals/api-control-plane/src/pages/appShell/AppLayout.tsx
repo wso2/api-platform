@@ -59,6 +59,8 @@ export default function AppLayout() {
     notify,
     apiFetch: extensionApiFetch,
     billing: { organization: getBillingOrganization },
+    gatewayVersions: runtimeConfig.gatewayVersions,
+    gatewayControlPlaneHost: runtimeConfig.gatewayControlPlaneHost,
   };
 
   return (

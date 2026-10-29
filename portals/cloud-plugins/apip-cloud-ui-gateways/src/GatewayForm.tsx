@@ -67,6 +67,8 @@ export type GatewayFormProps = {
   gateways: Gateway[];
   /** The self-hosted "Gateway Version" picker's choices, per gateway type. */
   gatewayVersions: GatewayVersionEntry[];
+  /** Preselects the Hosting option when creating, e.g. from the empty state's buttons. */
+  initialHosting?: GatewayHosting | null;
   onBack: () => void;
   /** Returning a promise lets the form keep its submit button busy until the save settles. Unchanged: still the `/managed-gateways` path. */
   onSubmit: (input: GatewayInput) => void | Promise<void>;
@@ -107,6 +109,7 @@ const GatewayForm: FC<GatewayFormProps> = ({
   environments,
   gateways,
   gatewayVersions,
+  initialHosting = null,
   onBack,
   onSubmit,
   onSubmitSelfHosted,
@@ -117,7 +120,9 @@ const GatewayForm: FC<GatewayFormProps> = ({
   // nothing to choose, so the picker and its comparison table are left out
   // entirely rather than shown read-only; the fields below just reflect the
   // gateway's own hosting from the start.
-  const [hosting, setHosting] = useState<GatewayHosting | null>(isEdit ? gateway!.hosting : null);
+  const [hosting, setHosting] = useState<GatewayHosting | null>(
+    isEdit ? gateway!.hosting : initialHosting
+  );
   const [showCompare, setShowCompare] = useState(false);
   const isSelfHosted = hosting === 'self-hosted';
 

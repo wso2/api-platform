@@ -67,4 +67,9 @@ export type AIWorkspaceHostPort = {
   apiFetch: ApiFetch;
   /** Available release versions per gateway type, for the self-hosted Quick Start panel. */
   gatewayVersions: GatewayVersionEntry[];
+  /**
+   * `host:port` a self-hosted gateway's controller dials to reach the control plane, shown in
+   * the setup commands. Falls back to this page's own host when the host does not supply it.
+   */
+  controlPlaneHost?: string;
 };

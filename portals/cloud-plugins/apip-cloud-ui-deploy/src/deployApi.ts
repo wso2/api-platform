@@ -78,6 +78,7 @@ type BuildDTO = {
  * an endpoint of its own.
  */
 type RestApiDTO = {
+  name?: string;
   upstream?: { main?: { url?: string } };
   /** True when a gateway created the API; its deployments are then the gateway's to manage. */
   readOnly?: boolean;
@@ -156,12 +157,12 @@ export function createDeployClient(
      * rather than by URL), and whether the API is read-only because a gateway
      * created it.
      */
-    async readApi(): Promise<{ endpointUrl?: string; readOnly: boolean }> {
+    async readApi(): Promise<{ name?: string; endpointUrl?: string; readOnly: boolean }> {
       // Only REST APIs are read here; the other kinds either have no backend URL or
       // shape it differently, so it is left empty for them rather than guessed at.
       if (kind !== 'RestApi') return { readOnly: false };
       const api = await apiFetch<RestApiDTO>('GET', `/rest-apis/${encodeURIComponent(apiHandle)}`);
-      return { endpointUrl: api?.upstream?.main?.url, readOnly: api?.readOnly === true };
+      return { name: api?.name, endpointUrl: api?.upstream?.main?.url, readOnly: api?.readOnly === true };
     },
 
     /**

@@ -1,0 +1,104 @@
+/*
+ * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+import type { ApiFetch, GatewayVersionEntry } from './hostPort';
+
+export const DEFAULT_SELF_HOSTED_NAME = 'Default Self-Hosted Gateway';
+const DEFAULT_SELF_HOSTED_DESCRIPTION = 'Default API Platform Self-Hosted Gateway';
+
+/**
+ * platform-api's native create needs at least one endpoint, and a self-hosted
+ * gateway has none until its own controller dials in. This is the local
+ * default listener address it will come up on.
+ */
+const PENDING_ENDPOINT = 'localhost:8443';
+
+/** The gateways table's handle column holds 40 characters. */
+const MAX_HANDLE_LENGTH = 40;
+
+/** The latest regular-gateway release: the first entry of its type in the host's config. */
+export const latestRegularVersion = (
+  versions: GatewayVersionEntry[] | undefined
+): GatewayVersionEntry | undefined => versions?.find((entry) => entry.type === 'regular');
+
+/** `<environment>-<name>`, as the Gateways page derives it, kept within the column. */
+const deriveHandle = (name: string, environment: string): string => {
+  const slug = name
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_]+/g, '-')
+    .replace(/[^a-z0-9-]/g, '')
+    .replace(/-{2,}/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return `${environment}-${slug}`.slice(0, MAX_HANDLE_LENGTH).replace(/-+$/, '');
+};
+
+/**
+ * Registers and sets up a self-hosted gateway. The calls are the Gateways page's
+ * own: platform-api's native `/gateways` resource, with the environment and the
+ * default marking carried in `properties`.
+ */
+export function createSelfHostedGatewaysClient(apiFetch: ApiFetch) {
+  const generateToken = async (gatewayId: string): Promise<string> => {
+    const response = await apiFetch<{ token?: string }>(
+      'POST',
+      `/gateways/${encodeURIComponent(gatewayId)}/tokens`,
+      {}
+    );
+    if (!response?.token) {
+      throw new Error('The gateway registration service did not return a token.');
+    }
+    return response.token;
+  };
+
+  return {
+    generateToken,
+
+    /**
+     * Creates the default self-hosted gateway in `environment` at `version` (a
+     * `major.minor`-style release from the host's config; omitted when the host has
+     * none, so platform-api's own default applies) and mints its first token.
+     * `token` is null only when minting failed after the create succeeded.
+     */
+    async createDefaultGateway(
+      environment: string,
+      version?: string
+    ): Promise<{ id: string; token: string | null }> {
+      const created = await apiFetch<{ id?: string }>('POST', '/gateways', {
+        id: deriveHandle(DEFAULT_SELF_HOSTED_NAME, environment),
+        displayName: DEFAULT_SELF_HOSTED_NAME,
+        description: DEFAULT_SELF_HOSTED_DESCRIPTION,
+        endpoints: [PENDING_ENDPOINT],
+        functionalityType: 'regular',
+        isCritical: false,
+        ...(version ? { version } : {}),
+        properties: { environment, isDefault: 'true' },
+      });
+      if (!created?.id) {
+        throw new Error('The gateway registration service returned an incomplete response.');
+      }
+      let token: string | null = null;
+      try {
+        token = await generateToken(created.id);
+      } catch {
+        token = null;
+      }
+      return { id: created.id, token };
+    },
+  };
+}
