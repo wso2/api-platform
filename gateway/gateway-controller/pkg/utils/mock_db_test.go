@@ -308,7 +308,7 @@ func (m *testMockDB) GetWebhookSecretByUUID(uuid string) (*models.WebhookSecret,
 func (m *testMockDB) UpdateWebhookSecret(secret *models.WebhookSecret) error { return nil }
 func (m *testMockDB) DeleteWebhookSecret(artifactUUID, name string) error    { return nil }
 func (m *testMockDB) GetAllWebhookSecrets() ([]*models.WebhookSecret, error) { return nil, nil }
-func (m *testMockDB) CreateAuditLog(row *models.AuditLog) error               { return nil }
+func (m *testMockDB) CreateAuditLog(row *models.AuditLog) error              { return nil }
 func (m *testMockDB) ListAuditLogs(f storage.AuditLogFilter, limit, offset int) ([]*models.AuditLog, error) {
 	return nil, nil
 }

@@ -252,7 +252,7 @@ func (s *APIServer) UpdateSubscription(w http.ResponseWriter, r *http.Request, s
 		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, maxSubscriptionRequestBodyBytes)
-	before := map[string]any{"status": string(sub.Status)}
+	before := subscriptionAuditFields(sub)
 	var req api.SubscriptionUpdateRequest
 	planIDPresent, err := s.bindSubscriptionUpdateBody(r, &req)
 	if err != nil {
@@ -333,13 +333,21 @@ func (s *APIServer) UpdateSubscription(w http.ResponseWriter, r *http.Request, s
 		httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to update subscription"})
 		return
 	}
+	eventData := auditservice.AuditDiff(before, subscriptionAuditFields(sub))
+	if newToken != "" {
+		// The token itself is never recorded, only that it was replaced.
+		if eventData == nil {
+			eventData = map[string]any{}
+		}
+		eventData["tokenRotated"] = true
+	}
 	s.auditService.Record(r.Context(), &auditservice.AuditEvent{
 		Action:       models.AuditActionUpdate,
 		ResourceType: models.AuditResourceTypeSubscription,
 		Outcome:      models.AuditOutcomeSucceeded,
 		PerformedBy:  actorFromRequest(r),
 		ResourceUUID: sub.ID,
-		EventData:    auditservice.AuditDiff(before, map[string]any{"status": string(sub.Status)}),
+		EventData:    eventData,
 	})
 	httputil.WriteJSON(w, http.StatusOK, subscriptionToResponse(sub))
 }
@@ -526,4 +534,14 @@ func subscriptionToResponseWithToken(sub *models.Subscription) api.SubscriptionR
 		resp.SubscriptionToken = ptr(sub.SubscriptionToken)
 	}
 	return resp
+}
+
+// subscriptionAuditFields lists the subscription fields recorded in update diffs. The
+// subscription token is never recorded.
+func subscriptionAuditFields(sub *models.Subscription) map[string]any {
+	planID := ""
+	if sub.SubscriptionPlanID != nil {
+		planID = *sub.SubscriptionPlanID
+	}
+	return map[string]any{"status": string(sub.Status), "subscriptionPlanId": planID}
 }

@@ -607,6 +607,7 @@ func (s *APIServer) DeleteCertificate(w http.ResponseWriter, r *http.Request, id
 				Outcome:      models.AuditOutcomeFailed,
 				PerformedBy:  actorFromRequest(r),
 				ResourceUUID: id,
+				ResourceName: certificateName(preDeleteCert),
 			})
 		}
 		httputil.WriteJSON(w, http.StatusNotFound, map[string]any{
@@ -625,6 +626,7 @@ func (s *APIServer) DeleteCertificate(w http.ResponseWriter, r *http.Request, id
 		Outcome:      models.AuditOutcomeSucceeded,
 		PerformedBy:  actorFromRequest(r),
 		ResourceUUID: id,
+		ResourceName: certificateName(preDeleteCert),
 	})
 
 	certStore := translator.GetCertStore()
@@ -914,12 +916,29 @@ func (s *APIServer) UpdateCertificate(w http.ResponseWriter, r *http.Request, id
 
 	if err := s.db.UpdateCertificate(updated); err != nil {
 		log.Error("Failed to update certificate", slog.String("id", id), slog.Any("error", err))
+		s.auditService.Record(r.Context(), &auditservice.AuditEvent{
+			Action:       models.AuditActionUpdate,
+			ResourceType: models.AuditResourceTypeCertificate,
+			Outcome:      models.AuditOutcomeFailed,
+			PerformedBy:  actorFromRequest(r),
+			ResourceUUID: existing.UUID,
+			ResourceName: existing.Name,
+		})
 		httputil.WriteJSON(w, http.StatusInternalServerError, map[string]any{
 			"status":  "error",
 			"message": "failed to update certificate",
 		})
 		return
 	}
+	s.auditService.Record(r.Context(), &auditservice.AuditEvent{
+		Action:       models.AuditActionUpdate,
+		ResourceType: models.AuditResourceTypeCertificate,
+		Outcome:      models.AuditOutcomeSucceeded,
+		PerformedBy:  actorFromRequest(r),
+		ResourceUUID: existing.UUID,
+		ResourceName: existing.Name,
+		EventData:    auditservice.AuditDiff(certificateAuditFields(existing), certificateAuditFields(updated)),
+	})
 	s.publishCertificateEvent("UPDATE", updated.UUID, correlationID, log)
 
 	// The SDS update rebuilds this identity's gateway_identity:<name> secret.
@@ -1560,4 +1579,23 @@ func (s *APIServer) validateCertificateUpload(req *UploadCertificateRequest) (*c
 // engine after a committed change.
 func (s *APIServer) publishClientAuthorities(correlationID string) error {
 	return s.clientAuthorities.Publish(correlationID)
+}
+
+// certificateAuditFields lists the certificate fields recorded when a gateway identity is
+// rotated. Only public certificate metadata; never the PEM or the private key.
+func certificateAuditFields(c *models.StoredCertificate) map[string]any {
+	return map[string]any{
+		"subject":  c.Subject,
+		"issuer":   c.Issuer,
+		"notAfter": c.NotAfter.UTC().Format(time.RFC3339),
+	}
+}
+
+// certificateName returns the name of a certificate read before its delete, or "" when
+// the read found nothing.
+func certificateName(c *models.StoredCertificate) string {
+	if c == nil {
+		return ""
+	}
+	return c.Name
 }

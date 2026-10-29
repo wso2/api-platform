@@ -7886,12 +7886,18 @@ components:
         - update
         - delete
         - revoke
+      x-enum-varnames:
+        - AuditActionCreate
+        - AuditActionUpdate
+        - AuditActionDelete
+        - AuditActionRevoke
 
     AuditResourceType:
       type: string
       description: Audited resource type.
       enum:
         - RestApi
+        - GraphQLApi
         - LlmProvider
         - LlmProviderTemplate
         - LlmProxy
@@ -7902,6 +7908,19 @@ components:
         - Subscription
         - Certificate
         - Secret
+      x-enum-varnames:
+        - AuditResourceTypeRestApi
+        - AuditResourceTypeGraphQLApi
+        - AuditResourceTypeLlmProvider
+        - AuditResourceTypeLlmProviderTemplate
+        - AuditResourceTypeLlmProxy
+        - AuditResourceTypeMcpProxy
+        - AuditResourceTypeAgent
+        - AuditResourceTypeApiKey
+        - AuditResourceTypeSubscriptionPlan
+        - AuditResourceTypeSubscription
+        - AuditResourceTypeCertificate
+        - AuditResourceTypeSecret
 
     AuditOutcome:
       type: string
@@ -7910,6 +7929,10 @@ components:
         - succeeded
         - failed
         - denied
+      x-enum-varnames:
+        - AuditOutcomeSucceeded
+        - AuditOutcomeFailed
+        - AuditOutcomeDenied
 
 tags:
   - name: Rest API Management

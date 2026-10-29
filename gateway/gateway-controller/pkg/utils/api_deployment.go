@@ -385,9 +385,13 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 			if isUpdate {
 				auditAction = models.AuditActionUpdate
 			}
+			auditType := models.AuditResourceTypeRestAPI
+			if kind == string(api.GraphQLAPIKindGraphQLApi) {
+				auditType = models.AuditResourceTypeGraphQLAPI
+			}
 			s.audit.Record(context.Background(), &auditservice.AuditEvent{
 				Action:        auditAction,
-				ResourceType:  models.AuditResourceTypeRestAPI,
+				ResourceType:  auditType,
 				Outcome:       models.AuditOutcomeFailed,
 				PerformedBy:   params.Actor,
 				ResourceUUID:  storedCfg.UUID,

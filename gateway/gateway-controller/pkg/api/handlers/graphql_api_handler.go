@@ -31,6 +31,7 @@ import (
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
+	auditservice "github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/audit"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 	"github.com/wso2/api-platform/httpkit/httputil"
@@ -69,6 +70,7 @@ func (s *APIServer) CreateGraphQLAPI(w http.ResponseWriter, r *http.Request) {
 		Origin:        models.OriginGatewayAPI,
 		CorrelationID: correlationID,
 		Logger:        log,
+		Actor:         actorFromRequest(r),
 	})
 	if err != nil {
 		log.Error("Failed to deploy GraphQL API configuration", slog.Any("error", err))
@@ -100,6 +102,20 @@ func (s *APIServer) CreateGraphQLAPI(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.pushDeployableGraphQLArtifact(result, correlationID, log)
+
+	createAction := models.AuditActionCreate
+	if result.IsUpdate {
+		createAction = models.AuditActionUpdate
+	}
+	s.auditService.Record(r.Context(), &auditservice.AuditEvent{
+		Action:       createAction,
+		ResourceType: models.AuditResourceTypeGraphQLAPI,
+		Outcome:      models.AuditOutcomeSucceeded,
+		PerformedBy:  actorFromRequest(r),
+		ResourceUUID: result.StoredConfig.UUID,
+		ResourceName: result.StoredConfig.Handle,
+		EventData:    utils.ConfigAuditFields(result.StoredConfig),
+	})
 
 	httputil.WriteJSON(w, http.StatusCreated, buildResourceResponseFromStored(result.StoredConfig.SourceConfiguration, result.StoredConfig))
 }
@@ -228,6 +244,7 @@ func (s *APIServer) UpdateGraphQLAPI(w http.ResponseWriter, r *http.Request, id 
 		Origin:        existing.Origin,
 		CorrelationID: correlationID,
 		Logger:        log,
+		Actor:         actorFromRequest(r),
 	})
 	if err != nil {
 		log.Error("Failed to update GraphQL API configuration", slog.Any("error", err))
@@ -252,6 +269,16 @@ func (s *APIServer) UpdateGraphQLAPI(w http.ResponseWriter, r *http.Request, id 
 	}
 
 	s.pushDeployableGraphQLArtifact(result, correlationID, log)
+
+	s.auditService.Record(r.Context(), &auditservice.AuditEvent{
+		Action:       models.AuditActionUpdate,
+		ResourceType: models.AuditResourceTypeGraphQLAPI,
+		Outcome:      models.AuditOutcomeSucceeded,
+		PerformedBy:  actorFromRequest(r),
+		ResourceUUID: result.StoredConfig.UUID,
+		ResourceName: result.StoredConfig.Handle,
+		EventData:    auditservice.AuditDiff(utils.ConfigAuditFields(existing), utils.ConfigAuditFields(result.StoredConfig)),
+	})
 
 	httputil.WriteJSON(w, http.StatusOK, buildResourceResponseFromStored(result.StoredConfig.SourceConfiguration, result.StoredConfig))
 }
@@ -281,12 +308,28 @@ func (s *APIServer) DeleteGraphQLAPI(w http.ResponseWriter, r *http.Request, id 
 
 	if err := s.db.DeleteConfig(cfg.UUID); err != nil {
 		log.Error("Failed to delete GraphQL API config from database", slog.Any("error", err))
+		s.auditService.Record(r.Context(), &auditservice.AuditEvent{
+			Action:       models.AuditActionDelete,
+			ResourceType: models.AuditResourceTypeGraphQLAPI,
+			Outcome:      models.AuditOutcomeFailed,
+			PerformedBy:  actorFromRequest(r),
+			ResourceUUID: cfg.UUID,
+			ResourceName: cfg.Handle,
+		})
 		httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{
 			Status:  "error",
 			Message: "Failed to delete configuration",
 		})
 		return
 	}
+	s.auditService.Record(r.Context(), &auditservice.AuditEvent{
+		Action:       models.AuditActionDelete,
+		ResourceType: models.AuditResourceTypeGraphQLAPI,
+		Outcome:      models.AuditOutcomeSucceeded,
+		PerformedBy:  actorFromRequest(r),
+		ResourceUUID: cfg.UUID,
+		ResourceName: cfg.Handle,
+	})
 
 	correlationID := middleware.GetCorrelationID(r)
 	s.publishGraphQLAPIEvent("DELETE", cfg.UUID, correlationID, log)

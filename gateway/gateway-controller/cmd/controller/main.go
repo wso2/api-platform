@@ -1045,6 +1045,8 @@ func main() {
 		}
 	}
 
+	mainAuditSvc.Close(ctx)
+
 	log.Info("Gateway-Controller stopped")
 }
 

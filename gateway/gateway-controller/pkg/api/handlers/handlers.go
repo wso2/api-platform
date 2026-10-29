@@ -208,6 +208,7 @@ func NewAPIServer(
 // creates. Passing nil (the default) disables it.
 func (s *APIServer) SetAuditService(audit *auditservice.AuditService) {
 	s.auditService = audit
+	s.deploymentService.SetAuditService(audit)
 	s.apiKeyService.SetAuditService(audit)
 	s.mcpDeploymentService.SetAuditService(audit)
 	s.llmDeploymentService.SetAuditService(audit)

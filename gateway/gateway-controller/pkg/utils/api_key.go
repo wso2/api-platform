@@ -62,8 +62,8 @@ type APIKeyCreationParams struct {
 	Handle        string                    // API handle/ID
 	Request       api.APIKeyCreationRequest // Request body with API key creation details
 	User          *commonmodels.AuthContext // User who initiated the request
-	CorrelationID string       // Correlation ID for tracking
-	Logger        *slog.Logger // Logger instance
+	CorrelationID string                    // Correlation ID for tracking
+	Logger        *slog.Logger              // Logger instance
 	// UUID is the pre-assigned key UUID from the platform API event path.
 	// Nil in the REST API path (a new UUID is generated instead).
 	UUID *string
@@ -96,8 +96,8 @@ type APIKeyRevocationParams struct {
 	Handle        string                    // API handle/ID
 	APIKeyName    string                    // // Name of the API key to revoke
 	User          *commonmodels.AuthContext // User who initiated the request
-	CorrelationID string       // Correlation ID for tracking
-	Logger        *slog.Logger // Logger instance
+	CorrelationID string                    // Correlation ID for tracking
+	Logger        *slog.Logger              // Logger instance
 	// TrustedOrigin marks this operation as coming from a pre-validated origin — the
 	// platform API already authorized it before broadcasting, so the gateway must not
 	// re-run its own creator check. Set only on the platform-api event path (see
@@ -118,8 +118,8 @@ type APIKeyRegenerationParams struct {
 	APIKeyName    string                        // Name of the API key to regenerate
 	Request       api.APIKeyRegenerationRequest // Request body with regeneration details
 	User          *commonmodels.AuthContext     // User who initiated the request
-	CorrelationID string       // Correlation ID for tracking
-	Logger        *slog.Logger // Logger instance
+	CorrelationID string                        // Correlation ID for tracking
+	Logger        *slog.Logger                  // Logger instance
 }
 
 // APIKeyRegenerationResult contains the result of API key regeneration
@@ -135,8 +135,8 @@ type APIKeyUpdateParams struct {
 	APIKeyName    string                    // Name of the API key to update
 	Request       api.APIKeyCreationRequest // Request body with update details
 	User          *commonmodels.AuthContext // User who initiated the request
-	CorrelationID string       // Correlation ID for tracking
-	Logger        *slog.Logger // Logger instance
+	CorrelationID string                    // Correlation ID for tracking
+	Logger        *slog.Logger              // Logger instance
 	// ApiKeyHashes contains pre-computed hashes from the platform API event path.
 	// Nil in the REST API path (which provides a plain-text key instead).
 	ApiKeyHashes *string
@@ -370,6 +370,26 @@ func (s *APIKeyService) CreateAPIKey(params APIKeyCreationParams) (*APIKeyCreati
 				logger.Error("Failed to save API key after retry",
 					slog.String("operation", operationType+"_key"),
 					slog.Any("error", err))
+				if !storage.IsConflictError(err) { // a 409 is the caller's error, not a failed write
+					s.audit.Record(auditCtx, &auditservice.AuditEvent{
+						Action:        models.AuditActionCreate,
+						ResourceType:  models.AuditResourceTypeAPIKey,
+						Outcome:       models.AuditOutcomeFailed,
+						PerformedBy:   user.UserID,
+						ResourceUUID:  apiKey.UUID,
+						ResourceName:  apiKey.Name,
+						CorrelationID: params.CorrelationID,
+						EventData:     map[string]any{"apiHandle": config.Handle, "kind": kind},
+					})
+				}
+				return nil, fmt.Errorf("failed to save API key after retry: %w", err)
+			}
+			result.IsRetry = true
+		} else {
+			logger.Error("Failed to save API key to database",
+				slog.String("operation", operationType+"_key"),
+				slog.Any("error", err))
+			if !storage.IsConflictError(err) { // a 409 is the caller's error, not a failed write
 				s.audit.Record(auditCtx, &auditservice.AuditEvent{
 					Action:        models.AuditActionCreate,
 					ResourceType:  models.AuditResourceTypeAPIKey,
@@ -380,23 +400,7 @@ func (s *APIKeyService) CreateAPIKey(params APIKeyCreationParams) (*APIKeyCreati
 					CorrelationID: params.CorrelationID,
 					EventData:     map[string]any{"apiHandle": config.Handle, "kind": kind},
 				})
-				return nil, fmt.Errorf("failed to save API key after retry: %w", err)
 			}
-			result.IsRetry = true
-		} else {
-			logger.Error("Failed to save API key to database",
-				slog.String("operation", operationType+"_key"),
-				slog.Any("error", err))
-			s.audit.Record(auditCtx, &auditservice.AuditEvent{
-				Action:        models.AuditActionCreate,
-				ResourceType:  models.AuditResourceTypeAPIKey,
-				Outcome:       models.AuditOutcomeFailed,
-				PerformedBy:   user.UserID,
-				ResourceUUID:  apiKey.UUID,
-				ResourceName:  apiKey.Name,
-				CorrelationID: params.CorrelationID,
-				EventData:     map[string]any{"apiHandle": config.Handle, "kind": kind},
-			})
 			return nil, fmt.Errorf("failed to save API key to database: %w", err)
 		}
 	}
@@ -765,16 +769,18 @@ func (s *APIKeyService) UpdateAPIKey(params APIKeyUpdateParams) (*APIKeyUpdateRe
 	if err := s.db.UpdateAPIKey(updatedKey); err != nil {
 		logger.Error("Failed to update API key in database",
 			slog.Any("error", err))
-		s.audit.Record(auditCtx, &auditservice.AuditEvent{
-			Action:        models.AuditActionUpdate,
-			ResourceType:  models.AuditResourceTypeAPIKey,
-			Outcome:       models.AuditOutcomeFailed,
-			PerformedBy:   user.UserID,
-			ResourceUUID:  updatedKey.UUID,
-			ResourceName:  updatedKey.Name,
-			CorrelationID: params.CorrelationID,
-			EventData:     map[string]any{"apiHandle": config.Handle, "kind": kind},
-		})
+		if !storage.IsConflictError(err) { // a 409 is the caller's error, not a failed write
+			s.audit.Record(auditCtx, &auditservice.AuditEvent{
+				Action:        models.AuditActionUpdate,
+				ResourceType:  models.AuditResourceTypeAPIKey,
+				Outcome:       models.AuditOutcomeFailed,
+				PerformedBy:   user.UserID,
+				ResourceUUID:  updatedKey.UUID,
+				ResourceName:  updatedKey.Name,
+				CorrelationID: params.CorrelationID,
+				EventData:     map[string]any{"apiHandle": config.Handle, "kind": kind},
+			})
+		}
 		return nil, fmt.Errorf("failed to update API key in database: %w", err)
 	}
 

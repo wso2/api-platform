@@ -235,7 +235,7 @@ spec:
 	assert.Equal(t, models.AuditActionCreate, e.Action)
 	assert.Equal(t, models.AuditResourceTypeRestAPI, e.ResourceType)
 	assert.Equal(t, "orders-api", e.ResourceName)
-	assert.JSONEq(t, `{"displayName":"Orders","version":"v1","desiredState":"deployed","policies":[]}`, e.EventData)
+	assert.JSONEq(t, `{"displayName":"Orders","version":"v1","desiredState":"deployed","policies":[],"faultPolicies":[]}`, e.EventData)
 
 	_, err = server.restAPIService.Update(restapi.UpdateParams{Handle: "orders-api", Body: yaml("Orders 2", ""), ContentType: "application/yaml", Actor: "alice", Logger: logger})
 	require.NoError(t, err)

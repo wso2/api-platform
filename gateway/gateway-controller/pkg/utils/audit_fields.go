@@ -38,29 +38,42 @@ func ConfigAuditFields(cfg *models.StoredConfig) map[string]any {
 	switch src := cfg.SourceConfiguration.(type) {
 	case api.RestAPI:
 		policies := appendPolicyNames([]string{}, src.Spec.Policies, "")
+		faultPolicies := appendPolicyNames([]string{}, src.Spec.FaultPolicies, "")
 		for _, op := range src.Spec.Operations {
-			policies = appendPolicyNames(policies, op.Policies, op.EffectiveMethod()+" "+op.EffectivePath())
+			target := op.EffectiveMethod() + " " + op.EffectivePath()
+			policies = appendPolicyNames(policies, op.Policies, target)
+			faultPolicies = appendPolicyNames(faultPolicies, op.FaultPolicies, target)
 		}
 		fields["policies"] = policies
+		fields["faultPolicies"] = faultPolicies
 	case api.LLMProviderConfiguration:
 		fields["template"] = src.Spec.Template
 		fields["policies"] = llmPolicyNames(src.Spec.GlobalPolicies, src.Spec.OperationPolicies, src.Spec.Policies)
+		fields["faultPolicies"] = llmPolicyNames(src.Spec.GlobalFaultPolicies, src.Spec.OperationFaultPolicies, nil)
 	case api.LLMProxyConfiguration:
 		fields["policies"] = llmPolicyNames(src.Spec.GlobalPolicies, src.Spec.OperationPolicies, src.Spec.Policies)
+		fields["faultPolicies"] = llmPolicyNames(src.Spec.GlobalFaultPolicies, src.Spec.OperationFaultPolicies, nil)
+	case api.GraphQLAPI:
+		fields["policies"] = appendPolicyNames([]string{}, src.Spec.Policies, "")
 	case api.MCPProxyConfiguration:
 		fields["policies"] = appendPolicyNames([]string{}, src.Spec.Policies, "")
+		fields["faultPolicies"] = appendPolicyNames([]string{}, src.Spec.FaultPolicies, "")
 	case api.AgentConfiguration:
 		a2a := src.Spec.A2a
 		policies := appendPolicyNames([]string{}, a2a.OperationConfigs.Policies, "")
+		faultPolicies := appendPolicyNames([]string{}, a2a.OperationConfigs.FaultPolicies, "")
 		if a2a.OperationConfigs.Operations != nil {
 			for _, op := range *a2a.OperationConfigs.Operations {
 				policies = appendPolicyNames(policies, op.Policies, string(op.Name))
+				faultPolicies = appendPolicyNames(faultPolicies, op.FaultPolicies, string(op.Name))
 			}
 		}
 		if a2a.AgentCard != nil && a2a.AgentCard.Public != nil {
 			policies = appendPolicyNames(policies, a2a.AgentCard.Public.Policies, "public agent card")
+			faultPolicies = appendPolicyNames(faultPolicies, a2a.AgentCard.Public.FaultPolicies, "public agent card")
 		}
 		fields["policies"] = policies
+		fields["faultPolicies"] = faultPolicies
 	}
 	return fields
 }

@@ -4245,4 +4245,3 @@ func scanAuditLog(rows *sql.Rows) (*models.AuditLog, error) {
 	row.EventData = eventData.String
 	return &row, nil
 }
-

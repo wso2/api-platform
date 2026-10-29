@@ -192,7 +192,7 @@ func (m *MockStorage) GetWebhookSecretByUUID(uuid string) (*models.WebhookSecret
 func (m *MockStorage) UpdateWebhookSecret(secret *models.WebhookSecret) error { return nil }
 func (m *MockStorage) DeleteWebhookSecret(artifactUUID, name string) error    { return nil }
 func (m *MockStorage) GetAllWebhookSecrets() ([]*models.WebhookSecret, error) { return nil, nil }
-func (m *MockStorage) CreateAuditLog(row *models.AuditLog) error               { return nil }
+func (m *MockStorage) CreateAuditLog(row *models.AuditLog) error              { return nil }
 func (m *MockStorage) ListAuditLogs(f storage.AuditLogFilter, limit, offset int) ([]*models.AuditLog, error) {
 	return nil, nil
 }

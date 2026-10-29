@@ -50,6 +50,7 @@ const (
 
 const (
 	AuditResourceTypeRestAPI             = "RestApi"
+	AuditResourceTypeGraphQLAPI          = "GraphQLApi"
 	AuditResourceTypeLLMProxy            = "LlmProxy"
 	AuditResourceTypeLLMProvider         = "LlmProvider"
 	AuditResourceTypeLLMProviderTemplate = "LlmProviderTemplate"

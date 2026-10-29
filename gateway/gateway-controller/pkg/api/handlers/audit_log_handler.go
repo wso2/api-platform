@@ -97,12 +97,12 @@ func (s *APIServer) parseAuditParams(w http.ResponseWriter, r *http.Request, par
 	// defensively in case the middleware binding is bypassed in tests.
 	if params.Action != nil {
 		switch *params.Action {
-		case api.Create, api.Update, api.Delete, api.Revoke:
+		case api.AuditActionCreate, api.AuditActionUpdate, api.AuditActionDelete, api.AuditActionRevoke:
 			filter.Action = string(*params.Action)
 		default:
 			httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{
 				Status:  "error",
-				Message: "invalid action filter; must be one of: create, update, delete",
+				Message: "invalid action filter; must be one of: create, update, delete, revoke",
 			})
 			return storage.AuditLogFilter{}, 0, 0, false
 		}
@@ -110,7 +110,7 @@ func (s *APIServer) parseAuditParams(w http.ResponseWriter, r *http.Request, par
 
 	if params.Outcome != nil {
 		switch *params.Outcome {
-		case api.Succeeded, api.Failed, api.Denied:
+		case api.AuditOutcomeSucceeded, api.AuditOutcomeFailed, api.AuditOutcomeDenied:
 			filter.Outcome = string(*params.Outcome)
 		default:
 			httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{
@@ -124,6 +124,7 @@ func (s *APIServer) parseAuditParams(w http.ResponseWriter, r *http.Request, par
 	if params.ResourceType != nil {
 		switch *params.ResourceType {
 		case api.AuditResourceTypeRestApi,
+			api.AuditResourceTypeGraphQLApi,
 			api.AuditResourceTypeLlmProvider,
 			api.AuditResourceTypeLlmProviderTemplate,
 			api.AuditResourceTypeLlmProxy,

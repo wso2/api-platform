@@ -39,8 +39,8 @@ const (
 
 // SecretParams carries input to encrypt/save a secret
 type SecretParams struct {
-	Data          []byte          // Raw configuration data (YAML/JSON)
-	ContentType   string          // Content type for parsing
+	Data          []byte       // Raw configuration data (YAML/JSON)
+	ContentType   string       // Content type for parsing
 	CorrelationID string       // Correlation ID for tracking
 	Logger        *slog.Logger // Logger
 	Actor         string       // Authenticated user performing the operation (for audit)
