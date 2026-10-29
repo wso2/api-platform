@@ -88,7 +88,7 @@ func TestExtractLLMAnalyticsAppliesResourceMapping(t *testing.T) {
 func TestExtractLLMAnalyticsBedrockInvokeUsesFallbacks(t *testing.T) {
 	template := bedrockStreamTemplate()
 	spec := template["spec"].(map[string]interface{})
-	spec["promptTokens"] = field("$.usage.inputTokens", "$.usage.input_tokens", "$.usage.prompt_tokens")
+	spec["promptTokens"] = field("$.usage.inputTokens", "$.usage.input_tokens", "$.message.usage.input_tokens", "$.usage.prompt_tokens")
 	spec["completionTokens"] = field("$.usage.outputTokens", "$.usage.output_tokens", "$.usage.completion_tokens")
 
 	const path = "/bedrock/model/us.anthropic.claude-sonnet-4-5-20250929-v1:0/invoke"
@@ -100,8 +100,9 @@ func TestExtractLLMAnalyticsBedrockInvokeUsesFallbacks(t *testing.T) {
 	wantTokens(t, info, 1000, 500)
 
 	var stream []byte
-	stream = append(stream, encodeEventStreamFrame("chunk", []byte(`{"type":"message_start","usage":{"input_tokens":1000}}`))...)
-	stream = append(stream, encodeEventStreamFrame("chunk", []byte(`{"type":"message_delta","usage":{"output_tokens":500}}`))...)
+	// Claude's own streaming envelope: the input count is only in message_start's message.usage.
+	stream = append(stream, encodeEventStreamFrame("chunk", []byte(`{"type":"message_start","message":{"id":"msg_1","model":"claude-sonnet-4-5","usage":{"input_tokens":1000,"output_tokens":1}}}`))...)
+	stream = append(stream, encodeEventStreamFrame("chunk", []byte(`{"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":500}}`))...)
 	headers := policy.NewHeaders(map[string][]string{"content-type": {"application/vnd.amazon.eventstream"}})
 	info, err = extractLLMProviderAnalyticsInfoFromBytes(template, nil, headers, nil, stream,
 		path+"-with-response-stream", "/model/x/invoke-with-response-stream")

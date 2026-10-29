@@ -30,6 +30,9 @@ spec:
     identifier: $.usage.inputTokens
     fallbackIdentifiers:
       - $.usage.input_tokens
+      # Claude over InvokeModelWithResponseStream reports input tokens only in
+      # message_start, nested under message.usage.
+      - $.message.usage.input_tokens
       - $.usage.prompt_tokens
       - $.inputTextTokenCount
   completionTokens:

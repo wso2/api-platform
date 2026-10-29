@@ -218,16 +218,23 @@ func TestDecodeEventStreamInvokeChunks(t *testing.T) {
 		return []byte(`{"bytes":"` + base64.StdEncoding.EncodeToString([]byte(raw)) + `"}`)
 	}
 	var body []byte
-	body = append(body, encodeEventStreamFrame("chunk", wrap(`{"type":"message_start","message":{"model":"claude"},"usage":{"input_tokens":1000}}`))...)
-	body = append(body, encodeEventStreamFrame("chunk", []byte(`{"type":"message_delta","usage":{"output_tokens":500}}`))...)
+	// Claude's own envelope: message_start nests its usage under message, and
+	// message_delta carries only the output count at the top level.
+	body = append(body, encodeEventStreamFrame("chunk", wrap(`{"type":"message_start","message":{"id":"msg_1","model":"claude-sonnet-4-5","usage":{"input_tokens":1000,"output_tokens":1}}}`))...)
+	body = append(body, encodeEventStreamFrame("chunk", []byte(`{"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":500}}`))...)
 
 	var merged map[string]interface{}
 	if err := json.Unmarshal(decodeEventStream(body), &merged); err != nil {
 		t.Fatalf("decoded body is not JSON: %v", err)
 	}
 	usage, _ := merged["usage"].(map[string]interface{})
-	if usage["input_tokens"] != float64(1000) || usage["output_tokens"] != float64(500) {
-		t.Errorf("usage = %v, want input_tokens 1000 and output_tokens 500", usage)
+	if usage["output_tokens"] != float64(500) {
+		t.Errorf("usage = %v, want output_tokens 500 from message_delta", usage)
+	}
+	message, _ := merged["message"].(map[string]interface{})
+	messageUsage, _ := message["usage"].(map[string]interface{})
+	if messageUsage["input_tokens"] != float64(1000) {
+		t.Errorf("message.usage = %v, want input_tokens 1000 from message_start", messageUsage)
 	}
 	if merged["type"] != "message_delta" {
 		t.Errorf("type = %v, want the later event to win at the top level", merged["type"])
