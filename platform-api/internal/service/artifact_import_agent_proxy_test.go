@@ -466,7 +466,7 @@ func TestAgentImport_PublicResponseIsReadOnlyAndOnlyMetadataIsEditable(t *testin
 	cfg := &config.Server{}
 	cfg.Deployments.MaxPerAPIGateway = 10
 	proxySvc := NewAgentProxyService(d.agentRepo, d.projectRepo, d.deployment, d.gatewayRepo, nil,
-		slog.New(slog.NewTextHandler(io.Discard, nil)), repository.NewAuditRepo(d.db), cfg,
+		slog.New(slog.NewTextHandler(io.Discard, nil)), nil, cfg,
 		NewIdentityService(repository.NewUserIdentityMappingRepo(d.db)))
 
 	got, err := proxySvc.Get(importTestOrgID, "weather-agent")
@@ -517,7 +517,7 @@ func TestAgentImport_PublicResponseIsReadOnlyAndOnlyMetadataIsEditable(t *testin
 	description := "Edited in the control plane"
 	got.Description = &description
 	got.DisplayName = "Edited In The Control Plane"
-	updated, err := proxySvc.Update(importTestOrgID, "weather-agent", "someone", got)
+	updated, err := proxySvc.Update(context.Background(), importTestOrgID, "weather-agent", "someone", got)
 	if err != nil {
 		t.Fatalf("Update() error = %v, want the description edit to be accepted", err)
 	}
@@ -537,7 +537,7 @@ func TestAgentImport_PublicResponseIsReadOnlyAndOnlyMetadataIsEditable(t *testin
 
 	// No public redeploy of a gateway-origin Agent proxy.
 	deploySvc := NewAgentDeploymentService(d.agentRepo, d.deployment, d.gatewayRepo, d.artifactRepo, d.apiKeyRepo,
-		nil, nil, nil, cfg, slog.New(slog.NewTextHandler(io.Discard, nil)))
+		nil, nil, nil, cfg, slog.New(slog.NewTextHandler(io.Discard, nil)), nil)
 	_, err = deploySvc.DeployByHandle(context.Background(), "weather-agent",
 		&api.DeployRequest{Name: "redeploy", Base: "current", GatewayId: "gw1"}, importTestOrgID, "someone")
 	if !apperror.ArtifactReadOnly.Is(err) {

@@ -159,7 +159,7 @@ func (s *MCPDeploymentService) RestoreMCPDeploymentByHandle(ctx context.Context,
 	}
 	s.audit.Record(ctx, &AuditEvent{
 		Outcome: model.AuditOutcomeSucceeded, OrganizationUUID: orgUUID, Action: model.AuditActionRestore, ResourceType: model.AuditResourceTypeDeployment,
-		PerformedBy: actor, ResourceUUID: deploymentID,
+		PerformedBy: actor, ResourceUUID: deploymentID, ResourceName: resp.Name,
 		EventData: map[string]any{"gatewayHandle": gateway.Handle, "mcpProxyId": proxyHandle},
 	})
 	return resp, nil
@@ -198,7 +198,7 @@ func (s *MCPDeploymentService) UndeployDeploymentByHandle(ctx context.Context, p
 	}
 	s.audit.Record(ctx, &AuditEvent{
 		Outcome: model.AuditOutcomeSucceeded, OrganizationUUID: orgUUID, Action: model.AuditActionUndeploy, ResourceType: model.AuditResourceTypeDeployment,
-		PerformedBy: actor, ResourceUUID: deploymentID,
+		PerformedBy: actor, ResourceUUID: deploymentID, ResourceName: resp.Name,
 		EventData: map[string]any{"gatewayHandle": gateway.Handle, "mcpProxyId": proxyHandle},
 	})
 	return resp, nil
@@ -319,7 +319,8 @@ func (s *MCPDeploymentService) deployMCPProxy(ctx context.Context, proxyUUID str
 		s.audit.Record(ctx, &AuditEvent{
 			Action: model.AuditActionDeploy, ResourceType: model.AuditResourceTypeDeployment,
 			Outcome: model.AuditOutcomeDenied, OrganizationUUID: orgId, PerformedBy: createdBy,
-			EventData: map[string]any{"reason": "dp_originated"},
+			ResourceName: req.Name,
+			EventData:    map[string]any{"reason": "dp_originated", "gatewayHandle": gatewayHandle, "mcpProxyId": mcpProxy.Handle},
 		})
 		return nil, err
 	}
@@ -517,7 +518,8 @@ func (s *MCPDeploymentService) undeployMCPProxyDeployment(ctx context.Context, p
 			s.audit.Record(ctx, &AuditEvent{
 				Action: model.AuditActionUndeploy, ResourceType: model.AuditResourceTypeDeployment,
 				Outcome: model.AuditOutcomeDenied, OrganizationUUID: orgId, PerformedBy: actor,
-				EventData: map[string]any{"reason": "dp_originated"},
+				ResourceUUID: utils.ValueOrEmpty(deploymentId),
+				EventData:    map[string]any{"reason": "dp_originated"},
 			})
 		}
 		return nil, err
@@ -625,7 +627,8 @@ func (s *MCPDeploymentService) restoreMCPProxyDeployment(ctx context.Context, pr
 			s.audit.Record(ctx, &AuditEvent{
 				Action: model.AuditActionRestore, ResourceType: model.AuditResourceTypeDeployment,
 				Outcome: model.AuditOutcomeDenied, OrganizationUUID: orgId, PerformedBy: actor,
-				EventData: map[string]any{"reason": "dp_originated"},
+				ResourceUUID: utils.ValueOrEmpty(deploymentId),
+				EventData:    map[string]any{"reason": "dp_originated"},
 			})
 		}
 		return nil, err

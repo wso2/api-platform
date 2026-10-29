@@ -55,13 +55,14 @@ type AgentDeploymentService struct {
 	// `current` renders through it so the snapshot commits with the deployment.
 	builds  *BuildService
 	slogger *slog.Logger
+	audit   *AuditService
 }
 
 // NewAgentDeploymentService creates a new AgentDeploymentService.
 func NewAgentDeploymentService(agentRepo repository.AgentProxyRepository, deploymentRepo repository.DeploymentRepository,
 	gatewayRepo repository.GatewayRepository, artifactRepo repository.ArtifactRepository,
 	apiKeyRepo repository.APIKeyRepository, gatewayEventsService *GatewayEventsService,
-	definitions ArtifactDefinitions, identity *IdentityService, cfg *config.Server, slogger *slog.Logger) *AgentDeploymentService {
+	definitions ArtifactDefinitions, identity *IdentityService, cfg *config.Server, slogger *slog.Logger, audit *AuditService) *AgentDeploymentService {
 	return &AgentDeploymentService{
 		agentRepo:            agentRepo,
 		deploymentRepo:       deploymentRepo,
@@ -71,6 +72,7 @@ func NewAgentDeploymentService(agentRepo repository.AgentProxyRepository, deploy
 		cfg:                  cfg,
 		builds:               NewBuildService(artifactRepo, deploymentRepo, definitions, identity, cfg, slogger),
 		slogger:              slogger,
+		audit:                audit,
 	}
 }
 
@@ -154,6 +156,13 @@ func (s *AgentDeploymentService) DeployByHandle(ctx context.Context, handle stri
 	// DP-originated artifacts are read-only in the control plane and cannot be
 	// (re)deployed from it.
 	if err := ensureOriginMutable(proxy.Origin); err != nil {
+		if IsOriginDenial(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Action: model.AuditActionDeploy, ResourceType: model.AuditResourceTypeDeployment,
+				Outcome: model.AuditOutcomeDenied, OrganizationUUID: orgUUID, PerformedBy: createdBy,
+				EventData: map[string]any{"reason": "dp_originated", "gatewayHandle": gatewayHandle, "agentProxyId": proxy.Handle},
+			})
+		}
 		return nil, err
 	}
 
@@ -241,8 +250,21 @@ func (s *AgentDeploymentService) DeployByHandle(ctx context.Context, handle stri
 		if limitErr := s.builds.LimitError(err); limitErr != err {
 			return nil, limitErr
 		}
+		if IsAuditableFailure(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Action: model.AuditActionDeploy, ResourceType: model.AuditResourceTypeDeployment,
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgUUID, PerformedBy: createdBy,
+				EventData: map[string]any{"gatewayHandle": gatewayHandle, "agentProxyId": proxy.Handle},
+			})
+		}
 		return nil, fmt.Errorf("failed to create deployment: %w", err)
 	}
+	s.audit.Record(ctx, &AuditEvent{
+		Action: model.AuditActionDeploy, ResourceType: model.AuditResourceTypeDeployment,
+		Outcome: model.AuditOutcomeSucceeded, OrganizationUUID: orgUUID, PerformedBy: createdBy,
+		ResourceUUID: deploymentID, ResourceName: deployment.Name,
+		EventData: map[string]any{"gatewayHandle": gatewayHandle, "agentProxyId": proxy.Handle},
+	})
 
 	// Transitional until the gateway acknowledges the artifact. performedAt is
 	// the concurrency token the acknowledgement is matched against.
@@ -320,7 +342,7 @@ func (s *AgentDeploymentService) translateForGateway(gatewayKind string, definit
 
 // UndeployByHandle begins undeploying a deployment from its bound gateway. The
 // gatewayHandle must name that gateway; the returned deployment is UNDEPLOYING.
-func (s *AgentDeploymentService) UndeployByHandle(ctx context.Context, handle, deploymentID, gatewayHandle, orgUUID string) (*api.DeploymentResponse, error) {
+func (s *AgentDeploymentService) UndeployByHandle(ctx context.Context, handle, deploymentID, gatewayHandle, orgUUID, actor string) (*api.DeploymentResponse, error) {
 	proxy, err := s.resolveAgentProxy(handle, orgUUID)
 	if err != nil {
 		return nil, err
@@ -329,6 +351,14 @@ func (s *AgentDeploymentService) UndeployByHandle(ctx context.Context, handle, d
 	// DP-originated artifacts are read-only in the control plane; their
 	// deployment lifecycle is owned by the data-plane gateway.
 	if err := ensureOriginMutable(proxy.Origin); err != nil {
+		if IsOriginDenial(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Action: model.AuditActionUndeploy, ResourceType: model.AuditResourceTypeDeployment,
+				Outcome: model.AuditOutcomeDenied, OrganizationUUID: orgUUID, PerformedBy: actor,
+				ResourceUUID: deploymentID,
+				EventData: map[string]any{"reason": "dp_originated", "gatewayHandle": gatewayHandle, "agentProxyId": proxy.Handle},
+			})
+		}
 		return nil, err
 	}
 	gatewayUUID, err := s.resolveGatewayUUID(gatewayHandle, orgUUID)
@@ -357,9 +387,22 @@ func (s *AgentDeploymentService) UndeployByHandle(ctx context.Context, handle, d
 		initialStatus, string(model.DeploymentStatusUndeployed),
 		&performedAt, "",
 	)
+	undeployData := map[string]any{"gatewayHandle": gatewayHandle, "agentProxyId": proxy.Handle}
 	if err != nil {
+		if IsAuditableFailure(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Action: model.AuditActionUndeploy, ResourceType: model.AuditResourceTypeDeployment,
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgUUID, PerformedBy: actor,
+				ResourceUUID: deploymentID, ResourceName: deployment.Name, EventData: undeployData,
+			})
+		}
 		return nil, fmt.Errorf("failed to update deployment status: %w", err)
 	}
+	s.audit.Record(ctx, &AuditEvent{
+		Action: model.AuditActionUndeploy, ResourceType: model.AuditResourceTypeDeployment,
+		Outcome: model.AuditOutcomeSucceeded, OrganizationUUID: orgUUID, PerformedBy: actor,
+		ResourceUUID: deploymentID, ResourceName: deployment.Name, EventData: undeployData,
+	})
 
 	// Send undeployment event to gateway
 	if s.gatewayEventsService != nil {
@@ -393,7 +436,7 @@ func (s *AgentDeploymentService) UndeployByHandle(ctx context.Context, handle, d
 // The stored snapshot is shipped as it is — never re-rendered or re-translated —
 // so a restore puts back exactly what was deployed. The returned deployment is
 // DEPLOYING.
-func (s *AgentDeploymentService) RestoreByHandle(ctx context.Context, handle, deploymentID, gatewayHandle, orgUUID string) (*api.DeploymentResponse, error) {
+func (s *AgentDeploymentService) RestoreByHandle(ctx context.Context, handle, deploymentID, gatewayHandle, orgUUID, actor string) (*api.DeploymentResponse, error) {
 	proxy, err := s.resolveAgentProxy(handle, orgUUID)
 	if err != nil {
 		return nil, err
@@ -402,6 +445,14 @@ func (s *AgentDeploymentService) RestoreByHandle(ctx context.Context, handle, de
 	// DP-originated artifacts are read-only in the control plane; their
 	// deployment lifecycle is owned by the data-plane gateway.
 	if err := ensureOriginMutable(proxy.Origin); err != nil {
+		if IsOriginDenial(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Action: model.AuditActionRestore, ResourceType: model.AuditResourceTypeDeployment,
+				Outcome: model.AuditOutcomeDenied, OrganizationUUID: orgUUID, PerformedBy: actor,
+				ResourceUUID: deploymentID,
+				EventData: map[string]any{"reason": "dp_originated", "gatewayHandle": gatewayHandle, "agentProxyId": proxy.Handle},
+			})
+		}
 		return nil, err
 	}
 	gateway, err := s.resolveGateway(gatewayHandle, orgUUID)
@@ -444,9 +495,22 @@ func (s *AgentDeploymentService) RestoreByHandle(ctx context.Context, handle, de
 		initialStatus, string(model.DeploymentStatusDeployed),
 		&performedAt, "",
 	)
+	restoreData := map[string]any{"gatewayHandle": gatewayHandle, "agentProxyId": proxy.Handle}
 	if err != nil {
+		if IsAuditableFailure(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Action: model.AuditActionRestore, ResourceType: model.AuditResourceTypeDeployment,
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgUUID, PerformedBy: actor,
+				ResourceUUID: deploymentID, ResourceName: target.Name, EventData: restoreData,
+			})
+		}
 		return nil, fmt.Errorf("failed to set current deployment: %w", err)
 	}
+	s.audit.Record(ctx, &AuditEvent{
+		Action: model.AuditActionRestore, ResourceType: model.AuditResourceTypeDeployment,
+		Outcome: model.AuditOutcomeSucceeded, OrganizationUUID: orgUUID, PerformedBy: actor,
+		ResourceUUID: deploymentID, ResourceName: target.Name, EventData: restoreData,
+	})
 
 	// A restore is a deployment as far as the gateway is concerned: it fetches
 	// the (restored) current deployment's snapshot.
@@ -482,7 +546,7 @@ func (s *AgentDeploymentService) RestoreByHandle(ctx context.Context, handle, de
 // DeleteByHandle deletes one deployment record. Only an UNDEPLOYED deployment is
 // deletable. This removes a record, not the Agent proxy, so no gateway is
 // notified.
-func (s *AgentDeploymentService) DeleteByHandle(handle, deploymentID, orgUUID string) error {
+func (s *AgentDeploymentService) DeleteByHandle(ctx context.Context, handle, deploymentID, orgUUID, actor string) error {
 	proxy, err := s.resolveAgentProxy(handle, orgUUID)
 	if err != nil {
 		return err
@@ -491,6 +555,14 @@ func (s *AgentDeploymentService) DeleteByHandle(handle, deploymentID, orgUUID st
 	// A DP-originated Agent proxy's deployment history is the data plane's
 	// record, and is read-only here like the rest of it.
 	if err := ensureOriginMutable(proxy.Origin); err != nil {
+		if IsOriginDenial(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Action: model.AuditActionDelete, ResourceType: model.AuditResourceTypeDeployment,
+				Outcome: model.AuditOutcomeDenied, OrganizationUUID: orgUUID, PerformedBy: actor,
+				ResourceUUID: deploymentID,
+				EventData: map[string]any{"reason": "dp_originated", "agentProxyId": proxy.Handle},
+			})
+		}
 		return err
 	}
 
@@ -506,8 +578,21 @@ func (s *AgentDeploymentService) DeleteByHandle(handle, deploymentID, orgUUID st
 	}
 
 	if err := s.deploymentRepo.Delete(deploymentID, proxyUUID, orgUUID); err != nil {
+		if IsAuditableFailure(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Action: model.AuditActionDelete, ResourceType: model.AuditResourceTypeDeployment,
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgUUID, PerformedBy: actor,
+				ResourceUUID: deploymentID, ResourceName: deployment.Name,
+			})
+		}
 		return fmt.Errorf("failed to delete deployment: %w", err)
 	}
+	s.audit.Record(ctx, &AuditEvent{
+		Action: model.AuditActionDelete, ResourceType: model.AuditResourceTypeDeployment,
+		Outcome: model.AuditOutcomeSucceeded, OrganizationUUID: orgUUID, PerformedBy: actor,
+		ResourceUUID: deploymentID, ResourceName: deployment.Name,
+		EventData: map[string]any{"agentProxyId": proxy.Handle},
+	})
 	return nil
 }
 

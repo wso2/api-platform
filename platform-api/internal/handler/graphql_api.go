@@ -86,7 +86,7 @@ func (h *GraphQLAPIHandler) CreateGraphQLAPI(w http.ResponseWriter, r *http.Requ
 	if err != nil {
 		return err
 	}
-	apiResponse, err := h.graphqlAPIService.Create(orgId, createdBy, &req)
+	apiResponse, err := h.graphqlAPIService.Create(r.Context(), orgId, createdBy, &req)
 	if err != nil {
 		return serviceError(err, fmt.Sprintf("failed to create GraphQL API in org %s", orgId))
 	}
@@ -227,7 +227,7 @@ func (h *GraphQLAPIHandler) UpdateGraphQLAPI(w http.ResponseWriter, r *http.Requ
 	if err != nil {
 		return err
 	}
-	apiResponse, err := h.graphqlAPIService.Update(orgId, apiId, updatedBy, &req)
+	apiResponse, err := h.graphqlAPIService.Update(r.Context(), orgId, apiId, updatedBy, &req)
 	if err != nil {
 		return serviceError(err, fmt.Sprintf("failed to update GraphQL API %s in org %s", apiId, orgId))
 	}
@@ -294,7 +294,7 @@ func (h *GraphQLAPIHandler) AddGatewaysToAPI(w http.ResponseWriter, r *http.Requ
 		return err
 	}
 
-	gatewaysResponse, err := h.graphqlAPIService.AddGatewaysToAPI(apiId, gatewayIds, orgId, createdBy)
+	gatewaysResponse, err := h.graphqlAPIService.AddGatewaysToAPI(r.Context(), apiId, gatewayIds, orgId, createdBy)
 	if err != nil {
 		return serviceError(err, fmt.Sprintf("failed to associate gateways with GraphQL API %s in org %s", apiId, orgId))
 	}

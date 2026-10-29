@@ -42,7 +42,6 @@ import (
 type APIDocumentService struct {
 	documentRepo repository.DocumentRepository
 	artifactRepo repository.ArtifactRepository
-	auditRepo    repository.AuditRepository
 	audit        *AuditService
 	slogger      *slog.Logger
 }
@@ -51,11 +50,10 @@ type APIDocumentService struct {
 // required for the /apis/{apiType}/{apiId}/docs endpoints to resolve a
 // kind-aware handle to an artifact UUID; nil is acceptable only in tests that
 // never call ResolveArtifactUUID.
-func NewAPIDocumentService(documentRepo repository.DocumentRepository, artifactRepo repository.ArtifactRepository, auditRepo repository.AuditRepository, audit *AuditService, slogger *slog.Logger) *APIDocumentService {
+func NewAPIDocumentService(documentRepo repository.DocumentRepository, artifactRepo repository.ArtifactRepository, audit *AuditService, slogger *slog.Logger) *APIDocumentService {
 	return &APIDocumentService{
 		documentRepo: documentRepo,
 		artifactRepo: artifactRepo,
-		auditRepo:    auditRepo,
 		audit:        audit,
 		slogger:      slogger,
 	}
@@ -129,9 +127,9 @@ func (s *APIDocumentService) CreateDocument(ctx context.Context, req *dto.Create
 			return "", apperror.Conflict.New().WithLogMessage("document handle already exists for artifact")
 		}
 		s.slogger.Error("Failed to create document", "artifactUUID", doc.ArtifactUUID, "error", err)
-		if doc.Type == constants.DocumentTypeDefinition && IsAuditableFailure(err) {
+		if IsAuditableFailure(err) {
 			s.audit.Record(ctx, &AuditEvent{
-				Action: model.AuditActionCreate, ResourceType: model.AuditResourceTypeAPIDefinition,
+				Action: model.AuditActionCreate, ResourceType: documentAuditResourceType(doc.Type),
 				Outcome: model.AuditOutcomeFailed, OrganizationUUID: doc.OrganizationUUID, PerformedBy: doc.CreatedBy,
 				ResourceUUID: doc.ArtifactUUID, ResourceName: doc.Handle,
 			})
@@ -284,13 +282,13 @@ func (s *APIDocumentService) UpsertDocument(ctx context.Context, req *dto.Create
 
 	if err := s.documentRepo.UpsertDocument(doc); err != nil {
 		s.slogger.Error("Failed to upsert document", "artifactUUID", doc.ArtifactUUID, "error", err)
-		if doc.Type == constants.DocumentTypeDefinition && IsAuditableFailure(err) {
+		if IsAuditableFailure(err) {
 			failedAction := model.AuditActionCreate
 			if isUpdate {
 				failedAction = model.AuditActionUpdate
 			}
 			s.audit.Record(ctx, &AuditEvent{
-				Action: failedAction, ResourceType: model.AuditResourceTypeAPIDefinition,
+				Action: failedAction, ResourceType: documentAuditResourceType(doc.Type),
 				Outcome: model.AuditOutcomeFailed, OrganizationUUID: doc.OrganizationUUID, PerformedBy: doc.UpdatedBy,
 				ResourceUUID: doc.ArtifactUUID, ResourceName: doc.Handle,
 			})
@@ -306,39 +304,36 @@ func (s *APIDocumentService) UpsertDocument(ctx context.Context, req *dto.Create
 	return nil
 }
 
-// recordDocumentAudit writes the audit entry for a created/updated document. The API
-// definition goes to the audit log; other document types still use the legacy audit table.
+// recordDocumentAudit writes the audit entry for a created/updated document.
 func (s *APIDocumentService) recordDocumentAudit(ctx context.Context, doc *model.Document, action, actor string) {
-	if doc.Type == constants.DocumentTypeDefinition {
-		s.audit.Record(ctx, &AuditEvent{
-			Action: action, ResourceType: model.AuditResourceTypeAPIDefinition,
-			Outcome:      model.AuditOutcomeSucceeded,
-			ResourceUUID: doc.ArtifactUUID, OrganizationUUID: doc.OrganizationUUID, PerformedBy: actor,
-			ResourceName: doc.Handle,
-			EventData:    map[string]any{"type": doc.Type, "contentType": doc.ContentType},
-		})
-		return
-	}
-	if err := s.auditRepo.Record(strings.ToUpper(action), doc.ArtifactUUID, auditResourceTypeFor(doc.Type), doc.OrganizationUUID, actor); err != nil {
-		s.slogger.Error("Failed to record audit entry for document", "artifactUUID", doc.ArtifactUUID, "error", err)
-	}
+	s.audit.Record(ctx, &AuditEvent{
+		Action: action, ResourceType: documentAuditResourceType(doc.Type),
+		Outcome:      model.AuditOutcomeSucceeded,
+		ResourceUUID: doc.ArtifactUUID, OrganizationUUID: doc.OrganizationUUID, PerformedBy: actor,
+		ResourceName: doc.Handle,
+		EventData:    documentAuditFields(doc),
+	})
 }
 
-// auditResourceTypeFor maps a document type to its audit resource-type label.
-func auditResourceTypeFor(docType string) string {
-	switch docType {
-	case constants.DocumentTypeDefinition:
-		return "api_definition"
-	case constants.DocumentTypeThumbnail:
-		return "api_thumbnail"
-	default:
-		return "api_document"
+// documentAuditResourceType is ApiDefinition for the API definition and ApiDocument
+// for every other document, the thumbnail included.
+func documentAuditResourceType(docType string) string {
+	if docType == constants.DocumentTypeDefinition {
+		return model.AuditResourceTypeAPIDefinition
 	}
+	return model.AuditResourceTypeAPIDocument
+}
+
+// documentAuditFields lists the document fields recorded in audit events. Rows use the
+// API's UUID as resourceId and the document handle as resourceName; the content is
+// never recorded.
+func documentAuditFields(doc *model.Document) map[string]any {
+	return map[string]any{"type": doc.Type, "contentType": doc.ContentType, "displayName": doc.DisplayName}
 }
 
 // DeleteUserDocument deletes a user-authored document identified by handle.
 // Refuses to delete a DEFINITION/THUMBNAIL document
-func (s *APIDocumentService) DeleteApiDocument(artifactUUID, handle, orgID, userID string) error {
+func (s *APIDocumentService) DeleteApiDocument(ctx context.Context, artifactUUID, handle, orgID, userID string) error {
 	if artifactUUID == "" {
 		return apperror.ValidationFailed.New("artifact UUID is required")
 	}
@@ -364,11 +359,19 @@ func (s *APIDocumentService) DeleteApiDocument(artifactUUID, handle, orgID, user
 			return apperror.NotFound.New()
 		}
 		s.slogger.Error("Failed to delete document", "artifactUUID", artifactUUID, "handle", handle, "error", err)
+		s.audit.Record(ctx, &AuditEvent{
+			Action: model.AuditActionDelete, ResourceType: model.AuditResourceTypeAPIDocument,
+			Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgID, PerformedBy: userID,
+			ResourceUUID: artifactUUID, ResourceName: handle,
+		})
 		return err
 	}
-	if err := s.auditRepo.Record("DELETE", artifactUUID, "api_document", orgID, userID); err != nil {
-		s.slogger.Error("Failed to record audit entry for document delete", "artifactUUID", artifactUUID, "error", err)
-	}
+	s.audit.Record(ctx, &AuditEvent{
+		Action: model.AuditActionDelete, ResourceType: model.AuditResourceTypeAPIDocument,
+		Outcome: model.AuditOutcomeSucceeded, OrganizationUUID: orgID, PerformedBy: userID,
+		ResourceUUID: artifactUUID, ResourceName: handle,
+		EventData: map[string]any{"type": existing.Type},
+	})
 	return nil
 }
 
@@ -455,7 +458,7 @@ func modelToAPIMetadata(d *model.Document) api.APIDocumentMetadata {
 // (non-nil) replaces the stored bytes along with ContentType and FileName.
 // Type is validated against ValidAPIDocumentUserTypes so a PUT cannot morph
 // a user doc into the singleton DEFINITION type.
-func (s *APIDocumentService) UpdateApiDocument(req *dto.UpdateAPIDocumentRequest, orgID, userID, artifactUUID, handle string) error {
+func (s *APIDocumentService) UpdateApiDocument(ctx context.Context, req *dto.UpdateAPIDocumentRequest, orgID, userID, artifactUUID, handle string) error {
 	if req == nil {
 		return apperror.ValidationFailed.New("document request is required")
 	}
@@ -530,12 +533,21 @@ func (s *APIDocumentService) UpdateApiDocument(req *dto.UpdateAPIDocumentRequest
 
 	if err := s.documentRepo.UpdateApiDocument(&updatedDocument, updateContent); err != nil {
 		s.slogger.Error("Failed to update document", "artifactUUID", artifactUUID, "handle", handle, "error", err)
+		if IsAuditableFailure(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Action: model.AuditActionUpdate, ResourceType: model.AuditResourceTypeAPIDocument,
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgID, PerformedBy: userID,
+				ResourceUUID: artifactUUID, ResourceName: handle,
+			})
+		}
 		return err
 	}
-
-	if err := s.auditRepo.Record("UPDATE", artifactUUID, "api_document", orgID, userID); err != nil {
-		s.slogger.Error("Failed to record audit entry for document update", "artifactUUID", artifactUUID, "error", err)
-	}
+	s.audit.Record(ctx, &AuditEvent{
+		Action: model.AuditActionUpdate, ResourceType: model.AuditResourceTypeAPIDocument,
+		Outcome: model.AuditOutcomeSucceeded, OrganizationUUID: orgID, PerformedBy: userID,
+		ResourceUUID: artifactUUID, ResourceName: handle,
+		EventData: AuditDiff(documentAuditFields(existing), documentAuditFields(&updatedDocument)),
+	})
 	return nil
 }
 
@@ -633,7 +645,7 @@ func (s *APIDocumentService) MergeOperations(existing *[]api.Operation, specOps 
 }
 
 // DeleteAPIThumbnail removes the thumbnail document for an artifact.
-func (s *APIDocumentService) DeleteAPIThumbnail(artifactUUID, orgID, userID string) error {
+func (s *APIDocumentService) DeleteAPIThumbnail(ctx context.Context, artifactUUID, orgID, userID string) error {
 	if artifactUUID == "" {
 		return apperror.ValidationFailed.New("artifact UUID is required")
 	}
@@ -642,11 +654,19 @@ func (s *APIDocumentService) DeleteAPIThumbnail(artifactUUID, orgID, userID stri
 			return apperror.NotFound.New()
 		}
 		s.slogger.Error("Failed to delete thumbnail", "artifactUUID", artifactUUID, "error", err)
+		s.audit.Record(ctx, &AuditEvent{
+			Action: model.AuditActionDelete, ResourceType: model.AuditResourceTypeAPIDocument,
+			Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgID, PerformedBy: userID,
+			ResourceUUID: artifactUUID, ResourceName: constants.DocumentHandleThumbnail,
+		})
 		return err
 	}
-	if err := s.auditRepo.Record("DELETE", artifactUUID, "api_thumbnail", orgID, userID); err != nil {
-		s.slogger.Error("Failed to record audit entry for thumbnail delete", "artifactUUID", artifactUUID, "error", err)
-	}
+	s.audit.Record(ctx, &AuditEvent{
+		Action: model.AuditActionDelete, ResourceType: model.AuditResourceTypeAPIDocument,
+		Outcome: model.AuditOutcomeSucceeded, OrganizationUUID: orgID, PerformedBy: userID,
+		ResourceUUID: artifactUUID, ResourceName: constants.DocumentHandleThumbnail,
+		EventData: map[string]any{"type": constants.DocumentTypeThumbnail},
+	})
 	return nil
 }
 

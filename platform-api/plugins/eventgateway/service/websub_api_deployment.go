@@ -217,7 +217,8 @@ func (s *WebSubAPIDeploymentService) deployWebSubAPI(ctx context.Context, apiUUI
 			s.audit.Record(ctx, &coreservice.AuditEvent{
 				Action: model.AuditActionDeploy, ResourceType: model.AuditResourceTypeDeployment,
 				Outcome: model.AuditOutcomeDenied, OrganizationUUID: orgID, PerformedBy: createdBy,
-				EventData: map[string]any{"reason": "dp_originated"},
+				ResourceName: req.Name,
+				EventData:    map[string]any{"reason": "dp_originated", "gatewayHandle": req.GatewayId},
 			})
 		}
 		return nil, err
@@ -379,7 +380,8 @@ func (s *WebSubAPIDeploymentService) undeployWebSubAPIDeployment(ctx context.Con
 				s.audit.Record(ctx, &coreservice.AuditEvent{
 					Action: model.AuditActionUndeploy, ResourceType: model.AuditResourceTypeDeployment,
 					Outcome: model.AuditOutcomeDenied, OrganizationUUID: orgID, PerformedBy: actor,
-					EventData: map[string]any{"reason": "dp_originated"},
+					ResourceUUID: utils.ValueOrEmpty(deploymentId),
+					EventData:    map[string]any{"reason": "dp_originated"},
 				})
 				return nil, err
 			}
@@ -477,7 +479,8 @@ func (s *WebSubAPIDeploymentService) restoreWebSubAPIDeployment(ctx context.Cont
 			s.audit.Record(ctx, &coreservice.AuditEvent{
 				Action: model.AuditActionRestore, ResourceType: model.AuditResourceTypeDeployment,
 				Outcome: model.AuditOutcomeDenied, OrganizationUUID: orgID, PerformedBy: actor,
-				EventData: map[string]any{"reason": "dp_originated"},
+				ResourceUUID: utils.ValueOrEmpty(deploymentId),
+				EventData:    map[string]any{"reason": "dp_originated"},
 			})
 		}
 		return nil, err

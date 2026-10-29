@@ -61,6 +61,7 @@ type GraphQLAPIDeploymentService struct {
 	builds               *BuildService
 	cfg                  *config.Server
 	slogger              *slog.Logger
+	audit                *AuditService
 }
 
 // NewGraphQLAPIDeploymentService creates a new GraphQL API deployment service.
@@ -76,6 +77,7 @@ func NewGraphQLAPIDeploymentService(
 	identity *IdentityService,
 	cfg *config.Server,
 	slogger *slog.Logger,
+	audit *AuditService,
 ) *GraphQLAPIDeploymentService {
 	return &GraphQLAPIDeploymentService{
 		graphqlRepo:          graphqlRepo,
@@ -87,6 +89,7 @@ func NewGraphQLAPIDeploymentService(
 		builds:               NewBuildService(artifactRepo, deploymentRepo, definitions, identity, cfg, slogger),
 		cfg:                  cfg,
 		slogger:              slogger,
+		audit:                audit,
 	}
 }
 
@@ -265,6 +268,13 @@ func (s *GraphQLAPIDeploymentService) DeployGraphQLAPI(ctx context.Context, apiI
 	// DP-originated artifacts are read-only in the control plane and cannot be
 	// (re)deployed from the CP.
 	if err := ensureOriginMutable(apiModel.Origin); err != nil {
+		if IsOriginDenial(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Action: model.AuditActionDeploy, ResourceType: model.AuditResourceTypeDeployment,
+				Outcome: model.AuditOutcomeDenied, OrganizationUUID: orgUUID, PerformedBy: createdBy,
+				EventData: map[string]any{"reason": "dp_originated", "gatewayHandle": gatewayHandle, "graphqlApiId": apiModel.Handle},
+			})
+		}
 		return nil, err
 	}
 
@@ -345,8 +355,21 @@ func (s *GraphQLAPIDeploymentService) DeployGraphQLAPI(ctx context.Context, apiI
 		if limitErr := s.builds.LimitError(err); limitErr != err {
 			return nil, limitErr
 		}
+		if IsAuditableFailure(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Action: model.AuditActionDeploy, ResourceType: model.AuditResourceTypeDeployment,
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgUUID, PerformedBy: createdBy,
+				EventData: map[string]any{"gatewayHandle": gatewayHandle, "graphqlApiId": apiModel.Handle},
+			})
+		}
 		return nil, fmt.Errorf("failed to create deployment: %w", err)
 	}
+	s.audit.Record(ctx, &AuditEvent{
+		Action: model.AuditActionDeploy, ResourceType: model.AuditResourceTypeDeployment,
+		Outcome: model.AuditOutcomeSucceeded, OrganizationUUID: orgUUID, PerformedBy: createdBy,
+		ResourceUUID: deploymentID, ResourceName: deployment.Name,
+		EventData: map[string]any{"gatewayHandle": gatewayHandle, "graphqlApiId": apiModel.Handle},
+	})
 
 	initialStatus := model.DeploymentStatusDeploying
 	performedAt := time.Now().UTC().Truncate(time.Millisecond)
@@ -390,7 +413,7 @@ func (s *GraphQLAPIDeploymentService) DeployGraphQLAPI(ctx context.Context, apiI
 
 // RestoreGraphQLAPIDeployment restores a previous deployment (ARCHIVED or
 // UNDEPLOYED). Mirrors LLMProviderDeploymentService.RestoreLLMProviderDeployment.
-func (s *GraphQLAPIDeploymentService) RestoreGraphQLAPIDeployment(ctx context.Context, apiID, deploymentID, gatewayID, orgUUID string) (*api.DeploymentResponse, error) {
+func (s *GraphQLAPIDeploymentService) RestoreGraphQLAPIDeployment(ctx context.Context, apiID, deploymentID, gatewayID, orgUUID, actor string) (*api.DeploymentResponse, error) {
 	apiModel, err := s.graphqlRepo.GetByHandle(apiID, orgUUID)
 	if err != nil {
 		return nil, err
@@ -399,6 +422,14 @@ func (s *GraphQLAPIDeploymentService) RestoreGraphQLAPIDeployment(ctx context.Co
 		return nil, apperror.GraphQLAPINotFound.New()
 	}
 	if err := ensureOriginMutable(apiModel.Origin); err != nil {
+		if IsOriginDenial(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Action: model.AuditActionRestore, ResourceType: model.AuditResourceTypeDeployment,
+				Outcome: model.AuditOutcomeDenied, OrganizationUUID: orgUUID, PerformedBy: actor,
+				ResourceUUID: deploymentID,
+				EventData: map[string]any{"reason": "dp_originated", "gatewayHandle": gatewayID, "graphqlApiId": apiModel.Handle},
+			})
+		}
 		return nil, err
 	}
 
@@ -446,9 +477,22 @@ func (s *GraphQLAPIDeploymentService) RestoreGraphQLAPIDeployment(ctx context.Co
 		initialStatus, string(model.DeploymentStatusDeployed),
 		&performedAt, "",
 	)
+	restoreData := map[string]any{"gatewayHandle": resolvedGateway.Handle, "graphqlApiId": apiModel.Handle}
 	if err != nil {
+		if IsAuditableFailure(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Action: model.AuditActionRestore, ResourceType: model.AuditResourceTypeDeployment,
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgUUID, PerformedBy: actor,
+				ResourceUUID: deploymentID, ResourceName: targetDeployment.Name, EventData: restoreData,
+			})
+		}
 		return nil, fmt.Errorf("failed to set current deployment: %w", err)
 	}
+	s.audit.Record(ctx, &AuditEvent{
+		Action: model.AuditActionRestore, ResourceType: model.AuditResourceTypeDeployment,
+		Outcome: model.AuditOutcomeSucceeded, OrganizationUUID: orgUUID, PerformedBy: actor,
+		ResourceUUID: deploymentID, ResourceName: targetDeployment.Name, EventData: restoreData,
+	})
 
 	if s.gatewayEventsService != nil {
 		deploymentEvent := &model.GraphQLAPIDeploymentEvent{
@@ -479,7 +523,7 @@ func (s *GraphQLAPIDeploymentService) RestoreGraphQLAPIDeployment(ctx context.Co
 
 // UndeployGraphQLAPIDeployment undeploys an active deployment. Mirrors
 // LLMProviderDeploymentService.UndeployLLMProviderDeployment.
-func (s *GraphQLAPIDeploymentService) UndeployGraphQLAPIDeployment(ctx context.Context, apiID, deploymentID, gatewayID, orgUUID string) (*api.DeploymentResponse, error) {
+func (s *GraphQLAPIDeploymentService) UndeployGraphQLAPIDeployment(ctx context.Context, apiID, deploymentID, gatewayID, orgUUID, actor string) (*api.DeploymentResponse, error) {
 	apiModel, err := s.graphqlRepo.GetByHandle(apiID, orgUUID)
 	if err != nil {
 		return nil, err
@@ -488,6 +532,14 @@ func (s *GraphQLAPIDeploymentService) UndeployGraphQLAPIDeployment(ctx context.C
 		return nil, apperror.GraphQLAPINotFound.New()
 	}
 	if err := ensureOriginMutable(apiModel.Origin); err != nil {
+		if IsOriginDenial(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Action: model.AuditActionUndeploy, ResourceType: model.AuditResourceTypeDeployment,
+				Outcome: model.AuditOutcomeDenied, OrganizationUUID: orgUUID, PerformedBy: actor,
+				ResourceUUID: deploymentID,
+				EventData: map[string]any{"reason": "dp_originated", "gatewayHandle": gatewayID, "graphqlApiId": apiModel.Handle},
+			})
+		}
 		return nil, err
 	}
 
@@ -527,9 +579,22 @@ func (s *GraphQLAPIDeploymentService) UndeployGraphQLAPIDeployment(ctx context.C
 		initialStatus, string(model.DeploymentStatusUndeployed),
 		&performedAt, "",
 	)
+	undeployData := map[string]any{"gatewayHandle": resolvedGateway.Handle, "graphqlApiId": apiModel.Handle}
 	if err != nil {
+		if IsAuditableFailure(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Action: model.AuditActionUndeploy, ResourceType: model.AuditResourceTypeDeployment,
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgUUID, PerformedBy: actor,
+				ResourceUUID: deploymentID, ResourceName: deployment.Name, EventData: undeployData,
+			})
+		}
 		return nil, fmt.Errorf("failed to update deployment status: %w", err)
 	}
+	s.audit.Record(ctx, &AuditEvent{
+		Action: model.AuditActionUndeploy, ResourceType: model.AuditResourceTypeDeployment,
+		Outcome: model.AuditOutcomeSucceeded, OrganizationUUID: orgUUID, PerformedBy: actor,
+		ResourceUUID: deploymentID, ResourceName: deployment.Name, EventData: undeployData,
+	})
 
 	if s.gatewayEventsService != nil {
 		undeploymentEvent := &model.GraphQLAPIUndeploymentEvent{
@@ -559,7 +624,7 @@ func (s *GraphQLAPIDeploymentService) UndeployGraphQLAPIDeployment(ctx context.C
 
 // DeleteGraphQLAPIDeployment permanently deletes an undeployed deployment
 // artifact. Mirrors LLMProviderDeploymentService.DeleteLLMProviderDeployment.
-func (s *GraphQLAPIDeploymentService) DeleteGraphQLAPIDeployment(apiID, deploymentID, orgUUID string) error {
+func (s *GraphQLAPIDeploymentService) DeleteGraphQLAPIDeployment(ctx context.Context, apiID, deploymentID, orgUUID, actor string) error {
 	apiModel, err := s.graphqlRepo.GetByHandle(apiID, orgUUID)
 	if err != nil {
 		return err
@@ -580,8 +645,21 @@ func (s *GraphQLAPIDeploymentService) DeleteGraphQLAPIDeployment(apiID, deployme
 	}
 
 	if err := s.deploymentRepo.Delete(deploymentID, apiModel.ID, orgUUID); err != nil {
+		if IsAuditableFailure(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Action: model.AuditActionDelete, ResourceType: model.AuditResourceTypeDeployment,
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgUUID, PerformedBy: actor,
+				ResourceUUID: deploymentID, ResourceName: deployment.Name,
+			})
+		}
 		return fmt.Errorf("failed to delete deployment: %w", err)
 	}
+	s.audit.Record(ctx, &AuditEvent{
+		Action: model.AuditActionDelete, ResourceType: model.AuditResourceTypeDeployment,
+		Outcome: model.AuditOutcomeSucceeded, OrganizationUUID: orgUUID, PerformedBy: actor,
+		ResourceUUID: deploymentID, ResourceName: deployment.Name,
+		EventData: map[string]any{"graphqlApiId": apiModel.Handle},
+	})
 
 	return nil
 }

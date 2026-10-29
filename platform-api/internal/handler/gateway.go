@@ -468,7 +468,8 @@ func (h *GatewayHandler) DeleteCustomPolicy(w http.ResponseWriter, r *http.Reque
 		return apperror.ValidationFailed.New("customPolicyUuid and version are required")
 	}
 
-	if err := h.gatewayService.DeleteCustomPolicyByUUID(r.Context(), orgId, policyUUID, version); err != nil {
+	actor, _ := h.identity.InternalUserID(r)
+	if err := h.gatewayService.DeleteCustomPolicyByUUID(r.Context(), orgId, policyUUID, version, actor); err != nil {
 		var appErr *apperror.Error
 		if errors.As(err, &appErr) {
 			return err

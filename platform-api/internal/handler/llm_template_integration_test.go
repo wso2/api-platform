@@ -41,12 +41,6 @@ import (
 const tmplBase = "/api/v0.9/llm-provider-templates"
 const tmplOrg = "org-it-001"
 
-type noopAudit struct{}
-
-func (noopAudit) Record(action, resourceUUID, resourceType, orgUUID, performedBy string) error {
-	return nil
-}
-
 // setupLLMTemplateEnv builds the real route → handler → service → repository
 // stack over an in-memory SQLite DB, seeded with the shipped built-in templates.
 func setupLLMTemplateEnv(t *testing.T) (http.Handler, *database.DB, func()) {

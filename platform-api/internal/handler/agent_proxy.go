@@ -100,7 +100,7 @@ func (h *AgentProxyHandler) CreateAgentProxy(w http.ResponseWriter, r *http.Requ
 		return err
 	}
 
-	resp, err := h.service.Create(orgID, createdBy, req)
+	resp, err := h.service.Create(r.Context(), orgID, createdBy, req)
 	if err != nil {
 		return h.mapServiceError(err)
 	}
@@ -184,7 +184,7 @@ func (h *AgentProxyHandler) UpdateAgentProxy(w http.ResponseWriter, r *http.Requ
 		return err
 	}
 
-	resp, err := h.service.Update(orgID, id, updatedBy, req)
+	resp, err := h.service.Update(r.Context(), orgID, id, updatedBy, req)
 	if err != nil {
 		return h.mapServiceError(err)
 	}

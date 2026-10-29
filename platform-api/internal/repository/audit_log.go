@@ -177,7 +177,7 @@ func buildAuditLogWhere(f AuditLogFilter) (where string, args []interface{}) {
 func (r *AuditLogRepo) List(f AuditLogFilter, limit, offset int) ([]*model.AuditLog, error) {
 	where, args := buildAuditLogWhere(f)
 	pageClause, pageArgs := r.db.PaginationClause(limit, offset)
-	query := r.db.Rebind(auditLogCols + where + " ORDER BY performed_at DESC " + pageClause)
+	query := r.db.Rebind(auditLogCols + where + " ORDER BY performed_at DESC, uuid DESC " + pageClause)
 	args = append(args, pageArgs...)
 
 	rows, err := r.db.Query(query, args...)

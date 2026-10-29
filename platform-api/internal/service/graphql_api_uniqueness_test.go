@@ -19,6 +19,7 @@
 package service
 
 import (
+	"context"
 	"errors"
 	"testing"
 
@@ -59,7 +60,7 @@ func TestGraphQLCreate_DuplicateNameAndVersion_Conflict(t *testing.T) {
 	repo := &mockGraphQLAPIRepo{nameVersionExists: true}
 	svc := newGraphQLTestService(repo, &model.Project{ID: "project-uuid", OrganizationID: "org-1"})
 
-	_, err := svc.Create("org-1", "creator-uuid", newUniquenessCreateRequest())
+	_, err := svc.Create(context.Background(), "org-1", "creator-uuid", newUniquenessCreateRequest())
 
 	if err == nil {
 		t.Fatal("expected a conflict for a display name + version already in use")
@@ -84,7 +85,7 @@ func TestGraphQLCreate_DuplicateHandle_KeepsItsOwnMessage(t *testing.T) {
 	repo := &mockGraphQLAPIRepo{existsResult: true, nameVersionExists: true}
 	svc := newGraphQLTestService(repo, &model.Project{ID: "project-uuid", OrganizationID: "org-1"})
 
-	_, err := svc.Create("org-1", "creator-uuid", newUniquenessCreateRequest())
+	_, err := svc.Create(context.Background(), "org-1", "creator-uuid", newUniquenessCreateRequest())
 
 	if got, want := graphQLConflictMessage(t, err), graphQLAPIIDExistsMessage; got != want {
 		t.Errorf("message = %q, want %q", got, want)
@@ -95,7 +96,7 @@ func TestGraphQLCreate_AvailableNameAndVersion_Creates(t *testing.T) {
 	repo := &mockGraphQLAPIRepo{}
 	svc := newGraphQLTestService(repo, &model.Project{ID: "project-uuid", OrganizationID: "org-1"})
 
-	if _, err := svc.Create("org-1", "creator-uuid", newUniquenessCreateRequest()); err != nil {
+	if _, err := svc.Create(context.Background(), "org-1", "creator-uuid", newUniquenessCreateRequest()); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if repo.created == nil {
@@ -132,7 +133,7 @@ func TestGraphQLUpdate_OntoAnotherAPIsNameAndVersion_Conflict(t *testing.T) {
 	repo, req := newUniquenessUpdateFixture(true)
 	svc := newGraphQLTestService(repo, nil)
 
-	_, err := svc.Update("org-1", "cities-graphql-api", "updater-uuid", req)
+	_, err := svc.Update(context.Background(), "org-1", "cities-graphql-api", "updater-uuid", req)
 
 	if err == nil {
 		t.Fatal("expected a conflict for a display name + version another API uses")
@@ -154,7 +155,7 @@ func TestGraphQLUpdate_AvailableNameAndVersion_Updates(t *testing.T) {
 	repo, req := newUniquenessUpdateFixture(false)
 	svc := newGraphQLTestService(repo, nil)
 
-	if _, err := svc.Update("org-1", "cities-graphql-api", "updater-uuid", req); err != nil {
+	if _, err := svc.Update(context.Background(), "org-1", "cities-graphql-api", "updater-uuid", req); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if repo.updated == nil {

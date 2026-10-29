@@ -982,8 +982,11 @@ const publicationStatusNotPublished = "NOT_PUBLISHED"
 // canonical audit resource type. Publication APIs use "rest-api" in their
 // paths, while audit filtering uses the resource enum value "RestApi".
 func publicationAuditResourceType(apiType string) string {
-	if apiType == constants.PublicationAPITypeRestAPI {
+	switch apiType {
+	case constants.PublicationAPITypeRestAPI:
 		return model.AuditResourceTypeRestAPI
+	case constants.PublicationAPITypeGraphQLAPI:
+		return model.AuditResourceTypeGraphQLAPI
 	}
 	return apiType
 }

@@ -75,7 +75,7 @@ func newAgentProxyTestService(repo repository.AgentProxyRepository) *AgentProxyS
 		ID: agentTestProject, Handle: "default-project", OrganizationID: agentTestOrg,
 	}}
 	return NewAgentProxyService(repo, projectRepo, nil, nil, nil,
-		slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
+		slog.Default(), nil, &config.Server{}, newTestIdentityService())
 }
 
 // storedAgentProxy is an A2A Agent proxy as the repository would return it.
@@ -129,7 +129,7 @@ func TestAgentProxyServiceUpdateRejectsProtocolChange(t *testing.T) {
 	req := validAgentProxyRequest()
 	req.Protocol = "mcp"
 
-	_, err := svc.Update(agentTestOrg, "weather-agent", "alice", req)
+	_, err := svc.Update(context.Background(), agentTestOrg, "weather-agent", "alice", req)
 	if !apperror.ValidationFailed.Is(err) {
 		t.Fatalf("expected a validation failure, got: %v", err)
 	}
@@ -141,7 +141,7 @@ func TestAgentProxyServiceRejectsUnsupportedProtocolOnCreate(t *testing.T) {
 	req := validAgentProxyRequest()
 	req.Protocol = "grpc"
 
-	if _, err := svc.Create(agentTestOrg, "alice", req); !apperror.ValidationFailed.Is(err) {
+	if _, err := svc.Create(context.Background(), agentTestOrg, "alice", req); !apperror.ValidationFailed.Is(err) {
 		t.Fatalf("expected a validation failure, got: %v", err)
 	}
 }
@@ -168,7 +168,7 @@ func TestAgentProxyServiceUpdateDPMetadata(t *testing.T) {
 			req.Context = &context
 			req.AssociatedGateways = &[]api.AssociatedGateway{{Id: "gateway"}}
 
-			resp, err := svc.Update(agentTestOrg, stored.Handle, "", req)
+			resp, err := svc.Update(t.Context(), agentTestOrg, stored.Handle, "", req)
 			if err != nil {
 				t.Fatalf("Update: %v", err)
 			}
@@ -194,7 +194,7 @@ func TestAgentProxyServiceUpdateDPMetadata(t *testing.T) {
 
 			req.Description = nil
 			req.AssociatedGateways = nil
-			if _, err := svc.Update(agentTestOrg, stored.Handle, "", req); err != nil {
+			if _, err := svc.Update(t.Context(), agentTestOrg, stored.Handle, "", req); err != nil {
 				t.Fatalf("clear metadata: %v", err)
 			}
 			if repo.stored.Description != "" || len(repo.stored.AssociatedGateways) != 0 || !repo.stored.ReplaceAssociatedGateways {

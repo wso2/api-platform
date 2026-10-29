@@ -202,11 +202,11 @@ func normalizeUpstreamAuthType(authType string) string {
 	canonical := strings.ToLower(strings.ReplaceAll(strings.ReplaceAll(normalized, "-", ""), "_", ""))
 	switch canonical {
 	case "apikey":
-		return string(api.UpstreamAuthTypeApiKey)
+		return string(api.ApiKey)
 	case "basic":
-		return string(api.UpstreamAuthTypeBasic)
+		return string(api.Basic)
 	case "bearer":
-		return string(api.UpstreamAuthTypeBearer)
+		return string(api.Bearer)
 	default:
 		return normalized
 	}

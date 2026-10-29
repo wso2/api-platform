@@ -34,7 +34,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/wso2/api-platform/platform-api/api"
 	"github.com/wso2/api-platform/platform-api/config"
@@ -166,14 +168,24 @@ func (r *docHRepo) DocumentHandleExistsForArtifact(artifactUUID, handle string) 
 	return ok || r.handleExists, r.existsErr
 }
 
-type docHAuditCall struct{ action, resourceUUID, resourceType, orgUUID, performedBy string }
+// docHAudit keeps the audit_log rows the document service records.
+type docHAudit struct {
+	mu   sync.Mutex
+	rows []*model.AuditLog
+}
 
-type docHAudit struct{ calls []docHAuditCall }
-
-func (a *docHAudit) Record(action, resourceUUID, resourceType, orgUUID, performedBy string) error {
-	a.calls = append(a.calls, docHAuditCall{action, resourceUUID, resourceType, orgUUID, performedBy})
+func (a *docHAudit) Create(row *model.AuditLog) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.rows = append(a.rows, row)
 	return nil
 }
+
+func (a *docHAudit) List(repository.AuditLogFilter, int, int) ([]*model.AuditLog, error) {
+	return nil, nil
+}
+
+func (a *docHAudit) Count(repository.AuditLogFilter) (int, error) { return 0, nil }
 
 // docHArtifactRepo resolves exactly one API (docHAPI in docHOrg, kind docHKind).
 // Any other kind behaves like an unregistered artifact kind; any other handle or
@@ -226,7 +238,7 @@ func newDocHEnvWithIdentity(t *testing.T, cfg *config.Server, identityRepo repos
 		audit:     &docHAudit{},
 		artifacts: &docHArtifactRepo{},
 	}
-	svc := service.NewAPIDocumentService(env.docs, env.artifacts, env.audit, nil, logger)
+	svc := service.NewAPIDocumentService(env.docs, env.artifacts, service.NewAuditService(config.Audit{Enabled: true}, env.audit, logger), logger)
 	identity := service.NewIdentityService(identityRepo)
 	env.mux = http.NewServeMux()
 	NewAPIDocumentHandler(svc, identity, logger, cfg).RegisterRoutes(env.mux)
@@ -344,12 +356,24 @@ func docHSampleDoc() *model.Document {
 	}
 }
 
-func docHAuditLast(t *testing.T, a *docHAudit) docHAuditCall {
+// docHAuditLast returns the last recorded row; audit writes are asynchronous, so it
+// waits briefly for one.
+func docHAuditLast(t *testing.T, a *docHAudit) *model.AuditLog {
 	t.Helper()
-	if len(a.calls) == 0 {
+	for deadline := time.Now().Add(2 * time.Second); time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
+		a.mu.Lock()
+		n := len(a.rows)
+		a.mu.Unlock()
+		if n > 0 {
+			break
+		}
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if len(a.rows) == 0 {
 		t.Fatalf("no audit entry recorded")
 	}
-	return a.calls[len(a.calls)-1]
+	return a.rows[len(a.rows)-1]
 }
 
 // ---------------------------------------------------------------------------
@@ -741,8 +765,8 @@ func TestCreateDocument_InlineContent(t *testing.T) {
 	if got.ArtifactUUID != docHArtifact || got.OrganizationUUID != docHOrg {
 		t.Errorf("stored under artifact=%q org=%q", got.ArtifactUUID, got.OrganizationUUID)
 	}
-	if call := docHAuditLast(t, env.audit); call.action != "CREATE" || call.resourceType != "api_document" {
-		t.Errorf("audit = %+v, want CREATE api_document", call)
+	if row := docHAuditLast(t, env.audit); row.Action != model.AuditActionCreate || row.ResourceType != model.AuditResourceTypeAPIDocument {
+		t.Errorf("audit = %+v, want an ApiDocument create", row)
 	}
 }
 
@@ -897,8 +921,8 @@ func TestUpdateDocument_MetadataOnlyKeepsStoredBytes(t *testing.T) {
 	if md := docHDecodeMetadata(t, rec); md.DisplayName != "Guide v2" {
 		t.Errorf("response displayName = %q", md.DisplayName)
 	}
-	if call := docHAuditLast(t, env.audit); call.action != "UPDATE" {
-		t.Errorf("audit action = %q, want UPDATE", call.action)
+	if row := docHAuditLast(t, env.audit); row.Action != model.AuditActionUpdate {
+		t.Errorf("audit action = %q, want update", row.Action)
 	}
 }
 
@@ -1029,8 +1053,8 @@ func TestDeleteDocument_Success(t *testing.T) {
 	if len(env.docs.deletedAPIHandles) != 1 || env.docs.deletedAPIHandles[0] != "guide" {
 		t.Errorf("deleted handles = %v, want [guide]", env.docs.deletedAPIHandles)
 	}
-	if call := docHAuditLast(t, env.audit); call.action != "DELETE" || call.resourceType != "api_document" || call.resourceUUID != docHArtifact {
-		t.Errorf("audit = %+v, want DELETE api_document on the artifact", call)
+	if row := docHAuditLast(t, env.audit); row.Action != model.AuditActionDelete || row.ResourceType != model.AuditResourceTypeAPIDocument || row.ResourceUUID != docHArtifact {
+		t.Errorf("audit = %+v, want an ApiDocument delete on the artifact", row)
 	}
 	// And the document is really gone.
 	docHAssertError(t, env.get(t, http.MethodGet, docHDocsBase+"/guide"), http.StatusNotFound, apperror.CodeCommonNotFound)

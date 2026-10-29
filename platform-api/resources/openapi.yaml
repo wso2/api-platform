@@ -9872,6 +9872,14 @@ components:
         - undeploy
         - restore
         - revoke
+      x-enum-varnames:
+        - AuditActionCreate
+        - AuditActionUpdate
+        - AuditActionDelete
+        - AuditActionDeploy
+        - AuditActionUndeploy
+        - AuditActionRestore
+        - AuditActionRevoke
 
     AuditResourceType:
       type: string
@@ -9897,6 +9905,35 @@ components:
         - WebSubApi
         - WebBrokerApi
         - Secret
+        - GraphQLApi
+        - AgentProxy
+        - ApiDocument
+        - Meter
+      x-enum-varnames:
+        - AuditResourceTypeRestApi
+        - AuditResourceTypeApplication
+        - AuditResourceTypeLlmProvider
+        - AuditResourceTypeLlmApiKey
+        - AuditResourceTypeLlmProviderTemplate
+        - AuditResourceTypeLlmProxy
+        - AuditResourceTypeSubscription
+        - AuditResourceTypeSubscriptionPlan
+        - AuditResourceTypeMcp
+        - AuditResourceTypeApiKey
+        - AuditResourceTypeDeployment
+        - AuditResourceTypeGateway
+        - AuditResourceTypeCustomPolicy
+        - AuditResourceTypeProject
+        - AuditResourceTypeOrganization
+        - AuditResourceTypeApiPortal
+        - AuditResourceTypeApiDefinition
+        - AuditResourceTypeWebSubApi
+        - AuditResourceTypeWebBrokerApi
+        - AuditResourceTypeSecret
+        - AuditResourceTypeGraphQLApi
+        - AuditResourceTypeAgentProxy
+        - AuditResourceTypeApiDocument
+        - AuditResourceTypeMeter
 
     AuditOutcome:
       type: string
@@ -9905,6 +9942,10 @@ components:
         - succeeded
         - failed
         - denied
+      x-enum-varnames:
+        - AuditOutcomeSucceeded
+        - AuditOutcomeFailed
+        - AuditOutcomeDenied
 
     AddApplicationAPIKeysRequest:
       type: object

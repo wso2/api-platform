@@ -56,6 +56,10 @@ const (
 	AuditResourceTypeWebSubAPI            = "WebSubApi"
 	AuditResourceTypeWebBrokerAPI         = "WebBrokerApi"
 	AuditResourceTypeSecret               = "Secret"
+	AuditResourceTypeGraphQLAPI           = "GraphQLApi"
+	AuditResourceTypeAgentProxy           = "AgentProxy"
+	AuditResourceTypeAPIDocument          = "ApiDocument"
+	AuditResourceTypeMeter                = "Meter"
 )
 
 // AuditLog is the DB-row shape for one audit_log entry — persisted by

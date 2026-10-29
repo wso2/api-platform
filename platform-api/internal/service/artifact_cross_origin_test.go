@@ -424,7 +424,7 @@ func TestLLMProviderUpdate_DefaultsUpstreamAuthToNone(t *testing.T) {
 		NewIdentityService(repository.NewUserIdentityMappingRepo(d.db)), nil,
 	)
 
-	apiKey := api.UpstreamAuthType(api.UpstreamAuthTypeApiKey)
+	apiKey := api.UpstreamAuthType(api.ApiKey)
 	created, err := providerSvc.Create(context.Background(), importTestOrgID, "tester", &api.LLMProvider{
 		Id:          strPointer("cp-none-prov"),
 		DisplayName: "CP None Provider",
@@ -479,7 +479,7 @@ func TestLLMProxyUpdate_DefaultsUpstreamAuthToNone(t *testing.T) {
 		NewIdentityService(repository.NewUserIdentityMappingRepo(d.db)),
 	)
 
-	apiKey := api.UpstreamAuthType(api.UpstreamAuthTypeApiKey)
+	apiKey := api.UpstreamAuthType(api.ApiKey)
 	created, err := proxySvc.Create(context.Background(), importTestOrgID, "tester", &api.LLMProxy{
 		Id:          strPointer("cp-none-proxy"),
 		DisplayName: "CP None Proxy",
@@ -532,7 +532,7 @@ func TestLLMProviderUpdate_SwitchApiKeyToOther_ClearsStoredCredential(t *testing
 		NewIdentityService(repository.NewUserIdentityMappingRepo(d.db)), nil,
 	)
 
-	apiKey := api.UpstreamAuthType(api.UpstreamAuthTypeApiKey)
+	apiKey := api.UpstreamAuthType(api.ApiKey)
 	created, err := providerSvc.Create(context.Background(), importTestOrgID, "tester", &api.LLMProvider{
 		Id: strPointer("cp-switch-prov"), DisplayName: "P", Version: "v1.0", Template: templateHandle,
 		Upstream: api.Upstream{Main: api.UpstreamDefinition{
@@ -545,7 +545,7 @@ func TestLLMProviderUpdate_SwitchApiKeyToOther_ClearsStoredCredential(t *testing
 		t.Fatalf("create provider: %v", err)
 	}
 
-	other := api.UpstreamAuthType(api.UpstreamAuthTypeOther)
+	other := api.UpstreamAuthType(api.Other)
 	if _, err := providerSvc.Update(context.Background(), importTestOrgID, *created.Id, "tester", &api.LLMProvider{
 		DisplayName: "P", Version: "v1.0", Template: templateHandle,
 		Upstream: api.Upstream{Main: api.UpstreamDefinition{
@@ -585,7 +585,7 @@ func TestLLMProxyUpdate_SwitchApiKeyToOther_ClearsStoredCredential(t *testing.T)
 		NewIdentityService(repository.NewUserIdentityMappingRepo(d.db)),
 	)
 
-	apiKey := api.UpstreamAuthType(api.UpstreamAuthTypeApiKey)
+	apiKey := api.UpstreamAuthType(api.ApiKey)
 	created, err := proxySvc.Create(context.Background(), importTestOrgID, "tester", &api.LLMProxy{
 		Id: strPointer("cp-switch-proxy"), DisplayName: "X", Version: "v1.0", ProjectId: "default",
 		Provider: &api.LLMProxyProvider{
@@ -597,7 +597,7 @@ func TestLLMProxyUpdate_SwitchApiKeyToOther_ClearsStoredCredential(t *testing.T)
 		t.Fatalf("create proxy: %v", err)
 	}
 
-	other := api.UpstreamAuthType(api.UpstreamAuthTypeOther)
+	other := api.UpstreamAuthType(api.Other)
 	if _, err := proxySvc.Update(context.Background(), importTestOrgID, *created.Id, "tester", &api.LLMProxy{
 		DisplayName: "X", Version: "v1.0", ProjectId: "default",
 		Provider: &api.LLMProxyProvider{Id: providerHandle, Auth: &api.UpstreamAuth{Type: &other}},
@@ -650,7 +650,7 @@ func TestLLMProviderUpdate_SwitchToOther_PreservesReferencedSecret(t *testing.T)
 	)
 	providerSvc.SetSecretService(secretSvc)
 
-	apiKey := api.UpstreamAuthType(api.UpstreamAuthTypeApiKey)
+	apiKey := api.UpstreamAuthType(api.ApiKey)
 	created, err := providerSvc.Create(context.Background(), importTestOrgID, "tester", &api.LLMProvider{
 		Id: strPointer("cp-secret-prov"), DisplayName: "P", Version: "v1.0", Template: templateHandle,
 		Upstream: api.Upstream{Main: api.UpstreamDefinition{
@@ -663,7 +663,7 @@ func TestLLMProviderUpdate_SwitchToOther_PreservesReferencedSecret(t *testing.T)
 		t.Fatalf("create provider: %v", err)
 	}
 
-	other := api.UpstreamAuthType(api.UpstreamAuthTypeOther)
+	other := api.UpstreamAuthType(api.Other)
 	if _, err := providerSvc.Update(context.Background(), importTestOrgID, *created.Id, "tester", &api.LLMProvider{
 		DisplayName: "P", Version: "v1.0", Template: templateHandle,
 		Upstream: api.Upstream{Main: api.UpstreamDefinition{

@@ -191,12 +191,12 @@ func (a agentDeployments) Deploy(ctx context.Context, handle string, req *api.De
 	return a.DeployByHandle(ctx, handle, req, orgID, actor)
 }
 
-func (a agentDeployments) Undeploy(ctx context.Context, handle, deploymentID, gatewayHandle, orgID, _ string) (*api.DeploymentResponse, error) {
-	return a.UndeployByHandle(ctx, handle, deploymentID, gatewayHandle, orgID)
+func (a agentDeployments) Undeploy(ctx context.Context, handle, deploymentID, gatewayHandle, orgID, actor string) (*api.DeploymentResponse, error) {
+	return a.UndeployByHandle(ctx, handle, deploymentID, gatewayHandle, orgID, actor)
 }
 
-func (a agentDeployments) Restore(ctx context.Context, handle, deploymentID, gatewayHandle, orgID, _ string) (*api.DeploymentResponse, error) {
-	return a.RestoreByHandle(ctx, handle, deploymentID, gatewayHandle, orgID)
+func (a agentDeployments) Restore(ctx context.Context, handle, deploymentID, gatewayHandle, orgID, actor string) (*api.DeploymentResponse, error) {
+	return a.RestoreByHandle(ctx, handle, deploymentID, gatewayHandle, orgID, actor)
 }
 
 func (a agentDeployments) GetDeployment(handle, deploymentID, orgID string) (*api.DeploymentResponse, error) {
@@ -215,12 +215,12 @@ func (a graphqlDeployments) Deploy(ctx context.Context, handle string, req *api.
 	return a.DeployGraphQLAPI(ctx, handle, req, orgID, actor)
 }
 
-func (a graphqlDeployments) Undeploy(ctx context.Context, handle, deploymentID, gatewayHandle, orgID, _ string) (*api.DeploymentResponse, error) {
-	return a.UndeployGraphQLAPIDeployment(ctx, handle, deploymentID, gatewayHandle, orgID)
+func (a graphqlDeployments) Undeploy(ctx context.Context, handle, deploymentID, gatewayHandle, orgID, actor string) (*api.DeploymentResponse, error) {
+	return a.UndeployGraphQLAPIDeployment(ctx, handle, deploymentID, gatewayHandle, orgID, actor)
 }
 
-func (a graphqlDeployments) Restore(ctx context.Context, handle, deploymentID, gatewayHandle, orgID, _ string) (*api.DeploymentResponse, error) {
-	return a.RestoreGraphQLAPIDeployment(ctx, handle, deploymentID, gatewayHandle, orgID)
+func (a graphqlDeployments) Restore(ctx context.Context, handle, deploymentID, gatewayHandle, orgID, actor string) (*api.DeploymentResponse, error) {
+	return a.RestoreGraphQLAPIDeployment(ctx, handle, deploymentID, gatewayHandle, orgID, actor)
 }
 
 func (a graphqlDeployments) GetDeployment(handle, deploymentID, orgID string) (*api.DeploymentResponse, error) {

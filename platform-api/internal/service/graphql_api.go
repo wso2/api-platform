@@ -38,7 +38,7 @@ import (
 type GraphQLAPIService struct {
 	repo                 repository.GraphQLAPIRepository
 	projectRepo          repository.ProjectRepository
-	auditRepo            repository.AuditRepository
+	audit                *AuditService
 	deploymentRepo       repository.DeploymentRepository
 	gatewayRepo          repository.GatewayRepository
 	orgRepo              repository.OrganizationRepository
@@ -53,7 +53,7 @@ type GraphQLAPIService struct {
 func NewGraphQLAPIService(
 	repo repository.GraphQLAPIRepository,
 	projectRepo repository.ProjectRepository,
-	auditRepo repository.AuditRepository,
+	audit *AuditService,
 	deploymentRepo repository.DeploymentRepository,
 	gatewayRepo repository.GatewayRepository,
 	orgRepo repository.OrganizationRepository,
@@ -64,7 +64,7 @@ func NewGraphQLAPIService(
 	return &GraphQLAPIService{
 		repo:                 repo,
 		projectRepo:          projectRepo,
-		auditRepo:            auditRepo,
+		audit:                audit,
 		deploymentRepo:       deploymentRepo,
 		gatewayRepo:          gatewayRepo,
 		orgRepo:              orgRepo,
@@ -174,7 +174,7 @@ func versionPathSegment(version string) string {
 
 // Create creates a new GraphQL API. Supply either req.Sdl directly or
 // req.Upstream.Main.Url — exactly one schema-resolution path runs.
-func (s *GraphQLAPIService) Create(orgUUID, createdBy string, req *api.CreateGraphQLAPIRequest) (*api.GraphQLAPI, error) {
+func (s *GraphQLAPIService) Create(ctx context.Context, orgUUID, createdBy string, req *api.CreateGraphQLAPIRequest) (*api.GraphQLAPI, error) {
 	if req == nil {
 		return nil, apperror.ValidationFailed.New("A request body is required.")
 	}
@@ -304,12 +304,18 @@ func (s *GraphQLAPIService) Create(orgUUID, createdBy string, req *api.CreateGra
 		if isSQLiteUniqueConstraint(err) {
 			return nil, apperror.GraphQLAPIExists.Wrap(err, graphQLAPIIDExistsMessage)
 		}
+		s.audit.Record(ctx, &AuditEvent{
+			Action: model.AuditActionCreate, ResourceType: model.AuditResourceTypeGraphQLAPI,
+			Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgUUID, PerformedBy: createdBy,
+			ResourceUUID: m.ID, ResourceName: m.Handle,
+		})
 		return nil, fmt.Errorf("failed to create GraphQL API: %w", err)
 	}
-
-	if s.auditRepo != nil {
-		_ = s.auditRepo.Record("CREATE", m.ID, "graphql_api", orgUUID, createdBy)
-	}
+	s.audit.Record(ctx, &AuditEvent{
+		Action: model.AuditActionCreate, ResourceType: model.AuditResourceTypeGraphQLAPI,
+		Outcome: model.AuditOutcomeSucceeded, OrganizationUUID: orgUUID, PerformedBy: createdBy,
+		ResourceUUID: m.ID, ResourceName: m.Handle, EventData: graphQLAPIAuditFields(m),
+	})
 	return s.Get(orgUUID, handle)
 }
 
@@ -679,7 +685,7 @@ func (s *GraphQLAPIService) List(orgUUID, projectHandle string, opts repository.
 // Update updates an existing GraphQL API. The project association is
 // immutable via this endpoint (req.ProjectId is not applied) — a PUT never
 // moves an artifact to a different project.
-func (s *GraphQLAPIService) Update(orgUUID, handle, updatedBy string, req *api.GraphQLAPI) (*api.GraphQLAPI, error) {
+func (s *GraphQLAPIService) Update(ctx context.Context, orgUUID, handle, updatedBy string, req *api.GraphQLAPI) (*api.GraphQLAPI, error) {
 	if handle == "" || req == nil {
 		return nil, apperror.ValidationFailed.New("The GraphQL API id and a request body are required.")
 	}
@@ -708,8 +714,17 @@ func (s *GraphQLAPIService) Update(orgUUID, handle, updatedBy string, req *api.G
 	}
 	// DP-originated artifacts are read-only in the control plane.
 	if err := ensureOriginMutable(existing.Origin); err != nil {
+		if IsOriginDenial(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Action: model.AuditActionUpdate, ResourceType: model.AuditResourceTypeGraphQLAPI,
+				Outcome: model.AuditOutcomeDenied, OrganizationUUID: orgUUID, PerformedBy: updatedBy,
+				ResourceUUID: existing.ID, ResourceName: existing.Handle,
+				EventData: map[string]any{"reason": "dp_originated"},
+			})
+		}
 		return nil, err
 	}
+	before := graphQLAPIAuditFields(existing)
 	if req.Id != nil && *req.Id != "" && *req.Id != handle {
 		return nil, apperror.ValidationFailed.New("The id in the request body must match the path parameter.")
 	}
@@ -774,12 +789,19 @@ func (s *GraphQLAPIService) Update(orgUUID, handle, updatedBy string, req *api.G
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, apperror.GraphQLAPINotFound.Wrap(err)
 		}
+		s.audit.Record(ctx, &AuditEvent{
+			Action: model.AuditActionUpdate, ResourceType: model.AuditResourceTypeGraphQLAPI,
+			Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgUUID, PerformedBy: updatedBy,
+			ResourceUUID: existing.ID, ResourceName: existing.Handle,
+		})
 		return nil, fmt.Errorf("failed to update GraphQL API: %w", err)
 	}
-
-	if s.auditRepo != nil {
-		_ = s.auditRepo.Record("UPDATE", existing.ID, "graphql_api", orgUUID, updatedBy)
-	}
+	s.audit.Record(ctx, &AuditEvent{
+		Action: model.AuditActionUpdate, ResourceType: model.AuditResourceTypeGraphQLAPI,
+		Outcome: model.AuditOutcomeSucceeded, OrganizationUUID: orgUUID, PerformedBy: updatedBy,
+		ResourceUUID: existing.ID, ResourceName: existing.Handle,
+		EventData: AuditDiff(before, graphQLAPIAuditFields(existing)),
+	})
 	return s.Get(orgUUID, handle)
 }
 
@@ -798,6 +820,14 @@ func (s *GraphQLAPIService) Delete(ctx context.Context, orgUUID, handle, deleted
 	}
 	// DP-originated artifacts may only be deleted once undeployed on all gateways.
 	if err := ensureOriginDeletable(s.deploymentRepo, existing.Origin, existing.ID, orgUUID); err != nil {
+		if IsOriginDenial(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Action: model.AuditActionDelete, ResourceType: model.AuditResourceTypeGraphQLAPI,
+				Outcome: model.AuditOutcomeDenied, OrganizationUUID: orgUUID, PerformedBy: deletedBy,
+				ResourceUUID: existing.ID, ResourceName: existing.Handle,
+				EventData: map[string]any{"reason": "dp_originated"},
+			})
+		}
 		return err
 	}
 
@@ -819,12 +849,18 @@ func (s *GraphQLAPIService) Delete(ctx context.Context, orgUUID, handle, deleted
 		if errors.Is(err, sql.ErrNoRows) {
 			return apperror.GraphQLAPINotFound.Wrap(err)
 		}
+		s.audit.Record(ctx, &AuditEvent{
+			Action: model.AuditActionDelete, ResourceType: model.AuditResourceTypeGraphQLAPI,
+			Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgUUID, PerformedBy: deletedBy,
+			ResourceUUID: existing.ID, ResourceName: existing.Handle,
+		})
 		return fmt.Errorf("failed to delete GraphQL API: %w", err)
 	}
-
-	if s.auditRepo != nil {
-		_ = s.auditRepo.Record("DELETE", existing.ID, "graphql_api", orgUUID, deletedBy)
-	}
+	s.audit.Record(ctx, &AuditEvent{
+		Action: model.AuditActionDelete, ResourceType: model.AuditResourceTypeGraphQLAPI,
+		Outcome: model.AuditOutcomeSucceeded, OrganizationUUID: orgUUID, PerformedBy: deletedBy,
+		ResourceUUID: existing.ID, ResourceName: existing.Handle,
+	})
 
 	// Send deletion events to all gateways in the organization
 	if s.gatewayEventsService != nil && len(gateways) > 0 {
@@ -857,7 +893,7 @@ func (s *GraphQLAPIService) Count(orgUUID string) (int, error) {
 // (api.RESTAPIGatewayListResponse) since the shape carries no REST-specific
 // fields — See resources/openapi.yaml's
 // /graphql-apis/{graphqlApiId}/gateways path.
-func (s *GraphQLAPIService) AddGatewaysToAPI(handle string, gatewayIds []string, orgUUID, createdBy string) (*api.RESTAPIGatewayListResponse, error) {
+func (s *GraphQLAPIService) AddGatewaysToAPI(ctx context.Context, handle string, gatewayIds []string, orgUUID, createdBy string) (*api.RESTAPIGatewayListResponse, error) {
 	apiModel, err := s.repo.GetByHandle(handle, orgUUID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get GraphQL API: %w", err)
@@ -888,9 +924,7 @@ func (s *GraphQLAPIService) AddGatewaysToAPI(handle string, gatewayIds []string,
 	}
 	for _, gateway := range validGateways {
 		if existingGatewayIds[gateway.ID] {
-			if err := s.repo.UpdateAPIAssociation(apiModel.ID, gateway.ID, constants.AssociationTypeGateway, orgUUID, createdBy); err != nil {
-				return nil, err
-			}
+			err = s.repo.UpdateAPIAssociation(apiModel.ID, gateway.ID, constants.AssociationTypeGateway, orgUUID, createdBy)
 		} else {
 			association := &model.APIAssociation{
 				ArtifactID:     apiModel.ID,
@@ -898,12 +932,28 @@ func (s *GraphQLAPIService) AddGatewaysToAPI(handle string, gatewayIds []string,
 				GatewayID:      gateway.ID,
 				CreatedBy:      createdBy,
 			}
-			if err := s.repo.CreateAPIAssociation(association); err != nil {
-				return nil, err
-			}
+			err = s.repo.CreateAPIAssociation(association)
 			existingGatewayIds[gateway.ID] = true
 		}
+		if err != nil {
+			break
+		}
 	}
+	if err != nil {
+		if IsAuditableFailure(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgUUID, Action: model.AuditActionUpdate, ResourceType: model.AuditResourceTypeGraphQLAPI,
+				PerformedBy: createdBy, ResourceUUID: apiModel.ID, ResourceName: apiModel.Handle,
+				EventData: map[string]any{"gateways": map[string]any{"added": gatewayIds}},
+			})
+		}
+		return nil, err
+	}
+	s.audit.Record(ctx, &AuditEvent{
+		Outcome: model.AuditOutcomeSucceeded, OrganizationUUID: orgUUID, Action: model.AuditActionUpdate, ResourceType: model.AuditResourceTypeGraphQLAPI,
+		PerformedBy: createdBy, ResourceUUID: apiModel.ID, ResourceName: apiModel.Handle,
+		EventData: map[string]any{"gateways": map[string]any{"added": gatewayIds}},
+	})
 
 	return s.getAPIGateways(apiModel.ID, orgUUID)
 }
@@ -967,4 +1017,15 @@ func (s *GraphQLAPIService) getAPIGateways(apiUUID, orgUUID string) (*api.RESTAP
 		return nil, fmt.Errorf("failed to convert API gateway details: %w", err)
 	}
 	return response, nil
+}
+
+// graphQLAPIAuditFields lists the GraphQL API fields recorded in audit events. The
+// schema, upstream and its credentials are never recorded.
+func graphQLAPIAuditFields(m *model.GraphQLAPI) map[string]any {
+	return map[string]any{
+		"displayName": m.Name,
+		"version":     m.Version,
+		"context":     utils.ValueOrEmpty(m.Configuration.Context),
+		"policies":    policyNames(m.Configuration.Policies),
+	}
 }

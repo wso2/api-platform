@@ -275,7 +275,7 @@ func newOAEnv(t *testing.T) *oaEnv {
 		nil /* orgRepo — not reached by these three handlers in the covered paths */,
 		nil /* gatewayRepo */, nil /* deploymentRepo */, nil /* subscriptionPlanRepo */, nil /* customPolicyRepo */,
 		nil /* gatewayEventsService */, &utils.APIUtil{}, logger, identitySvc, nil)
-	apiDocumentService := service.NewAPIDocumentService(env.docRepo, env.artifactRepo, env.docAudit, nil, logger)
+	apiDocumentService := service.NewAPIDocumentService(env.docRepo, env.artifactRepo, nil, logger)
 
 	env.mux = http.NewServeMux()
 	NewAPIHandler(apiService, identitySvc, apiDocumentService, logger, &config.Server{}).RegisterRoutes(env.mux)

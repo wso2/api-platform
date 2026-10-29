@@ -135,20 +135,6 @@ func (m *mockDocumentRepository) ListDocumentsByArtifact(artifactUUID, orgUUID, 
 	return m.listDocsResult, m.listDocsTotal, m.listDocsErr
 }
 
-type auditCall struct {
-	action, resourceUUID, resourceType, orgUUID, performedBy string
-}
-
-type recordingAuditRepo struct {
-	calls []auditCall
-	err   error
-}
-
-func (r *recordingAuditRepo) Record(action, resourceUUID, resourceType, orgUUID, performedBy string) error {
-	r.calls = append(r.calls, auditCall{action, resourceUUID, resourceType, orgUUID, performedBy})
-	return r.err
-}
-
 // mockArtifactRepository is only used by tests that exercise ResolveArtifactUUID.
 type mockArtifactRepository struct {
 	repository.ArtifactRepository
@@ -163,12 +149,12 @@ func (m *mockArtifactRepository) GetAPIMetadataByHandleAndKind(handle, kind, org
 	return m.metadataByHandleAndKind, m.metadataErr
 }
 
-func newTestDocumentService() (*APIDocumentService, *mockDocumentRepository, *recordingAuditRepo, *mockArtifactRepository) {
+func newTestDocumentService() (*APIDocumentService, *mockDocumentRepository, *auditLogRecorder, *mockArtifactRepository) {
 	docRepo := &mockDocumentRepository{}
-	auditRepo := &recordingAuditRepo{}
+	audit, auditRows := newRecordingAuditService()
 	artifactRepo := &mockArtifactRepository{}
-	svc := NewAPIDocumentService(docRepo, artifactRepo, auditRepo, nil, slog.New(slog.NewTextHandler(discard{}, nil)))
-	return svc, docRepo, auditRepo, artifactRepo
+	svc := NewAPIDocumentService(docRepo, artifactRepo, audit, slog.New(slog.NewTextHandler(discard{}, nil)))
+	return svc, docRepo, auditRows, artifactRepo
 }
 
 // discard swallows slog output so test output stays focused on failures.
@@ -280,7 +266,7 @@ func TestAPIDocumentService_UpdateApiDocument_AllowsDOCPrefixedOtherTypeName(t *
 	}
 	newType := constants.DocumentTypeOther
 	docPrefixed := "DOC_Custom"
-	err := svc.UpdateApiDocument(&dto.UpdateAPIDocumentRequest{
+	err := svc.UpdateApiDocument(context.Background(), &dto.UpdateAPIDocumentRequest{
 		Type:          &newType,
 		OtherTypeName: docPrefixed,
 	}, "org-1", "alice", "artifact-1", "doc-1")
@@ -382,7 +368,7 @@ func TestAPIDocumentService_UpdateApiDocument_PreservesContentWhenRequestOmitsIt
 	}
 
 	newName := "Overview v2"
-	err := svc.UpdateApiDocument(&dto.UpdateAPIDocumentRequest{
+	err := svc.UpdateApiDocument(context.Background(), &dto.UpdateAPIDocumentRequest{
 		DisplayName: &newName,
 	}, "org-1", "alice", "artifact-1", "overview")
 	if err != nil {
@@ -405,7 +391,7 @@ func TestAPIDocumentService_UpdateApiDocument_PreservesContentWhenRequestOmitsIt
 func TestAPIDocumentService_DeleteApiDocument_RejectsReservedHandle(t *testing.T) {
 	svc, docRepo, _, _ := newTestDocumentService()
 
-	err := svc.DeleteApiDocument("artifact-1", constants.DocumentHandleThumbnail, "org-1", "alice")
+	err := svc.DeleteApiDocument(context.Background(), "artifact-1", constants.DocumentHandleThumbnail, "org-1", "alice")
 	if err == nil || !apperror.ValidationFailed.Is(err) {
 		t.Errorf("DeleteApiDocument(handle=%q) err = %v, want ValidationFailed",
 			constants.DocumentHandleThumbnail, err)
@@ -420,13 +406,13 @@ func TestAPIDocumentService_DeleteApiDocument_NotFoundMapsToAppError(t *testing.
 	svc, docRepo, _, _ := newTestDocumentService()
 	docRepo.getDocResult = nil
 
-	err := svc.DeleteApiDocument("artifact-1", "overview", "org-1", "alice")
+	err := svc.DeleteApiDocument(context.Background(), "artifact-1", "overview", "org-1", "alice")
 	if err == nil || !apperror.NotFound.Is(err) {
 		t.Errorf("DeleteApiDocument(unknown handle) err = %v, want NotFound", err)
 	}
 }
 
-// DeleteApiDocument on a user doc calls the repo's user-facing delete path and records an audit event with the generic api_document resource label.
+// DeleteApiDocument on a user doc calls the repo's user-facing delete path and records an ApiDocument delete audit event.
 func TestAPIDocumentService_DeleteApiDocument_SuccessHits(t *testing.T) {
 	svc, docRepo, auditRepo, _ := newTestDocumentService()
 	docRepo.getDocResult = &model.Document{
@@ -437,14 +423,15 @@ func TestAPIDocumentService_DeleteApiDocument_SuccessHits(t *testing.T) {
 		DisplayName:      "Overview",
 	}
 
-	if err := svc.DeleteApiDocument("artifact-1", "overview", "org-1", "alice"); err != nil {
+	if err := svc.DeleteApiDocument(context.Background(), "artifact-1", "overview", "org-1", "alice"); err != nil {
 		t.Fatalf("DeleteApiDocument err = %v, want nil", err)
 	}
 	if len(docRepo.deleteApiDocCalls) != 1 || docRepo.deleteApiDocCalls[0].handle != "overview" {
 		t.Fatalf("DeleteApiDocument calls = %+v, want one with handle=overview", docRepo.deleteApiDocCalls)
 	}
-	if len(auditRepo.calls) != 1 || auditRepo.calls[0].resourceType != "api_document" {
-		t.Errorf("audit resourceType = %+v, want {api_document}", auditRepo.calls)
+	if rows := auditRepo.wait(1); len(rows) != 1 || rows[0].ResourceType != model.AuditResourceTypeAPIDocument ||
+		rows[0].Action != model.AuditActionDelete || rows[0].ResourceName != "overview" {
+		t.Errorf("audit = %+v, want one ApiDocument delete of overview", rows)
 	}
 }
 
@@ -1040,8 +1027,8 @@ func TestAPIDocumentService_UpsertDocument_CreateRecordsCreateAudit(t *testing.T
 	if stored.CreatedBy != "alice" || stored.UpdatedBy != "alice" {
 		t.Errorf("createdBy/updatedBy = %q/%q, want alice/alice on create", stored.CreatedBy, stored.UpdatedBy)
 	}
-	if len(auditRepo.calls) != 1 || auditRepo.calls[0].action != "CREATE" {
-		t.Errorf("audit = %+v, want one CREATE entry", auditRepo.calls)
+	if rows := auditRepo.wait(1); len(rows) != 1 || rows[0].Action != model.AuditActionCreate {
+		t.Errorf("audit = %+v, want one create entry", rows)
 	}
 }
 
@@ -1071,8 +1058,8 @@ func TestAPIDocumentService_UpsertDocument_ExistingRowIsUpdateAudit(t *testing.T
 	if stored.UpdatedBy != "bob" {
 		t.Errorf("UpdatedBy = %q, want bob", stored.UpdatedBy)
 	}
-	if len(auditRepo.calls) != 1 || auditRepo.calls[0].action != "UPDATE" {
-		t.Errorf("audit = %+v, want one UPDATE entry", auditRepo.calls)
+	if rows := auditRepo.wait(1); len(rows) != 1 || rows[0].Action != model.AuditActionUpdate {
+		t.Errorf("audit = %+v, want one update entry", rows)
 	}
 }
 
@@ -1105,7 +1092,7 @@ func TestAPIDocumentService_UpsertDocument_RepoErrorIsSurfaced(t *testing.T) {
 
 func TestAPIDocumentService_DeleteAPIThumbnail_Success(t *testing.T) {
 	svc, docRepo, auditRepo, _ := newTestDocumentService()
-	if err := svc.DeleteAPIThumbnail("artifact-1", "org-1", "alice"); err != nil {
+	if err := svc.DeleteAPIThumbnail(context.Background(), "artifact-1", "org-1", "alice"); err != nil {
 		t.Fatalf("DeleteAPIThumbnail err = %v", err)
 	}
 	if len(docRepo.deleteDocCalls) != 1 {
@@ -1119,9 +1106,9 @@ func TestAPIDocumentService_DeleteAPIThumbnail_Success(t *testing.T) {
 	if call.handle != constants.DocumentHandleThumbnail || call.docType != constants.DocumentTypeThumbnail {
 		t.Errorf("delete targeted handle=%q type=%q, want the thumbnail singleton", call.handle, call.docType)
 	}
-	if len(auditRepo.calls) != 1 || auditRepo.calls[0].action != "DELETE" ||
-		auditRepo.calls[0].resourceType != "api_thumbnail" {
-		t.Errorf("audit = %+v, want DELETE api_thumbnail", auditRepo.calls)
+	if rows := auditRepo.wait(1); len(rows) != 1 || rows[0].Action != model.AuditActionDelete ||
+		rows[0].ResourceType != model.AuditResourceTypeAPIDocument || rows[0].ResourceName != constants.DocumentHandleThumbnail {
+		t.Errorf("audit = %+v, want an ApiDocument delete of the thumbnail", rows)
 	}
 }
 
@@ -1130,18 +1117,18 @@ func TestAPIDocumentService_DeleteAPIThumbnail_Success(t *testing.T) {
 func TestAPIDocumentService_DeleteAPIThumbnail_NotFound(t *testing.T) {
 	svc, docRepo, auditRepo, _ := newTestDocumentService()
 	docRepo.deleteDocErr = sql.ErrNoRows
-	err := svc.DeleteAPIThumbnail("artifact-1", "org-1", "alice")
+	err := svc.DeleteAPIThumbnail(context.Background(), "artifact-1", "org-1", "alice")
 	if err == nil || !apperror.NotFound.Is(err) {
 		t.Fatalf("err = %v, want NotFound", err)
 	}
-	if len(auditRepo.calls) != 0 {
-		t.Errorf("audit entries recorded for a no-op delete: %+v", auditRepo.calls)
+	if rows := auditRepo.wait(1); len(rows) != 0 {
+		t.Errorf("audit entries recorded for a no-op delete: %+v", rows)
 	}
 }
 
 func TestAPIDocumentService_DeleteAPIThumbnail_RequiresArtifactUUID(t *testing.T) {
 	svc, docRepo, _, _ := newTestDocumentService()
-	if err := svc.DeleteAPIThumbnail("", "org-1", "alice"); err == nil || !apperror.ValidationFailed.Is(err) {
+	if err := svc.DeleteAPIThumbnail(context.Background(), "", "org-1", "alice"); err == nil || !apperror.ValidationFailed.Is(err) {
 		t.Fatalf("err = %v, want ValidationFailed", err)
 	}
 	if len(docRepo.deleteDocCalls) != 0 {
@@ -1152,7 +1139,7 @@ func TestAPIDocumentService_DeleteAPIThumbnail_RequiresArtifactUUID(t *testing.T
 func TestAPIDocumentService_DeleteAPIThumbnail_RepoErrorIsSurfaced(t *testing.T) {
 	svc, docRepo, _, _ := newTestDocumentService()
 	docRepo.deleteDocErr = errors.New("db down")
-	err := svc.DeleteAPIThumbnail("artifact-1", "org-1", "alice")
+	err := svc.DeleteAPIThumbnail(context.Background(), "artifact-1", "org-1", "alice")
 	if err == nil {
 		t.Fatal("err = nil, want the repo error to surface")
 	}
@@ -1343,7 +1330,7 @@ func TestAPIDocumentService_UpdateApiDocument_ValidationGates(t *testing.T) {
 					DisplayName: "Original",
 				}
 			}
-			err := svc.UpdateApiDocument(tc.req, "org", "alice", "artifact-1", tc.handle)
+			err := svc.UpdateApiDocument(context.Background(), tc.req, "org", "alice", "artifact-1", tc.handle)
 			if err == nil {
 				t.Fatalf("err = nil, want validation error")
 			}
@@ -1360,10 +1347,10 @@ func TestAPIDocumentService_UpdateApiDocument_ValidationGates(t *testing.T) {
 
 func TestAPIDocumentService_DeleteApiDocument_RequiresArtifactAndHandle(t *testing.T) {
 	svc, _, _, _ := newTestDocumentService()
-	if err := svc.DeleteApiDocument("", "overview", "org", "alice"); err == nil || !apperror.ValidationFailed.Is(err) {
+	if err := svc.DeleteApiDocument(context.Background(), "", "overview", "org", "alice"); err == nil || !apperror.ValidationFailed.Is(err) {
 		t.Errorf("empty artifact: err = %v, want ValidationFailed", err)
 	}
-	if err := svc.DeleteApiDocument("artifact-1", "", "org", "alice"); err == nil || !apperror.ValidationFailed.Is(err) {
+	if err := svc.DeleteApiDocument(context.Background(), "artifact-1", "", "org", "alice"); err == nil || !apperror.ValidationFailed.Is(err) {
 		t.Errorf("empty handle: err = %v, want ValidationFailed", err)
 	}
 }
@@ -1372,7 +1359,7 @@ func TestAPIDocumentService_DeleteApiDocument_NotFound(t *testing.T) {
 	// No getDocResult seeded → service returns NotFound before touching the
 	// repo delete.
 	svc, docRepo, _, _ := newTestDocumentService()
-	err := svc.DeleteApiDocument("artifact-1", "overview", "org", "alice")
+	err := svc.DeleteApiDocument(context.Background(), "artifact-1", "overview", "org", "alice")
 	if err == nil || !apperror.NotFound.Is(err) {
 		t.Fatalf("err = %v, want NotFound", err)
 	}
@@ -1392,7 +1379,7 @@ func TestAPIDocumentService_DeleteApiDocument_RaceMapsToNotFound(t *testing.T) {
 	}
 	docRepo.deleteApiDocErr = sql.ErrNoRows
 
-	err := svc.DeleteApiDocument("artifact-1", "overview", "org", "alice")
+	err := svc.DeleteApiDocument(context.Background(), "artifact-1", "overview", "org", "alice")
 	if err == nil || !apperror.NotFound.Is(err) {
 		t.Fatalf("err = %v, want NotFound", err)
 	}
@@ -1406,7 +1393,7 @@ func TestAPIDocumentService_DeleteApiDocument_RepoErrorIsSurfaced(t *testing.T) 
 	}
 	docRepo.deleteApiDocErr = errors.New("db down")
 
-	if err := svc.DeleteApiDocument("artifact-1", "overview", "org", "alice"); err == nil {
+	if err := svc.DeleteApiDocument(context.Background(), "artifact-1", "overview", "org", "alice"); err == nil {
 		t.Fatal("err = nil, want the repo error to surface")
 	}
 }

@@ -132,7 +132,8 @@ func (h *AgentProxyDeploymentHandler) UndeployDeployment(w http.ResponseWriter, 
 		return apperror.ValidationFailed.New("gatewayId is required")
 	}
 
-	deployment, err := h.deploymentService.UndeployByHandle(r.Context(), handle, deploymentID, gatewayID, orgID)
+	actor, _ := h.identity.InternalUserID(r)
+	deployment, err := h.deploymentService.UndeployByHandle(r.Context(), handle, deploymentID, gatewayID, orgID, actor)
 	if err != nil {
 		return serviceError(err, fmt.Sprintf("failed to undeploy Agent proxy %s deployment %s on gateway %s", handle, deploymentID, gatewayID))
 	}
@@ -156,7 +157,8 @@ func (h *AgentProxyDeploymentHandler) RestoreDeployment(w http.ResponseWriter, r
 		return apperror.ValidationFailed.New("gatewayId is required")
 	}
 
-	deployment, err := h.deploymentService.RestoreByHandle(r.Context(), handle, deploymentID, gatewayID, orgID)
+	actor, _ := h.identity.InternalUserID(r)
+	deployment, err := h.deploymentService.RestoreByHandle(r.Context(), handle, deploymentID, gatewayID, orgID, actor)
 	if err != nil {
 		return serviceError(err, fmt.Sprintf("failed to restore Agent proxy %s deployment %s on gateway %s", handle, deploymentID, gatewayID))
 	}
@@ -176,7 +178,8 @@ func (h *AgentProxyDeploymentHandler) DeleteDeployment(w http.ResponseWriter, r 
 	handle := r.PathValue("agentProxyId")
 	deploymentID := r.PathValue("deploymentId")
 
-	if err := h.deploymentService.DeleteByHandle(handle, deploymentID, orgID); err != nil {
+	actor, _ := h.identity.InternalUserID(r)
+	if err := h.deploymentService.DeleteByHandle(r.Context(), handle, deploymentID, orgID, actor); err != nil {
 		return serviceError(err, fmt.Sprintf("failed to delete Agent proxy %s deployment %s", handle, deploymentID))
 	}
 

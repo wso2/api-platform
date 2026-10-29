@@ -135,13 +135,8 @@ func (s *OrganizationService) RegisterOrganization(ctx context.Context, id strin
 	orgModel.UpdatedBy = performedBy
 	err = s.orgRepo.CreateOrganization(orgModel)
 	if err != nil {
-		if IsAuditableFailure(err) {
-			s.audit.Record(ctx, &AuditEvent{
-				Action: model.AuditActionCreate, ResourceType: model.AuditResourceTypeOrganization,
-				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgModel.ID, PerformedBy: performedBy,
-				ResourceUUID: orgModel.ID, ResourceName: orgModel.Handle,
-			})
-		}
+		// No failed row: it would belong to the organization that was not created, and
+		// audit_log's foreign key to organizations rejects it.
 		return nil, err
 	}
 	s.audit.Record(ctx, &AuditEvent{

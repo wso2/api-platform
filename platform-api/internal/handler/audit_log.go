@@ -107,7 +107,9 @@ func (h *AuditLogHandler) ListAuditLogs(w http.ResponseWriter, r *http.Request) 
 			model.AuditResourceTypeAPIPortal, model.AuditResourceTypeAPIDefinition,
 			model.AuditResourceTypeLLMProviderTemplate, model.AuditResourceTypeLLMProxy,
 			model.AuditResourceTypeWebSubAPI, model.AuditResourceTypeWebBrokerAPI,
-			model.AuditResourceTypeSecret:
+			model.AuditResourceTypeSecret, model.AuditResourceTypeGraphQLAPI,
+			model.AuditResourceTypeAgentProxy, model.AuditResourceTypeAPIDocument,
+			model.AuditResourceTypeMeter:
 		default:
 			return apperror.AuditInvalidFilter.New(fmt.Sprintf("unknown resourceType %q", v))
 		}

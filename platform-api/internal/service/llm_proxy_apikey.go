@@ -142,7 +142,7 @@ func (s *LLMProxyAPIKeyService) DeleteLLMProxyAPIKey(
 		s.slogger.Error("Failed to delete LLM proxy API key from database", "proxyId", proxyID, "keyName", keyName, "error", err)
 		if IsAuditableFailure(err) {
 			s.audit.Record(ctx, &AuditEvent{
-				Action: model.AuditActionRevoke, ResourceType: model.AuditResourceTypeLLMAPIKey,
+				Action: model.AuditActionDelete, ResourceType: model.AuditResourceTypeLLMAPIKey,
 				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgID, PerformedBy: userID,
 				ResourceUUID: existingKey.UUID, ResourceName: keyName,
 				EventData: map[string]any{"proxyId": proxyID},
@@ -151,7 +151,7 @@ func (s *LLMProxyAPIKeyService) DeleteLLMProxyAPIKey(
 		return fmt.Errorf("failed to delete API key: %w", err)
 	}
 	s.audit.Record(ctx, &AuditEvent{
-		Action: model.AuditActionRevoke, ResourceType: model.AuditResourceTypeLLMAPIKey,
+		Action: model.AuditActionDelete, ResourceType: model.AuditResourceTypeLLMAPIKey,
 		Outcome: model.AuditOutcomeSucceeded, OrganizationUUID: orgID, PerformedBy: userID,
 		ResourceUUID: existingKey.UUID, ResourceName: keyName,
 		EventData: map[string]any{"proxyId": proxyID},

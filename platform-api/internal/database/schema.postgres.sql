@@ -792,6 +792,7 @@ CREATE TABLE IF NOT EXISTS audit_log (
 CREATE INDEX IF NOT EXISTS idx_audit_log_org_time ON audit_log(organization_uuid, performed_at DESC);
 CREATE INDEX IF NOT EXISTS idx_audit_log_outcome ON audit_log(organization_uuid, outcome, performed_at DESC);
 CREATE INDEX IF NOT EXISTS idx_audit_log_actor ON audit_log(organization_uuid, performed_by, performed_at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_log_resource ON audit_log(organization_uuid, resource_uuid, performed_at DESC);
 
 -- Secrets table for encrypted secret management
 CREATE TABLE IF NOT EXISTS secrets (

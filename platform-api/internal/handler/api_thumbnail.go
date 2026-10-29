@@ -198,7 +198,7 @@ func (h *APIThumbnailHandler) DeleteThumbnail(w http.ResponseWriter, r *http.Req
 	if err != nil {
 		return err
 	}
-	if err := h.service.DeleteAPIThumbnail(artifactUUID, orgID, deletedBy); err != nil {
+	if err := h.service.DeleteAPIThumbnail(r.Context(), artifactUUID, orgID, deletedBy); err != nil {
 		return serviceError(err, "failed to delete thumbnail")
 	}
 	w.WriteHeader(http.StatusNoContent)

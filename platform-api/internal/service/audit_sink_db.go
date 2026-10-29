@@ -58,13 +58,14 @@ func toAuditLog(e *AuditEvent) *model.AuditLog {
 	}
 }
 
-// marshalEventData returns "" on nil or marshal failure — audit truth outweighs a lost payload.
+// marshalEventData returns "" on nil (including a nil map, e.g. an empty AuditDiff) or
+// marshal failure — audit truth outweighs a lost payload.
 func marshalEventData(v any) string {
 	if v == nil {
 		return ""
 	}
 	b, err := json.Marshal(v)
-	if err != nil {
+	if err != nil || string(b) == "null" {
 		return ""
 	}
 	return string(b)

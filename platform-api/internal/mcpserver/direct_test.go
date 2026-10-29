@@ -166,7 +166,6 @@ func newRealDirect(t *testing.T) realDirect {
 	mcpProxyRepo := repository.NewMCPProxyRepo(db)
 	agentProxyRepo := repository.NewAgentProxyRepo(db)
 	apiKeyRepo := repository.NewAPIKeyRepo(db, registry)
-	auditRepo := repository.NewAuditRepo(db)
 	graphqlAPIRepo := repository.NewGraphQLAPIRepo(db, registry)
 
 	templates, err := utils.LoadLLMProviderTemplatesFromDirectory("../../resources/default-llm-provider-templates")
@@ -204,8 +203,8 @@ func newRealDirect(t *testing.T) realDirect {
 		LLMProxyDeployments:    service.NewLLMProxyDeploymentService(proxyRepo, deploymentRepo, gatewayRepo, orgRepo, apiKeyRepo, events, artifactRepo, definitions, identity, cfg, logger, nil),
 		MCPProxies:             service.NewMCPProxyService(mcpProxyRepo, projectRepo, deploymentRepo, gatewayRepo, events, logger, cfg, identity, nil),
 		MCPProxyDeployments:    service.NewMCPDeploymentService(mcpProxyRepo, deploymentRepo, gatewayRepo, orgRepo, artifactRepo, apiKeyRepo, events, definitions, identity, cfg, logger, nil),
-		AgentProxies:           service.NewAgentProxyService(agentProxyRepo, projectRepo, deploymentRepo, gatewayRepo, events, logger, auditRepo, cfg, identity),
-		AgentProxyDeployments:  service.NewAgentDeploymentService(agentProxyRepo, deploymentRepo, gatewayRepo, artifactRepo, apiKeyRepo, events, definitions, identity, cfg, logger),
+		AgentProxies:           service.NewAgentProxyService(agentProxyRepo, projectRepo, deploymentRepo, gatewayRepo, events, logger, nil, cfg, identity),
+		AgentProxyDeployments:  service.NewAgentDeploymentService(agentProxyRepo, deploymentRepo, gatewayRepo, artifactRepo, apiKeyRepo, events, definitions, identity, cfg, logger, nil),
 	})
 	require.NoError(t, err)
 

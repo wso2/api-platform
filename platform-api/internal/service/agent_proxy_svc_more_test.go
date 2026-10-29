@@ -235,7 +235,7 @@ func TestAgentProxyCreate_HappyPathWithSuppliedHandle(t *testing.T) {
 	req.Id = apsTPtr("weather-agent")
 	req.Description = apsTPtr("forecasts")
 
-	resp, err := svc.Create(agentTestOrg, "alice", req)
+	resp, err := svc.Create(context.Background(), agentTestOrg, "alice", req)
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -255,7 +255,7 @@ func TestAgentProxyCreate_DerivesHandleFromDisplayName(t *testing.T) {
 	repo := newAPSTRepo()
 	svc := newAPSTService(repo)
 
-	resp, err := svc.Create(agentTestOrg, "alice", validAgentProxyRequest())
+	resp, err := svc.Create(context.Background(), agentTestOrg, "alice", validAgentProxyRequest())
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -276,7 +276,7 @@ func TestAgentProxyCreate_DerivedHandleSkipsReservedName(t *testing.T) {
 	req := validAgentProxyRequest()
 	req.DisplayName = "Fetch Agent Card"
 
-	resp, err := svc.Create(agentTestOrg, "alice", req)
+	resp, err := svc.Create(context.Background(), agentTestOrg, "alice", req)
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -360,7 +360,7 @@ func TestAgentProxyCreate_Rejections(t *testing.T) {
 		{
 			name: "credential-bearing auth with no value",
 			mutate: func(_ *AgentProxyService, _ *apsTRepo, req *api.A2AAgentProxy) {
-				bearer := api.UpstreamAuthTypeBearer
+				bearer := api.Bearer
 				req.Upstream.Main.Auth = &api.UpstreamAuth{Type: &bearer, Header: apsTPtr("Authorization")}
 			},
 			check: apperror.ValidationFailed.Is,
@@ -370,7 +370,7 @@ func TestAgentProxyCreate_Rejections(t *testing.T) {
 			mutate: func(s *AgentProxyService, _ *apsTRepo, req *api.A2AAgentProxy) {
 				ss, _ := apsTSecretService(nil)
 				s.WithSecretService(ss)
-				bearer := api.UpstreamAuthTypeBearer
+				bearer := api.Bearer
 				req.Upstream.Main.Auth = &api.UpstreamAuth{
 					Type: &bearer, Header: apsTPtr("Authorization"), Value: apsTPtr(`{{ secret "missing-handle" }}`),
 				}
@@ -412,7 +412,7 @@ func TestAgentProxyCreate_Rejections(t *testing.T) {
 				req = validAgentProxyRequest()
 				tc.mutate(svc, repo, req)
 			}
-			_, err := svc.Create(agentTestOrg, "alice", req)
+			_, err := svc.Create(context.Background(), agentTestOrg, "alice", req)
 			if !tc.check(err) {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -430,11 +430,11 @@ func TestAgentProxyCreate_ResolvedSecretReferenceIsAccepted(t *testing.T) {
 	svc.WithSecretService(ss)
 
 	req := validAgentProxyRequest()
-	bearer := api.UpstreamAuthTypeBearer
+	bearer := api.Bearer
 	req.Upstream.Main.Auth = &api.UpstreamAuth{
 		Type: &bearer, Header: apsTPtr("Authorization"), Value: apsTPtr(`{{ secret "agent-token" }}`),
 	}
-	if _, err := svc.Create(agentTestOrg, "alice", req); err != nil {
+	if _, err := svc.Create(context.Background(), agentTestOrg, "alice", req); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 	if got := repo.created.Configuration.Upstream.Main.Auth.Value; got != `{{ secret "agent-token" }}` {
@@ -610,13 +610,13 @@ func TestAgentProxyUpdate_Rejections(t *testing.T) {
 			s.projectRepo = &apsTProjectRepo{project: p}
 		}, apperror.ProjectNotFound.Is},
 		{"changed auth type drops the stored credential", func(_ *AgentProxyService, _ *apsTRepo, req *api.A2AAgentProxy) {
-			apiKey := api.UpstreamAuthTypeApiKey
+			apiKey := api.ApiKey
 			req.Upstream.Main.Auth = &api.UpstreamAuth{Type: &apiKey, Header: apsTPtr("X-API-Key")}
 		}, apperror.ValidationFailed.Is},
 		{"unresolvable secret reference", func(s *AgentProxyService, _ *apsTRepo, req *api.A2AAgentProxy) {
 			ss, _ := apsTSecretService(nil)
 			s.WithSecretService(ss)
-			bearer := api.UpstreamAuthTypeBearer
+			bearer := api.Bearer
 			req.Upstream.Main.Auth = &api.UpstreamAuth{
 				Type: &bearer, Header: apsTPtr("Authorization"), Value: apsTPtr(`{{ secret "nope" }}`),
 			}
@@ -643,7 +643,7 @@ func TestAgentProxyUpdate_Rejections(t *testing.T) {
 			svc := newAPSTService(repo)
 			req := validAgentProxyRequest()
 			tc.mutate(svc, repo, req)
-			if _, err := svc.Update(agentTestOrg, "weather-agent", "alice", req); !tc.check(err) {
+			if _, err := svc.Update(context.Background(), agentTestOrg, "weather-agent", "alice", req); !tc.check(err) {
 				t.Fatalf("unexpected error: %v", err)
 			}
 		})
@@ -652,7 +652,7 @@ func TestAgentProxyUpdate_Rejections(t *testing.T) {
 
 func TestAgentProxyUpdate_NilBody(t *testing.T) {
 	svc := newAPSTService(newAPSTRepo())
-	if _, err := svc.Update(agentTestOrg, "weather-agent", "alice", nil); !apperror.ValidationFailed.Is(err) {
+	if _, err := svc.Update(context.Background(), agentTestOrg, "weather-agent", "alice", nil); !apperror.ValidationFailed.Is(err) {
 		t.Fatalf("expected a validation failure, got %v", err)
 	}
 }
@@ -674,11 +674,11 @@ func TestAgentProxyUpdate_RotatesSecretAndInvalidatesCard(t *testing.T) {
 	svc.cardCache.storeCard(key, svc.cardCache.begin(key), []byte(`{"name":"stale"}`))
 
 	req := validAgentProxyRequest()
-	bearer := api.UpstreamAuthTypeBearer
+	bearer := api.Bearer
 	req.Upstream.Main.Auth = &api.UpstreamAuth{
 		Type: &bearer, Header: apsTPtr("Authorization"), Value: apsTPtr(`{{ secret "new-token" }}`),
 	}
-	if _, err := svc.Update(agentTestOrg, stored.Handle, "alice", req); err != nil {
+	if _, err := svc.Update(context.Background(), agentTestOrg, stored.Handle, "alice", req); err != nil {
 		t.Fatalf("Update: %v", err)
 	}
 	if secretRepo.secrets["old-token"].Status != model.SecretStatusDeprecated {
@@ -821,7 +821,7 @@ func TestAgentProxyFetchAgentCard_DirectURL(t *testing.T) {
 	srv, seen, _ := apsTCardServer(t, http.StatusOK, card)
 	svc := newAPSTService(newAPSTRepo())
 
-	apiKey := api.UpstreamAuthTypeApiKey
+	apiKey := api.ApiKey
 	res, err := svc.FetchAgentCard(agentTestOrg, &dto.AgentCardFetchRequest{
 		URL:  srv.URL,
 		Auth: &api.UpstreamAuth{Type: &apiKey, Header: apsTPtr("X-Agent-Key"), Value: apsTPtr("supplied")},
@@ -1061,7 +1061,7 @@ func TestAgentProxyFetchAgentCard_StoredIsOrgScopedBeforeCache(t *testing.T) {
 // ---- helpers ---------------------------------------------------------------
 
 func TestSuppliedAgentCardAuthHeader(t *testing.T) {
-	none, apiKey := api.UpstreamAuthTypeNone, api.UpstreamAuthTypeApiKey
+	none, apiKey := api.None, api.ApiKey
 	cases := []struct {
 		name      string
 		auth      *api.UpstreamAuth

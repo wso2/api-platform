@@ -82,9 +82,6 @@ type APIPortalService struct {
 	portalRepo   repository.APIPortalRepository
 	orgRepo      repository.OrganizationRepository
 	audit        *AuditService
-	// auditRepo records the lifecycle transitions the cloud plugin drives (no user operation, so
-	// they stay out of the audit log); nil records nothing.
-	auditRepo    repository.AuditRepository
 	vault        vault.SecretVault
 	authRegistry *APIPortalAuthRegistry
 	identity     *IdentityService
@@ -296,7 +293,7 @@ func (s *APIPortalService) UpdateAPIPortalStatus(handle, orgID, updatedBy, statu
 	if err != nil {
 		return err
 	}
-	s.recordStatusTransition(portal.ID, orgID, actor)
+	s.recordStatusTransition(portal, orgID, actor, status)
 	return nil
 }
 
@@ -316,7 +313,7 @@ func (s *APIPortalService) ReopenAPIPortal(handle, orgID, updatedBy string) erro
 	if err != nil {
 		return err
 	}
-	s.recordStatusTransition(portal.ID, orgID, actor)
+	s.recordStatusTransition(portal, orgID, actor, constants.APIPortalStatusPending)
 	return nil
 }
 
@@ -542,14 +539,14 @@ func apiPortalAuditFields(p *model.APIPortal) map[string]any {
 	}
 }
 
-// SetAuditRepository sets where portal lifecycle transitions are recorded.
-func (s *APIPortalService) SetAuditRepository(repo repository.AuditRepository) {
-	s.auditRepo = repo
-}
-
-// recordStatusTransition writes the legacy audit row for a portal lifecycle transition.
-func (s *APIPortalService) recordStatusTransition(portalID, orgID, actor string) {
-	if s.auditRepo != nil {
-		_ = s.auditRepo.Record("UPDATE_STATUS", portalID, "api_portal", orgID, actor)
-	}
+// recordStatusTransition records a portal lifecycle transition, which the cloud plugin
+// drives through the PDK. The PDK methods take no context, so the row has no
+// correlation ID; actor is the user the portal row names, empty when none.
+func (s *APIPortalService) recordStatusTransition(portal *model.APIPortal, orgID, actor, status string) {
+	s.audit.Record(context.Background(), &AuditEvent{
+		Action: model.AuditActionUpdate, ResourceType: model.AuditResourceTypeAPIPortal,
+		Outcome: model.AuditOutcomeSucceeded, OrganizationUUID: orgID, PerformedBy: actor,
+		ResourceUUID: portal.ID, ResourceName: portal.Handle,
+		EventData: map[string]any{"status": status},
+	})
 }

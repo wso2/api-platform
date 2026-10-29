@@ -589,11 +589,6 @@ type DocumentRepository interface {
 	GetDocumentsByHandles(artifactUUID string, handles []string, orgUUID string) (map[string]*model.Document, error)
 }
 
-// AuditRepository defines the interface for audit record writes.
-type AuditRepository interface {
-	Record(action, resourceUUID, resourceType, orgUUID, performedBy string) error
-}
-
 // AuditLogRepository defines the interface for structured audit-log reads and
 // writes. This is the per-action audit trail added for the audit-logs feature.
 type AuditLogRepository interface {

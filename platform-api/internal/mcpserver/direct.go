@@ -399,7 +399,7 @@ func (a agentProxies) create(ctx context.Context, org, user string, payload []by
 	if err != nil {
 		return nil, fail("%v", err)
 	}
-	return a.proxies.Create(org, user, req)
+	return a.proxies.Create(ctx, org, user, req)
 }
 
 func (a agentProxies) update(ctx context.Context, org, user, id string, whole []byte) (any, error) {
@@ -407,7 +407,7 @@ func (a agentProxies) update(ctx context.Context, org, user, id string, whole []
 	if err != nil {
 		return nil, fail("%v", err)
 	}
-	return a.proxies.Update(org, id, user, req)
+	return a.proxies.Update(ctx, org, id, user, req)
 }
 
 func (a agentProxies) delete(ctx context.Context, org, user, id string) error {
@@ -427,7 +427,7 @@ func (a agentProxies) deploy(ctx context.Context, org, user, id string, req *api
 }
 
 func (a agentProxies) undeploy(ctx context.Context, org, user, id, deploymentID, gatewayID string) (*api.DeploymentResponse, error) {
-	return a.deploys.UndeployByHandle(ctx, id, deploymentID, gatewayID, org)
+	return a.deploys.UndeployByHandle(ctx, id, deploymentID, gatewayID, org, user)
 }
 
 // anyList turns a typed list into the []any the adapters return.

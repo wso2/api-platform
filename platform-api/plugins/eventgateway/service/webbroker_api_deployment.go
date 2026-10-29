@@ -217,7 +217,8 @@ func (s *WebBrokerAPIDeploymentService) deployWebBrokerAPI(ctx context.Context, 
 			s.audit.Record(ctx, &coreservice.AuditEvent{
 				Action: model.AuditActionDeploy, ResourceType: model.AuditResourceTypeDeployment,
 				Outcome: model.AuditOutcomeDenied, OrganizationUUID: orgID, PerformedBy: createdBy,
-				EventData: map[string]any{"reason": "dp_originated"},
+				ResourceName: req.Name,
+				EventData:    map[string]any{"reason": "dp_originated", "gatewayHandle": req.GatewayId},
 			})
 		}
 		return nil, err
@@ -379,7 +380,8 @@ func (s *WebBrokerAPIDeploymentService) undeployWebBrokerAPIDeployment(ctx conte
 				s.audit.Record(ctx, &coreservice.AuditEvent{
 					Action: model.AuditActionUndeploy, ResourceType: model.AuditResourceTypeDeployment,
 					Outcome: model.AuditOutcomeDenied, OrganizationUUID: orgID, PerformedBy: actor,
-					EventData: map[string]any{"reason": "dp_originated"},
+					ResourceUUID: utils.ValueOrEmpty(deploymentId),
+					EventData:    map[string]any{"reason": "dp_originated"},
 				})
 				return nil, err
 			}
@@ -478,7 +480,8 @@ func (s *WebBrokerAPIDeploymentService) restoreWebBrokerAPIDeployment(ctx contex
 			s.audit.Record(ctx, &coreservice.AuditEvent{
 				Action: model.AuditActionRestore, ResourceType: model.AuditResourceTypeDeployment,
 				Outcome: model.AuditOutcomeDenied, OrganizationUUID: orgID, PerformedBy: actor,
-				EventData: map[string]any{"reason": "dp_originated"},
+				ResourceUUID: utils.ValueOrEmpty(deploymentId),
+				EventData:    map[string]any{"reason": "dp_originated"},
 			})
 		}
 		return nil, err

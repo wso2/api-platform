@@ -69,7 +69,7 @@ func fullAgentProxyValidationRequest() *api.A2AAgentProxy {
 	managed := api.ManagedPublicAgentCardModeManaged
 	publicMode := api.PublicAgentCardMode(managed)
 	protectedMode := api.ProtectedAgentCardMode(api.PassthroughProtectedAgentCardModePassthrough)
-	authType := api.UpstreamAuthTypeApiKey
+	authType := api.ApiKey
 
 	return &api.A2AAgentProxy{
 		DisplayName: "Weather Agent",

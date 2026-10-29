@@ -100,6 +100,10 @@ func newAgentProxyTestEnv(t *testing.T, cfg *config.Server) *agentProxyTestEnv {
 		t.Fatalf("open sqlite: %v", err)
 	}
 	t.Cleanup(func() { sqlDB.Close() })
+	// One connection, as database.NewConnection uses for SQLite: the audit service
+	// writes asynchronously, and a second connection's write would make a
+	// transaction's lock upgrade fail with SQLITE_BUSY.
+	sqlDB.SetMaxOpenConns(1)
 	db := &database.DB{DB: sqlDB}
 
 	schema, err := os.ReadFile(filepath.Join("..", "database", "schema.sqlite.sql"))
@@ -143,7 +147,7 @@ func newAgentProxyTestEnv(t *testing.T, cfg *config.Server) *agentProxyTestEnv {
 		repository.NewGatewayRepo(db),
 		gatewayEvents,
 		slog.Default(),
-		noopAudit{},
+		nil,
 		cfg,
 		identity,
 	).WithSecretService(secretSvc)
@@ -162,6 +166,7 @@ func newAgentProxyTestEnv(t *testing.T, cfg *config.Server) *agentProxyTestEnv {
 		identity,
 		cfg,
 		slog.New(slog.NewJSONHandler(deployLogs, nil)),
+		nil,
 	)
 
 	apiKeyRepo := repository.NewAPIKeyRepo(db, registry)

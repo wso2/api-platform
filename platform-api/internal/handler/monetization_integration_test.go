@@ -117,7 +117,7 @@ func setupMonetizationHandlerTestEnv(t *testing.T) http.Handler {
 	)
 	planService.SetPricingRepositories(meterRepo, pricingRepo)
 	// Meters and pricing are kept here, so no API Portal is involved.
-	adminService := service.NewMonetizationAdminService(meterRepo, pricingRepo, planRepo, slog.Default())
+	adminService := service.NewMonetizationAdminService(meterRepo, pricingRepo, planRepo, slog.Default(), nil)
 
 	receiver, err := webhook.NewReceiver(monetizationITWebhook, nil, nil, nil, planService,
 		service.NewMonetizationService(meterRepo, pricingRepo, slog.Default()), repository.NewOrganizationRepo(db), slog.Default())
@@ -129,7 +129,7 @@ func setupMonetizationHandlerTestEnv(t *testing.T) http.Handler {
 	planHandler := NewSubscriptionPlanHandler(planService, identityService, slog.Default())
 	planHandler.SetPricingRepository(pricingRepo)
 	planHandler.RegisterRoutes(mux)
-	NewMonetizationHandler(adminService, slog.Default()).RegisterRoutes(mux)
+	NewMonetizationHandler(adminService, identityService, slog.Default()).RegisterRoutes(mux)
 	receiver.RegisterRoutes(mux)
 	return middleware.NewTestContextMiddleware(mux)
 }

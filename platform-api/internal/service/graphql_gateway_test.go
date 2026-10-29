@@ -18,6 +18,7 @@
 package service
 
 import (
+	"context"
 	"testing"
 
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
@@ -54,7 +55,7 @@ func TestGraphQLAddGatewaysToAPI_CreatesAssociationAndReturnsList(t *testing.T) 
 
 	svc := newGraphQLTestServiceWithGateways(repo, nil, gatewayRepo, orgRepo)
 
-	resp, err := svc.AddGatewaysToAPI("countries-graphql-api", []string{"prod-gateway"}, "org-1", "creator-uuid")
+	resp, err := svc.AddGatewaysToAPI(context.Background(), "countries-graphql-api", []string{"prod-gateway"}, "org-1", "creator-uuid")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -89,7 +90,7 @@ func TestGraphQLAddGatewaysToAPI_UnknownGateway_NotFound(t *testing.T) {
 
 	svc := newGraphQLTestServiceWithGateways(repo, nil, gatewayRepo, orgRepo)
 
-	_, err := svc.AddGatewaysToAPI("countries-graphql-api", []string{"does-not-exist"}, "org-1", "creator-uuid")
+	_, err := svc.AddGatewaysToAPI(context.Background(), "countries-graphql-api", []string{"does-not-exist"}, "org-1", "creator-uuid")
 	if err == nil {
 		t.Fatal("expected an error for an unknown gateway handle")
 	}

@@ -211,13 +211,13 @@ func (m *mockAPIPortalOrgRepository) GetOrganizationByUUID(uuid string) (*model.
 func newTestAPIPortalService(t *testing.T,
 	portalRepo repository.APIPortalRepository,
 	orgRepo repository.OrganizationRepository,
-	auditRepo ...repository.AuditRepository,
+	audit ...*AuditService,
 ) *APIPortalService {
-	svc := NewAPIPortalService(portalRepo, orgRepo, nil, newTestVault(t), nil, nil, nil)
-	if len(auditRepo) > 0 {
-		svc.SetAuditRepository(auditRepo[0])
+	var auditService *AuditService
+	if len(audit) > 0 {
+		auditService = audit[0]
 	}
-	return svc
+	return NewAPIPortalService(portalRepo, orgRepo, auditService, newTestVault(t), nil, nil, nil)
 }
 
 func apiPortalStrPtr(s string) *string { return &s }
@@ -973,7 +973,7 @@ func TestAPIPortalService_UpdateAPIPortalStatus_EmptyActorAuditsLastUser(t *test
 		getResult:    &model.APIPortal{ID: "portal-uuid", Handle: "acme", UpdatedBy: "user-0"},
 		rowUpdatedBy: "user-1",
 	}
-	audit := &mockAPIPortalAuditRepository{}
+	audit, auditRows := newRecordingAuditService()
 	svc := newTestAPIPortalService(t, portalRepo, &mockAPIPortalOrgRepository{}, audit)
 
 	if err := svc.UpdateAPIPortalStatus("acme", "org-1", " ", constants.APIPortalStatusActive); err != nil {
@@ -982,8 +982,8 @@ func TestAPIPortalService_UpdateAPIPortalStatus_EmptyActorAuditsLastUser(t *test
 	if got := portalRepo.updateStatusCalledWith.UpdatedBy; got != "" {
 		t.Errorf("repo must get an empty actor to keep updated_by, got %q", got)
 	}
-	if len(audit.records) != 1 || audit.records[0].performedBy != "user-1" {
-		t.Errorf("audit: %+v", audit.records)
+	if rows := auditRows.wait(1); len(rows) != 1 || rows[0].PerformedBy != "user-1" {
+		t.Errorf("audit: %+v", rows)
 	}
 }
 
@@ -1157,7 +1157,7 @@ func TestAPIPortalService_ListAPIPortalsByStatus_RejectsUnknownStatus(t *testing
 // passes "already pending" through for errors.Is.
 func TestAPIPortalService_ReopenAPIPortal(t *testing.T) {
 	portalRepo := &mockAPIPortalRepository{getResult: &model.APIPortal{ID: "portal-uuid", Handle: "acme", UpdatedBy: "user-1"}}
-	audit := &mockAPIPortalAuditRepository{}
+	audit, auditRows := newRecordingAuditService()
 	svc := newTestAPIPortalService(t, portalRepo, &mockAPIPortalOrgRepository{}, audit)
 	if err := svc.ReopenAPIPortal("acme", "org-1", "user-2"); err != nil {
 		t.Fatalf("ReopenAPIPortal: %v", err)
@@ -1165,8 +1165,8 @@ func TestAPIPortalService_ReopenAPIPortal(t *testing.T) {
 	if got := portalRepo.reopenCalledWith; got.PortalID != "portal-uuid" || got.OrgUUID != "org-1" || got.UpdatedBy != "user-2" {
 		t.Errorf("repo args: %+v", got)
 	}
-	if len(audit.records) != 1 || audit.records[0].performedBy != "user-2" {
-		t.Errorf("audit: %+v", audit.records)
+	if rows := auditRows.wait(1); len(rows) != 1 || rows[0].PerformedBy != "user-2" {
+		t.Errorf("audit: %+v", rows)
 	}
 
 	portalRepo.reopenErr = repository.ErrAPIPortalPending
@@ -1205,32 +1205,14 @@ func TestAPIPortalService_StatusChangesReturnRepositoryErrors(t *testing.T) {
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
-			audit := &mockAPIPortalAuditRepository{}
+			audit, auditRows := newRecordingAuditService()
 			svc := newTestAPIPortalService(t, tc.repo, &mockAPIPortalOrgRepository{}, audit)
 			if err := tc.call(svc); !errors.Is(err, boom) {
 				t.Errorf("err = %v, want %v", err, boom)
 			}
-			if len(audit.records) != 0 {
-				t.Errorf("nothing may be audited: %+v", audit.records)
+			if rows := auditRows.wait(1); len(rows) != 0 {
+				t.Errorf("nothing may be audited: %+v", rows)
 			}
 		})
 	}
-}
-
-type mockAPIPortalAuditRepository struct {
-	repository.AuditRepository
-	records []auditRecord
-}
-
-type auditRecord struct {
-	action       string
-	resourceUUID string
-	resourceType string
-	orgUUID      string
-	performedBy  string
-}
-
-func (m *mockAPIPortalAuditRepository) Record(action, resourceUUID, resourceType, orgUUID, performedBy string) error {
-	m.records = append(m.records, auditRecord{action, resourceUUID, resourceType, orgUUID, performedBy})
-	return nil
 }

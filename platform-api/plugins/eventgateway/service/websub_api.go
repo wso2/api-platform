@@ -282,6 +282,14 @@ func (s *WebSubAPIService) Update(ctx context.Context, orgUUID, handle, updatedB
 	}
 	// DP-originated artifacts are read-only in the control plane.
 	if err := ensureOriginMutable(existing.Origin); err != nil {
+		if coreservice.IsOriginDenial(err) {
+			s.audit.Record(ctx, &coreservice.AuditEvent{
+				Action: model.AuditActionUpdate, ResourceType: model.AuditResourceTypeWebSubAPI,
+				Outcome: model.AuditOutcomeDenied, OrganizationUUID: orgUUID, PerformedBy: updatedBy,
+				ResourceUUID: existing.UUID, ResourceName: existing.Handle,
+				EventData: map[string]any{"reason": "dp_originated"},
+			})
+		}
 		return nil, err
 	}
 
@@ -359,6 +367,14 @@ func (s *WebSubAPIService) Delete(ctx context.Context, orgUUID, handle, deletedB
 	}
 	// DP-originated artifacts are read-only in the control plane and cannot be deleted from the CP.
 	if err := ensureOriginMutable(websubAPI.Origin); err != nil {
+		if coreservice.IsOriginDenial(err) {
+			s.audit.Record(ctx, &coreservice.AuditEvent{
+				Action: model.AuditActionDelete, ResourceType: model.AuditResourceTypeWebSubAPI,
+				Outcome: model.AuditOutcomeDenied, OrganizationUUID: orgUUID, PerformedBy: deletedBy,
+				ResourceUUID: websubAPI.UUID, ResourceName: websubAPI.Handle,
+				EventData: map[string]any{"reason": "dp_originated"},
+			})
+		}
 		return err
 	}
 

@@ -299,6 +299,13 @@ func (s *LLMProviderDeploymentService) DeployLLMProvider(ctx context.Context, pr
 	// DP-originated artifacts are read-only in the control plane and cannot be
 	// (re)deployed from the CP.
 	if err := ensureOriginMutable(provider.Origin); err != nil {
+		if IsOriginDenial(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Outcome: model.AuditOutcomeDenied, OrganizationUUID: orgUUID, Action: model.AuditActionDeploy, ResourceType: model.AuditResourceTypeDeployment,
+				PerformedBy: createdBy, ResourceName: req.Name,
+				EventData: map[string]any{"reason": "dp_originated", "gatewayHandle": gatewayHandle, "llmProviderId": providerID},
+			})
+		}
 		return nil, err
 	}
 
@@ -493,6 +500,13 @@ func (s *LLMProviderDeploymentService) RestoreLLMProviderDeployment(ctx context.
 	}
 	// DP-originated artifacts are read-only in the control plane; restore cannot be CP-initiated.
 	if err := ensureOriginMutable(provider.Origin); err != nil {
+		if IsOriginDenial(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Outcome: model.AuditOutcomeDenied, OrganizationUUID: orgUUID, Action: model.AuditActionRestore, ResourceType: model.AuditResourceTypeDeployment,
+				PerformedBy: actor, ResourceUUID: deploymentID,
+				EventData: map[string]any{"reason": "dp_originated", "llmProviderId": providerID},
+			})
+		}
 		return nil, err
 	}
 
@@ -604,6 +618,13 @@ func (s *LLMProviderDeploymentService) UndeployLLMProviderDeployment(ctx context
 	// lifecycle is owned by the data-plane gateway, so undeployment cannot be initiated
 	// from the control plane.
 	if err := ensureOriginMutable(provider.Origin); err != nil {
+		if IsOriginDenial(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Outcome: model.AuditOutcomeDenied, OrganizationUUID: orgUUID, Action: model.AuditActionUndeploy, ResourceType: model.AuditResourceTypeDeployment,
+				PerformedBy: actor, ResourceUUID: deploymentID,
+				EventData: map[string]any{"reason": "dp_originated", "llmProviderId": providerID},
+			})
+		}
 		return nil, err
 	}
 
@@ -1032,7 +1053,7 @@ func (s *LLMProviderDeploymentService) applyUpstreamAuthHeaderOverride(
 	if header = strings.TrimSpace(header); header == "" {
 		return nil
 	}
-	if normalizeUpstreamAuthType(string(*auth.Type)) != string(api.UpstreamAuthTypeApiKey) {
+	if normalizeUpstreamAuthType(string(*auth.Type)) != string(api.ApiKey) {
 		return apperror.LLMProviderDeploymentValidationFailed.New(fmt.Sprintf(
 			"Metadata %q applies only to an upstream that authenticates with an api-key.",
 			constants.MetadataKeyUpstreamAuthHeader))
@@ -1765,6 +1786,13 @@ func (s *LLMProxyDeploymentService) DeployLLMProxy(ctx context.Context, proxyID 
 	// DP-originated artifacts are read-only in the control plane and cannot be
 	// (re)deployed from the CP.
 	if err := ensureOriginMutable(proxy.Origin); err != nil {
+		if IsOriginDenial(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Outcome: model.AuditOutcomeDenied, OrganizationUUID: orgUUID, Action: model.AuditActionDeploy, ResourceType: model.AuditResourceTypeDeployment,
+				PerformedBy: createdBy, ResourceName: req.Name,
+				EventData: map[string]any{"reason": "dp_originated", "gatewayHandle": gatewayHandle, "llmProxyId": proxyID},
+			})
+		}
 		return nil, err
 	}
 
@@ -1918,6 +1946,13 @@ func (s *LLMProxyDeploymentService) RestoreLLMProxyDeployment(ctx context.Contex
 	}
 	// DP-originated artifacts are read-only in the control plane; restore cannot be CP-initiated.
 	if err := ensureOriginMutable(proxy.Origin); err != nil {
+		if IsOriginDenial(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Outcome: model.AuditOutcomeDenied, OrganizationUUID: orgUUID, Action: model.AuditActionRestore, ResourceType: model.AuditResourceTypeDeployment,
+				PerformedBy: actor, ResourceUUID: deploymentID,
+				EventData: map[string]any{"reason": "dp_originated", "llmProxyId": proxyID},
+			})
+		}
 		return nil, err
 	}
 
@@ -2029,6 +2064,13 @@ func (s *LLMProxyDeploymentService) UndeployLLMProxyDeployment(ctx context.Conte
 	// lifecycle is owned by the data-plane gateway, so undeployment cannot be initiated
 	// from the control plane.
 	if err := ensureOriginMutable(proxy.Origin); err != nil {
+		if IsOriginDenial(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Outcome: model.AuditOutcomeDenied, OrganizationUUID: orgUUID, Action: model.AuditActionUndeploy, ResourceType: model.AuditResourceTypeDeployment,
+				PerformedBy: actor, ResourceUUID: deploymentID,
+				EventData: map[string]any{"reason": "dp_originated", "llmProxyId": proxyID},
+			})
+		}
 		return nil, err
 	}
 
@@ -2540,10 +2582,10 @@ func legacyProvidersFor(
 // the type - no header/value. "api-key" (and legacy basic/bearer) carry the header and value.
 func mapModelAuthToAPI(auth *model.UpstreamAuth) *api.UpstreamAuth {
 	if auth == nil {
-		t := api.UpstreamAuthTypeNone
+		t := api.None
 		return &api.UpstreamAuth{Type: &t}
 	}
-	authType := string(api.UpstreamAuthTypeNone)
+	authType := string(api.None)
 	if normalized := normalizeUpstreamAuthType(auth.Type); normalized != "" {
 		authType = normalized
 	}

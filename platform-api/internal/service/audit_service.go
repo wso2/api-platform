@@ -21,6 +21,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"time"
@@ -124,6 +125,11 @@ func (s *AuditService) Record(ctx context.Context, e *AuditEvent) {
 		return
 	}
 
+	// An AuditDiff with no changes is a nil map: store it as no event data.
+	if m, ok := e.EventData.(map[string]any); ok && m == nil {
+		e.EventData = nil
+	}
+
 	if e.UUID == "" {
 		id, err := utils.GenerateUUID()
 		if err != nil {
@@ -213,4 +219,25 @@ func AuditDiff(before, after map[string]any) map[string]any {
 		return nil
 	}
 	return diff
+}
+
+// Close waits for in-flight writes to finish, until ctx is done, and then closes
+// the file sink. Events recorded after Close are dropped.
+func (s *AuditService) Close(ctx context.Context) {
+	if s == nil {
+		return
+	}
+	for i := 0; i < cap(s.sem); i++ {
+		select {
+		case s.sem <- struct{}{}:
+		case <-ctx.Done():
+			s.slogger.Warn("audit_log: shutdown before in-flight writes finished", "in_flight", cap(s.sem)-i)
+			return
+		}
+	}
+	for _, sink := range s.sinks {
+		if c, ok := sink.(io.Closer); ok {
+			_ = c.Close()
+		}
+	}
 }

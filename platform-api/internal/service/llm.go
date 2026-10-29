@@ -477,6 +477,14 @@ func (s *LLMProviderTemplateService) Update(ctx context.Context, orgUUID, handle
 	// editable.
 	if existing.Origin == constants.OriginDP {
 		if err := ensureTemplateRuntimeArtifactUnchanged(existing, m); err != nil {
+			if IsOriginDenial(err) {
+				s.audit.Record(ctx, &AuditEvent{
+					Action: model.AuditActionUpdate, ResourceType: model.AuditResourceTypeLLMProviderTemplate,
+					Outcome: model.AuditOutcomeDenied, OrganizationUUID: orgUUID, PerformedBy: updatedBy,
+					ResourceUUID: existing.UUID, ResourceName: existing.ID,
+					EventData: map[string]any{"reason": "dp_runtime_change"},
+				})
+			}
 			return nil, err
 		}
 	}
@@ -489,11 +497,21 @@ func (s *LLMProviderTemplateService) Update(ctx context.Context, orgUUID, handle
 			s.audit.Record(ctx, &AuditEvent{
 				Action: model.AuditActionUpdate, ResourceType: model.AuditResourceTypeLLMProviderTemplate,
 				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgUUID, PerformedBy: updatedBy,
-				ResourceUUID: m.UUID, ResourceName: m.ID,
+				ResourceUUID: existing.UUID, ResourceName: existing.ID,
 			})
 		}
 		return nil, fmt.Errorf("failed to update template: %w", err)
 	}
+	// Recorded right after the write, so a failed re-read below can't leave it unaudited.
+	after := llmProviderTemplateAuditFields(m)
+	after["version"] = existing.Version // an update never changes the version
+	s.audit.Record(ctx, &AuditEvent{
+		Action: model.AuditActionUpdate, ResourceType: model.AuditResourceTypeLLMProviderTemplate,
+		Outcome:      model.AuditOutcomeSucceeded,
+		ResourceUUID: existing.UUID, OrganizationUUID: orgUUID, PerformedBy: updatedBy,
+		ResourceName: existing.ID,
+		EventData:    AuditDiff(llmProviderTemplateAuditFields(existing), after),
+	})
 
 	base, baseErr := s.repo.GetGroupID(handle, orgUUID)
 	if baseErr != nil {
@@ -512,14 +530,6 @@ func (s *LLMProviderTemplateService) Update(ctx context.Context, orgUUID, handle
 	if updated == nil {
 		return nil, apperror.LLMProviderTemplateNotFound.New()
 	}
-
-	s.audit.Record(ctx, &AuditEvent{
-		Action: model.AuditActionUpdate, ResourceType: model.AuditResourceTypeLLMProviderTemplate,
-		Outcome:      model.AuditOutcomeSucceeded,
-		ResourceUUID: updated.UUID, OrganizationUUID: orgUUID, PerformedBy: updatedBy,
-		ResourceName: updated.ID,
-		EventData:    AuditDiff(llmProviderTemplateAuditFields(existing), llmProviderTemplateAuditFields(updated)),
-	})
 
 	return s.toTemplateAPI(updated)
 }
@@ -1130,6 +1140,13 @@ func (s *LLMProviderService) Create(ctx context.Context, orgUUID, createdBy stri
 		}
 		return nil, fmt.Errorf("failed to create provider: %w", err)
 	}
+	// Recorded right after the write, so a failed re-read below can't leave it unaudited.
+	s.audit.Record(ctx, &AuditEvent{
+		OrganizationUUID: orgUUID, Action: model.AuditActionCreate,
+		ResourceType: model.AuditResourceTypeLLMProvider, Outcome: model.AuditOutcomeSucceeded,
+		PerformedBy: createdBy, ResourceUUID: m.UUID, ResourceName: m.ID,
+		EventData: llmProviderAuditFields(m),
+	})
 
 	created, err := s.repo.GetByID(handle, orgUUID)
 	if err != nil {
@@ -1138,12 +1155,6 @@ func (s *LLMProviderService) Create(ctx context.Context, orgUUID, createdBy stri
 	if created == nil {
 		return nil, apperror.LLMProviderNotFound.New()
 	}
-	s.audit.Record(ctx, &AuditEvent{
-		OrganizationUUID: orgUUID, Action: model.AuditActionCreate,
-		ResourceType: model.AuditResourceTypeLLMProvider, Outcome: model.AuditOutcomeSucceeded,
-		PerformedBy: createdBy, ResourceUUID: created.UUID, ResourceName: created.ID,
-		EventData: llmProviderAuditFields(created),
-	})
 
 	return s.toProviderAPI(created, tpl.ID)
 }
@@ -1377,6 +1388,13 @@ func (s *LLMProviderService) Update(ctx context.Context, orgUUID, handle, update
 		}
 		return nil, fmt.Errorf("failed to update provider: %w", err)
 	}
+	// Recorded right after the write, so a failed re-read below can't leave it unaudited.
+	s.audit.Record(ctx, &AuditEvent{
+		OrganizationUUID: orgUUID, Action: model.AuditActionUpdate,
+		ResourceType: model.AuditResourceTypeLLMProvider, Outcome: model.AuditOutcomeSucceeded,
+		PerformedBy: updatedBy, ResourceUUID: existing.UUID, ResourceName: existing.ID,
+		EventData: AuditDiff(llmProviderAuditFields(existing), llmProviderAuditFields(m)),
+	})
 
 	// Best-effort: delete the secret the credential was rotated away from. Must
 	// run after the update above persists the new reference, so the in-use
@@ -1401,12 +1419,6 @@ func (s *LLMProviderService) Update(ctx context.Context, orgUUID, handle, update
 	if updated == nil {
 		return nil, apperror.LLMProviderNotFound.New()
 	}
-	s.audit.Record(ctx, &AuditEvent{
-		OrganizationUUID: orgUUID, Action: model.AuditActionUpdate,
-		ResourceType: model.AuditResourceTypeLLMProvider, Outcome: model.AuditOutcomeSucceeded,
-		PerformedBy: updatedBy, ResourceUUID: updated.UUID, ResourceName: updated.ID,
-		EventData: AuditDiff(llmProviderAuditFields(existing), llmProviderAuditFields(updated)),
-	})
 
 	return s.toProviderAPI(updated, tpl.ID)
 }
@@ -2432,6 +2444,14 @@ func (s *LLMProxyService) Update(ctx context.Context, orgUUID, handle, updatedBy
 		}
 		return nil, fmt.Errorf("failed to update proxy: %w", err)
 	}
+	// Recorded right after the write, so a failed re-read below can't leave it unaudited.
+	s.audit.Record(ctx, &AuditEvent{
+		Action: model.AuditActionUpdate, ResourceType: model.AuditResourceTypeLLMProxy,
+		Outcome:      model.AuditOutcomeSucceeded,
+		ResourceUUID: existing.UUID, OrganizationUUID: orgUUID, PerformedBy: updatedBy,
+		ResourceName: existing.ID,
+		EventData:    AuditDiff(llmProxyAuditFields(existing), llmProxyAuditFields(m)),
+	})
 
 	// Best-effort: delete the secret the credential was rotated away from. Must
 	// run after the update above persists the new reference, so the in-use
@@ -2492,13 +2512,6 @@ func (s *LLMProxyService) Update(ctx context.Context, orgUUID, handle, updatedBy
 	if updated == nil {
 		return nil, apperror.LLMProxyNotFound.New()
 	}
-	s.audit.Record(ctx, &AuditEvent{
-		Action: model.AuditActionUpdate, ResourceType: model.AuditResourceTypeLLMProxy,
-		Outcome:      model.AuditOutcomeSucceeded,
-		ResourceUUID: existing.UUID, OrganizationUUID: orgUUID, PerformedBy: updatedBy,
-		ResourceName: updated.ID,
-		EventData:    AuditDiff(llmProxyAuditFields(existing), llmProxyAuditFields(updated)),
-	})
 	return s.toProxyAPI(orgUUID, updated)
 }
 
@@ -3031,15 +3044,15 @@ func normalizeUpstreamAuthType(authType string) string {
 	canonical := strings.ToLower(strings.ReplaceAll(strings.ReplaceAll(normalized, "-", ""), "_", ""))
 	switch canonical {
 	case "apikey":
-		return string(api.UpstreamAuthTypeApiKey)
+		return string(api.ApiKey)
 	case "basic":
-		return string(api.UpstreamAuthTypeBasic)
+		return string(api.Basic)
 	case "bearer":
-		return string(api.UpstreamAuthTypeBearer)
+		return string(api.Bearer)
 	case "other":
-		return string(api.UpstreamAuthTypeOther)
+		return string(api.Other)
 	case "none":
-		return string(api.UpstreamAuthTypeNone)
+		return string(api.None)
 	default:
 		return normalized
 	}
@@ -3571,20 +3584,22 @@ func llmProviderAuditFields(p *model.LLMProvider) map[string]any {
 	}
 }
 
-// llmProxyAuditFields lists the LLM proxy fields recorded in audit events.
+// llmProxyAuditFields lists the LLM proxy fields recorded in audit events. Providers
+// are read through NormaliseLLMProxyAttachments, so a row in the earlier shape lists
+// them the same way; only their handles are recorded, never their credentials.
 func llmProxyAuditFields(p *model.LLMProxy) map[string]any {
-	additionalProviders := make([]string, 0, len(p.Configuration.AdditionalProviders))
-	for _, ap := range p.Configuration.AdditionalProviders {
-		additionalProviders = append(additionalProviders, ap.ID)
+	attachments, _ := model.NormaliseLLMProxyAttachments(p.Configuration)
+	providers := make([]string, 0, len(attachments))
+	for _, a := range attachments {
+		providers = append(providers, a.ID)
 	}
 	return map[string]any{
-		"displayName":         p.Name,
-		"version":             p.Version,
-		"context":             utils.ValueOrEmpty(p.Configuration.Context),
-		"vhost":               utils.ValueOrEmpty(p.Configuration.Vhost),
-		"provider":            p.Configuration.Provider,
-		"additionalProviders": additionalProviders,
-		"policies":            llmPolicyNames(p.Configuration.GlobalPolicies, p.Configuration.OperationPolicies),
+		"displayName": p.Name,
+		"version":     p.Version,
+		"context":     utils.ValueOrEmpty(p.Configuration.Context),
+		"vhost":       utils.ValueOrEmpty(p.Configuration.Vhost),
+		"providers":   providers,
+		"policies":    llmPolicyNames(p.Configuration.GlobalPolicies, p.Configuration.OperationPolicies),
 	}
 }
 
@@ -4148,10 +4163,10 @@ func resolveTemplateOpenAPISpec(ctx context.Context, tpl *model.LLMProviderTempl
 // strips credentials from credential-less types.
 func defaultUpstreamAuthToNone(auth *model.UpstreamAuth) *model.UpstreamAuth {
 	if auth == nil {
-		return &model.UpstreamAuth{Type: string(api.UpstreamAuthTypeNone)}
+		return &model.UpstreamAuth{Type: string(api.None)}
 	}
 	if strings.TrimSpace(auth.Type) == "" {
-		auth.Type = string(api.UpstreamAuthTypeNone)
+		auth.Type = string(api.None)
 	}
 	if isCredentialLessUpstreamAuthType(auth.Type) {
 		auth.Header = ""
@@ -4164,7 +4179,7 @@ func defaultUpstreamAuthToNone(auth *model.UpstreamAuth) *model.UpstreamAuth {
 // credentials ("none" or "other"), in which case header/value are irrelevant.
 func isCredentialLessUpstreamAuthType(authType string) bool {
 	switch normalizeUpstreamAuthType(authType) {
-	case string(api.UpstreamAuthTypeNone), string(api.UpstreamAuthTypeOther):
+	case string(api.None), string(api.Other):
 		return true
 	default:
 		return false

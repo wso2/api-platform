@@ -17,6 +17,7 @@
 package service
 
 import (
+	"context"
 	"bytes"
 	"database/sql"
 	"encoding/json"
@@ -45,6 +46,7 @@ type MonetizationAdminService struct {
 	pricingRepo repository.SubscriptionPlanPricingRepository
 	planRepo    repository.SubscriptionPlanRepository
 	slogger     *slog.Logger
+	audit       *AuditService
 }
 
 // NewMonetizationAdminService creates the service.
@@ -53,11 +55,12 @@ func NewMonetizationAdminService(
 	pricingRepo repository.SubscriptionPlanPricingRepository,
 	planRepo repository.SubscriptionPlanRepository,
 	slogger *slog.Logger,
+	audit *AuditService,
 ) *MonetizationAdminService {
 	if slogger == nil {
 		slogger = slog.Default()
 	}
-	return &MonetizationAdminService{meterRepo: meterRepo, pricingRepo: pricingRepo, planRepo: planRepo, slogger: slogger}
+	return &MonetizationAdminService{meterRepo: meterRepo, pricingRepo: pricingRepo, planRepo: planRepo, slogger: slogger, audit: audit}
 }
 
 // ListMeters returns the organization's meters, those whose name or handle contains search
@@ -105,7 +108,7 @@ func (s *MonetizationAdminService) GetPlanPricing(orgUUID, planHandle string) (*
 
 // CreateMeter saves a new meter, checked with the API Portal's rules (model.ParseMeterRequest): the
 // handle is the request's id, or is derived from the display name.
-func (s *MonetizationAdminService) CreateMeter(orgUUID string, body []byte) (*model.Meter, error) {
+func (s *MonetizationAdminService) CreateMeter(ctx context.Context, orgUUID, actor string, body []byte) (*model.Meter, error) {
 	meter, err := model.ParseMeterRequest(body, true)
 	if err != nil {
 		return nil, apperror.ValidationFailed.New(err.Error())
@@ -116,14 +119,24 @@ func (s *MonetizationAdminService) CreateMeter(orgUUID string, body []byte) (*mo
 		if errors.Is(err, repository.ErrMeterExists) {
 			return nil, apperror.MeterExists.New(meter.Handle)
 		}
+		s.audit.Record(ctx, &AuditEvent{
+			Action: model.AuditActionCreate, ResourceType: model.AuditResourceTypeMeter,
+			Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgUUID, PerformedBy: actor,
+			ResourceUUID: meter.UUID, ResourceName: meter.Handle,
+		})
 		return nil, apperror.Internal.Wrap(err).WithLogMessage(fmt.Sprintf("failed to create meter %s for org %s", meter.Handle, orgUUID))
 	}
+	s.audit.Record(ctx, &AuditEvent{
+		Action: model.AuditActionCreate, ResourceType: model.AuditResourceTypeMeter,
+		Outcome: model.AuditOutcomeSucceeded, OrganizationUUID: orgUUID, PerformedBy: actor,
+		ResourceUUID: meter.UUID, ResourceName: meter.Handle, EventData: meterAuditFields(meter),
+	})
 	return meter, nil
 }
 
 // UpdateMeter replaces the meter's settings with the request's. A meter that a plan's pricing here
 // uses cannot change at all, its event keys included.
-func (s *MonetizationAdminService) UpdateMeter(orgUUID, handle string, body []byte) (*model.Meter, error) {
+func (s *MonetizationAdminService) UpdateMeter(ctx context.Context, orgUUID, actor, handle string, body []byte) (*model.Meter, error) {
 	existing, err := s.GetMeter(orgUUID, handle)
 	if err != nil {
 		return nil, err
@@ -145,14 +158,26 @@ func (s *MonetizationAdminService) UpdateMeter(orgUUID, handle string, body []by
 	meter.UUID, meter.OrganizationUUID, meter.Handle = existing.UUID, orgUUID, existing.Handle
 	meter.SourceUpdatedAt = time.Now().UTC()
 	if err := s.meterRepo.Upsert(meter); err != nil {
+		s.audit.Record(ctx, &AuditEvent{
+			Action: model.AuditActionUpdate, ResourceType: model.AuditResourceTypeMeter,
+			Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgUUID, PerformedBy: actor,
+			ResourceUUID: existing.UUID, ResourceName: existing.Handle,
+		})
 		return nil, apperror.Internal.Wrap(err).WithLogMessage(fmt.Sprintf("failed to update meter %s for org %s", handle, orgUUID))
 	}
+	s.audit.Record(ctx, &AuditEvent{
+		Action: model.AuditActionUpdate, ResourceType: model.AuditResourceTypeMeter,
+		Outcome: model.AuditOutcomeSucceeded, OrganizationUUID: orgUUID, PerformedBy: actor,
+		ResourceUUID: existing.UUID, ResourceName: existing.Handle,
+		EventData: AuditDiff(meterAuditFields(existing), meterAuditFields(meter)),
+	})
 	return meter, nil
 }
 
 // DeleteMeter deletes the meter. A meter that a plan's pricing here uses cannot be deleted.
-func (s *MonetizationAdminService) DeleteMeter(orgUUID, handle string) error {
-	if _, err := s.GetMeter(orgUUID, handle); err != nil {
+func (s *MonetizationAdminService) DeleteMeter(ctx context.Context, orgUUID, actor, handle string) error {
+	existing, err := s.GetMeter(orgUUID, handle)
+	if err != nil {
 		return err
 	}
 	plans, err := s.meterUsage(orgUUID, handle)
@@ -163,8 +188,18 @@ func (s *MonetizationAdminService) DeleteMeter(orgUUID, handle string) error {
 		return apperror.MeterInUse.New("The meter is in use, so it can't be deleted.")
 	}
 	if err := s.meterRepo.Delete(orgUUID, handle); err != nil {
+		s.audit.Record(ctx, &AuditEvent{
+			Action: model.AuditActionDelete, ResourceType: model.AuditResourceTypeMeter,
+			Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgUUID, PerformedBy: actor,
+			ResourceUUID: existing.UUID, ResourceName: existing.Handle,
+		})
 		return apperror.Internal.Wrap(err).WithLogMessage(fmt.Sprintf("failed to delete meter %s for org %s", handle, orgUUID))
 	}
+	s.audit.Record(ctx, &AuditEvent{
+		Action: model.AuditActionDelete, ResourceType: model.AuditResourceTypeMeter,
+		Outcome: model.AuditOutcomeSucceeded, OrganizationUUID: orgUUID, PerformedBy: actor,
+		ResourceUUID: existing.UUID, ResourceName: existing.Handle,
+	})
 	return nil
 }
 
@@ -512,4 +547,17 @@ func (s *MonetizationAdminService) plan(orgUUID, planHandle string) (*model.Subs
 		return nil, apperror.Internal.Wrap(err).WithLogMessage(fmt.Sprintf("failed to get plan %s", planHandle))
 	}
 	return plan, nil
+}
+
+// meterAuditFields lists the meter fields recorded in audit events.
+func meterAuditFields(m *model.Meter) map[string]any {
+	filters := make([]string, 0, len(m.FilterFields))
+	for _, f := range m.FilterFields {
+		filters = append(filters, f.Field)
+	}
+	typeKey := ""
+	if m.TypeKey != nil {
+		typeKey = *m.TypeKey
+	}
+	return map[string]any{"displayName": m.DisplayName, "type": m.Type, "typeKey": typeKey, "filterFields": filters}
 }

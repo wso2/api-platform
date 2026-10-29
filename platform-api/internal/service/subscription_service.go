@@ -630,23 +630,11 @@ func (s *SubscriptionService) RegenerateToken(ctx context.Context, subscriptionI
 	if err != nil {
 		return nil, err
 	}
+	// Not audited: the only caller is the API Portal webhook, a machine-to-machine path.
 	if err := s.subscriptionRepo.UpdateToken(subscriptionId, orgUUID, newToken); err != nil {
-		if IsAuditableFailure(err) {
-			s.audit.Record(ctx, &AuditEvent{
-				Action: model.AuditActionUpdate, ResourceType: model.AuditResourceTypeSubscription,
-				Outcome: model.AuditOutcomeFailed, OrganizationUUID: sub.OrganizationUUID, PerformedBy: subscriberID,
-				ResourceUUID: sub.UUID,
-			})
-		}
 		return nil, err
 	}
 	sub.SubscriptionToken = newToken
-	s.audit.Record(ctx, &AuditEvent{
-		OrganizationUUID: sub.OrganizationUUID, Action: model.AuditActionUpdate,
-		ResourceType: model.AuditResourceTypeSubscription, Outcome: model.AuditOutcomeSucceeded,
-		PerformedBy: subscriberID, ResourceUUID: sub.UUID,
-		EventData: map[string]any{"subscriptionToken": map[string]any{"changed": true}},
-	})
 
 	if s.gatewayEvents != nil {
 		gateways, err := s.apiRepo.GetAPIGatewaysWithDetails(sub.ArtifactUUID, orgUUID)

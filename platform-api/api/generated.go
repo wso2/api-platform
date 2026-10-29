@@ -210,31 +210,31 @@ func (e ApplicationType) Valid() bool {
 
 // Defines values for AuditAction.
 const (
-	Create   AuditAction = "create"
-	Delete   AuditAction = "delete"
-	Deploy   AuditAction = "deploy"
-	Restore  AuditAction = "restore"
-	Revoke   AuditAction = "revoke"
-	Undeploy AuditAction = "undeploy"
-	Update   AuditAction = "update"
+	AuditActionCreate   AuditAction = "create"
+	AuditActionDelete   AuditAction = "delete"
+	AuditActionDeploy   AuditAction = "deploy"
+	AuditActionRestore  AuditAction = "restore"
+	AuditActionRevoke   AuditAction = "revoke"
+	AuditActionUndeploy AuditAction = "undeploy"
+	AuditActionUpdate   AuditAction = "update"
 )
 
 // Valid indicates whether the value is a known member of the AuditAction enum.
 func (e AuditAction) Valid() bool {
 	switch e {
-	case Create:
+	case AuditActionCreate:
 		return true
-	case Delete:
+	case AuditActionDelete:
 		return true
-	case Deploy:
+	case AuditActionDeploy:
 		return true
-	case Restore:
+	case AuditActionRestore:
 		return true
-	case Revoke:
+	case AuditActionRevoke:
 		return true
-	case Undeploy:
+	case AuditActionUndeploy:
 		return true
-	case Update:
+	case AuditActionUpdate:
 		return true
 	default:
 		return false
@@ -264,18 +264,22 @@ func (e AuditOutcome) Valid() bool {
 
 // Defines values for AuditResourceType.
 const (
+	AuditResourceTypeAgentProxy          AuditResourceType = "AgentProxy"
 	AuditResourceTypeApiDefinition       AuditResourceType = "ApiDefinition"
+	AuditResourceTypeApiDocument         AuditResourceType = "ApiDocument"
 	AuditResourceTypeApiKey              AuditResourceType = "ApiKey"
 	AuditResourceTypeApiPortal           AuditResourceType = "ApiPortal"
 	AuditResourceTypeApplication         AuditResourceType = "Application"
 	AuditResourceTypeCustomPolicy        AuditResourceType = "CustomPolicy"
 	AuditResourceTypeDeployment          AuditResourceType = "Deployment"
 	AuditResourceTypeGateway             AuditResourceType = "Gateway"
+	AuditResourceTypeGraphQLApi          AuditResourceType = "GraphQLApi"
 	AuditResourceTypeLlmApiKey           AuditResourceType = "LlmApiKey"
 	AuditResourceTypeLlmProvider         AuditResourceType = "LlmProvider"
 	AuditResourceTypeLlmProviderTemplate AuditResourceType = "LlmProviderTemplate"
 	AuditResourceTypeLlmProxy            AuditResourceType = "LlmProxy"
 	AuditResourceTypeMcp                 AuditResourceType = "Mcp"
+	AuditResourceTypeMeter               AuditResourceType = "Meter"
 	AuditResourceTypeOrganization        AuditResourceType = "Organization"
 	AuditResourceTypeProject             AuditResourceType = "Project"
 	AuditResourceTypeRestApi             AuditResourceType = "RestApi"
@@ -289,7 +293,11 @@ const (
 // Valid indicates whether the value is a known member of the AuditResourceType enum.
 func (e AuditResourceType) Valid() bool {
 	switch e {
+	case AuditResourceTypeAgentProxy:
+		return true
 	case AuditResourceTypeApiDefinition:
+		return true
+	case AuditResourceTypeApiDocument:
 		return true
 	case AuditResourceTypeApiKey:
 		return true
@@ -303,6 +311,8 @@ func (e AuditResourceType) Valid() bool {
 		return true
 	case AuditResourceTypeGateway:
 		return true
+	case AuditResourceTypeGraphQLApi:
+		return true
 	case AuditResourceTypeLlmApiKey:
 		return true
 	case AuditResourceTypeLlmProvider:
@@ -312,6 +322,8 @@ func (e AuditResourceType) Valid() bool {
 	case AuditResourceTypeLlmProxy:
 		return true
 	case AuditResourceTypeMcp:
+		return true
+	case AuditResourceTypeMeter:
 		return true
 	case AuditResourceTypeOrganization:
 		return true
@@ -1629,25 +1641,25 @@ func (e UpdateAPIKeyResponseStatus) Valid() bool {
 
 // Defines values for UpstreamAuthType.
 const (
-	UpstreamAuthTypeApiKey UpstreamAuthType = "api-key"
-	UpstreamAuthTypeBasic  UpstreamAuthType = "basic"
-	UpstreamAuthTypeBearer UpstreamAuthType = "bearer"
-	UpstreamAuthTypeNone   UpstreamAuthType = "none"
-	UpstreamAuthTypeOther  UpstreamAuthType = "other"
+	ApiKey UpstreamAuthType = "api-key"
+	Basic  UpstreamAuthType = "basic"
+	Bearer UpstreamAuthType = "bearer"
+	None   UpstreamAuthType = "none"
+	Other  UpstreamAuthType = "other"
 )
 
 // Valid indicates whether the value is a known member of the UpstreamAuthType enum.
 func (e UpstreamAuthType) Valid() bool {
 	switch e {
-	case UpstreamAuthTypeApiKey:
+	case ApiKey:
 		return true
-	case UpstreamAuthTypeBasic:
+	case Basic:
 		return true
-	case UpstreamAuthTypeBearer:
+	case Bearer:
 		return true
-	case UpstreamAuthTypeNone:
+	case None:
 		return true
-	case UpstreamAuthTypeOther:
+	case Other:
 		return true
 	default:
 		return false

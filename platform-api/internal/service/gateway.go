@@ -450,6 +450,12 @@ func (s *GatewayService) SyncCustomPolicy(ctx context.Context, gatewayHandle, or
 		auditAction = model.AuditActionUpdate
 		if err := s.customPolicyRepo.UpdateCustomPolicy(policy, sameMajorVersionedPolicy.Version); err != nil {
 			s.slogger.Error("failed to update custom policy", slog.String("org_id", orgID), slog.String("policy_name", policyName), slog.String("old_version", sameMajorVersionedPolicy.Version), slog.String("new_version", version))
+			s.audit.Record(ctx, &AuditEvent{
+				Action: auditAction, ResourceType: model.AuditResourceTypeCustomPolicy,
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgID, PerformedBy: createdBy,
+				ResourceUUID: policy.UUID, ResourceName: policyName,
+				EventData: map[string]any{"version": version, "gatewayHandle": gatewayHandle},
+			})
 			return nil, fmt.Errorf("failed to update custom policy: %w", err)
 		}
 		s.slogger.Info("Custom policy updated (minor version bump)",
@@ -467,6 +473,12 @@ func (s *GatewayService) SyncCustomPolicy(ctx context.Context, gatewayHandle, or
 		}
 		policy.UUID = policyID
 		if err := s.customPolicyRepo.InsertCustomPolicy(policy); err != nil {
+			s.audit.Record(ctx, &AuditEvent{
+				Action: auditAction, ResourceType: model.AuditResourceTypeCustomPolicy,
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgID, PerformedBy: createdBy,
+				ResourceUUID: policy.UUID, ResourceName: policyName,
+				EventData: map[string]any{"version": version, "gatewayHandle": gatewayHandle},
+			})
 			return nil, fmt.Errorf("failed to insert custom policy: %w", err)
 		}
 		s.slogger.Info("Custom policy created",
@@ -595,7 +607,7 @@ func (s *GatewayService) GetCustomPolicyByUUID(orgID, policyUUID, version string
 }
 
 // DeleteCustomPolicyByUUID deletes a custom policy by UUID, verifying org ownership, version, and no active usages.
-func (s *GatewayService) DeleteCustomPolicyByUUID(ctx context.Context, orgID, policyUUID, version string) error {
+func (s *GatewayService) DeleteCustomPolicyByUUID(ctx context.Context, orgID, policyUUID, version, actor string) error {
 	policy, err := s.customPolicyRepo.GetCustomPolicyByUUID(orgID, policyUUID)
 	if err != nil {
 		return fmt.Errorf("failed to retrieve custom policy (org_id=%s, policy_uuid=%s): %w", orgID, policyUUID, err)
@@ -613,11 +625,18 @@ func (s *GatewayService) DeleteCustomPolicyByUUID(ctx context.Context, orgID, po
 			slog.String("org_id", orgID), slog.String("policy_uuid", policyUUID), slog.Int("count", purgedOrphans))
 	}
 	if err != nil {
+		if IsAuditableFailure(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Action: model.AuditActionDelete, ResourceType: model.AuditResourceTypeCustomPolicy,
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgID, PerformedBy: actor,
+				ResourceUUID: policyUUID, ResourceName: policy.Name,
+			})
+		}
 		return err
 	}
 	s.audit.Record(ctx, &AuditEvent{
 		Action: model.AuditActionDelete, ResourceType: model.AuditResourceTypeCustomPolicy,
-		ResourceUUID: policyUUID, OrganizationUUID: orgID,
+		ResourceUUID: policyUUID, OrganizationUUID: orgID, PerformedBy: actor,
 		ResourceName: policy.Name, Outcome: model.AuditOutcomeSucceeded,
 		EventData: map[string]any{"version": version},
 	})

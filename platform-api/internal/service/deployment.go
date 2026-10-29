@@ -235,6 +235,14 @@ func (s *DeploymentService) DeployAPI(ctx context.Context, apiUUID string, req *
 	// DP-originated artifacts are read-only in the control plane and cannot be
 	// (re)deployed from the CP.
 	if err := ensureOriginMutable(apiModel.Origin); err != nil {
+		if IsOriginDenial(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Action: model.AuditActionDeploy, ResourceType: model.AuditResourceTypeDeployment,
+				Outcome: model.AuditOutcomeDenied, OrganizationUUID: orgUUID, PerformedBy: createdBy,
+				ResourceName: req.Name,
+				EventData:    map[string]any{"reason": "dp_originated", "gatewayHandle": gatewayHandle, "apiId": apiUUID},
+			})
+		}
 		return nil, err
 	}
 

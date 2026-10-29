@@ -42,16 +42,17 @@ const maxMonetizationBodyBytes = 64 << 10
 // here and reach an API Portal with the plans published there (see service.MonetizationAdminService).
 // Pricing is set when a plan is created (SubscriptionPlanHandler) and does not change.
 type MonetizationHandler struct {
-	service *service.MonetizationAdminService
-	slogger *slog.Logger
+	service  *service.MonetizationAdminService
+	identity *service.IdentityService
+	slogger  *slog.Logger
 }
 
 // NewMonetizationHandler creates the handler.
-func NewMonetizationHandler(svc *service.MonetizationAdminService, slogger *slog.Logger) *MonetizationHandler {
+func NewMonetizationHandler(svc *service.MonetizationAdminService, identity *service.IdentityService, slogger *slog.Logger) *MonetizationHandler {
 	if slogger == nil {
 		slogger = slog.Default()
 	}
-	return &MonetizationHandler{service: svc, slogger: slogger}
+	return &MonetizationHandler{service: svc, identity: identity, slogger: slogger}
 }
 
 // RegisterRoutes registers the meter routes and the plan pricing read.
@@ -168,7 +169,8 @@ func (h *MonetizationHandler) CreateMeter(w http.ResponseWriter, r *http.Request
 	if err != nil {
 		return err
 	}
-	meter, err := h.service.CreateMeter(orgID, body)
+	actor, _ := h.identity.InternalUserID(r)
+	meter, err := h.service.CreateMeter(r.Context(), orgID, actor, body)
 	if err != nil {
 		return err
 	}
@@ -187,7 +189,8 @@ func (h *MonetizationHandler) UpdateMeter(w http.ResponseWriter, r *http.Request
 	if err != nil {
 		return err
 	}
-	meter, err := h.service.UpdateMeter(orgID, r.PathValue("meterId"), body)
+	actor, _ := h.identity.InternalUserID(r)
+	meter, err := h.service.UpdateMeter(r.Context(), orgID, actor, r.PathValue("meterId"), body)
 	if err != nil {
 		return err
 	}
@@ -202,7 +205,8 @@ func (h *MonetizationHandler) DeleteMeter(w http.ResponseWriter, r *http.Request
 	if err != nil {
 		return err
 	}
-	if err := h.service.DeleteMeter(orgID, r.PathValue("meterId")); err != nil {
+	actor, _ := h.identity.InternalUserID(r)
+	if err := h.service.DeleteMeter(r.Context(), orgID, actor, r.PathValue("meterId")); err != nil {
 		return err
 	}
 	w.WriteHeader(http.StatusNoContent)

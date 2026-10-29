@@ -952,6 +952,8 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_audit_log_outcome' A
 CREATE INDEX idx_audit_log_outcome ON dbo.audit_log(organization_uuid, outcome, performed_at DESC);
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_audit_log_actor' AND object_id = OBJECT_ID(N'dbo.audit_log'))
 CREATE INDEX idx_audit_log_actor ON dbo.audit_log(organization_uuid, performed_by, performed_at DESC);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_audit_log_resource' AND object_id = OBJECT_ID(N'dbo.audit_log'))
+CREATE INDEX idx_audit_log_resource ON dbo.audit_log(organization_uuid, resource_uuid, performed_at DESC);
 
 -- Secrets table for encrypted secret management
 IF OBJECT_ID(N'dbo.secrets', N'U') IS NULL

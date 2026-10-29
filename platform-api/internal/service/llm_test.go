@@ -111,7 +111,7 @@ func TestMapLLMUpstreamYAMLToModel_DefaultsToNone(t *testing.T) {
 	}
 
 	// Explicit "other" is preserved.
-	otherType := api.UpstreamAuthTypeOther
+	otherType := api.Other
 	got = mapLLMUpstreamYAMLToModel(dto.LLMUpstreamYAML{
 		URL:  "https://api.openai.com/v1",
 		Auth: &api.UpstreamAuth{Type: &otherType},
@@ -1178,12 +1178,6 @@ func (m *mockProjectRepo) GetProjectByUUIDAndOrgID(projectID, orgID string) (*mo
 
 func (m *mockProjectRepo) GetProjectByHandleAndOrgID(handle, orgID string) (*model.Project, error) {
 	return m.project, nil
-}
-
-type noopAuditRepo struct{}
-
-func (n *noopAuditRepo) Record(action, resourceUUID, resourceType, orgUUID, performedBy string) error {
-	return nil
 }
 
 func TestLLMProviderServiceCreateRejectsMultipleModelProvidersForNativeTemplate(t *testing.T) {

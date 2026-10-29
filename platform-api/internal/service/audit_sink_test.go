@@ -24,12 +24,16 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/wso2/api-platform/platform-api/config"
+	"github.com/wso2/api-platform/platform-api/internal/model"
+	"github.com/wso2/api-platform/platform-api/internal/repository"
 )
 
 func testAuditEvent() *AuditEvent {
@@ -127,4 +131,44 @@ func TestNewAuditService_Sinks(t *testing.T) {
 		require.Len(t, sinks, 1)
 		assert.IsType(t, &DBSink{}, sinks[0])
 	})
+}
+
+// auditLogRecorder keeps audit_log rows in memory, for tests that assert on what a
+// service recorded.
+type auditLogRecorder struct {
+	mu   sync.Mutex
+	rows []*model.AuditLog
+}
+
+func (r *auditLogRecorder) Create(row *model.AuditLog) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.rows = append(r.rows, row)
+	return nil
+}
+
+func (r *auditLogRecorder) List(repository.AuditLogFilter, int, int) ([]*model.AuditLog, error) {
+	return nil, nil
+}
+
+func (r *auditLogRecorder) Count(repository.AuditLogFilter) (int, error) { return 0, nil }
+
+// wait returns the rows once at least n are recorded (Record writes asynchronously),
+// or what is there after a short timeout.
+func (r *auditLogRecorder) wait(n int) []*model.AuditLog {
+	for deadline := time.Now().Add(2 * time.Second); ; time.Sleep(10 * time.Millisecond) {
+		r.mu.Lock()
+		rows := append([]*model.AuditLog(nil), r.rows...)
+		r.mu.Unlock()
+		if len(rows) >= n || time.Now().After(deadline) {
+			return rows
+		}
+	}
+}
+
+// newRecordingAuditService returns an enabled AuditService whose only sink is an
+// in-memory recorder.
+func newRecordingAuditService() (*AuditService, *auditLogRecorder) {
+	rec := &auditLogRecorder{}
+	return NewAuditService(config.Audit{Enabled: true}, rec, slog.New(slog.NewTextHandler(io.Discard, nil))), rec
 }

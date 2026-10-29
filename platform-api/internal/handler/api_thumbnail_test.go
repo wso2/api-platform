@@ -250,8 +250,8 @@ func TestUpsertThumbnail_StoresSniffedImage(t *testing.T) {
 			if got.ArtifactUUID != docHArtifact || got.OrganizationUUID != docHOrg {
 				t.Errorf("stored under artifact=%q org=%q", got.ArtifactUUID, got.OrganizationUUID)
 			}
-			if call := docHAuditLast(t, env.audit); call.action != "CREATE" || call.resourceType != "api_thumbnail" {
-				t.Errorf("audit = %+v, want CREATE api_thumbnail", call)
+			if row := docHAuditLast(t, env.audit); row.Action != model.AuditActionCreate || row.ResourceType != model.AuditResourceTypeAPIDocument || row.ResourceName != constants.DocumentHandleThumbnail {
+				t.Errorf("audit = %+v, want an ApiDocument create of the thumbnail", row)
 			}
 		})
 	}
@@ -264,8 +264,8 @@ func TestUpsertThumbnail_ReplacesExistingAndIsServedBack(t *testing.T) {
 	if code := thumbPut(t, env, "new.jpg", thumbJPEG); code != http.StatusNoContent {
 		t.Fatalf("status = %d, want 204", code)
 	}
-	if call := docHAuditLast(t, env.audit); call.action != "UPDATE" || call.resourceType != "api_thumbnail" {
-		t.Errorf("audit = %+v, want UPDATE api_thumbnail", call)
+	if row := docHAuditLast(t, env.audit); row.Action != model.AuditActionUpdate || row.ResourceType != model.AuditResourceTypeAPIDocument || row.ResourceName != constants.DocumentHandleThumbnail {
+		t.Errorf("audit = %+v, want an ApiDocument update of the thumbnail", row)
 	}
 
 	rec := env.get(t, http.MethodGet, docHThumbPath)
@@ -375,8 +375,8 @@ func TestDeleteThumbnail_Success(t *testing.T) {
 		env.docs.deletedTypes[0] != constants.DocumentTypeThumbnail {
 		t.Errorf("deleted handles=%v types=%v, want the thumbnail singleton", env.docs.deletedHandles, env.docs.deletedTypes)
 	}
-	if call := docHAuditLast(t, env.audit); call.action != "DELETE" || call.resourceType != "api_thumbnail" {
-		t.Errorf("audit = %+v, want DELETE api_thumbnail", call)
+	if row := docHAuditLast(t, env.audit); row.Action != model.AuditActionDelete || row.ResourceType != model.AuditResourceTypeAPIDocument || row.ResourceName != constants.DocumentHandleThumbnail {
+		t.Errorf("audit = %+v, want an ApiDocument delete of the thumbnail", row)
 	}
 	// Once removed, GET falls back to 204 so the UI shows the initials avatar.
 	if rec := env.get(t, http.MethodGet, docHThumbPath); rec.Code != http.StatusNoContent {

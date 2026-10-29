@@ -71,6 +71,7 @@ func newGraphQLDeploymentTestService(repo *mockGraphQLAPIRepo, deploymentRepo *m
 		newTestIdentityService(),
 		&config.Server{Deployments: config.Deployments{MaxPerAPIGateway: 20}},
 		newTestLogger(),
+		nil,
 	)
 }
 
@@ -502,7 +503,7 @@ func TestGraphQLUndeployDeployment_Success(t *testing.T) {
 
 	svc := newGraphQLDeploymentTestService(repo, deploymentRepo, gatewayRepo)
 
-	resp, err := svc.UndeployGraphQLAPIDeployment(context.Background(), "countries-graphql-api", "dep-1", "prod-gateway", "org-1")
+	resp, err := svc.UndeployGraphQLAPIDeployment(context.Background(), "countries-graphql-api", "dep-1", "prod-gateway", "org-1", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -540,7 +541,7 @@ func TestGraphQLUndeployDeployment_GatewayMismatch_Rejected(t *testing.T) {
 
 	svc := newGraphQLDeploymentTestService(repo, deploymentRepo, gatewayRepo)
 
-	_, err := svc.UndeployGraphQLAPIDeployment(context.Background(), "countries-graphql-api", "dep-1", "staging-gateway", "org-1")
+	_, err := svc.UndeployGraphQLAPIDeployment(context.Background(), "countries-graphql-api", "dep-1", "staging-gateway", "org-1", "")
 	if err == nil {
 		t.Fatal("expected an error for a gateway mismatch")
 	}
@@ -578,7 +579,7 @@ func TestGraphQLRestoreDeployment_Success(t *testing.T) {
 
 	svc := newGraphQLDeploymentTestService(repo, deploymentRepo, gatewayRepo)
 
-	resp, err := svc.RestoreGraphQLAPIDeployment(context.Background(), "countries-graphql-api", "dep-1", "prod-gateway", "org-1")
+	resp, err := svc.RestoreGraphQLAPIDeployment(context.Background(), "countries-graphql-api", "dep-1", "prod-gateway", "org-1", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -616,7 +617,7 @@ func TestGraphQLRestoreDeployment_LTSGateway_Refused(t *testing.T) {
 
 	svc := newGraphQLDeploymentTestService(repo, deploymentRepo, gatewayRepo)
 
-	_, err := svc.RestoreGraphQLAPIDeployment(context.Background(), "countries-graphql-api", "dep-1", "prod-gateway", "org-1")
+	_, err := svc.RestoreGraphQLAPIDeployment(context.Background(), "countries-graphql-api", "dep-1", "prod-gateway", "org-1", "")
 	if err == nil {
 		t.Fatal("expected restoring onto an LTS gateway to be refused")
 	}
@@ -650,7 +651,7 @@ func TestGraphQLRestoreDeployment_AlreadyDeployed_Conflict(t *testing.T) {
 
 	svc := newGraphQLDeploymentTestService(repo, deploymentRepo, gatewayRepo)
 
-	_, err := svc.RestoreGraphQLAPIDeployment(context.Background(), "countries-graphql-api", "dep-1", "prod-gateway", "org-1")
+	_, err := svc.RestoreGraphQLAPIDeployment(context.Background(), "countries-graphql-api", "dep-1", "prod-gateway", "org-1", "")
 	if err == nil {
 		t.Fatal("expected an error restoring an already-deployed deployment")
 	}

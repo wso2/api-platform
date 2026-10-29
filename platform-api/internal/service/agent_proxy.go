@@ -38,10 +38,6 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/utils"
 )
 
-// agentProxyAuditResource is the resource label recorded against Agent proxy
-// audit entries.
-const agentProxyAuditResource = "agent_proxy"
-
 // reservedAgentProxyHandles are handles the Agent proxy collection cannot hand
 // out, because a static sibling route under /agent-proxies/ already owns the
 // path segment. Today the static route is POST-only and there is no POST on
@@ -68,7 +64,7 @@ type AgentProxyService struct {
 	gatewayRepo          repository.GatewayRepository
 	gatewayEventsService *GatewayEventsService
 	secretService        *SecretService
-	auditRepo            repository.AuditRepository
+	audit                *AuditService
 	identity             *IdentityService
 	cfg                  *config.Server
 	slogger              *slog.Logger
@@ -82,7 +78,7 @@ type AgentProxyService struct {
 // NewAgentProxyService creates a new AgentProxyService instance.
 func NewAgentProxyService(repo repository.AgentProxyRepository, projectRepo repository.ProjectRepository,
 	deploymentRepo repository.DeploymentRepository, gatewayRepo repository.GatewayRepository,
-	gatewayEventsService *GatewayEventsService, slogger *slog.Logger, auditRepo repository.AuditRepository,
+	gatewayEventsService *GatewayEventsService, slogger *slog.Logger, audit *AuditService,
 	cfg *config.Server, identity *IdentityService) *AgentProxyService {
 	var cardCacheCfg config.AgentCardCache
 	if cfg != nil {
@@ -95,7 +91,7 @@ func NewAgentProxyService(repo repository.AgentProxyRepository, projectRepo repo
 		deploymentRepo:       deploymentRepo,
 		gatewayRepo:          gatewayRepo,
 		gatewayEventsService: gatewayEventsService,
-		auditRepo:            auditRepo,
+		audit:                audit,
 		identity:             identity,
 		cfg:                  cfg,
 		slogger:              slogger,
@@ -119,7 +115,7 @@ func (s *AgentProxyService) InvalidateAgentCard(orgUUID, proxyUUID string) {
 }
 
 // Create stores a new Agent proxy and returns it as the caller will read it back.
-func (s *AgentProxyService) Create(orgUUID, createdBy string, req *api.A2AAgentProxy) (*api.A2AAgentProxy, error) {
+func (s *AgentProxyService) Create(ctx context.Context, orgUUID, createdBy string, req *api.A2AAgentProxy) (*api.A2AAgentProxy, error) {
 	if req == nil {
 		return nil, apperror.ValidationFailed.New("A request body is required.")
 	}
@@ -169,10 +165,21 @@ func (s *AgentProxyService) Create(orgUUID, createdBy string, req *api.A2AAgentP
 	}
 
 	if err := s.repo.Create(m); err != nil {
-		return nil, s.mapRepositoryError(err, "failed to create agent proxy")
+		err = s.mapRepositoryError(err, "failed to create agent proxy")
+		if IsAuditableFailure(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Action: model.AuditActionCreate, ResourceType: model.AuditResourceTypeAgentProxy,
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgUUID, PerformedBy: createdBy,
+				ResourceUUID: m.UUID, ResourceName: m.Handle,
+			})
+		}
+		return nil, err
 	}
-
-	_ = s.auditRepo.Record("CREATE", m.UUID, agentProxyAuditResource, orgUUID, createdBy)
+	s.audit.Record(ctx, &AuditEvent{
+		Action: model.AuditActionCreate, ResourceType: model.AuditResourceTypeAgentProxy,
+		Outcome: model.AuditOutcomeSucceeded, OrganizationUUID: orgUUID, PerformedBy: createdBy,
+		ResourceUUID: m.UUID, ResourceName: m.Handle, EventData: agentProxyAuditFields(m),
+	})
 	return s.Get(orgUUID, handle)
 }
 
@@ -254,7 +261,7 @@ func (s *AgentProxyService) List(orgUUID string, protocol, projectHandle *string
 // resource. The one exception is the write-only upstream credential, which
 // responses redact and a round trip therefore cannot carry back — see
 // dto.PreserveAgentProxyUpstreamAuth for exactly how narrow that inheritance is.
-func (s *AgentProxyService) Update(orgUUID, handle, updatedBy string, req *api.A2AAgentProxy) (*api.A2AAgentProxy, error) {
+func (s *AgentProxyService) Update(ctx context.Context, orgUUID, handle, updatedBy string, req *api.A2AAgentProxy) (*api.A2AAgentProxy, error) {
 	if req == nil {
 		return nil, apperror.ValidationFailed.New("A request body is required.")
 	}
@@ -286,6 +293,7 @@ func (s *AgentProxyService) Update(orgUUID, handle, updatedBy string, req *api.A
 	}
 
 	existingUpstream := existing.Configuration.Upstream
+	before := agentProxyAuditFields(existing)
 
 	// DP-originated proxies accept only description and gateway association edits.
 	// Preserve the stored runtime configuration, including credentials redacted by GET.
@@ -319,8 +327,22 @@ func (s *AgentProxyService) Update(orgUUID, handle, updatedBy string, req *api.A
 	existing.ReplaceAssociatedGateways = true
 
 	if err := s.repo.Update(existing); err != nil {
-		return nil, s.mapRepositoryError(err, "failed to update agent proxy")
+		err = s.mapRepositoryError(err, "failed to update agent proxy")
+		if IsAuditableFailure(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Action: model.AuditActionUpdate, ResourceType: model.AuditResourceTypeAgentProxy,
+				Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgUUID, PerformedBy: updatedBy,
+				ResourceUUID: existing.UUID, ResourceName: existing.Handle,
+			})
+		}
+		return nil, err
 	}
+	s.audit.Record(ctx, &AuditEvent{
+		Action: model.AuditActionUpdate, ResourceType: model.AuditResourceTypeAgentProxy,
+		Outcome: model.AuditOutcomeSucceeded, OrganizationUUID: orgUUID, PerformedBy: updatedBy,
+		ResourceUUID: existing.UUID, ResourceName: existing.Handle,
+		EventData: AuditDiff(before, agentProxyAuditFields(existing)),
+	})
 
 	// Best-effort, and only after the new reference is persisted: until then the
 	// in-use check would still see this Agent proxy pointing at the old handle.
@@ -340,7 +362,6 @@ func (s *AgentProxyService) Update(orgUUID, handle, updatedBy string, req *api.A
 	// card immediately instead of a full negative TTL later.
 	s.cardCache.invalidate(orgUUID, existing.UUID)
 
-	_ = s.auditRepo.Record("UPDATE", existing.UUID, agentProxyAuditResource, orgUUID, updatedBy)
 	return s.Get(orgUUID, handle)
 }
 
@@ -362,6 +383,14 @@ func (s *AgentProxyService) Delete(ctx context.Context, orgUUID, handle, deleted
 	// A gateway-originated Agent proxy may only be deleted once it is undeployed
 	// everywhere.
 	if err := ensureOriginDeletable(s.deploymentRepo, m.Origin, m.UUID, orgUUID); err != nil {
+		if IsOriginDenial(err) {
+			s.audit.Record(ctx, &AuditEvent{
+				Action: model.AuditActionDelete, ResourceType: model.AuditResourceTypeAgentProxy,
+				Outcome: model.AuditOutcomeDenied, OrganizationUUID: orgUUID, PerformedBy: deletedBy,
+				ResourceUUID: m.UUID, ResourceName: m.Handle,
+				EventData: map[string]any{"reason": "dp_originated"},
+			})
+		}
 		return err
 	}
 
@@ -379,12 +408,20 @@ func (s *AgentProxyService) Delete(ctx context.Context, orgUUID, handle, deleted
 		if errors.Is(err, sql.ErrNoRows) {
 			return apperror.AgentProxyNotFound.Wrap(err)
 		}
+		s.audit.Record(ctx, &AuditEvent{
+			Action: model.AuditActionDelete, ResourceType: model.AuditResourceTypeAgentProxy,
+			Outcome: model.AuditOutcomeFailed, OrganizationUUID: orgUUID, PerformedBy: deletedBy,
+			ResourceUUID: m.UUID, ResourceName: m.Handle,
+		})
 		return fmt.Errorf("failed to delete agent proxy: %w", err)
 	}
+	s.audit.Record(ctx, &AuditEvent{
+		Action: model.AuditActionDelete, ResourceType: model.AuditResourceTypeAgentProxy,
+		Outcome: model.AuditOutcomeSucceeded, OrganizationUUID: orgUUID, PerformedBy: deletedBy,
+		ResourceUUID: m.UUID, ResourceName: m.Handle,
+	})
 
 	s.cardCache.invalidate(orgUUID, m.UUID)
-
-	_ = s.auditRepo.Record("DELETE", m.UUID, agentProxyAuditResource, orgUUID, deletedBy)
 
 	// Send deletion events to all gateways in the organization
 	if s.gatewayEventsService != nil {
@@ -562,7 +599,7 @@ func (s *AgentProxyService) fetchStoredAgentCard(orgUUID, handle string, noCache
 // either: a failure returns apperror.Internal's fixed message, with the cause
 // confined to the internal-only detail.
 func (s *AgentProxyService) resolveStoredAgentCardAuth(orgUUID string, auth *model.UpstreamAuth) (string, string, error) {
-	if auth == nil || auth.Type == string(api.UpstreamAuthTypeNone) || auth.Header == "" {
+	if auth == nil || auth.Type == string(api.None) || auth.Header == "" {
 		return "", "", nil
 	}
 	if handle := extractSecretHandle(auth.Value); handle != "" {
@@ -584,7 +621,7 @@ func (s *AgentProxyService) resolveStoredAgentCardAuth(orgUUID string, auth *mod
 // header the fetch sends. Nothing here is stored or resolved through the secret
 // store: the value is the caller's own credential, used for this request alone.
 func suppliedAgentCardAuthHeader(auth *api.UpstreamAuth) (string, string) {
-	if auth == nil || auth.Type == nil || *auth.Type == api.UpstreamAuthTypeNone {
+	if auth == nil || auth.Type == nil || *auth.Type == api.None {
 		return "", ""
 	}
 	if auth.Header == nil || auth.Value == nil {
@@ -858,7 +895,7 @@ func validateEndpointAuthComplete(endpoint *model.UpstreamEndpoint, name string)
 	}
 	// "none" is the documented way to remove authentication, so it is the one
 	// type that is complete without a credential.
-	if endpoint.Auth.Type == string(api.UpstreamAuthTypeNone) {
+	if endpoint.Auth.Type == string(api.None) {
 		return nil
 	}
 	if strings.TrimSpace(endpoint.Auth.Value) == "" {
@@ -892,4 +929,26 @@ func parseAgentProxyProtocolFilter(protocol *string) (model.AgentProxyProtocol, 
 				*protocol, strings.Join(model.SupportedAgentProxyProtocols(), ", ")))
 	}
 	return model.AgentProxyProtocol(*protocol), nil
+}
+
+// agentProxyAuditFields lists the Agent proxy fields recorded in audit events. The
+// upstream, its credentials and the Agent Card are never recorded.
+func agentProxyAuditFields(m *model.AgentProxy) map[string]any {
+	var policies []string
+	if a2a := m.Configuration.A2A; a2a != nil {
+		policies = policyNames(a2a.OperationConfigs.Policies)
+		for _, op := range a2a.OperationConfigs.Operations {
+			for _, p := range op.Policies {
+				policies = append(policies, p.Name+" "+p.Version+" ("+op.Name+")")
+			}
+		}
+	}
+	return map[string]any{
+		"displayName": m.Name,
+		"version":     m.Version,
+		"protocol":    string(m.Protocol),
+		"context":     utils.ValueOrEmpty(m.Configuration.Context),
+		"vhost":       utils.ValueOrEmpty(m.Configuration.Vhost),
+		"policies":    policies,
+	}
 }

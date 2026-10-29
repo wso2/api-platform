@@ -17,6 +17,7 @@
 package service
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"reflect"
@@ -50,7 +51,7 @@ func newAdminTestService() (*MonetizationAdminService, *fakeMeterRepo, *fakePric
 		"gold":   {UUID: "plan-1", Handle: "gold", Name: "Gold", ThrottleLimitCount: &limit, ThrottleLimitUnit: "MINUTE"},
 		"silver": {UUID: "plan-2", Handle: "silver", Name: "Silver"},
 	}}
-	return NewMonetizationAdminService(meters, pricing, plans, nil), meters, pricing
+	return NewMonetizationAdminService(meters, pricing, plans, nil, nil), meters, pricing
 }
 
 func TestMonetizationAdmin_ReadsComeFromTheStore(t *testing.T) {
@@ -79,7 +80,7 @@ func TestMonetizationAdmin_MetersAreKeptHere(t *testing.T) {
 	// A custom token key, and filter properties named by the request, one of them reading the token key.
 	body := `{"displayName":" Output tokens ","type":"TOKENS","typeKey":"usage.output_tokens",
 		"filterFields":[{"field":"API type","eventKey":"custom.api.kind"},{"field":" Output ","eventKey":" usage.output_tokens "}]}`
-	created, err := svc.CreateMeter("org", []byte(body))
+	created, err := svc.CreateMeter(context.Background(), "org", "", []byte(body))
 	if err != nil {
 		t.Fatalf("CreateMeter: %v", err)
 	}
@@ -90,7 +91,7 @@ func TestMonetizationAdmin_MetersAreKeptHere(t *testing.T) {
 		t.Fatalf("stored %+v, want the meter as the API Portal stores it, its handle derived from the name", stored)
 	}
 
-	_, err = svc.CreateMeter("org", []byte(`{"id":"api-calls","displayName":"Calls","type":"REQUEST_COUNT"}`))
+	_, err = svc.CreateMeter(context.Background(), "org", "", []byte(`{"id":"api-calls","displayName":"Calls","type":"REQUEST_COUNT"}`))
 	var appErr *apperror.Error
 	if !apperror.MeterExists.Is(err) || !errors.As(err, &appErr) || appErr.HTTPStatus != http.StatusConflict ||
 		appErr.Message != `A meter with id "api-calls" already exists in this organization.` {
@@ -98,23 +99,23 @@ func TestMonetizationAdmin_MetersAreKeptHere(t *testing.T) {
 	}
 
 	update := `{"displayName":"Calls","type":"REQUEST_COUNT","filterFields":[{"field":"Status code","eventKey":"status_code"}]}`
-	updated, err := svc.UpdateMeter("org", "api-calls", []byte(update))
+	updated, err := svc.UpdateMeter(context.Background(), "org", "", "api-calls", []byte(update))
 	if err != nil || updated.Handle != "api-calls" || meters.meters["api-calls"].DisplayName != "Calls" ||
 		meters.meters["api-calls"].FilterFields[0].EventKey != "status_code" {
 		t.Fatalf("UpdateMeter = %+v, %v; stored %+v", updated, err, meters.meters["api-calls"])
 	}
 	renamed := `{"id":"calls","displayName":"Calls","type":"REQUEST_COUNT"}`
-	if _, err := svc.UpdateMeter("org", "api-calls", []byte(renamed)); !apperror.ValidationFailed.Is(err) ||
+	if _, err := svc.UpdateMeter(context.Background(), "org", "", "api-calls", []byte(renamed)); !apperror.ValidationFailed.Is(err) ||
 		err.Error() == "" || !errors.As(err, &appErr) || appErr.Message != "The id of a meter cannot be changed" {
 		t.Fatalf("another id: want it refused, got %v", err)
 	}
-	if _, err := svc.UpdateMeter("org", "missing", []byte(update)); !apperror.MeterNotFound.Is(err) {
+	if _, err := svc.UpdateMeter(context.Background(), "org", "", "missing", []byte(update)); !apperror.MeterNotFound.Is(err) {
 		t.Fatalf("updating a missing meter: want METER_NOT_FOUND, got %v", err)
 	}
-	if err := svc.DeleteMeter("org", "api-calls"); err != nil || meters.meters["api-calls"] != nil {
+	if err := svc.DeleteMeter(context.Background(), "org", "", "api-calls"); err != nil || meters.meters["api-calls"] != nil {
 		t.Fatalf("DeleteMeter: %v, stored %+v", err, meters.meters["api-calls"])
 	}
-	if err := svc.DeleteMeter("org", "api-calls"); !apperror.MeterNotFound.Is(err) {
+	if err := svc.DeleteMeter(context.Background(), "org", "", "api-calls"); !apperror.MeterNotFound.Is(err) {
 		t.Fatalf("deleting a missing meter: want METER_NOT_FOUND, got %v", err)
 	}
 }
@@ -124,8 +125,8 @@ func TestMonetizationAdmin_MeterRequestsAreCheckedLikeThePortal(t *testing.T) {
 	for _, conditions := range []string{`[{"field":"API type","operator":"IN"}]`, `[]`, `null`} {
 		svc, meters, _ := newAdminTestService()
 		body := []byte(`{"displayName":"LLM input tokens","type":"TOKENS","typeKey":"metadata.aiTokenUsage.promptTokens","conditions":` + conditions + `}`)
-		_, createErr := svc.CreateMeter("org", body)
-		_, updateErr := svc.UpdateMeter("org", "llm-input", body)
+		_, createErr := svc.CreateMeter(context.Background(), "org", "", body)
+		_, updateErr := svc.UpdateMeter(context.Background(), "org", "", "llm-input", body)
 		for _, err := range []error{createErr, updateErr} {
 			var appErr *apperror.Error
 			if !apperror.ValidationFailed.Is(err) || !errors.As(err, &appErr) ||
@@ -138,7 +139,7 @@ func TestMonetizationAdmin_MeterRequestsAreCheckedLikeThePortal(t *testing.T) {
 		}
 	}
 	svc, _, _ := newAdminTestService()
-	_, err := svc.CreateMeter("org", []byte(`{"displayName":"Calls","type":"REQUEST_COUNT","color":"red"}`))
+	_, err := svc.CreateMeter(context.Background(), "org", "", []byte(`{"displayName":"Calls","type":"REQUEST_COUNT","color":"red"}`))
 	var appErr *apperror.Error
 	if !apperror.ValidationFailed.Is(err) || !errors.As(err, &appErr) || appErr.Message != "color is not a known field" {
 		t.Fatalf("an unknown field: want 400 naming it, got %v", err)
@@ -230,7 +231,7 @@ func TestMonetizationAdmin_MeterPricedHereCannotChange(t *testing.T) {
 	for _, c := range cases {
 		svc, meters, pricing := newAdminTestService()
 		pricing.pricing = c.pricing
-		_, err := svc.UpdateMeter("org", "llm-input", []byte(c.body))
+		_, err := svc.UpdateMeter(context.Background(), "org", "", "llm-input", []byte(c.body))
 		if c.msg == "" {
 			if err != nil || meters.meters["llm-input"].DisplayName != "Prompt tokens" {
 				t.Errorf("%s: want the update made, got %v", c.name, err)
@@ -252,14 +253,14 @@ func TestMonetizationAdmin_MeterPricedHereCannotBeDeleted(t *testing.T) {
 	pricing.pricing["plan-2"] = pricedOnMeter("plan-2", "llm-input")
 	pricing.pricing["plan-1"] = pricedOnMeter("plan-1", "llm-input", "API type")
 
-	err := svc.DeleteMeter("org", "llm-input")
+	err := svc.DeleteMeter(context.Background(), "org", "", "llm-input")
 	var appErr *apperror.Error
 	if !apperror.MeterInUse.Is(err) || !errors.As(err, &appErr) || appErr.HTTPStatus != http.StatusConflict ||
 		appErr.Message != "The meter is in use, so it can't be deleted." {
 		t.Fatalf("want 409 METER_IN_USE, got %v", err)
 	}
 	delete(pricing.pricing, "plan-2")
-	err = svc.DeleteMeter("org", "llm-input")
+	err = svc.DeleteMeter(context.Background(), "org", "", "llm-input")
 	if !apperror.MeterInUse.Is(err) || !errors.As(err, &appErr) ||
 		appErr.Message != "The meter is in use, so it can't be deleted." {
 		t.Fatalf("want 409 METER_IN_USE with one plan, got %v", err)

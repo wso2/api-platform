@@ -303,7 +303,7 @@ func (h *APIDocumentHandler) UpdateDocument(w http.ResponseWriter, r *http.Reque
 		req.FileName = &parsed.fileName
 	}
 
-	if err := h.service.UpdateApiDocument(req, orgID, updatedBy, artifactUUID, docID); err != nil {
+	if err := h.service.UpdateApiDocument(r.Context(), req, orgID, updatedBy, artifactUUID, docID); err != nil {
 		return serviceError(err, "failed to update document")
 	}
 
@@ -330,7 +330,7 @@ func (h *APIDocumentHandler) DeleteDocument(w http.ResponseWriter, r *http.Reque
 		return err
 	}
 
-	if err := h.service.DeleteApiDocument(artifactUUID, docID, orgID, deletedBy); err != nil {
+	if err := h.service.DeleteApiDocument(r.Context(), artifactUUID, docID, orgID, deletedBy); err != nil {
 		return serviceError(err, "failed to delete document")
 	}
 	w.WriteHeader(http.StatusNoContent)

@@ -58,11 +58,6 @@ func (billingReadPlanRepo) GetByHandleAndOrg(handle, orgUUID string) (*model.Sub
 	return &model.SubscriptionPlan{UUID: "plan-uuid-" + handle}, nil
 }
 
-type billingReadAuditRepo struct{}
-
-func (billingReadAuditRepo) Record(action, resourceUUID, resourceType, orgUUID, performedBy string) error {
-	return nil
-}
 
 // billingReadRepo answers every read with err, or with no billing state when err is nil.
 type billingReadRepo struct {

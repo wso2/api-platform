@@ -634,7 +634,7 @@ func TestDeleteCustomPolicyByUUID(t *testing.T) {
 			}
 			svc := newTestGatewayService(&mockGatewayRepoForPolicy{}, cpRepo)
 
-			err := svc.DeleteCustomPolicyByUUID(context.Background(), orgID, policyUUID, tt.version)
+			err := svc.DeleteCustomPolicyByUUID(context.Background(), orgID, policyUUID, tt.version, "")
 
 			if (err != nil) != tt.wantErr {
 				t.Errorf("DeleteCustomPolicyByUUID() error = %v, wantErr %v", err, tt.wantErr)

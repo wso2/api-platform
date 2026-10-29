@@ -200,8 +200,8 @@ func (m *mockGraphQLProjectRepo) GetProjectByHandleAndOrgID(handle, orgID string
 }
 
 // newGraphQLTestService wires a GraphQLAPIService for tests, reusing the
-// package's shared noopAuditRepo (llm_test.go) and newTestIdentityService
-// (identity_test_helpers_test.go) test doubles. Gateway/org repos are wired
+// package's shared newTestIdentityService (identity_test_helpers_test.go)
+// test double. Gateway/org repos are wired
 // with empty defaults — use newGraphQLTestServiceWithGateways for tests that
 // exercise AddGatewaysToAPI/GetAPIGateways.
 func newGraphQLTestService(repo *mockGraphQLAPIRepo, project *model.Project) *GraphQLAPIService {
@@ -214,7 +214,7 @@ func newGraphQLTestServiceWithGateways(repo *mockGraphQLAPIRepo, project *model.
 	return NewGraphQLAPIService(
 		repo,
 		&mockGraphQLProjectRepo{project: project},
-		&noopAuditRepo{},
+		nil,
 		nil, // deploymentRepo — not needed unless exercising Delete's origin-deletable guard
 		gatewayRepo,
 		orgRepo,
@@ -257,7 +257,7 @@ func TestGraphQLCreate_WithSDL_Success(t *testing.T) {
 		},
 	}
 
-	resp, err := svc.Create("org-1", "creator-uuid", req)
+	resp, err := svc.Create(context.Background(), "org-1", "creator-uuid", req)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -326,7 +326,7 @@ func TestGraphQLCreate_WithIntrospection_Success(t *testing.T) {
 		},
 	}
 
-	resp, err := svc.Create("org-1", "creator-uuid", req)
+	resp, err := svc.Create(context.Background(), "org-1", "creator-uuid", req)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -391,7 +391,7 @@ func TestGraphQLCreate_InlineIntrospectionJSON_ConvertsToSDL(t *testing.T) {
 		Upstream:    api.Upstream{Main: api.UpstreamDefinition{Url: graphQLStrPtr("https://example.com/graphql")}},
 	}
 
-	resp, err := svc.Create("org-1", "creator-uuid", req)
+	resp, err := svc.Create(context.Background(), "org-1", "creator-uuid", req)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -441,7 +441,7 @@ func TestGraphQLCreate_IntrospectionFailure_SucceedsWithEmptySchema(t *testing.T
 		Upstream:    api.Upstream{Main: api.UpstreamDefinition{Url: graphQLStrPtr(server.URL)}},
 	}
 
-	resp, err := svc.Create("org-1", "creator-uuid", req)
+	resp, err := svc.Create(context.Background(), "org-1", "creator-uuid", req)
 	if err != nil {
 		t.Fatalf("expected creation to succeed despite a failed introspection, got: %v", err)
 	}
@@ -488,8 +488,8 @@ func TestGraphQLCreate_SchemaResolveFailure_DivergesByWhetherTextWasCallerAuthor
 
 	project := &model.Project{ID: "project-uuid", OrganizationID: "org-1"}
 	sdlRepo, introspectRepo := &mockGraphQLAPIRepo{}, &mockGraphQLAPIRepo{}
-	_, sdlErr := newGraphQLTestService(sdlRepo, project).Create("org-1", "creator-uuid", malformedSDLReq)
-	introspectResp, introspectErr := newGraphQLTestService(introspectRepo, project).Create("org-1", "creator-uuid", introspectionFailureReq)
+	_, sdlErr := newGraphQLTestService(sdlRepo, project).Create(context.Background(), "org-1", "creator-uuid", malformedSDLReq)
+	introspectResp, introspectErr := newGraphQLTestService(introspectRepo, project).Create(context.Background(), "org-1", "creator-uuid", introspectionFailureReq)
 
 	if sdlErr == nil {
 		t.Error("expected malformed caller-authored SDL to fail creation")
@@ -523,7 +523,7 @@ func TestGraphQLCreate_DuplicateHandle_Conflict(t *testing.T) {
 		Upstream:    api.Upstream{Main: api.UpstreamDefinition{Url: graphQLStrPtr("https://example.com/graphql")}},
 	}
 
-	_, err := svc.Create("org-1", "creator-uuid", req)
+	_, err := svc.Create(context.Background(), "org-1", "creator-uuid", req)
 	if err == nil {
 		t.Fatal("expected an error for a duplicate handle")
 	}
@@ -888,7 +888,7 @@ func TestGraphQLCreate_MalformedSDL_ValidationFailed(t *testing.T) {
 		Upstream:    api.Upstream{Main: api.UpstreamDefinition{Url: graphQLStrPtr("https://example.com/graphql")}},
 	}
 
-	_, err := svc.Create("org-1", "creator-uuid", req)
+	_, err := svc.Create(context.Background(), "org-1", "creator-uuid", req)
 	if err == nil {
 		t.Fatal("expected creation to fail for unparseable inline SDL")
 	}
@@ -928,7 +928,7 @@ func TestGraphQLCreate_SDLWithNoQueryRoot_ValidationFailed(t *testing.T) {
 		Upstream:    api.Upstream{Main: api.UpstreamDefinition{Url: graphQLStrPtr("https://example.com/graphql")}},
 	}
 
-	_, err := svc.Create("org-1", "creator-uuid", req)
+	_, err := svc.Create(context.Background(), "org-1", "creator-uuid", req)
 	if err == nil {
 		t.Fatal("expected creation to fail for a schema with no Query root type")
 	}
@@ -964,7 +964,7 @@ func TestGraphQLCreate_SDLTakesPrecedenceOverIntrospection(t *testing.T) {
 		Upstream:    api.Upstream{Main: api.UpstreamDefinition{Url: graphQLStrPtr(server.URL)}},
 	}
 
-	if _, err := svc.Create("org-1", "creator-uuid", req); err != nil {
+	if _, err := svc.Create(context.Background(), "org-1", "creator-uuid", req); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if repo.created.Configuration.IntrospectionMode != "SDL" {
@@ -996,7 +996,7 @@ func TestGraphQLCreate_SDLAndSDLUrlMutuallyExclusive(t *testing.T) {
 		SdlUrl:      graphQLStrPtr("https://example.com/schema.graphql"),
 	}
 
-	_, err := svc.Create("org-1", "creator-uuid", req)
+	_, err := svc.Create(context.Background(), "org-1", "creator-uuid", req)
 	if err == nil {
 		t.Fatal("expected an error when both sdl and sdlUrl are supplied")
 	}
@@ -1030,7 +1030,7 @@ func TestGraphQLCreate_SDLUrlFetchFailure_SucceedsWithEmptySchema(t *testing.T) 
 		SdlUrl:      graphQLStrPtr("http://127.0.0.1:9/schema.graphql"),
 	}
 
-	resp, err := svc.Create("org-1", "creator-uuid", req)
+	resp, err := svc.Create(context.Background(), "org-1", "creator-uuid", req)
 	if err != nil {
 		t.Fatalf("expected creation to succeed despite a blocked sdlUrl, got: %v", err)
 	}
@@ -1072,7 +1072,7 @@ func TestGraphQLCreate_SDLUrlFetchFailure_DoesNotFallBackToIntrospection(t *test
 		Upstream:    api.Upstream{Main: api.UpstreamDefinition{Url: graphQLStrPtr(server.URL)}},
 	}
 
-	resp, err := svc.Create("org-1", "creator-uuid", req)
+	resp, err := svc.Create(context.Background(), "org-1", "creator-uuid", req)
 	if err != nil {
 		t.Fatalf("expected creation to succeed despite a blocked sdlUrl, even with a reachable upstream present, got: %v", err)
 	}
@@ -1109,7 +1109,7 @@ func TestGraphQLCreate_MissingSDLAndUpstream_ValidationFailed(t *testing.T) {
 		// Neither Sdl nor Upstream.Main.Url supplied.
 	}
 
-	_, err := svc.Create("org-1", "creator-uuid", req)
+	_, err := svc.Create(context.Background(), "org-1", "creator-uuid", req)
 	if err == nil {
 		t.Fatal("expected an error when neither sdl nor upstream.main.url is supplied")
 	}
@@ -1305,7 +1305,7 @@ func TestGraphQLCreate_MissingContext_DerivesDefault(t *testing.T) {
 		// Context omitted.
 	}
 
-	resp, err := svc.Create("org-1", "creator-uuid", req)
+	resp, err := svc.Create(context.Background(), "org-1", "creator-uuid", req)
 	if err != nil {
 		t.Fatalf("expected omitted context to succeed with a derived default, got error: %v", err)
 	}
@@ -1332,7 +1332,7 @@ func TestGraphQLCreate_ProjectRefNotFound_CrossOrgProject(t *testing.T) {
 		Upstream:    api.Upstream{Main: api.UpstreamDefinition{Url: graphQLStrPtr("https://example.com/graphql")}},
 	}
 
-	_, err := svc.Create("org-1", "creator-uuid", req)
+	_, err := svc.Create(context.Background(), "org-1", "creator-uuid", req)
 	if err == nil {
 		t.Fatal("expected an error for a project belonging to a different organization")
 	}
@@ -1375,7 +1375,7 @@ func TestGraphQLUpdate_Success(t *testing.T) {
 		Upstream:    api.Upstream{Main: api.UpstreamDefinition{Url: graphQLStrPtr("https://example.com/graphql")}},
 	}
 
-	resp, err := svc.Update("org-1", "countries-graphql-api", "updater-uuid", req)
+	resp, err := svc.Update(context.Background(), "org-1", "countries-graphql-api", "updater-uuid", req)
 	if err != nil {
 		t.Fatalf("Update failed: %v", err)
 	}
@@ -1442,7 +1442,7 @@ func TestGraphQLUpdate_EndpointOnlyEdit_PreservesUpstreamAuth(t *testing.T) {
 		}},
 	}
 
-	if _, err := svc.Update("org-1", "countries-graphql-api", "updater-uuid", req); err != nil {
+	if _, err := svc.Update(context.Background(), "org-1", "countries-graphql-api", "updater-uuid", req); err != nil {
 		t.Fatalf("Update failed: %v", err)
 	}
 	if repo.updated == nil {
@@ -1484,7 +1484,7 @@ func TestGraphQLUpdate_IDMismatch_400(t *testing.T) {
 		Upstream:    api.Upstream{Main: api.UpstreamDefinition{Url: graphQLStrPtr("https://example.com/graphql")}},
 	}
 
-	_, err := svc.Update("org-1", "countries-graphql-api", "updater-uuid", req)
+	_, err := svc.Update(context.Background(), "org-1", "countries-graphql-api", "updater-uuid", req)
 	if err == nil {
 		t.Fatal("expected an error when the body id does not match the path handle")
 	}
@@ -1556,7 +1556,7 @@ func TestGraphQLUpdate_ReIntrospect_RefreshesSchema(t *testing.T) {
 		Upstream:    api.Upstream{Main: api.UpstreamDefinition{Url: graphQLStrPtr(server.URL)}},
 	}
 
-	if _, err := svc.Update("org-1", "countries-graphql-api", "updater-uuid", req); err != nil {
+	if _, err := svc.Update(context.Background(), "org-1", "countries-graphql-api", "updater-uuid", req); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if repo.updated == nil {
@@ -1601,7 +1601,7 @@ func TestGraphQLUpdate_ReIntrospectFails_PreservesExistingSchema(t *testing.T) {
 		Upstream:    api.Upstream{Main: api.UpstreamDefinition{Url: graphQLStrPtr(server.URL)}},
 	}
 
-	if _, err := svc.Update("org-1", "countries-graphql-api", "updater-uuid", req); err != nil {
+	if _, err := svc.Update(context.Background(), "org-1", "countries-graphql-api", "updater-uuid", req); err != nil {
 		t.Fatalf("expected update to succeed despite a failed re-introspection, got: %v", err)
 	}
 	if repo.updated == nil {
@@ -1642,7 +1642,7 @@ func TestGraphQLUpdate_MalformedSDL_PreservesExistingSchema(t *testing.T) {
 		Upstream:    api.Upstream{Main: api.UpstreamDefinition{Url: graphQLStrPtr("https://example.com/graphql")}},
 	}
 
-	if _, err := svc.Update("org-1", "countries-graphql-api", "updater-uuid", req); err != nil {
+	if _, err := svc.Update(context.Background(), "org-1", "countries-graphql-api", "updater-uuid", req); err != nil {
 		t.Fatalf("expected update to succeed despite malformed SDL, got: %v", err)
 	}
 	if repo.updated == nil {
@@ -1677,7 +1677,7 @@ func TestGraphQLUpdate_SDLWithNoQueryRoot_PreservesExistingSchema(t *testing.T) 
 		Upstream:    api.Upstream{Main: api.UpstreamDefinition{Url: graphQLStrPtr("https://example.com/graphql")}},
 	}
 
-	if _, err := svc.Update("org-1", "countries-graphql-api", "updater-uuid", req); err != nil {
+	if _, err := svc.Update(context.Background(), "org-1", "countries-graphql-api", "updater-uuid", req); err != nil {
 		t.Fatalf("expected update to succeed despite a schema with no Query root type, got: %v", err)
 	}
 	if repo.updated == nil {
@@ -1716,7 +1716,7 @@ func TestGraphQLUpdate_SDLAndSDLUrlMutuallyExclusive(t *testing.T) {
 		SdlUrl:      graphQLStrPtr("https://example.com/schema.graphql"),
 	}
 
-	_, err := svc.Update("org-1", "countries-graphql-api", "updater-uuid", req)
+	_, err := svc.Update(context.Background(), "org-1", "countries-graphql-api", "updater-uuid", req)
 	if err == nil {
 		t.Fatal("expected an error when both sdl and sdlUrl are supplied")
 	}
@@ -1752,7 +1752,7 @@ func TestGraphQLUpdate_SDLUrlFetchFailure_PreservesExistingSchema(t *testing.T) 
 		SdlUrl:      graphQLStrPtr("http://127.0.0.1:9/schema.graphql"),
 	}
 
-	if _, err := svc.Update("org-1", "countries-graphql-api", "updater-uuid", req); err != nil {
+	if _, err := svc.Update(context.Background(), "org-1", "countries-graphql-api", "updater-uuid", req); err != nil {
 		t.Fatalf("expected update to succeed despite a blocked sdlUrl, got: %v", err)
 	}
 	if repo.updated == nil {
@@ -1799,7 +1799,7 @@ func TestGraphQLUpdate_ResupplyInlineSchemaSource_MetadataOnlyEdit_SkipsIntrospe
 			Main: api.UpstreamDefinition{Url: graphQLStrPtr(server.URL)},
 		},
 	}
-	if _, err := svc.Create("org-1", "creator-uuid", createReq); err != nil {
+	if _, err := svc.Create(context.Background(), "org-1", "creator-uuid", createReq); err != nil {
 		t.Fatalf("unexpected error on create: %v", err)
 	}
 	if repo.created.Configuration.SchemaSource != "inline" {
@@ -1822,7 +1822,7 @@ func TestGraphQLUpdate_ResupplyInlineSchemaSource_MetadataOnlyEdit_SkipsIntrospe
 			Main: api.UpstreamDefinition{Url: graphQLStrPtr(server.URL)},
 		},
 	}
-	if _, err := svc.Update("org-1", stored.Handle, "updater-uuid", updateReq); err != nil {
+	if _, err := svc.Update(context.Background(), "org-1", stored.Handle, "updater-uuid", updateReq); err != nil {
 		t.Fatalf("unexpected error on update: %v", err)
 	}
 
@@ -1866,7 +1866,7 @@ func TestGraphQLUpdate_DPOriginated_Blocked(t *testing.T) {
 		Upstream:    api.Upstream{Main: api.UpstreamDefinition{Url: graphQLStrPtr("https://example.com/graphql")}},
 	}
 
-	_, err := svc.Update("org-1", "countries-graphql-api", "updater-uuid", req)
+	_, err := svc.Update(context.Background(), "org-1", "countries-graphql-api", "updater-uuid", req)
 	if err == nil {
 		t.Fatal("expected an error updating a DP-originated (gateway_api) GraphQL API")
 	}
@@ -1956,7 +1956,7 @@ func TestGraphQLDelete_BroadcastsDeletionEventToAllOrgGateways(t *testing.T) {
 	hub := &capturingEventHub{}
 	events := NewGatewayEventsService(hub, newTestIdentityService(), newTestLogger())
 
-	svc := NewGraphQLAPIService(repo, &mockGraphQLProjectRepo{}, &noopAuditRepo{}, nil,
+	svc := NewGraphQLAPIService(repo, &mockGraphQLProjectRepo{}, nil, nil,
 		gatewayRepo, &mockOrganizationRepo{}, events, newTestIdentityService(), slog.Default())
 
 	if err := svc.Delete(context.Background(), "org-1", "countries-graphql-api", "deleter-uuid"); err != nil {
@@ -1994,7 +1994,7 @@ func TestGraphQLDelete_DPOriginated_BlockedWhileDeployed(t *testing.T) {
 	}
 	deploymentRepo := &stubActiveDeploymentRepo{active: true}
 
-	svc := NewGraphQLAPIService(repo, &mockGraphQLProjectRepo{}, &noopAuditRepo{}, deploymentRepo,
+	svc := NewGraphQLAPIService(repo, &mockGraphQLProjectRepo{}, nil, deploymentRepo,
 		&mockGatewayRepository{}, &mockOrganizationRepo{}, nil, newTestIdentityService(), slog.Default())
 
 	err := svc.Delete(context.Background(), "org-1", "countries-graphql-api", "deleter-uuid")
@@ -2029,7 +2029,7 @@ func TestGraphQLDelete_DPOriginated_SucceedsOnceUndeployed(t *testing.T) {
 	}
 	deploymentRepo := &stubActiveDeploymentRepo{active: false}
 
-	svc := NewGraphQLAPIService(repo, &mockGraphQLProjectRepo{}, &noopAuditRepo{}, deploymentRepo,
+	svc := NewGraphQLAPIService(repo, &mockGraphQLProjectRepo{}, nil, deploymentRepo,
 		&stubOrgGatewaysRepo{}, &mockOrganizationRepo{}, nil, newTestIdentityService(), slog.Default())
 
 	if err := svc.Delete(context.Background(), "org-1", "countries-graphql-api", "deleter-uuid"); err != nil {

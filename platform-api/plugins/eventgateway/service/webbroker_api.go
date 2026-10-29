@@ -283,6 +283,14 @@ func (s *WebBrokerAPIService) Update(ctx context.Context, orgUUID, handle, updat
 	}
 	// DP-originated artifacts are read-only in the control plane.
 	if err := ensureOriginMutable(existing.Origin); err != nil {
+		if coreservice.IsOriginDenial(err) {
+			s.audit.Record(ctx, &coreservice.AuditEvent{
+				Action: model.AuditActionUpdate, ResourceType: model.AuditResourceTypeWebBrokerAPI,
+				Outcome: model.AuditOutcomeDenied, OrganizationUUID: orgUUID, PerformedBy: updatedBy,
+				ResourceUUID: existing.UUID, ResourceName: existing.Handle,
+				EventData: map[string]any{"reason": "dp_originated"},
+			})
+		}
 		return nil, err
 	}
 
@@ -361,6 +369,14 @@ func (s *WebBrokerAPIService) Delete(ctx context.Context, orgUUID, handle, delet
 	}
 	// DP-originated artifacts are read-only in the control plane and cannot be deleted from the CP.
 	if err := ensureOriginMutable(webbrokerAPI.Origin); err != nil {
+		if coreservice.IsOriginDenial(err) {
+			s.audit.Record(ctx, &coreservice.AuditEvent{
+				Action: model.AuditActionDelete, ResourceType: model.AuditResourceTypeWebBrokerAPI,
+				Outcome: model.AuditOutcomeDenied, OrganizationUUID: orgUUID, PerformedBy: deletedBy,
+				ResourceUUID: webbrokerAPI.UUID, ResourceName: webbrokerAPI.Handle,
+				EventData: map[string]any{"reason": "dp_originated"},
+			})
+		}
 		return err
 	}
 
