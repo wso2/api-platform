@@ -411,3 +411,51 @@ func TestPolicyValidator_ValidateLLMProviderPolicies_TemplateExtractionParamsNot
 	def := paramDefs()["token-based-ratelimit|v1.0.0"]
 	assert.NotEmpty(t, validator.validatePolicyParams(merged, *def.Parameters, "p", nil))
 }
+
+// FR-040 on BOTH provider shapes (T024a0). The per-upstream walk read
+// spec.AdditionalProviders directly, so a proxy authored in the canonical `providers` form
+// could list model-failover per upstream and deploy clean — the rule existed but was
+// unreachable from the shape the approved design document's own example uses.
+func TestPolicyValidator_FailoverRefusedPerUpstream_BothProviderShapes(t *testing.T) {
+	validator := NewPolicyValidator(ratelimitDefs(), nil)
+	offending := []api.Policy{{Name: FailoverPolicyName}}
+
+	t.Run("legacy additionalProviders", func(t *testing.T) {
+		cfg := &api.LLMProxyConfiguration{Spec: api.LLMProxyConfigData{
+			Provider: &api.LLMProxyProvider{Id: "openai-provider"},
+			AdditionalProviders: &[]api.LLMProxyAdditionalProvider{
+				{Id: "anthropic-provider", Policies: &offending},
+			},
+		}}
+		errs := validator.ValidateLLMProxyPolicies(cfg)
+		require.NotEmpty(t, errs)
+		assert.Equal(t, "spec.additionalProviders[0].policies[0].name", errs[0].Field)
+	})
+
+	t.Run("canonical providers", func(t *testing.T) {
+		cfg := &api.LLMProxyConfiguration{Spec: api.LLMProxyConfigData{
+			Providers: &[]api.LLMProxyProviderEntry{
+				{Id: "openai-provider", IsPrimary: true},
+				{Id: "anthropic-provider", Policies: &offending},
+			},
+		}}
+		errs := validator.ValidateLLMProxyPolicies(cfg)
+		require.NotEmpty(t, errs, "model-failover per upstream must be refused on the canonical shape too")
+		// The path names the entry the operator wrote, at its authored index — not the
+		// position normalisation moved it to.
+		assert.Equal(t, "spec.providers[1].policies[0].name", errs[0].Field)
+	})
+
+	// The canonical shape is the only one that can attach policies to the PRIMARY, so the
+	// rule has to reach there as well.
+	t.Run("canonical primary", func(t *testing.T) {
+		cfg := &api.LLMProxyConfiguration{Spec: api.LLMProxyConfigData{
+			Providers: &[]api.LLMProxyProviderEntry{
+				{Id: "openai-provider", IsPrimary: true, Policies: &offending},
+			},
+		}}
+		errs := validator.ValidateLLMProxyPolicies(cfg)
+		require.NotEmpty(t, errs)
+		assert.Equal(t, "spec.providers[0].policies[0].name", errs[0].Field)
+	})
+}

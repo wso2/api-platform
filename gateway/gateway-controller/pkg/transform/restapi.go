@@ -200,6 +200,41 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 	}
 
 	// Build routes and policy chains for each operation
+	// Maps a failover target's provider alias to the cluster serving it.
+	//
+	// Only the control plane can do this: cluster names are derived from the upstream
+	// definition name (or the main upstream's host), never from the alias a policy author
+	// writes. That is why the generated priority groups carry the clusters and the policy
+	// reorders them by group name alone.
+	//
+	// An alias naming no definition resolves to "" and that target is dropped from the
+	// chain — a silent no-op, never a deployment rejection (FR-006a).
+	// Built once per API: the policy needs it on every failover-bearing chain.
+	failoverProviderClusters := BuildProviderClusterMap(
+		mainUpstream.ClusterKey, apiData.UpstreamDefinitions, cfg.Kind, cfg.UUID)
+	// Carried on the RDC so later stages — the LLM layer's per-upstream chains, the xDS
+	// snapshot — use the same mapping rather than each re-deriving it from cluster names.
+	rdc.ProviderClusters = failoverProviderClusters
+
+	resolveFailoverCluster := func(provider string) string {
+		if provider == "" {
+			return mainUpstream.ClusterKey
+		}
+		if apiData.UpstreamDefinitions == nil {
+			return ""
+		}
+		for _, def := range *apiData.UpstreamDefinitions {
+			if def.Name != provider {
+				continue
+			}
+			if len(def.Upstreams) == 0 || def.Upstreams[0].Url == "" {
+				return ""
+			}
+			return "upstream_" + cfg.Kind + "_" + cfg.UUID + "_" + SanitizeUpstreamDefinitionName(def.Name)
+		}
+		return ""
+	}
+
 	for i, op := range apiData.Operations {
 		// Operation-level resilience overrides API-level (per field); nil leaves the
 		// global route timeout default in effect.
@@ -248,6 +283,7 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 					DefaultCluster:   defaultCluster,
 					Default:          &routeMainInfo,
 				},
+				Failover: buildFailoverConfig(op.Policies, resolveFailoverCluster),
 			}
 			rdc.Routes[routeKey] = rdcRoute
 
@@ -265,6 +301,10 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 			chain := t.buildPolicyChain(apiPolicies, op.Policies)
 			injected := utils.InjectSystemPolicies(chain, t.systemConfig, systemPolicyProps)
 			routeChain := sdkChainToModel(injected)
+			// Hand the failover policy the provider-to-cluster map, so it can publish complete
+			// priority groups and reach a (provider, model) the control plane never enumerated
+			// — a wildcard member, or a target a routing policy alone knows about.
+			InjectProviderClusters(routeChain, failoverProviderClusters)
 			// Fault policies: this operation's entries then the API's, which is the order
 			// they execute in, and then the fault-path system policies LAST.
 			//
