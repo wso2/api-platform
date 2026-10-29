@@ -123,9 +123,15 @@ scenarios:
     title: Edit the endpoint on the connection tab and save.
     priority: P1
     ui:
-      status: planned
+      status: automated
+      refs:
+        - feature: suites/ui/features/aiw_llm/provider_deployment.feature
+          scenario: "Journey: an administrator changes, stops and limits a deployed provider"
     it:
-      status: planned
+      status: automated
+      refs:
+        - feature: suites/it/features/ai-workspace/llm-providers/deploy.feature
+          scenario: "A changed endpoint takes effect once the provider is redeployed"
   - id: AIW-PRV-010
     title: Update the API key, then reload the page.
     priority: P1
@@ -199,16 +205,28 @@ scenarios:
     title: Send a request that violates the guardrail.
     priority: P1
     ui:
-      status: planned
+      status: automated
+      refs:
+        - feature: suites/ui/features/aiw_llm/provider_deployment.feature
+          scenario: "Journey: an administrator deploys a guarded provider and calls it through the gateway"
     it:
-      status: planned
+      status: automated
+      refs:
+        - feature: suites/it/features/ai-workspace/llm-providers/deploy.feature
+          scenario: "A request that violates the provider's guardrail is blocked with the guardrail's error"
   - id: AIW-PRV-016
     title: Edit and then remove the guardrail.
     priority: P2
     ui:
-      status: planned
+      status: automated
+      refs:
+        - feature: suites/ui/features/aiw_llm/provider_deployment.feature
+          scenario: "Journey: an administrator deploys a guarded provider and calls it through the gateway"
     it:
-      status: planned
+      status: automated
+      refs:
+        - feature: suites/it/features/ai-workspace/llm-providers/deploy.feature
+          scenario: "A guardrail edited and then removed stops applying once the provider is redeployed"
   - id: AIW-PRV-017
     title: Set a request limit and a token limit.
     priority: P1
@@ -226,9 +244,15 @@ scenarios:
     title: Send requests above the limit, then wait for the window to reset.
     priority: P1
     ui:
-      status: planned
+      status: automated
+      refs:
+        - feature: suites/ui/features/aiw_llm/provider_deployment.feature
+          scenario: "Journey: an administrator changes, stops and limits a deployed provider"
     it:
-      status: planned
+      status: automated
+      refs:
+        - feature: suites/it/features/ai-workspace/llm-providers/deploy.feature
+          scenario: "Requests over the provider's limit get 429 and succeed again once the window resets"
   - id: AIW-PRV-019
     title: Enter zero, negative, maximum and non-numeric limits.
     priority: P2
@@ -255,9 +279,15 @@ scenarios:
     title: Deploy the provider to the gateway.
     priority: P1
     ui:
-      status: planned
+      status: automated
+      refs:
+        - feature: suites/ui/features/aiw_llm/provider_deployment.feature
+          scenario: "Journey: an administrator deploys a guarded provider and calls it through the gateway"
     it:
-      status: planned
+      status: automated
+      refs:
+        - feature: suites/it/features/ai-workspace/llm-providers/deploy.feature
+          scenario: "A provider deployed to the gateway reaches the deployed state"
   - id: AIW-PRV-021
     title: Deploy the provider while the gateway is down.
     priority: P2
@@ -269,37 +299,69 @@ scenarios:
     title: Undeploy the provider.
     priority: P2
     ui:
-      status: planned
+      status: automated
+      refs:
+        - feature: suites/ui/features/aiw_llm/provider_deployment.feature
+          scenario: "Journey: an administrator changes, stops and limits a deployed provider"
     it:
-      status: planned
+      status: automated
+      refs:
+        - feature: suites/it/features/ai-workspace/llm-providers/deploy.feature
+          scenario: "An undeployed provider no longer serves traffic"
   - id: AIW-PRV-023
     title: Redeploy the provider after changing settings.
     priority: P2
     ui:
-      status: planned
+      status: known-issue
+      issue: https://github.com/wso2/api-platform/issues/3978
+      refs:
+        - feature: suites/ui/features/aiw_llm/provider_deployment.feature
+          scenario: "Redeploying a stopped provider after its settings changed puts the new settings in effect"
     it:
-      status: planned
+      status: known-issue
+      issue: https://github.com/wso2/api-platform/issues/3978
+      refs:
+        - feature: suites/it/features/ai-workspace/llm-providers/deploy.feature
+          scenario: "Redeploying a stopped provider after its settings changed puts the new settings in effect"
   - id: AIW-PRV-024
     title: Send a chat completion through the gateway.
     priority: P1
     ui:
-      status: planned
+      status: automated
+      refs:
+        - feature: suites/ui/features/aiw_llm/provider_deployment.feature
+          scenario: "Journey: an administrator deploys a guarded provider and calls it through the gateway"
     it:
-      status: planned
+      status: automated
+      refs:
+        - feature: suites/it/features/ai-workspace/llm-providers/deploy.feature
+          scenario: "A chat completion through the deployed provider returns the upstream's answer"
   - id: AIW-PRV-025
     title: Send a chat completion with a wrong upstream key.
     priority: P1
     ui:
-      status: planned
+      status: automated
+      refs:
+        - feature: suites/ui/features/aiw_llm/provider_deployment.feature
+          scenario: "Journey: an administrator deploys a guarded provider and calls it through the gateway"
     it:
-      status: planned
+      status: automated
+      refs:
+        - feature: suites/it/features/ai-workspace/llm-providers/deploy.feature
+          scenario: "A wrong upstream credential returns the upstream's error without leaking the credential"
   - id: AIW-PRV-026
     title: Send a streaming chat completion.
     priority: P2
     ui:
-      status: planned
+      status: automated
+      refs:
+        - feature: suites/ui/features/aiw_llm/provider_deployment.feature
+          scenario: "Journey: an administrator deploys a guarded provider and calls it through the gateway"
     it:
-      status: planned
+      status: automated
+      refs:
+        - feature: suites/it/features/ai-workspace/llm-providers/deploy.feature
+          scenario: "A streaming chat completion arrives as ordered chunks and ends normally"
   - id: AIW-PRV-027
     title: Create providers from different templates.
     priority: P2

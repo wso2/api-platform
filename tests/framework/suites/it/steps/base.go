@@ -322,6 +322,8 @@ func (b *Base) registerBaseSteps(sc *godog.ScenarioContext) {
 		})
 	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" until the response body contains "([^"]*)" with body:$`,
 		b.sendUntilBodyContains)
+	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" until status (\d+) and the response body contains "([^"]*)" with body:$`,
+		b.sendUntilStatusAndBodyContains)
 }
 
 func (b *Base) responseSuccessful(ctx context.Context) error {
@@ -763,6 +765,15 @@ func (b *Base) sendUntilJSONFieldStringLength(
 // overall length, leaving a length check satisfied against wording that has not actually
 // changed to what the scenario expects next. A substring check catches that case.
 func (b *Base) sendUntilBodyContains(ctx context.Context, method, path, want string, body *godog.DocString) error {
+	return b.sendUntilStatusAndBodyContains(ctx, method, path, 200, want, body)
+}
+
+// sendUntilStatusAndBodyContains polls until a response has the given status and carries
+// want, telling apart two answers that share a status — e.g. an upstream's 401 from the
+// gateway's own while a new consumer key is still propagating.
+func (b *Base) sendUntilStatusAndBodyContains(
+	ctx context.Context, method, path string, status int, want string, body *godog.DocString,
+) error {
 	resolved, err := stepscommon.Expand(ctx, path)
 	if err != nil {
 		return err
@@ -793,10 +804,10 @@ func (b *Base) sendUntilBodyContains(ctx context.Context, method, path, want str
 			return response, nil
 		},
 		func(r *httpx.Response) bool {
-			return r != nil && r.StatusCode == 200 && strings.Contains(string(r.Body), wantValue)
+			return r != nil && r.StatusCode == status && strings.Contains(string(r.Body), wantValue)
 		},
-		fmt.Sprintf("waiting for %s %s to answer with a body containing %q",
-			strings.ToUpper(method), url, wantValue))
+		fmt.Sprintf("waiting for %s %s to answer %d with a body containing %q",
+			strings.ToUpper(method), url, status, wantValue))
 }
 
 func (b *Base) statusCodeIs(ctx context.Context, want int) error {

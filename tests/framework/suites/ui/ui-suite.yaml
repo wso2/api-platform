@@ -175,3 +175,7 @@ blocks:
         features:
           - features/aiw_llm/provider_templates.feature
         tags: "~@known-issue"
+      - name: aiw-llm-provider-deployment
+        features:
+          - features/aiw_llm/provider_deployment.feature
+        tags: "~@known-issue"

@@ -26,6 +26,7 @@ import (
 	playwright "github.com/mxschmitt/playwright-go"
 
 	frameworkruntime "github.com/wso2/api-platform/tests/framework/core/runtime"
+	"github.com/wso2/api-platform/tests/framework/core/util/tcontext"
 )
 
 // Steps contains AI Workspace-specific bindings and their suite dependencies.
@@ -65,6 +66,9 @@ func (u *Steps) newAppPage(ctx playwright.BrowserContext) (playwright.Page, erro
 // Register wires AI Workspace-specific steps into the scenario context.
 func (u *Steps) Register(sc *godog.ScenarioContext) {
 	sc.Before(func(ctx context.Context, _ *godog.Scenario) (context.Context, error) {
+		// Runner-scoped state outlives a scenario; one scenario's provider must never be
+		// called through another's remembered invoke URL.
+		tcontext.Remove(ctx, keyLatestInvokeURL)
 		return withUIExpansionState(ctx), nil
 	})
 	sc.Step(`^the user opens the workspace$`, u.openWorkspace)
@@ -118,6 +122,21 @@ func (u *Steps) Register(sc *godog.ScenarioContext) {
 	sc.Step(`^the user tries to save the provider changes$`, u.triesToSaveProviderChanges)
 	sc.Step(`^the (Backend|Per Consumer) (Request Count|Token Count) limit is not set$`, u.rateLimitIsNotSet)
 	sc.Step(`^the user sees an error notification about "([^"]*)"$`, u.seesErrorAbout)
+	sc.Step(`^the user creates the provider "([^"]*)" pointed at the (keyed mock LLM|Mistral mock LLM) with the API key "([^"]*)"$`, u.createsProviderAt)
+	sc.Step(`^the user changes the provider's endpoint to the (mock LLM|keyed mock LLM|Mistral mock LLM)$`, u.changesProviderEndpoint)
+	sc.Step(`^the user sees the deployment is (Active|Suspended|Not Active|Failed)$`, u.seesDeploymentStatus)
+	sc.Step(`^the user opens the provider's deploy screen$`, u.opensDeployScreen)
+	sc.Step(`^the user stops the deployment$`, u.stopsDeployment)
+	sc.Step(`^the user redeploys the stopped deployment$`, u.redeploysStoppedDeployment)
+	sc.Step(`^the user's (streaming )?call to the provider with "([^"]*)" returns HTTP (\d+)$`, u.callsProvider)
+	sc.Step(`^the user's call to the provider with "([^"]*)" is answered by "([^"]*)"$`, u.callsProviderUntilAnswering)
+	sc.Step(`^the user's repeated calls to the provider are refused with HTTP 429$`, u.callsProviderUntilLimited)
+	sc.Step(`^the call's response (does not )?contains? "([^"]*)"$`, u.callResponseContains)
+	sc.Step(`^the call returned HTTP (\d+)$`, u.callReturned)
+	sc.Step(`^the call is answered with:$`, u.callAnswers)
+	sc.Step(`^the call streamed "([^"]*)" in order and ended normally$`, u.callStreamedInOrder)
+	sc.Step(`^the user edits the "([^"]*)" guardrail with:$`, u.editsGuardrail)
+	sc.Step(`^the user removes the "([^"]*)" guardrail$`, u.removesGuardrail)
 	sc.Step(`^the provider's Connection tab shows the endpoint "([^"]*)" and the authentication header "([^"]*)"$`, u.connectionTabShowsEndpointAndHeader)
 	sc.Step(`^the add-provider form (asks|does not ask) for an endpoint$`, u.addProviderFormAsksForEndpoint)
 	sc.Step(`^the user is on the provider's overview page$`, u.onProviderOverview)

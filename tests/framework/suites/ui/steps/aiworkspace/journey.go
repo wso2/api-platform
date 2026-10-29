@@ -790,7 +790,7 @@ func (u *Steps) invokesChatCompletions(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	invokeURL, err := page.Locator(`input[value^="http"]`).First().InputValue()
+	invokeURL, err := invokeURLField(page).InputValue()
 	if err != nil {
 		return fmt.Errorf("reading the invoke URL: %w", err)
 	}
