@@ -156,6 +156,69 @@ func TestRunRetainDeletesTheOldestVersionsBeyondTheKeepLimit(t *testing.T) {
 	require.Contains(t, stdout.String(), "deleted 0.4.0")
 }
 
+func untaggedVersions(firstID int64, count int) []ghcrVersion {
+	versions := make([]ghcrVersion, count)
+	for i := range versions {
+		versions[i].ID = firstID + int64(i)
+	}
+	return versions
+}
+
+func TestRunRetainFindsVersionsBeyondTheFirstPage(t *testing.T) {
+	t.Setenv("GHCR_RETENTION_TOKEN", "a-token")
+	pages := map[string][]ghcrVersion{"1": untaggedVersions(1, versionsPageSize)}
+	for i, tag := range []string{"0.4.0", "0.4.1", "0.4.2", "0.4.3"} {
+		v := ghcrVersion{ID: int64(1000 + i)}
+		v.Metadata.Container.Tags = []string{tag}
+		pages["2"] = append(pages["2"], v)
+	}
+	var deleted []string
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /orgs/wso2/packages/container/testbench/versions", func(w http.ResponseWriter, r *http.Request) {
+		require.NoError(t, json.NewEncoder(w).Encode(pages[r.URL.Query().Get("page")]))
+	})
+	mux.HandleFunc("DELETE /orgs/wso2/packages/container/testbench/versions/{id}", func(w http.ResponseWriter, r *http.Request) {
+		deleted = append(deleted, r.PathValue("id"))
+		w.WriteHeader(http.StatusNoContent)
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+	var stdout, stderr bytes.Buffer
+
+	code := run([]string{
+		"retain", "-org", "wso2", "-package", "testbench", "-released", "0.4.3",
+		"-keep", "3", "-api-base", server.URL,
+	}, &stdout, &stderr)
+
+	require.Equal(t, 0, code)
+	require.Equal(t, []string{"1000"}, deleted) // 0.4.0, on page 2, is the only one beyond the newest 3
+}
+
+func TestRunRetainWarnsInsteadOfPruningOnATruncatedListing(t *testing.T) {
+	t.Setenv("GHCR_RETENTION_TOKEN", "a-token")
+	var deleted []string
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /orgs/wso2/packages/container/testbench/versions", func(w http.ResponseWriter, r *http.Request) {
+		require.NoError(t, json.NewEncoder(w).Encode(untaggedVersions(1, versionsPageSize)))
+	})
+	mux.HandleFunc("DELETE /orgs/wso2/packages/container/testbench/versions/{id}", func(w http.ResponseWriter, r *http.Request) {
+		deleted = append(deleted, r.PathValue("id"))
+		w.WriteHeader(http.StatusNoContent)
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+	var stdout, stderr bytes.Buffer
+
+	code := run([]string{
+		"retain", "-org", "wso2", "-package", "testbench", "-released", "0.4.3", "-api-base", server.URL,
+	}, &stdout, &stderr)
+
+	require.Equal(t, 0, code)
+	require.Empty(t, deleted)
+	require.Contains(t, stdout.String(), "::warning::")
+	require.Contains(t, stdout.String(), "pages")
+}
+
 func TestRunRetainWarnsWithoutFailingWhenTheAPIRejectsTheRequest(t *testing.T) {
 	t.Setenv("GHCR_RETENTION_TOKEN", "a-token")
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
