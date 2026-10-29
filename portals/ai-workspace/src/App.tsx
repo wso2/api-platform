@@ -34,7 +34,7 @@ import { AIWorkspaceSnackbarProvider } from './contexts/AIWorkspaceSnackbarConte
 import OrgProvisioningPage from './pages/register/OrgProvisioningPage';
 import { checkOrganizationExists, registerOrganization } from './apis/platformApis';
 import { forceLogoutAndRedirect } from './auth/logout';
-import { DEFAULT_ORG_REGION, isFeatureEnabled } from './config.env';
+import { DEFAULT_ORG_REGION, MULTI_HUB_PUBLISHING, isFeatureEnabled } from './config.env';
 
 // App Shell Pages
 import Overview from './pages/appShell/appShellPages/overview/Overview';
@@ -84,6 +84,8 @@ import EditAgentProxy from './pages/appShell/appShellPages/agentProxies/EditAgen
 import AgentProxiesDeploy from './pages/appShell/appShellPages/agentProxies/AgentProxiesDeploy';
 import ExternalServersNew from './pages/appShell/appShellPages/externalServers/ExternalServersNew';
 import ExternalServersOverview from './pages/appShell/appShellPages/externalServers/ExternalServersOverview';
+import McpPublishHubs from './pages/appShell/appShellPages/publish/McpPublishHubs';
+import McpPublishHubPage from './pages/appShell/appShellPages/publish/McpPublishHubPage';
 import ExternalServersDeploy from './pages/appShell/appShellPages/externalServers/ExternalServersDeploy';
 import EditExternalServer from './pages/appShell/appShellPages/externalServers/EditExternalServer';
 import { MCPServerValidationProvider } from './contexts/MCP';
@@ -766,6 +768,26 @@ function WorkspaceRoutes({ extensions = [] }: AppProps) {
                 </WithPageBoundary>
               }
             />
+            {MULTI_HUB_PUBLISHING && (
+              <>
+                <Route
+                  path="publish/:serverId"
+                  element={
+                    <WithPageBoundary>
+                      <McpPublishHubs />
+                    </WithPageBoundary>
+                  }
+                />
+                <Route
+                  path="publish/:serverId/portals/:apiPortalId"
+                  element={
+                    <WithPageBoundary>
+                      <McpPublishHubPage />
+                    </WithPageBoundary>
+                  }
+                />
+              </>
+            )}
             <Route
               path="gateways/*"
               element={
@@ -1077,6 +1099,26 @@ function WorkspaceRoutes({ extensions = [] }: AppProps) {
                   </WithPageBoundary>
                 }
               />
+              {MULTI_HUB_PUBLISHING && (
+                <>
+                  <Route
+                    path="publish/:serverId"
+                    element={
+                      <WithPageBoundary>
+                        <McpPublishHubs />
+                      </WithPageBoundary>
+                    }
+                  />
+                  <Route
+                    path="publish/:serverId/portals/:apiPortalId"
+                    element={
+                      <WithPageBoundary>
+                        <McpPublishHubPage />
+                      </WithPageBoundary>
+                    }
+                  />
+                </>
+              )}
               <Route
                 path="insights"
                 element={
