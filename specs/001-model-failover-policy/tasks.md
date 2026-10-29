@@ -376,6 +376,8 @@ order; the downstream chain runs once; once B is suspended, published rankings e
 - [x] ~~T068~~ **WITHDRAWN 2026-10-29 — implemented, then reverted by design decision.** Failover must NOT publish its health state to other policies. Suspension is per-instance state private to failover, and exposing it makes a routing policy depend on an internal view it cannot reason about or verify.
   It also buys nothing: `resolveChain` already filters suspended targets out wherever they appear, including the leading one, so a suspended target is never attempted no matter what a routing policy nominated. And it could not have been delivered as specified — both policies choose in the request-header phase, which runs in author-written `operationPolicies` order, so a routing policy placed first decides before failover could publish.
   **The flow is one-way by design**: a routing policy publishes its ranking, failover consumes it, nothing goes back. Reverted: `UnavailableTargets`, `encodeTargets`, the `model_routing.unavailable_targets` key, the header-phase publication, and `unavailable_publish_test.go`. FR-026 withdrawn, FR-027 revised to place the duty on chain resolution rather than on the producer, FR-019f rescoped to read-only health queries generally.
+
+  Original task text, for the record: *Publish the healthy target set for the operation from `gc:policies/model-failover/health.go` so routing policies can rank over healthy targets only (FR-026).*
 - [x] T069 **DONE 2026-10-29.** `publishedRanking` falls through to the single-selection keys and returns a one-element list, and `resolveChain` continues into the configured chain from there. Covered by `TestMultiMemberRanking_SingleSelectionBehavesAsAOneElementRanking` (asserts the two paths produce an identical chain), `TestPublishedRanking_UnreadableValueDegradesToSingleSelection`, and the existing `chain_selection_by_target_test.go` cases. [US6] Handle non-adopting routing policies in `gc:policies/model-failover/chain.go` by treating a single published selection as a one-element list and continuing into the configured chain (FR-023)
 - [x] T070 **DONE 2026-10-29.** `model-round-robin` publishes its full rotation starting at the selected cursor position, under `model_routing.published_ranking`, in the pinned `[]map[string]string` carrier. Set ALONGSIDE the single-selection keys, never instead of them, so every existing consumer is unaffected (FR-026c). `selectNextAvailableModel` gained an index-returning variant — rotating from the selected position requires knowing where it landed, and searching back by value would be wrong for a configuration listing the same model under two providers. Covered by `rotation_publish_test.go` (6 tests). [US6] Publish the ordered target preference list from `gc:policies/model-round-robin/` as the full rotation starting at the current cursor (FR-028). **This is the ONE adopting policy in scope** — it exists to prove the contract end to end, not to roll the capability out. Chosen because its ranking is deterministic and therefore assertable in an integration test.
 - [ ] ~~T071~~ **OUT OF SCOPE (2026-10-29).** Publishing a ranking from `gc:policies/model-weighted-round-robin/` is a straight repeat of T070 against a second policy and proves nothing T070 has not. Updating the remaining routing and load-balancing policies is separate work.
@@ -384,50 +386,100 @@ order; the downstream chain runs once; once B is suspended, published rankings e
   Reverted: `FailoverAttachedParam`, `policiesSupersededByFailover`, `InjectFailoverSupersession` and its call site, round-robin's `FailoverAttached` field and `suspensionEnabled()`, and 11 tests. FR-026a and FR-026b withdrawn; FR-026c now trivially satisfied. **T070 is unaffected** — publishing the rotation was always the correct direction, and the v1.2.0 bump stands on it alone.
 - [x] T073 **DONE 2026-10-29.** `model-round-robin` v1.1.1 → **v1.2.0** in both `policy-definition.yaml` and `gateway/build-manifest.yaml`. A minor bump: publishing a new metadata key is purely additive and no existing behaviour changes. Only the one adopting policy; no other policy version changed.
 
-<!-- ============================================================================
-     RECOVERED 2026-10-29 — PARTIAL. READ THIS BEFORE USING THE ENTRIES BELOW.
+- [ ] T074 [P] [US6] Write `gateway/it/features/model-failover-routing-layered.feature` tagged `@model-failover @routing-layered` covering all seven acceptance scenarios of User Story 6, asserting the published groups match the ranking and the downstream chain runs once
+- [ ] T075 [P] [US6] Add a scenario to `gateway/it/features/model-failover-routing-layered.feature` asserting a non-adopting routing policy still composes via the one-element-list path
+- [ ] T076 [P] [US6] Add a no-regression scenario asserting a routing policy deployed without failover behaves exactly as before, including its own `suspendDuration` (FR-026c, SC-012)
 
-     An editing script of mine truncated this file after T072, deleting T074
-     through T093 along with the section headings between them. The spec
-     directory is untracked by git and no backup existed, so the full text is
-     gone.
+---
 
-     Every entry below is restored VERBATIM from a listing captured earlier in
-     the same session, which truncated each line at ~165 characters. Each one
-     therefore ends mid-sentence at the "…" marker. Nothing after the marker has
-     been reconstructed or guessed — the missing text is missing.
+## Phase 8: User Story 5 — Observability of failover decisions (P3)
 
-     US5's phase heading, the Polish/cross-cutting heading, and any dependency
-     or parallel-execution notes that sat between these entries are lost
-     entirely and are not represented here at all.
+**Goal**: An operator can reconstruct any failover, and any suspension, from telemetry alone.
 
-     Resolve this by regenerating with /speckit-tasks against spec.md, or by
-     rewriting the tails by hand. Do not treat these as complete task
-     definitions.
-     ============================================================================ -->
+**Independent test**: Drive a failed-over request; telemetry names each attempted target, each
+failure reason, the ranking source and the serving target.
 
-- [ ] T074 [P] [US6] Write `gateway/it/features/model-failover-routing-layered.feature` tagged `@model-failover @routing-layered` covering all seven acceptance s…
-- [ ] T075 [P] [US6] Add a scenario to `gateway/it/features/model-failover-routing-layered.feature` asserting a non-adopting routing policy still composes via th…
-- [ ] T076 [P] [US6] Add a no-regression scenario asserting a routing policy deployed without failover behaves exactly as before, including its own `suspendDurat…
-- [ ] T077 [US5] Emit the `FailoverAttemptRecord` from `gc:policies/model-failover/telemetry.go` with attempts, outcomes, failure reasons, serving target, rankin…
-- [ ] T078 [US5] Emit suspension and recovery records from `gc:policies/model-failover/telemetry.go` naming **which criterion fired and its observed value** — co…
-- [ ] T079 [US5] Expose per-target counters for failovers, suspensions by criterion, recoveries and chain exhaustions in `gc:policies/model-failover/metrics.go` …
-- [ ] T080 [US5] Separate attempt-level from request-level reporting in `gc:policies/model-failover/telemetry.go` using Envoy's `upstream_request_attempt_count`,…
-- [ ] T081 [US5] Exclude credentials, authorization headers and prompt or completion content from all emitted telemetry in `gc:policies/model-failover/telemetry.…
-- [ ] T082 [P] [US5] Add observability scenarios to `gateway/it/features/model-failover.feature` covering all four acceptance scenarios of User Story 5, includin…
+- [ ] T077 [US5] Emit the `FailoverAttemptRecord` from `gc:policies/model-failover/telemetry.go` with attempts, outcomes, failure reasons, serving target, ranking source and skipped targets (FR-031)
+- [ ] T078 [US5] Emit suspension and recovery records from `gc:policies/model-failover/telemetry.go` naming **which criterion fired and its observed value** — consecutive count, error rate with sample size, or latency percentile — plus the duration applied and escalation step (FR-018d, FR-019d)
+- [ ] T079 [US5] Expose per-target counters for failovers, suspensions by criterion, recoveries and chain exhaustions in `gc:policies/model-failover/metrics.go` (FR-033)
+- [ ] T080 [US5] Separate attempt-level from request-level reporting in `gc:policies/model-failover/telemetry.go` using Envoy's `upstream_request_attempt_count`, so analytics and cost report once per client request (SC-011)
+- [ ] T081 [US5] Exclude credentials, authorization headers and prompt or completion content from all emitted telemetry in `gc:policies/model-failover/telemetry.go` (FR-034)
+- [ ] T082 [P] [US5] Add observability scenarios to `gateway/it/features/model-failover.feature` covering all four acceptance scenarios of User Story 5, including the absence assertions
 - [ ] T083 [P] [US5] Unit-test telemetry redaction and suspension-reason reporting in `gc:policies/model-failover/telemetry_test.go`
-- [ ] T084 Write the body-mutation preservation test in `gateway/it/features/model-failover.feature` combining `pii-masking-regex` with failover and asserting on…
-- [ ] T085 Write the cross-API isolation test in `gateway/it/features/model-failover.feature`: two APIs sharing one provider cluster, one with failover and one w…
-- [ ] T086 [P] Add a scenario to `gateway/it/features/model-failover.feature` asserting the policy attached to a kind with no model concept deploys successfully …
-- [ ] T086a [P] Add a scenario to `gateway/it/features/model-failover.feature` deploying the **same** failover configuration under both `kind: RestApi` and `kind…
-- [ ] T087 [P] Add a streaming-safety scenario to `gateway/it/features/model-failover.feature` asserting no failover occurs once response headers or streamed con…
+
+---
+
+## Phase 9: Polish & Cross-Cutting Concerns
+
+- [ ] T084 Write the body-mutation preservation test in `gateway/it/features/model-failover.feature` combining `pii-masking-regex` with failover and asserting on the bytes the **fallback upstream received**, not on policy logs (FR-012c)
+- [ ] T085 Write the cross-API isolation test in `gateway/it/features/model-failover.feature`: two APIs sharing one provider cluster, one with failover and one without, asserting the second is unchanged against a no-failover deployment (FR-030d, SC-012a)
+- [ ] T086 [P] Add a scenario to `gateway/it/features/model-failover.feature` asserting the policy attached to a kind with no model concept deploys successfully and is inert, with no telemetry about being inert (FR-030b/e)
+- [ ] T086a [P] Add a scenario to `gateway/it/features/model-failover.feature` deploying the **same** failover configuration under both `kind: RestApi` and `kind: LlmProxy` and asserting identical failover behaviour in each, covering the positive half of applicability that T086 only tests negatively (FR-030a)
+- [ ] T087 [P] Add a streaming-safety scenario to `gateway/it/features/model-failover.feature` asserting no failover occurs once response headers or streamed content have reached the client (FR-013)
 - [ ] T088 [P] Add a client-disconnect scenario to `gateway/it/features/model-failover.feature` asserting traversal stops when the caller disconnects mid-chain
-- [ ] T089 [P] Add a side-effect accounting scenario to `gateway/it/features/model-failover.feature` asserting one unit of quota, one rate-limit count, tokens bi…
-- [ ] T089a Add tag filtering to `gateway/it/suite_test.go` — set `Tags` in the `godog.Options` block (currently unset, so every feature runs) from an env var de…
-- [ ] T089b Add a `test-load` target to `gateway/it/Makefile` running the suite with `@load` instead of the default exclusion, documented in `gateway/it/README.m…
-- [ ] T089c Write a sustained-load check in `gateway/it/features/model-failover-load.feature` tagged `@model-failover @load`: drive **at least 10,000 requests** …
-- [ ] T089d [P] Measure failover-path latency in `gateway/it/features/model-failover-load.feature` (same `@load` tag): assert added end-to-end latency during a p…
-- [ ] T090 [P] Document per-instance health detection in `gc:policies/model-failover/policy.yaml`, stating that across N instances a target may absorb up to N ti…
-- [ ] T091 Run `grep -rlE "resource: /(gateway|gateway/gateway-controller)" kb` and update every feature doc whose `sources:` lists a touched path, adding new su…
-- [ ] T092 Verify Codecov coverage has not regressed for every touched package by running `make test` in `gateway/it` and the module unit suites, per Constitutio…
+- [ ] T089 [P] Add a side-effect accounting scenario to `gateway/it/features/model-failover.feature` asserting one unit of quota, one rate-limit count, tokens billed for the serving attempt only, and one analytics record for a request that failed over twice (SC-011)
+- [ ] T089a Add tag filtering to `gateway/it/suite_test.go` — set `Tags` in the `godog.Options` block (currently unset, so every feature runs) from an env var defaulting to `~@load`, so load scenarios are excluded from the default suite and CI
+- [ ] T089b Add a `test-load` target to `gateway/it/Makefile` running the suite with `@load` instead of the default exclusion, documented in `gateway/it/README.md` as a **local-only** check not run by CI
+- [ ] T089c Write a sustained-load check in `gateway/it/features/model-failover-load.feature` tagged `@model-failover @load`: drive **at least 10,000 requests** with one target failing continuously and assert no target is attempted more than once per request and the chain never loops, by comparing per-target hit counts against request count (SC-008). **Local only** — excluded from CI by T089a
+- [ ] T089d [P] Measure failover-path latency in `gateway/it/features/model-failover-load.feature` (same `@load` tag): assert added end-to-end latency during a primary outage stays within `perAttemptTimeoutMs` plus the fallback's own response time, and drops to effectively zero once the primary is suspended (SC-003). **Local only**
+- [ ] T090 [P] Document per-instance health detection in `gc:policies/model-failover/policy.yaml`, stating that across N instances a target may absorb up to N times the configured threshold before every instance suspends it (FR-020b)
+- [ ] T091 Run `grep -rlE "resource: /(gateway|gateway/gateway-controller)" kb` and update every feature doc whose `sources:` lists a touched path, adding new surface to `sources:` and the Entry points table, per `.claude/rules/feature-docs.md`
+- [ ] T092 Verify Codecov coverage has not regressed for every touched package by running `make test` in `gateway/it` and the module unit suites, per Constitution Principle IV
 - [ ] T093 Execute `specs/001-model-failover-policy/quickstart.md` V0–V10 end to end against a built gateway and record outcomes
+
+---
+
+## Dependencies
+
+```
+Phase 1 Setup (version pins)
+  ↓
+Phase 2 Foundational — CORE PLATFORM (controller + runtime + Envoy config), no policy code
+  2a control plane ─→ 2b runtime ─→ 2c core verification
+  ↓ CHECKPOINT: ranked failover works with hand-supplied groups
+  ├─→ Phase 3 US1 (P1) ─→ Phase 4 US2 (P1)
+  ├─→ Phase 5 US3 (P2)        [needs US1 chain + publication]
+  ├─→ Phase 6 US4 (P2)        [needs US1 publication]
+  ├─→ Phase 7 US6 (P3)        [needs US1 + US4 health]
+  └─→ Phase 8 US5 (P3)        [needs US1 + US4 records]
+                ↓
+         Phase 9 Polish
+```
+
+**Core-first directive honoured**: the first `gc:policies/` file is touched at T030. Everything in
+Phases 1–2 is version pins, control plane, runtime, or Envoy configuration.
+
+**Two tasks pin failure modes rather than features**: T027 asserts the `refresh_cluster_on_retry`
+failure mode, and T017 asserts the absence of `rate_limited_retry_back_off`. Both encode POC findings
+so a later config change cannot silently reintroduce them.
+
+**Story independence**: US1 is a complete deliverable alone. US2 extends it with provider-scoped
+identity. US3, US4 and US6 each add a separable capability. US5 is additive telemetry.
+
+## Parallel Execution Examples
+
+- **Phase 1**: T004 and T005 are independent of each other and of the pins
+- **Phase 2a**: T014 and T015 share a validator file — sequence them; T016 and T017 are different test files
+- **Phase 3**: T041, T042, T043 after T030–T040 land
+- **Phase 6**: T063–T066 are different scenarios and test files
+- **Phase 7**: T070 and T071 are different policy modules
+- **Phase 9**: T086, T086a, T087, T088, T089, T090 are independent. T089a → T089b → T089c is a chain (filtering must exist before a `@load` scenario can be excluded); T089d is [P] with T089c once the file exists
+
+## Implementation Strategy
+
+**Core first.** Phases 1–2 deliver a gateway that walks a ranked list of clusters across attempts,
+verified by `@failover-core` integration tests with no policy module. That is a releasable platform
+capability and de-risks everything after it.
+
+**MVP = Phase 1 + Phase 2 + Phase 3 (US1).** That removes the client-side retry burden issue #3356
+was filed about.
+
+**Increment 2**: US2 (regional failover — the most common real-world trigger, and ECI points 1–2).
+
+**Increment 3**: US3 + US4 (cross-vendor resilience; US4 carries ECI points 3–5).
+
+**Increment 4**: US6 + US5 (ranking adoption in the routing policies, and ECI point 6).
+
+**Risk note**: the mechanism is proven (POC probes B1/B2/B4) and the Envoy 1.40.0 bump is CI-validated
+against a 1.39.0 baseline. The remaining risk is concentrated in T023 (mutated body reaching attempt
+2), which guards a security control — treat a failure there as blocking, not as a known issue.
