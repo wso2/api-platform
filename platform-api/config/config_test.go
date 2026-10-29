@@ -23,8 +23,11 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
+	"io"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 	"testing"
 	"time"
 
@@ -185,6 +188,7 @@ func TestLoadConfig_SkipPathsDefaultsSurvive(t *testing.T) {
 	cfg, err := loadWithKeys(t, "")
 	require.NoError(t, err)
 	assert.Contains(t, cfg.Auth.SkipPaths, "/health")
+	assert.Contains(t, cfg.Auth.SkipPaths, "/ready")
 	assert.Contains(t, cfg.Auth.SkipPaths, "/api/internal/v1/secrets")
 	assert.Contains(t, cfg.Auth.SkipPaths, "/api/internal/v1/agents")
 }
@@ -806,4 +810,373 @@ func TestJWT_EffectiveAlgorithm(t *testing.T) {
 	assert.Equal(t, JWTAlgorithmRS256, (&JWT{}).EffectiveAlgorithm())
 	assert.Equal(t, JWTAlgorithmRS256, (&JWT{Algorithm: JWTAlgorithmRS256}).EffectiveAlgorithm())
 	assert.Equal(t, "ML-DSA-65", (&JWT{Algorithm: "ML-DSA-65"}).EffectiveAlgorithm())
+}
+
+func TestLoadConfig_Health_DefaultsWhenSectionAbsent(t *testing.T) {
+	cfg, err := loadWithKeys(t, "")
+	require.NoError(t, err)
+	assert.Equal(t, 3*time.Second, cfg.Health.CacheTTL)
+	assert.Empty(t, cfg.Health.AllowedClients)
+	assert.Equal(t, HealthDatabase{
+		CheckTimeout:   2 * time.Second,
+		StartupWait:    5 * time.Minute,
+		FailureWindow:  30 * time.Second,
+		FailureRatio:   0.5,
+		MinAttempts:    5,
+		IdlePeriod:     10 * time.Second,
+		PoolSaturation: 0.9,
+		PoolWaitLimit:  5 * time.Second,
+	}, cfg.Health.Database)
+}
+
+func TestLoadConfig_Health_TOMLOverridesDefaults(t *testing.T) {
+	cfg, err := loadWithKeys(t, `
+[platform_api.health]
+cache_ttl       = "7s"
+allowed_clients = ["127.0.0.1", "::1", "10.0.0.0/8"]
+
+[platform_api.health.database]
+check_timeout   = "1s"
+startup_wait    = "90s"
+failure_window  = "1m"
+failure_ratio   = 0.25
+min_attempts    = 10
+idle_period     = "20s"
+pool_saturation = 0.75
+pool_wait_limit = "8s"
+`)
+	require.NoError(t, err)
+	assert.Equal(t, 7*time.Second, cfg.Health.CacheTTL)
+	assert.Equal(t, []string{"127.0.0.1", "::1", "10.0.0.0/8"}, cfg.Health.AllowedClients)
+	assert.Equal(t, HealthDatabase{
+		CheckTimeout:   time.Second,
+		StartupWait:    90 * time.Second,
+		FailureWindow:  time.Minute,
+		FailureRatio:   0.25,
+		MinAttempts:    10,
+		IdlePeriod:     20 * time.Second,
+		PoolSaturation: 0.75,
+		PoolWaitLimit:  8 * time.Second,
+	}, cfg.Health.Database)
+}
+
+// A database setting left out of the sub-table keeps its default.
+func TestLoadConfig_Health_PartialDatabaseTableKeepsDefaults(t *testing.T) {
+	cfg, err := loadWithKeys(t, `
+[platform_api.health.database]
+idle_period = "5s"
+`)
+	require.NoError(t, err)
+	assert.Equal(t, 5*time.Second, cfg.Health.Database.IdlePeriod)
+	assert.Equal(t, 2*time.Second, cfg.Health.Database.CheckTimeout)
+	assert.Equal(t, 30*time.Second, cfg.Health.Database.FailureWindow)
+}
+
+func TestLoadConfig_Health_AllowedClientsFromEnvironment(t *testing.T) {
+	t.Setenv("APIP_CP_HEALTH_ALLOWED_CLIENTS", "127.0.0.1,10.0.0.0/8,fc00::/7")
+	cfg, err := loadWithKeys(t, `
+[platform_api.health]
+allowed_clients = '{{ env "APIP_CP_HEALTH_ALLOWED_CLIENTS" "127.0.0.1,::1" }}'
+`)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"127.0.0.1", "10.0.0.0/8", "fc00::/7"}, cfg.Health.AllowedClients)
+}
+
+func TestLoadConfig_Health_InvalidAllowedClientsFail(t *testing.T) {
+	tests := []struct {
+		name    string
+		value   string
+		wantErr string
+	}{
+		{"invalid entry", `["127.0.0.1", "example.com"]`,
+			"platform_api.health.allowed_clients[1] is not a valid IP address or CIDR range"},
+		{"wildcard with other entries", `"*,10.0.0.0/8"`,
+			`platform_api.health.allowed_clients: "*" cannot be combined with other entries`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := loadWithKeys(t, "\n[platform_api.health]\nallowed_clients = "+tt.value+"\n")
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tt.wantErr)
+		})
+	}
+}
+
+// captureStdout returns what fn writes to stdout, where the configured logger writes.
+func captureStdout(t *testing.T, fn func()) string {
+	t.Helper()
+	r, w, err := os.Pipe()
+	require.NoError(t, err)
+	orig := os.Stdout
+	os.Stdout = w
+	defer func() { os.Stdout = orig }()
+	out := make(chan string, 1)
+	go func() {
+		b, _ := io.ReadAll(r)
+		out <- string(b)
+	}()
+	fn()
+	os.Stdout = orig
+	require.NoError(t, w.Close())
+	return <-out
+}
+
+// The health log settings were removed; a config that still sets them starts and warns
+// once for each.
+func TestLoadConfig_Health_RemovedKeysWarn(t *testing.T) {
+	var loadErr error
+	logged := captureStdout(t, func() {
+		_, loadErr = loadWithKeys(t, `
+[platform_api.logging]
+format = "text"
+
+[platform_api.health]
+log_file        = "/app/logs/health.log"
+log_max_size_mb = 20
+log_max_files   = 3
+backoff_initial = "30s"
+backoff_max     = "10m"
+`)
+	})
+
+	require.NoError(t, loadErr)
+	for _, key := range []string{"log_file", "log_max_size_mb", "log_max_files", "backoff_initial", "backoff_max"} {
+		assert.Equal(t, 1, strings.Count(logged, `msg="ignoring removed configuration key" key=platform_api.health.`+key+" "),
+			"want one warning for %s in:\n%s", key, logged)
+	}
+	assert.Equal(t, 5, strings.Count(logged, "level=WARN"), logged)
+}
+
+func TestValidateHealthConfig(t *testing.T) {
+	valid := func() Health { return defaultConfig().Health }
+
+	tests := []struct {
+		name    string
+		mutate  func(h *Health)
+		wantErr string
+	}{
+		{"defaults are accepted", func(h *Health) {}, ""},
+		{"cache_ttl zero", func(h *Health) { h.CacheTTL = 0 }, "platform_api.health.cache_ttl must be > 0 (got 0s)"},
+		{"check_timeout zero", func(h *Health) { h.Database.CheckTimeout = 0 },
+			"platform_api.health.database.check_timeout must be > 0 (got 0s)"},
+		{"check_timeout negative", func(h *Health) { h.Database.CheckTimeout = -time.Second },
+			"platform_api.health.database.check_timeout must be > 0 (got -1s)"},
+		{"startup_wait zero", func(h *Health) { h.Database.StartupWait = 0 },
+			"platform_api.health.database.startup_wait must be > 0 (got 0s)"},
+		{"startup_wait negative", func(h *Health) { h.Database.StartupWait = -time.Minute },
+			"platform_api.health.database.startup_wait must be > 0 (got -1m0s)"},
+		{"failure_window zero", func(h *Health) { h.Database.FailureWindow = 0 },
+			"platform_api.health.database.failure_window must be > 0 (got 0s)"},
+		{"idle_period zero", func(h *Health) { h.Database.IdlePeriod = 0 },
+			"platform_api.health.database.idle_period must be > 0 (got 0s)"},
+		{"pool_wait_limit negative", func(h *Health) { h.Database.PoolWaitLimit = -time.Second },
+			"platform_api.health.database.pool_wait_limit must be > 0 (got -1s)"},
+		{"failure_ratio zero", func(h *Health) { h.Database.FailureRatio = 0 },
+			"platform_api.health.database.failure_ratio must be > 0 and <= 1 (got 0)"},
+		{"failure_ratio above one", func(h *Health) { h.Database.FailureRatio = 1.5 },
+			"platform_api.health.database.failure_ratio must be > 0 and <= 1 (got 1.5)"},
+		{"failure_ratio of one is accepted", func(h *Health) { h.Database.FailureRatio = 1 }, ""},
+		{"pool_saturation negative", func(h *Health) { h.Database.PoolSaturation = -0.1 },
+			"platform_api.health.database.pool_saturation must be > 0 and <= 1 (got -0.1)"},
+		{"pool_saturation above one", func(h *Health) { h.Database.PoolSaturation = 2 },
+			"platform_api.health.database.pool_saturation must be > 0 and <= 1 (got 2)"},
+		{"min_attempts zero", func(h *Health) { h.Database.MinAttempts = 0 },
+			"platform_api.health.database.min_attempts must be >= 1 (got 0)"},
+		{"min_attempts of one is accepted", func(h *Health) { h.Database.MinAttempts = 1 }, ""},
+		{"failure_window shorter than cache_ttl", func(h *Health) { h.Database.FailureWindow = 2 * time.Second },
+			"platform_api.health.database.failure_window must be >= platform_api.health.cache_ttl (got 2s < 3s)"},
+		{"failure_window equal to cache_ttl is accepted", func(h *Health) {
+			h.Database.FailureWindow = 3 * time.Second
+			h.Database.IdlePeriod = 3 * time.Second
+		}, ""},
+		{"idle_period longer than failure_window", func(h *Health) { h.Database.IdlePeriod = time.Minute },
+			"platform_api.health.database.idle_period must be <= platform_api.health.database.failure_window (got 1m0s > 30s)"},
+		{"check_timeout at the probe timeout is accepted", func(h *Health) { h.Database.CheckTimeout = 5 * time.Second }, ""},
+		{"check_timeout above the probe timeout is accepted", func(h *Health) { h.Database.CheckTimeout = 30 * time.Second }, ""},
+		{"allowed_clients addresses and ranges", func(h *Health) { h.AllowedClients = []string{"10.1.2.3", "fd00::/8"} }, ""},
+		{"allowed_clients wildcard alone", func(h *Health) { h.AllowedClients = []string{"*"} }, ""},
+		{
+			"allowed_clients invalid entry",
+			func(h *Health) { h.AllowedClients = []string{"10.0.0.0/8", "10.0.0.300"} },
+			"platform_api.health.allowed_clients[1] is not a valid IP address or CIDR range",
+		},
+		{
+			"allowed_clients wildcard with other entries",
+			func(h *Health) { h.AllowedClients = []string{"*", "127.0.0.1"} },
+			`platform_api.health.allowed_clients: "*" cannot be combined with other entries`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h := valid()
+			tt.mutate(&h)
+			err := validateHealthConfig(&h)
+			if tt.wantErr != "" {
+				require.EqualError(t, err, tt.wantErr)
+				return
+			}
+			require.NoError(t, err)
+		})
+	}
+}
+
+// A database check timeout at or above the probe timeout starts, with a warning.
+func TestLoadConfig_Health_LongCheckTimeoutWarns(t *testing.T) {
+	var loadErr error
+	logged := captureStdout(t, func() {
+		_, loadErr = loadWithKeys(t, `
+[platform_api.logging]
+format = "text"
+
+[platform_api.health.database]
+check_timeout = "5s"
+`)
+	})
+
+	require.NoError(t, loadErr)
+	assert.Contains(t, logged, "level=WARN")
+	assert.Contains(t, logged, "check_timeout=5s")
+}
+
+// Settings that moved into the database sub-table fail startup and name where they went.
+func TestLoadConfig_Health_MovedKeysFail(t *testing.T) {
+	for _, key := range []string{"check_timeout", "startup_wait"} {
+		t.Run(key, func(t *testing.T) {
+			_, err := loadWithKeys(t, "\n[platform_api.health]\n"+key+" = \"2s\"\n")
+			require.EqualError(t, err, "platform_api.health."+key+" has moved to platform_api.health.database."+key)
+		})
+	}
+}
+
+// A misspelled or unknown key in the database sub-table fails startup instead of being
+// silently ignored.
+func TestLoadConfig_Health_UnknownDatabaseKeyFails(t *testing.T) {
+	tests := []struct {
+		name    string
+		section string
+		wantErr string
+	}{
+		{"misspelled key", "[platform_api.health.database]\nfaliure_ratio = 0.5\n",
+			`platform_api.health.database: unknown key "faliure_ratio"`},
+		{"nested table", "[platform_api.health.database.extra]\nenabled = true\n",
+			`platform_api.health.database: unknown key "extra"`},
+		{"first of several in key order", "[platform_api.health.database]\nzeta = 1\nalpha = 2\nidle_period = \"5s\"\n",
+			`platform_api.health.database: unknown key "alpha"`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := loadWithKeys(t, "\n"+tt.section)
+			require.EqualError(t, err, tt.wantErr)
+		})
+	}
+}
+
+// The strict checks cover only the database sub-table and the moved keys: other unknown
+// keys elsewhere, including directly under [platform_api.health], are still ignored.
+func TestLoadConfig_Health_StrictChecksAreScoped(t *testing.T) {
+	_, err := loadWithKeys(t, `
+[platform_api.health]
+something_else = "x"
+
+[platform_api.health.database]
+idle_period = "5s"
+
+[platform_api.unrelated]
+check_timeout = "2s"
+startup_wait  = "5m"
+`)
+	require.NoError(t, err)
+}
+
+// A moved key set only by another component's section of a shared config file does not
+// affect platform-api.
+func TestLoadConfig_Health_OtherComponentsKeysAreIgnored(t *testing.T) {
+	_, err := loadWithKeys(t, `
+[controller.health]
+check_timeout = "2s"
+
+[api_portal.health.database]
+faliure_ratio = 0.5
+`)
+	require.NoError(t, err)
+}
+
+// shippedHealthSection returns the [platform_api.health] and
+// [platform_api.health.database] tables of a shipped config file. With uncomment set,
+// the commented keys are enabled as an operator would enable them; comment-only lines
+// are dropped either way.
+func shippedHealthSection(t *testing.T, path string, uncomment bool) string {
+	t.Helper()
+	raw, err := os.ReadFile(path)
+	require.NoError(t, err)
+	commentedKey := regexp.MustCompile(`^# [a-z_]+ *= `)
+	var lines []string
+	var tables []string
+	inBlock := false
+	for _, line := range strings.Split(string(raw), "\n") {
+		if strings.HasPrefix(line, "[") {
+			inBlock = line == "[platform_api.health]" || line == "[platform_api.health.database]"
+			if inBlock {
+				tables = append(tables, line)
+			}
+		}
+		if !inBlock {
+			continue
+		}
+		switch {
+		case uncomment && commentedKey.MatchString(line):
+			lines = append(lines, strings.TrimPrefix(line, "# "))
+		case line != "" && !strings.HasPrefix(line, "#"):
+			lines = append(lines, line)
+		}
+	}
+	require.Equal(t, []string{"[platform_api.health]", "[platform_api.health.database]"}, tables,
+		"%s must carry the health tables", path)
+	return strings.Join(lines, "\n") + "\n"
+}
+
+// The shipped health section loads as is, with the allowed clients defaulting to
+// loopback and overridable from the environment, and still loads once its commented
+// keys are enabled.
+func TestLoadConfig_ShippedHealthExampleIsValid(t *testing.T) {
+	section := shippedHealthSection(t, "config.toml", false)
+
+	cfg, err := loadWithKeys(t, section)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"127.0.0.1", "::1"}, cfg.Health.AllowedClients)
+
+	t.Setenv("APIP_CP_HEALTH_ALLOWED_CLIENTS", "127.0.0.1,::1,10.0.0.0/8,fc00::/7")
+	cfg, err = loadWithKeys(t, section)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"127.0.0.1", "::1", "10.0.0.0/8", "fc00::/7"}, cfg.Health.AllowedClients)
+
+	t.Setenv("APIP_CP_HEALTH_ALLOWED_CLIENTS", "*")
+	cfg, err = loadWithKeys(t, section)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"*"}, cfg.Health.AllowedClients)
+
+	cfg, err = loadWithKeys(t, shippedHealthSection(t, "config.toml", true))
+	require.NoError(t, err)
+	assert.Equal(t, defaultConfig().Health.Database, cfg.Health.Database)
+	assert.Equal(t, 3*time.Second, cfg.Health.CacheTTL)
+
+	t.Setenv("APIP_CP_HEALTH_DATABASE_CHECK_TIMEOUT", "1s")
+	t.Setenv("APIP_CP_HEALTH_DATABASE_FAILURE_RATIO", "0.3")
+	t.Setenv("APIP_CP_HEALTH_DATABASE_MIN_ATTEMPTS", "8")
+	t.Setenv("APIP_CP_HEALTH_DATABASE_IDLE_PERIOD", "15s")
+	cfg, err = loadWithKeys(t, shippedHealthSection(t, "config.toml", true))
+	require.NoError(t, err)
+	assert.Equal(t, time.Second, cfg.Health.Database.CheckTimeout)
+	assert.Equal(t, 0.3, cfg.Health.Database.FailureRatio)
+	assert.Equal(t, 8, cfg.Health.Database.MinAttempts)
+	assert.Equal(t, 15*time.Second, cfg.Health.Database.IdlePeriod)
+}
+
+// The config template carries the same health tables, and they load once enabled.
+func TestLoadConfig_TemplateHealthExampleIsValid(t *testing.T) {
+	cfg, err := loadWithKeys(t, shippedHealthSection(t, "config-template.toml", true))
+	require.NoError(t, err)
+	assert.Equal(t, defaultConfig().Health.Database, cfg.Health.Database)
+	assert.Equal(t, 3*time.Second, cfg.Health.CacheTTL)
+	assert.Equal(t, []string{"127.0.0.1", "::1"}, cfg.Health.AllowedClients)
 }

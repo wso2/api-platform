@@ -340,10 +340,11 @@ All settings live under `[platform_api]` / `[platform_api.*]`. The main sections
 - **`file`** — `internal_token` plus local username/password login: the login endpoint authenticates against `[platform_api.auth.file]` and issues RS256 JWTs signed with `[platform_api.auth.jwt].private_key_file`, verified with the matching `public_key_file`. Used by the AI Workspace and API Portal quickstarts.
 - **`idp`** — validate tokens against an external IDP's JWKS endpoint (Thunder, Asgardeo, Keycloak, Azure AD, Okta, etc.) via `[platform_api.auth.idp]`; `jwks_url` and `issuer` are required.
 
-The paths that bypass authentication and scope enforcement — health/metrics probes, the login
-endpoint, and the internal routes authenticated by a gateway token instead of a user JWT — are not
-configurable: the list is a property of the product's own routing, and a wrong entry in it is an
-auth bypass. Plugins declare their own public prefixes through `AuthSkipPaths()`, which are
+The paths that bypass authentication and scope enforcement — the health probes (`/health` for
+liveness and `/ready` for readiness, which answer only `[platform_api.health] allowed_clients`,
+loopback by default), metrics probes, the login endpoint, and the internal routes authenticated by
+a gateway token instead of a user JWT — are not configurable: the list is a property of the
+product's own routing, and a wrong entry in it is an auth bypass. Plugins declare their own public prefixes through `AuthSkipPaths()`, which are
 validated at startup. Use `auth.authorization.enabled` to control authorization enforcement.
 A config file still carrying `platform_api.auth.skip_paths` fails startup rather than having the
 key silently ignored.
