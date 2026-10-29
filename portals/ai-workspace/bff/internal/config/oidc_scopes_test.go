@@ -105,14 +105,16 @@ func specPaths() []string {
 var excludedScopeResources = []string{
 	"ap:rest_api:",
 	"ap:subscription:",
+	// Only ap:subscription_plan:read is requested, for listing plans on the MCP
+	// publish page; creating them is the Platform API's own job when it publishes.
 	"ap:subscription_plan:",
 	"ap:meter:",
 	"ap:websub_api:",
 	"ap:webbroker_api:",
 	// Publishing a REST API to a portal, unlike the type-agnostic draft/publication
-	// scopes above, lives on dedicated rest-api-only endpoints and will never cover an
-	// MCP proxy — that gets its own scopes (see ap:api_portal:mcp_proxy: above) once it
-	// ships. Consistent with ap:rest_api: itself being excluded.
+	// scopes, lives on dedicated rest-api-only endpoints and never covers an MCP
+	// proxy, which has its own ap:api_portal:mcp_proxy: scopes. Consistent with
+	// ap:rest_api: itself being excluded.
 	"ap:api_portal:rest_api:",
 	// GraphQL API publishing is the same per-type flow as REST's, surfaced only in
 	// the API control plane console — the AI Workspace has no GraphQL publish page.
@@ -214,4 +216,18 @@ func TestDefaultOIDCScopesRequestGranularScopes(t *testing.T) {
 	}
 	t.Logf("requesting %d scopes, %d bytes encoded (Entra ID deployments must override this)",
 		len(granted), len(url.QueryEscape(defaultOIDCScopes)))
+}
+
+// The MCP publish page lists the organization's plans and the proxy's documents. These scopes sit in families the coverage check does not enforce, so
+// only this pins them.
+func TestDefaultOIDCScopesRequestMCPPublishPageScopes(t *testing.T) {
+	granted := strings.Fields(defaultOIDCScopes)
+	for _, scope := range []string{
+		"ap:subscription_plan:read",
+		"ap:docs:read",
+	} {
+		if !slices.Contains(granted, scope) {
+			t.Errorf("defaultOIDCScopes omits %s", scope)
+		}
+	}
 }

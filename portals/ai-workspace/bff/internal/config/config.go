@@ -631,6 +631,8 @@ const defaultOIDCScopes = "openid profile email offline_access" +
 	" ap:api_portal:publication:read" +
 	" ap:api_portal:mcp_proxy:publish ap:api_portal:mcp_proxy:unpublish ap:api_portal:mcp_proxy:manage" +
 	" ap:api_publication:read" +
+	" ap:subscription_plan:read" +
+	" ap:docs:read" +
 	" ap:secret:read ap:secret:create ap:secret:update ap:secret:delete ap:secret:manage"
 
 // Load resolves configuration from one or more config.toml files. At least one path
