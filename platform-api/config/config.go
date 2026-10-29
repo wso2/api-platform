@@ -24,8 +24,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"maps"
 	"os"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -38,6 +40,7 @@ import (
 	"github.com/knadh/koanf/v2"
 
 	"github.com/wso2/api-platform/common/configinterpolate"
+	"github.com/wso2/api-platform/platform-api/internal/health"
 	"github.com/wso2/api-platform/platform-api/internal/logger"
 )
 
@@ -91,9 +94,50 @@ type Logging struct {
 	Format string `koanf:"format"`
 }
 
+// Health holds configuration for platform-api's own health evaluation.
+type Health struct {
+	// CacheTTL is how long an evaluated health result is reused before it is re-evaluated.
+	CacheTTL time.Duration `koanf:"cache_ttl"`
+	// AllowedClients lists the IP addresses and CIDR ranges allowed to call the health
+	// endpoints. Empty means loopback only; "*" as the only entry allows every client.
+	AllowedClients []string `koanf:"allowed_clients"`
+	// Database configures the database check.
+	Database HealthDatabase `koanf:"database"`
+}
+
+// HealthDatabase configures the database health check. The check decides from the
+// outcomes of the platform's own database operations, and pings the database itself
+// only while those are idle.
+type HealthDatabase struct {
+	// CheckTimeout is the deadline for one run of the database check, and so for its
+	// own ping.
+	CheckTimeout time.Duration `koanf:"check_timeout"`
+	// StartupWait is how long startup waits for the database to become reachable
+	// before giving up and exiting.
+	StartupWait time.Duration `koanf:"startup_wait"`
+	// FailureWindow is how far back database operation outcomes are counted.
+	FailureWindow time.Duration `koanf:"failure_window"`
+	// FailureRatio is the share of failed operations in the window at or above which
+	// the database is reported down.
+	FailureRatio float64 `koanf:"failure_ratio"`
+	// MinAttempts is how many operations the window must hold before their failure
+	// ratio decides.
+	MinAttempts int `koanf:"min_attempts"`
+	// IdlePeriod is how long the platform may go without database operations before
+	// the check pings the database itself; it pings at most once per period.
+	IdlePeriod time.Duration `koanf:"idle_period"`
+	// PoolSaturation is the share of the connection pool that, once in use, counts as
+	// saturated.
+	PoolSaturation float64 `koanf:"pool_saturation"`
+	// PoolWaitLimit is how long the pool may stay saturated before the database is
+	// reported down.
+	PoolWaitLimit time.Duration `koanf:"pool_wait_limit"`
+}
+
 // Server holds the configuration parameters for the application.
 type Server struct {
 	Logging Logging `koanf:"logging"`
+	Health  Health  `koanf:"health"`
 
 	DBSchemaPath               string `koanf:"db_schema_path"`
 	OpenAPISpecPath            string `koanf:"openapi_spec_path"`
@@ -767,6 +811,15 @@ const platformAPIConfigKey = "platform_api"
 // silently ignored. Path is relative to the platform_api subtree.
 const removedAuthSkipPathsKey = "auth.skip_paths"
 
+// healthDatabaseKey is the health sub-table holding the database check's settings,
+// relative to the platform_api subtree.
+const healthDatabaseKey = "health.database"
+
+// movedHealthKeys are health settings that moved into the database sub-table. They are
+// still recognized so a config file carrying them at the old place fails startup
+// instead of being silently ignored.
+var movedHealthKeys = []string{"check_timeout", "startup_wait"}
+
 // LoadConfig loads configuration with priority: config files > defaults.
 //
 // configPaths is repeatable: files are merged in the order given with last-wins
@@ -837,6 +890,9 @@ func LoadConfig(configPaths ...string) (*Server, error) {
 			"(use auth.authorization.enabled to control authorization enforcement)",
 			platformAPIConfigKey, removedAuthSkipPathsKey)
 	}
+	if err := checkHealthKeys(k); err != nil {
+		return nil, err
+	}
 
 	// Subtree is already promoted to the top level by Cut, so unmarshal from the
 	// root ("") rather than re-descending through platformAPIConfigKey.
@@ -867,6 +923,9 @@ func LoadConfig(configPaths ...string) (*Server, error) {
 	warnRemovedConfigKeys(k)
 
 	if err := validateLoggingConfig(cfg.Logging.Level, cfg.Logging.Format); err != nil {
+		return nil, err
+	}
+	if err := validateHealthConfig(&cfg.Health); err != nil {
 		return nil, err
 	}
 	if err := validateTimeoutsConfig(&cfg.Listeners.Timeouts); err != nil {
@@ -1198,6 +1257,64 @@ func validateLoggingConfig(level, format string) error {
 	return nil
 }
 
+// healthProbeTimeout is the default timeout a gateway probe applies to a health
+// request; a check timeout at or above it lets the probe give up first.
+const healthProbeTimeout = 5 * time.Second
+
+// validateHealthConfig rejects out-of-range health settings and an invalid
+// allowed-clients list at startup. Every message names the full key.
+func validateHealthConfig(cfg *Health) error {
+	const prefix = "platform_api.health."
+	const dbPrefix = prefix + "database."
+	db := &cfg.Database
+	for _, f := range []struct {
+		key   string
+		value time.Duration
+	}{
+		{prefix + "cache_ttl", cfg.CacheTTL},
+		{dbPrefix + "check_timeout", db.CheckTimeout},
+		{dbPrefix + "startup_wait", db.StartupWait},
+		{dbPrefix + "failure_window", db.FailureWindow},
+		{dbPrefix + "idle_period", db.IdlePeriod},
+		{dbPrefix + "pool_wait_limit", db.PoolWaitLimit},
+	} {
+		if f.value <= 0 {
+			return fmt.Errorf("%s must be > 0 (got %s)", f.key, f.value)
+		}
+	}
+	for _, f := range []struct {
+		key   string
+		value float64
+	}{
+		{dbPrefix + "failure_ratio", db.FailureRatio},
+		{dbPrefix + "pool_saturation", db.PoolSaturation},
+	} {
+		if f.value <= 0 || f.value > 1 {
+			return fmt.Errorf("%s must be > 0 and <= 1 (got %g)", f.key, f.value)
+		}
+	}
+	if db.MinAttempts < 1 {
+		return fmt.Errorf("%smin_attempts must be >= 1 (got %d)", dbPrefix, db.MinAttempts)
+	}
+	if db.FailureWindow < cfg.CacheTTL {
+		return fmt.Errorf("%sfailure_window must be >= %scache_ttl (got %s < %s)",
+			dbPrefix, prefix, db.FailureWindow, cfg.CacheTTL)
+	}
+	if db.IdlePeriod > db.FailureWindow {
+		return fmt.Errorf("%sidle_period must be <= %sfailure_window (got %s > %s)",
+			dbPrefix, dbPrefix, db.IdlePeriod, db.FailureWindow)
+	}
+	if _, err := health.ParseAllowedClients("platform_api.health", cfg.AllowedClients); err != nil {
+		return err
+	}
+	if db.CheckTimeout >= healthProbeTimeout {
+		slog.Warn("database health check timeout is at or above the default probe timeout, so probes may give up before the check completes",
+			slog.Duration("check_timeout", db.CheckTimeout),
+			slog.Duration("probe_timeout", healthProbeTimeout))
+	}
+	return nil
+}
+
 // validateDatabaseConfig fails closed when the selected driver's required
 // connection fields are missing, rather than surfacing an opaque driver-level
 // connection error only once the server tries to open the database.
@@ -1356,6 +1473,36 @@ func validateFileBasedConfig(cfg *FileBased, authz *Authorization) error {
 
 // validateWebhookConfig validates and fills defaults for the webhook receiver config.
 // It is a no-op when the webhook is disabled.
+// checkHealthKeys fails on a health setting still at its old place and on any key in
+// the database sub-table that is not a known setting, so neither a stale nor a misspelled
+// setting is silently ignored. Other unknown keys keep the loader's usual leniency.
+func checkHealthKeys(k *koanf.Koanf) error {
+	for _, key := range movedHealthKeys {
+		if k.Exists("health." + key) {
+			return fmt.Errorf("%s.health.%s has moved to %s.%s.%s",
+				platformAPIConfigKey, key, platformAPIConfigKey, healthDatabaseKey, key)
+		}
+	}
+	known := koanfKeys(reflect.TypeFor[HealthDatabase]())
+	for _, key := range slices.Sorted(maps.Keys(k.Cut(healthDatabaseKey).Raw())) {
+		if !known[key] {
+			return fmt.Errorf("%s.%s: unknown key %q", platformAPIConfigKey, healthDatabaseKey, key)
+		}
+	}
+	return nil
+}
+
+// koanfKeys returns the koanf tag names of a struct type's fields.
+func koanfKeys(t reflect.Type) map[string]bool {
+	keys := make(map[string]bool, t.NumField())
+	for i := range t.NumField() {
+		if tag := t.Field(i).Tag.Get("koanf"); tag != "" {
+			keys[tag] = true
+		}
+	}
+	return keys
+}
+
 // removedConfigKeys maps a config key that no longer exists to the guidance shown
 // when it is still present. Keys are relative to the platform_api subtree, matching
 // the koanf tree after Cut. Add an entry whenever a setting is dropped: the
@@ -1367,7 +1514,16 @@ var removedConfigKeys = map[string]string{
 	"deployments.transitional_status_enabled": "a deployment is now always treated as transitional until the gateway " +
 		"acknowledges it, so there is nothing left to toggle; this setting has no effect and can be deleted " +
 		"(deployments.timeout_duration bounds how long an unacknowledged deployment waits before being marked FAILED)",
+	"health.log_file":        removedHealthLogGuidance,
+	"health.log_max_size_mb": removedHealthLogGuidance,
+	"health.log_max_files":   removedHealthLogGuidance,
+	"health.backoff_initial": removedHealthLogGuidance,
+	"health.backoff_max":     removedHealthLogGuidance,
 }
+
+// removedHealthLogGuidance is shown for the health log settings, which no longer exist.
+const removedHealthLogGuidance = "health check failures and recoveries are now logged once per change of state to " +
+	"the main log on stdout, with no separate log file or repeated lines; this setting has no effect and can be deleted"
 
 // warnRemovedConfigKeys logs a warning for each removed key still present in the
 // loaded config. It deliberately warns rather than failing: the removed setting is

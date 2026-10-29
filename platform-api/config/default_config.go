@@ -31,6 +31,20 @@ func defaultConfig() *Server {
 			Level:  "info",
 			Format: "text",
 		},
+		Health: Health{
+			CacheTTL:       3 * time.Second,
+			AllowedClients: []string{},
+			Database: HealthDatabase{
+				CheckTimeout:   2 * time.Second,
+				StartupWait:    5 * time.Minute,
+				FailureWindow:  30 * time.Second,
+				FailureRatio:   0.5,
+				MinAttempts:    5,
+				IdlePeriod:     10 * time.Second,
+				PoolSaturation: 0.9,
+				PoolWaitLimit:  5 * time.Second,
+			},
+		},
 		DBSchemaPath:               "./internal/database/schema.sql",
 		OpenAPISpecPath:            "./resources/openapi.yaml",
 		LLMTemplateDefinitionsPath: "./resources/default-llm-provider-templates",
@@ -57,6 +71,7 @@ func defaultConfig() *Server {
 			// probes are internal gateway routes authenticated via gateway token instead.
 			SkipPaths: []string{
 				"/health",
+				"/ready",
 				"/metrics",
 				"/api/portal/v0.9/auth/login",
 				"/api/internal/v1/ws/gateways/connect",
