@@ -62,7 +62,7 @@ Given I set header "Content-Type" to "application/json"
 Given I clear all headers
 
 # GET requests
-When I send a GET request to "http://localhost:9092/api/admin/v0.9/health"
+When I send a GET request to "http://localhost:9092/api/admin/v1/health"
 When I send a GET request to the "gateway-controller-admin" service at "/health"
 
 # POST requests
@@ -233,9 +233,14 @@ docker compose -f docker-compose.test.yaml -p gateway-it logs -f
 ### Check service health
 
 ```bash
-curl http://localhost:9092/api/admin/v0.9/health
+curl http://localhost:9092/api/admin/v1/ready
 curl http://localhost:9901/ready
 ```
+
+The controller's health endpoints answer only allowed clients (`allowed_clients`, loopback by default).
+The test compose files allow the private ranges through `APIP_GW_CONTROLLER_HEALTH_ALLOWED_CLIENTS` and
+`APIP_GW_ROUTER_HEALTH_ALLOWED_CLIENTS` on the controller, so these calls work from the host; keep them
+when you add a compose file or a controller service.
 
 ### Run single scenario
 

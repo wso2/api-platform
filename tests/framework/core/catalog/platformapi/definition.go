@@ -48,6 +48,9 @@ const svcPlatformAPI = "platform-api"
 
 const envWebhookSecret = "APIP_CP_WEBHOOK_SECRET"
 
+// envHealthAllowedClients sets the clients the health endpoints answer.
+const envHealthAllowedClients = "APIP_CP_HEALTH_ALLOWED_CLIENTS"
+
 var webhookSecretState struct {
 	sync.Once
 	value string
@@ -67,6 +70,7 @@ func PlatformAPI() *components.Definition {
 		env[key] = value
 	}
 	env[envWebhookSecret] = WebhookSecret()
+	env[envHealthAllowedClients] = shared.HealthAllowedClients
 	for key, value := range runtimeCoverageEnvironment() {
 		env[key] = value
 	}

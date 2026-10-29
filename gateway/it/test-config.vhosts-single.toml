@@ -67,6 +67,12 @@ roles = ["admin"]
 [controller.logging]
 level = '{{ env "APIP_GW_CONTROLLER_LOGGING_LEVEL" "debug" }}'
 
+[controller.health]
+# Health endpoints answer only these clients (loopback by default). The test stack
+# calls them from the host through published ports, which arrive from the Docker
+# network, so the compose files widen this to the private ranges.
+allowed_clients = '{{ env "APIP_GW_CONTROLLER_HEALTH_ALLOWED_CLIENTS" "127.0.0.1,::1" }}'
+
 [controller.metrics]
 enabled = true
 
@@ -77,6 +83,10 @@ enabled = true
 # =============================================================================
 # ROUTER CONFIGURATION
 # =============================================================================
+
+[router.health]
+# Clients allowed on the runtime's /_gateway-health routes (loopback by default).
+allowed_clients = '{{ env "APIP_GW_ROUTER_HEALTH_ALLOWED_CLIENTS" "127.0.0.1,::1" }}'
 
 [router.access_logs]
 enabled = true

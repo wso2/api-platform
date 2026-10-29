@@ -25,7 +25,7 @@
 services:
   gateway-controller${INSTANCE:-}:
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:9092/api/admin/v1/health || exit 1"]
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:9092/api/admin/v1/ready || exit 1"]
       interval: 2s
       timeout: 3s
       retries: 90
@@ -55,7 +55,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:9094/api/admin/v1/health || exit 1"]
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:9094/api/admin/v1/ready || exit 1"]
       interval: 2s
       timeout: 3s
       retries: 90

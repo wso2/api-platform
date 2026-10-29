@@ -89,6 +89,11 @@ services:
       - "18001:18001"
       - "9091:9091"   # Metrics
     environment:
+      # Health endpoints answer only allowed clients. The suite calls them from the
+      # host through published ports, so allow the Docker network ranges. The router
+      # value is read here because the controller builds the runtime's route config.
+      - APIP_GW_CONTROLLER_HEALTH_ALLOWED_CLIENTS=127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7
+      - APIP_GW_ROUTER_HEALTH_ALLOWED_CLIENTS=127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7
       - APIP_GW_CONTROLLER_STORAGE_TYPE=postgres
       - APIP_GW_CONTROLLER_STORAGE_POSTGRES_HOST=postgres
       - APIP_GW_CONTROLLER_STORAGE_POSTGRES_PORT=5432
@@ -119,7 +124,7 @@ services:
       mock-platform-api:
         condition: service_started
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:9092/api/admin/v1/health || exit 1"]
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:9092/api/admin/v1/ready || exit 1"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -143,6 +148,11 @@ services:
       # can query the version of the controller that actually feeds gateway-runtime.
       - "9093:9092"
     environment:
+      # Health endpoints answer only allowed clients. The suite calls them from the
+      # host through published ports, so allow the Docker network ranges. The router
+      # value is read here because the controller builds the runtime's route config.
+      - APIP_GW_CONTROLLER_HEALTH_ALLOWED_CLIENTS=127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7
+      - APIP_GW_ROUTER_HEALTH_ALLOWED_CLIENTS=127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7
       - APIP_GW_CONTROLLER_STORAGE_TYPE=postgres
       - APIP_GW_CONTROLLER_STORAGE_POSTGRES_HOST=postgres
       - APIP_GW_CONTROLLER_STORAGE_POSTGRES_PORT=5432
@@ -167,7 +177,7 @@ services:
       gateway-controller:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:9092/api/admin/v1/health || exit 1"]
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:9092/api/admin/v1/ready || exit 1"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -197,6 +207,8 @@ services:
       # host-published port, so admin must bind the container interface, not loopback.
       - ROUTER_ADMIN_ENABLED=true
       - ROUTER_ADMIN_HOST=0.0.0.0
+      # The healthcheck asks the gateway's readiness route, answered by the policy engine.
+      - GATEWAY_HEALTH_ROUTE=ready
       # Override AWS Bedrock Runtime endpoint for testing with mock service
       - AWS_ENDPOINT_URL_BEDROCK_RUNTIME=http://mock-aws-bedrock-guardrail:8080
       - GOCOVERDIR=/coverage

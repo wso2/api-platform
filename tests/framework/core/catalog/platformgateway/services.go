@@ -97,6 +97,8 @@ func GatewayController() *components.Definition {
 			"IT_TEMPLATE_PATH":                 "/anything",
 			"IT_RATE_LIMIT":                    "5",
 			"IT_ALLOW_CREDENTIALS":             "true",
+			envControllerHealthAllowedClients:  shared.HealthAllowedClients,
+			envRouterHealthAllowedClients:      shared.HealthAllowedClients,
 		},
 
 		Files: []components.FileMount{
@@ -110,6 +112,13 @@ func GatewayController() *components.Definition {
 		Limits: components.ResourceLimits{CPUs: 0.5, MemoryMB: 1000},
 	}
 }
+
+const (
+	// envControllerHealthAllowedClients sets the clients the controller admin health endpoints answer.
+	envControllerHealthAllowedClients = "APIP_GW_CONTROLLER_HEALTH_ALLOWED_CLIENTS"
+	// envRouterHealthAllowedClients sets the clients the runtime health routes answer.
+	envRouterHealthAllowedClients = "APIP_GW_ROUTER_HEALTH_ALLOWED_CLIENTS"
+)
 
 // gatewayControllerDBEnv converts a database DSN to controller environment variables.
 func gatewayControllerDBEnv(d components.DSN) map[string]string {

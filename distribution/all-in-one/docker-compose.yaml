@@ -72,6 +72,14 @@ services:
       - APIP_AP_SERVER_PORT=${APIP_AP_SERVER_PORT:-9543}
     ports:
       - "${APIP_AP_SERVER_PORT:-9543}:${APIP_AP_SERVER_PORT:-9543}"
+    healthcheck:
+      # Plain HTTP here (APIP_AP_SERVER_HTTPS_ENABLED=false above); the image has node
+      # but no curl.
+      test: ["CMD-SHELL", "node -e \"require('http').get({host:'localhost',port:process.env.APIP_AP_SERVER_PORT||9543,path:'/ready'},r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))\""]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
     volumes:
       # Replaces the image's shipped configs/config.toml (SQLite-only, fails
       # closed on security secrets) — see devportal-config.toml for why.

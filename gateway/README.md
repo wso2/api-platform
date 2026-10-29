@@ -43,11 +43,20 @@ encryption key, and the gateway-controller admin credentials), then start the st
 docker compose up
 ```
 
-`docker compose up` runs in the foreground — leave it running and check the stack from a second
-terminal:
+`docker compose up` runs in the foreground — leave it running and check that the controller is ready
+from a second terminal:
 
 ```bash
-curl http://localhost:9094/api/admin/v1/health
+curl http://localhost:9094/api/admin/v1/ready
+```
+
+Health endpoints answer only allowed clients (`allowed_clients`, loopback by default), and a call from
+the host through a published port arrives from the Docker network, so add that network first. For
+example, add these lines to `api-platform.env` and restart the stack:
+
+```bash
+APIP_GW_CONTROLLER_HEALTH_ALLOWED_CLIENTS=127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7
+APIP_GW_ROUTER_HEALTH_ALLOWED_CLIENTS=127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7
 ```
 
 On Windows, use the PowerShell counterpart (same flags and generated files; requires `openssl`
