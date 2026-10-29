@@ -674,7 +674,7 @@ func TestExtractModulePathFromGoMod_Success(t *testing.T) {
 
 	goModContent := `module github.com/example/test-policy
 
-go 1.23
+go 1.26.10
 
 require github.com/stretchr/testify v1.8.0
 `
@@ -710,7 +710,7 @@ func TestExtractModulePathFromGoMod_MissingModuleDirective(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// go.mod with no module directive
-	goModContent := `go 1.23
+	goModContent := `go 1.26.10
 
 require github.com/stretchr/testify v1.8.0
 `
@@ -751,7 +751,7 @@ func TestValidateDirectoryStructure_UnreadableDirectory(t *testing.T) {
 
 	// Create required files first
 	testutils.WriteFile(t, filepath.Join(testDir, "policy-definition.yaml"), "name: test\nversion: v1.0.0")
-	testutils.WriteFile(t, filepath.Join(testDir, "go.mod"), "module test\n\ngo 1.23")
+	testutils.WriteFile(t, filepath.Join(testDir, "go.mod"), "module test\n\ngo 1.26.10")
 
 	// Now make directory unreadable (skip on Windows)
 	err := os.Chmod(testDir, 0000)
@@ -825,7 +825,7 @@ policies:
 
 func TestDetectRuntime_GoPolicy(t *testing.T) {
 	tmpDir := t.TempDir()
-	testutils.WriteFile(t, filepath.Join(tmpDir, "go.mod"), "module test\n\ngo 1.23")
+	testutils.WriteFile(t, filepath.Join(tmpDir, "go.mod"), "module test\n\ngo 1.26.10")
 	testutils.WriteFile(t, filepath.Join(tmpDir, "policy.go"), "package test")
 
 	runtime, err := DetectRuntime(tmpDir)
@@ -848,7 +848,7 @@ func TestDetectRuntime_PythonPolicy(t *testing.T) {
 func TestDetectRuntime_GoTakesPrecedence(t *testing.T) {
 	// If both go.mod and .py files exist, Go wins
 	tmpDir := t.TempDir()
-	testutils.WriteFile(t, filepath.Join(tmpDir, "go.mod"), "module test\n\ngo 1.23")
+	testutils.WriteFile(t, filepath.Join(tmpDir, "go.mod"), "module test\n\ngo 1.26.10")
 	testutils.WriteFile(t, filepath.Join(tmpDir, "policy.go"), "package test")
 	testutils.WriteFile(t, filepath.Join(tmpDir, "helper.py"), "# python helper")
 

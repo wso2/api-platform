@@ -37,7 +37,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     -o sample-service cmd/server/main.go
 
 # Stage 2: Runtime
-FROM gcr.io/distroless/static-debian12
+FROM gcr.io/distroless/static-debian13
 
 COPY --from=builder /build/sample-service /sample-service
 
