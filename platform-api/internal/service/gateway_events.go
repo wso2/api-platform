@@ -427,7 +427,7 @@ func (s *GatewayEventsService) broadcastEventWithUserID(ctx context.Context, gat
 		return fmt.Errorf("failed to publish %s event: %w", eventType, err)
 	}
 
-	s.slogger.Debug("Published gateway event", "gatewayID", gatewayID, "type", eventType,
+	s.slogger.Info("Published gateway event", "gatewayID", gatewayID, "type", eventType,
 		"eventID", eventID, "requestCorrelationID", requestCorrelationID)
 	return nil
 }
