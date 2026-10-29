@@ -89,9 +89,8 @@ type graph struct {
 
 // seedOrgGraph inserts the rows a publication hangs off for one organization:
 // a REST API, an active subscription plan, one active API Portal and one API
-// document. api_publication_doc_mappings.doc_uuid has a hard FK to
-// api_documents(uuid), so docIds resolution needs a real row to resolve
-// against. api_publications itself stays unseeded; the tests write it through
+// document. docIds resolution needs a real row to resolve against.
+// api_publications itself stays unseeded; the tests write it through
 // PublicationService.
 func seedOrgGraph(t *testing.T, tdb *schemaDB) graph {
 	t.Helper()
@@ -140,7 +139,11 @@ func (alwaysSucceedsPortalPublisher) Unpublish(_ context.Context, _ *model.APIPo
 	return nil
 }
 
-func (alwaysSucceedsPortalPublisher) CreateMissingPlans(_ context.Context, _ *model.APIPortal, _ []*model.SubscriptionPlan) error {
+func (alwaysSucceedsPortalPublisher) SyncPlans(_ context.Context, _ *model.APIPortal, _ service.PlanSync) (service.PlanSyncResult, error) {
+	return service.PlanSyncResult{}, nil
+}
+
+func (alwaysSucceedsPortalPublisher) UndoPlanSync(_ context.Context, _ *model.APIPortal, _ service.PlanSyncResult) error {
 	return nil
 }
 
@@ -581,7 +584,11 @@ func (unpublishConflictPublisher) Unpublish(_ context.Context, _ *model.APIPorta
 	return &service.PortalConflictError{Message: "active consumers still attached"}
 }
 
-func (unpublishConflictPublisher) CreateMissingPlans(_ context.Context, _ *model.APIPortal, _ []*model.SubscriptionPlan) error {
+func (unpublishConflictPublisher) SyncPlans(_ context.Context, _ *model.APIPortal, _ service.PlanSync) (service.PlanSyncResult, error) {
+	return service.PlanSyncResult{}, nil
+}
+
+func (unpublishConflictPublisher) UndoPlanSync(_ context.Context, _ *model.APIPortal, _ service.PlanSyncResult) error {
 	return nil
 }
 
@@ -657,7 +664,11 @@ func (unpublishSubscriptionConflictPublisher) Unpublish(_ context.Context, _ *mo
 	}
 }
 
-func (unpublishSubscriptionConflictPublisher) CreateMissingPlans(_ context.Context, _ *model.APIPortal, _ []*model.SubscriptionPlan) error {
+func (unpublishSubscriptionConflictPublisher) SyncPlans(_ context.Context, _ *model.APIPortal, _ service.PlanSync) (service.PlanSyncResult, error) {
+	return service.PlanSyncResult{}, nil
+}
+
+func (unpublishSubscriptionConflictPublisher) UndoPlanSync(_ context.Context, _ *model.APIPortal, _ service.PlanSyncResult) error {
 	return nil
 }
 

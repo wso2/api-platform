@@ -83,6 +83,7 @@ export const PERMISSION_TREE_NODES: Readonly<Record<string, readonly string[]>> 
   'ap:llm_provider:build': ['create', 'delete', 'manage', 'read'],
   'ap:llm_provider:deployment': ['create', 'delete', 'manage', 'read', 'restore', 'undeploy'],
   'ap:llm_provider:template': ['create', 'delete', 'manage', 'read', 'update'],
+  'ap:meter': ['create', 'delete', 'manage', 'read', 'update'],
   'ap:organization': ['create', 'manage', 'read'],
   'ap:portal': ['create', 'delete', 'manage', 'read', 'update'],
   'ap:portal:draft': ['manage', 'read', 'update'],
@@ -94,6 +95,7 @@ export const PERMISSION_TREE_NODES: Readonly<Record<string, readonly string[]>> 
   'ap:publication': ['read'],
   'ap:subscription': ['create', 'delete', 'manage', 'read', 'update'],
   'ap:subscription_plan': ['create', 'delete', 'manage', 'read', 'update'],
+  'ap:subscription_plan:pricing': ['read'],
 };
 
 /** Pre-tree scope resources (the part between `ap:` and the verb) and the node each one became. */

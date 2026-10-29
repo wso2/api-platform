@@ -19,9 +19,12 @@ package utils
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"sync"
 	"time"
+
+	"github.com/wso2/api-platform/httpkit/httpclient"
 )
 
 // defaultMCPResponseMaxBytes bounds an MCP initialize/JSON-RPC response body when the
@@ -51,18 +54,40 @@ var (
 	// sharedMCPResponseMaxBytes is the configured byte ceiling for MCP initialize/JSON-RPC
 	// response bodies, set alongside sharedHTTPClient by InitSharedHTTPClient.
 	sharedMCPResponseMaxBytes int64
+
+	// sharedHTTPClientConfig is the httpkit config sharedHTTPClient was built from, or nil when
+	// the client was set without it (InitSharedHTTPClient).
+	sharedHTTPClientConfig *httpclient.Config
 )
 
 // InitSharedHTTPClient sets the single shared outbound *http.Client used by every
 // SSRF-guarded call this package makes (MCP reachability/JSON-RPC calls, OpenAPI spec
-// fetch), plus the byte ceiling applied to MCP response bodies. Every entry point
-// (cmd/main.go, platform.New) calls it through server.InitSharedHTTPClient at startup,
+// fetch), plus the byte ceiling applied to MCP response bodies, without the config the client
+// was built from. Every entry point (cmd/main.go, platform.New) sets the shared client at
+// startup through server.InitSharedHTTPClient, which uses InitSharedHTTPClientFromConfig,
 // before any wiring that could reach NewUpstreamFetchClient, FetchOpenAPISpecFromURL, or the
 // MCP utilities in this package.
 func InitSharedHTTPClient(client *http.Client, mcpResponseMaxBytes int64) {
+	initSharedHTTPClient(client, nil, mcpResponseMaxBytes)
+}
+
+// InitSharedHTTPClientFromConfig builds the shared outbound client from cfg and sets it as
+// InitSharedHTTPClient does, and keeps cfg, so a client with other timeouts can be built with the
+// same policy.
+func InitSharedHTTPClientFromConfig(cfg httpclient.Config, mcpResponseMaxBytes int64) error {
+	client, err := httpclient.New(cfg)
+	if err != nil {
+		return err
+	}
+	initSharedHTTPClient(client, &cfg, mcpResponseMaxBytes)
+	return nil
+}
+
+func initSharedHTTPClient(client *http.Client, cfg *httpclient.Config, mcpResponseMaxBytes int64) {
 	sharedHTTPClientMu.Lock()
 	defer sharedHTTPClientMu.Unlock()
 	sharedHTTPClient = client
+	sharedHTTPClientConfig = cfg
 	if mcpResponseMaxBytes <= 0 {
 		mcpResponseMaxBytes = defaultMCPResponseMaxBytes
 	}
@@ -102,6 +127,39 @@ func NewUpstreamFetchClient(timeout time.Duration) (*http.Client, error) {
 		return nil, errSharedHTTPClientNotInitialized
 	}
 	return sharedHTTPClient, nil
+}
+
+// NewUpstreamClientWithTimeout returns a client with the shared client's policy (SSRF guard,
+// redirects, TLS, pooling settings, response size bound) that waits up to timeout for a call,
+// response headers included. It is built from the shared client's config, so the timeout applies
+// to whatever transport httpkit builds. For a shared client set without its config, only a plain
+// *http.Transport can take the response-header timeout, and any other transport is refused.
+func NewUpstreamClientWithTimeout(timeout time.Duration) (*http.Client, error) {
+	sharedHTTPClientMu.RLock()
+	client, cfg := sharedHTTPClient, sharedHTTPClientConfig
+	sharedHTTPClientMu.RUnlock()
+	if client == nil {
+		return nil, errSharedHTTPClientNotInitialized
+	}
+	if cfg != nil {
+		own := *cfg
+		own.Timeouts.Overall = timeout
+		own.Timeouts.ResponseHeader = timeout
+		return httpclient.New(own)
+	}
+	copied := *client
+	copied.Timeout = timeout
+	switch transport := client.Transport.(type) {
+	case nil:
+		// http.DefaultTransport has no response-header timeout.
+	case *http.Transport:
+		own := transport.Clone()
+		own.ResponseHeaderTimeout = timeout
+		copied.Transport = own
+	default:
+		return nil, fmt.Errorf("the shared HTTP client's transport (%T) can't take a response-header timeout", transport)
+	}
+	return &copied, nil
 }
 
 // mcpResponseMaxBytes returns the configured byte ceiling for MCP response bodies, falling

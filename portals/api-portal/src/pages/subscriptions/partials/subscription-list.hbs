@@ -11,6 +11,7 @@
           <th>Version</th>
           <th>Type</th>
           <th>Plan</th>
+          <th>Billing</th>
           <th>Status</th>
           <th style="text-align:right;">Actions</th>
         </tr>
@@ -21,19 +22,21 @@
             data-sub-id="{{this.id}}"
             data-api-name="{{this.apiName}}"
             data-plan-name="{{this.planName}}"
-            data-status="{{this.status}}">
+            data-status="{{this.status}}"
+            data-paid="{{#if this.paid}}true{{else}}false{{/if}}">
           <td>
-            <a class="sub-api-link" href="{{../baseUrl}}/api/{{this.apiHandle}}">{{this.apiName}}</a>
+            <a class="sub-api-link" href="{{../baseUrl}}/{{this.pageSection}}/{{this.apiHandle}}">{{this.apiName}}</a>
           </td>
           <td>{{this.apiVersion}}</td>
           <td>
             <span class="sub-type-pill">Token-based</span>
           </td>
           <td>{{this.planName}}</td>
+          <td class="{{#unless this.paid}}sub-billing-free{{/unless}}">{{this.billingText}}</td>
           <td>
-            <span class="sub-status-pill {{#if (eq this.status 'ACTIVE')}}sub-status-pill--active{{else}}sub-status-pill--inactive{{/if}}">
+            <span class="sub-status-pill sub-status-pill--{{this.statusTone}}">
               <span class="sub-status-dot"></span>
-              {{this.status}}
+              {{this.statusLabel}}
             </span>
           </td>
           <td>
@@ -79,6 +82,8 @@
         <span class="mc-manage-status-label">Status</span>
         <span id="subManageStatusBadge" class="mc-manage-status-badge mc-manage-status-badge--active">Active</span>
       </div>
+      <p id="subPaymentPendingNote" class="sub-payment-pending" role="status" hidden>Payment pending. Requests to this API are blocked until the outstanding invoice is paid.</p>
+      <p id="subBillingEnds" class="sub-billing-ends" hidden></p>
       <div class="mc-token-label" style="margin-top:1.25rem;">
         <i class="bi bi-key" style="color:#637282;"></i>
         <span>Subscription token</span>
@@ -107,6 +112,9 @@
         </button>
         <button id="subManageUnsubBtn" class="dp-btn mc-manage-action-btn mc-manage-action-btn--unsub">
           <i class="bi bi-trash"></i> Unsubscribe
+        </button>
+        <button id="subManageEndNowBtn" class="dp-btn mc-manage-action-btn mc-manage-action-btn--unsub" hidden>
+          <i class="bi bi-x-circle"></i> End now
         </button>
       </div>
     </div>

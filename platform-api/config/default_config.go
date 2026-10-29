@@ -232,5 +232,9 @@ func defaultConfig() *Server {
 			Enabled:               false,
 			WritableOrganizations: nil,
 		},
+		MCPServer: MCPServer{
+			Enabled:         false,
+			MaxRequestBytes: 1 << 20,
+		},
 	}
 }

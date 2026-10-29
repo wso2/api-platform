@@ -93,6 +93,9 @@ roles:
       - dp:application_key_mapping:manage
       - dp:subscription:manage
       - dp:subscription_plan:manage
+      - dp:meter:manage
+      - dp:billing_configuration:manage
+      - dp:billing_report:manage
       - dp:key_manager:manage
       - dp:key_manager:read
       - dp:key_manager:metadata_read
@@ -150,8 +153,9 @@ roles:
     scopes: *subscriber_grant
 
   # Service identity for Platform API publish calls and its own webhook-subscriber
-  # registration. Narrower than dp_admin: only the artifacts Platform API produces,
-  # no org / applications / subscriptions / key managers.
+  # registration. Narrower than dp_admin: only the artifacts Platform API produces
+  # (including plan pricing, and the meters the plans' prices use, which it creates here
+  # when it publishes), no org / applications / subscriptions / key managers.
   # Not aliased - a strict subset of dp_admin that maps to no page-access tier.
   - name: platform-api-system
     scopes:
@@ -161,3 +165,4 @@ roles:
       - dp:mcp_server_content:manage
       - dp:subscription_plan:manage
       - dp:webhook_subscriber:manage
+      - dp:meter:manage

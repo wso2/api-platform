@@ -17,8 +17,8 @@
  */
 
 import { alpha, Box, Chip, Form, Tooltip, Typography, type Theme } from '@wso2/oxygen-ui';
-import { Check, TriangleAlert } from '@wso2/oxygen-ui-icons-react';
-import { defineMessages, FormattedMessage, FormattedNumber, useIntl } from 'react-intl';
+import { Check, Pencil, Trash2, TriangleAlert } from '@wso2/oxygen-ui-icons-react';
+import { defineMessages, FormattedMessage, FormattedNumber, useIntl, type MessageDescriptor } from 'react-intl';
 
 import { focusRingSx } from '@/theme/receipes';
 import type { PlanLimitDisplay } from '../utils/subscriptionPlanLimit';
@@ -31,7 +31,53 @@ const messages = defineMessages({
   },
   inactiveSelected: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.PlanCard.inactiveSelected',
-    defaultMessage: 'Clear inactive plan to save or publish.',
+    defaultMessage: 'Plan is inactive. Clear it to save or publish.',
+  },
+  deleted: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.PlanCard.deleted',
+    defaultMessage: 'Deleted',
+    description: 'Status pill on a plan card whose subscription plan no longer exists.',
+  },
+  edited: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.PlanCard.edited',
+    defaultMessage: 'Edited',
+    description: 'Status pill on a plan card whose subscription plan was changed after it was last saved or published.',
+  },
+  editedPublished: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.PlanCard.editedPublished',
+    defaultMessage: 'Edited after publishing.',
+    description:
+      'Shown in place of the limit on a published plan card whose plan was edited. Any edit counts (name, limit or status), so it does not say which.',
+  },
+  editedPublishedHint: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.PlanCard.editedPublishedHint',
+    defaultMessage: 'Plan was edited after publishing. Republish to apply changes.',
+    description: 'Tooltip on the Edited chip of a published plan card.',
+  },
+  deletedDraft: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.PlanCard.deletedDraft',
+    defaultMessage: 'Deleted after saving.',
+    description: 'Shown on a draft plan card whose subscription plan no longer exists.',
+  },
+  deletedDraftHint: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.PlanCard.deletedDraftHint',
+    defaultMessage: 'This plan was deleted. Clear it to save or publish.',
+    description: 'Tooltip on the Deleted chip of a draft plan card.',
+  },
+  deletedPublished: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.PlanCard.deletedPublished',
+    defaultMessage: 'Deleted after publishing.',
+    description: 'Shown on a published plan card whose subscription plan no longer exists.',
+  },
+  inactivePublishedHint: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.PlanCard.inactivePublishedHint',
+    defaultMessage: 'Plan is inactive. Clear it in draft, then republish.',
+    description: 'Tooltip on the Inactive chip of a published plan card.',
+  },
+  deletedPublishedHint: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.PlanCard.deletedPublishedHint',
+    defaultMessage: 'This plan was deleted. Clear it in draft, then republish.',
+    description: 'Tooltip on the Deleted chip of a published plan card.',
   },
   unlimitedValue: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.PlanCard.unlimitedValue',
@@ -41,20 +87,43 @@ const messages = defineMessages({
 });
 
 type PlanCardProps = {
+  deleted?: boolean;
   disabled?: boolean;
   displayName: string;
+  /** The plan was changed after the listing was published. Only the published view shows it; the draft always reads the live plan. */
+  edited?: boolean;
   inactive?: boolean;
-  limit: PlanLimitDisplay;
+  /** Absent for a deleted plan, whose limit is no longer known. */
+  limit?: PlanLimitDisplay;
   onToggle?: () => void;
+  pricing?: string;
   readOnly?: boolean;
   selected: boolean;
 };
 
-/** Palette colour a card is drawn in: success when live, warning when it must be cleared. */
-type Accent = 'primary' | 'success' | 'warning';
+/** The card's own colour: primary in the draft, success in the published view. State is carried by the chips, never the accent. */
+type Accent = 'primary' | 'success';
+
+/** Palette colour of a status chip: warning for something to act on or check, error for something gone. */
+type StatusTone = 'error' | 'warning';
+
+/** The states a card can show as a chip. */
+type Status = 'deleted' | 'inactive' | 'edited';
+
+/** Most blocking first. A card shows only the first state that applies: Deleted cannot be fixed, Inactive blocks save and publish, Edited is informational. */
+const STATUS_PRIORITY: readonly Status[] = ['deleted', 'inactive', 'edited'];
+
+const STATUS_CHIPS: Record<Status, { icon: typeof Check; label: MessageDescriptor; tone: StatusTone }> = {
+  deleted: { icon: Trash2, label: messages.deleted, tone: 'error' },
+  inactive: { icon: TriangleAlert, label: messages.inactive, tone: 'warning' },
+  edited: { icon: Pencil, label: messages.edited, tone: 'warning' },
+};
 
 /** Side of the leading checkbox square. */
 const CHECK_SIZE = 20;
+
+/** Room for the limit or a two-line notice, so cards with and without one stay level. */
+const BODY_MIN_HEIGHT = 42;
 
 /** The drawn checkbox at the card's left; a real checkbox cannot nest inside a button. */
 function SelectionSquare({ accent, selected }: { accent: Accent; selected: boolean }) {
@@ -78,6 +147,29 @@ function SelectionSquare({ accent, selected }: { accent: Accent; selected: boole
     >
       {selected && <Check color="#fff" size={14} strokeWidth={3} />}
     </Box>
+  );
+}
+
+/** One state on a card: a tinted pill with its icon, in the tone that says how much it matters. */
+function StatusChip({ status }: { status: Status }) {
+  const { icon: Icon, label, tone } = STATUS_CHIPS[status];
+  return (
+    <Chip
+      color={tone}
+      icon={<Icon aria-hidden size={14} />}
+      label={<FormattedMessage {...label} />}
+      size="small"
+      sx={(theme) => ({
+        bgcolor: alpha(theme.palette[tone].main, 0.16),
+        color: `${tone}.main`,
+        flexShrink: 0,
+        fontSize: 12,
+        fontWeight: 600,
+        letterSpacing: '0.01em',
+        '& .MuiChip-icon': { color: 'inherit' },
+      })}
+      variant="filled"
+    />
   );
 }
 
@@ -107,32 +199,55 @@ const planCardSx = (
   gap: 2.5,
   p: 3,
   width: '100%',
-  ...(readOnly && { cursor: 'default', pointerEvents: 'none' }),
+  ...(readOnly && { cursor: 'default' }),
 });
 
 /**
  * One plan in the grid: a single `Form.CardButton` wearing the `checkbox` role, so the whole card
  * is the hit target. The square at the left is drawn, not a real checkbox, which cannot nest in a button.
  *
- * An inactive plan only appears while it is selected, in the warning accent with a tooltip, because the
- * user has to clear it.
+ * The accent never changes with state. One chip beside the name carries it, the highest in
+ * `STATUS_PRIORITY`: Deleted in error, Inactive and Edited in warning. The notice and the tooltip
+ * follow that same state. The body is the plan's limit, or a notice in its place when the limit
+ * cannot be trusted: the plan was deleted, or edited since the listing was published.
  *
- * `readOnly` (the published view) never sets `disabled`, which would grey the card out; `pointerEvents`
- * blocks interaction instead.
+ * An inactive plan only appears while it is selected, because the user has to clear it.
+ *
+ * `readOnly` (the published view) never sets `disabled`, which would grey the card out; it just has no
+ * click handler, so hovering still shows the tooltip. A deleted plan in the draft stays clickable so
+ * the user can clear it.
+ *
+ * `pricing` is the price of a paid plan in words; a free plan shows none.
  */
 export function PlanCard({
+  deleted = false,
   disabled,
   displayName,
+  edited = false,
   inactive = false,
   limit,
   onToggle,
-  readOnly,
+  pricing,
+  readOnly: published,
   selected,
 }: PlanCardProps) {
   const intl = useIntl();
-  const needsClearing = inactive && selected && !readOnly;
-  const accent: Accent = readOnly ? 'success' : needsClearing ? 'warning' : 'primary';
-  const tooltip = needsClearing ? intl.formatMessage(messages.inactiveSelected) : '';
+  const readOnly = published;
+  const accent: Accent = published ? 'success' : 'primary';
+
+  const flags: Record<Status, boolean> = { deleted, edited: edited && Boolean(published), inactive };
+  const status = STATUS_PRIORITY.find((state) => flags[state]);
+
+  let notice: MessageDescriptor | undefined;
+  if (status === 'deleted') notice = published ? messages.deletedPublished : messages.deletedDraft;
+  else if (status === 'edited') notice = messages.editedPublished;
+
+  // The notice is the short form; the tooltip says it in full.
+  let hint: MessageDescriptor | undefined;
+  if (status === 'inactive') hint = published ? messages.inactivePublishedHint : messages.inactiveSelected;
+  else if (status === 'edited') hint = messages.editedPublishedHint;
+  else if (status === 'deleted') hint = published ? messages.deletedPublishedHint : messages.deletedDraftHint;
+  const tooltip = hint ? intl.formatMessage(hint) : '';
 
   return (
     // describeChild keeps the plan's name as the card's accessible name.
@@ -148,48 +263,41 @@ export function PlanCard({
         sx={(theme) => planCardSx(theme, { accent, disabled: !readOnly && disabled, readOnly, selected })}
         tabIndex={readOnly ? -1 : 0}
       >
-        <Box sx={{ alignItems: 'center', display: 'flex', gap: 1.5, justifyContent: 'space-between', width: '100%' }}>
+        <Box sx={{ alignItems: 'center', display: 'flex', gap: 1.5, width: '100%' }}>
           <Box sx={{ alignItems: 'center', display: 'flex', flex: 1, gap: 1.5, minWidth: 0 }}>
             <SelectionSquare accent={accent} selected={selected} />
             <Typography noWrap sx={{ fontSize: '1rem', fontWeight: 600, minWidth: 0 }} variant="subtitle1">
               {displayName}
             </Typography>
           </Box>
-          {inactive && (
-            <Chip
-              color="warning"
-              icon={<TriangleAlert aria-hidden size={14} />}
-              label={<FormattedMessage {...messages.inactive} />}
-              size="small"
-              sx={(theme) => ({
-                bgcolor: alpha(theme.palette.warning.main, 0.16),
-                color: 'warning.main',
-                flexShrink: 0,
-                fontSize: 12,
-                fontWeight: 600,
-                letterSpacing: '0.01em',
-                '& .MuiChip-icon': { color: 'inherit' },
-              })}
-              variant="filled"
-            />
-          )}
+          {status && <StatusChip status={status} />}
         </Box>
 
-        <Box sx={{ alignItems: 'baseline', columnGap: 1, display: 'flex' }}>
-          <Typography
-            sx={{ flexShrink: 0, fontSize: '1.75rem', fontVariantNumeric: 'tabular-nums', fontWeight: 600, lineHeight: 1.15 }}
-            variant="h4"
-          >
-            {limit.unlimited ? (
-              <FormattedMessage {...messages.unlimitedValue} />
-            ) : (
-              <FormattedNumber value={limit.count} />
-            )}
-          </Typography>
-          <Typography color="text.secondary" noWrap sx={{ minWidth: 0 }} variant="body2">
-            <FormattedMessage {...limit.unit} values={limit.unlimited ? undefined : limit.unitValues} />
-          </Typography>
+        <Box sx={{ minHeight: BODY_MIN_HEIGHT, textAlign: 'start', width: '100%' }}>
+          {notice && (
+            <Typography color="text.secondary" variant="body2">
+              <FormattedMessage {...notice} />
+            </Typography>
+          )}
+          {!notice && limit && (
+            <Box sx={{ alignItems: 'baseline', columnGap: 1, display: 'flex' }}>
+              <Typography
+                sx={{ flexShrink: 0, fontSize: '1.75rem', fontVariantNumeric: 'tabular-nums', fontWeight: 600, lineHeight: 1.15 }}
+                variant="h4"
+              >
+                {limit.unlimited ? (
+                  <FormattedMessage {...messages.unlimitedValue} />
+                ) : (
+                  <FormattedNumber value={limit.count} />
+                )}
+              </Typography>
+              <Typography color="text.secondary" noWrap sx={{ minWidth: 0 }} variant="body2">
+                <FormattedMessage {...limit.unit} values={limit.unlimited ? undefined : limit.unitValues} />
+              </Typography>
+            </Box>
+          )}
         </Box>
+        {pricing && <Typography variant="body2">{pricing}</Typography>}
       </Form.CardButton>
     </Tooltip>
   );

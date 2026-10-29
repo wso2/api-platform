@@ -34,6 +34,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"testing"
 
 	"github.com/cucumber/godog"
@@ -42,6 +43,8 @@ import (
 	"github.com/wso2/api-platform/tests/framework/core/catalog/shared"
 	"github.com/wso2/api-platform/tests/framework/core/cleanup"
 	"github.com/wso2/api-platform/tests/framework/core/components"
+	"github.com/wso2/api-platform/tests/framework/core/runtime"
+	"github.com/wso2/api-platform/tests/framework/core/topology"
 	"github.com/wso2/api-platform/tests/framework/core/util/httpx"
 	"github.com/wso2/api-platform/tests/framework/core/util/tcontext"
 )
@@ -371,4 +374,129 @@ func TestPortalProberTrustsOnlyThePortalCertificateAndFollowsRedirects(t *testin
 	status, err = prober.Probe(context.Background(), portal.URL+"/")
 	require.Error(t, err)
 	require.Zero(t, status)
+}
+
+func TestPortalResourceKindGivesEachCollectionItsOwnDeleter(t *testing.T) {
+	require.Equal(t, portalSubscriptionPlanKind, portalResourceKind("/subscription-plans"))
+	require.Equal(t, portalMeterKind, portalResourceKind("/meters"))
+	require.Equal(t, portalWebhookKind, portalResourceKind("/webhook-subscribers"))
+	require.Equal(t, "api-portal-resource", portalResourceKind("/apis").Name)
+	// An API goes before the plans it offers, and a plan before the meters it prices.
+	require.Less(t, portalResourceKind("/apis").Order, portalSubscriptionPlanKind.Order)
+	require.Less(t, portalSubscriptionPlanKind.Order, portalMeterKind.Order)
+}
+
+// billingFakes returns steps whose topology holds fakes of the testbench Stripe service, the API
+// Portal and the control plane's sign-in. Paying checkout "cs-1" delivers one event, which the
+// portal answers with deliveryStatus; reading the checkout finds it completed with subscription
+// "sub-1", as the portal reports once it has confirmed the payment with Stripe.
+func billingFakes(t *testing.T, deliveryStatus int) *Steps {
+	t.Helper()
+	serveTLS := func(certPEM, keyPEM []byte, handler http.HandlerFunc) *httptest.Server {
+		cert, err := tls.X509KeyPair(certPEM, keyPEM)
+		require.NoError(t, err)
+		server := httptest.NewUnstartedServer(handler)
+		server.TLS = &tls.Config{Certificates: []tls.Certificate{cert}}
+		server.StartTLS()
+		t.Cleanup(server.Close)
+		return server
+	}
+	writeJSON := func(w http.ResponseWriter, body any) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(body)
+	}
+
+	stripe := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/billing/test/checkout-sessions/cs-1/complete" {
+			http.NotFound(w, r)
+			return
+		}
+		writeJSON(w, map[string]any{"deliveries": []map[string]any{{
+			"url":    "https://api-portal.6f1c2b9e-net:9543/api-portal/billing/stripe/webhooks/org-1",
+			"status": deliveryStatus,
+		}}})
+	}))
+	t.Cleanup(stripe.Close)
+	portalPair := shared.APIPortalTLS()
+	portal := serveTLS(portalPair.CertPEM, portalPair.PrivateKeyPEM, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != apiPrefix+"/checkout-sessions/cs-1" {
+			http.NotFound(w, r)
+			return
+		}
+		writeJSON(w, map[string]any{"status": "COMPLETED", "subscriptionId": "sub-1"})
+	})
+	crypto := shared.ControlPlaneCrypto()
+	controlPlane := serveTLS(crypto["certs/cert.pem"], crypto["certs/key.pem"], func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/api/portal/v0.9/auth/login" {
+			http.NotFound(w, r)
+			return
+		}
+		writeJSON(w, map[string]any{"token": "token"})
+	})
+
+	set := components.NewSet()
+	add := func(name string, endpoint components.Endpoint, server *httptest.Server) {
+		address, err := url.Parse(server.URL)
+		require.NoError(t, err)
+		port, err := strconv.Atoi(address.Port())
+		require.NoError(t, err)
+		definition := &components.Definition{Name: name, Alias: name, Endpoints: []components.Endpoint{endpoint}}
+		inst, err := components.NewInstance(definition, 0, 1, "127.0.0.1", map[int]int{endpoint.Port: port})
+		require.NoError(t, err)
+		require.NoError(t, set.Add(inst))
+	}
+	add("testbench", components.Endpoint{Name: "stripe", Port: 3022, Scheme: "http"}, stripe)
+	add(portalService, components.Endpoint{Name: "https", Port: 9543, Scheme: "https"}, portal)
+	add("platform-api", components.Endpoint{Name: "https", Port: 9243, Scheme: "https"}, controlPlane)
+
+	return &Steps{
+		topo:   &runtime.Topology{Block: &topology.ResolvedBlock{Name: "billing"}, Instances: set},
+		client: newPortalClient(),
+	}
+}
+
+func TestPayCheckoutEndsTheSubscriptionAtCleanupEvenWhenStripesEventIsRefused(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		status  int
+		wantErr string
+	}{
+		{name: "every event is accepted", status: http.StatusOK},
+		{name: "an event is refused", status: http.StatusNotFound,
+			wantErr: "was not accepted by https://api-portal.6f1c2b9e-net:9543/api-portal/billing/stripe/webhooks/org-1: status 404"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := billingFakes(t, tc.status)
+			ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("runner"))
+			reg := cleanup.NewRegistry(slog.Default())
+			require.NoError(t, cleanup.Install(ctx, reg))
+
+			err := s.payCheckout(ctx, "cs-1", "developer", "subscriptionId")
+
+			pending := reg.Pending()
+			require.Len(t, pending, 1, "the subscription is ended when the scenario ends")
+			require.Equal(t, paidSubscriptionKind("developer").Name, pending[0].Kind.Name)
+			require.Equal(t, "sub-1", pending[0].ID)
+			stored, ok := tcontext.Get(ctx, "subscriptionId")
+			if tc.wantErr != "" {
+				require.ErrorContains(t, err, tc.wantErr)
+				require.False(t, ok, "a refused event fails the step before the subscription is stored")
+				return
+			}
+			require.NoError(t, err)
+			require.True(t, ok)
+			require.Equal(t, "sub-1", stored)
+		})
+	}
+}
+
+func TestPayCheckoutNeedsACleanupRegistry(t *testing.T) {
+	s := billingFakes(t, http.StatusOK)
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("runner"))
+
+	err := s.payCheckout(ctx, "cs-1", "developer", "subscriptionId")
+
+	require.Error(t, err, "a subscription that cannot be ended at cleanup fails the step")
+	_, ok := tcontext.Get(ctx, "subscriptionId")
+	require.False(t, ok)
 }

@@ -108,6 +108,7 @@ roles:
       - ap:application:read
       - ap:subscription:read
       - ap:subscription_plan:manage
+      - ap:meter:manage
       - ap:content:read
       - ap:portal:read
       # MCP proxy publishing to a portal, kept from the pre-tree ap:api_portal:manage
@@ -135,6 +136,7 @@ roles:
       - ap:application:read
       - ap:subscription:read
       - ap:subscription_plan:read
+      - ap:meter:read
       - ap:content:manage
       - ap:portal:read
       - ap:portal:draft:manage

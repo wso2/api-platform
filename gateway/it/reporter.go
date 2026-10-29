@@ -24,6 +24,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"time"
 
@@ -366,10 +367,9 @@ func (r *TestReporter) GetSummary() TestSummary {
 	return summary
 }
 
-// getGoVersion returns the Go version
+// getGoVersion returns the Go version the tests were built with
 func getGoVersion() string {
-	// This is a simplified version - in practice you might use runtime.Version()
-	return "1.25.1"
+	return runtime.Version()
 }
 
 // getPlatform returns the platform info

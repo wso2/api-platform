@@ -15,16 +15,16 @@
 # under the License.
 #
 # Testbench image for integration-test mock services.
-FROM golang:1.26-alpine@sha256:28d89ee9cc0ff9fec75c82ca201e6bf7fdf9a679d4b7b24dfa04f2bb766bb468 AS build
+FROM golang:1.26.10-alpine@sha256:a2012b4a1d1f9f7e9f44e0d39b805a901e856b1dd80b4e6ee4338db547050308 AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 go build -trimpath -o /out/testbench ./testbench/cmd/testbench
 
-FROM gcr.io/distroless/static-debian12:nonroot@sha256:afa5c872c891853ca7fcf1f12c3edb23f7eeef36189728842dd51042ff57f7ab
+FROM gcr.io/distroless/static-debian13:nonroot@sha256:18f4cc26c9ffa7f20a359298be7deadac5c607c8e03a02b8119f1a5fc2f82c99
 COPY --from=build /out/testbench /testbench
 # Service ports are declared in testbench/services/*.Port.
-EXPOSE 3000-3018 8443-8446
+EXPOSE 3000-3023 8443-8446
 USER nonroot:nonroot
 ENTRYPOINT ["/testbench"]

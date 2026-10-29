@@ -55,6 +55,8 @@ type Config struct {
 	PolicyHub    PolicyHubConfig    `koanf:"policy_hub"`
 	GatewayRelay GatewayRelayConfig `koanf:"gateway_relay"`
 
+	SanitizeHTMLDocs SanitizeHTMLDocsConfig `koanf:"sanitize_html_docs"`
+
 	RuntimeConfig map[string]string `koanf:"-"`
 }
 
@@ -122,6 +124,17 @@ type EgressConfig struct {
 // PolicyHubConfig configures the public catalog called directly by the browser.
 type PolicyHubConfig struct {
 	BaseURL string `koanf:"base_url"`
+}
+
+// SanitizeHTMLDocsConfig is the optional [sanitize_html_docs] section, passed
+// to the SPA as-is; the SPA parses the values and ignores anything malformed.
+// Each key may be a string (tags as a JSON array or comma-separated list,
+// attributes as a JSON object) or the native TOML bool, array or table.
+// Attribute names are camelCase hast property names (className, dataDocId).
+type SanitizeHTMLDocsConfig struct {
+	Enabled                     any `koanf:"enabled"`
+	AdditionalAllowedTags       any `koanf:"additional_allowed_tags"`
+	AdditionalAllowedAttributes any `koanf:"additional_allowed_attributes"`
 }
 
 // ServerConfig is [api_control_plane.server]: two independent listeners,
@@ -358,7 +371,7 @@ const defaultOIDCScopes = "openid profile email offline_access" +
 	" ap:content:manage ap:content:read ap:credential:api_key:read ap:credential:secret:manage ap:credential:secret:read" +
 	" ap:gateway_policy:manage ap:gateway_policy:read ap:llm_provider:read ap:llm_provider:build:manage ap:llm_provider:deployment:manage" +
 	" ap:llm_provider:template:manage ap:portal:read ap:portal:draft:manage ap:portal:graphql_api:manage ap:portal:mcp_proxy:manage ap:portal:rest_api:manage" +
-	" ap:publication:read"
+	" ap:publication:read ap:meter:read ap:meter:manage"
 
 // legacyOIDCScopes are added to defaultOIDCScopes while request_legacy_scopes
 // is true (the built-in default, so an upgraded deployment keeps requesting
@@ -504,6 +517,10 @@ func (c *Config) validate() error {
 	}
 	if err := c.validateGatewayRelay(); err != nil {
 		return err
+	}
+	if v, ok := runtimeValue(c.SanitizeHTMLDocs.Enabled); ok && strings.EqualFold(strings.TrimSpace(v), "false") {
+		slog.Warn("[sanitize_html_docs] enabled = false: raw HTML in API documents is rendered unsanitized. " +
+			"Keep sanitization on unless every document author is trusted.")
 	}
 	if !c.Server.HTTP.Enabled && !c.Server.HTTPS.Enabled {
 		return fmt.Errorf("no listeners enabled: set [server.http] enabled = true and/or [server.https] enabled = true")

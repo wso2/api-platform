@@ -212,6 +212,12 @@ func (s *ProjectService) GetProjectsByOrganization(organizationID string, opts r
 	return projects, total, nil
 }
 
+// ListProjects returns one page of an organization's projects, newest first, and the total.
+func (s *ProjectService) ListProjects(organizationID string, limit, offset int) ([]api.Project, int, error) {
+	return s.GetProjectsByOrganization(organizationID,
+		repository.ListOptions{Limit: limit, Offset: offset, SortOrder: "desc"})
+}
+
 func (s *ProjectService) UpdateProject(handle string, req *api.Project, orgId, actor string) (*api.Project, error) {
 	project, err := s.projectRepo.GetProjectByHandleAndOrgID(handle, orgId)
 	if err != nil {

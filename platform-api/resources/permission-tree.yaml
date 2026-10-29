@@ -496,6 +496,14 @@ tree:
     - update
     legacy:
     - llm_provider
+  - handle: meter
+    name: Meter
+    actions:
+    - create
+    - delete
+    - manage
+    - read
+    - update
   - handle: organization
     name: Organization
     actions:
@@ -587,6 +595,11 @@ tree:
     - subscription
   - handle: subscription_plan
     name: Subscription Plan
+    resources:
+    - handle: pricing
+      name: Pricing
+      actions:
+      - read
     actions:
     - create
     - delete
@@ -1622,6 +1635,23 @@ x-operation-permissions:
   DeleteSubscriptionPlan:
   - ap:subscription_plan:delete
   - ap:subscription_plan:manage
+  GetSubscriptionPlanPricing:
+  - ap:subscription_plan:pricing:read
+  ListMeters:
+  - ap:meter:manage
+  - ap:meter:read
+  CreateMeter:
+  - ap:meter:create
+  - ap:meter:manage
+  GetMeter:
+  - ap:meter:manage
+  - ap:meter:read
+  UpdateMeter:
+  - ap:meter:manage
+  - ap:meter:update
+  DeleteMeter:
+  - ap:meter:delete
+  - ap:meter:manage
   CreateSubscription:
   - ap:subscription:create
   - ap:subscription:manage

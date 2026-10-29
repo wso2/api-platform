@@ -662,7 +662,7 @@ pipeline {
 
 ## Prerequisites
 
-- Go 1.25.1 or later
+- Go 1.26.10 or later
 - Docker and Docker Compose
 - Network access to pull Docker images:
   - `ghcr.io/wso2/api-platform/gateway-controller-coverage:0.3.0-SNAPSHOT`

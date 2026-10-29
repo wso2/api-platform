@@ -34,6 +34,7 @@ const minConsoleMargin = 3 * time.Second
 func validAPIPortalPublication() APIPortalPublication {
 	return APIPortalPublication{
 		RequestTimeout:        5 * time.Second,
+		ListingRequestTimeout: 5 * time.Second,
 		ContentRequestTimeout: 10 * time.Second,
 		MaxRetries:            1,
 		RetryBackoff:          time.Second,
@@ -44,8 +45,9 @@ func validAPIPortalPublication() APIPortalPublication {
 func TestAPIPortalPublication_WorstCases(t *testing.T) {
 	c := validAPIPortalPublication()
 	assert.Equal(t, 11*time.Second, c.RequestWorstCase(), "two 5s attempts and one 1s wait")
+	assert.Equal(t, 11*time.Second, c.ListingRequestWorstCase(), "two 5s attempts and one 1s wait")
 	assert.Equal(t, 21*time.Second, c.ContentRequestWorstCase(), "two 10s attempts and one 1s wait")
-	assert.Equal(t, 65*time.Second, c.PublishWorstCase(), "four light calls and one content push")
+	assert.Equal(t, 65*time.Second, c.PublishWorstCase(), "three light calls, the listing push and the content push")
 
 	c.MaxRetries = 0
 	assert.Equal(t, 5*time.Second, c.RequestWorstCase(), "no retries means no wait")
@@ -55,7 +57,7 @@ func TestAPIPortalPublication_WorstCases(t *testing.T) {
 func TestAPIPortalPublication_PlanListingBudget(t *testing.T) {
 	c := validAPIPortalPublication()
 	assert.Equal(t, c.RequestWorstCase(), c.PlanListingBudget(), "the whole listing gets the time of one call")
-	assert.Equal(t, c.PlanListingBudget()+3*c.RequestWorstCase()+c.ContentRequestWorstCase(), c.PublishWorstCase(),
+	assert.Equal(t, c.PlanListingBudget()+2*c.RequestWorstCase()+c.ListingRequestWorstCase()+c.ContentRequestWorstCase(), c.PublishWorstCase(),
 		"the publish worst case counts the listing at its budget, however many pages it has")
 
 	c.MaxRetries = 0
@@ -77,6 +79,7 @@ func TestLoadConfig_APIPortalPublication_Override(t *testing.T) {
 	cfg, err := loadWithKeys(t, `
 [platform_api.api_portal_publication]
 request_timeout         = "4s"
+listing_request_timeout = "4s"
 content_request_timeout = "8s"
 max_retries             = 1
 retry_backoff           = "500ms"
@@ -85,11 +88,23 @@ overall_timeout         = "55s"
 	require.NoError(t, err)
 	assert.Equal(t, APIPortalPublication{
 		RequestTimeout:        4 * time.Second,
+		ListingRequestTimeout: 4 * time.Second,
 		ContentRequestTimeout: 8 * time.Second,
 		MaxRetries:            1,
 		RetryBackoff:          500 * time.Millisecond,
 		OverallTimeout:        55 * time.Second,
 	}, cfg.APIPortalPublication)
+}
+
+func TestLoadConfig_APIPortalPublication_ListingDefaultsToRequestTimeout(t *testing.T) {
+	cfg, err := loadWithKeys(t, `
+[platform_api.api_portal_publication]
+request_timeout = "8s"
+overall_timeout = "95s"
+`)
+	require.NoError(t, err)
+	assert.Equal(t, 8*time.Second, cfg.APIPortalPublication.ListingRequestTimeout,
+		"a configuration without listing_request_timeout times the listing push as any other call")
 }
 
 func TestLoadConfig_APIPortalPublication_RejectsUnfitCombination(t *testing.T) {
@@ -118,6 +133,11 @@ func TestValidateAPIPortalPublicationConfig(t *testing.T) {
 		{name: "deadline exactly at the worst case passes", mutate: func(c *APIPortalPublication) {
 			c.OverallTimeout = c.PublishWorstCase()
 		}, write: writeTimeout},
+		{name: "the config template's monetization example passes", mutate: func(c *APIPortalPublication) {
+			c.ListingRequestTimeout = 85 * time.Second
+			c.MaxRetries = 0
+			c.OverallTimeout = 110 * time.Second
+		}, write: writeTimeout},
 		{name: "write timeout disabled skips the ceiling", mutate: func(c *APIPortalPublication) {
 			c.OverallTimeout = 10 * time.Minute
 		}, write: 0},
@@ -126,6 +146,8 @@ func TestValidateAPIPortalPublicationConfig(t *testing.T) {
 			wantErr: "api_portal_publication.request_timeout must be greater than zero"},
 		{name: "negative attempt timeout", mutate: func(c *APIPortalPublication) { c.RequestTimeout = -time.Second }, write: writeTimeout,
 			wantErr: "api_portal_publication.request_timeout must be greater than zero"},
+		{name: "zero listing attempt timeout", mutate: func(c *APIPortalPublication) { c.ListingRequestTimeout = 0 }, write: writeTimeout,
+			wantErr: "api_portal_publication.listing_request_timeout must be greater than zero"},
 		{name: "zero content attempt timeout", mutate: func(c *APIPortalPublication) { c.ContentRequestTimeout = 0 }, write: writeTimeout,
 			wantErr: "api_portal_publication.content_request_timeout must be greater than zero"},
 		{name: "zero operation timeout", mutate: func(c *APIPortalPublication) { c.OverallTimeout = 0 }, write: writeTimeout,
@@ -134,6 +156,8 @@ func TestValidateAPIPortalPublicationConfig(t *testing.T) {
 			wantErr: "api_portal_publication.max_retries must not be negative"},
 		{name: "negative backoff", mutate: func(c *APIPortalPublication) { c.RetryBackoff = -time.Second }, write: writeTimeout,
 			wantErr: "api_portal_publication.retry_backoff must not be negative"},
+		{name: "listing shorter than light", mutate: func(c *APIPortalPublication) { c.ListingRequestTimeout = time.Second }, write: writeTimeout,
+			wantErr: "api_portal_publication.listing_request_timeout (1s) must not be shorter than api_portal_publication.request_timeout"},
 		{name: "content shorter than light", mutate: func(c *APIPortalPublication) { c.ContentRequestTimeout = time.Second }, write: writeTimeout,
 			wantErr: "must not be shorter than api_portal_publication.request_timeout"},
 		{name: "deadline below the worst case", mutate: func(c *APIPortalPublication) {

@@ -21,6 +21,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"slices"
 	"strings"
 
 	"github.com/wso2/api-platform/common/authenticators"
@@ -64,6 +65,10 @@ type ScopeEnforcerConfig struct {
 	// is the same list the authentication middleware bypasses — through the same
 	// hasPathPrefix matcher, so both exempt exactly the same requests.
 	SkipPaths []string
+	// ExemptRoutes are routes that check their own scopes (/mcp), in the
+	// "METHOD /path" form of the router's pattern. Unlike SkipPaths they match
+	// the route exactly, so a route added under the same path is still checked.
+	ExemptRoutes []string
 	// LegacyScopes translates the pre-permission-tree scope names a token, an
 	// IDP role or a role-to-scope mapping may still carry into the permissions
 	// the OpenAPI spec declares (resources/legacy-scope-mapping.yaml). Every
@@ -179,6 +184,13 @@ func ScopeEnforcer(registry *ScopeRegistry, cfg ScopeEnforcerConfig) (func(http.
 				return
 			}
 
+			// These routes check scopes themselves, per call (/mcp reads the tool from
+			// the body). They declare none in the spec, so the check below would deny them.
+			if slices.Contains(cfg.ExemptRoutes, pattern) {
+				next.ServeHTTP(w, r)
+				return
+			}
+
 			// pattern is "METHOD /path/{param}" — extract the path portion.
 			path := pattern
 			if idx := strings.Index(pattern, " "); idx != -1 {
@@ -232,10 +244,12 @@ func rawEffectiveScopes(r *http.Request, mode string) []string {
 	return strings.Fields(scope)
 }
 
-// resolveEffectiveScopes returns the effective scopes for the request: the set
-// ScopeEnforcer recorded (legacy names translated) when it ran, otherwise the
-// raw claim or roles.
-func resolveEffectiveScopes(r *http.Request, mode string) []string {
+// ResolveEffectiveScopes returns the effective scopes for the request: the set
+// ScopeEnforcer recorded (the scope claim, or in role mode the IDP roles
+// expanded via the role-scope map, with legacy names translated) when it ran,
+// otherwise the raw claim or roles. Handlers that check scopes themselves
+// (/mcp) read it so they see the same set the enforcer did.
+func ResolveEffectiveScopes(r *http.Request, mode string) []string {
 	if recorded, ok := r.Context().Value(keyEffectiveScopes).(*effectiveScopes); ok {
 		return recorded.scopes
 	}
@@ -250,7 +264,7 @@ func resolveEffectiveScopes(r *http.Request, mode string) []string {
 // the OpenAPI spec and held outright — or held by a legacy name that
 // resources/legacy-scope-mapping.yaml maps onto it.
 func HasEffectiveScope(r *http.Request, mode, scope string) bool {
-	for _, have := range resolveEffectiveScopes(r, mode) {
+	for _, have := range ResolveEffectiveScopes(r, mode) {
 		if have == scope {
 			return true
 		}

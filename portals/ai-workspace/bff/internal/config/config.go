@@ -619,7 +619,7 @@ const defaultOIDCScopes = "openid profile email offline_access" +
 	" ap:credential:api_key:read ap:credential:secret:manage ap:credential:secret:read ap:gateway_policy:manage ap:gateway_policy:read" +
 	" ap:llm_provider:build:manage ap:llm_provider:template:manage ap:portal:read ap:portal:draft:manage ap:portal:graphql_api:manage ap:portal:mcp_proxy:manage" +
 	" ap:portal:rest_api:manage ap:publication:read ap:subscription:manage ap:subscription:read ap:subscription_plan:manage" +
-	" ap:subscription_plan:read"
+	" ap:subscription_plan:read ap:meter:read ap:meter:manage"
 
 // legacyOIDCScopes are added to defaultOIDCScopes while request_legacy_scopes
 // is true (the built-in default, so an upgraded deployment keeps requesting

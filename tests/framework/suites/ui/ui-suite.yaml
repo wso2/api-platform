@@ -94,6 +94,24 @@ blocks:
         features:
           - features/apiportal_applications.feature
 
+  # Billing is portal-wide, so its scenarios keep a dedicated stack and run one at a time. The
+  # portal bills through the testbench's Stripe and Moesif services.
+  - name: api-portal-billing
+    parallel: 1
+    components:
+      - name: platform-api
+        db: postgres
+      - name: api-portal
+        db: postgres
+        dependsOn: [platform-api]
+        overlay: tests/framework/core/catalog/overlays/api-portal-publishing.toml
+      - name: testbench
+      - name: browser
+    runners:
+      - name: billing
+        features:
+          - features/apiportal_billing.feature
+
   # The AI Workspace journey topology: the workspace UI against the real control plane,
   # a real AI gateway registered with it, the testbench as every upstream (its openai
   # service is the LLM the journeys invoke), and the browser that drives it all — on the

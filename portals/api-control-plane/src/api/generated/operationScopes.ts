@@ -194,6 +194,11 @@ export type ApScope =
   | 'ap:llm_provider:template:update'
   | 'ap:llm_provider:update'
   | 'ap:manage'
+  | 'ap:meter:create'
+  | 'ap:meter:delete'
+  | 'ap:meter:manage'
+  | 'ap:meter:read'
+  | 'ap:meter:update'
   | 'ap:organization:create'
   | 'ap:organization:manage'
   | 'ap:organization:read'
@@ -207,6 +212,9 @@ export type ApScope =
   | 'ap:portal:graphql_api:publish'
   | 'ap:portal:graphql_api:unpublish'
   | 'ap:portal:manage'
+  | 'ap:portal:mcp_proxy:manage'
+  | 'ap:portal:mcp_proxy:publish'
+  | 'ap:portal:mcp_proxy:unpublish'
   | 'ap:portal:publication:read'
   | 'ap:portal:read'
   | 'ap:portal:rest_api:deprecate'
@@ -229,6 +237,7 @@ export type ApScope =
   | 'ap:subscription_plan:create'
   | 'ap:subscription_plan:delete'
   | 'ap:subscription_plan:manage'
+  | 'ap:subscription_plan:pricing:read'
   | 'ap:subscription_plan:read'
   | 'ap:subscription_plan:update';
 
@@ -403,6 +412,11 @@ export const AP_SCOPES: readonly ApScope[] = [
   'ap:llm_provider:template:update',
   'ap:llm_provider:update',
   'ap:manage',
+  'ap:meter:create',
+  'ap:meter:delete',
+  'ap:meter:manage',
+  'ap:meter:read',
+  'ap:meter:update',
   'ap:organization:create',
   'ap:organization:manage',
   'ap:organization:read',
@@ -416,6 +430,9 @@ export const AP_SCOPES: readonly ApScope[] = [
   'ap:portal:graphql_api:publish',
   'ap:portal:graphql_api:unpublish',
   'ap:portal:manage',
+  'ap:portal:mcp_proxy:manage',
+  'ap:portal:mcp_proxy:publish',
+  'ap:portal:mcp_proxy:unpublish',
   'ap:portal:publication:read',
   'ap:portal:read',
   'ap:portal:rest_api:deprecate',
@@ -438,6 +455,7 @@ export const AP_SCOPES: readonly ApScope[] = [
   'ap:subscription_plan:create',
   'ap:subscription_plan:delete',
   'ap:subscription_plan:manage',
+  'ap:subscription_plan:pricing:read',
   'ap:subscription_plan:read',
   'ap:subscription_plan:update',
 ];
@@ -594,6 +612,7 @@ export const OPERATION_SCOPES = {
     'ap:api:mcp:manage',
     'ap:manage',
   ],
+  CreateMeter: ['ap:manage', 'ap:meter:create', 'ap:meter:manage'],
   CreateProject: ['ap:manage', 'ap:project:create', 'ap:project:manage'],
   CreateRESTAPI: ['ap:api:manage', 'ap:api:rest:create', 'ap:api:rest:manage', 'ap:manage'],
   createSecret: ['ap:credential:secret:create', 'ap:credential:secret:manage', 'ap:manage'],
@@ -722,6 +741,7 @@ export const OPERATION_SCOPES = {
     'ap:api:mcp:manage',
     'ap:manage',
   ],
+  DeleteMeter: ['ap:manage', 'ap:meter:delete', 'ap:meter:manage'],
   DeleteProject: ['ap:manage', 'ap:project:delete', 'ap:project:manage'],
   DeleteRESTAPI: ['ap:api:manage', 'ap:api:rest:delete', 'ap:api:rest:manage', 'ap:manage'],
   deleteSecret: ['ap:credential:secret:delete', 'ap:credential:secret:manage', 'ap:manage'],
@@ -1166,6 +1186,7 @@ export const OPERATION_SCOPES = {
     'ap:manage',
     'ap:read',
   ],
+  GetMeter: ['ap:manage', 'ap:meter:manage', 'ap:meter:read', 'ap:read'],
   GetOrganization: ['ap:manage', 'ap:organization:manage', 'ap:organization:read', 'ap:read'],
   GetProject: ['ap:manage', 'ap:project:manage', 'ap:project:read', 'ap:read'],
   GetRESTAPI: [
@@ -1202,6 +1223,13 @@ export const OPERATION_SCOPES = {
     'ap:manage',
     'ap:read',
     'ap:subscription_plan:manage',
+    'ap:subscription_plan:read',
+  ],
+  GetSubscriptionPlanPricing: [
+    'ap:manage',
+    'ap:read',
+    'ap:subscription_plan:manage',
+    'ap:subscription_plan:pricing:read',
     'ap:subscription_plan:read',
   ],
   HeadOrganization: ['ap:manage', 'ap:organization:manage', 'ap:organization:read', 'ap:read'],
@@ -1361,6 +1389,7 @@ export const OPERATION_SCOPES = {
     'ap:manage',
     'ap:read',
   ],
+  ListMeters: ['ap:manage', 'ap:meter:manage', 'ap:meter:read', 'ap:read'],
   ListOrganizations: ['ap:manage', 'ap:organization:manage', 'ap:organization:read', 'ap:read'],
   ListProjects: ['ap:manage', 'ap:project:manage', 'ap:project:read', 'ap:read'],
   ListRESTAPIs: [
@@ -1625,6 +1654,7 @@ export const OPERATION_SCOPES = {
   ],
   updateLLMProxy: ['ap:api:llm:manage', 'ap:api:llm:update', 'ap:api:manage', 'ap:manage'],
   updateMCPProxy: ['ap:api:manage', 'ap:api:mcp:manage', 'ap:api:mcp:update', 'ap:manage'],
+  UpdateMeter: ['ap:manage', 'ap:meter:manage', 'ap:meter:update'],
   UpdateProject: ['ap:manage', 'ap:project:manage', 'ap:project:update'],
   UpdateRESTAPI: ['ap:api:manage', 'ap:api:rest:manage', 'ap:api:rest:update', 'ap:manage'],
   UpdateRESTAPISpec: ['ap:api:manage', 'ap:api:rest:manage', 'ap:api:rest:update', 'ap:manage'],

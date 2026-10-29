@@ -52,6 +52,9 @@ var (
 
 	gatewayEncryptionOnce sync.Once
 	gatewayEncryptionData []byte
+
+	jevTLSOnce sync.Once
+	jevTLSData *KeyPairPEM
 )
 
 // IdentityProviderHost is the host name the testbench identity provider is reached at from
@@ -243,6 +246,19 @@ func GatewayEncryptionKey() []byte {
 		gatewayEncryptionData = key
 	})
 	return append([]byte(nil), gatewayEncryptionData...)
+}
+
+// JevTLS returns the certificate and key the testbench Jev service serves HTTPS with. The
+// gateway runtime trusts this certificate, so a Jev policy can call the mock over HTTPS.
+func JevTLS() *KeyPairPEM {
+	jevTLSOnce.Do(func() {
+		pair, err := SelfSignedCert("testbench", []string{"testbench", "localhost"})
+		if err != nil {
+			panic(err)
+		}
+		jevTLSData = pair
+	})
+	return jevTLSData
 }
 
 func mustPKCS8(key *rsa.PrivateKey) []byte {

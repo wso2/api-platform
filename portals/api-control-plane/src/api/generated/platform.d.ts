@@ -3208,7 +3208,7 @@ export interface paths {
         put?: never;
         /**
          * Create subscription plan
-         * @description Creates an organization-scoped subscription plan.
+         * @description Creates an organization-scoped subscription plan. A paid plan is created with its `pricing`, checked against the API Portal's rules and the organization's meters and stored with the plan; a plan created without it is free. Pricing is set only here: it cannot be updated once the plan exists. Returns `400` for pricing that breaks the rules or names an unknown meter.
          */
         post: operations["CreateSubscriptionPlan"];
         delete?: never;
@@ -3226,11 +3226,95 @@ export interface paths {
         };
         /** Get subscription plan by ID */
         get: operations["GetSubscriptionPlan"];
-        /** Update subscription plan */
+        /**
+         * Update subscription plan
+         * @description Updates the plan's name, limits, status and expiry. The name and the request limit can change only while nothing uses the plan: otherwise `409` SUBSCRIPTION_PLAN_IN_USE, such as "The plan Gold is in use. To change its name or limit, create a new plan." The plan's `usage` (GET /subscription-plans/{subscriptionPlanId}) counts what uses it. Status and expiry can always change. Leave `pricing` out: it is the only part of a plan that never changes once the plan is created, and a body that carries it gets `409` SUBSCRIPTION_PLAN_PRICING_LOCKED.
+         */
         put: operations["UpdateSubscriptionPlan"];
         post?: never;
-        /** Delete subscription plan */
+        /**
+         * Delete subscription plan
+         * @description Deletes the plan with its pricing, only while nothing uses it: otherwise `409` SUBSCRIPTION_PLAN_IN_USE, such as "The plan Gold is in use and can't be deleted." The plan's `usage` (GET /subscription-plans/{subscriptionPlanId}) counts what uses it.
+         */
         delete: operations["DeleteSubscriptionPlan"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/subscription-plans/{subscriptionPlanId}/pricing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The plan's id (handle), as returned in `id` by GET /subscription-plans. */
+                subscriptionPlanId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Get the pricing of a subscription plan
+         * @description Returns the pricing of a paid plan; a free plan has none (404). A plan's pricing is set when the plan is created, here or in an API Portal (and copied here from its webhook event), and does not change.
+         */
+        get: operations["GetSubscriptionPlanPricing"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/meters": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List meters
+         * @description Lists the organization's meters, ordered by id. A meter defines what a paid plan charges for: the requests the gateway allows, or their tokens. Each plan price narrows it with its own filters. A meter made here is kept here and reaches an API Portal only when a plan that charges for it is published there; a meter made in an API Portal is a copy, kept current through that portal's webhook events. Each meter says how many plans charge for it (`planCount`).
+         */
+        get: operations["ListMeters"];
+        put?: never;
+        /**
+         * Create a meter
+         * @description Creates a meter here. It is checked with the API Portal's rules, and refused with the portal's messages. The id is the one given, or is derived from the display name. The meter is returned as GET /meters/{meterId} gives it. It reaches an API Portal when a plan that charges for it is first published there; until then, no API Portal is needed. A body that is not a JSON object is refused (400), and so is an id the organization already has (409 METER_EXISTS).
+         */
+        post: operations["CreateMeter"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/meters/{meterId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The meter's id (handle), as returned in `id` by GET /meters or POST /meters. */
+                meterId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Get a meter
+         * @description Returns one meter. `planCount` says how many plans price it; while any does, the meter cannot be updated or deleted.
+         */
+        get: operations["GetMeter"];
+        /**
+         * Update a meter
+         * @description Replaces the meter's settings, checked as on create; the meter is returned as GET /meters/{meterId} gives it. A meter that a plan prices cannot be updated at all, its name, description and event keys included (409 METER_IN_USE). The change is not sent to API Portals; an API Portal that has the meter keeps its copy, and a later publish of a plan charging for it there is refused while the two differ (409 PUBLICATION_METER_CONFLICT).
+         */
+        put: operations["UpdateMeter"];
+        post?: never;
+        /**
+         * Delete a meter
+         * @description Deletes the meter here; refused while a plan charges for it (409 METER_IN_USE). The delete is not sent to API Portals, which keep their copies, as for subscription plans.
+         */
+        delete: operations["DeleteMeter"];
         options?: never;
         head?: never;
         patch?: never;
@@ -5277,7 +5361,7 @@ export interface components {
         };
         CreateSubscriptionPlanRequest: {
             /**
-             * @description Handle (URL-friendly slug) for the plan. Immutable after creation.
+             * @description Handle (URL-friendly slug) for the plan. Immutable after creation. At most 40 characters; a longer one is refused with 400 "id must be at most 40 characters".
              * @example gold
              */
             id?: string;
@@ -5298,6 +5382,8 @@ export interface components {
              * @enum {string}
              */
             status: "ACTIVE" | "INACTIVE";
+            /** @description Makes the plan paid. Optional; a plan created without it is free. Pricing is set only when a plan is created and cannot be updated afterwards, so a free plan cannot become paid later, nor a paid plan free. */
+            pricing?: components["schemas"]["SubscriptionPlanPricingRequest"];
         };
         SubscriptionPlan: {
             /** @description Handle (slug) for the subscription plan */
@@ -5332,6 +5418,157 @@ export interface components {
             createdAt?: string;
             /** Format: date-time */
             updatedAt?: string;
+            /** @description The plan's pricing, present only on a paid plan. It is set when the plan is created (POST /subscription-plans) and is the only part of a plan that never changes, so a free plan stays free and a paid one paid. An update changes the plan's other fields and leaves `pricing` out: a body that carries it gets `409` SUBSCRIPTION_PLAN_PRICING_LOCKED. */
+            readonly pricing?: components["schemas"]["SubscriptionPlanPricing"];
+            /** @description What offers or uses the plan. Only present in the detail response (GET /subscription-plans/{planId}), omitted from list responses. A plan in use cannot be deleted, and its name and limit cannot be updated. */
+            readonly usage?: components["schemas"]["SubscriptionPlanUsage"];
+        };
+        /** @description Counts of what offers or uses a plan. Only counts are given: a plan may be offered by more APIs than a response or message can list. */
+        SubscriptionPlanUsage: {
+            /** @description Whether anything counted below offers or uses the plan. */
+            inUse: boolean;
+            /** @description How many REST APIs list the plan in their configuration. */
+            restApis: number;
+            /** @description How many APIs offer the plan in a publication draft (each API once). */
+            drafts: number;
+            /** @description How many APIs offer the plan in a publication (each API once). */
+            publications: number;
+            /** @description How many subscriptions use the plan. */
+            subscriptions: number;
+        };
+        /** @description A meter to create or replace. A field not listed here is refused. */
+        MeterRequest: {
+            /** @description The meter's id; derived from displayName when omitted on create. */
+            id?: string;
+            /** @description Says what the meter counts, for example "Input tokens". */
+            displayName: string;
+            description?: string;
+            /**
+             * @description What is counted: requests (REQUEST_COUNT), each counting one, or the tokens of AI API requests (TOKENS), adding up the number in the event field `typeKey` names. A meter has no conditions: each plan price gives its own filters.
+             * @enum {string}
+             */
+            type: "REQUEST_COUNT" | "TOKENS";
+            /**
+             * @description TOKENS only, and required there: the event field whose number the meter adds up, as a full path in the gateway's analytics event, such as `metadata.aiTokenUsage.promptTokens` (our gateway also sends `metadata.aiTokenUsage.completionTokens` and `metadata.aiTokenUsage.totalTokens`). 1 to 255 characters with no spaces. Refused for a REQUEST_COUNT meter.
+             * @example metadata.aiTokenUsage.promptTokens
+             */
+            typeKey?: string | null;
+            /** @description The properties this meter's prices can filter on, at most 10, each named by the administrator and read from its own event field. Names and event keys are each unique within the meter. Optional; without them the meter's prices take no filters. */
+            filterFields?: components["schemas"]["MeterFilterFieldRequest"][];
+        };
+        /** @description A property this meter's prices can filter on: a name the administrator gives it and the event field it reads. Any operator works on any property; the values a price gives must fit what the event field holds. */
+        MeterFilterFieldRequest: {
+            /**
+             * @description The property's name, 1 to 40 characters, unique within the meter ignoring case, such as `Status code` or `Region`.
+             * @example Status code
+             */
+            field: string;
+            /**
+             * @description The event field the property reads, as a full path in the Moesif event; 1 to 255 characters with no spaces, unique within the meter. Our gateway sends, among others, `response.status`, `request.verb`, `metadata.apiType`, `metadata.mcpAnalytics.jsonRpcMethod`, `metadata.mcpAnalytics.capabilityName` and `metadata.aiTokenUsage.promptTokens`, and Moesif adds `request.route`, the request path with its IDs as `:id`.
+             * @example response.status
+             */
+            eventKey: string;
+        };
+        Meter: {
+            id?: string;
+            displayName?: string;
+            description?: string;
+            /** @enum {string} */
+            type?: "REQUEST_COUNT" | "TOKENS";
+            /** @description The event field whose number a TOKENS meter adds up, as stored on the meter, such as `metadata.aiTokenUsage.promptTokens`; null for REQUEST_COUNT. */
+            typeKey?: string | null;
+            /** @description The fields this meter's prices can filter on, each with the event field it reads, as stored on the meter. */
+            filterFields?: components["schemas"]["MeterFilterField"][];
+            /** Format: date-time */
+            updatedAt?: string;
+            /** @description How many plans charge for this meter. While it is above 0, the meter cannot be updated or deleted. */
+            planCount?: number;
+        };
+        MeterFilterField: {
+            /** @description The property's name, such as `Status code`. */
+            field: string;
+            /** @description The event field the property reads, such as `response.status`. */
+            eventKey: string;
+        };
+        MeterListResponse: {
+            count: number;
+            list: components["schemas"]["Meter"][];
+            pagination: components["schemas"]["Pagination"];
+        };
+        PriceTier: {
+            /**
+             * Format: int64
+             * @description The last unit of the tier; null on the last tier.
+             */
+            upTo?: number | null;
+            unitAmount?: string | null;
+            flatAmount?: string | null;
+        };
+        /** @description Narrows the requests a plan price counts, on one of its meter's properties. Any operator works on any property. EQUALS, NOT_EQUALS and STARTS_WITH take one text value; IN and NOT_IN one to 20; text values are matched exactly as written (case-sensitive). STARTS_WITH matches values that begin with the text, so `/orders` also matches `/orders-archive`. NOT_EQUALS and NOT_IN count the requests that have the property with another value: a request without it is not counted. GREATER_THAN (more than), GREATER_THAN_OR_EQUAL (at least), LESS_THAN (less than) and LESS_THAN_OR_EQUAL (at most) compare a number: exactly one whole number from 0 to 1000000000000. On one property a price has either one EQUALS, NOT_EQUALS, IN, NOT_IN or STARTS_WITH filter, or one or two comparisons, which make a range (more than 100 and at most 500) and must be able to hold together. Values are not checked against what the property holds: they must fit its event field, numbers for a number field and the exact text for a text field. */
+        PriceFilter: {
+            /**
+             * @description The name of one of the meter's properties, matched ignoring case.
+             * @example Status code
+             */
+            field: string;
+            /** @enum {string} */
+            operator: "EQUALS" | "NOT_EQUALS" | "IN" | "NOT_IN" | "STARTS_WITH" | "GREATER_THAN" | "GREATER_THAN_OR_EQUAL" | "LESS_THAN" | "LESS_THAN_OR_EQUAL";
+            /** @description The values to match; for a comparison, exactly one whole number written as a string, such as "333". */
+            values: string[];
+        };
+        /** @description A usage price of a paid plan: what the meter `meterId` counts, narrowed by the price's `filters`, charged in one pricing model. PER_UNIT charges `unitAmount` per `unitQuantity` units; VOLUME prices all the units at the tier their total falls in; GRADUATED prices the units in each tier at that tier's price. Fields of other models are not accepted. A plan may price one meter several times, but two prices on the same meter must not count the same request. A price has no name: it is shown as the meter's name followed by its filters. */
+        SubscriptionPlanPrice: {
+            /** @description The `id` of the meter that counts the units, one of the organization's meters (GET /meters). */
+            meterId: string;
+            /** @description Optional; each names one of the properties the meter lists in its filterFields. On one property a price has either one EQUALS, NOT_EQUALS, IN, NOT_IN or STARTS_WITH filter, or one or two comparisons. Without filters the price counts every request the meter counts. */
+            filters?: components["schemas"]["PriceFilter"][];
+            /** @enum {string} */
+            pricingModel: "PER_UNIT" | "VOLUME" | "GRADUATED";
+            /** @description PER_UNIT only. The price per `unitQuantity` units, as a decimal string. */
+            unitAmount?: string | null;
+            /**
+             * Format: int64
+             * @description PER_UNIT only. How many units `unitAmount` is for (default 1).
+             */
+            unitQuantity?: number | null;
+            /** @description VOLUME and GRADUATED only. In ascending order; the last tier has no `upTo`. */
+            tiers?: components["schemas"]["PriceTier"][] | null;
+        };
+        /** @description What a paid subscription plan costs, given when the plan is created. A FLAT_RATE plan charges `flatAmount` every billing period and has no prices. A USAGE_BASED plan charges its `prices` (1 to 20) on one invoice per period and has no flat amount. A plan created without pricing is free. Pricing can't be updated once the plan exists, so a field the pricing, a price, a filter or a tier does not take is refused rather than ignored. */
+        SubscriptionPlanPricingRequest: {
+            /** @enum {string} */
+            pricingType: "FLAT_RATE" | "USAGE_BASED";
+            currency: string;
+            /** @enum {string} */
+            billingPeriod: "MONTH" | "YEAR";
+            /** @description FLAT_RATE only. The amount charged every billing period, as a decimal string in the currency. */
+            flatAmount?: string | null;
+            /** @description USAGE_BASED only. */
+            prices?: components["schemas"]["SubscriptionPlanPrice"][];
+        };
+        SubscriptionPlanPricing: {
+            subscriptionPlanId?: string;
+            /** @enum {string} */
+            pricingType?: "FLAT_RATE" | "USAGE_BASED";
+            currency?: string;
+            /** @enum {string} */
+            billingPeriod?: "MONTH" | "YEAR";
+            flatAmount?: string | null;
+            prices?: components["schemas"]["SubscriptionPlanPrice"][];
+            /** Format: date-time */
+            updatedAt?: string;
+        };
+        /** @description The billing of a paid subscription, as the API Portal reports it from the billing provider. */
+        SubscriptionBilling: {
+            /**
+             * @description Gateways refuse calls (403) while UNPAID or CANCELLED.
+             * @enum {string}
+             */
+            status?: "ACTIVE" | "PAST_DUE" | "UNPAID" | "CANCELLED";
+            /** @description The billing provider's customer. */
+            customerId?: string;
+            /** @description The billing provider's subscription. */
+            subscriptionId?: string;
         };
         SubscriptionPlanListResponse: {
             /** @description List of subscription plans in current response */
@@ -5414,6 +5651,7 @@ export interface components {
             organizationId?: string;
             /** @enum {string} */
             status?: "ACTIVE" | "INACTIVE" | "REVOKED";
+            billing?: components["schemas"]["SubscriptionBilling"];
             /**
              * @description User identifier of the user who created this resource
              * @example john.doe
@@ -7213,6 +7451,17 @@ export interface components {
         };
         SubscriptionPlanIdList: string[];
         DocIdList: string[];
+        /** @description A subscription plan or document selected by a publication, as it was when last saved or published. */
+        PublicationSelection: {
+            /** @description The plan or document handle. */
+            id: string;
+            /** @description The name stored with the selection, so it can still be shown after the source is deleted. */
+            displayName: string;
+            /** @description True when the plan or document no longer exists. The publication keeps the selection until the next publish. */
+            deleted: boolean;
+            /** @description True when the plan or document was changed after this selection was last saved (a draft) or published (a live listing). Saving the draft or publishing again clears it. */
+            edited: boolean;
+        };
         PublicationDraftDetailsInput: components["schemas"]["PublicationDetailsCore"] & {
             subscriptionPlanIds?: components["schemas"]["SubscriptionPlanIdList"];
             docIds?: components["schemas"]["DocIdList"];
@@ -7222,6 +7471,10 @@ export interface components {
             readonly hasThumbnail?: boolean;
             /** @description Whether this draft stores a landing page of its own. It is always Markdown, so it has no file name. */
             readonly hasLandingPage?: boolean;
+            /** @description The selected subscription plans, including deleted ones. Same plans as subscriptionPlanIds. */
+            readonly subscriptionPlans?: components["schemas"]["PublicationSelection"][];
+            /** @description The selected documents, including deleted ones. Same documents as docIds. */
+            readonly documents?: components["schemas"]["PublicationSelection"][];
         };
         Publication: components["schemas"]["PublicationDetailsCore"] & components["schemas"]["PublicationAuditFields"] & {
             /** @description The API Portal's handle. */
@@ -7235,6 +7488,10 @@ export interface components {
             readonly hasThumbnail?: boolean;
             /** @description Whether this publication stores a landing page. */
             readonly hasLandingPage?: boolean;
+            /** @description The selected subscription plans, including deleted ones. Same plans as subscriptionPlanIds. */
+            readonly subscriptionPlans?: components["schemas"]["PublicationSelection"][];
+            /** @description The selected documents, including deleted ones. Same documents as docIds. */
+            readonly documents?: components["schemas"]["PublicationSelection"][];
         };
         PublicationSummaryItem: {
             /** @description The API Portal's handle. */
@@ -8005,7 +8262,7 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
-        /** @description Conflict. code identifies which: PUBLICATION_STATE_CONFLICT when the action is not valid for the publication's current status, PUBLICATION_DRAFT_CHANGED when the draft was saved while a publish of it was in flight (the API Portal may hold the earlier copy; review the draft and publish again), or PUBLICATION_PORTAL_CONFLICT when the API Portal refused the change: the handle or display name and version is taken, the listing still has subscriptions or active API keys, or a subscription plan could not be created because the portal already holds it. A portal conflict does not clear on retry (rename, remove the consumers, or deprecate instead), except a plan conflict from a concurrent publish, which usually does. No local state was changed by any of these. */
+        /** @description Conflict. code identifies which: PUBLICATION_STATE_CONFLICT when the action is not valid for the publication's current status, PUBLICATION_DRAFT_CHANGED when the draft was saved while a publish of it was in flight (the API Portal may hold the earlier copy; review the draft and publish again), PUBLICATION_PLAN_PRICING_CONFLICT when the API Portal already has a plan with the handle of an offered plan but different pricing (a portal cannot change a plan's pricing; offer a plan with another handle), PUBLICATION_METER_CONFLICT when it already has a meter with the same id as one an offered plan charges for, but with other settings (price a new plan with a meter of another id), or PUBLICATION_PORTAL_CONFLICT when the API Portal refused the change: the handle or display name and version is taken, the listing still has subscriptions or active API keys, a plan the publish removes from the API still has subscriptions to it there, or a subscription plan could not be created or updated. A portal conflict does not clear on retry (rename, remove the consumers, or deprecate instead), except a plan conflict from a concurrent publish, which usually does. No local state was changed by any of these. Before the API is pushed, the API Portal's copy of each offered plan is created, after the meters its prices charge for, or, when its name or limit differs, updated. When the push then fails, the plans and meters this publish created are removed again; the name and limit updates stay. */
         PublicationConflict: {
             headers: {
                 [name: string]: unknown;
@@ -14351,6 +14608,8 @@ export interface operations {
                 offset?: components["parameters"]["offset-Q"];
                 /** @description Case-insensitive substring filter matched against the resource display name and id (handle). */
                 query?: components["parameters"]["query-Q"];
+                /** @description Only the plans with this status (ACTIVE, INACTIVE) */
+                status?: "ACTIVE" | "INACTIVE";
             };
             header?: never;
             path?: never;
@@ -14398,6 +14657,7 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             409: components["responses"]["Conflict"];
+            413: components["responses"]["PayloadTooLarge"];
             500: components["responses"]["InternalServerError"];
         };
     };
@@ -14479,6 +14739,179 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    GetSubscriptionPlanPricing: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The plan's id (handle), as returned in `id` by GET /subscription-plans. */
+                subscriptionPlanId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The plan's pricing */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubscriptionPlanPricing"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    ListMeters: {
+        parameters: {
+            query?: {
+                /** @description Maximum number of items to return per page. */
+                limit?: components["parameters"]["limit-Q"];
+                /** @description Zero-based index of the first item to return. */
+                offset?: components["parameters"]["offset-Q"];
+                /** @description Case-insensitive substring filter matched against the resource display name and id (handle). */
+                query?: components["parameters"]["query-Q"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The meters */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeterListResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    CreateMeter: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MeterRequest"];
+            };
+        };
+        responses: {
+            /** @description The meter, as stored */
+            201: {
+                headers: {
+                    Location: components["headers"]["Location"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Meter"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            413: components["responses"]["PayloadTooLarge"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    GetMeter: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The meter's id (handle), as returned in `id` by GET /meters or POST /meters. */
+                meterId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The meter */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Meter"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    UpdateMeter: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The meter's id (handle), as returned in `id` by GET /meters or POST /meters. */
+                meterId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MeterRequest"];
+            };
+        };
+        responses: {
+            /** @description The meter, as stored */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Meter"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            413: components["responses"]["PayloadTooLarge"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    DeleteMeter: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The meter's id (handle), as returned in `id` by GET /meters or POST /meters. */
+                meterId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Meter deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
             500: components["responses"]["InternalServerError"];
         };
     };

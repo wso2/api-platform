@@ -192,3 +192,18 @@ func TestSubscriptionResourceServiceReplaceApplicationMappings_PublishesRemovedK
 	require.NoError(t, json.Unmarshal([]byte(hub.publishedEvents[0].EventData), &eventData))
 	assert.Equal(t, []string{"key-3"}, eventData.RemovedAPIKeyIDs)
 }
+
+func TestCopySubscriptionFields_CopiesBillingIDsAsSent(t *testing.T) {
+	customer, subscription := "cus_1", "sub_1"
+	stored := &models.Subscription{ID: "sub-1"}
+
+	copySubscriptionFields(stored, &models.Subscription{ID: "sub-1", BillingCustomerID: &customer, BillingSubscriptionID: &subscription})
+	require.NotNil(t, stored.BillingCustomerID)
+	require.NotNil(t, stored.BillingSubscriptionID)
+	assert.Equal(t, "cus_1", *stored.BillingCustomerID)
+	assert.Equal(t, "sub_1", *stored.BillingSubscriptionID)
+
+	copySubscriptionFields(stored, &models.Subscription{ID: "sub-1"})
+	assert.Nil(t, stored.BillingCustomerID)
+	assert.Nil(t, stored.BillingSubscriptionID)
+}
