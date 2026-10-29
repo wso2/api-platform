@@ -21,7 +21,7 @@ For detailed setup instructions, see [Quickstart Guide](specs/001-policy-engine/
 ### Prerequisites
 
 - Docker and Docker Compose
-- Go 1.23+ (for custom policy development)
+- Go 1.26.10+ (for custom policy development)
 
 ### Build Policy Engine with Sample Policies
 

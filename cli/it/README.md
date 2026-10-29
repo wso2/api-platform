@@ -4,7 +4,7 @@ End-to-end integration tests for the `ap` CLI, validating commands against real 
 
 ## Prerequisites
 
-- Go 1.25.1 or later
+- Go 1.26.10 or later
 - Docker and Docker Compose
 - Network access to pull Docker images
 
