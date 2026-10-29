@@ -22,12 +22,17 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to release (MAJOR.MINOR.PATCH, e.g. 0.1.0).'
-        required: true
+        description: 'Version to release (MAJOR.MINOR.PATCH, e.g. 0.1.0). Leave empty to just replace the :latest testbench image without cutting a module release.'
+        required: false
         type: string
 
 env:
   TESTBENCH_REPOSITORY: ghcr.io/wso2/api-platform/testbench
+
+# Serializes releases: two in-flight runs could otherwise both pass the staleness check below
+# against a moving main, then race to publish.
+concurrency:
+  group: tests-framework-release
 
 jobs:
   release:
@@ -49,6 +54,7 @@ jobs:
 
       - name: Validate the version
         id: version
+        if: inputs.version != ''
         env:
           INPUT_VERSION: ${{ inputs.version }}
         run: |
@@ -63,6 +69,26 @@ jobs:
             exit 1
           fi
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      # Always evaluated, so a version release skips moving :latest instead of being rejected
+      # outright — a version input may deliberately target an older commit for a backport.
+      - name: Check whether this commit is main's current head
+        id: freshness
+        run: |
+          set -euo pipefail
+          main_head="$(git ls-remote --heads origin main | cut -f1)"
+          if [ "${main_head}" = "${GITHUB_SHA}" ]; then
+            echo "current=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "current=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::${GITHUB_SHA} is not main's current head (${main_head})"
+          fi
+
+      - name: Reject a stale commit for a :latest-only release
+        if: inputs.version == '' && steps.freshness.outputs.current != 'true'
+        run: |
+          echo "Error: refusing to replace :latest from a stale commit. Re-dispatch from the current main."
+          exit 1
 
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
@@ -92,17 +118,35 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.API_PLATFORM_BOT_TOKEN }}
 
+      # :latest only moves when this commit is current (see the freshness check above) — a
+      # version release from a stale commit still publishes its own immutable :VERSION tag.
       - name: Build and push the testbench image
         env:
           VERSION: ${{ steps.version.outputs.version }}
+          CURRENT: ${{ steps.freshness.outputs.current }}
         run: |
+          set -euo pipefail
+          tags=()
+          if [ "${CURRENT}" = "true" ]; then
+            tags+=(-t "${TESTBENCH_REPOSITORY}:latest")
+          fi
+          if [ -n "${VERSION}" ]; then
+            tags+=(-t "${TESTBENCH_REPOSITORY}:${VERSION}")
+          fi
+          if [ "${#tags[@]}" -eq 0 ]; then
+            echo "Error: nothing to publish — a stale commit with no version given"
+            exit 1
+          fi
           docker buildx build \
             --platform linux/amd64,linux/arm64 \
             -f testbench/Dockerfile \
-            -t "${TESTBENCH_REPOSITORY}:${VERSION}" \
+            "${tags[@]}" \
             --push .
 
-      - name: Create and push the tag
+      # Only when a version is given — that's what makes `go get .../tests/framework@vX.Y.Z`
+      # resolve a real, reproducible module release. A plain :latest replace needs no tag.
+      - name: Create and push the release tag
+        if: steps.version.outputs.version != ''
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
