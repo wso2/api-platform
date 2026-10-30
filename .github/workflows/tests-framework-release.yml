@@ -22,18 +22,26 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to release (MAJOR.MINOR.PATCH, e.g. 0.1.0).'
-        required: true
+        description: 'Version to release (MAJOR.MINOR.PATCH, e.g. 0.5.0). Leave empty to auto-increment the latest patch.'
+        required: false
         type: string
 
 env:
   TESTBENCH_REPOSITORY: ghcr.io/wso2/api-platform/testbench
+  TESTBENCH_PACKAGE: api-platform/testbench
+  GHCR_ORG: wso2
+  RETAIN_KEEP: 3
 
 jobs:
   release:
+    name: Release
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 45
+    # Serializes releases: two in-flight runs could otherwise both pass the staleness check
+    # below against a moving main, then race to publish.
+    concurrency:
+      group: tests-framework-release
     permissions:
       contents: write
       packages: write
@@ -47,16 +55,28 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
-      - name: Validate the version
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: '1.26.10'
+          cache-dependency-path: tests/framework/go.sum
+
+      - name: Determine the effective version
         id: version
         env:
           INPUT_VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
-          VERSION="${INPUT_VERSION#v}"
-          if ! printf '%s' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
-            echo "Error: '$INPUT_VERSION' is not a MAJOR.MINOR.PATCH version"
-            exit 1
+          if [ -n "${INPUT_VERSION}" ]; then
+            VERSION="${INPUT_VERSION#v}"
+            if ! printf '%s' "$VERSION" | grep -Eq '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'; then
+              echo "Error: '$INPUT_VERSION' is not a MAJOR.MINOR.PATCH version"
+              exit 1
+            fi
+            echo "explicit=true" >> "$GITHUB_OUTPUT"
+          else
+            VERSION="$(go run ./cmd/release next-version -repo .)"
+            echo "explicit=false" >> "$GITHUB_OUTPUT"
           fi
           if git rev-parse "tests/framework/v${VERSION}" >/dev/null 2>&1; then
             echo "Error: tag tests/framework/v${VERSION} already exists"
@@ -64,11 +84,29 @@ jobs:
           fi
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
-      - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
-        with:
-          go-version: '1.26.10'
-          cache-dependency-path: tests/framework/go.sum
+      # Only for an auto-computed version: auto-incrementing the patch of the latest release
+      # from a commit main has already moved past would publish a release that's missing
+      # whatever landed since. An explicit version (a deliberate backport, say) is exempt —
+      # releasing from an older commit on purpose is the point of giving one.
+      - name: Reject an auto-computed release from a stale commit
+        if: steps.version.outputs.explicit == 'false'
+        run: |
+          set -euo pipefail
+          main_head="$(git ls-remote --heads origin main | cut -f1)"
+          if [ "${main_head}" != "${GITHUB_SHA}" ]; then
+            echo "Error: ${GITHUB_SHA} is not main's current head (${main_head})."
+            echo "Re-dispatch from the current main, or give an explicit version to release from this commit on purpose."
+            exit 1
+          fi
+
+      - name: Determine which floating tags this release also receives
+        id: floating
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          tags="$(go run ./cmd/release floating-tags -repo . -released "${VERSION}")"
+          echo "tags=${tags}" >> "$GITHUB_OUTPUT"
 
       - name: Generate the embedded snapshots
         run: go run ./cmd/syncassets
@@ -92,17 +130,28 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.API_PLATFORM_BOT_TOKEN }}
 
+      # The exact version tag is immutable and always published; floating-tags (determined above)
+      # decides, from the full existing tag landscape, which of latest/MAJOR/MAJOR.MINOR this
+      # release is also the newest of.
       - name: Build and push the testbench image
         env:
           VERSION: ${{ steps.version.outputs.version }}
+          FLOATING_TAGS: ${{ steps.floating.outputs.tags }}
         run: |
+          set -euo pipefail
+          tags=(-t "${TESTBENCH_REPOSITORY}:${VERSION}")
+          for tag in ${FLOATING_TAGS}; do
+            tags+=(-t "${TESTBENCH_REPOSITORY}:${tag}")
+          done
           docker buildx build \
             --platform linux/amd64,linux/arm64 \
             -f testbench/Dockerfile \
-            -t "${TESTBENCH_REPOSITORY}:${VERSION}" \
+            "${tags[@]}" \
             --push .
 
-      - name: Create and push the tag
+      # go get .../tests/framework@vX.Y.Z resolves this tag; go get .../tests/framework@v0.4 or
+      # @latest resolve it too, to the newest matching tag — see tests/framework/README.md.
+      - name: Create and push the release tag
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
@@ -118,3 +167,17 @@ jobs:
           git commit -m "Tests framework ${VERSION}: embed the generated snapshots"
           git tag -a "tests/framework/v${VERSION}" -m "Tests framework ${VERSION}"
           git push origin "tests/framework/v${VERSION}"
+
+      # Best-effort cleanup, never a reason to fail a release that already shipped: cmd/release
+      # turns a missing token, an insufficient delete:packages scope, or any other API error into
+      # a warning annotation rather than a non-zero exit.
+      - name: Retain only the newest images per minor line
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          GHCR_RETENTION_TOKEN: ${{ secrets.API_PLATFORM_BOT_TOKEN }}
+        run: |
+          go run ./cmd/release retain \
+            -org "${GHCR_ORG}" \
+            -package "${TESTBENCH_PACKAGE}" \
+            -released "${VERSION}" \
+            -keep "${RETAIN_KEEP}"

@@ -105,9 +105,42 @@ before changing one — most encode a failure mode that presents as a passing te
 ## Using the framework from another repository
 
 The framework is a Go module, `github.com/wso2/api-platform/tests/framework`, released with the
-tag `tests/framework/vX.Y.Z` by the `Tests Framework Release` workflow. A project that owns its
-features, step definitions and resource templates imports it and runs without an api-platform
-checkout:
+tag `tests/framework/vX.Y.Z` by the `Tests Framework Release` workflow. Every dispatch cuts a
+real release (tag, embedded-snapshots commit, and an immutable
+`ghcr.io/wso2/api-platform/testbench:X.Y.Z` image): the `version` input is optional, and left
+empty the workflow auto-increments the patch of the highest existing release; give it an explicit
+version to start a new minor/major or to backport a fix onto an older line.
+
+The testbench image also gets whichever floating tags that release is the newest of: `:latest`
+only when it's the highest release overall, the bare `:MAJOR` only when it's the highest within
+that major, and `:MAJOR.MINOR` only when it's the highest patch within that minor line. So a
+backport onto an older minor line never moves `:latest` or `:MAJOR` backward, and gets that line's
+`:MAJOR.MINOR` if it's the newest patch there, while an out-of-order patch inside a line gets no
+floating tag at all.
+
+Retention keeps the newest 3 patch images per minor line on a best-effort basis: after a release,
+older images in that line are deleted from GHCR, except the one just published, so a line can hold
+a fourth until the next release in it. The step is skipped with a warning when the token is
+missing or lacks `delete:packages`, and a failed deletion only warns, so the limit isn't enforced
+in those cases.
+
+A consumer picks a reference with plain `go get`, no special syntax needed:
+
+```sh
+go get github.com/wso2/api-platform/tests/framework@latest      # the newest release overall
+go get github.com/wso2/api-platform/tests/framework@v0.4        # the newest 0.4.x release
+go get github.com/wso2/api-platform/tests/framework@v0.4.2      # pinned exactly
+```
+
+`go.mod` always records one exact resolved version — a `v0.4` query is only ever evaluated at the
+moment `go get` runs, never re-floated by a later `go build`; re-run `go get` to pick up a newer
+patch. `@latest` resolves to the single highest tag in the repository, which is always the
+highest minor and patch within the highest major, by ordinary semver precedence — until a `v2+`
+release, when Go's module path convention requires moving to a `/v2`-suffixed import path and
+`@latest` against the old path stops tracking it; not a concern while this module stays at `v0`/`v1`.
+
+A project that owns its features, step definitions and resource templates imports the module and
+runs without an api-platform checkout:
 
 ```go
 func TestMain(m *testing.M) { suiterun.Main(m, options()) }
