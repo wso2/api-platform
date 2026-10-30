@@ -91,6 +91,12 @@ type Logging struct {
 	Format string `koanf:"format"`
 }
 
+// Audit holds audit-log configuration. Audit records always go to the audit
+// table; Stdout also writes each one to stdout as a JSON line.
+type Audit struct {
+	Stdout bool `koanf:"stdout"`
+}
+
 // Server holds the configuration parameters for the application.
 type Server struct {
 	Logging Logging `koanf:"logging"`
@@ -126,6 +132,7 @@ type Server struct {
 
 	Database             Database             `koanf:"database"`
 	Auth                 Auth                 `koanf:"auth"`
+	Audit                Audit                `koanf:"audit"`
 	Deployments          Deployments          `koanf:"deployments"`
 	Listeners            ServerListeners      `koanf:"server"`
 	Security             Security             `koanf:"security"`

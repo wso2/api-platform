@@ -312,6 +312,7 @@ All settings live under `[platform_api]` / `[platform_api.*]`. The main sections
 |---|---|
 | `[platform_api]` | resource paths |
 | `[platform_api.logging]` | `level`, `format` |
+| `[platform_api.audit]` | `stdout` (off by default): also write each audit record to stdout as a JSON line tagged `"logType":"audit"`. Records always go to the `audit` table |
 | `[platform_api.security]` | `encryption_key` (**required** — at-rest AES-256 key, 32 bytes as hex or base64, never auto-generated) |
 | `[platform_api.security.api_key]` | `hashing_algorithms` accepted for API key verification |
 | `[platform_api.database]` | `driver` (`sqlite3` / `postgres` / `sqlserver`), connection fields, pool sizing |

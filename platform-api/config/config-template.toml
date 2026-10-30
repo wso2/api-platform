@@ -83,6 +83,16 @@ level = "info"   # debug | info | warn | error
 # Log encoding. Use "json" when shipping logs to an aggregator.
 format = "text"   # text | json
 
+# Audit records (who created, updated or deleted what) are always written to
+# the audit table. With stdout = true each record is also written to stdout as
+# one JSON line tagged "logType":"audit", whatever the logging level and format
+# above. performedBy is the platform user UUID, not the IdP subject.
+#
+# Env example:
+#   stdout = '{{ env "APIP_CP_AUDIT_STDOUT" "false" }}'
+[platform_api.audit]
+stdout = false
+
 # ---------------------------------------------------------------------------
 # Security
 # ---------------------------------------------------------------------------
