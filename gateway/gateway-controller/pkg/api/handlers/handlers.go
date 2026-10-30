@@ -47,6 +47,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/secrets"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/agent"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/certificate"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/graphqlapi"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/restapi"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/subscription"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
@@ -87,6 +88,7 @@ type APIServer struct {
 	subscriptionResourceService *utils.SubscriptionResourceService
 	subscriptionService         *subscription.SubscriptionService
 	certificateService          *certificate.CertificateService
+	graphQLAPIService           *graphqlapi.GraphQLAPIService
 	mcpHandler                  *McpHandler
 
 	// clientAuthorities republishes the client certificate authority pool to
@@ -200,6 +202,7 @@ func NewAPIServer(
 
 	server.subscriptionService = subscription.NewSubscriptionService(db, subscriptionResourceService)
 	server.certificateService = certificate.NewCertificateService(server.certificateDependencies())
+	server.graphQLAPIService = graphqlapi.NewGraphQLAPIService(store, db, deploymentService, parser, eventHub, gatewayID, controlPlaneClient, systemConfig)
 
 	// Register status update callback
 	snapshotManager.SetStatusCallback(server.handleStatusUpdate)
@@ -230,6 +233,20 @@ func (s *APIServer) getSubscriptionService() *subscription.SubscriptionService {
 	s.subscriptionService = subscription.NewSubscriptionService(s.db, s.getSubscriptionResourceService())
 
 	return s.subscriptionService
+}
+
+// getGraphQLAPIService returns the GraphQL API service, building it on first use
+// so a hand-constructed APIServer (as in tests) works without going through
+// NewAPIServer.
+func (s *APIServer) getGraphQLAPIService() *graphqlapi.GraphQLAPIService {
+	if s.graphQLAPIService != nil {
+		return s.graphQLAPIService
+	}
+
+	s.graphQLAPIService = graphqlapi.NewGraphQLAPIService(s.store, s.db, s.deploymentService, s.parser, s.eventHub,
+		s.gatewayID, s.controlPlaneClient, s.systemConfig)
+
+	return s.graphQLAPIService
 }
 
 // resolveCertXDS returns the live cert store and snapshot manager, or nil when
@@ -467,14 +484,6 @@ func (s *APIServer) deploymentPusher() *handlerkit.DeploymentPusher {
 		ControlPlaneClient: s.controlPlaneClient,
 		SystemConfig:       s.systemConfig,
 	}
-}
-
-// pushArtifactUndeploy notifies the control plane that a gateway-originated
-// artifact was deleted from this gateway. The control plane keeps the artifact
-// and marks it undeployed. Only handlers without a service layer (GraphQL APIs)
-// use it; every other kind pushes from its service.
-func (s *APIServer) pushArtifactUndeploy(cfg *models.StoredConfig, log *slog.Logger) {
-	s.deploymentPusher().PushArtifactUndeploy(cfg, log)
 }
 
 // waitForDeploymentAndPush waits for API deployment to complete and pushes it to the control plane
@@ -775,6 +784,7 @@ func (s *APIServer) EnableMCP(
 		MCPDeploymentService: s.mcpDeploymentService,
 		LLMDeploymentService: s.llmDeploymentService,
 		AgentService:         s.agentService,
+		GraphQLAPIService:    s.getGraphQLAPIService(),
 		SecretService:        s.secretService,
 		APIKeyService:        s.apiKeyService,
 		CertificateService:   s.getCertificateService(),

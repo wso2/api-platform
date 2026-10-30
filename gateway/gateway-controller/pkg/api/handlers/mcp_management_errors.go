@@ -27,6 +27,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/agent"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/graphqlapi"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/restapi"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine"
@@ -68,6 +69,10 @@ var mcpWriteErrorMappers = map[string]mcpWriteErrorMapper{
 	models.KindRestApi: {
 		Create: mcpRestAPICreateError,
 		Update: mcpRestAPIUpdateError,
+	},
+	models.KindGraphQLApi: {
+		Create: mcpGraphQLAPICreateError,
+		Update: mcpGraphQLAPIUpdateError,
 	},
 	models.KindAgent: {
 		// Create passes an empty handle, exactly as CreateAgent does.
@@ -248,6 +253,84 @@ func mcpRestAPIUpdateError(handle string, err error) string {
 
 	if errors.Is(err, restapi.ErrNotFound) {
 		return fmt.Sprintf("RestAPI with handle '%s' not found", handle)
+	}
+
+	if storage.IsConflictError(err) {
+		return err.Error()
+	}
+
+	return "Failed to update configuration"
+}
+
+// mcpIsGraphQLAPICreateBadRequest mirrors isGraphQLAPICreateBadRequest
+// (graphql_api_handler.go).
+func mcpIsGraphQLAPICreateBadRequest(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "failed to parse configuration") ||
+		strings.Contains(message, "resource kind is required") ||
+		strings.Contains(message, "unsupported resource kind") ||
+		strings.Contains(message, "invalid or missing origin") ||
+		strings.Contains(message, "unexpected configuration type")
+}
+
+// mcpGraphQLAPICreateError mirrors the error handling in APIServer.CreateGraphQLAPI
+// (graphql_api_handler.go).
+func mcpGraphQLAPICreateError(err error) string {
+	if msg, ok := mcpRenderErrorMessage(err); ok {
+		return msg
+	}
+
+	var validationErr *utils.ValidationErrorListError
+	if errors.As(err, &validationErr) {
+		return mcpFormatValidationErrors(validationErr.Errors)
+	}
+
+	if storage.IsConflictError(err) {
+		return err.Error()
+	}
+
+	if mcpIsGraphQLAPICreateBadRequest(err) {
+		return err.Error()
+	}
+
+	return "Failed to create configuration"
+}
+
+// mcpGraphQLAPIUpdateError mirrors the error handling in APIServer.UpdateGraphQLAPI
+// (graphql_api_handler.go), including writeGraphQLAPILoadError and
+// writeGraphQLAPIUpdateError. Like REST, it has no client-error branch for a body
+// whose kind does not parse as a GraphQLApi: that falls to the generic message.
+func mcpGraphQLAPIUpdateError(handle string, err error) string {
+	if errors.Is(err, graphqlapi.ErrNotFound) {
+		return fmt.Sprintf("GraphQLApi with handle '%s' not found", handle)
+	}
+
+	var loadErr *graphqlapi.LoadError
+	if errors.As(err, &loadErr) {
+		return "Failed to retrieve configuration"
+	}
+
+	var parseErr *graphqlapi.ParseError
+	if errors.As(err, &parseErr) {
+		return fmt.Sprintf("failed to parse configuration: %v", parseErr.Cause)
+	}
+
+	var mismatchErr *graphqlapi.HandleMismatchError
+	if errors.As(err, &mismatchErr) {
+		return fmt.Sprintf("metadata.name '%s' does not match path id '%s'", mismatchErr.YAMLHandle, handle)
+	}
+
+	if msg, ok := mcpRenderErrorMessage(err); ok {
+		return msg
+	}
+
+	var validationErr *utils.ValidationErrorListError
+	if errors.As(err, &validationErr) {
+		return mcpFormatValidationErrors(validationErr.Errors)
 	}
 
 	if storage.IsConflictError(err) {

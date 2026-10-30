@@ -122,6 +122,45 @@ Feature: Gateway controller management MCP endpoint
     And the JSON response field "result.isError" should be "true"
     And the JSON response field "result.content[0].text" should contain "not found"
 
+  Scenario: A GraphQL API deployed through MCP routes traffic, is readable and can be undeployed through MCP
+    Given I generate a unique resource name from "mcp-tool-graphql" and store it as "graphqlName"
+    And I generate a unique value from "mcp-tool-graphql" and store it as "graphqlDisplayName"
+    And I generate a unique API version from "mcp-tool-graphql" and store it as "graphqlVersion"
+    And I generate a unique API context from "/mcp-tool-graphql" and store it as "graphqlContext"
+    When I call the MCP tool "wso2_apip_gw_deploy_api" on the "gateway-controller" service with arguments:
+      """
+      {"kind":"GraphQLApi","yaml":"apiVersion: ${CTX:gatewaySpecVersion}\nkind: GraphQLApi\nmetadata:\n  name: ${CTX:graphqlName}\nspec:\n  displayName: ${CTX:graphqlDisplayName}\n  version: ${CTX:graphqlVersion}\n  context: ${CTX:graphqlContext}\n  upstream:\n    main:\n      url: http://testbench:3000/graphql\n"}
+      """
+    Then the response status code should be 200
+    And the JSON response field "result.isError" should not exist
+    And the JSON response field "result.structuredContent.operation" should be "create"
+    And the JSON response field "result.structuredContent.kind" should be "GraphQLApi"
+    And the JSON response field "result.structuredContent.resource.metadata.name" should be "${CTX:graphqlName}"
+    When I send a "POST" request to "${CTX:graphqlContext}" until status 200 with body:
+      """
+      {"query":"{ countries { code name } }"}
+      """
+    Then the response should be successful
+    When I call the MCP tool "wso2_apip_gw_get_resource" on the "gateway-controller" service with arguments:
+      """
+      {"kind":"GraphQLApi","id":"${CTX:graphqlName}"}
+      """
+    Then the response status code should be 200
+    And the JSON response field "result.isError" should not exist
+    And the JSON response field "result.structuredContent.resource.spec.displayName" should be "${CTX:graphqlDisplayName}"
+    When I call the MCP tool "wso2_apip_gw_undeploy_api" on the "gateway-controller" service with arguments:
+      """
+      {"kind":"GraphQLApi","id":"${CTX:graphqlName}","confirm":true}
+      """
+    Then the response status code should be 200
+    And the JSON response field "result.structuredContent.message" should contain "deleted successfully"
+    When I call the MCP tool "wso2_apip_gw_get_resource" on the "gateway-controller" service with arguments:
+      """
+      {"kind":"GraphQLApi","id":"${CTX:graphqlName}"}
+      """
+    Then the JSON response field "result.isError" should be "true"
+    And the JSON response field "result.content[0].text" should contain "not found"
+
   Scenario: An invalid manifest is returned as a tool error and nothing is deployed
     Given I generate a unique resource name from "mcp-tool-invalid" and store it as "apiName"
     And I generate a unique API context from "/mcp-tool-invalid" and store it as "apiContext"

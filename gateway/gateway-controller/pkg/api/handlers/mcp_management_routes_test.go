@@ -37,7 +37,7 @@ import (
 )
 
 // routesAllServices wires every optional service so the registry is complete:
-// all seven kinds, API keys on the key-bearing ones, and both action tools.
+// all eight kinds, API keys on the key-bearing ones, and both action tools.
 func routesAllServices() McpHandlerParams {
 	return McpHandlerParams{
 		Logger:              toolsDiscard,
@@ -159,6 +159,10 @@ func TestRouteKeysForCallMapsEveryTool(t *testing.T) {
 		{"deploy create", "wso2_apip_gw_deploy_api", deployInput{Kind: "Agent", Yaml: "x"}, []string{"POST /agents"}},
 		{"deploy update", "wso2_apip_gw_deploy_api", deployInput{Kind: "llm-provider", Yaml: "x", ID: "p"},
 			[]string{"PUT /llm-providers/{id}"}},
+		{"deploy a GraphQL API", "wso2_apip_gw_deploy_api", deployInput{Kind: "GraphQLApi", Yaml: "x"},
+			[]string{"POST /graphql-apis"}},
+		{"undeploy a GraphQL API", "wso2_apip_gw_undeploy_api", deleteInput{Kind: "graphql", ID: "g"},
+			[]string{"DELETE /graphql-apis/{id}"}},
 		{"apply_config create", "wso2_apip_gw_apply_config", deployInput{Kind: "LlmProviderTemplate", Yaml: "x"},
 			[]string{"POST /llm-provider-templates"}},
 		{"undeploy", "wso2_apip_gw_undeploy_api", deleteInput{Kind: "LlmProxy", ID: "p"},
@@ -175,6 +179,8 @@ func TestRouteKeysForCallMapsEveryTool(t *testing.T) {
 			[]string{"POST /llm-providers/{id}/api-keys"}},
 		{"list keys", "wso2_apip_gw_list_api_keys", listKeysInput{Kind: "Agent", ID: "a"},
 			[]string{"GET /agents/{id}/api-keys"}},
+		{"issue a key on a GraphQL API", "wso2_apip_gw_issue_api_key", issueKeyInput{Kind: "GraphQLApi", ID: "g"},
+			[]string{"POST /graphql-apis/{id}/api-keys"}},
 		{"rotate generates", "wso2_apip_gw_rotate_api_key", rotateKeyInput{Kind: "LlmProxy", ID: "p", KeyName: "k"},
 			[]string{"POST /llm-proxies/{id}/api-keys/{apiKeyName}/regenerate"}},
 		// Whitespace is not a key value, so this is a regeneration too: the
@@ -214,6 +220,7 @@ func TestRouteKeysForCallListWithoutKindCoversEveryRegisteredKind(t *testing.T) 
 	require.True(t, ok)
 	assert.Equal(t, []string{
 		"GET /agents",
+		"GET /graphql-apis",
 		"GET /llm-providers",
 		"GET /llm-provider-templates",
 		"GET /llm-proxies",
@@ -227,7 +234,7 @@ func TestRouteKeysForCallListWithoutKindCoversEveryRegisteredKind(t *testing.T) 
 	got, ok = bare.routeKeysForCall("wso2_apip_gw_list_resources", routesArgs(t, listInput{}))
 	require.True(t, ok)
 	assert.NotContains(t, got, "GET /secrets")
-	assert.Len(t, got, 6)
+	assert.Len(t, got, 7)
 }
 
 // Calls that cannot be mapped return ok=false and no keys.

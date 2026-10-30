@@ -76,6 +76,7 @@ func newKindsFixture(t *testing.T) *kindsFixture {
 		MCPDeploymentService: server.mcpDeploymentService,
 		LLMDeploymentService: server.llmDeploymentService,
 		AgentService:         server.agentService,
+		GraphQLAPIService:    server.getGraphQLAPIService(),
 		SecretService:        secrets.NewSecretsService(server.db, providers, kindsDiscard),
 		APIKeyService:        server.apiKeyService,
 		Logger:               kindsDiscard,
@@ -180,6 +181,7 @@ func TestNormalizeKindAcceptsEverySpelling(t *testing.T) {
 		"LlmProvider": models.KindLlmProvider, "llm-provider": models.KindLlmProvider,
 		"LlmProviderTemplate": models.KindLlmProviderTemplate, "llm_provider_template": models.KindLlmProviderTemplate,
 		"Agent": models.KindAgent, "AGENT": models.KindAgent,
+		"GraphQLApi": models.KindGraphQLApi, "graphql": models.KindGraphQLApi, "GraphQL API": models.KindGraphQLApi, "graphql_api": models.KindGraphQLApi,
 		"Secret": models.KindSecret, "secret": models.KindSecret,
 	} {
 		got, err := normalizeKind(raw)
@@ -190,14 +192,14 @@ func TestNormalizeKindAcceptsEverySpelling(t *testing.T) {
 	_, err := normalizeKind("Widget")
 	require.Error(t, err)
 	assert.Equal(t,
-		`unknown kind "Widget"; supported kinds: Agent, LlmProvider, LlmProviderTemplate, LlmProxy, Mcp, RestApi, Secret`,
+		`unknown kind "Widget"; supported kinds: Agent, GraphQLApi, LlmProvider, LlmProviderTemplate, LlmProxy, Mcp, RestApi, Secret`,
 		err.Error())
 }
 
 func TestCanonicalKindsIsSortedAndDeduplicated(t *testing.T) {
 	assert.Equal(t,
-		[]string{"Agent", "LlmProvider", "LlmProviderTemplate", "LlmProxy", "Mcp", "RestApi", "Secret"},
-		canonicalKinds(), "two aliases map to Mcp, yet it must appear once")
+		[]string{"Agent", "GraphQLApi", "LlmProvider", "LlmProviderTemplate", "LlmProxy", "Mcp", "RestApi", "Secret"},
+		canonicalKinds(), "two aliases each map to Mcp and to GraphQLApi, yet each must appear once")
 }
 
 // Each kind's collection is the authorization anchor: an MCP call is authorized
@@ -212,6 +214,7 @@ func TestBuildKindRegistryWiresEveryKind(t *testing.T) {
 		keys       bool
 	}{
 		{models.KindRestApi, "/rest-apis", true, true},
+		{models.KindGraphQLApi, "/graphql-apis", true, true},
 		{models.KindMcp, "/mcp-proxies", true, false},
 		{models.KindLlmProxy, "/llm-proxies", true, true},
 		{models.KindLlmProvider, "/llm-providers", true, true},
@@ -263,7 +266,7 @@ func TestResolveKindEnforcesTheClass(t *testing.T) {
 	_, err = f.h.resolveKind("Secret", classRoutable)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), `kind "Secret" is a supporting configuration`)
-	assert.Contains(t, err.Error(), "accept: Agent, LlmProvider, LlmProxy, Mcp, RestApi")
+	assert.Contains(t, err.Error(), "accept: Agent, GraphQLApi, LlmProvider, LlmProxy, Mcp, RestApi")
 
 	_, err = f.h.resolveKind("RestApi", classConfig)
 	require.Error(t, err)
@@ -281,7 +284,7 @@ func TestResolveKeyBearing(t *testing.T) {
 	for _, kind := range []string{"Mcp", "LlmProviderTemplate", "Secret"} {
 		_, err := f.h.resolveKeyBearing(kind)
 		require.Errorf(t, err, "%s has no API keys", kind)
-		assert.Contains(t, err.Error(), "the API key tools accept: Agent, LlmProvider, LlmProxy, RestApi")
+		assert.Contains(t, err.Error(), "the API key tools accept: Agent, GraphQLApi, LlmProvider, LlmProxy, RestApi")
 	}
 }
 
@@ -314,6 +317,10 @@ func kindsCases(t *testing.T) []kindsCase {
 		{kind: models.KindRestApi, handle: "orders", displayName: "Orders", renamed: "Orders Renamed",
 			create:   createTestRestAPIRequestBody(t, "orders", "Orders", "v1.0", "/orders"),
 			update:   createTestRestAPIRequestBody(t, "orders", "Orders Renamed", "v1.0", "/orders"),
+			routable: true},
+		{kind: models.KindGraphQLApi, handle: "orders-graphql", displayName: "Orders", renamed: "Orders Renamed",
+			create:   graphQLManifest("orders-graphql", "Orders", "v1.0", "/orders-graphql"),
+			update:   graphQLManifest("orders-graphql", "Orders Renamed", "v1.0", "/orders-graphql"),
 			routable: true},
 		{kind: models.KindMcp, handle: "tools", displayName: "Tools", renamed: "Tools Renamed",
 			create:   createTestMCPRequestBody(t, "tools", "Tools", "v1.0", "/tools"),
@@ -536,7 +543,7 @@ func TestListFailsOnAnUnreadableRow(t *testing.T) {
 }
 
 func TestListReturnsTheStorageError(t *testing.T) {
-	for _, kind := range []string{models.KindMcp, models.KindAgent} {
+	for _, kind := range []string{models.KindMcp, models.KindAgent, models.KindGraphQLApi} {
 		t.Run(kind, func(t *testing.T) {
 			f := newKindsFixture(t)
 			f.db.getErr = errors.New("database is locked")
@@ -696,4 +703,29 @@ func TestAPIKeyOpsPassTheKindExplicitly(t *testing.T) {
 		api.APIKeyCreationRequest{Name: &keyName}, kindsCaller, "c", kindsDiscard)
 	require.Error(t, err)
 	assert.True(t, storage.IsNotFoundError(err), "openai is an LlmProvider, not a RestApi: %v", err)
+}
+
+// A GraphQL API bears keys like a REST API, under its own kind: a key issued
+// against it is found through the GraphQLApi adapter and not through RestApi's.
+func TestAPIKeyOpsForAGraphQLAPI(t *testing.T) {
+	f := newKindsFixture(t)
+	_, err := f.h.kinds[models.KindGraphQLApi].Create(
+		graphQLManifest("orders-graphql", "Orders", "v1.0", "/orders-graphql"), "c", kindsDiscard)
+	require.NoError(t, err)
+	keyName := "graphql-key"
+
+	issued, err := f.h.kinds[models.KindGraphQLApi].Keys.Issue("orders-graphql",
+		api.APIKeyCreationRequest{Name: &keyName}, kindsCaller, "c", kindsDiscard)
+	require.NoError(t, err)
+	assert.True(t, strings.HasPrefix(kindsDig(t, kindsJSON(t, issued), "apiKey", "apiKey").(string), "apip_"))
+
+	listed, err := f.h.kinds[models.KindGraphQLApi].Keys.List("orders-graphql", kindsCaller, "c", kindsDiscard)
+	require.NoError(t, err)
+	raw, err := json.Marshal(listed)
+	require.NoError(t, err)
+	assert.Contains(t, string(raw), `"graphql-key"`)
+
+	_, err = f.h.kinds[models.KindRestApi].Keys.List("orders-graphql", kindsCaller, "c", kindsDiscard)
+	require.Error(t, err)
+	assert.True(t, storage.IsNotFoundError(err), "orders-graphql is a GraphQLApi, not a RestApi: %v", err)
 }

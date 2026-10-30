@@ -1462,6 +1462,7 @@ func attachTestEventHub(server *APIServer, hub eventhub.EventHub, gatewayID stri
 	server.apiKeyService = utils.NewAPIKeyService(server.store, server.db, server.apiKeyXDSManager, &server.systemConfig.APIKey, hub, gatewayID)
 	server.subscriptionResourceService = utils.NewSubscriptionResourceService(server.db, server.subscriptionSnapshotUpdater, hub, gatewayID)
 	server.subscriptionService = nil
+	server.graphQLAPIService = nil
 	server.mcpDeploymentService = utils.NewMCPDeploymentService(server.store, server.db, server.snapshotManager, server.policyManager, policyValidator, hub, gatewayID, nil, policyVersionResolver)
 
 	server.llmDeploymentService = utils.NewLLMDeploymentService(
@@ -4587,6 +4588,8 @@ func TestEnableMCP(t *testing.T) {
 		assert.Same(t, server.mcpDeploymentService, h.mcpDeploymentService)
 		assert.Same(t, server.llmDeploymentService, h.llmDeploymentService)
 		assert.Same(t, server.agentService, h.agentService)
+		require.NotNil(t, h.graphQLAPIService)
+		assert.Same(t, server.graphQLAPIService, h.graphQLAPIService)
 		assert.Same(t, server.apiKeyService, h.apiKeyService)
 		// Both tools are registered only when their service is non-nil.
 		assert.Subset(t, registeredToolNames(t, h),

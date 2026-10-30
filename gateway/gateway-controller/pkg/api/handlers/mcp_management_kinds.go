@@ -29,6 +29,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/secrets"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/agent"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/graphqlapi"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/restapi"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 )
@@ -84,8 +85,8 @@ type kindOps struct {
 	// wrong; returning the full summarised set degrades gracefully instead.
 	List func() ([]listedResource, error)
 
-	// Keys is non-nil only for kinds that bear API keys (RestApi, LlmProvider,
-	// LlmProxy, Agent). The four api-key tools refuse any kind whose block is nil,
+	// Keys is non-nil only for kinds that bear API keys (RestApi, GraphQLApi,
+	// LlmProvider, LlmProxy, Agent). The four api-key tools refuse any kind whose block is nil,
 	// which is also what keeps a nil dereference impossible when the api-key
 	// service was never wired.
 	Keys *keyOps
@@ -247,6 +248,8 @@ func (h *McpHandler) keyBearingKinds() []string {
 var kindAliases = map[string]string{
 	"agent":               models.KindAgent,
 	"restapi":             models.KindRestApi,
+	"graphqlapi":          models.KindGraphQLApi,
+	"graphql":             models.KindGraphQLApi,
 	"mcp":                 models.KindMcp,
 	"mcpproxy":            models.KindMcp,
 	"llmproxy":            models.KindLlmProxy,
@@ -298,6 +301,7 @@ func (h *McpHandler) buildKindRegistry() map[string]*kindOps {
 	for _, ops := range []*kindOps{
 		h.agentOps(),
 		h.restAPIOps(),
+		h.graphQLAPIOps(),
 		h.mcpProxyOps(),
 		h.llmProxyOps(),
 		h.llmProviderOps(),
@@ -418,6 +422,71 @@ func (h *McpHandler) restAPIOps() *kindOps {
 			}
 			rows := make([]listedResource, 0, len(result.Items))
 			for _, cfg := range result.Items {
+				rows = append(rows, storedConfigRow(cfg,
+					buildResourceResponseFromStored(cfg.SourceConfiguration, cfg)))
+			}
+			return rows, nil
+		},
+	}
+}
+
+func (h *McpHandler) graphQLAPIOps() *kindOps {
+	return &kindOps{
+		Kind:       models.KindGraphQLApi,
+		Routable:   true,
+		Collection: "/graphql-apis",
+		Keys:       h.apiKeyOps(models.KindGraphQLApi),
+
+		Create: func(manifest []byte, correlationID string, log *slog.Logger) (any, error) {
+			stored, err := h.graphQLAPIService.Create(graphqlapi.CreateParams{
+				Body:          manifest,
+				ContentType:   mcpManifestContentType,
+				CorrelationID: correlationID,
+				Logger:        log,
+			})
+			if err != nil {
+				return nil, err
+			}
+			return buildResourceResponseFromStored(stored.SourceConfiguration, stored), nil
+		},
+
+		Update: func(handle string, manifest []byte, correlationID string, log *slog.Logger) (any, error) {
+			stored, err := h.graphQLAPIService.Update(graphqlapi.UpdateParams{
+				Handle:        handle,
+				Body:          manifest,
+				ContentType:   mcpManifestContentType,
+				CorrelationID: correlationID,
+				Logger:        log,
+			})
+			if err != nil {
+				return nil, err
+			}
+			return buildResourceResponseFromStored(stored.SourceConfiguration, stored), nil
+		},
+
+		Delete: func(handle, correlationID string, log *slog.Logger) error {
+			return h.graphQLAPIService.Delete(graphqlapi.DeleteParams{
+				Handle:        handle,
+				CorrelationID: correlationID,
+				Logger:        log,
+			})
+		},
+
+		Get: func(handle string) (any, error) {
+			cfg, err := h.graphQLAPIService.GetByHandle(handle)
+			if err != nil {
+				return nil, err
+			}
+			return buildResourceResponseFromStored(cfg.SourceConfiguration, cfg), nil
+		},
+
+		List: func() ([]listedResource, error) {
+			configs, err := h.graphQLAPIService.List()
+			if err != nil {
+				return nil, err
+			}
+			rows := make([]listedResource, 0, len(configs))
+			for _, cfg := range configs {
 				rows = append(rows, storedConfigRow(cfg,
 					buildResourceResponseFromStored(cfg.SourceConfiguration, cfg)))
 			}
