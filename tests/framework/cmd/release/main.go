@@ -24,6 +24,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -139,6 +140,10 @@ func runRetain(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "release: -org and -package are required")
 		return 2
 	}
+	if *keep < 1 {
+		fmt.Fprintf(stderr, "release: -keep=%d must be at least 1\n", *keep)
+		return 2
+	}
 
 	// Retention is best-effort cleanup, never a reason to fail a release that already shipped:
 	// a missing token, an insufficient scope, or any other API error becomes a warning, not a
@@ -166,28 +171,43 @@ func retain(ctx context.Context, client *ghcrClient, released release.Version, k
 	if err != nil {
 		return err
 	}
+	releasedIDs := make(map[string]bool)
 	var tagged []release.TaggedVersion
 	for _, gv := range versions {
+		id := strconv.FormatInt(gv.ID, 10)
+		for _, tag := range gv.Metadata.Container.Tags {
+			if v, ok := release.ParseVersion(tag); ok && v == released {
+				releasedIDs[id] = true
+			}
+		}
 		for _, tag := range gv.Metadata.Container.Tags {
 			if v, ok := release.ParseVersion(tag); ok {
-				tagged = append(tagged, release.TaggedVersion{Version: v, ID: strconv.FormatInt(gv.ID, 10)})
+				tagged = append(tagged, release.TaggedVersion{Version: v, ID: id})
 				break // one release-version tag identifies the package version; co-applied floating tags don't add another
 			}
 		}
 	}
-	toDelete := release.Retain(release.FilterMinor(tagged, released.Major, released.Minor), keep)
+	var toDelete []release.TaggedVersion
+	for _, tv := range release.Retain(release.FilterMinor(tagged, released.Major, released.Minor), keep) {
+		if tv.Version != released && !releasedIDs[tv.ID] {
+			toDelete = append(toDelete, tv)
+		}
+	}
+	var failed []error
 	for _, tv := range toDelete {
 		id, err := strconv.ParseInt(tv.ID, 10, 64)
 		if err != nil {
-			return fmt.Errorf("parsing version id %q: %w", tv.ID, err)
+			failed = append(failed, fmt.Errorf("parsing version id %q: %w", tv.ID, err))
+			continue
 		}
 		if err := client.deleteVersion(ctx, id); err != nil {
-			return fmt.Errorf("deleting %s (id=%s): %w", tv.Version, tv.ID, err)
+			failed = append(failed, fmt.Errorf("deleting %s (id=%s): %w", tv.Version, tv.ID, err))
+			continue
 		}
 		fmt.Fprintf(stdout, "retention: deleted %s (id=%s)\n", tv.Version, tv.ID)
 	}
 	if len(toDelete) == 0 {
 		fmt.Fprintln(stdout, "retention: nothing to delete")
 	}
-	return nil
+	return errors.Join(failed...)
 }

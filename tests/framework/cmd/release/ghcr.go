@@ -48,24 +48,26 @@ type ghcrClient struct {
 
 const (
 	versionsPageSize = 100
-	maxVersionPages = 50
+	maxVersionPages  = 50
 )
 
 // listVersions returns every version of the package, each with the tags currently applied to it.
 func (c *ghcrClient) listVersions(ctx context.Context) ([]ghcrVersion, error) {
 	var all []ghcrVersion
-	for page := 1; page <= maxVersionPages; page++ {
+	for page := 1; ; page++ {
 		versions, err := c.listVersionsPage(ctx, page)
 		if err != nil {
 			return nil, err
+		}
+		if page > maxVersionPages && len(versions) > 0 {
+			return nil, fmt.Errorf("listing package versions: more than %d pages of %d versions",
+				maxVersionPages, versionsPageSize)
 		}
 		all = append(all, versions...)
 		if len(versions) < versionsPageSize {
 			return all, nil
 		}
 	}
-	return nil, fmt.Errorf("listing package versions: more than %d pages of %d versions",
-		maxVersionPages, versionsPageSize)
 }
 
 func (c *ghcrClient) listVersionsPage(ctx context.Context, page int) ([]ghcrVersion, error) {

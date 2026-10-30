@@ -25,6 +25,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"os/exec"
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -127,9 +128,9 @@ func TestRunRetainSkipsWithoutATokenAndStillSucceeds(t *testing.T) {
 func TestRunRetainDeletesTheOldestVersionsBeyondTheKeepLimit(t *testing.T) {
 	t.Setenv("GHCR_RETENTION_TOKEN", "a-token")
 	var versions []ghcrVersion
-	for i, tag := range []string{"0.4.0", "0.4.1", "0.4.2", "0.4.3", "latest", "0.3.9"} {
+	for i, tags := range [][]string{{"0.4.0"}, {"0.4.1"}, {"0.4.2"}, {"latest", "0.4.3", "0.4", "0"}, {"latest"}, {"0.3.9"}} {
 		v := ghcrVersion{ID: int64(i + 1)}
-		v.Metadata.Container.Tags = []string{tag}
+		v.Metadata.Container.Tags = tags
 		versions = append(versions, v)
 	}
 	var deleted []string
@@ -217,6 +218,119 @@ func TestRunRetainWarnsInsteadOfPruningOnATruncatedListing(t *testing.T) {
 	require.Empty(t, deleted)
 	require.Contains(t, stdout.String(), "::warning::")
 	require.Contains(t, stdout.String(), "pages")
+}
+
+func taggedVersion(id int64, tags ...string) ghcrVersion {
+	v := ghcrVersion{ID: id}
+	v.Metadata.Container.Tags = tags
+	return v
+}
+
+func retentionServer(t *testing.T, list func(page string) []ghcrVersion, status func(id string) int) (*httptest.Server, *[]string) {
+	t.Helper()
+	var deleted []string
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /orgs/wso2/packages/container/testbench/versions", func(w http.ResponseWriter, r *http.Request) {
+		require.NoError(t, json.NewEncoder(w).Encode(list(r.URL.Query().Get("page"))))
+	})
+	mux.HandleFunc("DELETE /orgs/wso2/packages/container/testbench/versions/{id}", func(w http.ResponseWriter, r *http.Request) {
+		deleted = append(deleted, r.PathValue("id"))
+		w.WriteHeader(status(r.PathValue("id")))
+	})
+	server := httptest.NewServer(mux)
+	t.Cleanup(server.Close)
+	return server, &deleted
+}
+
+func TestRunRetainRejectsAKeepBelowOne(t *testing.T) {
+	for _, keep := range []string{"0", "-1"} {
+		var stdout, stderr bytes.Buffer
+
+		code := run([]string{"retain", "-org", "wso2", "-package", "testbench", "-released", "0.4.3", "-keep", keep}, &stdout, &stderr)
+
+		require.Equal(t, 2, code, keep)
+		require.Contains(t, stderr.String(), "must be at least 1", keep)
+	}
+}
+
+func TestRunRetainNeverDeletesTheVersionJustReleased(t *testing.T) {
+	t.Setenv("GHCR_RETENTION_TOKEN", "a-token")
+	versions := []ghcrVersion{
+		taggedVersion(1, "0.4.0"), taggedVersion(2, "0.4.1"), taggedVersion(3, "0.4.2"),
+		taggedVersion(4, "0.4.3"), taggedVersion(5, "0.4.4"), taggedVersion(6, "0.4.5"),
+	}
+	server, deleted := retentionServer(t, func(string) []ghcrVersion { return versions },
+		func(string) int { return http.StatusNoContent })
+	var stdout, stderr bytes.Buffer
+
+	code := run([]string{
+		"retain", "-org", "wso2", "-package", "testbench", "-released", "0.4.1",
+		"-keep", "3", "-api-base", server.URL,
+	}, &stdout, &stderr)
+
+	require.Equal(t, 0, code)
+	require.ElementsMatch(t, []string{"1", "3"}, *deleted) // 0.4.0 and 0.4.2; 0.4.1 is the released version
+}
+
+func TestRunRetainNeverDeletesAPackageVersionThatAlsoCarriesTheReleasedTag(t *testing.T) {
+	t.Setenv("GHCR_RETENTION_TOKEN", "a-token")
+	versions := []ghcrVersion{
+		taggedVersion(1, "0.4.2", "0.4.3"), taggedVersion(2, "0.4.4"),
+		taggedVersion(3, "0.4.5"), taggedVersion(4, "0.4.6"),
+	}
+	server, deleted := retentionServer(t, func(string) []ghcrVersion { return versions },
+		func(string) int { return http.StatusNoContent })
+	var stdout, stderr bytes.Buffer
+
+	code := run([]string{
+		"retain", "-org", "wso2", "-package", "testbench", "-released", "0.4.3",
+		"-keep", "3", "-api-base", server.URL,
+	}, &stdout, &stderr)
+
+	require.Equal(t, 0, code)
+	require.Empty(t, *deleted)
+}
+
+func TestRunRetainKeepsDeletingAfterOneDeletionFails(t *testing.T) {
+	t.Setenv("GHCR_RETENTION_TOKEN", "a-token")
+	versions := []ghcrVersion{taggedVersion(1, "0.4.0"), taggedVersion(2, "0.4.1"), taggedVersion(3, "0.4.2"), taggedVersion(4, "0.4.3"), taggedVersion(5, "0.4.4")}
+	server, deleted := retentionServer(t, func(string) []ghcrVersion { return versions }, func(id string) int {
+		if id == "1" {
+			return http.StatusInternalServerError
+		}
+		return http.StatusNoContent
+	})
+	var stdout, stderr bytes.Buffer
+
+	code := run([]string{
+		"retain", "-org", "wso2", "-package", "testbench", "-released", "0.4.4",
+		"-keep", "3", "-api-base", server.URL,
+	}, &stdout, &stderr)
+
+	require.Equal(t, 0, code)
+	require.Equal(t, []string{"1", "2"}, *deleted) // the failure on 0.4.0 doesn't stop 0.4.1
+	require.Contains(t, stdout.String(), "deleted 0.4.1")
+	require.Contains(t, stdout.String(), "::warning::")
+}
+
+func TestRunRetainAcceptsAListingOfExactlyTheMaximumPages(t *testing.T) {
+	t.Setenv("GHCR_RETENTION_TOKEN", "a-token")
+	server, deleted := retentionServer(t, func(page string) []ghcrVersion {
+		if page == strconv.Itoa(maxVersionPages+1) {
+			return nil
+		}
+		return untaggedVersions(1, versionsPageSize)
+	}, func(string) int { return http.StatusNoContent })
+	var stdout, stderr bytes.Buffer
+
+	code := run([]string{
+		"retain", "-org", "wso2", "-package", "testbench", "-released", "0.4.3", "-api-base", server.URL,
+	}, &stdout, &stderr)
+
+	require.Equal(t, 0, code)
+	require.Empty(t, *deleted)
+	require.NotContains(t, stdout.String(), "::warning::")
+	require.Contains(t, stdout.String(), "nothing to delete")
 }
 
 func TestRunRetainWarnsWithoutFailingWhenTheAPIRejectsTheRequest(t *testing.T) {

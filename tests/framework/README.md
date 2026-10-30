@@ -113,10 +113,16 @@ version to start a new minor/major or to backport a fix onto an older line.
 
 The testbench image also gets whichever floating tags that release is the newest of: `:latest`
 only when it's the highest release overall, the bare `:MAJOR` only when it's the highest within
-that major, and `:MAJOR.MINOR` only when it's the highest patch within that minor line — so a
-deliberate backport (an explicit, out-of-order version) never moves `:latest` or `:MAJOR`
-backward, but still gets its own `:MAJOR.MINOR`. At most 3 patch images are kept per minor line;
-older ones are deleted from GHCR once a newer one in the same line is released.
+that major, and `:MAJOR.MINOR` only when it's the highest patch within that minor line. So a
+backport onto an older minor line never moves `:latest` or `:MAJOR` backward, and gets that line's
+`:MAJOR.MINOR` if it's the newest patch there, while an out-of-order patch inside a line gets no
+floating tag at all.
+
+Retention keeps the newest 3 patch images per minor line on a best-effort basis: after a release,
+older images in that line are deleted from GHCR, except the one just published, so a line can hold
+a fourth until the next release in it. The step is skipped with a warning when the token is
+missing or lacks `delete:packages`, and a failed deletion only warns, so the limit isn't enforced
+in those cases.
 
 A consumer picks a reference with plain `go get`, no special syntax needed:
 

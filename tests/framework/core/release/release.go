@@ -47,7 +47,7 @@ func (v Version) Less(other Version) bool {
 	return v.Patch < other.Patch
 }
 
-var versionPattern = regexp.MustCompile(`^v?(\d+)\.(\d+)\.(\d+)$`)
+var versionPattern = regexp.MustCompile(`^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$`)
 
 // ParseVersion parses a MAJOR.MINOR.PATCH string, with or without a leading "v". It reports
 // false for anything else — a floating tag ("latest", "0", "0.4"), a malformed string, or an
