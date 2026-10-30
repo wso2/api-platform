@@ -46,6 +46,8 @@ func gitRepoWithTags(t *testing.T, tags ...string) string {
 	run("init", "-q")
 	run("config", "user.email", "test@example.com")
 	run("config", "user.name", "test")
+	run("config", "commit.gpgsign", "false")
+	run("config", "tag.gpgsign", "false")
 	require.NoError(t, os.WriteFile(dir+"/f", []byte("x"), 0o644))
 	run("add", "f")
 	run("commit", "-q", "-m", "init")

@@ -161,7 +161,7 @@ func runRetain(args []string, stdout, stderr io.Writer) int {
 		pkg:        *pkg,
 	}
 	if err := retain(context.Background(), client, version, *keep, stdout); err != nil {
-		fmt.Fprintf(stdout, "::warning::retention failed, old testbench images were not pruned: %v\n", err)
+		fmt.Fprintf(stdout, "::warning::retention incomplete, some old testbench images may not have been pruned: %v\n", err)
 	}
 	return 0
 }
