@@ -1238,7 +1238,24 @@ blocks:
       - name: publication-outage
         features:
           - features/apiportal/publishing/publication_outage.feature
-      # Bills through the testbench's Stripe and Moesif services, which hold one account per block.
+
+  # Billing is set up once for a whole API Portal, so the runner that sets it up has a portal of its
+  # own: no other runner sees billing it leaves behind. It bills through the testbench's Stripe and
+  # Moesif services, which hold one account per block.
+  - name: api-portal-billing
+    parallel: 1
+    components:
+      - name: platform-api
+        overlay: tests/framework/core/catalog/overlays/platform-api-portal-publishing.toml
+        db: postgres
+      - name: api-portal
+        dependsOn: [platform-api]
+        db: postgres
+        overlay: tests/framework/core/catalog/overlays/api-portal-publishing.toml
+        stagedFiles:
+          role-to-scope-mapping.yaml: portals/api-portal/resources/role-to-scope-mapping.yaml
+      - name: testbench
+    runners:
       - name: api-portal-billing
         features:
           - features/apiportal/monetization/billing_setup.feature
