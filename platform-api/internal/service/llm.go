@@ -296,6 +296,9 @@ func (s *LLMProviderTemplateService) Create(orgUUID, createdBy string, req *api.
 	if req.ManagedBy != nil && strings.TrimSpace(*req.ManagedBy) == constants.PolicyManagedByWSO2 {
 		return nil, apperror.LLMProviderTemplateManagedByReserved.New()
 	}
+	if err := validateTemplateDeploymentType(req.Metadata); err != nil {
+		return nil, err
+	}
 
 	exists, err := s.repo.Exists(handle, orgUUID)
 	if err != nil {
@@ -423,6 +426,9 @@ func (s *LLMProviderTemplateService) Update(orgUUID, handle, updatedBy string, r
 				return nil, apperror.ValidationFailed.New("The metadata endpointUrl must be a valid, publicly reachable URL.")
 			}
 		}
+	}
+	if err := validateTemplateDeploymentType(req.Metadata); err != nil {
+		return nil, err
 	}
 
 	managedBy := existing.ManagedBy
@@ -582,6 +588,9 @@ func (s *LLMProviderTemplateService) CreateVersion(orgUUID, groupID, createdBy s
 	managedBy := defaultTemplateManagedBy(req.ManagedBy)
 	if managedBy == constants.PolicyManagedByWSO2 {
 		managedBy = constants.TemplateManagedByOrganization
+	}
+	if err := validateTemplateDeploymentType(req.Metadata); err != nil {
+		return nil, err
 	}
 
 	count, err := s.repo.CountVersions(groupID, orgUUID)
@@ -3084,24 +3093,26 @@ func templateListItem(t *model.LLMProviderTemplate) api.LLMProviderTemplateListI
 	version := t.Version
 	isLatest := t.IsLatest
 	enabled := t.Enabled
-	var logoURL string
+	var logoURL, deploymentType string
 	if t.Metadata != nil {
 		logoURL = t.Metadata.LogoURL
+		deploymentType = t.Metadata.DeploymentType
 	}
 	return api.LLMProviderTemplateListItem{
-		Id:          &id,
-		GroupId:     utils.StringPtrIfNotEmpty(t.GroupID),
-		DisplayName: name,
-		Description: utils.StringPtrIfNotEmpty(t.Description),
-		ManagedBy:   utils.StringPtrIfNotEmpty(t.ManagedBy),
-		CreatedBy:   utils.StringPtrIfNotEmpty(t.CreatedBy),
-		Version:     &version,
-		IsLatest:    &isLatest,
-		Enabled:     &enabled,
-		LogoUrl:     utils.StringPtrIfNotEmpty(logoURL),
-		ReadOnly:    utils.BoolPtr(t.Origin == constants.OriginDP),
-		CreatedAt:   utils.TimePtr(t.CreatedAt),
-		UpdatedAt:   utils.TimePtr(t.UpdatedAt),
+		Id:             &id,
+		GroupId:        utils.StringPtrIfNotEmpty(t.GroupID),
+		DisplayName:    name,
+		Description:    utils.StringPtrIfNotEmpty(t.Description),
+		ManagedBy:      utils.StringPtrIfNotEmpty(t.ManagedBy),
+		DeploymentType: templateDeploymentTypeToAPI(deploymentType),
+		CreatedBy:      utils.StringPtrIfNotEmpty(t.CreatedBy),
+		Version:        &version,
+		IsLatest:       &isLatest,
+		Enabled:        &enabled,
+		LogoUrl:        utils.StringPtrIfNotEmpty(logoURL),
+		ReadOnly:       utils.BoolPtr(t.Origin == constants.OriginDP),
+		CreatedAt:      utils.TimePtr(t.CreatedAt),
+		UpdatedAt:      utils.TimePtr(t.UpdatedAt),
 	}
 }
 
@@ -3241,16 +3252,41 @@ func mapTemplateMetadataAPI(in *api.LLMProviderTemplateMetadata) *model.LLMProvi
 			ValuePrefix: utils.ValueOrEmpty(in.Auth.ValuePrefix),
 		}
 	}
+	var deploymentType string
+	if in.DeploymentType != nil {
+		deploymentType = string(*in.DeploymentType)
+	}
 	out := &model.LLMProviderTemplateMetadata{
 		EndpointURL:    strings.TrimSpace(utils.ValueOrEmpty(in.EndpointUrl)),
 		Auth:           auth,
 		LogoURL:        strings.TrimSpace(utils.ValueOrEmpty(in.LogoUrl)),
 		OpenapiSpecURL: strings.TrimSpace(utils.ValueOrEmpty(in.OpenapiSpecUrl)),
+		DeploymentType: deploymentType,
 	}
-	if out.EndpointURL == "" && out.LogoURL == "" && out.Auth == nil && out.OpenapiSpecURL == "" {
+	if out.EndpointURL == "" && out.LogoURL == "" && out.Auth == nil && out.OpenapiSpecURL == "" && out.DeploymentType == "" {
 		return nil
 	}
 	return out
+}
+
+// validateTemplateDeploymentType rejects a metadata deploymentType outside the enum.
+// Leaving it out is allowed: a template without a value is managed.
+func validateTemplateDeploymentType(in *api.LLMProviderTemplateMetadata) error {
+	if in == nil || in.DeploymentType == nil || in.DeploymentType.Valid() {
+		return nil
+	}
+	return apperror.ValidationFailed.New("The metadata deploymentType must be 'managed' or 'self-managed'.")
+}
+
+// templateDeploymentTypeToAPI reports a template's metadata deploymentType for a list
+// item, reading a template without one (built-ins, and templates created before the field
+// existed) as managed, so list items always carry a value.
+func templateDeploymentTypeToAPI(stored string) *api.LLMProviderTemplateDeploymentType {
+	deploymentType := api.LLMProviderTemplateDeploymentType(stored)
+	if !deploymentType.Valid() {
+		deploymentType = api.LLMProviderTemplateDeploymentTypeManaged
+	}
+	return &deploymentType
 }
 
 func mapTemplateMetadataModelToAPI(in *model.LLMProviderTemplateMetadata) *api.LLMProviderTemplateMetadata {
@@ -3265,11 +3301,17 @@ func mapTemplateMetadataModelToAPI(in *model.LLMProviderTemplateMetadata) *api.L
 			ValuePrefix: utils.StringPtrIfNotEmpty(in.Auth.ValuePrefix),
 		}
 	}
+	var deploymentType *api.LLMProviderTemplateDeploymentType
+	if in.DeploymentType != "" {
+		dt := api.LLMProviderTemplateDeploymentType(in.DeploymentType)
+		deploymentType = &dt
+	}
 	return &api.LLMProviderTemplateMetadata{
 		EndpointUrl:    utils.StringPtrIfNotEmpty(in.EndpointURL),
 		Auth:           auth,
 		LogoUrl:        utils.StringPtrIfNotEmpty(in.LogoURL),
 		OpenapiSpecUrl: utils.StringPtrIfNotEmpty(in.OpenapiSpecURL),
+		DeploymentType: deploymentType,
 	}
 }
 

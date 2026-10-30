@@ -138,6 +138,7 @@ type LLMProviderTemplateMetadata struct {
 	Auth           *LLMProviderTemplateAuth `json:"auth,omitempty" db:"-"`
 	LogoURL        string                   `json:"logoUrl,omitempty" db:"-"`
 	OpenapiSpecURL string                   `json:"openapiSpecUrl,omitempty" db:"-"`
+	DeploymentType string                   `json:"deploymentType,omitempty" db:"-"`
 }
 
 type LLMProviderTemplateExtractionFields struct {

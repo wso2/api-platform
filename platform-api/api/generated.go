@@ -610,6 +610,24 @@ func (e LLMProviderListItemStatus) Valid() bool {
 	}
 }
 
+// Defines values for LLMProviderTemplateDeploymentType.
+const (
+	LLMProviderTemplateDeploymentTypeManaged     LLMProviderTemplateDeploymentType = "managed"
+	LLMProviderTemplateDeploymentTypeSelfManaged LLMProviderTemplateDeploymentType = "self-managed"
+)
+
+// Valid indicates whether the value is a known member of the LLMProviderTemplateDeploymentType enum.
+func (e LLMProviderTemplateDeploymentType) Valid() bool {
+	switch e {
+	case LLMProviderTemplateDeploymentTypeManaged:
+		return true
+	case LLMProviderTemplateDeploymentTypeSelfManaged:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for LLMProxyListItemStatus.
 const (
 	LLMProxyListItemStatusDeployed LLMProxyListItemStatus = "deployed"
@@ -3967,13 +3985,23 @@ type LLMProviderTemplateAuth struct {
 	ValuePrefix *string `json:"valuePrefix,omitempty" yaml:"valuePrefix,omitempty"`
 }
 
+// LLMProviderTemplateDeploymentType How the provider behind the template is operated. `managed` means the vendor runs
+// the provider as a service (for example OpenAI). `self-managed` means you host the
+// provider yourself, on your own infrastructure (for example Ollama or vLLM).
+// A template without a value is `managed`.
+type LLMProviderTemplateDeploymentType string
+
 // LLMProviderTemplateListItem defines model for LLMProviderTemplateListItem.
 type LLMProviderTemplateListItem struct {
 	CreatedAt *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
 
 	// CreatedBy User identifier of the user who created this resource
-	CreatedBy   *string `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
-	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
+	CreatedBy *string `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
+
+	// DeploymentType The template's `metadata.deploymentType`, listed as `managed` when the template
+	// has no value.
+	DeploymentType *LLMProviderTemplateDeploymentType `json:"deploymentType,omitempty" yaml:"deploymentType,omitempty"`
+	Description    *string                            `json:"description,omitempty" yaml:"description,omitempty"`
 
 	// DisplayName Human-readable name for the LLM provider template
 	DisplayName string `json:"displayName" yaml:"displayName"`
@@ -4015,6 +4043,12 @@ type LLMProviderTemplateListResponse struct {
 // LLMProviderTemplateMetadata defines model for LLMProviderTemplateMetadata.
 type LLMProviderTemplateMetadata struct {
 	Auth *LLMProviderTemplateAuth `json:"auth,omitempty" yaml:"auth,omitempty"`
+
+	// DeploymentType How the provider behind the template is operated. `managed` means the vendor runs
+	// the provider as a service (for example OpenAI). `self-managed` means you host the
+	// provider yourself, on your own infrastructure (for example Ollama or vLLM).
+	// A template without a value is `managed`.
+	DeploymentType *LLMProviderTemplateDeploymentType `json:"deploymentType,omitempty" yaml:"deploymentType,omitempty"`
 
 	// EndpointUrl Default endpoint URL for the template
 	EndpointUrl *string `json:"endpointUrl,omitempty" yaml:"endpointUrl,omitempty"`

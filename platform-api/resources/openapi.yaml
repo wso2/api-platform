@@ -12014,6 +12014,8 @@ components:
           format: uri
           description: URL to the OpenAPI specification for the provider
           example: https://api.openai.com/openapi.json
+        deploymentType:
+          $ref: '#/components/schemas/LLMProviderTemplateDeploymentType'
 
     LLMProviderTemplateResourceMapping:
       type: object
@@ -12069,6 +12071,19 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/LLMProviderTemplateResourceMapping'
+
+    LLMProviderTemplateDeploymentType:
+      type: string
+      description: |
+        How the provider behind the template is operated. `managed` means the vendor runs
+        the provider as a service (for example OpenAI). `self-managed` means you host the
+        provider yourself, on your own infrastructure (for example Ollama or vLLM).
+        A template without a value is `managed`.
+      enum:
+        - managed
+        - self-managed
+      default: managed
+      example: self-managed
 
     LLMProviderTemplate:
       type: object
@@ -12318,6 +12333,12 @@ components:
           type: string
           description: Who manages the template ('wso2' for built-in, otherwise custom-defined).
           example: wso2
+        deploymentType:
+          allOf:
+            - $ref: '#/components/schemas/LLMProviderTemplateDeploymentType'
+          description: |
+            The template's `metadata.deploymentType`, listed as `managed` when the template
+            has no value.
         description:
           type: string
           example: Default OpenAI template

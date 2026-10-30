@@ -826,3 +826,188 @@ func TestLLMProviderTemplateServiceDeleteVersion_Success(t *testing.T) {
 		t.Fatalf("expected repository DeleteVersion to be called")
 	}
 }
+
+// ---- Deployment type (metadata.deploymentType) ----
+
+// The stored (model) form of the two deployment types.
+const (
+	dtManaged     = string(api.LLMProviderTemplateDeploymentTypeManaged)
+	dtSelfManaged = string(api.LLMProviderTemplateDeploymentTypeSelfManaged)
+)
+
+func deploymentTypePtr(v api.LLMProviderTemplateDeploymentType) *api.LLMProviderTemplateDeploymentType {
+	return &v
+}
+
+// templateRequestWithDeploymentType is validTemplateRequest with metadata.deploymentType set.
+func templateRequestWithDeploymentType(name string, dt api.LLMProviderTemplateDeploymentType) *api.LLMProviderTemplate {
+	req := validTemplateRequest(name)
+	req.Metadata.DeploymentType = deploymentTypePtr(dt)
+	return req
+}
+
+func TestLLMProviderTemplateServiceCreate_StoresSelfManagedInMetadata(t *testing.T) {
+	repo := &mockLLMProviderTemplateCRUDRepo{}
+	svc := NewLLMProviderTemplateService(repo, &noopAuditRepo{}, newTestIdentityService())
+
+	resp, err := svc.Create("org-1", "alice", templateRequestWithDeploymentType("Local Llama", api.LLMProviderTemplateDeploymentTypeSelfManaged))
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	if repo.created == nil || repo.created.Metadata == nil || repo.created.Metadata.DeploymentType != dtSelfManaged {
+		t.Fatalf("expected stored metadata deploymentType %q, got: %#v", dtSelfManaged, repo.created)
+	}
+	if repo.created.Metadata.EndpointURL != "https://api.example.com" {
+		t.Fatalf("expected the rest of the metadata kept alongside deploymentType, got: %#v", repo.created.Metadata)
+	}
+	if resp.Metadata == nil || resp.Metadata.DeploymentType == nil || *resp.Metadata.DeploymentType != api.LLMProviderTemplateDeploymentTypeSelfManaged {
+		t.Fatalf("expected response metadata deploymentType self-managed, got: %#v", resp.Metadata)
+	}
+}
+
+func TestLLMProviderTemplateServiceCreate_OmittedDeploymentTypeStoresNone(t *testing.T) {
+	repo := &mockLLMProviderTemplateCRUDRepo{}
+	svc := NewLLMProviderTemplateService(repo, &noopAuditRepo{}, newTestIdentityService())
+
+	if _, err := svc.Create("org-1", "alice", validTemplateRequest("Hosted Provider")); err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	if repo.created == nil || repo.created.Metadata == nil || repo.created.Metadata.DeploymentType != "" {
+		t.Fatalf("expected no stored deploymentType (read as managed), got: %#v", repo.created)
+	}
+}
+
+func TestLLMProviderTemplateServiceCreate_RejectsUnknownDeploymentType(t *testing.T) {
+	repo := &mockLLMProviderTemplateCRUDRepo{}
+	svc := NewLLMProviderTemplateService(repo, &noopAuditRepo{}, newTestIdentityService())
+
+	_, err := svc.Create("org-1", "alice", templateRequestWithDeploymentType("On Prem", "on-prem"))
+	if !apperror.ValidationFailed.Is(err) {
+		t.Fatalf("expected ErrInvalidInput, got: %v", err)
+	}
+	if repo.createCalled {
+		t.Fatalf("did not expect repository create to be called")
+	}
+}
+
+func TestLLMProviderTemplateServiceUpdate_ChangesDeploymentType(t *testing.T) {
+	repo := &mockLLMProviderTemplateCRUDRepo{}
+	repo.getByIDFunc = func(templateID, orgUUID string) (*model.LLMProviderTemplate, error) {
+		return &model.LLMProviderTemplate{
+			ID:               templateID,
+			OrganizationUUID: orgUUID,
+			ManagedBy:        "organization",
+			Version:          "v1.0",
+			Metadata:         &model.LLMProviderTemplateMetadata{DeploymentType: dtSelfManaged},
+		}, nil
+	}
+	svc := NewLLMProviderTemplateService(repo, &noopAuditRepo{}, newTestIdentityService())
+
+	req := templateRequestWithDeploymentType("Local Llama", api.LLMProviderTemplateDeploymentTypeManaged)
+	if _, err := svc.Update("org-1", "local-llama-v1-0", "alice", req); err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	if repo.updated == nil || repo.updated.Metadata == nil || repo.updated.Metadata.DeploymentType != dtManaged {
+		t.Fatalf("expected deploymentType to change to managed, got: %#v", repo.updated)
+	}
+}
+
+// Update replaces the metadata block, and deploymentType is part of it: metadata sent
+// without it clears the stored value, the same as any other metadata field.
+func TestLLMProviderTemplateServiceUpdate_MetadataWithoutDeploymentTypeClearsIt(t *testing.T) {
+	repo := &mockLLMProviderTemplateCRUDRepo{}
+	repo.getByIDFunc = func(templateID, orgUUID string) (*model.LLMProviderTemplate, error) {
+		return &model.LLMProviderTemplate{
+			ID:               templateID,
+			OrganizationUUID: orgUUID,
+			ManagedBy:        "organization",
+			Version:          "v1.0",
+			Metadata:         &model.LLMProviderTemplateMetadata{DeploymentType: dtSelfManaged},
+		}, nil
+	}
+	svc := NewLLMProviderTemplateService(repo, &noopAuditRepo{}, newTestIdentityService())
+
+	if _, err := svc.Update("org-1", "local-llama-v1-0", "alice", validTemplateRequest("Local Llama")); err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	if repo.updated == nil || repo.updated.Metadata == nil || repo.updated.Metadata.DeploymentType != "" {
+		t.Fatalf("expected deploymentType cleared with the replaced metadata, got: %#v", repo.updated)
+	}
+}
+
+func TestLLMProviderTemplateServiceUpdate_RejectsUnknownDeploymentType(t *testing.T) {
+	repo := &mockLLMProviderTemplateCRUDRepo{}
+	repo.getByIDFunc = func(templateID, orgUUID string) (*model.LLMProviderTemplate, error) {
+		return &model.LLMProviderTemplate{ID: templateID, OrganizationUUID: orgUUID, ManagedBy: "organization", Version: "v1.0"}, nil
+	}
+	svc := NewLLMProviderTemplateService(repo, &noopAuditRepo{}, newTestIdentityService())
+
+	_, err := svc.Update("org-1", "local-llama-v1-0", "alice", templateRequestWithDeploymentType("Local Llama", "on-prem"))
+	if !apperror.ValidationFailed.Is(err) {
+		t.Fatalf("expected ErrInvalidInput, got: %v", err)
+	}
+	if repo.updated != nil {
+		t.Fatalf("did not expect repository update to be called")
+	}
+}
+
+func TestLLMProviderTemplateServiceCreateVersion_StoresDeploymentType(t *testing.T) {
+	repo := &mockLLMProviderTemplateCRUDRepo{countVersionsResult: 1, managedByForGroupIDResult: constants.TemplateManagedByOrganization}
+	svc := NewLLMProviderTemplateService(repo, &noopAuditRepo{}, newTestIdentityService())
+
+	req := &api.CreateLLMProviderTemplateVersionRequest{
+		DisplayName: stringPtr("Local Llama"),
+		Version:     "v2.0",
+		Metadata: &api.LLMProviderTemplateMetadata{
+			DeploymentType: deploymentTypePtr(api.LLMProviderTemplateDeploymentTypeSelfManaged),
+		},
+	}
+	if _, err := svc.CreateVersion("org-1", "local-llama", "test-user", req); err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	if repo.createdVersion == nil || repo.createdVersion.Metadata == nil || repo.createdVersion.Metadata.DeploymentType != dtSelfManaged {
+		t.Fatalf("expected new version to store self-managed, got: %#v", repo.createdVersion)
+	}
+}
+
+func TestLLMProviderTemplateServiceCopyVersion_CarriesDeploymentType(t *testing.T) {
+	repo := &mockLLMProviderTemplateCRUDRepo{countVersionsResult: 1}
+	repo.getByIDFunc = func(templateID, orgUUID string) (*model.LLMProviderTemplate, error) {
+		return &model.LLMProviderTemplate{
+			ID:        "local-llama-v1-0",
+			GroupID:   "local-llama",
+			Name:      "Local Llama",
+			ManagedBy: "organization",
+			Version:   "v1.0",
+			Metadata:  &model.LLMProviderTemplateMetadata{DeploymentType: dtSelfManaged},
+		}, nil
+	}
+	svc := NewLLMProviderTemplateService(repo, &noopAuditRepo{}, newTestIdentityService())
+
+	if _, err := svc.CopyVersion("org-1", "local-llama-v1-0", "", "v2.0", "test-user", nil); err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	if repo.createdVersion == nil || repo.createdVersion.Metadata == nil || repo.createdVersion.Metadata.DeploymentType != dtSelfManaged {
+		t.Fatalf("expected copy to carry self-managed from the source metadata, got: %#v", repo.createdVersion)
+	}
+}
+
+func TestMapTemplateToAPI_DeploymentType(t *testing.T) {
+	selfManaged := &model.LLMProviderTemplate{
+		ID: "local-llama-v1-0", Name: "Local Llama", Version: "v1.0",
+		Metadata: &model.LLMProviderTemplateMetadata{DeploymentType: dtSelfManaged},
+	}
+	full := mapTemplateModelToAPI(selfManaged)
+	if full.Metadata == nil || full.Metadata.DeploymentType == nil || *full.Metadata.DeploymentType != api.LLMProviderTemplateDeploymentTypeSelfManaged {
+		t.Fatalf("expected full response metadata to carry self-managed, got: %#v", full.Metadata)
+	}
+	if item := templateListItem(selfManaged); item.DeploymentType == nil || *item.DeploymentType != api.LLMProviderTemplateDeploymentTypeSelfManaged {
+		t.Fatalf("expected list item to carry self-managed, got: %v", item.DeploymentType)
+	}
+
+	// Built-ins and templates created before the field existed have no stored value.
+	legacy := &model.LLMProviderTemplate{ID: "openai", Name: "OpenAI", Version: "v1.0"}
+	if item := templateListItem(legacy); item.DeploymentType == nil || *item.DeploymentType != api.LLMProviderTemplateDeploymentTypeManaged {
+		t.Fatalf("expected list item to read as managed, got: %v", item.DeploymentType)
+	}
+}
