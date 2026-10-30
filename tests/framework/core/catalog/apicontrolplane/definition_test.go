@@ -52,7 +52,9 @@ func TestAPIControlPlaneBuildSpec(t *testing.T) {
 	spec, err := BuildSpec("1.2.3")
 	require.NoError(t, err)
 	require.Equal(t, "ghcr.io/wso2/api-platform/api-control-plane:1.2.3", spec.Images[0].Name)
-	require.Equal(t, []builder.CoverageType{builder.GoCoverage}, spec.Coverage.Types)
+	require.Equal(t, []builder.CoverageType{builder.GoCoverage, builder.BrowserJSCoverage}, spec.Coverage.Types)
+	require.True(t, spec.Coverage.Browser.Supported, "the console's journeys report browser coverage")
+	require.Equal(t, "portals/api-control-plane/src", spec.Coverage.Browser.SourceRoot)
 
 	commands, err := spec.Plan("/repo", "1.2.3", spec.Coverage)
 	require.NoError(t, err)

@@ -20,7 +20,8 @@ import basicSsl from '@vitejs/plugin-basic-ssl';
 import react from '@vitejs/plugin-react';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { defineConfig, loadEnv, type ProxyOptions } from 'vite';
+import { defineConfig, loadEnv, type PluginOption, type ProxyOptions } from 'vite';
+import istanbul from 'vite-plugin-istanbul';
 
 /** This file's own directory; `__dirname` doesn't exist in an ES module. */
 const projectRoot = path.dirname(fileURLToPath(import.meta.url));
@@ -54,6 +55,20 @@ export default ({ mode }: { mode: string }) => {
         },
       }),
       basicSsl(),
+      // The test framework's coverage build (VITE_COVERAGE=true) instruments the SPA so its
+      // browser journeys report source coverage; a normal build carries no instrumentation.
+      ...(process.env.VITE_COVERAGE === 'true'
+        ? [
+            istanbul({
+              checkProd: false,
+              forceBuildInstrument: true,
+              cwd: projectRoot,
+              include: ['src/**/*'],
+              exclude: ['**/*.test.*', '**/node_modules/**'],
+              requireEnv: false,
+            }) as unknown as PluginOption,
+          ]
+        : []),
     ],
     resolve: {
       alias: {

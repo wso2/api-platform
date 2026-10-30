@@ -9,7 +9,7 @@ const reports = require('istanbul-reports')
 const { minimatch } = require('minimatch')
 
 function usage() {
-  console.error('usage: browser-to-istanbul.js <input-root> <output-root> <repo-root> [--source-root path] [--inventory-root path] [--include pattern] [--exclude pattern]')
+  console.error('usage: browser-to-istanbul.js <input-root> <output-root> <repo-root> [--source-root path] [--inventory-root path] [--path-prefix container-prefix=repo-path] [--include pattern] [--exclude pattern]')
   process.exit(2)
 }
 
@@ -22,8 +22,18 @@ const sourceRoots = []
 const inventoryRoots = []
 const includes = []
 const excludes = []
+const pathPrefixes = []
 for (let i = 0; i < args.length; i += 2) {
-  if (!args[i + 1] || !['--source-root', '--inventory-root', '--include', '--exclude'].includes(args[i])) usage()
+  if (!args[i + 1] || !['--source-root', '--inventory-root', '--path-prefix', '--include', '--exclude'].includes(args[i])) usage()
+  if (args[i] === '--path-prefix') {
+    const separator = args[i + 1].indexOf('=')
+    if (separator <= 0 || separator === args[i + 1].length - 1) usage()
+    pathPrefixes.push({
+      prefix: args[i + 1].slice(0, separator),
+      root: path.resolve(repoRoot, args[i + 1].slice(separator + 1)),
+    })
+    continue
+  }
   const values = args[i] === '--source-root' ? sourceRoots : args[i] === '--inventory-root' ? inventoryRoots : args[i] === '--include' ? includes : excludes
   values.push(args[i + 1])
 }
@@ -71,6 +81,14 @@ function resolveSource(file) {
 
 function resolveIstanbulSource(file) {
   const normalized = String(file).replaceAll('\\', '/')
+  // An explicit container prefix identifies a portal exactly; the /src/ heuristics below would
+  // credit a file to whichever portal has a file at the same relative path.
+  for (const { prefix, root } of pathPrefixes) {
+    if (normalized.startsWith(prefix)) {
+      const candidate = path.join(root, normalized.slice(prefix.length))
+      if (fs.existsSync(candidate)) return candidate
+    }
+  }
   for (const root of absoluteSourceRoots) {
     const marker = `/${path.basename(root)}/`
     const index = normalized.lastIndexOf(marker)

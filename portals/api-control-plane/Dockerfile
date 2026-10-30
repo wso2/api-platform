@@ -23,6 +23,8 @@
 # target platform, so emulating node per-platform costs minutes and buys
 # nothing.
 FROM --platform=$BUILDPLATFORM node:24-alpine AS web
+# Off by default; the test framework turns it on to collect browser coverage.
+ARG ENABLE_COVERAGE=false
 WORKDIR /app
 
 # Separate dependency install for better layer caching.
@@ -30,7 +32,11 @@ COPY package.json package-lock.json ./
 RUN npm ci --ignore-scripts
 
 COPY . .
-RUN VITE_APP_BASE_PATH=/ npm run build
+RUN if [ "$ENABLE_COVERAGE" = "true" ]; then \
+        NODE_OPTIONS=--max-old-space-size=8192 VITE_COVERAGE=true VITE_APP_BASE_PATH=/ npm run build -- --sourcemap hidden; \
+    else \
+        VITE_APP_BASE_PATH=/ npm run build; \
+    fi
 
 ###########################
 # Stage 2 — BFF build     #

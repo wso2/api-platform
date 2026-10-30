@@ -43,7 +43,7 @@ raw_root="$run_root/raw"
 
 # Generated reports are disposable. Clear previous layouts so an index never links to
 # reports from an earlier run or an obsolete directory structure.
-rm -rf "$out/platform-gateway" "$out/platform-api" "$out/ai-workspace" \
+rm -rf "$out/platform-gateway" "$out/platform-api" "$out/ai-workspace" "$out/api-control-plane" \
 	"$out/api-portal/server" "$out/api-portal/ui" "$out/browser-report" "$out/node-v8-report" "$out/merged-go" \
 	"$out/coverage-go.txt" "$out/coverage-go.raw.txt" "$out/coverage-go.html" \
 	"$out/coverage-go.html.profile" "$out/index.html"
@@ -95,6 +95,7 @@ if [ -n "$go_inputs" ]; then
 				case "$file" in
 					github.com/wso2/api-platform/*) source="$repo_root/${file#github.com/wso2/api-platform/}" ;;
 					ai-workspace-bff/*) source="$repo_root/portals/ai-workspace/bff/${file#ai-workspace-bff/}" ;;
+					api-control-plane-bff/*) source="$repo_root/portals/api-control-plane/bff/${file#api-control-plane-bff/}" ;;
 					*) source="$repo_root/$file" ;;
 				 esac
 				[ -f "$source" ] && printf '%s\n' "$line"
@@ -109,7 +110,7 @@ if [ -n "$go_inputs" ]; then
 		printf '{"type":"go","covered":%d,"total":%d,"percent":%.2f}\n' "$covered" "$total" "$(awk -v c="$covered" -v t="$total" 'BEGIN {print 100*c/t}')" > "$report_dir/summary.json"
 	}
 
-	for service in gateway-controller gateway-runtime platform-api ai-workspace; do
+	for service in gateway-controller gateway-runtime platform-api ai-workspace api-control-plane; do
 		service_inputs=""
 		while IFS= read -r dir; do
 			[ "$(basename "$dir")" = "$service" ] || continue
@@ -121,6 +122,7 @@ if [ -n "$go_inputs" ]; then
 			gateway-runtime) report_dir="$out/platform-gateway/runtime" ;;
 			platform-api) report_dir="$out/platform-api" ;;
 			ai-workspace) report_dir="$out/ai-workspace/bff" ;;
+			api-control-plane) report_dir="$out/api-control-plane/bff" ;;
 			*) continue ;;
 		esac
 		render_go_report "$service" "$service_inputs" "$report_dir"
@@ -161,8 +163,11 @@ if [ "${#browser_files[@]}" -gt 0 ]; then
 	set -- "$tools/browser-to-istanbul.js" "$raw_root" "$out/browser-report" "$repo_root" \
 		--source-root portals/ai-workspace/src \
 		--source-root portals/api-portal/src/scripts \
+		--source-root portals/api-control-plane/src \
+		--path-prefix /app/src/=portals/api-control-plane/src/ \
 		--inventory-root portals/ai-workspace/src \
 		--inventory-root portals/api-portal/src/scripts \
+		--inventory-root portals/api-control-plane/src \
 		--include 'portals/ai-workspace/src/**/*.js' \
 		--include 'portals/ai-workspace/src/**/*.jsx' \
 		--include 'portals/ai-workspace/src/**/*.ts' \
@@ -171,6 +176,8 @@ if [ "${#browser_files[@]}" -gt 0 ]; then
 		--include 'portals/api-portal/src/scripts/**/*.jsx' \
 		--include 'portals/api-portal/src/scripts/**/*.ts' \
 		--include 'portals/api-portal/src/scripts/**/*.tsx' \
+		--include 'portals/api-control-plane/src/**/*.ts' \
+		--include 'portals/api-control-plane/src/**/*.tsx' \
 		--exclude '**/*.test.*' \
 		--exclude '**/node_modules/**'
 	echo "merging browser coverage: ${#browser_files[@]} files"
@@ -182,16 +189,18 @@ if [ "${#browser_files[@]}" -gt 0 ]; then
 	# Keep product reports separate so a combined UI percentage cannot hide which
 	# frontend produced it. The combined report above remains useful for one upload.
 	run_product_browser_report() {
-		local name="$1" source_root="$2" inventory_root="$3" pattern="$4"
+		local name="$1" source_root="$2" inventory_root="$3" pattern="$4" path_prefix="${5:-}"
 		local report_dir
 		case "$name" in
 			ai-workspace-ui) report_dir="$out/ai-workspace/ui" ;;
 			api-portal-ui) report_dir="$out/api-portal/ui" ;;
+			api-control-plane-ui) report_dir="$out/api-control-plane/ui" ;;
 			*) die "unknown browser report $name" ;;
 		esac
 		local -a report_args=("$tools/browser-to-istanbul.js" "$raw_root" "$report_dir" "$repo_root"
 			--source-root "$source_root" --inventory-root "$inventory_root" --include "$pattern"
 			--exclude '**/*.test.*' --exclude '**/node_modules/**')
+		[ -n "$path_prefix" ] && report_args+=(--path-prefix "$path_prefix")
 		echo "merging $name browser coverage"
 		node "${report_args[@]}"
 		[ -s "$report_dir/lcov.info" ] || die "$name browser coverage reporter produced no LCOV report"
@@ -206,6 +215,12 @@ if [ "${#browser_files[@]}" -gt 0 ]; then
 	if find "$raw_root/blocks" -type f -name 'raw-istanbul.json' -print -quit | grep -q . \
 		&& rg -l '/app/src/scripts/' "$raw_root/blocks" >/dev/null; then
 		run_product_browser_report api-portal-ui portals/api-portal/src/scripts portals/api-portal/src/scripts 'portals/api-portal/src/scripts/**/*.js'
+	fi
+	# The Management Portal also builds under /app, but outside /app/src/scripts.
+	if find "$raw_root/blocks" -type f -name 'raw-istanbul.json' -print -quit | grep -q . \
+		&& rg -l '/app/src/(pages|App\.tsx|main\.tsx)' "$raw_root/blocks" >/dev/null; then
+		run_product_browser_report api-control-plane-ui portals/api-control-plane/src portals/api-control-plane/src \
+			'portals/api-control-plane/src/**' /app/src/=portals/api-control-plane/src/
 	fi
 fi
 

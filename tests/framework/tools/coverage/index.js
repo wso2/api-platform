@@ -21,6 +21,8 @@ const entries = [
   ['ai-workspace', 'ui', 'ai-workspace/ui/summary.json', 'ai-workspace/ui/index.html'],
   ['api-portal', 'server', 'api-portal/server/coverage-summary.json', 'api-portal/server/index.html'],
   ['api-portal', 'ui', 'api-portal/ui/summary.json', 'api-portal/ui/index.html'],
+  ['api-control-plane', 'bff', 'api-control-plane/bff/summary.json', 'api-control-plane/bff/coverage.html'],
+  ['api-control-plane', 'ui', 'api-control-plane/ui/summary.json', 'api-control-plane/ui/index.html'],
 ]
 
 function readJSON(relative) {

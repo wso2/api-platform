@@ -31,10 +31,17 @@ func BuildSpec(version string) (builder.Spec, error) {
 		Component: svcAPIControlPlane,
 		SourceDir: "portals/api-control-plane",
 		Coverage: builder.CoverageSpec{
-			Supported: true, Types: []builder.CoverageType{builder.GoCoverage},
+			Supported: true, Types: []builder.CoverageType{builder.GoCoverage, builder.BrowserJSCoverage},
 			Packages: []string{"api-control-plane-bff/..."}, OutputDir: "/coverage",
 			BuildArgs:   map[string]string{"ENABLE_COVERAGE": "true"},
 			Environment: map[string]string{"GOCOVERDIR": "/coverage"},
+			Browser: builder.BrowserCoverageSpec{
+				Supported:  true,
+				SourceRoot: "portals/api-control-plane/src",
+				Include:    []string{"**/*.ts", "**/*.tsx"},
+				Exclude:    []string{"**/*.test.*", "**/node_modules/**"},
+				OutputDir:  "/coverage/browser",
+			},
 		},
 		Images: []builder.Image{{
 			Name:       image,
