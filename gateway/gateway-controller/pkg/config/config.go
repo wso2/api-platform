@@ -1326,7 +1326,6 @@ func defaultConfig() *Config {
 			},
 			Audit: AuditConfig{
 				Enabled: false,
-				Output:  "none",
 			},
 			Encryption: EncryptionConfig{
 				Providers: []ProviderConfig{
@@ -1525,9 +1524,9 @@ func defaultConfig() *Config {
 // Validate validates the configuration
 func (c *Config) Validate() error {
 	switch c.Controller.Audit.Output {
-	case "none", "stdout", "file":
+	case "", "stdout", "file":
 	default:
-		return fmt.Errorf("controller.audit.output must be \"none\", \"stdout\" or \"file\"; got %q", c.Controller.Audit.Output)
+		return fmt.Errorf("controller.audit.output must be \"stdout\" or \"file\"; got %q", c.Controller.Audit.Output)
 	}
 
 	// Immutable mode requires SQLite — it starts with a fresh in-container DB on every boot,

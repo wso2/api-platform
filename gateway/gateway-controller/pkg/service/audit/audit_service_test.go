@@ -96,9 +96,9 @@ func TestAuditServiceRecordsToDBAndOutput(t *testing.T) {
 	}
 }
 
-func TestAuditServiceOutputNone(t *testing.T) {
+func TestAuditServiceNoOutput(t *testing.T) {
 	db := &recordingAuditTable{}
-	s := NewAuditService(db, "gw-1", config.AuditConfig{Enabled: true, Output: "none"}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	s := NewAuditService(db, "gw-1", config.AuditConfig{Enabled: true}, slog.New(slog.NewTextHandler(io.Discard, nil)))
 
 	s.Record("DELETE", "res-1", "rest_api", "admin", "corr-1")
 
@@ -106,7 +106,7 @@ func TestAuditServiceOutputNone(t *testing.T) {
 		t.Fatalf("db rows = %d, want 1", len(db.rows))
 	}
 	if s.out != nil {
-		t.Fatal("output handler built although audit.output is none")
+		t.Fatal("output handler built although audit.output is unset")
 	}
 }
 
